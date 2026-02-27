@@ -5,6 +5,8 @@ export interface CompileResult {
   wat: string;
   /** TypeScript declaration file for exports and imports */
   dts: string;
+  /** JS module with createImports() helper function */
+  importsHelper: string;
   /** true if compilation was successful */
   success: boolean;
   /** Error messages with line numbers */

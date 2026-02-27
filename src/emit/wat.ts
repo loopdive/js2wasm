@@ -187,10 +187,12 @@ function formatInstrIndented(instr: Instr, depth: number): string {
       const thenStr = instr.then
         .map((i) => formatInstrIndented(i, depth + 1))
         .join("\n");
-      if (instr.else && instr.else.length > 0) {
-        const elseStr = instr.else
-          .map((i) => formatInstrIndented(i, depth + 1))
-          .join("\n");
+      const hasElse = instr.else && instr.else.length > 0;
+      const needsElse = hasElse || instr.blockType.kind === "val";
+      if (needsElse) {
+        const elseStr = hasElse
+          ? instr.else!.map((i) => formatInstrIndented(i, depth + 1)).join("\n")
+          : `${pad}    unreachable`;
         return `${pad}(if${bt}\n${pad}  (then\n${thenStr}\n${pad}  )\n${pad}  (else\n${elseStr}\n${pad}  )\n${pad})`;
       }
       return `${pad}(if${bt}\n${pad}  (then\n${thenStr}\n${pad}  )\n${pad})`;

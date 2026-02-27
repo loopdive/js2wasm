@@ -5,12 +5,14 @@ export default defineConfig({
   plugins: [dts()],
   build: {
     lib: {
-      entry: 'src/index.ts',
+      entry: {
+        index: 'src/index.ts',
+        cli: 'src/cli.ts',
+      },
       formats: ['es'],
-      fileName: 'index',
     },
     rollupOptions: {
-      external: ['typescript'],
+      external: ['typescript', 'node:fs', 'node:path', 'node:process'],
     },
   },
 });

@@ -103,7 +103,7 @@ function compileVariableStatement(
     const localIdx = allocLocal(fctx, name, wasmType);
 
     if (decl.initializer) {
-      compileExpression(ctx, fctx, decl.initializer);
+      compileExpression(ctx, fctx, decl.initializer, wasmType);
       fctx.body.push({ op: "local.set", index: localIdx });
     }
   }
@@ -118,6 +118,9 @@ function compileObjectDestructuring(
 
   const pattern = decl.name as ts.ObjectBindingPattern;
 
+  // Save body length so we can rollback if struct lookup fails
+  const bodyLenBefore = fctx.body.length;
+
   // Compile the initializer — result is a struct ref on the stack
   const resultType = compileExpression(ctx, fctx, decl.initializer);
   if (!resultType) return;
@@ -131,6 +134,7 @@ function compileObjectDestructuring(
       : ctx.anonTypeMap.get(initType) ?? symName;
 
   if (!typeName) {
+    fctx.body.length = bodyLenBefore; // rollback — value would leak on stack
     ctx.errors.push({
       message: "Cannot destructure: unknown type",
       line: getLine(decl),
@@ -142,6 +146,7 @@ function compileObjectDestructuring(
   const structTypeIdx = ctx.structMap.get(typeName);
   const fields = ctx.structFields.get(typeName);
   if (structTypeIdx === undefined || !fields) {
+    fctx.body.length = bodyLenBefore; // rollback — value would leak on stack
     ctx.errors.push({
       message: `Cannot destructure: not a known struct type: ${typeName}`,
       line: getLine(decl),
@@ -309,7 +314,7 @@ function compileForStatement(
           const wasmType = resolveWasmType(ctx, varType);
           const localIdx = allocLocal(fctx, name, wasmType);
           if (decl.initializer) {
-            compileExpression(ctx, fctx, decl.initializer);
+            compileExpression(ctx, fctx, decl.initializer, wasmType);
             fctx.body.push({ op: "local.set", index: localIdx });
           }
         }

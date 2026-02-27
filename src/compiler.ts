@@ -9,7 +9,7 @@ import type {
   CompileError,
   CompileOptions,
 } from "./index.js";
-import type { WasmModule, FuncTypeDef, ValType } from "./ir/types.js";
+import type { WasmModule, FuncTypeDef, ValType, ExternClassMeta } from "./ir/types.js";
 
 /**
  * Orchestrates the full compilation pipeline:
@@ -58,6 +58,7 @@ export function compileSource(
       binary: new Uint8Array(0),
       wat: "",
       dts: "",
+      importsHelper: "",
       success: false,
       errors,
       stringPool: [],
@@ -79,6 +80,7 @@ export function compileSource(
       binary: new Uint8Array(0),
       wat: "",
       dts: "",
+      importsHelper: "",
       success: false,
       errors,
       stringPool: [],
@@ -100,6 +102,7 @@ export function compileSource(
       binary: new Uint8Array(0),
       wat: "",
       dts: "",
+      importsHelper: "",
       success: false,
       errors,
       stringPool: [],
@@ -125,10 +128,14 @@ export function compileSource(
   // Step 5: Generate .d.ts
   const dts = generateDts(ast, mod);
 
+  // Step 6: Generate imports helper
+  const importsHelper = generateImportsHelper(mod);
+
   return {
     binary,
     wat,
     dts,
+    importsHelper,
     success: true,
     errors,
     stringPool: mod.stringPool,
@@ -165,7 +172,13 @@ function generateDts(ast: TypedAST, mod: WasmModule): string {
     lines.push("");
   }
 
-  // Imports interface
+  // Build a set of extern class import prefixes for annotation
+  const externPrefixes = new Map<string, ExternClassMeta>();
+  for (const ec of mod.externClasses) {
+    externPrefixes.set(ec.importPrefix, ec);
+  }
+
+  // Imports interface — group by module, annotate with comments
   const importsByModule = new Map<string, string[]>();
   for (const imp of mod.imports) {
     if (imp.desc.kind !== "func") continue;
@@ -180,8 +193,14 @@ function generateDts(ast: TypedAST, mod: WasmModule): string {
         ? "void"
         : wasmTypeToTs(typeDef.results[0]!);
 
+    // Annotate with comment
+    const comment = getImportComment(imp.name, mod);
+    const line = comment
+      ? `    /** ${comment} */\n    ${imp.name}(${params}): ${ret};`
+      : `    ${imp.name}(${params}): ${ret};`;
+
     const bucket = importsByModule.get(imp.module) ?? [];
-    bucket.push(`    ${imp.name}(${params}): ${ret};`);
+    bucket.push(line);
     importsByModule.set(imp.module, bucket);
   }
 
@@ -189,7 +208,8 @@ function generateDts(ast: TypedAST, mod: WasmModule): string {
     lines.push("export interface Imports {");
     for (const [module, funcs] of importsByModule) {
       const key = module.includes(":") ? `"${module}"` : module;
-      lines.push(`  ${key}: {`);
+      const optional = module.startsWith("wasm:") ? "?" : "";
+      lines.push(`  ${key}${optional}: {`);
       lines.push(...funcs);
       lines.push("  };");
     }
@@ -197,7 +217,181 @@ function generateDts(ast: TypedAST, mod: WasmModule): string {
     lines.push("");
   }
 
+  // Deps interface — what the user must provide for extern classes
+  if (mod.externClasses.length > 0) {
+    lines.push("/** Dependencies for extern class imports (pass to createImports) */");
+    lines.push("export interface Deps {");
+    // Group by top-level namespace
+    const nsByName = new Map<string, ExternClassMeta[]>();
+    for (const ec of mod.externClasses) {
+      const ns = ec.namespacePath[0] ?? ec.className;
+      const bucket = nsByName.get(ns) ?? [];
+      bucket.push(ec);
+      nsByName.set(ns, bucket);
+    }
+    for (const [ns, classes] of nsByName) {
+      if (classes.length === 1 && classes[0]!.namespacePath.length === 0) {
+        // Top-level class, no namespace wrapper
+        lines.push(`  ${ns}: any;`);
+      } else {
+        lines.push(`  ${ns}: {`);
+        for (const ec of classes) {
+          const path = ec.namespacePath.slice(1);
+          if (path.length === 0) {
+            lines.push(`    ${ec.className}: any;`);
+          } else {
+            lines.push(`    // ${[...path, ec.className].join(".")}`);
+            // Emit nested path as a comment — actual value is deeply nested
+            lines.push(`    ${ec.className}: any;`);
+          }
+        }
+        lines.push("  };");
+      }
+    }
+    lines.push("}");
+    lines.push("");
+  }
+
   return lines.join("\n");
+}
+
+function getImportComment(name: string, mod: WasmModule): string | undefined {
+  // String literal thunks
+  const strValue = mod.stringLiteralValues.get(name);
+  if (strValue !== undefined) {
+    return `returns ${JSON.stringify(strValue)}`;
+  }
+  // Extern class imports
+  for (const ec of mod.externClasses) {
+    const prefix = ec.importPrefix;
+    if (name === `${prefix}_new`) {
+      return `new ${ec.namespacePath.join(".")}.${ec.className}(...)`;
+    }
+    for (const [methodName] of ec.methods) {
+      if (name === `${prefix}_${methodName}`) {
+        return `instance.${methodName}(...)`;
+      }
+    }
+    for (const [propName, propInfo] of ec.properties) {
+      if (name === `${prefix}_get_${propName}`) {
+        return `instance.${propName} (getter)`;
+      }
+      if (name === `${prefix}_set_${propName}`) {
+        return `instance.${propName} = value (setter)`;
+      }
+    }
+  }
+  // Math host imports
+  if (name.startsWith("Math_")) {
+    return `Math.${name.slice(5)}`;
+  }
+  return undefined;
+}
+
+// ── Imports helper generation ────────────────────────────────────────
+
+function generateImportsHelper(mod: WasmModule): string {
+  const lines: string[] = [
+    "// Generated by ts2wasm — runtime imports helper",
+    "// Usage: const imports = createImports(deps);",
+    "//        const { instance } = await WebAssembly.instantiateStreaming(fetch('module.wasm'), imports);",
+    "",
+  ];
+
+  // Determine what we need
+  const hasDeps = mod.externClasses.length > 0;
+  const hasStringPool = mod.stringPool.length > 0;
+  const hasJsString = mod.imports.some((i) => i.module === "wasm:js-string");
+
+  // Function signature
+  lines.push(`export function createImports(${hasDeps ? "deps" : ""}) {`);
+
+  // env object
+  lines.push("  const env = {");
+
+  for (const imp of mod.imports) {
+    if (imp.module !== "env") continue;
+    if (imp.desc.kind !== "func") continue;
+
+    const line = generateEnvImportLine(imp.name, mod);
+    lines.push(`    ${line},`);
+  }
+
+  lines.push("  };");
+
+  // wasm:js-string polyfill
+  if (hasJsString) {
+    lines.push("");
+    lines.push("  // Polyfill for engines without native wasm:js-string support");
+    lines.push("  const jsString = {");
+    lines.push("    concat: (a, b) => a + b,");
+    lines.push("    length: (s) => s.length,");
+    lines.push("    equals: (a, b) => a === b ? 1 : 0,");
+    lines.push("    substring: (s, start, end) => s.substring(start, end),");
+    lines.push("    charCodeAt: (s, i) => s.charCodeAt(i),");
+    lines.push("  };");
+  }
+
+  // Return statement
+  lines.push("");
+  if (hasJsString) {
+    lines.push('  return { env, "wasm:js-string": jsString };');
+  } else {
+    lines.push("  return { env };");
+  }
+  lines.push("}");
+  lines.push("");
+
+  return lines.join("\n");
+}
+
+function generateEnvImportLine(name: string, mod: WasmModule): string {
+  // String literal thunks
+  const strValue = mod.stringLiteralValues.get(name);
+  if (strValue !== undefined) {
+    return `${name}: () => ${JSON.stringify(strValue)}`;
+  }
+
+  // Console stubs
+  if (name === "console_log_number") return "console_log_number: (v) => console.log(v)";
+  if (name === "console_log_bool") return "console_log_bool: (v) => console.log(Boolean(v))";
+  if (name === "console_log_string") return "console_log_string: (v) => console.log(v)";
+
+  // Math host imports
+  if (name.startsWith("Math_")) {
+    const method = name.slice(5);
+    return `${name}: Math.${method}`;
+  }
+
+  // Extern class imports
+  for (const ec of mod.externClasses) {
+    const prefix = ec.importPrefix;
+    const nsAccess = ec.namespacePath.length > 0
+      ? `deps.${ec.namespacePath.join(".")}`
+      : `deps`;
+
+    if (name === `${prefix}_new`) {
+      const paramList = ec.constructorParams.map((_, i) => `a${i}`).join(", ");
+      return `${name}: (${paramList}) => new ${nsAccess}.${ec.className}(${paramList})`;
+    }
+    for (const [methodName, sig] of ec.methods) {
+      if (name === `${prefix}_${methodName}`) {
+        const paramList = sig.params.slice(1).map((_, i) => `a${i}`).join(", ");
+        return `${name}: (self${paramList ? ", " + paramList : ""}) => self.${methodName}(${paramList})`;
+      }
+    }
+    for (const [propName, propInfo] of ec.properties) {
+      if (name === `${prefix}_get_${propName}`) {
+        return `${name}: (self) => self.${propName}`;
+      }
+      if (name === `${prefix}_set_${propName}`) {
+        return `${name}: (self, v) => { self.${propName} = v; }`;
+      }
+    }
+  }
+
+  // Fallback: no-op stub
+  return `${name}: () => {}`;
 }
 
 function mapTypeForDts(

@@ -2,6 +2,7 @@ import ts from "typescript";
 import type { CodegenContext, FunctionContext } from "./index.js";
 import { allocLocal, resolveWasmType } from "./index.js";
 import {
+  mapTsTypeToWasm,
   isNumberType,
   isBooleanType,
   isStringType,
@@ -11,11 +12,80 @@ import {
 import type { Instr, ValType } from "../ir/types.js";
 import { ensureI32Condition } from "./index.js";
 
+/** Sentinel: expression compiled successfully but produces no value (void) */
+const VOID_RESULT = Symbol("void");
+type InnerResult = ValType | null | typeof VOID_RESULT;
+
 /**
  * Compile an expression, pushing its result onto the Wasm stack.
- * Returns the Wasm type of the result.
+ * Returns null only for void expressions that intentionally produce no value.
+ * For failed expressions, pushes a typed fallback to keep the stack balanced.
  */
 export function compileExpression(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.Expression,
+  expectedType?: ValType,
+): ValType | null {
+  const bodyLenBefore = fctx.body.length;
+  const result = compileExpressionInner(ctx, fctx, expr);
+  if (result === VOID_RESULT) return null; // void — no value on stack
+  if (result !== null) {
+    // Coerce to expected type if there's a mismatch
+    if (expectedType && result.kind !== expectedType.kind) {
+      coerceType(fctx, result, expectedType);
+      return expectedType;
+    }
+    return result;
+  }
+
+  // Compilation failed — rollback any partially-emitted instructions
+  // (e.g. sub-expressions that were compiled before the failure point)
+  // then push a single typed fallback to keep the stack balanced.
+  fctx.body.length = bodyLenBefore;
+  const wasmType =
+    expectedType ?? mapTsTypeToWasm(ctx.checker.getTypeAtLocation(expr), ctx.checker);
+  pushDefaultValue(fctx, wasmType);
+  return wasmType;
+}
+
+/** Coerce a value on the stack from one type to another */
+function coerceType(fctx: FunctionContext, from: ValType, to: ValType): void {
+  if (from.kind === to.kind) return;
+  // i32 → f64
+  if (from.kind === "i32" && to.kind === "f64") {
+    fctx.body.push({ op: "f64.convert_i32_s" });
+    return;
+  }
+  // f64 → i32
+  if (from.kind === "f64" && to.kind === "i32") {
+    fctx.body.push({ op: "i32.trunc_f64_s" });
+    return;
+  }
+  // externref → i32 (non-null check)
+  if (from.kind === "externref" && to.kind === "i32") {
+    fctx.body.push({ op: "ref.is_null" });
+    fctx.body.push({ op: "i32.eqz" });
+    return;
+  }
+  // externref → f64
+  if (from.kind === "externref" && to.kind === "f64") {
+    fctx.body.push({ op: "drop" });
+    fctx.body.push({ op: "f64.const", value: 0 });
+    return;
+  }
+  // i32/f64 → externref
+  if (to.kind === "externref") {
+    fctx.body.push({ op: "drop" });
+    fctx.body.push({ op: "ref.null.extern" });
+    return;
+  }
+  // Fallback: drop + push default
+  fctx.body.push({ op: "drop" });
+  pushDefaultValue(fctx, to);
+}
+
+function compileExpressionInner(
   ctx: CodegenContext,
   fctx: FunctionContext,
   expr: ts.Expression,
@@ -57,7 +127,7 @@ export function compileExpression(
   }
 
   if (ts.isParenthesizedExpression(expr)) {
-    return compileExpression(ctx, fctx, expr.expression);
+    return compileExpressionInner(ctx, fctx, expr.expression);
   }
 
   if (ts.isCallExpression(expr)) {
@@ -89,11 +159,11 @@ export function compileExpression(
   }
 
   if (ts.isAsExpression(expr)) {
-    return compileExpression(ctx, fctx, expr.expression);
+    return compileExpressionInner(ctx, fctx, expr.expression);
   }
 
   if (ts.isNonNullExpression(expr)) {
-    return compileExpression(ctx, fctx, expr.expression);
+    return compileExpressionInner(ctx, fctx, expr.expression);
   }
 
   ctx.errors.push({
@@ -163,8 +233,21 @@ function compileBinaryExpression(
     return compileStringBinaryOp(ctx, fctx, expr, op);
   }
 
-  const leftType = compileExpression(ctx, fctx, expr.left);
-  const rightType = compileExpression(ctx, fctx, expr.right);
+  // Determine expected operand type from operator and context
+  const isNumericOp =
+    op === ts.SyntaxKind.PlusToken ||
+    op === ts.SyntaxKind.MinusToken ||
+    op === ts.SyntaxKind.AsteriskToken ||
+    op === ts.SyntaxKind.SlashToken ||
+    op === ts.SyntaxKind.PercentToken ||
+    op === ts.SyntaxKind.LessThanToken ||
+    op === ts.SyntaxKind.LessThanEqualsToken ||
+    op === ts.SyntaxKind.GreaterThanToken ||
+    op === ts.SyntaxKind.GreaterThanEqualsToken;
+  const hintF64: ValType | undefined = isNumericOp ? { kind: "f64" } : undefined;
+
+  const leftType = compileExpression(ctx, fctx, expr.left, hintF64);
+  const rightType = compileExpression(ctx, fctx, expr.right, hintF64);
 
   if (!leftType || !rightType) return null;
 
@@ -294,7 +377,8 @@ function compileLogicalAnd(
     then: (() => {
       const saved = fctx.body;
       fctx.body = [];
-      compileExpression(ctx, fctx, expr.right);
+      const rightType = compileExpression(ctx, fctx, expr.right, { kind: "i32" });
+      ensureI32Condition(fctx, rightType);
       const result = fctx.body;
       fctx.body = saved;
       return result;
@@ -320,7 +404,8 @@ function compileLogicalOr(
     else: (() => {
       const saved = fctx.body;
       fctx.body = [];
-      compileExpression(ctx, fctx, expr.right);
+      const rightType = compileExpression(ctx, fctx, expr.right, { kind: "i32" });
+      ensureI32Condition(fctx, rightType);
       const result = fctx.body;
       fctx.body = saved;
       return result;
@@ -339,7 +424,10 @@ function compileAssignment(
     const name = expr.left.text;
     const localIdx = fctx.localMap.get(name);
     if (localIdx !== undefined) {
-      const resultType = compileExpression(ctx, fctx, expr.right);
+      const localType = localIdx < fctx.params.length
+        ? fctx.params[localIdx]!.type
+        : fctx.locals[localIdx - fctx.params.length]?.type;
+      const resultType = compileExpression(ctx, fctx, expr.right, localType);
       fctx.body.push({ op: "local.tee", index: localIdx });
       return resultType;
     }
@@ -448,7 +536,7 @@ function compileDestructuringAssignment(
     }
   }
 
-  return null; // destructuring assignment has no result value
+  return VOID_RESULT; // destructuring assignment has no result value
 }
 
 function compilePropertyAssignment(
@@ -476,10 +564,10 @@ function compilePropertyAssignment(
   if (fieldIdx === -1) return null;
 
   compileExpression(ctx, fctx, target.expression);
-  compileExpression(ctx, fctx, value);
+  compileExpression(ctx, fctx, value, fields[fieldIdx]!.type);
   fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx });
 
-  return null;
+  return VOID_RESULT;
 }
 
 function compileExternPropertySet(
@@ -503,9 +591,10 @@ function compileExternPropertySet(
     return null;
   }
 
-  // Push object, then value
+  // Push object, then value (with type hint from property type)
   compileExpression(ctx, fctx, target.expression);
-  compileExpression(ctx, fctx, value);
+  const propInfo = externInfo.properties.get(propName);
+  compileExpression(ctx, fctx, value, propInfo?.type);
 
   const importName = `${externInfo.importPrefix}_set_${propName}`;
   const funcIdx = ctx.funcMap.get(importName);
@@ -519,7 +608,7 @@ function compileExternPropertySet(
   }
 
   fctx.body.push({ op: "call", funcIdx });
-  return null;
+  return VOID_RESULT;
 }
 
 function compileElementAssignment(
@@ -572,7 +661,7 @@ function compileCompoundAssignment(
   }
 
   fctx.body.push({ op: "local.get", index: localIdx });
-  compileExpression(ctx, fctx, expr.right);
+  compileExpression(ctx, fctx, expr.right, { kind: "f64" });
 
   switch (op) {
     case ts.SyntaxKind.PlusEqualsToken:
@@ -605,7 +694,8 @@ function compilePrefixUnary(
       return { kind: "f64" };
     }
     case ts.SyntaxKind.ExclamationToken: {
-      compileExpression(ctx, fctx, expr.operand);
+      const operandType = compileExpression(ctx, fctx, expr.operand);
+      ensureI32Condition(fctx, operandType);
       fctx.body.push({ op: "i32.eqz" });
       return { kind: "i32" };
     }
@@ -685,6 +775,31 @@ function compilePostfixUnary(
 
 // ── Call expressions ─────────────────────────────────────────────────
 
+/** Look up parameter types for a function by its index */
+function getFuncParamTypes(ctx: CodegenContext, funcIdx: number): ValType[] | undefined {
+  if (funcIdx < ctx.numImportFuncs) {
+    let importFuncCount = 0;
+    for (const imp of ctx.mod.imports) {
+      if (imp.desc.kind === "func") {
+        if (importFuncCount === funcIdx) {
+          const typeDef = ctx.mod.types[imp.desc.typeIdx];
+          if (typeDef?.kind === "func") return typeDef.params;
+          return undefined;
+        }
+        importFuncCount++;
+      }
+    }
+  } else {
+    const localIdx = funcIdx - ctx.numImportFuncs;
+    const func = ctx.mod.functions[localIdx];
+    if (func) {
+      const typeDef = ctx.mod.types[func.typeIdx];
+      if (typeDef?.kind === "func") return typeDef.params;
+    }
+  }
+  return undefined;
+}
+
 function compileCallExpression(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -728,9 +843,10 @@ function compileCallExpression(
       return null;
     }
 
-    // Compile provided arguments
-    for (const arg of expr.arguments) {
-      compileExpression(ctx, fctx, arg);
+    // Compile provided arguments with type hints from function signature
+    const paramTypes = getFuncParamTypes(ctx, funcIdx);
+    for (let i = 0; i < expr.arguments.length; i++) {
+      compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
     }
 
     // Supply defaults for missing optional params
@@ -750,7 +866,7 @@ function compileCallExpression(
     const sig = ctx.checker.getResolvedSignature(expr);
     if (sig) {
       const retType = ctx.checker.getReturnTypeOfSignature(sig);
-      if (isVoidType(retType)) return null;
+      if (isVoidType(retType)) return VOID_RESULT;
       return resolveWasmType(ctx, retType);
     }
     return { kind: "f64" };
@@ -786,9 +902,10 @@ function compileNewExpression(
 
   const externInfo = ctx.externClasses.get(className);
   if (externInfo) {
-    // Compile constructor arguments
-    for (const arg of expr.arguments ?? []) {
-      compileExpression(ctx, fctx, arg);
+    // Compile constructor arguments with type hints
+    const args = expr.arguments ?? [];
+    for (let i = 0; i < args.length; i++) {
+      compileExpression(ctx, fctx, args[i]!, externInfo.constructorParams[i]);
     }
 
     const importName = `${externInfo.importPrefix}_new`;
@@ -840,9 +957,11 @@ function compileExternMethodCall(
   // Push 'this' (the receiver object)
   compileExpression(ctx, fctx, propAccess.expression);
 
-  // Push arguments
-  for (const arg of callExpr.arguments) {
-    compileExpression(ctx, fctx, arg);
+  // Push arguments with type hints (params[0] is 'this', args start at [1])
+  const methodInfo = externInfo.methods.get(methodName);
+  for (let i = 0; i < callExpr.arguments.length; i++) {
+    const hint = methodInfo?.params[i + 1]; // +1 to skip 'this'
+    compileExpression(ctx, fctx, callExpr.arguments[i]!, hint);
   }
 
   const importName = `${externInfo.importPrefix}_${methodName}`;
@@ -858,8 +977,7 @@ function compileExternMethodCall(
 
   fctx.body.push({ op: "call", funcIdx });
 
-  const methodInfo = externInfo.methods.get(methodName);
-  if (!methodInfo || methodInfo.results.length === 0) return null;
+  if (!methodInfo || methodInfo.results.length === 0) return VOID_RESULT;
   return methodInfo.results[0]!;
 }
 
@@ -910,7 +1028,7 @@ function compileConsoleLog(
       }
     }
   }
-  return null;
+  return VOID_RESULT;
 }
 
 function compileMathCall(
@@ -929,21 +1047,23 @@ function compileMathCall(
     nearest: "f64.nearest",
   };
 
+  const f64Hint: ValType = { kind: "f64" };
+
   if (method === "round" && expr.arguments.length >= 1) {
-    compileExpression(ctx, fctx, expr.arguments[0]!);
+    compileExpression(ctx, fctx, expr.arguments[0]!, f64Hint);
     fctx.body.push({ op: "f64.nearest" } as Instr);
     return { kind: "f64" };
   }
 
   if (method in nativeUnary && expr.arguments.length >= 1) {
-    compileExpression(ctx, fctx, expr.arguments[0]!);
+    compileExpression(ctx, fctx, expr.arguments[0]!, f64Hint);
     fctx.body.push({ op: nativeUnary[method]! } as Instr);
     return { kind: "f64" };
   }
 
   if (method === "min" && expr.arguments.length >= 2) {
-    compileExpression(ctx, fctx, expr.arguments[0]!);
-    compileExpression(ctx, fctx, expr.arguments[1]!);
+    compileExpression(ctx, fctx, expr.arguments[0]!, f64Hint);
+    compileExpression(ctx, fctx, expr.arguments[1]!, f64Hint);
     const tmpA = allocLocal(fctx, `__min_a_${fctx.locals.length}`, { kind: "f64" });
     const tmpB = allocLocal(fctx, `__min_b_${fctx.locals.length}`, { kind: "f64" });
     fctx.body.push({ op: "local.set", index: tmpB });
@@ -958,8 +1078,8 @@ function compileMathCall(
   }
 
   if (method === "max" && expr.arguments.length >= 2) {
-    compileExpression(ctx, fctx, expr.arguments[0]!);
-    compileExpression(ctx, fctx, expr.arguments[1]!);
+    compileExpression(ctx, fctx, expr.arguments[0]!, f64Hint);
+    compileExpression(ctx, fctx, expr.arguments[1]!, f64Hint);
     const tmpA = allocLocal(fctx, `__max_a_${fctx.locals.length}`, { kind: "f64" });
     const tmpB = allocLocal(fctx, `__max_b_${fctx.locals.length}`, { kind: "f64" });
     fctx.body.push({ op: "local.set", index: tmpB });
@@ -975,7 +1095,7 @@ function compileMathCall(
 
   if (method === "sign" && expr.arguments.length >= 1) {
     // sign(x) = x > 0 ? 1 : x < 0 ? -1 : 0
-    compileExpression(ctx, fctx, expr.arguments[0]!);
+    compileExpression(ctx, fctx, expr.arguments[0]!, f64Hint);
     const tmp = allocLocal(fctx, `__sign_${fctx.locals.length}`, { kind: "f64" });
     fctx.body.push({ op: "local.tee", index: tmp });
     fctx.body.push({ op: "f64.const", value: 0 });
@@ -1007,7 +1127,7 @@ function compileMathCall(
   if (hostUnary.has(method) && expr.arguments.length >= 1) {
     const funcIdx = ctx.funcMap.get(`Math_${method}`);
     if (funcIdx !== undefined) {
-      compileExpression(ctx, fctx, expr.arguments[0]!);
+      compileExpression(ctx, fctx, expr.arguments[0]!, f64Hint);
       fctx.body.push({ op: "call", funcIdx });
       return { kind: "f64" };
     }
@@ -1017,8 +1137,8 @@ function compileMathCall(
   if ((method === "pow" || method === "atan2") && expr.arguments.length >= 2) {
     const funcIdx = ctx.funcMap.get(`Math_${method}`);
     if (funcIdx !== undefined) {
-      compileExpression(ctx, fctx, expr.arguments[0]!);
-      compileExpression(ctx, fctx, expr.arguments[1]!);
+      compileExpression(ctx, fctx, expr.arguments[0]!, f64Hint);
+      compileExpression(ctx, fctx, expr.arguments[1]!, f64Hint);
       fctx.body.push({ op: "call", funcIdx });
       return { kind: "f64" };
     }
@@ -1049,18 +1169,16 @@ function compileConditionalExpression(
   const condType = compileExpression(ctx, fctx, expr.condition);
   ensureI32Condition(fctx, condType);
 
-  const thenType = ctx.checker.getTypeAtLocation(expr.whenTrue);
-  const resultValType: ValType = isNumberType(thenType)
-    ? { kind: "f64" }
-    : { kind: "i32" };
-
   const savedBody = fctx.body;
   fctx.body = [];
-  compileExpression(ctx, fctx, expr.whenTrue);
+  const thenResultType = compileExpression(ctx, fctx, expr.whenTrue);
   const thenInstrs = fctx.body;
 
+  const resultValType: ValType = thenResultType ?? { kind: "i32" };
+
+  // Pass the then-branch type as hint so else-branch fallback matches
   fctx.body = [];
-  compileExpression(ctx, fctx, expr.whenFalse);
+  compileExpression(ctx, fctx, expr.whenFalse, resultValType);
   const elseInstrs = fctx.body;
 
   fctx.body = savedBody;

@@ -1,3 +1,12 @@
+export interface ExternClassMeta {
+  importPrefix: string;
+  namespacePath: string[];
+  className: string;
+  constructorParams: ValType[];
+  methods: Map<string, { params: ValType[]; results: ValType[] }>;
+  properties: Map<string, { type: ValType; readonly: boolean }>;
+}
+
 export interface WasmModule {
   types: TypeDef[];
   imports: Import[];
@@ -7,6 +16,10 @@ export interface WasmModule {
   elements: Element[];
   globals: GlobalDef[];
   stringPool: string[];
+  /** Extern class metadata (for .d.ts and imports helper generation) */
+  externClasses: ExternClassMeta[];
+  /** Map from import func name → string literal value (e.g. "__str_0" → "Hello") */
+  stringLiteralValues: Map<string, string>;
 }
 
 export type TypeDef =
@@ -193,5 +206,7 @@ export function createEmptyModule(): WasmModule {
     elements: [],
     globals: [],
     stringPool: [],
+    externClasses: [],
+    stringLiteralValues: new Map(),
   };
 }
