@@ -1,0 +1,293 @@
+<!doctype html>
+<html>
+  <head>
+    <title>ts2wasm playground</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+      }
+      body {
+        font-family: "SF Mono", "Fira Code", monospace;
+        background: #181818;
+        color: #cccccc;
+        padding: 1rem;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+      h2 {
+        margin-bottom: 0.5rem;
+        font-size: 1.1rem;
+        color: #e0e0e0;
+      }
+      .toolbar {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
+      }
+      button {
+        background: #2b2b2b;
+        color: #cccccc;
+        border: 1px solid #3b3b3b;
+        padding: 0.4rem 1rem;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 0.85rem;
+        border-radius: 5px;
+      }
+      button:hover {
+        background: #3b3b3b;
+        color: #e0e0e0;
+      }
+      .container {
+        display: grid;
+        grid-template-columns: 1fr 6px 1fr;
+        flex: 1;
+        min-height: 0;
+      }
+      .pane {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        overflow: hidden;
+      }
+      .divider {
+        background: #2b2b2b;
+        cursor: col-resize;
+        position: relative;
+        transition: background 0.15s;
+      }
+      .divider:hover, .divider.active {
+        background: #4e4e4e;
+      }
+      .divider::after {
+        content: "";
+        position: absolute;
+        top: 0; bottom: 0;
+        left: -3px; right: -3px;
+      }
+      .tabs {
+        display: flex;
+        border-bottom: 1px solid #2b2b2b;
+      }
+      .tab {
+        padding: 0.3rem 0.8rem;
+        cursor: pointer;
+        font-size: 0.8rem;
+        color: #5a5a5a;
+        border-bottom: 2px solid transparent;
+      }
+      .tab:hover {
+        color: #999;
+      }
+      .tab.active {
+        color: #cccccc;
+        border-bottom-color: #cccccc;
+      }
+      #editor, #wat {
+        flex: 1;
+        min-height: 0;
+        border: 1px solid #2b2b2b;
+      }
+      pre {
+        flex: 1;
+        background: #181818;
+        border: 1px solid #2b2b2b;
+        padding: 0.8rem;
+        overflow: auto;
+        font-size: 13px;
+        margin: 0;
+        white-space: pre-wrap;
+      }
+      .error {
+        color: #f48771;
+      }
+      .console {
+        color: #b5cea8;
+      }
+      .timing {
+        font-size: 0.75rem;
+        color: #5a5a5a;
+        margin-left: auto;
+        padding: 0.3rem 0;
+      }
+
+      /* ─── Treemap panel ─────────────────────────────────── */
+      #treemap-panel {
+        flex: 1;
+        display: none;
+        min-height: 0;
+        border: 1px solid #2b2b2b;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .tm-controls {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 4px 8px;
+        background: #1f1f1f;
+        border-bottom: 1px solid #2b2b2b;
+        flex-shrink: 0;
+      }
+      .tm-view-toggle { display: flex; gap: 3px; }
+      .tm-toggle {
+        padding: 2px 8px !important;
+        border-radius: 3px !important;
+        border: 1px solid #3b3b3b !important;
+        background: transparent !important;
+        color: #5a5a5a !important;
+        font-size: 11px !important;
+        cursor: pointer;
+      }
+      .tm-toggle.active {
+        background: #2b2b2b !important;
+        color: #cccccc !important;
+      }
+      .tm-threshold {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 11px;
+        color: #5a5a5a;
+      }
+      .tm-threshold input[type="range"] {
+        width: 60px;
+        accent-color: #4e4e4e;
+      }
+      .tm-info-bar {
+        padding: 3px 8px;
+        font-size: 10px;
+        color: #5a5a5a;
+        background: #181818;
+        border-bottom: 1px solid #2b2b2b;
+        flex-shrink: 0;
+      }
+      .tm-breadcrumbs {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        padding: 2px 8px;
+        font-size: 11px;
+        flex-shrink: 0;
+        min-height: 0;
+      }
+      .tm-crumb {
+        padding: 1px 6px;
+        border-radius: 3px;
+        cursor: pointer;
+        color: #9cdcfe;
+        background: none;
+        border: none;
+        font-family: inherit;
+        font-size: 11px;
+      }
+      .tm-crumb:hover { background: rgba(255, 255, 255, 0.06); }
+      .tm-crumb-sep { color: #5a5a5a; }
+      .tm-treemap {
+        flex: 1;
+        position: relative;
+        overflow: hidden;
+        min-height: 0;
+      }
+      .tm-empty {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: #555;
+        font-size: 12px;
+      }
+      .tm-node {
+        position: absolute;
+        overflow: hidden;
+        background: #121212;
+      }
+      .tm-node-inner {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+      }
+      .tm-label {
+        position: absolute;
+        top: 0; left: 0; right: 0;
+        padding: 2px 5px;
+        font-size: 11px;
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        pointer-events: none;
+        z-index: 1;
+        line-height: 18px;
+      }
+      .tm-label-size { font-weight: 400; opacity: 0.7; font-size: 10px; }
+      .tm-leaf:hover {
+        outline: 2px solid rgba(255, 255, 255, 0.7);
+        outline-offset: -2px;
+        z-index: 100;
+      }
+      .tm-branch:hover > .tm-node-inner {
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+      }
+      .tm-leaf, .tm-branch { cursor: pointer; }
+      .tm-remainder > .tm-node-inner {
+        background-image: repeating-linear-gradient(
+          45deg, transparent, transparent 4px,
+          rgba(255, 255, 255, 0.04) 4px, rgba(255, 255, 255, 0.04) 8px
+        ) !important;
+      }
+      .tm-tooltip {
+        position: fixed;
+        display: none;
+        background: #0d1117;
+        border: 1px solid #444;
+        border-radius: 6px;
+        padding: 10px 14px;
+        font-size: 12px;
+        line-height: 1.7;
+        max-width: 550px;
+        z-index: 10000;
+        pointer-events: none;
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.6);
+        font-family: "SF Mono", "Fira Code", monospace;
+        color: #e0e0e0;
+      }
+      .tm-tt-path { color: #7ec8e3; font-weight: 600; word-break: break-all; margin-bottom: 6px; }
+      .tm-tt-row { display: flex; justify-content: space-between; gap: 24px; }
+      .tm-tt-label { color: #8888aa; }
+      .tm-tt-value { color: #e0e0e0; font-weight: 500; }
+      .tm-tt-hint { color: #666; font-size: 10px; margin-top: 6px; font-style: italic; }
+    </style>
+  </head>
+
+  <body>
+    <h2>ts2wasm playground</h2>
+    <div class="toolbar">
+      <button id="run">&#9654; compile &amp; run</button>
+      <button id="wat-only">wat</button>
+      <span class="timing" id="timing"></span>
+    </div>
+    <div class="container">
+      <div class="pane">
+        <div id="editor"></div>
+      </div>
+      <div class="divider" id="divider"></div>
+      <div class="pane">
+        <div class="tabs">
+          <div class="tab active" data-panel="wat">WAT</div>
+          <div class="tab" data-panel="console">Console</div>
+          <div class="tab" data-panel="errors">Errors</div>
+          <div class="tab" data-panel="treemap">Treemap</div>
+        </div>
+        <div id="wat"></div>
+        <pre id="console" class="console" style="display: none"></pre>
+        <pre id="errors" class="error" style="display: none"></pre>
+        <div id="treemap-panel"></div>
+      </div>
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
