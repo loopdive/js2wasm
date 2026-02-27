@@ -5,6 +5,7 @@ export interface TypedAST {
   checker: ts.TypeChecker;
   program: ts.Program;
   diagnostics: ts.Diagnostic[];
+  syntacticDiagnostics: readonly ts.Diagnostic[];
 }
 
 /**
@@ -54,21 +55,22 @@ export function analyzeSource(
       target: ts.ScriptTarget.ES2022,
       module: ts.ModuleKind.ES2022,
       strict: true,
+      noImplicitAny: false,
       noEmit: true,
     },
     compilerHost,
   );
 
-  const diagnostics = [
-    ...program.getSyntacticDiagnostics(),
-    ...program.getSemanticDiagnostics(),
-  ];
+  const syntacticDiagnostics = program.getSyntacticDiagnostics();
+  const semanticDiagnostics = program.getSemanticDiagnostics();
+  const diagnostics = [...syntacticDiagnostics, ...semanticDiagnostics];
 
   return {
     sourceFile: program.getSourceFile(fileName)!,
     checker: program.getTypeChecker(),
     program,
     diagnostics,
+    syntacticDiagnostics: syntacticDiagnostics as readonly ts.Diagnostic[],
   };
 }
 
@@ -77,20 +79,69 @@ const MINIMAL_LIB_DTS = `
 interface Array<T> {
   length: number;
   push(item: T): number;
+  pop(): T | undefined;
+  shift(): T | undefined;
+  unshift(...items: T[]): number;
+  splice(start: number, deleteCount?: number, ...items: T[]): T[];
+  slice(start?: number, end?: number): T[];
+  concat(...items: T[]): T[];
+  indexOf(searchElement: T, fromIndex?: number): number;
+  includes(searchElement: T, fromIndex?: number): boolean;
+  find(predicate: (value: T, index: number, array: T[]) => boolean): T | undefined;
+  findIndex(predicate: (value: T, index: number, array: T[]) => boolean): number;
+  filter(predicate: (value: T, index: number, array: T[]) => boolean): T[];
+  map<U>(callbackfn: (value: T, index: number, array: T[]) => U): U[];
+  forEach(callbackfn: (value: T, index: number, array: T[]) => void): void;
+  reduce<U>(callbackfn: (prev: U, cur: T, index: number, array: T[]) => U, initialValue: U): U;
+  some(predicate: (value: T, index: number, array: T[]) => boolean): boolean;
+  every(predicate: (value: T, index: number, array: T[]) => boolean): boolean;
+  sort(compareFn?: (a: T, b: T) => number): T[];
+  reverse(): T[];
+  join(separator?: string): string;
   [index: number]: T;
 }
 interface ReadonlyArray<T> {
   readonly length: number;
+  indexOf(searchElement: T, fromIndex?: number): number;
+  includes(searchElement: T, fromIndex?: number): boolean;
+  filter(predicate: (value: T, index: number, array: readonly T[]) => boolean): T[];
+  map<U>(callbackfn: (value: T, index: number, array: readonly T[]) => U): U[];
+  forEach(callbackfn: (value: T, index: number, array: readonly T[]) => void): void;
+  reduce<U>(callbackfn: (prev: U, cur: T, index: number, array: readonly T[]) => U, initialValue: U): U;
+  some(predicate: (value: T, index: number, array: readonly T[]) => boolean): boolean;
+  every(predicate: (value: T, index: number, array: readonly T[]) => boolean): boolean;
+  find(predicate: (value: T, index: number, array: readonly T[]) => boolean): T | undefined;
   readonly [index: number]: T;
 }
 interface String {
   readonly length: number;
   charAt(pos: number): string;
+  charCodeAt(index: number): number;
+  indexOf(searchString: string, position?: number): number;
+  slice(start?: number, end?: number): string;
+  substring(start: number, end?: number): string;
+  toLowerCase(): string;
+  toUpperCase(): string;
+  trim(): string;
+  split(separator: string): string[];
+  includes(searchString: string, position?: number): boolean;
+  startsWith(searchString: string, position?: number): boolean;
+  endsWith(searchString: string, endPosition?: number): boolean;
+  replace(searchValue: string, replaceValue: string): string;
+  padStart(maxLength: number, fillString?: string): string;
+  padEnd(maxLength: number, fillString?: string): string;
 }
-interface Number {}
+interface Number {
+  toFixed(fractionDigits?: number): string;
+  toString(radix?: number): string;
+}
 interface Boolean {}
 interface Function {}
-interface Object {}
+interface Object {
+  constructor: Function;
+  toString(): string;
+  hasOwnProperty(v: string): boolean;
+}
 interface RegExp {}
 interface IArguments {}
 interface Math {
@@ -98,11 +149,44 @@ interface Math {
   abs(x: number): number;
   floor(x: number): number;
   ceil(x: number): number;
+  round(x: number): number;
+  trunc(x: number): number;
+  sign(x: number): number;
   min(...values: number[]): number;
   max(...values: number[]): number;
+  pow(x: number, y: number): number;
+  exp(x: number): number;
+  log(x: number): number;
+  log2(x: number): number;
+  log10(x: number): number;
+  sin(x: number): number;
+  cos(x: number): number;
+  tan(x: number): number;
+  asin(x: number): number;
+  acos(x: number): number;
+  atan(x: number): number;
+  atan2(y: number, x: number): number;
+  random(): number;
+  hypot(...values: number[]): number;
+  clz32(x: number): number;
+  fround(x: number): number;
   PI: number;
+  E: number;
+  LN2: number;
+  LN10: number;
+  SQRT2: number;
 }
 declare const Math: Math;
 declare const console: { log(...args: any[]): void };
-declare const undefined: undefined;
+declare const Infinity: number;
+declare const NaN: number;
+declare function parseInt(string: string, radix?: number): number;
+declare function parseFloat(string: string): number;
+declare function isNaN(number: number): boolean;
+declare function isFinite(number: number): boolean;
+declare function Boolean(value?: any): boolean;
+interface Performance {
+  now(): number;
+}
+declare const performance: Performance;
 `;

@@ -58,13 +58,58 @@ async function compileAndRun() {
 
   // Run
   const logs: string[] = [];
-  const imports = {
-    env: {
-      console_log_number: (v: number) => logs.push(String(v)),
-      console_log_string: (v: string) => logs.push(String(v)),
-      console_log_bool: (v: number) => logs.push(v ? "true" : "false"),
-    },
+  const envBase: Record<string, Function> = {
+    console_log_number: (v: number) => logs.push(String(v)),
+    console_log_string: (v: string) => logs.push(String(v)),
+    console_log_bool: (v: number) => logs.push(v ? "true" : "false"),
+    Math_exp: Math.exp,
+    Math_log: Math.log,
+    Math_log2: Math.log2,
+    Math_log10: Math.log10,
+    Math_sin: Math.sin,
+    Math_cos: Math.cos,
+    Math_tan: Math.tan,
+    Math_asin: Math.asin,
+    Math_acos: Math.acos,
+    Math_atan: Math.atan,
+    Math_atan2: Math.atan2,
+    Math_pow: Math.pow,
+    Math_random: Math.random,
   };
+
+  // Add string literal imports from the string pool
+  for (const str of result.stringPool) {
+    const idx = Object.keys(envBase).filter((k) =>
+      k.startsWith("__str_"),
+    ).length;
+    const name = `__str_${idx}`;
+    if (!(name in envBase)) {
+      envBase[name] = () => str;
+    }
+  }
+
+  // Auto-stub missing host imports (externref constructors, methods, etc.)
+  const env = new Proxy(envBase, {
+    get(target, prop) {
+      if (prop in target) return target[prop as string];
+      return (..._args: unknown[]) => {};
+    },
+  });
+
+  // wasm:js-string polyfill for engines without native support
+  const jsStringPolyfill: Record<string, Function> = {
+    concat: (a: string, b: string) => a + b,
+    length: (s: string) => s.length,
+    equals: (a: string, b: string) => (a === b ? 1 : 0),
+    substring: (s: string, start: number, end: number) =>
+      s.substring(start, end),
+    charCodeAt: (s: string, i: number) => s.charCodeAt(i),
+  };
+
+  const imports = {
+    env,
+    "wasm:js-string": jsStringPolyfill,
+  } as WebAssembly.Imports;
 
   try {
     const { instance } = await WebAssembly.instantiate(
@@ -102,6 +147,14 @@ function compileWatOnly() {
   }
   showPanel("wat");
 }
+
+// Persist editor content in sessionStorage
+const STORAGE_KEY = "ts2wasm_source";
+const saved = sessionStorage.getItem(STORAGE_KEY);
+if (saved !== null) editor.value = saved;
+editor.addEventListener("input", () => {
+  sessionStorage.setItem(STORAGE_KEY, editor.value);
+});
 
 runBtn.addEventListener("click", compileAndRun);
 watBtn.addEventListener("click", compileWatOnly);

@@ -12,7 +12,7 @@
   },
   "scripts": {
     "build": "vite build",
-    "dev": "vite",
+    "dev": "vite serve playground",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "biome check src/",

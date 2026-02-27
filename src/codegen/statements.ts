@@ -1,9 +1,8 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext } from "./index.js";
-import { allocLocal } from "./index.js";
+import { allocLocal, resolveWasmType, ensureI32Condition } from "./index.js";
 import { compileExpression } from "./expressions.js";
 import {
-  mapTsTypeToWasm,
   isVoidType,
   isNumberType,
   isBooleanType,
@@ -16,6 +15,9 @@ export function compileStatement(
   fctx: FunctionContext,
   stmt: ts.Statement,
 ): void {
+  // Skip import declarations — module imports not supported
+  if (ts.isImportDeclaration(stmt)) return;
+
   if (ts.isVariableStatement(stmt)) {
     compileVariableStatement(ctx, fctx, stmt);
     return;
@@ -80,6 +82,11 @@ function compileVariableStatement(
   stmt: ts.VariableStatement,
 ): void {
   for (const decl of stmt.declarationList.declarations) {
+    if (ts.isObjectBindingPattern(decl.name)) {
+      compileObjectDestructuring(ctx, fctx, decl);
+      continue;
+    }
+
     if (!ts.isIdentifier(decl.name)) {
       ctx.errors.push({
         message: "Destructuring not supported",
@@ -91,7 +98,7 @@ function compileVariableStatement(
 
     const name = decl.name.text;
     const varType = ctx.checker.getTypeAtLocation(decl);
-    const wasmType = mapTsTypeToWasm(varType, ctx.checker);
+    const wasmType = resolveWasmType(ctx, varType);
 
     const localIdx = allocLocal(fctx, name, wasmType);
 
@@ -99,6 +106,76 @@ function compileVariableStatement(
       compileExpression(ctx, fctx, decl.initializer);
       fctx.body.push({ op: "local.set", index: localIdx });
     }
+  }
+}
+
+function compileObjectDestructuring(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  decl: ts.VariableDeclaration,
+): void {
+  if (!decl.initializer) return;
+
+  const pattern = decl.name as ts.ObjectBindingPattern;
+
+  // Compile the initializer — result is a struct ref on the stack
+  const resultType = compileExpression(ctx, fctx, decl.initializer);
+  if (!resultType) return;
+
+  // Determine struct type from the initializer's type
+  const initType = ctx.checker.getTypeAtLocation(decl.initializer);
+  const symName = initType.symbol?.name;
+  const typeName =
+    (symName && symName !== "__type" && symName !== "__object" && ctx.structMap.has(symName))
+      ? symName
+      : ctx.anonTypeMap.get(initType) ?? symName;
+
+  if (!typeName) {
+    ctx.errors.push({
+      message: "Cannot destructure: unknown type",
+      line: getLine(decl),
+      column: getCol(decl),
+    });
+    return;
+  }
+
+  const structTypeIdx = ctx.structMap.get(typeName);
+  const fields = ctx.structFields.get(typeName);
+  if (structTypeIdx === undefined || !fields) {
+    ctx.errors.push({
+      message: `Cannot destructure: not a known struct type: ${typeName}`,
+      line: getLine(decl),
+      column: getCol(decl),
+    });
+    return;
+  }
+
+  // Save the struct ref into a temp local so we can access fields multiple times
+  const tmpLocal = allocLocal(fctx, `__destruct_${fctx.locals.length}`, resultType);
+  fctx.body.push({ op: "local.set", index: tmpLocal });
+
+  // For each binding element, create a local and extract the field
+  for (const element of pattern.elements) {
+    if (!ts.isBindingElement(element)) continue;
+    const propName = (element.propertyName ?? element.name) as ts.Identifier;
+    const localName = (element.name as ts.Identifier).text;
+
+    const fieldIdx = fields.findIndex((f) => f.name === propName.text);
+    if (fieldIdx === -1) {
+      ctx.errors.push({
+        message: `Unknown field in destructuring: ${propName.text}`,
+        line: getLine(element),
+        column: getCol(element),
+      });
+      continue;
+    }
+
+    const fieldType = fields[fieldIdx]!.type;
+    const localIdx = allocLocal(fctx, localName, fieldType);
+
+    fctx.body.push({ op: "local.get", index: tmpLocal });
+    fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+    fctx.body.push({ op: "local.set", index: localIdx });
   }
 }
 
@@ -120,12 +197,7 @@ function compileIfStatement(
 ): void {
   // Compile condition
   const condType = compileExpression(ctx, fctx, stmt.expression);
-
-  // If the condition is an f64 (number comparison result), convert to i32
-  if (condType && condType.kind === "f64") {
-    fctx.body.push({ op: "f64.const", value: 0 });
-    fctx.body.push({ op: "f64.ne" });
-  }
+  ensureI32Condition(fctx, condType);
 
   // Compile then branch
   const savedBody = fctx.body;
@@ -188,10 +260,7 @@ function compileWhileStatement(
 
   // Compile condition
   const condType = compileExpression(ctx, fctx, stmt.expression);
-  if (condType && condType.kind === "f64") {
-    fctx.body.push({ op: "f64.const", value: 0 });
-    fctx.body.push({ op: "f64.ne" });
-  }
+  ensureI32Condition(fctx, condType);
   fctx.body.push({ op: "i32.eqz" });
   fctx.body.push({ op: "br_if", depth: 1 }); // break out of block
 
@@ -237,7 +306,7 @@ function compileForStatement(
         if (ts.isIdentifier(decl.name)) {
           const name = decl.name.text;
           const varType = ctx.checker.getTypeAtLocation(decl);
-          const wasmType = mapTsTypeToWasm(varType, ctx.checker);
+          const wasmType = resolveWasmType(ctx, varType);
           const localIdx = allocLocal(fctx, name, wasmType);
           if (decl.initializer) {
             compileExpression(ctx, fctx, decl.initializer);
@@ -262,10 +331,7 @@ function compileForStatement(
   // Condition
   if (stmt.condition) {
     const condType = compileExpression(ctx, fctx, stmt.condition);
-    if (condType && condType.kind === "f64") {
-      fctx.body.push({ op: "f64.const", value: 0 });
-      fctx.body.push({ op: "f64.ne" });
-    }
+    ensureI32Condition(fctx, condType);
     fctx.body.push({ op: "i32.eqz" });
     fctx.body.push({ op: "br_if", depth: 1 }); // break
   }

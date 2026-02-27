@@ -3,10 +3,14 @@ export interface CompileResult {
   binary: Uint8Array;
   /** WAT text representation (debug) */
   wat: string;
+  /** TypeScript declaration file for exports and imports */
+  dts: string;
   /** true if compilation was successful */
   success: boolean;
   /** Error messages with line numbers */
   errors: CompileError[];
+  /** String literal pool (values used in the source) */
+  stringPool: string[];
 }
 
 export interface CompileError {

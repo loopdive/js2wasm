@@ -46,6 +46,8 @@ export const OP = {
   f64_neg: 0x9a,
   f64_ceil: 0x9b,
   f64_floor: 0x9c,
+  f64_trunc: 0x9d,
+  f64_nearest: 0x9e,
   f64_sqrt: 0x9f,
   f64_add: 0xa0,
   f64_sub: 0xa1,
