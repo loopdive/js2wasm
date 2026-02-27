@@ -136,6 +136,9 @@ export function generateModule(ast: TypedAST): WasmModule {
   // Collect console.log imports (only variants actually used)
   collectConsoleImports(ctx, ast.sourceFile);
 
+  // Collect primitive method imports (.toString() on numbers, etc.)
+  collectPrimitiveMethodImports(ctx, ast.sourceFile);
+
   // First pass: collect declare namespaces (registers imports before local funcs)
   collectExternDeclarations(ctx, ast.sourceFile);
 
@@ -232,6 +235,40 @@ function collectConsoleImports(
   if (needed.has("externref")) {
     const t = addFuncType(ctx, [{ kind: "externref" }], []);
     addImport(ctx, "env", "console_log_externref", { kind: "func", typeIdx: t });
+  }
+}
+
+/** Scan source for .toString() / .toFixed() on number types and register needed imports */
+function collectPrimitiveMethodImports(
+  ctx: CodegenContext,
+  sourceFile: ts.SourceFile,
+): void {
+  const needed = new Set<string>();
+
+  function visit(node: ts.Node) {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression)
+    ) {
+      const prop = node.expression;
+      const receiverType = ctx.checker.getTypeAtLocation(prop.expression);
+      const methodName = prop.name.text;
+      if (isNumberType(receiverType) && methodName === "toString") {
+        needed.add("number_toString");
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  for (const stmt of sourceFile.statements) {
+    if (ts.isFunctionDeclaration(stmt) && stmt.body) {
+      visit(stmt.body);
+    }
+  }
+
+  if (needed.has("number_toString")) {
+    const t = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", "number_toString", { kind: "func", typeIdx: t });
   }
 }
 

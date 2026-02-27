@@ -110,6 +110,14 @@
         min-height: 0;
         border: 1px solid #2b2b2b;
       }
+      #preview-panel {
+        flex: 1;
+        min-height: 0;
+        border: 1px solid #2b2b2b;
+        background: #fff;
+        overflow: auto;
+        display: none;
+      }
       pre {
         flex: 1;
         background: #181818;
@@ -308,6 +316,7 @@
           <div class="tab" data-panel="test">mod.test.ts</div>
           <div class="tab" data-panel="console">Console</div>
           <div class="tab" data-panel="errors">Errors</div>
+          <div class="tab" data-panel="preview">Preview</div>
           <div class="tab" data-panel="treemap">Treemap</div>
         </div>
         <div id="wat"></div>
@@ -318,6 +327,7 @@
         <div id="test" style="display: none"></div>
         <pre id="console" class="console" style="display: none"></pre>
         <pre id="errors" class="error" style="display: none"></pre>
+        <div id="preview-panel"></div>
         <div id="treemap-panel"></div>
       </div>
     </div>
