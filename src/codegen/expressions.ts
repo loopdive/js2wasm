@@ -191,7 +191,13 @@ function compileIdentifier(
     return localDef?.type ?? { kind: "f64" };
   }
 
-  // Could be a global or constant reference
+  // Check declared globals (e.g. document, window)
+  const globalInfo = ctx.declaredGlobals.get(name);
+  if (globalInfo) {
+    fctx.body.push({ op: "call", funcIdx: globalInfo.funcIdx });
+    return globalInfo.type;
+  }
+
   ctx.errors.push({
     message: `Unknown identifier: ${name}`,
     line: getLine(id),
@@ -581,8 +587,10 @@ function compileExternPropertySet(
   const propName = target.name.text;
   if (!className) return null;
 
-  const externInfo = ctx.externClasses.get(className);
-  if (!externInfo) {
+  // Walk inheritance chain to find the class that declares the property
+  const resolvedInfo = findExternInfoForMember(ctx, className, propName, "property");
+  const propOwner = resolvedInfo ?? ctx.externClasses.get(className);
+  if (!propOwner) {
     ctx.errors.push({
       message: `Unknown extern class: ${className}`,
       line: getLine(target),
@@ -593,10 +601,10 @@ function compileExternPropertySet(
 
   // Push object, then value (with type hint from property type)
   compileExpression(ctx, fctx, target.expression);
-  const propInfo = externInfo.properties.get(propName);
+  const propInfo = propOwner.properties.get(propName);
   compileExpression(ctx, fctx, value, propInfo?.type);
 
-  const importName = `${externInfo.importPrefix}_set_${propName}`;
+  const importName = `${propOwner.importPrefix}_set_${propName}`;
   const funcIdx = ctx.funcMap.get(importName);
   if (funcIdx === undefined) {
     ctx.errors.push({
@@ -943,6 +951,29 @@ function compileNewExpression(
   return null;
 }
 
+// ── Extern class inheritance helper ──────────────────────────────────
+
+import type { ExternClassInfo } from "./index.js";
+
+/** Walk the externClassParent chain to find the extern class that declares a member */
+function findExternInfoForMember(
+  ctx: CodegenContext,
+  className: string,
+  memberName: string,
+  kind: "method" | "property",
+): ExternClassInfo | null {
+  let current: string | undefined = className;
+  while (current) {
+    const info = ctx.externClasses.get(current);
+    if (info) {
+      if (kind === "method" && info.methods.has(memberName)) return info;
+      if (kind === "property" && info.properties.has(memberName)) return info;
+    }
+    current = ctx.externClassParent.get(current);
+  }
+  return null;
+}
+
 // ── Extern method calls ──────────────────────────────────────────────
 
 function compileExternMethodCall(
@@ -957,7 +988,9 @@ function compileExternMethodCall(
 
   if (!className) return null;
 
-  const externInfo = ctx.externClasses.get(className);
+  // Walk inheritance chain to find the class that declares the method
+  const resolvedInfo = findExternInfoForMember(ctx, className, methodName, "method");
+  const externInfo = resolvedInfo ?? ctx.externClasses.get(className);
   if (!externInfo) {
     ctx.errors.push({
       message: `Unknown extern class: ${className}`,
@@ -971,13 +1004,14 @@ function compileExternMethodCall(
   compileExpression(ctx, fctx, propAccess.expression);
 
   // Push arguments with type hints (params[0] is 'this', args start at [1])
-  const methodInfo = externInfo.methods.get(methodName);
+  const methodOwner = resolvedInfo ?? externInfo;
+  const methodInfo = methodOwner.methods.get(methodName);
   for (let i = 0; i < callExpr.arguments.length; i++) {
     const hint = methodInfo?.params[i + 1]; // +1 to skip 'this'
     compileExpression(ctx, fctx, callExpr.arguments[i]!, hint);
   }
 
-  const importName = `${externInfo.importPrefix}_${methodName}`;
+  const importName = `${methodOwner.importPrefix}_${methodName}`;
   const funcIdx = ctx.funcMap.get(importName);
   if (funcIdx === undefined) {
     ctx.errors.push({
@@ -1317,13 +1351,15 @@ function compileExternPropertyGet(
   const className = objType.getSymbol()?.name;
   if (!className) return null;
 
-  const externInfo = ctx.externClasses.get(className);
-  if (!externInfo) return null;
+  // Walk inheritance chain to find the class that declares the property
+  const resolvedInfo = findExternInfoForMember(ctx, className, propName, "property");
+  const propOwner = resolvedInfo ?? ctx.externClasses.get(className);
+  if (!propOwner) return null;
 
   // Push the object
   compileExpression(ctx, fctx, expr.expression);
 
-  const importName = `${externInfo.importPrefix}_get_${propName}`;
+  const importName = `${propOwner.importPrefix}_get_${propName}`;
   const funcIdx = ctx.funcMap.get(importName);
   if (funcIdx === undefined) {
     ctx.errors.push({
@@ -1336,7 +1372,7 @@ function compileExternPropertyGet(
 
   fctx.body.push({ op: "call", funcIdx });
 
-  const propInfo = externInfo.properties.get(propName);
+  const propInfo = propOwner.properties.get(propName);
   return propInfo?.type ?? { kind: "externref" };
 }
 

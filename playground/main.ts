@@ -486,6 +486,19 @@ function compileOnly() {
   }
 }
 
+/** Runtime DOM extern-class proxy — mirrors the one in TS2WASM_JS */
+const domApi: Record<string, Function> = new Proxy({} as Record<string, Function>, {
+  get(_, prop) {
+    const name = String(prop);
+    const under = name.indexOf("_");
+    if (under === -1) return undefined;
+    const rest = name.slice(under + 1);
+    if (rest.startsWith("get_")) { const k = rest.slice(4); return (self: any) => self[k]; }
+    if (rest.startsWith("set_")) { const k = rest.slice(4); return (self: any, v: any) => { self[k] = v; }; }
+    return (self: any, ...args: any[]) => (typeof self?.[rest] === "function" ? self[rest](...args) : undefined);
+  },
+});
+
 const jsStringPolyfill: Record<string, Function> = {
   concat: (a: string, b: string) => a + b,
   length: (s: string) => s.length,
@@ -516,12 +529,19 @@ function buildEnv(
     Math_atan2: Math.atan2,
     Math_pow: Math.pow,
     Math_random: Math.random,
+    // DOM globals
+    global_document: () => document,
+    global_window: () => window,
   };
   result.stringPool.forEach((str, i) => { env[`__str_${i}`] = () => str; });
-  // Auto-stub missing host imports (externref constructors, methods, etc.)
+  // Auto-stub missing host imports: try DOM API proxy first, then no-op fallback
   return new Proxy(env, {
     get(target, prop) {
-      return prop in target ? target[prop as string] : (..._: unknown[]) => {};
+      if (prop in target) return target[prop as string];
+      // DOM extern-class bindings (e.g. Document_createElement, HTMLElement_get_style)
+      const domVal = domApi[prop as string];
+      if (domVal !== undefined) return domVal;
+      return (..._: unknown[]) => {};
     },
   });
 }
