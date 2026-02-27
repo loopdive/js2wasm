@@ -1,8 +1,8 @@
 # ts2wasm
 
-AOT-Compiler der ein striktes Subset von TypeScript direkt zu WebAssembly mit GC-Proposal kompiliert.
+AOT compiler that compiles a strict subset of TypeScript directly to WebAssembly with the GC proposal.
 
-Läuft vollständig im Browser – kein Server, kein Build-Step für den User-Code.
+Runs entirely in the browser – no server, no build step for user code.
 
 ```
 TS Source (String) → tsc Parser+Checker → Codegen → Wasm GC Binary (Uint8Array) → WebAssembly.instantiate()
@@ -12,8 +12,8 @@ TS Source (String) → tsc Parser+Checker → Codegen → Wasm GC Binary (Uint8A
 
 ```bash
 pnpm install
-pnpm test        # 37 Tests
-pnpm dev         # Playground starten
+pnpm test        # 37 tests
+pnpm dev         # Start playground
 ```
 
 ## API
@@ -44,8 +44,8 @@ if (result.success) {
 
 ```ts
 interface CompileResult {
-  binary: Uint8Array;       // Wasm GC Binary
-  wat: string;              // WAT Text (Debug)
+  binary: Uint8Array;       // Wasm GC binary
+  wat: string;              // WAT text (debug)
   success: boolean;
   errors: CompileError[];
 }
@@ -58,34 +58,34 @@ interface CompileOptions {
 
 ### `compileToWat(source): string`
 
-Gibt nur den WAT-Text zurück (Debug).
+Returns only the WAT text (debug).
 
-## Unterstütztes TypeScript-Subset
+## Supported TypeScript Subset
 
-| Feature | Beispiel |
-|---------|----------|
-| Arithmetik | `a + b`, `a * b`, `a / b`, `-x` |
-| Vergleiche | `<`, `<=`, `>`, `>=`, `===`, `!==` |
-| Logische Operatoren | `&&`, `\|\|`, `!` |
-| Variablen | `let x: number = 10;`, `const y: number = 20;` |
+| Feature | Example |
+|---------|---------|
+| Arithmetic | `a + b`, `a * b`, `a / b`, `-x` |
+| Comparisons | `<`, `<=`, `>`, `>=`, `===`, `!==` |
+| Logical operators | `&&`, `\|\|`, `!` |
+| Variables | `let x: number = 10;`, `const y: number = 20;` |
 | If/Else | `if (x > 0) { ... } else { ... }` |
-| While-Loop | `while (i < n) { ... }` |
-| For-Loop | `for (let i: number = 0; i < n; i = i + 1) { ... }` |
+| While loop | `while (i < n) { ... }` |
+| For loop | `for (let i: number = 0; i < n; i = i + 1) { ... }` |
 | Break/Continue | `break;`, `continue;` |
-| Funktionen | Benannt, rekursiv, mehrere Exporte |
+| Functions | Named, recursive, multiple exports |
 | Ternary | `x > 0 ? x : -x` |
-| Math-Builtins | `Math.sqrt`, `Math.abs`, `Math.floor`, `Math.ceil`, `Math.min`, `Math.max`, `Math.PI` |
+| Math builtins | `Math.sqrt`, `Math.abs`, `Math.floor`, `Math.ceil`, `Math.min`, `Math.max`, `Math.PI` |
 | Interfaces → Structs | `interface Point { x: number; y: number }` |
-| Property-Zugriff | `p.x`, `p.y` |
-| Objekt-Literale | `{ x: 1, y: 2 }` |
-| console.log | Zahlen und Booleans via Host-Imports |
-| Export | `export function ...` → Wasm Exports |
+| Property access | `p.x`, `p.y` |
+| Object literals | `{ x: 1, y: 2 }` |
+| console.log | Numbers and booleans via host imports |
+| Export | `export function ...` → Wasm exports |
 
-### Nicht unterstützt (Phase 1)
+### Not supported (Phase 1)
 
-`var`, `eval`, `with`, Klassen, `async`/`await`, `try`/`catch`, Destructuring, Spread, Template Literals, Generics, Strings (Laufzeit), Arrays (Laufzeit).
+`var`, `eval`, `with`, classes, `async`/`await`, `try`/`catch`, destructuring, spread, template literals, generics, strings (runtime), arrays (runtime).
 
-## Architektur
+## Architecture
 
 ```
 ┌──────────────────────── Browser ─────────────────────────┐
@@ -117,7 +117,7 @@ Gibt nur den WAT-Text zurück (Debug).
 └───────────────────────────────────────────────────────────┘
 ```
 
-## Projekt-Struktur
+## Project Structure
 
 ```
 ts2wasm/
@@ -125,35 +125,35 @@ ts2wasm/
 │   ├── index.ts              # Public API: compile(), compileToWat()
 │   ├── compiler.ts           # Pipeline: parse → check → codegen → emit
 │   ├── checker/
-│   │   ├── index.ts          # tsc-Integration mit In-Memory CompilerHost
-│   │   └── type-mapper.ts    # ts.Type → WasmType Mapping
+│   │   ├── index.ts          # tsc integration with in-memory CompilerHost
+│   │   └── type-mapper.ts    # ts.Type → WasmType mapping
 │   ├── ir/
 │   │   ├── index.ts          # Re-exports
 │   │   └── types.ts          # WasmModule, Function, Instruction, ValType
 │   ├── codegen/
-│   │   ├── index.ts          # Typed AST → IR Orchestrierung
-│   │   ├── expressions.ts    # Expression → IR Instructions
-│   │   ├── statements.ts     # Statement → IR Instructions
-│   │   ├── functions.ts      # Funktionen (reserviert für Closures)
-│   │   └── structs.ts        # Interface → GC Struct (reserviert)
+│   │   ├── index.ts          # Typed AST → IR orchestration
+│   │   ├── expressions.ts    # Expression → IR instructions
+│   │   ├── statements.ts     # Statement → IR instructions
+│   │   ├── functions.ts      # Functions (reserved for closures)
+│   │   └── structs.ts        # Interface → GC struct (reserved)
 │   ├── emit/
-│   │   ├── binary.ts         # IR → Wasm Binary (Uint8Array)
-│   │   ├── encoder.ts        # LEB128, Section-Encoding
-│   │   ├── opcodes.ts        # Wasm-Opcodes inkl. GC (0xFB prefix)
-│   │   └── wat.ts            # IR → WAT Text (Debug-Output)
+│   │   ├── binary.ts         # IR → Wasm binary (Uint8Array)
+│   │   ├── encoder.ts        # LEB128, section encoding
+│   │   ├── opcodes.ts        # Wasm opcodes incl. GC (0xFB prefix)
+│   │   └── wat.ts            # IR → WAT text (debug output)
 │   └── runtime/
-│       └── builtins.ts       # Runtime-Funktionen (reserviert)
+│       └── builtins.ts       # Runtime functions (reserved)
 ├── playground/
 │   ├── index.html            # Editor + WAT/Console/Errors
-│   └── main.ts               # Compile & Run Logik
+│   └── main.ts               # Compile & run logic
 └── tests/
-    ├── compiler.test.ts      # End-to-End: TS → Binary → Ausführung
-    ├── binary.test.ts        # Binary-Encoder Unit Tests
-    ├── codegen.test.ts       # Codegen Unit Tests
-    └── fixtures/             # .ts Testdateien
+    ├── compiler.test.ts      # End-to-end: TS → binary → execution
+    ├── binary.test.ts        # Binary encoder unit tests
+    ├── codegen.test.ts       # Codegen unit tests
+    └── fixtures/             # .ts test files
 ```
 
-## Codegen-Regeln
+## Codegen Rules
 
 **number → f64 (unboxed)**
 
@@ -179,29 +179,29 @@ interface Point { x: number; y: number }
 
 **boolean → i32** (0 = false, 1 = true)
 
-**void → kein Rückgabewert**
+**void → no return value**
 
 ## Scripts
 
-| Script | Beschreibung |
+| Script | Description |
 |--------|-------------|
-| `pnpm build` | Library bauen (Vite) |
-| `pnpm dev` | Playground Dev-Server |
-| `pnpm test` | Tests ausführen (Vitest) |
-| `pnpm test:watch` | Tests im Watch-Modus |
+| `pnpm build` | Build library (Vite) |
+| `pnpm dev` | Playground dev server |
+| `pnpm test` | Run tests (Vitest) |
+| `pnpm test:watch` | Tests in watch mode |
 | `pnpm lint` | Linting (Biome) |
-| `pnpm typecheck` | TypeScript prüfen |
+| `pnpm typecheck` | TypeScript check |
 
 ## Toolchain
 
-- **Sprache:** TypeScript (strict mode)
-- **Parser & Type-Checker:** `typescript` Compiler API
-- **Output:** `Uint8Array` (Wasm Binary) + WAT-Text
+- **Language:** TypeScript (strict mode)
+- **Parser & Type Checker:** `typescript` Compiler API
+- **Output:** `Uint8Array` (Wasm binary) + WAT text
 - **Package Manager:** pnpm
 - **Bundler:** Vite
-- **Test-Framework:** Vitest
+- **Test Framework:** Vitest
 - **Linting:** Biome
 
-## Lizenz
+## License
 
 MIT
