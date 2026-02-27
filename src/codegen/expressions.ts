@@ -1,6 +1,6 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext } from "./index.js";
-import { allocLocal, resolveWasmType } from "./index.js";
+import { allocLocal, resolveWasmType, getOrRegisterArrayType } from "./index.js";
 import {
   mapTsTypeToWasm,
   isNumberType,
@@ -617,12 +617,25 @@ function compileElementAssignment(
   target: ts.ElementAccessExpression,
   value: ts.Expression,
 ): ValType | null {
-  ctx.errors.push({
-    message: "Array element assignment not yet supported",
-    line: getLine(target),
-    column: getCol(target),
-  });
-  return null;
+  // Push array ref
+  const arrType = compileExpression(ctx, fctx, target.expression);
+  if (!arrType || (arrType.kind !== "ref" && arrType.kind !== "ref_null")) {
+    ctx.errors.push({ message: "Assignment to non-array", line: 0, column: 0 });
+    return null;
+  }
+  const typeIdx = (arrType as { typeIdx: number }).typeIdx;
+  const typeDef = ctx.mod.types[typeIdx];
+  if (!typeDef || typeDef.kind !== "array") {
+    ctx.errors.push({ message: "Assignment to non-array type", line: 0, column: 0 });
+    return null;
+  }
+  // Push index (as i32)
+  compileExpression(ctx, fctx, target.argumentExpression, { kind: "f64" });
+  fctx.body.push({ op: "i32.trunc_f64_s" });
+  // Push value
+  compileExpression(ctx, fctx, value, typeDef.element);
+  fctx.body.push({ op: "array.set", typeIdx });
+  return VOID_RESULT;
 }
 
 function isCompoundAssignment(op: ts.SyntaxKind): boolean {
@@ -1021,8 +1034,14 @@ function compileConsoleLog(
       if (funcIdx !== undefined) {
         fctx.body.push({ op: "call", funcIdx });
       }
-    } else {
+    } else if (isNumberType(argType)) {
       const funcIdx = ctx.funcMap.get("console_log_number");
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+      }
+    } else {
+      // externref: DOM objects, class instances, anything else
+      const funcIdx = ctx.funcMap.get("console_log_externref");
       if (funcIdx !== undefined) {
         fctx.body.push({ op: "call", funcIdx });
       }
@@ -1203,6 +1222,31 @@ function compilePropertyAccess(
   const objType = ctx.checker.getTypeAtLocation(expr.expression);
   const propName = expr.name.text;
 
+  // Check for enum member access: EnumName.Member
+  if (ts.isIdentifier(expr.expression)) {
+    const objName = expr.expression.text;
+    const enumKey = `${objName}.${propName}`;
+    const enumVal = ctx.enumValues.get(enumKey);
+    if (enumVal !== undefined) {
+      fctx.body.push({ op: "f64.const", value: enumVal });
+      return { kind: "f64" };
+    }
+  }
+
+  // Handle array.length
+  if (propName === "length") {
+    const objWasmType = resolveWasmType(ctx, objType);
+    if (objWasmType.kind === "ref" || objWasmType.kind === "ref_null") {
+      const typeDef = ctx.mod.types[(objWasmType as { typeIdx: number }).typeIdx];
+      if (typeDef?.kind === "array") {
+        compileExpression(ctx, fctx, expr.expression);
+        fctx.body.push({ op: "array.len" });
+        fctx.body.push({ op: "f64.convert_i32_s" });
+        return { kind: "f64" };
+      }
+    }
+  }
+
   // Handle Math constants
   if (
     ts.isIdentifier(expr.expression) &&
@@ -1301,12 +1345,33 @@ function compileElementAccess(
   fctx: FunctionContext,
   expr: ts.ElementAccessExpression,
 ): ValType | null {
-  ctx.errors.push({
-    message: "Array element access not yet supported",
-    line: getLine(expr),
-    column: getCol(expr),
-  });
-  return null;
+  const objType = compileExpression(ctx, fctx, expr.expression);
+  if (!objType || (objType.kind !== "ref" && objType.kind !== "ref_null")) {
+    ctx.errors.push({
+      message: "Element access on non-array value",
+      line: getLine(expr),
+      column: 0,
+    });
+    return null;
+  }
+
+  const typeIdx = (objType as { typeIdx: number }).typeIdx;
+  const typeDef = ctx.mod.types[typeIdx];
+  if (!typeDef || typeDef.kind !== "array") {
+    ctx.errors.push({
+      message: "Element access on non-array type",
+      line: 0,
+      column: 0,
+    });
+    return null;
+  }
+
+  // Compile index and convert to i32
+  compileExpression(ctx, fctx, expr.argumentExpression, { kind: "f64" });
+  fctx.body.push({ op: "i32.trunc_f64_s" });
+
+  fctx.body.push({ op: "array.get", typeIdx });
+  return typeDef.element;
 }
 
 function resolveStructName(ctx: CodegenContext, tsType: ts.Type): string | undefined {
@@ -1394,12 +1459,26 @@ function compileArrayLiteral(
   fctx: FunctionContext,
   expr: ts.ArrayLiteralExpression,
 ): ValType | null {
-  ctx.errors.push({
-    message: "Array literals not yet supported",
-    line: getLine(expr),
-    column: getCol(expr),
-  });
-  return null;
+  if (expr.elements.length === 0) {
+    // Empty array — default to externref element type
+    const arrTypeIdx = getOrRegisterArrayType(ctx, "externref");
+    fctx.body.push({ op: "array.new_fixed", typeIdx: arrTypeIdx, length: 0 });
+    return { kind: "ref", typeIdx: arrTypeIdx };
+  }
+
+  // Determine element type from first element
+  const firstElemType = ctx.checker.getTypeAtLocation(expr.elements[0]!);
+  const elemWasm = mapTsTypeToWasm(firstElemType, ctx.checker);
+  const elemKind = elemWasm.kind;
+  const arrTypeIdx = getOrRegisterArrayType(ctx, elemKind);
+
+  // Push all elements onto stack
+  for (const el of expr.elements) {
+    compileExpression(ctx, fctx, el, elemWasm);
+  }
+
+  fctx.body.push({ op: "array.new_fixed", typeIdx: arrTypeIdx, length: expr.elements.length });
+  return { kind: "ref", typeIdx: arrTypeIdx };
 }
 
 // ── String operations ─────────────────────────────────────────────────

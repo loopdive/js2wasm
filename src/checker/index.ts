@@ -189,4 +189,100 @@ interface Performance {
   now(): number;
 }
 declare const performance: Performance;
+interface EventTarget {
+  addEventListener(type: string, listener: (event: any) => void, options?: any): void;
+  removeEventListener(type: string, listener: (event: any) => void, options?: any): void;
+  dispatchEvent(event: any): boolean;
+}
+interface Node extends EventTarget {
+  readonly nodeType: number;
+  readonly nodeName: string;
+  readonly parentNode: Node | null;
+  readonly childNodes: NodeList;
+  appendChild<T extends Node>(node: T): T;
+  removeChild<T extends Node>(child: T): T;
+  cloneNode(deep?: boolean): Node;
+  contains(other: Node | null): boolean;
+}
+interface NodeList {
+  readonly length: number;
+  item(index: number): Node | null;
+  [index: number]: Node;
+  forEach(callbackfn: (value: Node, key: number, parent: NodeList) => void): void;
+}
+interface Element extends Node {
+  readonly tagName: string;
+  id: string;
+  className: string;
+  innerHTML: string;
+  textContent: string | null;
+  getAttribute(name: string): string | null;
+  setAttribute(name: string, value: string): void;
+  removeAttribute(name: string): void;
+  hasAttribute(name: string): boolean;
+  querySelector(selectors: string): Element | null;
+  querySelectorAll(selectors: string): NodeList;
+  readonly children: HTMLCollection;
+  readonly classList: DOMTokenList;
+}
+interface HTMLCollection {
+  readonly length: number;
+  item(index: number): Element | null;
+  [index: number]: Element;
+}
+interface DOMTokenList {
+  readonly length: number;
+  add(...tokens: string[]): void;
+  remove(...tokens: string[]): void;
+  toggle(token: string, force?: boolean): boolean;
+  contains(token: string): boolean;
+}
+interface HTMLElement extends Element {
+  readonly style: CSSStyleDeclaration;
+  readonly offsetWidth: number;
+  readonly offsetHeight: number;
+  click(): void;
+  focus(): void;
+  blur(): void;
+}
+interface CSSStyleDeclaration {
+  [property: string]: string;
+}
+interface HTMLInputElement extends HTMLElement {
+  value: string;
+  checked: boolean;
+  type: string;
+  disabled: boolean;
+}
+interface HTMLButtonElement extends HTMLElement {
+  disabled: boolean;
+}
+interface Document extends Node {
+  readonly body: HTMLElement;
+  readonly head: HTMLElement;
+  readonly documentElement: HTMLElement;
+  getElementById(elementId: string): HTMLElement | null;
+  querySelector(selectors: string): Element | null;
+  querySelectorAll(selectors: string): NodeList;
+  createElement(tagName: string): HTMLElement;
+  createTextNode(data: string): Node;
+}
+interface Window extends EventTarget {
+  readonly document: Document;
+  readonly location: { href: string; pathname: string; search: string };
+  alert(message?: string): void;
+  confirm(message?: string): boolean;
+  setTimeout(handler: () => void, timeout?: number): number;
+  clearTimeout(id: number): void;
+  setInterval(handler: () => void, timeout?: number): number;
+  clearInterval(id: number): void;
+  fetch(input: string, init?: any): Promise<any>;
+}
+declare const document: Document;
+declare const window: Window;
+interface Promise<T> {
+  then<U>(onfulfilled: (value: T) => U | Promise<U>): Promise<U>;
+  catch(onrejected: (reason: any) => any): Promise<any>;
+}
+declare function fetch(input: string, init?: any): Promise<any>;
 `;
