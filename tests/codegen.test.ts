@@ -115,6 +115,95 @@ describe("math operations", () => {
   });
 });
 
+describe("math host imports", () => {
+  it("Math.sin and Math.cos via host import", async () => {
+    const result = compile(`
+      export function sinCos(x: number): number {
+        return Math.sin(x) + Math.cos(x);
+      }
+    `);
+    expect(
+      result.success,
+      `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}`,
+    ).toBe(true);
+
+    expect(result.wat).toContain("Math_sin");
+    expect(result.wat).toContain("Math_cos");
+
+    const { instance } = await WebAssembly.instantiate(result.binary, {
+      env: {
+        console_log_number: () => {},
+        console_log_bool: () => {},
+        Math_sin: Math.sin,
+        Math_cos: Math.cos,
+      },
+    });
+    const exports = instance.exports as any;
+    expect(exports.sinCos(0)).toBeCloseTo(1); // sin(0)=0, cos(0)=1
+  });
+
+  it("Math.pow via host import", async () => {
+    const result = compile(`
+      export function power(base: number, exp: number): number {
+        return Math.pow(base, exp);
+      }
+    `);
+    expect(result.success).toBe(true);
+    expect(result.wat).toContain("Math_pow");
+
+    const { instance } = await WebAssembly.instantiate(result.binary, {
+      env: {
+        console_log_number: () => {},
+        console_log_bool: () => {},
+        Math_pow: Math.pow,
+      },
+    });
+    const exports = instance.exports as any;
+    expect(exports.power(2, 10)).toBe(1024);
+  });
+
+  it("Math.exp and Math.log via host import", async () => {
+    const result = compile(`
+      export function expLog(x: number): number {
+        return Math.log(Math.exp(x));
+      }
+    `);
+    expect(result.success).toBe(true);
+
+    const { instance } = await WebAssembly.instantiate(result.binary, {
+      env: {
+        console_log_number: () => {},
+        console_log_bool: () => {},
+        Math_exp: Math.exp,
+        Math_log: Math.log,
+      },
+    });
+    const exports = instance.exports as any;
+    expect(exports.expLog(1)).toBeCloseTo(1);
+  });
+
+  it("Math.round via native f64.nearest", async () => {
+    const result = compile(`
+      export function roundVal(x: number): number {
+        return Math.round(x);
+      }
+    `);
+    expect(result.success).toBe(true);
+    // Should NOT create a host import for round (uses f64.nearest)
+    expect(result.wat).not.toContain("Math_round");
+
+    const { instance } = await WebAssembly.instantiate(result.binary, {
+      env: {
+        console_log_number: () => {},
+        console_log_bool: () => {},
+      },
+    });
+    const exports = instance.exports as any;
+    expect(exports.roundVal(3.7)).toBe(4);
+    expect(exports.roundVal(3.2)).toBe(3);
+  });
+});
+
 describe("compound operations", () => {
   it("gcd using while and modulo substitute", async () => {
     const e = await compileAndRun(`

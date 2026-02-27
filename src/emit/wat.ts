@@ -259,6 +259,8 @@ function formatInstr(instr: Instr, _depth: number): string {
       return `array.set ${instr.typeIdx}`;
     case "ref.null":
       return `ref.null ${instr.typeIdx}`;
+    case "ref.null.extern":
+      return "ref.null extern";
     case "ref.cast":
       return `ref.cast (ref ${instr.typeIdx})`;
     case "ref.test":

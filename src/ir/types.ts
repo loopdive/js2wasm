@@ -111,6 +111,8 @@ export type Instr =
   | { op: "f64.neg" }
   | { op: "f64.floor" }
   | { op: "f64.ceil" }
+  | { op: "f64.trunc" }
+  | { op: "f64.nearest" }
   | { op: "i32.trunc_f64_s" }
   | { op: "f64.convert_i32_s" }
   | { op: "block"; blockType: BlockType; body: Instr[] }
@@ -136,6 +138,7 @@ export type Instr =
   | { op: "array.set"; typeIdx: number }
   | { op: "array.len" }
   | { op: "ref.null"; typeIdx: number }
+  | { op: "ref.null.extern" }
   | { op: "ref.is_null" }
   | { op: "ref.as_non_null" }
   | { op: "ref.cast"; typeIdx: number }

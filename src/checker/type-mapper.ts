@@ -21,7 +21,7 @@ export function mapTsTypeToWasm(
     type.flags & ts.TypeFlags.String ||
     type.flags & ts.TypeFlags.StringLiteral
   ) {
-    return { kind: "ref", typeIdx: -1 }; // resolved in codegen
+    return { kind: "externref" }; // JS string pass-through
   }
   if (
     type.flags & ts.TypeFlags.Void ||
@@ -30,30 +30,72 @@ export function mapTsTypeToWasm(
     return { kind: "i32" }; // void → no result (handled in codegen)
   }
   if (type.flags & ts.TypeFlags.Null) {
-    return { kind: "ref_null", typeIdx: -1 };
+    return { kind: "externref" };
   }
 
-  // Union with null → nullable
+  // Union with null/undefined → unwrap to inner type
   if (type.isUnion()) {
-    const nonNull = type.types.filter(
-      (t) => !(t.flags & ts.TypeFlags.Null),
+    const nonNullish = type.types.filter(
+      (t) =>
+        !(t.flags & ts.TypeFlags.Null) &&
+        !(t.flags & ts.TypeFlags.Undefined),
     );
-    if (nonNull.length === 1 && type.types.length === 2) {
-      const inner = mapTsTypeToWasm(nonNull[0]!, checker);
+    if (nonNullish.length === 1 && type.types.length === 2) {
+      const inner = mapTsTypeToWasm(nonNullish[0]!, checker);
       if (inner.kind === "ref")
         return { kind: "ref_null", typeIdx: inner.typeIdx };
+      // T | undefined for primitives → just use T (e.g. number | undefined → f64)
+      return inner;
     }
-    // Real union → tagged
-    return { kind: "ref", typeIdx: -1 };
+    // Real union → externref (can't represent as single Wasm type)
+    return { kind: "externref" };
   }
 
   // Object types (interfaces, arrays, functions)
   if (type.flags & ts.TypeFlags.Object) {
-    return { kind: "ref", typeIdx: -1 }; // resolved in codegen
+    if (isExternalDeclaredClass(type)) return { kind: "externref" };
+    // Placeholder -1 for named structs — resolved by resolveWasmType in codegen.
+    // If codegen can't resolve it (e.g. Array, Function), it falls back here
+    // and resolveWasmType passes it through, so we use externref as safe fallback.
+    return { kind: "externref" };
   }
 
-  // any/unknown → tagged
-  return { kind: "ref", typeIdx: -1 };
+  // any/unknown/error → treat as externref (opaque JS value)
+  if (type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) {
+    return { kind: "externref" };
+  }
+
+  return { kind: "externref" };
+}
+
+/** Check if a type is an externally declared class (declare class / declare namespace) */
+export function isExternalDeclaredClass(type: ts.Type): boolean {
+  const symbol = type.getSymbol();
+  if (!symbol) return false;
+  const decls = symbol.getDeclarations();
+  if (!decls || decls.length === 0) return false;
+  return decls.some(
+    (d) => ts.isClassDeclaration(d) && isDeclareContext(d),
+  );
+}
+
+function isDeclareContext(node: ts.Node): boolean {
+  if (ts.canHaveModifiers(node)) {
+    const mods = ts.getModifiers(node);
+    if (mods?.some((m) => m.kind === ts.SyntaxKind.DeclareKeyword))
+      return true;
+  }
+  // Check if inside a declare namespace/module
+  // ClassDecl → ModuleBlock → ModuleDeclaration, so walk up
+  if (node.parent) {
+    if (ts.isModuleDeclaration(node.parent)) {
+      return isDeclareContext(node.parent);
+    }
+    if (ts.isModuleBlock(node.parent)) {
+      return isDeclareContext(node.parent.parent);
+    }
+  }
+  return false;
 }
 
 /** Check if a ts.Type represents void */

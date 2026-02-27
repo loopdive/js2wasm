@@ -1,12 +1,15 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext } from "./index.js";
-import { allocLocal } from "./index.js";
+import { allocLocal, resolveWasmType } from "./index.js";
 import {
   isNumberType,
   isBooleanType,
+  isStringType,
   isVoidType,
+  isExternalDeclaredClass,
 } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";
+import { ensureI32Condition } from "./index.js";
 
 /**
  * Compile an expression, pushing its result onto the Wasm stack.
@@ -21,6 +24,10 @@ export function compileExpression(
     const value = Number(expr.text);
     fctx.body.push({ op: "f64.const", value });
     return { kind: "f64" };
+  }
+
+  if (ts.isStringLiteral(expr) || ts.isNoSubstitutionTemplateLiteral(expr)) {
+    return compileStringLiteral(ctx, fctx, expr.text);
   }
 
   if (expr.kind === ts.SyntaxKind.TrueKeyword) {
@@ -55,6 +62,10 @@ export function compileExpression(
 
   if (ts.isCallExpression(expr)) {
     return compileCallExpression(ctx, fctx, expr);
+  }
+
+  if (ts.isNewExpression(expr)) {
+    return compileNewExpression(ctx, fctx, expr);
   }
 
   if (ts.isConditionalExpression(expr)) {
@@ -145,17 +156,22 @@ function compileBinaryExpression(
   }
 
   // Regular binary ops: evaluate both sides
+  const leftTsType = ctx.checker.getTypeAtLocation(expr.left);
+
+  // String operations
+  if (isStringType(leftTsType)) {
+    return compileStringBinaryOp(ctx, fctx, expr, op);
+  }
+
   const leftType = compileExpression(ctx, fctx, expr.left);
   const rightType = compileExpression(ctx, fctx, expr.right);
 
   if (!leftType || !rightType) return null;
 
-  const tsType = ctx.checker.getTypeAtLocation(expr.left);
-
-  if (isNumberType(tsType) || leftType.kind === "f64") {
+  if (isNumberType(leftTsType) || leftType.kind === "f64") {
     return compileNumericBinaryOp(ctx, fctx, op, expr);
   }
-  if (isBooleanType(tsType) || leftType.kind === "i32") {
+  if (isBooleanType(leftTsType) || leftType.kind === "i32") {
     return compileBooleanBinaryOp(ctx, fctx, op);
   }
 
@@ -187,9 +203,6 @@ function compileNumericBinaryOp(
       fctx.body.push({ op: "f64.div" });
       return { kind: "f64" };
     case ts.SyntaxKind.PercentToken:
-      // a % b = a - floor(a/b) * b
-      // Stack has [a, b]. We need a fresh approach:
-      // We need a and b available multiple times. Use locals.
       return compileModulo(ctx, fctx, expr);
     case ts.SyntaxKind.EqualsEqualsEqualsToken:
       fctx.body.push({ op: "f64.eq" });
@@ -230,17 +243,12 @@ function compileModulo(
   fctx: FunctionContext,
   expr: ts.BinaryExpression,
 ): ValType {
-  // Stack currently has [a, b] from the caller having compiled both operands.
-  // We need: a - floor(a/b) * b
-  // Problem: we need a and b multiple times. Pop them into temp locals.
   const tmpB = allocLocal(fctx, `__mod_b_${fctx.locals.length}`, { kind: "f64" });
   const tmpA = allocLocal(fctx, `__mod_a_${fctx.locals.length}`, { kind: "f64" });
 
-  // Stack: [a, b]
-  fctx.body.push({ op: "local.set", index: tmpB }); // b saved
-  fctx.body.push({ op: "local.set", index: tmpA }); // a saved
+  fctx.body.push({ op: "local.set", index: tmpB });
+  fctx.body.push({ op: "local.set", index: tmpA });
 
-  // a - floor(a / b) * b
   fctx.body.push({ op: "local.get", index: tmpA });
   fctx.body.push({ op: "local.get", index: tmpA });
   fctx.body.push({ op: "local.get", index: tmpB });
@@ -277,8 +285,8 @@ function compileLogicalAnd(
   fctx: FunctionContext,
   expr: ts.BinaryExpression,
 ): ValType {
-  // Short-circuit: if left is false, result is 0; else evaluate right
-  compileExpression(ctx, fctx, expr.left);
+  const leftType = compileExpression(ctx, fctx, expr.left);
+  ensureI32Condition(fctx, leftType);
 
   fctx.body.push({
     op: "if",
@@ -302,8 +310,8 @@ function compileLogicalOr(
   fctx: FunctionContext,
   expr: ts.BinaryExpression,
 ): ValType {
-  // Short-circuit: if left is true, result is 1; else evaluate right
-  compileExpression(ctx, fctx, expr.left);
+  const leftType = compileExpression(ctx, fctx, expr.left);
+  ensureI32Condition(fctx, leftType);
 
   fctx.body.push({
     op: "if",
@@ -345,12 +353,102 @@ function compileAssignment(
     return compileElementAssignment(ctx, fctx, expr.left, expr.right);
   }
 
+  if (ts.isObjectLiteralExpression(expr.left)) {
+    return compileDestructuringAssignment(ctx, fctx, expr.left, expr.right);
+  }
+
   ctx.errors.push({
     message: "Unsupported assignment target",
     line: getLine(expr),
     column: getCol(expr),
   });
   return null;
+}
+
+function compileDestructuringAssignment(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  target: ts.ObjectLiteralExpression,
+  value: ts.Expression,
+): ValType | null {
+  // Compile the RHS — should produce a struct ref
+  const resultType = compileExpression(ctx, fctx, value);
+  if (!resultType) return null;
+
+  // Determine struct type from the RHS expression's type
+  const rhsType = ctx.checker.getTypeAtLocation(value);
+  const typeName =
+    ctx.anonTypeMap.get(rhsType) ?? rhsType.symbol?.name;
+
+  if (!typeName) {
+    ctx.errors.push({
+      message: "Cannot destructure: unknown type",
+      line: getLine(target),
+      column: getCol(target),
+    });
+    return null;
+  }
+
+  const structTypeIdx = ctx.structMap.get(typeName);
+  const fields = ctx.structFields.get(typeName);
+  if (structTypeIdx === undefined || !fields) {
+    ctx.errors.push({
+      message: `Cannot destructure: not a known struct type: ${typeName}`,
+      line: getLine(target),
+      column: getCol(target),
+    });
+    return null;
+  }
+
+  // Save the struct ref in a temp local
+  const tmpLocal = allocLocal(fctx, `__destruct_assign_${fctx.locals.length}`, resultType);
+  fctx.body.push({ op: "local.set", index: tmpLocal });
+
+  // For each property in the destructuring pattern, set the existing local
+  for (const prop of target.properties) {
+    if (ts.isShorthandPropertyAssignment(prop)) {
+      // { width } = ... → prop.name is "width"
+      const propName = prop.name.text;
+      const localIdx = fctx.localMap.get(propName);
+      if (localIdx === undefined) {
+        ctx.errors.push({
+          message: `Unknown variable in destructuring: ${propName}`,
+          line: getLine(prop),
+          column: getCol(prop),
+        });
+        continue;
+      }
+
+      const fieldIdx = fields.findIndex((f) => f.name === propName);
+      if (fieldIdx === -1) {
+        ctx.errors.push({
+          message: `Unknown field in destructuring: ${propName}`,
+          line: getLine(prop),
+          column: getCol(prop),
+        });
+        continue;
+      }
+
+      fctx.body.push({ op: "local.get", index: tmpLocal });
+      fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+      fctx.body.push({ op: "local.set", index: localIdx });
+    } else if (ts.isPropertyAssignment(prop)) {
+      // { width: w } = ... → prop.name is "width", prop.initializer is "w"
+      const propName = (prop.name as ts.Identifier).text;
+      const localName = ts.isIdentifier(prop.initializer) ? prop.initializer.text : propName;
+      const localIdx = fctx.localMap.get(localName);
+      if (localIdx === undefined) continue;
+
+      const fieldIdx = fields.findIndex((f) => f.name === propName);
+      if (fieldIdx === -1) continue;
+
+      fctx.body.push({ op: "local.get", index: tmpLocal });
+      fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+      fctx.body.push({ op: "local.set", index: localIdx });
+    }
+  }
+
+  return null; // destructuring assignment has no result value
 }
 
 function compilePropertyAssignment(
@@ -360,7 +458,13 @@ function compilePropertyAssignment(
   value: ts.Expression,
 ): ValType | null {
   const objType = ctx.checker.getTypeAtLocation(target.expression);
-  const typeName = objType.symbol?.name;
+
+  // Handle externref property set
+  if (isExternalDeclaredClass(objType)) {
+    return compileExternPropertySet(ctx, fctx, target, value, objType);
+  }
+
+  const typeName = resolveStructName(ctx, objType);
   if (!typeName) return null;
 
   const structTypeIdx = ctx.structMap.get(typeName);
@@ -371,14 +475,50 @@ function compilePropertyAssignment(
   const fieldIdx = fields.findIndex((f) => f.name === fieldName);
   if (fieldIdx === -1) return null;
 
-  // Compile: obj value struct.set
   compileExpression(ctx, fctx, target.expression);
-  const resultType = compileExpression(ctx, fctx, value);
+  compileExpression(ctx, fctx, value);
   fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx });
 
-  // struct.set doesn't leave value on stack, but assignment expressions should.
-  // For simplicity in statement context this is fine. If needed as expression,
-  // the caller should handle.
+  return null;
+}
+
+function compileExternPropertySet(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  target: ts.PropertyAccessExpression,
+  value: ts.Expression,
+  objType: ts.Type,
+): ValType | null {
+  const className = objType.getSymbol()?.name;
+  const propName = target.name.text;
+  if (!className) return null;
+
+  const externInfo = ctx.externClasses.get(className);
+  if (!externInfo) {
+    ctx.errors.push({
+      message: `Unknown extern class: ${className}`,
+      line: getLine(target),
+      column: getCol(target),
+    });
+    return null;
+  }
+
+  // Push object, then value
+  compileExpression(ctx, fctx, target.expression);
+  compileExpression(ctx, fctx, value);
+
+  const importName = `${externInfo.importPrefix}_set_${propName}`;
+  const funcIdx = ctx.funcMap.get(importName);
+  if (funcIdx === undefined) {
+    ctx.errors.push({
+      message: `Missing import for property set: ${importName}`,
+      line: getLine(target),
+      column: getCol(target),
+    });
+    return null;
+  }
+
+  fctx.body.push({ op: "call", funcIdx });
   return null;
 }
 
@@ -388,8 +528,6 @@ function compileElementAssignment(
   target: ts.ElementAccessExpression,
   value: ts.Expression,
 ): ValType | null {
-  // array[idx] = value
-  // TODO: Implement array element assignment with GC arrays
   ctx.errors.push({
     message: "Array element assignment not yet supported",
     line: getLine(target),
@@ -433,12 +571,9 @@ function compileCompoundAssignment(
     return null;
   }
 
-  // Load current value
   fctx.body.push({ op: "local.get", index: localIdx });
-  // Compile right side
   compileExpression(ctx, fctx, expr.right);
 
-  // Apply operation
   switch (op) {
     case ts.SyntaxKind.PlusEqualsToken:
       fctx.body.push({ op: "f64.add" });
@@ -454,7 +589,6 @@ function compileCompoundAssignment(
       break;
   }
 
-  // Store and leave value on stack
   fctx.body.push({ op: "local.tee", index: localIdx });
   return { kind: "f64" };
 }
@@ -535,7 +669,6 @@ function compilePostfixUnary(
     return null;
   }
 
-  // Return old value, then update
   fctx.body.push({ op: "local.get", index: idx });
   fctx.body.push({ op: "local.get", index: idx });
   fctx.body.push({ op: "f64.const", value: 1 });
@@ -550,12 +683,14 @@ function compilePostfixUnary(
   return { kind: "f64" };
 }
 
+// ── Call expressions ─────────────────────────────────────────────────
+
 function compileCallExpression(
   ctx: CodegenContext,
   fctx: FunctionContext,
   expr: ts.CallExpression,
 ): ValType | null {
-  // Handle console.log
+  // Handle property access calls: console.log, Math.xxx, extern methods
   if (ts.isPropertyAccessExpression(expr.expression)) {
     const propAccess = expr.expression;
     if (
@@ -566,12 +701,17 @@ function compileCallExpression(
       return compileConsoleLog(ctx, fctx, expr);
     }
 
-    // Handle Math.xxx
     if (
       ts.isIdentifier(propAccess.expression) &&
       propAccess.expression.text === "Math"
     ) {
       return compileMathCall(ctx, fctx, propAccess.name.text, expr);
+    }
+
+    // Check if receiver is an externref object
+    const receiverType = ctx.checker.getTypeAtLocation(propAccess.expression);
+    if (isExternalDeclaredClass(receiverType)) {
+      return compileExternMethodCall(ctx, fctx, propAccess, expr);
     }
   }
 
@@ -588,9 +728,20 @@ function compileCallExpression(
       return null;
     }
 
-    // Compile arguments
+    // Compile provided arguments
     for (const arg of expr.arguments) {
       compileExpression(ctx, fctx, arg);
+    }
+
+    // Supply defaults for missing optional params
+    const optInfo = ctx.funcOptionalParams.get(funcName);
+    if (optInfo) {
+      const numProvided = expr.arguments.length;
+      for (const opt of optInfo) {
+        if (opt.index >= numProvided) {
+          pushDefaultValue(fctx, opt.type);
+        }
+      }
     }
 
     fctx.body.push({ op: "call", funcIdx });
@@ -600,7 +751,7 @@ function compileCallExpression(
     if (sig) {
       const retType = ctx.checker.getReturnTypeOfSignature(sig);
       if (isVoidType(retType)) return null;
-      return { kind: isNumberType(retType) ? "f64" : isBooleanType(retType) ? "i32" : "f64" };
+      return resolveWasmType(ctx, retType);
     }
     return { kind: "f64" };
   }
@@ -613,6 +764,126 @@ function compileCallExpression(
   return null;
 }
 
+// ── New expressions ──────────────────────────────────────────────────
+
+function compileNewExpression(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.NewExpression,
+): ValType | null {
+  const type = ctx.checker.getTypeAtLocation(expr);
+  const symbol = type.getSymbol();
+  const className = symbol?.name;
+
+  if (!className) {
+    ctx.errors.push({
+      message: "Cannot resolve class for new expression",
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+
+  const externInfo = ctx.externClasses.get(className);
+  if (externInfo) {
+    // Compile constructor arguments
+    for (const arg of expr.arguments ?? []) {
+      compileExpression(ctx, fctx, arg);
+    }
+
+    const importName = `${externInfo.importPrefix}_new`;
+    const funcIdx = ctx.funcMap.get(importName);
+    if (funcIdx === undefined) {
+      ctx.errors.push({
+        message: `Missing import for constructor: ${importName}`,
+        line: getLine(expr),
+        column: getCol(expr),
+      });
+      return null;
+    }
+    fctx.body.push({ op: "call", funcIdx });
+    return { kind: "externref" };
+  }
+
+  ctx.errors.push({
+    message: `Unsupported new expression for class: ${className}`,
+    line: getLine(expr),
+    column: getCol(expr),
+  });
+  return null;
+}
+
+// ── Extern method calls ──────────────────────────────────────────────
+
+function compileExternMethodCall(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  propAccess: ts.PropertyAccessExpression,
+  callExpr: ts.CallExpression,
+): ValType | null {
+  const receiverType = ctx.checker.getTypeAtLocation(propAccess.expression);
+  const className = receiverType.getSymbol()?.name;
+  const methodName = propAccess.name.text;
+
+  if (!className) return null;
+
+  const externInfo = ctx.externClasses.get(className);
+  if (!externInfo) {
+    ctx.errors.push({
+      message: `Unknown extern class: ${className}`,
+      line: getLine(callExpr),
+      column: getCol(callExpr),
+    });
+    return null;
+  }
+
+  // Push 'this' (the receiver object)
+  compileExpression(ctx, fctx, propAccess.expression);
+
+  // Push arguments
+  for (const arg of callExpr.arguments) {
+    compileExpression(ctx, fctx, arg);
+  }
+
+  const importName = `${externInfo.importPrefix}_${methodName}`;
+  const funcIdx = ctx.funcMap.get(importName);
+  if (funcIdx === undefined) {
+    ctx.errors.push({
+      message: `Missing import for method: ${importName}`,
+      line: getLine(callExpr),
+      column: getCol(callExpr),
+    });
+    return null;
+  }
+
+  fctx.body.push({ op: "call", funcIdx });
+
+  const methodInfo = externInfo.methods.get(methodName);
+  if (!methodInfo || methodInfo.results.length === 0) return null;
+  return methodInfo.results[0]!;
+}
+
+// ── Helper: push default value for a type ────────────────────────────
+
+function pushDefaultValue(fctx: FunctionContext, type: ValType): void {
+  switch (type.kind) {
+    case "f64":
+      fctx.body.push({ op: "f64.const", value: 0 });
+      break;
+    case "i32":
+      fctx.body.push({ op: "i32.const", value: 0 });
+      break;
+    case "externref":
+      fctx.body.push({ op: "ref.null.extern" });
+      break;
+    default:
+      fctx.body.push({ op: "i32.const", value: 0 });
+      break;
+  }
+}
+
+// ── Builtins ─────────────────────────────────────────────────────────
+
 function compileConsoleLog(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -622,20 +893,24 @@ function compileConsoleLog(
     const argType = ctx.checker.getTypeAtLocation(arg);
     compileExpression(ctx, fctx, arg);
 
-    if (isBooleanType(argType)) {
+    if (isStringType(argType)) {
+      const funcIdx = ctx.funcMap.get("console_log_string");
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+      }
+    } else if (isBooleanType(argType)) {
       const funcIdx = ctx.funcMap.get("console_log_bool");
       if (funcIdx !== undefined) {
         fctx.body.push({ op: "call", funcIdx });
       }
     } else {
-      // Default to number logging
       const funcIdx = ctx.funcMap.get("console_log_number");
       if (funcIdx !== undefined) {
         fctx.body.push({ op: "call", funcIdx });
       }
     }
   }
-  return null; // console.log returns void
+  return null;
 }
 
 function compileMathCall(
@@ -644,72 +919,118 @@ function compileMathCall(
   method: string,
   expr: ts.CallExpression,
 ): ValType | null {
-  switch (method) {
-    case "sqrt":
-      if (expr.arguments.length >= 1) {
-        compileExpression(ctx, fctx, expr.arguments[0]!);
-        fctx.body.push({ op: "f64.sqrt" });
-        return { kind: "f64" };
-      }
-      break;
-    case "abs":
-      if (expr.arguments.length >= 1) {
-        compileExpression(ctx, fctx, expr.arguments[0]!);
-        fctx.body.push({ op: "f64.abs" });
-        return { kind: "f64" };
-      }
-      break;
-    case "floor":
-      if (expr.arguments.length >= 1) {
-        compileExpression(ctx, fctx, expr.arguments[0]!);
-        fctx.body.push({ op: "f64.floor" });
-        return { kind: "f64" };
-      }
-      break;
-    case "ceil":
-      if (expr.arguments.length >= 1) {
-        compileExpression(ctx, fctx, expr.arguments[0]!);
-        fctx.body.push({ op: "f64.ceil" });
-        return { kind: "f64" };
-      }
-      break;
-    case "min":
-      if (expr.arguments.length >= 2) {
-        // min(a, b) = if a < b then a else b
-        compileExpression(ctx, fctx, expr.arguments[0]!);
-        compileExpression(ctx, fctx, expr.arguments[1]!);
-        // Use select: a b (a < b) select
-        // We need a and b available twice. Use temp locals.
-        const tmpA = allocLocal(fctx, `__min_a_${fctx.locals.length}`, { kind: "f64" });
-        const tmpB = allocLocal(fctx, `__min_b_${fctx.locals.length}`, { kind: "f64" });
-        fctx.body.push({ op: "local.set", index: tmpB });
-        fctx.body.push({ op: "local.set", index: tmpA });
-        fctx.body.push({ op: "local.get", index: tmpA });
-        fctx.body.push({ op: "local.get", index: tmpB });
-        fctx.body.push({ op: "local.get", index: tmpA });
-        fctx.body.push({ op: "local.get", index: tmpB });
-        fctx.body.push({ op: "f64.lt" });
-        fctx.body.push({ op: "select" });
-        return { kind: "f64" };
-      }
-      break;
-    case "max":
-      if (expr.arguments.length >= 2) {
-        compileExpression(ctx, fctx, expr.arguments[0]!);
-        compileExpression(ctx, fctx, expr.arguments[1]!);
-        const tmpA = allocLocal(fctx, `__max_a_${fctx.locals.length}`, { kind: "f64" });
-        const tmpB = allocLocal(fctx, `__max_b_${fctx.locals.length}`, { kind: "f64" });
-        fctx.body.push({ op: "local.set", index: tmpB });
-        fctx.body.push({ op: "local.set", index: tmpA });
-        fctx.body.push({ op: "local.get", index: tmpA });
-        fctx.body.push({ op: "local.get", index: tmpB });
-        fctx.body.push({ op: "local.get", index: tmpA });
-        fctx.body.push({ op: "local.get", index: tmpB });
-        fctx.body.push({ op: "f64.gt" });
-        fctx.body.push({ op: "select" });
-        return { kind: "f64" };
-      }
-      break;
+  // Native Wasm unary opcodes
+  const nativeUnary: Record<string, string> = {
+    sqrt: "f64.sqrt",
+    abs: "f64.abs",
+    floor: "f64.floor",
+    ceil: "f64.ceil",
+    trunc: "f64.trunc",
+    nearest: "f64.nearest",
+  };
+
+  if (method === "round" && expr.arguments.length >= 1) {
+    compileExpression(ctx, fctx, expr.arguments[0]!);
+    fctx.body.push({ op: "f64.nearest" } as Instr);
+    return { kind: "f64" };
+  }
+
+  if (method in nativeUnary && expr.arguments.length >= 1) {
+    compileExpression(ctx, fctx, expr.arguments[0]!);
+    fctx.body.push({ op: nativeUnary[method]! } as Instr);
+    return { kind: "f64" };
+  }
+
+  if (method === "min" && expr.arguments.length >= 2) {
+    compileExpression(ctx, fctx, expr.arguments[0]!);
+    compileExpression(ctx, fctx, expr.arguments[1]!);
+    const tmpA = allocLocal(fctx, `__min_a_${fctx.locals.length}`, { kind: "f64" });
+    const tmpB = allocLocal(fctx, `__min_b_${fctx.locals.length}`, { kind: "f64" });
+    fctx.body.push({ op: "local.set", index: tmpB });
+    fctx.body.push({ op: "local.set", index: tmpA });
+    fctx.body.push({ op: "local.get", index: tmpA });
+    fctx.body.push({ op: "local.get", index: tmpB });
+    fctx.body.push({ op: "local.get", index: tmpA });
+    fctx.body.push({ op: "local.get", index: tmpB });
+    fctx.body.push({ op: "f64.lt" });
+    fctx.body.push({ op: "select" });
+    return { kind: "f64" };
+  }
+
+  if (method === "max" && expr.arguments.length >= 2) {
+    compileExpression(ctx, fctx, expr.arguments[0]!);
+    compileExpression(ctx, fctx, expr.arguments[1]!);
+    const tmpA = allocLocal(fctx, `__max_a_${fctx.locals.length}`, { kind: "f64" });
+    const tmpB = allocLocal(fctx, `__max_b_${fctx.locals.length}`, { kind: "f64" });
+    fctx.body.push({ op: "local.set", index: tmpB });
+    fctx.body.push({ op: "local.set", index: tmpA });
+    fctx.body.push({ op: "local.get", index: tmpA });
+    fctx.body.push({ op: "local.get", index: tmpB });
+    fctx.body.push({ op: "local.get", index: tmpA });
+    fctx.body.push({ op: "local.get", index: tmpB });
+    fctx.body.push({ op: "f64.gt" });
+    fctx.body.push({ op: "select" });
+    return { kind: "f64" };
+  }
+
+  if (method === "sign" && expr.arguments.length >= 1) {
+    // sign(x) = x > 0 ? 1 : x < 0 ? -1 : 0
+    compileExpression(ctx, fctx, expr.arguments[0]!);
+    const tmp = allocLocal(fctx, `__sign_${fctx.locals.length}`, { kind: "f64" });
+    fctx.body.push({ op: "local.tee", index: tmp });
+    fctx.body.push({ op: "f64.const", value: 0 });
+    fctx.body.push({ op: "f64.gt" });
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "val", type: { kind: "f64" } },
+      then: [{ op: "f64.const", value: 1 }],
+      else: [
+        { op: "local.get", index: tmp },
+        { op: "f64.const", value: 0 },
+        { op: "f64.lt" },
+        {
+          op: "if",
+          blockType: { kind: "val", type: { kind: "f64" } },
+          then: [{ op: "f64.const", value: -1 }],
+          else: [{ op: "f64.const", value: 0 }],
+        },
+      ],
+    });
+    return { kind: "f64" };
+  }
+
+  // Host-imported Math methods (1-arg): sin, cos, tan, exp, log, etc.
+  const hostUnary = new Set([
+    "exp", "log", "log2", "log10",
+    "sin", "cos", "tan", "asin", "acos", "atan",
+  ]);
+  if (hostUnary.has(method) && expr.arguments.length >= 1) {
+    const funcIdx = ctx.funcMap.get(`Math_${method}`);
+    if (funcIdx !== undefined) {
+      compileExpression(ctx, fctx, expr.arguments[0]!);
+      fctx.body.push({ op: "call", funcIdx });
+      return { kind: "f64" };
+    }
+  }
+
+  // Host-imported Math methods (2-arg): pow, atan2
+  if ((method === "pow" || method === "atan2") && expr.arguments.length >= 2) {
+    const funcIdx = ctx.funcMap.get(`Math_${method}`);
+    if (funcIdx !== undefined) {
+      compileExpression(ctx, fctx, expr.arguments[0]!);
+      compileExpression(ctx, fctx, expr.arguments[1]!);
+      fctx.body.push({ op: "call", funcIdx });
+      return { kind: "f64" };
+    }
+  }
+
+  // Math.random() — 0-arg host import
+  if (method === "random") {
+    const funcIdx = ctx.funcMap.get("Math_random");
+    if (funcIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx });
+      return { kind: "f64" };
+    }
   }
 
   ctx.errors.push({
@@ -725,22 +1046,19 @@ function compileConditionalExpression(
   fctx: FunctionContext,
   expr: ts.ConditionalExpression,
 ): ValType | null {
-  // condition ? then : else
-  compileExpression(ctx, fctx, expr.condition);
+  const condType = compileExpression(ctx, fctx, expr.condition);
+  ensureI32Condition(fctx, condType);
 
-  // Determine result type
   const thenType = ctx.checker.getTypeAtLocation(expr.whenTrue);
   const resultValType: ValType = isNumberType(thenType)
     ? { kind: "f64" }
     : { kind: "i32" };
 
-  // Compile then branch in isolation
   const savedBody = fctx.body;
   fctx.body = [];
   compileExpression(ctx, fctx, expr.whenTrue);
   const thenInstrs = fctx.body;
 
-  // Compile else branch in isolation
   fctx.body = [];
   compileExpression(ctx, fctx, expr.whenFalse);
   const elseInstrs = fctx.body;
@@ -757,6 +1075,8 @@ function compileConditionalExpression(
   return resultValType;
 }
 
+// ── Property access ──────────────────────────────────────────────────
+
 function compilePropertyAccess(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -765,19 +1085,41 @@ function compilePropertyAccess(
   const objType = ctx.checker.getTypeAtLocation(expr.expression);
   const propName = expr.name.text;
 
-  // Handle Math.PI etc (constants)
+  // Handle Math constants
   if (
     ts.isIdentifier(expr.expression) &&
     expr.expression.text === "Math"
   ) {
-    if (propName === "PI") {
-      fctx.body.push({ op: "f64.const", value: Math.PI });
+    const mathConstants: Record<string, number> = {
+      PI: Math.PI,
+      E: Math.E,
+      LN2: Math.LN2,
+      LN10: Math.LN10,
+      SQRT2: Math.SQRT2,
+    };
+    if (propName in mathConstants) {
+      fctx.body.push({ op: "f64.const", value: mathConstants[propName]! });
       return { kind: "f64" };
     }
   }
 
-  // Handle struct field access
-  const typeName = objType.symbol?.name;
+  // Handle string.length
+  if (isStringType(objType) && propName === "length") {
+    compileExpression(ctx, fctx, expr.expression);
+    const funcIdx = ctx.funcMap.get("length");
+    if (funcIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx });
+      return { kind: "i32" };
+    }
+  }
+
+  // Handle externref property access
+  if (isExternalDeclaredClass(objType)) {
+    return compileExternPropertyGet(ctx, fctx, expr, objType, propName);
+  }
+
+  // Handle struct field access (named or anonymous)
+  const typeName = resolveStructName(ctx, objType);
   if (typeName) {
     const structTypeIdx = ctx.structMap.get(typeName);
     const fields = ctx.structFields.get(typeName);
@@ -803,12 +1145,44 @@ function compilePropertyAccess(
   return null;
 }
 
+function compileExternPropertyGet(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.PropertyAccessExpression,
+  objType: ts.Type,
+  propName: string,
+): ValType | null {
+  const className = objType.getSymbol()?.name;
+  if (!className) return null;
+
+  const externInfo = ctx.externClasses.get(className);
+  if (!externInfo) return null;
+
+  // Push the object
+  compileExpression(ctx, fctx, expr.expression);
+
+  const importName = `${externInfo.importPrefix}_get_${propName}`;
+  const funcIdx = ctx.funcMap.get(importName);
+  if (funcIdx === undefined) {
+    ctx.errors.push({
+      message: `Missing import for property get: ${importName}`,
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+
+  fctx.body.push({ op: "call", funcIdx });
+
+  const propInfo = externInfo.properties.get(propName);
+  return propInfo?.type ?? { kind: "externref" };
+}
+
 function compileElementAccess(
   ctx: CodegenContext,
   fctx: FunctionContext,
   expr: ts.ElementAccessExpression,
 ): ValType | null {
-  // TODO: Implement array element access with GC arrays
   ctx.errors.push({
     message: "Array element access not yet supported",
     line: getLine(expr),
@@ -817,17 +1191,23 @@ function compileElementAccess(
   return null;
 }
 
+function resolveStructName(ctx: CodegenContext, tsType: ts.Type): string | undefined {
+  const name = tsType.symbol?.name;
+  if (name && name !== "__type" && name !== "__object" && ctx.structMap.has(name)) {
+    return name;
+  }
+  return ctx.anonTypeMap.get(tsType);
+}
+
 function compileObjectLiteral(
   ctx: CodegenContext,
   fctx: FunctionContext,
   expr: ts.ObjectLiteralExpression,
 ): ValType | null {
-  // Determine the target struct type from the contextual type
   const contextType = ctx.checker.getContextualType(expr);
   if (!contextType) {
-    // Try getting type at location
     const type = ctx.checker.getTypeAtLocation(expr);
-    const typeName = type.symbol?.name;
+    const typeName = resolveStructName(ctx, type);
     if (typeName) {
       return compileObjectLiteralForStruct(ctx, fctx, expr, typeName);
     }
@@ -839,7 +1219,7 @@ function compileObjectLiteral(
     return null;
   }
 
-  const typeName = contextType.symbol?.name;
+  const typeName = resolveStructName(ctx, contextType);
   if (typeName) {
     return compileObjectLiteralForStruct(ctx, fctx, expr, typeName);
   }
@@ -869,7 +1249,6 @@ function compileObjectLiteralForStruct(
     return null;
   }
 
-  // Push field values in order
   for (const field of fields) {
     const prop = expr.properties.find(
       (p) =>
@@ -880,7 +1259,6 @@ function compileObjectLiteralForStruct(
     if (prop && ts.isPropertyAssignment(prop)) {
       compileExpression(ctx, fctx, prop.initializer);
     } else {
-      // Default value
       if (field.type.kind === "f64") {
         fctx.body.push({ op: "f64.const", value: 0 });
       } else {
@@ -898,9 +1276,80 @@ function compileArrayLiteral(
   fctx: FunctionContext,
   expr: ts.ArrayLiteralExpression,
 ): ValType | null {
-  // TODO: Implement array literals with GC arrays
   ctx.errors.push({
     message: "Array literals not yet supported",
+    line: getLine(expr),
+    column: getCol(expr),
+  });
+  return null;
+}
+
+// ── String operations ─────────────────────────────────────────────────
+
+function compileStringLiteral(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  value: string,
+): ValType | null {
+  const importName = ctx.stringLiteralMap.get(value);
+  if (!importName) {
+    ctx.errors.push({
+      message: `String literal not registered: "${value}"`,
+      line: 0,
+      column: 0,
+    });
+    return null;
+  }
+
+  const funcIdx = ctx.funcMap.get(importName);
+  if (funcIdx === undefined) return null;
+
+  fctx.body.push({ op: "call", funcIdx });
+  return { kind: "externref" };
+}
+
+function compileStringBinaryOp(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.BinaryExpression,
+  op: ts.SyntaxKind,
+): ValType | null {
+  compileExpression(ctx, fctx, expr.left);
+  compileExpression(ctx, fctx, expr.right);
+
+  switch (op) {
+    case ts.SyntaxKind.PlusToken: {
+      // String concatenation
+      const funcIdx = ctx.funcMap.get("concat");
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+        return { kind: "externref" };
+      }
+      break;
+    }
+    case ts.SyntaxKind.EqualsEqualsEqualsToken:
+    case ts.SyntaxKind.EqualsEqualsToken: {
+      const funcIdx = ctx.funcMap.get("equals");
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+        return { kind: "i32" };
+      }
+      break;
+    }
+    case ts.SyntaxKind.ExclamationEqualsEqualsToken:
+    case ts.SyntaxKind.ExclamationEqualsToken: {
+      const funcIdx = ctx.funcMap.get("equals");
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+        fctx.body.push({ op: "i32.eqz" }); // negate
+        return { kind: "i32" };
+      }
+      break;
+    }
+  }
+
+  ctx.errors.push({
+    message: `Unsupported string operator: ${ts.SyntaxKind[op]}`,
     line: getLine(expr),
     column: getCol(expr),
   });

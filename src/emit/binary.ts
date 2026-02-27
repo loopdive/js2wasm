@@ -459,6 +459,12 @@ function encodeInstr(instr: Instr, enc: WasmEncoder): void {
     case "f64.floor":
       enc.byte(OP.f64_floor);
       break;
+    case "f64.trunc":
+      enc.byte(OP.f64_trunc);
+      break;
+    case "f64.nearest":
+      enc.byte(OP.f64_nearest);
+      break;
     case "f64.sqrt":
       enc.byte(OP.f64_sqrt);
       break;
@@ -483,6 +489,10 @@ function encodeInstr(instr: Instr, enc: WasmEncoder): void {
     case "ref.null":
       enc.byte(OP.ref_null);
       enc.i32(instr.typeIdx);
+      break;
+    case "ref.null.extern":
+      enc.byte(OP.ref_null);
+      enc.byte(TYPE.externref);
       break;
     case "ref.is_null":
       enc.byte(OP.ref_is_null);
