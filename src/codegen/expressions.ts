@@ -849,6 +849,16 @@ function compileCallExpression(
     if (isExternalDeclaredClass(receiverType)) {
       return compileExternMethodCall(ctx, fctx, propAccess, expr);
     }
+
+    // Primitive method calls: number.toString()
+    if (isNumberType(receiverType) && propAccess.name.text === "toString") {
+      compileExpression(ctx, fctx, propAccess.expression);
+      const funcIdx = ctx.funcMap.get("number_toString");
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+        return { kind: "externref" };
+      }
+    }
   }
 
   // Regular function call

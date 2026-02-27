@@ -356,6 +356,10 @@ function generateEnvImportLine(name: string, mod: WasmModule): string {
   if (name === "console_log_number") return "console_log_number: (v) => console.log(v)";
   if (name === "console_log_bool") return "console_log_bool: (v) => console.log(Boolean(v))";
   if (name === "console_log_string") return "console_log_string: (v) => console.log(v)";
+  if (name === "console_log_externref") return "console_log_externref: (v) => console.log(v)";
+
+  // Primitive method imports
+  if (name === "number_toString") return "number_toString: (v) => String(v)";
 
   // Math host imports
   if (name.startsWith("Math_")) {
