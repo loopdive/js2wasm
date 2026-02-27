@@ -144,29 +144,67 @@ const editor = monaco.editor.create(
 
 editor.onDidChangeModelContent(() => {
   sessionStorage.setItem(STORAGE_KEY, editor.getValue());
+  lastResult = null;
+  compileBtn.disabled = false;
+  runBtn.disabled = true;
+  downloadBtn.disabled = true;
 });
 
-const watEditor = monaco.editor.create(
-  document.getElementById("wat")!,
-  {
-    value: "",
-    language: "wat",
-    theme: "cursor-dark",
-    fontSize: 13,
-    fontFamily: '"SF Mono", "Fira Code", monospace',
-    minimap: { enabled: false },
-    readOnly: true,
-    automaticLayout: true,
-    scrollBeyondLastLine: false,
-    lineNumbers: "on",
-  },
-);
+const editorOptions = {
+  theme: "cursor-dark",
+  fontSize: 13,
+  fontFamily: '"SF Mono", "Fira Code", monospace',
+  minimap: { enabled: false },
+  readOnly: true,
+  automaticLayout: true,
+  scrollBeyondLastLine: false,
+  lineNumbers: "on" as const,
+};
+
+const watEditor = monaco.editor.create(document.getElementById("wat")!, {
+  ...editorOptions,
+  value: "",
+  language: "wat",
+});
+
+const tswasmJsEditor = monaco.editor.create(document.getElementById("ts2wasm-js")!, {
+  ...editorOptions,
+  value: "",
+  language: "javascript",
+});
+
+const tswasmDtsEditor = monaco.editor.create(document.getElementById("ts2wasm-dts")!, {
+  ...editorOptions,
+  value: "",
+  language: "typescript",
+});
+
+const modEditor = monaco.editor.create(document.getElementById("mod")!, {
+  ...editorOptions,
+  value: "",
+  language: "javascript",
+});
+
+const modDtsEditor = monaco.editor.create(document.getElementById("mod-dts")!, {
+  ...editorOptions,
+  value: "",
+  language: "typescript",
+});
+
+const testEditor = monaco.editor.create(document.getElementById("test")!, {
+  ...editorOptions,
+  value: "",
+  language: "typescript",
+});
 
 const consolePre = document.getElementById("console") as HTMLPreElement;
 const errorsPre = document.getElementById("errors") as HTMLPreElement;
 const timingSpan = document.getElementById("timing") as HTMLSpanElement;
+const compileBtn = document.getElementById("compile") as HTMLButtonElement;
 const runBtn = document.getElementById("run") as HTMLButtonElement;
-const watBtn = document.getElementById("wat-only") as HTMLButtonElement;
+const downloadBtn = document.getElementById("download") as HTMLButtonElement;
+const genWatCb = document.getElementById("gen-wat") as HTMLInputElement;
+const genWasmCb = document.getElementById("gen-wasm") as HTMLInputElement;
 
 // Treemap
 const treemapPanel = document.getElementById("treemap-panel")!;
@@ -175,8 +213,13 @@ const treemap = new WasmTreemap(treemapPanel);
 // Tab switching
 const tabs = document.querySelectorAll(".tab");
 const watPanel = document.getElementById("wat")!;
-const panels = { wat: watPanel, console: consolePre, errors: errorsPre, treemap: treemapPanel };
-const panelDisplay: Record<string, string> = { wat: "block", console: "block", errors: "block", treemap: "flex" };
+const tswasmJsPanel = document.getElementById("ts2wasm-js")!;
+const tswasmDtsPanel = document.getElementById("ts2wasm-dts")!;
+const modPanel = document.getElementById("mod")!;
+const modDtsPanel = document.getElementById("mod-dts")!;
+const testPanel = document.getElementById("test")!;
+const panels = { wat: watPanel, "ts2wasm-js": tswasmJsPanel, "ts2wasm-dts": tswasmDtsPanel, mod: modPanel, "mod-dts": modDtsPanel, test: testPanel, console: consolePre, errors: errorsPre, treemap: treemapPanel };
+const panelDisplay: Record<string, string> = { wat: "block", "ts2wasm-js": "block", "ts2wasm-dts": "block", mod: "block", "mod-dts": "block", test: "block", console: "block", errors: "block", treemap: "flex" };
 
 function showPanel(name: keyof typeof panels) {
   tabs.forEach((t) => {
@@ -193,41 +236,273 @@ tabs.forEach((tab) => {
   });
 });
 
-async function compileAndRun() {
+const TS2WASM_JS = `/** wasm:js-string polyfill */
+export const jsString = {
+  concat: (a, b) => a + b,
+  length: (s) => s.length,
+  equals: (a, b) => (a === b ? 1 : 0),
+  substring: (s, start, end) => s.substring(start, end),
+  charCodeAt: (s, i) => s.charCodeAt(i),
+};
+
+/** Math and console bindings — dispatches Math_xxx → Math.xxx, console_log_xxx → console.log */
+export const jsApi = new Proxy({}, {
+  get(_, prop) {
+    const name = String(prop);
+    if (name.startsWith("Math_")) {
+      const fn = Math[name.slice(5)];
+      return typeof fn === "function" ? fn : undefined;
+    }
+    if (name.startsWith("console_log_")) {
+      const type = name.slice(12);
+      return type === "bool" ? (v) => console.log(Boolean(v)) : (v) => console.log(v);
+    }
+  },
+});
+
+/** DOM extern-class bindings — dispatches ClassName_method(self, …) → self.method(…) */
+export const domApi = new Proxy({}, {
+  get(_, prop) {
+    const name = String(prop);
+    const under = name.indexOf("_");
+    if (under === -1) return undefined;
+    const rest = name.slice(under + 1);
+    if (rest.startsWith("get_")) { const k = rest.slice(4); return (self) => self[k]; }
+    if (rest.startsWith("set_")) { const k = rest.slice(4); return (self, v) => { self[k] = v; }; }
+    return (self, ...args) => (typeof self?.[rest] === "function" ? self[rest](...args) : undefined);
+  },
+});
+
+/** Build the WebAssembly import object — uses a Proxy so apiObjects don't need to be enumerable */
+export function buildEnv(stringPool = [], ...apiObjects) {
+  const strEntries = Object.fromEntries(stringPool.map((s, i) => [\`__str_\${i}\`, () => s]));
+  const env = new Proxy({}, {
+    get(_, prop) {
+      if (prop in strEntries) return strEntries[prop];
+      for (const obj of apiObjects) {
+        const val = obj[prop];
+        if (val !== undefined) return val;
+      }
+    },
+  });
+  return { env, "wasm:js-string": jsString };
+}
+
+/** Compile TS source to Wasm binary, caching the result by source hash in sessionStorage */
+export async function getOrCompile(source, compileFn) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(source));
+  const hash = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const cacheKey = \`ts2wasm:\${hash}\`;
+  const cached = sessionStorage.getItem(cacheKey);
+  if (cached) {
+    const { b64, pool } = JSON.parse(cached);
+    return { binary: Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)), stringPool: pool };
+  }
+  const result = compileFn(source);
+  if (!result.success) throw new Error(result.errors.map((e) => e.message).join("\\n"));
+  sessionStorage.setItem(cacheKey, JSON.stringify({
+    b64: btoa(String.fromCharCode(...result.binary)),
+    pool: result.stringPool,
+  }));
+  return result;
+}
+`;
+
+const TS2WASM_DTS = `export declare const jsString: {
+  concat(a: string, b: string): string;
+  length(s: string): number;
+  equals(a: string, b: string): 0 | 1;
+  substring(s: string, start: number, end: number): string;
+  charCodeAt(s: string, i: number): number;
+};
+
+/** Math_xxx bindings derived from TypeScript's built-in Math interface */
+type MathBindings = {
+  [K in keyof Math as Math[K] extends (...args: any[]) => any ? \`Math_\${K & string}\` : never]: Math[K];
+};
+export declare const jsApi: MathBindings & {
+  console_log_number: (v: number) => void;
+  console_log_string: (v: string) => void;
+  console_log_bool: (v: number) => void;
+  console_log_externref: (v: unknown) => void;
+};
+
+/** DOM extern-class bindings derived from TypeScript's built-in DOM interfaces */
+type DomMethods<Name extends string, T> = {
+  [K in keyof T as T[K] extends (...args: any[]) => any ? \`\${Name}_\${K & string}\` : never]:
+    T[K] extends (...args: infer A) => infer R ? (self: T, ...args: A) => R : never;
+};
+type DomGetters<Name extends string, T> = {
+  [K in keyof T as T[K] extends (...args: any[]) => any ? never : \`\${Name}_get_\${K & string}\`]:
+    (self: T) => T[K];
+};
+type DomSetters<Name extends string, T> = {
+  [K in keyof T as T[K] extends (...args: any[]) => any ? never : \`\${Name}_set_\${K & string}\`]:
+    (self: T, value: T[K]) => void;
+};
+type DomApi<Name extends string, T> = DomMethods<Name, T> & DomGetters<Name, T> & DomSetters<Name, T>;
+
+export declare const domApi:
+  DomApi<"Document", Document> &
+  DomApi<"Window", Window & typeof globalThis> &
+  DomApi<"HTMLElement", HTMLElement> &
+  DomApi<"HTMLInputElement", HTMLInputElement> &
+  DomApi<"HTMLButtonElement", HTMLButtonElement> &
+  DomApi<"Element", Element> &
+  DomApi<"Node", Node> &
+  DomApi<"NodeList", NodeList> &
+  DomApi<"HTMLCollection", HTMLCollection> &
+  DomApi<"DOMTokenList", DOMTokenList> &
+  DomApi<"EventTarget", EventTarget> &
+  DomApi<"CSSStyleDeclaration", CSSStyleDeclaration>;
+
+export interface CompileResult {
+  binary: Uint8Array;
+  stringPool: string[];
+  success: boolean;
+  errors: Array<{ line: number; column: number; severity: string; message: string }>;
+}
+export declare function buildEnv(
+  stringPool?: string[],
+  ...apiObjects: Record<string, unknown>[]
+): { env: Record<string, Function>; "wasm:js-string": typeof jsString };
+export declare function getOrCompile(
+  source: string,
+  compileFn: (source: string) => CompileResult,
+): Promise<{ binary: Uint8Array; stringPool: string[] }>;
+`;
+
+// Matches extern-class import names generated by the ts2wasm compiler for DOM types
+const DOM_PATTERNS = /\b(?:Document|Window|HTMLElement|HTMLInputElement|HTMLButtonElement|HTMLCollection|Element|Node|NodeList|DOMTokenList|EventTarget|CSSStyleDeclaration)_/;
+
+function extractExportNames(dts: string): string[] {
+  const m = dts.match(/export interface Exports \{([\s\S]*?)\}/);
+  if (!m) return [];
+  return [...m[1].matchAll(/^\s+(\w+)\s*[\((:]/gm)].map((x) => x[1]);
+}
+
+function splitForModularOutput(result: ReturnType<typeof compile>, source: string): {
+  modJs: string;
+  modDts: string;
+  exportNames: string[];
+} {
+  // Detect DOM usage from importsHelper env lines (extern-class naming: Document_foo, …)
+  const helperBody = (result.importsHelper ?? "").replace(/^(\/\/[^\n]*\n)+\n?/, "").trimStart();
+  const envMatch = helperBody.match(/const env = \{([\s\S]*?)\n  \};/);
+  const envLines = envMatch ? envMatch[1].split("\n") : [];
+  const usesDom = envLines.some((l) => DOM_PATTERNS.test(l) && l.trim());
+
+  const tswasmImports = usesDom
+    ? `{ compile } from "../src/index.js";\nimport { jsApi, domApi, buildEnv, getOrCompile } from "./ts2wasm.js"`
+    : `{ compile } from "../src/index.js";\nimport { jsApi, buildEnv, getOrCompile } from "./ts2wasm.js"`;
+  const apiArgs = usesDom ? "jsApi, domApi" : "jsApi";
+
+  const escaped = source.replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$\{/g, "\\${");
+
+  const names = extractExportNames(result.dts ?? "");
+  const namedExports = names.length > 0
+    ? `export const { ${names.join(", ")} } = _instance.exports;`
+    : `export default _instance.exports;`;
+
+  const modJs = `import ${tswasmImports};
+
+// TypeScript source — compiled on first load, cached by hash in sessionStorage
+const _source = \`${escaped}\`;
+
+const { binary, stringPool } = await getOrCompile(_source, compile);
+const { env, ...rest } = buildEnv(stringPool, ${apiArgs});
+let _instance;
+try {
+  ({ instance: _instance } = await WebAssembly.instantiate(binary, { env }));
+} catch (e) {
+  if (!(e instanceof WebAssembly.LinkError)) throw e;
+  ({ instance: _instance } = await WebAssembly.instantiate(binary, { env, ...rest }));
+}
+
+${namedExports}
+`;
+
+  const dtsNamedDecls = names.map((n) => `export declare const ${n}: Exports["${n}"];`).join("\n");
+  const modDts = `${result.dts ?? ""}\n${dtsNamedDecls}\n`;
+
+  return { modJs, modDts, exportNames: names };
+}
+
+function generateTestCode(names: string[]): string {
+  const imports = names.length > 0 ? names.join(", ") : "exports";
+  const call = names.includes("main") ? "main()" : names[0] ? `${names[0]}(/* args */)` : null;
+  return `// mod.js compiles and instantiates on import — no setup needed
+import { ${imports} } from "./mod.js";
+${call ? `\nconst output = ${call};\nif (output !== undefined) console.log("→", output);` : ""}
+`;
+}
+
+let lastResult: ReturnType<typeof compile> | null = null;
+
+function compileOnly() {
   const source = editor.getValue();
   consolePre.textContent = "";
   errorsPre.textContent = "";
   watEditor.setValue("");
+  tswasmJsEditor.setValue("");
+  tswasmDtsEditor.setValue("");
+  modEditor.setValue("");
+  modDtsEditor.setValue("");
+  testEditor.setValue("");
 
   const t0 = performance.now();
   const result = compile(source);
   const compileTime = performance.now() - t0;
 
-  watEditor.setValue(result.wat);
+  lastResult = result;
 
+  if (result.binary && result.binary.length > 0) {
+    treemap.loadBinary(result.binary);
+  }
+  if (genWatCb.checked) {
+    watEditor.setValue(result.wat);
+  }
+  tswasmJsEditor.setValue(TS2WASM_JS);
+  tswasmDtsEditor.setValue(TS2WASM_DTS);
+  const { modJs, modDts, exportNames } = splitForModularOutput(result, source);
+  modEditor.setValue(modJs);
+  modDtsEditor.setValue(modDts);
+  testEditor.setValue(generateTestCode(exportNames));
   if (result.errors.length > 0) {
     errorsPre.textContent = result.errors
       .map((e) => `L${e.line}:${e.column} [${e.severity}] ${e.message}`)
       .join("\n");
   }
 
-  // Update treemap with binary (even on partial success)
-  if (result.binary && result.binary.length > 0) {
-    treemap.loadBinary(result.binary);
-  }
+  timingSpan.textContent = `compile: ${compileTime.toFixed(1)}ms${result.success ? "" : " (failed)"}`;
+  compileBtn.disabled = true;
+  runBtn.disabled = !result.success;
+  downloadBtn.disabled = !result.success;
 
   if (!result.success) {
     showPanel("errors");
-    timingSpan.textContent = `compile: ${compileTime.toFixed(1)}ms (failed)`;
-    return;
+  } else if (genWatCb.checked) {
+    showPanel("wat");
   }
+}
 
-  // Run
-  const logs: string[] = [];
-  const envBase: Record<string, Function> = {
-    console_log_number: (v: number) => logs.push(String(v)),
-    console_log_string: (v: string) => logs.push(String(v)),
-    console_log_bool: (v: number) => logs.push(v ? "true" : "false"),
+const jsStringPolyfill: Record<string, Function> = {
+  concat: (a: string, b: string) => a + b,
+  length: (s: string) => s.length,
+  equals: (a: string, b: string) => (a === b ? 1 : 0),
+  substring: (s: string, start: number, end: number) => s.substring(start, end),
+  charCodeAt: (s: string, i: number) => s.charCodeAt(i),
+};
+
+function buildEnv(
+  result: ReturnType<typeof compile>,
+  log: (msg: string) => void,
+): Record<string, Function> {
+  const env: Record<string, Function> = {
+    console_log_number: (v: number) => log(String(v)),
+    console_log_string: (v: string) => log(String(v)),
+    console_log_bool: (v: number) => log(v ? "true" : "false"),
+    console_log_externref: (v: unknown) => log(String(v)),
     Math_exp: Math.exp,
     Math_log: Math.log,
     Math_log2: Math.log2,
@@ -242,88 +517,82 @@ async function compileAndRun() {
     Math_pow: Math.pow,
     Math_random: Math.random,
   };
-
-  // Add string literal imports from the string pool
-  for (const str of result.stringPool) {
-    const idx = Object.keys(envBase).filter((k) =>
-      k.startsWith("__str_"),
-    ).length;
-    const name = `__str_${idx}`;
-    if (!(name in envBase)) {
-      envBase[name] = () => str;
-    }
-  }
-
+  result.stringPool.forEach((str, i) => { env[`__str_${i}`] = () => str; });
   // Auto-stub missing host imports (externref constructors, methods, etc.)
-  const env = new Proxy(envBase, {
+  return new Proxy(env, {
     get(target, prop) {
-      if (prop in target) return target[prop as string];
-      return (..._args: unknown[]) => {};
+      return prop in target ? target[prop as string] : (..._: unknown[]) => {};
     },
   });
+}
 
-  // wasm:js-string polyfill for engines without native support
-  const jsStringPolyfill: Record<string, Function> = {
-    concat: (a: string, b: string) => a + b,
-    length: (s: string) => s.length,
-    equals: (a: string, b: string) => (a === b ? 1 : 0),
-    substring: (s: string, start: number, end: number) =>
-      s.substring(start, end),
-    charCodeAt: (s: string, i: number) => s.charCodeAt(i),
-  };
+async function runOnly() {
+  if (!lastResult) return;
+  const result = lastResult;
 
-  const imports = {
-    env,
-    "wasm:js-string": jsStringPolyfill,
-  } as WebAssembly.Imports;
+  consolePre.textContent = "";
+  errorsPre.textContent = "";
+
+  const logs: string[] = [];
+  const env = buildEnv(result, (msg) => logs.push(msg));
 
   try {
-    const { instance } = await WebAssembly.instantiate(
-      result.binary,
-      imports,
-    );
-    const exports = instance.exports as Record<string, Function>;
+    let instance: WebAssembly.Instance;
+    try {
+      // Prefer native wasm:js-string support
+      ({ instance } = await WebAssembly.instantiate(result.binary, { env }));
+    } catch {
+      // Fall back to polyfill (LinkError or TypeError depending on browser)
+      ({ instance } = await WebAssembly.instantiate(result.binary, { env, "wasm:js-string": jsStringPolyfill }));
+    }
 
-    // Try to call main if it exists
+    const exports = instance.exports as Record<string, Function>;
     if (typeof exports.main === "function") {
       const returnValue = exports.main();
-      if (returnValue !== undefined) {
-        logs.push(`→ ${returnValue}`);
-      }
+      if (returnValue !== undefined) logs.push(`→ ${returnValue}`);
     }
 
     consolePre.textContent = logs.join("\n");
-    timingSpan.textContent = `compile: ${compileTime.toFixed(1)}ms`;
-    showPanel(logs.length > 0 ? "console" : "wat");
+    showPanel(logs.length > 0 ? "console" : genWatCb.checked ? "wat" : "console");
   } catch (e) {
-    errorsPre.textContent += `\nRuntime: ${e instanceof Error ? e.message : String(e)}`;
+    errorsPre.textContent = `Runtime: ${e instanceof Error ? e.message : String(e)}`;
     showPanel("errors");
-    timingSpan.textContent = `compile: ${compileTime.toFixed(1)}ms (runtime error)`;
   }
 }
 
-function compileWatOnly() {
-  const source = editor.getValue();
-  const result = compile(source);
-  watEditor.setValue(result.wat);
-  if (result.binary && result.binary.length > 0) {
-    treemap.loadBinary(result.binary);
+function downloadOutputs() {
+  if (!lastResult) return;
+  const result = lastResult;
+
+  if (genWatCb.checked) {
+    const blob = new Blob([result.wat], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "output.wat";
+    a.click();
+    URL.revokeObjectURL(url);
   }
-  if (result.errors.length > 0) {
-    errorsPre.textContent = result.errors
-      .map((e) => `L${e.line}:${e.column} [${e.severity}] ${e.message}`)
-      .join("\n");
+
+  if (genWasmCb.checked && result.binary && result.binary.length > 0) {
+    const blob = new Blob([result.binary], { type: "application/wasm" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "output.wasm";
+    a.click();
+    URL.revokeObjectURL(url);
   }
-  showPanel("wat");
 }
 
-runBtn.addEventListener("click", compileAndRun);
-watBtn.addEventListener("click", compileWatOnly);
+compileBtn.addEventListener("click", compileOnly);
+runBtn.addEventListener("click", runOnly);
+downloadBtn.addEventListener("click", downloadOutputs);
 
-// Ctrl+Enter / Cmd+Enter to compile & run
+// Ctrl+Enter / Cmd+Enter to compile
 editor.addCommand(
   monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
-  compileAndRun,
+  compileOnly,
 );
 
 // ─── Resizable divider ──────────────────────────────────────────────────

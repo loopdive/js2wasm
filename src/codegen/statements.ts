@@ -59,6 +59,21 @@ export function compileStatement(
     return;
   }
 
+  if (ts.isDoStatement(stmt)) {
+    compileDoWhileStatement(ctx, fctx, stmt);
+    return;
+  }
+
+  if (ts.isSwitchStatement(stmt)) {
+    compileSwitchStatement(ctx, fctx, stmt);
+    return;
+  }
+
+  if (ts.isForOfStatement(stmt)) {
+    compileForOfStatement(ctx, fctx, stmt);
+    return;
+  }
+
   if (ts.isBreakStatement(stmt)) {
     compileBreakStatement(ctx, fctx, stmt);
     return;
@@ -204,6 +219,11 @@ function compileIfStatement(
   const condType = compileExpression(ctx, fctx, stmt.expression);
   ensureI32Condition(fctx, condType);
 
+  // The 'if' instruction adds one label level. Increment break/continue depths
+  // so that br instructions emitted inside the if branches target the correct labels.
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!++;
+  for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!++;
+
   // Compile then branch
   const savedBody = fctx.body;
   fctx.body = [];
@@ -231,6 +251,10 @@ function compileIfStatement(
   }
 
   fctx.body = savedBody;
+
+  // Restore break/continue depths
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!--;
+  for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!--;
 
   fctx.body.push({
     op: "if",
@@ -359,6 +383,247 @@ function compileForStatement(
   fctx.body.push({ op: "br", depth: 0 }); // continue loop
   const loopBody = fctx.body;
 
+  fctx.breakStack.pop();
+  fctx.continueStack.pop();
+
+  fctx.body = savedBody;
+
+  fctx.body.push({
+    op: "block",
+    blockType: { kind: "empty" },
+    body: [
+      {
+        op: "loop",
+        blockType: { kind: "empty" },
+        body: loopBody,
+      },
+    ],
+  });
+}
+
+function compileDoWhileStatement(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  stmt: ts.DoStatement,
+): void {
+  // block $break        (break target — depth 1 from inside the loop)
+  //   loop $continue    (continue target — depth 0)
+  //     <body>
+  //     <condition>
+  //     ensureI32Condition
+  //     br_if 0         (true → jump back to loop start)
+  //   end
+  // end
+
+  const savedBody = fctx.body;
+  fctx.body = [];
+
+  // Inside this structure: br 1 = break (exits outer block), br 0 = continue (restarts loop)
+  fctx.breakStack.push(1);
+  fctx.continueStack.push(0);
+
+  // Compile body
+  if (ts.isBlock(stmt.statement)) {
+    for (const s of stmt.statement.statements) {
+      compileStatement(ctx, fctx, s);
+    }
+  } else {
+    compileStatement(ctx, fctx, stmt.statement);
+  }
+
+  // Compile condition — true means continue looping
+  const condType = compileExpression(ctx, fctx, stmt.expression);
+  ensureI32Condition(fctx, condType);
+  fctx.body.push({ op: "br_if", depth: 0 }); // continue loop if true
+
+  const loopBody = fctx.body;
+
+  fctx.breakStack.pop();
+  fctx.continueStack.pop();
+
+  fctx.body = savedBody;
+
+  fctx.body.push({
+    op: "block",
+    blockType: { kind: "empty" },
+    body: [
+      {
+        op: "loop",
+        blockType: { kind: "empty" },
+        body: loopBody,
+      },
+    ],
+  });
+}
+
+function compileSwitchStatement(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  stmt: ts.SwitchStatement,
+): void {
+  // Evaluate the switch expression and save it to a temp local
+  const exprType = ctx.checker.getTypeAtLocation(stmt.expression);
+  const wasmType = resolveWasmType(ctx, exprType);
+
+  const tmpLocalIdx = allocLocal(fctx, `__sw_${fctx.locals.length}`, wasmType);
+  compileExpression(ctx, fctx, stmt.expression);
+  fctx.body.push({ op: "local.set", index: tmpLocalIdx });
+
+  // Choose the equality opcode based on the switch expression type
+  const eqOp: "f64.eq" | "i32.eq" = wasmType.kind === "i32" ? "i32.eq" : "f64.eq";
+
+  // Collect instructions for the switch block body
+  const savedBody = fctx.body;
+  fctx.body = [];
+
+  // Inside the block: br 1 exits the block ($break). No continueStack change.
+  fctx.breakStack.push(1);
+
+  const clauses = stmt.caseBlock.clauses;
+  let defaultClause: ts.DefaultClause | undefined;
+
+  for (const clause of clauses) {
+    if (ts.isDefaultClause(clause)) {
+      // Defer the default clause — emit it after all case clauses
+      defaultClause = clause;
+      continue;
+    }
+
+    // case X:
+    const caseClause = clause as ts.CaseClause;
+
+    // Condition: tmpLocal == caseExpr
+    fctx.body.push({ op: "local.get", index: tmpLocalIdx });
+    compileExpression(ctx, fctx, caseClause.expression);
+    fctx.body.push({ op: eqOp });
+
+    // Compile the clause body into a temp buffer to check for break
+    const savedBodyInner = fctx.body;
+    fctx.body = [];
+
+    for (const s of caseClause.statements) {
+      compileStatement(ctx, fctx, s);
+    }
+
+    const clauseBody = fctx.body;
+    fctx.body = savedBodyInner;
+
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: clauseBody,
+    });
+  }
+
+  // Emit default clause body (if any) directly — no condition check needed
+  if (defaultClause) {
+    for (const s of defaultClause.statements) {
+      compileStatement(ctx, fctx, s);
+    }
+  }
+
+  fctx.breakStack.pop();
+
+  const switchBody = fctx.body;
+  fctx.body = savedBody;
+
+  fctx.body.push({
+    op: "block",
+    blockType: { kind: "empty" },
+    body: switchBody,
+  });
+}
+
+function compileForOfStatement(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  stmt: ts.ForOfStatement,
+): void {
+  // Compile the iterable expression (array ref)
+  const bodyLenBefore = fctx.body.length;
+  const arrType = compileExpression(ctx, fctx, stmt.expression);
+  if (!arrType || (arrType.kind !== "ref" && arrType.kind !== "ref_null")) {
+    fctx.body.length = bodyLenBefore; // rollback — value would leak on stack
+    ctx.errors.push({
+      message: "for-of requires an array expression",
+      line: getLine(stmt),
+      column: getCol(stmt),
+    });
+    return;
+  }
+
+  // Look up array element type
+  const arrTypeDef = ctx.mod.types[arrType.typeIdx];
+  if (!arrTypeDef || arrTypeDef.kind !== "array") {
+    fctx.body.length = bodyLenBefore; // rollback — value would leak on stack
+    ctx.errors.push({
+      message: "for-of requires an array type",
+      line: getLine(stmt),
+      column: getCol(stmt),
+    });
+    return;
+  }
+  const elemType = arrTypeDef.element;
+
+  // Save array ref to temp local
+  const arrLocal = allocLocal(fctx, `__forof_arr_${fctx.locals.length}`, arrType);
+  fctx.body.push({ op: "local.set", index: arrLocal });
+
+  // Allocate counter local (i32)
+  const iLocal = allocLocal(fctx, `__forof_i_${fctx.locals.length}`, { kind: "i32" });
+  fctx.body.push({ op: "i32.const", value: 0 });
+  fctx.body.push({ op: "local.set", index: iLocal });
+
+  // Declare the loop variable
+  let elemLocal: number;
+  if (ts.isVariableDeclarationList(stmt.initializer)) {
+    const decl = stmt.initializer.declarations[0]!;
+    const varName = (decl.name as ts.Identifier).text;
+    elemLocal = allocLocal(fctx, varName, elemType);
+  } else {
+    // Expression form: for (x of arr) — x is already declared
+    const varName = (stmt.initializer as ts.Identifier).text;
+    elemLocal = fctx.localMap.get(varName)!;
+  }
+
+  // Build loop body
+  const savedBody = fctx.body;
+  fctx.body = [];
+
+  fctx.breakStack.push(1);     // break = depth 1 (exit block)
+  fctx.continueStack.push(0);  // continue = depth 0 (restart loop)
+
+  // Condition: i >= arr.length → break
+  fctx.body.push({ op: "local.get", index: iLocal });
+  fctx.body.push({ op: "local.get", index: arrLocal });
+  fctx.body.push({ op: "array.len" });
+  fctx.body.push({ op: "i32.ge_s" });
+  fctx.body.push({ op: "br_if", depth: 1 }); // break
+
+  // Get element: x = arr[i]
+  fctx.body.push({ op: "local.get", index: arrLocal });
+  fctx.body.push({ op: "local.get", index: iLocal });
+  fctx.body.push({ op: "array.get", typeIdx: arrType.typeIdx });
+  fctx.body.push({ op: "local.set", index: elemLocal });
+
+  // Compile body
+  if (ts.isBlock(stmt.statement)) {
+    for (const s of stmt.statement.statements) {
+      compileStatement(ctx, fctx, s);
+    }
+  } else {
+    compileStatement(ctx, fctx, stmt.statement);
+  }
+
+  // Increment i
+  fctx.body.push({ op: "local.get", index: iLocal });
+  fctx.body.push({ op: "i32.const", value: 1 });
+  fctx.body.push({ op: "i32.add" });
+  fctx.body.push({ op: "local.set", index: iLocal });
+
+  fctx.body.push({ op: "br", depth: 0 }); // continue loop
+
+  const loopBody = fctx.body;
   fctx.breakStack.pop();
   fctx.continueStack.pop();
 

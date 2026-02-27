@@ -13,6 +13,7 @@ import type {
   TypeDef,
   FuncTypeDef,
   StructTypeDef,
+  ArrayTypeDef,
   ValType,
   Instr,
   LocalDef,
@@ -72,6 +73,10 @@ export interface CodegenContext {
   stringLiteralCounter: number;
   /** Whether wasm:js-string imports have been registered */
   hasStringImports: boolean;
+  /** Map from "EnumName.Member" → numeric value */
+  enumValues: Map<string, number>;
+  /** Map from element kind (e.g. "f64") → registered array type index */
+  arrayTypeMap: Map<string, number>;
 }
 
 /** Per-function context */
@@ -117,6 +122,8 @@ export function generateModule(ast: TypedAST): WasmModule {
     stringLiteralValues: new Map(),
     stringLiteralCounter: 0,
     hasStringImports: false,
+    enumValues: new Map(),
+    arrayTypeMap: new Map(),
   };
 
   // Add standard imports
@@ -397,6 +404,27 @@ function valTypeEq(a: ValType, b: ValType): boolean {
 // ── Type resolution ──────────────────────────────────────────────────
 
 /**
+ * Get or register a Wasm array type for a given element kind.
+ * Reuses existing registrations so each element type only gets one array type.
+ */
+export function getOrRegisterArrayType(ctx: CodegenContext, elemKind: string): number {
+  if (ctx.arrayTypeMap.has(elemKind)) return ctx.arrayTypeMap.get(elemKind)!;
+  const elemType: ValType =
+    elemKind === "f64" ? { kind: "f64" } :
+    elemKind === "i32" ? { kind: "i32" } :
+    { kind: "externref" };
+  const idx = ctx.mod.types.length;
+  ctx.mod.types.push({
+    kind: "array",
+    name: `__arr_${elemKind}`,
+    element: elemType,
+    mutable: true,
+  } as ArrayTypeDef);
+  ctx.arrayTypeMap.set(elemKind, idx);
+  return idx;
+}
+
+/**
  * Resolve a ts.Type to a ValType, using the struct registry and anonymous type map.
  * Use this instead of mapTsTypeToWasm in the codegen to get real type indices.
  */
@@ -404,7 +432,23 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type): ValType {
   if (isExternalDeclaredClass(tsType)) return { kind: "externref" };
 
   if (tsType.flags & ts.TypeFlags.Object) {
-    const name = tsType.symbol?.name;
+    // Handle Array<T> / T[] types — must check before named struct lookup
+    const sym = (tsType as ts.TypeReference).symbol ?? (tsType as ts.Type).symbol;
+    if (sym?.name === "Array") {
+      const typeArgs = ctx.checker.getTypeArguments(tsType as ts.TypeReference);
+      const elemType = typeArgs[0];
+      const elemKind = elemType ? mapTsTypeToWasm(elemType, ctx.checker).kind : "externref";
+      // Only use Wasm GC arrays for primitive element types (f64, i32).
+      // Arrays of externref (objects, strings, any[]) stay as externref since
+      // they typically come from JS across the boundary, not from array.new_fixed.
+      if (elemKind === "f64" || elemKind === "i32") {
+        const arrTypeIdx = getOrRegisterArrayType(ctx, elemKind);
+        return { kind: "ref", typeIdx: arrTypeIdx };
+      }
+      return { kind: "externref" };
+    }
+
+    const name = sym?.name;
     // Check named structs (interfaces, type aliases)
     if (name && name !== "__type" && name !== "__object" && ctx.structMap.has(name)) {
       return { kind: "ref", typeIdx: ctx.structMap.get(name)! };
@@ -615,12 +659,41 @@ function registerExternClassImports(
 
 // ── Regular declaration collection ───────────────────────────────────
 
+/** Collect enum declarations into ctx.enumValues */
+function collectEnumDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFile): void {
+  for (const stmt of sourceFile.statements) {
+    if (!ts.isEnumDeclaration(stmt)) continue;
+    const enumName = stmt.name.text;
+    let nextValue = 0;
+    for (const member of stmt.members) {
+      const memberName = (member.name as ts.Identifier).text;
+      const key = `${enumName}.${memberName}`;
+      if (member.initializer) {
+        if (ts.isNumericLiteral(member.initializer)) {
+          nextValue = Number(member.initializer.text);
+        } else if (
+          ts.isPrefixUnaryExpression(member.initializer) &&
+          member.initializer.operator === ts.SyntaxKind.MinusToken &&
+          ts.isNumericLiteral(member.initializer.operand)
+        ) {
+          nextValue = -Number((member.initializer.operand as ts.NumericLiteral).text);
+        }
+      }
+      ctx.enumValues.set(key, nextValue);
+      nextValue++;
+    }
+  }
+}
+
 /** Collect all function declarations and interfaces */
 function collectDeclarations(
   ctx: CodegenContext,
   sourceFile: ts.SourceFile,
 ): void {
-  // First: collect interfaces and type aliases (so struct types are available)
+  // First: collect enum declarations (so enum values are available)
+  collectEnumDeclarations(ctx, sourceFile);
+
+  // Second: collect interfaces and type aliases (so struct types are available)
   for (const stmt of sourceFile.statements) {
     if (ts.isInterfaceDeclaration(stmt)) {
       collectInterface(ctx, stmt);
@@ -632,7 +705,7 @@ function collectDeclarations(
     }
   }
 
-  // Second: collect function declarations (uses resolveWasmType for real type indices)
+  // Third: collect function declarations (uses resolveWasmType for real type indices)
   for (const stmt of sourceFile.statements) {
     if (ts.isFunctionDeclaration(stmt) && stmt.name) {
       // Skip declare function stubs (no body, inside or matching declare)

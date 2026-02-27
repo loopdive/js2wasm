@@ -36,9 +36,29 @@
         font-size: 0.85rem;
         border-radius: 5px;
       }
-      button:hover {
+      button:hover:not(:disabled) {
         background: #3b3b3b;
         color: #e0e0e0;
+      }
+      button:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+      }
+      .gen-option {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 0.85rem;
+        color: #5a5a5a;
+        cursor: pointer;
+        user-select: none;
+      }
+      .gen-option input[type="checkbox"] {
+        accent-color: #cccccc;
+        cursor: pointer;
+      }
+      .gen-option:has(input:checked) span {
+        color: #cccccc;
       }
       .container {
         display: grid;
@@ -85,7 +105,7 @@
         color: #cccccc;
         border-bottom-color: #cccccc;
       }
-      #editor, #wat {
+      #editor, #wat, #ts2wasm-js, #ts2wasm-dts, #mod, #mod-dts, #test {
         flex: 1;
         min-height: 0;
         border: 1px solid #2b2b2b;
@@ -266,8 +286,11 @@
   <body>
     <h2>ts2wasm playground</h2>
     <div class="toolbar">
-      <button id="run">&#9654; compile &amp; run</button>
-      <button id="wat-only">wat</button>
+      <button id="compile">compile</button>
+      <button id="run" disabled>&#9654; run</button>
+      <button id="download" disabled>&#11015; download</button>
+      <label class="gen-option"><input type="checkbox" id="gen-wat" checked><span>WAT</span></label>
+      <label class="gen-option"><input type="checkbox" id="gen-wasm"><span>WASM</span></label>
       <span class="timing" id="timing"></span>
     </div>
     <div class="container">
@@ -277,12 +300,22 @@
       <div class="divider" id="divider"></div>
       <div class="pane">
         <div class="tabs">
-          <div class="tab active" data-panel="wat">WAT</div>
+          <div class="tab active" data-panel="wat">mod.wat</div>
+          <div class="tab" data-panel="ts2wasm-js">ts2wasm.js</div>
+          <div class="tab" data-panel="ts2wasm-dts">ts2wasm.d.ts</div>
+          <div class="tab" data-panel="mod">mod.js</div>
+          <div class="tab" data-panel="mod-dts">mod.d.ts</div>
+          <div class="tab" data-panel="test">mod.test.ts</div>
           <div class="tab" data-panel="console">Console</div>
           <div class="tab" data-panel="errors">Errors</div>
           <div class="tab" data-panel="treemap">Treemap</div>
         </div>
         <div id="wat"></div>
+        <div id="ts2wasm-js" style="display: none"></div>
+        <div id="ts2wasm-dts" style="display: none"></div>
+        <div id="mod" style="display: none"></div>
+        <div id="mod-dts" style="display: none"></div>
+        <div id="test" style="display: none"></div>
         <pre id="console" class="console" style="display: none"></pre>
         <pre id="errors" class="error" style="display: none"></pre>
         <div id="treemap-panel"></div>
