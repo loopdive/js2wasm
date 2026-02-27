@@ -5,6 +5,7 @@ import {
   isVoidType,
   isNumberType,
   isBooleanType,
+  isStringType,
   isExternalDeclaredClass,
 } from "../checker/type-mapper.js";
 import type {
@@ -77,6 +78,10 @@ export interface CodegenContext {
   enumValues: Map<string, number>;
   /** Map from element kind (e.g. "f64") → registered array type index */
   arrayTypeMap: Map<string, number>;
+  /** Map from className → parent className (for inheritance chain walk) */
+  externClassParent: Map<string, string>;
+  /** Map from global name (e.g. "document") → import info */
+  declaredGlobals: Map<string, { type: ValType; funcIdx: number }>;
 }
 
 /** Per-function context */
@@ -124,13 +129,25 @@ export function generateModule(ast: TypedAST): WasmModule {
     hasStringImports: false,
     enumValues: new Map(),
     arrayTypeMap: new Map(),
+    externClassParent: new Map(),
+    declaredGlobals: new Map(),
   };
 
-  // Add standard imports
-  addStandardImports(ctx);
+  // Collect console.log imports (only variants actually used)
+  collectConsoleImports(ctx, ast.sourceFile);
 
   // First pass: collect declare namespaces (registers imports before local funcs)
   collectExternDeclarations(ctx, ast.sourceFile);
+
+  // Scan lib.d.ts for DOM extern classes + globals (only if user code uses DOM)
+  const libFile = ast.program.getSourceFile("lib.d.ts");
+  if (libFile && sourceUsesDOMGlobals(ast.sourceFile)) {
+    collectExternDeclarations(ctx, libFile);
+    collectDeclaredGlobals(ctx, libFile);
+  }
+
+  // Register only the extern class imports actually used in source code
+  collectUsedExternImports(ctx, ast.sourceFile);
 
   // Collect string literals and register imports (must be before local func indices)
   collectStringLiterals(ctx, ast.sourceFile);
@@ -163,34 +180,65 @@ export function generateModule(ast: TypedAST): WasmModule {
   return mod;
 }
 
-function addStandardImports(ctx: CodegenContext): void {
-  // console_log_number: (f64) -> void
-  const logNumTypeIdx = addFuncType(ctx, [{ kind: "f64" }], []);
-  addImport(ctx, "env", "console_log_number", {
-    kind: "func",
-    typeIdx: logNumTypeIdx,
-  });
+/** Scan source for console.log() calls and register only needed import variants */
+function collectConsoleImports(
+  ctx: CodegenContext,
+  sourceFile: ts.SourceFile,
+): void {
+  const needed = new Set<"number" | "bool" | "string" | "externref">();
 
-  // console_log_bool: (i32) -> void
-  const logBoolTypeIdx = addFuncType(ctx, [{ kind: "i32" }], []);
-  addImport(ctx, "env", "console_log_bool", {
-    kind: "func",
-    typeIdx: logBoolTypeIdx,
-  });
+  function visit(node: ts.Node) {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      ts.isIdentifier(node.expression.expression) &&
+      node.expression.expression.text === "console" &&
+      node.expression.name.text === "log"
+    ) {
+      for (const arg of node.arguments) {
+        const argType = ctx.checker.getTypeAtLocation(arg);
+        if (isStringType(argType)) {
+          needed.add("string");
+        } else if (isBooleanType(argType)) {
+          needed.add("bool");
+        } else if (isNumberType(argType)) {
+          needed.add("number");
+        } else {
+          needed.add("externref");
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
 
+  for (const stmt of sourceFile.statements) {
+    if (ts.isFunctionDeclaration(stmt) && stmt.body) {
+      visit(stmt.body);
+    }
+  }
+
+  if (needed.has("number")) {
+    const t = addFuncType(ctx, [{ kind: "f64" }], []);
+    addImport(ctx, "env", "console_log_number", { kind: "func", typeIdx: t });
+  }
+  if (needed.has("bool")) {
+    const t = addFuncType(ctx, [{ kind: "i32" }], []);
+    addImport(ctx, "env", "console_log_bool", { kind: "func", typeIdx: t });
+  }
+  if (needed.has("string")) {
+    const t = addFuncType(ctx, [{ kind: "externref" }], []);
+    addImport(ctx, "env", "console_log_string", { kind: "func", typeIdx: t });
+  }
+  if (needed.has("externref")) {
+    const t = addFuncType(ctx, [{ kind: "externref" }], []);
+    addImport(ctx, "env", "console_log_externref", { kind: "func", typeIdx: t });
+  }
 }
 
 /** Register wasm:js-string builtin imports (called on demand when strings are used) */
 function addStringImports(ctx: CodegenContext): void {
   if (ctx.hasStringImports) return;
   ctx.hasStringImports = true;
-
-  // console_log_string: (externref) -> void
-  const logStrTypeIdx = addFuncType(ctx, [{ kind: "externref" }], []);
-  addImport(ctx, "env", "console_log_string", {
-    kind: "func",
-    typeIdx: logStrTypeIdx,
-  });
 
   // concat: (externref, externref) -> externref
   const concatType = addFuncType(
@@ -524,6 +572,10 @@ function collectExternDeclarations(
     if (ts.isModuleDeclaration(stmt) && hasDeclareModifier(stmt)) {
       collectDeclareNamespace(ctx, stmt, []);
     }
+    // Top-level declare class (e.g. DOM types from lib.d.ts)
+    if (ts.isClassDeclaration(stmt) && stmt.name && hasDeclareModifier(stmt)) {
+      collectExternClass(ctx, stmt, []);
+    }
   }
 }
 
@@ -599,12 +651,21 @@ function collectExternClass(
     }
   }
 
+  // Record parent class for inheritance chain walk
+  if (decl.heritageClauses) {
+    for (const clause of decl.heritageClauses) {
+      if (clause.token === ts.SyntaxKind.ExtendsKeyword && clause.types[0]) {
+        const baseType = ctx.checker.getTypeAtLocation(clause.types[0]);
+        const baseName = baseType.getSymbol()?.name;
+        if (baseName) ctx.externClassParent.set(className, baseName);
+      }
+    }
+  }
+
   ctx.externClasses.set(className, info);
   // Also register with full qualified name
   const fullName = [...namespacePath, className].join(".");
   ctx.externClasses.set(fullName, info);
-
-  registerExternClassImports(ctx, info);
 }
 
 function registerExternClassImports(
@@ -655,6 +716,154 @@ function registerExternClassImports(
       });
     }
   }
+}
+
+/** Scan user code and register only the extern class imports actually used */
+function collectUsedExternImports(
+  ctx: CodegenContext,
+  sourceFile: ts.SourceFile,
+): void {
+  const registered = new Set<string>();
+
+  function resolveExtern(
+    className: string,
+    memberName: string,
+    kind: "method" | "property",
+  ): ExternClassInfo | null {
+    let current: string | undefined = className;
+    while (current) {
+      const info = ctx.externClasses.get(current);
+      if (info) {
+        if (kind === "method" && info.methods.has(memberName)) return info;
+        if (kind === "property" && info.properties.has(memberName)) return info;
+      }
+      current = ctx.externClassParent.get(current);
+    }
+    return null;
+  }
+
+  function register(importName: string, params: ValType[], results: ValType[]) {
+    if (registered.has(importName)) return;
+    registered.add(importName);
+    const t = addFuncType(ctx, params, results);
+    addImport(ctx, "env", importName, { kind: "func", typeIdx: t });
+  }
+
+  function visit(node: ts.Node) {
+    // new ClassName()
+    if (ts.isNewExpression(node)) {
+      const type = ctx.checker.getTypeAtLocation(node);
+      const className = type.getSymbol()?.name;
+      if (className) {
+        const info = ctx.externClasses.get(className);
+        if (info) register(`${info.importPrefix}_new`, info.constructorParams, [{ kind: "externref" }]);
+      }
+    }
+
+    // obj.prop or obj.method(...)
+    if (ts.isPropertyAccessExpression(node)) {
+      // Skip if this is the target of an assignment (setter handled below)
+      const isAssignTarget =
+        node.parent &&
+        ts.isBinaryExpression(node.parent) &&
+        node.parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        node.parent.left === node;
+
+      if (!isAssignTarget) {
+        const objType = ctx.checker.getTypeAtLocation(node.expression);
+        const className = objType.getSymbol()?.name;
+        const memberName = node.name.text;
+        if (className) {
+          const isCall =
+            node.parent &&
+            ts.isCallExpression(node.parent) &&
+            node.parent.expression === node;
+          if (isCall) {
+            const info = resolveExtern(className, memberName, "method");
+            if (info) {
+              const sig = info.methods.get(memberName)!;
+              register(`${info.importPrefix}_${memberName}`, sig.params, sig.results);
+            }
+          } else {
+            const info = resolveExtern(className, memberName, "property");
+            if (info) {
+              const propInfo = info.properties.get(memberName)!;
+              register(`${info.importPrefix}_get_${memberName}`, [{ kind: "externref" }], [propInfo.type]);
+            }
+          }
+        }
+      }
+    }
+
+    // obj.prop = value
+    if (
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ts.isPropertyAccessExpression(node.left)
+    ) {
+      const objType = ctx.checker.getTypeAtLocation(node.left.expression);
+      const className = objType.getSymbol()?.name;
+      const propName = node.left.name.text;
+      if (className) {
+        const info = resolveExtern(className, propName, "property");
+        if (info) {
+          const propInfo = info.properties.get(propName)!;
+          register(`${info.importPrefix}_set_${propName}`, [{ kind: "externref" }, propInfo.type], []);
+        }
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  }
+
+  for (const stmt of sourceFile.statements) {
+    if (ts.isFunctionDeclaration(stmt) && stmt.body) {
+      visit(stmt.body);
+    }
+  }
+}
+
+// ── Declared globals (e.g. declare const document: Document) ────────
+
+function collectDeclaredGlobals(
+  ctx: CodegenContext,
+  sourceFile: ts.SourceFile,
+): void {
+  for (const stmt of sourceFile.statements) {
+    if (!ts.isVariableStatement(stmt) || !hasDeclareModifier(stmt)) continue;
+    for (const decl of stmt.declarationList.declarations) {
+      if (!ts.isIdentifier(decl.name)) continue;
+      const name = decl.name.text;
+      if (ctx.declaredGlobals.has(name)) continue; // already registered
+      const type = ctx.checker.getTypeAtLocation(decl);
+      if (!isExternalDeclaredClass(type)) continue;
+      const importName = `global_${name}`;
+      const typeIdx = addFuncType(ctx, [], [{ kind: "externref" }]);
+      addImport(ctx, "env", importName, { kind: "func", typeIdx });
+      const funcIdx = ctx.funcMap.get(importName);
+      if (funcIdx !== undefined) {
+        ctx.declaredGlobals.set(name, { type: { kind: "externref" }, funcIdx });
+      }
+    }
+  }
+}
+
+/** Check if source code references DOM globals (document, window) */
+function sourceUsesDOMGlobals(sourceFile: ts.SourceFile): boolean {
+  let found = false;
+  const visit = (node: ts.Node): void => {
+    if (found) return;
+    if (ts.isIdentifier(node) && (node.text === "document" || node.text === "window")) {
+      found = true;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  for (const stmt of sourceFile.statements) {
+    ts.forEachChild(stmt, visit);
+    if (found) break;
+  }
+  return found;
 }
 
 // ── Regular declaration collection ───────────────────────────────────

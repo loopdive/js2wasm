@@ -285,4 +285,94 @@ interface Promise<T> {
   catch(onrejected: (reason: any) => any): Promise<any>;
 }
 declare function fetch(input: string, init?: any): Promise<any>;
+declare class EventTarget {
+  addEventListener(type: string, listener: any): void;
+  removeEventListener(type: string, listener: any): void;
+}
+declare class Node extends EventTarget {
+  appendChild(node: any): any;
+  removeChild(child: any): any;
+  readonly parentNode: any;
+  readonly nodeType: number;
+  textContent: string | null;
+}
+declare class Element extends Node {
+  readonly tagName: string;
+  id: string;
+  className: string;
+  innerHTML: string;
+  getAttribute(name: string): string | null;
+  setAttribute(name: string, value: string): void;
+  removeAttribute(name: string): void;
+  querySelector(selectors: string): any;
+  querySelectorAll(selectors: string): any;
+  readonly classList: any;
+}
+declare class HTMLElement extends Element {
+  readonly style: CSSStyleDeclaration;
+  readonly offsetWidth: number;
+  readonly offsetHeight: number;
+  click(): void;
+  focus(): void;
+  blur(): void;
+}
+declare class HTMLInputElement extends HTMLElement {
+  value: string;
+  checked: boolean;
+  type: string;
+  disabled: boolean;
+}
+declare class HTMLButtonElement extends HTMLElement {
+  disabled: boolean;
+}
+declare class Document extends Node {
+  readonly body: HTMLElement;
+  readonly head: HTMLElement;
+  getElementById(elementId: string): any;
+  querySelector(selectors: string): any;
+  querySelectorAll(selectors: string): any;
+  createElement(tagName: string): HTMLElement;
+  createTextNode(data: string): any;
+}
+declare class Window extends EventTarget {
+  readonly document: Document;
+  alert(message?: string): void;
+}
+declare class CSSStyleDeclaration {
+  backgroundColor: string;
+  color: string;
+  display: string;
+  width: string;
+  height: string;
+  margin: string;
+  padding: string;
+  border: string;
+  position: string;
+  top: string;
+  left: string;
+  right: string;
+  bottom: string;
+  fontSize: string;
+  fontWeight: string;
+  textAlign: string;
+  opacity: string;
+  overflow: string;
+  zIndex: string;
+  transform: string;
+}
+declare class NodeList {
+  readonly length: number;
+  item(index: number): any;
+}
+declare class HTMLCollection {
+  readonly length: number;
+  item(index: number): any;
+}
+declare class DOMTokenList {
+  readonly length: number;
+  add(token: string): void;
+  remove(token: string): void;
+  toggle(token: string): boolean;
+  contains(token: string): boolean;
+}
 `;

@@ -8,6 +8,7 @@
 | [7](issues/7.md) | Closures / arrow functions | L | — |
 | [8](issues/8.md) | Generics | L | — |
 | [9](issues/9.md) | for-in loops | M | #3 optional |
+| [10](issues/10.md) | DOM support | L | — |
 
 ## Complexity legend
 - XS: < 50 lines, one file
