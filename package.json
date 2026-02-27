@@ -1,0 +1,35 @@
+{
+  "name": "ts2wasm",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "ts2wasm": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite serve playground",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "biome check src/",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "typescript": "^5.7"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1",
+    "@types/node": "^22",
+    "monaco-editor": "^0.55.1",
+    "vite": "^6",
+    "vite-plugin-dts": "^4",
+    "vitest": "^3"
+  }
+}

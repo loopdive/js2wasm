@@ -1,0 +1,1327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WASM Binary Treemap</title>
+  <style>
+    :root {
+      --bg: #000;
+      --surface: #000;
+      --text: #e0e0e0;
+      --text-muted: #8888aa;
+      --accent: #0f3460;
+      --border: #2a2a4a;
+      --tooltip-bg: #0d1117;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: "SF Mono", "Cascadia Code", "Fira Code", monospace;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 10px 16px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      flex-wrap: wrap;
+    }
+
+    header h1 { font-size: 15px; font-weight: 600; white-space: nowrap; }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .file-input-wrapper { position: relative; }
+
+    .file-input-wrapper input[type="file"] {
+      position: absolute; top: 0; left: 0;
+      opacity: 0; width: 100%; height: 100%; cursor: pointer;
+    }
+
+    .btn {
+      padding: 5px 14px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: var(--accent);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .btn:hover { background: #1a4a80; }
+
+    .threshold-control {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .threshold-control input[type="range"] {
+      width: 80px;
+      accent-color: #537ec5;
+    }
+
+    .view-toggle {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+    }
+
+    .view-toggle button {
+      padding: 3px 10px;
+      border-radius: 3px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-muted);
+      font-family: inherit;
+      font-size: 11px;
+      cursor: pointer;
+    }
+
+    .view-toggle button.active {
+      background: var(--accent);
+      color: var(--text);
+    }
+
+    .breadcrumbs {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      flex-wrap: wrap;
+    }
+
+    .breadcrumb {
+      padding: 2px 8px;
+      border-radius: 3px;
+      cursor: pointer;
+      color: #537ec5;
+      background: none;
+      border: none;
+      font-family: inherit;
+      font-size: 12px;
+    }
+
+    .breadcrumb:hover { background: rgba(83, 126, 197, 0.15); }
+    .breadcrumb-sep { color: var(--text-muted); }
+
+    .info-bar {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 6px 16px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    #drop-zone {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #drop-zone.empty { cursor: pointer; }
+
+    .drop-prompt { text-align: center; color: var(--text-muted); }
+    .drop-prompt h2 { font-size: 18px; margin-bottom: 8px; font-weight: 500; }
+    .drop-prompt p { font-size: 13px; }
+
+    #treemap-container {
+      width: 100%; height: 100%;
+      position: relative;
+      display: none;
+    }
+
+    .tm-node {
+      position: absolute;
+      overflow: hidden;
+      background: #000;
+    }
+
+    .tm-node-inner {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+    }
+
+    .tm-label {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      padding: 2px 5px;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      pointer-events: none;
+      z-index: 1;
+      line-height: 18px;
+    }
+
+    .tm-label-size {
+      font-weight: 400;
+      opacity: 0.7;
+      font-size: 10px;
+    }
+
+    .tm-leaf:hover {
+      outline: 2px solid rgba(255, 255, 255, 0.7);
+      outline-offset: -2px;
+      z-index: 100;
+    }
+
+    .tm-branch:hover > .tm-node-inner {
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+    }
+
+    .tm-leaf, .tm-branch { cursor: pointer; }
+
+    .tm-remainder > .tm-node-inner {
+      background-image: repeating-linear-gradient(
+        45deg, transparent, transparent 4px,
+        rgba(255, 255, 255, 0.04) 4px, rgba(255, 255, 255, 0.04) 8px
+      ) !important;
+    }
+
+    #tooltip {
+      position: fixed;
+      display: none;
+      background: var(--tooltip-bg);
+      border: 1px solid #444;
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-size: 12px;
+      line-height: 1.7;
+      max-width: 550px;
+      z-index: 10000;
+      pointer-events: none;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.6);
+    }
+
+    .tt-path { color: #7ec8e3; font-weight: 600; word-break: break-all; margin-bottom: 6px; }
+    .tt-row { display: flex; justify-content: space-between; gap: 24px; }
+    .tt-label { color: var(--text-muted); }
+    .tt-value { color: var(--text); font-weight: 500; }
+    .tt-hint { color: #666; font-size: 10px; margin-top: 6px; font-style: italic; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>WASM Binary Treemap</h1>
+  <div class="controls">
+    <div class="file-input-wrapper">
+      <button class="btn">Load .wasm / .wat</button>
+      <input type="file" id="file-input" accept=".wasm,.wat">
+    </div>
+    <div class="view-toggle">
+      <button class="active" id="view-sections">Sections</button>
+      <button id="view-functions">Functions</button>
+    </div>
+    <div class="threshold-control">
+      <label>Remainder:</label>
+      <input type="range" id="threshold" min="0" max="20" value="2" step="0.5">
+      <span id="threshold-val">2%</span>
+    </div>
+  </div>
+</header>
+
+<div class="info-bar" id="info-bar" style="display: none;">
+  <span id="info-file-size">File:</span>
+  <span id="info-code-size">Code:</span>
+  <span id="info-functions">Functions:</span>
+  <span id="info-imports">Imports:</span>
+  <span id="info-exports">Exports:</span>
+  <div style="flex: 1;"></div>
+  <div class="breadcrumbs" id="breadcrumbs-bar"></div>
+</div>
+
+<div id="drop-zone" class="empty">
+  <div id="drop-prompt" class="drop-prompt">
+    <h2>Drop a .wasm or .wat file here</h2>
+    <p>or use the button above to load a file</p>
+    <p style="font-size: 11px; margin-top: 8px; color: #666;">
+      Visualizes section sizes, function bodies, imports & exports
+    </p>
+  </div>
+</div>
+
+<div id="treemap-container"></div>
+
+<div id="tooltip">
+  <div class="tt-path" id="tt-path"></div>
+  <div class="tt-row"><span class="tt-label">Size</span><span class="tt-value" id="tt-size"></span></div>
+  <div class="tt-row"><span class="tt-label">% of file</span><span class="tt-value" id="tt-pct-total"></span></div>
+  <div class="tt-row" id="tt-pct-parent-row"><span class="tt-label">% of parent</span><span class="tt-value" id="tt-pct-parent"></span></div>
+  <div class="tt-row" id="tt-children-row" style="display: none;"><span class="tt-label">Children</span><span class="tt-value" id="tt-children"></span></div>
+  <div class="tt-hint" id="tt-hint"></div>
+</div>
+
+<script>
+// ─── Global state ───────────────────────────────────────────────────────
+let wasmData = null;
+let treeRoot = null;
+let thresholdPct = 2;
+let totalFileSize = 0;
+let viewMode = 'sections'; // 'sections' | 'functions'
+
+let nextNodeId = 0;
+const nodeById = new Map();
+let zoomStack = [];
+
+const colorMap = new Map();
+let colorIdx = 0;
+
+// ─── Section names ──────────────────────────────────────────────────────
+const SECTION_NAMES = {
+  0: 'custom', 1: 'type', 2: 'import', 3: 'function',
+  4: 'table', 5: 'memory', 6: 'global', 7: 'export',
+  8: 'start', 9: 'element', 10: 'code', 11: 'data', 12: 'datacount',
+};
+
+const IMPORT_KIND = { 0: 'func', 1: 'table', 2: 'memory', 3: 'global' };
+const EXPORT_KIND = { 0: 'func', 1: 'table', 2: 'memory', 3: 'global' };
+
+// ─── Color helpers ──────────────────────────────────────────────────────
+const HUE_PALETTE = (() => {
+  const colors = [];
+  const golden = 137.508;
+  for (let i = 0; i < 40; i++) {
+    const h = (i * golden) % 360;
+    const s = 0.75, l = 0.55;
+    const c = (1 - Math.abs(2 * l - 1)) * s;
+    const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+    const m = l - c / 2;
+    let r, g, b;
+    if (h < 60) { r = c; g = x; b = 0; }
+    else if (h < 120) { r = x; g = c; b = 0; }
+    else if (h < 180) { r = 0; g = c; b = x; }
+    else if (h < 240) { r = 0; g = x; b = c; }
+    else if (h < 300) { r = x; g = 0; b = c; }
+    else { r = c; g = 0; b = x; }
+    colors.push([
+      Math.round((r + m) * 255),
+      Math.round((g + m) * 255),
+      Math.round((b + m) * 255),
+    ]);
+  }
+  return colors;
+})();
+
+// Fixed colors for well-known sections
+const SECTION_COLORS = {
+  code:     [70, 140, 200],
+  type:     [180, 100, 60],
+  import:   [100, 170, 80],
+  export:   [200, 160, 50],
+  data:     [160, 80, 160],
+  function: [80, 160, 160],
+  table:    [200, 100, 100],
+  memory:   [100, 100, 200],
+  global:   [150, 150, 80],
+  element:  [80, 150, 130],
+  start:    [180, 120, 80],
+  custom:   [120, 120, 140],
+  datacount:[130, 100, 150],
+  header:   [60, 60, 80],
+};
+
+function assignColor(name) {
+  if (SECTION_COLORS[name]) return SECTION_COLORS[name];
+  if (colorMap.has(name)) return colorMap.get(name);
+  const rgb = HUE_PALETTE[colorIdx % HUE_PALETTE.length];
+  colorIdx++;
+  colorMap.set(name, rgb);
+  return rgb;
+}
+
+function rgbaStr([r, g, b], a) { return `rgba(${r},${g},${b},${a})`; }
+
+// ─── LEB128 decoder ─────────────────────────────────────────────────────
+function readU32Leb(bytes, offset) {
+  let result = 0, shift = 0, pos = offset;
+  while (true) {
+    const byte = bytes[pos++];
+    result |= (byte & 0x7f) << shift;
+    if ((byte & 0x80) === 0) break;
+    shift += 7;
+  }
+  return { value: result >>> 0, next: pos };
+}
+
+function readName(bytes, offset) {
+  const { value: len, next: p } = readU32Leb(bytes, offset);
+  const nameBytes = bytes.slice(p, p + len);
+  return { value: new TextDecoder().decode(nameBytes), next: p + len };
+}
+
+// ─── WASM binary parser ─────────────────────────────────────────────────
+function parseWasm(buffer) {
+  const bytes = new Uint8Array(buffer);
+  if (bytes.length < 8) throw new Error('File too small to be a valid .wasm');
+
+  const magic = bytes[0] === 0x00 && bytes[1] === 0x61 && bytes[2] === 0x73 && bytes[3] === 0x6d;
+  if (!magic) throw new Error('Invalid WASM magic bytes');
+
+  const version = bytes[4] | (bytes[5] << 8) | (bytes[6] << 16) | (bytes[7] << 24);
+
+  const result = {
+    fileSize: bytes.length,
+    version,
+    headerSize: 8,
+    sections: [],
+    functionNames: new Map(),
+    imports: [],
+    exports: [],
+    functionBodies: [],
+    typeCount: 0,
+    importFuncCount: 0,
+  };
+
+  let pos = 8;
+  let customIdx = 0;
+
+  while (pos < bytes.length) {
+    const sectionId = bytes[pos++];
+    const { value: sectionSize, next: dataStart } = readU32Leb(bytes, pos);
+    const overhead = dataStart - (pos - 1); // id byte + LEB128 size
+    const sectionEnd = dataStart + sectionSize;
+
+    const sectionName = SECTION_NAMES[sectionId] || `unknown_${sectionId}`;
+    const section = {
+      id: sectionId,
+      name: sectionName,
+      offset: pos - 1,
+      headerSize: overhead,
+      dataSize: sectionSize,
+      totalSize: overhead + sectionSize,
+      customName: null,
+    };
+
+    // Parse custom section name
+    if (sectionId === 0) {
+      const { value: cname, next: afterName } = readName(bytes, dataStart);
+      section.customName = cname;
+      section.name = `custom:"${cname}"`;
+    }
+
+    // Parse type section count
+    if (sectionId === 1) {
+      const { value: count } = readU32Leb(bytes, dataStart);
+      result.typeCount = count;
+    }
+
+    // Parse import section
+    if (sectionId === 2) {
+      let p = dataStart;
+      const { value: count, next: p2 } = readU32Leb(bytes, p);
+      p = p2;
+      let funcIdx = 0;
+      for (let i = 0; i < count; i++) {
+        const importStart = p;
+        const { value: mod, next: p3 } = readName(bytes, p);
+        p = p3;
+        const { value: name, next: p4 } = readName(bytes, p);
+        p = p4;
+        const kind = bytes[p++];
+        // Skip kind-specific data
+        if (kind === 0) { // func
+          const { next: p5 } = readU32Leb(bytes, p); p = p5;
+          result.imports.push({ module: mod, name, kind: 'func', index: funcIdx++ });
+        } else if (kind === 1) { // table
+          p++; // reftype
+          const { value: flags, next: p5 } = readU32Leb(bytes, p); p = p5;
+          const { next: p6 } = readU32Leb(bytes, p); p = p6;
+          if (flags & 1) { const { next: p7 } = readU32Leb(bytes, p); p = p7; }
+          result.imports.push({ module: mod, name, kind: 'table', index: i });
+        } else if (kind === 2) { // memory
+          const { value: flags, next: p5 } = readU32Leb(bytes, p); p = p5;
+          const { next: p6 } = readU32Leb(bytes, p); p = p6;
+          if (flags & 1) { const { next: p7 } = readU32Leb(bytes, p); p = p7; }
+          result.imports.push({ module: mod, name, kind: 'memory', index: i });
+        } else if (kind === 3) { // global
+          p++; // valtype
+          p++; // mutability
+          result.imports.push({ module: mod, name, kind: 'global', index: i });
+        }
+        const importSize = p - importStart;
+        result.imports[result.imports.length - 1].size = importSize;
+      }
+      result.importFuncCount = funcIdx;
+    }
+
+    // Parse export section
+    if (sectionId === 7) {
+      let p = dataStart;
+      const { value: count, next: p2 } = readU32Leb(bytes, p);
+      p = p2;
+      for (let i = 0; i < count; i++) {
+        const { value: name, next: p3 } = readName(bytes, p);
+        p = p3;
+        const kind = bytes[p++];
+        const { value: index, next: p4 } = readU32Leb(bytes, p);
+        p = p4;
+        result.exports.push({ name, kind: EXPORT_KIND[kind] || `kind_${kind}`, index });
+      }
+    }
+
+    // Parse code section (function bodies)
+    if (sectionId === 10) {
+      let p = dataStart;
+      const { value: count, next: p2 } = readU32Leb(bytes, p);
+      p = p2;
+      for (let i = 0; i < count; i++) {
+        const bodyStart = p;
+        const { value: bodySize, next: codeStart } = readU32Leb(bytes, p);
+        const headerBytes = codeStart - bodyStart;
+        result.functionBodies.push({
+          index: i,
+          bodySize,
+          totalSize: headerBytes + bodySize,
+          offset: bodyStart,
+        });
+        p = codeStart + bodySize;
+      }
+    }
+
+    // Parse name section
+    if (sectionId === 0 && section.customName === 'name') {
+      try {
+        const { next: afterName } = readName(bytes, dataStart);
+        let p = afterName;
+        while (p < sectionEnd) {
+          const subId = bytes[p++];
+          const { value: subSize, next: subStart } = readU32Leb(bytes, p);
+          p = subStart;
+          if (subId === 1) { // function names
+            let sp = p;
+            const { value: nameCount, next: sp2 } = readU32Leb(bytes, sp);
+            sp = sp2;
+            for (let i = 0; i < nameCount && sp < p + subSize; i++) {
+              const { value: funcIndex, next: sp3 } = readU32Leb(bytes, sp);
+              sp = sp3;
+              const { value: funcName, next: sp4 } = readName(bytes, sp);
+              sp = sp4;
+              result.functionNames.set(funcIndex, funcName);
+            }
+          }
+          p += subSize;
+        }
+      } catch (_) { /* name section parsing is best-effort */ }
+    }
+
+    result.sections.push(section);
+    pos = sectionEnd;
+  }
+
+  // Build export name map for functions
+  result.exportNames = new Map();
+  for (const exp of result.exports) {
+    if (exp.kind === 'func') {
+      result.exportNames.set(exp.index, exp.name);
+    }
+  }
+
+  return result;
+}
+
+// ─── WAT text parser (approximate sizes) ────────────────────────────────
+function parseWat(text) {
+  const result = {
+    fileSize: new TextEncoder().encode(text).length,
+    version: 1,
+    headerSize: 0,
+    sections: [],
+    functionNames: new Map(),
+    imports: [],
+    exports: [],
+    functionBodies: [],
+    typeCount: 0,
+    importFuncCount: 0,
+    exportNames: new Map(),
+    isWat: true,
+  };
+
+  // Extract functions with their byte sizes (character count as proxy)
+  const funcRegex = /\(func\s+(\$[\w.]+)?[^)]*\)/g;
+  let funcIdx = 0;
+
+  // More robust: find balanced parens for (func ...)
+  let depth = 0, funcStart = -1, funcName = null;
+  const funcs = [];
+  const importMatches = [];
+
+  // Find all top-level (func ...) and (import ...) blocks
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '(' && depth === 1) {
+      // Check what keyword follows
+      const rest = text.substring(i + 1, i + 20).trim();
+      if (rest.startsWith('func')) {
+        funcStart = i;
+        const nameMatch = rest.match(/func\s+(\$[\w.:-]+)/);
+        funcName = nameMatch ? nameMatch[1] : null;
+      } else if (rest.startsWith('import')) {
+        funcStart = i;
+        funcName = '__import__';
+      }
+    }
+    if (text[i] === '(') depth++;
+    if (text[i] === ')') {
+      depth--;
+      if (depth === 1 && funcStart >= 0) {
+        const block = text.substring(funcStart, i + 1);
+        if (funcName === '__import__') {
+          // Parse import
+          const m = block.match(/\(import\s+"([^"]+)"\s+"([^"]+)"/);
+          if (m) {
+            const kind = block.includes('(func') ? 'func' :
+                         block.includes('(memory') ? 'memory' :
+                         block.includes('(table') ? 'table' : 'global';
+            importMatches.push({ module: m[1], name: m[2], kind, size: block.length });
+            if (kind === 'func') result.importFuncCount++;
+          }
+        } else if (block.startsWith('(func')) {
+          const isExport = block.includes('(export');
+          const exportMatch = block.match(/\(export\s+"([^"]+)"\)/);
+          funcs.push({
+            name: funcName,
+            exportName: exportMatch ? exportMatch[1] : null,
+            size: block.length,
+            text: block,
+          });
+        }
+        funcStart = -1;
+        funcName = null;
+      }
+    }
+  }
+
+  // Build imports
+  let importFuncIdx = 0;
+  for (const imp of importMatches) {
+    const idx = imp.kind === 'func' ? importFuncIdx++ : result.imports.length;
+    result.imports.push({ ...imp, index: idx });
+  }
+
+  // Build function bodies
+  for (let i = 0; i < funcs.length; i++) {
+    const f = funcs[i];
+    const globalIdx = result.importFuncCount + i;
+    result.functionBodies.push({
+      index: i,
+      bodySize: f.size,
+      totalSize: f.size,
+      offset: 0,
+    });
+    if (f.name) {
+      result.functionNames.set(globalIdx, f.name.replace(/^\$/, ''));
+    }
+    if (f.exportName) {
+      result.exportNames.set(globalIdx, f.exportName);
+    }
+  }
+
+  // Synthesize sections for the WAT view
+  const totalImportSize = importMatches.reduce((s, i) => s + i.size, 0);
+  const totalCodeSize = funcs.reduce((s, f) => s + f.size, 0);
+  const otherSize = result.fileSize - totalImportSize - totalCodeSize;
+
+  if (totalImportSize > 0) {
+    result.sections.push({
+      id: 2, name: 'import', offset: 0,
+      headerSize: 0, dataSize: totalImportSize, totalSize: totalImportSize,
+    });
+  }
+  if (totalCodeSize > 0) {
+    result.sections.push({
+      id: 10, name: 'code', offset: 0,
+      headerSize: 0, dataSize: totalCodeSize, totalSize: totalCodeSize,
+    });
+  }
+  if (otherSize > 0) {
+    result.sections.push({
+      id: -1, name: 'other (types, exports, etc.)', offset: 0,
+      headerSize: 0, dataSize: otherSize, totalSize: otherSize,
+    });
+  }
+
+  return result;
+}
+
+// ─── Tree building ──────────────────────────────────────────────────────
+function makeNode(name, fullPath) {
+  const id = nextNodeId++;
+  const node = {
+    _id: id, name, children: {}, size: 0, fullPath,
+    isLeaf: false, isRemainder: false,
+  };
+  nodeById.set(id, node);
+  return node;
+}
+
+function getFunctionName(data, bodyIndex) {
+  const globalIdx = data.importFuncCount + bodyIndex;
+  const debugName = data.functionNames.get(globalIdx);
+  const exportName = data.exportNames.get(globalIdx);
+  if (debugName && exportName && debugName !== exportName) {
+    return `${exportName} (${debugName})`;
+  }
+  return exportName || debugName || `func[${globalIdx}]`;
+}
+
+function buildSectionsTree(data) {
+  nextNodeId = 0;
+  nodeById.clear();
+  colorMap.clear();
+  colorIdx = 0;
+
+  const root = makeNode('root', 'root');
+  root.isRoot = true;
+
+  // Header node (magic + version = 8 bytes)
+  if (data.headerSize > 0) {
+    const hdr = makeNode('header', 'header');
+    hdr.size = data.headerSize;
+    hdr.isLeaf = true;
+    root.children['header'] = hdr;
+    root.size += data.headerSize;
+    assignColor('header');
+  }
+
+  for (const section of data.sections) {
+    const sName = section.name;
+    assignColor(sName.split(':')[0].split('"')[0]); // base section name for color
+
+    const sNode = makeNode(sName, sName);
+    sNode.size = section.totalSize;
+
+    // For code section, add function bodies as children
+    if (section.id === 10 && data.functionBodies.length > 0) {
+      let overhead = section.totalSize;
+      for (const body of data.functionBodies) {
+        const fname = getFunctionName(data, body.index);
+        const fNode = makeNode(fname, `${sName}/${fname}`);
+        fNode.size = body.totalSize;
+        fNode.isLeaf = true;
+        sNode.children[`func_${body.index}`] = fNode;
+        overhead -= body.totalSize;
+      }
+      // Section overhead (count byte, etc.)
+      if (overhead > 0) {
+        const oh = makeNode('[section overhead]', `${sName}/[overhead]`);
+        oh.size = overhead;
+        oh.isLeaf = true;
+        sNode.children['__overhead__'] = oh;
+      }
+    }
+    // For import section, group by module
+    else if (section.id === 2 && data.imports.length > 0) {
+      const byModule = {};
+      for (const imp of data.imports) {
+        if (!byModule[imp.module]) byModule[imp.module] = [];
+        byModule[imp.module].push(imp);
+      }
+      let accounted = 0;
+      for (const [mod, imps] of Object.entries(byModule)) {
+        assignColor(mod);
+        const modNode = makeNode(mod, `${sName}/${mod}`);
+        for (const imp of imps) {
+          const label = `${imp.name} [${imp.kind}]`;
+          const iNode = makeNode(label, `${sName}/${mod}/${label}`);
+          iNode.size = imp.size || 1;
+          iNode.isLeaf = true;
+          modNode.children[`imp_${imp.index}_${imp.kind}`] = iNode;
+          modNode.size += iNode.size;
+        }
+        sNode.children[`mod_${mod}`] = modNode;
+        accounted += modNode.size;
+      }
+      const overhead = section.totalSize - accounted;
+      if (overhead > 0) {
+        const oh = makeNode('[section overhead]', `${sName}/[overhead]`);
+        oh.size = overhead;
+        oh.isLeaf = true;
+        sNode.children['__overhead__'] = oh;
+      }
+    }
+    // For custom sections with subsections, show as leaf
+    else {
+      sNode.isLeaf = true;
+    }
+
+    root.children[`section_${section.id}_${section.offset}`] = sNode;
+    root.size += section.totalSize;
+  }
+
+  return root;
+}
+
+function buildFunctionsTree(data) {
+  nextNodeId = 0;
+  nodeById.clear();
+  colorMap.clear();
+  colorIdx = 0;
+
+  const root = makeNode('root', 'root');
+  root.isRoot = true;
+
+  // Group functions by module path (split on . or :: or /)
+  // Also separate: imports, local functions, overhead
+
+  // Local functions from code section
+  if (data.functionBodies.length > 0) {
+    for (const body of data.functionBodies) {
+      const globalIdx = data.importFuncCount + body.index;
+      const name = getFunctionName(data, body.index);
+      const isExported = data.exportNames.has(globalIdx);
+
+      // Try to group by namespace (split on $ . :: /)
+      const parts = name.replace(/^\$/, '').split(/[./:]+/);
+
+      let parent = root;
+      if (parts.length > 1) {
+        // Create intermediate group nodes
+        let path = '';
+        for (let i = 0; i < parts.length - 1; i++) {
+          path += (path ? '/' : '') + parts[i];
+          const key = `group_${path}`;
+          if (!parent.children[key]) {
+            assignColor(parts[i]);
+            const gNode = makeNode(parts[i], path);
+            parent.children[key] = gNode;
+          }
+          parent.children[key].size += body.totalSize;
+          parent = parent.children[key];
+        }
+      }
+
+      const leafName = parts.length > 1 ? parts[parts.length - 1] : name;
+      const tag = isExported ? ' [export]' : '';
+      assignColor(name);
+      const fNode = makeNode(leafName + tag, name);
+      fNode.size = body.totalSize;
+      fNode.isLeaf = true;
+      parent.children[`func_${body.index}`] = fNode;
+      root.size += body.totalSize;
+    }
+  }
+
+  // Imported functions
+  if (data.imports.length > 0) {
+    const impNode = makeNode('[imports]', 'imports');
+    assignColor('import');
+    for (const imp of data.imports) {
+      if (imp.kind !== 'func') continue;
+      const label = `${imp.module}::${imp.name}`;
+      const iNode = makeNode(label, `imports/${label}`);
+      iNode.size = imp.size || 1;
+      iNode.isLeaf = true;
+      impNode.children[`imp_${imp.index}`] = iNode;
+      impNode.size += iNode.size;
+    }
+    if (impNode.size > 0) {
+      root.children['__imports__'] = impNode;
+      root.size += impNode.size;
+    }
+  }
+
+  // Non-code overhead
+  let codeSize = data.functionBodies.reduce((s, b) => s + b.totalSize, 0);
+  let overhead = data.fileSize - codeSize;
+  if (overhead > 0) {
+    const oh = makeNode('[non-code sections]', 'overhead');
+    oh.size = overhead;
+    oh.isLeaf = true;
+    root.children['__overhead__'] = oh;
+    root.size += overhead;
+  }
+
+  return root;
+}
+
+// ─── Remainder grouping ─────────────────────────────────────────────────
+function applyRemainders(node, threshPct) {
+  const childArr = Object.values(node.children);
+  if (childArr.length === 0) return;
+  const threshold = node.size * (threshPct / 100);
+  const sorted = childArr.slice().sort((a, b) => b.size - a.size);
+  const keep = [], small = [];
+  for (const child of sorted) {
+    (child.size < threshold ? small : keep).push(child);
+  }
+  const remainderSize = small.reduce((s, c) => s + c.size, 0);
+  const remainderTooBig = remainderSize > node.size * 0.15;
+  if (keep.length === 0 || remainderTooBig || small.length < 2) {
+    for (const child of childArr) {
+      if (!child.isLeaf) applyRemainders(child, threshPct);
+    }
+    return;
+  }
+  for (const child of keep) {
+    if (!child.isLeaf) applyRemainders(child, threshPct);
+  }
+  node.children = {};
+  for (const k of keep) node.children['_k_' + k._id] = k;
+  if (small.length > 0) {
+    node.children['__remainder__'] = {
+      _id: -1, _originalId: -1,
+      name: `[${small.length} smaller items]`,
+      children: {}, size: remainderSize,
+      fullPath: node.fullPath + '/[other]',
+      isLeaf: true, isRemainder: true, remainderCount: small.length,
+    };
+  }
+}
+
+function deepCloneTree(node) {
+  const clone = { ...node, _originalId: node._id, children: {} };
+  for (const [k, v] of Object.entries(node.children)) {
+    clone.children[k] = deepCloneTree(v);
+  }
+  return clone;
+}
+
+// ─── Squarify layout ────────────────────────────────────────────────────
+function squarify(items, x, y, w, h) {
+  if (items.length === 0) return [];
+  const total = items.reduce((s, i) => s + i.size, 0);
+  if (total <= 0 || w <= 0 || h <= 0) return [];
+  const sorted = items.slice().sort((a, b) => b.size - a.size);
+  const result = [];
+  layoutRows(sorted, x, y, w, h, total, result);
+  return result;
+}
+
+function layoutRows(items, x, y, w, h, total, result) {
+  if (items.length === 0) return;
+  if (items.length === 1) { result.push({ ...items[0], x, y, w, h }); return; }
+  const vertical = h > w;
+  const mainLen = vertical ? h : w;
+  const crossLen = vertical ? w : h;
+  let rowItems = [], rowSize = 0, bestWorst = Infinity, bestN = 1;
+  for (let i = 0; i < items.length; i++) {
+    rowItems.push(items[i]);
+    rowSize += items[i].size;
+    const rowDim = (rowSize / total) * mainLen;
+    let worst = 0;
+    for (const ri of rowItems) {
+      const itemCross = (ri.size / rowSize) * crossLen;
+      if (rowDim > 0 && itemCross > 0) {
+        worst = Math.max(worst, Math.max(rowDim / itemCross, itemCross / rowDim));
+      } else worst = Infinity;
+    }
+    if (worst <= bestWorst) { bestWorst = worst; bestN = i + 1; }
+    else break;
+  }
+  const row = items.slice(0, bestN);
+  const rest = items.slice(bestN);
+  const rSize = row.reduce((s, i) => s + i.size, 0);
+  const rowFrac = rSize / total;
+  const rowDim = rowFrac * mainLen;
+  let offset = 0;
+  for (const item of row) {
+    const itemCross = (item.size / rSize) * crossLen;
+    if (vertical) result.push({ ...item, x: x + offset, y, w: itemCross, h: rowDim });
+    else result.push({ ...item, x, y: y + offset, w: rowDim, h: itemCross });
+    offset += itemCross;
+  }
+  if (rest.length > 0) {
+    const restTotal = total - rSize;
+    if (vertical) layoutRows(rest, x, y + rowDim, w, h - rowDim, restTotal, result);
+    else layoutRows(rest, x + rowDim, y, w - rowDim, h, restTotal, result);
+  }
+}
+
+// ─── Rendering ──────────────────────────────────────────────────────────
+const HEADER_H = 20, MIN_LABEL_W = 35, MIN_LABEL_H = 16, MIN_CHILD_AREA = 600;
+
+function renderTreemap(rootNode, container, initialRgb) {
+  container.innerHTML = '';
+  const rect = container.getBoundingClientRect();
+  renderNode(rootNode, container, 0, 0, rect.width, rect.height, 0, initialRgb || null, rootNode.size);
+}
+
+function getNodeColor(node) {
+  // Determine color from section/group name
+  const base = node.fullPath.split('/')[0].split(':')[0].replace(/^custom$/, 'custom');
+  return SECTION_COLORS[base] || colorMap.get(node.name) || colorMap.get(base) || [80, 80, 100];
+}
+
+function renderNode(node, container, x, y, w, h, depth, crateRgb, parentSize) {
+  if (w < 2 || h < 2) return;
+  const children = Object.values(node.children);
+  const hasChildren = children.length > 0 && !node.isLeaf;
+  const isLeaf = !hasChildren;
+
+  if (!crateRgb) {
+    crateRgb = getNodeColor(node);
+  }
+  if (depth === 1 && !crateRgb) crateRgb = [80, 80, 100];
+  const baseRgb = crateRgb || [80, 80, 100];
+
+  const el = document.createElement('div');
+  el.className = 'tm-node' + (isLeaf ? ' tm-leaf' : ' tm-branch') + (node.isRemainder ? ' tm-remainder' : '');
+  el.style.left = x + 'px'; el.style.top = y + 'px';
+  el.style.width = w + 'px'; el.style.height = h + 'px';
+
+  const inner = document.createElement('div');
+  inner.className = 'tm-node-inner';
+  const bw = Math.max(1, 3 - depth);
+  inner.style.inset = bw + 'px';
+
+  if (depth === 0) {
+    inner.style.background = 'transparent';
+    inner.style.inset = '0';
+    el.style.background = 'transparent';
+  } else if (node.isRemainder) {
+    inner.style.background = 'rgba(128,128,128,0.35)';
+  } else {
+    inner.style.background = rgbaStr(baseRgb, 0.35);
+  }
+
+  const canLabel = w > MIN_LABEL_W && h > MIN_LABEL_H;
+  let headerH = 0;
+  if (canLabel && !isLeaf && depth > 0) {
+    const label = document.createElement('div');
+    label.className = 'tm-label';
+    label.innerHTML = `<span>${esc(node.name)}</span> <span class="tm-label-size">${formatSize(node.size)}</span>`;
+    label.style.color = node.isRemainder ? '#999' : '#ddd';
+    label.style.background = node.isRemainder ? 'rgba(128,128,128,0.35)' : rgbaStr(baseRgb, 0.35);
+    label.style.borderBottom = '2px solid #000';
+    label.style.zIndex = '2';
+    el.appendChild(label);
+    headerH = HEADER_H;
+  } else if (canLabel && isLeaf) {
+    const label = document.createElement('div');
+    label.className = 'tm-label';
+    label.textContent = node.name;
+    label.style.color = node.isRemainder ? '#888' : '#ccc';
+    label.style.fontSize = w < 70 ? '9px' : '11px';
+    inner.appendChild(label);
+  }
+
+  el._tmNode = node;
+  el._tmParentSize = parentSize;
+  el._tmCrateRgb = crateRgb;
+
+  el.addEventListener('mouseenter', onNodeEnter);
+  el.addEventListener('mousemove', onTooltipMove);
+  el.addEventListener('mouseleave', onNodeLeave);
+  if (!isLeaf && depth > 0) el.addEventListener('click', onNodeClick);
+
+  el.appendChild(inner);
+  container.appendChild(el);
+
+  if (hasChildren) {
+    const iy = bw + headerH;
+    const iw = w, ih = h - iy;
+    if (iw * ih >= MIN_CHILD_AREA && iw > 10 && ih > 10) {
+      const childItems = children.map(c => ({ size: c.size, node: c }));
+      const laid = squarify(childItems, 0, 0, iw, ih);
+      for (const item of laid) {
+        // For depth 1 nodes, pass their own color to children
+        const childRgb = depth === 0 ? getNodeColor(item.node) : crateRgb;
+        renderNode(item.node, el, item.x, iy + item.y, item.w, item.h, depth + 1, childRgb, node.size);
+      }
+    }
+  }
+}
+
+// ─── Tooltip ────────────────────────────────────────────────────────────
+const tooltip = document.getElementById('tooltip');
+const ttChildrenRow = document.getElementById('tt-children-row');
+const ttChildren = document.getElementById('tt-children');
+const ttHint = document.getElementById('tt-hint');
+
+function onNodeEnter(e) {
+  e.stopPropagation();
+  const el = e.currentTarget;
+  const node = el._tmNode;
+  const parentSize = el._tmParentSize;
+
+  tooltip.querySelector('.tt-path').textContent = node.fullPath || node.name;
+  const vals = tooltip.querySelectorAll('.tt-value');
+  vals[0].textContent = formatSize(node.size);
+  vals[1].textContent = ((node.size / totalFileSize) * 100).toFixed(2) + '%';
+
+  if (parentSize && parentSize > 0) {
+    vals[2].textContent = ((node.size / parentSize) * 100).toFixed(1) + '%';
+    vals[2].parentElement.style.display = 'flex';
+  } else vals[2].parentElement.style.display = 'none';
+
+  const children = Object.values(node.children || {});
+  if (children.length > 0 && !node.isLeaf) {
+    ttChildrenRow.style.display = 'flex';
+    ttChildren.textContent = children.length + ' items';
+    ttHint.textContent = 'Click to zoom in';
+  } else {
+    ttChildrenRow.style.display = 'none';
+    ttHint.textContent = '';
+  }
+  if (node.isRemainder) ttHint.textContent = 'Grouped items below remainder threshold';
+
+  tooltip.style.display = 'block';
+  positionTooltip(e);
+}
+
+function onTooltipMove(e) { positionTooltip(e); }
+function onNodeLeave() { tooltip.style.display = 'none'; }
+
+function positionTooltip(e) {
+  let tx = e.clientX + 14, ty = e.clientY + 14;
+  const tw = tooltip.offsetWidth, th = tooltip.offsetHeight;
+  if (tx + tw > window.innerWidth - 10) tx = e.clientX - tw - 14;
+  if (ty + th > window.innerHeight - 10) ty = e.clientY - th - 14;
+  tooltip.style.left = tx + 'px';
+  tooltip.style.top = ty + 'px';
+}
+
+// ─── Zoom / Breadcrumbs ─────────────────────────────────────────────────
+function onNodeClick(e) {
+  e.stopPropagation();
+  const el = e.currentTarget;
+  const node = el._tmNode;
+  const crateRgb = el._tmCrateRgb;
+  const origId = node._originalId != null ? node._originalId : node._id;
+  if (origId < 0) return;
+  zoomStack.push({ nodeId: origId, crateRgb, name: node.name });
+  renderCurrentView();
+}
+
+function zoomToIndex(idx) { zoomStack = zoomStack.slice(0, idx + 1); renderCurrentView(); }
+function zoomToRoot() { zoomStack = []; renderCurrentView(); }
+
+function renderCurrentView() {
+  const container = document.getElementById('treemap-container');
+  const bc = document.getElementById('breadcrumbs-bar');
+
+  let viewNode, crateRgb;
+  if (zoomStack.length === 0) {
+    viewNode = treeRoot;
+    crateRgb = null;
+  } else {
+    const top = zoomStack[zoomStack.length - 1];
+    viewNode = nodeById.get(top.nodeId);
+    crateRgb = top.crateRgb;
+    if (!viewNode) { zoomStack = []; viewNode = treeRoot; crateRgb = null; }
+  }
+
+  const viewCopy = deepCloneTree(viewNode);
+  applyRemainders(viewCopy, thresholdPct);
+  renderTreemap(viewCopy, container, crateRgb);
+
+  bc.innerHTML = '';
+  const rootCrumb = document.createElement('button');
+  rootCrumb.className = 'breadcrumb';
+  rootCrumb.textContent = 'root';
+  rootCrumb.onclick = zoomToRoot;
+  bc.appendChild(rootCrumb);
+
+  for (let i = 0; i < zoomStack.length; i++) {
+    const sep = document.createElement('span');
+    sep.className = 'breadcrumb-sep';
+    sep.textContent = '/';
+    bc.appendChild(sep);
+    const crumb = document.createElement('button');
+    crumb.className = 'breadcrumb';
+    crumb.textContent = zoomStack[i].name;
+    const idx = i;
+    crumb.onclick = () => zoomToIndex(idx);
+    bc.appendChild(crumb);
+  }
+}
+
+// ─── Utilities ──────────────────────────────────────────────────────────
+function formatSize(bytes) {
+  if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + ' MB';
+  if (bytes >= 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return bytes + ' B';
+}
+
+function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+// ─── Data loading ───────────────────────────────────────────────────────
+function loadWasm(buffer, fileName) {
+  try {
+    wasmData = parseWasm(buffer);
+  } catch (e) {
+    alert('Failed to parse WASM: ' + e.message);
+    return;
+  }
+  showData(wasmData, fileName);
+}
+
+function loadWat(text, fileName) {
+  try {
+    wasmData = parseWat(text);
+  } catch (e) {
+    alert('Failed to parse WAT: ' + e.message);
+    return;
+  }
+  showData(wasmData, fileName);
+}
+
+function showData(data, fileName) {
+  totalFileSize = data.fileSize;
+  treeRoot = viewMode === 'functions' ? buildFunctionsTree(data) : buildSectionsTree(data);
+
+  document.getElementById('info-bar').style.display = 'flex';
+  document.getElementById('info-file-size').textContent = 'File: ' + formatSize(data.fileSize) + (fileName ? ` (${fileName})` : '');
+
+  const codeSection = data.sections.find(s => s.id === 10);
+  document.getElementById('info-code-size').textContent = 'Code: ' + formatSize(codeSection ? codeSection.totalSize : 0);
+  document.getElementById('info-functions').textContent = data.functionBodies.length + ' functions';
+  document.getElementById('info-imports').textContent = data.imports.length + ' imports';
+  document.getElementById('info-exports').textContent = data.exports.length + ' exports';
+
+  document.getElementById('drop-prompt').style.display = 'none';
+  document.getElementById('treemap-container').style.display = 'block';
+  document.getElementById('drop-zone').classList.remove('empty');
+
+  zoomStack = [];
+  renderCurrentView();
+}
+
+// ─── View toggle ────────────────────────────────────────────────────────
+const btnSections = document.getElementById('view-sections');
+const btnFunctions = document.getElementById('view-functions');
+
+btnSections.addEventListener('click', () => {
+  viewMode = 'sections';
+  btnSections.classList.add('active');
+  btnFunctions.classList.remove('active');
+  if (wasmData) showData(wasmData);
+});
+
+btnFunctions.addEventListener('click', () => {
+  viewMode = 'functions';
+  btnFunctions.classList.add('active');
+  btnSections.classList.remove('active');
+  if (wasmData) showData(wasmData);
+});
+
+// ─── Event wiring ───────────────────────────────────────────────────────
+const fileInput = document.getElementById('file-input');
+
+function loadFile(file) {
+  const name = file.name;
+  if (name.endsWith('.wat')) {
+    const reader = new FileReader();
+    reader.onload = ev => loadWat(ev.target.result, name);
+    reader.readAsText(file);
+  } else {
+    const reader = new FileReader();
+    reader.onload = ev => loadWasm(ev.target.result, name);
+    reader.readAsArrayBuffer(file);
+  }
+}
+
+fileInput.addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (file) loadFile(file);
+  fileInput.value = '';
+});
+
+fileInput.previousElementSibling.addEventListener('click', e => {
+  e.preventDefault();
+  fileInput.click();
+});
+
+// Drag & drop
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('drop', e => e.preventDefault());
+
+const dropZone = document.getElementById('drop-zone');
+dropZone.addEventListener('dragover', e => {
+  e.preventDefault(); e.stopPropagation();
+  e.dataTransfer.dropEffect = 'copy';
+  dropZone.style.outline = '2px solid #537ec5';
+});
+dropZone.addEventListener('dragleave', e => {
+  if (!dropZone.contains(e.relatedTarget)) dropZone.style.outline = '';
+});
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); e.stopPropagation();
+  dropZone.style.outline = '';
+  const file = e.dataTransfer.files[0];
+  if (file) loadFile(file);
+});
+
+// Also allow drop on treemap container
+const tmContainer = document.getElementById('treemap-container');
+tmContainer.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+tmContainer.addEventListener('drop', e => {
+  e.preventDefault(); e.stopPropagation();
+  const file = e.dataTransfer.files[0];
+  if (file) loadFile(file);
+});
+
+// Threshold slider
+document.getElementById('threshold').addEventListener('input', e => {
+  thresholdPct = parseFloat(e.target.value);
+  document.getElementById('threshold-val').textContent = thresholdPct + '%';
+  if (treeRoot) renderCurrentView();
+});
+
+// Resize
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { if (treeRoot) renderCurrentView(); }, 100);
+});
+
+// Escape to zoom out
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && zoomStack.length > 0) {
+    zoomStack.pop();
+    renderCurrentView();
+  }
+});
+
+// URL parameter: ?url=path/to/file.wasm
+const urlParam = new URLSearchParams(window.location.search).get('url');
+if (urlParam) {
+  fetch(urlParam)
+    .then(r => {
+      if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+      const isWat = urlParam.endsWith('.wat');
+      return isWat ? r.text() : r.arrayBuffer();
+    })
+    .then(data => {
+      const name = urlParam.split('/').pop();
+      if (typeof data === 'string') loadWat(data, name);
+      else loadWasm(data, name);
+    })
+    .catch(err => alert('Failed to load ' + urlParam + ':\n' + err.message));
+}
+</script>
+</body>
+</html>

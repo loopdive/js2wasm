@@ -1,0 +1,587 @@
+import type {
+  WasmModule,
+  TypeDef,
+  ValType,
+  Instr,
+  BlockType,
+  FieldDef,
+  Import,
+  WasmFunction,
+  WasmExport,
+  GlobalDef,
+} from "../ir/types.js";
+import { WasmEncoder } from "./encoder.js";
+import { OP, GC, TYPE, SECTION } from "./opcodes.js";
+
+/** Emit a complete Wasm binary from an IR module */
+export function emitBinary(mod: WasmModule): Uint8Array {
+  const enc = new WasmEncoder();
+
+  // Magic + Version
+  enc.bytes([0x00, 0x61, 0x73, 0x6d]); // \0asm
+  enc.bytes([0x01, 0x00, 0x00, 0x00]); // version 1
+
+  const numImportFuncs = mod.imports.filter(
+    (i) => i.desc.kind === "func",
+  ).length;
+
+  // Type section
+  if (mod.types.length > 0) {
+    enc.section(SECTION.type, (s) => {
+      s.vector(mod.types, (t, e) => encodeTypeDef(t, e));
+    });
+  }
+
+  // Import section
+  if (mod.imports.length > 0) {
+    enc.section(SECTION.import, (s) => {
+      s.vector(mod.imports, (imp, e) => encodeImport(imp, e));
+    });
+  }
+
+  // Function section (type indices for each function)
+  if (mod.functions.length > 0) {
+    enc.section(SECTION.function, (s) => {
+      s.vector(mod.functions, (f, e) => e.u32(f.typeIdx));
+    });
+  }
+
+  // Table section
+  if (mod.tables.length > 0) {
+    enc.section(SECTION.table, (s) => {
+      s.vector(mod.tables, (t, e) => {
+        e.byte(t.elementType === "funcref" ? TYPE.funcref : TYPE.externref);
+        if (t.max !== undefined) {
+          e.byte(0x01); // has max
+          e.u32(t.min);
+          e.u32(t.max);
+        } else {
+          e.byte(0x00);
+          e.u32(t.min);
+        }
+      });
+    });
+  }
+
+  // Global section
+  if (mod.globals.length > 0) {
+    enc.section(SECTION.global, (s) => {
+      s.vector(mod.globals, (g, e) => encodeGlobal(g, e));
+    });
+  }
+
+  // Export section
+  if (mod.exports.length > 0) {
+    enc.section(SECTION.export, (s) => {
+      s.vector(mod.exports, (exp, e) => encodeExport(exp, e, numImportFuncs));
+    });
+  }
+
+  // Element section
+  if (mod.elements.length > 0) {
+    enc.section(SECTION.element, (s) => {
+      s.vector(mod.elements, (elem, e) => {
+        e.byte(0x00); // active, table 0, funcref
+        for (const instr of elem.offset) encodeInstr(instr, e);
+        e.byte(OP.end);
+        e.vector(elem.funcIndices, (idx, enc2) => enc2.u32(idx));
+      });
+    });
+  }
+
+  // Code section
+  if (mod.functions.length > 0) {
+    enc.section(SECTION.code, (s) => {
+      s.vector(mod.functions, (f, e) => encodeFunction(f, e));
+    });
+  }
+
+  return enc.finish();
+}
+
+function encodeTypeDef(t: TypeDef, enc: WasmEncoder): void {
+  switch (t.kind) {
+    case "func":
+      enc.byte(TYPE.func);
+      enc.vector(t.params, (p, e) => encodeValType(p, e));
+      enc.vector(t.results, (r, e) => encodeValType(r, e));
+      break;
+    case "struct":
+      enc.byte(TYPE.struct);
+      enc.vector(t.fields, (f, e) => encodeFieldDef(f, e));
+      break;
+    case "array":
+      enc.byte(TYPE.array);
+      encodeStorageType(t.element, enc);
+      enc.byte(t.mutable ? TYPE.mut_field : TYPE.const_field);
+      break;
+    case "rec":
+      enc.byte(TYPE.rec);
+      enc.u32(t.types.length);
+      for (const sub of t.types) encodeTypeDef(sub, enc);
+      break;
+    case "sub":
+      if (t.superType !== null) {
+        enc.byte(t.final ? TYPE.sub_final : TYPE.sub);
+        enc.u32(1); // 1 supertype
+        enc.u32(t.superType);
+      } else if (!t.final) {
+        enc.byte(TYPE.sub);
+        enc.u32(0); // 0 supertypes
+      }
+      // else: final with no super → just encode inner type
+      if (t.superType !== null || !t.final) {
+        encodeTypeDef(t.type, enc);
+      } else {
+        encodeTypeDef(t.type, enc);
+      }
+      break;
+  }
+}
+
+function encodeFieldDef(f: FieldDef, enc: WasmEncoder): void {
+  encodeStorageType(f.type, enc);
+  enc.byte(f.mutable ? TYPE.mut_field : TYPE.const_field);
+}
+
+function encodeStorageType(t: ValType, enc: WasmEncoder): void {
+  encodeValType(t, enc);
+}
+
+function encodeValType(t: ValType, enc: WasmEncoder): void {
+  switch (t.kind) {
+    case "i32":
+      enc.byte(TYPE.i32);
+      break;
+    case "i64":
+      enc.byte(TYPE.i64);
+      break;
+    case "f32":
+      enc.byte(TYPE.f32);
+      break;
+    case "f64":
+      enc.byte(TYPE.f64);
+      break;
+    case "funcref":
+      enc.byte(TYPE.funcref);
+      break;
+    case "externref":
+      enc.byte(TYPE.externref);
+      break;
+    case "ref":
+      enc.byte(TYPE.ref);
+      enc.i32(t.typeIdx);
+      break;
+    case "ref_null":
+      enc.byte(TYPE.ref_null);
+      enc.i32(t.typeIdx);
+      break;
+  }
+}
+
+function encodeImport(imp: Import, enc: WasmEncoder): void {
+  enc.name(imp.module);
+  enc.name(imp.name);
+  switch (imp.desc.kind) {
+    case "func":
+      enc.byte(0x00);
+      enc.u32(imp.desc.typeIdx);
+      break;
+    case "table":
+      enc.byte(0x01);
+      enc.byte(
+        imp.desc.elementType === "funcref" ? TYPE.funcref : TYPE.externref,
+      );
+      if (imp.desc.max !== undefined) {
+        enc.byte(0x01);
+        enc.u32(imp.desc.min);
+        enc.u32(imp.desc.max);
+      } else {
+        enc.byte(0x00);
+        enc.u32(imp.desc.min);
+      }
+      break;
+    case "global":
+      enc.byte(0x03);
+      encodeValType(imp.desc.type, enc);
+      enc.byte(imp.desc.mutable ? 0x01 : 0x00);
+      break;
+  }
+}
+
+function encodeGlobal(g: GlobalDef, enc: WasmEncoder): void {
+  encodeValType(g.type, enc);
+  enc.byte(g.mutable ? 0x01 : 0x00);
+  for (const instr of g.init) encodeInstr(instr, enc);
+  enc.byte(OP.end);
+}
+
+function encodeExport(
+  exp: WasmExport,
+  enc: WasmEncoder,
+  _numImportFuncs: number,
+): void {
+  enc.name(exp.name);
+  const kindByte =
+    exp.desc.kind === "func"
+      ? 0x00
+      : exp.desc.kind === "table"
+        ? 0x01
+        : exp.desc.kind === "memory"
+          ? 0x02
+          : 0x03;
+  enc.byte(kindByte);
+  enc.u32(exp.desc.index);
+}
+
+function encodeFunction(f: WasmFunction, enc: WasmEncoder): void {
+  const body = new WasmEncoder();
+
+  // Locals: group consecutive same-type locals
+  const localGroups = groupLocals(f.locals);
+  body.vector(localGroups, (group, e) => {
+    e.u32(group.count);
+    encodeValType(group.type, e);
+  });
+
+  // Body instructions
+  for (const instr of f.body) {
+    encodeInstr(instr, body);
+  }
+  body.byte(OP.end);
+
+  const bodyBytes = body.finish();
+  enc.u32(bodyBytes.length);
+  enc.bytes(bodyBytes);
+}
+
+interface LocalGroup {
+  count: number;
+  type: ValType;
+}
+
+function groupLocals(locals: { type: ValType }[]): LocalGroup[] {
+  const groups: LocalGroup[] = [];
+  for (const local of locals) {
+    const last = groups[groups.length - 1];
+    if (last && valTypeEq(last.type, local.type)) {
+      last.count++;
+    } else {
+      groups.push({ count: 1, type: local.type });
+    }
+  }
+  return groups;
+}
+
+function valTypeEq(a: ValType, b: ValType): boolean {
+  if (a.kind !== b.kind) return false;
+  if (
+    (a.kind === "ref" || a.kind === "ref_null") &&
+    (b.kind === "ref" || b.kind === "ref_null")
+  ) {
+    return a.typeIdx === b.typeIdx;
+  }
+  return true;
+}
+
+function encodeBlockType(bt: BlockType, enc: WasmEncoder): void {
+  switch (bt.kind) {
+    case "empty":
+      enc.byte(0x40);
+      break;
+    case "val":
+      encodeValType(bt.type, enc);
+      break;
+    case "type":
+      enc.i32(bt.typeIdx);
+      break;
+  }
+}
+
+function encodeInstr(instr: Instr, enc: WasmEncoder): void {
+  switch (instr.op) {
+    case "unreachable":
+      enc.byte(OP.unreachable);
+      break;
+    case "nop":
+      enc.byte(OP.nop);
+      break;
+    case "block":
+      enc.byte(OP.block);
+      encodeBlockType(instr.blockType, enc);
+      for (const i of instr.body) encodeInstr(i, enc);
+      enc.byte(OP.end);
+      break;
+    case "loop":
+      enc.byte(OP.loop);
+      encodeBlockType(instr.blockType, enc);
+      for (const i of instr.body) encodeInstr(i, enc);
+      enc.byte(OP.end);
+      break;
+    case "if": {
+      enc.byte(OP.if);
+      encodeBlockType(instr.blockType, enc);
+      for (const i of instr.then) encodeInstr(i, enc);
+      const hasElse = instr.else && instr.else.length > 0;
+      const needsElse = hasElse || instr.blockType.kind === "val";
+      if (needsElse) {
+        enc.byte(OP.else);
+        if (hasElse) {
+          for (const i of instr.else!) encodeInstr(i, enc);
+        } else {
+          // Valued if with no else — emit unreachable to satisfy validator
+          enc.byte(OP.unreachable);
+        }
+      }
+      enc.byte(OP.end);
+      break;
+    }
+    case "br":
+      enc.byte(OP.br);
+      enc.u32(instr.depth);
+      break;
+    case "br_if":
+      enc.byte(OP.br_if);
+      enc.u32(instr.depth);
+      break;
+    case "return":
+      enc.byte(OP.return);
+      break;
+    case "call":
+      enc.byte(OP.call);
+      enc.u32(instr.funcIdx);
+      break;
+    case "call_indirect":
+      enc.byte(OP.call_indirect);
+      enc.u32(instr.typeIdx);
+      enc.u32(instr.tableIdx);
+      break;
+    case "drop":
+      enc.byte(OP.drop);
+      break;
+    case "select":
+      enc.byte(OP.select);
+      break;
+    case "local.get":
+      enc.byte(OP.local_get);
+      enc.u32(instr.index);
+      break;
+    case "local.set":
+      enc.byte(OP.local_set);
+      enc.u32(instr.index);
+      break;
+    case "local.tee":
+      enc.byte(OP.local_tee);
+      enc.u32(instr.index);
+      break;
+    case "global.get":
+      enc.byte(OP.global_get);
+      enc.u32(instr.index);
+      break;
+    case "global.set":
+      enc.byte(OP.global_set);
+      enc.u32(instr.index);
+      break;
+    case "i32.const":
+      enc.byte(OP.i32_const);
+      enc.i32(instr.value);
+      break;
+    case "i64.const":
+      enc.byte(OP.i64_const);
+      enc.i64(instr.value);
+      break;
+    case "f64.const":
+      enc.byte(OP.f64_const);
+      enc.f64(instr.value);
+      break;
+    case "f32.const":
+      enc.byte(OP.f64_const);
+      enc.f32(instr.value);
+      break;
+    case "i32.eqz":
+      enc.byte(OP.i32_eqz);
+      break;
+    case "i32.eq":
+      enc.byte(OP.i32_eq);
+      break;
+    case "i32.ne":
+      enc.byte(OP.i32_ne);
+      break;
+    case "i32.lt_s":
+      enc.byte(OP.i32_lt_s);
+      break;
+    case "i32.le_s":
+      enc.byte(OP.i32_le_s);
+      break;
+    case "i32.gt_s":
+      enc.byte(OP.i32_gt_s);
+      break;
+    case "i32.ge_s":
+      enc.byte(OP.i32_ge_s);
+      break;
+    case "i32.ge_u":
+      enc.byte(OP.i32_ge_u);
+      break;
+    case "i32.add":
+      enc.byte(OP.i32_add);
+      break;
+    case "i32.sub":
+      enc.byte(OP.i32_sub);
+      break;
+    case "i32.mul":
+      enc.byte(OP.i32_mul);
+      break;
+    case "i32.and":
+      enc.byte(OP.i32_and);
+      break;
+    case "i32.or":
+      enc.byte(OP.i32_or);
+      break;
+    case "f64.eq":
+      enc.byte(OP.f64_eq);
+      break;
+    case "f64.ne":
+      enc.byte(OP.f64_ne);
+      break;
+    case "f64.lt":
+      enc.byte(OP.f64_lt);
+      break;
+    case "f64.le":
+      enc.byte(OP.f64_le);
+      break;
+    case "f64.gt":
+      enc.byte(OP.f64_gt);
+      break;
+    case "f64.ge":
+      enc.byte(OP.f64_ge);
+      break;
+    case "f64.abs":
+      enc.byte(OP.f64_abs);
+      break;
+    case "f64.neg":
+      enc.byte(OP.f64_neg);
+      break;
+    case "f64.ceil":
+      enc.byte(OP.f64_ceil);
+      break;
+    case "f64.floor":
+      enc.byte(OP.f64_floor);
+      break;
+    case "f64.trunc":
+      enc.byte(OP.f64_trunc);
+      break;
+    case "f64.nearest":
+      enc.byte(OP.f64_nearest);
+      break;
+    case "f64.sqrt":
+      enc.byte(OP.f64_sqrt);
+      break;
+    case "f64.add":
+      enc.byte(OP.f64_add);
+      break;
+    case "f64.sub":
+      enc.byte(OP.f64_sub);
+      break;
+    case "f64.mul":
+      enc.byte(OP.f64_mul);
+      break;
+    case "f64.div":
+      enc.byte(OP.f64_div);
+      break;
+    case "i32.trunc_f64_s":
+      enc.byte(OP.i32_trunc_f64_s);
+      break;
+    case "f64.convert_i32_s":
+      enc.byte(OP.f64_convert_i32_s);
+      break;
+    case "ref.null":
+      enc.byte(OP.ref_null);
+      enc.i32(instr.typeIdx);
+      break;
+    case "ref.null.extern":
+      enc.byte(OP.ref_null);
+      enc.byte(TYPE.externref);
+      break;
+    case "ref.is_null":
+      enc.byte(OP.ref_is_null);
+      break;
+    case "ref.as_non_null":
+      enc.byte(OP.ref_as_non_null);
+      break;
+    case "ref.eq":
+      enc.byte(OP.ref_eq);
+      break;
+    case "ref.cast":
+      enc.byte(GC.prefix);
+      enc.byte(GC.ref_cast);
+      enc.byte(TYPE.ref);
+      enc.i32(instr.typeIdx);
+      break;
+    case "ref.test":
+      enc.byte(GC.prefix);
+      enc.byte(GC.ref_test);
+      enc.byte(TYPE.ref);
+      enc.i32(instr.typeIdx);
+      break;
+    case "struct.new":
+      enc.byte(GC.prefix);
+      enc.byte(GC.struct_new);
+      enc.u32(instr.typeIdx);
+      break;
+    case "struct.get":
+      enc.byte(GC.prefix);
+      enc.byte(GC.struct_get);
+      enc.u32(instr.typeIdx);
+      enc.u32(instr.fieldIdx);
+      break;
+    case "struct.set":
+      enc.byte(GC.prefix);
+      enc.byte(GC.struct_set);
+      enc.u32(instr.typeIdx);
+      enc.u32(instr.fieldIdx);
+      break;
+    case "array.new":
+      enc.byte(GC.prefix);
+      enc.byte(GC.array_new);
+      enc.u32(instr.typeIdx);
+      break;
+    case "array.new_fixed":
+      enc.byte(GC.prefix);
+      enc.byte(GC.array_new_fixed);
+      enc.u32(instr.typeIdx);
+      enc.u32(instr.length);
+      break;
+    case "array.new_default":
+      enc.byte(GC.prefix);
+      enc.byte(GC.array_new_default);
+      enc.u32(instr.typeIdx);
+      break;
+    case "array.get":
+      enc.byte(GC.prefix);
+      enc.byte(GC.array_get);
+      enc.u32(instr.typeIdx);
+      break;
+    case "array.get_s":
+      enc.byte(GC.prefix);
+      enc.byte(GC.array_get_s);
+      enc.u32(instr.typeIdx);
+      break;
+    case "array.set":
+      enc.byte(GC.prefix);
+      enc.byte(GC.array_set);
+      enc.u32(instr.typeIdx);
+      break;
+    case "array.len":
+      enc.byte(GC.prefix);
+      enc.byte(GC.array_len);
+      break;
+    case "memory.size":
+      enc.byte(OP.memory_size);
+      enc.byte(0x00);
+      break;
+    case "memory.grow":
+      enc.byte(OP.memory_grow);
+      enc.byte(0x00);
+      break;
+  }
+}
