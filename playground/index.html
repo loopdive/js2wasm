@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>ts2wasm playground</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; }
+    body { font-family: 'SF Mono', 'Fira Code', monospace; background: #1e1e1e; color: #d4d4d4; padding: 1rem; height: 100vh; display: flex; flex-direction: column; }
+    h2 { margin-bottom: 0.5rem; font-size: 1.1rem; color: #569cd6; }
+    .toolbar { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; }
+    button { background: #0e639c; color: white; border: none; padding: 0.4rem 1rem; cursor: pointer; font-family: inherit; font-size: 0.85rem; border-radius: 3px; }
+    button:hover { background: #1177bb; }
+    .container { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; flex: 1; min-height: 0; }
+    .pane { display: flex; flex-direction: column; min-height: 0; }
+    .tabs { display: flex; border-bottom: 1px solid #3e3e3e; }
+    .tab { padding: 0.3rem 0.8rem; cursor: pointer; font-size: 0.8rem; color: #888; border-bottom: 2px solid transparent; }
+    .tab.active { color: #d4d4d4; border-bottom-color: #569cd6; }
+    textarea { flex: 1; background: #1e1e1e; border: 1px solid #3e3e3e; padding: 0.8rem; color: #d4d4d4; font-family: inherit; font-size: 13px; resize: none; outline: none; tab-size: 2; }
+    pre { flex: 1; background: #1e1e1e; border: 1px solid #3e3e3e; padding: 0.8rem; overflow: auto; font-size: 13px; margin: 0; white-space: pre-wrap; }
+    .error { color: #f48771; }
+    .console { color: #b5cea8; }
+    .timing { font-size: 0.75rem; color: #666; margin-left: auto; padding: 0.3rem 0; }
+  </style>
+</head>
+<body>
+  <h2>ts2wasm playground</h2>
+  <div class="toolbar">
+    <button id="run">&#9654; compile &amp; run</button>
+    <button id="wat-only">wat</button>
+    <span class="timing" id="timing"></span>
+  </div>
+  <div class="container">
+    <div class="pane">
+      <textarea id="editor" spellcheck="false">export function fib(n: number): number {
+  if (n <= 1) return n;
+  return fib(n - 1) + fib(n - 2);
+}
+
+export function main(): number {
+  return fib(10);
+}</textarea>
+    </div>
+    <div class="pane">
+      <div class="tabs">
+        <div class="tab active" data-panel="wat">WAT</div>
+        <div class="tab" data-panel="console">Console</div>
+        <div class="tab" data-panel="errors">Errors</div>
+      </div>
+      <pre id="wat"></pre>
+      <pre id="console" class="console" style="display:none"></pre>
+      <pre id="errors" class="error" style="display:none"></pre>
+    </div>
+  </div>
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>
