@@ -137,6 +137,22 @@ export function generateModule(ast: TypedAST): WasmModule {
   // Third pass: compile function bodies
   compileDeclarations(ctx, ast.sourceFile);
 
+  // Copy metadata for .d.ts / helper generation
+  for (const [key, info] of ctx.externClasses) {
+    // Deduplicate: only add by className (skip full qualified duplicates)
+    if (key === info.className) {
+      mod.externClasses.push({
+        importPrefix: info.importPrefix,
+        namespacePath: info.namespacePath,
+        className: info.className,
+        constructorParams: info.constructorParams,
+        methods: info.methods,
+        properties: info.properties,
+      });
+    }
+  }
+  mod.stringLiteralValues = ctx.stringLiteralValues;
+
   return mod;
 }
 

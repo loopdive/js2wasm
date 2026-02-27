@@ -4,6 +4,9 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "ts2wasm": "./dist/cli.js"
+  },
   "exports": {
     ".": {
       "import": "./dist/index.js",
@@ -22,10 +25,11 @@
     "typescript": "^5.7"
   },
   "devDependencies": {
+    "@biomejs/biome": "^1",
     "@types/node": "^22",
+    "monaco-editor": "^0.55.1",
     "vite": "^6",
     "vite-plugin-dts": "^4",
-    "vitest": "^3",
-    "@biomejs/biome": "^1"
+    "vitest": "^3"
   }
 }

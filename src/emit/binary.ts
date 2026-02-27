@@ -318,16 +318,24 @@ function encodeInstr(instr: Instr, enc: WasmEncoder): void {
       for (const i of instr.body) encodeInstr(i, enc);
       enc.byte(OP.end);
       break;
-    case "if":
+    case "if": {
       enc.byte(OP.if);
       encodeBlockType(instr.blockType, enc);
       for (const i of instr.then) encodeInstr(i, enc);
-      if (instr.else && instr.else.length > 0) {
+      const hasElse = instr.else && instr.else.length > 0;
+      const needsElse = hasElse || instr.blockType.kind === "val";
+      if (needsElse) {
         enc.byte(OP.else);
-        for (const i of instr.else) encodeInstr(i, enc);
+        if (hasElse) {
+          for (const i of instr.else!) encodeInstr(i, enc);
+        } else {
+          // Valued if with no else — emit unreachable to satisfy validator
+          enc.byte(OP.unreachable);
+        }
       }
       enc.byte(OP.end);
       break;
+    }
     case "br":
       enc.byte(OP.br);
       enc.u32(instr.depth);

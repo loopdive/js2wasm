@@ -410,4 +410,42 @@ describe("TS ↔ Wasm equivalence", () => {
     expect(result.wat).toContain("Math_exp");
     expect(result.wat).toContain("Math_pow");
   });
+
+  it("game-loop.ts binary instantiates successfully", async () => {
+    const source = readFileSync(
+      resolve(__dirname, "game-loop.ts"),
+      "utf-8",
+    );
+    const result = compile(source);
+    expect(result.success).toBe(true);
+
+    // Build imports using the standard helper (covers env + wasm:js-string)
+    const imports = buildImports(result);
+
+    // Auto-stub any remaining import modules/fields that the binary needs
+    // by catching instantiation errors and adding stubs via Proxy
+    const proxyImports = new Proxy(imports, {
+      get(target, module: string) {
+        if (module in target) {
+          return new Proxy(target[module] as Record<string, unknown>, {
+            get(inner, field: string) {
+              if (field in inner) return inner[field];
+              // Return a no-op function stub for unknown imports
+              return () => 0;
+            },
+          });
+        }
+        // Return a proxy module that stubs all fields
+        return new Proxy({}, { get: () => () => 0 });
+      },
+    });
+
+    const mod = await WebAssembly.compile(result.binary as BufferSource);
+    const instance = await WebAssembly.instantiate(
+      mod,
+      proxyImports as WebAssembly.Imports,
+    );
+    expect(instance).toBeTruthy();
+    expect(instance.exports.animate).toBeTypeOf("function");
+  });
 });

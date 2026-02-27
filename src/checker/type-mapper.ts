@@ -40,14 +40,21 @@ export function mapTsTypeToWasm(
         !(t.flags & ts.TypeFlags.Null) &&
         !(t.flags & ts.TypeFlags.Undefined),
     );
-    if (nonNullish.length === 1 && type.types.length === 2) {
+    if (nonNullish.length === 1) {
       const inner = mapTsTypeToWasm(nonNullish[0]!, checker);
       if (inner.kind === "ref")
         return { kind: "ref_null", typeIdx: inner.typeIdx };
       // T | undefined for primitives → just use T (e.g. number | undefined → f64)
       return inner;
     }
-    // Real union → externref (can't represent as single Wasm type)
+    // Check if all non-nullish types map to the same Wasm kind (e.g. 0 | 2 → f64)
+    if (nonNullish.length > 1) {
+      const mapped = nonNullish.map((t) => mapTsTypeToWasm(t, checker));
+      if (mapped.every((m) => m.kind === mapped[0]!.kind)) {
+        return mapped[0]!;
+      }
+    }
+    // Real heterogeneous union → externref
     return { kind: "externref" };
   }
 
