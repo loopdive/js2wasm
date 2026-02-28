@@ -22,7 +22,7 @@ TypeScript normally transpiles to JavaScript, which requires a JS engine to run 
 
 ## Example
 
-Here is a regular TypeScript file with 962 bytes that compiles to 240 bytes of WebAssembly:
+Here is a regular TypeScript file with 962 bytes that compiles to 1.1kb of WebAssembly:
 
 ```ts
 export function fib(n: number): number {
@@ -154,15 +154,15 @@ Returns only the WAT text (debug).
 | Property access      | `p.x`, `p.y`                                                                          |
 | Object literals      | `{ x: 1, y: 2 }`                                                                      |
 | Destructuring        | `const { x, y } = p`, `const [a, b] = arr`                                            |
-| Optional chaining    | `obj?.prop`, `obj?.method()`                                                           |
-| Nullish coalescing   | `a ?? b`                                                                               |
+| Optional chaining    | `obj?.prop`, `obj?.method()`                                                          |
+| Nullish coalescing   | `a ?? b`                                                                              |
 | for-in               | `for (const key in obj)` → compile-time unrolling                                     |
 | Arrays               | `[1, 2, 3]`, `arr[i]`, `arr.length` → GC arrays                                       |
 | Enums                | `enum Dir { Up, Down }` → inlined constants                                           |
 | Strings              | `"hello"`, `a + b`, `===` → externref + wasm:js-string                                |
-| String methods       | `.toUpperCase()`, `.indexOf()`, `.slice()`, `.trim()`, etc.                            |
+| String methods       | `.toUpperCase()`, `.indexOf()`, `.slice()`, `.trim()`, etc.                           |
 | Template literals    | `` `value: ${x}` `` → string concat chain                                             |
-| Do-while             | `do { ... } while (cond)`                                                              |
+| Do-while             | `do { ... } while (cond)`                                                             |
 | Switch               | `switch (x) { case 1: ... break; default: ... }`                                      |
 | for-of               | `for (const x of arr) { ... }`                                                        |
 | External classes     | `declare class Foo { ... }` → opaque externref                                        |
@@ -172,18 +172,18 @@ Returns only the WAT text (debug).
 
 ### Not yet supported
 
-| Feature | Notes |
-| --- | --- |
-| Classes | `class Foo { ... }` — constructors, methods, inheritance |
-| Closures | Capturing outer variables in nested functions / arrow functions |
-| Generics | `function identity<T>(x: T): T` — runtime type parameters |
-| Spread / rest | `...args`, `[...arr]`, `{ ...obj }` |
-| Type narrowing | `typeof x === "string"`, union types, type guards |
-| Async / await | `async function`, `Promise`, `await` |
-| Array methods | `.map()`, `.filter()`, `.reduce()` with callbacks |
-| Multi-file modules | `import { foo } from "./bar"` — cross-file compilation |
-| Try / catch | `try { ... } catch (e) { ... } finally { ... }` |
-| `var`, `eval`, `with` | Not planned — use `let`/`const` instead |
+| Feature               | Notes                                                           |
+| --------------------- | --------------------------------------------------------------- |
+| Classes               | `class Foo { ... }` — constructors, methods, inheritance        |
+| Closures              | Capturing outer variables in nested functions / arrow functions |
+| Generics              | `function identity<T>(x: T): T` — runtime type parameters       |
+| Spread / rest         | `...args`, `[...arr]`, `{ ...obj }`                             |
+| Type narrowing        | `typeof x === "string"`, union types, type guards               |
+| Async / await         | `async function`, `Promise`, `await`                            |
+| Array methods         | `.map()`, `.filter()`, `.reduce()` with callbacks               |
+| Multi-file modules    | `import { foo } from "./bar"` — cross-file compilation          |
+| Try / catch           | `try { ... } catch (e) { ... } finally { ... }`                 |
+| `var`, `eval`, `with` | Not planned — use `let`/`const` instead                         |
 
 ## Architecture
 
