@@ -400,8 +400,7 @@ describe("TS ↔ Wasm equivalence", () => {
     expect(result.wat).toContain("(export");
 
     // .d.ts describes the exported animate function
-    expect(result.dts).toContain("export interface Exports");
-    expect(result.dts).toContain("animate(): void");
+    expect(result.dts).toContain("export declare function animate(): void;");
 
     // Import resolver handled all imports (no raw import statements left in WAT)
     expect(result.wat).not.toContain("import *");
@@ -447,5 +446,32 @@ describe("TS ↔ Wasm equivalence", () => {
     );
     expect(instance).toBeTruthy();
     expect(instance.exports.animate).toBeTypeOf("function");
+  });
+
+  it("exponentiation operator", async () => {
+    await assertEquivalent(
+      `
+      export function pow(a: number, b: number): number { return a ** b; }
+      export function square(x: number): number { return x ** 2; }
+      export function sqrtViaPow(x: number): number { return x ** 0.5; }
+      export function powAssign(x: number, y: number): number {
+        let result: number = x;
+        result **= y;
+        return result;
+      }
+      `,
+      [
+        { fn: "pow", args: [2, 10] },
+        { fn: "pow", args: [9, 0.5], approx: true },
+        { fn: "pow", args: [3, 0] },
+        { fn: "pow", args: [5, 1] },
+        { fn: "square", args: [7] },
+        { fn: "square", args: [-3] },
+        { fn: "sqrtViaPow", args: [9], approx: true },
+        { fn: "sqrtViaPow", args: [2], approx: true },
+        { fn: "powAssign", args: [2, 3] },
+        { fn: "powAssign", args: [5, 2] },
+      ],
+    );
   });
 });

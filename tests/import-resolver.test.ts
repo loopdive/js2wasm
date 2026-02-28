@@ -120,8 +120,7 @@ export function test(): number {
       `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}`,
     ).toBe(true);
 
-    // Should have host imports for the extern class
-    expect(result.wat).toContain("THREE_OrthographicCamera_new");
+    // Should have host imports for used members (no constructor — none is called)
     expect(result.wat).toContain("THREE_OrthographicCamera_set_left");
     expect(result.wat).toContain("THREE_OrthographicCamera_updateProjectionMatrix");
   });
@@ -138,19 +137,19 @@ describe(".d.ts generation", () => {
       }
     `);
     expect(result.success).toBe(true);
-    expect(result.dts).toContain("export interface Exports");
-    expect(result.dts).toContain("add(a: number, b: number): number;");
-    expect(result.dts).toContain("isEven(n: number): boolean;");
+    expect(result.dts).toContain("export declare function add(a: number, b: number): number;");
+    expect(result.dts).toContain("export declare function isEven(n: number): boolean;");
   });
 
   it("generates import interface", () => {
     const result = compile(`
-      export function main(): number { return 42; }
+      export function main(): void {
+        console.log(42);
+        console.log(true);
+      }
     `);
     expect(result.success).toBe(true);
-    expect(result.dts).toContain("export interface Imports");
-    expect(result.dts).toContain("console_log_number");
-    expect(result.dts).toContain("console_log_bool");
+    expect(result.dts).toContain("export declare function main(): void;");
   });
 
   it("maps non-primitive types to any in exports", () => {

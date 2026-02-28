@@ -96,6 +96,42 @@ export function emitBinary(mod: WasmModule): Uint8Array {
     });
   }
 
+  // Custom "name" section — function names for debugging/treemap
+  {
+    const nameEntries: { index: number; name: string }[] = [];
+    // Import functions
+    let funcIdx = 0;
+    for (const imp of mod.imports) {
+      if (imp.desc.kind === "func") {
+        nameEntries.push({ index: funcIdx, name: imp.name.replace(/_import$/, "") });
+        funcIdx++;
+      }
+    }
+    // Local functions
+    for (const f of mod.functions) {
+      if (f.name) {
+        nameEntries.push({ index: funcIdx, name: f.name });
+      }
+      funcIdx++;
+    }
+    if (nameEntries.length > 0) {
+      enc.section(SECTION.custom, (s) => {
+        s.name("name");
+        // Subsection 1: function names
+        const sub = new WasmEncoder();
+        sub.u32(nameEntries.length);
+        for (const entry of nameEntries) {
+          sub.u32(entry.index);
+          sub.name(entry.name);
+        }
+        const subData = sub.finish();
+        s.byte(1); // subsection id = 1 (function names)
+        s.u32(subData.length);
+        s.bytes(subData);
+      });
+    }
+  }
+
   return enc.finish();
 }
 
@@ -395,7 +431,7 @@ function encodeInstr(instr: Instr, enc: WasmEncoder): void {
       enc.f64(instr.value);
       break;
     case "f32.const":
-      enc.byte(OP.f64_const);
+      enc.byte(OP.f32_const);
       enc.f32(instr.value);
       break;
     case "i32.eqz":
@@ -436,6 +472,18 @@ function encodeInstr(instr: Instr, enc: WasmEncoder): void {
       break;
     case "i32.or":
       enc.byte(OP.i32_or);
+      break;
+    case "i32.xor":
+      enc.byte(OP.i32_xor);
+      break;
+    case "i32.shl":
+      enc.byte(OP.i32_shl);
+      break;
+    case "i32.shr_s":
+      enc.byte(OP.i32_shr_s);
+      break;
+    case "i32.shr_u":
+      enc.byte(OP.i32_shr_u);
       break;
     case "f64.eq":
       enc.byte(OP.f64_eq);
@@ -493,6 +541,9 @@ function encodeInstr(instr: Instr, enc: WasmEncoder): void {
       break;
     case "f64.convert_i32_s":
       enc.byte(OP.f64_convert_i32_s);
+      break;
+    case "f64.convert_i32_u":
+      enc.byte(OP.f64_convert_i32_u);
       break;
     case "ref.null":
       enc.byte(OP.ref_null);
@@ -574,6 +625,14 @@ function encodeInstr(instr: Instr, enc: WasmEncoder): void {
     case "array.len":
       enc.byte(GC.prefix);
       enc.byte(GC.array_len);
+      break;
+    case "ref.func":
+      enc.byte(OP.ref_func);
+      enc.u32(instr.funcIdx);
+      break;
+    case "call_ref":
+      enc.byte(OP.call_ref);
+      enc.u32(instr.typeIdx);
       break;
     case "memory.size":
       enc.byte(OP.memory_size);

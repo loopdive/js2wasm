@@ -122,6 +122,18 @@ function compileVariableStatement(
     }
 
     const name = decl.name.text;
+
+    // For arrow/function expression initializers, compile the expression first
+    // to get the actual closure struct ref type (resolveWasmType returns externref
+    // for function types, but closures need ref $struct)
+    if (decl.initializer && (ts.isArrowFunction(decl.initializer) || ts.isFunctionExpression(decl.initializer))) {
+      const actualType = compileExpression(ctx, fctx, decl.initializer);
+      const closureType = actualType ?? { kind: "externref" as const };
+      const localIdx = allocLocal(fctx, name, closureType);
+      fctx.body.push({ op: "local.set", index: localIdx });
+      continue;
+    }
+
     const varType = ctx.checker.getTypeAtLocation(decl);
     const wasmType = resolveWasmType(ctx, varType);
 

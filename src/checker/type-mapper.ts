@@ -67,6 +67,15 @@ export function mapTsTypeToWasm(
     return { kind: "externref" };
   }
 
+  // Type parameter (generics) — check constraint, fallback to externref
+  if (type.flags & ts.TypeFlags.TypeParameter) {
+    const constraint = checker.getBaseConstraintOfType(type);
+    if (constraint) {
+      return mapTsTypeToWasm(constraint, checker);
+    }
+    return { kind: "externref" };
+  }
+
   // any/unknown/error → treat as externref (opaque JS value)
   if (type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) {
     return { kind: "externref" };

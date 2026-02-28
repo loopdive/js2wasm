@@ -86,6 +86,28 @@ export interface CodegenContext {
   callbackCounter: number;
   /** Map from captured variable name → global index in mod.globals */
   capturedGlobals: Map<string, number>;
+  /** Set of class names (local classes compiled to Wasm GC structs) */
+  classSet: Set<string>;
+  /** Map from "ClassName_methodName" → method info for local classes */
+  classMethodSet: Set<string>;
+  /** Counter for generated closure types/functions */
+  closureCounter: number;
+  /** Map from local variable name → closure metadata (for call_ref dispatch) */
+  closureMap: Map<string, ClosureInfo>;
+  /** Resolved concrete types for generic functions (from call-site analysis) */
+  genericResolved: Map<string, { params: ValType[]; results: ValType[] }>;
+}
+
+/** Metadata for a closure stored in a local variable */
+export interface ClosureInfo {
+  /** Type index of the closure struct */
+  structTypeIdx: number;
+  /** Type index of the inner function type (for call_ref) */
+  funcTypeIdx: number;
+  /** Return type of the closure */
+  returnType: ValType | null;
+  /** Parameter types of the closure (excluding the closure struct self param) */
+  paramTypes: ValType[];
 }
 
 /** Per-function context */
@@ -137,6 +159,11 @@ export function generateModule(ast: TypedAST): WasmModule {
     declaredGlobals: new Map(),
     callbackCounter: 0,
     capturedGlobals: new Map(),
+    classSet: new Set(),
+    classMethodSet: new Set(),
+    closureCounter: 0,
+    closureMap: new Map(),
+    genericResolved: new Map(),
   };
 
   // Collect console.log imports (only variants actually used)
@@ -179,10 +206,12 @@ export function generateModule(ast: TypedAST): WasmModule {
   // Third pass: compile function bodies
   compileDeclarations(ctx, ast.sourceFile);
 
-  // Copy metadata for .d.ts / helper generation
+  // Copy metadata for .d.ts / helper generation — only include actually-used extern classes
+  const importNames = mod.imports.map((imp) => imp.name);
   for (const [key, info] of ctx.externClasses) {
-    // Deduplicate: only add by className (skip full qualified duplicates)
-    if (key === info.className) {
+    const prefix = info.importPrefix + "_";
+    const isUsed = importNames.some((n) => n.startsWith(prefix));
+    if (key === info.className && isUsed) {
       mod.externClasses.push({
         importPrefix: info.importPrefix,
         namespacePath: info.namespacePath,
@@ -526,6 +555,14 @@ function collectMathImports(
       if (MATH_HOST_METHODS_1ARG.has(method) || MATH_HOST_METHODS_2ARG.has(method) || method === "random") {
         needed.add(method);
       }
+    }
+    // ** and **= operators need Math.pow
+    if (
+      ts.isBinaryExpression(node) &&
+      (node.operatorToken.kind === ts.SyntaxKind.AsteriskAsteriskToken ||
+        node.operatorToken.kind === ts.SyntaxKind.AsteriskAsteriskEqualsToken)
+    ) {
+      needed.add("pow");
     }
     ts.forEachChild(node, visit);
   }
@@ -1268,6 +1305,156 @@ function collectEnumDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFile)
 }
 
 /** Collect all function declarations and interfaces */
+/** Collect a local class declaration: register struct type, constructor, and methods */
+function collectClassDeclaration(
+  ctx: CodegenContext,
+  decl: ts.ClassDeclaration,
+): void {
+  const className = decl.name!.text;
+  ctx.classSet.add(className);
+
+  // Find the constructor to determine struct fields from `this.x = ...` assignments
+  const ctor = decl.members.find(ts.isConstructorDeclaration) as ts.ConstructorDeclaration | undefined;
+  const fields: FieldDef[] = [];
+
+  if (ctor?.body) {
+    for (const stmt of ctor.body.statements) {
+      if (
+        ts.isExpressionStatement(stmt) &&
+        ts.isBinaryExpression(stmt.expression) &&
+        stmt.expression.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        ts.isPropertyAccessExpression(stmt.expression.left) &&
+        stmt.expression.left.expression.kind === ts.SyntaxKind.ThisKeyword
+      ) {
+        const fieldName = stmt.expression.left.name.text;
+        const fieldTsType = ctx.checker.getTypeAtLocation(stmt.expression.left);
+        const fieldType = resolveWasmType(ctx, fieldTsType);
+        if (!fields.some((f) => f.name === fieldName)) {
+          fields.push({ name: fieldName, type: fieldType, mutable: true });
+        }
+      }
+    }
+  }
+
+  // Also collect fields from property declarations (class Point { x: number; y: number; })
+  for (const member of decl.members) {
+    if (ts.isPropertyDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
+      const fieldName = member.name.text;
+      if (!fields.some((f) => f.name === fieldName)) {
+        const fieldTsType = ctx.checker.getTypeAtLocation(member);
+        const fieldType = resolveWasmType(ctx, fieldTsType);
+        fields.push({ name: fieldName, type: fieldType, mutable: true });
+      }
+    }
+  }
+
+  // Register the struct type
+  const structTypeIdx = ctx.mod.types.length;
+  ctx.mod.types.push({ kind: "struct", name: className, fields } as StructTypeDef);
+  ctx.structMap.set(className, structTypeIdx);
+  ctx.structFields.set(className, fields);
+
+  // Register constructor function: takes ctor params, returns (ref $structTypeIdx)
+  const ctorParams: ValType[] = [];
+  if (ctor) {
+    for (const param of ctor.parameters) {
+      const paramType = ctx.checker.getTypeAtLocation(param);
+      ctorParams.push(resolveWasmType(ctx, paramType));
+    }
+  }
+  const ctorResults: ValType[] = [{ kind: "ref", typeIdx: structTypeIdx }];
+  const ctorTypeIdx = addFuncType(ctx, ctorParams, ctorResults, `${className}_new_type`);
+  const ctorFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+  const ctorName = `${className}_new`;
+  ctx.funcMap.set(ctorName, ctorFuncIdx);
+
+  ctx.mod.functions.push({
+    name: ctorName,
+    typeIdx: ctorTypeIdx,
+    locals: [],
+    body: [],
+    exported: false,
+  });
+
+  // Register method functions
+  for (const member of decl.members) {
+    if (ts.isMethodDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
+      const methodName = member.name.text;
+      const fullName = `${className}_${methodName}`;
+      ctx.classMethodSet.add(fullName);
+
+      // First param is self: (ref $structTypeIdx)
+      const methodParams: ValType[] = [{ kind: "ref", typeIdx: structTypeIdx }];
+      for (const param of member.parameters) {
+        const paramType = ctx.checker.getTypeAtLocation(param);
+        methodParams.push(resolveWasmType(ctx, paramType));
+      }
+
+      const sig = ctx.checker.getSignatureFromDeclaration(member);
+      let methodResults: ValType[] = [];
+      if (sig) {
+        const retType = ctx.checker.getReturnTypeOfSignature(sig);
+        if (!isVoidType(retType)) {
+          methodResults = [resolveWasmType(ctx, retType)];
+        }
+      }
+
+      const methodTypeIdx = addFuncType(ctx, methodParams, methodResults, `${fullName}_type`);
+      const methodFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+      ctx.funcMap.set(fullName, methodFuncIdx);
+
+      ctx.mod.functions.push({
+        name: fullName,
+        typeIdx: methodTypeIdx,
+        locals: [],
+        body: [],
+        exported: false,
+      });
+    }
+  }
+}
+
+/**
+ * For a generic function, find the first call site in the source and resolve
+ * concrete param/return types from the checker's instantiated signature.
+ * Returns null if no call site is found (function stays with erased types).
+ */
+function resolveGenericCallSiteTypes(
+  ctx: CodegenContext,
+  funcName: string,
+  sourceFile: ts.SourceFile,
+): { params: ValType[]; results: ValType[] } | null {
+  let found: { params: ValType[]; results: ValType[] } | null = null;
+
+  function visit(node: ts.Node) {
+    if (found) return;
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === funcName
+    ) {
+      const sig = ctx.checker.getResolvedSignature(node);
+      if (sig) {
+        const params: ValType[] = [];
+        const sigParams = sig.getParameters();
+        for (let i = 0; i < sigParams.length; i++) {
+          const paramType = ctx.checker.getTypeOfSymbol(sigParams[i]!);
+          params.push(resolveWasmType(ctx, paramType));
+        }
+        const retType = ctx.checker.getReturnTypeOfSignature(sig);
+        const results: ValType[] = isVoidType(retType)
+          ? []
+          : [resolveWasmType(ctx, retType)];
+        found = { params, results };
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  ts.forEachChild(sourceFile, visit);
+  return found;
+}
+
 function collectDeclarations(
   ctx: CodegenContext,
   sourceFile: ts.SourceFile,
@@ -1287,6 +1474,13 @@ function collectDeclarations(
     }
   }
 
+  // Collect class declarations (struct types + constructor/method functions)
+  for (const stmt of sourceFile.statements) {
+    if (ts.isClassDeclaration(stmt) && stmt.name && !hasDeclareModifier(stmt)) {
+      collectClassDeclaration(ctx, stmt);
+    }
+  }
+
   // Third: collect function declarations (uses resolveWasmType for real type indices)
   for (const stmt of sourceFile.statements) {
     if (ts.isFunctionDeclaration(stmt) && stmt.name) {
@@ -1297,6 +1491,15 @@ function collectDeclarations(
       const sig = ctx.checker.getSignatureFromDeclaration(stmt);
       if (!sig) continue;
 
+      // Check if this is a generic function — resolve types from call site
+      const isGeneric = stmt.typeParameters && stmt.typeParameters.length > 0;
+      const resolved = isGeneric
+        ? resolveGenericCallSiteTypes(ctx, name, sourceFile)
+        : null;
+      if (resolved) {
+        ctx.genericResolved.set(name, resolved);
+      }
+
       // Ensure anonymous types in signature are registered as structs
       const retType = ctx.checker.getReturnTypeOfSignature(sig);
       if (!isVoidType(retType)) ensureStructForType(ctx, retType);
@@ -1305,25 +1508,36 @@ function collectDeclarations(
         ensureStructForType(ctx, pt);
       }
 
-      const params: ValType[] = [];
+      let params: ValType[];
+      let results: ValType[];
+
+      if (resolved) {
+        // Use call-site resolved types for generic functions
+        params = resolved.params;
+        results = resolved.results;
+      } else {
+        params = [];
+        for (let i = 0; i < stmt.parameters.length; i++) {
+          const param = stmt.parameters[i]!;
+          const paramType = ctx.checker.getTypeAtLocation(param);
+          const wasmType = resolveWasmType(ctx, paramType);
+          params.push(wasmType);
+        }
+        const r = ctx.checker.getReturnTypeOfSignature(sig);
+        results = isVoidType(r) ? [] : [resolveWasmType(ctx, r)];
+      }
+
       const optionalParams: OptionalParamInfo[] = [];
       for (let i = 0; i < stmt.parameters.length; i++) {
         const param = stmt.parameters[i]!;
-        const paramType = ctx.checker.getTypeAtLocation(param);
-        const wasmType = resolveWasmType(ctx, paramType);
-        params.push(wasmType);
         if (param.questionToken) {
-          optionalParams.push({ index: i, type: wasmType });
+          optionalParams.push({ index: i, type: params[i]! });
         }
       }
 
       if (optionalParams.length > 0) {
         ctx.funcOptionalParams.set(name, optionalParams);
       }
-
-      const results: ValType[] = isVoidType(retType)
-        ? []
-        : [resolveWasmType(ctx, retType)];
 
       const typeIdx = addFuncType(ctx, params, results, `${name}_type`);
       const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
@@ -1408,19 +1622,180 @@ function collectObjectType(
   }
 }
 
-/** Compile all function bodies */
+/** Compile all function bodies (including class constructors and methods) */
 function compileDeclarations(
   ctx: CodegenContext,
   sourceFile: ts.SourceFile,
 ): void {
-  let funcIdx = 0;
+  // Build a map from function name → index within ctx.mod.functions
+  const funcByName = new Map<string, number>();
+  for (let i = 0; i < ctx.mod.functions.length; i++) {
+    funcByName.set(ctx.mod.functions[i]!.name, i);
+  }
+
+  // Compile class constructors and methods
+  for (const stmt of sourceFile.statements) {
+    if (ts.isClassDeclaration(stmt) && stmt.name && !hasDeclareModifier(stmt)) {
+      compileClassBodies(ctx, stmt, funcByName);
+    }
+  }
+
+  // Compile top-level function declarations
   for (const stmt of sourceFile.statements) {
     if (ts.isFunctionDeclaration(stmt) && stmt.name && !hasDeclareModifier(stmt)) {
       if (stmt.body) {
-        const func = ctx.mod.functions[funcIdx]!;
-        compileFunctionBody(ctx, stmt, func);
+        const idx = funcByName.get(stmt.name.text);
+        if (idx !== undefined) {
+          const func = ctx.mod.functions[idx]!;
+          compileFunctionBody(ctx, stmt, func);
+        }
       }
-      funcIdx++;
+    }
+  }
+}
+
+/** Compile constructor and method bodies for a class declaration */
+function compileClassBodies(
+  ctx: CodegenContext,
+  decl: ts.ClassDeclaration,
+  funcByName: Map<string, number>,
+): void {
+  const className = decl.name!.text;
+  const structTypeIdx = ctx.structMap.get(className)!;
+  const fields = ctx.structFields.get(className)!;
+
+  // Compile constructor
+  const ctor = decl.members.find(ts.isConstructorDeclaration) as ts.ConstructorDeclaration | undefined;
+  const ctorName = `${className}_new`;
+  const ctorLocalIdx = funcByName.get(ctorName);
+  if (ctorLocalIdx !== undefined) {
+    const func = ctx.mod.functions[ctorLocalIdx]!;
+    const params: { name: string; type: ValType }[] = [];
+    if (ctor) {
+      for (const param of ctor.parameters) {
+        const paramName = (param.name as ts.Identifier).text;
+        const paramType = ctx.checker.getTypeAtLocation(param);
+        params.push({ name: paramName, type: resolveWasmType(ctx, paramType) });
+      }
+    }
+
+    const fctx: FunctionContext = {
+      name: ctorName,
+      params,
+      locals: [],
+      localMap: new Map(),
+      returnType: { kind: "ref", typeIdx: structTypeIdx },
+      body: [],
+      blockDepth: 0,
+      breakStack: [],
+      continueStack: [],
+    };
+
+    for (let i = 0; i < params.length; i++) {
+      fctx.localMap.set(params[i]!.name, i);
+    }
+
+    // Allocate a local for the struct instance
+    const selfLocal = allocLocal(fctx, "__self", { kind: "ref", typeIdx: structTypeIdx });
+
+    // Push default values for all fields, then struct.new
+    for (const field of fields) {
+      if (field.type.kind === "f64") {
+        fctx.body.push({ op: "f64.const", value: 0 });
+      } else if (field.type.kind === "i32") {
+        fctx.body.push({ op: "i32.const", value: 0 });
+      } else if (field.type.kind === "externref") {
+        fctx.body.push({ op: "ref.null.extern" });
+      } else if (field.type.kind === "ref" || field.type.kind === "ref_null") {
+        fctx.body.push({ op: "ref.null", typeIdx: field.type.typeIdx });
+      }
+    }
+    fctx.body.push({ op: "struct.new", typeIdx: structTypeIdx });
+    fctx.body.push({ op: "local.set", index: selfLocal });
+
+    // Compile constructor body — `this` maps to __self local
+    fctx.localMap.set("this", selfLocal);
+    ctx.currentFunc = fctx;
+
+    if (ctor?.body) {
+      for (const stmt of ctor.body.statements) {
+        compileStatement(ctx, fctx, stmt);
+      }
+    }
+
+    // Return the struct instance
+    fctx.body.push({ op: "local.get", index: selfLocal });
+
+    func.locals = fctx.locals;
+    func.body = fctx.body;
+    ctx.currentFunc = null;
+  }
+
+  // Compile methods
+  for (const member of decl.members) {
+    if (ts.isMethodDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
+      const methodName = member.name.text;
+      const fullName = `${className}_${methodName}`;
+      const methodLocalIdx = funcByName.get(fullName);
+      if (methodLocalIdx === undefined) continue;
+
+      const func = ctx.mod.functions[methodLocalIdx]!;
+      const sig = ctx.checker.getSignatureFromDeclaration(member);
+      const retType = sig ? ctx.checker.getReturnTypeOfSignature(sig) : undefined;
+
+      // First param is self
+      const params: { name: string; type: ValType }[] = [
+        { name: "this", type: { kind: "ref", typeIdx: structTypeIdx } },
+      ];
+      for (const param of member.parameters) {
+        const paramName = (param.name as ts.Identifier).text;
+        const paramType = ctx.checker.getTypeAtLocation(param);
+        params.push({ name: paramName, type: resolveWasmType(ctx, paramType) });
+      }
+
+      const fctx: FunctionContext = {
+        name: fullName,
+        params,
+        locals: [],
+        localMap: new Map(),
+        returnType: retType && !isVoidType(retType) ? resolveWasmType(ctx, retType) : null,
+        body: [],
+        blockDepth: 0,
+        breakStack: [],
+        continueStack: [],
+      };
+
+      for (let i = 0; i < params.length; i++) {
+        fctx.localMap.set(params[i]!.name, i);
+      }
+
+      ctx.currentFunc = fctx;
+
+      if (member.body) {
+        for (const stmt of member.body.statements) {
+          compileStatement(ctx, fctx, stmt);
+        }
+      }
+
+      // Ensure valid return for non-void methods
+      if (fctx.returnType) {
+        const lastInstr = fctx.body[fctx.body.length - 1];
+        if (!lastInstr || lastInstr.op !== "return") {
+          if (fctx.returnType.kind === "f64") {
+            fctx.body.push({ op: "f64.const", value: 0 });
+          } else if (fctx.returnType.kind === "i32") {
+            fctx.body.push({ op: "i32.const", value: 0 });
+          } else if (fctx.returnType.kind === "externref") {
+            fctx.body.push({ op: "ref.null.extern" });
+          } else if (fctx.returnType.kind === "ref" || fctx.returnType.kind === "ref_null") {
+            fctx.body.push({ op: "ref.null", typeIdx: fctx.returnType.typeIdx });
+          }
+        }
+      }
+
+      func.locals = fctx.locals;
+      func.body = fctx.body;
+      ctx.currentFunc = null;
     }
   }
 }
@@ -1433,19 +1808,29 @@ function compileFunctionBody(
   const sig = ctx.checker.getSignatureFromDeclaration(decl)!;
   const retType = ctx.checker.getReturnTypeOfSignature(sig);
 
+  // Use call-site resolved types for generic functions
+  const resolved = ctx.genericResolved.get(func.name);
+
   const params: { name: string; type: ValType }[] = [];
-  for (const param of decl.parameters) {
+  for (let i = 0; i < decl.parameters.length; i++) {
+    const param = decl.parameters[i]!;
     const paramName = (param.name as ts.Identifier).text;
-    const paramType = ctx.checker.getTypeAtLocation(param);
-    params.push({ name: paramName, type: resolveWasmType(ctx, paramType) });
+    const paramType = resolved
+      ? resolved.params[i]!
+      : resolveWasmType(ctx, ctx.checker.getTypeAtLocation(param));
+    params.push({ name: paramName, type: paramType });
   }
+
+  const returnType = resolved
+    ? (resolved.results.length > 0 ? resolved.results[0]! : null)
+    : (isVoidType(retType) ? null : resolveWasmType(ctx, retType));
 
   const fctx: FunctionContext = {
     name: func.name,
     params,
     locals: [],
     localMap: new Map(),
-    returnType: isVoidType(retType) ? null : resolveWasmType(ctx, retType),
+    returnType,
     body: [],
     blockDepth: 0,
     breakStack: [],
