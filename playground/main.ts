@@ -1,6 +1,7 @@
 import * as monaco from "monaco-editor";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker";
+import * as ts from "typescript";
 import { compile } from "../src/index.js";
 import { domApi, jsString as jsStringPolyfill } from "../src/runtime.js";
 import { WasmTreemap } from "./wasm-treemap.js";
@@ -513,6 +514,7 @@ inputFile.model.onDidChangeContent(() => {
   lastResult = null;
   compileBtn.disabled = false;
   runBtn.disabled = true;
+  benchBtn.disabled = true;
   downloadWatBtn.disabled = true;
   downloadWasmBtn.disabled = true;
 });
@@ -529,6 +531,7 @@ const downloadWatBtn = document.getElementById(
 const downloadWasmBtn = document.getElementById(
   "download-wasm",
 ) as HTMLButtonElement;
+const benchBtn = document.getElementById("bench") as HTMLButtonElement;
 const treemapPanel = document.getElementById("treemap-panel")!;
 const previewPanel = document.getElementById("preview-panel")!;
 
@@ -762,6 +765,7 @@ function compileOnly() {
   timingSpan.textContent = `compile: ${compileTime.toFixed(1)}ms${result.success ? "" : " (failed)"}`;
   compileBtn.disabled = true;
   runBtn.disabled = !result.success;
+  benchBtn.disabled = !result.success;
   downloadWatBtn.disabled = !result.success;
   downloadWasmBtn.disabled = !result.success;
 
@@ -930,9 +934,114 @@ function downloadWasm() {
   URL.revokeObjectURL(url);
 }
 
+// ─── Benchmark ───────────────────────────────────────────────────────────
+const BENCH_ITERATIONS = 10_000;
+
+async function runBenchmark() {
+  if (!lastResult?.success) {
+    compileOnly();
+    if (!lastResult?.success) return;
+  }
+
+  consolePre.textContent = `Running benchmark (${BENCH_ITERATIONS.toLocaleString()} iterations)…\n`;
+  showOutputPanel("console");
+  benchBtn.disabled = true;
+
+  // Yield to let the UI update before blocking
+  await new Promise((r) => setTimeout(r, 50));
+
+  // ── WASM setup ──
+  const wasmRoot = document.createElement("div");
+  const { env: wasmEnv, setExports } = buildEnv(lastResult, () => {}, wasmRoot);
+
+  let instance: WebAssembly.Instance;
+  try {
+    ({ instance } = await WebAssembly.instantiate(
+      lastResult.binary as BufferSource,
+      { env: wasmEnv },
+    ));
+  } catch {
+    ({ instance } = await WebAssembly.instantiate(
+      lastResult.binary as BufferSource,
+      { env: wasmEnv, "wasm:js-string": jsStringPolyfill },
+    ));
+  }
+  const wasmExports = instance.exports as Record<string, Function>;
+  setExports(wasmExports);
+
+  if (typeof wasmExports.main !== "function") {
+    consolePre.textContent = "No main() function found in WASM exports";
+    benchBtn.disabled = false;
+    return;
+  }
+
+  // ── JS setup ──
+  const source = inputFile.model.getValue();
+  const transpiled = ts.transpileModule(source, {
+    compilerOptions: { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.ESNext },
+  });
+  const cleanJs = transpiled.outputText.replace(/^export /gm, "");
+  const mockConsole = { log() {}, warn() {}, error() {} };
+  const jsRoot = document.createElement("div");
+  const mockDoc = new Proxy(document, {
+    get(target, prop) {
+      if (prop === "body") return jsRoot;
+      const val = (target as any)[prop];
+      return typeof val === "function" ? val.bind(target) : val;
+    },
+  });
+
+  let jsMain: Function;
+  try {
+    const factory = new Function(
+      "console",
+      "document",
+      cleanJs + "\nreturn main;",
+    );
+    jsMain = factory(mockConsole, mockDoc);
+  } catch (e) {
+    consolePre.textContent = `Failed to create JS main: ${e}`;
+    benchBtn.disabled = false;
+    return;
+  }
+
+  // ── Warmup ──
+  for (let i = 0; i < 100; i++) wasmExports.main();
+  for (let i = 0; i < 100; i++) jsMain();
+
+  // ── Benchmark WASM ──
+  const wasmT0 = performance.now();
+  for (let i = 0; i < BENCH_ITERATIONS; i++) wasmExports.main();
+  const wasmTime = performance.now() - wasmT0;
+
+  // ── Benchmark JS ──
+  const jsT0 = performance.now();
+  for (let i = 0; i < BENCH_ITERATIONS; i++) jsMain();
+  const jsTime = performance.now() - jsT0;
+
+  // ── Results ──
+  const ratio = jsTime / wasmTime;
+  const winner =
+    ratio > 1
+      ? `WASM is ${ratio.toFixed(2)}× faster`
+      : `JS is ${(1 / ratio).toFixed(2)}× faster`;
+
+  consolePre.textContent = [
+    `Benchmark: main() × ${BENCH_ITERATIONS.toLocaleString()}`,
+    ``,
+    `  WASM:  ${wasmTime.toFixed(1)}ms  (${((wasmTime / BENCH_ITERATIONS) * 1000).toFixed(1)}µs/call)`,
+    `  JS:    ${jsTime.toFixed(1)}ms  (${((jsTime / BENCH_ITERATIONS) * 1000).toFixed(1)}µs/call)`,
+    ``,
+    `  ${winner}`,
+  ].join("\n");
+
+  benchBtn.disabled = false;
+}
+
 // ─── Event listeners ────────────────────────────────────────────────────
 compileBtn.addEventListener("click", compileOnly);
 runBtn.addEventListener("click", runOnly);
+benchBtn.addEventListener("click", runBenchmark);
 downloadWatBtn.addEventListener("click", downloadWat);
 downloadWasmBtn.addEventListener("click", downloadWasm);
 
