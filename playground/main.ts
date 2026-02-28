@@ -6,7 +6,8 @@ import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker"
 import * as ts from "typescript";
 import { compile } from "../src/index.js";
 import { domApi, jsString as jsStringPolyfill } from "../src/runtime.js";
-import { WasmTreemap } from "./wasm-treemap.js";
+import { WasmTreemap, parseWasm } from "./wasm-treemap.js";
+import type { WasmData, WasmSection } from "./wasm-treemap.js";
 
 self.MonacoEnvironment = {
   getWorker(_workerId: string, label: string) {
@@ -18,168 +19,448 @@ self.MonacoEnvironment = {
 };
 
 // Default source code for the playground file
-const DEFAULT_SOURCE = `// ── Classes with constructors, methods & properties ──────
-class Vec2 {
-  x: number;
-  y: number;
-  constructor(x: number, y: number) {
-    this.x = x;
-    this.y = y;
-  }
-  length(): number {
-    return Math.sqrt(this.x * this.x + this.y * this.y);
-  }
-  dot(other: Vec2): number {
-    return this.x * other.x + this.y * other.y;
-  }
-  add(other: Vec2): Vec2 {
-    return new Vec2(this.x + other.x, this.y + other.y);
+const DEFAULT_SOURCE = `// ═══════════════════════════════════════════════════════
+// ts2wasm Email Client Demo
+// ═══════════════════════════════════════════════════════
+// This entire UI is rendered by WebAssembly — compiled
+// from the TypeScript you see here. The host browser
+// provides DOM APIs via imports; all logic, layout, and
+// event handling runs inside the Wasm sandbox.
+
+// ── Classes ─────────────────────────────────────────────
+class Email {
+  from: string;
+  subject: string;
+  preview: string;
+  read: number; // 0 = unread, 1 = read (wasm i32 bool)
+  constructor(from: string, subject: string, preview: string) {
+    this.from = from;
+    this.subject = subject;
+    this.preview = preview;
+    this.read = 0;
   }
 }
 
-// ── Enums ────────────────────────────────────────────────
-enum Direction { Up, Down, Left, Right }
+// ── Enums & switch ──────────────────────────────────────
+enum Folder { Inbox, Sent, Drafts, About }
 
-function directionToAngle(d: Direction): number {
-  switch (d) {
-    case Direction.Up:    return 90;
-    case Direction.Down:  return 270;
-    case Direction.Left:  return 180;
-    case Direction.Right: return 0;
-    default: return 0;
+function folderIcon(f: Folder): string {
+  switch (f) {
+    case Folder.Inbox:  return ">> ";
+    case Folder.Sent:   return "<< ";
+    case Folder.Drafts: return "// ";
+    case Folder.About:  return "?  ";
+    default: return "";
   }
 }
 
-// ── Arrays & array methods ───────────────────────────────
-function sumArray(arr: number[]): number {
-  let total = 0;
-  for (let i = 0; i < arr.length; i++) {
-    total += arr[i];
-  }
-  return total;
-}
-
-function countPositive(values: number[]): number {
-  let count = 0;
-  for (const v of values) {
-    if (v > 0) count += 1;
-  }
-  return count;
-}
-
-// ── Bitwise operators ────────────────────────────────────
-function packRGBA(r: number, g: number, b: number, a: number): number {
-  return ((a & 0xFF) << 24) | ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
-}
-
-// ── Generics ─────────────────────────────────────────────
+// ── Generics ────────────────────────────────────────────
 function clamp<T extends number>(value: T, min: T, max: T): T {
   if (value < min) return min;
   if (value > max) return max;
   return value;
 }
 
-// ── Optional parameters ──────────────────────────────────
-function lerp(a: number, b: number, t?: number): number {
-  if (!t) t = 0.5;
-  return a + (b - a) * t;
-}
-
-// ── Ternary & comparison ─────────────────────────────────
-function sign(x: number): number {
-  return x > 0 ? 1 : x < 0 ? -1 : 0;
-}
-
-// ── Math builtins ────────────────────────────────────────
-function distance(x1: number, y1: number, x2: number, y2: number): number {
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  return Math.sqrt(dx * dx + dy * dy);
-}
-
-// ── Exponentiation ───────────────────────────────────────
-function area(radius: number): number {
-  return Math.PI * radius ** 2;
-}
-
-// ── While loop ───────────────────────────────────────────
-function collatz(n: number): number {
-  let steps = 0;
-  while (n !== 1) {
-    n = n % 2 === 0 ? n / 2 : 3 * n + 1;
-    steps += 1;
+// ── Rest params ─────────────────────────────────────────
+function countUnread(...emails: Email[]): number {
+  let n = 0;
+  for (let i = 0; i < emails.length; i++) {
+    if (emails[i].read === 0) n = n + 1;
   }
-  return steps;
+  return n;
 }
 
-// ── Recursion ────────────────────────────────────────────
+// ── Destructuring ───────────────────────────────────────
+interface Rect { x: number; y: number; w: number; h: number }
+
+function area(r: Rect): number {
+  const { w, h } = r;
+  return w * h;
+}
+
+// ── Recursion (for benchmarking) ────────────────────────
 export function fib(n: number): number {
   if (n <= 1) return n;
   return fib(n - 1) + fib(n - 2);
 }
 
+// ── Bitwise (badge color) ───────────────────────────────
+function badgeColor(count: number): string {
+  const r = clamp(count * 40, 80, 255);
+  const packed = ((r & 0xFF) << 16) | (0x33 << 8) | 0x55;
+  return "#" + packed.toString();
+}
+
+// ── Helpers ─────────────────────────────────────────────
+function px(n: number): string { return n.toString() + "px"; }
+
+function el(tag: string, css: string): HTMLElement {
+  const e = document.createElement(tag);
+  e.style.cssText = css;
+  return e;
+}
+
+// ═══════════════════════════════════════════════════════
+// Main: build the email client UI
+// ═══════════════════════════════════════════════════════
+
 export function main(): void {
-  // exercise the features above
-  const a = new Vec2(3, 4);
-  const b = new Vec2(1, 2);
-  const c = a.add(b);
-  console.log("|a| = " + a.length().toString());
-  console.log("a · b = " + a.dot(b).toString());
-  console.log("a + b = (" + c.x.toString() + ", " + c.y.toString() + ")");
-  console.log("sign(-5) = " + sign(-5).toString());
-  console.log("lerp(0,100) = " + lerp(0, 100).toString());
-  console.log("distance = " + distance(0, 0, 3, 4).toString());
-  console.log("collatz(27) = " + collatz(27).toString());
-  console.log("area(5) = " + area(5).toString());
-  console.log("packRGBA = " + packRGBA(255, 128, 0, 255).toString());
-  console.log("clamp(15,0,10) = " + clamp(15, 0, 10).toString());
-  console.log("dirAngle(Up) = " + directionToAngle(Direction.Up).toString());
-  const nums = [10, -3, 7, -1, 5];
-  console.log("sum = " + sumArray(nums).toString());
-  console.log("positives = " + countPositive(nums).toString());
+  // ── Sample data ──
+  const inbox = [
+    new Email("alice@example.com", "Meeting tomorrow",
+      "Hey, can we move the standup to 10am?"),
+    new Email("bob@dev.io", "PR Review: wasm-gc arrays",
+      "Looks good! One comment on the bounds check."),
+    new Email("carol@acme.co", "Invoice #1042",
+      "Please find attached the invoice for Q4."),
+    new Email("dave@startup.xyz", "Launch day!",
+      "We're live! Thanks for all the help."),
+    new Email("eve@security.net", "Vulnerability report",
+      "Found an XSS in the login form, details below.")
+  ];
 
-  // ── Compute-heavy loop ──
-  let fibSum = 0;
-  for (let i = 0; i < 10000; i++) {
-    fibSum += fib(10);
+  const sent = [
+    new Email("you@ts2wasm.dev", "Re: Meeting tomorrow",
+      "10am works for me, see you then."),
+    new Email("you@ts2wasm.dev", "Re: PR Review",
+      "Fixed the bounds check, PTAL.")
+  ];
+
+  const drafts = [
+    new Email("you@ts2wasm.dev", "Wasm GC proposal notes",
+      "Key points: struct types, array types, i31ref...")
+  ];
+
+  document.body.style.cssText =
+    "margin:0;background:#111;color:#ddd;" +
+    "font-family:system-ui,sans-serif;overflow:hidden";
+
+  const layout = el("div",
+    "display:flex;height:100vh;width:100vw");
+
+  // ── Sidebar ──────────────────────────────────────────
+  const sidebar = el("nav",
+    "width:220px;background:#1a1a2e;padding:0.75rem 0;" +
+    "display:flex;flex-direction:column;" +
+    "border-right:1px solid #2a2a4a");
+
+  const logo = el("div",
+    "padding:0.5rem 1rem 1rem;font-size:0.7rem;" +
+    "text-transform:uppercase;letter-spacing:2px;color:#555");
+  logo.textContent = "ts2wasm mail";
+  sidebar.appendChild(logo);
+
+  const contentPanel = el("div",
+    "flex:1;display:flex;flex-direction:column;overflow:hidden");
+
+  const folders = ["Inbox", "Sent", "Drafts", "About"];
+  const counts = [
+    countUnread(inbox[0], inbox[1], inbox[2], inbox[3], inbox[4]),
+    0, 0, 0
+  ];
+
+  let activeBtn: HTMLElement | null = null;
+
+  for (let i = 0; i < folders.length; i++) {
+    const row = el("div",
+      "display:flex;align-items:center;padding:0.5rem 1rem;" +
+      "cursor:pointer;color:#8888aa;font-size:0.85rem;" +
+      "border-left:3px solid transparent");
+
+    const icon = el("span", "margin-right:0.5rem;font-family:monospace;" +
+      "font-size:0.75rem;color:#666");
+    icon.textContent = folderIcon(i);
+    row.appendChild(icon);
+
+    const label = el("span", "flex:1");
+    label.textContent = folders[i];
+    row.appendChild(label);
+
+    if (counts[i] > 0) {
+      const badge = el("span",
+        "background:" + badgeColor(counts[i]) + ";" +
+        "color:#fff;font-size:0.65rem;padding:1px 6px;" +
+        "border-radius:8px;font-weight:bold");
+      badge.textContent = counts[i].toString();
+      row.appendChild(badge);
+    }
+
+    row.addEventListener("mouseenter", () => {
+      row.style.background = "#222244";
+    });
+    row.addEventListener("mouseleave", () => {
+      if (activeBtn !== row) row.style.background = "transparent";
+    });
+    row.addEventListener("click", () => {
+      if (activeBtn !== null) {
+        activeBtn.style.background = "transparent";
+        activeBtn.style.borderLeftColor = "transparent";
+        activeBtn.style.color = "#8888aa";
+      }
+      activeBtn = row;
+      row.style.background = "#222244";
+      row.style.borderLeftColor = "#7c3aed";
+      row.style.color = "#fff";
+      showFolder(i, inbox, sent, drafts, contentPanel);
+    });
+
+    sidebar.appendChild(row);
   }
-  console.log("fibSum(10k) = " + fibSum.toString());
+  layout.appendChild(sidebar);
 
-  document.body.style.background = "#111";
-  document.body.style.color = "#eee";
-  document.body.style.margin = "0";
+  layout.appendChild(contentPanel);
+  document.body.appendChild(layout);
 
-  const app = document.createElement("div");
-  app.style.fontFamily = "system-ui, sans-serif";
-  app.style.padding = "2rem";
+  // Show inbox by default
+  showFolder(Folder.Inbox, inbox, sent, drafts, contentPanel);
+  console.log("email client ready");
+}
 
-  const h1 = document.createElement("h1");
-  h1.textContent = "Hello from WebAssembly!";
-  h1.style.color = "#fff";
-  app.appendChild(h1);
+// ── Folder views ───────────────────────────────────────
+function showFolder(
+  folder: number,
+  inbox: Email[],
+  sent: Email[],
+  drafts: Email[],
+  panel: HTMLElement
+): void {
+  panel.innerHTML = "";
 
-  const p = document.createElement("p");
-  p.textContent = "fib(10) = " + fib(10).toString();
-  p.style.color = "#aaa";
-  app.appendChild(p);
+  if (folder === 0) showEmailList("Inbox", inbox, panel);
+  if (folder === 1) showEmailList("Sent", sent, panel);
+  if (folder === 2) showEmailList("Drafts", drafts, panel);
+  if (folder === 3) showAbout(panel);
+}
 
-  const btn = document.createElement("button");
-  btn.textContent = "Run fib(20)";
-  btn.style.padding = "0.5rem 1rem";
-  btn.style.fontSize = "1rem";
-  btn.style.border = "none";
-  btn.style.borderRadius = "4px";
-  btn.style.background = "#fff";
-  btn.style.color = "#111";
-  btn.addEventListener("click", () => {
-    const result = fib(20);
-    p.textContent = "fib(20) = " + result.toString();
-    console.log("fib(20) = " + result.toString());
+function showEmailList(
+  title: string,
+  emails: Email[],
+  panel: HTMLElement
+): void {
+  // Header bar
+  const header = el("div",
+    "padding:0.75rem 1.25rem;border-bottom:1px solid #2a2a3a;" +
+    "font-size:1rem;font-weight:bold;color:#fff;" +
+    "background:#161628");
+  header.textContent = title + " (" + emails.length.toString() + ")";
+  panel.appendChild(header);
+
+  // Email list
+  const list = el("div", "flex:1;overflow-y:auto");
+
+  for (let i = 0; i < emails.length; i++) {
+    const mail = emails[i];
+    const row = el("div",
+      "padding:0.75rem 1.25rem;border-bottom:1px solid #1e1e35;" +
+      "cursor:pointer");
+
+    // Unread dot
+    if (mail.read === 0) {
+      const dot = el("span",
+        "display:inline-block;width:6px;height:6px;" +
+        "background:#7c3aed;border-radius:50%;" +
+        "margin-right:0.5rem;vertical-align:middle");
+      row.appendChild(dot);
+    }
+
+    const from = el("span",
+      "font-size:0.8rem;font-weight:" +
+      (mail.read === 0 ? "bold" : "normal") +
+      ";color:" + (mail.read === 0 ? "#fff" : "#999"));
+    from.textContent = mail.from;
+    row.appendChild(from);
+
+    const subj = el("div",
+      "font-size:0.85rem;color:#ccc;margin-top:2px;" +
+      "font-weight:" + (mail.read === 0 ? "600" : "normal"));
+    subj.textContent = mail.subject;
+    row.appendChild(subj);
+
+    const prev = el("div",
+      "font-size:0.75rem;color:#666;margin-top:2px;" +
+      "overflow:hidden;white-space:nowrap");
+    prev.textContent = mail.preview;
+    row.appendChild(prev);
+
+    row.addEventListener("mouseenter", () => {
+      row.style.background = "#1a1a35";
+    });
+    row.addEventListener("mouseleave", () => {
+      row.style.background = "transparent";
+    });
+    row.addEventListener("click", () => {
+      mail.read = 1;
+      from.style.fontWeight = "normal";
+      from.style.color = "#999";
+      subj.style.fontWeight = "normal";
+      console.log("read: " + mail.subject);
+    });
+
+    list.appendChild(row);
+  }
+  panel.appendChild(list);
+}
+
+// ── About / Benchmarks page ─────────────────────────────
+
+function benchCard(
+  title: string, desc: string, body: HTMLElement
+): HTMLElement {
+  const card = el("div",
+    "padding:0.75rem;background:#1a1a35;" +
+    "border-radius:6px;border:1px solid #2a2a4a;" +
+    "margin-bottom:0.5rem");
+  const t = el("div",
+    "font-size:0.8rem;color:#fff;font-weight:bold");
+  t.textContent = title;
+  card.appendChild(t);
+  const d = el("div",
+    "font-size:0.7rem;color:#666;margin:2px 0 6px");
+  d.textContent = desc;
+  card.appendChild(d);
+  const row = el("div", "display:flex;align-items:center;gap:0.5rem");
+  const btn = el("button",
+    "padding:3px 10px;border:none;border-radius:3px;" +
+    "background:#7c3aed;color:#fff;cursor:pointer;" +
+    "font-size:0.7rem");
+  btn.textContent = "Run";
+  row.appendChild(btn);
+  const out = el("span", "font-size:0.75rem;color:#888");
+  out.textContent = "—";
+  row.appendChild(out);
+  card.appendChild(row);
+  body.appendChild(card);
+  return card;
+}
+
+function showAbout(panel: HTMLElement): void {
+  const header = el("div",
+    "padding:0.75rem 1.25rem;border-bottom:1px solid #2a2a3a;" +
+    "font-size:1rem;font-weight:bold;color:#fff;" +
+    "background:#161628");
+  header.textContent = "Benchmarks";
+  panel.appendChild(header);
+
+  const body = el("div",
+    "padding:0.75rem;overflow-y:auto;flex:1");
+
+  const intro = el("div",
+    "font-size:0.75rem;color:#777;margin-bottom:0.75rem;" +
+    "line-height:1.5");
+  intro.textContent =
+    "This UI is rendered entirely by WebAssembly compiled " +
+    "from the TypeScript on the left. Each benchmark " +
+    "runs inside the Wasm sandbox.";
+  body.appendChild(intro);
+
+  // ── 1. Pure computation: fib(30) ──
+  const c1 = benchCard(
+    "Pure Wasm: fib(30)",
+    "Recursive fibonacci — pure i32/f64 math, no host calls",
+    body);
+  c1.addEventListener("click", () => {
+    const t0 = performance.now();
+    const v = fib(30);
+    const ms = performance.now() - t0;
+    const out = c1.children[3].children[1];
+    out.textContent = v.toString() + " in " + ms.toFixed(1) + "ms";
   });
-  app.appendChild(btn);
 
-  document.body.appendChild(app);
-  console.log("page ready");
+  // ── 2. Wasm inner loop: sum 1M ──
+  const c2 = benchCard(
+    "Wasm loop: sum 1..1,000,000",
+    "Tight numeric loop — no allocations, no host calls",
+    body);
+  c2.addEventListener("click", () => {
+    const t0 = performance.now();
+    let sum = 0;
+    for (let i = 0; i < 1000000; i++) {
+      sum = sum + i;
+    }
+    const ms = performance.now() - t0;
+    const out = c2.children[3].children[1];
+    out.textContent = sum.toString() + " in " + ms.toFixed(1) + "ms";
+  });
+
+  // ── 3. DOM manipulation: create 1000 elements ──
+  const c3 = benchCard(
+    "DOM: create 1,000 elements",
+    "Host boundary — createElement + appendChild per iteration",
+    body);
+  c3.addEventListener("click", () => {
+    const container = document.createElement("div");
+    container.style.cssText = "display:none";
+    document.body.appendChild(container);
+    const t0 = performance.now();
+    for (let i = 0; i < 1000; i++) {
+      const d = document.createElement("span");
+      d.textContent = i.toString();
+      container.appendChild(d);
+    }
+    const ms = performance.now() - t0;
+    document.body.removeChild(container);
+    const out = c3.children[3].children[1];
+    out.textContent = "1000 nodes in " + ms.toFixed(1) + "ms";
+  });
+
+  // ── 4. String concat: build a long string ──
+  const c4 = benchCard(
+    "String: concat 10,000 fragments",
+    "Host boundary — wasm:js-string concat per iteration",
+    body);
+  c4.addEventListener("click", () => {
+    const t0 = performance.now();
+    let s = "";
+    for (let i = 0; i < 10000; i++) {
+      s = s + "x";
+    }
+    const ms = performance.now() - t0;
+    const out = c4.children[3].children[1];
+    out.textContent = "len=" + s.length.toString() + " in " + ms.toFixed(1) + "ms";
+  });
+
+  // ── 5. Array: fill + sum 100k elements ──
+  const c5 = benchCard(
+    "Array: fill + sum 100,000",
+    "Wasm GC array — array.set / array.get in a loop",
+    body);
+  c5.addEventListener("click", () => {
+    const arr: number[] = [];
+    for (let i = 0; i < 100000; i++) {
+      arr.push(i);
+    }
+    const t0 = performance.now();
+    let total = 0;
+    for (let i = 0; i < arr.length; i++) {
+      total = total + arr[i];
+    }
+    const ms = performance.now() - t0;
+    const out = c5.children[3].children[1];
+    out.textContent = total.toString() + " in " + ms.toFixed(1) + "ms";
+  });
+
+  // ── 6. Style updates: 500 color changes ──
+  const c6 = benchCard(
+    "Style: 500 color updates",
+    "Host boundary — set style.background per iteration",
+    body);
+  c6.addEventListener("click", () => {
+    const box = document.createElement("div");
+    box.style.cssText = "width:1px;height:1px;position:fixed;top:-9px";
+    document.body.appendChild(box);
+    const t0 = performance.now();
+    for (let i = 0; i < 500; i++) {
+      const r = (i * 7) & 255;
+      const g = (i * 13) & 255;
+      box.style.background = "rgb(" + r.toString() + "," + g.toString() + ",128)";
+    }
+    const ms = performance.now() - t0;
+    document.body.removeChild(box);
+    const out = c6.children[3].children[1];
+    out.textContent = "500 updates in " + ms.toFixed(1) + "ms";
+  });
+
+  panel.appendChild(body);
 }`;
 
 // ─── Cursor Dark theme ──────────────────────────────────────────────────
@@ -461,7 +742,7 @@ const editorLeft = monaco.editor.create(
 const watFile = fileMap.get("output/example.wat")!;
 const editorRight = monaco.editor.create(
   document.getElementById("editor-container-right")!,
-  { ...editorOpts, model: watFile.model, readOnly: true },
+  { ...editorOpts, model: watFile.model, readOnly: true, glyphMargin: true },
 );
 
 // Keep reference to the "main" editor for keybindings
@@ -517,6 +798,7 @@ function switchToFileRight(path: string) {
 
   activeFileRight = path;
   renderEditorTabsRight();
+  if (path === "output/example.wasm") applyHexDecorations();
 }
 
 // Session storage for input
@@ -749,6 +1031,196 @@ ${exports}
 `;
 }
 
+// ─── Hex viewer annotations ─────────────────────────────────────────────
+
+const SECTION_CSS: Record<string, string> = {
+  Header: "header", Type: "type", Import: "import", Function: "function",
+  Table: "table", Tag: "tag", Global: "global", Export: "export",
+  Element: "element", Code: "code", "Custom: name": "name",
+};
+
+function sectionCssKey(section: WasmSection): string {
+  const key = section.customName ? `Custom: ${section.customName}` : section.name;
+  return SECTION_CSS[key] ?? "header";
+}
+
+/** Map a byte offset → Monaco editor position in the hex dump */
+function byteToPos(offset: number): monaco.IPosition {
+  return {
+    lineNumber: Math.floor(offset / 16) + 1,
+    column: 10 + (offset % 16) * 3 + 1,
+  };
+}
+
+/** Map a Monaco position in the hex dump → byte offset */
+function posToByteOffset(line: number, col: number): number | null {
+  const byteInLine = Math.floor((col - 10) / 3);
+  if (byteInLine < 0 || byteInLine > 15) return null;
+  return (line - 1) * 16 + byteInLine;
+}
+
+let lastWasmData: WasmData | null = null;
+let pendingHexDecorations: monaco.editor.IModelDeltaDecoration[] = [];
+let hexDecorationsCollection: monaco.editor.IEditorDecorationsCollection | null = null;
+
+function annotateHexEditor(bin: Uint8Array) {
+  const wasmData = parseWasm(bin.buffer as ArrayBuffer);
+  lastWasmData = wasmData;
+
+  const decorations: monaco.editor.IModelDeltaDecoration[] = [];
+
+  // Header decoration (magic + version = 8 bytes)
+  const headerStart = byteToPos(0);
+  const headerEnd = byteToPos(7);
+  decorations.push({
+    range: new monaco.Range(headerStart.lineNumber, 1, headerEnd.lineNumber, 999),
+    options: {
+      className: "hex-sec-header",
+      isWholeLine: true,
+      glyphMarginHoverMessage: { value: "**HEADER** — magic + version (8 bytes)" },
+      afterContentClassName: "hex-sec-label hex-sec-label-header",
+      after: { content: " HEADER", inlineClassName: "hex-sec-label hex-sec-label-header" },
+    },
+  });
+
+  // Section decorations
+  for (const section of wasmData.sections) {
+    const cssKey = sectionCssKey(section);
+    const start = byteToPos(section.offset);
+    const end = byteToPos(section.offset + section.totalSize - 1);
+    const sizeStr = section.totalSize >= 1024
+      ? `${(section.totalSize / 1024).toFixed(1)}k`
+      : `${section.totalSize}b`;
+    const label = section.customName
+      ? `${section.name}: ${section.customName}`
+      : section.name;
+
+    decorations.push({
+      range: new monaco.Range(start.lineNumber, 1, end.lineNumber, 999),
+      options: {
+        className: `hex-sec-${cssKey}`,
+        isWholeLine: true,
+      },
+    });
+
+    // Label on the first line of the section
+    decorations.push({
+      range: new monaco.Range(start.lineNumber, 1, start.lineNumber, 1),
+      options: {
+        glyphMarginHoverMessage: {
+          value: `**${label.toUpperCase()}** — ${sizeStr} (offset 0x${section.offset.toString(16)})`,
+        },
+        after: {
+          content: ` ${label.toUpperCase()} ${sizeStr}`,
+          inlineClassName: `hex-sec-label hex-sec-label-${cssKey}`,
+        },
+      },
+    });
+  }
+
+  // Function body decorations within the code section
+  for (const fb of wasmData.functionBodies) {
+    const funcName = wasmData.functionNames.get(fb.index + wasmData.importFuncCount) ?? `func[${fb.index}]`;
+    const start = byteToPos(fb.offset);
+    decorations.push({
+      range: new monaco.Range(start.lineNumber, 1, start.lineNumber, 1),
+      options: {
+        glyphMarginHoverMessage: {
+          value: `**$${funcName}** — ${fb.totalSize}b (offset 0x${fb.offset.toString(16)})`,
+        },
+      },
+    });
+  }
+
+  pendingHexDecorations = decorations;
+  applyHexDecorations();
+}
+
+/** Apply hex decorations when the wasm model is active in the right editor */
+function applyHexDecorations() {
+  const wasmModel = fileMap.get("output/example.wasm")!.model;
+  if (editorRight.getModel() !== wasmModel) return;
+  if (pendingHexDecorations.length === 0) return;
+  if (hexDecorationsCollection) {
+    hexDecorationsCollection.clear();
+  }
+  hexDecorationsCollection = editorRight.createDecorationsCollection(pendingHexDecorations);
+}
+
+// Hover provider for the hex view — shows section and function info
+const wasmHexModel = fileMap.get("output/example.wasm")!.model;
+monaco.languages.registerHoverProvider("text", {
+  provideHover(_model, position) {
+    if (_model !== wasmHexModel || !lastWasmData) return null;
+    const offset = posToByteOffset(position.lineNumber, position.column);
+    if (offset === null) return null;
+
+    // Find which section this byte belongs to
+    let section: WasmSection | null = null;
+    for (const s of lastWasmData.sections) {
+      if (offset >= s.offset && offset < s.offset + s.totalSize) {
+        section = s;
+        break;
+      }
+    }
+
+    const parts: string[] = [];
+    if (offset < 8) {
+      parts.push("**HEADER** — Wasm magic + version");
+    } else if (section) {
+      const label = section.customName ? `${section.name}: ${section.customName}` : section.name;
+      parts.push(`**${label.toUpperCase()}** section — ${section.totalSize}b`);
+    }
+
+    // Check if inside a function body
+    if (section && section.id === 10) {
+      for (const fb of lastWasmData.functionBodies) {
+        if (offset >= fb.offset && offset < fb.offset + fb.totalSize) {
+          const name = lastWasmData.functionNames.get(fb.index + lastWasmData.importFuncCount) ?? `func[${fb.index}]`;
+          parts.push(`**$${name}** — ${fb.totalSize}b`);
+          break;
+        }
+      }
+    }
+
+    parts.push(`\`offset 0x${offset.toString(16)}\` (byte ${offset})`);
+
+    return {
+      range: new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column + 2),
+      contents: parts.map((value) => ({ value })),
+    };
+  },
+});
+
+// Click in hex code section → jump to WAT function definition
+editorRight.onMouseDown((e) => {
+  if (!lastWasmData || activeFileRight !== "output/example.wasm") return;
+  if (!e.target.position) return;
+
+  const offset = posToByteOffset(e.target.position.lineNumber, e.target.position.column);
+  if (offset === null) return;
+
+  // Find function body at this offset
+  for (const fb of lastWasmData.functionBodies) {
+    if (offset >= fb.offset && offset < fb.offset + fb.totalSize) {
+      const name = lastWasmData.functionNames.get(fb.index + lastWasmData.importFuncCount);
+      if (!name) break;
+
+      // Switch to WAT and find the function definition
+      switchToFileRight("output/example.wat");
+      const watText = watFile.model.getValue();
+      const pattern = `(func $${name}`;
+      const idx = watText.indexOf(pattern);
+      if (idx !== -1) {
+        const line = watText.substring(0, idx).split("\n").length;
+        editorRight.revealLineInCenter(line);
+        editorRight.setPosition({ lineNumber: line, column: 1 });
+      }
+      break;
+    }
+  }
+});
+
 // ─── Compile / Run ──────────────────────────────────────────────────────
 let lastResult: ReturnType<typeof compile> | null = null;
 let hasCompiledOnce = false;
@@ -795,6 +1267,7 @@ function compileOnly() {
     wasmFile.model.setValue(lines.join("\n"));
     wasmFile.binarySize = bin.length;
     wasmFile.binaryData = new Uint8Array(bin);
+    annotateHexEditor(bin);
   }
   fileMap
     .get("output/example.ts")!

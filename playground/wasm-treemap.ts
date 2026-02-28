@@ -3,7 +3,7 @@
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
-interface WasmSection {
+export interface WasmSection {
   id: number;
   name: string;
   offset: number;
@@ -27,14 +27,14 @@ interface WasmExport {
   index: number;
 }
 
-interface WasmFunctionBody {
+export interface WasmFunctionBody {
   index: number;
   bodySize: number;
   totalSize: number;
   offset: number;
 }
 
-interface WasmData {
+export interface WasmData {
   fileSize: number;
   version: number;
   headerSize: number;
@@ -407,7 +407,7 @@ export class WasmTreemap {
   private treeRoot: TreeNode | null = null;
   private totalFileSize = 0;
   private viewMode: ViewMode = "sections";
-  private thresholdPct = 2;
+  private thresholdPct = 0;
 
   private nextNodeId = 0;
   private nodeById = new Map<number, TreeNode>();
@@ -439,8 +439,8 @@ export class WasmTreemap {
       </div>
       <div class="tm-threshold">
         <label>Remainder:</label>
-        <input type="range" min="0" max="20" value="2" step="0.5">
-        <span>2%</span>
+        <input type="range" min="0" max="20" value="0" step="0.5">
+        <span>0%</span>
       </div>
     `;
     container.appendChild(this.controlsBar);
@@ -634,10 +634,7 @@ export class WasmTreemap {
           overhead -= body.totalSize;
         }
         if (overhead > 0) {
-          const oh = this.makeNode(
-            "[section overhead]",
-            `${sName}/[overhead]`,
-          );
+          const oh = this.makeNode("[section overhead]", `${sName}/[overhead]`);
           oh.size = overhead;
           oh.isLeaf = true;
           sNode.children["__overhead__"] = oh;
@@ -665,10 +662,7 @@ export class WasmTreemap {
         }
         const overhead = section.totalSize - accounted;
         if (overhead > 0) {
-          const oh = this.makeNode(
-            "[section overhead]",
-            `${sName}/[overhead]`,
-          );
+          const oh = this.makeNode("[section overhead]", `${sName}/[overhead]`);
           oh.size = overhead;
           oh.isLeaf = true;
           sNode.children["__overhead__"] = oh;
@@ -744,10 +738,7 @@ export class WasmTreemap {
       }
     }
 
-    const codeSize = data.functionBodies.reduce(
-      (s, b) => s + b.totalSize,
-      0,
-    );
+    const codeSize = data.functionBodies.reduce((s, b) => s + b.totalSize, 0);
     const overhead = data.fileSize - codeSize;
     if (overhead > 0) {
       const oh = this.makeNode("[non-code sections]", "overhead");
@@ -946,6 +937,12 @@ export class WasmTreemap {
     const hasChildren = children.length > 0 && !node.isLeaf;
     const isLeaf = !hasChildren;
 
+    // Shrink top-level sections to create black gap between them;
+    // leaf nodes use inner inset instead
+    if (!isLeaf && depth === 1) {
+      x += 1; y += 1; w -= 2; h -= 2;
+    }
+
     if (!crateRgb) crateRgb = this.getNodeColor(node);
     if (depth === 1 && !crateRgb) crateRgb = [80, 80, 100];
     const baseRgb = crateRgb || [80, 80, 100];
@@ -962,17 +959,27 @@ export class WasmTreemap {
 
     const inner = document.createElement("div");
     inner.className = "tm-node-inner";
-    const bw = Math.max(1, 3 - depth);
+    const bw = isLeaf ? Math.max(1, 3 - depth) : 0;
     inner.style.inset = bw + "px";
 
     if (depth === 0) {
       inner.style.background = "transparent";
-      inner.style.inset = "0";
       el.style.background = "transparent";
-    } else if (node.isRemainder) {
-      inner.style.background = "rgba(128,128,128,0.35)";
     } else {
-      inner.style.background = rgbaStr(baseRgb, 0.35);
+      el.style.background = "#000";
+      if (node.isRemainder) {
+        inner.style.background = isLeaf ? "rgb(60,60,60)" : "#000";
+      } else if (isLeaf) {
+        const dim = 0.65;
+        inner.style.background = rgbStr([
+          Math.round(baseRgb[0] * dim),
+          Math.round(baseRgb[1] * dim),
+          Math.round(baseRgb[2] * dim),
+        ]);
+      } else {
+        // Branch inner is black so leaf gaps show black separators
+        inner.style.background = "#000";
+      }
     }
 
     const canLabel = w > WasmTreemap.MIN_LABEL_W && h > WasmTreemap.MIN_LABEL_H;
@@ -981,20 +988,28 @@ export class WasmTreemap {
       const label = document.createElement("div");
       label.className = "tm-label";
       label.innerHTML = `<span>${esc(node.name)}</span> <span class="tm-label-size">${formatSize(node.size)}</span>`;
-      label.style.color = node.isRemainder ? "#999" : "#ddd";
+      label.style.color = "#fff";
+      const headerDim = depth > 1 ? 0.8 : 1;
       label.style.background = node.isRemainder
-        ? "rgba(128,128,128,0.35)"
-        : rgbaStr(baseRgb, 0.35);
-      label.style.borderBottom = "2px solid #000";
+        ? "rgb(80,80,80)"
+        : rgbStr([
+            Math.round(baseRgb[0] * headerDim),
+            Math.round(baseRgb[1] * headerDim),
+            Math.round(baseRgb[2] * headerDim),
+          ]);
+      label.style.height = WasmTreemap.HEADER_H + "px";
+      label.style.bottom = "auto";
+      label.style.borderBottom = "1px solid rgba(0,0,0,0.3)";
       label.style.zIndex = "2";
       el.appendChild(label);
-      headerH = WasmTreemap.HEADER_H;
+      headerH = WasmTreemap.HEADER_H + 2;
     } else if (canLabel && isLeaf) {
       const label = document.createElement("div");
       label.className = "tm-label";
-      label.textContent = node.name;
-      label.style.color = node.isRemainder ? "#888" : "#ccc";
-      label.style.fontSize = w < 70 ? "9px" : "11px";
+      const fs = w < 70 ? "9px" : "11px";
+      label.innerHTML = `<span>${esc(node.name)}</span> <span class="tm-label-size">${formatSize(node.size)}</span>`;
+      label.style.color = "#fff";
+      label.style.fontSize = fs;
       inner.appendChild(label);
     }
 
@@ -1012,26 +1027,27 @@ export class WasmTreemap {
     container.appendChild(el);
 
     if (hasChildren) {
-      const iy = bw + headerH;
+      const iy = headerH;
       const iw = w,
         ih = h - iy;
-      if (
-        iw * ih >= WasmTreemap.MIN_CHILD_AREA &&
-        iw > 10 &&
-        ih > 10
-      ) {
+      if (iw * ih >= WasmTreemap.MIN_CHILD_AREA && iw > 10 && ih > 10) {
         const childItems = children.map((c) => ({ size: c.size, node: c }));
         const laid = this.squarify(childItems, 0, 0, iw, ih);
         for (const item of laid) {
+          // Round to integer pixels to avoid sub-pixel gaps
+          const cx = Math.round(item.x);
+          const cy = Math.round(item.y);
+          const cw = Math.round(item.x + item.w) - cx;
+          const ch = Math.round(item.y + item.h) - cy;
           const childRgb =
             depth === 0 ? this.getNodeColor(item.node) : crateRgb;
           this.renderNode(
             item.node,
             el,
-            item.x,
-            iy + item.y,
-            item.w,
-            item.h,
+            cx,
+            iy + cy,
+            cw,
+            ch,
             depth + 1,
             childRgb,
             node.size,
@@ -1060,8 +1076,7 @@ export class WasmTreemap {
       ".tm-tt-parent",
     ) as HTMLElement;
     if (parentSize && parentSize > 0) {
-      vals[2].textContent =
-        ((node.size / parentSize) * 100).toFixed(1) + "%";
+      vals[2].textContent = ((node.size / parentSize) * 100).toFixed(1) + "%";
       parentRow.style.display = "flex";
     } else parentRow.style.display = "none";
 
@@ -1107,6 +1122,15 @@ export class WasmTreemap {
 
   // ─── Zoom / Breadcrumbs ───────────────────────────────────────────────
 
+  private findPathTo(root: TreeNode, targetId: number): TreeNode[] {
+    if (root._id === targetId) return [root];
+    for (const child of Object.values(root.children)) {
+      const path = this.findPathTo(child, targetId);
+      if (path.length > 0) return [root, ...path];
+    }
+    return [];
+  }
+
   private onNodeClick(e: MouseEvent) {
     e.stopPropagation();
     const el = e.currentTarget as HTMLElement;
@@ -1114,13 +1138,23 @@ export class WasmTreemap {
     const crateRgb = (el as any)._tmCrateRgb as [number, number, number];
     const origId = node._originalId != null ? node._originalId : node._id;
     if (origId < 0) return;
-    this.zoomStack.push({ nodeId: origId, crateRgb, name: node.name });
+
+    // Find the full path from current view root to clicked node
+    const currentRoot = this.zoomStack.length === 0
+      ? this.treeRoot!
+      : this.nodeById.get(this.zoomStack[this.zoomStack.length - 1].nodeId)!;
+    const path = this.findPathTo(currentRoot, origId);
+    // path[0] is current root (already in stack), push all descendants
+    for (let i = 1; i < path.length; i++) {
+      const n = path[i];
+      const rgb = this.getNodeColor(n) || crateRgb;
+      this.zoomStack.push({ nodeId: n._id, crateRgb: rgb, name: n.name });
+    }
     this.renderCurrentView();
   }
 
   private renderCurrentView() {
-    let viewNode: TreeNode,
-      crateRgb: [number, number, number] | null;
+    let viewNode: TreeNode, crateRgb: [number, number, number] | null;
     if (this.zoomStack.length === 0) {
       viewNode = this.treeRoot!;
       crateRgb = null;
@@ -1183,10 +1217,11 @@ function formatSize(bytes: number): string {
 }
 
 function esc(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function rgbStr([r, g, b]: [number, number, number]): string {
+  return `rgb(${r},${g},${b})`;
 }
 
 function rgbaStr([r, g, b]: [number, number, number], a: number): string {
