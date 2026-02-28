@@ -10,7 +10,7 @@ import {
   isExternalDeclaredClass,
   isHeterogeneousUnion,
 } from "../checker/type-mapper.js";
-import type { Instr, ValType, WasmFunction } from "../ir/types.js";
+import type { Instr, ValType, WasmFunction, FieldDef, StructTypeDef } from "../ir/types.js";
 import { ensureI32Condition } from "./index.js";
 import { compileStatement } from "./statements.js";
 
@@ -439,7 +439,8 @@ function compileArrowAsClosure(
   return { kind: "ref", typeIdx: structTypeIdx };
 }
 
-/** Compile an arrow function as a host callback (existing __make_callback path) */
+/** Compile an arrow function as a host callback via __make_callback.
+ *  Captures are bundled into a per-instance GC struct (not shared globals). */
 function compileArrowAsCallback(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -447,10 +448,10 @@ function compileArrowAsCallback(
 ): ValType | null {
   const cbId = ctx.callbackCounter++;
   const cbName = `__cb_${cbId}`;
-
-  // 1. Analyze captured variables: identifiers in body that resolve to locals in fctx
-  const referencedNames = new Set<string>();
   const body = arrow.body;
+
+  // 1. Analyze captured variables
+  const referencedNames = new Set<string>();
   if (ts.isBlock(body)) {
     for (const stmt of body.statements) {
       collectReferencedIdentifiers(stmt, referencedNames);
@@ -459,7 +460,6 @@ function compileArrowAsCallback(
     collectReferencedIdentifiers(body, referencedNames);
   }
 
-  // Build capture list: names that are locals/params in the enclosing function
   const captures: { name: string; type: ValType; localIdx: number }[] = [];
   for (const name of referencedNames) {
     const localIdx = fctx.localMap.get(name);
@@ -471,51 +471,29 @@ function compileArrowAsCallback(
     captures.push({ name, type, localIdx });
   }
 
-  // 2. Promote captured variables to mutable globals
-  for (const cap of captures) {
-    if (!ctx.capturedGlobals.has(cap.name)) {
-      const globalIdx = ctx.mod.globals.length;
-      const init: Instr[] = cap.type.kind === "f64"
-        ? [{ op: "f64.const", value: 0 }]
-        : cap.type.kind === "i32"
-          ? [{ op: "i32.const", value: 0 }]
-          : cap.type.kind === "ref_null"
-            ? [{ op: "ref.null", typeIdx: cap.type.typeIdx }]
-            : cap.type.kind === "ref"
-              ? [{ op: "ref.null", typeIdx: cap.type.typeIdx }]
-              : [{ op: "ref.null.extern" }];
-      // Widen non-nullable ref to ref_null so the global accepts a null initializer
-      const widened = cap.type.kind === "ref";
-      const globalType: ValType = widened
-        ? { kind: "ref_null", typeIdx: (cap.type as { kind: "ref"; typeIdx: number }).typeIdx }
-        : cap.type;
-      ctx.mod.globals.push({
-        name: `__cap_${cap.name}`,
-        type: globalType,
-        mutable: true,
-        init,
-      });
-      ctx.capturedGlobals.set(cap.name, globalIdx);
-      if (widened) ctx.capturedGlobalsWidened.add(cap.name);
-    }
+  // 2. Create capture struct type (if captures exist)
+  let capStructTypeIdx = -1;
+  if (captures.length > 0) {
+    capStructTypeIdx = ctx.mod.types.length;
+    const fields: FieldDef[] = captures.map((cap) => ({
+      name: cap.name,
+      type: cap.type,
+      mutable: false, // captures are immutable snapshots
+    }));
+    ctx.mod.types.push({
+      kind: "struct",
+      name: `__cb_cap_${cbId}`,
+      fields,
+    } as StructTypeDef);
   }
 
-  // 3. Emit global.set in enclosing function to initialize captured globals from locals
-  for (const cap of captures) {
-    const globalIdx = ctx.capturedGlobals.get(cap.name)!;
-    fctx.body.push({ op: "local.get", index: cap.localIdx });
-    fctx.body.push({ op: "global.set", index: globalIdx });
-  }
-
-  // 5. Create the callback WasmFunction
-  const cbParams: ValType[] = [];
-  // Arrow function parameters
+  // 3. Build the __cb_N function — first param is externref captures
+  const cbParams: ValType[] = [{ kind: "externref" }]; // captures param
   for (const p of arrow.parameters) {
     const paramType = ctx.checker.getTypeAtLocation(p);
     cbParams.push(resolveWasmType(ctx, paramType));
   }
 
-  // Determine return type
   const sig = ctx.checker.getSignatureFromDeclaration(arrow);
   let cbReturnType: ValType | null = null;
   if (sig) {
@@ -528,13 +506,15 @@ function compileArrowAsCallback(
   const cbResults: ValType[] = cbReturnType ? [cbReturnType] : [];
   const cbTypeIdx = addFuncType(ctx, cbParams, cbResults, `${cbName}_type`);
 
-  // Build callback function context
   const cbFctx: FunctionContext = {
     name: cbName,
-    params: arrow.parameters.map((p, i) => ({
-      name: (p.name as ts.Identifier).text,
-      type: cbParams[i]!,
-    })),
+    params: [
+      { name: "__captures", type: { kind: "externref" } },
+      ...arrow.parameters.map((p, i) => ({
+        name: (p.name as ts.Identifier).text,
+        type: cbParams[i + 1]!,
+      })),
+    ],
     locals: [],
     localMap: new Map(),
     returnType: cbReturnType,
@@ -544,31 +524,46 @@ function compileArrowAsCallback(
     continueStack: [],
   };
 
-  // Register params as locals
+  // Register params as locals (param 0 = __captures, then arrow params)
   for (let i = 0; i < cbFctx.params.length; i++) {
     cbFctx.localMap.set(cbFctx.params[i]!.name, i);
   }
 
-  // Set current function context for the callback compilation
+  // 4. Extract captures from struct into locals at start of __cb_N body
+  if (captures.length > 0) {
+    // Convert externref captures → anyref → ref $__cb_cap_N
+    const capLocal = allocLocal(cbFctx, `__cap_ref`, { kind: "ref", typeIdx: capStructTypeIdx });
+    cbFctx.body.push({ op: "local.get", index: 0 }); // __captures externref
+    cbFctx.body.push({ op: "any.convert_extern" });
+    cbFctx.body.push({ op: "ref.cast", typeIdx: capStructTypeIdx });
+    cbFctx.body.push({ op: "local.set", index: capLocal });
+
+    for (let i = 0; i < captures.length; i++) {
+      const cap = captures[i]!;
+      const localIdx = allocLocal(cbFctx, cap.name, cap.type);
+      cbFctx.body.push({ op: "local.get", index: capLocal });
+      cbFctx.body.push({ op: "struct.get", typeIdx: capStructTypeIdx, fieldIdx: i });
+      cbFctx.body.push({ op: "local.set", index: localIdx });
+    }
+  }
+
+  // 5. Compile the callback body
   const savedFunc = ctx.currentFunc;
   ctx.currentFunc = cbFctx;
 
-  // Compile the callback body
   if (ts.isBlock(body)) {
     for (const stmt of body.statements) {
       compileStatement(ctx, cbFctx, stmt);
     }
   } else {
-    // Expression body: compile and drop if void, or leave on stack
     const exprType = compileExpression(ctx, cbFctx, body);
     if (exprType !== null && cbReturnType) {
-      // Expression result is the return value - already on stack
+      // Expression result is the return value
     } else if (exprType !== null) {
       cbFctx.body.push({ op: "drop" });
     }
   }
 
-  // Ensure return value for non-void callbacks
   if (cbReturnType) {
     const lastInstr = cbFctx.body[cbFctx.body.length - 1];
     if (!lastInstr || lastInstr.op !== "return") {
@@ -584,25 +579,22 @@ function compileArrowAsCallback(
 
   ctx.currentFunc = savedFunc;
 
-  // Register the callback function
+  // 6. Register and export the callback function
   const cbFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
-  const cbFunc: WasmFunction = {
+  ctx.mod.functions.push({
     name: cbName,
     typeIdx: cbTypeIdx,
     locals: cbFctx.locals,
     body: cbFctx.body,
     exported: true,
-  };
-  ctx.mod.functions.push(cbFunc);
+  });
   ctx.funcMap.set(cbName, cbFuncIdx);
-
-  // Export the callback
   ctx.mod.exports.push({
     name: cbName,
     desc: { kind: "func", index: cbFuncIdx },
   });
 
-  // 6. Emit i32.const cbId + call __make_callback → externref
+  // 7. At creation site: push cbId + captures externref, call __make_callback
   const makeCallbackIdx = ctx.funcMap.get("__make_callback");
   if (makeCallbackIdx === undefined) {
     ctx.errors.push({
@@ -614,6 +606,18 @@ function compileArrowAsCallback(
   }
 
   fctx.body.push({ op: "i32.const", value: cbId });
+
+  if (captures.length > 0) {
+    // Push captured locals and create struct
+    for (const cap of captures) {
+      fctx.body.push({ op: "local.get", index: cap.localIdx });
+    }
+    fctx.body.push({ op: "struct.new", typeIdx: capStructTypeIdx });
+    fctx.body.push({ op: "extern.convert_any" });
+  } else {
+    fctx.body.push({ op: "ref.null.extern" });
+  }
+
   fctx.body.push({ op: "call", funcIdx: makeCallbackIdx });
   return { kind: "externref" };
 }

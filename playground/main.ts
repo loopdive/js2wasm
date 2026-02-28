@@ -177,37 +177,53 @@ function renderCal(): void {
   for (let d = 1; d <= days; d++) {
     let bg = "transparent";
     let fg = "#ddd";
-    let outline = "none";
+    let border = "2px solid transparent";
+    let priceFg = "#aaa";
+    const isToday = d === todayD && curMonth === todayM && curYear === todayY;
     const inRange = selStart > 0 && selEnd > 0 && d >= selStart && d <= selEnd;
-    if (inRange) bg = "#444";
-    if (d === selStart && selEnd > 0) {
+    if (inRange) { bg = "#333"; }
+    if (d === selStart) {
       bg = "#fff";
       fg = "#111";
+      priceFg = "#666";
     }
     if (d === selEnd && selEnd !== selStart) {
       bg = "#fff";
       fg = "#111";
+      priceFg = "#666";
     }
-    if (d === todayD && curMonth === todayM && curYear === todayY) {
-      outline = "1px solid rgba(255,255,255,0.4)";
+    if (isToday && bg === "transparent") {
+      bg = "#7c3aed";
+      fg = "#fff";
+      priceFg = "rgba(255,255,255,0.6)";
+    }
+    if (isToday && bg !== "#7c3aed") {
+      border = "2px solid #7c3aed";
     }
     const cell = el("div",
-      "padding:8px 4px;text-align:center;font-size:0.8rem;" +
+      "padding:6px 4px;text-align:center;font-size:0.8rem;" +
       "cursor:pointer;border-radius:4px;" +
       "background:" + bg + ";color:" + fg + ";" +
-      "outline:" + outline);
+      "border:" + border + ";transition:background 0.1s");
 
     const dn = el("div", "font-weight:bold");
     dn.textContent = d.toString();
     cell.appendChild(dn);
-    const pr = el("div", "font-size:0.6rem;margin-top:2px;color:#aaa");
+    const pr = el("div", "font-size:0.6rem;margin-top:2px;color:" + priceFg);
     pr.textContent = priceOf(curYear, curMonth, d).toString() + " \\u20AC";
     cell.appendChild(pr);
 
     const day = d;
+    const cellBg = bg;
     cell.addEventListener("click", () => {
       autoMode = 0;
       onDay(day);
+    });
+    cell.addEventListener("mouseenter", () => {
+      if (cellBg === "transparent") cell.style.background = "#222";
+    });
+    cell.addEventListener("mouseleave", () => {
+      if (cellBg === "transparent") cell.style.background = "transparent";
     });
     gridEl.appendChild(cell);
   }
@@ -282,7 +298,7 @@ function showCal(): void {
   wrap.appendChild(hdr);
 
   // weekday headers
-  const dayNames = ["MON", "TUE", "WED", "THR", "FRI", "SAT", "SUN"];
+  const dayNames = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
   const wh = el("div",
     "display:grid;grid-template-columns:repeat(7,1fr);" +
     "text-align:center;font-size:0.6rem;color:#666;margin-bottom:4px");
@@ -461,30 +477,77 @@ function showBuiltins(): void {
 }
 
 // ═══════════════════════════════════════════════════════
-// Demo 3: Benchmarks
+// Benchmark functions (exported for WASM vs JS comparison)
 // ═══════════════════════════════════════════════════════
+
+export function bench_fib(): number {
+  return fib(30);
+}
+
+export function bench_loop(): number {
+  let s = 0;
+  for (let i = 0; i < 1000000; i++) s = s + i;
+  return s;
+}
+
+export function bench_dom(): number {
+  const host = document.getElementById("preview-panel")!;
+  const box = document.createElement("div");
+  box.style.cssText = "display:none";
+  host.appendChild(box);
+  for (let i = 0; i < 100; i++) {
+    const d = document.createElement("span");
+    d.textContent = i.toString();
+    box.appendChild(d);
+  }
+  host.removeChild(box);
+  return 100;
+}
+
+export function bench_string(): number {
+  let str = "";
+  for (let i = 0; i < 1000; i++) str = str + "abcde";
+  return str.length;
+}
+
+export function bench_array(): number {
+  const arr: number[] = [];
+  for (let i = 0; i < 10000; i++) arr.push(i);
+  let total = 0;
+  for (let i = 0; i < arr.length; i++) total = total + arr[i];
+  return total;
+}
+
+export function bench_style(): number {
+  const host = document.getElementById("preview-panel")!;
+  const box = document.createElement("div");
+  box.style.cssText = "width:1px;height:1px;position:fixed;top:-9px";
+  host.appendChild(box);
+  for (let i = 0; i < 100; i++) {
+    const r = (i * 7) & 255;
+    const g = (i * 13) & 255;
+    box.style.background = "rgb(" + r.toString() + "," + g.toString() + ",128)";
+  }
+  host.removeChild(box);
+  return 100;
+}
+
+// ── Demo 3: Benchmarks UI ─────────────────────────────
 
 function bcrd(title: string, desc: string, parent: HTMLElement): HTMLElement {
   const card = el("div",
     "padding:0.75rem;background:#1a1a35;" +
     "border-radius:6px;border:1px solid #2a2a4a;" +
-    "margin-bottom:0.5rem");
+    "margin-bottom:0.5rem;cursor:pointer");
   const t = el("div", "font-size:0.8rem;color:#fff;font-weight:bold");
   t.textContent = title;
   card.appendChild(t);
   const d = el("div", "font-size:0.7rem;color:#666;margin:2px 0 6px");
   d.textContent = desc;
   card.appendChild(d);
-  const row = el("div", "display:flex;align-items:center;gap:0.5rem");
-  const btn = el("button",
-    "padding:3px 10px;border:none;border-radius:3px;" +
-    "background:#7c3aed;color:#fff;cursor:pointer;font-size:0.7rem");
-  btn.textContent = "Run";
-  row.appendChild(btn);
-  const out = el("span", "font-size:0.75rem;color:#888");
-  out.textContent = "—";
-  row.appendChild(out);
-  card.appendChild(row);
+  const out = el("div", "font-size:0.75rem;color:#888");
+  out.textContent = "tap to run";
+  card.appendChild(out);
   parent.appendChild(card);
   return card;
 }
@@ -497,101 +560,27 @@ function showBench(): void {
     "font-size:0.75rem;color:#777;margin-bottom:0.75rem;line-height:1.5");
   intro.textContent =
     "Each benchmark runs inside the Wasm sandbox. " +
-    "Click Run to measure.";
+    "Click a card to measure. Use the Bench button for WASM vs JS comparison.";
   wrap.appendChild(intro);
 
-  // 1. fib(30)
-  const c1 = bcrd("Pure Wasm: fib(30)",
-    "Recursive fibonacci — pure i32/f64 math, no host calls", wrap);
-  c1.addEventListener("click", () => {
-    autoMode = 0;
-    const t0 = performance.now();
-    const v = fib(30);
-    const ms = performance.now() - t0;
-    const out = c1.children[2].children[1];
-    out.textContent = v.toString() + " in " + ms.toFixed(1) + "ms";
-  });
+  function addBench(title: string, desc: string, fn: () => number): void {
+    const card = bcrd(title, desc, wrap);
+    card.addEventListener("click", () => {
+      autoMode = 0;
+      const t0 = performance.now();
+      const v = fn();
+      const ms = performance.now() - t0;
+      const out = card.children[2];
+      out.textContent = v.toString() + " in " + ms.toFixed(2) + "ms";
+    });
+  }
 
-  // 2. sum 1M
-  const c2 = bcrd("Wasm loop: sum 1..1,000,000",
-    "Tight numeric loop — no allocations, no host calls", wrap);
-  c2.addEventListener("click", () => {
-    autoMode = 0;
-    const t0 = performance.now();
-    let s = 0;
-    for (let i = 0; i < 1000000; i++) s = s + i;
-    const ms = performance.now() - t0;
-    const out = c2.children[2].children[1];
-    out.textContent = s.toString() + " in " + ms.toFixed(1) + "ms";
-  });
-
-  // 3. DOM create 1000
-  const c3 = bcrd("DOM: create 1,000 elements",
-    "Host boundary — createElement + appendChild per iteration", wrap);
-  c3.addEventListener("click", () => {
-    autoMode = 0;
-    const box = document.createElement("div");
-    box.style.cssText = "display:none";
-    document.body.appendChild(box);
-    const t0 = performance.now();
-    for (let i = 0; i < 1000; i++) {
-      const d = document.createElement("span");
-      d.textContent = i.toString();
-      box.appendChild(d);
-    }
-    const ms = performance.now() - t0;
-    document.body.removeChild(box);
-    const out = c3.children[2].children[1];
-    out.textContent = "1000 nodes in " + ms.toFixed(1) + "ms";
-  });
-
-  // 4. String concat 10k
-  const c4 = bcrd("String: concat 10,000 fragments",
-    "Host boundary — wasm:js-string concat per iteration", wrap);
-  c4.addEventListener("click", () => {
-    autoMode = 0;
-    const t0 = performance.now();
-    let str = "";
-    for (let i = 0; i < 10000; i++) str = str + "x";
-    const ms = performance.now() - t0;
-    const out = c4.children[2].children[1];
-    out.textContent = "len=" + str.length.toString() + " in " + ms.toFixed(1) + "ms";
-  });
-
-  // 5. Array fill+sum 100k
-  const c5 = bcrd("Array: fill + sum 100,000",
-    "Wasm GC array — array.set / array.get in a loop", wrap);
-  c5.addEventListener("click", () => {
-    autoMode = 0;
-    const arr: number[] = [];
-    for (let i = 0; i < 100000; i++) arr.push(i);
-    const t0 = performance.now();
-    let total = 0;
-    for (let i = 0; i < arr.length; i++) total = total + arr[i];
-    const ms = performance.now() - t0;
-    const out = c5.children[2].children[1];
-    out.textContent = total.toString() + " in " + ms.toFixed(1) + "ms";
-  });
-
-  // 6. Style updates 500
-  const c6 = bcrd("Style: 500 color updates",
-    "Host boundary — set style.background per iteration", wrap);
-  c6.addEventListener("click", () => {
-    autoMode = 0;
-    const box = document.createElement("div");
-    box.style.cssText = "width:1px;height:1px;position:fixed;top:-9px";
-    document.body.appendChild(box);
-    const t0 = performance.now();
-    for (let i = 0; i < 500; i++) {
-      const r = (i * 7) & 255;
-      const g = (i * 13) & 255;
-      box.style.background = "rgb(" + r.toString() + "," + g.toString() + ",128)";
-    }
-    const ms = performance.now() - t0;
-    document.body.removeChild(box);
-    const out = c6.children[2].children[1];
-    out.textContent = "500 updates in " + ms.toFixed(1) + "ms";
-  });
+  addBench("fib(30)", "Recursive — pure i32/f64 math, no host calls", bench_fib);
+  addBench("Loop: sum 1..1M", "Tight numeric loop, no allocations", bench_loop);
+  addBench("DOM: 100 elements", "Host boundary — createElement + appendChild", bench_dom);
+  addBench("String: concat 1k", "wasm:js-string concat per iteration", bench_string);
+  addBench("Array: fill+sum 10k", "Wasm GC array — push / get loop", bench_array);
+  addBench("Style: 100 updates", "Host boundary — style.background per iteration", bench_style);
 
   pnl.appendChild(wrap);
 }
@@ -601,11 +590,14 @@ function showBench(): void {
 // ═══════════════════════════════════════════════════════
 
 export function main(): void {
-  document.body.style.cssText =
+  tabEls = [];
+  const host = document.getElementById("preview-panel")!;
+  host.innerHTML = "";
+  host.style.cssText =
     "margin:0;background:#111;color:#ddd;" +
     "font-family:system-ui,sans-serif;overflow:hidden";
 
-  const root = el("div", "display:flex;flex-direction:column;height:100vh");
+  const root = el("div", "display:flex;flex-direction:column;height:100%");
 
   // tab bar
   const bar = el("div",
@@ -619,7 +611,7 @@ export function main(): void {
   pnl = el("div", "flex:1;overflow-y:auto");
   root.appendChild(pnl);
 
-  document.body.appendChild(root);
+  host.appendChild(root);
 
   curDemo = 0;
   hlTabs();
@@ -2529,9 +2521,9 @@ function buildEnv(
     string_padStart: (s: string, n: number, p: string) => s.padStart(n, p),
     string_padEnd: (s: string, n: number, p: string) => s.padEnd(n, p),
     __make_callback:
-      (id: number) =>
+      (id: number, cap: unknown) =>
       (...args: unknown[]) =>
-        wasmExports![`__cb_${id}`]!(...args),
+        wasmExports![`__cb_${id}`]!(cap, ...args),
     Math_exp: Math.exp,
     Math_log: Math.log,
     Math_log2: Math.log2,
@@ -2654,7 +2646,6 @@ function downloadWasm() {
 }
 
 // ─── Benchmark ───────────────────────────────────────────────────────────
-const BENCH_ITERATIONS = 10_000;
 
 async function runBenchmark() {
   if (!lastResult?.success) {
@@ -2662,22 +2653,22 @@ async function runBenchmark() {
     if (!lastResult?.success) return;
   }
 
-  consolePre.textContent = `Running benchmark (${BENCH_ITERATIONS.toLocaleString()} iterations)…\n`;
+  consolePre.textContent = "";
   showOutputPanel("console");
   benchBtn.disabled = true;
 
-  // Yield to let the UI update before blocking
-  await new Promise((r) => setTimeout(r, 50));
+  const log = (s: string) => { consolePre.textContent += s + "\n"; };
+  const yield_ = () => new Promise<void>((r) => setTimeout(r, 0));
 
   // ── WASM setup ──
-  const wasmRoot = document.createElement("div");
-  const { env: wasmEnv, setExports } = buildEnv(lastResult, () => {}, wasmRoot);
+  log("Setting up WASM…");
+  await yield_();
 
+  const { env: wasmEnv, setExports } = buildEnv(lastResult, () => {});
   let instance: WebAssembly.Instance;
   try {
     ({ instance } = await WebAssembly.instantiate(
-      lastResult.binary as BufferSource,
-      { env: wasmEnv },
+      lastResult.binary as BufferSource, { env: wasmEnv },
     ));
   } catch {
     ({ instance } = await WebAssembly.instantiate(
@@ -2688,13 +2679,21 @@ async function runBenchmark() {
   const wasmExports = instance.exports as Record<string, Function>;
   setExports(wasmExports);
 
-  if (typeof wasmExports.main !== "function") {
-    consolePre.textContent = "No main() function found in WASM exports";
+  // Discover bench_* exports
+  const benchNames = Object.keys(wasmExports)
+    .filter((k) => k.startsWith("bench_") && typeof wasmExports[k] === "function")
+    .sort();
+
+  if (benchNames.length === 0) {
+    log("No bench_* functions found in WASM exports.");
     benchBtn.disabled = false;
     return;
   }
 
-  // ── JS setup ──
+  // ── JS setup: transpile once ──
+  log("Transpiling TS → JS…");
+  await yield_();
+
   const source = inputFile.model.getValue();
   const transpiled = ts.transpileModule(source, {
     compilerOptions: {
@@ -2703,84 +2702,96 @@ async function runBenchmark() {
     },
   });
   const cleanJs = transpiled.outputText.replace(/^export /gm, "");
-  const mockConsole = { log() {}, warn() {}, error() {} };
-  const jsRoot = document.createElement("div");
-  const mockDoc = new Proxy(document, {
-    get(target, prop) {
-      if (prop === "body") return jsRoot;
-      const val = (target as any)[prop];
-      return typeof val === "function" ? val.bind(target) : val;
-    },
-  });
 
-  let jsMain: Function;
+  let jsFuncs: Record<string, Function>;
   try {
-    const factory = new Function(
-      "console",
-      "document",
-      cleanJs + "\nreturn main;",
-    );
-    jsMain = factory(mockConsole, mockDoc);
+    const returnExpr = "return {" + benchNames.join(",") + "};";
+    const factory = new Function(cleanJs + "\n" + returnExpr);
+    jsFuncs = factory();
   } catch (e) {
-    consolePre.textContent = `Failed to create JS main: ${e}`;
+    log(`Failed to create JS functions: ${e}`);
     benchBtn.disabled = false;
     return;
   }
 
-  // Run iterations in chunks to keep UI responsive
-  const CHUNK = 500;
-  const total = BENCH_ITERATIONS;
-  const yieldFrame = () => new Promise<void>((r) => setTimeout(r, 0));
+  // ── Calibrate + measure each test ──
+  const TARGET_MS = 1000; // run each side for ~1s
 
-  const progress = (phase: string, done: number) => {
-    const pct = ((done / total) * 100) | 0;
-    consolePre.textContent = `${phase}… ${done.toLocaleString()}/${total.toLocaleString()} (${pct}%)`;
+  function calibrate(fn: Function): number {
+    let iters = 0;
+    const t0 = performance.now();
+    while (performance.now() - t0 < 100) { fn(); iters++; }
+    return Math.max(10, Math.ceil((iters / 100) * TARGET_MS));
+  }
+
+  function timeIt(fn: Function, iters: number): number {
+    const t0 = performance.now();
+    for (let i = 0; i < iters; i++) fn();
+    return performance.now() - t0;
+  }
+
+  function fmtTime(us: number): string {
+    if (us >= 1000) return (us / 1000).toFixed(1).padStart(8) + " ms";
+    return us.toFixed(1).padStart(8) + " µs";
+  }
+
+  type BenchResult = {
+    name: string; iters: number;
+    wasmUs: number; jsUs: number;
   };
+  const results: BenchResult[] = [];
 
-  // ── Warmup ──
-  progress("Warmup", 0);
-  await yieldFrame();
-  for (let i = 0; i < 100; i++) wasmExports.main();
-  for (let i = 0; i < 100; i++) jsMain();
+  log(`Running ${benchNames.length} tests (~1s each side)…\n`);
 
-  // ── Benchmark WASM ──
-  let wasmTime = 0;
-  for (let done = 0; done < total; done += CHUNK) {
-    progress("WASM", done);
-    await yieldFrame();
-    const n = Math.min(CHUNK, total - done);
-    const t0 = performance.now();
-    for (let i = 0; i < n; i++) wasmExports.main();
-    wasmTime += performance.now() - t0;
+  for (const name of benchNames) {
+    const wasmFn = wasmExports[name];
+    const jsFn = jsFuncs[name];
+    if (!jsFn) { log(`  ${name}: JS function not found, skipping`); continue; }
+
+    consolePre.textContent = consolePre.textContent.replace(/  \w+…\n?$/, "");
+    log(`  ${name}…`);
+    await yield_();
+
+    // Warmup both sides
+    for (let i = 0; i < 50; i++) { wasmFn(); jsFn(); }
+
+    // Calibrate on WASM (usually faster → safe iteration count for JS)
+    const iters = calibrate(wasmFn);
+
+    const wasmMs = timeIt(wasmFn, iters);
+    const jsMs = timeIt(jsFn, iters);
+
+    results.push({
+      name: name.replace("bench_", ""),
+      iters,
+      wasmUs: (wasmMs / iters) * 1000,
+      jsUs: (jsMs / iters) * 1000,
+    });
   }
 
-  // ── Benchmark JS ──
-  let jsTime = 0;
-  for (let done = 0; done < total; done += CHUNK) {
-    progress("JS", done);
-    await yieldFrame();
-    const n = Math.min(CHUNK, total - done);
-    const t0 = performance.now();
-    for (let i = 0; i < n; i++) jsMain();
-    jsTime += performance.now() - t0;
+  // ── Format results table ──
+  const nameW = Math.max(10, ...results.map((r) => r.name.length));
+
+  const lines: string[] = [
+    "Benchmark" + " ".repeat(nameW - 9 + 2) + "  WASM          JS        Ratio     n",
+    "\u2500".repeat(nameW + 52),
+  ];
+
+  for (const r of results) {
+    const pad = " ".repeat(nameW - r.name.length);
+    const wStr = fmtTime(r.wasmUs);
+    const jStr = fmtTime(r.jsUs);
+    const ratio = r.jsUs / r.wasmUs;
+    let tag: string;
+    if (ratio > 1.05) tag = ("WASM " + ratio.toFixed(2) + "\u00d7").padEnd(10);
+    else if (ratio < 0.95) tag = ("JS " + (1 / ratio).toFixed(2) + "\u00d7").padEnd(10);
+    else tag = ("\u2248 tied").padEnd(10);
+    lines.push(
+      `  ${r.name}${pad}${wStr}  ${jStr}    ${tag} ${r.iters.toLocaleString()}`,
+    );
   }
 
-  // ── Results ──
-  const ratio = jsTime / wasmTime;
-  const winner =
-    ratio > 1
-      ? `WASM is ${ratio.toFixed(2)}× faster`
-      : `JS is ${(1 / ratio).toFixed(2)}× faster`;
-
-  consolePre.textContent = [
-    `Benchmark: main() × ${total.toLocaleString()}`,
-    ``,
-    `  WASM:  ${wasmTime.toFixed(1)}ms  (${((wasmTime / total) * 1000).toFixed(1)}µs/call)`,
-    `  JS:    ${jsTime.toFixed(1)}ms  (${((jsTime / total) * 1000).toFixed(1)}µs/call)`,
-    ``,
-    `  ${winner}`,
-  ].join("\n");
-
+  consolePre.textContent = lines.join("\n") + "\n";
   benchBtn.disabled = false;
 }
 

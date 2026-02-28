@@ -212,7 +212,7 @@ export function generateModule(ast: TypedAST): WasmModule {
 
   // Scan lib.d.ts for DOM extern classes + globals (only if user code uses DOM)
   const libFile = ast.program.getSourceFile("lib.d.ts");
-  if (libFile && sourceUsesDOMGlobals(ast.sourceFile)) {
+  if (libFile && sourceUsesLibGlobals(ast.sourceFile)) {
     collectExternDeclarations(ctx, libFile);
     collectDeclaredGlobals(ctx, libFile, ast.sourceFile);
   }
@@ -321,11 +321,11 @@ export function generateMultiModule(multiAst: MultiTypedAST): WasmModule {
   // Scan lib.d.ts for DOM extern classes + globals (only if any user code uses DOM)
   const libFile = multiAst.program.getSourceFile("lib.d.ts");
   if (libFile) {
-    const anyUsesDom = multiAst.sourceFiles.some((sf) => sourceUsesDOMGlobals(sf));
+    const anyUsesDom = multiAst.sourceFiles.some((sf) => sourceUsesLibGlobals(sf));
     if (anyUsesDom) {
       collectExternDeclarations(ctx, libFile);
       for (const sf of multiAst.sourceFiles) {
-        if (sourceUsesDOMGlobals(sf)) {
+        if (sourceUsesLibGlobals(sf)) {
           collectDeclaredGlobals(ctx, libFile, sf);
         }
       }
@@ -766,8 +766,8 @@ function collectCallbackImports(
   }
 
   if (found) {
-    // __make_callback: (i32) → externref
-    const typeIdx = addFuncType(ctx, [{ kind: "i32" }], [{ kind: "externref" }]);
+    // __make_callback: (i32, externref) → externref
+    const typeIdx = addFuncType(ctx, [{ kind: "i32" }, { kind: "externref" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "__make_callback", { kind: "func", typeIdx });
   }
 }
@@ -1053,16 +1053,34 @@ function collectExternDeclarations(
       collectExternClass(ctx, stmt, []);
     }
     // declare var X: { prototype: X; new(): X } (lib.dom.d.ts pattern)
+    // declare var Date: DateConstructor (interface with new() pattern)
     if (ts.isVariableStatement(stmt) && hasDeclareModifier(stmt)) {
       for (const decl of stmt.declarationList.declarations) {
+        if (!decl.name || !ts.isIdentifier(decl.name) || !decl.type) continue;
+        // Inline type literal with construct signature
         if (
-          decl.name &&
-          ts.isIdentifier(decl.name) &&
-          decl.type &&
           ts.isTypeLiteralNode(decl.type) &&
           decl.type.members.some((m) => ts.isConstructSignatureDeclaration(m))
         ) {
           collectExternFromDeclareVar(ctx, decl);
+        }
+        // Type reference to interface with construct signature (e.g. declare var Date: DateConstructor)
+        // Skip types with built-in wasm handling (Array, primitives, etc.)
+        else if (ts.isTypeReferenceNode(decl.type)) {
+          const varName = decl.name.text;
+          const BUILTIN_SKIP = new Set([
+            "Array", "Number", "Boolean", "String", "Object", "Function",
+            "Symbol", "BigInt", "Int8Array", "Uint8Array", "Int16Array",
+            "Uint16Array", "Int32Array", "Uint32Array", "Float32Array",
+            "Float64Array", "ArrayBuffer", "DataView", "JSON", "Math",
+          ]);
+          if (!BUILTIN_SKIP.has(varName)) {
+            const refType = ctx.checker.getTypeAtLocation(decl.type);
+            const constructSigs = refType.getConstructSignatures();
+            if (constructSigs.length > 0) {
+              collectExternFromDeclareVar(ctx, decl);
+            }
+          }
         }
       }
     }
@@ -1180,15 +1198,29 @@ function collectExternFromDeclareVar(
     properties: new Map(),
   };
 
-  // Extract constructor params from the type literal's construct signature
-  if (decl.type && ts.isTypeLiteralNode(decl.type)) {
-    for (const member of decl.type.members) {
-      if (ts.isConstructSignatureDeclaration(member)) {
-        for (const param of member.parameters) {
-          const paramType = ctx.checker.getTypeAtLocation(param);
+  // Extract constructor params from the construct signature
+  if (decl.type) {
+    if (ts.isTypeLiteralNode(decl.type)) {
+      for (const member of decl.type.members) {
+        if (ts.isConstructSignatureDeclaration(member)) {
+          for (const param of member.parameters) {
+            const paramType = ctx.checker.getTypeAtLocation(param);
+            info.constructorParams.push(mapTsTypeToWasm(paramType, ctx.checker));
+          }
+          break;
+        }
+      }
+    } else if (ts.isTypeReferenceNode(decl.type)) {
+      // Resolve interface reference (e.g. DateConstructor) to get construct signatures
+      const refType = ctx.checker.getTypeAtLocation(decl.type);
+      const constructSigs = refType.getConstructSignatures();
+      // Use the zero-arg constructor if available, otherwise the first one
+      const sig = constructSigs.find(s => s.parameters.length === 0) ?? constructSigs[0];
+      if (sig) {
+        for (const param of sig.parameters) {
+          const paramType = ctx.checker.getTypeOfSymbol(param);
           info.constructorParams.push(mapTsTypeToWasm(paramType, ctx.checker));
         }
-        break;
       }
     }
   }
@@ -1517,11 +1549,16 @@ function collectDeclaredGlobals(
 }
 
 /** Check if source code references DOM globals (document, window) */
-function sourceUsesDOMGlobals(sourceFile: ts.SourceFile): boolean {
+const LIB_GLOBALS = new Set([
+  "document", "window", "Date", "RegExp", "Error",
+  "HTMLElement", "Element", "Node", "Event",
+]);
+
+function sourceUsesLibGlobals(sourceFile: ts.SourceFile): boolean {
   let found = false;
   const visit = (node: ts.Node): void => {
     if (found) return;
-    if (ts.isIdentifier(node) && (node.text === "document" || node.text === "window")) {
+    if (ts.isIdentifier(node) && LIB_GLOBALS.has(node.text)) {
       found = true;
       return;
     }

@@ -429,7 +429,7 @@ function generateEnvImportLine(name: string, mod: WasmModule): string {
 
   // __make_callback: late-binding wrapper
   if (name === "__make_callback") {
-    return `${name}: (id) => (...args) => wasmExports[\`__cb_\${id}\`](...args)`;
+    return `${name}: (id, cap) => (...args) => wasmExports[\`__cb_\${id}\`](cap, ...args)`;
   }
 
   // Async/await support: __await is identity (host functions are sync from Wasm's perspective)

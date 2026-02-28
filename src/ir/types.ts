@@ -171,7 +171,9 @@ export type Instr =
   | { op: "memory.grow" }
   | { op: "try"; blockType: BlockType; body: Instr[]; catches: CatchClause[]; catchAll?: Instr[] }
   | { op: "throw"; tagIdx: number }
-  | { op: "rethrow"; depth: number };
+  | { op: "rethrow"; depth: number }
+  | { op: "any.convert_extern" }
+  | { op: "extern.convert_any" };
 
 export type BlockType =
   | { kind: "empty" }

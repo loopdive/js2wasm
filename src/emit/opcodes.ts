@@ -95,8 +95,10 @@ export const GC = {
   array_len: 0x0f,
   ref_test: 0x14,
   ref_test_null: 0x15,
-  ref_cast: 0x17,
-  ref_cast_null: 0x18,
+  ref_cast: 0x16,
+  ref_cast_null: 0x17,
+  any_convert_extern: 0x1a,
+  extern_convert_any: 0x1b,
 } as const;
 
 export const TYPE = {

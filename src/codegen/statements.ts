@@ -305,7 +305,7 @@ function compileReturnStatement(
   stmt: ts.ReturnStatement,
 ): void {
   if (stmt.expression) {
-    compileExpression(ctx, fctx, stmt.expression);
+    compileExpression(ctx, fctx, stmt.expression, fctx.returnType ?? undefined);
   }
   fctx.body.push({ op: "return" });
 }

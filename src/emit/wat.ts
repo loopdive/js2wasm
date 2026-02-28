@@ -289,6 +289,10 @@ function formatInstr(instr: Instr, _depth: number): string {
       return "ref.null extern";
     case "ref.cast":
       return `ref.cast (ref ${instr.typeIdx})`;
+    case "any.convert_extern":
+      return "any.convert_extern";
+    case "extern.convert_any":
+      return "extern.convert_any";
     case "ref.test":
       return `ref.test (ref ${instr.typeIdx})`;
     case "ref.func":
