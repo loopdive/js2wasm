@@ -2,6 +2,7 @@ import * as monaco from "monaco-editor";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker";
 import { compile } from "../src/index.js";
+import { domApi, jsString as jsStringPolyfill } from "../src/runtime.js";
 import { WasmTreemap } from "./wasm-treemap.js";
 
 self.MonacoEnvironment = {
@@ -13,24 +14,142 @@ self.MonacoEnvironment = {
   },
 };
 
-const DEFAULT_SOURCE = `export function fib(n: number): number {
+const DEFAULT_SOURCE = `// ── Classes with constructors, methods & properties ──────
+class Vec2 {
+  x: number;
+  y: number;
+  constructor(x: number, y: number) {
+    this.x = x;
+    this.y = y;
+  }
+  length(): number {
+    return Math.sqrt(this.x * this.x + this.y * this.y);
+  }
+  dot(other: Vec2): number {
+    return this.x * other.x + this.y * other.y;
+  }
+  add(other: Vec2): Vec2 {
+    return new Vec2(this.x + other.x, this.y + other.y);
+  }
+}
+
+// ── Enums ────────────────────────────────────────────────
+enum Direction { Up, Down, Left, Right }
+
+function directionToAngle(d: Direction): number {
+  switch (d) {
+    case Direction.Up:    return 90;
+    case Direction.Down:  return 270;
+    case Direction.Left:  return 180;
+    case Direction.Right: return 0;
+    default: return 0;
+  }
+}
+
+// ── Arrays & array methods ───────────────────────────────
+function sumArray(arr: number[]): number {
+  let total = 0;
+  for (let i = 0; i < arr.length; i++) {
+    total += arr[i];
+  }
+  return total;
+}
+
+function countPositive(values: number[]): number {
+  let count = 0;
+  for (const v of values) {
+    if (v > 0) count += 1;
+  }
+  return count;
+}
+
+// ── Bitwise operators ────────────────────────────────────
+function packRGBA(r: number, g: number, b: number, a: number): number {
+  return ((a & 0xFF) << 24) | ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
+}
+
+// ── Generics ─────────────────────────────────────────────
+function clamp<T extends number>(value: T, min: T, max: T): T {
+  if (value < min) return min;
+  if (value > max) return max;
+  return value;
+}
+
+// ── Optional parameters ──────────────────────────────────
+function lerp(a: number, b: number, t?: number): number {
+  if (!t) t = 0.5;
+  return a + (b - a) * t;
+}
+
+// ── Ternary & comparison ─────────────────────────────────
+function sign(x: number): number {
+  return x > 0 ? 1 : x < 0 ? -1 : 0;
+}
+
+// ── Math builtins ────────────────────────────────────────
+function distance(x1: number, y1: number, x2: number, y2: number): number {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+// ── Exponentiation ───────────────────────────────────────
+function area(radius: number): number {
+  return Math.PI * radius ** 2;
+}
+
+// ── While loop ───────────────────────────────────────────
+function collatz(n: number): number {
+  let steps = 0;
+  while (n !== 1) {
+    n = n % 2 === 0 ? n / 2 : 3 * n + 1;
+    steps += 1;
+  }
+  return steps;
+}
+
+// ── Recursion ────────────────────────────────────────────
+export function fib(n: number): number {
   if (n <= 1) return n;
   return fib(n - 1) + fib(n - 2);
 }
 
 export function main(): void {
+  // exercise the features above
+  const a = new Vec2(3, 4);
+  const b = new Vec2(1, 2);
+  const c = a.add(b);
+  console.log("|a| = " + a.length().toString());
+  console.log("a · b = " + a.dot(b).toString());
+  console.log("a + b = (" + c.x.toString() + ", " + c.y.toString() + ")");
+  console.log("sign(-5) = " + sign(-5).toString());
+  console.log("lerp(0,100) = " + lerp(0, 100).toString());
+  console.log("distance = " + distance(0, 0, 3, 4).toString());
+  console.log("collatz(27) = " + collatz(27).toString());
+  console.log("area(5) = " + area(5).toString());
+  console.log("packRGBA = " + packRGBA(255, 128, 0, 255).toString());
+  console.log("clamp(15,0,10) = " + clamp(15, 0, 10).toString());
+  console.log("dirAngle(Up) = " + directionToAngle(Direction.Up).toString());
+  const nums = [10, -3, 7, -1, 5];
+  console.log("sum = " + sumArray(nums).toString());
+  console.log("positives = " + countPositive(nums).toString());
+
+  document.body.style.background = "#111";
+  document.body.style.color = "#eee";
+  document.body.style.margin = "0";
+
   const app = document.createElement("div");
   app.style.fontFamily = "system-ui, sans-serif";
   app.style.padding = "2rem";
 
   const h1 = document.createElement("h1");
   h1.textContent = "Hello from WebAssembly!";
-  h1.style.color = "#1a1a2e";
+  h1.style.color = "#fff";
   app.appendChild(h1);
 
   const p = document.createElement("p");
   p.textContent = "fib(10) = " + fib(10).toString();
-  p.style.color = "#555";
+  p.style.color = "#aaa";
   app.appendChild(p);
 
   const btn = document.createElement("button");
@@ -39,8 +158,13 @@ export function main(): void {
   btn.style.fontSize = "1rem";
   btn.style.border = "none";
   btn.style.borderRadius = "4px";
-  btn.style.background = "#1a1a2e";
-  btn.style.color = "#fff";
+  btn.style.background = "#fff";
+  btn.style.color = "#111";
+  btn.addEventListener("click", () => {
+    const result = fib(20);
+    p.textContent = "fib(20) = " + result.toString();
+    console.log("fib(20) = " + result.toString());
+  });
   app.appendChild(btn);
 
   document.body.appendChild(app);
@@ -263,6 +387,7 @@ interface FileEntry {
   readOnly: boolean;
   folder: "input" | "output";
   compiled: boolean;
+  binarySize?: number;
 }
 
 const STORAGE_KEY = "ts2wasm_source";
@@ -291,20 +416,20 @@ function createFileEntry(
 
 const files: FileEntry[] = [
   createFileEntry(
-    "input/input.ts",
+    "input/example.ts",
     "typescript",
     false,
     "input",
     saved ?? DEFAULT_SOURCE,
   ),
-  createFileEntry("output/mod.wat", "wat", true, "output", ""),
+  createFileEntry("output/example.wat", "wat", true, "output", ""),
+  createFileEntry("output/example.wasm", "text", true, "output", ""),
+  createFileEntry("output/example.ts", "typescript", true, "output", ""),
   createFileEntry("output/ts2wasm.ts", "typescript", true, "output", ""),
-  createFileEntry("output/mod.ts", "typescript", true, "output", ""),
-  createFileEntry("output/mod.test.ts", "typescript", true, "output", ""),
 ];
 
 const fileMap = new Map<string, FileEntry>(files.map((f) => [f.path, f]));
-const inputFile = fileMap.get("input/input.ts")!;
+const inputFile = fileMap.get("input/example.ts")!;
 
 // ─── Dual Monaco editors ─────────────────────────────────────────────────
 const editorOpts: monaco.editor.IStandaloneEditorConstructionOptions = {
@@ -322,7 +447,7 @@ const editorLeft = monaco.editor.create(
   { ...editorOpts, model: inputFile.model, readOnly: false },
 );
 
-const watFile = fileMap.get("output/mod.wat")!;
+const watFile = fileMap.get("output/example.wat")!;
 const editorRight = monaco.editor.create(
   document.getElementById("editor-container-right")!,
   { ...editorOpts, model: watFile.model, readOnly: true },
@@ -360,7 +485,6 @@ function switchToFileLeft(path: string) {
 
   activeFileLeft = path;
   renderEditorTabsLeft();
-  renderFileTree();
 }
 
 function switchToFileRight(path: string) {
@@ -382,7 +506,6 @@ function switchToFileRight(path: string) {
 
   activeFileRight = path;
   renderEditorTabsRight();
-  renderFileTree();
 }
 
 // Session storage for input
@@ -414,17 +537,18 @@ const previewPanel = document.getElementById("preview-panel")!;
 const treemap = new WasmTreemap(treemapPanel);
 
 // ─── Editor tabs (split left/right) ─────────────────────────────────────
-let openTabsLeft: string[] = ["input/input.ts"];
-let openTabsRight: string[] = ["output/mod.wat"];
-let activeFileLeft = "input/input.ts";
-let activeFileRight = "output/mod.wat";
+const LEFT_TABS = new Set(["input/example.ts", "output/ts2wasm.ts"]);
+let openTabsLeft: string[] = ["input/example.ts", "output/ts2wasm.ts"];
+let openTabsRight: string[] = ["output/example.wat", "output/example.wasm", "output/example.ts"];
+let activeFileLeft = "input/example.ts";
+let activeFileRight = "output/example.wat";
 const editorTabsLeftEl = document.getElementById("editor-tabs-left")!;
 const editorTabsRightEl = document.getElementById("editor-tabs-right")!;
 
 function openFileTab(path: string) {
   const file = fileMap.get(path);
   if (!file) return;
-  if (file.folder === "input") {
+  if (LEFT_TABS.has(path)) {
     if (!openTabsLeft.includes(path)) openTabsLeft.push(path);
     switchToFileLeft(path);
   } else {
@@ -434,7 +558,7 @@ function openFileTab(path: string) {
 }
 
 function closeFileTabLeft(path: string) {
-  if (path === "input/input.ts") return;
+  if (path === "input/example.ts") return;
   const idx = openTabsLeft.indexOf(path);
   if (idx === -1) return;
   openTabsLeft.splice(idx, 1);
@@ -447,7 +571,7 @@ function closeFileTabLeft(path: string) {
 }
 
 function closeFileTabRight(path: string) {
-  if (path === "output/mod.wat") return;
+  if (path === "output/example.wat") return;
   const idx = openTabsRight.indexOf(path);
   if (idx === -1) return;
   openTabsRight.splice(idx, 1);
@@ -474,7 +598,9 @@ function renderTabBar(
     tab.className = "editor-tab" + (path === activeFile ? " active" : "");
 
     const label = document.createElement("span");
-    label.textContent = file.displayName;
+    const bytes = file.binarySize ?? new TextEncoder().encode(file.model.getValue()).length;
+    const size = bytes >= 1024 ? `${(bytes / 1024).toFixed(1)}k` : `${bytes}b`;
+    label.textContent = `${file.displayName} (${size})`;
     tab.appendChild(label);
 
     const closeBtn = document.createElement("span");
@@ -497,7 +623,7 @@ function renderEditorTabsLeft() {
     editorTabsLeftEl,
     openTabsLeft,
     activeFileLeft,
-    "input/input.ts",
+    "input/example.ts",
     switchToFileLeft,
     closeFileTabLeft,
   );
@@ -508,68 +634,21 @@ function renderEditorTabsRight() {
     editorTabsRightEl,
     openTabsRight,
     activeFileRight,
-    "output/mod.wat",
+    "output/example.wat",
     switchToFileRight,
     closeFileTabRight,
   );
 }
 
-// ─── File tree ──────────────────────────────────────────────────────────
-const fileTreeEl = document.getElementById("file-tree")!;
-const folderCollapsed = { input: false, output: false };
-
-function renderFileTree() {
-  fileTreeEl.innerHTML = "";
-  for (const folder of ["input", "output"] as const) {
-    const folderFiles = files.filter((f) => f.folder === folder);
-    const folderEl = document.createElement("div");
-    folderEl.className =
-      "tree-folder" + (folderCollapsed[folder] ? " collapsed" : "");
-
-    const labelEl = document.createElement("div");
-    labelEl.className = "tree-folder-label";
-    const arrow = document.createElement("span");
-    arrow.className = "tree-folder-arrow";
-    arrow.textContent = "\u25bc";
-    labelEl.appendChild(arrow);
-    const name = document.createElement("span");
-    name.textContent = folder + "/";
-    labelEl.appendChild(name);
-    labelEl.addEventListener("click", () => {
-      folderCollapsed[folder] = !folderCollapsed[folder];
-      renderFileTree();
-    });
-    folderEl.appendChild(labelEl);
-
-    const children = document.createElement("div");
-    children.className = "tree-children";
-    for (const file of folderFiles) {
-      const fileEl = document.createElement("div");
-      fileEl.className = "tree-file";
-      if (file.path === activeFileLeft || file.path === activeFileRight)
-        fileEl.classList.add("active");
-      if (!file.compiled) fileEl.classList.add("dimmed");
-      fileEl.textContent = file.displayName;
-      fileEl.addEventListener("click", () => openFileTab(file.path));
-      children.appendChild(fileEl);
-    }
-    folderEl.appendChild(children);
-    fileTreeEl.appendChild(folderEl);
-  }
-}
-
-renderFileTree();
 renderEditorTabsLeft();
 renderEditorTabsRight();
 
 // ─── Output panel tabs ──────────────────────────────────────────────────
 const outputPanels: Record<string, HTMLElement> = {
-  console: consolePre,
   errors: errorsPre,
   preview: previewPanel,
 };
 const outputPanelDisplay: Record<string, string> = {
-  console: "block",
   errors: "block",
   preview: "block",
 };
@@ -577,7 +656,7 @@ let activeOutputTab = "preview";
 
 function showOutputPanel(name: string) {
   activeOutputTab = name;
-  document.querySelectorAll(".output-tab").forEach((t) => {
+  document.querySelectorAll("#output-tabs .output-tab").forEach((t) => {
     t.classList.toggle("active", (t as HTMLElement).dataset.panel === name);
   });
   for (const [key, el] of Object.entries(outputPanels)) {
@@ -586,142 +665,14 @@ function showOutputPanel(name: string) {
   }
 }
 
-document.querySelectorAll(".output-tab").forEach((tab) => {
+document.querySelectorAll("#output-tabs .output-tab").forEach((tab) => {
   tab.addEventListener("click", () => {
     showOutputPanel((tab as HTMLElement).dataset.panel!);
   });
 });
 
 // ─── Static content string ──────────────────────────────────────────────
-const TS2WASM_TS = `/** wasm:js-string polyfill */
-export const jsString = {
-  concat: (a: string, b: string): string => a + b,
-  length: (s: string): number => s.length,
-  equals: (a: string, b: string): number => (a === b ? 1 : 0),
-  substring: (s: string, start: number, end: number): string => s.substring(start, end),
-  charCodeAt: (s: string, i: number): number => s.charCodeAt(i),
-};
-
-/** Math_xxx bindings derived from TypeScript's built-in Math interface */
-type MathBindings = {
-  [K in keyof Math as Math[K] extends (...args: any[]) => any ? \\\`Math_\\\${K & string}\\\` : never]: Math[K];
-};
-
-type JsApi = MathBindings & {
-  console_log_number: (v: number) => void;
-  console_log_string: (v: string) => void;
-  console_log_bool: (v: number) => void;
-  console_log_externref: (v: unknown) => void;
-  number_toString: (v: number) => string;
-};
-
-/** Math and console bindings — dispatches Math_xxx → Math.xxx, console_log_xxx → console.log */
-export const jsApi: JsApi = new Proxy({} as JsApi, {
-  get(_, prop) {
-    const name = String(prop);
-    if (name.startsWith("Math_")) {
-      const fn = (Math as any)[name.slice(5)];
-      return typeof fn === "function" ? fn : undefined;
-    }
-    if (name.startsWith("console_log_")) {
-      const type = name.slice(12);
-      return type === "bool" ? (v: number) => console.log(Boolean(v)) : (v: any) => console.log(v);
-    }
-    if (name === "number_toString") return (v: number) => String(v);
-    if (name.startsWith("string_")) {
-      const method = name.slice(7);
-      return (s: any, ...a: any[]) => s[method](...a);
-    }
-  },
-});
-
-/** DOM extern-class bindings — dispatches ClassName_method(self, …) → self.method(…) */
-type DomMethods<Name extends string, T> = {
-  [K in keyof T as T[K] extends (...args: any[]) => any ? \\\`\\\${Name}_\\\${K & string}\\\` : never]:
-    T[K] extends (...args: infer A) => infer R ? (self: T, ...args: A) => R : never;
-};
-type DomGetters<Name extends string, T> = {
-  [K in keyof T as T[K] extends (...args: any[]) => any ? never : \\\`\\\${Name}_get_\\\${K & string}\\\`]:
-    (self: T) => T[K];
-};
-type DomSetters<Name extends string, T> = {
-  [K in keyof T as T[K] extends (...args: any[]) => any ? never : \\\`\\\${Name}_set_\\\${K & string}\\\`]:
-    (self: T, value: T[K]) => void;
-};
-type DomApi<Name extends string, T> = DomMethods<Name, T> & DomGetters<Name, T> & DomSetters<Name, T>;
-
-type AllDomApi =
-  DomApi<"Document", Document> &
-  DomApi<"Window", Window & typeof globalThis> &
-  DomApi<"HTMLElement", HTMLElement> &
-  DomApi<"HTMLInputElement", HTMLInputElement> &
-  DomApi<"HTMLButtonElement", HTMLButtonElement> &
-  DomApi<"Element", Element> &
-  DomApi<"Node", Node> &
-  DomApi<"NodeList", NodeList> &
-  DomApi<"HTMLCollection", HTMLCollection> &
-  DomApi<"DOMTokenList", DOMTokenList> &
-  DomApi<"EventTarget", EventTarget> &
-  DomApi<"CSSStyleDeclaration", CSSStyleDeclaration>;
-
-export const domApi: AllDomApi = new Proxy({} as AllDomApi, {
-  get(_, prop) {
-    const name = String(prop);
-    const under = name.indexOf("_");
-    if (under === -1) return undefined;
-    const rest = name.slice(under + 1);
-    if (rest.startsWith("get_")) { const k = rest.slice(4); return (self: any) => self[k]; }
-    if (rest.startsWith("set_")) { const k = rest.slice(4); return (self: any, v: any) => { self[k] = v; }; }
-    return (self: any, ...args: any[]) => (typeof self?.[rest] === "function" ? self[rest](...args) : undefined);
-  },
-});
-
-export interface CompileResult {
-  binary: Uint8Array;
-  stringPool: string[];
-  success: boolean;
-  errors: Array<{ line: number; column: number; severity: string; message: string }>;
-}
-
-/** Build the WebAssembly import object */
-export function buildEnv(
-  stringPool: string[] = [],
-  ...apiObjects: Record<string, unknown>[]
-): { env: Record<string, Function>; "wasm:js-string": typeof jsString } {
-  const strEntries = Object.fromEntries(stringPool.map((s, i) => [\\\`__str_\\\${i}\\\`, () => s]));
-  const env = new Proxy({} as Record<string, Function>, {
-    get(_, prop) {
-      if (prop in strEntries) return (strEntries as any)[prop];
-      for (const obj of apiObjects) {
-        const val = (obj as any)[prop];
-        if (val !== undefined) return val;
-      }
-    },
-  });
-  return { env, "wasm:js-string": jsString };
-}
-
-/** Compile TS source to Wasm binary, caching by hash in sessionStorage */
-export async function getOrCompile(
-  source: string,
-  compileFn: (source: string) => CompileResult,
-): Promise<{ binary: Uint8Array; stringPool: string[] }> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(source));
-  const hash = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
-  const cacheKey = \\\`ts2wasm:\\\${hash}\\\`;
-  const cached = sessionStorage.getItem(cacheKey);
-  if (cached) {
-    const { b64, pool } = JSON.parse(cached);
-    return { binary: Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)), stringPool: pool };
-  }
-  const result = compileFn(source);
-  if (!result.success) throw new Error(result.errors.map((e) => e.message).join("\\\\n"));
-  sessionStorage.setItem(cacheKey, JSON.stringify({
-    b64: btoa(String.fromCharCode(...result.binary)),
-    pool: result.stringPool,
-  }));
-  return result;
-}
+const TS2WASM_TS = `export { compile, compileAndInstantiate, buildImports, jsApi, domApi, jsString } from "ts2wasm";
 `;
 
 // ─── Compile helpers ────────────────────────────────────────────────────
@@ -737,74 +688,26 @@ function detectDomUsage(result: ReturnType<typeof compile>): boolean {
   return envMatch[1].split("\n").some((l) => DOM_PATTERNS.test(l) && l.trim());
 }
 
-function extractExportNames(dts: string): string[] {
-  const m = dts.match(/export interface Exports \{([\s\S]*?)\}/);
-  if (!m) return [];
-  return [...m[1].matchAll(/^\s+(\w+)\s*[\((:]/gm)].map((x) => x[1]);
-}
-
-function splitForModularOutput(
+function generateModularOutput(
   result: ReturnType<typeof compile>,
-  source: string,
-): {
-  modTs: string;
-  exportNames: string[];
-} {
-  const helperBody = (result.importsHelper ?? "")
-    .replace(/^(\/\/[^\n]*\n)+\n?/, "")
-    .trimStart();
-  const envMatch = helperBody.match(/const env = \{([\s\S]*?)\n  \};/);
-  const envLines = envMatch ? envMatch[1].split("\n") : [];
-  const usesDom = envLines.some((l) => DOM_PATTERNS.test(l) && l.trim());
+): string {
+  const dts = result.dts ?? "";
+  // Parse "export declare function name(params): ret;" into typed export lines
+  const exportLines = [...dts.matchAll(/^export declare function (\w+)\(([^)]*)\):\s*(.+);$/gm)]
+    .map(([, name, params, ret]) =>
+      `export const ${name} = _exports.${name} as (${params}) => ${ret};`
+    );
 
-  const tswasmImports = usesDom
-    ? `{ compile } from "ts2wasm";\nimport { jsApi, domApi, buildEnv, getOrCompile } from "./ts2wasm"`
-    : `{ compile } from "ts2wasm";\nimport { jsApi, buildEnv, getOrCompile } from "./ts2wasm"`;
-  const apiArgs = usesDom ? "jsApi, domApi" : "jsApi";
+  const exports = exportLines.length > 0
+    ? exportLines.join("\n")
+    : `export default _exports;`;
 
-  const escaped = source
-    .replace(/\\/g, "\\\\")
-    .replace(/`/g, "\\`")
-    .replace(/\$\{/g, "\\${");
+  return `import { compileAndInstantiate } from "ts2wasm";
+import _source from "./example.ts?raw";
 
-  const names = extractExportNames(result.dts ?? "");
-  const typedExports =
-    names.length > 0
-      ? `const _exports = _instance.exports as unknown as Exports;\nexport const { ${names.join(", ")} } = _exports;`
-      : `export default _instance.exports;`;
+const _exports = await compileAndInstantiate(_source);
 
-  const modTs = `import ${tswasmImports};
-
-// TypeScript source — compiled on first load, cached by hash
-const _source = \`${escaped}\`;
-
-const { binary, stringPool } = await getOrCompile(_source, compile);
-const { env, ...rest } = buildEnv(stringPool, ${apiArgs});
-let _instance: WebAssembly.Instance;
-try {
-  ({ instance: _instance } = await WebAssembly.instantiate(binary, { env }));
-} catch (e) {
-  if (!(e instanceof WebAssembly.LinkError)) throw e;
-  ({ instance: _instance } = await WebAssembly.instantiate(binary, { env, ...rest }));
-}
-
-${result.dts ?? ""}
-${typedExports}
-`;
-
-  return { modTs, exportNames: names };
-}
-
-function generateTestCode(names: string[]): string {
-  const imports = names.length > 0 ? names.join(", ") : "exports";
-  const call = names.includes("main")
-    ? "main()"
-    : names[0]
-      ? `${names[0]}(/* args */)`
-      : null;
-  return `// mod.ts compiles and instantiates on import — no setup needed
-import { ${imports} } from "./mod";
-${call ? `\nconst output = ${call};\nif (output !== undefined) console.log("→", output);` : ""}
+${exports}
 `;
 }
 
@@ -835,12 +738,21 @@ function compileOnly() {
 
   // Populate output models
   watFile.model.setValue(result.wat);
+  if (result.binary && result.binary.length > 0) {
+    const bin = result.binary as Uint8Array;
+    const lines: string[] = [];
+    for (let i = 0; i < bin.length; i += 16) {
+      const slice = bin.subarray(i, Math.min(i + 16, bin.length));
+      const hex = Array.from(slice, (b) => b.toString(16).padStart(2, "0")).join(" ");
+      const ascii = Array.from(slice, (b) => (b >= 32 && b < 127 ? String.fromCharCode(b) : ".")).join("");
+      lines.push(`${i.toString(16).padStart(8, "0")}  ${hex.padEnd(47)}  ${ascii}`);
+    }
+    const wasmFile = fileMap.get("output/example.wasm")!;
+    wasmFile.model.setValue(lines.join("\n"));
+    wasmFile.binarySize = bin.length;
+  }
   fileMap.get("output/ts2wasm.ts")!.model.setValue(TS2WASM_TS);
-  const { modTs, exportNames } = splitForModularOutput(result, source);
-  fileMap.get("output/mod.ts")!.model.setValue(modTs);
-  fileMap
-    .get("output/mod.test.ts")!
-    .model.setValue(generateTestCode(exportNames));
+  fileMap.get("output/example.ts")!.model.setValue(generateModularOutput(result));
 
   // Mark output files as compiled
   for (const f of files) {
@@ -862,60 +774,32 @@ function compileOnly() {
   // Auto-open mod.wat tab on first successful compile
   if (result.success && !hasCompiledOnce) {
     hasCompiledOnce = true;
-    openFileTab("output/mod.wat");
+    openFileTab("output/example.wat");
   }
-
-  // Re-render file tree to remove dimmed state
-  renderFileTree();
 
   if (!result.success) {
     showOutputPanel("errors");
   }
 }
 
-/** Runtime DOM extern-class proxy */
-const domApi: Record<string, Function> = new Proxy(
-  {} as Record<string, Function>,
-  {
-    get(_, prop) {
-      const name = String(prop);
-      const under = name.indexOf("_");
-      if (under === -1) return undefined;
-      const rest = name.slice(under + 1);
-      if (rest.startsWith("get_")) {
-        const k = rest.slice(4);
-        return (self: any) => self[k];
-      }
-      if (rest.startsWith("set_")) {
-        const k = rest.slice(4);
-        return (self: any, v: any) => {
-          self[k] = v;
-        };
-      }
-      return (self: any, ...args: any[]) =>
-        typeof self?.[rest] === "function" ? self[rest](...args) : undefined;
-    },
-  },
-);
-
-const jsStringPolyfill: Record<string, Function> = {
-  concat: (a: string, b: string) => a + b,
-  length: (s: string) => s.length,
-  equals: (a: string, b: string) => (a === b ? 1 : 0),
-  substring: (s: string, start: number, end: number) => s.substring(start, end),
-  charCodeAt: (s: string, i: number) => s.charCodeAt(i),
-};
-
 function buildEnv(
   result: ReturnType<typeof compile>,
   log: (msg: string) => void,
-  targetDoc?: Document,
+  previewRoot?: HTMLElement,
 ): {
   env: Record<string, Function>;
   setExports: (exports: Record<string, Function>) => void;
 } {
-  const doc = targetDoc ?? document;
-  const win = doc.defaultView ?? window;
+  const doc = previewRoot
+    ? new Proxy(document, {
+        get(target, prop) {
+          if (prop === "body") return previewRoot;
+          const val = (target as any)[prop];
+          return typeof val === "function" ? val.bind(target) : val;
+        },
+      })
+    : document;
+  const win = window;
   let wasmExports: Record<string, Function> | undefined;
   const env: Record<string, Function> = {
     console_log_number: (v: number) => log(String(v)),
@@ -990,25 +874,13 @@ async function runOnly() {
   const usesDom = detectDomUsage(result);
   const logs: string[] = [];
 
-  let targetDoc: Document | undefined;
-  if (usesDom) {
-    const iframe = document.createElement("iframe");
-    iframe.style.cssText =
-      "width:100%;height:100%;border:none;background:transparent";
-    previewPanel.appendChild(iframe);
-    targetDoc = iframe.contentDocument!;
-    targetDoc.open();
-    targetDoc.write("<!doctype html><html><head></head><body></body></html>");
-    targetDoc.close();
-  }
-
   const { env, setExports } = buildEnv(
     result,
     (msg) => {
       logs.push(msg);
       consolePre.textContent = logs.join("\n");
     },
-    targetDoc,
+    usesDom ? previewPanel as HTMLElement : undefined,
   );
 
   try {
@@ -1033,9 +905,7 @@ async function runOnly() {
     }
 
     consolePre.textContent = logs.join("\n");
-    showOutputPanel(
-      usesDom ? "preview" : logs.length > 0 ? "console" : "console",
-    );
+    if (usesDom) showOutputPanel("preview");
   } catch (e) {
     errorsPre.textContent = `Runtime: ${e instanceof Error ? e.message : String(e)}`;
     showOutputPanel("errors");
@@ -1048,7 +918,7 @@ function downloadWat() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "output.wat";
+  a.download = "example.wat";
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -1086,36 +956,42 @@ editorRight.addCommand(
   compileOnly,
 );
 
-// ─── Resizable sidebar divider ──────────────────────────────────────────
-const sidebarDivider = document.getElementById("divider-sidebar")!;
-const ideContainer = document.querySelector(".ide-container") as HTMLElement;
+// ─── Layout persistence ─────────────────────────────────────────────────
+const LAYOUT_KEY = "ts2wasm_layout";
+type LayoutState = {
+  editorSplit?: number;
+  outputHeight?: number;
+  outputH1?: [number, number];
+  outputH2?: [number, number];
+};
 
-sidebarDivider.addEventListener("mousedown", (e) => {
-  e.preventDefault();
-  sidebarDivider.classList.add("active");
-  const rect = ideContainer.getBoundingClientRect();
+function loadLayout(): LayoutState {
+  try {
+    return JSON.parse(localStorage.getItem(LAYOUT_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
 
-  const onMove = (ev: MouseEvent) => {
-    const x = ev.clientX - rect.left;
-    const clamped = Math.max(120, Math.min(400, x));
-    ideContainer.style.setProperty("--sidebar-width", `${clamped}px`);
-  };
+function saveLayout(patch: Partial<LayoutState>) {
+  const state = { ...loadLayout(), ...patch };
+  localStorage.setItem(LAYOUT_KEY, JSON.stringify(state));
+}
 
-  const onUp = () => {
-    sidebarDivider.classList.remove("active");
-    document.removeEventListener("mousemove", onMove);
-    document.removeEventListener("mouseup", onUp);
-  };
-
-  document.addEventListener("mousemove", onMove);
-  document.addEventListener("mouseup", onUp);
-});
+const layoutState = loadLayout();
 
 // ─── Resizable editor divider ────────────────────────────────────────────
 const editorDivider = document.getElementById("divider-editor")!;
 const editorArea = document.querySelector(".editor-area") as HTMLElement;
 const leftPane = editorArea.querySelector(".editor-pane.left") as HTMLElement;
 const rightPane = editorArea.querySelector(".editor-pane.right") as HTMLElement;
+
+function applyEditorSplit(pct: number) {
+  leftPane.style.flex = `0 0 ${pct}%`;
+  rightPane.style.flex = `0 0 ${100 - pct}%`;
+}
+
+if (layoutState.editorSplit) applyEditorSplit(layoutState.editorSplit);
 
 editorDivider.addEventListener("mousedown", (e) => {
   e.preventDefault();
@@ -1126,12 +1002,13 @@ editorDivider.addEventListener("mousedown", (e) => {
     const x = ev.clientX - rect.left;
     const pct = (x / rect.width) * 100;
     const clamped = Math.max(20, Math.min(80, pct));
-    leftPane.style.flex = `0 0 ${clamped}%`;
-    rightPane.style.flex = `0 0 ${100 - clamped}%`;
+    applyEditorSplit(clamped);
   };
 
   const onUp = () => {
     editorDivider.classList.remove("active");
+    const cur = (leftPane.getBoundingClientRect().width / editorArea.getBoundingClientRect().width) * 100;
+    saveLayout({ editorSplit: Math.round(cur * 10) / 10 });
     document.removeEventListener("mousemove", onMove);
     document.removeEventListener("mouseup", onUp);
   };
@@ -1145,7 +1022,11 @@ const outputDivider = document.getElementById("divider-output")!;
 const outputPanel = document.getElementById("output-panel")!;
 const mainArea = document.querySelector(".main-area") as HTMLElement;
 let outputCollapsed = false;
-let lastOutputHeight = 200;
+let lastOutputHeight = layoutState.outputHeight ?? Math.round(window.innerHeight * 0.4);
+
+if (layoutState.outputHeight) {
+  outputPanel.style.flexBasis = `${layoutState.outputHeight}px`;
+}
 
 outputDivider.addEventListener("mousedown", (e) => {
   e.preventDefault();
@@ -1170,6 +1051,7 @@ outputDivider.addEventListener("mousedown", (e) => {
 
   const onUp = () => {
     outputDivider.classList.remove("active");
+    saveLayout({ outputHeight: lastOutputHeight });
     document.removeEventListener("mousemove", onMove);
     document.removeEventListener("mouseup", onUp);
   };
@@ -1190,3 +1072,62 @@ outputDivider.addEventListener("dblclick", () => {
     outputPanel.style.flexBasis = `${lastOutputHeight}px`;
   }
 });
+
+// ─── Resizable output horizontal dividers ───────────────────────────────
+const outputPaneLeft = document.getElementById("output-pane-left")!;
+const outputPaneCenter = document.getElementById("output-pane-center")!;
+const outputPaneRight = document.getElementById("output-pane-right")!;
+
+function setupOutputHDivider(
+  divider: HTMLElement,
+  leftEl: HTMLElement,
+  rightEl: HTMLElement,
+  layoutKey: "outputH1" | "outputH2",
+) {
+  const saved = layoutState[layoutKey];
+  if (saved) {
+    leftEl.style.flex = `0 1 ${saved[0]}px`;
+    rightEl.style.flex = `0 1 ${saved[1]}px`;
+  }
+
+  divider.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    divider.classList.add("active");
+    const startX = e.clientX;
+    const startLeftW = leftEl.getBoundingClientRect().width;
+    const startRightW = rightEl.getBoundingClientRect().width;
+
+    const onMove = (ev: MouseEvent) => {
+      const delta = ev.clientX - startX;
+      const newLeftW = Math.max(80, startLeftW + delta);
+      const newRightW = Math.max(80, startRightW - delta);
+      leftEl.style.flex = `0 1 ${newLeftW}px`;
+      rightEl.style.flex = `0 1 ${newRightW}px`;
+    };
+
+    const onUp = () => {
+      divider.classList.remove("active");
+      const lw = leftEl.getBoundingClientRect().width;
+      const rw = rightEl.getBoundingClientRect().width;
+      saveLayout({ [layoutKey]: [Math.round(lw), Math.round(rw)] });
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  });
+}
+
+setupOutputHDivider(
+  document.getElementById("divider-output-h1")!,
+  outputPaneLeft,
+  outputPaneCenter,
+  "outputH1",
+);
+setupOutputHDivider(
+  document.getElementById("divider-output-h2")!,
+  outputPaneCenter,
+  outputPaneRight,
+  "outputH2",
+);

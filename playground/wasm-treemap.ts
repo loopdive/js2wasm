@@ -425,9 +425,9 @@ export class WasmTreemap {
   constructor(container: HTMLElement) {
     this.container = container;
     container.innerHTML = "";
+    container.style.display = "flex";
     container.style.flexDirection = "column";
     container.style.overflow = "hidden";
-    container.style.height = "100%";
 
     // Controls bar (view toggle + threshold)
     this.controlsBar = document.createElement("div");
