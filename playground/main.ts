@@ -157,8 +157,8 @@ function renderCal(): void {
   for (let i = 0; i < offset; i++) {
     const d = prevDays - offset + 1 + i;
     const cell = el("div",
-      "padding:6px 4px;text-align:center;font-size:0.75rem;" +
-      "color:#444;font-style:italic");
+      "padding:8px 4px;text-align:center;font-size:0.8rem;" +
+      "color:#555;font-style:italic");
     const dn = el("div", "font-weight:bold");
     dn.textContent = d.toString();
     cell.appendChild(dn);
@@ -177,23 +177,25 @@ function renderCal(): void {
   for (let d = 1; d <= days; d++) {
     let bg = "transparent";
     let fg = "#ddd";
-    let bdr = "none";
+    let outline = "none";
     const inRange = selStart > 0 && selEnd > 0 && d >= selStart && d <= selEnd;
-    if (inRange) bg = "#333";
-    if (d === selStart) bdr = "2px solid #fff";
+    if (inRange) bg = "#444";
+    if (d === selStart && selEnd > 0) {
+      bg = "#fff";
+      fg = "#111";
+    }
     if (d === selEnd && selEnd !== selStart) {
       bg = "#fff";
       fg = "#111";
     }
-    let outline = "none";
     if (d === todayD && curMonth === todayM && curYear === todayY) {
       outline = "1px solid rgba(255,255,255,0.4)";
     }
     const cell = el("div",
-      "padding:6px 4px;text-align:center;font-size:0.75rem;" +
+      "padding:8px 4px;text-align:center;font-size:0.8rem;" +
       "cursor:pointer;border-radius:4px;" +
       "background:" + bg + ";color:" + fg + ";" +
-      "border-left:" + bdr + ";outline:" + outline);
+      "outline:" + outline);
 
     const dn = el("div", "font-weight:bold");
     dn.textContent = d.toString();
@@ -217,8 +219,8 @@ function renderCal(): void {
   const nextY = curMonth === 11 ? curYear + 1 : curYear;
   for (let i = 1; i <= rem; i++) {
     const cell = el("div",
-      "padding:6px 4px;text-align:center;font-size:0.75rem;" +
-      "color:#444;font-style:italic");
+      "padding:8px 4px;text-align:center;font-size:0.8rem;" +
+      "color:#555;font-style:italic");
     const dn = el("div", "font-weight:bold");
     dn.textContent = i.toString();
     cell.appendChild(dn);
@@ -259,7 +261,7 @@ function updFoot(): void {
     if (totalEl !== null) totalEl.textContent = sum.toString() + " \\u20AC";
   } else {
     if (nightsEl !== null) nightsEl.textContent = "0 nights";
-    if (totalEl !== null) totalEl.textContent = "—";
+    if (totalEl !== null) totalEl.textContent = "";
   }
 }
 
@@ -273,8 +275,8 @@ function showCal(): void {
   const hdr = el("div",
     "display:flex;justify-content:space-between;align-items:baseline;" +
     "margin-bottom:0.5rem");
-  monthEl = el("div", "font-size:1.8rem;font-weight:bold;color:#fff");
-  yearEl = el("div", "font-size:1rem;color:#888");
+  monthEl = el("div", "font-size:3.5rem;font-weight:bold;color:#fff;line-height:1");
+  yearEl = el("div", "font-size:1.1rem;color:#888");
   hdr.appendChild(monthEl);
   hdr.appendChild(yearEl);
   wrap.appendChild(hdr);
@@ -309,7 +311,7 @@ function showCal(): void {
 
   // navigation
   const nav = el("div",
-    "display:flex;justify-content:center;gap:2rem;margin:0.75rem 0");
+    "display:flex;justify-content:space-between;margin:0.75rem 0");
   const prev = el("div",
     "cursor:pointer;font-size:1.2rem;color:#888;padding:4px 12px");
   prev.textContent = "\\u2190";
@@ -332,36 +334,39 @@ function showCal(): void {
   nav.appendChild(next);
   wrap.appendChild(nav);
 
-  // footer
-  const foot = el("div",
+  // footer row 1: Clear Dates + nights
+  const foot1 = el("div",
     "display:flex;align-items:center;justify-content:space-between;" +
-    "margin-top:0.5rem;font-size:0.8rem");
+    "margin-top:0.75rem;font-size:0.85rem");
   const clr = el("span", "color:#888;cursor:pointer;text-decoration:underline");
   clr.textContent = "Clear Dates";
   clr.addEventListener("click", () => {
     autoMode = 0;
     selStart = -1; selEnd = -1; updFoot(); renderCal();
   });
-  foot.appendChild(clr);
-
+  foot1.appendChild(clr);
   nightsEl = el("span", "color:#aaa");
   nightsEl.textContent = "0 nights";
-  foot.appendChild(nightsEl);
+  foot1.appendChild(nightsEl);
+  wrap.appendChild(foot1);
 
-  totalEl = el("span", "color:#fff;font-weight:bold");
-  totalEl.textContent = "—";
-  foot.appendChild(totalEl);
-
+  // footer row 2: total + save
+  const foot2 = el("div",
+    "display:flex;align-items:center;justify-content:space-between;" +
+    "margin-top:0.5rem");
+  totalEl = el("div", "color:#fff;font-weight:bold;font-size:2rem");
+  totalEl.textContent = "";
+  foot2.appendChild(totalEl);
   const saveBtn = el("div",
-    "padding:4px 16px;background:#7c3aed;color:#fff;" +
-    "border-radius:4px;cursor:pointer;font-size:0.75rem");
+    "padding:8px 28px;background:#fff;color:#111;" +
+    "border-radius:999px;cursor:pointer;font-size:0.9rem;font-weight:600");
   saveBtn.textContent = "Save";
   saveBtn.addEventListener("click", () => {
     autoMode = 0;
     console.log("saved " + selStart.toString() + "-" + selEnd.toString());
   });
-  foot.appendChild(saveBtn);
-  wrap.appendChild(foot);
+  foot2.appendChild(saveBtn);
+  wrap.appendChild(foot2);
 
   pnl.appendChild(wrap);
   renderCal();
@@ -1415,6 +1420,12 @@ function switchToFileRight(path: string) {
   activeFileRight = path;
   renderEditorTabsRight();
   if (path === "output/example.wasm") applyHexDecorations();
+
+  // Re-apply pinned cross-highlight for the new active view
+  if (xPinned && xTarget) {
+    if (xDecoRight) { xDecoRight.clear(); xDecoRight = null; }
+    xHighlightRightEditor(xTarget, true);
+  }
 }
 
 // Session storage for input
@@ -1447,120 +1458,197 @@ const previewPanel = document.getElementById("preview-panel")!;
 // Treemap
 const treemap = new WasmTreemap(treemapPanel);
 
-// Treemap click → jump to WAT/hex editors
+// Treemap click → pin cross-highlight
 treemap.onNodeSelect = ({ name, fullPath }) => {
-  if (!lastWasmData) return;
-  const watText = watFile.model.getValue();
-
-  // Try to find a function match
-  const funcBody = lastWasmData.functionBodies.find((_fb, i) => {
-    const fname = lastWasmData!.functionNames.get(i + lastWasmData!.importFuncCount);
-    return fname === name;
-  });
-
-  if (funcBody) {
-    // Jump WAT editor to function definition
-    switchToFileRight("output/example.wat");
-    const pattern = `(func $${name}`;
-    const idx = watText.indexOf(pattern);
-    if (idx !== -1) {
-      const line = watText.substring(0, idx).split("\n").length;
-      editorRight.revealLineInCenter(line);
-      editorRight.setPosition({ lineNumber: line, column: 1 });
-    }
-    return;
-  }
-
-  // Try to find a section match
-  const section = lastWasmData.sections.find((s) => s.name === name || s.customName === name);
-  if (section) {
-    // Jump hex editor to section offset
-    switchToFileRight("output/example.wasm");
-    const pos = byteToPos(section.offset);
-    editorRight.revealLineInCenter(pos.lineNumber);
-    editorRight.setPosition(pos);
-    return;
-  }
-
-  // Try import module match (e.g. "env" inside "import")
-  if (fullPath.startsWith("import/")) {
-    // Search WAT for the import module
-    const pattern = `(import "${name}"`;
-    const idx = watText.indexOf(pattern);
-    if (idx !== -1) {
-      switchToFileRight("output/example.wat");
-      const line = watText.substring(0, idx).split("\n").length;
-      editorRight.revealLineInCenter(line);
-      editorRight.setPosition({ lineNumber: line, column: 1 });
-      return;
-    }
-  }
-
-  // Try individual import match (e.g. "console_log [func]")
-  const importMatch = name.match(/^(.+)\s+\[(\w+)\]$/);
-  if (importMatch) {
-    const importName = importMatch[1];
-    const pattern = `"${importName}"`;
-    const idx = watText.indexOf(pattern);
-    if (idx !== -1) {
-      switchToFileRight("output/example.wat");
-      const line = watText.substring(0, idx).split("\n").length;
-      editorRight.revealLineInCenter(line);
-      editorRight.setPosition({ lineNumber: line, column: 1 });
-      return;
-    }
-  }
+  const target = resolveTreemapTarget({ name, fullPath });
+  if (target) handleHighlightClick(target, "treemap");
 };
 
-// Treemap hover → highlight corresponding range in hex/WAT editors
-let hoverDecorationsRight: monaco.editor.IEditorDecorationsCollection | null = null;
-let preHoverViewState: monaco.editor.ICodeEditorViewState | null = null;
+// ─── Unified cross-highlight system ─────────────────────────────────────
 
-treemap.onNodeHover = (node) => {
-  // Clear previous hover decorations
-  if (hoverDecorationsRight) {
-    hoverDecorationsRight.clear();
-    hoverDecorationsRight = null;
+interface HighlightTarget {
+  name: string;           // function name (no $) or section name
+  treemapPath: string;    // e.g. "code/fib", "import", "type"
+  kind: "function" | "section" | "import";
+}
+type HighlightSource = "ts" | "wat" | "hex" | "treemap";
+
+let xTarget: HighlightTarget | null = null;
+let xSource: HighlightSource | null = null;
+let xPinned = false;
+let xSavedStates: { left: monaco.editor.ICodeEditorViewState | null; right: monaco.editor.ICodeEditorViewState | null } | null = null;
+let xDecoLeft: monaco.editor.IEditorDecorationsCollection | null = null;
+let xDecoRight: monaco.editor.IEditorDecorationsCollection | null = null;
+let xHexSpanDeco: monaco.editor.IEditorDecorationsCollection | null = null;
+let xLastHoveredSpan: ByteSpan | null = null;
+
+function xClearDecorations() {
+  if (xDecoLeft) { xDecoLeft.clear(); xDecoLeft = null; }
+  if (xDecoRight) { xDecoRight.clear(); xDecoRight = null; }
+  treemap.highlightNode(null);
+}
+
+function xHighlightTs(target: HighlightTarget, pinned: boolean) {
+  if (target.kind !== "function") return;
+  const line = findTsSourceLine(inputFile.model, target.name);
+  if (!line) return;
+  const cls = pinned ? "cross-highlight-pinned" : "cross-highlight";
+  xDecoLeft = editorLeft.createDecorationsCollection([{
+    range: new monaco.Range(line, 1, line, 1),
+    options: { className: cls, isWholeLine: true },
+  }]);
+  editorLeft.revealLineInCenter(line);
+}
+
+function xHighlightRightEditor(target: HighlightTarget, pinned: boolean) {
+  const cls = pinned ? "cross-highlight-pinned" : "cross-highlight";
+  if (activeFileRight === "output/example.wasm") {
+    const range = hexRangeForNode(target.name, target.treemapPath);
+    if (range) {
+      xDecoRight = editorRight.createDecorationsCollection([{
+        range,
+        options: { className: cls, isWholeLine: true },
+      }]);
+      editorRight.revealRangeInCenter(range);
+    }
+  } else if (activeFileRight === "output/example.wat") {
+    const watLine = watLineForNode(target.name, target.treemapPath);
+    if (watLine) {
+      const range = new monaco.Range(watLine.start, 1, watLine.end, 1);
+      xDecoRight = editorRight.createDecorationsCollection([{
+        range,
+        options: { className: cls, isWholeLine: true },
+      }]);
+      editorRight.revealRangeInCenter(range);
+    }
   }
-  if (!node || !lastWasmData) {
-    // Hover ended — restore previous scroll/cursor position
-    if (preHoverViewState) {
-      editorRight.restoreViewState(preHoverViewState);
-      preHoverViewState = null;
+}
+
+function setHighlightTarget(target: HighlightTarget | null, source: HighlightSource) {
+  if (xPinned) return;
+  if (target?.name === xTarget?.name && source === xSource) return;
+
+  xClearDecorations();
+
+  if (!target) {
+    xTarget = null;
+    xSource = null;
+    if (xSavedStates) {
+      if (xSavedStates.left) editorLeft.restoreViewState(xSavedStates.left);
+      if (xSavedStates.right) editorRight.restoreViewState(xSavedStates.right);
+      xSavedStates = null;
     }
     return;
   }
 
-  // Save view state before first hover scroll
-  if (!preHoverViewState) {
-    preHoverViewState = editorRight.saveViewState();
+  if (!xSavedStates) {
+    xSavedStates = {
+      left: editorLeft.saveViewState(),
+      right: editorRight.saveViewState(),
+    };
   }
 
-  const { name, fullPath } = node;
-  const wasmModel = fileMap.get("output/example.wasm")!.model;
-  const watModel = fileMap.get("output/example.wat")!.model;
-  const currentModel = editorRight.getModel();
+  xTarget = target;
+  xSource = source;
 
-  if (currentModel === wasmModel) {
-    const range = hexRangeForNode(name, fullPath);
-    if (range) {
-      hoverDecorationsRight = editorRight.createDecorationsCollection([{
-        range,
-        options: { className: "hex-hover-highlight", isWholeLine: true },
-      }]);
-      editorRight.revealRangeInCenter(range);
+  if (source !== "ts") xHighlightTs(target, false);
+  if (source !== "treemap") treemap.highlightNode(target.treemapPath);
+  // Highlight right editor if source isn't the currently active right-side view
+  const rightSource = activeFileRight === "output/example.wasm" ? "hex" : "wat";
+  if (source !== rightSource) xHighlightRightEditor(target, false);
+}
+
+function handleHighlightClick(target: HighlightTarget | null, source: HighlightSource) {
+  if (!target) return;
+  if (xPinned && xTarget?.name === target.name) {
+    // Unpin
+    xPinned = false;
+    xTarget = null;
+    xSource = null;
+    xClearDecorations();
+    if (xSavedStates) {
+      if (xSavedStates.left) editorLeft.restoreViewState(xSavedStates.left);
+      if (xSavedStates.right) editorRight.restoreViewState(xSavedStates.right);
+      xSavedStates = null;
     }
-  } else if (currentModel === watModel) {
-    const watLine = watLineForNode(name, fullPath);
-    if (watLine) {
-      const range = new monaco.Range(watLine.start, 1, watLine.end, 1);
-      hoverDecorationsRight = editorRight.createDecorationsCollection([{
-        range,
-        options: { className: "hex-hover-highlight", isWholeLine: true },
-      }]);
-      editorRight.revealRangeInCenter(range);
-    }
+    return;
   }
+  // Pin
+  xPinned = false; // allow setHighlightTarget to work
+  xSavedStates = null; // force re-save
+  setHighlightTarget(target, source);
+  // Upgrade decorations to pinned style
+  xClearDecorations();
+  xHighlightTs(target, true);
+  treemap.highlightNode(target.treemapPath);
+  xHighlightRightEditor(target, true);
+  xPinned = true;
+}
+
+// Resolver: hex byte offset → target
+function resolveHexTarget(offset: number): HighlightTarget | null {
+  if (!lastWasmData) return null;
+  const func = findFuncBodyAt(offset);
+  if (func) return { name: func.name, treemapPath: `code/${func.name}`, kind: "function" };
+  const section = findSectionAt(offset);
+  if (section) {
+    const name = section.customName ?? section.name;
+    return { name, treemapPath: name, kind: "section" };
+  }
+  return null;
+}
+
+// Resolver: WAT line → target
+function resolveWatTarget(lineNumber: number): HighlightTarget | null {
+  const funcName = findEnclosingWatFunc(watFile.model, lineNumber);
+  if (funcName) {
+    const name = funcName.replace(/^\$/, "");
+    return { name, treemapPath: `code/${name}`, kind: "function" };
+  }
+  return null;
+}
+
+// Resolver: treemap node → target
+function resolveTreemapTarget(node: { name: string; fullPath: string }): HighlightTarget | null {
+  if (node.fullPath.startsWith("code/")) return { name: node.name, treemapPath: node.fullPath, kind: "function" };
+  if (node.fullPath.startsWith("import/")) return { name: node.name, treemapPath: node.fullPath, kind: "import" };
+  return { name: node.name, treemapPath: node.fullPath, kind: "section" };
+}
+
+// Resolver: TS line → target
+function resolveTsTarget(lineNumber: number): HighlightTarget | null {
+  const name = findEnclosingTsFunc(inputFile.model, lineNumber);
+  if (name) return { name, treemapPath: `code/${name}`, kind: "function" };
+  return null;
+}
+
+// ─── Hex span highlight (orthogonal to cross-highlight) ─────────────────
+
+function applyHexSpanHighlight(offset: number) {
+  const span = findSpanAt(offset);
+  if (span && span === xLastHoveredSpan) return;
+  xLastHoveredSpan = span;
+  if (xHexSpanDeco) { xHexSpanDeco.clear(); xHexSpanDeco = null; }
+  if (span) {
+    const section = findSectionAt(span.offset);
+    const cssKey = section ? sectionCssKey(section) : "header";
+    xHexSpanDeco = editorRight.createDecorationsCollection(
+      spanHighlightDecorations(span, `hex-span-hover-${cssKey}`),
+    );
+  }
+}
+
+function clearHexSpanHighlight() {
+  if (xHexSpanDeco) { xHexSpanDeco.clear(); xHexSpanDeco = null; }
+  xLastHoveredSpan = null;
+}
+
+// ─── Event handlers ─────────────────────────────────────────────────────
+
+// Treemap hover
+treemap.onNodeHover = (node) => {
+  if (!node) { setHighlightTarget(null, "treemap"); return; }
+  setHighlightTarget(resolveTreemapTarget(node), "treemap");
 };
 
 /** Find the hex byte range (as Monaco Range) for a treemap node */
@@ -2252,156 +2340,60 @@ monaco.languages.registerHoverProvider("text", {
   },
 });
 
-// ─── Hex span hover highlight + treemap + TS source cross-highlight ─────
+// ─── Left editor (TS source) hover → cross-highlight ────────────────────
 
-let hexSpanDecoration: monaco.editor.IEditorDecorationsCollection | null = null;
-let lastHoveredSpan: ByteSpan | null = null;
-let preHoverLeftState: monaco.editor.ICodeEditorViewState | null = null;
-let lastHoveredFuncName: string | null = null;
-let leftHoverDecoration: monaco.editor.IEditorDecorationsCollection | null = null;
+editorLeft.onMouseMove((e) => {
+  if (!e.target.position) { setHighlightTarget(null, "ts"); return; }
+  setHighlightTarget(resolveTsTarget(e.target.position.lineNumber), "ts");
+});
+editorLeft.onMouseLeave(() => setHighlightTarget(null, "ts"));
+editorLeft.onMouseDown((e) => {
+  if (!e.target.position) return;
+  handleHighlightClick(resolveTsTarget(e.target.position.lineNumber), "ts");
+});
 
-/** Scroll the left editor (TS source) to the function matching funcName. */
-function crossHighlightTsSource(funcName: string | null) {
-  const tsModel = inputFile.model;
-  if (funcName === lastHoveredFuncName) return;
-  lastHoveredFuncName = funcName;
-
-  if (!funcName) {
-    // Restore left editor
-    if (leftHoverDecoration) { leftHoverDecoration.clear(); leftHoverDecoration = null; }
-    if (preHoverLeftState) {
-      editorLeft.restoreViewState(preHoverLeftState);
-      preHoverLeftState = null;
-    }
-    return;
-  }
-
-  const tsLine = findTsSourceLine(tsModel, funcName);
-  if (!tsLine) return;
-
-  if (!preHoverLeftState) preHoverLeftState = editorLeft.saveViewState();
-  if (leftHoverDecoration) leftHoverDecoration.clear();
-  leftHoverDecoration = editorLeft.createDecorationsCollection([{
-    range: new monaco.Range(tsLine, 1, tsLine, 1),
-    options: { className: "hex-hover-highlight", isWholeLine: true },
-  }]);
-  editorLeft.revealLineInCenter(tsLine);
-}
+// ─── Right editor hover → cross-highlight ───────────────────────────────
 
 editorRight.onMouseMove((e) => {
   if (!e.target.position) {
-    if (hexSpanDecoration) { hexSpanDecoration.clear(); hexSpanDecoration = null; }
-    lastHoveredSpan = null;
-    treemap.highlightNode(null);
-    crossHighlightTsSource(null);
+    clearHexSpanHighlight();
+    setHighlightTarget(null, activeFileRight === "output/example.wasm" ? "hex" : "wat");
     return;
   }
 
-  // ─── .wasm hex view ───
   if (activeFileRight === "output/example.wasm") {
     const offset = posToByteOffset(e.target.position.lineNumber, e.target.position.column);
     if (offset === null) {
-      if (hexSpanDecoration) { hexSpanDecoration.clear(); hexSpanDecoration = null; }
-      lastHoveredSpan = null;
-      treemap.highlightNode(null);
-      crossHighlightTsSource(null);
+      clearHexSpanHighlight();
+      setHighlightTarget(null, "hex");
       return;
     }
-
-    // Span highlight
-    const span = findSpanAt(offset);
-    if (span && span === lastHoveredSpan) return;
-    lastHoveredSpan = span;
-
-    if (span) {
-      const section = findSectionAt(span.offset);
-      const cssKey = section ? sectionCssKey(section) : "header";
-      if (hexSpanDecoration) hexSpanDecoration.clear();
-      hexSpanDecoration = editorRight.createDecorationsCollection(
-        spanHighlightDecorations(span, `hex-span-hover-${cssKey}`),
-      );
-    } else {
-      if (hexSpanDecoration) { hexSpanDecoration.clear(); hexSpanDecoration = null; }
-    }
-
-    // Cross-highlight treemap tile + TS source
-    if (lastWasmData) {
-      const func = findFuncBodyAt(offset);
-      if (func) {
-        treemap.highlightNode(`code/${func.name}`);
-        crossHighlightTsSource("$" + func.name);
-      } else {
-        const section = findSectionAt(offset);
-        if (section) {
-          treemap.highlightNode(section.customName ?? section.name);
-        } else {
-          treemap.highlightNode(null);
-        }
-        crossHighlightTsSource(null);
-      }
-    }
+    applyHexSpanHighlight(offset);
+    setHighlightTarget(resolveHexTarget(offset), "hex");
     return;
   }
 
-  // ─── .wat view ───
   if (activeFileRight === "output/example.wat") {
-    const watModel = watFile.model;
-    const funcName = findEnclosingWatFunc(watModel, e.target.position.lineNumber);
-    crossHighlightTsSource(funcName);
-    // Cross-highlight treemap
-    if (funcName) {
-      treemap.highlightNode(`code/${funcName.replace(/^\$/, "")}`);
-    } else {
-      treemap.highlightNode(null);
-    }
+    setHighlightTarget(resolveWatTarget(e.target.position.lineNumber), "wat");
     return;
   }
-
-  crossHighlightTsSource(null);
-  treemap.highlightNode(null);
 });
 
-// Clear on mouse leave
 editorRight.onMouseLeave(() => {
-  if (hexSpanDecoration) { hexSpanDecoration.clear(); hexSpanDecoration = null; }
-  lastHoveredSpan = null;
-  treemap.highlightNode(null);
-  crossHighlightTsSource(null);
+  clearHexSpanHighlight();
+  setHighlightTarget(null, activeFileRight === "output/example.wasm" ? "hex" : "wat");
 });
 
-// ─── Click in hex → jump to WAT ────────────────────────────────────────
+// ─── Right editor click → pin ───────────────────────────────────────────
 
 editorRight.onMouseDown((e) => {
-  if (!lastWasmData || activeFileRight !== "output/example.wasm") return;
   if (!e.target.position) return;
-
-  const offset = posToByteOffset(e.target.position.lineNumber, e.target.position.column);
-  if (offset === null) return;
-
-  // Try function body first
-  const func = findFuncBodyAt(offset);
-  if (func) {
-    switchToFileRight("output/example.wat");
-    const watText = watFile.model.getValue();
-    const pattern = `(func $${func.name}`;
-    const idx = watText.indexOf(pattern);
-    if (idx !== -1) {
-      const line = watText.substring(0, idx).split("\n").length;
-      editorRight.revealLineInCenter(line);
-      editorRight.setPosition({ lineNumber: line, column: 1 });
-    }
-    return;
-  }
-
-  // Try section-level jump
-  const section = findSectionAt(offset);
-  if (section) {
-    const watLine = watLineForNode(section.name, section.name);
-    if (watLine) {
-      switchToFileRight("output/example.wat");
-      editorRight.revealLineInCenter(watLine.start);
-      editorRight.setPosition({ lineNumber: watLine.start, column: 1 });
-    }
+  if (activeFileRight === "output/example.wasm") {
+    const offset = posToByteOffset(e.target.position.lineNumber, e.target.position.column);
+    if (offset === null) return;
+    handleHighlightClick(resolveHexTarget(offset), "hex");
+  } else if (activeFileRight === "output/example.wat") {
+    handleHighlightClick(resolveWatTarget(e.target.position.lineNumber), "wat");
   }
 });
 
