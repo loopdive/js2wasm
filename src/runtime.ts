@@ -1,4 +1,4 @@
-import { compile } from "./index.js";
+import { compileSource } from "./compiler.js";
 import type { CompileResult } from "./index.js";
 
 /** wasm:js-string polyfill for engines without native support */
@@ -85,7 +85,7 @@ export function buildImports(
 export async function compileAndInstantiate(
   source: string,
 ): Promise<WebAssembly.Exports> {
-  const result = compile(source);
+  const result = compileSource(source);
   if (!result.success) {
     throw new Error(result.errors.map((e) => e.message).join("\n"));
   }
