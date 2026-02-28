@@ -59,3 +59,11 @@ export function compileToWat(source: string): string {
   const result = compileSource(source, { emitWat: true });
   return result.wat;
 }
+
+export {
+  jsString,
+  jsApi,
+  domApi,
+  buildImports,
+  compileAndInstantiate,
+} from "./runtime.js";
