@@ -399,6 +399,7 @@ interface FileEntry {
   folder: "input" | "output";
   compiled: boolean;
   binarySize?: number;
+  binaryData?: Uint8Array;
 }
 
 const STORAGE_KEY = "ts2wasm_source";
@@ -599,6 +600,21 @@ function closeFileTabRight(path: string) {
   }
 }
 
+async function gzipSize(data: Uint8Array): Promise<number> {
+  const cs = new CompressionStream("gzip");
+  const writer = cs.writable.getWriter();
+  writer.write(data);
+  writer.close();
+  const reader = cs.readable.getReader();
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+  }
+  return total;
+}
+
 function renderTabBar(
   el: HTMLElement,
   tabs: string[],
@@ -614,11 +630,19 @@ function renderTabBar(
     tab.className = "editor-tab" + (path === activeFile ? " active" : "");
 
     const label = document.createElement("span");
-    const bytes =
+    const raw =
       file.binarySize ?? new TextEncoder().encode(file.model.getValue()).length;
-    const size = bytes >= 1024 ? `${(bytes / 1024).toFixed(1)}k` : `${bytes}b`;
-    label.textContent = `${file.displayName} (${size})`;
+    const fmtSize = (b: number) => b >= 1024 ? `${(b / 1024).toFixed(1)}k` : `${b}b`;
+    label.textContent = `${file.displayName} (${fmtSize(raw)})`;
     tab.appendChild(label);
+
+    // Compute gzip size async and update label
+    if (raw > 0) {
+      const gzInput = file.binaryData ?? new TextEncoder().encode(file.model.getValue());
+      gzipSize(gzInput).then((gz: number) => {
+        label.textContent = `${file.displayName} (${fmtSize(raw)} / ${fmtSize(gz)} gz)`;
+      });
+    }
 
     const closeBtn = document.createElement("span");
     closeBtn.className =
@@ -770,6 +794,7 @@ function compileOnly() {
     const wasmFile = fileMap.get("output/example.wasm")!;
     wasmFile.model.setValue(lines.join("\n"));
     wasmFile.binarySize = bin.length;
+    wasmFile.binaryData = new Uint8Array(bin);
   }
   fileMap
     .get("output/example.ts")!
