@@ -75,15 +75,27 @@ export function mapTsTypeToWasm(
   return { kind: "externref" };
 }
 
-/** Check if a type is an externally declared class (declare class / declare namespace) */
+/** Check if a type is an externally declared class (declare class / declare var with constructor) */
 export function isExternalDeclaredClass(type: ts.Type): boolean {
   const symbol = type.getSymbol();
   if (!symbol) return false;
   const decls = symbol.getDeclarations();
   if (!decls || decls.length === 0) return false;
   return decls.some(
-    (d) => ts.isClassDeclaration(d) && isDeclareContext(d),
+    (d) =>
+      // declare class Foo { ... }
+      (ts.isClassDeclaration(d) && isDeclareContext(d)) ||
+      // declare var Foo: { prototype: Foo; new(): Foo }  (lib.dom.d.ts pattern)
+      (ts.isVariableDeclaration(d) && isDeclareVarWithConstructor(d)),
   );
+}
+
+function isDeclareVarWithConstructor(d: ts.VariableDeclaration): boolean {
+  const stmt = d.parent?.parent;
+  if (!stmt || !ts.isVariableStatement(stmt)) return false;
+  if (!isDeclareContext(stmt)) return false;
+  if (!d.type || !ts.isTypeLiteralNode(d.type)) return false;
+  return d.type.members.some((m) => ts.isConstructSignatureDeclaration(m));
 }
 
 function isDeclareContext(node: ts.Node): boolean {
