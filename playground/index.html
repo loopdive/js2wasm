@@ -24,10 +24,14 @@
       }
       .toolbar {
         display: flex;
+        align-items: center;
         gap: 1rem;
         padding: 0 1rem;
         border-top: 1px solid #2b2b2b;
         flex-shrink: 0;
+      }
+      .toolbar-logo {
+        height: 22px;
       }
       .toolbar-btn {
         display: flex;
@@ -68,140 +72,11 @@
         padding: 0.3rem 0;
       }
 
-      /* ─── IDE 3-zone layout ────────────────────────────── */
-      .ide-container {
-        display: grid;
-        grid-template-columns: var(--sidebar-width, min-content) 1px 1fr;
-        flex: 1;
-        min-height: 0;
-      }
-
-      /* ─── Sidebar ──────────────────────────────────────── */
-      .sidebar {
-        background: #181818;
-        display: flex;
-        flex-direction: column;
-        min-height: 0;
-        overflow: hidden;
-        white-space: nowrap;
-        font-family:
-          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        font-size: 13px;
-      }
-      .sidebar-logo {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 20px;
-        flex-shrink: 0;
-        border-bottom: 1px solid transparent;
-      }
-      .sidebar-logo img {
-        height: 40px;
-      }
-      .sidebar-section {
-        padding: 6px 12px;
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        color: #bbb;
-        font-weight: 700;
-        flex-shrink: 0;
-        background: #181818;
-        border-bottom: 1px solid transparent;
-      }
-      .file-tree {
-        flex: 1;
-        overflow-y: auto;
-        padding: 2px 0;
-      }
-      .tree-folder {
-        cursor: pointer;
-        user-select: none;
-      }
-      .tree-folder-label {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        padding: 4px 8px 4px 12px;
-        font-size: 13px;
-        color: #ccc;
-        font-weight: 700;
-        transition: background 0.1s;
-      }
-      .tree-folder-label:hover {
-        background: rgba(255, 255, 255, 0.06);
-      }
-      .tree-folder-arrow {
-        font-size: 9px;
-        width: 12px;
-        text-align: center;
-        transition: transform 0.1s;
-        color: #888;
-      }
-      .tree-folder.collapsed .tree-folder-arrow {
-        transform: rotate(-90deg);
-      }
-      .tree-folder.collapsed .tree-children {
-        display: none;
-      }
-      .tree-file {
-        display: flex;
-        align-items: center;
-        padding: 4px 8px 4px 32px;
-        font-size: 13px;
-        cursor: pointer;
-        color: #ccc;
-        position: relative;
-        transition: background 0.1s;
-        letter-spacing: 0.2px;
-      }
-      .tree-file:hover {
-        background: rgba(255, 255, 255, 0.06);
-      }
-      .tree-file.active {
-        background: rgba(255, 255, 255, 0.08);
-        color: #ffffff;
-      }
-      .tree-file.active::before {
-        content: "";
-        position: absolute;
-        left: 0;
-        top: 0;
-        bottom: 0;
-        width: 2px;
-        background: #007acc;
-      }
-      .tree-file.dimmed {
-        color: #555;
-      }
-      .tree-file.dimmed:hover {
-        color: #777;
-      }
-
-      /* ─── Sidebar divider ──────────────────────────────── */
-      .divider-sidebar {
-        background: transparent;
-        cursor: col-resize;
-        position: relative;
-      }
-      .divider-sidebar:hover,
-      .divider-sidebar.active {
-        background: #007acc;
-      }
-      .divider-sidebar::after {
-        content: "";
-        position: absolute;
-        top: 0;
-        bottom: 0;
-        left: -3px;
-        right: -3px;
-      }
-
       /* ─── Main area (editor + output) ──────────────────── */
       .main-area {
         display: flex;
         flex-direction: column;
+        flex: 1;
         min-height: 0;
         min-width: 0;
       }
@@ -322,10 +197,12 @@
 
       /* ─── Output panel ─────────────────────────────────── */
       .output-panel {
-        flex: 0 0 var(--output-height, 200px);
+        flex: 0 0 var(--output-height, 40%);
         display: flex;
         flex-direction: row;
         min-height: 0;
+        min-width: 0;
+        overflow: hidden;
         border-top: 1px solid #2b2b2b;
       }
       .output-panel.collapsed {
@@ -333,20 +210,36 @@
         min-height: 0;
         overflow: hidden;
       }
-      .output-left {
+      .output-pane {
         flex: 1;
         display: flex;
         flex-direction: column;
         min-width: 0;
         min-height: 0;
+        overflow: hidden;
       }
-      .output-right {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        min-width: 0;
-        min-height: 0;
+      .output-pane + .divider-output-h + .output-pane {
         border-left: 1px solid #2b2b2b;
+      }
+      .divider-output-h {
+        width: 6px;
+        background: transparent;
+        cursor: col-resize;
+        position: relative;
+        transition: background 0.15s;
+        flex-shrink: 0;
+      }
+      .divider-output-h:hover,
+      .divider-output-h.active {
+        background: #4e4e4e;
+      }
+      .divider-output-h::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: -3px;
+        right: -3px;
       }
       .output-tabs {
         display: flex;
@@ -384,9 +277,8 @@
 
       /* Output sub-panels */
       #console-panel {
-        position: absolute;
-        inset: 0;
-        display: none;
+        flex: 1;
+        min-height: 0;
         overflow: auto;
       }
       #errors-panel {
@@ -401,6 +293,13 @@
         display: none;
         background: transparent;
         overflow: auto;
+        padding: 8px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      }
+      #preview-panel * {
+        margin: revert;
+        padding: revert;
+        font: revert;
       }
       #treemap-panel {
         flex: 1;
@@ -525,12 +424,12 @@
         top: 0;
         left: 0;
         right: 0;
+        bottom: 0;
         padding: 2px 5px;
         font-size: 11px;
         font-weight: 600;
-        white-space: nowrap;
         overflow: hidden;
-        text-overflow: ellipsis;
+        word-break: break-all;
         pointer-events: none;
         z-index: 1;
         line-height: 18px;
@@ -605,18 +504,6 @@
   </head>
 
   <body>
-    <div class="ide-container">
-      <!-- Sidebar -->
-      <div class="sidebar">
-        <div class="sidebar-logo">
-          <img src="./image-white.png" alt="ts2wasm" />
-        </div>
-        <div class="sidebar-section">Explorer</div>
-        <div class="file-tree" id="file-tree"></div>
-      </div>
-      <!-- Sidebar divider -->
-      <div class="divider-sidebar" id="divider-sidebar"></div>
-      <!-- Main area -->
       <div class="main-area">
         <!-- Editor area -->
         <div class="editor-area">
@@ -634,19 +521,25 @@
         <div class="divider-output" id="divider-output"></div>
         <!-- Output panel -->
         <div class="output-panel" id="output-panel">
-          <div class="output-left">
+          <div class="output-pane" id="output-pane-left">
             <div class="output-tabs" id="output-tabs">
-              <div class="output-tab" data-panel="console">Console</div>
               <div class="output-tab" data-panel="errors">Errors</div>
               <div class="output-tab active" data-panel="preview">Preview</div>
             </div>
             <div class="output-content">
-              <pre id="console-panel" class="console"></pre>
               <pre id="errors-panel" class="error"></pre>
               <div id="preview-panel" style="display: block"></div>
             </div>
           </div>
-          <div class="output-right">
+          <div class="divider-output-h" id="divider-output-h1"></div>
+          <div class="output-pane" id="output-pane-center">
+            <div class="output-tabs">
+              <div class="output-tab static">Console</div>
+            </div>
+            <pre id="console-panel" class="console" style="display: block"></pre>
+          </div>
+          <div class="divider-output-h" id="divider-output-h2"></div>
+          <div class="output-pane" id="output-pane-right">
             <div class="output-tabs">
               <div class="output-tab static">Treemap</div>
             </div>
@@ -654,8 +547,8 @@
           </div>
         </div>
       </div>
-    </div>
     <div class="toolbar">
+      <img src="./image-white.png" alt="ts2wasm" class="toolbar-logo" />
       <button class="toolbar-btn" id="compile">
         <span class="tb-icon lg">&#9881;</span
         ><span class="tb-label">compile</span>
