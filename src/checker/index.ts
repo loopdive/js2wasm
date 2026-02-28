@@ -83,3 +83,132 @@ export function analyzeSource(
     syntacticDiagnostics: syntacticDiagnostics as readonly ts.Diagnostic[],
   };
 }
+
+/** Result of multi-file analysis */
+export interface MultiTypedAST {
+  /** All user source files (in dependency order, entry file last) */
+  sourceFiles: ts.SourceFile[];
+  /** The entry source file */
+  entryFile: ts.SourceFile;
+  checker: ts.TypeChecker;
+  program: ts.Program;
+  diagnostics: ts.Diagnostic[];
+  syntacticDiagnostics: readonly ts.Diagnostic[];
+}
+
+/**
+ * Normalize a file path to a canonical form used as key in our in-memory file map.
+ * Strips leading "./" and ensures ".ts" extension.
+ */
+function normalizeFileName(name: string): string {
+  if (name.startsWith("./")) {
+    name = name.slice(2);
+  }
+  if (name.startsWith("/")) {
+    name = name.slice(1);
+  }
+  if (!name.endsWith(".ts")) {
+    name = name + ".ts";
+  }
+  return name;
+}
+
+/**
+ * Parse and type-check multiple TS source files.
+ * In-memory CompilerHost — no filesystem needed.
+ * The TypeScript compiler handles cross-file imports natively.
+ */
+export function analyzeMultiSource(
+  files: Record<string, string>,
+  entryFile: string,
+): MultiTypedAST {
+  const normalizedFiles = new Map<string, string>();
+  for (const [name, content] of Object.entries(files)) {
+    normalizedFiles.set(normalizeFileName(name), content);
+  }
+  const normalizedEntry = normalizeFileName(entryFile);
+  const rootNames = Array.from(normalizedFiles.keys());
+
+  const compilerHost: ts.CompilerHost = {
+    getSourceFile(name, languageVersion) {
+      const userContent = normalizedFiles.get(name);
+      if (userContent !== undefined) {
+        return ts.createSourceFile(
+          name,
+          userContent,
+          languageVersion,
+          true,
+          ts.ScriptKind.TS,
+        );
+      }
+      const libContent = LIB_FILES[name];
+      if (libContent !== undefined) {
+        return ts.createSourceFile(name, libContent, languageVersion);
+      }
+      return undefined;
+    },
+    getDefaultLibFileName: () => "lib.d.ts",
+    writeFile: () => {},
+    getCurrentDirectory: () => "",
+    getCanonicalFileName: (f) => f,
+    useCaseSensitiveFileNames: () => true,
+    getNewLine: () => "\n",
+    fileExists: (name) =>
+      normalizedFiles.has(name) || name in LIB_FILES,
+    readFile: (name) => normalizedFiles.get(name),
+    getDirectories: () => [],
+    directoryExists: () => true,
+    resolveModuleNameLiterals(moduleLiterals, _containingFile) {
+      return moduleLiterals.map((literal) => {
+        const moduleName = literal.text;
+        const resolved = normalizeFileName(moduleName);
+        if (normalizedFiles.has(resolved)) {
+          return {
+            resolvedModule: {
+              resolvedFileName: resolved,
+              isExternalLibraryImport: false,
+              extension: ts.Extension.Ts,
+            },
+          };
+        }
+        return { resolvedModule: undefined };
+      });
+    },
+  };
+
+  const program = ts.createProgram(
+    rootNames,
+    {
+      target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.ES2022,
+      moduleResolution: ts.ModuleResolutionKind.Bundler,
+      strict: true,
+      noImplicitAny: false,
+      noEmit: true,
+    },
+    compilerHost,
+  );
+
+  const syntacticDiagnostics = program.getSyntacticDiagnostics();
+  const semanticDiagnostics = program.getSemanticDiagnostics();
+  const diagnostics = [...syntacticDiagnostics, ...semanticDiagnostics];
+
+  const entrySourceFile = program.getSourceFile(normalizedEntry)!;
+  const userSourceFiles: ts.SourceFile[] = [];
+  for (const name of rootNames) {
+    if (name !== normalizedEntry) {
+      const sf = program.getSourceFile(name);
+      if (sf) userSourceFiles.push(sf);
+    }
+  }
+  userSourceFiles.push(entrySourceFile);
+
+  return {
+    sourceFiles: userSourceFiles,
+    entryFile: entrySourceFile,
+    checker: program.getTypeChecker(),
+    program,
+    diagnostics,
+    syntacticDiagnostics: syntacticDiagnostics as readonly ts.Diagnostic[],
+  };
+}

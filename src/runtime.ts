@@ -1,7 +1,6 @@
 import { compileSource } from "./compiler.js";
-import type { CompileResult } from "./index.js";
 
-/** wasm:js-string polyfill for engines without native support */
+/** wasm:js-string polyfill for engines without native support (https://developer.mozilla.org/de/docs/WebAssembly/Guides/JavaScript_builtins) */
 export const jsString = {
   concat: (a: string, b: string): string => a + b,
   length: (s: string): number => s.length,
@@ -32,6 +31,17 @@ export const jsApi: Record<string, Function> = new Proxy(
         const method = name.slice(7);
         return (s: any, ...a: any[]) => s[method](...a);
       }
+      // Async/await support: __await is identity (host functions are sync from Wasm's perspective)
+      if (name === "__await") return (v: any) => v;
+      // Union type typeof checks and boxing/unboxing
+      if (name === "__typeof_number") return (v: any) => typeof v === "number" ? 1 : 0;
+      if (name === "__typeof_string") return (v: any) => typeof v === "string" ? 1 : 0;
+      if (name === "__typeof_boolean") return (v: any) => typeof v === "boolean" ? 1 : 0;
+      if (name === "__unbox_number") return (v: any) => Number(v);
+      if (name === "__unbox_boolean") return (v: any) => v ? 1 : 0;
+      if (name === "__box_number") return (v: number) => v;
+      if (name === "__box_boolean") return (v: number) => Boolean(v);
+      if (name === "__is_truthy") return (v: any) => v ? 1 : 0;
     },
   },
 );

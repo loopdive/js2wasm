@@ -2,13 +2,7 @@
 
 ## Open issues
 
-| #                  | Feature                        | Complexity | Depends on |
-| ------------------ | ------------------------------ | ---------- | ---------- |
-| [18](issues/18.md) | Spread and rest operators      | L          | —          |
-| [19](issues/19.md) | Type narrowing and union types | L          | —          |
-| [27](issues/27.md) | Try/catch/throw                | L          | —          |
-| [28](issues/28.md) | Multi-file module compilation  | L          | —          |
-| [30](issues/30.md) | Async/await and Promises       | L          | —          |
+(none)
 
 ## Complexity legend
 
@@ -43,3 +37,8 @@
 | [25](issues/25.md) | Fix f32.const opcode in binary emitter   | —                            |
 | [26](issues/26.md) | Array methods via host imports           | 22 in array-methods.test.ts  |
 | [29](issues/29.md) | Investigate failing tests                | fixed 2 in import-resolver   |
+| [18](issues/18.md) | Spread and rest operators                | 13 in spread-rest.test.ts    |
+| [19](issues/19.md) | Type narrowing and union types           | 4 in union-narrowing.test.ts |
+| [27](issues/27.md) | Try/catch/throw                          | 8 in try-catch.test.ts       |
+| [28](issues/28.md) | Multi-file module compilation            | 10 in multi-file.test.ts     |
+| [30](issues/30.md) | Async/await and Promises                 | 8 in async-await.test.ts     |

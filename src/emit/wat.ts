@@ -61,6 +61,12 @@ export function emitWat(mod: WasmModule): string {
     );
   }
 
+  // Tags
+  for (let i = 0; i < mod.tags.length; i++) {
+    const tag = mod.tags[i]!;
+    lines.push(`${indent(1)}(tag $${tag.name} (type ${tag.typeIdx}))`);
+  }
+
   // Functions
   const numImportFuncs = mod.imports.filter(
     (i) => i.desc.kind === "func",
@@ -197,6 +203,24 @@ function formatInstrIndented(instr: Instr, depth: number): string {
       }
       return `${pad}(if${bt}\n${pad}  (then\n${thenStr}\n${pad}  )\n${pad})`;
     }
+    case "try": {
+      const bt = formatBlockType(instr.blockType);
+      let result = `${pad}(try${bt}\n${pad}  (do\n`;
+      result += instr.body.map((i) => formatInstrIndented(i, depth + 2)).join("\n");
+      result += `\n${pad}  )`;
+      for (const c of instr.catches) {
+        result += `\n${pad}  (catch ${c.tagIdx}\n`;
+        result += c.body.map((i) => formatInstrIndented(i, depth + 2)).join("\n");
+        result += `\n${pad}  )`;
+      }
+      if (instr.catchAll) {
+        result += `\n${pad}  (catch_all\n`;
+        result += instr.catchAll.map((i) => formatInstrIndented(i, depth + 2)).join("\n");
+        result += `\n${pad}  )`;
+      }
+      result += `\n${pad})`;
+      return result;
+    }
     default:
       return `${pad}${formatInstr(instr, depth)}`;
   }
@@ -271,6 +295,10 @@ function formatInstr(instr: Instr, _depth: number): string {
       return `ref.func ${instr.funcIdx}`;
     case "call_ref":
       return `call_ref ${instr.typeIdx}`;
+    case "throw":
+      return `throw ${instr.tagIdx}`;
+    case "rethrow":
+      return `rethrow ${instr.depth}`;
     default:
       return instr.op;
   }

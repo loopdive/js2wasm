@@ -15,11 +15,14 @@ export interface WasmModule {
   tables: Table[];
   elements: Element[];
   globals: GlobalDef[];
+  tags: TagDef[];
   stringPool: string[];
   /** Extern class metadata (for .d.ts and imports helper generation) */
   externClasses: ExternClassMeta[];
   /** Map from import func name → string literal value (e.g. "__str_0" → "Hello") */
   stringLiteralValues: Map<string, string>;
+  /** Set of function names that are async (for .d.ts generation) */
+  asyncFunctions: Set<string>;
 }
 
 export type TypeDef =
@@ -165,12 +168,26 @@ export type Instr =
   | { op: "ref.func"; funcIdx: number }
   | { op: "call_ref"; typeIdx: number }
   | { op: "memory.size" }
-  | { op: "memory.grow" };
+  | { op: "memory.grow" }
+  | { op: "try"; blockType: BlockType; body: Instr[]; catches: CatchClause[]; catchAll?: Instr[] }
+  | { op: "throw"; tagIdx: number }
+  | { op: "rethrow"; depth: number };
 
 export type BlockType =
   | { kind: "empty" }
   | { kind: "val"; type: ValType }
   | { kind: "type"; typeIdx: number };
+
+export interface CatchClause {
+  tagIdx: number;
+  body: Instr[];
+}
+
+export interface TagDef {
+  name: string;
+  /** Type index of the tag's function signature (params = exception values) */
+  typeIdx: number;
+}
 
 export interface Import {
   module: string;
@@ -180,7 +197,8 @@ export interface Import {
 export type ImportDesc =
   | { kind: "func"; typeIdx: number }
   | { kind: "table"; elementType: string; min: number; max?: number }
-  | { kind: "global"; type: ValType; mutable: boolean };
+  | { kind: "global"; type: ValType; mutable: boolean }
+  | { kind: "tag"; typeIdx: number };
 
 export interface WasmExport {
   name: string;
@@ -212,8 +230,10 @@ export function createEmptyModule(): WasmModule {
     tables: [],
     elements: [],
     globals: [],
+    tags: [],
     stringPool: [],
     externClasses: [],
     stringLiteralValues: new Map(),
+    asyncFunctions: new Set(),
   };
 }

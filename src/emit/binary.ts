@@ -9,6 +9,8 @@ import type {
   WasmFunction,
   WasmExport,
   GlobalDef,
+  CatchClause,
+  TagDef,
 } from "../ir/types.js";
 import { WasmEncoder } from "./encoder.js";
 import { OP, GC, TYPE, SECTION } from "./opcodes.js";
@@ -59,6 +61,16 @@ export function emitBinary(mod: WasmModule): Uint8Array {
           e.byte(0x00);
           e.u32(t.min);
         }
+      });
+    });
+  }
+
+  // Tag section (exception handling) — must come before Global section
+  if (mod.tags.length > 0) {
+    enc.section(SECTION.tag, (s) => {
+      s.vector(mod.tags, (tag, e) => {
+        e.byte(0x00); // attribute: exception (0)
+        e.u32(tag.typeIdx);
       });
     });
   }
@@ -241,6 +253,11 @@ function encodeImport(imp: Import, enc: WasmEncoder): void {
       enc.byte(0x03);
       encodeValType(imp.desc.type, enc);
       enc.byte(imp.desc.mutable ? 0x01 : 0x00);
+      break;
+    case "tag":
+      enc.byte(0x04); // import kind: tag
+      enc.byte(0x00); // attribute: exception
+      enc.u32(imp.desc.typeIdx);
       break;
   }
 }
@@ -642,5 +659,31 @@ function encodeInstr(instr: Instr, enc: WasmEncoder): void {
       enc.byte(OP.memory_grow);
       enc.byte(0x00);
       break;
+    case "throw":
+      enc.byte(OP.throw);
+      enc.u32(instr.tagIdx);
+      break;
+    case "rethrow":
+      enc.byte(OP.rethrow);
+      enc.u32(instr.depth);
+      break;
+    case "try": {
+      enc.byte(OP.try);
+      encodeBlockType(instr.blockType, enc);
+      for (const i of instr.body) encodeInstr(i, enc);
+      // Encode catch clauses (catch $tag)
+      for (const c of instr.catches) {
+        enc.byte(OP.catch);
+        enc.u32(c.tagIdx);
+        for (const i of c.body) encodeInstr(i, enc);
+      }
+      // Encode catch_all clause
+      if (instr.catchAll) {
+        enc.byte(OP.catch_all);
+        for (const i of instr.catchAll) encodeInstr(i, enc);
+      }
+      enc.byte(OP.end);
+      break;
+    }
   }
 }

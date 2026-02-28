@@ -157,3 +157,44 @@ export function isStringType(type: ts.Type): boolean {
     (type.flags & ts.TypeFlags.StringLiteral) !== 0
   );
 }
+
+/**
+ * Check if a ts.Type is Promise<T>.
+ * Returns true for the built-in Promise generic type.
+ */
+export function isPromiseType(type: ts.Type): boolean {
+  const symbol = type.getSymbol();
+  if (!symbol) return false;
+  return symbol.name === "Promise" && !!(type.flags & ts.TypeFlags.Object);
+}
+
+/**
+ * Unwrap Promise<T> to T. If the type is not a Promise, returns the type unchanged.
+ * Used to extract the inner type of async function return types.
+ */
+export function unwrapPromiseType(type: ts.Type, checker: ts.TypeChecker): ts.Type {
+  if (!isPromiseType(type)) return type;
+  const typeRef = type as ts.TypeReference;
+  const typeArgs = checker.getTypeArguments(typeRef);
+  if (typeArgs.length > 0) {
+    return typeArgs[0]!;
+  }
+  return type;
+}
+
+/**
+ * Check if a ts.Type is a heterogeneous union (e.g. number | string)
+ * that requires externref boxing. Returns false for T | null/undefined unions
+ * where the non-nullish types all map to the same Wasm kind.
+ */
+export function isHeterogeneousUnion(type: ts.Type, checker: ts.TypeChecker): boolean {
+  if (!type.isUnion()) return false;
+  const nonNullish = type.types.filter(
+    (t) =>
+      !(t.flags & ts.TypeFlags.Null) &&
+      !(t.flags & ts.TypeFlags.Undefined),
+  );
+  if (nonNullish.length <= 1) return false;
+  const mapped = nonNullish.map((t) => mapTsTypeToWasm(t, checker));
+  return !mapped.every((m) => m.kind === mapped[0]!.kind);
+}

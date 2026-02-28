@@ -29,7 +29,7 @@ export interface CompileOptions {
   moduleName?: string;
 }
 
-import { compileSource } from "./compiler.js";
+import { compileSource, compileMultiSource } from "./compiler.js";
 
 /**
  * Compile TypeScript source to Wasm GC binary.
@@ -52,6 +52,18 @@ export function compile(
   options?: CompileOptions,
 ): CompileResult {
   return compileSource(source, options);
+}
+
+/**
+ * Compile multiple TypeScript source files into a single Wasm GC binary.
+ * Supports cross-file imports: `import { foo } from "./bar"`.
+ */
+export function compileMulti(
+  files: Record<string, string>,
+  entryFile: string,
+  options?: CompileOptions,
+): CompileResult {
+  return compileMultiSource(files, entryFile, options);
 }
 
 /** Only WAT text (debug) */

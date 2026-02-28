@@ -1,6 +1,6 @@
 import ts from "typescript";
-import { analyzeSource, type TypedAST } from "./checker/index.js";
-import { generateModule } from "./codegen/index.js";
+import { analyzeSource, analyzeMultiSource, type TypedAST, type MultiTypedAST } from "./checker/index.js";
+import { generateModule, generateMultiModule } from "./codegen/index.js";
 import { emitBinary } from "./emit/binary.js";
 import { emitWat } from "./emit/wat.js";
 import { preprocessImports } from "./import-resolver.js";
@@ -142,6 +142,130 @@ export function compileSource(
   };
 }
 
+/**
+ * Compile multiple TypeScript source files into a single Wasm module.
+ * Supports cross-file imports: `import { foo } from "./bar"`.
+ */
+export function compileMultiSource(
+  files: Record<string, string>,
+  entryFile: string,
+  options: CompileOptions = {},
+): CompileResult {
+  const errors: CompileError[] = [];
+  const emitWatOutput = options.emitWat !== false;
+
+  const multiAst = analyzeMultiSource(files, entryFile);
+
+  for (const diag of multiAst.diagnostics) {
+    if (diag.category === 1) {
+      const pos = diag.file
+        ? diag.file.getLineAndCharacterOfPosition(diag.start ?? 0)
+        : { line: 0, character: 0 };
+      errors.push({
+        message:
+          typeof diag.messageText === "string"
+            ? diag.messageText
+            : diag.messageText.messageText,
+        line: pos.line + 1,
+        column: pos.character + 1,
+        severity: "error",
+      });
+    }
+  }
+
+  const hasSyntaxErrors = multiAst.syntacticDiagnostics.some(
+    (d) => d.category === 1 && multiAst.sourceFiles.some((sf) => d.file === sf),
+  );
+
+  if (hasSyntaxErrors && errors.length > 0) {
+    return {
+      binary: new Uint8Array(0),
+      wat: "",
+      dts: "",
+      importsHelper: "",
+      success: false,
+      errors,
+      stringPool: [],
+    };
+  }
+
+  let mod;
+  try {
+    mod = generateMultiModule(multiAst);
+  } catch (e) {
+    errors.push({
+      message: `Codegen error: ${e instanceof Error ? e.message : String(e)}`,
+      line: 0,
+      column: 0,
+      severity: "error",
+    });
+    return {
+      binary: new Uint8Array(0),
+      wat: "",
+      dts: "",
+      importsHelper: "",
+      success: false,
+      errors,
+      stringPool: [],
+    };
+  }
+
+  let binary: Uint8Array;
+  try {
+    binary = emitBinary(mod);
+  } catch (e) {
+    errors.push({
+      message: `Binary emit error: ${e instanceof Error ? e.message : String(e)}`,
+      line: 0,
+      column: 0,
+      severity: "error",
+    });
+    return {
+      binary: new Uint8Array(0),
+      wat: "",
+      dts: "",
+      importsHelper: "",
+      success: false,
+      errors,
+      stringPool: [],
+    };
+  }
+
+  let wat = "";
+  if (emitWatOutput) {
+    try {
+      wat = emitWat(mod);
+    } catch (e) {
+      errors.push({
+        message: `WAT emit warning: ${e instanceof Error ? e.message : String(e)}`,
+        line: 0,
+        column: 0,
+        severity: "warning",
+      });
+    }
+  }
+
+  const entryAst: TypedAST = {
+    sourceFile: multiAst.entryFile,
+    checker: multiAst.checker,
+    program: multiAst.program,
+    diagnostics: multiAst.diagnostics,
+    syntacticDiagnostics: multiAst.syntacticDiagnostics,
+  };
+  const dts = generateDts(entryAst, mod);
+  const importsHelper = generateImportsHelper(mod);
+
+  return {
+    binary,
+    wat,
+    dts,
+    importsHelper,
+    success: true,
+    errors,
+    stringPool: mod.stringPool,
+  };
+}
+
 // ── .d.ts generation ─────────────────────────────────────────────────
 
 function generateDts(ast: TypedAST, mod: WasmModule): string {
@@ -152,6 +276,7 @@ function generateDts(ast: TypedAST, mod: WasmModule): string {
   for (const stmt of ast.sourceFile.statements) {
     if (ts.isFunctionDeclaration(stmt) && stmt.name && hasExportModifier(stmt)) {
       const name = stmt.name.text;
+      const isAsync = mod.asyncFunctions.has(name);
       const params = stmt.parameters
         .map((p) => {
           const paramName = ts.isIdentifier(p.name) ? p.name.text : "_";
@@ -160,7 +285,11 @@ function generateDts(ast: TypedAST, mod: WasmModule): string {
           return `${paramName}${optional}: ${typeText}`;
         })
         .join(", ");
-      const returnType = mapTypeForDts(stmt.type, ast.sourceFile);
+      let returnType = mapTypeForDts(stmt.type, ast.sourceFile);
+      // For async functions, preserve the Promise<T> wrapper in the .d.ts output
+      if (isAsync && !returnType.startsWith("Promise<")) {
+        returnType = `Promise<${returnType}>`;
+      }
       exportLines.push(`  ${name}(${params}): ${returnType};`);
     }
   }
@@ -303,6 +432,19 @@ function generateEnvImportLine(name: string, mod: WasmModule): string {
     return `${name}: (id) => (...args) => wasmExports[\`__cb_\${id}\`](...args)`;
   }
 
+  // Async/await support: __await is identity (host functions are sync from Wasm's perspective)
+  if (name === "__await") return `${name}: (v) => v`;
+
+  // Union type helper imports
+  if (name === "__typeof_number") return `${name}: (v) => typeof v === "number" ? 1 : 0`;
+  if (name === "__typeof_string") return `${name}: (v) => typeof v === "string" ? 1 : 0`;
+  if (name === "__typeof_boolean") return `${name}: (v) => typeof v === "boolean" ? 1 : 0`;
+  if (name === "__unbox_number") return `${name}: (v) => Number(v)`;
+  if (name === "__unbox_boolean") return `${name}: (v) => v ? 1 : 0`;
+  if (name === "__box_number") return `${name}: (v) => v`;
+  if (name === "__box_boolean") return `${name}: (v) => Boolean(v)`;
+  if (name === "__is_truthy") return `${name}: (v) => v ? 1 : 0`;
+
   // Fallback: no-op stub
   return `${name}: () => {}`;
 }
@@ -320,6 +462,14 @@ function mapTypeForDts(
     text === "void"
   ) {
     return text;
+  }
+  // Handle Promise<T> type references
+  if (ts.isTypeReferenceNode(typeNode)) {
+    const typeName = typeNode.typeName.getText(sf);
+    if (typeName === "Promise" && typeNode.typeArguments?.length === 1) {
+      const innerType = mapTypeForDts(typeNode.typeArguments[0], sf);
+      return `Promise<${innerType}>`;
+    }
   }
   return "any";
 }

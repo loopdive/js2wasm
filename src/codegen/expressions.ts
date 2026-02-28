@@ -1,6 +1,6 @@
 import ts from "typescript";
-import type { CodegenContext, FunctionContext, ClosureInfo } from "./index.js";
-import { allocLocal, resolveWasmType, getOrRegisterArrayType, addFuncType } from "./index.js";
+import type { CodegenContext, FunctionContext, ClosureInfo, RestParamInfo } from "./index.js";
+import { allocLocal, resolveWasmType, getOrRegisterArrayType, addFuncType, addUnionImports } from "./index.js";
 import {
   mapTsTypeToWasm,
   isNumberType,
@@ -8,6 +8,7 @@ import {
   isStringType,
   isVoidType,
   isExternalDeclaredClass,
+  isHeterogeneousUnion,
 } from "../checker/type-mapper.js";
 import type { Instr, ValType, WasmFunction } from "../ir/types.js";
 import { ensureI32Condition } from "./index.js";
@@ -34,7 +35,7 @@ export function compileExpression(
   if (result !== null) {
     // Coerce to expected type if there's a mismatch
     if (expectedType && result.kind !== expectedType.kind) {
-      coerceType(fctx, result, expectedType);
+      coerceType(ctx, fctx, result, expectedType);
       return expectedType;
     }
     return result;
@@ -51,7 +52,7 @@ export function compileExpression(
 }
 
 /** Coerce a value on the stack from one type to another */
-function coerceType(fctx: FunctionContext, from: ValType, to: ValType): void {
+function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: ValType, to: ValType): void {
   if (from.kind === to.kind) return;
   // i32 → f64
   if (from.kind === "i32" && to.kind === "f64") {
@@ -75,7 +76,25 @@ function coerceType(fctx: FunctionContext, from: ValType, to: ValType): void {
     fctx.body.push({ op: "f64.const", value: 0 });
     return;
   }
-  // i32/f64 → externref
+  // f64 → externref (box number)
+  if (from.kind === "f64" && to.kind === "externref") {
+    addUnionImports(ctx);
+    const funcIdx = ctx.funcMap.get("__box_number");
+    if (funcIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx });
+      return;
+    }
+  }
+  // i32 → externref (box boolean)
+  if (from.kind === "i32" && to.kind === "externref") {
+    addUnionImports(ctx);
+    const funcIdx = ctx.funcMap.get("__box_boolean");
+    if (funcIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx });
+      return;
+    }
+  }
+  // i32/f64 → externref (fallback)
   if (to.kind === "externref") {
     fctx.body.push({ op: "drop" });
     fctx.body.push({ op: "ref.null.extern" });
@@ -191,6 +210,11 @@ function compileExpressionInner(
   }
 
   if (ts.isNonNullExpression(expr)) {
+    return compileExpressionInner(ctx, fctx, expr.expression);
+  }
+
+  // await expr — compile as pass-through (host functions are sync from Wasm's perspective)
+  if (ts.isAwaitExpression(expr)) {
     return compileExpressionInner(ctx, fctx, expr.expression);
   }
 
@@ -593,12 +617,24 @@ function compileIdentifier(
   const localIdx = fctx.localMap.get(name);
   if (localIdx !== undefined) {
     fctx.body.push({ op: "local.get", index: localIdx });
-    // Determine type from params or locals
+    // Determine declared type from params or locals
+    let declaredType: ValType;
     if (localIdx < fctx.params.length) {
-      return fctx.params[localIdx]!.type;
+      declaredType = fctx.params[localIdx]!.type;
+    } else {
+      const localDef = fctx.locals[localIdx - fctx.params.length];
+      declaredType = localDef?.type ?? { kind: "f64" };
     }
-    const localDef = fctx.locals[localIdx - fctx.params.length];
-    return localDef?.type ?? { kind: "f64" };
+
+    // Narrowing: if the declared type is externref (boxed union) but the
+    // checker narrows it to a concrete type, emit an unbox call.
+    if (declaredType.kind === "externref") {
+      const narrowedType = ctx.checker.getTypeAtLocation(id);
+      const narrowed = narrowTypeToUnbox(ctx, fctx, narrowedType);
+      if (narrowed) return narrowed;
+    }
+
+    return declaredType;
   }
 
   // Check captured globals (variables promoted from enclosing scope for callbacks)
@@ -622,6 +658,117 @@ function compileIdentifier(
     column: getCol(id),
   });
   return null;
+}
+
+/**
+ * If the narrowed TS type indicates a concrete primitive, emit an unbox call
+ * and return the unboxed ValType. The externref value must already be on stack.
+ * Returns null if no unboxing is needed (type is still a union or externref).
+ */
+function narrowTypeToUnbox(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  narrowedType: ts.Type,
+): ValType | null {
+  // Don't unbox if the narrowed type is still a heterogeneous union
+  if (isHeterogeneousUnion(narrowedType, ctx.checker)) return null;
+  // Don't unbox if still a union with null/undefined (stays externref)
+  if (narrowedType.isUnion()) return null;
+
+  if (isNumberType(narrowedType)) {
+    addUnionImports(ctx);
+    const funcIdx = ctx.funcMap.get("__unbox_number");
+    if (funcIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx });
+      return { kind: "f64" };
+    }
+  }
+  if (isBooleanType(narrowedType)) {
+    addUnionImports(ctx);
+    const funcIdx = ctx.funcMap.get("__unbox_boolean");
+    if (funcIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx });
+      return { kind: "i32" };
+    }
+  }
+  // String stays as externref — no unboxing needed
+  if (isStringType(narrowedType)) return null;
+
+  return null;
+}
+
+/**
+ * Compile `typeof x === "number"` / `typeof x !== "string"` etc.
+ * Returns i32 result, or null if the expression is not a typeof comparison.
+ */
+function compileTypeofComparison(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.BinaryExpression,
+): ValType | null {
+  const op = expr.operatorToken.kind;
+  const isEq =
+    op === ts.SyntaxKind.EqualsEqualsEqualsToken ||
+    op === ts.SyntaxKind.EqualsEqualsToken;
+  const isNeq =
+    op === ts.SyntaxKind.ExclamationEqualsEqualsToken ||
+    op === ts.SyntaxKind.ExclamationEqualsToken;
+  if (!isEq && !isNeq) return null;
+
+  // Detect typeof on left or right
+  let typeofExpr: ts.TypeOfExpression | null = null;
+  let stringLiteral: string | null = null;
+
+  if (ts.isTypeOfExpression(expr.left) && ts.isStringLiteral(expr.right)) {
+    typeofExpr = expr.left;
+    stringLiteral = expr.right.text;
+  } else if (ts.isTypeOfExpression(expr.right) && ts.isStringLiteral(expr.left)) {
+    typeofExpr = expr.right;
+    stringLiteral = expr.left.text;
+  }
+
+  if (!typeofExpr || !stringLiteral) return null;
+
+  // Ensure union imports are registered
+  addUnionImports(ctx);
+
+  // Determine the helper function name
+  let helperName: string | null = null;
+  if (stringLiteral === "number") helperName = "__typeof_number";
+  else if (stringLiteral === "string") helperName = "__typeof_string";
+  else if (stringLiteral === "boolean") helperName = "__typeof_boolean";
+
+  if (!helperName) return null;
+
+  const funcIdx = ctx.funcMap.get(helperName);
+  if (funcIdx === undefined) return null;
+
+  // Compile the operand of typeof — need to get the raw externref value
+  // The operand should be loaded without narrowing (use the declared type)
+  const operand = typeofExpr.expression;
+  if (ts.isIdentifier(operand)) {
+    const localIdx = fctx.localMap.get(operand.text);
+    if (localIdx !== undefined) {
+      fctx.body.push({ op: "local.get", index: localIdx });
+    } else {
+      // Try other resolution paths
+      const valType = compileExpression(ctx, fctx, operand);
+      if (!valType) return null;
+    }
+  } else {
+    const valType = compileExpression(ctx, fctx, operand);
+    if (!valType) return null;
+  }
+
+  // Call the typeof helper
+  fctx.body.push({ op: "call", funcIdx });
+
+  // If !== comparison, negate the result
+  if (isNeq) {
+    fctx.body.push({ op: "i32.eqz" });
+  }
+
+  return { kind: "i32" };
 }
 
 function compileBinaryExpression(
@@ -652,6 +799,17 @@ function compileBinaryExpression(
   // Nullish coalescing: a ?? b
   if (op === ts.SyntaxKind.QuestionQuestionToken) {
     return compileNullishCoalescing(ctx, fctx, expr);
+  }
+
+  // typeof x === "type" / typeof x !== "type"
+  if (
+    (op === ts.SyntaxKind.EqualsEqualsEqualsToken ||
+      op === ts.SyntaxKind.EqualsEqualsToken ||
+      op === ts.SyntaxKind.ExclamationEqualsEqualsToken ||
+      op === ts.SyntaxKind.ExclamationEqualsToken)
+  ) {
+    const typeofResult = compileTypeofComparison(ctx, fctx, expr);
+    if (typeofResult !== null) return typeofResult;
   }
 
   // Null comparison shortcut: x === null, x !== null, null === x, null !== x
@@ -1612,19 +1770,47 @@ function compileCallExpression(
       return null;
     }
 
-    // Compile provided arguments with type hints from function signature
-    const paramTypes = getFuncParamTypes(ctx, funcIdx);
-    for (let i = 0; i < expr.arguments.length; i++) {
-      compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
-    }
+    // Check for rest parameters on the callee
+    const restInfo = ctx.funcRestParams.get(funcName);
 
-    // Supply defaults for missing optional params
-    const optInfo = ctx.funcOptionalParams.get(funcName);
-    if (optInfo) {
-      const numProvided = expr.arguments.length;
-      for (const opt of optInfo) {
-        if (opt.index >= numProvided) {
-          pushDefaultValue(fctx, opt.type);
+    // Check if any argument uses spread syntax
+    const hasSpreadArg = expr.arguments.some((a) => ts.isSpreadElement(a));
+
+    if (restInfo && !hasSpreadArg) {
+      // Calling a rest-param function: pack trailing args into a GC array
+      const paramTypes = getFuncParamTypes(ctx, funcIdx);
+      // Compile non-rest arguments
+      for (let i = 0; i < restInfo.restIndex; i++) {
+        if (i < expr.arguments.length) {
+          compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+        } else {
+          pushDefaultValue(fctx, paramTypes?.[i] ?? { kind: "f64" });
+        }
+      }
+      // Pack remaining arguments into an array
+      const restArgCount = Math.max(0, expr.arguments.length - restInfo.restIndex);
+      for (let i = restInfo.restIndex; i < expr.arguments.length; i++) {
+        compileExpression(ctx, fctx, expr.arguments[i]!, restInfo.elemType);
+      }
+      fctx.body.push({ op: "array.new_fixed", typeIdx: restInfo.arrayTypeIdx, length: restArgCount });
+    } else if (hasSpreadArg) {
+      // Spread in function call: fn(...arr) — unpack array elements as positional args
+      compileSpreadCallArgs(ctx, fctx, expr, funcIdx, restInfo);
+    } else {
+      // Normal call — compile provided arguments with type hints from function signature
+      const paramTypes = getFuncParamTypes(ctx, funcIdx);
+      for (let i = 0; i < expr.arguments.length; i++) {
+        compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+      }
+
+      // Supply defaults for missing optional params
+      const optInfo = ctx.funcOptionalParams.get(funcName);
+      if (optInfo) {
+        const numProvided = expr.arguments.length;
+        for (const opt of optInfo) {
+          if (opt.index >= numProvided) {
+            pushDefaultValue(fctx, opt.type);
+          }
         }
       }
     }
@@ -1825,6 +2011,85 @@ function pushDefaultValue(fctx: FunctionContext, type: ValType): void {
     default:
       fctx.body.push({ op: "i32.const", value: 0 });
       break;
+  }
+}
+
+// ── Spread in function calls ─────────────────────────────────────────
+
+/**
+ * Compile function call arguments when spread syntax is used: fn(...arr)
+ * For non-rest targets: unpack array elements as positional args using locals.
+ * For rest-param targets: pass the spread array directly as the rest param.
+ */
+function compileSpreadCallArgs(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.CallExpression,
+  funcIdx: number,
+  restInfo: RestParamInfo | undefined,
+): void {
+  const paramTypes = getFuncParamTypes(ctx, funcIdx);
+
+  if (restInfo) {
+    // Calling a rest-param function with spread — compile non-rest args normally,
+    // then for the rest portion, if it's a single spread of an array, pass directly
+    let argIdx = 0;
+    for (let i = 0; i < restInfo.restIndex; i++) {
+      if (argIdx < expr.arguments.length) {
+        compileExpression(ctx, fctx, expr.arguments[argIdx]!, paramTypes?.[i]);
+        argIdx++;
+      }
+    }
+    // Remaining args should be a single spread element — pass the array directly
+    if (argIdx < expr.arguments.length) {
+      const restArg = expr.arguments[argIdx]!;
+      if (ts.isSpreadElement(restArg)) {
+        compileExpression(ctx, fctx, restArg.expression);
+      } else {
+        // Single non-spread arg as rest — wrap in array
+        compileExpression(ctx, fctx, restArg, restInfo.elemType);
+        fctx.body.push({ op: "array.new_fixed", typeIdx: restInfo.arrayTypeIdx, length: 1 });
+      }
+    } else {
+      // No rest args provided — pass empty array
+      fctx.body.push({ op: "array.new_fixed", typeIdx: restInfo.arrayTypeIdx, length: 0 });
+    }
+    return;
+  }
+
+  // Non-rest target: fn(...arr) — unpack array elements into locals then push them
+  // Strategy: for each spread arg, store the array in a local and extract elements by index
+  // For simplicity, we handle the common case: fn(...arr) where arr has known length from the
+  // function's parameter count.
+  if (!paramTypes) return;
+
+  // Collect all arguments, resolving spreads
+  let paramIdx = 0;
+  for (const arg of expr.arguments) {
+    if (ts.isSpreadElement(arg)) {
+      // Compile the spread source array
+      const arrType = compileExpression(ctx, fctx, arg.expression);
+      if (!arrType || (arrType.kind !== "ref" && arrType.kind !== "ref_null")) continue;
+
+      const arrTypeDef = ctx.mod.types[arrType.typeIdx];
+      if (!arrTypeDef || arrTypeDef.kind !== "array") continue;
+
+      // Store array in temp local
+      const arrLocal = allocLocal(fctx, `__spread_arr_${fctx.locals.length}`, arrType);
+      fctx.body.push({ op: "local.set", index: arrLocal });
+
+      // Extract elements up to the remaining parameter count
+      const remainingParams = paramTypes.length - paramIdx;
+      for (let i = 0; i < remainingParams; i++) {
+        fctx.body.push({ op: "local.get", index: arrLocal });
+        fctx.body.push({ op: "i32.const", value: i });
+        fctx.body.push({ op: "array.get", typeIdx: arrType.typeIdx });
+        paramIdx++;
+      }
+    } else {
+      compileExpression(ctx, fctx, arg, paramTypes[paramIdx]);
+      paramIdx++;
+    }
   }
 }
 
@@ -2400,7 +2665,28 @@ function compileObjectLiteralForStruct(
     return null;
   }
 
+  // Check if there are any spread assignments — if so, compile spread sources into locals
+  const spreadSources: { local: number; srcStructTypeIdx: number; srcFields: { name: string }[] }[] = [];
+  for (const prop of expr.properties) {
+    if (ts.isSpreadAssignment(prop)) {
+      const srcType = ctx.checker.getTypeAtLocation(prop.expression);
+      const srcStructName = resolveStructName(ctx, srcType);
+      if (srcStructName) {
+        const srcStructTypeIdx = ctx.structMap.get(srcStructName);
+        const srcFields = ctx.structFields.get(srcStructName);
+        if (srcStructTypeIdx !== undefined && srcFields) {
+          const srcValType: ValType = { kind: "ref", typeIdx: srcStructTypeIdx };
+          const srcLocal = allocLocal(fctx, `__spread_obj_${fctx.locals.length}`, srcValType);
+          compileExpression(ctx, fctx, prop.expression);
+          fctx.body.push({ op: "local.set", index: srcLocal });
+          spreadSources.push({ local: srcLocal, srcStructTypeIdx, srcFields });
+        }
+      }
+    }
+  }
+
   for (const field of fields) {
+    // First check for an explicit property assignment
     const prop = expr.properties.find(
       (p) =>
         ts.isPropertyAssignment(p) &&
@@ -2410,10 +2696,29 @@ function compileObjectLiteralForStruct(
     if (prop && ts.isPropertyAssignment(prop)) {
       compileExpression(ctx, fctx, prop.initializer);
     } else {
-      if (field.type.kind === "f64") {
-        fctx.body.push({ op: "f64.const", value: 0 });
-      } else {
-        fctx.body.push({ op: "i32.const", value: 0 });
+      // Check spread sources (last spread wins — JS semantics)
+      let found = false;
+      for (let si = spreadSources.length - 1; si >= 0; si--) {
+        const src = spreadSources[si]!;
+        const fieldIdx = src.srcFields.findIndex((f) => f.name === field.name);
+        if (fieldIdx >= 0) {
+          fctx.body.push({ op: "local.get", index: src.local });
+          fctx.body.push({ op: "struct.get", typeIdx: src.srcStructTypeIdx, fieldIdx });
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        // Default value
+        if (field.type.kind === "f64") {
+          fctx.body.push({ op: "f64.const", value: 0 });
+        } else if (field.type.kind === "externref") {
+          fctx.body.push({ op: "ref.null.extern" });
+        } else if (field.type.kind === "ref" || field.type.kind === "ref_null") {
+          fctx.body.push({ op: "ref.null", typeIdx: field.type.typeIdx });
+        } else {
+          fctx.body.push({ op: "i32.const", value: 0 });
+        }
       }
     }
   }
@@ -2428,25 +2733,143 @@ function compileArrayLiteral(
   expr: ts.ArrayLiteralExpression,
 ): ValType | null {
   if (expr.elements.length === 0) {
-    // Empty array — default to externref element type
-    const arrTypeIdx = getOrRegisterArrayType(ctx, "externref");
+    // Empty array — try to determine element type from contextual type (e.g. number[])
+    let emptyElemKind = "externref";
+    const ctxType = ctx.checker.getContextualType(expr) ?? ctx.checker.getTypeAtLocation(expr);
+    if (ctxType) {
+      const sym = (ctxType as ts.TypeReference).symbol ?? ctxType.symbol;
+      if (sym?.name === "Array") {
+        const typeArgs = ctx.checker.getTypeArguments(ctxType as ts.TypeReference);
+        if (typeArgs[0]) {
+          emptyElemKind = mapTsTypeToWasm(typeArgs[0], ctx.checker).kind;
+        }
+      }
+    }
+    const arrTypeIdx = getOrRegisterArrayType(ctx, emptyElemKind);
     fctx.body.push({ op: "array.new_fixed", typeIdx: arrTypeIdx, length: 0 });
     return { kind: "ref", typeIdx: arrTypeIdx };
   }
 
-  // Determine element type from first element
-  const firstElemType = ctx.checker.getTypeAtLocation(expr.elements[0]!);
-  const elemWasm = mapTsTypeToWasm(firstElemType, ctx.checker);
-  const elemKind = elemWasm.kind;
+  // Check if any element is a spread
+  const hasSpread = expr.elements.some((el) => ts.isSpreadElement(el));
+
+  // Determine element type from first non-spread element, or from spread source
+  let elemWasm: ValType;
+  let elemKind: string;
+  const firstElem = expr.elements[0]!;
+  if (ts.isSpreadElement(firstElem)) {
+    const spreadType = ctx.checker.getTypeAtLocation(firstElem.expression);
+    const typeArgs = ctx.checker.getTypeArguments(spreadType as ts.TypeReference);
+    const innerType = typeArgs[0];
+    elemWasm = innerType ? mapTsTypeToWasm(innerType, ctx.checker) : { kind: "f64" };
+    elemKind = elemWasm.kind;
+  } else {
+    const firstElemType = ctx.checker.getTypeAtLocation(firstElem);
+    elemWasm = mapTsTypeToWasm(firstElemType, ctx.checker);
+    elemKind = elemWasm.kind;
+  }
   const arrTypeIdx = getOrRegisterArrayType(ctx, elemKind);
 
-  // Push all elements onto stack
-  for (const el of expr.elements) {
-    compileExpression(ctx, fctx, el, elemWasm);
+  if (!hasSpread) {
+    // No spread — use the fast array.new_fixed path
+    for (const el of expr.elements) {
+      compileExpression(ctx, fctx, el, elemWasm);
+    }
+    fctx.body.push({ op: "array.new_fixed", typeIdx: arrTypeIdx, length: expr.elements.length });
+    return { kind: "ref", typeIdx: arrTypeIdx };
   }
 
-  fctx.body.push({ op: "array.new_fixed", typeIdx: arrTypeIdx, length: expr.elements.length });
-  return { kind: "ref", typeIdx: arrTypeIdx };
+  // Has spread elements — compute total length, create array, then fill
+  // Step 1: Compute total length and store spread sources in locals
+  const spreadLocals: { local: number; elemIdx: number }[] = [];
+  const nonSpreadCount = expr.elements.filter((el) => !ts.isSpreadElement(el)).length;
+
+  // Push the non-spread count as the initial length
+  fctx.body.push({ op: "i32.const", value: nonSpreadCount });
+
+  // For each spread source, compile it, store in local, and add its length
+  for (let i = 0; i < expr.elements.length; i++) {
+    const el = expr.elements[i]!;
+    if (ts.isSpreadElement(el)) {
+      const srcType = compileExpression(ctx, fctx, el.expression);
+      if (!srcType || (srcType.kind !== "ref" && srcType.kind !== "ref_null")) continue;
+      const srcLocal = allocLocal(fctx, `__spread_src_${fctx.locals.length}`, srcType);
+      fctx.body.push({ op: "local.tee", index: srcLocal });
+      fctx.body.push({ op: "array.len" });
+      fctx.body.push({ op: "i32.add" }); // accumulate total length
+      spreadLocals.push({ local: srcLocal, elemIdx: i });
+    }
+  }
+
+  // Step 2: Create the result array with computed length, default-initialized
+  const resultArrType: ValType = { kind: "ref", typeIdx: arrTypeIdx };
+  fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx });
+  const resultLocal = allocLocal(fctx, `__spread_result_${fctx.locals.length}`, resultArrType);
+  fctx.body.push({ op: "local.set", index: resultLocal });
+
+  // Step 3: Fill the array — track current write index
+  const writeIdx = allocLocal(fctx, `__spread_wi_${fctx.locals.length}`, { kind: "i32" });
+  fctx.body.push({ op: "i32.const", value: 0 });
+  fctx.body.push({ op: "local.set", index: writeIdx });
+
+  for (let i = 0; i < expr.elements.length; i++) {
+    const el = expr.elements[i]!;
+    if (ts.isSpreadElement(el)) {
+      // Copy all elements from spread source using a loop
+      const spreadInfo = spreadLocals.find((s) => s.elemIdx === i);
+      if (!spreadInfo) continue;
+
+      const readIdx = allocLocal(fctx, `__spread_ri_${fctx.locals.length}`, { kind: "i32" });
+      fctx.body.push({ op: "i32.const", value: 0 });
+      fctx.body.push({ op: "local.set", index: readIdx });
+
+      // loop: while readIdx < srcArr.len
+      const loopBody: Instr[] = [];
+      // Condition: readIdx >= srcArr.len → break
+      loopBody.push({ op: "local.get", index: readIdx });
+      loopBody.push({ op: "local.get", index: spreadInfo.local });
+      loopBody.push({ op: "array.len" });
+      loopBody.push({ op: "i32.ge_s" });
+      loopBody.push({ op: "br_if", depth: 1 }); // break out of block
+      // result[writeIdx] = src[readIdx]
+      loopBody.push({ op: "local.get", index: resultLocal });
+      loopBody.push({ op: "local.get", index: writeIdx });
+      loopBody.push({ op: "local.get", index: spreadInfo.local });
+      loopBody.push({ op: "local.get", index: readIdx });
+      loopBody.push({ op: "array.get", typeIdx: arrTypeIdx });
+      loopBody.push({ op: "array.set", typeIdx: arrTypeIdx });
+      // writeIdx++; readIdx++
+      loopBody.push({ op: "local.get", index: writeIdx });
+      loopBody.push({ op: "i32.const", value: 1 });
+      loopBody.push({ op: "i32.add" });
+      loopBody.push({ op: "local.set", index: writeIdx });
+      loopBody.push({ op: "local.get", index: readIdx });
+      loopBody.push({ op: "i32.const", value: 1 });
+      loopBody.push({ op: "i32.add" });
+      loopBody.push({ op: "local.set", index: readIdx });
+      loopBody.push({ op: "br", depth: 0 }); // continue loop
+
+      fctx.body.push({
+        op: "block",
+        blockType: { kind: "empty" },
+        body: [{ op: "loop", blockType: { kind: "empty" }, body: loopBody }],
+      });
+    } else {
+      // Non-spread element: result[writeIdx] = el; writeIdx++
+      fctx.body.push({ op: "local.get", index: resultLocal });
+      fctx.body.push({ op: "local.get", index: writeIdx });
+      compileExpression(ctx, fctx, el, elemWasm);
+      fctx.body.push({ op: "array.set", typeIdx: arrTypeIdx });
+      fctx.body.push({ op: "local.get", index: writeIdx });
+      fctx.body.push({ op: "i32.const", value: 1 });
+      fctx.body.push({ op: "i32.add" });
+      fctx.body.push({ op: "local.set", index: writeIdx });
+    }
+  }
+
+  // Push the result array onto the stack
+  fctx.body.push({ op: "local.get", index: resultLocal });
+  return resultArrType;
 }
 
 // ── String operations ─────────────────────────────────────────────────
