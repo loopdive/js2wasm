@@ -7,9 +7,6 @@
 | [6](issues/6.md) | Classes | L | — |
 | [7](issues/7.md) | Closures / arrow functions | L | — |
 | [8](issues/8.md) | Generics | L | — |
-| [9](issues/9.md) | for-in loops | M | #3 optional |
-| [16](issues/16.md) | Optional chaining and nullish coalescing | M | — |
-| [17](issues/17.md) | Destructuring | M | — |
 | [18](issues/18.md) | Spread and rest operators | L | — |
 | [19](issues/19.md) | Type narrowing and union types | L | — |
 | [20](issues/20.md) | Async/await and Promises | L | — |
@@ -37,3 +34,6 @@
 | [13](issues/13.md) | Template literals (substitutions) | — |
 | [14](issues/14.md) | String methods | — |
 | [15](issues/15.md) | Ternary / conditional expression | — |
+| [16](issues/16.md) | Optional chaining and nullish coalescing | — |
+| [17](issues/17.md) | Destructuring | — |
+| [9](issues/9.md) | for-in loops | — |
