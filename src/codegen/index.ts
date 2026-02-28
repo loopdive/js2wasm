@@ -100,6 +100,8 @@ export interface CodegenContext {
   callbackCounter: number;
   /** Map from captured variable name → global index in mod.globals */
   capturedGlobals: Map<string, number>;
+  /** Captured globals whose type was widened from ref to ref_null for null init */
+  capturedGlobalsWidened: Set<string>;
   /** Set of class names (local classes compiled to Wasm GC structs) */
   classSet: Set<string>;
   /** Map from "ClassName_methodName" → method info for local classes */
@@ -181,6 +183,7 @@ export function generateModule(ast: TypedAST): WasmModule {
     declaredGlobals: new Map(),
     callbackCounter: 0,
     capturedGlobals: new Map(),
+    capturedGlobalsWidened: new Set(),
     classSet: new Set(),
     classMethodSet: new Set(),
     closureCounter: 0,
@@ -288,6 +291,7 @@ export function generateMultiModule(multiAst: MultiTypedAST): WasmModule {
     declaredGlobals: new Map(),
     callbackCounter: 0,
     capturedGlobals: new Map(),
+    capturedGlobalsWidened: new Set(),
     classSet: new Set(),
     classMethodSet: new Set(),
     closureCounter: 0,
@@ -913,12 +917,12 @@ function valTypeEq(a: ValType, b: ValType): boolean {
  * Get or register a Wasm array type for a given element kind.
  * Reuses existing registrations so each element type only gets one array type.
  */
-export function getOrRegisterArrayType(ctx: CodegenContext, elemKind: string): number {
+export function getOrRegisterArrayType(ctx: CodegenContext, elemKind: string, elemTypeOverride?: ValType): number {
   if (ctx.arrayTypeMap.has(elemKind)) return ctx.arrayTypeMap.get(elemKind)!;
-  const elemType: ValType =
-    elemKind === "f64" ? { kind: "f64" } :
+  const elemType: ValType = elemTypeOverride ??
+    (elemKind === "f64" ? { kind: "f64" } :
     elemKind === "i32" ? { kind: "i32" } :
-    { kind: "externref" };
+    { kind: "externref" });
   const idx = ctx.mod.types.length;
   ctx.mod.types.push({
     kind: "array",
@@ -942,16 +946,13 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type): ValType {
     const sym = (tsType as ts.TypeReference).symbol ?? (tsType as ts.Type).symbol;
     if (sym?.name === "Array") {
       const typeArgs = ctx.checker.getTypeArguments(tsType as ts.TypeReference);
-      const elemType = typeArgs[0];
-      const elemKind = elemType ? mapTsTypeToWasm(elemType, ctx.checker).kind : "externref";
-      // Only use Wasm GC arrays for primitive element types (f64, i32).
-      // Arrays of externref (objects, strings, any[]) stay as externref since
-      // they typically come from JS across the boundary, not from array.new_fixed.
-      if (elemKind === "f64" || elemKind === "i32") {
-        const arrTypeIdx = getOrRegisterArrayType(ctx, elemKind);
-        return { kind: "ref", typeIdx: arrTypeIdx };
-      }
-      return { kind: "externref" };
+      const elemTsType = typeArgs[0];
+      const elemWasm: ValType = elemTsType ? resolveWasmType(ctx, elemTsType) : { kind: "externref" };
+      const elemKey = (elemWasm.kind === "ref" || elemWasm.kind === "ref_null")
+        ? `ref_${elemWasm.typeIdx}` : elemWasm.kind;
+      const arrTypeIdx = getOrRegisterArrayType(ctx, elemKey, elemWasm);
+      // Use ref_null so locals can default-initialize to null
+      return { kind: "ref_null", typeIdx: arrTypeIdx };
     }
 
     const name = sym?.name;
@@ -1760,11 +1761,12 @@ function collectDeclarations(
             const paramType = ctx.checker.getTypeAtLocation(param);
             const typeArgs = ctx.checker.getTypeArguments(paramType as ts.TypeReference);
             const elemTsType = typeArgs[0];
-            const elemKind = elemTsType ? mapTsTypeToWasm(elemTsType, ctx.checker).kind : "f64";
-            const arrTypeIdx = getOrRegisterArrayType(ctx, elemKind);
-            const elemType: ValType = elemKind === "f64" ? { kind: "f64" } :
-              elemKind === "i32" ? { kind: "i32" } : { kind: "externref" };
-            params.push({ kind: "ref", typeIdx: arrTypeIdx });
+            const elemType: ValType = elemTsType ? resolveWasmType(ctx, elemTsType) : { kind: "f64" };
+            // Use a unique key for ref element types so each struct gets its own array type
+            const elemKey = (elemType.kind === "ref" || elemType.kind === "ref_null")
+              ? `ref_${elemType.typeIdx}` : elemType.kind;
+            const arrTypeIdx = getOrRegisterArrayType(ctx, elemKey, elemType);
+            params.push({ kind: "ref_null", typeIdx: arrTypeIdx });
             ctx.funcRestParams.set(name, {
               restIndex: i,
               elemType,
@@ -2078,7 +2080,7 @@ function compileFunctionBody(
     const paramName = (param.name as ts.Identifier).text;
     if (restInfo && i === restInfo.restIndex) {
       // Rest parameter — use the array ref type from the function signature
-      params.push({ name: paramName, type: { kind: "ref", typeIdx: restInfo.arrayTypeIdx } });
+      params.push({ name: paramName, type: { kind: "ref_null", typeIdx: restInfo.arrayTypeIdx } });
     } else {
       const paramType = resolved
         ? resolved.params[i]!

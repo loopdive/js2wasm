@@ -479,14 +479,24 @@ function compileArrowAsCallback(
         ? [{ op: "f64.const", value: 0 }]
         : cap.type.kind === "i32"
           ? [{ op: "i32.const", value: 0 }]
-          : [{ op: "ref.null.extern" }];
+          : cap.type.kind === "ref_null"
+            ? [{ op: "ref.null", typeIdx: cap.type.typeIdx }]
+            : cap.type.kind === "ref"
+              ? [{ op: "ref.null", typeIdx: cap.type.typeIdx }]
+              : [{ op: "ref.null.extern" }];
+      // Widen non-nullable ref to ref_null so the global accepts a null initializer
+      const widened = cap.type.kind === "ref";
+      const globalType: ValType = widened
+        ? { kind: "ref_null", typeIdx: (cap.type as { kind: "ref"; typeIdx: number }).typeIdx }
+        : cap.type;
       ctx.mod.globals.push({
         name: `__cap_${cap.name}`,
-        type: cap.type,
+        type: globalType,
         mutable: true,
         init,
       });
       ctx.capturedGlobals.set(cap.name, globalIdx);
+      if (widened) ctx.capturedGlobalsWidened.add(cap.name);
     }
   }
 
@@ -642,7 +652,13 @@ function compileIdentifier(
   if (capturedIdx !== undefined) {
     fctx.body.push({ op: "global.get", index: capturedIdx });
     const globalDef = ctx.mod.globals[capturedIdx];
-    return globalDef?.type ?? { kind: "f64" };
+    const gType = globalDef?.type ?? { kind: "f64" };
+    // Globals widened from ref to ref_null for null init — narrow back
+    if (gType.kind === "ref_null" && ctx.capturedGlobalsWidened.has(name)) {
+      fctx.body.push({ op: "ref.as_non_null" });
+      return { kind: "ref", typeIdx: gType.typeIdx };
+    }
+    return gType;
   }
 
   // Check declared globals (e.g. document, window)
@@ -2008,6 +2024,10 @@ function pushDefaultValue(fctx: FunctionContext, type: ValType): void {
     case "externref":
       fctx.body.push({ op: "ref.null.extern" });
       break;
+    case "ref_null":
+    case "ref":
+      fctx.body.push({ op: "ref.null", typeIdx: type.typeIdx });
+      break;
     default:
       fctx.body.push({ op: "i32.const", value: 0 });
       break;
@@ -2747,7 +2767,7 @@ function compileArrayLiteral(
     }
     const arrTypeIdx = getOrRegisterArrayType(ctx, emptyElemKind);
     fctx.body.push({ op: "array.new_fixed", typeIdx: arrTypeIdx, length: 0 });
-    return { kind: "ref", typeIdx: arrTypeIdx };
+    return { kind: "ref_null", typeIdx: arrTypeIdx };
   }
 
   // Check if any element is a spread
@@ -2761,14 +2781,14 @@ function compileArrayLiteral(
     const spreadType = ctx.checker.getTypeAtLocation(firstElem.expression);
     const typeArgs = ctx.checker.getTypeArguments(spreadType as ts.TypeReference);
     const innerType = typeArgs[0];
-    elemWasm = innerType ? mapTsTypeToWasm(innerType, ctx.checker) : { kind: "f64" };
-    elemKind = elemWasm.kind;
+    elemWasm = innerType ? resolveWasmType(ctx, innerType) : { kind: "f64" };
   } else {
     const firstElemType = ctx.checker.getTypeAtLocation(firstElem);
-    elemWasm = mapTsTypeToWasm(firstElemType, ctx.checker);
-    elemKind = elemWasm.kind;
+    elemWasm = resolveWasmType(ctx, firstElemType);
   }
-  const arrTypeIdx = getOrRegisterArrayType(ctx, elemKind);
+  elemKind = (elemWasm.kind === "ref" || elemWasm.kind === "ref_null")
+    ? `ref_${elemWasm.typeIdx}` : elemWasm.kind;
+  const arrTypeIdx = getOrRegisterArrayType(ctx, elemKind, elemWasm);
 
   if (!hasSpread) {
     // No spread — use the fast array.new_fixed path
@@ -2776,7 +2796,7 @@ function compileArrayLiteral(
       compileExpression(ctx, fctx, el, elemWasm);
     }
     fctx.body.push({ op: "array.new_fixed", typeIdx: arrTypeIdx, length: expr.elements.length });
-    return { kind: "ref", typeIdx: arrTypeIdx };
+    return { kind: "ref_null", typeIdx: arrTypeIdx };
   }
 
   // Has spread elements — compute total length, create array, then fill
@@ -2802,7 +2822,7 @@ function compileArrayLiteral(
   }
 
   // Step 2: Create the result array with computed length, default-initialized
-  const resultArrType: ValType = { kind: "ref", typeIdx: arrTypeIdx };
+  const resultArrType: ValType = { kind: "ref_null", typeIdx: arrTypeIdx };
   fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx });
   const resultLocal = allocLocal(fctx, `__spread_result_${fctx.locals.length}`, resultArrType);
   fctx.body.push({ op: "local.set", index: resultLocal });
@@ -3137,7 +3157,7 @@ function compileArrayIndexOf(
     return null;
   }
 
-  const arrTmp = allocLocal(fctx, `__arr_iof_${fctx.locals.length}`, { kind: "ref", typeIdx });
+  const arrTmp = allocLocal(fctx, `__arr_iof_${fctx.locals.length}`, { kind: "ref_null", typeIdx });
   const iTmp = allocLocal(fctx, `__arr_iof_i_${fctx.locals.length}`, { kind: "i32" });
   const lenTmp = allocLocal(fctx, `__arr_iof_len_${fctx.locals.length}`, { kind: "i32" });
   const valTmp = allocLocal(fctx, `__arr_iof_val_${fctx.locals.length}`, elemType);
@@ -3212,7 +3232,7 @@ function compileArrayIncludes(
     return null;
   }
 
-  const arrTmp = allocLocal(fctx, `__arr_inc_${fctx.locals.length}`, { kind: "ref", typeIdx });
+  const arrTmp = allocLocal(fctx, `__arr_inc_${fctx.locals.length}`, { kind: "ref_null", typeIdx });
   const iTmp = allocLocal(fctx, `__arr_inc_i_${fctx.locals.length}`, { kind: "i32" });
   const lenTmp = allocLocal(fctx, `__arr_inc_len_${fctx.locals.length}`, { kind: "i32" });
   const valTmp = allocLocal(fctx, `__arr_inc_val_${fctx.locals.length}`, elemType);
@@ -3281,7 +3301,7 @@ function compileArrayReverse(
   typeIdx: number,
   elemType: ValType,
 ): ValType {
-  const arrTmp = allocLocal(fctx, `__arr_rev_${fctx.locals.length}`, { kind: "ref", typeIdx });
+  const arrTmp = allocLocal(fctx, `__arr_rev_${fctx.locals.length}`, { kind: "ref_null", typeIdx });
   const iTmp = allocLocal(fctx, `__arr_rev_i_${fctx.locals.length}`, { kind: "i32" });
   const jTmp = allocLocal(fctx, `__arr_rev_j_${fctx.locals.length}`, { kind: "i32" });
   const swapTmp = allocLocal(fctx, `__arr_rev_sw_${fctx.locals.length}`, elemType);
@@ -3349,7 +3369,7 @@ function compileArrayReverse(
   });
 
   fctx.body.push({ op: "local.get", index: arrTmp });
-  return { kind: "ref", typeIdx };
+  return { kind: "ref_null", typeIdx };
 }
 
 /**
@@ -3375,8 +3395,8 @@ function compileArrayPush(
     return null;
   }
 
-  const oldArr = allocLocal(fctx, `__arr_push_old_${fctx.locals.length}`, { kind: "ref", typeIdx });
-  const newArr = allocLocal(fctx, `__arr_push_new_${fctx.locals.length}`, { kind: "ref", typeIdx });
+  const oldArr = allocLocal(fctx, `__arr_push_old_${fctx.locals.length}`, { kind: "ref_null", typeIdx });
+  const newArr = allocLocal(fctx, `__arr_push_new_${fctx.locals.length}`, { kind: "ref_null", typeIdx });
   const lenTmp = allocLocal(fctx, `__arr_push_len_${fctx.locals.length}`, { kind: "i32" });
   const valTmp = allocLocal(fctx, `__arr_push_val_${fctx.locals.length}`, elemType);
 
@@ -3436,8 +3456,8 @@ function compileArrayPop(
     return null;
   }
 
-  const oldArr = allocLocal(fctx, `__arr_pop_old_${fctx.locals.length}`, { kind: "ref", typeIdx });
-  const newArr = allocLocal(fctx, `__arr_pop_new_${fctx.locals.length}`, { kind: "ref", typeIdx });
+  const oldArr = allocLocal(fctx, `__arr_pop_old_${fctx.locals.length}`, { kind: "ref_null", typeIdx });
+  const newArr = allocLocal(fctx, `__arr_pop_new_${fctx.locals.length}`, { kind: "ref_null", typeIdx });
   const lenTmp = allocLocal(fctx, `__arr_pop_len_${fctx.locals.length}`, { kind: "i32" });
   const newLenTmp = allocLocal(fctx, `__arr_pop_nl_${fctx.locals.length}`, { kind: "i32" });
   const resultTmp = allocLocal(fctx, `__arr_pop_res_${fctx.locals.length}`, elemType);
@@ -3497,8 +3517,8 @@ function compileArrayShift(
     return null;
   }
 
-  const oldArr = allocLocal(fctx, `__arr_sft_old_${fctx.locals.length}`, { kind: "ref", typeIdx });
-  const newArr = allocLocal(fctx, `__arr_sft_new_${fctx.locals.length}`, { kind: "ref", typeIdx });
+  const oldArr = allocLocal(fctx, `__arr_sft_old_${fctx.locals.length}`, { kind: "ref_null", typeIdx });
+  const newArr = allocLocal(fctx, `__arr_sft_new_${fctx.locals.length}`, { kind: "ref_null", typeIdx });
   const lenTmp = allocLocal(fctx, `__arr_sft_len_${fctx.locals.length}`, { kind: "i32" });
   const newLenTmp = allocLocal(fctx, `__arr_sft_nl_${fctx.locals.length}`, { kind: "i32" });
   const resultTmp = allocLocal(fctx, `__arr_sft_res_${fctx.locals.length}`, elemType);
@@ -3553,8 +3573,8 @@ function compileArraySlice(
   typeIdx: number,
   elemType: ValType,
 ): ValType {
-  const arrTmp = allocLocal(fctx, `__arr_slc_${fctx.locals.length}`, { kind: "ref", typeIdx });
-  const newArr = allocLocal(fctx, `__arr_slc_new_${fctx.locals.length}`, { kind: "ref", typeIdx });
+  const arrTmp = allocLocal(fctx, `__arr_slc_${fctx.locals.length}`, { kind: "ref_null", typeIdx });
+  const newArr = allocLocal(fctx, `__arr_slc_new_${fctx.locals.length}`, { kind: "ref_null", typeIdx });
   const startTmp = allocLocal(fctx, `__arr_slc_s_${fctx.locals.length}`, { kind: "i32" });
   const endTmp = allocLocal(fctx, `__arr_slc_e_${fctx.locals.length}`, { kind: "i32" });
   const lenTmp = allocLocal(fctx, `__arr_slc_len_${fctx.locals.length}`, { kind: "i32" });
@@ -3597,7 +3617,7 @@ function compileArraySlice(
   emitArrayCopyLoop(fctx, typeIdx, elemType, newArr, null, arrTmp, startTmp, sliceLenTmp);
 
   fctx.body.push({ op: "local.get", index: newArr });
-  return { kind: "ref", typeIdx };
+  return { kind: "ref_null", typeIdx };
 }
 
 /**
@@ -3616,9 +3636,9 @@ function compileArrayConcat(
     return null;
   }
 
-  const arrA = allocLocal(fctx, `__arr_cat_a_${fctx.locals.length}`, { kind: "ref", typeIdx });
-  const arrB = allocLocal(fctx, `__arr_cat_b_${fctx.locals.length}`, { kind: "ref", typeIdx });
-  const newArr = allocLocal(fctx, `__arr_cat_new_${fctx.locals.length}`, { kind: "ref", typeIdx });
+  const arrA = allocLocal(fctx, `__arr_cat_a_${fctx.locals.length}`, { kind: "ref_null", typeIdx });
+  const arrB = allocLocal(fctx, `__arr_cat_b_${fctx.locals.length}`, { kind: "ref_null", typeIdx });
+  const newArr = allocLocal(fctx, `__arr_cat_new_${fctx.locals.length}`, { kind: "ref_null", typeIdx });
   const lenA = allocLocal(fctx, `__arr_cat_la_${fctx.locals.length}`, { kind: "i32" });
   const lenB = allocLocal(fctx, `__arr_cat_lb_${fctx.locals.length}`, { kind: "i32" });
 
@@ -3650,7 +3670,7 @@ function compileArrayConcat(
   emitArrayCopyLoop(fctx, typeIdx, elemType, newArr, lenA, arrB, null, lenB);
 
   fctx.body.push({ op: "local.get", index: newArr });
-  return { kind: "ref", typeIdx };
+  return { kind: "ref_null", typeIdx };
 }
 
 /**
@@ -3672,7 +3692,7 @@ function compileArrayJoin(
     return null;
   }
 
-  const arrTmp = allocLocal(fctx, `__arr_join_${fctx.locals.length}`, { kind: "ref", typeIdx });
+  const arrTmp = allocLocal(fctx, `__arr_join_${fctx.locals.length}`, { kind: "ref_null", typeIdx });
   const lenTmp = allocLocal(fctx, `__arr_join_len_${fctx.locals.length}`, { kind: "i32" });
   const iTmp = allocLocal(fctx, `__arr_join_i_${fctx.locals.length}`, { kind: "i32" });
   const resultTmp = allocLocal(fctx, `__arr_join_res_${fctx.locals.length}`, { kind: "externref" });
@@ -3794,9 +3814,9 @@ function compileArraySplice(
     return null;
   }
 
-  const oldArr = allocLocal(fctx, `__arr_spl_old_${fctx.locals.length}`, { kind: "ref", typeIdx });
-  const newArr = allocLocal(fctx, `__arr_spl_new_${fctx.locals.length}`, { kind: "ref", typeIdx });
-  const delArr = allocLocal(fctx, `__arr_spl_del_${fctx.locals.length}`, { kind: "ref", typeIdx });
+  const oldArr = allocLocal(fctx, `__arr_spl_old_${fctx.locals.length}`, { kind: "ref_null", typeIdx });
+  const newArr = allocLocal(fctx, `__arr_spl_new_${fctx.locals.length}`, { kind: "ref_null", typeIdx });
+  const delArr = allocLocal(fctx, `__arr_spl_del_${fctx.locals.length}`, { kind: "ref_null", typeIdx });
   const lenTmp = allocLocal(fctx, `__arr_spl_len_${fctx.locals.length}`, { kind: "i32" });
   const startTmp = allocLocal(fctx, `__arr_spl_s_${fctx.locals.length}`, { kind: "i32" });
   const delCountTmp = allocLocal(fctx, `__arr_spl_dc_${fctx.locals.length}`, { kind: "i32" });
@@ -3869,7 +3889,7 @@ function compileArraySplice(
 
   // Return deleted array
   fctx.body.push({ op: "local.get", index: delArr });
-  return { kind: "ref", typeIdx };
+  return { kind: "ref_null", typeIdx };
 }
 
 function getLine(node: ts.Node): number {
