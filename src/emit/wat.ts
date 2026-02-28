@@ -267,6 +267,10 @@ function formatInstr(instr: Instr, _depth: number): string {
       return `ref.cast (ref ${instr.typeIdx})`;
     case "ref.test":
       return `ref.test (ref ${instr.typeIdx})`;
+    case "ref.func":
+      return `ref.func ${instr.funcIdx}`;
+    case "call_ref":
+      return `call_ref ${instr.typeIdx}`;
     default:
       return instr.op;
   }

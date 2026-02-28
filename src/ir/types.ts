@@ -109,6 +109,10 @@ export type Instr =
   | { op: "i32.eqz" }
   | { op: "i32.and" }
   | { op: "i32.or" }
+  | { op: "i32.xor" }
+  | { op: "i32.shl" }
+  | { op: "i32.shr_s" }
+  | { op: "i32.shr_u" }
   | { op: "f64.add" }
   | { op: "f64.sub" }
   | { op: "f64.mul" }
@@ -128,6 +132,7 @@ export type Instr =
   | { op: "f64.nearest" }
   | { op: "i32.trunc_f64_s" }
   | { op: "f64.convert_i32_s" }
+  | { op: "f64.convert_i32_u" }
   | { op: "block"; blockType: BlockType; body: Instr[] }
   | { op: "loop"; blockType: BlockType; body: Instr[] }
   | { op: "if"; blockType: BlockType; then: Instr[]; else?: Instr[] }
@@ -157,6 +162,8 @@ export type Instr =
   | { op: "ref.cast"; typeIdx: number }
   | { op: "ref.test"; typeIdx: number }
   | { op: "ref.eq" }
+  | { op: "ref.func"; funcIdx: number }
+  | { op: "call_ref"; typeIdx: number }
   | { op: "memory.size" }
   | { op: "memory.grow" };
 
