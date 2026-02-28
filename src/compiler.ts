@@ -9,7 +9,7 @@ import type {
   CompileError,
   CompileOptions,
 } from "./index.js";
-import type { WasmModule, FuncTypeDef, ValType, ExternClassMeta } from "./ir/types.js";
+import type { WasmModule } from "./ir/types.js";
 
 /**
  * Orchestrates the full compilation pipeline:
@@ -166,126 +166,16 @@ function generateDts(ast: TypedAST, mod: WasmModule): string {
   }
 
   if (exportLines.length > 0) {
-    lines.push("export interface Exports {");
-    lines.push(...exportLines);
-    lines.push("}");
-    lines.push("");
-  }
-
-  // Build a set of extern class import prefixes for annotation
-  const externPrefixes = new Map<string, ExternClassMeta>();
-  for (const ec of mod.externClasses) {
-    externPrefixes.set(ec.importPrefix, ec);
-  }
-
-  // Imports interface — group by module, annotate with comments
-  const importsByModule = new Map<string, string[]>();
-  for (const imp of mod.imports) {
-    if (imp.desc.kind !== "func") continue;
-    const typeDef = mod.types[imp.desc.typeIdx] as FuncTypeDef | undefined;
-    if (!typeDef) continue;
-
-    const params = typeDef.params
-      .map((p, i) => `a${i}: ${wasmTypeToTs(p)}`)
-      .join(", ");
-    const ret =
-      typeDef.results.length === 0
-        ? "void"
-        : wasmTypeToTs(typeDef.results[0]!);
-
-    // Annotate with comment
-    const comment = getImportComment(imp.name, mod);
-    const line = comment
-      ? `    /** ${comment} */\n    ${imp.name}(${params}): ${ret};`
-      : `    ${imp.name}(${params}): ${ret};`;
-
-    const bucket = importsByModule.get(imp.module) ?? [];
-    bucket.push(line);
-    importsByModule.set(imp.module, bucket);
-  }
-
-  if (importsByModule.size > 0) {
-    lines.push("export interface Imports {");
-    for (const [module, funcs] of importsByModule) {
-      const key = module.includes(":") ? `"${module}"` : module;
-      const optional = module.startsWith("wasm:") ? "?" : "";
-      lines.push(`  ${key}${optional}: {`);
-      lines.push(...funcs);
-      lines.push("  };");
-    }
-    lines.push("}");
-    lines.push("");
-  }
-
-  // Deps interface — what the user must provide for extern classes
-  if (mod.externClasses.length > 0) {
-    lines.push("/** Dependencies for extern class imports (pass to createImports) */");
-    lines.push("export interface Deps {");
-    // Group by top-level namespace
-    const nsByName = new Map<string, ExternClassMeta[]>();
-    for (const ec of mod.externClasses) {
-      const ns = ec.namespacePath[0] ?? ec.className;
-      const bucket = nsByName.get(ns) ?? [];
-      bucket.push(ec);
-      nsByName.set(ns, bucket);
-    }
-    for (const [ns, classes] of nsByName) {
-      if (classes.length === 1 && classes[0]!.namespacePath.length === 0) {
-        // Top-level class, no namespace wrapper
-        lines.push(`  ${ns}: any;`);
-      } else {
-        lines.push(`  ${ns}: {`);
-        for (const ec of classes) {
-          const path = ec.namespacePath.slice(1);
-          if (path.length === 0) {
-            lines.push(`    ${ec.className}: any;`);
-          } else {
-            lines.push(`    // ${[...path, ec.className].join(".")}`);
-            // Emit nested path as a comment — actual value is deeply nested
-            lines.push(`    ${ec.className}: any;`);
-          }
-        }
-        lines.push("  };");
-      }
-    }
-    lines.push("}");
+    lines.push(...exportLines.map((l) => {
+      // Convert "  name(params): ret;" to "export declare function name(params): ret;"
+      const m = l.match(/^\s+(\w+)\(([^)]*)\):\s*(.+);$/);
+      if (m) return `export declare function ${m[1]}(${m[2]}): ${m[3]};`;
+      return l;
+    }));
     lines.push("");
   }
 
   return lines.join("\n");
-}
-
-function getImportComment(name: string, mod: WasmModule): string | undefined {
-  // String literal thunks
-  const strValue = mod.stringLiteralValues.get(name);
-  if (strValue !== undefined) {
-    return `returns ${JSON.stringify(strValue)}`;
-  }
-  // Extern class imports
-  for (const ec of mod.externClasses) {
-    const prefix = ec.importPrefix;
-    if (name === `${prefix}_new`) {
-      return `new ${ec.namespacePath.join(".")}.${ec.className}(...)`;
-    }
-    for (const [methodName] of ec.methods) {
-      if (name === `${prefix}_${methodName}`) {
-        return `instance.${methodName}(...)`;
-      }
-    }
-    for (const [propName, propInfo] of ec.properties) {
-      if (name === `${prefix}_get_${propName}`) {
-        return `instance.${propName} (getter)`;
-      }
-      if (name === `${prefix}_set_${propName}`) {
-        return `instance.${propName} = value (setter)`;
-      }
-    }
-  }
-  // Math host imports
-  if (name.startsWith("Math_")) {
-    return `Math.${name.slice(5)}`;
-  }
-  return undefined;
 }
 
 // ── Imports helper generation ────────────────────────────────────────
@@ -432,19 +322,6 @@ function mapTypeForDts(
     return text;
   }
   return "any";
-}
-
-function wasmTypeToTs(type: ValType): string {
-  switch (type.kind) {
-    case "f64":
-      return "number";
-    case "i32":
-      return "number";
-    case "externref":
-      return "any";
-    default:
-      return "any";
-  }
 }
 
 function hasExportModifier(node: ts.Node): boolean {
