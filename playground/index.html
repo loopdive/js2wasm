@@ -11,20 +11,23 @@
         font-family: "SF Mono", "Fira Code", monospace;
         background: #181818;
         color: #cccccc;
-        padding: 1rem;
+        padding: 0;
         height: 100vh;
         display: flex;
         flex-direction: column;
+        overflow: hidden;
       }
       h2 {
-        margin-bottom: 0.5rem;
+        margin-bottom: 0;
         font-size: 1.1rem;
         color: #e0e0e0;
       }
       .toolbar {
         display: flex;
         gap: 0.5rem;
-        margin-bottom: 0.5rem;
+        padding: 0.5rem 1rem;
+        border-bottom: 1px solid #2b2b2b;
+        flex-shrink: 0;
       }
       button {
         background: #2b2b2b;
@@ -60,80 +63,6 @@
       .gen-option:has(input:checked) span {
         color: #cccccc;
       }
-      .container {
-        display: grid;
-        grid-template-columns: 1fr 6px 1fr;
-        flex: 1;
-        min-height: 0;
-      }
-      .pane {
-        display: flex;
-        flex-direction: column;
-        min-height: 0;
-        overflow: hidden;
-      }
-      .divider {
-        background: #2b2b2b;
-        cursor: col-resize;
-        position: relative;
-        transition: background 0.15s;
-      }
-      .divider:hover, .divider.active {
-        background: #4e4e4e;
-      }
-      .divider::after {
-        content: "";
-        position: absolute;
-        top: 0; bottom: 0;
-        left: -3px; right: -3px;
-      }
-      .tabs {
-        display: flex;
-        border-bottom: 1px solid #2b2b2b;
-      }
-      .tab {
-        padding: 0.3rem 0.8rem;
-        cursor: pointer;
-        font-size: 0.8rem;
-        color: #5a5a5a;
-        border-bottom: 2px solid transparent;
-      }
-      .tab:hover {
-        color: #999;
-      }
-      .tab.active {
-        color: #cccccc;
-        border-bottom-color: #cccccc;
-      }
-      #editor, #wat, #ts2wasm-js, #ts2wasm-dts, #mod, #mod-dts, #test {
-        flex: 1;
-        min-height: 0;
-        border: 1px solid #2b2b2b;
-      }
-      #preview-panel {
-        flex: 1;
-        min-height: 0;
-        border: 1px solid #2b2b2b;
-        background: #fff;
-        overflow: auto;
-        display: none;
-      }
-      pre {
-        flex: 1;
-        background: #181818;
-        border: 1px solid #2b2b2b;
-        padding: 0.8rem;
-        overflow: auto;
-        font-size: 13px;
-        margin: 0;
-        white-space: pre-wrap;
-      }
-      .error {
-        color: #f48771;
-      }
-      .console {
-        color: #b5cea8;
-      }
       .timing {
         font-size: 0.75rem;
         color: #5a5a5a;
@@ -141,16 +70,281 @@
         padding: 0.3rem 0;
       }
 
-      /* ─── Treemap panel ─────────────────────────────────── */
-      #treemap-panel {
+      /* ─── IDE 3-zone layout ────────────────────────────── */
+      .ide-container {
+        display: grid;
+        grid-template-columns: var(--sidebar-width, 200px) 6px 1fr;
         flex: 1;
-        display: none;
         min-height: 0;
-        border: 1px solid #2b2b2b;
+      }
+
+      /* ─── Sidebar ──────────────────────────────────────── */
+      .sidebar {
+        background: #181818;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        overflow: hidden;
+        border-right: 1px solid #2b2b2b;
+      }
+      .sidebar-header {
+        padding: 8px 12px;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: #888;
+        font-weight: 600;
+        flex-shrink: 0;
+      }
+      .file-tree {
+        flex: 1;
+        overflow-y: auto;
+        padding: 0 0 8px;
+      }
+      .tree-folder {
+        cursor: pointer;
+        user-select: none;
+      }
+      .tree-folder-label {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 3px 12px;
+        font-size: 13px;
+        color: #cccccc;
+      }
+      .tree-folder-label:hover {
+        background: rgba(255,255,255,0.04);
+      }
+      .tree-folder-arrow {
+        font-size: 10px;
+        width: 14px;
+        text-align: center;
+        transition: transform 0.1s;
+        color: #888;
+      }
+      .tree-folder.collapsed .tree-folder-arrow {
+        transform: rotate(-90deg);
+      }
+      .tree-folder.collapsed .tree-children {
+        display: none;
+      }
+      .tree-file {
+        display: flex;
+        align-items: center;
+        padding: 3px 12px 3px 30px;
+        font-size: 13px;
+        cursor: pointer;
+        color: #cccccc;
+      }
+      .tree-file:hover {
+        background: rgba(255,255,255,0.04);
+      }
+      .tree-file.active {
+        background: rgba(255,255,255,0.08);
+        color: #ffffff;
+      }
+      .tree-file.dimmed {
+        color: #555;
+      }
+      .tree-file.dimmed:hover {
+        color: #777;
+      }
+
+      /* ─── Sidebar divider ──────────────────────────────── */
+      .divider-sidebar {
+        background: #2b2b2b;
+        cursor: col-resize;
+        position: relative;
+        transition: background 0.15s;
+      }
+      .divider-sidebar:hover, .divider-sidebar.active {
+        background: #4e4e4e;
+      }
+      .divider-sidebar::after {
+        content: "";
+        position: absolute;
+        top: 0; bottom: 0;
+        left: -3px; right: -3px;
+      }
+
+      /* ─── Main area (editor + output) ──────────────────── */
+      .main-area {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        min-width: 0;
+      }
+
+      /* ─── Editor area ──────────────────────────────────── */
+      .editor-area {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+      }
+
+      /* Editor tabs */
+      .editor-tabs {
+        display: flex;
+        border-bottom: 1px solid #2b2b2b;
+        flex-shrink: 0;
+        overflow-x: auto;
+        background: #1e1e1e;
+      }
+      .editor-tab {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        cursor: pointer;
+        font-size: 12px;
+        color: #888;
+        border-right: 1px solid #2b2b2b;
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+      .editor-tab:hover {
+        color: #bbb;
+        background: rgba(255,255,255,0.03);
+      }
+      .editor-tab.active {
+        color: #cccccc;
+        background: #181818;
+      }
+      .editor-tab .close-btn {
+        font-size: 14px;
+        line-height: 1;
+        width: 16px;
+        height: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 3px;
+        opacity: 0;
+      }
+      .editor-tab:hover .close-btn,
+      .editor-tab.active .close-btn {
+        opacity: 0.5;
+      }
+      .editor-tab .close-btn:hover {
+        opacity: 1;
+        background: rgba(255,255,255,0.1);
+      }
+      .editor-tab .close-btn.permanent {
+        display: none;
+      }
+
+      #editor-container {
+        flex: 1;
+        min-height: 0;
+      }
+
+      /* ─── Horizontal divider (output) ──────────────────── */
+      .divider-output {
+        height: 6px;
+        background: #2b2b2b;
+        cursor: row-resize;
+        position: relative;
+        transition: background 0.15s;
+        flex-shrink: 0;
+      }
+      .divider-output:hover, .divider-output.active {
+        background: #4e4e4e;
+      }
+      .divider-output::after {
+        content: "";
+        position: absolute;
+        left: 0; right: 0;
+        top: -3px; bottom: -3px;
+      }
+
+      /* ─── Output panel ─────────────────────────────────── */
+      .output-panel {
+        flex: 0 0 var(--output-height, 200px);
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        border-top: 1px solid #2b2b2b;
+      }
+      .output-panel.collapsed {
+        flex-basis: 0 !important;
+        min-height: 0;
+        overflow: hidden;
+      }
+      .output-tabs {
+        display: flex;
+        border-bottom: 1px solid #2b2b2b;
+        flex-shrink: 0;
+        background: #1e1e1e;
+      }
+      .output-tab {
+        padding: 4px 12px;
+        cursor: pointer;
+        font-size: 11px;
+        color: #5a5a5a;
+        border-bottom: 2px solid transparent;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .output-tab:hover {
+        color: #999;
+      }
+      .output-tab.active {
+        color: #cccccc;
+        border-bottom-color: #cccccc;
+      }
+      .output-content {
+        flex: 1;
+        min-height: 0;
         position: relative;
         overflow: hidden;
       }
 
+      /* Output sub-panels */
+      #console-panel {
+        position: absolute;
+        inset: 0;
+        display: none;
+        overflow: auto;
+      }
+      #errors-panel {
+        position: absolute;
+        inset: 0;
+        display: none;
+        overflow: auto;
+      }
+      #preview-panel {
+        position: absolute;
+        inset: 0;
+        display: none;
+        background: #fff;
+        overflow: auto;
+      }
+      #treemap-panel {
+        position: absolute;
+        inset: 0;
+        display: none;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      pre {
+        background: #181818;
+        padding: 0.8rem;
+        overflow: auto;
+        font-size: 13px;
+        margin: 0;
+        white-space: pre-wrap;
+        height: 100%;
+      }
+      .error {
+        color: #f48771;
+      }
+      .console {
+        color: #b5cea8;
+      }
+
+      /* ─── Treemap panel ─────────────────────────────────── */
       .tm-controls {
         display: flex;
         align-items: center;
@@ -292,8 +486,8 @@
   </head>
 
   <body>
-    <h2>ts2wasm playground</h2>
     <div class="toolbar">
+      <img src="../image.png" alt="ts2wasm" height="28" />
       <button id="compile">compile</button>
       <button id="run" disabled>&#9654; run</button>
       <button id="download" disabled>&#11015; download</button>
@@ -301,34 +495,38 @@
       <label class="gen-option"><input type="checkbox" id="gen-wasm"><span>WASM</span></label>
       <span class="timing" id="timing"></span>
     </div>
-    <div class="container">
-      <div class="pane">
-        <div id="editor"></div>
+    <div class="ide-container">
+      <!-- Sidebar -->
+      <div class="sidebar">
+        <div class="sidebar-header">Explorer</div>
+        <div class="file-tree" id="file-tree"></div>
       </div>
-      <div class="divider" id="divider"></div>
-      <div class="pane">
-        <div class="tabs">
-          <div class="tab active" data-panel="wat">mod.wat</div>
-          <div class="tab" data-panel="ts2wasm-js">ts2wasm.js</div>
-          <div class="tab" data-panel="ts2wasm-dts">ts2wasm.d.ts</div>
-          <div class="tab" data-panel="mod">mod.js</div>
-          <div class="tab" data-panel="mod-dts">mod.d.ts</div>
-          <div class="tab" data-panel="test">mod.test.ts</div>
-          <div class="tab" data-panel="console">Console</div>
-          <div class="tab" data-panel="errors">Errors</div>
-          <div class="tab" data-panel="preview">Preview</div>
-          <div class="tab" data-panel="treemap">Treemap</div>
+      <!-- Sidebar divider -->
+      <div class="divider-sidebar" id="divider-sidebar"></div>
+      <!-- Main area -->
+      <div class="main-area">
+        <!-- Editor area -->
+        <div class="editor-area">
+          <div class="editor-tabs" id="editor-tabs"></div>
+          <div id="editor-container"></div>
         </div>
-        <div id="wat"></div>
-        <div id="ts2wasm-js" style="display: none"></div>
-        <div id="ts2wasm-dts" style="display: none"></div>
-        <div id="mod" style="display: none"></div>
-        <div id="mod-dts" style="display: none"></div>
-        <div id="test" style="display: none"></div>
-        <pre id="console" class="console" style="display: none"></pre>
-        <pre id="errors" class="error" style="display: none"></pre>
-        <div id="preview-panel"></div>
-        <div id="treemap-panel"></div>
+        <!-- Output divider -->
+        <div class="divider-output" id="divider-output"></div>
+        <!-- Output panel -->
+        <div class="output-panel" id="output-panel">
+          <div class="output-tabs" id="output-tabs">
+            <div class="output-tab active" data-panel="console">Console</div>
+            <div class="output-tab" data-panel="errors">Errors</div>
+            <div class="output-tab" data-panel="preview">Preview</div>
+            <div class="output-tab" data-panel="treemap">Treemap</div>
+          </div>
+          <div class="output-content">
+            <pre id="console-panel" class="console" style="display: block"></pre>
+            <pre id="errors-panel" class="error"></pre>
+            <div id="preview-panel"></div>
+            <div id="treemap-panel"></div>
+          </div>
+        </div>
       </div>
     </div>
     <script type="module" src="./main.ts"></script>

@@ -82,6 +82,10 @@ export interface CodegenContext {
   externClassParent: Map<string, string>;
   /** Map from global name (e.g. "document") → import info */
   declaredGlobals: Map<string, { type: ValType; funcIdx: number }>;
+  /** Counter for generated callback functions (__cb_0, __cb_1, ...) */
+  callbackCounter: number;
+  /** Map from captured variable name → global index in mod.globals */
+  capturedGlobals: Map<string, number>;
 }
 
 /** Per-function context */
@@ -131,6 +135,8 @@ export function generateModule(ast: TypedAST): WasmModule {
     arrayTypeMap: new Map(),
     externClassParent: new Map(),
     declaredGlobals: new Map(),
+    callbackCounter: 0,
+    capturedGlobals: new Map(),
   };
 
   // Collect console.log imports (only variants actually used)
@@ -155,8 +161,14 @@ export function generateModule(ast: TypedAST): WasmModule {
   // Collect string literals and register imports (must be before local func indices)
   collectStringLiterals(ctx, ast.sourceFile);
 
+  // Collect string method imports (.toUpperCase(), .indexOf(), etc.)
+  collectStringMethodImports(ctx, ast.sourceFile);
+
   // Collect Math host imports for methods without native Wasm equivalents
   collectMathImports(ctx, ast.sourceFile);
+
+  // Collect __make_callback import if arrow functions are used as call arguments
+  collectCallbackImports(ctx, ast.sourceFile);
 
   // Second pass: collect all function declarations and interfaces
   collectDeclarations(ctx, ast.sourceFile);
@@ -257,6 +269,15 @@ function collectPrimitiveMethodImports(
         needed.add("number_toString");
       }
     }
+    // Template expressions with number substitutions need number_toString
+    if (ts.isTemplateExpression(node)) {
+      for (const span of node.templateSpans) {
+        const spanType = ctx.checker.getTypeAtLocation(span.expression);
+        if (isNumberType(spanType) || isBooleanType(spanType)) {
+          needed.add("number_toString");
+        }
+      }
+    }
     ts.forEachChild(node, visit);
   }
 
@@ -269,6 +290,63 @@ function collectPrimitiveMethodImports(
   if (needed.has("number_toString")) {
     const t = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "number_toString", { kind: "func", typeIdx: t });
+  }
+}
+
+// String method signatures: name → { params (excluding self), resultKind }
+const STRING_METHODS: Record<string, { params: ValType[]; result: ValType }> = {
+  toUpperCase:  { params: [],                                 result: { kind: "externref" } },
+  toLowerCase:  { params: [],                                 result: { kind: "externref" } },
+  trim:         { params: [],                                 result: { kind: "externref" } },
+  trimStart:    { params: [],                                 result: { kind: "externref" } },
+  trimEnd:      { params: [],                                 result: { kind: "externref" } },
+  charAt:       { params: [{ kind: "f64" }],                  result: { kind: "externref" } },
+  slice:        { params: [{ kind: "f64" }, { kind: "f64" }], result: { kind: "externref" } },
+  substring:    { params: [{ kind: "f64" }, { kind: "f64" }], result: { kind: "externref" } },
+  indexOf:      { params: [{ kind: "externref" }],            result: { kind: "f64" } },
+  lastIndexOf:  { params: [{ kind: "externref" }],            result: { kind: "f64" } },
+  includes:     { params: [{ kind: "externref" }],            result: { kind: "i32" } },
+  startsWith:   { params: [{ kind: "externref" }],            result: { kind: "i32" } },
+  endsWith:     { params: [{ kind: "externref" }],            result: { kind: "i32" } },
+  replace:      { params: [{ kind: "externref" }, { kind: "externref" }], result: { kind: "externref" } },
+  repeat:       { params: [{ kind: "f64" }],                  result: { kind: "externref" } },
+  padStart:     { params: [{ kind: "f64" }, { kind: "externref" }],       result: { kind: "externref" } },
+  padEnd:       { params: [{ kind: "f64" }, { kind: "externref" }],       result: { kind: "externref" } },
+};
+
+/** Scan source for method calls on string types and register needed imports */
+function collectStringMethodImports(
+  ctx: CodegenContext,
+  sourceFile: ts.SourceFile,
+): void {
+  const needed = new Set<string>();
+
+  function visit(node: ts.Node) {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression)
+    ) {
+      const prop = node.expression;
+      const receiverType = ctx.checker.getTypeAtLocation(prop.expression);
+      const methodName = prop.name.text;
+      if (isStringType(receiverType) && methodName in STRING_METHODS) {
+        needed.add(methodName);
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  for (const stmt of sourceFile.statements) {
+    if (ts.isFunctionDeclaration(stmt) && stmt.body) {
+      visit(stmt.body);
+    }
+  }
+
+  for (const method of needed) {
+    const sig = STRING_METHODS[method]!;
+    const params: ValType[] = [{ kind: "externref" }, ...sig.params]; // self + args
+    const t = addFuncType(ctx, params, [sig.result]);
+    addImport(ctx, "env", `string_${method}`, { kind: "func", typeIdx: t });
   }
 }
 
@@ -344,9 +422,15 @@ function collectStringLiterals(
     if (ts.isStringLiteral(node)) {
       literals.add(node.text);
     }
-    // Also check template literal spans (no-substitution templates)
     if (ts.isNoSubstitutionTemplateLiteral(node)) {
       literals.add(node.text);
+    }
+    // Template expressions: collect head and span literal texts
+    if (ts.isTemplateExpression(node)) {
+      if (node.head.text) literals.add(node.head.text);
+      for (const span of node.templateSpans) {
+        if (span.literal.text) literals.add(span.literal.text);
+      }
     }
     ts.forEachChild(node, visit);
   }
@@ -420,6 +504,36 @@ function collectMathImports(
       const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "f64" }]);
       addImport(ctx, "env", `Math_${method}`, { kind: "func", typeIdx });
     }
+  }
+}
+
+/** Scan source for arrow functions used as call arguments and register __make_callback import */
+function collectCallbackImports(
+  ctx: CodegenContext,
+  sourceFile: ts.SourceFile,
+): void {
+  let found = false;
+
+  function visit(node: ts.Node) {
+    if (found) return;
+    if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) {
+      found = true;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  for (const stmt of sourceFile.statements) {
+    if (ts.isFunctionDeclaration(stmt) && stmt.body) {
+      visit(stmt.body);
+    }
+    if (found) break;
+  }
+
+  if (found) {
+    // __make_callback: (i32) → externref
+    const typeIdx = addFuncType(ctx, [{ kind: "i32" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", "__make_callback", { kind: "func", typeIdx });
   }
 }
 

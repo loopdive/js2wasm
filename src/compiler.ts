@@ -302,6 +302,14 @@ function generateImportsHelper(mod: WasmModule): string {
   const hasDeps = mod.externClasses.length > 0;
   const hasStringPool = mod.stringPool.length > 0;
   const hasJsString = mod.imports.some((i) => i.module === "wasm:js-string");
+  const hasCallbacks = mod.imports.some((i) => i.name === "__make_callback");
+
+  // Late-binding variable for callback support
+  if (hasCallbacks) {
+    lines.push("let wasmExports;");
+    lines.push("export function setExports(exports) { wasmExports = exports; }");
+    lines.push("");
+  }
 
   // Function signature
   lines.push(`export function createImports(${hasDeps ? "deps" : ""}) {`);
@@ -361,6 +369,12 @@ function generateEnvImportLine(name: string, mod: WasmModule): string {
   // Primitive method imports
   if (name === "number_toString") return "number_toString: (v) => String(v)";
 
+  // String method imports
+  if (name.startsWith("string_")) {
+    const method = name.slice(7);
+    return `${name}: (s, ...a) => s.${method}(...a)`;
+  }
+
   // Math host imports
   if (name.startsWith("Math_")) {
     const method = name.slice(5);
@@ -392,6 +406,11 @@ function generateEnvImportLine(name: string, mod: WasmModule): string {
         return `${name}: (self, v) => { self.${propName} = v; }`;
       }
     }
+  }
+
+  // __make_callback: late-binding wrapper
+  if (name === "__make_callback") {
+    return `${name}: (id) => (...args) => wasmExports[\`__cb_\${id}\`](...args)`;
   }
 
   // Fallback: no-op stub
