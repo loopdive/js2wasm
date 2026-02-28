@@ -425,7 +425,6 @@ const files: FileEntry[] = [
   createFileEntry("output/example.wat", "wat", true, "output", ""),
   createFileEntry("output/example.wasm", "text", true, "output", ""),
   createFileEntry("output/example.ts", "typescript", true, "output", ""),
-  createFileEntry("output/ts2wasm.ts", "typescript", true, "output", ""),
 ];
 
 const fileMap = new Map<string, FileEntry>(files.map((f) => [f.path, f]));
@@ -537,8 +536,8 @@ const previewPanel = document.getElementById("preview-panel")!;
 const treemap = new WasmTreemap(treemapPanel);
 
 // ─── Editor tabs (split left/right) ─────────────────────────────────────
-const LEFT_TABS = new Set(["input/example.ts", "output/ts2wasm.ts"]);
-let openTabsLeft: string[] = ["input/example.ts", "output/ts2wasm.ts"];
+const LEFT_TABS = new Set(["input/example.ts"]);
+let openTabsLeft: string[] = ["input/example.ts"];
 let openTabsRight: string[] = ["output/example.wat", "output/example.wasm", "output/example.ts"];
 let activeFileLeft = "input/example.ts";
 let activeFileRight = "output/example.wat";
@@ -671,10 +670,6 @@ document.querySelectorAll("#output-tabs .output-tab").forEach((tab) => {
   });
 });
 
-// ─── Static content string ──────────────────────────────────────────────
-const TS2WASM_TS = `export { compile, compileAndInstantiate, buildImports, jsApi, domApi, jsString } from "ts2wasm";
-`;
-
 // ─── Compile helpers ────────────────────────────────────────────────────
 const DOM_PATTERNS =
   /\b(?:Document|Window|HTMLElement|HTMLInputElement|HTMLButtonElement|HTMLCollection|Element|Node|NodeList|DOMTokenList|EventTarget|CSSStyleDeclaration)_/;
@@ -751,7 +746,6 @@ function compileOnly() {
     wasmFile.model.setValue(lines.join("\n"));
     wasmFile.binarySize = bin.length;
   }
-  fileMap.get("output/ts2wasm.ts")!.model.setValue(TS2WASM_TS);
   fileMap.get("output/example.ts")!.model.setValue(generateModularOutput(result));
 
   // Mark output files as compiled
