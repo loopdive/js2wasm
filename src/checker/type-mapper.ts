@@ -90,13 +90,36 @@ export function isExternalDeclaredClass(type: ts.Type): boolean {
   if (!symbol) return false;
   const decls = symbol.getDeclarations();
   if (!decls || decls.length === 0) return false;
-  return decls.some(
+  if (decls.some(
     (d) =>
       // declare class Foo { ... }
       (ts.isClassDeclaration(d) && isDeclareContext(d)) ||
       // declare var Foo: { prototype: Foo; new(): Foo }  (lib.dom.d.ts pattern)
       (ts.isVariableDeclaration(d) && isDeclareVarWithConstructor(d)),
-  );
+  )) return true;
+
+  // Interface pattern: interface Date { ... } + declare var Date: DateConstructor
+  // The type symbol only has interface declarations; look for a companion declare var
+  // with a constructor-bearing type in the same source file.
+  // Skip types that have built-in wasm handling (Array, primitives, etc.)
+  const BUILTIN_TYPES = ["Array", "Number", "Boolean", "String", "Object", "Function",
+    "Symbol", "BigInt", "RegExp", "Int8Array", "Uint8Array", "Int16Array",
+    "Uint16Array", "Int32Array", "Uint32Array", "Float32Array", "Float64Array",
+    "ArrayBuffer", "DataView", "JSON", "Math", "Promise"];
+  if (decls.every((d) => ts.isInterfaceDeclaration(d))) {
+    const name = symbol.getName();
+    if (BUILTIN_TYPES.includes(name)) return false;
+    const sourceFile = decls[0]!.getSourceFile();
+    const locals = (sourceFile as any).locals as Map<string, ts.Symbol> | undefined;
+    const varSym = locals?.get(name);
+    if (varSym && varSym !== symbol) {
+      const varDecls = varSym.getDeclarations?.() ?? [];
+      if (varDecls.some((d) => ts.isVariableDeclaration(d) && isDeclareVarWithConstructor(d))) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 function isDeclareVarWithConstructor(d: ts.VariableDeclaration): boolean {

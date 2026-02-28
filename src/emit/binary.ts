@@ -582,13 +582,19 @@ function encodeInstr(instr: Instr, enc: WasmEncoder): void {
     case "ref.cast":
       enc.byte(GC.prefix);
       enc.byte(GC.ref_cast);
-      enc.byte(TYPE.ref);
       enc.i32(instr.typeIdx);
+      break;
+    case "any.convert_extern":
+      enc.byte(GC.prefix);
+      enc.byte(GC.any_convert_extern);
+      break;
+    case "extern.convert_any":
+      enc.byte(GC.prefix);
+      enc.byte(GC.extern_convert_any);
       break;
     case "ref.test":
       enc.byte(GC.prefix);
       enc.byte(GC.ref_test);
-      enc.byte(TYPE.ref);
       enc.i32(instr.typeIdx);
       break;
     case "struct.new":
