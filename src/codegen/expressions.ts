@@ -1,6 +1,6 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext } from "./index.js";
-import { allocLocal, resolveWasmType, getOrRegisterArrayType } from "./index.js";
+import { allocLocal, resolveWasmType, getOrRegisterArrayType, addFuncType } from "./index.js";
 import {
   mapTsTypeToWasm,
   isNumberType,
@@ -9,8 +9,9 @@ import {
   isVoidType,
   isExternalDeclaredClass,
 } from "../checker/type-mapper.js";
-import type { Instr, ValType } from "../ir/types.js";
+import type { Instr, ValType, WasmFunction } from "../ir/types.js";
 import { ensureI32Condition } from "./index.js";
+import { compileStatement } from "./statements.js";
 
 /** Sentinel: expression compiled successfully but produces no value (void) */
 const VOID_RESULT = Symbol("void");
@@ -100,6 +101,10 @@ function compileExpressionInner(
     return compileStringLiteral(ctx, fctx, expr.text);
   }
 
+  if (ts.isTemplateExpression(expr)) {
+    return compileTemplateExpression(ctx, fctx, expr);
+  }
+
   if (expr.kind === ts.SyntaxKind.TrueKeyword) {
     fctx.body.push({ op: "i32.const", value: 1 });
     return { kind: "i32" };
@@ -166,12 +171,206 @@ function compileExpressionInner(
     return compileExpressionInner(ctx, fctx, expr.expression);
   }
 
+  if (ts.isArrowFunction(expr) || ts.isFunctionExpression(expr)) {
+    return compileArrowFunction(ctx, fctx, expr);
+  }
+
   ctx.errors.push({
     message: `Unsupported expression: ${ts.SyntaxKind[expr.kind]}`,
     line: getLine(expr),
     column: getCol(expr),
   });
   return null;
+}
+
+// ── Arrow function callbacks ──────────────────────────────────────────
+
+/** Collect all identifiers referenced in a node */
+function collectReferencedIdentifiers(node: ts.Node, names: Set<string>): void {
+  if (ts.isIdentifier(node)) {
+    names.add(node.text);
+  }
+  ts.forEachChild(node, (child) => collectReferencedIdentifiers(child, names));
+}
+
+function compileArrowFunction(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  arrow: ts.ArrowFunction | ts.FunctionExpression,
+): ValType | null {
+  const cbId = ctx.callbackCounter++;
+  const cbName = `__cb_${cbId}`;
+
+  // 1. Analyze captured variables: identifiers in body that resolve to locals in fctx
+  const referencedNames = new Set<string>();
+  const body = arrow.body;
+  if (ts.isBlock(body)) {
+    for (const stmt of body.statements) {
+      collectReferencedIdentifiers(stmt, referencedNames);
+    }
+  } else {
+    collectReferencedIdentifiers(body, referencedNames);
+  }
+
+  // Build capture list: names that are locals/params in the enclosing function
+  const captures: { name: string; type: ValType; localIdx: number }[] = [];
+  for (const name of referencedNames) {
+    const localIdx = fctx.localMap.get(name);
+    if (localIdx === undefined) continue;
+    // Skip if it's a function name (not a variable)
+    if (ctx.funcMap.has(name)) continue;
+    const type = localIdx < fctx.params.length
+      ? fctx.params[localIdx]!.type
+      : fctx.locals[localIdx - fctx.params.length]?.type ?? { kind: "f64" };
+    captures.push({ name, type, localIdx });
+  }
+
+  // 2. Promote captured variables to mutable globals
+  for (const cap of captures) {
+    if (!ctx.capturedGlobals.has(cap.name)) {
+      const globalIdx = ctx.mod.globals.length;
+      const init: Instr[] = cap.type.kind === "f64"
+        ? [{ op: "f64.const", value: 0 }]
+        : cap.type.kind === "i32"
+          ? [{ op: "i32.const", value: 0 }]
+          : [{ op: "ref.null.extern" }];
+      ctx.mod.globals.push({
+        name: `__cap_${cap.name}`,
+        type: cap.type,
+        mutable: true,
+        init,
+      });
+      ctx.capturedGlobals.set(cap.name, globalIdx);
+    }
+  }
+
+  // 3. Emit global.set in enclosing function to initialize captured globals from locals
+  for (const cap of captures) {
+    const globalIdx = ctx.capturedGlobals.get(cap.name)!;
+    fctx.body.push({ op: "local.get", index: cap.localIdx });
+    fctx.body.push({ op: "global.set", index: globalIdx });
+  }
+
+  // 4. Also rewrite enclosing function: any local.get/set for captured vars
+  //    must use global.get/set from now on. We do this by updating localMap
+  //    to point to a sentinel, and patching compileIdentifier/compileAssignment
+  //    via the capturedGlobals map (they check it before localMap).
+  //    Actually, the simpler approach: we leave localMap intact, but the
+  //    enclosing function already compiled its earlier code with local.get/set.
+  //    After the arrow function point, the enclosing code should also use globals.
+  //    For now, we don't rewrite the enclosing function's subsequent code -
+  //    we rely on the pattern that captured vars are typically set before the
+  //    callback and read inside it. The global.set above syncs the value.
+
+  // 5. Create the callback WasmFunction
+  const cbParams: ValType[] = [];
+  // Arrow function parameters
+  for (const p of arrow.parameters) {
+    const paramType = ctx.checker.getTypeAtLocation(p);
+    cbParams.push(resolveWasmType(ctx, paramType));
+  }
+
+  // Determine return type
+  const sig = ctx.checker.getSignatureFromDeclaration(arrow);
+  let cbReturnType: ValType | null = null;
+  if (sig) {
+    const retType = ctx.checker.getReturnTypeOfSignature(sig);
+    if (!isVoidType(retType)) {
+      cbReturnType = resolveWasmType(ctx, retType);
+    }
+  }
+
+  const cbResults: ValType[] = cbReturnType ? [cbReturnType] : [];
+  const cbTypeIdx = addFuncType(ctx, cbParams, cbResults, `${cbName}_type`);
+
+  // Build callback function context
+  const cbFctx: FunctionContext = {
+    name: cbName,
+    params: arrow.parameters.map((p, i) => ({
+      name: (p.name as ts.Identifier).text,
+      type: cbParams[i]!,
+    })),
+    locals: [],
+    localMap: new Map(),
+    returnType: cbReturnType,
+    body: [],
+    blockDepth: 0,
+    breakStack: [],
+    continueStack: [],
+  };
+
+  // Register params as locals
+  for (let i = 0; i < cbFctx.params.length; i++) {
+    cbFctx.localMap.set(cbFctx.params[i]!.name, i);
+  }
+
+  // Set current function context for the callback compilation
+  const savedFunc = ctx.currentFunc;
+  ctx.currentFunc = cbFctx;
+
+  // Compile the callback body
+  if (ts.isBlock(body)) {
+    for (const stmt of body.statements) {
+      compileStatement(ctx, cbFctx, stmt);
+    }
+  } else {
+    // Expression body: compile and drop if void, or leave on stack
+    const exprType = compileExpression(ctx, cbFctx, body);
+    if (exprType !== null && cbReturnType) {
+      // Expression result is the return value - already on stack
+    } else if (exprType !== null) {
+      cbFctx.body.push({ op: "drop" });
+    }
+  }
+
+  // Ensure return value for non-void callbacks
+  if (cbReturnType) {
+    const lastInstr = cbFctx.body[cbFctx.body.length - 1];
+    if (!lastInstr || lastInstr.op !== "return") {
+      if (cbReturnType.kind === "f64") {
+        cbFctx.body.push({ op: "f64.const", value: 0 });
+      } else if (cbReturnType.kind === "i32") {
+        cbFctx.body.push({ op: "i32.const", value: 0 });
+      } else if (cbReturnType.kind === "externref") {
+        cbFctx.body.push({ op: "ref.null.extern" });
+      }
+    }
+  }
+
+  ctx.currentFunc = savedFunc;
+
+  // Register the callback function
+  const cbFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+  const cbFunc: WasmFunction = {
+    name: cbName,
+    typeIdx: cbTypeIdx,
+    locals: cbFctx.locals,
+    body: cbFctx.body,
+    exported: true,
+  };
+  ctx.mod.functions.push(cbFunc);
+  ctx.funcMap.set(cbName, cbFuncIdx);
+
+  // Export the callback
+  ctx.mod.exports.push({
+    name: cbName,
+    desc: { kind: "func", index: cbFuncIdx },
+  });
+
+  // 6. Emit i32.const cbId + call __make_callback → externref
+  const makeCallbackIdx = ctx.funcMap.get("__make_callback");
+  if (makeCallbackIdx === undefined) {
+    ctx.errors.push({
+      message: "Missing __make_callback import",
+      line: getLine(arrow),
+      column: getCol(arrow),
+    });
+    return null;
+  }
+
+  fctx.body.push({ op: "i32.const", value: cbId });
+  fctx.body.push({ op: "call", funcIdx: makeCallbackIdx });
+  return { kind: "externref" };
 }
 
 function compileIdentifier(
@@ -189,6 +388,14 @@ function compileIdentifier(
     }
     const localDef = fctx.locals[localIdx - fctx.params.length];
     return localDef?.type ?? { kind: "f64" };
+  }
+
+  // Check captured globals (variables promoted from enclosing scope for callbacks)
+  const capturedIdx = ctx.capturedGlobals.get(name);
+  if (capturedIdx !== undefined) {
+    fctx.body.push({ op: "global.get", index: capturedIdx });
+    const globalDef = ctx.mod.globals[capturedIdx];
+    return globalDef?.type ?? { kind: "f64" };
   }
 
   // Check declared globals (e.g. document, window)
@@ -437,6 +644,16 @@ function compileAssignment(
       fctx.body.push({ op: "local.tee", index: localIdx });
       return resultType;
     }
+    // Check captured globals
+    const capturedIdx = ctx.capturedGlobals.get(name);
+    if (capturedIdx !== undefined) {
+      const globalDef = ctx.mod.globals[capturedIdx];
+      const resultType = compileExpression(ctx, fctx, expr.right, globalDef?.type);
+      fctx.body.push({ op: "global.set", index: capturedIdx });
+      // global.set consumes the value; re-push it for expression result
+      fctx.body.push({ op: "global.get", index: capturedIdx });
+      return resultType;
+    }
   }
 
   if (ts.isPropertyAccessExpression(expr.left)) {
@@ -671,6 +888,33 @@ function compileCompoundAssignment(
   }
 
   const name = expr.left.text;
+
+  // Check captured globals first
+  const capturedIdx = ctx.capturedGlobals.get(name);
+  if (capturedIdx !== undefined && fctx.localMap.get(name) === undefined) {
+    fctx.body.push({ op: "global.get", index: capturedIdx });
+    compileExpression(ctx, fctx, expr.right, { kind: "f64" });
+
+    switch (op) {
+      case ts.SyntaxKind.PlusEqualsToken:
+        fctx.body.push({ op: "f64.add" });
+        break;
+      case ts.SyntaxKind.MinusEqualsToken:
+        fctx.body.push({ op: "f64.sub" });
+        break;
+      case ts.SyntaxKind.AsteriskEqualsToken:
+        fctx.body.push({ op: "f64.mul" });
+        break;
+      case ts.SyntaxKind.SlashEqualsToken:
+        fctx.body.push({ op: "f64.div" });
+        break;
+    }
+
+    fctx.body.push({ op: "global.set", index: capturedIdx });
+    fctx.body.push({ op: "global.get", index: capturedIdx });
+    return { kind: "f64" };
+  }
+
   const localIdx = fctx.localMap.get(name);
   if (localIdx === undefined) {
     ctx.errors.push({
@@ -857,6 +1101,22 @@ function compileCallExpression(
       if (funcIdx !== undefined) {
         fctx.body.push({ op: "call", funcIdx });
         return { kind: "externref" };
+      }
+    }
+
+    // String method calls
+    if (isStringType(receiverType)) {
+      const method = propAccess.name.text;
+      const importName = `string_${method}`;
+      const funcIdx = ctx.funcMap.get(importName);
+      if (funcIdx !== undefined) {
+        compileExpression(ctx, fctx, propAccess.expression);
+        for (const arg of expr.arguments) {
+          compileExpression(ctx, fctx, arg);
+        }
+        fctx.body.push({ op: "call", funcIdx });
+        const returnsBool = method === "includes" || method === "startsWith" || method === "endsWith";
+        return returnsBool ? { kind: "i32" } : method === "indexOf" || method === "lastIndexOf" ? { kind: "f64" } : { kind: "externref" };
       }
     }
   }
@@ -1548,6 +1808,52 @@ function compileStringLiteral(
   if (funcIdx === undefined) return null;
 
   fctx.body.push({ op: "call", funcIdx });
+  return { kind: "externref" };
+}
+
+function compileTemplateExpression(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.TemplateExpression,
+): ValType | null {
+  const concatIdx = ctx.funcMap.get("concat");
+  const toStrIdx = ctx.funcMap.get("number_toString");
+  if (concatIdx === undefined) return null;
+
+  // Start with the head text (may be empty string "")
+  if (expr.head.text) {
+    compileStringLiteral(ctx, fctx, expr.head.text);
+  } else {
+    // Empty head — we'll start from the first span's expression
+  }
+
+  for (let i = 0; i < expr.templateSpans.length; i++) {
+    const span = expr.templateSpans[i]!;
+
+    // Compile the substitution expression and coerce to string if needed
+    const spanType = compileExpression(ctx, fctx, span.expression);
+    if (spanType && spanType.kind === "f64" && toStrIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: toStrIdx });
+    } else if (spanType && spanType.kind === "i32" && toStrIdx !== undefined) {
+      fctx.body.push({ op: "f64.convert_i32_s" });
+      fctx.body.push({ op: "call", funcIdx: toStrIdx });
+    }
+    // externref assumed to be string already
+
+    // If we had a head (or previous spans), concat with accumulated string
+    if (i === 0 && !expr.head.text) {
+      // No head — the expression result IS the accumulated string so far
+    } else {
+      fctx.body.push({ op: "call", funcIdx: concatIdx });
+    }
+
+    // Append the span's literal text (the part after ${...} up to next ${ or backtick)
+    if (span.literal.text) {
+      compileStringLiteral(ctx, fctx, span.literal.text);
+      fctx.body.push({ op: "call", funcIdx: concatIdx });
+    }
+  }
+
   return { kind: "externref" };
 }
 
