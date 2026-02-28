@@ -6,8 +6,8 @@ import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker"
 import * as ts from "typescript";
 import { compile } from "../src/index.js";
 import { domApi, jsString as jsStringPolyfill } from "../src/runtime.js";
-import { WasmTreemap, parseWasm } from "./wasm-treemap.js";
-import type { WasmData, WasmSection } from "./wasm-treemap.js";
+import { WasmTreemap, parseWasm, parseWasmSpans, SECTION_COLORS } from "./wasm-treemap.js";
+import type { WasmData, WasmSection, WasmFunctionBody, ByteSpan } from "./wasm-treemap.js";
 
 self.MonacoEnvironment = {
   getWorker(_workerId: string, label: string) {
@@ -20,431 +20,559 @@ self.MonacoEnvironment = {
 
 // Default source code for the playground file
 const DEFAULT_SOURCE = `// ═══════════════════════════════════════════════════════
-// ts2wasm Email Client Demo
+// ts2wasm Showreel — auto-cycling demo switcher
 // ═══════════════════════════════════════════════════════
 // This entire UI is rendered by WebAssembly — compiled
 // from the TypeScript you see here. The host browser
 // provides DOM APIs via imports; all logic, layout, and
 // event handling runs inside the Wasm sandbox.
 
-// ── Classes ─────────────────────────────────────────────
-class Email {
-  from: string;
-  subject: string;
-  preview: string;
-  read: number; // 0 = unread, 1 = read (wasm i32 bool)
-  constructor(from: string, subject: string, preview: string) {
-    this.from = from;
-    this.subject = subject;
-    this.preview = preview;
-    this.read = 0;
-  }
-}
-
-// ── Enums & switch ──────────────────────────────────────
-enum Folder { Inbox, Sent, Drafts, About }
-
-function folderIcon(f: Folder): string {
-  switch (f) {
-    case Folder.Inbox:  return ">> ";
-    case Folder.Sent:   return "<< ";
-    case Folder.Drafts: return "// ";
-    case Folder.About:  return "?  ";
-    default: return "";
-  }
-}
-
-// ── Generics ────────────────────────────────────────────
-function clamp<T extends number>(value: T, min: T, max: T): T {
-  if (value < min) return min;
-  if (value > max) return max;
-  return value;
-}
-
-// ── Rest params ─────────────────────────────────────────
-function countUnread(...emails: Email[]): number {
-  let n = 0;
-  for (let i = 0; i < emails.length; i++) {
-    if (emails[i].read === 0) n = n + 1;
-  }
-  return n;
-}
-
-// ── Destructuring ───────────────────────────────────────
-interface Rect { x: number; y: number; w: number; h: number }
-
-function area(r: Rect): number {
-  const { w, h } = r;
-  return w * h;
-}
-
-// ── Recursion (for benchmarking) ────────────────────────
-export function fib(n: number): number {
-  if (n <= 1) return n;
-  return fib(n - 1) + fib(n - 2);
-}
-
-// ── Bitwise (badge color) ───────────────────────────────
-function badgeColor(count: number): string {
-  const r = clamp(count * 40, 80, 255);
-  const packed = ((r & 0xFF) << 16) | (0x33 << 8) | 0x55;
-  return "#" + packed.toString();
-}
-
 // ── Helpers ─────────────────────────────────────────────
-function px(n: number): string { return n.toString() + "px"; }
-
 function el(tag: string, css: string): HTMLElement {
   const e = document.createElement(tag);
   e.style.cssText = css;
   return e;
 }
+function px(n: number): string { return n.toString() + "px"; }
+
+export function fib(n: number): number {
+  if (n <= 1) return n;
+  return fib(n - 1) + fib(n - 2);
+}
+
+function mname(m: number): string {
+  if (m === 0) return "Jan";
+  if (m === 1) return "Feb";
+  if (m === 2) return "Mar";
+  if (m === 3) return "Apr";
+  if (m === 4) return "May";
+  if (m === 5) return "Jun";
+  if (m === 6) return "Jul";
+  if (m === 7) return "Aug";
+  if (m === 8) return "Sep";
+  if (m === 9) return "Oct";
+  if (m === 10) return "Nov";
+  return "Dec";
+}
+
+function dimOf(y: number, m: number): number {
+  if (m === 1) {
+    if (y % 400 === 0) return 29;
+    if (y % 100 === 0) return 28;
+    if (y % 4 === 0) return 29;
+    return 28;
+  }
+  if (m === 3 || m === 5 || m === 8 || m === 10) return 30;
+  return 31;
+}
+
+// Sakamoto's day-of-week: returns 0=Mon..6=Sun
+function fdow(y: number, m: number): number {
+  const t = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
+  let yr = y;
+  if (m < 2) yr = yr - 1;
+  const d = (yr + (yr / 4 | 0) - (yr / 100 | 0) + (yr / 400 | 0) + t[m] + 1) % 7;
+  return (d + 6) % 7;
+}
+
+// Deterministic price 100-950
+function priceOf(y: number, m: number, d: number): number {
+  const h = ((y * 373 + m * 631 + d * 997) & 0x7FFFFFFF) % 18;
+  return (h + 2) * 50;
+}
+
+// ── State ───────────────────────────────────────────────
+let curDemo = 0;
+let autoMode = 1;
+let pnl: HTMLElement | null = null;
+let tabEls: HTMLElement[] = [];
+
+// calendar state
+let curYear = 2026;
+let curMonth = 1; // 0-based (Feb)
+let selStart = -1;
+let selEnd = -1;
+let gridEl: HTMLElement | null = null;
+let monthEl: HTMLElement | null = null;
+let yearEl: HTMLElement | null = null;
+let nightsEl: HTMLElement | null = null;
+let totalEl: HTMLElement | null = null;
+
+// ── Tab bar ─────────────────────────────────────────────
+function mkTab(label: string, idx: number, bar: HTMLElement): HTMLElement {
+  const t = el("div",
+    "padding:6px 16px;cursor:pointer;font-size:0.8rem;" +
+    "border-bottom:2px solid transparent;color:#888");
+  t.textContent = label;
+  t.addEventListener("click", () => {
+    autoMode = 0;
+    showDemo(idx);
+  });
+  bar.appendChild(t);
+  return t;
+}
+
+function hlTabs(): void {
+  for (let i = 0; i < tabEls.length; i = i + 1) {
+    const t = tabEls[i];
+    if (curDemo === i) {
+      t.style.color = "#fff";
+      t.style.borderBottomColor = "#7c3aed";
+    } else {
+      t.style.color = "#888";
+      t.style.borderBottomColor = "transparent";
+    }
+  }
+}
+
+function showDemo(idx: number): void {
+  curDemo = idx;
+  hlTabs();
+  if (pnl === null) return;
+  pnl.innerHTML = "";
+  if (idx === 0) showCal();
+  if (idx === 1) showBuiltins();
+  if (idx === 2) showBench();
+}
+
+export function nextDemo(): void {
+  if (autoMode === 0) return;
+  showDemo((curDemo + 1) % 3);
+}
 
 // ═══════════════════════════════════════════════════════
-// Main: build the email client UI
+// Demo 1: Booking Calendar
 // ═══════════════════════════════════════════════════════
 
-export function main(): void {
-  // ── Sample data ──
-  const inbox = [
-    new Email("alice@example.com", "Meeting tomorrow",
-      "Hey, can we move the standup to 10am?"),
-    new Email("bob@dev.io", "PR Review: wasm-gc arrays",
-      "Looks good! One comment on the bounds check."),
-    new Email("carol@acme.co", "Invoice #1042",
-      "Please find attached the invoice for Q4."),
-    new Email("dave@startup.xyz", "Launch day!",
-      "We're live! Thanks for all the help."),
-    new Email("eve@security.net", "Vulnerability report",
-      "Found an XSS in the login form, details below.")
-  ];
+function renderCal(): void {
+  if (gridEl === null) return;
+  gridEl.innerHTML = "";
+  const offset = fdow(curYear, curMonth);
+  const days = dimOf(curYear, curMonth);
+  const prevM = curMonth === 0 ? 11 : curMonth - 1;
+  const prevY = curMonth === 0 ? curYear - 1 : curYear;
+  const prevDays = dimOf(prevY, prevM);
 
-  const sent = [
-    new Email("you@ts2wasm.dev", "Re: Meeting tomorrow",
-      "10am works for me, see you then."),
-    new Email("you@ts2wasm.dev", "Re: PR Review",
-      "Fixed the bounds check, PTAL.")
-  ];
-
-  const drafts = [
-    new Email("you@ts2wasm.dev", "Wasm GC proposal notes",
-      "Key points: struct types, array types, i31ref...")
-  ];
-
-  document.body.style.cssText =
-    "margin:0;background:#111;color:#ddd;" +
-    "font-family:system-ui,sans-serif;overflow:hidden";
-
-  const layout = el("div",
-    "display:flex;height:100vh;width:100vw");
-
-  // ── Sidebar ──────────────────────────────────────────
-  const sidebar = el("nav",
-    "width:220px;background:#1a1a2e;padding:0.75rem 0;" +
-    "display:flex;flex-direction:column;" +
-    "border-right:1px solid #2a2a4a");
-
-  const logo = el("div",
-    "padding:0.5rem 1rem 1rem;font-size:0.7rem;" +
-    "text-transform:uppercase;letter-spacing:2px;color:#555");
-  logo.textContent = "ts2wasm mail";
-  sidebar.appendChild(logo);
-
-  const contentPanel = el("div",
-    "flex:1;display:flex;flex-direction:column;overflow:hidden");
-
-  const folders = ["Inbox", "Sent", "Drafts", "About"];
-  const counts = [
-    countUnread(inbox[0], inbox[1], inbox[2], inbox[3], inbox[4]),
-    0, 0, 0
-  ];
-
-  let activeBtn: HTMLElement | null = null;
-
-  for (let i = 0; i < folders.length; i++) {
-    const row = el("div",
-      "display:flex;align-items:center;padding:0.5rem 1rem;" +
-      "cursor:pointer;color:#8888aa;font-size:0.85rem;" +
-      "border-left:3px solid transparent");
-
-    const icon = el("span", "margin-right:0.5rem;font-family:monospace;" +
-      "font-size:0.75rem;color:#666");
-    icon.textContent = folderIcon(i);
-    row.appendChild(icon);
-
-    const label = el("span", "flex:1");
-    label.textContent = folders[i];
-    row.appendChild(label);
-
-    if (counts[i] > 0) {
-      const badge = el("span",
-        "background:" + badgeColor(counts[i]) + ";" +
-        "color:#fff;font-size:0.65rem;padding:1px 6px;" +
-        "border-radius:8px;font-weight:bold");
-      badge.textContent = counts[i].toString();
-      row.appendChild(badge);
-    }
-
-    row.addEventListener("mouseenter", () => {
-      row.style.background = "#222244";
-    });
-    row.addEventListener("mouseleave", () => {
-      if (activeBtn !== row) row.style.background = "transparent";
-    });
-    row.addEventListener("click", () => {
-      if (activeBtn !== null) {
-        activeBtn.style.background = "transparent";
-        activeBtn.style.borderLeftColor = "transparent";
-        activeBtn.style.color = "#8888aa";
-      }
-      activeBtn = row;
-      row.style.background = "#222244";
-      row.style.borderLeftColor = "#7c3aed";
-      row.style.color = "#fff";
-      showFolder(i, inbox, sent, drafts, contentPanel);
-    });
-
-    sidebar.appendChild(row);
+  // previous month overflow
+  for (let i = 0; i < offset; i++) {
+    const d = prevDays - offset + 1 + i;
+    const cell = el("div",
+      "padding:6px 4px;text-align:center;font-size:0.75rem;" +
+      "color:#444;font-style:italic");
+    const dn = el("div", "font-weight:bold");
+    dn.textContent = d.toString();
+    cell.appendChild(dn);
+    const pr = el("div", "font-size:0.6rem;margin-top:2px");
+    pr.textContent = priceOf(prevY, prevM, d).toString() + " \\u20AC";
+    cell.appendChild(pr);
+    gridEl.appendChild(cell);
   }
-  layout.appendChild(sidebar);
 
-  layout.appendChild(contentPanel);
-  document.body.appendChild(layout);
+  // current month days
+  const now = new Date();
+  const todayD = now.getDate();
+  const todayM = now.getMonth();
+  const todayY = now.getFullYear();
 
-  // Show inbox by default
-  showFolder(Folder.Inbox, inbox, sent, drafts, contentPanel);
-  console.log("email client ready");
-}
-
-// ── Folder views ───────────────────────────────────────
-function showFolder(
-  folder: number,
-  inbox: Email[],
-  sent: Email[],
-  drafts: Email[],
-  panel: HTMLElement
-): void {
-  panel.innerHTML = "";
-
-  if (folder === 0) showEmailList("Inbox", inbox, panel);
-  if (folder === 1) showEmailList("Sent", sent, panel);
-  if (folder === 2) showEmailList("Drafts", drafts, panel);
-  if (folder === 3) showAbout(panel);
-}
-
-function showEmailList(
-  title: string,
-  emails: Email[],
-  panel: HTMLElement
-): void {
-  // Header bar
-  const header = el("div",
-    "padding:0.75rem 1.25rem;border-bottom:1px solid #2a2a3a;" +
-    "font-size:1rem;font-weight:bold;color:#fff;" +
-    "background:#161628");
-  header.textContent = title + " (" + emails.length.toString() + ")";
-  panel.appendChild(header);
-
-  // Email list
-  const list = el("div", "flex:1;overflow-y:auto");
-
-  for (let i = 0; i < emails.length; i++) {
-    const mail = emails[i];
-    const row = el("div",
-      "padding:0.75rem 1.25rem;border-bottom:1px solid #1e1e35;" +
-      "cursor:pointer");
-
-    // Unread dot
-    if (mail.read === 0) {
-      const dot = el("span",
-        "display:inline-block;width:6px;height:6px;" +
-        "background:#7c3aed;border-radius:50%;" +
-        "margin-right:0.5rem;vertical-align:middle");
-      row.appendChild(dot);
+  for (let d = 1; d <= days; d++) {
+    let bg = "transparent";
+    let fg = "#ddd";
+    let bdr = "none";
+    const inRange = selStart > 0 && selEnd > 0 && d >= selStart && d <= selEnd;
+    if (inRange) bg = "#333";
+    if (d === selStart) bdr = "2px solid #fff";
+    if (d === selEnd && selEnd !== selStart) {
+      bg = "#fff";
+      fg = "#111";
     }
+    let outline = "none";
+    if (d === todayD && curMonth === todayM && curYear === todayY) {
+      outline = "1px solid rgba(255,255,255,0.4)";
+    }
+    const cell = el("div",
+      "padding:6px 4px;text-align:center;font-size:0.75rem;" +
+      "cursor:pointer;border-radius:4px;" +
+      "background:" + bg + ";color:" + fg + ";" +
+      "border-left:" + bdr + ";outline:" + outline);
 
-    const from = el("span",
-      "font-size:0.8rem;font-weight:" +
-      (mail.read === 0 ? "bold" : "normal") +
-      ";color:" + (mail.read === 0 ? "#fff" : "#999"));
-    from.textContent = mail.from;
-    row.appendChild(from);
+    const dn = el("div", "font-weight:bold");
+    dn.textContent = d.toString();
+    cell.appendChild(dn);
+    const pr = el("div", "font-size:0.6rem;margin-top:2px;color:#aaa");
+    pr.textContent = priceOf(curYear, curMonth, d).toString() + " \\u20AC";
+    cell.appendChild(pr);
 
-    const subj = el("div",
-      "font-size:0.85rem;color:#ccc;margin-top:2px;" +
-      "font-weight:" + (mail.read === 0 ? "600" : "normal"));
-    subj.textContent = mail.subject;
-    row.appendChild(subj);
-
-    const prev = el("div",
-      "font-size:0.75rem;color:#666;margin-top:2px;" +
-      "overflow:hidden;white-space:nowrap");
-    prev.textContent = mail.preview;
-    row.appendChild(prev);
-
-    row.addEventListener("mouseenter", () => {
-      row.style.background = "#1a1a35";
+    const day = d;
+    cell.addEventListener("click", () => {
+      autoMode = 0;
+      onDay(day);
     });
-    row.addEventListener("mouseleave", () => {
-      row.style.background = "transparent";
-    });
-    row.addEventListener("click", () => {
-      mail.read = 1;
-      from.style.fontWeight = "normal";
-      from.style.color = "#999";
-      subj.style.fontWeight = "normal";
-      console.log("read: " + mail.subject);
-    });
-
-    list.appendChild(row);
+    gridEl.appendChild(cell);
   }
-  panel.appendChild(list);
+
+  // next month overflow
+  const total = offset + days;
+  const rem = total % 7 === 0 ? 0 : 7 - (total % 7);
+  const nextM = curMonth === 11 ? 0 : curMonth + 1;
+  const nextY = curMonth === 11 ? curYear + 1 : curYear;
+  for (let i = 1; i <= rem; i++) {
+    const cell = el("div",
+      "padding:6px 4px;text-align:center;font-size:0.75rem;" +
+      "color:#444;font-style:italic");
+    const dn = el("div", "font-weight:bold");
+    dn.textContent = i.toString();
+    cell.appendChild(dn);
+    const pr = el("div", "font-size:0.6rem;margin-top:2px");
+    pr.textContent = priceOf(nextY, nextM, i).toString() + " \\u20AC";
+    cell.appendChild(pr);
+    gridEl.appendChild(cell);
+  }
+
+  if (monthEl !== null) monthEl.textContent = mname(curMonth);
+  if (yearEl !== null) yearEl.textContent = curYear.toString();
 }
 
-// ── About / Benchmarks page ─────────────────────────────
+function onDay(d: number): void {
+  if (selStart < 0) {
+    selStart = d;
+    selEnd = -1;
+  } else if (selEnd < 0) {
+    if (d > selStart) selEnd = d;
+    else if (d < selStart) { selEnd = selStart; selStart = d; }
+    else { selStart = -1; selEnd = -1; }
+  } else {
+    selStart = d;
+    selEnd = -1;
+  }
+  updFoot();
+  renderCal();
+}
 
-function benchCard(
-  title: string, desc: string, body: HTMLElement
-): HTMLElement {
+function updFoot(): void {
+  if (selStart > 0 && selEnd > 0) {
+    const n = selEnd - selStart;
+    let sum = 0;
+    for (let i = selStart; i < selEnd; i++) {
+      sum = sum + priceOf(curYear, curMonth, i);
+    }
+    if (nightsEl !== null) nightsEl.textContent = n.toString() + " nights";
+    if (totalEl !== null) totalEl.textContent = sum.toString() + " \\u20AC";
+  } else {
+    if (nightsEl !== null) nightsEl.textContent = "0 nights";
+    if (totalEl !== null) totalEl.textContent = "—";
+  }
+}
+
+function showCal(): void {
+  if (pnl === null) return;
+  selStart = -1;
+  selEnd = -1;
+  const wrap = el("div", "padding:1rem;max-width:420px;margin:0 auto");
+
+  // header: month + year
+  const hdr = el("div",
+    "display:flex;justify-content:space-between;align-items:baseline;" +
+    "margin-bottom:0.5rem");
+  monthEl = el("div", "font-size:1.8rem;font-weight:bold;color:#fff");
+  yearEl = el("div", "font-size:1rem;color:#888");
+  hdr.appendChild(monthEl);
+  hdr.appendChild(yearEl);
+  wrap.appendChild(hdr);
+
+  // weekday headers
+  const dayNames = ["MON", "TUE", "WED", "THR", "FRI", "SAT", "SUN"];
+  const wh = el("div",
+    "display:grid;grid-template-columns:repeat(7,1fr);" +
+    "text-align:center;font-size:0.6rem;color:#666;margin-bottom:4px");
+  for (let i = 0; i < 7; i++) {
+    const c = el("div", "padding:2px");
+    c.textContent = dayNames[i];
+    wh.appendChild(c);
+  }
+  wrap.appendChild(wh);
+
+  // grid
+  gridEl = el("div",
+    "display:grid;grid-template-columns:repeat(7,1fr);gap:2px");
+  wrap.appendChild(gridEl);
+
+  // bottom weekday headers
+  const wh2 = el("div",
+    "display:grid;grid-template-columns:repeat(7,1fr);" +
+    "text-align:center;font-size:0.6rem;color:#666;margin-top:4px");
+  for (let i = 0; i < 7; i++) {
+    const c = el("div", "padding:2px");
+    c.textContent = dayNames[i];
+    wh2.appendChild(c);
+  }
+  wrap.appendChild(wh2);
+
+  // navigation
+  const nav = el("div",
+    "display:flex;justify-content:center;gap:2rem;margin:0.75rem 0");
+  const prev = el("div",
+    "cursor:pointer;font-size:1.2rem;color:#888;padding:4px 12px");
+  prev.textContent = "\\u2190";
+  prev.addEventListener("click", () => {
+    autoMode = 0;
+    if (curMonth === 0) { curMonth = 11; curYear = curYear - 1; }
+    else { curMonth = curMonth - 1; }
+    selStart = -1; selEnd = -1; updFoot(); renderCal();
+  });
+  const next = el("div",
+    "cursor:pointer;font-size:1.2rem;color:#888;padding:4px 12px");
+  next.textContent = "\\u2192";
+  next.addEventListener("click", () => {
+    autoMode = 0;
+    if (curMonth === 11) { curMonth = 0; curYear = curYear + 1; }
+    else { curMonth = curMonth + 1; }
+    selStart = -1; selEnd = -1; updFoot(); renderCal();
+  });
+  nav.appendChild(prev);
+  nav.appendChild(next);
+  wrap.appendChild(nav);
+
+  // footer
+  const foot = el("div",
+    "display:flex;align-items:center;justify-content:space-between;" +
+    "margin-top:0.5rem;font-size:0.8rem");
+  const clr = el("span", "color:#888;cursor:pointer;text-decoration:underline");
+  clr.textContent = "Clear Dates";
+  clr.addEventListener("click", () => {
+    autoMode = 0;
+    selStart = -1; selEnd = -1; updFoot(); renderCal();
+  });
+  foot.appendChild(clr);
+
+  nightsEl = el("span", "color:#aaa");
+  nightsEl.textContent = "0 nights";
+  foot.appendChild(nightsEl);
+
+  totalEl = el("span", "color:#fff;font-weight:bold");
+  totalEl.textContent = "—";
+  foot.appendChild(totalEl);
+
+  const saveBtn = el("div",
+    "padding:4px 16px;background:#7c3aed;color:#fff;" +
+    "border-radius:4px;cursor:pointer;font-size:0.75rem");
+  saveBtn.textContent = "Save";
+  saveBtn.addEventListener("click", () => {
+    autoMode = 0;
+    console.log("saved " + selStart.toString() + "-" + selEnd.toString());
+  });
+  foot.appendChild(saveBtn);
+  wrap.appendChild(foot);
+
+  pnl.appendChild(wrap);
+  renderCal();
+}
+
+// ═══════════════════════════════════════════════════════
+// Demo 2: JS Builtins
+// ═══════════════════════════════════════════════════════
+
+function crd(title: string, parent: HTMLElement): HTMLElement {
+  const c = el("div",
+    "padding:0.5rem 0.75rem;background:#1a1a35;" +
+    "border-radius:6px;border:1px solid #2a2a4a;" +
+    "margin-bottom:0.5rem");
+  const t = el("div", "font-size:0.8rem;color:#7c3aed;font-weight:bold;margin-bottom:4px");
+  t.textContent = title;
+  c.appendChild(t);
+  parent.appendChild(c);
+  return c;
+}
+
+function rw(label: string, value: string, parent: HTMLElement): void {
+  const r = el("div",
+    "display:flex;justify-content:space-between;" +
+    "font-size:0.7rem;padding:1px 0");
+  const l = el("span", "color:#888");
+  l.textContent = label;
+  const v = el("span", "color:#ddd;font-family:monospace");
+  v.textContent = value;
+  r.appendChild(l);
+  r.appendChild(v);
+  parent.appendChild(r);
+}
+
+function showBuiltins(): void {
+  if (pnl === null) return;
+  const wrap = el("div", "padding:0.75rem;overflow-y:auto");
+
+  // Math
+  const m = crd("Math", wrap);
+  rw("Math.pow(2, 10)", Math.pow(2, 10).toString(), m);
+  rw("Math.sqrt(144)", Math.sqrt(144).toString(), m);
+  rw("Math.log2(1024)", Math.log2(1024).toFixed(1), m);
+  rw("Math.sin(3.14159/2)", Math.sin(3.14159 / 2).toFixed(6), m);
+  rw("Math.cos(0)", Math.cos(0).toString(), m);
+  rw("Math.atan2(1, 1)", Math.atan2(1, 1).toFixed(6), m);
+  rw("Math.exp(1)", Math.exp(1).toFixed(6), m);
+  rw("Math.log(Math.exp(1))", Math.log(Math.exp(1)).toFixed(6), m);
+
+  // Strings
+  const s = crd("Strings", wrap);
+  const hello = "Hello, WebAssembly!";
+  rw("length", hello.length.toString(), s);
+  rw("toUpperCase()", hello.toUpperCase(), s);
+  rw("toLowerCase()", hello.toLowerCase(), s);
+  rw("slice(0, 5)", hello.slice(0, 5), s);
+  rw("indexOf('Wasm')", hello.indexOf("Wasm").toString(), s);
+  rw("includes('Assembly')", hello.includes("Assembly") ? "true" : "false", s);
+  rw("replace('Hello','Hi')", hello.replace("Hello", "Hi"), s);
+  rw("trim('  hi  ')", "  hi  ".trim(), s);
+
+  // Arrays
+  const a = crd("Arrays", wrap);
+  const arr: number[] = [];
+  for (let i = 0; i < 5; i++) arr.push((i + 1) * 10);
+  let arrStr = "";
+  for (let i = 0; i < arr.length; i++) {
+    if (i > 0) arrStr = arrStr + ",";
+    arrStr = arrStr + arr[i].toString();
+  }
+  rw("arr", "[" + arrStr + "]", a);
+  rw("arr.length", arr.length.toString(), a);
+  let sum = 0;
+  for (let i = 0; i < arr.length; i++) sum = sum + arr[i];
+  rw("sum(arr)", sum.toString(), a);
+
+  // Bitwise
+  const b = crd("Bitwise", wrap);
+  rw("0xFF << 8", (0xFF << 8).toString(), b);
+  rw("0xABCD & 0xFF", (0xABCD & 0xFF).toString(), b);
+  rw("0x55 | 0xAA", (0x55 | 0xAA).toString(), b);
+  rw("0xFF ^ 0x0F", (0xFF ^ 0x0F).toString(), b);
+  rw("~0", (~0).toString(), b);
+
+  // Enum + Switch
+  const e = crd("Enum + Switch", wrap);
+  rw("folderIcon(0)", ">> Inbox", e);
+  rw("folderIcon(1)", "<< Sent", e);
+  rw("folderIcon(2)", "// Drafts", e);
+
+  pnl.appendChild(wrap);
+}
+
+// ═══════════════════════════════════════════════════════
+// Demo 3: Benchmarks
+// ═══════════════════════════════════════════════════════
+
+function bcrd(title: string, desc: string, parent: HTMLElement): HTMLElement {
   const card = el("div",
     "padding:0.75rem;background:#1a1a35;" +
     "border-radius:6px;border:1px solid #2a2a4a;" +
     "margin-bottom:0.5rem");
-  const t = el("div",
-    "font-size:0.8rem;color:#fff;font-weight:bold");
+  const t = el("div", "font-size:0.8rem;color:#fff;font-weight:bold");
   t.textContent = title;
   card.appendChild(t);
-  const d = el("div",
-    "font-size:0.7rem;color:#666;margin:2px 0 6px");
+  const d = el("div", "font-size:0.7rem;color:#666;margin:2px 0 6px");
   d.textContent = desc;
   card.appendChild(d);
   const row = el("div", "display:flex;align-items:center;gap:0.5rem");
   const btn = el("button",
     "padding:3px 10px;border:none;border-radius:3px;" +
-    "background:#7c3aed;color:#fff;cursor:pointer;" +
-    "font-size:0.7rem");
+    "background:#7c3aed;color:#fff;cursor:pointer;font-size:0.7rem");
   btn.textContent = "Run";
   row.appendChild(btn);
   const out = el("span", "font-size:0.75rem;color:#888");
   out.textContent = "—";
   row.appendChild(out);
   card.appendChild(row);
-  body.appendChild(card);
+  parent.appendChild(card);
   return card;
 }
 
-function showAbout(panel: HTMLElement): void {
-  const header = el("div",
-    "padding:0.75rem 1.25rem;border-bottom:1px solid #2a2a3a;" +
-    "font-size:1rem;font-weight:bold;color:#fff;" +
-    "background:#161628");
-  header.textContent = "Benchmarks";
-  panel.appendChild(header);
-
-  const body = el("div",
-    "padding:0.75rem;overflow-y:auto;flex:1");
+function showBench(): void {
+  if (pnl === null) return;
+  const wrap = el("div", "padding:0.75rem;overflow-y:auto");
 
   const intro = el("div",
-    "font-size:0.75rem;color:#777;margin-bottom:0.75rem;" +
-    "line-height:1.5");
+    "font-size:0.75rem;color:#777;margin-bottom:0.75rem;line-height:1.5");
   intro.textContent =
-    "This UI is rendered entirely by WebAssembly compiled " +
-    "from the TypeScript on the left. Each benchmark " +
-    "runs inside the Wasm sandbox.";
-  body.appendChild(intro);
+    "Each benchmark runs inside the Wasm sandbox. " +
+    "Click Run to measure.";
+  wrap.appendChild(intro);
 
-  // ── 1. Pure computation: fib(30) ──
-  const c1 = benchCard(
-    "Pure Wasm: fib(30)",
-    "Recursive fibonacci — pure i32/f64 math, no host calls",
-    body);
+  // 1. fib(30)
+  const c1 = bcrd("Pure Wasm: fib(30)",
+    "Recursive fibonacci — pure i32/f64 math, no host calls", wrap);
   c1.addEventListener("click", () => {
+    autoMode = 0;
     const t0 = performance.now();
     const v = fib(30);
     const ms = performance.now() - t0;
-    const out = c1.children[3].children[1];
+    const out = c1.children[2].children[1];
     out.textContent = v.toString() + " in " + ms.toFixed(1) + "ms";
   });
 
-  // ── 2. Wasm inner loop: sum 1M ──
-  const c2 = benchCard(
-    "Wasm loop: sum 1..1,000,000",
-    "Tight numeric loop — no allocations, no host calls",
-    body);
+  // 2. sum 1M
+  const c2 = bcrd("Wasm loop: sum 1..1,000,000",
+    "Tight numeric loop — no allocations, no host calls", wrap);
   c2.addEventListener("click", () => {
+    autoMode = 0;
     const t0 = performance.now();
-    let sum = 0;
-    for (let i = 0; i < 1000000; i++) {
-      sum = sum + i;
-    }
+    let s = 0;
+    for (let i = 0; i < 1000000; i++) s = s + i;
     const ms = performance.now() - t0;
-    const out = c2.children[3].children[1];
-    out.textContent = sum.toString() + " in " + ms.toFixed(1) + "ms";
+    const out = c2.children[2].children[1];
+    out.textContent = s.toString() + " in " + ms.toFixed(1) + "ms";
   });
 
-  // ── 3. DOM manipulation: create 1000 elements ──
-  const c3 = benchCard(
-    "DOM: create 1,000 elements",
-    "Host boundary — createElement + appendChild per iteration",
-    body);
+  // 3. DOM create 1000
+  const c3 = bcrd("DOM: create 1,000 elements",
+    "Host boundary — createElement + appendChild per iteration", wrap);
   c3.addEventListener("click", () => {
-    const container = document.createElement("div");
-    container.style.cssText = "display:none";
-    document.body.appendChild(container);
+    autoMode = 0;
+    const box = document.createElement("div");
+    box.style.cssText = "display:none";
+    document.body.appendChild(box);
     const t0 = performance.now();
     for (let i = 0; i < 1000; i++) {
       const d = document.createElement("span");
       d.textContent = i.toString();
-      container.appendChild(d);
+      box.appendChild(d);
     }
     const ms = performance.now() - t0;
-    document.body.removeChild(container);
-    const out = c3.children[3].children[1];
+    document.body.removeChild(box);
+    const out = c3.children[2].children[1];
     out.textContent = "1000 nodes in " + ms.toFixed(1) + "ms";
   });
 
-  // ── 4. String concat: build a long string ──
-  const c4 = benchCard(
-    "String: concat 10,000 fragments",
-    "Host boundary — wasm:js-string concat per iteration",
-    body);
+  // 4. String concat 10k
+  const c4 = bcrd("String: concat 10,000 fragments",
+    "Host boundary — wasm:js-string concat per iteration", wrap);
   c4.addEventListener("click", () => {
+    autoMode = 0;
     const t0 = performance.now();
-    let s = "";
-    for (let i = 0; i < 10000; i++) {
-      s = s + "x";
-    }
+    let str = "";
+    for (let i = 0; i < 10000; i++) str = str + "x";
     const ms = performance.now() - t0;
-    const out = c4.children[3].children[1];
-    out.textContent = "len=" + s.length.toString() + " in " + ms.toFixed(1) + "ms";
+    const out = c4.children[2].children[1];
+    out.textContent = "len=" + str.length.toString() + " in " + ms.toFixed(1) + "ms";
   });
 
-  // ── 5. Array: fill + sum 100k elements ──
-  const c5 = benchCard(
-    "Array: fill + sum 100,000",
-    "Wasm GC array — array.set / array.get in a loop",
-    body);
+  // 5. Array fill+sum 100k
+  const c5 = bcrd("Array: fill + sum 100,000",
+    "Wasm GC array — array.set / array.get in a loop", wrap);
   c5.addEventListener("click", () => {
+    autoMode = 0;
     const arr: number[] = [];
-    for (let i = 0; i < 100000; i++) {
-      arr.push(i);
-    }
+    for (let i = 0; i < 100000; i++) arr.push(i);
     const t0 = performance.now();
     let total = 0;
-    for (let i = 0; i < arr.length; i++) {
-      total = total + arr[i];
-    }
+    for (let i = 0; i < arr.length; i++) total = total + arr[i];
     const ms = performance.now() - t0;
-    const out = c5.children[3].children[1];
+    const out = c5.children[2].children[1];
     out.textContent = total.toString() + " in " + ms.toFixed(1) + "ms";
   });
 
-  // ── 6. Style updates: 500 color changes ──
-  const c6 = benchCard(
-    "Style: 500 color updates",
-    "Host boundary — set style.background per iteration",
-    body);
+  // 6. Style updates 500
+  const c6 = bcrd("Style: 500 color updates",
+    "Host boundary — set style.background per iteration", wrap);
   c6.addEventListener("click", () => {
+    autoMode = 0;
     const box = document.createElement("div");
     box.style.cssText = "width:1px;height:1px;position:fixed;top:-9px";
     document.body.appendChild(box);
@@ -456,11 +584,41 @@ function showAbout(panel: HTMLElement): void {
     }
     const ms = performance.now() - t0;
     document.body.removeChild(box);
-    const out = c6.children[3].children[1];
+    const out = c6.children[2].children[1];
     out.textContent = "500 updates in " + ms.toFixed(1) + "ms";
   });
 
-  panel.appendChild(body);
+  pnl.appendChild(wrap);
+}
+
+// ═══════════════════════════════════════════════════════
+// Main entry point
+// ═══════════════════════════════════════════════════════
+
+export function main(): void {
+  document.body.style.cssText =
+    "margin:0;background:#111;color:#ddd;" +
+    "font-family:system-ui,sans-serif;overflow:hidden";
+
+  const root = el("div", "display:flex;flex-direction:column;height:100vh");
+
+  // tab bar
+  const bar = el("div",
+    "display:flex;border-bottom:1px solid #2a2a4a;background:#161628");
+  tabEls.push(mkTab("DOM Manipulation", 0, bar));
+  tabEls.push(mkTab("JS Builtins", 1, bar));
+  tabEls.push(mkTab("Benchmarks", 2, bar));
+  root.appendChild(bar);
+
+  // content panel
+  pnl = el("div", "flex:1;overflow-y:auto");
+  root.appendChild(pnl);
+
+  document.body.appendChild(root);
+
+  curDemo = 0;
+  hlTabs();
+  showCal();
 }`;
 
 // ─── Cursor Dark theme ──────────────────────────────────────────────────
@@ -500,7 +658,8 @@ monaco.editor.defineTheme("cursor-dark", {
   },
 });
 
-// ─── Register WAT language ──────────────────────────────────────────────
+// ─── Register languages ─────────────────────────────────────────────────
+monaco.languages.register({ id: "text" });
 monaco.languages.register({ id: "wat" });
 monaco.languages.setMonarchTokensProvider("wat", {
   keywords: [
@@ -670,6 +829,449 @@ monaco.languages.setMonarchTokensProvider("wat", {
   },
 });
 
+// ─── WAT hover documentation ────────────────────────────────────────────
+
+const WAT_KEYWORD_DOCS: Record<string, { brief: string; url?: string }> = {
+  // Value types
+  i32: { brief: "32-bit integer", url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Types/i32" },
+  i64: { brief: "64-bit integer", url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Types/i64" },
+  f32: { brief: "32-bit IEEE 754 float", url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Types/f32" },
+  f64: { brief: "64-bit IEEE 754 float", url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Types/f64" },
+  funcref: { brief: "Nullable reference to a function", url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Understanding_the_text_format#reference_types" },
+  externref: { brief: "Opaque host reference — JS object, DOM node, etc.", url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Understanding_the_text_format#reference_types" },
+  anyref: { brief: "Reference to any GC-managed value" },
+  eqref: { brief: "Reference supporting structural equality" },
+  i31ref: { brief: "Unboxed 31-bit integer reference" },
+  // Module structure
+  module: { brief: "Top-level container for all definitions", url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Understanding_the_text_format" },
+  func: { brief: "Function definition or reference" },
+  type: { brief: "Reusable function type signature" },
+  param: { brief: "Function parameter" },
+  result: { brief: "Function return type" },
+  local: { brief: "Local variable, scoped to the function" },
+  global: { brief: "Global variable, accessible from all functions" },
+  import: { brief: "Import from the host environment" },
+  export: { brief: "Export to the host environment" },
+  memory: { brief: "Linear memory — resizable byte buffer (64KB pages)", url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Understanding_the_text_format#webassembly_memory" },
+  data: { brief: "Initialize a region of linear memory" },
+  table: { brief: "Typed array of references for indirect calls", url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Understanding_the_text_format#webassembly_tables" },
+  elem: { brief: "Initialize table entries with references" },
+  start: { brief: "Function called automatically on instantiation" },
+  mut: { brief: "Marks a global as mutable (default is immutable)" },
+  offset: { brief: "Memory or table initialization offset" },
+  // Control flow
+  block: { brief: "Structured forward-jump target", url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Control_flow/block" },
+  loop: { brief: "Structured backward-jump target", url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Control_flow/loop" },
+  if: { brief: "Pop i32, execute then-branch if non-zero", url: "https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/Control_flow/if...else" },
+  then: { brief: "True branch of an if" },
+  else: { brief: "False branch of an if" },
+  end: { brief: "End of block, loop, if, or function body" },
+  // GC
+  struct: { brief: "Fixed-layout product type (GC proposal)" },
+  array: { brief: "Variable-length sequence type (GC proposal)" },
+  field: { brief: "Struct field declaration" },
+  rec: { brief: "Recursive type group" },
+  sub: { brief: "Subtype declaration" },
+  ref: { brief: "Reference type constructor" },
+  null: { brief: "Null reference constant" },
+};
+
+/** Describe a dotted instruction like i32.add, local.get, etc. */
+function describeWatInstruction(token: string): { brief: string; url?: string } | null {
+  if (WAT_KEYWORD_DOCS[token]) return WAT_KEYWORD_DOCS[token];
+
+  // local.get/set/tee
+  const lm = token.match(/^local\.(get|set|tee)$/);
+  if (lm) return { get: { brief: "Push local variable onto the stack" }, set: { brief: "Pop and store into local variable" }, tee: { brief: "Copy top of stack into local (keep on stack)" } }[lm[1]]!;
+  // global.get/set
+  const gm = token.match(/^global\.(get|set)$/);
+  if (gm) return gm[1] === "get" ? { brief: "Push global value onto the stack" } : { brief: "Pop and store into global" };
+
+  // type.const
+  if (/^(i32|i64|f32|f64)\.const$/.test(token)) return { brief: `Push a constant ${token.split(".")[0]} value` };
+
+  // memory.size/grow/fill/copy
+  if (token === "memory.size") return { brief: "Push current memory size in 64KB pages" };
+  if (token === "memory.grow") return { brief: "Grow memory by N pages, push old size (or -1)" };
+  if (token === "memory.fill") return { brief: "Fill memory region with a byte value" };
+  if (token === "memory.copy") return { brief: "Copy memory region to another" };
+
+  // Simple instructions
+  const simple: Record<string, string> = {
+    call: "Call function directly by name/index",
+    call_indirect: "Call function from table by runtime index",
+    return: "Return from the current function",
+    br: "Unconditional branch to label",
+    br_if: "Branch to label if top of stack is non-zero",
+    br_table: "Branch by index into a label table",
+    drop: "Pop and discard top stack value",
+    select: "Pop i32 condition, keep one of two values",
+    unreachable: "Trap — signals dead code",
+    nop: "No operation",
+  };
+  if (simple[token]) return { brief: simple[token] };
+
+  // Dotted instructions: type.op
+  const dm = token.match(/^(i32|i64|f32|f64)\.(\w+)$/);
+  if (!dm) {
+    // struct/array/ref ops
+    const gcOps: Record<string, string> = {
+      "struct.new": "Allocate struct, pop fields from stack",
+      "struct.new_default": "Allocate struct with default values",
+      "struct.get": "Read struct field", "struct.get_s": "Read struct field, sign-extend",
+      "struct.get_u": "Read struct field, zero-extend", "struct.set": "Write struct field",
+      "array.new": "Allocate array, fill with stack value",
+      "array.new_default": "Allocate array with defaults",
+      "array.new_fixed": "Allocate array from N stack values",
+      "array.get": "Read array element", "array.get_s": "Read array element, sign-extend",
+      "array.get_u": "Read array element, zero-extend",
+      "array.set": "Write array element", "array.len": "Push array length",
+      "ref.null": "Push null reference", "ref.is_null": "Test if reference is null → i32",
+      "ref.func": "Push reference to a function",
+      "ref.test": "Test reference type → i32", "ref.cast": "Cast reference (trap on mismatch)",
+    };
+    return gcOps[token] ? { brief: gcOps[token] } : null;
+  }
+
+  const [, ty, op] = dm;
+  // Binary arithmetic
+  const bin: Record<string, string> = {
+    add: "Add", sub: "Subtract", mul: "Multiply",
+    div_s: "Signed divide", div_u: "Unsigned divide", div: "Divide",
+    rem_s: "Signed remainder", rem_u: "Unsigned remainder",
+    and: "Bitwise AND", or: "Bitwise OR", xor: "Bitwise XOR",
+    shl: "Shift left", shr_s: "Arithmetic shift right", shr_u: "Logical shift right",
+    rotl: "Rotate left", rotr: "Rotate right",
+    min: "Minimum", max: "Maximum", copysign: "Copy sign",
+  };
+  if (bin[op]) return { brief: `${bin[op]} — pop two ${ty}, push result` };
+
+  // Comparison
+  const cmp: Record<string, string> = {
+    eq: "Equal", ne: "Not equal",
+    lt_s: "Less (signed)", lt_u: "Less (unsigned)", lt: "Less than",
+    gt_s: "Greater (signed)", gt_u: "Greater (unsigned)", gt: "Greater than",
+    le_s: "≤ (signed)", le_u: "≤ (unsigned)", le: "≤",
+    ge_s: "≥ (signed)", ge_u: "≥ (unsigned)", ge: "≥",
+  };
+  if (cmp[op]) return { brief: `${cmp[op]} — pop two ${ty}, push i32 (0 or 1)` };
+
+  // Unary
+  const un: Record<string, string> = {
+    eqz: "Is zero? → push i32", clz: "Count leading zeros", ctz: "Count trailing zeros",
+    popcnt: "Count set bits", neg: "Negate", abs: "Absolute value",
+    ceil: "Round up", floor: "Round down", trunc: "Round toward zero",
+    nearest: "Round to nearest even", sqrt: "Square root",
+  };
+  if (un[op]) return { brief: un[op] };
+
+  // Conversion
+  const conv: Record<string, string> = {
+    wrap_i64: "Truncate i64 → i32 (low 32 bits)",
+    extend_i32_s: "Sign-extend i32 → i64", extend_i32_u: "Zero-extend i32 → i64",
+    trunc_f32_s: "Truncate f32 → signed int", trunc_f32_u: "Truncate f32 → unsigned int",
+    trunc_f64_s: "Truncate f64 → signed int", trunc_f64_u: "Truncate f64 → unsigned int",
+    convert_i32_s: "Convert signed i32 → float", convert_i32_u: "Convert unsigned i32 → float",
+    convert_i64_s: "Convert signed i64 → float", convert_i64_u: "Convert unsigned i64 → float",
+    demote_f64: "f64 → f32 (lossy)", promote_f32: "f32 → f64",
+    reinterpret_i32: "Reinterpret i32 bits as f32", reinterpret_i64: "Reinterpret i64 bits as f64",
+    reinterpret_f32: "Reinterpret f32 bits as i32", reinterpret_f64: "Reinterpret f64 bits as i64",
+    extend8_s: "Sign-extend low 8 bits", extend16_s: "Sign-extend low 16 bits",
+    trunc_sat_f32_s: "Saturating truncate f32 → signed int",
+    trunc_sat_f32_u: "Saturating truncate f32 → unsigned int",
+    trunc_sat_f64_s: "Saturating truncate f64 → signed int",
+    trunc_sat_f64_u: "Saturating truncate f64 → unsigned int",
+  };
+  if (conv[op]) return { brief: conv[op] };
+
+  // Load/store
+  const mem: Record<string, string> = {
+    load: "Load from memory", load8_s: "Load 8-bit, sign-extend", load8_u: "Load 8-bit, zero-extend",
+    load16_s: "Load 16-bit, sign-extend", load16_u: "Load 16-bit, zero-extend",
+    load32_s: "Load 32-bit, sign-extend", load32_u: "Load 32-bit, zero-extend",
+    store: "Store to memory", store8: "Store low 8 bits", store16: "Store low 16 bits", store32: "Store low 32 bits",
+  };
+  if (mem[op]) return { brief: `${mem[op]} (${ty})` };
+
+  return null;
+}
+
+/** Extract the full dotted token (e.g. "i32.add") at a cursor column. */
+function getWatTokenAt(line: string, col: number): string {
+  const idx = col - 1;
+  let start = idx, end = idx;
+  while (start > 0 && /[\w.]/.test(line[start - 1])) start--;
+  while (end < line.length && /[\w.]/.test(line[end])) end++;
+  return line.slice(start, end);
+}
+
+/** Describe a WAT line in plain English. */
+function describeWatLine(lineText: string): string | null {
+  const t = lineText.trim();
+  if (!t || t.startsWith(";;") || t === ")" || t === "(module") return null;
+
+  // Type definition
+  const typeM = t.match(/^\(type\s+(\$\S+)\s+\(func\s*(.*)\)\s*\)?/);
+  if (typeM) {
+    const ps = [...typeM[2].matchAll(/\(param\s+(?:\$\S+\s+)?(\w+)\)/g)].map(m => m[1]);
+    const rs = [...typeM[2].matchAll(/\(result\s+(\w+)\)/g)].map(m => m[1]);
+    return `Type **${typeM[1]}** — signature (${ps.join(", ") || "∅"}) → ${rs.join(", ") || "void"}`;
+  }
+
+  // Function definition
+  const funcM = t.match(/^\(func\s+(\$\S+)/);
+  if (funcM) {
+    const ps = [...t.matchAll(/\(param\s+(?:\$\S+\s+)?(\w+)\)/g)].map(m => m[1]);
+    const rs = [...t.matchAll(/\(result\s+(\w+)\)/g)].map(m => m[1]);
+    return `Function **${funcM[1]}**(${ps.join(", ")})${rs.length ? " → " + rs.join(", ") : ""}`;
+  }
+
+  // Import
+  const impM = t.match(/^\(import\s+"([^"]+)"\s+"([^"]+)"/);
+  if (impM) {
+    const kind = t.match(/\((func|memory|table|global)\s/);
+    return `Import ${kind?.[1] || ""} **"${impM[2]}"** from **"${impM[1]}"**`;
+  }
+
+  // Export
+  const expM = t.match(/^\(export\s+"([^"]+)"\s+\((func|memory|table|global)\s+(\$?\S+)\s*\)/);
+  if (expM) return `Export ${expM[2]} **${expM[3]}** as **"${expM[1]}"**`;
+
+  // Memory
+  const memM = t.match(/^\(memory\s+(?:(\$\S+)\s+)?(\d+)/);
+  if (memM) {
+    const p = parseInt(memM[2]);
+    return `Linear memory${memM[1] ? " **" + memM[1] + "**" : ""} — ${p} page${p !== 1 ? "s" : ""} (${p * 64}KB)`;
+  }
+
+  // Global
+  const gloM = t.match(/^\(global\s+(\$\S+)\s+\(?(mut\s+)?(\w+)\)?/);
+  if (gloM) return `Global **${gloM[1]}** — ${gloM[2] ? "mutable " : ""}${gloM[3]}`;
+
+  // Table
+  const tabM = t.match(/^\(table\s+(?:(\$\S+)\s+)?(\d+)\s+(\w+)/);
+  if (tabM) return `Table${tabM[1] ? " **" + tabM[1] + "**" : ""} — ${tabM[2]} ${tabM[3]} slots`;
+
+  // Data
+  if (/^\(data\b/.test(t)) {
+    const off = t.match(/\((?:i32|i64)\.const\s+(\d+)\)/);
+    return `Data segment${off ? " at offset " + off[1] : ""}`;
+  }
+
+  // Elem
+  if (/^\(elem\b/.test(t)) return "Element segment — initializes table entries";
+
+  // Start
+  const startM = t.match(/^\(start\s+(\$?\S+)/);
+  if (startM) return `Start function **${startM[1]}** — runs on instantiation`;
+
+  // Local declaration
+  const locM = t.match(/^\(local\s+(\$\S+)\s+(\w+)/);
+  if (locM) return `Local variable **${locM[1]}** : ${locM[2]}`;
+
+  // Instruction lines: extract instruction + operands for a richer description
+  const instrM = t.match(/^([\w.]+)\s*(.*)/);
+  if (instrM) {
+    const instr = instrM[1];
+    const operands = instrM[2].replace(/\)$/, "").trim();
+    const doc = describeWatInstruction(instr);
+    if (doc) {
+      if (operands) return `\`${instr}\` ${operands} — ${doc.brief}`;
+      return `\`${instr}\` — ${doc.brief}`;
+    }
+  }
+
+  return null;
+}
+
+/** Find a function's name and signature in the WAT model by $name. */
+function findWatFuncSignature(watModel: monaco.editor.ITextModel, funcName: string): { params: string[]; results: string[] } | null {
+  const lineCount = watModel.getLineCount();
+  const escaped = funcName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`\\(func\\s+${escaped}(?:\\s|\\()`);
+  for (let i = 1; i <= lineCount; i++) {
+    const text = watModel.getLineContent(i);
+    if (!re.test(text)) continue;
+    const params = [...text.matchAll(/\(param\s+(?:\$\S+\s+)?(\w+)\)/g)].map(m => m[1]);
+    const results = [...text.matchAll(/\(result\s+(\w+)\)/g)].map(m => m[1]);
+    return { params, results };
+  }
+  return null;
+}
+
+/** Resolve a type index or $name to its signature from the WAT model. */
+function resolveWatType(watModel: monaco.editor.ITextModel, operand: string): string | null {
+  const lineCount = watModel.getLineCount();
+  if (operand.startsWith("$")) {
+    // Named type: find (type $name ...)
+    const escaped = operand.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(`\\(type\\s+${escaped}\\s`);
+    for (let i = 1; i <= lineCount; i++) {
+      const text = watModel.getLineContent(i);
+      if (!re.test(text)) continue;
+      return extractTypeSig(text);
+    }
+  } else {
+    // Numeric index: count (type ...) definitions
+    const idx = parseInt(operand);
+    if (isNaN(idx)) return null;
+    let count = 0;
+    for (let i = 1; i <= lineCount; i++) {
+      const text = watModel.getLineContent(i).trim();
+      if (/^\(type\s/.test(text)) {
+        if (count === idx) return extractTypeSig(text);
+        count++;
+      }
+    }
+  }
+  return null;
+}
+
+function extractTypeSig(typeLineText: string): string {
+  const params = [...typeLineText.matchAll(/\(param\s+(?:\$\S+\s+)?(\w+)\)/g)].map(m => m[1]);
+  const results = [...typeLineText.matchAll(/\(result\s+(\w+)\)/g)].map(m => m[1]);
+  const nameM = typeLineText.match(/\(type\s+(\$\S+)/);
+  const name = nameM ? `**${nameM[1]}**` : "type";
+  const ret = results.length ? " → " + results.join(", ") : "";
+  return `${name}(${params.join(", ")})${ret}`;
+}
+
+/** Resolve a call target (numeric index or $name) to function name + signature. */
+function resolveCallTarget(watModel: monaco.editor.ITextModel, operand: string): string | null {
+  let funcName: string | null = null;
+  if (operand.startsWith("$")) {
+    funcName = operand;
+  } else {
+    const idx = parseInt(operand);
+    if (isNaN(idx) || !lastWasmData) return null;
+    const name = lastWasmData.functionNames.get(idx) ?? lastWasmData.exportNames.get(idx);
+    if (name) funcName = "$" + name;
+    else return `→ function #${idx}`;
+  }
+  if (!funcName) return null;
+  const sig = findWatFuncSignature(watModel, funcName);
+  if (sig) {
+    const ret = sig.results.length ? " → " + sig.results.join(", ") : "";
+    return `→ **${funcName}**(${sig.params.join(", ")})${ret}`;
+  }
+  return `→ **${funcName}**`;
+}
+
+/** Find enclosing function name for a WAT line (search upward for (func $name). */
+function findEnclosingWatFunc(watModel: monaco.editor.ITextModel, lineNumber: number): string | null {
+  for (let i = lineNumber; i >= 1; i--) {
+    const text = watModel.getLineContent(i);
+    const m = text.match(/\(func\s+(\$\S+)/);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+/** Cached map of TS declaration name → line number, built from the AST. */
+let tsSymbolCache: { version: number; map: Map<string, number> } | null = null;
+
+function getTsSymbolMap(tsModel: monaco.editor.ITextModel): Map<string, number> {
+  const version = tsModel.getVersionId();
+  if (tsSymbolCache?.version === version) return tsSymbolCache.map;
+
+  const map = new Map<string, number>();
+  const text = tsModel.getValue();
+  const sf = ts.createSourceFile("example.ts", text, ts.ScriptTarget.Latest, true);
+
+  function add(name: string, node: ts.Node) {
+    const { line } = sf.getLineAndCharacterOfPosition(node.getStart());
+    if (!map.has(name)) map.set(name, line + 1);
+  }
+
+  function visit(node: ts.Node, prefix: string) {
+    if (ts.isFunctionDeclaration(node) && node.name) {
+      add(prefix + node.name.text, node);
+    } else if (ts.isClassDeclaration(node) && node.name) {
+      const cls = node.name.text;
+      add(prefix + cls, node);
+      ts.forEachChild(node, (child) => visit(child, cls + "."));
+      return;
+    } else if (ts.isMethodDeclaration(node) && ts.isIdentifier(node.name)) {
+      add(prefix + node.name.text, node);
+    } else if (ts.isConstructorDeclaration(node)) {
+      add(prefix + "constructor", node);
+    } else if (ts.isGetAccessorDeclaration(node) && ts.isIdentifier(node.name)) {
+      add(prefix + node.name.text, node);
+      add(prefix + "get_" + node.name.text, node);
+    } else if (ts.isSetAccessorDeclaration(node) && ts.isIdentifier(node.name)) {
+      add(prefix + node.name.text, node);
+      add(prefix + "set_" + node.name.text, node);
+    } else if (ts.isPropertyDeclaration(node) && ts.isIdentifier(node.name)) {
+      add(prefix + node.name.text, node);
+    } else if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) &&
+               node.initializer && (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))) {
+      add(prefix + node.name.text, node);
+    }
+    ts.forEachChild(node, (child) => visit(child, prefix));
+  }
+
+  ts.forEachChild(sf, (child) => visit(child, ""));
+  tsSymbolCache = { version, map };
+  return map;
+}
+
+/** Find a TS source line for a WAT function name using the TS AST. */
+function findTsSourceLine(tsModel: monaco.editor.ITextModel, funcName: string): number | null {
+  const name = funcName.replace(/^\$/, "");
+  const map = getTsSymbolMap(tsModel);
+  if (map.has(name)) return map.get(name)!;
+  // Try short name (e.g. "MyClass.method" → "method")
+  const short = name.includes(".") ? name.split(".").pop()! : null;
+  if (short && map.has(short)) return map.get(short)!;
+  return null;
+}
+
+monaco.languages.registerHoverProvider("wat", {
+  provideHover(model, position) {
+    const line = model.getLineContent(position.lineNumber);
+    const parts: string[] = [];
+
+    // Line-level explanation
+    const lineDesc = describeWatLine(line);
+    if (lineDesc) parts.push(lineDesc);
+
+    // Resolve call/call_indirect targets
+    const callM = line.trim().match(/^(call(?:_indirect)?)\s+(\$?\S+)/);
+    if (callM) {
+      const resolved = resolveCallTarget(model, callM[2]);
+      if (resolved) parts.push(resolved);
+    }
+
+    // Resolve type references: "type N", "(type $name)", "call_indirect (type N)"
+    const typeRefs = [...line.matchAll(/\(type\s+(\$?\S+)\s*\)/g), ...line.matchAll(/^[\s]*type\s+(\d+)/g)];
+    for (const tm of typeRefs) {
+      const sig = resolveWatType(model, tm[1]);
+      if (sig) parts.push(`→ ${sig}`);
+    }
+
+    // Token-level explanation for the hovered word
+    const token = getWatTokenAt(line, position.column);
+    if (token && token.length > 0) {
+      const doc = describeWatInstruction(token) || WAT_KEYWORD_DOCS[token];
+      if (doc && (!lineDesc || !lineDesc.includes(doc.brief))) {
+        const link = doc.url ? ` — [docs ↗](${doc.url})` : "";
+        parts.push(`**${token}** — ${doc.brief}${link}`);
+      } else if (doc?.url) {
+        parts.push(`[${token} docs ↗](${doc.url})`);
+      }
+    }
+
+    if (parts.length === 0) return null;
+
+    const word = model.getWordAtPosition(position);
+    const range = word
+      ? new monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn)
+      : new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column + 1);
+
+    return { range, contents: parts.map((value) => ({ value })) };
+  },
+});
+
 // ─── Virtual file system ────────────────────────────────────────────────
 interface FileEntry {
   path: string;
@@ -830,6 +1432,222 @@ const previewPanel = document.getElementById("preview-panel")!;
 
 // Treemap
 const treemap = new WasmTreemap(treemapPanel);
+
+// Treemap click → jump to WAT/hex editors
+treemap.onNodeSelect = ({ name, fullPath }) => {
+  if (!lastWasmData) return;
+  const watText = watFile.model.getValue();
+
+  // Try to find a function match
+  const funcBody = lastWasmData.functionBodies.find((_fb, i) => {
+    const fname = lastWasmData!.functionNames.get(i + lastWasmData!.importFuncCount);
+    return fname === name;
+  });
+
+  if (funcBody) {
+    // Jump WAT editor to function definition
+    switchToFileRight("output/example.wat");
+    const pattern = `(func $${name}`;
+    const idx = watText.indexOf(pattern);
+    if (idx !== -1) {
+      const line = watText.substring(0, idx).split("\n").length;
+      editorRight.revealLineInCenter(line);
+      editorRight.setPosition({ lineNumber: line, column: 1 });
+    }
+    return;
+  }
+
+  // Try to find a section match
+  const section = lastWasmData.sections.find((s) => s.name === name || s.customName === name);
+  if (section) {
+    // Jump hex editor to section offset
+    switchToFileRight("output/example.wasm");
+    const pos = byteToPos(section.offset);
+    editorRight.revealLineInCenter(pos.lineNumber);
+    editorRight.setPosition(pos);
+    return;
+  }
+
+  // Try import module match (e.g. "env" inside "import")
+  if (fullPath.startsWith("import/")) {
+    // Search WAT for the import module
+    const pattern = `(import "${name}"`;
+    const idx = watText.indexOf(pattern);
+    if (idx !== -1) {
+      switchToFileRight("output/example.wat");
+      const line = watText.substring(0, idx).split("\n").length;
+      editorRight.revealLineInCenter(line);
+      editorRight.setPosition({ lineNumber: line, column: 1 });
+      return;
+    }
+  }
+
+  // Try individual import match (e.g. "console_log [func]")
+  const importMatch = name.match(/^(.+)\s+\[(\w+)\]$/);
+  if (importMatch) {
+    const importName = importMatch[1];
+    const pattern = `"${importName}"`;
+    const idx = watText.indexOf(pattern);
+    if (idx !== -1) {
+      switchToFileRight("output/example.wat");
+      const line = watText.substring(0, idx).split("\n").length;
+      editorRight.revealLineInCenter(line);
+      editorRight.setPosition({ lineNumber: line, column: 1 });
+      return;
+    }
+  }
+};
+
+// Treemap hover → highlight corresponding range in hex/WAT editors
+let hoverDecorationsRight: monaco.editor.IEditorDecorationsCollection | null = null;
+let preHoverViewState: monaco.editor.ICodeEditorViewState | null = null;
+
+treemap.onNodeHover = (node) => {
+  // Clear previous hover decorations
+  if (hoverDecorationsRight) {
+    hoverDecorationsRight.clear();
+    hoverDecorationsRight = null;
+  }
+  if (!node || !lastWasmData) {
+    // Hover ended — restore previous scroll/cursor position
+    if (preHoverViewState) {
+      editorRight.restoreViewState(preHoverViewState);
+      preHoverViewState = null;
+    }
+    return;
+  }
+
+  // Save view state before first hover scroll
+  if (!preHoverViewState) {
+    preHoverViewState = editorRight.saveViewState();
+  }
+
+  const { name, fullPath } = node;
+  const wasmModel = fileMap.get("output/example.wasm")!.model;
+  const watModel = fileMap.get("output/example.wat")!.model;
+  const currentModel = editorRight.getModel();
+
+  if (currentModel === wasmModel) {
+    const range = hexRangeForNode(name, fullPath);
+    if (range) {
+      hoverDecorationsRight = editorRight.createDecorationsCollection([{
+        range,
+        options: { className: "hex-hover-highlight", isWholeLine: true },
+      }]);
+      editorRight.revealRangeInCenter(range);
+    }
+  } else if (currentModel === watModel) {
+    const watLine = watLineForNode(name, fullPath);
+    if (watLine) {
+      const range = new monaco.Range(watLine.start, 1, watLine.end, 1);
+      hoverDecorationsRight = editorRight.createDecorationsCollection([{
+        range,
+        options: { className: "hex-hover-highlight", isWholeLine: true },
+      }]);
+      editorRight.revealRangeInCenter(range);
+    }
+  }
+};
+
+/** Find the hex byte range (as Monaco Range) for a treemap node */
+function hexRangeForNode(name: string, fullPath: string): monaco.Range | null {
+  if (!lastWasmData) return null;
+
+  // Function body
+  const funcBody = lastWasmData.functionBodies.find((_fb, i) => {
+    const fname = lastWasmData!.functionNames.get(i + lastWasmData!.importFuncCount);
+    return fname === name;
+  });
+  if (funcBody) {
+    const start = byteToPos(funcBody.offset);
+    const end = byteToPos(funcBody.offset + funcBody.totalSize - 1);
+    return new monaco.Range(start.lineNumber, 1, end.lineNumber, 999);
+  }
+
+  // Section
+  const section = lastWasmData.sections.find((s) => s.name === name || s.customName === name);
+  if (section) {
+    const startLine = Math.floor(section.offset / 16) + 1;
+    const endLine = Math.floor((section.offset + section.totalSize - 1) / 16) + 1;
+    return new monaco.Range(startLine, 1, endLine, 999);
+  }
+
+  // Import module group (e.g. "env" inside "import")
+  if (fullPath.startsWith("import/") && !name.match(/\[/)) {
+    const importSection = lastWasmData.sections.find((s) => s.name === "import");
+    if (importSection) {
+      const startLine = Math.floor(importSection.offset / 16) + 1;
+      const endLine = Math.floor((importSection.offset + importSection.totalSize - 1) / 16) + 1;
+      return new monaco.Range(startLine, 1, endLine, 999);
+    }
+  }
+
+  return null;
+}
+
+/** Find the WAT line range for a treemap node */
+function watLineForNode(name: string, fullPath: string): { start: number; end: number } | null {
+  const watText = fileMap.get("output/example.wat")!.model.getValue();
+
+  // Function — find (func $name and its closing paren
+  const funcPattern = `(func $${name}`;
+  let idx = watText.indexOf(funcPattern);
+  if (idx !== -1) {
+    const startLine = watText.substring(0, idx).split("\n").length;
+    // Find the end of this func by looking for the next top-level (func or end of module
+    const afterFunc = watText.indexOf("\n  (func ", idx + funcPattern.length);
+    const endIdx = afterFunc !== -1 ? afterFunc : watText.lastIndexOf(")");
+    const endLine = watText.substring(0, endIdx).split("\n").length;
+    return { start: startLine, end: endLine };
+  }
+
+  // Section-level: find section keyword in WAT
+  const sectionKeywords: Record<string, string> = {
+    type: "(type ", import: "(import ", func: "(func ", export: "(export ",
+    global: "(global ", table: "(table ", memory: "(memory ", element: "(elem ",
+  };
+  const kw = sectionKeywords[name];
+  if (kw) {
+    const lines = watText.split("\n");
+    let start = -1, end = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].trimStart().startsWith(kw)) {
+        if (start === -1) start = i + 1;
+        end = i + 1;
+      }
+    }
+    if (start !== -1) return { start, end };
+  }
+
+  // Import module match
+  if (fullPath.startsWith("import/")) {
+    const pattern = `(import "${name}"`;
+    idx = watText.indexOf(pattern);
+    if (idx !== -1) {
+      const lines = watText.split("\n");
+      let start = -1, end = -1;
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].includes(`(import "${name}"`)) {
+          if (start === -1) start = i + 1;
+          end = i + 1;
+        }
+      }
+      if (start !== -1) return { start, end };
+    }
+  }
+
+  // Individual import
+  const importMatch = name.match(/^(.+)\s+\[(\w+)\]$/);
+  if (importMatch) {
+    idx = watText.indexOf(`"${importMatch[1]}"`);
+    if (idx !== -1) {
+      const line = watText.substring(0, idx).split("\n").length;
+      return { start: line, end: line };
+    }
+  }
+
+  return null;
+}
 
 // ─── Editor tabs (split left/right) ─────────────────────────────────────
 const LEFT_TABS = new Set(["input/example.ts"]);
@@ -1033,103 +1851,240 @@ ${exports}
 
 // ─── Hex viewer annotations ─────────────────────────────────────────────
 
-const SECTION_CSS: Record<string, string> = {
-  Header: "header", Type: "type", Import: "import", Function: "function",
-  Table: "table", Tag: "tag", Global: "global", Export: "export",
-  Element: "element", Code: "code", "Custom: name": "name",
-};
-
 function sectionCssKey(section: WasmSection): string {
-  const key = section.customName ? `Custom: ${section.customName}` : section.name;
-  return SECTION_CSS[key] ?? "header";
+  const key = section.customName ? "custom" : section.name;
+  return key in SECTION_COLORS ? key : "header";
 }
+
+
+// Generate hex viewer CSS from treemap SECTION_COLORS
+{
+  const style = document.createElement("style");
+  const rules: string[] = [];
+  for (const [name, [r, g, b]] of Object.entries(SECTION_COLORS)) {
+    // Subtle dark background tint derived from the section color (two alternating shades)
+    const bg0 = `rgb(${Math.round(r * 0.15)},${Math.round(g * 0.15)},${Math.round(b * 0.15)})`;
+    const bg1 = `rgb(${Math.round(r * 0.22)},${Math.round(g * 0.22)},${Math.round(b * 0.22)})`;
+    rules.push(`.hex-sec-${name} { background: ${bg0} !important; }`);
+    rules.push(`.hex-sec-${name}-alt { background: ${bg1} !important; }`);
+    // Label color: brighter version of the section color
+    const lc = `rgb(${Math.min(255, r + 60)},${Math.min(255, g + 60)},${Math.min(255, b + 60)})`;
+    rules.push(`.hex-sec-label-${name} { color: ${lc}; }`);
+    // Span hover: brighter + more saturated version of section color, with boosted text
+    const hoverBg = `rgba(${Math.min(255, Math.round(r * 1.2))},${Math.min(255, Math.round(g * 1.2))},${Math.min(255, Math.round(b * 1.2))},0.25)`;
+    rules.push(`.hex-span-hover-${name} { background: ${hoverBg} !important; }`);
+  }
+  rules.push(`.hex-dim { color: #444 !important; }`);
+  rules.push(`.hex-hover-highlight { background: rgba(255,255,255,0.06) !important; }`);
+  // Per-section brightness-scaled hex byte colors and ASCII tints
+  for (const [name, [r, g, b]] of Object.entries(SECTION_COLORS)) {
+    // ASCII chars tinted with section color
+    const asc = `rgb(${Math.min(255, Math.round(r * 0.6 + 120))},${Math.min(255, Math.round(g * 0.6 + 120))},${Math.min(255, Math.round(b * 0.6 + 120))})`;
+    rules.push(`.hex-asc-${name} { color: ${asc} !important; }`);
+    // Brightness levels 0-10: near-background → section color → white
+    const bgVal = 35;
+    const midR = Math.min(255, r + 80), midG = Math.min(255, g + 80), midB = Math.min(255, b + 80);
+    for (let i = 0; i <= 10; i++) {
+      const t = i / 10;
+      let cr: number, cg: number, cb: number;
+      if (t <= 0.5) {
+        const s = t * 2;
+        cr = Math.round(bgVal + s * (midR - bgVal));
+        cg = Math.round(bgVal + s * (midG - bgVal));
+        cb = Math.round(bgVal + s * (midB - bgVal));
+      } else {
+        const s = (t - 0.5) * 2;
+        cr = Math.round(midR + s * (255 - midR));
+        cg = Math.round(midG + s * (255 - midG));
+        cb = Math.round(midB + s * (255 - midB));
+      }
+      rules.push(`.hex-b${i}-${name} { color: rgb(${cr},${cg},${cb}) !important; }`);
+    }
+  }
+  // Must come AFTER hex-b* so it wins the cascade
+  rules.push(`.hex-span-text { color: #fff !important; }`);
+  style.textContent = rules.join("\n");
+  document.head.appendChild(style);
+}
+
+// Hex line layout: "OFFSET  HEX_DATA  ASCII  LABEL"
+// Columns:          1..8  10..56    59..74  77+
+const HEX_DATA_COL = 10; // after "XXXXXXXX  "
+const HEX_ASCII_COL = 59; // after 47 hex chars + 2 spaces
+const HEX_LABEL_COL = 77; // after 16 ascii chars + 2 spaces
 
 /** Map a byte offset → Monaco editor position in the hex dump */
 function byteToPos(offset: number): monaco.IPosition {
   return {
     lineNumber: Math.floor(offset / 16) + 1,
-    column: 10 + (offset % 16) * 3 + 1,
+    column: HEX_DATA_COL + (offset % 16) * 3 + 1,
   };
 }
 
 /** Map a Monaco position in the hex dump → byte offset */
 function posToByteOffset(line: number, col: number): number | null {
-  const byteInLine = Math.floor((col - 10) / 3);
+  const byteInLine = Math.floor((col - HEX_DATA_COL) / 3);
   if (byteInLine < 0 || byteInLine > 15) return null;
   return (line - 1) * 16 + byteInLine;
 }
 
 let lastWasmData: WasmData | null = null;
+let lastWasmSpans: ByteSpan[] = [];
 let pendingHexDecorations: monaco.editor.IModelDeltaDecoration[] = [];
 let hexDecorationsCollection: monaco.editor.IEditorDecorationsCollection | null = null;
 
-function annotateHexEditor(bin: Uint8Array) {
-  const wasmData = parseWasm(bin.buffer as ArrayBuffer);
-  lastWasmData = wasmData;
+/** Build per-line labels for the hex dump first column */
+function buildHexLineLabels(wasmData: WasmData, totalLines: number): string[] {
+  const labels = new Array<string>(totalLines).fill("");
 
-  const decorations: monaco.editor.IModelDeltaDecoration[] = [];
+  // Header (line 0 = first line)
+  labels[0] = "HEADER";
 
-  // Header decoration (magic + version = 8 bytes)
-  const headerStart = byteToPos(0);
-  const headerEnd = byteToPos(7);
-  decorations.push({
-    range: new monaco.Range(headerStart.lineNumber, 1, headerEnd.lineNumber, 999),
-    options: {
-      className: "hex-sec-header",
-      isWholeLine: true,
-      glyphMarginHoverMessage: { value: "**HEADER** — magic + version (8 bytes)" },
-      afterContentClassName: "hex-sec-label hex-sec-label-header",
-      after: { content: " HEADER", inlineClassName: "hex-sec-label hex-sec-label-header" },
-    },
-  });
-
-  // Section decorations
+  // Section lines
   for (const section of wasmData.sections) {
-    const cssKey = sectionCssKey(section);
-    const start = byteToPos(section.offset);
-    const end = byteToPos(section.offset + section.totalSize - 1);
-    const sizeStr = section.totalSize >= 1024
-      ? `${(section.totalSize / 1024).toFixed(1)}k`
-      : `${section.totalSize}b`;
     const label = section.customName
-      ? `${section.name}: ${section.customName}`
+      ? `${section.name}:${section.customName}`
       : section.name;
-
-    decorations.push({
-      range: new monaco.Range(start.lineNumber, 1, end.lineNumber, 999),
-      options: {
-        className: `hex-sec-${cssKey}`,
-        isWholeLine: true,
-      },
-    });
-
-    // Label on the first line of the section
-    decorations.push({
-      range: new monaco.Range(start.lineNumber, 1, start.lineNumber, 1),
-      options: {
-        glyphMarginHoverMessage: {
-          value: `**${label.toUpperCase()}** — ${sizeStr} (offset 0x${section.offset.toString(16)})`,
-        },
-        after: {
-          content: ` ${label.toUpperCase()} ${sizeStr}`,
-          inlineClassName: `hex-sec-label hex-sec-label-${cssKey}`,
-        },
-      },
-    });
+    const startLine = Math.floor(section.offset / 16);
+    const endLine = Math.floor((section.offset + section.totalSize - 1) / 16);
+    for (let l = startLine; l <= Math.min(endLine, totalLines - 1); l++) {
+      labels[l] = label;
+    }
   }
 
-  // Function body decorations within the code section
+  // Function bodies override code section labels
   for (const fb of wasmData.functionBodies) {
     const funcName = wasmData.functionNames.get(fb.index + wasmData.importFuncCount) ?? `func[${fb.index}]`;
-    const start = byteToPos(fb.offset);
-    decorations.push({
-      range: new monaco.Range(start.lineNumber, 1, start.lineNumber, 1),
-      options: {
-        glyphMarginHoverMessage: {
-          value: `**$${funcName}** — ${fb.totalSize}b (offset 0x${fb.offset.toString(16)})`,
-        },
-      },
-    });
+    const startLine = Math.floor(fb.offset / 16);
+    const endLine = Math.floor((fb.offset + fb.totalSize - 1) / 16);
+    for (let l = startLine; l <= Math.min(endLine, totalLines - 1); l++) {
+      labels[l] = `$${funcName}`;
+    }
+  }
+
+  return labels;
+}
+
+function annotateHexEditor(bin: Uint8Array, wasmData: WasmData, lineLabels: string[]) {
+  const decorations: monaco.editor.IModelDeltaDecoration[] = [];
+  const totalLines = Math.ceil(bin.length / 16);
+
+  // Build per-byte section map: byteOffset → cssKey
+  const byteSectionMap = new Uint8Array(bin.length); // index into sectionKeys[]
+  const sectionKeys = ["header"];
+  const sectionKeyIndex = new Map<string, number>([["header", 0]]);
+  function getSectionKeyIdx(key: string): number {
+    let idx = sectionKeyIndex.get(key);
+    if (idx == null) { idx = sectionKeys.length; sectionKeys.push(key); sectionKeyIndex.set(key, idx); }
+    return idx;
+  }
+  // Header: bytes 0-7
+  for (let i = 0; i < Math.min(8, bin.length); i++) byteSectionMap[i] = 0;
+  // Sections
+  for (const section of wasmData.sections) {
+    const idx = getSectionKeyIdx(sectionCssKey(section));
+    const end = Math.min(section.offset + section.totalSize, bin.length);
+    for (let i = section.offset; i < end; i++) byteSectionMap[i] = idx;
+  }
+
+  // Build per-byte span alternation: 0 or 1 toggling on each span boundary
+  const byteSpanAlt = new Uint8Array(bin.length);
+  {
+    let alt = 0;
+    let spanIdx = 0;
+    for (let i = 0; i < bin.length; i++) {
+      // Advance to the span covering this byte
+      while (spanIdx < lastWasmSpans.length &&
+             i >= lastWasmSpans[spanIdx].offset + lastWasmSpans[spanIdx].length) {
+        spanIdx++;
+        alt ^= 1;
+      }
+      byteSpanAlt[i] = alt;
+    }
+  }
+
+  // Per-line decorations (byte-precise section backgrounds, labels, brightness)
+  for (let l = 0; l < totalLines; l++) {
+    const lineNum = l + 1;
+    const lineStart = l * 16;
+    const lineEnd = Math.min(lineStart + 16, bin.length);
+    const slice = bin.subarray(lineStart, lineEnd);
+
+    // Section background: emit one decoration per contiguous run of same section+span-alt
+    let runStart = 0;
+    let runKey = byteSectionMap[lineStart];
+    let runAlt = byteSpanAlt[lineStart];
+    for (let b = 1; b <= slice.length; b++) {
+      const key = b < slice.length ? byteSectionMap[lineStart + b] : -1;
+      const alt = b < slice.length ? byteSpanAlt[lineStart + b] : -1;
+      if (key !== runKey || alt !== runAlt) {
+        const base = `hex-sec-${sectionKeys[runKey]}`;
+        const cls = runAlt ? `${base}-alt` : base;
+        // Background spans the hex columns for this byte run
+        const colStart = HEX_DATA_COL + runStart * 3 + 1;
+        const colEnd = HEX_DATA_COL + (b - 1) * 3 + 3; // include last byte's 2 hex chars
+        decorations.push({
+          range: new monaco.Range(lineNum, colStart, lineNum, colEnd),
+          options: { className: cls },
+        });
+        // Also color the corresponding ASCII columns
+        decorations.push({
+          range: new monaco.Range(lineNum, HEX_ASCII_COL + runStart + 1, lineNum, HEX_ASCII_COL + b + 1),
+          options: { className: cls },
+        });
+        // Offset column gets the color of the first byte on the line
+        if (runStart === 0) {
+          decorations.push({
+            range: new monaco.Range(lineNum, 1, lineNum, 9),
+            options: { className: cls },
+          });
+        }
+        runStart = b;
+        runKey = key as number;
+        runAlt = alt as number;
+      }
+    }
+
+    // Color the label text (last column)
+    const label = lineLabels[l];
+    if (label) {
+      // Label color matches the last section on this line
+      const lastKey = sectionKeys[byteSectionMap[lineEnd - 1]];
+      decorations.push({
+        range: new monaco.Range(lineNum, HEX_LABEL_COL + 1, lineNum, HEX_LABEL_COL + 1 + label.length),
+        options: { inlineClassName: `hex-sec-label-${lastKey}` },
+      });
+    }
+
+    // Dim leading zeros in the offset column
+    const offsetStr = (l * 16).toString(16).padStart(8, "0");
+    const firstNonZero = offsetStr.search(/[^0]/);
+    const zeroCount = firstNonZero === -1 ? 8 : firstNonZero;
+    if (zeroCount > 0) {
+      decorations.push({
+        range: new monaco.Range(lineNum, 1, lineNum, 1 + zeroCount),
+        options: { inlineClassName: "hex-dim" },
+      });
+    }
+
+    // Brightness-scaled hex bytes + ascii coloring (section-tinted)
+    for (let b = 0; b < slice.length; b++) {
+      const v = slice[b];
+      const secName = sectionKeys[byteSectionMap[lineStart + b]];
+      const hexCol = HEX_DATA_COL + b * 3 + 1;
+      const bright = v === 0 ? 0 : Math.max(1, Math.round((v / 255) * 10));
+      decorations.push({
+        range: new monaco.Range(lineNum, hexCol, lineNum, hexCol + 2),
+        options: { inlineClassName: `hex-b${bright}-${secName}` },
+      });
+
+      const ascCol = HEX_ASCII_COL + b + 1;
+      const cls = v >= 32 && v < 127 ? `hex-asc-${secName}` : "hex-dim";
+      decorations.push({
+        range: new monaco.Range(lineNum, ascCol, lineNum, ascCol + 1),
+        options: { inlineClassName: cls },
+      });
+    }
   }
 
   pendingHexDecorations = decorations;
@@ -1147,7 +2102,91 @@ function applyHexDecorations() {
   hexDecorationsCollection = editorRight.createDecorationsCollection(pendingHexDecorations);
 }
 
-// Hover provider for the hex view — shows section and function info
+// ─── Span lookup helpers ────────────────────────────────────────────────
+
+/** Binary search for the span containing `offset` */
+function findSpanAt(offset: number): ByteSpan | null {
+  const spans = lastWasmSpans;
+  let lo = 0, hi = spans.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const s = spans[mid];
+    if (offset < s.offset) hi = mid - 1;
+    else if (offset >= s.offset + s.length) lo = mid + 1;
+    else return s;
+  }
+  return null;
+}
+
+/** Find which section a byte offset belongs to */
+function findSectionAt(offset: number): WasmSection | null {
+  if (!lastWasmData) return null;
+  for (const s of lastWasmData.sections) {
+    if (offset >= s.offset && offset < s.offset + s.totalSize) return s;
+  }
+  return null;
+}
+
+/** Find which function body a byte offset belongs to */
+function findFuncBodyAt(offset: number): { name: string; fb: WasmFunctionBody } | null {
+  if (!lastWasmData) return null;
+  for (const fb of lastWasmData.functionBodies) {
+    if (offset >= fb.offset && offset < fb.offset + fb.totalSize) {
+      const name = lastWasmData.functionNames.get(fb.index + lastWasmData.importFuncCount) ?? `func[${fb.index}]`;
+      return { name, fb };
+    }
+  }
+  return null;
+}
+
+/** Build decorations highlighting a span across hex, ascii, offset, and label columns */
+function spanHighlightDecorations(s: ByteSpan, className: string): monaco.editor.IModelDeltaDecoration[] {
+  const decs: monaco.editor.IModelDeltaDecoration[] = [];
+  const spanEnd = s.offset + s.length;
+  const firstLine = Math.floor(s.offset / 16);
+  const lastLine = Math.floor((spanEnd - 1) / 16);
+
+  for (let line = firstLine; line <= lastLine; line++) {
+    const lineNum = line + 1;
+    const lineByteStart = line * 16;
+    // Clamp span range to this line's 16-byte window
+    const bStart = Math.max(s.offset, lineByteStart) - lineByteStart; // 0..15
+    const bEnd = Math.min(spanEnd, lineByteStart + 16) - lineByteStart; // 1..16
+
+    // Hex column: from first byte's hex pos to last byte's hex pos + 2
+    const hexColStart = HEX_DATA_COL + bStart * 3 + 1;
+    const hexColEnd = HEX_DATA_COL + (bEnd - 1) * 3 + 3;
+    decs.push({
+      range: new monaco.Range(lineNum, hexColStart, lineNum, hexColEnd),
+      options: { className, inlineClassName: "hex-span-text" },
+    });
+
+    // ASCII column: corresponding characters
+    const ascStart = HEX_ASCII_COL + bStart + 1;
+    const ascEnd = HEX_ASCII_COL + bEnd + 1;
+    decs.push({
+      range: new monaco.Range(lineNum, ascStart, lineNum, ascEnd),
+      options: { className, inlineClassName: "hex-span-text" },
+    });
+
+    // Offset column (cols 1..8) — highlight on every affected line
+    decs.push({
+      range: new monaco.Range(lineNum, 1, lineNum, 9),
+      options: { className },
+    });
+
+    // Label column — highlight on every affected line
+    decs.push({
+      range: new monaco.Range(lineNum, HEX_LABEL_COL + 1, lineNum, 999),
+      options: { className },
+    });
+  }
+
+  return decs;
+}
+
+// ─── Hover provider with span info ─────────────────────────────────────
+
 const wasmHexModel = fileMap.get("output/example.wasm")!.model;
 monaco.languages.registerHoverProvider("text", {
   provideHover(_model, position) {
@@ -1155,44 +2194,169 @@ monaco.languages.registerHoverProvider("text", {
     const offset = posToByteOffset(position.lineNumber, position.column);
     if (offset === null) return null;
 
-    // Find which section this byte belongs to
-    let section: WasmSection | null = null;
-    for (const s of lastWasmData.sections) {
-      if (offset >= s.offset && offset < s.offset + s.totalSize) {
-        section = s;
-        break;
-      }
-    }
-
     const parts: string[] = [];
-    if (offset < 8) {
-      parts.push("**HEADER** — Wasm magic + version");
-    } else if (section) {
-      const label = section.customName ? `${section.name}: ${section.customName}` : section.name;
-      parts.push(`**${label.toUpperCase()}** section — ${section.totalSize}b`);
+
+    // Span-level info (most specific)
+    const span = findSpanAt(offset);
+    if (span) {
+      const label = span.value ? `**${span.label}** = ${span.value}` : `**${span.label}**`;
+      parts.push(label);
     }
 
-    // Check if inside a function body
+    // Section context
+    const section = findSectionAt(offset);
+    if (offset < 8) {
+      parts.push("HEADER — Wasm magic + version");
+    } else if (section) {
+      const sLabel = section.customName ? `${section.name}: ${section.customName}` : section.name;
+      parts.push(`${sLabel.toUpperCase()} section — ${section.totalSize}b`);
+    }
+
+    // Function body context
     if (section && section.id === 10) {
-      for (const fb of lastWasmData.functionBodies) {
-        if (offset >= fb.offset && offset < fb.offset + fb.totalSize) {
-          const name = lastWasmData.functionNames.get(fb.index + lastWasmData.importFuncCount) ?? `func[${fb.index}]`;
-          parts.push(`**$${name}** — ${fb.totalSize}b`);
-          break;
-        }
-      }
+      const func = findFuncBodyAt(offset);
+      if (func) parts.push(`$${func.name} — ${func.fb.totalSize}b`);
     }
 
     parts.push(`\`offset 0x${offset.toString(16)}\` (byte ${offset})`);
 
-    return {
-      range: new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column + 2),
-      contents: parts.map((value) => ({ value })),
-    };
+    // Range covers the span's hex bytes on the current line (for tooltip anchor)
+    let range: monaco.Range;
+    if (span) {
+      const lineByteStart = (position.lineNumber - 1) * 16;
+      const bStart = Math.max(span.offset, lineByteStart) - lineByteStart;
+      const bEnd = Math.min(span.offset + span.length, lineByteStart + 16) - lineByteStart;
+      range = new monaco.Range(
+        position.lineNumber, HEX_DATA_COL + bStart * 3 + 1,
+        position.lineNumber, HEX_DATA_COL + (bEnd - 1) * 3 + 3,
+      );
+    } else {
+      range = new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column + 2);
+    }
+
+    return { range, contents: parts.map((value) => ({ value })) };
   },
 });
 
-// Click in hex code section → jump to WAT function definition
+// ─── Hex span hover highlight + treemap + TS source cross-highlight ─────
+
+let hexSpanDecoration: monaco.editor.IEditorDecorationsCollection | null = null;
+let lastHoveredSpan: ByteSpan | null = null;
+let preHoverLeftState: monaco.editor.ICodeEditorViewState | null = null;
+let lastHoveredFuncName: string | null = null;
+let leftHoverDecoration: monaco.editor.IEditorDecorationsCollection | null = null;
+
+/** Scroll the left editor (TS source) to the function matching funcName. */
+function crossHighlightTsSource(funcName: string | null) {
+  const tsModel = inputFile.model;
+  if (funcName === lastHoveredFuncName) return;
+  lastHoveredFuncName = funcName;
+
+  if (!funcName) {
+    // Restore left editor
+    if (leftHoverDecoration) { leftHoverDecoration.clear(); leftHoverDecoration = null; }
+    if (preHoverLeftState) {
+      editorLeft.restoreViewState(preHoverLeftState);
+      preHoverLeftState = null;
+    }
+    return;
+  }
+
+  const tsLine = findTsSourceLine(tsModel, funcName);
+  if (!tsLine) return;
+
+  if (!preHoverLeftState) preHoverLeftState = editorLeft.saveViewState();
+  if (leftHoverDecoration) leftHoverDecoration.clear();
+  leftHoverDecoration = editorLeft.createDecorationsCollection([{
+    range: new monaco.Range(tsLine, 1, tsLine, 1),
+    options: { className: "hex-hover-highlight", isWholeLine: true },
+  }]);
+  editorLeft.revealLineInCenter(tsLine);
+}
+
+editorRight.onMouseMove((e) => {
+  if (!e.target.position) {
+    if (hexSpanDecoration) { hexSpanDecoration.clear(); hexSpanDecoration = null; }
+    lastHoveredSpan = null;
+    treemap.highlightNode(null);
+    crossHighlightTsSource(null);
+    return;
+  }
+
+  // ─── .wasm hex view ───
+  if (activeFileRight === "output/example.wasm") {
+    const offset = posToByteOffset(e.target.position.lineNumber, e.target.position.column);
+    if (offset === null) {
+      if (hexSpanDecoration) { hexSpanDecoration.clear(); hexSpanDecoration = null; }
+      lastHoveredSpan = null;
+      treemap.highlightNode(null);
+      crossHighlightTsSource(null);
+      return;
+    }
+
+    // Span highlight
+    const span = findSpanAt(offset);
+    if (span && span === lastHoveredSpan) return;
+    lastHoveredSpan = span;
+
+    if (span) {
+      const section = findSectionAt(span.offset);
+      const cssKey = section ? sectionCssKey(section) : "header";
+      if (hexSpanDecoration) hexSpanDecoration.clear();
+      hexSpanDecoration = editorRight.createDecorationsCollection(
+        spanHighlightDecorations(span, `hex-span-hover-${cssKey}`),
+      );
+    } else {
+      if (hexSpanDecoration) { hexSpanDecoration.clear(); hexSpanDecoration = null; }
+    }
+
+    // Cross-highlight treemap tile + TS source
+    if (lastWasmData) {
+      const func = findFuncBodyAt(offset);
+      if (func) {
+        treemap.highlightNode(`code/${func.name}`);
+        crossHighlightTsSource("$" + func.name);
+      } else {
+        const section = findSectionAt(offset);
+        if (section) {
+          treemap.highlightNode(section.customName ?? section.name);
+        } else {
+          treemap.highlightNode(null);
+        }
+        crossHighlightTsSource(null);
+      }
+    }
+    return;
+  }
+
+  // ─── .wat view ───
+  if (activeFileRight === "output/example.wat") {
+    const watModel = watFile.model;
+    const funcName = findEnclosingWatFunc(watModel, e.target.position.lineNumber);
+    crossHighlightTsSource(funcName);
+    // Cross-highlight treemap
+    if (funcName) {
+      treemap.highlightNode(`code/${funcName.replace(/^\$/, "")}`);
+    } else {
+      treemap.highlightNode(null);
+    }
+    return;
+  }
+
+  crossHighlightTsSource(null);
+  treemap.highlightNode(null);
+});
+
+// Clear on mouse leave
+editorRight.onMouseLeave(() => {
+  if (hexSpanDecoration) { hexSpanDecoration.clear(); hexSpanDecoration = null; }
+  lastHoveredSpan = null;
+  treemap.highlightNode(null);
+  crossHighlightTsSource(null);
+});
+
+// ─── Click in hex → jump to WAT ────────────────────────────────────────
+
 editorRight.onMouseDown((e) => {
   if (!lastWasmData || activeFileRight !== "output/example.wasm") return;
   if (!e.target.position) return;
@@ -1200,23 +2364,29 @@ editorRight.onMouseDown((e) => {
   const offset = posToByteOffset(e.target.position.lineNumber, e.target.position.column);
   if (offset === null) return;
 
-  // Find function body at this offset
-  for (const fb of lastWasmData.functionBodies) {
-    if (offset >= fb.offset && offset < fb.offset + fb.totalSize) {
-      const name = lastWasmData.functionNames.get(fb.index + lastWasmData.importFuncCount);
-      if (!name) break;
+  // Try function body first
+  const func = findFuncBodyAt(offset);
+  if (func) {
+    switchToFileRight("output/example.wat");
+    const watText = watFile.model.getValue();
+    const pattern = `(func $${func.name}`;
+    const idx = watText.indexOf(pattern);
+    if (idx !== -1) {
+      const line = watText.substring(0, idx).split("\n").length;
+      editorRight.revealLineInCenter(line);
+      editorRight.setPosition({ lineNumber: line, column: 1 });
+    }
+    return;
+  }
 
-      // Switch to WAT and find the function definition
+  // Try section-level jump
+  const section = findSectionAt(offset);
+  if (section) {
+    const watLine = watLineForNode(section.name, section.name);
+    if (watLine) {
       switchToFileRight("output/example.wat");
-      const watText = watFile.model.getValue();
-      const pattern = `(func $${name}`;
-      const idx = watText.indexOf(pattern);
-      if (idx !== -1) {
-        const line = watText.substring(0, idx).split("\n").length;
-        editorRight.revealLineInCenter(line);
-        editorRight.setPosition({ lineNumber: line, column: 1 });
-      }
-      break;
+      editorRight.revealLineInCenter(watLine.start);
+      editorRight.setPosition({ lineNumber: watLine.start, column: 1 });
     }
   }
 });
@@ -1224,6 +2394,7 @@ editorRight.onMouseDown((e) => {
 // ─── Compile / Run ──────────────────────────────────────────────────────
 let lastResult: ReturnType<typeof compile> | null = null;
 let hasCompiledOnce = false;
+let autoCycleTimer: ReturnType<typeof setInterval> | null = null;
 
 function compileOnly() {
   const source = inputFile.model.getValue();
@@ -1250,8 +2421,16 @@ function compileOnly() {
   watFile.model.setValue(result.wat);
   if (result.binary && result.binary.length > 0) {
     const bin = result.binary as Uint8Array;
+    // Parse wasm first to build line labels
+    const wasmData = parseWasm(bin.buffer as ArrayBuffer);
+    lastWasmData = wasmData;
+    lastWasmSpans = parseWasmSpans(bin.buffer as ArrayBuffer);
+    const totalLines = Math.ceil(bin.length / 16);
+    const lineLabels = buildHexLineLabels(wasmData, totalLines);
+
     const lines: string[] = [];
     for (let i = 0; i < bin.length; i += 16) {
+      const lineIdx = i / 16;
       const slice = bin.subarray(i, Math.min(i + 16, bin.length));
       const hex = Array.from(slice, (b) =>
         b.toString(16).padStart(2, "0"),
@@ -1259,15 +2438,16 @@ function compileOnly() {
       const ascii = Array.from(slice, (b) =>
         b >= 32 && b < 127 ? String.fromCharCode(b) : ".",
       ).join("");
+      const label = lineLabels[lineIdx];
       lines.push(
-        `${i.toString(16).padStart(8, "0")}  ${hex.padEnd(47)}  ${ascii}`,
+        `${i.toString(16).padStart(8, "0")}  ${hex.padEnd(47)}  ${ascii.padEnd(16)}  ${label}`,
       );
     }
     const wasmFile = fileMap.get("output/example.wasm")!;
     wasmFile.model.setValue(lines.join("\n"));
     wasmFile.binarySize = bin.length;
     wasmFile.binaryData = new Uint8Array(bin);
-    annotateHexEditor(bin);
+    annotateHexEditor(bin, wasmData, lineLabels);
   }
   fileMap
     .get("output/example.ts")!
@@ -1361,6 +2541,9 @@ function buildEnv(
     Math_random: Math.random,
     global_document: () => doc,
     global_window: () => win,
+    global_performance: () => performance,
+    number_toFixed: (v: number, d: number) => v.toFixed(d),
+    __extern_get: (obj: any, idx: number) => obj[idx],
   };
   result.stringPool.forEach((str, i) => {
     env[`__str_${i}`] = () => str;
@@ -1424,6 +2607,16 @@ async function runOnly() {
 
     consolePre.textContent = logs.join("\n");
     if (usesDom) showOutputPanel("preview");
+
+    // Auto-cycle demos if nextDemo is exported
+    if (autoCycleTimer !== null) {
+      clearInterval(autoCycleTimer);
+      autoCycleTimer = null;
+    }
+    if (typeof exports.nextDemo === "function") {
+      const nd = exports.nextDemo;
+      autoCycleTimer = setInterval(() => nd(), 8000);
+    }
   } catch (e) {
     errorsPre.textContent = `Runtime: ${e instanceof Error ? e.message : String(e)}`;
     showOutputPanel("errors");

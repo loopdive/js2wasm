@@ -120,6 +120,10 @@ export interface CodegenContext {
   hasUnionImports: boolean;
   /** Set of function names that are async (for .d.ts generation) */
   asyncFunctions: Set<string>;
+  /** Map from module-level variable name → global index in mod.globals */
+  moduleGlobals: Map<string, number>;
+  /** Module-level variable initializers (compiled into __module_init) */
+  moduleInitStatements: ts.Statement[];
 }
 
 /** Metadata for a closure stored in a local variable */
@@ -193,6 +197,8 @@ export function generateModule(ast: TypedAST): WasmModule {
     exnTagIdx: -1,
     hasUnionImports: false,
     asyncFunctions: new Set(),
+    moduleGlobals: new Map(),
+    moduleInitStatements: [],
   };
 
   // Collect console.log imports (only variants actually used)
@@ -301,6 +307,8 @@ export function generateMultiModule(multiAst: MultiTypedAST): WasmModule {
     hasUnionImports: false,
     asyncFunctions: new Set(),
     exnTagIdx: -1,
+    moduleGlobals: new Map(),
+    moduleInitStatements: [],
   };
 
   // Phase 1: Collect all import-phase declarations across all source files
@@ -440,6 +448,9 @@ function collectPrimitiveMethodImports(
       if (isNumberType(receiverType) && methodName === "toString") {
         needed.add("number_toString");
       }
+      if (isNumberType(receiverType) && methodName === "toFixed") {
+        needed.add("number_toFixed");
+      }
     }
     // Template expressions with number substitutions need number_toString
     if (ts.isTemplateExpression(node)) {
@@ -462,6 +473,10 @@ function collectPrimitiveMethodImports(
   if (needed.has("number_toString")) {
     const t = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "number_toString", { kind: "func", typeIdx: t });
+  }
+  if (needed.has("number_toFixed")) {
+    const t = addFuncType(ctx, [{ kind: "f64" }, { kind: "f64" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", "number_toFixed", { kind: "func", typeIdx: t });
   }
 }
 
@@ -939,10 +954,9 @@ export function getOrRegisterArrayType(ctx: CodegenContext, elemKind: string, el
  * Use this instead of mapTsTypeToWasm in the codegen to get real type indices.
  */
 export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type): ValType {
-  if (isExternalDeclaredClass(tsType)) return { kind: "externref" };
-
+  // Check Array<T> / T[] BEFORE isExternalDeclaredClass, because Array is declared
+  // in the lib as `declare var Array: ArrayConstructor` which would match externref
   if (tsType.flags & ts.TypeFlags.Object) {
-    // Handle Array<T> / T[] types — must check before named struct lookup
     const sym = (tsType as ts.TypeReference).symbol ?? (tsType as ts.Type).symbol;
     if (sym?.name === "Array") {
       const typeArgs = ctx.checker.getTypeArguments(tsType as ts.TypeReference);
@@ -954,6 +968,9 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type): ValType {
       // Use ref_null so locals can default-initialize to null
       return { kind: "ref_null", typeIdx: arrTypeIdx };
     }
+
+    // Check externref AFTER Array check — Array is declared in lib but should use wasm GC arrays
+    if (isExternalDeclaredClass(tsType)) return { kind: "externref" };
 
     const name = sym?.name;
     // Check named structs (interfaces, type aliases)
@@ -1439,6 +1456,19 @@ function collectUsedExternImports(
       }
     }
 
+    // obj[idx] on externref (e.g. HTMLCollection) → __extern_get
+    if (ts.isElementAccessExpression(node)) {
+      const objType = ctx.checker.getTypeAtLocation(node.expression);
+      const sym = objType.getSymbol();
+      // Skip Array types — those use Wasm GC array.get, not host import
+      if (sym?.name !== "Array") {
+        const wasmType = mapTsTypeToWasm(objType, ctx.checker);
+        if (wasmType.kind === "externref") {
+          register("__extern_get", [{ kind: "externref" }, { kind: "f64" }], [{ kind: "externref" }]);
+        }
+      }
+    }
+
     ts.forEachChild(node, visit);
   }
 
@@ -1820,6 +1850,46 @@ function collectDeclarations(
       }
     }
   }
+
+  // Fourth: collect module-level variable declarations as wasm globals
+  for (const stmt of sourceFile.statements) {
+    if (!ts.isVariableStatement(stmt)) continue;
+    if (hasDeclareModifier(stmt)) continue;
+    for (const decl of stmt.declarationList.declarations) {
+      if (!ts.isIdentifier(decl.name)) continue;
+      const name = decl.name.text;
+      if (ctx.funcMap.has(name)) continue; // skip if shadowed by function
+      if (ctx.moduleGlobals.has(name)) continue; // skip if already registered
+
+      const varType = ctx.checker.getTypeAtLocation(decl);
+      const wasmType = resolveWasmType(ctx, varType);
+
+      // Build null/zero initializer for the global
+      const init: Instr[] = wasmType.kind === "f64"
+        ? [{ op: "f64.const", value: 0 }]
+        : wasmType.kind === "i32"
+          ? [{ op: "i32.const", value: 0 }]
+          : (wasmType.kind === "ref_null" || wasmType.kind === "ref")
+            ? [{ op: "ref.null", typeIdx: (wasmType as { typeIdx: number }).typeIdx }]
+            : [{ op: "ref.null.extern" }];
+
+      // Widen non-nullable ref to ref_null so the global can hold null initially
+      const globalType: ValType = wasmType.kind === "ref"
+        ? { kind: "ref_null", typeIdx: (wasmType as { typeIdx: number }).typeIdx }
+        : wasmType;
+
+      const globalIdx = ctx.mod.globals.length;
+      ctx.mod.globals.push({
+        name: `__mod_${name}`,
+        type: globalType,
+        mutable: true,
+        init,
+      });
+      ctx.moduleGlobals.set(name, globalIdx);
+    }
+    // Collect the statement for init compilation
+    ctx.moduleInitStatements.push(stmt);
+  }
 }
 
 function collectInterface(
@@ -1906,6 +1976,51 @@ function compileDeclarations(
         if (idx !== undefined) {
           const func = ctx.mod.functions[idx]!;
           compileFunctionBody(ctx, stmt, func);
+        }
+      }
+    }
+  }
+
+  // Compile module-level init statements into the start of main()
+  if (ctx.moduleInitStatements.length > 0) {
+    const mainIdx = funcByName.get("main");
+    if (mainIdx !== undefined) {
+      const mainFunc = ctx.mod.functions[mainIdx]!;
+      // Create a temporary FunctionContext for compiling init statements
+      const initFctx: FunctionContext = {
+        name: "__module_init",
+        params: [],
+        locals: [],
+        localMap: new Map(),
+        returnType: null,
+        body: [],
+        blockDepth: 0,
+        breakStack: [],
+        continueStack: [],
+      };
+      ctx.currentFunc = initFctx;
+
+      for (const stmt of ctx.moduleInitStatements) {
+        compileStatement(ctx, initFctx, stmt);
+      }
+
+      ctx.currentFunc = null;
+
+      // Prepend init body + init locals to main's body
+      if (initFctx.body.length > 0) {
+        mainFunc.body = [...initFctx.body, ...mainFunc.body];
+        // Add init locals to main's locals (adjust any local indices in init body)
+        // Find number of existing main locals
+        const existingLocals = mainFunc.locals.length;
+        // Append init locals to main's locals
+        mainFunc.locals = [...mainFunc.locals, ...initFctx.locals];
+        // Adjust local indices in init body (shift by existing locals count in main)
+        if (existingLocals > 0) {
+          for (const instr of initFctx.body) {
+            if ((instr.op === "local.get" || instr.op === "local.set" || instr.op === "local.tee") && typeof (instr as any).index === "number") {
+              (instr as any).index += existingLocals;
+            }
+          }
         }
       }
     }

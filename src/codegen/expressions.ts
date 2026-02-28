@@ -661,6 +661,14 @@ function compileIdentifier(
     return gType;
   }
 
+  // Check module-level globals (top-level let/const declarations)
+  const moduleIdx = ctx.moduleGlobals.get(name);
+  if (moduleIdx !== undefined) {
+    fctx.body.push({ op: "global.get", index: moduleIdx });
+    const globalDef = ctx.mod.globals[moduleIdx];
+    return globalDef?.type ?? { kind: "f64" };
+  }
+
   // Check declared globals (e.g. document, window)
   const globalInfo = ctx.declaredGlobals.get(name);
   if (globalInfo) {
@@ -1163,6 +1171,15 @@ function compileAssignment(
       fctx.body.push({ op: "global.get", index: capturedIdx });
       return resultType;
     }
+    // Check module-level globals
+    const moduleIdx = ctx.moduleGlobals.get(name);
+    if (moduleIdx !== undefined) {
+      const globalDef = ctx.mod.globals[moduleIdx];
+      const resultType = compileExpression(ctx, fctx, expr.right, globalDef?.type);
+      fctx.body.push({ op: "global.set", index: moduleIdx });
+      fctx.body.push({ op: "global.get", index: moduleIdx });
+      return resultType;
+    }
   }
 
   if (ts.isPropertyAccessExpression(expr.left)) {
@@ -1443,6 +1460,47 @@ function compileCompoundAssignment(
 
     fctx.body.push({ op: "global.set", index: capturedIdx });
     fctx.body.push({ op: "global.get", index: capturedIdx });
+    return { kind: "f64" };
+  }
+
+  // Check module-level globals
+  const moduleIdx = ctx.moduleGlobals.get(name);
+  if (moduleIdx !== undefined && fctx.localMap.get(name) === undefined) {
+    fctx.body.push({ op: "global.get", index: moduleIdx });
+    compileExpression(ctx, fctx, expr.right, { kind: "f64" });
+
+    switch (op) {
+      case ts.SyntaxKind.PlusEqualsToken:
+        fctx.body.push({ op: "f64.add" });
+        break;
+      case ts.SyntaxKind.MinusEqualsToken:
+        fctx.body.push({ op: "f64.sub" });
+        break;
+      case ts.SyntaxKind.AsteriskEqualsToken:
+        fctx.body.push({ op: "f64.mul" });
+        break;
+      case ts.SyntaxKind.AsteriskAsteriskEqualsToken: {
+        const funcIdx = ctx.funcMap.get("Math_pow");
+        if (funcIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx });
+        }
+        break;
+      }
+      case ts.SyntaxKind.SlashEqualsToken:
+        fctx.body.push({ op: "f64.div" });
+        break;
+      case ts.SyntaxKind.AmpersandEqualsToken:
+      case ts.SyntaxKind.BarEqualsToken:
+      case ts.SyntaxKind.CaretEqualsToken:
+      case ts.SyntaxKind.LessThanLessThanEqualsToken:
+      case ts.SyntaxKind.GreaterThanGreaterThanEqualsToken:
+      case ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken:
+        emitBitwiseCompoundOp(fctx, op);
+        break;
+    }
+
+    fctx.body.push({ op: "global.set", index: moduleIdx });
+    fctx.body.push({ op: "global.get", index: moduleIdx });
     return { kind: "f64" };
   }
 
@@ -1739,10 +1797,31 @@ function compileCallExpression(
       if (arrMethodResult !== undefined) return arrMethodResult;
     }
 
-    // Primitive method calls: number.toString()
+    // Primitive method calls: number.toString(), number.toFixed()
     if (isNumberType(receiverType) && propAccess.name.text === "toString") {
-      compileExpression(ctx, fctx, propAccess.expression);
+      const exprType = compileExpression(ctx, fctx, propAccess.expression);
+      // number_toString expects f64 but source may be i32 (e.g. string.length)
+      if (exprType && exprType.kind === "i32") {
+        fctx.body.push({ op: "f64.convert_i32_s" });
+      }
       const funcIdx = ctx.funcMap.get("number_toString");
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+        return { kind: "externref" };
+      }
+    }
+    if (isNumberType(receiverType) && propAccess.name.text === "toFixed") {
+      const exprType = compileExpression(ctx, fctx, propAccess.expression);
+      if (exprType && exprType.kind === "i32") {
+        fctx.body.push({ op: "f64.convert_i32_s" });
+      }
+      // Compile the digits argument (default 0)
+      if (expr.arguments.length > 0) {
+        compileExpression(ctx, fctx, expr.arguments[0]!);
+      } else {
+        fctx.body.push({ op: "f64.const", value: 0 });
+      }
+      const funcIdx = ctx.funcMap.get("number_toFixed");
       if (funcIdx !== undefined) {
         fctx.body.push({ op: "call", funcIdx });
         return { kind: "externref" };
@@ -2599,7 +2678,25 @@ function compileElementAccess(
   expr: ts.ElementAccessExpression,
 ): ValType | null {
   const objType = compileExpression(ctx, fctx, expr.expression);
-  if (!objType || (objType.kind !== "ref" && objType.kind !== "ref_null")) {
+  if (!objType) return null;
+
+  // Externref element access: obj[idx] → host import __extern_get(obj, f64) → externref
+  if (objType.kind === "externref") {
+    compileExpression(ctx, fctx, expr.argumentExpression, { kind: "f64" });
+    const funcIdx = ctx.funcMap.get("__extern_get");
+    if (funcIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx });
+      return { kind: "externref" };
+    }
+    ctx.errors.push({
+      message: "Element access on externref requires __extern_get import",
+      line: getLine(expr),
+      column: 0,
+    });
+    return null;
+  }
+
+  if (objType.kind !== "ref" && objType.kind !== "ref_null") {
     ctx.errors.push({
       message: "Element access on non-array value",
       line: getLine(expr),
@@ -3064,30 +3161,64 @@ function compileArrayMethodCall(
 
   const { typeIdx, elemType } = arrInfo;
 
+  // If receiver is a module global, proxy it through a temp local so
+  // getReceiverLocalIdx succeeds and mutating methods can write back.
+  let moduleGlobalIdx: number | undefined;
+  let savedLocal: number | undefined;
+  const MUTATING = new Set(["push", "pop", "shift", "reverse", "splice"]);
+  if (ts.isIdentifier(propAccess.expression)) {
+    const name = propAccess.expression.text;
+    const gIdx = ctx.moduleGlobals.get(name);
+    if (gIdx !== undefined && !fctx.localMap.has(name)) {
+      moduleGlobalIdx = gIdx;
+      const globalDef = ctx.mod.globals[gIdx];
+      const tempLocal = allocLocal(fctx, `__mod_proxy_${name}`, globalDef!.type);
+      fctx.body.push({ op: "global.get", index: gIdx });
+      fctx.body.push({ op: "local.set", index: tempLocal });
+      fctx.localMap.set(name, tempLocal);
+      savedLocal = tempLocal;
+    }
+  }
+
+  let result: ValType | null | undefined;
   switch (methodName) {
     case "indexOf":
-      return compileArrayIndexOf(ctx, fctx, propAccess, callExpr, typeIdx, elemType);
+      result = compileArrayIndexOf(ctx, fctx, propAccess, callExpr, typeIdx, elemType); break;
     case "includes":
-      return compileArrayIncludes(ctx, fctx, propAccess, callExpr, typeIdx, elemType);
+      result = compileArrayIncludes(ctx, fctx, propAccess, callExpr, typeIdx, elemType); break;
     case "reverse":
-      return compileArrayReverse(ctx, fctx, propAccess, callExpr, typeIdx, elemType);
+      result = compileArrayReverse(ctx, fctx, propAccess, callExpr, typeIdx, elemType); break;
     case "push":
-      return compileArrayPush(ctx, fctx, propAccess, callExpr, typeIdx, elemType);
+      result = compileArrayPush(ctx, fctx, propAccess, callExpr, typeIdx, elemType); break;
     case "pop":
-      return compileArrayPop(ctx, fctx, propAccess, callExpr, typeIdx, elemType);
+      result = compileArrayPop(ctx, fctx, propAccess, callExpr, typeIdx, elemType); break;
     case "shift":
-      return compileArrayShift(ctx, fctx, propAccess, callExpr, typeIdx, elemType);
+      result = compileArrayShift(ctx, fctx, propAccess, callExpr, typeIdx, elemType); break;
     case "slice":
-      return compileArraySlice(ctx, fctx, propAccess, callExpr, typeIdx, elemType);
+      result = compileArraySlice(ctx, fctx, propAccess, callExpr, typeIdx, elemType); break;
     case "concat":
-      return compileArrayConcat(ctx, fctx, propAccess, callExpr, typeIdx, elemType);
+      result = compileArrayConcat(ctx, fctx, propAccess, callExpr, typeIdx, elemType); break;
     case "join":
-      return compileArrayJoin(ctx, fctx, propAccess, callExpr, typeIdx, elemType);
+      result = compileArrayJoin(ctx, fctx, propAccess, callExpr, typeIdx, elemType); break;
     case "splice":
-      return compileArraySplice(ctx, fctx, propAccess, callExpr, typeIdx, elemType);
+      result = compileArraySplice(ctx, fctx, propAccess, callExpr, typeIdx, elemType); break;
     default:
-      return undefined;
+      result = undefined;
   }
+
+  // Write back temp local to module global for mutating methods
+  if (moduleGlobalIdx !== undefined && savedLocal !== undefined) {
+    if (MUTATING.has(methodName) && result !== null && result !== undefined) {
+      fctx.body.push({ op: "local.get", index: savedLocal });
+      fctx.body.push({ op: "global.set", index: moduleGlobalIdx });
+    }
+    // Clean up the proxy from localMap
+    if (ts.isIdentifier(propAccess.expression)) {
+      fctx.localMap.delete(propAccess.expression.text);
+    }
+  }
+
+  return result;
 }
 
 /** Helper: emit a block+loop copy from srcArr[srcOffset+i] to dstArr[dstOffset+i] for count iterations */
