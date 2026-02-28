@@ -1,6 +1,6 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext } from "./index.js";
-import { allocLocal, resolveWasmType, ensureI32Condition } from "./index.js";
+import { allocLocal, resolveWasmType, ensureI32Condition, ensureExnTag } from "./index.js";
 import { compileExpression } from "./expressions.js";
 import {
   isVoidType,
@@ -86,6 +86,16 @@ export function compileStatement(
 
   if (ts.isContinueStatement(stmt)) {
     compileContinueStatement(ctx, fctx, stmt);
+    return;
+  }
+
+  if (ts.isThrowStatement(stmt)) {
+    compileThrowStatement(ctx, fctx, stmt);
+    return;
+  }
+
+  if (ts.isTryStatement(stmt)) {
+    compileTryStatement(ctx, fctx, stmt);
     return;
   }
 
@@ -791,6 +801,125 @@ function compileContinueStatement(
   if (depth !== undefined) {
     fctx.body.push({ op: "br", depth });
   }
+}
+
+function compileThrowStatement(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  stmt: ts.ThrowStatement,
+): void {
+  const tagIdx = ensureExnTag(ctx);
+
+  if (stmt.expression) {
+    // Compile the thrown expression — coerce to externref
+    const resultType = compileExpression(ctx, fctx, stmt.expression, { kind: "externref" });
+    // If the expression didn't produce externref, we need to ensure it's externref
+    if (resultType && resultType.kind !== "externref") {
+      // Drop whatever was produced, push null extern as fallback
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "ref.null.extern" });
+    }
+  } else {
+    // throw with no expression (unusual but syntactically valid in some contexts)
+    fctx.body.push({ op: "ref.null.extern" });
+  }
+
+  fctx.body.push({ op: "throw", tagIdx });
+}
+
+function compileTryStatement(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  stmt: ts.TryStatement,
+): void {
+  const tagIdx = ensureExnTag(ctx);
+
+  // Compile the try block body
+  const savedBody = fctx.body;
+  fctx.body = [];
+
+  // Adjust break/continue depths: the try block adds one label level
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!++;
+  for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!++;
+
+  for (const s of stmt.tryBlock.statements) {
+    compileStatement(ctx, fctx, s);
+  }
+
+  // If there's a finally block, inline it at the end of the try body (normal path)
+  if (stmt.finallyBlock) {
+    for (const s of stmt.finallyBlock.statements) {
+      compileStatement(ctx, fctx, s);
+    }
+  }
+
+  const tryBody = fctx.body;
+
+  // Compile catch clause (if present)
+  let catches: { tagIdx: number; body: Instr[] }[] = [];
+  let catchAllBody: Instr[] | undefined;
+
+  if (stmt.catchClause) {
+    // Allocate the catch variable local (if any) before compiling catch bodies
+    // so it's available in both catch $tag and catch_all bodies.
+    let exnLocalIdx: number | null = null;
+    if (stmt.catchClause.variableDeclaration && ts.isIdentifier(stmt.catchClause.variableDeclaration.name)) {
+      const varName = stmt.catchClause.variableDeclaration.name.text;
+      exnLocalIdx = allocLocal(fctx, varName, { kind: "externref" });
+    }
+
+    // Build "catch $exn" body: receives the externref value on the stack
+    {
+      fctx.body = [];
+      if (exnLocalIdx !== null) {
+        fctx.body.push({ op: "local.set", index: exnLocalIdx });
+      } else {
+        fctx.body.push({ op: "drop" });
+      }
+      for (const s of stmt.catchClause.block.statements) {
+        compileStatement(ctx, fctx, s);
+      }
+      if (stmt.finallyBlock) {
+        for (const s of stmt.finallyBlock.statements) {
+          compileStatement(ctx, fctx, s);
+        }
+      }
+      catches = [{ tagIdx, body: fctx.body }];
+    }
+
+    // Build "catch_all" body: no value on stack; set catch var to null extern
+    {
+      fctx.body = [];
+      if (exnLocalIdx !== null) {
+        fctx.body.push({ op: "ref.null.extern" });
+        fctx.body.push({ op: "local.set", index: exnLocalIdx });
+      }
+      for (const s of stmt.catchClause.block.statements) {
+        compileStatement(ctx, fctx, s);
+      }
+      if (stmt.finallyBlock) {
+        for (const s of stmt.finallyBlock.statements) {
+          compileStatement(ctx, fctx, s);
+        }
+      }
+      catchAllBody = fctx.body;
+    }
+  }
+
+  fctx.body = savedBody;
+
+  // Restore break/continue depths
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!--;
+  for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!--;
+
+  // Emit the try instruction with catch $tag + catch_all
+  fctx.body.push({
+    op: "try",
+    blockType: { kind: "empty" },
+    body: tryBody,
+    catches,
+    catchAll: catchAllBody,
+  });
 }
 
 function getLine(node: ts.Node): number {

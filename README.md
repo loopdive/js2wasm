@@ -2,7 +2,7 @@
   <img src="./playground/image.png" alt="ts2wasm" width="300" />
 </p>
 
-# ts2wasm
+# ts2wasm Typescript to WebAssembly Compiler
 
 AOT compiler that compiles a strict subset of TypeScript directly to WebAssembly with the GC proposal.
 
@@ -73,7 +73,7 @@ The module analyzer shows the size of the WebAssembly binary and the WAT text fo
 
 ```bash
 pnpm install
-pnpm test        # 103 tests
+pnpm test        # 195 tests
 pnpm dev         # Start playground
 ```
 
@@ -173,21 +173,22 @@ Returns only the WAT text (debug).
 | console.log          | Numbers, booleans, strings via host imports                                           |
 | Export               | `export function ...` → Wasm exports                                                  |
 | Import resolution    | `import * as X from "..."` → auto-generated `declare` stubs                           |
+| Classes              | `class Foo { constructor(); method() }` — constructors, methods, inheritance           |
+| Closures             | Capturing outer variables in nested functions / arrow functions                        |
+| Generics             | `function identity<T>(x: T): T` — type parameters with constraints                    |
+| Array methods        | `.map()`, `.filter()`, `.reduce()`, `.push()`, `.forEach()` with callbacks             |
+| Bitwise operators    | `&`, `\|`, `^`, `<<`, `>>`, `>>>`                                                     |
+| Spread / rest        | `...args`, `[...arr]`, `{ ...obj }` — rest params, array/object spread                |
+| Try / catch          | `try { ... } catch (e) { ... } finally { ... }` — Wasm exception handling             |
+| Type narrowing       | `typeof x === "number"` — union types with boxing/unboxing                             |
+| Multi-file modules   | `import { foo } from "./bar"` — cross-file compilation via `compileMulti()`            |
+| Async / await        | `async function`, `await` — host-delegated Promises                                   |
 
-### Not yet supported
+### Not supported
 
-| Feature               | Notes                                                           |
-| --------------------- | --------------------------------------------------------------- |
-| Classes               | `class Foo { ... }` — constructors, methods, inheritance        |
-| Closures              | Capturing outer variables in nested functions / arrow functions |
-| Generics              | `function identity<T>(x: T): T` — runtime type parameters       |
-| Spread / rest         | `...args`, `[...arr]`, `{ ...obj }`                             |
-| Type narrowing        | `typeof x === "string"`, union types, type guards               |
-| Async / await         | `async function`, `Promise`, `await`                            |
-| Array methods         | `.map()`, `.filter()`, `.reduce()` with callbacks               |
-| Multi-file modules    | `import { foo } from "./bar"` — cross-file compilation          |
-| Try / catch           | `try { ... } catch (e) { ... } finally { ... }`                 |
-| `var`, `eval`, `with` | Not planned — use `let`/`const` instead                         |
+| Feature               | Notes                                         |
+| --------------------- | --------------------------------------------- |
+| `var`, `eval`, `with` | Not planned — use `let`/`const` instead       |
 
 ## Architecture
 

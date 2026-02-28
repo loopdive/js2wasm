@@ -1,5 +1,7 @@
-import * as monaco from "monaco-editor";
+import "monaco-editor/esm/vs/basic-languages/typescript/typescript.contribution.js";
+import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
+import "monaco-editor/esm/vs/language/typescript/monaco.contribution.js";
 import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker";
 import * as ts from "typescript";
 import { compile } from "../src/index.js";
@@ -15,6 +17,7 @@ self.MonacoEnvironment = {
   },
 };
 
+// Default source code for the playground file
 const DEFAULT_SOURCE = `// ── Classes with constructors, methods & properties ──────
 class Vec2 {
   x: number;
@@ -134,6 +137,13 @@ export function main(): void {
   const nums = [10, -3, 7, -1, 5];
   console.log("sum = " + sumArray(nums).toString());
   console.log("positives = " + countPositive(nums).toString());
+
+  // ── Compute-heavy loop ──
+  let fibSum = 0;
+  for (let i = 0; i < 10000; i++) {
+    fibSum += fib(10);
+  }
+  console.log("fibSum(10k) = " + fibSum.toString());
 
   document.body.style.background = "#111";
   document.body.style.color = "#eee";
@@ -541,7 +551,11 @@ const treemap = new WasmTreemap(treemapPanel);
 // ─── Editor tabs (split left/right) ─────────────────────────────────────
 const LEFT_TABS = new Set(["input/example.ts"]);
 let openTabsLeft: string[] = ["input/example.ts"];
-let openTabsRight: string[] = ["output/example.wat", "output/example.wasm", "output/example.ts"];
+let openTabsRight: string[] = [
+  "output/example.wat",
+  "output/example.wasm",
+  "output/example.ts",
+];
 let activeFileLeft = "input/example.ts";
 let activeFileRight = "output/example.wat";
 const editorTabsLeftEl = document.getElementById("editor-tabs-left")!;
@@ -600,7 +614,8 @@ function renderTabBar(
     tab.className = "editor-tab" + (path === activeFile ? " active" : "");
 
     const label = document.createElement("span");
-    const bytes = file.binarySize ?? new TextEncoder().encode(file.model.getValue()).length;
+    const bytes =
+      file.binarySize ?? new TextEncoder().encode(file.model.getValue()).length;
     const size = bytes >= 1024 ? `${(bytes / 1024).toFixed(1)}k` : `${bytes}b`;
     label.textContent = `${file.displayName} (${size})`;
     tab.appendChild(label);
@@ -686,19 +701,20 @@ function detectDomUsage(result: ReturnType<typeof compile>): boolean {
   return envMatch[1].split("\n").some((l) => DOM_PATTERNS.test(l) && l.trim());
 }
 
-function generateModularOutput(
-  result: ReturnType<typeof compile>,
-): string {
+function generateModularOutput(result: ReturnType<typeof compile>): string {
   const dts = result.dts ?? "";
   // Parse "export declare function name(params): ret;" into typed export lines
-  const exportLines = [...dts.matchAll(/^export declare function (\w+)\(([^)]*)\):\s*(.+);$/gm)]
-    .map(([, name, params, ret]) =>
-      `export const ${name} = _exports.${name} as (${params}) => ${ret};`
-    );
+  const exportLines = [
+    ...dts.matchAll(/^export declare function (\w+)\(([^)]*)\):\s*(.+);$/gm),
+  ].map(
+    ([, name, params, ret]) =>
+      `export const ${name} = _exports.${name} as (${params}) => ${ret};`,
+  );
 
-  const exports = exportLines.length > 0
-    ? exportLines.join("\n")
-    : `export default _exports;`;
+  const exports =
+    exportLines.length > 0
+      ? exportLines.join("\n")
+      : `export default _exports;`;
 
   return `import { compileAndInstantiate } from "ts2wasm";
 import _source from "./example.ts?raw";
@@ -741,15 +757,23 @@ function compileOnly() {
     const lines: string[] = [];
     for (let i = 0; i < bin.length; i += 16) {
       const slice = bin.subarray(i, Math.min(i + 16, bin.length));
-      const hex = Array.from(slice, (b) => b.toString(16).padStart(2, "0")).join(" ");
-      const ascii = Array.from(slice, (b) => (b >= 32 && b < 127 ? String.fromCharCode(b) : ".")).join("");
-      lines.push(`${i.toString(16).padStart(8, "0")}  ${hex.padEnd(47)}  ${ascii}`);
+      const hex = Array.from(slice, (b) =>
+        b.toString(16).padStart(2, "0"),
+      ).join(" ");
+      const ascii = Array.from(slice, (b) =>
+        b >= 32 && b < 127 ? String.fromCharCode(b) : ".",
+      ).join("");
+      lines.push(
+        `${i.toString(16).padStart(8, "0")}  ${hex.padEnd(47)}  ${ascii}`,
+      );
     }
     const wasmFile = fileMap.get("output/example.wasm")!;
     wasmFile.model.setValue(lines.join("\n"));
     wasmFile.binarySize = bin.length;
   }
-  fileMap.get("output/example.ts")!.model.setValue(generateModularOutput(result));
+  fileMap
+    .get("output/example.ts")!
+    .model.setValue(generateModularOutput(result));
 
   // Mark output files as compiled
   for (const f of files) {
@@ -775,9 +799,7 @@ function compileOnly() {
     openFileTab("output/example.wat");
   }
 
-  if (!result.success) {
-    showOutputPanel("errors");
-  }
+  showOutputPanel(result.success ? "preview" : "errors");
 }
 
 function buildEnv(
@@ -878,7 +900,7 @@ async function runOnly() {
       logs.push(msg);
       consolePre.textContent = logs.join("\n");
     },
-    usesDom ? previewPanel as HTMLElement : undefined,
+    usesDom ? (previewPanel as HTMLElement) : undefined,
   );
 
   try {
@@ -978,7 +1000,10 @@ async function runBenchmark() {
   // ── JS setup ──
   const source = inputFile.model.getValue();
   const transpiled = ts.transpileModule(source, {
-    compilerOptions: { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.ESNext },
+    compilerOptions: {
+      target: ts.ScriptTarget.ESNext,
+      module: ts.ModuleKind.ESNext,
+    },
   });
   const cleanJs = transpiled.outputText.replace(/^export /gm, "");
   const mockConsole = { log() {}, warn() {}, error() {} };
@@ -1005,19 +1030,43 @@ async function runBenchmark() {
     return;
   }
 
+  // Run iterations in chunks to keep UI responsive
+  const CHUNK = 500;
+  const total = BENCH_ITERATIONS;
+  const yieldFrame = () => new Promise<void>((r) => setTimeout(r, 0));
+
+  const progress = (phase: string, done: number) => {
+    const pct = ((done / total) * 100) | 0;
+    consolePre.textContent = `${phase}… ${done.toLocaleString()}/${total.toLocaleString()} (${pct}%)`;
+  };
+
   // ── Warmup ──
+  progress("Warmup", 0);
+  await yieldFrame();
   for (let i = 0; i < 100; i++) wasmExports.main();
   for (let i = 0; i < 100; i++) jsMain();
 
   // ── Benchmark WASM ──
-  const wasmT0 = performance.now();
-  for (let i = 0; i < BENCH_ITERATIONS; i++) wasmExports.main();
-  const wasmTime = performance.now() - wasmT0;
+  let wasmTime = 0;
+  for (let done = 0; done < total; done += CHUNK) {
+    progress("WASM", done);
+    await yieldFrame();
+    const n = Math.min(CHUNK, total - done);
+    const t0 = performance.now();
+    for (let i = 0; i < n; i++) wasmExports.main();
+    wasmTime += performance.now() - t0;
+  }
 
   // ── Benchmark JS ──
-  const jsT0 = performance.now();
-  for (let i = 0; i < BENCH_ITERATIONS; i++) jsMain();
-  const jsTime = performance.now() - jsT0;
+  let jsTime = 0;
+  for (let done = 0; done < total; done += CHUNK) {
+    progress("JS", done);
+    await yieldFrame();
+    const n = Math.min(CHUNK, total - done);
+    const t0 = performance.now();
+    for (let i = 0; i < n; i++) jsMain();
+    jsTime += performance.now() - t0;
+  }
 
   // ── Results ──
   const ratio = jsTime / wasmTime;
@@ -1027,10 +1076,10 @@ async function runBenchmark() {
       : `JS is ${(1 / ratio).toFixed(2)}× faster`;
 
   consolePre.textContent = [
-    `Benchmark: main() × ${BENCH_ITERATIONS.toLocaleString()}`,
+    `Benchmark: main() × ${total.toLocaleString()}`,
     ``,
-    `  WASM:  ${wasmTime.toFixed(1)}ms  (${((wasmTime / BENCH_ITERATIONS) * 1000).toFixed(1)}µs/call)`,
-    `  JS:    ${jsTime.toFixed(1)}ms  (${((jsTime / BENCH_ITERATIONS) * 1000).toFixed(1)}µs/call)`,
+    `  WASM:  ${wasmTime.toFixed(1)}ms  (${((wasmTime / total) * 1000).toFixed(1)}µs/call)`,
+    `  JS:    ${jsTime.toFixed(1)}ms  (${((jsTime / total) * 1000).toFixed(1)}µs/call)`,
     ``,
     `  ${winner}`,
   ].join("\n");
@@ -1110,7 +1159,10 @@ editorDivider.addEventListener("mousedown", (e) => {
 
   const onUp = () => {
     editorDivider.classList.remove("active");
-    const cur = (leftPane.getBoundingClientRect().width / editorArea.getBoundingClientRect().width) * 100;
+    const cur =
+      (leftPane.getBoundingClientRect().width /
+        editorArea.getBoundingClientRect().width) *
+      100;
     saveLayout({ editorSplit: Math.round(cur * 10) / 10 });
     document.removeEventListener("mousemove", onMove);
     document.removeEventListener("mouseup", onUp);
@@ -1125,7 +1177,8 @@ const outputDivider = document.getElementById("divider-output")!;
 const outputPanel = document.getElementById("output-panel")!;
 const mainArea = document.querySelector(".main-area") as HTMLElement;
 let outputCollapsed = false;
-let lastOutputHeight = layoutState.outputHeight ?? Math.round(window.innerHeight * 0.4);
+let lastOutputHeight =
+  layoutState.outputHeight ?? Math.round(window.innerHeight * 0.4);
 
 if (layoutState.outputHeight) {
   outputPanel.style.flexBasis = `${layoutState.outputHeight}px`;

@@ -1,5 +1,5 @@
 import ts from "typescript";
-import type { TypedAST } from "../checker/index.js";
+import type { TypedAST, MultiTypedAST } from "../checker/index.js";
 import {
   mapTsTypeToWasm,
   isVoidType,
@@ -7,6 +7,9 @@ import {
   isBooleanType,
   isStringType,
   isExternalDeclaredClass,
+  isHeterogeneousUnion,
+  isPromiseType,
+  unwrapPromiseType,
 } from "../checker/type-mapper.js";
 import type {
   WasmModule,
@@ -21,6 +24,7 @@ import type {
   Import,
   WasmExport,
   FieldDef,
+  TagDef,
 } from "../ir/types.js";
 import { createEmptyModule } from "../ir/types.js";
 import { compileExpression } from "./expressions.js";
@@ -40,6 +44,16 @@ export interface ExternClassInfo {
 export interface OptionalParamInfo {
   index: number;
   type: ValType;
+}
+
+/** Info about a rest parameter */
+export interface RestParamInfo {
+  /** Index of the rest parameter in the original TS signature */
+  restIndex: number;
+  /** Element type of the rest array (e.g. f64 for number[]) */
+  elemType: ValType;
+  /** Array type index in the module types */
+  arrayTypeIdx: number;
 }
 
 /** Context shared across all codegen */
@@ -96,6 +110,14 @@ export interface CodegenContext {
   closureMap: Map<string, ClosureInfo>;
   /** Resolved concrete types for generic functions (from call-site analysis) */
   genericResolved: Map<string, { params: ValType[]; results: ValType[] }>;
+  /** Rest parameter info per function (functions with ...rest syntax) */
+  funcRestParams: Map<string, RestParamInfo>;
+  /** Tag index for the exception tag (-1 if not yet registered) */
+  exnTagIdx: number;
+  /** Whether union type helper imports have been registered */
+  hasUnionImports: boolean;
+  /** Set of function names that are async (for .d.ts generation) */
+  asyncFunctions: Set<string>;
 }
 
 /** Metadata for a closure stored in a local variable */
@@ -164,6 +186,10 @@ export function generateModule(ast: TypedAST): WasmModule {
     closureCounter: 0,
     closureMap: new Map(),
     genericResolved: new Map(),
+    funcRestParams: new Map(),
+    exnTagIdx: -1,
+    hasUnionImports: false,
+    asyncFunctions: new Set(),
   };
 
   // Collect console.log imports (only variants actually used)
@@ -197,6 +223,9 @@ export function generateModule(ast: TypedAST): WasmModule {
   // Collect __make_callback import if arrow functions are used as call arguments
   collectCallbackImports(ctx, ast.sourceFile);
 
+  // Collect union type helper imports (typeof checks, boxing/unboxing)
+  collectUnionImports(ctx, ast.sourceFile);
+
   // Register string literals for for-in field names (uses type checker, before func indices)
   collectForInStringLiterals(ctx, ast.sourceFile);
 
@@ -223,6 +252,113 @@ export function generateModule(ast: TypedAST): WasmModule {
     }
   }
   mod.stringLiteralValues = ctx.stringLiteralValues;
+  mod.asyncFunctions = ctx.asyncFunctions;
+
+  return mod;
+}
+
+/**
+ * Compile multiple typed source files into a single WasmModule IR.
+ * All source files share the same codegen context (funcMap, structMap, etc.).
+ * Only functions exported from the entry file become Wasm exports.
+ */
+export function generateMultiModule(multiAst: MultiTypedAST): WasmModule {
+  const mod = createEmptyModule();
+
+  const ctx: CodegenContext = {
+    mod,
+    checker: multiAst.checker,
+    funcMap: new Map(),
+    structMap: new Map(),
+    structFields: new Map(),
+    numImportFuncs: 0,
+    currentFunc: null,
+    errors: [],
+    externClasses: new Map(),
+    funcOptionalParams: new Map(),
+    anonTypeMap: new Map(),
+    anonTypeCounter: 0,
+    stringLiteralMap: new Map(),
+    stringLiteralValues: new Map(),
+    stringLiteralCounter: 0,
+    hasStringImports: false,
+    enumValues: new Map(),
+    arrayTypeMap: new Map(),
+    externClassParent: new Map(),
+    declaredGlobals: new Map(),
+    callbackCounter: 0,
+    capturedGlobals: new Map(),
+    classSet: new Set(),
+    classMethodSet: new Set(),
+    closureCounter: 0,
+    closureMap: new Map(),
+    genericResolved: new Map(),
+    funcRestParams: new Map(),
+    hasUnionImports: false,
+    asyncFunctions: new Set(),
+    exnTagIdx: -1,
+  };
+
+  // Phase 1: Collect all import-phase declarations across all source files
+  for (const sf of multiAst.sourceFiles) {
+    collectConsoleImports(ctx, sf);
+    collectPrimitiveMethodImports(ctx, sf);
+    collectExternDeclarations(ctx, sf);
+  }
+
+  // Scan lib.d.ts for DOM extern classes + globals (only if any user code uses DOM)
+  const libFile = multiAst.program.getSourceFile("lib.d.ts");
+  if (libFile) {
+    const anyUsesDom = multiAst.sourceFiles.some((sf) => sourceUsesDOMGlobals(sf));
+    if (anyUsesDom) {
+      collectExternDeclarations(ctx, libFile);
+      for (const sf of multiAst.sourceFiles) {
+        if (sourceUsesDOMGlobals(sf)) {
+          collectDeclaredGlobals(ctx, libFile, sf);
+        }
+      }
+    }
+  }
+
+  for (const sf of multiAst.sourceFiles) {
+    collectUsedExternImports(ctx, sf);
+    collectStringLiterals(ctx, sf);
+    collectStringMethodImports(ctx, sf);
+    collectMathImports(ctx, sf);
+    collectCallbackImports(ctx, sf);
+    collectUnionImports(ctx, sf);
+    collectForInStringLiterals(ctx, sf);
+  }
+
+  // Phase 2: Collect all declarations — only entry file gets Wasm exports
+  for (const sf of multiAst.sourceFiles) {
+    const isEntry = sf === multiAst.entryFile;
+    collectDeclarations(ctx, sf, isEntry);
+  }
+
+  // Phase 3: Compile all function bodies
+  for (const sf of multiAst.sourceFiles) {
+    compileDeclarations(ctx, sf);
+  }
+
+  // Copy metadata for .d.ts / helper generation
+  const importNames = mod.imports.map((imp) => imp.name);
+  for (const [key, info] of ctx.externClasses) {
+    const prefix = info.importPrefix + "_";
+    const isUsed = importNames.some((n) => n.startsWith(prefix));
+    if (key === info.className && isUsed) {
+      mod.externClasses.push({
+        importPrefix: info.importPrefix,
+        namespacePath: info.namespacePath,
+        className: info.className,
+        constructorParams: info.constructorParams,
+        methods: info.methods,
+        properties: info.properties,
+      });
+    }
+  }
+  mod.stringLiteralValues = ctx.stringLiteralValues;
+  mod.asyncFunctions = ctx.asyncFunctions;
 
   return mod;
 }
@@ -617,6 +753,82 @@ function collectCallbackImports(
   }
 }
 
+/** Scan source for union types (number | string, etc.) and register needed helper imports */
+function collectUnionImports(
+  ctx: CodegenContext,
+  sourceFile: ts.SourceFile,
+): void {
+  let found = false;
+
+  function visit(node: ts.Node) {
+    if (found) return;
+    // Check function parameter types for heterogeneous unions
+    if (ts.isFunctionDeclaration(node) && node.parameters) {
+      for (const param of node.parameters) {
+        const paramType = ctx.checker.getTypeAtLocation(param);
+        if (isHeterogeneousUnion(paramType, ctx.checker)) {
+          found = true;
+          return;
+        }
+      }
+    }
+    // Check variable declarations for union types
+    if (ts.isVariableDeclaration(node) && node.type) {
+      const varType = ctx.checker.getTypeAtLocation(node);
+      if (isHeterogeneousUnion(varType, ctx.checker)) {
+        found = true;
+        return;
+      }
+    }
+    // Check for typeof expressions (used in narrowing)
+    if (ts.isTypeOfExpression(node)) {
+      found = true;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  for (const stmt of sourceFile.statements) {
+    if (ts.isFunctionDeclaration(stmt) && stmt.body) {
+      visit(stmt);
+    }
+  }
+
+  if (found) {
+    addUnionImports(ctx);
+  }
+}
+
+/** Register union type helper imports (typeof checks, boxing/unboxing) */
+export function addUnionImports(ctx: CodegenContext): void {
+  if (ctx.hasUnionImports) return;
+  ctx.hasUnionImports = true;
+
+  // __typeof_number: (externref) → i32
+  const typeofType = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "i32" }]);
+  addImport(ctx, "env", "__typeof_number", { kind: "func", typeIdx: typeofType });
+  addImport(ctx, "env", "__typeof_string", { kind: "func", typeIdx: typeofType });
+  addImport(ctx, "env", "__typeof_boolean", { kind: "func", typeIdx: typeofType });
+
+  // __is_truthy: (externref) → i32
+  addImport(ctx, "env", "__is_truthy", { kind: "func", typeIdx: typeofType });
+
+  // __unbox_number: (externref) → f64
+  const unboxNumType = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "f64" }]);
+  addImport(ctx, "env", "__unbox_number", { kind: "func", typeIdx: unboxNumType });
+
+  // __unbox_boolean: (externref) → i32
+  addImport(ctx, "env", "__unbox_boolean", { kind: "func", typeIdx: typeofType });
+
+  // __box_number: (f64) → externref
+  const boxNumType = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "externref" }]);
+  addImport(ctx, "env", "__box_number", { kind: "func", typeIdx: boxNumType });
+
+  // __box_boolean: (i32) → externref
+  const boxBoolType = addFuncType(ctx, [{ kind: "i32" }], [{ kind: "externref" }]);
+  addImport(ctx, "env", "__box_boolean", { kind: "func", typeIdx: boxBoolType });
+}
+
 export function addImport(
   ctx: CodegenContext,
   module: string,
@@ -628,6 +840,21 @@ export function addImport(
     ctx.funcMap.set(name, ctx.numImportFuncs);
     ctx.numImportFuncs++;
   }
+}
+
+/**
+ * Lazily register the exception tag used by throw/try-catch.
+ * The tag has signature (externref) — all thrown values are externref.
+ * Returns the tag index (currently always 0 since we only have one tag).
+ */
+export function ensureExnTag(ctx: CodegenContext): number {
+  if (ctx.exnTagIdx >= 0) return ctx.exnTagIdx;
+  // Create a func type for the tag: (param externref) — no results
+  const typeIdx = addFuncType(ctx, [{ kind: "externref" }], []);
+  const tagDef: TagDef = { name: "__exn", typeIdx };
+  ctx.exnTagIdx = ctx.mod.tags.length;
+  ctx.mod.tags.push(tagDef);
+  return ctx.exnTagIdx;
 }
 
 export function addFuncType(
@@ -1458,6 +1685,7 @@ function resolveGenericCallSiteTypes(
 function collectDeclarations(
   ctx: CodegenContext,
   sourceFile: ts.SourceFile,
+  isEntryFile = true,
 ): void {
   // First: collect enum declarations (so enum values are available)
   collectEnumDeclarations(ctx, sourceFile);
@@ -1500,9 +1728,17 @@ function collectDeclarations(
         ctx.genericResolved.set(name, resolved);
       }
 
+      // Track async functions — unwrap Promise<T> for Wasm return type
+      const isAsync = hasAsyncModifier(stmt);
+      if (isAsync) {
+        ctx.asyncFunctions.add(name);
+      }
+
       // Ensure anonymous types in signature are registered as structs
       const retType = ctx.checker.getReturnTypeOfSignature(sig);
-      if (!isVoidType(retType)) ensureStructForType(ctx, retType);
+      // For async functions, unwrap Promise<T> to get T for struct registration
+      const unwrappedRetType = isAsync ? unwrapPromiseType(retType, ctx.checker) : retType;
+      if (!isVoidType(unwrappedRetType)) ensureStructForType(ctx, unwrappedRetType);
       for (const p of stmt.parameters) {
         const pt = ctx.checker.getTypeAtLocation(p);
         ensureStructForType(ctx, pt);
@@ -1519,12 +1755,31 @@ function collectDeclarations(
         params = [];
         for (let i = 0; i < stmt.parameters.length; i++) {
           const param = stmt.parameters[i]!;
-          const paramType = ctx.checker.getTypeAtLocation(param);
-          const wasmType = resolveWasmType(ctx, paramType);
-          params.push(wasmType);
+          if (param.dotDotDotToken) {
+            // Rest parameter: ...args: T[] → single (ref $__arr_elemKind) param
+            const paramType = ctx.checker.getTypeAtLocation(param);
+            const typeArgs = ctx.checker.getTypeArguments(paramType as ts.TypeReference);
+            const elemTsType = typeArgs[0];
+            const elemKind = elemTsType ? mapTsTypeToWasm(elemTsType, ctx.checker).kind : "f64";
+            const arrTypeIdx = getOrRegisterArrayType(ctx, elemKind);
+            const elemType: ValType = elemKind === "f64" ? { kind: "f64" } :
+              elemKind === "i32" ? { kind: "i32" } : { kind: "externref" };
+            params.push({ kind: "ref", typeIdx: arrTypeIdx });
+            ctx.funcRestParams.set(name, {
+              restIndex: i,
+              elemType,
+              arrayTypeIdx: arrTypeIdx,
+            });
+          } else {
+            const paramType = ctx.checker.getTypeAtLocation(param);
+            const wasmType = resolveWasmType(ctx, paramType);
+            params.push(wasmType);
+          }
         }
         const r = ctx.checker.getReturnTypeOfSignature(sig);
-        results = isVoidType(r) ? [] : [resolveWasmType(ctx, r)];
+        // For async functions, unwrap Promise<T> to get T for Wasm return type
+        const rUnwrapped = isAsync ? unwrapPromiseType(r, ctx.checker) : r;
+        results = isVoidType(rUnwrapped) ? [] : [resolveWasmType(ctx, rUnwrapped)];
       }
 
       const optionalParams: OptionalParamInfo[] = [];
@@ -1544,7 +1799,8 @@ function collectDeclarations(
       ctx.funcMap.set(name, funcIdx);
 
       // Create placeholder function to be filled in second pass
-      const isExported = hasExportModifier(stmt);
+      // Only export as Wasm exports if this is the entry file
+      const isExported = isEntryFile && hasExportModifier(stmt);
       const func: WasmFunction = {
         name,
         typeIdx,
@@ -1808,22 +2064,32 @@ function compileFunctionBody(
   const sig = ctx.checker.getSignatureFromDeclaration(decl)!;
   const retType = ctx.checker.getReturnTypeOfSignature(sig);
 
+  // For async functions, unwrap Promise<T> to get T
+  const isAsync = ctx.asyncFunctions.has(func.name);
+  const effectiveRetType = isAsync ? unwrapPromiseType(retType, ctx.checker) : retType;
+
   // Use call-site resolved types for generic functions
   const resolved = ctx.genericResolved.get(func.name);
 
+  const restInfo = ctx.funcRestParams.get(func.name);
   const params: { name: string; type: ValType }[] = [];
   for (let i = 0; i < decl.parameters.length; i++) {
     const param = decl.parameters[i]!;
     const paramName = (param.name as ts.Identifier).text;
-    const paramType = resolved
-      ? resolved.params[i]!
-      : resolveWasmType(ctx, ctx.checker.getTypeAtLocation(param));
-    params.push({ name: paramName, type: paramType });
+    if (restInfo && i === restInfo.restIndex) {
+      // Rest parameter — use the array ref type from the function signature
+      params.push({ name: paramName, type: { kind: "ref", typeIdx: restInfo.arrayTypeIdx } });
+    } else {
+      const paramType = resolved
+        ? resolved.params[i]!
+        : resolveWasmType(ctx, ctx.checker.getTypeAtLocation(param));
+      params.push({ name: paramName, type: paramType });
+    }
   }
 
   const returnType = resolved
     ? (resolved.results.length > 0 ? resolved.results[0]! : null)
-    : (isVoidType(retType) ? null : resolveWasmType(ctx, retType));
+    : (isVoidType(effectiveRetType) ? null : resolveWasmType(ctx, effectiveRetType));
 
   const fctx: FunctionContext = {
     name: func.name,
@@ -1899,6 +2165,13 @@ function hasDeclareModifier(node: ts.Node): boolean {
     ? ts.getModifiers(node)
     : undefined;
   return modifiers?.some((m) => m.kind === ts.SyntaxKind.DeclareKeyword) ?? false;
+}
+
+function hasAsyncModifier(node: ts.Node): boolean {
+  const modifiers = ts.canHaveModifiers(node)
+    ? ts.getModifiers(node)
+    : undefined;
+  return modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
 }
 
 /**
