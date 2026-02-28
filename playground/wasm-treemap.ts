@@ -92,7 +92,7 @@ const SECTION_NAMES: Record<number, string> = {
 
 // ─── Fixed section colors ───────────────────────────────────────────────
 
-const SECTION_COLORS: Record<string, [number, number, number]> = {
+export const SECTION_COLORS: Record<string, [number, number, number]> = {
   code: [70, 140, 200],
   type: [180, 100, 60],
   import: [100, 170, 80],
@@ -154,7 +154,7 @@ const HUE_PALETTE: [number, number, number][] = (() => {
   return colors;
 })();
 
-// ─── LEB128 decoder ─────────────────────────────────────────────────────
+// ─── LEB128 decoders ────────────────────────────────────────────────────
 
 function readU32Leb(
   bytes: Uint8Array,
@@ -170,6 +170,40 @@ function readU32Leb(
     shift += 7;
   }
   return { value: result >>> 0, next: pos };
+}
+
+function readS32Leb(
+  bytes: Uint8Array,
+  offset: number,
+): { value: number; next: number } {
+  let result = 0,
+    shift = 0,
+    pos = offset;
+  let byte: number;
+  do {
+    byte = bytes[pos++];
+    result |= (byte & 0x7f) << shift;
+    shift += 7;
+  } while (byte & 0x80);
+  if (shift < 32 && byte & 0x40) result |= -(1 << shift);
+  return { value: result, next: pos };
+}
+
+function readS64Leb(
+  bytes: Uint8Array,
+  offset: number,
+): { value: bigint; next: number } {
+  let result = 0n,
+    shift = 0n,
+    pos = offset;
+  let byte: number;
+  do {
+    byte = bytes[pos++];
+    result |= BigInt(byte & 0x7f) << shift;
+    shift += 7n;
+  } while (byte & 0x80);
+  if (shift < 64n && byte & 0x40) result |= -(1n << shift);
+  return { value: result, next: pos };
 }
 
 function readName(
@@ -393,6 +427,517 @@ export function parseWasm(buffer: ArrayBuffer): WasmData {
   return result;
 }
 
+// ─── Byte-level span parser ─────────────────────────────────────────────
+
+export interface ByteSpan {
+  offset: number;
+  length: number;
+  label: string;
+  value?: string;
+}
+
+const VALTYPE_NAMES: Record<number, string> = {
+  0x7f: "i32", 0x7e: "i64", 0x7d: "f32", 0x7c: "f64",
+  0x70: "funcref", 0x6f: "externref",
+};
+
+// Immediate kinds
+const N = "none";   // no immediate
+const L = "leb";    // unsigned LEB128
+const SL = "sleb";  // signed LEB128 (i32)
+const SL64 = "sleb64"; // signed LEB128 (i64)
+const F32 = "f32";
+const F64 = "f64";
+const MEM = "mem";   // memarg: align + offset
+const BLK = "block"; // block type
+const BRT = "br_table";
+const CI = "call_indirect";
+const B = "byte";    // single byte (memory index)
+
+type ImmKind = typeof N | typeof L | typeof SL | typeof SL64 |
+  typeof F32 | typeof F64 | typeof MEM | typeof BLK |
+  typeof BRT | typeof CI | typeof B;
+
+const OPCODES: [number, string, ImmKind][] = [
+  [0x00, "unreachable", N], [0x01, "nop", N],
+  [0x02, "block", BLK], [0x03, "loop", BLK], [0x04, "if", BLK],
+  [0x05, "else", N], [0x0b, "end", N],
+  [0x0c, "br", L], [0x0d, "br_if", L], [0x0e, "br_table", BRT],
+  [0x0f, "return", N],
+  [0x10, "call", L], [0x11, "call_indirect", CI],
+  [0x1a, "drop", N], [0x1b, "select", N],
+  [0x20, "local.get", L], [0x21, "local.set", L], [0x22, "local.tee", L],
+  [0x23, "global.get", L], [0x24, "global.set", L],
+  [0x25, "table.get", L], [0x26, "table.set", L],
+  [0x28, "i32.load", MEM], [0x29, "i64.load", MEM],
+  [0x2a, "f32.load", MEM], [0x2b, "f64.load", MEM],
+  [0x2c, "i32.load8_s", MEM], [0x2d, "i32.load8_u", MEM],
+  [0x2e, "i32.load16_s", MEM], [0x2f, "i32.load16_u", MEM],
+  [0x30, "i64.load8_s", MEM], [0x31, "i64.load8_u", MEM],
+  [0x32, "i64.load16_s", MEM], [0x33, "i64.load16_u", MEM],
+  [0x34, "i64.load32_s", MEM], [0x35, "i64.load32_u", MEM],
+  [0x36, "i32.store", MEM], [0x37, "i64.store", MEM],
+  [0x38, "f32.store", MEM], [0x39, "f64.store", MEM],
+  [0x3a, "i32.store8", MEM], [0x3b, "i32.store16", MEM],
+  [0x3c, "i64.store8", MEM], [0x3d, "i64.store16", MEM],
+  [0x3e, "i64.store32", MEM],
+  [0x3f, "memory.size", B], [0x40, "memory.grow", B],
+  [0x41, "i32.const", SL], [0x42, "i64.const", SL64],
+  [0x43, "f32.const", F32], [0x44, "f64.const", F64],
+  [0x45, "i32.eqz", N], [0x46, "i32.eq", N], [0x47, "i32.ne", N],
+  [0x48, "i32.lt_s", N], [0x49, "i32.lt_u", N],
+  [0x4a, "i32.gt_s", N], [0x4b, "i32.gt_u", N],
+  [0x4c, "i32.le_s", N], [0x4d, "i32.le_u", N],
+  [0x4e, "i32.ge_s", N], [0x4f, "i32.ge_u", N],
+  [0x50, "i64.eqz", N], [0x51, "i64.eq", N], [0x52, "i64.ne", N],
+  [0x53, "i64.lt_s", N], [0x54, "i64.lt_u", N],
+  [0x55, "i64.gt_s", N], [0x56, "i64.gt_u", N],
+  [0x57, "i64.le_s", N], [0x58, "i64.le_u", N],
+  [0x59, "i64.ge_s", N], [0x5a, "i64.ge_u", N],
+  [0x5b, "f32.eq", N], [0x5c, "f32.ne", N],
+  [0x5d, "f32.lt", N], [0x5e, "f32.gt", N],
+  [0x5f, "f32.le", N], [0x60, "f32.ge", N],
+  [0x61, "f64.eq", N], [0x62, "f64.ne", N],
+  [0x63, "f64.lt", N], [0x64, "f64.gt", N],
+  [0x65, "f64.le", N], [0x66, "f64.ge", N],
+  [0x67, "i32.clz", N], [0x68, "i32.ctz", N], [0x69, "i32.popcnt", N],
+  [0x6a, "i32.add", N], [0x6b, "i32.sub", N],
+  [0x6c, "i32.mul", N], [0x6d, "i32.div_s", N], [0x6e, "i32.div_u", N],
+  [0x6f, "i32.rem_s", N], [0x70, "i32.rem_u", N],
+  [0x71, "i32.and", N], [0x72, "i32.or", N], [0x73, "i32.xor", N],
+  [0x74, "i32.shl", N], [0x75, "i32.shr_s", N], [0x76, "i32.shr_u", N],
+  [0x77, "i32.rotl", N], [0x78, "i32.rotr", N],
+  [0x79, "i64.clz", N], [0x7a, "i64.ctz", N], [0x7b, "i64.popcnt", N],
+  [0x7c, "i64.add", N], [0x7d, "i64.sub", N],
+  [0x7e, "i64.mul", N], [0x7f, "i64.div_s", N], [0x80, "i64.div_u", N],
+  [0x81, "i64.rem_s", N], [0x82, "i64.rem_u", N],
+  [0x83, "i64.and", N], [0x84, "i64.or", N], [0x85, "i64.xor", N],
+  [0x86, "i64.shl", N], [0x87, "i64.shr_s", N], [0x88, "i64.shr_u", N],
+  [0x89, "i64.rotl", N], [0x8a, "i64.rotr", N],
+  [0x8b, "f32.abs", N], [0x8c, "f32.neg", N],
+  [0x8d, "f32.ceil", N], [0x8e, "f32.floor", N],
+  [0x8f, "f32.trunc", N], [0x90, "f32.nearest", N],
+  [0x91, "f32.sqrt", N],
+  [0x92, "f32.add", N], [0x93, "f32.sub", N],
+  [0x94, "f32.mul", N], [0x95, "f32.div", N],
+  [0x96, "f32.min", N], [0x97, "f32.max", N],
+  [0x98, "f32.copysign", N],
+  [0x99, "f64.abs", N], [0x9a, "f64.neg", N],
+  [0x9b, "f64.ceil", N], [0x9c, "f64.floor", N],
+  [0x9d, "f64.trunc", N], [0x9e, "f64.nearest", N],
+  [0x9f, "f64.sqrt", N],
+  [0xa0, "f64.add", N], [0xa1, "f64.sub", N],
+  [0xa2, "f64.mul", N], [0xa3, "f64.div", N],
+  [0xa4, "f64.min", N], [0xa5, "f64.max", N],
+  [0xa6, "f64.copysign", N],
+  [0xa7, "i32.wrap_i64", N],
+  [0xa8, "i32.trunc_f32_s", N], [0xa9, "i32.trunc_f32_u", N],
+  [0xaa, "i32.trunc_f64_s", N], [0xab, "i32.trunc_f64_u", N],
+  [0xac, "i64.extend_i32_s", N], [0xad, "i64.extend_i32_u", N],
+  [0xae, "i64.trunc_f32_s", N], [0xaf, "i64.trunc_f32_u", N],
+  [0xb0, "i64.trunc_f64_s", N], [0xb1, "i64.trunc_f64_u", N],
+  [0xb2, "f32.convert_i32_s", N], [0xb3, "f32.convert_i32_u", N],
+  [0xb4, "f32.convert_i64_s", N], [0xb5, "f32.convert_i64_u", N],
+  [0xb6, "f32.demote_f64", N],
+  [0xb7, "f64.convert_i32_s", N], [0xb8, "f64.convert_i32_u", N],
+  [0xb9, "f64.convert_i64_s", N], [0xba, "f64.convert_i64_u", N],
+  [0xbb, "f64.promote_f32", N],
+  [0xbc, "i32.reinterpret_f32", N], [0xbd, "i64.reinterpret_f64", N],
+  [0xbe, "f32.reinterpret_i32", N], [0xbf, "f64.reinterpret_i64", N],
+  [0xc0, "i32.extend8_s", N], [0xc1, "i32.extend16_s", N],
+  [0xc2, "i64.extend8_s", N], [0xc3, "i64.extend16_s", N],
+  [0xc4, "i64.extend32_s", N],
+  [0xd0, "ref.null", B], [0xd1, "ref.is_null", N], [0xd2, "ref.func", L],
+];
+
+const OPCODE_MAP = new Map<number, { name: string; imm: ImmKind }>();
+for (const [code, name, imm] of OPCODES) OPCODE_MAP.set(code, { name, imm });
+
+// FC-prefixed (extended) opcodes — all take LEB128 immediates
+const FC_OPCODES: Record<number, string> = {
+  0: "i32.trunc_sat_f32_s", 1: "i32.trunc_sat_f32_u",
+  2: "i32.trunc_sat_f64_s", 3: "i32.trunc_sat_f64_u",
+  4: "i64.trunc_sat_f32_s", 5: "i64.trunc_sat_f32_u",
+  6: "i64.trunc_sat_f64_s", 7: "i64.trunc_sat_f64_u",
+  8: "memory.init", 9: "data.drop",
+  10: "memory.copy", 11: "memory.fill",
+  12: "table.init", 13: "elem.drop",
+  14: "table.copy", 15: "table.grow", 16: "table.size", 17: "table.fill",
+};
+
+export function parseWasmSpans(buffer: ArrayBuffer): ByteSpan[] {
+  const bytes = new Uint8Array(buffer);
+  const spans: ByteSpan[] = [];
+
+  function span(offset: number, length: number, label: string, value?: string) {
+    spans.push({ offset, length, label, value });
+  }
+
+  function valtype(b: number): string { return VALTYPE_NAMES[b] ?? `0x${b.toString(16)}`; }
+
+  function spanLeb(offset: number, label: string): number {
+    const { value, next } = readU32Leb(bytes, offset);
+    span(offset, next - offset, label, String(value));
+    return next;
+  }
+
+  function spanSleb(offset: number, label: string): number {
+    const { value, next } = readS32Leb(bytes, offset);
+    span(offset, next - offset, label, String(value));
+    return next;
+  }
+
+  function spanName(offset: number, label: string): { value: string; next: number } {
+    const { value: len, next: p } = readU32Leb(bytes, offset);
+    span(offset, p - offset, `${label} length`, String(len));
+    const str = new TextDecoder().decode(bytes.slice(p, p + len));
+    if (len > 0) span(p, len, label, `"${str}"`);
+    return { value: str, next: p + len };
+  }
+
+  function spanValtype(offset: number, label: string): number {
+    span(offset, 1, label, valtype(bytes[offset]));
+    return offset + 1;
+  }
+
+  // Parse init expression (const expr ending with 0x0B)
+  function parseInitExpr(p: number): number {
+    while (p < bytes.length) {
+      const op = bytes[p];
+      if (op === 0x0b) { span(p, 1, "end"); return p + 1; }
+      if (op === 0x41) { // i32.const
+        span(p, 1, "i32.const"); p++;
+        const { value, next } = readS32Leb(bytes, p);
+        span(p, next - p, "value", String(value));
+        p = next;
+      } else if (op === 0x42) { // i64.const
+        span(p, 1, "i64.const"); p++;
+        const { value, next } = readS64Leb(bytes, p);
+        span(p, next - p, "value", String(value));
+        p = next;
+      } else if (op === 0x43) { // f32.const
+        span(p, 1, "f32.const"); p++;
+        const view = new DataView(bytes.buffer, bytes.byteOffset + p, 4);
+        span(p, 4, "value", String(view.getFloat32(0, true)));
+        p += 4;
+      } else if (op === 0x44) { // f64.const
+        span(p, 1, "f64.const"); p++;
+        const view = new DataView(bytes.buffer, bytes.byteOffset + p, 8);
+        span(p, 8, "value", String(view.getFloat64(0, true)));
+        p += 8;
+      } else if (op === 0x23) { // global.get
+        span(p, 1, "global.get"); p++;
+        p = spanLeb(p, "global index");
+      } else if (op === 0xd2) { // ref.func
+        span(p, 1, "ref.func"); p++;
+        p = spanLeb(p, "func index");
+      } else if (op === 0xd0) { // ref.null
+        span(p, 1, "ref.null"); p++;
+        span(p, 1, "reftype", valtype(bytes[p])); p++;
+      } else {
+        // Unknown init opcode, skip to end
+        span(p, 1, `opcode 0x${op.toString(16)}`); p++;
+      }
+    }
+    return p;
+  }
+
+  if (bytes.length < 8) return spans;
+
+  // Header
+  span(0, 4, "magic", "\\0asm");
+  const version = bytes[4] | (bytes[5] << 8) | (bytes[6] << 16) | (bytes[7] << 24);
+  span(4, 4, "version", String(version));
+
+  let pos = 8;
+  while (pos < bytes.length) {
+    const sectionStart = pos;
+    const sectionId = bytes[pos];
+    span(pos, 1, "section id", SECTION_NAMES[sectionId] ?? `unknown(${sectionId})`);
+    pos++;
+    const { value: sectionSize, next: dataStart } = readU32Leb(bytes, pos);
+    span(pos, dataStart - pos, "section size", String(sectionSize));
+    const sectionEnd = dataStart + sectionSize;
+    let p = dataStart;
+
+    try {
+      if (sectionId === 0) {
+        // Custom section: name + raw data
+        const { next: afterName } = spanName(p, "custom section name");
+        p = afterName;
+        if (p < sectionEnd) span(p, sectionEnd - p, "custom data");
+      } else if (sectionId === 1) {
+        // Type section
+        const { value: count, next: p2 } = readU32Leb(bytes, p);
+        span(p, p2 - p, "type count", String(count));
+        p = p2;
+        for (let i = 0; i < count && p < sectionEnd; i++) {
+          span(p, 1, "func type marker", "0x60"); p++;
+          const { value: paramCount, next: p3 } = readU32Leb(bytes, p);
+          span(p, p3 - p, "param count", String(paramCount)); p = p3;
+          for (let j = 0; j < paramCount; j++) p = spanValtype(p, `param[${j}]`);
+          const { value: resultCount, next: p4 } = readU32Leb(bytes, p);
+          span(p, p4 - p, "result count", String(resultCount)); p = p4;
+          for (let j = 0; j < resultCount; j++) p = spanValtype(p, `result[${j}]`);
+        }
+      } else if (sectionId === 2) {
+        // Import section
+        const { value: count, next: p2 } = readU32Leb(bytes, p);
+        span(p, p2 - p, "import count", String(count)); p = p2;
+        const IMPORT_KIND: Record<number, string> = { 0: "func", 1: "table", 2: "memory", 3: "global", 4: "tag" };
+        for (let i = 0; i < count && p < sectionEnd; i++) {
+          const { next: p3 } = spanName(p, "module name"); p = p3;
+          const { next: p4 } = spanName(p, "field name"); p = p4;
+          const kind = bytes[p];
+          span(p, 1, "import kind", IMPORT_KIND[kind] ?? String(kind)); p++;
+          if (kind === 0) {
+            p = spanLeb(p, "type index");
+          } else if (kind === 1) {
+            p = spanValtype(p, "reftype");
+            const { value: flags, next: pf } = readU32Leb(bytes, p);
+            span(p, pf - p, "limits flags", String(flags)); p = pf;
+            p = spanLeb(p, "min");
+            if (flags & 1) p = spanLeb(p, "max");
+          } else if (kind === 2) {
+            const { value: flags, next: pf } = readU32Leb(bytes, p);
+            span(p, pf - p, "limits flags", String(flags)); p = pf;
+            p = spanLeb(p, "min pages");
+            if (flags & 1) p = spanLeb(p, "max pages");
+          } else if (kind === 3) {
+            p = spanValtype(p, "global type");
+            span(p, 1, "mutability", bytes[p] ? "var" : "const"); p++;
+          } else if (kind === 4) {
+            p = spanLeb(p, "tag type index");
+          }
+        }
+      } else if (sectionId === 3) {
+        // Function section
+        const { value: count, next: p2 } = readU32Leb(bytes, p);
+        span(p, p2 - p, "function count", String(count)); p = p2;
+        for (let i = 0; i < count && p < sectionEnd; i++) {
+          p = spanLeb(p, `func[${i}] type index`);
+        }
+      } else if (sectionId === 4) {
+        // Table section
+        const { value: count, next: p2 } = readU32Leb(bytes, p);
+        span(p, p2 - p, "table count", String(count)); p = p2;
+        for (let i = 0; i < count && p < sectionEnd; i++) {
+          p = spanValtype(p, "reftype");
+          const { value: flags, next: pf } = readU32Leb(bytes, p);
+          span(p, pf - p, "limits flags", String(flags)); p = pf;
+          p = spanLeb(p, "min");
+          if (flags & 1) p = spanLeb(p, "max");
+        }
+      } else if (sectionId === 5) {
+        // Memory section
+        const { value: count, next: p2 } = readU32Leb(bytes, p);
+        span(p, p2 - p, "memory count", String(count)); p = p2;
+        for (let i = 0; i < count && p < sectionEnd; i++) {
+          const { value: flags, next: pf } = readU32Leb(bytes, p);
+          span(p, pf - p, "limits flags", String(flags)); p = pf;
+          p = spanLeb(p, "min pages");
+          if (flags & 1) p = spanLeb(p, "max pages");
+        }
+      } else if (sectionId === 6) {
+        // Global section
+        const { value: count, next: p2 } = readU32Leb(bytes, p);
+        span(p, p2 - p, "global count", String(count)); p = p2;
+        for (let i = 0; i < count && p < sectionEnd; i++) {
+          p = spanValtype(p, "global type");
+          span(p, 1, "mutability", bytes[p] ? "var" : "const"); p++;
+          p = parseInitExpr(p);
+        }
+      } else if (sectionId === 7) {
+        // Export section
+        const { value: count, next: p2 } = readU32Leb(bytes, p);
+        span(p, p2 - p, "export count", String(count)); p = p2;
+        const EXPORT_KIND: Record<number, string> = { 0: "func", 1: "table", 2: "memory", 3: "global" };
+        for (let i = 0; i < count && p < sectionEnd; i++) {
+          const { next: p3 } = spanName(p, "export name"); p = p3;
+          span(p, 1, "export kind", EXPORT_KIND[bytes[p]] ?? String(bytes[p])); p++;
+          p = spanLeb(p, "export index");
+        }
+      } else if (sectionId === 8) {
+        // Start section
+        p = spanLeb(p, "start function index");
+      } else if (sectionId === 9) {
+        // Element section
+        const { value: count, next: p2 } = readU32Leb(bytes, p);
+        span(p, p2 - p, "element count", String(count)); p = p2;
+        for (let i = 0; i < count && p < sectionEnd; i++) {
+          const { value: flags, next: pf } = readU32Leb(bytes, p);
+          span(p, pf - p, "elem flags", String(flags)); p = pf;
+          if (flags === 0) {
+            p = parseInitExpr(p); // offset expr
+            const { value: ec, next: pe } = readU32Leb(bytes, p);
+            span(p, pe - p, "elem count", String(ec)); p = pe;
+            for (let j = 0; j < ec; j++) p = spanLeb(p, "func index");
+          } else {
+            // Other element flag variants — skip remaining
+            if (p < sectionEnd) span(p, sectionEnd - p, "element data");
+            p = sectionEnd;
+          }
+        }
+      } else if (sectionId === 10) {
+        // Code section
+        const { value: count, next: p2 } = readU32Leb(bytes, p);
+        span(p, p2 - p, "function count", String(count)); p = p2;
+        for (let i = 0; i < count && p < sectionEnd; i++) {
+          const bodyStart = p;
+          const { value: bodySize, next: codeStart } = readU32Leb(bytes, p);
+          span(p, codeStart - p, "body size", String(bodySize)); p = codeStart;
+          const bodyEnd = codeStart + bodySize;
+
+          // Local declarations
+          const { value: localGroupCount, next: pl } = readU32Leb(bytes, p);
+          span(p, pl - p, "local group count", String(localGroupCount)); p = pl;
+          for (let j = 0; j < localGroupCount && p < bodyEnd; j++) {
+            const { value: lc, next: plc } = readU32Leb(bytes, p);
+            span(p, plc - p, "local count", String(lc)); p = plc;
+            p = spanValtype(p, "local type");
+          }
+
+          // Instructions
+          while (p < bodyEnd) {
+            const opStart = p;
+            const opcode = bytes[p++];
+
+            if (opcode === 0xfc) {
+              // Extended opcode prefix
+              const { value: extOp, next: pe } = readU32Leb(bytes, p);
+              const name = FC_OPCODES[extOp] ?? `fc.${extOp}`;
+              span(opStart, pe - opStart, name);
+              p = pe;
+              // Some FC ops have trailing immediates
+              if (extOp >= 8 && extOp <= 17) {
+                p = spanLeb(p, "index");
+                if (extOp === 8 || extOp === 10 || extOp === 12 || extOp === 14) {
+                  p = spanLeb(p, "index");
+                }
+              }
+              continue;
+            }
+
+            const info = OPCODE_MAP.get(opcode);
+            if (!info) {
+              span(opStart, 1, `unknown opcode`, `0x${opcode.toString(16)}`);
+              continue;
+            }
+
+            switch (info.imm) {
+              case N:
+                span(opStart, 1, info.name);
+                break;
+              case L: {
+                const { value, next } = readU32Leb(bytes, p);
+                span(opStart, next - opStart, info.name, String(value));
+                p = next;
+                break;
+              }
+              case SL: {
+                const { value, next } = readS32Leb(bytes, p);
+                span(opStart, next - opStart, info.name, String(value));
+                p = next;
+                break;
+              }
+              case SL64: {
+                const { value, next } = readS64Leb(bytes, p);
+                span(opStart, next - opStart, info.name, String(value));
+                p = next;
+                break;
+              }
+              case F32: {
+                const view = new DataView(bytes.buffer, bytes.byteOffset + p, 4);
+                span(opStart, 5, info.name, String(view.getFloat32(0, true)));
+                p += 4;
+                break;
+              }
+              case F64: {
+                const view = new DataView(bytes.buffer, bytes.byteOffset + p, 8);
+                span(opStart, 9, info.name, String(view.getFloat64(0, true)));
+                p += 8;
+                break;
+              }
+              case MEM: {
+                const { value: align, next: pa } = readU32Leb(bytes, p);
+                const { value: offset, next: po } = readU32Leb(bytes, pa);
+                span(opStart, po - opStart, info.name, `align=${align} offset=${offset}`);
+                p = po;
+                break;
+              }
+              case BLK: {
+                // Block type: 0x40 = void, valtype, or signed LEB type index
+                const bt = bytes[p];
+                if (bt === 0x40 || VALTYPE_NAMES[bt]) {
+                  span(opStart, 2, info.name, bt === 0x40 ? "void" : valtype(bt));
+                  p++;
+                } else {
+                  const { value: typeIdx, next: pt } = readS32Leb(bytes, p);
+                  span(opStart, pt - opStart, info.name, `type[${typeIdx}]`);
+                  p = pt;
+                }
+                break;
+              }
+              case BRT: {
+                const { value: count, next: pc } = readU32Leb(bytes, p);
+                p = pc;
+                for (let j = 0; j <= count; j++) {
+                  const { next: pl2 } = readU32Leb(bytes, p);
+                  p = pl2;
+                }
+                span(opStart, p - opStart, info.name, `${count + 1} targets`);
+                break;
+              }
+              case CI: {
+                const { value: typeIdx, next: pt } = readU32Leb(bytes, p);
+                const tableIdx = bytes[pt];
+                span(opStart, pt + 1 - opStart, info.name, `type[${typeIdx}] table[${tableIdx}]`);
+                p = pt + 1;
+                break;
+              }
+              case B:
+                span(opStart, 2, info.name, String(bytes[p]));
+                p++;
+                break;
+            }
+          }
+        }
+      } else if (sectionId === 11) {
+        // Data section
+        const { value: count, next: p2 } = readU32Leb(bytes, p);
+        span(p, p2 - p, "data segment count", String(count)); p = p2;
+        for (let i = 0; i < count && p < sectionEnd; i++) {
+          const { value: flags, next: pf } = readU32Leb(bytes, p);
+          span(p, pf - p, "segment flags", String(flags)); p = pf;
+          if (flags === 0) {
+            p = parseInitExpr(p);
+          } else if (flags === 2) {
+            p = spanLeb(p, "memory index");
+            p = parseInitExpr(p);
+          }
+          // passive (1) has no expr
+          const { value: dataLen, next: pd } = readU32Leb(bytes, p);
+          span(p, pd - p, "data length", String(dataLen)); p = pd;
+          if (dataLen > 0) {
+            span(p, dataLen, "data bytes");
+            p += dataLen;
+          }
+        }
+      } else if (sectionId === 12) {
+        // DataCount section
+        p = spanLeb(p, "data count");
+      }
+    } catch {
+      // If parsing fails mid-section, span remaining bytes
+      if (p < sectionEnd) span(p, sectionEnd - p, "unparsed");
+    }
+
+    pos = sectionEnd;
+  }
+
+  return spans;
+}
+
 // ─── Treemap widget ─────────────────────────────────────────────────────
 
 export class WasmTreemap {
@@ -418,6 +963,31 @@ export class WasmTreemap {
     crateRgb: [number, number, number] | null;
     name: string;
   }[] = [];
+
+  onNodeSelect: ((node: { name: string; fullPath: string; isLeaf: boolean }) => void) | null = null;
+  onNodeHover: ((node: { name: string; fullPath: string; isLeaf: boolean } | null) => void) | null = null;
+
+  private highlightedEl: HTMLElement | null = null;
+
+  /** Highlight a treemap tile by name or path. Pass null to clear. */
+  highlightNode(nameOrPath: string | null) {
+    if (this.highlightedEl) {
+      this.highlightedEl.classList.remove("tm-highlight");
+      this.highlightedEl = null;
+    }
+    if (!nameOrPath) return;
+    // Search all tile elements for a matching node
+    const els = this.treemapEl.querySelectorAll<HTMLElement>(".tm-node");
+    for (const el of els) {
+      const node = (el as any)._tmNode as TreeNode | undefined;
+      if (!node) continue;
+      if (node.fullPath === nameOrPath || node.name === nameOrPath) {
+        el.classList.add("tm-highlight");
+        this.highlightedEl = el;
+        return;
+      }
+    }
+  }
 
   private resizeObserver: ResizeObserver;
   private resizeTimer = 0;
@@ -1020,8 +1590,18 @@ export class WasmTreemap {
     el.addEventListener("mouseenter", (e) => this.onNodeEnter(e));
     el.addEventListener("mousemove", (e) => this.onTooltipMove(e));
     el.addEventListener("mouseleave", () => this.onNodeLeave());
-    if (!isLeaf && depth > 0)
-      el.addEventListener("click", (e) => this.onNodeClick(e));
+    if (depth > 0) {
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const n = (e.currentTarget as any)._tmNode as TreeNode;
+        const origId = n._originalId != null ? n._originalId : n._id;
+        const origNode = origId >= 0 ? this.nodeById.get(origId) : null;
+        if (this.onNodeSelect && origNode) {
+          this.onNodeSelect({ name: origNode.name, fullPath: origNode.fullPath, isLeaf: origNode.isLeaf });
+        }
+        if (!isLeaf) this.onNodeClick(e);
+      });
+    }
 
     el.appendChild(inner);
     container.appendChild(el);
@@ -1099,6 +1679,14 @@ export class WasmTreemap {
 
     this.tooltip.style.display = "block";
     this.positionTooltip(e);
+
+    if (this.onNodeHover) {
+      const origId = node._originalId != null ? node._originalId : node._id;
+      const origNode = origId >= 0 ? this.nodeById.get(origId) : null;
+      if (origNode) {
+        this.onNodeHover({ name: origNode.name, fullPath: origNode.fullPath, isLeaf: origNode.isLeaf });
+      }
+    }
   }
 
   private onTooltipMove(e: MouseEvent) {
@@ -1107,6 +1695,7 @@ export class WasmTreemap {
 
   private onNodeLeave() {
     this.tooltip.style.display = "none";
+    if (this.onNodeHover) this.onNodeHover(null);
   }
 
   private positionTooltip(e: MouseEvent) {
@@ -1132,7 +1721,6 @@ export class WasmTreemap {
   }
 
   private onNodeClick(e: MouseEvent) {
-    e.stopPropagation();
     const el = e.currentTarget as HTMLElement;
     const node = (el as any)._tmNode as TreeNode;
     const crateRgb = (el as any)._tmCrateRgb as [number, number, number];

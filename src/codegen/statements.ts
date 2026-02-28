@@ -144,6 +144,19 @@ function compileVariableStatement(
       continue;
     }
 
+    // Check if this is a module-level global (already registered)
+    const moduleGlobalIdx = ctx.moduleGlobals.get(name);
+    if (moduleGlobalIdx !== undefined) {
+      // Module global: compile initializer and set global
+      if (decl.initializer) {
+        const globalDef = ctx.mod.globals[moduleGlobalIdx];
+        const wasmType = globalDef?.type ?? resolveWasmType(ctx, ctx.checker.getTypeAtLocation(decl));
+        compileExpression(ctx, fctx, decl.initializer, wasmType);
+        fctx.body.push({ op: "global.set", index: moduleGlobalIdx });
+      }
+      continue;
+    }
+
     const varType = ctx.checker.getTypeAtLocation(decl);
     const wasmType = resolveWasmType(ctx, varType);
 

@@ -450,6 +450,9 @@
       .tm-branch {
         cursor: pointer;
       }
+      .tm-highlight > .tm-node-inner {
+        box-shadow: inset 0 0 0 2px rgba(255, 240, 150, 0.6);
+      }
       .tm-remainder > .tm-node-inner {
         background-image: repeating-linear-gradient(
           45deg,
@@ -501,17 +504,7 @@
       }
 
       /* ─── Hex viewer section decorations ──────────────── */
-      .hex-sec-header   { background: #2d2d2d !important; }
-      .hex-sec-type     { background: #1b2d4a !important; }
-      .hex-sec-import   { background: #3a1e3a !important; }
-      .hex-sec-function { background: #1a3a30 !important; }
-      .hex-sec-table    { background: #2e2e2e !important; }
-      .hex-sec-tag      { background: #3e1a1a !important; }
-      .hex-sec-global   { background: #35351a !important; }
-      .hex-sec-export   { background: #1a3040 !important; }
-      .hex-sec-element  { background: #2e2e2e !important; }
-      .hex-sec-code     { background: #1e351e !important; }
-      .hex-sec-name     { background: #1e2e18 !important; }
+      /* Background and label colors generated dynamically from SECTION_COLORS */
       .hex-sec-label {
         display: inline-block;
         font-size: 10px;
@@ -522,17 +515,6 @@
         border-radius: 2px;
         margin-left: 4px;
       }
-      .hex-sec-label-header   { color: #888; }
-      .hex-sec-label-type     { color: #569cd6; }
-      .hex-sec-label-import   { color: #c586c0; }
-      .hex-sec-label-function { color: #4ec9b0; }
-      .hex-sec-label-table    { color: #d4d4d4; }
-      .hex-sec-label-tag      { color: #f48771; }
-      .hex-sec-label-global   { color: #dcdcaa; }
-      .hex-sec-label-export   { color: #4fc1ff; }
-      .hex-sec-label-element  { color: #d4d4d4; }
-      .hex-sec-label-code     { color: #b5cea8; }
-      .hex-sec-label-name     { color: #6a9955; }
     </style>
   </head>
 
