@@ -1004,7 +1004,10 @@ async function runOnly() {
 
   const { env, setExports } = buildEnv(
     result,
-    (msg) => logs.push(msg),
+    (msg) => {
+      logs.push(msg);
+      consolePre.textContent = logs.join("\n");
+    },
     targetDoc,
   );
 

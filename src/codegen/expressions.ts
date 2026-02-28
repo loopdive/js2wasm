@@ -1370,6 +1370,14 @@ function compileExternMethodCall(
     compileExpression(ctx, fctx, callExpr.arguments[i]!, hint);
   }
 
+  // Pad missing optional args with default values
+  if (methodInfo) {
+    const actualArgs = callExpr.arguments.length + 1; // +1 for 'this'
+    for (let i = actualArgs; i < methodInfo.params.length; i++) {
+      pushDefaultValue(fctx, methodInfo.params[i]!);
+    }
+  }
+
   const importName = `${methodOwner.importPrefix}_${methodName}`;
   const funcIdx = ctx.funcMap.get(importName);
   if (funcIdx === undefined) {

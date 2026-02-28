@@ -61,6 +61,10 @@ export function main(): void {
 }
 ```
 
+renders this in the browser:
+
+![Screenshot](./screenshot.png)
+
 The module analyzer shows the size of the WebAssembly binary and the WAT text for the compiled module.
 
 ![Module Analyzer](./treemap.png)
