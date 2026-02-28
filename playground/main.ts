@@ -1167,20 +1167,23 @@ function findEnclosingWatFunc(watModel: monaco.editor.ITextModel, lineNumber: nu
   return null;
 }
 
-/** Cached map of TS declaration name → line number, built from the AST. */
-let tsSymbolCache: { version: number; map: Map<string, number> } | null = null;
+/** Cached map of TS declaration name → line range, built from the AST. */
+interface TsSymbolInfo { startLine: number; endLine: number }
+let tsSymbolCache: { version: number; map: Map<string, TsSymbolInfo> } | null = null;
 
-function getTsSymbolMap(tsModel: monaco.editor.ITextModel): Map<string, number> {
+function getTsSymbolMap(tsModel: monaco.editor.ITextModel): Map<string, TsSymbolInfo> {
   const version = tsModel.getVersionId();
   if (tsSymbolCache?.version === version) return tsSymbolCache.map;
 
-  const map = new Map<string, number>();
+  const map = new Map<string, TsSymbolInfo>();
   const text = tsModel.getValue();
   const sf = ts.createSourceFile("example.ts", text, ts.ScriptTarget.Latest, true);
 
   function add(name: string, node: ts.Node) {
-    const { line } = sf.getLineAndCharacterOfPosition(node.getStart());
-    if (!map.has(name)) map.set(name, line + 1);
+    if (map.has(name)) return;
+    const startLine = sf.getLineAndCharacterOfPosition(node.getStart()).line + 1;
+    const endLine = sf.getLineAndCharacterOfPosition(node.getEnd()).line + 1;
+    map.set(name, { startLine, endLine });
   }
 
   function visit(node: ts.Node, prefix: string) {
@@ -1219,11 +1222,22 @@ function getTsSymbolMap(tsModel: monaco.editor.ITextModel): Map<string, number> 
 function findTsSourceLine(tsModel: monaco.editor.ITextModel, funcName: string): number | null {
   const name = funcName.replace(/^\$/, "");
   const map = getTsSymbolMap(tsModel);
-  if (map.has(name)) return map.get(name)!;
-  // Try short name (e.g. "MyClass.method" → "method")
-  const short = name.includes(".") ? name.split(".").pop()! : null;
-  if (short && map.has(short)) return map.get(short)!;
-  return null;
+  const info = map.get(name) ?? (name.includes(".") ? map.get(name.split(".").pop()!) : undefined);
+  return info?.startLine ?? null;
+}
+
+/** Find which TS function the cursor is inside, using AST line ranges. */
+function findEnclosingTsFunc(tsModel: monaco.editor.ITextModel, lineNumber: number): string | null {
+  const map = getTsSymbolMap(tsModel);
+  let best: string | null = null;
+  let bestSize = Infinity;
+  for (const [name, { startLine, endLine }] of map) {
+    if (lineNumber >= startLine && lineNumber <= endLine) {
+      const size = endLine - startLine;
+      if (size < bestSize) { bestSize = size; best = name; }
+    }
+  }
+  return best;
 }
 
 monaco.languages.registerHoverProvider("wat", {

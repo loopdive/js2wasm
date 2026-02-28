@@ -4,3 +4,5 @@ playground-dist/
 output/
 *.tsbuildinfo
 .vite/
+.env
+.file-registry.json
