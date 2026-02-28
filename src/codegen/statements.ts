@@ -74,6 +74,11 @@ export function compileStatement(
     return;
   }
 
+  if (ts.isForInStatement(stmt)) {
+    compileForInStatement(ctx, fctx, stmt);
+    return;
+  }
+
   if (ts.isBreakStatement(stmt)) {
     compileBreakStatement(ctx, fctx, stmt);
     return;
@@ -99,6 +104,11 @@ function compileVariableStatement(
   for (const decl of stmt.declarationList.declarations) {
     if (ts.isObjectBindingPattern(decl.name)) {
       compileObjectDestructuring(ctx, fctx, decl);
+      continue;
+    }
+
+    if (ts.isArrayBindingPattern(decl.name)) {
+      compileArrayDestructuring(ctx, fctx, decl);
       continue;
     }
 
@@ -195,6 +205,61 @@ function compileObjectDestructuring(
 
     fctx.body.push({ op: "local.get", index: tmpLocal });
     fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+    fctx.body.push({ op: "local.set", index: localIdx });
+  }
+}
+
+function compileArrayDestructuring(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  decl: ts.VariableDeclaration,
+): void {
+  if (!decl.initializer) return;
+
+  const pattern = decl.name as ts.ArrayBindingPattern;
+  const bodyLenBefore = fctx.body.length;
+
+  const resultType = compileExpression(ctx, fctx, decl.initializer);
+  if (!resultType) return;
+
+  if (resultType.kind !== "ref" && resultType.kind !== "ref_null") {
+    fctx.body.length = bodyLenBefore;
+    ctx.errors.push({
+      message: "Cannot destructure: not an array type",
+      line: getLine(decl),
+      column: getCol(decl),
+    });
+    return;
+  }
+
+  const typeIdx = (resultType as { typeIdx: number }).typeIdx;
+  const typeDef = ctx.mod.types[typeIdx];
+  if (!typeDef || typeDef.kind !== "array") {
+    fctx.body.length = bodyLenBefore;
+    ctx.errors.push({
+      message: "Cannot destructure: not an array type",
+      line: getLine(decl),
+      column: getCol(decl),
+    });
+    return;
+  }
+
+  const elemType = typeDef.element;
+
+  // Store array ref in temp local
+  const tmpLocal = allocLocal(fctx, `__destruct_${fctx.locals.length}`, resultType);
+  fctx.body.push({ op: "local.set", index: tmpLocal });
+
+  for (let i = 0; i < pattern.elements.length; i++) {
+    const element = pattern.elements[i]!;
+    if (ts.isOmittedExpression(element)) continue; // skip holes: [a, , c]
+
+    const localName = (element.name as ts.Identifier).text;
+    const localIdx = allocLocal(fctx, localName, elemType);
+
+    fctx.body.push({ op: "local.get", index: tmpLocal });
+    fctx.body.push({ op: "i32.const", value: i });
+    fctx.body.push({ op: "array.get", typeIdx });
     fctx.body.push({ op: "local.set", index: localIdx });
   }
 }
@@ -640,6 +705,58 @@ function compileForOfStatement(
       },
     ],
   });
+}
+
+function compileForInStatement(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  stmt: ts.ForInStatement,
+): void {
+  // Get property names from the type checker
+  const exprType = ctx.checker.getTypeAtLocation(stmt.expression);
+  const props = exprType.getProperties();
+  if (props.length === 0) return;
+
+  // Get the loop variable name
+  const init = stmt.initializer;
+  let varName: string;
+  if (ts.isVariableDeclarationList(init)) {
+    const decl = init.declarations[0]!;
+    if (!ts.isIdentifier(decl.name)) {
+      ctx.errors.push({
+        message: "for-in variable must be an identifier",
+        line: getLine(decl),
+        column: getCol(decl),
+      });
+      return;
+    }
+    varName = decl.name.text;
+  } else {
+    ctx.errors.push({
+      message: "for-in requires a variable declaration",
+      line: getLine(stmt),
+      column: getCol(stmt),
+    });
+    return;
+  }
+
+  // Allocate a local for the loop variable (string / externref)
+  const keyLocal = allocLocal(fctx, varName, { kind: "externref" });
+
+  // Unroll: emit one copy of the loop body per property
+  for (const prop of props) {
+    const importName = ctx.stringLiteralMap.get(prop.name);
+    if (!importName) continue;
+    const funcIdx = ctx.funcMap.get(importName);
+    if (funcIdx === undefined) continue;
+
+    // Set the key variable to this property's name
+    fctx.body.push({ op: "call", funcIdx });
+    fctx.body.push({ op: "local.set", index: keyLocal });
+
+    // Compile the loop body
+    compileStatement(ctx, fctx, stmt.statement);
+  }
 }
 
 function compileBreakStatement(

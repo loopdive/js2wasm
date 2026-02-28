@@ -170,6 +170,9 @@ export function generateModule(ast: TypedAST): WasmModule {
   // Collect __make_callback import if arrow functions are used as call arguments
   collectCallbackImports(ctx, ast.sourceFile);
 
+  // Register string literals for for-in field names (uses type checker, before func indices)
+  collectForInStringLiterals(ctx, ast.sourceFile);
+
   // Second pass: collect all function declarations and interfaces
   collectDeclarations(ctx, ast.sourceFile);
 
@@ -448,6 +451,46 @@ function collectStringLiterals(
   addStringImports(ctx);
 
   // Register an env import for each unique string literal
+  const strThunkType = addFuncType(ctx, [], [{ kind: "externref" }]);
+  for (const value of literals) {
+    const name = `__str_${ctx.stringLiteralCounter++}`;
+    addImport(ctx, "env", name, { kind: "func", typeIdx: strThunkType });
+    ctx.stringLiteralMap.set(value, name);
+    ctx.stringLiteralValues.set(name, value);
+    ctx.mod.stringPool.push(value);
+  }
+}
+
+/** Register struct field names as string literals for for-in loops.
+ *  Uses the type checker to get property names (runs before collectDeclarations). */
+function collectForInStringLiterals(
+  ctx: CodegenContext,
+  sourceFile: ts.SourceFile,
+): void {
+  const literals = new Set<string>();
+
+  function visit(node: ts.Node) {
+    if (ts.isForInStatement(node)) {
+      const exprType = ctx.checker.getTypeAtLocation(node.expression);
+      const props = exprType.getProperties();
+      for (const prop of props) {
+        if (!ctx.stringLiteralMap.has(prop.name)) literals.add(prop.name);
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  for (const stmt of sourceFile.statements) {
+    if (ts.isFunctionDeclaration(stmt) && stmt.body) {
+      visit(stmt.body);
+    }
+  }
+
+  if (literals.size === 0) return;
+
+  // Ensure wasm:js-string imports exist (may already be registered)
+  addStringImports(ctx);
+
   const strThunkType = addFuncType(ctx, [], [{ kind: "externref" }]);
   for (const value of literals) {
     const name = `__str_${ctx.stringLiteralCounter++}`;
