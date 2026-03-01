@@ -1,9 +1,40 @@
 import ts from "typescript";
-import type { CodegenContext, FunctionContext } from "./index.js";
-import { allocLocal, resolveWasmType, ensureI32Condition, ensureExnTag, addFuncType, getArrTypeIdxFromVec } from "./index.js";
-import { compileExpression, collectReferencedIdentifiers } from "./expressions.js";
 import { isVoidType } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";
+import {
+  collectReferencedIdentifiers,
+  compileExpression,
+} from "./expressions.js";
+import type { CodegenContext, FunctionContext } from "./index.js";
+import {
+  addFuncType,
+  allocLocal,
+  attachSourcePos,
+  ensureExnTag,
+  ensureI32Condition,
+  getArrTypeIdxFromVec,
+  getSourcePos,
+  resolveWasmType,
+} from "./index.js";
+
+/**
+ * Mark the first instruction emitted for a statement with its source position.
+ * Captures body length before, then after the statement is compiled,
+ * attaches the source position to the first new instruction (if any).
+ */
+function markStatementPos(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  stmt: ts.Statement,
+  compile: () => void,
+): void {
+  const pos = getSourcePos(ctx, stmt);
+  const bodyLenBefore = fctx.body.length;
+  compile();
+  if (pos && fctx.body.length > bodyLenBefore) {
+    attachSourcePos(fctx.body[bodyLenBefore]!, pos);
+  }
+}
 
 /** Compile a statement, appending instructions to the function body */
 export function compileStatement(
@@ -15,27 +46,37 @@ export function compileStatement(
   if (ts.isImportDeclaration(stmt)) return;
 
   if (ts.isVariableStatement(stmt)) {
-    compileVariableStatement(ctx, fctx, stmt);
+    markStatementPos(ctx, fctx, stmt, () =>
+      compileVariableStatement(ctx, fctx, stmt),
+    );
     return;
   }
 
   if (ts.isReturnStatement(stmt)) {
-    compileReturnStatement(ctx, fctx, stmt);
+    markStatementPos(ctx, fctx, stmt, () =>
+      compileReturnStatement(ctx, fctx, stmt),
+    );
     return;
   }
 
   if (ts.isIfStatement(stmt)) {
-    compileIfStatement(ctx, fctx, stmt);
+    markStatementPos(ctx, fctx, stmt, () =>
+      compileIfStatement(ctx, fctx, stmt),
+    );
     return;
   }
 
   if (ts.isWhileStatement(stmt)) {
-    compileWhileStatement(ctx, fctx, stmt);
+    markStatementPos(ctx, fctx, stmt, () =>
+      compileWhileStatement(ctx, fctx, stmt),
+    );
     return;
   }
 
   if (ts.isForStatement(stmt)) {
-    compileForStatement(ctx, fctx, stmt);
+    markStatementPos(ctx, fctx, stmt, () =>
+      compileForStatement(ctx, fctx, stmt),
+    );
     return;
   }
 
@@ -47,51 +88,74 @@ export function compileStatement(
   }
 
   if (ts.isExpressionStatement(stmt)) {
-    const resultType = compileExpression(ctx, fctx, stmt.expression);
-    // Drop the result if the expression left something on the stack
-    if (resultType !== null) {
-      fctx.body.push({ op: "drop" });
-    }
+    markStatementPos(ctx, fctx, stmt, () => {
+      const resultType = compileExpression(ctx, fctx, stmt.expression);
+      // Drop the result if the expression left something on the stack
+      if (resultType !== null) {
+        fctx.body.push({ op: "drop" });
+      }
+    });
     return;
   }
 
   if (ts.isDoStatement(stmt)) {
-    compileDoWhileStatement(ctx, fctx, stmt);
+    markStatementPos(ctx, fctx, stmt, () =>
+      compileDoWhileStatement(ctx, fctx, stmt),
+    );
     return;
   }
 
   if (ts.isSwitchStatement(stmt)) {
-    compileSwitchStatement(ctx, fctx, stmt);
+    markStatementPos(ctx, fctx, stmt, () =>
+      compileSwitchStatement(ctx, fctx, stmt),
+    );
     return;
   }
 
   if (ts.isForOfStatement(stmt)) {
-    compileForOfStatement(ctx, fctx, stmt);
+    markStatementPos(ctx, fctx, stmt, () =>
+      compileForOfStatement(ctx, fctx, stmt),
+    );
     return;
   }
 
   if (ts.isForInStatement(stmt)) {
-    compileForInStatement(ctx, fctx, stmt);
+    markStatementPos(ctx, fctx, stmt, () =>
+      compileForInStatement(ctx, fctx, stmt),
+    );
+    return;
+  }
+
+  if (ts.isLabeledStatement(stmt)) {
+    compileLabeledStatement(ctx, fctx, stmt);
     return;
   }
 
   if (ts.isBreakStatement(stmt)) {
-    compileBreakStatement(ctx, fctx, stmt);
+    markStatementPos(ctx, fctx, stmt, () =>
+      compileBreakStatement(ctx, fctx, stmt),
+    );
     return;
   }
 
   if (ts.isContinueStatement(stmt)) {
-    compileContinueStatement(ctx, fctx, stmt);
+    markStatementPos(ctx, fctx, stmt, () =>
+      compileContinueStatement(ctx, fctx, stmt),
+    );
     return;
   }
 
   if (ts.isThrowStatement(stmt)) {
-    compileThrowStatement(ctx, fctx, stmt);
+    markStatementPos(ctx, fctx, stmt, () =>
+      compileThrowStatement(ctx, fctx, stmt),
+    );
     return;
   }
 
   if (ts.isTryStatement(stmt)) {
-    compileTryStatement(ctx, fctx, stmt);
+    markStatementPos(ctx, fctx, stmt, () =>
+      compileTryStatement(ctx, fctx, stmt),
+    );
     return;
   }
 
@@ -137,7 +201,11 @@ function compileVariableStatement(
     // For arrow/function expression initializers, compile the expression first
     // to get the actual closure struct ref type (resolveWasmType returns externref
     // for function types, but closures need ref $struct)
-    if (decl.initializer && (ts.isArrowFunction(decl.initializer) || ts.isFunctionExpression(decl.initializer))) {
+    if (
+      decl.initializer &&
+      (ts.isArrowFunction(decl.initializer) ||
+        ts.isFunctionExpression(decl.initializer))
+    ) {
       const actualType = compileExpression(ctx, fctx, decl.initializer);
       const closureType = actualType ?? { kind: "externref" as const };
       const localIdx = allocLocal(fctx, name, closureType);
@@ -151,7 +219,9 @@ function compileVariableStatement(
       // Module global: compile initializer and set global
       if (decl.initializer) {
         const globalDef = ctx.mod.globals[moduleGlobalIdx];
-        const wasmType = globalDef?.type ?? resolveWasmType(ctx, ctx.checker.getTypeAtLocation(decl));
+        const wasmType =
+          globalDef?.type ??
+          resolveWasmType(ctx, ctx.checker.getTypeAtLocation(decl));
         compileExpression(ctx, fctx, decl.initializer, wasmType);
         fctx.body.push({ op: "global.set", index: moduleGlobalIdx });
       }
@@ -190,9 +260,12 @@ function compileObjectDestructuring(
   const initType = ctx.checker.getTypeAtLocation(decl.initializer);
   const symName = initType.symbol?.name;
   const typeName =
-    (symName && symName !== "__type" && symName !== "__object" && ctx.structMap.has(symName))
+    symName &&
+    symName !== "__type" &&
+    symName !== "__object" &&
+    ctx.structMap.has(symName)
       ? symName
-      : ctx.anonTypeMap.get(initType) ?? symName;
+      : (ctx.anonTypeMap.get(initType) ?? symName);
 
   if (!typeName) {
     fctx.body.length = bodyLenBefore; // rollback — value would leak on stack
@@ -217,7 +290,11 @@ function compileObjectDestructuring(
   }
 
   // Save the struct ref into a temp local so we can access fields multiple times
-  const tmpLocal = allocLocal(fctx, `__destruct_${fctx.locals.length}`, resultType);
+  const tmpLocal = allocLocal(
+    fctx,
+    `__destruct_${fctx.locals.length}`,
+    resultType,
+  );
   fctx.body.push({ op: "local.set", index: tmpLocal });
 
   // For each binding element, create a local and extract the field
@@ -297,7 +374,11 @@ function compileArrayDestructuring(
   const elemType = arrDef.element;
 
   // Store vec ref in temp local
-  const tmpLocal = allocLocal(fctx, `__destruct_${fctx.locals.length}`, resultType);
+  const tmpLocal = allocLocal(
+    fctx,
+    `__destruct_${fctx.locals.length}`,
+    resultType,
+  );
   fctx.body.push({ op: "local.set", index: tmpLocal });
 
   for (let i = 0; i < pattern.elements.length; i++) {
@@ -398,10 +479,15 @@ function compileWhileStatement(
   const savedBody = fctx.body;
   fctx.body = [];
 
+  // Adjust existing break/continue depths: block+loop adds 2 nesting levels
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! += 2;
+  for (let i = 0; i < fctx.continueStack.length; i++)
+    fctx.continueStack[i]! += 2;
+
   // Track break/continue depths
   // Inside the generated structure, br 1 = break, br 0 = continue
-  fctx.breakStack.push(1);     // break: exit the outer block
-  fctx.continueStack.push(0);  // continue: restart the loop
+  fctx.breakStack.push(1); // break: exit the outer block
+  fctx.continueStack.push(0); // continue: restart the loop
 
   // Compile condition
   const condType = compileExpression(ctx, fctx, stmt.expression);
@@ -423,6 +509,11 @@ function compileWhileStatement(
 
   fctx.breakStack.pop();
   fctx.continueStack.pop();
+
+  // Restore existing break/continue depths
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! -= 2;
+  for (let i = 0; i < fctx.continueStack.length; i++)
+    fctx.continueStack[i]! -= 2;
 
   fctx.body = savedBody;
 
@@ -465,23 +556,45 @@ function compileForStatement(
     }
   }
 
-  // Loop structure: block { loop { condition_check; body; incrementor; br 0 } }
+  // Loop structure:
+  // block $break {                    ; break target (depth 2 from body)
+  //   loop $loop {                    ; loop restart (continue outer target)
+  //     condition_check
+  //     block $continue {             ; continue target (depth 0 from body)
+  //       body
+  //     }
+  //     incrementor
+  //     br $loop
+  //   }
+  // }
   const savedBody = fctx.body;
   fctx.body = [];
 
-  // break goes to outer block (depth 1), continue goes to incrementor+loop restart
-  fctx.breakStack.push(1);
+  // Adjust existing break/continue depths: block+loop+block adds 3 nesting levels
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! += 3;
+  for (let i = 0; i < fctx.continueStack.length; i++)
+    fctx.continueStack[i]! += 3;
+
+  // From body inside $continue block:
+  //   break = br 2 (exits $break block)
+  //   continue = br 0 (exits $continue block, falls through to incrementor)
+  fctx.breakStack.push(2);
   fctx.continueStack.push(0);
 
-  // Condition
+  // Condition (inside $loop, before $continue block)
+  const condInstrs: Instr[] = [];
   if (stmt.condition) {
+    const condBody = fctx.body;
+    fctx.body = [];
     const condType = compileExpression(ctx, fctx, stmt.condition);
     ensureI32Condition(fctx, condType);
     fctx.body.push({ op: "i32.eqz" });
-    fctx.body.push({ op: "br_if", depth: 1 }); // break
+    fctx.body.push({ op: "br_if", depth: 1 }); // break: exits $break (depth 1 from $loop body)
+    condInstrs.push(...fctx.body);
+    fctx.body = condBody;
   }
 
-  // Body
+  // Body (inside $continue block)
   if (ts.isBlock(stmt.statement)) {
     for (const s of stmt.statement.statements) {
       compileStatement(ctx, fctx, s);
@@ -489,20 +602,37 @@ function compileForStatement(
   } else {
     compileStatement(ctx, fctx, stmt.statement);
   }
+  const bodyInstrs = fctx.body;
 
-  // Incrementor
+  // Incrementor (inside $loop, after $continue block)
+  fctx.body = [];
   if (stmt.incrementor) {
     const resultType = compileExpression(ctx, fctx, stmt.incrementor);
     if (resultType !== null) fctx.body.push({ op: "drop" });
   }
-
-  fctx.body.push({ op: "br", depth: 0 }); // continue loop
-  const loopBody = fctx.body;
+  const incrInstrs = fctx.body;
 
   fctx.breakStack.pop();
   fctx.continueStack.pop();
 
+  // Restore existing break/continue depths
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! -= 3;
+  for (let i = 0; i < fctx.continueStack.length; i++)
+    fctx.continueStack[i]! -= 3;
+
   fctx.body = savedBody;
+
+  // Build the loop body: condition + block $continue { body } + incrementor + br $loop
+  const loopBody: Instr[] = [
+    ...condInstrs,
+    {
+      op: "block",
+      blockType: { kind: "empty" },
+      body: bodyInstrs,
+    },
+    ...incrInstrs,
+    { op: "br", depth: 0 }, // restart $loop
+  ];
 
   fctx.body.push({
     op: "block",
@@ -534,6 +664,11 @@ function compileDoWhileStatement(
   const savedBody = fctx.body;
   fctx.body = [];
 
+  // Adjust existing break/continue depths: block+loop adds 2 nesting levels
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! += 2;
+  for (let i = 0; i < fctx.continueStack.length; i++)
+    fctx.continueStack[i]! += 2;
+
   // Inside this structure: br 1 = break (exits outer block), br 0 = continue (restarts loop)
   fctx.breakStack.push(1);
   fctx.continueStack.push(0);
@@ -556,6 +691,11 @@ function compileDoWhileStatement(
 
   fctx.breakStack.pop();
   fctx.continueStack.pop();
+
+  // Restore existing break/continue depths
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! -= 2;
+  for (let i = 0; i < fctx.continueStack.length; i++)
+    fctx.continueStack[i]! -= 2;
 
   fctx.body = savedBody;
 
@@ -586,13 +726,20 @@ function compileSwitchStatement(
   fctx.body.push({ op: "local.set", index: tmpLocalIdx });
 
   // Choose the equality opcode based on the switch expression type
-  const eqOp: "f64.eq" | "i32.eq" = wasmType.kind === "i32" ? "i32.eq" : "f64.eq";
+  const eqOp: "f64.eq" | "i32.eq" =
+    wasmType.kind === "i32" ? "i32.eq" : "f64.eq";
 
   // Collect instructions for the switch block body
   const savedBody = fctx.body;
   fctx.body = [];
 
+  // Adjust existing break/continue depths: block adds 1 nesting level
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!++;
+  for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!++;
+
   // Inside the block: br 1 exits the block ($break). No continueStack change.
+  // The value 1 accounts for the case if-wrapping (+1 from block).
+  const switchBreakIdx = fctx.breakStack.length;
   fctx.breakStack.push(1);
 
   const clauses = stmt.caseBlock.clauses;
@@ -617,9 +764,21 @@ function compileSwitchStatement(
     const savedBodyInner = fctx.body;
     fctx.body = [];
 
+    // Adjust outer entries for the if-wrapping (+1 nesting level).
+    // Only adjust entries before the switch's own entry — the switch's
+    // breakStack entry already accounts for the if.
+    for (let i = 0; i < switchBreakIdx; i++) fctx.breakStack[i]!++;
+    for (let i = 0; i < fctx.continueStack.length; i++)
+      fctx.continueStack[i]!++;
+
     for (const s of caseClause.statements) {
       compileStatement(ctx, fctx, s);
     }
+
+    // Restore depths after case body compilation
+    for (let i = 0; i < switchBreakIdx; i++) fctx.breakStack[i]!--;
+    for (let i = 0; i < fctx.continueStack.length; i++)
+      fctx.continueStack[i]!--;
 
     const clauseBody = fctx.body;
     fctx.body = savedBodyInner;
@@ -639,6 +798,10 @@ function compileSwitchStatement(
   }
 
   fctx.breakStack.pop();
+
+  // Restore existing break/continue depths
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!--;
+  for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!--;
 
   const switchBody = fctx.body;
   fctx.body = savedBody;
@@ -695,22 +858,33 @@ function compileForOfStatement(
   const elemType = arrDef.element;
 
   // Save vec ref to temp local
-  const vecLocal = allocLocal(fctx, `__forof_vec_${fctx.locals.length}`, vecType);
+  const vecLocal = allocLocal(
+    fctx,
+    `__forof_vec_${fctx.locals.length}`,
+    vecType,
+  );
   fctx.body.push({ op: "local.tee", index: vecLocal });
 
   // Extract data array from vec into a local
-  const dataLocal = allocLocal(fctx, `__forof_data_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
+  const dataLocal = allocLocal(fctx, `__forof_data_${fctx.locals.length}`, {
+    kind: "ref_null",
+    typeIdx: arrTypeIdx,
+  });
   fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
   fctx.body.push({ op: "local.set", index: dataLocal });
 
   // Extract length from vec into a local
-  const lenLocal = allocLocal(fctx, `__forof_len_${fctx.locals.length}`, { kind: "i32" });
+  const lenLocal = allocLocal(fctx, `__forof_len_${fctx.locals.length}`, {
+    kind: "i32",
+  });
   fctx.body.push({ op: "local.get", index: vecLocal });
   fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
   fctx.body.push({ op: "local.set", index: lenLocal });
 
   // Allocate counter local (i32)
-  const iLocal = allocLocal(fctx, `__forof_i_${fctx.locals.length}`, { kind: "i32" });
+  const iLocal = allocLocal(fctx, `__forof_i_${fctx.locals.length}`, {
+    kind: "i32",
+  });
   fctx.body.push({ op: "i32.const", value: 0 });
   fctx.body.push({ op: "local.set", index: iLocal });
 
@@ -730,8 +904,13 @@ function compileForOfStatement(
   const savedBody = fctx.body;
   fctx.body = [];
 
-  fctx.breakStack.push(1);     // break = depth 1 (exit block)
-  fctx.continueStack.push(0);  // continue = depth 0 (restart loop)
+  // Adjust existing break/continue depths: block+loop adds 2 nesting levels
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! += 2;
+  for (let i = 0; i < fctx.continueStack.length; i++)
+    fctx.continueStack[i]! += 2;
+
+  fctx.breakStack.push(1); // break = depth 1 (exit block)
+  fctx.continueStack.push(0); // continue = depth 0 (restart loop)
 
   // Condition: i >= length → break
   fctx.body.push({ op: "local.get", index: iLocal });
@@ -765,6 +944,11 @@ function compileForOfStatement(
   const loopBody = fctx.body;
   fctx.breakStack.pop();
   fctx.continueStack.pop();
+
+  // Restore existing break/continue depths
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! -= 2;
+  for (let i = 0; i < fctx.continueStack.length; i++)
+    fctx.continueStack[i]! -= 2;
 
   fctx.body = savedBody;
 
@@ -833,25 +1017,72 @@ function compileForInStatement(
   }
 }
 
+function compileLabeledStatement(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  stmt: ts.LabeledStatement,
+): void {
+  const labelName = stmt.label.text;
+
+  // Record the label with the current break/continue stack indices.
+  // The inner loop statement will push its own entries, so the label
+  // points to the index that will be pushed by the labeled loop.
+  const breakIdx = fctx.breakStack.length;
+  const continueIdx = fctx.continueStack.length;
+  fctx.labelMap.set(labelName, { breakIdx, continueIdx });
+
+  // Compile the inner statement (typically a loop)
+  compileStatement(ctx, fctx, stmt.statement);
+
+  // Remove the label after compilation
+  fctx.labelMap.delete(labelName);
+}
+
 function compileBreakStatement(
   _ctx: CodegenContext,
   fctx: FunctionContext,
-  _stmt: ts.BreakStatement,
+  stmt: ts.BreakStatement,
 ): void {
-  const depth = fctx.breakStack[fctx.breakStack.length - 1];
-  if (depth !== undefined) {
-    fctx.body.push({ op: "br", depth });
+  if (stmt.label) {
+    // Labeled break: look up the label to find the correct depth
+    const labelName = stmt.label.text;
+    const labelInfo = fctx.labelMap.get(labelName);
+    if (labelInfo !== undefined) {
+      const depth = fctx.breakStack[labelInfo.breakIdx];
+      if (depth !== undefined) {
+        fctx.body.push({ op: "br", depth });
+      }
+    }
+  } else {
+    // Unlabeled break: use the innermost (top of stack)
+    const depth = fctx.breakStack[fctx.breakStack.length - 1];
+    if (depth !== undefined) {
+      fctx.body.push({ op: "br", depth });
+    }
   }
 }
 
 function compileContinueStatement(
   _ctx: CodegenContext,
   fctx: FunctionContext,
-  _stmt: ts.ContinueStatement,
+  stmt: ts.ContinueStatement,
 ): void {
-  const depth = fctx.continueStack[fctx.continueStack.length - 1];
-  if (depth !== undefined) {
-    fctx.body.push({ op: "br", depth });
+  if (stmt.label) {
+    // Labeled continue: look up the label to find the correct depth
+    const labelName = stmt.label.text;
+    const labelInfo = fctx.labelMap.get(labelName);
+    if (labelInfo !== undefined) {
+      const depth = fctx.continueStack[labelInfo.continueIdx];
+      if (depth !== undefined) {
+        fctx.body.push({ op: "br", depth });
+      }
+    }
+  } else {
+    // Unlabeled continue: use the innermost (top of stack)
+    const depth = fctx.continueStack[fctx.continueStack.length - 1];
+    if (depth !== undefined) {
+      fctx.body.push({ op: "br", depth });
+    }
   }
 }
 
@@ -864,7 +1095,9 @@ function compileThrowStatement(
 
   if (stmt.expression) {
     // Compile the thrown expression — coerce to externref
-    const resultType = compileExpression(ctx, fctx, stmt.expression, { kind: "externref" });
+    const resultType = compileExpression(ctx, fctx, stmt.expression, {
+      kind: "externref",
+    });
     // If the expression didn't produce externref, we need to ensure it's externref
     if (resultType && resultType.kind !== "externref") {
       // Drop whatever was produced, push null extern as fallback
@@ -915,7 +1148,10 @@ function compileTryStatement(
     // Allocate the catch variable local (if any) before compiling catch bodies
     // so it's available in both catch $tag and catch_all bodies.
     let exnLocalIdx: number | null = null;
-    if (stmt.catchClause.variableDeclaration && ts.isIdentifier(stmt.catchClause.variableDeclaration.name)) {
+    if (
+      stmt.catchClause.variableDeclaration &&
+      ts.isIdentifier(stmt.catchClause.variableDeclaration.name)
+    ) {
       const varName = stmt.catchClause.variableDeclaration.name.text;
       exnLocalIdx = allocLocal(fctx, varName, { kind: "externref" });
     }
@@ -1019,9 +1255,10 @@ function compileNestedFunctionDeclaration(
     const localIdx = fctx.localMap.get(name);
     if (localIdx === undefined) continue;
     if (ctx.funcMap.has(name)) continue;
-    const type = localIdx < fctx.params.length
-      ? fctx.params[localIdx]!.type
-      : fctx.locals[localIdx - fctx.params.length]?.type ?? { kind: "f64" };
+    const type =
+      localIdx < fctx.params.length
+        ? fctx.params[localIdx]!.type
+        : (fctx.locals[localIdx - fctx.params.length]?.type ?? { kind: "f64" });
     captures.push({ name, type, localIdx });
   }
 
@@ -1029,7 +1266,12 @@ function compileNestedFunctionDeclaration(
 
   if (captures.length === 0) {
     // No captures — compile as a regular module-level function
-    const funcTypeIdx = addFuncType(ctx, paramTypes, results, `${funcName}_type`);
+    const funcTypeIdx = addFuncType(
+      ctx,
+      paramTypes,
+      results,
+      `${funcName}_type`,
+    );
     const liftedFctx: FunctionContext = {
       name: funcName,
       params: stmt.parameters.map((p, i) => ({
@@ -1068,7 +1310,12 @@ function compileNestedFunctionDeclaration(
   } else {
     // Has captures — lift with captures as leading parameters, use direct call
     const allParamTypes = [...captures.map((c) => c.type), ...paramTypes];
-    const funcTypeIdx = addFuncType(ctx, allParamTypes, results, `${funcName}_type`);
+    const funcTypeIdx = addFuncType(
+      ctx,
+      allParamTypes,
+      results,
+      `${funcName}_type`,
+    );
     const liftedFctx: FunctionContext = {
       name: funcName,
       params: [
@@ -1109,21 +1356,29 @@ function compileNestedFunctionDeclaration(
     ctx.funcMap.set(funcName, funcIdx);
 
     // Store capture info so call sites prepend captured values
-    ctx.nestedFuncCaptures.set(funcName, captures.map((c) => ({
-      name: c.name,
-      outerLocalIdx: c.localIdx,
-    })));
+    ctx.nestedFuncCaptures.set(
+      funcName,
+      captures.map((c) => ({
+        name: c.name,
+        outerLocalIdx: c.localIdx,
+      })),
+    );
   }
 }
 
 /** Append a default return value if the function body doesn't end with a return */
-function appendDefaultReturn(fctx: FunctionContext, returnType: ValType | null): void {
+function appendDefaultReturn(
+  fctx: FunctionContext,
+  returnType: ValType | null,
+): void {
   if (!returnType) return;
   const lastInstr = fctx.body[fctx.body.length - 1];
   if (lastInstr && lastInstr.op === "return") return;
   if (returnType.kind === "f64") fctx.body.push({ op: "f64.const", value: 0 });
-  else if (returnType.kind === "i32") fctx.body.push({ op: "i32.const", value: 0 });
-  else if (returnType.kind === "externref") fctx.body.push({ op: "ref.null.extern" });
+  else if (returnType.kind === "i32")
+    fctx.body.push({ op: "i32.const", value: 0 });
+  else if (returnType.kind === "externref")
+    fctx.body.push({ op: "ref.null.extern" });
 }
 
 function getLine(node: ts.Node): number {

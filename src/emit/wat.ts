@@ -118,6 +118,10 @@ function formatTypeDef(t: TypeDef, idx: number): string {
       const fields = t.fields
         .map((f) => formatFieldDef(f))
         .join(" ");
+      if (t.superTypeIdx !== undefined) {
+        const superStr = t.superTypeIdx >= 0 ? ` $type${t.superTypeIdx}` : "";
+        return `(type $${t.name} (sub${superStr} (struct ${fields})))`;
+      }
       return `(type $${t.name} (struct ${fields}))`;
     }
     case "array":
