@@ -218,6 +218,16 @@ function compileExpressionInner(
     return compileExpressionInner(ctx, fctx, expr.expression);
   }
 
+  // void expr — evaluate operand for side effects, then produce undefined
+  if (ts.isVoidExpression(expr)) {
+    const operandType = compileExpressionInner(ctx, fctx, expr.expression);
+    if (operandType !== null && operandType !== VOID_RESULT) {
+      fctx.body.push({ op: "drop" });
+    }
+    fctx.body.push({ op: "ref.null.extern" });
+    return { kind: "externref" };
+  }
+
   if (ts.isArrowFunction(expr) || ts.isFunctionExpression(expr)) {
     return compileArrowFunction(ctx, fctx, expr);
   }
