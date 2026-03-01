@@ -72,36 +72,16 @@
         padding: 0.3rem 0;
       }
 
-      /* ─── Main area (editor + output) ──────────────────── */
+      /* ─── Main area ───────────────────────────────────── */
       .main-area {
-        display: flex;
-        flex-direction: column;
         flex: 1;
         min-height: 0;
         min-width: 0;
+        overflow: hidden;
       }
 
-      /* ─── Editor area ──────────────────────────────────── */
-      .editor-area {
-        flex: 1;
-        display: flex;
-        flex-direction: row;
-        min-height: 0;
-      }
-      .editor-pane {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        min-height: 0;
-        min-width: 0;
-      }
-      .editor-pane .editor-container {
-        flex: 1;
-        min-height: 0;
-      }
-
-      /* ─── Editor divider ──────────────────────────────── */
-      .divider-editor {
+      /* ─── Layout system ─────────────────────────────────── */
+      .layout-divider-h {
         width: 6px;
         background: transparent;
         cursor: col-resize;
@@ -109,48 +89,62 @@
         transition: background 0.15s;
         flex-shrink: 0;
       }
-      .divider-editor:hover,
-      .divider-editor.active {
+      .layout-divider-v {
+        height: 6px;
+        background: transparent;
+        cursor: row-resize;
+        position: relative;
+        transition: background 0.15s;
+        flex-shrink: 0;
+      }
+      .layout-divider-h:hover, .layout-divider-h.active,
+      .layout-divider-v:hover, .layout-divider-v.active {
         background: #4e4e4e;
       }
-      .divider-editor::after {
+      .layout-divider-h::after {
         content: "";
         position: absolute;
-        top: 0;
-        bottom: 0;
-        left: -3px;
-        right: -3px;
+        top: 0; bottom: 0; left: -3px; right: -3px;
+      }
+      .layout-divider-v::after {
+        content: "";
+        position: absolute;
+        left: 0; right: 0; top: -3px; bottom: -3px;
       }
 
-      /* Editor tabs */
-      .editor-tabs {
+      /* Panel tab bar */
+      .panel-tab-bar {
         display: flex;
         border-bottom: 1px solid #2b2b2b;
         flex-shrink: 0;
         overflow-x: auto;
         background: #1e1e1e;
       }
-      .editor-tab {
+      .panel-tab {
         display: flex;
         align-items: center;
         gap: 6px;
         padding: 6px 12px;
-        cursor: pointer;
+        cursor: grab;
         font-size: 12px;
         color: #888;
         border-right: 1px solid #2b2b2b;
         white-space: nowrap;
         flex-shrink: 0;
+        user-select: none;
       }
-      .editor-tab:hover {
+      .panel-tab:hover {
         color: #bbb;
         background: rgba(255, 255, 255, 0.03);
       }
-      .editor-tab.active {
+      .panel-tab.active {
         color: #cccccc;
         background: #181818;
       }
-      .editor-tab .close-btn {
+      .panel-tab.dragging {
+        opacity: 0.4;
+      }
+      .panel-tab .close-btn {
         font-size: 14px;
         line-height: 1;
         width: 16px;
@@ -160,137 +154,61 @@
         justify-content: center;
         border-radius: 3px;
         opacity: 0;
+        cursor: pointer;
       }
-      .editor-tab:hover .close-btn,
-      .editor-tab.active .close-btn {
+      .panel-tab:hover .close-btn,
+      .panel-tab.active .close-btn {
         opacity: 0.5;
       }
-      .editor-tab .close-btn:hover {
+      .panel-tab .close-btn:hover {
         opacity: 1;
         background: rgba(255, 255, 255, 0.1);
       }
-      .editor-tab .close-btn.permanent {
-        display: none;
-      }
 
-      /* ─── Horizontal divider (output) ──────────────────── */
-      .divider-output {
-        height: 6px;
-        background: transparent;
-        cursor: row-resize;
-        position: relative;
-        transition: background 0.15s;
-        flex-shrink: 0;
-      }
-      .divider-output:hover,
-      .divider-output.active {
-        background: #4e4e4e;
-      }
-      .divider-output::after {
-        content: "";
+      /* Drop overlay */
+      .drop-overlay {
         position: absolute;
-        left: 0;
-        right: 0;
-        top: -3px;
-        bottom: -3px;
+        inset: 0;
+        pointer-events: none;
+        z-index: 100;
       }
-
-      /* ─── Output panel ─────────────────────────────────── */
-      .output-panel {
-        flex: 0 0 var(--output-height, 40%);
-        display: flex;
-        flex-direction: row;
-        min-height: 0;
-        min-width: 0;
-        overflow: hidden;
-        border-top: 1px solid #2b2b2b;
-      }
-      .output-panel.collapsed {
-        flex-basis: 0 !important;
-        min-height: 0;
-        overflow: hidden;
-      }
-      .output-pane {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        min-width: 0;
-        min-height: 0;
-        overflow: hidden;
-      }
-      .output-pane + .divider-output-h + .output-pane {
-        border-left: 1px solid #2b2b2b;
-      }
-      .divider-output-h {
-        width: 6px;
-        background: transparent;
-        cursor: col-resize;
-        position: relative;
-        transition: background 0.15s;
-        flex-shrink: 0;
-      }
-      .divider-output-h:hover,
-      .divider-output-h.active {
-        background: #4e4e4e;
-      }
-      .divider-output-h::after {
-        content: "";
+      .drop-indicator {
         position: absolute;
-        top: 0;
-        bottom: 0;
-        left: -3px;
-        right: -3px;
-      }
-      .output-tabs {
-        display: flex;
-        border-bottom: 1px solid #2b2b2b;
-        flex-shrink: 0;
-        background: #1e1e1e;
-      }
-      .output-tab {
-        padding: 4px 12px;
-        cursor: pointer;
-        font-size: 11px;
-        color: #5a5a5a;
-        border-bottom: 2px solid transparent;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-      }
-      .output-tab:hover {
-        color: #999;
-      }
-      .output-tab.active {
-        color: #cccccc;
-        border-bottom-color: #cccccc;
-      }
-      .output-tab.static {
-        cursor: default;
-        color: #cccccc;
-        border-bottom-color: #cccccc;
-      }
-      .output-content {
-        flex: 1;
-        min-height: 0;
-        position: relative;
-        overflow: hidden;
+        background: rgba(0, 122, 204, 0.18);
+        border: 2px dashed rgba(0, 122, 204, 0.5);
+        border-radius: 4px;
+        transition: all 0.1s ease;
       }
 
-      /* Output sub-panels */
+      /* Drag ghost */
+      .drag-ghost {
+        position: absolute;
+        top: -1000px;
+        left: -1000px;
+        padding: 4px 10px;
+        background: #252526;
+        border: 1px solid #007acc;
+        border-radius: 4px;
+        color: #ccc;
+        font-size: 12px;
+        font-family: inherit;
+        white-space: nowrap;
+      }
+
+      /* Content panels (mounted dynamically by layout system) */
       #console-panel {
-        flex: 1;
-        min-height: 0;
+        width: 100%;
+        height: 100%;
         overflow: auto;
       }
       #errors-panel {
-        position: absolute;
-        inset: 0;
-        display: none;
+        width: 100%;
+        height: 100%;
         overflow: auto;
       }
       #preview-panel {
-        position: absolute;
-        inset: 0;
-        display: none;
+        width: 100%;
+        height: 100%;
         background: transparent;
         overflow: auto;
         padding: 8px;
@@ -302,11 +220,11 @@
         font: revert;
       }
       #treemap-panel {
-        flex: 1;
+        width: 100%;
+        height: 100%;
         display: flex;
         flex-direction: column;
         overflow: hidden;
-        min-height: 0;
       }
       pre {
         background: #181818;
@@ -525,49 +443,7 @@
   </head>
 
   <body>
-      <div class="main-area">
-        <!-- Editor area -->
-        <div class="editor-area">
-          <div class="editor-pane left">
-            <div class="editor-tabs" id="editor-tabs-left"></div>
-            <div class="editor-container" id="editor-container-left"></div>
-          </div>
-          <div class="divider-editor" id="divider-editor"></div>
-          <div class="editor-pane right">
-            <div class="editor-tabs" id="editor-tabs-right"></div>
-            <div class="editor-container" id="editor-container-right"></div>
-          </div>
-        </div>
-        <!-- Output divider -->
-        <div class="divider-output" id="divider-output"></div>
-        <!-- Output panel -->
-        <div class="output-panel" id="output-panel">
-          <div class="output-pane" id="output-pane-left">
-            <div class="output-tabs" id="output-tabs">
-              <div class="output-tab" data-panel="errors">Errors</div>
-              <div class="output-tab active" data-panel="preview">Preview</div>
-            </div>
-            <div class="output-content">
-              <pre id="errors-panel" class="error"></pre>
-              <div id="preview-panel" style="display: block"></div>
-            </div>
-          </div>
-          <div class="divider-output-h" id="divider-output-h1"></div>
-          <div class="output-pane" id="output-pane-center">
-            <div class="output-tabs">
-              <div class="output-tab static">Console</div>
-            </div>
-            <pre id="console-panel" class="console" style="display: block"></pre>
-          </div>
-          <div class="divider-output-h" id="divider-output-h2"></div>
-          <div class="output-pane" id="output-pane-right">
-            <div class="output-tabs">
-              <div class="output-tab static">Treemap</div>
-            </div>
-            <div id="treemap-panel"></div>
-          </div>
-        </div>
-      </div>
+      <div class="main-area" id="layout-root"></div>
     <div class="toolbar">
       <img src="./image-white.png" alt="ts2wasm" class="toolbar-logo" />
       <button class="toolbar-btn" id="compile">
@@ -585,6 +461,9 @@
       </button>
       <button class="toolbar-btn" id="download-wasm" disabled>
         <span class="tb-icon">&#11015;</span><span class="tb-label">.wasm</span>
+      </button>
+      <button class="toolbar-btn" id="reset-layout" title="Reset panel layout">
+        <span class="tb-icon">&#8634;</span><span class="tb-label">reset layout</span>
       </button>
       <span class="timing" id="timing"></span>
     </div>

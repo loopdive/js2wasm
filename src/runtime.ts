@@ -29,6 +29,12 @@ export const jsApi: Record<string, Function> = new Proxy(
       if (name === "number_toString") return (v: number) => String(v);
       if (name === "number_toFixed") return (v: number, digits: number) => v.toFixed(digits);
       if (name === "__extern_get") return (obj: any, idx: number) => obj[idx];
+      // Date methods
+      if (name === "Date_new") return () => new Date();
+      if (name.startsWith("Date_get")) {
+        const method = name.slice(5); // "getDate", "getMonth", etc.
+        return (d: any) => d[method]();
+      }
       if (name.startsWith("string_")) {
         const method = name.slice(7);
         return (s: any, ...a: any[]) => s[method](...a);

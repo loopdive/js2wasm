@@ -1,3 +1,4 @@
+import "monaco-editor/esm/vs/basic-languages/javascript/javascript.contribution.js";
 import "monaco-editor/esm/vs/basic-languages/typescript/typescript.contribution.js";
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
@@ -8,6 +9,7 @@ import { compile } from "../src/index.js";
 import { domApi, jsString as jsStringPolyfill } from "../src/runtime.js";
 import { WasmTreemap, parseWasm, parseWasmSpans, SECTION_COLORS } from "./wasm-treemap.js";
 import type { WasmData, WasmSection, WasmFunctionBody, ByteSpan } from "./wasm-treemap.js";
+import { LayoutManager } from "./layout.js";
 
 self.MonacoEnvironment = {
   getWorker(_workerId: string, label: string) {
@@ -88,8 +90,8 @@ let pnl: HTMLElement | null = null;
 let tabEls: HTMLElement[] = [];
 
 // calendar state
-let curYear = 2026;
-let curMonth = 1; // 0-based (Feb)
+let curYear = new Date().getFullYear();
+let curMonth = new Date().getMonth(); // 0-based
 let selStart = -1;
 let selEnd = -1;
 let gridEl: HTMLElement | null = null;
@@ -1330,13 +1332,13 @@ const files: FileEntry[] = [
   ),
   createFileEntry("output/example.wat", "wat", true, "output", ""),
   createFileEntry("output/example.wasm", "text", true, "output", ""),
-  createFileEntry("output/example.ts", "typescript", true, "output", ""),
+  createFileEntry("output/example.js", "javascript", true, "output", ""),
 ];
 
 const fileMap = new Map<string, FileEntry>(files.map((f) => [f.path, f]));
 const inputFile = fileMap.get("input/example.ts")!;
 
-// ─── Dual Monaco editors ─────────────────────────────────────────────────
+// ─── Editor pool ─────────────────────────────────────────────────────────
 const editorOpts: monaco.editor.IStandaloneEditorConstructionOptions = {
   theme: "cursor-dark",
   fontSize: 13,
@@ -1347,77 +1349,59 @@ const editorOpts: monaco.editor.IStandaloneEditorConstructionOptions = {
   scrollBeyondLastLine: false,
 };
 
-const editorLeft = monaco.editor.create(
-  document.getElementById("editor-container-left")!,
-  { ...editorOpts, model: inputFile.model, readOnly: false },
-);
+interface EditorSlot {
+  editor: monaco.editor.IStandaloneCodeEditor;
+  wrapper: HTMLDivElement;
+  panelId: string | null;
+}
+const editorSlots: EditorSlot[] = [];
+const editorViewStates = new Map<string, monaco.editor.ICodeEditorViewState | null>();
 
-const watFile = fileMap.get("output/example.wat")!;
-const editorRight = monaco.editor.create(
-  document.getElementById("editor-container-right")!,
-  { ...editorOpts, model: watFile.model, readOnly: true, glyphMargin: true },
-);
-
-// Keep reference to the "main" editor for keybindings
-const editor = editorLeft;
-
-// Save/restore view state per model per side
-const viewStatesLeft = new Map<
-  string,
-  monaco.editor.ICodeEditorViewState | null
->();
-const viewStatesRight = new Map<
-  string,
-  monaco.editor.ICodeEditorViewState | null
->();
-
-function switchToFileLeft(path: string) {
-  const file = fileMap.get(path);
-  if (!file) return;
-
-  const currentModel = editorLeft.getModel();
-  if (currentModel) {
-    const currentPath = files.find((f) => f.model === currentModel)?.path;
-    if (currentPath)
-      viewStatesLeft.set(currentPath, editorLeft.saveViewState());
-  }
-
-  editorLeft.setModel(file.model);
-  editorLeft.updateOptions({ readOnly: file.readOnly });
-
-  const savedState = viewStatesLeft.get(path);
-  if (savedState) editorLeft.restoreViewState(savedState);
-
-  activeFileLeft = path;
-  renderEditorTabsLeft();
+function createEditorSlot(): EditorSlot {
+  const wrapper = document.createElement("div");
+  wrapper.style.cssText = "width:100%;height:100%";
+  const ed = monaco.editor.create(wrapper, editorOpts);
+  const slot: EditorSlot = { editor: ed, wrapper, panelId: null };
+  editorSlots.push(slot);
+  setupEditorHandlers(ed);
+  return slot;
 }
 
-function switchToFileRight(path: string) {
-  const file = fileMap.get(path);
-  if (!file) return;
+const watFile = fileMap.get("output/example.wat")!;
+const wasmHexFile = fileMap.get("output/example.wasm")!;
+const modularFile = fileMap.get("output/example.js")!;
 
-  const currentModel = editorRight.getModel();
-  if (currentModel) {
-    const currentPath = files.find((f) => f.model === currentModel)?.path;
-    if (currentPath)
-      viewStatesRight.set(currentPath, editorRight.saveViewState());
-  }
+const slotLeft = createEditorSlot();
+slotLeft.editor.setModel(inputFile.model);
+slotLeft.editor.updateOptions({ readOnly: false });
 
-  editorRight.setModel(file.model);
-  editorRight.updateOptions({ readOnly: file.readOnly });
+const slotRight = createEditorSlot();
+slotRight.editor.setModel(watFile.model);
+slotRight.editor.updateOptions({ readOnly: true, glyphMargin: true });
 
-  const savedState = viewStatesRight.get(path);
-  if (savedState) editorRight.restoreViewState(savedState);
+// Tab ID ↔ file path mapping
+const tabToFile: Record<string, string> = {
+  "ts-source": "input/example.ts",
+  "wat-output": "output/example.wat",
+  "wasm-hex": "output/example.wasm",
+  "modular-ts": "output/example.js",
+};
+const fileToTab: Record<string, string> = {};
+for (const [tab, file] of Object.entries(tabToFile)) fileToTab[file] = tab;
 
-  activeFileRight = path;
-  renderEditorTabsRight();
-  if (path === "output/example.wasm") applyHexDecorations();
+// Find the editor currently showing a given tab
+function editorForTab(tabId: string): monaco.editor.IStandaloneCodeEditor | null {
+  const panelId = layout.findPanelForTab(tabId);
+  if (!panelId) return null;
+  const slot = editorSlots.find((s) => s.panelId === panelId);
+  // Check the panel's active tab matches
+  if (slot && layout.getActiveTabForPanel(panelId) === tabId) return slot.editor;
+  return null;
+}
 
-  // Re-apply pinned cross-highlight for the new active view
-  if (xPinned && xTarget) {
-    if (xDecoRight) { xDecoRight.clear(); xDecoRight = null; }
-    xHighlightRightEditor(xTarget, true);
-  }
+// Find the editor in a specific panel
+function editorForPanel(panelId: string): EditorSlot | null {
+  return editorSlots.find((s) => s.panelId === panelId) ?? null;
 }
 
 // Session storage for input
@@ -1432,20 +1416,28 @@ inputFile.model.onDidChangeContent(() => {
 });
 
 // ─── DOM references ─────────────────────────────────────────────────────
-const consolePre = document.getElementById("console-panel") as HTMLPreElement;
-const errorsPre = document.getElementById("errors-panel") as HTMLPreElement;
 const timingSpan = document.getElementById("timing") as HTMLSpanElement;
 const compileBtn = document.getElementById("compile") as HTMLButtonElement;
 const runBtn = document.getElementById("run") as HTMLButtonElement;
-const downloadWatBtn = document.getElementById(
-  "download-wat",
-) as HTMLButtonElement;
-const downloadWasmBtn = document.getElementById(
-  "download-wasm",
-) as HTMLButtonElement;
+const downloadWatBtn = document.getElementById("download-wat") as HTMLButtonElement;
+const downloadWasmBtn = document.getElementById("download-wasm") as HTMLButtonElement;
 const benchBtn = document.getElementById("bench") as HTMLButtonElement;
-const treemapPanel = document.getElementById("treemap-panel")!;
-const previewPanel = document.getElementById("preview-panel")!;
+const resetLayoutBtn = document.getElementById("reset-layout") as HTMLButtonElement;
+
+// Create output panel elements programmatically (mounted by layout system)
+const consolePre = document.createElement("pre");
+consolePre.id = "console-panel";
+consolePre.className = "console";
+
+const errorsPre = document.createElement("pre");
+errorsPre.id = "errors-panel";
+errorsPre.className = "error";
+
+const previewPanel = document.createElement("div");
+previewPanel.id = "preview-panel";
+
+const treemapPanel = document.createElement("div");
+treemapPanel.id = "treemap-panel";
 
 // Treemap
 const treemap = new WasmTreemap(treemapPanel);
@@ -1456,8 +1448,7 @@ treemap.onNodeSelect = ({ name, fullPath }) => {
   if (target) handleHighlightClick(target, "treemap");
 };
 
-// ─── Unified cross-highlight system ─────────────────────────────────────
-
+// ─── Cross-highlight state (declared early, used by layout callbacks) ────
 interface HighlightTarget {
   name: string;           // function name (no $) or section name
   treemapPath: string;    // e.g. "code/fib", "import", "type"
@@ -1468,52 +1459,253 @@ type HighlightSource = "ts" | "wat" | "hex" | "treemap";
 let xTarget: HighlightTarget | null = null;
 let xSource: HighlightSource | null = null;
 let xPinned = false;
-let xSavedStates: { left: monaco.editor.ICodeEditorViewState | null; right: monaco.editor.ICodeEditorViewState | null } | null = null;
-let xDecoLeft: monaco.editor.IEditorDecorationsCollection | null = null;
-let xDecoRight: monaco.editor.IEditorDecorationsCollection | null = null;
+let xSavedStates: Map<string, monaco.editor.ICodeEditorViewState | null> | null = null;
+let xDecos: monaco.editor.IEditorDecorationsCollection[] = [];
 let xHexSpanDeco: monaco.editor.IEditorDecorationsCollection | null = null;
 let xLastHoveredSpan: ByteSpan | null = null;
 
+// Hex editor state (declared early, used by layout callbacks and editor handlers)
+let lastWasmData: WasmData | null = null;
+let lastWasmSpans: ByteSpan[] = [];
+let pendingHexDecorations: monaco.editor.IModelDeltaDecoration[] = [];
+let hexDecorationsCollection: monaco.editor.IEditorDecorationsCollection | null = null;
+const wasmHexModel = fileMap.get("output/example.wasm")!.model;
+
+// ─── Layout manager ─────────────────────────────────────────────────────
+
+// Tab content definitions
+interface EditorTabDef { kind: "editor"; model: monaco.editor.ITextModel; readOnly: boolean; glyphMargin?: boolean; }
+interface DomTabDef { kind: "dom"; element: HTMLElement; }
+type TabContentDef = EditorTabDef | DomTabDef;
+
+const tabDefs: Record<string, TabContentDef> = {
+  "ts-source": { kind: "editor", model: inputFile.model, readOnly: false },
+  "wat-output": { kind: "editor", model: watFile.model, readOnly: true, glyphMargin: true },
+  "wasm-hex": { kind: "editor", model: wasmHexFile.model, readOnly: true, glyphMargin: true },
+  "modular-ts": { kind: "editor", model: modularFile.model, readOnly: true },
+  "errors": { kind: "dom", element: errorsPre },
+  "preview": { kind: "dom", element: previewPanel },
+  "console": { kind: "dom", element: consolePre },
+  "treemap": { kind: "dom", element: treemapPanel },
+};
+
+const layoutRoot = document.getElementById("layout-root")!;
+const layout = new LayoutManager(layoutRoot);
+
+// Register all tabs
+layout.registerTab({ id: "ts-source", title: "TypeScript (.ts)", kind: "editor", permanent: true });
+layout.registerTab({ id: "wat-output", title: "WebAssembly Text Format (.wat)", kind: "editor", permanent: true });
+layout.registerTab({ id: "wasm-hex", title: "WebAssembly Binary (.wasm)", kind: "editor" });
+layout.registerTab({ id: "modular-ts", title: "JavaScript (.js)", kind: "editor" });
+layout.registerTab({ id: "errors", title: "Errors", kind: "dom" });
+layout.registerTab({ id: "preview", title: "Preview", kind: "dom" });
+layout.registerTab({ id: "console", title: "Console", kind: "dom" });
+layout.registerTab({ id: "treemap", title: "Treemap", kind: "dom" });
+
+// Mount callback: place content into panel
+layout.onMount = (panelId: string, tabId: string, contentEl: HTMLElement) => {
+  const def = tabDefs[tabId];
+  if (!def) return;
+
+  // Remove previous content from this panel
+  while (contentEl.firstChild) contentEl.firstChild.remove();
+
+  if (def.kind === "editor") {
+    // Find or assign an editor slot for this panel
+    let slot = editorSlots.find((s) => s.panelId === panelId);
+    if (!slot) slot = editorSlots.find((s) => s.panelId === null);
+    if (!slot) slot = createEditorSlot();
+    slot.panelId = panelId;
+    contentEl.appendChild(slot.wrapper);
+    // Restore view state, set model
+    const vs = editorViewStates.get(tabId);
+    slot.editor.setModel(def.model);
+    slot.editor.updateOptions({ readOnly: def.readOnly, glyphMargin: def.glyphMargin ?? false });
+    if (vs) slot.editor.restoreViewState(vs);
+    requestAnimationFrame(() => slot!.editor.layout());
+    // Apply hex decorations if this is the wasm hex tab
+    if (tabId === "wasm-hex") applyHexDecorations();
+    // Re-apply pinned cross-highlight
+    if (xPinned && xTarget) {
+      requestAnimationFrame(() => xReapplyPinned());
+    }
+  } else {
+    contentEl.appendChild(def.element);
+  }
+};
+
+// Unmount callback: save editor state before detach and release slot
+layout.onUnmount = (panelId: string, tabId: string) => {
+  const def = tabDefs[tabId];
+  if (!def) return;
+  if (def.kind === "editor") {
+    const slot = editorSlots.find((s) => s.panelId === panelId);
+    if (slot) {
+      editorViewStates.set(tabId, slot.editor.saveViewState());
+      slot.editor.setModel(null);
+      slot.panelId = null;
+    }
+  }
+};
+
+// Layout changed: relayout editors
+layout.onLayoutChanged = () => {
+  for (const slot of editorSlots) {
+    if (slot.panelId) slot.editor.layout();
+  }
+};
+
+// Load saved layout or use default
+const allTabIds = new Set(Object.keys(tabDefs));
+const savedLayout = LayoutManager.loadLayout(allTabIds);
+layout.init(savedLayout ?? undefined);
+
+// ─── Tab size labels ─────────────────────────────────────────────────────
+
+const fmtSize = (b: number) => b >= 1024 ? `${(b / 1024).toFixed(1)}k` : `${b}b`;
+
+const tabBaseTitles: Record<string, string> = {
+  "ts-source": "TypeScript (.ts)",
+  "wat-output": "WebAssembly Text Format (.wat)",
+  "wasm-hex": "WebAssembly Binary (.wasm)",
+  "modular-ts": "JavaScript (.js)",
+};
+
+async function gzipSize(data: Uint8Array): Promise<number> {
+  const cs = new CompressionStream("gzip");
+  const writer = cs.writable.getWriter();
+  writer.write(data);
+  writer.close();
+  const reader = cs.readable.getReader();
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+  }
+  return total;
+}
+
+function updateTabSizes() {
+  for (const [tabId, filePath] of Object.entries(tabToFile)) {
+    const file = fileMap.get(filePath);
+    if (!file) continue;
+    const baseTitle = tabBaseTitles[tabId] ?? tabId;
+
+    const raw = file.binarySize ?? new TextEncoder().encode(file.model.getValue()).length;
+    if (raw === 0) { updateTabLabel(tabId, baseTitle); continue; }
+
+    updateTabLabel(tabId, `${baseTitle} (${fmtSize(raw)})`);
+
+    // Compute gzip size async
+    const gzInput = file.binaryData ?? new TextEncoder().encode(file.model.getValue());
+    gzipSize(gzInput).then((gz) => {
+      updateTabLabel(tabId, `${baseTitle} (${fmtSize(raw)} / ${fmtSize(gz)} gz)`);
+    });
+  }
+}
+
+function updateTabLabel(tabId: string, text: string) {
+  const el = layout.getTabElement(tabId);
+  if (el) {
+    const label = el.querySelector(".panel-tab-label");
+    if (label) label.textContent = text;
+  }
+}
+
+// Convenience functions replacing old tab management
+function openFileTab(path: string) {
+  const tabId = fileToTab[path];
+  if (!tabId) return;
+  const panelId = layout.findPanelForTab(tabId);
+  if (panelId) layout.switchTab(panelId, tabId);
+}
+
+function showOutputPanel(name: string) {
+  const panelId = layout.findPanelForTab(name);
+  if (panelId) layout.switchTab(panelId, name);
+}
+
+// ─── Cross-highlight functions ───────────────────────────────────────────
+
 function xClearDecorations() {
-  if (xDecoLeft) { xDecoLeft.clear(); xDecoLeft = null; }
-  if (xDecoRight) { xDecoRight.clear(); xDecoRight = null; }
+  for (const d of xDecos) d.clear();
+  xDecos = [];
   treemap.highlightNode(null);
 }
 
-function xHighlightTs(target: HighlightTarget, pinned: boolean) {
-  if (target.kind !== "function") return;
-  const line = findTsSourceLine(inputFile.model, target.name);
-  if (!line) return;
+/** Highlight all visible editors for a target (except the source view) */
+function xHighlightEditors(target: HighlightTarget, pinned: boolean, source: HighlightSource) {
   const cls = pinned ? "cross-highlight-pinned" : "cross-highlight";
-  xDecoLeft = editorLeft.createDecorationsCollection([{
-    range: new monaco.Range(line, 1, line, 1),
-    options: { className: cls, isWholeLine: true },
-  }]);
-  editorLeft.revealLineInCenter(line);
-}
 
-function xHighlightRightEditor(target: HighlightTarget, pinned: boolean) {
-  const cls = pinned ? "cross-highlight-pinned" : "cross-highlight";
-  if (activeFileRight === "output/example.wasm") {
-    const range = hexRangeForNode(target.name, target.treemapPath);
-    if (range) {
-      xDecoRight = editorRight.createDecorationsCollection([{
-        range,
-        options: { className: cls, isWholeLine: true },
-      }]);
-      editorRight.revealRangeInCenter(range);
+  for (const slot of editorSlots) {
+    if (!slot.panelId) continue;
+    const activeTab = layout.getActiveTabForPanel(slot.panelId);
+    if (!activeTab) continue;
+    const model = slot.editor.getModel();
+
+    // TS source editor
+    if (model === inputFile.model && source !== "ts" && target.kind === "function") {
+      const line = findTsSourceLine(inputFile.model, target.name);
+      if (line) {
+        xDecos.push(slot.editor.createDecorationsCollection([{
+          range: new monaco.Range(line, 1, line, 1),
+          options: { className: cls, isWholeLine: true },
+        }]));
+        slot.editor.revealLineInCenter(line);
+      }
     }
-  } else if (activeFileRight === "output/example.wat") {
-    const watLine = watLineForNode(target.name, target.treemapPath);
-    if (watLine) {
-      const range = new monaco.Range(watLine.start, 1, watLine.end, 1);
-      xDecoRight = editorRight.createDecorationsCollection([{
-        range,
-        options: { className: cls, isWholeLine: true },
-      }]);
-      editorRight.revealRangeInCenter(range);
+
+    // Hex editor
+    if (model === wasmHexFile.model && source !== "hex") {
+      const range = hexRangeForNode(target.name, target.treemapPath);
+      if (range) {
+        xDecos.push(slot.editor.createDecorationsCollection([{
+          range, options: { className: cls, isWholeLine: true },
+        }]));
+        slot.editor.revealRangeInCenter(range);
+      }
+    }
+
+    // WAT editor
+    if (model === watFile.model && source !== "wat") {
+      const watLine = watLineForNode(target.name, target.treemapPath);
+      if (watLine) {
+        const range = new monaco.Range(watLine.start, 1, watLine.end, 1);
+        xDecos.push(slot.editor.createDecorationsCollection([{
+          range, options: { className: cls, isWholeLine: true },
+        }]));
+        slot.editor.revealRangeInCenter(range);
+      }
     }
   }
+}
+
+function xSaveStates() {
+  if (xSavedStates) return;
+  xSavedStates = new Map();
+  for (const slot of editorSlots) {
+    if (slot.panelId) xSavedStates.set(slot.panelId, slot.editor.saveViewState());
+  }
+}
+
+function xRestoreStates() {
+  if (!xSavedStates) return;
+  for (const slot of editorSlots) {
+    if (slot.panelId) {
+      const vs = xSavedStates.get(slot.panelId);
+      if (vs) slot.editor.restoreViewState(vs);
+    }
+  }
+  xSavedStates = null;
+}
+
+/** Re-apply pinned highlight (called after tab switch or layout change) */
+function xReapplyPinned() {
+  if (!xPinned || !xTarget) return;
+  xClearDecorations();
+  xHighlightEditors(xTarget, true, "treemap"); // highlight all editors
+  treemap.highlightNode(xTarget.treemapPath);
 }
 
 function setHighlightTarget(target: HighlightTarget | null, source: HighlightSource) {
@@ -1525,29 +1717,16 @@ function setHighlightTarget(target: HighlightTarget | null, source: HighlightSou
   if (!target) {
     xTarget = null;
     xSource = null;
-    if (xSavedStates) {
-      if (xSavedStates.left) editorLeft.restoreViewState(xSavedStates.left);
-      if (xSavedStates.right) editorRight.restoreViewState(xSavedStates.right);
-      xSavedStates = null;
-    }
+    xRestoreStates();
     return;
   }
 
-  if (!xSavedStates) {
-    xSavedStates = {
-      left: editorLeft.saveViewState(),
-      right: editorRight.saveViewState(),
-    };
-  }
-
+  xSaveStates();
   xTarget = target;
   xSource = source;
 
-  if (source !== "ts") xHighlightTs(target, false);
+  xHighlightEditors(target, false, source);
   if (source !== "treemap") treemap.highlightNode(target.treemapPath);
-  // Highlight right editor if source isn't the currently active right-side view
-  const rightSource = activeFileRight === "output/example.wasm" ? "hex" : "wat";
-  if (source !== rightSource) xHighlightRightEditor(target, false);
 }
 
 function handleHighlightClick(target: HighlightTarget | null, source: HighlightSource) {
@@ -1558,22 +1737,17 @@ function handleHighlightClick(target: HighlightTarget | null, source: HighlightS
     xTarget = null;
     xSource = null;
     xClearDecorations();
-    if (xSavedStates) {
-      if (xSavedStates.left) editorLeft.restoreViewState(xSavedStates.left);
-      if (xSavedStates.right) editorRight.restoreViewState(xSavedStates.right);
-      xSavedStates = null;
-    }
+    xRestoreStates();
     return;
   }
   // Pin
-  xPinned = false; // allow setHighlightTarget to work
-  xSavedStates = null; // force re-save
+  xPinned = false;
+  xSavedStates = null;
   setHighlightTarget(target, source);
-  // Upgrade decorations to pinned style
+  // Upgrade to pinned
   xClearDecorations();
-  xHighlightTs(target, true);
+  xHighlightEditors(target, true, source);
   treemap.highlightNode(target.treemapPath);
-  xHighlightRightEditor(target, true);
   xPinned = true;
 }
 
@@ -1616,7 +1790,7 @@ function resolveTsTarget(lineNumber: number): HighlightTarget | null {
 
 // ─── Hex span highlight (orthogonal to cross-highlight) ─────────────────
 
-function applyHexSpanHighlight(offset: number) {
+function applyHexSpanHighlight(offset: number, ed: monaco.editor.IStandaloneCodeEditor) {
   const span = findSpanAt(offset);
   if (span && span === xLastHoveredSpan) return;
   xLastHoveredSpan = span;
@@ -1624,7 +1798,7 @@ function applyHexSpanHighlight(offset: number) {
   if (span) {
     const section = findSectionAt(span.offset);
     const cssKey = section ? sectionCssKey(section) : "header";
-    xHexSpanDeco = editorRight.createDecorationsCollection(
+    xHexSpanDeco = ed.createDecorationsCollection(
       spanHighlightDecorations(span, `hex-span-hover-${cssKey}`),
     );
   }
@@ -1743,168 +1917,7 @@ function watLineForNode(name: string, fullPath: string): { start: number; end: n
   return null;
 }
 
-// ─── Editor tabs (split left/right) ─────────────────────────────────────
-const LEFT_TABS = new Set(["input/example.ts"]);
-let openTabsLeft: string[] = ["input/example.ts"];
-let openTabsRight: string[] = [
-  "output/example.wat",
-  "output/example.wasm",
-  "output/example.ts",
-];
-let activeFileLeft = "input/example.ts";
-let activeFileRight = "output/example.wat";
-const editorTabsLeftEl = document.getElementById("editor-tabs-left")!;
-const editorTabsRightEl = document.getElementById("editor-tabs-right")!;
-
-function openFileTab(path: string) {
-  const file = fileMap.get(path);
-  if (!file) return;
-  if (LEFT_TABS.has(path)) {
-    if (!openTabsLeft.includes(path)) openTabsLeft.push(path);
-    switchToFileLeft(path);
-  } else {
-    if (!openTabsRight.includes(path)) openTabsRight.push(path);
-    switchToFileRight(path);
-  }
-}
-
-function closeFileTabLeft(path: string) {
-  if (path === "input/example.ts") return;
-  const idx = openTabsLeft.indexOf(path);
-  if (idx === -1) return;
-  openTabsLeft.splice(idx, 1);
-  if (activeFileLeft === path) {
-    const newIdx = Math.min(idx, openTabsLeft.length - 1);
-    switchToFileLeft(openTabsLeft[newIdx]);
-  } else {
-    renderEditorTabsLeft();
-  }
-}
-
-function closeFileTabRight(path: string) {
-  if (path === "output/example.wat") return;
-  const idx = openTabsRight.indexOf(path);
-  if (idx === -1) return;
-  openTabsRight.splice(idx, 1);
-  if (activeFileRight === path) {
-    const newIdx = Math.min(idx, openTabsRight.length - 1);
-    switchToFileRight(openTabsRight[newIdx]);
-  } else {
-    renderEditorTabsRight();
-  }
-}
-
-async function gzipSize(data: Uint8Array): Promise<number> {
-  const cs = new CompressionStream("gzip");
-  const writer = cs.writable.getWriter();
-  writer.write(data);
-  writer.close();
-  const reader = cs.readable.getReader();
-  let total = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-  }
-  return total;
-}
-
-function renderTabBar(
-  el: HTMLElement,
-  tabs: string[],
-  activeFile: string,
-  permanentPath: string,
-  switchFn: (path: string) => void,
-  closeFn: (path: string) => void,
-) {
-  el.innerHTML = "";
-  for (const path of tabs) {
-    const file = fileMap.get(path)!;
-    const tab = document.createElement("div");
-    tab.className = "editor-tab" + (path === activeFile ? " active" : "");
-
-    const label = document.createElement("span");
-    const raw =
-      file.binarySize ?? new TextEncoder().encode(file.model.getValue()).length;
-    const fmtSize = (b: number) => b >= 1024 ? `${(b / 1024).toFixed(1)}k` : `${b}b`;
-    label.textContent = `${file.displayName} (${fmtSize(raw)})`;
-    tab.appendChild(label);
-
-    // Compute gzip size async and update label
-    if (raw > 0) {
-      const gzInput = file.binaryData ?? new TextEncoder().encode(file.model.getValue());
-      gzipSize(gzInput).then((gz: number) => {
-        label.textContent = `${file.displayName} (${fmtSize(raw)} / ${fmtSize(gz)} gz)`;
-      });
-    }
-
-    const closeBtn = document.createElement("span");
-    closeBtn.className =
-      "close-btn" + (path === permanentPath ? " permanent" : "");
-    closeBtn.textContent = "\u00d7";
-    closeBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      closeFn(path);
-    });
-    tab.appendChild(closeBtn);
-
-    tab.addEventListener("click", () => switchFn(path));
-    el.appendChild(tab);
-  }
-}
-
-function renderEditorTabsLeft() {
-  renderTabBar(
-    editorTabsLeftEl,
-    openTabsLeft,
-    activeFileLeft,
-    "input/example.ts",
-    switchToFileLeft,
-    closeFileTabLeft,
-  );
-}
-
-function renderEditorTabsRight() {
-  renderTabBar(
-    editorTabsRightEl,
-    openTabsRight,
-    activeFileRight,
-    "output/example.wat",
-    switchToFileRight,
-    closeFileTabRight,
-  );
-}
-
-renderEditorTabsLeft();
-renderEditorTabsRight();
-
-// ─── Output panel tabs ──────────────────────────────────────────────────
-const outputPanels: Record<string, HTMLElement> = {
-  errors: errorsPre,
-  preview: previewPanel,
-};
-const outputPanelDisplay: Record<string, string> = {
-  errors: "block",
-  preview: "block",
-};
-let activeOutputTab = "preview";
-
-function showOutputPanel(name: string) {
-  activeOutputTab = name;
-  document.querySelectorAll("#output-tabs .output-tab").forEach((t) => {
-    t.classList.toggle("active", (t as HTMLElement).dataset.panel === name);
-  });
-  for (const [key, el] of Object.entries(outputPanels)) {
-    el.style.display =
-      key === name ? outputPanelDisplay[key] || "block" : "none";
-  }
-}
-
-document.querySelectorAll("#output-tabs .output-tab").forEach((tab) => {
-  tab.addEventListener("click", () => {
-    showOutputPanel((tab as HTMLElement).dataset.panel!);
-  });
-});
+// (Old tab management removed — handled by LayoutManager)
 
 // ─── Compile helpers ────────────────────────────────────────────────────
 const DOM_PATTERNS =
@@ -1921,17 +1934,26 @@ function detectDomUsage(result: ReturnType<typeof compile>): boolean {
 
 function generateModularOutput(result: ReturnType<typeof compile>): string {
   const dts = result.dts ?? "";
-  // Parse "export declare function name(params): ret;" into typed export lines
+  // Parse "export declare function name(params): ret;" into JSDoc-annotated exports
   const exportLines = [
     ...dts.matchAll(/^export declare function (\w+)\(([^)]*)\):\s*(.+);$/gm),
-  ].map(
-    ([, name, params, ret]) =>
-      `export const ${name} = _exports.${name} as (${params}) => ${ret};`,
-  );
+  ].map(([, name, params, ret]) => {
+    // Build compact JSDoc type annotation
+    const jsParams = params
+      .split(",")
+      .map((p) => p.trim())
+      .filter(Boolean)
+      .map((p) => {
+        const [pName, pType] = p.split(":").map((s) => s.trim());
+        return `${pType || "any"} ${pName}`;
+      })
+      .join(", ");
+    return `/** @type {(${jsParams}) => ${ret}} */\nexport const ${name} = _exports.${name};`;
+  });
 
   const exports =
     exportLines.length > 0
-      ? exportLines.join("\n")
+      ? exportLines.join("\n\n")
       : `export default _exports;`;
 
   return `import { compileAndInstantiate } from "ts2wasm";
@@ -2021,11 +2043,6 @@ function posToByteOffset(line: number, col: number): number | null {
   if (byteInLine < 0 || byteInLine > 15) return null;
   return (line - 1) * 16 + byteInLine;
 }
-
-let lastWasmData: WasmData | null = null;
-let lastWasmSpans: ByteSpan[] = [];
-let pendingHexDecorations: monaco.editor.IModelDeltaDecoration[] = [];
-let hexDecorationsCollection: monaco.editor.IEditorDecorationsCollection | null = null;
 
 /** Build per-line labels for the hex dump first column */
 function buildHexLineLabels(wasmData: WasmData, totalLines: number): string[] {
@@ -2185,15 +2202,17 @@ function annotateHexEditor(bin: Uint8Array, wasmData: WasmData, lineLabels: stri
   applyHexDecorations();
 }
 
-/** Apply hex decorations when the wasm model is active in the right editor */
+/** Apply hex decorations to whichever editor currently shows the wasm hex model */
 function applyHexDecorations() {
   const wasmModel = fileMap.get("output/example.wasm")!.model;
-  if (editorRight.getModel() !== wasmModel) return;
   if (pendingHexDecorations.length === 0) return;
+  // Find editor slot currently displaying the hex model
+  const slot = editorSlots.find((s) => s.panelId && s.editor.getModel() === wasmModel);
+  if (!slot) return;
   if (hexDecorationsCollection) {
     hexDecorationsCollection.clear();
   }
-  hexDecorationsCollection = editorRight.createDecorationsCollection(pendingHexDecorations);
+  hexDecorationsCollection = slot.editor.createDecorationsCollection(pendingHexDecorations);
 }
 
 // ─── Span lookup helpers ────────────────────────────────────────────────
@@ -2281,7 +2300,6 @@ function spanHighlightDecorations(s: ByteSpan, className: string): monaco.editor
 
 // ─── Hover provider with span info ─────────────────────────────────────
 
-const wasmHexModel = fileMap.get("output/example.wasm")!.model;
 monaco.languages.registerHoverProvider("text", {
   provideHover(_model, position) {
     if (_model !== wasmHexModel || !lastWasmData) return null;
@@ -2332,62 +2350,49 @@ monaco.languages.registerHoverProvider("text", {
   },
 });
 
-// ─── Left editor (TS source) hover → cross-highlight ────────────────────
+// ─── Generic editor event handlers (model-aware) ────────────────────────
 
-editorLeft.onMouseMove((e) => {
-  if (!e.target.position) { setHighlightTarget(null, "ts"); return; }
-  setHighlightTarget(resolveTsTarget(e.target.position.lineNumber), "ts");
-});
-editorLeft.onMouseLeave(() => setHighlightTarget(null, "ts"));
-editorLeft.onMouseDown((e) => {
-  if (!e.target.position) return;
-  handleHighlightClick(resolveTsTarget(e.target.position.lineNumber), "ts");
-});
-
-// ─── Right editor hover → cross-highlight ───────────────────────────────
-
-editorRight.onMouseMove((e) => {
-  if (!e.target.position) {
-    clearHexSpanHighlight();
-    setHighlightTarget(null, activeFileRight === "output/example.wasm" ? "hex" : "wat");
-    return;
-  }
-
-  if (activeFileRight === "output/example.wasm") {
-    const offset = posToByteOffset(e.target.position.lineNumber, e.target.position.column);
-    if (offset === null) {
+function setupEditorHandlers(ed: monaco.editor.IStandaloneCodeEditor) {
+  ed.onMouseMove((e) => {
+    if (!e.target.position) {
       clearHexSpanHighlight();
-      setHighlightTarget(null, "hex");
+      setHighlightTarget(null, "ts");
       return;
     }
-    applyHexSpanHighlight(offset);
-    setHighlightTarget(resolveHexTarget(offset), "hex");
-    return;
-  }
+    const model = ed.getModel();
+    if (model === inputFile.model) {
+      setHighlightTarget(resolveTsTarget(e.target.position.lineNumber), "ts");
+    } else if (model === wasmHexModel) {
+      const offset = posToByteOffset(e.target.position.lineNumber, e.target.position.column);
+      if (offset === null) { clearHexSpanHighlight(); setHighlightTarget(null, "hex"); return; }
+      applyHexSpanHighlight(offset, ed);
+      setHighlightTarget(resolveHexTarget(offset), "hex");
+    } else if (model === watFile.model) {
+      setHighlightTarget(resolveWatTarget(e.target.position.lineNumber), "wat");
+    }
+  });
 
-  if (activeFileRight === "output/example.wat") {
-    setHighlightTarget(resolveWatTarget(e.target.position.lineNumber), "wat");
-    return;
-  }
-});
+  ed.onMouseLeave(() => {
+    clearHexSpanHighlight();
+    setHighlightTarget(null, "ts");
+  });
 
-editorRight.onMouseLeave(() => {
-  clearHexSpanHighlight();
-  setHighlightTarget(null, activeFileRight === "output/example.wasm" ? "hex" : "wat");
-});
+  ed.onMouseDown((e) => {
+    if (!e.target.position) return;
+    const model = ed.getModel();
+    if (model === inputFile.model) {
+      handleHighlightClick(resolveTsTarget(e.target.position.lineNumber), "ts");
+    } else if (model === wasmHexModel) {
+      const offset = posToByteOffset(e.target.position.lineNumber, e.target.position.column);
+      if (offset === null) return;
+      handleHighlightClick(resolveHexTarget(offset), "hex");
+    } else if (model === watFile.model) {
+      handleHighlightClick(resolveWatTarget(e.target.position.lineNumber), "wat");
+    }
+  });
 
-// ─── Right editor click → pin ───────────────────────────────────────────
-
-editorRight.onMouseDown((e) => {
-  if (!e.target.position) return;
-  if (activeFileRight === "output/example.wasm") {
-    const offset = posToByteOffset(e.target.position.lineNumber, e.target.position.column);
-    if (offset === null) return;
-    handleHighlightClick(resolveHexTarget(offset), "hex");
-  } else if (activeFileRight === "output/example.wat") {
-    handleHighlightClick(resolveWatTarget(e.target.position.lineNumber), "wat");
-  }
-});
+  ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, compileOnly);
+}
 
 // ─── Compile / Run ──────────────────────────────────────────────────────
 let lastResult: ReturnType<typeof compile> | null = null;
@@ -2448,7 +2453,7 @@ function compileOnly() {
     annotateHexEditor(bin, wasmData, lineLabels);
   }
   fileMap
-    .get("output/example.ts")!
+    .get("output/example.js")!
     .model.setValue(generateModularOutput(result));
 
   // Mark output files as compiled
@@ -2476,6 +2481,9 @@ function compileOnly() {
   }
 
   showOutputPanel(result.success ? "preview" : "errors");
+
+  // Update tab labels with file sizes
+  updateTabSizes();
 }
 
 function buildEnv(
@@ -2542,6 +2550,14 @@ function buildEnv(
     global_performance: () => performance,
     number_toFixed: (v: number, d: number) => v.toFixed(d),
     __extern_get: (obj: any, idx: number) => obj[idx],
+    Date_new: () => new Date(),
+    Date_getDate: (d: Date) => d.getDate(),
+    Date_getMonth: (d: Date) => d.getMonth(),
+    Date_getFullYear: (d: Date) => d.getFullYear(),
+    Date_getHours: (d: Date) => d.getHours(),
+    Date_getMinutes: (d: Date) => d.getMinutes(),
+    Date_getSeconds: (d: Date) => d.getSeconds(),
+    Date_getTime: (d: Date) => d.getTime(),
   };
   result.stringPool.forEach((str, i) => {
     env[`__str_${i}`] = () => str;
@@ -2801,197 +2817,8 @@ runBtn.addEventListener("click", runOnly);
 benchBtn.addEventListener("click", runBenchmark);
 downloadWatBtn.addEventListener("click", downloadWat);
 downloadWasmBtn.addEventListener("click", downloadWasm);
+resetLayoutBtn.addEventListener("click", () => layout.resetLayout());
 
 // Auto-compile and run on page load
 compileOnly();
 runOnly();
-
-// Ctrl+Enter / Cmd+Enter to compile from either editor
-editorLeft.addCommand(
-  monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
-  compileOnly,
-);
-editorRight.addCommand(
-  monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
-  compileOnly,
-);
-
-// ─── Layout persistence ─────────────────────────────────────────────────
-const LAYOUT_KEY = "ts2wasm_layout";
-type LayoutState = {
-  editorSplit?: number;
-  outputHeight?: number;
-  outputH1?: [number, number];
-  outputH2?: [number, number];
-};
-
-function loadLayout(): LayoutState {
-  try {
-    return JSON.parse(localStorage.getItem(LAYOUT_KEY) || "{}");
-  } catch {
-    return {};
-  }
-}
-
-function saveLayout(patch: Partial<LayoutState>) {
-  const state = { ...loadLayout(), ...patch };
-  localStorage.setItem(LAYOUT_KEY, JSON.stringify(state));
-}
-
-const layoutState = loadLayout();
-
-// ─── Resizable editor divider ────────────────────────────────────────────
-const editorDivider = document.getElementById("divider-editor")!;
-const editorArea = document.querySelector(".editor-area") as HTMLElement;
-const leftPane = editorArea.querySelector(".editor-pane.left") as HTMLElement;
-const rightPane = editorArea.querySelector(".editor-pane.right") as HTMLElement;
-
-function applyEditorSplit(pct: number) {
-  leftPane.style.flex = `0 0 ${pct}%`;
-  rightPane.style.flex = `0 0 ${100 - pct}%`;
-}
-
-if (layoutState.editorSplit) applyEditorSplit(layoutState.editorSplit);
-
-editorDivider.addEventListener("mousedown", (e) => {
-  e.preventDefault();
-  editorDivider.classList.add("active");
-  const rect = editorArea.getBoundingClientRect();
-
-  const onMove = (ev: MouseEvent) => {
-    const x = ev.clientX - rect.left;
-    const pct = (x / rect.width) * 100;
-    const clamped = Math.max(20, Math.min(80, pct));
-    applyEditorSplit(clamped);
-  };
-
-  const onUp = () => {
-    editorDivider.classList.remove("active");
-    const cur =
-      (leftPane.getBoundingClientRect().width /
-        editorArea.getBoundingClientRect().width) *
-      100;
-    saveLayout({ editorSplit: Math.round(cur * 10) / 10 });
-    document.removeEventListener("mousemove", onMove);
-    document.removeEventListener("mouseup", onUp);
-  };
-
-  document.addEventListener("mousemove", onMove);
-  document.addEventListener("mouseup", onUp);
-});
-
-// ─── Resizable output divider ───────────────────────────────────────────
-const outputDivider = document.getElementById("divider-output")!;
-const outputPanel = document.getElementById("output-panel")!;
-const mainArea = document.querySelector(".main-area") as HTMLElement;
-let outputCollapsed = false;
-let lastOutputHeight =
-  layoutState.outputHeight ?? Math.round(window.innerHeight * 0.4);
-
-if (layoutState.outputHeight) {
-  outputPanel.style.flexBasis = `${layoutState.outputHeight}px`;
-}
-
-outputDivider.addEventListener("mousedown", (e) => {
-  e.preventDefault();
-  outputDivider.classList.add("active");
-
-  if (outputCollapsed) {
-    outputCollapsed = false;
-    outputPanel.classList.remove("collapsed");
-    outputPanel.style.setProperty("flex-basis", `${lastOutputHeight}px`);
-    mainArea.style.setProperty("--output-height", `${lastOutputHeight}px`);
-  }
-
-  const startY = e.clientY;
-  const startHeight = outputPanel.getBoundingClientRect().height;
-
-  const onMove = (ev: MouseEvent) => {
-    const delta = startY - ev.clientY;
-    const newHeight = Math.max(80, startHeight + delta);
-    outputPanel.style.flexBasis = `${newHeight}px`;
-    lastOutputHeight = newHeight;
-  };
-
-  const onUp = () => {
-    outputDivider.classList.remove("active");
-    saveLayout({ outputHeight: lastOutputHeight });
-    document.removeEventListener("mousemove", onMove);
-    document.removeEventListener("mouseup", onUp);
-  };
-
-  document.addEventListener("mousemove", onMove);
-  document.addEventListener("mouseup", onUp);
-});
-
-// Double-click to collapse/expand
-outputDivider.addEventListener("dblclick", () => {
-  outputCollapsed = !outputCollapsed;
-  if (outputCollapsed) {
-    lastOutputHeight =
-      outputPanel.getBoundingClientRect().height || lastOutputHeight;
-    outputPanel.classList.add("collapsed");
-  } else {
-    outputPanel.classList.remove("collapsed");
-    outputPanel.style.flexBasis = `${lastOutputHeight}px`;
-  }
-});
-
-// ─── Resizable output horizontal dividers ───────────────────────────────
-const outputPaneLeft = document.getElementById("output-pane-left")!;
-const outputPaneCenter = document.getElementById("output-pane-center")!;
-const outputPaneRight = document.getElementById("output-pane-right")!;
-
-function setupOutputHDivider(
-  divider: HTMLElement,
-  leftEl: HTMLElement,
-  rightEl: HTMLElement,
-  layoutKey: "outputH1" | "outputH2",
-) {
-  const saved = layoutState[layoutKey];
-  if (saved) {
-    leftEl.style.flex = `0 1 ${saved[0]}px`;
-    rightEl.style.flex = `0 1 ${saved[1]}px`;
-  }
-
-  divider.addEventListener("mousedown", (e) => {
-    e.preventDefault();
-    divider.classList.add("active");
-    const startX = e.clientX;
-    const startLeftW = leftEl.getBoundingClientRect().width;
-    const startRightW = rightEl.getBoundingClientRect().width;
-
-    const onMove = (ev: MouseEvent) => {
-      const delta = ev.clientX - startX;
-      const newLeftW = Math.max(80, startLeftW + delta);
-      const newRightW = Math.max(80, startRightW - delta);
-      leftEl.style.flex = `0 1 ${newLeftW}px`;
-      rightEl.style.flex = `0 1 ${newRightW}px`;
-    };
-
-    const onUp = () => {
-      divider.classList.remove("active");
-      const lw = leftEl.getBoundingClientRect().width;
-      const rw = rightEl.getBoundingClientRect().width;
-      saveLayout({ [layoutKey]: [Math.round(lw), Math.round(rw)] });
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-    };
-
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  });
-}
-
-setupOutputHDivider(
-  document.getElementById("divider-output-h1")!,
-  outputPaneLeft,
-  outputPaneCenter,
-  "outputH1",
-);
-setupOutputHDivider(
-  document.getElementById("divider-output-h2")!,
-  outputPaneCenter,
-  outputPaneRight,
-  "outputH2",
-);

@@ -970,7 +970,7 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type): ValType {
     }
 
     // Check externref AFTER Array check — Array is declared in lib but should use wasm GC arrays
-    if (isExternalDeclaredClass(tsType)) return { kind: "externref" };
+    if (isExternalDeclaredClass(tsType, ctx.checker)) return { kind: "externref" };
 
     const name = sym?.name;
     // Check named structs (interfaces, type aliases)
@@ -1008,7 +1008,7 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type): ValType {
  */
 function ensureStructForType(ctx: CodegenContext, tsType: ts.Type): void {
   if (!(tsType.flags & ts.TypeFlags.Object)) return;
-  if (isExternalDeclaredClass(tsType)) return;
+  if (isExternalDeclaredClass(tsType, ctx.checker)) return;
 
   const name = tsType.symbol?.name;
 
@@ -1247,7 +1247,7 @@ function collectExternFromDeclareVar(
             parentSet = true;
           }
           // If this base is NOT an extern class, it's a mixin — collect its members
-          if (!isExternalDeclaredClass(baseType)) {
+          if (!isExternalDeclaredClass(baseType, ctx.checker)) {
             collectMixinMembers(ctx, baseType, info, decl, visited);
           }
         }
@@ -1334,7 +1334,7 @@ function collectMixinMembers(
         if (clause.token !== ts.SyntaxKind.ExtendsKeyword) continue;
         for (const typeRef of clause.types) {
           const baseType = ctx.checker.getTypeAtLocation(typeRef);
-          if (!isExternalDeclaredClass(baseType)) {
+          if (!isExternalDeclaredClass(baseType, ctx.checker)) {
             collectMixinMembers(ctx, baseType, info, locationNode, visited);
           }
         }
@@ -1536,7 +1536,7 @@ function collectDeclaredGlobals(
       if (!referencedNames.has(name)) continue; // only register used globals
       if (ctx.declaredGlobals.has(name)) continue;
       const type = ctx.checker.getTypeAtLocation(decl);
-      if (!isExternalDeclaredClass(type)) continue;
+      if (!isExternalDeclaredClass(type, ctx.checker)) continue;
       const importName = `global_${name}`;
       const typeIdx = addFuncType(ctx, [], [{ kind: "externref" }]);
       addImport(ctx, "env", importName, { kind: "func", typeIdx });
