@@ -42,6 +42,8 @@ export interface StructTypeDef {
   kind: "struct";
   name: string;
   fields: FieldDef[];
+  /** Type index of the parent struct (for class inheritance sub-typing) */
+  superTypeIdx?: number;
 }
 export interface ArrayTypeDef {
   kind: "array";
