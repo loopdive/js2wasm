@@ -111,6 +111,8 @@ export interface CodegenContext {
   hasStringImports: boolean;
   /** Map from "EnumName.Member" → numeric value */
   enumValues: Map<string, number>;
+  /** Map from "EnumName.Member" → string value (for string enums) */
+  enumStringValues: Map<string, string>;
   /** Map from element kind (e.g. "f64") → registered array type index */
   arrayTypeMap: Map<string, number>;
   /** Map from className → parent className (for inheritance chain walk) */
@@ -227,6 +229,7 @@ export function generateModule(ast: TypedAST, options?: CodegenOptions): WasmMod
     stringLiteralCounter: 0,
     hasStringImports: false,
     enumValues: new Map(),
+    enumStringValues: new Map(),
     arrayTypeMap: new Map(),
     externClassParent: new Map(),
     declaredGlobals: new Map(),
@@ -345,6 +348,7 @@ export function generateMultiModule(multiAst: MultiTypedAST, options?: CodegenOp
     stringLiteralCounter: 0,
     hasStringImports: false,
     enumValues: new Map(),
+    enumStringValues: new Map(),
     arrayTypeMap: new Map(),
     externClassParent: new Map(),
     declaredGlobals: new Map(),
@@ -1634,8 +1638,9 @@ function sourceUsesLibGlobals(sourceFile: ts.SourceFile): boolean {
 
 // ── Regular declaration collection ───────────────────────────────────
 
-/** Collect enum declarations into ctx.enumValues */
+/** Collect enum declarations into ctx.enumValues / ctx.enumStringValues */
 function collectEnumDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFile): void {
+  const stringEnumLiterals: string[] = [];
   for (const stmt of sourceFile.statements) {
     if (!ts.isEnumDeclaration(stmt)) continue;
     const enumName = stmt.name.text;
@@ -1644,6 +1649,15 @@ function collectEnumDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFile)
       const memberName = (member.name as ts.Identifier).text;
       const key = `${enumName}.${memberName}`;
       if (member.initializer) {
+        if (ts.isStringLiteral(member.initializer)) {
+          // String enum member — store in enumStringValues
+          const strVal = member.initializer.text;
+          ctx.enumStringValues.set(key, strVal);
+          if (!ctx.stringLiteralMap.has(strVal)) {
+            stringEnumLiterals.push(strVal);
+          }
+          continue;
+        }
         if (ts.isNumericLiteral(member.initializer)) {
           nextValue = Number(member.initializer.text);
         } else if (
@@ -1656,6 +1670,19 @@ function collectEnumDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFile)
       }
       ctx.enumValues.set(key, nextValue);
       nextValue++;
+    }
+  }
+
+  // Register string enum literals as string imports
+  if (stringEnumLiterals.length > 0) {
+    addStringImports(ctx);
+    const strThunkType = addFuncType(ctx, [], [{ kind: "externref" }]);
+    for (const value of stringEnumLiterals) {
+      const name = `__str_${ctx.stringLiteralCounter++}`;
+      addImport(ctx, "env", name, { kind: "func", typeIdx: strThunkType });
+      ctx.stringLiteralMap.set(value, name);
+      ctx.stringLiteralValues.set(name, value);
+      ctx.mod.stringPool.push(value);
     }
   }
 }
