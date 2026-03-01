@@ -1,6 +1,6 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext } from "./index.js";
-import { allocLocal, resolveWasmType, ensureI32Condition, ensureExnTag } from "./index.js";
+import { allocLocal, resolveWasmType, ensureI32Condition, ensureExnTag, getSourcePos, attachSourcePos } from "./index.js";
 import { compileExpression } from "./expressions.js";
 import {
   isVoidType,
@@ -8,6 +8,25 @@ import {
   isBooleanType,
 } from "../checker/type-mapper.js";
 import type { Instr } from "../ir/types.js";
+
+/**
+ * Mark the first instruction emitted for a statement with its source position.
+ * Captures body length before, then after the statement is compiled,
+ * attaches the source position to the first new instruction (if any).
+ */
+function markStatementPos(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  stmt: ts.Statement,
+  compile: () => void,
+): void {
+  const pos = getSourcePos(ctx, stmt);
+  const bodyLenBefore = fctx.body.length;
+  compile();
+  if (pos && fctx.body.length > bodyLenBefore) {
+    attachSourcePos(fctx.body[bodyLenBefore]!, pos);
+  }
+}
 
 /** Compile a statement, appending instructions to the function body */
 export function compileStatement(
@@ -19,27 +38,27 @@ export function compileStatement(
   if (ts.isImportDeclaration(stmt)) return;
 
   if (ts.isVariableStatement(stmt)) {
-    compileVariableStatement(ctx, fctx, stmt);
+    markStatementPos(ctx, fctx, stmt, () => compileVariableStatement(ctx, fctx, stmt));
     return;
   }
 
   if (ts.isReturnStatement(stmt)) {
-    compileReturnStatement(ctx, fctx, stmt);
+    markStatementPos(ctx, fctx, stmt, () => compileReturnStatement(ctx, fctx, stmt));
     return;
   }
 
   if (ts.isIfStatement(stmt)) {
-    compileIfStatement(ctx, fctx, stmt);
+    markStatementPos(ctx, fctx, stmt, () => compileIfStatement(ctx, fctx, stmt));
     return;
   }
 
   if (ts.isWhileStatement(stmt)) {
-    compileWhileStatement(ctx, fctx, stmt);
+    markStatementPos(ctx, fctx, stmt, () => compileWhileStatement(ctx, fctx, stmt));
     return;
   }
 
   if (ts.isForStatement(stmt)) {
-    compileForStatement(ctx, fctx, stmt);
+    markStatementPos(ctx, fctx, stmt, () => compileForStatement(ctx, fctx, stmt));
     return;
   }
 
@@ -51,31 +70,33 @@ export function compileStatement(
   }
 
   if (ts.isExpressionStatement(stmt)) {
-    const resultType = compileExpression(ctx, fctx, stmt.expression);
-    // Drop the result if the expression left something on the stack
-    if (resultType !== null) {
-      fctx.body.push({ op: "drop" });
-    }
+    markStatementPos(ctx, fctx, stmt, () => {
+      const resultType = compileExpression(ctx, fctx, stmt.expression);
+      // Drop the result if the expression left something on the stack
+      if (resultType !== null) {
+        fctx.body.push({ op: "drop" });
+      }
+    });
     return;
   }
 
   if (ts.isDoStatement(stmt)) {
-    compileDoWhileStatement(ctx, fctx, stmt);
+    markStatementPos(ctx, fctx, stmt, () => compileDoWhileStatement(ctx, fctx, stmt));
     return;
   }
 
   if (ts.isSwitchStatement(stmt)) {
-    compileSwitchStatement(ctx, fctx, stmt);
+    markStatementPos(ctx, fctx, stmt, () => compileSwitchStatement(ctx, fctx, stmt));
     return;
   }
 
   if (ts.isForOfStatement(stmt)) {
-    compileForOfStatement(ctx, fctx, stmt);
+    markStatementPos(ctx, fctx, stmt, () => compileForOfStatement(ctx, fctx, stmt));
     return;
   }
 
   if (ts.isForInStatement(stmt)) {
-    compileForInStatement(ctx, fctx, stmt);
+    markStatementPos(ctx, fctx, stmt, () => compileForInStatement(ctx, fctx, stmt));
     return;
   }
 
@@ -85,22 +106,22 @@ export function compileStatement(
   }
 
   if (ts.isBreakStatement(stmt)) {
-    compileBreakStatement(ctx, fctx, stmt);
+    markStatementPos(ctx, fctx, stmt, () => compileBreakStatement(ctx, fctx, stmt));
     return;
   }
 
   if (ts.isContinueStatement(stmt)) {
-    compileContinueStatement(ctx, fctx, stmt);
+    markStatementPos(ctx, fctx, stmt, () => compileContinueStatement(ctx, fctx, stmt));
     return;
   }
 
   if (ts.isThrowStatement(stmt)) {
-    compileThrowStatement(ctx, fctx, stmt);
+    markStatementPos(ctx, fctx, stmt, () => compileThrowStatement(ctx, fctx, stmt));
     return;
   }
 
   if (ts.isTryStatement(stmt)) {
-    compileTryStatement(ctx, fctx, stmt);
+    markStatementPos(ctx, fctx, stmt, () => compileTryStatement(ctx, fctx, stmt));
     return;
   }
 

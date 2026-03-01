@@ -20,6 +20,7 @@ import type {
   ArrayTypeDef,
   ValType,
   Instr,
+  SourcePos,
   LocalDef,
   Import,
   WasmExport,
@@ -130,6 +131,8 @@ export interface CodegenContext {
   moduleGlobals: Map<string, number>;
   /** Module-level variable initializers (compiled into __module_init) */
   moduleInitStatements: ts.Statement[];
+  /** Whether to attach source positions for source map generation */
+  sourceMap: boolean;
 }
 
 /** Metadata for a closure stored in a local variable */
@@ -168,8 +171,14 @@ export interface FunctionContext {
   labelMap: Map<string, { breakIdx: number; continueIdx: number }>;
 }
 
+/** Options for code generation */
+export interface CodegenOptions {
+  /** Whether to generate source positions for source map */
+  sourceMap?: boolean;
+}
+
 /** Compile a typed AST into a WasmModule IR */
-export function generateModule(ast: TypedAST): WasmModule {
+export function generateModule(ast: TypedAST, options?: CodegenOptions): WasmModule {
   const mod = createEmptyModule();
 
   const ctx: CodegenContext = {
@@ -210,6 +219,7 @@ export function generateModule(ast: TypedAST): WasmModule {
     asyncFunctions: new Set(),
     moduleGlobals: new Map(),
     moduleInitStatements: [],
+    sourceMap: options?.sourceMap ?? false,
   };
 
   // Collect console.log imports (only variants actually used)
@@ -282,7 +292,7 @@ export function generateModule(ast: TypedAST): WasmModule {
  * All source files share the same codegen context (funcMap, structMap, etc.).
  * Only functions exported from the entry file become Wasm exports.
  */
-export function generateMultiModule(multiAst: MultiTypedAST): WasmModule {
+export function generateMultiModule(multiAst: MultiTypedAST, options?: CodegenOptions): WasmModule {
   const mod = createEmptyModule();
 
   const ctx: CodegenContext = {
@@ -323,6 +333,7 @@ export function generateMultiModule(multiAst: MultiTypedAST): WasmModule {
     exnTagIdx: -1,
     moduleGlobals: new Map(),
     moduleInitStatements: [],
+    sourceMap: options?.sourceMap ?? false,
   };
 
   // Phase 1: Collect all import-phase declarations across all source files
@@ -2344,6 +2355,14 @@ function compileFunctionBody(
 
   ctx.currentFunc = fctx;
 
+  // Mark function entry with source position
+  const funcPos = getSourcePos(ctx, decl);
+  if (funcPos) {
+    const nop: Instr = { op: "nop" };
+    attachSourcePos(nop, funcPos);
+    fctx.body.push(nop);
+  }
+
   // Compile body statements
   if (decl.body) {
     for (const stmt of decl.body.statements) {
@@ -2431,6 +2450,23 @@ export function ensureI32Condition(fctx: FunctionContext, condType: ValType | nu
     fctx.body.push({ op: "i32.eqz" }); // flip: is_null=1 means falsy
   }
   // i32 is already valid as-is
+}
+
+/** Get source position from a TS AST node (returns undefined if sourceMap is disabled) */
+export function getSourcePos(ctx: CodegenContext, node: ts.Node): SourcePos | undefined {
+  if (!ctx.sourceMap) return undefined;
+  const sf = node.getSourceFile();
+  if (!sf) return undefined;
+  const pos = sf.getLineAndCharacterOfPosition(node.getStart());
+  return { file: sf.fileName, line: pos.line, column: pos.character };
+}
+
+/** Attach a source position to an instruction (mutates in place) */
+export function attachSourcePos(instr: Instr, sourcePos: SourcePos | undefined): Instr {
+  if (sourcePos) {
+    (instr as Instr).sourcePos = sourcePos;
+  }
+  return instr;
 }
 
 export { compileExpression } from "./expressions.js";

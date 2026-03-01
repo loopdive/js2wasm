@@ -51,6 +51,7 @@
 | [28](issues/done/28.md) | Multi-file module compilation            | 10 in multi-file.test.ts     |
 | [29](issues/done/29.md) | Investigate failing tests                | fixed 2 in import-resolver   |
 | [30](issues/done/30.md) | Async/await and Promises                 | 8 in async-await.test.ts     |
+| [44](issues/44.md)      | Source map generation                    | 18 in sourcemap.test.ts      |
 | [36](issues/36.md)      | Static class members                     | 8 in static-members.test.ts  |
 
 
