@@ -131,6 +131,10 @@ export interface CodegenContext {
   moduleGlobals: Map<string, number>;
   /** Module-level variable initializers (compiled into __module_init) */
   moduleInitStatements: ts.Statement[];
+  /** Counter for assigning unique class tags (for instanceof support) */
+  classTagCounter: number;
+  /** Map from class name → unique tag value (for instanceof support) */
+  classTagMap: Map<string, number>;
   /** Whether to attach source positions for source map generation */
   sourceMap: boolean;
 }
@@ -219,6 +223,8 @@ export function generateModule(ast: TypedAST, options?: CodegenOptions): WasmMod
     asyncFunctions: new Set(),
     moduleGlobals: new Map(),
     moduleInitStatements: [],
+    classTagCounter: 0,
+    classTagMap: new Map(),
     sourceMap: options?.sourceMap ?? false,
   };
 
@@ -333,6 +339,8 @@ export function generateMultiModule(multiAst: MultiTypedAST, options?: CodegenOp
     exnTagIdx: -1,
     moduleGlobals: new Map(),
     moduleInitStatements: [],
+    classTagCounter: 0,
+    classTagMap: new Map(),
     sourceMap: options?.sourceMap ?? false,
   };
 
@@ -1670,6 +1678,13 @@ function collectClassDeclaration(
     }
   }
 
+  // Assign a unique class tag for instanceof support
+  const classTag = ctx.classTagCounter++;
+  ctx.classTagMap.set(className, classTag);
+
+  // Add hidden __tag field at the beginning for instanceof discrimination
+  fields.unshift({ name: "__tag", type: { kind: "i32" }, mutable: false });
+
   // Register the struct type
   const structTypeIdx = ctx.mod.types.length;
   ctx.mod.types.push({ kind: "struct", name: className, fields } as StructTypeDef);
@@ -2198,7 +2213,11 @@ function compileClassBodies(
 
     // Push default values for all fields, then struct.new
     for (const field of fields) {
-      if (field.type.kind === "f64") {
+      if (field.name === "__tag") {
+        // Push the class-specific tag value for instanceof discrimination
+        const tagValue = ctx.classTagMap.get(className) ?? 0;
+        fctx.body.push({ op: "i32.const", value: tagValue });
+      } else if (field.type.kind === "f64") {
         fctx.body.push({ op: "f64.const", value: 0 });
       } else if (field.type.kind === "i32") {
         fctx.body.push({ op: "i32.const", value: 0 });
