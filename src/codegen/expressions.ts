@@ -2770,6 +2770,11 @@ function compilePropertyAccess(
       fctx.body.push({ op: "f64.const", value: enumVal });
       return { kind: "f64" };
     }
+    // Check for string enum member access
+    const enumStrVal = ctx.enumStringValues.get(enumKey);
+    if (enumStrVal !== undefined) {
+      return compileStringLiteral(ctx, fctx, enumStrVal);
+    }
   }
 
   // Check for static property access: ClassName.staticProp
