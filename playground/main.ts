@@ -2719,13 +2719,25 @@ async function runBenchmark() {
   });
   const cleanJs = transpiled.outputText.replace(/^export /gm, "");
 
+  // Ensure a preview-panel element exists for DOM benchmarks (JS side)
+  let tempPreview: HTMLElement | null = null;
+  if (!document.getElementById("preview-panel")) {
+    tempPreview = document.createElement("div");
+    tempPreview.id = "preview-panel";
+    tempPreview.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;overflow:hidden";
+    document.body.appendChild(tempPreview);
+  }
+
+  // NOTE: new Function() is intentional here — we evaluate the user's transpiled
+  // benchmark source to get JS reference functions for WASM-vs-JS comparison.
   let jsFuncs: Record<string, Function>;
   try {
     const returnExpr = "return {" + benchNames.join(",") + "};";
-    const factory = new Function(cleanJs + "\n" + returnExpr);
+    const factory = new Function(cleanJs + "\n" + returnExpr); // eslint-disable-line no-new-func
     jsFuncs = factory();
   } catch (e) {
     log(`Failed to create JS functions: ${e}`);
+    tempPreview?.remove();
     benchBtn.disabled = false;
     return;
   }
@@ -2768,22 +2780,28 @@ async function runBenchmark() {
     log(`  ${name}…`);
     await yield_();
 
-    // Warmup both sides
-    for (let i = 0; i < 50; i++) { wasmFn(); jsFn(); }
+    try {
+      // Warmup both sides
+      for (let i = 0; i < 50; i++) { wasmFn(); jsFn(); }
 
-    // Calibrate on WASM (usually faster → safe iteration count for JS)
-    const iters = calibrate(wasmFn);
+      // Calibrate on WASM (usually faster → safe iteration count for JS)
+      const iters = calibrate(wasmFn);
 
-    const wasmMs = timeIt(wasmFn, iters);
-    const jsMs = timeIt(jsFn, iters);
+      const wasmMs = timeIt(wasmFn, iters);
+      const jsMs = timeIt(jsFn, iters);
 
-    results.push({
-      name: name.replace("bench_", ""),
-      iters,
-      wasmUs: (wasmMs / iters) * 1000,
-      jsUs: (jsMs / iters) * 1000,
-    });
+      results.push({
+        name: name.replace("bench_", ""),
+        iters,
+        wasmUs: (wasmMs / iters) * 1000,
+        jsUs: (jsMs / iters) * 1000,
+      });
+    } catch (e) {
+      log(`  ${name}: ERROR — ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
+
+  tempPreview?.remove();
 
   // ── Format results table ──
   const nameW = Math.max(10, ...results.map((r) => r.name.length));
