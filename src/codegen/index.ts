@@ -54,6 +54,8 @@ export interface RestParamInfo {
   elemType: ValType;
   /** Array type index in the module types */
   arrayTypeIdx: number;
+  /** Vec struct type index wrapping the array */
+  vecTypeIdx: number;
 }
 
 /** Context shared across all codegen */
@@ -1864,7 +1866,7 @@ function collectDeclarations(
         for (let i = 0; i < stmt.parameters.length; i++) {
           const param = stmt.parameters[i]!;
           if (param.dotDotDotToken) {
-            // Rest parameter: ...args: T[] → single (ref $__arr_elemKind) param
+            // Rest parameter: ...args: T[] → single (ref $__vec_elemKind) param
             const paramType = ctx.checker.getTypeAtLocation(param);
             const typeArgs = ctx.checker.getTypeArguments(paramType as ts.TypeReference);
             const elemTsType = typeArgs[0];
@@ -1872,12 +1874,14 @@ function collectDeclarations(
             // Use a unique key for ref element types so each struct gets its own array type
             const elemKey = (elemType.kind === "ref" || elemType.kind === "ref_null")
               ? `ref_${elemType.typeIdx}` : elemType.kind;
-            const arrTypeIdx = getOrRegisterArrayType(ctx, elemKey, elemType);
-            params.push({ kind: "ref_null", typeIdx: arrTypeIdx });
+            const vecTypeIdx = getOrRegisterVecType(ctx, elemKey, elemType);
+            const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
+            params.push({ kind: "ref_null", typeIdx: vecTypeIdx });
             ctx.funcRestParams.set(name, {
               restIndex: i,
               elemType,
               arrayTypeIdx: arrTypeIdx,
+              vecTypeIdx,
             });
           } else {
             const paramType = ctx.checker.getTypeAtLocation(param);
@@ -2271,8 +2275,8 @@ function compileFunctionBody(
     const param = decl.parameters[i]!;
     const paramName = (param.name as ts.Identifier).text;
     if (restInfo && i === restInfo.restIndex) {
-      // Rest parameter — use the array ref type from the function signature
-      params.push({ name: paramName, type: { kind: "ref_null", typeIdx: restInfo.arrayTypeIdx } });
+      // Rest parameter — use the vec struct ref type from the function signature
+      params.push({ name: paramName, type: { kind: "ref_null", typeIdx: restInfo.vecTypeIdx } });
     } else {
       const paramType = resolved
         ? resolved.params[i]!
