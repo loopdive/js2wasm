@@ -1,6 +1,6 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext } from "./index.js";
-import { allocLocal, resolveWasmType, ensureI32Condition, ensureExnTag } from "./index.js";
+import { allocLocal, resolveWasmType, ensureI32Condition, ensureExnTag, getArrTypeIdxFromVec } from "./index.js";
 import { compileExpression } from "./expressions.js";
 import {
   isVoidType,
@@ -269,7 +269,9 @@ function compileArrayDestructuring(
 
   const typeIdx = (resultType as { typeIdx: number }).typeIdx;
   const typeDef = ctx.mod.types[typeIdx];
-  if (!typeDef || typeDef.kind !== "array") {
+
+  // Handle vec struct (array wrapped in {length, data})
+  if (!typeDef || typeDef.kind !== "struct") {
     fctx.body.length = bodyLenBefore;
     ctx.errors.push({
       message: "Cannot destructure: not an array type",
@@ -279,9 +281,21 @@ function compileArrayDestructuring(
     return;
   }
 
-  const elemType = typeDef.element;
+  const arrTypeIdx = getArrTypeIdxFromVec(ctx, typeIdx);
+  const arrDef = ctx.mod.types[arrTypeIdx];
+  if (!arrDef || arrDef.kind !== "array") {
+    fctx.body.length = bodyLenBefore;
+    ctx.errors.push({
+      message: "Cannot destructure: vec data is not array",
+      line: getLine(decl),
+      column: getCol(decl),
+    });
+    return;
+  }
 
-  // Store array ref in temp local
+  const elemType = arrDef.element;
+
+  // Store vec ref in temp local
   const tmpLocal = allocLocal(fctx, `__destruct_${fctx.locals.length}`, resultType);
   fctx.body.push({ op: "local.set", index: tmpLocal });
 
@@ -293,8 +307,9 @@ function compileArrayDestructuring(
     const localIdx = allocLocal(fctx, localName, elemType);
 
     fctx.body.push({ op: "local.get", index: tmpLocal });
+    fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 }); // get data from vec
     fctx.body.push({ op: "i32.const", value: i });
-    fctx.body.push({ op: "array.get", typeIdx });
+    fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
     fctx.body.push({ op: "local.set", index: localIdx });
   }
 }
