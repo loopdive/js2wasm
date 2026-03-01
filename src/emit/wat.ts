@@ -52,12 +52,31 @@ export function emitWat(mod: WasmModule): string {
     );
   }
 
+  // Memories
+  if (mod.memories) {
+    for (const mem of mod.memories) {
+      if (mem.max !== undefined) {
+        lines.push(`${indent(1)}(memory ${mem.min} ${mem.max})`);
+      } else {
+        lines.push(`${indent(1)}(memory ${mem.min})`);
+      }
+    }
+  }
+
   // Elements
   for (const elem of mod.elements) {
     const offsetStr = elem.offset.map((i) => formatInstr(i, 0)).join(" ");
     const funcStr = elem.funcIndices.join(" ");
     lines.push(
       `${indent(1)}(elem (offset ${offsetStr}) func ${funcStr})`,
+    );
+  }
+
+  // Declarative element segment for ref.func targets
+  if (mod.declaredFuncRefs.length > 0) {
+    const funcStr = mod.declaredFuncRefs.join(" ");
+    lines.push(
+      `${indent(1)}(elem declare func ${funcStr})`,
     );
   }
 
@@ -303,6 +322,15 @@ function formatInstr(instr: Instr, _depth: number): string {
       return `throw ${instr.tagIdx}`;
     case "rethrow":
       return `rethrow ${instr.depth}`;
+    // Memory load/store (linear memory)
+    case "i32.load":
+    case "i32.load8_u":
+    case "i32.load8_s":
+    case "i32.load16_u":
+    case "i32.store":
+    case "i32.store8":
+    case "i32.store16":
+      return `${instr.op} offset=${instr.offset} align=${1 << instr.align}`;
     default:
       return instr.op;
   }

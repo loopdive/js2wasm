@@ -23,6 +23,10 @@ export interface WasmModule {
   stringLiteralValues: Map<string, string>;
   /** Set of function names that are async (for .d.ts generation) */
   asyncFunctions: Set<string>;
+  /** Function indices referenced by ref.func that need declarative element segments */
+  declaredFuncRefs: number[];
+  /** Linear memory definitions */
+  memories: { min: number; max?: number }[];
 }
 
 export type TypeDef =
@@ -173,7 +177,24 @@ export type Instr =
   | { op: "throw"; tagIdx: number }
   | { op: "rethrow"; depth: number }
   | { op: "any.convert_extern" }
-  | { op: "extern.convert_any" };
+  | { op: "extern.convert_any" }
+  // Memory load/store (linear memory)
+  | { op: "i32.load"; align: number; offset: number }
+  | { op: "i32.load8_u"; align: number; offset: number }
+  | { op: "i32.load8_s"; align: number; offset: number }
+  | { op: "i32.load16_u"; align: number; offset: number }
+  | { op: "i32.store"; align: number; offset: number }
+  | { op: "i32.store8"; align: number; offset: number }
+  | { op: "i32.store16"; align: number; offset: number }
+  // Integer division and remainder
+  | { op: "i32.div_u" }
+  | { op: "i32.div_s" }
+  | { op: "i32.rem_u" }
+  | { op: "i32.rem_s" }
+  // Unsigned comparisons (complements existing i32.lt_s etc.)
+  | { op: "i32.lt_u" }
+  | { op: "i32.le_u" }
+  | { op: "i32.gt_u" };
 
 export type BlockType =
   | { kind: "empty" }
@@ -237,5 +258,7 @@ export function createEmptyModule(): WasmModule {
     externClasses: [],
     stringLiteralValues: new Map(),
     asyncFunctions: new Set(),
+    declaredFuncRefs: [],
+    memories: [],
   };
 }

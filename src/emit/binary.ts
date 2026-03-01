@@ -65,6 +65,23 @@ export function emitBinary(mod: WasmModule): Uint8Array {
     });
   }
 
+  // Memory section
+  if (mod.memories && mod.memories.length > 0) {
+    enc.section(SECTION.memory, (s) => {
+      s.u32(mod.memories.length);
+      for (const mem of mod.memories) {
+        if (mem.max !== undefined) {
+          s.byte(0x01);
+          s.u32(mem.min);
+          s.u32(mem.max);
+        } else {
+          s.byte(0x00);
+          s.u32(mem.min);
+        }
+      }
+    });
+  }
+
   // Tag section (exception handling) — must come before Global section
   if (mod.tags.length > 0) {
     enc.section(SECTION.tag, (s) => {
@@ -691,5 +708,64 @@ export function encodeInstr(instr: Instr, enc: WasmEncoder): void {
       enc.byte(OP.end);
       break;
     }
+    // Memory load/store (linear memory)
+    case "i32.load":
+      enc.byte(OP.i32_load);
+      enc.u32(instr.align);
+      enc.u32(instr.offset);
+      break;
+    case "i32.load8_u":
+      enc.byte(OP.i32_load8_u);
+      enc.u32(instr.align);
+      enc.u32(instr.offset);
+      break;
+    case "i32.load8_s":
+      enc.byte(OP.i32_load8_s);
+      enc.u32(instr.align);
+      enc.u32(instr.offset);
+      break;
+    case "i32.load16_u":
+      enc.byte(OP.i32_load16_u);
+      enc.u32(instr.align);
+      enc.u32(instr.offset);
+      break;
+    case "i32.store":
+      enc.byte(OP.i32_store);
+      enc.u32(instr.align);
+      enc.u32(instr.offset);
+      break;
+    case "i32.store8":
+      enc.byte(OP.i32_store8);
+      enc.u32(instr.align);
+      enc.u32(instr.offset);
+      break;
+    case "i32.store16":
+      enc.byte(OP.i32_store16);
+      enc.u32(instr.align);
+      enc.u32(instr.offset);
+      break;
+    // Integer division and remainder
+    case "i32.div_s":
+      enc.byte(OP.i32_div_s);
+      break;
+    case "i32.div_u":
+      enc.byte(OP.i32_div_u);
+      break;
+    case "i32.rem_s":
+      enc.byte(OP.i32_rem_s);
+      break;
+    case "i32.rem_u":
+      enc.byte(OP.i32_rem_u);
+      break;
+    // Unsigned comparisons
+    case "i32.lt_u":
+      enc.byte(OP.i32_lt_u);
+      break;
+    case "i32.le_u":
+      enc.byte(OP.i32_le_u);
+      break;
+    case "i32.gt_u":
+      enc.byte(OP.i32_gt_u);
+      break;
   }
 }
