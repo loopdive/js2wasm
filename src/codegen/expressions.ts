@@ -726,6 +726,62 @@ function narrowTypeToUnbox(
 }
 
 /**
+ * Compile `expr instanceof ClassName`.
+ * Reads the hidden __tag field (index 0) from the struct and compares
+ * it against the class's compile-time tag value.
+ */
+function compileInstanceOf(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.BinaryExpression,
+): ValType | null {
+  // Right operand must be a class name identifier
+  if (!ts.isIdentifier(expr.right)) {
+    ctx.errors.push({
+      message: "instanceof right operand must be a class name",
+      line: getLine(expr.right),
+      column: getCol(expr.right),
+    });
+    return null;
+  }
+
+  const className = expr.right.text;
+  const tagValue = ctx.classTagMap.get(className);
+  if (tagValue === undefined) {
+    ctx.errors.push({
+      message: `instanceof: unknown class "${className}"`,
+      line: getLine(expr.right),
+      column: getCol(expr.right),
+    });
+    return null;
+  }
+
+  // Compile left operand (the value to test) — must be a ref to a class struct
+  const leftType = compileExpression(ctx, fctx, expr.left);
+  if (!leftType) return null;
+
+  // Resolve the struct type index from the left operand's type
+  const leftTsType = ctx.checker.getTypeAtLocation(expr.left);
+  const leftClassName = leftTsType.getSymbol()?.name;
+  const leftStructTypeIdx = leftClassName ? ctx.structMap.get(leftClassName) : undefined;
+  if (leftStructTypeIdx === undefined) {
+    ctx.errors.push({
+      message: "instanceof: left operand must be a class instance",
+      line: getLine(expr.left),
+      column: getCol(expr.left),
+    });
+    return null;
+  }
+
+  // Read the __tag field (field index 0) from the struct
+  fctx.body.push({ op: "struct.get", typeIdx: leftStructTypeIdx, fieldIdx: 0 });
+  // Compare with the expected tag value
+  fctx.body.push({ op: "i32.const", value: tagValue });
+  fctx.body.push({ op: "i32.eq" });
+  return { kind: "i32" };
+}
+
+/**
  * Compile `typeof x === "number"` / `typeof x !== "string"` etc.
  * Returns i32 result, or null if the expression is not a typeof comparison.
  */
@@ -827,6 +883,11 @@ function compileBinaryExpression(
   // Nullish coalescing: a ?? b
   if (op === ts.SyntaxKind.QuestionQuestionToken) {
     return compileNullishCoalescing(ctx, fctx, expr);
+  }
+
+  // instanceof: compile left value, resolve right to struct type, emit ref.test
+  if (op === ts.SyntaxKind.InstanceOfKeyword) {
+    return compileInstanceOf(ctx, fctx, expr);
   }
 
   // typeof x === "type" / typeof x !== "type"
