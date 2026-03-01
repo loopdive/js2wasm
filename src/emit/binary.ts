@@ -11,13 +11,32 @@ import type {
   GlobalDef,
   CatchClause,
   TagDef,
+  SourcePos,
 } from "../ir/types.js";
 import { WasmEncoder } from "./encoder.js";
 import { OP, GC, TYPE, SECTION } from "./opcodes.js";
 
+/** A source map entry: maps a wasm byte offset to a source position */
+export interface SourceMapEntry {
+  wasmOffset: number;
+  sourcePos: SourcePos;
+}
+
+/** Result of binary emission with source map data */
+export interface EmitResult {
+  binary: Uint8Array;
+  sourceMapEntries: SourceMapEntry[];
+}
+
 /** Emit a complete Wasm binary from an IR module */
 export function emitBinary(mod: WasmModule): Uint8Array {
+  return emitBinaryWithSourceMap(mod).binary;
+}
+
+/** Emit a Wasm binary and collect source map entries */
+export function emitBinaryWithSourceMap(mod: WasmModule): EmitResult {
   const enc = new WasmEncoder();
+  const sourceMapEntries: SourceMapEntry[] = [];
 
   // Magic + Version
   enc.bytes([0x00, 0x61, 0x73, 0x6d]); // \0asm
@@ -118,11 +137,38 @@ export function emitBinary(mod: WasmModule): Uint8Array {
     });
   }
 
-  // Code section
+  // Code section — track byte offsets for source map
   if (mod.functions.length > 0) {
-    enc.section(SECTION.code, (s) => {
-      s.vector(mod.functions, (f, e) => encodeFunction(f, e));
-    });
+    // Build code section body to determine code section payload offset
+    const codeSectionBody = new WasmEncoder();
+    // Collect per-function relative offset entries
+    const funcRelativeEntries: { bodyOffset: number; instrOffset: number; sourcePos: SourcePos }[] = [];
+
+    codeSectionBody.u32(mod.functions.length); // vector count
+    for (const f of mod.functions) {
+      const bodyStartInSection = codeSectionBody.length;
+      encodeFunctionWithSourceMap(f, codeSectionBody, bodyStartInSection, funcRelativeEntries);
+    }
+
+    const codeSectionData = codeSectionBody.finish();
+
+    // Write the code section: id byte + length + data
+    // The absolute offset of the code section payload within the final binary:
+    // current enc.length + 1 (section id byte) + sizeof(u32(codeSectionData.length))
+    const sectionIdPos = enc.length;
+    enc.byte(SECTION.code);
+    const lengthBefore = enc.length;
+    enc.u32(codeSectionData.length);
+    const codeSectionPayloadStart = enc.length;
+    enc.bytes(codeSectionData);
+
+    // Convert relative entries to absolute wasm byte offsets
+    for (const entry of funcRelativeEntries) {
+      sourceMapEntries.push({
+        wasmOffset: codeSectionPayloadStart + entry.instrOffset,
+        sourcePos: entry.sourcePos,
+      });
+    }
   }
 
   // Custom "name" section — function names for debugging/treemap
@@ -161,7 +207,77 @@ export function emitBinary(mod: WasmModule): Uint8Array {
     }
   }
 
-  return enc.finish();
+  return { binary: enc.finish(), sourceMapEntries };
+}
+
+/** Encode a function body, tracking instruction offsets for source maps */
+function encodeFunctionWithSourceMap(
+  f: WasmFunction,
+  enc: WasmEncoder,
+  _bodyStartInSection: number,
+  entries: { bodyOffset: number; instrOffset: number; sourcePos: SourcePos }[],
+): void {
+  const body = new WasmEncoder();
+
+  // Locals: group consecutive same-type locals
+  const localGroups = groupLocals(f.locals);
+  body.vector(localGroups, (group, e) => {
+    e.u32(group.count);
+    encodeValType(group.type, e);
+  });
+
+  // Body instructions — track positions for instructions with sourcePos
+  for (const instr of f.body) {
+    encodeInstrWithSourceMap(instr, body, entries, _bodyStartInSection, enc);
+  }
+  body.byte(OP.end);
+
+  const bodyBytes = body.finish();
+  // The function body in the code section is: u32(bodyBytes.length) + bodyBytes
+  // We need to account for the u32 prefix length when computing absolute offsets
+  const u32PrefixSize = leb128UnsignedSize(bodyBytes.length);
+
+  // Adjust all entries' instrOffset: add the position of the function body data within the section
+  // entries that were just added have instrOffset relative to the body encoder
+  // We need to adjust them to be relative to the section start
+  for (const entry of entries) {
+    if (entry.bodyOffset === _bodyStartInSection) {
+      // This entry belongs to this function — adjust its instrOffset
+      entry.instrOffset = _bodyStartInSection + u32PrefixSize + entry.instrOffset;
+    }
+  }
+
+  enc.u32(bodyBytes.length);
+  enc.bytes(bodyBytes);
+}
+
+/** Encode instruction and collect source positions */
+function encodeInstrWithSourceMap(
+  instr: Instr,
+  enc: WasmEncoder,
+  entries: { bodyOffset: number; instrOffset: number; sourcePos: SourcePos }[],
+  bodyStartInSection: number,
+  _sectionEnc: WasmEncoder,
+): void {
+  // Record source position before encoding the instruction
+  if (instr.sourcePos) {
+    entries.push({
+      bodyOffset: bodyStartInSection,
+      instrOffset: enc.length, // position within the body encoder
+      sourcePos: instr.sourcePos,
+    });
+  }
+  encodeInstr(instr, enc);
+}
+
+/** Calculate the byte size of an unsigned LEB128 encoding */
+function leb128UnsignedSize(value: number): number {
+  let size = 0;
+  do {
+    value >>>= 7;
+    size++;
+  } while (value !== 0);
+  return size;
 }
 
 export function encodeTypeDef(t: TypeDef, enc: WasmEncoder): void {
@@ -172,8 +288,21 @@ export function encodeTypeDef(t: TypeDef, enc: WasmEncoder): void {
       enc.vector(t.results, (r, e) => encodeValType(r, e));
       break;
     case "struct":
-      enc.byte(TYPE.struct);
-      enc.vector(t.fields, (f, e) => encodeFieldDef(f, e));
+      if (t.superTypeIdx !== undefined) {
+        // Wrap in sub-type encoding for class inheritance
+        enc.byte(TYPE.sub); // 0x50 = non-final sub
+        if (t.superTypeIdx >= 0) {
+          enc.u32(1); // 1 supertype
+          enc.u32(t.superTypeIdx);
+        } else {
+          enc.u32(0); // 0 supertypes (root of hierarchy, non-final)
+        }
+        enc.byte(TYPE.struct);
+        enc.vector(t.fields, (f, e) => encodeFieldDef(f, e));
+      } else {
+        enc.byte(TYPE.struct);
+        enc.vector(t.fields, (f, e) => encodeFieldDef(f, e));
+      }
       break;
     case "array":
       enc.byte(TYPE.array);
@@ -779,4 +908,12 @@ export function encodeInstr(instr: Instr, enc: WasmEncoder): void {
       enc.byte(OP.i32_gt_u);
       break;
   }
+}
+
+/** Emit a sourceMappingURL custom section */
+export function emitSourceMappingURLSection(enc: WasmEncoder, url: string): void {
+  enc.section(SECTION.custom, (s) => {
+    s.name("sourceMappingURL");
+    s.name(url);
+  });
 }

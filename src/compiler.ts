@@ -1,15 +1,21 @@
 import ts from "typescript";
-import { analyzeSource, analyzeMultiSource, type TypedAST, type MultiTypedAST } from "./checker/index.js";
+import {
+  analyzeMultiSource,
+  analyzeSource,
+  type TypedAST,
+} from "./checker/index.js";
 import { generateModule, generateMultiModule } from "./codegen/index.js";
-import { emitBinary } from "./emit/binary.js";
+import {
+  emitBinary,
+  emitBinaryWithSourceMap,
+  emitSourceMappingURLSection,
+} from "./emit/binary.js";
+import { WasmEncoder } from "./emit/encoder.js";
 import { emitObject } from "./emit/object.js";
+import { generateSourceMap } from "./emit/sourcemap.js";
 import { emitWat } from "./emit/wat.js";
 import { preprocessImports } from "./import-resolver.js";
-import type {
-  CompileResult,
-  CompileError,
-  CompileOptions,
-} from "./index.js";
+import type { CompileError, CompileOptions, CompileResult } from "./index.js";
 import type { WasmModule } from "./ir/types.js";
 
 /**
@@ -66,10 +72,22 @@ export function compileSource(
     };
   }
 
+  const emitSourceMap = options.sourceMap === true;
+
   // Step 2: Generate IR
   let mod;
   try {
-    mod = generateModule(ast);
+    const result = generateModule(ast, { sourceMap: emitSourceMap });
+    mod = result.module;
+    // Propagate codegen errors with source locations
+    for (const err of result.errors) {
+      errors.push({
+        message: err.message,
+        line: err.line,
+        column: err.column,
+        severity: "error",
+      });
+    }
   } catch (e) {
     errors.push({
       message: `Codegen error: ${e instanceof Error ? e.message : String(e)}`,
@@ -88,10 +106,38 @@ export function compileSource(
     };
   }
 
-  // Step 3: Emit binary
+  // Step 3: Emit binary (with source map collection if enabled)
   let binary: Uint8Array;
+  let sourceMapJson: string | undefined;
   try {
-    binary = emitBinary(mod);
+    if (emitSourceMap) {
+      const emitResult = emitBinaryWithSourceMap(mod);
+
+      // Generate source map JSON
+      const sourcesContent = new Map<string, string>();
+      sourcesContent.set(options.moduleName ?? "input.ts", source);
+      const sourceMap = generateSourceMap(
+        emitResult.sourceMapEntries,
+        sourcesContent,
+      );
+      sourceMapJson = JSON.stringify(sourceMap);
+
+      // Append sourceMappingURL custom section to the binary
+      const sourceMapUrl = options.sourceMapUrl ?? "module.wasm.map";
+      const urlSection = new WasmEncoder();
+      emitSourceMappingURLSection(urlSection, sourceMapUrl);
+      const urlSectionBytes = urlSection.finish();
+
+      // Concatenate the binary with the sourceMappingURL section
+      const combined = new Uint8Array(
+        emitResult.binary.length + urlSectionBytes.length,
+      );
+      combined.set(emitResult.binary);
+      combined.set(urlSectionBytes, emitResult.binary.length);
+      binary = combined;
+    } else {
+      binary = emitBinary(mod);
+    }
   } catch (e) {
     errors.push({
       message: `Binary emit error: ${e instanceof Error ? e.message : String(e)}`,
@@ -140,6 +186,7 @@ export function compileSource(
     success: true,
     errors,
     stringPool: mod.stringPool,
+    sourceMap: sourceMapJson,
   };
 }
 
@@ -190,9 +237,21 @@ export function compileMultiSource(
     };
   }
 
+  const emitSourceMap = options.sourceMap === true;
+
   let mod;
   try {
-    mod = generateMultiModule(multiAst);
+    const result = generateMultiModule(multiAst, { sourceMap: emitSourceMap });
+    mod = result.module;
+    // Propagate codegen errors with source locations
+    for (const err of result.errors) {
+      errors.push({
+        message: err.message,
+        line: err.line,
+        column: err.column,
+        severity: "error",
+      });
+    }
   } catch (e) {
     errors.push({
       message: `Codegen error: ${e instanceof Error ? e.message : String(e)}`,
@@ -212,8 +271,37 @@ export function compileMultiSource(
   }
 
   let binary: Uint8Array;
+  let sourceMapJson: string | undefined;
   try {
-    binary = emitBinary(mod);
+    if (emitSourceMap) {
+      const emitResult = emitBinaryWithSourceMap(mod);
+
+      // Build sources content from input files
+      const sourcesContent = new Map<string, string>();
+      for (const [name, content] of Object.entries(files)) {
+        sourcesContent.set(name, content);
+      }
+      const sourceMap = generateSourceMap(
+        emitResult.sourceMapEntries,
+        sourcesContent,
+      );
+      sourceMapJson = JSON.stringify(sourceMap);
+
+      // Append sourceMappingURL custom section
+      const sourceMapUrl = options.sourceMapUrl ?? "module.wasm.map";
+      const urlSection = new WasmEncoder();
+      emitSourceMappingURLSection(urlSection, sourceMapUrl);
+      const urlSectionBytes = urlSection.finish();
+
+      const combined = new Uint8Array(
+        emitResult.binary.length + urlSectionBytes.length,
+      );
+      combined.set(emitResult.binary);
+      combined.set(urlSectionBytes, emitResult.binary.length);
+      binary = combined;
+    } else {
+      binary = emitBinary(mod);
+    }
   } catch (e) {
     errors.push({
       message: `Binary emit error: ${e instanceof Error ? e.message : String(e)}`,
@@ -264,6 +352,7 @@ export function compileMultiSource(
     success: true,
     errors,
     stringPool: mod.stringPool,
+    sourceMap: sourceMapJson,
   };
 }
 
@@ -275,7 +364,11 @@ function generateDts(ast: TypedAST, mod: WasmModule): string {
   // Exports interface
   const exportLines: string[] = [];
   for (const stmt of ast.sourceFile.statements) {
-    if (ts.isFunctionDeclaration(stmt) && stmt.name && hasExportModifier(stmt)) {
+    if (
+      ts.isFunctionDeclaration(stmt) &&
+      stmt.name &&
+      hasExportModifier(stmt)
+    ) {
       const name = stmt.name.text;
       const isAsync = mod.asyncFunctions.has(name);
       const params = stmt.parameters
@@ -296,12 +389,14 @@ function generateDts(ast: TypedAST, mod: WasmModule): string {
   }
 
   if (exportLines.length > 0) {
-    lines.push(...exportLines.map((l) => {
-      // Convert "  name(params): ret;" to "export declare function name(params): ret;"
-      const m = l.match(/^\s+(\w+)\(([^)]*)\):\s*(.+);$/);
-      if (m) return `export declare function ${m[1]}(${m[2]}): ${m[3]};`;
-      return l;
-    }));
+    lines.push(
+      ...exportLines.map((l) => {
+        // Convert "  name(params): ret;" to "export declare function name(params): ret;"
+        const m = l.match(/^\s+(\w+)\(([^)]*)\):\s*(.+);$/);
+        if (m) return `export declare function ${m[1]}(${m[2]}): ${m[3]};`;
+        return l;
+      }),
+    );
     lines.push("");
   }
 
@@ -327,7 +422,9 @@ function generateImportsHelper(mod: WasmModule): string {
   // Late-binding variable for callback support
   if (hasCallbacks) {
     lines.push("let wasmExports;");
-    lines.push("export function setExports(exports) { wasmExports = exports; }");
+    lines.push(
+      "export function setExports(exports) { wasmExports = exports; }",
+    );
     lines.push("");
   }
 
@@ -350,7 +447,9 @@ function generateImportsHelper(mod: WasmModule): string {
   // wasm:js-string polyfill
   if (hasJsString) {
     lines.push("");
-    lines.push("  // Polyfill for engines without native wasm:js-string support");
+    lines.push(
+      "  // Polyfill for engines without native wasm:js-string support",
+    );
     lines.push("  const jsString = {");
     lines.push("    concat: (a, b) => a + b,");
     lines.push("    length: (s) => s.length,");
@@ -381,10 +480,14 @@ function generateEnvImportLine(name: string, mod: WasmModule): string {
   }
 
   // Console stubs
-  if (name === "console_log_number") return "console_log_number: (v) => console.log(v)";
-  if (name === "console_log_bool") return "console_log_bool: (v) => console.log(Boolean(v))";
-  if (name === "console_log_string") return "console_log_string: (v) => console.log(v)";
-  if (name === "console_log_externref") return "console_log_externref: (v) => console.log(v)";
+  if (name === "console_log_number")
+    return "console_log_number: (v) => console.log(v)";
+  if (name === "console_log_bool")
+    return "console_log_bool: (v) => console.log(Boolean(v))";
+  if (name === "console_log_string")
+    return "console_log_string: (v) => console.log(v)";
+  if (name === "console_log_externref")
+    return "console_log_externref: (v) => console.log(v)";
 
   // Primitive method imports
   if (name === "number_toString") return "number_toString: (v) => String(v)";
@@ -404,9 +507,10 @@ function generateEnvImportLine(name: string, mod: WasmModule): string {
   // Extern class imports
   for (const ec of mod.externClasses) {
     const prefix = ec.importPrefix;
-    const nsAccess = ec.namespacePath.length > 0
-      ? `deps.${ec.namespacePath.join(".")}`
-      : `deps`;
+    const nsAccess =
+      ec.namespacePath.length > 0
+        ? `deps.${ec.namespacePath.join(".")}`
+        : `deps`;
 
     if (name === `${prefix}_new`) {
       const paramList = ec.constructorParams.map((_, i) => `a${i}`).join(", ");
@@ -414,7 +518,10 @@ function generateEnvImportLine(name: string, mod: WasmModule): string {
     }
     for (const [methodName, sig] of ec.methods) {
       if (name === `${prefix}_${methodName}`) {
-        const paramList = sig.params.slice(1).map((_, i) => `a${i}`).join(", ");
+        const paramList = sig.params
+          .slice(1)
+          .map((_, i) => `a${i}`)
+          .join(", ");
         return `${name}: (self${paramList ? ", " + paramList : ""}) => self.${methodName}(${paramList})`;
       }
     }
@@ -437,9 +544,12 @@ function generateEnvImportLine(name: string, mod: WasmModule): string {
   if (name === "__await") return `${name}: (v) => v`;
 
   // Union type helper imports
-  if (name === "__typeof_number") return `${name}: (v) => typeof v === "number" ? 1 : 0`;
-  if (name === "__typeof_string") return `${name}: (v) => typeof v === "string" ? 1 : 0`;
-  if (name === "__typeof_boolean") return `${name}: (v) => typeof v === "boolean" ? 1 : 0`;
+  if (name === "__typeof_number")
+    return `${name}: (v) => typeof v === "number" ? 1 : 0`;
+  if (name === "__typeof_string")
+    return `${name}: (v) => typeof v === "string" ? 1 : 0`;
+  if (name === "__typeof_boolean")
+    return `${name}: (v) => typeof v === "boolean" ? 1 : 0`;
   if (name === "__unbox_number") return `${name}: (v) => Number(v)`;
   if (name === "__unbox_boolean") return `${name}: (v) => v ? 1 : 0`;
   if (name === "__box_number") return `${name}: (v) => v`;
