@@ -158,6 +158,8 @@ export interface FunctionContext {
   breakStack: number[];
   /** Continue label depth stack */
   continueStack: number[];
+  /** Map from label name to break/continue stack indices for labeled break/continue */
+  labelMap: Map<string, { breakIdx: number; continueIdx: number }>;
 }
 
 /** Compile a typed AST into a WasmModule IR */
@@ -2034,6 +2036,7 @@ function compileDeclarations(
         blockDepth: 0,
         breakStack: [],
         continueStack: [],
+        labelMap: new Map(),
       };
       ctx.currentFunc = initFctx;
 
@@ -2099,6 +2102,7 @@ function compileClassBodies(
       blockDepth: 0,
       breakStack: [],
       continueStack: [],
+      labelMap: new Map(),
     };
 
     for (let i = 0; i < params.length; i++) {
@@ -2173,6 +2177,7 @@ function compileClassBodies(
         blockDepth: 0,
         breakStack: [],
         continueStack: [],
+        labelMap: new Map(),
       };
 
       for (let i = 0; i < params.length; i++) {
@@ -2255,6 +2260,7 @@ function compileFunctionBody(
     blockDepth: 0,
     breakStack: [],
     continueStack: [],
+    labelMap: new Map(),
   };
 
   // Register params as locals
