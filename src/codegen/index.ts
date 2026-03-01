@@ -31,6 +31,26 @@ import { createEmptyModule } from "../ir/types.js";
 import { compileExpression } from "./expressions.js";
 import { compileStatement } from "./statements.js";
 
+/** Result returned by generateModule / generateMultiModule */
+export interface CodegenResult {
+  module: WasmModule;
+  errors: { message: string; line: number; column: number }[];
+}
+
+/**
+ * Report a codegen error with source location extracted from an AST node.
+ * Pushes the error into ctx.errors so it can be propagated to the caller.
+ */
+export function reportError(ctx: CodegenContext, node: ts.Node, message: string): void {
+  const sf = node.getSourceFile();
+  if (sf) {
+    const { line, character } = sf.getLineAndCharacterOfPosition(node.getStart());
+    ctx.errors.push({ message, line: line + 1, column: character + 1 });
+  } else {
+    ctx.errors.push({ message, line: 0, column: 0 });
+  }
+}
+
 /** Info about an externally declared class */
 export interface ExternClassInfo {
   importPrefix: string;
@@ -296,7 +316,7 @@ export function generateModule(ast: TypedAST, options?: CodegenOptions): WasmMod
   mod.stringLiteralValues = ctx.stringLiteralValues;
   mod.asyncFunctions = ctx.asyncFunctions;
 
-  return mod;
+  return { module: mod, errors: ctx.errors };
 }
 
 /**
@@ -413,7 +433,7 @@ export function generateMultiModule(multiAst: MultiTypedAST, options?: CodegenOp
   mod.stringLiteralValues = ctx.stringLiteralValues;
   mod.asyncFunctions = ctx.asyncFunctions;
 
-  return mod;
+  return { module: mod, errors: ctx.errors };
 }
 
 /** Scan source for console.log() calls and register only needed import variants */

@@ -72,7 +72,17 @@ export function compileSource(
   // Step 2: Generate IR
   let mod;
   try {
-    mod = generateModule(ast, { sourceMap: emitSourceMap });
+    const result = generateModule(ast, { sourceMap: emitSourceMap });
+    mod = result.module;
+    // Propagate codegen errors with source locations
+    for (const err of result.errors) {
+      errors.push({
+        message: err.message,
+        line: err.line,
+        column: err.column,
+        severity: "error",
+      });
+    }
   } catch (e) {
     errors.push({
       message: `Codegen error: ${e instanceof Error ? e.message : String(e)}`,
@@ -221,7 +231,17 @@ export function compileMultiSource(
 
   let mod;
   try {
-    mod = generateMultiModule(multiAst, { sourceMap: emitSourceMap });
+    const result = generateMultiModule(multiAst, { sourceMap: emitSourceMap });
+    mod = result.module;
+    // Propagate codegen errors with source locations
+    for (const err of result.errors) {
+      errors.push({
+        message: err.message,
+        line: err.line,
+        column: err.column,
+        severity: "error",
+      });
+    }
   } catch (e) {
     errors.push({
       message: `Codegen error: ${e instanceof Error ? e.message : String(e)}`,
