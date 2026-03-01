@@ -117,7 +117,7 @@ function compileExpressionInner(
   }
 
   if (ts.isStringLiteral(expr) || ts.isNoSubstitutionTemplateLiteral(expr)) {
-    return compileStringLiteral(ctx, fctx, expr.text);
+    return compileStringLiteral(ctx, fctx, expr.text, expr);
   }
 
   if (ts.isTemplateExpression(expr)) {
@@ -1375,13 +1375,13 @@ function compileElementAssignment(
   // Push array ref
   const arrType = compileExpression(ctx, fctx, target.expression);
   if (!arrType || (arrType.kind !== "ref" && arrType.kind !== "ref_null")) {
-    ctx.errors.push({ message: "Assignment to non-array", line: 0, column: 0 });
+    ctx.errors.push({ message: "Assignment to non-array", line: getLine(target), column: getCol(target) });
     return null;
   }
   const typeIdx = (arrType as { typeIdx: number }).typeIdx;
   const typeDef = ctx.mod.types[typeIdx];
   if (!typeDef || typeDef.kind !== "array") {
-    ctx.errors.push({ message: "Assignment to non-array type", line: 0, column: 0 });
+    ctx.errors.push({ message: "Assignment to non-array type", line: getLine(target), column: getCol(target) });
     return null;
   }
   // Push index (as i32)
@@ -2695,7 +2695,7 @@ function compileElementAccess(
     ctx.errors.push({
       message: "Element access on externref requires __extern_get import",
       line: getLine(expr),
-      column: 0,
+      column: getCol(expr),
     });
     return null;
   }
@@ -2704,7 +2704,7 @@ function compileElementAccess(
     ctx.errors.push({
       message: "Element access on non-array value",
       line: getLine(expr),
-      column: 0,
+      column: getCol(expr),
     });
     return null;
   }
@@ -2714,8 +2714,8 @@ function compileElementAccess(
   if (!typeDef || typeDef.kind !== "array") {
     ctx.errors.push({
       message: "Element access on non-array type",
-      line: 0,
-      column: 0,
+      line: getLine(expr),
+      column: getCol(expr),
     });
     return null;
   }
@@ -2999,13 +2999,14 @@ function compileStringLiteral(
   ctx: CodegenContext,
   fctx: FunctionContext,
   value: string,
+  node?: ts.Node,
 ): ValType | null {
   const importName = ctx.stringLiteralMap.get(value);
   if (!importName) {
     ctx.errors.push({
       message: `String literal not registered: "${value}"`,
-      line: 0,
-      column: 0,
+      line: node ? getLine(node) : 0,
+      column: node ? getCol(node) : 0,
     });
     return null;
   }
@@ -3028,7 +3029,7 @@ function compileTemplateExpression(
 
   // Start with the head text (may be empty string "")
   if (expr.head.text) {
-    compileStringLiteral(ctx, fctx, expr.head.text);
+    compileStringLiteral(ctx, fctx, expr.head.text, expr.head);
   } else {
     // Empty head — we'll start from the first span's expression
   }
@@ -3055,7 +3056,7 @@ function compileTemplateExpression(
 
     // Append the span's literal text (the part after ${...} up to next ${ or backtick)
     if (span.literal.text) {
-      compileStringLiteral(ctx, fctx, span.literal.text);
+      compileStringLiteral(ctx, fctx, span.literal.text, span.literal);
       fctx.body.push({ op: "call", funcIdx: concatIdx });
     }
   }
