@@ -3113,16 +3113,23 @@ function compileStringBinaryOp(
 
 // ── Array method calls (pure Wasm, no host imports) ─────────────────
 
-/** Resolve array type info from a TS type. Returns null if not a Wasm GC array. */
+/** Resolve array type info from a TS type. Returns null if not a Wasm GC vec struct. */
 function resolveArrayInfo(
   ctx: CodegenContext,
   tsType: ts.Type,
-): { typeIdx: number; elemType: ValType } | null {
+): { vecTypeIdx: number; arrTypeIdx: number; elemType: ValType } | null {
   const wasmType = resolveWasmType(ctx, tsType);
   if (wasmType.kind !== "ref" && wasmType.kind !== "ref_null") return null;
-  const typeDef = ctx.mod.types[(wasmType as { typeIdx: number }).typeIdx];
-  if (!typeDef || typeDef.kind !== "array") return null;
-  return { typeIdx: (wasmType as { typeIdx: number }).typeIdx, elemType: typeDef.element };
+  const vecTypeIdx = (wasmType as { typeIdx: number }).typeIdx;
+  const vecDef = ctx.mod.types[vecTypeIdx];
+  if (!vecDef || vecDef.kind !== "struct") return null;
+  if (vecDef.fields.length < 2) return null;
+  const dataField = vecDef.fields[1]!;
+  if (dataField.type.kind !== "ref") return null;
+  const arrTypeIdx = dataField.type.typeIdx;
+  const arrDef = ctx.mod.types[arrTypeIdx];
+  if (!arrDef || arrDef.kind !== "array") return null;
+  return { vecTypeIdx, arrTypeIdx, elemType: arrDef.element };
 }
 
 /**
@@ -3163,7 +3170,7 @@ function compileArrayMethodCall(
   const arrInfo = resolveArrayInfo(ctx, receiverType);
   if (!arrInfo) return undefined;
 
-  const { typeIdx, elemType } = arrInfo;
+  const { vecTypeIdx, arrTypeIdx, elemType } = arrInfo;
 
   // If receiver is a module global, proxy it through a temp local so
   // getReceiverLocalIdx succeeds and mutating methods can write back.
@@ -3187,25 +3194,25 @@ function compileArrayMethodCall(
   let result: ValType | null | undefined;
   switch (methodName) {
     case "indexOf":
-      result = compileArrayIndexOf(ctx, fctx, propAccess, callExpr, typeIdx, elemType); break;
+      result = compileArrayIndexOf(ctx, fctx, propAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType); break;
     case "includes":
-      result = compileArrayIncludes(ctx, fctx, propAccess, callExpr, typeIdx, elemType); break;
+      result = compileArrayIncludes(ctx, fctx, propAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType); break;
     case "reverse":
-      result = compileArrayReverse(ctx, fctx, propAccess, callExpr, typeIdx, elemType); break;
+      result = compileArrayReverse(ctx, fctx, propAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType); break;
     case "push":
-      result = compileArrayPush(ctx, fctx, propAccess, callExpr, typeIdx, elemType); break;
+      result = compileArrayPush(ctx, fctx, propAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType); break;
     case "pop":
-      result = compileArrayPop(ctx, fctx, propAccess, callExpr, typeIdx, elemType); break;
+      result = compileArrayPop(ctx, fctx, propAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType); break;
     case "shift":
-      result = compileArrayShift(ctx, fctx, propAccess, callExpr, typeIdx, elemType); break;
+      result = compileArrayShift(ctx, fctx, propAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType); break;
     case "slice":
-      result = compileArraySlice(ctx, fctx, propAccess, callExpr, typeIdx, elemType); break;
+      result = compileArraySlice(ctx, fctx, propAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType); break;
     case "concat":
-      result = compileArrayConcat(ctx, fctx, propAccess, callExpr, typeIdx, elemType); break;
+      result = compileArrayConcat(ctx, fctx, propAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType); break;
     case "join":
-      result = compileArrayJoin(ctx, fctx, propAccess, callExpr, typeIdx, elemType); break;
+      result = compileArrayJoin(ctx, fctx, propAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType); break;
     case "splice":
-      result = compileArraySplice(ctx, fctx, propAccess, callExpr, typeIdx, elemType); break;
+      result = compileArraySplice(ctx, fctx, propAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType); break;
     default:
       result = undefined;
   }
@@ -3228,7 +3235,7 @@ function compileArrayMethodCall(
 /** Helper: emit a block+loop copy from srcArr[srcOffset+i] to dstArr[dstOffset+i] for count iterations */
 function emitArrayCopyLoop(
   fctx: FunctionContext,
-  typeIdx: number,
+  arrTypeIdx: number,
   elemType: ValType,
   dstArr: number,
   dstOffset: number | null, // local index, or null for 0
@@ -3259,8 +3266,8 @@ function emitArrayCopyLoop(
     ...(srcOffset !== null
       ? [{ op: "local.get", index: srcOffset } as Instr, { op: "local.get", index: iTmp } as Instr, { op: "i32.add" } as Instr]
       : [{ op: "local.get", index: iTmp } as Instr]),
-    { op: getOp, typeIdx } as Instr,
-    { op: "array.set", typeIdx },
+    { op: getOp, typeIdx: arrTypeIdx } as Instr,
+    { op: "array.set", typeIdx: arrTypeIdx },
 
     { op: "local.get", index: iTmp },
     { op: "i32.const", value: 1 },
@@ -3284,7 +3291,8 @@ function compileArrayIndexOf(
   fctx: FunctionContext,
   propAccess: ts.PropertyAccessExpression,
   callExpr: ts.CallExpression,
-  typeIdx: number,
+  _vecTypeIdx: number,
+  arrTypeIdx: number,
   elemType: ValType,
 ): ValType | null {
   if (callExpr.arguments.length < 1) {
@@ -3292,7 +3300,7 @@ function compileArrayIndexOf(
     return null;
   }
 
-  const arrTmp = allocLocal(fctx, `__arr_iof_${fctx.locals.length}`, { kind: "ref_null", typeIdx });
+  const arrTmp = allocLocal(fctx, `__arr_iof_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
   const iTmp = allocLocal(fctx, `__arr_iof_i_${fctx.locals.length}`, { kind: "i32" });
   const lenTmp = allocLocal(fctx, `__arr_iof_len_${fctx.locals.length}`, { kind: "i32" });
   const valTmp = allocLocal(fctx, `__arr_iof_val_${fctx.locals.length}`, elemType);
@@ -3321,7 +3329,7 @@ function compileArrayIndexOf(
 
     { op: "local.get", index: arrTmp },
     { op: "local.get", index: iTmp },
-    { op: getOp, typeIdx } as Instr,
+    { op: getOp, typeIdx: arrTypeIdx } as Instr,
     { op: "local.get", index: valTmp },
     { op: eqOp } as Instr,
     { op: "if", blockType: { kind: "empty" },
@@ -3359,7 +3367,8 @@ function compileArrayIncludes(
   fctx: FunctionContext,
   propAccess: ts.PropertyAccessExpression,
   callExpr: ts.CallExpression,
-  typeIdx: number,
+  _vecTypeIdx: number,
+  arrTypeIdx: number,
   elemType: ValType,
 ): ValType | null {
   if (callExpr.arguments.length < 1) {
@@ -3367,7 +3376,7 @@ function compileArrayIncludes(
     return null;
   }
 
-  const arrTmp = allocLocal(fctx, `__arr_inc_${fctx.locals.length}`, { kind: "ref_null", typeIdx });
+  const arrTmp = allocLocal(fctx, `__arr_inc_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
   const iTmp = allocLocal(fctx, `__arr_inc_i_${fctx.locals.length}`, { kind: "i32" });
   const lenTmp = allocLocal(fctx, `__arr_inc_len_${fctx.locals.length}`, { kind: "i32" });
   const valTmp = allocLocal(fctx, `__arr_inc_val_${fctx.locals.length}`, elemType);
@@ -3396,7 +3405,7 @@ function compileArrayIncludes(
 
     { op: "local.get", index: arrTmp },
     { op: "local.get", index: iTmp },
-    { op: getOp, typeIdx } as Instr,
+    { op: getOp, typeIdx: arrTypeIdx } as Instr,
     { op: "local.get", index: valTmp },
     { op: eqOp } as Instr,
     { op: "if", blockType: { kind: "empty" },
@@ -3433,10 +3442,11 @@ function compileArrayReverse(
   fctx: FunctionContext,
   propAccess: ts.PropertyAccessExpression,
   _callExpr: ts.CallExpression,
-  typeIdx: number,
+  _vecTypeIdx: number,
+  arrTypeIdx: number,
   elemType: ValType,
 ): ValType {
-  const arrTmp = allocLocal(fctx, `__arr_rev_${fctx.locals.length}`, { kind: "ref_null", typeIdx });
+  const arrTmp = allocLocal(fctx, `__arr_rev_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
   const iTmp = allocLocal(fctx, `__arr_rev_i_${fctx.locals.length}`, { kind: "i32" });
   const jTmp = allocLocal(fctx, `__arr_rev_j_${fctx.locals.length}`, { kind: "i32" });
   const swapTmp = allocLocal(fctx, `__arr_rev_sw_${fctx.locals.length}`, elemType);
@@ -3464,7 +3474,7 @@ function compileArrayReverse(
     // swap = arr[i]
     { op: "local.get", index: arrTmp },
     { op: "local.get", index: iTmp },
-    { op: getOp, typeIdx } as Instr,
+    { op: getOp, typeIdx: arrTypeIdx } as Instr,
     { op: "local.set", index: swapTmp },
 
     // arr[i] = arr[j]
@@ -3472,14 +3482,14 @@ function compileArrayReverse(
     { op: "local.get", index: iTmp },
     { op: "local.get", index: arrTmp },
     { op: "local.get", index: jTmp },
-    { op: getOp, typeIdx } as Instr,
-    { op: "array.set", typeIdx },
+    { op: getOp, typeIdx: arrTypeIdx } as Instr,
+    { op: "array.set", typeIdx: arrTypeIdx },
 
     // arr[j] = swap
     { op: "local.get", index: arrTmp },
     { op: "local.get", index: jTmp },
     { op: "local.get", index: swapTmp },
-    { op: "array.set", typeIdx },
+    { op: "array.set", typeIdx: arrTypeIdx },
 
     // i++, j--
     { op: "local.get", index: iTmp },
@@ -3504,7 +3514,7 @@ function compileArrayReverse(
   });
 
   fctx.body.push({ op: "local.get", index: arrTmp });
-  return { kind: "ref_null", typeIdx };
+  return { kind: "ref_null", typeIdx: arrTypeIdx };
 }
 
 /**
@@ -3516,7 +3526,8 @@ function compileArrayPush(
   fctx: FunctionContext,
   propAccess: ts.PropertyAccessExpression,
   callExpr: ts.CallExpression,
-  typeIdx: number,
+  _vecTypeIdx: number,
+  arrTypeIdx: number,
   elemType: ValType,
 ): ValType | null {
   if (callExpr.arguments.length < 1) {
@@ -3530,8 +3541,8 @@ function compileArrayPush(
     return null;
   }
 
-  const oldArr = allocLocal(fctx, `__arr_push_old_${fctx.locals.length}`, { kind: "ref_null", typeIdx });
-  const newArr = allocLocal(fctx, `__arr_push_new_${fctx.locals.length}`, { kind: "ref_null", typeIdx });
+  const oldArr = allocLocal(fctx, `__arr_push_old_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
+  const newArr = allocLocal(fctx, `__arr_push_new_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
   const lenTmp = allocLocal(fctx, `__arr_push_len_${fctx.locals.length}`, { kind: "i32" });
   const valTmp = allocLocal(fctx, `__arr_push_val_${fctx.locals.length}`, elemType);
 
@@ -3550,17 +3561,17 @@ function compileArrayPush(
   fctx.body.push({ op: "local.get", index: lenTmp });
   fctx.body.push({ op: "i32.const", value: 1 });
   fctx.body.push({ op: "i32.add" });
-  fctx.body.push({ op: "array.new_default", typeIdx });
+  fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx });
   fctx.body.push({ op: "local.set", index: newArr });
 
   // Copy old elements
-  emitArrayCopyLoop(fctx, typeIdx, elemType, newArr, null, oldArr, null, lenTmp);
+  emitArrayCopyLoop(fctx, arrTypeIdx, elemType, newArr, null, oldArr, null, lenTmp);
 
   // new_arr[len] = val
   fctx.body.push({ op: "local.get", index: newArr });
   fctx.body.push({ op: "local.get", index: lenTmp });
   fctx.body.push({ op: "local.get", index: valTmp });
-  fctx.body.push({ op: "array.set", typeIdx });
+  fctx.body.push({ op: "array.set", typeIdx: arrTypeIdx });
 
   // Reassign receiver local
   fctx.body.push({ op: "local.get", index: newArr });
@@ -3582,7 +3593,8 @@ function compileArrayPop(
   fctx: FunctionContext,
   propAccess: ts.PropertyAccessExpression,
   _callExpr: ts.CallExpression,
-  typeIdx: number,
+  _vecTypeIdx: number,
+  arrTypeIdx: number,
   elemType: ValType,
 ): ValType | null {
   const receiverLocal = getReceiverLocalIdx(fctx, propAccess.expression);
@@ -3591,8 +3603,8 @@ function compileArrayPop(
     return null;
   }
 
-  const oldArr = allocLocal(fctx, `__arr_pop_old_${fctx.locals.length}`, { kind: "ref_null", typeIdx });
-  const newArr = allocLocal(fctx, `__arr_pop_new_${fctx.locals.length}`, { kind: "ref_null", typeIdx });
+  const oldArr = allocLocal(fctx, `__arr_pop_old_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
+  const newArr = allocLocal(fctx, `__arr_pop_new_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
   const lenTmp = allocLocal(fctx, `__arr_pop_len_${fctx.locals.length}`, { kind: "i32" });
   const newLenTmp = allocLocal(fctx, `__arr_pop_nl_${fctx.locals.length}`, { kind: "i32" });
   const resultTmp = allocLocal(fctx, `__arr_pop_res_${fctx.locals.length}`, elemType);
@@ -3610,7 +3622,7 @@ function compileArrayPop(
   fctx.body.push({ op: "local.get", index: lenTmp });
   fctx.body.push({ op: "i32.const", value: 1 });
   fctx.body.push({ op: "i32.sub" });
-  fctx.body.push({ op: getOp, typeIdx } as Instr);
+  fctx.body.push({ op: getOp, typeIdx: arrTypeIdx } as Instr);
   fctx.body.push({ op: "local.set", index: resultTmp });
 
   // newLen = len - 1
@@ -3621,11 +3633,11 @@ function compileArrayPop(
 
   // new_arr = array.new_default(newLen)
   fctx.body.push({ op: "local.get", index: newLenTmp });
-  fctx.body.push({ op: "array.new_default", typeIdx });
+  fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx });
   fctx.body.push({ op: "local.set", index: newArr });
 
   // Copy old elements [0, newLen)
-  emitArrayCopyLoop(fctx, typeIdx, elemType, newArr, null, oldArr, null, newLenTmp);
+  emitArrayCopyLoop(fctx, arrTypeIdx, elemType, newArr, null, oldArr, null, newLenTmp);
 
   // Reassign receiver
   fctx.body.push({ op: "local.get", index: newArr });
@@ -3643,7 +3655,8 @@ function compileArrayShift(
   fctx: FunctionContext,
   propAccess: ts.PropertyAccessExpression,
   _callExpr: ts.CallExpression,
-  typeIdx: number,
+  _vecTypeIdx: number,
+  arrTypeIdx: number,
   elemType: ValType,
 ): ValType | null {
   const receiverLocal = getReceiverLocalIdx(fctx, propAccess.expression);
@@ -3652,8 +3665,8 @@ function compileArrayShift(
     return null;
   }
 
-  const oldArr = allocLocal(fctx, `__arr_sft_old_${fctx.locals.length}`, { kind: "ref_null", typeIdx });
-  const newArr = allocLocal(fctx, `__arr_sft_new_${fctx.locals.length}`, { kind: "ref_null", typeIdx });
+  const oldArr = allocLocal(fctx, `__arr_sft_old_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
+  const newArr = allocLocal(fctx, `__arr_sft_new_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
   const lenTmp = allocLocal(fctx, `__arr_sft_len_${fctx.locals.length}`, { kind: "i32" });
   const newLenTmp = allocLocal(fctx, `__arr_sft_nl_${fctx.locals.length}`, { kind: "i32" });
   const resultTmp = allocLocal(fctx, `__arr_sft_res_${fctx.locals.length}`, elemType);
@@ -3670,7 +3683,7 @@ function compileArrayShift(
   const getOp = elemType.kind === "i32" ? "array.get_s" : "array.get";
   fctx.body.push({ op: "local.get", index: oldArr });
   fctx.body.push({ op: "i32.const", value: 0 });
-  fctx.body.push({ op: getOp, typeIdx } as Instr);
+  fctx.body.push({ op: getOp, typeIdx: arrTypeIdx } as Instr);
   fctx.body.push({ op: "local.set", index: resultTmp });
 
   // newLen = len - 1
@@ -3681,13 +3694,13 @@ function compileArrayShift(
 
   // new_arr = array.new_default(newLen)
   fctx.body.push({ op: "local.get", index: newLenTmp });
-  fctx.body.push({ op: "array.new_default", typeIdx });
+  fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx });
   fctx.body.push({ op: "local.set", index: newArr });
 
   // Copy from old[1..] to new[0..]: srcOffset = 1
   fctx.body.push({ op: "i32.const", value: 1 });
   fctx.body.push({ op: "local.set", index: oneTmp });
-  emitArrayCopyLoop(fctx, typeIdx, elemType, newArr, null, oldArr, oneTmp, newLenTmp);
+  emitArrayCopyLoop(fctx, arrTypeIdx, elemType, newArr, null, oldArr, oneTmp, newLenTmp);
 
   // Reassign receiver
   fctx.body.push({ op: "local.get", index: newArr });
@@ -3705,11 +3718,12 @@ function compileArraySlice(
   fctx: FunctionContext,
   propAccess: ts.PropertyAccessExpression,
   callExpr: ts.CallExpression,
-  typeIdx: number,
+  _vecTypeIdx: number,
+  arrTypeIdx: number,
   elemType: ValType,
 ): ValType {
-  const arrTmp = allocLocal(fctx, `__arr_slc_${fctx.locals.length}`, { kind: "ref_null", typeIdx });
-  const newArr = allocLocal(fctx, `__arr_slc_new_${fctx.locals.length}`, { kind: "ref_null", typeIdx });
+  const arrTmp = allocLocal(fctx, `__arr_slc_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
+  const newArr = allocLocal(fctx, `__arr_slc_new_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
   const startTmp = allocLocal(fctx, `__arr_slc_s_${fctx.locals.length}`, { kind: "i32" });
   const endTmp = allocLocal(fctx, `__arr_slc_e_${fctx.locals.length}`, { kind: "i32" });
   const lenTmp = allocLocal(fctx, `__arr_slc_len_${fctx.locals.length}`, { kind: "i32" });
@@ -3745,14 +3759,14 @@ function compileArraySlice(
   fctx.body.push({ op: "local.set", index: sliceLenTmp });
 
   fctx.body.push({ op: "local.get", index: sliceLenTmp });
-  fctx.body.push({ op: "array.new_default", typeIdx });
+  fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx });
   fctx.body.push({ op: "local.set", index: newArr });
 
   // Copy: new[i] = old[start + i] for i in [0, sliceLen)
-  emitArrayCopyLoop(fctx, typeIdx, elemType, newArr, null, arrTmp, startTmp, sliceLenTmp);
+  emitArrayCopyLoop(fctx, arrTypeIdx, elemType, newArr, null, arrTmp, startTmp, sliceLenTmp);
 
   fctx.body.push({ op: "local.get", index: newArr });
-  return { kind: "ref_null", typeIdx };
+  return { kind: "ref_null", typeIdx: arrTypeIdx };
 }
 
 /**
@@ -3763,7 +3777,8 @@ function compileArrayConcat(
   fctx: FunctionContext,
   propAccess: ts.PropertyAccessExpression,
   callExpr: ts.CallExpression,
-  typeIdx: number,
+  _vecTypeIdx: number,
+  arrTypeIdx: number,
   elemType: ValType,
 ): ValType | null {
   if (callExpr.arguments.length < 1) {
@@ -3771,9 +3786,9 @@ function compileArrayConcat(
     return null;
   }
 
-  const arrA = allocLocal(fctx, `__arr_cat_a_${fctx.locals.length}`, { kind: "ref_null", typeIdx });
-  const arrB = allocLocal(fctx, `__arr_cat_b_${fctx.locals.length}`, { kind: "ref_null", typeIdx });
-  const newArr = allocLocal(fctx, `__arr_cat_new_${fctx.locals.length}`, { kind: "ref_null", typeIdx });
+  const arrA = allocLocal(fctx, `__arr_cat_a_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
+  const arrB = allocLocal(fctx, `__arr_cat_b_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
+  const newArr = allocLocal(fctx, `__arr_cat_new_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
   const lenA = allocLocal(fctx, `__arr_cat_la_${fctx.locals.length}`, { kind: "i32" });
   const lenB = allocLocal(fctx, `__arr_cat_lb_${fctx.locals.length}`, { kind: "i32" });
 
@@ -3795,17 +3810,17 @@ function compileArrayConcat(
   fctx.body.push({ op: "local.get", index: lenA });
   fctx.body.push({ op: "local.get", index: lenB });
   fctx.body.push({ op: "i32.add" });
-  fctx.body.push({ op: "array.new_default", typeIdx });
+  fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx });
   fctx.body.push({ op: "local.set", index: newArr });
 
   // Copy A: new[i] = A[i] for i in [0, lenA)
-  emitArrayCopyLoop(fctx, typeIdx, elemType, newArr, null, arrA, null, lenA);
+  emitArrayCopyLoop(fctx, arrTypeIdx, elemType, newArr, null, arrA, null, lenA);
 
   // Copy B: new[lenA + i] = B[i] for i in [0, lenB)
-  emitArrayCopyLoop(fctx, typeIdx, elemType, newArr, lenA, arrB, null, lenB);
+  emitArrayCopyLoop(fctx, arrTypeIdx, elemType, newArr, lenA, arrB, null, lenB);
 
   fctx.body.push({ op: "local.get", index: newArr });
-  return { kind: "ref_null", typeIdx };
+  return { kind: "ref_null", typeIdx: arrTypeIdx };
 }
 
 /**
@@ -3817,7 +3832,8 @@ function compileArrayJoin(
   fctx: FunctionContext,
   propAccess: ts.PropertyAccessExpression,
   callExpr: ts.CallExpression,
-  typeIdx: number,
+  _vecTypeIdx: number,
+  arrTypeIdx: number,
   elemType: ValType,
 ): ValType | null {
   const concatIdx = ctx.funcMap.get("concat");
@@ -3827,7 +3843,7 @@ function compileArrayJoin(
     return null;
   }
 
-  const arrTmp = allocLocal(fctx, `__arr_join_${fctx.locals.length}`, { kind: "ref_null", typeIdx });
+  const arrTmp = allocLocal(fctx, `__arr_join_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
   const lenTmp = allocLocal(fctx, `__arr_join_len_${fctx.locals.length}`, { kind: "i32" });
   const iTmp = allocLocal(fctx, `__arr_join_i_${fctx.locals.length}`, { kind: "i32" });
   const resultTmp = allocLocal(fctx, `__arr_join_res_${fctx.locals.length}`, { kind: "externref" });
@@ -3872,7 +3888,7 @@ function compileArrayJoin(
   const elemToStr: Instr[] = [
     { op: "local.get", index: arrTmp },
     { op: "local.get", index: iTmp },
-    { op: getOp, typeIdx } as Instr,
+    { op: getOp, typeIdx: arrTypeIdx } as Instr,
   ];
   if (elemType.kind === "f64" && toStrIdx !== undefined) {
     elemToStr.push({ op: "call", funcIdx: toStrIdx });
@@ -3935,7 +3951,8 @@ function compileArraySplice(
   fctx: FunctionContext,
   propAccess: ts.PropertyAccessExpression,
   callExpr: ts.CallExpression,
-  typeIdx: number,
+  _vecTypeIdx: number,
+  arrTypeIdx: number,
   elemType: ValType,
 ): ValType | null {
   if (callExpr.arguments.length < 1) {
@@ -3949,9 +3966,9 @@ function compileArraySplice(
     return null;
   }
 
-  const oldArr = allocLocal(fctx, `__arr_spl_old_${fctx.locals.length}`, { kind: "ref_null", typeIdx });
-  const newArr = allocLocal(fctx, `__arr_spl_new_${fctx.locals.length}`, { kind: "ref_null", typeIdx });
-  const delArr = allocLocal(fctx, `__arr_spl_del_${fctx.locals.length}`, { kind: "ref_null", typeIdx });
+  const oldArr = allocLocal(fctx, `__arr_spl_old_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
+  const newArr = allocLocal(fctx, `__arr_spl_new_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
+  const delArr = allocLocal(fctx, `__arr_spl_del_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
   const lenTmp = allocLocal(fctx, `__arr_spl_len_${fctx.locals.length}`, { kind: "i32" });
   const startTmp = allocLocal(fctx, `__arr_spl_s_${fctx.locals.length}`, { kind: "i32" });
   const delCountTmp = allocLocal(fctx, `__arr_spl_dc_${fctx.locals.length}`, { kind: "i32" });
@@ -3984,10 +4001,10 @@ function compileArraySplice(
 
   // Create deleted elements array and copy
   fctx.body.push({ op: "local.get", index: delCountTmp });
-  fctx.body.push({ op: "array.new_default", typeIdx });
+  fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx });
   fctx.body.push({ op: "local.set", index: delArr });
 
-  emitArrayCopyLoop(fctx, typeIdx, elemType, delArr, null, oldArr, startTmp, delCountTmp);
+  emitArrayCopyLoop(fctx, arrTypeIdx, elemType, delArr, null, oldArr, startTmp, delCountTmp);
 
   // newLen = len - delCount
   fctx.body.push({ op: "local.get", index: lenTmp });
@@ -3997,11 +4014,11 @@ function compileArraySplice(
 
   // Create new array
   fctx.body.push({ op: "local.get", index: newLenTmp });
-  fctx.body.push({ op: "array.new_default", typeIdx });
+  fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx });
   fctx.body.push({ op: "local.set", index: newArr });
 
   // Copy [0, start) from old to new
-  emitArrayCopyLoop(fctx, typeIdx, elemType, newArr, null, oldArr, null, startTmp);
+  emitArrayCopyLoop(fctx, arrTypeIdx, elemType, newArr, null, oldArr, null, startTmp);
 
   // Copy [start + delCount, len) from old to new[start..]
   // tailStart = start + delCount
@@ -4016,7 +4033,7 @@ function compileArraySplice(
   fctx.body.push({ op: "i32.sub" });
   fctx.body.push({ op: "local.set", index: tailLenTmp });
 
-  emitArrayCopyLoop(fctx, typeIdx, elemType, newArr, startTmp, oldArr, tailStartTmp, tailLenTmp);
+  emitArrayCopyLoop(fctx, arrTypeIdx, elemType, newArr, startTmp, oldArr, tailStartTmp, tailLenTmp);
 
   // Reassign receiver
   fctx.body.push({ op: "local.get", index: newArr });
@@ -4024,7 +4041,7 @@ function compileArraySplice(
 
   // Return deleted array
   fctx.body.push({ op: "local.get", index: delArr });
-  return { kind: "ref_null", typeIdx };
+  return { kind: "ref_null", typeIdx: arrTypeIdx };
 }
 
 function getLine(node: ts.Node): number {
