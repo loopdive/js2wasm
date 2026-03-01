@@ -1,8 +1,10 @@
 import ts from "typescript";
 import { analyzeSource, analyzeMultiSource, type TypedAST, type MultiTypedAST } from "./checker/index.js";
 import { generateModule, generateMultiModule } from "./codegen/index.js";
-import { emitBinary } from "./emit/binary.js";
+import { emitBinary, emitBinaryWithSourceMap, emitSourceMappingURLSection } from "./emit/binary.js";
 import { emitWat } from "./emit/wat.js";
+import { generateSourceMap } from "./emit/sourcemap.js";
+import { WasmEncoder } from "./emit/encoder.js";
 import { preprocessImports } from "./import-resolver.js";
 import type {
   CompileResult,
@@ -65,10 +67,12 @@ export function compileSource(
     };
   }
 
+  const emitSourceMap = options.sourceMap === true;
+
   // Step 2: Generate IR
   let mod;
   try {
-    mod = generateModule(ast);
+    mod = generateModule(ast, { sourceMap: emitSourceMap });
   } catch (e) {
     errors.push({
       message: `Codegen error: ${e instanceof Error ? e.message : String(e)}`,
@@ -87,10 +91,33 @@ export function compileSource(
     };
   }
 
-  // Step 3: Emit binary
+  // Step 3: Emit binary (with source map collection if enabled)
   let binary: Uint8Array;
+  let sourceMapJson: string | undefined;
   try {
-    binary = emitBinary(mod);
+    if (emitSourceMap) {
+      const emitResult = emitBinaryWithSourceMap(mod);
+
+      // Generate source map JSON
+      const sourcesContent = new Map<string, string>();
+      sourcesContent.set(options.moduleName ?? "input.ts", source);
+      const sourceMap = generateSourceMap(emitResult.sourceMapEntries, sourcesContent);
+      sourceMapJson = JSON.stringify(sourceMap);
+
+      // Append sourceMappingURL custom section to the binary
+      const sourceMapUrl = options.sourceMapUrl ?? "module.wasm.map";
+      const urlSection = new WasmEncoder();
+      emitSourceMappingURLSection(urlSection, sourceMapUrl);
+      const urlSectionBytes = urlSection.finish();
+
+      // Concatenate the binary with the sourceMappingURL section
+      const combined = new Uint8Array(emitResult.binary.length + urlSectionBytes.length);
+      combined.set(emitResult.binary);
+      combined.set(urlSectionBytes, emitResult.binary.length);
+      binary = combined;
+    } else {
+      binary = emitBinary(mod);
+    }
   } catch (e) {
     errors.push({
       message: `Binary emit error: ${e instanceof Error ? e.message : String(e)}`,
@@ -139,6 +166,7 @@ export function compileSource(
     success: true,
     errors,
     stringPool: mod.stringPool,
+    sourceMap: sourceMapJson,
   };
 }
 
@@ -189,9 +217,11 @@ export function compileMultiSource(
     };
   }
 
+  const emitSourceMap = options.sourceMap === true;
+
   let mod;
   try {
-    mod = generateMultiModule(multiAst);
+    mod = generateMultiModule(multiAst, { sourceMap: emitSourceMap });
   } catch (e) {
     errors.push({
       message: `Codegen error: ${e instanceof Error ? e.message : String(e)}`,
@@ -211,8 +241,32 @@ export function compileMultiSource(
   }
 
   let binary: Uint8Array;
+  let sourceMapJson: string | undefined;
   try {
-    binary = emitBinary(mod);
+    if (emitSourceMap) {
+      const emitResult = emitBinaryWithSourceMap(mod);
+
+      // Build sources content from input files
+      const sourcesContent = new Map<string, string>();
+      for (const [name, content] of Object.entries(files)) {
+        sourcesContent.set(name, content);
+      }
+      const sourceMap = generateSourceMap(emitResult.sourceMapEntries, sourcesContent);
+      sourceMapJson = JSON.stringify(sourceMap);
+
+      // Append sourceMappingURL custom section
+      const sourceMapUrl = options.sourceMapUrl ?? "module.wasm.map";
+      const urlSection = new WasmEncoder();
+      emitSourceMappingURLSection(urlSection, sourceMapUrl);
+      const urlSectionBytes = urlSection.finish();
+
+      const combined = new Uint8Array(emitResult.binary.length + urlSectionBytes.length);
+      combined.set(emitResult.binary);
+      combined.set(urlSectionBytes, emitResult.binary.length);
+      binary = combined;
+    } else {
+      binary = emitBinary(mod);
+    }
   } catch (e) {
     errors.push({
       message: `Binary emit error: ${e instanceof Error ? e.message : String(e)}`,
@@ -263,6 +317,7 @@ export function compileMultiSource(
     success: true,
     errors,
     stringPool: mod.stringPool,
+    sourceMap: sourceMapJson,
   };
 }
 
