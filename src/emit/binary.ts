@@ -155,8 +155,21 @@ function encodeTypeDef(t: TypeDef, enc: WasmEncoder): void {
       enc.vector(t.results, (r, e) => encodeValType(r, e));
       break;
     case "struct":
-      enc.byte(TYPE.struct);
-      enc.vector(t.fields, (f, e) => encodeFieldDef(f, e));
+      if (t.superTypeIdx !== undefined) {
+        // Wrap in sub-type encoding for class inheritance
+        enc.byte(TYPE.sub); // 0x50 = non-final sub
+        if (t.superTypeIdx >= 0) {
+          enc.u32(1); // 1 supertype
+          enc.u32(t.superTypeIdx);
+        } else {
+          enc.u32(0); // 0 supertypes (root of hierarchy, non-final)
+        }
+        enc.byte(TYPE.struct);
+        enc.vector(t.fields, (f, e) => encodeFieldDef(f, e));
+      } else {
+        enc.byte(TYPE.struct);
+        enc.vector(t.fields, (f, e) => encodeFieldDef(f, e));
+      }
       break;
     case "array":
       enc.byte(TYPE.array);

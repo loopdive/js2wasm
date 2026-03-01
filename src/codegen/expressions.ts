@@ -1744,6 +1744,14 @@ function compileCallExpression(
     return compileOptionalCallExpression(ctx, fctx, expr);
   }
 
+  // Handle super.method() calls — resolve to ParentClass_method with this as first arg
+  if (
+    ts.isPropertyAccessExpression(expr.expression) &&
+    expr.expression.expression.kind === ts.SyntaxKind.SuperKeyword
+  ) {
+    return compileSuperMethodCall(ctx, fctx, expr);
+  }
+
   // Handle property access calls: console.log, Math.xxx, extern methods
   if (ts.isPropertyAccessExpression(expr.expression)) {
     const propAccess = expr.expression;
@@ -1926,6 +1934,14 @@ function compileCallExpression(
     return { kind: "f64" };
   }
 
+  // Handle standalone super() calls (constructor chaining) — normally handled by
+  // compileClassBodies, but handle here as fallback
+  if (expr.expression.kind === ts.SyntaxKind.SuperKeyword) {
+    // super() call in constructor — already handled by compileClassBodies inline
+    // Just return void since the work is done there
+    return null;
+  }
+
   ctx.errors.push({
     message: "Unsupported call expression",
     line: getLine(expr),
@@ -1935,6 +1951,73 @@ function compileCallExpression(
 }
 
 // ── New expressions ──────────────────────────────────────────────────
+
+/** Compile super.method(args) — resolve to ParentClass_method and call with this */
+function compileSuperMethodCall(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.CallExpression,
+): ValType | null {
+  const propAccess = expr.expression as ts.PropertyAccessExpression;
+  const methodName = propAccess.name.text;
+
+  // Determine which class we're in from the current function name (ClassName_methodName)
+  const currentFuncName = fctx.name;
+  const underscoreIdx = currentFuncName.indexOf("_");
+  if (underscoreIdx === -1) return null;
+  const currentClassName = currentFuncName.substring(0, underscoreIdx);
+
+  // Find parent class
+  const parentClassName = ctx.classParentMap.get(currentClassName);
+  if (!parentClassName) {
+    ctx.errors.push({
+      message: `Cannot use super in class without parent: ${currentClassName}`,
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+
+  // Resolve parent method — walk up the inheritance chain
+  let ancestor: string | undefined = parentClassName;
+  let funcIdx: number | undefined;
+  while (ancestor) {
+    funcIdx = ctx.funcMap.get(`${ancestor}_${methodName}`);
+    if (funcIdx !== undefined) break;
+    ancestor = ctx.classParentMap.get(ancestor);
+  }
+
+  if (funcIdx === undefined) {
+    ctx.errors.push({
+      message: `Cannot find method '${methodName}' on parent class '${parentClassName}'`,
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+
+  // Push this as first argument
+  const selfIdx = fctx.localMap.get("this");
+  if (selfIdx !== undefined) {
+    fctx.body.push({ op: "local.get", index: selfIdx });
+  }
+
+  // Push remaining arguments with type hints
+  const paramTypes = getFuncParamTypes(ctx, funcIdx);
+  for (let i = 0; i < expr.arguments.length; i++) {
+    compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
+  }
+  fctx.body.push({ op: "call", funcIdx });
+
+  // Determine return type
+  const sig = ctx.checker.getResolvedSignature(expr);
+  if (sig) {
+    const retType = ctx.checker.getReturnTypeOfSignature(sig);
+    if (isVoidType(retType)) return null;
+    return resolveWasmType(ctx, retType);
+  }
+  return null;
+}
 
 function compileNewExpression(
   ctx: CodegenContext,
