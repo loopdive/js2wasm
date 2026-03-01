@@ -147,7 +147,7 @@ export function emitBinary(mod: WasmModule): Uint8Array {
   return enc.finish();
 }
 
-function encodeTypeDef(t: TypeDef, enc: WasmEncoder): void {
+export function encodeTypeDef(t: TypeDef, enc: WasmEncoder): void {
   switch (t.kind) {
     case "func":
       enc.byte(TYPE.func);
@@ -187,16 +187,16 @@ function encodeTypeDef(t: TypeDef, enc: WasmEncoder): void {
   }
 }
 
-function encodeFieldDef(f: FieldDef, enc: WasmEncoder): void {
+export function encodeFieldDef(f: FieldDef, enc: WasmEncoder): void {
   encodeStorageType(f.type, enc);
   enc.byte(f.mutable ? TYPE.mut_field : TYPE.const_field);
 }
 
-function encodeStorageType(t: ValType, enc: WasmEncoder): void {
+export function encodeStorageType(t: ValType, enc: WasmEncoder): void {
   encodeValType(t, enc);
 }
 
-function encodeValType(t: ValType, enc: WasmEncoder): void {
+export function encodeValType(t: ValType, enc: WasmEncoder): void {
   switch (t.kind) {
     case "i32":
       enc.byte(TYPE.i32);
@@ -227,7 +227,7 @@ function encodeValType(t: ValType, enc: WasmEncoder): void {
   }
 }
 
-function encodeImport(imp: Import, enc: WasmEncoder): void {
+export function encodeImport(imp: Import, enc: WasmEncoder): void {
   enc.name(imp.module);
   enc.name(imp.name);
   switch (imp.desc.kind) {
@@ -262,14 +262,14 @@ function encodeImport(imp: Import, enc: WasmEncoder): void {
   }
 }
 
-function encodeGlobal(g: GlobalDef, enc: WasmEncoder): void {
+export function encodeGlobal(g: GlobalDef, enc: WasmEncoder): void {
   encodeValType(g.type, enc);
   enc.byte(g.mutable ? 0x01 : 0x00);
   for (const instr of g.init) encodeInstr(instr, enc);
   enc.byte(OP.end);
 }
 
-function encodeExport(
+export function encodeExport(
   exp: WasmExport,
   enc: WasmEncoder,
   _numImportFuncs: number,
@@ -287,7 +287,7 @@ function encodeExport(
   enc.u32(exp.desc.index);
 }
 
-function encodeFunction(f: WasmFunction, enc: WasmEncoder): void {
+export function encodeFunction(f: WasmFunction, enc: WasmEncoder): void {
   const body = new WasmEncoder();
 
   // Locals: group consecutive same-type locals
@@ -308,12 +308,12 @@ function encodeFunction(f: WasmFunction, enc: WasmEncoder): void {
   enc.bytes(bodyBytes);
 }
 
-interface LocalGroup {
+export interface LocalGroup {
   count: number;
   type: ValType;
 }
 
-function groupLocals(locals: { type: ValType }[]): LocalGroup[] {
+export function groupLocals(locals: { type: ValType }[]): LocalGroup[] {
   const groups: LocalGroup[] = [];
   for (const local of locals) {
     const last = groups[groups.length - 1];
@@ -337,7 +337,7 @@ function valTypeEq(a: ValType, b: ValType): boolean {
   return true;
 }
 
-function encodeBlockType(bt: BlockType, enc: WasmEncoder): void {
+export function encodeBlockType(bt: BlockType, enc: WasmEncoder): void {
   switch (bt.kind) {
     case "empty":
       enc.byte(0x40);
@@ -351,7 +351,7 @@ function encodeBlockType(bt: BlockType, enc: WasmEncoder): void {
   }
 }
 
-function encodeInstr(instr: Instr, enc: WasmEncoder): void {
+export function encodeInstr(instr: Instr, enc: WasmEncoder): void {
   switch (instr.op) {
     case "unreachable":
       enc.byte(OP.unreachable);

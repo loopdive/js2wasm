@@ -100,6 +100,11 @@ export class WasmEncoder {
     return this.buf.length;
   }
 
+  /** Get current write position (alias for length, used by relocation tracking) */
+  get position(): number {
+    return this.buf.length;
+  }
+
   finish(): Uint8Array {
     return new Uint8Array(this.buf);
   }

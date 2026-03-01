@@ -29,7 +29,7 @@ export interface CompileOptions {
   moduleName?: string;
 }
 
-import { compileSource, compileMultiSource } from "./compiler.js";
+import { compileSource, compileMultiSource, compileToObjectSource } from "./compiler.js";
 
 /**
  * Compile TypeScript source to Wasm GC binary.
@@ -70,6 +70,18 @@ export function compileMulti(
 export function compileToWat(source: string): string {
   const result = compileSource(source, { emitWat: true });
   return result.wat;
+}
+
+/**
+ * Compile TypeScript source to a relocatable Wasm object file (.o).
+ * The output contains LLVM-style linking and relocation metadata
+ * suitable for use with a Wasm linker.
+ */
+export function compileToObject(
+  source: string,
+  options?: CompileOptions,
+) {
+  return compileToObjectSource(source, options);
 }
 
 export {

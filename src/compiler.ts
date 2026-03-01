@@ -2,6 +2,7 @@ import ts from "typescript";
 import { analyzeSource, analyzeMultiSource, type TypedAST, type MultiTypedAST } from "./checker/index.js";
 import { generateModule, generateMultiModule } from "./codegen/index.js";
 import { emitBinary } from "./emit/binary.js";
+import { emitObject } from "./emit/object.js";
 import { emitWat } from "./emit/wat.js";
 import { preprocessImports } from "./import-resolver.js";
 import type {
@@ -481,4 +482,83 @@ function hasExportModifier(node: ts.Node): boolean {
   return (
     modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword) ?? false
   );
+}
+
+// ── Object file compilation ─────────────────────────────────────────
+
+export interface ObjectCompileResult {
+  /** Relocatable Wasm object file (.o) */
+  object: Uint8Array;
+  /** true if compilation was successful */
+  success: boolean;
+  /** Error messages with line numbers */
+  errors: CompileError[];
+}
+
+/**
+ * Compile TypeScript source to a relocatable Wasm object file (.o).
+ * Uses the same pipeline as compileSource but emits LLVM-style
+ * linking metadata instead of a final executable module.
+ */
+export function compileToObjectSource(
+  source: string,
+  options: CompileOptions = {},
+): ObjectCompileResult {
+  const errors: CompileError[] = [];
+
+  const processedSource = preprocessImports(source);
+  const ast = analyzeSource(processedSource, options.moduleName ?? "input.ts");
+
+  for (const diag of ast.diagnostics) {
+    if (diag.category === 1) {
+      const pos = diag.file
+        ? diag.file.getLineAndCharacterOfPosition(diag.start ?? 0)
+        : { line: 0, character: 0 };
+      errors.push({
+        message:
+          typeof diag.messageText === "string"
+            ? diag.messageText
+            : diag.messageText.messageText,
+        line: pos.line + 1,
+        column: pos.character + 1,
+        severity: "error",
+      });
+    }
+  }
+
+  const hasSyntaxErrors = ast.syntacticDiagnostics.some(
+    (d) => d.category === 1 && d.file === ast.sourceFile,
+  );
+
+  if (hasSyntaxErrors && errors.length > 0) {
+    return { object: new Uint8Array(0), success: false, errors };
+  }
+
+  let mod;
+  try {
+    mod = generateModule(ast);
+  } catch (e) {
+    errors.push({
+      message: `Codegen error: ${e instanceof Error ? e.message : String(e)}`,
+      line: 0,
+      column: 0,
+      severity: "error",
+    });
+    return { object: new Uint8Array(0), success: false, errors };
+  }
+
+  let object: Uint8Array;
+  try {
+    object = emitObject(mod);
+  } catch (e) {
+    errors.push({
+      message: `Object emit error: ${e instanceof Error ? e.message : String(e)}`,
+      line: 0,
+      column: 0,
+      severity: "error",
+    });
+    return { object: new Uint8Array(0), success: false, errors };
+  }
+
+  return { object, success: true, errors };
 }
