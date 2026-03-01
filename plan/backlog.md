@@ -7,6 +7,7 @@
 | ------------------ | ----------------------------------------------------------- | ---------- |
 | [31](issues/31.md) | Default number type to i32, promote to f64 only when needed | L          |
 | [32](issues/32.md) | Capacity-based array representation with `array.copy`       | L          |
+| [37](issues/37.md) | Getter/setter properties on user-defined classes            | M          |
 
 
 ## Complexity legend
@@ -52,5 +53,11 @@
 | [29](issues/done/29.md) | Investigate failing tests                | fixed 2 in import-resolver   |
 | [30](issues/done/30.md) | Async/await and Promises                 | 8 in async-await.test.ts     |
 | [43](issues/43.md)      | void expression                          | 3 in void-expr.test.ts       |
+| [45](issues/45.md)      | Error reporting with source locations     | 7 in error-reporting.test.ts |
+| [42](issues/42.md)      | Comma operator                           | 5 in comma-operator.test.ts  |
+| [35](issues/35.md)      | Class inheritance with extends and super  | 7 in inheritance.test.ts     |
+| [38](issues/38.md)      | Implement `instanceof` operator          | 4 in instanceof.test.ts      |
+| [44](issues/44.md)      | Source map generation                    | 18 in sourcemap.test.ts      |
+| [36](issues/36.md)      | Static class members                     | 8 in static-members.test.ts  |
 
 
