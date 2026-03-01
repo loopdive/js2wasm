@@ -158,6 +158,8 @@ export type Instr =
   | { op: "array.get_s"; typeIdx: number }
   | { op: "array.set"; typeIdx: number }
   | { op: "array.len" }
+  | { op: "array.copy"; dstTypeIdx: number; srcTypeIdx: number }
+  | { op: "array.fill"; typeIdx: number }
   | { op: "ref.null"; typeIdx: number }
   | { op: "ref.null.extern" }
   | { op: "ref.is_null" }

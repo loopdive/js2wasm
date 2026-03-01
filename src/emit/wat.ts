@@ -283,6 +283,10 @@ function formatInstr(instr: Instr, _depth: number): string {
       return `array.get_s ${instr.typeIdx}`;
     case "array.set":
       return `array.set ${instr.typeIdx}`;
+    case "array.copy":
+      return `array.copy ${instr.dstTypeIdx} ${instr.srcTypeIdx}`;
+    case "array.fill":
+      return `array.fill ${instr.typeIdx}`;
     case "ref.null":
       return `ref.null ${instr.typeIdx}`;
     case "ref.null.extern":

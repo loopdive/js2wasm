@@ -93,6 +93,8 @@ export const GC = {
   array_get_u: 0x0d,
   array_set: 0x0e,
   array_len: 0x0f,
+  array_fill: 0x10,
+  array_copy: 0x11,
   ref_test: 0x14,
   ref_test_null: 0x15,
   ref_cast: 0x16,
