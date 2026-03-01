@@ -439,6 +439,7 @@ function generateEnvImportLine(name: string, mod: WasmModule): string {
   if (name === "__typeof_number") return `${name}: (v) => typeof v === "number" ? 1 : 0`;
   if (name === "__typeof_string") return `${name}: (v) => typeof v === "string" ? 1 : 0`;
   if (name === "__typeof_boolean") return `${name}: (v) => typeof v === "boolean" ? 1 : 0`;
+  if (name === "__typeof") return `${name}: (v) => typeof v`;
   if (name === "__unbox_number") return `${name}: (v) => Number(v)`;
   if (name === "__unbox_boolean") return `${name}: (v) => v ? 1 : 0`;
   if (name === "__box_number") return `${name}: (v) => v`;

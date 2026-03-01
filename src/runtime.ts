@@ -45,6 +45,7 @@ export const jsApi: Record<string, Function> = new Proxy(
       if (name === "__typeof_number") return (v: any) => typeof v === "number" ? 1 : 0;
       if (name === "__typeof_string") return (v: any) => typeof v === "string" ? 1 : 0;
       if (name === "__typeof_boolean") return (v: any) => typeof v === "boolean" ? 1 : 0;
+      if (name === "__typeof") return (v: any) => typeof v;
       if (name === "__unbox_number") return (v: any) => Number(v);
       if (name === "__unbox_boolean") return (v: any) => v ? 1 : 0;
       if (name === "__box_number") return (v: number) => v;

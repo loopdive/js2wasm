@@ -619,6 +619,14 @@ function collectStringLiterals(
         if (span.literal.text) literals.add(span.literal.text);
       }
     }
+    // Standalone typeof expressions: register the result type-name string
+    if (ts.isTypeOfExpression(node)) {
+      const operandType = ctx.checker.getTypeAtLocation(node.expression);
+      const typeName = typeofResultString(operandType, ctx.checker);
+      if (typeName) {
+        literals.add(typeName);
+      }
+    }
     ts.forEachChild(node, visit);
   }
 
@@ -846,6 +854,34 @@ export function addUnionImports(ctx: CodegenContext): void {
   // __box_boolean: (i32) → externref
   const boxBoolType = addFuncType(ctx, [{ kind: "i32" }], [{ kind: "externref" }]);
   addImport(ctx, "env", "__box_boolean", { kind: "func", typeIdx: boxBoolType });
+
+  // __typeof: (externref) → externref (returns JS typeof string)
+  const typeofRetType = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
+  addImport(ctx, "env", "__typeof", { kind: "func", typeIdx: typeofRetType });
+}
+
+/**
+ * Map a TS type to the string that `typeof` would return at runtime.
+ * Returns null for unknown/union types that need runtime dispatch.
+ */
+export function typeofResultString(
+  type: ts.Type,
+  checker: ts.TypeChecker,
+): string | null {
+  if (type.flags & ts.TypeFlags.Number || type.flags & ts.TypeFlags.NumberLiteral) return "number";
+  if (type.flags & ts.TypeFlags.Boolean || type.flags & ts.TypeFlags.BooleanLiteral) return "boolean";
+  if (type.flags & ts.TypeFlags.String || type.flags & ts.TypeFlags.StringLiteral) return "string";
+  if (type.flags & ts.TypeFlags.Void || type.flags & ts.TypeFlags.Undefined) return "undefined";
+  if (type.flags & ts.TypeFlags.Null) return "object";
+  // Object types (structs, arrays, classes) → "object"
+  if (type.flags & ts.TypeFlags.Object) return "object";
+  // Unions where all branches resolve to the same typeof result
+  if (type.isUnion()) {
+    const results = type.types.map((t) => typeofResultString(t, checker));
+    if (results.every((r) => r !== null && r === results[0])) return results[0];
+    return null; // heterogeneous union — needs runtime dispatch
+  }
+  return null;
 }
 
 export function addImport(

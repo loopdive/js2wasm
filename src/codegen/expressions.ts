@@ -1,6 +1,6 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext, ClosureInfo, RestParamInfo } from "./index.js";
-import { allocLocal, resolveWasmType, getOrRegisterArrayType, addFuncType, addUnionImports } from "./index.js";
+import { allocLocal, resolveWasmType, getOrRegisterArrayType, addFuncType, addUnionImports, typeofResultString } from "./index.js";
 import {
   mapTsTypeToWasm,
   isNumberType,
@@ -216,6 +216,11 @@ function compileExpressionInner(
   // await expr — compile as pass-through (host functions are sync from Wasm's perspective)
   if (ts.isAwaitExpression(expr)) {
     return compileExpressionInner(ctx, fctx, expr.expression);
+  }
+
+  // typeof expr — standalone typeof returning a string
+  if (ts.isTypeOfExpression(expr)) {
+    return compileTypeofExpression(ctx, fctx, expr);
   }
 
   if (ts.isArrowFunction(expr) || ts.isFunctionExpression(expr)) {
@@ -723,6 +728,74 @@ function narrowTypeToUnbox(
   if (isStringType(narrowedType)) return null;
 
   return null;
+}
+
+/**
+ * Compile standalone `typeof x` expression, returning an externref string.
+ * For statically known types, emits the corresponding string constant.
+ * For unknown/union types, calls the __typeof host import at runtime.
+ */
+function compileTypeofExpression(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.TypeOfExpression,
+): ValType | null {
+  const operandType = ctx.checker.getTypeAtLocation(expr.expression);
+  const staticResult = typeofResultString(operandType, ctx.checker);
+
+  if (staticResult) {
+    // Statically known — emit the string constant
+    const importName = ctx.stringLiteralMap.get(staticResult);
+    if (!importName) {
+      ctx.errors.push({
+        message: `typeof result string not registered: "${staticResult}"`,
+        line: 0,
+        column: 0,
+      });
+      return null;
+    }
+    const funcIdx = ctx.funcMap.get(importName);
+    if (funcIdx === undefined) return null;
+
+    // Still need to evaluate the operand for side effects, then drop it
+    const valType = compileExpression(ctx, fctx, expr.expression);
+    if (valType) {
+      fctx.body.push({ op: "drop" });
+    }
+
+    fctx.body.push({ op: "call", funcIdx });
+    return { kind: "externref" };
+  }
+
+  // Runtime typeof: compile operand as externref, call __typeof host import
+  addUnionImports(ctx);
+  const typeofIdx = ctx.funcMap.get("__typeof");
+  if (typeofIdx === undefined) {
+    ctx.errors.push({
+      message: "Missing __typeof import for runtime typeof",
+      line: 0,
+      column: 0,
+    });
+    return null;
+  }
+
+  // Load the operand — for union params, need the raw externref value
+  const operand = expr.expression;
+  if (ts.isIdentifier(operand)) {
+    const localIdx = fctx.localMap.get(operand.text);
+    if (localIdx !== undefined) {
+      fctx.body.push({ op: "local.get", index: localIdx });
+    } else {
+      const valType = compileExpression(ctx, fctx, operand);
+      if (!valType) return null;
+    }
+  } else {
+    const valType = compileExpression(ctx, fctx, operand);
+    if (!valType) return null;
+  }
+
+  fctx.body.push({ op: "call", funcIdx: typeofIdx });
+  return { kind: "externref" };
 }
 
 /**

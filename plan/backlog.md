@@ -7,6 +7,7 @@
 | ------------------ | ----------------------------------------------------------- | ---------- |
 | [31](issues/31.md) | Default number type to i32, promote to f64 only when needed | L          |
 | [32](issues/32.md) | Capacity-based array representation with `array.copy`       | L          |
+| [41](issues/41.md) | typeof as standalone expression                             | S          |
 
 
 ## Complexity legend
