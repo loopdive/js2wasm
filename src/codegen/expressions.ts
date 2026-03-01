@@ -1301,7 +1301,7 @@ function compilePropertyAssignment(
   const objType = ctx.checker.getTypeAtLocation(target.expression);
 
   // Handle externref property set
-  if (isExternalDeclaredClass(objType)) {
+  if (isExternalDeclaredClass(objType, ctx.checker)) {
     return compileExternPropertySet(ctx, fctx, target, value, objType);
   }
 
@@ -1764,7 +1764,7 @@ function compileCallExpression(
 
     // Check if receiver is an externref object
     const receiverType = ctx.checker.getTypeAtLocation(propAccess.expression);
-    if (isExternalDeclaredClass(receiverType)) {
+    if (isExternalDeclaredClass(receiverType, ctx.checker)) {
       return compileExternMethodCall(ctx, fctx, propAccess, expr);
     }
 
@@ -2429,7 +2429,7 @@ function compileOptionalPropertyAccess(
   // Compile the property access part without the receiver
   const tsObjType = ctx.checker.getTypeAtLocation(expr.expression);
   const propName = expr.name.text;
-  if (isExternalDeclaredClass(tsObjType)) {
+  if (isExternalDeclaredClass(tsObjType, ctx.checker)) {
     compileExternPropertyGetFromStack(ctx, fctx, tsObjType, propName);
   } else if (isStringType(tsObjType) && propName === "length") {
     const funcIdx = ctx.funcMap.get("length");
@@ -2505,7 +2505,7 @@ function compileOptionalCallExpression(
   fctx.body.push({ op: "local.get", index: tmp });
   const tsReceiverType = ctx.checker.getTypeAtLocation(propAccess.expression);
   const methodName = propAccess.name.text;
-  if (isExternalDeclaredClass(tsReceiverType)) {
+  if (isExternalDeclaredClass(tsReceiverType, ctx.checker)) {
     // Find the method import and call it
     const className = tsReceiverType.getSymbol()?.name;
     if (className) {
@@ -2610,7 +2610,7 @@ function compilePropertyAccess(
   }
 
   // Handle externref property access
-  if (isExternalDeclaredClass(objType)) {
+  if (isExternalDeclaredClass(objType, ctx.checker)) {
     return compileExternPropertyGet(ctx, fctx, expr, objType, propName);
   }
 

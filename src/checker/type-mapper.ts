@@ -1,6 +1,14 @@
 import ts from "typescript";
 import type { ValType } from "../ir/types.js";
 
+/** Types with built-in wasm GC handling that should NOT be treated as extern classes */
+const BUILTIN_TYPES = new Set([
+  "Array", "Number", "Boolean", "String", "Object", "Function",
+  "Symbol", "BigInt", "RegExp", "Int8Array", "Uint8Array", "Int16Array",
+  "Uint16Array", "Int32Array", "Uint32Array", "Float32Array", "Float64Array",
+  "ArrayBuffer", "DataView", "JSON", "Math", "Promise",
+]);
+
 export function mapTsTypeToWasm(
   type: ts.Type,
   checker: ts.TypeChecker,
@@ -60,7 +68,7 @@ export function mapTsTypeToWasm(
 
   // Object types (interfaces, arrays, functions)
   if (type.flags & ts.TypeFlags.Object) {
-    if (isExternalDeclaredClass(type)) return { kind: "externref" };
+    if (isExternalDeclaredClass(type, checker)) return { kind: "externref" };
     // Placeholder -1 for named structs — resolved by resolveWasmType in codegen.
     // If codegen can't resolve it (e.g. Array, Function), it falls back here
     // and resolveWasmType passes it through, so we use externref as safe fallback.
@@ -85,40 +93,23 @@ export function mapTsTypeToWasm(
 }
 
 /** Check if a type is an externally declared class (declare class / declare var with constructor) */
-export function isExternalDeclaredClass(type: ts.Type): boolean {
+export function isExternalDeclaredClass(type: ts.Type, checker?: ts.TypeChecker): boolean {
   const symbol = type.getSymbol();
   if (!symbol) return false;
   const decls = symbol.getDeclarations();
   if (!decls || decls.length === 0) return false;
+  const symName = symbol.getName();
   if (decls.some(
     (d) =>
       // declare class Foo { ... }
       (ts.isClassDeclaration(d) && isDeclareContext(d)) ||
       // declare var Foo: { prototype: Foo; new(): Foo }  (lib.dom.d.ts pattern)
-      (ts.isVariableDeclaration(d) && isDeclareVarWithConstructor(d)),
+      (ts.isVariableDeclaration(d) && isDeclareVarWithConstructor(d)) ||
+      // declare var Date: DateConstructor  (TypeReferenceNode pattern, skip builtins)
+      (ts.isVariableDeclaration(d) && checker && !BUILTIN_TYPES.has(symName) &&
+        isDeclareVarWithTypeRefConstructor(d, checker)),
   )) return true;
 
-  // Interface pattern: interface Date { ... } + declare var Date: DateConstructor
-  // The type symbol only has interface declarations; look for a companion declare var
-  // with a constructor-bearing type in the same source file.
-  // Skip types that have built-in wasm handling (Array, primitives, etc.)
-  const BUILTIN_TYPES = ["Array", "Number", "Boolean", "String", "Object", "Function",
-    "Symbol", "BigInt", "RegExp", "Int8Array", "Uint8Array", "Int16Array",
-    "Uint16Array", "Int32Array", "Uint32Array", "Float32Array", "Float64Array",
-    "ArrayBuffer", "DataView", "JSON", "Math", "Promise"];
-  if (decls.every((d) => ts.isInterfaceDeclaration(d))) {
-    const name = symbol.getName();
-    if (BUILTIN_TYPES.includes(name)) return false;
-    const sourceFile = decls[0]!.getSourceFile();
-    const locals = (sourceFile as any).locals as Map<string, ts.Symbol> | undefined;
-    const varSym = locals?.get(name);
-    if (varSym && varSym !== symbol) {
-      const varDecls = varSym.getDeclarations?.() ?? [];
-      if (varDecls.some((d) => ts.isVariableDeclaration(d) && isDeclareVarWithConstructor(d))) {
-        return true;
-      }
-    }
-  }
   return false;
 }
 
@@ -128,6 +119,16 @@ function isDeclareVarWithConstructor(d: ts.VariableDeclaration): boolean {
   if (!isDeclareContext(stmt)) return false;
   if (!d.type || !ts.isTypeLiteralNode(d.type)) return false;
   return d.type.members.some((m) => ts.isConstructSignatureDeclaration(m));
+}
+
+/** Check declare var with TypeReferenceNode type that has construct signatures (e.g. declare var Date: DateConstructor) */
+function isDeclareVarWithTypeRefConstructor(d: ts.VariableDeclaration, checker: ts.TypeChecker): boolean {
+  const stmt = d.parent?.parent;
+  if (!stmt || !ts.isVariableStatement(stmt)) return false;
+  if (!isDeclareContext(stmt)) return false;
+  if (!d.type || !ts.isTypeReferenceNode(d.type)) return false;
+  const refType = checker.getTypeAtLocation(d.type);
+  return refType.getConstructSignatures().length > 0;
 }
 
 function isDeclareContext(node: ts.Node): boolean {
