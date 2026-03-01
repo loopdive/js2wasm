@@ -654,11 +654,11 @@ function compileForOfStatement(
   fctx: FunctionContext,
   stmt: ts.ForOfStatement,
 ): void {
-  // Compile the iterable expression (array ref)
+  // Compile the iterable expression (vec struct ref)
   const bodyLenBefore = fctx.body.length;
-  const arrType = compileExpression(ctx, fctx, stmt.expression);
-  if (!arrType || (arrType.kind !== "ref" && arrType.kind !== "ref_null")) {
-    fctx.body.length = bodyLenBefore; // rollback — value would leak on stack
+  const vecType = compileExpression(ctx, fctx, stmt.expression);
+  if (!vecType || (vecType.kind !== "ref" && vecType.kind !== "ref_null")) {
+    fctx.body.length = bodyLenBefore;
     ctx.errors.push({
       message: "for-of requires an array expression",
       line: getLine(stmt),
@@ -667,10 +667,11 @@ function compileForOfStatement(
     return;
   }
 
-  // Look up array element type
-  const arrTypeDef = ctx.mod.types[arrType.typeIdx];
-  if (!arrTypeDef || arrTypeDef.kind !== "array") {
-    fctx.body.length = bodyLenBefore; // rollback — value would leak on stack
+  // Expect a vec struct type {length: i32, data: (ref $__arr_T)}
+  const vecTypeIdx = vecType.typeIdx;
+  const vecDef = ctx.mod.types[vecTypeIdx];
+  if (!vecDef || vecDef.kind !== "struct") {
+    fctx.body.length = bodyLenBefore;
     ctx.errors.push({
       message: "for-of requires an array type",
       line: getLine(stmt),
@@ -678,11 +679,34 @@ function compileForOfStatement(
     });
     return;
   }
-  const elemType = arrTypeDef.element;
 
-  // Save array ref to temp local
-  const arrLocal = allocLocal(fctx, `__forof_arr_${fctx.locals.length}`, arrType);
-  fctx.body.push({ op: "local.set", index: arrLocal });
+  const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
+  const arrDef = ctx.mod.types[arrTypeIdx];
+  if (!arrDef || arrDef.kind !== "array") {
+    fctx.body.length = bodyLenBefore;
+    ctx.errors.push({
+      message: "for-of requires an array type",
+      line: getLine(stmt),
+      column: getCol(stmt),
+    });
+    return;
+  }
+  const elemType = arrDef.element;
+
+  // Save vec ref to temp local
+  const vecLocal = allocLocal(fctx, `__forof_vec_${fctx.locals.length}`, vecType);
+  fctx.body.push({ op: "local.tee", index: vecLocal });
+
+  // Extract data array from vec into a local
+  const dataLocal = allocLocal(fctx, `__forof_data_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
+  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
+  fctx.body.push({ op: "local.set", index: dataLocal });
+
+  // Extract length from vec into a local
+  const lenLocal = allocLocal(fctx, `__forof_len_${fctx.locals.length}`, { kind: "i32" });
+  fctx.body.push({ op: "local.get", index: vecLocal });
+  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
+  fctx.body.push({ op: "local.set", index: lenLocal });
 
   // Allocate counter local (i32)
   const iLocal = allocLocal(fctx, `__forof_i_${fctx.locals.length}`, { kind: "i32" });
@@ -708,17 +732,16 @@ function compileForOfStatement(
   fctx.breakStack.push(1);     // break = depth 1 (exit block)
   fctx.continueStack.push(0);  // continue = depth 0 (restart loop)
 
-  // Condition: i >= arr.length → break
+  // Condition: i >= length → break
   fctx.body.push({ op: "local.get", index: iLocal });
-  fctx.body.push({ op: "local.get", index: arrLocal });
-  fctx.body.push({ op: "array.len" });
+  fctx.body.push({ op: "local.get", index: lenLocal });
   fctx.body.push({ op: "i32.ge_s" });
   fctx.body.push({ op: "br_if", depth: 1 }); // break
 
-  // Get element: x = arr[i]
-  fctx.body.push({ op: "local.get", index: arrLocal });
+  // Get element: x = data[i]
+  fctx.body.push({ op: "local.get", index: dataLocal });
   fctx.body.push({ op: "local.get", index: iLocal });
-  fctx.body.push({ op: "array.get", typeIdx: arrType.typeIdx });
+  fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
   fctx.body.push({ op: "local.set", index: elemLocal });
 
   // Compile body
