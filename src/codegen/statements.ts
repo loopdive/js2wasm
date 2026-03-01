@@ -100,6 +100,11 @@ export function compileStatement(
     return;
   }
 
+  if (ts.isLabeledStatement(stmt)) {
+    compileLabeledStatement(ctx, fctx, stmt);
+    return;
+  }
+
   if (ts.isBreakStatement(stmt)) {
     markStatementPos(ctx, fctx, stmt, () => compileBreakStatement(ctx, fctx, stmt));
     return;
@@ -403,6 +408,10 @@ function compileWhileStatement(
   const savedBody = fctx.body;
   fctx.body = [];
 
+  // Adjust existing break/continue depths: block+loop adds 2 nesting levels
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! += 2;
+  for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]! += 2;
+
   // Track break/continue depths
   // Inside the generated structure, br 1 = break, br 0 = continue
   fctx.breakStack.push(1);     // break: exit the outer block
@@ -428,6 +437,10 @@ function compileWhileStatement(
 
   fctx.breakStack.pop();
   fctx.continueStack.pop();
+
+  // Restore existing break/continue depths
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! -= 2;
+  for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]! -= 2;
 
   fctx.body = savedBody;
 
@@ -470,23 +483,44 @@ function compileForStatement(
     }
   }
 
-  // Loop structure: block { loop { condition_check; body; incrementor; br 0 } }
+  // Loop structure:
+  // block $break {                    ; break target (depth 2 from body)
+  //   loop $loop {                    ; loop restart (continue outer target)
+  //     condition_check
+  //     block $continue {             ; continue target (depth 0 from body)
+  //       body
+  //     }
+  //     incrementor
+  //     br $loop
+  //   }
+  // }
   const savedBody = fctx.body;
   fctx.body = [];
 
-  // break goes to outer block (depth 1), continue goes to incrementor+loop restart
-  fctx.breakStack.push(1);
+  // Adjust existing break/continue depths: block+loop+block adds 3 nesting levels
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! += 3;
+  for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]! += 3;
+
+  // From body inside $continue block:
+  //   break = br 2 (exits $break block)
+  //   continue = br 0 (exits $continue block, falls through to incrementor)
+  fctx.breakStack.push(2);
   fctx.continueStack.push(0);
 
-  // Condition
+  // Condition (inside $loop, before $continue block)
+  const condInstrs: Instr[] = [];
   if (stmt.condition) {
+    const condBody = fctx.body;
+    fctx.body = [];
     const condType = compileExpression(ctx, fctx, stmt.condition);
     ensureI32Condition(fctx, condType);
     fctx.body.push({ op: "i32.eqz" });
-    fctx.body.push({ op: "br_if", depth: 1 }); // break
+    fctx.body.push({ op: "br_if", depth: 1 }); // break: exits $break (depth 1 from $loop body)
+    condInstrs.push(...fctx.body);
+    fctx.body = condBody;
   }
 
-  // Body
+  // Body (inside $continue block)
   if (ts.isBlock(stmt.statement)) {
     for (const s of stmt.statement.statements) {
       compileStatement(ctx, fctx, s);
@@ -494,20 +528,36 @@ function compileForStatement(
   } else {
     compileStatement(ctx, fctx, stmt.statement);
   }
+  const bodyInstrs = fctx.body;
 
-  // Incrementor
+  // Incrementor (inside $loop, after $continue block)
+  fctx.body = [];
   if (stmt.incrementor) {
     const resultType = compileExpression(ctx, fctx, stmt.incrementor);
     if (resultType !== null) fctx.body.push({ op: "drop" });
   }
-
-  fctx.body.push({ op: "br", depth: 0 }); // continue loop
-  const loopBody = fctx.body;
+  const incrInstrs = fctx.body;
 
   fctx.breakStack.pop();
   fctx.continueStack.pop();
 
+  // Restore existing break/continue depths
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! -= 3;
+  for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]! -= 3;
+
   fctx.body = savedBody;
+
+  // Build the loop body: condition + block $continue { body } + incrementor + br $loop
+  const loopBody: Instr[] = [
+    ...condInstrs,
+    {
+      op: "block",
+      blockType: { kind: "empty" },
+      body: bodyInstrs,
+    },
+    ...incrInstrs,
+    { op: "br", depth: 0 }, // restart $loop
+  ];
 
   fctx.body.push({
     op: "block",
@@ -539,6 +589,10 @@ function compileDoWhileStatement(
   const savedBody = fctx.body;
   fctx.body = [];
 
+  // Adjust existing break/continue depths: block+loop adds 2 nesting levels
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! += 2;
+  for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]! += 2;
+
   // Inside this structure: br 1 = break (exits outer block), br 0 = continue (restarts loop)
   fctx.breakStack.push(1);
   fctx.continueStack.push(0);
@@ -561,6 +615,10 @@ function compileDoWhileStatement(
 
   fctx.breakStack.pop();
   fctx.continueStack.pop();
+
+  // Restore existing break/continue depths
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! -= 2;
+  for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]! -= 2;
 
   fctx.body = savedBody;
 
@@ -597,7 +655,13 @@ function compileSwitchStatement(
   const savedBody = fctx.body;
   fctx.body = [];
 
+  // Adjust existing break/continue depths: block adds 1 nesting level
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!++;
+  for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!++;
+
   // Inside the block: br 1 exits the block ($break). No continueStack change.
+  // The value 1 accounts for the case if-wrapping (+1 from block).
+  const switchBreakIdx = fctx.breakStack.length;
   fctx.breakStack.push(1);
 
   const clauses = stmt.caseBlock.clauses;
@@ -622,9 +686,19 @@ function compileSwitchStatement(
     const savedBodyInner = fctx.body;
     fctx.body = [];
 
+    // Adjust outer entries for the if-wrapping (+1 nesting level).
+    // Only adjust entries before the switch's own entry — the switch's
+    // breakStack entry already accounts for the if.
+    for (let i = 0; i < switchBreakIdx; i++) fctx.breakStack[i]!++;
+    for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!++;
+
     for (const s of caseClause.statements) {
       compileStatement(ctx, fctx, s);
     }
+
+    // Restore depths after case body compilation
+    for (let i = 0; i < switchBreakIdx; i++) fctx.breakStack[i]!--;
+    for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!--;
 
     const clauseBody = fctx.body;
     fctx.body = savedBodyInner;
@@ -644,6 +718,10 @@ function compileSwitchStatement(
   }
 
   fctx.breakStack.pop();
+
+  // Restore existing break/continue depths
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!--;
+  for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!--;
 
   const switchBody = fctx.body;
   fctx.body = savedBody;
@@ -711,6 +789,10 @@ function compileForOfStatement(
   const savedBody = fctx.body;
   fctx.body = [];
 
+  // Adjust existing break/continue depths: block+loop adds 2 nesting levels
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! += 2;
+  for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]! += 2;
+
   fctx.breakStack.push(1);     // break = depth 1 (exit block)
   fctx.continueStack.push(0);  // continue = depth 0 (restart loop)
 
@@ -747,6 +829,10 @@ function compileForOfStatement(
   const loopBody = fctx.body;
   fctx.breakStack.pop();
   fctx.continueStack.pop();
+
+  // Restore existing break/continue depths
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! -= 2;
+  for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]! -= 2;
 
   fctx.body = savedBody;
 
@@ -815,25 +901,72 @@ function compileForInStatement(
   }
 }
 
+function compileLabeledStatement(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  stmt: ts.LabeledStatement,
+): void {
+  const labelName = stmt.label.text;
+
+  // Record the label with the current break/continue stack indices.
+  // The inner loop statement will push its own entries, so the label
+  // points to the index that will be pushed by the labeled loop.
+  const breakIdx = fctx.breakStack.length;
+  const continueIdx = fctx.continueStack.length;
+  fctx.labelMap.set(labelName, { breakIdx, continueIdx });
+
+  // Compile the inner statement (typically a loop)
+  compileStatement(ctx, fctx, stmt.statement);
+
+  // Remove the label after compilation
+  fctx.labelMap.delete(labelName);
+}
+
 function compileBreakStatement(
   _ctx: CodegenContext,
   fctx: FunctionContext,
-  _stmt: ts.BreakStatement,
+  stmt: ts.BreakStatement,
 ): void {
-  const depth = fctx.breakStack[fctx.breakStack.length - 1];
-  if (depth !== undefined) {
-    fctx.body.push({ op: "br", depth });
+  if (stmt.label) {
+    // Labeled break: look up the label to find the correct depth
+    const labelName = stmt.label.text;
+    const labelInfo = fctx.labelMap.get(labelName);
+    if (labelInfo !== undefined) {
+      const depth = fctx.breakStack[labelInfo.breakIdx];
+      if (depth !== undefined) {
+        fctx.body.push({ op: "br", depth });
+      }
+    }
+  } else {
+    // Unlabeled break: use the innermost (top of stack)
+    const depth = fctx.breakStack[fctx.breakStack.length - 1];
+    if (depth !== undefined) {
+      fctx.body.push({ op: "br", depth });
+    }
   }
 }
 
 function compileContinueStatement(
   _ctx: CodegenContext,
   fctx: FunctionContext,
-  _stmt: ts.ContinueStatement,
+  stmt: ts.ContinueStatement,
 ): void {
-  const depth = fctx.continueStack[fctx.continueStack.length - 1];
-  if (depth !== undefined) {
-    fctx.body.push({ op: "br", depth });
+  if (stmt.label) {
+    // Labeled continue: look up the label to find the correct depth
+    const labelName = stmt.label.text;
+    const labelInfo = fctx.labelMap.get(labelName);
+    if (labelInfo !== undefined) {
+      const depth = fctx.continueStack[labelInfo.continueIdx];
+      if (depth !== undefined) {
+        fctx.body.push({ op: "br", depth });
+      }
+    }
+  } else {
+    // Unlabeled continue: use the innermost (top of stack)
+    const depth = fctx.continueStack[fctx.continueStack.length - 1];
+    if (depth !== undefined) {
+      fctx.body.push({ op: "br", depth });
+    }
   }
 }
 
