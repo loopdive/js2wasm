@@ -13,6 +13,8 @@ export interface CompileResult {
   errors: CompileError[];
   /** String literal pool (values used in the source) */
   stringPool: string[];
+  /** Source map v3 JSON string (only present when sourceMap option is enabled) */
+  sourceMap?: string;
 }
 
 export interface CompileError {
@@ -27,6 +29,10 @@ export interface CompileOptions {
   emitWat?: boolean;
   /** Module name (for debugging) */
   moduleName?: string;
+  /** Generate source map (default: false) */
+  sourceMap?: boolean;
+  /** Source map URL to embed in the wasm binary (default: "module.wasm.map") */
+  sourceMapUrl?: string;
 }
 
 import { compileSource, compileMultiSource } from "./compiler.js";
