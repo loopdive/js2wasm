@@ -20,6 +20,7 @@ import type {
   ArrayTypeDef,
   ValType,
   Instr,
+  SourcePos,
   LocalDef,
   Import,
   WasmExport,
@@ -126,6 +127,14 @@ export interface CodegenContext {
   classSet: Set<string>;
   /** Map from "ClassName_methodName" → method info for local classes */
   classMethodSet: Set<string>;
+  /** Set of "ClassName_propName" for getter/setter accessor properties */
+  classAccessorSet: Set<string>;
+  /** Set of "ClassName_methodName" for static methods (no self param) */
+  staticMethodSet: Set<string>;
+  /** Map from "ClassName_propName" → global index for static properties */
+  staticProps: Map<string, number>;
+  /** Static property initializer expressions to compile into __module_init */
+  staticInitExprs: { globalIdx: number; initializer: ts.Expression }[];
   /** Counter for generated closure types/functions */
   closureCounter: number;
   /** Map from local variable name → closure metadata (for call_ref dispatch) */
@@ -144,6 +153,14 @@ export interface CodegenContext {
   moduleGlobals: Map<string, number>;
   /** Module-level variable initializers (compiled into __module_init) */
   moduleInitStatements: ts.Statement[];
+  /** Map from child className → parent className (for local class inheritance) */
+  classParentMap: Map<string, string>;
+  /** Counter for assigning unique class tags (for instanceof support) */
+  classTagCounter: number;
+  /** Map from class name → unique tag value (for instanceof support) */
+  classTagMap: Map<string, number>;
+  /** Whether to attach source positions for source map generation */
+  sourceMap: boolean;
 }
 
 /** Metadata for a closure stored in a local variable */
@@ -178,10 +195,18 @@ export interface FunctionContext {
   breakStack: number[];
   /** Continue label depth stack */
   continueStack: number[];
+  /** Map from label name to break/continue stack indices for labeled break/continue */
+  labelMap: Map<string, { breakIdx: number; continueIdx: number }>;
+}
+
+/** Options for code generation */
+export interface CodegenOptions {
+  /** Whether to generate source positions for source map */
+  sourceMap?: boolean;
 }
 
 /** Compile a typed AST into a WasmModule IR */
-export function generateModule(ast: TypedAST): CodegenResult {
+export function generateModule(ast: TypedAST, options?: CodegenOptions): WasmModule {
   const mod = createEmptyModule();
 
   const ctx: CodegenContext = {
@@ -210,6 +235,10 @@ export function generateModule(ast: TypedAST): CodegenResult {
     capturedGlobalsWidened: new Set(),
     classSet: new Set(),
     classMethodSet: new Set(),
+    classAccessorSet: new Set(),
+    staticMethodSet: new Set(),
+    staticProps: new Map(),
+    staticInitExprs: [],
     closureCounter: 0,
     closureMap: new Map(),
     genericResolved: new Map(),
@@ -219,6 +248,10 @@ export function generateModule(ast: TypedAST): CodegenResult {
     asyncFunctions: new Set(),
     moduleGlobals: new Map(),
     moduleInitStatements: [],
+    classParentMap: new Map(),
+    classTagCounter: 0,
+    classTagMap: new Map(),
+    sourceMap: options?.sourceMap ?? false,
   };
 
   // Collect console.log imports (only variants actually used)
@@ -291,7 +324,7 @@ export function generateModule(ast: TypedAST): CodegenResult {
  * All source files share the same codegen context (funcMap, structMap, etc.).
  * Only functions exported from the entry file become Wasm exports.
  */
-export function generateMultiModule(multiAst: MultiTypedAST): CodegenResult {
+export function generateMultiModule(multiAst: MultiTypedAST, options?: CodegenOptions): WasmModule {
   const mod = createEmptyModule();
 
   const ctx: CodegenContext = {
@@ -320,6 +353,10 @@ export function generateMultiModule(multiAst: MultiTypedAST): CodegenResult {
     capturedGlobalsWidened: new Set(),
     classSet: new Set(),
     classMethodSet: new Set(),
+    classAccessorSet: new Set(),
+    staticMethodSet: new Set(),
+    staticProps: new Map(),
+    staticInitExprs: [],
     closureCounter: 0,
     closureMap: new Map(),
     genericResolved: new Map(),
@@ -329,6 +366,10 @@ export function generateMultiModule(multiAst: MultiTypedAST): CodegenResult {
     exnTagIdx: -1,
     moduleGlobals: new Map(),
     moduleInitStatements: [],
+    classParentMap: new Map(),
+    classTagCounter: 0,
+    classTagMap: new Map(),
+    sourceMap: options?.sourceMap ?? false,
   };
 
   // Phase 1: Collect all import-phase declarations across all source files
@@ -1628,12 +1669,47 @@ function collectClassDeclaration(
   const className = decl.name!.text;
   ctx.classSet.add(className);
 
+  // Detect parent class via heritage clauses (extends)
+  let parentClassName: string | undefined;
+  let parentStructTypeIdx: number | undefined;
+  let parentFields: FieldDef[] = [];
+  if (decl.heritageClauses) {
+    for (const clause of decl.heritageClauses) {
+      if (clause.token === ts.SyntaxKind.ExtendsKeyword && clause.types.length > 0) {
+        const baseExpr = clause.types[0]!.expression;
+        if (ts.isIdentifier(baseExpr)) {
+          parentClassName = baseExpr.text;
+          parentStructTypeIdx = ctx.structMap.get(parentClassName);
+          parentFields = ctx.structFields.get(parentClassName) ?? [];
+          // Record parent-child relationship
+          ctx.classParentMap.set(className, parentClassName);
+          // Mark parent struct as non-final so it can be extended
+          if (parentStructTypeIdx !== undefined) {
+            const parentTypeDef = ctx.mod.types[parentStructTypeIdx] as StructTypeDef;
+            if (parentTypeDef && parentTypeDef.superTypeIdx === undefined) {
+              // Mark parent as extensible (superTypeIdx = -1 means "sub with no super")
+              parentTypeDef.superTypeIdx = -1;
+            }
+          }
+        }
+      }
+    }
+  }
+
   // Find the constructor to determine struct fields from `this.x = ...` assignments
   const ctor = decl.members.find(ts.isConstructorDeclaration) as ts.ConstructorDeclaration | undefined;
-  const fields: FieldDef[] = [];
+  const ownFields: FieldDef[] = [];
 
   if (ctor?.body) {
     for (const stmt of ctor.body.statements) {
+      // Skip super() calls — they don't define new fields
+      if (
+        ts.isExpressionStatement(stmt) &&
+        ts.isCallExpression(stmt.expression) &&
+        stmt.expression.expression.kind === ts.SyntaxKind.SuperKeyword
+      ) {
+        continue;
+      }
       if (
         ts.isExpressionStatement(stmt) &&
         ts.isBinaryExpression(stmt.expression) &&
@@ -1642,30 +1718,51 @@ function collectClassDeclaration(
         stmt.expression.left.expression.kind === ts.SyntaxKind.ThisKeyword
       ) {
         const fieldName = stmt.expression.left.name.text;
+        // Skip if this field is already defined in parent
+        if (parentFields.some((f) => f.name === fieldName)) continue;
         const fieldTsType = ctx.checker.getTypeAtLocation(stmt.expression.left);
         const fieldType = resolveWasmType(ctx, fieldTsType);
-        if (!fields.some((f) => f.name === fieldName)) {
-          fields.push({ name: fieldName, type: fieldType, mutable: true });
+        if (!ownFields.some((f) => f.name === fieldName)) {
+          ownFields.push({ name: fieldName, type: fieldType, mutable: true });
         }
       }
     }
   }
 
   // Also collect fields from property declarations (class Point { x: number; y: number; })
+  // Skip static properties — they become module globals, not struct fields
   for (const member of decl.members) {
     if (ts.isPropertyDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
+      if (hasStaticModifier(member)) continue; // handled below
       const fieldName = member.name.text;
-      if (!fields.some((f) => f.name === fieldName)) {
+      // Skip if this field is already defined in parent
+      if (parentFields.some((f) => f.name === fieldName)) continue;
+      if (!ownFields.some((f) => f.name === fieldName)) {
         const fieldTsType = ctx.checker.getTypeAtLocation(member);
         const fieldType = resolveWasmType(ctx, fieldTsType);
-        fields.push({ name: fieldName, type: fieldType, mutable: true });
+        ownFields.push({ name: fieldName, type: fieldType, mutable: true });
       }
     }
   }
 
+  // Build full fields list: parent fields first, then own fields
+  const fields: FieldDef[] = [...parentFields, ...ownFields];
+
+  // Register the struct type with optional super-type
+  // Assign a unique class tag for instanceof support
+  const classTag = ctx.classTagCounter++;
+  ctx.classTagMap.set(className, classTag);
+
+  // Add hidden __tag field at the beginning for instanceof discrimination
+  fields.unshift({ name: "__tag", type: { kind: "i32" }, mutable: false });
+
   // Register the struct type
   const structTypeIdx = ctx.mod.types.length;
-  ctx.mod.types.push({ kind: "struct", name: className, fields } as StructTypeDef);
+  const structDef: StructTypeDef = { kind: "struct", name: className, fields };
+  if (parentStructTypeIdx !== undefined) {
+    structDef.superTypeIdx = parentStructTypeIdx;
+  }
+  ctx.mod.types.push(structDef);
   ctx.structMap.set(className, structTypeIdx);
   ctx.structFields.set(className, fields);
 
@@ -1691,15 +1788,25 @@ function collectClassDeclaration(
     exported: false,
   });
 
-  // Register method functions
+  // Register method functions (own methods defined on this class)
+  const ownMethodNames = new Set<string>();
   for (const member of decl.members) {
     if (ts.isMethodDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
       const methodName = member.name.text;
+      ownMethodNames.add(methodName);
       const fullName = `${className}_${methodName}`;
-      ctx.classMethodSet.add(fullName);
+      const isStatic = hasStaticModifier(member);
 
-      // First param is self: (ref $structTypeIdx)
-      const methodParams: ValType[] = [{ kind: "ref", typeIdx: structTypeIdx }];
+      if (isStatic) {
+        ctx.staticMethodSet.add(fullName);
+      } else {
+        ctx.classMethodSet.add(fullName);
+      }
+
+      // Static methods have no self parameter; instance methods get self: (ref $structTypeIdx)
+      const methodParams: ValType[] = isStatic
+        ? []
+        : [{ kind: "ref", typeIdx: structTypeIdx }];
       for (const param of member.parameters) {
         const paramType = ctx.checker.getTypeAtLocation(param);
         methodParams.push(resolveWasmType(ctx, paramType));
@@ -1725,6 +1832,128 @@ function collectClassDeclaration(
         body: [],
         exported: false,
       });
+    }
+  }
+
+  // Register getter/setter accessor functions
+  for (const member of decl.members) {
+    if (ts.isGetAccessorDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
+      const propName = member.name.text;
+      const accessorKey = `${className}_${propName}`;
+      ctx.classAccessorSet.add(accessorKey);
+
+      const getterName = `${className}_get_${propName}`;
+      // Getter takes self, returns the accessor return type
+      const getterParams: ValType[] = [{ kind: "ref", typeIdx: structTypeIdx }];
+      const sig = ctx.checker.getSignatureFromDeclaration(member);
+      let getterResults: ValType[] = [];
+      if (sig) {
+        const retType = ctx.checker.getReturnTypeOfSignature(sig);
+        if (!isVoidType(retType)) {
+          getterResults = [resolveWasmType(ctx, retType)];
+        }
+      }
+
+      const getterTypeIdx = addFuncType(ctx, getterParams, getterResults, `${getterName}_type`);
+      const getterFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+      ctx.funcMap.set(getterName, getterFuncIdx);
+
+      ctx.mod.functions.push({
+        name: getterName,
+        typeIdx: getterTypeIdx,
+        locals: [],
+        body: [],
+        exported: false,
+      });
+    }
+
+    if (ts.isSetAccessorDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
+      const propName = member.name.text;
+      const accessorKey = `${className}_${propName}`;
+      ctx.classAccessorSet.add(accessorKey);
+
+      const setterName = `${className}_set_${propName}`;
+      // Setter takes self + value, returns void
+      const setterParams: ValType[] = [{ kind: "ref", typeIdx: structTypeIdx }];
+      for (const param of member.parameters) {
+        const paramType = ctx.checker.getTypeAtLocation(param);
+        setterParams.push(resolveWasmType(ctx, paramType));
+      }
+
+      const setterTypeIdx = addFuncType(ctx, setterParams, [], `${setterName}_type`);
+      const setterFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+      ctx.funcMap.set(setterName, setterFuncIdx);
+
+      ctx.mod.functions.push({
+        name: setterName,
+        typeIdx: setterTypeIdx,
+        locals: [],
+        body: [],
+        exported: false,
+      });
+    }
+  }
+
+  // Register inherited methods: if parent has methods that child doesn't override,
+  // map ChildClass_methodName → ParentClass_methodName func index
+  if (parentClassName) {
+    // Walk the parent chain to find all inherited methods
+    let ancestor: string | undefined = parentClassName;
+    while (ancestor) {
+      for (const [key, funcIdx] of ctx.funcMap) {
+        if (key.startsWith(`${ancestor}_`) && !key.endsWith("_new") && !key.endsWith("_type")) {
+          const methodName = key.substring(ancestor.length + 1);
+          // Skip _new_type suffix entries
+          if (methodName.includes("_")) continue;
+          const childFullName = `${className}_${methodName}`;
+          // Only inherit if child doesn't define its own version
+          if (!ownMethodNames.has(methodName) && !ctx.funcMap.has(childFullName)) {
+            ctx.funcMap.set(childFullName, funcIdx);
+            ctx.classMethodSet.add(childFullName);
+          }
+        }
+      }
+      ancestor = ctx.classParentMap.get(ancestor);
+    }
+  }
+    
+  // Register static properties as module globals
+  for (const member of decl.members) {
+    if (ts.isPropertyDeclaration(member) && member.name && ts.isIdentifier(member.name) && hasStaticModifier(member)) {
+      const propName = member.name.text;
+      const fullName = `${className}_${propName}`;
+      if (ctx.staticProps.has(fullName)) continue; // skip if already registered
+
+      const propTsType = ctx.checker.getTypeAtLocation(member);
+      const wasmType = resolveWasmType(ctx, propTsType);
+
+      // Build null/zero initializer for the global
+      const init: Instr[] = wasmType.kind === "f64"
+        ? [{ op: "f64.const", value: 0 }]
+        : wasmType.kind === "i32"
+          ? [{ op: "i32.const", value: 0 }]
+          : (wasmType.kind === "ref_null" || wasmType.kind === "ref")
+            ? [{ op: "ref.null", typeIdx: (wasmType as { typeIdx: number }).typeIdx }]
+            : [{ op: "ref.null.extern" }];
+
+      // Widen non-nullable ref to ref_null so the global can hold null initially
+      const globalType: ValType = wasmType.kind === "ref"
+        ? { kind: "ref_null", typeIdx: (wasmType as { typeIdx: number }).typeIdx }
+        : wasmType;
+
+      const globalIdx = ctx.mod.globals.length;
+      ctx.mod.globals.push({
+        name: `__static_${fullName}`,
+        type: globalType,
+        mutable: true,
+        init,
+      });
+      ctx.staticProps.set(fullName, globalIdx);
+
+      // Store initializer expression for later compilation
+      if (member.initializer) {
+        ctx.staticInitExprs.push({ globalIdx, initializer: member.initializer });
+      }
     }
   }
 }
@@ -2038,8 +2267,11 @@ function compileDeclarations(
     }
   }
 
-  // Compile module-level init statements into the start of main()
-  if (ctx.moduleInitStatements.length > 0) {
+  // Compile module-level init statements and static property initializers into the start of main()
+  const hasModuleInits = ctx.moduleInitStatements.length > 0;
+  const hasStaticInits = ctx.staticInitExprs.length > 0;
+
+  if (hasModuleInits || hasStaticInits) {
     const mainIdx = funcByName.get("main");
     if (mainIdx !== undefined) {
       const mainFunc = ctx.mod.functions[mainIdx]!;
@@ -2054,9 +2286,18 @@ function compileDeclarations(
         blockDepth: 0,
         breakStack: [],
         continueStack: [],
+        labelMap: new Map(),
       };
       ctx.currentFunc = initFctx;
 
+      // Compile static property initializers
+      for (const { globalIdx, initializer } of ctx.staticInitExprs) {
+        const globalDef = ctx.mod.globals[globalIdx];
+        compileExpression(ctx, initFctx, initializer, globalDef?.type);
+        initFctx.body.push({ op: "global.set", index: globalIdx });
+      }
+
+      // Compile module-level variable init statements
       for (const stmt of ctx.moduleInitStatements) {
         compileStatement(ctx, initFctx, stmt);
       }
@@ -2119,6 +2360,7 @@ function compileClassBodies(
       blockDepth: 0,
       breakStack: [],
       continueStack: [],
+      labelMap: new Map(),
     };
 
     for (let i = 0; i < params.length; i++) {
@@ -2130,7 +2372,11 @@ function compileClassBodies(
 
     // Push default values for all fields, then struct.new
     for (const field of fields) {
-      if (field.type.kind === "f64") {
+      if (field.name === "__tag") {
+        // Push the class-specific tag value for instanceof discrimination
+        const tagValue = ctx.classTagMap.get(className) ?? 0;
+        fctx.body.push({ op: "i32.const", value: tagValue });
+      } else if (field.type.kind === "f64") {
         fctx.body.push({ op: "f64.const", value: 0 });
       } else if (field.type.kind === "i32") {
         fctx.body.push({ op: "i32.const", value: 0 });
@@ -2149,6 +2395,15 @@ function compileClassBodies(
 
     if (ctor?.body) {
       for (const stmt of ctor.body.statements) {
+        // Handle super(args) calls: inline parent constructor field initialization
+        if (
+          ts.isExpressionStatement(stmt) &&
+          ts.isCallExpression(stmt.expression) &&
+          stmt.expression.expression.kind === ts.SyntaxKind.SuperKeyword
+        ) {
+          compileSuperCall(ctx, fctx, className, selfLocal, stmt.expression, fields);
+          continue;
+        }
         compileStatement(ctx, fctx, stmt);
       }
     }
@@ -2161,11 +2416,12 @@ function compileClassBodies(
     ctx.currentFunc = null;
   }
 
-  // Compile methods
+  // Compile methods (instance and static)
   for (const member of decl.members) {
     if (ts.isMethodDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
       const methodName = member.name.text;
       const fullName = `${className}_${methodName}`;
+      const isStatic = ctx.staticMethodSet.has(fullName);
       const methodLocalIdx = funcByName.get(fullName);
       if (methodLocalIdx === undefined) continue;
 
@@ -2173,10 +2429,10 @@ function compileClassBodies(
       const sig = ctx.checker.getSignatureFromDeclaration(member);
       const retType = sig ? ctx.checker.getReturnTypeOfSignature(sig) : undefined;
 
-      // First param is self
-      const params: { name: string; type: ValType }[] = [
-        { name: "this", type: { kind: "ref", typeIdx: structTypeIdx } },
-      ];
+      // Static methods have no self param; instance methods get self as first param
+      const params: { name: string; type: ValType }[] = isStatic
+        ? []
+        : [{ name: "this", type: { kind: "ref", typeIdx: structTypeIdx } }];
       for (const param of member.parameters) {
         const paramName = (param.name as ts.Identifier).text;
         const paramType = ctx.checker.getTypeAtLocation(param);
@@ -2193,6 +2449,7 @@ function compileClassBodies(
         blockDepth: 0,
         breakStack: [],
         continueStack: [],
+        labelMap: new Map(),
       };
 
       for (let i = 0; i < params.length; i++) {
@@ -2227,6 +2484,148 @@ function compileClassBodies(
       func.body = fctx.body;
       ctx.currentFunc = null;
     }
+  }
+
+  // Compile getter/setter accessor bodies
+  for (const member of decl.members) {
+    if (ts.isGetAccessorDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
+      const propName = member.name.text;
+      const getterName = `${className}_get_${propName}`;
+      const getterLocalIdx = funcByName.get(getterName);
+      if (getterLocalIdx === undefined) continue;
+
+      const func = ctx.mod.functions[getterLocalIdx]!;
+      const sig = ctx.checker.getSignatureFromDeclaration(member);
+      const retType = sig ? ctx.checker.getReturnTypeOfSignature(sig) : undefined;
+
+      const params: { name: string; type: ValType }[] = [
+        { name: "this", type: { kind: "ref", typeIdx: structTypeIdx } },
+      ];
+
+      const fctx: FunctionContext = {
+        name: getterName,
+        params,
+        locals: [],
+        localMap: new Map(),
+        returnType: retType && !isVoidType(retType) ? resolveWasmType(ctx, retType) : null,
+        body: [],
+        blockDepth: 0,
+        breakStack: [],
+        continueStack: [],
+      };
+
+      for (let i = 0; i < params.length; i++) {
+        fctx.localMap.set(params[i]!.name, i);
+      }
+
+      ctx.currentFunc = fctx;
+
+      if (member.body) {
+        for (const stmt of member.body.statements) {
+          compileStatement(ctx, fctx, stmt);
+        }
+      }
+
+      // Ensure valid return for non-void getters
+      if (fctx.returnType) {
+        const lastInstr = fctx.body[fctx.body.length - 1];
+        if (!lastInstr || lastInstr.op !== "return") {
+          if (fctx.returnType.kind === "f64") {
+            fctx.body.push({ op: "f64.const", value: 0 });
+          } else if (fctx.returnType.kind === "i32") {
+            fctx.body.push({ op: "i32.const", value: 0 });
+          } else if (fctx.returnType.kind === "externref") {
+            fctx.body.push({ op: "ref.null.extern" });
+          } else if (fctx.returnType.kind === "ref" || fctx.returnType.kind === "ref_null") {
+            fctx.body.push({ op: "ref.null", typeIdx: fctx.returnType.typeIdx });
+          }
+        }
+      }
+
+      func.locals = fctx.locals;
+      func.body = fctx.body;
+      ctx.currentFunc = null;
+    }
+
+    if (ts.isSetAccessorDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
+      const propName = member.name.text;
+      const setterName = `${className}_set_${propName}`;
+      const setterLocalIdx = funcByName.get(setterName);
+      if (setterLocalIdx === undefined) continue;
+
+      const func = ctx.mod.functions[setterLocalIdx]!;
+
+      // First param is self, remaining are the setter parameters
+      const params: { name: string; type: ValType }[] = [
+        { name: "this", type: { kind: "ref", typeIdx: structTypeIdx } },
+      ];
+      for (const param of member.parameters) {
+        const paramName = (param.name as ts.Identifier).text;
+        const paramType = ctx.checker.getTypeAtLocation(param);
+        params.push({ name: paramName, type: resolveWasmType(ctx, paramType) });
+      }
+
+      const fctx: FunctionContext = {
+        name: setterName,
+        params,
+        locals: [],
+        localMap: new Map(),
+        returnType: null, // setters always return void
+        body: [],
+        blockDepth: 0,
+        breakStack: [],
+        continueStack: [],
+      };
+
+      for (let i = 0; i < params.length; i++) {
+        fctx.localMap.set(params[i]!.name, i);
+      }
+
+      ctx.currentFunc = fctx;
+
+      if (member.body) {
+        for (const stmt of member.body.statements) {
+          compileStatement(ctx, fctx, stmt);
+        }
+      }
+
+      func.locals = fctx.locals;
+      func.body = fctx.body;
+      ctx.currentFunc = null;
+    }
+  }
+}
+
+/**
+ * Compile a super(args) call inside a child constructor.
+ * This runs the parent constructor's field-initialization logic inline:
+ * for each parent field, evaluate the corresponding super argument and
+ * store it into the child struct (which includes parent fields at the start).
+ */
+function compileSuperCall(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  childClassName: string,
+  selfLocal: number,
+  callExpr: ts.CallExpression,
+  _allFields: FieldDef[],
+): void {
+  const parentClassName = ctx.classParentMap.get(childClassName);
+  if (!parentClassName) return;
+
+  const parentFields = ctx.structFields.get(parentClassName) ?? [];
+  const structTypeIdx = ctx.structMap.get(childClassName)!;
+
+  // Evaluate super(args) and assign to parent fields on the child struct.
+  // The parent constructor takes N params and assigns them to the N parent fields
+  // via this.fieldName = paramName patterns. We replicate that here by
+  // evaluating each super argument and setting the corresponding parent field.
+  for (let i = 0; i < callExpr.arguments.length && i < parentFields.length; i++) {
+    const field = parentFields[i]!;
+    const fieldIdx = i; // Parent fields are at the start of the child struct
+    fctx.body.push({ op: "local.get", index: selfLocal });
+    compileExpression(ctx, fctx, callExpr.arguments[i]!, field.type);
+    fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx });
   }
 }
 
@@ -2275,6 +2674,7 @@ function compileFunctionBody(
     blockDepth: 0,
     breakStack: [],
     continueStack: [],
+    labelMap: new Map(),
   };
 
   // Register params as locals
@@ -2283,6 +2683,14 @@ function compileFunctionBody(
   }
 
   ctx.currentFunc = fctx;
+
+  // Mark function entry with source position
+  const funcPos = getSourcePos(ctx, decl);
+  if (funcPos) {
+    const nop: Instr = { op: "nop" };
+    attachSourcePos(nop, funcPos);
+    fctx.body.push(nop);
+  }
 
   // Compile body statements
   if (decl.body) {
@@ -2348,6 +2756,10 @@ function hasAsyncModifier(node: ts.Node): boolean {
   return modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
 }
 
+function hasStaticModifier(node: ts.Node): boolean {
+  return (ts.getCombinedModifierFlags(node as ts.Declaration) & ts.ModifierFlags.Static) !== 0;
+}
+
 /**
  * Ensure the stack top is an i32 suitable for use as a condition.
  * Handles: f64 (truthy != 0), externref (non-null check), null (push 0).
@@ -2367,6 +2779,23 @@ export function ensureI32Condition(fctx: FunctionContext, condType: ValType | nu
     fctx.body.push({ op: "i32.eqz" }); // flip: is_null=1 means falsy
   }
   // i32 is already valid as-is
+}
+
+/** Get source position from a TS AST node (returns undefined if sourceMap is disabled) */
+export function getSourcePos(ctx: CodegenContext, node: ts.Node): SourcePos | undefined {
+  if (!ctx.sourceMap) return undefined;
+  const sf = node.getSourceFile();
+  if (!sf) return undefined;
+  const pos = sf.getLineAndCharacterOfPosition(node.getStart());
+  return { file: sf.fileName, line: pos.line, column: pos.character };
+}
+
+/** Attach a source position to an instruction (mutates in place) */
+export function attachSourcePos(instr: Instr, sourcePos: SourcePos | undefined): Instr {
+  if (sourcePos) {
+    (instr as Instr).sourcePos = sourcePos;
+  }
+  return instr;
 }
 
 export { compileExpression } from "./expressions.js";
