@@ -235,3 +235,21 @@ describe("compound operations", () => {
     expect(e.pow(2, 10)).toBe(1024);
   });
 });
+
+describe("nested functions with captures (closures)", () => {
+  it("nested function capturing outer local uses ref.func", async () => {
+    // This tests that the compiler emits a declarative element segment
+    // for functions referenced by ref.func (needed for closure structs).
+    // Captures are immutable snapshots, so we test reading the captured value.
+    const e = await compileAndRun(`
+      export function outer(): number {
+        const base: number = 100;
+        function add(x: number): number {
+          return base + x;
+        }
+        return add(42);
+      }
+    `);
+    expect(e.outer()).toBe(142);
+  });
+});

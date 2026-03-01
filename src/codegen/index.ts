@@ -124,6 +124,8 @@ export interface CodegenContext {
   moduleGlobals: Map<string, number>;
   /** Module-level variable initializers (compiled into __module_init) */
   moduleInitStatements: ts.Statement[];
+  /** Nested function capture info: funcName → list of captures with outer local indices */
+  nestedFuncCaptures: Map<string, { name: string; outerLocalIdx: number }[]>;
 }
 
 /** Metadata for a closure stored in a local variable */
@@ -199,6 +201,7 @@ export function generateModule(ast: TypedAST): WasmModule {
     asyncFunctions: new Set(),
     moduleGlobals: new Map(),
     moduleInitStatements: [],
+    nestedFuncCaptures: new Map(),
   };
 
   // Collect console.log imports (only variants actually used)
@@ -243,6 +246,9 @@ export function generateModule(ast: TypedAST): WasmModule {
 
   // Third pass: compile function bodies
   compileDeclarations(ctx, ast.sourceFile);
+
+  // Collect ref.func targets so the binary emitter can add a declarative element segment
+  collectDeclaredFuncRefs(ctx);
 
   // Copy metadata for .d.ts / helper generation — only include actually-used extern classes
   const importNames = mod.imports.map((imp) => imp.name);
@@ -309,6 +315,7 @@ export function generateMultiModule(multiAst: MultiTypedAST): WasmModule {
     exnTagIdx: -1,
     moduleGlobals: new Map(),
     moduleInitStatements: [],
+    nestedFuncCaptures: new Map(),
   };
 
   // Phase 1: Collect all import-phase declarations across all source files
@@ -352,6 +359,9 @@ export function generateMultiModule(multiAst: MultiTypedAST): WasmModule {
   for (const sf of multiAst.sourceFiles) {
     compileDeclarations(ctx, sf);
   }
+
+  // Collect ref.func targets so the binary emitter can add a declarative element segment
+  collectDeclaredFuncRefs(ctx);
 
   // Copy metadata for .d.ts / helper generation
   const importNames = mod.imports.map((imp) => imp.name);
@@ -2061,6 +2071,21 @@ function compileDeclarations(
         }
       }
     }
+  }
+}
+
+/** Scan all function bodies for ref.func instructions and record their targets */
+function collectDeclaredFuncRefs(ctx: CodegenContext): void {
+  const refs = new Set<number>();
+  for (const func of ctx.mod.functions) {
+    for (const instr of func.body) {
+      if (instr.op === "ref.func") {
+        refs.add((instr as { op: "ref.func"; funcIdx: number }).funcIdx);
+      }
+    }
+  }
+  if (refs.size > 0) {
+    ctx.mod.declaredFuncRefs = [...refs].sort((a, b) => a - b);
   }
 }
 

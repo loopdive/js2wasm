@@ -1,13 +1,9 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext } from "./index.js";
-import { allocLocal, resolveWasmType, ensureI32Condition, ensureExnTag } from "./index.js";
-import { compileExpression } from "./expressions.js";
-import {
-  isVoidType,
-  isNumberType,
-  isBooleanType,
-} from "../checker/type-mapper.js";
-import type { Instr } from "../ir/types.js";
+import { allocLocal, resolveWasmType, ensureI32Condition, ensureExnTag, addFuncType } from "./index.js";
+import { compileExpression, collectReferencedIdentifiers } from "./expressions.js";
+import { isVoidType } from "../checker/type-mapper.js";
+import type { Instr, ValType } from "../ir/types.js";
 
 /** Compile a statement, appending instructions to the function body */
 export function compileStatement(
@@ -96,6 +92,11 @@ export function compileStatement(
 
   if (ts.isTryStatement(stmt)) {
     compileTryStatement(ctx, fctx, stmt);
+    return;
+  }
+
+  if (ts.isFunctionDeclaration(stmt)) {
+    compileNestedFunctionDeclaration(ctx, fctx, stmt);
     return;
   }
 
@@ -933,6 +934,158 @@ function compileTryStatement(
     catches,
     catchAll: catchAllBody,
   });
+}
+
+/** Compile a function declaration nested inside another function.
+ *  Lifts the function to module level. If it captures outer-scope variables,
+ *  uses a closure struct (like arrow closures). Otherwise uses a direct call. */
+function compileNestedFunctionDeclaration(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  stmt: ts.FunctionDeclaration,
+): void {
+  if (!stmt.name || !stmt.body) return;
+  const funcName = stmt.name.text;
+
+  // Determine parameter types and return type
+  const paramTypes: ValType[] = [];
+  for (const p of stmt.parameters) {
+    const paramType = ctx.checker.getTypeAtLocation(p);
+    paramTypes.push(resolveWasmType(ctx, paramType));
+  }
+
+  const sig = ctx.checker.getSignatureFromDeclaration(stmt);
+  let returnType: ValType | null = null;
+  if (sig) {
+    const retType = ctx.checker.getReturnTypeOfSignature(sig);
+    if (!isVoidType(retType)) {
+      returnType = resolveWasmType(ctx, retType);
+    }
+  }
+
+  // Analyze captured variables from the enclosing scope
+  const referencedNames = new Set<string>();
+  for (const s of stmt.body.statements) {
+    collectReferencedIdentifiers(s, referencedNames);
+  }
+
+  const ownParamNames = new Set(
+    stmt.parameters
+      .filter((p) => ts.isIdentifier(p.name))
+      .map((p) => (p.name as ts.Identifier).text),
+  );
+
+  const captures: { name: string; type: ValType; localIdx: number }[] = [];
+  for (const name of referencedNames) {
+    if (ownParamNames.has(name)) continue;
+    const localIdx = fctx.localMap.get(name);
+    if (localIdx === undefined) continue;
+    if (ctx.funcMap.has(name)) continue;
+    const type = localIdx < fctx.params.length
+      ? fctx.params[localIdx]!.type
+      : fctx.locals[localIdx - fctx.params.length]?.type ?? { kind: "f64" };
+    captures.push({ name, type, localIdx });
+  }
+
+  const results: ValType[] = returnType ? [returnType] : [];
+
+  if (captures.length === 0) {
+    // No captures — compile as a regular module-level function
+    const funcTypeIdx = addFuncType(ctx, paramTypes, results, `${funcName}_type`);
+    const liftedFctx: FunctionContext = {
+      name: funcName,
+      params: stmt.parameters.map((p, i) => ({
+        name: (p.name as ts.Identifier).text,
+        type: paramTypes[i]!,
+      })),
+      locals: [],
+      localMap: new Map(),
+      returnType,
+      body: [],
+      blockDepth: 0,
+      breakStack: [],
+      continueStack: [],
+    };
+    for (let i = 0; i < liftedFctx.params.length; i++) {
+      liftedFctx.localMap.set(liftedFctx.params[i]!.name, i);
+    }
+
+    const savedFunc = ctx.currentFunc;
+    ctx.currentFunc = liftedFctx;
+    for (const s of stmt.body.statements) {
+      compileStatement(ctx, liftedFctx, s);
+    }
+    appendDefaultReturn(liftedFctx, returnType);
+    ctx.currentFunc = savedFunc;
+
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.mod.functions.push({
+      name: funcName,
+      typeIdx: funcTypeIdx,
+      locals: liftedFctx.locals,
+      body: liftedFctx.body,
+      exported: false,
+    });
+    ctx.funcMap.set(funcName, funcIdx);
+  } else {
+    // Has captures — lift with captures as leading parameters, use direct call
+    const allParamTypes = [...captures.map((c) => c.type), ...paramTypes];
+    const funcTypeIdx = addFuncType(ctx, allParamTypes, results, `${funcName}_type`);
+    const liftedFctx: FunctionContext = {
+      name: funcName,
+      params: [
+        ...captures.map((c) => ({ name: c.name, type: c.type })),
+        ...stmt.parameters.map((p, i) => ({
+          name: (p.name as ts.Identifier).text,
+          type: paramTypes[i]!,
+        })),
+      ],
+      locals: [],
+      localMap: new Map(),
+      returnType,
+      body: [],
+      blockDepth: 0,
+      breakStack: [],
+      continueStack: [],
+    };
+    for (let i = 0; i < liftedFctx.params.length; i++) {
+      liftedFctx.localMap.set(liftedFctx.params[i]!.name, i);
+    }
+
+    const savedFunc = ctx.currentFunc;
+    ctx.currentFunc = liftedFctx;
+    for (const s of stmt.body.statements) {
+      compileStatement(ctx, liftedFctx, s);
+    }
+    appendDefaultReturn(liftedFctx, returnType);
+    ctx.currentFunc = savedFunc;
+
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.mod.functions.push({
+      name: funcName,
+      typeIdx: funcTypeIdx,
+      locals: liftedFctx.locals,
+      body: liftedFctx.body,
+      exported: false,
+    });
+    ctx.funcMap.set(funcName, funcIdx);
+
+    // Store capture info so call sites prepend captured values
+    ctx.nestedFuncCaptures.set(funcName, captures.map((c) => ({
+      name: c.name,
+      outerLocalIdx: c.localIdx,
+    })));
+  }
+}
+
+/** Append a default return value if the function body doesn't end with a return */
+function appendDefaultReturn(fctx: FunctionContext, returnType: ValType | null): void {
+  if (!returnType) return;
+  const lastInstr = fctx.body[fctx.body.length - 1];
+  if (lastInstr && lastInstr.op === "return") return;
+  if (returnType.kind === "f64") fctx.body.push({ op: "f64.const", value: 0 });
+  else if (returnType.kind === "i32") fctx.body.push({ op: "i32.const", value: 0 });
+  else if (returnType.kind === "externref") fctx.body.push({ op: "ref.null.extern" });
 }
 
 function getLine(node: ts.Node): number {

@@ -233,7 +233,7 @@ function compileExpressionInner(
 // ── Arrow function callbacks ──────────────────────────────────────────
 
 /** Collect all identifiers referenced in a node */
-function collectReferencedIdentifiers(node: ts.Node, names: Set<string>): void {
+export function collectReferencedIdentifiers(node: ts.Node, names: Set<string>): void {
   if (ts.isIdentifier(node)) {
     names.add(node.text);
   }
@@ -1867,6 +1867,14 @@ function compileCallExpression(
         column: getCol(expr),
       });
       return null;
+    }
+
+    // Prepend captured values for nested functions with captures
+    const nestedCaptures = ctx.nestedFuncCaptures.get(funcName);
+    if (nestedCaptures) {
+      for (const cap of nestedCaptures) {
+        fctx.body.push({ op: "local.get", index: cap.outerLocalIdx });
+      }
     }
 
     // Check for rest parameters on the callee
