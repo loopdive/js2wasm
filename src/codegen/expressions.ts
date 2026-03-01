@@ -829,6 +829,15 @@ function compileBinaryExpression(
     return compileNullishCoalescing(ctx, fctx, expr);
   }
 
+  // Comma operator: (a, b) — evaluate a, drop its value, evaluate b
+  if (op === ts.SyntaxKind.CommaToken) {
+    const leftType = compileExpression(ctx, fctx, expr.left);
+    if (leftType) {
+      fctx.body.push({ op: "drop" });
+    }
+    return compileExpression(ctx, fctx, expr.right);
+  }
+
   // typeof x === "type" / typeof x !== "type"
   if (
     (op === ts.SyntaxKind.EqualsEqualsEqualsToken ||
