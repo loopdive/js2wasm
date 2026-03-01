@@ -1361,6 +1361,19 @@ function compilePropertyAssignment(
 ): ValType | null {
   const objType = ctx.checker.getTypeAtLocation(target.expression);
 
+  // Handle static property assignment: ClassName.staticProp = value
+  if (ts.isIdentifier(target.expression) && ctx.classSet.has(target.expression.text)) {
+    const clsName = target.expression.text;
+    const fullName = `${clsName}_${target.name.text}`;
+    const globalIdx = ctx.staticProps.get(fullName);
+    if (globalIdx !== undefined) {
+      const globalDef = ctx.mod.globals[globalIdx];
+      compileExpression(ctx, fctx, value, globalDef?.type);
+      fctx.body.push({ op: "global.set", index: globalIdx });
+      return VOID_RESULT;
+    }
+  }
+
   // Handle externref property set
   if (isExternalDeclaredClass(objType, ctx.checker)) {
     return compileExternPropertySet(ctx, fctx, target, value, objType);
@@ -1823,6 +1836,32 @@ function compileCallExpression(
       return compileMathCall(ctx, fctx, propAccess.name.text, expr);
     }
 
+    // Check if this is a static method call: ClassName.staticMethod(args)
+    if (ts.isIdentifier(propAccess.expression) && ctx.classSet.has(propAccess.expression.text)) {
+      const clsName = propAccess.expression.text;
+      const methodName = propAccess.name.text;
+      const fullName = `${clsName}_${methodName}`;
+      if (ctx.staticMethodSet.has(fullName)) {
+        const funcIdx = ctx.funcMap.get(fullName);
+        if (funcIdx !== undefined) {
+          // No self parameter for static methods
+          const paramTypes = getFuncParamTypes(ctx, funcIdx);
+          for (let i = 0; i < expr.arguments.length; i++) {
+            compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+          }
+          fctx.body.push({ op: "call", funcIdx });
+
+          const sig = ctx.checker.getResolvedSignature(expr);
+          if (sig) {
+            const retType = ctx.checker.getReturnTypeOfSignature(sig);
+            if (isVoidType(retType)) return VOID_RESULT;
+            return resolveWasmType(ctx, retType);
+          }
+          return VOID_RESULT;
+        }
+      }
+    }
+
     // Check if receiver is an externref object
     const receiverType = ctx.checker.getTypeAtLocation(propAccess.expression);
     if (isExternalDeclaredClass(receiverType, ctx.checker)) {
@@ -1849,10 +1888,10 @@ function compileCallExpression(
         const sig = ctx.checker.getResolvedSignature(expr);
         if (sig) {
           const retType = ctx.checker.getReturnTypeOfSignature(sig);
-          if (isVoidType(retType)) return null;
+          if (isVoidType(retType)) return VOID_RESULT;
           return resolveWasmType(ctx, retType);
         }
-        return null;
+        return VOID_RESULT;
       }
     }
 
@@ -2625,6 +2664,20 @@ function compilePropertyAccess(
     if (enumVal !== undefined) {
       fctx.body.push({ op: "f64.const", value: enumVal });
       return { kind: "f64" };
+    }
+  }
+
+  // Check for static property access: ClassName.staticProp
+  if (ts.isIdentifier(expr.expression)) {
+    const objName = expr.expression.text;
+    if (ctx.classSet.has(objName)) {
+      const fullName = `${objName}_${propName}`;
+      const globalIdx = ctx.staticProps.get(fullName);
+      if (globalIdx !== undefined) {
+        fctx.body.push({ op: "global.get", index: globalIdx });
+        const globalDef = ctx.mod.globals[globalIdx];
+        return globalDef?.type ?? { kind: "f64" };
+      }
     }
   }
 
