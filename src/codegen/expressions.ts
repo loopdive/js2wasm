@@ -726,6 +726,62 @@ function narrowTypeToUnbox(
 }
 
 /**
+ * Compile `expr instanceof ClassName`.
+ * Reads the hidden __tag field (index 0) from the struct and compares
+ * it against the class's compile-time tag value.
+ */
+function compileInstanceOf(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.BinaryExpression,
+): ValType | null {
+  // Right operand must be a class name identifier
+  if (!ts.isIdentifier(expr.right)) {
+    ctx.errors.push({
+      message: "instanceof right operand must be a class name",
+      line: getLine(expr.right),
+      column: getCol(expr.right),
+    });
+    return null;
+  }
+
+  const className = expr.right.text;
+  const tagValue = ctx.classTagMap.get(className);
+  if (tagValue === undefined) {
+    ctx.errors.push({
+      message: `instanceof: unknown class "${className}"`,
+      line: getLine(expr.right),
+      column: getCol(expr.right),
+    });
+    return null;
+  }
+
+  // Compile left operand (the value to test) — must be a ref to a class struct
+  const leftType = compileExpression(ctx, fctx, expr.left);
+  if (!leftType) return null;
+
+  // Resolve the struct type index from the left operand's type
+  const leftTsType = ctx.checker.getTypeAtLocation(expr.left);
+  const leftClassName = leftTsType.getSymbol()?.name;
+  const leftStructTypeIdx = leftClassName ? ctx.structMap.get(leftClassName) : undefined;
+  if (leftStructTypeIdx === undefined) {
+    ctx.errors.push({
+      message: "instanceof: left operand must be a class instance",
+      line: getLine(expr.left),
+      column: getCol(expr.left),
+    });
+    return null;
+  }
+
+  // Read the __tag field (field index 0) from the struct
+  fctx.body.push({ op: "struct.get", typeIdx: leftStructTypeIdx, fieldIdx: 0 });
+  // Compare with the expected tag value
+  fctx.body.push({ op: "i32.const", value: tagValue });
+  fctx.body.push({ op: "i32.eq" });
+  return { kind: "i32" };
+}
+
+/**
  * Compile `typeof x === "number"` / `typeof x !== "string"` etc.
  * Returns i32 result, or null if the expression is not a typeof comparison.
  */
@@ -827,6 +883,11 @@ function compileBinaryExpression(
   // Nullish coalescing: a ?? b
   if (op === ts.SyntaxKind.QuestionQuestionToken) {
     return compileNullishCoalescing(ctx, fctx, expr);
+  }
+
+  // instanceof: compile left value, resolve right to struct type, emit ref.test
+  if (op === ts.SyntaxKind.InstanceOfKeyword) {
+    return compileInstanceOf(ctx, fctx, expr);
   }
 
   // typeof x === "type" / typeof x !== "type"
@@ -1300,6 +1361,19 @@ function compilePropertyAssignment(
 ): ValType | null {
   const objType = ctx.checker.getTypeAtLocation(target.expression);
 
+  // Handle static property assignment: ClassName.staticProp = value
+  if (ts.isIdentifier(target.expression) && ctx.classSet.has(target.expression.text)) {
+    const clsName = target.expression.text;
+    const fullName = `${clsName}_${target.name.text}`;
+    const globalIdx = ctx.staticProps.get(fullName);
+    if (globalIdx !== undefined) {
+      const globalDef = ctx.mod.globals[globalIdx];
+      compileExpression(ctx, fctx, value, globalDef?.type);
+      fctx.body.push({ op: "global.set", index: globalIdx });
+      return VOID_RESULT;
+    }
+  }
+
   // Handle externref property set
   if (isExternalDeclaredClass(objType, ctx.checker)) {
     return compileExternPropertySet(ctx, fctx, target, value, objType);
@@ -1757,6 +1831,14 @@ function compileCallExpression(
     return compileOptionalCallExpression(ctx, fctx, expr);
   }
 
+  // Handle super.method() calls — resolve to ParentClass_method with this as first arg
+  if (
+    ts.isPropertyAccessExpression(expr.expression) &&
+    expr.expression.expression.kind === ts.SyntaxKind.SuperKeyword
+  ) {
+    return compileSuperMethodCall(ctx, fctx, expr);
+  }
+
   // Handle property access calls: console.log, Math.xxx, extern methods
   if (ts.isPropertyAccessExpression(expr.expression)) {
     const propAccess = expr.expression;
@@ -1773,6 +1855,32 @@ function compileCallExpression(
       propAccess.expression.text === "Math"
     ) {
       return compileMathCall(ctx, fctx, propAccess.name.text, expr);
+    }
+
+    // Check if this is a static method call: ClassName.staticMethod(args)
+    if (ts.isIdentifier(propAccess.expression) && ctx.classSet.has(propAccess.expression.text)) {
+      const clsName = propAccess.expression.text;
+      const methodName = propAccess.name.text;
+      const fullName = `${clsName}_${methodName}`;
+      if (ctx.staticMethodSet.has(fullName)) {
+        const funcIdx = ctx.funcMap.get(fullName);
+        if (funcIdx !== undefined) {
+          // No self parameter for static methods
+          const paramTypes = getFuncParamTypes(ctx, funcIdx);
+          for (let i = 0; i < expr.arguments.length; i++) {
+            compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+          }
+          fctx.body.push({ op: "call", funcIdx });
+
+          const sig = ctx.checker.getResolvedSignature(expr);
+          if (sig) {
+            const retType = ctx.checker.getReturnTypeOfSignature(sig);
+            if (isVoidType(retType)) return VOID_RESULT;
+            return resolveWasmType(ctx, retType);
+          }
+          return VOID_RESULT;
+        }
+      }
     }
 
     // Check if receiver is an externref object
@@ -1801,10 +1909,10 @@ function compileCallExpression(
         const sig = ctx.checker.getResolvedSignature(expr);
         if (sig) {
           const retType = ctx.checker.getReturnTypeOfSignature(sig);
-          if (isVoidType(retType)) return null;
+          if (isVoidType(retType)) return VOID_RESULT;
           return resolveWasmType(ctx, retType);
         }
-        return null;
+        return VOID_RESULT;
       }
     }
 
@@ -1939,6 +2047,14 @@ function compileCallExpression(
     return { kind: "f64" };
   }
 
+  // Handle standalone super() calls (constructor chaining) — normally handled by
+  // compileClassBodies, but handle here as fallback
+  if (expr.expression.kind === ts.SyntaxKind.SuperKeyword) {
+    // super() call in constructor — already handled by compileClassBodies inline
+    // Just return void since the work is done there
+    return null;
+  }
+
   ctx.errors.push({
     message: "Unsupported call expression",
     line: getLine(expr),
@@ -1948,6 +2064,73 @@ function compileCallExpression(
 }
 
 // ── New expressions ──────────────────────────────────────────────────
+
+/** Compile super.method(args) — resolve to ParentClass_method and call with this */
+function compileSuperMethodCall(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.CallExpression,
+): ValType | null {
+  const propAccess = expr.expression as ts.PropertyAccessExpression;
+  const methodName = propAccess.name.text;
+
+  // Determine which class we're in from the current function name (ClassName_methodName)
+  const currentFuncName = fctx.name;
+  const underscoreIdx = currentFuncName.indexOf("_");
+  if (underscoreIdx === -1) return null;
+  const currentClassName = currentFuncName.substring(0, underscoreIdx);
+
+  // Find parent class
+  const parentClassName = ctx.classParentMap.get(currentClassName);
+  if (!parentClassName) {
+    ctx.errors.push({
+      message: `Cannot use super in class without parent: ${currentClassName}`,
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+
+  // Resolve parent method — walk up the inheritance chain
+  let ancestor: string | undefined = parentClassName;
+  let funcIdx: number | undefined;
+  while (ancestor) {
+    funcIdx = ctx.funcMap.get(`${ancestor}_${methodName}`);
+    if (funcIdx !== undefined) break;
+    ancestor = ctx.classParentMap.get(ancestor);
+  }
+
+  if (funcIdx === undefined) {
+    ctx.errors.push({
+      message: `Cannot find method '${methodName}' on parent class '${parentClassName}'`,
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+
+  // Push this as first argument
+  const selfIdx = fctx.localMap.get("this");
+  if (selfIdx !== undefined) {
+    fctx.body.push({ op: "local.get", index: selfIdx });
+  }
+
+  // Push remaining arguments with type hints
+  const paramTypes = getFuncParamTypes(ctx, funcIdx);
+  for (let i = 0; i < expr.arguments.length; i++) {
+    compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
+  }
+  fctx.body.push({ op: "call", funcIdx });
+
+  // Determine return type
+  const sig = ctx.checker.getResolvedSignature(expr);
+  if (sig) {
+    const retType = ctx.checker.getReturnTypeOfSignature(sig);
+    if (isVoidType(retType)) return null;
+    return resolveWasmType(ctx, retType);
+  }
+  return null;
+}
 
 function compileNewExpression(
   ctx: CodegenContext,
@@ -2577,6 +2760,20 @@ function compilePropertyAccess(
     if (enumVal !== undefined) {
       fctx.body.push({ op: "f64.const", value: enumVal });
       return { kind: "f64" };
+    }
+  }
+
+  // Check for static property access: ClassName.staticProp
+  if (ts.isIdentifier(expr.expression)) {
+    const objName = expr.expression.text;
+    if (ctx.classSet.has(objName)) {
+      const fullName = `${objName}_${propName}`;
+      const globalIdx = ctx.staticProps.get(fullName);
+      if (globalIdx !== undefined) {
+        fctx.body.push({ op: "global.get", index: globalIdx });
+        const globalDef = ctx.mod.globals[globalIdx];
+        return globalDef?.type ?? { kind: "f64" };
+      }
     }
   }
 
