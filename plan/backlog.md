@@ -6,7 +6,6 @@
 | #                  | Feature                                                     | Complexity |
 | ------------------ | ----------------------------------------------------------- | ---------- |
 | [31](issues/31.md) | Default number type to i32, promote to f64 only when needed          | L          |
-| [32](issues/32.md) | Capacity-based array representation with `array.copy`                | L          |
 | [33](issues/33.md) | Relocatable Wasm object file (.o) emission                           | L          |
 | [34](issues/34.md) | Multi-memory module linker with isolation validation                  | L          |
 | [35](issues/35.md) | Class inheritance (extends, super)                                    | L          |
@@ -65,5 +64,6 @@
 | [28](issues/done/28.md) | Multi-file module compilation            | 10 in multi-file.test.ts     |
 | [29](issues/done/29.md) | Investigate failing tests                | fixed 2 in import-resolver   |
 | [30](issues/done/30.md) | Async/await and Promises                 | 8 in async-await.test.ts     |
+| [32](issues/32.md)      | Capacity-based arrays with `array.copy`  | 4 in array-capacity.test.ts  |
 
 

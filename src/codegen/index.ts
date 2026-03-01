@@ -54,6 +54,8 @@ export interface RestParamInfo {
   elemType: ValType;
   /** Array type index in the module types */
   arrayTypeIdx: number;
+  /** Vec struct type index wrapping the array */
+  vecTypeIdx: number;
 }
 
 /** Context shared across all codegen */
@@ -92,6 +94,8 @@ export interface CodegenContext {
   enumValues: Map<string, number>;
   /** Map from element kind (e.g. "f64") → registered array type index */
   arrayTypeMap: Map<string, number>;
+  /** Map from element kind (e.g. "f64") → registered vec struct type index */
+  vecTypeMap: Map<string, number>;
   /** Map from className → parent className (for inheritance chain walk) */
   externClassParent: Map<string, string>;
   /** Map from global name (e.g. "document") → import info */
@@ -185,6 +189,7 @@ export function generateModule(ast: TypedAST): WasmModule {
     hasStringImports: false,
     enumValues: new Map(),
     arrayTypeMap: new Map(),
+    vecTypeMap: new Map(),
     externClassParent: new Map(),
     declaredGlobals: new Map(),
     callbackCounter: 0,
@@ -299,6 +304,7 @@ export function generateMultiModule(multiAst: MultiTypedAST): WasmModule {
     hasStringImports: false,
     enumValues: new Map(),
     arrayTypeMap: new Map(),
+    vecTypeMap: new Map(),
     externClassParent: new Map(),
     declaredGlobals: new Map(),
     callbackCounter: 0,
@@ -960,6 +966,42 @@ export function getOrRegisterArrayType(ctx: CodegenContext, elemKind: string, el
 }
 
 /**
+ * Get or register a vec struct type wrapping a Wasm GC array.
+ * The vec struct has {length: i32, data: (ref $__arr_<elemKind>)}.
+ * Reuses existing registrations so each element type only gets one vec type.
+ */
+export function getOrRegisterVecType(
+  ctx: CodegenContext,
+  elemKind: string,
+  elemTypeOverride?: ValType,
+): number {
+  const existing = ctx.vecTypeMap.get(elemKind);
+  if (existing !== undefined) return existing;
+
+  const arrTypeIdx = getOrRegisterArrayType(ctx, elemKind, elemTypeOverride);
+  const vecIdx = ctx.mod.types.length;
+  ctx.mod.types.push({
+    kind: "struct",
+    name: `__vec_${elemKind}`,
+    fields: [
+      { name: "length", type: { kind: "i32" }, mutable: true },
+      { name: "data", type: { kind: "ref", typeIdx: arrTypeIdx }, mutable: true },
+    ],
+  });
+  ctx.vecTypeMap.set(elemKind, vecIdx);
+  return vecIdx;
+}
+
+/** Get the raw array type index from a vec struct type index. */
+export function getArrTypeIdxFromVec(ctx: CodegenContext, vecTypeIdx: number): number {
+  const vecDef = ctx.mod.types[vecTypeIdx];
+  if (!vecDef || vecDef.kind !== "struct") throw new Error("not a vec type");
+  const dataField = vecDef.fields[1]!;
+  if (dataField.type.kind !== "ref") throw new Error("vec data field not ref");
+  return dataField.type.typeIdx;
+}
+
+/**
  * Resolve a ts.Type to a ValType, using the struct registry and anonymous type map.
  * Use this instead of mapTsTypeToWasm in the codegen to get real type indices.
  */
@@ -973,10 +1015,10 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type): ValType {
       const elemTsType = typeArgs[0];
       const elemWasm: ValType = elemTsType ? resolveWasmType(ctx, elemTsType) : { kind: "externref" };
       const elemKey = (elemWasm.kind === "ref" || elemWasm.kind === "ref_null")
-        ? `ref_${elemWasm.typeIdx}` : elemWasm.kind;
-      const arrTypeIdx = getOrRegisterArrayType(ctx, elemKey, elemWasm);
+        ? `ref_${(elemWasm as { typeIdx: number }).typeIdx}` : elemWasm.kind;
+      const vecIdx = getOrRegisterVecType(ctx, elemKey, elemWasm);
       // Use ref_null so locals can default-initialize to null
-      return { kind: "ref_null", typeIdx: arrTypeIdx };
+      return { kind: "ref_null", typeIdx: vecIdx };
     }
 
     // Check externref AFTER Array check — Array is declared in lib but should use wasm GC arrays
@@ -1834,7 +1876,7 @@ function collectDeclarations(
         for (let i = 0; i < stmt.parameters.length; i++) {
           const param = stmt.parameters[i]!;
           if (param.dotDotDotToken) {
-            // Rest parameter: ...args: T[] → single (ref $__arr_elemKind) param
+            // Rest parameter: ...args: T[] → single (ref $__vec_elemKind) param
             const paramType = ctx.checker.getTypeAtLocation(param);
             const typeArgs = ctx.checker.getTypeArguments(paramType as ts.TypeReference);
             const elemTsType = typeArgs[0];
@@ -1842,12 +1884,14 @@ function collectDeclarations(
             // Use a unique key for ref element types so each struct gets its own array type
             const elemKey = (elemType.kind === "ref" || elemType.kind === "ref_null")
               ? `ref_${elemType.typeIdx}` : elemType.kind;
-            const arrTypeIdx = getOrRegisterArrayType(ctx, elemKey, elemType);
-            params.push({ kind: "ref_null", typeIdx: arrTypeIdx });
+            const vecTypeIdx = getOrRegisterVecType(ctx, elemKey, elemType);
+            const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
+            params.push({ kind: "ref_null", typeIdx: vecTypeIdx });
             ctx.funcRestParams.set(name, {
               restIndex: i,
               elemType,
               arrayTypeIdx: arrTypeIdx,
+              vecTypeIdx,
             });
           } else {
             const paramType = ctx.checker.getTypeAtLocation(param);
@@ -2256,8 +2300,8 @@ function compileFunctionBody(
     const param = decl.parameters[i]!;
     const paramName = (param.name as ts.Identifier).text;
     if (restInfo && i === restInfo.restIndex) {
-      // Rest parameter — use the array ref type from the function signature
-      params.push({ name: paramName, type: { kind: "ref_null", typeIdx: restInfo.arrayTypeIdx } });
+      // Rest parameter — use the vec struct ref type from the function signature
+      params.push({ name: paramName, type: { kind: "ref_null", typeIdx: restInfo.vecTypeIdx } });
     } else {
       const paramType = resolved
         ? resolved.params[i]!
