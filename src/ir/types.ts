@@ -42,6 +42,8 @@ export interface StructTypeDef {
   kind: "struct";
   name: string;
   fields: FieldDef[];
+  /** Type index of the parent struct (for class inheritance sub-typing) */
+  superTypeIdx?: number;
 }
 export interface ArrayTypeDef {
   kind: "array";
@@ -89,7 +91,14 @@ export interface LocalDef {
   type: ValType;
 }
 
-export type Instr =
+/** Source position for source map generation */
+export interface SourcePos {
+  file: string;
+  line: number;
+  column: number;
+}
+
+type InstrBase =
   | { op: "local.get"; index: number }
   | { op: "local.set"; index: number }
   | { op: "local.tee"; index: number }
@@ -174,6 +183,8 @@ export type Instr =
   | { op: "rethrow"; depth: number }
   | { op: "any.convert_extern" }
   | { op: "extern.convert_any" };
+
+export type Instr = InstrBase & { sourcePos?: SourcePos };
 
 export type BlockType =
   | { kind: "empty" }
