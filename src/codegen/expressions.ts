@@ -1382,11 +1382,24 @@ function compilePropertyAssignment(
   const typeName = resolveStructName(ctx, objType);
   if (!typeName) return null;
 
+  // Check for setter accessor on user-defined classes
+  const fieldName = target.name.text;
+  const accessorKey = `${typeName}_${fieldName}`;
+  if (ctx.classAccessorSet.has(accessorKey)) {
+    const setterName = `${typeName}_set_${fieldName}`;
+    const funcIdx = ctx.funcMap.get(setterName);
+    if (funcIdx !== undefined) {
+      compileExpression(ctx, fctx, target.expression);
+      compileExpression(ctx, fctx, value);
+      fctx.body.push({ op: "call", funcIdx });
+      return VOID_RESULT;
+    }
+  }
+
   const structTypeIdx = ctx.structMap.get(typeName);
   const fields = ctx.structFields.get(typeName);
   if (structTypeIdx === undefined || !fields) return null;
 
-  const fieldName = target.name.text;
   const fieldIdx = fields.findIndex((f) => f.name === fieldName);
   if (fieldIdx === -1) return null;
 
@@ -2811,9 +2824,23 @@ function compilePropertyAccess(
     return compileExternPropertyGet(ctx, fctx, expr, objType, propName);
   }
 
-  // Handle struct field access (named or anonymous)
+  // Handle getter accessor on user-defined classes
   const typeName = resolveStructName(ctx, objType);
   if (typeName) {
+    const accessorKey = `${typeName}_${propName}`;
+    if (ctx.classAccessorSet.has(accessorKey)) {
+      const getterName = `${typeName}_get_${propName}`;
+      const funcIdx = ctx.funcMap.get(getterName);
+      if (funcIdx !== undefined) {
+        compileExpression(ctx, fctx, expr.expression);
+        fctx.body.push({ op: "call", funcIdx });
+        // Use the property type from the checker to determine the return type
+        const propType = ctx.checker.getTypeAtLocation(expr);
+        return resolveWasmType(ctx, propType);
+      }
+    }
+
+    // Handle struct field access (named or anonymous)
     const structTypeIdx = ctx.structMap.get(typeName);
     const fields = ctx.structFields.get(typeName);
     if (structTypeIdx !== undefined && fields) {

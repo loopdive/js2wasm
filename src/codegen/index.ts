@@ -107,6 +107,8 @@ export interface CodegenContext {
   classSet: Set<string>;
   /** Map from "ClassName_methodName" → method info for local classes */
   classMethodSet: Set<string>;
+  /** Set of "ClassName_propName" for getter/setter accessor properties */
+  classAccessorSet: Set<string>;
   /** Set of "ClassName_methodName" for static methods (no self param) */
   staticMethodSet: Set<string>;
   /** Map from "ClassName_propName" → global index for static properties */
@@ -213,6 +215,7 @@ export function generateModule(ast: TypedAST, options?: CodegenOptions): WasmMod
     capturedGlobalsWidened: new Set(),
     classSet: new Set(),
     classMethodSet: new Set(),
+    classAccessorSet: new Set(),
     staticMethodSet: new Set(),
     staticProps: new Map(),
     staticInitExprs: [],
@@ -330,6 +333,7 @@ export function generateMultiModule(multiAst: MultiTypedAST, options?: CodegenOp
     capturedGlobalsWidened: new Set(),
     classSet: new Set(),
     classMethodSet: new Set(),
+    classAccessorSet: new Set(),
     staticMethodSet: new Set(),
     staticProps: new Map(),
     staticInitExprs: [],
@@ -1811,6 +1815,64 @@ function collectClassDeclaration(
     }
   }
 
+  // Register getter/setter accessor functions
+  for (const member of decl.members) {
+    if (ts.isGetAccessorDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
+      const propName = member.name.text;
+      const accessorKey = `${className}_${propName}`;
+      ctx.classAccessorSet.add(accessorKey);
+
+      const getterName = `${className}_get_${propName}`;
+      // Getter takes self, returns the accessor return type
+      const getterParams: ValType[] = [{ kind: "ref", typeIdx: structTypeIdx }];
+      const sig = ctx.checker.getSignatureFromDeclaration(member);
+      let getterResults: ValType[] = [];
+      if (sig) {
+        const retType = ctx.checker.getReturnTypeOfSignature(sig);
+        if (!isVoidType(retType)) {
+          getterResults = [resolveWasmType(ctx, retType)];
+        }
+      }
+
+      const getterTypeIdx = addFuncType(ctx, getterParams, getterResults, `${getterName}_type`);
+      const getterFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+      ctx.funcMap.set(getterName, getterFuncIdx);
+
+      ctx.mod.functions.push({
+        name: getterName,
+        typeIdx: getterTypeIdx,
+        locals: [],
+        body: [],
+        exported: false,
+      });
+    }
+
+    if (ts.isSetAccessorDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
+      const propName = member.name.text;
+      const accessorKey = `${className}_${propName}`;
+      ctx.classAccessorSet.add(accessorKey);
+
+      const setterName = `${className}_set_${propName}`;
+      // Setter takes self + value, returns void
+      const setterParams: ValType[] = [{ kind: "ref", typeIdx: structTypeIdx }];
+      for (const param of member.parameters) {
+        const paramType = ctx.checker.getTypeAtLocation(param);
+        setterParams.push(resolveWasmType(ctx, paramType));
+      }
+
+      const setterTypeIdx = addFuncType(ctx, setterParams, [], `${setterName}_type`);
+      const setterFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+      ctx.funcMap.set(setterName, setterFuncIdx);
+
+      ctx.mod.functions.push({
+        name: setterName,
+        typeIdx: setterTypeIdx,
+        locals: [],
+        body: [],
+        exported: false,
+      });
+    }
+  }
 
   // Register inherited methods: if parent has methods that child doesn't override,
   // map ChildClass_methodName → ParentClass_methodName func index
@@ -2395,6 +2457,115 @@ function compileClassBodies(
           } else if (fctx.returnType.kind === "ref" || fctx.returnType.kind === "ref_null") {
             fctx.body.push({ op: "ref.null", typeIdx: fctx.returnType.typeIdx });
           }
+        }
+      }
+
+      func.locals = fctx.locals;
+      func.body = fctx.body;
+      ctx.currentFunc = null;
+    }
+  }
+
+  // Compile getter/setter accessor bodies
+  for (const member of decl.members) {
+    if (ts.isGetAccessorDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
+      const propName = member.name.text;
+      const getterName = `${className}_get_${propName}`;
+      const getterLocalIdx = funcByName.get(getterName);
+      if (getterLocalIdx === undefined) continue;
+
+      const func = ctx.mod.functions[getterLocalIdx]!;
+      const sig = ctx.checker.getSignatureFromDeclaration(member);
+      const retType = sig ? ctx.checker.getReturnTypeOfSignature(sig) : undefined;
+
+      const params: { name: string; type: ValType }[] = [
+        { name: "this", type: { kind: "ref", typeIdx: structTypeIdx } },
+      ];
+
+      const fctx: FunctionContext = {
+        name: getterName,
+        params,
+        locals: [],
+        localMap: new Map(),
+        returnType: retType && !isVoidType(retType) ? resolveWasmType(ctx, retType) : null,
+        body: [],
+        blockDepth: 0,
+        breakStack: [],
+        continueStack: [],
+      };
+
+      for (let i = 0; i < params.length; i++) {
+        fctx.localMap.set(params[i]!.name, i);
+      }
+
+      ctx.currentFunc = fctx;
+
+      if (member.body) {
+        for (const stmt of member.body.statements) {
+          compileStatement(ctx, fctx, stmt);
+        }
+      }
+
+      // Ensure valid return for non-void getters
+      if (fctx.returnType) {
+        const lastInstr = fctx.body[fctx.body.length - 1];
+        if (!lastInstr || lastInstr.op !== "return") {
+          if (fctx.returnType.kind === "f64") {
+            fctx.body.push({ op: "f64.const", value: 0 });
+          } else if (fctx.returnType.kind === "i32") {
+            fctx.body.push({ op: "i32.const", value: 0 });
+          } else if (fctx.returnType.kind === "externref") {
+            fctx.body.push({ op: "ref.null.extern" });
+          } else if (fctx.returnType.kind === "ref" || fctx.returnType.kind === "ref_null") {
+            fctx.body.push({ op: "ref.null", typeIdx: fctx.returnType.typeIdx });
+          }
+        }
+      }
+
+      func.locals = fctx.locals;
+      func.body = fctx.body;
+      ctx.currentFunc = null;
+    }
+
+    if (ts.isSetAccessorDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
+      const propName = member.name.text;
+      const setterName = `${className}_set_${propName}`;
+      const setterLocalIdx = funcByName.get(setterName);
+      if (setterLocalIdx === undefined) continue;
+
+      const func = ctx.mod.functions[setterLocalIdx]!;
+
+      // First param is self, remaining are the setter parameters
+      const params: { name: string; type: ValType }[] = [
+        { name: "this", type: { kind: "ref", typeIdx: structTypeIdx } },
+      ];
+      for (const param of member.parameters) {
+        const paramName = (param.name as ts.Identifier).text;
+        const paramType = ctx.checker.getTypeAtLocation(param);
+        params.push({ name: paramName, type: resolveWasmType(ctx, paramType) });
+      }
+
+      const fctx: FunctionContext = {
+        name: setterName,
+        params,
+        locals: [],
+        localMap: new Map(),
+        returnType: null, // setters always return void
+        body: [],
+        blockDepth: 0,
+        breakStack: [],
+        continueStack: [],
+      };
+
+      for (let i = 0; i < params.length; i++) {
+        fctx.localMap.set(params[i]!.name, i);
+      }
+
+      ctx.currentFunc = fctx;
+
+      if (member.body) {
+        for (const stmt of member.body.statements) {
+          compileStatement(ctx, fctx, stmt);
         }
       }
 
