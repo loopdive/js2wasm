@@ -131,6 +131,8 @@ export interface CodegenContext {
   moduleGlobals: Map<string, number>;
   /** Module-level variable initializers (compiled into __module_init) */
   moduleInitStatements: ts.Statement[];
+  /** Map from child className → parent className (for local class inheritance) */
+  classParentMap: Map<string, string>;
   /** Counter for assigning unique class tags (for instanceof support) */
   classTagCounter: number;
   /** Map from class name → unique tag value (for instanceof support) */
@@ -223,6 +225,7 @@ export function generateModule(ast: TypedAST, options?: CodegenOptions): WasmMod
     asyncFunctions: new Set(),
     moduleGlobals: new Map(),
     moduleInitStatements: [],
+    classParentMap: new Map(),
     classTagCounter: 0,
     classTagMap: new Map(),
     sourceMap: options?.sourceMap ?? false,
@@ -339,6 +342,7 @@ export function generateMultiModule(multiAst: MultiTypedAST, options?: CodegenOp
     exnTagIdx: -1,
     moduleGlobals: new Map(),
     moduleInitStatements: [],
+    classParentMap: new Map(),
     classTagCounter: 0,
     classTagMap: new Map(),
     sourceMap: options?.sourceMap ?? false,
@@ -1641,12 +1645,47 @@ function collectClassDeclaration(
   const className = decl.name!.text;
   ctx.classSet.add(className);
 
+  // Detect parent class via heritage clauses (extends)
+  let parentClassName: string | undefined;
+  let parentStructTypeIdx: number | undefined;
+  let parentFields: FieldDef[] = [];
+  if (decl.heritageClauses) {
+    for (const clause of decl.heritageClauses) {
+      if (clause.token === ts.SyntaxKind.ExtendsKeyword && clause.types.length > 0) {
+        const baseExpr = clause.types[0]!.expression;
+        if (ts.isIdentifier(baseExpr)) {
+          parentClassName = baseExpr.text;
+          parentStructTypeIdx = ctx.structMap.get(parentClassName);
+          parentFields = ctx.structFields.get(parentClassName) ?? [];
+          // Record parent-child relationship
+          ctx.classParentMap.set(className, parentClassName);
+          // Mark parent struct as non-final so it can be extended
+          if (parentStructTypeIdx !== undefined) {
+            const parentTypeDef = ctx.mod.types[parentStructTypeIdx] as StructTypeDef;
+            if (parentTypeDef && parentTypeDef.superTypeIdx === undefined) {
+              // Mark parent as extensible (superTypeIdx = -1 means "sub with no super")
+              parentTypeDef.superTypeIdx = -1;
+            }
+          }
+        }
+      }
+    }
+  }
+
   // Find the constructor to determine struct fields from `this.x = ...` assignments
   const ctor = decl.members.find(ts.isConstructorDeclaration) as ts.ConstructorDeclaration | undefined;
-  const fields: FieldDef[] = [];
+  const ownFields: FieldDef[] = [];
 
   if (ctor?.body) {
     for (const stmt of ctor.body.statements) {
+      // Skip super() calls — they don't define new fields
+      if (
+        ts.isExpressionStatement(stmt) &&
+        ts.isCallExpression(stmt.expression) &&
+        stmt.expression.expression.kind === ts.SyntaxKind.SuperKeyword
+      ) {
+        continue;
+      }
       if (
         ts.isExpressionStatement(stmt) &&
         ts.isBinaryExpression(stmt.expression) &&
@@ -1655,10 +1694,12 @@ function collectClassDeclaration(
         stmt.expression.left.expression.kind === ts.SyntaxKind.ThisKeyword
       ) {
         const fieldName = stmt.expression.left.name.text;
+        // Skip if this field is already defined in parent
+        if (parentFields.some((f) => f.name === fieldName)) continue;
         const fieldTsType = ctx.checker.getTypeAtLocation(stmt.expression.left);
         const fieldType = resolveWasmType(ctx, fieldTsType);
-        if (!fields.some((f) => f.name === fieldName)) {
-          fields.push({ name: fieldName, type: fieldType, mutable: true });
+        if (!ownFields.some((f) => f.name === fieldName)) {
+          ownFields.push({ name: fieldName, type: fieldType, mutable: true });
         }
       }
     }
@@ -1670,14 +1711,20 @@ function collectClassDeclaration(
     if (ts.isPropertyDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
       if (hasStaticModifier(member)) continue; // handled below
       const fieldName = member.name.text;
-      if (!fields.some((f) => f.name === fieldName)) {
+      // Skip if this field is already defined in parent
+      if (parentFields.some((f) => f.name === fieldName)) continue;
+      if (!ownFields.some((f) => f.name === fieldName)) {
         const fieldTsType = ctx.checker.getTypeAtLocation(member);
         const fieldType = resolveWasmType(ctx, fieldTsType);
-        fields.push({ name: fieldName, type: fieldType, mutable: true });
+        ownFields.push({ name: fieldName, type: fieldType, mutable: true });
       }
     }
   }
 
+  // Build full fields list: parent fields first, then own fields
+  const fields: FieldDef[] = [...parentFields, ...ownFields];
+
+  // Register the struct type with optional super-type
   // Assign a unique class tag for instanceof support
   const classTag = ctx.classTagCounter++;
   ctx.classTagMap.set(className, classTag);
@@ -1687,7 +1734,11 @@ function collectClassDeclaration(
 
   // Register the struct type
   const structTypeIdx = ctx.mod.types.length;
-  ctx.mod.types.push({ kind: "struct", name: className, fields } as StructTypeDef);
+  const structDef: StructTypeDef = { kind: "struct", name: className, fields };
+  if (parentStructTypeIdx !== undefined) {
+    structDef.superTypeIdx = parentStructTypeIdx;
+  }
+  ctx.mod.types.push(structDef);
   ctx.structMap.set(className, structTypeIdx);
   ctx.structFields.set(className, fields);
 
@@ -1713,10 +1764,12 @@ function collectClassDeclaration(
     exported: false,
   });
 
-  // Register method functions (instance and static)
+  // Register method functions (own methods defined on this class)
+  const ownMethodNames = new Set<string>();
   for (const member of decl.members) {
     if (ts.isMethodDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
       const methodName = member.name.text;
+      ownMethodNames.add(methodName);
       const fullName = `${className}_${methodName}`;
       const isStatic = hasStaticModifier(member);
 
@@ -1758,6 +1811,30 @@ function collectClassDeclaration(
     }
   }
 
+
+  // Register inherited methods: if parent has methods that child doesn't override,
+  // map ChildClass_methodName → ParentClass_methodName func index
+  if (parentClassName) {
+    // Walk the parent chain to find all inherited methods
+    let ancestor: string | undefined = parentClassName;
+    while (ancestor) {
+      for (const [key, funcIdx] of ctx.funcMap) {
+        if (key.startsWith(`${ancestor}_`) && !key.endsWith("_new") && !key.endsWith("_type")) {
+          const methodName = key.substring(ancestor.length + 1);
+          // Skip _new_type suffix entries
+          if (methodName.includes("_")) continue;
+          const childFullName = `${className}_${methodName}`;
+          // Only inherit if child doesn't define its own version
+          if (!ownMethodNames.has(methodName) && !ctx.funcMap.has(childFullName)) {
+            ctx.funcMap.set(childFullName, funcIdx);
+            ctx.classMethodSet.add(childFullName);
+          }
+        }
+      }
+      ancestor = ctx.classParentMap.get(ancestor);
+    }
+  }
+    
   // Register static properties as module globals
   for (const member of decl.members) {
     if (ts.isPropertyDeclaration(member) && member.name && ts.isIdentifier(member.name) && hasStaticModifier(member)) {
@@ -2236,6 +2313,15 @@ function compileClassBodies(
 
     if (ctor?.body) {
       for (const stmt of ctor.body.statements) {
+        // Handle super(args) calls: inline parent constructor field initialization
+        if (
+          ts.isExpressionStatement(stmt) &&
+          ts.isCallExpression(stmt.expression) &&
+          stmt.expression.expression.kind === ts.SyntaxKind.SuperKeyword
+        ) {
+          compileSuperCall(ctx, fctx, className, selfLocal, stmt.expression, fields);
+          continue;
+        }
         compileStatement(ctx, fctx, stmt);
       }
     }
@@ -2316,6 +2402,39 @@ function compileClassBodies(
       func.body = fctx.body;
       ctx.currentFunc = null;
     }
+  }
+}
+
+/**
+ * Compile a super(args) call inside a child constructor.
+ * This runs the parent constructor's field-initialization logic inline:
+ * for each parent field, evaluate the corresponding super argument and
+ * store it into the child struct (which includes parent fields at the start).
+ */
+function compileSuperCall(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  childClassName: string,
+  selfLocal: number,
+  callExpr: ts.CallExpression,
+  _allFields: FieldDef[],
+): void {
+  const parentClassName = ctx.classParentMap.get(childClassName);
+  if (!parentClassName) return;
+
+  const parentFields = ctx.structFields.get(parentClassName) ?? [];
+  const structTypeIdx = ctx.structMap.get(childClassName)!;
+
+  // Evaluate super(args) and assign to parent fields on the child struct.
+  // The parent constructor takes N params and assigns them to the N parent fields
+  // via this.fieldName = paramName patterns. We replicate that here by
+  // evaluating each super argument and setting the corresponding parent field.
+  for (let i = 0; i < callExpr.arguments.length && i < parentFields.length; i++) {
+    const field = parentFields[i]!;
+    const fieldIdx = i; // Parent fields are at the start of the child struct
+    fctx.body.push({ op: "local.get", index: selfLocal });
+    compileExpression(ctx, fctx, callExpr.arguments[i]!, field.type);
+    fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx });
   }
 }
 
