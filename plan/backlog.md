@@ -20,6 +20,7 @@
 | [43](issues/43.md) | void expression                                                       | XS         |
 | [44](issues/44.md) | Source maps                                                           | L          |
 | [45](issues/45.md) | Error reporting with source locations                                 | M          |
+| [46](issues/46.md) | Linear-memory compilation backend                                     | L          |
 
 
 ## Complexity legend
