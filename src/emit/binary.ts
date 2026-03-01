@@ -649,6 +649,17 @@ function encodeInstr(instr: Instr, enc: WasmEncoder): void {
       enc.byte(GC.prefix);
       enc.byte(GC.array_len);
       break;
+    case "array.copy":
+      enc.byte(GC.prefix);
+      enc.byte(GC.array_copy);
+      enc.u32(instr.dstTypeIdx);
+      enc.u32(instr.srcTypeIdx);
+      break;
+    case "array.fill":
+      enc.byte(GC.prefix);
+      enc.byte(GC.array_fill);
+      enc.u32(instr.typeIdx);
+      break;
     case "ref.func":
       enc.byte(OP.ref_func);
       enc.u32(instr.funcIdx);
