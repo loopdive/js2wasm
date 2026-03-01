@@ -141,3 +141,47 @@ export const SECTION = {
   data: 11,
   tag: 13,
 } as const;
+
+/** LLVM-style Wasm relocation types */
+export const RELOC = {
+  R_WASM_FUNCTION_INDEX_LEB: 0,
+  R_WASM_TABLE_INDEX_SLEB: 1,
+  R_WASM_TABLE_INDEX_I32: 2,
+  R_WASM_MEMORY_ADDR_LEB: 3,
+  R_WASM_MEMORY_ADDR_SLEB: 4,
+  R_WASM_MEMORY_ADDR_I32: 5,
+  R_WASM_TYPE_INDEX_LEB: 6,
+  R_WASM_GLOBAL_INDEX_LEB: 7,
+  R_WASM_FUNCTION_OFFSET_I32: 8,
+  R_WASM_SECTION_OFFSET_I32: 9,
+  R_WASM_TAG_INDEX_LEB: 11,
+} as const;
+
+/** Symbol flags for the linking section symbol table */
+export const SYM_FLAGS = {
+  WASM_SYM_BINDING_WEAK: 0x01,
+  WASM_SYM_BINDING_LOCAL: 0x02,
+  WASM_SYM_VISIBILITY_HIDDEN: 0x04,
+  WASM_SYM_UNDEFINED: 0x10,
+  WASM_SYM_EXPORTED: 0x20,
+  WASM_SYM_EXPLICIT_NAME: 0x40,
+  WASM_SYM_NO_STRIP: 0x80,
+} as const;
+
+/** Symbol kinds for the linking section symbol table */
+export const SYMTAB = {
+  SYMTAB_FUNCTION: 0,
+  SYMTAB_DATA: 1,
+  SYMTAB_GLOBAL: 2,
+  SYMTAB_SECTION: 3,
+  SYMTAB_EVENT: 4,
+  SYMTAB_TABLE: 5,
+} as const;
+
+/** Linking section subsection types */
+export const LINKING_SUBSECTION = {
+  WASM_SEGMENT_INFO: 5,
+  WASM_INIT_FUNCS: 6,
+  WASM_COMDAT_INFO: 7,
+  WASM_SYMBOL_TABLE: 8,
+} as const;
