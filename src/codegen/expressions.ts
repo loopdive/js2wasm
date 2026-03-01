@@ -1,6 +1,6 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext, ClosureInfo, RestParamInfo } from "./index.js";
-import { allocLocal, resolveWasmType, getOrRegisterArrayType, addFuncType, addUnionImports } from "./index.js";
+import { allocLocal, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addUnionImports } from "./index.js";
 import {
   mapTsTypeToWasm,
   isNumberType,
@@ -1380,6 +1380,24 @@ function compileElementAssignment(
   }
   const typeIdx = (arrType as { typeIdx: number }).typeIdx;
   const typeDef = ctx.mod.types[typeIdx];
+
+  // Handle vec struct (array wrapped in {length, data})
+  if (typeDef?.kind === "struct") {
+    const arrTypeIdx = getArrTypeIdxFromVec(ctx, typeIdx);
+    const arrDef = ctx.mod.types[arrTypeIdx];
+    if (!arrDef || arrDef.kind !== "array") {
+      ctx.errors.push({ message: "Assignment: vec data is not array", line: 0, column: 0 });
+      return null;
+    }
+    // Unwrap: struct.get data field, then set element in backing array
+    fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 }); // get data from vec
+    compileExpression(ctx, fctx, target.argumentExpression, { kind: "f64" });
+    fctx.body.push({ op: "i32.trunc_f64_s" });
+    compileExpression(ctx, fctx, value, arrDef.element);
+    fctx.body.push({ op: "array.set", typeIdx: arrTypeIdx });
+    return VOID_RESULT;
+  }
+
   if (!typeDef || typeDef.kind !== "array") {
     ctx.errors.push({ message: "Assignment to non-array type", line: 0, column: 0 });
     return null;
@@ -2567,14 +2585,15 @@ function compilePropertyAccess(
     }
   }
 
-  // Handle array.length
+  // Handle array.length (vec struct: field 0 is the logical length)
   if (propName === "length") {
     const objWasmType = resolveWasmType(ctx, objType);
     if (objWasmType.kind === "ref" || objWasmType.kind === "ref_null") {
-      const typeDef = ctx.mod.types[(objWasmType as { typeIdx: number }).typeIdx];
-      if (typeDef?.kind === "array") {
+      const vecTypeIdx = (objWasmType as { typeIdx: number }).typeIdx;
+      const typeDef = ctx.mod.types[vecTypeIdx];
+      if (typeDef?.kind === "struct" && typeDef.fields[1]?.name === "data") {
         compileExpression(ctx, fctx, expr.expression);
-        fctx.body.push({ op: "array.len" });
+        fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 }); // get length from vec
         fctx.body.push({ op: "f64.convert_i32_s" });
         return { kind: "f64" };
       }
@@ -2711,6 +2730,23 @@ function compileElementAccess(
 
   const typeIdx = (objType as { typeIdx: number }).typeIdx;
   const typeDef = ctx.mod.types[typeIdx];
+
+  // Handle vec struct (array wrapped in {length, data})
+  if (typeDef?.kind === "struct") {
+    const arrTypeIdx = getArrTypeIdxFromVec(ctx, typeIdx);
+    const arrDef = ctx.mod.types[arrTypeIdx];
+    if (!arrDef || arrDef.kind !== "array") {
+      ctx.errors.push({ message: "Element access: vec data is not array", line: 0, column: 0 });
+      return null;
+    }
+    // Unwrap: struct.get data field, then index into backing array
+    fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 }); // get data from vec
+    compileExpression(ctx, fctx, expr.argumentExpression, { kind: "f64" });
+    fctx.body.push({ op: "i32.trunc_f64_s" });
+    fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
+    return arrDef.element;
+  }
+
   if (!typeDef || typeDef.kind !== "array") {
     ctx.errors.push({
       message: "Element access on non-array type",
@@ -2866,9 +2902,13 @@ function compileArrayLiteral(
         }
       }
     }
-    const arrTypeIdx = getOrRegisterArrayType(ctx, emptyElemKind);
-    fctx.body.push({ op: "array.new_fixed", typeIdx: arrTypeIdx, length: 0 });
-    return { kind: "ref_null", typeIdx: arrTypeIdx };
+    const vecTypeIdx = getOrRegisterVecType(ctx, emptyElemKind);
+    const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
+    fctx.body.push({ op: "i32.const", value: 0 });           // length field (field 0)
+    fctx.body.push({ op: "i32.const", value: 0 });           // size for array.new_default
+    fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx }); // data field (field 1)
+    fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx }); // wrap in vec struct
+    return { kind: "ref_null", typeIdx: vecTypeIdx };
   }
 
   // Check if any element is a spread
@@ -2889,20 +2929,27 @@ function compileArrayLiteral(
   }
   elemKind = (elemWasm.kind === "ref" || elemWasm.kind === "ref_null")
     ? `ref_${elemWasm.typeIdx}` : elemWasm.kind;
-  const arrTypeIdx = getOrRegisterArrayType(ctx, elemKind, elemWasm);
+  const vecTypeIdx = getOrRegisterVecType(ctx, elemKind, elemWasm);
+  const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
 
   if (!hasSpread) {
-    // No spread — use the fast array.new_fixed path
+    // No spread — use the fast array.new_fixed path, then wrap in vec struct
     for (const el of expr.elements) {
       compileExpression(ctx, fctx, el, elemWasm);
     }
     fctx.body.push({ op: "array.new_fixed", typeIdx: arrTypeIdx, length: expr.elements.length });
-    return { kind: "ref_null", typeIdx: arrTypeIdx };
+    // Store data array in temp local, then build vec struct
+    const tmpData = allocLocal(fctx, `__arr_data_${fctx.locals.length}`, { kind: "ref", typeIdx: arrTypeIdx });
+    fctx.body.push({ op: "local.set", index: tmpData });
+    fctx.body.push({ op: "i32.const", value: expr.elements.length }); // length field (field 0)
+    fctx.body.push({ op: "local.get", index: tmpData });               // data field (field 1)
+    fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });          // wrap in vec struct
+    return { kind: "ref_null", typeIdx: vecTypeIdx };
   }
 
   // Has spread elements — compute total length, create array, then fill
   // Step 1: Compute total length and store spread sources in locals
-  const spreadLocals: { local: number; elemIdx: number }[] = [];
+  const spreadLocals: { local: number; elemIdx: number; srcVecTypeIdx: number }[] = [];
   const nonSpreadCount = expr.elements.filter((el) => !ts.isSpreadElement(el)).length;
 
   // Push the non-spread count as the initial length
@@ -2914,16 +2961,17 @@ function compileArrayLiteral(
     if (ts.isSpreadElement(el)) {
       const srcType = compileExpression(ctx, fctx, el.expression);
       if (!srcType || (srcType.kind !== "ref" && srcType.kind !== "ref_null")) continue;
+      const srcVecTypeIdx = (srcType as { typeIdx: number }).typeIdx;
       const srcLocal = allocLocal(fctx, `__spread_src_${fctx.locals.length}`, srcType);
       fctx.body.push({ op: "local.tee", index: srcLocal });
-      fctx.body.push({ op: "array.len" });
+      fctx.body.push({ op: "struct.get", typeIdx: srcVecTypeIdx, fieldIdx: 0 }); // get length from vec
       fctx.body.push({ op: "i32.add" }); // accumulate total length
-      spreadLocals.push({ local: srcLocal, elemIdx: i });
+      spreadLocals.push({ local: srcLocal, elemIdx: i, srcVecTypeIdx });
     }
   }
 
-  // Step 2: Create the result array with computed length, default-initialized
-  const resultArrType: ValType = { kind: "ref_null", typeIdx: arrTypeIdx };
+  // Step 2: Create the result backing array with computed length, default-initialized
+  const resultArrType: ValType = { kind: "ref", typeIdx: arrTypeIdx };
   fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx });
   const resultLocal = allocLocal(fctx, `__spread_result_${fctx.locals.length}`, resultArrType);
   fctx.body.push({ op: "local.set", index: resultLocal });
@@ -2940,24 +2988,26 @@ function compileArrayLiteral(
       const spreadInfo = spreadLocals.find((s) => s.elemIdx === i);
       if (!spreadInfo) continue;
 
+      const srcArrTypeIdx = getArrTypeIdxFromVec(ctx, spreadInfo.srcVecTypeIdx);
       const readIdx = allocLocal(fctx, `__spread_ri_${fctx.locals.length}`, { kind: "i32" });
       fctx.body.push({ op: "i32.const", value: 0 });
       fctx.body.push({ op: "local.set", index: readIdx });
 
-      // loop: while readIdx < srcArr.len
+      // loop: while readIdx < srcVec.length
       const loopBody: Instr[] = [];
-      // Condition: readIdx >= srcArr.len → break
+      // Condition: readIdx >= srcVec.length → break
       loopBody.push({ op: "local.get", index: readIdx });
       loopBody.push({ op: "local.get", index: spreadInfo.local });
-      loopBody.push({ op: "array.len" });
+      loopBody.push({ op: "struct.get", typeIdx: spreadInfo.srcVecTypeIdx, fieldIdx: 0 }); // get length from vec
       loopBody.push({ op: "i32.ge_s" });
       loopBody.push({ op: "br_if", depth: 1 }); // break out of block
-      // result[writeIdx] = src[readIdx]
+      // result[writeIdx] = src.data[readIdx]
       loopBody.push({ op: "local.get", index: resultLocal });
       loopBody.push({ op: "local.get", index: writeIdx });
       loopBody.push({ op: "local.get", index: spreadInfo.local });
+      loopBody.push({ op: "struct.get", typeIdx: spreadInfo.srcVecTypeIdx, fieldIdx: 1 }); // get data from vec
       loopBody.push({ op: "local.get", index: readIdx });
-      loopBody.push({ op: "array.get", typeIdx: arrTypeIdx });
+      loopBody.push({ op: "array.get", typeIdx: srcArrTypeIdx });
       loopBody.push({ op: "array.set", typeIdx: arrTypeIdx });
       // writeIdx++; readIdx++
       loopBody.push({ op: "local.get", index: writeIdx });
@@ -2988,9 +3038,12 @@ function compileArrayLiteral(
     }
   }
 
-  // Push the result array onto the stack
-  fctx.body.push({ op: "local.get", index: resultLocal });
-  return resultArrType;
+  // Wrap the result backing array in a vec struct
+  // Stack: totalLen (= writeIdx), data ref → struct.new
+  fctx.body.push({ op: "local.get", index: writeIdx });    // length field (field 0)
+  fctx.body.push({ op: "local.get", index: resultLocal }); // data field (field 1)
+  fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx }); // wrap in vec struct
+  return { kind: "ref_null", typeIdx: vecTypeIdx };
 }
 
 // ── String operations ─────────────────────────────────────────────────
