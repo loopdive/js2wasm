@@ -125,15 +125,28 @@ export function emitBinaryWithSourceMap(mod: WasmModule): EmitResult {
     });
   }
 
-  // Element section
-  if (mod.elements.length > 0) {
+  // Element section — active segments (tables) + declarative segments (ref.func)
+  const hasActiveElems = mod.elements.length > 0;
+  const hasDeclaredRefs = mod.declaredFuncRefs.length > 0;
+  if (hasActiveElems || hasDeclaredRefs) {
     enc.section(SECTION.element, (s) => {
-      s.vector(mod.elements, (elem, e) => {
-        e.byte(0x00); // active, table 0, funcref
-        for (const instr of elem.offset) encodeInstr(instr, e);
-        e.byte(OP.end);
-        e.vector(elem.funcIndices, (idx, enc2) => enc2.u32(idx));
-      });
+      const totalSegments = mod.elements.length + (hasDeclaredRefs ? 1 : 0);
+      s.u32(totalSegments);
+      // Active element segments (table initializers)
+      for (const elem of mod.elements) {
+        s.byte(0x00); // active, table 0, funcref
+        for (const instr of elem.offset) encodeInstr(instr, s);
+        s.byte(OP.end);
+        s.u32(elem.funcIndices.length);
+        for (const idx of elem.funcIndices) s.u32(idx);
+      }
+      // Declarative element segment for ref.func targets
+      if (hasDeclaredRefs) {
+        s.byte(0x03); // declarative, elemkind
+        s.byte(0x00); // elemkind = funcref
+        s.u32(mod.declaredFuncRefs.length);
+        for (const idx of mod.declaredFuncRefs) s.u32(idx);
+      }
     });
   }
 
