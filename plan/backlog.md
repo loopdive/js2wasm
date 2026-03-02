@@ -2,13 +2,48 @@
 
 ## Open issues
 
+### Tier 1 — Language essentials
+
 | #                  | Feature                                                     | Complexity |
 | ------------------ | ----------------------------------------------------------- | ---------- |
+| [49](issues/49.md) | Default parameter values                                    | S          |
+| [50](issues/50.md) | Nullish/logical assignment (`??=`, `\|\|=`, `&&=`)          | XS         |
+| [51](issues/51.md) | Functional array methods (filter, map, reduce, forEach ...) | L          |
+| [52](issues/52.md) | String.split()                                              | S          |
+| [53](issues/53.md) | Numeric separators (`1_000_000`)                            | XS         |
+| [41](issues/41.md) | typeof as expression                                        | S          |
+
+### Tier 2 — Broader TS support
+
+| #                  | Feature                                                     | Complexity |
+| ------------------ | ----------------------------------------------------------- | ---------- |
+| [54](issues/54.md) | Map and Set collections                                     | M          |
+| [55](issues/55.md) | Function expressions                                        | S          |
+| [56](issues/56.md) | Tuples                                                      | M          |
+| [57](issues/57.md) | Class expressions                                           | S          |
+| [58](issues/58.md) | Iterators and for...of with custom iterables                | L          |
+| [59](issues/59.md) | Abstract classes                                            | XS         |
+
+### Tier 3 — Standard library & advanced
+
+| #                  | Feature                                                     | Complexity |
+| ------------------ | ----------------------------------------------------------- | ---------- |
+| [60](issues/60.md) | RegExp via host imports                                     | M          |
+| [61](issues/61.md) | Object.keys / Object.values / Object.entries                | M          |
+| [62](issues/62.md) | JSON.parse / JSON.stringify                                 | S          |
+| [63](issues/63.md) | Promise.all / Promise.race                                  | M          |
+| [64](issues/64.md) | Generators and yield                                        | L          |
+| [65](issues/65.md) | Computed property names                                     | M          |
+
+### Performance & infrastructure
+
+| #                  | Feature                                                     | Complexity |
+| ------------------ | ----------------------------------------------------------- | ---------- |
+| [47](issues/47.md) | importedStringConstants support                              | M          |
+| [48](issues/48.md) | Cache string literals in locals                              | S          |
 | [31](issues/31.md) | Default number type to i32, promote to f64 only when needed | L          |
 | [33](issues/33.md) | Relocatable Wasm object file (.o) emission                  | L          |
 | [34](issues/34.md) | Multi-memory module linker with isolation validation        | L          |
-| [37](issues/37.md) | Getter/setter properties on user-defined classes            | M          |
-| [41](issues/41.md) | typeof as expression                                        | S          |
 | [46](issues/46.md) | Linear-memory compilation backend                           | L          |
 
 ## Complexity legend
@@ -36,7 +71,7 @@
 | [12](issues/done/12.md) | VS Code-like IDE layout for playground   | —                            |
 | [13](issues/done/13.md) | Template literals (substitutions)        | —                            |
 | [14](issues/done/14.md) | String methods                           | —                            |
-| [15](issues/done/15.md) | Ternary / conditional expressiongene     | —                            |
+| [15](issues/done/15.md) | Ternary / conditional expression         | —                            |
 | [16](issues/done/16.md) | Optional chaining and nullish coalescing | —                            |
 | [17](issues/done/17.md) | Destructuring                            | —                            |
 | [18](issues/done/18.md) | Spread and rest operators                | 13 in spread-rest.test.ts    |
@@ -53,12 +88,13 @@
 | [29](issues/done/29.md) | Investigate failing tests                | fixed 2 in import-resolver   |
 | [30](issues/done/30.md) | Async/await and Promises                 | 8 in async-await.test.ts     |
 | [32](issues/32.md)      | Capacity-based arrays with `array.copy`  | 4 in array-capacity.test.ts  |
-| [43](issues/43.md)      | void expression                          | 3 in void-expr.test.ts       |
-| [45](issues/45.md)      | Error reporting with source locations    | 7 in error-reporting.test.ts |
-| [42](issues/42.md)      | Comma operator                           | 5 in comma-operator.test.ts  |
 | [35](issues/35.md)      | Class inheritance with extends and super | 7 in inheritance.test.ts     |
-| [38](issues/38.md)      | Implement `instanceof` operator          | 4 in instanceof.test.ts      |
-| [44](issues/44.md)      | Source map generation                    | 18 in sourcemap.test.ts      |
 | [36](issues/36.md)      | Static class members                     | 8 in static-members.test.ts  |
+| [37](issues/37.md)      | Getter/setter properties                 | 6 in getters-setters.test.ts |
+| [38](issues/38.md)      | Implement `instanceof` operator          | 4 in instanceof.test.ts      |
 | [39](issues/39.md)      | Labeled break and continue               | 7 in labeled-loops.test.ts   |
 | [40](issues/40.md)      | String enums                             | 5 in string-enums.test.ts    |
+| [42](issues/42.md)      | Comma operator                           | 5 in comma-operator.test.ts  |
+| [43](issues/43.md)      | void expression                          | 3 in void-expr.test.ts       |
+| [44](issues/44.md)      | Source map generation                    | 18 in sourcemap.test.ts      |
+| [45](issues/45.md)      | Error reporting with source locations    | 7 in error-reporting.test.ts |
