@@ -15,6 +15,8 @@ export interface ClassLayout {
   totalSize: number;
   /** Map from field name to its memory offset and wasm type */
   fields: Map<string, { offset: number; type: "i32" | "f64" }>;
+  /** Map from field name to TS collection kind (for nested property access) */
+  fieldCollectionKinds: Map<string, "Array" | "Uint8Array" | "Map" | "Set">;
   /** Map from method name to its wasm function name */
   methods: Map<string, string>;
   /** Map from getter property name to its wasm function name */
@@ -48,6 +50,7 @@ export function computeClassLayout(
     name,
     totalSize: offset,
     fields,
+    fieldCollectionKinds: new Map(),
     methods: new Map(),
     getters: new Map(),
     ctorFuncName: `${name}_ctor`,
