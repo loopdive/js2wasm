@@ -198,6 +198,11 @@ function compileVariableStatement(
 
     const name = decl.name.text;
 
+    // Class expression: const C = class { ... } — skip, already handled as class declaration
+    if (decl.initializer && ts.isClassExpression(decl.initializer)) {
+      continue;
+    }
+
     // For arrow/function expression initializers, compile the expression first
     // to get the actual closure struct ref type (resolveWasmType returns externref
     // for function types, but closures need ref $struct)
