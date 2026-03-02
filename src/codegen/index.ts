@@ -732,6 +732,7 @@ function collectStringLiterals(
   sourceFile: ts.SourceFile,
 ): void {
   const literals = new Set<string>();
+  let hasTypeofExpr = false;
 
   function visit(node: ts.Node) {
     if (ts.isStringLiteral(node)) {
@@ -747,6 +748,10 @@ function collectStringLiterals(
         if (span.literal.text) literals.add(span.literal.text);
       }
     }
+    // typeof expressions need type-name string constants
+    if (ts.isTypeOfExpression(node)) {
+      hasTypeofExpr = true;
+    }
     ts.forEachChild(node, visit);
   }
 
@@ -754,6 +759,13 @@ function collectStringLiterals(
   for (const stmt of sourceFile.statements) {
     if (ts.isFunctionDeclaration(stmt) && stmt.body) {
       visit(stmt.body);
+    }
+  }
+
+  // typeof expressions may need type-name constants not present in source
+  if (hasTypeofExpr) {
+    for (const s of ["number", "string", "boolean", "object", "undefined", "function"]) {
+      literals.add(s);
     }
   }
 
@@ -1027,6 +1039,17 @@ export function addUnionImports(ctx: CodegenContext): void {
   addImport(ctx, "env", "__box_boolean", {
     kind: "func",
     typeIdx: boxBoolType,
+  });
+
+  // __typeof: (externref) → externref (returns type string)
+  const typeofStrType = addFuncType(
+    ctx,
+    [{ kind: "externref" }],
+    [{ kind: "externref" }],
+  );
+  addImport(ctx, "env", "__typeof", {
+    kind: "func",
+    typeIdx: typeofStrType,
   });
 }
 
