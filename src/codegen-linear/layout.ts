@@ -17,6 +17,8 @@ export interface ClassLayout {
   fields: Map<string, { offset: number; type: "i32" | "f64" }>;
   /** Map from method name to its wasm function name */
   methods: Map<string, string>;
+  /** Map from getter property name to its wasm function name */
+  getters: Map<string, string>;
   /** Wasm function name for the constructor */
   ctorFuncName: string;
 }
@@ -47,6 +49,7 @@ export function computeClassLayout(
     totalSize: offset,
     fields,
     methods: new Map(),
+    getters: new Map(),
     ctorFuncName: `${name}_ctor`,
   };
 }

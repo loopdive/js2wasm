@@ -89,6 +89,13 @@ export function generateLinearModule(ast: TypedAST): WasmModule {
         layout.methods.set(methodName, wasmMethodName);
         allFuncEntries.push({ kind: "method", node: member, name: wasmMethodName, className });
       }
+      // Getter accessors
+      if (ts.isGetAccessorDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
+        const getterName = member.name.text;
+        const wasmGetterName = `${className}_get_${getterName}`;
+        layout.getters.set(getterName, wasmGetterName);
+        allFuncEntries.push({ kind: "method", node: member, name: wasmGetterName, className });
+      }
     }
   }
 
@@ -253,6 +260,9 @@ function compileStatement(
           compileExpression(ctx, fctx, decl.initializer);
           fctx.body.push({ op: "local.set", index: localIdx });
         }
+      } else if (ts.isArrayBindingPattern(decl.name) && decl.initializer) {
+        // Array destructuring: const [a, b, c] = arr
+        compileArrayDestructuring(ctx, fctx, decl.name, decl.initializer);
       }
     }
   } else if (ts.isIfStatement(stmt)) {
@@ -382,9 +392,357 @@ function compileStatement(
         },
       ],
     });
+  } else if (ts.isForOfStatement(stmt)) {
+    // for (const x of arr) { ... }
+    compileForOfStatement(ctx, fctx, stmt);
+  } else if (ts.isDoStatement(stmt)) {
+    // do { ... } while (cond)
+    compileDoWhileStatement(ctx, fctx, stmt);
+  } else if (ts.isSwitchStatement(stmt)) {
+    // switch (expr) { case ...: ... }
+    compileSwitchStatement(ctx, fctx, stmt);
   } else if (ts.isExpressionStatement(stmt)) {
     compileExpression(ctx, fctx, stmt.expression);
     fctx.body.push({ op: "drop" });
+  }
+}
+
+// ── ForOfStatement ─────────────────────────────────────────────────────
+
+function compileForOfStatement(
+  ctx: LinearContext,
+  fctx: LinearFuncContext,
+  stmt: ts.ForOfStatement,
+): void {
+  // Compile the iterable expression (the array)
+  compileExpression(ctx, fctx, stmt.expression);
+  const arrLocal = addLocal(fctx, `__forof_arr_${fctx.locals.length}`, { kind: "i32" });
+  fctx.body.push({ op: "local.set", index: arrLocal });
+
+  // Create index counter
+  const idxLocal = addLocal(fctx, `__forof_idx_${fctx.locals.length}`, { kind: "i32" });
+  fctx.body.push({ op: "i32.const", value: 0 });
+  fctx.body.push({ op: "local.set", index: idxLocal });
+
+  // Get length
+  const lenLocal = addLocal(fctx, `__forof_len_${fctx.locals.length}`, { kind: "i32" });
+  const arrLenIdx = ctx.funcMap.get("__arr_len")!;
+  fctx.body.push({ op: "local.get", index: arrLocal });
+  fctx.body.push({ op: "call", funcIdx: arrLenIdx });
+  fctx.body.push({ op: "local.set", index: lenLocal });
+
+  // Determine collection kind for the iterable
+  const iterKind = getExprCollectionKind(ctx, fctx, stmt.expression);
+
+  // Determine the loop variable name(s)
+  const initDecl = stmt.initializer;
+  let loopVarName: string | null = null;
+  let destructuredNames: string[] | null = null;
+
+  if (ts.isVariableDeclarationList(initDecl)) {
+    const decl = initDecl.declarations[0];
+    if (ts.isIdentifier(decl.name)) {
+      loopVarName = decl.name.text;
+    } else if (ts.isArrayBindingPattern(decl.name)) {
+      // Destructuring: for (const [k, v] of map)
+      destructuredNames = [];
+      for (const el of decl.name.elements) {
+        if (ts.isBindingElement(el) && ts.isIdentifier(el.name)) {
+          destructuredNames.push(el.name.text);
+        }
+      }
+    }
+  }
+
+  // If it's a Map iteration with destructuring, delegate to compileForOfMap
+  if (destructuredNames && iterKind === "Map") {
+    compileForOfMap(ctx, fctx, stmt, arrLocal, destructuredNames);
+    return;
+  }
+
+  // Create loop variable (for simple for-of)
+  let loopVarIdx: number | undefined;
+  if (loopVarName) {
+    loopVarIdx = addLocal(fctx, loopVarName, { kind: "f64" });
+  }
+
+  // Build loop body
+  const loopBody: Instr[] = [];
+  const savedBody = fctx.body;
+  fctx.body = loopBody;
+
+  // Break condition: idx >= len
+  fctx.body.push({ op: "local.get", index: idxLocal });
+  fctx.body.push({ op: "local.get", index: lenLocal });
+  fctx.body.push({ op: "i32.ge_s" });
+  fctx.body.push({ op: "br_if", depth: 1 }); // break to outer block
+
+  // Load element: x = __arr_get(arr, idx)
+  if (loopVarIdx !== undefined) {
+    const arrGetIdx = ctx.funcMap.get("__arr_get")!;
+    fctx.body.push({ op: "local.get", index: arrLocal });
+    fctx.body.push({ op: "local.get", index: idxLocal });
+    fctx.body.push({ op: "call", funcIdx: arrGetIdx });
+    fctx.body.push({ op: "f64.convert_i32_s" });
+    fctx.body.push({ op: "local.set", index: loopVarIdx });
+  }
+
+  // Push break/continue stack
+  fctx.breakStack.push(fctx.blockDepth);
+  fctx.continueStack.push(fctx.blockDepth + 1);
+  fctx.blockDepth += 2;
+
+  // Compile body
+  compileStatement(ctx, fctx, stmt.statement);
+
+  fctx.blockDepth -= 2;
+  fctx.breakStack.pop();
+  fctx.continueStack.pop();
+
+  // Increment index
+  fctx.body.push({ op: "local.get", index: idxLocal });
+  fctx.body.push({ op: "i32.const", value: 1 });
+  fctx.body.push({ op: "i32.add" });
+  fctx.body.push({ op: "local.set", index: idxLocal });
+
+  // Continue loop
+  fctx.body.push({ op: "br", depth: 0 });
+
+  fctx.body = savedBody;
+  fctx.body.push({
+    op: "block",
+    blockType: { kind: "empty" },
+    body: [
+      {
+        op: "loop",
+        blockType: { kind: "empty" },
+        body: loopBody,
+      },
+    ],
+  });
+}
+
+// ── ForOfMap (for-of over Map entries with destructuring) ──────────────
+
+function compileForOfMap(
+  ctx: LinearContext,
+  fctx: LinearFuncContext,
+  stmt: ts.ForOfStatement,
+  mapLocal: number,
+  destructuredNames: string[],
+): void {
+  // Layout: [header 8B][count:u32 at +8][cap:u32 at +12][entries at +16...]
+  // Entry: [hash:u32][key:i32][val:i32] = 12 bytes each
+
+  const idxLocal = addLocal(fctx, `__forof_map_idx_${fctx.locals.length}`, { kind: "i32" });
+  fctx.body.push({ op: "i32.const", value: 0 });
+  fctx.body.push({ op: "local.set", index: idxLocal });
+
+  const capLocal = addLocal(fctx, `__forof_map_cap_${fctx.locals.length}`, { kind: "i32" });
+  fctx.body.push({ op: "local.get", index: mapLocal });
+  fctx.body.push({ op: "i32.load", align: 2, offset: 12 });
+  fctx.body.push({ op: "local.set", index: capLocal });
+
+  // Create locals for destructured variables
+  const keyVarIdx = destructuredNames.length > 0
+    ? addLocal(fctx, destructuredNames[0], { kind: "f64" })
+    : undefined;
+  const valVarIdx = destructuredNames.length > 1
+    ? addLocal(fctx, destructuredNames[1], { kind: "f64" })
+    : undefined;
+
+  const loopBody: Instr[] = [];
+  const savedBody = fctx.body;
+  fctx.body = loopBody;
+
+  // Break condition: idx >= cap
+  fctx.body.push({ op: "local.get", index: idxLocal });
+  fctx.body.push({ op: "local.get", index: capLocal });
+  fctx.body.push({ op: "i32.ge_s" });
+  fctx.body.push({ op: "br_if", depth: 1 });
+
+  // Compute entry address: map + 16 + idx * 12
+  // Read hash at entry address
+  const entryAddrLocal = addLocal(fctx, `__forof_entry_${fctx.locals.length}`, { kind: "i32" });
+  fctx.body.push({ op: "local.get", index: mapLocal });
+  fctx.body.push({ op: "i32.const", value: 16 });
+  fctx.body.push({ op: "i32.add" });
+  fctx.body.push({ op: "local.get", index: idxLocal });
+  fctx.body.push({ op: "i32.const", value: 12 });
+  fctx.body.push({ op: "i32.mul" });
+  fctx.body.push({ op: "i32.add" });
+  fctx.body.push({ op: "local.set", index: entryAddrLocal });
+
+  // Check hash != 0 (non-empty entry)
+  fctx.body.push({ op: "local.get", index: entryAddrLocal });
+  fctx.body.push({ op: "i32.load", align: 2, offset: 0 });
+  fctx.body.push({ op: "i32.const", value: 0 });
+  fctx.body.push({ op: "i32.ne" });
+
+  // If hash != 0, process this entry
+  const thenBody: Instr[] = [];
+  const savedBody2 = fctx.body;
+  fctx.body = thenBody;
+
+  // Load key: i32.load at entry + 4
+  if (keyVarIdx !== undefined) {
+    fctx.body.push({ op: "local.get", index: entryAddrLocal });
+    fctx.body.push({ op: "i32.load", align: 2, offset: 4 });
+    fctx.body.push({ op: "f64.convert_i32_s" });
+    fctx.body.push({ op: "local.set", index: keyVarIdx });
+  }
+
+  // Load val: i32.load at entry + 8
+  if (valVarIdx !== undefined) {
+    fctx.body.push({ op: "local.get", index: entryAddrLocal });
+    fctx.body.push({ op: "i32.load", align: 2, offset: 8 });
+    fctx.body.push({ op: "f64.convert_i32_s" });
+    fctx.body.push({ op: "local.set", index: valVarIdx });
+  }
+
+  // Push break/continue stack
+  // Note: We're inside the if block, so block depth is higher
+  fctx.breakStack.push(fctx.blockDepth);
+  fctx.continueStack.push(fctx.blockDepth + 1);
+  fctx.blockDepth += 2; // +2 for block/loop that wraps us
+
+  // Compile body
+  compileStatement(ctx, fctx, stmt.statement);
+
+  fctx.blockDepth -= 2;
+  fctx.breakStack.pop();
+  fctx.continueStack.pop();
+
+  fctx.body = savedBody2;
+
+  fctx.body.push({
+    op: "if",
+    blockType: { kind: "empty" },
+    then: thenBody,
+  });
+
+  // Increment index
+  fctx.body.push({ op: "local.get", index: idxLocal });
+  fctx.body.push({ op: "i32.const", value: 1 });
+  fctx.body.push({ op: "i32.add" });
+  fctx.body.push({ op: "local.set", index: idxLocal });
+
+  // Continue loop
+  fctx.body.push({ op: "br", depth: 0 });
+
+  fctx.body = savedBody;
+  fctx.body.push({
+    op: "block",
+    blockType: { kind: "empty" },
+    body: [
+      {
+        op: "loop",
+        blockType: { kind: "empty" },
+        body: loopBody,
+      },
+    ],
+  });
+}
+
+// ── DoWhileStatement ──────────────────────────────────────────────────
+
+function compileDoWhileStatement(
+  ctx: LinearContext,
+  fctx: LinearFuncContext,
+  stmt: ts.DoStatement,
+): void {
+  const loopBody: Instr[] = [];
+  const savedBody = fctx.body;
+  fctx.body = loopBody;
+
+  // Push break/continue stack
+  fctx.breakStack.push(fctx.blockDepth);
+  fctx.continueStack.push(fctx.blockDepth + 1);
+  fctx.blockDepth += 2;
+
+  // Compile body first (do-while executes body before checking condition)
+  compileStatement(ctx, fctx, stmt.statement);
+
+  fctx.blockDepth -= 2;
+  fctx.breakStack.pop();
+  fctx.continueStack.pop();
+
+  // Compile condition
+  compileExpression(ctx, fctx, stmt.expression);
+  emitTruthyCoercion(fctx, inferExprType(ctx, fctx, stmt.expression));
+  // If condition is true, continue looping (br to loop)
+  fctx.body.push({ op: "br_if", depth: 0 });
+
+  fctx.body = savedBody;
+  fctx.body.push({
+    op: "block",
+    blockType: { kind: "empty" },
+    body: [
+      {
+        op: "loop",
+        blockType: { kind: "empty" },
+        body: loopBody,
+      },
+    ],
+  });
+}
+
+// ── SwitchStatement ────────────────────────────────────────────────────
+
+function compileSwitchStatement(
+  ctx: LinearContext,
+  fctx: LinearFuncContext,
+  stmt: ts.SwitchStatement,
+): void {
+  // Compile as cascading if/else
+  // Evaluate switch expression once, store in temp local
+  compileExpression(ctx, fctx, stmt.expression);
+  const switchExprType = inferExprType(ctx, fctx, stmt.expression);
+  const switchLocal = addLocal(fctx, `__switch_${fctx.locals.length}`, switchExprType);
+  fctx.body.push({ op: "local.set", index: switchLocal });
+
+  let defaultClause: ts.CaseOrDefaultClause | null = null;
+
+  for (const clause of stmt.caseBlock.clauses) {
+    if (ts.isDefaultClause(clause)) {
+      defaultClause = clause;
+      continue;
+    }
+
+    // case value: compare switch expression to case value
+    fctx.body.push({ op: "local.get", index: switchLocal });
+    compileExpression(ctx, fctx, clause.expression!);
+
+    // Compare
+    if (switchExprType.kind === "f64") {
+      fctx.body.push({ op: "f64.eq" });
+    } else {
+      fctx.body.push({ op: "i32.eq" });
+    }
+
+    // Then body
+    const thenBody: Instr[] = [];
+    const savedBody = fctx.body;
+    fctx.body = thenBody;
+
+    for (const s of clause.statements) {
+      compileStatement(ctx, fctx, s);
+    }
+
+    fctx.body = savedBody;
+
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: thenBody,
+    });
+  }
+
+  // Default clause
+  if (defaultClause) {
+    for (const s of defaultClause.statements) {
+      compileStatement(ctx, fctx, s);
+    }
   }
 }
 
@@ -512,6 +870,8 @@ export function compileExpression(
   } else if (ts.isNonNullExpression(expr)) {
     // Handle `expr!` (non-null assertion) - just compile the inner expression
     compileExpression(ctx, fctx, expr.expression);
+  } else if (ts.isTemplateExpression(expr)) {
+    compileTemplateExpression(ctx, fctx, expr);
   } else if (ts.isConditionalExpression(expr)) {
     // ternary: cond ? then : else
     compileExpression(ctx, fctx, expr.condition);
@@ -842,6 +1202,41 @@ function compileArrayLiteral(
   // If empty array, __arr_new already left ptr on stack
 }
 
+// ── Array destructuring ──────────────────────────────────────────────
+
+function compileArrayDestructuring(
+  ctx: LinearContext,
+  fctx: LinearFuncContext,
+  pattern: ts.ArrayBindingPattern,
+  initializer: ts.Expression,
+): void {
+  // Compile the initializer (the array expression)
+  compileExpression(ctx, fctx, initializer);
+  const arrLocal = addLocal(fctx, `__destr_arr_${fctx.locals.length}`, { kind: "i32" });
+  fctx.body.push({ op: "local.set", index: arrLocal });
+
+  const arrGetIdx = ctx.funcMap.get("__arr_get")!;
+
+  for (let i = 0; i < pattern.elements.length; i++) {
+    const element = pattern.elements[i];
+    if (ts.isOmittedExpression(element)) {
+      // Skip omitted elements (e.g., const [, b] = arr)
+      continue;
+    }
+    if (ts.isBindingElement(element) && ts.isIdentifier(element.name)) {
+      const varName = element.name.text;
+      const localIdx = addLocal(fctx, varName, { kind: "f64" });
+
+      // x = __arr_get(arr, i) — result is i32, convert to f64
+      fctx.body.push({ op: "local.get", index: arrLocal });
+      fctx.body.push({ op: "i32.const", value: i });
+      fctx.body.push({ op: "call", funcIdx: arrGetIdx });
+      fctx.body.push({ op: "f64.convert_i32_s" });
+      fctx.body.push({ op: "local.set", index: localIdx });
+    }
+  }
+}
+
 // ── NewExpression ────────────────────────────────────────────────────
 
 function compileNewExpression(
@@ -908,6 +1303,15 @@ function compilePropertyAccess(
     return;
   }
 
+  // string.length → call __str_len(str) → i32, convert to f64
+  if (propName === "length" && isStringExpr(ctx, fctx, expr.expression)) {
+    compileExpression(ctx, fctx, expr.expression);
+    const strLenIdx = ctx.funcMap.get("__str_len")!;
+    fctx.body.push({ op: "call", funcIdx: strLenIdx });
+    fctx.body.push({ op: "f64.convert_i32_s" });
+    return;
+  }
+
   if (propName === "size" && (objKind === "Map" || objKind === "Set")) {
     // map.size or set.size → call __nmap_size / __nset_size
     compileExpression(ctx, fctx, expr.expression);
@@ -919,7 +1323,7 @@ function compilePropertyAccess(
     return;
   }
 
-  // Check if it's a class field access
+  // Check if it's a class field access or getter
   const className = inferClassName(ctx, fctx, expr.expression);
   if (className) {
     const layout = ctx.classLayouts.get(className);
@@ -933,6 +1337,17 @@ function compilePropertyAccess(
           fctx.body.push({ op: "i32.load", align: 2, offset: field.offset });
         }
         return;
+      }
+
+      // Check for getter
+      const getterFuncName = layout.getters.get(propName);
+      if (getterFuncName) {
+        const funcIdx = ctx.funcMap.get(getterFuncName);
+        if (funcIdx !== undefined) {
+          compileExpression(ctx, fctx, expr.expression);
+          fctx.body.push({ op: "call", funcIdx });
+          return;
+        }
       }
     }
   }
@@ -1210,8 +1625,8 @@ function inferExprType(
   fctx: LinearFuncContext,
   expr: ts.Expression,
 ): ValType {
-  // String literals are i32 (pointers)
-  if (ts.isStringLiteral(expr) || ts.isNoSubstitutionTemplateLiteral(expr)) {
+  // String literals and template expressions are i32 (pointers)
+  if (ts.isStringLiteral(expr) || ts.isNoSubstitutionTemplateLiteral(expr) || ts.isTemplateExpression(expr)) {
     return { kind: "i32" };
   }
 
@@ -1374,6 +1789,9 @@ function compileClassDeclaration(ctx: LinearContext, classDecl: ts.ClassDeclarat
     if (ts.isMethodDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
       compileClassMethod(ctx, className, layout, member);
     }
+    if (ts.isGetAccessorDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
+      compileClassGetter(ctx, className, layout, member);
+    }
   }
 }
 
@@ -1507,6 +1925,73 @@ function compileClassMethod(
 
   ctx.mod.functions.push({
     name: wasmMethodName,
+    typeIdx,
+    locals: fctx.locals,
+    body: fctx.body,
+    exported: false,
+  });
+
+  ctx.currentFunc = null;
+}
+
+/** Compile a class getter. Receives `this` as first parameter. */
+function compileClassGetter(
+  ctx: LinearContext,
+  _className: string,
+  layout: ClassLayout,
+  getterDecl: ts.GetAccessorDeclaration,
+): void {
+  const getterName = (getterDecl.name as ts.Identifier).text;
+  const wasmGetterName = layout.getters.get(getterName)!;
+
+  const params: { name: string; type: ValType }[] = [
+    { name: "this", type: { kind: "i32" } },
+  ];
+
+  const returnType = resolveType(ctx, getterDecl.type);
+  const isVoid = returnType === null;
+
+  const paramTypes = params.map((p) => p.type);
+  const resultTypes: ValType[] = isVoid ? [] : [returnType];
+  const typeIdx = ctx.mod.types.length;
+  ctx.mod.types.push({
+    kind: "func",
+    name: `$type_${wasmGetterName}`,
+    params: paramTypes,
+    results: resultTypes,
+  });
+
+  const fctx: LinearFuncContext = {
+    name: wasmGetterName,
+    params,
+    locals: [],
+    localMap: new Map(),
+    returnType: isVoid ? null : returnType,
+    body: [],
+    blockDepth: 0,
+    breakStack: [],
+    continueStack: [],
+    collectionTypes: new Map(),
+  };
+
+  for (let i = 0; i < params.length; i++) {
+    fctx.localMap.set(params[i].name, i);
+  }
+
+  ctx.currentFunc = fctx;
+
+  if (getterDecl.body) {
+    for (const stmt of getterDecl.body.statements) {
+      compileStatement(ctx, fctx, stmt);
+    }
+  }
+
+  if (!isVoid) {
+    fctx.body.push({ op: "unreachable" });
+  }
+
+  ctx.mod.functions.push({
+    name: wasmGetterName,
     typeIdx,
     locals: fctx.locals,
     body: fctx.body,
@@ -1689,9 +2174,49 @@ function findMethodResultType(ctx: LinearContext, wasmFuncName: string): ValType
   return [];
 }
 
+/** Compile a template expression: `hello ${name}` → __str_concat chain */
+function compileTemplateExpression(
+  ctx: LinearContext,
+  fctx: LinearFuncContext,
+  expr: ts.TemplateExpression,
+): void {
+  const strConcatIdx = ctx.funcMap.get("__str_concat")!;
+
+  // Start with the head text
+  compileStringLiteral(ctx, fctx, expr.head.text);
+
+  for (const span of expr.templateSpans) {
+    // Compile the expression in this span
+    const spanExprType = inferExprType(ctx, fctx, span.expression);
+    if (spanExprType.kind === "i32") {
+      // Already a string pointer (i32), just compile
+      compileExpression(ctx, fctx, span.expression);
+    } else {
+      // It's an f64 number — need to convert to string
+      // For now, use __str_from_i32 if available, otherwise just truncate and convert
+      const strFromI32Idx = ctx.funcMap.get("__str_from_i32");
+      if (strFromI32Idx !== undefined) {
+        compileExpression(ctx, fctx, span.expression);
+        fctx.body.push({ op: "i32.trunc_f64_s" });
+        fctx.body.push({ op: "call", funcIdx: strFromI32Idx });
+      } else {
+        // Fallback: compile as empty string (shouldn't normally happen)
+        compileStringLiteral(ctx, fctx, "");
+      }
+    }
+    fctx.body.push({ op: "call", funcIdx: strConcatIdx });
+
+    // If this span has trailing text, concat it too
+    if (span.literal.text.length > 0) {
+      compileStringLiteral(ctx, fctx, span.literal.text);
+      fctx.body.push({ op: "call", funcIdx: strConcatIdx });
+    }
+  }
+}
+
 /** Check if an expression is a string type */
 function isStringExpr(ctx: LinearContext, fctx: LinearFuncContext, expr: ts.Expression): boolean {
-  if (ts.isStringLiteral(expr) || ts.isNoSubstitutionTemplateLiteral(expr)) {
+  if (ts.isStringLiteral(expr) || ts.isNoSubstitutionTemplateLiteral(expr) || ts.isTemplateExpression(expr)) {
     return true;
   }
   if (ts.isIdentifier(expr)) {
