@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { isVoidType } from "../checker/type-mapper.js";
+import { isStringType, isVoidType } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";
 import {
   collectReferencedIdentifiers,
@@ -171,6 +171,21 @@ export function compileStatement(
   });
 }
 
+/** String methods that return a host array (externref) rather than a wasm GC array.
+ *  Variables initialized from these calls use externref instead of the GC vec struct
+ *  that resolveWasmType would produce for the TS return type (e.g. string[]). */
+const HOST_ARRAY_STRING_METHODS = new Set(["split"]);
+
+/** Check if an expression is a string method call that returns a host array (externref). */
+function isStringMethodReturningHostArray(ctx: CodegenContext, expr: ts.Expression): boolean {
+  if (!ts.isCallExpression(expr)) return false;
+  if (!ts.isPropertyAccessExpression(expr.expression)) return false;
+  const method = expr.expression.name.text;
+  if (!HOST_ARRAY_STRING_METHODS.has(method)) return false;
+  const receiverType = ctx.checker.getTypeAtLocation(expr.expression.expression);
+  return isStringType(receiverType);
+}
+
 function compileVariableStatement(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -229,7 +244,11 @@ function compileVariableStatement(
     }
 
     const varType = ctx.checker.getTypeAtLocation(decl);
-    const wasmType = resolveWasmType(ctx, varType);
+    // Override type for string methods returning host arrays (e.g. split() returns
+    // externref but TS types as string[] which resolveWasmType maps to GC vec struct)
+    const wasmType = (decl.initializer && isStringMethodReturningHostArray(ctx, decl.initializer))
+      ? { kind: "externref" as const }
+      : resolveWasmType(ctx, varType);
 
     const localIdx = allocLocal(fctx, name, wasmType);
 
