@@ -1157,12 +1157,34 @@ function detectCollectionKind(
 
 /** Get the collection kind for an expression (typically an identifier) */
 function getExprCollectionKind(
-  _ctx: LinearContext,
+  ctx: LinearContext,
   fctx: LinearFuncContext,
   expr: ts.Expression,
 ): CollectionKind | null {
   if (ts.isIdentifier(expr)) {
     return fctx.collectionTypes.get(expr.text) ?? null;
+  }
+  // Handle property access on class instances: this.data or obj.items
+  if (ts.isPropertyAccessExpression(expr)) {
+    const className = inferClassName(ctx, fctx, expr.expression);
+    if (className) {
+      const layout = ctx.classLayouts.get(className);
+      if (layout) {
+        const kind = layout.fieldCollectionKinds.get(expr.name.text);
+        if (kind) return kind;
+      }
+    }
+  }
+  // Array literal expressions are always arrays
+  if (ts.isArrayLiteralExpression(expr)) {
+    return "Array";
+  }
+  // new Map() / new Set() / new Uint8Array()
+  if (ts.isNewExpression(expr) && ts.isIdentifier(expr.expression)) {
+    const name = expr.expression.text;
+    if (name === "Map") return "Map";
+    if (name === "Set") return "Set";
+    if (name === "Uint8Array") return "Uint8Array";
   }
   return null;
 }
@@ -1710,6 +1732,9 @@ function scanClassDeclaration(ctx: LinearContext, classDecl: ts.ClassDeclaration
   const fieldDefs: { name: string; type: "i32" | "f64" }[] = [];
   const seenFields = new Set<string>();
 
+  // Track collection kinds for fields
+  const fieldCollectionKinds = new Map<string, "Array" | "Uint8Array" | "Map" | "Set">();
+
   // First: explicit property declarations
   for (const member of classDecl.members) {
     if (ts.isPropertyDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
@@ -1717,6 +1742,19 @@ function scanClassDeclaration(ctx: LinearContext, classDecl: ts.ClassDeclaration
       const fieldType = resolveFieldType(member.type);
       fieldDefs.push({ name: fieldName, type: fieldType });
       seenFields.add(fieldName);
+      // Detect collection kind from type annotation
+      if (member.type) {
+        const typeText = member.type.getText();
+        if (typeText.endsWith("[]") || typeText.startsWith("Array<")) {
+          fieldCollectionKinds.set(fieldName, "Array");
+        } else if (typeText === "Uint8Array") {
+          fieldCollectionKinds.set(fieldName, "Uint8Array");
+        } else if (typeText.startsWith("Map<") || typeText === "Map") {
+          fieldCollectionKinds.set(fieldName, "Map");
+        } else if (typeText.startsWith("Set<") || typeText === "Set") {
+          fieldCollectionKinds.set(fieldName, "Set");
+        }
+      }
     }
   }
 
@@ -1753,6 +1791,10 @@ function scanClassDeclaration(ctx: LinearContext, classDecl: ts.ClassDeclaration
   }
 
   const layout = computeClassLayout(className, fieldDefs);
+  // Store collection kinds for fields
+  for (const [fieldName, kind] of fieldCollectionKinds) {
+    layout.fieldCollectionKinds.set(fieldName, kind);
+  }
   ctx.classLayouts.set(className, layout);
 }
 
