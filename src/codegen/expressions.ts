@@ -1894,6 +1894,32 @@ function compileCallExpression(
       return compileMathCall(ctx, fctx, propAccess.name.text, expr);
     }
 
+    // Handle JSON.stringify / JSON.parse as host import calls
+    if (
+      ts.isIdentifier(propAccess.expression) &&
+      propAccess.expression.text === "JSON"
+    ) {
+      const method = propAccess.name.text;
+      if ((method === "stringify" || method === "parse") && expr.arguments.length >= 1) {
+        const importName = `JSON_${method}`;
+        const funcIdx = ctx.funcMap.get(importName);
+        if (funcIdx !== undefined) {
+          // Compile argument and coerce to externref if needed
+          // (boxing imports registered early in collectJsonImports)
+          const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
+          if (argType && argType.kind === "f64") {
+            const boxIdx = ctx.funcMap.get("__box_number");
+            if (boxIdx !== undefined) fctx.body.push({ op: "call", funcIdx: boxIdx });
+          } else if (argType && argType.kind === "i32") {
+            const boxIdx = ctx.funcMap.get("__box_boolean");
+            if (boxIdx !== undefined) fctx.body.push({ op: "call", funcIdx: boxIdx });
+          }
+          fctx.body.push({ op: "call", funcIdx });
+          return { kind: "externref" };
+        }
+      }
+    }
+
     // Check if this is a static method call: ClassName.staticMethod(args)
     if (ts.isIdentifier(propAccess.expression) && ctx.classSet.has(propAccess.expression.text)) {
       const clsName = propAccess.expression.text;
