@@ -877,6 +877,15 @@ function compileBinaryExpression(
     return compileAssignment(ctx, fctx, expr);
   }
 
+  // Handle logical assignment operators (??=, ||=, &&=)
+  if (
+    op === ts.SyntaxKind.QuestionQuestionEqualsToken ||
+    op === ts.SyntaxKind.BarBarEqualsToken ||
+    op === ts.SyntaxKind.AmpersandAmpersandEqualsToken
+  ) {
+    return compileLogicalAssignment(ctx, fctx, expr, op);
+  }
+
   // Handle compound assignments
   if (isCompoundAssignment(op)) {
     return compileCompoundAssignment(ctx, fctx, expr, op);
@@ -1515,6 +1524,160 @@ function compileElementAssignment(
   compileExpression(ctx, fctx, value, typeDef.element);
   fctx.body.push({ op: "array.set", typeIdx });
   return VOID_RESULT;
+}
+
+/**
+ * Compile logical assignment operators: ??=, ||=, &&=
+ *
+ * Desugars to value-preserving semantics:
+ *   a ??= b  →  if (a is null) a = b; result = a
+ *   a ||= b  →  if (!a) a = b; result = a
+ *   a &&= b  →  if (a) a = b; result = a
+ */
+function compileLogicalAssignment(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.BinaryExpression,
+  op: ts.SyntaxKind,
+): ValType | null {
+  if (!ts.isIdentifier(expr.left)) {
+    ctx.errors.push({
+      message: "Logical assignment only supported for simple identifiers",
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+
+  const name = expr.left.text;
+
+  // Resolve the variable storage location
+  let storage: { kind: "local"; index: number; type: ValType } |
+               { kind: "captured"; index: number; type: ValType } |
+               { kind: "module"; index: number; type: ValType } | null = null;
+
+  const localIdx = fctx.localMap.get(name);
+  if (localIdx !== undefined) {
+    const localType = localIdx < fctx.params.length
+      ? fctx.params[localIdx]!.type
+      : fctx.locals[localIdx - fctx.params.length]?.type;
+    storage = { kind: "local", index: localIdx, type: localType ?? { kind: "f64" } };
+  }
+  if (!storage) {
+    const capturedIdx = ctx.capturedGlobals.get(name);
+    if (capturedIdx !== undefined) {
+      const globalDef = ctx.mod.globals[capturedIdx];
+      storage = { kind: "captured", index: capturedIdx, type: globalDef?.type ?? { kind: "f64" } };
+    }
+  }
+  if (!storage) {
+    const moduleIdx = ctx.moduleGlobals.get(name);
+    if (moduleIdx !== undefined) {
+      const globalDef = ctx.mod.globals[moduleIdx];
+      storage = { kind: "module", index: moduleIdx, type: globalDef?.type ?? { kind: "f64" } };
+    }
+  }
+
+  if (!storage) {
+    ctx.errors.push({
+      message: `Unknown variable: ${name}`,
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+
+  const varType = storage.type;
+
+  // Emit: read current value
+  const emitGet = () => {
+    if (storage!.kind === "local") fctx.body.push({ op: "local.get", index: storage!.index });
+    else fctx.body.push({ op: "global.get", index: storage!.index });
+  };
+  const emitSet = () => {
+    if (storage!.kind === "local") fctx.body.push({ op: "local.tee", index: storage!.index });
+    else {
+      fctx.body.push({ op: "global.set", index: storage!.index });
+      fctx.body.push({ op: "global.get", index: storage!.index });
+    }
+  };
+
+  if (op === ts.SyntaxKind.QuestionQuestionEqualsToken) {
+    // a ??= b  →  if (a is null) { a = b }; result = a
+    // This operates on externref (nullable) values
+    emitGet();
+    fctx.body.push({ op: "ref.is_null" });
+
+    // Compile the RHS in a separate body
+    const savedBody = fctx.body;
+    fctx.body = [];
+    compileExpression(ctx, fctx, expr.right, varType);
+    emitSet();
+    const thenInstrs = fctx.body;
+
+    // Else: just read the current value (it's not null)
+    fctx.body = [];
+    emitGet();
+    const elseInstrs = fctx.body;
+
+    fctx.body = savedBody;
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "val", type: varType },
+      then: thenInstrs,
+      else: elseInstrs,
+    });
+  } else if (op === ts.SyntaxKind.BarBarEqualsToken) {
+    // a ||= b  →  if (!a) { a = b }; result = a
+    emitGet();
+    ensureI32Condition(fctx, varType);
+
+    // Then (truthy): keep current value
+    const savedBody = fctx.body;
+    fctx.body = [];
+    emitGet();
+    const thenInstrs = fctx.body;
+
+    // Else (falsy): assign RHS
+    fctx.body = [];
+    compileExpression(ctx, fctx, expr.right, varType);
+    emitSet();
+    const elseInstrs = fctx.body;
+
+    fctx.body = savedBody;
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "val", type: varType },
+      then: thenInstrs,
+      else: elseInstrs,
+    });
+  } else {
+    // a &&= b  →  if (a) { a = b }; result = a
+    emitGet();
+    ensureI32Condition(fctx, varType);
+
+    // Then (truthy): assign RHS
+    const savedBody = fctx.body;
+    fctx.body = [];
+    compileExpression(ctx, fctx, expr.right, varType);
+    emitSet();
+    const thenInstrs = fctx.body;
+
+    // Else (falsy): keep current value
+    fctx.body = [];
+    emitGet();
+    const elseInstrs = fctx.body;
+
+    fctx.body = savedBody;
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "val", type: varType },
+      then: thenInstrs,
+      else: elseInstrs,
+    });
+  }
+
+  return varType;
 }
 
 function isCompoundAssignment(op: ts.SyntaxKind): boolean {
