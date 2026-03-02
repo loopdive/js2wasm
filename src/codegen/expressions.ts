@@ -111,7 +111,7 @@ function compileExpressionInner(
   expr: ts.Expression,
 ): ValType | null {
   if (ts.isNumericLiteral(expr)) {
-    const value = Number(expr.text);
+    const value = Number(expr.text.replace(/_/g, ""));
     fctx.body.push({ op: "f64.const", value });
     return { kind: "f64" };
   }
