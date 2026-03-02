@@ -171,6 +171,24 @@ export function emitBinaryWithSourceMap(mod: WasmModule): EmitResult {
     }
   }
 
+  // Data section (active data segments for linear memory)
+  if (mod.dataSegments && mod.dataSegments.length > 0) {
+    enc.section(SECTION.data, (s) => {
+      s.u32(mod.dataSegments.length);
+      for (const seg of mod.dataSegments) {
+        // Active data segment for memory 0
+        s.byte(0x00); // active, memory index 0
+        // Offset expression: i32.const <offset>; end
+        s.byte(OP.i32_const);
+        s.i32(seg.offset);
+        s.byte(OP.end);
+        // Data bytes
+        s.u32(seg.bytes.length);
+        s.bytes(seg.bytes);
+      }
+    });
+  }
+
   // Custom "name" section — function names for debugging/treemap
   {
     const nameEntries: { index: number; name: string }[] = [];
@@ -910,6 +928,17 @@ export function encodeInstr(instr: Instr, enc: WasmEncoder): void {
       break;
     case "i32.gt_u":
       enc.byte(OP.i32_gt_u);
+      break;
+    // f64 memory load/store
+    case "f64.load":
+      enc.byte(OP.f64_load);
+      enc.u32(instr.align);
+      enc.u32(instr.offset);
+      break;
+    case "f64.store":
+      enc.byte(OP.f64_store);
+      enc.u32(instr.align);
+      enc.u32(instr.offset);
       break;
   }
 }

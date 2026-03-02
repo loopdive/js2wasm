@@ -5,6 +5,7 @@ import {
   type TypedAST,
 } from "./checker/index.js";
 import { generateModule, generateMultiModule } from "./codegen/index.js";
+import { generateLinearModule } from "./codegen-linear/index.js";
 import {
   emitBinary,
   emitBinaryWithSourceMap,
@@ -73,20 +74,25 @@ export function compileSource(
   }
 
   const emitSourceMap = options.sourceMap === true;
+  const useLinear = options.target === "linear";
 
   // Step 2: Generate IR
   let mod;
   try {
-    const result = generateModule(ast, { sourceMap: emitSourceMap });
-    mod = result.module;
-    // Propagate codegen errors with source locations
-    for (const err of result.errors) {
-      errors.push({
-        message: err.message,
-        line: err.line,
-        column: err.column,
-        severity: "error",
-      });
+    if (useLinear) {
+      mod = generateLinearModule(ast);
+    } else {
+      const result = generateModule(ast, { sourceMap: emitSourceMap });
+      mod = result.module;
+      // Propagate codegen errors with source locations
+      for (const err of result.errors) {
+        errors.push({
+          message: err.message,
+          line: err.line,
+          column: err.column,
+          severity: "error",
+        });
+      }
     }
   } catch (e) {
     errors.push({
