@@ -6,3 +6,4 @@ output/
 .vite/
 .env
 .file-registry.json
+.worktrees/
