@@ -310,6 +310,9 @@ export function generateModule(
   // Collect Math host imports for methods without native Wasm equivalents
   collectMathImports(ctx, ast.sourceFile);
 
+  // Collect Promise.all / Promise.race host imports
+  collectPromiseImports(ctx, ast.sourceFile);
+
   // Collect __make_callback import if arrow functions are used as call arguments
   collectCallbackImports(ctx, ast.sourceFile);
 
@@ -440,6 +443,7 @@ export function generateMultiModule(
     collectStringLiterals(ctx, sf);
     collectStringMethodImports(ctx, sf);
     collectMathImports(ctx, sf);
+    collectPromiseImports(ctx, sf);
     collectCallbackImports(ctx, sf);
     collectUnionImports(ctx, sf);
     collectForInStringLiterals(ctx, sf);
@@ -882,6 +886,55 @@ function collectMathImports(
     } else {
       const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "f64" }]);
       addImport(ctx, "env", `Math_${method}`, { kind: "func", typeIdx });
+    }
+  }
+}
+
+/** Scan source for Promise.all / Promise.race calls and register host imports */
+function collectPromiseImports(
+  ctx: CodegenContext,
+  sourceFile: ts.SourceFile,
+): void {
+  const needed = new Set<string>();
+
+  function visit(node: ts.Node) {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      ts.isIdentifier(node.expression.expression) &&
+      node.expression.expression.text === "Promise"
+    ) {
+      const method = node.expression.name.text;
+      if (method === "all" || method === "race") {
+        needed.add(method);
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  for (const stmt of sourceFile.statements) {
+    if (ts.isFunctionDeclaration(stmt) && stmt.body) {
+      visit(stmt.body);
+    }
+    if (ts.isClassDeclaration(stmt)) {
+      for (const member of stmt.members) {
+        if (ts.isMethodDeclaration(member) && member.body) {
+          visit(member.body);
+        }
+      }
+    }
+  }
+
+  for (const method of needed) {
+    const importName = `Promise_${method}`;
+    if (!ctx.funcMap.has(importName)) {
+      // (externref) -> externref — takes array of promises, returns promise
+      const typeIdx = addFuncType(
+        ctx,
+        [{ kind: "externref" }],
+        [{ kind: "externref" }],
+      );
+      addImport(ctx, "env", importName, { kind: "func", typeIdx });
     }
   }
 }
