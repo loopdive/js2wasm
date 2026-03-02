@@ -99,7 +99,29 @@ export function buildImports(
   return { env, "wasm:js-string": jsString };
 }
 
-/** Compile TypeScript source and instantiate the Wasm module */
+/** Instantiate a Wasm module, trying native wasm:js-string builtins first
+ *  (Chrome 130+, Firefox 135+), falling back to the JS polyfill. */
+export async function instantiateWasm(
+  binary: BufferSource,
+  env: Record<string, Function>,
+): Promise<{ instance: WebAssembly.Instance; nativeBuiltins: boolean }> {
+  try {
+    const { instance } = await (WebAssembly.instantiate as Function)(
+      binary,
+      { env },
+      { builtins: ["js-string"] },
+    );
+    return { instance, nativeBuiltins: true };
+  } catch {
+    const { instance } = await WebAssembly.instantiate(
+      binary,
+      { env, "wasm:js-string": jsString } as WebAssembly.Imports,
+    );
+    return { instance, nativeBuiltins: false };
+  }
+}
+
+/** Compile TypeScript source and instantiate the Wasm module. */
 export async function compileAndInstantiate(
   source: string,
 ): Promise<WebAssembly.Exports> {
@@ -108,14 +130,6 @@ export async function compileAndInstantiate(
     throw new Error(result.errors.map((e) => e.message).join("\n"));
   }
   const imports = buildImports(result.stringPool, jsApi, domApi);
-  let instance: WebAssembly.Instance;
-  try {
-    ({ instance } = await WebAssembly.instantiate(result.binary, {
-      env: imports.env,
-    }));
-  } catch (e) {
-    if (!(e instanceof WebAssembly.LinkError)) throw e;
-    ({ instance } = await WebAssembly.instantiate(result.binary, imports));
-  }
+  const { instance } = await instantiateWasm(result.binary, imports.env);
   return instance.exports;
 }

@@ -7,21 +7,9 @@
 | [31](issues/31.md) | Default number type to i32, promote to f64 only when needed | L          |
 | [33](issues/33.md) | Relocatable Wasm object file (.o) emission                  | L          |
 | [34](issues/34.md) | Multi-memory module linker with isolation validation        | L          |
-| [35](issues/35.md) | Class inheritance (extends, super)                          | L          |
-| [36](issues/36.md) | Static class members                                        | M          |
 | [37](issues/37.md) | Getter/setter properties on user-defined classes            | M          |
-| [38](issues/38.md) | instanceof operator                                         | S          |
-| [39](issues/39.md) | Labeled break and continue                                  | S          |
-| [40](issues/40.md) | String enums                                                | S          |
 | [41](issues/41.md) | typeof as expression                                        | S          |
-| [42](issues/42.md) | Comma operator                                              | XS         |
-| [43](issues/43.md) | void expression                                             | XS         |
-| [44](issues/44.md) | Source maps                                                 | L          |
-| [45](issues/45.md) | Error reporting with source locations                       | M          |
 | [46](issues/46.md) | Linear-memory compilation backend                           | L          |
-| [31](issues/31.md) | Default number type to i32, promote to f64 only when needed | L          |
-| [32](issues/32.md) | Capacity-based array representation with `array.copy`       | L          |
-| [37](issues/37.md) | Getter/setter properties on user-defined classes            | M          |
 
 ## Complexity legend
 
@@ -72,3 +60,5 @@
 | [38](issues/38.md)      | Implement `instanceof` operator          | 4 in instanceof.test.ts      |
 | [44](issues/44.md)      | Source map generation                    | 18 in sourcemap.test.ts      |
 | [36](issues/36.md)      | Static class members                     | 8 in static-members.test.ts  |
+| [39](issues/39.md)      | Labeled break and continue               | 7 in labeled-loops.test.ts   |
+| [40](issues/40.md)      | String enums                             | 5 in string-enums.test.ts    |

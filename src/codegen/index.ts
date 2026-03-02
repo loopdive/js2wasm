@@ -670,11 +670,11 @@ function addStringImports(ctx: CodegenContext): void {
   if (ctx.hasStringImports) return;
   ctx.hasStringImports = true;
 
-  // concat: (externref, externref) -> externref
+  // concat: (externref, externref) -> (ref extern)
   const concatType = addFuncType(
     ctx,
     [{ kind: "externref" }, { kind: "externref" }],
-    [{ kind: "externref" }],
+    [{ kind: "ref_extern" }],
   );
   addImport(ctx, "wasm:js-string", "concat", {
     kind: "func",
@@ -703,11 +703,11 @@ function addStringImports(ctx: CodegenContext): void {
     typeIdx: equalsType,
   });
 
-  // substring: (externref, i32, i32) -> externref
+  // substring: (externref, i32, i32) -> (ref extern)
   const substringType = addFuncType(
     ctx,
     [{ kind: "externref" }, { kind: "i32" }, { kind: "i32" }],
-    [{ kind: "externref" }],
+    [{ kind: "ref_extern" }],
   );
   addImport(ctx, "wasm:js-string", "substring", {
     kind: "func",
@@ -2046,7 +2046,10 @@ function collectClassDeclaration(
   ctx.classTagMap.set(className, classTag);
 
   // Add hidden __tag field at the beginning for instanceof discrimination
-  fields.unshift({ name: "__tag", type: { kind: "i32" }, mutable: false });
+  // Only for root classes — child classes inherit __tag via parentFields
+  if (!parentClassName) {
+    fields.unshift({ name: "__tag", type: { kind: "i32" }, mutable: false });
+  }
 
   // Register the struct type
   const structTypeIdx = ctx.mod.types.length;
@@ -3059,16 +3062,17 @@ function compileSuperCall(
   const structTypeIdx = ctx.structMap.get(childClassName)!;
 
   // Evaluate super(args) and assign to parent fields on the child struct.
-  // The parent constructor takes N params and assigns them to the N parent fields
-  // via this.fieldName = paramName patterns. We replicate that here by
-  // evaluating each super argument and setting the corresponding parent field.
+  // Skip __tag (immutable, already set by struct.new) and map arguments to
+  // the remaining parent fields in order.
+  const assignableParentFields = parentFields
+    .map((f, idx) => ({ field: f, fieldIdx: idx }))
+    .filter((e) => e.field.name !== "__tag");
   for (
     let i = 0;
-    i < callExpr.arguments.length && i < parentFields.length;
+    i < callExpr.arguments.length && i < assignableParentFields.length;
     i++
   ) {
-    const field = parentFields[i]!;
-    const fieldIdx = i; // Parent fields are at the start of the child struct
+    const { field, fieldIdx } = assignableParentFields[i]!;
     fctx.body.push({ op: "local.get", index: selfLocal });
     compileExpression(ctx, fctx, callExpr.arguments[i]!, field.type);
     fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx });

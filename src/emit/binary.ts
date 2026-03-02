@@ -362,6 +362,10 @@ export function encodeValType(t: ValType, enc: WasmEncoder): void {
     case "externref":
       enc.byte(TYPE.externref);
       break;
+    case "ref_extern":
+      enc.byte(TYPE.ref);
+      enc.byte(TYPE.externref); // extern abstract heap type (-17 as s33)
+      break;
     case "ref":
       enc.byte(TYPE.ref);
       enc.i32(t.typeIdx);
