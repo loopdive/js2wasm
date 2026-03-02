@@ -1,0 +1,10 @@
+Support class expressions: const C = class { ... } (#57)
+
+Class expressions in variable declarations are now compiled as regular
+class declarations using the variable name as the class name. The TS
+type checker assigns an internal symbol name to anonymous class
+expressions, so a classExprNameMap bridges that to the synthetic name
+for struct resolution, constructor lookup, method dispatch, and
+instanceof checks.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>

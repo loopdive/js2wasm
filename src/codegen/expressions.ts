@@ -772,7 +772,10 @@ function compileInstanceOf(
 
   // Resolve the struct type index from the left operand's type
   const leftTsType = ctx.checker.getTypeAtLocation(expr.left);
-  const leftClassName = leftTsType.getSymbol()?.name;
+  let leftClassName = leftTsType.getSymbol()?.name;
+  if (leftClassName && !ctx.structMap.has(leftClassName)) {
+    leftClassName = ctx.classExprNameMap.get(leftClassName) ?? leftClassName;
+  }
   const leftStructTypeIdx = leftClassName ? ctx.structMap.get(leftClassName) : undefined;
   if (leftStructTypeIdx === undefined) {
     ctx.errors.push({
@@ -1927,7 +1930,11 @@ function compileCallExpression(
     }
 
     // Check if receiver is a local class instance
-    const receiverClassName = receiverType.getSymbol()?.name;
+    let receiverClassName = receiverType.getSymbol()?.name;
+    // Map class expression symbol names to their synthetic names
+    if (receiverClassName && !ctx.classSet.has(receiverClassName)) {
+      receiverClassName = ctx.classExprNameMap.get(receiverClassName) ?? receiverClassName;
+    }
     if (receiverClassName && ctx.classSet.has(receiverClassName)) {
       const methodName = propAccess.name.text;
       const fullName = `${receiverClassName}_${methodName}`;
@@ -2189,7 +2196,23 @@ function compileNewExpression(
 ): ValType | null {
   const type = ctx.checker.getTypeAtLocation(expr);
   const symbol = type.getSymbol();
-  const className = symbol?.name;
+  let className = symbol?.name;
+
+  // For class expressions (const C = class { ... }), the symbol name may be
+  // the internal anonymous name (e.g. "__class"). Look up the mapped name first,
+  // then fall back to the identifier used in the new expression.
+  if (className && !ctx.classSet.has(className)) {
+    const mapped = ctx.classExprNameMap.get(className);
+    if (mapped) {
+      className = mapped;
+    }
+  }
+  if ((!className || !ctx.classSet.has(className)) && ts.isIdentifier(expr.expression)) {
+    const idName = expr.expression.text;
+    if (ctx.classSet.has(idName)) {
+      className = idName;
+    }
+  }
 
   if (!className) {
     ctx.errors.push({
@@ -3038,6 +3061,13 @@ function resolveStructName(ctx: CodegenContext, tsType: ts.Type): string | undef
   const name = tsType.symbol?.name;
   if (name && name !== "__type" && name !== "__object" && ctx.structMap.has(name)) {
     return name;
+  }
+  // Check class expression name mapping (e.g. "__class" → "Point")
+  if (name) {
+    const mapped = ctx.classExprNameMap.get(name);
+    if (mapped && ctx.structMap.has(mapped)) {
+      return mapped;
+    }
   }
   return ctx.anonTypeMap.get(tsType);
 }
