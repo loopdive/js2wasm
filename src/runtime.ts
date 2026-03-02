@@ -26,6 +26,8 @@ export const jsApi: Record<string, Function> = new Proxy(
           ? (v: number) => console.log(Boolean(v))
           : (v: any) => console.log(v);
       }
+      if (name === "JSON_stringify") return (v: any) => JSON.stringify(v);
+      if (name === "JSON_parse") return (s: any) => JSON.parse(s);
       if (name === "number_toString") return (v: number) => String(v);
       if (name === "number_toFixed") return (v: number, digits: number) => v.toFixed(digits);
       if (name === "__extern_get") return (obj: any, idx: number) => obj[idx];
