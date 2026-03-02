@@ -5,6 +5,7 @@ import type {
   ValType,
   WasmModule,
 } from "../ir/types.js";
+import type { ClassLayout } from "./layout.js";
 
 /** Module-level context for linear-memory codegen */
 export interface LinearContext {
@@ -18,7 +19,16 @@ export interface LinearContext {
   currentFunc: LinearFuncContext | null;
   /** Errors accumulated during codegen */
   errors: { message: string; line: number; column: number }[];
+  /** Class layouts for class declarations */
+  classLayouts: Map<string, ClassLayout>;
+  /** String literal data segment: string value → data segment offset */
+  stringLiterals: Map<string, number>;
+  /** Current data segment write offset */
+  dataSegmentOffset: number;
 }
+
+/** Collection type tag for tracking variable types */
+export type CollectionKind = "Array" | "Uint8Array" | "Map" | "Set";
 
 /** Per-function context for linear-memory codegen */
 export interface LinearFuncContext {
@@ -40,6 +50,8 @@ export interface LinearFuncContext {
   breakStack: number[];
   /** Continue label depth stack */
   continueStack: number[];
+  /** Track which locals are collection types (varName → kind) */
+  collectionTypes: Map<string, CollectionKind>;
 }
 
 /** Add a local variable to the current function context */

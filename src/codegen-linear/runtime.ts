@@ -1079,6 +1079,563 @@ export function addSetRuntime(mod: WasmModule): void {
   ]);
 }
 
+/**
+ * Add numeric-key Map runtime functions (open-addressing hash table with i32 keys).
+ * Layout: [header 8B][count:u32 at +8][cap:u32 at +12][entries at +16...]
+ * Entry: [hash:u32][key:i32][val:i32] = 12 bytes each
+ * Empty entry: hash=0, key uses (key | 1) as hash to avoid zero sentinel.
+ *
+ * Functions added:
+ * - __nmap_new(cap: i32) → i32
+ * - __nmap_set(map: i32, key: i32, val: i32) → void
+ * - __nmap_get(map: i32, key: i32) → i32
+ * - __nmap_has(map: i32, key: i32) → i32
+ * - __nmap_size(map: i32) → i32
+ */
+export function addNumericMapRuntime(mod: WasmModule): void {
+  const mallocIdx = findFuncIndex(mod, "__malloc");
+
+  // __nmap_new: identical to __map_new
+  addRuntimeFunc(mod, "__nmap_new", [{ kind: "i32" }], [{ kind: "i32" }], [], (firstLocalIdx) => {
+    const ptrLocal = firstLocalIdx;
+    const iLocal = firstLocalIdx + 1;
+    return [
+      // totalSize = 16 + cap * 12
+      { op: "i32.const", value: 16 },
+      { op: "local.get", index: 0 },
+      { op: "i32.const", value: 12 },
+      { op: "i32.mul" },
+      { op: "i32.add" },
+      { op: "call", funcIdx: mallocIdx },
+      { op: "local.set", index: ptrLocal },
+      // count = 0
+      { op: "local.get", index: ptrLocal },
+      { op: "i32.const", value: 0 },
+      { op: "i32.store", align: 2, offset: 8 },
+      // cap
+      { op: "local.get", index: ptrLocal },
+      { op: "local.get", index: 0 },
+      { op: "i32.store", align: 2, offset: 12 },
+      // Zero out entries
+      { op: "i32.const", value: 0 },
+      { op: "local.set", index: iLocal },
+      {
+        op: "block", blockType: { kind: "empty" }, body: [
+          {
+            op: "loop", blockType: { kind: "empty" }, body: [
+              { op: "local.get", index: iLocal },
+              { op: "local.get", index: 0 },
+              { op: "i32.ge_u" },
+              { op: "br_if", depth: 1 },
+              { op: "local.get", index: ptrLocal },
+              { op: "local.get", index: iLocal },
+              { op: "i32.const", value: 12 },
+              { op: "i32.mul" },
+              { op: "i32.add" },
+              { op: "i32.const", value: 0 },
+              { op: "i32.store", align: 2, offset: 16 },
+              { op: "local.get", index: iLocal },
+              { op: "i32.const", value: 1 },
+              { op: "i32.add" },
+              { op: "local.set", index: iLocal },
+              { op: "br", depth: 0 },
+            ],
+          },
+        ],
+      },
+      { op: "local.get", index: ptrLocal },
+    ];
+  }, 2);
+
+  // __nmap_set: insert/update using numeric key directly
+  // hash = (key * 2654435761) | 1  (Knuth multiplicative hash, ensure non-zero)
+  // extra locals: hash, cap, idx, entryAddr, entryHash
+  addRuntimeFunc(mod, "__nmap_set", [{ kind: "i32" }, { kind: "i32" }, { kind: "i32" }], [], [], (firstLocalIdx) => {
+    const hashLocal = firstLocalIdx;
+    const capLocal = firstLocalIdx + 1;
+    const idxLocal = firstLocalIdx + 2;
+    const entryAddrLocal = firstLocalIdx + 3;
+    const entryHashLocal = firstLocalIdx + 4;
+    return [
+      // hash = (key * 2654435761) | 1
+      { op: "local.get", index: 1 },
+      { op: "i32.const", value: 0x9E3779B1 | 0 },
+      { op: "i32.mul" },
+      { op: "i32.const", value: 1 },
+      { op: "i32.or" },
+      { op: "local.set", index: hashLocal },
+      // cap
+      { op: "local.get", index: 0 },
+      { op: "i32.load", align: 2, offset: 12 },
+      { op: "local.set", index: capLocal },
+      // idx = hash % cap
+      { op: "local.get", index: hashLocal },
+      { op: "local.get", index: capLocal },
+      { op: "i32.rem_u" },
+      { op: "local.set", index: idxLocal },
+      {
+        op: "block", blockType: { kind: "empty" }, body: [
+          {
+            op: "loop", blockType: { kind: "empty" }, body: [
+              // entryAddr = map + idx * 12
+              { op: "local.get", index: 0 },
+              { op: "local.get", index: idxLocal },
+              { op: "i32.const", value: 12 },
+              { op: "i32.mul" },
+              { op: "i32.add" },
+              { op: "local.set", index: entryAddrLocal },
+              // entryHash
+              { op: "local.get", index: entryAddrLocal },
+              { op: "i32.load", align: 2, offset: 16 },
+              { op: "local.set", index: entryHashLocal },
+              // Empty slot → insert
+              { op: "local.get", index: entryHashLocal },
+              { op: "i32.eqz" },
+              {
+                op: "if", blockType: { kind: "empty" }, then: [
+                  { op: "local.get", index: entryAddrLocal },
+                  { op: "local.get", index: hashLocal },
+                  { op: "i32.store", align: 2, offset: 16 },
+                  { op: "local.get", index: entryAddrLocal },
+                  { op: "local.get", index: 1 },
+                  { op: "i32.store", align: 2, offset: 20 },
+                  { op: "local.get", index: entryAddrLocal },
+                  { op: "local.get", index: 2 },
+                  { op: "i32.store", align: 2, offset: 24 },
+                  // Increment count
+                  { op: "local.get", index: 0 },
+                  { op: "local.get", index: 0 },
+                  { op: "i32.load", align: 2, offset: 8 },
+                  { op: "i32.const", value: 1 },
+                  { op: "i32.add" },
+                  { op: "i32.store", align: 2, offset: 8 },
+                  { op: "return" },
+                ],
+              },
+              // Same hash → check key equality (numeric)
+              { op: "local.get", index: entryHashLocal },
+              { op: "local.get", index: hashLocal },
+              { op: "i32.eq" },
+              {
+                op: "if", blockType: { kind: "empty" }, then: [
+                  { op: "local.get", index: entryAddrLocal },
+                  { op: "i32.load", align: 2, offset: 20 },
+                  { op: "local.get", index: 1 },
+                  { op: "i32.eq" },
+                  {
+                    op: "if", blockType: { kind: "empty" }, then: [
+                      // Update value
+                      { op: "local.get", index: entryAddrLocal },
+                      { op: "local.get", index: 2 },
+                      { op: "i32.store", align: 2, offset: 24 },
+                      { op: "return" },
+                    ],
+                  },
+                ],
+              },
+              // Advance
+              { op: "local.get", index: idxLocal },
+              { op: "i32.const", value: 1 },
+              { op: "i32.add" },
+              { op: "local.get", index: capLocal },
+              { op: "i32.rem_u" },
+              { op: "local.set", index: idxLocal },
+              { op: "br", depth: 0 },
+            ],
+          },
+        ],
+      },
+    ];
+  }, 5);
+
+  // __nmap_get
+  addRuntimeFunc(mod, "__nmap_get", [{ kind: "i32" }, { kind: "i32" }], [{ kind: "i32" }], [], (firstLocalIdx) => {
+    const hashLocal = firstLocalIdx;
+    const capLocal = firstLocalIdx + 1;
+    const idxLocal = firstLocalIdx + 2;
+    const entryAddrLocal = firstLocalIdx + 3;
+    const entryHashLocal = firstLocalIdx + 4;
+    return [
+      { op: "local.get", index: 1 },
+      { op: "i32.const", value: 0x9E3779B1 | 0 },
+      { op: "i32.mul" },
+      { op: "i32.const", value: 1 },
+      { op: "i32.or" },
+      { op: "local.set", index: hashLocal },
+      { op: "local.get", index: 0 },
+      { op: "i32.load", align: 2, offset: 12 },
+      { op: "local.set", index: capLocal },
+      { op: "local.get", index: hashLocal },
+      { op: "local.get", index: capLocal },
+      { op: "i32.rem_u" },
+      { op: "local.set", index: idxLocal },
+      {
+        op: "block", blockType: { kind: "empty" }, body: [
+          {
+            op: "loop", blockType: { kind: "empty" }, body: [
+              { op: "local.get", index: 0 },
+              { op: "local.get", index: idxLocal },
+              { op: "i32.const", value: 12 },
+              { op: "i32.mul" },
+              { op: "i32.add" },
+              { op: "local.set", index: entryAddrLocal },
+              { op: "local.get", index: entryAddrLocal },
+              { op: "i32.load", align: 2, offset: 16 },
+              { op: "local.set", index: entryHashLocal },
+              // Empty → not found
+              { op: "local.get", index: entryHashLocal },
+              { op: "i32.eqz" },
+              {
+                op: "if", blockType: { kind: "empty" }, then: [
+                  { op: "i32.const", value: 0 },
+                  { op: "return" },
+                ],
+              },
+              // Check hash + key
+              { op: "local.get", index: entryHashLocal },
+              { op: "local.get", index: hashLocal },
+              { op: "i32.eq" },
+              {
+                op: "if", blockType: { kind: "empty" }, then: [
+                  { op: "local.get", index: entryAddrLocal },
+                  { op: "i32.load", align: 2, offset: 20 },
+                  { op: "local.get", index: 1 },
+                  { op: "i32.eq" },
+                  {
+                    op: "if", blockType: { kind: "empty" }, then: [
+                      { op: "local.get", index: entryAddrLocal },
+                      { op: "i32.load", align: 2, offset: 24 },
+                      { op: "return" },
+                    ],
+                  },
+                ],
+              },
+              { op: "local.get", index: idxLocal },
+              { op: "i32.const", value: 1 },
+              { op: "i32.add" },
+              { op: "local.get", index: capLocal },
+              { op: "i32.rem_u" },
+              { op: "local.set", index: idxLocal },
+              { op: "br", depth: 0 },
+            ],
+          },
+        ],
+      },
+      { op: "i32.const", value: 0 },
+    ];
+  }, 5);
+
+  // __nmap_has
+  addRuntimeFunc(mod, "__nmap_has", [{ kind: "i32" }, { kind: "i32" }], [{ kind: "i32" }], [], (firstLocalIdx) => {
+    const hashLocal = firstLocalIdx;
+    const capLocal = firstLocalIdx + 1;
+    const idxLocal = firstLocalIdx + 2;
+    const entryAddrLocal = firstLocalIdx + 3;
+    const entryHashLocal = firstLocalIdx + 4;
+    return [
+      { op: "local.get", index: 1 },
+      { op: "i32.const", value: 0x9E3779B1 | 0 },
+      { op: "i32.mul" },
+      { op: "i32.const", value: 1 },
+      { op: "i32.or" },
+      { op: "local.set", index: hashLocal },
+      { op: "local.get", index: 0 },
+      { op: "i32.load", align: 2, offset: 12 },
+      { op: "local.set", index: capLocal },
+      { op: "local.get", index: hashLocal },
+      { op: "local.get", index: capLocal },
+      { op: "i32.rem_u" },
+      { op: "local.set", index: idxLocal },
+      {
+        op: "block", blockType: { kind: "empty" }, body: [
+          {
+            op: "loop", blockType: { kind: "empty" }, body: [
+              { op: "local.get", index: 0 },
+              { op: "local.get", index: idxLocal },
+              { op: "i32.const", value: 12 },
+              { op: "i32.mul" },
+              { op: "i32.add" },
+              { op: "local.set", index: entryAddrLocal },
+              { op: "local.get", index: entryAddrLocal },
+              { op: "i32.load", align: 2, offset: 16 },
+              { op: "local.set", index: entryHashLocal },
+              { op: "local.get", index: entryHashLocal },
+              { op: "i32.eqz" },
+              {
+                op: "if", blockType: { kind: "empty" }, then: [
+                  { op: "i32.const", value: 0 },
+                  { op: "return" },
+                ],
+              },
+              { op: "local.get", index: entryHashLocal },
+              { op: "local.get", index: hashLocal },
+              { op: "i32.eq" },
+              {
+                op: "if", blockType: { kind: "empty" }, then: [
+                  { op: "local.get", index: entryAddrLocal },
+                  { op: "i32.load", align: 2, offset: 20 },
+                  { op: "local.get", index: 1 },
+                  { op: "i32.eq" },
+                  {
+                    op: "if", blockType: { kind: "empty" }, then: [
+                      { op: "i32.const", value: 1 },
+                      { op: "return" },
+                    ],
+                  },
+                ],
+              },
+              { op: "local.get", index: idxLocal },
+              { op: "i32.const", value: 1 },
+              { op: "i32.add" },
+              { op: "local.get", index: capLocal },
+              { op: "i32.rem_u" },
+              { op: "local.set", index: idxLocal },
+              { op: "br", depth: 0 },
+            ],
+          },
+        ],
+      },
+      { op: "i32.const", value: 0 },
+    ];
+  }, 5);
+
+  // __nmap_size: same as __map_size
+  addRuntimeFunc(mod, "__nmap_size", [{ kind: "i32" }], [{ kind: "i32" }], [], () => [
+    { op: "local.get", index: 0 },
+    { op: "i32.load", align: 2, offset: 8 },
+  ]);
+}
+
+/**
+ * Add numeric-key Set runtime functions (open-addressing hash set with i32 keys).
+ * Layout: [header 8B][count:u32 at +8][cap:u32 at +12][entries at +16...]
+ * Entry: [hash:u32][key:i32] = 8 bytes each
+ *
+ * Functions added:
+ * - __nset_new(cap: i32) → i32
+ * - __nset_add(set: i32, key: i32) → void
+ * - __nset_has(set: i32, key: i32) → i32
+ * - __nset_size(set: i32) → i32
+ */
+export function addNumericSetRuntime(mod: WasmModule): void {
+  const mallocIdx = findFuncIndex(mod, "__malloc");
+
+  // __nset_new
+  addRuntimeFunc(mod, "__nset_new", [{ kind: "i32" }], [{ kind: "i32" }], [], (firstLocalIdx) => {
+    const ptrLocal = firstLocalIdx;
+    const iLocal = firstLocalIdx + 1;
+    return [
+      // 16 + cap * 8
+      { op: "i32.const", value: 16 },
+      { op: "local.get", index: 0 },
+      { op: "i32.const", value: 8 },
+      { op: "i32.mul" },
+      { op: "i32.add" },
+      { op: "call", funcIdx: mallocIdx },
+      { op: "local.set", index: ptrLocal },
+      { op: "local.get", index: ptrLocal },
+      { op: "i32.const", value: 0 },
+      { op: "i32.store", align: 2, offset: 8 },
+      { op: "local.get", index: ptrLocal },
+      { op: "local.get", index: 0 },
+      { op: "i32.store", align: 2, offset: 12 },
+      // Zero entries
+      { op: "i32.const", value: 0 },
+      { op: "local.set", index: iLocal },
+      {
+        op: "block", blockType: { kind: "empty" }, body: [
+          {
+            op: "loop", blockType: { kind: "empty" }, body: [
+              { op: "local.get", index: iLocal },
+              { op: "local.get", index: 0 },
+              { op: "i32.ge_u" },
+              { op: "br_if", depth: 1 },
+              { op: "local.get", index: ptrLocal },
+              { op: "local.get", index: iLocal },
+              { op: "i32.const", value: 8 },
+              { op: "i32.mul" },
+              { op: "i32.add" },
+              { op: "i32.const", value: 0 },
+              { op: "i32.store", align: 2, offset: 16 },
+              { op: "local.get", index: iLocal },
+              { op: "i32.const", value: 1 },
+              { op: "i32.add" },
+              { op: "local.set", index: iLocal },
+              { op: "br", depth: 0 },
+            ],
+          },
+        ],
+      },
+      { op: "local.get", index: ptrLocal },
+    ];
+  }, 2);
+
+  // __nset_add
+  addRuntimeFunc(mod, "__nset_add", [{ kind: "i32" }, { kind: "i32" }], [], [], (firstLocalIdx) => {
+    const hashLocal = firstLocalIdx;
+    const capLocal = firstLocalIdx + 1;
+    const idxLocal = firstLocalIdx + 2;
+    const entryAddrLocal = firstLocalIdx + 3;
+    const entryHashLocal = firstLocalIdx + 4;
+    return [
+      { op: "local.get", index: 1 },
+      { op: "i32.const", value: 0x9E3779B1 | 0 },
+      { op: "i32.mul" },
+      { op: "i32.const", value: 1 },
+      { op: "i32.or" },
+      { op: "local.set", index: hashLocal },
+      { op: "local.get", index: 0 },
+      { op: "i32.load", align: 2, offset: 12 },
+      { op: "local.set", index: capLocal },
+      { op: "local.get", index: hashLocal },
+      { op: "local.get", index: capLocal },
+      { op: "i32.rem_u" },
+      { op: "local.set", index: idxLocal },
+      {
+        op: "block", blockType: { kind: "empty" }, body: [
+          {
+            op: "loop", blockType: { kind: "empty" }, body: [
+              { op: "local.get", index: 0 },
+              { op: "local.get", index: idxLocal },
+              { op: "i32.const", value: 8 },
+              { op: "i32.mul" },
+              { op: "i32.add" },
+              { op: "local.set", index: entryAddrLocal },
+              { op: "local.get", index: entryAddrLocal },
+              { op: "i32.load", align: 2, offset: 16 },
+              { op: "local.set", index: entryHashLocal },
+              // Empty → insert
+              { op: "local.get", index: entryHashLocal },
+              { op: "i32.eqz" },
+              {
+                op: "if", blockType: { kind: "empty" }, then: [
+                  { op: "local.get", index: entryAddrLocal },
+                  { op: "local.get", index: hashLocal },
+                  { op: "i32.store", align: 2, offset: 16 },
+                  { op: "local.get", index: entryAddrLocal },
+                  { op: "local.get", index: 1 },
+                  { op: "i32.store", align: 2, offset: 20 },
+                  { op: "local.get", index: 0 },
+                  { op: "local.get", index: 0 },
+                  { op: "i32.load", align: 2, offset: 8 },
+                  { op: "i32.const", value: 1 },
+                  { op: "i32.add" },
+                  { op: "i32.store", align: 2, offset: 8 },
+                  { op: "return" },
+                ],
+              },
+              // Same hash → check key
+              { op: "local.get", index: entryHashLocal },
+              { op: "local.get", index: hashLocal },
+              { op: "i32.eq" },
+              {
+                op: "if", blockType: { kind: "empty" }, then: [
+                  { op: "local.get", index: entryAddrLocal },
+                  { op: "i32.load", align: 2, offset: 20 },
+                  { op: "local.get", index: 1 },
+                  { op: "i32.eq" },
+                  {
+                    op: "if", blockType: { kind: "empty" }, then: [
+                      { op: "return" }, // already in set
+                    ],
+                  },
+                ],
+              },
+              { op: "local.get", index: idxLocal },
+              { op: "i32.const", value: 1 },
+              { op: "i32.add" },
+              { op: "local.get", index: capLocal },
+              { op: "i32.rem_u" },
+              { op: "local.set", index: idxLocal },
+              { op: "br", depth: 0 },
+            ],
+          },
+        ],
+      },
+    ];
+  }, 5);
+
+  // __nset_has
+  addRuntimeFunc(mod, "__nset_has", [{ kind: "i32" }, { kind: "i32" }], [{ kind: "i32" }], [], (firstLocalIdx) => {
+    const hashLocal = firstLocalIdx;
+    const capLocal = firstLocalIdx + 1;
+    const idxLocal = firstLocalIdx + 2;
+    const entryAddrLocal = firstLocalIdx + 3;
+    const entryHashLocal = firstLocalIdx + 4;
+    return [
+      { op: "local.get", index: 1 },
+      { op: "i32.const", value: 0x9E3779B1 | 0 },
+      { op: "i32.mul" },
+      { op: "i32.const", value: 1 },
+      { op: "i32.or" },
+      { op: "local.set", index: hashLocal },
+      { op: "local.get", index: 0 },
+      { op: "i32.load", align: 2, offset: 12 },
+      { op: "local.set", index: capLocal },
+      { op: "local.get", index: hashLocal },
+      { op: "local.get", index: capLocal },
+      { op: "i32.rem_u" },
+      { op: "local.set", index: idxLocal },
+      {
+        op: "block", blockType: { kind: "empty" }, body: [
+          {
+            op: "loop", blockType: { kind: "empty" }, body: [
+              { op: "local.get", index: 0 },
+              { op: "local.get", index: idxLocal },
+              { op: "i32.const", value: 8 },
+              { op: "i32.mul" },
+              { op: "i32.add" },
+              { op: "local.set", index: entryAddrLocal },
+              { op: "local.get", index: entryAddrLocal },
+              { op: "i32.load", align: 2, offset: 16 },
+              { op: "local.set", index: entryHashLocal },
+              { op: "local.get", index: entryHashLocal },
+              { op: "i32.eqz" },
+              {
+                op: "if", blockType: { kind: "empty" }, then: [
+                  { op: "i32.const", value: 0 },
+                  { op: "return" },
+                ],
+              },
+              { op: "local.get", index: entryHashLocal },
+              { op: "local.get", index: hashLocal },
+              { op: "i32.eq" },
+              {
+                op: "if", blockType: { kind: "empty" }, then: [
+                  { op: "local.get", index: entryAddrLocal },
+                  { op: "i32.load", align: 2, offset: 20 },
+                  { op: "local.get", index: 1 },
+                  { op: "i32.eq" },
+                  {
+                    op: "if", blockType: { kind: "empty" }, then: [
+                      { op: "i32.const", value: 1 },
+                      { op: "return" },
+                    ],
+                  },
+                ],
+              },
+              { op: "local.get", index: idxLocal },
+              { op: "i32.const", value: 1 },
+              { op: "i32.add" },
+              { op: "local.get", index: capLocal },
+              { op: "i32.rem_u" },
+              { op: "local.set", index: idxLocal },
+              { op: "br", depth: 0 },
+            ],
+          },
+        ],
+      },
+      { op: "i32.const", value: 0 },
+    ];
+  }, 5);
+
+  // __nset_size
+  addRuntimeFunc(mod, "__nset_size", [{ kind: "i32" }], [{ kind: "i32" }], [], () => [
+    { op: "local.get", index: 0 },
+    { op: "i32.load", align: 2, offset: 8 },
+  ]);
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────
 
 /** Find a function's absolute index by name */
