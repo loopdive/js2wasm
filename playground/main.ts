@@ -6,7 +6,7 @@ import "monaco-editor/esm/vs/language/typescript/monaco.contribution.js";
 import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker";
 import * as ts from "typescript";
 import { compile } from "../src/index.js";
-import { domApi, jsString as jsStringPolyfill } from "../src/runtime.js";
+import { domApi, instantiateWasm } from "../src/runtime.js";
 import { WasmTreemap, parseWasm, parseWasmSpans, SECTION_COLORS } from "./wasm-treemap.js";
 import type { WasmData, WasmSection, WasmFunctionBody, ByteSpan } from "./wasm-treemap.js";
 import { LayoutManager } from "./layout.js";
@@ -2599,18 +2599,11 @@ async function runOnly() {
   );
 
   try {
-    let instance: WebAssembly.Instance;
-    try {
-      ({ instance } = await WebAssembly.instantiate(
-        result.binary as BufferSource,
-        { env },
-      ));
-    } catch {
-      ({ instance } = await WebAssembly.instantiate(
-        result.binary as BufferSource,
-        { env, "wasm:js-string": jsStringPolyfill },
-      ));
-    }
+    const { instance, nativeBuiltins } = await instantiateWasm(
+      result.binary as BufferSource,
+      env,
+    );
+    console.log(`[ts2wasm] wasm:js-string → ${nativeBuiltins ? "native builtins" : "JS polyfill"}`);
 
     const exports = instance.exports as Record<string, Function>;
     setExports(exports);
@@ -2681,17 +2674,11 @@ async function runBenchmark() {
   await yield_();
 
   const { env: wasmEnv, setExports } = buildEnv(lastResult, () => {});
-  let instance: WebAssembly.Instance;
-  try {
-    ({ instance } = await WebAssembly.instantiate(
-      lastResult.binary as BufferSource, { env: wasmEnv },
-    ));
-  } catch {
-    ({ instance } = await WebAssembly.instantiate(
-      lastResult.binary as BufferSource,
-      { env: wasmEnv, "wasm:js-string": jsStringPolyfill },
-    ));
-  }
+  const { instance, nativeBuiltins } = await instantiateWasm(
+    lastResult.binary as BufferSource,
+    wasmEnv,
+  );
+  log(`wasm:js-string → ${nativeBuiltins ? "native builtins" : "JS polyfill"}`);
   const wasmExports = instance.exports as Record<string, Function>;
   setExports(wasmExports);
 

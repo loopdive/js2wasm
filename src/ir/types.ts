@@ -80,7 +80,8 @@ export type ValType =
   | { kind: "ref"; typeIdx: number }
   | { kind: "ref_null"; typeIdx: number }
   | { kind: "funcref" }
-  | { kind: "externref" };
+  | { kind: "externref" }
+  | { kind: "ref_extern" };
 
 export interface WasmFunction {
   name: string;

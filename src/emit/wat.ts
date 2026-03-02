@@ -160,6 +160,8 @@ function formatValType(t: ValType): string {
       return "funcref";
     case "externref":
       return "externref";
+    case "ref_extern":
+      return "(ref extern)";
     case "ref":
       return `(ref ${t.typeIdx})`;
     case "ref_null":
