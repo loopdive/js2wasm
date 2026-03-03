@@ -35,6 +35,9 @@ export const jsApi: Record<string, Function> = new Proxy(
         const method = name.slice(5); // "getDate", "getMonth", etc.
         return (d: any) => d[method]();
       }
+      // RegExp constructor — flags may be null when padded by Wasm default args
+      if (name === "RegExp_new") return (pattern: string, flags?: string) =>
+        flags != null ? new RegExp(pattern, flags) : new RegExp(pattern);
       if (name.startsWith("string_")) {
         const method = name.slice(7);
         return (s: any, ...a: any[]) => s[method](...a);
