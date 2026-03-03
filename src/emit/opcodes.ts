@@ -33,6 +33,8 @@ export const OP = {
   i32_store: 0x36,
   i32_store8: 0x3a,
   i32_store16: 0x3b,
+  f64_load: 0x2b,
+  f64_store: 0x39,
   i32_const: 0x41,
   i64_const: 0x42,
   f32_const: 0x43,
