@@ -64,14 +64,26 @@ function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: ValType, t
     fctx.body.push({ op: "i32.trunc_f64_s" });
     return;
   }
-  // externref → i32 (non-null check)
+  // externref → i32 (unbox boolean, fallback to non-null check)
   if (from.kind === "externref" && to.kind === "i32") {
+    addUnionImports(ctx);
+    const funcIdx = ctx.funcMap.get("__unbox_boolean");
+    if (funcIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx });
+      return;
+    }
     fctx.body.push({ op: "ref.is_null" });
     fctx.body.push({ op: "i32.eqz" });
     return;
   }
-  // externref → f64
+  // externref → f64 (unbox number)
   if (from.kind === "externref" && to.kind === "f64") {
+    addUnionImports(ctx);
+    const funcIdx = ctx.funcMap.get("__unbox_number");
+    if (funcIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx });
+      return;
+    }
     fctx.body.push({ op: "drop" });
     fctx.body.push({ op: "f64.const", value: 0 });
     return;
