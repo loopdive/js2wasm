@@ -62,6 +62,35 @@ export const jsApi: Record<string, Function> = new Proxy(
       if (name === "__box_number") return (v: number) => v;
       if (name === "__box_boolean") return (v: number) => Boolean(v);
       if (name === "__is_truthy") return (v: any) => v ? 1 : 0;
+      // Generator support: buffer management and generator creation
+      if (name === "__gen_create_buffer") return () => [];
+      if (name === "__gen_push_f64") return (buf: any[], v: number) => { buf.push(v); };
+      if (name === "__gen_push_i32") return (buf: any[], v: number) => { buf.push(v); };
+      if (name === "__gen_push_ref") return (buf: any[], v: any) => { buf.push(v); };
+      if (name === "__create_generator") return (buf: any[]) => {
+        let index = 0;
+        return {
+          next() {
+            if (index < buf.length) {
+              return { value: buf[index++], done: false };
+            }
+            return { value: undefined, done: true };
+          },
+          return(value: any) {
+            index = buf.length;
+            return { value, done: true };
+          },
+          throw(e: any) {
+            index = buf.length;
+            throw e;
+          },
+          [Symbol.iterator]() { return this; },
+        };
+      };
+      if (name === "__gen_next") return (gen: any) => gen.next();
+      if (name === "__gen_result_value") return (result: any) => result.value;
+      if (name === "__gen_result_value_f64") return (result: any) => Number(result.value);
+      if (name === "__gen_result_done") return (result: any) => result.done ? 1 : 0;
       // Iterator protocol: host-delegated iteration for non-array types
       if (name === "__iterator") return (obj: any) => obj[Symbol.iterator]();
       if (name === "__iterator_next") return (iter: any) => iter.next();

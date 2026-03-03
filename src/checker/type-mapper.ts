@@ -7,6 +7,8 @@ const BUILTIN_TYPES = new Set([
   "Symbol", "BigInt", "RegExp", "Int8Array", "Uint8Array", "Int16Array",
   "Uint16Array", "Int32Array", "Uint32Array", "Float32Array", "Float64Array",
   "ArrayBuffer", "DataView", "JSON", "Math", "Promise",
+  "Generator", "Iterator", "IterableIterator", "Iterable",
+  "IteratorResult", "IteratorYieldResult", "IteratorReturnResult",
 ]);
 
 export function mapTsTypeToWasm(
@@ -190,6 +192,35 @@ export function isPromiseType(type: ts.Type): boolean {
   const symbol = type.getSymbol();
   if (!symbol) return false;
   return symbol.name === "Promise" && !!(type.flags & ts.TypeFlags.Object);
+}
+
+/**
+ * Check if a ts.Type is Generator<T>, Iterator<T>, or IterableIterator<T>.
+ * Returns true for any of the built-in generator/iterator types.
+ */
+export function isGeneratorType(type: ts.Type): boolean {
+  const symbol = type.getSymbol();
+  if (!symbol) return false;
+  return (
+    (symbol.name === "Generator" ||
+      symbol.name === "Iterator" ||
+      symbol.name === "IterableIterator") &&
+    !!(type.flags & ts.TypeFlags.Object)
+  );
+}
+
+/**
+ * Check if a ts.Type is IteratorResult<T> (the return type of .next()).
+ */
+export function isIteratorResultType(type: ts.Type): boolean {
+  const symbol = type.getSymbol();
+  if (!symbol) return false;
+  return (
+    (symbol.name === "IteratorYieldResult" ||
+      symbol.name === "IteratorReturnResult" ||
+      symbol.name === "IteratorResult") &&
+    !!(type.flags & ts.TypeFlags.Object)
+  );
 }
 
 /**

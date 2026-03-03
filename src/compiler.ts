@@ -561,6 +561,18 @@ function generateEnvImportLine(name: string, mod: WasmModule): string {
   // Async/await support: __await is identity (host functions are sync from Wasm's perspective)
   if (name === "__await") return `${name}: (v) => v`;
 
+  // Generator support
+  if (name === "__gen_create_buffer") return `${name}: () => []`;
+  if (name === "__gen_push_f64") return `${name}: (buf, v) => { buf.push(v); }`;
+  if (name === "__gen_push_i32") return `${name}: (buf, v) => { buf.push(v); }`;
+  if (name === "__gen_push_ref") return `${name}: (buf, v) => { buf.push(v); }`;
+  if (name === "__create_generator")
+    return `${name}: (buf) => { let i = 0; return { next() { if (i < buf.length) return { value: buf[i++], done: false }; return { value: undefined, done: true }; }, return(v) { i = buf.length; return { value: v, done: true }; }, throw(e) { i = buf.length; throw e; }, [Symbol.iterator]() { return this; } }; }`;
+  if (name === "__gen_next") return `${name}: (gen) => gen.next()`;
+  if (name === "__gen_result_value") return `${name}: (r) => r.value`;
+  if (name === "__gen_result_value_f64") return `${name}: (r) => Number(r.value)`;
+  if (name === "__gen_result_done") return `${name}: (r) => r.done ? 1 : 0`;
+
   // Union type helper imports
   if (name === "__typeof_number")
     return `${name}: (v) => typeof v === "number" ? 1 : 0`;
