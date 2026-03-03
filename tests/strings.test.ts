@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { compile } from "../src/index.js";
+import { buildStringConstants } from "../src/runtime.js";
 
 describe("string support", () => {
   it("string parameter passes as externref", async () => {
@@ -17,7 +18,7 @@ describe("string support", () => {
     expect(result.wat).toContain("externref");
   });
 
-  it("string literal compiles to import call", async () => {
+  it("string literal compiles to global import from string_constants", async () => {
     const result = compile(`
       export function hello(): string {
         return "world";
@@ -28,8 +29,10 @@ describe("string support", () => {
       `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}`,
     ).toBe(true);
 
-    // Should have a string literal import
-    expect(result.wat).toContain("__str_");
+    // Should have a string_constants global import (externref global)
+    expect(result.wat).toContain("string_constants");
+    expect(result.wat).toContain('(import "string_constants"');
+    expect(result.wat).toContain("(global");
     // Should have wasm:js-string imports
     expect(result.wat).toContain("wasm:js-string");
 
@@ -93,11 +96,6 @@ describe("string support", () => {
       console_log_bool: () => {},
       console_log_string: () => {},
     };
-    // Provide string literal thunks
-    for (let i = 0; i < result.stringPool.length; i++) {
-      const value = result.stringPool[i]!;
-      env[`__str_${i}`] = () => value;
-    }
 
     const jsStringPolyfill = {
       concat: (a: string, b: string) => a + b,
@@ -111,6 +109,7 @@ describe("string support", () => {
     const { instance } = await WebAssembly.instantiate(result.binary, {
       env,
       "wasm:js-string": jsStringPolyfill,
+      string_constants: buildStringConstants(result.stringPool),
     } as WebAssembly.Imports);
     const exports = instance.exports as any;
     expect(exports.hello()).toBe("world");
@@ -129,10 +128,6 @@ describe("string support", () => {
       console_log_bool: () => {},
       console_log_string: () => {},
     };
-    for (let i = 0; i < result.stringPool.length; i++) {
-      const value = result.stringPool[i]!;
-      env[`__str_${i}`] = () => value;
-    }
 
     const jsStringPolyfill = {
       concat: (a: string, b: string) => a + b,
@@ -146,6 +141,7 @@ describe("string support", () => {
     const { instance } = await WebAssembly.instantiate(result.binary, {
       env,
       "wasm:js-string": jsStringPolyfill,
+      string_constants: buildStringConstants(result.stringPool),
     } as WebAssembly.Imports);
     const exports = instance.exports as any;
     expect(exports.greet("World")).toBe("Hello, World");
