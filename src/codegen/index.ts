@@ -2111,6 +2111,7 @@ function collectClassDeclaration(
   });
 
   // Register method functions (own methods defined on this class)
+  // Skip abstract methods — they have no body and are implemented by subclasses
   const ownMethodNames = new Set<string>();
   for (const member of decl.members) {
     if (
@@ -2120,6 +2121,10 @@ function collectClassDeclaration(
     ) {
       const methodName = member.name.text;
       ownMethodNames.add(methodName);
+
+      // Abstract methods have no body — skip generating a wasm function stub
+      if (hasAbstractModifier(member)) continue;
+
       const fullName = `${className}_${methodName}`;
       const isStatic = hasStaticModifier(member);
 
@@ -3413,6 +3418,14 @@ function hasAsyncModifier(node: ts.Node): boolean {
     ? ts.getModifiers(node)
     : undefined;
   return modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
+}
+
+function hasAbstractModifier(node: ts.Node): boolean {
+  return (
+    (ts.getCombinedModifierFlags(node as ts.Declaration) &
+      ts.ModifierFlags.Abstract) !==
+    0
+  );
 }
 
 function hasStaticModifier(node: ts.Node): boolean {
