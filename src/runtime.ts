@@ -65,6 +65,11 @@ export const jsApi: Record<string, Function> = new Proxy(
       if (name === "__box_number") return (v: number) => v;
       if (name === "__box_boolean") return (v: number) => Boolean(v);
       if (name === "__is_truthy") return (v: any) => v ? 1 : 0;
+      // Iterator protocol: host-delegated iteration for non-array types
+      if (name === "__iterator") return (obj: any) => obj[Symbol.iterator]();
+      if (name === "__iterator_next") return (iter: any) => iter.next();
+      if (name === "__iterator_done") return (result: any) => result.done ? 1 : 0;
+      if (name === "__iterator_value") return (result: any) => result.value;
       // Callback bridges for functional array methods
       if (name === "__call_1_f64") return (fn: Function, a: number) => fn(a);
       if (name === "__call_2_f64") return (fn: Function, a: number, b: number) => fn(a, b);
