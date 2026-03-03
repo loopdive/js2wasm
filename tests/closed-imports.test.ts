@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { compile } from "../src/index.js";
 import type { ImportDescriptor } from "../src/index.js";
+import { buildImports } from "../src/runtime.js";
 
 describe("ImportDescriptor manifest", () => {
   it("includes string literal imports", () => {
@@ -78,5 +79,60 @@ describe("ImportDescriptor manifest", () => {
     expect(result.success).toBe(true);
     const jsStringImports = result.imports.filter(i => i.module === "wasm:js-string");
     expect(jsStringImports.length).toBe(0);
+  });
+});
+
+describe("closed buildImports", () => {
+  it("builds env from manifest with string literals", () => {
+    const manifest: ImportDescriptor[] = [
+      { module: "env", name: "__str_0", kind: "func", intent: { type: "string_literal", value: "hello" } },
+    ];
+    const imports = buildImports(manifest);
+    expect(imports.env.__str_0()).toBe("hello");
+  });
+
+  it("builds env from manifest with Math", () => {
+    const manifest: ImportDescriptor[] = [
+      { module: "env", name: "Math_floor", kind: "func", intent: { type: "math", method: "floor" } },
+    ];
+    const imports = buildImports(manifest);
+    expect(imports.env.Math_floor(3.7)).toBe(3);
+  });
+
+  it("builds env from manifest with extern class get", () => {
+    const manifest: ImportDescriptor[] = [
+      { module: "env", name: "Foo_get_bar", kind: "func", intent: { type: "extern_class", className: "Foo", action: "get", member: "bar" } },
+    ];
+    const imports = buildImports(manifest);
+    expect(imports.env.Foo_get_bar({ bar: 42 })).toBe(42);
+  });
+
+  it("does not include unlisted imports", () => {
+    const manifest: ImportDescriptor[] = [
+      { module: "env", name: "Math_floor", kind: "func", intent: { type: "math", method: "floor" } },
+    ];
+    const imports = buildImports(manifest);
+    expect(imports.env.Math_ceil).toBeUndefined();
+    expect(imports.env.__extern_get).toBeUndefined();
+    expect(imports.env.string_constructor).toBeUndefined();
+  });
+
+  it("extern class new uses deps", () => {
+    class MyWidget { x: number; constructor(x: number) { this.x = x; } }
+    const manifest: ImportDescriptor[] = [
+      { module: "env", name: "Widget_new", kind: "func", intent: { type: "extern_class", className: "Widget", action: "new" } },
+    ];
+    const imports = buildImports(manifest, { Widget: MyWidget });
+    const w = imports.env.Widget_new(7);
+    expect(w).toBeInstanceOf(MyWidget);
+    expect((w as any).x).toBe(7);
+  });
+
+  it("string methods coerce receiver with String()", () => {
+    const manifest: ImportDescriptor[] = [
+      { module: "env", name: "string_trim", kind: "func", intent: { type: "string_method", method: "trim" } },
+    ];
+    const imports = buildImports(manifest);
+    expect(imports.env.string_trim("  hi  ")).toBe("hi");
   });
 });
