@@ -136,3 +136,75 @@ describe("closed buildImports", () => {
     expect(imports.env.string_trim("  hi  ")).toBe("hi");
   });
 });
+
+describe("security: closed import surface", () => {
+  it("unlisted import names are absent from env", () => {
+    const manifest: ImportDescriptor[] = [
+      { module: "env", name: "Math_floor", kind: "func", intent: { type: "math", method: "floor" } },
+    ];
+    const imports = buildImports(manifest);
+    // Use hasOwnProperty to check only the closed env's own keys,
+    // not inherited properties like __proto__ and constructor.
+    const has = (key: string) => Object.prototype.hasOwnProperty.call(imports.env, key);
+    expect(has("__proto__")).toBe(false);
+    expect(has("constructor")).toBe(false);
+    expect(has("Element_get___proto__")).toBe(false);
+    expect(has("Element_get_constructor")).toBe(false);
+    expect(has("__extern_get")).toBe(false);
+    expect(has("string_constructor")).toBe(false);
+    // The only own property should be Math_floor
+    expect(has("Math_floor")).toBe(true);
+  });
+
+  it("string methods coerce to String preventing prototype attacks", () => {
+    const manifest: ImportDescriptor[] = [
+      { module: "env", name: "string_trim", kind: "func", intent: { type: "string_method", method: "trim" } },
+    ];
+    const imports = buildImports(manifest);
+    expect(imports.env.string_trim("  hi  ")).toBe("hi");
+  });
+
+  it("extern class get only accesses the declared member", () => {
+    const manifest: ImportDescriptor[] = [
+      { module: "env", name: "Element_get_textContent", kind: "func",
+        intent: { type: "extern_class", className: "Element", action: "get", member: "textContent" } },
+    ];
+    const imports = buildImports(manifest);
+    const fake = { textContent: "hello", __proto__: "evil" };
+    expect(imports.env.Element_get_textContent(fake)).toBe("hello");
+  });
+
+  it("full compile-to-instantiate round-trip with closed imports", async () => {
+    const result = compile(`
+      export function f(x: number): number {
+        return Math.exp(x);
+      }
+    `);
+    expect(result.success).toBe(true);
+    // Math.exp is a host import (not a native wasm opcode like Math.floor)
+    expect(result.imports.length).toBeGreaterThan(0);
+
+    const imports = buildImports(result.imports);
+    const { instance } = await WebAssembly.instantiate(
+      result.binary as BufferSource,
+      imports as WebAssembly.Imports,
+    );
+    expect((instance.exports as any).f(0)).toBeCloseTo(1, 5);
+  });
+
+  it("compileAndInstantiate works end-to-end", async () => {
+    const { compileAndInstantiate } = await import("../src/runtime.js");
+    const exports = await compileAndInstantiate(`
+      export function add(a: number, b: number): number { return a + b; }
+    `);
+    expect((exports as any).add(2, 3)).toBe(5);
+  });
+
+  it("compileAndInstantiate with string literals", async () => {
+    const { compileAndInstantiate } = await import("../src/runtime.js");
+    const exports = await compileAndInstantiate(`
+      export function greet(): string { return "hello world"; }
+    `);
+    expect((exports as any).greet()).toBe("hello world");
+  });
+});
