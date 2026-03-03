@@ -11,6 +11,8 @@ import {
   isVoidType,
   isExternalDeclaredClass,
   isHeterogeneousUnion,
+  isGeneratorType,
+  isIteratorResultType,
 } from "../checker/type-mapper.js";
 import type { Instr, ValType, WasmFunction, FieldDef, StructTypeDef } from "../ir/types.js";
 import { ensureI32Condition } from "./index.js";
@@ -237,6 +239,11 @@ function compileExpressionInner(
   // await expr — compile as pass-through (host functions are sync from Wasm's perspective)
   if (ts.isAwaitExpression(expr)) {
     return compileExpressionInner(ctx, fctx, expr.expression);
+  }
+
+  // yield expr — inside a generator function, push value to the generator buffer
+  if (ts.isYieldExpression(expr)) {
+    return compileYieldExpression(ctx, fctx, expr);
   }
 
   // void expr — evaluate operand for side effects, then produce undefined
@@ -2251,6 +2258,16 @@ function compileCallExpression(
       return compileExternMethodCall(ctx, fctx, propAccess, expr);
     }
 
+    // Generator method calls: gen.next()
+    if (isGeneratorType(receiverType) && propAccess.name.text === "next") {
+      compileExpression(ctx, fctx, propAccess.expression);
+      const funcIdx = ctx.funcMap.get("__gen_next");
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+        return { kind: "externref" }; // Returns IteratorResult as externref
+      }
+    }
+
     // Check if receiver is a local class instance
     let receiverClassName = receiverType.getSymbol()?.name;
     // Map class expression symbol names to their synthetic names
@@ -3243,6 +3260,35 @@ function compilePropertyAccess(
     if (funcIdx !== undefined) {
       fctx.body.push({ op: "call", funcIdx });
       return { kind: "i32" };
+    }
+  }
+
+  // Handle IteratorResult property access: .value and .done
+  if (isIteratorResultType(objType) || isGeneratorIteratorResultLike(ctx, objType, propName)) {
+    if (propName === "value") {
+      compileExpression(ctx, fctx, expr.expression);
+      // Check the expected value type from the IteratorResult<T>
+      const valueType = getIteratorResultValueType(ctx, objType);
+      if (valueType && valueType.kind === "f64") {
+        const funcIdx = ctx.funcMap.get("__gen_result_value_f64");
+        if (funcIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx });
+          return { kind: "f64" };
+        }
+      }
+      const funcIdx = ctx.funcMap.get("__gen_result_value");
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+        return { kind: "externref" };
+      }
+    }
+    if (propName === "done") {
+      compileExpression(ctx, fctx, expr.expression);
+      const funcIdx = ctx.funcMap.get("__gen_result_done");
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+        return { kind: "i32" };
+      }
     }
   }
 
@@ -5079,6 +5125,136 @@ function compileArraySplice(
   return { kind: "ref_null", typeIdx: vecTypeIdx };
 }
 
+// ── Generator helper functions ────────────────────────────────────────
+
+/**
+ * Check if a type looks like an IteratorResult (has .value and .done properties)
+ * even if the type checker doesn't resolve it as IteratorResult directly.
+ * This handles cases where the type is a union (IteratorYieldResult | IteratorReturnResult).
+ */
+function isGeneratorIteratorResultLike(
+  ctx: CodegenContext,
+  type: ts.Type,
+  propName: string,
+): boolean {
+  if (propName !== "value" && propName !== "done") return false;
+  // Check if the type has both .value and .done properties (IteratorResult shape)
+  const props = type.getProperties();
+  const hasValue = props.some((p) => p.name === "value");
+  const hasDone = props.some((p) => p.name === "done");
+  if (hasValue && hasDone) return true;
+  // Check union types (IteratorResult = IteratorYieldResult | IteratorReturnResult)
+  if (type.isUnion()) {
+    for (const t of type.types) {
+      if (isIteratorResultType(t)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Get the value type T from IteratorResult<T>.
+ * Returns the ValType for the value, or null if not determinable.
+ */
+function getIteratorResultValueType(
+  ctx: CodegenContext,
+  type: ts.Type,
+): ValType | null {
+  // Try to get T from the type arguments
+  const typeArgs = ctx.checker.getTypeArguments(type as ts.TypeReference);
+  if (typeArgs.length > 0) {
+    return resolveWasmType(ctx, typeArgs[0]!);
+  }
+  // For unions, check each member
+  if (type.isUnion()) {
+    for (const t of type.types) {
+      const args = ctx.checker.getTypeArguments(t as ts.TypeReference);
+      if (args.length > 0) {
+        return resolveWasmType(ctx, args[0]!);
+      }
+    }
+  }
+  return null;
+}
+
+// ── Generator yield expression ────────────────────────────────────────
+
+/**
+ * Compile a `yield expr` expression inside a generator function.
+ * Pushes the yielded value into the __gen_buffer (a JS array managed by the host).
+ * The yield expression itself evaluates to void (we don't support receiving
+ * values via yield in this initial implementation).
+ */
+function compileYieldExpression(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.YieldExpression,
+): InnerResult {
+  // Ensure we're inside a generator function
+  if (!ctx.generatorFunctions.has(fctx.name)) {
+    ctx.errors.push({
+      message: "yield expression outside of generator function",
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+
+  // Get the buffer local
+  const bufferIdx = fctx.localMap.get("__gen_buffer");
+  if (bufferIdx === undefined) {
+    ctx.errors.push({
+      message: "Internal error: __gen_buffer not found in generator function",
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+
+  if (!expr.expression) {
+    // yield with no value: push undefined
+    const pushRefIdx = ctx.funcMap.get("__gen_push_ref");
+    if (pushRefIdx !== undefined) {
+      fctx.body.push({ op: "local.get", index: bufferIdx });
+      fctx.body.push({ op: "ref.null.extern" });
+      fctx.body.push({ op: "call", funcIdx: pushRefIdx });
+    }
+    return VOID_RESULT;
+  }
+
+  // Compile the yielded expression
+  const yieldedType = compileExpressionInner(ctx, fctx, expr.expression);
+  if (yieldedType === null || yieldedType === VOID_RESULT) {
+    return VOID_RESULT;
+  }
+
+  // Store the yielded value in a temp local, then push to buffer
+  const tmpLocal = allocLocal(fctx, `__yield_tmp_${fctx.locals.length}`, yieldedType);
+  fctx.body.push({ op: "local.set", index: tmpLocal });
+
+  // Push to buffer based on type
+  fctx.body.push({ op: "local.get", index: bufferIdx });
+  fctx.body.push({ op: "local.get", index: tmpLocal });
+
+  if (yieldedType.kind === "f64") {
+    const pushIdx = ctx.funcMap.get("__gen_push_f64");
+    if (pushIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: pushIdx });
+    }
+  } else if (yieldedType.kind === "i32") {
+    const pushIdx = ctx.funcMap.get("__gen_push_i32");
+    if (pushIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: pushIdx });
+    }
+  } else {
+    // externref, ref, ref_null — all pass as externref
+    const pushIdx = ctx.funcMap.get("__gen_push_ref");
+    if (pushIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: pushIdx });
+    }
+  }
+
+  return VOID_RESULT;
 // ── Functional array methods (filter, map, reduce, forEach, find, findIndex, some, every) ──
 
 /**
