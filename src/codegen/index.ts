@@ -313,6 +313,9 @@ export function generateModule(
   // Collect __make_callback import if arrow functions are used as call arguments
   collectCallbackImports(ctx, ast.sourceFile);
 
+  // Collect host callback bridges for functional array methods (filter, map, etc.)
+  collectFunctionalArrayImports(ctx, ast.sourceFile);
+
   // Collect union type helper imports (typeof checks, boxing/unboxing)
   collectUnionImports(ctx, ast.sourceFile);
 
@@ -441,6 +444,7 @@ export function generateMultiModule(
     collectStringMethodImports(ctx, sf);
     collectMathImports(ctx, sf);
     collectCallbackImports(ctx, sf);
+    collectFunctionalArrayImports(ctx, sf);
     collectUnionImports(ctx, sf);
     collectForInStringLiterals(ctx, sf);
   }
@@ -917,6 +921,67 @@ function collectCallbackImports(
       [{ kind: "externref" }],
     );
     addImport(ctx, "env", "__make_callback", { kind: "func", typeIdx });
+  }
+}
+
+/** Functional array methods that need host callback bridges */
+const FUNCTIONAL_ARRAY_METHODS = new Set([
+  "filter", "map", "reduce", "forEach", "find", "findIndex", "some", "every",
+]);
+
+/** Scan source for functional array methods (filter, map, etc.) and register __call_Nf64 imports */
+function collectFunctionalArrayImports(
+  ctx: CodegenContext,
+  sourceFile: ts.SourceFile,
+): void {
+  let need1 = false;
+  let need2 = false;
+
+  function visit(node: ts.Node) {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression)
+    ) {
+      const method = node.expression.name.text;
+      if (FUNCTIONAL_ARRAY_METHODS.has(method)) {
+        if (method === "reduce") {
+          need2 = true;
+        } else {
+          need1 = true;
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  for (const stmt of sourceFile.statements) {
+    if (ts.isFunctionDeclaration(stmt) && stmt.body) {
+      visit(stmt.body);
+    }
+    // Also scan module-level variable declarations
+    if (ts.isVariableStatement(stmt)) {
+      visit(stmt);
+    }
+  }
+
+  if (need1) {
+    // __call_1_f64: (externref, f64) → f64 — invoke callback with 1 f64 arg
+    const typeIdx = addFuncType(
+      ctx,
+      [{ kind: "externref" }, { kind: "f64" }],
+      [{ kind: "f64" }],
+    );
+    addImport(ctx, "env", "__call_1_f64", { kind: "func", typeIdx });
+  }
+
+  if (need2) {
+    // __call_2_f64: (externref, f64, f64) → f64 — invoke callback with 2 f64 args
+    const typeIdx = addFuncType(
+      ctx,
+      [{ kind: "externref" }, { kind: "f64" }, { kind: "f64" }],
+      [{ kind: "f64" }],
+    );
+    addImport(ctx, "env", "__call_2_f64", { kind: "func", typeIdx });
   }
 }
 
