@@ -1,4 +1,5 @@
 import { compileSource } from "./compiler.js";
+import type { ImportDescriptor, ImportIntent } from "./index.js";
 
 /** wasm:js-string polyfill for engines without native support (https://developer.mozilla.org/de/docs/WebAssembly/Guides/JavaScript_builtins) */
 export const jsString = {
@@ -10,61 +11,57 @@ export const jsString = {
   charCodeAt: (s: string, i: number): number => s.charCodeAt(i),
 };
 
-/** Math and console bindings — dispatches Math_xxx → Math.xxx, console_log_xxx → console.log */
-export const jsApi: Record<string, Function> = new Proxy(
-  {} as Record<string, Function>,
-  {
-    get(_, prop) {
-      const name = String(prop);
-      if (name.startsWith("Math_")) {
-        const fn = (Math as any)[name.slice(5)];
-        return typeof fn === "function" ? fn : undefined;
+function resolveImport(
+  intent: ImportIntent,
+  deps?: Record<string, any>,
+  callbackState?: { getExports: () => Record<string, Function> | undefined },
+): Function {
+  switch (intent.type) {
+    case "string_literal":
+      return () => intent.value;
+    case "math":
+      return (Math as any)[intent.method];
+    case "console_log":
+      return intent.variant === "bool"
+        ? (v: number) => console.log(Boolean(v))
+        : (v: any) => console.log(v);
+    case "string_method": {
+      const method = intent.method;
+      return (s: any, ...a: any[]) => (String(s) as any)[method](...a);
+    }
+    case "extern_class": {
+      if (intent.action === "new") {
+        const builtinCtors: Record<string, Function> = { Map, Set, RegExp };
+        const Ctor = deps?.[intent.className] ?? builtinCtors[intent.className];
+        if (!Ctor) return (...args: any[]) => { throw new Error(`No dependency provided for extern class "${intent.className}"`); };
+        return (...args: any[]) => {
+          // Strip trailing null/undefined args (wasm pads optionals with ref.null)
+          while (args.length > 0 && args[args.length - 1] == null) args.pop();
+          return new Ctor(...args);
+        };
       }
-      if (name.startsWith("console_log_")) {
-        const type = name.slice(12);
-        return type === "bool"
-          ? (v: number) => console.log(Boolean(v))
-          : (v: any) => console.log(v);
+      if (intent.action === "get") {
+        const member = intent.member!;
+        return (self: any) => self[member];
       }
+      if (intent.action === "set") {
+        const member = intent.member!;
+        return (self: any, v: any) => { self[member] = v; };
+      }
+      const m = intent.member!;
+      return (self: any, ...args: any[]) => self[m](...args);
+    }
+    case "builtin": {
+      const name = intent.name;
+      if (name === "number_toString") return (v: number) => String(v);
+      if (name === "number_toFixed") return (v: number, d: number) => v.toFixed(d);
       if (name === "JSON_stringify") return (v: any) => JSON.stringify(v);
       if (name === "JSON_parse") return (s: any) => JSON.parse(s);
-      if (name === "number_toString") return (v: number) => String(v);
-      if (name === "number_toFixed") return (v: number, digits: number) => v.toFixed(digits);
       if (name === "__extern_get") return (obj: any, idx: number) => obj[idx];
       if (name === "__extern_length") return (obj: any) => obj.length;
-      // Date methods
-      if (name === "Date_new") return () => new Date();
-      // Map and Set constructors
-      if (name === "Map_new") return () => new Map();
-      if (name === "Set_new") return () => new Set();
-      if (name.startsWith("Date_get")) {
-        const method = name.slice(5); // "getDate", "getMonth", etc.
-        return (d: any) => d[method]();
-      }
-      // RegExp constructor — flags may be null when padded by Wasm default args
-      if (name === "RegExp_new") return (pattern: string, flags?: string) =>
-        flags != null ? new RegExp(pattern, flags) : new RegExp(pattern);
-      if (name.startsWith("string_")) {
-        const method = name.slice(7);
-        return (s: any, ...a: any[]) => s[method](...a);
-      }
-      // Async/await support: __await is identity (host functions are sync from Wasm's perspective)
-      if (name === "__await") return (v: any) => v;
-      // Promise combinators — delegate to host
-      // In the synchronous runtime (where __await is identity), these return
-      // resolved values directly. In a real async host (JSPI), override with
-      // actual Promise.all / Promise.race.
+      // Promise combinators
       if (name === "Promise_all") return (arr: any) => Promise.all(arr);
       if (name === "Promise_race") return (arr: any) => Promise.race(arr);
-      // Union type typeof checks and boxing/unboxing
-      if (name === "__typeof_number") return (v: any) => typeof v === "number" ? 1 : 0;
-      if (name === "__typeof_string") return (v: any) => typeof v === "string" ? 1 : 0;
-      if (name === "__typeof_boolean") return (v: any) => typeof v === "boolean" ? 1 : 0;
-      if (name === "__unbox_number") return (v: any) => Number(v);
-      if (name === "__unbox_boolean") return (v: any) => v ? 1 : 0;
-      if (name === "__box_number") return (v: number) => v;
-      if (name === "__box_boolean") return (v: number) => Boolean(v);
-      if (name === "__is_truthy") return (v: any) => v ? 1 : 0;
       // Generator support: buffer management and generator creation
       if (name === "__gen_create_buffer") return () => [];
       if (name === "__gen_push_f64") return (buf: any[], v: number) => { buf.push(v); };
@@ -103,34 +100,37 @@ export const jsApi: Record<string, Function> = new Proxy(
       if (name === "__call_1_f64") return (fn: Function, a: number) => fn(a);
       if (name === "__call_2_f64") return (fn: Function, a: number, b: number) => fn(a, b);
       if (name === "__typeof") return (v: any) => typeof v;
-    },
-  },
-);
-
-/** DOM extern-class bindings — dispatches ClassName_method(self, …) → self.method(…) */
-export const domApi: Record<string, Function> = new Proxy(
-  {} as Record<string, Function>,
-  {
-    get(_, prop) {
-      const name = String(prop);
-      const under = name.indexOf("_");
-      if (under === -1) return undefined;
-      const rest = name.slice(under + 1);
-      if (rest.startsWith("get_")) {
-        const k = rest.slice(4);
-        return (self: any) => self[k];
-      }
-      if (rest.startsWith("set_")) {
-        const k = rest.slice(4);
-        return (self: any, v: any) => {
-          self[k] = v;
-        };
-      }
-      return (self: any, ...args: any[]) =>
-        typeof self?.[rest] === "function" ? self[rest](...args) : undefined;
-    },
-  },
-);
+      return () => {};
+    }
+    case "callback_maker":
+      return (id: number, cap: any) => (...args: any[]) => {
+        const exports = callbackState?.getExports();
+        return exports?.[`__cb_${id}`]?.(cap, ...args);
+      };
+    case "await":
+      return (v: any) => v;
+    case "typeof_check":
+      return (v: any) => typeof v === intent.targetType ? 1 : 0;
+    case "box":
+      return intent.targetType === "boolean" ? (v: number) => Boolean(v) : (v: number) => v;
+    case "unbox":
+      return intent.targetType === "boolean" ? (v: any) => (v ? 1 : 0) : (v: any) => Number(v);
+    case "truthy_check":
+      return (v: any) => (v ? 1 : 0);
+    case "extern_get":
+      return (obj: any, idx: number) => obj[idx];
+    case "date_new":
+      return () => new Date();
+    case "date_method": {
+      const m = intent.method;
+      return (d: any) => d[m]();
+    }
+    case "declared_global":
+      return deps?.[intent.name] ?? (() => {});
+    default:
+      return () => {};
+  }
+}
 
 /**
  * Build string constants object for the "string_constants" import namespace.
@@ -151,28 +151,42 @@ export function buildStringConstants(
   return constants;
 }
 
-/** Build the WebAssembly import object from string pool and API bindings */
+/** Build the WebAssembly import object from a closed manifest */
 export function buildImports(
-  stringPool: string[] = [],
-  ...apiObjects: Record<string, unknown>[]
+  manifest: ImportDescriptor[],
+  deps?: Record<string, any>,
+  stringPool?: string[],
 ): {
   env: Record<string, Function>;
   "wasm:js-string": typeof jsString;
   string_constants: Record<string, WebAssembly.Global>;
+  setExports?: (exports: Record<string, Function>) => void;
 } {
-  const env = new Proxy({} as Record<string, Function>, {
-    get(_, prop) {
-      for (const obj of apiObjects) {
-        const val = (obj as any)[prop];
-        if (val !== undefined) return val;
-      }
-    },
-  });
-  return {
+  const env: Record<string, Function> = {};
+  let wasmExports: Record<string, Function> | undefined;
+  const callbackState = { getExports: () => wasmExports };
+  let hasCallbacks = false;
+
+  for (const imp of manifest) {
+    if (imp.module !== "env") continue;
+    env[imp.name] = resolveImport(imp.intent, deps, callbackState);
+    if (imp.intent.type === "callback_maker") hasCallbacks = true;
+  }
+
+  const result: {
+    env: Record<string, Function>;
+    "wasm:js-string": typeof jsString;
+    string_constants: Record<string, WebAssembly.Global>;
+    setExports?: (exports: Record<string, Function>) => void;
+  } = {
     env,
     "wasm:js-string": jsString,
     string_constants: buildStringConstants(stringPool),
   };
+  if (hasCallbacks) {
+    result.setExports = (exports: Record<string, Function>) => { wasmExports = exports; };
+  }
+  return result;
 }
 
 /** Instantiate a Wasm module, trying native wasm:js-string builtins first
@@ -207,16 +221,20 @@ export async function instantiateWasm(
 /** Compile TypeScript source and instantiate the Wasm module. */
 export async function compileAndInstantiate(
   source: string,
+  deps?: Record<string, any>,
 ): Promise<WebAssembly.Exports> {
   const result = compileSource(source);
   if (!result.success) {
     throw new Error(result.errors.map((e) => e.message).join("\n"));
   }
-  const imports = buildImports(result.stringPool, jsApi, domApi);
+  const imports = buildImports(result.imports, deps, result.stringPool);
   const { instance } = await instantiateWasm(
     result.binary,
     imports.env,
     imports.string_constants,
   );
+  if (imports.setExports) {
+    imports.setExports(instance.exports as Record<string, Function>);
+  }
   return instance.exports;
 }

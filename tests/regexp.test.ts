@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { compile } from "../src/index.js";
-import { buildImports, jsApi, domApi } from "../src/runtime.js";
+import { buildImports } from "../src/runtime.js";
 
 async function run(source: string, fn: string, ...args: unknown[]): Promise<unknown> {
   const result = compile(source);
@@ -9,7 +9,7 @@ async function run(source: string, fn: string, ...args: unknown[]): Promise<unkn
       `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}\nWAT:\n${result.wat}`,
     );
   }
-  const imports = buildImports(result.stringPool, jsApi, domApi);
+  const imports = buildImports(result.imports, undefined, result.stringPool);
   const { instance } = await WebAssembly.instantiate(
     result.binary,
     imports as WebAssembly.Imports,

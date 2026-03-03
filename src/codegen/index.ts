@@ -828,6 +828,7 @@ function collectStringLiterals(
       const { pattern, flags } = parseRegExpLiteral(node.getText());
       literals.add(pattern);
       if (flags) literals.add(flags);
+    }
     // typeof expressions need type-name string constants
     if (ts.isTypeOfExpression(node)) {
       hasTypeofExpr = true;
@@ -1039,6 +1040,48 @@ function collectPromiseImports(
   sourceFile: ts.SourceFile,
 ): void {
   const needed = new Set<string>();
+
+  function visit(node: ts.Node) {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      ts.isIdentifier(node.expression.expression) &&
+      node.expression.expression.text === "Promise"
+    ) {
+      const method = node.expression.name.text;
+      if (method === "all" || method === "race") {
+        needed.add(method);
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  for (const stmt of sourceFile.statements) {
+    if (ts.isFunctionDeclaration(stmt) && stmt.body) {
+      visit(stmt.body);
+    }
+    if (ts.isClassDeclaration(stmt)) {
+      for (const member of stmt.members) {
+        if (ts.isMethodDeclaration(member) && member.body) {
+          visit(member.body);
+        }
+      }
+    }
+  }
+
+  for (const method of needed) {
+    const importName = `Promise_${method}`;
+    if (!ctx.funcMap.has(importName)) {
+      const typeIdx = addFuncType(
+        ctx,
+        [{ kind: "externref" }],
+        [{ kind: "externref" }],
+      );
+      addImport(ctx, "env", importName, { kind: "func", typeIdx });
+    }
+  }
+}
+
 /** Scan source for JSON.parse / JSON.stringify calls and register host imports */
 function collectJsonImports(
   ctx: CodegenContext,
@@ -1052,12 +1095,6 @@ function collectJsonImports(
       ts.isCallExpression(node) &&
       ts.isPropertyAccessExpression(node.expression) &&
       ts.isIdentifier(node.expression.expression) &&
-      node.expression.expression.text === "Promise"
-    ) {
-      const method = node.expression.name.text;
-      if (method === "all" || method === "race") {
-        needed.add(method);
-      }
       node.expression.expression.text === "JSON"
     ) {
       const method = node.expression.name.text;
@@ -1071,7 +1108,6 @@ function collectJsonImports(
     if (ts.isFunctionDeclaration(stmt) && stmt.body) {
       visit(stmt.body);
     }
-    // Also visit class method bodies
     if (ts.isClassDeclaration(stmt)) {
       for (const member of stmt.members) {
         if (ts.isMethodDeclaration(member) && member.body) {
@@ -1081,29 +1117,14 @@ function collectJsonImports(
     }
   }
 
-  for (const method of needed) {
-    const importName = `Promise_${method}`;
-    if (!ctx.funcMap.has(importName)) {
-      // (externref) -> externref — takes array of promises, returns promise
-      const typeIdx = addFuncType(
-        ctx,
-        [{ kind: "externref" }],
-        [{ kind: "externref" }],
-      );
-      addImport(ctx, "env", importName, { kind: "func", typeIdx });
-    }
   if (needStringify || needParse) {
-    // Ensure boxing imports are available (stringify may receive numbers/booleans
-    // that need to be coerced to externref before the host call)
     addUnionImports(ctx);
   }
   if (needStringify) {
-    // JSON_stringify: (externref) -> externref
     const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "JSON_stringify", { kind: "func", typeIdx });
   }
   if (needParse) {
-    // JSON_parse: (externref) -> externref
     const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "JSON_parse", { kind: "func", typeIdx });
   }
@@ -1248,6 +1269,9 @@ function collectGeneratorImports(
       kind: "func",
       typeIdx: resultDoneType,
     });
+  }
+}
+
 /** Functional array methods that need host callback bridges */
 const FUNCTIONAL_ARRAY_METHODS = new Set([
   "filter", "map", "reduce", "forEach", "find", "findIndex", "some", "every",
@@ -1422,6 +1446,17 @@ export function addUnionImports(ctx: CodegenContext): void {
     typeIdx: boxBoolType,
   });
 
+  // __typeof: (externref) → externref (returns type string)
+  const typeofStrType = addFuncType(
+    ctx,
+    [{ kind: "externref" }],
+    [{ kind: "externref" }],
+  );
+  addImport(ctx, "env", "__typeof", {
+    kind: "func",
+    typeIdx: typeofStrType,
+  });
+
   // If imports were added after defined functions were registered (late addition),
   // shift all defined-function indices and fix exports/funcMap/call instructions.
   // The new imports themselves (at indices importsBefore..numImportFuncs-1) are already
@@ -1433,7 +1468,7 @@ export function addUnionImports(ctx: CodegenContext): void {
     const newImportNames = new Set([
       "__typeof_number", "__typeof_string", "__typeof_boolean",
       "__is_truthy", "__unbox_number", "__unbox_boolean",
-      "__box_number", "__box_boolean",
+      "__box_number", "__box_boolean", "__typeof",
     ]);
     // Update funcMap entries for defined functions (not imports)
     for (const [name, idx] of ctx.funcMap) {
@@ -1475,16 +1510,6 @@ export function addUnionImports(ctx: CodegenContext): void {
       );
     }
   }
-  // __typeof: (externref) → externref (returns type string)
-  const typeofStrType = addFuncType(
-    ctx,
-    [{ kind: "externref" }],
-    [{ kind: "externref" }],
-  );
-  addImport(ctx, "env", "__typeof", {
-    kind: "func",
-    typeIdx: typeofStrType,
-  });
 }
 
 /**

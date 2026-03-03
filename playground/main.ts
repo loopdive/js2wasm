@@ -6,7 +6,7 @@ import "monaco-editor/esm/vs/language/typescript/monaco.contribution.js";
 import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker";
 import * as ts from "typescript";
 import { compile } from "../src/index.js";
-import { domApi, instantiateWasm } from "../src/runtime.js";
+import { buildImports, instantiateWasm } from "../src/runtime.js";
 import { WasmTreemap, parseWasm, parseWasmSpans, SECTION_COLORS } from "./wasm-treemap.js";
 import type { WasmData, WasmSection, WasmFunctionBody, ByteSpan } from "./wasm-treemap.js";
 import { LayoutManager } from "./layout.js";
@@ -2503,78 +2503,31 @@ function buildEnv(
         },
       })
     : document;
-  const win = window;
-  let wasmExports: Record<string, Function> | undefined;
-  const env: Record<string, Function> = {
-    console_log_number: (v: number) => log(String(v)),
-    console_log_string: (v: string) => log(String(v)),
-    console_log_bool: (v: number) => log(v ? "true" : "false"),
-    console_log_externref: (v: unknown) => log(String(v)),
-    number_toString: (v: number) => String(v),
-    string_toUpperCase: (s: string) => s.toUpperCase(),
-    string_toLowerCase: (s: string) => s.toLowerCase(),
-    string_trim: (s: string) => s.trim(),
-    string_trimStart: (s: string) => s.trimStart(),
-    string_trimEnd: (s: string) => s.trimEnd(),
-    string_charAt: (s: string, i: number) => s.charAt(i),
-    string_slice: (s: string, a: number, b: number) => s.slice(a, b),
-    string_substring: (s: string, a: number, b: number) => s.substring(a, b),
-    string_indexOf: (s: string, v: string) => s.indexOf(v),
-    string_lastIndexOf: (s: string, v: string) => s.lastIndexOf(v),
-    string_includes: (s: string, v: string) => (s.includes(v) ? 1 : 0),
-    string_startsWith: (s: string, v: string) => (s.startsWith(v) ? 1 : 0),
-    string_endsWith: (s: string, v: string) => (s.endsWith(v) ? 1 : 0),
-    string_replace: (s: string, a: string, b: string) => s.replace(a, b),
-    string_repeat: (s: string, n: number) => s.repeat(n),
-    string_padStart: (s: string, n: number, p: string) => s.padStart(n, p),
-    string_padEnd: (s: string, n: number, p: string) => s.padEnd(n, p),
-    __make_callback:
-      (id: number, cap: unknown) =>
-      (...args: unknown[]) =>
-        wasmExports![`__cb_${id}`]!(cap, ...args),
-    Math_exp: Math.exp,
-    Math_log: Math.log,
-    Math_log2: Math.log2,
-    Math_log10: Math.log10,
-    Math_sin: Math.sin,
-    Math_cos: Math.cos,
-    Math_tan: Math.tan,
-    Math_asin: Math.asin,
-    Math_acos: Math.acos,
-    Math_atan: Math.atan,
-    Math_atan2: Math.atan2,
-    Math_pow: Math.pow,
-    Math_random: Math.random,
-    global_document: () => doc,
-    global_window: () => win,
-    global_performance: () => performance,
-    number_toFixed: (v: number, d: number) => v.toFixed(d),
-    __extern_get: (obj: any, idx: number) => obj[idx],
-    Date_new: () => new Date(),
-    Date_getDate: (d: Date) => d.getDate(),
-    Date_getMonth: (d: Date) => d.getMonth(),
-    Date_getFullYear: (d: Date) => d.getFullYear(),
-    Date_getHours: (d: Date) => d.getHours(),
-    Date_getMinutes: (d: Date) => d.getMinutes(),
-    Date_getSeconds: (d: Date) => d.getSeconds(),
-    Date_getTime: (d: Date) => d.getTime(),
-  };
-  result.stringPool.forEach((str, i) => {
-    env[`__str_${i}`] = () => str;
+
+  // Build closed env from the compiler-generated manifest.
+  // The deps object provides declared globals (document, window, performance).
+  const imports = buildImports(result.imports, {
+    document: doc,
+    window: window,
+    performance: performance,
   });
-  const proxy = new Proxy(env, {
-    get(target, prop) {
-      if (prop in target) return target[prop as string];
-      const domVal = domApi[prop as string];
-      if (domVal !== undefined) return domVal;
-      return (..._: unknown[]) => {};
-    },
-  });
+  const env = imports.env;
+
+  // Override console_log variants to redirect to the playground's console panel
+  env.console_log_number = (v: number) => log(String(v));
+  env.console_log_string = (v: string) => log(String(v));
+  env.console_log_bool = (v: number) => log(v ? "true" : "false");
+  env.console_log_externref = (v: unknown) => log(String(v));
+
+  let setExportsFn = imports.setExports;
+  if (!setExportsFn) {
+    // Provide a no-op if no callbacks are in the manifest
+    setExportsFn = () => {};
+  }
+
   return {
-    env: proxy,
-    setExports: (exports: Record<string, Function>) => {
-      wasmExports = exports;
-    },
+    env,
+    setExports: setExportsFn,
   };
 }
 

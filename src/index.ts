@@ -1,3 +1,28 @@
+export type ImportIntent =
+  | { type: "string_literal"; value: string }
+  | { type: "math"; method: string }
+  | { type: "console_log"; variant: string }
+  | { type: "extern_class"; className: string; action: "new" | "method" | "get" | "set"; member?: string }
+  | { type: "string_method"; method: string }
+  | { type: "builtin"; name: string }
+  | { type: "callback_maker" }
+  | { type: "await" }
+  | { type: "typeof_check"; targetType: string }
+  | { type: "box"; targetType: string }
+  | { type: "unbox"; targetType: string }
+  | { type: "extern_get" }
+  | { type: "truthy_check" }
+  | { type: "date_new" }
+  | { type: "date_method"; method: string }
+  | { type: "declared_global"; name: string };
+
+export interface ImportDescriptor {
+  module: "env" | "wasm:js-string" | "string_constants";
+  name: string;
+  kind: "func" | "global";
+  intent: ImportIntent;
+}
+
 export interface CompileResult {
   /** Wasm binary with GC proposal */
   binary: Uint8Array;
@@ -15,6 +40,8 @@ export interface CompileResult {
   stringPool: string[];
   /** Source map v3 JSON string (only present when sourceMap option is enabled) */
   sourceMap?: string;
+  /** Import descriptors for closed import building */
+  imports: ImportDescriptor[];
 }
 
 export interface CompileError {
@@ -94,9 +121,8 @@ export function compileToObject(
 
 export {
   jsString,
-  jsApi,
-  domApi,
   buildImports,
   buildStringConstants,
   compileAndInstantiate,
+  instantiateWasm,
 } from "./runtime.js";

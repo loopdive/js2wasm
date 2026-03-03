@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { compile } from "../src/index.js";
+import { buildImports } from "../src/runtime.js";
 
 async function run(source: string, fnName = "test") {
   const result = compile(source);
@@ -8,13 +9,8 @@ async function run(source: string, fnName = "test") {
     `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}`,
   ).toBe(true);
 
-  const { instance } = await WebAssembly.instantiate(result.binary, {
-    env: {
-      console_log_number: () => {},
-      console_log_bool: () => {},
-      console_log_string: () => {},
-    },
-  });
+  const imports = buildImports(result.imports, undefined, result.stringPool);
+  const { instance } = await WebAssembly.instantiate(result.binary, imports as WebAssembly.Imports);
   return (instance.exports as any)[fnName]();
 }
 
