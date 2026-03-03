@@ -3075,6 +3075,83 @@ function compileObjectLiteral(
   return null;
 }
 
+/**
+ * Resolve the property name of an ObjectLiteralElementLike to a static string.
+ * Handles identifiers, string literals, and computed property names that can be
+ * evaluated at compile time (string literal expressions, const variables, enum members).
+ * Returns undefined if the name cannot be statically resolved.
+ */
+function resolvePropertyNameText(
+  ctx: CodegenContext,
+  prop: ts.ObjectLiteralElementLike,
+): string | undefined {
+  if (!ts.isPropertyAssignment(prop)) return undefined;
+  const name = prop.name;
+
+  // Regular identifier: { x: 1 }
+  if (ts.isIdentifier(name)) return name.text;
+
+  // String literal property name: { "x": 1 }
+  if (ts.isStringLiteral(name)) return name.text;
+
+  // Numeric literal property name: { 0: 1 }
+  if (ts.isNumericLiteral(name)) return name.text;
+
+  // Computed property name: { [expr]: 1 }
+  if (ts.isComputedPropertyName(name)) {
+    return resolveComputedKeyExpression(ctx, name.expression);
+  }
+
+  return undefined;
+}
+
+/**
+ * Try to evaluate a computed key expression to a static string at compile time.
+ * Supports:
+ * - String literals: ["x"]
+ * - Const variable references: [key] where const key = "x"
+ * - Enum member access: [MyEnum.Key]
+ */
+function resolveComputedKeyExpression(
+  ctx: CodegenContext,
+  expr: ts.Expression,
+): string | undefined {
+  // Direct string literal: ["x"]
+  if (ts.isStringLiteral(expr)) return expr.text;
+
+  // Identifier referencing a const variable: [key]
+  if (ts.isIdentifier(expr)) {
+    const sym = ctx.checker.getSymbolAtLocation(expr);
+    if (sym) {
+      const decl = sym.valueDeclaration;
+      if (decl && ts.isVariableDeclaration(decl) && decl.initializer) {
+        // Check that the variable is declared with const
+        const declList = decl.parent;
+        if (ts.isVariableDeclarationList(declList) && (declList.flags & ts.NodeFlags.Const) !== 0) {
+          if (ts.isStringLiteral(decl.initializer)) {
+            return decl.initializer.text;
+          }
+        }
+      }
+    }
+    return undefined;
+  }
+
+  // Property access for enum members: [MyEnum.Key]
+  if (ts.isPropertyAccessExpression(expr) && ts.isIdentifier(expr.expression)) {
+    const objName = expr.expression.text;
+    const propName = expr.name.text;
+    const enumKey = `${objName}.${propName}`;
+    const enumStrVal = ctx.enumStringValues.get(enumKey);
+    if (enumStrVal !== undefined) return enumStrVal;
+    // Numeric enum — convert to string
+    const enumNumVal = ctx.enumValues.get(enumKey);
+    if (enumNumVal !== undefined) return String(enumNumVal);
+  }
+
+  return undefined;
+}
+
 function compileObjectLiteralForStruct(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -3113,12 +3190,9 @@ function compileObjectLiteralForStruct(
   }
 
   for (const field of fields) {
-    // First check for an explicit property assignment
+    // First check for an explicit property assignment (identifier, string literal, or computed key)
     const prop = expr.properties.find(
-      (p) =>
-        ts.isPropertyAssignment(p) &&
-        ts.isIdentifier(p.name) &&
-        p.name.text === field.name,
+      (p) => resolvePropertyNameText(ctx, p) === field.name,
     );
     if (prop && ts.isPropertyAssignment(prop)) {
       compileExpression(ctx, fctx, prop.initializer);

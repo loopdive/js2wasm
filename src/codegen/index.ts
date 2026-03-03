@@ -734,6 +734,10 @@ function collectStringLiterals(
   const literals = new Set<string>();
 
   function visit(node: ts.Node) {
+    // Skip computed property names — their string literals are resolved at
+    // compile time and never appear as runtime values in the wasm output.
+    if (ts.isComputedPropertyName(node)) return;
+
     if (ts.isStringLiteral(node)) {
       literals.add(node.text);
     }
