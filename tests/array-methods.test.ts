@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { compile } from "../src/index.js";
+import { buildStringConstants } from "../src/runtime.js";
 
 async function run(source: string, fn: string, args: unknown[] = []): Promise<unknown> {
   const result = compile(source);
@@ -11,11 +12,6 @@ async function run(source: string, fn: string, args: unknown[] = []): Promise<un
     console_log_bool: () => {},
     console_log_string: () => {},
   };
-  // String literal thunks
-  for (let i = 0; i < result.stringPool.length; i++) {
-    const value = result.stringPool[i]!;
-    env[`__str_${i}`] = () => value;
-  }
   // number_toString
   env["number_toString"] = (v: number) => String(v);
 
@@ -30,6 +26,7 @@ async function run(source: string, fn: string, args: unknown[] = []): Promise<un
   const { instance } = await WebAssembly.instantiate(result.binary, {
     env,
     "wasm:js-string": jsStringPolyfill,
+    string_constants: buildStringConstants(result.stringPool),
   } as WebAssembly.Imports);
   return (instance.exports as any)[fn](...args);
 }
