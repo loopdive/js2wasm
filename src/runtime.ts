@@ -11,75 +11,6 @@ export const jsString = {
   charCodeAt: (s: string, i: number): number => s.charCodeAt(i),
 };
 
-/** Math and console bindings — dispatches Math_xxx → Math.xxx, console_log_xxx → console.log */
-export const jsApi: Record<string, Function> = new Proxy(
-  {} as Record<string, Function>,
-  {
-    get(_, prop) {
-      const name = String(prop);
-      if (name.startsWith("Math_")) {
-        const fn = (Math as any)[name.slice(5)];
-        return typeof fn === "function" ? fn : undefined;
-      }
-      if (name.startsWith("console_log_")) {
-        const type = name.slice(12);
-        return type === "bool"
-          ? (v: number) => console.log(Boolean(v))
-          : (v: any) => console.log(v);
-      }
-      if (name === "number_toString") return (v: number) => String(v);
-      if (name === "number_toFixed") return (v: number, digits: number) => v.toFixed(digits);
-      if (name === "__extern_get") return (obj: any, idx: number) => obj[idx];
-      // Date methods
-      if (name === "Date_new") return () => new Date();
-      if (name.startsWith("Date_get")) {
-        const method = name.slice(5); // "getDate", "getMonth", etc.
-        return (d: any) => d[method]();
-      }
-      if (name.startsWith("string_")) {
-        const method = name.slice(7);
-        return (s: any, ...a: any[]) => s[method](...a);
-      }
-      // Async/await support: __await is identity (host functions are sync from Wasm's perspective)
-      if (name === "__await") return (v: any) => v;
-      // Union type typeof checks and boxing/unboxing
-      if (name === "__typeof_number") return (v: any) => typeof v === "number" ? 1 : 0;
-      if (name === "__typeof_string") return (v: any) => typeof v === "string" ? 1 : 0;
-      if (name === "__typeof_boolean") return (v: any) => typeof v === "boolean" ? 1 : 0;
-      if (name === "__unbox_number") return (v: any) => Number(v);
-      if (name === "__unbox_boolean") return (v: any) => v ? 1 : 0;
-      if (name === "__box_number") return (v: number) => v;
-      if (name === "__box_boolean") return (v: number) => Boolean(v);
-      if (name === "__is_truthy") return (v: any) => v ? 1 : 0;
-    },
-  },
-);
-
-/** DOM extern-class bindings — dispatches ClassName_method(self, …) → self.method(…) */
-export const domApi: Record<string, Function> = new Proxy(
-  {} as Record<string, Function>,
-  {
-    get(_, prop) {
-      const name = String(prop);
-      const under = name.indexOf("_");
-      if (under === -1) return undefined;
-      const rest = name.slice(under + 1);
-      if (rest.startsWith("get_")) {
-        const k = rest.slice(4);
-        return (self: any) => self[k];
-      }
-      if (rest.startsWith("set_")) {
-        const k = rest.slice(4);
-        return (self: any, v: any) => {
-          self[k] = v;
-        };
-      }
-      return (self: any, ...args: any[]) =>
-        typeof self?.[rest] === "function" ? self[rest](...args) : undefined;
-    },
-  },
-);
-
 function resolveImport(
   intent: ImportIntent,
   deps?: Record<string, any>,
@@ -205,12 +136,16 @@ export async function instantiateWasm(
 /** Compile TypeScript source and instantiate the Wasm module. */
 export async function compileAndInstantiate(
   source: string,
+  deps?: Record<string, any>,
 ): Promise<WebAssembly.Exports> {
   const result = compileSource(source);
   if (!result.success) {
     throw new Error(result.errors.map((e) => e.message).join("\n"));
   }
-  const imports = buildImports(result.stringPool, jsApi, domApi);
+  const imports = buildImports(result.imports, deps);
   const { instance } = await instantiateWasm(result.binary, imports.env);
+  if (imports.setExports) {
+    imports.setExports(instance.exports as Record<string, Function>);
+  }
   return instance.exports;
 }
