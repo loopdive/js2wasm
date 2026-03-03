@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { compile } from "../src/index.js";
+import { buildStringConstants } from "../src/runtime.js";
 import { readFileSync } from "fs";
 import { resolve } from "path";
 
@@ -104,12 +105,6 @@ describe("full playground DEFAULT_SOURCE", () => {
       Date_getTime: (d: Date) => d.getTime(),
     };
 
-    // Add string pool entries
-    for (let i = 0; i < result.stringPool.length; i++) {
-      const val = result.stringPool[i]!;
-      env["__str_" + i] = () => val;
-    }
-
     // JS string polyfill
     const jsStringPolyfill = {
       concat: (a: string, b: string) => a + b,
@@ -118,6 +113,8 @@ describe("full playground DEFAULT_SOURCE", () => {
       substring: (s: string, start: number, end: number) => s.substring(start, end),
       charCodeAt: (s: string, i: number) => s.charCodeAt(i),
     };
+
+    const sc = buildStringConstants(result.stringPool);
 
     // Use a proxy like the playground to catch missing imports
     const proxy = new Proxy(env, {
@@ -132,11 +129,13 @@ describe("full playground DEFAULT_SOURCE", () => {
     try {
       ({ instance } = await WebAssembly.instantiate(result.binary, {
         env: proxy,
+        string_constants: sc,
       }));
     } catch {
       ({ instance } = await WebAssembly.instantiate(result.binary, {
         env: proxy,
         "wasm:js-string": jsStringPolyfill,
+        string_constants: sc,
       } as WebAssembly.Imports));
     }
 
@@ -229,11 +228,6 @@ describe("full playground DEFAULT_SOURCE", () => {
       Date_getTime: (d: Date) => d.getTime(),
     };
 
-    for (let i = 0; i < result.stringPool.length; i++) {
-      const val = result.stringPool[i]!;
-      env["__str_" + i] = () => val;
-    }
-
     const jsStringPolyfill = {
       concat: (a: string, b: string) => a + b,
       length: (s: string) => s.length,
@@ -241,6 +235,8 @@ describe("full playground DEFAULT_SOURCE", () => {
       substring: (s: string, start: number, end: number) => s.substring(start, end),
       charCodeAt: (s: string, i: number) => s.charCodeAt(i),
     };
+
+    const sc = buildStringConstants(result.stringPool);
 
     // DOM API proxy
     const domProxy = new Proxy(env, {
@@ -265,11 +261,13 @@ describe("full playground DEFAULT_SOURCE", () => {
     try {
       ({ instance } = await WebAssembly.instantiate(result.binary, {
         env: domProxy,
+        string_constants: sc,
       }));
     } catch {
       ({ instance } = await WebAssembly.instantiate(result.binary, {
         env: domProxy,
         "wasm:js-string": jsStringPolyfill,
+        string_constants: sc,
       } as WebAssembly.Imports));
     }
 
