@@ -953,6 +953,20 @@ export function encodeInstr(instr: Instr, enc: WasmEncoder): void {
       enc.u32(instr.align);
       enc.u32(instr.offset);
       break;
+    // f32 memory load/store and conversion
+    case "f32.load":
+      enc.byte(OP.f32_load);
+      enc.u32(instr.align);
+      enc.u32(instr.offset);
+      break;
+    case "f32.store":
+      enc.byte(OP.f32_store);
+      enc.u32(instr.align);
+      enc.u32(instr.offset);
+      break;
+    case "f32.demote_f64":
+      enc.byte(OP.f32_demote_f64);
+      break;
   }
 }
 

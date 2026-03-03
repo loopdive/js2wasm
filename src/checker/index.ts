@@ -100,7 +100,7 @@ export interface MultiTypedAST {
 
 /**
  * Normalize a file path to a canonical form used as key in our in-memory file map.
- * Strips leading "./" and ensures ".ts" extension.
+ * Strips leading "./", resolves ".." segments, and ensures ".ts" extension.
  */
 function normalizeFileName(name: string): string {
   if (name.startsWith("./")) {
@@ -109,7 +109,21 @@ function normalizeFileName(name: string): string {
   if (name.startsWith("/")) {
     name = name.slice(1);
   }
-  if (!name.endsWith(".ts")) {
+  // Resolve ".." path segments (e.g., "link/../emit/foo" → "emit/foo")
+  const parts = name.split("/");
+  const resolved: string[] = [];
+  for (const part of parts) {
+    if (part === "..") {
+      resolved.pop();
+    } else if (part !== ".") {
+      resolved.push(part);
+    }
+  }
+  name = resolved.join("/");
+  // Replace .js extension with .ts, or append .ts if no extension
+  if (name.endsWith(".js")) {
+    name = name.slice(0, -3) + ".ts";
+  } else if (!name.endsWith(".ts")) {
     name = name + ".ts";
   }
   return name;
@@ -160,10 +174,17 @@ export function analyzeMultiSource(
     readFile: (name) => normalizedFiles.get(name),
     getDirectories: () => [],
     directoryExists: () => true,
-    resolveModuleNameLiterals(moduleLiterals, _containingFile) {
+    resolveModuleNameLiterals(moduleLiterals, containingFile) {
       return moduleLiterals.map((literal) => {
         const moduleName = literal.text;
-        const resolved = normalizeFileName(moduleName);
+        // Resolve relative paths against the containing file's directory
+        let resolved: string;
+        if (moduleName.startsWith("./") || moduleName.startsWith("../")) {
+          const containingDir = containingFile.replace(/[^/]*$/, "");
+          resolved = normalizeFileName(containingDir + moduleName);
+        } else {
+          resolved = normalizeFileName(moduleName);
+        }
         if (normalizedFiles.has(resolved)) {
           return {
             resolvedModule: {

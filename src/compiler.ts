@@ -5,7 +5,7 @@ import {
   type TypedAST,
 } from "./checker/index.js";
 import { generateModule, generateMultiModule } from "./codegen/index.js";
-import { generateLinearModule } from "./codegen-linear/index.js";
+import { generateLinearModule, generateLinearMultiModule } from "./codegen-linear/index.js";
 import {
   emitBinary,
   emitBinaryWithSourceMap,
@@ -327,19 +327,24 @@ export function compileMultiSource(
   }
 
   const emitSourceMap = options.sourceMap === true;
+  const useLinear = options.target === "linear";
 
   let mod;
   try {
-    const result = generateMultiModule(multiAst, { sourceMap: emitSourceMap });
-    mod = result.module;
-    // Propagate codegen errors with source locations
-    for (const err of result.errors) {
-      errors.push({
-        message: err.message,
-        line: err.line,
-        column: err.column,
-        severity: "error",
-      });
+    if (useLinear) {
+      mod = generateLinearMultiModule(multiAst);
+    } else {
+      const result = generateMultiModule(multiAst, { sourceMap: emitSourceMap });
+      mod = result.module;
+      // Propagate codegen errors with source locations
+      for (const err of result.errors) {
+        errors.push({
+          message: err.message,
+          line: err.line,
+          column: err.column,
+          severity: "error",
+        });
+      }
     }
   } catch (e) {
     errors.push({
@@ -394,7 +399,7 @@ export function compileMultiSource(
     }
   } catch (e) {
     errors.push({
-      message: `Binary emit error: ${e instanceof Error ? e.message : String(e)}`,
+      message: `Binary emit error: ${e instanceof Error ? e.stack ?? e.message : String(e)}`,
       line: 0,
       column: 0,
       severity: "error",

@@ -25,6 +25,16 @@ export interface LinearContext {
   stringLiterals: Map<string, number>;
   /** Current data segment write offset */
   dataSegmentOffset: number;
+  /** Counter for generating unique lambda function names */
+  lambdaCounter: number;
+  /** Function indices to populate in the funcref table */
+  tableEntries: number[];
+  /** Global index for __closure_env (env pointer for closures) */
+  closureEnvGlobalIdx: number;
+  /** Module-level variables → wasm global index */
+  moduleGlobals: Map<string, number>;
+  /** Module-level collection types (for Set, Map, Array globals) */
+  moduleCollectionTypes: Map<string, CollectionKind>;
 }
 
 /** Collection type tag for tracking variable types */
@@ -52,6 +62,8 @@ export interface LinearFuncContext {
   continueStack: number[];
   /** Track which locals are collection types (varName → kind) */
   collectionTypes: Map<string, CollectionKind>;
+  /** Parameters that are callback/function-typed (param name → call_indirect type index) */
+  callbackParams: Map<string, number>;
 }
 
 /** Add a local variable to the current function context */
