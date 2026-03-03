@@ -51,6 +51,14 @@ export interface CompileError {
   severity: "error" | "warning";
 }
 
+export interface DomContainmentOptions {
+  domRoot: Element | ShadowRoot;
+}
+
+export interface ImportPolicy {
+  blocked: Set<string>;
+}
+
 export interface CompileOptions {
   /** Emit WAT debug output (default: true) */
   emitWat?: boolean;
@@ -122,6 +130,7 @@ export function compileToObject(
 export {
   jsString,
   buildImports,
+  checkPolicy,
   compileAndInstantiate,
   instantiateWasm,
 } from "./runtime.js";
