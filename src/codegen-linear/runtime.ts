@@ -134,6 +134,103 @@ export function addUint8ArrayRuntime(mod: WasmModule): void {
     { op: "local.get", index: 0 }, // ptr
     { op: "i32.load", align: 2, offset: 8 },
   ]);
+
+  // __u8arr_from_raw(rawPtr, len): create a Uint8Array by copying len bytes from rawPtr.
+  // This is used for `new Uint8Array(arrayBuffer)` patterns.
+  // extra locals: local2 = newPtr, local3 = i
+  addRuntimeFunc(mod, "__u8arr_from_raw",
+    [{ kind: "i32" }, { kind: "i32" }],
+    [{ kind: "i32" }],
+    [],
+    (firstLocalIdx) => {
+      const newPtrLocal = firstLocalIdx;
+      const iLocal = firstLocalIdx + 1;
+      return [
+        // newPtr = __u8arr_new(len)
+        { op: "local.get", index: 1 }, // len
+        { op: "call", funcIdx: findFuncIndex(mod, "__u8arr_new") },
+        { op: "local.set", index: newPtrLocal },
+        // Copy loop
+        { op: "i32.const", value: 0 },
+        { op: "local.set", index: iLocal },
+        { op: "block", blockType: { kind: "empty" }, body: [
+          { op: "loop", blockType: { kind: "empty" }, body: [
+            { op: "local.get", index: iLocal },
+            { op: "local.get", index: 1 }, // len
+            { op: "i32.ge_u" },
+            { op: "br_if", label: 1 },
+            // newPtr[12+i] = rawPtr[i]
+            { op: "local.get", index: newPtrLocal },
+            { op: "local.get", index: iLocal },
+            { op: "i32.add" },
+            { op: "local.get", index: 0 }, // rawPtr
+            { op: "local.get", index: iLocal },
+            { op: "i32.add" },
+            { op: "i32.load8_u", align: 0, offset: 0 },
+            { op: "i32.store8", align: 0, offset: 12 },
+            { op: "local.get", index: iLocal },
+            { op: "i32.const", value: 1 },
+            { op: "i32.add" },
+            { op: "local.set", index: iLocal },
+            { op: "br", label: 0 },
+          ]},
+        ]},
+        { op: "local.get", index: newPtrLocal },
+      ];
+    }, 2);
+
+  // __u8arr_slice(ptr, start, end) → new_ptr
+  // Creates a new Uint8Array from [start, end) of the source.
+  // Extra locals: local3 = newLen, local4 = newPtr, local5 = i (loop counter)
+  const u8NewIdx = findFuncIndex(mod, "__u8arr_new");
+  addRuntimeFunc(mod, "__u8arr_slice",
+    [{ kind: "i32" }, { kind: "i32" }, { kind: "i32" }],
+    [{ kind: "i32" }],
+    [],
+    (local3Idx) => [
+      // newLen = end - start
+      { op: "local.get", index: 2 }, // end
+      { op: "local.get", index: 1 }, // start
+      { op: "i32.sub" },
+      { op: "local.set", index: local3Idx }, // local3 = newLen
+      // newPtr = __u8arr_new(newLen)
+      { op: "local.get", index: local3Idx },
+      { op: "call", funcIdx: u8NewIdx },
+      { op: "local.set", index: local3Idx + 1 }, // local4 = newPtr
+      // Copy loop: i = 0
+      { op: "i32.const", value: 0 },
+      { op: "local.set", index: local3Idx + 2 }, // local5 = 0
+      { op: "block", blockType: { kind: "empty" }, body: [
+        { op: "loop", blockType: { kind: "empty" }, body: [
+          // if (i >= newLen) break
+          { op: "local.get", index: local3Idx + 2 }, // i
+          { op: "local.get", index: local3Idx }, // newLen
+          { op: "i32.ge_u" },
+          { op: "br_if", label: 1 },
+          // newPtr[12 + i] = src[12 + start + i]
+          { op: "local.get", index: local3Idx + 1 }, // newPtr
+          { op: "local.get", index: local3Idx + 2 }, // i
+          { op: "i32.add" },
+          // load src byte
+          { op: "local.get", index: 0 }, // src ptr
+          { op: "local.get", index: 1 }, // start
+          { op: "i32.add" },
+          { op: "local.get", index: local3Idx + 2 }, // i
+          { op: "i32.add" },
+          { op: "i32.load8_u", align: 0, offset: 12 },
+          // store into newPtr
+          { op: "i32.store8", align: 0, offset: 12 },
+          // i++
+          { op: "local.get", index: local3Idx + 2 },
+          { op: "i32.const", value: 1 },
+          { op: "i32.add" },
+          { op: "local.set", index: local3Idx + 2 },
+          { op: "br", label: 0 },
+        ]},
+      ]},
+      // Return newPtr
+      { op: "local.get", index: local3Idx + 1 },
+    ], 3); // 3 extra locals: newLen, newPtr, i
 }
 
 /**
@@ -221,6 +318,48 @@ export function addArrayRuntime(mod: WasmModule): void {
     { op: "local.get", index: 0 }, // ptr
     { op: "i32.load", align: 2, offset: 8 },
   ]);
+
+  // __arr_slice(arr: i32, start: i32, end: i32) → i32 (new array)
+  // Creates a new array containing elements [start, end) from arr
+  // extra locals: newArr, i, len
+  const arrNewIdx = findFuncIndex(mod, "__arr_new");
+  const arrGetIdx = findFuncIndex(mod, "__arr_get");
+  const arrPushIdx = findFuncIndex(mod, "__arr_push");
+  addRuntimeFunc(mod, "__arr_slice", [{ kind: "i32" }, { kind: "i32" }, { kind: "i32" }], [{ kind: "i32" }], [], (firstLocalIdx) => {
+    const newArrLocal = firstLocalIdx;
+    const iLocal2 = firstLocalIdx + 1;
+    return [
+      // newArr = __arr_new(16)
+      { op: "i32.const", value: 16 },
+      { op: "call", funcIdx: arrNewIdx },
+      { op: "local.set", index: newArrLocal },
+      // i = start
+      { op: "local.get", index: 1 },
+      { op: "local.set", index: iLocal2 },
+      // loop: while i < end, push arr[i]
+      { op: "block", blockType: { kind: "empty" }, body: [
+        { op: "loop", blockType: { kind: "empty" }, body: [
+          { op: "local.get", index: iLocal2 },
+          { op: "local.get", index: 2 },
+          { op: "i32.ge_s" },
+          { op: "br_if", depth: 1 },
+          // __arr_push(newArr, __arr_get(arr, i))
+          { op: "local.get", index: newArrLocal },
+          { op: "local.get", index: 0 },
+          { op: "local.get", index: iLocal2 },
+          { op: "call", funcIdx: arrGetIdx },
+          { op: "call", funcIdx: arrPushIdx },
+          // i++
+          { op: "local.get", index: iLocal2 },
+          { op: "i32.const", value: 1 },
+          { op: "i32.add" },
+          { op: "local.set", index: iLocal2 },
+          { op: "br", depth: 0 },
+        ] },
+      ] },
+      { op: "local.get", index: newArrLocal },
+    ] as Instr[];
+  }, 2);
 }
 
 /**
@@ -503,6 +642,352 @@ export function addStringRuntime(mod: WasmModule): void {
       { op: "local.get", index: ptrLocal },
     ];
   }, 4);
+
+  // __str_from_u8arr: create a string from a Uint8Array.
+  // Since string and Uint8Array have the same layout ([header 8B][len at +8][bytes at +12]),
+  // this just allocates a new string and copies the u8arr bytes.
+  // extra locals: local 1 = len, local 2 = newPtr, local 3 = i
+  const u8LenIdx = findFuncIndex(mod, "__u8arr_len");
+  addRuntimeFunc(mod, "__str_from_u8arr", [{ kind: "i32" }], [{ kind: "i32" }], [], (firstLocalIdx) => {
+    const lenLocal = firstLocalIdx;
+    const ptrLocalFu = firstLocalIdx + 1;
+    const iLocalFu = firstLocalIdx + 2;
+    return [
+      // len = __u8arr_len(u8arr)
+      { op: "local.get", index: 0 },
+      { op: "call", funcIdx: u8LenIdx },
+      { op: "local.set", index: lenLocal },
+      // newPtr = malloc(12 + len)
+      { op: "i32.const", value: 12 },
+      { op: "local.get", index: lenLocal },
+      { op: "i32.add" },
+      { op: "call", funcIdx: mallocIdx },
+      { op: "local.set", index: ptrLocalFu },
+      // Store len at newPtr+8
+      { op: "local.get", index: ptrLocalFu },
+      { op: "local.get", index: lenLocal },
+      { op: "i32.store", align: 2, offset: 8 },
+      // Copy bytes
+      { op: "i32.const", value: 0 },
+      { op: "local.set", index: iLocalFu },
+      { op: "block", blockType: { kind: "empty" }, body: [
+        { op: "loop", blockType: { kind: "empty" }, body: [
+          { op: "local.get", index: iLocalFu },
+          { op: "local.get", index: lenLocal },
+          { op: "i32.ge_u" },
+          { op: "br_if", label: 1 },
+          // newPtr[12+i] = u8arr[12+i]
+          { op: "local.get", index: ptrLocalFu },
+          { op: "local.get", index: iLocalFu },
+          { op: "i32.add" },
+          { op: "local.get", index: 0 }, // u8arr ptr
+          { op: "local.get", index: iLocalFu },
+          { op: "i32.add" },
+          { op: "i32.load8_u", align: 0, offset: 12 },
+          { op: "i32.store8", align: 0, offset: 12 },
+          { op: "local.get", index: iLocalFu },
+          { op: "i32.const", value: 1 },
+          { op: "i32.add" },
+          { op: "local.set", index: iLocalFu },
+          { op: "br", label: 0 },
+        ]},
+      ]},
+      { op: "local.get", index: ptrLocalFu },
+    ];
+  }, 3);
+
+  // __str_starts_with(str: i32, prefix: i32) → i32 (boolean)
+  // Checks if str starts with prefix by comparing bytes.
+  // extra locals: strLen, prefixLen, i, result
+  const strLenIdx = findFuncIndex(mod, "__str_len");
+  addRuntimeFunc(mod, "__str_starts_with", [{ kind: "i32" }, { kind: "i32" }], [{ kind: "i32" }], [], (firstLocalIdx) => {
+    const strLenLocal = firstLocalIdx;
+    const prefixLenLocal = firstLocalIdx + 1;
+    const iLocal = firstLocalIdx + 2;
+    const resultLocal = firstLocalIdx + 3;
+    return [
+      // strLen = __str_len(str)
+      { op: "local.get", index: 0 },
+      { op: "call", funcIdx: strLenIdx },
+      { op: "local.set", index: strLenLocal },
+      // prefixLen = __str_len(prefix)
+      { op: "local.get", index: 1 },
+      { op: "call", funcIdx: strLenIdx },
+      { op: "local.set", index: prefixLenLocal },
+      // result = 1 (assume true)
+      { op: "i32.const", value: 1 },
+      { op: "local.set", index: resultLocal },
+      // if strLen < prefixLen, result = 0
+      { op: "local.get", index: strLenLocal },
+      { op: "local.get", index: prefixLenLocal },
+      { op: "i32.lt_u" },
+      { op: "if", blockType: { kind: "empty" },
+        then: [
+          { op: "i32.const", value: 0 },
+          { op: "local.set", index: resultLocal },
+        ],
+        else: [
+          // Compare prefix bytes: i = 0
+          { op: "i32.const", value: 0 },
+          { op: "local.set", index: iLocal },
+          { op: "block", blockType: { kind: "empty" }, body: [
+            { op: "loop", blockType: { kind: "empty" }, body: [
+              // if i >= prefixLen, break (result stays 1)
+              { op: "local.get", index: iLocal },
+              { op: "local.get", index: prefixLenLocal },
+              { op: "i32.ge_u" },
+              { op: "br_if", depth: 1 },
+              // if str[12+i] != prefix[12+i], result = 0 and break
+              { op: "local.get", index: 0 },
+              { op: "local.get", index: iLocal },
+              { op: "i32.add" },
+              { op: "i32.load8_u", align: 0, offset: 12 },
+              { op: "local.get", index: 1 },
+              { op: "local.get", index: iLocal },
+              { op: "i32.add" },
+              { op: "i32.load8_u", align: 0, offset: 12 },
+              { op: "i32.ne" },
+              { op: "if", blockType: { kind: "empty" },
+                then: [
+                  { op: "i32.const", value: 0 },
+                  { op: "local.set", index: resultLocal },
+                  { op: "br", depth: 2 }, // break to outer block
+                ],
+              },
+              // i++
+              { op: "local.get", index: iLocal },
+              { op: "i32.const", value: 1 },
+              { op: "i32.add" },
+              { op: "local.set", index: iLocal },
+              { op: "br", depth: 0 }, // continue loop
+            ]},
+          ]},
+        ],
+      },
+      // return result
+      { op: "local.get", index: resultLocal },
+    ] as Instr[];
+  }, 4);
+
+  // __str_slice(str: i32, start: i32, end: i32) → i32
+  // Extract substring [start, end) from str. Returns new string pointer.
+  // extra locals: newLen, ptr, i
+  addRuntimeFunc(mod, "__str_slice", [{ kind: "i32" }, { kind: "i32" }, { kind: "i32" }], [{ kind: "i32" }], [], (firstLocalIdx) => {
+    const newLenLocal = firstLocalIdx;
+    const ptrLocal = firstLocalIdx + 1;
+    const iLocal = firstLocalIdx + 2;
+    return [
+      // newLen = end - start
+      { op: "local.get", index: 2 },
+      { op: "local.get", index: 1 },
+      { op: "i32.sub" },
+      { op: "local.set", index: newLenLocal },
+      // Clamp: if newLen < 0, set to 0
+      { op: "local.get", index: newLenLocal },
+      { op: "i32.const", value: 0 },
+      { op: "i32.lt_s" },
+      { op: "if", blockType: { kind: "empty" }, then: [
+        { op: "i32.const", value: 0 },
+        { op: "local.set", index: newLenLocal },
+      ] },
+      // ptr = malloc(12 + newLen)
+      { op: "i32.const", value: 12 },
+      { op: "local.get", index: newLenLocal },
+      { op: "i32.add" },
+      { op: "call", funcIdx: mallocIdx },
+      { op: "local.set", index: ptrLocal },
+      // store length at ptr+8
+      { op: "local.get", index: ptrLocal },
+      { op: "local.get", index: newLenLocal },
+      { op: "i32.store", align: 2, offset: 8 },
+      // copy bytes: for i = 0; i < newLen; i++
+      { op: "i32.const", value: 0 },
+      { op: "local.set", index: iLocal },
+      { op: "block", blockType: { kind: "empty" }, body: [
+        { op: "loop", blockType: { kind: "empty" }, body: [
+          { op: "local.get", index: iLocal },
+          { op: "local.get", index: newLenLocal },
+          { op: "i32.ge_u" },
+          { op: "br_if", depth: 1 },
+          // dest: ptr + 12 + i
+          { op: "local.get", index: ptrLocal },
+          { op: "local.get", index: iLocal },
+          { op: "i32.add" },
+          // src: str + 12 + start + i
+          { op: "local.get", index: 0 },
+          { op: "local.get", index: 1 },
+          { op: "i32.add" },
+          { op: "local.get", index: iLocal },
+          { op: "i32.add" },
+          { op: "i32.load8_u", align: 0, offset: 12 },
+          { op: "i32.store8", align: 0, offset: 12 },
+          { op: "local.get", index: iLocal },
+          { op: "i32.const", value: 1 },
+          { op: "i32.add" },
+          { op: "local.set", index: iLocal },
+          { op: "br", depth: 0 },
+        ] },
+      ] },
+      { op: "local.get", index: ptrLocal },
+    ] as Instr[];
+  }, 3);
+
+  // __str_index_of(str: i32, sep: i32, fromIdx: i32) → i32 (-1 if not found)
+  // Find first occurrence of sep in str starting from fromIdx
+  // extra locals: strLen, sepLen, i, j, match
+  addRuntimeFunc(mod, "__str_index_of", [{ kind: "i32" }, { kind: "i32" }, { kind: "i32" }], [{ kind: "i32" }], [], (firstLocalIdx) => {
+    const strLenLocal = firstLocalIdx;
+    const sepLenLocal = firstLocalIdx + 1;
+    const iLocal2 = firstLocalIdx + 2;
+    const jLocal = firstLocalIdx + 3;
+    const matchLocal = firstLocalIdx + 4;
+    return [
+      // strLen = str.length
+      { op: "local.get", index: 0 },
+      { op: "call", funcIdx: strLenIdx },
+      { op: "local.set", index: strLenLocal },
+      // sepLen = sep.length
+      { op: "local.get", index: 1 },
+      { op: "call", funcIdx: strLenIdx },
+      { op: "local.set", index: sepLenLocal },
+      // for i = fromIdx; i <= strLen - sepLen; i++
+      { op: "local.get", index: 2 },
+      { op: "local.set", index: iLocal2 },
+      { op: "block", blockType: { kind: "val", type: { kind: "i32" } }, body: [
+        { op: "loop", blockType: { kind: "empty" }, body: [
+          // if i > strLen - sepLen, return -1
+          { op: "local.get", index: iLocal2 },
+          { op: "local.get", index: strLenLocal },
+          { op: "local.get", index: sepLenLocal },
+          { op: "i32.sub" },
+          { op: "i32.gt_s" },
+          { op: "if", blockType: { kind: "empty" }, then: [
+            { op: "i32.const", value: -1 },
+            { op: "br", depth: 3 }, // return -1 (break out of block)
+          ] },
+          // match = true
+          { op: "i32.const", value: 1 },
+          { op: "local.set", index: matchLocal },
+          // for j = 0; j < sepLen; j++
+          { op: "i32.const", value: 0 },
+          { op: "local.set", index: jLocal },
+          { op: "block", blockType: { kind: "empty" }, body: [
+            { op: "loop", blockType: { kind: "empty" }, body: [
+              { op: "local.get", index: jLocal },
+              { op: "local.get", index: sepLenLocal },
+              { op: "i32.ge_u" },
+              { op: "br_if", depth: 1 },
+              // compare str[i+j] with sep[j]
+              { op: "local.get", index: 0 },
+              { op: "local.get", index: iLocal2 },
+              { op: "i32.add" },
+              { op: "local.get", index: jLocal },
+              { op: "i32.add" },
+              { op: "i32.load8_u", align: 0, offset: 12 },
+              { op: "local.get", index: 1 },
+              { op: "local.get", index: jLocal },
+              { op: "i32.add" },
+              { op: "i32.load8_u", align: 0, offset: 12 },
+              { op: "i32.ne" },
+              { op: "if", blockType: { kind: "empty" }, then: [
+                { op: "i32.const", value: 0 },
+                { op: "local.set", index: matchLocal },
+                { op: "br", depth: 2 }, // break inner loop
+              ] },
+              { op: "local.get", index: jLocal },
+              { op: "i32.const", value: 1 },
+              { op: "i32.add" },
+              { op: "local.set", index: jLocal },
+              { op: "br", depth: 0 },
+            ] },
+          ] },
+          // if match, return i
+          { op: "local.get", index: matchLocal },
+          { op: "if", blockType: { kind: "empty" }, then: [
+            { op: "local.get", index: iLocal2 },
+            { op: "br", depth: 2 }, // return i
+          ] },
+          // i++
+          { op: "local.get", index: iLocal2 },
+          { op: "i32.const", value: 1 },
+          { op: "i32.add" },
+          { op: "local.set", index: iLocal2 },
+          { op: "br", depth: 0 },
+        ] },
+        // Loop fallthrough (unreachable in practice): return -1
+        { op: "i32.const", value: -1 },
+      ] },
+    ] as Instr[];
+  }, 5);
+
+  // __str_split(str: i32, sep: i32) → i32 (array of string pointers)
+  // extra locals: result, strLen, sepLen, start, pos
+  const strSliceIdx = findFuncIndex(mod, "__str_slice");
+  const strIndexOfIdx = findFuncIndex(mod, "__str_index_of");
+  const arrNewIdx = findFuncIndex(mod, "__arr_new");
+  const arrPushIdx = findFuncIndex(mod, "__arr_push");
+  addRuntimeFunc(mod, "__str_split", [{ kind: "i32" }, { kind: "i32" }], [{ kind: "i32" }], [], (firstLocalIdx) => {
+    const resultLocal = firstLocalIdx;
+    const strLenLocal2 = firstLocalIdx + 1;
+    const startLocal = firstLocalIdx + 2;
+    const posLocal = firstLocalIdx + 3;
+    const sepLenLocal2 = firstLocalIdx + 4;
+    return [
+      // result = __arr_new(16)
+      { op: "i32.const", value: 16 },
+      { op: "call", funcIdx: arrNewIdx },
+      { op: "local.set", index: resultLocal },
+      // strLen
+      { op: "local.get", index: 0 },
+      { op: "call", funcIdx: strLenIdx },
+      { op: "local.set", index: strLenLocal2 },
+      // sepLen
+      { op: "local.get", index: 1 },
+      { op: "call", funcIdx: strLenIdx },
+      { op: "local.set", index: sepLenLocal2 },
+      // start = 0
+      { op: "i32.const", value: 0 },
+      { op: "local.set", index: startLocal },
+      // loop: find sep, push substring, advance
+      { op: "block", blockType: { kind: "empty" }, body: [
+        { op: "loop", blockType: { kind: "empty" }, body: [
+          // pos = __str_index_of(str, sep, start)
+          { op: "local.get", index: 0 },
+          { op: "local.get", index: 1 },
+          { op: "local.get", index: startLocal },
+          { op: "call", funcIdx: strIndexOfIdx },
+          { op: "local.set", index: posLocal },
+          // if pos == -1, break
+          { op: "local.get", index: posLocal },
+          { op: "i32.const", value: -1 },
+          { op: "i32.eq" },
+          { op: "br_if", depth: 1 },
+          // push substring [start, pos)
+          { op: "local.get", index: resultLocal },
+          { op: "local.get", index: 0 },
+          { op: "local.get", index: startLocal },
+          { op: "local.get", index: posLocal },
+          { op: "call", funcIdx: strSliceIdx },
+          { op: "call", funcIdx: arrPushIdx },
+          // start = pos + sepLen
+          { op: "local.get", index: posLocal },
+          { op: "local.get", index: sepLenLocal2 },
+          { op: "i32.add" },
+          { op: "local.set", index: startLocal },
+          { op: "br", depth: 0 },
+        ] },
+      ] },
+      // push final substring [start, strLen)
+      { op: "local.get", index: resultLocal },
+      { op: "local.get", index: 0 },
+      { op: "local.get", index: startLocal },
+      { op: "local.get", index: strLenLocal2 },
+      { op: "call", funcIdx: strSliceIdx },
+      { op: "call", funcIdx: arrPushIdx },
+      // return result
+      { op: "local.get", index: resultLocal },
+    ] as Instr[];
+  }, 5);
 }
 
 /**

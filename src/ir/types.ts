@@ -211,7 +211,11 @@ type InstrBase =
   | { op: "i32.gt_u" }
   // f64 memory load/store (linear memory)
   | { op: "f64.load"; align: number; offset: number }
-  | { op: "f64.store"; align: number; offset: number };
+  | { op: "f64.store"; align: number; offset: number }
+  // f32 memory load/store and conversion (linear memory)
+  | { op: "f32.load"; align: number; offset: number }
+  | { op: "f32.store"; align: number; offset: number }
+  | { op: "f32.demote_f64" };
 
 export type Instr = InstrBase & { sourcePos?: SourcePos };
 
