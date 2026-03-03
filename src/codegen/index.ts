@@ -316,6 +316,9 @@ export function generateModule(
   // Collect union type helper imports (typeof checks, boxing/unboxing)
   collectUnionImports(ctx, ast.sourceFile);
 
+  // Collect iterator protocol imports for for...of on non-array types (strings, etc.)
+  collectIteratorImports(ctx, ast.sourceFile);
+
   // Register string literals for for-in field names (uses type checker, before func indices)
   collectForInStringLiterals(ctx, ast.sourceFile);
 
@@ -442,6 +445,7 @@ export function generateMultiModule(
     collectMathImports(ctx, sf);
     collectCallbackImports(ctx, sf);
     collectUnionImports(ctx, sf);
+    collectIteratorImports(ctx, sf);
     collectForInStringLiterals(ctx, sf);
   }
 
@@ -1027,6 +1031,96 @@ export function addUnionImports(ctx: CodegenContext): void {
   addImport(ctx, "env", "__box_boolean", {
     kind: "func",
     typeIdx: boxBoolType,
+  });
+}
+
+/**
+ * Scan source for for...of on non-array types (strings, externref iterables)
+ * and register the host-delegated iterator protocol imports.
+ */
+function collectIteratorImports(
+  ctx: CodegenContext,
+  sourceFile: ts.SourceFile,
+): void {
+  let found = false;
+
+  function visit(node: ts.Node) {
+    if (found) return;
+    if (ts.isForOfStatement(node)) {
+      const exprType = ctx.checker.getTypeAtLocation(node.expression);
+      // Array types use the existing index-based loop — no iterator imports needed
+      const sym =
+        (exprType as ts.TypeReference).symbol ?? (exprType as ts.Type).symbol;
+      if (sym?.name !== "Array") {
+        found = true;
+        return;
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  for (const stmt of sourceFile.statements) {
+    if (found) break;
+    if (ts.isFunctionDeclaration(stmt) && stmt.body) {
+      visit(stmt.body);
+    }
+    // Also check class method bodies
+    if (ts.isClassDeclaration(stmt)) {
+      for (const member of stmt.members) {
+        if (found) break;
+        if (
+          (ts.isMethodDeclaration(member) || ts.isConstructorDeclaration(member)) &&
+          member.body
+        ) {
+          visit(member.body);
+        }
+      }
+    }
+    // Also check module-level statements (top-level for...of)
+    if (ts.isForOfStatement(stmt)) {
+      visit(stmt);
+    }
+  }
+
+  if (found) {
+    addIteratorImports(ctx);
+  }
+}
+
+/** Register the iterator protocol host imports if not already registered */
+export function addIteratorImports(ctx: CodegenContext): void {
+  // Guard: only register once
+  if (ctx.funcMap.has("__iterator")) return;
+
+  // __iterator: (externref) → externref — calls obj[Symbol.iterator]()
+  const extToExt = addFuncType(
+    ctx,
+    [{ kind: "externref" }],
+    [{ kind: "externref" }],
+  );
+  addImport(ctx, "env", "__iterator", { kind: "func", typeIdx: extToExt });
+
+  // __iterator_next: (externref) → externref — calls iter.next()
+  addImport(ctx, "env", "__iterator_next", {
+    kind: "func",
+    typeIdx: extToExt,
+  });
+
+  // __iterator_done: (externref) → i32 — returns result.done ? 1 : 0
+  const extToI32 = addFuncType(
+    ctx,
+    [{ kind: "externref" }],
+    [{ kind: "i32" }],
+  );
+  addImport(ctx, "env", "__iterator_done", {
+    kind: "func",
+    typeIdx: extToI32,
+  });
+
+  // __iterator_value: (externref) → externref — returns result.value
+  addImport(ctx, "env", "__iterator_value", {
+    kind: "func",
+    typeIdx: extToExt,
   });
 }
 
