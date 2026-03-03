@@ -401,6 +401,21 @@ function compileReturnStatement(
   fctx: FunctionContext,
   stmt: ts.ReturnStatement,
 ): void {
+  // Inside a generator function, `return` should break out of the body block
+  // (not use the wasm `return` opcode, which would skip __create_generator).
+  if (ctx.generatorFunctions.has(fctx.name)) {
+    // If there's a return expression, evaluate it for side effects but discard the value
+    if (stmt.expression) {
+      const resultType = compileExpression(ctx, fctx, stmt.expression);
+      if (resultType !== null) {
+        fctx.body.push({ op: "drop" });
+      }
+    }
+    // Break out of the generator body block (depth = blockDepth, i.e. the outermost block)
+    fctx.body.push({ op: "br", depth: fctx.blockDepth });
+    return;
+  }
+
   if (stmt.expression) {
     compileExpression(ctx, fctx, stmt.expression, fctx.returnType ?? undefined);
   }

@@ -161,6 +161,10 @@ export interface CodegenContext {
   hasUnionImports: boolean;
   /** Set of function names that are async (for .d.ts generation) */
   asyncFunctions: Set<string>;
+  /** Set of function names that are generators (function*) */
+  generatorFunctions: Set<string>;
+  /** Map from generator function name → yield element type (wasm ValType kind for the yielded values) */
+  generatorYieldType: Map<string, ValType>;
   /** Map from module-level variable name → global index in mod.globals */
   moduleGlobals: Map<string, number>;
   /** Module-level variable initializers (compiled into __module_init) */
@@ -273,6 +277,8 @@ export function generateModule(
     exnTagIdx: -1,
     hasUnionImports: false,
     asyncFunctions: new Set(),
+    generatorFunctions: new Set(),
+    generatorYieldType: new Map(),
     moduleGlobals: new Map(),
     moduleInitStatements: [],
     nestedFuncCaptures: new Map(),
@@ -315,6 +321,9 @@ export function generateModule(
 
   // Collect union type helper imports (typeof checks, boxing/unboxing)
   collectUnionImports(ctx, ast.sourceFile);
+
+  // Collect generator imports (function* support)
+  collectGeneratorImports(ctx, ast.sourceFile);
 
   // Register string literals for for-in field names (uses type checker, before func indices)
   collectForInStringLiterals(ctx, ast.sourceFile);
@@ -402,6 +411,8 @@ export function generateMultiModule(
     funcRestParams: new Map(),
     hasUnionImports: false,
     asyncFunctions: new Set(),
+    generatorFunctions: new Set(),
+    generatorYieldType: new Map(),
     exnTagIdx: -1,
     moduleGlobals: new Map(),
     moduleInitStatements: [],
@@ -442,6 +453,7 @@ export function generateMultiModule(
     collectMathImports(ctx, sf);
     collectCallbackImports(ctx, sf);
     collectUnionImports(ctx, sf);
+    collectGeneratorImports(ctx, sf);
     collectForInStringLiterals(ctx, sf);
   }
 
@@ -917,6 +929,114 @@ function collectCallbackImports(
       [{ kind: "externref" }],
     );
     addImport(ctx, "env", "__make_callback", { kind: "func", typeIdx });
+  }
+}
+
+/** Scan source for generator functions (function*) and register generator host imports */
+function collectGeneratorImports(
+  ctx: CodegenContext,
+  sourceFile: ts.SourceFile,
+): void {
+  let found = false;
+
+  for (const stmt of sourceFile.statements) {
+    if (
+      ts.isFunctionDeclaration(stmt) &&
+      stmt.asteriskToken &&
+      stmt.body &&
+      !hasDeclareModifier(stmt)
+    ) {
+      found = true;
+      break;
+    }
+  }
+
+  if (found && !ctx.funcMap.has("__gen_create_buffer")) {
+    // __gen_create_buffer: () → externref  (creates an empty JS array)
+    const bufType = addFuncType(ctx, [], [{ kind: "externref" }]);
+    addImport(ctx, "env", "__gen_create_buffer", {
+      kind: "func",
+      typeIdx: bufType,
+    });
+
+    // __gen_push_f64: (externref, f64) → void  (pushes a number to the buffer)
+    const pushF64Type = addFuncType(
+      ctx,
+      [{ kind: "externref" }, { kind: "f64" }],
+      [],
+    );
+    addImport(ctx, "env", "__gen_push_f64", {
+      kind: "func",
+      typeIdx: pushF64Type,
+    });
+
+    // __gen_push_i32: (externref, i32) → void  (pushes a boolean to the buffer)
+    const pushI32Type = addFuncType(
+      ctx,
+      [{ kind: "externref" }, { kind: "i32" }],
+      [],
+    );
+    addImport(ctx, "env", "__gen_push_i32", {
+      kind: "func",
+      typeIdx: pushI32Type,
+    });
+
+    // __gen_push_ref: (externref, externref) → void  (pushes a string/object to the buffer)
+    const pushRefType = addFuncType(
+      ctx,
+      [{ kind: "externref" }, { kind: "externref" }],
+      [],
+    );
+    addImport(ctx, "env", "__gen_push_ref", {
+      kind: "func",
+      typeIdx: pushRefType,
+    });
+
+    // __create_generator: (externref) → externref
+    // Takes a JS array of yielded values, returns a Generator-like object
+    const genType = addFuncType(
+      ctx,
+      [{ kind: "externref" }],
+      [{ kind: "externref" }],
+    );
+    addImport(ctx, "env", "__create_generator", {
+      kind: "func",
+      typeIdx: genType,
+    });
+
+    // __gen_next: (generator: externref) → externref (calls gen.next(), returns IteratorResult)
+    addImport(ctx, "env", "__gen_next", {
+      kind: "func",
+      typeIdx: genType,
+    });
+
+    // __gen_result_value: (result: externref) → externref (returns result.value)
+    addImport(ctx, "env", "__gen_result_value", {
+      kind: "func",
+      typeIdx: genType,
+    });
+
+    // __gen_result_value_f64: (result: externref) → f64 (returns result.value as number)
+    const resultValF64Type = addFuncType(
+      ctx,
+      [{ kind: "externref" }],
+      [{ kind: "f64" }],
+    );
+    addImport(ctx, "env", "__gen_result_value_f64", {
+      kind: "func",
+      typeIdx: resultValF64Type,
+    });
+
+    // __gen_result_done: (result: externref) → i32 (returns result.done as boolean)
+    const resultDoneType = addFuncType(
+      ctx,
+      [{ kind: "externref" }],
+      [{ kind: "i32" }],
+    );
+    addImport(ctx, "env", "__gen_result_done", {
+      kind: "func",
+      typeIdx: resultDoneType,
+    });
   }
 }
 
@@ -2403,13 +2523,23 @@ function collectDeclarations(
         ctx.asyncFunctions.add(name);
       }
 
+      // Track generator functions (function*)
+      const isGenerator = isGeneratorFunction(stmt);
+      if (isGenerator) {
+        ctx.generatorFunctions.add(name);
+        // Determine yield element type from Generator<T> return annotation
+        const retType = ctx.checker.getReturnTypeOfSignature(sig);
+        const yieldType = unwrapGeneratorYieldType(retType, ctx);
+        ctx.generatorYieldType.set(name, yieldType);
+      }
+
       // Ensure anonymous types in signature are registered as structs
       const retType = ctx.checker.getReturnTypeOfSignature(sig);
       // For async functions, unwrap Promise<T> to get T for struct registration
       const unwrappedRetType = isAsync
         ? unwrapPromiseType(retType, ctx.checker)
         : retType;
-      if (!isVoidType(unwrappedRetType))
+      if (!isGenerator && !isVoidType(unwrappedRetType))
         ensureStructForType(ctx, unwrappedRetType);
       for (const p of stmt.parameters) {
         const pt = ctx.checker.getTypeAtLocation(p);
@@ -2419,7 +2549,17 @@ function collectDeclarations(
       let params: ValType[];
       let results: ValType[];
 
-      if (resolved) {
+      if (isGenerator) {
+        // Generator functions: parameters are compiled normally, return is externref
+        params = [];
+        for (let i = 0; i < stmt.parameters.length; i++) {
+          const param = stmt.parameters[i]!;
+          const paramType = ctx.checker.getTypeAtLocation(param);
+          const wasmType = resolveWasmType(ctx, paramType);
+          params.push(wasmType);
+        }
+        results = [{ kind: "externref" }]; // Returns a JS Generator object
+      } else if (resolved) {
         // Use call-site resolved types for generic functions
         params = resolved.params;
         results = resolved.results;
@@ -3089,6 +3229,7 @@ function compileFunctionBody(
 
   // For async functions, unwrap Promise<T> to get T
   const isAsync = ctx.asyncFunctions.has(func.name);
+  const isGenerator = ctx.generatorFunctions.has(func.name);
   const effectiveRetType = isAsync
     ? unwrapPromiseType(retType, ctx.checker)
     : retType;
@@ -3115,13 +3256,17 @@ function compileFunctionBody(
     }
   }
 
-  const returnType = resolved
-    ? resolved.results.length > 0
-      ? resolved.results[0]!
-      : null
-    : isVoidType(effectiveRetType)
+  let returnType: ValType | null;
+  if (isGenerator) {
+    // Generator functions return externref (JS Generator object)
+    returnType = { kind: "externref" };
+  } else if (resolved) {
+    returnType = resolved.results.length > 0 ? resolved.results[0]! : null;
+  } else {
+    returnType = isVoidType(effectiveRetType)
       ? null
       : resolveWasmType(ctx, effectiveRetType);
+  }
 
   const fctx: FunctionContext = {
     name: func.name,
@@ -3151,30 +3296,77 @@ function compileFunctionBody(
     fctx.body.push(nop);
   }
 
-  // Compile body statements
-  if (decl.body) {
-    for (const stmt of decl.body.statements) {
-      compileStatement(ctx, fctx, stmt);
-    }
-  }
+  if (isGenerator) {
+    // Generator function: eagerly evaluate body, collect yields into a JS array,
+    // then wrap it with __create_generator to return a Generator-like object.
+    const bufferLocal = allocLocal(fctx, "__gen_buffer", { kind: "externref" });
 
-  // Ensure there's always a valid return value at the end for non-void functions
-  if (fctx.returnType) {
-    // Check if the last instruction is already a return
-    const lastInstr = fctx.body[fctx.body.length - 1];
-    if (!lastInstr || lastInstr.op !== "return") {
-      // Add a default return value
-      if (fctx.returnType.kind === "f64") {
-        fctx.body.push({ op: "f64.const", value: 0 });
-      } else if (fctx.returnType.kind === "i32") {
-        fctx.body.push({ op: "i32.const", value: 0 });
-      } else if (fctx.returnType.kind === "externref") {
-        fctx.body.push({ op: "ref.null.extern" });
-      } else if (
-        fctx.returnType.kind === "ref" ||
-        fctx.returnType.kind === "ref_null"
-      ) {
-        fctx.body.push({ op: "ref.null", typeIdx: fctx.returnType.typeIdx });
+    // Create buffer: __gen_buffer = __gen_create_buffer()
+    const createBufIdx = ctx.funcMap.get("__gen_create_buffer")!;
+    fctx.body.push({ op: "call", funcIdx: createBufIdx });
+    fctx.body.push({ op: "local.set", index: bufferLocal });
+
+    // Wrap the generator body in a block so that `return` statements inside
+    // the body can `br` out to the generator creation code instead of
+    // using the wasm `return` opcode (which would skip __create_generator).
+    const bodyInstrs: Instr[] = [];
+    const outerBody = fctx.body;
+    fctx.body = bodyInstrs;
+
+    // Push a block label level so return can break out
+    fctx.blockDepth++;
+    for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!++;
+    for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!++;
+
+    if (decl.body) {
+      for (const stmt of decl.body.statements) {
+        compileStatement(ctx, fctx, stmt);
+      }
+    }
+
+    fctx.blockDepth--;
+    for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!--;
+    for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!--;
+
+    // Restore outer body and wrap compiled body in a block
+    fctx.body = outerBody;
+    fctx.body.push({
+      op: "block",
+      blockType: { kind: "empty" },
+      body: bodyInstrs,
+    });
+
+    // Return __create_generator(__gen_buffer)
+    const createGenIdx = ctx.funcMap.get("__create_generator")!;
+    fctx.body.push({ op: "local.get", index: bufferLocal });
+    fctx.body.push({ op: "call", funcIdx: createGenIdx });
+    // The externref Generator object is now on the stack as the return value
+  } else {
+    // Compile body statements
+    if (decl.body) {
+      for (const stmt of decl.body.statements) {
+        compileStatement(ctx, fctx, stmt);
+      }
+    }
+
+    // Ensure there's always a valid return value at the end for non-void functions
+    if (fctx.returnType) {
+      // Check if the last instruction is already a return
+      const lastInstr = fctx.body[fctx.body.length - 1];
+      if (!lastInstr || lastInstr.op !== "return") {
+        // Add a default return value
+        if (fctx.returnType.kind === "f64") {
+          fctx.body.push({ op: "f64.const", value: 0 });
+        } else if (fctx.returnType.kind === "i32") {
+          fctx.body.push({ op: "i32.const", value: 0 });
+        } else if (fctx.returnType.kind === "externref") {
+          fctx.body.push({ op: "ref.null.extern" });
+        } else if (
+          fctx.returnType.kind === "ref" ||
+          fctx.returnType.kind === "ref_null"
+        ) {
+          fctx.body.push({ op: "ref.null", typeIdx: fctx.returnType.typeIdx });
+        }
       }
     }
   }
@@ -3228,6 +3420,34 @@ function hasStaticModifier(node: ts.Node): boolean {
       ts.ModifierFlags.Static) !==
     0
   );
+}
+
+/** Check if a function declaration is a generator (function*) */
+function isGeneratorFunction(node: ts.FunctionDeclaration): boolean {
+  return node.asteriskToken !== undefined;
+}
+
+/**
+ * Unwrap Generator<T> return type to get the yield element type T.
+ * Falls back to externref if the type cannot be unwrapped.
+ */
+function unwrapGeneratorYieldType(type: ts.Type, ctx: CodegenContext): ValType {
+  const symbol = type.getSymbol();
+  if (symbol && symbol.name === "Generator") {
+    const typeArgs = ctx.checker.getTypeArguments(type as ts.TypeReference);
+    if (typeArgs.length > 0) {
+      return resolveWasmType(ctx, typeArgs[0]!);
+    }
+  }
+  // Also check Iterator and IterableIterator
+  if (symbol && (symbol.name === "Iterator" || symbol.name === "IterableIterator")) {
+    const typeArgs = ctx.checker.getTypeArguments(type as ts.TypeReference);
+    if (typeArgs.length > 0) {
+      return resolveWasmType(ctx, typeArgs[0]!);
+    }
+  }
+  // Fallback: assume number yield type (most common case)
+  return { kind: "f64" };
 }
 
 /**
