@@ -79,43 +79,73 @@ export const domApi: Record<string, Function> = new Proxy(
   },
 );
 
+/**
+ * Build string constants object for the "string_constants" import namespace.
+ * Each string pool entry becomes a WebAssembly.Global with ref extern type.
+ */
+export function buildStringConstants(
+  stringPool: string[] = [],
+): Record<string, WebAssembly.Global> {
+  const constants: Record<string, WebAssembly.Global> = {};
+  for (const s of stringPool) {
+    if (!(s in constants)) {
+      constants[s] = new WebAssembly.Global(
+        { value: "externref", mutable: false },
+        s,
+      );
+    }
+  }
+  return constants;
+}
+
 /** Build the WebAssembly import object from string pool and API bindings */
 export function buildImports(
   stringPool: string[] = [],
   ...apiObjects: Record<string, unknown>[]
-): { env: Record<string, Function>; "wasm:js-string": typeof jsString } {
-  const strEntries = Object.fromEntries(
-    stringPool.map((s, i) => [`__str_${i}`, () => s]),
-  );
+): {
+  env: Record<string, Function>;
+  "wasm:js-string": typeof jsString;
+  string_constants: Record<string, WebAssembly.Global>;
+} {
   const env = new Proxy({} as Record<string, Function>, {
     get(_, prop) {
-      if (prop in strEntries) return (strEntries as any)[prop];
       for (const obj of apiObjects) {
         const val = (obj as any)[prop];
         if (val !== undefined) return val;
       }
     },
   });
-  return { env, "wasm:js-string": jsString };
+  return {
+    env,
+    "wasm:js-string": jsString,
+    string_constants: buildStringConstants(stringPool),
+  };
 }
 
 /** Instantiate a Wasm module, trying native wasm:js-string builtins first
- *  (Chrome 130+, Firefox 135+), falling back to the JS polyfill. */
+ *  (Chrome 130+, Firefox 135+), falling back to the JS polyfill.
+ *  Uses importedStringConstants to provide string literals as globals. */
 export async function instantiateWasm(
   binary: BufferSource,
   env: Record<string, Function>,
+  stringConstants?: Record<string, WebAssembly.Global>,
 ): Promise<{ instance: WebAssembly.Instance; nativeBuiltins: boolean }> {
+  const sc = stringConstants ?? {};
   try {
     const { instance } = await (WebAssembly.instantiate as Function)(
       binary,
-      { env },
-      { builtins: ["js-string"] },
+      { env, string_constants: sc },
+      { builtins: ["js-string"], importedStringConstants: "string_constants" },
     );
     return { instance, nativeBuiltins: true };
   } catch {
     const { instance } = await WebAssembly.instantiate(
       binary,
-      { env, "wasm:js-string": jsString } as WebAssembly.Imports,
+      {
+        env,
+        "wasm:js-string": jsString,
+        string_constants: sc,
+      } as WebAssembly.Imports,
     );
     return { instance, nativeBuiltins: false };
   }
@@ -130,6 +160,10 @@ export async function compileAndInstantiate(
     throw new Error(result.errors.map((e) => e.message).join("\n"));
   }
   const imports = buildImports(result.stringPool, jsApi, domApi);
-  const { instance } = await instantiateWasm(result.binary, imports.env);
+  const { instance } = await instantiateWasm(
+    result.binary,
+    imports.env,
+    imports.string_constants,
+  );
   return instance.exports;
 }

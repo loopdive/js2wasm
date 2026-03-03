@@ -1,6 +1,6 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext, ClosureInfo, RestParamInfo } from "./index.js";
-import { allocLocal, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addUnionImports } from "./index.js";
+import { allocLocal, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addUnionImports, localGlobalIdx } from "./index.js";
 import {
   mapTsTypeToWasm,
   isNumberType,
@@ -665,7 +665,7 @@ function compileIdentifier(
   const capturedIdx = ctx.capturedGlobals.get(name);
   if (capturedIdx !== undefined) {
     fctx.body.push({ op: "global.get", index: capturedIdx });
-    const globalDef = ctx.mod.globals[capturedIdx];
+    const globalDef = ctx.mod.globals[localGlobalIdx(ctx, capturedIdx)];
     const gType = globalDef?.type ?? { kind: "f64" };
     // Globals widened from ref to ref_null for null init — narrow back
     if (gType.kind === "ref_null" && ctx.capturedGlobalsWidened.has(name)) {
@@ -679,7 +679,7 @@ function compileIdentifier(
   const moduleIdx = ctx.moduleGlobals.get(name);
   if (moduleIdx !== undefined) {
     fctx.body.push({ op: "global.get", index: moduleIdx });
-    const globalDef = ctx.mod.globals[moduleIdx];
+    const globalDef = ctx.mod.globals[localGlobalIdx(ctx, moduleIdx)];
     return globalDef?.type ?? { kind: "f64" };
   }
 
@@ -1248,7 +1248,7 @@ function compileAssignment(
     // Check captured globals
     const capturedIdx = ctx.capturedGlobals.get(name);
     if (capturedIdx !== undefined) {
-      const globalDef = ctx.mod.globals[capturedIdx];
+      const globalDef = ctx.mod.globals[localGlobalIdx(ctx, capturedIdx)];
       const resultType = compileExpression(ctx, fctx, expr.right, globalDef?.type);
       fctx.body.push({ op: "global.set", index: capturedIdx });
       // global.set consumes the value; re-push it for expression result
@@ -1258,7 +1258,7 @@ function compileAssignment(
     // Check module-level globals
     const moduleIdx = ctx.moduleGlobals.get(name);
     if (moduleIdx !== undefined) {
-      const globalDef = ctx.mod.globals[moduleIdx];
+      const globalDef = ctx.mod.globals[localGlobalIdx(ctx, moduleIdx)];
       const resultType = compileExpression(ctx, fctx, expr.right, globalDef?.type);
       fctx.body.push({ op: "global.set", index: moduleIdx });
       fctx.body.push({ op: "global.get", index: moduleIdx });
@@ -1386,7 +1386,7 @@ function compilePropertyAssignment(
     const fullName = `${clsName}_${target.name.text}`;
     const globalIdx = ctx.staticProps.get(fullName);
     if (globalIdx !== undefined) {
-      const globalDef = ctx.mod.globals[globalIdx];
+      const globalDef = ctx.mod.globals[localGlobalIdx(ctx, globalIdx)];
       compileExpression(ctx, fctx, value, globalDef?.type);
       fctx.body.push({ op: "global.set", index: globalIdx });
       return VOID_RESULT;
@@ -2835,7 +2835,7 @@ function compilePropertyAccess(
       const globalIdx = ctx.staticProps.get(fullName);
       if (globalIdx !== undefined) {
         fctx.body.push({ op: "global.get", index: globalIdx });
-        const globalDef = ctx.mod.globals[globalIdx];
+        const globalDef = ctx.mod.globals[localGlobalIdx(ctx, globalIdx)];
         return globalDef?.type ?? { kind: "f64" };
       }
     }
@@ -3324,21 +3324,20 @@ function compileStringLiteral(
   value: string,
   node?: ts.Node,
 ): ValType | null {
-  const importName = ctx.stringLiteralMap.get(value);
-  if (!importName) {
-    ctx.errors.push({
-      message: `String literal not registered: "${value}"`,
-      line: node ? getLine(node) : 0,
-      column: node ? getCol(node) : 0,
-    });
-    return null;
+  // Use importedStringConstants: string literals are global imports
+  const globalIdx = ctx.stringGlobalMap.get(value);
+  if (globalIdx !== undefined) {
+    fctx.body.push({ op: "global.get", index: globalIdx });
+    return { kind: "externref" };
   }
 
-  const funcIdx = ctx.funcMap.get(importName);
-  if (funcIdx === undefined) return null;
-
-  fctx.body.push({ op: "call", funcIdx });
-  return { kind: "externref" };
+  // Fallback for legacy stringLiteralMap (should not be reached)
+  ctx.errors.push({
+    message: `String literal not registered: "${value}"`,
+    line: node ? getLine(node) : 0,
+    column: node ? getCol(node) : 0,
+  });
+  return null;
 }
 
 function compileTemplateExpression(
@@ -3506,7 +3505,7 @@ function compileArrayMethodCall(
     const gIdx = ctx.moduleGlobals.get(name);
     if (gIdx !== undefined && !fctx.localMap.has(name)) {
       moduleGlobalIdx = gIdx;
-      const globalDef = ctx.mod.globals[gIdx];
+      const globalDef = ctx.mod.globals[localGlobalIdx(ctx, gIdx)];
       const tempLocal = allocLocal(fctx, `__mod_proxy_${name}`, globalDef!.type);
       fctx.body.push({ op: "global.get", index: gIdx });
       fctx.body.push({ op: "local.set", index: tempLocal });
@@ -4244,15 +4243,10 @@ function compileArrayJoin(
   if (callExpr.arguments.length >= 1) {
     compileExpression(ctx, fctx, callExpr.arguments[0]!);
   } else {
-    // Default separator "," — check if registered
-    const commaImport = ctx.stringLiteralMap.get(",");
-    if (commaImport) {
-      const funcIdx = ctx.funcMap.get(commaImport);
-      if (funcIdx !== undefined) {
-        fctx.body.push({ op: "call", funcIdx });
-      } else {
-        fctx.body.push({ op: "ref.null.extern" });
-      }
+    // Default separator "," — check if registered as string constant global
+    const commaGlobalIdx = ctx.stringGlobalMap.get(",");
+    if (commaGlobalIdx !== undefined) {
+      fctx.body.push({ op: "global.get", index: commaGlobalIdx });
     } else {
       fctx.body.push({ op: "ref.null.extern" });
     }

@@ -109,12 +109,16 @@ export interface CodegenContext {
   anonTypeMap: Map<ts.Type, string>;
   /** Counter for generating anonymous struct names */
   anonTypeCounter: number;
-  /** Map from string literal value → import func name */
+  /** Map from string literal value → import func name (legacy, unused with importedStringConstants) */
   stringLiteralMap: Map<string, string>;
   /** Map from import name → string literal value (for .d.ts comments) */
   stringLiteralValues: Map<string, string>;
   /** Counter for string literal imports */
   stringLiteralCounter: number;
+  /** Map from string literal value → global import index (for importedStringConstants) */
+  stringGlobalMap: Map<string, number>;
+  /** Number of imported globals (string constants) — offsets module-defined global indices */
+  numImportGlobals: number;
   /** Whether wasm:js-string imports have been registered */
   hasStringImports: boolean;
   /** Map from "EnumName.Member" → numeric value */
@@ -250,6 +254,8 @@ export function generateModule(
     stringLiteralMap: new Map(),
     stringLiteralValues: new Map(),
     stringLiteralCounter: 0,
+    stringGlobalMap: new Map(),
+    numImportGlobals: 0,
     hasStringImports: false,
     enumValues: new Map(),
     enumStringValues: new Map(),
@@ -380,6 +386,8 @@ export function generateMultiModule(
     stringLiteralMap: new Map(),
     stringLiteralValues: new Map(),
     stringLiteralCounter: 0,
+    stringGlobalMap: new Map(),
+    numImportGlobals: 0,
     hasStringImports: false,
     enumValues: new Map(),
     enumStringValues: new Map(),
@@ -726,7 +734,7 @@ function addStringImports(ctx: CodegenContext): void {
   });
 }
 
-/** Scan source for string literals and register env imports for each unique one */
+/** Scan source for string literals and register string_constants global imports */
 function collectStringLiterals(
   ctx: CodegenContext,
   sourceFile: ts.SourceFile,
@@ -762,14 +770,9 @@ function collectStringLiterals(
   // Register wasm:js-string imports since we have strings
   addStringImports(ctx);
 
-  // Register an env import for each unique string literal
-  const strThunkType = addFuncType(ctx, [], [{ kind: "externref" }]);
+  // Register a global import from "string_constants" for each unique string literal
   for (const value of literals) {
-    const name = `__str_${ctx.stringLiteralCounter++}`;
-    addImport(ctx, "env", name, { kind: "func", typeIdx: strThunkType });
-    ctx.stringLiteralMap.set(value, name);
-    ctx.stringLiteralValues.set(name, value);
-    ctx.mod.stringPool.push(value);
+    addStringConstantGlobal(ctx, value);
   }
 }
 
@@ -786,7 +789,7 @@ function collectForInStringLiterals(
       const exprType = ctx.checker.getTypeAtLocation(node.expression);
       const props = exprType.getProperties();
       for (const prop of props) {
-        if (!ctx.stringLiteralMap.has(prop.name)) literals.add(prop.name);
+        if (!ctx.stringGlobalMap.has(prop.name)) literals.add(prop.name);
       }
     }
     ts.forEachChild(node, visit);
@@ -803,13 +806,8 @@ function collectForInStringLiterals(
   // Ensure wasm:js-string imports exist (may already be registered)
   addStringImports(ctx);
 
-  const strThunkType = addFuncType(ctx, [], [{ kind: "externref" }]);
   for (const value of literals) {
-    const name = `__str_${ctx.stringLiteralCounter++}`;
-    addImport(ctx, "env", name, { kind: "func", typeIdx: strThunkType });
-    ctx.stringLiteralMap.set(value, name);
-    ctx.stringLiteralValues.set(name, value);
-    ctx.mod.stringPool.push(value);
+    addStringConstantGlobal(ctx, value);
   }
 }
 
@@ -1041,6 +1039,40 @@ export function addImport(
     ctx.funcMap.set(name, ctx.numImportFuncs);
     ctx.numImportFuncs++;
   }
+  if (desc.kind === "global") {
+    ctx.numImportGlobals++;
+  }
+}
+
+/**
+ * Register a string literal as a global import from the "string_constants" namespace.
+ * Uses importedStringConstants: the import name is the literal string value itself,
+ * and the global type is (ref extern) (non-nullable externref).
+ */
+function addStringConstantGlobal(ctx: CodegenContext, value: string): void {
+  if (ctx.stringGlobalMap.has(value)) return; // already registered
+
+  const globalIdx = ctx.numImportGlobals; // next global import index
+  addImport(ctx, "string_constants", value, {
+    kind: "global",
+    type: { kind: "externref" },
+    mutable: false,
+  });
+  ctx.stringGlobalMap.set(value, globalIdx);
+  ctx.stringLiteralMap.set(value, `__str_${ctx.stringLiteralCounter}`);
+  ctx.stringLiteralValues.set(`__str_${ctx.stringLiteralCounter}`, value);
+  ctx.stringLiteralCounter++;
+  ctx.mod.stringPool.push(value);
+}
+
+/** Return the absolute Wasm global index for a new module-defined global. */
+function nextModuleGlobalIdx(ctx: CodegenContext): number {
+  return ctx.numImportGlobals + ctx.mod.globals.length;
+}
+
+/** Convert an absolute Wasm global index to a local module-globals array index. */
+export function localGlobalIdx(ctx: CodegenContext, absIdx: number): number {
+  return absIdx - ctx.numImportGlobals;
 }
 
 /**
@@ -1905,7 +1937,7 @@ function collectEnumDeclarations(
           // String enum member — store in enumStringValues
           const strVal = member.initializer.text;
           ctx.enumStringValues.set(key, strVal);
-          if (!ctx.stringLiteralMap.has(strVal)) {
+          if (!ctx.stringGlobalMap.has(strVal)) {
             stringEnumLiterals.push(strVal);
           }
           continue;
@@ -1927,16 +1959,11 @@ function collectEnumDeclarations(
     }
   }
 
-  // Register string enum literals as string imports
+  // Register string enum literals as string constant globals
   if (stringEnumLiterals.length > 0) {
     addStringImports(ctx);
-    const strThunkType = addFuncType(ctx, [], [{ kind: "externref" }]);
     for (const value of stringEnumLiterals) {
-      const name = `__str_${ctx.stringLiteralCounter++}`;
-      addImport(ctx, "env", name, { kind: "func", typeIdx: strThunkType });
-      ctx.stringLiteralMap.set(value, name);
-      ctx.stringLiteralValues.set(name, value);
-      ctx.mod.stringPool.push(value);
+      addStringConstantGlobal(ctx, value);
     }
   }
 }
@@ -2290,7 +2317,7 @@ function collectClassDeclaration(
             }
           : wasmType;
 
-      const globalIdx = ctx.mod.globals.length;
+      const globalIdx = nextModuleGlobalIdx(ctx);
       ctx.mod.globals.push({
         name: `__static_${fullName}`,
         type: globalType,
@@ -2539,7 +2566,7 @@ function collectDeclarations(
             }
           : wasmType;
 
-      const globalIdx = ctx.mod.globals.length;
+      const globalIdx = nextModuleGlobalIdx(ctx);
       ctx.mod.globals.push({
         name: `__mod_${name}`,
         type: globalType,
@@ -2671,7 +2698,7 @@ function compileDeclarations(
 
       // Compile static property initializers
       for (const { globalIdx, initializer } of ctx.staticInitExprs) {
-        const globalDef = ctx.mod.globals[globalIdx];
+        const globalDef = ctx.mod.globals[localGlobalIdx(ctx, globalIdx)];
         compileExpression(ctx, initFctx, initializer, globalDef?.type);
         initFctx.body.push({ op: "global.set", index: globalIdx });
       }
