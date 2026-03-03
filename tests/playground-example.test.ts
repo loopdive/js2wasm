@@ -16,8 +16,8 @@ describe("playground", () => {
     expect(result.binary.length).toBeGreaterThan(0);
     console.log("Binary size:", result.binary.length, "bytes");
 
-    const { domApi, jsString, jsApi, buildImports } = await import("../src/runtime.js");
-    const imports = buildImports(result.stringPool, jsApi, domApi);
+    const { jsString, buildImports } = await import("../src/runtime.js");
+    const imports = buildImports(result.imports);
     try {
       const { instance } = await WebAssembly.instantiate(result.binary, { env: imports.env } as any);
       console.log("OK, exports:", Object.keys(instance.exports));

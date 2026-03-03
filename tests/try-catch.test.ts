@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { compile } from "../src/index.js";
-import { buildImports, jsApi } from "../src/runtime.js";
+import { buildImports } from "../src/runtime.js";
 
 async function run(source: string, fn: string, args: unknown[]): Promise<unknown> {
   const result = compile(source);
   if (!result.success) throw new Error(result.errors.map(e => `L${e.line}: ${e.message}`).join("\n"));
-  const imports = buildImports(result.stringPool, jsApi);
+  const imports = buildImports(result.imports);
   const { instance } = await WebAssembly.instantiate(result.binary, imports as WebAssembly.Imports);
   return (instance.exports as any)[fn](...args);
 }

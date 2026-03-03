@@ -121,8 +121,7 @@ export function compileToObject(
 
 export {
   jsString,
-  jsApi,
-  domApi,
   buildImports,
   compileAndInstantiate,
+  instantiateWasm,
 } from "./runtime.js";
