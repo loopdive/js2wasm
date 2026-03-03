@@ -313,6 +313,9 @@ export function generateModule(
   // Collect Math host imports for methods without native Wasm equivalents
   collectMathImports(ctx, ast.sourceFile);
 
+  // Collect JSON.parse / JSON.stringify host imports
+  collectJsonImports(ctx, ast.sourceFile);
+
   // Collect __make_callback import if arrow functions are used as call arguments
   collectCallbackImports(ctx, ast.sourceFile);
 
@@ -444,6 +447,7 @@ export function generateMultiModule(
     collectStringLiterals(ctx, sf);
     collectStringMethodImports(ctx, sf);
     collectMathImports(ctx, sf);
+    collectJsonImports(ctx, sf);
     collectCallbackImports(ctx, sf);
     collectUnionImports(ctx, sf);
     collectForInStringLiterals(ctx, sf);
@@ -921,6 +925,59 @@ function collectMathImports(
       const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "f64" }]);
       addImport(ctx, "env", `Math_${method}`, { kind: "func", typeIdx });
     }
+  }
+}
+
+/** Scan source for JSON.parse / JSON.stringify calls and register host imports */
+function collectJsonImports(
+  ctx: CodegenContext,
+  sourceFile: ts.SourceFile,
+): void {
+  let needStringify = false;
+  let needParse = false;
+
+  function visit(node: ts.Node) {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      ts.isIdentifier(node.expression.expression) &&
+      node.expression.expression.text === "JSON"
+    ) {
+      const method = node.expression.name.text;
+      if (method === "stringify") needStringify = true;
+      if (method === "parse") needParse = true;
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  for (const stmt of sourceFile.statements) {
+    if (ts.isFunctionDeclaration(stmt) && stmt.body) {
+      visit(stmt.body);
+    }
+    // Also visit class method bodies
+    if (ts.isClassDeclaration(stmt)) {
+      for (const member of stmt.members) {
+        if (ts.isMethodDeclaration(member) && member.body) {
+          visit(member.body);
+        }
+      }
+    }
+  }
+
+  if (needStringify || needParse) {
+    // Ensure boxing imports are available (stringify may receive numbers/booleans
+    // that need to be coerced to externref before the host call)
+    addUnionImports(ctx);
+  }
+  if (needStringify) {
+    // JSON_stringify: (externref) -> externref
+    const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", "JSON_stringify", { kind: "func", typeIdx });
+  }
+  if (needParse) {
+    // JSON_parse: (externref) -> externref
+    const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", "JSON_parse", { kind: "func", typeIdx });
   }
 }
 
