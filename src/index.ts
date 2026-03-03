@@ -33,6 +33,8 @@ export interface CompileOptions {
   sourceMap?: boolean;
   /** Source map URL to embed in the wasm binary (default: "module.wasm.map") */
   sourceMapUrl?: string;
+  /** Compilation target: "gc" (WasmGC, default) or "linear" (linear memory) */
+  target?: "gc" | "linear";
 }
 
 import { compileSource, compileMultiSource, compileToObjectSource } from "./compiler.js";
@@ -95,5 +97,6 @@ export {
   jsApi,
   domApi,
   buildImports,
+  buildStringConstants,
   compileAndInstantiate,
 } from "./runtime.js";

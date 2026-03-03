@@ -19,7 +19,7 @@ describe("playground", () => {
     const { domApi, jsString, jsApi, buildImports } = await import("../src/runtime.js");
     const imports = buildImports(result.stringPool, jsApi, domApi);
     try {
-      const { instance } = await WebAssembly.instantiate(result.binary, { env: imports.env } as any);
+      const { instance } = await WebAssembly.instantiate(result.binary, { env: imports.env, string_constants: imports.string_constants } as any);
       console.log("OK, exports:", Object.keys(instance.exports));
     } catch {
       const { instance } = await WebAssembly.instantiate(result.binary, imports as any);

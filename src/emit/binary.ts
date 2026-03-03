@@ -125,15 +125,28 @@ export function emitBinaryWithSourceMap(mod: WasmModule): EmitResult {
     });
   }
 
-  // Element section
-  if (mod.elements.length > 0) {
+  // Element section — active segments (tables) + declarative segments (ref.func)
+  const hasActiveElems = mod.elements.length > 0;
+  const hasDeclaredRefs = mod.declaredFuncRefs.length > 0;
+  if (hasActiveElems || hasDeclaredRefs) {
     enc.section(SECTION.element, (s) => {
-      s.vector(mod.elements, (elem, e) => {
-        e.byte(0x00); // active, table 0, funcref
-        for (const instr of elem.offset) encodeInstr(instr, e);
-        e.byte(OP.end);
-        e.vector(elem.funcIndices, (idx, enc2) => enc2.u32(idx));
-      });
+      const totalSegments = mod.elements.length + (hasDeclaredRefs ? 1 : 0);
+      s.u32(totalSegments);
+      // Active element segments (table initializers)
+      for (const elem of mod.elements) {
+        s.byte(0x00); // active, table 0, funcref
+        for (const instr of elem.offset) encodeInstr(instr, s);
+        s.byte(OP.end);
+        s.u32(elem.funcIndices.length);
+        for (const idx of elem.funcIndices) s.u32(idx);
+      }
+      // Declarative element segment for ref.func targets
+      if (hasDeclaredRefs) {
+        s.byte(0x03); // declarative, elemkind
+        s.byte(0x00); // elemkind = funcref
+        s.u32(mod.declaredFuncRefs.length);
+        for (const idx of mod.declaredFuncRefs) s.u32(idx);
+      }
     });
   }
 
@@ -169,6 +182,24 @@ export function emitBinaryWithSourceMap(mod: WasmModule): EmitResult {
         sourcePos: entry.sourcePos,
       });
     }
+  }
+
+  // Data section (active data segments for linear memory)
+  if (mod.dataSegments && mod.dataSegments.length > 0) {
+    enc.section(SECTION.data, (s) => {
+      s.u32(mod.dataSegments.length);
+      for (const seg of mod.dataSegments) {
+        // Active data segment for memory 0
+        s.byte(0x00); // active, memory index 0
+        // Offset expression: i32.const <offset>; end
+        s.byte(OP.i32_const);
+        s.i32(seg.offset);
+        s.byte(OP.end);
+        // Data bytes
+        s.u32(seg.bytes.length);
+        s.bytes(seg.bytes);
+      }
+    });
   }
 
   // Custom "name" section — function names for debugging/treemap
@@ -910,6 +941,17 @@ export function encodeInstr(instr: Instr, enc: WasmEncoder): void {
       break;
     case "i32.gt_u":
       enc.byte(OP.i32_gt_u);
+      break;
+    // f64 memory load/store
+    case "f64.load":
+      enc.byte(OP.f64_load);
+      enc.u32(instr.align);
+      enc.u32(instr.offset);
+      break;
+    case "f64.store":
+      enc.byte(OP.f64_store);
+      enc.u32(instr.align);
+      enc.u32(instr.offset);
       break;
   }
 }

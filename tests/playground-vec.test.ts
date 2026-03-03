@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { compile } from "../src/index.js";
+import { buildStringConstants } from "../src/runtime.js";
 
 describe("playground vec patterns", () => {
   it("bench_array with i++ compiles and runs", async () => {
@@ -99,10 +100,6 @@ describe("playground vec patterns", () => {
       console_log_bool: () => {},
       console_log_string: () => {},
     };
-    for (let i = 0; i < result.stringPool.length; i++) {
-      const val = result.stringPool[i]!;
-      env["__str_" + i] = () => val;
-    }
     const jsStringPolyfill = {
       concat: (a: string, b: string) => a + b,
       length: (s: string) => s.length,
@@ -113,6 +110,7 @@ describe("playground vec patterns", () => {
     const { instance } = await WebAssembly.instantiate(result.binary, {
       env,
       "wasm:js-string": jsStringPolyfill,
+      string_constants: buildStringConstants(result.stringPool),
     } as WebAssembly.Imports);
     expect((instance.exports as any).test()).toBe("TUE");
   });
