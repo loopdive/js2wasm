@@ -764,10 +764,18 @@ function collectStringLiterals(
     ts.forEachChild(node, visit);
   }
 
-  // Only scan function bodies (skip declare namespaces, interfaces, etc.)
+  // Scan function bodies and parameter initializers (skip declare namespaces, interfaces, etc.)
   for (const stmt of sourceFile.statements) {
-    if (ts.isFunctionDeclaration(stmt) && stmt.body) {
-      visit(stmt.body);
+    if (ts.isFunctionDeclaration(stmt)) {
+      // Scan parameter default values for string literals
+      for (const param of stmt.parameters) {
+        if (param.initializer) {
+          visit(param.initializer);
+        }
+      }
+      if (stmt.body) {
+        visit(stmt.body);
+      }
     }
   }
 
@@ -1568,7 +1576,7 @@ function collectInterfaceMembers(
         for (const p of member.parameters) {
           const pt = ctx.checker.getTypeAtLocation(p);
           params.push(mapTsTypeToWasm(pt, ctx.checker));
-          if (!p.questionToken) requiredParams++;
+          if (!p.questionToken && !p.initializer) requiredParams++;
         }
         const retType = ctx.checker.getReturnTypeOfSignature(sig);
         const results: ValType[] = isVoidType(retType)
@@ -2482,7 +2490,7 @@ function collectDeclarations(
       const optionalParams: OptionalParamInfo[] = [];
       for (let i = 0; i < stmt.parameters.length; i++) {
         const param = stmt.parameters[i]!;
-        if (param.questionToken) {
+        if (param.questionToken || param.initializer) {
           optionalParams.push({ index: i, type: params[i]! });
         }
       }
@@ -3167,6 +3175,65 @@ function compileFunctionBody(
     const nop: Instr = { op: "nop" };
     attachSourcePos(nop, funcPos);
     fctx.body.push(nop);
+  }
+
+  // Emit default-value initialization for parameters with initializers.
+  // For each param with a default value, check if the caller omitted it
+  // (externref → ref.is_null, i32 → i32.eqz, f64 → f64.eq 0.0) and if so
+  // compile the initializer expression and assign it to the param local.
+  for (let i = 0; i < decl.parameters.length; i++) {
+    const param = decl.parameters[i]!;
+    if (!param.initializer) continue;
+
+    const paramIdx = i;
+    const paramType = params[i]!.type;
+
+    // Build the "then" block: compile default expression, local.set
+    const savedBody = fctx.body;
+    fctx.body = [];
+    compileExpression(ctx, fctx, param.initializer, paramType);
+    fctx.body.push({ op: "local.set", index: paramIdx });
+    const thenInstrs = fctx.body;
+    fctx.body = savedBody;
+
+    // Emit the null/zero check + conditional assignment
+    if (paramType.kind === "externref") {
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "ref.is_null" });
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" },
+        then: thenInstrs,
+      });
+    } else if (
+      paramType.kind === "ref_null" ||
+      paramType.kind === "ref"
+    ) {
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "ref.is_null" });
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" },
+        then: thenInstrs,
+      });
+    } else if (paramType.kind === "i32") {
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "i32.eqz" });
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" },
+        then: thenInstrs,
+      });
+    } else if (paramType.kind === "f64") {
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "f64.const", value: 0 });
+      fctx.body.push({ op: "f64.eq" });
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" },
+        then: thenInstrs,
+      });
+    }
   }
 
   // Compile body statements
