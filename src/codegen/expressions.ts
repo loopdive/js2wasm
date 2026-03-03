@@ -319,6 +319,8 @@ function compileArrowAsClosure(
       (p) => ts.isIdentifier(p.name) && p.name.text === name,
     );
     if (isOwnParam) continue;
+    // Skip if the name is a named function expression's own name (self-reference)
+    if (ts.isFunctionExpression(arrow) && arrow.name && arrow.name.text === name) continue;
     const type = localIdx < fctx.params.length
       ? fctx.params[localIdx]!.type
       : fctx.locals[localIdx - fctx.params.length]?.type ?? { kind: "f64" };
@@ -383,8 +385,31 @@ function compileArrowAsClosure(
     liftedFctx.body.push({ op: "local.set", index: localIdx });
   }
 
+  // For named function expressions, register the name in the lifted
+  // function's local scope so recursive calls resolve to __self (the
+  // closure struct).  Also register in closureMap so the call-site
+  // compiler emits call_ref instead of a direct call.
+  let funcExprName: string | undefined;
+  if (ts.isFunctionExpression(arrow) && arrow.name) {
+    funcExprName = arrow.name.text;
+    // Map the name to the __self param (index 0) inside the lifted body
+    liftedFctx.localMap.set(funcExprName, 0);
+  }
+
   const savedFunc = ctx.currentFunc;
   ctx.currentFunc = liftedFctx;
+
+  // Temporarily register closure info for named function expressions so
+  // recursive calls inside the body are compiled as closure calls.
+  const closureInfoForSelf: ClosureInfo = {
+    structTypeIdx,
+    funcTypeIdx: liftedFuncTypeIdx,
+    returnType: closureReturnType,
+    paramTypes: arrowParams,
+  };
+  if (funcExprName) {
+    ctx.closureMap.set(funcExprName, closureInfoForSelf);
+  }
 
   if (ts.isBlock(body)) {
     for (const stmt of body.statements) {
@@ -397,6 +422,11 @@ function compileArrowAsClosure(
     } else if (exprType !== null) {
       liftedFctx.body.push({ op: "drop" });
     }
+  }
+
+  // Clean up the temporary closure map entry for named function expressions
+  if (funcExprName) {
+    ctx.closureMap.delete(funcExprName);
   }
 
   // Ensure return value for non-void functions
@@ -2011,9 +2041,10 @@ function compileClosureCall(
     compileExpression(ctx, fctx, expr.arguments[i]!, info.paramTypes[i]);
   }
 
-  // Push the funcref from the closure struct (field 0)
+  // Push the funcref from the closure struct (field 0) and cast to typed ref
   fctx.body.push({ op: "local.get", index: localIdx });
   fctx.body.push({ op: "struct.get", typeIdx: info.structTypeIdx, fieldIdx: 0 });
+  fctx.body.push({ op: "ref.cast", typeIdx: info.funcTypeIdx });
 
   // call_ref with the lifted function's type index
   fctx.body.push({ op: "call_ref", typeIdx: info.funcTypeIdx });
