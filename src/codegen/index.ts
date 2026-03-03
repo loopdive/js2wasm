@@ -109,12 +109,16 @@ export interface CodegenContext {
   anonTypeMap: Map<ts.Type, string>;
   /** Counter for generating anonymous struct names */
   anonTypeCounter: number;
-  /** Map from string literal value → import func name */
+  /** Map from string literal value → import func name (legacy, unused with importedStringConstants) */
   stringLiteralMap: Map<string, string>;
   /** Map from import name → string literal value (for .d.ts comments) */
   stringLiteralValues: Map<string, string>;
   /** Counter for string literal imports */
   stringLiteralCounter: number;
+  /** Map from string literal value → global import index (for importedStringConstants) */
+  stringGlobalMap: Map<string, number>;
+  /** Number of imported globals (string constants) — offsets module-defined global indices */
+  numImportGlobals: number;
   /** Whether wasm:js-string imports have been registered */
   hasStringImports: boolean;
   /** Map from "EnumName.Member" → numeric value */
@@ -173,6 +177,8 @@ export interface CodegenContext {
   classTagCounter: number;
   /** Map from class name → unique tag value (for instanceof support) */
   classTagMap: Map<string, number>;
+  /** Map from TS symbol name (e.g. "__class") → synthetic class name for class expressions */
+  classExprNameMap: Map<string, string>;
   /** Whether to attach source positions for source map generation */
   sourceMap: boolean;
 }
@@ -250,6 +256,8 @@ export function generateModule(
     stringLiteralMap: new Map(),
     stringLiteralValues: new Map(),
     stringLiteralCounter: 0,
+    stringGlobalMap: new Map(),
+    numImportGlobals: 0,
     hasStringImports: false,
     enumValues: new Map(),
     enumStringValues: new Map(),
@@ -279,6 +287,7 @@ export function generateModule(
     classParentMap: new Map(),
     classTagCounter: 0,
     classTagMap: new Map(),
+    classExprNameMap: new Map(),
     sourceMap: options?.sourceMap ?? false,
   };
 
@@ -309,6 +318,9 @@ export function generateModule(
 
   // Collect Math host imports for methods without native Wasm equivalents
   collectMathImports(ctx, ast.sourceFile);
+
+  // Collect JSON.parse / JSON.stringify host imports
+  collectJsonImports(ctx, ast.sourceFile);
 
   // Collect __make_callback import if arrow functions are used as call arguments
   collectCallbackImports(ctx, ast.sourceFile);
@@ -383,6 +395,8 @@ export function generateMultiModule(
     stringLiteralMap: new Map(),
     stringLiteralValues: new Map(),
     stringLiteralCounter: 0,
+    stringGlobalMap: new Map(),
+    numImportGlobals: 0,
     hasStringImports: false,
     enumValues: new Map(),
     enumStringValues: new Map(),
@@ -412,6 +426,7 @@ export function generateMultiModule(
     classParentMap: new Map(),
     classTagCounter: 0,
     classTagMap: new Map(),
+    classExprNameMap: new Map(),
     sourceMap: options?.sourceMap ?? false,
   };
 
@@ -443,6 +458,7 @@ export function generateMultiModule(
     collectStringLiterals(ctx, sf);
     collectStringMethodImports(ctx, sf);
     collectMathImports(ctx, sf);
+    collectJsonImports(ctx, sf);
     collectCallbackImports(ctx, sf);
     collectUnionImports(ctx, sf);
     collectIteratorImports(ctx, sf);
@@ -631,6 +647,7 @@ const STRING_METHODS: Record<string, { params: ValType[]; result: ValType }> = {
     params: [{ kind: "f64" }, { kind: "externref" }],
     result: { kind: "externref" },
   },
+  split: { params: [{ kind: "externref" }], result: { kind: "externref" } },
 };
 
 /** Scan source for method calls on string types and register needed imports */
@@ -666,6 +683,19 @@ function collectStringMethodImports(
     const params: ValType[] = [{ kind: "externref" }, ...sig.params]; // self + args
     const t = addFuncType(ctx, params, [sig.result]);
     addImport(ctx, "env", `string_${method}`, { kind: "func", typeIdx: t });
+  }
+
+  // split() returns an externref JS array — register __extern_get and __extern_length
+  // so that element access and .length work on the result
+  if (needed.has("split")) {
+    if (!ctx.funcMap.has("__extern_get")) {
+      const getType = addFuncType(ctx, [{ kind: "externref" }, { kind: "f64" }], [{ kind: "externref" }]);
+      addImport(ctx, "env", "__extern_get", { kind: "func", typeIdx: getType });
+    }
+    if (!ctx.funcMap.has("__extern_length")) {
+      const lenType = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "f64" }]);
+      addImport(ctx, "env", "__extern_length", { kind: "func", typeIdx: lenType });
+    }
   }
 }
 
@@ -730,14 +760,19 @@ function addStringImports(ctx: CodegenContext): void {
   });
 }
 
-/** Scan source for string literals and register env imports for each unique one */
+/** Scan source for string literals and register string_constants global imports */
 function collectStringLiterals(
   ctx: CodegenContext,
   sourceFile: ts.SourceFile,
 ): void {
   const literals = new Set<string>();
+  let hasTypeofExpr = false;
 
   function visit(node: ts.Node) {
+    // Skip computed property names — their string literals are resolved at
+    // compile time and never appear as runtime values in the wasm output.
+    if (ts.isComputedPropertyName(node)) return;
+
     if (ts.isStringLiteral(node)) {
       literals.add(node.text);
     }
@@ -751,13 +786,32 @@ function collectStringLiterals(
         if (span.literal.text) literals.add(span.literal.text);
       }
     }
+    // typeof expressions need type-name string constants
+    if (ts.isTypeOfExpression(node)) {
+      hasTypeofExpr = true;
+    }
     ts.forEachChild(node, visit);
   }
 
-  // Only scan function bodies (skip declare namespaces, interfaces, etc.)
+  // Scan function bodies and parameter initializers (skip declare namespaces, interfaces, etc.)
   for (const stmt of sourceFile.statements) {
-    if (ts.isFunctionDeclaration(stmt) && stmt.body) {
-      visit(stmt.body);
+    if (ts.isFunctionDeclaration(stmt)) {
+      // Scan parameter default values for string literals
+      for (const param of stmt.parameters) {
+        if (param.initializer) {
+          visit(param.initializer);
+        }
+      }
+      if (stmt.body) {
+        visit(stmt.body);
+      }
+    }
+  }
+
+  // typeof expressions may need type-name constants not present in source
+  if (hasTypeofExpr) {
+    for (const s of ["number", "string", "boolean", "object", "undefined", "function"]) {
+      literals.add(s);
     }
   }
 
@@ -766,14 +820,9 @@ function collectStringLiterals(
   // Register wasm:js-string imports since we have strings
   addStringImports(ctx);
 
-  // Register an env import for each unique string literal
-  const strThunkType = addFuncType(ctx, [], [{ kind: "externref" }]);
+  // Register a global import from "string_constants" for each unique string literal
   for (const value of literals) {
-    const name = `__str_${ctx.stringLiteralCounter++}`;
-    addImport(ctx, "env", name, { kind: "func", typeIdx: strThunkType });
-    ctx.stringLiteralMap.set(value, name);
-    ctx.stringLiteralValues.set(name, value);
-    ctx.mod.stringPool.push(value);
+    addStringConstantGlobal(ctx, value);
   }
 }
 
@@ -790,7 +839,7 @@ function collectForInStringLiterals(
       const exprType = ctx.checker.getTypeAtLocation(node.expression);
       const props = exprType.getProperties();
       for (const prop of props) {
-        if (!ctx.stringLiteralMap.has(prop.name)) literals.add(prop.name);
+        if (!ctx.stringGlobalMap.has(prop.name)) literals.add(prop.name);
       }
     }
     ts.forEachChild(node, visit);
@@ -807,13 +856,8 @@ function collectForInStringLiterals(
   // Ensure wasm:js-string imports exist (may already be registered)
   addStringImports(ctx);
 
-  const strThunkType = addFuncType(ctx, [], [{ kind: "externref" }]);
   for (const value of literals) {
-    const name = `__str_${ctx.stringLiteralCounter++}`;
-    addImport(ctx, "env", name, { kind: "func", typeIdx: strThunkType });
-    ctx.stringLiteralMap.set(value, name);
-    ctx.stringLiteralValues.set(name, value);
-    ctx.mod.stringPool.push(value);
+    addStringConstantGlobal(ctx, value);
   }
 }
 
@@ -887,6 +931,59 @@ function collectMathImports(
       const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "f64" }]);
       addImport(ctx, "env", `Math_${method}`, { kind: "func", typeIdx });
     }
+  }
+}
+
+/** Scan source for JSON.parse / JSON.stringify calls and register host imports */
+function collectJsonImports(
+  ctx: CodegenContext,
+  sourceFile: ts.SourceFile,
+): void {
+  let needStringify = false;
+  let needParse = false;
+
+  function visit(node: ts.Node) {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      ts.isIdentifier(node.expression.expression) &&
+      node.expression.expression.text === "JSON"
+    ) {
+      const method = node.expression.name.text;
+      if (method === "stringify") needStringify = true;
+      if (method === "parse") needParse = true;
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  for (const stmt of sourceFile.statements) {
+    if (ts.isFunctionDeclaration(stmt) && stmt.body) {
+      visit(stmt.body);
+    }
+    // Also visit class method bodies
+    if (ts.isClassDeclaration(stmt)) {
+      for (const member of stmt.members) {
+        if (ts.isMethodDeclaration(member) && member.body) {
+          visit(member.body);
+        }
+      }
+    }
+  }
+
+  if (needStringify || needParse) {
+    // Ensure boxing imports are available (stringify may receive numbers/booleans
+    // that need to be coerced to externref before the host call)
+    addUnionImports(ctx);
+  }
+  if (needStringify) {
+    // JSON_stringify: (externref) -> externref
+    const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", "JSON_stringify", { kind: "func", typeIdx });
+  }
+  if (needParse) {
+    // JSON_parse: (externref) -> externref
+    const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", "JSON_parse", { kind: "func", typeIdx });
   }
 }
 
@@ -1032,6 +1129,17 @@ export function addUnionImports(ctx: CodegenContext): void {
     kind: "func",
     typeIdx: boxBoolType,
   });
+
+  // __typeof: (externref) → externref (returns type string)
+  const typeofStrType = addFuncType(
+    ctx,
+    [{ kind: "externref" }],
+    [{ kind: "externref" }],
+  );
+  addImport(ctx, "env", "__typeof", {
+    kind: "func",
+    typeIdx: typeofStrType,
+  });
 }
 
 /**
@@ -1135,6 +1243,40 @@ export function addImport(
     ctx.funcMap.set(name, ctx.numImportFuncs);
     ctx.numImportFuncs++;
   }
+  if (desc.kind === "global") {
+    ctx.numImportGlobals++;
+  }
+}
+
+/**
+ * Register a string literal as a global import from the "string_constants" namespace.
+ * Uses importedStringConstants: the import name is the literal string value itself,
+ * and the global type is (ref extern) (non-nullable externref).
+ */
+function addStringConstantGlobal(ctx: CodegenContext, value: string): void {
+  if (ctx.stringGlobalMap.has(value)) return; // already registered
+
+  const globalIdx = ctx.numImportGlobals; // next global import index
+  addImport(ctx, "string_constants", value, {
+    kind: "global",
+    type: { kind: "externref" },
+    mutable: false,
+  });
+  ctx.stringGlobalMap.set(value, globalIdx);
+  ctx.stringLiteralMap.set(value, `__str_${ctx.stringLiteralCounter}`);
+  ctx.stringLiteralValues.set(`__str_${ctx.stringLiteralCounter}`, value);
+  ctx.stringLiteralCounter++;
+  ctx.mod.stringPool.push(value);
+}
+
+/** Return the absolute Wasm global index for a new module-defined global. */
+function nextModuleGlobalIdx(ctx: CodegenContext): number {
+  return ctx.numImportGlobals + ctx.mod.globals.length;
+}
+
+/** Convert an absolute Wasm global index to a local module-globals array index. */
+export function localGlobalIdx(ctx: CodegenContext, absIdx: number): number {
+  return absIdx - ctx.numImportGlobals;
 }
 
 /**
@@ -1304,7 +1446,11 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type): ValType {
     if (isExternalDeclaredClass(tsType, ctx.checker))
       return { kind: "externref" };
 
-    const name = sym?.name;
+    let name = sym?.name;
+    // Map class expression symbol names to their synthetic names
+    if (name && !ctx.structMap.has(name)) {
+      name = ctx.classExprNameMap.get(name) ?? name;
+    }
     // Check named structs (interfaces, type aliases)
     if (
       name &&
@@ -1648,7 +1794,7 @@ function collectInterfaceMembers(
         for (const p of member.parameters) {
           const pt = ctx.checker.getTypeAtLocation(p);
           params.push(mapTsTypeToWasm(pt, ctx.checker));
-          if (!p.questionToken) requiredParams++;
+          if (!p.questionToken && !p.initializer) requiredParams++;
         }
         const retType = ctx.checker.getReturnTypeOfSignature(sig);
         const results: ValType[] = isVoidType(retType)
@@ -1999,20 +2145,20 @@ function collectEnumDeclarations(
           // String enum member — store in enumStringValues
           const strVal = member.initializer.text;
           ctx.enumStringValues.set(key, strVal);
-          if (!ctx.stringLiteralMap.has(strVal)) {
+          if (!ctx.stringGlobalMap.has(strVal)) {
             stringEnumLiterals.push(strVal);
           }
           continue;
         }
         if (ts.isNumericLiteral(member.initializer)) {
-          nextValue = Number(member.initializer.text);
+          nextValue = Number(member.initializer.text.replace(/_/g, ""));
         } else if (
           ts.isPrefixUnaryExpression(member.initializer) &&
           member.initializer.operator === ts.SyntaxKind.MinusToken &&
           ts.isNumericLiteral(member.initializer.operand)
         ) {
           nextValue = -Number(
-            (member.initializer.operand as ts.NumericLiteral).text,
+            (member.initializer.operand as ts.NumericLiteral).text.replace(/_/g, ""),
           );
         }
       }
@@ -2021,28 +2167,34 @@ function collectEnumDeclarations(
     }
   }
 
-  // Register string enum literals as string imports
+  // Register string enum literals as string constant globals
   if (stringEnumLiterals.length > 0) {
     addStringImports(ctx);
-    const strThunkType = addFuncType(ctx, [], [{ kind: "externref" }]);
     for (const value of stringEnumLiterals) {
-      const name = `__str_${ctx.stringLiteralCounter++}`;
-      addImport(ctx, "env", name, { kind: "func", typeIdx: strThunkType });
-      ctx.stringLiteralMap.set(value, name);
-      ctx.stringLiteralValues.set(name, value);
-      ctx.mod.stringPool.push(value);
+      addStringConstantGlobal(ctx, value);
     }
   }
 }
 
 /** Collect all function declarations and interfaces */
-/** Collect a local class declaration: register struct type, constructor, and methods */
+/** Collect a class declaration or class expression: register struct type, constructor, and methods */
 function collectClassDeclaration(
   ctx: CodegenContext,
-  decl: ts.ClassDeclaration,
+  decl: ts.ClassDeclaration | ts.ClassExpression,
+  syntheticName?: string,
 ): void {
-  const className = decl.name!.text;
+  const className = syntheticName ?? decl.name!.text;
   ctx.classSet.add(className);
+
+  // For class expressions, map the TS symbol name to the synthetic class name
+  // so that resolveStructName and compileNewExpression can find the struct
+  if (syntheticName) {
+    const tsType = ctx.checker.getTypeAtLocation(decl);
+    const symbolName = tsType.getSymbol()?.name;
+    if (symbolName && symbolName !== syntheticName) {
+      ctx.classExprNameMap.set(symbolName, syntheticName);
+    }
+  }
 
   // Detect parent class via heritage clauses (extends)
   let parentClassName: string | undefined;
@@ -2183,6 +2335,7 @@ function collectClassDeclaration(
   });
 
   // Register method functions (own methods defined on this class)
+  // Skip abstract methods — they have no body and are implemented by subclasses
   const ownMethodNames = new Set<string>();
   for (const member of decl.members) {
     if (
@@ -2192,6 +2345,10 @@ function collectClassDeclaration(
     ) {
       const methodName = member.name.text;
       ownMethodNames.add(methodName);
+
+      // Abstract methods have no body — skip generating a wasm function stub
+      if (hasAbstractModifier(member)) continue;
+
       const fullName = `${className}_${methodName}`;
       const isStatic = hasStaticModifier(member);
 
@@ -2384,7 +2541,7 @@ function collectClassDeclaration(
             }
           : wasmType;
 
-      const globalIdx = ctx.mod.globals.length;
+      const globalIdx = nextModuleGlobalIdx(ctx);
       ctx.mod.globals.push({
         name: `__static_${fullName}`,
         type: globalType,
@@ -2466,9 +2623,20 @@ function collectDeclarations(
   }
 
   // Collect class declarations (struct types + constructor/method functions)
+  // Also collect class expressions in variable declarations: const C = class { ... }
   for (const stmt of sourceFile.statements) {
     if (ts.isClassDeclaration(stmt) && stmt.name && !hasDeclareModifier(stmt)) {
       collectClassDeclaration(ctx, stmt);
+    } else if (ts.isVariableStatement(stmt) && !hasDeclareModifier(stmt)) {
+      for (const decl of stmt.declarationList.declarations) {
+        if (
+          ts.isIdentifier(decl.name) &&
+          decl.initializer &&
+          ts.isClassExpression(decl.initializer)
+        ) {
+          collectClassDeclaration(ctx, decl.initializer, decl.name.text);
+        }
+      }
     }
   }
 
@@ -2562,7 +2730,7 @@ function collectDeclarations(
       const optionalParams: OptionalParamInfo[] = [];
       for (let i = 0; i < stmt.parameters.length; i++) {
         const param = stmt.parameters[i]!;
-        if (param.questionToken) {
+        if (param.questionToken || param.initializer) {
           optionalParams.push({ index: i, type: params[i]! });
         }
       }
@@ -2605,6 +2773,7 @@ function collectDeclarations(
       const name = decl.name.text;
       if (ctx.funcMap.has(name)) continue; // skip if shadowed by function
       if (ctx.moduleGlobals.has(name)) continue; // skip if already registered
+      if (ctx.classSet.has(name)) continue; // skip class expression variables
 
       const varType = ctx.checker.getTypeAtLocation(decl);
       const wasmType = resolveWasmType(ctx, varType);
@@ -2633,7 +2802,7 @@ function collectDeclarations(
             }
           : wasmType;
 
-      const globalIdx = ctx.mod.globals.length;
+      const globalIdx = nextModuleGlobalIdx(ctx);
       ctx.mod.globals.push({
         name: `__mod_${name}`,
         type: globalType,
@@ -2642,8 +2811,13 @@ function collectDeclarations(
       });
       ctx.moduleGlobals.set(name, globalIdx);
     }
-    // Collect the statement for init compilation
-    ctx.moduleInitStatements.push(stmt);
+    // Collect the statement for init compilation (skip pure class expression bindings)
+    const hasNonClassDecl = stmt.declarationList.declarations.some(
+      (d) => !(ts.isIdentifier(d.name) && d.initializer && ts.isClassExpression(d.initializer)),
+    );
+    if (hasNonClassDecl) {
+      ctx.moduleInitStatements.push(stmt);
+    }
   }
 }
 
@@ -2717,9 +2891,20 @@ function compileDeclarations(
   }
 
   // Compile class constructors and methods
+  // Also compile class expressions in variable declarations
   for (const stmt of sourceFile.statements) {
     if (ts.isClassDeclaration(stmt) && stmt.name && !hasDeclareModifier(stmt)) {
       compileClassBodies(ctx, stmt, funcByName);
+    } else if (ts.isVariableStatement(stmt) && !hasDeclareModifier(stmt)) {
+      for (const decl of stmt.declarationList.declarations) {
+        if (
+          ts.isIdentifier(decl.name) &&
+          decl.initializer &&
+          ts.isClassExpression(decl.initializer)
+        ) {
+          compileClassBodies(ctx, decl.initializer, funcByName, decl.name.text);
+        }
+      }
     }
   }
 
@@ -2765,7 +2950,7 @@ function compileDeclarations(
 
       // Compile static property initializers
       for (const { globalIdx, initializer } of ctx.staticInitExprs) {
-        const globalDef = ctx.mod.globals[globalIdx];
+        const globalDef = ctx.mod.globals[localGlobalIdx(ctx, globalIdx)];
         compileExpression(ctx, initFctx, initializer, globalDef?.type);
         initFctx.body.push({ op: "global.set", index: globalIdx });
       }
@@ -2821,10 +3006,11 @@ function collectDeclaredFuncRefs(ctx: CodegenContext): void {
 /** Compile constructor and method bodies for a class declaration */
 function compileClassBodies(
   ctx: CodegenContext,
-  decl: ts.ClassDeclaration,
+  decl: ts.ClassDeclaration | ts.ClassExpression,
   funcByName: Map<string, number>,
+  syntheticName?: string,
 ): void {
-  const className = decl.name!.text;
+  const className = syntheticName ?? decl.name!.text;
   const structTypeIdx = ctx.structMap.get(className)!;
   const fields = ctx.structFields.get(className)!;
 
@@ -2916,6 +3102,7 @@ function compileClassBodies(
     // Return the struct instance
     fctx.body.push({ op: "local.get", index: selfLocal });
 
+    cacheStringLiterals(ctx, fctx);
     func.locals = fctx.locals;
     func.body = fctx.body;
     ctx.currentFunc = null;
@@ -3000,6 +3187,7 @@ function compileClassBodies(
         }
       }
 
+      cacheStringLiterals(ctx, fctx);
       func.locals = fctx.locals;
       func.body = fctx.body;
       ctx.currentFunc = null;
@@ -3077,6 +3265,7 @@ function compileClassBodies(
         }
       }
 
+      cacheStringLiterals(ctx, fctx);
       func.locals = fctx.locals;
       func.body = fctx.body;
       ctx.currentFunc = null;
@@ -3128,6 +3317,7 @@ function compileClassBodies(
         }
       }
 
+      cacheStringLiterals(ctx, fctx);
       func.locals = fctx.locals;
       func.body = fctx.body;
       ctx.currentFunc = null;
@@ -3245,6 +3435,65 @@ function compileFunctionBody(
     fctx.body.push(nop);
   }
 
+  // Emit default-value initialization for parameters with initializers.
+  // For each param with a default value, check if the caller omitted it
+  // (externref → ref.is_null, i32 → i32.eqz, f64 → f64.eq 0.0) and if so
+  // compile the initializer expression and assign it to the param local.
+  for (let i = 0; i < decl.parameters.length; i++) {
+    const param = decl.parameters[i]!;
+    if (!param.initializer) continue;
+
+    const paramIdx = i;
+    const paramType = params[i]!.type;
+
+    // Build the "then" block: compile default expression, local.set
+    const savedBody = fctx.body;
+    fctx.body = [];
+    compileExpression(ctx, fctx, param.initializer, paramType);
+    fctx.body.push({ op: "local.set", index: paramIdx });
+    const thenInstrs = fctx.body;
+    fctx.body = savedBody;
+
+    // Emit the null/zero check + conditional assignment
+    if (paramType.kind === "externref") {
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "ref.is_null" });
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" },
+        then: thenInstrs,
+      });
+    } else if (
+      paramType.kind === "ref_null" ||
+      paramType.kind === "ref"
+    ) {
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "ref.is_null" });
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" },
+        then: thenInstrs,
+      });
+    } else if (paramType.kind === "i32") {
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "i32.eqz" });
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" },
+        then: thenInstrs,
+      });
+    } else if (paramType.kind === "f64") {
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "f64.const", value: 0 });
+      fctx.body.push({ op: "f64.eq" });
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" },
+        then: thenInstrs,
+      });
+    }
+  }
+
   // Compile body statements
   if (decl.body) {
     for (const stmt of decl.body.statements) {
@@ -3273,6 +3522,7 @@ function compileFunctionBody(
     }
   }
 
+  cacheStringLiterals(ctx, fctx);
   func.locals = fctx.locals;
   func.body = fctx.body;
 
@@ -3289,6 +3539,113 @@ export function allocLocal(
   fctx.locals.push({ name, type });
   fctx.localMap.set(name, index);
   return index;
+}
+
+/**
+ * Cache string literal thunk calls in locals for the given function.
+ *
+ * After a function body has been compiled, this scans all instructions
+ * (including nested blocks/loops/ifs) for `call` instructions that invoke
+ * string literal thunks (__str_N).  For each unique thunk found it:
+ *   1. Allocates an `externref` local to hold the cached value.
+ *   2. Prepends `call $__str_N` + `local.set $cached` at function entry.
+ *   3. Replaces every matching `call` in the body with `local.get $cached`.
+ *
+ * This avoids repeated import calls for the same string literal, which is
+ * especially beneficial inside loops.
+ */
+export function cacheStringLiterals(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+): void {
+  // Build a set of funcIdx values that correspond to string literal thunks
+  const strFuncIdxSet = new Set<number>();
+  for (const [, importName] of ctx.stringLiteralMap) {
+    const funcIdx = ctx.funcMap.get(importName);
+    if (funcIdx !== undefined) strFuncIdxSet.add(funcIdx);
+  }
+  if (strFuncIdxSet.size === 0) return;
+
+  // Collect all unique string-thunk funcIdx values used in the body
+  const usedFuncIdxs = new Set<number>();
+  collectStringCalls(fctx.body, strFuncIdxSet, usedFuncIdxs);
+  if (usedFuncIdxs.size === 0) return;
+
+  // Allocate a local for each unique string thunk and build the mapping
+  const cacheMap = new Map<number, number>(); // funcIdx → local index
+  for (const funcIdx of usedFuncIdxs) {
+    const localIdx = allocLocal(fctx, `__cached_str_${funcIdx}`, {
+      kind: "externref",
+    });
+    cacheMap.set(funcIdx, localIdx);
+  }
+
+  // Build the cache-loading preamble (call + local.set for each)
+  const preamble: Instr[] = [];
+  for (const [funcIdx, localIdx] of cacheMap) {
+    preamble.push({ op: "call", funcIdx });
+    preamble.push({ op: "local.set", index: localIdx });
+  }
+
+  // Replace all matching call instructions in the body with local.get
+  replaceStringCalls(fctx.body, cacheMap);
+
+  // Prepend the preamble at the start of the body
+  fctx.body.unshift(...preamble);
+}
+
+/** Recursively scan instructions to find call instructions targeting string thunks. */
+function collectStringCalls(
+  instrs: Instr[],
+  strFuncIdxSet: Set<number>,
+  found: Set<number>,
+): void {
+  for (const instr of instrs) {
+    if (instr.op === "call" && strFuncIdxSet.has(instr.funcIdx)) {
+      found.add(instr.funcIdx);
+    }
+    // Recurse into nested blocks
+    if (instr.op === "block" || instr.op === "loop") {
+      collectStringCalls(instr.body, strFuncIdxSet, found);
+    } else if (instr.op === "if") {
+      collectStringCalls(instr.then, strFuncIdxSet, found);
+      if (instr.else) collectStringCalls(instr.else, strFuncIdxSet, found);
+    } else if (instr.op === "try") {
+      collectStringCalls(instr.body, strFuncIdxSet, found);
+      for (const c of instr.catches) {
+        collectStringCalls(c.body, strFuncIdxSet, found);
+      }
+      if (instr.catchAll) collectStringCalls(instr.catchAll, strFuncIdxSet, found);
+    }
+  }
+}
+
+/** Recursively replace call instructions matching the cache map with local.get. */
+function replaceStringCalls(
+  instrs: Instr[],
+  cacheMap: Map<number, number>,
+): void {
+  for (let i = 0; i < instrs.length; i++) {
+    const instr = instrs[i]!;
+    if (instr.op === "call" && cacheMap.has(instr.funcIdx)) {
+      // Replace in-place: swap the call with a local.get
+      const localIdx = cacheMap.get(instr.funcIdx)!;
+      (instrs as any)[i] = { op: "local.get", index: localIdx };
+    }
+    // Recurse into nested blocks
+    if (instr.op === "block" || instr.op === "loop") {
+      replaceStringCalls(instr.body, cacheMap);
+    } else if (instr.op === "if") {
+      replaceStringCalls(instr.then, cacheMap);
+      if (instr.else) replaceStringCalls(instr.else, cacheMap);
+    } else if (instr.op === "try") {
+      replaceStringCalls(instr.body, cacheMap);
+      for (const c of instr.catches) {
+        replaceStringCalls(c.body, cacheMap);
+      }
+      if (instr.catchAll) replaceStringCalls(instr.catchAll, cacheMap);
+    }
+  }
 }
 
 function hasExportModifier(node: ts.Node): boolean {
@@ -3314,6 +3671,14 @@ function hasAsyncModifier(node: ts.Node): boolean {
     ? ts.getModifiers(node)
     : undefined;
   return modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
+}
+
+function hasAbstractModifier(node: ts.Node): boolean {
+  return (
+    (ts.getCombinedModifierFlags(node as ts.Declaration) &
+      ts.ModifierFlags.Abstract) !==
+    0
+  );
 }
 
 function hasStaticModifier(node: ts.Node): boolean {
