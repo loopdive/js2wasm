@@ -34,6 +34,9 @@ export const jsApi: Record<string, Function> = new Proxy(
       if (name === "__extern_length") return (obj: any) => obj.length;
       // Date methods
       if (name === "Date_new") return () => new Date();
+      // Map and Set constructors
+      if (name === "Map_new") return () => new Map();
+      if (name === "Set_new") return () => new Set();
       if (name.startsWith("Date_get")) {
         const method = name.slice(5); // "getDate", "getMonth", etc.
         return (d: any) => d[method]();
@@ -44,6 +47,12 @@ export const jsApi: Record<string, Function> = new Proxy(
       }
       // Async/await support: __await is identity (host functions are sync from Wasm's perspective)
       if (name === "__await") return (v: any) => v;
+      // Promise combinators — delegate to host
+      // In the synchronous runtime (where __await is identity), these return
+      // resolved values directly. In a real async host (JSPI), override with
+      // actual Promise.all / Promise.race.
+      if (name === "Promise_all") return (arr: any) => Promise.all(arr);
+      if (name === "Promise_race") return (arr: any) => Promise.race(arr);
       // Union type typeof checks and boxing/unboxing
       if (name === "__typeof_number") return (v: any) => typeof v === "number" ? 1 : 0;
       if (name === "__typeof_string") return (v: any) => typeof v === "string" ? 1 : 0;
@@ -58,6 +67,9 @@ export const jsApi: Record<string, Function> = new Proxy(
       if (name === "__iterator_next") return (iter: any) => iter.next();
       if (name === "__iterator_done") return (result: any) => result.done ? 1 : 0;
       if (name === "__iterator_value") return (result: any) => result.value;
+      // Callback bridges for functional array methods
+      if (name === "__call_1_f64") return (fn: Function, a: number) => fn(a);
+      if (name === "__call_2_f64") return (fn: Function, a: number, b: number) => fn(a, b);
       if (name === "__typeof") return (v: any) => typeof v;
     },
   },
