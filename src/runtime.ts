@@ -51,6 +51,7 @@ export const jsApi: Record<string, Function> = new Proxy(
       if (name === "__box_number") return (v: number) => v;
       if (name === "__box_boolean") return (v: number) => Boolean(v);
       if (name === "__is_truthy") return (v: any) => v ? 1 : 0;
+      if (name === "__typeof") return (v: any) => typeof v;
     },
   },
 );
