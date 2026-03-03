@@ -1911,14 +1911,14 @@ function collectEnumDeclarations(
           continue;
         }
         if (ts.isNumericLiteral(member.initializer)) {
-          nextValue = Number(member.initializer.text);
+          nextValue = Number(member.initializer.text.replace(/_/g, ""));
         } else if (
           ts.isPrefixUnaryExpression(member.initializer) &&
           member.initializer.operator === ts.SyntaxKind.MinusToken &&
           ts.isNumericLiteral(member.initializer.operand)
         ) {
           nextValue = -Number(
-            (member.initializer.operand as ts.NumericLiteral).text,
+            (member.initializer.operand as ts.NumericLiteral).text.replace(/_/g, ""),
           );
         }
       }
