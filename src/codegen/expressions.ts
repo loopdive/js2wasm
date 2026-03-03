@@ -1,5 +1,6 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext, ClosureInfo, RestParamInfo } from "./index.js";
+import { allocLocal, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addUnionImports, isTupleType, getTupleElementTypes, getOrRegisterTupleType } from "./index.js";
 import { allocLocal, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addUnionImports, localGlobalIdx } from "./index.js";
 import {
   mapTsTypeToWasm,
@@ -3337,8 +3338,34 @@ function compileElementAccess(
   const typeIdx = (objType as { typeIdx: number }).typeIdx;
   const typeDef = ctx.mod.types[typeIdx];
 
-  // Handle vec struct (array wrapped in {length, data})
+  // Handle tuple struct — element access with literal index → struct.get
   if (typeDef?.kind === "struct") {
+    // Check if this is a tuple struct (registered in tupleTypeMap)
+    const isTuple = Array.from(ctx.tupleTypeMap.values()).includes(typeIdx);
+    if (isTuple) {
+      // Tuple element access requires a literal numeric index
+      if (!ts.isNumericLiteral(expr.argumentExpression)) {
+        ctx.errors.push({
+          message: "Tuple element access requires a numeric literal index",
+          line: getLine(expr),
+          column: getCol(expr),
+        });
+        return null;
+      }
+      const fieldIdx = Number(expr.argumentExpression.text);
+      if (fieldIdx < 0 || fieldIdx >= typeDef.fields.length) {
+        ctx.errors.push({
+          message: `Tuple index ${fieldIdx} out of bounds (tuple has ${typeDef.fields.length} elements)`,
+          line: getLine(expr),
+          column: getCol(expr),
+        });
+        return null;
+      }
+      fctx.body.push({ op: "struct.get", typeIdx, fieldIdx });
+      return typeDef.fields[fieldIdx]!.type;
+    }
+
+    // Handle vec struct (array wrapped in {length, data})
     const arrTypeIdx = getArrTypeIdxFromVec(ctx, typeIdx);
     const arrDef = ctx.mod.types[arrTypeIdx];
     if (!arrDef || arrDef.kind !== "array") {
@@ -3571,11 +3598,40 @@ function compileObjectLiteralForStruct(
   return { kind: "ref", typeIdx: structTypeIdx };
 }
 
+/**
+ * Compile a tuple literal [a, b, c] to a Wasm GC struct.new instruction.
+ * Each element is compiled to its corresponding field type.
+ */
+function compileTupleLiteral(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.ArrayLiteralExpression,
+  tupleType: ts.Type,
+): ValType | null {
+  const elemTypes = getTupleElementTypes(ctx, tupleType);
+  const tupleIdx = getOrRegisterTupleType(ctx, elemTypes);
+
+  // Compile each element with the expected field type
+  for (let i = 0; i < expr.elements.length; i++) {
+    const expectedType = elemTypes[i] ?? { kind: "externref" as const };
+    compileExpression(ctx, fctx, expr.elements[i]!, expectedType);
+  }
+
+  fctx.body.push({ op: "struct.new", typeIdx: tupleIdx });
+  return { kind: "ref", typeIdx: tupleIdx };
+}
+
 function compileArrayLiteral(
   ctx: CodegenContext,
   fctx: FunctionContext,
   expr: ts.ArrayLiteralExpression,
 ): ValType | null {
+  // Check if the target type is a tuple — compile as struct.new instead of array
+  const ctxTupleType = ctx.checker.getContextualType(expr) ?? ctx.checker.getTypeAtLocation(expr);
+  if (ctxTupleType && isTupleType(ctxTupleType)) {
+    return compileTupleLiteral(ctx, fctx, expr, ctxTupleType);
+  }
+
   if (expr.elements.length === 0) {
     // Empty array — try to determine element type from contextual type (e.g. number[])
     let emptyElemKind = "externref";

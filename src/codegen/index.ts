@@ -181,6 +181,8 @@ export interface CodegenContext {
   classExprNameMap: Map<string, string>;
   /** Whether to attach source positions for source map generation */
   sourceMap: boolean;
+  /** Map from tuple type signature key → type index of the tuple struct */
+  tupleTypeMap: Map<string, number>;
 }
 
 /** Metadata for a closure stored in a local variable */
@@ -289,6 +291,7 @@ export function generateModule(
     classTagMap: new Map(),
     classExprNameMap: new Map(),
     sourceMap: options?.sourceMap ?? false,
+    tupleTypeMap: new Map(),
   };
 
   // Collect console.log imports (only variants actually used)
@@ -428,6 +431,7 @@ export function generateMultiModule(
     classTagMap: new Map(),
     classExprNameMap: new Map(),
     sourceMap: options?.sourceMap ?? false,
+    tupleTypeMap: new Map(),
   };
 
   // Phase 1: Collect all import-phase declarations across all source files
@@ -1446,10 +1450,94 @@ export function getArrTypeIdxFromVec(
 }
 
 /**
+ * Check if a ts.Type is a TypeScript tuple type (e.g. [number, string]).
+ * Tuples are TypeReference types whose target has the Tuple object flag.
+ * The Tuple flag is on the target, not the reference itself.
+ */
+export function isTupleType(type: ts.Type): boolean {
+  if (!(type.flags & ts.TypeFlags.Object)) return false;
+  const objType = type as ts.ObjectType;
+  // Direct Tuple flag check (on the target for TypeReference types)
+  if ((objType.objectFlags & ts.ObjectFlags.Tuple) !== 0) return true;
+  // TypeReference → check target's objectFlags
+  if ((objType.objectFlags & ts.ObjectFlags.Reference) !== 0) {
+    const ref = type as ts.TypeReference;
+    if (ref.target && (ref.target.objectFlags & ts.ObjectFlags.Tuple) !== 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Get the element types of a tuple type.
+ * Returns the resolved ValType for each element position.
+ */
+export function getTupleElementTypes(
+  ctx: CodegenContext,
+  tsType: ts.Type,
+): ValType[] {
+  const typeRef = tsType as ts.TypeReference;
+  const typeArgs = ctx.checker.getTypeArguments(typeRef);
+  return typeArgs.map((t) => resolveWasmType(ctx, t));
+}
+
+/**
+ * Build a unique key for a tuple type signature based on its element types.
+ * Used as the key for tupleTypeMap to de-duplicate identical tuple shapes.
+ */
+function tupleTypeKey(elemTypes: ValType[]): string {
+  return elemTypes
+    .map((t) => {
+      if (t.kind === "ref" || t.kind === "ref_null") return `${t.kind}_${t.typeIdx}`;
+      return t.kind;
+    })
+    .join(",");
+}
+
+/**
+ * Get or register a Wasm GC struct type for a tuple type.
+ * Each unique tuple signature (e.g. [f64, externref]) maps to one struct type
+ * with fields named _0, _1, etc.
+ */
+export function getOrRegisterTupleType(
+  ctx: CodegenContext,
+  elemTypes: ValType[],
+): number {
+  const key = tupleTypeKey(elemTypes);
+  const existing = ctx.tupleTypeMap.get(key);
+  if (existing !== undefined) return existing;
+
+  const fields: FieldDef[] = elemTypes.map((t, i) => ({
+    name: `_${i}`,
+    type: t,
+    mutable: false,
+  }));
+
+  const typeIdx = ctx.mod.types.length;
+  const structName = `__tuple_${ctx.tupleTypeMap.size}`;
+  ctx.mod.types.push({
+    kind: "struct",
+    name: structName,
+    fields,
+  } as StructTypeDef);
+  ctx.tupleTypeMap.set(key, typeIdx);
+  return typeIdx;
+}
+
+/**
  * Resolve a ts.Type to a ValType, using the struct registry and anonymous type map.
  * Use this instead of mapTsTypeToWasm in the codegen to get real type indices.
  */
 export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type): ValType {
+  // Check tuple types BEFORE Array — tuples have the Object flag and Array symbol
+  // but should be compiled to structs, not arrays
+  if (isTupleType(tsType)) {
+    const elemTypes = getTupleElementTypes(ctx, tsType);
+    const tupleIdx = getOrRegisterTupleType(ctx, elemTypes);
+    return { kind: "ref", typeIdx: tupleIdx };
+  }
+
   // Check Array<T> / T[] BEFORE isExternalDeclaredClass, because Array is declared
   // in the lib as `declare var Array: ArrayConstructor` which would match externref
   if (tsType.flags & ts.TypeFlags.Object) {
@@ -1520,6 +1608,8 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type): ValType {
 function ensureStructForType(ctx: CodegenContext, tsType: ts.Type): void {
   if (!(tsType.flags & ts.TypeFlags.Object)) return;
   if (isExternalDeclaredClass(tsType, ctx.checker)) return;
+  // Tuple types are handled by getOrRegisterTupleType, not as anonymous structs
+  if (isTupleType(tsType)) return;
 
   const name = tsType.symbol?.name;
 
@@ -2063,8 +2153,8 @@ function collectUsedExternImports(
     if (ts.isElementAccessExpression(node)) {
       const objType = ctx.checker.getTypeAtLocation(node.expression);
       const sym = objType.getSymbol();
-      // Skip Array types — those use Wasm GC array.get, not host import
-      if (sym?.name !== "Array") {
+      // Skip Array and tuple types — those use Wasm GC struct/array ops, not host import
+      if (sym?.name !== "Array" && !isTupleType(objType)) {
         const wasmType = mapTsTypeToWasm(objType, ctx.checker);
         if (wasmType.kind === "externref") {
           register(
