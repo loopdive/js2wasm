@@ -2661,7 +2661,7 @@ function compileArrayHOF(
   const indexLocal = indexParamName ? addLocal(fctx, indexParamName, { kind: "f64" }) : undefined;
 
   let resultLocal: number | undefined;
-  if (method === "filter" || method === "map") {
+  if (method === "filter" || method === "map" || method === "flatMap") {
     resultLocal = addLocal(fctx, `__hof_result_${fctx.locals.length}`, { kind: "i32" });
   } else if (method === "some") {
     resultLocal = addLocal(fctx, `__hof_result_${fctx.locals.length}`, { kind: "f64" });
@@ -2682,7 +2682,7 @@ function compileArrayHOF(
   fctx.body.push({ op: "i32.const", value: 0 });
   fctx.body.push({ op: "local.set", index: iLocal });
 
-  if (method === "filter" || method === "map") {
+  if (method === "filter" || method === "map" || method === "flatMap") {
     // resultLocal = __arr_new(16)
     fctx.body.push({ op: "i32.const", value: 16 });
     fctx.body.push({ op: "call", funcIdx: arrNewIdx });
@@ -2785,6 +2785,49 @@ function compileArrayHOF(
     fctx.body.push({ op: "br", depth: 2 }); // break out of block+loop
     fctx.body = savedBody2;
     fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: foundBody });
+  } else if (method === "flatMap") {
+    // innerArr = callback(elem); for j in innerArr: __arr_push(result, innerArr[j])
+    const innerArrLocal = addLocal(fctx, `__hof_inner_${fctx.locals.length}`, { kind: "i32" });
+    const jLocal = addLocal(fctx, `__hof_j_${fctx.locals.length}`, { kind: "i32" });
+    const innerLenLocal = addLocal(fctx, `__hof_ilen_${fctx.locals.length}`, { kind: "i32" });
+    compileExpression(ctx, fctx, bodyExpr);
+    const innerType = inferExprType(ctx, fctx, bodyExpr);
+    if (innerType.kind === "f64") {
+      fctx.body.push({ op: "i32.trunc_f64_s" });
+    }
+    fctx.body.push({ op: "local.set", index: innerArrLocal });
+    // innerLen = __arr_len(innerArr)
+    fctx.body.push({ op: "local.get", index: innerArrLocal });
+    fctx.body.push({ op: "call", funcIdx: arrLenIdx });
+    fctx.body.push({ op: "local.set", index: innerLenLocal });
+    // j = 0
+    fctx.body.push({ op: "i32.const", value: 0 });
+    fctx.body.push({ op: "local.set", index: jLocal });
+    // Inner loop: for j in innerArr
+    const innerLoopBody: Instr[] = [];
+    // break: if (j >= innerLen) break
+    innerLoopBody.push({ op: "local.get", index: jLocal });
+    innerLoopBody.push({ op: "local.get", index: innerLenLocal });
+    innerLoopBody.push({ op: "i32.ge_s" });
+    innerLoopBody.push({ op: "br_if", depth: 1 });
+    // __arr_push(result, __arr_get(innerArr, j))
+    innerLoopBody.push({ op: "local.get", index: resultLocal! });
+    innerLoopBody.push({ op: "local.get", index: innerArrLocal });
+    innerLoopBody.push({ op: "local.get", index: jLocal });
+    innerLoopBody.push({ op: "call", funcIdx: arrGetIdx });
+    innerLoopBody.push({ op: "call", funcIdx: arrPushIdx });
+    // j++
+    innerLoopBody.push({ op: "local.get", index: jLocal });
+    innerLoopBody.push({ op: "i32.const", value: 1 });
+    innerLoopBody.push({ op: "i32.add" });
+    innerLoopBody.push({ op: "local.set", index: jLocal });
+    innerLoopBody.push({ op: "br", depth: 0 });
+
+    fctx.body.push({
+      op: "block", blockType: { kind: "empty" }, body: [{
+        op: "loop", blockType: { kind: "empty" }, body: innerLoopBody,
+      }],
+    });
   }
 
   // i++
@@ -2810,7 +2853,7 @@ function compileArrayHOF(
   fctx.blockDepth -= 2;
 
   // Push result
-  if (method === "filter" || method === "map" || method === "find") {
+  if (method === "filter" || method === "map" || method === "find" || method === "flatMap") {
     fctx.body.push({ op: "local.get", index: resultLocal! });
   } else if (method === "some") {
     fctx.body.push({ op: "local.get", index: resultLocal! });
