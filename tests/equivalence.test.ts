@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { compile, type CompileResult } from "../src/index.js";
+import { buildStringConstants } from "../src/runtime.js";
 import ts from "typescript";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -15,7 +16,7 @@ const jsStringPolyfill = {
 
 /**
  * Build the full WebAssembly.Imports for a compiled result,
- * including env stubs, Math host imports, string pool thunks,
+ * including env stubs, Math host imports, string constants,
  * and wasm:js-string polyfill.
  */
 function buildImports(result: CompileResult): WebAssembly.Imports {
@@ -37,12 +38,11 @@ function buildImports(result: CompileResult): WebAssembly.Imports {
     Math_pow: Math.pow,
     Math_random: Math.random,
   };
-  // String literal thunks
-  for (let i = 0; i < result.stringPool.length; i++) {
-    const value = result.stringPool[i]!;
-    env[`__str_${i}`] = () => value;
-  }
-  return { env, "wasm:js-string": jsStringPolyfill } as WebAssembly.Imports;
+  return {
+    env,
+    "wasm:js-string": jsStringPolyfill,
+    string_constants: buildStringConstants(result.stringPool),
+  } as WebAssembly.Imports;
 }
 
 /**

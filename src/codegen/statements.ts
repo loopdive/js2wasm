@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { isVoidType } from "../checker/type-mapper.js";
+import { isStringType, isVoidType } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";
 import {
   collectReferencedIdentifiers,
@@ -14,6 +14,7 @@ import {
   ensureI32Condition,
   getArrTypeIdxFromVec,
   getSourcePos,
+  localGlobalIdx,
   resolveWasmType,
 } from "./index.js";
 
@@ -171,6 +172,21 @@ export function compileStatement(
   });
 }
 
+/** String methods that return a host array (externref) rather than a wasm GC array.
+ *  Variables initialized from these calls use externref instead of the GC vec struct
+ *  that resolveWasmType would produce for the TS return type (e.g. string[]). */
+const HOST_ARRAY_STRING_METHODS = new Set(["split"]);
+
+/** Check if an expression is a string method call that returns a host array (externref). */
+function isStringMethodReturningHostArray(ctx: CodegenContext, expr: ts.Expression): boolean {
+  if (!ts.isCallExpression(expr)) return false;
+  if (!ts.isPropertyAccessExpression(expr.expression)) return false;
+  const method = expr.expression.name.text;
+  if (!HOST_ARRAY_STRING_METHODS.has(method)) return false;
+  const receiverType = ctx.checker.getTypeAtLocation(expr.expression.expression);
+  return isStringType(receiverType);
+}
+
 function compileVariableStatement(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -198,6 +214,11 @@ function compileVariableStatement(
 
     const name = decl.name.text;
 
+    // Class expression: const C = class { ... } — skip, already handled as class declaration
+    if (decl.initializer && ts.isClassExpression(decl.initializer)) {
+      continue;
+    }
+
     // For arrow/function expression initializers, compile the expression first
     // to get the actual closure struct ref type (resolveWasmType returns externref
     // for function types, but closures need ref $struct)
@@ -218,7 +239,7 @@ function compileVariableStatement(
     if (moduleGlobalIdx !== undefined) {
       // Module global: compile initializer and set global
       if (decl.initializer) {
-        const globalDef = ctx.mod.globals[moduleGlobalIdx];
+        const globalDef = ctx.mod.globals[localGlobalIdx(ctx, moduleGlobalIdx)];
         const wasmType =
           globalDef?.type ??
           resolveWasmType(ctx, ctx.checker.getTypeAtLocation(decl));
@@ -229,7 +250,11 @@ function compileVariableStatement(
     }
 
     const varType = ctx.checker.getTypeAtLocation(decl);
-    const wasmType = resolveWasmType(ctx, varType);
+    // Override type for string methods returning host arrays (e.g. split() returns
+    // externref but TS types as string[] which resolveWasmType maps to GC vec struct)
+    const wasmType = (decl.initializer && isStringMethodReturningHostArray(ctx, decl.initializer))
+      ? { kind: "externref" as const }
+      : resolveWasmType(ctx, varType);
 
     const localIdx = allocLocal(fctx, name, wasmType);
 
@@ -1018,13 +1043,11 @@ function compileForInStatement(
 
   // Unroll: emit one copy of the loop body per property
   for (const prop of props) {
-    const importName = ctx.stringLiteralMap.get(prop.name);
-    if (!importName) continue;
-    const funcIdx = ctx.funcMap.get(importName);
-    if (funcIdx === undefined) continue;
+    const globalIdx = ctx.stringGlobalMap.get(prop.name);
+    if (globalIdx === undefined) continue;
 
     // Set the key variable to this property's name
-    fctx.body.push({ op: "call", funcIdx });
+    fctx.body.push({ op: "global.get", index: globalIdx });
     fctx.body.push({ op: "local.set", index: keyLocal });
 
     // Compile the loop body

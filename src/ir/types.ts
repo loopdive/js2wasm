@@ -27,6 +27,8 @@ export interface WasmModule {
   declaredFuncRefs: number[];
   /** Linear memory definitions */
   memories: { min: number; max?: number }[];
+  /** Data segments for linear memory (string literals, etc.) */
+  dataSegments: { offset: number; bytes: Uint8Array }[];
 }
 
 export type TypeDef =
@@ -206,7 +208,10 @@ type InstrBase =
   // Unsigned comparisons (complements existing i32.lt_s etc.)
   | { op: "i32.lt_u" }
   | { op: "i32.le_u" }
-  | { op: "i32.gt_u" };
+  | { op: "i32.gt_u" }
+  // f64 memory load/store (linear memory)
+  | { op: "f64.load"; align: number; offset: number }
+  | { op: "f64.store"; align: number; offset: number };
 
 export type Instr = InstrBase & { sourcePos?: SourcePos };
 
@@ -274,5 +279,6 @@ export function createEmptyModule(): WasmModule {
     asyncFunctions: new Set(),
     declaredFuncRefs: [],
     memories: [],
+    dataSegments: [],
   };
 }
