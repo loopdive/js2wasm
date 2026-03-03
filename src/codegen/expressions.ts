@@ -1,5 +1,6 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext, ClosureInfo, RestParamInfo } from "./index.js";
+import { allocLocal, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addUnionImports, ensureStructForType } from "./index.js";
 import { allocLocal, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addUnionImports, isTupleType, getTupleElementTypes, getOrRegisterTupleType } from "./index.js";
 import { allocLocal, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addUnionImports, localGlobalIdx } from "./index.js";
 import {
@@ -79,6 +80,8 @@ function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: ValType, t
     fctx.body.push({ op: "i32.eqz" });
     return;
   }
+  // externref → f64 (unbox number if import available)
+  if (from.kind === "externref" && to.kind === "f64") {
   // externref → f64 (unbox number)
   if (from.kind === "externref" && to.kind === "f64") {
     addUnionImports(ctx);
@@ -87,6 +90,7 @@ function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: ValType, t
       fctx.body.push({ op: "call", funcIdx });
       return;
     }
+    // Fallback: drop and push default
     fctx.body.push({ op: "drop" });
     fctx.body.push({ op: "f64.const", value: 0 });
     return;
@@ -2175,6 +2179,14 @@ function compileCallExpression(
       return compileMathCall(ctx, fctx, propAccess.name.text, expr);
     }
 
+    // Handle Object.keys(obj) and Object.values(obj)
+    if (
+      ts.isIdentifier(propAccess.expression) &&
+      propAccess.expression.text === "Object" &&
+      (propAccess.name.text === "keys" || propAccess.name.text === "values") &&
+      expr.arguments.length === 1
+    ) {
+      return compileObjectKeysOrValues(ctx, fctx, propAccess.name.text, expr);
     // Handle Promise.all / Promise.race — host-delegated static calls
     if (
       ts.isIdentifier(propAccess.expression) &&
@@ -3479,7 +3491,12 @@ function compileObjectLiteral(
   const contextType = ctx.checker.getContextualType(expr);
   if (!contextType) {
     const type = ctx.checker.getTypeAtLocation(expr);
-    const typeName = resolveStructName(ctx, type);
+    let typeName = resolveStructName(ctx, type);
+    if (!typeName) {
+      // Auto-register the struct type for inline object literals
+      ensureStructForType(ctx, type);
+      typeName = resolveStructName(ctx, type);
+    }
     if (typeName) {
       return compileObjectLiteralForStruct(ctx, fctx, expr, typeName);
     }
@@ -3491,7 +3508,12 @@ function compileObjectLiteral(
     return null;
   }
 
-  const typeName = resolveStructName(ctx, contextType);
+  let typeName = resolveStructName(ctx, contextType);
+  if (!typeName) {
+    // Auto-register the struct type for the contextual type
+    ensureStructForType(ctx, contextType);
+    typeName = resolveStructName(ctx, contextType);
+  }
   if (typeName) {
     return compileObjectLiteralForStruct(ctx, fctx, expr, typeName);
   }
@@ -3623,8 +3645,19 @@ function compileObjectLiteralForStruct(
     const prop = expr.properties.find(
       (p) => resolvePropertyNameText(ctx, p) === field.name,
     );
+    // Also check for shorthand property assignment ({ x, y } where x/y are identifiers)
+    const shorthandProp = !prop
+      ? expr.properties.find(
+          (p) =>
+            ts.isShorthandPropertyAssignment(p) &&
+            p.name.text === field.name,
+        )
+      : undefined;
     if (prop && ts.isPropertyAssignment(prop)) {
       compileExpression(ctx, fctx, prop.initializer);
+    } else if (shorthandProp && ts.isShorthandPropertyAssignment(shorthandProp)) {
+      // Shorthand { x } means the value is the identifier x — compile it
+      compileExpression(ctx, fctx, shorthandProp.name);
     } else {
       // Check spread sources (last spread wins — JS semantics)
       let found = false;
@@ -3845,6 +3878,122 @@ function compileArrayLiteral(
   fctx.body.push({ op: "local.get", index: writeIdx });    // length field (field 0)
   fctx.body.push({ op: "local.get", index: resultLocal }); // data field (field 1)
   fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx }); // wrap in vec struct
+  return { kind: "ref_null", typeIdx: vecTypeIdx };
+}
+
+// ── Object.keys / Object.values ───────────────────────────────────────
+
+/**
+ * Compile Object.keys(obj) or Object.values(obj) by expanding struct fields
+ * at compile time. Object.keys returns a string[] of field names,
+ * Object.values returns an array of the field values.
+ */
+function compileObjectKeysOrValues(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  method: string,
+  expr: ts.CallExpression,
+): ValType | null {
+  const arg = expr.arguments[0]!;
+  const argType = ctx.checker.getTypeAtLocation(arg);
+
+  // Resolve struct name from the argument type
+  const structName = resolveStructName(ctx, argType);
+  if (!structName) {
+    ctx.errors.push({
+      message: `Object.${method}() requires a struct type argument`,
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+
+  const structTypeIdx = ctx.structMap.get(structName);
+  const fields = ctx.structFields.get(structName);
+  if (structTypeIdx === undefined || !fields) {
+    ctx.errors.push({
+      message: `Object.${method}(): unknown struct "${structName}"`,
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+
+  // Filter out internal fields like __tag
+  const userFields = fields
+    .map((f, idx) => ({ field: f, fieldIdx: idx }))
+    .filter((e) => !e.field.name.startsWith("__"));
+
+  if (method === "keys") {
+    // Build a string[] array from the field names
+    // Each field name is already registered as a string literal thunk
+    const elemKind = "externref";
+    const vecTypeIdx = getOrRegisterVecType(ctx, elemKind);
+    const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
+
+    // Push each field name string onto the stack
+    for (const entry of userFields) {
+      const importName = ctx.stringLiteralMap.get(entry.field.name);
+      if (!importName) continue;
+      const funcIdx = ctx.funcMap.get(importName);
+      if (funcIdx === undefined) continue;
+      fctx.body.push({ op: "call", funcIdx });
+    }
+
+    // Create the backing array with array.new_fixed
+    const count = userFields.length;
+    fctx.body.push({ op: "array.new_fixed", typeIdx: arrTypeIdx, length: count });
+    const tmpData = allocLocal(fctx, `__obj_keys_data_${fctx.locals.length}`, { kind: "ref", typeIdx: arrTypeIdx });
+    fctx.body.push({ op: "local.set", index: tmpData });
+    fctx.body.push({ op: "i32.const", value: count });
+    fctx.body.push({ op: "local.get", index: tmpData });
+    fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
+    return { kind: "ref_null", typeIdx: vecTypeIdx };
+  }
+
+  // method === "values"
+  // Compile the argument expression, store in a local, then struct.get each field
+  const argResult = compileExpression(ctx, fctx, arg);
+  if (!argResult) return null;
+  const objLocal = allocLocal(fctx, `__obj_vals_src_${fctx.locals.length}`, { kind: "ref", typeIdx: structTypeIdx });
+  fctx.body.push({ op: "local.set", index: objLocal });
+
+  // Always use externref elements for Object.values() since the TS return type is any[]
+  const elemKind = "externref";
+  const vecTypeIdx = getOrRegisterVecType(ctx, elemKind);
+  const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
+
+  // Ensure union boxing imports are registered (needed for boxing primitives)
+  addUnionImports(ctx);
+
+  // Push each field value onto the stack, boxing primitives to externref
+  for (const entry of userFields) {
+    fctx.body.push({ op: "local.get", index: objLocal });
+    fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx: entry.fieldIdx });
+    // Box primitive values to externref
+    if (entry.field.type.kind === "f64") {
+      const boxIdx = ctx.funcMap.get("__box_number");
+      if (boxIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: boxIdx });
+      }
+    } else if (entry.field.type.kind === "i32") {
+      fctx.body.push({ op: "f64.convert_i32_s" });
+      const boxIdx = ctx.funcMap.get("__box_number");
+      if (boxIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: boxIdx });
+      }
+    }
+    // externref fields (strings, etc.) don't need boxing
+  }
+
+  // Create the backing array with array.new_fixed
+  const count = userFields.length;
+  fctx.body.push({ op: "array.new_fixed", typeIdx: arrTypeIdx, length: count });
+  const tmpData = allocLocal(fctx, `__obj_vals_data_${fctx.locals.length}`, { kind: "ref", typeIdx: arrTypeIdx });
+  fctx.body.push({ op: "local.set", index: tmpData });
+  fctx.body.push({ op: "i32.const", value: count });
+  fctx.body.push({ op: "local.get", index: tmpData });
+  fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
   return { kind: "ref_null", typeIdx: vecTypeIdx };
 }
 
