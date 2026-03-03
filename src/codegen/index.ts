@@ -786,6 +786,17 @@ function addStringImports(ctx: CodegenContext): void {
   });
 }
 
+/** Parse a RegExp literal text (e.g. "/\\d+/gi") into pattern and flags */
+export function parseRegExpLiteral(text: string): { pattern: string; flags: string } {
+  // The text includes the leading '/' and trailing '/flags'.
+  // Find the last '/' which separates pattern from flags.
+  const lastSlash = text.lastIndexOf("/");
+  const pattern = text.slice(1, lastSlash);
+  const flags = text.slice(lastSlash + 1);
+  return { pattern, flags };
+}
+
+/** Scan source for string literals and register env imports for each unique one */
 /** Scan source for string literals and register string_constants global imports */
 function collectStringLiterals(
   ctx: CodegenContext,
@@ -812,6 +823,11 @@ function collectStringLiterals(
         if (span.literal.text) literals.add(span.literal.text);
       }
     }
+    // RegExp literals: collect pattern and flags as string literals
+    if (node.kind === ts.SyntaxKind.RegularExpressionLiteral) {
+      const { pattern, flags } = parseRegExpLiteral(node.getText());
+      literals.add(pattern);
+      if (flags) literals.add(flags);
     // typeof expressions need type-name string constants
     if (ts.isTypeOfExpression(node)) {
       hasTypeofExpr = true;
@@ -2167,13 +2183,15 @@ function collectExternFromDeclareVar(
         }
       }
     } else if (ts.isTypeReferenceNode(decl.type)) {
-      // Resolve interface reference (e.g. DateConstructor) to get construct signatures
+      // Resolve interface reference (e.g. DateConstructor, RegExpConstructor)
       const refType = ctx.checker.getTypeAtLocation(decl.type);
       const constructSigs = refType.getConstructSignatures();
-      // Use the zero-arg constructor if available, otherwise the first one
-      const sig =
-        constructSigs.find((s) => s.parameters.length === 0) ??
-        constructSigs[0];
+      // Use the constructor with the most parameters so all overloads can be
+      // served.  Missing args at call sites are padded with defaults.
+      const sig = constructSigs.length > 0
+        ? constructSigs.reduce((a, b) =>
+            b.parameters.length > a.parameters.length ? b : a)
+        : undefined;
       if (sig) {
         for (const param of sig.parameters) {
           const paramType = ctx.checker.getTypeOfSymbol(param);
@@ -2411,6 +2429,16 @@ function collectUsedExternImports(
       }
     }
 
+    // RegExp literal (/pattern/flags) → needs RegExp_new import
+    if (node.kind === ts.SyntaxKind.RegularExpressionLiteral) {
+      const info = ctx.externClasses.get("RegExp");
+      if (info) {
+        register(`${info.importPrefix}_new`, info.constructorParams, [
+          { kind: "externref" },
+        ]);
+      }
+    }
+
     // obj.prop or obj.method(...)
     if (ts.isPropertyAccessExpression(node)) {
       // Skip if this is the target of an assignment (setter handled below)
@@ -2560,6 +2588,11 @@ function sourceUsesLibGlobals(sourceFile: ts.SourceFile): boolean {
   const visit = (node: ts.Node): void => {
     if (found) return;
     if (ts.isIdentifier(node) && LIB_GLOBALS.has(node.text)) {
+      found = true;
+      return;
+    }
+    // RegExp literals (/pattern/flags) implicitly use the RegExp extern class
+    if (node.kind === ts.SyntaxKind.RegularExpressionLiteral) {
       found = true;
       return;
     }
