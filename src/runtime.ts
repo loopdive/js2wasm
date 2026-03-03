@@ -31,6 +31,9 @@ export const jsApi: Record<string, Function> = new Proxy(
       if (name === "__extern_get") return (obj: any, idx: number) => obj[idx];
       // Date methods
       if (name === "Date_new") return () => new Date();
+      // Map and Set constructors
+      if (name === "Map_new") return () => new Map();
+      if (name === "Set_new") return () => new Set();
       if (name.startsWith("Date_get")) {
         const method = name.slice(5); // "getDate", "getMonth", etc.
         return (d: any) => d[method]();
