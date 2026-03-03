@@ -322,6 +322,8 @@ export function generateModule(
   // Collect Math host imports for methods without native Wasm equivalents
   collectMathImports(ctx, ast.sourceFile);
 
+  // Collect Promise.all / Promise.race host imports
+  collectPromiseImports(ctx, ast.sourceFile);
   // Collect JSON.parse / JSON.stringify host imports
   collectJsonImports(ctx, ast.sourceFile);
 
@@ -462,6 +464,7 @@ export function generateMultiModule(
     collectStringLiterals(ctx, sf);
     collectStringMethodImports(ctx, sf);
     collectMathImports(ctx, sf);
+    collectPromiseImports(ctx, sf);
     collectJsonImports(ctx, sf);
     collectCallbackImports(ctx, sf);
     collectFunctionalArrayImports(ctx, sf);
@@ -938,6 +941,12 @@ function collectMathImports(
   }
 }
 
+/** Scan source for Promise.all / Promise.race calls and register host imports */
+function collectPromiseImports(
+  ctx: CodegenContext,
+  sourceFile: ts.SourceFile,
+): void {
+  const needed = new Set<string>();
 /** Scan source for JSON.parse / JSON.stringify calls and register host imports */
 function collectJsonImports(
   ctx: CodegenContext,
@@ -951,6 +960,12 @@ function collectJsonImports(
       ts.isCallExpression(node) &&
       ts.isPropertyAccessExpression(node.expression) &&
       ts.isIdentifier(node.expression.expression) &&
+      node.expression.expression.text === "Promise"
+    ) {
+      const method = node.expression.name.text;
+      if (method === "all" || method === "race") {
+        needed.add(method);
+      }
       node.expression.expression.text === "JSON"
     ) {
       const method = node.expression.name.text;
@@ -974,6 +989,17 @@ function collectJsonImports(
     }
   }
 
+  for (const method of needed) {
+    const importName = `Promise_${method}`;
+    if (!ctx.funcMap.has(importName)) {
+      // (externref) -> externref — takes array of promises, returns promise
+      const typeIdx = addFuncType(
+        ctx,
+        [{ kind: "externref" }],
+        [{ kind: "externref" }],
+      );
+      addImport(ctx, "env", importName, { kind: "func", typeIdx });
+    }
   if (needStringify || needParse) {
     // Ensure boxing imports are available (stringify may receive numbers/booleans
     // that need to be coerced to externref before the host call)

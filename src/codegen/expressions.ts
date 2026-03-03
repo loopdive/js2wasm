@@ -2168,6 +2168,19 @@ function compileCallExpression(
       return compileMathCall(ctx, fctx, propAccess.name.text, expr);
     }
 
+    // Handle Promise.all / Promise.race — host-delegated static calls
+    if (
+      ts.isIdentifier(propAccess.expression) &&
+      propAccess.expression.text === "Promise" &&
+      (propAccess.name.text === "all" || propAccess.name.text === "race") &&
+      expr.arguments.length >= 1
+    ) {
+      const importName = `Promise_${propAccess.name.text}`;
+      const funcIdx = ctx.funcMap.get(importName);
+      if (funcIdx !== undefined) {
+        compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "externref" });
+        fctx.body.push({ op: "call", funcIdx });
+        return { kind: "externref" };
     // Handle JSON.stringify / JSON.parse as host import calls
     if (
       ts.isIdentifier(propAccess.expression) &&
