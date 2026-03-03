@@ -14,6 +14,7 @@ import {
   ensureI32Condition,
   getArrTypeIdxFromVec,
   getSourcePos,
+  localGlobalIdx,
   resolveWasmType,
 } from "./index.js";
 
@@ -238,7 +239,7 @@ function compileVariableStatement(
     if (moduleGlobalIdx !== undefined) {
       // Module global: compile initializer and set global
       if (decl.initializer) {
-        const globalDef = ctx.mod.globals[moduleGlobalIdx];
+        const globalDef = ctx.mod.globals[localGlobalIdx(ctx, moduleGlobalIdx)];
         const wasmType =
           globalDef?.type ??
           resolveWasmType(ctx, ctx.checker.getTypeAtLocation(decl));
@@ -1027,13 +1028,11 @@ function compileForInStatement(
 
   // Unroll: emit one copy of the loop body per property
   for (const prop of props) {
-    const importName = ctx.stringLiteralMap.get(prop.name);
-    if (!importName) continue;
-    const funcIdx = ctx.funcMap.get(importName);
-    if (funcIdx === undefined) continue;
+    const globalIdx = ctx.stringGlobalMap.get(prop.name);
+    if (globalIdx === undefined) continue;
 
     // Set the key variable to this property's name
-    fctx.body.push({ op: "call", funcIdx });
+    fctx.body.push({ op: "global.get", index: globalIdx });
     fctx.body.push({ op: "local.set", index: keyLocal });
 
     // Compile the loop body

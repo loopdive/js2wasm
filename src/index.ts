@@ -97,5 +97,6 @@ export {
   jsApi,
   domApi,
   buildImports,
+  buildStringConstants,
   compileAndInstantiate,
 } from "./runtime.js";
