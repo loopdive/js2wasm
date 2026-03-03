@@ -165,6 +165,10 @@ function compileExpressionInner(
     return compileBinaryExpression(ctx, fctx, expr);
   }
 
+  if (ts.isTypeOfExpression(expr)) {
+    return compileTypeofExpression(ctx, fctx, expr);
+  }
+
   if (ts.isPrefixUnaryExpression(expr)) {
     return compilePrefixUnary(ctx, fctx, expr);
   }
@@ -822,6 +826,64 @@ function compileInstanceOf(
   fctx.body.push({ op: "i32.const", value: tagValue });
   fctx.body.push({ op: "i32.eq" });
   return { kind: "i32" };
+}
+
+/**
+ * Compile `typeof x` as a standalone expression that returns a type string (externref).
+ * For statically known types, emits the string constant directly.
+ * For externref/union types, calls the __typeof host helper.
+ */
+function compileTypeofExpression(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.TypeOfExpression,
+): ValType | null {
+  const operand = expr.expression;
+  const tsType = ctx.checker.getTypeAtLocation(operand);
+  const wasmType = resolveWasmType(ctx, tsType);
+
+  // For statically known types, emit the constant string directly.
+  // The type-name strings are pre-registered by collectStringLiterals.
+  if (wasmType.kind === "f64") {
+    return compileStringLiteral(ctx, fctx, "number");
+  }
+  if (wasmType.kind === "i32") {
+    // Determine if this is boolean or number (i32 is used for both)
+    if (isBooleanType(tsType)) {
+      return compileStringLiteral(ctx, fctx, "boolean");
+    }
+    // i32 used as number (e.g. void, but unlikely in typeof)
+    return compileStringLiteral(ctx, fctx, "number");
+  }
+  if (wasmType.kind === "ref" || wasmType.kind === "ref_null") {
+    return compileStringLiteral(ctx, fctx, "object");
+  }
+
+  // For externref: check if the TS type is statically known as string
+  if (isStringType(tsType)) {
+    return compileStringLiteral(ctx, fctx, "string");
+  }
+
+  // For union/unknown externref types, call the __typeof host helper at runtime
+  addUnionImports(ctx);
+  const funcIdx = ctx.funcMap.get("__typeof");
+  if (funcIdx === undefined) return null;
+
+  // Compile the operand to push its value onto the stack
+  const operandType = compileExpression(ctx, fctx, operand);
+  if (operandType === null) return null;
+
+  // Coerce to externref if needed (e.g. f64 → boxed number)
+  if (operandType.kind === "f64") {
+    const boxIdx = ctx.funcMap.get("__box_number");
+    if (boxIdx !== undefined) fctx.body.push({ op: "call", funcIdx: boxIdx });
+  } else if (operandType.kind === "i32") {
+    const boxIdx = ctx.funcMap.get("__box_boolean");
+    if (boxIdx !== undefined) fctx.body.push({ op: "call", funcIdx: boxIdx });
+  }
+
+  fctx.body.push({ op: "call", funcIdx });
+  return { kind: "externref" };
 }
 
 /**
