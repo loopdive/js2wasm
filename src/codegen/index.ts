@@ -173,6 +173,8 @@ export interface CodegenContext {
   classTagCounter: number;
   /** Map from class name → unique tag value (for instanceof support) */
   classTagMap: Map<string, number>;
+  /** Map from TS symbol name (e.g. "__class") → synthetic class name for class expressions */
+  classExprNameMap: Map<string, string>;
   /** Whether to attach source positions for source map generation */
   sourceMap: boolean;
 }
@@ -279,6 +281,7 @@ export function generateModule(
     classParentMap: new Map(),
     classTagCounter: 0,
     classTagMap: new Map(),
+    classExprNameMap: new Map(),
     sourceMap: options?.sourceMap ?? false,
   };
 
@@ -409,6 +412,7 @@ export function generateMultiModule(
     classParentMap: new Map(),
     classTagCounter: 0,
     classTagMap: new Map(),
+    classExprNameMap: new Map(),
     sourceMap: options?.sourceMap ?? false,
   };
 
@@ -1232,7 +1236,11 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type): ValType {
     if (isExternalDeclaredClass(tsType, ctx.checker))
       return { kind: "externref" };
 
-    const name = sym?.name;
+    let name = sym?.name;
+    // Map class expression symbol names to their synthetic names
+    if (name && !ctx.structMap.has(name)) {
+      name = ctx.classExprNameMap.get(name) ?? name;
+    }
     // Check named structs (interfaces, type aliases)
     if (
       name &&
@@ -1964,13 +1972,24 @@ function collectEnumDeclarations(
 }
 
 /** Collect all function declarations and interfaces */
-/** Collect a local class declaration: register struct type, constructor, and methods */
+/** Collect a class declaration or class expression: register struct type, constructor, and methods */
 function collectClassDeclaration(
   ctx: CodegenContext,
-  decl: ts.ClassDeclaration,
+  decl: ts.ClassDeclaration | ts.ClassExpression,
+  syntheticName?: string,
 ): void {
-  const className = decl.name!.text;
+  const className = syntheticName ?? decl.name!.text;
   ctx.classSet.add(className);
+
+  // For class expressions, map the TS symbol name to the synthetic class name
+  // so that resolveStructName and compileNewExpression can find the struct
+  if (syntheticName) {
+    const tsType = ctx.checker.getTypeAtLocation(decl);
+    const symbolName = tsType.getSymbol()?.name;
+    if (symbolName && symbolName !== syntheticName) {
+      ctx.classExprNameMap.set(symbolName, syntheticName);
+    }
+  }
 
   // Detect parent class via heritage clauses (extends)
   let parentClassName: string | undefined;
@@ -2399,9 +2418,20 @@ function collectDeclarations(
   }
 
   // Collect class declarations (struct types + constructor/method functions)
+  // Also collect class expressions in variable declarations: const C = class { ... }
   for (const stmt of sourceFile.statements) {
     if (ts.isClassDeclaration(stmt) && stmt.name && !hasDeclareModifier(stmt)) {
       collectClassDeclaration(ctx, stmt);
+    } else if (ts.isVariableStatement(stmt) && !hasDeclareModifier(stmt)) {
+      for (const decl of stmt.declarationList.declarations) {
+        if (
+          ts.isIdentifier(decl.name) &&
+          decl.initializer &&
+          ts.isClassExpression(decl.initializer)
+        ) {
+          collectClassDeclaration(ctx, decl.initializer, decl.name.text);
+        }
+      }
     }
   }
 
@@ -2538,6 +2568,7 @@ function collectDeclarations(
       const name = decl.name.text;
       if (ctx.funcMap.has(name)) continue; // skip if shadowed by function
       if (ctx.moduleGlobals.has(name)) continue; // skip if already registered
+      if (ctx.classSet.has(name)) continue; // skip class expression variables
 
       const varType = ctx.checker.getTypeAtLocation(decl);
       const wasmType = resolveWasmType(ctx, varType);
@@ -2575,8 +2606,13 @@ function collectDeclarations(
       });
       ctx.moduleGlobals.set(name, globalIdx);
     }
-    // Collect the statement for init compilation
-    ctx.moduleInitStatements.push(stmt);
+    // Collect the statement for init compilation (skip pure class expression bindings)
+    const hasNonClassDecl = stmt.declarationList.declarations.some(
+      (d) => !(ts.isIdentifier(d.name) && d.initializer && ts.isClassExpression(d.initializer)),
+    );
+    if (hasNonClassDecl) {
+      ctx.moduleInitStatements.push(stmt);
+    }
   }
 }
 
@@ -2650,9 +2686,20 @@ function compileDeclarations(
   }
 
   // Compile class constructors and methods
+  // Also compile class expressions in variable declarations
   for (const stmt of sourceFile.statements) {
     if (ts.isClassDeclaration(stmt) && stmt.name && !hasDeclareModifier(stmt)) {
       compileClassBodies(ctx, stmt, funcByName);
+    } else if (ts.isVariableStatement(stmt) && !hasDeclareModifier(stmt)) {
+      for (const decl of stmt.declarationList.declarations) {
+        if (
+          ts.isIdentifier(decl.name) &&
+          decl.initializer &&
+          ts.isClassExpression(decl.initializer)
+        ) {
+          compileClassBodies(ctx, decl.initializer, funcByName, decl.name.text);
+        }
+      }
     }
   }
 
@@ -2754,10 +2801,11 @@ function collectDeclaredFuncRefs(ctx: CodegenContext): void {
 /** Compile constructor and method bodies for a class declaration */
 function compileClassBodies(
   ctx: CodegenContext,
-  decl: ts.ClassDeclaration,
+  decl: ts.ClassDeclaration | ts.ClassExpression,
   funcByName: Map<string, number>,
+  syntheticName?: string,
 ): void {
-  const className = decl.name!.text;
+  const className = syntheticName ?? decl.name!.text;
   const structTypeIdx = ctx.structMap.get(className)!;
   const fields = ctx.structFields.get(className)!;
 
