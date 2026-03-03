@@ -1,6 +1,6 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext, ClosureInfo, RestParamInfo } from "./index.js";
-import { allocLocal, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addUnionImports } from "./index.js";
+import { allocLocal, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addUnionImports, localGlobalIdx } from "./index.js";
 import {
   mapTsTypeToWasm,
   isNumberType,
@@ -123,7 +123,7 @@ function compileExpressionInner(
   expr: ts.Expression,
 ): ValType | null {
   if (ts.isNumericLiteral(expr)) {
-    const value = Number(expr.text);
+    const value = Number(expr.text.replace(/_/g, ""));
     fctx.body.push({ op: "f64.const", value });
     return { kind: "f64" };
   }
@@ -175,6 +175,10 @@ function compileExpressionInner(
 
   if (ts.isBinaryExpression(expr)) {
     return compileBinaryExpression(ctx, fctx, expr);
+  }
+
+  if (ts.isTypeOfExpression(expr)) {
+    return compileTypeofExpression(ctx, fctx, expr);
   }
 
   if (ts.isPrefixUnaryExpression(expr)) {
@@ -331,6 +335,8 @@ function compileArrowAsClosure(
       (p) => ts.isIdentifier(p.name) && p.name.text === name,
     );
     if (isOwnParam) continue;
+    // Skip if the name is a named function expression's own name (self-reference)
+    if (ts.isFunctionExpression(arrow) && arrow.name && arrow.name.text === name) continue;
     const type = localIdx < fctx.params.length
       ? fctx.params[localIdx]!.type
       : fctx.locals[localIdx - fctx.params.length]?.type ?? { kind: "f64" };
@@ -395,8 +401,31 @@ function compileArrowAsClosure(
     liftedFctx.body.push({ op: "local.set", index: localIdx });
   }
 
+  // For named function expressions, register the name in the lifted
+  // function's local scope so recursive calls resolve to __self (the
+  // closure struct).  Also register in closureMap so the call-site
+  // compiler emits call_ref instead of a direct call.
+  let funcExprName: string | undefined;
+  if (ts.isFunctionExpression(arrow) && arrow.name) {
+    funcExprName = arrow.name.text;
+    // Map the name to the __self param (index 0) inside the lifted body
+    liftedFctx.localMap.set(funcExprName, 0);
+  }
+
   const savedFunc = ctx.currentFunc;
   ctx.currentFunc = liftedFctx;
+
+  // Temporarily register closure info for named function expressions so
+  // recursive calls inside the body are compiled as closure calls.
+  const closureInfoForSelf: ClosureInfo = {
+    structTypeIdx,
+    funcTypeIdx: liftedFuncTypeIdx,
+    returnType: closureReturnType,
+    paramTypes: arrowParams,
+  };
+  if (funcExprName) {
+    ctx.closureMap.set(funcExprName, closureInfoForSelf);
+  }
 
   if (ts.isBlock(body)) {
     for (const stmt of body.statements) {
@@ -409,6 +438,11 @@ function compileArrowAsClosure(
     } else if (exprType !== null) {
       liftedFctx.body.push({ op: "drop" });
     }
+  }
+
+  // Clean up the temporary closure map entry for named function expressions
+  if (funcExprName) {
+    ctx.closureMap.delete(funcExprName);
   }
 
   // Ensure return value for non-void functions
@@ -677,7 +711,7 @@ function compileIdentifier(
   const capturedIdx = ctx.capturedGlobals.get(name);
   if (capturedIdx !== undefined) {
     fctx.body.push({ op: "global.get", index: capturedIdx });
-    const globalDef = ctx.mod.globals[capturedIdx];
+    const globalDef = ctx.mod.globals[localGlobalIdx(ctx, capturedIdx)];
     const gType = globalDef?.type ?? { kind: "f64" };
     // Globals widened from ref to ref_null for null init — narrow back
     if (gType.kind === "ref_null" && ctx.capturedGlobalsWidened.has(name)) {
@@ -691,7 +725,7 @@ function compileIdentifier(
   const moduleIdx = ctx.moduleGlobals.get(name);
   if (moduleIdx !== undefined) {
     fctx.body.push({ op: "global.get", index: moduleIdx });
-    const globalDef = ctx.mod.globals[moduleIdx];
+    const globalDef = ctx.mod.globals[localGlobalIdx(ctx, moduleIdx)];
     return globalDef?.type ?? { kind: "f64" };
   }
 
@@ -784,7 +818,10 @@ function compileInstanceOf(
 
   // Resolve the struct type index from the left operand's type
   const leftTsType = ctx.checker.getTypeAtLocation(expr.left);
-  const leftClassName = leftTsType.getSymbol()?.name;
+  let leftClassName = leftTsType.getSymbol()?.name;
+  if (leftClassName && !ctx.structMap.has(leftClassName)) {
+    leftClassName = ctx.classExprNameMap.get(leftClassName) ?? leftClassName;
+  }
   const leftStructTypeIdx = leftClassName ? ctx.structMap.get(leftClassName) : undefined;
   if (leftStructTypeIdx === undefined) {
     ctx.errors.push({
@@ -801,6 +838,64 @@ function compileInstanceOf(
   fctx.body.push({ op: "i32.const", value: tagValue });
   fctx.body.push({ op: "i32.eq" });
   return { kind: "i32" };
+}
+
+/**
+ * Compile `typeof x` as a standalone expression that returns a type string (externref).
+ * For statically known types, emits the string constant directly.
+ * For externref/union types, calls the __typeof host helper.
+ */
+function compileTypeofExpression(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.TypeOfExpression,
+): ValType | null {
+  const operand = expr.expression;
+  const tsType = ctx.checker.getTypeAtLocation(operand);
+  const wasmType = resolveWasmType(ctx, tsType);
+
+  // For statically known types, emit the constant string directly.
+  // The type-name strings are pre-registered by collectStringLiterals.
+  if (wasmType.kind === "f64") {
+    return compileStringLiteral(ctx, fctx, "number");
+  }
+  if (wasmType.kind === "i32") {
+    // Determine if this is boolean or number (i32 is used for both)
+    if (isBooleanType(tsType)) {
+      return compileStringLiteral(ctx, fctx, "boolean");
+    }
+    // i32 used as number (e.g. void, but unlikely in typeof)
+    return compileStringLiteral(ctx, fctx, "number");
+  }
+  if (wasmType.kind === "ref" || wasmType.kind === "ref_null") {
+    return compileStringLiteral(ctx, fctx, "object");
+  }
+
+  // For externref: check if the TS type is statically known as string
+  if (isStringType(tsType)) {
+    return compileStringLiteral(ctx, fctx, "string");
+  }
+
+  // For union/unknown externref types, call the __typeof host helper at runtime
+  addUnionImports(ctx);
+  const funcIdx = ctx.funcMap.get("__typeof");
+  if (funcIdx === undefined) return null;
+
+  // Compile the operand to push its value onto the stack
+  const operandType = compileExpression(ctx, fctx, operand);
+  if (operandType === null) return null;
+
+  // Coerce to externref if needed (e.g. f64 → boxed number)
+  if (operandType.kind === "f64") {
+    const boxIdx = ctx.funcMap.get("__box_number");
+    if (boxIdx !== undefined) fctx.body.push({ op: "call", funcIdx: boxIdx });
+  } else if (operandType.kind === "i32") {
+    const boxIdx = ctx.funcMap.get("__box_boolean");
+    if (boxIdx !== undefined) fctx.body.push({ op: "call", funcIdx: boxIdx });
+  }
+
+  fctx.body.push({ op: "call", funcIdx });
+  return { kind: "externref" };
 }
 
 /**
@@ -887,6 +982,15 @@ function compileBinaryExpression(
   // Handle assignment
   if (op === ts.SyntaxKind.EqualsToken) {
     return compileAssignment(ctx, fctx, expr);
+  }
+
+  // Handle logical assignment operators (??=, ||=, &&=)
+  if (
+    op === ts.SyntaxKind.QuestionQuestionEqualsToken ||
+    op === ts.SyntaxKind.BarBarEqualsToken ||
+    op === ts.SyntaxKind.AmpersandAmpersandEqualsToken
+  ) {
+    return compileLogicalAssignment(ctx, fctx, expr, op);
   }
 
   // Handle compound assignments
@@ -1260,7 +1364,7 @@ function compileAssignment(
     // Check captured globals
     const capturedIdx = ctx.capturedGlobals.get(name);
     if (capturedIdx !== undefined) {
-      const globalDef = ctx.mod.globals[capturedIdx];
+      const globalDef = ctx.mod.globals[localGlobalIdx(ctx, capturedIdx)];
       const resultType = compileExpression(ctx, fctx, expr.right, globalDef?.type);
       fctx.body.push({ op: "global.set", index: capturedIdx });
       // global.set consumes the value; re-push it for expression result
@@ -1270,7 +1374,7 @@ function compileAssignment(
     // Check module-level globals
     const moduleIdx = ctx.moduleGlobals.get(name);
     if (moduleIdx !== undefined) {
-      const globalDef = ctx.mod.globals[moduleIdx];
+      const globalDef = ctx.mod.globals[localGlobalIdx(ctx, moduleIdx)];
       const resultType = compileExpression(ctx, fctx, expr.right, globalDef?.type);
       fctx.body.push({ op: "global.set", index: moduleIdx });
       fctx.body.push({ op: "global.get", index: moduleIdx });
@@ -1398,7 +1502,7 @@ function compilePropertyAssignment(
     const fullName = `${clsName}_${target.name.text}`;
     const globalIdx = ctx.staticProps.get(fullName);
     if (globalIdx !== undefined) {
-      const globalDef = ctx.mod.globals[globalIdx];
+      const globalDef = ctx.mod.globals[localGlobalIdx(ctx, globalIdx)];
       compileExpression(ctx, fctx, value, globalDef?.type);
       fctx.body.push({ op: "global.set", index: globalIdx });
       return VOID_RESULT;
@@ -1527,6 +1631,160 @@ function compileElementAssignment(
   compileExpression(ctx, fctx, value, typeDef.element);
   fctx.body.push({ op: "array.set", typeIdx });
   return VOID_RESULT;
+}
+
+/**
+ * Compile logical assignment operators: ??=, ||=, &&=
+ *
+ * Desugars to value-preserving semantics:
+ *   a ??= b  →  if (a is null) a = b; result = a
+ *   a ||= b  →  if (!a) a = b; result = a
+ *   a &&= b  →  if (a) a = b; result = a
+ */
+function compileLogicalAssignment(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.BinaryExpression,
+  op: ts.SyntaxKind,
+): ValType | null {
+  if (!ts.isIdentifier(expr.left)) {
+    ctx.errors.push({
+      message: "Logical assignment only supported for simple identifiers",
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+
+  const name = expr.left.text;
+
+  // Resolve the variable storage location
+  let storage: { kind: "local"; index: number; type: ValType } |
+               { kind: "captured"; index: number; type: ValType } |
+               { kind: "module"; index: number; type: ValType } | null = null;
+
+  const localIdx = fctx.localMap.get(name);
+  if (localIdx !== undefined) {
+    const localType = localIdx < fctx.params.length
+      ? fctx.params[localIdx]!.type
+      : fctx.locals[localIdx - fctx.params.length]?.type;
+    storage = { kind: "local", index: localIdx, type: localType ?? { kind: "f64" } };
+  }
+  if (!storage) {
+    const capturedIdx = ctx.capturedGlobals.get(name);
+    if (capturedIdx !== undefined) {
+      const globalDef = ctx.mod.globals[capturedIdx];
+      storage = { kind: "captured", index: capturedIdx, type: globalDef?.type ?? { kind: "f64" } };
+    }
+  }
+  if (!storage) {
+    const moduleIdx = ctx.moduleGlobals.get(name);
+    if (moduleIdx !== undefined) {
+      const globalDef = ctx.mod.globals[moduleIdx];
+      storage = { kind: "module", index: moduleIdx, type: globalDef?.type ?? { kind: "f64" } };
+    }
+  }
+
+  if (!storage) {
+    ctx.errors.push({
+      message: `Unknown variable: ${name}`,
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+
+  const varType = storage.type;
+
+  // Emit: read current value
+  const emitGet = () => {
+    if (storage!.kind === "local") fctx.body.push({ op: "local.get", index: storage!.index });
+    else fctx.body.push({ op: "global.get", index: storage!.index });
+  };
+  const emitSet = () => {
+    if (storage!.kind === "local") fctx.body.push({ op: "local.tee", index: storage!.index });
+    else {
+      fctx.body.push({ op: "global.set", index: storage!.index });
+      fctx.body.push({ op: "global.get", index: storage!.index });
+    }
+  };
+
+  if (op === ts.SyntaxKind.QuestionQuestionEqualsToken) {
+    // a ??= b  →  if (a is null) { a = b }; result = a
+    // This operates on externref (nullable) values
+    emitGet();
+    fctx.body.push({ op: "ref.is_null" });
+
+    // Compile the RHS in a separate body
+    const savedBody = fctx.body;
+    fctx.body = [];
+    compileExpression(ctx, fctx, expr.right, varType);
+    emitSet();
+    const thenInstrs = fctx.body;
+
+    // Else: just read the current value (it's not null)
+    fctx.body = [];
+    emitGet();
+    const elseInstrs = fctx.body;
+
+    fctx.body = savedBody;
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "val", type: varType },
+      then: thenInstrs,
+      else: elseInstrs,
+    });
+  } else if (op === ts.SyntaxKind.BarBarEqualsToken) {
+    // a ||= b  →  if (!a) { a = b }; result = a
+    emitGet();
+    ensureI32Condition(fctx, varType);
+
+    // Then (truthy): keep current value
+    const savedBody = fctx.body;
+    fctx.body = [];
+    emitGet();
+    const thenInstrs = fctx.body;
+
+    // Else (falsy): assign RHS
+    fctx.body = [];
+    compileExpression(ctx, fctx, expr.right, varType);
+    emitSet();
+    const elseInstrs = fctx.body;
+
+    fctx.body = savedBody;
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "val", type: varType },
+      then: thenInstrs,
+      else: elseInstrs,
+    });
+  } else {
+    // a &&= b  →  if (a) { a = b }; result = a
+    emitGet();
+    ensureI32Condition(fctx, varType);
+
+    // Then (truthy): assign RHS
+    const savedBody = fctx.body;
+    fctx.body = [];
+    compileExpression(ctx, fctx, expr.right, varType);
+    emitSet();
+    const thenInstrs = fctx.body;
+
+    // Else (falsy): keep current value
+    fctx.body = [];
+    emitGet();
+    const elseInstrs = fctx.body;
+
+    fctx.body = savedBody;
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "val", type: varType },
+      then: thenInstrs,
+      else: elseInstrs,
+    });
+  }
+
+  return varType;
 }
 
 function isCompoundAssignment(op: ts.SyntaxKind): boolean {
@@ -1860,9 +2118,10 @@ function compileClosureCall(
     compileExpression(ctx, fctx, expr.arguments[i]!, info.paramTypes[i]);
   }
 
-  // Push the funcref from the closure struct (field 0)
+  // Push the funcref from the closure struct (field 0) and cast to typed ref
   fctx.body.push({ op: "local.get", index: localIdx });
   fctx.body.push({ op: "struct.get", typeIdx: info.structTypeIdx, fieldIdx: 0 });
+  fctx.body.push({ op: "ref.cast", typeIdx: info.funcTypeIdx });
 
   // call_ref with the lifted function's type index
   fctx.body.push({ op: "call_ref", typeIdx: info.funcTypeIdx });
@@ -1906,6 +2165,32 @@ function compileCallExpression(
       return compileMathCall(ctx, fctx, propAccess.name.text, expr);
     }
 
+    // Handle JSON.stringify / JSON.parse as host import calls
+    if (
+      ts.isIdentifier(propAccess.expression) &&
+      propAccess.expression.text === "JSON"
+    ) {
+      const method = propAccess.name.text;
+      if ((method === "stringify" || method === "parse") && expr.arguments.length >= 1) {
+        const importName = `JSON_${method}`;
+        const funcIdx = ctx.funcMap.get(importName);
+        if (funcIdx !== undefined) {
+          // Compile argument and coerce to externref if needed
+          // (boxing imports registered early in collectJsonImports)
+          const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
+          if (argType && argType.kind === "f64") {
+            const boxIdx = ctx.funcMap.get("__box_number");
+            if (boxIdx !== undefined) fctx.body.push({ op: "call", funcIdx: boxIdx });
+          } else if (argType && argType.kind === "i32") {
+            const boxIdx = ctx.funcMap.get("__box_boolean");
+            if (boxIdx !== undefined) fctx.body.push({ op: "call", funcIdx: boxIdx });
+          }
+          fctx.body.push({ op: "call", funcIdx });
+          return { kind: "externref" };
+        }
+      }
+    }
+
     // Check if this is a static method call: ClassName.staticMethod(args)
     if (ts.isIdentifier(propAccess.expression) && ctx.classSet.has(propAccess.expression.text)) {
       const clsName = propAccess.expression.text;
@@ -1939,7 +2224,11 @@ function compileCallExpression(
     }
 
     // Check if receiver is a local class instance
-    const receiverClassName = receiverType.getSymbol()?.name;
+    let receiverClassName = receiverType.getSymbol()?.name;
+    // Map class expression symbol names to their synthetic names
+    if (receiverClassName && !ctx.classSet.has(receiverClassName)) {
+      receiverClassName = ctx.classExprNameMap.get(receiverClassName) ?? receiverClassName;
+    }
     if (receiverClassName && ctx.classSet.has(receiverClassName)) {
       const methodName = propAccess.name.text;
       const fullName = `${receiverClassName}_${methodName}`;
@@ -2201,7 +2490,23 @@ function compileNewExpression(
 ): ValType | null {
   const type = ctx.checker.getTypeAtLocation(expr);
   const symbol = type.getSymbol();
-  const className = symbol?.name;
+  let className = symbol?.name;
+
+  // For class expressions (const C = class { ... }), the symbol name may be
+  // the internal anonymous name (e.g. "__class"). Look up the mapped name first,
+  // then fall back to the identifier used in the new expression.
+  if (className && !ctx.classSet.has(className)) {
+    const mapped = ctx.classExprNameMap.get(className);
+    if (mapped) {
+      className = mapped;
+    }
+  }
+  if ((!className || !ctx.classSet.has(className)) && ts.isIdentifier(expr.expression)) {
+    const idName = expr.expression.text;
+    if (ctx.classSet.has(idName)) {
+      className = idName;
+    }
+  }
 
   if (!className) {
     ctx.errors.push({
@@ -2847,7 +3152,7 @@ function compilePropertyAccess(
       const globalIdx = ctx.staticProps.get(fullName);
       if (globalIdx !== undefined) {
         fctx.body.push({ op: "global.get", index: globalIdx });
-        const globalDef = ctx.mod.globals[globalIdx];
+        const globalDef = ctx.mod.globals[localGlobalIdx(ctx, globalIdx)];
         return globalDef?.type ?? { kind: "f64" };
       }
     }
@@ -2855,6 +3160,23 @@ function compilePropertyAccess(
 
   // Handle array.length (vec struct: field 0 is the logical length)
   if (propName === "length") {
+    // Check if the local is actually externref (e.g. from string.split() returning a JS array)
+    if (ts.isIdentifier(expr.expression)) {
+      const localIdx = fctx.localMap.get(expr.expression.text);
+      if (localIdx !== undefined) {
+        const localType = localIdx < fctx.params.length
+          ? fctx.params[localIdx]!.type
+          : fctx.locals[localIdx - fctx.params.length]?.type;
+        if (localType?.kind === "externref") {
+          const funcIdx = ctx.funcMap.get("__extern_length");
+          if (funcIdx !== undefined) {
+            fctx.body.push({ op: "local.get", index: localIdx });
+            fctx.body.push({ op: "call", funcIdx });
+            return { kind: "f64" };
+          }
+        }
+      }
+    }
     const objWasmType = resolveWasmType(ctx, objType);
     if (objWasmType.kind === "ref" || objWasmType.kind === "ref_null") {
       const vecTypeIdx = (objWasmType as { typeIdx: number }).typeIdx;
@@ -3051,6 +3373,13 @@ function resolveStructName(ctx: CodegenContext, tsType: ts.Type): string | undef
   if (name && name !== "__type" && name !== "__object" && ctx.structMap.has(name)) {
     return name;
   }
+  // Check class expression name mapping (e.g. "__class" → "Point")
+  if (name) {
+    const mapped = ctx.classExprNameMap.get(name);
+    if (mapped && ctx.structMap.has(mapped)) {
+      return mapped;
+    }
+  }
   return ctx.anonTypeMap.get(tsType);
 }
 
@@ -3085,6 +3414,83 @@ function compileObjectLiteral(
     column: getCol(expr),
   });
   return null;
+}
+
+/**
+ * Resolve the property name of an ObjectLiteralElementLike to a static string.
+ * Handles identifiers, string literals, and computed property names that can be
+ * evaluated at compile time (string literal expressions, const variables, enum members).
+ * Returns undefined if the name cannot be statically resolved.
+ */
+function resolvePropertyNameText(
+  ctx: CodegenContext,
+  prop: ts.ObjectLiteralElementLike,
+): string | undefined {
+  if (!ts.isPropertyAssignment(prop)) return undefined;
+  const name = prop.name;
+
+  // Regular identifier: { x: 1 }
+  if (ts.isIdentifier(name)) return name.text;
+
+  // String literal property name: { "x": 1 }
+  if (ts.isStringLiteral(name)) return name.text;
+
+  // Numeric literal property name: { 0: 1 }
+  if (ts.isNumericLiteral(name)) return name.text;
+
+  // Computed property name: { [expr]: 1 }
+  if (ts.isComputedPropertyName(name)) {
+    return resolveComputedKeyExpression(ctx, name.expression);
+  }
+
+  return undefined;
+}
+
+/**
+ * Try to evaluate a computed key expression to a static string at compile time.
+ * Supports:
+ * - String literals: ["x"]
+ * - Const variable references: [key] where const key = "x"
+ * - Enum member access: [MyEnum.Key]
+ */
+function resolveComputedKeyExpression(
+  ctx: CodegenContext,
+  expr: ts.Expression,
+): string | undefined {
+  // Direct string literal: ["x"]
+  if (ts.isStringLiteral(expr)) return expr.text;
+
+  // Identifier referencing a const variable: [key]
+  if (ts.isIdentifier(expr)) {
+    const sym = ctx.checker.getSymbolAtLocation(expr);
+    if (sym) {
+      const decl = sym.valueDeclaration;
+      if (decl && ts.isVariableDeclaration(decl) && decl.initializer) {
+        // Check that the variable is declared with const
+        const declList = decl.parent;
+        if (ts.isVariableDeclarationList(declList) && (declList.flags & ts.NodeFlags.Const) !== 0) {
+          if (ts.isStringLiteral(decl.initializer)) {
+            return decl.initializer.text;
+          }
+        }
+      }
+    }
+    return undefined;
+  }
+
+  // Property access for enum members: [MyEnum.Key]
+  if (ts.isPropertyAccessExpression(expr) && ts.isIdentifier(expr.expression)) {
+    const objName = expr.expression.text;
+    const propName = expr.name.text;
+    const enumKey = `${objName}.${propName}`;
+    const enumStrVal = ctx.enumStringValues.get(enumKey);
+    if (enumStrVal !== undefined) return enumStrVal;
+    // Numeric enum — convert to string
+    const enumNumVal = ctx.enumValues.get(enumKey);
+    if (enumNumVal !== undefined) return String(enumNumVal);
+  }
+
+  return undefined;
 }
 
 function compileObjectLiteralForStruct(
@@ -3125,12 +3531,9 @@ function compileObjectLiteralForStruct(
   }
 
   for (const field of fields) {
-    // First check for an explicit property assignment
+    // First check for an explicit property assignment (identifier, string literal, or computed key)
     const prop = expr.properties.find(
-      (p) =>
-        ts.isPropertyAssignment(p) &&
-        ts.isIdentifier(p.name) &&
-        p.name.text === field.name,
+      (p) => resolvePropertyNameText(ctx, p) === field.name,
     );
     if (prop && ts.isPropertyAssignment(prop)) {
       compileExpression(ctx, fctx, prop.initializer);
@@ -3336,21 +3739,20 @@ function compileStringLiteral(
   value: string,
   node?: ts.Node,
 ): ValType | null {
-  const importName = ctx.stringLiteralMap.get(value);
-  if (!importName) {
-    ctx.errors.push({
-      message: `String literal not registered: "${value}"`,
-      line: node ? getLine(node) : 0,
-      column: node ? getCol(node) : 0,
-    });
-    return null;
+  // Use importedStringConstants: string literals are global imports
+  const globalIdx = ctx.stringGlobalMap.get(value);
+  if (globalIdx !== undefined) {
+    fctx.body.push({ op: "global.get", index: globalIdx });
+    return { kind: "externref" };
   }
 
-  const funcIdx = ctx.funcMap.get(importName);
-  if (funcIdx === undefined) return null;
-
-  fctx.body.push({ op: "call", funcIdx });
-  return { kind: "externref" };
+  // Fallback for legacy stringLiteralMap (should not be reached)
+  ctx.errors.push({
+    message: `String literal not registered: "${value}"`,
+    line: node ? getLine(node) : 0,
+    column: node ? getCol(node) : 0,
+  });
+  return null;
 }
 
 function compileTemplateExpression(
@@ -3518,7 +3920,7 @@ function compileArrayMethodCall(
     const gIdx = ctx.moduleGlobals.get(name);
     if (gIdx !== undefined && !fctx.localMap.has(name)) {
       moduleGlobalIdx = gIdx;
-      const globalDef = ctx.mod.globals[gIdx];
+      const globalDef = ctx.mod.globals[localGlobalIdx(ctx, gIdx)];
       const tempLocal = allocLocal(fctx, `__mod_proxy_${name}`, globalDef!.type);
       fctx.body.push({ op: "global.get", index: gIdx });
       fctx.body.push({ op: "local.set", index: tempLocal });
@@ -4256,15 +4658,10 @@ function compileArrayJoin(
   if (callExpr.arguments.length >= 1) {
     compileExpression(ctx, fctx, callExpr.arguments[0]!);
   } else {
-    // Default separator "," — check if registered
-    const commaImport = ctx.stringLiteralMap.get(",");
-    if (commaImport) {
-      const funcIdx = ctx.funcMap.get(commaImport);
-      if (funcIdx !== undefined) {
-        fctx.body.push({ op: "call", funcIdx });
-      } else {
-        fctx.body.push({ op: "ref.null.extern" });
-      }
+    // Default separator "," — check if registered as string constant global
+    const commaGlobalIdx = ctx.stringGlobalMap.get(",");
+    if (commaGlobalIdx !== undefined) {
+      fctx.body.push({ op: "global.get", index: commaGlobalIdx });
     } else {
       fctx.body.push({ op: "ref.null.extern" });
     }
