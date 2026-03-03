@@ -53,6 +53,9 @@ export const jsApi: Record<string, Function> = new Proxy(
       if (name === "__box_number") return (v: number) => v;
       if (name === "__box_boolean") return (v: number) => Boolean(v);
       if (name === "__is_truthy") return (v: any) => v ? 1 : 0;
+      // Callback bridges for functional array methods
+      if (name === "__call_1_f64") return (fn: Function, a: number) => fn(a);
+      if (name === "__call_2_f64") return (fn: Function, a: number, b: number) => fn(a, b);
       if (name === "__typeof") return (v: any) => typeof v;
     },
   },
