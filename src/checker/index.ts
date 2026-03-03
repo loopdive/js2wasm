@@ -3,6 +3,8 @@ import libEs5 from "./lib-es5";
 import libDom from "./lib-dom";
 import libDecorators from "./lib-decorators";
 import libDecoratorsLegacy from "./lib-decorators-legacy";
+import libGenerators from "./lib-generators";
+import libEs2015 from "./lib-es2015";
 
 export interface TypedAST {
   sourceFile: ts.SourceFile;
@@ -14,7 +16,7 @@ export interface TypedAST {
 
 /** Map of lib filenames to their contents */
 const LIB_FILES: Record<string, string> = {
-  "lib.d.ts": libEs5 + "\n" + libDom,
+  "lib.d.ts": libEs5 + "\n" + libEs2015 + "\n" + libDom + "\n" + libGenerators,
   "lib.es5.d.ts": libEs5,
   "lib.dom.d.ts": libDom,
   "lib.decorators.d.ts": libDecorators,

@@ -1,6 +1,6 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext, ClosureInfo, RestParamInfo } from "./index.js";
-import { allocLocal, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addUnionImports } from "./index.js";
+import { allocLocal, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx } from "./index.js";
 import {
   mapTsTypeToWasm,
   isNumberType,
@@ -9,6 +9,8 @@ import {
   isVoidType,
   isExternalDeclaredClass,
   isHeterogeneousUnion,
+  isGeneratorType,
+  isIteratorResultType,
 } from "../checker/type-mapper.js";
 import type { Instr, ValType, WasmFunction, FieldDef, StructTypeDef } from "../ir/types.js";
 import { ensureI32Condition } from "./index.js";
@@ -64,14 +66,27 @@ function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: ValType, t
     fctx.body.push({ op: "i32.trunc_f64_s" });
     return;
   }
-  // externref → i32 (non-null check)
+  // externref → i32 (unbox boolean, fallback to non-null check)
   if (from.kind === "externref" && to.kind === "i32") {
+    addUnionImports(ctx);
+    const funcIdx = ctx.funcMap.get("__unbox_boolean");
+    if (funcIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx });
+      return;
+    }
     fctx.body.push({ op: "ref.is_null" });
     fctx.body.push({ op: "i32.eqz" });
     return;
   }
-  // externref → f64
+  // externref → f64 (unbox number)
   if (from.kind === "externref" && to.kind === "f64") {
+    addUnionImports(ctx);
+    const funcIdx = ctx.funcMap.get("__unbox_number");
+    if (funcIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx });
+      return;
+    }
+    // Fallback: drop and push default
     fctx.body.push({ op: "drop" });
     fctx.body.push({ op: "f64.const", value: 0 });
     return;
@@ -111,7 +126,7 @@ function compileExpressionInner(
   expr: ts.Expression,
 ): ValType | null {
   if (ts.isNumericLiteral(expr)) {
-    const value = Number(expr.text);
+    const value = Number(expr.text.replace(/_/g, ""));
     fctx.body.push({ op: "f64.const", value });
     return { kind: "f64" };
   }
@@ -163,6 +178,10 @@ function compileExpressionInner(
 
   if (ts.isBinaryExpression(expr)) {
     return compileBinaryExpression(ctx, fctx, expr);
+  }
+
+  if (ts.isTypeOfExpression(expr)) {
+    return compileTypeofExpression(ctx, fctx, expr);
   }
 
   if (ts.isPrefixUnaryExpression(expr)) {
@@ -218,6 +237,11 @@ function compileExpressionInner(
     return compileExpressionInner(ctx, fctx, expr.expression);
   }
 
+  // yield expr — inside a generator function, push value to the generator buffer
+  if (ts.isYieldExpression(expr)) {
+    return compileYieldExpression(ctx, fctx, expr);
+  }
+
   // void expr — evaluate operand for side effects, then produce undefined
   if (ts.isVoidExpression(expr)) {
     const operandType = compileExpressionInner(ctx, fctx, expr.expression);
@@ -232,12 +256,56 @@ function compileExpressionInner(
     return compileArrowFunction(ctx, fctx, expr);
   }
 
+  // RegExp literal (/pattern/flags) → desugar to new RegExp(pattern, flags)
+  if (expr.kind === ts.SyntaxKind.RegularExpressionLiteral) {
+    return compileRegExpLiteral(ctx, fctx, expr);
+  }
+
   ctx.errors.push({
     message: `Unsupported expression: ${ts.SyntaxKind[expr.kind]}`,
     line: getLine(expr),
     column: getCol(expr),
   });
   return null;
+}
+
+// ── RegExp literal ────────────────────────────────────────────────────
+
+/**
+ * Compile a RegExp literal (e.g. /\d+/g) by desugaring it to new RegExp(pattern, flags).
+ * The pattern and flags strings are loaded from the string pool, then RegExp_new is called.
+ */
+function compileRegExpLiteral(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.Expression,
+): ValType | null {
+  const { pattern, flags } = parseRegExpLiteral(expr.getText());
+
+  // Load pattern string
+  const patternResult = compileStringLiteral(ctx, fctx, pattern, expr);
+  if (!patternResult) return null;
+
+  // Load flags string (or ref.null.extern if no flags)
+  if (flags) {
+    const flagsResult = compileStringLiteral(ctx, fctx, flags, expr);
+    if (!flagsResult) return null;
+  } else {
+    fctx.body.push({ op: "ref.null.extern" });
+  }
+
+  // Call RegExp_new(pattern, flags) → externref
+  const funcIdx = ctx.funcMap.get("RegExp_new");
+  if (funcIdx === undefined) {
+    ctx.errors.push({
+      message: "Missing RegExp_new import for regex literal",
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+  fctx.body.push({ op: "call", funcIdx });
+  return { kind: "externref" };
 }
 
 // ── Arrow function callbacks ──────────────────────────────────────────
@@ -319,6 +387,8 @@ function compileArrowAsClosure(
       (p) => ts.isIdentifier(p.name) && p.name.text === name,
     );
     if (isOwnParam) continue;
+    // Skip if the name is a named function expression's own name (self-reference)
+    if (ts.isFunctionExpression(arrow) && arrow.name && arrow.name.text === name) continue;
     const type = localIdx < fctx.params.length
       ? fctx.params[localIdx]!.type
       : fctx.locals[localIdx - fctx.params.length]?.type ?? { kind: "f64" };
@@ -383,8 +453,31 @@ function compileArrowAsClosure(
     liftedFctx.body.push({ op: "local.set", index: localIdx });
   }
 
+  // For named function expressions, register the name in the lifted
+  // function's local scope so recursive calls resolve to __self (the
+  // closure struct).  Also register in closureMap so the call-site
+  // compiler emits call_ref instead of a direct call.
+  let funcExprName: string | undefined;
+  if (ts.isFunctionExpression(arrow) && arrow.name) {
+    funcExprName = arrow.name.text;
+    // Map the name to the __self param (index 0) inside the lifted body
+    liftedFctx.localMap.set(funcExprName, 0);
+  }
+
   const savedFunc = ctx.currentFunc;
   ctx.currentFunc = liftedFctx;
+
+  // Temporarily register closure info for named function expressions so
+  // recursive calls inside the body are compiled as closure calls.
+  const closureInfoForSelf: ClosureInfo = {
+    structTypeIdx,
+    funcTypeIdx: liftedFuncTypeIdx,
+    returnType: closureReturnType,
+    paramTypes: arrowParams,
+  };
+  if (funcExprName) {
+    ctx.closureMap.set(funcExprName, closureInfoForSelf);
+  }
 
   if (ts.isBlock(body)) {
     for (const stmt of body.statements) {
@@ -397,6 +490,11 @@ function compileArrowAsClosure(
     } else if (exprType !== null) {
       liftedFctx.body.push({ op: "drop" });
     }
+  }
+
+  // Clean up the temporary closure map entry for named function expressions
+  if (funcExprName) {
+    ctx.closureMap.delete(funcExprName);
   }
 
   // Ensure return value for non-void functions
@@ -561,6 +659,7 @@ function compileArrowAsCallback(
   const savedFunc = ctx.currentFunc;
   ctx.currentFunc = cbFctx;
 
+  let exprBodyHasReturnValue = false;
   if (ts.isBlock(body)) {
     for (const stmt of body.statements) {
       compileStatement(ctx, cbFctx, stmt);
@@ -568,13 +667,14 @@ function compileArrowAsCallback(
   } else {
     const exprType = compileExpression(ctx, cbFctx, body);
     if (exprType !== null && cbReturnType) {
-      // Expression result is the return value
+      // Expression result is the return value — already on stack
+      exprBodyHasReturnValue = true;
     } else if (exprType !== null) {
       cbFctx.body.push({ op: "drop" });
     }
   }
 
-  if (cbReturnType) {
+  if (cbReturnType && !exprBodyHasReturnValue) {
     const lastInstr = cbFctx.body[cbFctx.body.length - 1];
     if (!lastInstr || lastInstr.op !== "return") {
       if (cbReturnType.kind === "f64") {
@@ -665,7 +765,7 @@ function compileIdentifier(
   const capturedIdx = ctx.capturedGlobals.get(name);
   if (capturedIdx !== undefined) {
     fctx.body.push({ op: "global.get", index: capturedIdx });
-    const globalDef = ctx.mod.globals[capturedIdx];
+    const globalDef = ctx.mod.globals[localGlobalIdx(ctx, capturedIdx)];
     const gType = globalDef?.type ?? { kind: "f64" };
     // Globals widened from ref to ref_null for null init — narrow back
     if (gType.kind === "ref_null" && ctx.capturedGlobalsWidened.has(name)) {
@@ -679,7 +779,7 @@ function compileIdentifier(
   const moduleIdx = ctx.moduleGlobals.get(name);
   if (moduleIdx !== undefined) {
     fctx.body.push({ op: "global.get", index: moduleIdx });
-    const globalDef = ctx.mod.globals[moduleIdx];
+    const globalDef = ctx.mod.globals[localGlobalIdx(ctx, moduleIdx)];
     return globalDef?.type ?? { kind: "f64" };
   }
 
@@ -772,7 +872,10 @@ function compileInstanceOf(
 
   // Resolve the struct type index from the left operand's type
   const leftTsType = ctx.checker.getTypeAtLocation(expr.left);
-  const leftClassName = leftTsType.getSymbol()?.name;
+  let leftClassName = leftTsType.getSymbol()?.name;
+  if (leftClassName && !ctx.structMap.has(leftClassName)) {
+    leftClassName = ctx.classExprNameMap.get(leftClassName) ?? leftClassName;
+  }
   const leftStructTypeIdx = leftClassName ? ctx.structMap.get(leftClassName) : undefined;
   if (leftStructTypeIdx === undefined) {
     ctx.errors.push({
@@ -789,6 +892,64 @@ function compileInstanceOf(
   fctx.body.push({ op: "i32.const", value: tagValue });
   fctx.body.push({ op: "i32.eq" });
   return { kind: "i32" };
+}
+
+/**
+ * Compile `typeof x` as a standalone expression that returns a type string (externref).
+ * For statically known types, emits the string constant directly.
+ * For externref/union types, calls the __typeof host helper.
+ */
+function compileTypeofExpression(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.TypeOfExpression,
+): ValType | null {
+  const operand = expr.expression;
+  const tsType = ctx.checker.getTypeAtLocation(operand);
+  const wasmType = resolveWasmType(ctx, tsType);
+
+  // For statically known types, emit the constant string directly.
+  // The type-name strings are pre-registered by collectStringLiterals.
+  if (wasmType.kind === "f64") {
+    return compileStringLiteral(ctx, fctx, "number");
+  }
+  if (wasmType.kind === "i32") {
+    // Determine if this is boolean or number (i32 is used for both)
+    if (isBooleanType(tsType)) {
+      return compileStringLiteral(ctx, fctx, "boolean");
+    }
+    // i32 used as number (e.g. void, but unlikely in typeof)
+    return compileStringLiteral(ctx, fctx, "number");
+  }
+  if (wasmType.kind === "ref" || wasmType.kind === "ref_null") {
+    return compileStringLiteral(ctx, fctx, "object");
+  }
+
+  // For externref: check if the TS type is statically known as string
+  if (isStringType(tsType)) {
+    return compileStringLiteral(ctx, fctx, "string");
+  }
+
+  // For union/unknown externref types, call the __typeof host helper at runtime
+  addUnionImports(ctx);
+  const funcIdx = ctx.funcMap.get("__typeof");
+  if (funcIdx === undefined) return null;
+
+  // Compile the operand to push its value onto the stack
+  const operandType = compileExpression(ctx, fctx, operand);
+  if (operandType === null) return null;
+
+  // Coerce to externref if needed (e.g. f64 → boxed number)
+  if (operandType.kind === "f64") {
+    const boxIdx = ctx.funcMap.get("__box_number");
+    if (boxIdx !== undefined) fctx.body.push({ op: "call", funcIdx: boxIdx });
+  } else if (operandType.kind === "i32") {
+    const boxIdx = ctx.funcMap.get("__box_boolean");
+    if (boxIdx !== undefined) fctx.body.push({ op: "call", funcIdx: boxIdx });
+  }
+
+  fctx.body.push({ op: "call", funcIdx });
+  return { kind: "externref" };
 }
 
 /**
@@ -875,6 +1036,15 @@ function compileBinaryExpression(
   // Handle assignment
   if (op === ts.SyntaxKind.EqualsToken) {
     return compileAssignment(ctx, fctx, expr);
+  }
+
+  // Handle logical assignment operators (??=, ||=, &&=)
+  if (
+    op === ts.SyntaxKind.QuestionQuestionEqualsToken ||
+    op === ts.SyntaxKind.BarBarEqualsToken ||
+    op === ts.SyntaxKind.AmpersandAmpersandEqualsToken
+  ) {
+    return compileLogicalAssignment(ctx, fctx, expr, op);
   }
 
   // Handle compound assignments
@@ -1248,7 +1418,7 @@ function compileAssignment(
     // Check captured globals
     const capturedIdx = ctx.capturedGlobals.get(name);
     if (capturedIdx !== undefined) {
-      const globalDef = ctx.mod.globals[capturedIdx];
+      const globalDef = ctx.mod.globals[localGlobalIdx(ctx, capturedIdx)];
       const resultType = compileExpression(ctx, fctx, expr.right, globalDef?.type);
       fctx.body.push({ op: "global.set", index: capturedIdx });
       // global.set consumes the value; re-push it for expression result
@@ -1258,7 +1428,7 @@ function compileAssignment(
     // Check module-level globals
     const moduleIdx = ctx.moduleGlobals.get(name);
     if (moduleIdx !== undefined) {
-      const globalDef = ctx.mod.globals[moduleIdx];
+      const globalDef = ctx.mod.globals[localGlobalIdx(ctx, moduleIdx)];
       const resultType = compileExpression(ctx, fctx, expr.right, globalDef?.type);
       fctx.body.push({ op: "global.set", index: moduleIdx });
       fctx.body.push({ op: "global.get", index: moduleIdx });
@@ -1386,7 +1556,7 @@ function compilePropertyAssignment(
     const fullName = `${clsName}_${target.name.text}`;
     const globalIdx = ctx.staticProps.get(fullName);
     if (globalIdx !== undefined) {
-      const globalDef = ctx.mod.globals[globalIdx];
+      const globalDef = ctx.mod.globals[localGlobalIdx(ctx, globalIdx)];
       compileExpression(ctx, fctx, value, globalDef?.type);
       fctx.body.push({ op: "global.set", index: globalIdx });
       return VOID_RESULT;
@@ -1515,6 +1685,160 @@ function compileElementAssignment(
   compileExpression(ctx, fctx, value, typeDef.element);
   fctx.body.push({ op: "array.set", typeIdx });
   return VOID_RESULT;
+}
+
+/**
+ * Compile logical assignment operators: ??=, ||=, &&=
+ *
+ * Desugars to value-preserving semantics:
+ *   a ??= b  →  if (a is null) a = b; result = a
+ *   a ||= b  →  if (!a) a = b; result = a
+ *   a &&= b  →  if (a) a = b; result = a
+ */
+function compileLogicalAssignment(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.BinaryExpression,
+  op: ts.SyntaxKind,
+): ValType | null {
+  if (!ts.isIdentifier(expr.left)) {
+    ctx.errors.push({
+      message: "Logical assignment only supported for simple identifiers",
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+
+  const name = expr.left.text;
+
+  // Resolve the variable storage location
+  let storage: { kind: "local"; index: number; type: ValType } |
+               { kind: "captured"; index: number; type: ValType } |
+               { kind: "module"; index: number; type: ValType } | null = null;
+
+  const localIdx = fctx.localMap.get(name);
+  if (localIdx !== undefined) {
+    const localType = localIdx < fctx.params.length
+      ? fctx.params[localIdx]!.type
+      : fctx.locals[localIdx - fctx.params.length]?.type;
+    storage = { kind: "local", index: localIdx, type: localType ?? { kind: "f64" } };
+  }
+  if (!storage) {
+    const capturedIdx = ctx.capturedGlobals.get(name);
+    if (capturedIdx !== undefined) {
+      const globalDef = ctx.mod.globals[capturedIdx];
+      storage = { kind: "captured", index: capturedIdx, type: globalDef?.type ?? { kind: "f64" } };
+    }
+  }
+  if (!storage) {
+    const moduleIdx = ctx.moduleGlobals.get(name);
+    if (moduleIdx !== undefined) {
+      const globalDef = ctx.mod.globals[moduleIdx];
+      storage = { kind: "module", index: moduleIdx, type: globalDef?.type ?? { kind: "f64" } };
+    }
+  }
+
+  if (!storage) {
+    ctx.errors.push({
+      message: `Unknown variable: ${name}`,
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+
+  const varType = storage.type;
+
+  // Emit: read current value
+  const emitGet = () => {
+    if (storage!.kind === "local") fctx.body.push({ op: "local.get", index: storage!.index });
+    else fctx.body.push({ op: "global.get", index: storage!.index });
+  };
+  const emitSet = () => {
+    if (storage!.kind === "local") fctx.body.push({ op: "local.tee", index: storage!.index });
+    else {
+      fctx.body.push({ op: "global.set", index: storage!.index });
+      fctx.body.push({ op: "global.get", index: storage!.index });
+    }
+  };
+
+  if (op === ts.SyntaxKind.QuestionQuestionEqualsToken) {
+    // a ??= b  →  if (a is null) { a = b }; result = a
+    // This operates on externref (nullable) values
+    emitGet();
+    fctx.body.push({ op: "ref.is_null" });
+
+    // Compile the RHS in a separate body
+    const savedBody = fctx.body;
+    fctx.body = [];
+    compileExpression(ctx, fctx, expr.right, varType);
+    emitSet();
+    const thenInstrs = fctx.body;
+
+    // Else: just read the current value (it's not null)
+    fctx.body = [];
+    emitGet();
+    const elseInstrs = fctx.body;
+
+    fctx.body = savedBody;
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "val", type: varType },
+      then: thenInstrs,
+      else: elseInstrs,
+    });
+  } else if (op === ts.SyntaxKind.BarBarEqualsToken) {
+    // a ||= b  →  if (!a) { a = b }; result = a
+    emitGet();
+    ensureI32Condition(fctx, varType);
+
+    // Then (truthy): keep current value
+    const savedBody = fctx.body;
+    fctx.body = [];
+    emitGet();
+    const thenInstrs = fctx.body;
+
+    // Else (falsy): assign RHS
+    fctx.body = [];
+    compileExpression(ctx, fctx, expr.right, varType);
+    emitSet();
+    const elseInstrs = fctx.body;
+
+    fctx.body = savedBody;
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "val", type: varType },
+      then: thenInstrs,
+      else: elseInstrs,
+    });
+  } else {
+    // a &&= b  →  if (a) { a = b }; result = a
+    emitGet();
+    ensureI32Condition(fctx, varType);
+
+    // Then (truthy): assign RHS
+    const savedBody = fctx.body;
+    fctx.body = [];
+    compileExpression(ctx, fctx, expr.right, varType);
+    emitSet();
+    const thenInstrs = fctx.body;
+
+    // Else (falsy): keep current value
+    fctx.body = [];
+    emitGet();
+    const elseInstrs = fctx.body;
+
+    fctx.body = savedBody;
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "val", type: varType },
+      then: thenInstrs,
+      else: elseInstrs,
+    });
+  }
+
+  return varType;
 }
 
 function isCompoundAssignment(op: ts.SyntaxKind): boolean {
@@ -1848,9 +2172,10 @@ function compileClosureCall(
     compileExpression(ctx, fctx, expr.arguments[i]!, info.paramTypes[i]);
   }
 
-  // Push the funcref from the closure struct (field 0)
+  // Push the funcref from the closure struct (field 0) and cast to typed ref
   fctx.body.push({ op: "local.get", index: localIdx });
   fctx.body.push({ op: "struct.get", typeIdx: info.structTypeIdx, fieldIdx: 0 });
+  fctx.body.push({ op: "ref.cast", typeIdx: info.funcTypeIdx });
 
   // call_ref with the lifted function's type index
   fctx.body.push({ op: "call_ref", typeIdx: info.funcTypeIdx });
@@ -1894,6 +2219,58 @@ function compileCallExpression(
       return compileMathCall(ctx, fctx, propAccess.name.text, expr);
     }
 
+    // Handle Object.keys(obj) and Object.values(obj)
+    if (
+      ts.isIdentifier(propAccess.expression) &&
+      propAccess.expression.text === "Object" &&
+      (propAccess.name.text === "keys" || propAccess.name.text === "values") &&
+      expr.arguments.length === 1
+    ) {
+      return compileObjectKeysOrValues(ctx, fctx, propAccess.name.text, expr);
+    }
+
+    // Handle Promise.all / Promise.race — host-delegated static calls
+    if (
+      ts.isIdentifier(propAccess.expression) &&
+      propAccess.expression.text === "Promise" &&
+      (propAccess.name.text === "all" || propAccess.name.text === "race") &&
+      expr.arguments.length >= 1
+    ) {
+      const importName = `Promise_${propAccess.name.text}`;
+      const funcIdx = ctx.funcMap.get(importName);
+      if (funcIdx !== undefined) {
+        compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "externref" });
+        fctx.body.push({ op: "call", funcIdx });
+        return { kind: "externref" };
+      }
+    }
+
+    // Handle JSON.stringify / JSON.parse as host import calls
+    if (
+      ts.isIdentifier(propAccess.expression) &&
+      propAccess.expression.text === "JSON"
+    ) {
+      const method = propAccess.name.text;
+      if ((method === "stringify" || method === "parse") && expr.arguments.length >= 1) {
+        const importName = `JSON_${method}`;
+        const funcIdx = ctx.funcMap.get(importName);
+        if (funcIdx !== undefined) {
+          // Compile argument and coerce to externref if needed
+          // (boxing imports registered early in collectJsonImports)
+          const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
+          if (argType && argType.kind === "f64") {
+            const boxIdx = ctx.funcMap.get("__box_number");
+            if (boxIdx !== undefined) fctx.body.push({ op: "call", funcIdx: boxIdx });
+          } else if (argType && argType.kind === "i32") {
+            const boxIdx = ctx.funcMap.get("__box_boolean");
+            if (boxIdx !== undefined) fctx.body.push({ op: "call", funcIdx: boxIdx });
+          }
+          fctx.body.push({ op: "call", funcIdx });
+          return { kind: "externref" };
+        }
+      }
+    }
+
     // Check if this is a static method call: ClassName.staticMethod(args)
     if (ts.isIdentifier(propAccess.expression) && ctx.classSet.has(propAccess.expression.text)) {
       const clsName = propAccess.expression.text;
@@ -1926,8 +2303,22 @@ function compileCallExpression(
       return compileExternMethodCall(ctx, fctx, propAccess, expr);
     }
 
+    // Generator method calls: gen.next()
+    if (isGeneratorType(receiverType) && propAccess.name.text === "next") {
+      compileExpression(ctx, fctx, propAccess.expression);
+      const funcIdx = ctx.funcMap.get("__gen_next");
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+        return { kind: "externref" }; // Returns IteratorResult as externref
+      }
+    }
+
     // Check if receiver is a local class instance
-    const receiverClassName = receiverType.getSymbol()?.name;
+    let receiverClassName = receiverType.getSymbol()?.name;
+    // Map class expression symbol names to their synthetic names
+    if (receiverClassName && !ctx.classSet.has(receiverClassName)) {
+      receiverClassName = ctx.classExprNameMap.get(receiverClassName) ?? receiverClassName;
+    }
     if (receiverClassName && ctx.classSet.has(receiverClassName)) {
       const methodName = propAccess.name.text;
       const fullName = `${receiverClassName}_${methodName}`;
@@ -2189,7 +2580,23 @@ function compileNewExpression(
 ): ValType | null {
   const type = ctx.checker.getTypeAtLocation(expr);
   const symbol = type.getSymbol();
-  const className = symbol?.name;
+  let className = symbol?.name;
+
+  // For class expressions (const C = class { ... }), the symbol name may be
+  // the internal anonymous name (e.g. "__class"). Look up the mapped name first,
+  // then fall back to the identifier used in the new expression.
+  if (className && !ctx.classSet.has(className)) {
+    const mapped = ctx.classExprNameMap.get(className);
+    if (mapped) {
+      className = mapped;
+    }
+  }
+  if ((!className || !ctx.classSet.has(className)) && ts.isIdentifier(expr.expression)) {
+    const idName = expr.expression.text;
+    if (ctx.classSet.has(idName)) {
+      className = idName;
+    }
+  }
 
   if (!className) {
     ctx.errors.push({
@@ -2231,6 +2638,10 @@ function compileNewExpression(
     const args = expr.arguments ?? [];
     for (let i = 0; i < args.length; i++) {
       compileExpression(ctx, fctx, args[i]!, externInfo.constructorParams[i]);
+    }
+    // Pad missing optional args with default values
+    for (let i = args.length; i < externInfo.constructorParams.length; i++) {
+      pushDefaultValue(fctx, externInfo.constructorParams[i]!);
     }
 
     const importName = `${externInfo.importPrefix}_new`;
@@ -2835,7 +3246,7 @@ function compilePropertyAccess(
       const globalIdx = ctx.staticProps.get(fullName);
       if (globalIdx !== undefined) {
         fctx.body.push({ op: "global.get", index: globalIdx });
-        const globalDef = ctx.mod.globals[globalIdx];
+        const globalDef = ctx.mod.globals[localGlobalIdx(ctx, globalIdx)];
         return globalDef?.type ?? { kind: "f64" };
       }
     }
@@ -2843,6 +3254,23 @@ function compilePropertyAccess(
 
   // Handle array.length (vec struct: field 0 is the logical length)
   if (propName === "length") {
+    // Check if the local is actually externref (e.g. from string.split() returning a JS array)
+    if (ts.isIdentifier(expr.expression)) {
+      const localIdx = fctx.localMap.get(expr.expression.text);
+      if (localIdx !== undefined) {
+        const localType = localIdx < fctx.params.length
+          ? fctx.params[localIdx]!.type
+          : fctx.locals[localIdx - fctx.params.length]?.type;
+        if (localType?.kind === "externref") {
+          const funcIdx = ctx.funcMap.get("__extern_length");
+          if (funcIdx !== undefined) {
+            fctx.body.push({ op: "local.get", index: localIdx });
+            fctx.body.push({ op: "call", funcIdx });
+            return { kind: "f64" };
+          }
+        }
+      }
+    }
     const objWasmType = resolveWasmType(ctx, objType);
     if (objWasmType.kind === "ref" || objWasmType.kind === "ref_null") {
       const vecTypeIdx = (objWasmType as { typeIdx: number }).typeIdx;
@@ -2881,6 +3309,35 @@ function compilePropertyAccess(
     if (funcIdx !== undefined) {
       fctx.body.push({ op: "call", funcIdx });
       return { kind: "i32" };
+    }
+  }
+
+  // Handle IteratorResult property access: .value and .done
+  if (isIteratorResultType(objType) || isGeneratorIteratorResultLike(ctx, objType, propName)) {
+    if (propName === "value") {
+      compileExpression(ctx, fctx, expr.expression);
+      // Check the expected value type from the IteratorResult<T>
+      const valueType = getIteratorResultValueType(ctx, objType);
+      if (valueType && valueType.kind === "f64") {
+        const funcIdx = ctx.funcMap.get("__gen_result_value_f64");
+        if (funcIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx });
+          return { kind: "f64" };
+        }
+      }
+      const funcIdx = ctx.funcMap.get("__gen_result_value");
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+        return { kind: "externref" };
+      }
+    }
+    if (propName === "done") {
+      compileExpression(ctx, fctx, expr.expression);
+      const funcIdx = ctx.funcMap.get("__gen_result_done");
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+        return { kind: "i32" };
+      }
     }
   }
 
@@ -3001,8 +3458,34 @@ function compileElementAccess(
   const typeIdx = (objType as { typeIdx: number }).typeIdx;
   const typeDef = ctx.mod.types[typeIdx];
 
-  // Handle vec struct (array wrapped in {length, data})
+  // Handle tuple struct — element access with literal index → struct.get
   if (typeDef?.kind === "struct") {
+    // Check if this is a tuple struct (registered in tupleTypeMap)
+    const isTuple = Array.from(ctx.tupleTypeMap.values()).includes(typeIdx);
+    if (isTuple) {
+      // Tuple element access requires a literal numeric index
+      if (!ts.isNumericLiteral(expr.argumentExpression)) {
+        ctx.errors.push({
+          message: "Tuple element access requires a numeric literal index",
+          line: getLine(expr),
+          column: getCol(expr),
+        });
+        return null;
+      }
+      const fieldIdx = Number(expr.argumentExpression.text);
+      if (fieldIdx < 0 || fieldIdx >= typeDef.fields.length) {
+        ctx.errors.push({
+          message: `Tuple index ${fieldIdx} out of bounds (tuple has ${typeDef.fields.length} elements)`,
+          line: getLine(expr),
+          column: getCol(expr),
+        });
+        return null;
+      }
+      fctx.body.push({ op: "struct.get", typeIdx, fieldIdx });
+      return typeDef.fields[fieldIdx]!.type;
+    }
+
+    // Handle vec struct (array wrapped in {length, data})
     const arrTypeIdx = getArrTypeIdxFromVec(ctx, typeIdx);
     const arrDef = ctx.mod.types[arrTypeIdx];
     if (!arrDef || arrDef.kind !== "array") {
@@ -3039,6 +3522,13 @@ function resolveStructName(ctx: CodegenContext, tsType: ts.Type): string | undef
   if (name && name !== "__type" && name !== "__object" && ctx.structMap.has(name)) {
     return name;
   }
+  // Check class expression name mapping (e.g. "__class" → "Point")
+  if (name) {
+    const mapped = ctx.classExprNameMap.get(name);
+    if (mapped && ctx.structMap.has(mapped)) {
+      return mapped;
+    }
+  }
   return ctx.anonTypeMap.get(tsType);
 }
 
@@ -3050,7 +3540,12 @@ function compileObjectLiteral(
   const contextType = ctx.checker.getContextualType(expr);
   if (!contextType) {
     const type = ctx.checker.getTypeAtLocation(expr);
-    const typeName = resolveStructName(ctx, type);
+    let typeName = resolveStructName(ctx, type);
+    if (!typeName) {
+      // Auto-register the struct type for inline object literals
+      ensureStructForType(ctx, type);
+      typeName = resolveStructName(ctx, type);
+    }
     if (typeName) {
       return compileObjectLiteralForStruct(ctx, fctx, expr, typeName);
     }
@@ -3062,7 +3557,12 @@ function compileObjectLiteral(
     return null;
   }
 
-  const typeName = resolveStructName(ctx, contextType);
+  let typeName = resolveStructName(ctx, contextType);
+  if (!typeName) {
+    // Auto-register the struct type for the contextual type
+    ensureStructForType(ctx, contextType);
+    typeName = resolveStructName(ctx, contextType);
+  }
   if (typeName) {
     return compileObjectLiteralForStruct(ctx, fctx, expr, typeName);
   }
@@ -3073,6 +3573,83 @@ function compileObjectLiteral(
     column: getCol(expr),
   });
   return null;
+}
+
+/**
+ * Resolve the property name of an ObjectLiteralElementLike to a static string.
+ * Handles identifiers, string literals, and computed property names that can be
+ * evaluated at compile time (string literal expressions, const variables, enum members).
+ * Returns undefined if the name cannot be statically resolved.
+ */
+function resolvePropertyNameText(
+  ctx: CodegenContext,
+  prop: ts.ObjectLiteralElementLike,
+): string | undefined {
+  if (!ts.isPropertyAssignment(prop)) return undefined;
+  const name = prop.name;
+
+  // Regular identifier: { x: 1 }
+  if (ts.isIdentifier(name)) return name.text;
+
+  // String literal property name: { "x": 1 }
+  if (ts.isStringLiteral(name)) return name.text;
+
+  // Numeric literal property name: { 0: 1 }
+  if (ts.isNumericLiteral(name)) return name.text;
+
+  // Computed property name: { [expr]: 1 }
+  if (ts.isComputedPropertyName(name)) {
+    return resolveComputedKeyExpression(ctx, name.expression);
+  }
+
+  return undefined;
+}
+
+/**
+ * Try to evaluate a computed key expression to a static string at compile time.
+ * Supports:
+ * - String literals: ["x"]
+ * - Const variable references: [key] where const key = "x"
+ * - Enum member access: [MyEnum.Key]
+ */
+function resolveComputedKeyExpression(
+  ctx: CodegenContext,
+  expr: ts.Expression,
+): string | undefined {
+  // Direct string literal: ["x"]
+  if (ts.isStringLiteral(expr)) return expr.text;
+
+  // Identifier referencing a const variable: [key]
+  if (ts.isIdentifier(expr)) {
+    const sym = ctx.checker.getSymbolAtLocation(expr);
+    if (sym) {
+      const decl = sym.valueDeclaration;
+      if (decl && ts.isVariableDeclaration(decl) && decl.initializer) {
+        // Check that the variable is declared with const
+        const declList = decl.parent;
+        if (ts.isVariableDeclarationList(declList) && (declList.flags & ts.NodeFlags.Const) !== 0) {
+          if (ts.isStringLiteral(decl.initializer)) {
+            return decl.initializer.text;
+          }
+        }
+      }
+    }
+    return undefined;
+  }
+
+  // Property access for enum members: [MyEnum.Key]
+  if (ts.isPropertyAccessExpression(expr) && ts.isIdentifier(expr.expression)) {
+    const objName = expr.expression.text;
+    const propName = expr.name.text;
+    const enumKey = `${objName}.${propName}`;
+    const enumStrVal = ctx.enumStringValues.get(enumKey);
+    if (enumStrVal !== undefined) return enumStrVal;
+    // Numeric enum — convert to string
+    const enumNumVal = ctx.enumValues.get(enumKey);
+    if (enumNumVal !== undefined) return String(enumNumVal);
+  }
+
+  return undefined;
 }
 
 function compileObjectLiteralForStruct(
@@ -3113,15 +3690,23 @@ function compileObjectLiteralForStruct(
   }
 
   for (const field of fields) {
-    // First check for an explicit property assignment
+    // First check for an explicit property assignment (identifier, string literal, or computed key)
     const prop = expr.properties.find(
-      (p) =>
-        ts.isPropertyAssignment(p) &&
-        ts.isIdentifier(p.name) &&
-        p.name.text === field.name,
+      (p) => resolvePropertyNameText(ctx, p) === field.name,
     );
+    // Also check for shorthand property assignment ({ x, y } where x/y are identifiers)
+    const shorthandProp = !prop
+      ? expr.properties.find(
+          (p) =>
+            ts.isShorthandPropertyAssignment(p) &&
+            p.name.text === field.name,
+        )
+      : undefined;
     if (prop && ts.isPropertyAssignment(prop)) {
       compileExpression(ctx, fctx, prop.initializer);
+    } else if (shorthandProp && ts.isShorthandPropertyAssignment(shorthandProp)) {
+      // Shorthand { x } means the value is the identifier x — compile it
+      compileExpression(ctx, fctx, shorthandProp.name);
     } else {
       // Check spread sources (last spread wins — JS semantics)
       let found = false;
@@ -3154,11 +3739,40 @@ function compileObjectLiteralForStruct(
   return { kind: "ref", typeIdx: structTypeIdx };
 }
 
+/**
+ * Compile a tuple literal [a, b, c] to a Wasm GC struct.new instruction.
+ * Each element is compiled to its corresponding field type.
+ */
+function compileTupleLiteral(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.ArrayLiteralExpression,
+  tupleType: ts.Type,
+): ValType | null {
+  const elemTypes = getTupleElementTypes(ctx, tupleType);
+  const tupleIdx = getOrRegisterTupleType(ctx, elemTypes);
+
+  // Compile each element with the expected field type
+  for (let i = 0; i < expr.elements.length; i++) {
+    const expectedType = elemTypes[i] ?? { kind: "externref" as const };
+    compileExpression(ctx, fctx, expr.elements[i]!, expectedType);
+  }
+
+  fctx.body.push({ op: "struct.new", typeIdx: tupleIdx });
+  return { kind: "ref", typeIdx: tupleIdx };
+}
+
 function compileArrayLiteral(
   ctx: CodegenContext,
   fctx: FunctionContext,
   expr: ts.ArrayLiteralExpression,
 ): ValType | null {
+  // Check if the target type is a tuple — compile as struct.new instead of array
+  const ctxTupleType = ctx.checker.getContextualType(expr) ?? ctx.checker.getTypeAtLocation(expr);
+  if (ctxTupleType && isTupleType(ctxTupleType)) {
+    return compileTupleLiteral(ctx, fctx, expr, ctxTupleType);
+  }
+
   if (expr.elements.length === 0) {
     // Empty array — try to determine element type from contextual type (e.g. number[])
     let emptyElemKind = "externref";
@@ -3316,6 +3930,122 @@ function compileArrayLiteral(
   return { kind: "ref_null", typeIdx: vecTypeIdx };
 }
 
+// ── Object.keys / Object.values ───────────────────────────────────────
+
+/**
+ * Compile Object.keys(obj) or Object.values(obj) by expanding struct fields
+ * at compile time. Object.keys returns a string[] of field names,
+ * Object.values returns an array of the field values.
+ */
+function compileObjectKeysOrValues(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  method: string,
+  expr: ts.CallExpression,
+): ValType | null {
+  const arg = expr.arguments[0]!;
+  const argType = ctx.checker.getTypeAtLocation(arg);
+
+  // Resolve struct name from the argument type
+  const structName = resolveStructName(ctx, argType);
+  if (!structName) {
+    ctx.errors.push({
+      message: `Object.${method}() requires a struct type argument`,
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+
+  const structTypeIdx = ctx.structMap.get(structName);
+  const fields = ctx.structFields.get(structName);
+  if (structTypeIdx === undefined || !fields) {
+    ctx.errors.push({
+      message: `Object.${method}(): unknown struct "${structName}"`,
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+
+  // Filter out internal fields like __tag
+  const userFields = fields
+    .map((f, idx) => ({ field: f, fieldIdx: idx }))
+    .filter((e) => !e.field.name.startsWith("__"));
+
+  if (method === "keys") {
+    // Build a string[] array from the field names
+    // Each field name is already registered as a string literal thunk
+    const elemKind = "externref";
+    const vecTypeIdx = getOrRegisterVecType(ctx, elemKind);
+    const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
+
+    // Push each field name string onto the stack
+    for (const entry of userFields) {
+      const importName = ctx.stringLiteralMap.get(entry.field.name);
+      if (!importName) continue;
+      const funcIdx = ctx.funcMap.get(importName);
+      if (funcIdx === undefined) continue;
+      fctx.body.push({ op: "call", funcIdx });
+    }
+
+    // Create the backing array with array.new_fixed
+    const count = userFields.length;
+    fctx.body.push({ op: "array.new_fixed", typeIdx: arrTypeIdx, length: count });
+    const tmpData = allocLocal(fctx, `__obj_keys_data_${fctx.locals.length}`, { kind: "ref", typeIdx: arrTypeIdx });
+    fctx.body.push({ op: "local.set", index: tmpData });
+    fctx.body.push({ op: "i32.const", value: count });
+    fctx.body.push({ op: "local.get", index: tmpData });
+    fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
+    return { kind: "ref_null", typeIdx: vecTypeIdx };
+  }
+
+  // method === "values"
+  // Compile the argument expression, store in a local, then struct.get each field
+  const argResult = compileExpression(ctx, fctx, arg);
+  if (!argResult) return null;
+  const objLocal = allocLocal(fctx, `__obj_vals_src_${fctx.locals.length}`, { kind: "ref", typeIdx: structTypeIdx });
+  fctx.body.push({ op: "local.set", index: objLocal });
+
+  // Always use externref elements for Object.values() since the TS return type is any[]
+  const elemKind = "externref";
+  const vecTypeIdx = getOrRegisterVecType(ctx, elemKind);
+  const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
+
+  // Ensure union boxing imports are registered (needed for boxing primitives)
+  addUnionImports(ctx);
+
+  // Push each field value onto the stack, boxing primitives to externref
+  for (const entry of userFields) {
+    fctx.body.push({ op: "local.get", index: objLocal });
+    fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx: entry.fieldIdx });
+    // Box primitive values to externref
+    if (entry.field.type.kind === "f64") {
+      const boxIdx = ctx.funcMap.get("__box_number");
+      if (boxIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: boxIdx });
+      }
+    } else if (entry.field.type.kind === "i32") {
+      fctx.body.push({ op: "f64.convert_i32_s" });
+      const boxIdx = ctx.funcMap.get("__box_number");
+      if (boxIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: boxIdx });
+      }
+    }
+    // externref fields (strings, etc.) don't need boxing
+  }
+
+  // Create the backing array with array.new_fixed
+  const count = userFields.length;
+  fctx.body.push({ op: "array.new_fixed", typeIdx: arrTypeIdx, length: count });
+  const tmpData = allocLocal(fctx, `__obj_vals_data_${fctx.locals.length}`, { kind: "ref", typeIdx: arrTypeIdx });
+  fctx.body.push({ op: "local.set", index: tmpData });
+  fctx.body.push({ op: "i32.const", value: count });
+  fctx.body.push({ op: "local.get", index: tmpData });
+  fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
+  return { kind: "ref_null", typeIdx: vecTypeIdx };
+}
+
 // ── String operations ─────────────────────────────────────────────────
 
 function compileStringLiteral(
@@ -3324,21 +4054,20 @@ function compileStringLiteral(
   value: string,
   node?: ts.Node,
 ): ValType | null {
-  const importName = ctx.stringLiteralMap.get(value);
-  if (!importName) {
-    ctx.errors.push({
-      message: `String literal not registered: "${value}"`,
-      line: node ? getLine(node) : 0,
-      column: node ? getCol(node) : 0,
-    });
-    return null;
+  // Use importedStringConstants: string literals are global imports
+  const globalIdx = ctx.stringGlobalMap.get(value);
+  if (globalIdx !== undefined) {
+    fctx.body.push({ op: "global.get", index: globalIdx });
+    return { kind: "externref" };
   }
 
-  const funcIdx = ctx.funcMap.get(importName);
-  if (funcIdx === undefined) return null;
-
-  fctx.body.push({ op: "call", funcIdx });
-  return { kind: "externref" };
+  // Fallback for legacy stringLiteralMap (should not be reached)
+  ctx.errors.push({
+    message: `String literal not registered: "${value}"`,
+    line: node ? getLine(node) : 0,
+    column: node ? getCol(node) : 0,
+  });
+  return null;
 }
 
 function compileTemplateExpression(
@@ -3474,6 +4203,7 @@ function getReceiverLocalIdx(
 const ARRAY_METHODS = new Set([
   "push", "pop", "shift", "indexOf", "includes",
   "slice", "concat", "join", "reverse", "splice",
+  "filter", "map", "reduce", "forEach", "find", "findIndex", "some", "every",
 ]);
 
 /**
@@ -3506,7 +4236,7 @@ function compileArrayMethodCall(
     const gIdx = ctx.moduleGlobals.get(name);
     if (gIdx !== undefined && !fctx.localMap.has(name)) {
       moduleGlobalIdx = gIdx;
-      const globalDef = ctx.mod.globals[gIdx];
+      const globalDef = ctx.mod.globals[localGlobalIdx(ctx, gIdx)];
       const tempLocal = allocLocal(fctx, `__mod_proxy_${name}`, globalDef!.type);
       fctx.body.push({ op: "global.get", index: gIdx });
       fctx.body.push({ op: "local.set", index: tempLocal });
@@ -3537,6 +4267,31 @@ function compileArrayMethodCall(
       result = compileArrayJoin(ctx, fctx, propAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType); break;
     case "splice":
       result = compileArraySplice(ctx, fctx, propAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType); break;
+    // Functional array methods — currently only supported for numeric element types (f64, i32)
+    case "filter":
+      result = (elemType.kind === "f64" || elemType.kind === "i32")
+        ? compileArrayFilter(ctx, fctx, propAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType) : undefined; break;
+    case "map":
+      result = (elemType.kind === "f64" || elemType.kind === "i32")
+        ? compileArrayMap(ctx, fctx, propAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType) : undefined; break;
+    case "reduce":
+      result = (elemType.kind === "f64" || elemType.kind === "i32")
+        ? compileArrayReduce(ctx, fctx, propAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType) : undefined; break;
+    case "forEach":
+      result = (elemType.kind === "f64" || elemType.kind === "i32")
+        ? compileArrayForEach(ctx, fctx, propAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType) : undefined; break;
+    case "find":
+      result = (elemType.kind === "f64" || elemType.kind === "i32")
+        ? compileArrayFind(ctx, fctx, propAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType) : undefined; break;
+    case "findIndex":
+      result = (elemType.kind === "f64" || elemType.kind === "i32")
+        ? compileArrayFindIndex(ctx, fctx, propAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType) : undefined; break;
+    case "some":
+      result = (elemType.kind === "f64" || elemType.kind === "i32")
+        ? compileArraySome(ctx, fctx, propAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType) : undefined; break;
+    case "every":
+      result = (elemType.kind === "f64" || elemType.kind === "i32")
+        ? compileArrayEvery(ctx, fctx, propAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType) : undefined; break;
     default:
       result = undefined;
   }
@@ -4244,15 +4999,10 @@ function compileArrayJoin(
   if (callExpr.arguments.length >= 1) {
     compileExpression(ctx, fctx, callExpr.arguments[0]!);
   } else {
-    // Default separator "," — check if registered
-    const commaImport = ctx.stringLiteralMap.get(",");
-    if (commaImport) {
-      const funcIdx = ctx.funcMap.get(commaImport);
-      if (funcIdx !== undefined) {
-        fctx.body.push({ op: "call", funcIdx });
-      } else {
-        fctx.body.push({ op: "ref.null.extern" });
-      }
+    // Default separator "," — check if registered as string constant global
+    const commaGlobalIdx = ctx.stringGlobalMap.get(",");
+    if (commaGlobalIdx !== undefined) {
+      fctx.body.push({ op: "global.get", index: commaGlobalIdx });
     } else {
       fctx.body.push({ op: "ref.null.extern" });
     }
@@ -4422,6 +5172,948 @@ function compileArraySplice(
   fctx.body.push({ op: "ref.as_non_null" });
   fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
   return { kind: "ref_null", typeIdx: vecTypeIdx };
+}
+
+// ── Generator helper functions ────────────────────────────────────────
+
+/**
+ * Check if a type looks like an IteratorResult (has .value and .done properties)
+ * even if the type checker doesn't resolve it as IteratorResult directly.
+ * This handles cases where the type is a union (IteratorYieldResult | IteratorReturnResult).
+ */
+function isGeneratorIteratorResultLike(
+  ctx: CodegenContext,
+  type: ts.Type,
+  propName: string,
+): boolean {
+  if (propName !== "value" && propName !== "done") return false;
+  // Check if the type has both .value and .done properties (IteratorResult shape)
+  const props = type.getProperties();
+  const hasValue = props.some((p) => p.name === "value");
+  const hasDone = props.some((p) => p.name === "done");
+  if (hasValue && hasDone) return true;
+  // Check union types (IteratorResult = IteratorYieldResult | IteratorReturnResult)
+  if (type.isUnion()) {
+    for (const t of type.types) {
+      if (isIteratorResultType(t)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Get the value type T from IteratorResult<T>.
+ * Returns the ValType for the value, or null if not determinable.
+ */
+function getIteratorResultValueType(
+  ctx: CodegenContext,
+  type: ts.Type,
+): ValType | null {
+  // Try to get T from the type arguments
+  const typeArgs = ctx.checker.getTypeArguments(type as ts.TypeReference);
+  if (typeArgs.length > 0) {
+    return resolveWasmType(ctx, typeArgs[0]!);
+  }
+  // For unions, check each member
+  if (type.isUnion()) {
+    for (const t of type.types) {
+      const args = ctx.checker.getTypeArguments(t as ts.TypeReference);
+      if (args.length > 0) {
+        return resolveWasmType(ctx, args[0]!);
+      }
+    }
+  }
+  return null;
+}
+
+// ── Generator yield expression ────────────────────────────────────────
+
+/**
+ * Compile a `yield expr` expression inside a generator function.
+ * Pushes the yielded value into the __gen_buffer (a JS array managed by the host).
+ * The yield expression itself evaluates to void (we don't support receiving
+ * values via yield in this initial implementation).
+ */
+function compileYieldExpression(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.YieldExpression,
+): InnerResult {
+  // Ensure we're inside a generator function
+  if (!ctx.generatorFunctions.has(fctx.name)) {
+    ctx.errors.push({
+      message: "yield expression outside of generator function",
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+
+  // Get the buffer local
+  const bufferIdx = fctx.localMap.get("__gen_buffer");
+  if (bufferIdx === undefined) {
+    ctx.errors.push({
+      message: "Internal error: __gen_buffer not found in generator function",
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+
+  if (!expr.expression) {
+    // yield with no value: push undefined
+    const pushRefIdx = ctx.funcMap.get("__gen_push_ref");
+    if (pushRefIdx !== undefined) {
+      fctx.body.push({ op: "local.get", index: bufferIdx });
+      fctx.body.push({ op: "ref.null.extern" });
+      fctx.body.push({ op: "call", funcIdx: pushRefIdx });
+    }
+    return VOID_RESULT;
+  }
+
+  // Compile the yielded expression
+  const yieldedType = compileExpressionInner(ctx, fctx, expr.expression);
+  if (yieldedType === null || yieldedType === VOID_RESULT) {
+    return VOID_RESULT;
+  }
+
+  // Store the yielded value in a temp local, then push to buffer
+  const tmpLocal = allocLocal(fctx, `__yield_tmp_${fctx.locals.length}`, yieldedType);
+  fctx.body.push({ op: "local.set", index: tmpLocal });
+
+  // Push to buffer based on type
+  fctx.body.push({ op: "local.get", index: bufferIdx });
+  fctx.body.push({ op: "local.get", index: tmpLocal });
+
+  if (yieldedType.kind === "f64") {
+    const pushIdx = ctx.funcMap.get("__gen_push_f64");
+    if (pushIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: pushIdx });
+    }
+  } else if (yieldedType.kind === "i32") {
+    const pushIdx = ctx.funcMap.get("__gen_push_i32");
+    if (pushIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: pushIdx });
+    }
+  } else {
+    // externref, ref, ref_null — all pass as externref
+    const pushIdx = ctx.funcMap.get("__gen_push_ref");
+    if (pushIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: pushIdx });
+    }
+  }
+
+  return VOID_RESULT;
+}
+
+// ── Functional array methods (filter, map, reduce, forEach, find, findIndex, some, every) ──
+
+/**
+ * arr.filter(cb) → iterate elements, call host-bridged callback, build new array from truthy results.
+ * Pattern: allocate result array of same capacity, copy matching elements, return new vec struct.
+ */
+function compileArrayFilter(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  propAccess: ts.PropertyAccessExpression,
+  callExpr: ts.CallExpression,
+  vecTypeIdx: number,
+  arrTypeIdx: number,
+  elemType: ValType,
+): ValType | null {
+  if (callExpr.arguments.length < 1) {
+    ctx.errors.push({ message: "filter requires a callback argument", line: getLine(callExpr), column: getCol(callExpr) });
+    return null;
+  }
+
+  const callBridgeIdx = ctx.funcMap.get("__call_1_f64");
+  if (callBridgeIdx === undefined) {
+    ctx.errors.push({ message: "Missing __call_1_f64 import for filter", line: getLine(callExpr), column: getCol(callExpr) });
+    return null;
+  }
+
+  const vecTmp = allocLocal(fctx, `__arr_flt_vec_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecTypeIdx });
+  const dataTmp = allocLocal(fctx, `__arr_flt_data_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
+  const lenTmp = allocLocal(fctx, `__arr_flt_len_${fctx.locals.length}`, { kind: "i32" });
+  const iTmp = allocLocal(fctx, `__arr_flt_i_${fctx.locals.length}`, { kind: "i32" });
+  const cbTmp = allocLocal(fctx, `__arr_flt_cb_${fctx.locals.length}`, { kind: "externref" });
+  const resData = allocLocal(fctx, `__arr_flt_rd_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
+  const resLen = allocLocal(fctx, `__arr_flt_rl_${fctx.locals.length}`, { kind: "i32" });
+  const elemTmp = allocLocal(fctx, `__arr_flt_el_${fctx.locals.length}`, elemType);
+
+  // Compile receiver → vec ref
+  compileExpression(ctx, fctx, propAccess.expression);
+  fctx.body.push({ op: "local.tee", index: vecTmp });
+
+  // Extract length
+  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
+  fctx.body.push({ op: "local.set", index: lenTmp });
+
+  // Extract data
+  fctx.body.push({ op: "local.get", index: vecTmp });
+  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
+  fctx.body.push({ op: "local.set", index: dataTmp });
+
+  // Compile callback (arrow function → externref via __make_callback)
+  compileExpression(ctx, fctx, callExpr.arguments[0]!);
+  fctx.body.push({ op: "local.set", index: cbTmp });
+
+  // Allocate result array with same capacity as source
+  fctx.body.push({ op: "local.get", index: lenTmp });
+  fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx });
+  fctx.body.push({ op: "local.set", index: resData });
+
+  // resLen = 0, i = 0
+  fctx.body.push({ op: "i32.const", value: 0 });
+  fctx.body.push({ op: "local.set", index: resLen });
+  fctx.body.push({ op: "i32.const", value: 0 });
+  fctx.body.push({ op: "local.set", index: iTmp });
+
+  const getOp = elemType.kind === "i32" ? "array.get_s" : "array.get";
+
+  // Loop: for each element, call callback, if truthy push to result
+  const loopBody: Instr[] = [
+    // if (i >= len) break
+    { op: "local.get", index: iTmp } as Instr,
+    { op: "local.get", index: lenTmp } as Instr,
+    { op: "i32.ge_s" } as Instr,
+    { op: "br_if", depth: 1 } as Instr,
+
+    // elem = data[i]
+    { op: "local.get", index: dataTmp } as Instr,
+    { op: "local.get", index: iTmp } as Instr,
+    { op: getOp, typeIdx: arrTypeIdx } as Instr,
+    { op: "local.set", index: elemTmp } as Instr,
+
+    // call __call_1_f64(cb, elem as f64) → f64
+    { op: "local.get", index: cbTmp } as Instr,
+    { op: "local.get", index: elemTmp } as Instr,
+    ...(elemType.kind === "i32" ? [{ op: "f64.convert_i32_s" } as Instr] : []),
+    { op: "call", funcIdx: callBridgeIdx } as Instr,
+
+    // if result != 0.0 (truthy), add element to result
+    { op: "f64.const", value: 0 } as Instr,
+    { op: "f64.ne" } as Instr,
+    { op: "if", blockType: { kind: "empty" },
+      then: [
+        // resData[resLen] = elem
+        { op: "local.get", index: resData } as Instr,
+        { op: "local.get", index: resLen } as Instr,
+        { op: "local.get", index: elemTmp } as Instr,
+        { op: "array.set", typeIdx: arrTypeIdx } as Instr,
+        // resLen++
+        { op: "local.get", index: resLen } as Instr,
+        { op: "i32.const", value: 1 } as Instr,
+        { op: "i32.add" } as Instr,
+        { op: "local.set", index: resLen } as Instr,
+      ],
+    } as Instr,
+
+    // i++
+    { op: "local.get", index: iTmp } as Instr,
+    { op: "i32.const", value: 1 } as Instr,
+    { op: "i32.add" } as Instr,
+    { op: "local.set", index: iTmp } as Instr,
+    { op: "br", depth: 0 } as Instr,
+  ];
+
+  fctx.body.push({
+    op: "block",
+    blockType: { kind: "empty" },
+    body: [
+      { op: "loop", blockType: { kind: "empty" }, body: loopBody } as Instr,
+    ],
+  });
+
+  // Return new vec struct { resLen, resData }
+  fctx.body.push({ op: "local.get", index: resLen });
+  fctx.body.push({ op: "local.get", index: resData });
+  fctx.body.push({ op: "ref.as_non_null" });
+  fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
+  return { kind: "ref_null", typeIdx: vecTypeIdx };
+}
+
+/**
+ * arr.map(cb) → iterate elements, call callback, store results in new array.
+ */
+function compileArrayMap(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  propAccess: ts.PropertyAccessExpression,
+  callExpr: ts.CallExpression,
+  vecTypeIdx: number,
+  arrTypeIdx: number,
+  elemType: ValType,
+): ValType | null {
+  if (callExpr.arguments.length < 1) {
+    ctx.errors.push({ message: "map requires a callback argument", line: getLine(callExpr), column: getCol(callExpr) });
+    return null;
+  }
+
+  const callBridgeIdx = ctx.funcMap.get("__call_1_f64");
+  if (callBridgeIdx === undefined) {
+    ctx.errors.push({ message: "Missing __call_1_f64 import for map", line: getLine(callExpr), column: getCol(callExpr) });
+    return null;
+  }
+
+  const cbArg = callExpr.arguments[0]!;
+  // Determine the result element type from the callback's own return type
+  let mapResultElemType: ValType = elemType; // default: same as source
+  let mapArrTypeIdx = arrTypeIdx;
+  let mapVecTypeIdx = vecTypeIdx;
+
+  // Try to get the callback's return type (not the .map() call's return type)
+  if (ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg)) {
+    const cbSig = ctx.checker.getSignatureFromDeclaration(cbArg);
+    if (cbSig) {
+      const retType = ctx.checker.getReturnTypeOfSignature(cbSig);
+      const mapped = resolveWasmType(ctx, retType);
+      // If return type differs from source element, create new array types
+      if (mapped.kind !== elemType.kind) {
+        mapResultElemType = mapped;
+        mapArrTypeIdx = getOrRegisterArrayType(ctx, mapResultElemType);
+        mapVecTypeIdx = getOrRegisterVecType(ctx, mapArrTypeIdx);
+      }
+    }
+  }
+
+  const vecTmp = allocLocal(fctx, `__arr_map_vec_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecTypeIdx });
+  const dataTmp = allocLocal(fctx, `__arr_map_data_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
+  const lenTmp = allocLocal(fctx, `__arr_map_len_${fctx.locals.length}`, { kind: "i32" });
+  const iTmp = allocLocal(fctx, `__arr_map_i_${fctx.locals.length}`, { kind: "i32" });
+  const cbTmp = allocLocal(fctx, `__arr_map_cb_${fctx.locals.length}`, { kind: "externref" });
+  const resData = allocLocal(fctx, `__arr_map_rd_${fctx.locals.length}`, { kind: "ref_null", typeIdx: mapArrTypeIdx });
+
+  // Compile receiver → vec ref
+  compileExpression(ctx, fctx, propAccess.expression);
+  fctx.body.push({ op: "local.tee", index: vecTmp });
+
+  // Extract length
+  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
+  fctx.body.push({ op: "local.set", index: lenTmp });
+
+  // Extract data
+  fctx.body.push({ op: "local.get", index: vecTmp });
+  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
+  fctx.body.push({ op: "local.set", index: dataTmp });
+
+  // Compile callback
+  compileExpression(ctx, fctx, cbArg);
+  fctx.body.push({ op: "local.set", index: cbTmp });
+
+  // Allocate result array with same length
+  fctx.body.push({ op: "local.get", index: lenTmp });
+  fctx.body.push({ op: "array.new_default", typeIdx: mapArrTypeIdx });
+  fctx.body.push({ op: "local.set", index: resData });
+
+  // i = 0
+  fctx.body.push({ op: "i32.const", value: 0 });
+  fctx.body.push({ op: "local.set", index: iTmp });
+
+  const getOp = elemType.kind === "i32" ? "array.get_s" : "array.get";
+
+  // Loop: for each element, resData[i] = cb(data[i])
+  const loopBody: Instr[] = [
+    // if (i >= len) break
+    { op: "local.get", index: iTmp } as Instr,
+    { op: "local.get", index: lenTmp } as Instr,
+    { op: "i32.ge_s" } as Instr,
+    { op: "br_if", depth: 1 } as Instr,
+
+    // resData[i] = ...
+    { op: "local.get", index: resData } as Instr,
+    { op: "local.get", index: iTmp } as Instr,
+
+    // call __call_1_f64(cb, data[i] as f64) → f64
+    { op: "local.get", index: cbTmp } as Instr,
+    { op: "local.get", index: dataTmp } as Instr,
+    { op: "local.get", index: iTmp } as Instr,
+    { op: getOp, typeIdx: arrTypeIdx } as Instr,
+    ...(elemType.kind === "i32" ? [{ op: "f64.convert_i32_s" } as Instr] : []),
+    { op: "call", funcIdx: callBridgeIdx } as Instr,
+
+    // Convert result to target element type if needed
+    ...(mapResultElemType.kind === "i32" ? [{ op: "i32.trunc_f64_s" } as Instr] : []),
+
+    // array.set
+    { op: "array.set", typeIdx: mapArrTypeIdx } as Instr,
+
+    // i++
+    { op: "local.get", index: iTmp } as Instr,
+    { op: "i32.const", value: 1 } as Instr,
+    { op: "i32.add" } as Instr,
+    { op: "local.set", index: iTmp } as Instr,
+    { op: "br", depth: 0 } as Instr,
+  ];
+
+  fctx.body.push({
+    op: "block",
+    blockType: { kind: "empty" },
+    body: [
+      { op: "loop", blockType: { kind: "empty" }, body: loopBody } as Instr,
+    ],
+  });
+
+  // Return new vec struct { len, resData }
+  fctx.body.push({ op: "local.get", index: lenTmp });
+  fctx.body.push({ op: "local.get", index: resData });
+  fctx.body.push({ op: "ref.as_non_null" });
+  fctx.body.push({ op: "struct.new", typeIdx: mapVecTypeIdx });
+  return { kind: "ref_null", typeIdx: mapVecTypeIdx };
+}
+
+/**
+ * arr.reduce(cb, initial) → iterate elements, accumulate result via callback.
+ */
+function compileArrayReduce(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  propAccess: ts.PropertyAccessExpression,
+  callExpr: ts.CallExpression,
+  vecTypeIdx: number,
+  arrTypeIdx: number,
+  elemType: ValType,
+): ValType | null {
+  if (callExpr.arguments.length < 2) {
+    ctx.errors.push({ message: "reduce requires a callback and initial value", line: getLine(callExpr), column: getCol(callExpr) });
+    return null;
+  }
+
+  const callBridgeIdx = ctx.funcMap.get("__call_2_f64");
+  if (callBridgeIdx === undefined) {
+    ctx.errors.push({ message: "Missing __call_2_f64 import for reduce", line: getLine(callExpr), column: getCol(callExpr) });
+    return null;
+  }
+
+  const vecTmp = allocLocal(fctx, `__arr_red_vec_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecTypeIdx });
+  const dataTmp = allocLocal(fctx, `__arr_red_data_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
+  const lenTmp = allocLocal(fctx, `__arr_red_len_${fctx.locals.length}`, { kind: "i32" });
+  const iTmp = allocLocal(fctx, `__arr_red_i_${fctx.locals.length}`, { kind: "i32" });
+  const cbTmp = allocLocal(fctx, `__arr_red_cb_${fctx.locals.length}`, { kind: "externref" });
+  const accTmp = allocLocal(fctx, `__arr_red_acc_${fctx.locals.length}`, { kind: "f64" });
+
+  // Compile receiver
+  compileExpression(ctx, fctx, propAccess.expression);
+  fctx.body.push({ op: "local.tee", index: vecTmp });
+
+  // Extract length
+  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
+  fctx.body.push({ op: "local.set", index: lenTmp });
+
+  // Extract data
+  fctx.body.push({ op: "local.get", index: vecTmp });
+  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
+  fctx.body.push({ op: "local.set", index: dataTmp });
+
+  // Compile callback
+  compileExpression(ctx, fctx, callExpr.arguments[0]!);
+  fctx.body.push({ op: "local.set", index: cbTmp });
+
+  // Compile initial value → f64
+  compileExpression(ctx, fctx, callExpr.arguments[1]!, { kind: "f64" });
+  fctx.body.push({ op: "local.set", index: accTmp });
+
+  // i = 0
+  fctx.body.push({ op: "i32.const", value: 0 });
+  fctx.body.push({ op: "local.set", index: iTmp });
+
+  const getOp = elemType.kind === "i32" ? "array.get_s" : "array.get";
+
+  // Loop: acc = cb(acc, data[i])
+  const loopBody: Instr[] = [
+    { op: "local.get", index: iTmp } as Instr,
+    { op: "local.get", index: lenTmp } as Instr,
+    { op: "i32.ge_s" } as Instr,
+    { op: "br_if", depth: 1 } as Instr,
+
+    // acc = __call_2_f64(cb, acc, data[i])
+    { op: "local.get", index: cbTmp } as Instr,
+    { op: "local.get", index: accTmp } as Instr,
+    { op: "local.get", index: dataTmp } as Instr,
+    { op: "local.get", index: iTmp } as Instr,
+    { op: getOp, typeIdx: arrTypeIdx } as Instr,
+    ...(elemType.kind === "i32" ? [{ op: "f64.convert_i32_s" } as Instr] : []),
+    { op: "call", funcIdx: callBridgeIdx } as Instr,
+    { op: "local.set", index: accTmp } as Instr,
+
+    // i++
+    { op: "local.get", index: iTmp } as Instr,
+    { op: "i32.const", value: 1 } as Instr,
+    { op: "i32.add" } as Instr,
+    { op: "local.set", index: iTmp } as Instr,
+    { op: "br", depth: 0 } as Instr,
+  ];
+
+  fctx.body.push({
+    op: "block",
+    blockType: { kind: "empty" },
+    body: [
+      { op: "loop", blockType: { kind: "empty" }, body: loopBody } as Instr,
+    ],
+  });
+
+  // Return accumulator
+  fctx.body.push({ op: "local.get", index: accTmp });
+  return { kind: "f64" };
+}
+
+/**
+ * arr.forEach(cb) → iterate elements, call callback, return void.
+ */
+function compileArrayForEach(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  propAccess: ts.PropertyAccessExpression,
+  callExpr: ts.CallExpression,
+  vecTypeIdx: number,
+  arrTypeIdx: number,
+  elemType: ValType,
+): ValType | null {
+  if (callExpr.arguments.length < 1) {
+    ctx.errors.push({ message: "forEach requires a callback argument", line: getLine(callExpr), column: getCol(callExpr) });
+    return null;
+  }
+
+  const callBridgeIdx = ctx.funcMap.get("__call_1_f64");
+  if (callBridgeIdx === undefined) {
+    ctx.errors.push({ message: "Missing __call_1_f64 import for forEach", line: getLine(callExpr), column: getCol(callExpr) });
+    return null;
+  }
+
+  const vecTmp = allocLocal(fctx, `__arr_fe_vec_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecTypeIdx });
+  const dataTmp = allocLocal(fctx, `__arr_fe_data_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
+  const lenTmp = allocLocal(fctx, `__arr_fe_len_${fctx.locals.length}`, { kind: "i32" });
+  const iTmp = allocLocal(fctx, `__arr_fe_i_${fctx.locals.length}`, { kind: "i32" });
+  const cbTmp = allocLocal(fctx, `__arr_fe_cb_${fctx.locals.length}`, { kind: "externref" });
+
+  // Compile receiver
+  compileExpression(ctx, fctx, propAccess.expression);
+  fctx.body.push({ op: "local.tee", index: vecTmp });
+
+  // Extract length
+  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
+  fctx.body.push({ op: "local.set", index: lenTmp });
+
+  // Extract data
+  fctx.body.push({ op: "local.get", index: vecTmp });
+  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
+  fctx.body.push({ op: "local.set", index: dataTmp });
+
+  // Compile callback
+  compileExpression(ctx, fctx, callExpr.arguments[0]!);
+  fctx.body.push({ op: "local.set", index: cbTmp });
+
+  // i = 0
+  fctx.body.push({ op: "i32.const", value: 0 });
+  fctx.body.push({ op: "local.set", index: iTmp });
+
+  const getOp = elemType.kind === "i32" ? "array.get_s" : "array.get";
+
+  // Loop: call cb(data[i]), drop result
+  const loopBody: Instr[] = [
+    { op: "local.get", index: iTmp } as Instr,
+    { op: "local.get", index: lenTmp } as Instr,
+    { op: "i32.ge_s" } as Instr,
+    { op: "br_if", depth: 1 } as Instr,
+
+    // __call_1_f64(cb, data[i]) → f64 (dropped)
+    { op: "local.get", index: cbTmp } as Instr,
+    { op: "local.get", index: dataTmp } as Instr,
+    { op: "local.get", index: iTmp } as Instr,
+    { op: getOp, typeIdx: arrTypeIdx } as Instr,
+    ...(elemType.kind === "i32" ? [{ op: "f64.convert_i32_s" } as Instr] : []),
+    { op: "call", funcIdx: callBridgeIdx } as Instr,
+    { op: "drop" } as Instr,
+
+    // i++
+    { op: "local.get", index: iTmp } as Instr,
+    { op: "i32.const", value: 1 } as Instr,
+    { op: "i32.add" } as Instr,
+    { op: "local.set", index: iTmp } as Instr,
+    { op: "br", depth: 0 } as Instr,
+  ];
+
+  fctx.body.push({
+    op: "block",
+    blockType: { kind: "empty" },
+    body: [
+      { op: "loop", blockType: { kind: "empty" }, body: loopBody } as Instr,
+    ],
+  });
+
+  // forEach returns void — return null to indicate no value on stack
+  return null;
+}
+
+/**
+ * arr.find(cb) → iterate, return first element where cb returns truthy, else NaN.
+ * Since number arrays use f64, we return NaN for "not found" (approximation of undefined).
+ */
+function compileArrayFind(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  propAccess: ts.PropertyAccessExpression,
+  callExpr: ts.CallExpression,
+  vecTypeIdx: number,
+  arrTypeIdx: number,
+  elemType: ValType,
+): ValType | null {
+  if (callExpr.arguments.length < 1) {
+    ctx.errors.push({ message: "find requires a callback argument", line: getLine(callExpr), column: getCol(callExpr) });
+    return null;
+  }
+
+  const callBridgeIdx = ctx.funcMap.get("__call_1_f64");
+  if (callBridgeIdx === undefined) {
+    ctx.errors.push({ message: "Missing __call_1_f64 import for find", line: getLine(callExpr), column: getCol(callExpr) });
+    return null;
+  }
+
+  const vecTmp = allocLocal(fctx, `__arr_find_vec_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecTypeIdx });
+  const dataTmp = allocLocal(fctx, `__arr_find_data_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
+  const lenTmp = allocLocal(fctx, `__arr_find_len_${fctx.locals.length}`, { kind: "i32" });
+  const iTmp = allocLocal(fctx, `__arr_find_i_${fctx.locals.length}`, { kind: "i32" });
+  const cbTmp = allocLocal(fctx, `__arr_find_cb_${fctx.locals.length}`, { kind: "externref" });
+  const elemTmpLocal = allocLocal(fctx, `__arr_find_el_${fctx.locals.length}`, elemType);
+
+  // Compile receiver
+  compileExpression(ctx, fctx, propAccess.expression);
+  fctx.body.push({ op: "local.tee", index: vecTmp });
+
+  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
+  fctx.body.push({ op: "local.set", index: lenTmp });
+
+  fctx.body.push({ op: "local.get", index: vecTmp });
+  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
+  fctx.body.push({ op: "local.set", index: dataTmp });
+
+  // Compile callback
+  compileExpression(ctx, fctx, callExpr.arguments[0]!);
+  fctx.body.push({ op: "local.set", index: cbTmp });
+
+  // i = 0
+  fctx.body.push({ op: "i32.const", value: 0 });
+  fctx.body.push({ op: "local.set", index: iTmp });
+
+  const getOp = elemType.kind === "i32" ? "array.get_s" : "array.get";
+
+  const loopBody: Instr[] = [
+    { op: "local.get", index: iTmp } as Instr,
+    { op: "local.get", index: lenTmp } as Instr,
+    { op: "i32.ge_s" } as Instr,
+    { op: "br_if", depth: 1 } as Instr,
+
+    // elem = data[i]
+    { op: "local.get", index: dataTmp } as Instr,
+    { op: "local.get", index: iTmp } as Instr,
+    { op: getOp, typeIdx: arrTypeIdx } as Instr,
+    { op: "local.set", index: elemTmpLocal } as Instr,
+
+    // if cb(elem) is truthy, return elem
+    { op: "local.get", index: cbTmp } as Instr,
+    { op: "local.get", index: elemTmpLocal } as Instr,
+    ...(elemType.kind === "i32" ? [{ op: "f64.convert_i32_s" } as Instr] : []),
+    { op: "call", funcIdx: callBridgeIdx } as Instr,
+    { op: "f64.const", value: 0 } as Instr,
+    { op: "f64.ne" } as Instr,
+    { op: "if", blockType: { kind: "empty" },
+      then: [
+        { op: "local.get", index: elemTmpLocal } as Instr,
+        ...(elemType.kind === "i32" ? [{ op: "f64.convert_i32_s" } as Instr] : []),
+        { op: "return" } as Instr,
+      ],
+    } as Instr,
+
+    // i++
+    { op: "local.get", index: iTmp } as Instr,
+    { op: "i32.const", value: 1 } as Instr,
+    { op: "i32.add" } as Instr,
+    { op: "local.set", index: iTmp } as Instr,
+    { op: "br", depth: 0 } as Instr,
+  ];
+
+  fctx.body.push({
+    op: "block",
+    blockType: { kind: "empty" },
+    body: [
+      { op: "loop", blockType: { kind: "empty" }, body: loopBody } as Instr,
+    ],
+  });
+
+  // Not found: return NaN (approximation of undefined for number arrays)
+  // Using a large sentinel: NaN. We use 0/0 trick.
+  fctx.body.push({ op: "f64.const", value: 0 });
+  fctx.body.push({ op: "f64.const", value: 0 });
+  fctx.body.push({ op: "f64.div" });
+  return { kind: "f64" };
+}
+
+/**
+ * arr.findIndex(cb) → iterate, return index (f64) of first truthy cb result, else -1.
+ */
+function compileArrayFindIndex(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  propAccess: ts.PropertyAccessExpression,
+  callExpr: ts.CallExpression,
+  vecTypeIdx: number,
+  arrTypeIdx: number,
+  elemType: ValType,
+): ValType | null {
+  if (callExpr.arguments.length < 1) {
+    ctx.errors.push({ message: "findIndex requires a callback argument", line: getLine(callExpr), column: getCol(callExpr) });
+    return null;
+  }
+
+  const callBridgeIdx = ctx.funcMap.get("__call_1_f64");
+  if (callBridgeIdx === undefined) {
+    ctx.errors.push({ message: "Missing __call_1_f64 import for findIndex", line: getLine(callExpr), column: getCol(callExpr) });
+    return null;
+  }
+
+  const vecTmp = allocLocal(fctx, `__arr_fi_vec_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecTypeIdx });
+  const dataTmp = allocLocal(fctx, `__arr_fi_data_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
+  const lenTmp = allocLocal(fctx, `__arr_fi_len_${fctx.locals.length}`, { kind: "i32" });
+  const iTmp = allocLocal(fctx, `__arr_fi_i_${fctx.locals.length}`, { kind: "i32" });
+  const cbTmp = allocLocal(fctx, `__arr_fi_cb_${fctx.locals.length}`, { kind: "externref" });
+
+  // Compile receiver
+  compileExpression(ctx, fctx, propAccess.expression);
+  fctx.body.push({ op: "local.tee", index: vecTmp });
+
+  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
+  fctx.body.push({ op: "local.set", index: lenTmp });
+
+  fctx.body.push({ op: "local.get", index: vecTmp });
+  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
+  fctx.body.push({ op: "local.set", index: dataTmp });
+
+  compileExpression(ctx, fctx, callExpr.arguments[0]!);
+  fctx.body.push({ op: "local.set", index: cbTmp });
+
+  fctx.body.push({ op: "i32.const", value: 0 });
+  fctx.body.push({ op: "local.set", index: iTmp });
+
+  const getOp = elemType.kind === "i32" ? "array.get_s" : "array.get";
+
+  const loopBody: Instr[] = [
+    { op: "local.get", index: iTmp } as Instr,
+    { op: "local.get", index: lenTmp } as Instr,
+    { op: "i32.ge_s" } as Instr,
+    { op: "br_if", depth: 1 } as Instr,
+
+    // if cb(data[i]) is truthy, return i
+    { op: "local.get", index: cbTmp } as Instr,
+    { op: "local.get", index: dataTmp } as Instr,
+    { op: "local.get", index: iTmp } as Instr,
+    { op: getOp, typeIdx: arrTypeIdx } as Instr,
+    ...(elemType.kind === "i32" ? [{ op: "f64.convert_i32_s" } as Instr] : []),
+    { op: "call", funcIdx: callBridgeIdx } as Instr,
+    { op: "f64.const", value: 0 } as Instr,
+    { op: "f64.ne" } as Instr,
+    { op: "if", blockType: { kind: "empty" },
+      then: [
+        { op: "local.get", index: iTmp } as Instr,
+        { op: "f64.convert_i32_s" } as Instr,
+        { op: "return" } as Instr,
+      ],
+    } as Instr,
+
+    // i++
+    { op: "local.get", index: iTmp } as Instr,
+    { op: "i32.const", value: 1 } as Instr,
+    { op: "i32.add" } as Instr,
+    { op: "local.set", index: iTmp } as Instr,
+    { op: "br", depth: 0 } as Instr,
+  ];
+
+  fctx.body.push({
+    op: "block",
+    blockType: { kind: "empty" },
+    body: [
+      { op: "loop", blockType: { kind: "empty" }, body: loopBody } as Instr,
+    ],
+  });
+
+  // Not found: return -1
+  fctx.body.push({ op: "f64.const", value: -1 });
+  return { kind: "f64" };
+}
+
+/**
+ * arr.some(cb) → returns i32 (1 if any element passes callback, 0 otherwise).
+ */
+function compileArraySome(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  propAccess: ts.PropertyAccessExpression,
+  callExpr: ts.CallExpression,
+  vecTypeIdx: number,
+  arrTypeIdx: number,
+  elemType: ValType,
+): ValType | null {
+  if (callExpr.arguments.length < 1) {
+    ctx.errors.push({ message: "some requires a callback argument", line: getLine(callExpr), column: getCol(callExpr) });
+    return null;
+  }
+
+  const callBridgeIdx = ctx.funcMap.get("__call_1_f64");
+  if (callBridgeIdx === undefined) {
+    ctx.errors.push({ message: "Missing __call_1_f64 import for some", line: getLine(callExpr), column: getCol(callExpr) });
+    return null;
+  }
+
+  const vecTmp = allocLocal(fctx, `__arr_some_vec_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecTypeIdx });
+  const dataTmp = allocLocal(fctx, `__arr_some_data_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
+  const lenTmp = allocLocal(fctx, `__arr_some_len_${fctx.locals.length}`, { kind: "i32" });
+  const iTmp = allocLocal(fctx, `__arr_some_i_${fctx.locals.length}`, { kind: "i32" });
+  const cbTmp = allocLocal(fctx, `__arr_some_cb_${fctx.locals.length}`, { kind: "externref" });
+
+  compileExpression(ctx, fctx, propAccess.expression);
+  fctx.body.push({ op: "local.tee", index: vecTmp });
+
+  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
+  fctx.body.push({ op: "local.set", index: lenTmp });
+
+  fctx.body.push({ op: "local.get", index: vecTmp });
+  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
+  fctx.body.push({ op: "local.set", index: dataTmp });
+
+  compileExpression(ctx, fctx, callExpr.arguments[0]!);
+  fctx.body.push({ op: "local.set", index: cbTmp });
+
+  fctx.body.push({ op: "i32.const", value: 0 });
+  fctx.body.push({ op: "local.set", index: iTmp });
+
+  const getOp = elemType.kind === "i32" ? "array.get_s" : "array.get";
+
+  const loopBody: Instr[] = [
+    { op: "local.get", index: iTmp } as Instr,
+    { op: "local.get", index: lenTmp } as Instr,
+    { op: "i32.ge_s" } as Instr,
+    { op: "br_if", depth: 1 } as Instr,
+
+    { op: "local.get", index: cbTmp } as Instr,
+    { op: "local.get", index: dataTmp } as Instr,
+    { op: "local.get", index: iTmp } as Instr,
+    { op: getOp, typeIdx: arrTypeIdx } as Instr,
+    ...(elemType.kind === "i32" ? [{ op: "f64.convert_i32_s" } as Instr] : []),
+    { op: "call", funcIdx: callBridgeIdx } as Instr,
+    { op: "f64.const", value: 0 } as Instr,
+    { op: "f64.ne" } as Instr,
+    { op: "if", blockType: { kind: "empty" },
+      then: [
+        { op: "i32.const", value: 1 } as Instr,
+        { op: "return" } as Instr,
+      ],
+    } as Instr,
+
+    { op: "local.get", index: iTmp } as Instr,
+    { op: "i32.const", value: 1 } as Instr,
+    { op: "i32.add" } as Instr,
+    { op: "local.set", index: iTmp } as Instr,
+    { op: "br", depth: 0 } as Instr,
+  ];
+
+  fctx.body.push({
+    op: "block",
+    blockType: { kind: "empty" },
+    body: [
+      { op: "loop", blockType: { kind: "empty" }, body: loopBody } as Instr,
+    ],
+  });
+
+  // No element matched
+  fctx.body.push({ op: "i32.const", value: 0 });
+  return { kind: "i32" };
+}
+
+/**
+ * arr.every(cb) → returns i32 (1 if all elements pass callback, 0 otherwise).
+ */
+function compileArrayEvery(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  propAccess: ts.PropertyAccessExpression,
+  callExpr: ts.CallExpression,
+  vecTypeIdx: number,
+  arrTypeIdx: number,
+  elemType: ValType,
+): ValType | null {
+  if (callExpr.arguments.length < 1) {
+    ctx.errors.push({ message: "every requires a callback argument", line: getLine(callExpr), column: getCol(callExpr) });
+    return null;
+  }
+
+  const callBridgeIdx = ctx.funcMap.get("__call_1_f64");
+  if (callBridgeIdx === undefined) {
+    ctx.errors.push({ message: "Missing __call_1_f64 import for every", line: getLine(callExpr), column: getCol(callExpr) });
+    return null;
+  }
+
+  const vecTmp = allocLocal(fctx, `__arr_evr_vec_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecTypeIdx });
+  const dataTmp = allocLocal(fctx, `__arr_evr_data_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
+  const lenTmp = allocLocal(fctx, `__arr_evr_len_${fctx.locals.length}`, { kind: "i32" });
+  const iTmp = allocLocal(fctx, `__arr_evr_i_${fctx.locals.length}`, { kind: "i32" });
+  const cbTmp = allocLocal(fctx, `__arr_evr_cb_${fctx.locals.length}`, { kind: "externref" });
+
+  compileExpression(ctx, fctx, propAccess.expression);
+  fctx.body.push({ op: "local.tee", index: vecTmp });
+
+  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
+  fctx.body.push({ op: "local.set", index: lenTmp });
+
+  fctx.body.push({ op: "local.get", index: vecTmp });
+  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
+  fctx.body.push({ op: "local.set", index: dataTmp });
+
+  compileExpression(ctx, fctx, callExpr.arguments[0]!);
+  fctx.body.push({ op: "local.set", index: cbTmp });
+
+  fctx.body.push({ op: "i32.const", value: 0 });
+  fctx.body.push({ op: "local.set", index: iTmp });
+
+  const getOp = elemType.kind === "i32" ? "array.get_s" : "array.get";
+
+  const loopBody: Instr[] = [
+    { op: "local.get", index: iTmp } as Instr,
+    { op: "local.get", index: lenTmp } as Instr,
+    { op: "i32.ge_s" } as Instr,
+    { op: "br_if", depth: 1 } as Instr,
+
+    { op: "local.get", index: cbTmp } as Instr,
+    { op: "local.get", index: dataTmp } as Instr,
+    { op: "local.get", index: iTmp } as Instr,
+    { op: getOp, typeIdx: arrTypeIdx } as Instr,
+    ...(elemType.kind === "i32" ? [{ op: "f64.convert_i32_s" } as Instr] : []),
+    { op: "call", funcIdx: callBridgeIdx } as Instr,
+    { op: "f64.const", value: 0 } as Instr,
+    { op: "f64.eq" } as Instr,  // if result == 0 (falsy)
+    { op: "if", blockType: { kind: "empty" },
+      then: [
+        { op: "i32.const", value: 0 } as Instr,
+        { op: "return" } as Instr,
+      ],
+    } as Instr,
+
+    { op: "local.get", index: iTmp } as Instr,
+    { op: "i32.const", value: 1 } as Instr,
+    { op: "i32.add" } as Instr,
+    { op: "local.set", index: iTmp } as Instr,
+    { op: "br", depth: 0 } as Instr,
+  ];
+
+  fctx.body.push({
+    op: "block",
+    blockType: { kind: "empty" },
+    body: [
+      { op: "loop", blockType: { kind: "empty" }, body: loopBody } as Instr,
+    ],
+  });
+
+  // All elements passed
+  fctx.body.push({ op: "i32.const", value: 1 });
+  return { kind: "i32" };
 }
 
 function getLine(node: ts.Node): number {

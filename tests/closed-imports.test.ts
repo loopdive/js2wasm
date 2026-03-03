@@ -4,14 +4,13 @@ import type { ImportDescriptor } from "../src/index.js";
 import { buildImports } from "../src/runtime.js";
 
 describe("ImportDescriptor manifest", () => {
-  it("includes string literal imports", () => {
+  it("includes string literals in stringPool", () => {
     const result = compile(`
       export function greet(): string { return "hello"; }
     `);
     expect(result.success).toBe(true);
-    const strImport = result.imports.find(i => i.name === "__str_0");
-    expect(strImport).toBeDefined();
-    expect(strImport!.intent).toEqual({ type: "string_literal", value: "hello" });
+    // String literals are now imported via string_constants globals, not env func imports
+    expect(result.stringPool).toContain("hello");
   });
 
   it("includes Math imports", () => {

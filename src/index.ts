@@ -122,6 +122,7 @@ export function compileToObject(
 export {
   jsString,
   buildImports,
+  buildStringConstants,
   compileAndInstantiate,
   instantiateWasm,
 } from "./runtime.js";
