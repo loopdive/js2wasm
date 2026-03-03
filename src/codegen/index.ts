@@ -2822,6 +2822,7 @@ function compileClassBodies(
     // Return the struct instance
     fctx.body.push({ op: "local.get", index: selfLocal });
 
+    cacheStringLiterals(ctx, fctx);
     func.locals = fctx.locals;
     func.body = fctx.body;
     ctx.currentFunc = null;
@@ -2906,6 +2907,7 @@ function compileClassBodies(
         }
       }
 
+      cacheStringLiterals(ctx, fctx);
       func.locals = fctx.locals;
       func.body = fctx.body;
       ctx.currentFunc = null;
@@ -2983,6 +2985,7 @@ function compileClassBodies(
         }
       }
 
+      cacheStringLiterals(ctx, fctx);
       func.locals = fctx.locals;
       func.body = fctx.body;
       ctx.currentFunc = null;
@@ -3034,6 +3037,7 @@ function compileClassBodies(
         }
       }
 
+      cacheStringLiterals(ctx, fctx);
       func.locals = fctx.locals;
       func.body = fctx.body;
       ctx.currentFunc = null;
@@ -3179,6 +3183,7 @@ function compileFunctionBody(
     }
   }
 
+  cacheStringLiterals(ctx, fctx);
   func.locals = fctx.locals;
   func.body = fctx.body;
 
@@ -3195,6 +3200,113 @@ export function allocLocal(
   fctx.locals.push({ name, type });
   fctx.localMap.set(name, index);
   return index;
+}
+
+/**
+ * Cache string literal thunk calls in locals for the given function.
+ *
+ * After a function body has been compiled, this scans all instructions
+ * (including nested blocks/loops/ifs) for `call` instructions that invoke
+ * string literal thunks (__str_N).  For each unique thunk found it:
+ *   1. Allocates an `externref` local to hold the cached value.
+ *   2. Prepends `call $__str_N` + `local.set $cached` at function entry.
+ *   3. Replaces every matching `call` in the body with `local.get $cached`.
+ *
+ * This avoids repeated import calls for the same string literal, which is
+ * especially beneficial inside loops.
+ */
+export function cacheStringLiterals(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+): void {
+  // Build a set of funcIdx values that correspond to string literal thunks
+  const strFuncIdxSet = new Set<number>();
+  for (const [, importName] of ctx.stringLiteralMap) {
+    const funcIdx = ctx.funcMap.get(importName);
+    if (funcIdx !== undefined) strFuncIdxSet.add(funcIdx);
+  }
+  if (strFuncIdxSet.size === 0) return;
+
+  // Collect all unique string-thunk funcIdx values used in the body
+  const usedFuncIdxs = new Set<number>();
+  collectStringCalls(fctx.body, strFuncIdxSet, usedFuncIdxs);
+  if (usedFuncIdxs.size === 0) return;
+
+  // Allocate a local for each unique string thunk and build the mapping
+  const cacheMap = new Map<number, number>(); // funcIdx → local index
+  for (const funcIdx of usedFuncIdxs) {
+    const localIdx = allocLocal(fctx, `__cached_str_${funcIdx}`, {
+      kind: "externref",
+    });
+    cacheMap.set(funcIdx, localIdx);
+  }
+
+  // Build the cache-loading preamble (call + local.set for each)
+  const preamble: Instr[] = [];
+  for (const [funcIdx, localIdx] of cacheMap) {
+    preamble.push({ op: "call", funcIdx });
+    preamble.push({ op: "local.set", index: localIdx });
+  }
+
+  // Replace all matching call instructions in the body with local.get
+  replaceStringCalls(fctx.body, cacheMap);
+
+  // Prepend the preamble at the start of the body
+  fctx.body.unshift(...preamble);
+}
+
+/** Recursively scan instructions to find call instructions targeting string thunks. */
+function collectStringCalls(
+  instrs: Instr[],
+  strFuncIdxSet: Set<number>,
+  found: Set<number>,
+): void {
+  for (const instr of instrs) {
+    if (instr.op === "call" && strFuncIdxSet.has(instr.funcIdx)) {
+      found.add(instr.funcIdx);
+    }
+    // Recurse into nested blocks
+    if (instr.op === "block" || instr.op === "loop") {
+      collectStringCalls(instr.body, strFuncIdxSet, found);
+    } else if (instr.op === "if") {
+      collectStringCalls(instr.then, strFuncIdxSet, found);
+      if (instr.else) collectStringCalls(instr.else, strFuncIdxSet, found);
+    } else if (instr.op === "try") {
+      collectStringCalls(instr.body, strFuncIdxSet, found);
+      for (const c of instr.catches) {
+        collectStringCalls(c.body, strFuncIdxSet, found);
+      }
+      if (instr.catchAll) collectStringCalls(instr.catchAll, strFuncIdxSet, found);
+    }
+  }
+}
+
+/** Recursively replace call instructions matching the cache map with local.get. */
+function replaceStringCalls(
+  instrs: Instr[],
+  cacheMap: Map<number, number>,
+): void {
+  for (let i = 0; i < instrs.length; i++) {
+    const instr = instrs[i]!;
+    if (instr.op === "call" && cacheMap.has(instr.funcIdx)) {
+      // Replace in-place: swap the call with a local.get
+      const localIdx = cacheMap.get(instr.funcIdx)!;
+      (instrs as any)[i] = { op: "local.get", index: localIdx };
+    }
+    // Recurse into nested blocks
+    if (instr.op === "block" || instr.op === "loop") {
+      replaceStringCalls(instr.body, cacheMap);
+    } else if (instr.op === "if") {
+      replaceStringCalls(instr.then, cacheMap);
+      if (instr.else) replaceStringCalls(instr.else, cacheMap);
+    } else if (instr.op === "try") {
+      replaceStringCalls(instr.body, cacheMap);
+      for (const c of instr.catches) {
+        replaceStringCalls(c.body, cacheMap);
+      }
+      if (instr.catchAll) replaceStringCalls(instr.catchAll, cacheMap);
+    }
+  }
 }
 
 function hasExportModifier(node: ts.Node): boolean {
