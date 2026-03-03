@@ -4,7 +4,7 @@ import type { ValType } from "../ir/types.js";
 /** Types with built-in wasm GC handling that should NOT be treated as extern classes */
 const BUILTIN_TYPES = new Set([
   "Array", "Number", "Boolean", "String", "Object", "Function",
-  "Symbol", "BigInt", "RegExp", "Int8Array", "Uint8Array", "Int16Array",
+  "Symbol", "BigInt", "Int8Array", "Uint8Array", "Int16Array",
   "Uint16Array", "Int32Array", "Uint32Array", "Float32Array", "Float64Array",
   "ArrayBuffer", "DataView", "JSON", "Math", "Promise",
   "Generator", "Iterator", "IterableIterator", "Iterable",

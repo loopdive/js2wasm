@@ -1,5 +1,6 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext, ClosureInfo, RestParamInfo } from "./index.js";
+import { allocLocal, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addUnionImports, parseRegExpLiteral } from "./index.js";
 import { allocLocal, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addUnionImports, ensureStructForType } from "./index.js";
 import { allocLocal, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addUnionImports, isTupleType, getTupleElementTypes, getOrRegisterTupleType } from "./index.js";
 import { allocLocal, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addUnionImports, localGlobalIdx } from "./index.js";
@@ -260,12 +261,56 @@ function compileExpressionInner(
     return compileArrowFunction(ctx, fctx, expr);
   }
 
+  // RegExp literal (/pattern/flags) → desugar to new RegExp(pattern, flags)
+  if (expr.kind === ts.SyntaxKind.RegularExpressionLiteral) {
+    return compileRegExpLiteral(ctx, fctx, expr);
+  }
+
   ctx.errors.push({
     message: `Unsupported expression: ${ts.SyntaxKind[expr.kind]}`,
     line: getLine(expr),
     column: getCol(expr),
   });
   return null;
+}
+
+// ── RegExp literal ────────────────────────────────────────────────────
+
+/**
+ * Compile a RegExp literal (e.g. /\d+/g) by desugaring it to new RegExp(pattern, flags).
+ * The pattern and flags strings are loaded from the string pool, then RegExp_new is called.
+ */
+function compileRegExpLiteral(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.Expression,
+): ValType | null {
+  const { pattern, flags } = parseRegExpLiteral(expr.getText());
+
+  // Load pattern string
+  const patternResult = compileStringLiteral(ctx, fctx, pattern, expr);
+  if (!patternResult) return null;
+
+  // Load flags string (or ref.null.extern if no flags)
+  if (flags) {
+    const flagsResult = compileStringLiteral(ctx, fctx, flags, expr);
+    if (!flagsResult) return null;
+  } else {
+    fctx.body.push({ op: "ref.null.extern" });
+  }
+
+  // Call RegExp_new(pattern, flags) → externref
+  const funcIdx = ctx.funcMap.get("RegExp_new");
+  if (funcIdx === undefined) {
+    ctx.errors.push({
+      message: "Missing RegExp_new import for regex literal",
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+  fctx.body.push({ op: "call", funcIdx });
+  return { kind: "externref" };
 }
 
 // ── Arrow function callbacks ──────────────────────────────────────────
@@ -2593,6 +2638,10 @@ function compileNewExpression(
     const args = expr.arguments ?? [];
     for (let i = 0; i < args.length; i++) {
       compileExpression(ctx, fctx, args[i]!, externInfo.constructorParams[i]);
+    }
+    // Pad missing optional args with default values
+    for (let i = args.length; i < externInfo.constructorParams.length; i++) {
+      pushDefaultValue(fctx, externInfo.constructorParams[i]!);
     }
 
     const importName = `${externInfo.importPrefix}_new`;
