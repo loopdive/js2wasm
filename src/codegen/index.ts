@@ -971,6 +971,10 @@ export function addUnionImports(ctx: CodegenContext): void {
   if (ctx.hasUnionImports) return;
   ctx.hasUnionImports = true;
 
+  // Record the import count before adding, so we can adjust defined-function
+  // indices if imports are added after collectDeclarations has run.
+  const importsBefore = ctx.numImportFuncs;
+
   // __typeof_number: (externref) → i32
   const typeofType = addFuncType(
     ctx,
@@ -1028,6 +1032,60 @@ export function addUnionImports(ctx: CodegenContext): void {
     kind: "func",
     typeIdx: boxBoolType,
   });
+
+  // If imports were added after defined functions were registered (late addition),
+  // shift all defined-function indices and fix exports/funcMap/call instructions.
+  // The new imports themselves (at indices importsBefore..numImportFuncs-1) are already
+  // correct, so we only shift indices that were >= importsBefore BEFORE the addition,
+  // i.e., the defined functions that start at index importsBefore in the old scheme.
+  const delta = ctx.numImportFuncs - importsBefore;
+  if (delta > 0 && ctx.mod.functions.length > 0) {
+    // Build a set of the new import names to skip them during funcMap update
+    const newImportNames = new Set([
+      "__typeof_number", "__typeof_string", "__typeof_boolean",
+      "__is_truthy", "__unbox_number", "__unbox_boolean",
+      "__box_number", "__box_boolean",
+    ]);
+    // Update funcMap entries for defined functions (not imports)
+    for (const [name, idx] of ctx.funcMap) {
+      if (!newImportNames.has(name) && idx >= importsBefore) {
+        ctx.funcMap.set(name, idx + delta);
+      }
+    }
+    // Update export indices
+    for (const exp of ctx.mod.exports) {
+      if (exp.desc.kind === "func" && exp.desc.index >= importsBefore) {
+        exp.desc.index += delta;
+      }
+    }
+    // Update call instructions in already-compiled function bodies
+    for (const func of ctx.mod.functions) {
+      for (const instr of func.body) {
+        if (instr.op === "call" && instr.funcIdx >= importsBefore) {
+          instr.funcIdx += delta;
+        }
+        if (instr.op === "ref.func" && instr.funcIdx >= importsBefore) {
+          instr.funcIdx += delta;
+        }
+      }
+    }
+    // Update table elements
+    for (const elem of ctx.mod.elements) {
+      if (elem.funcIndices) {
+        for (let i = 0; i < elem.funcIndices.length; i++) {
+          if (elem.funcIndices[i]! >= importsBefore) {
+            elem.funcIndices[i]! += delta;
+          }
+        }
+      }
+    }
+    // Update declaredFuncRefs
+    if (ctx.mod.declaredFuncRefs.length > 0) {
+      ctx.mod.declaredFuncRefs = ctx.mod.declaredFuncRefs.map(
+        idx => idx >= importsBefore ? idx + delta : idx,
+      );
+    }
+  }
 }
 
 export function addImport(
@@ -1860,6 +1918,8 @@ const LIB_GLOBALS = new Set([
   "document",
   "window",
   "Date",
+  "Map",
+  "Set",
   "RegExp",
   "Error",
   "HTMLElement",
