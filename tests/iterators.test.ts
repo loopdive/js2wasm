@@ -1,13 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { compile } from "../src/index.js";
-
-const jsStringPolyfill = {
-  concat: (a: string, b: string) => a + b,
-  length: (s: string) => s.length,
-  equals: (a: string, b: string) => (a === b ? 1 : 0),
-  substring: (s: string, start: number, end: number) => s.substring(start, end),
-  charCodeAt: (s: string, i: number) => s.charCodeAt(i),
-};
+import { buildImports } from "../src/runtime.js";
 
 async function run(source: string, fn: string, args: unknown[] = []): Promise<unknown> {
   const result = compile(source);
@@ -16,27 +9,8 @@ async function run(source: string, fn: string, args: unknown[] = []): Promise<un
       `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}\nWAT:\n${result.wat}`,
     );
   }
-  const env: Record<string, Function> = {
-    console_log_number: () => {},
-    console_log_bool: () => {},
-    console_log_string: () => {},
-    console_log_externref: () => {},
-    // Iterator protocol host functions
-    __iterator: (obj: any) => obj[Symbol.iterator](),
-    __iterator_next: (iter: any) => iter.next(),
-    __iterator_done: (result: any) => (result.done ? 1 : 0),
-    __iterator_value: (result: any) => result.value,
-  };
-  // String literal thunks
-  for (let i = 0; i < result.stringPool.length; i++) {
-    const value = result.stringPool[i]!;
-    env[`__str_${i}`] = () => value;
-  }
-
-  const { instance } = await WebAssembly.instantiate(result.binary, {
-    env,
-    "wasm:js-string": jsStringPolyfill,
-  } as WebAssembly.Imports);
+  const imports = buildImports(result.imports, undefined, result.stringPool);
+  const { instance } = await WebAssembly.instantiate(result.binary, imports as WebAssembly.Imports);
   return (instance.exports as any)[fn](...args);
 }
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { compile } from "../src/index.js";
-import { buildImports, jsApi } from "../src/runtime.js";
+import { buildImports } from "../src/runtime.js";
 
 describe("Promise.all / Promise.race", () => {
   it("Promise.all with resolved values", async () => {
@@ -22,15 +22,10 @@ describe("Promise.all / Promise.race", () => {
       `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}\nWAT:\n${result.wat}`,
     ).toBe(true);
 
-    const hostApi: Record<string, Function> = {
-      Host_Source_new: () => ({}),
-      Host_Source_getPromises: () => [
-        Promise.resolve(1),
-        Promise.resolve(2),
-        Promise.resolve(3),
-      ],
-    };
-    const imports = buildImports(result.stringPool, jsApi, hostApi);
+    class MockSource {
+      getPromises() { return [Promise.resolve(1), Promise.resolve(2), Promise.resolve(3)]; }
+    }
+    const imports = buildImports(result.imports, { Source: MockSource }, result.stringPool);
     const { instance } = await WebAssembly.instantiate(
       result.binary,
       imports as WebAssembly.Imports,
@@ -60,15 +55,10 @@ describe("Promise.all / Promise.race", () => {
       `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}\nWAT:\n${result.wat}`,
     ).toBe(true);
 
-    const hostApi: Record<string, Function> = {
-      Host_Source_new: () => ({}),
-      Host_Source_getPromises: () => [
-        Promise.resolve(10),
-        Promise.resolve(20),
-        Promise.resolve(30),
-      ],
-    };
-    const imports = buildImports(result.stringPool, jsApi, hostApi);
+    class MockSource {
+      getPromises() { return [Promise.resolve(10), Promise.resolve(20), Promise.resolve(30)]; }
+    }
+    const imports = buildImports(result.imports, { Source: MockSource }, result.stringPool);
     const { instance } = await WebAssembly.instantiate(
       result.binary,
       imports as WebAssembly.Imports,

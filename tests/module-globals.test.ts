@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { compile } from "../src/index.js";
-import { buildImports, jsApi } from "../src/runtime.js";
+import { buildImports } from "../src/runtime.js";
 
 describe("module-level globals", () => {
   it("module-level counter shared between functions", async () => {
@@ -20,7 +20,7 @@ export function main(): number {
 `;
     const result = compile(src);
     expect(result.success).toBe(true);
-    const imports = buildImports(result.stringPool, jsApi);
+    const imports = buildImports(result.imports);
     const { instance } = await WebAssembly.instantiate(
       result.binary as BufferSource,
       imports,
@@ -46,7 +46,7 @@ export function main(): number {
 `;
     const result = compile(src);
     expect(result.success).toBe(true);
-    const imports = buildImports(result.stringPool, jsApi);
+    const imports = buildImports(result.imports);
     const { instance } = await WebAssembly.instantiate(
       result.binary as BufferSource,
       imports,

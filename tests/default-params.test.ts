@@ -1,32 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { compile, type CompileResult } from "../src/index.js";
-
-const jsStringPolyfill = {
-  concat: (a: string, b: string) => a + b,
-  length: (s: string) => s.length,
-  equals: (a: string, b: string) => (a === b ? 1 : 0),
-  substring: (s: string, start: number, end: number) =>
-    s.substring(start, end),
-  charCodeAt: (s: string, i: number) => s.charCodeAt(i),
-};
-
-function buildImports(result: CompileResult): WebAssembly.Imports {
-  const env: Record<string, Function> = {
-    console_log_number: () => {},
-    console_log_string: () => {},
-    console_log_bool: () => {},
-  };
-  for (let i = 0; i < result.stringPool.length; i++) {
-    const value = result.stringPool[i]!;
-    env[`__str_${i}`] = () => value;
-  }
-  const imports: Record<string, Record<string, unknown>> = { env };
-  // Only include wasm:js-string polyfill if the module uses string imports
-  if (result.wat.includes("wasm:js-string")) {
-    imports["wasm:js-string"] = jsStringPolyfill;
-  }
-  return imports as WebAssembly.Imports;
-}
+import { compile } from "../src/index.js";
+import { buildImports } from "../src/runtime.js";
 
 describe("default parameter values", () => {
   it("numeric default value is used when argument is omitted", { timeout: 15000 }, async () => {
@@ -45,7 +19,7 @@ describe("default parameter values", () => {
 
     const { instance } = await WebAssembly.instantiate(
       result.binary,
-      buildImports(result),
+      buildImports(result.imports, undefined, result.stringPool),
     );
     const exports = instance.exports as any;
     expect(exports.test()).toBe(42);
@@ -67,7 +41,7 @@ describe("default parameter values", () => {
 
     const { instance } = await WebAssembly.instantiate(
       result.binary,
-      buildImports(result),
+      buildImports(result.imports, undefined, result.stringPool),
     );
     const exports = instance.exports as any;
     expect(exports.test()).toBe(99);
@@ -95,7 +69,7 @@ describe("default parameter values", () => {
 
     const { instance } = await WebAssembly.instantiate(
       result.binary,
-      buildImports(result),
+      buildImports(result.imports, undefined, result.stringPool),
     );
     const exports = instance.exports as any;
     expect(exports.noArgs()).toBe(3);   // 1 + 2
@@ -119,7 +93,7 @@ describe("default parameter values", () => {
 
     const { instance } = await WebAssembly.instantiate(
       result.binary,
-      buildImports(result),
+      buildImports(result.imports, undefined, result.stringPool),
     );
     const exports = instance.exports as any;
     expect(exports.test()).toBe("Hello world");
@@ -141,7 +115,7 @@ describe("default parameter values", () => {
 
     const { instance } = await WebAssembly.instantiate(
       result.binary,
-      buildImports(result),
+      buildImports(result.imports, undefined, result.stringPool),
     );
     const exports = instance.exports as any;
     expect(exports.test()).toBe("Hello Bob");
@@ -166,7 +140,7 @@ describe("default parameter values", () => {
 
     const { instance } = await WebAssembly.instantiate(
       result.binary,
-      buildImports(result),
+      buildImports(result.imports, undefined, result.stringPool),
     );
     const exports = instance.exports as any;
     expect(exports.withDefault()).toBe(50);  // 5 * 10
@@ -195,7 +169,7 @@ describe("default parameter values", () => {
 
     const { instance } = await WebAssembly.instantiate(
       result.binary,
-      buildImports(result),
+      buildImports(result.imports, undefined, result.stringPool),
     );
     const exports = instance.exports as any;
     expect(exports.withDefault()).toBe(1);
@@ -218,7 +192,7 @@ describe("default parameter values", () => {
 
     const { instance } = await WebAssembly.instantiate(
       result.binary,
-      buildImports(result),
+      buildImports(result.imports, undefined, result.stringPool),
     );
     const exports = instance.exports as any;
     expect(exports.test()).toBe(14); // (3+4) * 2

@@ -16,8 +16,86 @@ import { emitObject } from "./emit/object.js";
 import { generateSourceMap } from "./emit/sourcemap.js";
 import { emitWat } from "./emit/wat.js";
 import { preprocessImports } from "./import-resolver.js";
-import type { CompileError, CompileOptions, CompileResult } from "./index.js";
+import type { CompileError, CompileOptions, CompileResult, ImportDescriptor, ImportIntent } from "./index.js";
 import type { WasmModule } from "./ir/types.js";
+
+function classifyImport(name: string, mod: WasmModule): ImportIntent {
+  // String literals
+  const strValue = mod.stringLiteralValues.get(name);
+  if (strValue !== undefined) return { type: "string_literal", value: strValue };
+
+  // Console
+  if (name === "console_log_number") return { type: "console_log", variant: "number" };
+  if (name === "console_log_bool") return { type: "console_log", variant: "bool" };
+  if (name === "console_log_string") return { type: "console_log", variant: "string" };
+  if (name === "console_log_externref") return { type: "console_log", variant: "externref" };
+
+  // Math
+  if (name.startsWith("Math_")) return { type: "math", method: name.slice(5) };
+
+  // String methods
+  if (name.startsWith("string_")) return { type: "string_method", method: name.slice(7) };
+
+  // Builtins
+  if (name === "number_toString") return { type: "builtin", name };
+  if (name === "number_toFixed") return { type: "builtin", name };
+
+  // Date
+  if (name === "Date_new") return { type: "date_new" };
+  if (name.startsWith("Date_")) return { type: "date_method", method: name.slice(5) };
+
+  // Extern classes — check mod.externClasses
+  for (const ec of mod.externClasses) {
+    const prefix = ec.importPrefix;
+    if (name === `${prefix}_new`) return { type: "extern_class", className: ec.className, action: "new" };
+    for (const [methodName] of ec.methods) {
+      if (name === `${prefix}_${methodName}`) return { type: "extern_class", className: ec.className, action: "method", member: methodName };
+    }
+    for (const [propName] of ec.properties) {
+      if (name === `${prefix}_get_${propName}`) return { type: "extern_class", className: ec.className, action: "get", member: propName };
+      if (name === `${prefix}_set_${propName}`) return { type: "extern_class", className: ec.className, action: "set", member: propName };
+    }
+  }
+
+  // Callback maker
+  if (name === "__make_callback") return { type: "callback_maker" };
+
+  // Async/await
+  if (name === "__await") return { type: "await" };
+
+  // Union type helpers
+  if (name === "__typeof_number") return { type: "typeof_check", targetType: "number" };
+  if (name === "__typeof_string") return { type: "typeof_check", targetType: "string" };
+  if (name === "__typeof_boolean") return { type: "typeof_check", targetType: "boolean" };
+  if (name === "__unbox_number") return { type: "unbox", targetType: "number" };
+  if (name === "__unbox_boolean") return { type: "unbox", targetType: "boolean" };
+  if (name === "__box_number") return { type: "box", targetType: "number" };
+  if (name === "__box_boolean") return { type: "box", targetType: "boolean" };
+  if (name === "__is_truthy") return { type: "truthy_check" };
+
+  // Extern get
+  if (name === "__extern_get") return { type: "extern_get" };
+
+  // Declared globals (like `declare const document: Document`)
+  if (name.startsWith("global_")) return { type: "declared_global", name: name.slice(7) };
+
+  // Fallback
+  return { type: "builtin", name };
+}
+
+function buildImportManifest(mod: WasmModule): ImportDescriptor[] {
+  const manifest: ImportDescriptor[] = [];
+  for (const imp of mod.imports) {
+    if (imp.module !== "env") continue;
+    manifest.push({
+      module: "env",
+      name: imp.name,
+      kind: imp.desc.kind === "func" ? "func" : "global",
+      intent: classifyImport(imp.name, mod),
+    });
+  }
+  return manifest;
+}
 
 /**
  * Orchestrates the full compilation pipeline:
@@ -70,6 +148,7 @@ export function compileSource(
       success: false,
       errors,
       stringPool: [],
+      imports: [],
     };
   }
 
@@ -109,6 +188,7 @@ export function compileSource(
       success: false,
       errors,
       stringPool: [],
+      imports: [],
     };
   }
 
@@ -159,6 +239,7 @@ export function compileSource(
       success: false,
       errors,
       stringPool: [],
+      imports: [],
     };
   }
 
@@ -193,6 +274,7 @@ export function compileSource(
     errors,
     stringPool: mod.stringPool,
     sourceMap: sourceMapJson,
+    imports: buildImportManifest(mod),
   };
 }
 
@@ -240,6 +322,7 @@ export function compileMultiSource(
       success: false,
       errors,
       stringPool: [],
+      imports: [],
     };
   }
 
@@ -273,6 +356,7 @@ export function compileMultiSource(
       success: false,
       errors,
       stringPool: [],
+      imports: [],
     };
   }
 
@@ -323,6 +407,7 @@ export function compileMultiSource(
       success: false,
       errors,
       stringPool: [],
+      imports: [],
     };
   }
 
@@ -359,6 +444,7 @@ export function compileMultiSource(
     errors,
     stringPool: mod.stringPool,
     sourceMap: sourceMapJson,
+    imports: buildImportManifest(mod),
   };
 }
 

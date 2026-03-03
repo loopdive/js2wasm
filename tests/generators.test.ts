@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { compile } from "../src/index.js";
-import { buildImports, jsApi } from "../src/runtime.js";
+import { buildImports } from "../src/runtime.js";
 
 // Helper to compile and run a generator test with the standard runtime imports
 async function compileAndRun(source: string): Promise<{
@@ -14,7 +14,7 @@ async function compileAndRun(source: string): Promise<{
     );
   }
 
-  const imports = buildImports(result.stringPool, jsApi);
+  const imports = buildImports(result.imports, undefined, result.stringPool);
   const { instance } = await WebAssembly.instantiate(
     result.binary,
     imports as unknown as WebAssembly.Imports,

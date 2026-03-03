@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { compile } from "../src/index.js";
-import { buildImports, jsApi } from "../src/runtime.js";
+import { buildImports } from "../src/runtime.js";
 
 async function run(
   source: string,
@@ -13,13 +13,13 @@ async function run(
       `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}\nWAT:\n${result.wat}`,
     );
   }
-  const imports = buildImports(result.stringPool, jsApi);
+  const imports = buildImports(result.imports, undefined, result.stringPool);
   const { instance } = await WebAssembly.instantiate(result.binary, imports);
   return (instance.exports as any)[fn](...args);
 }
 
 describe("string literal caching", () => {
-  it("caches string literals in locals (WAT inspection)", { timeout: 15000 }, () => {
+  it("string literals use imported string constants (WAT inspection)", { timeout: 15000 }, () => {
     const src = `
       export function greet(): string {
         return "hello";
@@ -28,13 +28,12 @@ describe("string literal caching", () => {
     const result = compile(src);
     expect(result.success).toBe(true);
     const wat = result.wat!;
-    // The string thunk call should be replaced with a cached local
-    expect(wat).toContain("__cached_str_");
-    expect(wat).toContain("local.set");
-    expect(wat).toContain("local.get");
+    // String literals are now imported as string_constants globals
+    expect(wat).toContain('string_constants');
+    expect(wat).toContain('global.get');
   });
 
-  it("string literal in loop uses local.get instead of call", () => {
+  it("string literal in loop uses global.get", () => {
     const src = `
       export function bench(): string {
         let s: string = "";
@@ -47,16 +46,9 @@ describe("string literal caching", () => {
     const result = compile(src);
     expect(result.success).toBe(true);
     const wat = result.wat!;
-    // Cache locals should be allocated
-    expect(wat).toContain("__cached_str_");
-
-    // The loop body should NOT contain a call to __str_ —
-    // the call should only be in the preamble
-    const loopBodyMatch = wat.match(/\(loop[\s\S]*?\n\s*\)/);
-    if (loopBodyMatch) {
-      // Inside the loop there should be local.get for the cached string
-      expect(loopBodyMatch[0]).toContain("local.get");
-    }
+    // String constants should be imported as globals
+    expect(wat).toContain('string_constants');
+    expect(wat).toContain('global.get');
   });
 
   it("string concat in loop produces correct result", async () => {
@@ -72,7 +64,7 @@ describe("string literal caching", () => {
     expect(await run(src, "repeat5")).toBe("ababababab");
   });
 
-  it("multiple different string literals are cached separately", () => {
+  it("multiple different string literals have separate constants", () => {
     const src = `
       export function test(): string {
         const a: string = "hello";
@@ -82,14 +74,13 @@ describe("string literal caching", () => {
     `;
     const result = compile(src);
     expect(result.success).toBe(true);
-    const wat = result.wat!;
-    // Should have multiple cached string locals
-    const cacheMatches = wat.match(/__cached_str_/g);
-    expect(cacheMatches).not.toBeNull();
-    expect(cacheMatches!.length).toBeGreaterThanOrEqual(3); // at least "hello", "world", " " (x2 for set+get each)
+    // Each unique string should be in the stringPool
+    expect(result.stringPool).toContain("hello");
+    expect(result.stringPool).toContain("world");
+    expect(result.stringPool).toContain(" ");
   });
 
-  it("same string literal used twice is cached once", () => {
+  it("same string literal used twice appears once in stringPool", () => {
     const src = `
       export function test(): string {
         const a: string = "x";
@@ -99,16 +90,9 @@ describe("string literal caching", () => {
     `;
     const result = compile(src);
     expect(result.success).toBe(true);
-    const wat = result.wat!;
-    // "x" appears twice in source but should only get one cached local
-    const setMatches = wat.match(/local\.set.*__cached_str_/g) ?? [];
-    // The preamble should have exactly one local.set for "x"
-    // (We count unique cached local names)
-    const cacheLocals = new Set(
-      (wat.match(/__cached_str_\d+/g) ?? []),
-    );
-    // Only one unique cached local name (used in both local.set and local.get)
-    expect(cacheLocals.size).toBe(1);
+    // "x" appears twice in source but should only be in stringPool once
+    const xCount = result.stringPool.filter((s: string) => s === "x").length;
+    expect(xCount).toBe(1);
   });
 
   it("string enum value is cached correctly", async () => {

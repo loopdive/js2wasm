@@ -1,9 +1,6 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext, ClosureInfo, RestParamInfo } from "./index.js";
-import { allocLocal, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addUnionImports, parseRegExpLiteral } from "./index.js";
-import { allocLocal, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addUnionImports, ensureStructForType } from "./index.js";
-import { allocLocal, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addUnionImports, isTupleType, getTupleElementTypes, getOrRegisterTupleType } from "./index.js";
-import { allocLocal, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addUnionImports, localGlobalIdx } from "./index.js";
+import { allocLocal, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx } from "./index.js";
 import {
   mapTsTypeToWasm,
   isNumberType,
@@ -81,8 +78,6 @@ function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: ValType, t
     fctx.body.push({ op: "i32.eqz" });
     return;
   }
-  // externref → f64 (unbox number if import available)
-  if (from.kind === "externref" && to.kind === "f64") {
   // externref → f64 (unbox number)
   if (from.kind === "externref" && to.kind === "f64") {
     addUnionImports(ctx);
@@ -2232,6 +2227,8 @@ function compileCallExpression(
       expr.arguments.length === 1
     ) {
       return compileObjectKeysOrValues(ctx, fctx, propAccess.name.text, expr);
+    }
+
     // Handle Promise.all / Promise.race — host-delegated static calls
     if (
       ts.isIdentifier(propAccess.expression) &&
@@ -2245,6 +2242,9 @@ function compileCallExpression(
         compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "externref" });
         fctx.body.push({ op: "call", funcIdx });
         return { kind: "externref" };
+      }
+    }
+
     // Handle JSON.stringify / JSON.parse as host import calls
     if (
       ts.isIdentifier(propAccess.expression) &&
@@ -5304,6 +5304,8 @@ function compileYieldExpression(
   }
 
   return VOID_RESULT;
+}
+
 // ── Functional array methods (filter, map, reduce, forEach, find, findIndex, some, every) ──
 
 /**
