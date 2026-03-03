@@ -627,6 +627,7 @@ const STRING_METHODS: Record<string, { params: ValType[]; result: ValType }> = {
     params: [{ kind: "f64" }, { kind: "externref" }],
     result: { kind: "externref" },
   },
+  split: { params: [{ kind: "externref" }], result: { kind: "externref" } },
 };
 
 /** Scan source for method calls on string types and register needed imports */
@@ -662,6 +663,19 @@ function collectStringMethodImports(
     const params: ValType[] = [{ kind: "externref" }, ...sig.params]; // self + args
     const t = addFuncType(ctx, params, [sig.result]);
     addImport(ctx, "env", `string_${method}`, { kind: "func", typeIdx: t });
+  }
+
+  // split() returns an externref JS array — register __extern_get and __extern_length
+  // so that element access and .length work on the result
+  if (needed.has("split")) {
+    if (!ctx.funcMap.has("__extern_get")) {
+      const getType = addFuncType(ctx, [{ kind: "externref" }, { kind: "f64" }], [{ kind: "externref" }]);
+      addImport(ctx, "env", "__extern_get", { kind: "func", typeIdx: getType });
+    }
+    if (!ctx.funcMap.has("__extern_length")) {
+      const lenType = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "f64" }]);
+      addImport(ctx, "env", "__extern_length", { kind: "func", typeIdx: lenType });
+    }
   }
 }
 

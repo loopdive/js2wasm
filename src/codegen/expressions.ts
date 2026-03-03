@@ -3006,6 +3006,23 @@ function compilePropertyAccess(
 
   // Handle array.length (vec struct: field 0 is the logical length)
   if (propName === "length") {
+    // Check if the local is actually externref (e.g. from string.split() returning a JS array)
+    if (ts.isIdentifier(expr.expression)) {
+      const localIdx = fctx.localMap.get(expr.expression.text);
+      if (localIdx !== undefined) {
+        const localType = localIdx < fctx.params.length
+          ? fctx.params[localIdx]!.type
+          : fctx.locals[localIdx - fctx.params.length]?.type;
+        if (localType?.kind === "externref") {
+          const funcIdx = ctx.funcMap.get("__extern_length");
+          if (funcIdx !== undefined) {
+            fctx.body.push({ op: "local.get", index: localIdx });
+            fctx.body.push({ op: "call", funcIdx });
+            return { kind: "f64" };
+          }
+        }
+      }
+    }
     const objWasmType = resolveWasmType(ctx, objType);
     if (objWasmType.kind === "ref" || objWasmType.kind === "ref_null") {
       const vecTypeIdx = (objWasmType as { typeIdx: number }).typeIdx;
