@@ -586,6 +586,10 @@ function generateEnvImportLine(name: string, mod: WasmModule): string {
   if (name === "__box_boolean") return `${name}: (v) => Boolean(v)`;
   if (name === "__is_truthy") return `${name}: (v) => v ? 1 : 0`;
 
+  // Callback bridges for functional array methods
+  if (name === "__call_1_f64") return `${name}: (fn, a) => fn(a)`;
+  if (name === "__call_2_f64") return `${name}: (fn, a, b) => fn(a, b)`;
+
   // Fallback: no-op stub
   return `${name}: () => {}`;
 }

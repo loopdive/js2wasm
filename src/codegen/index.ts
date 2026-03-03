@@ -185,6 +185,8 @@ export interface CodegenContext {
   classExprNameMap: Map<string, string>;
   /** Whether to attach source positions for source map generation */
   sourceMap: boolean;
+  /** Map from tuple type signature key → type index of the tuple struct */
+  tupleTypeMap: Map<string, number>;
 }
 
 /** Metadata for a closure stored in a local variable */
@@ -295,6 +297,7 @@ export function generateModule(
     classTagMap: new Map(),
     classExprNameMap: new Map(),
     sourceMap: options?.sourceMap ?? false,
+    tupleTypeMap: new Map(),
   };
 
   // Collect console.log imports (only variants actually used)
@@ -325,11 +328,16 @@ export function generateModule(
   // Collect Math host imports for methods without native Wasm equivalents
   collectMathImports(ctx, ast.sourceFile);
 
+  // Collect Promise.all / Promise.race host imports
+  collectPromiseImports(ctx, ast.sourceFile);
   // Collect JSON.parse / JSON.stringify host imports
   collectJsonImports(ctx, ast.sourceFile);
 
   // Collect __make_callback import if arrow functions are used as call arguments
   collectCallbackImports(ctx, ast.sourceFile);
+
+  // Collect host callback bridges for functional array methods (filter, map, etc.)
+  collectFunctionalArrayImports(ctx, ast.sourceFile);
 
   // Collect union type helper imports (typeof checks, boxing/unboxing)
   collectUnionImports(ctx, ast.sourceFile);
@@ -436,6 +444,7 @@ export function generateMultiModule(
     classTagMap: new Map(),
     classExprNameMap: new Map(),
     sourceMap: options?.sourceMap ?? false,
+    tupleTypeMap: new Map(),
   };
 
   // Phase 1: Collect all import-phase declarations across all source files
@@ -466,8 +475,10 @@ export function generateMultiModule(
     collectStringLiterals(ctx, sf);
     collectStringMethodImports(ctx, sf);
     collectMathImports(ctx, sf);
+    collectPromiseImports(ctx, sf);
     collectJsonImports(ctx, sf);
     collectCallbackImports(ctx, sf);
+    collectFunctionalArrayImports(ctx, sf);
     collectUnionImports(ctx, sf);
     collectGeneratorImports(ctx, sf);
     collectForInStringLiterals(ctx, sf);
@@ -942,6 +953,12 @@ function collectMathImports(
   }
 }
 
+/** Scan source for Promise.all / Promise.race calls and register host imports */
+function collectPromiseImports(
+  ctx: CodegenContext,
+  sourceFile: ts.SourceFile,
+): void {
+  const needed = new Set<string>();
 /** Scan source for JSON.parse / JSON.stringify calls and register host imports */
 function collectJsonImports(
   ctx: CodegenContext,
@@ -955,6 +972,12 @@ function collectJsonImports(
       ts.isCallExpression(node) &&
       ts.isPropertyAccessExpression(node.expression) &&
       ts.isIdentifier(node.expression.expression) &&
+      node.expression.expression.text === "Promise"
+    ) {
+      const method = node.expression.name.text;
+      if (method === "all" || method === "race") {
+        needed.add(method);
+      }
       node.expression.expression.text === "JSON"
     ) {
       const method = node.expression.name.text;
@@ -978,6 +1001,17 @@ function collectJsonImports(
     }
   }
 
+  for (const method of needed) {
+    const importName = `Promise_${method}`;
+    if (!ctx.funcMap.has(importName)) {
+      // (externref) -> externref — takes array of promises, returns promise
+      const typeIdx = addFuncType(
+        ctx,
+        [{ kind: "externref" }],
+        [{ kind: "externref" }],
+      );
+      addImport(ctx, "env", importName, { kind: "func", typeIdx });
+    }
   if (needStringify || needParse) {
     // Ensure boxing imports are available (stringify may receive numbers/booleans
     // that need to be coerced to externref before the host call)
@@ -1134,6 +1168,64 @@ function collectGeneratorImports(
       kind: "func",
       typeIdx: resultDoneType,
     });
+/** Functional array methods that need host callback bridges */
+const FUNCTIONAL_ARRAY_METHODS = new Set([
+  "filter", "map", "reduce", "forEach", "find", "findIndex", "some", "every",
+]);
+
+/** Scan source for functional array methods (filter, map, etc.) and register __call_Nf64 imports */
+function collectFunctionalArrayImports(
+  ctx: CodegenContext,
+  sourceFile: ts.SourceFile,
+): void {
+  let need1 = false;
+  let need2 = false;
+
+  function visit(node: ts.Node) {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression)
+    ) {
+      const method = node.expression.name.text;
+      if (FUNCTIONAL_ARRAY_METHODS.has(method)) {
+        if (method === "reduce") {
+          need2 = true;
+        } else {
+          need1 = true;
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  for (const stmt of sourceFile.statements) {
+    if (ts.isFunctionDeclaration(stmt) && stmt.body) {
+      visit(stmt.body);
+    }
+    // Also scan module-level variable declarations
+    if (ts.isVariableStatement(stmt)) {
+      visit(stmt);
+    }
+  }
+
+  if (need1) {
+    // __call_1_f64: (externref, f64) → f64 — invoke callback with 1 f64 arg
+    const typeIdx = addFuncType(
+      ctx,
+      [{ kind: "externref" }, { kind: "f64" }],
+      [{ kind: "f64" }],
+    );
+    addImport(ctx, "env", "__call_1_f64", { kind: "func", typeIdx });
+  }
+
+  if (need2) {
+    // __call_2_f64: (externref, f64, f64) → f64 — invoke callback with 2 f64 args
+    const typeIdx = addFuncType(
+      ctx,
+      [{ kind: "externref" }, { kind: "f64" }, { kind: "f64" }],
+      [{ kind: "f64" }],
+    );
+    addImport(ctx, "env", "__call_2_f64", { kind: "func", typeIdx });
   }
 }
 
@@ -1187,6 +1279,10 @@ function collectUnionImports(
 export function addUnionImports(ctx: CodegenContext): void {
   if (ctx.hasUnionImports) return;
   ctx.hasUnionImports = true;
+
+  // Record the import count before adding, so we can adjust defined-function
+  // indices if imports are added after collectDeclarations has run.
+  const importsBefore = ctx.numImportFuncs;
 
   // __typeof_number: (externref) → i32
   const typeofType = addFuncType(
@@ -1246,6 +1342,59 @@ export function addUnionImports(ctx: CodegenContext): void {
     typeIdx: boxBoolType,
   });
 
+  // If imports were added after defined functions were registered (late addition),
+  // shift all defined-function indices and fix exports/funcMap/call instructions.
+  // The new imports themselves (at indices importsBefore..numImportFuncs-1) are already
+  // correct, so we only shift indices that were >= importsBefore BEFORE the addition,
+  // i.e., the defined functions that start at index importsBefore in the old scheme.
+  const delta = ctx.numImportFuncs - importsBefore;
+  if (delta > 0 && ctx.mod.functions.length > 0) {
+    // Build a set of the new import names to skip them during funcMap update
+    const newImportNames = new Set([
+      "__typeof_number", "__typeof_string", "__typeof_boolean",
+      "__is_truthy", "__unbox_number", "__unbox_boolean",
+      "__box_number", "__box_boolean",
+    ]);
+    // Update funcMap entries for defined functions (not imports)
+    for (const [name, idx] of ctx.funcMap) {
+      if (!newImportNames.has(name) && idx >= importsBefore) {
+        ctx.funcMap.set(name, idx + delta);
+      }
+    }
+    // Update export indices
+    for (const exp of ctx.mod.exports) {
+      if (exp.desc.kind === "func" && exp.desc.index >= importsBefore) {
+        exp.desc.index += delta;
+      }
+    }
+    // Update call instructions in already-compiled function bodies
+    for (const func of ctx.mod.functions) {
+      for (const instr of func.body) {
+        if (instr.op === "call" && instr.funcIdx >= importsBefore) {
+          instr.funcIdx += delta;
+        }
+        if (instr.op === "ref.func" && instr.funcIdx >= importsBefore) {
+          instr.funcIdx += delta;
+        }
+      }
+    }
+    // Update table elements
+    for (const elem of ctx.mod.elements) {
+      if (elem.funcIndices) {
+        for (let i = 0; i < elem.funcIndices.length; i++) {
+          if (elem.funcIndices[i]! >= importsBefore) {
+            elem.funcIndices[i]! += delta;
+          }
+        }
+      }
+    }
+    // Update declaredFuncRefs
+    if (ctx.mod.declaredFuncRefs.length > 0) {
+      ctx.mod.declaredFuncRefs = ctx.mod.declaredFuncRefs.map(
+        idx => idx >= importsBefore ? idx + delta : idx,
+      );
+    }
+  }
   // __typeof: (externref) → externref (returns type string)
   const typeofStrType = addFuncType(
     ctx,
@@ -1444,10 +1593,94 @@ export function getArrTypeIdxFromVec(
 }
 
 /**
+ * Check if a ts.Type is a TypeScript tuple type (e.g. [number, string]).
+ * Tuples are TypeReference types whose target has the Tuple object flag.
+ * The Tuple flag is on the target, not the reference itself.
+ */
+export function isTupleType(type: ts.Type): boolean {
+  if (!(type.flags & ts.TypeFlags.Object)) return false;
+  const objType = type as ts.ObjectType;
+  // Direct Tuple flag check (on the target for TypeReference types)
+  if ((objType.objectFlags & ts.ObjectFlags.Tuple) !== 0) return true;
+  // TypeReference → check target's objectFlags
+  if ((objType.objectFlags & ts.ObjectFlags.Reference) !== 0) {
+    const ref = type as ts.TypeReference;
+    if (ref.target && (ref.target.objectFlags & ts.ObjectFlags.Tuple) !== 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Get the element types of a tuple type.
+ * Returns the resolved ValType for each element position.
+ */
+export function getTupleElementTypes(
+  ctx: CodegenContext,
+  tsType: ts.Type,
+): ValType[] {
+  const typeRef = tsType as ts.TypeReference;
+  const typeArgs = ctx.checker.getTypeArguments(typeRef);
+  return typeArgs.map((t) => resolveWasmType(ctx, t));
+}
+
+/**
+ * Build a unique key for a tuple type signature based on its element types.
+ * Used as the key for tupleTypeMap to de-duplicate identical tuple shapes.
+ */
+function tupleTypeKey(elemTypes: ValType[]): string {
+  return elemTypes
+    .map((t) => {
+      if (t.kind === "ref" || t.kind === "ref_null") return `${t.kind}_${t.typeIdx}`;
+      return t.kind;
+    })
+    .join(",");
+}
+
+/**
+ * Get or register a Wasm GC struct type for a tuple type.
+ * Each unique tuple signature (e.g. [f64, externref]) maps to one struct type
+ * with fields named _0, _1, etc.
+ */
+export function getOrRegisterTupleType(
+  ctx: CodegenContext,
+  elemTypes: ValType[],
+): number {
+  const key = tupleTypeKey(elemTypes);
+  const existing = ctx.tupleTypeMap.get(key);
+  if (existing !== undefined) return existing;
+
+  const fields: FieldDef[] = elemTypes.map((t, i) => ({
+    name: `_${i}`,
+    type: t,
+    mutable: false,
+  }));
+
+  const typeIdx = ctx.mod.types.length;
+  const structName = `__tuple_${ctx.tupleTypeMap.size}`;
+  ctx.mod.types.push({
+    kind: "struct",
+    name: structName,
+    fields,
+  } as StructTypeDef);
+  ctx.tupleTypeMap.set(key, typeIdx);
+  return typeIdx;
+}
+
+/**
  * Resolve a ts.Type to a ValType, using the struct registry and anonymous type map.
  * Use this instead of mapTsTypeToWasm in the codegen to get real type indices.
  */
 export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type): ValType {
+  // Check tuple types BEFORE Array — tuples have the Object flag and Array symbol
+  // but should be compiled to structs, not arrays
+  if (isTupleType(tsType)) {
+    const elemTypes = getTupleElementTypes(ctx, tsType);
+    const tupleIdx = getOrRegisterTupleType(ctx, elemTypes);
+    return { kind: "ref", typeIdx: tupleIdx };
+  }
+
   // Check Array<T> / T[] BEFORE isExternalDeclaredClass, because Array is declared
   // in the lib as `declare var Array: ArrayConstructor` which would match externref
   if (tsType.flags & ts.TypeFlags.Object) {
@@ -1518,6 +1751,8 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type): ValType {
 function ensureStructForType(ctx: CodegenContext, tsType: ts.Type): void {
   if (!(tsType.flags & ts.TypeFlags.Object)) return;
   if (isExternalDeclaredClass(tsType, ctx.checker)) return;
+  // Tuple types are handled by getOrRegisterTupleType, not as anonymous structs
+  if (isTupleType(tsType)) return;
 
   const name = tsType.symbol?.name;
 
@@ -2061,8 +2296,8 @@ function collectUsedExternImports(
     if (ts.isElementAccessExpression(node)) {
       const objType = ctx.checker.getTypeAtLocation(node.expression);
       const sym = objType.getSymbol();
-      // Skip Array types — those use Wasm GC array.get, not host import
-      if (sym?.name !== "Array") {
+      // Skip Array and tuple types — those use Wasm GC struct/array ops, not host import
+      if (sym?.name !== "Array" && !isTupleType(objType)) {
         const wasmType = mapTsTypeToWasm(objType, ctx.checker);
         if (wasmType.kind === "externref") {
           register(
@@ -2126,6 +2361,8 @@ const LIB_GLOBALS = new Set([
   "document",
   "window",
   "Date",
+  "Map",
+  "Set",
   "RegExp",
   "Error",
   "HTMLElement",
