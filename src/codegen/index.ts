@@ -342,6 +342,9 @@ export function generateModule(
   // Register string literals for for-in field names (uses type checker, before func indices)
   collectForInStringLiterals(ctx, ast.sourceFile);
 
+  // Register string literals for Object.keys() / Object.values() calls
+  collectObjectMethodStringLiterals(ctx, ast.sourceFile);
+
   // Second pass: collect all function declarations and interfaces
   collectDeclarations(ctx, ast.sourceFile);
 
@@ -474,6 +477,7 @@ export function generateMultiModule(
     collectUnionImports(ctx, sf);
     collectIteratorImports(ctx, sf);
     collectForInStringLiterals(ctx, sf);
+    collectObjectMethodStringLiterals(ctx, sf);
   }
 
   // Phase 2: Collect all declarations — only entry file gets Wasm exports
@@ -869,6 +873,63 @@ function collectForInStringLiterals(
 
   for (const value of literals) {
     addStringConstantGlobal(ctx, value);
+  }
+}
+
+/** Register struct field names as string literals for Object.keys() / Object.values() calls.
+ *  Detects Object.keys(expr) and Object.values(expr) patterns and pre-registers
+ *  the field names from the argument's type as string thunks. */
+function collectObjectMethodStringLiterals(
+  ctx: CodegenContext,
+  sourceFile: ts.SourceFile,
+): void {
+  const literals = new Set<string>();
+  let hasValues = false;
+
+  function visit(node: ts.Node) {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      ts.isIdentifier(node.expression.expression) &&
+      node.expression.expression.text === "Object" &&
+      (node.expression.name.text === "keys" || node.expression.name.text === "values") &&
+      node.arguments.length === 1
+    ) {
+      if (node.expression.name.text === "values") hasValues = true;
+      const argType = ctx.checker.getTypeAtLocation(node.arguments[0]!);
+      const props = argType.getProperties();
+      for (const prop of props) {
+        if (!ctx.stringLiteralMap.has(prop.name)) literals.add(prop.name);
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  for (const stmt of sourceFile.statements) {
+    if (ts.isFunctionDeclaration(stmt) && stmt.body) {
+      visit(stmt.body);
+    }
+  }
+
+  // Object.values() needs union boxing imports (__box_number etc.)
+  // to box primitive field values into externref. Register them now
+  // before function indices are assigned in collectDeclarations.
+  if (hasValues) {
+    addUnionImports(ctx);
+  }
+
+  if (literals.size === 0) return;
+
+  // Ensure wasm:js-string imports exist (may already be registered)
+  addStringImports(ctx);
+
+  const strThunkType = addFuncType(ctx, [], [{ kind: "externref" }]);
+  for (const value of literals) {
+    const name = `__str_${ctx.stringLiteralCounter++}`;
+    addImport(ctx, "env", name, { kind: "func", typeIdx: strThunkType });
+    ctx.stringLiteralMap.set(value, name);
+    ctx.stringLiteralValues.set(name, value);
+    ctx.mod.stringPool.push(value);
   }
 }
 
@@ -1701,6 +1762,20 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type): ValType {
     if (anonName && ctx.structMap.has(anonName)) {
       return { kind: "ref", typeIdx: ctx.structMap.get(anonName)! };
     }
+
+    // Auto-register anonymous object types that look like plain data objects
+    // (name is __type or __object, has properties, not a class/function/external type)
+    if (
+      !anonName &&
+      (name === "__type" || name === "__object") &&
+      tsType.getProperties().length > 0
+    ) {
+      ensureStructForType(ctx, tsType);
+      const registeredName = ctx.anonTypeMap.get(tsType);
+      if (registeredName && ctx.structMap.has(registeredName)) {
+        return { kind: "ref", typeIdx: ctx.structMap.get(registeredName)! };
+      }
+    }
   }
 
   // Handle unions (T | undefined) — resolve inner type
@@ -1725,7 +1800,7 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type): ValType {
  * For named types already in structMap, this is a no-op.
  * For anonymous types, auto-registers them with a generated name.
  */
-function ensureStructForType(ctx: CodegenContext, tsType: ts.Type): void {
+export function ensureStructForType(ctx: CodegenContext, tsType: ts.Type): void {
   if (!(tsType.flags & ts.TypeFlags.Object)) return;
   if (isExternalDeclaredClass(tsType, ctx.checker)) return;
   // Tuple types are handled by getOrRegisterTupleType, not as anonymous structs
@@ -1755,6 +1830,22 @@ function ensureStructForType(ctx: CodegenContext, tsType: ts.Type): void {
     // Use mapTsTypeToWasm for fields — they'll be resolved later or are primitives
     const wasmType = mapTsTypeToWasm(propType, ctx.checker);
     fields.push({ name: prop.name, type: wasmType, mutable: true });
+  }
+
+  // Structural dedup: check if an existing anonymous struct has the exact same fields.
+  // This avoids creating duplicate struct types for the same shape when TS returns
+  // different ts.Type objects (e.g. variable type vs. initializer type).
+  for (const [existingName, existingFields] of ctx.structFields) {
+    if (!existingName.startsWith("__anon_")) continue;
+    if (existingFields.length !== fields.length) continue;
+    const match = existingFields.every((ef, i) => {
+      const nf = fields[i]!;
+      return ef.name === nf.name && ef.type.kind === nf.type.kind;
+    });
+    if (match) {
+      ctx.anonTypeMap.set(tsType, existingName);
+      return;
+    }
   }
 
   const structName = `__anon_${ctx.anonTypeCounter++}`;
