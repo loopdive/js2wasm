@@ -843,6 +843,26 @@ function compileForOfStatement(
   fctx: FunctionContext,
   stmt: ts.ForOfStatement,
 ): void {
+  // Check the TS type of the iterable to decide compilation strategy
+  const exprTsType = ctx.checker.getTypeAtLocation(stmt.expression);
+  const sym =
+    (exprTsType as ts.TypeReference).symbol ??
+    (exprTsType as ts.Type).symbol;
+  const isArray = sym?.name === "Array";
+
+  if (isArray) {
+    compileForOfArray(ctx, fctx, stmt);
+  } else {
+    compileForOfIterator(ctx, fctx, stmt);
+  }
+}
+
+/** Compile for...of over an array using index-based loop (existing behavior) */
+function compileForOfArray(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  stmt: ts.ForOfStatement,
+): void {
   // Compile the iterable expression (vec struct ref)
   const bodyLenBefore = fctx.body.length;
   const vecType = compileExpression(ctx, fctx, stmt.expression);
@@ -963,6 +983,146 @@ function compileForOfStatement(
   fctx.body.push({ op: "i32.const", value: 1 });
   fctx.body.push({ op: "i32.add" });
   fctx.body.push({ op: "local.set", index: iLocal });
+
+  fctx.body.push({ op: "br", depth: 0 }); // continue loop
+
+  const loopBody = fctx.body;
+  fctx.breakStack.pop();
+  fctx.continueStack.pop();
+
+  // Restore existing break/continue depths
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! -= 2;
+  for (let i = 0; i < fctx.continueStack.length; i++)
+    fctx.continueStack[i]! -= 2;
+
+  fctx.body = savedBody;
+
+  fctx.body.push({
+    op: "block",
+    blockType: { kind: "empty" },
+    body: [
+      {
+        op: "loop",
+        blockType: { kind: "empty" },
+        body: loopBody,
+      },
+    ],
+  });
+}
+
+/**
+ * Compile for...of over a non-array iterable using the host-delegated
+ * iterator protocol. Works with strings, Maps, Sets, and any object
+ * implementing [Symbol.iterator]().
+ *
+ * Generated Wasm pseudo-code:
+ *   iter = __iterator(obj)
+ *   loop:
+ *     result = __iterator_next(iter)
+ *     if __iterator_done(result) → break
+ *     elem = __iterator_value(result)
+ *     <body>
+ *     br loop
+ */
+function compileForOfIterator(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  stmt: ts.ForOfStatement,
+): void {
+  // Compile the iterable expression — should produce an externref
+  const iterableType = compileExpression(ctx, fctx, stmt.expression);
+  if (!iterableType) {
+    ctx.errors.push({
+      message: "for-of: failed to compile iterable expression",
+      line: getLine(stmt),
+      column: getCol(stmt),
+    });
+    return;
+  }
+
+  // Look up the iterator host import function indices
+  const iteratorIdx = ctx.funcMap.get("__iterator");
+  const nextIdx = ctx.funcMap.get("__iterator_next");
+  const doneIdx = ctx.funcMap.get("__iterator_done");
+  const valueIdx = ctx.funcMap.get("__iterator_value");
+  if (
+    iteratorIdx === undefined ||
+    nextIdx === undefined ||
+    doneIdx === undefined ||
+    valueIdx === undefined
+  ) {
+    ctx.errors.push({
+      message: "for-of on non-array type requires iterator imports",
+      line: getLine(stmt),
+      column: getCol(stmt),
+    });
+    return;
+  }
+
+  // Call __iterator(obj) → externref (the iterator)
+  fctx.body.push({ op: "call", funcIdx: iteratorIdx });
+  const iterLocal = allocLocal(
+    fctx,
+    `__forof_iter_${fctx.locals.length}`,
+    { kind: "externref" },
+  );
+  fctx.body.push({ op: "local.set", index: iterLocal });
+
+  // Allocate locals for iterator result and loop element
+  const resultLocal = allocLocal(
+    fctx,
+    `__forof_result_${fctx.locals.length}`,
+    { kind: "externref" },
+  );
+
+  // Declare the loop variable (element type is externref for iterator protocol)
+  const elemType: ValType = { kind: "externref" };
+  let elemLocal: number;
+  if (ts.isVariableDeclarationList(stmt.initializer)) {
+    const decl = stmt.initializer.declarations[0]!;
+    const varName = (decl.name as ts.Identifier).text;
+    elemLocal = allocLocal(fctx, varName, elemType);
+  } else {
+    // Expression form: for (x of arr) — x is already declared
+    const varName = (stmt.initializer as ts.Identifier).text;
+    elemLocal = fctx.localMap.get(varName)!;
+  }
+
+  // Build loop body
+  const savedBody = fctx.body;
+  fctx.body = [];
+
+  // Adjust existing break/continue depths: block+loop adds 2 nesting levels
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! += 2;
+  for (let i = 0; i < fctx.continueStack.length; i++)
+    fctx.continueStack[i]! += 2;
+
+  fctx.breakStack.push(1); // break = depth 1 (exit block)
+  fctx.continueStack.push(0); // continue = depth 0 (restart loop)
+
+  // Call __iterator_next(iter) → result
+  fctx.body.push({ op: "local.get", index: iterLocal });
+  fctx.body.push({ op: "call", funcIdx: nextIdx });
+  fctx.body.push({ op: "local.set", index: resultLocal });
+
+  // Check done: __iterator_done(result) → i32, break if truthy
+  fctx.body.push({ op: "local.get", index: resultLocal });
+  fctx.body.push({ op: "call", funcIdx: doneIdx });
+  fctx.body.push({ op: "br_if", depth: 1 }); // break out of block
+
+  // Get value: elem = __iterator_value(result)
+  fctx.body.push({ op: "local.get", index: resultLocal });
+  fctx.body.push({ op: "call", funcIdx: valueIdx });
+  fctx.body.push({ op: "local.set", index: elemLocal });
+
+  // Compile body
+  if (ts.isBlock(stmt.statement)) {
+    for (const s of stmt.statement.statements) {
+      compileStatement(ctx, fctx, s);
+    }
+  } else {
+    compileStatement(ctx, fctx, stmt.statement);
+  }
 
   fctx.body.push({ op: "br", depth: 0 }); // continue loop
 
