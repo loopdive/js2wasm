@@ -498,6 +498,9 @@ function compileStatement(
       } else if (ts.isArrayBindingPattern(decl.name) && decl.initializer) {
         // Array destructuring: const [a, b, c] = arr
         compileArrayDestructuring(ctx, fctx, decl.name, decl.initializer);
+      } else if (ts.isObjectBindingPattern(decl.name) && decl.initializer) {
+        // Object destructuring: const { a, b: c } = obj
+        compileObjectDestructuring(ctx, fctx, decl.name, decl.initializer);
       }
     }
   } else if (ts.isIfStatement(stmt)) {
@@ -2058,6 +2061,85 @@ function compileArrayLiteral(
 
 // ── Array destructuring ──────────────────────────────────────────────
 
+function compileObjectDestructuring(
+  ctx: LinearContext,
+  fctx: LinearFuncContext,
+  pattern: ts.ObjectBindingPattern,
+  initializer: ts.Expression,
+): void {
+  // Compile initializer to get object pointer
+  compileExpression(ctx, fctx, initializer);
+  const objLocal = addLocal(fctx, `__obj_destr_${fctx.locals.length}`, { kind: "i32" });
+  fctx.body.push({ op: "local.set", index: objLocal });
+
+  // Use TypeChecker to get the type of the initializer and compute field offsets
+  let objType: ts.Type | null = null;
+  try {
+    objType = ctx.checker.getTypeAtLocation(initializer);
+  } catch { /* ignore */ }
+
+  // Build property list with offsets (matching the TypeChecker-based property access fallback)
+  const propOffsets = new Map<string, { offset: number; type: "i32" | "f64" }>();
+  if (objType) {
+    const props = objType.getProperties();
+    let offset = 0;
+    for (const prop of props) {
+      let isF64 = false;
+      try {
+        const propType = ctx.checker.getTypeOfSymbolAtLocation(prop, initializer);
+        const baseType = ctx.checker.getNonNullableType(propType);
+        if (baseType.flags & (ts.TypeFlags.NumberLike | ts.TypeFlags.BooleanLike)) {
+          isF64 = true;
+        }
+      } catch { /* default: i32 */ }
+      const fieldSize = isF64 ? 8 : 4;
+      if (isF64 && offset % 8 !== 0) offset = Math.ceil(offset / 8) * 8;
+      else if (!isF64 && offset % 4 !== 0) offset = Math.ceil(offset / 4) * 4;
+      propOffsets.set(prop.getName(), { offset, type: isF64 ? "f64" : "i32" });
+      offset += fieldSize;
+    }
+  }
+
+  // For each binding element, extract the property value
+  for (const element of pattern.elements) {
+    if (ts.isOmittedExpression(element)) continue;
+    if (!ts.isBindingElement(element)) continue;
+
+    // Get property name and variable name
+    const propName = element.propertyName && ts.isIdentifier(element.propertyName)
+      ? element.propertyName.text
+      : ts.isIdentifier(element.name) ? element.name.text : null;
+    const varName = ts.isIdentifier(element.name) ? element.name.text : null;
+
+    if (!propName || !varName) continue;
+
+    const fieldInfo = propOffsets.get(propName);
+    if (!fieldInfo) {
+      ctx.errors.push({ message: `Object destructuring: unknown property "${propName}"`, line: 0, column: 0 });
+      continue;
+    }
+
+    const localType: ValType = fieldInfo.type === "f64" ? { kind: "f64" } : { kind: "i32" };
+    const localIdx = addLocal(fctx, varName, localType);
+
+    // Load field from object
+    fctx.body.push({ op: "local.get", index: objLocal });
+    if (fieldInfo.type === "f64") {
+      fctx.body.push({ op: "f64.load", align: 3, offset: fieldInfo.offset });
+    } else {
+      fctx.body.push({ op: "i32.load", align: 2, offset: fieldInfo.offset });
+    }
+    fctx.body.push({ op: "local.set", index: localIdx });
+
+    // Track collection types
+    try {
+      const propType = ctx.checker.getTypeAtLocation(element);
+      const typeStr = ctx.checker.typeToString(ctx.checker.getNonNullableType(propType));
+      if (typeStr.endsWith("[]")) fctx.collectionTypes.set(varName, "Array");
+    } catch { /* ignore */ }
+  }
+}
+
 function compileArrayDestructuring(
   ctx: LinearContext,
   fctx: LinearFuncContext,
@@ -3205,8 +3287,8 @@ function inferExprType(
     // TypeChecker fallback for anonymous object types
     try {
       const type = ctx.checker.getTypeAtLocation(expr);
-      const typeStr = ctx.checker.typeToString(ctx.checker.getNonNullableType(type));
-      if (typeStr === "number" || typeStr === "boolean") return { kind: "f64" };
+      const baseType = ctx.checker.getNonNullableType(type);
+      if (baseType.flags & (ts.TypeFlags.NumberLike | ts.TypeFlags.BooleanLike)) return { kind: "f64" };
       return { kind: "i32" }; // strings, objects, arrays → pointer
     } catch { /* fall through */ }
   }
@@ -3246,8 +3328,9 @@ function inferExprType(
   if (ts.isCallExpression(expr)) {
     try {
       const type = ctx.checker.getTypeAtLocation(expr);
-      const typeStr = ctx.checker.typeToString(type);
-      if (typeStr === "number" || typeStr === "boolean") return { kind: "f64" };
+      const baseType = ctx.checker.getNonNullableType(type);
+      if (baseType.flags & (ts.TypeFlags.NumberLike | ts.TypeFlags.BooleanLike)) return { kind: "f64" };
+      const typeStr = ctx.checker.typeToString(baseType);
       if (typeStr !== "void") return { kind: "i32" };
     } catch { /* fall through */ }
   }
@@ -3955,10 +4038,11 @@ function inferDeclType(ctx: LinearContext, decl: ts.VariableDeclaration): ValTyp
   // Use TypeChecker
   try {
     const type = ctx.checker.getTypeAtLocation(decl);
-    const typeStr = ctx.checker.typeToString(type);
-    if (typeStr === "number" || typeStr === "boolean") return { kind: "f64" };
-    if (typeStr === "string" || typeStr.includes("Map") || typeStr.includes("Set") ||
-        typeStr.includes("Array") || typeStr.includes("[]")) return { kind: "i32" };
+    const baseType = ctx.checker.getNonNullableType(type);
+    // Check type flags for number-like types (includes literal types like `1`, `2`, etc.)
+    if (baseType.flags & (ts.TypeFlags.NumberLike | ts.TypeFlags.BooleanLike)) return { kind: "f64" };
+    // Everything else (strings, objects, arrays, classes, etc.) is i32 pointers
+    return { kind: "i32" };
   } catch { /* fall through */ }
   return { kind: "f64" };
 }
