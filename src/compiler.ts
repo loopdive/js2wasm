@@ -19,6 +19,123 @@ import { preprocessImports } from "./import-resolver.js";
 import type { CompileError, CompileOptions, CompileResult, ImportDescriptor, ImportIntent } from "./index.js";
 import type { WasmModule } from "./ir/types.js";
 
+// Default blocked members on extern classes in safe mode
+const DEFAULT_BLOCKED_MEMBERS = new Set([
+  "__proto__", "constructor", "prototype", "valueOf", "toString",
+  "innerHTML", "outerHTML", "insertAdjacentHTML",
+]);
+
+/** Validate source against safe mode restrictions. Returns errors for violations. */
+function validateSafeMode(
+  sourceFile: ts.SourceFile,
+  checker: ts.TypeChecker,
+  options: CompileOptions,
+): CompileError[] {
+  const errors: CompileError[] = [];
+  const allowedGlobals = new Set(options.allowedGlobals ?? []);
+  const allowedMembers = options.allowedExternMembers ?? {};
+
+  function pos(node: ts.Node) {
+    const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart());
+    return { line: line + 1, column: character + 1 };
+  }
+
+  function visit(node: ts.Node): void {
+    // 1. Check declare var/const globals
+    if (ts.isVariableStatement(node) && node.modifiers?.some(m => m.kind === ts.SyntaxKind.DeclareKeyword)) {
+      for (const decl of node.declarationList.declarations) {
+        const name = decl.name.getText();
+        // Block undeclared globals unless allowlisted
+        if (!allowedGlobals.has(name)) {
+          const p = pos(decl);
+          errors.push({
+            message: `Safe mode: declared global "${name}" is not in allowedGlobals`,
+            line: p.line, column: p.column, severity: "error",
+          });
+        }
+        // Block any type on declared globals
+        if (decl.type) {
+          const t = checker.getTypeAtLocation(decl.type);
+          if (t.flags & ts.TypeFlags.Any) {
+            const p = pos(decl.type);
+            errors.push({
+              message: `Safe mode: "any" type on declared global "${name}" is not allowed`,
+              line: p.line, column: p.column, severity: "error",
+            });
+          }
+        }
+      }
+    }
+
+    // 2. Check declare class (extern class) members
+    if (ts.isClassDeclaration(node) && node.modifiers?.some(m => m.kind === ts.SyntaxKind.DeclareKeyword)) {
+      const className = node.name?.getText() ?? "(anonymous)";
+      const allowed = allowedMembers[className];
+      for (const member of node.members) {
+        const memberName = member.name?.getText();
+        if (!memberName) continue;
+
+        // Block default-blocked members
+        if (DEFAULT_BLOCKED_MEMBERS.has(memberName)) {
+          const p = pos(member);
+          errors.push({
+            message: `Safe mode: extern class "${className}" member "${memberName}" is blocked`,
+            line: p.line, column: p.column, severity: "error",
+          });
+          continue;
+        }
+
+        // If an allowlist is provided for this class, check against it
+        if (allowed && !allowed.includes(memberName)) {
+          const p = pos(member);
+          errors.push({
+            message: `Safe mode: extern class "${className}" member "${memberName}" is not in allowedExternMembers`,
+            line: p.line, column: p.column, severity: "error",
+          });
+          continue;
+        }
+
+        // Block "any" types on extern class members
+        if (ts.isPropertyDeclaration(member) && member.type) {
+          const t = checker.getTypeAtLocation(member.type);
+          if (t.flags & ts.TypeFlags.Any) {
+            const p = pos(member.type);
+            errors.push({
+              message: `Safe mode: "any" type on extern class "${className}.${memberName}" is not allowed`,
+              line: p.line, column: p.column, severity: "error",
+            });
+          }
+        }
+      }
+    }
+
+    // 3. Check for dynamic property access on externref (element access with non-literal)
+    if (ts.isElementAccessExpression(node)) {
+      const objType = checker.getTypeAtLocation(node.expression);
+      // If the object is an extern class type (declared class), block dynamic access
+      const objSymbol = objType.getSymbol();
+      if (objSymbol) {
+        const decls = objSymbol.getDeclarations() ?? [];
+        const isDeclaredClass = decls.some(d =>
+          ts.isClassDeclaration(d) && d.modifiers?.some(m => m.kind === ts.SyntaxKind.DeclareKeyword)
+        );
+        if (isDeclaredClass) {
+          const p = pos(node);
+          errors.push({
+            message: `Safe mode: dynamic property access on extern class "${objSymbol.getName()}" is not allowed`,
+            line: p.line, column: p.column, severity: "error",
+          });
+        }
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return errors;
+}
+
 function classifyImport(name: string, mod: WasmModule): ImportIntent {
   // String literals
   const strValue = mod.stringLiteralValues.get(name);
@@ -150,6 +267,24 @@ export function compileSource(
       stringPool: [],
       imports: [],
     };
+  }
+
+  // Step 1b: Safe mode validation
+  if (options.safe) {
+    const safeErrors = validateSafeMode(ast.sourceFile, ast.checker, options);
+    errors.push(...safeErrors);
+    if (safeErrors.length > 0) {
+      return {
+        binary: new Uint8Array(0),
+        wat: "",
+        dts: "",
+        importsHelper: "",
+        success: false,
+        errors,
+        stringPool: [],
+        imports: [],
+      };
+    }
   }
 
   const emitSourceMap = options.sourceMap === true;
@@ -324,6 +459,26 @@ export function compileMultiSource(
       stringPool: [],
       imports: [],
     };
+  }
+
+  // Safe mode validation for all source files
+  if (options.safe) {
+    for (const sf of multiAst.sourceFiles) {
+      const safeErrors = validateSafeMode(sf, multiAst.checker, options);
+      errors.push(...safeErrors);
+    }
+    if (errors.some(e => e.severity === "error")) {
+      return {
+        binary: new Uint8Array(0),
+        wat: "",
+        dts: "",
+        importsHelper: "",
+        success: false,
+        errors,
+        stringPool: [],
+        imports: [],
+      };
+    }
   }
 
   const emitSourceMap = options.sourceMap === true;

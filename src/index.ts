@@ -70,6 +70,12 @@ export interface CompileOptions {
   sourceMapUrl?: string;
   /** Compilation target: "gc" (WasmGC, default) or "linear" (linear memory) */
   target?: "gc" | "linear";
+  /** Enable safe mode — reject unsafe TypeScript patterns at compile time */
+  safe?: boolean;
+  /** Globals allowed in safe mode (e.g. ["document"]) */
+  allowedGlobals?: string[];
+  /** Extern class members allowed in safe mode (e.g. { Element: ["textContent"] }) */
+  allowedExternMembers?: Record<string, string[]>;
 }
 
 import { compileSource, compileMultiSource, compileToObjectSource } from "./compiler.js";
