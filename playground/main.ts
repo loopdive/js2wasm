@@ -1459,7 +1459,6 @@ type HighlightSource = "ts" | "wat" | "hex" | "treemap";
 let xTarget: HighlightTarget | null = null;
 let xSource: HighlightSource | null = null;
 let xPinned = false;
-let xSavedStates: Map<string, monaco.editor.ICodeEditorViewState | null> | null = null;
 let xDecos: monaco.editor.IEditorDecorationsCollection[] = [];
 let xHexSpanDeco: monaco.editor.IEditorDecorationsCollection | null = null;
 let xLastHoveredSpan: ByteSpan | null = null;
@@ -1681,25 +1680,6 @@ function xHighlightEditors(target: HighlightTarget, pinned: boolean, source: Hig
   }
 }
 
-function xSaveStates() {
-  if (xSavedStates) return;
-  xSavedStates = new Map();
-  for (const slot of editorSlots) {
-    if (slot.panelId) xSavedStates.set(slot.panelId, slot.editor.saveViewState());
-  }
-}
-
-function xRestoreStates() {
-  if (!xSavedStates) return;
-  for (const slot of editorSlots) {
-    if (slot.panelId) {
-      const vs = xSavedStates.get(slot.panelId);
-      if (vs) slot.editor.restoreViewState(vs);
-    }
-  }
-  xSavedStates = null;
-}
-
 /** Re-apply pinned highlight (called after tab switch or layout change) */
 function xReapplyPinned() {
   if (!xPinned || !xTarget) return;
@@ -1708,25 +1688,35 @@ function xReapplyPinned() {
   treemap.highlightNode(xTarget.treemapPath);
 }
 
+let xHoverTimer: ReturnType<typeof setTimeout> | null = null;
+const X_HOVER_DELAY = 500; // ms before hover highlight kicks in
+
 function setHighlightTarget(target: HighlightTarget | null, source: HighlightSource) {
   if (xPinned) return;
+
+  // Cancel any pending hover
+  if (xHoverTimer !== null) { clearTimeout(xHoverTimer); xHoverTimer = null; }
+
   if (target?.name === xTarget?.name && source === xSource) return;
 
-  xClearDecorations();
-
   if (!target) {
+    // Clear decorations but don't jump back
+    xClearDecorations();
     xTarget = null;
     xSource = null;
-    xRestoreStates();
     return;
   }
 
-  xSaveStates();
-  xTarget = target;
-  xSource = source;
-
-  xHighlightEditors(target, false, source);
-  if (source !== "treemap") treemap.highlightNode(target.treemapPath);
+  // Delay before applying the highlight
+  xHoverTimer = setTimeout(() => {
+    xHoverTimer = null;
+    if (xPinned) return;
+    xClearDecorations();
+    xTarget = target;
+    xSource = source;
+    xHighlightEditors(target, false, source);
+    if (source !== "treemap") treemap.highlightNode(target.treemapPath);
+  }, X_HOVER_DELAY);
 }
 
 function handleHighlightClick(target: HighlightTarget | null, source: HighlightSource) {
@@ -1737,12 +1727,10 @@ function handleHighlightClick(target: HighlightTarget | null, source: HighlightS
     xTarget = null;
     xSource = null;
     xClearDecorations();
-    xRestoreStates();
     return;
   }
   // Pin
   xPinned = false;
-  xSavedStates = null;
   setHighlightTarget(target, source);
   // Upgrade to pinned
   xClearDecorations();
