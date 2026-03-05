@@ -3965,10 +3965,6 @@ function compileFunctionBody(
     fctx.body.push(nop);
   }
 
-  if (isGenerator) {
-    // Generator function: eagerly evaluate body, collect yields into a JS array,
-    // then wrap it with __create_generator to return a Generator-like object.
-    const bufferLocal = allocLocal(fctx, "__gen_buffer", { kind: "externref" });
   // Emit default-value initialization for parameters with initializers.
   // For each param with a default value, check if the caller omitted it
   // (externref → ref.is_null, i32 → i32.eqz, f64 → f64.eq 0.0) and if so
@@ -4028,12 +4024,10 @@ function compileFunctionBody(
     }
   }
 
-  // Compile body statements
-  if (decl.body) {
-    for (const stmt of decl.body.statements) {
-      compileStatement(ctx, fctx, stmt);
-    }
-  }
+  if (isGenerator) {
+    // Generator function: eagerly evaluate body, collect yields into a JS array,
+    // then wrap it with __create_generator to return a Generator-like object.
+    const bufferLocal = allocLocal(fctx, "__gen_buffer", { kind: "externref" });
 
     // Create buffer: __gen_buffer = __gen_create_buffer()
     const createBufIdx = ctx.funcMap.get("__gen_create_buffer")!;
