@@ -125,8 +125,10 @@ function resolveImport(
       const m = intent.method;
       return (d: any) => d[m]();
     }
-    case "declared_global":
-      return deps?.[intent.name] ?? (() => {});
+    case "declared_global": {
+      const val = deps?.[intent.name];
+      return val !== undefined ? () => val : (() => {});
+    }
     default:
       return () => {};
   }
