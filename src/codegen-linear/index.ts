@@ -273,9 +273,19 @@ export function generateLinearMultiModule(multiAst: MultiTypedAST): WasmModule {
     compileClassDeclaration(ctx, classDecl);
   }
 
+  // ── Collect re-exported names from entry file ──
+  // e.g. `export { link } from "./linker.js"` in the entry file
+  const reExportedNames = new Set<string>();
+  for (const stmt of multiAst.entryFile.statements) {
+    if (ts.isExportDeclaration(stmt) && stmt.exportClause && ts.isNamedExports(stmt.exportClause)) {
+      for (const spec of stmt.exportClause.elements) {
+        reExportedNames.add(spec.name.text);
+      }
+    }
+  }
   // ── Compile top-level functions (only export entry file's exports) ──
   for (const { decl, isEntry } of funcDeclsByFile) {
-    compileFunctionMulti(ctx, decl, isEntry);
+    compileFunctionMulti(ctx, decl, isEntry, reExportedNames);
   }
 
   // ── Fix up function indices after lambda insertion ──
@@ -300,14 +310,14 @@ export function generateLinearMultiModule(multiAst: MultiTypedAST): WasmModule {
   return mod;
 }
 
-/** Like compileFunction but only exports if isEntry is true */
-function compileFunctionMulti(ctx: LinearContext, decl: ts.FunctionDeclaration, isEntry: boolean): void {
+/** Like compileFunction but only exports if isEntry is true or re-exported */
+function compileFunctionMulti(ctx: LinearContext, decl: ts.FunctionDeclaration, isEntry: boolean, reExportedNames: Set<string>): void {
   const name = decl.name!.text;
   const hasExportKeyword = decl.modifiers?.some(
     (m) => m.kind === ts.SyntaxKind.ExportKeyword,
   ) ?? false;
-  // Only export if this function is in the entry file
-  const isExported = hasExportKeyword && isEntry;
+  // Export if: (1) directly exported from entry file, or (2) re-exported by entry file
+  const isExported = (hasExportKeyword && isEntry) || reExportedNames.has(name);
 
   // Build parameter types
   const params: { name: string; type: ValType }[] = [];
@@ -370,6 +380,15 @@ function compileFunctionMulti(ctx: LinearContext, decl: ts.FunctionDeclaration, 
     body: fctx.body,
     exported: isExported,
   });
+
+  if (isExported) {
+    ctx.mod.exports.push({
+      name,
+      desc: { kind: "func", index: funcIdx },
+    });
+  }
+
+  ctx.currentFunc = null;
 }
 
 function compileFunction(ctx: LinearContext, decl: ts.FunctionDeclaration): void {
@@ -4100,6 +4119,14 @@ function fixupFuncIndices(ctx: LinearContext): void {
 
   for (const fn of ctx.mod.functions) {
     patchInstrs(fn.body);
+  }
+
+  // Fix up export indices
+  for (const exp of ctx.mod.exports) {
+    if (exp.desc.kind === "func") {
+      const mapped = oldToNew.get(exp.desc.index);
+      if (mapped !== undefined) exp.desc.index = mapped;
+    }
   }
 }
 
