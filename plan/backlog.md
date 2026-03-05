@@ -2,45 +2,10 @@
 
 ## Open issues
 
-### Tier 1 — Language essentials
-
-| #                  | Feature                                                     | Complexity |
-| ------------------ | ----------------------------------------------------------- | ---------- |
-| [49](issues/49.md) | Default parameter values                                    | S          |
-| [50](issues/50.md) | Nullish/logical assignment (`??=`, `\|\|=`, `&&=`)          | XS         |
-| [51](issues/51.md) | Functional array methods (filter, map, reduce, forEach ...) | L          |
-| [52](issues/52.md) | String.split()                                              | S          |
-| [53](issues/53.md) | Numeric separators (`1_000_000`)                            | XS         |
-| [41](issues/41.md) | typeof as expression                                        | S          |
-
-### Tier 2 — Broader TS support
-
-| #                  | Feature                                                     | Complexity |
-| ------------------ | ----------------------------------------------------------- | ---------- |
-| [54](issues/54.md) | Map and Set collections                                     | M          |
-| [55](issues/55.md) | Function expressions                                        | S          |
-| [56](issues/56.md) | Tuples                                                      | M          |
-| [57](issues/57.md) | Class expressions                                           | S          |
-| [58](issues/58.md) | Iterators and for...of with custom iterables                | L          |
-| [59](issues/59.md) | Abstract classes                                            | XS         |
-
-### Tier 3 — Standard library & advanced
-
-| #                  | Feature                                                     | Complexity |
-| ------------------ | ----------------------------------------------------------- | ---------- |
-| [60](issues/60.md) | RegExp via host imports                                     | M          |
-| [61](issues/61.md) | Object.keys / Object.values / Object.entries                | M          |
-| [62](issues/62.md) | JSON.parse / JSON.stringify                                 | S          |
-| [63](issues/63.md) | Promise.all / Promise.race                                  | M          |
-| [64](issues/64.md) | Generators and yield                                        | L          |
-| [65](issues/65.md) | Computed property names                                     | M          |
-
 ### Performance & infrastructure
 
 | #                  | Feature                                                     | Complexity |
 | ------------------ | ----------------------------------------------------------- | ---------- |
-| [47](issues/47.md) | importedStringConstants support                              | M          |
-| [48](issues/48.md) | Cache string literals in locals                              | S          |
 | [31](issues/31.md) | Default number type to i32, promote to f64 only when needed | L          |
 | [33](issues/33.md) | Relocatable Wasm object file (.o) emission                  | L          |
 | [34](issues/34.md) | Multi-memory module linker with isolation validation        | L          |
@@ -98,3 +63,23 @@
 | [43](issues/43.md)      | void expression                          | 3 in void-expr.test.ts       |
 | [44](issues/44.md)      | Source map generation                    | 18 in sourcemap.test.ts      |
 | [45](issues/45.md)      | Error reporting with source locations    | 7 in error-reporting.test.ts |
+| [41](issues/41.md)      | typeof as expression                     | 5 in typeof-expression.test.ts |
+| [47](issues/47.md)      | importedStringConstants support          | 21 in imported-string-constants.test.ts |
+| [48](issues/48.md)      | Cache string literals in locals          | 9 in string-literal-cache.test.ts |
+| [49](issues/49.md)      | Default parameter values                 | 8 in default-params.test.ts  |
+| [50](issues/50.md)      | Nullish/logical assignment               | 11 in logical-assignment.test.ts |
+| [51](issues/51.md)      | Functional array methods                 | 24 in functional-array-methods.test.ts |
+| [52](issues/52.md)      | String.split()                           | 5 in string-split.test.ts    |
+| [53](issues/53.md)      | Numeric separators                       | 6 in numeric-separators.test.ts |
+| [54](issues/54.md)      | Map and Set collections                  | 19 in map-set.test.ts        |
+| [55](issues/55.md)      | Function expressions                     | 5 in function-expressions.test.ts |
+| [56](issues/56.md)      | Tuples                                   | 10 in tuples.test.ts         |
+| [57](issues/57.md)      | Class expressions                        | 3 in class-expressions.test.ts |
+| [58](issues/58.md)      | Iterators and for...of                   | 6 in iterators.test.ts       |
+| [59](issues/59.md)      | Abstract classes                         | 6 in abstract-classes.test.ts |
+| [60](issues/60.md)      | RegExp via host imports                  | in regexp.test.ts            |
+| [61](issues/61.md)      | Object.keys / Object.values / Object.entries | 13 in object-methods.test.ts |
+| [62](issues/62.md)      | JSON.parse / JSON.stringify              | 5 in json.test.ts            |
+| [63](issues/63.md)      | Promise.all / Promise.race               | 4 in promise-combinators.test.ts |
+| [64](issues/64.md)      | Generators and yield                     | 9 in generators.test.ts      |
+| [65](issues/65.md)      | Computed property names                  | 6 in computed-props.test.ts  |
