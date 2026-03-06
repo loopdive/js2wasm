@@ -79,6 +79,7 @@ export type ValType =
   | { kind: "i64" }
   | { kind: "f32" }
   | { kind: "f64" }
+  | { kind: "i16" }
   | { kind: "ref"; typeIdx: number }
   | { kind: "ref_null"; typeIdx: number }
   | { kind: "funcref" }
@@ -172,6 +173,7 @@ type InstrBase =
   | { op: "array.new_default"; typeIdx: number }
   | { op: "array.get"; typeIdx: number }
   | { op: "array.get_s"; typeIdx: number }
+  | { op: "array.get_u"; typeIdx: number }
   | { op: "array.set"; typeIdx: number }
   | { op: "array.len" }
   | { op: "array.copy"; dstTypeIdx: number; srcTypeIdx: number }
