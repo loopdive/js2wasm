@@ -14,12 +14,13 @@ const BUILTIN_TYPES = new Set([
 export function mapTsTypeToWasm(
   type: ts.Type,
   checker: ts.TypeChecker,
+  fast?: boolean,
 ): ValType {
   if (
     type.flags & ts.TypeFlags.Number ||
     type.flags & ts.TypeFlags.NumberLiteral
   ) {
-    return { kind: "f64" };
+    return { kind: fast ? "i32" : "f64" };
   }
   if (
     type.flags & ts.TypeFlags.Boolean ||
@@ -51,7 +52,7 @@ export function mapTsTypeToWasm(
         !(t.flags & ts.TypeFlags.Undefined),
     );
     if (nonNullish.length === 1) {
-      const inner = mapTsTypeToWasm(nonNullish[0]!, checker);
+      const inner = mapTsTypeToWasm(nonNullish[0]!, checker, fast);
       if (inner.kind === "ref")
         return { kind: "ref_null", typeIdx: inner.typeIdx };
       // T | undefined for primitives → just use T (e.g. number | undefined → f64)
@@ -59,7 +60,7 @@ export function mapTsTypeToWasm(
     }
     // Check if all non-nullish types map to the same Wasm kind (e.g. 0 | 2 → f64)
     if (nonNullish.length > 1) {
-      const mapped = nonNullish.map((t) => mapTsTypeToWasm(t, checker));
+      const mapped = nonNullish.map((t) => mapTsTypeToWasm(t, checker, fast));
       if (mapped.every((m) => m.kind === mapped[0]!.kind)) {
         return mapped[0]!;
       }
@@ -81,7 +82,7 @@ export function mapTsTypeToWasm(
   if (type.flags & ts.TypeFlags.TypeParameter) {
     const constraint = checker.getBaseConstraintOfType(type);
     if (constraint) {
-      return mapTsTypeToWasm(constraint, checker);
+      return mapTsTypeToWasm(constraint, checker, fast);
     }
     return { kind: "externref" };
   }
@@ -242,7 +243,7 @@ export function unwrapPromiseType(type: ts.Type, checker: ts.TypeChecker): ts.Ty
  * that requires externref boxing. Returns false for T | null/undefined unions
  * where the non-nullish types all map to the same Wasm kind.
  */
-export function isHeterogeneousUnion(type: ts.Type, checker: ts.TypeChecker): boolean {
+export function isHeterogeneousUnion(type: ts.Type, checker: ts.TypeChecker, fast?: boolean): boolean {
   if (!type.isUnion()) return false;
   const nonNullish = type.types.filter(
     (t) =>
@@ -250,6 +251,6 @@ export function isHeterogeneousUnion(type: ts.Type, checker: ts.TypeChecker): bo
       !(t.flags & ts.TypeFlags.Undefined),
   );
   if (nonNullish.length <= 1) return false;
-  const mapped = nonNullish.map((t) => mapTsTypeToWasm(t, checker));
+  const mapped = nonNullish.map((t) => mapTsTypeToWasm(t, checker, fast));
   return !mapped.every((m) => m.kind === mapped[0]!.kind);
 }
