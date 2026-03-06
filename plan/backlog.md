@@ -6,7 +6,6 @@
 
 | #                  | Feature                                                     | Complexity |
 | ------------------ | ----------------------------------------------------------- | ---------- |
-| [31](issues/31.md) | Default number type to i32, promote to f64 only when needed | L          |
 | [33](issues/33.md) | Relocatable Wasm object file (.o) emission                  | L          |
 | [34](issues/34.md) | Multi-memory module linker with isolation validation        | L          |
 | [46](issues/46.md) | Linear-memory compilation backend                           | L          |
@@ -83,3 +82,6 @@
 | [63](issues/63.md)      | Promise.all / Promise.race               | 4 in promise-combinators.test.ts |
 | [64](issues/64.md)      | Generators and yield                     | 9 in generators.test.ts      |
 | [65](issues/65.md)      | Computed property names                  | 6 in computed-props.test.ts  |
+| [69](issues/done/69.md) | Safe mode — compile-time security checks | 14 in safe-mode.test.ts      |
+| [70](issues/70.md)      | Fast mode Phase 1 — i32 default numbers  | 13 in i32-fast-mode.test.ts  |
+| [31](issues/31.md)      | Default number type to i32 (via fast mode) | 13 in i32-fast-mode.test.ts |
