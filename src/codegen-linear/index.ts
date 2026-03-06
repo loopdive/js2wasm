@@ -694,15 +694,36 @@ function compileForOfStatement(
   fctx.body.push({ op: "i32.const", value: 0 });
   fctx.body.push({ op: "local.set", index: idxLocal });
 
-  // Get length
-  const lenLocal = addLocal(fctx, `__forof_len_${fctx.locals.length}`, { kind: "i32" });
-  const arrLenIdx = ctx.funcMap.get("__arr_len")!;
-  fctx.body.push({ op: "local.get", index: arrLocal });
-  fctx.body.push({ op: "call", funcIdx: arrLenIdx });
-  fctx.body.push({ op: "local.set", index: lenLocal });
-
   // Determine collection kind for the iterable
   const iterKind = getExprCollectionKind(ctx, fctx, stmt.expression);
+
+  // Get length (use appropriate len function based on collection kind)
+  const lenLocal = addLocal(fctx, `__forof_len_${fctx.locals.length}`, { kind: "i32" });
+  if (iterKind === "ArrayOrUint8Array") {
+    // Runtime dispatch: check tag byte at offset 0
+    const arrLenIdx = ctx.funcMap.get("__arr_len")!;
+    const u8LenIdx = ctx.funcMap.get("__u8arr_len")!;
+    fctx.body.push({ op: "local.get", index: arrLocal });
+    fctx.body.push({ op: "i32.load8_u", align: 0, offset: 0 });
+    fctx.body.push({ op: "i32.const", value: 0x02 }); // Uint8Array tag
+    fctx.body.push({ op: "i32.eq" });
+    fctx.body.push({ op: "if", blockType: { kind: "val", type: { kind: "i32" } },
+      then: [
+        { op: "local.get", index: arrLocal },
+        { op: "call", funcIdx: u8LenIdx },
+      ],
+      else: [
+        { op: "local.get", index: arrLocal },
+        { op: "call", funcIdx: arrLenIdx },
+      ],
+    });
+  } else {
+    const lenFuncName = iterKind === "Uint8Array" ? "__u8arr_len" : "__arr_len";
+    const arrLenIdx = ctx.funcMap.get(lenFuncName)!;
+    fctx.body.push({ op: "local.get", index: arrLocal });
+    fctx.body.push({ op: "call", funcIdx: arrLenIdx });
+  }
+  fctx.body.push({ op: "local.set", index: lenLocal });
 
   // Determine the loop variable name(s)
   const initDecl = stmt.initializer;
@@ -760,12 +781,35 @@ function compileForOfStatement(
   fctx.body.push({ op: "i32.ge_s" });
   fctx.body.push({ op: "br_if", depth: 1 }); // break to outer block
 
-  // Load element: x = __arr_get(arr, idx)
+  // Load element: x = getter(arr, idx)
   if (loopVarIdx !== undefined) {
-    const arrGetIdx = ctx.funcMap.get("__arr_get")!;
-    fctx.body.push({ op: "local.get", index: arrLocal });
-    fctx.body.push({ op: "local.get", index: idxLocal });
-    fctx.body.push({ op: "call", funcIdx: arrGetIdx });
+    if (iterKind === "ArrayOrUint8Array") {
+      // Runtime dispatch: check tag byte at offset 0
+      const arrGetIdx = ctx.funcMap.get("__arr_get")!;
+      const u8GetIdx = ctx.funcMap.get("__u8arr_get")!;
+      fctx.body.push({ op: "local.get", index: arrLocal });
+      fctx.body.push({ op: "i32.load8_u", align: 0, offset: 0 });
+      fctx.body.push({ op: "i32.const", value: 0x02 }); // Uint8Array tag
+      fctx.body.push({ op: "i32.eq" });
+      fctx.body.push({ op: "if", blockType: { kind: "val", type: { kind: "i32" } },
+        then: [
+          { op: "local.get", index: arrLocal },
+          { op: "local.get", index: idxLocal },
+          { op: "call", funcIdx: u8GetIdx },
+        ],
+        else: [
+          { op: "local.get", index: arrLocal },
+          { op: "local.get", index: idxLocal },
+          { op: "call", funcIdx: arrGetIdx },
+        ],
+      });
+    } else {
+      const getFuncName = iterKind === "Uint8Array" ? "__u8arr_get" : "__arr_get";
+      const arrGetIdx = ctx.funcMap.get(getFuncName)!;
+      fctx.body.push({ op: "local.get", index: arrLocal });
+      fctx.body.push({ op: "local.get", index: idxLocal });
+      fctx.body.push({ op: "call", funcIdx: arrGetIdx });
+    }
     if (!elementIsI32) {
       fctx.body.push({ op: "f64.convert_i32_s" });
     }
@@ -2464,13 +2508,33 @@ function compilePropertyAccess(
 
   const objKind = getExprCollectionKind(ctx, fctx, expr.expression);
 
-  if (propName === "length" && (objKind === "Array" || objKind === "Uint8Array")) {
+  if (propName === "length" && (objKind === "Array" || objKind === "Uint8Array" || objKind === "ArrayOrUint8Array")) {
     // arr.length or u8.length → call __arr_len / __u8arr_len
     compileExpression(ctx, fctx, expr.expression);
-    // expression is i32 (pointer), no conversion needed
-    const lenFunc = objKind === "Array" ? "__arr_len" : "__u8arr_len";
-    const funcIdx = ctx.funcMap.get(lenFunc)!;
-    fctx.body.push({ op: "call", funcIdx });
+    if (objKind === "ArrayOrUint8Array") {
+      // Runtime dispatch via tag byte
+      const arrLenIdx = ctx.funcMap.get("__arr_len")!;
+      const u8LenIdx = ctx.funcMap.get("__u8arr_len")!;
+      const ptrLocal = addLocal(fctx, `__len_tmp_${fctx.locals.length}`, { kind: "i32" });
+      fctx.body.push({ op: "local.tee", index: ptrLocal });
+      fctx.body.push({ op: "i32.load8_u", align: 0, offset: 0 });
+      fctx.body.push({ op: "i32.const", value: 0x02 });
+      fctx.body.push({ op: "i32.eq" });
+      fctx.body.push({ op: "if", blockType: { kind: "val", type: { kind: "i32" } },
+        then: [
+          { op: "local.get", index: ptrLocal },
+          { op: "call", funcIdx: u8LenIdx },
+        ],
+        else: [
+          { op: "local.get", index: ptrLocal },
+          { op: "call", funcIdx: arrLenIdx },
+        ],
+      });
+    } else {
+      const lenFunc = objKind === "Array" ? "__arr_len" : "__u8arr_len";
+      const funcIdx = ctx.funcMap.get(lenFunc)!;
+      fctx.body.push({ op: "call", funcIdx });
+    }
     // Convert i32 result to f64 (since our numeric values are f64)
     fctx.body.push({ op: "f64.convert_i32_s" });
     return;
@@ -2532,7 +2596,10 @@ function compilePropertyAccess(
     const props = baseType.getProperties();
     if (props.length > 0) {
       // Calculate field offset by iterating properties in order
-      let offset = 0;
+      // Start after the 8-byte header (tag + payload_size)
+      const HEADER_SIZE = 8;
+      const FIELD_SIZE = 8;
+      let offset = HEADER_SIZE;
       let foundField: { offset: number; type: "i32" | "f64" } | null = null;
       for (const prop of props) {
         const rawPropType = ctx.checker.getTypeOfSymbolAtLocation(prop, expr);
@@ -2540,16 +2607,12 @@ function compilePropertyAccess(
         const typeStr = ctx.checker.typeToString(propType);
         const isF64 = typeStr === "number" || typeStr === "boolean" ||
           (propType.getFlags() & (ts.TypeFlags.NumberLike | ts.TypeFlags.BooleanLike)) !== 0;
-        const fieldSize = isF64 ? 8 : 4;
-        // Align
-        if (isF64 && offset % 8 !== 0) offset = Math.ceil(offset / 8) * 8;
-        else if (!isF64 && offset % 4 !== 0) offset = Math.ceil(offset / 4) * 4;
 
         if (prop.getName() === propName) {
           foundField = { offset, type: isF64 ? "f64" : "i32" };
           break;
         }
-        offset += fieldSize;
+        offset += FIELD_SIZE; // uniform 8-byte fields to match computeClassLayout
       }
       if (foundField) {
         compileExpression(ctx, fctx, expr.expression);
@@ -3416,7 +3479,7 @@ function inferExprType(
     const propName = expr.name.text;
     // Check collection length/size
     const objKind = getExprCollectionKind(ctx, fctx, expr.expression);
-    if ((propName === "length" && (objKind === "Array" || objKind === "Uint8Array")) ||
+    if ((propName === "length" && (objKind === "Array" || objKind === "Uint8Array" || objKind === "ArrayOrUint8Array")) ||
         (propName === "size" && (objKind === "Map" || objKind === "Set"))) {
       return { kind: "f64" }; // length/size are returned as f64
     }
@@ -4316,6 +4379,10 @@ function detectParamCollectionTypes(
     // Check explicit type annotation
     if (param.type) {
       const text = param.type.getText();
+      if (text === "number[] | Uint8Array" || text === "Uint8Array | number[]") {
+        fctx.collectionTypes.set(paramName, "ArrayOrUint8Array");
+        continue;
+      }
       if (text === "number[]" || text.endsWith("[]") || text.startsWith("Array<")) {
         fctx.collectionTypes.set(paramName, "Array");
         continue;
@@ -4328,6 +4395,7 @@ function detectParamCollectionTypes(
     try {
       const type = ctx.checker.getTypeAtLocation(param);
       const typeStr = ctx.checker.typeToString(type);
+      if (typeStr === "number[] | Uint8Array" || typeStr === "Uint8Array | number[]") { fctx.collectionTypes.set(paramName, "ArrayOrUint8Array"); continue; }
       if (typeStr === "Uint8Array") { fctx.collectionTypes.set(paramName, "Uint8Array"); continue; }
       if (typeStr.startsWith("Map<")) { fctx.collectionTypes.set(paramName, "Map"); continue; }
       if (typeStr.startsWith("Set<")) { fctx.collectionTypes.set(paramName, "Set"); continue; }

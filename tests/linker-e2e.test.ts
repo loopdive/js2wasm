@@ -28,6 +28,28 @@ function buildLinkerWasm(): Uint8Array {
   const mod = generateLinearMultiModule(multiAst);
   console.timeEnd("generateLinearMultiModule");
 
+  // Log compilation errors (access internal ctx errors via a hack)
+  // We need to temporarily patch generateLinearMultiModule to expose errors
+  // Instead, let's check for 'unreachable' instructions which indicate unhandled cases
+  let unreachableCount = 0;
+  for (const f of mod.functions) {
+    const countInBody = (body: any[]): number => {
+      let c = 0;
+      for (const instr of body) {
+        if (instr.op === "unreachable") c++;
+        if (instr.body) c += countInBody(instr.body);
+        if (instr.then) c += countInBody(instr.then);
+        if (instr.else) c += countInBody(Array.isArray(instr.else) ? instr.else : [instr.else]);
+      }
+      return c;
+    };
+    const count = countInBody(f.body);
+    if (count > 0 && !f.name.startsWith("__")) {
+      unreachableCount += count;
+      if (count > 1) console.log(`  ${f.name}: ${count} unreachable instructions`);
+    }
+  }
+
   // Export runtime helpers for marshaling
   const helpers = [
     "__malloc", "__str_from_data", "__str_len",
@@ -144,6 +166,117 @@ describe("linker end-to-end", { timeout: 120_000 }, () => {
     const parsedPtr = parseObject(namePtr, bytesPtr);
     console.log("parseObject returned:", parsedPtr);
     expect(parsedPtr).toBeGreaterThan(0);
+
+    // Inspect ParsedObject fields:
+    // Layout: [header 8B][name:i32 +8][types:i32 +16][imports:i32 +24][functions:i32 +32]...
+    const dv = new DataView(memory.buffer);
+    const nameField = dv.getInt32(parsedPtr + 8, true);
+    const typesField = dv.getInt32(parsedPtr + 16, true);
+    const importsField = dv.getInt32(parsedPtr + 24, true);
+    const functionsField = dv.getInt32(parsedPtr + 32, true);
+    console.log("ParsedObject fields: name=", nameField, "types=", typesField,
+      "imports=", importsField, "functions=", functionsField);
+
+    // Check types array
+    if (typesField > 0) {
+      const typesLen = ex.__arr_len(typesField) as number;
+      console.log("types.length =", typesLen);
+      if (typesLen > 0) {
+        const firstType = ex.__arr_get(typesField, 0) as number;
+        console.log("types[0] ptr =", firstType);
+        // TypeSection layout: [header 8B][params:i32 +8][results:i32 +16]
+        const paramsField = dv.getInt32(firstType + 8, true);
+        const resultsField = dv.getInt32(firstType + 16, true);
+        console.log("types[0].params =", paramsField, "types[0].results =", resultsField);
+        if (paramsField > 0) {
+          const paramsLen = ex.__arr_len(paramsField) as number;
+          console.log("types[0].params.length =", paramsLen);
+          for (let pi = 0; pi < paramsLen; pi++) {
+            const pval = ex.__arr_get(paramsField, pi) as number;
+            console.log("  params[" + pi + "] =", pval, "(0x" + pval.toString(16) + ")");
+          }
+        }
+      }
+    }
+
+    // Check functions array
+    // ParsedObject field order: name(+8), types(+16), imports(+24), functions(+32),
+    //   tables(+40), memories(+48), globals(+56), exports(+64), elements(+72),
+    //   tags(+80), code(+88), symbols(+96), relocations(+104)
+    if (functionsField > 0) {
+      const funcsLen = ex.__arr_len(functionsField) as number;
+      console.log("functions.length =", funcsLen);
+      if (funcsLen > 0) {
+        const fn0 = ex.__arr_get(functionsField, 0) as number;
+        console.log("functions[0] ptr =", fn0);
+        // FunctionEntry layout: [header 8B][typeIdx: ???]
+        // Dump raw bytes around the object to determine field layout
+        const rawBytes: number[] = [];
+        const u8view = new Uint8Array(memory.buffer);
+        for (let i = 0; i < 24; i++) rawBytes.push(u8view[fn0 + i]);
+        console.log("functions[0] raw:", rawBytes.map(b => b.toString(16).padStart(2, "0")).join(" "));
+        // Try reading typeIdx as both i32 and f64
+        const typeIdxI32 = dv.getInt32(fn0 + 8, true);
+        const typeIdxF64 = dv.getFloat64(fn0 + 8, true);
+        console.log("functions[0].typeIdx: i32=", typeIdxI32, "f64=", typeIdxF64);
+      }
+    }
+
+    // Check exports array
+    const exportsField = dv.getInt32(parsedPtr + 64, true);
+    console.log("exports field ptr:", exportsField);
+    if (exportsField > 0) {
+      const exportsLen = ex.__arr_len(exportsField) as number;
+      console.log("exports.length =", exportsLen);
+      if (exportsLen > 0) {
+        const exp0 = ex.__arr_get(exportsField, 0) as number;
+        console.log("exports[0] ptr =", exp0);
+        // ExportEntry layout: [header 8B][name:i32 +8][kind:??? +??][index:??? +??]
+        const rawBytes: number[] = [];
+        const u8view = new Uint8Array(memory.buffer);
+        for (let i = 0; i < 32; i++) rawBytes.push(u8view[exp0 + i]);
+        console.log("exports[0] raw:", rawBytes.map(b => b.toString(16).padStart(2, "0")).join(" "));
+        const nameFieldExp = dv.getInt32(exp0 + 8, true);
+        const kindI32 = dv.getInt32(exp0 + 16, true);
+        const kindF64 = dv.getFloat64(exp0 + 16, true);
+        const indexI32 = dv.getInt32(exp0 + 24, true);
+        const indexF64 = dv.getFloat64(exp0 + 24, true);
+        console.log("exports[0].name ptr:", nameFieldExp, "kind i32:", kindI32, "f64:", kindF64, "index i32:", indexI32, "f64:", indexF64);
+        if (nameFieldExp > 0) {
+          const nameLen = ex.__str_len(nameFieldExp) as number;
+          console.log("exports[0].name len:", nameLen);
+        }
+      }
+    }
+
+    // Check code array
+    const codeField = dv.getInt32(parsedPtr + 88, true);
+    console.log("code field ptr:", codeField);
+    if (codeField > 0) {
+      const codeLen = ex.__arr_len(codeField) as number;
+      console.log("code.length =", codeLen);
+      if (codeLen > 0) {
+        const code0 = ex.__arr_get(codeField, 0) as number;
+        console.log("code[0] ptr =", code0);
+        const rawBytes: number[] = [];
+        const u8view = new Uint8Array(memory.buffer);
+        for (let i = 0; i < 32; i++) rawBytes.push(u8view[code0 + i]);
+        console.log("code[0] raw:", rawBytes.map(b => b.toString(16).padStart(2, "0")).join(" "));
+        // CodeEntry layout: [header 8B][locals:i32 +8][body:i32 +16]
+        const localsField = dv.getInt32(code0 + 8, true);
+        const bodyField = dv.getInt32(code0 + 16, true);
+        console.log("code[0].locals:", localsField, "code[0].body:", bodyField);
+        if (bodyField > 0) {
+          const bodyLen = ex.__u8arr_len(bodyField) as number;
+          console.log("code[0].body length:", bodyLen);
+          const bodyBytes: number[] = [];
+          for (let i = 0; i < Math.min(bodyLen, 16); i++) {
+            bodyBytes.push(ex.__u8arr_get(bodyField, i) as number);
+          }
+          console.log("code[0].body bytes:", bodyBytes.map(b => b.toString(16).padStart(2, "0")).join(" "));
+        }
+      }
+    }
   });
 
   it("link() produces same output as TypeScript linker", async () => {

@@ -38,7 +38,7 @@ export interface LinearContext {
 }
 
 /** Collection type tag for tracking variable types */
-export type CollectionKind = "Array" | "Uint8Array" | "Map" | "Set";
+export type CollectionKind = "Array" | "Uint8Array" | "ArrayOrUint8Array" | "Map" | "Set";
 
 /** Per-function context for linear-memory codegen */
 export interface LinearFuncContext {
