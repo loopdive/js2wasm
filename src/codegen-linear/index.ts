@@ -1612,6 +1612,14 @@ function compileObjectLiteral(
     ctx.classLayouts.set(typeName, layout);
   }
 
+  // For anonymous types without a name, create an ephemeral layout from propDefs
+  if (!typeName && propDefs.length > 0) {
+    typeName = `__anon_${ctx.lambdaCounter++}`;
+    const anonLayout = computeClassLayout(typeName, propDefs);
+    for (const [k, v] of collKinds) anonLayout.fieldCollectionKinds.set(k, v);
+    ctx.classLayouts.set(typeName, anonLayout);
+  }
+
   // Use the layout to determine total size (includes ALL interface fields)
   const layout = typeName ? ctx.classLayouts.get(typeName) : undefined;
   const HEADER_SIZE = 8;
@@ -3279,10 +3287,10 @@ function compileUint8ArrayMethodCall(
     const sliceIdx = ctx.funcMap.get("__u8arr_slice")!;
     compileExpression(ctx, fctx, propAccess.expression); // u8 ptr
     if (expr.arguments.length >= 2) {
-      compileExprToI32(ctx, fctx, expr.arguments[0]); // start → i32
-      compileExprToI32(ctx, fctx, expr.arguments[1]); // end → i32
+      compileExprToI32(ctx, fctx, expr.arguments[0]!); // start → i32
+      compileExprToI32(ctx, fctx, expr.arguments[1]!); // end → i32
     } else if (expr.arguments.length === 1) {
-      compileExprToI32(ctx, fctx, expr.arguments[0]); // start → i32
+      compileExprToI32(ctx, fctx, expr.arguments[0]!); // start → i32
       // end = length
       compileExpression(ctx, fctx, propAccess.expression);
       const lenIdx = ctx.funcMap.get("__u8arr_len")!;
@@ -3295,6 +3303,53 @@ function compileUint8ArrayMethodCall(
       fctx.body.push({ op: "call", funcIdx: lenIdx });
     }
     fctx.body.push({ op: "call", funcIdx: sliceIdx });
+  } else if (methodName === "set") {
+    // u8.set(source) → copy source bytes into u8
+    // Inline loop: for (let i = 0; i < src.len; i++) dest[12+i] = src[12+i]
+    const u8LenIdx = ctx.funcMap.get("__u8arr_len")!;
+    const destLocal = addLocal(fctx, `__u8set_dest_${fctx.locals.length}`, { kind: "i32" });
+    const srcLocal = addLocal(fctx, `__u8set_src_${fctx.locals.length}`, { kind: "i32" });
+    const lenLocal = addLocal(fctx, `__u8set_len_${fctx.locals.length}`, { kind: "i32" });
+    const iLocal = addLocal(fctx, `__u8set_i_${fctx.locals.length}`, { kind: "i32" });
+
+    compileExpression(ctx, fctx, propAccess.expression); // dest u8 ptr
+    fctx.body.push({ op: "local.set", index: destLocal });
+    compileExprToI32(ctx, fctx, expr.arguments[0]!); // source u8 ptr
+    fctx.body.push({ op: "local.set", index: srcLocal });
+
+    // len = __u8arr_len(src)
+    fctx.body.push({ op: "local.get", index: srcLocal });
+    fctx.body.push({ op: "call", funcIdx: u8LenIdx });
+    fctx.body.push({ op: "local.set", index: lenLocal });
+
+    // i = 0
+    fctx.body.push({ op: "i32.const", value: 0 });
+    fctx.body.push({ op: "local.set", index: iLocal });
+
+    // Copy loop
+    fctx.body.push({ op: "block", blockType: { kind: "empty" }, body: [
+      { op: "loop", blockType: { kind: "empty" }, body: [
+        { op: "local.get", index: iLocal },
+        { op: "local.get", index: lenLocal },
+        { op: "i32.ge_u" },
+        { op: "br_if", depth: 1 },
+        // dest[12+i] = src[12+i]
+        { op: "local.get", index: destLocal },
+        { op: "local.get", index: iLocal },
+        { op: "i32.add" },
+        { op: "local.get", index: srcLocal },
+        { op: "local.get", index: iLocal },
+        { op: "i32.add" },
+        { op: "i32.load8_u", align: 0, offset: 12 },
+        { op: "i32.store8", align: 0, offset: 12 },
+        // i++
+        { op: "local.get", index: iLocal },
+        { op: "i32.const", value: 1 },
+        { op: "i32.add" },
+        { op: "local.set", index: iLocal },
+        { op: "br", depth: 0 },
+      ]},
+    ]});
   } else {
     ctx.errors.push({
       message: `Unsupported Uint8Array method: .${methodName}()`,
