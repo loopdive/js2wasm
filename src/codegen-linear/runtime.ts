@@ -158,7 +158,7 @@ export function addUint8ArrayRuntime(mod: WasmModule): void {
             { op: "local.get", index: iLocal },
             { op: "local.get", index: 1 }, // len
             { op: "i32.ge_u" },
-            { op: "br_if", label: 1 },
+            { op: "br_if", depth: 1 },
             // newPtr[12+i] = rawPtr[i]
             { op: "local.get", index: newPtrLocal },
             { op: "local.get", index: iLocal },
@@ -172,7 +172,7 @@ export function addUint8ArrayRuntime(mod: WasmModule): void {
             { op: "i32.const", value: 1 },
             { op: "i32.add" },
             { op: "local.set", index: iLocal },
-            { op: "br", label: 0 },
+            { op: "br", depth: 0 },
           ]},
         ]},
         { op: "local.get", index: newPtrLocal },
@@ -206,7 +206,7 @@ export function addUint8ArrayRuntime(mod: WasmModule): void {
           { op: "local.get", index: local3Idx + 2 }, // i
           { op: "local.get", index: local3Idx }, // newLen
           { op: "i32.ge_u" },
-          { op: "br_if", label: 1 },
+          { op: "br_if", depth: 1 },
           // newPtr[12 + i] = src[12 + start + i]
           { op: "local.get", index: local3Idx + 1 }, // newPtr
           { op: "local.get", index: local3Idx + 2 }, // i
@@ -225,12 +225,68 @@ export function addUint8ArrayRuntime(mod: WasmModule): void {
           { op: "i32.const", value: 1 },
           { op: "i32.add" },
           { op: "local.set", index: local3Idx + 2 },
-          { op: "br", label: 0 },
+          { op: "br", depth: 0 },
         ]},
       ]},
       // Return newPtr
       { op: "local.get", index: local3Idx + 1 },
     ], 3); // 3 extra locals: newLen, newPtr, i
+
+  // __u8arr_from_arr(arrPtr: i32) → i32
+  // Creates a Uint8Array from a number[] array.
+  // Array layout: [header 8B][len:u32 +8][cap:u32 +12][elements: i32×cap +16...]
+  // Extra locals: local1 = len, local2 = newPtr, local3 = i
+  addRuntimeFunc(mod, "__u8arr_from_arr",
+    [{ kind: "i32" }],
+    [{ kind: "i32" }],
+    [],
+    (local1Idx) => {
+      const lenLocal = local1Idx;
+      const newPtrLocal = local1Idx + 1;
+      const iLocal = local1Idx + 2;
+      return [
+        // len = arrPtr.len (at +8)
+        { op: "local.get", index: 0 },
+        { op: "i32.load", align: 2, offset: 8 },
+        { op: "local.set", index: lenLocal },
+        // newPtr = __u8arr_new(len)
+        { op: "local.get", index: lenLocal },
+        { op: "call", funcIdx: findFuncIndex(mod, "__u8arr_new") },
+        { op: "local.set", index: newPtrLocal },
+        // i = 0
+        { op: "i32.const", value: 0 },
+        { op: "local.set", index: iLocal },
+        // Copy loop
+        { op: "block", blockType: { kind: "empty" }, body: [
+          { op: "loop", blockType: { kind: "empty" }, body: [
+            { op: "local.get", index: iLocal },
+            { op: "local.get", index: lenLocal },
+            { op: "i32.ge_u" },
+            { op: "br_if", depth: 1 },
+            // newPtr[12+i] = (u8) arrPtr[16 + i*4]
+            { op: "local.get", index: newPtrLocal },
+            { op: "local.get", index: iLocal },
+            { op: "i32.add" },
+            // Load element from array: arrPtr + 16 + i*4
+            { op: "local.get", index: 0 }, // arrPtr
+            { op: "local.get", index: iLocal },
+            { op: "i32.const", value: 4 },
+            { op: "i32.mul" },
+            { op: "i32.add" },
+            { op: "i32.load", align: 2, offset: 16 },
+            // Store as byte
+            { op: "i32.store8", align: 0, offset: 12 },
+            // i++
+            { op: "local.get", index: iLocal },
+            { op: "i32.const", value: 1 },
+            { op: "i32.add" },
+            { op: "local.set", index: iLocal },
+            { op: "br", depth: 0 },
+          ]},
+        ]},
+        { op: "local.get", index: newPtrLocal },
+      ];
+    }, 3);
 }
 
 /**
@@ -675,7 +731,7 @@ export function addStringRuntime(mod: WasmModule): void {
           { op: "local.get", index: iLocalFu },
           { op: "local.get", index: lenLocal },
           { op: "i32.ge_u" },
-          { op: "br_if", label: 1 },
+          { op: "br_if", depth: 1 },
           // newPtr[12+i] = u8arr[12+i]
           { op: "local.get", index: ptrLocalFu },
           { op: "local.get", index: iLocalFu },
@@ -689,7 +745,7 @@ export function addStringRuntime(mod: WasmModule): void {
           { op: "i32.const", value: 1 },
           { op: "i32.add" },
           { op: "local.set", index: iLocalFu },
-          { op: "br", label: 0 },
+          { op: "br", depth: 0 },
         ]},
       ]},
       { op: "local.get", index: ptrLocalFu },
