@@ -296,7 +296,7 @@ export function compileSource(
     if (useLinear) {
       mod = generateLinearModule(ast);
     } else {
-      const result = generateModule(ast, { sourceMap: emitSourceMap });
+      const result = generateModule(ast, { sourceMap: emitSourceMap, fast: options.fast });
       mod = result.module;
       // Propagate codegen errors with source locations
       for (const err of result.errors) {
@@ -489,7 +489,7 @@ export function compileMultiSource(
     if (useLinear) {
       mod = generateLinearMultiModule(multiAst);
     } else {
-      const result = generateMultiModule(multiAst, { sourceMap: emitSourceMap });
+      const result = generateMultiModule(multiAst, { sourceMap: emitSourceMap, fast: options.fast });
       mod = result.module;
       // Propagate codegen errors with source locations
       for (const err of result.errors) {

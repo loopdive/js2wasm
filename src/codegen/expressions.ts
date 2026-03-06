@@ -1,6 +1,6 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext, ClosureInfo, RestParamInfo } from "./index.js";
-import { allocLocal, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx } from "./index.js";
+import { allocLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx } from "./index.js";
 import {
   mapTsTypeToWasm,
   isNumberType,
@@ -127,6 +127,10 @@ function compileExpressionInner(
 ): ValType | null {
   if (ts.isNumericLiteral(expr)) {
     const value = Number(expr.text.replace(/_/g, ""));
+    if (ctx.fast && Number.isInteger(value) && value >= -2147483648 && value <= 2147483647) {
+      fctx.body.push({ op: "i32.const", value });
+      return { kind: "i32" };
+    }
     fctx.body.push({ op: "f64.const", value });
     return { kind: "f64" };
   }
@@ -1141,12 +1145,21 @@ function compileBinaryExpression(
     op === ts.SyntaxKind.LessThanLessThanToken ||
     op === ts.SyntaxKind.GreaterThanGreaterThanToken ||
     op === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken;
-  const hintF64: ValType | undefined = isNumericOp ? { kind: "f64" } : undefined;
+  // In fast mode, numeric hint is i32 (unless division/power which promotes to f64)
+  const isDivOrPow = op === ts.SyntaxKind.SlashToken || op === ts.SyntaxKind.AsteriskAsteriskToken;
+  const numericHint: ValType | undefined = isNumericOp
+    ? { kind: (ctx.fast && !isDivOrPow) ? "i32" : "f64" }
+    : undefined;
 
-  const leftType = compileExpression(ctx, fctx, expr.left, hintF64);
-  const rightType = compileExpression(ctx, fctx, expr.right, hintF64);
+  const leftType = compileExpression(ctx, fctx, expr.left, numericHint);
+  const rightType = compileExpression(ctx, fctx, expr.right, numericHint);
 
   if (!leftType || !rightType) return null;
+
+  // Fast mode: i32 numeric operations
+  if (ctx.fast && isNumberType(leftTsType) && leftType.kind === "i32" && rightType.kind === "i32") {
+    return compileI32BinaryOp(ctx, fctx, op, expr);
+  }
 
   if (isNumberType(leftTsType) || leftType.kind === "f64") {
     return compileNumericBinaryOp(ctx, fctx, op, expr);
@@ -1252,6 +1265,71 @@ function compileNumericBinaryOp(
         column: getCol(expr),
       });
       return { kind: "f64" };
+  }
+}
+
+/** Fast mode: i32 arithmetic/comparison on two i32 operands */
+function compileI32BinaryOp(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  op: ts.SyntaxKind,
+  expr: ts.BinaryExpression,
+): ValType {
+  switch (op) {
+    case ts.SyntaxKind.PlusToken:
+      fctx.body.push({ op: "i32.add" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.MinusToken:
+      fctx.body.push({ op: "i32.sub" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.AsteriskToken:
+      fctx.body.push({ op: "i32.mul" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.PercentToken:
+      fctx.body.push({ op: "i32.rem_s" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.EqualsEqualsEqualsToken:
+    case ts.SyntaxKind.EqualsEqualsToken:
+      fctx.body.push({ op: "i32.eq" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.ExclamationEqualsEqualsToken:
+    case ts.SyntaxKind.ExclamationEqualsToken:
+      fctx.body.push({ op: "i32.ne" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.LessThanToken:
+      fctx.body.push({ op: "i32.lt_s" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.LessThanEqualsToken:
+      fctx.body.push({ op: "i32.le_s" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.GreaterThanToken:
+      fctx.body.push({ op: "i32.gt_s" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.GreaterThanEqualsToken:
+      fctx.body.push({ op: "i32.ge_s" });
+      return { kind: "i32" };
+    // Bitwise — direct i32 ops (no conversion needed!)
+    case ts.SyntaxKind.AmpersandToken:
+      fctx.body.push({ op: "i32.and" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.BarToken:
+      fctx.body.push({ op: "i32.or" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.CaretToken:
+      fctx.body.push({ op: "i32.xor" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.LessThanLessThanToken:
+      fctx.body.push({ op: "i32.shl" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.GreaterThanGreaterThanToken:
+      fctx.body.push({ op: "i32.shr_s" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken:
+      fctx.body.push({ op: "i32.shr_u" });
+      return { kind: "i32" };
+    default:
+      // Fall back to f64 path for division, power, etc.
+      return compileNumericBinaryOp(ctx, fctx, op, expr);
   }
 }
 
@@ -2030,7 +2108,16 @@ function compilePrefixUnary(
 ): ValType | null {
   switch (expr.operator) {
     case ts.SyntaxKind.MinusToken: {
-      compileExpression(ctx, fctx, expr.operand);
+      const operandType = compileExpression(ctx, fctx, expr.operand);
+      if (ctx.fast && operandType?.kind === "i32") {
+        // i32 negate: 0 - x
+        const tmp = allocLocal(fctx, `__neg_${fctx.locals.length}`, { kind: "i32" });
+        fctx.body.push({ op: "local.set", index: tmp });
+        fctx.body.push({ op: "i32.const", value: 0 });
+        fctx.body.push({ op: "local.get", index: tmp });
+        fctx.body.push({ op: "i32.sub" });
+        return { kind: "i32" };
+      }
       fctx.body.push({ op: "f64.neg" });
       return { kind: "f64" };
     }
@@ -2041,6 +2128,12 @@ function compilePrefixUnary(
       return { kind: "i32" };
     }
     case ts.SyntaxKind.TildeToken: {
+      if (ctx.fast) {
+        compileExpression(ctx, fctx, expr.operand, { kind: "i32" });
+        fctx.body.push({ op: "i32.const", value: -1 });
+        fctx.body.push({ op: "i32.xor" });
+        return { kind: "i32" };
+      }
       // ~x => f64.convert_i32_s(i32.xor(i32.trunc_f64_s(x), -1))
       compileExpression(ctx, fctx, expr.operand, { kind: "f64" });
       fctx.body.push({ op: "i32.trunc_f64_s" });
@@ -2053,6 +2146,14 @@ function compilePrefixUnary(
       if (ts.isIdentifier(expr.operand)) {
         const idx = fctx.localMap.get(expr.operand.text);
         if (idx !== undefined) {
+          const localType = getLocalType(fctx, idx);
+          if (ctx.fast && localType?.kind === "i32") {
+            fctx.body.push({ op: "local.get", index: idx });
+            fctx.body.push({ op: "i32.const", value: 1 });
+            fctx.body.push({ op: "i32.add" });
+            fctx.body.push({ op: "local.tee", index: idx });
+            return { kind: "i32" };
+          }
           fctx.body.push({ op: "local.get", index: idx });
           fctx.body.push({ op: "f64.const", value: 1 });
           fctx.body.push({ op: "f64.add" });
@@ -2066,6 +2167,14 @@ function compilePrefixUnary(
       if (ts.isIdentifier(expr.operand)) {
         const idx = fctx.localMap.get(expr.operand.text);
         if (idx !== undefined) {
+          const localType = getLocalType(fctx, idx);
+          if (ctx.fast && localType?.kind === "i32") {
+            fctx.body.push({ op: "local.get", index: idx });
+            fctx.body.push({ op: "i32.const", value: 1 });
+            fctx.body.push({ op: "i32.sub" });
+            fctx.body.push({ op: "local.tee", index: idx });
+            return { kind: "i32" };
+          }
           fctx.body.push({ op: "local.get", index: idx });
           fctx.body.push({ op: "f64.const", value: 1 });
           fctx.body.push({ op: "f64.sub" });
@@ -2107,6 +2216,16 @@ function compilePostfixUnary(
       column: getCol(expr),
     });
     return null;
+  }
+
+  const localType = getLocalType(fctx, idx);
+  if (ctx.fast && localType?.kind === "i32") {
+    fctx.body.push({ op: "local.get", index: idx });
+    fctx.body.push({ op: "local.get", index: idx });
+    fctx.body.push({ op: "i32.const", value: 1 });
+    fctx.body.push({ op: expr.operator === ts.SyntaxKind.PlusPlusToken ? "i32.add" : "i32.sub" });
+    fctx.body.push({ op: "local.set", index: idx });
+    return { kind: "i32" };
   }
 
   fctx.body.push({ op: "local.get", index: idx });

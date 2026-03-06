@@ -187,6 +187,8 @@ export interface CodegenContext {
   sourceMap: boolean;
   /** Map from tuple type signature key → type index of the tuple struct */
   tupleTypeMap: Map<string, number>;
+  /** Fast mode: default number to i32, promote to f64 only when needed */
+  fast: boolean;
 }
 
 /** Metadata for a closure stored in a local variable */
@@ -234,6 +236,8 @@ export interface CodegenResult {
 export interface CodegenOptions {
   /** Whether to generate source positions for source map */
   sourceMap?: boolean;
+  /** Fast mode: i32 default numbers */
+  fast?: boolean;
 }
 
 /** Compile a typed AST into a WasmModule IR */
@@ -298,6 +302,7 @@ export function generateModule(
     classExprNameMap: new Map(),
     sourceMap: options?.sourceMap ?? false,
     tupleTypeMap: new Map(),
+    fast: options?.fast ?? false,
   };
 
   // Collect console.log imports (only variants actually used)
@@ -450,6 +455,7 @@ export function generateMultiModule(
     classExprNameMap: new Map(),
     sourceMap: options?.sourceMap ?? false,
     tupleTypeMap: new Map(),
+    fast: options?.fast ?? false,
   };
 
   // Phase 1: Collect all import-phase declarations across all source files
@@ -1949,7 +1955,7 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type): ValType {
     }
   }
 
-  return mapTsTypeToWasm(tsType, ctx.checker);
+  return mapTsTypeToWasm(tsType, ctx.checker, ctx.fast);
 }
 
 /**
@@ -4116,6 +4122,13 @@ export function allocLocal(
   fctx.locals.push({ name, type });
   fctx.localMap.set(name, index);
   return index;
+}
+
+/** Get the ValType of a local by index (param or local slot) */
+export function getLocalType(fctx: FunctionContext, index: number): ValType | undefined {
+  if (index < fctx.params.length) return fctx.params[index]!.type;
+  const localIdx = index - fctx.params.length;
+  return fctx.locals[localIdx]?.type;
 }
 
 /**

@@ -70,6 +70,8 @@ export interface CompileOptions {
   sourceMapUrl?: string;
   /** Compilation target: "gc" (WasmGC, default) or "linear" (linear memory) */
   target?: "gc" | "linear";
+  /** Enable fast mode — i32 default numbers, performance optimizations */
+  fast?: boolean;
   /** Enable safe mode — reject unsafe TypeScript patterns at compile time */
   safe?: boolean;
   /** Globals allowed in safe mode (e.g. ["document"]) */
