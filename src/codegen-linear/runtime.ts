@@ -729,6 +729,10 @@ export function addStringRuntime(mod: WasmModule): void {
       { op: "i32.add" },
       { op: "call", funcIdx: mallocIdx },
       { op: "local.set", index: ptrLocalFu },
+      // Store tag byte 0x02 (Uint8Array) at newPtr+0
+      { op: "local.get", index: ptrLocalFu },
+      { op: "i32.const", value: 0x02 },
+      { op: "i32.store8", align: 0, offset: 0 },
       // Store len at newPtr+8
       { op: "local.get", index: ptrLocalFu },
       { op: "local.get", index: lenLocal },

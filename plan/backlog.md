@@ -6,9 +6,8 @@
 
 | #                  | Feature                                                     | Complexity |
 | ------------------ | ----------------------------------------------------------- | ---------- |
-| [33](issues/33.md) | Relocatable Wasm object file (.o) emission                  | L          |
-| [34](issues/34.md) | Multi-memory module linker with isolation validation        | L          |
 | [46](issues/46.md) | Linear-memory compilation backend                           | L          |
+| [70](issues/70.md) | Fast mode Phases 2–4 (wasm-native strings, arrays, C ABI)  | L          |
 
 ## Complexity legend
 
@@ -51,37 +50,42 @@
 | [28](issues/done/28.md) | Multi-file module compilation            | 10 in multi-file.test.ts     |
 | [29](issues/done/29.md) | Investigate failing tests                | fixed 2 in import-resolver   |
 | [30](issues/done/30.md) | Async/await and Promises                 | 8 in async-await.test.ts     |
-| [32](issues/32.md)      | Capacity-based arrays with `array.copy`  | 4 in array-capacity.test.ts  |
-| [35](issues/35.md)      | Class inheritance with extends and super | 7 in inheritance.test.ts     |
-| [36](issues/36.md)      | Static class members                     | 8 in static-members.test.ts  |
-| [37](issues/37.md)      | Getter/setter properties                 | 6 in getters-setters.test.ts |
-| [38](issues/38.md)      | Implement `instanceof` operator          | 4 in instanceof.test.ts      |
-| [39](issues/39.md)      | Labeled break and continue               | 7 in labeled-loops.test.ts   |
-| [40](issues/40.md)      | String enums                             | 5 in string-enums.test.ts    |
-| [42](issues/42.md)      | Comma operator                           | 5 in comma-operator.test.ts  |
-| [43](issues/43.md)      | void expression                          | 3 in void-expr.test.ts       |
-| [44](issues/44.md)      | Source map generation                    | 18 in sourcemap.test.ts      |
-| [45](issues/45.md)      | Error reporting with source locations    | 7 in error-reporting.test.ts |
-| [41](issues/41.md)      | typeof as expression                     | 5 in typeof-expression.test.ts |
-| [47](issues/47.md)      | importedStringConstants support          | 21 in imported-string-constants.test.ts |
-| [48](issues/48.md)      | Cache string literals in locals          | 9 in string-literal-cache.test.ts |
-| [49](issues/49.md)      | Default parameter values                 | 8 in default-params.test.ts  |
-| [50](issues/50.md)      | Nullish/logical assignment               | 11 in logical-assignment.test.ts |
-| [51](issues/51.md)      | Functional array methods                 | 24 in functional-array-methods.test.ts |
-| [52](issues/52.md)      | String.split()                           | 5 in string-split.test.ts    |
-| [53](issues/53.md)      | Numeric separators                       | 6 in numeric-separators.test.ts |
-| [54](issues/54.md)      | Map and Set collections                  | 19 in map-set.test.ts        |
-| [55](issues/55.md)      | Function expressions                     | 5 in function-expressions.test.ts |
-| [56](issues/56.md)      | Tuples                                   | 10 in tuples.test.ts         |
-| [57](issues/57.md)      | Class expressions                        | 3 in class-expressions.test.ts |
-| [58](issues/58.md)      | Iterators and for...of                   | 6 in iterators.test.ts       |
-| [59](issues/59.md)      | Abstract classes                         | 6 in abstract-classes.test.ts |
-| [60](issues/60.md)      | RegExp via host imports                  | in regexp.test.ts            |
-| [61](issues/61.md)      | Object.keys / Object.values / Object.entries | 13 in object-methods.test.ts |
-| [62](issues/62.md)      | JSON.parse / JSON.stringify              | 5 in json.test.ts            |
-| [63](issues/63.md)      | Promise.all / Promise.race               | 4 in promise-combinators.test.ts |
-| [64](issues/64.md)      | Generators and yield                     | 9 in generators.test.ts      |
-| [65](issues/65.md)      | Computed property names                  | 6 in computed-props.test.ts  |
+| [31](issues/31.md)      | Default number type to i32 (via fast mode) | 13 in i32-fast-mode.test.ts |
+| [32](issues/done/32.md) | Capacity-based arrays with `array.copy`  | 4 in array-capacity.test.ts  |
+| [33](issues/done/33.md) | Relocatable Wasm object file (.o) emission | in linker-e2e.test.ts      |
+| [34](issues/done/34.md) | Multi-memory module linker               | in linker-e2e.test.ts        |
+| [35](issues/done/35.md) | Class inheritance with extends and super | 7 in inheritance.test.ts     |
+| [36](issues/done/36.md) | Static class members                     | 8 in static-members.test.ts  |
+| [37](issues/done/37.md) | Getter/setter properties                 | 6 in getters-setters.test.ts |
+| [38](issues/done/38.md) | Implement `instanceof` operator          | 4 in instanceof.test.ts      |
+| [39](issues/done/39.md) | Labeled break and continue               | 7 in labeled-loops.test.ts   |
+| [40](issues/done/40.md) | String enums                             | 5 in string-enums.test.ts    |
+| [41](issues/done/41.md) | typeof as expression                     | 5 in typeof-expression.test.ts |
+| [42](issues/done/42.md) | Comma operator                           | 5 in comma-operator.test.ts  |
+| [43](issues/done/43.md) | void expression                          | 3 in void-expr.test.ts       |
+| [44](issues/done/44.md) | Source map generation                    | 18 in sourcemap.test.ts      |
+| [45](issues/done/45.md) | Error reporting with source locations    | 7 in error-reporting.test.ts |
+| [47](issues/done/47.md) | importedStringConstants support          | 21 in imported-string-constants.test.ts |
+| [48](issues/done/48.md) | Cache string literals in locals          | 9 in string-literal-cache.test.ts |
+| [49](issues/done/49.md) | Default parameter values                 | 8 in default-params.test.ts  |
+| [50](issues/done/50.md) | Nullish/logical assignment               | 11 in logical-assignment.test.ts |
+| [51](issues/done/51.md) | Functional array methods                 | 24 in functional-array-methods.test.ts |
+| [52](issues/done/52.md) | String.split()                           | 5 in string-split.test.ts    |
+| [53](issues/done/53.md) | Numeric separators                       | 6 in numeric-separators.test.ts |
+| [54](issues/done/54.md) | Map and Set collections                  | 19 in map-set.test.ts        |
+| [55](issues/done/55.md) | Function expressions                     | 5 in function-expressions.test.ts |
+| [56](issues/done/56.md) | Tuples                                   | 10 in tuples.test.ts         |
+| [57](issues/done/57.md) | Class expressions                        | 3 in class-expressions.test.ts |
+| [58](issues/done/58.md) | Iterators and for...of                   | 6 in iterators.test.ts       |
+| [59](issues/done/59.md) | Abstract classes                         | 6 in abstract-classes.test.ts |
+| [60](issues/done/60.md) | RegExp via host imports                  | in regexp.test.ts            |
+| [61](issues/done/61.md) | Object.keys / Object.values / Object.entries | 13 in object-methods.test.ts |
+| [62](issues/done/62.md) | JSON.parse / JSON.stringify              | 5 in json.test.ts            |
+| [63](issues/done/63.md) | Promise.all / Promise.race               | 4 in promise-combinators.test.ts |
+| [64](issues/done/64.md) | Generators and yield                     | 9 in generators.test.ts      |
+| [65](issues/done/65.md) | Computed property names                  | 6 in computed-props.test.ts  |
+| [66](issues/done/66.md) | Security design doc — runtime import hardening | —                      |
+| [67](issues/done/67.md) | Closed import objects                    | in closed-imports.test.ts    |
+| [68](issues/done/68.md) | DOM containment                          | in dom-containment.test.ts   |
 | [69](issues/done/69.md) | Safe mode — compile-time security checks | 14 in safe-mode.test.ts      |
 | [70](issues/70.md)      | Fast mode Phase 1 — i32 default numbers  | 13 in i32-fast-mode.test.ts  |
-| [31](issues/31.md)      | Default number type to i32 (via fast mode) | 13 in i32-fast-mode.test.ts |
