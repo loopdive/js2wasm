@@ -96,6 +96,7 @@ export function addUint8ArrayRuntime(mod: WasmModule): void {
   const mallocIdx = findFuncIndex(mod, "__malloc");
 
   // __u8arr_new: allocate header(8) + len(4) + bytes(len)
+  // Tag byte at offset 0: 0x02 = Uint8Array
   // extra locals: local 1 = ptr (result)
   addRuntimeFunc(mod, "__u8arr_new", [{ kind: "i32" }], [{ kind: "i32" }], [], (local1Idx) => [
     // Allocate: 12 + len bytes
@@ -104,6 +105,10 @@ export function addUint8ArrayRuntime(mod: WasmModule): void {
     { op: "i32.add" },
     { op: "call", funcIdx: mallocIdx },
     { op: "local.set", index: local1Idx },
+    // Store tag byte 0x02 (Uint8Array) at ptr+0
+    { op: "local.get", index: local1Idx },
+    { op: "i32.const", value: 0x02 },
+    { op: "i32.store8", align: 0, offset: 0 },
     // Store len at ptr+8
     { op: "local.get", index: local1Idx },
     { op: "local.get", index: 0 }, // len
@@ -304,6 +309,7 @@ export function addArrayRuntime(mod: WasmModule): void {
   const mallocIdx = findFuncIndex(mod, "__malloc");
 
   // __arr_new: allocate header(8) + len(4) + cap(4) + elements(cap*4)
+  // Tag byte at offset 0: 0x01 = Array
   // extra locals: local 1 = ptr
   addRuntimeFunc(mod, "__arr_new", [{ kind: "i32" }], [{ kind: "i32" }], [], (local1Idx) => [
     // Allocate: 16 + cap*4
@@ -314,6 +320,10 @@ export function addArrayRuntime(mod: WasmModule): void {
     { op: "i32.add" },
     { op: "call", funcIdx: mallocIdx },
     { op: "local.set", index: local1Idx },
+    // Store tag byte 0x01 (Array) at ptr+0
+    { op: "local.get", index: local1Idx },
+    { op: "i32.const", value: 0x01 },
+    { op: "i32.store8", align: 0, offset: 0 },
     // Store len=0 at ptr+8
     { op: "local.get", index: local1Idx },
     { op: "i32.const", value: 0 },
