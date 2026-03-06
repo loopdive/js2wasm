@@ -232,6 +232,16 @@ describe("linker end-to-end", { timeout: 120_000 }, () => {
     const outBytes = new Uint8Array(memory.buffer).slice(binaryPtr + 12, binaryPtr + 12 + outLen);
     console.log("wasm linker output size:", outBytes.length, "ts linker output size:", tsResult.binary.length);
 
+    // Dump both outputs for comparison
+    const hexDump = (label: string, bytes: Uint8Array) => {
+      const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, "0"));
+      for (let i = 0; i < hex.length; i += 16) {
+        console.log(label, i.toString(16).padStart(4, "0") + ":", hex.slice(i, i + 16).join(" "));
+      }
+    };
+    hexDump("WASM", outBytes);
+    hexDump("TS  ", tsResult.binary);
+
     // Verify output starts with wasm magic
     expect(outBytes[0]).toBe(0x00); // \0
     expect(outBytes[1]).toBe(0x61); // a
