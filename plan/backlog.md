@@ -6,7 +6,6 @@
 
 | #                  | Feature                                                     | Complexity |
 | ------------------ | ----------------------------------------------------------- | ---------- |
-| [46](issues/46.md) | Linear-memory compilation backend                           | L          |
 | [70](issues/70.md) | Fast mode Phases 2–4 (wasm-native strings, arrays, C ABI)  | L          |
 
 ## Complexity legend
@@ -88,4 +87,5 @@
 | [67](issues/done/67.md) | Closed import objects                    | in closed-imports.test.ts    |
 | [68](issues/done/68.md) | DOM containment                          | in dom-containment.test.ts   |
 | [69](issues/done/69.md) | Safe mode — compile-time security checks | 14 in safe-mode.test.ts      |
+| [46](issues/done/46.md) | Linear-memory compilation backend        | 3 in linker-e2e.test.ts      |
 | [70](issues/70.md)      | Fast mode Phase 1 — i32 default numbers  | 13 in i32-fast-mode.test.ts  |
