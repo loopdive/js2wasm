@@ -100,6 +100,30 @@ function resolveImport(
       if (name === "__call_1_f64") return (fn: Function, a: number) => fn(a);
       if (name === "__call_2_f64") return (fn: Function, a: number, b: number) => fn(a, b);
       if (name === "__typeof") return (v: any) => typeof v;
+      // Native string marshaling (fast mode)
+      if (name === "__str_extern_len") return (s: string) => s.length;
+      if (name === "__str_from_mem") {
+        // Returns a function that reads i16 code units from wasm memory
+        // The memory is bound lazily after instantiation
+        return (ptr: number, len: number) => {
+          const exports = callbackState?.getExports();
+          const mem = exports?.__str_mem as WebAssembly.Memory | undefined;
+          if (!mem) return "";
+          const u16 = new Uint16Array(mem.buffer, ptr, len);
+          return String.fromCharCode(...u16);
+        };
+      }
+      if (name === "__str_to_mem") {
+        return (s: string, ptr: number) => {
+          const exports = callbackState?.getExports();
+          const mem = exports?.__str_mem as WebAssembly.Memory | undefined;
+          if (!mem) return;
+          const u16 = new Uint16Array(mem.buffer, ptr);
+          for (let i = 0; i < s.length; i++) {
+            u16[i] = s.charCodeAt(i);
+          }
+        };
+      }
       return () => {};
     }
     case "callback_maker":
@@ -320,6 +344,8 @@ export function buildImports(
 
     env[imp.name] = fn;
     if (imp.intent.type === "callback_maker") hasCallbacks = true;
+    // Native string marshal helpers need late-bound exports (for memory access)
+    if (imp.name === "__str_from_mem" || imp.name === "__str_to_mem") hasCallbacks = true;
   }
 
   const result: {

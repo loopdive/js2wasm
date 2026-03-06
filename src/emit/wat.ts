@@ -125,7 +125,7 @@ function formatTypeDef(t: TypeDef, idx: number): string {
       return `(type $${t.name} (struct ${fields}))`;
     }
     case "array":
-      return `(type $${t.name} (array ${t.mutable ? "(mut " : ""}${formatValType(t.element)}${t.mutable ? ")" : ""}))`;
+      return `(type $${t.name} (array ${t.mutable ? "(mut " : ""}${formatStorageType(t.element)}${t.mutable ? ")" : ""}))`;
     case "rec": {
       const inner = t.types
         .map((sub, i) => `    ${formatTypeDef(sub, idx + i)}`)
@@ -141,8 +141,13 @@ function formatTypeDef(t: TypeDef, idx: number): string {
   }
 }
 
+function formatStorageType(t: ValType): string {
+  if (t.kind === "i16") return "i16";
+  return formatValType(t);
+}
+
 function formatFieldDef(f: FieldDef): string {
-  const mutStr = f.mutable ? `(mut ${formatValType(f.type)})` : formatValType(f.type);
+  const mutStr = f.mutable ? `(mut ${formatStorageType(f.type)})` : formatStorageType(f.type);
   return `(field $${f.name} ${mutStr})`;
 }
 
@@ -166,6 +171,8 @@ function formatValType(t: ValType): string {
       return `(ref ${t.typeIdx})`;
     case "ref_null":
       return `(ref null ${t.typeIdx})`;
+    case "i16":
+      return "i16";
   }
 }
 
@@ -306,6 +313,8 @@ function formatInstr(instr: Instr, _depth: number): string {
       return `array.get ${instr.typeIdx}`;
     case "array.get_s":
       return `array.get_s ${instr.typeIdx}`;
+    case "array.get_u":
+      return `array.get_u ${instr.typeIdx}`;
     case "array.set":
       return `array.set ${instr.typeIdx}`;
     case "array.copy":

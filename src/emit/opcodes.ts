@@ -143,6 +143,8 @@ export const TYPE = {
   struct_ht: 0x6b,
   array_ht: 0x6a,
   none: 0x6e, // alias – bottom of ref hierarchy
+  i8: 0x78,
+  i16: 0x77,
   const_field: 0x00,
   mut_field: 0x01,
 } as const;

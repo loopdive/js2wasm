@@ -1,6 +1,6 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext, ClosureInfo, RestParamInfo } from "./index.js";
-import { allocLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx } from "./index.js";
+import { allocLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, ensureNativeStringHelpers } from "./index.js";
 import {
   mapTsTypeToWasm,
   isNumberType,
@@ -2503,6 +2503,12 @@ function compileCallExpression(
     // String method calls
     if (isStringType(receiverType)) {
       const method = propAccess.name.text;
+
+      // Fast mode: native string method dispatch
+      if (ctx.fast && ctx.nativeStrTypeIdx >= 0) {
+        return compileNativeStringMethodCall(ctx, fctx, expr, propAccess, method);
+      }
+
       const importName = `string_${method}`;
       const funcIdx = ctx.funcMap.get(importName);
       if (funcIdx !== undefined) {
@@ -2993,6 +2999,13 @@ function compileConsoleLog(
     compileExpression(ctx, fctx, arg);
 
     if (isStringType(argType)) {
+      // Fast mode: marshal native string to externref before passing to host
+      if (ctx.fast && ctx.nativeStrTypeIdx >= 0) {
+        const toExternIdx = ctx.nativeStrHelpers.get("__str_to_extern");
+        if (toExternIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx: toExternIdx });
+        }
+      }
       const funcIdx = ctx.funcMap.get("console_log_string");
       if (funcIdx !== undefined) {
         fctx.body.push({ op: "call", funcIdx });
@@ -3217,8 +3230,12 @@ function compileOptionalPropertyAccess(
   if (isExternalDeclaredClass(tsObjType, ctx.checker)) {
     compileExternPropertyGetFromStack(ctx, fctx, tsObjType, propName);
   } else if (isStringType(tsObjType) && propName === "length") {
-    const funcIdx = ctx.funcMap.get("length");
-    if (funcIdx !== undefined) fctx.body.push({ op: "call", funcIdx });
+    if (ctx.fast && ctx.nativeStrTypeIdx >= 0) {
+      fctx.body.push({ op: "struct.get", typeIdx: ctx.nativeStrTypeIdx, fieldIdx: 0 });
+    } else {
+      const funcIdx = ctx.funcMap.get("length");
+      if (funcIdx !== undefined) fctx.body.push({ op: "call", funcIdx });
+    }
   }
   const elseInstrs = fctx.body;
 
@@ -3424,6 +3441,11 @@ function compilePropertyAccess(
   // Handle string.length
   if (isStringType(objType) && propName === "length") {
     compileExpression(ctx, fctx, expr.expression);
+    if (ctx.fast && ctx.nativeStrTypeIdx >= 0) {
+      // Inline: struct.get $NativeString.$len
+      fctx.body.push({ op: "struct.get", typeIdx: ctx.nativeStrTypeIdx, fieldIdx: 0 });
+      return { kind: "i32" };
+    }
     const funcIdx = ctx.funcMap.get("length");
     if (funcIdx !== undefined) {
       fctx.body.push({ op: "call", funcIdx });
@@ -4173,6 +4195,11 @@ function compileStringLiteral(
   value: string,
   node?: ts.Node,
 ): ValType | null {
+  // Fast mode: materialize as NativeString GC struct inline
+  if (ctx.fast && ctx.nativeStrTypeIdx >= 0) {
+    return compileNativeStringLiteral(ctx, fctx, value);
+  }
+
   // Use importedStringConstants: string literals are global imports
   const globalIdx = ctx.stringGlobalMap.get(value);
   if (globalIdx !== undefined) {
@@ -4189,11 +4216,43 @@ function compileStringLiteral(
   return null;
 }
 
+/**
+ * Materialize a string literal as a NativeString GC struct in fast mode.
+ * Emits array.new_fixed with the WTF-16 code units, then struct.new.
+ */
+function compileNativeStringLiteral(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  value: string,
+): ValType {
+  const strDataTypeIdx = ctx.nativeStrDataTypeIdx;
+  const strTypeIdx = ctx.nativeStrTypeIdx;
+
+  // Push len (i32)
+  fctx.body.push({ op: "i32.const", value: value.length });
+
+  // Push each code unit (i16) and create array with array.new_fixed
+  for (let i = 0; i < value.length; i++) {
+    fctx.body.push({ op: "i32.const", value: value.charCodeAt(i) });
+  }
+  fctx.body.push({ op: "array.new_fixed", typeIdx: strDataTypeIdx, length: value.length });
+
+  // struct.new $NativeString(len, data)
+  fctx.body.push({ op: "struct.new", typeIdx: strTypeIdx });
+
+  return nativeStringType(ctx);
+}
+
 function compileTemplateExpression(
   ctx: CodegenContext,
   fctx: FunctionContext,
   expr: ts.TemplateExpression,
 ): ValType | null {
+  // Fast mode: use native string concat
+  if (ctx.fast && ctx.nativeStrTypeIdx >= 0) {
+    return compileNativeTemplateExpression(ctx, fctx, expr);
+  }
+
   const concatIdx = ctx.funcMap.get("concat");
   const toStrIdx = ctx.funcMap.get("number_toString");
   if (concatIdx === undefined) return null;
@@ -4235,12 +4294,108 @@ function compileTemplateExpression(
   return { kind: "externref" };
 }
 
+/**
+ * Compile a template expression in fast mode, using native string concat.
+ * Number substitutions are converted via number_toString (returns externref)
+ * then marshaled to native string.
+ */
+function compileNativeTemplateExpression(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.TemplateExpression,
+): ValType | null {
+  const concatIdx = ctx.nativeStrHelpers.get("__str_concat");
+  const toStrIdx = ctx.funcMap.get("number_toString");
+  const fromExternIdx = ctx.nativeStrHelpers.get("__str_from_extern");
+  if (concatIdx === undefined) return null;
+
+  if (expr.head.text) {
+    compileStringLiteral(ctx, fctx, expr.head.text, expr.head);
+  }
+
+  for (let i = 0; i < expr.templateSpans.length; i++) {
+    const span = expr.templateSpans[i]!;
+
+    const spanType = compileExpression(ctx, fctx, span.expression);
+    if (spanType && spanType.kind === "f64" && toStrIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: toStrIdx });
+      // number_toString returns externref, marshal to native string
+      if (fromExternIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: fromExternIdx });
+      }
+    } else if (spanType && spanType.kind === "i32" && toStrIdx !== undefined) {
+      fctx.body.push({ op: "f64.convert_i32_s" });
+      fctx.body.push({ op: "call", funcIdx: toStrIdx });
+      if (fromExternIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: fromExternIdx });
+      }
+    }
+    // ref $NativeString is already the right type
+
+    if (i === 0 && !expr.head.text) {
+      // No head — expression result is accumulated string
+    } else {
+      fctx.body.push({ op: "call", funcIdx: concatIdx });
+    }
+
+    if (span.literal.text) {
+      compileStringLiteral(ctx, fctx, span.literal.text, span.literal);
+      fctx.body.push({ op: "call", funcIdx: concatIdx });
+    }
+  }
+
+  return nativeStringType(ctx);
+}
+
 function compileStringBinaryOp(
   ctx: CodegenContext,
   fctx: FunctionContext,
   expr: ts.BinaryExpression,
   op: ts.SyntaxKind,
 ): ValType | null {
+  // Fast mode: native string operations
+  if (ctx.fast && ctx.nativeStrTypeIdx >= 0) {
+    compileExpression(ctx, fctx, expr.left);
+    compileExpression(ctx, fctx, expr.right);
+
+    switch (op) {
+      case ts.SyntaxKind.PlusToken: {
+        const funcIdx = ctx.nativeStrHelpers.get("__str_concat");
+        if (funcIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx });
+          return nativeStringType(ctx);
+        }
+        break;
+      }
+      case ts.SyntaxKind.EqualsEqualsEqualsToken:
+      case ts.SyntaxKind.EqualsEqualsToken: {
+        const funcIdx = ctx.nativeStrHelpers.get("__str_equals");
+        if (funcIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx });
+          return { kind: "i32" };
+        }
+        break;
+      }
+      case ts.SyntaxKind.ExclamationEqualsEqualsToken:
+      case ts.SyntaxKind.ExclamationEqualsToken: {
+        const funcIdx = ctx.nativeStrHelpers.get("__str_equals");
+        if (funcIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx });
+          fctx.body.push({ op: "i32.eqz" });
+          return { kind: "i32" };
+        }
+        break;
+      }
+    }
+
+    ctx.errors.push({
+      message: `Unsupported string operator: ${ts.SyntaxKind[op]}`,
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+
   compileExpression(ctx, fctx, expr.left);
   compileExpression(ctx, fctx, expr.right);
 
@@ -4283,6 +4438,154 @@ function compileStringBinaryOp(
   return null;
 }
 
+// ── Native string method calls (fast mode) ──────────────────────────
+
+/**
+ * Compile a method call on a native string in fast mode.
+ * Handles: charCodeAt (inline), charAt, substring, slice (native helpers),
+ * and delegates other methods to host via marshal.
+ */
+function compileNativeStringMethodCall(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.CallExpression,
+  propAccess: ts.PropertyAccessExpression,
+  method: string,
+): ValType | null {
+  const strTypeIdx = ctx.nativeStrTypeIdx;
+  const strDataTypeIdx = ctx.nativeStrDataTypeIdx;
+
+  // charCodeAt: inline array.get_u
+  if (method === "charCodeAt") {
+    compileExpression(ctx, fctx, propAccess.expression);
+    fctx.body.push({ op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 }); // .data
+    if (expr.arguments.length > 0) {
+      const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
+      if (argType && argType.kind === "f64") {
+        fctx.body.push({ op: "i32.trunc_f64_s" });
+      }
+    } else {
+      fctx.body.push({ op: "i32.const", value: 0 });
+    }
+    fctx.body.push({ op: "array.get_u", typeIdx: strDataTypeIdx });
+    return { kind: "i32" };
+  }
+
+  // charAt: native helper
+  if (method === "charAt") {
+    compileExpression(ctx, fctx, propAccess.expression);
+    if (expr.arguments.length > 0) {
+      const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
+      if (argType && argType.kind === "f64") {
+        fctx.body.push({ op: "i32.trunc_f64_s" });
+      }
+    } else {
+      fctx.body.push({ op: "i32.const", value: 0 });
+    }
+    const funcIdx = ctx.nativeStrHelpers.get("__str_charAt")!;
+    fctx.body.push({ op: "call", funcIdx });
+    return nativeStringType(ctx);
+  }
+
+  // substring: native helper
+  if (method === "substring") {
+    compileExpression(ctx, fctx, propAccess.expression);
+    // start
+    if (expr.arguments.length > 0) {
+      const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
+      if (argType && argType.kind === "f64") {
+        fctx.body.push({ op: "i32.trunc_f64_s" });
+      }
+    } else {
+      fctx.body.push({ op: "i32.const", value: 0 });
+    }
+    // end
+    if (expr.arguments.length > 1) {
+      const argType = compileExpression(ctx, fctx, expr.arguments[1]!);
+      if (argType && argType.kind === "f64") {
+        fctx.body.push({ op: "i32.trunc_f64_s" });
+      }
+    } else {
+      // Default end = string length
+      // We need to get the receiver again — use a temp local
+      // Actually, push len from the string on stack — but receiver is consumed.
+      // Simpler: push i32.const MAX_INT as sentinel and let helper clamp
+      fctx.body.push({ op: "i32.const", value: 0x7FFFFFFF });
+    }
+    const funcIdx = ctx.nativeStrHelpers.get("__str_substring")!;
+    fctx.body.push({ op: "call", funcIdx });
+    return nativeStringType(ctx);
+  }
+
+  // slice: native helper (handles negative indices)
+  if (method === "slice") {
+    compileExpression(ctx, fctx, propAccess.expression);
+    // start
+    if (expr.arguments.length > 0) {
+      const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
+      if (argType && argType.kind === "f64") {
+        fctx.body.push({ op: "i32.trunc_f64_s" });
+      }
+    } else {
+      fctx.body.push({ op: "i32.const", value: 0 });
+    }
+    // end
+    if (expr.arguments.length > 1) {
+      const argType = compileExpression(ctx, fctx, expr.arguments[1]!);
+      if (argType && argType.kind === "f64") {
+        fctx.body.push({ op: "i32.trunc_f64_s" });
+      }
+    } else {
+      fctx.body.push({ op: "i32.const", value: 0x7FFFFFFF });
+    }
+    const funcIdx = ctx.nativeStrHelpers.get("__str_slice")!;
+    fctx.body.push({ op: "call", funcIdx });
+    return nativeStringType(ctx);
+  }
+
+  // Other methods: marshal native->extern, call host, marshal extern->native
+  const importName = `string_${method}`;
+  const funcIdx = ctx.funcMap.get(importName);
+  if (funcIdx !== undefined) {
+    // Marshal receiver: native string -> externref
+    compileExpression(ctx, fctx, propAccess.expression);
+    const toExternIdx = ctx.nativeStrHelpers.get("__str_to_extern")!;
+    fctx.body.push({ op: "call", funcIdx: toExternIdx });
+
+    // Compile arguments — string args need marshaling too
+    for (const arg of expr.arguments) {
+      const argType = compileExpression(ctx, fctx, arg);
+      if (argType && argType.kind === "ref" && argType.typeIdx === strTypeIdx) {
+        // Native string arg → marshal to externref
+        fctx.body.push({ op: "call", funcIdx: toExternIdx });
+      }
+    }
+
+    fctx.body.push({ op: "call", funcIdx });
+
+    // Determine return type and marshal back if needed
+    const returnsBool = method === "includes" || method === "startsWith" || method === "endsWith";
+    const returnsNum = method === "indexOf" || method === "lastIndexOf";
+    if (returnsBool) {
+      return { kind: "i32" };
+    } else if (returnsNum) {
+      return { kind: "f64" };
+    } else {
+      // Returns externref string → marshal to native
+      const fromExternIdx = ctx.nativeStrHelpers.get("__str_from_extern")!;
+      fctx.body.push({ op: "call", funcIdx: fromExternIdx });
+      return nativeStringType(ctx);
+    }
+  }
+
+  ctx.errors.push({
+    message: `Unknown string method: ${method}`,
+    line: getLine(expr),
+    column: getCol(expr),
+  });
+  return null;
+}
+
 // ── Array method calls (pure Wasm, no host imports) ─────────────────
 
 /** Resolve array type info from a TS type. Returns null if not a Wasm GC vec struct. */
@@ -4290,6 +4593,10 @@ function resolveArrayInfo(
   ctx: CodegenContext,
   tsType: ts.Type,
 ): { vecTypeIdx: number; arrTypeIdx: number; elemType: ValType } | null {
+  // In fast mode, strings are NativeString structs that look like arrays
+  // (struct { len: i32, data: ref array }). Reject them here so string
+  // methods are dispatched via compileNativeStringMethodCall instead.
+  if (ctx.fast && ctx.nativeStrTypeIdx >= 0 && isStringType(tsType)) return null;
   const wasmType = resolveWasmType(ctx, tsType);
   if (wasmType.kind !== "ref" && wasmType.kind !== "ref_null") return null;
   const vecTypeIdx = (wasmType as { typeIdx: number }).typeIdx;
