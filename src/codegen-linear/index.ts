@@ -658,12 +658,22 @@ function compileStatement(
   } else if (ts.isSwitchStatement(stmt)) {
     // switch (expr) { case ...: ... }
     compileSwitchStatement(ctx, fctx, stmt);
+  } else if (ts.isTryStatement(stmt)) {
+    // Compile try body inline (wasm has no exception handling in MVP).
+    // The catch clause is skipped — wasm traps are not catchable.
+    for (const s of stmt.tryBlock.statements) {
+      compileStatement(ctx, fctx, s);
+    }
+    // Skip catch clause — it would only fire on JS exceptions
   } else if (ts.isExpressionStatement(stmt)) {
     compileExpression(ctx, fctx, stmt.expression);
     // Only drop if the expression produces a value
     if (!isVoidExpression(ctx, stmt.expression)) {
       fctx.body.push({ op: "drop" });
     }
+  } else if (ts.isThrowStatement(stmt)) {
+    // throw → unreachable (wasm trap)
+    fctx.body.push({ op: "unreachable" });
   }
 }
 
@@ -1012,8 +1022,9 @@ function compileSwitchStatement(
   fctx: LinearFuncContext,
   stmt: ts.SwitchStatement,
 ): void {
-  // Compile as cascading if/else
-  // Evaluate switch expression once, store in temp local
+  // Compile as cascading if/else with fall-through support.
+  // Group consecutive case clauses with empty bodies (fall-through)
+  // into a single OR'd condition.
   compileExpression(ctx, fctx, stmt.expression);
   const switchExprType = inferExprType(ctx, fctx, stmt.expression);
   const switchLocal = addLocal(fctx, `__switch_${fctx.locals.length}`, switchExprType);
@@ -1021,32 +1032,67 @@ function compileSwitchStatement(
 
   let defaultClause: ts.CaseOrDefaultClause | null = null;
 
-  for (const clause of stmt.caseBlock.clauses) {
+  // Track whether any case matched (for default clause guarding)
+  let matchedLocal: number | undefined;
+  // Pre-scan for default clause
+  for (const c of stmt.caseBlock.clauses) {
+    if (ts.isDefaultClause(c)) {
+      matchedLocal = addLocal(fctx, `__switch_matched_${fctx.locals.length}`, { kind: "i32" });
+      fctx.body.push({ op: "i32.const", value: 0 });
+      fctx.body.push({ op: "local.set", index: matchedLocal });
+      break;
+    }
+  }
+
+  const clauseArr = Array.from(stmt.caseBlock.clauses);
+  let i = 0;
+  while (i < clauseArr.length) {
+    const clause = clauseArr[i]!;
     if (ts.isDefaultClause(clause)) {
       defaultClause = clause;
+      i++;
       continue;
     }
 
-    // case value: compare switch expression to case value
-    fctx.body.push({ op: "local.get", index: switchLocal });
-    compileExpression(ctx, fctx, clause.expression!);
+    // Collect consecutive case clauses with empty statements (fall-through)
+    const caseExprs: ts.Expression[] = [clause.expression!];
+    let bodyClause: ts.CaseClause = clause as ts.CaseClause;
+    while (bodyClause.statements.length === 0 && i + 1 < clauseArr.length) {
+      i++;
+      const next = clauseArr[i]!;
+      if (ts.isDefaultClause(next)) {
+        defaultClause = next;
+        break;
+      }
+      caseExprs.push((next as ts.CaseClause).expression!);
+      bodyClause = next as ts.CaseClause;
+    }
 
-    // Compare
-    if (switchExprType.kind === "f64") {
-      fctx.body.push({ op: "f64.eq" });
-    } else {
-      fctx.body.push({ op: "i32.eq" });
+    // Build OR'd condition: switchVal === case1 || switchVal === case2 || ...
+    for (let j = 0; j < caseExprs.length; j++) {
+      fctx.body.push({ op: "local.get", index: switchLocal });
+      compileExpression(ctx, fctx, caseExprs[j]!);
+      if (switchExprType.kind === "f64") {
+        fctx.body.push({ op: "f64.eq" });
+      } else {
+        fctx.body.push({ op: "i32.eq" });
+      }
+      if (j > 0) {
+        fctx.body.push({ op: "i32.or" });
+      }
     }
 
     // Then body
     const thenBody: Instr[] = [];
     const savedBody = fctx.body;
     fctx.body = thenBody;
-
-    for (const s of clause.statements) {
+    if (matchedLocal !== undefined) {
+      fctx.body.push({ op: "i32.const", value: 1 });
+      fctx.body.push({ op: "local.set", index: matchedLocal });
+    }
+    for (const s of bodyClause.statements) {
       compileStatement(ctx, fctx, s);
     }
-
     fctx.body = savedBody;
 
     fctx.body.push({
@@ -1054,12 +1100,31 @@ function compileSwitchStatement(
       blockType: { kind: "empty" },
       then: thenBody,
     });
+
+    i++;
   }
 
-  // Default clause
+  // Default clause — only execute if no case matched
   if (defaultClause) {
-    for (const s of defaultClause.statements) {
-      compileStatement(ctx, fctx, s);
+    if (matchedLocal !== undefined) {
+      fctx.body.push({ op: "local.get", index: matchedLocal });
+      fctx.body.push({ op: "i32.eqz" });
+      const defaultBody: Instr[] = [];
+      const savedBody = fctx.body;
+      fctx.body = defaultBody;
+      for (const s of defaultClause.statements) {
+        compileStatement(ctx, fctx, s);
+      }
+      fctx.body = savedBody;
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" },
+        then: defaultBody,
+      });
+    } else {
+      for (const s of defaultClause.statements) {
+        compileStatement(ctx, fctx, s);
+      }
     }
   }
 }
@@ -1648,6 +1713,46 @@ function compileBinaryExpression(
       fctx.body.push({ op: "global.set", index: gIdx });
       fctx.body.push({ op: "global.get", index: gIdx });
       return;
+    }
+  }
+
+  // Handle compound assignment on property access (e.g. this.pos += n)
+  if (isCompoundAssignment(op) && ts.isPropertyAccessExpression(expr.left)) {
+    const propName = expr.left.name.text;
+    const className = inferClassName(ctx, fctx, expr.left.expression);
+    if (className) {
+      const layout = ctx.classLayouts.get(className);
+      const field = layout?.fields.get(propName);
+      if (field) {
+        // Load current value: obj.field
+        compileExpression(ctx, fctx, expr.left.expression);
+        const objLocal = addLocal(fctx, `$compound_obj`, { kind: "i32" });
+        fctx.body.push({ op: "local.tee", index: objLocal });
+        if (field.type === "f64") {
+          fctx.body.push({ op: "f64.load", align: 3, offset: field.offset });
+        } else {
+          fctx.body.push({ op: "i32.load", align: 2, offset: field.offset });
+        }
+        // Compute new value: current op rhs
+        compileExpression(ctx, fctx, expr.right);
+        fctx.body.push(compoundAssignmentOp(op));
+        // Store new value back
+        const tempLocal = addLocal(fctx, `$compound_val`, field.type === "f64" ? { kind: "f64" } : { kind: "i32" });
+        fctx.body.push({ op: "local.tee", index: tempLocal });
+        // Swap: need obj ptr on stack first, then value
+        const objLocal2 = objLocal; // reuse
+        fctx.body.push({ op: "local.set", index: tempLocal }); // save value
+        fctx.body.push({ op: "local.get", index: objLocal2 }); // obj ptr
+        fctx.body.push({ op: "local.get", index: tempLocal }); // value
+        if (field.type === "f64") {
+          fctx.body.push({ op: "f64.store", align: 3, offset: field.offset });
+        } else {
+          fctx.body.push({ op: "i32.store", align: 2, offset: field.offset });
+        }
+        // Leave value on stack as expression result
+        fctx.body.push({ op: "local.get", index: tempLocal });
+        return;
+      }
     }
   }
 
@@ -2262,10 +2367,22 @@ function compileNewExpression(
         fctx.body.push({ op: "i32.load", align: 2, offset: 0 }); // len = buf[0]
         fctx.body.push({ op: "call", funcIdx: fromRawIdx });
       } else {
-        // new Uint8Array(n) → __u8arr_new(n)
-        const u8NewIdx = ctx.funcMap.get("__u8arr_new")!;
-        compileExprToI32(ctx, fctx, expr.arguments[0]);
-        fctx.body.push({ op: "call", funcIdx: u8NewIdx });
+        // Check if arg is a number[] (array) → __u8arr_from_arr(arrPtr)
+        let isNumberArray = false;
+        try {
+          const argTypeStr = ctx.checker.typeToString(ctx.checker.getTypeAtLocation(expr.arguments[0]));
+          isNumberArray = argTypeStr === "number[]" || argTypeStr.endsWith("[]");
+        } catch { /* fallback */ }
+        if (isNumberArray) {
+          const fromArrIdx = ctx.funcMap.get("__u8arr_from_arr")!;
+          compileExpression(ctx, fctx, expr.arguments[0]);
+          fctx.body.push({ op: "call", funcIdx: fromArrIdx });
+        } else {
+          // new Uint8Array(n) → __u8arr_new(n)
+          const u8NewIdx = ctx.funcMap.get("__u8arr_new")!;
+          compileExprToI32(ctx, fctx, expr.arguments[0]);
+          fctx.body.push({ op: "call", funcIdx: u8NewIdx });
+        }
       }
     } else {
       const u8NewIdx = ctx.funcMap.get("__u8arr_new")!;
@@ -2331,6 +2448,20 @@ function compilePropertyAccess(
   expr: ts.PropertyAccessExpression,
 ): void {
   const propName = expr.name.text;
+
+  // Try to resolve compile-time constant values (e.g., SECTION.type from `as const` objects)
+  try {
+    const type = ctx.checker.getTypeAtLocation(expr);
+    if (type.isNumberLiteral()) {
+      fctx.body.push({ op: "f64.const", value: (type as any).value });
+      return;
+    }
+    if (type.isStringLiteral()) {
+      compileStringLiteral(ctx, fctx, (type as any).value);
+      return;
+    }
+  } catch { /* fall through to runtime access */ }
+
   const objKind = getExprCollectionKind(ctx, fctx, expr.expression);
 
   if (propName === "length" && (objKind === "Array" || objKind === "Uint8Array")) {
@@ -3508,7 +3639,7 @@ function compileClassDeclaration(ctx: LinearContext, classDecl: ts.ClassDeclarat
     }
   }
 
-  compileClassCtor(ctx, className, layout, ctorDecl);
+  compileClassCtor(ctx, className, layout, ctorDecl, classDecl);
 
   for (const member of classDecl.members) {
     if (ts.isMethodDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
@@ -3526,6 +3657,7 @@ function compileClassCtor(
   _className: string,
   layout: ClassLayout,
   ctorDecl: ts.ConstructorDeclaration | undefined,
+  classDecl?: ts.ClassDeclaration,
 ): void {
   const ctorName = layout.ctorFuncName;
 
@@ -3569,6 +3701,32 @@ function compileClassCtor(
   }
 
   ctx.currentFunc = fctx;
+
+  // Compile field initializers (e.g., `private buf: number[] = []`)
+  if (classDecl) {
+    for (const member of classDecl.members) {
+      if (ts.isPropertyDeclaration(member) && member.initializer && member.name && ts.isIdentifier(member.name)) {
+        const fieldName = member.name.text;
+        const field = layout.fields.get(fieldName);
+        if (field) {
+          fctx.body.push({ op: "local.get", index: 0 }); // this
+          compileExpression(ctx, fctx, member.initializer);
+          const valType = inferExprType(ctx, fctx, member.initializer);
+          if (field.type === "i32") {
+            if (valType.kind !== "i32") {
+              fctx.body.push({ op: "i32.trunc_f64_s" });
+            }
+            fctx.body.push({ op: "i32.store", align: 2, offset: field.offset });
+          } else {
+            if (valType.kind === "i32") {
+              fctx.body.push({ op: "f64.convert_i32_s" });
+            }
+            fctx.body.push({ op: "f64.store", align: 3, offset: field.offset });
+          }
+        }
+      }
+    }
+  }
 
   if (ctorDecl?.body) {
     for (const stmt of ctorDecl.body.statements) {
@@ -4087,13 +4245,10 @@ function fixupFuncIndices(ctx: LinearContext): void {
   // Update funcMap
   ctx.funcMap = newFuncMap;
 
-  // Also fix up tableEntries (lambda func indices for closure table)
-  for (let i = 0; i < ctx.tableEntries.length; i++) {
-    const mapped = oldToNew.get(ctx.tableEntries[i]);
-    if (mapped !== undefined) {
-      ctx.tableEntries[i] = mapped;
-    }
-  }
+  // Note: tableEntries are NOT remapped here because they store the correct
+  // final position in mod.functions (set right before push in compileArrowFunctionArg).
+  // The oldToNew map may contain colliding indices from non-lambda functions
+  // that were registered in funcMap before lambdas shifted their positions.
 
   // Patch all call and ref.func instructions in all function bodies
   function patchInstrs(instrs: Instr[]): void {
@@ -4204,13 +4359,29 @@ function detectCallbackParams(
       const cbResults: ValType[] = cbReturn ? [cbReturn] : [];
 
       // Find or create a type index for this callback signature
-      const typeIdx = ctx.mod.types.length;
-      ctx.mod.types.push({
-        kind: "func",
-        name: `$cb_type_${paramName}`,
-        params: cbParams,
-        results: cbResults,
-      });
+      let typeIdx = -1;
+      for (let ti = 0; ti < ctx.mod.types.length; ti++) {
+        const t = ctx.mod.types[ti]!;
+        if (t.kind !== "func") continue;
+        if (
+          t.params.length === cbParams.length &&
+          t.results.length === cbResults.length &&
+          t.params.every((p: ValType, j: number) => p.kind === cbParams[j]!.kind) &&
+          t.results.every((r: ValType, j: number) => r.kind === cbResults[j]!.kind)
+        ) {
+          typeIdx = ti;
+          break;
+        }
+      }
+      if (typeIdx < 0) {
+        typeIdx = ctx.mod.types.length;
+        ctx.mod.types.push({
+          kind: "func",
+          name: `$cb_type_${paramName}`,
+          params: cbParams,
+          results: cbResults,
+        });
+      }
       fctx.callbackParams.set(paramName, typeIdx);
     }
   }
@@ -4280,14 +4451,31 @@ function compileArrowFunctionArg(
   const paramTypes = params.map((p) => p.type);
   const resultTypes: ValType[] = isVoid ? [] : [returnType];
 
-  // Create type and function context
-  const typeIdx = ctx.mod.types.length;
-  ctx.mod.types.push({
-    kind: "func",
-    name: `$type_${lambdaName}`,
-    params: paramTypes,
-    results: resultTypes,
-  });
+  // Create type and function context — reuse existing type if structurally identical
+  // (required for call_indirect type checking in WebAssembly)
+  let typeIdx = -1;
+  for (let ti = 0; ti < ctx.mod.types.length; ti++) {
+    const t = ctx.mod.types[ti]!;
+    if (t.kind !== "func") continue;
+    if (
+      t.params.length === paramTypes.length &&
+      t.results.length === resultTypes.length &&
+      t.params.every((p: ValType, j: number) => p.kind === paramTypes[j]!.kind) &&
+      t.results.every((r: ValType, j: number) => r.kind === resultTypes[j]!.kind)
+    ) {
+      typeIdx = ti;
+      break;
+    }
+  }
+  if (typeIdx < 0) {
+    typeIdx = ctx.mod.types.length;
+    ctx.mod.types.push({
+      kind: "func",
+      name: `$type_${lambdaName}`,
+      params: paramTypes,
+      results: resultTypes,
+    });
+  }
 
   const fctx: LinearFuncContext = {
     name: lambdaName,
