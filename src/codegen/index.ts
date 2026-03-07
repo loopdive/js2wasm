@@ -741,6 +741,7 @@ function collectStringMethodImports(
     "charAt", "substring", "slice",
     "indexOf", "lastIndexOf", "includes", "startsWith", "endsWith",
     "trim", "trimStart", "trimEnd",
+    "repeat", "padStart", "padEnd", "toLowerCase", "toUpperCase",
   ]);
 
   for (const method of needed) {
@@ -1890,6 +1891,453 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       name: "__str_trim",
       typeIdx,
       locals: [],
+      body,
+      exported: false,
+    });
+  }
+
+  // --- $__str_repeat(s: ref $NativeString, count: i32) -> ref $NativeString ---
+  {
+    const typeIdx = addFuncType(ctx, [strRef, { kind: "i32" }], [strRef]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_repeat", funcIdx);
+
+    // params: s(0), count(1)
+    // locals: sLen(2), newLen(3), newArr(4), dst(5), srcData(6), copyI(7)
+    const body: Instr[] = [
+      // sLen = s.len
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 2 },
+
+      // if count <= 0 or sLen == 0, return empty string
+      { op: "local.get", index: 1 },
+      { op: "i32.const", value: 0 },
+      { op: "i32.le_s" },
+      { op: "if", blockType: { kind: "val", type: strRef }, then: [
+        { op: "i32.const", value: 0 },  // len = 0
+        { op: "i32.const", value: 0 },
+        { op: "array.new_default", typeIdx: strDataTypeIdx },
+        { op: "struct.new", typeIdx: strTypeIdx },
+      ], else: [
+        { op: "local.get", index: 2 },
+        { op: "i32.eqz" },
+        { op: "if", blockType: { kind: "val", type: strRef }, then: [
+          { op: "i32.const", value: 0 },  // len = 0
+          { op: "i32.const", value: 0 },
+          { op: "array.new_default", typeIdx: strDataTypeIdx },
+          { op: "struct.new", typeIdx: strTypeIdx },
+        ], else: [
+          // newLen = sLen * count
+          { op: "local.get", index: 2 },
+          { op: "local.get", index: 1 },
+          { op: "i32.mul" },
+          { op: "local.tee", index: 3 },
+
+          // newArr = array.new_default(newLen)
+          { op: "array.new_default", typeIdx: strDataTypeIdx },
+          { op: "local.set", index: 4 },
+
+          // srcData = s.data
+          { op: "local.get", index: 0 },
+          { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 },
+          { op: "local.set", index: 6 },
+
+          // dst = 0
+          { op: "i32.const", value: 0 },
+          { op: "local.set", index: 5 },
+
+          // outer loop: repeat count times
+          { op: "block", blockType: { kind: "empty" }, body: [
+            { op: "loop", blockType: { kind: "empty" }, body: [
+              { op: "local.get", index: 5 },
+              { op: "local.get", index: 3 },
+              { op: "i32.ge_u" },
+              { op: "br_if", depth: 1 },
+
+              // array.copy newArr[dst..] <- srcData[0..sLen]
+              { op: "local.get", index: 4 },   // dst array
+              { op: "local.get", index: 5 },   // dst offset
+              { op: "local.get", index: 6 },   // src array
+              { op: "i32.const", value: 0 },   // src offset
+              { op: "local.get", index: 2 },   // length = sLen
+              { op: "array.copy", dstTypeIdx: strDataTypeIdx, srcTypeIdx: strDataTypeIdx },
+
+              // dst += sLen
+              { op: "local.get", index: 5 },
+              { op: "local.get", index: 2 },
+              { op: "i32.add" },
+              { op: "local.set", index: 5 },
+              { op: "br", depth: 0 },
+            ]},
+          ]},
+
+          // return struct.new(newLen, newArr)
+          { op: "local.get", index: 3 },
+          { op: "local.get", index: 4 },
+          { op: "struct.new", typeIdx: strTypeIdx },
+        ]},
+      ]},
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_repeat",
+      typeIdx,
+      locals: [
+        { name: "sLen", type: { kind: "i32" } },
+        { name: "newLen", type: { kind: "i32" } },
+        { name: "newArr", type: strDataRef },
+        { name: "dst", type: { kind: "i32" } },
+        { name: "srcData", type: strDataRef },
+        { name: "copyI", type: { kind: "i32" } },
+      ],
+      body,
+      exported: false,
+    });
+  }
+
+  // --- $__str_padStart(s: ref $NativeString, targetLen: i32, padStr: ref $NativeString) -> ref $NativeString ---
+  {
+    const concatIdx = ctx.nativeStrHelpers.get("__str_concat")!;
+    const repeatIdx = ctx.nativeStrHelpers.get("__str_repeat")!;
+    const substringIdx = ctx.nativeStrHelpers.get("__str_substring")!;
+
+    const typeIdx = addFuncType(ctx, [strRef, { kind: "i32" }, strRef], [strRef]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_padStart", funcIdx);
+
+    // params: s(0), targetLen(1), padStr(2)
+    // locals: sLen(3), padLen(4), fillLen(5), repeated(6), prefix(7)
+    const body: Instr[] = [
+      // sLen = s.len
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 3 },
+
+      // if sLen >= targetLen, return s
+      { op: "local.get", index: 3 },
+      { op: "local.get", index: 1 },
+      { op: "i32.ge_s" },
+      { op: "if", blockType: { kind: "val", type: strRef }, then: [
+        { op: "local.get", index: 0 },
+      ], else: [
+        // padLen = padStr.len
+        { op: "local.get", index: 2 },
+        { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+        { op: "local.set", index: 4 },
+
+        // if padLen == 0, return s
+        { op: "local.get", index: 4 },
+        { op: "i32.eqz" },
+        { op: "if", blockType: { kind: "val", type: strRef }, then: [
+          { op: "local.get", index: 0 },
+        ], else: [
+          // fillLen = targetLen - sLen
+          { op: "local.get", index: 1 },
+          { op: "local.get", index: 3 },
+          { op: "i32.sub" },
+          { op: "local.set", index: 5 },
+
+          // repeated = repeat(padStr, ceil(fillLen / padLen))
+          { op: "local.get", index: 2 },  // padStr (1st arg)
+          { op: "local.get", index: 5 },   // fillLen
+          { op: "local.get", index: 4 },   // padLen
+          { op: "i32.add" },
+          { op: "i32.const", value: 1 },
+          { op: "i32.sub" },
+          { op: "local.get", index: 4 },
+          { op: "i32.div_u" },             // count (2nd arg)
+          { op: "call", funcIdx: repeatIdx },
+
+          // prefix = repeated.substring(0, fillLen)
+          { op: "i32.const", value: 0 },
+          { op: "local.get", index: 5 },
+          { op: "call", funcIdx: substringIdx },
+
+          // return concat(prefix, s)
+          { op: "local.get", index: 0 },
+          { op: "call", funcIdx: concatIdx },
+        ]},
+      ]},
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_padStart",
+      typeIdx,
+      locals: [
+        { name: "sLen", type: { kind: "i32" } },
+        { name: "padLen", type: { kind: "i32" } },
+        { name: "fillLen", type: { kind: "i32" } },
+        { name: "repeated", type: strRef },
+        { name: "prefix", type: strRef },
+      ],
+      body,
+      exported: false,
+    });
+  }
+
+  // --- $__str_padEnd(s: ref $NativeString, targetLen: i32, padStr: ref $NativeString) -> ref $NativeString ---
+  {
+    const concatIdx = ctx.nativeStrHelpers.get("__str_concat")!;
+    const repeatIdx = ctx.nativeStrHelpers.get("__str_repeat")!;
+    const substringIdx = ctx.nativeStrHelpers.get("__str_substring")!;
+
+    const typeIdx = addFuncType(ctx, [strRef, { kind: "i32" }, strRef], [strRef]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_padEnd", funcIdx);
+
+    // params: s(0), targetLen(1), padStr(2)
+    // locals: sLen(3), padLen(4), fillLen(5)
+    const body: Instr[] = [
+      // sLen = s.len
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 3 },
+
+      // if sLen >= targetLen, return s
+      { op: "local.get", index: 3 },
+      { op: "local.get", index: 1 },
+      { op: "i32.ge_s" },
+      { op: "if", blockType: { kind: "val", type: strRef }, then: [
+        { op: "local.get", index: 0 },
+      ], else: [
+        // padLen = padStr.len
+        { op: "local.get", index: 2 },
+        { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+        { op: "local.set", index: 4 },
+
+        // if padLen == 0, return s
+        { op: "local.get", index: 4 },
+        { op: "i32.eqz" },
+        { op: "if", blockType: { kind: "val", type: strRef }, then: [
+          { op: "local.get", index: 0 },
+        ], else: [
+          // fillLen = targetLen - sLen
+          { op: "local.get", index: 1 },
+          { op: "local.get", index: 3 },
+          { op: "i32.sub" },
+          { op: "local.set", index: 5 },
+
+          // repeated = repeat(padStr, ceil(fillLen / padLen))
+          { op: "local.get", index: 2 },  // padStr (1st arg)
+          { op: "local.get", index: 5 },   // fillLen
+          { op: "local.get", index: 4 },   // padLen
+          { op: "i32.add" },
+          { op: "i32.const", value: 1 },
+          { op: "i32.sub" },
+          { op: "local.get", index: 4 },
+          { op: "i32.div_u" },             // count (2nd arg)
+          { op: "call", funcIdx: repeatIdx },
+
+          // suffix = repeated.substring(0, fillLen)
+          { op: "i32.const", value: 0 },
+          { op: "local.get", index: 5 },
+          { op: "call", funcIdx: substringIdx },
+
+          // return concat(s, suffix)
+          // stack has: suffix on top. Store it, push s, push suffix back
+          { op: "local.set", index: 6 },   // suffix -> local 6
+          { op: "local.get", index: 0 },   // s (1st arg to concat)
+          { op: "local.get", index: 6 },   // suffix (2nd arg to concat)
+          { op: "ref.as_non_null" },
+          { op: "call", funcIdx: concatIdx },
+        ]},
+      ]},
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_padEnd",
+      typeIdx,
+      locals: [
+        { name: "sLen", type: { kind: "i32" } },
+        { name: "padLen", type: { kind: "i32" } },
+        { name: "fillLen", type: { kind: "i32" } },
+        { name: "suffix", type: { kind: "ref_null", typeIdx: strTypeIdx } },
+      ],
+      body,
+      exported: false,
+    });
+  }
+
+  // --- $__str_toLowerCase(s: ref $NativeString) -> ref $NativeString ---
+  // ASCII-only: maps A-Z (65-90) to a-z (97-122), copies everything else as-is
+  {
+    const typeIdx = addFuncType(ctx, [strRef], [strRef]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_toLowerCase", funcIdx);
+
+    // params: s(0)
+    // locals: len(1), srcData(2), newArr(3), i(4), ch(5)
+    const body: Instr[] = [
+      // len = s.len
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 1 },
+
+      // srcData = s.data
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 },
+      { op: "local.set", index: 2 },
+
+      // newArr = array.new_default(len)
+      { op: "local.get", index: 1 },
+      { op: "array.new_default", typeIdx: strDataTypeIdx },
+      { op: "local.set", index: 3 },
+
+      // i = 0
+      { op: "i32.const", value: 0 },
+      { op: "local.set", index: 4 },
+
+      // loop over each code unit
+      { op: "block", blockType: { kind: "empty" }, body: [
+        { op: "loop", blockType: { kind: "empty" }, body: [
+          { op: "local.get", index: 4 },
+          { op: "local.get", index: 1 },
+          { op: "i32.ge_u" },
+          { op: "br_if", depth: 1 },
+
+          // ch = srcData[i]
+          { op: "local.get", index: 2 },
+          { op: "local.get", index: 4 },
+          { op: "array.get_u", typeIdx: strDataTypeIdx },
+          { op: "local.set", index: 5 },
+
+          // newArr[i] = (ch >= 65 && ch <= 90) ? ch + 32 : ch
+          { op: "local.get", index: 3 },
+          { op: "local.get", index: 4 },
+          { op: "local.get", index: 5 },
+          { op: "i32.const", value: 65 },
+          { op: "i32.ge_u" },
+          { op: "local.get", index: 5 },
+          { op: "i32.const", value: 90 },
+          { op: "i32.le_u" },
+          { op: "i32.and" },
+          { op: "if", blockType: { kind: "val", type: { kind: "i32" } }, then: [
+            { op: "local.get", index: 5 },
+            { op: "i32.const", value: 32 },
+            { op: "i32.add" },
+          ], else: [
+            { op: "local.get", index: 5 },
+          ]},
+          { op: "array.set", typeIdx: strDataTypeIdx },
+
+          // i++
+          { op: "local.get", index: 4 },
+          { op: "i32.const", value: 1 },
+          { op: "i32.add" },
+          { op: "local.set", index: 4 },
+          { op: "br", depth: 0 },
+        ]},
+      ]},
+
+      // return struct.new(len, newArr)
+      { op: "local.get", index: 1 },
+      { op: "local.get", index: 3 },
+      { op: "struct.new", typeIdx: strTypeIdx },
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_toLowerCase",
+      typeIdx,
+      locals: [
+        { name: "len", type: { kind: "i32" } },
+        { name: "srcData", type: strDataRef },
+        { name: "newArr", type: strDataRef },
+        { name: "i", type: { kind: "i32" } },
+        { name: "ch", type: { kind: "i32" } },
+      ],
+      body,
+      exported: false,
+    });
+  }
+
+  // --- $__str_toUpperCase(s: ref $NativeString) -> ref $NativeString ---
+  // ASCII-only: maps a-z (97-122) to A-Z (65-90), copies everything else as-is
+  {
+    const typeIdx = addFuncType(ctx, [strRef], [strRef]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_toUpperCase", funcIdx);
+
+    // params: s(0)
+    // locals: len(1), srcData(2), newArr(3), i(4), ch(5)
+    const body: Instr[] = [
+      // len = s.len
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 1 },
+
+      // srcData = s.data
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 },
+      { op: "local.set", index: 2 },
+
+      // newArr = array.new_default(len)
+      { op: "local.get", index: 1 },
+      { op: "array.new_default", typeIdx: strDataTypeIdx },
+      { op: "local.set", index: 3 },
+
+      // i = 0
+      { op: "i32.const", value: 0 },
+      { op: "local.set", index: 4 },
+
+      // loop
+      { op: "block", blockType: { kind: "empty" }, body: [
+        { op: "loop", blockType: { kind: "empty" }, body: [
+          { op: "local.get", index: 4 },
+          { op: "local.get", index: 1 },
+          { op: "i32.ge_u" },
+          { op: "br_if", depth: 1 },
+
+          // ch = srcData[i]
+          { op: "local.get", index: 2 },
+          { op: "local.get", index: 4 },
+          { op: "array.get_u", typeIdx: strDataTypeIdx },
+          { op: "local.set", index: 5 },
+
+          // newArr[i] = (ch >= 97 && ch <= 122) ? ch - 32 : ch
+          { op: "local.get", index: 3 },
+          { op: "local.get", index: 4 },
+          { op: "local.get", index: 5 },
+          { op: "i32.const", value: 97 },
+          { op: "i32.ge_u" },
+          { op: "local.get", index: 5 },
+          { op: "i32.const", value: 122 },
+          { op: "i32.le_u" },
+          { op: "i32.and" },
+          { op: "if", blockType: { kind: "val", type: { kind: "i32" } }, then: [
+            { op: "local.get", index: 5 },
+            { op: "i32.const", value: 32 },
+            { op: "i32.sub" },
+          ], else: [
+            { op: "local.get", index: 5 },
+          ]},
+          { op: "array.set", typeIdx: strDataTypeIdx },
+
+          // i++
+          { op: "local.get", index: 4 },
+          { op: "i32.const", value: 1 },
+          { op: "i32.add" },
+          { op: "local.set", index: 4 },
+          { op: "br", depth: 0 },
+        ]},
+      ]},
+
+      // return struct.new(len, newArr)
+      { op: "local.get", index: 1 },
+      { op: "local.get", index: 3 },
+      { op: "struct.new", typeIdx: strTypeIdx },
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_toUpperCase",
+      typeIdx,
+      locals: [
+        { name: "len", type: { kind: "i32" } },
+        { name: "srcData", type: strDataRef },
+        { name: "newArr", type: strDataRef },
+        { name: "i", type: { kind: "i32" } },
+        { name: "ch", type: { kind: "i32" } },
+      ],
       body,
       exported: false,
     });

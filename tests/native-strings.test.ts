@@ -395,6 +395,156 @@ describe("fast mode: native strings", () => {
     expect(await runFast(src)).toBe(5);
   });
 
+  // ── repeat ──────────────────────────────────────────────────────────
+
+  it("repeat creates repeated string", async () => {
+    const src = `export function test(): number {
+      return "ab".repeat(3).length;
+    }`;
+    expect(await runFast(src)).toBe(6);
+  });
+
+  it("repeat preserves code units", async () => {
+    const src = `export function test(): number {
+      const s = "AB".repeat(2);
+      return s.charCodeAt(2);
+    }`;
+    expect(await runFast(src)).toBe(65); // 'A'
+  });
+
+  it("repeat(0) returns empty string", async () => {
+    const src = `export function test(): number {
+      return "hello".repeat(0).length;
+    }`;
+    expect(await runFast(src)).toBe(0);
+  });
+
+  it("repeat(1) returns same-length string", async () => {
+    const src = `export function test(): number {
+      return "abc".repeat(1).length;
+    }`;
+    expect(await runFast(src)).toBe(3);
+  });
+
+  // ── padStart ───────────────────────────────────────────────────────
+
+  it("padStart pads with spaces by default", async () => {
+    const src = `export function test(): number {
+      return "hi".padStart(5).length;
+    }`;
+    expect(await runFast(src)).toBe(5);
+  });
+
+  it("padStart pads with leading spaces", async () => {
+    const src = `export function test(): number {
+      return "hi".padStart(5).charCodeAt(0);
+    }`;
+    expect(await runFast(src)).toBe(32); // space
+  });
+
+  it("padStart preserves original at end", async () => {
+    const src = `export function test(): number {
+      return "hi".padStart(5).charCodeAt(3);
+    }`;
+    expect(await runFast(src)).toBe(104); // 'h'
+  });
+
+  it("padStart with custom pad string", async () => {
+    const src = `export function test(): number {
+      const s = "5".padStart(4, "0");
+      return s.charCodeAt(0) * 1000 + s.charCodeAt(1) * 100 + s.charCodeAt(2) * 10 + s.charCodeAt(3);
+    }`;
+    // "0005" -> charCodes 48,48,48,53 -> 48000+4800+480+53 = 53333
+    expect(await runFast(src)).toBe(53333);
+  });
+
+  it("padStart no-op when already long enough", async () => {
+    const src = `export function test(): number {
+      return "hello".padStart(3).length;
+    }`;
+    expect(await runFast(src)).toBe(5);
+  });
+
+  // ── padEnd ─────────────────────────────────────────────────────────
+
+  it("padEnd pads with spaces by default", async () => {
+    const src = `export function test(): number {
+      return "hi".padEnd(5).length;
+    }`;
+    expect(await runFast(src)).toBe(5);
+  });
+
+  it("padEnd pads at the end", async () => {
+    const src = `export function test(): number {
+      return "hi".padEnd(5).charCodeAt(4);
+    }`;
+    expect(await runFast(src)).toBe(32); // space
+  });
+
+  it("padEnd with custom pad string", async () => {
+    const src = `export function test(): number {
+      const s = "1".padEnd(4, "0");
+      return s.charCodeAt(0) * 1000 + s.charCodeAt(1) * 100 + s.charCodeAt(2) * 10 + s.charCodeAt(3);
+    }`;
+    // "1000" -> charCodes 49,48,48,48 -> 49000+4800+480+48 = 54328
+    expect(await runFast(src)).toBe(54328);
+  });
+
+  it("padEnd no-op when already long enough", async () => {
+    const src = `export function test(): number {
+      return "hello".padEnd(3).length;
+    }`;
+    expect(await runFast(src)).toBe(5);
+  });
+
+  // ── toLowerCase / toUpperCase ──────────────────────────────────────
+
+  it("toLowerCase converts ASCII uppercase", async () => {
+    const src = `export function test(): number {
+      const s = "HELLO".toLowerCase();
+      return s.charCodeAt(0);
+    }`;
+    expect(await runFast(src)).toBe(104); // 'h'
+  });
+
+  it("toLowerCase preserves length", async () => {
+    const src = `export function test(): number {
+      return "HELLO".toLowerCase().length;
+    }`;
+    expect(await runFast(src)).toBe(5);
+  });
+
+  it("toLowerCase leaves non-uppercase unchanged", async () => {
+    const src = `export function test(): number {
+      const s = "hello123".toLowerCase();
+      return s.charCodeAt(0);
+    }`;
+    expect(await runFast(src)).toBe(104); // 'h' (already lowercase)
+  });
+
+  it("toUpperCase converts ASCII lowercase", async () => {
+    const src = `export function test(): number {
+      const s = "hello".toUpperCase();
+      return s.charCodeAt(0);
+    }`;
+    expect(await runFast(src)).toBe(72); // 'H'
+  });
+
+  it("toUpperCase preserves length", async () => {
+    const src = `export function test(): number {
+      return "hello".toUpperCase().length;
+    }`;
+    expect(await runFast(src)).toBe(5);
+  });
+
+  it("toUpperCase leaves non-lowercase unchanged", async () => {
+    const src = `export function test(): number {
+      const s = "HELLO123".toUpperCase();
+      return s.charCodeAt(0);
+    }`;
+    expect(await runFast(src)).toBe(72); // 'H' (already uppercase)
+  });
+
   // ── Existing tests must still pass in non-fast mode ──────────────
 
   it("non-fast mode still uses externref strings", () => {

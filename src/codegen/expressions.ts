@@ -4661,6 +4661,84 @@ function compileNativeStringMethodCall(
     return nativeStringType(ctx);
   }
 
+  // repeat: native helper
+  if (method === "repeat") {
+    compileExpression(ctx, fctx, propAccess.expression);
+    if (expr.arguments.length > 0) {
+      const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
+      if (argType && argType.kind === "f64") {
+        fctx.body.push({ op: "i32.trunc_f64_s" });
+      }
+    } else {
+      fctx.body.push({ op: "i32.const", value: 0 });
+    }
+    const funcIdx = ctx.nativeStrHelpers.get("__str_repeat")!;
+    fctx.body.push({ op: "call", funcIdx });
+    return nativeStringType(ctx);
+  }
+
+  // padStart: native helper
+  if (method === "padStart") {
+    compileExpression(ctx, fctx, propAccess.expression);
+    // targetLength
+    if (expr.arguments.length > 0) {
+      const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
+      if (argType && argType.kind === "f64") {
+        fctx.body.push({ op: "i32.trunc_f64_s" });
+      }
+    } else {
+      fctx.body.push({ op: "i32.const", value: 0 });
+    }
+    // padString (default: " ")
+    if (expr.arguments.length > 1) {
+      compileExpression(ctx, fctx, expr.arguments[1]!);
+    } else {
+      // Create a single-space native string
+      fctx.body.push({ op: "i32.const", value: 1 });
+      fctx.body.push({ op: "i32.const", value: 32 }); // space
+      fctx.body.push({ op: "array.new_fixed", typeIdx: ctx.nativeStrDataTypeIdx, length: 1 });
+      fctx.body.push({ op: "struct.new", typeIdx: ctx.nativeStrTypeIdx });
+    }
+    const funcIdx = ctx.nativeStrHelpers.get("__str_padStart")!;
+    fctx.body.push({ op: "call", funcIdx });
+    return nativeStringType(ctx);
+  }
+
+  // padEnd: native helper
+  if (method === "padEnd") {
+    compileExpression(ctx, fctx, propAccess.expression);
+    // targetLength
+    if (expr.arguments.length > 0) {
+      const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
+      if (argType && argType.kind === "f64") {
+        fctx.body.push({ op: "i32.trunc_f64_s" });
+      }
+    } else {
+      fctx.body.push({ op: "i32.const", value: 0 });
+    }
+    // padString (default: " ")
+    if (expr.arguments.length > 1) {
+      compileExpression(ctx, fctx, expr.arguments[1]!);
+    } else {
+      fctx.body.push({ op: "i32.const", value: 1 });
+      fctx.body.push({ op: "i32.const", value: 32 });
+      fctx.body.push({ op: "array.new_fixed", typeIdx: ctx.nativeStrDataTypeIdx, length: 1 });
+      fctx.body.push({ op: "struct.new", typeIdx: ctx.nativeStrTypeIdx });
+    }
+    const funcIdx = ctx.nativeStrHelpers.get("__str_padEnd")!;
+    fctx.body.push({ op: "call", funcIdx });
+    return nativeStringType(ctx);
+  }
+
+  // toLowerCase, toUpperCase: native helpers
+  if (method === "toLowerCase" || method === "toUpperCase") {
+    compileExpression(ctx, fctx, propAccess.expression);
+    const helperName = `__str_${method}`;
+    const funcIdx = ctx.nativeStrHelpers.get(helperName)!;
+    fctx.body.push({ op: "call", funcIdx });
+    return nativeStringType(ctx);
+  }
+
   // Other methods: marshal native->extern, call host, marshal extern->native
   const importName = `string_${method}`;
   const funcIdx = ctx.funcMap.get(importName);
