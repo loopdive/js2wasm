@@ -742,6 +742,7 @@ function collectStringMethodImports(
     "indexOf", "lastIndexOf", "includes", "startsWith", "endsWith",
     "trim", "trimStart", "trimEnd",
     "repeat", "padStart", "padEnd", "toLowerCase", "toUpperCase",
+    "replace",
   ]);
 
   for (const method of needed) {
@@ -2337,6 +2338,80 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
         { name: "newArr", type: strDataRef },
         { name: "i", type: { kind: "i32" } },
         { name: "ch", type: { kind: "i32" } },
+      ],
+      body,
+      exported: false,
+    });
+  }
+
+  // --- $__str_replace(s: ref $NativeString, search: ref $NativeString, replacement: ref $NativeString) -> ref $NativeString ---
+  // Replaces first occurrence of search with replacement. Pure wasm using indexOf + substring + concat.
+  {
+    const indexOfIdx = ctx.nativeStrHelpers.get("__str_indexOf")!;
+    const substringIdx = ctx.nativeStrHelpers.get("__str_substring")!;
+    const concatIdx = ctx.nativeStrHelpers.get("__str_concat")!;
+
+    const typeIdx = addFuncType(ctx, [strRef, strRef, strRef], [strRef]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_replace", funcIdx);
+
+    // params: s(0), search(1), replacement(2)
+    // locals: idx(3), searchLen(4), prefix(5-nullable), suffix(6-nullable)
+    const body: Instr[] = [
+      // idx = indexOf(s, search, 0)
+      { op: "local.get", index: 0 },
+      { op: "local.get", index: 1 },
+      { op: "i32.const", value: 0 },
+      { op: "call", funcIdx: indexOfIdx },
+      { op: "local.set", index: 3 },
+
+      // if idx == -1, return s unchanged
+      { op: "local.get", index: 3 },
+      { op: "i32.const", value: -1 },
+      { op: "i32.eq" },
+      { op: "if", blockType: { kind: "val", type: strRef }, then: [
+        { op: "local.get", index: 0 },
+      ], else: [
+        // searchLen = search.len
+        { op: "local.get", index: 1 },
+        { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+        { op: "local.set", index: 4 },
+
+        // prefix = s.substring(0, idx)
+        { op: "local.get", index: 0 },
+        { op: "i32.const", value: 0 },
+        { op: "local.get", index: 3 },
+        { op: "call", funcIdx: substringIdx },
+        { op: "local.set", index: 5 },
+
+        // suffix = s.substring(idx + searchLen, MAX)
+        { op: "local.get", index: 0 },
+        { op: "local.get", index: 3 },
+        { op: "local.get", index: 4 },
+        { op: "i32.add" },
+        { op: "i32.const", value: 0x7FFFFFFF },
+        { op: "call", funcIdx: substringIdx },
+        { op: "local.set", index: 6 },
+
+        // return concat(concat(prefix, replacement), suffix)
+        { op: "local.get", index: 5 },
+        { op: "ref.as_non_null" },
+        { op: "local.get", index: 2 },
+        { op: "call", funcIdx: concatIdx },
+        { op: "local.get", index: 6 },
+        { op: "ref.as_non_null" },
+        { op: "call", funcIdx: concatIdx },
+      ]},
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_replace",
+      typeIdx,
+      locals: [
+        { name: "idx", type: { kind: "i32" } },
+        { name: "searchLen", type: { kind: "i32" } },
+        { name: "prefix", type: { kind: "ref_null", typeIdx: strTypeIdx } },
+        { name: "suffix", type: { kind: "ref_null", typeIdx: strTypeIdx } },
       ],
       body,
       exported: false,

@@ -4739,6 +4739,30 @@ function compileNativeStringMethodCall(
     return nativeStringType(ctx);
   }
 
+  // replace(search, replacement): native helper
+  if (method === "replace") {
+    compileExpression(ctx, fctx, propAccess.expression);
+    // search arg
+    if (expr.arguments.length > 0) {
+      compileExpression(ctx, fctx, expr.arguments[0]!);
+    } else {
+      fctx.body.push({ op: "ref.null", typeIdx: ctx.nativeStrTypeIdx });
+    }
+    // replacement arg
+    if (expr.arguments.length > 1) {
+      compileExpression(ctx, fctx, expr.arguments[1]!);
+    } else {
+      // default: empty string
+      fctx.body.push({ op: "i32.const", value: 0 });
+      fctx.body.push({ op: "i32.const", value: 0 });
+      fctx.body.push({ op: "array.new_default", typeIdx: ctx.nativeStrDataTypeIdx });
+      fctx.body.push({ op: "struct.new", typeIdx: ctx.nativeStrTypeIdx });
+    }
+    const funcIdx = ctx.nativeStrHelpers.get("__str_replace")!;
+    fctx.body.push({ op: "call", funcIdx });
+    return nativeStringType(ctx);
+  }
+
   // Other methods: marshal native->extern, call host, marshal extern->native
   const importName = `string_${method}`;
   const funcIdx = ctx.funcMap.get(importName);
