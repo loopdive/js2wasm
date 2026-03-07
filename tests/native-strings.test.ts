@@ -545,6 +545,49 @@ describe("fast mode: native strings", () => {
     expect(await runFast(src)).toBe(72); // 'H' (already uppercase)
   });
 
+  // ── replace ─────────────────────────────────────────────────────────
+
+  it("replace first occurrence", async () => {
+    const src = `export function test(): number {
+      const s = "hello world".replace("world", "there");
+      return s.length;
+    }`;
+    expect(await runFast(src)).toBe(11); // "hello there"
+  });
+
+  it("replace preserves correct characters", async () => {
+    const src = `export function test(): number {
+      const s = "ABCDE".replace("CD", "XY");
+      return s.charCodeAt(2) * 100 + s.charCodeAt(3);
+    }`;
+    // "ABXYE" -> X=88, Y=89 -> 8889
+    expect(await runFast(src)).toBe(8889);
+  });
+
+  it("replace returns unchanged when not found", async () => {
+    const src = `export function test(): number {
+      const s = "hello".replace("xyz", "abc");
+      return s.length;
+    }`;
+    expect(await runFast(src)).toBe(5);
+  });
+
+  it("replace with longer replacement", async () => {
+    const src = `export function test(): number {
+      const s = "ab".replace("a", "xyz");
+      return s.length;
+    }`;
+    expect(await runFast(src)).toBe(4); // "xyzb"
+  });
+
+  it("replace with empty replacement (deletion)", async () => {
+    const src = `export function test(): number {
+      const s = "hello".replace("ll", "");
+      return s.length;
+    }`;
+    expect(await runFast(src)).toBe(3); // "heo"
+  });
+
   // ── Existing tests must still pass in non-fast mode ──────────────
 
   it("non-fast mode still uses externref strings", () => {
