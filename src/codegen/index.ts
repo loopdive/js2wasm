@@ -742,7 +742,7 @@ function collectStringMethodImports(
     "indexOf", "lastIndexOf", "includes", "startsWith", "endsWith",
     "trim", "trimStart", "trimEnd",
     "repeat", "padStart", "padEnd", "toLowerCase", "toUpperCase",
-    "replace",
+    "replace", "split",
   ]);
 
   for (const method of needed) {
@@ -758,8 +758,9 @@ function collectStringMethodImports(
   }
 
   // split() returns an externref JS array — register __extern_get and __extern_length
-  // so that element access and .length work on the result
-  if (needed.has("split")) {
+  // so that element access and .length work on the result.
+  // In fast mode, native split returns a native string array — no extern helpers needed.
+  if (needed.has("split") && !ctx.fast) {
     if (!ctx.funcMap.has("__extern_get")) {
       const getType = addFuncType(ctx, [{ kind: "externref" }, { kind: "f64" }], [{ kind: "externref" }]);
       addImport(ctx, "env", "__extern_get", { kind: "func", typeIdx: getType });
@@ -2412,6 +2413,245 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
         { name: "searchLen", type: { kind: "i32" } },
         { name: "prefix", type: { kind: "ref_null", typeIdx: strTypeIdx } },
         { name: "suffix", type: { kind: "ref_null", typeIdx: strTypeIdx } },
+      ],
+      body,
+      exported: false,
+    });
+  }
+
+  // --- $__str_split(s: ref $NativeString, sep: ref $NativeString) -> ref $vec_nstr ---
+  // Splits s by sep, returns a native array of native strings.
+  {
+    // Register native string array type: (array (mut (ref null $NativeString)))
+    // Use ref_null so array.new_default can initialize with null.
+    // Key must match what resolveWasmType generates for string[] (ref_N).
+    const nstrElemKey = `ref_${strTypeIdx}`;
+    const nstrElemType: ValType = { kind: "ref_null", typeIdx: strTypeIdx };
+    const nstrArrTypeIdx = getOrRegisterArrayType(ctx, nstrElemKey, nstrElemType);
+    const nstrVecTypeIdx = getOrRegisterVecType(ctx, nstrElemKey, nstrElemType);
+    const nstrVecRef: ValType = { kind: "ref", typeIdx: nstrVecTypeIdx };
+
+    const typeIdx = addFuncType(ctx, [strRef, strRef], [nstrVecRef]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_split", funcIdx);
+
+    const indexOfIdx = ctx.nativeStrHelpers.get("__str_indexOf")!;
+    const substringIdx = ctx.nativeStrHelpers.get("__str_substring")!;
+
+    // params: s(0), sep(1)
+    // locals: sLen(2), sepLen(3), pos(4), idx(5), part(6-nullable),
+    //         resultArr(7-nullable), resultLen(8), resultCap(9), newArr(10-nullable)
+    const S = 0, SEP = 1;
+    const SLEN = 2, SEPLEN = 3, POS = 4, IDX = 5, PART = 6;
+    const RARR = 7, RLEN = 8, RCAP = 9, NEWARR = 10;
+
+    const body: Instr[] = [
+      // sLen = s.len
+      { op: "local.get", index: S },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: SLEN },
+
+      // sepLen = sep.len
+      { op: "local.get", index: SEP },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: SEPLEN },
+
+      // resultArr = array.new_default(8)
+      { op: "i32.const", value: 8 },
+      { op: "array.new_default", typeIdx: nstrArrTypeIdx },
+      { op: "local.set", index: RARR },
+      { op: "i32.const", value: 0 },
+      { op: "local.set", index: RLEN },
+      { op: "i32.const", value: 8 },
+      { op: "local.set", index: RCAP },
+
+      // pos = 0
+      { op: "i32.const", value: 0 },
+      { op: "local.set", index: POS },
+
+      // Handle empty separator: return array with single element (the whole string)
+      { op: "local.get", index: SEPLEN },
+      { op: "i32.eqz" },
+      { op: "if", blockType: { kind: "empty" }, then: [
+        // For empty sep, split each character (like JS)
+        // But for simplicity and correctness, match JS: "abc".split("") => ["a","b","c"]
+        // Realloc if needed for sLen elements
+        { op: "local.get", index: SLEN },
+        { op: "array.new_default", typeIdx: nstrArrTypeIdx },
+        { op: "local.set", index: RARR },
+        { op: "local.get", index: SLEN },
+        { op: "local.set", index: RCAP },
+
+        // Loop: for each character, create a single-char NativeString
+        { op: "i32.const", value: 0 },
+        { op: "local.set", index: POS },
+        { op: "block", blockType: { kind: "empty" }, body: [
+          { op: "loop", blockType: { kind: "empty" }, body: [
+            { op: "local.get", index: POS },
+            { op: "local.get", index: SLEN },
+            { op: "i32.ge_s" },
+            { op: "br_if", depth: 1 },
+
+            // part = substring(s, pos, pos+1)
+            { op: "local.get", index: S },
+            { op: "local.get", index: POS },
+            { op: "local.get", index: POS },
+            { op: "i32.const", value: 1 },
+            { op: "i32.add" },
+            { op: "call", funcIdx: substringIdx },
+            { op: "local.set", index: PART },
+
+            // resultArr[pos] = part
+            { op: "local.get", index: RARR },
+            { op: "local.get", index: POS },
+            { op: "local.get", index: PART },
+            { op: "array.set", typeIdx: nstrArrTypeIdx },
+
+            { op: "local.get", index: POS },
+            { op: "i32.const", value: 1 },
+            { op: "i32.add" },
+            { op: "local.set", index: POS },
+            { op: "br", depth: 0 },
+          ] as Instr[] },
+        ] as Instr[] },
+
+        // return struct.new(sLen, resultArr)
+        { op: "local.get", index: SLEN },
+        { op: "local.get", index: RARR },
+        { op: "ref.as_non_null" },
+        { op: "struct.new", typeIdx: nstrVecTypeIdx },
+        { op: "return" },
+      ] as Instr[] },
+
+      // Main split loop: find sep occurrences and extract substrings
+      { op: "block", blockType: { kind: "empty" }, body: [
+        { op: "loop", blockType: { kind: "empty" }, body: [
+          // idx = indexOf(s, sep, pos)
+          { op: "local.get", index: S },
+          { op: "local.get", index: SEP },
+          { op: "local.get", index: POS },
+          { op: "call", funcIdx: indexOfIdx },
+          { op: "local.set", index: IDX },
+
+          // if idx == -1: add final part and break
+          { op: "local.get", index: IDX },
+          { op: "i32.const", value: -1 },
+          { op: "i32.eq" },
+          { op: "if", blockType: { kind: "empty" }, then: [
+            // part = substring(s, pos, sLen)
+            { op: "local.get", index: S },
+            { op: "local.get", index: POS },
+            { op: "local.get", index: SLEN },
+            { op: "call", funcIdx: substringIdx },
+            { op: "local.set", index: PART },
+
+            // Grow result if needed
+            { op: "local.get", index: RLEN },
+            { op: "local.get", index: RCAP },
+            { op: "i32.ge_s" },
+            { op: "if", blockType: { kind: "empty" }, then: [
+              // newCap = cap * 2
+              { op: "local.get", index: RCAP },
+              { op: "i32.const", value: 2 },
+              { op: "i32.mul" },
+              { op: "local.set", index: RCAP },
+              // newArr = array.new_default(newCap)
+              { op: "local.get", index: RCAP },
+              { op: "array.new_default", typeIdx: nstrArrTypeIdx },
+              { op: "local.set", index: NEWARR },
+              // array.copy(newArr, 0, resultArr, 0, resultLen)
+              { op: "local.get", index: NEWARR },
+              { op: "i32.const", value: 0 },
+              { op: "local.get", index: RARR },
+              { op: "i32.const", value: 0 },
+              { op: "local.get", index: RLEN },
+              { op: "array.copy", dstTypeIdx: nstrArrTypeIdx, srcTypeIdx: nstrArrTypeIdx },
+              { op: "local.get", index: NEWARR },
+              { op: "local.set", index: RARR },
+            ] as Instr[] },
+
+            // resultArr[resultLen] = part
+            { op: "local.get", index: RARR },
+            { op: "local.get", index: RLEN },
+            { op: "local.get", index: PART },
+            { op: "array.set", typeIdx: nstrArrTypeIdx },
+            { op: "local.get", index: RLEN },
+            { op: "i32.const", value: 1 },
+            { op: "i32.add" },
+            { op: "local.set", index: RLEN },
+
+            { op: "br", depth: 2 }, // break outer block
+          ] as Instr[] },
+
+          // Found separator: part = substring(s, pos, idx)
+          { op: "local.get", index: S },
+          { op: "local.get", index: POS },
+          { op: "local.get", index: IDX },
+          { op: "call", funcIdx: substringIdx },
+          { op: "local.set", index: PART },
+
+          // Grow result if needed
+          { op: "local.get", index: RLEN },
+          { op: "local.get", index: RCAP },
+          { op: "i32.ge_s" },
+          { op: "if", blockType: { kind: "empty" }, then: [
+            { op: "local.get", index: RCAP },
+            { op: "i32.const", value: 2 },
+            { op: "i32.mul" },
+            { op: "local.set", index: RCAP },
+            { op: "local.get", index: RCAP },
+            { op: "array.new_default", typeIdx: nstrArrTypeIdx },
+            { op: "local.set", index: NEWARR },
+            { op: "local.get", index: NEWARR },
+            { op: "i32.const", value: 0 },
+            { op: "local.get", index: RARR },
+            { op: "i32.const", value: 0 },
+            { op: "local.get", index: RLEN },
+            { op: "array.copy", dstTypeIdx: nstrArrTypeIdx, srcTypeIdx: nstrArrTypeIdx },
+            { op: "local.get", index: NEWARR },
+            { op: "local.set", index: RARR },
+          ] as Instr[] },
+
+          // resultArr[resultLen] = part
+          { op: "local.get", index: RARR },
+          { op: "local.get", index: RLEN },
+          { op: "local.get", index: PART },
+          { op: "array.set", typeIdx: nstrArrTypeIdx },
+          { op: "local.get", index: RLEN },
+          { op: "i32.const", value: 1 },
+          { op: "i32.add" },
+          { op: "local.set", index: RLEN },
+
+          // pos = idx + sepLen
+          { op: "local.get", index: IDX },
+          { op: "local.get", index: SEPLEN },
+          { op: "i32.add" },
+          { op: "local.set", index: POS },
+
+          { op: "br", depth: 0 }, // continue loop
+        ] as Instr[] },
+      ] as Instr[] },
+
+      // return struct.new(resultLen, resultArr)
+      { op: "local.get", index: RLEN },
+      { op: "local.get", index: RARR },
+      { op: "ref.as_non_null" },
+      { op: "struct.new", typeIdx: nstrVecTypeIdx },
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_split",
+      typeIdx,
+      locals: [
+        { name: "sLen", type: { kind: "i32" } },
+        { name: "sepLen", type: { kind: "i32" } },
+        { name: "pos", type: { kind: "i32" } },
+        { name: "idx", type: { kind: "i32" } },
+        { name: "part", type: { kind: "ref_null", typeIdx: strTypeIdx } },
+        { name: "resultArr", type: { kind: "ref_null", typeIdx: nstrArrTypeIdx } },
+        { name: "resultLen", type: { kind: "i32" } },
+        { name: "resultCap", type: { kind: "i32" } },
+        { name: "newArr", type: { kind: "ref_null", typeIdx: nstrArrTypeIdx } },
       ],
       body,
       exported: false,

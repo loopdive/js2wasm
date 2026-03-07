@@ -588,6 +588,59 @@ describe("fast mode: native strings", () => {
     expect(await runFast(src)).toBe(3); // "heo"
   });
 
+  // ── split ─────────────────────────────────────────────────────────
+
+  it("split by comma", async () => {
+    const src = `export function test(): number {
+      const parts = "a,b,c".split(",");
+      return parts.length;
+    }`;
+    expect(await runFast(src)).toBe(3);
+  });
+
+  it("split returns correct substrings", async () => {
+    const src = `export function test(): number {
+      const parts = "hello world foo".split(" ");
+      return parts[0].length * 100 + parts[1].length * 10 + parts[2].length;
+    }`;
+    // "hello"=5, "world"=5, "foo"=3 → 553
+    expect(await runFast(src)).toBe(553);
+  });
+
+  it("split with no match returns single element", async () => {
+    const src = `export function test(): number {
+      const parts = "hello".split(",");
+      return parts.length * 10 + parts[0].length;
+    }`;
+    // 1 part, length 5 → 15
+    expect(await runFast(src)).toBe(15);
+  });
+
+  it("split by empty string splits each character", async () => {
+    const src = `export function test(): number {
+      const chars = "abc".split("");
+      return chars.length;
+    }`;
+    expect(await runFast(src)).toBe(3);
+  });
+
+  it("split with multi-char separator", async () => {
+    const src = `export function test(): number {
+      const parts = "one::two::three".split("::");
+      return parts.length;
+    }`;
+    expect(await runFast(src)).toBe(3);
+  });
+
+  it("split preserves empty strings between separators", async () => {
+    const src = `export function test(): number {
+      const parts = "a,,b".split(",");
+      return parts.length * 10 + parts[1].length;
+    }`;
+    // 3 parts, middle part "" has length 0 → 30
+    expect(await runFast(src)).toBe(30);
+  });
+
   // ── Existing tests must still pass in non-fast mode ──────────────
 
   it("non-fast mode still uses externref strings", () => {
