@@ -250,6 +250,151 @@ describe("fast mode: native strings", () => {
     expect(await runFast(src)).toBe(1);
   });
 
+  // ── indexOf ────────────────────────────────────────────────────────
+
+  it("indexOf finds substring", async () => {
+    const src = `export function test(): number {
+      return "hello world".indexOf("world");
+    }`;
+    expect(await runFast(src)).toBe(6);
+  });
+
+  it("indexOf returns -1 for missing substring", async () => {
+    const src = `export function test(): number {
+      return "hello".indexOf("xyz");
+    }`;
+    expect(await runFast(src)).toBe(-1);
+  });
+
+  it("indexOf with fromIndex", async () => {
+    const src = `export function test(): number {
+      return "abcabc".indexOf("abc", 1);
+    }`;
+    expect(await runFast(src)).toBe(3);
+  });
+
+  it("indexOf empty string", async () => {
+    const src = `export function test(): number {
+      return "hello".indexOf("");
+    }`;
+    expect(await runFast(src)).toBe(0);
+  });
+
+  // ── lastIndexOf ─────────────────────────────────────────────────
+
+  it("lastIndexOf finds last occurrence", async () => {
+    const src = `export function test(): number {
+      return "abcabc".lastIndexOf("abc");
+    }`;
+    expect(await runFast(src)).toBe(3);
+  });
+
+  it("lastIndexOf with fromIndex", async () => {
+    const src = `export function test(): number {
+      return "abcabc".lastIndexOf("abc", 2);
+    }`;
+    expect(await runFast(src)).toBe(0);
+  });
+
+  it("lastIndexOf returns -1 for missing", async () => {
+    const src = `export function test(): number {
+      return "hello".lastIndexOf("xyz");
+    }`;
+    expect(await runFast(src)).toBe(-1);
+  });
+
+  // ── includes ──────────────────────────────────────────────────────
+
+  it("includes returns 1 when found", async () => {
+    const src = `export function test(): number {
+      return "hello world".includes("world") ? 1 : 0;
+    }`;
+    expect(await runFast(src)).toBe(1);
+  });
+
+  it("includes returns 0 when not found", async () => {
+    const src = `export function test(): number {
+      return "hello".includes("xyz") ? 1 : 0;
+    }`;
+    expect(await runFast(src)).toBe(0);
+  });
+
+  // ── startsWith ────────────────────────────────────────────────────
+
+  it("startsWith returns true for prefix", async () => {
+    const src = `export function test(): number {
+      return "hello world".startsWith("hello") ? 1 : 0;
+    }`;
+    expect(await runFast(src)).toBe(1);
+  });
+
+  it("startsWith returns false for non-prefix", async () => {
+    const src = `export function test(): number {
+      return "hello".startsWith("world") ? 1 : 0;
+    }`;
+    expect(await runFast(src)).toBe(0);
+  });
+
+  it("startsWith with position", async () => {
+    const src = `export function test(): number {
+      return "hello world".startsWith("world", 6) ? 1 : 0;
+    }`;
+    expect(await runFast(src)).toBe(1);
+  });
+
+  // ── endsWith ──────────────────────────────────────────────────────
+
+  it("endsWith returns true for suffix", async () => {
+    const src = `export function test(): number {
+      return "hello world".endsWith("world") ? 1 : 0;
+    }`;
+    expect(await runFast(src)).toBe(1);
+  });
+
+  it("endsWith returns false for non-suffix", async () => {
+    const src = `export function test(): number {
+      return "hello world".endsWith("hello") ? 1 : 0;
+    }`;
+    expect(await runFast(src)).toBe(0);
+  });
+
+  // ── trim ──────────────────────────────────────────────────────────
+
+  it("trim removes leading and trailing whitespace", async () => {
+    const src = `export function test(): number {
+      return "  hello  ".trim().length;
+    }`;
+    expect(await runFast(src)).toBe(5);
+  });
+
+  it("trimStart removes leading whitespace only", async () => {
+    const src = `export function test(): number {
+      return "  hello  ".trimStart().length;
+    }`;
+    expect(await runFast(src)).toBe(7);
+  });
+
+  it("trimEnd removes trailing whitespace only", async () => {
+    const src = `export function test(): number {
+      return "  hello  ".trimEnd().length;
+    }`;
+    expect(await runFast(src)).toBe(7);
+  });
+
+  it("trim handles tabs and newlines", async () => {
+    const src = String.raw`export function test(): number {
+      return "\t\nhello\r\n".trim().length;
+    }`;
+    expect(await runFast(src)).toBe(5);
+  });
+
+  it("trim on already trimmed string", async () => {
+    const src = `export function test(): number {
+      return "hello".trim().length;
+    }`;
+    expect(await runFast(src)).toBe(5);
+  });
+
   // ── Existing tests must still pass in non-fast mode ──────────────
 
   it("non-fast mode still uses externref strings", () => {

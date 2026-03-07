@@ -4543,6 +4543,124 @@ function compileNativeStringMethodCall(
     return nativeStringType(ctx);
   }
 
+  // indexOf: native helper
+  if (method === "indexOf") {
+    compileExpression(ctx, fctx, propAccess.expression);
+    // search string arg
+    if (expr.arguments.length > 0) {
+      compileExpression(ctx, fctx, expr.arguments[0]!);
+    } else {
+      fctx.body.push({ op: "ref.null", typeIdx: strTypeIdx });
+    }
+    // fromIndex arg
+    if (expr.arguments.length > 1) {
+      const argType = compileExpression(ctx, fctx, expr.arguments[1]!);
+      if (argType && argType.kind === "f64") {
+        fctx.body.push({ op: "i32.trunc_f64_s" });
+      }
+    } else {
+      fctx.body.push({ op: "i32.const", value: 0 });
+    }
+    const funcIdx = ctx.nativeStrHelpers.get("__str_indexOf")!;
+    fctx.body.push({ op: "call", funcIdx });
+    return { kind: "i32" };
+  }
+
+  // lastIndexOf: native helper
+  if (method === "lastIndexOf") {
+    compileExpression(ctx, fctx, propAccess.expression);
+    if (expr.arguments.length > 0) {
+      compileExpression(ctx, fctx, expr.arguments[0]!);
+    } else {
+      fctx.body.push({ op: "ref.null", typeIdx: strTypeIdx });
+    }
+    if (expr.arguments.length > 1) {
+      const argType = compileExpression(ctx, fctx, expr.arguments[1]!);
+      if (argType && argType.kind === "f64") {
+        fctx.body.push({ op: "i32.trunc_f64_s" });
+      }
+    } else {
+      fctx.body.push({ op: "i32.const", value: 0x7FFFFFFF });
+    }
+    const funcIdx = ctx.nativeStrHelpers.get("__str_lastIndexOf")!;
+    fctx.body.push({ op: "call", funcIdx });
+    return { kind: "i32" };
+  }
+
+  // includes: native helper
+  if (method === "includes") {
+    compileExpression(ctx, fctx, propAccess.expression);
+    if (expr.arguments.length > 0) {
+      compileExpression(ctx, fctx, expr.arguments[0]!);
+    } else {
+      fctx.body.push({ op: "ref.null", typeIdx: strTypeIdx });
+    }
+    if (expr.arguments.length > 1) {
+      const argType = compileExpression(ctx, fctx, expr.arguments[1]!);
+      if (argType && argType.kind === "f64") {
+        fctx.body.push({ op: "i32.trunc_f64_s" });
+      }
+    } else {
+      fctx.body.push({ op: "i32.const", value: 0 });
+    }
+    const funcIdx = ctx.nativeStrHelpers.get("__str_includes")!;
+    fctx.body.push({ op: "call", funcIdx });
+    return { kind: "i32" };
+  }
+
+  // startsWith: native helper
+  if (method === "startsWith") {
+    compileExpression(ctx, fctx, propAccess.expression);
+    if (expr.arguments.length > 0) {
+      compileExpression(ctx, fctx, expr.arguments[0]!);
+    } else {
+      fctx.body.push({ op: "ref.null", typeIdx: strTypeIdx });
+    }
+    if (expr.arguments.length > 1) {
+      const argType = compileExpression(ctx, fctx, expr.arguments[1]!);
+      if (argType && argType.kind === "f64") {
+        fctx.body.push({ op: "i32.trunc_f64_s" });
+      }
+    } else {
+      fctx.body.push({ op: "i32.const", value: 0 });
+    }
+    const funcIdx = ctx.nativeStrHelpers.get("__str_startsWith")!;
+    fctx.body.push({ op: "call", funcIdx });
+    return { kind: "i32" };
+  }
+
+  // endsWith: native helper
+  if (method === "endsWith") {
+    compileExpression(ctx, fctx, propAccess.expression);
+    // suffix arg
+    if (expr.arguments.length > 0) {
+      compileExpression(ctx, fctx, expr.arguments[0]!);
+    } else {
+      fctx.body.push({ op: "ref.null", typeIdx: strTypeIdx });
+    }
+    // endPosition arg — default to string length
+    if (expr.arguments.length > 1) {
+      const argType = compileExpression(ctx, fctx, expr.arguments[1]!);
+      if (argType && argType.kind === "f64") {
+        fctx.body.push({ op: "i32.trunc_f64_s" });
+      }
+    } else {
+      fctx.body.push({ op: "i32.const", value: 0x7FFFFFFF });
+    }
+    const funcIdx = ctx.nativeStrHelpers.get("__str_endsWith")!;
+    fctx.body.push({ op: "call", funcIdx });
+    return { kind: "i32" };
+  }
+
+  // trim, trimStart, trimEnd: native helpers
+  if (method === "trim" || method === "trimStart" || method === "trimEnd") {
+    compileExpression(ctx, fctx, propAccess.expression);
+    const helperName = `__str_${method}`;
+    const funcIdx = ctx.nativeStrHelpers.get(helperName)!;
+    fctx.body.push({ op: "call", funcIdx });
+    return nativeStringType(ctx);
+  }
+
   // Other methods: marshal native->extern, call host, marshal extern->native
   const importName = `string_${method}`;
   const funcIdx = ctx.funcMap.get(importName);
