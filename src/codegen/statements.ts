@@ -179,6 +179,8 @@ const HOST_ARRAY_STRING_METHODS = new Set(["split"]);
 
 /** Check if an expression is a string method call that returns a host array (externref). */
 function isStringMethodReturningHostArray(ctx: CodegenContext, expr: ts.Expression): boolean {
+  // In fast mode with native strings, split returns a native string array, not externref
+  if (ctx.fast && ctx.nativeStrTypeIdx >= 0) return false;
   if (!ts.isCallExpression(expr)) return false;
   if (!ts.isPropertyAccessExpression(expr.expression)) return false;
   const method = expr.expression.name.text;

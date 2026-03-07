@@ -56,6 +56,9 @@ export function compileExpression(
 /** Coerce a value on the stack from one type to another */
 function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: ValType, to: ValType): void {
   if (from.kind === to.kind) return;
+  // ref is a subtype of ref_null — no coercion needed
+  if (from.kind === "ref" && to.kind === "ref_null") return;
+  if (from.kind === "ref_null" && to.kind === "ref") return;
   // i32 → f64
   if (from.kind === "i32" && to.kind === "f64") {
     fctx.body.push({ op: "f64.convert_i32_s" });
@@ -4761,6 +4764,26 @@ function compileNativeStringMethodCall(
     const funcIdx = ctx.nativeStrHelpers.get("__str_replace")!;
     fctx.body.push({ op: "call", funcIdx });
     return nativeStringType(ctx);
+  }
+
+  // split: native helper, returns native string array
+  if (method === "split") {
+    compileExpression(ctx, fctx, propAccess.expression);
+    // separator arg
+    if (expr.arguments.length > 0) {
+      compileExpression(ctx, fctx, expr.arguments[0]!);
+    } else {
+      // default: empty string separator (split each char)
+      fctx.body.push({ op: "i32.const", value: 0 });
+      fctx.body.push({ op: "i32.const", value: 0 });
+      fctx.body.push({ op: "array.new_default", typeIdx: ctx.nativeStrDataTypeIdx });
+      fctx.body.push({ op: "struct.new", typeIdx: ctx.nativeStrTypeIdx });
+    }
+    const splitIdx = ctx.nativeStrHelpers.get("__str_split")!;
+    fctx.body.push({ op: "call", funcIdx: splitIdx });
+    // Return type is ref $vec_nstr — use same key as resolveWasmType for string[]
+    const nstrVecTypeIdx = ctx.vecTypeMap.get(`ref_${ctx.nativeStrTypeIdx}`)!;
+    return { kind: "ref", typeIdx: nstrVecTypeIdx };
   }
 
   // Other methods: marshal native->extern, call host, marshal extern->native
