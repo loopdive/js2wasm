@@ -651,4 +651,141 @@ describe("fast mode: native strings", () => {
     expect(result.wat).toContain("externref");
     expect(result.wat).toContain("string_constants");
   });
+
+  // ── O(1) substring view tests (offset field) ─────────────────────
+
+  it("substring of substring returns correct result", async () => {
+    const src = `export function test(): number {
+      const s = "hello world";
+      const sub = s.substring(6, 11);  // "world"
+      const sub2 = sub.substring(1, 4); // "orl"
+      return sub2.length;
+    }`;
+    expect(await runFast(src)).toBe(3);
+  });
+
+  it("substring charCodeAt reads correct offset", async () => {
+    const src = `export function test(): number {
+      const s = "abcdef";
+      const sub = s.substring(2, 5); // "cde"
+      return sub.charCodeAt(0); // should be 99 = 'c'
+    }`;
+    expect(await runFast(src)).toBe(99);
+  });
+
+  it("substring charCodeAt at index 1", async () => {
+    const src = `export function test(): number {
+      const s = "abcdef";
+      const sub = s.substring(2, 5); // "cde"
+      return sub.charCodeAt(1); // should be 100 = 'd'
+    }`;
+    expect(await runFast(src)).toBe(100);
+  });
+
+  it("substring indexOf works with offset", async () => {
+    const src = `export function test(): number {
+      const s = "hello world";
+      const sub = s.substring(6, 11); // "world"
+      return sub.indexOf("rl");
+    }`;
+    expect(await runFast(src)).toBe(2);
+  });
+
+  it("slice creates correct view", async () => {
+    const src = `export function test(): number {
+      const s = "abcdefgh";
+      const sub = s.slice(3, 7); // "defg"
+      return sub.charCodeAt(2); // 'f' = 102
+    }`;
+    expect(await runFast(src)).toBe(102);
+  });
+
+  it("trim on substring works", async () => {
+    const src = `export function test(): number {
+      const s = "hello   world   ";
+      const sub = s.substring(5, 16); // "   world   "
+      const trimmed = sub.trim(); // "world"
+      return trimmed.length;
+    }`;
+    expect(await runFast(src)).toBe(5);
+  });
+
+  it("concat of substrings works", async () => {
+    const src = `export function test(): number {
+      const s = "hello world";
+      const a = s.substring(0, 5);  // "hello"
+      const b = s.substring(5, 11); // " world"
+      const c = a + b;              // "hello world"
+      return c.length;
+    }`;
+    expect(await runFast(src)).toBe(11);
+  });
+
+  it("substring equality works", async () => {
+    const src = `export function test(): number {
+      const s = "abcabc";
+      const a = s.substring(0, 3); // "abc"
+      const b = s.substring(3, 6); // "abc"
+      return a === b ? 1 : 0;
+    }`;
+    expect(await runFast(src)).toBe(1);
+  });
+
+  it("substring toLowerCase works with offset", async () => {
+    const src = `export function test(): number {
+      const s = "helloWORLD";
+      const sub = s.substring(5, 10); // "WORLD"
+      const lower = sub.toLowerCase();
+      return lower.charCodeAt(0); // 'w' = 119
+    }`;
+    expect(await runFast(src)).toBe(119);
+  });
+
+  it("substring toUpperCase works with offset", async () => {
+    const src = `export function test(): number {
+      const s = "HELLOworld";
+      const sub = s.substring(5, 10); // "world"
+      const upper = sub.toUpperCase();
+      return upper.charCodeAt(0); // 'W' = 87
+    }`;
+    expect(await runFast(src)).toBe(87);
+  });
+
+  it("nested slice of slice", async () => {
+    const src = `export function test(): number {
+      const s = "0123456789";
+      const a = s.slice(2, 8);  // "234567"
+      const b = a.slice(1, 4);  // "345"
+      return b.charCodeAt(0);   // '3' = 51
+    }`;
+    expect(await runFast(src)).toBe(51);
+  });
+
+  it("substring repeat works", async () => {
+    const src = `export function test(): number {
+      const s = "abcdef";
+      const sub = s.substring(0, 2); // "ab"
+      const r = sub.repeat(3); // "ababab"
+      return r.length;
+    }`;
+    expect(await runFast(src)).toBe(6);
+  });
+
+  it("substring startsWith works with offset", async () => {
+    const src = `export function test(): number {
+      const s = "hello world";
+      const sub = s.substring(6, 11); // "world"
+      return sub.startsWith("wor") ? 1 : 0;
+    }`;
+    expect(await runFast(src)).toBe(1);
+  });
+
+  it("substring endsWith works with offset", async () => {
+    const src = `export function test(): number {
+      const s = "hello world";
+      const sub = s.substring(6, 11); // "world"
+      return sub.endsWith("rld") ? 1 : 0;
+    }`;
+    expect(await runFast(src)).toBe(1);
+  });
 });

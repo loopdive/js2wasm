@@ -611,6 +611,13 @@ function encodeInstrWithReloc(
     case "i32.shr_u":
       enc.byte(OP.i32_shr_u);
       break;
+    case "i32.clz":
+      enc.byte(OP.i32_clz);
+      break;
+    case "i32.trunc_sat_f64_s":
+      enc.byte(OP.misc_prefix);
+      enc.byte(OP.i32_trunc_sat_f64_s);
+      break;
     case "f64.eq":
       enc.byte(OP.f64_eq);
       break;

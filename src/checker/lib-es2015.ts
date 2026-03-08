@@ -126,7 +126,21 @@ interface Uint8Array {
 interface String {
   startsWith(searchString: string, position?: number): boolean;
   endsWith(searchString: string, endPosition?: number): boolean;
+  at(index: number): string;
 }
+
+// ── Array ES2022 methods ────────────────────────────────────────
+
+interface Array<T> {
+  at(index: number): T;
+}
+
+// ── ArrayConstructor ES2015 ─────────────────────────────────────
+
+interface ArrayConstructor {
+  from<T>(arrayLike: T[]): T[];
+}
+
 
 // ── Object.entries / Object.keys ES2017 ─────────────────────────
 

@@ -11,6 +11,8 @@
 | [74](issues/74.md) | WASM SIMD for string and array operations                  | L          |
 | [75](issues/75.md) | Slice-based string views for substring/trim/slice          | M          |
 | [76](issues/76.md) | Rope/cons-string for O(1) concatenation                    | L          |
+| [82](issues/82.md) | Study V8, SpiderMonkey, Zena, AssemblyScript strategies    | M          |
+| [83](issues/83.md) | Test262 conformance subset                                 | M          |
 
 ### Language coverage
 

@@ -21,10 +21,20 @@ function resolveImport(
       return () => intent.value;
     case "math":
       return (Math as any)[intent.method];
-    case "console_log":
-      return intent.variant === "bool"
-        ? (v: number) => console.log(Boolean(v))
-        : (v: any) => console.log(v);
+    case "console_log": {
+      // variant format: "bool" (legacy) or "{method}_{type}" e.g. "warn_number"
+      const variant = intent.variant;
+      // Determine console method and type variant
+      let consoleFn: (...args: any[]) => void = console.log;
+      let isBool = variant === "bool";
+      if (variant.startsWith("warn_")) { consoleFn = console.warn; isBool = variant === "warn_bool"; }
+      else if (variant.startsWith("error_")) { consoleFn = console.error; isBool = variant === "error_bool"; }
+      else if (variant.startsWith("log_")) { isBool = variant === "log_bool"; }
+      else if (variant === "bool") { isBool = true; }
+      return isBool
+        ? (v: number) => consoleFn(Boolean(v))
+        : (v: any) => consoleFn(v);
+    }
     case "string_method": {
       const method = intent.method;
       return (s: any, ...a: any[]) => (String(s) as any)[method](...a);
@@ -99,7 +109,14 @@ function resolveImport(
       // Callback bridges for functional array methods
       if (name === "__call_1_f64") return (fn: Function, a: number) => fn(a);
       if (name === "__call_2_f64") return (fn: Function, a: number, b: number) => fn(a, b);
+      if (name === "__call_1_i32") return (fn: Function, a: number) => fn(a);
+      if (name === "__call_2_i32") return (fn: Function, a: number, b: number) => fn(a, b);
       if (name === "__typeof") return (v: any) => typeof v;
+      // parseInt / parseFloat host imports
+      if (name === "parseInt") return (s: any) => parseInt(String(s), 10);
+      if (name === "parseFloat") return (s: any) => parseFloat(String(s));
+      // String.fromCharCode host import
+      if (name === "String_fromCharCode") return (code: number) => String.fromCharCode(code);
       // Native string marshaling (fast mode)
       if (name === "__str_extern_len") return (s: string) => s.length;
       if (name === "__str_from_mem") {
