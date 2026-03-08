@@ -863,6 +863,10 @@ function generateEnvImportLine(name: string, mod: WasmModule): string {
   if (name === "String_fromCharCode")
     return "String_fromCharCode: (code) => String.fromCharCode(code)";
 
+  // ToUint32 helper for Math.clz32/imul
+  if (name === "__toUint32")
+    return "__toUint32: (x) => x >>> 0";
+
   // Math host imports
   if (name.startsWith("Math_")) {
     const method = name.slice(5);

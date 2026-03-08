@@ -83,6 +83,7 @@ export const OP = {
   f64_sub: 0xa1,
   f64_mul: 0xa2,
   f64_div: 0xa3,
+  f64_copysign: 0xa6,
   i32_trunc_f64_s: 0xaa,
   f32_demote_f64: 0xb6,
   f64_convert_i32_s: 0xb7,
@@ -97,6 +98,7 @@ export const OP = {
   memory_grow: 0x40,
   misc_prefix: 0xfc,
   i32_trunc_sat_f64_s: 0x02,
+  i32_trunc_sat_f64_u: 0x03,
 } as const;
 
 export const GC = {

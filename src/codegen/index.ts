@@ -3485,6 +3485,8 @@ function collectMathImports(
 ): void {
   const needed = new Set<string>();
 
+  let needsToUint32 = false;
+
   function visit(node: ts.Node) {
     if (
       ts.isCallExpression(node) &&
@@ -3499,6 +3501,10 @@ function collectMathImports(
         method === "random"
       ) {
         needed.add(method);
+      }
+      // clz32 and imul need __toUint32 for spec-correct ToUint32 conversion
+      if (method === "clz32" || method === "imul") {
+        needsToUint32 = true;
       }
     }
     // ** and **= operators need Math.pow
@@ -3533,6 +3539,12 @@ function collectMathImports(
       const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "f64" }]);
       addImport(ctx, "env", `Math_${method}`, { kind: "func", typeIdx });
     }
+  }
+
+  // Register __toUint32 host import: (f64) → i32
+  if (needsToUint32 && !ctx.funcMap.has("__toUint32")) {
+    const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "i32" }]);
+    addImport(ctx, "env", "__toUint32", { kind: "func", typeIdx });
   }
 }
 

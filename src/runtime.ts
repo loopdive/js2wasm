@@ -117,6 +117,9 @@ function resolveImport(
       if (name === "parseFloat") return (s: any) => parseFloat(String(s));
       // String.fromCharCode host import
       if (name === "String_fromCharCode") return (code: number) => String.fromCharCode(code);
+      // ToUint32 for Math.clz32/imul — spec-correct conversion
+      // (x >>> 0) applies the ToUint32 abstract operation per ES spec
+      if (name === "__toUint32") return (x: number) => x >>> 0;
       // Native string marshaling (fast mode)
       if (name === "__str_extern_len") return (s: string) => s.length;
       if (name === "__str_from_mem") {
