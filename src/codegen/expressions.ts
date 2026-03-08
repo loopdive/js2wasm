@@ -3249,8 +3249,12 @@ function compileMathCall(
   const f64Hint: ValType = { kind: "f64" };
 
   if (method === "round" && expr.arguments.length >= 1) {
+    // JS Math.round rounds half toward +Infinity: Math.round(x) = floor(x + 0.5)
+    // (NOT banker's rounding like f64.nearest which rounds half to even)
     compileExpression(ctx, fctx, expr.arguments[0]!, f64Hint);
-    fctx.body.push({ op: "f64.nearest" } as Instr);
+    fctx.body.push({ op: "f64.const", value: 0.5 } as Instr);
+    fctx.body.push({ op: "f64.add" } as Instr);
+    fctx.body.push({ op: "f64.floor" } as Instr);
     return { kind: "f64" };
   }
 
