@@ -2120,6 +2120,10 @@ function compilePrefixUnary(
   expr: ts.PrefixUnaryExpression,
 ): ValType | null {
   switch (expr.operator) {
+    case ts.SyntaxKind.PlusToken: {
+      // Unary + is ToNumber — in wasm everything is already numeric, so just compile the operand
+      return compileExpression(ctx, fctx, expr.operand);
+    }
     case ts.SyntaxKind.MinusToken: {
       const operandType = compileExpression(ctx, fctx, expr.operand);
       if (ctx.fast && operandType?.kind === "i32") {
@@ -3684,6 +3688,27 @@ function compilePropertyAccess(
     };
     if (propName in mathConstants) {
       fctx.body.push({ op: "f64.const", value: mathConstants[propName]! });
+      return { kind: "f64" };
+    }
+  }
+
+  // Handle Number constants
+  if (
+    ts.isIdentifier(expr.expression) &&
+    expr.expression.text === "Number"
+  ) {
+    const numberConstants: Record<string, number> = {
+      EPSILON: Number.EPSILON,
+      MAX_SAFE_INTEGER: Number.MAX_SAFE_INTEGER,
+      MIN_SAFE_INTEGER: Number.MIN_SAFE_INTEGER,
+      MAX_VALUE: Number.MAX_VALUE,
+      MIN_VALUE: Number.MIN_VALUE,
+      POSITIVE_INFINITY: Infinity,
+      NEGATIVE_INFINITY: -Infinity,
+      NaN: NaN,
+    };
+    if (propName in numberConstants) {
+      fctx.body.push({ op: "f64.const", value: numberConstants[propName]! });
       return { kind: "f64" };
     }
   }

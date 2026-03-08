@@ -142,6 +142,14 @@ interface ArrayConstructor {
 }
 
 
+// ── Number ES2015 constants ──────────────────────────────────────
+
+interface NumberConstructor {
+  readonly EPSILON: number;
+  readonly MAX_SAFE_INTEGER: number;
+  readonly MIN_SAFE_INTEGER: number;
+}
+
 // ── Object.entries / Object.keys ES2017 ─────────────────────────
 
 interface ObjectConstructor {
