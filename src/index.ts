@@ -78,6 +78,10 @@ export interface CompileOptions {
   allowedGlobals?: string[];
   /** Extern class members allowed in safe mode (e.g. { Element: ["textContent"] }) */
   allowedExternMembers?: Record<string, string[]>;
+  /** Allow JavaScript source files as input (auto-detected for .js fileName) */
+  allowJs?: boolean;
+  /** Virtual file name for the source (controls language: use ".js" for JS input) */
+  fileName?: string;
 }
 
 import { compileSource, compileMultiSource, compileToObjectSource } from "./compiler.js";

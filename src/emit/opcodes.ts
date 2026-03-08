@@ -65,6 +65,7 @@ export const OP = {
   i32_shl: 0x74,
   i32_shr_s: 0x75,
   i32_shr_u: 0x76,
+  i32_clz: 0x67,
   f64_eq: 0x61,
   f64_ne: 0x62,
   f64_lt: 0x63,
@@ -94,6 +95,8 @@ export const OP = {
   call_ref: 0x14,
   memory_size: 0x3f,
   memory_grow: 0x40,
+  misc_prefix: 0xfc,
+  i32_trunc_sat_f64_s: 0x02,
 } as const;
 
 export const GC = {
