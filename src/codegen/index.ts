@@ -4046,8 +4046,10 @@ export function ensureStructForType(ctx: CodegenContext, tsType: ts.Type): void 
   const fields: FieldDef[] = [];
   for (const prop of props) {
     const propType = ctx.checker.getTypeOfSymbol(prop);
-    // Use mapTsTypeToWasm for fields — they'll be resolved later or are primitives
-    const wasmType = mapTsTypeToWasm(propType, ctx.checker);
+    // Recursively register nested object types as structs before resolving
+    ensureStructForType(ctx, propType);
+    // Use resolveWasmType so nested structs get ref types, not externref
+    const wasmType = resolveWasmType(ctx, propType);
     fields.push({ name: prop.name, type: wasmType, mutable: true });
   }
 
@@ -4059,7 +4061,10 @@ export function ensureStructForType(ctx: CodegenContext, tsType: ts.Type): void 
     if (existingFields.length !== fields.length) continue;
     const match = existingFields.every((ef, i) => {
       const nf = fields[i]!;
-      return ef.name === nf.name && ef.type.kind === nf.type.kind;
+      if (ef.name !== nf.name || ef.type.kind !== nf.type.kind) return false;
+      if ((ef.type.kind === "ref" || ef.type.kind === "ref_null") &&
+          (ef.type as { typeIdx: number }).typeIdx !== (nf.type as { typeIdx: number }).typeIdx) return false;
+      return true;
     });
     if (match) {
       ctx.anonTypeMap.set(tsType, existingName);
