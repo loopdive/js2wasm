@@ -3257,9 +3257,10 @@ function compileMathCall(
   }
 
   // Math.clz32(n) → i32.clz (count leading zeros)
+  // Use saturating trunc to handle NaN/Infinity (spec: ToUint32 returns 0 for those)
   if (method === "clz32" && expr.arguments.length >= 1) {
     compileExpression(ctx, fctx, expr.arguments[0]!, f64Hint);
-    fctx.body.push({ op: "i32.trunc_f64_s" } as Instr);
+    fctx.body.push({ op: "i32.trunc_sat_f64_s" } as Instr);
     fctx.body.push({ op: "i32.clz" } as Instr);
     fctx.body.push({ op: "f64.convert_i32_s" } as Instr);
     return { kind: "f64" };

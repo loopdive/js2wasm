@@ -1,0 +1,84 @@
+/**
+ * Test262 conformance tests — runs a filtered subset of the official
+ * ECMAScript test suite through the ts2wasm compiler.
+ *
+ * Tests are non-failing: we track pass/fail/skip/compile_error counts
+ * as a conformance dashboard, not as a gate.
+ */
+import { describe, it, expect, afterAll } from "vitest";
+import { TEST_CATEGORIES, findTestFiles, runTest262File, TestResult } from "./test262-runner.js";
+import { relative, join } from "path";
+
+const TEST262_ROOT = join(import.meta.dirname ?? ".", "..", "test262");
+
+const allResults: TestResult[] = [];
+
+for (const category of TEST_CATEGORIES) {
+  const files = findTestFiles(category);
+  if (files.length === 0) continue;
+
+  describe(`test262: ${category}`, () => {
+    for (const filePath of files) {
+      const relPath = relative(TEST262_ROOT, filePath);
+
+      it(relPath, async () => {
+        const result = await runTest262File(filePath, category);
+        allResults.push(result);
+        // All tests pass in vitest — conformance is tracked via the report
+      });
+    }
+  });
+}
+
+afterAll(() => {
+  // Print conformance report
+  const stats = { pass: 0, fail: 0, skip: 0, compile_error: 0 };
+  const byCategory = new Map<string, { pass: number; fail: number; skip: number; compile_error: number }>();
+
+  for (const r of allResults) {
+    stats[r.status]++;
+    if (!byCategory.has(r.category)) {
+      byCategory.set(r.category, { pass: 0, fail: 0, skip: 0, compile_error: 0 });
+    }
+    byCategory.get(r.category)![r.status]++;
+  }
+
+  const total = allResults.length;
+  const compilable = stats.pass + stats.fail;
+  console.log("\n╔══════════════════════════════════════════════════╗");
+  console.log("║           Test262 Conformance Report             ║");
+  console.log("╠══════════════════════════════════════════════════╣");
+  console.log(`║  Total tests:     ${String(total).padStart(5)}                        ║`);
+  console.log(`║  Passed:          ${String(stats.pass).padStart(5)}  (${compilable > 0 ? ((stats.pass / compilable * 100) | 0) : 0}% of compilable)   ║`);
+  console.log(`║  Failed:          ${String(stats.fail).padStart(5)}                        ║`);
+  console.log(`║  Compile errors:  ${String(stats.compile_error).padStart(5)}                        ║`);
+  console.log(`║  Skipped:         ${String(stats.skip).padStart(5)}                        ║`);
+  console.log("╠══════════════════════════════════════════════════╣");
+
+  for (const [cat, s] of [...byCategory.entries()].sort()) {
+    const catCompilable = s.pass + s.fail;
+    const pct = catCompilable > 0 ? ((s.pass / catCompilable * 100) | 0) : 0;
+    const short = cat.replace("built-ins/Math/", "Math.");
+    console.log(`║  ${short.padEnd(18)} ${String(s.pass).padStart(3)}/${String(catCompilable).padStart(3)} pass (${String(pct).padStart(3)}%)  skip:${String(s.skip).padStart(3)} ║`);
+  }
+
+  console.log("╚══════════════════════════════════════════════════╝");
+
+  // Print failures for debugging
+  const failures = allResults.filter(r => r.status === "fail");
+  if (failures.length > 0 && failures.length <= 30) {
+    console.log("\nFailing tests:");
+    for (const f of failures) {
+      console.log(`  ✗ ${f.file}: ${f.error}`);
+    }
+  }
+
+  // Print sample compile errors for debugging
+  const compileErrors = allResults.filter(r => r.status === "compile_error");
+  if (compileErrors.length > 0) {
+    console.log(`\nSample compile errors (first 10 of ${compileErrors.length}):`);
+    for (const e of compileErrors.slice(0, 10)) {
+      console.log(`  ⚠ ${e.file}: ${e.error?.substring(0, 100)}`);
+    }
+  }
+});
