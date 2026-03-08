@@ -1756,12 +1756,43 @@ function compileElementAssignment(
       ctx.errors.push({ message: "Assignment: vec data is not array", line: 0, column: 0 });
       return null;
     }
-    // Unwrap: struct.get data field, then set element in backing array
-    fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 }); // get data from vec
+    // Save vec ref and index in locals for reuse
+    const vecLocal = allocLocal(fctx, `__vec_${fctx.locals.length}`, arrType);
+    fctx.body.push({ op: "local.set", index: vecLocal });
     compileExpression(ctx, fctx, target.argumentExpression, { kind: "f64" });
     fctx.body.push({ op: "i32.trunc_f64_s" });
+    const idxLocal = allocLocal(fctx, `__idx_${fctx.locals.length}`, { kind: "i32" });
+    fctx.body.push({ op: "local.set", index: idxLocal });
+    // Compile value
     compileExpression(ctx, fctx, value, arrDef.element);
+    const valLocal = allocLocal(fctx, `__val_${fctx.locals.length}`, arrDef.element);
+    fctx.body.push({ op: "local.set", index: valLocal });
+
+    // array.set: vec.data[idx] = val
+    fctx.body.push({ op: "local.get", index: vecLocal });
+    fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 }); // get data
+    fctx.body.push({ op: "local.get", index: idxLocal });
+    fctx.body.push({ op: "local.get", index: valLocal });
     fctx.body.push({ op: "array.set", typeIdx: arrTypeIdx });
+
+    // Update length if idx+1 > current length:
+    // if (idx + 1 > vec.length) vec.length = idx + 1
+    fctx.body.push({ op: "local.get", index: idxLocal });
+    fctx.body.push({ op: "i32.const", value: 1 });
+    fctx.body.push({ op: "i32.add" });
+    fctx.body.push({ op: "local.get", index: vecLocal });
+    fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 0 }); // get length
+    fctx.body.push({ op: "i32.gt_s" });
+    fctx.body.push({
+      op: "if", blockType: { kind: "empty" },
+      then: [
+        { op: "local.get", index: vecLocal },
+        { op: "local.get", index: idxLocal },
+        { op: "i32.const", value: 1 },
+        { op: "i32.add" },
+        { op: "struct.set", typeIdx, fieldIdx: 0 },
+      ],
+    });
     return VOID_RESULT;
   }
 
@@ -3002,6 +3033,63 @@ function compileNewExpression(
     return { kind: "externref" };
   }
 
+  // new Array() / new Array(n) / new Array(a, b, c)
+  if (className === "Array") {
+    // Use contextual type (from variable declaration) if available, else expression type.
+    // `new Array()` without type args gives Array<any>, but `var a: number[] = new Array()`
+    // needs to produce Array<number> to match the variable's vec type.
+    const ctxType = ctx.checker.getContextualType(expr);
+    const exprType = ctxType ?? ctx.checker.getTypeAtLocation(expr);
+    const resolved = resolveWasmType(ctx, exprType);
+    const vecTypeIdx = (resolved as { typeIdx: number }).typeIdx;
+    const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
+    // Determine element wasm type for compiling initializer elements
+    const typeArgs = ctx.checker.getTypeArguments(exprType as ts.TypeReference);
+    const elemTsType = typeArgs?.[0];
+    const elemWasm: ValType = elemTsType ? resolveWasmType(ctx, elemTsType) : { kind: "f64" };
+
+    const args = expr.arguments ?? [];
+
+    if (args.length === 0) {
+      // new Array() → empty array with default backing capacity
+      // JS arrays are dynamically resizable; wasm arrays are fixed-size.
+      // Allocate a default backing buffer so index assignments work.
+      const DEFAULT_CAPACITY = 64;
+      fctx.body.push({ op: "i32.const", value: 0 });           // length = 0
+      fctx.body.push({ op: "i32.const", value: DEFAULT_CAPACITY });
+      fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx });
+      fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
+      return { kind: "ref_null", typeIdx: vecTypeIdx };
+    }
+
+    if (args.length === 1) {
+      // new Array(n) → array with capacity n, length 0
+      // For test262 patterns like `var a = new Array(16); a[0] = x;`
+      // we create an array of size n with default values and set length to n
+      // (JS semantics: sparse array with length n, all slots undefined)
+      compileExpression(ctx, fctx, args[0]!, { kind: "f64" });
+      fctx.body.push({ op: "i32.trunc_f64_s" });
+      const sizeLocal = allocLocal(fctx, `__arr_size_${fctx.locals.length}`, { kind: "i32" });
+      fctx.body.push({ op: "local.tee", index: sizeLocal });
+      fctx.body.push({ op: "local.get", index: sizeLocal });
+      fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx });
+      fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
+      return { kind: "ref_null", typeIdx: vecTypeIdx };
+    }
+
+    // new Array(a, b, c) → [a, b, c]
+    for (const arg of args) {
+      compileExpression(ctx, fctx, arg, elemWasm);
+    }
+    fctx.body.push({ op: "array.new_fixed", typeIdx: arrTypeIdx, length: args.length });
+    const tmpData = allocLocal(fctx, `__arr_data_${fctx.locals.length}`, { kind: "ref", typeIdx: arrTypeIdx });
+    fctx.body.push({ op: "local.set", index: tmpData });
+    fctx.body.push({ op: "i32.const", value: args.length });
+    fctx.body.push({ op: "local.get", index: tmpData });
+    fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
+    return { kind: "ref_null", typeIdx: vecTypeIdx };
+  }
+
   ctx.errors.push({
     message: `Unsupported new expression for class: ${className}`,
     line: getLine(expr),
@@ -3433,6 +3521,22 @@ function compileMathCall(
       fctx.body.push({ op: "call", funcIdx });
       return { kind: "f64" };
     }
+  }
+
+  // Math.min(...args) / Math.max(...args) — variadic, chain pairwise f64.min/f64.max
+  if ((method === "min" || method === "max") && expr.arguments) {
+    const wasmOp = method === "min" ? "f64.min" : "f64.max";
+    if (expr.arguments.length === 0) {
+      // Math.min() → Infinity, Math.max() → -Infinity
+      fctx.body.push({ op: "f64.const", value: method === "min" ? Infinity : -Infinity } as Instr);
+      return { kind: "f64" };
+    }
+    compileExpression(ctx, fctx, expr.arguments[0]!, f64Hint);
+    for (let i = 1; i < expr.arguments.length; i++) {
+      compileExpression(ctx, fctx, expr.arguments[i]!, f64Hint);
+      fctx.body.push({ op: wasmOp } as Instr);
+    }
+    return { kind: "f64" };
   }
 
   ctx.errors.push({
