@@ -7,6 +7,20 @@
 | #                  | Feature                                                     | Complexity |
 | ------------------ | ----------------------------------------------------------- | ---------- |
 | [70](issues/70.md) | Fast mode Phases 2–4 (wasm-native strings, arrays, C ABI)  | L          |
+| [73](issues/73.md) | Benchmark — JS vs host-call vs GC-native vs linear-memory  | M          |
+| [74](issues/74.md) | WASM SIMD for string and array operations                  | L          |
+| [75](issues/75.md) | Slice-based string views for substring/trim/slice          | M          |
+| [76](issues/76.md) | Rope/cons-string for O(1) concatenation                    | L          |
+
+### Language coverage
+
+| #                  | Feature                                                     | Complexity |
+| ------------------ | ----------------------------------------------------------- | ---------- |
+| [77](issues/77.md) | Object literals, spread, and structural typing              | L          |
+| [78](issues/78.md) | Standard library coverage — builtins and static methods     | L          |
+| [79](issues/79.md) | Gradual typing — boxed `any` with runtime dispatch          | XL         |
+| [80](issues/80.md) | JS file compilation via `.d.ts` types and TS inference      | M          |
+| [81](issues/81.md) | npm package resolution and tree-shaking                     | L          |
 
 ## Complexity legend
 
