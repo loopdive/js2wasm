@@ -3256,22 +3256,37 @@ function compileMathCall(
     return { kind: "f64" };
   }
 
-  // Math.clz32(n) → i32.clz (count leading zeros)
-  // Use saturating trunc to handle NaN/Infinity (spec: ToUint32 returns 0 for those)
+  // Math.clz32(n) → ToUint32(n) then i32.clz
+  // ToUint32: NaN/±Infinity → 0; otherwise truncate then modulo 2^32.
+  // We use the host-imported __toUint32 for correct edge-case handling.
   if (method === "clz32" && expr.arguments.length >= 1) {
+    const toU32Idx = ctx.funcMap.get("__toUint32");
     compileExpression(ctx, fctx, expr.arguments[0]!, f64Hint);
-    fctx.body.push({ op: "i32.trunc_sat_f64_s" } as Instr);
+    if (toU32Idx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: toU32Idx });
+    } else {
+      fctx.body.push({ op: "i32.trunc_sat_f64_s" } as Instr);
+    }
     fctx.body.push({ op: "i32.clz" } as Instr);
     fctx.body.push({ op: "f64.convert_i32_s" } as Instr);
     return { kind: "f64" };
   }
 
-  // Math.imul(a, b) → i32.mul (32-bit integer multiply, with wrapping/saturating trunc)
+  // Math.imul(a, b) → ToUint32(a) * ToUint32(b), result as signed i32
   if (method === "imul" && expr.arguments.length >= 2) {
+    const toU32Idx = ctx.funcMap.get("__toUint32");
     compileExpression(ctx, fctx, expr.arguments[0]!, f64Hint);
-    fctx.body.push({ op: "i32.trunc_sat_f64_s" } as Instr);
+    if (toU32Idx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: toU32Idx });
+    } else {
+      fctx.body.push({ op: "i32.trunc_sat_f64_s" } as Instr);
+    }
     compileExpression(ctx, fctx, expr.arguments[1]!, f64Hint);
-    fctx.body.push({ op: "i32.trunc_sat_f64_s" } as Instr);
+    if (toU32Idx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: toU32Idx });
+    } else {
+      fctx.body.push({ op: "i32.trunc_sat_f64_s" } as Instr);
+    }
     fctx.body.push({ op: "i32.mul" } as Instr);
     fctx.body.push({ op: "f64.convert_i32_s" } as Instr);
     return { kind: "f64" };
@@ -3310,25 +3325,43 @@ function compileMathCall(
   }
 
   if (method === "sign" && expr.arguments.length >= 1) {
-    // sign(x) = x > 0 ? 1 : x < 0 ? -1 : 0
+    // sign(x): NaN→NaN, -0→-0, 0→0, x>0→1, x<0→-1
+    // Use f64.copysign to preserve -0 and NaN passthrough:
+    //   if (x !== x) return NaN  (NaN check)
+    //   if (x == 0) return x     (preserves -0/+0)
+    //   return x > 0 ? 1 : -1
     compileExpression(ctx, fctx, expr.arguments[0]!, f64Hint);
     const tmp = allocLocal(fctx, `__sign_${fctx.locals.length}`, { kind: "f64" });
     fctx.body.push({ op: "local.tee", index: tmp });
-    fctx.body.push({ op: "f64.const", value: 0 });
-    fctx.body.push({ op: "f64.gt" });
+    // NaN check: x !== x
+    fctx.body.push({ op: "local.get", index: tmp });
+    fctx.body.push({ op: "f64.ne" } as Instr);
     fctx.body.push({
       op: "if",
       blockType: { kind: "val", type: { kind: "f64" } },
-      then: [{ op: "f64.const", value: 1 }],
+      then: [
+        // return NaN
+        { op: "f64.const", value: NaN },
+      ],
       else: [
+        // x == 0 check (true for both +0 and -0)
         { op: "local.get", index: tmp },
+        { op: "f64.abs" } as Instr,
         { op: "f64.const", value: 0 },
-        { op: "f64.lt" },
+        { op: "f64.eq" } as Instr,
         {
           op: "if",
           blockType: { kind: "val", type: { kind: "f64" } },
-          then: [{ op: "f64.const", value: -1 }],
-          else: [{ op: "f64.const", value: 0 }],
+          then: [
+            // return x (preserves -0)
+            { op: "local.get", index: tmp },
+          ],
+          else: [
+            // return copysign(1.0, x) — gives 1 or -1 based on sign of x
+            { op: "f64.const", value: 1 },
+            { op: "local.get", index: tmp },
+            { op: "f64.copysign" } as Instr,
+          ],
         },
       ],
     });
