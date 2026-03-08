@@ -3548,7 +3548,7 @@ function collectMathImports(
   }
 }
 
-/** Scan source for parseInt / parseFloat calls and register host imports */
+/** Scan source for parseInt / parseFloat / Number() / unary + on strings and register host imports */
 function collectParseImports(
   ctx: CodegenContext,
   sourceFile: ts.SourceFile,
@@ -3558,10 +3558,26 @@ function collectParseImports(
   function visit(node: ts.Node) {
     if (
       ts.isCallExpression(node) &&
-      ts.isIdentifier(node.expression) &&
-      (node.expression.text === "parseInt" || node.expression.text === "parseFloat")
+      ts.isIdentifier(node.expression)
     ) {
-      needed.add(node.expression.text);
+      const name = node.expression.text;
+      if (name === "parseInt" || name === "parseFloat") {
+        needed.add(name);
+      }
+      // Number(x) uses parseFloat for string→number coercion
+      if (name === "Number") {
+        needed.add("parseFloat");
+      }
+    }
+    // Unary + on string uses parseFloat for coercion
+    if (
+      ts.isPrefixUnaryExpression(node) &&
+      node.operator === ts.SyntaxKind.PlusToken
+    ) {
+      const operandType = ctx.checker.getTypeAtLocation(node.operand);
+      if (operandType.flags & ts.TypeFlags.StringLike) {
+        needed.add("parseFloat");
+      }
     }
     ts.forEachChild(node, visit);
   }
