@@ -2121,8 +2121,18 @@ function compilePrefixUnary(
 ): ValType | null {
   switch (expr.operator) {
     case ts.SyntaxKind.PlusToken: {
-      // Unary + is ToNumber — in wasm everything is already numeric, so just compile the operand
-      return compileExpression(ctx, fctx, expr.operand);
+      // Unary + is ToNumber coercion
+      const operandType = compileExpression(ctx, fctx, expr.operand);
+      if (operandType?.kind === "externref") {
+        // String → number: call parseFloat host import
+        const pfIdx = ctx.funcMap.get("parseFloat");
+        if (pfIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx: pfIdx });
+          return { kind: "f64" };
+        }
+      }
+      // Already numeric — no-op
+      return operandType;
     }
     case ts.SyntaxKind.MinusToken: {
       const operandType = compileExpression(ctx, fctx, expr.operand);
@@ -2714,6 +2724,21 @@ function compileCallExpression(
         fctx.body.push({ op: "call", funcIdx: importFuncIdx });
         return { kind: "f64" };
       }
+    }
+
+    // Number(x) — ToNumber coercion
+    if (funcName === "Number" && expr.arguments.length >= 1) {
+      const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
+      if (argType?.kind === "externref") {
+        // String → number: use parseFloat
+        const pfIdx = ctx.funcMap.get("parseFloat");
+        if (pfIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx: pfIdx });
+          return { kind: "f64" };
+        }
+      }
+      // Already numeric — no-op
+      return argType;
     }
   }
 
