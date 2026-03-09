@@ -135,6 +135,7 @@ type InstrBase =
   | { op: "i32.shr_u" }
   | { op: "i32.clz" }
   | { op: "i32.trunc_sat_f64_s" }
+  | { op: "i32.trunc_sat_f64_u" }
   | { op: "f64.add" }
   | { op: "f64.sub" }
   | { op: "f64.mul" }

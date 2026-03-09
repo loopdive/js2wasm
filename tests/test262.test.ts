@@ -45,40 +45,45 @@ afterAll(() => {
 
   const total = allResults.length;
   const compilable = stats.pass + stats.fail;
-  console.log("\n╔══════════════════════════════════════════════════╗");
-  console.log("║           Test262 Conformance Report             ║");
-  console.log("╠══════════════════════════════════════════════════╣");
-  console.log(`║  Total tests:     ${String(total).padStart(5)}                        ║`);
-  console.log(`║  Passed:          ${String(stats.pass).padStart(5)}  (${compilable > 0 ? ((stats.pass / compilable * 100) | 0) : 0}% of compilable)   ║`);
-  console.log(`║  Failed:          ${String(stats.fail).padStart(5)}                        ║`);
-  console.log(`║  Compile errors:  ${String(stats.compile_error).padStart(5)}                        ║`);
-  console.log(`║  Skipped:         ${String(stats.skip).padStart(5)}                        ║`);
-  console.log("╠══════════════════════════════════════════════════╣");
+  console.log("\n══════════════════════════════════════════════════════");
+  console.log("           Test262 Conformance Report");
+  console.log("══════════════════════════════════════════════════════");
+  console.log(`  Total tests:     ${total}`);
+  console.log(`  Passed:          ${stats.pass}  (${compilable > 0 ? ((stats.pass / compilable * 100) | 0) : 0}% of compilable)`);
+  console.log(`  Failed:          ${stats.fail}`);
+  console.log(`  Compile errors:  ${stats.compile_error}`);
+  console.log(`  Skipped:         ${stats.skip}`);
+  console.log("──────────────────────────────────────────────────────");
 
   for (const [cat, s] of [...byCategory.entries()].sort()) {
     const catCompilable = s.pass + s.fail;
     const pct = catCompilable > 0 ? ((s.pass / catCompilable * 100) | 0) : 0;
-    const short = cat.replace("built-ins/Math/", "Math.");
-    console.log(`║  ${short.padEnd(18)} ${String(s.pass).padStart(3)}/${String(catCompilable).padStart(3)} pass (${String(pct).padStart(3)}%)  skip:${String(s.skip).padStart(3)} ║`);
+    const short = cat
+      .replace("built-ins/Math/", "Math.")
+      .replace("built-ins/", "")
+      .replace("language/expressions/", "expr/")
+      .replace("language/statements/", "stmt/")
+      .replace("language/types/", "types/");
+    console.log(`  ${short.padEnd(26)} ${String(s.pass).padStart(3)}/${String(catCompilable).padStart(3)} pass (${String(pct).padStart(3)}%)  skip:${String(s.skip).padStart(3)}  err:${String(s.compile_error).padStart(3)}`);
   }
 
-  console.log("╚══════════════════════════════════════════════════╝");
+  console.log("══════════════════════════════════════════════════════");
 
   // Print failures for debugging
   const failures = allResults.filter(r => r.status === "fail");
-  if (failures.length > 0 && failures.length <= 30) {
-    console.log("\nFailing tests:");
+  if (failures.length > 0) {
+    console.log(`\nFailing tests (${failures.length}):`);
     for (const f of failures) {
       console.log(`  ✗ ${f.file}: ${f.error}`);
     }
   }
 
-  // Print sample compile errors for debugging
+  // Print all compile errors for debugging
   const compileErrors = allResults.filter(r => r.status === "compile_error");
   if (compileErrors.length > 0) {
-    console.log(`\nSample compile errors (first 10 of ${compileErrors.length}):`);
-    for (const e of compileErrors.slice(0, 10)) {
-      console.log(`  ⚠ ${e.file}: ${e.error?.substring(0, 100)}`);
+    console.log(`\nCompile errors (${compileErrors.length}):`);
+    for (const e of compileErrors) {
+      console.log(`  ⚠ ${e.file}: ${e.error?.substring(0, 120)}`);
     }
   }
 });
