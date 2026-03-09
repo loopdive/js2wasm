@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ts2wasm — Conformance &amp; Performance Report</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-muted: #8b949e;
+    --pass: #3fb950;
+    --fail: #f85149;
+    --skip: #8b949e;
+    --error: #d29922;
+    --accent: #58a6ff;
+    --bar-bg: #21262d;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    padding: 2rem;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 1.75rem; font-weight: 600; margin-bottom: 0.25rem; }
+  h2 { font-size: 1.25rem; font-weight: 600; margin: 2rem 0 1rem; color: var(--text); }
+  h3 { font-size: 1rem; font-weight: 600; margin: 1.5rem 0 0.5rem; color: var(--text-muted); }
+  .subtitle { color: var(--text-muted); font-size: 0.875rem; margin-bottom: 2rem; }
+  .summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+  }
+  .card .label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  .card .value { font-size: 1.75rem; font-weight: 700; margin-top: 0.25rem; }
+  .card .pct { font-size: 0.875rem; color: var(--text-muted); }
+  .cat-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .cat-table th {
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 2px solid var(--border);
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 0.6875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .cat-table th.num { text-align: right; }
+  .cat-table td {
+    padding: 0.375rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .cat-table td.num { text-align: right; font-family: "SF Mono", SFMono-Regular, Consolas, monospace; font-size: 0.75rem; }
+  .cat-table tr:hover { background: rgba(88, 166, 255, 0.04); }
+  .cat-table .group-header td {
+    padding-top: 1rem;
+    font-weight: 700;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--accent);
+    border-bottom: 1px solid var(--accent);
+  }
+  .bar-container {
+    width: 100%;
+    height: 8px;
+    background: var(--bar-bg);
+    border-radius: 4px;
+    overflow: hidden;
+    display: flex;
+  }
+  .overall-bar { height: 24px; border-radius: 6px; margin-bottom: 2rem; }
+  .legend {
+    display: flex;
+    gap: 1.5rem;
+    margin-bottom: 1rem;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+  }
+  .legend-item { display: flex; align-items: center; gap: 0.375rem; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+  .bench-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 1rem;
+  }
+  .bench-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem;
+  }
+  .bench-name { font-weight: 600; font-size: 0.875rem; margin-bottom: 0.75rem; }
+  .bench-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.375rem;
+    font-size: 0.75rem;
+  }
+  .bench-label {
+    width: 70px;
+    flex-shrink: 0;
+    color: var(--text-muted);
+    font-family: "SF Mono", SFMono-Regular, Consolas, monospace;
+  }
+  .bench-bar-bg {
+    flex: 1;
+    height: 14px;
+    background: var(--bar-bg);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .bench-bar { height: 100%; border-radius: 3px; min-width: 2px; }
+  .bench-time {
+    width: 80px;
+    text-align: right;
+    flex-shrink: 0;
+    font-family: "SF Mono", SFMono-Regular, Consolas, monospace;
+    color: var(--text-muted);
+  }
+  .speedup { font-size: 0.6875rem; margin-left: 0.5rem; }
+  .timestamp { font-size: 0.75rem; color: var(--text-muted); margin-top: 2rem; text-align: center; }
+  .no-data { color: var(--text-muted); font-style: italic; padding: 2rem; text-align: center; }
+</style>
+</head>
+<body>
+
+<h1>ts2wasm</h1>
+<div class="subtitle">ECMAScript conformance &amp; performance report</div>
+<div id="app"><div class="no-data">Loading report data…</div></div>
+
+<script>
+const REPORT_JSON = "results/test262-report.json";
+const BENCH_JSON = "results/latest.json";
+
+async function loadJSON(url) {
+  try { const r = await fetch(url); return r.ok ? r.json() : null; } catch { return null; }
+}
+
+function shortName(cat) {
+  return cat
+    .replace("built-ins/Math/", "Math.")
+    .replace("built-ins/Array/prototype/", "Array.")
+    .replace("built-ins/Number/", "Number.")
+    .replace("built-ins/Object/", "Object.")
+    .replace("built-ins/JSON/", "JSON.")
+    .replace("built-ins/", "")
+    .replace("language/expressions/", "expr/")
+    .replace("language/statements/", "stmt/")
+    .replace("language/types/", "types/");
+}
+
+function groupName(cat) {
+  if (cat.startsWith("built-ins/Math/")) return "Math";
+  if (cat.startsWith("built-ins/Array/")) return "Array";
+  if (cat.startsWith("built-ins/Number/")) return "Number";
+  if (cat.startsWith("built-ins/Object/")) return "Object";
+  if (cat.startsWith("built-ins/JSON/")) return "JSON";
+  if (cat.startsWith("built-ins/is")) return "Global Functions";
+  if (cat.startsWith("language/expressions/")) return "Expressions";
+  if (cat.startsWith("language/statements/")) return "Statements";
+  if (cat.startsWith("language/types/")) return "Types";
+  return "Other";
+}
+
+function pct(n, d) { return d > 0 ? Math.round(n / d * 100) : 0; }
+function fmt(ms) {
+  if (ms < 0.001) return "<0.001ms";
+  if (ms < 1) return ms.toFixed(3) + "ms";
+  if (ms < 100) return ms.toFixed(1) + "ms";
+  return Math.round(ms) + "ms";
+}
+
+function el(tag, attrs, ...children) {
+  const e = document.createElement(tag);
+  if (attrs) for (const [k, v] of Object.entries(attrs)) {
+    if (k === "style" && typeof v === "object") Object.assign(e.style, v);
+    else if (k === "className") e.className = v;
+    else e.setAttribute(k, v);
+  }
+  for (const c of children) {
+    if (typeof c === "string") e.appendChild(document.createTextNode(c));
+    else if (c) e.appendChild(c);
+  }
+  return e;
+}
+
+function makeBar(passW, failW, errW, extraClass) {
+  const container = el("div", { className: "bar-container" + (extraClass ? " " + extraClass : "") });
+  container.appendChild(el("div", { style: { width: passW + "%", background: "var(--pass)" } }));
+  container.appendChild(el("div", { style: { width: failW + "%", background: "var(--fail)" } }));
+  container.appendChild(el("div", { style: { width: errW + "%", background: "var(--error)" } }));
+  return container;
+}
+
+function makeLegend(items) {
+  const legend = el("div", { className: "legend" });
+  for (const [label, color] of items) {
+    const dot = el("div", { className: "legend-dot", style: { background: color } });
+    const item = el("div", { className: "legend-item" }, dot, " " + label);
+    legend.appendChild(item);
+  }
+  return legend;
+}
+
+function makeCard(label, value, colorVar, subtext) {
+  const card = el("div", { className: "card" });
+  card.appendChild(el("div", { className: "label" }, label));
+  const valEl = el("div", { className: "value", style: { color: colorVar || "inherit" } }, String(value));
+  card.appendChild(valEl);
+  if (subtext) card.appendChild(el("div", { className: "pct" }, subtext));
+  return card;
+}
+
+function renderConformance(data, container) {
+  const s = data.summary;
+  const passRate = pct(s.pass, s.pass + s.fail);
+
+  container.appendChild(el("h2", null, "Test262 Conformance"));
+
+  const summary = el("div", { className: "summary" });
+  summary.appendChild(makeCard("Total Tests", s.total.toLocaleString()));
+  summary.appendChild(makeCard("Passed", s.pass, "var(--pass)", passRate + "% of compilable"));
+  summary.appendChild(makeCard("Failed", s.fail, s.fail ? "var(--fail)" : "inherit"));
+  summary.appendChild(makeCard("Compile Errors", s.compile_error, "var(--error)"));
+  summary.appendChild(makeCard("Skipped", s.skip.toLocaleString(), "var(--text-muted)", "unsupported features"));
+  container.appendChild(summary);
+
+  container.appendChild(makeBar(pct(s.pass, s.total), pct(s.fail, s.total), pct(s.compile_error, s.total), "overall-bar"));
+
+  container.appendChild(makeLegend([
+    ["Pass", "var(--pass)"], ["Fail", "var(--fail)"],
+    ["Compile Error", "var(--error)"], ["Skip", "var(--bar-bg)"]
+  ]));
+
+  container.appendChild(el("h3", null, "By Category"));
+
+  const table = el("table", { className: "cat-table" });
+  const thead = el("thead");
+  const headerRow = el("tr");
+  for (const [text, cls] of [["Category",""], ["Pass","num"], ["Fail","num"], ["Err","num"], ["Skip","num"], ["Rate","num"], ["Distribution",""]]) {
+    headerRow.appendChild(el("th", cls ? { className: cls } : null, text));
+  }
+  thead.appendChild(headerRow);
+  table.appendChild(thead);
+
+  const tbody = el("tbody");
+
+  // Group categories
+  const groups = new Map();
+  for (const cat of data.categories) {
+    const g = groupName(cat.name);
+    if (!groups.has(g)) groups.set(g, []);
+    groups.get(g).push(cat);
+  }
+
+  for (const [group, cats] of groups) {
+    const gPass = cats.reduce((a, c) => a + c.pass, 0);
+    const gTotal = cats.reduce((a, c) => a + c.pass + c.fail + c.skip + c.compile_error, 0);
+
+    const groupRow = el("tr", { className: "group-header" });
+    groupRow.appendChild(el("td", { colspan: "7" }, group + " (" + gPass + " pass / " + gTotal + " total)"));
+    tbody.appendChild(groupRow);
+
+    for (const cat of cats) {
+      const total = cat.pass + cat.fail + cat.skip + cat.compile_error;
+      const compilable = cat.pass + cat.fail;
+      const catPct = pct(cat.pass, compilable);
+
+      const row = el("tr");
+      row.appendChild(el("td", { className: "cat-name" }, shortName(cat.name)));
+
+      const passCell = el("td", { className: "num", style: { color: "var(--pass)" } }, String(cat.pass));
+      row.appendChild(passCell);
+
+      const failCell = el("td", { className: "num", style: { color: cat.fail ? "var(--fail)" : "var(--text-muted)" } }, String(cat.fail));
+      row.appendChild(failCell);
+
+      const errCell = el("td", { className: "num", style: { color: cat.compile_error ? "var(--error)" : "var(--text-muted)" } }, String(cat.compile_error));
+      row.appendChild(errCell);
+
+      row.appendChild(el("td", { className: "num", style: { color: "var(--text-muted)" } }, String(cat.skip)));
+      row.appendChild(el("td", { className: "num" }, compilable > 0 ? catPct + "%" : "\u2014"));
+
+      const barCell = el("td", { style: { width: "120px" } });
+      barCell.appendChild(makeBar(pct(cat.pass, total), pct(cat.fail, total), pct(cat.compile_error, total)));
+      row.appendChild(barCell);
+
+      tbody.appendChild(row);
+    }
+  }
+
+  table.appendChild(tbody);
+  container.appendChild(table);
+}
+
+function renderBenchmarks(data, container) {
+  container.appendChild(el("h2", null, "Performance Benchmarks"));
+  container.appendChild(makeLegend([
+    ["JavaScript", "var(--text-muted)"],
+    ["Host-call (wasm)", "var(--accent)"],
+    ["GC-native (wasm)", "var(--pass)"]
+  ]));
+
+  const byName = new Map();
+  for (const b of data) {
+    if (!byName.has(b.name)) byName.set(b.name, {});
+    byName.get(b.name)[b.strategy] = b;
+  }
+
+  const benchGroups = new Map();
+  for (const [name, strats] of byName) {
+    const group = name.split("/")[0];
+    if (!benchGroups.has(group)) benchGroups.set(group, []);
+    benchGroups.get(group).push({ name, strats });
+  }
+
+  const stratColors = { js: "var(--text-muted)", "host-call": "var(--accent)", "gc-native": "var(--pass)" };
+
+  for (const [group, benchmarks] of benchGroups) {
+    container.appendChild(el("h3", null, group.charAt(0).toUpperCase() + group.slice(1)));
+    const grid = el("div", { className: "bench-grid" });
+
+    for (const { name, strats } of benchmarks) {
+      const card = el("div", { className: "bench-card" });
+      const nameEl = el("div", { className: "bench-name" }, name.split("/")[1]);
+
+      // Speedup info
+      const js = strats["js"];
+      const hc = strats["host-call"];
+      const gc = strats["gc-native"];
+      if (js && hc) {
+        const ratio = js.medianMs / hc.medianMs;
+        if (ratio > 1) {
+          const sp = el("span", { className: "speedup", style: { color: "var(--pass)" } }, "host " + ratio.toFixed(1) + "\u00d7 faster");
+          nameEl.appendChild(sp);
+        } else if (ratio < 0.5) {
+          const sp = el("span", { className: "speedup", style: { color: "var(--error)" } }, "host " + (1/ratio).toFixed(1) + "\u00d7 slower");
+          nameEl.appendChild(sp);
+        }
+      }
+      card.appendChild(nameEl);
+
+      let localMax = 0;
+      for (const b of Object.values(strats)) if (b.medianMs > localMax) localMax = b.medianMs;
+      if (localMax === 0) localMax = 1;
+
+      for (const strategy of ["js", "host-call", "gc-native"]) {
+        const b = strats[strategy];
+        if (!b) continue;
+        const barW = Math.max(1, (b.medianMs / localMax) * 100);
+
+        const row = el("div", { className: "bench-row" });
+        row.appendChild(el("span", { className: "bench-label" }, strategy));
+
+        const barBg = el("div", { className: "bench-bar-bg" });
+        barBg.appendChild(el("div", { className: "bench-bar", style: { width: barW + "%", background: stratColors[strategy] } }));
+        row.appendChild(barBg);
+
+        row.appendChild(el("span", { className: "bench-time" }, fmt(b.medianMs)));
+        card.appendChild(row);
+      }
+
+      grid.appendChild(card);
+    }
+    container.appendChild(grid);
+  }
+}
+
+async function main() {
+  const [conformance, benchmarks] = await Promise.all([loadJSON(REPORT_JSON), loadJSON(BENCH_JSON)]);
+  const app = document.getElementById("app");
+  app.textContent = "";
+
+  if (conformance) {
+    renderConformance(conformance, app);
+  } else {
+    app.appendChild(el("div", { className: "no-data" }, "No test262 report found. Run: npx vitest run tests/test262.test.ts"));
+  }
+
+  if (benchmarks) {
+    renderBenchmarks(benchmarks, app);
+  }
+
+  if (conformance) {
+    app.appendChild(el("div", { className: "timestamp" }, "Generated " + new Date(conformance.timestamp).toLocaleString()));
+  }
+}
+
+main();
+</script>
+</body>
+</html>
