@@ -9,3 +9,4 @@ output/
 .worktrees/
 benchmarks/results/*.json
 benchmarks/results/*.md
+benchmarks/results/*.txt
