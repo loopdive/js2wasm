@@ -7,3 +7,6 @@ output/
 .env
 .file-registry.json
 .worktrees/
+benchmarks/results/*.json
+benchmarks/results/*.md
+benchmarks/results/*.txt

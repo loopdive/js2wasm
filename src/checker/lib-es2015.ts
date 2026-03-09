@@ -126,6 +126,28 @@ interface Uint8Array {
 interface String {
   startsWith(searchString: string, position?: number): boolean;
   endsWith(searchString: string, endPosition?: number): boolean;
+  at(index: number): string;
+}
+
+// ── Array ES2022 methods ────────────────────────────────────────
+
+interface Array<T> {
+  at(index: number): T;
+}
+
+// ── ArrayConstructor ES2015 ─────────────────────────────────────
+
+interface ArrayConstructor {
+  from<T>(arrayLike: T[]): T[];
+}
+
+
+// ── Number ES2015 constants ──────────────────────────────────────
+
+interface NumberConstructor {
+  readonly EPSILON: number;
+  readonly MAX_SAFE_INTEGER: number;
+  readonly MIN_SAFE_INTEGER: number;
 }
 
 // ── Object.entries / Object.keys ES2017 ─────────────────────────

@@ -23,14 +23,24 @@ const LIB_FILES: Record<string, string> = {
   "lib.decorators.legacy.d.ts": libDecoratorsLegacy,
 };
 
+export interface AnalyzeOptions {
+  /** Allow JavaScript source files (enables allowJs + checkJs in TS compiler) */
+  allowJs?: boolean;
+}
+
 /**
- * Parse and type-check a TS source file.
+ * Parse and type-check a TS or JS source file.
  * In-memory CompilerHost – no filesystem needed.
  */
 export function analyzeSource(
   source: string,
   fileName = "input.ts",
+  analyzeOptions?: AnalyzeOptions,
 ): TypedAST {
+  const isJs = fileName.endsWith(".js") || fileName.endsWith(".jsx");
+  const scriptKind = isJs ? ts.ScriptKind.JS : ts.ScriptKind.TS;
+  const useAllowJs = isJs || analyzeOptions?.allowJs === true;
+
   const compilerHost: ts.CompilerHost = {
     getSourceFile(name, languageVersion) {
       if (name === fileName) {
@@ -39,7 +49,7 @@ export function analyzeSource(
           source,
           languageVersion,
           true,
-          ts.ScriptKind.TS,
+          scriptKind,
         );
       }
       const libContent = LIB_FILES[name];
@@ -61,15 +71,22 @@ export function analyzeSource(
     directoryExists: () => true,
   };
 
+  const compilerOptions: ts.CompilerOptions = {
+    target: ts.ScriptTarget.ES2022,
+    module: ts.ModuleKind.ES2022,
+    strict: !isJs,
+    noImplicitAny: false,
+    noEmit: true,
+  };
+
+  if (useAllowJs) {
+    compilerOptions.allowJs = true;
+    compilerOptions.checkJs = true;
+  }
+
   const program = ts.createProgram(
     [fileName],
-    {
-      target: ts.ScriptTarget.ES2022,
-      module: ts.ModuleKind.ES2022,
-      strict: true,
-      noImplicitAny: false,
-      noEmit: true,
-    },
+    compilerOptions,
     compilerHost,
   );
 

@@ -21,10 +21,20 @@ function resolveImport(
       return () => intent.value;
     case "math":
       return (Math as any)[intent.method];
-    case "console_log":
-      return intent.variant === "bool"
-        ? (v: number) => console.log(Boolean(v))
-        : (v: any) => console.log(v);
+    case "console_log": {
+      // variant format: "bool" (legacy) or "{method}_{type}" e.g. "warn_number"
+      const variant = intent.variant;
+      // Determine console method and type variant
+      let consoleFn: (...args: any[]) => void = console.log;
+      let isBool = variant === "bool";
+      if (variant.startsWith("warn_")) { consoleFn = console.warn; isBool = variant === "warn_bool"; }
+      else if (variant.startsWith("error_")) { consoleFn = console.error; isBool = variant === "error_bool"; }
+      else if (variant.startsWith("log_")) { isBool = variant === "log_bool"; }
+      else if (variant === "bool") { isBool = true; }
+      return isBool
+        ? (v: number) => consoleFn(Boolean(v))
+        : (v: any) => consoleFn(v);
+    }
     case "string_method": {
       const method = intent.method;
       return (s: any, ...a: any[]) => (String(s) as any)[method](...a);
@@ -99,7 +109,43 @@ function resolveImport(
       // Callback bridges for functional array methods
       if (name === "__call_1_f64") return (fn: Function, a: number) => fn(a);
       if (name === "__call_2_f64") return (fn: Function, a: number, b: number) => fn(a, b);
+      if (name === "__call_1_i32") return (fn: Function, a: number) => fn(a);
+      if (name === "__call_2_i32") return (fn: Function, a: number, b: number) => fn(a, b);
       if (name === "__typeof") return (v: any) => typeof v;
+      // parseInt / parseFloat host imports
+      if (name === "parseInt") return (s: any) => parseInt(String(s), 10);
+      if (name === "parseFloat") return (s: any) => parseFloat(String(s));
+      // String.fromCharCode host import
+      if (name === "String_fromCharCode") return (code: number) => String.fromCharCode(code);
+      // String comparison (lexicographic ordering)
+      if (name === "string_compare") return (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+      // ToUint32 for Math.clz32/imul — spec-correct conversion
+      // (x >>> 0) applies the ToUint32 abstract operation per ES spec
+      if (name === "__toUint32") return (x: number) => x >>> 0;
+      // Native string marshaling (fast mode)
+      if (name === "__str_extern_len") return (s: string) => s.length;
+      if (name === "__str_from_mem") {
+        // Returns a function that reads i16 code units from wasm memory
+        // The memory is bound lazily after instantiation
+        return (ptr: number, len: number) => {
+          const exports = callbackState?.getExports();
+          const mem = exports?.__str_mem as WebAssembly.Memory | undefined;
+          if (!mem) return "";
+          const u16 = new Uint16Array(mem.buffer, ptr, len);
+          return String.fromCharCode(...u16);
+        };
+      }
+      if (name === "__str_to_mem") {
+        return (s: string, ptr: number) => {
+          const exports = callbackState?.getExports();
+          const mem = exports?.__str_mem as WebAssembly.Memory | undefined;
+          if (!mem) return;
+          const u16 = new Uint16Array(mem.buffer, ptr);
+          for (let i = 0; i < s.length; i++) {
+            u16[i] = s.charCodeAt(i);
+          }
+        };
+      }
       return () => {};
     }
     case "callback_maker":
@@ -320,6 +366,8 @@ export function buildImports(
 
     env[imp.name] = fn;
     if (imp.intent.type === "callback_maker") hasCallbacks = true;
+    // Native string marshal helpers need late-bound exports (for memory access)
+    if (imp.name === "__str_from_mem" || imp.name === "__str_to_mem") hasCallbacks = true;
   }
 
   const result: {

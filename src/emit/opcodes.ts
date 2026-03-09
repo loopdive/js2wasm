@@ -65,6 +65,7 @@ export const OP = {
   i32_shl: 0x74,
   i32_shr_s: 0x75,
   i32_shr_u: 0x76,
+  i32_clz: 0x67,
   f64_eq: 0x61,
   f64_ne: 0x62,
   f64_lt: 0x63,
@@ -82,6 +83,9 @@ export const OP = {
   f64_sub: 0xa1,
   f64_mul: 0xa2,
   f64_div: 0xa3,
+  f64_min: 0xa4,
+  f64_max: 0xa5,
+  f64_copysign: 0xa6,
   i32_trunc_f64_s: 0xaa,
   f32_demote_f64: 0xb6,
   f64_convert_i32_s: 0xb7,
@@ -94,6 +98,9 @@ export const OP = {
   call_ref: 0x14,
   memory_size: 0x3f,
   memory_grow: 0x40,
+  misc_prefix: 0xfc,
+  i32_trunc_sat_f64_s: 0x02,
+  i32_trunc_sat_f64_u: 0x03,
 } as const;
 
 export const GC = {
@@ -143,6 +150,8 @@ export const TYPE = {
   struct_ht: 0x6b,
   array_ht: 0x6a,
   none: 0x6e, // alias – bottom of ref hierarchy
+  i8: 0x78,
+  i16: 0x77,
   const_field: 0x00,
   mut_field: 0x01,
 } as const;

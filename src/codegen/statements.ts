@@ -8,15 +8,83 @@ import {
 import type { CodegenContext, FunctionContext } from "./index.js";
 import {
   addFuncType,
+  addUnionImports,
   allocLocal,
   attachSourcePos,
   ensureExnTag,
   ensureI32Condition,
   getArrTypeIdxFromVec,
+  getOrRegisterVecType,
   getSourcePos,
   localGlobalIdx,
   resolveWasmType,
 } from "./index.js";
+
+/**
+ * Infer the element type of an `Array<any>` variable by scanning how it is used.
+ * Walks the enclosing function for `arr[i] = value` and `arr.push(value)` patterns,
+ * returns a concrete wasm vec type if a non-any element type is found.
+ */
+function inferArrayVecType(ctx: CodegenContext, decl: ts.VariableDeclaration): ValType | null {
+  if (!ts.isIdentifier(decl.name)) return null;
+  const varName = decl.name.text;
+
+  // Walk up to the enclosing function body or source file
+  let scope: ts.Node = decl;
+  while (scope && !ts.isFunctionDeclaration(scope) && !ts.isFunctionExpression(scope)
+         && !ts.isArrowFunction(scope) && !ts.isMethodDeclaration(scope)
+         && !ts.isSourceFile(scope)) {
+    scope = scope.parent;
+  }
+  if (!scope) return null;
+
+  let inferredElemType: ts.Type | null = null;
+
+  function visit(node: ts.Node) {
+    if (inferredElemType) return;
+
+    // arr[i] = value
+    if (ts.isBinaryExpression(node)
+        && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+        && ts.isElementAccessExpression(node.left)
+        && ts.isIdentifier(node.left.expression)
+        && node.left.expression.text === varName) {
+      const valType = ctx.checker.getTypeAtLocation(node.right);
+      if (!(valType.flags & ts.TypeFlags.Any)) {
+        inferredElemType = valType;
+        return;
+      }
+    }
+
+    // arr.push(value)
+    if (ts.isCallExpression(node)
+        && ts.isPropertyAccessExpression(node.expression)
+        && node.expression.name.text === "push"
+        && ts.isIdentifier(node.expression.expression)
+        && node.expression.expression.text === varName
+        && node.arguments.length >= 1) {
+      const valType = ctx.checker.getTypeAtLocation(node.arguments[0]!);
+      if (!(valType.flags & ts.TypeFlags.Any)) {
+        inferredElemType = valType;
+        return;
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  }
+
+  visit(scope);
+  if (!inferredElemType) return null;
+
+  // Resolve the inferred element type to a wasm type, then register the vec
+  const elemWasm = resolveWasmType(ctx, inferredElemType);
+  const elemKey =
+    elemWasm.kind === "ref" || elemWasm.kind === "ref_null"
+      ? `ref_${(elemWasm as { typeIdx: number }).typeIdx}`
+      : elemWasm.kind;
+  const vecTypeIdx = getOrRegisterVecType(ctx, elemKey, elemWasm);
+  return { kind: "ref_null", typeIdx: vecTypeIdx };
+}
 
 /**
  * Mark the first instruction emitted for a statement with its source position.
@@ -165,6 +233,11 @@ export function compileStatement(
     return;
   }
 
+  // Empty statement (`;`) — no-op
+  if (stmt.kind === ts.SyntaxKind.EmptyStatement) {
+    return;
+  }
+
   ctx.errors.push({
     message: `Unsupported statement: ${ts.SyntaxKind[stmt.kind]}`,
     line: getLine(stmt),
@@ -179,6 +252,8 @@ const HOST_ARRAY_STRING_METHODS = new Set(["split"]);
 
 /** Check if an expression is a string method call that returns a host array (externref). */
 function isStringMethodReturningHostArray(ctx: CodegenContext, expr: ts.Expression): boolean {
+  // In fast mode with native strings, split returns a native string array, not externref
+  if (ctx.fast && ctx.nativeStrTypeIdx >= 0) return false;
   if (!ts.isCallExpression(expr)) return false;
   if (!ts.isPropertyAccessExpression(expr.expression)) return false;
   const method = expr.expression.name.text;
@@ -250,11 +325,24 @@ function compileVariableStatement(
     }
 
     const varType = ctx.checker.getTypeAtLocation(decl);
+    // If the variable is an untyped Array<any> (e.g. `var x = new Array()`),
+    // infer the element type from how the variable is used in the function.
+    let inferredVecType: ValType | null = null;
+    if (varType.flags & ts.TypeFlags.Object) {
+      const sym = (varType as ts.TypeReference).symbol ?? (varType as ts.Type).symbol;
+      if (sym?.name === "Array") {
+        const typeArgs = ctx.checker.getTypeArguments(varType as ts.TypeReference);
+        if (typeArgs?.[0] && (typeArgs[0].flags & ts.TypeFlags.Any)) {
+          inferredVecType = inferArrayVecType(ctx, decl);
+        }
+      }
+    }
     // Override type for string methods returning host arrays (e.g. split() returns
     // externref but TS types as string[] which resolveWasmType maps to GC vec struct)
-    const wasmType = (decl.initializer && isStringMethodReturningHostArray(ctx, decl.initializer))
-      ? { kind: "externref" as const }
-      : resolveWasmType(ctx, varType);
+    const wasmType = inferredVecType
+      ?? ((decl.initializer && isStringMethodReturningHostArray(ctx, decl.initializer))
+        ? { kind: "externref" as const }
+        : resolveWasmType(ctx, varType));
 
     const localIdx = allocLocal(fctx, name, wasmType);
 
@@ -443,6 +531,11 @@ function compileReturnStatement(
 
   if (stmt.expression) {
     compileExpression(ctx, fctx, stmt.expression, fctx.returnType ?? undefined);
+  } else if (fctx.returnType) {
+    // Bare `return;` in a value-returning function — push default value
+    if (fctx.returnType.kind === "f64") fctx.body.push({ op: "f64.const", value: 0 });
+    else if (fctx.returnType.kind === "i32") fctx.body.push({ op: "i32.const", value: 0 });
+    else if (fctx.returnType.kind === "externref") fctx.body.push({ op: "ref.null", refType: "extern" } as any);
   }
   fctx.body.push({ op: "return" });
 }
@@ -454,7 +547,7 @@ function compileIfStatement(
 ): void {
   // Compile condition
   const condType = compileExpression(ctx, fctx, stmt.expression);
-  ensureI32Condition(fctx, condType);
+  ensureI32Condition(fctx, condType, ctx);
 
   // The 'if' instruction adds one label level. Increment break/continue depths
   // so that br instructions emitted inside the if branches target the correct labels.
@@ -531,7 +624,7 @@ function compileWhileStatement(
 
   // Compile condition
   const condType = compileExpression(ctx, fctx, stmt.expression);
-  ensureI32Condition(fctx, condType);
+  ensureI32Condition(fctx, condType, ctx);
   fctx.body.push({ op: "i32.eqz" });
   fctx.body.push({ op: "br_if", depth: 1 }); // break out of block
 
@@ -627,7 +720,7 @@ function compileForStatement(
     const condBody = fctx.body;
     fctx.body = [];
     const condType = compileExpression(ctx, fctx, stmt.condition);
-    ensureI32Condition(fctx, condType);
+    ensureI32Condition(fctx, condType, ctx);
     fctx.body.push({ op: "i32.eqz" });
     fctx.body.push({ op: "br_if", depth: 1 }); // break: exits $break (depth 1 from $loop body)
     condInstrs.push(...fctx.body);
@@ -724,7 +817,7 @@ function compileDoWhileStatement(
 
   // Compile condition — true means continue looping
   const condType = compileExpression(ctx, fctx, stmt.expression);
-  ensureI32Condition(fctx, condType);
+  ensureI32Condition(fctx, condType, ctx);
   fctx.body.push({ op: "br_if", depth: 0 }); // continue loop if true
 
   const loopBody = fctx.body;
@@ -759,10 +852,15 @@ function compileSwitchStatement(
 ): void {
   // Evaluate the switch expression and save it to a temp local
   const exprType = ctx.checker.getTypeAtLocation(stmt.expression);
-  const wasmType = resolveWasmType(ctx, exprType);
+  let wasmType = resolveWasmType(ctx, exprType);
+
+  // Externref discriminant: unbox to f64 for numeric comparison
+  if (wasmType.kind === "externref") {
+    wasmType = { kind: "f64" };
+  }
 
   const tmpLocalIdx = allocLocal(fctx, `__sw_${fctx.locals.length}`, wasmType);
-  compileExpression(ctx, fctx, stmt.expression);
+  compileExpression(ctx, fctx, stmt.expression, wasmType);
   fctx.body.push({ op: "local.set", index: tmpLocalIdx });
 
   // Choose the equality opcode based on the switch expression type

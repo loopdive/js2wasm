@@ -141,14 +141,24 @@ function classifyImport(name: string, mod: WasmModule): ImportIntent {
   const strValue = mod.stringLiteralValues.get(name);
   if (strValue !== undefined) return { type: "string_literal", value: strValue };
 
-  // Console
+  // Console (log, warn, error)
+  // For console.log, keep backward-compatible variant format ("number", "bool", etc.)
   if (name === "console_log_number") return { type: "console_log", variant: "number" };
   if (name === "console_log_bool") return { type: "console_log", variant: "bool" };
   if (name === "console_log_string") return { type: "console_log", variant: "string" };
   if (name === "console_log_externref") return { type: "console_log", variant: "externref" };
+  for (const cm of ["warn", "error"]) {
+    if (name === `console_${cm}_number`) return { type: "console_log", variant: `${cm}_number` };
+    if (name === `console_${cm}_bool`) return { type: "console_log", variant: `${cm}_bool` };
+    if (name === `console_${cm}_string`) return { type: "console_log", variant: `${cm}_string` };
+    if (name === `console_${cm}_externref`) return { type: "console_log", variant: `${cm}_externref` };
+  }
 
   // Math
   if (name.startsWith("Math_")) return { type: "math", method: name.slice(5) };
+
+  // String compare (lexicographic ordering)
+  if (name === "string_compare") return { type: "builtin", name };
 
   // String methods
   if (name.startsWith("string_")) return { type: "string_method", method: name.slice(7) };
@@ -189,12 +199,18 @@ function classifyImport(name: string, mod: WasmModule): ImportIntent {
   if (name === "__box_number") return { type: "box", targetType: "number" };
   if (name === "__box_boolean") return { type: "box", targetType: "boolean" };
   if (name === "__is_truthy") return { type: "truthy_check" };
+  if (name === "__typeof") return { type: "builtin", name: "__typeof" };
 
   // Extern get
   if (name === "__extern_get") return { type: "extern_get" };
 
   // Declared globals (like `declare const document: Document`)
   if (name.startsWith("global_")) return { type: "declared_global", name: name.slice(7) };
+
+  // Unknown constructor imports (__new_ClassName)
+  if (name.startsWith("__new_")) {
+    return { type: "extern_class", className: name.slice(6), action: "new" };
+  }
 
   // Fallback
   return { type: "builtin", name };
@@ -214,6 +230,71 @@ function buildImportManifest(mod: WasmModule): ImportDescriptor[] {
   return manifest;
 }
 
+/** Check if TS syntax errors look like the source is plain JavaScript (no type annotations). */
+function looksLikeTsSyntaxOnJs(diagnostics: readonly { code: number; messageText: string | ts.DiagnosticMessageChain }[]): boolean {
+  // TS error codes that indicate TS-specific syntax was expected but not found,
+  // or the parser hit JS-only patterns it can't handle in .ts mode.
+  // Common: 1005 (';' expected), 2304 (cannot find name), 2552 (cannot find name, did you mean),
+  // 1109 (expression expected — happens with arrow functions returning JSX-like).
+  // We also check message text for typical TS-on-JS confusion.
+  for (const d of diagnostics) {
+    const msg = typeof d.messageText === "string" ? d.messageText : d.messageText.messageText;
+    // These patterns strongly suggest the user passed JS to the TS parser
+    if (msg.includes("Type annotations can only be used in TypeScript files")) return true;
+    if (msg.includes("types can only be used in a .ts file")) return true;
+    if (msg.includes("'type' modifier cannot be used in a JavaScript file")) return true;
+  }
+  return false;
+}
+
+/**
+ * Detect untyped parameters in JS mode and add helpful warnings suggesting JSDoc annotations.
+ * Returns warning CompileErrors for each function parameter that resolved to 'any'.
+ */
+function checkJsTypeCoverage(ast: TypedAST): CompileError[] {
+  const warnings: CompileError[] = [];
+  const sf = ast.sourceFile;
+
+  function visit(node: ts.Node): void {
+    if (ts.isFunctionDeclaration(node) && node.name && hasExportModifier(node)) {
+      const fnName = node.name.text;
+      for (const param of node.parameters) {
+        const paramType = ast.checker.getTypeAtLocation(param);
+        if (paramType.flags & ts.TypeFlags.Any) {
+          const paramName = ts.isIdentifier(param.name) ? param.name.text : "?";
+          const { line, character } = sf.getLineAndCharacterOfPosition(param.getStart());
+          warnings.push({
+            message: `Parameter '${paramName}' in function '${fnName}' has implicit 'any' type. ` +
+              `Add a JSDoc annotation: /** @param {number} ${paramName} */`,
+            line: line + 1,
+            column: character + 1,
+            severity: "warning",
+          });
+        }
+      }
+      // Check return type
+      const sig = ast.checker.getSignatureFromDeclaration(node);
+      if (sig) {
+        const retType = ast.checker.getReturnTypeOfSignature(sig);
+        if (retType.flags & ts.TypeFlags.Any) {
+          const { line, character } = sf.getLineAndCharacterOfPosition(node.name.getStart());
+          warnings.push({
+            message: `Function '${fnName}' has implicit 'any' return type. ` +
+              `Add a JSDoc annotation: /** @returns {number} */`,
+            line: line + 1,
+            column: character + 1,
+            severity: "warning",
+          });
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sf);
+  return warnings;
+}
+
 /**
  * Orchestrates the full compilation pipeline:
  * TS Source → tsc Parser+Checker → Codegen → Binary + WAT
@@ -229,15 +310,75 @@ export function compileSource(
   const processedSource = preprocessImports(source);
 
   // Step 1: Parse and type-check
-  const ast = analyzeSource(processedSource, options.moduleName ?? "input.ts");
+  let isJsMode = options.allowJs === true || (options.fileName?.endsWith(".js") ?? false);
+  const defaultFileName = options.fileName ?? (isJsMode ? "input.js" : "input.ts");
+  const effectiveFileName = options.moduleName ?? defaultFileName;
+  let ast = analyzeSource(processedSource, effectiveFileName, { allowJs: options.allowJs });
 
-  // Collect TS diagnostics as errors
+  // Auto-detect: if parsing as TS fails with syntax errors that look like
+  // the source is plain JS, retry with allowJs mode enabled.
+  if (!isJsMode) {
+    const syntaxErrors = ast.syntacticDiagnostics.filter(
+      (d) => d.category === 1 && d.file === ast.sourceFile,
+    );
+    if (syntaxErrors.length > 0 && looksLikeTsSyntaxOnJs(syntaxErrors)) {
+      // Retry as JS
+      isJsMode = true;
+      const jsFileName = effectiveFileName.replace(/\.ts$/, ".js");
+      ast = analyzeSource(processedSource, jsFileName, { allowJs: true });
+    }
+  }
+
+  // In JS mode, check for untyped parameters and add helpful warnings
+  if (isJsMode) {
+    const typeWarnings = checkJsTypeCoverage(ast);
+    errors.push(...typeWarnings);
+  }
+
+  // TS diagnostics that the wasm codegen can handle gracefully —
+  // downgrade from error to warning so they don't block compilation.
+  const DOWNGRADE_DIAG_CODES = new Set([
+    2304, // "Cannot find name 'X'" — unknown identifiers compiled as externref/unreachable
+    2345, // "Argument of type 'X' is not assignable to parameter of type 'Y'"
+    2322, // "Type 'X' is not assignable to type 'Y'"
+    2339, // "Property 'X' does not exist on type 'Y'" — dynamic property access
+    2454, // "Variable 'X' is used before being assigned"
+    2531, // "Object is possibly 'null'"
+    2532, // "Object is possibly 'undefined'"
+    2367, // "This comparison appears to be unintentional" (always truthy/falsy)
+    2554, // "Expected N arguments, but got M"
+    2683, // "'this' implicitly has type 'any'"
+    2769, // "No overload matches this call"
+    18049, // "'X' is declared but its value is never read" (unused vars)
+    2358, // "The left-hand side of an 'instanceof' expression must be..."
+    2362, // "The left-hand side of an arithmetic operation must be..."
+    2365, // "Operator 'X' cannot be applied to types 'Y' and 'Z'"
+    18050, // "The value 'null'/'undefined' cannot be used here"
+    2872, // "This kind of expression is always truthy"
+    2873, // "This kind of expression is always falsy"
+    2363, // "The right-hand side of an arithmetic operation must be..."
+    2695, // "Left side of comma operator is unused and has no side effects"
+    2869, // "Right operand of ?? is unreachable because the left operand is never nullish"
+    2349, // "This expression is not callable"
+    2552, // "Cannot find name 'X'. Did you mean 'Y'?"
+    18046, // "'X' is of type 'unknown'"
+    2871, // "This expression is always nullish"
+    18048, // "'X' is possibly 'undefined'"
+    2839, // "This condition will always return true/false since JS compares objects by reference"
+    2703, // "The operand of a 'delete' operator must be a property reference"
+    2630, // "Cannot assign to 'X' because it is a function"
+    2447, // "The '|'/'&' operator is not allowed for boolean types"
+    2300, // "Duplicate identifier 'X'"
+  ]);
+
+  // Collect TS diagnostics as errors (or warnings for handled cases)
   for (const diag of ast.diagnostics) {
     if (diag.category === 1) {
       // Error
       const pos = diag.file
         ? diag.file.getLineAndCharacterOfPosition(diag.start ?? 0)
         : { line: 0, character: 0 };
+      const severity = DOWNGRADE_DIAG_CODES.has(diag.code) ? "warning" : "error";
       errors.push({
         message:
           typeof diag.messageText === "string"
@@ -245,15 +386,22 @@ export function compileSource(
             : diag.messageText.messageText,
         line: pos.line + 1,
         column: pos.character + 1,
-        severity: "error",
+        severity: severity as "error" | "warning",
       });
     }
   }
 
   // Don't stop on type errors – the compiler can still generate code for many cases
-  // Only stop on syntax errors (parsing failures)
+  // Only stop on syntax errors (parsing failures), except tolerated ones
+  const TOLERATED_SYNTAX_CODES = new Set([
+    1156, // "'let' declarations can only be declared inside a block"
+    1313, // "The body of an 'if' statement cannot be the empty statement"
+    1344, // "A label is not allowed here"
+    1182, // "A destructuring declaration must have an initializer"
+    1228, // "A type predicate is only allowed in return type position"
+  ]);
   const hasSyntaxErrors = ast.syntacticDiagnostics.some(
-    (d) => d.category === 1 && d.file === ast.sourceFile,
+    (d) => d.category === 1 && d.file === ast.sourceFile && !TOLERATED_SYNTAX_CODES.has(d.code),
   );
 
   if (hasSyntaxErrors && errors.length > 0) {
@@ -336,7 +484,7 @@ export function compileSource(
 
       // Generate source map JSON
       const sourcesContent = new Map<string, string>();
-      sourcesContent.set(options.moduleName ?? "input.ts", source);
+      sourcesContent.set(effectiveFileName, source);
       const sourceMap = generateSourceMap(
         emitResult.sourceMapEntries,
         sourcesContent,
@@ -743,24 +891,38 @@ function generateEnvImportLine(name: string, mod: WasmModule): string {
     return `${name}: () => ${JSON.stringify(strValue)}`;
   }
 
-  // Console stubs
-  if (name === "console_log_number")
-    return "console_log_number: (v) => console.log(v)";
-  if (name === "console_log_bool")
-    return "console_log_bool: (v) => console.log(Boolean(v))";
-  if (name === "console_log_string")
-    return "console_log_string: (v) => console.log(v)";
-  if (name === "console_log_externref")
-    return "console_log_externref: (v) => console.log(v)";
+  // Console stubs (log, warn, error)
+  for (const cm of ["log", "warn", "error"]) {
+    if (name === `console_${cm}_number`)
+      return `console_${cm}_number: (v) => console.${cm}(v)`;
+    if (name === `console_${cm}_bool`)
+      return `console_${cm}_bool: (v) => console.${cm}(Boolean(v))`;
+    if (name === `console_${cm}_string`)
+      return `console_${cm}_string: (v) => console.${cm}(v)`;
+    if (name === `console_${cm}_externref`)
+      return `console_${cm}_externref: (v) => console.${cm}(v)`;
+  }
 
   // Primitive method imports
   if (name === "number_toString") return "number_toString: (v) => String(v)";
+
+  // String compare (lexicographic ordering)
+  if (name === "string_compare")
+    return "string_compare: (a, b) => (a < b ? -1 : a > b ? 1 : 0)";
 
   // String method imports
   if (name.startsWith("string_")) {
     const method = name.slice(7);
     return `${name}: (s, ...a) => s.${method}(...a)`;
   }
+
+  // String.fromCharCode
+  if (name === "String_fromCharCode")
+    return "String_fromCharCode: (code) => String.fromCharCode(code)";
+
+  // ToUint32 helper for Math.clz32/imul
+  if (name === "__toUint32")
+    return "__toUint32: (x) => x >>> 0";
 
   // Math host imports
   if (name.startsWith("Math_")) {
@@ -831,6 +993,7 @@ function generateEnvImportLine(name: string, mod: WasmModule): string {
   if (name === "__box_number") return `${name}: (v) => v`;
   if (name === "__box_boolean") return `${name}: (v) => Boolean(v)`;
   if (name === "__is_truthy") return `${name}: (v) => v ? 1 : 0`;
+  if (name === "__typeof") return `${name}: (v) => typeof v`;
 
   // Callback bridges for functional array methods
   if (name === "__call_1_f64") return `${name}: (fn, a) => fn(a)`;
@@ -897,7 +1060,9 @@ export function compileToObjectSource(
   const errors: CompileError[] = [];
 
   const processedSource = preprocessImports(source);
-  const ast = analyzeSource(processedSource, options.moduleName ?? "input.ts");
+  const defaultFileName = options.fileName ?? (options.allowJs ? "input.js" : "input.ts");
+  const effectiveFileName = options.moduleName ?? defaultFileName;
+  const ast = analyzeSource(processedSource, effectiveFileName, { allowJs: options.allowJs });
 
   for (const diag of ast.diagnostics) {
     if (diag.category === 1) {
