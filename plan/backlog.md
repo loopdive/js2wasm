@@ -32,7 +32,6 @@
 
 | #                  | Feature                                                     | Complexity |
 | ------------------ | ----------------------------------------------------------- | ---------- |
-| [97](issues/97.md) | NaN/undefined/null truthiness in boolean contexts           | S          |
 | [98](issues/98.md) | Proper ToInt32 modular arithmetic for bitwise operations    | S          |
 
 ### Language coverage
@@ -126,3 +125,5 @@
 | [69](issues/done/69.md) | Safe mode — compile-time security checks | 14 in safe-mode.test.ts      |
 | [46](issues/done/46.md) | Linear-memory compilation backend        | 3 in linker-e2e.test.ts      |
 | [70](issues/70.md)      | Fast mode Phase 1 — i32 default numbers  | 13 in i32-fast-mode.test.ts  |
+| [97](issues/done/97.md) | NaN/undefined/null truthiness fix        | test262 + test_debug         |
+| [99](issues/done/99.md) | Externref arithmetic/comparison/control  | test262: 82%→100% compilable |
