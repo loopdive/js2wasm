@@ -8,6 +8,7 @@ import {
 import type { CodegenContext, FunctionContext } from "./index.js";
 import {
   addFuncType,
+  addUnionImports,
   allocLocal,
   attachSourcePos,
   ensureExnTag,
@@ -229,6 +230,11 @@ export function compileStatement(
 
   if (ts.isFunctionDeclaration(stmt)) {
     compileNestedFunctionDeclaration(ctx, fctx, stmt);
+    return;
+  }
+
+  // Empty statement (`;`) — no-op
+  if (stmt.kind === ts.SyntaxKind.EmptyStatement) {
     return;
   }
 
@@ -525,6 +531,11 @@ function compileReturnStatement(
 
   if (stmt.expression) {
     compileExpression(ctx, fctx, stmt.expression, fctx.returnType ?? undefined);
+  } else if (fctx.returnType) {
+    // Bare `return;` in a value-returning function — push default value
+    if (fctx.returnType.kind === "f64") fctx.body.push({ op: "f64.const", value: 0 });
+    else if (fctx.returnType.kind === "i32") fctx.body.push({ op: "i32.const", value: 0 });
+    else if (fctx.returnType.kind === "externref") fctx.body.push({ op: "ref.null", refType: "extern" } as any);
   }
   fctx.body.push({ op: "return" });
 }
@@ -536,7 +547,7 @@ function compileIfStatement(
 ): void {
   // Compile condition
   const condType = compileExpression(ctx, fctx, stmt.expression);
-  ensureI32Condition(fctx, condType);
+  ensureI32Condition(fctx, condType, ctx);
 
   // The 'if' instruction adds one label level. Increment break/continue depths
   // so that br instructions emitted inside the if branches target the correct labels.
@@ -613,7 +624,7 @@ function compileWhileStatement(
 
   // Compile condition
   const condType = compileExpression(ctx, fctx, stmt.expression);
-  ensureI32Condition(fctx, condType);
+  ensureI32Condition(fctx, condType, ctx);
   fctx.body.push({ op: "i32.eqz" });
   fctx.body.push({ op: "br_if", depth: 1 }); // break out of block
 
@@ -709,7 +720,7 @@ function compileForStatement(
     const condBody = fctx.body;
     fctx.body = [];
     const condType = compileExpression(ctx, fctx, stmt.condition);
-    ensureI32Condition(fctx, condType);
+    ensureI32Condition(fctx, condType, ctx);
     fctx.body.push({ op: "i32.eqz" });
     fctx.body.push({ op: "br_if", depth: 1 }); // break: exits $break (depth 1 from $loop body)
     condInstrs.push(...fctx.body);
@@ -806,7 +817,7 @@ function compileDoWhileStatement(
 
   // Compile condition — true means continue looping
   const condType = compileExpression(ctx, fctx, stmt.expression);
-  ensureI32Condition(fctx, condType);
+  ensureI32Condition(fctx, condType, ctx);
   fctx.body.push({ op: "br_if", depth: 0 }); // continue loop if true
 
   const loopBody = fctx.body;
@@ -841,10 +852,15 @@ function compileSwitchStatement(
 ): void {
   // Evaluate the switch expression and save it to a temp local
   const exprType = ctx.checker.getTypeAtLocation(stmt.expression);
-  const wasmType = resolveWasmType(ctx, exprType);
+  let wasmType = resolveWasmType(ctx, exprType);
+
+  // Externref discriminant: unbox to f64 for numeric comparison
+  if (wasmType.kind === "externref") {
+    wasmType = { kind: "f64" };
+  }
 
   const tmpLocalIdx = allocLocal(fctx, `__sw_${fctx.locals.length}`, wasmType);
-  compileExpression(ctx, fctx, stmt.expression);
+  compileExpression(ctx, fctx, stmt.expression, wasmType);
   fctx.body.push({ op: "local.set", index: tmpLocalIdx });
 
   // Choose the equality opcode based on the switch expression type

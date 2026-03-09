@@ -196,6 +196,7 @@ function classifyImport(name: string, mod: WasmModule): ImportIntent {
   if (name === "__box_number") return { type: "box", targetType: "number" };
   if (name === "__box_boolean") return { type: "box", targetType: "boolean" };
   if (name === "__is_truthy") return { type: "truthy_check" };
+  if (name === "__typeof") return { type: "builtin", name: "__typeof" };
 
   // Extern get
   if (name === "__extern_get") return { type: "extern_get" };
@@ -337,6 +338,18 @@ export function compileSource(
     2304, // "Cannot find name 'X'" — unknown identifiers compiled as externref/unreachable
     2345, // "Argument of type 'X' is not assignable to parameter of type 'Y'"
     2322, // "Type 'X' is not assignable to type 'Y'"
+    2339, // "Property 'X' does not exist on type 'Y'" — dynamic property access
+    2454, // "Variable 'X' is used before being assigned"
+    2531, // "Object is possibly 'null'"
+    2532, // "Object is possibly 'undefined'"
+    2367, // "This comparison appears to be unintentional" (always truthy/falsy)
+    2554, // "Expected N arguments, but got M"
+    2683, // "'this' implicitly has type 'any'"
+    2769, // "No overload matches this call"
+    18049, // "'X' is declared but its value is never read" (unused vars)
+    2358, // "The left-hand side of an 'instanceof' expression must be..."
+    2362, // "The left-hand side of an arithmetic operation must be..."
+    2365, // "Operator 'X' cannot be applied to types 'Y' and 'Z'"
   ]);
 
   // Collect TS diagnostics as errors (or warnings for handled cases)
@@ -950,6 +963,7 @@ function generateEnvImportLine(name: string, mod: WasmModule): string {
   if (name === "__box_number") return `${name}: (v) => v`;
   if (name === "__box_boolean") return `${name}: (v) => Boolean(v)`;
   if (name === "__is_truthy") return `${name}: (v) => v ? 1 : 0`;
+  if (name === "__typeof") return `${name}: (v) => typeof v`;
 
   // Callback bridges for functional array methods
   if (name === "__call_1_f64") return `${name}: (fn, a) => fn(a)`;

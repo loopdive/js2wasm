@@ -7046,11 +7046,12 @@ function unwrapGeneratorYieldType(type: ts.Type, ctx: CodegenContext): ValType {
 
 /**
  * Ensure the stack top is an i32 suitable for use as a condition.
- * Handles: f64 (truthy != 0), externref (non-null check), null (push 0).
+ * Handles: f64 (truthy != 0), externref (JS truthiness via __is_truthy), null (push 0).
  */
 export function ensureI32Condition(
   fctx: FunctionContext,
   condType: ValType | null,
+  ctx?: CodegenContext,
 ): void {
   if (!condType) {
     // Expression compilation failed — push false to keep Wasm valid
@@ -7058,12 +7059,24 @@ export function ensureI32Condition(
     return;
   }
   if (condType.kind === "f64") {
+    // Use f64.abs + f64.gt(0) so that NaN, +0, and -0 are all falsy
+    // (f64.ne(0) treats NaN as truthy which is wrong for JS semantics)
+    fctx.body.push({ op: "f64.abs" });
     fctx.body.push({ op: "f64.const", value: 0 });
-    fctx.body.push({ op: "f64.ne" });
+    fctx.body.push({ op: "f64.gt" });
   } else if (condType.kind === "externref") {
-    // Truthiness for externref: non-null → true
+    // Use __is_truthy for proper JS truthiness (0, NaN, null, undefined, "" → falsy)
+    if (ctx) {
+      addUnionImports(ctx);
+      const funcIdx = ctx.funcMap.get("__is_truthy");
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+        return;
+      }
+    }
+    // Fallback: non-null → true
     fctx.body.push({ op: "ref.is_null" });
-    fctx.body.push({ op: "i32.eqz" }); // flip: is_null=1 means falsy
+    fctx.body.push({ op: "i32.eqz" });
   }
   // i32 is already valid as-is
 }
