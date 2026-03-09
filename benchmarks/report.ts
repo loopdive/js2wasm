@@ -163,4 +163,43 @@ export function saveResults(
   // Also write latest
   fs.writeFileSync(`${outDir}/latest.json`, JSON.stringify(results, null, 2));
   fs.writeFileSync(`${outDir}/latest.md`, md);
+
+  // Build history.json from all timestamped result files
+  buildHistory(outDir);
+}
+
+// ---------------------------------------------------------------------------
+// History — aggregate all timestamped result files into history.json
+// ---------------------------------------------------------------------------
+
+interface HistoryPoint {
+  timestamp: string;
+  benchmarks: Record<string, Record<string, number>>; // name → strategy → medianMs
+}
+
+function buildHistory(outDir: string): void {
+  const files = fs.readdirSync(outDir)
+    .filter(f => /^\d{4}-\d{2}-\d{2}T[\d-]+Z\.json$/.test(f))
+    .sort();
+
+  const history: HistoryPoint[] = [];
+
+  for (const file of files) {
+    // Parse timestamp from filename: 2026-03-07T23-00-07-232Z → 2026-03-07T23:00:07.232Z
+    const isoTimestamp = file.replace(/\.json$/, "")
+      .replace(/^(\d{4}-\d{2}-\d{2}T)(\d{2})-(\d{2})-(\d{2})-(\d+)Z$/, "$1$2:$3:$4.$5Z");
+
+    try {
+      const raw: BenchmarkResult[] = JSON.parse(fs.readFileSync(`${outDir}/${file}`, "utf-8"));
+      const benchmarks: Record<string, Record<string, number>> = {};
+      for (const r of raw) {
+        if (!benchmarks[r.name]) benchmarks[r.name] = {};
+        benchmarks[r.name][r.strategy] = r.medianMs;
+      }
+      history.push({ timestamp: isoTimestamp, benchmarks });
+    } catch {}
+  }
+
+  fs.writeFileSync(`${outDir}/history.json`, JSON.stringify(history, null, 2));
+  console.log(`History saved to ${outDir}/history.json (${history.length} runs)`);
 }
