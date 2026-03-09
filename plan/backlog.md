@@ -18,14 +18,6 @@
 
 | #                  | Feature                                                     | Complexity | Priority |
 | ------------------ | ----------------------------------------------------------- | ---------- | -------- |
-| [88](issues/88.md) | Test262 — language/expressions                              | L          | High     |
-| [89](issues/89.md) | Test262 — language/statements                               | L          | High     |
-| [90](issues/90.md) | Test262 — built-ins/Array                                   | M          | High     |
-| [91](issues/91.md) | Test262 — built-ins/Number, isNaN, isFinite                 | M          | High     |
-| [92](issues/92.md) | Test262 — language/types (coercion)                         | M          | Medium   |
-| [93](issues/93.md) | Test262 — built-ins/Object                                  | S          | Medium   |
-| [94](issues/94.md) | Test262 — language/function-code                            | M          | Medium   |
-| [95](issues/95.md) | Test262 — built-ins/isNaN + isFinite                        | S          | Medium   |
 | [96](issues/96.md) | Test262 — built-ins/JSON                                    | S          | Low      |
 
 ### Language coverage
@@ -122,3 +114,11 @@
 | [97](issues/done/97.md) | NaN/undefined/null truthiness fix        | test262 + test_debug         |
 | [98](issues/done/98.md) | ToInt32 for bitwise compound assignments  | test262 bitwise tests        |
 | [99](issues/done/99.md) | Externref arithmetic/comparison/control  | test262: 82%→100% compilable |
+| [88](issues/done/88.md) | Test262 — language/expressions            | 412 pass, 0 fail (6773 total) |
+| [89](issues/done/89.md) | Test262 — language/statements             | test262 stmt categories        |
+| [90](issues/done/90.md) | Test262 — built-ins/Array                 | 20 Array prototype categories  |
+| [91](issues/done/91.md) | Test262 — built-ins/Number                | EPSILON, MAX/MIN_SAFE_INTEGER  |
+| [92](issues/done/92.md) | Test262 — language/types (coercion)       | all type categories pass       |
+| [93](issues/done/93.md) | Test262 — built-ins/Object                | keys/values/entries categories |
+| [94](issues/done/94.md) | Test262 — language/function-code          | statements/function category   |
+| [95](issues/done/95.md) | Test262 — built-ins/isNaN + isFinite      | already present, all pass      |
