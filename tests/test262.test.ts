@@ -8,6 +8,7 @@
 import { describe, it, expect, afterAll } from "vitest";
 import { TEST_CATEGORIES, findTestFiles, runTest262File, TestResult } from "./test262-runner.js";
 import { relative, join } from "path";
+import { writeFileSync } from "fs";
 
 const TEST262_ROOT = join(import.meta.dirname ?? ".", "..", "test262");
 
@@ -68,6 +69,19 @@ afterAll(() => {
   }
 
   console.log("══════════════════════════════════════════════════════");
+
+  // Write JSON report for the report page
+  const reportData = {
+    timestamp: new Date().toISOString(),
+    summary: { total, ...stats, compilable },
+    categories: [...byCategory.entries()].sort().map(([cat, s]) => ({
+      name: cat,
+      ...s,
+      compilable: s.pass + s.fail,
+    })),
+  };
+  const reportPath = join(import.meta.dirname ?? ".", "..", "benchmarks", "results", "test262-report.json");
+  try { writeFileSync(reportPath, JSON.stringify(reportData, null, 2)); } catch {}
 
   // Print failures for debugging
   const failures = allResults.filter(r => r.status === "fail");
