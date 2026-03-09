@@ -1529,6 +1529,12 @@ function compileModulo(
   fctx: FunctionContext,
   expr: ts.BinaryExpression,
 ): ValType {
+  emitModulo(fctx);
+  return { kind: "f64" };
+}
+
+/** Emit JS remainder (a % b = a - trunc(a/b) * b) — stack: [a_f64, b_f64] -> [result_f64] */
+function emitModulo(fctx: FunctionContext): void {
   const tmpB = allocLocal(fctx, `__mod_b_${fctx.locals.length}`, { kind: "f64" });
   const tmpA = allocLocal(fctx, `__mod_a_${fctx.locals.length}`, { kind: "f64" });
 
@@ -1539,12 +1545,10 @@ function compileModulo(
   fctx.body.push({ op: "local.get", index: tmpA });
   fctx.body.push({ op: "local.get", index: tmpB });
   fctx.body.push({ op: "f64.div" });
-  fctx.body.push({ op: "f64.floor" });
+  fctx.body.push({ op: "f64.trunc" }); // JS % uses truncation toward zero, not floor
   fctx.body.push({ op: "local.get", index: tmpB });
   fctx.body.push({ op: "f64.mul" });
   fctx.body.push({ op: "f64.sub" });
-
-  return { kind: "f64" };
 }
 
 function compileBooleanBinaryOp(
@@ -2211,6 +2215,7 @@ function isCompoundAssignment(op: ts.SyntaxKind): boolean {
     op === ts.SyntaxKind.AsteriskEqualsToken ||
     op === ts.SyntaxKind.AsteriskAsteriskEqualsToken ||
     op === ts.SyntaxKind.SlashEqualsToken ||
+    op === ts.SyntaxKind.PercentEqualsToken ||
     op === ts.SyntaxKind.AmpersandEqualsToken ||
     op === ts.SyntaxKind.BarEqualsToken ||
     op === ts.SyntaxKind.CaretEqualsToken ||
@@ -2263,6 +2268,9 @@ function compileCompoundAssignment(
       case ts.SyntaxKind.SlashEqualsToken:
         fctx.body.push({ op: "f64.div" });
         break;
+      case ts.SyntaxKind.PercentEqualsToken:
+        emitModulo(fctx);
+        break;
       case ts.SyntaxKind.AmpersandEqualsToken:
       case ts.SyntaxKind.BarEqualsToken:
       case ts.SyntaxKind.CaretEqualsToken:
@@ -2303,6 +2311,9 @@ function compileCompoundAssignment(
       }
       case ts.SyntaxKind.SlashEqualsToken:
         fctx.body.push({ op: "f64.div" });
+        break;
+      case ts.SyntaxKind.PercentEqualsToken:
+        emitModulo(fctx);
         break;
       case ts.SyntaxKind.AmpersandEqualsToken:
       case ts.SyntaxKind.BarEqualsToken:
@@ -2361,6 +2372,9 @@ function compileCompoundAssignment(
     }
     case ts.SyntaxKind.SlashEqualsToken:
       fctx.body.push({ op: "f64.div" });
+      break;
+    case ts.SyntaxKind.PercentEqualsToken:
+      emitModulo(fctx);
       break;
     case ts.SyntaxKind.AmpersandEqualsToken:
     case ts.SyntaxKind.BarEqualsToken:
@@ -5381,6 +5395,23 @@ function compileStringBinaryOp(
       if (funcIdx !== undefined) {
         fctx.body.push({ op: "call", funcIdx });
         fctx.body.push({ op: "i32.eqz" }); // negate
+        return { kind: "i32" };
+      }
+      break;
+    }
+    case ts.SyntaxKind.LessThanToken:
+    case ts.SyntaxKind.LessThanEqualsToken:
+    case ts.SyntaxKind.GreaterThanToken:
+    case ts.SyntaxKind.GreaterThanEqualsToken: {
+      const funcIdx = ctx.funcMap.get("string_compare");
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+        fctx.body.push({ op: "i32.const", value: 0 });
+        const cmpOp = op === ts.SyntaxKind.LessThanToken ? "i32.lt_s"
+          : op === ts.SyntaxKind.LessThanEqualsToken ? "i32.le_s"
+          : op === ts.SyntaxKind.GreaterThanToken ? "i32.gt_s"
+          : "i32.ge_s";
+        fctx.body.push({ op: cmpOp as any });
         return { kind: "i32" };
       }
       break;

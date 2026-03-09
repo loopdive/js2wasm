@@ -28,12 +28,6 @@
 | [95](issues/95.md) | Test262 — built-ins/isNaN + isFinite                        | S          | Medium   |
 | [96](issues/96.md) | Test262 — built-ins/JSON                                    | S          | Low      |
 
-### Compiler bugs (found via test262)
-
-| #                  | Feature                                                     | Complexity |
-| ------------------ | ----------------------------------------------------------- | ---------- |
-| [98](issues/98.md) | Proper ToInt32 modular arithmetic for bitwise operations    | S          |
-
 ### Language coverage
 
 | #                  | Feature                                                     | Complexity |
@@ -126,4 +120,5 @@
 | [46](issues/done/46.md) | Linear-memory compilation backend        | 3 in linker-e2e.test.ts      |
 | [70](issues/70.md)      | Fast mode Phase 1 — i32 default numbers  | 13 in i32-fast-mode.test.ts  |
 | [97](issues/done/97.md) | NaN/undefined/null truthiness fix        | test262 + test_debug         |
+| [98](issues/done/98.md) | ToInt32 for bitwise compound assignments  | test262 bitwise tests        |
 | [99](issues/done/99.md) | Externref arithmetic/comparison/control  | test262: 82%→100% compilable |

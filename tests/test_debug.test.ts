@@ -129,4 +129,51 @@ describe("externref compound assignment", () => {
     `);
     expect(ret).toBe(-Infinity);
   });
+
+  it("string comparison operators", async () => {
+    const result = compile(`
+      export function test(): number {
+        if ("b" > "a") return 1;
+        return 0;
+      }
+    `, { fileName: "test.ts" });
+    expect(result.errors.filter(e => e.severity === "error")).toEqual([]);
+    const imports = buildImports(result.imports, undefined, result.stringPool);
+    const { instance } = await WebAssembly.instantiate(result.binary, imports);
+    const ret = (instance.exports as any).test();
+    expect(ret).toBe(1);
+  });
+
+  it("modulo compound assignment (-1 %= 2)", async () => {
+    const ret = await run(`
+      export function test(): number {
+        let x: number = -1;
+        x %= 2;
+        return x;
+      }
+    `);
+    expect(ret).toBe(-1);
+  });
+
+  it("modulo operator (-7 % 3 = -1)", async () => {
+    const ret = await run(`
+      export function test(): number {
+        return (-7) % 3;
+      }
+    `);
+    expect(ret).toBe(-1);
+  });
+
+  it("string comparison like test262", async () => {
+    const ret = await run(`
+      export function test(): number {
+        if (("xy" > "xx") !== true) { return 0; }
+        if (("xx" > "xy") !== false) { return 0; }
+        if (("y" > "x") !== true) { return 0; }
+        if (("aba" > "aab") !== true) { return 0; }
+        return 1;
+      }
+    `);
+    expect(ret).toBe(1);
+  });
 });
