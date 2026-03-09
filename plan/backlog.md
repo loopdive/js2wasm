@@ -14,12 +14,6 @@
 | [82](issues/82.md) | Study V8, SpiderMonkey, Zena, AssemblyScript strategies    | M          |
 | [83](issues/83.md) | Test262 conformance subset                                 | M          |
 
-### Test262 conformance expansion
-
-| #                  | Feature                                                     | Complexity | Priority |
-| ------------------ | ----------------------------------------------------------- | ---------- | -------- |
-| [96](issues/96.md) | Test262 — built-ins/JSON                                    | S          | Low      |
-
 ### Language coverage
 
 | #                  | Feature                                                     | Complexity |
@@ -122,3 +116,4 @@
 | [93](issues/done/93.md) | Test262 — built-ins/Object                | keys/values/entries categories |
 | [94](issues/done/94.md) | Test262 — language/function-code          | statements/function category   |
 | [95](issues/done/95.md) | Test262 — built-ins/isNaN + isFinite      | already present, all pass      |
+| [96](issues/done/96.md) | Test262 — built-ins/JSON                  | JSON.parse 12/12, stringify skipped |
