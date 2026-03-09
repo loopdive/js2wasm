@@ -101,4 +101,41 @@ describe("new Array()", () => {
     `);
     expect(e.test()).toBe(5);
   });
+
+  it("index assignment beyond capacity grows array", async () => {
+    const e = await compileAndRun(`
+      export function test(): number {
+        var a: number[] = new Array(2);
+        a[0] = 10;
+        a[1] = 20;
+        a[5] = 60;
+        return a[0] + a[1] + a[5];
+      }
+    `);
+    expect(e.test()).toBe(90);
+  });
+
+  it("index assignment beyond capacity updates length", async () => {
+    const e = await compileAndRun(`
+      export function test(): number {
+        var a: number[] = new Array(2);
+        a[10] = 99;
+        return a.length;
+      }
+    `);
+    expect(e.test()).toBe(11);
+  });
+
+  it("push after grow works", async () => {
+    const e = await compileAndRun(`
+      export function test(): number {
+        var a: number[] = new Array(1);
+        a[0] = 1;
+        a[3] = 4;
+        a.push(5);
+        return a.length;
+      }
+    `);
+    expect(e.test()).toBe(5);
+  });
 });

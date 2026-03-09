@@ -755,6 +755,12 @@ export function encodeInstr(instr: Instr, enc: WasmEncoder): void {
     case "f64.div":
       enc.byte(OP.f64_div);
       break;
+    case "f64.min":
+      enc.byte(OP.f64_min);
+      break;
+    case "f64.max":
+      enc.byte(OP.f64_max);
+      break;
     case "f64.copysign":
       enc.byte(OP.f64_copysign);
       break;

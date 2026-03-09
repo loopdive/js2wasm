@@ -13,10 +13,77 @@ import {
   ensureExnTag,
   ensureI32Condition,
   getArrTypeIdxFromVec,
+  getOrRegisterVecType,
   getSourcePos,
   localGlobalIdx,
   resolveWasmType,
 } from "./index.js";
+
+/**
+ * Infer the element type of an `Array<any>` variable by scanning how it is used.
+ * Walks the enclosing function for `arr[i] = value` and `arr.push(value)` patterns,
+ * returns a concrete wasm vec type if a non-any element type is found.
+ */
+function inferArrayVecType(ctx: CodegenContext, decl: ts.VariableDeclaration): ValType | null {
+  if (!ts.isIdentifier(decl.name)) return null;
+  const varName = decl.name.text;
+
+  // Walk up to the enclosing function body or source file
+  let scope: ts.Node = decl;
+  while (scope && !ts.isFunctionDeclaration(scope) && !ts.isFunctionExpression(scope)
+         && !ts.isArrowFunction(scope) && !ts.isMethodDeclaration(scope)
+         && !ts.isSourceFile(scope)) {
+    scope = scope.parent;
+  }
+  if (!scope) return null;
+
+  let inferredElemType: ts.Type | null = null;
+
+  function visit(node: ts.Node) {
+    if (inferredElemType) return;
+
+    // arr[i] = value
+    if (ts.isBinaryExpression(node)
+        && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+        && ts.isElementAccessExpression(node.left)
+        && ts.isIdentifier(node.left.expression)
+        && node.left.expression.text === varName) {
+      const valType = ctx.checker.getTypeAtLocation(node.right);
+      if (!(valType.flags & ts.TypeFlags.Any)) {
+        inferredElemType = valType;
+        return;
+      }
+    }
+
+    // arr.push(value)
+    if (ts.isCallExpression(node)
+        && ts.isPropertyAccessExpression(node.expression)
+        && node.expression.name.text === "push"
+        && ts.isIdentifier(node.expression.expression)
+        && node.expression.expression.text === varName
+        && node.arguments.length >= 1) {
+      const valType = ctx.checker.getTypeAtLocation(node.arguments[0]!);
+      if (!(valType.flags & ts.TypeFlags.Any)) {
+        inferredElemType = valType;
+        return;
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  }
+
+  visit(scope);
+  if (!inferredElemType) return null;
+
+  // Resolve the inferred element type to a wasm type, then register the vec
+  const elemWasm = resolveWasmType(ctx, inferredElemType);
+  const elemKey =
+    elemWasm.kind === "ref" || elemWasm.kind === "ref_null"
+      ? `ref_${(elemWasm as { typeIdx: number }).typeIdx}`
+      : elemWasm.kind;
+  const vecTypeIdx = getOrRegisterVecType(ctx, elemKey, elemWasm);
+  return { kind: "ref_null", typeIdx: vecTypeIdx };
+}
 
 /**
  * Mark the first instruction emitted for a statement with its source position.
@@ -252,11 +319,24 @@ function compileVariableStatement(
     }
 
     const varType = ctx.checker.getTypeAtLocation(decl);
+    // If the variable is an untyped Array<any> (e.g. `var x = new Array()`),
+    // infer the element type from how the variable is used in the function.
+    let inferredVecType: ValType | null = null;
+    if (varType.flags & ts.TypeFlags.Object) {
+      const sym = (varType as ts.TypeReference).symbol ?? (varType as ts.Type).symbol;
+      if (sym?.name === "Array") {
+        const typeArgs = ctx.checker.getTypeArguments(varType as ts.TypeReference);
+        if (typeArgs?.[0] && (typeArgs[0].flags & ts.TypeFlags.Any)) {
+          inferredVecType = inferArrayVecType(ctx, decl);
+        }
+      }
+    }
     // Override type for string methods returning host arrays (e.g. split() returns
     // externref but TS types as string[] which resolveWasmType maps to GC vec struct)
-    const wasmType = (decl.initializer && isStringMethodReturningHostArray(ctx, decl.initializer))
-      ? { kind: "externref" as const }
-      : resolveWasmType(ctx, varType);
+    const wasmType = inferredVecType
+      ?? ((decl.initializer && isStringMethodReturningHostArray(ctx, decl.initializer))
+        ? { kind: "externref" as const }
+        : resolveWasmType(ctx, varType));
 
     const localIdx = allocLocal(fctx, name, wasmType);
 

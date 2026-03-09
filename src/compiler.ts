@@ -203,6 +203,11 @@ function classifyImport(name: string, mod: WasmModule): ImportIntent {
   // Declared globals (like `declare const document: Document`)
   if (name.startsWith("global_")) return { type: "declared_global", name: name.slice(7) };
 
+  // Unknown constructor imports (__new_ClassName)
+  if (name.startsWith("__new_")) {
+    return { type: "extern_class", className: name.slice(6), action: "new" };
+  }
+
   // Fallback
   return { type: "builtin", name };
 }
@@ -326,13 +331,22 @@ export function compileSource(
     errors.push(...typeWarnings);
   }
 
-  // Collect TS diagnostics as errors
+  // TS diagnostics that the wasm codegen can handle gracefully —
+  // downgrade from error to warning so they don't block compilation.
+  const DOWNGRADE_DIAG_CODES = new Set([
+    2304, // "Cannot find name 'X'" — unknown identifiers compiled as externref/unreachable
+    2345, // "Argument of type 'X' is not assignable to parameter of type 'Y'"
+    2322, // "Type 'X' is not assignable to type 'Y'"
+  ]);
+
+  // Collect TS diagnostics as errors (or warnings for handled cases)
   for (const diag of ast.diagnostics) {
     if (diag.category === 1) {
       // Error
       const pos = diag.file
         ? diag.file.getLineAndCharacterOfPosition(diag.start ?? 0)
         : { line: 0, character: 0 };
+      const severity = DOWNGRADE_DIAG_CODES.has(diag.code) ? "warning" : "error";
       errors.push({
         message:
           typeof diag.messageText === "string"
@@ -340,7 +354,7 @@ export function compileSource(
             : diag.messageText.messageText,
         line: pos.line + 1,
         column: pos.character + 1,
-        severity: "error",
+        severity: severity as "error" | "warning",
       });
     }
   }

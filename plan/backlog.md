@@ -14,6 +14,27 @@
 | [82](issues/82.md) | Study V8, SpiderMonkey, Zena, AssemblyScript strategies    | M          |
 | [83](issues/83.md) | Test262 conformance subset                                 | M          |
 
+### Test262 conformance expansion
+
+| #                  | Feature                                                     | Complexity | Priority |
+| ------------------ | ----------------------------------------------------------- | ---------- | -------- |
+| [88](issues/88.md) | Test262 — language/expressions                              | L          | High     |
+| [89](issues/89.md) | Test262 — language/statements                               | L          | High     |
+| [90](issues/90.md) | Test262 — built-ins/Array                                   | M          | High     |
+| [91](issues/91.md) | Test262 — built-ins/Number, isNaN, isFinite                 | M          | High     |
+| [92](issues/92.md) | Test262 — language/types (coercion)                         | M          | Medium   |
+| [93](issues/93.md) | Test262 — built-ins/Object                                  | S          | Medium   |
+| [94](issues/94.md) | Test262 — language/function-code                            | M          | Medium   |
+| [95](issues/95.md) | Test262 — built-ins/isNaN + isFinite                        | S          | Medium   |
+| [96](issues/96.md) | Test262 — built-ins/JSON                                    | S          | Low      |
+
+### Compiler bugs (found via test262)
+
+| #                  | Feature                                                     | Complexity |
+| ------------------ | ----------------------------------------------------------- | ---------- |
+| [97](issues/97.md) | NaN/undefined/null truthiness in boolean contexts           | S          |
+| [98](issues/98.md) | Proper ToInt32 modular arithmetic for bitwise operations    | S          |
+
 ### Language coverage
 
 | #                  | Feature                                                     | Complexity |
