@@ -1,0 +1,789 @@
+
+ RUN  v3.2.4 /Users/thomas/Documents/Arbeit/Startup/Projekte/Mosaic/code/@loopdive/ts2wasm
+
+stdout | tests/test262.test.ts
+
+══════════════════════════════════════════════════════
+           Test262 Conformance Report
+══════════════════════════════════════════════════════
+  Total tests:     3114
+  Passed:          333  (82% of compilable)
+  Failed:          72
+  Compile errors:  432
+  Skipped:         2277
+──────────────────────────────────────────────────────
+  Math.abs                     4/  4 pass (100%)  skip:  4  err:  0
+  Math.acos                    4/  4 pass (100%)  skip:  4  err:  0
+  Math.asin                    5/  5 pass (100%)  skip:  4  err:  0
+  Math.atan                    3/  3 pass (100%)  skip:  4  err:  0
+  Math.atan2                   7/  7 pass (100%)  skip:  4  err:  0
+  Math.ceil                    7/  7 pass (100%)  skip:  4  err:  0
+  Math.clz32                   6/  6 pass (100%)  skip:  4  err:  0
+  Math.cos                     5/  5 pass (100%)  skip:  4  err:  0
+  Math.exp                     5/  5 pass (100%)  skip:  4  err:  0
+  Math.floor                   7/  7 pass (100%)  skip:  4  err:  0
+  Math.imul                    1/  1 pass (100%)  skip:  4  err:  0
+  Math.log                     5/  5 pass (100%)  skip:  4  err:  0
+  Math.max                     3/  4 pass ( 75%)  skip:  6  err:  0
+  Math.min                     3/  4 pass ( 75%)  skip:  6  err:  0
+  Math.pow                    24/ 24 pass (100%)  skip:  4  err:  0
+  Math.round                   6/  7 pass ( 85%)  skip:  4  err:  0
+  Math.sign                    1/  1 pass (100%)  skip:  4  err:  0
+  Math.sin                     4/  4 pass (100%)  skip:  4  err:  0
+  Math.sqrt                    6/  6 pass (100%)  skip:  4  err:  0
+  Math.tan                     5/  5 pass (100%)  skip:  4  err:  0
+  Math.trunc                   8/  8 pass (100%)  skip:  4  err:  0
+  Number/MAX_VALUE             0/  0 pass (  0%)  skip:  2  err:  1
+  Number/MIN_VALUE             0/  0 pass (  0%)  skip:  2  err:  1
+  Number/NEGATIVE_INFINITY     2/  2 pass (100%)  skip:  2  err:  0
+  Number/POSITIVE_INFINITY     2/  2 pass (100%)  skip:  2  err:  0
+  Number/isFinite              3/  3 pass (100%)  skip:  5  err:  0
+  Number/isInteger             3/  4 pass ( 75%)  skip:  5  err:  0
+  Number/isNaN                 2/  2 pass (100%)  skip:  5  err:  0
+  Number/parseFloat            0/  0 pass (  0%)  skip:  1  err:  0
+  Number/parseInt              0/  0 pass (  0%)  skip:  1  err:  0
+  isFinite                     2/  2 pass (100%)  skip:  9  err:  4
+  isNaN                        1/  1 pass (100%)  skip: 10  err:  4
+  expr/addition               10/ 10 pass (100%)  skip: 32  err:  6
+  expr/bitwise-and             1/  1 pass (100%)  skip: 26  err:  3
+  expr/bitwise-not             2/  2 pass (100%)  skip:  9  err:  5
+  expr/bitwise-or              1/  1 pass (100%)  skip: 26  err:  3
+  expr/bitwise-xor             1/  1 pass (100%)  skip: 26  err:  3
+  expr/call                    0/  0 pass (  0%)  skip: 88  err:  4
+  expr/comma                   1/  1 pass (100%)  skip:  4  err:  1
+  expr/compound-assignment    20/ 51 pass ( 39%)  skip:300  err:103
+  expr/concatenation           2/  3 pass ( 66%)  skip:  2  err:  0
+  expr/conditional             1/  2 pass ( 50%)  skip: 16  err:  4
+  expr/division               14/ 14 pass (100%)  skip: 27  err:  4
+  expr/does-not-equals         2/  2 pass (100%)  skip: 25  err: 11
+  expr/equals                  2/  2 pass (100%)  skip: 31  err: 14
+  expr/exponentiation         27/ 27 pass (100%)  skip: 15  err:  2
+  expr/function                0/  0 pass (  0%)  skip:245  err: 19
+  expr/greater-than           10/ 12 pass ( 83%)  skip: 27  err: 10
+  expr/greater-than-or-equal  10/ 10 pass (100%)  skip: 25  err:  8
+  expr/grouping                0/  1 pass (  0%)  skip:  4  err:  4
+  expr/instanceof              0/  0 pass (  0%)  skip: 16  err: 27
+  expr/left-shift             12/ 12 pass (100%)  skip: 29  err:  4
+  expr/less-than              10/ 10 pass (100%)  skip: 27  err:  8
+  expr/less-than-or-equal     10/ 12 pass ( 83%)  skip: 25  err: 10
+  expr/logical-and             1/  2 pass ( 50%)  skip: 14  err:  2
+  expr/logical-assignment      1/  3 pass ( 33%)  skip: 36  err: 39
+  expr/logical-not             1/  2 pass ( 50%)  skip:  9  err:  8
+  expr/logical-or              2/  3 pass ( 66%)  skip: 14  err:  1
+  expr/typeof                  2/  4 pass ( 50%)  skip:  5  err:  7
+  stmt/block                   0/  0 pass (  0%)  skip: 20  err:  1
+  stmt/break                   1/  1 pass (100%)  skip: 14  err:  5
+  stmt/continue                8/  8 pass (100%)  skip: 15  err:  1
+  stmt/do-while                0/  1 pass (  0%)  skip: 26  err:  9
+  stmt/empty                   0/  0 pass (  0%)  skip:  1  err:  1
+  stmt/expression              0/  0 pass (  0%)  skip:  3  err:  0
+  stmt/for                     9/ 18 pass ( 50%)  skip:356  err: 11
+  stmt/if                      1/  1 pass (100%)  skip: 56  err: 12
+  stmt/labeled                 2/  2 pass (100%)  skip: 17  err:  5
+  stmt/return                  0/  1 pass (  0%)  skip: 11  err:  4
+  stmt/switch                  0/  3 pass (  0%)  skip:106  err:  2
+  stmt/throw                   0/  0 pass (  0%)  skip: 14  err:  0
+  stmt/try                     3/  5 pass ( 60%)  skip:184  err: 12
+  stmt/variable                0/  0 pass (  0%)  skip:166  err: 12
+  stmt/while                   0/  2 pass (  0%)  skip: 27  err:  9
+  types/boolean                1/  1 pass (100%)  skip:  2  err:  2
+  types/null                   2/  3 pass ( 66%)  skip:  1  err:  0
+  types/number                19/ 19 pass (100%)  skip:  0  err:  2
+  types/reference              2/  3 pass ( 66%)  skip: 10  err: 16
+  types/string                 5/  7 pass ( 71%)  skip: 13  err:  4
+  types/undefined              3/  4 pass ( 75%)  skip:  0  err:  4
+══════════════════════════════════════════════════════
+
+Failing tests (72):
+  ✗ test/built-ins/Math/round/S15.8.2.15_A7.js: returned 0
+  ✗ test/built-ins/Math/min/Math.min_each-element-coerced.js: returned 0
+  ✗ test/built-ins/Math/max/Math.max_each-element-coerced.js: returned 0
+  ✗ test/language/expressions/concatenation/S9.8_A3_T2.js: returned 0
+  ✗ test/language/expressions/greater-than/11.8.2-1.js: returned 0
+  ✗ test/language/expressions/greater-than/11.8.2-4.js: returned 0
+  ✗ test/language/expressions/less-than-or-equal/11.8.3-1.js: returned 0
+  ✗ test/language/expressions/less-than-or-equal/11.8.3-4.js: returned 0
+  ✗ test/language/expressions/logical-and/S11.11.1_A4_T4.js: returned 0
+  ✗ test/language/expressions/logical-not/S9.2_A4_T2.js: returned 0
+  ✗ test/language/expressions/logical-or/S11.11.2_A3_T4.js: returned 0
+  ✗ test/language/expressions/conditional/S11.12_A3_T4.js: returned 0
+  ✗ test/language/expressions/typeof/number.js: returned 0
+  ✗ test/language/expressions/typeof/undefined.js: returned 0
+  ✗ test/language/expressions/compound-assignment/S11.13.2_A3.1_T1.js: CompileError: WebAssembly.instantiate(): Compiling function #13:"test" failed: f64.mul[0] expected type f64, found local.get of type externref @+518
+  ✗ test/language/expressions/compound-assignment/S11.13.2_A3.1_T10.js: CompileError: WebAssembly.instantiate(): Compiling function #13:"test" failed: i32.trunc_f64_s[0] expected type f64, found local.get of type externref @+525
+  ✗ test/language/expressions/compound-assignment/S11.13.2_A3.1_T11.js: CompileError: WebAssembly.instantiate(): Compiling function #13:"test" failed: i32.trunc_f64_s[0] expected type f64, found local.get of type externref @+525
+  ✗ test/language/expressions/compound-assignment/S11.13.2_A3.1_T2.js: CompileError: WebAssembly.instantiate(): Compiling function #13:"test" failed: f64.div[0] expected type f64, found local.get of type externref @+518
+  ✗ test/language/expressions/compound-assignment/S11.13.2_A3.1_T4.js: CompileError: WebAssembly.instantiate(): Compiling function #13:"test" failed: f64.add[0] expected type f64, found local.get of type externref @+516
+  ✗ test/language/expressions/compound-assignment/S11.13.2_A3.1_T5.js: CompileError: WebAssembly.instantiate(): Compiling function #13:"test" failed: f64.sub[0] expected type f64, found local.get of type externref @+519
+  ✗ test/language/expressions/compound-assignment/S11.13.2_A3.1_T6.js: CompileError: WebAssembly.instantiate(): Compiling function #13:"test" failed: i32.trunc_f64_s[0] expected type f64, found local.get of type externref @+525
+  ✗ test/language/expressions/compound-assignment/S11.13.2_A3.1_T7.js: CompileError: WebAssembly.instantiate(): Compiling function #13:"test" failed: i32.trunc_f64_s[0] expected type f64, found local.get of type externref @+525
+  ✗ test/language/expressions/compound-assignment/S11.13.2_A3.1_T8.js: CompileError: WebAssembly.instantiate(): Compiling function #13:"test" failed: i32.trunc_f64_s[0] expected type f64, found local.get of type externref @+525
+  ✗ test/language/expressions/compound-assignment/S11.13.2_A3.1_T9.js: CompileError: WebAssembly.instantiate(): Compiling function #13:"test" failed: i32.trunc_f64_s[0] expected type f64, found local.get of type externref @+525
+  ✗ test/language/expressions/compound-assignment/S11.13.2_A3.2_T1.js: CompileError: WebAssembly.instantiate(): Compiling function #13:"test" failed: f64.mul[0] expected type f64, found local.get of type externref @+519
+  ✗ test/language/expressions/compound-assignment/S11.13.2_A3.2_T10.js: CompileError: WebAssembly.instantiate(): Compiling function #13:"test" failed: i32.trunc_f64_s[0] expected type f64, found local.get of type externref @+526
+  ✗ test/language/expressions/compound-assignment/S11.13.2_A3.2_T11.js: CompileError: WebAssembly.instantiate(): Compiling function #13:"test" failed: i32.trunc_f64_s[0] expected type f64, found local.get of type externref @+526
+  ✗ test/language/expressions/compound-assignment/S11.13.2_A3.2_T2.js: CompileError: WebAssembly.instantiate(): Compiling function #13:"test" failed: f64.div[0] expected type f64, found local.get of type externref @+519
+  ✗ test/language/expressions/compound-assignment/S11.13.2_A3.2_T4.js: CompileError: WebAssembly.instantiate(): Compiling function #13:"test" failed: f64.add[0] expected type f64, found local.get of type externref @+517
+  ✗ test/language/expressions/compound-assignment/S11.13.2_A3.2_T5.js: CompileError: WebAssembly.instantiate(): Compiling function #13:"test" failed: f64.sub[0] expected type f64, found local.get of type externref @+520
+  ✗ test/language/expressions/compound-assignment/S11.13.2_A3.2_T6.js: CompileError: WebAssembly.instantiate(): Compiling function #13:"test" failed: i32.trunc_f64_s[0] expected type f64, found local.get of type externref @+526
+  ✗ test/language/expressions/compound-assignment/S11.13.2_A3.2_T7.js: CompileError: WebAssembly.instantiate(): Compiling function #13:"test" failed: i32.trunc_f64_s[0] expected type f64, found local.get of type externref @+526
+  ✗ test/language/expressions/compound-assignment/S11.13.2_A3.2_T8.js: CompileError: WebAssembly.instantiate(): Compiling function #13:"test" failed: i32.trunc_f64_s[0] expected type f64, found local.get of type externref @+526
+  ✗ test/language/expressions/compound-assignment/S11.13.2_A3.2_T9.js: CompileError: WebAssembly.instantiate(): Compiling function #13:"test" failed: i32.trunc_f64_s[0] expected type f64, found local.get of type externref @+526
+  ✗ test/language/expressions/compound-assignment/S11.13.2_A4.4_T1.3.js: CompileError: WebAssembly.instantiate(): Compiling function #13:"test" failed: f64.add[0] expected type f64, found local.get of type externref @+456
+  ✗ test/language/expressions/compound-assignment/add-whitespace.js: CompileError: WebAssembly.instantiate(): Compiling function #13:"test" failed: f64.add[0] expected type f64, found local.get of type externref @+464
+  ✗ test/language/expressions/compound-assignment/and-whitespace.js: CompileError: WebAssembly.instantiate(): Compiling function #13:"test" failed: i32.trunc_f64_s[0] expected type f64, found local.get of type externref @+465
+  ✗ test/language/expressions/compound-assignment/div-whitespace.js: CompileError: WebAssembly.instantiate(): Compiling function #13:"test" failed: f64.div[0] expected type f64, found local.get of type externref @+464
+  ✗ test/language/expressions/compound-assignment/lshift-whitespace.js: CompileError: WebAssembly.instantiate(): Compiling function #13:"test" failed: i32.trunc_f64_s[0] expected type f64, found local.get of type externref @+465
+  ✗ test/language/expressions/compound-assignment/mult-whitespace.js: CompileError: WebAssembly.instantiate(): Compiling function #13:"test" failed: f64.mul[0] expected type f64, found local.get of type externref @+464
+  ✗ test/language/expressions/compound-assignment/or-whitespace.js: CompileError: WebAssembly.instantiate(): Compiling function #13:"test" failed: i32.trunc_f64_s[0] expected type f64, found local.get of type externref @+465
+  ✗ test/language/expressions/compound-assignment/srshift-whitespace.js: CompileError: WebAssembly.instantiate(): Compiling function #13:"test" failed: i32.trunc_f64_s[0] expected type f64, found local.get of type externref @+465
+  ✗ test/language/expressions/compound-assignment/sub-whitespace.js: CompileError: WebAssembly.instantiate(): Compiling function #13:"test" failed: f64.sub[0] expected type f64, found local.get of type externref @+464
+  ✗ test/language/expressions/compound-assignment/urshift-whitespace.js: CompileError: WebAssembly.instantiate(): Compiling function #13:"test" failed: i32.trunc_f64_s[0] expected type f64, found local.get of type externref @+465
+  ✗ test/language/expressions/compound-assignment/xor-whitespace.js: CompileError: WebAssembly.instantiate(): Compiling function #13:"test" failed: i32.trunc_f64_s[0] expected type f64, found local.get of type externref @+465
+  ✗ test/language/expressions/logical-assignment/lgcl-nullish-whitespace.js: CompileError: WebAssembly.instantiate(): Compiling function #13:"test" failed: call[0] expected type externref, found f64.const of type f64 @+478
+  ✗ test/language/expressions/logical-assignment/lgcl-or-whitespace.js: returned 0
+  ✗ test/language/expressions/grouping/S11.1.6_A3_T4.js: returned 0
+  ✗ test/language/statements/while/S12.6.2_A4_T1.js: returned 0
+  ✗ test/language/statements/while/S12.6.2_A4_T5.js: returned 0
+  ✗ test/language/statements/do-while/S12.6.1_A4_T5.js: returned 0
+  ✗ test/language/statements/for/S12.6.3_A11.1_T1.js: CompileError: WebAssembly.instantiate(): Compiling function #9:"test" failed: f64.add[0] expected type f64, found local.get of type externref @+504
+  ✗ test/language/statements/for/S12.6.3_A11.1_T2.js: CompileError: WebAssembly.instantiate(): Compiling function #19:"test" failed: f64.add[0] expected type f64, found local.get of type externref @+806
+  ✗ test/language/statements/for/S12.6.3_A11_T1.js: CompileError: WebAssembly.instantiate(): Compiling function #18:"test" failed: f64.add[0] expected type f64, found local.get of type externref @+711
+  ✗ test/language/statements/for/S12.6.3_A11_T2.js: CompileError: WebAssembly.instantiate(): Compiling function #19:"test" failed: f64.add[0] expected type f64, found local.get of type externref @+820
+  ✗ test/language/statements/for/S12.6.3_A12.1_T1.js: CompileError: WebAssembly.instantiate(): Compiling function #9:"test" failed: f64.add[0] expected type f64, found local.get of type externref @+505
+  ✗ test/language/statements/for/S12.6.3_A12.1_T2.js: CompileError: WebAssembly.instantiate(): Compiling function #19:"test" failed: f64.add[0] expected type f64, found local.get of type externref @+796
+  ✗ test/language/statements/for/S12.6.3_A12_T1.js: CompileError: WebAssembly.instantiate(): Compiling function #18:"test" failed: f64.add[0] expected type f64, found local.get of type externref @+712
+  ✗ test/language/statements/for/S12.6.3_A12_T2.js: CompileError: WebAssembly.instantiate(): Compiling function #19:"test" failed: f64.add[0] expected type f64, found local.get of type externref @+810
+  ✗ test/language/statements/for/head-init-expr-check-empty-inc-empty-syntax.js: CompileError: WebAssembly.instantiate(): Compiling function #13:"test" failed: f64.add[0] expected type f64, found local.get of type externref @+496
+  ✗ test/language/statements/switch/S12.11_A1_T1.js: CompileError: WebAssembly.instantiate(): Compiling function #18:"test" failed: f64.eq[0] expected type f64, found call of type i32 @+635
+  ✗ test/language/statements/switch/S12.11_A1_T3.js: CompileError: WebAssembly.instantiate(): Compiling function #13:"test" failed: f64.eq[0] expected type f64, found call of type i32 @+459
+  ✗ test/language/statements/switch/S12.11_A4_T1.js: CompileError: WebAssembly.instantiate(): Compiling function #13:"test" failed: local.set[0] expected type f64, found call of type i32 @+460
+  ✗ test/language/statements/return/S12.9_A5.js: CompileError: WebAssembly.instantiate(): Compiling function #7:"myfunc3" failed: expected 1 elements on the stack for return, found 0 @+496
+  ✗ test/language/statements/try/12.14-4.js: CompileError: WebAssembly.instantiate(): Compiling function #13:"test" failed: call[0] expected type externref, found call of type f64 @+503
+  ✗ test/language/statements/try/12.14-6.js: CompileError: WebAssembly.instantiate(): Compiling function #14:"test" failed: undeclared reference to function #7 @+563
+  ✗ test/built-ins/Number/isInteger/infinity.js: returned 0
+  ✗ test/language/types/null/S8.2_A3.js: returned 0
+  ✗ test/language/types/undefined/S8.1_A2_T1.js: returned 0
+  ✗ test/language/types/string/S8.4_A3.js: CompileError: WebAssembly.instantiate(): Compiling function #9:"test" failed: f64.ne[0] expected type f64, found call of type i32 @+435
+  ✗ test/language/types/string/S8.4_A4.js: CompileError: WebAssembly.instantiate(): Compiling function #9:"test" failed: f64.ne[0] expected type f64, found call of type i32 @+427
+  ✗ test/language/types/reference/S8.7.2_A2.js: CompileError: WebAssembly.instantiate(): Compiling function #4:"test" failed: f64.add[0] expected type f64, found local.get of type externref @+256
+
+Compile errors (432):
+  ⚠ test/language/expressions/addition/S11.6.1_A2.1_T1.js: Property 'prop' does not exist on type 'Object'.; Property 'prop' does not exist on type 'Object'.; Property 'prop' does
+  ⚠ test/language/expressions/addition/S11.6.1_A2.2_T2.js: Operator '+' cannot be applied to types 'Date' and 'Date'.; Operator '+' cannot be applied to types 'Date' and 'number'.
+  ⚠ test/language/expressions/addition/S11.6.1_A2.2_T3.js: Operator '+' cannot be applied to types '() => number' and 'number'.; Operator '+' cannot be applied to types 'number' a
+  ⚠ test/language/expressions/addition/S11.6.1_A2.4_T4.js: Cannot find name 'y'.; Cannot find name 'y'.; Unsupported assignment target; Unknown identifier: y
+  ⚠ test/language/expressions/addition/S11.6.1_A3.1_T1.3.js: The value 'null' cannot be used here.; The value 'undefined' cannot be used here.; The value 'undefined' cannot be used 
+  ⚠ test/language/expressions/addition/S11.6.1_A3.2_T1.2.js: Operator '+' cannot be applied to types '{}' and '() => number'.; Operator '+' cannot be applied to types '() => number'
+  ⚠ test/language/expressions/division/S11.5.2_A2.1_T1.js: Property 'prop' does not exist on type 'Object'.; Property 'prop' does not exist on type 'Object'.; Property 'prop' does
+  ⚠ test/language/expressions/division/S11.5.2_A2.4_T4.js: Cannot find name 'y'.; Cannot find name 'y'.; Unsupported assignment target; Unknown identifier: y
+  ⚠ test/language/expressions/division/S11.5.2_A3_T1.4.js: The value 'null' cannot be used here.; The value 'undefined' cannot be used here.; The value 'undefined' cannot be used 
+  ⚠ test/language/expressions/division/S11.5.2_A3_T1.5.js: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.; The right-hand
+  ⚠ test/language/expressions/exponentiation/exp-operator-evaluation-order.js: Argument of type '"leftValue"' is not assignable to parameter of type 'never'.; Argument of type '"rightValue"' is not a
+  ⚠ test/language/expressions/exponentiation/exp-operator-precedence-unary-expression-semantics.js: Argument of type 'boolean' is not assignable to parameter of type 'number'.; The right-hand side of an arithmetic operat
+  ⚠ test/language/expressions/bitwise-and/S11.10.1_A2.1_T1.js: Property 'prop' does not exist on type 'Object'.; Property 'prop' does not exist on type 'Object'.; Property 'prop' does
+  ⚠ test/language/expressions/bitwise-and/S11.10.1_A3_T1.4.js: The value 'null' cannot be used here.; The value 'undefined' cannot be used here.; The value 'undefined' cannot be used 
+  ⚠ test/language/expressions/bitwise-and/S11.10.1_A3_T1.5.js: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.; The right-hand
+  ⚠ test/language/expressions/bitwise-or/S11.10.3_A2.1_T1.js: Property 'prop' does not exist on type 'Object'.; Property 'prop' does not exist on type 'Object'.; Property 'prop' does
+  ⚠ test/language/expressions/bitwise-or/S11.10.3_A3_T1.4.js: The value 'null' cannot be used here.; The value 'undefined' cannot be used here.; The value 'undefined' cannot be used 
+  ⚠ test/language/expressions/bitwise-or/S11.10.3_A3_T1.5.js: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.; The right-hand
+  ⚠ test/language/expressions/bitwise-xor/S11.10.2_A2.1_T1.js: Property 'prop' does not exist on type 'Object'.; Property 'prop' does not exist on type 'Object'.; Property 'prop' does
+  ⚠ test/language/expressions/bitwise-xor/S11.10.2_A3_T1.4.js: The value 'null' cannot be used here.; The value 'undefined' cannot be used here.; The value 'undefined' cannot be used 
+  ⚠ test/language/expressions/bitwise-xor/S11.10.2_A3_T1.5.js: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.; The right-hand
+  ⚠ test/language/expressions/bitwise-not/S11.4.8_A2.1_T1.js: Property 'prop' does not exist on type 'Object'.; Property 'prop' does not exist on type 'Object'.; Unsupported new expr
+  ⚠ test/language/expressions/bitwise-not/S11.4.8_A3_T4.js: Object is possibly 'undefined'.; The value 'null' cannot be used here.
+  ⚠ test/language/expressions/bitwise-not/S9.5_A2.2_T2.js: Unterminated string literal.; Unterminated string literal.; Unterminated string literal.; Unterminated string literal.; 
+  ⚠ test/language/expressions/bitwise-not/S9.5_A2.3_T2.js: Unterminated string literal.; Unterminated string literal.; Unterminated string literal.; Unterminated string literal.; 
+  ⚠ test/language/expressions/bitwise-not/S9.5_A3.2_T2.js: Unterminated string literal.; Unterminated string literal.
+  ⚠ test/language/expressions/left-shift/S11.7.1_A2.1_T1.js: Property 'prop' does not exist on type 'Object'.; Property 'prop' does not exist on type 'Object'.; Property 'prop' does
+  ⚠ test/language/expressions/left-shift/S11.7.1_A2.4_T4.js: Cannot find name 'y'.; Cannot find name 'y'.; Unsupported assignment target; Unknown identifier: y
+  ⚠ test/language/expressions/left-shift/S11.7.1_A3_T1.4.js: The value 'null' cannot be used here.; The value 'undefined' cannot be used here.; The value 'undefined' cannot be used 
+  ⚠ test/language/expressions/left-shift/S11.7.1_A3_T1.5.js: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.; The right-hand
+  ⚠ test/language/expressions/equals/S11.9.1_A2.1_T1.js: Property 'prop' does not exist on type 'Object'.; Property 'prop' does not exist on type 'Object'.; Property 'prop' does
+  ⚠ test/language/expressions/equals/S11.9.1_A2.4_T4.js: Cannot find name 'y'.; Cannot find name 'y'.; Unsupported assignment target; Unknown identifier: y
+  ⚠ test/language/expressions/equals/S11.9.1_A3.1.js: This comparison appears to be unintentional because the types 'true' and 'false' have no overlap.; This comparison appea
+  ⚠ test/language/expressions/equals/S11.9.1_A3.2.js: This comparison appears to be unintentional because the types 'boolean' and 'number' have no overlap.; This comparison a
+  ⚠ test/language/expressions/equals/S11.9.1_A3.3.js: This comparison appears to be unintentional because the types 'number' and 'boolean' have no overlap.; This comparison a
+  ⚠ test/language/expressions/equals/S11.9.1_A4.1_T1.js: This comparison appears to be unintentional because the types 'number' and 'boolean' have no overlap.; This comparison a
+  ⚠ test/language/expressions/equals/S11.9.1_A4.1_T2.js: This comparison appears to be unintentional because the types 'boolean' and 'number' have no overlap.; This comparison a
+  ⚠ test/language/expressions/equals/S11.9.1_A4.3.js: This comparison appears to be unintentional because the types '1' and '0.999999999999' have no overlap.
+  ⚠ test/language/expressions/equals/S11.9.1_A5.1.js: This comparison appears to be unintentional because the types '" "' and '""' have no overlap.; This comparison appears t
+  ⚠ test/language/expressions/equals/S11.9.1_A5.2.js: This comparison appears to be unintentional because the types 'number' and 'string' have no overlap.; This comparison ap
+  ⚠ test/language/expressions/equals/S11.9.1_A5.3.js: This comparison appears to be unintentional because the types 'string' and 'number' have no overlap.; This comparison ap
+  ⚠ test/language/expressions/equals/S11.9.1_A6.2_T1.js: This condition will always return 'false' since JavaScript compares objects by reference, not value.; This condition wil
+  ⚠ test/language/expressions/equals/S11.9.1_A6.2_T2.js: This condition will always return 'false' since JavaScript compares objects by reference, not value.; This condition wil
+  ⚠ test/language/expressions/equals/S9.1_A1_T3.js: Subsequent variable declarations must have the same type.  Variable 'object' must be of type '{ valueOf: () => number; t
+  ⚠ test/language/expressions/does-not-equals/S11.9.2_A2.1_T1.js: Property 'prop' does not exist on type 'Object'.; Property 'prop' does not exist on type 'Object'.; Property 'prop' does
+  ⚠ test/language/expressions/does-not-equals/S11.9.2_A2.4_T4.js: Cannot find name 'y'.; Cannot find name 'y'.; Unsupported assignment target; Unknown identifier: y
+  ⚠ test/language/expressions/does-not-equals/S11.9.2_A3.1.js: This comparison appears to be unintentional because the types 'true' and 'false' have no overlap.; This comparison appea
+  ⚠ test/language/expressions/does-not-equals/S11.9.2_A4.1_T1.js: This comparison appears to be unintentional because the types 'number' and 'boolean' have no overlap.; This comparison a
+  ⚠ test/language/expressions/does-not-equals/S11.9.2_A4.1_T2.js: This comparison appears to be unintentional because the types 'boolean' and 'number' have no overlap.; This comparison a
+  ⚠ test/language/expressions/does-not-equals/S11.9.2_A4.3.js: This comparison appears to be unintentional because the types '1' and '0.999999999999' have no overlap.
+  ⚠ test/language/expressions/does-not-equals/S11.9.2_A5.1.js: This comparison appears to be unintentional because the types '" "' and '""' have no overlap.; This comparison appears t
+  ⚠ test/language/expressions/does-not-equals/S11.9.2_A5.2.js: This comparison appears to be unintentional because the types 'number' and 'string' have no overlap.; This comparison ap
+  ⚠ test/language/expressions/does-not-equals/S11.9.2_A5.3.js: This comparison appears to be unintentional because the types 'string' and 'number' have no overlap.; This comparison ap
+  ⚠ test/language/expressions/does-not-equals/S11.9.2_A6.2_T1.js: This condition will always return 'true' since JavaScript compares objects by reference, not value.; This condition will
+  ⚠ test/language/expressions/does-not-equals/S11.9.2_A6.2_T2.js: This condition will always return 'true' since JavaScript compares objects by reference, not value.; This condition will
+  ⚠ test/language/expressions/greater-than/11.8.2-2.js: Argument of type 'boolean' is not assignable to parameter of type 'number'.; Operator '>' cannot be applied to types '{ 
+  ⚠ test/language/expressions/greater-than/11.8.2-3.js: Argument of type 'boolean' is not assignable to parameter of type 'number'.; Operator '>' cannot be applied to types '{ 
+  ⚠ test/language/expressions/greater-than/S11.8.2_A2.1_T1.js: Property 'prop' does not exist on type 'Object'.; Property 'prop' does not exist on type 'Object'.; Property 'prop' does
+  ⚠ test/language/expressions/greater-than/S11.8.2_A2.4_T4.js: Cannot find name 'y'.; Cannot find name 'y'.; Unsupported assignment target; Unknown identifier: y
+  ⚠ test/language/expressions/greater-than/S11.8.2_A3.1_T1.3.js: The value 'null' cannot be used here.; The value 'undefined' cannot be used here.; The value 'undefined' cannot be used 
+  ⚠ test/language/expressions/greater-than/S11.8.2_A3.2_T1.2.js: Unsupported call expression; Unsupported call expression; Unsupported string operator: GreaterThanToken; Unsupported cal
+  ⚠ test/language/expressions/greater-than/S11.8.2_A4.10.js: Unsupported string operator: GreaterThanToken; Unsupported string operator: GreaterThanToken; Unsupported string operato
+  ⚠ test/language/expressions/greater-than/S11.8.2_A4.11.js: Unsupported string operator: GreaterThanToken; Unsupported string operator: GreaterThanToken; Unsupported string operato
+  ⚠ test/language/expressions/greater-than/S11.8.2_A4.12_T1.js: Unsupported string operator: GreaterThanToken; Unsupported string operator: GreaterThanToken; Unsupported string operato
+  ⚠ test/language/expressions/greater-than/S11.8.2_A4.12_T2.js: Unsupported string operator: GreaterThanToken; Unsupported string operator: GreaterThanToken; Unsupported string operato
+  ⚠ test/language/expressions/greater-than-or-equal/S11.8.4_A2.1_T1.js: Property 'prop' does not exist on type 'Object'.; Property 'prop' does not exist on type 'Object'.; Property 'prop' does
+  ⚠ test/language/expressions/greater-than-or-equal/S11.8.4_A2.4_T4.js: Cannot find name 'y'.; Cannot find name 'y'.; Unsupported assignment target; Unknown identifier: y
+  ⚠ test/language/expressions/greater-than-or-equal/S11.8.4_A3.1_T1.3.js: The value 'null' cannot be used here.; The value 'undefined' cannot be used here.; The value 'undefined' cannot be used 
+  ⚠ test/language/expressions/greater-than-or-equal/S11.8.4_A3.2_T1.2.js: Unsupported call expression; Unsupported call expression; Unsupported string operator: GreaterThanEqualsToken; Unsupport
+  ⚠ test/language/expressions/greater-than-or-equal/S11.8.4_A4.10.js: Unsupported string operator: GreaterThanEqualsToken; Unsupported string operator: GreaterThanEqualsToken; Unsupported st
+  ⚠ test/language/expressions/greater-than-or-equal/S11.8.4_A4.11.js: Unsupported string operator: GreaterThanEqualsToken; Unsupported string operator: GreaterThanEqualsToken; Unsupported st
+  ⚠ test/language/expressions/greater-than-or-equal/S11.8.4_A4.12_T1.js: Unsupported string operator: GreaterThanEqualsToken; Unsupported string operator: GreaterThanEqualsToken; Unsupported st
+  ⚠ test/language/expressions/greater-than-or-equal/S11.8.4_A4.12_T2.js: Unsupported string operator: GreaterThanEqualsToken; Unsupported string operator: GreaterThanEqualsToken; Unsupported st
+  ⚠ test/language/expressions/less-than/S11.8.1_A2.1_T1.js: Property 'prop' does not exist on type 'Object'.; Property 'prop' does not exist on type 'Object'.; Property 'prop' does
+  ⚠ test/language/expressions/less-than/S11.8.1_A2.4_T4.js: Cannot find name 'y'.; Cannot find name 'y'.; Unsupported assignment target; Unknown identifier: y
+  ⚠ test/language/expressions/less-than/S11.8.1_A3.1_T1.3.js: The value 'null' cannot be used here.; The value 'undefined' cannot be used here.; The value 'undefined' cannot be used 
+  ⚠ test/language/expressions/less-than/S11.8.1_A3.2_T1.2.js: Unsupported call expression; Unsupported call expression; Unsupported string operator: FirstBinaryOperator; Unsupported 
+  ⚠ test/language/expressions/less-than/S11.8.1_A4.10.js: Unsupported string operator: FirstBinaryOperator; Unsupported string operator: FirstBinaryOperator; Unsupported string o
+  ⚠ test/language/expressions/less-than/S11.8.1_A4.11.js: Unsupported string operator: FirstBinaryOperator; Unsupported string operator: FirstBinaryOperator; Unsupported string o
+  ⚠ test/language/expressions/less-than/S11.8.1_A4.12_T1.js: Unsupported string operator: FirstBinaryOperator; Unsupported string operator: FirstBinaryOperator; Unsupported string o
+  ⚠ test/language/expressions/less-than/S11.8.1_A4.12_T2.js: Unsupported string operator: FirstBinaryOperator; Unsupported string operator: FirstBinaryOperator; Unsupported string o
+  ⚠ test/language/expressions/less-than-or-equal/11.8.3-2.js: Argument of type 'boolean' is not assignable to parameter of type 'number'.; Operator '<=' cannot be applied to types '{
+  ⚠ test/language/expressions/less-than-or-equal/11.8.3-3.js: Argument of type 'boolean' is not assignable to parameter of type 'number'.; Operator '<=' cannot be applied to types '{
+  ⚠ test/language/expressions/less-than-or-equal/S11.8.3_A2.1_T1.js: Property 'prop' does not exist on type 'Object'.; Property 'prop' does not exist on type 'Object'.; Property 'prop' does
+  ⚠ test/language/expressions/less-than-or-equal/S11.8.3_A2.4_T4.js: Cannot find name 'y'.; Cannot find name 'y'.; Unsupported assignment target; Unknown identifier: y
+  ⚠ test/language/expressions/less-than-or-equal/S11.8.3_A3.1_T1.3.js: The value 'null' cannot be used here.; The value 'undefined' cannot be used here.; The value 'undefined' cannot be used 
+  ⚠ test/language/expressions/less-than-or-equal/S11.8.3_A3.2_T1.2.js: Unsupported call expression; Unsupported call expression; Unsupported string operator: LessThanEqualsToken; Unsupported 
+  ⚠ test/language/expressions/less-than-or-equal/S11.8.3_A4.10.js: Unsupported string operator: LessThanEqualsToken; Unsupported string operator: LessThanEqualsToken; Unsupported string o
+  ⚠ test/language/expressions/less-than-or-equal/S11.8.3_A4.11.js: Unsupported string operator: LessThanEqualsToken; Unsupported string operator: LessThanEqualsToken; Unsupported string o
+  ⚠ test/language/expressions/less-than-or-equal/S11.8.3_A4.12_T1.js: Unsupported string operator: LessThanEqualsToken; Unsupported string operator: LessThanEqualsToken; Unsupported string o
+  ⚠ test/language/expressions/less-than-or-equal/S11.8.3_A4.12_T2.js: Unsupported string operator: LessThanEqualsToken; Unsupported string operator: LessThanEqualsToken; Unsupported string o
+  ⚠ test/language/expressions/logical-and/S11.11.1_A2.1_T4.js: Cannot find name 'x'.; Unknown identifier: x
+  ⚠ test/language/expressions/logical-and/S11.11.1_A3_T4.js: This kind of expression is always falsy.; This kind of expression is always falsy.
+  ⚠ test/language/expressions/logical-not/S11.4.9_A2.1_T1.js: Property 'prop' does not exist on type 'Object'.; Property 'prop' does not exist on type 'Object'.; Unsupported new expr
+  ⚠ test/language/expressions/logical-not/S11.4.9_A2.2_T1.js: Subsequent variable declarations must have the same type.  Variable 'object' must be of type '{ valueOf: () => number; }
+  ⚠ test/language/expressions/logical-not/S11.4.9_A3_T4.js: This kind of expression is always falsy.; This kind of expression is always falsy.
+  ⚠ test/language/expressions/logical-not/S11.4.9_A3_T5.js: This kind of expression is always truthy.; This kind of expression is always truthy.
+  ⚠ test/language/expressions/logical-not/S9.2_A2_T2.js: This kind of expression is always falsy.
+  ⚠ test/language/expressions/logical-not/S9.2_A4_T4.js: This kind of expression is always truthy.; This kind of expression is always truthy.
+  ⚠ test/language/expressions/logical-not/S9.2_A5_T2.js: This kind of expression is always falsy.
+  ⚠ test/language/expressions/logical-not/S9.2_A5_T4.js: This kind of expression is always truthy.; This kind of expression is always truthy.
+  ⚠ test/language/expressions/logical-or/S11.11.2_A2.1_T4.js: Cannot find name 'x'.; Unknown identifier: x
+  ⚠ test/language/expressions/conditional/S11.12_A2.1_T5.js: Cannot find name 'z'.; Unsupported new expression for class: Object; Unknown identifier: z
+  ⚠ test/language/expressions/conditional/S11.12_A2.1_T6.js: Cannot find name 'y'.; Unsupported new expression for class: Object; Unknown identifier: y
+  ⚠ test/language/expressions/conditional/coalesce-expr-ternary.js: This expression is always nullish.; This expression is always nullish.; This expression is always nullish.; This express
+  ⚠ test/language/expressions/conditional/in-branch-1.js: Unsupported string operator: InKeyword; Unsupported statement: EmptyStatement
+  ⚠ test/language/expressions/comma/S11.14_A2.1_T1.js: Left side of comma operator is unused and has no side effects.; Left side of comma operator is unused and has no side ef
+  ⚠ test/language/expressions/typeof/built-in-functions.js: Unknown identifier: parseInt
+  ⚠ test/language/expressions/typeof/built-in-ordinary-objects-no-call.js: Cannot find name 'Reflect'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2015
+  ⚠ test/language/expressions/typeof/get-value-ref-err.js: Cannot find name 'assert'.; Cannot find name 'x'.; Unsupported call expression
+  ⚠ test/language/expressions/typeof/get-value.js: 'this' implicitly has type 'any' because it does not have a type annotation.; Cannot find name 'x'.; Cannot find name 'y
+  ⚠ test/language/expressions/typeof/native-call.js: Unsupported new expression for class: Function; Unknown function: Function; Unknown identifier: Object; Unknown identifi
+  ⚠ test/language/expressions/typeof/null.js: Unknown function: RegExp
+  ⚠ test/language/expressions/typeof/unresolvable-reference.js: Cannot find name 'x'.; Unknown identifier: x
+  ⚠ test/language/expressions/instanceof/S11.8.6_A2.1_T1.js: instanceof: unknown class "Object"; instanceof: unknown class "Object"; Unknown identifier: Object; instanceof: unknown 
+  ⚠ test/language/expressions/instanceof/S11.8.6_A2.4_T1.js: Type 'ObjectConstructor' is not assignable to type 'number'.; The right-hand side of an 'instanceof' expression must be 
+  ⚠ test/language/expressions/instanceof/S11.8.6_A2.4_T4.js: Cannot find name 'OBJECT'. Did you mean 'Object'?; Cannot find name 'OBJECT'. Did you mean 'Object'?; instanceof: unknow
+  ⚠ test/language/expressions/instanceof/S11.8.6_A4_T1.js: The left-hand side of an 'instanceof' expression must be of type 'any', an object type or a type parameter.; The left-ha
+  ⚠ test/language/expressions/instanceof/S11.8.6_A4_T2.js: The left-hand side of an 'instanceof' expression must be of type 'any', an object type or a type parameter.; The left-ha
+  ⚠ test/language/expressions/instanceof/S11.8.6_A4_T3.js: The left-hand side of an 'instanceof' expression must be of type 'any', an object type or a type parameter.; The left-ha
+  ⚠ test/language/expressions/instanceof/S11.8.6_A5_T1.js: instanceof: unknown class "Error"; instanceof: unknown class "TypeError"; Unknown function: Error; instanceof: unknown c
+  ⚠ test/language/expressions/instanceof/S11.8.6_A5_T2.js: instanceof: unknown class "Error"; instanceof: unknown class "TypeError"; Unknown function: TypeError; instanceof: unkno
+  ⚠ test/language/expressions/instanceof/S11.8.6_A6_T3.js: Unsupported statement: EmptyStatement; instanceof: unknown class "MyFunct"; instanceof: unknown class "Function"; instan
+  ⚠ test/language/expressions/instanceof/S11.8.6_A7_T1.js: instanceof: unknown class "Object"; Cannot access property 'constructor' on type 'Object'; Unknown identifier: Object
+  ⚠ test/language/expressions/instanceof/S11.8.6_A7_T2.js: instanceof: unknown class "Array"; Cannot access property 'constructor' on type 'never[]'; Unknown identifier: Array
+  ⚠ test/language/expressions/instanceof/S11.8.6_A7_T3.js: Unsupported new expression for class: Function; instanceof: unknown class "Function"; Cannot access property 'constructo
+  ⚠ test/language/expressions/instanceof/S15.3.5.3_A1_T1.js: Unexpected keyword or identifier.; Unexpected keyword or identifier.; A type predicate is only allowed in return type po
+  ⚠ test/language/expressions/instanceof/S15.3.5.3_A1_T2.js: Unexpected keyword or identifier.; Unexpected keyword or identifier.; A type predicate is only allowed in return type po
+  ⚠ test/language/expressions/instanceof/S15.3.5.3_A1_T3.js: Unexpected keyword or identifier.; Unexpected keyword or identifier.; A type predicate is only allowed in return type po
+  ⚠ test/language/expressions/instanceof/S15.3.5.3_A1_T4.js: Unexpected keyword or identifier.; Unexpected keyword or identifier.; A type predicate is only allowed in return type po
+  ⚠ test/language/expressions/instanceof/S15.3.5.3_A1_T5.js: Unexpected keyword or identifier.; Unexpected keyword or identifier.; A type predicate is only allowed in return type po
+  ⚠ test/language/expressions/instanceof/S15.3.5.3_A1_T6.js: Unexpected keyword or identifier.; Unexpected keyword or identifier.; A type predicate is only allowed in return type po
+  ⚠ test/language/expressions/instanceof/S15.3.5.3_A1_T7.js: Unexpected keyword or identifier.; Unexpected keyword or identifier.; A type predicate is only allowed in return type po
+  ⚠ test/language/expressions/instanceof/S15.3.5.3_A1_T8.js: Unexpected keyword or identifier.; Unexpected keyword or identifier.; A type predicate is only allowed in return type po
+  ⚠ test/language/expressions/instanceof/S15.3.5.3_A3_T1.js: Unknown function: Function; instanceof: unknown class "FACTORY"
+  ⚠ test/language/expressions/instanceof/S15.3.5.3_A3_T2.js: Unknown function: Function; Object literal type not mapped to struct; instanceof: unknown class "FAKEFACTORY"; instanceo
+  ⚠ test/language/expressions/instanceof/primitive-prototype-with-object.js: Cannot find name 'assert'.; Unsupported call expression
+  ⚠ test/language/expressions/instanceof/primitive-prototype-with-primitive.js: The left-hand side of an 'instanceof' expression must be of type 'any', an object type or a type parameter.; Argument of
+  ⚠ test/language/expressions/instanceof/prototype-getter-with-object-throws.js: Argument of type 'boolean' is not assignable to parameter of type 'number'.; Cannot find name 'assert'.; Unsupported cal
+  ⚠ test/language/expressions/instanceof/prototype-getter-with-object.js: Argument of type 'boolean' is not assignable to parameter of type 'number'.; Expected 1 arguments, but got 2.; Expected 
+  ⚠ test/language/expressions/instanceof/prototype-getter-with-primitive.js: The left-hand side of an 'instanceof' expression must be of type 'any', an object type or a type parameter.; Argument of
+  ⚠ test/language/expressions/compound-assignment/11.13.2-14-s.js: Unsupported numeric binary operator: PercentEqualsToken
+  ⚠ test/language/expressions/compound-assignment/11.13.2-23-s.js: Cannot find name 'assert'.; Property 'prop' does not exist on type '{}'.; Property 'prop' does not exist on type '{}'.; 
+  ⚠ test/language/expressions/compound-assignment/11.13.2-24-s.js: Cannot find name 'assert'.; Property 'prop' does not exist on type '{}'.; Property 'prop' does not exist on type '{}'.; 
+  ⚠ test/language/expressions/compound-assignment/11.13.2-25-s.js: Cannot find name 'assert'.; Property 'prop' does not exist on type '{}'.; Property 'prop' does not exist on type '{}'.; 
+  ⚠ test/language/expressions/compound-assignment/11.13.2-26-s.js: Cannot find name 'assert'.; Property 'prop' does not exist on type '{}'.; Property 'prop' does not exist on type '{}'.; 
+  ⚠ test/language/expressions/compound-assignment/11.13.2-27-s.js: Cannot find name 'assert'.; Property 'prop' does not exist on type '{}'.; Property 'prop' does not exist on type '{}'.; 
+  ⚠ test/language/expressions/compound-assignment/11.13.2-28-s.js: Cannot find name 'assert'.; Property 'prop' does not exist on type '{}'.; Property 'prop' does not exist on type '{}'.; 
+  ⚠ test/language/expressions/compound-assignment/11.13.2-29-s.js: Cannot find name 'assert'.; Property 'prop' does not exist on type '{}'.; Property 'prop' does not exist on type '{}'.; 
+  ⚠ test/language/expressions/compound-assignment/11.13.2-30-s.js: Cannot find name 'assert'.; Property 'prop' does not exist on type '{}'.; Property 'prop' does not exist on type '{}'.; 
+  ⚠ test/language/expressions/compound-assignment/11.13.2-31-s.js: Cannot find name 'assert'.; Property 'prop' does not exist on type '{}'.; Property 'prop' does not exist on type '{}'.; 
+  ⚠ test/language/expressions/compound-assignment/11.13.2-32-s.js: Cannot find name 'assert'.; Property 'prop' does not exist on type '{}'.; Property 'prop' does not exist on type '{}'.; 
+  ⚠ test/language/expressions/compound-assignment/11.13.2-33-s.js: Cannot find name 'assert'.; Property 'prop' does not exist on type '{}'.; Property 'prop' does not exist on type '{}'.; 
+  ⚠ test/language/expressions/compound-assignment/11.13.2-34-s.js: Cannot find name 'assert'.; Property 'prop' does not exist on type '{}'.; Property 'prop' does not exist on type '{}'.; 
+  ⚠ test/language/expressions/compound-assignment/11.13.2-35-s.js: Cannot find name 'assert'.; Property 'prop' does not exist on type '{}'.; Property 'prop' does not exist on type '{}'.; 
+  ⚠ test/language/expressions/compound-assignment/11.13.2-36-s.js: Cannot find name 'assert'.; Property 'prop' does not exist on type '{}'.; Property 'prop' does not exist on type '{}'.; 
+  ⚠ test/language/expressions/compound-assignment/11.13.2-37-s.js: Cannot find name 'assert'.; Property 'prop' does not exist on type '{}'.; Property 'prop' does not exist on type '{}'.; 
+  ⚠ test/language/expressions/compound-assignment/11.13.2-38-s.js: Cannot find name 'assert'.; Property 'prop' does not exist on type '{}'.; Property 'prop' does not exist on type '{}'.; 
+  ⚠ test/language/expressions/compound-assignment/11.13.2-39-s.js: Cannot find name 'assert'.; Property 'prop' does not exist on type '{}'.; Property 'prop' does not exist on type '{}'.; 
+  ⚠ test/language/expressions/compound-assignment/11.13.2-40-s.js: Cannot find name 'assert'.; Property 'prop' does not exist on type '{}'.; Property 'prop' does not exist on type '{}'.; 
+  ⚠ test/language/expressions/compound-assignment/11.13.2-41-s.js: Cannot find name 'assert'.; Property 'prop' does not exist on type '{}'.; Property 'prop' does not exist on type '{}'.; 
+  ⚠ test/language/expressions/compound-assignment/11.13.2-42-s.js: Cannot find name 'assert'.; Property 'prop' does not exist on type '{}'.; Property 'prop' does not exist on type '{}'.; 
+  ⚠ test/language/expressions/compound-assignment/11.13.2-43-s.js: Cannot find name 'assert'.; Property 'prop' does not exist on type '{}'.; Property 'prop' does not exist on type '{}'.; 
+  ⚠ test/language/expressions/compound-assignment/11.13.2-44-s.js: Cannot find name 'assert'.; Property 'prop' does not exist on type '{}'.; Property 'prop' does not exist on type '{}'.; 
+  ⚠ test/language/expressions/compound-assignment/11.13.2-45-s.js: Cannot find name 'assert'.; Property 'len' does not exist on type '{}'.; Unsupported call expression; Unsupported call e
+  ⚠ test/language/expressions/compound-assignment/11.13.2-46-s.js: Cannot find name 'assert'.; Property 'len' does not exist on type '{}'.; Unsupported call expression; Unsupported call e
+  ⚠ test/language/expressions/compound-assignment/11.13.2-47-s.js: Cannot find name 'assert'.; Property 'len' does not exist on type '{}'.; Unsupported call expression; Unsupported call e
+  ⚠ test/language/expressions/compound-assignment/11.13.2-48-s.js: Cannot find name 'assert'.; Property 'len' does not exist on type '{}'.; Unsupported call expression; Unsupported call e
+  ⚠ test/language/expressions/compound-assignment/11.13.2-49-s.js: Cannot find name 'assert'.; Property 'len' does not exist on type '{}'.; Unsupported call expression; Unsupported call e
+  ⚠ test/language/expressions/compound-assignment/11.13.2-50-s.js: Cannot find name 'assert'.; Property 'len' does not exist on type '{}'.; Unsupported call expression; Unsupported call e
+  ⚠ test/language/expressions/compound-assignment/11.13.2-51-s.js: Cannot find name 'assert'.; Property 'len' does not exist on type '{}'.; Unsupported call expression; Unsupported call e
+  ⚠ test/language/expressions/compound-assignment/11.13.2-52-s.js: Cannot find name 'assert'.; Property 'len' does not exist on type '{}'.; Unsupported call expression; Unsupported call e
+  ⚠ test/language/expressions/compound-assignment/11.13.2-53-s.js: Cannot find name 'assert'.; Property 'len' does not exist on type '{}'.; Unsupported call expression; Unsupported call e
+  ⚠ test/language/expressions/compound-assignment/11.13.2-54-s.js: Cannot find name 'assert'.; Property 'len' does not exist on type '{}'.; Unsupported call expression; Unsupported call e
+  ⚠ test/language/expressions/compound-assignment/11.13.2-55-s.js: Cannot find name 'assert'.; Property 'len' does not exist on type '{}'.; Unsupported call expression; Unsupported call e
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A2.1_T1.3.js: Unsupported numeric binary operator: PercentEqualsToken; Unsupported numeric binary operator: PercentEqualsToken
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A3.1_T3.js: Unsupported numeric binary operator: PercentEqualsToken; Unsupported binary operator for type
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A3.2_T3.js: Unsupported numeric binary operator: PercentEqualsToken; Unsupported binary operator for type
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A4.10_T1.4.js: The value 'undefined' cannot be used here.; The value 'null' cannot be used here.; The value 'undefined' cannot be used 
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A4.11_T1.4.js: The value 'undefined' cannot be used here.; The value 'null' cannot be used here.; The value 'undefined' cannot be used 
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A4.1_T1.4.js: The value 'undefined' cannot be used here.; The value 'null' cannot be used here.; The value 'undefined' cannot be used 
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A4.2_T1.4.js: The value 'undefined' cannot be used here.; The value 'null' cannot be used here.; The value 'undefined' cannot be used 
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A4.3_T1.4.js: The value 'undefined' cannot be used here.; The value 'null' cannot be used here.; The value 'undefined' cannot be used 
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A4.5_T1.4.js: The value 'undefined' cannot be used here.; The value 'null' cannot be used here.; The value 'undefined' cannot be used 
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A4.6_T1.4.js: The value 'undefined' cannot be used here.; The value 'null' cannot be used here.; The value 'undefined' cannot be used 
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A4.7_T1.4.js: The value 'undefined' cannot be used here.; The value 'null' cannot be used here.; The value 'undefined' cannot be used 
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A4.8_T1.4.js: The value 'undefined' cannot be used here.; The value 'null' cannot be used here.; The value 'undefined' cannot be used 
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A4.9_T1.4.js: The value 'undefined' cannot be used here.; The value 'null' cannot be used here.; The value 'undefined' cannot be used 
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.10_T1.js: Cannot find name 'assert'.; 'base' is possibly 'null'.; Cannot find name 'assert'.; 'base' is possibly 'null'.; Unsuppor
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.10_T2.js: Cannot find name 'assert'.; 'base' is possibly 'undefined'.; Cannot find name 'assert'.; 'base' is possibly 'undefined'.
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.10_T3.js: Cannot find name 'assert'.; Type '{ toString: () => never; }' cannot be used as an index type.; Unsupported call express
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.10_T4.js: Argument of type 'boolean' is not assignable to parameter of type 'number'.; Type '{ toString: () => string; }' cannot b
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.11_T1.js: Cannot find name 'assert'.; 'base' is possibly 'null'.; Cannot find name 'assert'.; 'base' is possibly 'null'.; Unsuppor
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.11_T2.js: Cannot find name 'assert'.; 'base' is possibly 'undefined'.; Cannot find name 'assert'.; 'base' is possibly 'undefined'.
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.11_T3.js: Cannot find name 'assert'.; Type '{ toString: () => never; }' cannot be used as an index type.; Unsupported call express
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.11_T4.js: Argument of type 'boolean' is not assignable to parameter of type 'number'.; Type '{ toString: () => string; }' cannot b
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.1_T1.js: Cannot find name 'assert'.; 'base' is possibly 'null'.; Cannot find name 'assert'.; 'base' is possibly 'null'.; Unsuppor
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.1_T2.js: Cannot find name 'assert'.; 'base' is possibly 'undefined'.; Cannot find name 'assert'.; 'base' is possibly 'undefined'.
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.1_T3.js: Cannot find name 'assert'.; Type '{ toString: () => never; }' cannot be used as an index type.; Unsupported call express
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.1_T4.js: Argument of type 'boolean' is not assignable to parameter of type 'number'.; Type '{ toString: () => string; }' cannot b
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.2_T1.js: Cannot find name 'assert'.; 'base' is possibly 'null'.; Cannot find name 'assert'.; 'base' is possibly 'null'.; Unsuppor
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.2_T2.js: Cannot find name 'assert'.; 'base' is possibly 'undefined'.; Cannot find name 'assert'.; 'base' is possibly 'undefined'.
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.2_T3.js: Cannot find name 'assert'.; Type '{ toString: () => never; }' cannot be used as an index type.; Unsupported call express
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.2_T4.js: Argument of type 'boolean' is not assignable to parameter of type 'number'.; Type '{ toString: () => string; }' cannot b
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.3_T1.js: Cannot find name 'assert'.; 'base' is possibly 'null'.; Cannot find name 'assert'.; 'base' is possibly 'null'.; Unsuppor
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.3_T2.js: Cannot find name 'assert'.; 'base' is possibly 'undefined'.; Cannot find name 'assert'.; 'base' is possibly 'undefined'.
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.3_T3.js: Cannot find name 'assert'.; Type '{ toString: () => never; }' cannot be used as an index type.; Unsupported call express
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.3_T4.js: Argument of type 'boolean' is not assignable to parameter of type 'number'.; Type '{ toString: () => string; }' cannot b
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.4_T1.js: Cannot find name 'assert'.; 'base' is possibly 'null'.; Cannot find name 'assert'.; 'base' is possibly 'null'.; Unsuppor
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.4_T2.js: Cannot find name 'assert'.; 'base' is possibly 'undefined'.; Cannot find name 'assert'.; 'base' is possibly 'undefined'.
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.4_T3.js: Cannot find name 'assert'.; Type '{ toString: () => never; }' cannot be used as an index type.; Unsupported call express
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.4_T4.js: Argument of type 'boolean' is not assignable to parameter of type 'number'.; Type '{ toString: () => string; }' cannot b
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.5_T1.js: Cannot find name 'assert'.; 'base' is possibly 'null'.; Cannot find name 'assert'.; 'base' is possibly 'null'.; Unsuppor
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.5_T2.js: Cannot find name 'assert'.; 'base' is possibly 'undefined'.; Cannot find name 'assert'.; 'base' is possibly 'undefined'.
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.5_T3.js: Cannot find name 'assert'.; Type '{ toString: () => never; }' cannot be used as an index type.; Unsupported call express
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.5_T4.js: Argument of type 'boolean' is not assignable to parameter of type 'number'.; Type '{ toString: () => string; }' cannot b
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.6_T1.js: Cannot find name 'assert'.; 'base' is possibly 'null'.; Cannot find name 'assert'.; 'base' is possibly 'null'.; Unsuppor
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.6_T2.js: Cannot find name 'assert'.; 'base' is possibly 'undefined'.; Cannot find name 'assert'.; 'base' is possibly 'undefined'.
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.6_T3.js: Cannot find name 'assert'.; Type '{ toString: () => never; }' cannot be used as an index type.; Unsupported call express
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.6_T4.js: Argument of type 'boolean' is not assignable to parameter of type 'number'.; Type '{ toString: () => string; }' cannot b
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.7_T1.js: Cannot find name 'assert'.; 'base' is possibly 'null'.; Cannot find name 'assert'.; 'base' is possibly 'null'.; Unsuppor
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.7_T2.js: Cannot find name 'assert'.; 'base' is possibly 'undefined'.; Cannot find name 'assert'.; 'base' is possibly 'undefined'.
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.7_T3.js: Cannot find name 'assert'.; Type '{ toString: () => never; }' cannot be used as an index type.; Unsupported call express
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.7_T4.js: Argument of type 'boolean' is not assignable to parameter of type 'number'.; Type '{ toString: () => string; }' cannot b
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.8_T1.js: Cannot find name 'assert'.; 'base' is possibly 'null'.; Cannot find name 'assert'.; 'base' is possibly 'null'.; Unsuppor
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.8_T2.js: Cannot find name 'assert'.; 'base' is possibly 'undefined'.; Cannot find name 'assert'.; 'base' is possibly 'undefined'.
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.8_T3.js: Cannot find name 'assert'.; Type '{ toString: () => never; }' cannot be used as an index type.; Unsupported call express
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.8_T4.js: Argument of type 'boolean' is not assignable to parameter of type 'number'.; Type '{ toString: () => string; }' cannot b
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.9_T1.js: Cannot find name 'assert'.; 'base' is possibly 'null'.; Cannot find name 'assert'.; 'base' is possibly 'null'.; Unsuppor
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.9_T2.js: Cannot find name 'assert'.; 'base' is possibly 'undefined'.; Cannot find name 'assert'.; 'base' is possibly 'undefined'.
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.9_T3.js: Cannot find name 'assert'.; Type '{ toString: () => never; }' cannot be used as an index type.; Unsupported call express
+  ⚠ test/language/expressions/compound-assignment/S11.13.2_A7.9_T4.js: Argument of type 'boolean' is not assignable to parameter of type 'number'.; Type '{ toString: () => string; }' cannot b
+  ⚠ test/language/expressions/compound-assignment/compound-assignment-operator-calls-putvalue-lref--v--1.js: 'this' implicitly has type 'any' because it does not have a type annotation.; Cannot find name 'assert'.; Cannot find na
+  ⚠ test/language/expressions/compound-assignment/compound-assignment-operator-calls-putvalue-lref--v--11.js: 'this' implicitly has type 'any' because it does not have a type annotation.; Cannot find name 'assert'.; Cannot find na
+  ⚠ test/language/expressions/compound-assignment/compound-assignment-operator-calls-putvalue-lref--v--13.js: 'this' implicitly has type 'any' because it does not have a type annotation.; Cannot find name 'assert'.; Cannot find na
+  ⚠ test/language/expressions/compound-assignment/compound-assignment-operator-calls-putvalue-lref--v--15.js: 'this' implicitly has type 'any' because it does not have a type annotation.; Cannot find name 'assert'.; Cannot find na
+  ⚠ test/language/expressions/compound-assignment/compound-assignment-operator-calls-putvalue-lref--v--17.js: 'this' implicitly has type 'any' because it does not have a type annotation.; Cannot find name 'assert'.; Cannot find na
+  ⚠ test/language/expressions/compound-assignment/compound-assignment-operator-calls-putvalue-lref--v--19.js: 'this' implicitly has type 'any' because it does not have a type annotation.; Cannot find name 'assert'.; Cannot find na
+  ⚠ test/language/expressions/compound-assignment/compound-assignment-operator-calls-putvalue-lref--v--21.js: 'this' implicitly has type 'any' because it does not have a type annotation.; Cannot find name 'assert'.; Cannot find na
+  ⚠ test/language/expressions/compound-assignment/compound-assignment-operator-calls-putvalue-lref--v--3.js: 'this' implicitly has type 'any' because it does not have a type annotation.; Cannot find name 'assert'.; Cannot find na
+  ⚠ test/language/expressions/compound-assignment/compound-assignment-operator-calls-putvalue-lref--v--5.js: 'this' implicitly has type 'any' because it does not have a type annotation.; Cannot find name 'assert'.; Cannot find na
+  ⚠ test/language/expressions/compound-assignment/compound-assignment-operator-calls-putvalue-lref--v--7.js: 'this' implicitly has type 'any' because it does not have a type annotation.; Cannot find name 'assert'.; Cannot find na
+  ⚠ test/language/expressions/compound-assignment/compound-assignment-operator-calls-putvalue-lref--v--9.js: 'this' implicitly has type 'any' because it does not have a type annotation.; Cannot find name 'assert'.; Cannot find na
+  ⚠ test/language/expressions/compound-assignment/mod-whitespace.js: Unsupported binary operator for type; Unsupported binary operator for type; Unsupported binary operator for type; Unsupp
+  ⚠ test/language/expressions/logical-assignment/lgcl-and-assignment-operator-lhs-before-rhs.js: Cannot find name 'assert'.; 'base' is possibly 'null'.; Cannot find name 'assert'.; 'base' is possibly 'null'.; Argument
+  ⚠ test/language/expressions/logical-assignment/lgcl-and-assignment-operator-namedevaluation-arrow-function.js: Type '() => void' is not assignable to type 'number'.; Property 'name' does not exist on type 'number'.; Argument of typ
+  ⚠ test/language/expressions/logical-assignment/lgcl-and-assignment-operator-namedevaluation-class-expression.js: Type 'typeof value' is not assignable to type 'number'.; Property 'name' does not exist on type 'number'.; Argument of t
+  ⚠ test/language/expressions/logical-assignment/lgcl-and-assignment-operator-namedevaluation-function.js: Type '() => void' is not assignable to type 'number'.; Property 'name' does not exist on type 'number'.; Argument of typ
+  ⚠ test/language/expressions/logical-assignment/lgcl-and-assignment-operator-no-set-put.js: Cannot find name 'assert'.; Property 'prop' does not exist on type '{}'.; Property 'prop' does not exist on type '{}'.; 
+  ⚠ test/language/expressions/logical-assignment/lgcl-and-assignment-operator-no-set.js: Property 'prop' does not exist on type '{}'.; Unsupported call expression; Logical assignment only supported for simple 
+  ⚠ test/language/expressions/logical-assignment/lgcl-and-assignment-operator-non-extensible.js: Property 'prop' does not exist on type '{}'.; Property 'prop' does not exist on type '{}'.; Argument of type 'undefined'
+  ⚠ test/language/expressions/logical-assignment/lgcl-and-assignment-operator-non-writeable-put.js: Cannot find name 'assert'.; Property 'prop' does not exist on type '{}'.; Property 'prop' does not exist on type '{}'.; 
+  ⚠ test/language/expressions/logical-assignment/lgcl-and-assignment-operator-non-writeable.js: Property 'prop' does not exist on type '{}'.; Unsupported call expression; Logical assignment only supported for simple 
+  ⚠ test/language/expressions/logical-assignment/lgcl-and-assignment-operator-unresolved-lhs.js: Cannot find name 'assert'.; Cannot find name 'unresolved'.; Unsupported call expression
+  ⚠ test/language/expressions/logical-assignment/lgcl-and-assignment-operator-unresolved-rhs-put.js: Cannot find name 'assert'.; Cannot find name 'unresolved'.; Unsupported call expression
+  ⚠ test/language/expressions/logical-assignment/lgcl-and-assignment-operator-unresolved-rhs.js: Cannot find name 'unresolved'.; Unknown identifier: unresolved
+  ⚠ test/language/expressions/logical-assignment/lgcl-and-assignment-operator.js: Type '1' is not assignable to type 'undefined'.; Argument of type 'undefined' is not assignable to parameter of type 'nu
+  ⚠ test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator-lhs-before-rhs.js: Cannot find name 'assert'.; 'base' is possibly 'null'.; Cannot find name 'assert'.; 'base' is possibly 'null'.; Unsuppor
+  ⚠ test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator-namedevaluation-arrow-function.js: Type '() => void' is not assignable to type 'undefined'.; 'value' is possibly 'undefined'.; Argument of type 'string' is
+  ⚠ test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator-namedevaluation-class-expression.js: Type 'typeof value' is not assignable to type 'undefined'.; 'value' is possibly 'undefined'.; Argument of type 'string' 
+  ⚠ test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator-namedevaluation-function.js: Type '() => void' is not assignable to type 'undefined'.; 'value' is possibly 'undefined'.; Argument of type 'string' is
+  ⚠ test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator-no-set-put.js: Cannot find name 'assert'.; Property 'prop' does not exist on type '{}'.; Property 'prop' does not exist on type '{}'.; 
+  ⚠ test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator-no-set.js: Property 'prop' does not exist on type '{}'.; Unsupported call expression; Logical assignment only supported for simple 
+  ⚠ test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator-non-extensible.js: Cannot find name 'assert'.; Property 'prop' does not exist on type '{}'.; Property 'prop' does not exist on type '{}'.; 
+  ⚠ test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator-non-writeable-put.js: Cannot find name 'assert'.; Property 'prop' does not exist on type '{}'.; Property 'prop' does not exist on type '{}'.; 
+  ⚠ test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator-non-writeable.js: Property 'prop' does not exist on type '{}'.; Unsupported call expression; Logical assignment only supported for simple 
+  ⚠ test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator-unresolved-lhs.js: Cannot find name 'assert'.; Cannot find name 'unresolved'.; Unsupported call expression
+  ⚠ test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator-unresolved-rhs-put.js: Cannot find name 'assert'.; Cannot find name 'unresolved'.; Argument of type 'undefined' is not assignable to parameter 
+  ⚠ test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator-unresolved-rhs.js: Cannot find name 'unresolved'.; Unknown identifier: unresolved
+  ⚠ test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator.js: Type '1' is not assignable to type 'undefined'.; Type 'null' is not assignable to type 'undefined'.; Type '1' is not ass
+  ⚠ test/language/expressions/logical-assignment/lgcl-or-assignment-operator-lhs-before-rhs.js: Cannot find name 'assert'.; 'base' is possibly 'null'.; Cannot find name 'assert'.; 'base' is possibly 'null'.; Unsuppor
+  ⚠ test/language/expressions/logical-assignment/lgcl-or-assignment-operator-namedevaluation-arrow-function.js: Type '() => void' is not assignable to type 'number'.; Property 'name' does not exist on type 'number'.; Argument of typ
+  ⚠ test/language/expressions/logical-assignment/lgcl-or-assignment-operator-namedevaluation-class-expression.js: Type 'typeof value' is not assignable to type 'number'.; Property 'name' does not exist on type 'number'.; Argument of t
+  ⚠ test/language/expressions/logical-assignment/lgcl-or-assignment-operator-namedevaluation-function.js: Type '() => void' is not assignable to type 'number'.; Property 'name' does not exist on type 'number'.; Argument of typ
+  ⚠ test/language/expressions/logical-assignment/lgcl-or-assignment-operator-no-set-put.js: Cannot find name 'assert'.; Property 'prop' does not exist on type '{}'.; Property 'prop' does not exist on type '{}'.; 
+  ⚠ test/language/expressions/logical-assignment/lgcl-or-assignment-operator-no-set.js: Property 'prop' does not exist on type '{}'.; Unsupported call expression; Logical assignment only supported for simple 
+  ⚠ test/language/expressions/logical-assignment/lgcl-or-assignment-operator-non-extensible.js: Cannot find name 'assert'.; Property 'prop' does not exist on type '{}'.; Property 'prop' does not exist on type '{}'.; 
+  ⚠ test/language/expressions/logical-assignment/lgcl-or-assignment-operator-non-writeable-put.js: Cannot find name 'assert'.; Property 'prop' does not exist on type '{}'.; Property 'prop' does not exist on type '{}'.; 
+  ⚠ test/language/expressions/logical-assignment/lgcl-or-assignment-operator-non-writeable.js: Property 'prop' does not exist on type '{}'.; Unsupported call expression; Logical assignment only supported for simple 
+  ⚠ test/language/expressions/logical-assignment/lgcl-or-assignment-operator-unresolved-lhs.js: Cannot find name 'assert'.; Cannot find name 'unresolved'.; Unsupported call expression
+  ⚠ test/language/expressions/logical-assignment/lgcl-or-assignment-operator-unresolved-rhs-put.js: Cannot find name 'assert'.; Cannot find name 'unresolved'.; Unsupported call expression
+  ⚠ test/language/expressions/logical-assignment/lgcl-or-assignment-operator-unresolved-rhs.js: Cannot find name 'unresolved'.; Unknown identifier: unresolved
+  ⚠ test/language/expressions/logical-assignment/lgcl-or-assignment-operator.js: Type '1' is not assignable to type 'undefined'.; Type 'null' is not assignable to type 'undefined'.; Type '1' is not ass
+  ⚠ test/language/expressions/grouping/S11.1.6_A2_T1.js: Cannot find name 'x'.; Property 'prop' does not exist on type '{}'.; Property 'prop' does not exist on type '{}'.; Unkno
+  ⚠ test/language/expressions/grouping/S11.1.6_A2_T2.js: Cannot find name 'x'.; The operand of a 'delete' operator must be a property reference.; Unsupported expression: DeleteE
+  ⚠ test/language/expressions/grouping/S11.1.6_A3_T6.js: Cannot find name 'x'.; The operand of a 'delete' operator must be a property reference.; Unsupported expression: DeleteE
+  ⚠ test/language/expressions/grouping/S11.1.6_A3_T7.js: Cannot find name 'x'.; Unknown identifier: x
+  ⚠ test/language/expressions/call/S11.2.4_A1.4_T1.js: Cannot find name 'x'.; Expected 0 arguments, but got 2.; Cannot find name 'x'.; Unsupported assignment target; Unknown i
+  ⚠ test/language/expressions/call/S11.2.4_A1.4_T3.js: Cannot find name 'x'.; Cannot find name 'y'.; Cannot find name 'x'.; Cannot find name 'x'.; Cannot find name 'y'.; Unsup
+  ⚠ test/language/expressions/call/scope-var-close.js: Argument of type 'string' is not assignable to parameter of type 'number'.; Argument of type 'string' is not assignable 
+  ⚠ test/language/expressions/call/scope-var-open.js: Argument of type 'string' is not assignable to parameter of type 'number'.; Argument of type 'undefined' is not assignab
+  ⚠ test/language/expressions/function/S10.1.1_A1_T2.js: Unsupported call expression; Unsupported call expression; Unsupported call expression
+  ⚠ test/language/expressions/function/forbidden-ext/b1/func-expr-strict-forbidden-ext-direct-access-prop-arguments.js: Argument of type 'boolean' is not assignable to parameter of type 'number'.; Unsupported call expression; Unknown functi
+  ⚠ test/language/expressions/function/forbidden-ext/b2/func-expr-forbidden-ext-indirect-access-own-prop-caller-get.js: This expression is not callable.; Unknown function: Symbol; Unsupported call expression; Cannot access property 'caller'
+  ⚠ test/language/expressions/function/forbidden-ext/b2/func-expr-forbidden-ext-indirect-access-own-prop-caller-value.js: This expression is not callable.; Unknown function: Symbol; Unsupported call expression; Cannot access property 'caller'
+  ⚠ test/language/expressions/function/forbidden-ext/b2/func-expr-forbidden-ext-indirect-access-prop-caller.js: This expression is not callable.; Unknown function: Symbol; Unsupported call expression; Cannot access property 'caller'
+  ⚠ test/language/expressions/function/named-no-strict-reassign-fn-name-in-body-in-arrow.js: Cannot assign to 'BindingIdentifier' because it is a function.; Argument of type '() => ...' is not assignable to parame
+  ⚠ test/language/expressions/function/named-no-strict-reassign-fn-name-in-body.js: Cannot assign to 'BindingIdentifier' because it is a function.; Argument of type '() => ...' is not assignable to parame
+  ⚠ test/language/expressions/function/named-strict-error-reassign-fn-name-in-body-in-arrow.js: Cannot assign to 'BindingIdentifier' because it is a function.; Cannot find name 'assert'.; Unsupported call expression;
+  ⚠ test/language/expressions/function/named-strict-error-reassign-fn-name-in-body.js: Cannot assign to 'BindingIdentifier' because it is a function.; Cannot find name 'assert'.; Unsupported call expression
+  ⚠ test/language/expressions/function/param-duplicated-non-strict.js: Duplicate identifier 'a'.; Duplicate identifier 'a'.
+  ⚠ test/language/expressions/function/param-eval-non-strict-is-correct-value.js: Invalid use of 'eval'. Modules are automatically in strict mode.; Argument of type '{}' is not assignable to parameter o
+  ⚠ test/language/expressions/function/param-eval-non-strict.js: Invalid use of 'eval'. Modules are automatically in strict mode.
+  ⚠ test/language/expressions/function/scope-name-var-close.js: Argument of type 'string' is not assignable to parameter of type 'number'.; Argument of type '() => void' is not assigna
+  ⚠ test/language/expressions/function/scope-name-var-open-non-strict.js: Type 'null' is not assignable to type 'string'.; Cannot assign to 'f' because it is a function.; Cannot assign to 'f' be
+  ⚠ test/language/expressions/function/scope-name-var-open-strict.js: Type 'null' is not assignable to type 'string'.; Cannot assign to 'f' because it is a function.; Cannot assign to 'f' be
+  ⚠ test/language/expressions/function/scope-paramsbody-var-close.js: Argument of type 'string' is not assignable to parameter of type 'number'.; Argument of type 'string' is not assignable 
+  ⚠ test/language/expressions/function/scope-paramsbody-var-open.js: Argument of type 'string' is not assignable to parameter of type 'number'.; Argument of type 'string' is not assignable 
+  ⚠ test/language/expressions/function/static-init-await-binding.js: Identifier expected. 'await' is a reserved word that cannot be used here.; Unsupported statement: ClassDeclaration
+  ⚠ test/language/expressions/function/static-init-await-reference.js: Unsupported statement: ClassDeclaration
+  ⚠ test/language/statements/if/S12.5_A1.1_T1.js: This kind of expression is always falsy.; This kind of expression is always falsy.; This kind of expression is always fa
+  ⚠ test/language/statements/if/S12.5_A1.1_T2.js: This kind of expression is always falsy.; This kind of expression is always falsy.; This kind of expression is always fa
+  ⚠ test/language/statements/if/S12.5_A10_T1.js: This kind of expression is always truthy.; Unsupported statement: EmptyStatement
+  ⚠ test/language/statements/if/S12.5_A10_T2.js: Unsupported call expression; Unsupported statement: EmptyStatement
+  ⚠ test/language/statements/if/S12.5_A12_T1.js: The body of an 'if' statement cannot be the empty statement.; The body of an 'if' statement cannot be the empty statemen
+  ⚠ test/language/statements/if/S12.5_A12_T2.js: The body of an 'if' statement cannot be the empty statement.; The body of an 'if' statement cannot be the empty statemen
+  ⚠ test/language/statements/if/S12.5_A12_T3.js: The body of an 'if' statement cannot be the empty statement.; Unsupported statement: EmptyStatement; Unsupported stateme
+  ⚠ test/language/statements/if/S12.5_A1_T1.js: This kind of expression is always truthy.; This kind of expression is always truthy.
+  ⚠ test/language/statements/if/S12.5_A1_T2.js: This kind of expression is always truthy.; This kind of expression is always truthy.
+  ⚠ test/language/statements/if/empty-statement.js: The body of an 'if' statement cannot be the empty statement.; Unsupported statement: EmptyStatement
+  ⚠ test/language/statements/if/let-block-with-newline.js: 'let' declarations can only be declared inside a block.; A destructuring declaration must have an initializer.
+  ⚠ test/language/statements/if/let-identifier-with-newline.js: 'let' declarations can only be declared inside a block.
+  ⚠ test/language/statements/while/S12.6.2_A10.js: This kind of expression is always truthy.; Cannot find name 'f'.; Unknown identifier: f
+  ⚠ test/language/statements/while/S12.6.2_A11.js: This kind of expression is always truthy.; Variable '__in__do' is used before being assigned.; Unsupported statement: Em
+  ⚠ test/language/statements/while/S12.6.2_A14_T1.js: This kind of expression is always truthy.; Variable '__reached' is used before being assigned.; Unsupported statement: E
+  ⚠ test/language/statements/while/S12.6.2_A14_T2.js: Variable '__reached' is used before being assigned.; Unsupported call expression; Unsupported statement: EmptyStatement
+  ⚠ test/language/statements/while/S12.6.2_A4_T2.js: Variable '__in__do__before__break' is used before being assigned.; Variable '__in__do__before__break' is used before bei
+  ⚠ test/language/statements/while/S12.6.2_A4_T3.js: Variable '__in__do__before__break' is used before being assigned.; Variable '__in__do__before__break' is used before bei
+  ⚠ test/language/statements/while/S12.6.2_A4_T4.js: Variable '__in__do__before__break' is used before being assigned.; Variable '__in__do__before__break' is used before bei
+  ⚠ test/language/statements/while/let-block-with-newline.js: 'let' declarations can only be declared inside a block.; A destructuring declaration must have an initializer.
+  ⚠ test/language/statements/while/let-identifier-with-newline.js: 'let' declarations can only be declared inside a block.
+  ⚠ test/language/statements/do-while/S12.6.1_A1.js: This kind of expression is always falsy.
+  ⚠ test/language/statements/do-while/S12.6.1_A10.js: Cannot find name 'f'.; This kind of expression is always truthy.; Unknown identifier: f
+  ⚠ test/language/statements/do-while/S12.6.1_A11.js: This kind of expression is always truthy.
+  ⚠ test/language/statements/do-while/S12.6.1_A14_T1.js: This kind of expression is always truthy.
+  ⚠ test/language/statements/do-while/S12.6.1_A14_T2.js: Unsupported call expression
+  ⚠ test/language/statements/do-while/S12.6.1_A4_T1.js: This comparison appears to be unintentional because the types '2' and '1' have no overlap.
+  ⚠ test/language/statements/do-while/S12.6.1_A4_T2.js: This comparison appears to be unintentional because the types '2' and '1' have no overlap.; Variable '__in__do__IN__afte
+  ⚠ test/language/statements/do-while/S12.6.1_A4_T3.js: This comparison appears to be unintentional because the types '2' and '1' have no overlap.; Variable '__in__do__IN__afte
+  ⚠ test/language/statements/do-while/S12.6.1_A4_T4.js: This comparison appears to be unintentional because the types '2' and '1' have no overlap.; Variable '__in__do__IN__afte
+  ⚠ test/language/statements/for/12.6.3_2-3-a-ii-1.js: Expected 1 arguments, but got 2.
+  ⚠ test/language/statements/for/12.6.3_2-3-a-ii-17.js: This kind of expression is always truthy.; Expected 1 arguments, but got 2.
+  ⚠ test/language/statements/for/12.6.3_2-3-a-ii-18.js: This kind of expression is always falsy.
+  ⚠ test/language/statements/for/12.6.3_2-3-a-ii-19.js: This kind of expression is always truthy.; Expected 1 arguments, but got 2.
+  ⚠ test/language/statements/for/12.6.3_2-3-a-ii-20.js: This kind of expression is always truthy.; Expected 1 arguments, but got 2.
+  ⚠ test/language/statements/for/12.6.3_2-3-a-ii-21.js: This kind of expression is always truthy.; Expected 1 arguments, but got 2.
+  ⚠ test/language/statements/for/head-init-async-of.js: Cannot find global value 'Promise'.; An async function or method in ES5 requires the 'Promise' constructor.  Make sure y
+  ⚠ test/language/statements/for/head-let-destructuring.js: Argument of type 'string' is not assignable to parameter of type 'number'.; Cannot find name 'x'.; Unknown identifier: x
+  ⚠ test/language/statements/for/head-lhs-let.js: Variable declaration expected.; Variable declaration expected.; Expression expected.; Declaration or statement expected.
+  ⚠ test/language/statements/for/let-block-with-newline.js: 'let' declarations can only be declared inside a block.; A destructuring declaration must have an initializer.
+  ⚠ test/language/statements/for/let-identifier-with-newline.js: 'let' declarations can only be declared inside a block.
+  ⚠ test/language/statements/switch/S12.11_A1_T4.js: Unknown identifier: isNaN; Unknown identifier: parseInt; Unknown identifier: isNaN
+  ⚠ test/language/statements/switch/syntax/redeclaration/var-name-redeclaration-attempt-with-var.js: Type '1' is not comparable to type '0'.
+  ⚠ test/language/statements/break/S12.8_A3.js: 'A label is not allowed here.; 'A label is not allowed here.; Unsupported statement: EmptyStatement
+  ⚠ test/language/statements/break/S12.8_A4_T1.js: 'A label is not allowed here.; Unsupported call expression
+  ⚠ test/language/statements/break/S12.8_A4_T2.js: 'A label is not allowed here.; The '&' operator is not allowed for boolean types. Consider using '&&' instead.; Unsuppor
+  ⚠ test/language/statements/break/S12.8_A4_T3.js: 'A label is not allowed here.; The '&' operator is not allowed for boolean types. Consider using '&&' instead.; Unsuppor
+  ⚠ test/language/statements/break/line-terminators.js: Cannot find name 'FOR1'.; Cannot find name 'FOR2'.; Cannot find name 'FOR3'.; Cannot find name 'FOR4'.; Unknown identifi
+  ⚠ test/language/statements/continue/line-terminators.js: Cannot find name 'FOR1'.; Variable 'j' is used before being assigned.; Cannot find name 'FOR2'.; Variable 'j' is used be
+  ⚠ test/language/statements/return/12.9-1.js: Unsupported call expression
+  ⚠ test/language/statements/return/S12.9_A3.js: Unsupported call expression
+  ⚠ test/language/statements/return/S12.9_A4.js: Unknown function: f; Unknown function: f; Unknown function: f; Cannot access property 'sin' on type 'Math'; Unknown func
+  ⚠ test/language/statements/return/line-terminators.js: Argument of type 'void' is not assignable to parameter of type 'number'.; Argument of type 'void' is not assignable to p
+  ⚠ test/language/statements/block/scope-var-none.js: Argument of type 'string' is not assignable to parameter of type 'number'.; Argument of type 'string' is not assignable 
+  ⚠ test/language/statements/empty/S12.3_A1.js: Unsupported statement: EmptyStatement; Unsupported statement: EmptyStatement; Unsupported statement: EmptyStatement; Uns
+  ⚠ test/language/statements/variable/12.2.1-10-s.js: Unknown identifier: eval; Unknown function: s
+  ⚠ test/language/statements/variable/12.2.1-5-s.js: Unknown function: Function
+  ⚠ test/language/statements/variable/12.2.1-6-s.js: Unknown function: Function; Unknown function: f
+  ⚠ test/language/statements/variable/12.2.1-9-s.js: Unknown identifier: eval; Unknown function: s
+  ⚠ test/language/statements/variable/S12.2_A11.js: 'this' implicitly has type 'any' because it does not have a type annotation.; 'this' implicitly has type 'any' because i
+  ⚠ test/language/statements/variable/S12.2_A2.js: The operand of a 'delete' operator must be a property reference.; 'this' implicitly has type 'any' because it does not h
+  ⚠ test/language/statements/variable/S12.2_A3.js: Unsupported call expression; Unsupported call expression
+  ⚠ test/language/statements/variable/S12.2_A9.js: 'this' implicitly has type 'any' because it does not have a type annotation.
+  ⚠ test/language/statements/variable/S14_A1.js: Variable '__func' is used before being assigned.; Unknown identifier: __func; Unsupported statement: EmptyStatement
+  ⚠ test/language/statements/variable/dstr/ary-ptrn-elem-id-static-init-await-valid.js: Tuple type '[]' of length '0' has no element at index '0'.; Unsupported statement: ClassDeclaration
+  ⚠ test/language/statements/variable/dstr/obj-ptrn-elem-id-static-init-await-valid.js: Property 'await' does not exist on type '{}'.; Unsupported statement: ClassDeclaration
+  ⚠ test/language/statements/variable/static-init-await-binding-valid.js: Unsupported statement: ClassDeclaration
+  ⚠ test/language/statements/labeled/S12.12_A1_T1.js: Codegen error: vec data field not ref
+  ⚠ test/language/statements/labeled/let-block-with-newline.js: 'A label is not allowed here.; A destructuring declaration must have an initializer.
+  ⚠ test/language/statements/labeled/let-identifier-with-newline.js: 'A label is not allowed here.
+  ⚠ test/language/statements/labeled/value-yield-non-strict-escaped.js: Identifier expected. 'yi\u0065ld' is a reserved word in strict mode. Modules are automatically in strict mode.
+  ⚠ test/language/statements/labeled/value-yield-non-strict.js: Identifier expected. 'yield' is a reserved word in strict mode. Modules are automatically in strict mode.
+  ⚠ test/language/statements/try/12.14-10.js: Object literal type not mapped to struct
+  ⚠ test/language/statements/try/12.14-11.js: Object literal type not mapped to struct
+  ⚠ test/language/statements/try/12.14-12.js: 'e' is of type 'unknown'.; Cannot access property 'x' on type 'unknown'; Cannot access property 'x' on type 'unknown'; O
+  ⚠ test/language/statements/try/12.14-13.js: 'this' implicitly has type 'any' because it does not have a type annotation.; 'e' is of type 'unknown'.; Expected 1 argu
+  ⚠ test/language/statements/try/12.14-14.js: 'this' implicitly has type 'any' because it does not have a type annotation.; 'this' implicitly has type 'any' because i
+  ⚠ test/language/statements/try/12.14-15.js: 'this' implicitly has type 'any' because it does not have a type annotation.; Property 'test' does not exist on type '{}
+  ⚠ test/language/statements/try/12.14-16.js: 'this' implicitly has type 'any' because it does not have a type annotation.; 'this' implicitly has type 'any' because i
+  ⚠ test/language/statements/try/12.14-7.js: 'expObj' is of type 'unknown'.; Expected 1 arguments, but got 2.; Cannot find name 'expObj'.; Expected 1 arguments, but 
+  ⚠ test/language/statements/try/12.14-9.js: Object literal type not mapped to struct
+  ⚠ test/language/statements/try/scope-catch-block-var-none.js: Unknown function: probeInside
+  ⚠ test/language/statements/try/scope-catch-param-lex-open.js: Type 'unknown' must have a '[Symbol.iterator]()' method that returns an iterator.; Argument of type 'string' is not assi
+  ⚠ test/language/statements/try/static-init-await-binding-valid.js: Unsupported statement: ClassDeclaration
+  ⚠ test/built-ins/Number/MAX_VALUE/S15.7.3.2_A4.js: Argument of type 'string' is not assignable to parameter of type 'number'.; Expected 1 arguments, but got 2.; Unsupporte
+  ⚠ test/built-ins/Number/MIN_VALUE/S15.7.3.3_A4.js: Argument of type 'string' is not assignable to parameter of type 'number'.; Expected 1 arguments, but got 2.; Unsupporte
+  ⚠ test/built-ins/isNaN/S15.1.2.4_A2.6.js: Argument of type 'undefined' is not assignable to parameter of type 'number'.; Cannot access property 'prototype' on typ
+  ⚠ test/built-ins/isNaN/S15.1.2.4_A2.7.js: Cannot find name 'assert'.; Only a void function can be called with the 'new' keyword.; Expected 1 arguments, but got 0.
+  ⚠ test/built-ins/isNaN/return-abrupt-from-tonumber-number.js: Cannot find name 'assert'.; Cannot find name 'Test262Error'.; Argument of type '{ valueOf: () => number; }' is not assig
+  ⚠ test/built-ins/isNaN/tonumber-operations.js: Argument of type 'boolean' is not assignable to parameter of type 'number'.; Argument of type 'string' is not assignable
+  ⚠ test/built-ins/isFinite/S15.1.2.5_A2.6.js: Argument of type 'undefined' is not assignable to parameter of type 'number'.; Cannot access property 'prototype' on typ
+  ⚠ test/built-ins/isFinite/S15.1.2.5_A2.7.js: Cannot find name 'assert'.; Only a void function can be called with the 'new' keyword.; Expected 1 arguments, but got 0.
+  ⚠ test/built-ins/isFinite/return-abrupt-from-tonumber-number.js: Cannot find name 'assert'.; Cannot find name 'Test262Error'.; Argument of type '{ valueOf: () => number; }' is not assig
+  ⚠ test/built-ins/isFinite/tonumber-operations.js: Argument of type 'boolean' is not assignable to parameter of type 'number'.; Argument of type 'string' is not assignable
+  ⚠ test/language/types/number/S8.5_A5.js: Operator '+' cannot be applied to types 'boolean' and 'boolean'.
+  ⚠ test/language/types/number/S8.5_A9.js: Cannot assign to 'NaN' because it is a read-only property.
+  ⚠ test/language/types/boolean/S8.3_A1_T1.js: Variable 'x' is used before being assigned.; Unknown identifier: x
+  ⚠ test/language/types/boolean/S8.3_A1_T2.js: This comparison appears to be unintentional because the types 'true' and 'false' have no overlap.; This comparison appea
+  ⚠ test/language/types/undefined/S8.1_A1_T2.js: Cannot find name 'ERROR'. Did you mean 'Error'?; Cannot find name 'ERROR'. Did you mean 'Error'?; Cannot find name 'ERRO
+  ⚠ test/language/types/undefined/S8.1_A2_T2.js: Expected 1 arguments, but got 0.
+  ⚠ test/language/types/undefined/S8.1_A4.js: Property 'newProperty' does not exist on type 'Object'.; Cannot access property 'newProperty' on type 'Object'
+  ⚠ test/language/types/undefined/S8.1_A5.js: Expected 1 arguments, but got 0.
+  ⚠ test/language/types/string/S8.4_A10.js: Unsupported statement: EmptyStatement; Unsupported statement: EmptyStatement; Unsupported statement: EmptyStatement
+  ⚠ test/language/types/string/S8.4_A12.js: Cannot access property 'constructor' on type 'string'; Unknown identifier: String
+  ⚠ test/language/types/string/S8.4_A5.js: This comparison appears to be unintentional because the types '"x\0y"' and '"x"' have no overlap.; Unsupported string op
+  ⚠ test/language/types/string/S8.4_A8.js: This comparison appears to be unintentional because the types 'string' and 'number' have no overlap.
+  ⚠ test/language/types/reference/8.7.2-3-a-1gs.js: Cannot find name 'assert'.; Cannot find name 'b'.; Unsupported call expression
+  ⚠ test/language/types/reference/8.7.2-3-a-2gs.js: Cannot find name 'assert'.; Cannot find name 'Test262Error'.; Cannot find name 'b'.; Unsupported call expression
+  ⚠ test/language/types/reference/8.7.2-3-s.js: Cannot find name 'assert'.; Property 'b' does not exist on type '{}'.; Unsupported call expression; Unsupported call exp
+  ⚠ test/language/types/reference/8.7.2-4-s.js: Cannot find name 'assert'.; Property 'b' does not exist on type '{}'.; Unsupported call expression; Unsupported call exp
+  ⚠ test/language/types/reference/8.7.2-5-s.js: Cannot find name 'assert'.; Property 'b' does not exist on type '{}'.; Unsupported call expression; Unsupported call exp
+  ⚠ test/language/types/reference/8.7.2-6-s.js: Property 'b' does not exist on type '{}'.; Property 'b' does not exist on type '{}'.; Unsupported call expression; Canno
+  ⚠ test/language/types/reference/8.7.2-7-s.js: Property 'b' does not exist on type '{}'.; Property 'b' does not exist on type '{}'.; Unsupported call expression; Canno
+  ⚠ test/language/types/reference/8.7.2-8-s.js: Property 'b' does not exist on type '{}'.; Property 'b' does not exist on type '{}'.; Cannot access property 'b' on type
+  ⚠ test/language/types/reference/S8.7.1_A1.js: 'this' implicitly has type 'any' because it does not have a type annotation.; 'this' implicitly has type 'any' because i
+  ⚠ test/language/types/reference/S8.7.1_A2.js: 'delete' cannot be called on an identifier in strict mode.; The operand of a 'delete' operator must be a property refere
+  ⚠ test/language/types/reference/S8.7.2_A3.js: 'this' implicitly has type 'any' because it does not have a type annotation.; 'this' implicitly has type 'any' because i
+  ⚠ test/language/types/reference/S8.7_A1.js: Property 'oneProperty' does not exist on type 'Object'.; Property 'oneProperty' does not exist on type 'Object'.; Proper
+  ⚠ test/language/types/reference/S8.7_A2.js: Unsupported statement: EmptyStatement; Unsupported statement: EmptyStatement
+  ⚠ test/language/types/reference/S8.7_A3.js: Unsupported binary operator for type; Unsupported statement: EmptyStatement
+  ⚠ test/language/types/reference/S8.7_A5_T1.js: Variable '__ref' is used before being assigned.; 'delete' cannot be called on an identifier in strict mode.; The operand
+  ⚠ test/language/types/reference/S8.7_A5_T2.js: Cannot find name '__ref'.; Cannot find name '__ref'.; Cannot find name '__ref'.; 'delete' cannot be called on an identif
+
+ ✓ tests/test262.test.ts (3114 tests) 243657ms
+   ✓ test262: built-ins/Math/abs > test/built-ins/Math/abs/S15.8.2.1_A1.js  467ms
+   ✓ test262: built-ins/Math/abs > test/built-ins/Math/abs/S15.8.2.1_A2.js  427ms
+   ✓ test262: built-ins/Math/abs > test/built-ins/Math/abs/S15.8.2.1_A3.js  383ms
+   ✓ test262: built-ins/Math/abs > test/built-ins/Math/abs/absolute-value.js  331ms
+   ✓ test262: built-ins/Math/ceil > test/built-ins/Math/ceil/S15.8.2.6_A1.js  337ms
+   ✓ test262: built-ins/Math/ceil > test/built-ins/Math/ceil/S15.8.2.6_A2.js  478ms
+   ✓ test262: built-ins/Math/ceil > test/built-ins/Math/ceil/S15.8.2.6_A3.js  372ms
+   ✓ test262: built-ins/Math/ceil > test/built-ins/Math/ceil/S15.8.2.6_A4.js  343ms
+   ✓ test262: built-ins/Math/ceil > test/built-ins/Math/ceil/S15.8.2.6_A5.js  421ms
+   ✓ test262: built-ins/Math/ceil > test/built-ins/Math/ceil/S15.8.2.6_A6.js  307ms
+   ✓ test262: built-ins/Math/ceil > test/built-ins/Math/ceil/S15.8.2.6_A7.js  460ms
+   ✓ test262: built-ins/Math/floor > test/built-ins/Math/floor/S15.8.2.9_A1.js  304ms
+   ✓ test262: built-ins/Math/floor > test/built-ins/Math/floor/S15.8.2.9_A3.js  453ms
+   ✓ test262: built-ins/Math/floor > test/built-ins/Math/floor/S15.8.2.9_A4.js  303ms
+   ✓ test262: built-ins/Math/floor > test/built-ins/Math/floor/S15.8.2.9_A5.js  352ms
+   ✓ test262: built-ins/Math/sqrt > test/built-ins/Math/sqrt/S15.8.2.17_A1.js  395ms
+   ✓ test262: built-ins/Math/sqrt > test/built-ins/Math/sqrt/S15.8.2.17_A2.js  1978ms
+   ✓ test262: built-ins/Math/sqrt > test/built-ins/Math/sqrt/S15.8.2.17_A3.js  1878ms
+   ✓ test262: built-ins/Math/sqrt > test/built-ins/Math/sqrt/S15.8.2.17_A4.js  359ms
+   ✓ test262: built-ins/Math/sqrt > test/built-ins/Math/sqrt/results.js  442ms
+   ✓ test262: built-ins/Math/min > test/built-ins/Math/min/S15.8.2.12_A4.js  364ms
+   ✓ test262: built-ins/Math/clz32 > test/built-ins/Math/clz32/Math.clz32_1.js  347ms
+   ✓ test262: built-ins/Math/clz32 > test/built-ins/Math/clz32/infinity.js  320ms
+   ✓ test262: built-ins/Math/pow > test/built-ins/Math/pow/applying-the-exp-operator_A10.js  432ms
+   ✓ test262: built-ins/Math/pow > test/built-ins/Math/pow/applying-the-exp-operator_A11.js  302ms
+   ✓ test262: built-ins/Math/pow > test/built-ins/Math/pow/applying-the-exp-operator_A17.js  360ms
+   ✓ test262: built-ins/Math/pow > test/built-ins/Math/pow/applying-the-exp-operator_A18.js  403ms
+   ✓ test262: built-ins/Math/pow > test/built-ins/Math/pow/applying-the-exp-operator_A19.js  308ms
+   ✓ test262: built-ins/Math/pow > test/built-ins/Math/pow/applying-the-exp-operator_A2.js  434ms
+   ✓ test262: built-ins/Math/pow > test/built-ins/Math/pow/applying-the-exp-operator_A21.js  311ms
+   ✓ test262: built-ins/Math/pow > test/built-ins/Math/pow/applying-the-exp-operator_A23.js  397ms
+   ✓ test262: built-ins/Math/pow > test/built-ins/Math/pow/applying-the-exp-operator_A3.js  307ms
+   ✓ test262: built-ins/Math/pow > test/built-ins/Math/pow/applying-the-exp-operator_A4.js  354ms
+   ✓ test262: built-ins/Math/pow > test/built-ins/Math/pow/applying-the-exp-operator_A6.js  305ms
+   ✓ test262: built-ins/Math/pow > test/built-ins/Math/pow/applying-the-exp-operator_A8.js  352ms
+   ✓ test262: built-ins/Math/pow > test/built-ins/Math/pow/applying-the-exp-operator_A9.js  305ms
+   ✓ test262: built-ins/Math/exp > test/built-ins/Math/exp/S15.8.2.8_A3.js  337ms
+   ✓ test262: built-ins/Math/exp > test/built-ins/Math/exp/S15.8.2.8_A4.js  335ms
+   ✓ test262: built-ins/Math/exp > test/built-ins/Math/exp/S15.8.2.8_A5.js  332ms
+   ✓ test262: built-ins/Math/log > test/built-ins/Math/log/S15.8.2.10_A1.js  631ms
+   ✓ test262: built-ins/Math/log > test/built-ins/Math/log/S15.8.2.10_A2.js  1561ms
+   ✓ test262: built-ins/Math/log > test/built-ins/Math/log/S15.8.2.10_A3.js  393ms
+   ✓ test262: built-ins/Math/log > test/built-ins/Math/log/S15.8.2.10_A4.js  347ms
+   ✓ test262: built-ins/Math/log > test/built-ins/Math/log/S15.8.2.10_A5.js  401ms
+   ✓ test262: built-ins/Math/sin > test/built-ins/Math/sin/S15.8.2.16_A5.js  414ms
+   ✓ test262: built-ins/Math/cos > test/built-ins/Math/cos/S15.8.2.7_A3.js  306ms
+   ✓ test262: built-ins/Math/asin > test/built-ins/Math/asin/S15.8.2.3_A4.js  347ms
+   ✓ test262: built-ins/Math/acos > test/built-ins/Math/acos/S15.8.2.2_A1.js  510ms
+   ✓ test262: built-ins/Math/acos > test/built-ins/Math/acos/S15.8.2.2_A2.js  328ms
+   ✓ test262: built-ins/Math/atan > test/built-ins/Math/atan/S15.8.2.4_A2.js  494ms
+   ✓ test262: built-ins/Math/atan2 > test/built-ins/Math/atan2/S15.8.2.5_A4.js  744ms
+   ✓ test262: built-ins/Math/atan2 > test/built-ins/Math/atan2/S15.8.2.5_A8.js  365ms
+   ✓ test262: language/expressions/addition > test/language/expressions/addition/S11.6.1_A2.1_T1.js  348ms
+   ✓ test262: language/expressions/addition > test/language/expressions/addition/S11.6.1_A2.2_T2.js  362ms
+   ✓ test262: language/expressions/addition > test/language/expressions/addition/S11.6.1_A4_T9.js  348ms
+   ✓ test262: language/expressions/division > test/language/expressions/division/no-magic-asi.js  346ms
+   ✓ test262: language/expressions/exponentiation > test/language/expressions/exponentiation/applying-the-exp-operator_A15.js  349ms
+   ✓ test262: language/expressions/exponentiation > test/language/expressions/exponentiation/applying-the-exp-operator_A21.js  338ms
+   ✓ test262: language/expressions/exponentiation > test/language/expressions/exponentiation/applying-the-exp-operator_A4.js  324ms
+   ✓ test262: language/expressions/exponentiation > test/language/expressions/exponentiation/applying-the-exp-operator_A7.js  344ms
+   ✓ test262: language/expressions/exponentiation > test/language/expressions/exponentiation/exp-operator.js  351ms
+   ✓ test262: language/expressions/concatenation > test/language/expressions/concatenation/S9.8_A3_T2.js  399ms
+   ✓ test262: language/expressions/bitwise-and > test/language/expressions/bitwise-and/S11.10.1_A3_T1.4.js  370ms
+   ✓ test262: language/expressions/bitwise-or > test/language/expressions/bitwise-or/S11.10.3_A3_T1.5.js  563ms
+   ✓ test262: language/expressions/bitwise-xor > test/language/expressions/bitwise-xor/S11.10.2_A2.4_T1.js  430ms
+   ✓ test262: language/expressions/bitwise-xor > test/language/expressions/bitwise-xor/S11.10.2_A3_T1.4.js  451ms
+   ✓ test262: language/expressions/bitwise-not > test/language/expressions/bitwise-not/S11.4.8_A3_T4.js  320ms
+   ✓ test262: language/expressions/bitwise-not > test/language/expressions/bitwise-not/S9.5_A2.1_T2.js  421ms
+   ✓ test262: language/expressions/bitwise-not > test/language/expressions/bitwise-not/S9.5_A2.2_T2.js  369ms
+   ✓ test262: language/expressions/bitwise-not > test/language/expressions/bitwise-not/S9.5_A3.2_T2.js  324ms
+   ✓ test262: language/expressions/left-shift > test/language/expressions/left-shift/S11.7.1_A2.1_T1.js  317ms
+   ✓ test262: language/expressions/left-shift > test/language/expressions/left-shift/S11.7.1_A2.4_T1.js  386ms
+   ✓ test262: language/expressions/left-shift > test/language/expressions/left-shift/S11.7.1_A4_T1.js  416ms
+   ✓ test262: language/expressions/left-shift > test/language/expressions/left-shift/S11.7.1_A4_T2.js  371ms
+   ✓ test262: language/expressions/left-shift > test/language/expressions/left-shift/S11.7.1_A4_T3.js  335ms
+   ✓ test262: language/expressions/left-shift > test/language/expressions/left-shift/S11.7.1_A4_T4.js  344ms
+   ✓ test262: language/expressions/left-shift > test/language/expressions/left-shift/S9.5_A2.3_T1.js  797ms
+   ✓ test262: language/expressions/left-shift > test/language/expressions/left-shift/S9.5_A3.2_T1.js  341ms
+   ✓ test262: language/expressions/equals > test/language/expressions/equals/S11.9.1_A2.4_T1.js  535ms
+   ✓ test262: language/expressions/equals > test/language/expressions/equals/S11.9.1_A2.4_T4.js  417ms
+   ✓ test262: language/expressions/equals > test/language/expressions/equals/S11.9.1_A3.1.js  344ms
+   ✓ test262: language/expressions/equals > test/language/expressions/equals/S11.9.1_A3.2.js  352ms
+   ✓ test262: language/expressions/equals > test/language/expressions/equals/S11.9.1_A3.3.js  386ms
+   ✓ test262: language/expressions/equals > test/language/expressions/equals/S11.9.1_A4.1_T1.js  312ms
+   ✓ test262: language/expressions/equals > test/language/expressions/equals/S11.9.1_A4.1_T2.js  945ms
+   ✓ test262: language/expressions/equals > test/language/expressions/equals/S11.9.1_A4.3.js  314ms
+   ✓ test262: language/expressions/equals > test/language/expressions/equals/S11.9.1_A5.1.js  306ms
+   ✓ test262: language/expressions/equals > test/language/expressions/equals/S11.9.1_A5.3.js  314ms
+   ✓ test262: language/expressions/equals > test/language/expressions/equals/S11.9.1_A6.2_T2.js  387ms
+   ✓ test262: language/expressions/equals > test/language/expressions/equals/S9.1_A1_T3.js  695ms
+   ✓ test262: language/expressions/does-not-equals > test/language/expressions/does-not-equals/S11.9.2_A2.1_T1.js  320ms
+   ✓ test262: language/expressions/does-not-equals > test/language/expressions/does-not-equals/S11.9.2_A2.4_T1.js  301ms
+   ✓ test262: language/expressions/does-not-equals > test/language/expressions/does-not-equals/S11.9.2_A4.2.js  317ms
+   ✓ test262: language/expressions/does-not-equals > test/language/expressions/does-not-equals/S11.9.2_A5.2.js  321ms
+   ✓ test262: language/expressions/does-not-equals > test/language/expressions/does-not-equals/S11.9.2_A5.3.js  301ms
+   ✓ test262: language/expressions/greater-than > test/language/expressions/greater-than/S11.8.2_A2.1_T1.js  410ms
+   ✓ test262: language/expressions/greater-than > test/language/expressions/greater-than/S11.8.2_A4.12_T1.js  339ms
+   ✓ test262: language/expressions/greater-than > test/language/expressions/greater-than/S11.8.2_A4.6.js  352ms
+   ✓ test262: language/expressions/greater-than-or-equal > test/language/expressions/greater-than-or-equal/S11.8.4_A3.1_T1.3.js  315ms
+   ✓ test262: language/expressions/greater-than-or-equal > test/language/expressions/greater-than-or-equal/S11.8.4_A3.2_T1.2.js  304ms
+   ✓ test262: language/expressions/greater-than-or-equal > test/language/expressions/greater-than-or-equal/S11.8.4_A4.1.js  305ms
+   ✓ test262: language/expressions/greater-than-or-equal > test/language/expressions/greater-than-or-equal/S11.8.4_A4.3.js  318ms
+   ✓ test262: language/expressions/greater-than-or-equal > test/language/expressions/greater-than-or-equal/S11.8.4_A4.6.js  366ms
+   ✓ test262: language/expressions/greater-than-or-equal > test/language/expressions/greater-than-or-equal/S11.8.4_A4.7.js  591ms
+   ✓ test262: language/expressions/greater-than-or-equal > test/language/expressions/greater-than-or-equal/S11.8.4_A4.9.js  618ms
+   ✓ test262: language/expressions/less-than > test/language/expressions/less-than/S11.8.1_A2.1_T1.js  316ms
+   ✓ test262: language/expressions/less-than > test/language/expressions/less-than/S11.8.1_A2.4_T1.js  314ms
+   ✓ test262: language/expressions/less-than > test/language/expressions/less-than/S11.8.1_A2.4_T4.js  328ms
+   ✓ test262: language/expressions/less-than > test/language/expressions/less-than/S11.8.1_A3.1_T1.3.js  399ms
+   ✓ test262: language/expressions/less-than > test/language/expressions/less-than/S11.8.1_A4.1.js  797ms
+   ✓ test262: language/expressions/less-than > test/language/expressions/less-than/S11.8.1_A4.12_T1.js  352ms
+   ✓ test262: language/expressions/less-than > test/language/expressions/less-than/S11.8.1_A4.5.js  314ms
+   ✓ test262: language/expressions/less-than > test/language/expressions/less-than/S11.8.1_A4.6.js  440ms
+   ✓ test262: language/expressions/less-than > test/language/expressions/less-than/S11.8.1_A4.7.js  315ms
+   ✓ test262: language/expressions/less-than-or-equal > test/language/expressions/less-than-or-equal/S11.8.3_A2.4_T1.js  316ms
+   ✓ test262: language/expressions/less-than-or-equal > test/language/expressions/less-than-or-equal/S11.8.3_A2.4_T4.js  360ms
+   ✓ test262: language/expressions/logical-not > test/language/expressions/logical-not/S11.4.9_A2.2_T1.js  308ms
+   ✓ test262: language/expressions/logical-not > test/language/expressions/logical-not/S11.4.9_A3_T4.js  306ms
+   ✓ test262: language/expressions/logical-not > test/language/expressions/logical-not/S9.2_A3_T2.js  309ms
+   ✓ test262: language/expressions/logical-not > test/language/expressions/logical-not/S9.2_A5_T4.js  307ms
+   ✓ test262: language/expressions/conditional > test/language/expressions/conditional/S11.12_A2.1_T6.js  327ms
+   ✓ test262: language/expressions/conditional > test/language/expressions/conditional/coalesce-expr-ternary.js  395ms
+   ✓ test262: language/expressions/typeof > test/language/expressions/typeof/get-value.js  308ms
+   ✓ test262: language/expressions/typeof > test/language/expressions/typeof/native-call.js  387ms
+   ✓ test262: language/expressions/typeof > test/language/expressions/typeof/null.js  344ms
+   ✓ test262: language/expressions/typeof > test/language/expressions/typeof/string.js  325ms
+   ✓ test262: language/expressions/instanceof > test/language/expressions/instanceof/S11.8.6_A5_T1.js  324ms
+   ✓ test262: language/expressions/instanceof > test/language/expressions/instanceof/S11.8.6_A5_T2.js  314ms
+   ✓ test262: language/expressions/instanceof > test/language/expressions/instanceof/S15.3.5.3_A1_T3.js  537ms
+   ✓ test262: language/expressions/instanceof > test/language/expressions/instanceof/S15.3.5.3_A1_T5.js  484ms
+   ✓ test262: language/expressions/instanceof > test/language/expressions/instanceof/primitive-prototype-with-primitive.js  323ms
+   ✓ test262: language/expressions/instanceof > test/language/expressions/instanceof/prototype-getter-with-object-throws.js  427ms
+   ✓ test262: language/expressions/instanceof > test/language/expressions/instanceof/prototype-getter-with-primitive.js  518ms
+   ✓ test262: language/expressions/compound-assignment > test/language/expressions/compound-assignment/11.13.2-16-s.js  348ms
+   ✓ test262: language/expressions/compound-assignment > test/language/expressions/compound-assignment/11.13.2-18-s.js  359ms
+   ✓ test262: language/expressions/compound-assignment > test/language/expressions/compound-assignment/11.13.2-26-s.js  355ms
+   ✓ test262: language/expressions/compound-assignment > test/language/expressions/compound-assignment/11.13.2-35-s.js  379ms
+   ✓ test262: language/expressions/compound-assignment > test/language/expressions/compound-assignment/11.13.2-38-s.js  638ms
+   ✓ test262: language/expressions/compound-assignment > test/language/expressions/compound-assignment/11.13.2-46-s.js  347ms
+   ✓ test262: language/expressions/compound-assignment > test/language/expressions/compound-assignment/11.13.2-47-s.js  302ms
+   ✓ test262: language/expressions/compound-assignment > test/language/expressions/compound-assignment/S11.13.2_A2.1_T1.5.js  401ms
+   ✓ test262: language/expressions/compound-assignment > test/language/expressions/compound-assignment/S11.13.2_A2.1_T1.6.js  2043ms
+   ✓ test262: language/expressions/compound-assignment > test/language/expressions/compound-assignment/S11.13.2_A2.1_T1.7.js  308ms
+   ✓ test262: language/expressions/compound-assignment > test/language/expressions/compound-assignment/S11.13.2_A2.1_T1.9.js  453ms
+   ✓ test262: language/expressions/compound-assignment > test/language/expressions/compound-assignment/S11.13.2_A3.1_T5.js  306ms
+   ✓ test262: language/expressions/compound-assignment > test/language/expressions/compound-assignment/S11.13.2_A3.2_T10.js  307ms
+   ✓ test262: language/expressions/compound-assignment > test/language/expressions/compound-assignment/S11.13.2_A3.2_T2.js  391ms
+   ✓ test262: language/expressions/compound-assignment > test/language/expressions/compound-assignment/S11.13.2_A3.2_T4.js  311ms
+   ✓ test262: language/expressions/compound-assignment > test/language/expressions/compound-assignment/S11.13.2_A3.2_T7.js  346ms
+   ✓ test262: language/expressions/compound-assignment > test/language/expressions/compound-assignment/S11.13.2_A4.1_T1.4.js  347ms
+   ✓ test262: language/expressions/compound-assignment > test/language/expressions/compound-assignment/S11.13.2_A4.8_T1.4.js  312ms
+   ✓ test262: language/expressions/compound-assignment > test/language/expressions/compound-assignment/S11.13.2_A7.2_T3.js  314ms
+   ✓ test262: language/expressions/compound-assignment > test/language/expressions/compound-assignment/S11.13.2_A7.3_T1.js  352ms
+   ✓ test262: language/expressions/compound-assignment > test/language/expressions/compound-assignment/S11.13.2_A7.3_T2.js  303ms
+   ✓ test262: language/expressions/compound-assignment > test/language/expressions/compound-assignment/S11.13.2_A7.4_T4.js  310ms
+   ✓ test262: language/expressions/compound-assignment > test/language/expressions/compound-assignment/S11.13.2_A7.5_T2.js  337ms
+   ✓ test262: language/expressions/compound-assignment > test/language/expressions/compound-assignment/compound-assignment-operator-calls-putvalue-lref--v--3.js  468ms
+   ✓ test262: language/expressions/logical-assignment > test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator-non-writeable-put.js  341ms
+   ✓ test262: language/expressions/logical-assignment > test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator-unresolved-rhs-put.js  309ms
+   ✓ test262: language/expressions/logical-assignment > test/language/expressions/logical-assignment/lgcl-or-assignment-operator-namedevaluation-arrow-function.js  301ms
+   ✓ test262: language/expressions/logical-assignment > test/language/expressions/logical-assignment/lgcl-or-assignment-operator-no-set.js  312ms
+   ✓ test262: language/expressions/logical-assignment > test/language/expressions/logical-assignment/lgcl-or-assignment-operator-non-extensible.js  302ms
+   ✓ test262: language/expressions/call > test/language/expressions/call/S11.2.4_A1.4_T1.js  315ms
+   ✓ test262: language/statements/for > test/language/statements/for/12.6.3_2-3-a-ii-16.js  322ms
+   ✓ test262: language/statements/for > test/language/statements/for/head-init-async-of.js  337ms
+   ✓ test262: language/statements/return > test/language/statements/return/12.9-1.js  310ms
+   ✓ test262: language/statements/variable > test/language/statements/variable/S12.2_A2.js  323ms
+   ✓ test262: built-ins/Number/isNaN > test/built-ins/Number/isNaN/not-nan.js  325ms
+   ✓ test262: built-ins/Number/POSITIVE_INFINITY > test/built-ins/Number/POSITIVE_INFINITY/S15.7.3.6_A1.js  337ms
+   ✓ test262: built-ins/isFinite > test/built-ins/isFinite/return-false-on-nan-or-infinities.js  311ms
+   ✓ test262: language/types/number > test/language/types/number/S8.5_A10_T1.js  346ms
+   ✓ test262: language/types/number > test/language/types/number/S8.5_A14_T2.js  338ms
+   ✓ test262: language/types/number > test/language/types/number/S8.5_A7.js  352ms
+   ✓ test262: language/types/null > test/language/types/null/S8.2_A1_T2.js  331ms
+   ✓ test262: language/types/undefined > test/language/types/undefined/S8.1_A3_T2.js  346ms
+   ✓ test262: language/types/string > test/language/types/string/S8.4_A3.js  348ms
+   ✓ test262: language/types/reference > test/language/types/reference/8.7.2-3-a-1gs.js  345ms
+   ✓ test262: language/types/reference > test/language/types/reference/S8.7.1_A2.js  311ms
+
+ Test Files  1 passed (1)
+      Tests  3114 passed (3114)
+   Start at  10:43:21
+   Duration  245.51s (transform 950ms, setup 0ms, collect 1.62s, tests 243.66s, environment 0ms, prepare 60ms)
+

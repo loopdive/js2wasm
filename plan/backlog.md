@@ -7,6 +7,22 @@
 | #                  | Feature                                                     | Complexity |
 | ------------------ | ----------------------------------------------------------- | ---------- |
 | [70](issues/70.md) | Fast mode Phases 2–4 (wasm-native strings, arrays, C ABI)  | L          |
+| [73](issues/73.md) | Benchmark — JS vs host-call vs GC-native vs linear-memory  | M          |
+| [74](issues/74.md) | WASM SIMD for string and array operations                  | L          |
+| [75](issues/75.md) | Slice-based string views for substring/trim/slice          | M          |
+| [76](issues/76.md) | Rope/cons-string for O(1) concatenation                    | L          |
+| [82](issues/82.md) | Study V8, SpiderMonkey, Zena, AssemblyScript strategies    | M          |
+| [83](issues/83.md) | Test262 conformance subset                                 | M          |
+
+### Language coverage
+
+| #                  | Feature                                                     | Complexity |
+| ------------------ | ----------------------------------------------------------- | ---------- |
+| [77](issues/77.md) | Object literals, spread, and structural typing              | L          |
+| [78](issues/78.md) | Standard library coverage — builtins and static methods     | L          |
+| [79](issues/79.md) | Gradual typing — boxed `any` with runtime dispatch          | XL         |
+| [80](issues/80.md) | JS file compilation via `.d.ts` types and TS inference      | M          |
+| [81](issues/81.md) | npm package resolution and tree-shaking                     | L          |
 
 ## Complexity legend
 
@@ -89,3 +105,15 @@
 | [69](issues/done/69.md) | Safe mode — compile-time security checks | 14 in safe-mode.test.ts      |
 | [46](issues/done/46.md) | Linear-memory compilation backend        | 3 in linker-e2e.test.ts      |
 | [70](issues/70.md)      | Fast mode Phase 1 — i32 default numbers  | 13 in i32-fast-mode.test.ts  |
+| [97](issues/done/97.md) | NaN/undefined/null truthiness fix        | test262 + test_debug         |
+| [98](issues/done/98.md) | ToInt32 for bitwise compound assignments  | test262 bitwise tests        |
+| [99](issues/done/99.md) | Externref arithmetic/comparison/control  | test262: 82%→100% compilable |
+| [88](issues/done/88.md) | Test262 — language/expressions            | 412 pass, 0 fail (6773 total) |
+| [89](issues/done/89.md) | Test262 — language/statements             | test262 stmt categories        |
+| [90](issues/done/90.md) | Test262 — built-ins/Array                 | 20 Array prototype categories  |
+| [91](issues/done/91.md) | Test262 — built-ins/Number                | EPSILON, MAX/MIN_SAFE_INTEGER  |
+| [92](issues/done/92.md) | Test262 — language/types (coercion)       | all type categories pass       |
+| [93](issues/done/93.md) | Test262 — built-ins/Object                | keys/values/entries categories |
+| [94](issues/done/94.md) | Test262 — language/function-code          | statements/function category   |
+| [95](issues/done/95.md) | Test262 — built-ins/isNaN + isFinite      | already present, all pass      |
+| [96](issues/done/96.md) | Test262 — built-ins/JSON                  | JSON.parse 12/12, stringify skipped |

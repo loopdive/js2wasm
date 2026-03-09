@@ -155,6 +155,8 @@ export interface CodegenContext {
   closureCounter: number;
   /** Map from local variable name → closure metadata (for call_ref dispatch) */
   closureMap: Map<string, ClosureInfo>;
+  /** Map from closure struct type index → closure metadata (for anonymous closures) */
+  closureInfoByTypeIdx: Map<number, ClosureInfo>;
   /** Resolved concrete types for generic functions (from call-site analysis) */
   genericResolved: Map<string, { params: ValType[]; results: ValType[] }>;
   /** Rest parameter info per function (functions with ...rest syntax) */
@@ -189,6 +191,18 @@ export interface CodegenContext {
   tupleTypeMap: Map<string, number>;
   /** Fast mode: default number to i32, promote to f64 only when needed */
   fast: boolean;
+  /** Native string support (fast mode): type index for $__str_data (array (mut i16)) */
+  nativeStrDataTypeIdx: number;
+  /** Type index for $AnyString (struct { len: i32 }) — base type for rope subtyping */
+  anyStrTypeIdx: number;
+  /** Native string support (fast mode): type index for $NativeString (struct { len: i32, off: i32, data: ref $__str_data }) */
+  nativeStrTypeIdx: number;
+  /** Type index for $ConsString (struct { len: i32, left: ref $AnyString, right: ref $AnyString }) */
+  consStrTypeIdx: number;
+  /** Whether native string helper functions have been emitted */
+  nativeStrHelpersEmitted: boolean;
+  /** Map from native string helper name → function index */
+  nativeStrHelpers: Map<string, number>;
 }
 
 /** Metadata for a closure stored in a local variable */
@@ -286,6 +300,7 @@ export function generateModule(
     staticInitExprs: [],
     closureCounter: 0,
     closureMap: new Map(),
+    closureInfoByTypeIdx: new Map(),
     genericResolved: new Map(),
     funcRestParams: new Map(),
     exnTagIdx: -1,
@@ -303,7 +318,18 @@ export function generateModule(
     sourceMap: options?.sourceMap ?? false,
     tupleTypeMap: new Map(),
     fast: options?.fast ?? false,
+    nativeStrDataTypeIdx: -1,
+    anyStrTypeIdx: -1,
+    nativeStrTypeIdx: -1,
+    consStrTypeIdx: -1,
+    nativeStrHelpersEmitted: false,
+    nativeStrHelpers: new Map(),
   };
+
+  // Register native string types if fast mode
+  if (ctx.fast) {
+    registerNativeStringTypes(ctx);
+  }
 
   // Collect console.log imports (only variants actually used)
   collectConsoleImports(ctx, ast.sourceFile);
@@ -333,6 +359,12 @@ export function generateModule(
   // Collect Math host imports for methods without native Wasm equivalents
   collectMathImports(ctx, ast.sourceFile);
 
+  // Collect parseInt / parseFloat host imports
+  collectParseImports(ctx, ast.sourceFile);
+
+  // Collect String.fromCharCode host imports
+  collectStringStaticImports(ctx, ast.sourceFile);
+
   // Collect Promise.all / Promise.race host imports
   collectPromiseImports(ctx, ast.sourceFile);
   // Collect JSON.parse / JSON.stringify host imports
@@ -357,6 +389,9 @@ export function generateModule(
 
   // Register string literals for Object.keys() / Object.values() calls
   collectObjectMethodStringLiterals(ctx, ast.sourceFile);
+
+  // Collect unknown constructor imports (__new_X for `new X(...)` where X is not a known class)
+  collectUnknownConstructorImports(ctx, ast.sourceFile);
 
   // Second pass: collect all function declarations and interfaces
   collectDeclarations(ctx, ast.sourceFile);
@@ -439,6 +474,7 @@ export function generateMultiModule(
     staticInitExprs: [],
     closureCounter: 0,
     closureMap: new Map(),
+    closureInfoByTypeIdx: new Map(),
     genericResolved: new Map(),
     funcRestParams: new Map(),
     hasUnionImports: false,
@@ -456,7 +492,18 @@ export function generateMultiModule(
     sourceMap: options?.sourceMap ?? false,
     tupleTypeMap: new Map(),
     fast: options?.fast ?? false,
+    nativeStrDataTypeIdx: -1,
+    anyStrTypeIdx: -1,
+    nativeStrTypeIdx: -1,
+    consStrTypeIdx: -1,
+    nativeStrHelpersEmitted: false,
+    nativeStrHelpers: new Map(),
   };
+
+  // Register native string types if fast mode
+  if (ctx.fast) {
+    registerNativeStringTypes(ctx);
+  }
 
   // Phase 1: Collect all import-phase declarations across all source files
   for (const sf of multiAst.sourceFiles) {
@@ -486,6 +533,8 @@ export function generateMultiModule(
     collectStringLiterals(ctx, sf);
     collectStringMethodImports(ctx, sf);
     collectMathImports(ctx, sf);
+    collectParseImports(ctx, sf);
+    collectStringStaticImports(ctx, sf);
     collectPromiseImports(ctx, sf);
     collectJsonImports(ctx, sf);
     collectCallbackImports(ctx, sf);
@@ -495,6 +544,7 @@ export function generateMultiModule(
     collectIteratorImports(ctx, sf);
     collectForInStringLiterals(ctx, sf);
     collectObjectMethodStringLiterals(ctx, sf);
+    collectUnknownConstructorImports(ctx, sf);
   }
 
   // Phase 2: Collect all declarations — only entry file gets Wasm exports
@@ -533,31 +583,37 @@ export function generateMultiModule(
   return { module: mod, errors: ctx.errors };
 }
 
-/** Scan source for console.log() calls and register only needed import variants */
+/** Scan source for console.log/warn/error() calls and register only needed import variants */
 function collectConsoleImports(
   ctx: CodegenContext,
   sourceFile: ts.SourceFile,
 ): void {
-  const needed = new Set<"number" | "bool" | "string" | "externref">();
+  const CONSOLE_METHODS = ["log", "warn", "error"] as const;
+  // Track needed variants per console method
+  const neededByMethod = new Map<string, Set<"number" | "bool" | "string" | "externref">>();
 
   function visit(node: ts.Node) {
     if (
       ts.isCallExpression(node) &&
       ts.isPropertyAccessExpression(node.expression) &&
       ts.isIdentifier(node.expression.expression) &&
-      node.expression.expression.text === "console" &&
-      node.expression.name.text === "log"
+      node.expression.expression.text === "console"
     ) {
-      for (const arg of node.arguments) {
-        const argType = ctx.checker.getTypeAtLocation(arg);
-        if (isStringType(argType)) {
-          needed.add("string");
-        } else if (isBooleanType(argType)) {
-          needed.add("bool");
-        } else if (isNumberType(argType)) {
-          needed.add("number");
-        } else {
-          needed.add("externref");
+      const method = node.expression.name.text;
+      if (CONSOLE_METHODS.includes(method as any)) {
+        if (!neededByMethod.has(method)) neededByMethod.set(method, new Set());
+        const needed = neededByMethod.get(method)!;
+        for (const arg of node.arguments) {
+          const argType = ctx.checker.getTypeAtLocation(arg);
+          if (isStringType(argType)) {
+            needed.add("string");
+          } else if (isBooleanType(argType)) {
+            needed.add("bool");
+          } else if (isNumberType(argType)) {
+            needed.add("number");
+          } else {
+            needed.add("externref");
+          }
         }
       }
     }
@@ -570,24 +626,28 @@ function collectConsoleImports(
     }
   }
 
-  if (needed.has("number")) {
-    const t = addFuncType(ctx, [{ kind: "f64" }], []);
-    addImport(ctx, "env", "console_log_number", { kind: "func", typeIdx: t });
-  }
-  if (needed.has("bool")) {
-    const t = addFuncType(ctx, [{ kind: "i32" }], []);
-    addImport(ctx, "env", "console_log_bool", { kind: "func", typeIdx: t });
-  }
-  if (needed.has("string")) {
-    const t = addFuncType(ctx, [{ kind: "externref" }], []);
-    addImport(ctx, "env", "console_log_string", { kind: "func", typeIdx: t });
-  }
-  if (needed.has("externref")) {
-    const t = addFuncType(ctx, [{ kind: "externref" }], []);
-    addImport(ctx, "env", "console_log_externref", {
-      kind: "func",
-      typeIdx: t,
-    });
+  for (const method of CONSOLE_METHODS) {
+    const needed = neededByMethod.get(method);
+    if (!needed) continue;
+    if (needed.has("number")) {
+      const t = addFuncType(ctx, [{ kind: "f64" }], []);
+      addImport(ctx, "env", `console_${method}_number`, { kind: "func", typeIdx: t });
+    }
+    if (needed.has("bool")) {
+      const t = addFuncType(ctx, [{ kind: "i32" }], []);
+      addImport(ctx, "env", `console_${method}_bool`, { kind: "func", typeIdx: t });
+    }
+    if (needed.has("string")) {
+      const t = addFuncType(ctx, [{ kind: "externref" }], []);
+      addImport(ctx, "env", `console_${method}_string`, { kind: "func", typeIdx: t });
+    }
+    if (needed.has("externref")) {
+      const t = addFuncType(ctx, [{ kind: "externref" }], []);
+      addImport(ctx, "env", `console_${method}_externref`, {
+        kind: "func",
+        typeIdx: t,
+      });
+    }
   }
 }
 
@@ -622,14 +682,39 @@ function collectPrimitiveMethodImports(
         }
       }
     }
+    // String + non-string concatenation needs number_toString for coercion.
+    // Conservative: register whenever either side of + is a string and the
+    // other is not (could be number, any, boolean — all may produce f64 at wasm level).
+    if (
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === ts.SyntaxKind.PlusToken
+    ) {
+      const leftType = ctx.checker.getTypeAtLocation(node.left);
+      const rightType = ctx.checker.getTypeAtLocation(node.right);
+      if (isStringType(leftType) && !isStringType(rightType)) {
+        needed.add("number_toString");
+      }
+      if (!isStringType(leftType) && isStringType(rightType)) {
+        needed.add("number_toString");
+      }
+    }
+    // String comparison operators (< > <= >=) on string types need string_compare import
+    if (
+      ts.isBinaryExpression(node) &&
+      (node.operatorToken.kind === ts.SyntaxKind.LessThanToken ||
+       node.operatorToken.kind === ts.SyntaxKind.LessThanEqualsToken ||
+       node.operatorToken.kind === ts.SyntaxKind.GreaterThanToken ||
+       node.operatorToken.kind === ts.SyntaxKind.GreaterThanEqualsToken)
+    ) {
+      const leftType = ctx.checker.getTypeAtLocation(node.left);
+      if (isStringType(leftType)) {
+        needed.add("string_compare");
+      }
+    }
     ts.forEachChild(node, visit);
   }
 
-  for (const stmt of sourceFile.statements) {
-    if (ts.isFunctionDeclaration(stmt) && stmt.body) {
-      visit(stmt.body);
-    }
-  }
+  ts.forEachChild(sourceFile, visit);
 
   if (needed.has("number_toString")) {
     const t = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "externref" }]);
@@ -642,6 +727,10 @@ function collectPrimitiveMethodImports(
       [{ kind: "externref" }],
     );
     addImport(ctx, "env", "number_toFixed", { kind: "func", typeIdx: t });
+  }
+  if (needed.has("string_compare")) {
+    const t = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "i32" }]);
+    addImport(ctx, "env", "string_compare", { kind: "func", typeIdx: t });
   }
 }
 
@@ -680,6 +769,7 @@ const STRING_METHODS: Record<string, { params: ValType[]; result: ValType }> = {
     result: { kind: "externref" },
   },
   split: { params: [{ kind: "externref" }], result: { kind: "externref" } },
+  at: { params: [{ kind: "f64" }], result: { kind: "externref" } },
 };
 
 /** Scan source for method calls on string types and register needed imports */
@@ -710,7 +800,21 @@ function collectStringMethodImports(
     }
   }
 
+  // Native string methods handled in wasm (fast mode)
+  const NATIVE_STR_METHODS = new Set([
+    "charAt", "substring", "slice", "at",
+    "indexOf", "lastIndexOf", "includes", "startsWith", "endsWith",
+    "trim", "trimStart", "trimEnd",
+    "repeat", "padStart", "padEnd", "toLowerCase", "toUpperCase",
+    "replace", "split",
+  ]);
+
   for (const method of needed) {
+    if (ctx.fast && NATIVE_STR_METHODS.has(method)) {
+      // These are handled by native string helpers — no import needed
+      ensureNativeStringHelpers(ctx);
+      continue;
+    }
     const sig = STRING_METHODS[method]!;
     const params: ValType[] = [{ kind: "externref" }, ...sig.params]; // self + args
     const t = addFuncType(ctx, params, [sig.result]);
@@ -718,8 +822,9 @@ function collectStringMethodImports(
   }
 
   // split() returns an externref JS array — register __extern_get and __extern_length
-  // so that element access and .length work on the result
-  if (needed.has("split")) {
+  // so that element access and .length work on the result.
+  // In fast mode, native split returns a native string array — no extern helpers needed.
+  if (needed.has("split") && !ctx.fast) {
     if (!ctx.funcMap.has("__extern_get")) {
       const getType = addFuncType(ctx, [{ kind: "externref" }, { kind: "f64" }], [{ kind: "externref" }]);
       addImport(ctx, "env", "__extern_get", { kind: "func", typeIdx: getType });
@@ -790,6 +895,2404 @@ function addStringImports(ctx: CodegenContext): void {
     kind: "func",
     typeIdx: charCodeAtType,
   });
+}
+
+// ── Native string support (fast mode) ────────────────────────────────
+
+/**
+ * Register the WasmGC types for native strings (rope/cons-string support):
+ *   $__str_data   = (array (mut i16))
+ *   $AnyString    = (sub (struct (field $len i32)))                                   -- non-final base
+ *   $NativeString = (sub $AnyString (struct (field $len i32) (field $off i32) (field $data (ref $__str_data))))
+ *   $ConsString   = (sub $AnyString (struct (field $len i32) (field $left (ref $AnyString)) (field $right (ref $AnyString))))
+ *
+ * Field layout: len is always field 0 (shared via AnyString prefix).
+ * NativeString: field 0 = len, field 1 = off, field 2 = data
+ * ConsString:   field 0 = len, field 1 = left, field 2 = right
+ */
+function registerNativeStringTypes(ctx: CodegenContext): void {
+  // $__str_data: array of mutable i16 (WTF-16 code units)
+  ctx.nativeStrDataTypeIdx = ctx.mod.types.length;
+  ctx.mod.types.push({
+    kind: "array",
+    name: "__str_data",
+    element: { kind: "i16" },
+    mutable: true,
+  });
+
+  // $AnyString: base type with just len (non-final, superTypeIdx = -1 means root)
+  ctx.anyStrTypeIdx = ctx.mod.types.length;
+  ctx.mod.types.push({
+    kind: "struct",
+    name: "AnyString",
+    fields: [
+      { name: "len", type: { kind: "i32" }, mutable: false },
+    ],
+    superTypeIdx: -1, // non-final root
+  });
+
+  // $NativeString (FlatString): sub $AnyString, fields: len, off, data
+  ctx.nativeStrTypeIdx = ctx.mod.types.length;
+  ctx.mod.types.push({
+    kind: "struct",
+    name: "NativeString",
+    fields: [
+      { name: "len", type: { kind: "i32" }, mutable: false },
+      { name: "off", type: { kind: "i32" }, mutable: false },
+      { name: "data", type: { kind: "ref", typeIdx: ctx.nativeStrDataTypeIdx }, mutable: false },
+    ],
+    superTypeIdx: ctx.anyStrTypeIdx,
+  });
+
+  // $ConsString: sub $AnyString, fields: len, left, right
+  ctx.consStrTypeIdx = ctx.mod.types.length;
+  ctx.mod.types.push({
+    kind: "struct",
+    name: "ConsString",
+    fields: [
+      { name: "len", type: { kind: "i32" }, mutable: false },
+      { name: "left", type: { kind: "ref", typeIdx: ctx.anyStrTypeIdx }, mutable: false },
+      { name: "right", type: { kind: "ref", typeIdx: ctx.anyStrTypeIdx }, mutable: false },
+    ],
+    superTypeIdx: ctx.anyStrTypeIdx,
+  });
+}
+
+/**
+ * Get the ValType for a string reference (ref $AnyString).
+ * This is the abstract base type that represents any string (flat or cons).
+ * Only valid when ctx.fast is true and native string types are registered.
+ */
+export function nativeStringType(ctx: CodegenContext): ValType {
+  return { kind: "ref", typeIdx: ctx.anyStrTypeIdx };
+}
+
+/**
+ * Get the nullable ValType for a string reference (ref null $AnyString).
+ */
+export function nativeStringTypeNullable(ctx: CodegenContext): ValType {
+  return { kind: "ref_null", typeIdx: ctx.anyStrTypeIdx };
+}
+
+/**
+ * Get the ValType for a flat string reference (ref $NativeString).
+ */
+export function flatStringType(ctx: CodegenContext): ValType {
+  return { kind: "ref", typeIdx: ctx.nativeStrTypeIdx };
+}
+
+/**
+ * Emit native string helper functions into the module.
+ * Called lazily when string operations are first encountered in fast mode.
+ *
+ * IMPORTANT: All imports must be registered BEFORE any module functions,
+ * because wasm function indices are: imports first, then module functions.
+ */
+export function ensureNativeStringHelpers(ctx: CodegenContext): void {
+  if (ctx.nativeStrHelpersEmitted) return;
+  ctx.nativeStrHelpersEmitted = true;
+
+  const strDataTypeIdx = ctx.nativeStrDataTypeIdx;
+  const strTypeIdx = ctx.nativeStrTypeIdx;    // NativeString (FlatString) struct type index
+  const anyStrTypeIdx = ctx.anyStrTypeIdx;    // AnyString base type index
+  const consStrTypeIdx = ctx.consStrTypeIdx;  // ConsString type index
+  // strRef = ref $AnyString — used in all helper function signatures (params and results).
+  // All string values in the system can be either FlatString or ConsString.
+  const strRef: ValType = { kind: "ref", typeIdx: anyStrTypeIdx };
+  const flatStrRef: ValType = { kind: "ref", typeIdx: strTypeIdx };  // ref $NativeString
+  const strDataRef: ValType = { kind: "ref", typeIdx: strDataTypeIdx };
+
+  // ── Step 1: Register ALL host imports first ──────────────────────
+  // This must happen before any ctx.mod.functions.push() calls.
+
+  // Add a 1-page linear memory for string marshaling
+  if (ctx.mod.memories.length === 0) {
+    ctx.mod.memories.push({ min: 1 });
+    ctx.mod.exports.push({
+      name: "__str_mem",
+      desc: { kind: "memory", index: 0 },
+    });
+  }
+
+  // __str_from_mem: (i32, i32) -> externref
+  {
+    const typeIdx = addFuncType(ctx, [{ kind: "i32" }, { kind: "i32" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", "__str_from_mem", { kind: "func", typeIdx });
+  }
+
+  // __str_to_mem: (externref, i32) -> void
+  {
+    const typeIdx = addFuncType(ctx, [{ kind: "externref" }, { kind: "i32" }], []);
+    addImport(ctx, "env", "__str_to_mem", { kind: "func", typeIdx });
+  }
+
+  // __str_extern_len: (externref) -> i32
+  {
+    const lenTypeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "i32" }]);
+    addImport(ctx, "env", "__str_extern_len", { kind: "func", typeIdx: lenTypeIdx });
+  }
+
+  // Helper: get the flatten function index (available after flatten is registered)
+  const getFlattenIdx = () => ctx.nativeStrHelpers.get("__str_flatten")!;
+
+  /**
+   * Wrap a helper body with flatten preambles for string params.
+   * For each string param index in `strParamIndices`, adds:
+   *   local.get $param → call $__str_flatten → local.set $param
+   * This ensures the param (typed ref $AnyString) actually holds a NativeString.
+   * Also inserts ref.cast $NativeString before every struct.get $NativeString
+   * to satisfy the wasm type checker.
+   */
+  function wrapBodyWithFlatten(body: Instr[], strParamIndices: number[]): Instr[] {
+    // 1. Build flatten preamble
+    const preamble: Instr[] = [];
+    for (const idx of strParamIndices) {
+      preamble.push(
+        { op: "local.get", index: idx },
+        { op: "call", funcIdx: getFlattenIdx() },
+        // flatten returns ref $NativeString which is subtype of ref $AnyString — can store in param
+        { op: "local.set", index: idx },
+      );
+    }
+
+    // 2. Insert ref.cast before every struct.get $NativeString
+    const processed: Instr[] = [];
+    for (const instr of body) {
+      if (instr.op === "struct.get" && (instr as any).typeIdx === strTypeIdx) {
+        processed.push({ op: "ref.cast", typeIdx: strTypeIdx });
+      }
+      // Recurse into if/block/loop bodies
+      if (instr.op === "if") {
+        const ifInstr = instr as any;
+        const newIf: any = { ...ifInstr };
+        if (ifInstr.then) newIf.then = wrapBodyWithFlatten(ifInstr.then, []).slice(0); // no preamble for sub-bodies
+        if (ifInstr.else) newIf.else = wrapBodyWithFlatten(ifInstr.else, []).slice(0);
+        processed.push(newIf);
+        continue;
+      }
+      if (instr.op === "block" || instr.op === "loop") {
+        const blockInstr = instr as any;
+        const newBlock: any = { ...blockInstr };
+        if (blockInstr.body) newBlock.body = wrapBodyWithFlatten(blockInstr.body, []).slice(0);
+        processed.push(newBlock);
+        continue;
+      }
+      processed.push(instr);
+    }
+
+    return [...preamble, ...processed];
+  }
+
+  // ── Step 2: Now add all module functions ─────────────────────────
+
+  // --- $__str_copy_tree(node: ref $AnyString, buf: ref $__str_data, pos: i32) -> i32 ---
+  // Recursively copies rope tree into a flat buffer. Returns next write position.
+  {
+    const typeIdx = addFuncType(ctx, [strRef, strDataRef, { kind: "i32" }], [{ kind: "i32" }]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_copy_tree", funcIdx);
+
+    // params: node(0), buf(1), pos(2)
+    // locals: flat(3), flatOff(4), flatLen(5), left(6), right(7)
+    const body: Instr[] = [
+      // if node is FlatString: array.copy and return pos + len
+      { op: "local.get", index: 0 },
+      { op: "ref.test", typeIdx: strTypeIdx },
+      { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
+        then: [
+          // flat = ref.cast $NativeString node
+          { op: "local.get", index: 0 },
+          { op: "ref.cast", typeIdx: strTypeIdx },
+          { op: "local.set", index: 3 },
+
+          // flatOff = flat.off (field 1)
+          { op: "local.get", index: 3 },
+          { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 },
+          { op: "local.set", index: 4 },
+
+          // flatLen = flat.len (field 0)
+          { op: "local.get", index: 3 },
+          { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+          { op: "local.set", index: 5 },
+
+          // array.copy(buf, pos, flat.data, flatOff, flatLen)
+          { op: "local.get", index: 1 },       // dst = buf
+          { op: "local.get", index: 2 },       // dstOffset = pos
+          { op: "local.get", index: 3 },       // flat
+          { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 }, // flat.data
+          { op: "local.get", index: 4 },       // srcOffset = flatOff
+          { op: "local.get", index: 5 },       // length = flatLen
+          { op: "array.copy", dstTypeIdx: strDataTypeIdx, srcTypeIdx: strDataTypeIdx },
+
+          // return pos + flatLen
+          { op: "local.get", index: 2 },
+          { op: "local.get", index: 5 },
+          { op: "i32.add" },
+        ],
+        else: [
+          // node is ConsString
+          // left = cons.left (field 1)
+          { op: "local.get", index: 0 },
+          { op: "ref.cast", typeIdx: consStrTypeIdx },
+          { op: "struct.get", typeIdx: consStrTypeIdx, fieldIdx: 1 }, // left
+          { op: "local.set", index: 6 },  // left
+
+          // right = cons.right
+          { op: "local.get", index: 0 },
+          { op: "ref.cast", typeIdx: consStrTypeIdx },
+          { op: "struct.get", typeIdx: consStrTypeIdx, fieldIdx: 2 }, // right
+          { op: "local.set", index: 7 },  // right
+
+          // pos = copy_tree(left, buf, pos)
+          { op: "local.get", index: 6 },
+          { op: "ref.as_non_null" },
+          { op: "local.get", index: 1 },
+          { op: "local.get", index: 2 },
+          { op: "call", funcIdx },  // recursive call to self
+
+          // return copy_tree(right, buf, pos)
+          // pos is now the return value on the stack — use it directly
+          { op: "local.set", index: 2 },  // update pos
+          { op: "local.get", index: 7 },
+          { op: "ref.as_non_null" },
+          { op: "local.get", index: 1 },
+          { op: "local.get", index: 2 },
+          { op: "call", funcIdx },  // recursive call to self
+        ],
+      },
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_copy_tree",
+      typeIdx,
+      locals: [
+        { name: "flat", type: { kind: "ref_null", typeIdx: strTypeIdx } },
+        { name: "flatOff", type: { kind: "i32" } },
+        { name: "flatLen", type: { kind: "i32" } },
+        { name: "left", type: { kind: "ref_null", typeIdx: anyStrTypeIdx } },
+        { name: "right", type: { kind: "ref_null", typeIdx: anyStrTypeIdx } },
+      ],
+      body,
+      exported: false,
+    });
+  }
+
+  // --- $__str_flatten(s: ref $AnyString) -> ref $NativeString ---
+  // If s is already a FlatString, returns it. Otherwise flattens the rope tree.
+  {
+    const typeIdx = addFuncType(ctx, [strRef], [flatStrRef]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_flatten", funcIdx);
+
+    const copyTreeIdx = ctx.nativeStrHelpers.get("__str_copy_tree")!;
+
+    // params: s(0)
+    // locals: len(1), buf(2)
+    const body: Instr[] = [
+      // if s is already a FlatString, return it
+      { op: "local.get", index: 0 },
+      { op: "ref.test", typeIdx: strTypeIdx },
+      { op: "if", blockType: { kind: "val", type: flatStrRef },
+        then: [
+          { op: "local.get", index: 0 },
+          { op: "ref.cast", typeIdx: strTypeIdx },
+        ],
+        else: [
+          // len = s.len (field 0 of AnyString)
+          { op: "local.get", index: 0 },
+          { op: "struct.get", typeIdx: anyStrTypeIdx, fieldIdx: 0 },
+          { op: "local.set", index: 1 },
+
+          // buf = array.new_default(len)
+          { op: "local.get", index: 1 },
+          { op: "array.new_default", typeIdx: strDataTypeIdx },
+          { op: "local.set", index: 2 },
+
+          // copy_tree(s, buf, 0)
+          { op: "local.get", index: 0 },
+          { op: "local.get", index: 2 },
+          { op: "i32.const", value: 0 },
+          { op: "call", funcIdx: copyTreeIdx },
+          { op: "drop" },  // discard returned position
+
+          // return struct.new $NativeString(len, 0, buf)
+          { op: "local.get", index: 1 },  // len
+          { op: "i32.const", value: 0 },  // off = 0
+          { op: "local.get", index: 2 },  // data = buf
+          { op: "struct.new", typeIdx: strTypeIdx },
+        ],
+      },
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_flatten",
+      typeIdx,
+      locals: [
+        { name: "len", type: { kind: "i32" } },
+        { name: "buf", type: strDataRef },
+      ],
+      body,
+      exported: false,
+    });
+  }
+
+  // --- $__str_concat(a: ref $AnyString, b: ref $AnyString) -> ref $AnyString ---
+  // For short strings (combined length < 64), copies into a flat string.
+  // For longer strings, creates a ConsString node in O(1).
+  {
+    const flattenIdx = ctx.nativeStrHelpers.get("__str_flatten")!;
+    const typeIdx = addFuncType(ctx, [strRef, strRef], [strRef]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_concat", funcIdx);
+
+    // params: a(0), b(1)
+    // locals: lenA(2), lenB(3), newLen(4), newArr(5), flatA(6), flatB(7)
+    const body: Instr[] = [
+      // lenA = a.len (field 0 of AnyString)
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: anyStrTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 2 }, // lenA
+
+      // lenB = b.len (field 0 of AnyString)
+      { op: "local.get", index: 1 },
+      { op: "struct.get", typeIdx: anyStrTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 3 }, // lenB
+
+      // newLen = lenA + lenB
+      { op: "local.get", index: 2 },
+      { op: "local.get", index: 3 },
+      { op: "i32.add" },
+      { op: "local.set", index: 4 }, // newLen
+
+      // if newLen >= 64, create ConsString (O(1) rope node)
+      { op: "local.get", index: 4 },
+      { op: "i32.const", value: 64 },
+      { op: "i32.ge_u" },
+      { op: "if", blockType: { kind: "val", type: strRef },
+        then: [
+          // struct.new $ConsString(newLen, a, b)
+          { op: "local.get", index: 4 },  // len = newLen
+          { op: "local.get", index: 0 },  // left = a
+          { op: "local.get", index: 1 },  // right = b
+          { op: "struct.new", typeIdx: consStrTypeIdx },
+        ],
+        else: [
+          // Short string: flatten both sides and copy
+          // flatA = flatten(a)
+          { op: "local.get", index: 0 },
+          { op: "call", funcIdx: flattenIdx },
+          { op: "local.set", index: 6 },
+
+          // flatB = flatten(b)
+          { op: "local.get", index: 1 },
+          { op: "call", funcIdx: flattenIdx },
+          { op: "local.set", index: 7 },
+
+          // newArr = array.new_default(newLen)
+          { op: "local.get", index: 4 },
+          { op: "array.new_default", typeIdx: strDataTypeIdx },
+          { op: "local.set", index: 5 },
+
+          // array.copy(newArr, 0, flatA.data, flatA.off, lenA)
+          { op: "local.get", index: 5 },       // dst
+          { op: "ref.as_non_null" },
+          { op: "i32.const", value: 0 },        // dstOffset
+          { op: "local.get", index: 6 },        // flatA
+          { op: "ref.as_non_null" },
+          { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 }, // flatA.data
+          { op: "local.get", index: 6 },        // flatA
+          { op: "ref.as_non_null" },
+          { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 }, // flatA.off
+          { op: "local.get", index: 2 },        // lenA
+          { op: "array.copy", dstTypeIdx: strDataTypeIdx, srcTypeIdx: strDataTypeIdx },
+
+          // array.copy(newArr, lenA, flatB.data, flatB.off, lenB)
+          { op: "local.get", index: 5 },       // dst
+          { op: "ref.as_non_null" },
+          { op: "local.get", index: 2 },        // dstOffset = lenA
+          { op: "local.get", index: 7 },        // flatB
+          { op: "ref.as_non_null" },
+          { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 }, // flatB.data
+          { op: "local.get", index: 7 },        // flatB
+          { op: "ref.as_non_null" },
+          { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 }, // flatB.off
+          { op: "local.get", index: 3 },        // lenB
+          { op: "array.copy", dstTypeIdx: strDataTypeIdx, srcTypeIdx: strDataTypeIdx },
+
+          // result = struct.new $NativeString(newLen, 0, newArr)
+          { op: "local.get", index: 4 },        // len = newLen
+          { op: "i32.const", value: 0 },        // off = 0
+          { op: "local.get", index: 5 },        // data = newArr
+          { op: "ref.as_non_null" },
+          { op: "struct.new", typeIdx: strTypeIdx },
+        ],
+      },
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_concat",
+      typeIdx,
+      locals: [
+        { name: "lenA", type: { kind: "i32" } },
+        { name: "lenB", type: { kind: "i32" } },
+        { name: "newLen", type: { kind: "i32" } },
+        { name: "newArr", type: { kind: "ref_null", typeIdx: strDataTypeIdx } },
+        { name: "flatA", type: { kind: "ref_null", typeIdx: strTypeIdx } },
+        { name: "flatB", type: { kind: "ref_null", typeIdx: strTypeIdx } },
+      ],
+      body,
+      exported: false,
+    });
+  }
+
+  // --- $__str_equals(a: ref $NativeString, b: ref $NativeString) -> i32 ---
+  {
+    const typeIdx = addFuncType(ctx, [strRef, strRef], [{ kind: "i32" }]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_equals", funcIdx);
+
+    // locals: len(2), i(3), aData(4), bData(5), aOff(6), bOff(7)
+    const body: Instr[] = [
+      // len = a.len
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 2 }, // len
+
+      // if a.len != b.len return 0
+      { op: "local.get", index: 2 },
+      { op: "local.get", index: 1 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+      { op: "i32.ne" },
+      { op: "if", blockType: { kind: "empty" },
+        then: [{ op: "i32.const", value: 0 }, { op: "return" }],
+      },
+
+      // aOff = a.off
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 },
+      { op: "local.set", index: 6 },
+
+      // bOff = b.off
+      { op: "local.get", index: 1 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 },
+      { op: "local.set", index: 7 },
+
+      // aData = a.data
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 },
+      { op: "local.set", index: 4 },
+
+      // bData = b.data
+      { op: "local.get", index: 1 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 },
+      { op: "local.set", index: 5 },
+
+      // i = 0
+      { op: "i32.const", value: 0 },
+      { op: "local.set", index: 3 },
+
+      // loop: compare element by element
+      { op: "block", blockType: { kind: "empty" }, body: [
+        { op: "loop", blockType: { kind: "empty" }, body: [
+          // if i >= len, break (strings are equal)
+          { op: "local.get", index: 3 },
+          { op: "local.get", index: 2 },
+          { op: "i32.ge_u" },
+          { op: "br_if", depth: 1 },
+
+          // if aData[aOff + i] != bData[bOff + i], return 0
+          { op: "local.get", index: 4 },
+          { op: "local.get", index: 6 },
+          { op: "local.get", index: 3 },
+          { op: "i32.add" },
+          { op: "array.get_u", typeIdx: strDataTypeIdx },
+          { op: "local.get", index: 5 },
+          { op: "local.get", index: 7 },
+          { op: "local.get", index: 3 },
+          { op: "i32.add" },
+          { op: "array.get_u", typeIdx: strDataTypeIdx },
+          { op: "i32.ne" },
+          { op: "if", blockType: { kind: "empty" },
+            then: [{ op: "i32.const", value: 0 }, { op: "return" }],
+          },
+
+          // i++
+          { op: "local.get", index: 3 },
+          { op: "i32.const", value: 1 },
+          { op: "i32.add" },
+          { op: "local.set", index: 3 },
+          { op: "br", depth: 0 },
+        ]},
+      ]},
+
+      // return 1 (equal)
+      { op: "i32.const", value: 1 },
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_equals",
+      typeIdx,
+      locals: [
+        { name: "len", type: { kind: "i32" } },
+        { name: "i", type: { kind: "i32" } },
+        { name: "aData", type: strDataRef },
+        { name: "bData", type: strDataRef },
+        { name: "aOff", type: { kind: "i32" } },
+        { name: "bOff", type: { kind: "i32" } },
+      ],
+      body: wrapBodyWithFlatten(body, [0, 1]),
+      exported: false,
+    });
+  }
+
+  // --- $__str_substring(s: ref $NativeString, start: i32, end: i32) -> ref $NativeString ---
+  {
+    const typeIdx = addFuncType(ctx, [strRef, { kind: "i32" }, { kind: "i32" }], [strRef]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_substring", funcIdx);
+
+    // O(1) substring: creates a view sharing the backing array.
+    // locals: sOff(3), sLen(4)
+    const body: Instr[] = [
+      // sOff = s.off
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 },
+      { op: "local.set", index: 3 },
+
+      // sLen = s.len
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 4 },
+
+      // Clamp start: max(0, min(start, sLen))
+      { op: "local.get", index: 1 },
+      { op: "i32.const", value: 0 },
+      { op: "local.get", index: 1 },
+      { op: "i32.const", value: 0 },
+      { op: "i32.gt_s" },
+      { op: "select" },
+      { op: "local.tee", index: 1 },  // start = max(0, start)
+      { op: "local.get", index: 4 },
+      { op: "local.get", index: 1 },
+      { op: "local.get", index: 4 },
+      { op: "i32.lt_s" },
+      { op: "select" },
+      { op: "local.set", index: 1 },  // start = min(start, sLen)
+
+      // Clamp end: max(0, min(end, sLen))
+      { op: "local.get", index: 2 },
+      { op: "i32.const", value: 0 },
+      { op: "local.get", index: 2 },
+      { op: "i32.const", value: 0 },
+      { op: "i32.gt_s" },
+      { op: "select" },
+      { op: "local.tee", index: 2 },  // end = max(0, end)
+      { op: "local.get", index: 4 },
+      { op: "local.get", index: 2 },
+      { op: "local.get", index: 4 },
+      { op: "i32.lt_s" },
+      { op: "select" },
+      { op: "local.set", index: 2 },  // end = min(end, sLen)
+
+      // Swap if start > end (JS substring semantics)
+      { op: "local.get", index: 1 },
+      { op: "local.get", index: 2 },
+      { op: "i32.gt_s" },
+      { op: "if", blockType: { kind: "empty" },
+        then: [
+          { op: "local.get", index: 2 },
+          { op: "local.get", index: 1 },
+          { op: "local.set", index: 2 },
+          { op: "local.set", index: 1 },
+        ],
+      },
+
+      // struct.new(len = end - start, off = sOff + start, s.data)
+      { op: "local.get", index: 2 },   // end
+      { op: "local.get", index: 1 },   // start
+      { op: "i32.sub" },               // len = end - start
+      { op: "local.get", index: 3 },   // sOff
+      { op: "local.get", index: 1 },   // start
+      { op: "i32.add" },               // off = sOff + start
+      { op: "local.get", index: 0 },   // s
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 }, // s.data
+      { op: "struct.new", typeIdx: strTypeIdx },
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_substring",
+      typeIdx,
+      locals: [
+        { name: "sOff", type: { kind: "i32" } },
+        { name: "sLen", type: { kind: "i32" } },
+      ],
+      body: wrapBodyWithFlatten(body, [0]),
+      exported: false,
+    });
+  }
+
+  // --- $__str_charAt(s: ref $NativeString, idx: i32) -> ref $NativeString ---
+  {
+    const typeIdx = addFuncType(ctx, [strRef, { kind: "i32" }], [strRef]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_charAt", funcIdx);
+
+    const body: Instr[] = [
+      // Bounds check: if idx < 0 || idx >= s.len, return empty string
+      { op: "local.get", index: 1 },
+      { op: "i32.const", value: 0 },
+      { op: "i32.lt_s" },
+      { op: "local.get", index: 1 },
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+      { op: "i32.ge_s" },
+      { op: "i32.or" },
+      { op: "if", blockType: { kind: "val", type: strRef },
+        then: [
+          // empty string: off=0, len=0, empty array
+          { op: "i32.const", value: 0 },
+          { op: "i32.const", value: 0 },
+          { op: "i32.const", value: 0 },
+          { op: "array.new_default", typeIdx: strDataTypeIdx },
+          { op: "struct.new", typeIdx: strTypeIdx },
+        ],
+        else: [
+          // Single-char string: len=1, off=0, [char]
+          { op: "i32.const", value: 1 }, // len
+          { op: "i32.const", value: 0 }, // off
+          { op: "local.get", index: 0 },
+          { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 }, // data
+          { op: "local.get", index: 0 },
+          { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 }, // off
+          { op: "local.get", index: 1 },
+          { op: "i32.add" }, // off + idx
+          { op: "array.get_u", typeIdx: strDataTypeIdx },
+          // Create single-element array
+          { op: "array.new_fixed", typeIdx: strDataTypeIdx, length: 1 },
+          { op: "struct.new", typeIdx: strTypeIdx },
+        ],
+      },
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_charAt",
+      typeIdx,
+      locals: [],
+      body: wrapBodyWithFlatten(body, [0]),
+      exported: false,
+    });
+  }
+
+  // --- $__str_slice(s: ref $NativeString, start: i32, end: i32) -> ref $NativeString ---
+  // Like substring but handles negative indices
+  {
+    const typeIdx = addFuncType(ctx, [strRef, { kind: "i32" }, { kind: "i32" }], [strRef]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_slice", funcIdx);
+
+    const substringIdx = ctx.nativeStrHelpers.get("__str_substring")!;
+
+    // locals: len (index 3)
+    const body: Instr[] = [
+      // len = s.len
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 3 }, // len
+
+      // Resolve negative start: if start < 0, start = len + start
+      { op: "local.get", index: 1 },
+      { op: "i32.const", value: 0 },
+      { op: "i32.lt_s" },
+      { op: "if", blockType: { kind: "empty" },
+        then: [
+          { op: "local.get", index: 3 }, // len
+          { op: "local.get", index: 1 }, // start (negative)
+          { op: "i32.add" },
+          { op: "local.set", index: 1 },
+        ],
+      },
+      // Clamp start to >= 0
+      { op: "local.get", index: 1 },
+      { op: "i32.const", value: 0 },
+      { op: "i32.lt_s" },
+      { op: "if", blockType: { kind: "empty" },
+        then: [
+          { op: "i32.const", value: 0 },
+          { op: "local.set", index: 1 },
+        ],
+      },
+
+      // Resolve negative end: if end < 0, end = len + end
+      { op: "local.get", index: 2 },
+      { op: "i32.const", value: 0 },
+      { op: "i32.lt_s" },
+      { op: "if", blockType: { kind: "empty" },
+        then: [
+          { op: "local.get", index: 3 }, // len
+          { op: "local.get", index: 2 }, // end (negative)
+          { op: "i32.add" },
+          { op: "local.set", index: 2 },
+        ],
+      },
+      // Clamp end to >= 0
+      { op: "local.get", index: 2 },
+      { op: "i32.const", value: 0 },
+      { op: "i32.lt_s" },
+      { op: "if", blockType: { kind: "empty" },
+        then: [
+          { op: "i32.const", value: 0 },
+          { op: "local.set", index: 2 },
+        ],
+      },
+
+      // Delegate to __str_substring (which handles clamping to len and swapping)
+      { op: "local.get", index: 0 },
+      { op: "local.get", index: 1 },
+      { op: "local.get", index: 2 },
+      { op: "call", funcIdx: substringIdx },
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_slice",
+      typeIdx,
+      locals: [
+        { name: "len", type: { kind: "i32" } },
+      ],
+      body: wrapBodyWithFlatten(body, [0]),
+      exported: false,
+    });
+  }
+
+  // --- $__str_indexOf(haystack: ref $NativeString, needle: ref $NativeString, fromIndex: i32) -> i32 ---
+  {
+    const typeIdx = addFuncType(ctx, [strRef, strRef, { kind: "i32" }], [{ kind: "i32" }]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_indexOf", funcIdx);
+
+    // params: haystack(0), needle(1), fromIndex(2)
+    // locals: hLen(3), nLen(4), i(5), j(6), hData(7), nData(8), hOff(9), nOff(10)
+    const body: Instr[] = [
+      // hLen = haystack.len
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 3 },
+      // nLen = needle.len
+      { op: "local.get", index: 1 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 4 },
+      // if nLen == 0, return clamp(fromIndex, 0, hLen)
+      { op: "local.get", index: 4 },
+      { op: "i32.eqz" },
+      { op: "if", blockType: { kind: "empty" }, then: [
+        { op: "local.get", index: 2 },
+        { op: "i32.const", value: 0 },
+        { op: "local.get", index: 2 },
+        { op: "i32.const", value: 0 },
+        { op: "i32.gt_s" },
+        { op: "select" },
+        { op: "local.tee", index: 5 },
+        { op: "local.get", index: 3 },
+        { op: "local.get", index: 5 },
+        { op: "local.get", index: 3 },
+        { op: "i32.lt_s" },
+        { op: "select" },
+        { op: "return" },
+      ] },
+      // hOff = haystack.off
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 },
+      { op: "local.set", index: 9 },
+      // nOff = needle.off
+      { op: "local.get", index: 1 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 },
+      { op: "local.set", index: 10 },
+      // hData = haystack.data
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 },
+      { op: "local.set", index: 7 },
+      // nData = needle.data
+      { op: "local.get", index: 1 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 },
+      { op: "local.set", index: 8 },
+      // i = max(fromIndex, 0)
+      { op: "local.get", index: 2 },
+      { op: "i32.const", value: 0 },
+      { op: "local.get", index: 2 },
+      { op: "i32.const", value: 0 },
+      { op: "i32.gt_s" },
+      { op: "select" },
+      { op: "local.set", index: 5 },
+      // outer loop: scan i from fromIndex to hLen - nLen
+      { op: "block", blockType: { kind: "empty" }, body: [
+        { op: "loop", blockType: { kind: "empty" }, body: [
+          // if i > hLen - nLen, break
+          { op: "local.get", index: 5 },
+          { op: "local.get", index: 3 },
+          { op: "local.get", index: 4 },
+          { op: "i32.sub" },
+          { op: "i32.gt_s" },
+          { op: "br_if", depth: 1 },
+          // j = 0; inner loop to compare needle chars
+          { op: "i32.const", value: 0 },
+          { op: "local.set", index: 6 },
+          { op: "block", blockType: { kind: "empty" }, body: [
+            { op: "loop", blockType: { kind: "empty" }, body: [
+              // if j >= nLen, match found — return i
+              { op: "local.get", index: 6 },
+              { op: "local.get", index: 4 },
+              { op: "i32.ge_s" },
+              { op: "if", blockType: { kind: "empty" }, then: [
+                { op: "local.get", index: 5 },
+                { op: "return" },
+              ] },
+              // if hData[hOff + i + j] != nData[nOff + j], break inner
+              { op: "local.get", index: 7 },
+              { op: "local.get", index: 9 },
+              { op: "local.get", index: 5 },
+              { op: "i32.add" },
+              { op: "local.get", index: 6 },
+              { op: "i32.add" },
+              { op: "array.get_u", typeIdx: strDataTypeIdx },
+              { op: "local.get", index: 8 },
+              { op: "local.get", index: 10 },
+              { op: "local.get", index: 6 },
+              { op: "i32.add" },
+              { op: "array.get_u", typeIdx: strDataTypeIdx },
+              { op: "i32.ne" },
+              { op: "br_if", depth: 1 },
+              // j++
+              { op: "local.get", index: 6 },
+              { op: "i32.const", value: 1 },
+              { op: "i32.add" },
+              { op: "local.set", index: 6 },
+              { op: "br", depth: 0 },
+            ]},
+          ]},
+          // i++
+          { op: "local.get", index: 5 },
+          { op: "i32.const", value: 1 },
+          { op: "i32.add" },
+          { op: "local.set", index: 5 },
+          { op: "br", depth: 0 },
+        ]},
+      ]},
+      // not found
+      { op: "i32.const", value: -1 },
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_indexOf",
+      typeIdx,
+      locals: [
+        { name: "hLen", type: { kind: "i32" } },
+        { name: "nLen", type: { kind: "i32" } },
+        { name: "i", type: { kind: "i32" } },
+        { name: "j", type: { kind: "i32" } },
+        { name: "hData", type: strDataRef },
+        { name: "nData", type: strDataRef },
+        { name: "hOff", type: { kind: "i32" } },
+        { name: "nOff", type: { kind: "i32" } },
+      ],
+      body: wrapBodyWithFlatten(body, [0, 1]),
+      exported: false,
+    });
+  }
+
+  // --- $__str_lastIndexOf(haystack: ref $NativeString, needle: ref $NativeString, fromIndex: i32) -> i32 ---
+  {
+    const typeIdx = addFuncType(ctx, [strRef, strRef, { kind: "i32" }], [{ kind: "i32" }]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_lastIndexOf", funcIdx);
+
+    // params: haystack(0), needle(1), fromIndex(2)
+    // locals: hLen(3), nLen(4), i(5), j(6), hData(7), nData(8), hOff(9), nOff(10)
+    const body: Instr[] = [
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 3 },
+      { op: "local.get", index: 1 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 4 },
+      // if nLen == 0, return min(fromIndex, hLen)
+      { op: "local.get", index: 4 },
+      { op: "i32.eqz" },
+      { op: "if", blockType: { kind: "empty" }, then: [
+        { op: "local.get", index: 2 },
+        { op: "local.get", index: 3 },
+        { op: "local.get", index: 2 },
+        { op: "local.get", index: 3 },
+        { op: "i32.lt_s" },
+        { op: "select" },
+        { op: "return" },
+      ] },
+      // hOff, nOff
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 },
+      { op: "local.set", index: 9 },
+      { op: "local.get", index: 1 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 },
+      { op: "local.set", index: 10 },
+      // hData, nData
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 },
+      { op: "local.set", index: 7 },
+      { op: "local.get", index: 1 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 },
+      { op: "local.set", index: 8 },
+      // i = min(fromIndex, hLen - nLen)
+      { op: "local.get", index: 2 },
+      { op: "local.get", index: 3 },
+      { op: "local.get", index: 4 },
+      { op: "i32.sub" },
+      { op: "local.tee", index: 5 },
+      { op: "local.get", index: 2 },
+      { op: "local.get", index: 5 },
+      { op: "i32.lt_s" },
+      { op: "select" },
+      { op: "local.set", index: 5 },
+      // reverse scan
+      { op: "block", blockType: { kind: "empty" }, body: [
+        { op: "loop", blockType: { kind: "empty" }, body: [
+          { op: "local.get", index: 5 },
+          { op: "i32.const", value: 0 },
+          { op: "i32.lt_s" },
+          { op: "br_if", depth: 1 },
+          { op: "i32.const", value: 0 },
+          { op: "local.set", index: 6 },
+          { op: "block", blockType: { kind: "empty" }, body: [
+            { op: "loop", blockType: { kind: "empty" }, body: [
+              { op: "local.get", index: 6 },
+              { op: "local.get", index: 4 },
+              { op: "i32.ge_s" },
+              { op: "if", blockType: { kind: "empty" }, then: [
+                { op: "local.get", index: 5 },
+                { op: "return" },
+              ] },
+              // hData[hOff + i + j]
+              { op: "local.get", index: 7 },
+              { op: "local.get", index: 9 },
+              { op: "local.get", index: 5 },
+              { op: "i32.add" },
+              { op: "local.get", index: 6 },
+              { op: "i32.add" },
+              { op: "array.get_u", typeIdx: strDataTypeIdx },
+              // nData[nOff + j]
+              { op: "local.get", index: 8 },
+              { op: "local.get", index: 10 },
+              { op: "local.get", index: 6 },
+              { op: "i32.add" },
+              { op: "array.get_u", typeIdx: strDataTypeIdx },
+              { op: "i32.ne" },
+              { op: "br_if", depth: 1 },
+              { op: "local.get", index: 6 },
+              { op: "i32.const", value: 1 },
+              { op: "i32.add" },
+              { op: "local.set", index: 6 },
+              { op: "br", depth: 0 },
+            ]},
+          ]},
+          { op: "local.get", index: 5 },
+          { op: "i32.const", value: 1 },
+          { op: "i32.sub" },
+          { op: "local.set", index: 5 },
+          { op: "br", depth: 0 },
+        ]},
+      ]},
+      // not found
+      { op: "i32.const", value: -1 },
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_lastIndexOf",
+      typeIdx,
+      locals: [
+        { name: "hLen", type: { kind: "i32" } },
+        { name: "nLen", type: { kind: "i32" } },
+        { name: "i", type: { kind: "i32" } },
+        { name: "j", type: { kind: "i32" } },
+        { name: "hData", type: strDataRef },
+        { name: "nData", type: strDataRef },
+        { name: "hOff", type: { kind: "i32" } },
+        { name: "nOff", type: { kind: "i32" } },
+      ],
+      body: wrapBodyWithFlatten(body, [0, 1]),
+      exported: false,
+    });
+  }
+
+  // --- $__str_includes(haystack: ref $NativeString, needle: ref $NativeString, fromIndex: i32) -> i32 ---
+  {
+    const typeIdx = addFuncType(ctx, [strRef, strRef, { kind: "i32" }], [{ kind: "i32" }]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_includes", funcIdx);
+
+    const indexOfIdx = ctx.nativeStrHelpers.get("__str_indexOf")!;
+
+    const body: Instr[] = [
+      { op: "local.get", index: 0 },
+      { op: "local.get", index: 1 },
+      { op: "local.get", index: 2 },
+      { op: "call", funcIdx: indexOfIdx },
+      { op: "i32.const", value: -1 },
+      { op: "i32.ne" },
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_includes",
+      typeIdx,
+      locals: [],
+      body,
+      exported: false,
+    });
+  }
+
+  // --- $__str_startsWith(s: ref $NativeString, prefix: ref $NativeString, position: i32) -> i32 ---
+  {
+    const typeIdx = addFuncType(ctx, [strRef, strRef, { kind: "i32" }], [{ kind: "i32" }]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_startsWith", funcIdx);
+
+    // params: s(0), prefix(1), position(2)
+    // locals: sLen(3), pLen(4), i(5), sData(6), pData(7), sOff(8), pOff(9)
+    const body: Instr[] = [
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 3 },
+      { op: "local.get", index: 1 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 4 },
+      // if position + pLen > sLen, return 0
+      { op: "local.get", index: 2 },
+      { op: "local.get", index: 4 },
+      { op: "i32.add" },
+      { op: "local.get", index: 3 },
+      { op: "i32.gt_s" },
+      { op: "if", blockType: { kind: "empty" }, then: [
+        { op: "i32.const", value: 0 },
+        { op: "return" },
+      ] },
+      // sOff, pOff
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 },
+      { op: "local.set", index: 8 },
+      { op: "local.get", index: 1 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 },
+      { op: "local.set", index: 9 },
+      // sData, pData
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 },
+      { op: "local.set", index: 6 },
+      { op: "local.get", index: 1 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 },
+      { op: "local.set", index: 7 },
+      { op: "i32.const", value: 0 },
+      { op: "local.set", index: 5 },
+      // compare loop
+      { op: "block", blockType: { kind: "empty" }, body: [
+        { op: "loop", blockType: { kind: "empty" }, body: [
+          { op: "local.get", index: 5 },
+          { op: "local.get", index: 4 },
+          { op: "i32.ge_s" },
+          { op: "if", blockType: { kind: "empty" }, then: [
+            { op: "i32.const", value: 1 },
+            { op: "return" },
+          ] },
+          // sData[sOff + position + i]
+          { op: "local.get", index: 6 },
+          { op: "local.get", index: 8 },
+          { op: "local.get", index: 2 },
+          { op: "i32.add" },
+          { op: "local.get", index: 5 },
+          { op: "i32.add" },
+          { op: "array.get_u", typeIdx: strDataTypeIdx },
+          // pData[pOff + i]
+          { op: "local.get", index: 7 },
+          { op: "local.get", index: 9 },
+          { op: "local.get", index: 5 },
+          { op: "i32.add" },
+          { op: "array.get_u", typeIdx: strDataTypeIdx },
+          { op: "i32.ne" },
+          { op: "br_if", depth: 1 },
+          { op: "local.get", index: 5 },
+          { op: "i32.const", value: 1 },
+          { op: "i32.add" },
+          { op: "local.set", index: 5 },
+          { op: "br", depth: 0 },
+        ]},
+      ]},
+      // mismatch found
+      { op: "i32.const", value: 0 },
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_startsWith",
+      typeIdx,
+      locals: [
+        { name: "sLen", type: { kind: "i32" } },
+        { name: "pLen", type: { kind: "i32" } },
+        { name: "i", type: { kind: "i32" } },
+        { name: "sData", type: strDataRef },
+        { name: "pData", type: strDataRef },
+        { name: "sOff", type: { kind: "i32" } },
+        { name: "pOff", type: { kind: "i32" } },
+      ],
+      body: wrapBodyWithFlatten(body, [0, 1]),
+      exported: false,
+    });
+  }
+
+  // --- $__str_endsWith(s: ref $NativeString, suffix: ref $NativeString, endPos: i32) -> i32 ---
+  {
+    const typeIdx = addFuncType(ctx, [strRef, strRef, { kind: "i32" }], [{ kind: "i32" }]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_endsWith", funcIdx);
+
+    // params: s(0), suffix(1), endPos(2)
+    // locals: sxLen(3), i(4), sData(5), xData(6), startPos(7), sLen(8), sOff(9), xOff(10)
+    const body: Instr[] = [
+      { op: "local.get", index: 1 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 3 },
+      // sLen = s.len; clamp endPos to sLen
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 8 },
+      // endPos = min(endPos, sLen)
+      { op: "local.get", index: 2 },
+      { op: "local.get", index: 8 },
+      { op: "local.get", index: 2 },
+      { op: "local.get", index: 8 },
+      { op: "i32.lt_s" },
+      { op: "select" },
+      { op: "local.set", index: 2 },
+      // startPos = endPos - sxLen
+      { op: "local.get", index: 2 },
+      { op: "local.get", index: 3 },
+      { op: "i32.sub" },
+      { op: "local.set", index: 7 },
+      // if startPos < 0, return 0
+      { op: "local.get", index: 7 },
+      { op: "i32.const", value: 0 },
+      { op: "i32.lt_s" },
+      { op: "if", blockType: { kind: "empty" }, then: [
+        { op: "i32.const", value: 0 },
+        { op: "return" },
+      ] },
+      // sOff, xOff
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 },
+      { op: "local.set", index: 9 },
+      { op: "local.get", index: 1 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 },
+      { op: "local.set", index: 10 },
+      // sData, xData
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 },
+      { op: "local.set", index: 5 },
+      { op: "local.get", index: 1 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 },
+      { op: "local.set", index: 6 },
+      { op: "i32.const", value: 0 },
+      { op: "local.set", index: 4 },
+      { op: "block", blockType: { kind: "empty" }, body: [
+        { op: "loop", blockType: { kind: "empty" }, body: [
+          { op: "local.get", index: 4 },
+          { op: "local.get", index: 3 },
+          { op: "i32.ge_s" },
+          { op: "if", blockType: { kind: "empty" }, then: [
+            { op: "i32.const", value: 1 },
+            { op: "return" },
+          ] },
+          // sData[sOff + startPos + i]
+          { op: "local.get", index: 5 },
+          { op: "local.get", index: 9 },
+          { op: "local.get", index: 7 },
+          { op: "i32.add" },
+          { op: "local.get", index: 4 },
+          { op: "i32.add" },
+          { op: "array.get_u", typeIdx: strDataTypeIdx },
+          // xData[xOff + i]
+          { op: "local.get", index: 6 },
+          { op: "local.get", index: 10 },
+          { op: "local.get", index: 4 },
+          { op: "i32.add" },
+          { op: "array.get_u", typeIdx: strDataTypeIdx },
+          { op: "i32.ne" },
+          { op: "br_if", depth: 1 },
+          { op: "local.get", index: 4 },
+          { op: "i32.const", value: 1 },
+          { op: "i32.add" },
+          { op: "local.set", index: 4 },
+          { op: "br", depth: 0 },
+        ]},
+      ]},
+      { op: "i32.const", value: 0 },
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_endsWith",
+      typeIdx,
+      locals: [
+        { name: "sxLen", type: { kind: "i32" } },
+        { name: "i", type: { kind: "i32" } },
+        { name: "sData", type: strDataRef },
+        { name: "xData", type: strDataRef },
+        { name: "startPos", type: { kind: "i32" } },
+        { name: "sLen", type: { kind: "i32" } },
+        { name: "sOff", type: { kind: "i32" } },
+        { name: "xOff", type: { kind: "i32" } },
+      ],
+      body: wrapBodyWithFlatten(body, [0, 1]),
+      exported: false,
+    });
+  }
+
+  // --- $__str_isWhitespace(codeUnit: i32) -> i32 (helper, not exported) ---
+  // Checks if a WTF-16 code unit is whitespace: 0x09-0x0D, 0x20, 0xA0, 0xFEFF
+  {
+    const typeIdx = addFuncType(ctx, [{ kind: "i32" }], [{ kind: "i32" }]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_isWhitespace", funcIdx);
+
+    const body: Instr[] = [
+      // Check ranges: 0x09 <= c <= 0x0D || c == 0x20 || c == 0xA0 || c == 0xFEFF
+      // Use a chain of comparisons
+      { op: "local.get", index: 0 },
+      { op: "i32.const", value: 0x20 },
+      { op: "i32.eq" },
+      { op: "local.get", index: 0 },
+      { op: "i32.const", value: 0x09 },
+      { op: "i32.ge_u" },
+      { op: "local.get", index: 0 },
+      { op: "i32.const", value: 0x0D },
+      { op: "i32.le_u" },
+      { op: "i32.and" },
+      { op: "i32.or" },
+      { op: "local.get", index: 0 },
+      { op: "i32.const", value: 0xA0 },
+      { op: "i32.eq" },
+      { op: "i32.or" },
+      { op: "local.get", index: 0 },
+      { op: "i32.const", value: 0xFEFF },
+      { op: "i32.eq" },
+      { op: "i32.or" },
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_isWhitespace",
+      typeIdx,
+      locals: [],
+      body,
+      exported: false,
+    });
+  }
+
+  // --- $__str_trimStart(s: ref $NativeString) -> ref $NativeString ---
+  {
+    const typeIdx = addFuncType(ctx, [strRef], [strRef]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_trimStart", funcIdx);
+
+    const isWsIdx = ctx.nativeStrHelpers.get("__str_isWhitespace")!;
+    const substringIdx = ctx.nativeStrHelpers.get("__str_substring")!;
+
+    // params: s(0)
+    // locals: len(1), i(2), sData(3), sOff(4)
+    const body: Instr[] = [
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 1 },
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 },
+      { op: "local.set", index: 4 }, // sOff
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 },
+      { op: "local.set", index: 3 }, // sData
+      { op: "i32.const", value: 0 },
+      { op: "local.set", index: 2 },
+      // scan forward while whitespace
+      { op: "block", blockType: { kind: "empty" }, body: [
+        { op: "loop", blockType: { kind: "empty" }, body: [
+          { op: "local.get", index: 2 },
+          { op: "local.get", index: 1 },
+          { op: "i32.ge_s" },
+          { op: "br_if", depth: 1 },
+          // sData[sOff + i]
+          { op: "local.get", index: 3 },
+          { op: "local.get", index: 4 },
+          { op: "local.get", index: 2 },
+          { op: "i32.add" },
+          { op: "array.get_u", typeIdx: strDataTypeIdx },
+          { op: "call", funcIdx: isWsIdx },
+          { op: "i32.eqz" },
+          { op: "br_if", depth: 1 },
+          { op: "local.get", index: 2 },
+          { op: "i32.const", value: 1 },
+          { op: "i32.add" },
+          { op: "local.set", index: 2 },
+          { op: "br", depth: 0 },
+        ]},
+      ]},
+      // return substring(s, i, len)
+      { op: "local.get", index: 0 },
+      { op: "local.get", index: 2 },
+      { op: "local.get", index: 1 },
+      { op: "call", funcIdx: substringIdx },
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_trimStart",
+      typeIdx,
+      locals: [
+        { name: "len", type: { kind: "i32" } },
+        { name: "i", type: { kind: "i32" } },
+        { name: "sData", type: strDataRef },
+        { name: "sOff", type: { kind: "i32" } },
+      ],
+      body: wrapBodyWithFlatten(body, [0]),
+      exported: false,
+    });
+  }
+
+  // --- $__str_trimEnd(s: ref $NativeString) -> ref $NativeString ---
+  {
+    const typeIdx = addFuncType(ctx, [strRef], [strRef]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_trimEnd", funcIdx);
+
+    const isWsIdx = ctx.nativeStrHelpers.get("__str_isWhitespace")!;
+    const substringIdx = ctx.nativeStrHelpers.get("__str_substring")!;
+
+    // params: s(0)
+    // locals: end(1), sData(2), sOff(3)
+    const body: Instr[] = [
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 1 }, // end = len
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 },
+      { op: "local.set", index: 3 }, // sOff
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 },
+      { op: "local.set", index: 2 }, // sData
+      // scan backward while whitespace
+      { op: "block", blockType: { kind: "empty" }, body: [
+        { op: "loop", blockType: { kind: "empty" }, body: [
+          { op: "local.get", index: 1 },
+          { op: "i32.const", value: 0 },
+          { op: "i32.le_s" },
+          { op: "br_if", depth: 1 },
+          // sData[sOff + end - 1]
+          { op: "local.get", index: 2 },
+          { op: "local.get", index: 3 },
+          { op: "local.get", index: 1 },
+          { op: "i32.add" },
+          { op: "i32.const", value: 1 },
+          { op: "i32.sub" },
+          { op: "array.get_u", typeIdx: strDataTypeIdx },
+          { op: "call", funcIdx: isWsIdx },
+          { op: "i32.eqz" },
+          { op: "br_if", depth: 1 },
+          { op: "local.get", index: 1 },
+          { op: "i32.const", value: 1 },
+          { op: "i32.sub" },
+          { op: "local.set", index: 1 },
+          { op: "br", depth: 0 },
+        ]},
+      ]},
+      // return substring(s, 0, end)
+      { op: "local.get", index: 0 },
+      { op: "i32.const", value: 0 },
+      { op: "local.get", index: 1 },
+      { op: "call", funcIdx: substringIdx },
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_trimEnd",
+      typeIdx,
+      locals: [
+        { name: "end", type: { kind: "i32" } },
+        { name: "sData", type: strDataRef },
+        { name: "sOff", type: { kind: "i32" } },
+      ],
+      body: wrapBodyWithFlatten(body, [0]),
+      exported: false,
+    });
+  }
+
+  // --- $__str_trim(s: ref $NativeString) -> ref $NativeString ---
+  {
+    const typeIdx = addFuncType(ctx, [strRef], [strRef]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_trim", funcIdx);
+
+    const trimStartIdx = ctx.nativeStrHelpers.get("__str_trimStart")!;
+    const trimEndIdx = ctx.nativeStrHelpers.get("__str_trimEnd")!;
+
+    const body: Instr[] = [
+      { op: "local.get", index: 0 },
+      { op: "call", funcIdx: trimStartIdx },
+      { op: "call", funcIdx: trimEndIdx },
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_trim",
+      typeIdx,
+      locals: [],
+      body,
+      exported: false,
+    });
+  }
+
+  // --- $__str_repeat(s: ref $NativeString, count: i32) -> ref $NativeString ---
+  {
+    const typeIdx = addFuncType(ctx, [strRef, { kind: "i32" }], [strRef]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_repeat", funcIdx);
+
+    // params: s(0), count(1)
+    // locals: sLen(2), newLen(3), newArr(4), dst(5), srcData(6), copyI(7), sOff(8)
+    const body: Instr[] = [
+      // sLen = s.len
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 2 },
+
+      // if count <= 0 or sLen == 0, return empty string
+      { op: "local.get", index: 1 },
+      { op: "i32.const", value: 0 },
+      { op: "i32.le_s" },
+      { op: "if", blockType: { kind: "val", type: strRef }, then: [
+        { op: "i32.const", value: 0 },  // off = 0
+        { op: "i32.const", value: 0 },  // len = 0
+        { op: "i32.const", value: 0 },
+        { op: "array.new_default", typeIdx: strDataTypeIdx },
+        { op: "struct.new", typeIdx: strTypeIdx },
+      ], else: [
+        { op: "local.get", index: 2 },
+        { op: "i32.eqz" },
+        { op: "if", blockType: { kind: "val", type: strRef }, then: [
+          { op: "i32.const", value: 0 },  // off = 0
+          { op: "i32.const", value: 0 },  // len = 0
+          { op: "i32.const", value: 0 },
+          { op: "array.new_default", typeIdx: strDataTypeIdx },
+          { op: "struct.new", typeIdx: strTypeIdx },
+        ], else: [
+          // sOff = s.off
+          { op: "local.get", index: 0 },
+          { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 },
+          { op: "local.set", index: 8 },
+
+          // newLen = sLen * count
+          { op: "local.get", index: 2 },
+          { op: "local.get", index: 1 },
+          { op: "i32.mul" },
+          { op: "local.tee", index: 3 },
+
+          // newArr = array.new_default(newLen)
+          { op: "array.new_default", typeIdx: strDataTypeIdx },
+          { op: "local.set", index: 4 },
+
+          // srcData = s.data
+          { op: "local.get", index: 0 },
+          { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 },
+          { op: "local.set", index: 6 },
+
+          // dst = 0
+          { op: "i32.const", value: 0 },
+          { op: "local.set", index: 5 },
+
+          // outer loop: repeat count times
+          { op: "block", blockType: { kind: "empty" }, body: [
+            { op: "loop", blockType: { kind: "empty" }, body: [
+              { op: "local.get", index: 5 },
+              { op: "local.get", index: 3 },
+              { op: "i32.ge_u" },
+              { op: "br_if", depth: 1 },
+
+              // array.copy newArr[dst..] <- srcData[sOff..sOff+sLen]
+              { op: "local.get", index: 4 },   // dst array
+              { op: "local.get", index: 5 },   // dst offset
+              { op: "local.get", index: 6 },   // src array
+              { op: "local.get", index: 8 },   // src offset = sOff
+              { op: "local.get", index: 2 },   // length = sLen
+              { op: "array.copy", dstTypeIdx: strDataTypeIdx, srcTypeIdx: strDataTypeIdx },
+
+              // dst += sLen
+              { op: "local.get", index: 5 },
+              { op: "local.get", index: 2 },
+              { op: "i32.add" },
+              { op: "local.set", index: 5 },
+              { op: "br", depth: 0 },
+            ]},
+          ]},
+
+          // return struct.new(newLen, 0, newArr)
+          { op: "local.get", index: 3 },  // len = newLen
+          { op: "i32.const", value: 0 },  // off = 0
+          { op: "local.get", index: 4 },  // data = newArr
+          { op: "struct.new", typeIdx: strTypeIdx },
+        ]},
+      ]},
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_repeat",
+      typeIdx,
+      locals: [
+        { name: "sLen", type: { kind: "i32" } },
+        { name: "newLen", type: { kind: "i32" } },
+        { name: "newArr", type: strDataRef },
+        { name: "dst", type: { kind: "i32" } },
+        { name: "srcData", type: strDataRef },
+        { name: "copyI", type: { kind: "i32" } },
+        { name: "sOff", type: { kind: "i32" } },
+      ],
+      body: wrapBodyWithFlatten(body, [0]),
+      exported: false,
+    });
+  }
+
+  // --- $__str_padStart(s: ref $NativeString, targetLen: i32, padStr: ref $NativeString) -> ref $NativeString ---
+  {
+    const concatIdx = ctx.nativeStrHelpers.get("__str_concat")!;
+    const repeatIdx = ctx.nativeStrHelpers.get("__str_repeat")!;
+    const substringIdx = ctx.nativeStrHelpers.get("__str_substring")!;
+
+    const typeIdx = addFuncType(ctx, [strRef, { kind: "i32" }, strRef], [strRef]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_padStart", funcIdx);
+
+    // params: s(0), targetLen(1), padStr(2)
+    // locals: sLen(3), padLen(4), fillLen(5), repeated(6), prefix(7)
+    const body: Instr[] = [
+      // sLen = s.len
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 3 },
+
+      // if sLen >= targetLen, return s
+      { op: "local.get", index: 3 },
+      { op: "local.get", index: 1 },
+      { op: "i32.ge_s" },
+      { op: "if", blockType: { kind: "val", type: strRef }, then: [
+        { op: "local.get", index: 0 },
+      ], else: [
+        // padLen = padStr.len
+        { op: "local.get", index: 2 },
+        { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+        { op: "local.set", index: 4 },
+
+        // if padLen == 0, return s
+        { op: "local.get", index: 4 },
+        { op: "i32.eqz" },
+        { op: "if", blockType: { kind: "val", type: strRef }, then: [
+          { op: "local.get", index: 0 },
+        ], else: [
+          // fillLen = targetLen - sLen
+          { op: "local.get", index: 1 },
+          { op: "local.get", index: 3 },
+          { op: "i32.sub" },
+          { op: "local.set", index: 5 },
+
+          // repeated = repeat(padStr, ceil(fillLen / padLen))
+          { op: "local.get", index: 2 },  // padStr (1st arg)
+          { op: "local.get", index: 5 },   // fillLen
+          { op: "local.get", index: 4 },   // padLen
+          { op: "i32.add" },
+          { op: "i32.const", value: 1 },
+          { op: "i32.sub" },
+          { op: "local.get", index: 4 },
+          { op: "i32.div_u" },             // count (2nd arg)
+          { op: "call", funcIdx: repeatIdx },
+
+          // prefix = repeated.substring(0, fillLen)
+          { op: "i32.const", value: 0 },
+          { op: "local.get", index: 5 },
+          { op: "call", funcIdx: substringIdx },
+
+          // return concat(prefix, s)
+          { op: "local.get", index: 0 },
+          { op: "call", funcIdx: concatIdx },
+        ]},
+      ]},
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_padStart",
+      typeIdx,
+      locals: [
+        { name: "sLen", type: { kind: "i32" } },
+        { name: "padLen", type: { kind: "i32" } },
+        { name: "fillLen", type: { kind: "i32" } },
+        { name: "repeated", type: strRef },
+        { name: "prefix", type: strRef },
+      ],
+      body: wrapBodyWithFlatten(body, [0, 2]),
+      exported: false,
+    });
+  }
+
+  // --- $__str_padEnd(s: ref $NativeString, targetLen: i32, padStr: ref $NativeString) -> ref $NativeString ---
+  {
+    const concatIdx = ctx.nativeStrHelpers.get("__str_concat")!;
+    const repeatIdx = ctx.nativeStrHelpers.get("__str_repeat")!;
+    const substringIdx = ctx.nativeStrHelpers.get("__str_substring")!;
+
+    const typeIdx = addFuncType(ctx, [strRef, { kind: "i32" }, strRef], [strRef]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_padEnd", funcIdx);
+
+    // params: s(0), targetLen(1), padStr(2)
+    // locals: sLen(3), padLen(4), fillLen(5)
+    const body: Instr[] = [
+      // sLen = s.len
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 3 },
+
+      // if sLen >= targetLen, return s
+      { op: "local.get", index: 3 },
+      { op: "local.get", index: 1 },
+      { op: "i32.ge_s" },
+      { op: "if", blockType: { kind: "val", type: strRef }, then: [
+        { op: "local.get", index: 0 },
+      ], else: [
+        // padLen = padStr.len
+        { op: "local.get", index: 2 },
+        { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+        { op: "local.set", index: 4 },
+
+        // if padLen == 0, return s
+        { op: "local.get", index: 4 },
+        { op: "i32.eqz" },
+        { op: "if", blockType: { kind: "val", type: strRef }, then: [
+          { op: "local.get", index: 0 },
+        ], else: [
+          // fillLen = targetLen - sLen
+          { op: "local.get", index: 1 },
+          { op: "local.get", index: 3 },
+          { op: "i32.sub" },
+          { op: "local.set", index: 5 },
+
+          // repeated = repeat(padStr, ceil(fillLen / padLen))
+          { op: "local.get", index: 2 },  // padStr (1st arg)
+          { op: "local.get", index: 5 },   // fillLen
+          { op: "local.get", index: 4 },   // padLen
+          { op: "i32.add" },
+          { op: "i32.const", value: 1 },
+          { op: "i32.sub" },
+          { op: "local.get", index: 4 },
+          { op: "i32.div_u" },             // count (2nd arg)
+          { op: "call", funcIdx: repeatIdx },
+
+          // suffix = repeated.substring(0, fillLen)
+          { op: "i32.const", value: 0 },
+          { op: "local.get", index: 5 },
+          { op: "call", funcIdx: substringIdx },
+
+          // return concat(s, suffix)
+          // stack has: suffix on top. Store it, push s, push suffix back
+          { op: "local.set", index: 6 },   // suffix -> local 6
+          { op: "local.get", index: 0 },   // s (1st arg to concat)
+          { op: "local.get", index: 6 },   // suffix (2nd arg to concat)
+          { op: "ref.as_non_null" },
+          { op: "call", funcIdx: concatIdx },
+        ]},
+      ]},
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_padEnd",
+      typeIdx,
+      locals: [
+        { name: "sLen", type: { kind: "i32" } },
+        { name: "padLen", type: { kind: "i32" } },
+        { name: "fillLen", type: { kind: "i32" } },
+        { name: "suffix", type: { kind: "ref_null", typeIdx: anyStrTypeIdx } },
+      ],
+      body: wrapBodyWithFlatten(body, [0, 2]),
+      exported: false,
+    });
+  }
+
+  // --- $__str_toLowerCase(s: ref $NativeString) -> ref $NativeString ---
+  // ASCII-only: maps A-Z (65-90) to a-z (97-122), copies everything else as-is
+  {
+    const typeIdx = addFuncType(ctx, [strRef], [strRef]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_toLowerCase", funcIdx);
+
+    // params: s(0)
+    // locals: len(1), srcData(2), newArr(3), i(4), ch(5), sOff(6)
+    const body: Instr[] = [
+      // len = s.len
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 1 },
+
+      // sOff = s.off
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 },
+      { op: "local.set", index: 6 },
+
+      // srcData = s.data
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 },
+      { op: "local.set", index: 2 },
+
+      // newArr = array.new_default(len)
+      { op: "local.get", index: 1 },
+      { op: "array.new_default", typeIdx: strDataTypeIdx },
+      { op: "local.set", index: 3 },
+
+      // i = 0
+      { op: "i32.const", value: 0 },
+      { op: "local.set", index: 4 },
+
+      // loop over each code unit
+      { op: "block", blockType: { kind: "empty" }, body: [
+        { op: "loop", blockType: { kind: "empty" }, body: [
+          { op: "local.get", index: 4 },
+          { op: "local.get", index: 1 },
+          { op: "i32.ge_u" },
+          { op: "br_if", depth: 1 },
+
+          // ch = srcData[sOff + i]
+          { op: "local.get", index: 2 },
+          { op: "local.get", index: 6 },
+          { op: "local.get", index: 4 },
+          { op: "i32.add" },
+          { op: "array.get_u", typeIdx: strDataTypeIdx },
+          { op: "local.set", index: 5 },
+
+          // newArr[i] = (ch >= 65 && ch <= 90) ? ch + 32 : ch
+          { op: "local.get", index: 3 },
+          { op: "local.get", index: 4 },
+          { op: "local.get", index: 5 },
+          { op: "i32.const", value: 65 },
+          { op: "i32.ge_u" },
+          { op: "local.get", index: 5 },
+          { op: "i32.const", value: 90 },
+          { op: "i32.le_u" },
+          { op: "i32.and" },
+          { op: "if", blockType: { kind: "val", type: { kind: "i32" } }, then: [
+            { op: "local.get", index: 5 },
+            { op: "i32.const", value: 32 },
+            { op: "i32.add" },
+          ], else: [
+            { op: "local.get", index: 5 },
+          ]},
+          { op: "array.set", typeIdx: strDataTypeIdx },
+
+          // i++
+          { op: "local.get", index: 4 },
+          { op: "i32.const", value: 1 },
+          { op: "i32.add" },
+          { op: "local.set", index: 4 },
+          { op: "br", depth: 0 },
+        ]},
+      ]},
+
+      // return struct.new(len, 0, newArr)
+      { op: "local.get", index: 1 },  // len
+      { op: "i32.const", value: 0 },  // off = 0
+      { op: "local.get", index: 3 },  // data = newArr
+      { op: "struct.new", typeIdx: strTypeIdx },
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_toLowerCase",
+      typeIdx,
+      locals: [
+        { name: "len", type: { kind: "i32" } },
+        { name: "srcData", type: strDataRef },
+        { name: "newArr", type: strDataRef },
+        { name: "i", type: { kind: "i32" } },
+        { name: "ch", type: { kind: "i32" } },
+        { name: "sOff", type: { kind: "i32" } },
+      ],
+      body: wrapBodyWithFlatten(body, [0]),
+      exported: false,
+    });
+  }
+
+  // --- $__str_toUpperCase(s: ref $NativeString) -> ref $NativeString ---
+  // ASCII-only: maps a-z (97-122) to A-Z (65-90), copies everything else as-is
+  {
+    const typeIdx = addFuncType(ctx, [strRef], [strRef]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_toUpperCase", funcIdx);
+
+    // params: s(0)
+    // locals: len(1), srcData(2), newArr(3), i(4), ch(5), sOff(6)
+    const body: Instr[] = [
+      // len = s.len
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 1 },
+
+      // sOff = s.off
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 },
+      { op: "local.set", index: 6 },
+
+      // srcData = s.data
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 },
+      { op: "local.set", index: 2 },
+
+      // newArr = array.new_default(len)
+      { op: "local.get", index: 1 },
+      { op: "array.new_default", typeIdx: strDataTypeIdx },
+      { op: "local.set", index: 3 },
+
+      // i = 0
+      { op: "i32.const", value: 0 },
+      { op: "local.set", index: 4 },
+
+      // loop
+      { op: "block", blockType: { kind: "empty" }, body: [
+        { op: "loop", blockType: { kind: "empty" }, body: [
+          { op: "local.get", index: 4 },
+          { op: "local.get", index: 1 },
+          { op: "i32.ge_u" },
+          { op: "br_if", depth: 1 },
+
+          // ch = srcData[sOff + i]
+          { op: "local.get", index: 2 },
+          { op: "local.get", index: 6 },
+          { op: "local.get", index: 4 },
+          { op: "i32.add" },
+          { op: "array.get_u", typeIdx: strDataTypeIdx },
+          { op: "local.set", index: 5 },
+
+          // newArr[i] = (ch >= 97 && ch <= 122) ? ch - 32 : ch
+          { op: "local.get", index: 3 },
+          { op: "local.get", index: 4 },
+          { op: "local.get", index: 5 },
+          { op: "i32.const", value: 97 },
+          { op: "i32.ge_u" },
+          { op: "local.get", index: 5 },
+          { op: "i32.const", value: 122 },
+          { op: "i32.le_u" },
+          { op: "i32.and" },
+          { op: "if", blockType: { kind: "val", type: { kind: "i32" } }, then: [
+            { op: "local.get", index: 5 },
+            { op: "i32.const", value: 32 },
+            { op: "i32.sub" },
+          ], else: [
+            { op: "local.get", index: 5 },
+          ]},
+          { op: "array.set", typeIdx: strDataTypeIdx },
+
+          // i++
+          { op: "local.get", index: 4 },
+          { op: "i32.const", value: 1 },
+          { op: "i32.add" },
+          { op: "local.set", index: 4 },
+          { op: "br", depth: 0 },
+        ]},
+      ]},
+
+      // return struct.new(len, 0, newArr)
+      { op: "local.get", index: 1 },  // len
+      { op: "i32.const", value: 0 },  // off = 0
+      { op: "local.get", index: 3 },  // data = newArr
+      { op: "struct.new", typeIdx: strTypeIdx },
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_toUpperCase",
+      typeIdx,
+      locals: [
+        { name: "len", type: { kind: "i32" } },
+        { name: "srcData", type: strDataRef },
+        { name: "newArr", type: strDataRef },
+        { name: "i", type: { kind: "i32" } },
+        { name: "ch", type: { kind: "i32" } },
+        { name: "sOff", type: { kind: "i32" } },
+      ],
+      body: wrapBodyWithFlatten(body, [0]),
+      exported: false,
+    });
+  }
+
+  // --- $__str_replace(s: ref $NativeString, search: ref $NativeString, replacement: ref $NativeString) -> ref $NativeString ---
+  // Replaces first occurrence of search with replacement. Pure wasm using indexOf + substring + concat.
+  {
+    const indexOfIdx = ctx.nativeStrHelpers.get("__str_indexOf")!;
+    const substringIdx = ctx.nativeStrHelpers.get("__str_substring")!;
+    const concatIdx = ctx.nativeStrHelpers.get("__str_concat")!;
+
+    const typeIdx = addFuncType(ctx, [strRef, strRef, strRef], [strRef]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_replace", funcIdx);
+
+    // params: s(0), search(1), replacement(2)
+    // locals: idx(3), searchLen(4), prefix(5-nullable), suffix(6-nullable)
+    const body: Instr[] = [
+      // idx = indexOf(s, search, 0)
+      { op: "local.get", index: 0 },
+      { op: "local.get", index: 1 },
+      { op: "i32.const", value: 0 },
+      { op: "call", funcIdx: indexOfIdx },
+      { op: "local.set", index: 3 },
+
+      // if idx == -1, return s unchanged
+      { op: "local.get", index: 3 },
+      { op: "i32.const", value: -1 },
+      { op: "i32.eq" },
+      { op: "if", blockType: { kind: "val", type: strRef }, then: [
+        { op: "local.get", index: 0 },
+      ], else: [
+        // searchLen = search.len
+        { op: "local.get", index: 1 },
+        { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+        { op: "local.set", index: 4 },
+
+        // prefix = s.substring(0, idx)
+        { op: "local.get", index: 0 },
+        { op: "i32.const", value: 0 },
+        { op: "local.get", index: 3 },
+        { op: "call", funcIdx: substringIdx },
+        { op: "local.set", index: 5 },
+
+        // suffix = s.substring(idx + searchLen, MAX)
+        { op: "local.get", index: 0 },
+        { op: "local.get", index: 3 },
+        { op: "local.get", index: 4 },
+        { op: "i32.add" },
+        { op: "i32.const", value: 0x7FFFFFFF },
+        { op: "call", funcIdx: substringIdx },
+        { op: "local.set", index: 6 },
+
+        // return concat(concat(prefix, replacement), suffix)
+        { op: "local.get", index: 5 },
+        { op: "ref.as_non_null" },
+        { op: "local.get", index: 2 },
+        { op: "call", funcIdx: concatIdx },
+        { op: "local.get", index: 6 },
+        { op: "ref.as_non_null" },
+        { op: "call", funcIdx: concatIdx },
+      ]},
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_replace",
+      typeIdx,
+      locals: [
+        { name: "idx", type: { kind: "i32" } },
+        { name: "searchLen", type: { kind: "i32" } },
+        { name: "prefix", type: { kind: "ref_null", typeIdx: anyStrTypeIdx } },
+        { name: "suffix", type: { kind: "ref_null", typeIdx: anyStrTypeIdx } },
+      ],
+      body: wrapBodyWithFlatten(body, [0, 1, 2]),
+      exported: false,
+    });
+  }
+
+  // --- $__str_split(s: ref $NativeString, sep: ref $NativeString) -> ref $vec_nstr ---
+  // Splits s by sep, returns a native array of native strings.
+  {
+    // Register native string array type: (array (mut (ref null $AnyString)))
+    // Use ref_null so array.new_default can initialize with null.
+    // Key must match what resolveWasmType generates for string[] (ref_N).
+    const nstrElemKey = `ref_${anyStrTypeIdx}`;
+    const nstrElemType: ValType = { kind: "ref_null", typeIdx: anyStrTypeIdx };
+    const nstrArrTypeIdx = getOrRegisterArrayType(ctx, nstrElemKey, nstrElemType);
+    const nstrVecTypeIdx = getOrRegisterVecType(ctx, nstrElemKey, nstrElemType);
+    const nstrVecRef: ValType = { kind: "ref", typeIdx: nstrVecTypeIdx };
+
+    const typeIdx = addFuncType(ctx, [strRef, strRef], [nstrVecRef]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_split", funcIdx);
+
+    const indexOfIdx = ctx.nativeStrHelpers.get("__str_indexOf")!;
+    const substringIdx = ctx.nativeStrHelpers.get("__str_substring")!;
+
+    // params: s(0), sep(1)
+    // locals: sLen(2), sepLen(3), pos(4), idx(5), part(6-nullable),
+    //         resultArr(7-nullable), resultLen(8), resultCap(9), newArr(10-nullable)
+    const S = 0, SEP = 1;
+    const SLEN = 2, SEPLEN = 3, POS = 4, IDX = 5, PART = 6;
+    const RARR = 7, RLEN = 8, RCAP = 9, NEWARR = 10;
+
+    const body: Instr[] = [
+      // sLen = s.len
+      { op: "local.get", index: S },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: SLEN },
+
+      // sepLen = sep.len
+      { op: "local.get", index: SEP },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: SEPLEN },
+
+      // resultArr = array.new_default(8)
+      { op: "i32.const", value: 8 },
+      { op: "array.new_default", typeIdx: nstrArrTypeIdx },
+      { op: "local.set", index: RARR },
+      { op: "i32.const", value: 0 },
+      { op: "local.set", index: RLEN },
+      { op: "i32.const", value: 8 },
+      { op: "local.set", index: RCAP },
+
+      // pos = 0
+      { op: "i32.const", value: 0 },
+      { op: "local.set", index: POS },
+
+      // Handle empty separator: return array with single element (the whole string)
+      { op: "local.get", index: SEPLEN },
+      { op: "i32.eqz" },
+      { op: "if", blockType: { kind: "empty" }, then: [
+        // For empty sep, split each character (like JS)
+        // But for simplicity and correctness, match JS: "abc".split("") => ["a","b","c"]
+        // Realloc if needed for sLen elements
+        { op: "local.get", index: SLEN },
+        { op: "array.new_default", typeIdx: nstrArrTypeIdx },
+        { op: "local.set", index: RARR },
+        { op: "local.get", index: SLEN },
+        { op: "local.set", index: RCAP },
+
+        // Loop: for each character, create a single-char NativeString
+        { op: "i32.const", value: 0 },
+        { op: "local.set", index: POS },
+        { op: "block", blockType: { kind: "empty" }, body: [
+          { op: "loop", blockType: { kind: "empty" }, body: [
+            { op: "local.get", index: POS },
+            { op: "local.get", index: SLEN },
+            { op: "i32.ge_s" },
+            { op: "br_if", depth: 1 },
+
+            // part = substring(s, pos, pos+1)
+            { op: "local.get", index: S },
+            { op: "local.get", index: POS },
+            { op: "local.get", index: POS },
+            { op: "i32.const", value: 1 },
+            { op: "i32.add" },
+            { op: "call", funcIdx: substringIdx },
+            { op: "local.set", index: PART },
+
+            // resultArr[pos] = part
+            { op: "local.get", index: RARR },
+            { op: "local.get", index: POS },
+            { op: "local.get", index: PART },
+            { op: "array.set", typeIdx: nstrArrTypeIdx },
+
+            { op: "local.get", index: POS },
+            { op: "i32.const", value: 1 },
+            { op: "i32.add" },
+            { op: "local.set", index: POS },
+            { op: "br", depth: 0 },
+          ] as Instr[] },
+        ] as Instr[] },
+
+        // return struct.new(sLen, resultArr)
+        { op: "local.get", index: SLEN },
+        { op: "local.get", index: RARR },
+        { op: "ref.as_non_null" },
+        { op: "struct.new", typeIdx: nstrVecTypeIdx },
+        { op: "return" },
+      ] as Instr[] },
+
+      // Main split loop: find sep occurrences and extract substrings
+      { op: "block", blockType: { kind: "empty" }, body: [
+        { op: "loop", blockType: { kind: "empty" }, body: [
+          // idx = indexOf(s, sep, pos)
+          { op: "local.get", index: S },
+          { op: "local.get", index: SEP },
+          { op: "local.get", index: POS },
+          { op: "call", funcIdx: indexOfIdx },
+          { op: "local.set", index: IDX },
+
+          // if idx == -1: add final part and break
+          { op: "local.get", index: IDX },
+          { op: "i32.const", value: -1 },
+          { op: "i32.eq" },
+          { op: "if", blockType: { kind: "empty" }, then: [
+            // part = substring(s, pos, sLen)
+            { op: "local.get", index: S },
+            { op: "local.get", index: POS },
+            { op: "local.get", index: SLEN },
+            { op: "call", funcIdx: substringIdx },
+            { op: "local.set", index: PART },
+
+            // Grow result if needed
+            { op: "local.get", index: RLEN },
+            { op: "local.get", index: RCAP },
+            { op: "i32.ge_s" },
+            { op: "if", blockType: { kind: "empty" }, then: [
+              // newCap = cap * 2
+              { op: "local.get", index: RCAP },
+              { op: "i32.const", value: 2 },
+              { op: "i32.mul" },
+              { op: "local.set", index: RCAP },
+              // newArr = array.new_default(newCap)
+              { op: "local.get", index: RCAP },
+              { op: "array.new_default", typeIdx: nstrArrTypeIdx },
+              { op: "local.set", index: NEWARR },
+              // array.copy(newArr, 0, resultArr, 0, resultLen)
+              { op: "local.get", index: NEWARR },
+              { op: "i32.const", value: 0 },
+              { op: "local.get", index: RARR },
+              { op: "i32.const", value: 0 },
+              { op: "local.get", index: RLEN },
+              { op: "array.copy", dstTypeIdx: nstrArrTypeIdx, srcTypeIdx: nstrArrTypeIdx },
+              { op: "local.get", index: NEWARR },
+              { op: "local.set", index: RARR },
+            ] as Instr[] },
+
+            // resultArr[resultLen] = part
+            { op: "local.get", index: RARR },
+            { op: "local.get", index: RLEN },
+            { op: "local.get", index: PART },
+            { op: "array.set", typeIdx: nstrArrTypeIdx },
+            { op: "local.get", index: RLEN },
+            { op: "i32.const", value: 1 },
+            { op: "i32.add" },
+            { op: "local.set", index: RLEN },
+
+            { op: "br", depth: 2 }, // break outer block
+          ] as Instr[] },
+
+          // Found separator: part = substring(s, pos, idx)
+          { op: "local.get", index: S },
+          { op: "local.get", index: POS },
+          { op: "local.get", index: IDX },
+          { op: "call", funcIdx: substringIdx },
+          { op: "local.set", index: PART },
+
+          // Grow result if needed
+          { op: "local.get", index: RLEN },
+          { op: "local.get", index: RCAP },
+          { op: "i32.ge_s" },
+          { op: "if", blockType: { kind: "empty" }, then: [
+            { op: "local.get", index: RCAP },
+            { op: "i32.const", value: 2 },
+            { op: "i32.mul" },
+            { op: "local.set", index: RCAP },
+            { op: "local.get", index: RCAP },
+            { op: "array.new_default", typeIdx: nstrArrTypeIdx },
+            { op: "local.set", index: NEWARR },
+            { op: "local.get", index: NEWARR },
+            { op: "i32.const", value: 0 },
+            { op: "local.get", index: RARR },
+            { op: "i32.const", value: 0 },
+            { op: "local.get", index: RLEN },
+            { op: "array.copy", dstTypeIdx: nstrArrTypeIdx, srcTypeIdx: nstrArrTypeIdx },
+            { op: "local.get", index: NEWARR },
+            { op: "local.set", index: RARR },
+          ] as Instr[] },
+
+          // resultArr[resultLen] = part
+          { op: "local.get", index: RARR },
+          { op: "local.get", index: RLEN },
+          { op: "local.get", index: PART },
+          { op: "array.set", typeIdx: nstrArrTypeIdx },
+          { op: "local.get", index: RLEN },
+          { op: "i32.const", value: 1 },
+          { op: "i32.add" },
+          { op: "local.set", index: RLEN },
+
+          // pos = idx + sepLen
+          { op: "local.get", index: IDX },
+          { op: "local.get", index: SEPLEN },
+          { op: "i32.add" },
+          { op: "local.set", index: POS },
+
+          { op: "br", depth: 0 }, // continue loop
+        ] as Instr[] },
+      ] as Instr[] },
+
+      // return struct.new(resultLen, resultArr)
+      { op: "local.get", index: RLEN },
+      { op: "local.get", index: RARR },
+      { op: "ref.as_non_null" },
+      { op: "struct.new", typeIdx: nstrVecTypeIdx },
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_split",
+      typeIdx,
+      locals: [
+        { name: "sLen", type: { kind: "i32" } },
+        { name: "sepLen", type: { kind: "i32" } },
+        { name: "pos", type: { kind: "i32" } },
+        { name: "idx", type: { kind: "i32" } },
+        { name: "part", type: { kind: "ref_null", typeIdx: anyStrTypeIdx } },
+        { name: "resultArr", type: { kind: "ref_null", typeIdx: nstrArrTypeIdx } },
+        { name: "resultLen", type: { kind: "i32" } },
+        { name: "resultCap", type: { kind: "i32" } },
+        { name: "newArr", type: { kind: "ref_null", typeIdx: nstrArrTypeIdx } },
+      ],
+      body: wrapBodyWithFlatten(body, [0, 1]),
+      exported: false,
+    });
+  }
+
+  // --- Boundary marshaling helpers ---
+  // Uses linear memory as a shared buffer for string data transfer.
+  // Import registrations are in Step 1 above; here we add the module functions.
+
+  // $__str_to_extern(s: ref $NativeString) -> externref
+  // Copies GC array code units to linear memory, then calls __str_from_mem
+  {
+    const typeIdx = addFuncType(ctx, [strRef], [{ kind: "externref" }]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_to_extern", funcIdx);
+    ctx.funcMap.set("__str_to_extern", funcIdx);
+
+    const fromMemIdx = ctx.funcMap.get("__str_from_mem")!;
+
+    // locals: len, i, data, sOff
+    const body: Instr[] = [
+      // len = s.len
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 1 }, // len
+
+      // sOff = s.off
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 },
+      { op: "local.set", index: 4 }, // sOff
+
+      // data = s.data
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 },
+      { op: "local.set", index: 3 }, // data
+
+      // i = 0
+      { op: "i32.const", value: 0 },
+      { op: "local.set", index: 2 }, // i
+
+      // loop: copy code units from GC array to linear memory
+      { op: "block", blockType: { kind: "empty" }, body: [
+        { op: "loop", blockType: { kind: "empty" }, body: [
+          // if i >= len, break
+          { op: "local.get", index: 2 },
+          { op: "local.get", index: 1 },
+          { op: "i32.ge_u" },
+          { op: "br_if", depth: 1 },
+
+          // memory[i*2] = data[sOff + i] (i32.store16)
+          { op: "local.get", index: 2 },
+          { op: "i32.const", value: 1 },
+          { op: "i32.shl" },          // ptr = i * 2
+          { op: "local.get", index: 3 },
+          { op: "local.get", index: 4 },
+          { op: "local.get", index: 2 },
+          { op: "i32.add" },          // sOff + i
+          { op: "array.get_u", typeIdx: strDataTypeIdx },
+          { op: "i32.store16", align: 1, offset: 0 },
+
+          // i++
+          { op: "local.get", index: 2 },
+          { op: "i32.const", value: 1 },
+          { op: "i32.add" },
+          { op: "local.set", index: 2 },
+          { op: "br", depth: 0 },
+        ]},
+      ]},
+
+      // return __str_from_mem(0, len)
+      { op: "i32.const", value: 0 },
+      { op: "local.get", index: 1 },
+      { op: "call", funcIdx: fromMemIdx },
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_to_extern",
+      typeIdx,
+      locals: [
+        { name: "len", type: { kind: "i32" } },
+        { name: "i", type: { kind: "i32" } },
+        { name: "data", type: strDataRef },
+        { name: "sOff", type: { kind: "i32" } },
+      ],
+      body: wrapBodyWithFlatten(body, [0]),
+      exported: false,
+    });
+  }
+
+  // $__str_from_extern(s: externref) -> ref $NativeString
+  // Host writes JS string code units to linear memory, then wasm copies to GC array
+  {
+    const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [strRef]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_from_extern", funcIdx);
+    ctx.funcMap.set("__str_from_extern", funcIdx);
+
+    const toMemIdx = ctx.funcMap.get("__str_to_mem")!;
+    const externLenIdx = ctx.funcMap.get("__str_extern_len")!;
+
+    // locals: len, arr, i
+    const body: Instr[] = [
+      // len = __str_extern_len(s)
+      { op: "local.get", index: 0 },
+      { op: "call", funcIdx: externLenIdx },
+      { op: "local.set", index: 1 }, // len
+
+      // __str_to_mem(s, 0) — host writes code units to linear memory at ptr=0
+      { op: "local.get", index: 0 },
+      { op: "i32.const", value: 0 },
+      { op: "call", funcIdx: toMemIdx },
+
+      // arr = array.new_default len
+      { op: "local.get", index: 1 },
+      { op: "array.new_default", typeIdx: strDataTypeIdx },
+      { op: "local.set", index: 2 }, // arr
+
+      // i = 0
+      { op: "i32.const", value: 0 },
+      { op: "local.set", index: 3 }, // i
+
+      // loop: copy from linear memory to GC array
+      { op: "block", blockType: { kind: "empty" }, body: [
+        { op: "loop", blockType: { kind: "empty" }, body: [
+          // if i >= len, break
+          { op: "local.get", index: 3 },
+          { op: "local.get", index: 1 },
+          { op: "i32.ge_u" },
+          { op: "br_if", depth: 1 },
+
+          // arr[i] = memory[i*2] (i32.load16_u)
+          { op: "local.get", index: 2 },
+          { op: "local.get", index: 3 },
+          { op: "local.get", index: 3 },
+          { op: "i32.const", value: 1 },
+          { op: "i32.shl" },          // ptr = i * 2
+          { op: "i32.load16_u", align: 1, offset: 0 },
+          { op: "array.set", typeIdx: strDataTypeIdx },
+
+          // i++
+          { op: "local.get", index: 3 },
+          { op: "i32.const", value: 1 },
+          { op: "i32.add" },
+          { op: "local.set", index: 3 },
+          { op: "br", depth: 0 },
+        ]},
+      ]},
+
+      // struct.new(len, 0, arr)
+      { op: "local.get", index: 1 },  // len
+      { op: "i32.const", value: 0 },  // off = 0
+      { op: "local.get", index: 2 },  // data = arr
+      { op: "struct.new", typeIdx: strTypeIdx },
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_from_extern",
+      typeIdx,
+      locals: [
+        { name: "len", type: { kind: "i32" } },
+        { name: "arr", type: strDataRef },
+        { name: "i", type: { kind: "i32" } },
+      ],
+      body,
+      exported: false,
+    });
+  }
 }
 
 /** Parse a RegExp literal text (e.g. "/\\d+/gi") into pattern and flags */
@@ -866,6 +3369,20 @@ function collectStringLiterals(
 
   if (literals.size === 0) return;
 
+  if (ctx.fast) {
+    // Fast mode: native strings — ensure helpers are emitted, track literals
+    // No wasm:js-string or string_constants imports needed
+    ensureNativeStringHelpers(ctx);
+    for (const value of literals) {
+      // Track literals in stringGlobalMap so compileStringLiteral can find them.
+      // Use a sentinel value (-1) since we don't import globals in fast mode.
+      if (!ctx.stringGlobalMap.has(value)) {
+        ctx.stringGlobalMap.set(value, -1);
+      }
+    }
+    return;
+  }
+
   // Register wasm:js-string imports since we have strings
   addStringImports(ctx);
 
@@ -901,6 +3418,14 @@ function collectForInStringLiterals(
   }
 
   if (literals.size === 0) return;
+
+  if (ctx.fast) {
+    ensureNativeStringHelpers(ctx);
+    for (const value of literals) {
+      if (!ctx.stringGlobalMap.has(value)) ctx.stringGlobalMap.set(value, -1);
+    }
+    return;
+  }
 
   // Ensure wasm:js-string imports exist (may already be registered)
   addStringImports(ctx);
@@ -954,6 +3479,14 @@ function collectObjectMethodStringLiterals(
 
   if (literals.size === 0) return;
 
+  if (ctx.fast) {
+    ensureNativeStringHelpers(ctx);
+    for (const value of literals) {
+      if (!ctx.stringGlobalMap.has(value)) ctx.stringGlobalMap.set(value, -1);
+    }
+    return;
+  }
+
   // Ensure wasm:js-string imports exist (may already be registered)
   addStringImports(ctx);
 
@@ -989,6 +3522,8 @@ function collectMathImports(
 ): void {
   const needed = new Set<string>();
 
+  let needsToUint32 = false;
+
   function visit(node: ts.Node) {
     if (
       ts.isCallExpression(node) &&
@@ -1003,6 +3538,10 @@ function collectMathImports(
         method === "random"
       ) {
         needed.add(method);
+      }
+      // clz32 and imul need __toUint32 for spec-correct ToUint32 conversion
+      if (method === "clz32" || method === "imul") {
+        needsToUint32 = true;
       }
     }
     // ** and **= operators need Math.pow
@@ -1036,6 +3575,162 @@ function collectMathImports(
     } else {
       const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "f64" }]);
       addImport(ctx, "env", `Math_${method}`, { kind: "func", typeIdx });
+    }
+  }
+
+  // Register __toUint32 host import: (f64) → i32
+  if (needsToUint32 && !ctx.funcMap.has("__toUint32")) {
+    const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "i32" }]);
+    addImport(ctx, "env", "__toUint32", { kind: "func", typeIdx });
+  }
+}
+
+/** Scan source for parseInt / parseFloat / Number() / unary + on strings and register host imports */
+function collectParseImports(
+  ctx: CodegenContext,
+  sourceFile: ts.SourceFile,
+): void {
+  const needed = new Set<string>();
+
+  function visit(node: ts.Node) {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression)
+    ) {
+      const name = node.expression.text;
+      if (name === "parseInt" || name === "parseFloat") {
+        needed.add(name);
+      }
+      // Number(x) uses parseFloat for string→number coercion
+      if (name === "Number") {
+        needed.add("parseFloat");
+      }
+    }
+    // Unary + on string uses parseFloat for coercion
+    if (
+      ts.isPrefixUnaryExpression(node) &&
+      node.operator === ts.SyntaxKind.PlusToken
+    ) {
+      const operandType = ctx.checker.getTypeAtLocation(node.operand);
+      if (operandType.flags & ts.TypeFlags.StringLike) {
+        needed.add("parseFloat");
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  for (const stmt of sourceFile.statements) {
+    if (ts.isFunctionDeclaration(stmt) && stmt.body) {
+      visit(stmt.body);
+    }
+    if (ts.isClassDeclaration(stmt)) {
+      for (const member of stmt.members) {
+        if (ts.isMethodDeclaration(member) && member.body) {
+          visit(member.body);
+        }
+      }
+    }
+  }
+
+  for (const name of needed) {
+    // (externref) -> f64
+    const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "f64" }]);
+    addImport(ctx, "env", name, { kind: "func", typeIdx });
+  }
+}
+
+/** Known constructors handled natively (not needing __new_ imports) */
+const KNOWN_CONSTRUCTORS = new Set([
+  "Array", "Date", "Map", "Set", "RegExp", "Error", "TypeError", "RangeError",
+  "Promise", "WeakMap", "WeakSet", "WeakRef",
+]);
+
+/**
+ * Scan source for `new X(args...)` where X is not a locally declared class
+ * or known extern class, and register `__new_X` host imports so the runtime
+ * can provide the constructor.
+ */
+function collectUnknownConstructorImports(
+  ctx: CodegenContext,
+  sourceFile: ts.SourceFile,
+): void {
+  // Map from constructor name to arg count (max seen)
+  const needed = new Map<string, number>();
+
+  function visit(node: ts.Node) {
+    if (ts.isNewExpression(node) && ts.isIdentifier(node.expression)) {
+      const name = node.expression.text;
+      if (!KNOWN_CONSTRUCTORS.has(name)) {
+        // Check if it's a class declared in this source file
+        const sym = ctx.checker.getSymbolAtLocation(node.expression);
+        const decls = sym?.getDeclarations() ?? [];
+        const isLocalClass = decls.some(d => {
+          if (ts.isClassDeclaration(d) || ts.isClassExpression(d)) return d.getSourceFile() === sourceFile;
+          // const Vec2 = class { ... } — variable whose initializer is a class expression
+          if (ts.isVariableDeclaration(d) && d.initializer && ts.isClassExpression(d.initializer)) return d.getSourceFile() === sourceFile;
+          return false;
+        });
+        const isExtern = ctx.externClasses.has(name);
+        if (!isLocalClass && !isExtern) {
+          const argCount = node.arguments?.length ?? 0;
+          const prev = needed.get(name) ?? 0;
+          needed.set(name, Math.max(prev, argCount));
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  ts.forEachChild(sourceFile, visit);
+
+  for (const [name, argCount] of needed) {
+    const importName = `__new_${name}`;
+    if (ctx.funcMap.has(importName)) continue;
+    const params: ValType[] = Array.from({ length: argCount }, () => ({ kind: "externref" } as ValType));
+    const typeIdx = addFuncType(ctx, params, [{ kind: "externref" }]);
+    addImport(ctx, "env", importName, { kind: "func", typeIdx });
+  }
+}
+
+/** Scan source for String.fromCharCode() calls and register host import */
+function collectStringStaticImports(
+  ctx: CodegenContext,
+  sourceFile: ts.SourceFile,
+): void {
+  let needsFromCharCode = false;
+
+  function visit(node: ts.Node) {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      ts.isIdentifier(node.expression.expression) &&
+      node.expression.expression.text === "String" &&
+      node.expression.name.text === "fromCharCode"
+    ) {
+      needsFromCharCode = true;
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  for (const stmt of sourceFile.statements) {
+    if (ts.isFunctionDeclaration(stmt) && stmt.body) {
+      visit(stmt.body);
+    }
+    if (ts.isClassDeclaration(stmt)) {
+      for (const member of stmt.members) {
+        if (ts.isMethodDeclaration(member) && member.body) {
+          visit(member.body);
+        }
+      }
+    }
+  }
+
+  if (needsFromCharCode) {
+    // (f64) -> externref  (char code -> string)
+    const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", "String_fromCharCode", { kind: "func", typeIdx });
+    if (ctx.fast) {
+      ensureNativeStringHelpers(ctx);
     }
   }
 }
@@ -1319,23 +4014,43 @@ function collectFunctionalArrayImports(
   }
 
   if (need1) {
-    // __call_1_f64: (externref, f64) → f64 — invoke callback with 1 f64 arg
-    const typeIdx = addFuncType(
-      ctx,
-      [{ kind: "externref" }, { kind: "f64" }],
-      [{ kind: "f64" }],
-    );
-    addImport(ctx, "env", "__call_1_f64", { kind: "func", typeIdx });
+    if (ctx.fast) {
+      // __call_1_i32: (externref, i32) → i32 — invoke callback with 1 i32 arg (fast mode)
+      const typeIdx = addFuncType(
+        ctx,
+        [{ kind: "externref" }, { kind: "i32" }],
+        [{ kind: "i32" }],
+      );
+      addImport(ctx, "env", "__call_1_i32", { kind: "func", typeIdx });
+    } else {
+      // __call_1_f64: (externref, f64) → f64 — invoke callback with 1 f64 arg
+      const typeIdx = addFuncType(
+        ctx,
+        [{ kind: "externref" }, { kind: "f64" }],
+        [{ kind: "f64" }],
+      );
+      addImport(ctx, "env", "__call_1_f64", { kind: "func", typeIdx });
+    }
   }
 
   if (need2) {
-    // __call_2_f64: (externref, f64, f64) → f64 — invoke callback with 2 f64 args
-    const typeIdx = addFuncType(
-      ctx,
-      [{ kind: "externref" }, { kind: "f64" }, { kind: "f64" }],
-      [{ kind: "f64" }],
-    );
-    addImport(ctx, "env", "__call_2_f64", { kind: "func", typeIdx });
+    if (ctx.fast) {
+      // __call_2_i32: (externref, i32, i32) → i32 — invoke callback with 2 i32 args (fast mode)
+      const typeIdx = addFuncType(
+        ctx,
+        [{ kind: "externref" }, { kind: "i32" }, { kind: "i32" }],
+        [{ kind: "i32" }],
+      );
+      addImport(ctx, "env", "__call_2_i32", { kind: "func", typeIdx });
+    } else {
+      // __call_2_f64: (externref, f64, f64) → f64 — invoke callback with 2 f64 args
+      const typeIdx = addFuncType(
+        ctx,
+        [{ kind: "externref" }, { kind: "f64" }, { kind: "f64" }],
+        [{ kind: "f64" }],
+      );
+      addImport(ctx, "env", "__call_2_f64", { kind: "func", typeIdx });
+    }
   }
 }
 
@@ -1488,16 +4203,37 @@ export function addUnionImports(ctx: CodegenContext): void {
         exp.desc.index += delta;
       }
     }
-    // Update call instructions in already-compiled function bodies
-    for (const func of ctx.mod.functions) {
-      for (const instr of func.body) {
+    // Update call instructions in already-compiled function bodies (recursive)
+    function shiftFuncIndices(instrs: Instr[]): void {
+      for (const instr of instrs) {
         if (instr.op === "call" && instr.funcIdx >= importsBefore) {
           instr.funcIdx += delta;
         }
         if (instr.op === "ref.func" && instr.funcIdx >= importsBefore) {
           instr.funcIdx += delta;
         }
+        // Recurse into nested instruction arrays
+        if ("body" in instr && Array.isArray((instr as any).body)) {
+          shiftFuncIndices((instr as any).body);
+        }
+        if ("then" in instr && Array.isArray((instr as any).then)) {
+          shiftFuncIndices((instr as any).then);
+        }
+        if ("else" in instr && Array.isArray((instr as any).else)) {
+          shiftFuncIndices((instr as any).else);
+        }
+        if ("catches" in instr && Array.isArray((instr as any).catches)) {
+          for (const c of (instr as any).catches) {
+            if (Array.isArray(c.body)) shiftFuncIndices(c.body);
+          }
+        }
+        if ("catchAll" in instr && Array.isArray((instr as any).catchAll)) {
+          shiftFuncIndices((instr as any).catchAll);
+        }
       }
+    }
+    for (const func of ctx.mod.functions) {
+      shiftFuncIndices(func.body);
     }
     // Update table elements
     for (const elem of ctx.mod.elements) {
@@ -1874,6 +4610,11 @@ export function getOrRegisterTupleType(
  * Use this instead of mapTsTypeToWasm in the codegen to get real type indices.
  */
 export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type): ValType {
+  // Fast mode: string → ref $AnyString (not externref)
+  if (ctx.fast && ctx.anyStrTypeIdx >= 0 && isStringType(tsType)) {
+    return { kind: "ref", typeIdx: ctx.anyStrTypeIdx };
+  }
+
   // Check tuple types BEFORE Array — tuples have the Object flag and Array symbol
   // but should be compiled to structs, not arrays
   if (isTupleType(tsType)) {
@@ -1968,6 +4709,8 @@ export function ensureStructForType(ctx: CodegenContext, tsType: ts.Type): void 
   if (isExternalDeclaredClass(tsType, ctx.checker)) return;
   // Tuple types are handled by getOrRegisterTupleType, not as anonymous structs
   if (isTupleType(tsType)) return;
+  // Callable types (functions) are compiled as closures, not structs
+  if (tsType.getCallSignatures().length > 0) return;
 
   const name = tsType.symbol?.name;
 
@@ -1983,15 +4726,16 @@ export function ensureStructForType(ctx: CodegenContext, tsType: ts.Type): void 
   // Already registered as anonymous struct
   if (ctx.anonTypeMap.has(tsType)) return;
 
-  // Get properties from the type
+  // Get properties from the type (empty objects get an empty struct)
   const props = tsType.getProperties();
-  if (props.length === 0) return;
 
   const fields: FieldDef[] = [];
   for (const prop of props) {
     const propType = ctx.checker.getTypeOfSymbol(prop);
-    // Use mapTsTypeToWasm for fields — they'll be resolved later or are primitives
-    const wasmType = mapTsTypeToWasm(propType, ctx.checker);
+    // Recursively register nested object types as structs before resolving
+    ensureStructForType(ctx, propType);
+    // Use resolveWasmType so nested structs get ref types, not externref
+    const wasmType = resolveWasmType(ctx, propType);
     fields.push({ name: prop.name, type: wasmType, mutable: true });
   }
 
@@ -2003,7 +4747,10 @@ export function ensureStructForType(ctx: CodegenContext, tsType: ts.Type): void 
     if (existingFields.length !== fields.length) continue;
     const match = existingFields.every((ef, i) => {
       const nf = fields[i]!;
-      return ef.name === nf.name && ef.type.kind === nf.type.kind;
+      if (ef.name !== nf.name || ef.type.kind !== nf.type.kind) return false;
+      if ((ef.type.kind === "ref" || ef.type.kind === "ref_null") &&
+          (ef.type as { typeIdx: number }).typeIdx !== (nf.type as { typeIdx: number }).typeIdx) return false;
+      return true;
     });
     if (match) {
       ctx.anonTypeMap.set(tsType, existingName);
@@ -2680,9 +5427,16 @@ function collectEnumDeclarations(
 
   // Register string enum literals as string constant globals
   if (stringEnumLiterals.length > 0) {
-    addStringImports(ctx);
-    for (const value of stringEnumLiterals) {
-      addStringConstantGlobal(ctx, value);
+    if (ctx.fast) {
+      ensureNativeStringHelpers(ctx);
+      for (const value of stringEnumLiterals) {
+        if (!ctx.stringGlobalMap.has(value)) ctx.stringGlobalMap.set(value, -1);
+      }
+    } else {
+      addStringImports(ctx);
+      for (const value of stringEnumLiterals) {
+        addStringConstantGlobal(ctx, value);
+      }
     }
   }
 }
@@ -4309,11 +7063,12 @@ function unwrapGeneratorYieldType(type: ts.Type, ctx: CodegenContext): ValType {
 
 /**
  * Ensure the stack top is an i32 suitable for use as a condition.
- * Handles: f64 (truthy != 0), externref (non-null check), null (push 0).
+ * Handles: f64 (truthy != 0), externref (JS truthiness via __is_truthy), null (push 0).
  */
 export function ensureI32Condition(
   fctx: FunctionContext,
   condType: ValType | null,
+  ctx?: CodegenContext,
 ): void {
   if (!condType) {
     // Expression compilation failed — push false to keep Wasm valid
@@ -4321,12 +7076,46 @@ export function ensureI32Condition(
     return;
   }
   if (condType.kind === "f64") {
+    // Use f64.abs + f64.gt(0) so that NaN, +0, and -0 are all falsy
+    // (f64.ne(0) treats NaN as truthy which is wrong for JS semantics)
+    fctx.body.push({ op: "f64.abs" });
     fctx.body.push({ op: "f64.const", value: 0 });
-    fctx.body.push({ op: "f64.ne" });
+    fctx.body.push({ op: "f64.gt" });
   } else if (condType.kind === "externref") {
-    // Truthiness for externref: non-null → true
+    // Use __is_truthy for proper JS truthiness (0, NaN, null, undefined, "" → falsy)
+    if (ctx) {
+      addUnionImports(ctx);
+      const funcIdx = ctx.funcMap.get("__is_truthy");
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+        return;
+      }
+    }
+    // Fallback: non-null → true
     fctx.body.push({ op: "ref.is_null" });
-    fctx.body.push({ op: "i32.eqz" }); // flip: is_null=1 means falsy
+    fctx.body.push({ op: "i32.eqz" });
+  } else if (condType.kind === "ref" || condType.kind === "ref_null") {
+    // Native string or struct ref — non-empty string is truthy
+    // For strings: check length > 0 via string.measure_utf8 or ref.is_null fallback
+    if (ctx && condType.typeIdx === ctx.anyStrTypeIdx) {
+      // Native string — check length > 0
+      const lengthIdx = ctx.nativeStrHelpers.get("__str_flatten");
+      if (lengthIdx !== undefined) {
+        // Flatten then check len field
+        fctx.body.push({ op: "call", funcIdx: lengthIdx });
+        fctx.body.push({
+          op: "struct.get",
+          typeIdx: ctx.nativeStrTypeIdx,
+          fieldIdx: 0,
+        }); // len field
+        fctx.body.push({ op: "i32.const", value: 0 });
+        fctx.body.push({ op: "i32.gt_s" });
+        return;
+      }
+    }
+    // Fallback: non-null → true
+    fctx.body.push({ op: "ref.is_null" });
+    fctx.body.push({ op: "i32.eqz" });
   }
   // i32 is already valid as-is
 }
