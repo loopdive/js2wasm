@@ -23,6 +23,7 @@
 | [79](issues/79.md) | Gradual typing — boxed `any` with runtime dispatch          | XL         |
 | [80](issues/80.md) | JS file compilation via `.d.ts` types and TS inference      | M          |
 | [81](issues/81.md) | npm package resolution and tree-shaking                     | L          |
+| [100](issues/100.md) | Mutable closure captures via ref cells                     | L          |
 
 ## Complexity legend
 
