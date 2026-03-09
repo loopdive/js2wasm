@@ -157,6 +157,9 @@ function classifyImport(name: string, mod: WasmModule): ImportIntent {
   // Math
   if (name.startsWith("Math_")) return { type: "math", method: name.slice(5) };
 
+  // String compare (lexicographic ordering)
+  if (name === "string_compare") return { type: "builtin", name };
+
   // String methods
   if (name.startsWith("string_")) return { type: "string_method", method: name.slice(7) };
 
@@ -350,6 +353,22 @@ export function compileSource(
     2358, // "The left-hand side of an 'instanceof' expression must be..."
     2362, // "The left-hand side of an arithmetic operation must be..."
     2365, // "Operator 'X' cannot be applied to types 'Y' and 'Z'"
+    18050, // "The value 'null'/'undefined' cannot be used here"
+    2872, // "This kind of expression is always truthy"
+    2873, // "This kind of expression is always falsy"
+    2363, // "The right-hand side of an arithmetic operation must be..."
+    2695, // "Left side of comma operator is unused and has no side effects"
+    2869, // "Right operand of ?? is unreachable because the left operand is never nullish"
+    2349, // "This expression is not callable"
+    2552, // "Cannot find name 'X'. Did you mean 'Y'?"
+    18046, // "'X' is of type 'unknown'"
+    2871, // "This expression is always nullish"
+    18048, // "'X' is possibly 'undefined'"
+    2839, // "This condition will always return true/false since JS compares objects by reference"
+    2703, // "The operand of a 'delete' operator must be a property reference"
+    2630, // "Cannot assign to 'X' because it is a function"
+    2447, // "The '|'/'&' operator is not allowed for boolean types"
+    2300, // "Duplicate identifier 'X'"
   ]);
 
   // Collect TS diagnostics as errors (or warnings for handled cases)
@@ -373,9 +392,16 @@ export function compileSource(
   }
 
   // Don't stop on type errors – the compiler can still generate code for many cases
-  // Only stop on syntax errors (parsing failures)
+  // Only stop on syntax errors (parsing failures), except tolerated ones
+  const TOLERATED_SYNTAX_CODES = new Set([
+    1156, // "'let' declarations can only be declared inside a block"
+    1313, // "The body of an 'if' statement cannot be the empty statement"
+    1344, // "A label is not allowed here"
+    1182, // "A destructuring declaration must have an initializer"
+    1228, // "A type predicate is only allowed in return type position"
+  ]);
   const hasSyntaxErrors = ast.syntacticDiagnostics.some(
-    (d) => d.category === 1 && d.file === ast.sourceFile,
+    (d) => d.category === 1 && d.file === ast.sourceFile && !TOLERATED_SYNTAX_CODES.has(d.code),
   );
 
   if (hasSyntaxErrors && errors.length > 0) {
@@ -879,6 +905,10 @@ function generateEnvImportLine(name: string, mod: WasmModule): string {
 
   // Primitive method imports
   if (name === "number_toString") return "number_toString: (v) => String(v)";
+
+  // String compare (lexicographic ordering)
+  if (name === "string_compare")
+    return "string_compare: (a, b) => (a < b ? -1 : a > b ? 1 : 0)";
 
   // String method imports
   if (name.startsWith("string_")) {

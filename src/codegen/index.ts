@@ -698,6 +698,19 @@ function collectPrimitiveMethodImports(
         needed.add("number_toString");
       }
     }
+    // String comparison operators (< > <= >=) on string types need string_compare import
+    if (
+      ts.isBinaryExpression(node) &&
+      (node.operatorToken.kind === ts.SyntaxKind.LessThanToken ||
+       node.operatorToken.kind === ts.SyntaxKind.LessThanEqualsToken ||
+       node.operatorToken.kind === ts.SyntaxKind.GreaterThanToken ||
+       node.operatorToken.kind === ts.SyntaxKind.GreaterThanEqualsToken)
+    ) {
+      const leftType = ctx.checker.getTypeAtLocation(node.left);
+      if (isStringType(leftType)) {
+        needed.add("string_compare");
+      }
+    }
     ts.forEachChild(node, visit);
   }
 
@@ -714,6 +727,10 @@ function collectPrimitiveMethodImports(
       [{ kind: "externref" }],
     );
     addImport(ctx, "env", "number_toFixed", { kind: "func", typeIdx: t });
+  }
+  if (needed.has("string_compare")) {
+    const t = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "i32" }]);
+    addImport(ctx, "env", "string_compare", { kind: "func", typeIdx: t });
   }
 }
 
@@ -7071,6 +7088,28 @@ export function ensureI32Condition(
       const funcIdx = ctx.funcMap.get("__is_truthy");
       if (funcIdx !== undefined) {
         fctx.body.push({ op: "call", funcIdx });
+        return;
+      }
+    }
+    // Fallback: non-null → true
+    fctx.body.push({ op: "ref.is_null" });
+    fctx.body.push({ op: "i32.eqz" });
+  } else if (condType.kind === "ref" || condType.kind === "ref_null") {
+    // Native string or struct ref — non-empty string is truthy
+    // For strings: check length > 0 via string.measure_utf8 or ref.is_null fallback
+    if (ctx && condType.typeIdx === ctx.anyStrTypeIdx) {
+      // Native string — check length > 0
+      const lengthIdx = ctx.nativeStrHelpers.get("__str_flatten");
+      if (lengthIdx !== undefined) {
+        // Flatten then check len field
+        fctx.body.push({ op: "call", funcIdx: lengthIdx });
+        fctx.body.push({
+          op: "struct.get",
+          typeIdx: ctx.nativeStrTypeIdx,
+          fieldIdx: 0,
+        }); // len field
+        fctx.body.push({ op: "i32.const", value: 0 });
+        fctx.body.push({ op: "i32.gt_s" });
         return;
       }
     }
