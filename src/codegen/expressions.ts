@@ -15,6 +15,7 @@ import {
 import type { Instr, ValType, WasmFunction, FieldDef, StructTypeDef } from "../ir/types.js";
 import { ensureI32Condition } from "./index.js";
 import { compileStatement } from "./statements.js";
+import { ensureTimsortHelper } from "./timsort.js";
 
 /** Sentinel: expression compiled successfully but produces no value (void) */
 const VOID_RESULT = Symbol("void");
@@ -5947,6 +5948,7 @@ function getReceiverLocalIdx(
 const ARRAY_METHODS = new Set([
   "push", "pop", "shift", "indexOf", "includes",
   "slice", "concat", "join", "reverse", "splice", "at",
+  "fill", "copyWithin", "lastIndexOf", "sort",
   "filter", "map", "reduce", "forEach", "find", "findIndex", "some", "every",
 ]);
 
@@ -5974,7 +5976,7 @@ function compileArrayMethodCall(
   // getReceiverLocalIdx succeeds and mutating methods can write back.
   let moduleGlobalIdx: number | undefined;
   let savedLocal: number | undefined;
-  const MUTATING = new Set(["push", "pop", "shift", "reverse", "splice"]);
+  const MUTATING = new Set(["push", "pop", "shift", "reverse", "splice", "fill", "copyWithin", "sort"]);
   if (ts.isIdentifier(propAccess.expression)) {
     const name = propAccess.expression.text;
     const gIdx = ctx.moduleGlobals.get(name);
@@ -6013,6 +6015,15 @@ function compileArrayMethodCall(
       result = compileArraySplice(ctx, fctx, propAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType); break;
     case "at":
       result = compileArrayAt(ctx, fctx, propAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType); break;
+    case "fill":
+      result = compileArrayFill(ctx, fctx, propAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType); break;
+    case "copyWithin":
+      result = compileArrayCopyWithin(ctx, fctx, propAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType); break;
+    case "lastIndexOf":
+      result = compileArrayLastIndexOf(ctx, fctx, propAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType); break;
+    case "sort":
+      result = (elemType.kind === "f64" || elemType.kind === "i32")
+        ? compileArraySort(ctx, fctx, propAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType) : undefined; break;
     // Functional array methods — currently only supported for numeric element types (f64, i32)
     case "filter":
       result = (elemType.kind === "f64" || elemType.kind === "i32")
@@ -7942,6 +7953,350 @@ function compileArrayEvery(
   // All elements passed
   fctx.body.push({ op: "i32.const", value: 1 });
   return { kind: "i32" };
+}
+
+/**
+ * arr.sort() → in-place Timsort, return same vec ref.
+ * Only supported for numeric element types (i32, f64).
+ */
+function compileArraySort(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  propAccess: ts.PropertyAccessExpression,
+  _callExpr: ts.CallExpression,
+  vecTypeIdx: number,
+  arrTypeIdx: number,
+  elemType: ValType,
+): ValType | null {
+  const elemKind = elemType.kind as "i32" | "f64";
+  const timsortIdx = ensureTimsortHelper(ctx, vecTypeIdx, arrTypeIdx, elemKind);
+
+  const vecTmp = allocLocal(fctx, `__arr_sort_vec_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecTypeIdx });
+
+  // Compile receiver, save a copy for return value
+  compileExpression(ctx, fctx, propAccess.expression);
+  fctx.body.push({ op: "local.tee", index: vecTmp });
+
+  // Call timsort(vec)
+  fctx.body.push({ op: "call", funcIdx: timsortIdx });
+
+  // Return the same vec ref (sort is in-place)
+  fctx.body.push({ op: "local.get", index: vecTmp });
+  fctx.body.push({ op: "ref.as_non_null" });
+  return { kind: "ref_null", typeIdx: vecTypeIdx };
+}
+
+/**
+ * arr.fill(value, start?, end?) → fill elements with value, return same vec ref.
+ * Mutates the array in place.
+ */
+function compileArrayFill(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  propAccess: ts.PropertyAccessExpression,
+  callExpr: ts.CallExpression,
+  vecTypeIdx: number,
+  arrTypeIdx: number,
+  elemType: ValType,
+): ValType | null {
+  if (callExpr.arguments.length < 1) {
+    ctx.errors.push({ message: "fill requires at least 1 argument", line: getLine(callExpr), column: getCol(callExpr) });
+    return null;
+  }
+
+  const vecTmp = allocLocal(fctx, `__arr_fill_vec_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecTypeIdx });
+  const dataTmp = allocLocal(fctx, `__arr_fill_data_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
+  const lenTmp = allocLocal(fctx, `__arr_fill_len_${fctx.locals.length}`, { kind: "i32" });
+  const valTmp = allocLocal(fctx, `__arr_fill_val_${fctx.locals.length}`, elemType);
+  const startTmp = allocLocal(fctx, `__arr_fill_s_${fctx.locals.length}`, { kind: "i32" });
+  const endTmp = allocLocal(fctx, `__arr_fill_e_${fctx.locals.length}`, { kind: "i32" });
+  const iTmp = allocLocal(fctx, `__arr_fill_i_${fctx.locals.length}`, { kind: "i32" });
+
+  // Compile receiver → vec ref
+  compileExpression(ctx, fctx, propAccess.expression);
+  fctx.body.push({ op: "local.tee", index: vecTmp });
+
+  // Extract length
+  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
+  fctx.body.push({ op: "local.set", index: lenTmp });
+
+  // Extract data
+  fctx.body.push({ op: "local.get", index: vecTmp });
+  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
+  fctx.body.push({ op: "local.set", index: dataTmp });
+
+  // Compile value argument
+  compileExpression(ctx, fctx, callExpr.arguments[0]!, elemType);
+  fctx.body.push({ op: "local.set", index: valTmp });
+
+  // start (default: 0)
+  if (callExpr.arguments.length >= 2) {
+    if (ctx.fast) {
+      compileExpression(ctx, fctx, callExpr.arguments[1]!, { kind: "i32" });
+    } else {
+      compileExpression(ctx, fctx, callExpr.arguments[1]!, { kind: "f64" });
+      fctx.body.push({ op: "i32.trunc_f64_s" });
+    }
+  } else {
+    fctx.body.push({ op: "i32.const", value: 0 });
+  }
+  fctx.body.push({ op: "local.set", index: startTmp });
+
+  // end (default: length)
+  if (callExpr.arguments.length >= 3) {
+    if (ctx.fast) {
+      compileExpression(ctx, fctx, callExpr.arguments[2]!, { kind: "i32" });
+    } else {
+      compileExpression(ctx, fctx, callExpr.arguments[2]!, { kind: "f64" });
+      fctx.body.push({ op: "i32.trunc_f64_s" });
+    }
+  } else {
+    fctx.body.push({ op: "local.get", index: lenTmp });
+  }
+  fctx.body.push({ op: "local.set", index: endTmp });
+
+  // i = start
+  fctx.body.push({ op: "local.get", index: startTmp });
+  fctx.body.push({ op: "local.set", index: iTmp });
+
+  // Loop: while (i < end) { data[i] = value; i++; }
+  const loopBody: Instr[] = [
+    { op: "local.get", index: iTmp },
+    { op: "local.get", index: endTmp },
+    { op: "i32.ge_s" },
+    { op: "br_if", depth: 1 },
+
+    // data[i] = value
+    { op: "local.get", index: dataTmp },
+    { op: "local.get", index: iTmp },
+    { op: "local.get", index: valTmp },
+    { op: "array.set", typeIdx: arrTypeIdx },
+
+    // i++
+    { op: "local.get", index: iTmp },
+    { op: "i32.const", value: 1 },
+    { op: "i32.add" },
+    { op: "local.set", index: iTmp },
+    { op: "br", depth: 0 },
+  ];
+
+  fctx.body.push({
+    op: "block",
+    blockType: { kind: "empty" },
+    body: [
+      { op: "loop", blockType: { kind: "empty" }, body: loopBody } as Instr,
+    ],
+  });
+
+  // Return same vec ref
+  fctx.body.push({ op: "local.get", index: vecTmp });
+  return { kind: "ref_null", typeIdx: vecTypeIdx };
+}
+
+/**
+ * arr.copyWithin(target, start, end?) → copy elements within the same array, return same vec ref.
+ * Mutates the array in place using array.copy.
+ */
+function compileArrayCopyWithin(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  propAccess: ts.PropertyAccessExpression,
+  callExpr: ts.CallExpression,
+  vecTypeIdx: number,
+  arrTypeIdx: number,
+  _elemType: ValType,
+): ValType | null {
+  if (callExpr.arguments.length < 2) {
+    ctx.errors.push({ message: "copyWithin requires at least 2 arguments (target, start)", line: getLine(callExpr), column: getCol(callExpr) });
+    return null;
+  }
+
+  const vecTmp = allocLocal(fctx, `__arr_cw_vec_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecTypeIdx });
+  const dataTmp = allocLocal(fctx, `__arr_cw_data_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
+  const lenTmp = allocLocal(fctx, `__arr_cw_len_${fctx.locals.length}`, { kind: "i32" });
+  const targetTmp = allocLocal(fctx, `__arr_cw_tgt_${fctx.locals.length}`, { kind: "i32" });
+  const startTmp = allocLocal(fctx, `__arr_cw_s_${fctx.locals.length}`, { kind: "i32" });
+  const endTmp = allocLocal(fctx, `__arr_cw_e_${fctx.locals.length}`, { kind: "i32" });
+  const countTmp = allocLocal(fctx, `__arr_cw_cnt_${fctx.locals.length}`, { kind: "i32" });
+
+  // Compile receiver → vec ref
+  compileExpression(ctx, fctx, propAccess.expression);
+  fctx.body.push({ op: "local.tee", index: vecTmp });
+
+  // Extract length
+  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
+  fctx.body.push({ op: "local.set", index: lenTmp });
+
+  // Extract data
+  fctx.body.push({ op: "local.get", index: vecTmp });
+  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
+  fctx.body.push({ op: "local.set", index: dataTmp });
+
+  // target arg
+  if (ctx.fast) {
+    compileExpression(ctx, fctx, callExpr.arguments[0]!, { kind: "i32" });
+  } else {
+    compileExpression(ctx, fctx, callExpr.arguments[0]!, { kind: "f64" });
+    fctx.body.push({ op: "i32.trunc_f64_s" });
+  }
+  fctx.body.push({ op: "local.set", index: targetTmp });
+
+  // start arg
+  if (ctx.fast) {
+    compileExpression(ctx, fctx, callExpr.arguments[1]!, { kind: "i32" });
+  } else {
+    compileExpression(ctx, fctx, callExpr.arguments[1]!, { kind: "f64" });
+    fctx.body.push({ op: "i32.trunc_f64_s" });
+  }
+  fctx.body.push({ op: "local.set", index: startTmp });
+
+  // end arg (default: length)
+  if (callExpr.arguments.length >= 3) {
+    if (ctx.fast) {
+      compileExpression(ctx, fctx, callExpr.arguments[2]!, { kind: "i32" });
+    } else {
+      compileExpression(ctx, fctx, callExpr.arguments[2]!, { kind: "f64" });
+      fctx.body.push({ op: "i32.trunc_f64_s" });
+    }
+  } else {
+    fctx.body.push({ op: "local.get", index: lenTmp });
+  }
+  fctx.body.push({ op: "local.set", index: endTmp });
+
+  // count = min(end - start, len - target)
+  fctx.body.push({ op: "local.get", index: endTmp });
+  fctx.body.push({ op: "local.get", index: startTmp });
+  fctx.body.push({ op: "i32.sub" });
+  fctx.body.push({ op: "local.get", index: lenTmp });
+  fctx.body.push({ op: "local.get", index: targetTmp });
+  fctx.body.push({ op: "i32.sub" });
+  // select min: if (end-start) < (len-target) then (end-start) else (len-target)
+  fctx.body.push({ op: "local.get", index: endTmp });
+  fctx.body.push({ op: "local.get", index: startTmp });
+  fctx.body.push({ op: "i32.sub" });
+  fctx.body.push({ op: "local.get", index: lenTmp });
+  fctx.body.push({ op: "local.get", index: targetTmp });
+  fctx.body.push({ op: "i32.sub" });
+  fctx.body.push({ op: "i32.lt_s" });
+  fctx.body.push({ op: "select" });
+  fctx.body.push({ op: "local.set", index: countTmp });
+
+  // array.copy data[target..target+count] = data[start..start+count]
+  emitArrayCopy(fctx, arrTypeIdx, dataTmp, targetTmp, dataTmp, startTmp, countTmp);
+
+  // Return same vec ref
+  fctx.body.push({ op: "local.get", index: vecTmp });
+  return { kind: "ref_null", typeIdx: vecTypeIdx };
+}
+
+/**
+ * arr.lastIndexOf(value, fromIndex?) → reverse linear scan, return index or -1.
+ */
+function compileArrayLastIndexOf(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  propAccess: ts.PropertyAccessExpression,
+  callExpr: ts.CallExpression,
+  vecTypeIdx: number,
+  arrTypeIdx: number,
+  elemType: ValType,
+): ValType | null {
+  if (callExpr.arguments.length < 1) {
+    ctx.errors.push({ message: "lastIndexOf requires 1 argument", line: getLine(callExpr), column: getCol(callExpr) });
+    return null;
+  }
+
+  const vecTmp = allocLocal(fctx, `__arr_liof_vec_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecTypeIdx });
+  const dataTmp = allocLocal(fctx, `__arr_liof_data_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
+  const iTmp = allocLocal(fctx, `__arr_liof_i_${fctx.locals.length}`, { kind: "i32" });
+  const valTmp = allocLocal(fctx, `__arr_liof_val_${fctx.locals.length}`, elemType);
+
+  // Compile receiver → vec ref
+  compileExpression(ctx, fctx, propAccess.expression);
+  fctx.body.push({ op: "local.tee", index: vecTmp });
+
+  // Extract length, then i = length - 1 (or fromIndex if provided)
+  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
+
+  if (callExpr.arguments.length >= 2) {
+    // fromIndex provided
+    fctx.body.push({ op: "drop" });
+    if (ctx.fast) {
+      compileExpression(ctx, fctx, callExpr.arguments[1]!, { kind: "i32" });
+    } else {
+      compileExpression(ctx, fctx, callExpr.arguments[1]!, { kind: "f64" });
+      fctx.body.push({ op: "i32.trunc_f64_s" });
+    }
+  } else {
+    // Default: length - 1
+    fctx.body.push({ op: "i32.const", value: 1 });
+    fctx.body.push({ op: "i32.sub" });
+  }
+  fctx.body.push({ op: "local.set", index: iTmp });
+
+  // Extract data
+  fctx.body.push({ op: "local.get", index: vecTmp });
+  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
+  fctx.body.push({ op: "local.set", index: dataTmp });
+
+  // Compile search value
+  compileExpression(ctx, fctx, callExpr.arguments[0]!, elemType);
+  fctx.body.push({ op: "local.set", index: valTmp });
+
+  const eqOp = elemType.kind === "f64" ? "f64.eq" : "i32.eq";
+  const getOp = elemType.kind === "i16" ? "array.get_s" : "array.get";
+
+  // Loop: while (i >= 0) { if data[i] == val return i; i--; }
+  const loopBody: Instr[] = [
+    // if (i < 0) break
+    { op: "local.get", index: iTmp },
+    { op: "i32.const", value: 0 },
+    { op: "i32.lt_s" },
+    { op: "br_if", depth: 1 },
+
+    // if (data[i] == val) return i
+    { op: "local.get", index: dataTmp },
+    { op: "local.get", index: iTmp },
+    { op: getOp, typeIdx: arrTypeIdx } as Instr,
+    { op: "local.get", index: valTmp },
+    { op: eqOp } as Instr,
+    { op: "if", blockType: { kind: "empty" },
+      then: ctx.fast
+        ? [
+            { op: "local.get", index: iTmp } as Instr,
+            { op: "return" } as Instr,
+          ]
+        : [
+            { op: "local.get", index: iTmp } as Instr,
+            { op: "f64.convert_i32_s" } as Instr,
+            { op: "return" } as Instr,
+          ],
+    } as Instr,
+
+    // i--
+    { op: "local.get", index: iTmp },
+    { op: "i32.const", value: 1 },
+    { op: "i32.sub" },
+    { op: "local.set", index: iTmp },
+    { op: "br", depth: 0 },
+  ];
+
+  fctx.body.push({
+    op: "block",
+    blockType: { kind: "empty" },
+    body: [
+      { op: "loop", blockType: { kind: "empty" }, body: loopBody } as Instr,
+    ],
+  });
+
+  // Not found → return -1
+  if (ctx.fast) {
+    fctx.body.push({ op: "i32.const", value: -1 });
+    return { kind: "i32" };
+  } else {
+    fctx.body.push({ op: "f64.const", value: -1 });
+    return { kind: "f64" };
+  }
 }
 
 /** Check if an expression is statically known to be NaN at compile time */
