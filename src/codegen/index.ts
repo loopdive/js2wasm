@@ -1026,13 +1026,13 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
   const anyRefNull: ValType = { kind: "ref_null", typeIdx: anyTypeIdx };
 
   // Helper to register a helper function
-  function addHelper(name: string, params: ValType[], results: ValType[], body: Instr[]): void {
+  function addHelper(name: string, params: ValType[], results: ValType[], body: Instr[], locals?: { name: string; type: ValType }[]): void {
     const typeIdx = addFuncType(ctx, params, results, name);
     const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
     ctx.mod.functions.push({
       name,
       typeIdx,
-      locals: [],
+      locals: locals ?? [],
       body,
       exported: false,
     });
@@ -1219,6 +1219,410 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
     { op: "local.get", index: 0 },
     { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 4 },
   ]);
+
+  // ── Phase 2: Runtime dispatch operators ──────────────────────────
+
+  // Helper: get numeric value as f64 from an AnyValue (assumes tag is 2 or 3)
+  // Used internally by arithmetic helpers.
+  // params: a(0)  locals: none
+  // Returns f64. If tag==2, converts i32val; if tag==3, returns f64val.
+  addHelper("__any_to_f64", [anyRefNull], [{ kind: "f64" }], [
+    { op: "local.get", index: 0 },
+    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 }, // tag
+    { op: "i32.const", value: 2 },
+    { op: "i32.eq" },
+    { op: "if", blockType: { kind: "val", type: { kind: "f64" } },
+      then: [
+        { op: "local.get", index: 0 },
+        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 }, // i32val
+        { op: "f64.convert_i32_s" },
+      ],
+      else: [
+        { op: "local.get", index: 0 },
+        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 }, // f64val
+      ],
+    } as unknown as Instr,
+  ]);
+
+  const toF64Idx = ctx.funcMap.get("__any_to_f64")!;
+  const boxI32Idx = ctx.funcMap.get("__any_box_i32")!;
+  const boxF64Idx = ctx.funcMap.get("__any_box_f64")!;
+
+  // __any_add(a: ref $AnyValue, b: ref $AnyValue) -> ref $AnyValue
+  // If both are i32 (tag==2): i32.add, box as i32
+  // If both are numeric (tag 2 or 3): convert to f64, f64.add, box as f64
+  // Otherwise: trap (string concat via any not supported yet for simplicity)
+  // params: a(0), b(1)  locals: tagA(2), tagB(3)
+  addHelper("__any_add", [anyRefNull, anyRefNull], [anyRef], [
+    // tagA = a.tag
+    { op: "local.get", index: 0 },
+    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+    { op: "local.set", index: 2 },
+    // tagB = b.tag
+    { op: "local.get", index: 1 },
+    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+    { op: "local.set", index: 3 },
+    // if tagA == 2 && tagB == 2 → i32 add
+    { op: "local.get", index: 2 },
+    { op: "i32.const", value: 2 },
+    { op: "i32.eq" },
+    { op: "local.get", index: 3 },
+    { op: "i32.const", value: 2 },
+    { op: "i32.eq" },
+    { op: "i32.and" },
+    { op: "if", blockType: { kind: "val", type: anyRef },
+      then: [
+        { op: "local.get", index: 0 },
+        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+        { op: "local.get", index: 1 },
+        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+        { op: "i32.add" },
+        { op: "call", funcIdx: boxI32Idx },
+      ],
+      else: [
+        // f64 path: convert both to f64, add, box as f64
+        { op: "local.get", index: 0 },
+        { op: "call", funcIdx: toF64Idx },
+        { op: "local.get", index: 1 },
+        { op: "call", funcIdx: toF64Idx },
+        { op: "f64.add" },
+        { op: "call", funcIdx: boxF64Idx },
+      ],
+    } as unknown as Instr,
+  ], [
+    { name: "tagA", type: { kind: "i32" } },
+    { name: "tagB", type: { kind: "i32" } },
+  ]);
+
+  // Generic numeric binary op helper generator
+  function addNumericBinaryHelper(
+    name: string,
+    i32op: string,
+    f64op: string,
+  ): void {
+    addHelper(name, [anyRefNull, anyRefNull], [anyRef], [
+      // tagA = a.tag
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 2 },
+      // tagB = b.tag
+      { op: "local.get", index: 1 },
+      { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 3 },
+      // if tagA == 2 && tagB == 2 → i32 op
+      { op: "local.get", index: 2 },
+      { op: "i32.const", value: 2 },
+      { op: "i32.eq" },
+      { op: "local.get", index: 3 },
+      { op: "i32.const", value: 2 },
+      { op: "i32.eq" },
+      { op: "i32.and" },
+      { op: "if", blockType: { kind: "val", type: anyRef },
+        then: [
+          { op: "local.get", index: 0 },
+          { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+          { op: "local.get", index: 1 },
+          { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+          { op: i32op } as unknown as Instr,
+          { op: "call", funcIdx: boxI32Idx },
+        ],
+        else: [
+          // f64 path
+          { op: "local.get", index: 0 },
+          { op: "call", funcIdx: toF64Idx },
+          { op: "local.get", index: 1 },
+          { op: "call", funcIdx: toF64Idx },
+          { op: f64op } as unknown as Instr,
+          { op: "call", funcIdx: boxF64Idx },
+        ],
+      } as unknown as Instr,
+    ], [
+      { name: "tagA", type: { kind: "i32" } },
+      { name: "tagB", type: { kind: "i32" } },
+    ]);
+  }
+
+  addNumericBinaryHelper("__any_sub", "i32.sub", "f64.sub");
+  addNumericBinaryHelper("__any_mul", "i32.mul", "f64.mul");
+
+  // __any_div: always use f64 (division can produce fractions)
+  addHelper("__any_div", [anyRefNull, anyRefNull], [anyRef], [
+    { op: "local.get", index: 0 },
+    { op: "call", funcIdx: toF64Idx },
+    { op: "local.get", index: 1 },
+    { op: "call", funcIdx: toF64Idx },
+    { op: "f64.div" },
+    { op: "call", funcIdx: boxF64Idx },
+  ]);
+
+  // __any_mod: i32.rem_s for i32, otherwise f64 approximation via floor division
+  addHelper("__any_mod", [anyRefNull, anyRefNull], [anyRef], [
+    // tagA = a.tag
+    { op: "local.get", index: 0 },
+    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+    { op: "local.set", index: 2 },
+    // tagB = b.tag
+    { op: "local.get", index: 1 },
+    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+    { op: "local.set", index: 3 },
+    // if tagA == 2 && tagB == 2 → i32 rem_s
+    { op: "local.get", index: 2 },
+    { op: "i32.const", value: 2 },
+    { op: "i32.eq" },
+    { op: "local.get", index: 3 },
+    { op: "i32.const", value: 2 },
+    { op: "i32.eq" },
+    { op: "i32.and" },
+    { op: "if", blockType: { kind: "val", type: anyRef },
+      then: [
+        { op: "local.get", index: 0 },
+        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+        { op: "local.get", index: 1 },
+        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+        { op: "i32.rem_s" },
+        { op: "call", funcIdx: boxI32Idx },
+      ],
+      else: [
+        // f64 path: a - floor(a/b) * b
+        { op: "local.get", index: 0 },
+        { op: "call", funcIdx: toF64Idx },
+        { op: "local.set", index: 4 }, // fA
+        { op: "local.get", index: 1 },
+        { op: "call", funcIdx: toF64Idx },
+        { op: "local.set", index: 5 }, // fB
+        // result = fA - floor(fA / fB) * fB
+        { op: "local.get", index: 4 },
+        { op: "local.get", index: 4 },
+        { op: "local.get", index: 5 },
+        { op: "f64.div" },
+        { op: "f64.floor" },
+        { op: "local.get", index: 5 },
+        { op: "f64.mul" },
+        { op: "f64.sub" },
+        { op: "call", funcIdx: boxF64Idx },
+      ],
+    } as unknown as Instr,
+  ], [
+    { name: "tagA", type: { kind: "i32" } },
+    { name: "tagB", type: { kind: "i32" } },
+    { name: "fA", type: { kind: "f64" } },
+    { name: "fB", type: { kind: "f64" } },
+  ]);
+
+  // __any_eq(a, b) -> i32
+  // Same tag: compare values. Different tag: return 0.
+  addHelper("__any_eq", [anyRefNull, anyRefNull], [{ kind: "i32" }], [
+    // tagA = a.tag
+    { op: "local.get", index: 0 },
+    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+    { op: "local.set", index: 2 },
+    // tagB = b.tag
+    { op: "local.get", index: 1 },
+    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+    { op: "local.set", index: 3 },
+    // if tagA != tagB → 0
+    { op: "local.get", index: 2 },
+    { op: "local.get", index: 3 },
+    { op: "i32.ne" },
+    { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
+      then: [
+        // Cross-tag numeric equality: if one is i32(2) and other is f64(3), compare as f64
+        { op: "local.get", index: 2 },
+        { op: "local.get", index: 3 },
+        { op: "i32.add" },
+        { op: "i32.const", value: 5 }, // 2+3 = 5
+        { op: "i32.eq" },
+        { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
+          then: [
+            { op: "local.get", index: 0 },
+            { op: "call", funcIdx: toF64Idx },
+            { op: "local.get", index: 1 },
+            { op: "call", funcIdx: toF64Idx },
+            { op: "f64.eq" },
+          ],
+          else: [
+            { op: "i32.const", value: 0 },
+          ],
+        } as unknown as Instr,
+      ],
+      else: [
+        // Same tag — compare by tag type
+        { op: "local.get", index: 2 },
+        { op: "i32.const", value: 2 },
+        { op: "i32.eq" },
+        { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
+          then: [
+            // i32 eq
+            { op: "local.get", index: 0 },
+            { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+            { op: "local.get", index: 1 },
+            { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+            { op: "i32.eq" },
+          ],
+          else: [
+            { op: "local.get", index: 2 },
+            { op: "i32.const", value: 3 },
+            { op: "i32.eq" },
+            { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
+              then: [
+                // f64 eq
+                { op: "local.get", index: 0 },
+                { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 },
+                { op: "local.get", index: 1 },
+                { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 },
+                { op: "f64.eq" },
+              ],
+              else: [
+                { op: "local.get", index: 2 },
+                { op: "i32.const", value: 4 },
+                { op: "i32.eq" },
+                { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
+                  then: [
+                    // bool eq (compare i32val)
+                    { op: "local.get", index: 0 },
+                    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+                    { op: "local.get", index: 1 },
+                    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+                    { op: "i32.eq" },
+                  ],
+                  else: [
+                    // null/undefined: both same tag → equal
+                    { op: "local.get", index: 2 },
+                    { op: "i32.const", value: 2 },
+                    { op: "i32.lt_s" },
+                    // tag < 2 means 0 (null) or 1 (undefined), both equal to themselves
+                  ],
+                } as unknown as Instr,
+              ],
+            } as unknown as Instr,
+          ],
+        } as unknown as Instr,
+      ],
+    } as unknown as Instr,
+  ], [
+    { name: "tagA", type: { kind: "i32" } },
+    { name: "tagB", type: { kind: "i32" } },
+  ]);
+
+  // Comparison helpers: __any_lt, __any_gt, __any_le, __any_ge
+  // All use numeric comparison (convert to f64, compare)
+  function addComparisonHelper(name: string, f64op: string): void {
+    addHelper(name, [anyRefNull, anyRefNull], [{ kind: "i32" }], [
+      { op: "local.get", index: 0 },
+      { op: "call", funcIdx: toF64Idx },
+      { op: "local.get", index: 1 },
+      { op: "call", funcIdx: toF64Idx },
+      { op: f64op } as unknown as Instr,
+    ]);
+  }
+
+  addComparisonHelper("__any_lt", "f64.lt");
+  addComparisonHelper("__any_gt", "f64.gt");
+  addComparisonHelper("__any_le", "f64.le");
+  addComparisonHelper("__any_ge", "f64.ge");
+
+  // __any_neg(a) -> ref $AnyValue
+  // Negate numeric value: tag 2 → negate i32, tag 3 → negate f64
+  addHelper("__any_neg", [anyRefNull], [anyRef], [
+    { op: "local.get", index: 0 },
+    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+    { op: "i32.const", value: 2 },
+    { op: "i32.eq" },
+    { op: "if", blockType: { kind: "val", type: anyRef },
+      then: [
+        { op: "i32.const", value: 0 },
+        { op: "local.get", index: 0 },
+        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+        { op: "i32.sub" },
+        { op: "call", funcIdx: boxI32Idx },
+      ],
+      else: [
+        { op: "local.get", index: 0 },
+        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 },
+        { op: "f64.neg" },
+        { op: "call", funcIdx: boxF64Idx },
+      ],
+    } as unknown as Instr,
+  ]);
+
+  // __any_typeof(a) -> ref $AnyString (native string in fast mode)
+  // Returns "number", "string", "boolean", "object", "undefined" as native strings
+  // Uses the $AnyString type system (WasmGC native strings)
+  if (ctx.fast && ctx.nativeStrTypeIdx >= 0) {
+    const strDataTypeIdx = ctx.nativeStrDataTypeIdx;
+    const strTypeIdx = ctx.nativeStrTypeIdx;
+
+    // Helper to build a native string literal inline (returns instructions that leave ref $NativeString on stack)
+    function nativeStrConstInstrs(value: string): Instr[] {
+      const instrs: Instr[] = [];
+      // Push len (i32) — field 0
+      instrs.push({ op: "i32.const", value: value.length });
+      // Push off (i32) = 0 — field 1
+      instrs.push({ op: "i32.const", value: 0 });
+      // Push each code unit and create array
+      for (let i = 0; i < value.length; i++) {
+        instrs.push({ op: "i32.const", value: value.charCodeAt(i) });
+      }
+      instrs.push({ op: "array.new_fixed", typeIdx: strDataTypeIdx, length: value.length });
+      instrs.push({ op: "struct.new", typeIdx: strTypeIdx });
+      return instrs;
+    }
+
+    const anyStrRef: ValType = { kind: "ref", typeIdx: ctx.anyStrTypeIdx };
+
+    addHelper("__any_typeof", [anyRefNull], [anyStrRef], [
+      // Check tag and return corresponding string
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 1 }, // tag in local 1
+
+      // tag == 0 (null) → "object"
+      { op: "local.get", index: 1 },
+      { op: "i32.const", value: 0 },
+      { op: "i32.eq" },
+      { op: "if", blockType: { kind: "val", type: anyStrRef },
+        then: nativeStrConstInstrs("object"),
+        else: [
+          // tag == 1 (undefined) → "undefined"
+          { op: "local.get", index: 1 },
+          { op: "i32.const", value: 1 },
+          { op: "i32.eq" },
+          { op: "if", blockType: { kind: "val", type: anyStrRef },
+            then: nativeStrConstInstrs("undefined"),
+            else: [
+              // tag == 2 or tag == 3 (i32/f64) → "number"
+              { op: "local.get", index: 1 },
+              { op: "i32.const", value: 2 },
+              { op: "i32.eq" },
+              { op: "local.get", index: 1 },
+              { op: "i32.const", value: 3 },
+              { op: "i32.eq" },
+              { op: "i32.or" },
+              { op: "if", blockType: { kind: "val", type: anyStrRef },
+                then: nativeStrConstInstrs("number"),
+                else: [
+                  // tag == 4 (bool) → "boolean"
+                  { op: "local.get", index: 1 },
+                  { op: "i32.const", value: 4 },
+                  { op: "i32.eq" },
+                  { op: "if", blockType: { kind: "val", type: anyStrRef },
+                    then: nativeStrConstInstrs("boolean"),
+                    else: [
+                      // tag == 5 (string/externref) or tag == 6 (gcref) — default to "object"
+                      // (In practice tag 5 would be "string" but we don't use it in fast mode)
+                      ...nativeStrConstInstrs("object"),
+                    ],
+                  } as unknown as Instr,
+                ],
+              } as unknown as Instr,
+            ],
+          } as unknown as Instr,
+        ],
+      } as unknown as Instr,
+    ], [
+      { name: "tag", type: { kind: "i32" } },
+    ]);
+  }
 }
 
 /**

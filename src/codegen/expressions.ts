@@ -1278,6 +1278,17 @@ function compileTypeofExpression(
     return compileStringLiteral(ctx, fctx, "number");
   }
   if (wasmType.kind === "ref" || wasmType.kind === "ref_null") {
+    // Fast mode: any-typed operand → runtime typeof via __any_typeof
+    if (ctx.fast && isAnyValue(wasmType, ctx)) {
+      ensureAnyHelpers(ctx);
+      const typeofIdx = ctx.funcMap.get("__any_typeof");
+      if (typeofIdx !== undefined) {
+        const operandType = compileExpression(ctx, fctx, operand);
+        if (operandType === null) return null;
+        fctx.body.push({ op: "call", funcIdx: typeofIdx });
+        return { kind: "ref", typeIdx: ctx.anyStrTypeIdx };
+      }
+    }
     // Check if the TS type is callable (function/arrow/class) — typeof should return "function"
     const callSigs = tsType.getCallSignatures?.();
     if (callSigs && callSigs.length > 0) {
@@ -1359,7 +1370,7 @@ function compileTypeofComparison(
     const wasmType = resolveWasmType(ctx, tsType);
     if (wasmType.kind === "f64") staticTypeof = "number";
     else if (wasmType.kind === "i32") staticTypeof = isBooleanType(tsType) ? "boolean" : "number";
-    else if (wasmType.kind === "ref" || wasmType.kind === "ref_null") staticTypeof = "object";
+    else if ((wasmType.kind === "ref" || wasmType.kind === "ref_null") && !isAnyValue(wasmType, ctx)) staticTypeof = "object";
     else if (isStringType(tsType)) staticTypeof = "string";
   }
   if (staticTypeof !== null) {
@@ -1367,6 +1378,50 @@ function compileTypeofComparison(
     const result = isEq ? (matches ? 1 : 0) : (matches ? 0 : 1);
     fctx.body.push({ op: "i32.const", value: result });
     return { kind: "i32" };
+  }
+
+  // Fast mode: any-typed typeof comparison via tag check
+  // Instead of calling __any_typeof + string comparison, we can directly check the tag
+  // on the $AnyValue struct. This avoids pulling in the full native string helpers.
+  if (ctx.fast && isAnyValue(resolveWasmType(ctx, tsType), ctx)) {
+    ensureAnyHelpers(ctx);
+    // Map the string literal to tag check(s)
+    let tagChecks: number[] | null = null;
+    if (stringLiteral === "number") tagChecks = [2, 3]; // i32 or f64
+    else if (stringLiteral === "boolean") tagChecks = [4];
+    else if (stringLiteral === "string") tagChecks = [5, 6]; // externref string or gcref string
+    else if (stringLiteral === "undefined") tagChecks = [1];
+    else if (stringLiteral === "object") tagChecks = [0]; // null → "object"
+
+    if (tagChecks !== null) {
+      // Compile the operand
+      const operandType = compileExpression(ctx, fctx, operand);
+      if (!operandType) return null;
+      // Get the tag field
+      fctx.body.push({ op: "struct.get", typeIdx: ctx.anyValueTypeIdx, fieldIdx: 0 });
+      // Check if tag matches any of the expected values
+      if (tagChecks.length === 1) {
+        fctx.body.push({ op: "i32.const", value: tagChecks[0]! });
+        fctx.body.push({ op: "i32.eq" });
+      } else {
+        // Multiple tags: (tag == t1) || (tag == t2)
+        const tagLocal = allocLocal(fctx, `__typeof_tag_${fctx.locals.length}`, { kind: "i32" });
+        fctx.body.push({ op: "local.set", index: tagLocal });
+        fctx.body.push({ op: "local.get", index: tagLocal });
+        fctx.body.push({ op: "i32.const", value: tagChecks[0]! });
+        fctx.body.push({ op: "i32.eq" });
+        for (let i = 1; i < tagChecks.length; i++) {
+          fctx.body.push({ op: "local.get", index: tagLocal });
+          fctx.body.push({ op: "i32.const", value: tagChecks[i]! });
+          fctx.body.push({ op: "i32.eq" });
+          fctx.body.push({ op: "i32.or" });
+        }
+      }
+      if (isNeq) {
+        fctx.body.push({ op: "i32.eqz" });
+      }
+      return { kind: "i32" };
+    }
   }
 
   // Ensure union imports are registered
@@ -1520,9 +1575,20 @@ function compileBinaryExpression(
 
   // Regular binary ops: evaluate both sides
   const leftTsType = ctx.checker.getTypeAtLocation(expr.left);
+  const rightTsType = ctx.checker.getTypeAtLocation(expr.right);
+
+  // ── Fast mode: any-typed operand dispatch ──
+  // When both operands are `any`, compile without numeric hint and call __any_* helpers
+  if (ctx.fast && ctx.anyValueTypeIdx >= 0) {
+    const leftIsAny = (leftTsType.flags & ts.TypeFlags.Any) !== 0;
+    const rightIsAny = (rightTsType.flags & ts.TypeFlags.Any) !== 0;
+    if (leftIsAny && rightIsAny) {
+      const anyDispatch = compileAnyBinaryDispatch(ctx, fctx, expr, op);
+      if (anyDispatch !== null) return anyDispatch;
+    }
+  }
 
   // String operations — either operand being a string triggers string concat for +
-  const rightTsType = ctx.checker.getTypeAtLocation(expr.right);
   if (isStringType(leftTsType) || (op === ts.SyntaxKind.PlusToken && isStringType(rightTsType))) {
     return compileStringBinaryOp(ctx, fctx, expr, op);
   }
@@ -1621,6 +1687,62 @@ function compileBinaryExpression(
     column: getCol(expr),
   });
   return null;
+}
+
+/**
+ * Compile a binary expression where both operands are `any`-typed.
+ * Emits both operands as ref $AnyValue and calls the appropriate __any_* helper.
+ */
+function compileAnyBinaryDispatch(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.BinaryExpression,
+  op: ts.SyntaxKind,
+): InnerResult {
+  // Map operator to helper name and result type
+  let helperName: string | null = null;
+  let resultIsI32 = false; // true for comparison/equality operators
+
+  switch (op) {
+    case ts.SyntaxKind.PlusToken: helperName = "__any_add"; break;
+    case ts.SyntaxKind.MinusToken: helperName = "__any_sub"; break;
+    case ts.SyntaxKind.AsteriskToken: helperName = "__any_mul"; break;
+    case ts.SyntaxKind.SlashToken: helperName = "__any_div"; break;
+    case ts.SyntaxKind.PercentToken: helperName = "__any_mod"; break;
+    case ts.SyntaxKind.EqualsEqualsToken:
+    case ts.SyntaxKind.EqualsEqualsEqualsToken:
+      helperName = "__any_eq"; resultIsI32 = true; break;
+    case ts.SyntaxKind.ExclamationEqualsToken:
+    case ts.SyntaxKind.ExclamationEqualsEqualsToken:
+      helperName = "__any_eq"; resultIsI32 = true; break;
+    case ts.SyntaxKind.LessThanToken: helperName = "__any_lt"; resultIsI32 = true; break;
+    case ts.SyntaxKind.GreaterThanToken: helperName = "__any_gt"; resultIsI32 = true; break;
+    case ts.SyntaxKind.LessThanEqualsToken: helperName = "__any_le"; resultIsI32 = true; break;
+    case ts.SyntaxKind.GreaterThanEqualsToken: helperName = "__any_ge"; resultIsI32 = true; break;
+    default: return null; // Not a supported operator for any dispatch
+  }
+
+  ensureAnyHelpers(ctx);
+  const funcIdx = ctx.funcMap.get(helperName);
+  if (funcIdx === undefined) return null;
+
+  // Compile both operands without numeric hint so they produce ref $AnyValue
+  const leftType = compileExpression(ctx, fctx, expr.left);
+  const rightType = compileExpression(ctx, fctx, expr.right);
+  if (!leftType || !rightType) return null;
+
+  fctx.body.push({ op: "call", funcIdx });
+
+  // For != / !==, negate the __any_eq result
+  if (op === ts.SyntaxKind.ExclamationEqualsToken ||
+      op === ts.SyntaxKind.ExclamationEqualsEqualsToken) {
+    fctx.body.push({ op: "i32.eqz" });
+  }
+
+  if (resultIsI32) {
+    return { kind: "i32" };
+  }
+  return { kind: "ref", typeIdx: ctx.anyValueTypeIdx };
 }
 
 function compileNumericBinaryOp(
@@ -2834,6 +2956,15 @@ function compilePrefixUnary(
     case ts.SyntaxKind.MinusToken: {
       const operandType = compileExpression(ctx, fctx, expr.operand);
       if (!operandType) return null;
+      // any-typed negate: call __any_neg
+      if (ctx.fast && isAnyValue(operandType, ctx)) {
+        ensureAnyHelpers(ctx);
+        const negIdx = ctx.funcMap.get("__any_neg");
+        if (negIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx: negIdx });
+          return { kind: "ref", typeIdx: ctx.anyValueTypeIdx };
+        }
+      }
       if (ctx.fast && operandType?.kind === "i32") {
         // i32 negate: 0 - x
         const tmp = allocLocal(fctx, `__neg_${fctx.locals.length}`, { kind: "i32" });

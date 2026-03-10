@@ -598,7 +598,22 @@ describe("Gradual typing: boxed any (fast mode)", () => {
       );
     }
     const mod = await WebAssembly.compile(result.binary as BufferSource);
-    const instance = await WebAssembly.instantiate(mod, buildImports(result));
+    // Use a proxy to auto-stub any missing imports (e.g. __str_from_mem)
+    const baseImports = buildImports(result);
+    const proxyImports = new Proxy(baseImports, {
+      get(target, module: string) {
+        if (module in target) {
+          return new Proxy(target[module] as Record<string, unknown>, {
+            get(inner, field: string) {
+              if (field in inner) return inner[field];
+              return () => 0;
+            },
+          });
+        }
+        return new Proxy({}, { get: () => () => 0 });
+      },
+    });
+    const instance = await WebAssembly.instantiate(mod, proxyImports as WebAssembly.Imports);
     return instance.exports as Record<string, Function>;
   }
 
@@ -624,5 +639,213 @@ describe("Gradual typing: boxed any (fast mode)", () => {
     expect(exports.boxUnboxBool(1)).toBe(1);
     expect(exports.boxUnboxBool(0)).toBe(0);
     expect(exports.boxUnboxBool(5)).toBe(1);
+  });
+
+  it("any + any: i32 addition", async () => {
+    const exports = await compileFast(`
+      export function addAny(x: number, y: number): number {
+        let a: any = x;
+        let b: any = y;
+        let c: any = a + b;
+        return c as number;
+      }
+    `);
+    expect(exports.addAny(3, 4)).toBe(7);
+    expect(exports.addAny(0, 0)).toBe(0);
+    expect(exports.addAny(-5, 3)).toBe(-2);
+    expect(exports.addAny(100, 200)).toBe(300);
+  });
+
+  it("any - any: i32 subtraction", async () => {
+    const exports = await compileFast(`
+      export function subAny(x: number, y: number): number {
+        let a: any = x;
+        let b: any = y;
+        let c: any = a - b;
+        return c as number;
+      }
+    `);
+    expect(exports.subAny(10, 3)).toBe(7);
+    expect(exports.subAny(0, 5)).toBe(-5);
+  });
+
+  it("any * any: i32 multiplication", async () => {
+    const exports = await compileFast(`
+      export function mulAny(x: number, y: number): number {
+        let a: any = x;
+        let b: any = y;
+        let c: any = a * b;
+        return c as number;
+      }
+    `);
+    expect(exports.mulAny(4, 5)).toBe(20);
+    expect(exports.mulAny(-3, 7)).toBe(-21);
+  });
+
+  it("any / any: division (always f64 path)", async () => {
+    const exports = await compileFast(`
+      export function divAny(x: number, y: number): number {
+        let a: any = x;
+        let b: any = y;
+        let c: any = a / b;
+        return c as number;
+      }
+    `);
+    expect(exports.divAny(10, 2)).toBe(5);
+  });
+
+  it("any % any: modulo", async () => {
+    const exports = await compileFast(`
+      export function modAny(x: number, y: number): number {
+        let a: any = x;
+        let b: any = y;
+        let c: any = a % b;
+        return c as number;
+      }
+    `);
+    expect(exports.modAny(10, 3)).toBe(1);
+    expect(exports.modAny(7, 2)).toBe(1);
+  });
+
+  it("any == any: equality", async () => {
+    const exports = await compileFast(`
+      export function eqAny(x: number, y: number): number {
+        let a: any = x;
+        let b: any = y;
+        return (a == b) ? 1 : 0;
+      }
+    `);
+    expect(exports.eqAny(5, 5)).toBe(1);
+    expect(exports.eqAny(5, 6)).toBe(0);
+    expect(exports.eqAny(0, 0)).toBe(1);
+  });
+
+  it("any != any: inequality", async () => {
+    const exports = await compileFast(`
+      export function neqAny(x: number, y: number): number {
+        let a: any = x;
+        let b: any = y;
+        return (a != b) ? 1 : 0;
+      }
+    `);
+    expect(exports.neqAny(5, 5)).toBe(0);
+    expect(exports.neqAny(5, 6)).toBe(1);
+  });
+
+  it("any < any: less than comparison", async () => {
+    const exports = await compileFast(`
+      export function ltAny(x: number, y: number): number {
+        let a: any = x;
+        let b: any = y;
+        return (a < b) ? 1 : 0;
+      }
+    `);
+    expect(exports.ltAny(3, 7)).toBe(1);
+    expect(exports.ltAny(7, 3)).toBe(0);
+    expect(exports.ltAny(5, 5)).toBe(0);
+  });
+
+  it("any > any: greater than comparison", async () => {
+    const exports = await compileFast(`
+      export function gtAny(x: number, y: number): number {
+        let a: any = x;
+        let b: any = y;
+        return (a > b) ? 1 : 0;
+      }
+    `);
+    expect(exports.gtAny(7, 3)).toBe(1);
+    expect(exports.gtAny(3, 7)).toBe(0);
+    expect(exports.gtAny(5, 5)).toBe(0);
+  });
+
+  it("any <= any: less than or equal", async () => {
+    const exports = await compileFast(`
+      export function leAny(x: number, y: number): number {
+        let a: any = x;
+        let b: any = y;
+        return (a <= b) ? 1 : 0;
+      }
+    `);
+    expect(exports.leAny(3, 7)).toBe(1);
+    expect(exports.leAny(5, 5)).toBe(1);
+    expect(exports.leAny(7, 3)).toBe(0);
+  });
+
+  it("any >= any: greater than or equal", async () => {
+    const exports = await compileFast(`
+      export function geAny(x: number, y: number): number {
+        let a: any = x;
+        let b: any = y;
+        return (a >= b) ? 1 : 0;
+      }
+    `);
+    expect(exports.geAny(7, 3)).toBe(1);
+    expect(exports.geAny(5, 5)).toBe(1);
+    expect(exports.geAny(3, 7)).toBe(0);
+  });
+
+  it("typeof any: runtime typeof comparison for numbers", async () => {
+    const exports = await compileFast(`
+      export function isNumber(x: number): number {
+        let a: any = x;
+        if (typeof a === "number") return 1;
+        return 0;
+      }
+      export function isNotString(x: number): number {
+        let a: any = x;
+        if (typeof a !== "string") return 1;
+        return 0;
+      }
+    `);
+    expect(exports.isNumber(42)).toBe(1);
+    expect(exports.isNumber(0)).toBe(1);
+    expect(exports.isNotString(5)).toBe(1);
+  });
+
+  it("assignment from typed to any and back", async () => {
+    const exports = await compileFast(`
+      export function roundTrip(x: number): number {
+        let a: any = x;
+        let b: number = a as number;
+        return b;
+      }
+      export function roundTripBool(x: number): number {
+        let a: any = x > 0;
+        let b: number = a ? 1 : 0;
+        return b;
+      }
+    `);
+    expect(exports.roundTrip(42)).toBe(42);
+    expect(exports.roundTrip(-10)).toBe(-10);
+    expect(exports.roundTripBool(5)).toBe(1);
+    expect(exports.roundTripBool(0)).toBe(0);
+  });
+
+  it("function taking any param and returning any", async () => {
+    const exports = await compileFast(`
+      function addOne(a: any): any {
+        return (a as number) + 1;
+      }
+      export function testAnyFunc(x: number): number {
+        let result: any = addOne(x);
+        return result as number;
+      }
+    `);
+    expect(exports.testAnyFunc(10)).toBe(11);
+    expect(exports.testAnyFunc(0)).toBe(1);
+    expect(exports.testAnyFunc(-5)).toBe(-4);
+  });
+
+  it("any negation", async () => {
+    const exports = await compileFast(`
+      export function negAny(x: number): number {
+        let a: any = x;
+        let b: any = -a;
+        return b as number;
+      }
+    `);
+    expect(exports.negAny(5)).toBe(-5);
+    expect(exports.negAny(-3)).toBe(3);
+    expect(exports.negAny(0)).toBe(0);
   });
 });
