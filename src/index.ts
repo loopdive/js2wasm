@@ -42,6 +42,8 @@ export interface CompileResult {
   sourceMap?: string;
   /** Import descriptors for closed import building */
   imports: ImportDescriptor[];
+  /** C header file content (only present when abi: "c") */
+  cHeader?: string;
 }
 
 export interface CompileError {
@@ -84,9 +86,26 @@ export interface CompileOptions {
   allowJs?: boolean;
   /** Virtual file name for the source (controls language: use ".js" for JS input) */
   fileName?: string;
+  /** Module resolution options for npm packages */
+  resolve?: {
+    /** Directories to search for modules (default: ["node_modules"]) */
+    modules?: string[];
+    /** File extensions to try during resolution (default: [".ts", ".tsx", ".d.ts"]) */
+    extensions?: string[];
+  };
+  /** Packages to keep as host imports (not resolved/bundled) */
+  externals?: string[];
+  /** Enable tree-shaking to eliminate unused exports (default: false) */
+  treeshake?: boolean;
+  /** ABI for exported functions: "default" (normal) or "c" (C-compatible calling conventions).
+   *  C ABI is only supported with target: "linear". Strings/arrays become (ptr, len) pairs. */
+  abi?: "default" | "c";
 }
 
+import * as path from "path";
 import { compileSource, compileMultiSource, compileToObjectSource } from "./compiler.js";
+import { ModuleResolver, resolveAllImports } from "./resolve.js";
+import { treeshake, getEntryExportNames } from "./treeshake.js";
 
 /**
  * Compile TypeScript source to Wasm GC binary.
@@ -140,6 +159,46 @@ export function compileToObject(
 ) {
   return compileToObjectSource(source, options);
 }
+
+/**
+ * Compile a TypeScript project from an entry file on disk.
+ * Resolves npm package imports and relative imports recursively,
+ * then compiles all resolved files into a single Wasm module.
+ *
+ * @param entryFile - Absolute or relative path to the entry .ts file
+ * @param options - Compile options including resolve and externals settings
+ */
+export function compileProject(
+  entryFile: string,
+  options?: CompileOptions,
+): CompileResult {
+  const resolvedEntry = path.resolve(entryFile);
+  const rootDir = path.dirname(resolvedEntry);
+
+  // Create resolver
+  const resolver = new ModuleResolver(rootDir, options);
+
+  // Resolve all imports recursively
+  const allFiles = resolveAllImports(resolvedEntry, resolver);
+
+  // Convert to the Record<string, string> format expected by compileMulti
+  const files: Record<string, string> = {};
+  for (const [filePath, content] of allFiles) {
+    // Use relative paths from root dir as keys
+    const relPath = path.relative(rootDir, filePath);
+    // Ensure paths start with ./ for the multi-file compiler
+    const key = relPath.startsWith(".") ? relPath : `./${relPath}`;
+    files[key] = content;
+  }
+
+  // Entry file key
+  const entryKey = `./${path.relative(rootDir, resolvedEntry)}`;
+
+  return compileMultiSource(files, entryKey, options);
+}
+
+export { ModuleResolver, resolveAllImports, getBarePackageName } from "./resolve.js";
+export { treeshake, getEntryExportNames } from "./treeshake.js";
 
 export {
   jsString,
