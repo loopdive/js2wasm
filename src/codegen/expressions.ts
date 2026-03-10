@@ -32,6 +32,23 @@ export function compileExpression(
   expr: ts.Expression,
   expectedType?: ValType,
 ): ValType | null {
+  // Fast-path: null/undefined in numeric context — emit the correct f64 constant
+  // directly instead of going through externref + __unbox_number, because wasm's
+  // ref.null.extern is indistinguishable between null and undefined at the JS
+  // boundary (both become JS null), so Number(null)=0 but Number(undefined)=NaN
+  // cannot be recovered after the externref roundtrip.
+  if (expectedType?.kind === "f64") {
+    if (expr.kind === ts.SyntaxKind.NullKeyword) {
+      fctx.body.push({ op: "f64.const", value: 0 });
+      return { kind: "f64" };
+    }
+    if (expr.kind === ts.SyntaxKind.UndefinedKeyword ||
+        (ts.isIdentifier(expr) && expr.text === "undefined")) {
+      fctx.body.push({ op: "f64.const", value: NaN });
+      return { kind: "f64" };
+    }
+  }
+
   const bodyLenBefore = fctx.body.length;
   let result: InnerResult;
   try {
@@ -93,12 +110,13 @@ function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: ValType, t
     fctx.body.push({ op: "i32.trunc_f64_s" });
     return;
   }
-  // externref → i32 (unbox boolean, fallback to non-null check)
+  // externref → i32 (unbox as number to preserve value, then truncate)
   if (from.kind === "externref" && to.kind === "i32") {
     addUnionImports(ctx);
-    const funcIdx = ctx.funcMap.get("__unbox_boolean");
+    const funcIdx = ctx.funcMap.get("__unbox_number");
     if (funcIdx !== undefined) {
       fctx.body.push({ op: "call", funcIdx });
+      fctx.body.push({ op: "i32.trunc_f64_s" });
       return;
     }
     fctx.body.push({ op: "ref.is_null" });
@@ -127,14 +145,20 @@ function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: ValType, t
       return;
     }
   }
-  // i32 → externref (box boolean)
+  // i32 → externref (box as number to preserve value)
   if (from.kind === "i32" && to.kind === "externref") {
     addUnionImports(ctx);
-    const funcIdx = ctx.funcMap.get("__box_boolean");
+    const funcIdx = ctx.funcMap.get("__box_number");
     if (funcIdx !== undefined) {
+      fctx.body.push({ op: "f64.convert_i32_s" });
       fctx.body.push({ op: "call", funcIdx });
       return;
     }
+  }
+  // ref/ref_null → externref (convert GC ref to externref via extern.convert_any)
+  if ((from.kind === "ref" || from.kind === "ref_null") && to.kind === "externref") {
+    fctx.body.push({ op: "extern.convert_any" });
+    return;
   }
   // i32/f64 → externref (fallback)
   if (to.kind === "externref") {
@@ -578,7 +602,7 @@ function compileArrowAsClosure(
     { kind: "ref", typeIdx: structTypeIdx },
     ...arrowParams,
   ];
-  const liftedFuncTypeIdx = addFuncType(ctx, liftedParams, closureResults, `${closureName}_type`);
+  let liftedFuncTypeIdx = addFuncType(ctx, liftedParams, closureResults, `${closureName}_type`);
 
   // 5. Build the lifted function body
   const liftedFctx: FunctionContext = {
@@ -652,6 +676,7 @@ function compileArrowAsClosure(
     ctx.closureMap.set(funcExprName, closureInfoForSelf);
   }
 
+  let conciseBodyHasValue = false;
   if (ts.isBlock(body)) {
     for (const stmt of body.statements) {
       compileStatement(ctx, liftedFctx, stmt);
@@ -660,6 +685,25 @@ function compileArrowAsClosure(
     const exprType = compileExpression(ctx, liftedFctx, body);
     if (exprType !== null && closureReturnType) {
       // Expression result is the return value - already on stack
+      conciseBodyHasValue = true;
+
+      // The actual expression type may differ from the declared return type
+      // (e.g. TS infers `any`→externref but codegen produces f64 for arithmetic).
+      // Coerce the expression result to match the declared return type.
+      if (exprType.kind !== closureReturnType.kind) {
+        if (closureReturnType.kind === "externref" && (exprType.kind === "ref" || exprType.kind === "ref_null")) {
+          // Upcast struct ref to externref via extern.convert_any
+          liftedFctx.body.push({ op: "extern.convert_any" });
+        } else if (closureReturnType.kind === "externref" && exprType.kind === "f64") {
+          // f64 cannot be converted to externref; fix the return type instead
+          closureReturnType = exprType;
+          liftedFctx.returnType = exprType;
+          closureResults[0] = exprType;
+          liftedFuncTypeIdx = addFuncType(ctx, liftedParams, closureResults, `${closureName}_type`);
+          closureInfoForSelf.returnType = exprType;
+          closureInfoForSelf.funcTypeIdx = liftedFuncTypeIdx;
+        }
+      }
     } else if (exprType !== null) {
       liftedFctx.body.push({ op: "drop" });
     }
@@ -670,8 +714,8 @@ function compileArrowAsClosure(
     ctx.closureMap.delete(funcExprName);
   }
 
-  // Ensure return value for non-void functions
-  if (closureReturnType) {
+  // Ensure return value for non-void functions (skip if concise body already left a value)
+  if (closureReturnType && !conciseBodyHasValue) {
     const lastInstr = liftedFctx.body[liftedFctx.body.length - 1];
     if (!lastInstr || lastInstr.op !== "return") {
       if (closureReturnType.kind === "f64") {
@@ -1147,6 +1191,11 @@ function compileTypeofExpression(
     return compileStringLiteral(ctx, fctx, "number");
   }
   if (wasmType.kind === "ref" || wasmType.kind === "ref_null") {
+    // Check if the TS type is callable (function/arrow/class) — typeof should return "function"
+    const callSigs = tsType.getCallSignatures?.();
+    if (callSigs && callSigs.length > 0) {
+      return compileStringLiteral(ctx, fctx, "function");
+    }
     return compileStringLiteral(ctx, fctx, "object");
   }
 
@@ -1732,26 +1781,30 @@ function compileLogicalAnd(
   fctx: FunctionContext,
   expr: ts.BinaryExpression,
 ): ValType {
+  // JS semantics: a && b → if a is falsy, return a; else return b
   const leftType = compileExpression(ctx, fctx, expr.left);
   if (!leftType) { ensureI32Condition(fctx, leftType, ctx); return { kind: "i32" }; }
+
+  // Save LHS value for JS value semantics, then check truthiness
+  const tmp = allocLocal(fctx, `__and_left_${fctx.locals.length}`, leftType);
+  fctx.body.push({ op: "local.tee", index: tmp });
   ensureI32Condition(fctx, leftType, ctx);
 
   fctx.body.push({
     op: "if",
-    blockType: { kind: "val", type: { kind: "i32" } },
+    blockType: { kind: "val", type: leftType },
     then: (() => {
       const saved = fctx.body;
       fctx.body = [];
-      const rightType = compileExpression(ctx, fctx, expr.right, { kind: "i32" });
-      ensureI32Condition(fctx, rightType, ctx);
+      compileExpression(ctx, fctx, expr.right, leftType);
       const result = fctx.body;
       fctx.body = saved;
       return result;
     })(),
-    else: [{ op: "i32.const", value: 0 } as Instr],
+    else: [{ op: "local.get", index: tmp } as Instr],
   });
 
-  return { kind: "i32" };
+  return leftType;
 }
 
 function compileLogicalOr(
@@ -1759,26 +1812,30 @@ function compileLogicalOr(
   fctx: FunctionContext,
   expr: ts.BinaryExpression,
 ): ValType {
+  // JS semantics: a || b → if a is truthy, return a; else return b
   const leftType = compileExpression(ctx, fctx, expr.left);
   if (!leftType) { ensureI32Condition(fctx, leftType, ctx); return { kind: "i32" }; }
+
+  // Save LHS value for JS value semantics, then check truthiness
+  const tmp = allocLocal(fctx, `__or_left_${fctx.locals.length}`, leftType);
+  fctx.body.push({ op: "local.tee", index: tmp });
   ensureI32Condition(fctx, leftType, ctx);
 
   fctx.body.push({
     op: "if",
-    blockType: { kind: "val", type: { kind: "i32" } },
-    then: [{ op: "i32.const", value: 1 } as Instr],
+    blockType: { kind: "val", type: leftType },
+    then: [{ op: "local.get", index: tmp } as Instr],
     else: (() => {
       const saved = fctx.body;
       fctx.body = [];
-      const rightType = compileExpression(ctx, fctx, expr.right, { kind: "i32" });
-      ensureI32Condition(fctx, rightType, ctx);
+      compileExpression(ctx, fctx, expr.right, leftType);
       const result = fctx.body;
       fctx.body = saved;
       return result;
     })(),
   });
 
-  return { kind: "i32" };
+  return leftType;
 }
 
 /** Nullish coalescing: a ?? b → if a is null, return b, else return a */
@@ -1793,6 +1850,11 @@ function compileNullishCoalescing(
   const resultKind: ValType = leftType ?? { kind: "externref" };
   const tmp = allocLocal(fctx, `__nullish_${fctx.locals.length}`, resultKind);
   fctx.body.push({ op: "local.tee", index: tmp });
+
+  // If the left side is a value type (i32/f64), it can never be null — short-circuit
+  if (resultKind.kind === "i32" || resultKind.kind === "f64") {
+    return resultKind;
+  }
 
   // Check if null
   fctx.body.push({ op: "ref.is_null" });
@@ -3067,9 +3129,14 @@ function compileCallExpression(
         // Delegate to the global parseInt / parseFloat host import
         const funcIdx = ctx.funcMap.get(method === "parseFloat" ? "parseFloat" : "parseInt");
         if (funcIdx !== undefined) {
-          compileExpression(ctx, fctx, expr.arguments[0]!);
-          if (method === "parseInt" && expr.arguments.length >= 2) {
-            compileExpression(ctx, fctx, expr.arguments[1]!);
+          compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "externref" });
+          if (method === "parseInt") {
+            if (expr.arguments.length >= 2) {
+              compileExpression(ctx, fctx, expr.arguments[1]!, { kind: "f64" });
+            } else {
+              // No radix supplied — push NaN sentinel so runtime treats it as undefined
+              fctx.body.push({ op: "f64.const", value: NaN });
+            }
           }
           fctx.body.push({ op: "call", funcIdx });
           return { kind: "f64" };
@@ -3390,11 +3457,31 @@ function compileCallExpression(
       return { kind: "i32" };
     }
 
-    // parseInt(s) and parseFloat(s) — host imports
+    // parseInt(s, radix?) and parseFloat(s) — host imports
     if ((funcName === "parseInt" || funcName === "parseFloat") && expr.arguments.length >= 1) {
       const importFuncIdx = ctx.funcMap.get(funcName);
       if (importFuncIdx !== undefined) {
-        compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "externref" });
+        const arg0 = expr.arguments[0]!;
+        const arg0Type = compileExpression(ctx, fctx, arg0);
+        // Coerce to externref, preserving boolean identity (not boxing as number)
+        if (arg0Type && arg0Type.kind !== "externref") {
+          if (arg0Type.kind === "i32" && (arg0.kind === ts.SyntaxKind.TrueKeyword || arg0.kind === ts.SyntaxKind.FalseKeyword)) {
+            // Boolean literal: box as boolean so String(true) → "true"
+            addUnionImports(ctx);
+            const boxIdx = ctx.funcMap.get("__box_boolean");
+            if (boxIdx !== undefined) fctx.body.push({ op: "call", funcIdx: boxIdx });
+          } else {
+            coerceType(ctx, fctx, arg0Type, { kind: "externref" });
+          }
+        }
+        if (funcName === "parseInt") {
+          if (expr.arguments.length >= 2) {
+            compileExpression(ctx, fctx, expr.arguments[1]!, { kind: "f64" });
+          } else {
+            // No radix supplied — push NaN sentinel so runtime treats it as undefined
+            fctx.body.push({ op: "f64.const", value: NaN });
+          }
+        }
         fctx.body.push({ op: "call", funcIdx: importFuncIdx });
         return { kind: "f64" };
       }
@@ -4333,7 +4420,7 @@ function compileMathCall(
   if (method === "fround" && expr.arguments.length >= 1) {
     compileExpression(ctx, fctx, expr.arguments[0]!, f64Hint);
     fctx.body.push({ op: "f32.demote_f64" } as Instr);
-    fctx.body.push({ op: "f64.promote_f32" } as unknown as Instr);
+    fctx.body.push({ op: "f64.promote_f32" } as Instr);
     return { kind: "f64" };
   }
 
@@ -4348,20 +4435,43 @@ function compileMathCall(
       fctx.body.push({ op: "f64.abs" } as Instr);
       return { kind: "f64" };
     }
-    // 2+ args: sqrt(sum of squares)
+    // 2+ args: spec says if any arg is +-Infinity → +Infinity, else sqrt(sum of squares)
     const hypotLocals: number[] = [];
     for (let ai = 0; ai < expr.arguments.length; ai++) {
       const loc = allocLocal(fctx, `__hypot_${fctx.locals.length}`, { kind: "f64" });
       compileExpression(ctx, fctx, expr.arguments[ai]!, f64Hint);
-      fctx.body.push({ op: "local.tee", index: loc } as Instr);
-      fctx.body.push({ op: "local.get", index: loc } as Instr);
-      fctx.body.push({ op: "f64.mul" } as Instr);
+      fctx.body.push({ op: "local.set", index: loc });
       hypotLocals.push(loc);
     }
-    for (let i = 1; i < hypotLocals.length; i++) {
-      fctx.body.push({ op: "f64.add" } as Instr);
+    // Check if any arg is +-Infinity: abs(x) == +Inf
+    // Build: abs(a0)==Inf || abs(a1)==Inf || ...
+    for (let i = 0; i < hypotLocals.length; i++) {
+      fctx.body.push({ op: "local.get", index: hypotLocals[i]! } as Instr);
+      fctx.body.push({ op: "f64.abs" } as Instr);
+      fctx.body.push({ op: "f64.const", value: Infinity });
+      fctx.body.push({ op: "f64.eq" } as Instr);
+      if (i > 0) {
+        fctx.body.push({ op: "i32.or" } as Instr);
+      }
     }
-    fctx.body.push({ op: "f64.sqrt" } as Instr);
+    // if any is Inf, return +Infinity, else sqrt(sum of squares)
+    const thenBlock: Instr[] = [{ op: "f64.const", value: Infinity }];
+    const elseBlock: Instr[] = [];
+    for (let i = 0; i < hypotLocals.length; i++) {
+      elseBlock.push({ op: "local.get", index: hypotLocals[i]! } as Instr);
+      elseBlock.push({ op: "local.get", index: hypotLocals[i]! } as Instr);
+      elseBlock.push({ op: "f64.mul" } as Instr);
+    }
+    for (let i = 1; i < hypotLocals.length; i++) {
+      elseBlock.push({ op: "f64.add" } as Instr);
+    }
+    elseBlock.push({ op: "f64.sqrt" } as Instr);
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "val", type: { kind: "f64" } },
+      then: thenBlock,
+      else: elseBlock,
+    });
     return { kind: "f64" };
   }
 

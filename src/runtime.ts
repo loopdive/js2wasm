@@ -117,7 +117,10 @@ function resolveImport(
       if (name === "__call_2_i32") return (fn: Function, a: number, b: number) => fn(a, b);
       if (name === "__typeof") return (v: any) => typeof v;
       // parseInt / parseFloat host imports
-      if (name === "parseInt") return (s: any) => parseInt(String(s), 10);
+      if (name === "parseInt") return (s: any, radix: number) => {
+        const r = Number.isNaN(radix) ? undefined : radix;
+        return parseInt(String(s), r as any);
+      };
       if (name === "parseFloat") return (s: any) => parseFloat(String(s));
       // String.fromCharCode host import
       if (name === "String_fromCharCode") return (code: number) => String.fromCharCode(code);

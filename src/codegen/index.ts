@@ -3657,9 +3657,15 @@ function collectParseImports(
   }
 
   for (const name of needed) {
-    // (externref) -> f64
-    const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "f64" }]);
-    addImport(ctx, "env", name, { kind: "func", typeIdx });
+    if (name === "parseInt") {
+      // (externref, f64) -> f64  — radix is NaN when omitted
+      const typeIdx = addFuncType(ctx, [{ kind: "externref" }, { kind: "f64" }], [{ kind: "f64" }]);
+      addImport(ctx, "env", name, { kind: "func", typeIdx });
+    } else {
+      // (externref) -> f64
+      const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "f64" }]);
+      addImport(ctx, "env", name, { kind: "func", typeIdx });
+    }
   }
 }
 
@@ -4258,6 +4264,18 @@ export function addUnionImports(ctx: CodegenContext): void {
     }
     for (const func of ctx.mod.functions) {
       shiftFuncIndices(func.body);
+    }
+    // Also shift indices in the currently-being-compiled function body,
+    // which may differ from func.body (fctx.body starts as [] and is
+    // assigned to func.body only after compilation completes).
+    if (ctx.currentFunc) {
+      // Check that we don't double-shift (fctx.body won't be in
+      // ctx.mod.functions until func.body = fctx.body runs later).
+      const curBody = ctx.currentFunc.body;
+      const alreadyShifted = ctx.mod.functions.some(f => f.body === curBody);
+      if (!alreadyShifted) {
+        shiftFuncIndices(curBody);
+      }
     }
     // Update table elements
     for (const elem of ctx.mod.elements) {

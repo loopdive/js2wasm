@@ -369,6 +369,18 @@ function compileVariableStatement(
       ? existingIdx
       : allocLocal(fctx, name, wasmType);
 
+    // If we reused a pre-hoisted slot but inference found a more precise type
+    // (e.g. Array<any> hoisted as vec_externref, but inferred as vec_f64),
+    // update the local's type so it matches what the initializer will produce.
+    if (isVar && existingIdx !== undefined && existingIdx >= fctx.params.length) {
+      const localSlot = fctx.locals[existingIdx - fctx.params.length];
+      if (localSlot
+          && (wasmType.kind !== localSlot.type.kind
+              || (wasmType as any).typeIdx !== (localSlot.type as any).typeIdx)) {
+        localSlot.type = wasmType;
+      }
+    }
+
     if (decl.initializer) {
       compileExpression(ctx, fctx, decl.initializer, wasmType);
       fctx.body.push({ op: "local.set", index: localIdx });
