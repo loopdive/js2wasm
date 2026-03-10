@@ -10,3 +10,4 @@ output/
 benchmarks/results/*.json
 benchmarks/results/*.md
 benchmarks/results/*.txt
+.pnpm-store/
