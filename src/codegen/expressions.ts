@@ -1,6 +1,6 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext, ClosureInfo, RestParamInfo } from "./index.js";
-import { allocLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType } from "./index.js";
+import { allocLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers } from "./index.js";
 import {
   mapTsTypeToWasm,
   isNumberType,
@@ -96,10 +96,97 @@ export function compileExpression(
 
 /** Coerce a value on the stack from one type to another */
 function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: ValType, to: ValType): void {
-  if (from.kind === to.kind) return;
+  if (from.kind === to.kind) {
+    // Same kind but check if ref typeIdx differs (e.g. ref $AnyValue vs ref $SomeStruct)
+    if ((from.kind === "ref" || from.kind === "ref_null") &&
+        (to.kind === "ref" || to.kind === "ref_null")) {
+      const fromIdx = (from as { typeIdx: number }).typeIdx;
+      const toIdx = (to as { typeIdx: number }).typeIdx;
+      if (fromIdx === toIdx) return;
+      // Boxing: non-any ref → any ref
+      if (isAnyValue(to, ctx) && !isAnyValue(from, ctx)) {
+        ensureAnyHelpers(ctx);
+        const funcIdx = ctx.funcMap.get("__any_box_ref");
+        if (funcIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx });
+          return;
+        }
+      }
+      // Unboxing: any ref → non-any ref (extract refval and cast)
+      if (isAnyValue(from, ctx) && !isAnyValue(to, ctx)) {
+        ensureAnyHelpers(ctx);
+        // Get the refval field (eqref), then ref.cast to target type
+        fctx.body.push({ op: "struct.get", typeIdx: ctx.anyValueTypeIdx, fieldIdx: 3 });
+        fctx.body.push({ op: "ref.cast", typeIdx: toIdx });
+        return;
+      }
+    }
+    return;
+  }
   // ref is a subtype of ref_null — no coercion needed
-  if (from.kind === "ref" && to.kind === "ref_null") return;
-  if (from.kind === "ref_null" && to.kind === "ref") return;
+  if (from.kind === "ref" && to.kind === "ref_null") {
+    // But check for any-value boxing (ref $X → ref_null $AnyValue)
+    if (isAnyValue(to, ctx) && !isAnyValue(from, ctx)) {
+      ensureAnyHelpers(ctx);
+      const funcIdx = ctx.funcMap.get("__any_box_ref");
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+        return;
+      }
+    }
+    return;
+  }
+  if (from.kind === "ref_null" && to.kind === "ref") {
+    // Unboxing: ref_null $AnyValue → ref $X
+    if (isAnyValue(from, ctx) && !isAnyValue(to, ctx)) {
+      ensureAnyHelpers(ctx);
+      const toIdx = (to as { typeIdx: number }).typeIdx;
+      fctx.body.push({ op: "struct.get", typeIdx: ctx.anyValueTypeIdx, fieldIdx: 3 });
+      fctx.body.push({ op: "ref.cast", typeIdx: toIdx });
+      return;
+    }
+    return;
+  }
+
+  // ── Boxing: primitive → ref $AnyValue ──
+  if (isAnyValue(to, ctx)) {
+    ensureAnyHelpers(ctx);
+    if (from.kind === "i32") {
+      const funcIdx = ctx.funcMap.get("__any_box_i32");
+      if (funcIdx !== undefined) { fctx.body.push({ op: "call", funcIdx }); return; }
+    }
+    if (from.kind === "f64") {
+      const funcIdx = ctx.funcMap.get("__any_box_f64");
+      if (funcIdx !== undefined) { fctx.body.push({ op: "call", funcIdx }); return; }
+    }
+    if (from.kind === "externref") {
+      const funcIdx = ctx.funcMap.get("__any_box_string");
+      if (funcIdx !== undefined) { fctx.body.push({ op: "call", funcIdx }); return; }
+    }
+    if (from.kind === "ref" || from.kind === "ref_null") {
+      const funcIdx = ctx.funcMap.get("__any_box_ref");
+      if (funcIdx !== undefined) { fctx.body.push({ op: "call", funcIdx }); return; }
+    }
+  }
+
+  // ── Unboxing: ref $AnyValue → primitive ──
+  if (isAnyValue(from, ctx)) {
+    ensureAnyHelpers(ctx);
+    if (to.kind === "i32") {
+      const funcIdx = ctx.funcMap.get("__any_unbox_i32");
+      if (funcIdx !== undefined) { fctx.body.push({ op: "call", funcIdx }); return; }
+    }
+    if (to.kind === "f64") {
+      const funcIdx = ctx.funcMap.get("__any_unbox_f64");
+      if (funcIdx !== undefined) { fctx.body.push({ op: "call", funcIdx }); return; }
+    }
+    if (to.kind === "externref") {
+      // Convert GC ref (AnyValue struct) to externref via extern.convert_any
+      fctx.body.push({ op: "extern.convert_any" });
+      return;
+    }
+  }
+
   // i32 → f64
   if (from.kind === "i32" && to.kind === "f64") {
     fctx.body.push({ op: "f64.convert_i32_s" });
@@ -5916,54 +6003,18 @@ function compileNativeTemplateExpression(
 // ── Tagged template expressions ──────────────────────────────────────
 
 /**
- * Ensure the host imports needed for tagged template expressions are registered.
- * Three imports are needed:
- *   __js_array_new: () → externref           — creates a new JS array
- *   __js_array_push: (arr, val) → void       — pushes a value onto a JS array
- *   __tagged_template: (tag, strings, subs) → externref — calls tag(strings, ...subs)
- */
-function ensureTaggedTemplateImports(ctx: CodegenContext): void {
-  if (!ctx.funcMap.has("__js_array_new")) {
-    const typeIdx = addFuncType(ctx, [], [{ kind: "externref" }]);
-    addImport(ctx, "env", "__js_array_new", { kind: "func", typeIdx });
-  }
-  if (!ctx.funcMap.has("__js_array_push")) {
-    const typeIdx = addFuncType(
-      ctx,
-      [{ kind: "externref" }, { kind: "externref" }],
-      [],
-    );
-    addImport(ctx, "env", "__js_array_push", { kind: "func", typeIdx });
-  }
-  if (!ctx.funcMap.has("__tagged_template")) {
-    const typeIdx = addFuncType(
-      ctx,
-      [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }],
-      [{ kind: "externref" }],
-    );
-    addImport(ctx, "env", "__tagged_template", { kind: "func", typeIdx });
-  }
-}
-
-/**
  * Compile a tagged template expression: tag`hello ${x} world`
  * Desugars to: tag(["hello ", " world"], x)
  *
- * Implementation: build a JS strings array and a JS substitutions array
- * via host imports, then call __tagged_template(tagFn, stringsArr, subsArr).
+ * Implementation: build a WasmGC externref array (vec struct) of string parts,
+ * then call the tag function with the array as first arg and substitutions
+ * as remaining args. NO host imports needed.
  */
 function compileTaggedTemplateExpression(
   ctx: CodegenContext,
   fctx: FunctionContext,
   expr: ts.TaggedTemplateExpression,
 ): ValType | null {
-  ensureTaggedTemplateImports(ctx);
-  addUnionImports(ctx); // ensure __box_number/__box_boolean are available for substitutions
-
-  const arrayNewIdx = ctx.funcMap.get("__js_array_new")!;
-  const arrayPushIdx = ctx.funcMap.get("__js_array_push")!;
-  const taggedCallIdx = ctx.funcMap.get("__tagged_template")!;
-
   // Extract string parts and substitution expressions from the template
   const stringParts: string[] = [];
   const substitutions: ts.Expression[] = [];
@@ -5981,49 +6032,146 @@ function compileTaggedTemplateExpression(
     }
   }
 
-  // Build the strings array: __js_array_new() then __js_array_push for each string
-  fctx.body.push({ op: "call", funcIdx: arrayNewIdx });
-  const stringsLocal = allocLocal(fctx, `__tt_strings_${fctx.locals.length}`, { kind: "externref" });
+  // Build the strings array as a WasmGC externref vec (same layout as array literals)
+  const elemKind = "externref";
+  const elemWasm: ValType = { kind: "externref" };
+  const vecTypeIdx = getOrRegisterVecType(ctx, elemKind, elemWasm);
+  const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
+  if (arrTypeIdx < 0) {
+    ctx.errors.push({ message: "Tagged template: invalid vec type for strings array", line: getLine(expr), column: getCol(expr) });
+    return null;
+  }
+
+  // Push each string part onto the stack, then array.new_fixed
+  for (const str of stringParts) {
+    compileStringLiteral(ctx, fctx, str, expr);
+  }
+  fctx.body.push({ op: "array.new_fixed", typeIdx: arrTypeIdx, length: stringParts.length });
+  // Wrap in vec struct: { i32 length, array data }
+  const tmpData = allocLocal(fctx, `__tt_arr_data_${fctx.locals.length}`, { kind: "ref", typeIdx: arrTypeIdx });
+  fctx.body.push({ op: "local.set", index: tmpData });
+  fctx.body.push({ op: "i32.const", value: stringParts.length });
+  fctx.body.push({ op: "local.get", index: tmpData });
+  fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
+
+  // Store the strings vec in a local so we can push it as an argument later
+  const stringsVecType: ValType = { kind: "ref_null", typeIdx: vecTypeIdx };
+  const stringsLocal = allocLocal(fctx, `__tt_strings_${fctx.locals.length}`, stringsVecType);
   fctx.body.push({ op: "local.set", index: stringsLocal });
 
-  for (const str of stringParts) {
-    fctx.body.push({ op: "local.get", index: stringsLocal });
-    compileStringLiteral(ctx, fctx, str, expr);
-    fctx.body.push({ op: "call", funcIdx: arrayPushIdx });
-  }
+  // Now compile the call to the tag function.
+  // The tag function receives (stringsArray, ...substitutions).
+  // We handle three cases: known function, closure, or fallback.
 
-  // Build the substitutions array
-  fctx.body.push({ op: "call", funcIdx: arrayNewIdx });
-  const subsLocal = allocLocal(fctx, `__tt_subs_${fctx.locals.length}`, { kind: "externref" });
-  fctx.body.push({ op: "local.set", index: subsLocal });
+  if (ts.isIdentifier(expr.tag)) {
+    const tagName = expr.tag.text;
 
-  for (const sub of substitutions) {
-    fctx.body.push({ op: "local.get", index: subsLocal });
-    const subType = compileExpression(ctx, fctx, sub);
-    // Coerce non-externref values to externref for the JS array
-    if (subType && subType.kind === "f64") {
-      const boxIdx = ctx.funcMap.get("__box_number");
-      if (boxIdx !== undefined) {
-        fctx.body.push({ op: "call", funcIdx: boxIdx });
+    // Case 1: tag is a closure variable
+    const closureInfo = ctx.closureMap.get(tagName);
+    if (closureInfo) {
+      const localIdx = fctx.localMap.get(tagName);
+      if (localIdx === undefined) {
+        ctx.errors.push({ message: `Tagged template: closure variable '${tagName}' not found`, line: getLine(expr), column: getCol(expr) });
+        return null;
       }
-    } else if (subType && subType.kind === "i32") {
-      const boxIdx = ctx.funcMap.get("__box_boolean");
-      if (boxIdx !== undefined) {
-        fctx.body.push({ op: "call", funcIdx: boxIdx });
+
+      // Push closure ref as self param
+      fctx.body.push({ op: "local.get", index: localIdx });
+
+      // Push strings array as first argument (coerce to expected param type)
+      const paramType0 = closureInfo.paramTypes[0];
+      fctx.body.push({ op: "local.get", index: stringsLocal });
+      if (paramType0 && paramType0.kind === "externref") {
+        // Need to convert GC ref to externref
+        fctx.body.push({ op: "extern.convert_any" });
       }
+
+      // Push substitution expressions as remaining arguments
+      for (let i = 0; i < substitutions.length; i++) {
+        const expectedParamType = closureInfo.paramTypes[i + 1];
+        compileExpression(ctx, fctx, substitutions[i]!, expectedParamType);
+      }
+
+      // Push funcref from closure struct field 0 and call_ref
+      fctx.body.push({ op: "local.get", index: localIdx });
+      fctx.body.push({ op: "struct.get", typeIdx: closureInfo.structTypeIdx, fieldIdx: 0 });
+      fctx.body.push({ op: "ref.cast", typeIdx: closureInfo.funcTypeIdx });
+      fctx.body.push({ op: "call_ref", typeIdx: closureInfo.funcTypeIdx });
+
+      return closureInfo.returnType;
     }
-    fctx.body.push({ op: "call", funcIdx: arrayPushIdx });
+
+    // Case 2: tag is a known function
+    const funcIdx = ctx.funcMap.get(tagName);
+    if (funcIdx !== undefined) {
+      // Prepend captured values for nested functions with captures
+      const nestedCaptures = ctx.nestedFuncCaptures.get(tagName);
+      if (nestedCaptures) {
+        for (const cap of nestedCaptures) {
+          fctx.body.push({ op: "local.get", index: cap.outerLocalIdx });
+        }
+      }
+
+      const restInfo = ctx.funcRestParams.get(tagName);
+      const paramTypes = getFuncParamTypes(ctx, funcIdx);
+
+      // Push the strings array as argument 0
+      fctx.body.push({ op: "local.get", index: stringsLocal });
+      // Coerce if needed (e.g. ref_null vec → externref)
+      if (paramTypes?.[0] && paramTypes[0].kind === "externref") {
+        fctx.body.push({ op: "extern.convert_any" });
+      }
+
+      if (restInfo && restInfo.restIndex === 1) {
+        // Tag function has rest param at index 1: tag(strings, ...subs)
+        // Pack substitutions into a vec
+        const restArgCount = substitutions.length;
+        fctx.body.push({ op: "i32.const", value: restArgCount });
+        for (const sub of substitutions) {
+          compileExpression(ctx, fctx, sub, restInfo.elemType);
+        }
+        fctx.body.push({ op: "array.new_fixed", typeIdx: restInfo.arrayTypeIdx, length: restArgCount });
+        fctx.body.push({ op: "struct.new", typeIdx: restInfo.vecTypeIdx });
+      } else {
+        // No rest param — push substitutions as positional args
+        for (let i = 0; i < substitutions.length; i++) {
+          compileExpression(ctx, fctx, substitutions[i]!, paramTypes?.[i + 1]);
+        }
+
+        // Supply defaults for missing optional params
+        const optInfo = ctx.funcOptionalParams.get(tagName);
+        if (optInfo) {
+          const numProvided = substitutions.length + 1; // +1 for strings array
+          for (const opt of optInfo) {
+            if (opt.index >= numProvided) {
+              pushDefaultValue(fctx, opt.type);
+            }
+          }
+        }
+      }
+
+      // Re-lookup funcIdx in case imports shifted during compilation
+      const finalFuncIdx = ctx.funcMap.get(tagName) ?? funcIdx;
+      fctx.body.push({ op: "call", funcIdx: finalFuncIdx });
+
+      // Determine return type
+      const sig = ctx.checker.getResolvedSignature(expr);
+      if (sig) {
+        const retType = ctx.checker.getReturnTypeOfSignature(sig);
+        if (isVoidType(retType)) return null;
+        return resolveWasmType(ctx, retType);
+      }
+      return { kind: "externref" };
+    }
   }
 
-  // Compile the tag expression (could be identifier, property access, etc.)
-  const tagType = compileExpression(ctx, fctx, expr.tag, { kind: "externref" });
-  // If tag compiled to non-externref, it's already been coerced by compileExpression
-
-  // Push strings and subs arrays, then call __tagged_template
-  fctx.body.push({ op: "local.get", index: stringsLocal });
-  fctx.body.push({ op: "local.get", index: subsLocal });
-  fctx.body.push({ op: "call", funcIdx: taggedCallIdx });
-
+  // Fallback: unsupported tag expression type
+  ctx.errors.push({
+    message: `Tagged template: unsupported tag expression kind ${ts.SyntaxKind[expr.tag.kind]}`,
+    line: getLine(expr),
+    column: getCol(expr),
+  });
+  fctx.body.push({ op: "ref.null.extern" });
   return { kind: "externref" };
 }
 function compileStringBinaryOp(

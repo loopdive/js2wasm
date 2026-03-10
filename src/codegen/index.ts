@@ -205,6 +205,12 @@ export interface CodegenContext {
   nativeStrHelpers: Map<string, number>;
   /** Map from value type kind → ref cell struct type index (for mutable closure captures) */
   refCellTypeMap: Map<string, number>;
+  /** Type index of the $AnyValue boxed-any struct (-1 if not registered) */
+  anyValueTypeIdx: number;
+  /** Map from any-value helper name → function index */
+  anyHelpers: Map<string, number>;
+  /** Whether any-value helper functions have been emitted */
+  anyHelpersEmitted: boolean;
 }
 
 /** Metadata for a closure stored in a local variable */
@@ -329,12 +335,18 @@ export function generateModule(
     nativeStrHelpersEmitted: false,
     nativeStrHelpers: new Map(),
     refCellTypeMap: new Map(),
+    anyValueTypeIdx: -1,
+    anyHelpers: new Map(),
+    anyHelpersEmitted: false,
   };
 
   // Register native string types if fast mode
   if (ctx.fast) {
     registerNativeStringTypes(ctx);
   }
+
+  // Register $AnyValue struct type for gradual typing
+  registerAnyValueType(ctx);
 
   // Collect console.log imports (only variants actually used)
   collectConsoleImports(ctx, ast.sourceFile);
@@ -504,12 +516,18 @@ export function generateMultiModule(
     nativeStrHelpersEmitted: false,
     nativeStrHelpers: new Map(),
     refCellTypeMap: new Map(),
+    anyValueTypeIdx: -1,
+    anyHelpers: new Map(),
+    anyHelpersEmitted: false,
   };
 
   // Register native string types if fast mode
   if (ctx.fast) {
     registerNativeStringTypes(ctx);
   }
+
+  // Register $AnyValue struct type for gradual typing
+  registerAnyValueType(ctx);
 
   // Phase 1: Collect all import-phase declarations across all source files
   for (const sf of multiAst.sourceFiles) {
@@ -962,6 +980,245 @@ function registerNativeStringTypes(ctx: CodegenContext): void {
     ],
     superTypeIdx: ctx.anyStrTypeIdx,
   });
+}
+
+/**
+ * Register the $AnyValue struct type for boxing `any` typed values.
+ * The struct has a tag field to distinguish the boxed type at runtime,
+ * plus payload fields for each possible value kind.
+ */
+function registerAnyValueType(ctx: CodegenContext): void {
+  ctx.anyValueTypeIdx = ctx.mod.types.length;
+  ctx.mod.types.push({
+    kind: "struct",
+    name: "AnyValue",
+    fields: [
+      { name: "tag", type: { kind: "i32" }, mutable: false },
+      { name: "i32val", type: { kind: "i32" }, mutable: false },
+      { name: "f64val", type: { kind: "f64" }, mutable: false },
+      { name: "refval", type: { kind: "eqref" }, mutable: false },
+      { name: "externval", type: { kind: "externref" }, mutable: false },
+    ],
+  });
+}
+
+/**
+ * Check if a ValType represents a boxed `any` value (ref $AnyValue).
+ */
+export function isAnyValue(type: ValType, ctx: CodegenContext): boolean {
+  return (
+    (type.kind === "ref" || type.kind === "ref_null") &&
+    (type as { typeIdx: number }).typeIdx === ctx.anyValueTypeIdx &&
+    ctx.anyValueTypeIdx >= 0
+  );
+}
+
+/**
+ * Emit inline wasm helper functions for boxing/unboxing `any` values.
+ * Called lazily when any-typed operations are first encountered.
+ */
+export function ensureAnyHelpers(ctx: CodegenContext): void {
+  if (ctx.anyHelpersEmitted) return;
+  ctx.anyHelpersEmitted = true;
+
+  const anyTypeIdx = ctx.anyValueTypeIdx;
+  const anyRef: ValType = { kind: "ref", typeIdx: anyTypeIdx };
+  const anyRefNull: ValType = { kind: "ref_null", typeIdx: anyTypeIdx };
+
+  // Helper to register a helper function
+  function addHelper(name: string, params: ValType[], results: ValType[], body: Instr[]): void {
+    const typeIdx = addFuncType(ctx, params, results, name);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.mod.functions.push({
+      name,
+      typeIdx,
+      locals: [],
+      body,
+      exported: false,
+    });
+    ctx.funcMap.set(name, funcIdx);
+    ctx.anyHelpers.set(name, funcIdx);
+  }
+
+  // ref.null eq — the eq abstract heap type is encoded as byte 0x6d.
+  // In signed LEB128 (used by enc.i32), 0x6d = -19 (7-bit two's complement).
+  const EQ_HEAP_TYPE = -19; // signed LEB128 → 0x6d → TYPE.eq
+
+  // __any_box_null() -> ref $AnyValue
+  // tag=0, i32val=0, f64val=0.0, refval=null, externval=null
+  addHelper("__any_box_null", [], [anyRef], [
+    { op: "i32.const", value: 0 },
+    { op: "i32.const", value: 0 },
+    { op: "f64.const", value: 0 },
+    { op: "ref.null", typeIdx: EQ_HEAP_TYPE } as unknown as Instr,
+    { op: "ref.null.extern" },
+    { op: "struct.new", typeIdx: anyTypeIdx },
+  ]);
+
+  // __any_box_undefined() -> ref $AnyValue
+  // tag=1
+  addHelper("__any_box_undefined", [], [anyRef], [
+    { op: "i32.const", value: 1 },
+    { op: "i32.const", value: 0 },
+    { op: "f64.const", value: 0 },
+    { op: "ref.null", typeIdx: EQ_HEAP_TYPE } as unknown as Instr,
+    { op: "ref.null.extern" },
+    { op: "struct.new", typeIdx: anyTypeIdx },
+  ]);
+
+  // __any_box_i32(val: i32) -> ref $AnyValue
+  // tag=2, i32val=val, f64val=0.0, refval=null, externval=null
+  addHelper("__any_box_i32", [{ kind: "i32" }], [anyRef], [
+    { op: "i32.const", value: 2 },
+    { op: "local.get", index: 0 },
+    { op: "f64.const", value: 0 },
+    { op: "ref.null", typeIdx: EQ_HEAP_TYPE } as unknown as Instr,
+    { op: "ref.null.extern" },
+    { op: "struct.new", typeIdx: anyTypeIdx },
+  ]);
+
+  // __any_box_f64(val: f64) -> ref $AnyValue
+  // tag=3, i32val=0, f64val=val, refval=null, externval=null
+  addHelper("__any_box_f64", [{ kind: "f64" }], [anyRef], [
+    { op: "i32.const", value: 3 },
+    { op: "i32.const", value: 0 },
+    { op: "local.get", index: 0 },
+    { op: "ref.null", typeIdx: EQ_HEAP_TYPE } as unknown as Instr,
+    { op: "ref.null.extern" },
+    { op: "struct.new", typeIdx: anyTypeIdx },
+  ]);
+
+  // __any_box_bool(val: i32) -> ref $AnyValue
+  // tag=4, i32val=val, f64val=0.0, refval=null, externval=null
+  addHelper("__any_box_bool", [{ kind: "i32" }], [anyRef], [
+    { op: "i32.const", value: 4 },
+    { op: "local.get", index: 0 },
+    { op: "f64.const", value: 0 },
+    { op: "ref.null", typeIdx: EQ_HEAP_TYPE } as unknown as Instr,
+    { op: "ref.null.extern" },
+    { op: "struct.new", typeIdx: anyTypeIdx },
+  ]);
+
+  // __any_box_string(val: externref) -> ref $AnyValue
+  // tag=5, i32val=0, f64val=0.0, refval=null, externval=val
+  addHelper("__any_box_string", [{ kind: "externref" }], [anyRef], [
+    { op: "i32.const", value: 5 },
+    { op: "i32.const", value: 0 },
+    { op: "f64.const", value: 0 },
+    { op: "ref.null", typeIdx: EQ_HEAP_TYPE } as unknown as Instr,
+    { op: "local.get", index: 0 },
+    { op: "struct.new", typeIdx: anyTypeIdx },
+  ]);
+
+  // __any_box_ref(val: eqref) -> ref $AnyValue
+  // tag=6, i32val=0, f64val=0.0, refval=val, externval=null
+  addHelper("__any_box_ref", [{ kind: "eqref" }], [anyRef], [
+    { op: "i32.const", value: 6 },
+    { op: "i32.const", value: 0 },
+    { op: "f64.const", value: 0 },
+    { op: "local.get", index: 0 },
+    { op: "ref.null.extern" },
+    { op: "struct.new", typeIdx: anyTypeIdx },
+  ]);
+
+  // __any_unbox_i32(val: ref $AnyValue) -> i32
+  // Returns i32val field; if tag==3 (f64), truncate f64val
+  addHelper("__any_unbox_i32", [anyRefNull], [{ kind: "i32" }], [
+    // Check if tag == 3 (f64 number)
+    { op: "local.get", index: 0 },
+    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+    { op: "i32.const", value: 3 },
+    { op: "i32.eq" },
+    { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
+      then: [
+        { op: "local.get", index: 0 },
+        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 },
+        { op: "i32.trunc_sat_f64_s" },
+      ],
+      else: [
+        { op: "local.get", index: 0 },
+        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+      ],
+    } as unknown as Instr,
+  ]);
+
+  // __any_unbox_f64(val: ref $AnyValue) -> f64
+  // Returns f64val field; if tag==2 (i32 number), convert i32val
+  addHelper("__any_unbox_f64", [anyRefNull], [{ kind: "f64" }], [
+    // Check if tag == 2 (i32 number)
+    { op: "local.get", index: 0 },
+    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+    { op: "i32.const", value: 2 },
+    { op: "i32.eq" },
+    { op: "if", blockType: { kind: "val", type: { kind: "f64" } },
+      then: [
+        { op: "local.get", index: 0 },
+        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+        { op: "f64.convert_i32_s" },
+      ],
+      else: [
+        { op: "local.get", index: 0 },
+        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 },
+      ],
+    } as unknown as Instr,
+  ]);
+
+  // __any_unbox_bool(val: ref $AnyValue) -> i32
+  // Truthiness check: tag 4 → i32val, tag 2 → i32val!=0, tag 3 → f64val!=0,
+  // tag 0/1 → 0 (null/undefined), tag >= 5 → 1 (truthy object)
+  addHelper("__any_unbox_bool", [anyRefNull], [{ kind: "i32" }], [
+    { op: "local.get", index: 0 },
+    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+    { op: "i32.const", value: 4 },
+    { op: "i32.eq" },
+    { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
+      then: [
+        { op: "local.get", index: 0 },
+        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+      ],
+      else: [
+        { op: "local.get", index: 0 },
+        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+        { op: "i32.const", value: 2 },
+        { op: "i32.eq" },
+        { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
+          then: [
+            { op: "local.get", index: 0 },
+            { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+            { op: "i32.const", value: 0 },
+            { op: "i32.ne" },
+          ],
+          else: [
+            { op: "local.get", index: 0 },
+            { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+            { op: "i32.const", value: 3 },
+            { op: "i32.eq" },
+            { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
+              then: [
+                { op: "local.get", index: 0 },
+                { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 },
+                { op: "f64.const", value: 0 },
+                { op: "f64.ne" },
+              ],
+              else: [
+                { op: "local.get", index: 0 },
+                { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+                { op: "i32.const", value: 5 },
+                { op: "i32.ge_s" },
+              ],
+            } as unknown as Instr,
+          ],
+        } as unknown as Instr,
+      ],
+    } as unknown as Instr,
+  ]);
+
+  // __any_unbox_extern(val: ref $AnyValue) -> externref
+  // Returns externval field
+  addHelper("__any_unbox_extern", [anyRefNull], [{ kind: "externref" }], [
+    { op: "local.get", index: 0 },
+    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 4 },
+  ]);
 }
 
 /**
@@ -4769,6 +5026,19 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type): ValType {
     }
   }
 
+  // any/unknown → ref_null $AnyValue (boxed any) when available.
+  // Only for explicitly-typed `any` — not for unresolved imports that default to `any`.
+  // We detect unresolved-import `any` by checking if the type has no symbol and no error flag,
+  // or if it comes from an external declaration. For Phase 1, we restrict this to fast mode
+  // where there are no host-imported extern classes to conflict with.
+  if (
+    ctx.fast &&
+    (tsType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) &&
+    ctx.anyValueTypeIdx >= 0
+  ) {
+    return { kind: "ref_null", typeIdx: ctx.anyValueTypeIdx };
+  }
+
   return mapTsTypeToWasm(tsType, ctx.checker, ctx.fast);
 }
 
@@ -7295,6 +7565,15 @@ export function ensureI32Condition(
     fctx.body.push({ op: "ref.is_null" });
     fctx.body.push({ op: "i32.eqz" });
   } else if (condType.kind === "ref" || condType.kind === "ref_null") {
+    // Boxed any value — use __any_unbox_bool for proper JS truthiness
+    if (ctx && isAnyValue(condType, ctx)) {
+      ensureAnyHelpers(ctx);
+      const funcIdx = ctx.funcMap.get("__any_unbox_bool");
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+        return;
+      }
+    }
     // Native string or struct ref — non-empty string is truthy
     // For strings: check length > 0 via string.measure_utf8 or ref.is_null fallback
     if (ctx && condType.typeIdx === ctx.anyStrTypeIdx) {
