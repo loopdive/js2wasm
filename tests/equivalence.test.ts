@@ -43,6 +43,7 @@ function buildImports(result: CompileResult): WebAssembly.Imports {
     Math_cbrt: Math.cbrt,
     Math_expm1: Math.expm1,
     Math_log1p: Math.log1p,
+    number_toString: (v: number) => String(v),
   };
   return {
     env,
@@ -496,5 +497,132 @@ describe("TS ↔ Wasm equivalence", () => {
         { fn: "powAssign", args: [5, 2] },
       ],
     );
+  });
+
+  it("tagged template literals — basic", async () => {
+    await assertEquivalent(
+      `
+      function tag(strings: string[], a: number, b: number): number {
+        return strings.length + a + b;
+      }
+      export function test1(): number {
+        return tag\`hello \${10} world \${20}\`;
+      }
+      `,
+      [
+        { fn: "test1", args: [] },
+      ],
+    );
+  });
+
+  it("tagged template literals — no substitutions", async () => {
+    await assertEquivalent(
+      `
+      function tag(strings: string[]): number {
+        return strings.length;
+      }
+      export function test1(): number {
+        return tag\`just a string\`;
+      }
+      `,
+      [
+        { fn: "test1", args: [] },
+      ],
+    );
+  });
+
+  it("tagged template literals — rest params", async () => {
+    await assertEquivalent(
+      `
+      function tag(strings: string[], ...values: number[]): number {
+        return strings.length + values.length;
+      }
+      export function test1(): number {
+        return tag\`a \${1} b \${2} c \${3} d\`;
+      }
+      export function test2(): number {
+        return tag\`no subs\`;
+      }
+      `,
+      [
+        { fn: "test1", args: [] },
+        { fn: "test2", args: [] },
+      ],
+    );
+  });
+
+  it("tagged template literals — string content access", async () => {
+    await assertEquivalent(
+      `
+      function first(strings: string[]): string {
+        return strings[0];
+      }
+      export function test1(): string {
+        return first\`hello world\`;
+      }
+      `,
+      [
+        { fn: "test1", args: [] },
+      ],
+    );
+  });
+
+  it("tagged template literals — substitution values", async () => {
+    await assertEquivalent(
+      `
+      function sum(strings: string[], a: number, b: number): number {
+        return a + b;
+      }
+      export function test1(): number {
+        const x = 5;
+        const y = 10;
+        return sum\`\${x} plus \${y}\`;
+      }
+      `,
+      [
+        { fn: "test1", args: [] },
+      ],
+    );
+  });
+});
+
+describe("Gradual typing: boxed any (fast mode)", () => {
+  /**
+   * Compile TS source to Wasm in fast mode, instantiate it, and return exports.
+   */
+  async function compileFast(source: string) {
+    const result = compile(source, { fast: true });
+    if (!result.success) {
+      throw new Error(
+        `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}`,
+      );
+    }
+    const mod = await WebAssembly.compile(result.binary as BufferSource);
+    const instance = await WebAssembly.instantiate(mod, buildImports(result));
+    return instance.exports as Record<string, Function>;
+  }
+
+  it("any type: box and unbox i32 number", async () => {
+    const exports = await compileFast(`
+      export function boxUnboxNum(x: number): number {
+        let a: any = x;
+        return a as number;
+      }
+    `);
+    expect(exports.boxUnboxNum(42)).toBe(42);
+    expect(exports.boxUnboxNum(0)).toBe(0);
+    expect(exports.boxUnboxNum(-7)).toBe(-7);
+  });
+
+  it("any type: box and unbox boolean via truthiness", async () => {
+    const exports = await compileFast(`
+      export function boxUnboxBool(x: number): number {
+        let a: any = x > 0;
+        return a ? 1 : 0;
+      }
+    `);
+    expect(exports.boxUnboxBool(1)).toBe(1);
+    expect(exports.boxUnboxBool(0)).toBe(0);
+    expect(exports.boxUnboxBool(5)).toBe(1);
   });
 });
