@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm test)",
+      "Bash(npm install -g pnpm)",
+      "Bash(node --version)",
+      "Bash(node node_modules/vitest/dist/cli.js run)"
+    ]
+  }
+}
