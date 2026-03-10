@@ -4574,11 +4574,12 @@ export function getArrTypeIdxFromVec(
   vecTypeIdx: number,
 ): number {
   const vecDef = ctx.mod.types[vecTypeIdx];
-  if (!vecDef || vecDef.kind !== "struct") throw new Error("not a vec type");
-  const dataField = vecDef.fields[1]!;
+  if (!vecDef || vecDef.kind !== "struct") return -1;
+  const dataField = vecDef.fields[1];
+  if (!dataField) return -1;
   // data field may use ref_null instead of ref (e.g. for nullable element types)
   if (dataField.type.kind !== "ref" && dataField.type.kind !== "ref_null") {
-    throw new Error("vec data field not ref");
+    return -1;
   }
   return (dataField.type as { typeIdx: number }).typeIdx;
 }
@@ -6233,7 +6234,12 @@ function compileDeclarations(
   // Also compile class expressions in variable declarations
   for (const stmt of sourceFile.statements) {
     if (ts.isClassDeclaration(stmt) && stmt.name && !hasDeclareModifier(stmt)) {
-      compileClassBodies(ctx, stmt, funcByName);
+      try {
+        compileClassBodies(ctx, stmt, funcByName);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        reportError(ctx, stmt, `Internal error compiling class '${stmt.name.text}': ${msg}`);
+      }
     } else if (ts.isVariableStatement(stmt) && !hasDeclareModifier(stmt)) {
       for (const decl of stmt.declarationList.declarations) {
         if (
@@ -6241,7 +6247,12 @@ function compileDeclarations(
           decl.initializer &&
           ts.isClassExpression(decl.initializer)
         ) {
-          compileClassBodies(ctx, decl.initializer, funcByName, decl.name.text);
+          try {
+            compileClassBodies(ctx, decl.initializer, funcByName, decl.name.text);
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            reportError(ctx, decl, `Internal error compiling class expression: ${msg}`);
+          }
         }
       }
     }
@@ -6258,7 +6269,12 @@ function compileDeclarations(
         const idx = funcByName.get(stmt.name.text);
         if (idx !== undefined) {
           const func = ctx.mod.functions[idx]!;
-          compileFunctionBody(ctx, stmt, func);
+          try {
+            compileFunctionBody(ctx, stmt, func);
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            reportError(ctx, stmt, `Internal error compiling function '${stmt.name.text}': ${msg}`);
+          }
         }
       }
     }
@@ -6349,9 +6365,17 @@ function compileClassBodies(
   funcByName: Map<string, number>,
   syntheticName?: string,
 ): void {
-  const className = syntheticName ?? decl.name!.text;
-  const structTypeIdx = ctx.structMap.get(className)!;
-  const fields = ctx.structFields.get(className)!;
+  const className = syntheticName ?? decl.name?.text;
+  if (!className) {
+    reportError(ctx, decl, "Cannot compile unnamed class");
+    return;
+  }
+  const structTypeIdx = ctx.structMap.get(className);
+  const fields = ctx.structFields.get(className);
+  if (structTypeIdx === undefined || !fields) {
+    reportError(ctx, decl, `Unknown class struct type: ${className}`);
+    return;
+  }
 
   // Compile constructor
   const ctor = decl.members.find(ts.isConstructorDeclaration) as
@@ -6363,8 +6387,9 @@ function compileClassBodies(
     const func = ctx.mod.functions[ctorLocalIdx]!;
     const params: { name: string; type: ValType }[] = [];
     if (ctor) {
-      for (const param of ctor.parameters) {
-        const paramName = (param.name as ts.Identifier).text;
+      for (let pi = 0; pi < ctor.parameters.length; pi++) {
+        const param = ctor.parameters[pi]!;
+        const paramName = ts.isIdentifier(param.name) ? param.name.text : `__param${pi}`;
         const paramType = ctx.checker.getTypeAtLocation(param);
         params.push({ name: paramName, type: resolveWasmType(ctx, paramType) });
       }
@@ -6470,8 +6495,9 @@ function compileClassBodies(
       const params: { name: string; type: ValType }[] = isStatic
         ? []
         : [{ name: "this", type: { kind: "ref", typeIdx: structTypeIdx } }];
-      for (const param of member.parameters) {
-        const paramName = (param.name as ts.Identifier).text;
+      for (let pi = 0; pi < member.parameters.length; pi++) {
+        const param = member.parameters[pi]!;
+        const paramName = ts.isIdentifier(param.name) ? param.name.text : `__param${pi}`;
         const paramType = ctx.checker.getTypeAtLocation(param);
         params.push({ name: paramName, type: resolveWasmType(ctx, paramType) });
       }
@@ -6627,8 +6653,9 @@ function compileClassBodies(
       const params: { name: string; type: ValType }[] = [
         { name: "this", type: { kind: "ref", typeIdx: structTypeIdx } },
       ];
-      for (const param of member.parameters) {
-        const paramName = (param.name as ts.Identifier).text;
+      for (let pi = 0; pi < member.parameters.length; pi++) {
+        const param = member.parameters[pi]!;
+        const paramName = ts.isIdentifier(param.name) ? param.name.text : `__param${pi}`;
         const paramType = ctx.checker.getTypeAtLocation(param);
         params.push({ name: paramName, type: resolveWasmType(ctx, paramType) });
       }
@@ -6801,7 +6828,11 @@ function compileFunctionBody(
   decl: ts.FunctionDeclaration,
   func: WasmFunction,
 ): void {
-  const sig = ctx.checker.getSignatureFromDeclaration(decl)!;
+  const sig = ctx.checker.getSignatureFromDeclaration(decl);
+  if (!sig) {
+    reportError(ctx, decl, `Cannot resolve signature for function '${func.name}'`);
+    return;
+  }
   const retType = ctx.checker.getReturnTypeOfSignature(sig);
 
   // For async functions, unwrap Promise<T> to get T
@@ -6818,7 +6849,7 @@ function compileFunctionBody(
   const params: { name: string; type: ValType }[] = [];
   for (let i = 0; i < decl.parameters.length; i++) {
     const param = decl.parameters[i]!;
-    const paramName = (param.name as ts.Identifier).text;
+    const paramName = ts.isIdentifier(param.name) ? param.name.text : `__param${i}`;
     if (restInfo && i === restInfo.restIndex) {
       // Rest parameter — use the vec struct ref type from the function signature
       params.push({
@@ -6826,9 +6857,8 @@ function compileFunctionBody(
         type: { kind: "ref_null", typeIdx: restInfo.vecTypeIdx },
       });
     } else {
-      const paramType = resolved
-        ? resolved.params[i]!
-        : resolveWasmType(ctx, ctx.checker.getTypeAtLocation(param));
+      const paramType = resolved?.params[i]
+        ?? resolveWasmType(ctx, ctx.checker.getTypeAtLocation(param));
       params.push({ name: paramName, type: paramType });
     }
   }
@@ -6838,7 +6868,7 @@ function compileFunctionBody(
     // Generator functions return externref (JS Generator object)
     returnType = { kind: "externref" };
   } else if (resolved) {
-    returnType = resolved.results.length > 0 ? resolved.results[0]! : null;
+    returnType = resolved.results.length > 0 ? (resolved.results[0] ?? null) : null;
   } else {
     returnType = isVoidType(effectiveRetType)
       ? null

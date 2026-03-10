@@ -33,7 +33,22 @@ export function compileExpression(
   expectedType?: ValType,
 ): ValType | null {
   const bodyLenBefore = fctx.body.length;
-  const result = compileExpressionInner(ctx, fctx, expr);
+  let result: InnerResult;
+  try {
+    result = compileExpressionInner(ctx, fctx, expr);
+  } catch (e) {
+    // Defensive: catch any unhandled crash in expression compilation
+    fctx.body.length = bodyLenBefore;
+    const msg = e instanceof Error ? e.message : String(e);
+    ctx.errors.push({
+      message: `Internal error compiling expression: ${msg}`,
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    const fallbackType = expectedType ?? { kind: "f64" as const };
+    pushDefaultValue(fctx, fallbackType);
+    return fallbackType;
+  }
   if (result === VOID_RESULT) return null; // void — no value on stack
   if (result !== null) {
     // Coerce to expected type if there's a mismatch
@@ -48,8 +63,16 @@ export function compileExpression(
   // (e.g. sub-expressions that were compiled before the failure point)
   // then push a single typed fallback to keep the stack balanced.
   fctx.body.length = bodyLenBefore;
-  const wasmType =
-    expectedType ?? mapTsTypeToWasm(ctx.checker.getTypeAtLocation(expr), ctx.checker);
+  let wasmType: ValType;
+  if (expectedType) {
+    wasmType = expectedType;
+  } else {
+    try {
+      wasmType = mapTsTypeToWasm(ctx.checker.getTypeAtLocation(expr), ctx.checker);
+    } catch {
+      wasmType = { kind: "f64" };
+    }
+  }
   pushDefaultValue(fctx, wasmType);
   return wasmType;
 }
@@ -563,8 +586,8 @@ function compileArrowAsClosure(
     params: [
       { name: "__self", type: { kind: "ref", typeIdx: structTypeIdx } },
       ...arrow.parameters.map((p, i) => ({
-        name: (p.name as ts.Identifier).text,
-        type: arrowParams[i]!,
+        name: ts.isIdentifier(p.name) ? p.name.text : `__param${i}`,
+        type: arrowParams[i] ?? { kind: "f64" as const },
       })),
     ],
     locals: [],
@@ -793,8 +816,8 @@ function compileArrowAsCallback(
     params: [
       { name: "__captures", type: { kind: "externref" } },
       ...arrow.parameters.map((p, i) => ({
-        name: (p.name as ts.Identifier).text,
-        type: cbParams[i + 1]!,
+        name: ts.isIdentifier(p.name) ? p.name.text : `__param${i}`,
+        type: cbParams[i + 1] ?? { kind: "f64" as const },
       })),
     ],
     locals: [],
@@ -3872,6 +3895,11 @@ function compileNewExpression(
       elemWasm = elemTsType ? resolveWasmType(ctx, elemTsType) : { kind: "f64" };
     }
 
+    if (arrTypeIdx < 0) {
+      ctx.errors.push({ message: "new Array(): invalid vec type", line: getLine(expr), column: getCol(expr) });
+      return null;
+    }
+
     const args = expr.arguments ?? [];
 
     if (args.length === 0) {
@@ -4098,6 +4126,7 @@ function compileSpreadCallArgs(
       fctx.body.push({ op: "local.set", index: vecLocal });
 
       const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecType.typeIdx);
+      if (arrTypeIdx < 0) continue;
       const dataLocal = allocLocal(fctx, `__spread_data_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
       fctx.body.push({ op: "local.get", index: vecLocal });
       fctx.body.push({ op: "struct.get", typeIdx: vecType.typeIdx, fieldIdx: 1 });
@@ -5327,6 +5356,10 @@ function compileArrayLiteral(
     }
     const vecTypeIdx = getOrRegisterVecType(ctx, emptyElemKind);
     const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
+    if (arrTypeIdx < 0) {
+      ctx.errors.push({ message: "Empty array literal: invalid vec type", line: getLine(expr), column: getCol(expr) });
+      return null;
+    }
     fctx.body.push({ op: "i32.const", value: 0 });           // length field (field 0)
     fctx.body.push({ op: "i32.const", value: 0 });           // size for array.new_default
     fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx }); // data field (field 1)
@@ -5354,6 +5387,10 @@ function compileArrayLiteral(
     ? `ref_${elemWasm.typeIdx}` : elemWasm.kind;
   const vecTypeIdx = getOrRegisterVecType(ctx, elemKind, elemWasm);
   const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
+  if (arrTypeIdx < 0) {
+    ctx.errors.push({ message: "Array literal: invalid vec type", line: getLine(expr), column: getCol(expr) });
+    return null;
+  }
 
   if (!hasSpread) {
     // No spread — use the fast array.new_fixed path, then wrap in vec struct
@@ -5412,6 +5449,7 @@ function compileArrayLiteral(
       if (!spreadInfo) continue;
 
       const srcArrTypeIdx = getArrTypeIdxFromVec(ctx, spreadInfo.srcVecTypeIdx);
+      if (srcArrTypeIdx < 0) continue;
       const readIdx = allocLocal(fctx, `__spread_ri_${fctx.locals.length}`, { kind: "i32" });
       fctx.body.push({ op: "i32.const", value: 0 });
       fctx.body.push({ op: "local.set", index: readIdx });
@@ -5518,6 +5556,14 @@ function compileObjectKeysOrValues(
     const elemKind = "externref";
     const vecTypeIdx = getOrRegisterVecType(ctx, elemKind);
     const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
+    if (arrTypeIdx < 0) {
+      ctx.errors.push({
+        message: `Object.keys(): cannot resolve array type for string[]`,
+        line: getLine(expr),
+        column: getCol(expr),
+      });
+      return null;
+    }
 
     // Push each field name string onto the stack
     for (const entry of userFields) {
@@ -5550,6 +5596,14 @@ function compileObjectKeysOrValues(
   const elemKind = "externref";
   const vecTypeIdx = getOrRegisterVecType(ctx, elemKind);
   const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
+  if (arrTypeIdx < 0) {
+    ctx.errors.push({
+      message: `Object.values(): cannot resolve array type for values[]`,
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
 
   // Ensure union boxing imports are registered (needed for boxing primitives)
   addUnionImports(ctx);

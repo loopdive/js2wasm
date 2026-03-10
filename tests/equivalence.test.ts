@@ -257,6 +257,23 @@ describe("TS ↔ Wasm equivalence", () => {
     );
   });
 
+  it("Math.round negative zero preservation (#87)", async () => {
+    // Use 1/Math.round(x) to distinguish -0 from +0: 1/-0 === -Infinity
+    await assertEquivalent(
+      `
+      export function roundRecip(x: number): number { return 1 / Math.round(x); }
+      export function roundNeg05(): number { return 1 / Math.round(-0.5); }
+      export function roundNeg025(): number { return 1 / Math.round(-0.25); }
+      `,
+      [
+        { fn: "roundRecip", args: [-0.25] },
+        { fn: "roundRecip", args: [-0.5] },
+        { fn: "roundNeg05", args: [] },
+        { fn: "roundNeg025", args: [] },
+      ],
+    );
+  });
+
   it("Math builtins (host-imported)", async () => {
     await assertEquivalent(
       `
