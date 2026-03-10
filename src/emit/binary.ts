@@ -14,7 +14,7 @@ import type {
   SourcePos,
 } from "../ir/types.js";
 import { WasmEncoder } from "./encoder.js";
-import { OP, GC, TYPE, SECTION } from "./opcodes.js";
+import { OP, GC, TYPE, SECTION, SIMD } from "./opcodes.js";
 
 /** A source map entry: maps a wasm byte offset to a source position */
 export interface SourceMapEntry {
@@ -392,6 +392,9 @@ export function encodeValType(t: ValType, enc: WasmEncoder): void {
     case "f64":
       enc.byte(TYPE.f64);
       break;
+    case "v128":
+      enc.byte(TYPE.v128);
+      break;
     case "funcref":
       enc.byte(TYPE.funcref);
       break;
@@ -409,6 +412,10 @@ export function encodeValType(t: ValType, enc: WasmEncoder): void {
     case "ref_null":
       enc.byte(TYPE.ref_null);
       enc.i32(t.typeIdx);
+      break;
+    case "eqref":
+      enc.byte(TYPE.ref_null);
+      enc.byte(TYPE.eq);
       break;
     case "i16":
       // i16 is only valid as a packed storage type in struct fields/array elements,
@@ -1004,6 +1011,386 @@ export function encodeInstr(instr: Instr, enc: WasmEncoder): void {
       break;
     case "f64.promote_f32":
       enc.byte(OP.f64_promote_f32);
+      break;
+
+    // ---- SIMD v128 instructions ----
+    case "v128.const":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.v128_const);
+      enc.v128(instr.bytes);
+      break;
+    case "v128.load":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.v128_load);
+      enc.u32(instr.align);
+      enc.u32(instr.offset);
+      break;
+    case "v128.store":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.v128_store);
+      enc.u32(instr.align);
+      enc.u32(instr.offset);
+      break;
+    case "v128.not":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.v128_not);
+      break;
+    case "v128.and":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.v128_and);
+      break;
+    case "v128.andnot":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.v128_andnot);
+      break;
+    case "v128.or":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.v128_or);
+      break;
+    case "v128.xor":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.v128_xor);
+      break;
+    case "v128.bitselect":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.v128_bitselect);
+      break;
+    case "v128.any_true":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.v128_any_true);
+      break;
+
+    // i8x16
+    case "i8x16.splat":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i8x16_splat);
+      break;
+    case "i8x16.extract_lane_s":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i8x16_extract_lane_s);
+      enc.byte(instr.lane);
+      break;
+    case "i8x16.extract_lane_u":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i8x16_extract_lane_u);
+      enc.byte(instr.lane);
+      break;
+    case "i8x16.replace_lane":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i8x16_replace_lane);
+      enc.byte(instr.lane);
+      break;
+    case "i8x16.eq":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i8x16_eq);
+      break;
+    case "i8x16.ne":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i8x16_ne);
+      break;
+    case "i8x16.all_true":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i8x16_all_true);
+      break;
+    case "i8x16.bitmask":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i8x16_bitmask);
+      break;
+    case "i8x16.swizzle":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i8x16_swizzle);
+      break;
+    case "i8x16.shuffle":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i8x16_shuffle);
+      for (const lane of instr.lanes) enc.byte(lane);
+      break;
+    case "i8x16.add":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i8x16_add);
+      break;
+    case "i8x16.sub":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i8x16_sub);
+      break;
+    case "i8x16.min_u":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i8x16_min_u);
+      break;
+    case "i8x16.max_u":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i8x16_max_u);
+      break;
+
+    // i16x8
+    case "i16x8.splat":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i16x8_splat);
+      break;
+    case "i16x8.extract_lane_s":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i16x8_extract_lane_s);
+      enc.byte(instr.lane);
+      break;
+    case "i16x8.extract_lane_u":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i16x8_extract_lane_u);
+      enc.byte(instr.lane);
+      break;
+    case "i16x8.replace_lane":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i16x8_replace_lane);
+      enc.byte(instr.lane);
+      break;
+    case "i16x8.eq":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i16x8_eq);
+      break;
+    case "i16x8.ne":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i16x8_ne);
+      break;
+    case "i16x8.lt_s":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i16x8_lt_s);
+      break;
+    case "i16x8.gt_s":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i16x8_gt_s);
+      break;
+    case "i16x8.all_true":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i16x8_all_true);
+      break;
+    case "i16x8.bitmask":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i16x8_bitmask);
+      break;
+    case "i16x8.add":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i16x8_add);
+      break;
+    case "i16x8.sub":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i16x8_sub);
+      break;
+    case "i16x8.mul":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i16x8_mul);
+      break;
+    case "i16x8.shl":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i16x8_shl);
+      break;
+    case "i16x8.shr_u":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i16x8_shr_u);
+      break;
+
+    // i32x4
+    case "i32x4.splat":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i32x4_splat);
+      break;
+    case "i32x4.extract_lane":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i32x4_extract_lane);
+      enc.byte(instr.lane);
+      break;
+    case "i32x4.replace_lane":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i32x4_replace_lane);
+      enc.byte(instr.lane);
+      break;
+    case "i32x4.eq":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i32x4_eq);
+      break;
+    case "i32x4.ne":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i32x4_ne);
+      break;
+    case "i32x4.all_true":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i32x4_all_true);
+      break;
+    case "i32x4.bitmask":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i32x4_bitmask);
+      break;
+    case "i32x4.add":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i32x4_add);
+      break;
+    case "i32x4.sub":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i32x4_sub);
+      break;
+    case "i32x4.mul":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i32x4_mul);
+      break;
+    case "i32x4.shl":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i32x4_shl);
+      break;
+    case "i32x4.shr_s":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i32x4_shr_s);
+      break;
+    case "i32x4.shr_u":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i32x4_shr_u);
+      break;
+
+    // i64x2
+    case "i64x2.splat":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i64x2_splat);
+      break;
+    case "i64x2.extract_lane":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i64x2_extract_lane);
+      enc.byte(instr.lane);
+      break;
+    case "i64x2.replace_lane":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i64x2_replace_lane);
+      enc.byte(instr.lane);
+      break;
+    case "i64x2.add":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i64x2_add);
+      break;
+    case "i64x2.sub":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i64x2_sub);
+      break;
+    case "i64x2.mul":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i64x2_mul);
+      break;
+    case "i64x2.eq":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i64x2_eq);
+      break;
+    case "i64x2.ne":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.i64x2_ne);
+      break;
+
+    // f32x4
+    case "f32x4.splat":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.f32x4_splat);
+      break;
+    case "f32x4.extract_lane":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.f32x4_extract_lane);
+      enc.byte(instr.lane);
+      break;
+    case "f32x4.replace_lane":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.f32x4_replace_lane);
+      enc.byte(instr.lane);
+      break;
+    case "f32x4.eq":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.f32x4_eq);
+      break;
+    case "f32x4.add":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.f32x4_add);
+      break;
+    case "f32x4.sub":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.f32x4_sub);
+      break;
+    case "f32x4.mul":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.f32x4_mul);
+      break;
+    case "f32x4.div":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.f32x4_div);
+      break;
+
+    // f64x2
+    case "f64x2.splat":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.f64x2_splat);
+      break;
+    case "f64x2.extract_lane":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.f64x2_extract_lane);
+      enc.byte(instr.lane);
+      break;
+    case "f64x2.replace_lane":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.f64x2_replace_lane);
+      enc.byte(instr.lane);
+      break;
+    case "f64x2.eq":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.f64x2_eq);
+      break;
+    case "f64x2.ne":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.f64x2_ne);
+      break;
+    case "f64x2.add":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.f64x2_add);
+      break;
+    case "f64x2.sub":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.f64x2_sub);
+      break;
+    case "f64x2.mul":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.f64x2_mul);
+      break;
+    case "f64x2.div":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.f64x2_div);
+      break;
+
+    // SIMD load splat variants
+    case "v128.load8_splat":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.v128_load8_splat);
+      enc.u32(instr.align);
+      enc.u32(instr.offset);
+      break;
+    case "v128.load16_splat":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.v128_load16_splat);
+      enc.u32(instr.align);
+      enc.u32(instr.offset);
+      break;
+    case "v128.load32_splat":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.v128_load32_splat);
+      enc.u32(instr.align);
+      enc.u32(instr.offset);
+      break;
+    case "v128.load64_splat":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.v128_load64_splat);
+      enc.u32(instr.align);
+      enc.u32(instr.offset);
+      break;
+    case "v128.load32_zero":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.v128_load32_zero);
+      enc.u32(instr.align);
+      enc.u32(instr.offset);
+      break;
+    case "v128.load64_zero":
+      enc.byte(OP.simd_prefix);
+      enc.u32(SIMD.v128_load64_zero);
+      enc.u32(instr.align);
+      enc.u32(instr.offset);
       break;
   }
 }

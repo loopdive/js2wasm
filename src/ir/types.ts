@@ -79,12 +79,14 @@ export type ValType =
   | { kind: "i64" }
   | { kind: "f32" }
   | { kind: "f64" }
+  | { kind: "v128" }
   | { kind: "i16" }
   | { kind: "ref"; typeIdx: number }
   | { kind: "ref_null"; typeIdx: number }
   | { kind: "funcref" }
   | { kind: "externref" }
-  | { kind: "ref_extern" };
+  | { kind: "ref_extern" }
+  | { kind: "eqref" };
 
 export interface WasmFunction {
   name: string;
@@ -221,7 +223,98 @@ type InstrBase =
   | { op: "f32.load"; align: number; offset: number }
   | { op: "f32.store"; align: number; offset: number }
   | { op: "f32.demote_f64" }
-  | { op: "f64.promote_f32" };
+  | { op: "f64.promote_f32" }
+  // SIMD v128 instructions
+  | { op: "v128.const"; bytes: Uint8Array }
+  | { op: "v128.load"; align: number; offset: number }
+  | { op: "v128.store"; align: number; offset: number }
+  | { op: "v128.not" }
+  | { op: "v128.and" }
+  | { op: "v128.andnot" }
+  | { op: "v128.or" }
+  | { op: "v128.xor" }
+  | { op: "v128.bitselect" }
+  | { op: "v128.any_true" }
+  // i8x16
+  | { op: "i8x16.splat" }
+  | { op: "i8x16.extract_lane_s"; lane: number }
+  | { op: "i8x16.extract_lane_u"; lane: number }
+  | { op: "i8x16.replace_lane"; lane: number }
+  | { op: "i8x16.eq" }
+  | { op: "i8x16.ne" }
+  | { op: "i8x16.all_true" }
+  | { op: "i8x16.bitmask" }
+  | { op: "i8x16.swizzle" }
+  | { op: "i8x16.shuffle"; lanes: number[] }
+  | { op: "i8x16.add" }
+  | { op: "i8x16.sub" }
+  | { op: "i8x16.min_u" }
+  | { op: "i8x16.max_u" }
+  // i16x8
+  | { op: "i16x8.splat" }
+  | { op: "i16x8.extract_lane_s"; lane: number }
+  | { op: "i16x8.extract_lane_u"; lane: number }
+  | { op: "i16x8.replace_lane"; lane: number }
+  | { op: "i16x8.eq" }
+  | { op: "i16x8.ne" }
+  | { op: "i16x8.lt_s" }
+  | { op: "i16x8.gt_s" }
+  | { op: "i16x8.all_true" }
+  | { op: "i16x8.bitmask" }
+  | { op: "i16x8.add" }
+  | { op: "i16x8.sub" }
+  | { op: "i16x8.mul" }
+  | { op: "i16x8.shl" }
+  | { op: "i16x8.shr_u" }
+  // i32x4
+  | { op: "i32x4.splat" }
+  | { op: "i32x4.extract_lane"; lane: number }
+  | { op: "i32x4.replace_lane"; lane: number }
+  | { op: "i32x4.eq" }
+  | { op: "i32x4.ne" }
+  | { op: "i32x4.all_true" }
+  | { op: "i32x4.bitmask" }
+  | { op: "i32x4.add" }
+  | { op: "i32x4.sub" }
+  | { op: "i32x4.mul" }
+  | { op: "i32x4.shl" }
+  | { op: "i32x4.shr_s" }
+  | { op: "i32x4.shr_u" }
+  // i64x2
+  | { op: "i64x2.splat" }
+  | { op: "i64x2.extract_lane"; lane: number }
+  | { op: "i64x2.replace_lane"; lane: number }
+  | { op: "i64x2.add" }
+  | { op: "i64x2.sub" }
+  | { op: "i64x2.mul" }
+  | { op: "i64x2.eq" }
+  | { op: "i64x2.ne" }
+  // f32x4
+  | { op: "f32x4.splat" }
+  | { op: "f32x4.extract_lane"; lane: number }
+  | { op: "f32x4.replace_lane"; lane: number }
+  | { op: "f32x4.eq" }
+  | { op: "f32x4.add" }
+  | { op: "f32x4.sub" }
+  | { op: "f32x4.mul" }
+  | { op: "f32x4.div" }
+  // f64x2
+  | { op: "f64x2.splat" }
+  | { op: "f64x2.extract_lane"; lane: number }
+  | { op: "f64x2.replace_lane"; lane: number }
+  | { op: "f64x2.eq" }
+  | { op: "f64x2.ne" }
+  | { op: "f64x2.add" }
+  | { op: "f64x2.sub" }
+  | { op: "f64x2.mul" }
+  | { op: "f64x2.div" }
+  // SIMD load/store lane
+  | { op: "v128.load8_splat"; align: number; offset: number }
+  | { op: "v128.load16_splat"; align: number; offset: number }
+  | { op: "v128.load32_splat"; align: number; offset: number }
+  | { op: "v128.load64_splat"; align: number; offset: number }
+  | { op: "v128.load32_zero"; align: number; offset: number }
+  | { op: "v128.load64_zero"; align: number; offset: number };
 
 export type Instr = InstrBase & { sourcePos?: SourcePos };
 
