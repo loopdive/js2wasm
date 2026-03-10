@@ -88,6 +88,7 @@ export const OP = {
   f64_copysign: 0xa6,
   i32_trunc_f64_s: 0xaa,
   f32_demote_f64: 0xb6,
+  f64_promote_f32: 0xbb,
   f64_convert_i32_s: 0xb7,
   f64_convert_i32_u: 0xb8,
   ref_null: 0xd0,

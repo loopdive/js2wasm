@@ -1002,6 +1002,9 @@ export function encodeInstr(instr: Instr, enc: WasmEncoder): void {
     case "f32.demote_f64":
       enc.byte(OP.f32_demote_f64);
       break;
+    case "f64.promote_f32":
+      enc.byte(OP.f64_promote_f32);
+      break;
   }
 }
 

@@ -220,7 +220,8 @@ type InstrBase =
   // f32 memory load/store and conversion (linear memory)
   | { op: "f32.load"; align: number; offset: number }
   | { op: "f32.store"; align: number; offset: number }
-  | { op: "f32.demote_f64" };
+  | { op: "f32.demote_f64" }
+  | { op: "f64.promote_f32" };
 
 export type Instr = InstrBase & { sourcePos?: SourcePos };
 
