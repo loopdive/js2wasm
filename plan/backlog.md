@@ -136,12 +136,12 @@
 | [114](issues/done/114.md)  | Bug — "vec data field not ref" array codegen crash      | accept ref_null data fields             |
 | [109](issues/109.md)      | Tagged template literals                                | runtime + codegen                       |
 | [115](issues/done/115.md)  | Bug — var hoisting in function scope                    | pre-pass walkStmtForVars                |
-| [87](issues/87.md)        | Math.round negative zero preservation                   | inline wasm, -0 via copysign            |
-| [101](issues/101.md)      | Test262 — language/statements                           | for-of, for-in, class, generators, async|
-| [102](issues/102.md)      | Test262 — language/expressions                          | 22 expression categories                |
-| [103](issues/103.md)      | Test262 — built-ins/String/prototype                    | 21 String method categories             |
-| [105](issues/105.md)      | Test262 — Map/Set/Promise                               | 16 collection/promise categories        |
-| [106](issues/106.md)      | Test262 — Object/Array extended                         | Array.isArray + skip filters            |
-| [107](issues/107.md)      | Fix codegen null-dereference crashes                    | try-catch + null guards                 |
+| [87](issues/done/87.md)   | Math.round negative zero preservation                   | inline wasm, -0 via copysign            |
+| [101](issues/done/101.md) | Test262 — language/statements                           | for-of, for-in, class, generators, async|
+| [102](issues/done/102.md) | Test262 — language/expressions                          | 22 expression categories                |
+| [103](issues/done/103.md) | Test262 — built-ins/String/prototype                    | 21 String method categories             |
+| [105](issues/done/105.md) | Test262 — Map/Set/Promise                               | 16 collection/promise categories        |
+| [106](issues/done/106.md) | Test262 — Object/Array extended                         | Array.isArray + skip filters            |
+| [107](issues/done/107.md) | Fix codegen null-dereference crashes                    | try-catch + null guards                 |
 
 
