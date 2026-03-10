@@ -2,20 +2,7 @@
 
 ## Open issues
 
-### Performance & infrastructure
-
-
-| #                  | Feature                                                   | Complexity |
-| ------------------ | --------------------------------------------------------- | ---------- |
-| [70](issues/70.md) | Fast mode Phase 4 — C ABI for multi-language wasm linking | L          |
-| [74](issues/74.md) | WASM SIMD for string and array operations                 | L          |
-### Language coverage
-
-
-| #                    | Feature                                            | Complexity |
-| -------------------- | -------------------------------------------------- | ---------- |
-| [79](issues/79.md)   | Gradual typing — boxed `any` with runtime dispatch | XL         |
-| [81](issues/81.md)   | npm package resolution and tree-shaking            | L          |
+(none)
 
 
 
@@ -134,7 +121,11 @@
 | [112](issues/done/112.md)  | Number static methods (isSafeInteger, parseFloat, …)    | inline + delegation                     |
 | [113](issues/done/113.md)  | Bug — "Object literal type not mapped to struct"        | inferred type fallback                  |
 | [114](issues/done/114.md)  | Bug — "vec data field not ref" array codegen crash      | accept ref_null data fields             |
-| [109](issues/109.md)      | Tagged template literals                                | runtime + codegen                       |
+| [70 Ph4](issues/70.md)    | Fast mode Phase 4 — C ABI for multi-language linking    | c-abi.test.ts (38 tests)                |
+| [79](issues/79.md)        | Gradual typing — boxed `any` with runtime dispatch      | 37 in equivalence.test.ts               |
+| [81](issues/81.md)        | npm package resolution and tree-shaking                 | 18 in resolve.test.ts                   |
+| [74](issues/74.md)        | WASM SIMD for string and array operations               | simd.test.ts + benchmarks               |
+| [109](issues/done/109.md) | Tagged template literals                                | runtime + codegen                       |
 | [115](issues/done/115.md)  | Bug — var hoisting in function scope                    | pre-pass walkStmtForVars                |
 | [87](issues/done/87.md)   | Math.round negative zero preservation                   | inline wasm, -0 via copysign            |
 | [101](issues/done/101.md) | Test262 — language/statements                           | for-of, for-in, class, generators, async|
