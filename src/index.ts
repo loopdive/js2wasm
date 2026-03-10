@@ -72,6 +72,8 @@ export interface CompileOptions {
   target?: "gc" | "linear";
   /** Enable fast mode — i32 default numbers, performance optimizations */
   fast?: boolean;
+  /** Enable SIMD-accelerated string/array helpers (requires engine SIMD support) */
+  simd?: boolean;
   /** Enable safe mode — reject unsafe TypeScript patterns at compile time */
   safe?: boolean;
   /** Globals allowed in safe mode (e.g. ["document"]) */

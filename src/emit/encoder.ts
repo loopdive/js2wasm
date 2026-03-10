@@ -69,6 +69,12 @@ export class WasmEncoder {
     this.bytes(new Uint8Array(buf));
   }
 
+  /** v128 constant — 16 bytes little-endian */
+  v128(bytes: Uint8Array): void {
+    if (bytes.length !== 16) throw new Error("v128 must be exactly 16 bytes");
+    this.bytes(bytes);
+  }
+
   /** UTF-8 string with length prefix */
   name(s: string): void {
     const encoded = new TextEncoder().encode(s);
