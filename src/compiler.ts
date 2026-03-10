@@ -17,7 +17,10 @@ import { generateSourceMap } from "./emit/sourcemap.js";
 import { emitWat } from "./emit/wat.js";
 import { preprocessImports } from "./import-resolver.js";
 import type { CompileError, CompileOptions, CompileResult, ImportDescriptor, ImportIntent } from "./index.js";
-import type { WasmModule } from "./ir/types.js";
+import type { WasmModule, FuncTypeDef } from "./ir/types.js";
+import { generateCHeader, extractCHeaderExports } from "./emit/c-header.js";
+import type { CabiExportInfo, CabiParam, ParamDef } from "./codegen-linear/c-abi.js";
+import { mapParamsToCabi, mapResultToCabi, emitCabiWrappers, inferSemantic } from "./codegen-linear/c-abi.js";
 
 // Default blocked members on extern classes in safe mode
 const DEFAULT_BLOCKED_MEMBERS = new Set([
@@ -475,6 +478,13 @@ export function compileSource(
     };
   }
 
+  // Step 2b: Apply C ABI transformations if requested
+  let cHeader: string | undefined;
+  if (options.abi === "c" && options.target === "linear") {
+    const cabiResult = applyCabiTransform(mod, options.moduleName ?? "module");
+    cHeader = cabiResult.cHeader;
+  }
+
   // Step 3: Emit binary (with source map collection if enabled)
   let binary: Uint8Array;
   let sourceMapJson: string | undefined;
@@ -558,7 +568,76 @@ export function compileSource(
     stringPool: mod.stringPool,
     sourceMap: sourceMapJson,
     imports: buildImportManifest(mod),
+    cHeader,
   };
+}
+
+/**
+ * Apply C ABI transformation to a compiled WasmModule.
+ * Rewrites exported function signatures for C compatibility and generates a C header.
+ */
+function applyCabiTransform(
+  mod: WasmModule,
+  moduleName: string,
+): { cHeader: string } {
+  const numImportFuncs = mod.imports.filter(
+    (i) => i.desc.kind === "func",
+  ).length;
+
+  // Build CabiExportInfo for each exported function
+  const exportInfos: CabiExportInfo[] = [];
+  for (const exp of mod.exports) {
+    if (exp.desc.kind !== "func") continue;
+    if (exp.name === "memory") continue;
+
+    const funcIdx = exp.desc.index;
+    const localIdx = funcIdx - numImportFuncs;
+    if (localIdx < 0 || localIdx >= mod.functions.length) continue;
+
+    const func = mod.functions[localIdx];
+    const typeDef = mod.types[func.typeIdx];
+    if (!typeDef || typeDef.kind !== "func") continue;
+
+    // Build ParamDefs from the function type
+    // In linear memory mode: f64 = number, i32 = pointer (string/array/object)
+    // We infer semantics from the function name and wasm types
+    const paramDefs: ParamDef[] = typeDef.params.map((wt, i) => {
+      // Without TS type info at this stage, we infer from wasm types:
+      // f64 → number, i32 → could be string/array/object/boolean
+      // For now, treat all i32 params as direct (caller provides i32)
+      const semantic = wt.kind === "f64" ? "number_f64" as const : "number_i32" as const;
+      return { name: `p${i}`, wasmType: wt, semantic };
+    });
+
+    const cabiParams = mapParamsToCabi(paramDefs);
+    const resultSemantic = typeDef.results.length === 0
+      ? "void" as const
+      : typeDef.results[0].kind === "f64"
+        ? "number_f64" as const
+        : "number_i32" as const;
+    const cabiResult = mapResultToCabi(
+      typeDef.results.length > 0 ? typeDef.results[0] : null,
+      resultSemantic,
+    );
+
+    const cabiName = exp.name; // mangleCabiName is identity for simple names
+
+    exportInfos.push({
+      tsName: exp.name,
+      cabiName,
+      params: cabiParams,
+      result: cabiResult,
+    });
+  }
+
+  // Apply wrappers for functions that need them
+  emitCabiWrappers(mod, exportInfos);
+
+  // Generate C header from the final module state
+  const headerExports = extractCHeaderExports(mod);
+  const cHeader = generateCHeader(moduleName, headerExports);
+
+  return { cHeader };
 }
 
 /**
