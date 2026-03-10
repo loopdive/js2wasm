@@ -6568,6 +6568,7 @@ function compileClassBodies(
         blockDepth: 0,
         breakStack: [],
         continueStack: [],
+        labelMap: new Map(),
       };
 
       for (let i = 0; i < params.length; i++) {
@@ -6642,6 +6643,7 @@ function compileClassBodies(
         blockDepth: 0,
         breakStack: [],
         continueStack: [],
+        labelMap: new Map(),
       };
 
       for (let i = 0; i < params.length; i++) {

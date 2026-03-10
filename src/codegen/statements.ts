@@ -1645,6 +1645,7 @@ function compileNestedFunctionDeclaration(
       blockDepth: 0,
       breakStack: [],
       continueStack: [],
+      labelMap: new Map(),
     };
     for (let i = 0; i < liftedFctx.params.length; i++) {
       liftedFctx.localMap.set(liftedFctx.params[i]!.name, i);
@@ -1692,6 +1693,7 @@ function compileNestedFunctionDeclaration(
       blockDepth: 0,
       breakStack: [],
       continueStack: [],
+      labelMap: new Map(),
     };
     for (let i = 0; i < liftedFctx.params.length; i++) {
       liftedFctx.localMap.set(liftedFctx.params[i]!.name, i);

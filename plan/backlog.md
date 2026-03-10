@@ -43,13 +43,6 @@
 | [107](issues/107.md) | Fix codegen null-dereference crashes (90x in test262)        | M          |
 
 
-### Missing language features (from test262 harvest)
-
-
-| #                    | Feature                                                         | Complexity |
-| -------------------- | --------------------------------------------------------------- | ---------- |
-| [109](issues/109.md) | Tagged template literals                                        | M          |
-
 
 ## Complexity legend
 
@@ -166,6 +159,7 @@
 | [112](issues/done/112.md)  | Number static methods (isSafeInteger, parseFloat, …)    | inline + delegation                     |
 | [113](issues/done/113.md)  | Bug — "Object literal type not mapped to struct"        | inferred type fallback                  |
 | [114](issues/done/114.md)  | Bug — "vec data field not ref" array codegen crash      | accept ref_null data fields             |
+| [109](issues/109.md)      | Tagged template literals                                | runtime + codegen                       |
 | [115](issues/done/115.md)  | Bug — var hoisting in function scope                    | pre-pass walkStmtForVars                |
 
 

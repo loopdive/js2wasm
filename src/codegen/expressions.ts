@@ -187,7 +187,7 @@ function compileExpressionInner(
   ctx: CodegenContext,
   fctx: FunctionContext,
   expr: ts.Expression,
-): ValType | null {
+): InnerResult {
   if (ts.isNumericLiteral(expr)) {
     const value = Number(expr.text.replace(/_/g, ""));
     if (ctx.fast && Number.isInteger(value) && value >= -2147483648 && value <= 2147483647) {
@@ -574,6 +574,7 @@ function compileArrowAsClosure(
     blockDepth: 0,
     breakStack: [],
     continueStack: [],
+    labelMap: new Map(),
   };
 
   for (let i = 0; i < liftedFctx.params.length; i++) {
@@ -803,6 +804,7 @@ function compileArrowAsCallback(
     blockDepth: 0,
     breakStack: [],
     continueStack: [],
+    labelMap: new Map(),
   };
 
   // Register params as locals (param 0 = __captures, then arrow params)
@@ -1253,7 +1255,7 @@ function compileBinaryExpression(
   ctx: CodegenContext,
   fctx: FunctionContext,
   expr: ts.BinaryExpression,
-): ValType | null {
+): InnerResult {
   const op = expr.operatorToken.kind;
 
   // Handle assignment
@@ -1793,7 +1795,7 @@ function compileAssignment(
   ctx: CodegenContext,
   fctx: FunctionContext,
   expr: ts.BinaryExpression,
-): ValType | null {
+): InnerResult {
   if (ts.isIdentifier(expr.left)) {
     const name = expr.left.text;
     const localIdx = fctx.localMap.get(name);
@@ -1869,7 +1871,7 @@ function compileDestructuringAssignment(
   fctx: FunctionContext,
   target: ts.ObjectLiteralExpression,
   value: ts.Expression,
-): ValType | null {
+): InnerResult {
   // Compile the RHS — should produce a struct ref
   const resultType = compileExpression(ctx, fctx, value);
   if (!resultType) return null;
@@ -1955,7 +1957,7 @@ function compilePropertyAssignment(
   fctx: FunctionContext,
   target: ts.PropertyAccessExpression,
   value: ts.Expression,
-): ValType | null {
+): InnerResult {
   const objType = ctx.checker.getTypeAtLocation(target.expression);
 
   // Handle static property assignment: ClassName.staticProp = value
@@ -2016,7 +2018,7 @@ function compileExternPropertySet(
   target: ts.PropertyAccessExpression,
   value: ts.Expression,
   objType: ts.Type,
-): ValType | null {
+): InnerResult {
   const className = objType.getSymbol()?.name;
   const propName = target.name.text;
   if (!className) return null;
@@ -2060,7 +2062,7 @@ function compileElementAssignment(
   fctx: FunctionContext,
   target: ts.ElementAccessExpression,
   value: ts.Expression,
-): ValType | null {
+): InnerResult {
   // Push array ref
   const arrType = compileExpression(ctx, fctx, target.expression);
   if (!arrType || (arrType.kind !== "ref" && arrType.kind !== "ref_null")) {
@@ -2940,7 +2942,7 @@ function compileCallExpression(
   ctx: CodegenContext,
   fctx: FunctionContext,
   expr: ts.CallExpression,
-): ValType | null {
+): InnerResult {
   // Optional chaining on calls: obj?.method()
   if (expr.questionDotToken && ts.isPropertyAccessExpression(expr.expression)) {
     return compileOptionalCallExpression(ctx, fctx, expr);
@@ -3950,7 +3952,7 @@ function compileExternMethodCall(
   fctx: FunctionContext,
   propAccess: ts.PropertyAccessExpression,
   callExpr: ts.CallExpression,
-): ValType | null {
+): InnerResult {
   const receiverType = ctx.checker.getTypeAtLocation(propAccess.expression);
   const className = receiverType.getSymbol()?.name;
   const methodName = propAccess.name.text;
@@ -4123,7 +4125,7 @@ function compileConsoleCall(
   fctx: FunctionContext,
   expr: ts.CallExpression,
   method: string,
-): ValType | null {
+): InnerResult {
   for (const arg of expr.arguments) {
     const argType = ctx.checker.getTypeAtLocation(arg);
     compileExpression(ctx, fctx, arg);
@@ -4203,7 +4205,7 @@ function compileMathCall(
       then: [
         { op: "f64.const", value: 0 } as Instr,
         { op: "local.get", index: xLocal } as Instr,
-        { op: "f64.copysign" } as Instr,
+        { op: "f64.copysign" } as unknown as Instr,
       ],
       else: [
         { op: "local.get", index: rLocal } as Instr,
@@ -4290,7 +4292,7 @@ function compileMathCall(
             // return copysign(1.0, x) — gives 1 or -1 based on sign of x
             { op: "f64.const", value: 1 },
             { op: "local.get", index: tmp },
-            { op: "f64.copysign" } as Instr,
+            { op: "f64.copysign" } as unknown as Instr,
           ],
         },
       ],
@@ -4302,7 +4304,7 @@ function compileMathCall(
   if (method === "fround" && expr.arguments.length >= 1) {
     compileExpression(ctx, fctx, expr.arguments[0]!, f64Hint);
     fctx.body.push({ op: "f32.demote_f64" } as Instr);
-    fctx.body.push({ op: "f64.promote_f32" } as Instr);
+    fctx.body.push({ op: "f64.promote_f32" } as unknown as Instr);
     return { kind: "f64" };
   }
 
@@ -4439,7 +4441,7 @@ function compileMathCall(
     let innerBody: Instr[] = [{ op: "local.get", index: argLocals[0]! }];
     for (let i = 1; i < argLocals.length; i++) {
       innerBody.push({ op: "local.get", index: argLocals[i]! });
-      innerBody.push({ op: wasmOp } as Instr);
+      innerBody.push({ op: wasmOp } as unknown as Instr);
     }
 
     // Wrap with NaN checks from last arg to first
@@ -6553,7 +6555,8 @@ function compileArrayMethodCall(
     if (gIdx !== undefined && !fctx.localMap.has(name)) {
       moduleGlobalIdx = gIdx;
       const globalDef = ctx.mod.globals[localGlobalIdx(ctx, gIdx)];
-      const tempLocal = allocLocal(fctx, `__mod_proxy_${name}`, globalDef!.type);
+      if (!globalDef) return null;
+      const tempLocal = allocLocal(fctx, `__mod_proxy_${name}`, globalDef.type);
       fctx.body.push({ op: "global.get", index: gIdx });
       fctx.body.push({ op: "local.set", index: tempLocal });
       fctx.localMap.set(name, tempLocal);
@@ -7877,8 +7880,8 @@ function compileArrayMap(
       // If return type differs from source element, create new array types
       if (mapped.kind !== elemType.kind) {
         mapResultElemType = mapped;
-        mapArrTypeIdx = getOrRegisterArrayType(ctx, mapResultElemType);
-        mapVecTypeIdx = getOrRegisterVecType(ctx, mapArrTypeIdx);
+        mapArrTypeIdx = getOrRegisterArrayType(ctx, mapResultElemType.kind, mapResultElemType);
+        mapVecTypeIdx = getOrRegisterVecType(ctx, mapResultElemType.kind, mapResultElemType);
       }
     }
   }
