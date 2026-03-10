@@ -22,8 +22,8 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite serve playground",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "node node_modules/vitest/dist/cli.js run",
+    "test:watch": "node node_modules/vitest/dist/cli.js",
     "lint": "biome check src/",
     "typecheck": "tsc --noEmit",
     "build:playground": "vite build playground",
@@ -35,6 +35,7 @@
   "devDependencies": {
     "@biomejs/biome": "^1",
     "@types/node": "^22",
+    "eslint": "^10.0.3",
     "monaco-editor": "^0.55.1",
     "vite": "^6",
     "vite-plugin-dts": "^4",
