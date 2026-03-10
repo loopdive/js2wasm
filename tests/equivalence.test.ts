@@ -37,6 +37,12 @@ function buildImports(result: CompileResult): WebAssembly.Imports {
     Math_log10: Math.log10,
     Math_pow: Math.pow,
     Math_random: Math.random,
+    Math_acosh: Math.acosh,
+    Math_asinh: Math.asinh,
+    Math_atanh: Math.atanh,
+    Math_cbrt: Math.cbrt,
+    Math_expm1: Math.expm1,
+    Math_log1p: Math.log1p,
   };
   return {
     env,

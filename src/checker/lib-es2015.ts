@@ -142,12 +142,42 @@ interface ArrayConstructor {
 }
 
 
-// ── Number ES2015 constants ──────────────────────────────────────
+// ── Number ES2015 constants and static methods ───────────────────
 
 interface NumberConstructor {
   readonly EPSILON: number;
   readonly MAX_SAFE_INTEGER: number;
   readonly MIN_SAFE_INTEGER: number;
+  readonly MAX_VALUE: number;
+  readonly MIN_VALUE: number;
+  readonly POSITIVE_INFINITY: number;
+  readonly NEGATIVE_INFINITY: number;
+  readonly NaN: number;
+  isFinite(value: number): boolean;
+  isInteger(value: number): boolean;
+  isNaN(value: number): boolean;
+  isSafeInteger(value: number): boolean;
+  parseFloat(string: string): number;
+  parseInt(string: string, radix?: number): number;
+}
+
+// ── Math ES2015 methods ──────────────────────────────────────────
+
+interface Math {
+  hypot(...values: number[]): number;
+  acosh(x: number): number;
+  asinh(x: number): number;
+  atanh(x: number): number;
+  cbrt(x: number): number;
+  clz32(x: number): number;
+  expm1(x: number): number;
+  fround(x: number): number;
+  imul(x: number, y: number): number;
+  log1p(x: number): number;
+  log2(x: number): number;
+  log10(x: number): number;
+  sign(x: number): number;
+  trunc(x: number): number;
 }
 
 // ── Object.entries / Object.keys ES2017 ─────────────────────────

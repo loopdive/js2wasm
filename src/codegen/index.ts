@@ -203,6 +203,8 @@ export interface CodegenContext {
   nativeStrHelpersEmitted: boolean;
   /** Map from native string helper name → function index */
   nativeStrHelpers: Map<string, number>;
+  /** Map from value type kind → ref cell struct type index (for mutable closure captures) */
+  refCellTypeMap: Map<string, number>;
 }
 
 /** Metadata for a closure stored in a local variable */
@@ -239,6 +241,8 @@ export interface FunctionContext {
   continueStack: number[];
   /** Map from label name to break/continue stack indices for labeled break/continue */
   labelMap: Map<string, { breakIdx: number; continueIdx: number }>;
+  /** Map from variable name → ref cell info (for mutable closure captures) */
+  boxedCaptures?: Map<string, { refCellTypeIdx: number; valType: ValType }>;
 }
 
 /** Options for code generation */
@@ -324,6 +328,7 @@ export function generateModule(
     consStrTypeIdx: -1,
     nativeStrHelpersEmitted: false,
     nativeStrHelpers: new Map(),
+    refCellTypeMap: new Map(),
   };
 
   // Register native string types if fast mode
@@ -498,6 +503,7 @@ export function generateMultiModule(
     consStrTypeIdx: -1,
     nativeStrHelpersEmitted: false,
     nativeStrHelpers: new Map(),
+    refCellTypeMap: new Map(),
   };
 
   // Register native string types if fast mode
@@ -3332,6 +3338,18 @@ function collectStringLiterals(
         if (span.literal.text) literals.add(span.literal.text);
       }
     }
+    // Tagged template expressions: collect ALL string parts (including empty strings)
+    // because tagged templates pass the full strings array to the tag function
+    if (ts.isTaggedTemplateExpression(node)) {
+      if (ts.isNoSubstitutionTemplateLiteral(node.template)) {
+        literals.add(node.template.text);
+      } else if (ts.isTemplateExpression(node.template)) {
+        literals.add(node.template.head.text); // include empty strings
+        for (const span of node.template.templateSpans) {
+          literals.add(span.literal.text); // include empty strings
+        }
+      }
+    }
     // RegExp literals: collect pattern and flags as string literals
     if (node.kind === ts.SyntaxKind.RegularExpressionLiteral) {
       const { pattern, flags } = parseRegExpLiteral(node.getText());
@@ -3512,6 +3530,12 @@ const MATH_HOST_METHODS_1ARG = new Set([
   "asin",
   "acos",
   "atan",
+  "acosh",
+  "asinh",
+  "atanh",
+  "cbrt",
+  "expm1",
+  "log1p",
 ]);
 const MATH_HOST_METHODS_2ARG = new Set(["pow", "atan2"]);
 
@@ -4517,6 +4541,33 @@ export function getOrRegisterVecType(
   return vecIdx;
 }
 
+/**
+ * Get or register a ref cell struct type for mutable closure captures.
+ * A ref cell is a 1-field mutable struct: (struct (field $value (mut T)))
+ */
+export function getOrRegisterRefCellType(
+  ctx: CodegenContext,
+  valType: ValType,
+): number {
+  const key =
+    (valType.kind === "ref" || valType.kind === "ref_null")
+      ? `${valType.kind}_${(valType as { typeIdx: number }).typeIdx}`
+      : valType.kind;
+  const existing = ctx.refCellTypeMap.get(key);
+  if (existing !== undefined) return existing;
+
+  const typeIdx = ctx.mod.types.length;
+  ctx.mod.types.push({
+    kind: "struct",
+    name: `__ref_cell_${key}`,
+    fields: [
+      { name: "value", type: valType, mutable: true },
+    ],
+  });
+  ctx.refCellTypeMap.set(key, typeIdx);
+  return typeIdx;
+}
+
 /** Get the raw array type index from a vec struct type index. */
 export function getArrTypeIdxFromVec(
   ctx: CodegenContext,
@@ -4525,8 +4576,11 @@ export function getArrTypeIdxFromVec(
   const vecDef = ctx.mod.types[vecTypeIdx];
   if (!vecDef || vecDef.kind !== "struct") throw new Error("not a vec type");
   const dataField = vecDef.fields[1]!;
-  if (dataField.type.kind !== "ref") throw new Error("vec data field not ref");
-  return dataField.type.typeIdx;
+  // data field may use ref_null instead of ref (e.g. for nullable element types)
+  if (dataField.type.kind !== "ref" && dataField.type.kind !== "ref_null") {
+    throw new Error("vec data field not ref");
+  }
+  return (dataField.type as { typeIdx: number }).typeIdx;
 }
 
 /**
@@ -6648,6 +6702,98 @@ function compileSuperCall(
   }
 }
 
+/**
+ * Pre-pass: hoist all `var` declarations in a function body.
+ * Walks statements recursively and pre-allocates a local for each `var`
+ * variable not yet in localMap, so identifiers are valid before their
+ * declaration site (JavaScript var-hoisting semantics).
+ */
+function hoistVarDeclarations(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  stmts: ts.NodeArray<ts.Statement> | ts.Statement[],
+): void {
+  for (const stmt of stmts) {
+    walkStmtForVars(ctx, fctx, stmt);
+  }
+}
+
+function walkStmtForVars(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  stmt: ts.Statement,
+): void {
+  if (ts.isVariableStatement(stmt)) {
+    const list = stmt.declarationList;
+    // Only hoist `var` (not let/const)
+    if (list.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const)) return;
+    for (const decl of list.declarations) {
+      if (!ts.isIdentifier(decl.name)) continue;
+      const name = decl.name.text;
+      if (fctx.localMap.has(name)) continue;
+      // Skip module globals
+      if (ctx.moduleGlobals.has(name)) continue;
+      const varType = ctx.checker.getTypeAtLocation(decl);
+      const wasmType = resolveWasmType(ctx, varType);
+      allocLocal(fctx, name, wasmType);
+    }
+    return;
+  }
+  if (ts.isBlock(stmt)) {
+    for (const s of stmt.statements) walkStmtForVars(ctx, fctx, s);
+    return;
+  }
+  if (ts.isIfStatement(stmt)) {
+    walkStmtForVars(ctx, fctx, stmt.thenStatement);
+    if (stmt.elseStatement) walkStmtForVars(ctx, fctx, stmt.elseStatement);
+    return;
+  }
+  if (ts.isWhileStatement(stmt) || ts.isDoStatement(stmt)) {
+    walkStmtForVars(ctx, fctx, stmt.statement);
+    return;
+  }
+  if (ts.isForStatement(stmt)) {
+    if (stmt.initializer && ts.isVariableDeclarationList(stmt.initializer)) {
+      const list = stmt.initializer;
+      if (!(list.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const))) {
+        for (const decl of list.declarations) {
+          if (!ts.isIdentifier(decl.name)) continue;
+          const name = decl.name.text;
+          if (fctx.localMap.has(name)) continue;
+          if (ctx.moduleGlobals.has(name)) continue;
+          const varType = ctx.checker.getTypeAtLocation(decl);
+          allocLocal(fctx, name, resolveWasmType(ctx, varType));
+        }
+      }
+    }
+    walkStmtForVars(ctx, fctx, stmt.statement);
+    return;
+  }
+  if (ts.isForInStatement(stmt) || ts.isForOfStatement(stmt)) {
+    walkStmtForVars(ctx, fctx, stmt.statement);
+    return;
+  }
+  if (ts.isLabeledStatement(stmt)) {
+    walkStmtForVars(ctx, fctx, stmt.statement);
+    return;
+  }
+  if (ts.isTryStatement(stmt)) {
+    for (const s of stmt.tryBlock.statements) walkStmtForVars(ctx, fctx, s);
+    if (stmt.catchClause) {
+      for (const s of stmt.catchClause.block.statements) walkStmtForVars(ctx, fctx, s);
+    }
+    if (stmt.finallyBlock) {
+      for (const s of stmt.finallyBlock.statements) walkStmtForVars(ctx, fctx, s);
+    }
+    return;
+  }
+  if (ts.isSwitchStatement(stmt)) {
+    for (const clause of stmt.caseBlock.clauses) {
+      for (const s of clause.statements) walkStmtForVars(ctx, fctx, s);
+    }
+  }
+}
+
 function compileFunctionBody(
   ctx: CodegenContext,
   decl: ts.FunctionDeclaration,
@@ -6807,6 +6953,7 @@ function compileFunctionBody(
     for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!++;
 
     if (decl.body) {
+      hoistVarDeclarations(ctx, fctx, decl.body.statements);
       for (const stmt of decl.body.statements) {
         compileStatement(ctx, fctx, stmt);
       }
@@ -6832,6 +6979,9 @@ function compileFunctionBody(
   } else {
     // Compile body statements
     if (decl.body) {
+      // Hoist `var` declarations: pre-allocate locals so variables are accessible
+      // even before their declaration site (JS var hoisting semantics).
+      hoistVarDeclarations(ctx, fctx, decl.body.statements);
       for (const stmt of decl.body.statements) {
         compileStatement(ctx, fctx, stmt);
       }
