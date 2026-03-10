@@ -645,6 +645,16 @@ export const TEST_CATEGORIES = [
   "built-ins/Math/acos",
   "built-ins/Math/atan",
   "built-ins/Math/atan2",
+  "built-ins/Math/acosh",
+  "built-ins/Math/asinh",
+  "built-ins/Math/atanh",
+  "built-ins/Math/cbrt",
+  "built-ins/Math/expm1",
+  "built-ins/Math/log1p",
+  "built-ins/Math/log2",
+  "built-ins/Math/log10",
+  "built-ins/Math/fround",
+  "built-ins/Math/hypot",
   // ── language/expressions (#88) ──
   "language/expressions/addition",
   "language/expressions/subtraction",
@@ -739,6 +749,12 @@ export const TEST_CATEGORIES = [
   "built-ins/Number/EPSILON",
   "built-ins/Number/MAX_SAFE_INTEGER",
   "built-ins/Number/MIN_SAFE_INTEGER",
+  "built-ins/Number/isSafeInteger",
+  // ── built-ins/Boolean ──
+  "built-ins/Boolean",
+  // ── built-ins/parseInt + parseFloat ──
+  "built-ins/parseInt",
+  "built-ins/parseFloat",
   // ── built-ins/isNaN + isFinite (#95) ──
   "built-ins/isNaN",
   "built-ins/isFinite",
@@ -756,6 +772,10 @@ export const TEST_CATEGORIES = [
   // ── built-ins/JSON (#96) ──
   "built-ins/JSON/parse",
   "built-ins/JSON/stringify",
+  // ── language/ top-level (#104) ──
+  "language/destructuring",
+  "language/rest-parameters",
+  "language/computed-property-names",
 ];
 
 const TEST262_ROOT = join(import.meta.dirname ?? ".", "..", "test262");

@@ -69,6 +69,10 @@ function resolveImport(
       if (name === "JSON_parse") return (s: any) => JSON.parse(s);
       if (name === "__extern_get") return (obj: any, idx: number) => obj[idx];
       if (name === "__extern_length") return (obj: any) => obj.length;
+      // Tagged template support: JS array builder and tagged template caller
+      if (name === "__js_array_new") return () => [];
+      if (name === "__js_array_push") return (arr: any[], val: any) => { arr.push(val); };
+      if (name === "__tagged_template") return (tag: Function, strings: any[], subs: any[]) => tag(strings, ...subs);
       // Promise combinators
       if (name === "Promise_all") return (arr: any) => Promise.all(arr);
       if (name === "Promise_race") return (arr: any) => Promise.race(arr);

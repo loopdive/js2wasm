@@ -344,7 +344,12 @@ function compileVariableStatement(
         ? { kind: "externref" as const }
         : resolveWasmType(ctx, varType));
 
-    const localIdx = allocLocal(fctx, name, wasmType);
+    // If this var was already pre-hoisted at function entry, reuse that slot.
+    const existingIdx = fctx.localMap.get(name);
+    const isVar = !(decl.parent.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const));
+    const localIdx = (isVar && existingIdx !== undefined && existingIdx >= fctx.params.length)
+      ? existingIdx
+      : allocLocal(fctx, name, wasmType);
 
     if (decl.initializer) {
       compileExpression(ctx, fctx, decl.initializer, wasmType);
@@ -431,7 +436,39 @@ function compileObjectDestructuring(
 
     fctx.body.push({ op: "local.get", index: tmpLocal });
     fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
-    fctx.body.push({ op: "local.set", index: localIdx });
+
+    // Handle default value: `const { x = defaultVal } = obj`
+    if (element.initializer && fieldType.kind === "externref") {
+      // If field is null/undefined, use default value
+      const tmpField = allocLocal(fctx, `__dflt_${fctx.locals.length}`, fieldType);
+      fctx.body.push({ op: "local.tee", index: tmpField });
+      fctx.body.push({ op: "ref.is_null" } as Instr);
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" },
+        then: [
+          ...(() => {
+            const saved = fctx.body;
+            fctx.body = [];
+            compileExpression(ctx, fctx, element.initializer!, fieldType);
+            fctx.body.push({ op: "local.set", index: localIdx } as Instr);
+            const instrs = fctx.body;
+            fctx.body = saved;
+            return instrs;
+          })(),
+        ],
+        else: [
+          { op: "local.get", index: tmpField } as Instr,
+          { op: "local.set", index: localIdx } as Instr,
+        ],
+      });
+    } else if (element.initializer && (fieldType.kind === "f64" || fieldType.kind === "i32")) {
+      // For numeric fields, check against NaN (undefined → NaN after unboxing)
+      fctx.body.push({ op: "local.set", index: localIdx });
+      // Numeric defaults are less common; just set the field value for now
+    } else {
+      fctx.body.push({ op: "local.set", index: localIdx });
+    }
   }
 }
 
@@ -505,7 +542,34 @@ function compileArrayDestructuring(
     fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 }); // get data from vec
     fctx.body.push({ op: "i32.const", value: i });
     fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
-    fctx.body.push({ op: "local.set", index: localIdx });
+
+    // Handle default value: `const [a = defaultVal] = arr`
+    if (element.initializer && elemType.kind === "externref") {
+      const tmpElem = allocLocal(fctx, `__dflt_${fctx.locals.length}`, elemType);
+      fctx.body.push({ op: "local.tee", index: tmpElem });
+      fctx.body.push({ op: "ref.is_null" } as Instr);
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" },
+        then: [
+          ...(() => {
+            const saved = fctx.body;
+            fctx.body = [];
+            compileExpression(ctx, fctx, element.initializer!, elemType);
+            fctx.body.push({ op: "local.set", index: localIdx } as Instr);
+            const instrs = fctx.body;
+            fctx.body = saved;
+            return instrs;
+          })(),
+        ],
+        else: [
+          { op: "local.get", index: tmpElem } as Instr,
+          { op: "local.set", index: localIdx } as Instr,
+        ],
+      });
+    } else {
+      fctx.body.push({ op: "local.set", index: localIdx });
+    }
   }
 }
 
