@@ -111,6 +111,24 @@ export function compileStatement(
   fctx: FunctionContext,
   stmt: ts.Statement,
 ): void {
+  try {
+    compileStatementInner(ctx, fctx, stmt);
+  } catch (e) {
+    // Defensive: catch any unhandled crash in statement compilation
+    const msg = e instanceof Error ? e.message : String(e);
+    ctx.errors.push({
+      message: `Internal error compiling statement: ${msg}`,
+      line: getLine(stmt),
+      column: getCol(stmt),
+    });
+  }
+}
+
+function compileStatementInner(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  stmt: ts.Statement,
+): void {
   // Skip import declarations — module imports not supported
   if (ts.isImportDeclaration(stmt)) return;
 

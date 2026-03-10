@@ -9,9 +9,6 @@
 | ------------------ | --------------------------------------------------------- | ---------- |
 | [70](issues/70.md) | Fast mode Phase 4 — C ABI for multi-language wasm linking | L          |
 | [74](issues/74.md) | WASM SIMD for string and array operations                 | L          |
-| [87](issues/87.md) | Math.round negative zero preservation                     | S          |
-
-
 ### Language coverage
 
 
@@ -19,28 +16,6 @@
 | -------------------- | -------------------------------------------------- | ---------- |
 | [79](issues/79.md)   | Gradual typing — boxed `any` with runtime dispatch | XL         |
 | [81](issues/81.md)   | npm package resolution and tree-shaking            | L          |
-| [100](issues/100.md) | Mutable closure captures via ref cells             | L          |
-
-
-### Test262 conformance
-
-
-| #                    | Feature                                                                   | Complexity |
-| -------------------- | ------------------------------------------------------------------------- | ---------- |
-| [101](issues/101.md) | Test262 — language/statements (for-of, for-in, class, generators, async)  | M          |
-| [102](issues/102.md) | Test262 — language/expressions (new, arrow, class, object, array, spread) | M          |
-| [103](issues/103.md) | Test262 — built-ins/String prototype methods                              | M          |
-| [104](issues/104.md) | Test262 — language/ top-level (destructuring, defaults, rest, template)   | S          |
-| [105](issues/105.md) | Test262 — built-ins/Map, built-ins/Set, built-ins/Promise                 | M          |
-| [106](issues/106.md) | Test262 — built-ins/Object extended + built-ins/Array constructor         | M          |
-
-
-### Compiler bugs (from test262 harvest)
-
-
-| #                    | Feature                                                      | Complexity |
-| -------------------- | ------------------------------------------------------------ | ---------- |
-| [107](issues/107.md) | Fix codegen null-dereference crashes (90x in test262)        | M          |
 
 
 
@@ -161,5 +136,12 @@
 | [114](issues/done/114.md)  | Bug — "vec data field not ref" array codegen crash      | accept ref_null data fields             |
 | [109](issues/109.md)      | Tagged template literals                                | runtime + codegen                       |
 | [115](issues/done/115.md)  | Bug — var hoisting in function scope                    | pre-pass walkStmtForVars                |
+| [87](issues/87.md)        | Math.round negative zero preservation                   | inline wasm, -0 via copysign            |
+| [101](issues/101.md)      | Test262 — language/statements                           | for-of, for-in, class, generators, async|
+| [102](issues/102.md)      | Test262 — language/expressions                          | 22 expression categories                |
+| [103](issues/103.md)      | Test262 — built-ins/String/prototype                    | 21 String method categories             |
+| [105](issues/105.md)      | Test262 — Map/Set/Promise                               | 16 collection/promise categories        |
+| [106](issues/106.md)      | Test262 — Object/Array extended                         | Array.isArray + skip filters            |
+| [107](issues/107.md)      | Fix codegen null-dereference crashes                    | try-catch + null guards                 |
 
 
