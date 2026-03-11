@@ -372,6 +372,8 @@ export function compileSource(
     2630, // "Cannot assign to 'X' because it is a function"
     2447, // "The '|'/'&' operator is not allowed for boolean types"
     2300, // "Duplicate identifier 'X'"
+    1345, // "An expression of type 'void' cannot be tested for truthiness"
+    2350, // "Only a void function can be called with the 'new' keyword"
   ]);
 
   // Collect TS diagnostics as errors (or warnings for handled cases)
