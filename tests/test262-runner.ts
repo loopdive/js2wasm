@@ -770,6 +770,53 @@ function stripUndefinedThrowGuards(code: string): string {
 }
 
 /**
+ * Resolve Unicode escape sequences (\uNNNN) in identifier positions.
+ * Avoids replacing escapes inside string literals or template literals.
+ * This normalizes test262 sources that use escaped keywords as property names
+ * (e.g. obj.bre\u0061k → obj.break) so that regex preprocessing works correctly.
+ */
+function resolveUnicodeEscapes(source: string): string {
+  // Split source into string-literal and non-string-literal segments.
+  // We only resolve escapes in non-string segments.
+  const parts: string[] = [];
+  let i = 0;
+  while (i < source.length) {
+    // Check for string literal start
+    if (source[i] === '"' || source[i] === "'" || source[i] === '`') {
+      const quote = source[i]!;
+      let j = i + 1;
+      while (j < source.length) {
+        if (source[j] === '\\') {
+          j += 2; // skip escaped char
+          continue;
+        }
+        if (source[j] === quote) {
+          j++;
+          break;
+        }
+        j++;
+      }
+      parts.push(source.slice(i, j)); // push string literal unchanged
+      i = j;
+    } else {
+      // Non-string segment: find next string literal or end
+      let j = i + 1;
+      while (j < source.length && source[j] !== '"' && source[j] !== "'" && source[j] !== '`') {
+        j++;
+      }
+      // Replace \uNNNN in this segment
+      const segment = source.slice(i, j).replace(
+        /\\u([0-9a-fA-F]{4})/g,
+        (_match, hex) => String.fromCharCode(parseInt(hex, 16)),
+      );
+      parts.push(segment);
+      i = j;
+    }
+  }
+  return parts.join("");
+}
+
+/**
  * Wrap a test262 test into a compilable TS module.
  *
  * Strategy: provide a shim for assert.sameValue that traps on mismatch.
@@ -782,6 +829,13 @@ export function wrapTest(source: string): string {
   // Strip all comments to avoid false matches
   body = body.replace(/\/\/.*$/gm, "");
   body = body.replace(/\/\*[\s\S]*?\*\//g, "");
+
+  // Resolve Unicode escape sequences in identifiers (e.g. bre\u0061k → break).
+  // test262 uses these to test that keywords are valid property names when escaped.
+  // The TS parser handles them, but our regex preprocessing (switch widening,
+  // assert routing, etc.) operates on raw source and can be confused by them.
+  // Replace \uNNNN sequences outside of string literals with the actual character.
+  body = resolveUnicodeEscapes(body);
 
   // Widen switch discriminants from literal types to `number` to avoid
   // TypeScript strict narrowing errors like "Type '1' is not comparable to type '0'"

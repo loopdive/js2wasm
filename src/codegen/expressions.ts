@@ -7213,6 +7213,39 @@ function resolveConstantExpression(
     }
   }
 
+  // Conditional (ternary) expression: cond ? a : b
+  if (ts.isConditionalExpression(expr)) {
+    const cond = resolveConstantExpression(ctx, expr.condition);
+    if (cond === undefined) return undefined;
+    // Evaluate truthiness: 0, NaN, "" are falsy; everything else is truthy
+    const isTruthy = typeof cond === "string" ? cond.length > 0 : (cond !== 0 && !isNaN(cond));
+    return resolveConstantExpression(ctx, isTruthy ? expr.whenTrue : expr.whenFalse);
+  }
+
+  // Nullish coalescing: a ?? b
+  if (ts.isBinaryExpression(expr) && expr.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken) {
+    const left = resolveConstantExpression(ctx, expr.left);
+    // In constant expressions, values are never null/undefined, so left always wins
+    if (left !== undefined) return left;
+    return resolveConstantExpression(ctx, expr.right);
+  }
+
+  // Template literal: `prefix${expr}suffix`
+  if (ts.isTemplateExpression(expr)) {
+    let result = expr.head.text;
+    for (const span of expr.templateSpans) {
+      const val = resolveConstantExpression(ctx, span.expression);
+      if (val === undefined) return undefined;
+      result += String(val) + span.literal.text;
+    }
+    return result;
+  }
+
+  // No-substitution template literal: `hello`
+  if (ts.isNoSubstitutionTemplateLiteral(expr)) {
+    return expr.text;
+  }
+
   return undefined;
 }
 
@@ -7257,31 +7290,8 @@ function resolveComputedKeyExpression(
   ctx: CodegenContext,
   expr: ts.Expression,
 ): string | undefined {
-  // Direct string literal: ["x"]
-  if (ts.isStringLiteral(expr)) return expr.text;
-
-  // Numeric literal: [0], [42], [0x10] → canonical string form
-  if (ts.isNumericLiteral(expr)) return String(Number(expr.text));
-
-  // Identifier referencing a const variable: [key]
-  if (ts.isIdentifier(expr)) {
-    const sym = ctx.checker.getSymbolAtLocation(expr);
-    if (sym) {
-      const decl = sym.valueDeclaration;
-      if (decl && ts.isVariableDeclaration(decl) && decl.initializer) {
-        // Check that the variable is declared with const
-        const declList = decl.parent;
-        if (ts.isVariableDeclarationList(declList) && (declList.flags & ts.NodeFlags.Const) !== 0) {
-          if (ts.isStringLiteral(decl.initializer)) {
-            return decl.initializer.text;
-          }
-        }
-      }
-    }
-    return undefined;
-  }
-
   // Property access for enum members: [MyEnum.Key]
+  // Check this first since resolveConstantExpression doesn't know about enums.
   if (ts.isPropertyAccessExpression(expr) && ts.isIdentifier(expr.expression)) {
     const objName = expr.expression.text;
     const propName = expr.name.text;
@@ -7292,6 +7302,12 @@ function resolveComputedKeyExpression(
     const enumNumVal = ctx.enumValues.get(enumKey);
     if (enumNumVal !== undefined) return String(enumNumVal);
   }
+
+  // Delegate to resolveConstantExpression which handles literals, const variables,
+  // binary expressions (+, -, *, /), ternary, nullish coalescing, template literals,
+  // prefix unary, and parenthesized expressions.
+  const constVal = resolveConstantExpression(ctx, expr);
+  if (constVal !== undefined) return String(constVal);
 
   return undefined;
 }
