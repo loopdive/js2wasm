@@ -1600,3 +1600,177 @@ describe("IIFE and call expression edge cases", () => {
     );
   });
 });
+
+describe("prefix/postfix increment on property access (#195)", () => {
+  it("prefix increment on object property", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let obj = { x: 5 };
+        let result = ++obj.x;
+        return result + obj.x;  // 6 + 6 = 12
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("prefix decrement on object property", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let obj = { x: 10 };
+        let result = --obj.x;
+        return result + obj.x;  // 9 + 9 = 18
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("postfix increment on object property", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let obj = { x: 5 };
+        let result = obj.x++;
+        return result + obj.x;  // 5 + 6 = 11
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("postfix decrement on object property", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let obj = { x: 10 };
+        let result = obj.x--;
+        return result + obj.x;  // 10 + 9 = 19
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("prefix increment on array element", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let arr = [1, 2, 3];
+        let result = ++arr[1];
+        return result + arr[1];  // 3 + 3 = 6
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("postfix increment on array element", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let arr = [1, 2, 3];
+        let result = arr[1]++;
+        return result + arr[1];  // 2 + 3 = 5
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("multiple increments on same property", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let obj = { count: 0 };
+        obj.count++;
+        obj.count++;
+        ++obj.count;
+        return obj.count;  // 3
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("increment property in expression", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let obj = { a: 1, b: 10 };
+        return obj.a++ + ++obj.b;  // 1 + 11 = 12
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+});
+
+describe("compound assignment on property access (#195)", () => {
+  it("obj.prop += value", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let obj = { x: 10 };
+        obj.x += 5;
+        return obj.x;  // 15
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("obj.prop -= value", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let obj = { x: 10 };
+        obj.x -= 3;
+        return obj.x;  // 7
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("obj.prop *= value", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let obj = { x: 5 };
+        obj.x *= 4;
+        return obj.x;  // 20
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("arr[i] += value", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let arr = [10, 20, 30];
+        arr[1] += 5;
+        return arr[1];  // 25
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("compound assignment returns new value", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let obj = { x: 10 };
+        let result = (obj.x += 5);
+        return result;  // 15
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+});
