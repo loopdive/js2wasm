@@ -675,6 +675,75 @@ describe("TS ↔ Wasm equivalence", () => {
     );
   });
 
+  it("tagged template literals — same call site returns same object across calls", async () => {
+    await assertEquivalent(
+      `
+      function eq(a: string[], b: string[]): number {
+        return a === b ? 1 : 0;
+      }
+      function tag(strings: string[]): string[] {
+        return strings;
+      }
+      function getTemplate(): string[] {
+        return tag\`hello\`;
+      }
+      export function test1(): number {
+        const first = getTemplate();
+        const second = getTemplate();
+        return eq(first, second);
+      }
+      `,
+      [
+        { fn: "test1", args: [] },
+      ],
+    );
+  });
+
+  it("tagged template literals — different sites produce different objects", async () => {
+    await assertEquivalent(
+      `
+      function eq(a: string[], b: string[]): number {
+        return a === b ? 1 : 0;
+      }
+      function tag(strings: string[]): string[] {
+        return strings;
+      }
+      export function test1(): number {
+        const first = tag\`aaa\`;
+        const second = tag\`bbb\`;
+        return eq(first, second);
+      }
+      `,
+      [
+        { fn: "test1", args: [] },
+      ],
+    );
+  });
+
+  it("tagged template literals — same site caches even with different expression values", async () => {
+    await assertEquivalent(
+      `
+      function eq(a: string[], b: string[]): number {
+        return a === b ? 1 : 0;
+      }
+      function tag(strings: string[], ...subs: number[]): string[] {
+        return strings;
+      }
+      function getTemplate(x: number): string[] {
+        return tag\`head\${x}tail\`;
+      }
+      export function test1(): number {
+        const first = getTemplate(1);
+        const second = getTemplate(2);
+        return eq(first, second);
+      }
+      `,
+      [
+        { fn: "test1", args: [] },
+      ],
+    );
+  });
+
   it("typeof comparison — static resolution for number, string, boolean", async () => {
     await assertEquivalent(
       `
