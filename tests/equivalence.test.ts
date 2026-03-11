@@ -1599,4 +1599,177 @@ describe("IIFE and call expression edge cases", () => {
       [{ fn: "test", args: [] }],
     );
   });
+
+  // --- Issue #218: Boolean(x = 0) should return false ---
+  it("Boolean with assignment expression argument", async () => {
+    await assertEquivalent(
+      `
+      export function test1(): number {
+        var x: number = 5;
+        return Boolean(x = 0) ? 1 : 0;
+      }
+      export function test2(): number {
+        var x: number = 5;
+        return Boolean(x = 1) ? 1 : 0;
+      }
+      export function test3(): number {
+        var x: number = 0;
+        return Boolean(x = 42) ? 1 : 0;
+      }
+      `,
+      [
+        { fn: "test1", args: [] },
+        { fn: "test2", args: [] },
+        { fn: "test3", args: [] },
+      ],
+    );
+  });
+
+  it("Boolean with empty string argument", async () => {
+    await assertEquivalent(
+      `
+      export function test1(): number {
+        return Boolean("") ? 1 : 0;
+      }
+      export function test2(): number {
+        return Boolean("hello") ? 1 : 0;
+      }
+      `,
+      [
+        { fn: "test1", args: [] },
+        { fn: "test2", args: [] },
+      ],
+    );
+  });
+
+  // --- Issue #219: void expression edge cases ---
+  it("void expression returns undefined-like", async () => {
+    await assertEquivalent(
+      `
+      export function test1(): number {
+        var x: number = 1;
+        void x;
+        return x;
+      }
+      export function test2(): number {
+        var x: number = 0;
+        void (x = 5);
+        return x;
+      }
+      `,
+      [
+        { fn: "test1", args: [] },
+        { fn: "test2", args: [] },
+      ],
+    );
+  });
+
+  // --- Issue #219: switch statement with various cases ---
+  it("switch with multiple case values", async () => {
+    await assertEquivalent(
+      `
+      export function test(x: number): number {
+        var result: number = 0;
+        switch (x) {
+          case 0: result = 10; break;
+          case 1: result = 20; break;
+          case 2: result = 30; break;
+          default: result = -1;
+        }
+        return result;
+      }
+      `,
+      [
+        { fn: "test", args: [0] },
+        { fn: "test", args: [1] },
+        { fn: "test", args: [2] },
+        { fn: "test", args: [3] },
+      ],
+    );
+  });
+
+  // --- Issue #219: return statement edge cases ---
+  it("return from nested if in function", async () => {
+    await assertEquivalent(
+      `
+      function myfunc(x: number): number {
+        if (x > 0) {
+          return x * 2;
+        }
+        return -1;
+      }
+      export function test(): number {
+        return myfunc(5) + myfunc(-1);
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // --- Issue #219: logical-and returning values ---
+  it("logical-and with numeric operands", async () => {
+    await assertEquivalent(
+      `
+      export function test1(): number { return (1 && 2) as number; }
+      export function test2(): number { return (0 && 2) as number; }
+      export function test3(): number { return (1 && 0) as number; }
+      `,
+      [
+        { fn: "test1", args: [] },
+        { fn: "test2", args: [] },
+        { fn: "test3", args: [] },
+      ],
+    );
+  });
+
+  // --- Issue #219: logical-or returning values ---
+  it("logical-or with numeric operands", async () => {
+    await assertEquivalent(
+      `
+      export function test1(): number { return (1 || 2) as number; }
+      export function test2(): number { return (0 || 2) as number; }
+      export function test3(): number { return (0 || 0) as number; }
+      `,
+      [
+        { fn: "test1", args: [] },
+        { fn: "test2", args: [] },
+        { fn: "test3", args: [] },
+      ],
+    );
+  });
+
+  // --- Issue #218: Boolean with NaN ---
+  it("Boolean with NaN returns false", async () => {
+    await assertEquivalent(
+      `
+      export function test1(): number { return Boolean(NaN) ? 1 : 0; }
+      export function test2(): number { return Boolean(0) ? 1 : 0; }
+      export function test3(): number { return Boolean(-0) ? 1 : 0; }
+      export function test4(): number { return Boolean(1) ? 1 : 0; }
+      export function test5(): number { return Boolean(-1) ? 1 : 0; }
+      `,
+      [
+        { fn: "test1", args: [] },
+        { fn: "test2", args: [] },
+        { fn: "test3", args: [] },
+        { fn: "test4", args: [] },
+        { fn: "test5", args: [] },
+      ],
+    );
+  });
+
+  // --- Issue #218: Boolean with assignment side effects ---
+  it("Boolean assignment side effects preserved", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var x: number = 10;
+        var b: boolean = Boolean(x = 0);
+        // x should be 0 (side effect) and b should be false
+        return x + (b ? 100 : 0);
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
 });

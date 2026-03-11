@@ -461,10 +461,7 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     return { skip: true, reason: "runtime in operator for property check" };
   }
 
-  // Skip tests using Boolean() with string/assignment expression argument
-  if (/Boolean\s*\(\s*(\w+\s*=\s*|"")/.test(source)) {
-    return { skip: true, reason: "Boolean() with non-numeric argument" };
-  }
+  // (Removed: Boolean(x = 0) and Boolean("") — now handled in codegen)
 
   // Skip tests checking `this` at module/global scope or with thisArg
   if (/assert.*\bthis\b/.test(source) && !/function\s+\w|class\s+\w/.test(source)) {
