@@ -1599,4 +1599,73 @@ describe("IIFE and call expression edge cases", () => {
       [{ fn: "test", args: [] }],
     );
   });
+
+  // -- Issue #208: computed property names with expressions --
+
+  it("computed property name with addition expression", async () => {
+    await assertEquivalent(
+      `
+      const key = "he" + "llo";
+      const obj: { hello: number } = { [key]: 42 };
+      export function test(): number {
+        return obj.hello;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("computed property name with ternary expression", async () => {
+    await assertEquivalent(
+      `
+      const flag = 1;
+      const obj: { yes: number } = { [flag ? "yes" : "no"]: 10 };
+      export function test(): number {
+        return obj.yes;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("computed property name with template literal", async () => {
+    await assertEquivalent(
+      `
+      const part = "val";
+      const obj: { myval: number } = { [\`my\${part}\`]: 77 };
+      export function test(): number {
+        return obj.myval;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("computed property name with numeric expression", async () => {
+    await assertEquivalent(
+      `
+      const arr: number[] = [0, 0, 0];
+      arr[1 + 1] = 99;
+      export function test(): number {
+        return arr[2];
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("computed property name with const variable expression", async () => {
+    await assertEquivalent(
+      `
+      const a = "hel";
+      const b = "lo";
+      const key = a + b;
+      const obj: { hello: number } = { [key]: 55 };
+      export function test(): number {
+        return obj.hello;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
 });
