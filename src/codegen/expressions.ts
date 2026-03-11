@@ -1783,6 +1783,43 @@ function compileBinaryExpression(
     rightType = { kind: "f64" };
   }
 
+  // ── Struct ref valueOf coercion (#138/#139) ──
+  // When operands are struct refs (objects with valueOf), coerce them to f64
+  // before performing numeric/comparison/equality operations.
+  // For strict equality (===, !==): compare struct refs by reference identity.
+  {
+    const leftIsRef = leftType.kind === "ref" || leftType.kind === "ref_null";
+    const rightIsRef = rightType.kind === "ref" || rightType.kind === "ref_null";
+    if (leftIsRef || rightIsRef) {
+      // Strict equality: reference identity comparison (no valueOf coercion)
+      const isStrictEq = op === ts.SyntaxKind.EqualsEqualsEqualsToken;
+      const isStrictNeq = op === ts.SyntaxKind.ExclamationEqualsEqualsToken;
+      if ((isStrictEq || isStrictNeq) && leftIsRef && rightIsRef) {
+        fctx.body.push({ op: "ref.eq" } as unknown as Instr);
+        if (isStrictNeq) fctx.body.push({ op: "i32.eqz" });
+        return { kind: "i32" };
+      }
+
+      // For numeric, comparison, and loose equality ops: coerce struct refs → f64 via valueOf
+      if (isNumericOp || isEqOp || isNeqOp) {
+        // Coerce right operand (top of stack) first
+        if (rightIsRef) {
+          coerceType(ctx, fctx, rightType, { kind: "f64" });
+          rightType = { kind: "f64" };
+        }
+        // Coerce left operand (below right on stack) — save right to local
+        if (leftIsRef) {
+          const tmpR = allocLocal(fctx, `__vo_r_${fctx.locals.length}`, { kind: "f64" });
+          fctx.body.push({ op: "local.set", index: tmpR });
+          coerceType(ctx, fctx, leftType, { kind: "f64" });
+          fctx.body.push({ op: "local.get", index: tmpR });
+          leftType = { kind: "f64" };
+        }
+        // Now both operands are f64 — fall through to numeric dispatch below
+      }
+    }
+  }
+
   // Fast mode: i32 numeric operations
   if (ctx.fast && isNumberType(leftTsType) && leftType.kind === "i32" && rightType.kind === "i32") {
     return compileI32BinaryOp(ctx, fctx, op, expr);
@@ -3320,6 +3357,10 @@ function compilePrefixUnary(
         fctx.body.push({ op: "local.get", index: tmp });
         fctx.body.push({ op: "i64.sub" });
         return { kind: "i64" };
+      }
+      // Struct ref → coerce to f64 via valueOf before negating
+      if (operandType?.kind === "ref" || operandType?.kind === "ref_null") {
+        coerceType(ctx, fctx, operandType, { kind: "f64" });
       }
       fctx.body.push({ op: "f64.neg" });
       return { kind: "f64" };

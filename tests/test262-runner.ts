@@ -178,13 +178,6 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     }
   }
 
-  // Skip tests that use valueOf/toString coercion on object literals
-  // Our compiler doesn't support object method dispatch for type coercion
-  if (/\bvalueOf\s*\(\s*\)\s*\{/.test(source) || /\bvalueOf\s*:\s*function/.test(source) ||
-      /\btoString\s*:\s*function/.test(source)) {
-    return { skip: true, reason: "uses valueOf/toString coercion on objects" };
-  }
-
   // Skip tests that use delete operator — we don't support property deletion
   if (/\bdelete\s+/.test(source)) {
     return { skip: true, reason: "uses delete operator" };
