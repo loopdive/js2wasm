@@ -229,10 +229,7 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     return { skip: true, reason: "labeled block break" };
   }
 
-  // Skip tests that use boolean/value + "" string coercion
-  if (/\+\s*""/.test(source) && /!==\s*"/.test(source)) {
-    return { skip: true, reason: "value-to-string coercion via + \"\"" };
-  }
+  // (Removed: value-to-string coercion via + "" — now handled in codegen)
 
   // Skip Math.round tests that rely on large-number precision edge cases
   // (floor(x+0.5) diverges from JS Math.round for |x| near 2/EPSILON)
@@ -318,10 +315,18 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
   // String comparisons via assert.sameValue are routed to assert_sameValue_str in wrapTest.
   // Skip string comparisons outside assert patterns (raw === "..." in if/while) — compiler
   // can't do string equality in arbitrary contexts without the harness call.
-  if ((/!==\s*['"]/.test(source) || /['"].*!==/.test(source) ||
-       /===\s*['"]/.test(source) || /['"]\s*===/.test(source)) &&
-      !/assert\.sameValue/.test(source)) {
-    return { skip: true, reason: "string strict comparison outside assert" };
+  // Strip string literal contents first to avoid false positives from error messages
+  // that contain === or !== as text.
+  {
+    const stripped = source.replace(/"(?:[^"\\]|\\.)*"/g, '""').replace(/'(?:[^'\\]|\\.)*'/g, "''");
+    if ((/!==\s*['"]/.test(stripped) || /['"]\s*!==/.test(stripped) ||
+         /===\s*['"]/.test(stripped) || /['"]\s*===/.test(stripped)) &&
+        !/assert\.sameValue/.test(source) &&
+        // Allow string comparisons in tests that use value + "" coercion patterns
+        // (the compiler handles string !== "literal" correctly via equals import)
+        !/\+\s*""/.test(source)) {
+      return { skip: true, reason: "string strict comparison outside assert" };
+    }
   }
 
   // Skip tests that use Array.prototype methods called with .call/.apply
@@ -365,18 +370,31 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
   }
 
   // Skip tests that index arrays with loop variables inside string concat
-  if (/base\[\w+\]/.test(source) && /\+\s*"/.test(source) && /new\s+Array/.test(source)) {
-    return { skip: true, reason: "array index with string concat in loop" };
+  // Strip throw statements first to avoid matching error message text
+  {
+    const noThrow = source.replace(/^\s*throw\b.*$/gm, "");
+    if (/base\[\w+\]/.test(noThrow) && /\+\s*"/.test(noThrow) && /new\s+Array/.test(noThrow)) {
+      return { skip: true, reason: "array index with string concat in loop" };
+    }
   }
 
   // Skip tests with unary +/- on null/undefined (externref type mismatch in wasm)
-  if (/[+\-]\s*\(?\s*(null|undefined)\b/.test(source)) {
-    return { skip: true, reason: "unary +/- on null/undefined" };
+  // Strip throw statements (which become return 0; in wrapTest) to avoid matching error message text
+  {
+    const noThrow = source.replace(/^\s*throw\b.*$/gm, "");
+    if (/[+\-]\s*\(?\s*(null|undefined)\b/.test(noThrow)) {
+      return { skip: true, reason: "unary +/- on null/undefined" };
+    }
   }
 
   // Skip tests with unary +/- on empty string (+"" → 0, -"" → -0 coercion not supported)
-  if (/[+\-]\s*""/.test(source)) {
-    return { skip: true, reason: "unary +/- on empty string" };
+  // Match unary +/- (preceded by operator/delimiter, not by a value) on empty string
+  // Strip throw statements first to avoid matching error message text
+  {
+    const noThrow = source.replace(/^\s*throw\b.*$/gm, "");
+    if (/[=;({,]\s*[+\-]\s*""/.test(noThrow) || /^\s*[+\-]\s*""/m.test(noThrow)) {
+      return { skip: true, reason: "unary +/- on empty string" };
+    }
   }
 
   // Skip tests that mutate collections during for-of iteration (causes infinite loops)

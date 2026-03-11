@@ -724,7 +724,8 @@ function collectPrimitiveMethodImports(
     // other is not (could be number, any, boolean — all may produce f64 at wasm level).
     if (
       ts.isBinaryExpression(node) &&
-      node.operatorToken.kind === ts.SyntaxKind.PlusToken
+      (node.operatorToken.kind === ts.SyntaxKind.PlusToken ||
+       node.operatorToken.kind === ts.SyntaxKind.PlusEqualsToken)
     ) {
       const leftType = ctx.checker.getTypeAtLocation(node.left);
       const rightType = ctx.checker.getTypeAtLocation(node.right);
@@ -5155,7 +5156,7 @@ export function addImport(
  * Uses importedStringConstants: the import name is the literal string value itself,
  * and the global type is (ref extern) (non-nullable externref).
  */
-function addStringConstantGlobal(ctx: CodegenContext, value: string): void {
+export function addStringConstantGlobal(ctx: CodegenContext, value: string): void {
   if (ctx.stringGlobalMap.has(value)) return; // already registered
 
   const globalIdx = ctx.numImportGlobals; // next global import index
