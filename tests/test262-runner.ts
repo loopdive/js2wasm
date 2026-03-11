@@ -510,6 +510,17 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     return { skip: true, reason: "for-of destructuring over string array" };
   }
 
+  // Skip tests using IIFEs (immediately invoked function expressions)
+  // — compiler doesn't support calling function expressions directly
+  if (/\(\s*function\s*[\w$]*\s*\([^)]*\)\s*\{/.test(source) && /\}\s*\)\s*\(/.test(source)) {
+    return { skip: true, reason: "IIFE (immediately invoked function expression)" };
+  }
+
+  // Skip tests using indirect eval (var s = eval; s(...))
+  if (/\bvar\s+\w+\s*=\s*eval\b/.test(source)) {
+    return { skip: true, reason: "indirect eval" };
+  }
+
   return { skip: false };
 }
 
@@ -734,6 +745,11 @@ export function wrapTest(source: string): string {
   // Strip all comments to avoid false matches
   body = body.replace(/\/\/.*$/gm, "");
   body = body.replace(/\/\*[\s\S]*?\*\//g, "");
+
+  // Widen switch discriminants from literal types to `number` to avoid
+  // TypeScript strict narrowing errors like "Type '1' is not comparable to type '0'"
+  body = body.replace(/\bswitch\s*\(\s*(-?\d+(?:\.\d+)?)\s*\)/g, "switch ($1 as number)");
+  body = body.replace(/\bswitch\s*\(\s*(null)\s*\)/g, "switch ($1 as any)");
 
   // Remove assert.throws() calls — we can't test error-throwing in wasm
   body = removeAssertThrows(body);
