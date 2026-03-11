@@ -6173,7 +6173,7 @@ function collectUsedExternImports(
       const objType = ctx.checker.getTypeAtLocation(node.expression);
       const sym = objType.getSymbol();
       // Skip Array and tuple types — those use Wasm GC struct/array ops, not host import
-      if (sym?.name !== "Array" && !isTupleType(objType)) {
+      if (sym?.name !== "Array" && sym?.name !== "__type" && sym?.name !== "__object" && !isTupleType(objType)) {
         const wasmType = mapTsTypeToWasm(objType, ctx.checker);
         if (wasmType.kind === "externref") {
           register(
