@@ -67,7 +67,19 @@ export function compileExpression(
     pushDefaultValue(fctx, fallbackType);
     return fallbackType;
   }
-  if (result === VOID_RESULT) return null; // void — no value on stack
+  if (result === VOID_RESULT) {
+    // void expression but caller expects a value — push a typed default
+    // (JS coerces undefined/void to NaN for numbers, 0 for i32, etc.)
+    if (expectedType) {
+      if (expectedType.kind === "f64") {
+        fctx.body.push({ op: "f64.const", value: NaN });
+      } else {
+        pushDefaultValue(fctx, expectedType);
+      }
+      return expectedType;
+    }
+    return null; // void — no value on stack
+  }
   if (result !== null) {
     // Coerce to expected type if there's a mismatch
     if (expectedType && result.kind !== expectedType.kind) {
@@ -5249,22 +5261,34 @@ function compileConditionalExpression(
   expr: ts.ConditionalExpression,
 ): ValType | null {
   const condType = compileExpression(ctx, fctx, expr.condition);
-  if (!condType) { ctx.errors.push({ message: "Failed to compile conditional expression condition", line: getLine(expr), column: getCol(expr) }); return null; }
-  ensureI32Condition(fctx, condType, ctx);
+  if (!condType) {
+    // void condition — JS treats undefined as falsy, so push i32.const 0
+    fctx.body.push({ op: "i32.const", value: 0 });
+  } else {
+    ensureI32Condition(fctx, condType, ctx);
+  }
 
   const savedBody = fctx.body;
   fctx.body = [];
   const thenResultType = compileExpression(ctx, fctx, expr.whenTrue);
+  // If the then-branch is void (no value on stack), push a default value
+  // so the ternary has a consistent result. JS treats void as undefined → NaN for numbers.
+  if (!thenResultType) {
+    fctx.body.push({ op: "f64.const", value: NaN });
+  }
   let thenInstrs = fctx.body;
 
   fctx.body = [];
   const elseResultType = compileExpression(ctx, fctx, expr.whenFalse);
+  if (!elseResultType) {
+    fctx.body.push({ op: "f64.const", value: NaN });
+  }
   let elseInstrs = fctx.body;
 
   fctx.body = savedBody;
 
-  const thenType: ValType = thenResultType ?? { kind: "i32" };
-  const elseType: ValType = elseResultType ?? { kind: "i32" };
+  const thenType: ValType = thenResultType ?? { kind: "f64" };
+  const elseType: ValType = elseResultType ?? { kind: "f64" };
 
   // Determine the common result type for both branches
   let resultValType: ValType = thenType;
