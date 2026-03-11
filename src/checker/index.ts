@@ -76,6 +76,7 @@ export function analyzeSource(
     module: ts.ModuleKind.ES2022,
     strict: !isJs,
     noImplicitAny: false,
+    noImplicitThis: false,
     noEmit: true,
   };
 
