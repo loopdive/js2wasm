@@ -11,7 +11,7 @@ _Details: [sprint-1.md](sprint-1.md)_
 | [139](issues/139.md) | Bug: valueOf/toString coercion on arithmetic operators | Open | — |
 | [140](issues/140.md) | Bug: object computed property names runtime | Open | — |
 | [141](issues/141.md) | Bug: tagged template literal runtime failures | Open | — |
-| [142](issues/142.md) | Bug: assignment destructuring failures | Open | — |
+| [142](issues/142.md) | Bug: assignment destructuring failures | Review | — |
 | [143](issues/143.md) | Bug: for-loop edge cases | Open | — |
 | [144](issues/144.md) | Bug: new expression with class expressions | Open | — |
 | [145](issues/145.md) | allowJs type flexibility: boolean/string/void as number | Open | — |
