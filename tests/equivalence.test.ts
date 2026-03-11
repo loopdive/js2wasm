@@ -1600,3 +1600,103 @@ describe("IIFE and call expression edge cases", () => {
     );
   });
 });
+
+describe("computed property name expressions (#212)", () => {
+  it("additive expression as computed key", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let o = { [1 + 1]: 42 };
+        return o[1 + 1];
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("multiplicative expression as computed key", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let o = { [3 * 4]: 99 };
+        return o[3 * 4];
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("subtraction expression as computed key", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let o = { [5 - 3]: 77 };
+        return o[5 - 3];
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("exponentiation expression as computed key", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let o = { [2 ** 3]: 55 };
+        return o[2 ** 3];
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("ternary expression as computed key", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let o = { [true ? 1 : 2]: 33 };
+        return o[true ? 1 : 2];
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("division expression as computed key", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let o = { [10 / 2]: 88 };
+        return o[10 / 2];
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+});
+
+describe("class edge cases (#207)", () => {
+  it("typeof class expression is function", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        const A = class {};
+        return typeof A === "function" ? 1 : 0;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("typeof class declaration is function", async () => {
+    await assertEquivalent(
+      `
+      class MyClass {}
+      export function test(): number {
+        return typeof MyClass === "function" ? 1 : 0;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+});
