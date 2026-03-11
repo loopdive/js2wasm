@@ -208,4 +208,5 @@ _Details: [sprint-1.md](sprint-1.md)_
 | [135](issues/135.md)      | Ternary returning non-boolean values                    | type reconciliation across branches     |
 | [136](issues/136.md)      | Loose equality (== / !=)                                | mixed-type coercion dispatch            |
 | [137](issues/137.md)      | Object literal getter/setter                            | 3 in equivalence.test.ts                |
+| [210](issues/210.md)      | for-of destructuring with default values                | review                                  |
 
