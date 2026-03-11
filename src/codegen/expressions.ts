@@ -1637,13 +1637,19 @@ function compileBinaryExpression(
       // Compile only the non-null side
       const nonNullExpr = rightIsNull ? expr.left : expr.right;
       const valType = compileExpression(ctx, fctx, nonNullExpr);
-      if (valType && valType.kind === "externref") {
+      if (valType === null) {
+        // Void expression (e.g. void function call) compared to null/undefined:
+        // void returns undefined, so undefined === undefined is true
+        fctx.body.push({ op: "i32.const", value: isEqOp ? 1 : 0 });
+        return { kind: "i32" };
+      }
+      if (valType.kind === "externref") {
         fctx.body.push({ op: "ref.is_null" });
         if (isNeqOp) fctx.body.push({ op: "i32.eqz" });
         return { kind: "i32" };
       }
       // For non-externref types compared with null, always not-equal
-      if (valType) fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "drop" });
       fctx.body.push({ op: "i32.const", value: isNeqOp ? 1 : 0 });
       return { kind: "i32" };
     }
@@ -6686,6 +6692,23 @@ function compilePropertyAccess(
     const method = expr.expression.name.text;
     if (method in mathMethodArity) {
       fctx.body.push({ op: "f64.const", value: mathMethodArity[method]! });
+      return { kind: "f64" };
+    }
+  }
+
+  // Handle Function.length — return the number of formal parameters
+  if (propName === "length") {
+    const callSigs = objType.getCallSignatures?.();
+    if (callSigs && callSigs.length > 0) {
+      // Use the first call signature's parameter count (excluding rest params)
+      const sig = callSigs[0]!;
+      const paramCount = sig.parameters.filter(
+        (p: any) => {
+          const decl = p.valueDeclaration;
+          return !decl || !ts.isParameter(decl) || !decl.dotDotDotToken;
+        }
+      ).length;
+      fctx.body.push({ op: "f64.const", value: paramCount });
       return { kind: "f64" };
     }
   }

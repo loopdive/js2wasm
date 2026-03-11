@@ -1809,6 +1809,65 @@ describe("IIFE and call expression edge cases", () => {
         return x + (b ? 100 : 0);
       }
       `,
+  it("void function returns undefined (=== undefined)", async () => {
+    await assertEquivalent(
+      `
+      function voidFunc(): void {
+      }
+      export function test(): number {
+        // void function call compared to undefined should be equal
+        if (voidFunc() === undefined) return 1;
+        return 0;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("void function with bare return returns undefined", async () => {
+    await assertEquivalent(
+      `
+      let x: number = 0;
+      function voidFunc(): void {
+        x = 1;
+        return;
+      }
+      export function test(): number {
+        if (voidFunc() !== undefined) return 0;
+        if (x !== 1) return 0;
+        return 1;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("function.length property (formal parameter count)", async () => {
+    await assertEquivalent(
+      `
+      function zero(): void {}
+      function one(a: number): number { return a; }
+      function three(a: number, b: number, c: number): number { return a + b + c; }
+      export function test(): number {
+        return zero.length * 100 + one.length * 10 + three.length;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("pass-by-value semantics for primitives", async () => {
+    await assertEquivalent(
+      `
+      function modify(arg1: number): void {
+        arg1++;
+      }
+      export function test(): number {
+        let x: number = 1;
+        modify(x);
+        return x;
+      }
+      `,
       [{ fn: "test", args: [] }],
     );
   });
