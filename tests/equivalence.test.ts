@@ -3112,3 +3112,49 @@ describe("Scope and error handling (#180, #196, #197)", () => {
     );
   });
 });
+
+describe("boolean relational comparison", () => {
+  it("true > false", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        return (true > false) ? 1 : 0;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("false < true", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        return (false < true) ? 1 : 0;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("true >= true", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        return (true >= true) ? 1 : 0;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("false <= false", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        return (false <= false) ? 1 : 0;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+});
