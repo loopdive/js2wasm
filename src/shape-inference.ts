@@ -89,7 +89,7 @@ export function collectShapes(
       shape.hasNumericIndexing = true;
       if (idx > shape.maxNumericIndex) shape.maxNumericIndex = idx;
       const valCategory = inferTypeCategory(valType);
-      if (valCategory !== "unknown") {
+      if (valCategory === "number" || valCategory === "string") {
         shape.numericValueType = valCategory;
       }
     }

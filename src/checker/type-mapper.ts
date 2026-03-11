@@ -17,6 +17,12 @@ export function mapTsTypeToWasm(
   fast?: boolean,
 ): ValType {
   if (
+    type.flags & ts.TypeFlags.BigInt ||
+    type.flags & ts.TypeFlags.BigIntLiteral
+  ) {
+    return { kind: "i64" };
+  }
+  if (
     type.flags & ts.TypeFlags.Number ||
     type.flags & ts.TypeFlags.NumberLiteral
   ) {
@@ -158,6 +164,14 @@ export function isVoidType(type: ts.Type): boolean {
   return (
     (type.flags & ts.TypeFlags.Void) !== 0 ||
     (type.flags & ts.TypeFlags.Undefined) !== 0
+  );
+}
+
+/** Check if a ts.Type represents bigint */
+export function isBigIntType(type: ts.Type): boolean {
+  return (
+    (type.flags & ts.TypeFlags.BigInt) !== 0 ||
+    (type.flags & ts.TypeFlags.BigIntLiteral) !== 0
   );
 }
 

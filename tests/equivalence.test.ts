@@ -925,3 +925,68 @@ describe("Shape inference: array-like objects", () => {
     expect(exports.findMiddle()).toBe(2);
   });
 });
+
+describe("Private class members", () => {
+  it("private field access", async () => {
+    const exports = await compileToWasm(`
+      class Counter {
+        #count: number = 0;
+        increment(): void { this.#count = this.#count + 1; }
+        getCount(): number { return this.#count; }
+      }
+      export function test(): number {
+        const c = new Counter();
+        c.increment();
+        c.increment();
+        c.increment();
+        return c.getCount();
+      }
+    `);
+    expect(exports.test()).toBe(3);
+  });
+
+  it("private method call", async () => {
+    const exports = await compileToWasm(`
+      class Adder {
+        #value: number = 0;
+        #add(n: number): void { this.#value = this.#value + n; }
+        addTwice(n: number): void { this.#add(n); this.#add(n); }
+        get(): number { return this.#value; }
+      }
+      export function test(): number {
+        const a = new Adder();
+        a.addTwice(5);
+        return a.get();
+      }
+    `);
+    expect(exports.test()).toBe(10);
+  });
+});
+
+describe("Arguments object", () => {
+  it("arguments.length returns parameter count", async () => {
+    const exports = await compileToWasm(`
+      function countArgs(a: number, b: number, c: number): number {
+        return arguments.length;
+      }
+      export function test(): number {
+        return countArgs(10, 20, 30);
+      }
+    `);
+    expect(exports.test()).toBe(3);
+  });
+});
+
+describe("BigInt", () => {
+  it("bigint comparison", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        const a: bigint = 42n;
+        const b: bigint = 42n;
+        if (a === b) return 1;
+        return 0;
+      }
+    `);
+    expect(exports.test()).toBe(1);
+  });
+});

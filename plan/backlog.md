@@ -6,9 +6,6 @@
 
 | #                    | Feature                                            | Complexity | Tests blocked |
 | -------------------- | -------------------------------------------------- | ---------- | ------------- |
-| [116](issues/116.md) | Unskip implemented features in test262 runner      | M          | ~4,000        |
-| [117](issues/117.md) | String comparison in test262 harness               | M          | 553           |
-| [118](issues/118.md) | compareArray.js test262 harness shim               | S          | 113           |
 | [119](issues/119.md) | assert.throws support in test262 harness           | S          | 557           |
 | [120](issues/120.md) | undefined/void 0 comparison support                | M          | 129           |
 
@@ -16,7 +13,7 @@
 
 | #                    | Feature                                            | Complexity | Tests blocked |
 | -------------------- | -------------------------------------------------- | ---------- | ------------- |
-| [130](issues/130.md) | Usage-based shape inference + call/apply inlining  | XL         | 2,200+        |
+| [130](issues/130.md) | Shape inference Phase 4 — hashmap fallback + more methods | L   | 2,200+        |
 | [122](issues/122.md) | arguments object                                   | M          | 399           |
 | [127](issues/127.md) | Private class members (#field, #method)            | M          | ~800          |
 | [128](issues/128.md) | BigInt type                                        | M          | 154           |
@@ -161,5 +158,9 @@
 | [105](issues/done/105.md) | Test262 — Map/Set/Promise                               | 16 collection/promise categories        |
 | [106](issues/done/106.md) | Test262 — Object/Array extended                         | Array.isArray + skip filters            |
 | [107](issues/done/107.md) | Fix codegen null-dereference crashes                    | try-catch + null guards                 |
+| [116](issues/116.md)      | Unskip implemented features in test262 runner           | 26 features unskipped, +13 passing      |
+| [117](issues/117.md)      | String comparison in test262 harness                    | assert_sameValue_str                    |
+| [118](issues/118.md)      | compareArray.js test262 harness shim                    | compareArray shim                       |
+| [130 Ph1-3](issues/130.md)| Shape inference + call/apply inlining                   | 4 in equivalence.test.ts                |
 
 
