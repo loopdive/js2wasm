@@ -4468,11 +4468,306 @@ function inferArrayElementType(ctx: CodegenContext, expr: ts.NewExpression): ts.
   return inferredElemType;
 }
 
+/**
+ * Check if a node tree references the `arguments` identifier
+ * (skipping nested functions/arrows which have their own scope).
+ */
+function usesArguments(node: ts.Node): boolean {
+  if (ts.isIdentifier(node) && node.text === "arguments") return true;
+  if (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node)) {
+    return false;
+  }
+  return ts.forEachChild(node, usesArguments) ?? false;
+}
+
+/**
+ * Flatten call-site arguments, expanding spread elements on array literals
+ * into individual expressions. Returns the flat list of expressions.
+ * For spread on non-literal arrays, returns null (cannot flatten at compile time).
+ */
+function flattenCallArgs(args: readonly ts.Expression[]): ts.Expression[] | null {
+  const result: ts.Expression[] = [];
+  for (const arg of args) {
+    if (ts.isSpreadElement(arg)) {
+      if (ts.isArrayLiteralExpression(arg.expression)) {
+        // Spread on array literal: inline elements
+        for (const el of arg.expression.elements) {
+          result.push(el);
+        }
+      } else {
+        // Spread on non-literal — can't flatten at compile time
+        return null;
+      }
+    } else {
+      result.push(arg);
+    }
+  }
+  return result;
+}
+
+/**
+ * Compile `new FunctionExpression(args)` — treats the function expression
+ * as an immediately-invoked constructor. The function body is compiled
+ * as a lifted closure function and called with the provided arguments.
+ * Supports spread arguments and the `arguments` object.
+ */
+function compileNewFunctionExpression(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.NewExpression,
+  funcExpr: ts.FunctionExpression,
+): ValType | null {
+  const closureId = ctx.closureCounter++;
+  const closureName = `__new_ctor_${closureId}`;
+  const body = funcExpr.body;
+  if (!body || !ts.isBlock(body)) return null;
+
+  // 1. Flatten call-site arguments (resolve spread on array literals)
+  const rawArgs = expr.arguments ?? [];
+  const flatArgs = flattenCallArgs(rawArgs);
+  if (!flatArgs) {
+    // Can't flatten spread at compile time — unsupported
+    ctx.errors.push({
+      message: "new FunctionExpression with non-literal spread not supported",
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+
+  const needsArguments = usesArguments(body);
+
+  // 2. Determine the parameter list for the lifted function
+  //    Use the function's formal params if it has them, otherwise
+  //    create f64 params matching the flattened call-site args.
+  const formalParams: ValType[] = [];
+  if (funcExpr.parameters.length > 0) {
+    for (const p of funcExpr.parameters) {
+      const paramType = ctx.checker.getTypeAtLocation(p);
+      formalParams.push(resolveWasmType(ctx, paramType));
+    }
+  } else {
+    // No formal params — create f64 params for each call-site arg
+    for (let i = 0; i < flatArgs.length; i++) {
+      formalParams.push({ kind: "f64" });
+    }
+  }
+
+  // 3. Analyze captured variables
+  const referencedNames = new Set<string>();
+  for (const stmt of body.statements) {
+    collectReferencedIdentifiers(stmt, referencedNames);
+  }
+  const writtenInClosure = new Set<string>();
+  for (const stmt of body.statements) {
+    collectWrittenIdentifiers(stmt, writtenInClosure);
+  }
+
+  const captures: { name: string; type: ValType; localIdx: number; mutable: boolean }[] = [];
+  for (const name of referencedNames) {
+    const localIdx = fctx.localMap.get(name);
+    if (localIdx === undefined) continue;
+    if (ctx.funcMap.has(name)) continue;
+    const isOwnParam = funcExpr.parameters.some(
+      (p) => ts.isIdentifier(p.name) && p.name.text === name,
+    );
+    if (isOwnParam) continue;
+    if (name === "arguments") continue;
+    const type = localIdx < fctx.params.length
+      ? fctx.params[localIdx]!.type
+      : fctx.locals[localIdx - fctx.params.length]?.type ?? { kind: "f64" };
+    const isMutable = writtenInClosure.has(name);
+    captures.push({ name, type, localIdx, mutable: isMutable });
+  }
+
+  // 4. Build the closure struct type
+  const structFields = [
+    { name: "func", type: { kind: "funcref" as const }, mutable: false },
+    ...captures.map((c) => {
+      if (c.mutable) {
+        const refCellTypeIdx = getOrRegisterRefCellType(ctx, c.type);
+        return {
+          name: c.name,
+          type: { kind: "ref_null" as const, typeIdx: refCellTypeIdx },
+          mutable: false,
+        };
+      }
+      return { name: c.name, type: c.type, mutable: false };
+    }),
+  ];
+
+  const structTypeIdx = ctx.mod.types.length;
+  ctx.mod.types.push({
+    kind: "struct",
+    name: `${closureName}_struct`,
+    fields: structFields,
+  });
+
+  // 5. Build the lifted function
+  //    Params: (ref $closure_struct, arg0: f64, arg1: f64, ...)
+  const liftedParams: ValType[] = [
+    { kind: "ref", typeIdx: structTypeIdx },
+    ...formalParams,
+  ];
+
+  const liftedFuncTypeIdx = addFuncType(ctx, liftedParams, [], `${closureName}_type`);
+
+  // Create the lifted function context
+  const paramDefs: { name: string; type: ValType }[] = [
+    { name: "__self", type: { kind: "ref", typeIdx: structTypeIdx } },
+  ];
+  if (funcExpr.parameters.length > 0) {
+    for (let i = 0; i < funcExpr.parameters.length; i++) {
+      const p = funcExpr.parameters[i]!;
+      paramDefs.push({
+        name: ts.isIdentifier(p.name) ? p.name.text : `__param${i}`,
+        type: formalParams[i] ?? { kind: "f64" },
+      });
+    }
+  } else {
+    for (let i = 0; i < flatArgs.length; i++) {
+      paramDefs.push({ name: `__arg${i}`, type: { kind: "f64" } });
+    }
+  }
+
+  const liftedFctx: FunctionContext = {
+    name: closureName,
+    params: paramDefs,
+    locals: [],
+    localMap: new Map(),
+    returnType: null,
+    body: [],
+    blockDepth: 0,
+    breakStack: [],
+    continueStack: [],
+    labelMap: new Map(),
+  };
+
+  for (let i = 0; i < liftedFctx.params.length; i++) {
+    liftedFctx.localMap.set(liftedFctx.params[i]!.name, i);
+  }
+
+  // Initialize locals for captured variables from struct fields
+  for (let i = 0; i < captures.length; i++) {
+    const cap = captures[i]!;
+    if (cap.mutable) {
+      const refCellTypeIdx = getOrRegisterRefCellType(ctx, cap.type);
+      const refCellType: ValType = { kind: "ref_null", typeIdx: refCellTypeIdx };
+      const localIdx = allocLocal(liftedFctx, cap.name, refCellType);
+      liftedFctx.body.push({ op: "local.get", index: 0 });
+      liftedFctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx: i + 1 });
+      liftedFctx.body.push({ op: "local.set", index: localIdx });
+      if (!liftedFctx.boxedCaptures) liftedFctx.boxedCaptures = new Map();
+      liftedFctx.boxedCaptures.set(cap.name, { refCellTypeIdx, valType: cap.type });
+    } else {
+      const localIdx = allocLocal(liftedFctx, cap.name, cap.type);
+      liftedFctx.body.push({ op: "local.get", index: 0 });
+      liftedFctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx: i + 1 });
+      liftedFctx.body.push({ op: "local.set", index: localIdx });
+    }
+  }
+
+  // Set up `arguments` if the body references it
+  if (needsArguments) {
+    const numArgs = formalParams.length;
+    const elemType: ValType = { kind: "f64" };
+    const vti = getOrRegisterVecType(ctx, "f64", elemType);
+    const ati = getArrTypeIdxFromVec(ctx, vti);
+    const vecRef: ValType = { kind: "ref", typeIdx: vti };
+    const argsLocal = allocLocal(liftedFctx, "arguments", vecRef);
+    const arrTmp = allocLocal(liftedFctx, "__args_arr_tmp", { kind: "ref", typeIdx: ati });
+
+    // Push each param coerced to f64
+    for (let i = 0; i < numArgs; i++) {
+      liftedFctx.body.push({ op: "local.get", index: i + 1 }); // skip __self
+      const pt = formalParams[i]!;
+      if (pt.kind === "i32") {
+        liftedFctx.body.push({ op: "f64.convert_i32_s" });
+      } else if (pt.kind === "externref" || pt.kind === "ref" || pt.kind === "ref_null") {
+        liftedFctx.body.push({ op: "drop" });
+        liftedFctx.body.push({ op: "f64.const", value: 0 });
+      }
+    }
+    liftedFctx.body.push({ op: "array.new_fixed", typeIdx: ati, length: numArgs });
+    liftedFctx.body.push({ op: "local.set", index: arrTmp });
+    liftedFctx.body.push({ op: "i32.const", value: numArgs });
+    liftedFctx.body.push({ op: "local.get", index: arrTmp });
+    liftedFctx.body.push({ op: "struct.new", typeIdx: vti });
+    liftedFctx.body.push({ op: "local.set", index: argsLocal });
+  }
+
+  // 6. Compile the function body
+  const savedFunc = ctx.currentFunc;
+  ctx.currentFunc = liftedFctx;
+  for (const stmt of body.statements) {
+    compileStatement(ctx, liftedFctx, stmt);
+  }
+  ctx.currentFunc = savedFunc;
+
+  // 7. Register the lifted function
+  const liftedFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+  ctx.mod.functions.push({
+    name: closureName,
+    typeIdx: liftedFuncTypeIdx,
+    locals: liftedFctx.locals,
+    body: liftedFctx.body,
+    exported: false,
+  });
+  ctx.funcMap.set(closureName, liftedFuncIdx);
+
+  // 8. At the call site: build closure struct, push args, call
+  fctx.body.push({ op: "ref.func", funcIdx: liftedFuncIdx });
+  for (const cap of captures) {
+    if (cap.mutable) {
+      if (fctx.boxedCaptures?.has(cap.name)) {
+        fctx.body.push({ op: "local.get", index: cap.localIdx });
+      } else {
+        const refCellTypeIdx = getOrRegisterRefCellType(ctx, cap.type);
+        fctx.body.push({ op: "local.get", index: cap.localIdx });
+        fctx.body.push({ op: "struct.new", typeIdx: refCellTypeIdx });
+        const boxedLocalIdx = allocLocal(fctx, `__boxed_${cap.name}`, { kind: "ref_null", typeIdx: refCellTypeIdx });
+        fctx.body.push({ op: "local.tee", index: boxedLocalIdx });
+        fctx.localMap.set(cap.name, boxedLocalIdx);
+        if (!fctx.boxedCaptures) fctx.boxedCaptures = new Map();
+        fctx.boxedCaptures.set(cap.name, { refCellTypeIdx, valType: cap.type });
+      }
+    } else {
+      fctx.body.push({ op: "local.get", index: cap.localIdx });
+    }
+  }
+  fctx.body.push({ op: "struct.new", typeIdx: structTypeIdx });
+
+  // Store closure struct in local for __self arg
+  const closureLocal = allocLocal(fctx, `__ctor_closure_${closureId}`, { kind: "ref", typeIdx: structTypeIdx });
+  fctx.body.push({ op: "local.set", index: closureLocal });
+
+  // Push __self argument
+  fctx.body.push({ op: "local.get", index: closureLocal });
+
+  // Push call-site arguments (flattened, spread already resolved)
+  for (let i = 0; i < flatArgs.length; i++) {
+    compileExpression(ctx, fctx, flatArgs[i]!, formalParams[i]);
+  }
+
+  // Call the lifted function
+  fctx.body.push({ op: "call", funcIdx: liftedFuncIdx });
+
+  // new expression returns the constructed object — produce externref null
+  // since we don't construct actual objects, and callers typically discard the result
+  fctx.body.push({ op: "ref.null.extern" });
+  return { kind: "externref" };
+}
+
 function compileNewExpression(
   ctx: CodegenContext,
   fctx: FunctionContext,
   expr: ts.NewExpression,
 ): ValType | null {
+  // Handle `new function() { ... }(args)` — constructor with function expression
+  if (ts.isFunctionExpression(expr.expression)) {
+    return compileNewFunctionExpression(ctx, fctx, expr, expr.expression);
+  }
+
   const type = ctx.checker.getTypeAtLocation(expr);
   const symbol = type.getSymbol();
   let className = symbol?.name;
