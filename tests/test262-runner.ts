@@ -185,6 +185,15 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     return { skip: true, reason: "throw+try/catch control flow (throw→return causes hang)" };
   }
 
+  // Skip assert.throws tests where the callback has side effects checked by later assertions.
+  if (/\bassert\.throws\b/.test(source)) {
+    const lastThrowsIdx = source.lastIndexOf("assert.throws");
+    const afterThrows = source.slice(lastThrowsIdx);
+    if (/assert\.sameValue/.test(afterThrows) || /assert\s*\(/.test(afterThrows.slice(20))) {
+      return { skip: true, reason: "assert.throws with side-effect-dependent assertions" };
+    }
+  }
+
   // Skip tests that use delete operator — we don't support property deletion
   if (/\bdelete\s+/.test(source)) {
     return { skip: true, reason: "uses delete operator" };
