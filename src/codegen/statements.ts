@@ -11,12 +11,15 @@ import {
   addUnionImports,
   allocLocal,
   attachSourcePos,
+  collectClassDeclaration,
+  compileClassBodies,
   ensureExnTag,
   ensureI32Condition,
   getArrTypeIdxFromVec,
   getOrRegisterVecType,
   getSourcePos,
   localGlobalIdx,
+  reportError,
   resolveWasmType,
 } from "./index.js";
 
@@ -248,6 +251,12 @@ function compileStatementInner(
 
   if (ts.isFunctionDeclaration(stmt)) {
     compileNestedFunctionDeclaration(ctx, fctx, stmt);
+    return;
+  }
+
+  // ClassDeclaration in statement position (e.g., inside for loops, if blocks)
+  if (ts.isClassDeclaration(stmt) && stmt.name) {
+    compileNestedClassDeclaration(ctx, stmt);
     return;
   }
 
@@ -1636,6 +1645,38 @@ function compileTryStatement(
 /** Compile a function declaration nested inside another function.
  *  Lifts the function to module level. If it captures outer-scope variables,
  *  uses a closure struct (like arrow closures). Otherwise uses a direct call. */
+/**
+ * Handle a ClassDeclaration in statement position (inside for loops, if blocks, etc.).
+ * Collects the class struct/methods and compiles their bodies immediately.
+ */
+function compileNestedClassDeclaration(
+  ctx: CodegenContext,
+  decl: ts.ClassDeclaration,
+): void {
+  if (!decl.name) return;
+  const className = decl.name.text;
+
+  // Skip if already collected (e.g., hoisted or duplicate)
+  if (ctx.structMap.has(className)) return;
+
+  try {
+    // Collect struct type, constructor, and method stubs
+    collectClassDeclaration(ctx, decl);
+
+    // Build funcByName map for compileClassBodies
+    const funcByName = new Map<string, number>();
+    for (let i = 0; i < ctx.mod.functions.length; i++) {
+      funcByName.set(ctx.mod.functions[i]!.name, i);
+    }
+
+    // Compile constructor and method bodies
+    compileClassBodies(ctx, decl, funcByName);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    reportError(ctx, decl, `Internal error compiling nested class '${className}': ${msg}`);
+  }
+}
+
 function compileNestedFunctionDeclaration(
   ctx: CodegenContext,
   fctx: FunctionContext,
