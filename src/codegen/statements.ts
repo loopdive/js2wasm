@@ -1459,19 +1459,64 @@ function compileLabeledStatement(
   stmt: ts.LabeledStatement,
 ): void {
   const labelName = stmt.label.text;
+  const innerStmt = stmt.statement;
 
-  // Record the label with the current break/continue stack indices.
-  // The inner loop statement will push its own entries, so the label
-  // points to the index that will be pushed by the labeled loop.
-  const breakIdx = fctx.breakStack.length;
-  const continueIdx = fctx.continueStack.length;
-  fctx.labelMap.set(labelName, { breakIdx, continueIdx });
+  // If the inner statement is a loop, we just record the label and let the
+  // loop push its own break/continue entries. But if the inner statement is
+  // a block (e.g. `label: { ... break label; ... }`), we need to wrap it in
+  // a Wasm block so that `break label` can exit the entire labeled block.
+  const isLoop = ts.isWhileStatement(innerStmt) || ts.isDoStatement(innerStmt) ||
+                 ts.isForStatement(innerStmt) || ts.isForInStatement(innerStmt) ||
+                 ts.isForOfStatement(innerStmt);
 
-  // Compile the inner statement (typically a loop)
-  compileStatement(ctx, fctx, stmt.statement);
+  if (isLoop) {
+    // Record the label with the current break/continue stack indices.
+    // The inner loop statement will push its own entries, so the label
+    // points to the index that will be pushed by the labeled loop.
+    const breakIdx = fctx.breakStack.length;
+    const continueIdx = fctx.continueStack.length;
+    fctx.labelMap.set(labelName, { breakIdx, continueIdx });
 
-  // Remove the label after compilation
-  fctx.labelMap.delete(labelName);
+    compileStatement(ctx, fctx, innerStmt);
+
+    fctx.labelMap.delete(labelName);
+  } else {
+    // Non-loop labeled statement: wrap in a Wasm block for break support.
+    // Structure:
+    //   block $label {
+    //     body
+    //   }
+    const savedBody = fctx.body;
+    fctx.body = [];
+
+    // Adjust existing break/continue depths: block adds 1 nesting level
+    for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!++;
+    for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!++;
+
+    // Push break entry for this labeled block: br 0 exits the block
+    const breakIdx = fctx.breakStack.length;
+    const continueIdx = fctx.continueStack.length;
+    fctx.breakStack.push(0);
+    fctx.labelMap.set(labelName, { breakIdx, continueIdx });
+
+    compileStatement(ctx, fctx, innerStmt);
+
+    const bodyInstrs = fctx.body;
+
+    fctx.breakStack.pop();
+    fctx.labelMap.delete(labelName);
+
+    // Restore existing break/continue depths
+    for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!--;
+    for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!--;
+
+    fctx.body = savedBody;
+    fctx.body.push({
+      op: "block",
+      blockType: { kind: "empty" },
+      body: bodyInstrs,
+    });
+  }
 }
 
 function compileBreakStatement(

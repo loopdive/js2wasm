@@ -1599,4 +1599,340 @@ describe("IIFE and call expression edge cases", () => {
       [{ fn: "test", args: [] }],
     );
   });
+
+  // Issue #209: for-loop with continue and string concatenation of numbers
+  it("for-loop continue with string concat", async () => {
+    await assertEquivalent(
+      `
+      export function test(): string {
+        var __str = "";
+        for (var index = 0; index < 10; index += 1) {
+          if (index < 5) continue;
+          __str += index;
+        }
+        return __str;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("for-loop continue with string concat (all iterations)", async () => {
+    await assertEquivalent(
+      `
+      export function test(): string {
+        var s = "";
+        for (var i = 0; i < 5; i++) {
+          if (i === 2) continue;
+          s += i;
+        }
+        return s;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #209: for-loop with string literal as condition
+  it("for-loop with string literal condition", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var accessed: number = 0;
+        for (var i = 0; "hello"; ) {
+          accessed = 1;
+          break;
+        }
+        return accessed;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #209: for-loop with object as condition
+  it("for-loop with object condition", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var accessed: number = 0;
+        var obj = { value: false };
+        for (var i = 0; obj; ) {
+          accessed = 1;
+          break;
+        }
+        return accessed;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #209: for-loop with number literal condition (non-boolean)
+  it("for-loop with numeric literal condition", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var accessed: number = 0;
+        for (var i = 0; 2; ) {
+          accessed = 1;
+          break;
+        }
+        return accessed;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #217: while/do-while with string truthiness in loop condition
+  it("while loop with string condition", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var s: string = "hello";
+        var count: number = 0;
+        while (s) {
+          count++;
+          if (count >= 3) s = "";
+        }
+        return count;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("do-while loop with string concatenation condition", async () => {
+    await assertEquivalent(
+      `
+      export function test(): string {
+        var result: string = "";
+        var i: number = 0;
+        do {
+          result += i;
+          i++;
+        } while (i < 3);
+        return result;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #217: while loop with string variable condition
+  it("while loop with string variable truthiness", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var s: string = "abc";
+        var n: number = 0;
+        while (s) {
+          n++;
+          s = "";
+        }
+        return n;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #217: do-while with string condition
+  it("do-while with string truthiness condition", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var s: string = "x";
+        var n: number = 0;
+        do {
+          n++;
+          if (n >= 2) s = "";
+        } while (s);
+        return n;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #209: for-loop with string condition (test262 pattern - module level)
+  it("for-loop with string condition - module level vars", async () => {
+    const exports = await compileToWasm(`
+let __fail: number = 0;
+
+function assert_true(value: number): void {
+  if (!value) {
+    __fail = 1;
+  }
+}
+
+export function test(): number {
+  var accessed: number = 0;
+  for (var i = 0; "undefined"; ) {
+    accessed = 1;
+    break;
+  }
+  assert_true(accessed);
+  if (__fail) { return 0; }
+  return 1;
+}
+    `);
+    expect(exports.test!()).toBe(1);
+  });
+
+  // Issue #209: for-loop with object condition (test262 pattern)
+  it("for-loop with object condition - assert pattern", async () => {
+    const exports = await compileToWasm(`
+let __fail: number = 0;
+
+function assert_true(value: number): void {
+  if (!value) {
+    __fail = 1;
+  }
+}
+
+export function test(): number {
+  var accessed = false;
+  var obj = { value: false };
+  for (var i = 0; obj; ) {
+    accessed = true;
+    break;
+  }
+  if (!accessed) { __fail = 1; }
+  if (__fail) { return 0; }
+  return 1;
+}
+    `);
+    expect(exports.test!()).toBe(1);
+  });
+
+  // Issue #209: for-loop with assert_true(boolean, string) - extra arg pattern
+  it("for-loop assert_true with extra string arg", async () => {
+    const exports = await compileToWasm(`
+let __fail: number = 0;
+
+function assert_true(value: number): void {
+  if (!value) {
+    __fail = 1;
+  }
+}
+
+export function test(): number {
+  var accessed = false;
+  var obj = { value: false };
+  for (var i = 0; obj; ) {
+    accessed = true;
+    break;
+  }
+  assert_true(accessed, 'accessed !== true');
+  if (__fail) { return 0; }
+  return 1;
+}
+    `);
+    expect(exports.test!()).toBe(1);
+  });
+
+  // Exact test262 wrapper pattern for 12.6.3_2-3-a-ii-19 (string condition "undefined")
+  it("test262 for-loop string condition pattern", async () => {
+    const exports = await compileToWasm(`
+let __fail: number = 0;
+
+function isSameValue(a: number, b: number): number {
+  if (a === b) { return 1; }
+  if (a !== a && b !== b) { return 1; }
+  return 0;
+}
+
+function assert_sameValue(actual: number, expected: number): void {
+  if (!isSameValue(actual, expected)) {
+    __fail = 1;
+  }
+}
+
+function assert_notSameValue(actual: number, expected: number): void {
+  if (isSameValue(actual, expected)) {
+    __fail = 1;
+  }
+}
+
+function assert_true(value: number): void {
+  if (!value) {
+    __fail = 1;
+  }
+}
+
+export function test(): number {
+  var accessed = false;
+  for (var i = 0; "undefined"; ) {
+    accessed = true;
+    break;
+  }
+  assert_true(accessed, 'accessed !== true');
+  if (__fail) { return 0; }
+  return 1;
+}
+    `);
+    expect(exports.test!()).toBe(1);
+  });
+
+  // Issue #209: untyped var string concat (test262 pattern: var __str; __str=""; __str+=index)
+  it("untyped var string concat with continue", async () => {
+    await assertEquivalent(
+      `
+      export function test(): string {
+        var __str: any, index: any;
+        __str = "";
+        for (index = 0; index < 10; index += 1) {
+          if (index < 5) continue;
+          __str += index;
+        }
+        return __str;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Labeled block break (non-loop labeled statement)
+  it("labeled block break exits block", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var i: number = 0;
+        outer: {
+          while (true) {
+            i++;
+            if (i === 10) {
+              break outer;
+            }
+          }
+          i = 999; // should not be reached
+        }
+        return i;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Labeled block break with do-while
+  it("labeled block break from do-while", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var i: number = 0;
+        outer: {
+          do {
+            i++;
+            if (i === 5) break outer;
+          } while (true);
+          i = 999;
+        }
+        return i;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
 });
