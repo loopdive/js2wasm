@@ -372,6 +372,7 @@ export function compileSource(
     2630, // "Cannot assign to 'X' because it is a function"
     2447, // "The '|'/'&' operator is not allowed for boolean types"
     2300, // "Duplicate identifier 'X'"
+    2408, // "Setters cannot return a value" — valid in JS, codegen handles it
   ]);
 
   // Collect TS diagnostics as errors (or warnings for handled cases)
