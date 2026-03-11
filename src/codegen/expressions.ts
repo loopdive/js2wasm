@@ -5,6 +5,7 @@ import {
   mapTsTypeToWasm,
   isNumberType,
   isBooleanType,
+  isBigIntType,
   isStringType,
   isVoidType,
   isExternalDeclaredClass,
@@ -187,6 +188,28 @@ function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: ValType, t
     }
   }
 
+  // i64 → f64 (Number(bigint))
+  if (from.kind === "i64" && to.kind === "f64") {
+    fctx.body.push({ op: "f64.convert_i64_s" });
+    return;
+  }
+  // f64 → i64 (BigInt(number))
+  if (from.kind === "f64" && to.kind === "i64") {
+    fctx.body.push({ op: "i64.trunc_f64_s" });
+    return;
+  }
+  // i32 → i64
+  if (from.kind === "i32" && to.kind === "i64") {
+    fctx.body.push({ op: "i64.extend_i32_s" });
+    return;
+  }
+  // i64 → i32
+  if (from.kind === "i64" && to.kind === "i32") {
+    // Truncate: check if non-zero (truthiness for conditions)
+    fctx.body.push({ op: "i64.const", value: 0n });
+    fctx.body.push({ op: "i64.ne" });
+    return;
+  }
   // i32 → f64
   if (from.kind === "i32" && to.kind === "f64") {
     fctx.body.push({ op: "f64.convert_i32_s" });
@@ -242,8 +265,20 @@ function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: ValType, t
       return;
     }
   }
-  // ref/ref_null → externref (convert GC ref to externref via extern.convert_any)
+  // ref/ref_null → externref: call toString() method if available, else extern.convert_any
   if ((from.kind === "ref" || from.kind === "ref_null") && to.kind === "externref") {
+    const typeIdx = (from as { typeIdx: number }).typeIdx;
+    for (const [name, idx] of ctx.structMap) {
+      if (idx === typeIdx) {
+        const toStringFuncIdx = ctx.funcMap.get(`${name}_toString`);
+        if (toStringFuncIdx !== undefined) {
+          // Call ClassName_toString(self) — self is already on stack
+          fctx.body.push({ op: "call", funcIdx: toStringFuncIdx });
+          return;
+        }
+        break;
+      }
+    }
     fctx.body.push({ op: "extern.convert_any" });
     return;
   }
@@ -262,6 +297,18 @@ function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: ValType, t
         if (!fields) { break; }
         const fieldIdx = fields.findIndex(f => f.name === "valueOf");
         if (fieldIdx < 0) {
+          // No valueOf field — check for a class method valueOf (ClassName_valueOf)
+          const valueOfFuncIdx = ctx.funcMap.get(`${name}_valueOf`);
+          if (valueOfFuncIdx !== undefined) {
+            // Call ClassName_valueOf(self) — self is already on stack
+            fctx.body.push({ op: "call", funcIdx: valueOfFuncIdx });
+            // Check return type — if i32, convert to f64
+            const funcType = ctx.mod.types[ctx.mod.functions[valueOfFuncIdx - ctx.numImportFuncs]?.typeIdx ?? -1];
+            if (funcType?.kind === "func" && funcType.results?.[0]?.kind === "i32") {
+              fctx.body.push({ op: "f64.convert_i32_s" });
+            }
+            return;
+          }
           // No valueOf — ToNumber({}) = NaN per spec
           fctx.body.push({ op: "drop" });
           fctx.body.push({ op: "f64.const", value: NaN });
@@ -330,6 +377,15 @@ function compileExpressionInner(
     }
     fctx.body.push({ op: "f64.const", value });
     return { kind: "f64" };
+  }
+
+  if (ts.isBigIntLiteral(expr)) {
+    // BigInt literal: 42n → i64.const 42
+    // expr.text includes trailing 'n', strip it
+    const text = expr.text.replace(/_/g, "").replace(/n$/i, "");
+    const value = BigInt(text);
+    fctx.body.push({ op: "i64.const", value });
+    return { kind: "i64" };
   }
 
   if (ts.isStringLiteral(expr) || ts.isNoSubstitutionTemplateLiteral(expr)) {
@@ -1593,6 +1649,15 @@ function compileBinaryExpression(
     return compileStringBinaryOp(ctx, fctx, expr, op);
   }
 
+  // BigInt operations — both operands must be bigint (mixed bigint/number is a TS error)
+  if (isBigIntType(leftTsType) || isBigIntType(rightTsType)) {
+    const i64Hint: ValType = { kind: "i64" };
+    const leftType = compileExpression(ctx, fctx, expr.left, i64Hint);
+    const rightType = compileExpression(ctx, fctx, expr.right, i64Hint);
+    if (!leftType || !rightType) return null;
+    return compileI64BinaryOp(ctx, fctx, op, expr);
+  }
+
   // Determine expected operand type from operator and context
   const isNumericOp =
     op === ts.SyntaxKind.PlusToken ||
@@ -1637,6 +1702,11 @@ function compileBinaryExpression(
   // Fast mode: i32 numeric operations
   if (ctx.fast && isNumberType(leftTsType) && leftType.kind === "i32" && rightType.kind === "i32") {
     return compileI32BinaryOp(ctx, fctx, op, expr);
+  }
+
+  // i64 operations (bigint detected by compiled type, e.g. from variables)
+  if (leftType.kind === "i64" && rightType.kind === "i64") {
+    return compileI64BinaryOp(ctx, fctx, op, expr);
   }
 
   if (isNumberType(leftTsType) || leftType.kind === "f64") {
@@ -1887,6 +1957,86 @@ function compileI32BinaryOp(
     default:
       // Fall back to f64 path for division, power, etc.
       return compileNumericBinaryOp(ctx, fctx, op, expr);
+  }
+}
+
+/** BigInt: i64 arithmetic/comparison on two i64 operands */
+function compileI64BinaryOp(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  op: ts.SyntaxKind,
+  expr: ts.BinaryExpression,
+): ValType {
+  switch (op) {
+    case ts.SyntaxKind.PlusToken:
+      fctx.body.push({ op: "i64.add" });
+      return { kind: "i64" };
+    case ts.SyntaxKind.MinusToken:
+      fctx.body.push({ op: "i64.sub" });
+      return { kind: "i64" };
+    case ts.SyntaxKind.AsteriskToken:
+      fctx.body.push({ op: "i64.mul" });
+      return { kind: "i64" };
+    case ts.SyntaxKind.SlashToken:
+      fctx.body.push({ op: "i64.div_s" });
+      return { kind: "i64" };
+    case ts.SyntaxKind.PercentToken:
+      fctx.body.push({ op: "i64.rem_s" });
+      return { kind: "i64" };
+    case ts.SyntaxKind.AsteriskAsteriskToken: {
+      // BigInt ** not supported in wasm — report error
+      ctx.errors.push({
+        message: "BigInt exponentiation (**) is not supported in Wasm",
+        line: getLine(expr),
+        column: getCol(expr),
+      });
+      return { kind: "i64" };
+    }
+    case ts.SyntaxKind.EqualsEqualsEqualsToken:
+    case ts.SyntaxKind.EqualsEqualsToken:
+      fctx.body.push({ op: "i64.eq" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.ExclamationEqualsEqualsToken:
+    case ts.SyntaxKind.ExclamationEqualsToken:
+      fctx.body.push({ op: "i64.ne" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.LessThanToken:
+      fctx.body.push({ op: "i64.lt_s" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.LessThanEqualsToken:
+      fctx.body.push({ op: "i64.le_s" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.GreaterThanToken:
+      fctx.body.push({ op: "i64.gt_s" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.GreaterThanEqualsToken:
+      fctx.body.push({ op: "i64.ge_s" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.AmpersandToken:
+      fctx.body.push({ op: "i64.and" });
+      return { kind: "i64" };
+    case ts.SyntaxKind.BarToken:
+      fctx.body.push({ op: "i64.or" });
+      return { kind: "i64" };
+    case ts.SyntaxKind.CaretToken:
+      fctx.body.push({ op: "i64.xor" });
+      return { kind: "i64" };
+    case ts.SyntaxKind.LessThanLessThanToken:
+      fctx.body.push({ op: "i64.shl" });
+      return { kind: "i64" };
+    case ts.SyntaxKind.GreaterThanGreaterThanToken:
+      fctx.body.push({ op: "i64.shr_s" });
+      return { kind: "i64" };
+    case ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken:
+      fctx.body.push({ op: "i64.shr_u" });
+      return { kind: "i64" };
+    default:
+      ctx.errors.push({
+        message: `Unsupported BigInt binary operator: ${ts.SyntaxKind[op]}`,
+        line: getLine(expr),
+        column: getCol(expr),
+      });
+      return { kind: "i64" };
   }
 }
 
@@ -2295,7 +2445,7 @@ function compilePropertyAssignment(
   if (!typeName) return null;
 
   // Check for setter accessor on user-defined classes
-  const fieldName = target.name.text;
+  const fieldName = ts.isPrivateIdentifier(target.name) ? target.name.text.slice(1) : target.name.text;
   const accessorKey = `${typeName}_${fieldName}`;
   if (ctx.classAccessorSet.has(accessorKey)) {
     const setterName = `${typeName}_set_${fieldName}`;
@@ -3591,7 +3741,7 @@ function compileCallExpression(
       receiverClassName = ctx.classExprNameMap.get(receiverClassName) ?? receiverClassName;
     }
     if (receiverClassName && ctx.classSet.has(receiverClassName)) {
-      const methodName = propAccess.name.text;
+      const methodName = ts.isPrivateIdentifier(propAccess.name) ? propAccess.name.text.slice(1) : propAccess.name.text;
       const fullName = `${receiverClassName}_${methodName}`;
       const funcIdx = ctx.funcMap.get(fullName);
       if (funcIdx !== undefined) {
@@ -3734,6 +3884,11 @@ function compileCallExpression(
     // Number(x) — ToNumber coercion
     if (funcName === "Number" && expr.arguments.length >= 1) {
       const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
+      if (argType?.kind === "i64") {
+        // BigInt → number: f64.convert_i64_s
+        fctx.body.push({ op: "f64.convert_i64_s" });
+        return { kind: "f64" };
+      }
       if (argType?.kind === "externref") {
         // String → number: use parseFloat
         const pfIdx = ctx.funcMap.get("parseFloat");
@@ -3743,6 +3898,21 @@ function compileCallExpression(
         }
       }
       // Already numeric — no-op
+      return argType;
+    }
+
+    // BigInt(x) — ToBigInt coercion
+    if (funcName === "BigInt" && expr.arguments.length >= 1) {
+      const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
+      if (argType?.kind === "f64") {
+        fctx.body.push({ op: "i64.trunc_f64_s" });
+        return { kind: "i64" };
+      }
+      if (argType?.kind === "i32") {
+        fctx.body.push({ op: "i64.extend_i32_s" });
+        return { kind: "i64" };
+      }
+      // Already i64 — no-op
       return argType;
     }
 
@@ -4375,6 +4545,9 @@ function pushDefaultValue(fctx: FunctionContext, type: ValType): void {
       break;
     case "i32":
       fctx.body.push({ op: "i32.const", value: 0 });
+      break;
+    case "i64":
+      fctx.body.push({ op: "i64.const", value: 0n });
       break;
     case "externref":
       fctx.body.push({ op: "ref.null.extern" });
@@ -5059,7 +5232,7 @@ function compilePropertyAccess(
   }
 
   const objType = ctx.checker.getTypeAtLocation(expr.expression);
-  const propName = expr.name.text;
+  const propName = ts.isPrivateIdentifier(expr.name) ? expr.name.text.slice(1) : expr.name.text;
 
   // Check for enum member access: EnumName.Member
   if (ts.isIdentifier(expr.expression)) {
@@ -5124,7 +5297,7 @@ function compilePropertyAccess(
         return ctx.fast ? { kind: "i32" } : { kind: "f64" };
       }
     }
-    // Check if the local is actually externref (e.g. from string.split() returning a JS array)
+    // Check the actual local type (may differ from TS type, e.g. arguments vec struct)
     if (ts.isIdentifier(expr.expression)) {
       const localIdx = fctx.localMap.get(expr.expression.text);
       if (localIdx !== undefined) {
@@ -5137,6 +5310,17 @@ function compilePropertyAccess(
             fctx.body.push({ op: "local.get", index: localIdx });
             fctx.body.push({ op: "call", funcIdx });
             return { kind: "f64" };
+          }
+        }
+        // Vec struct ref local (e.g. `arguments` object) — struct.get field 0 (length)
+        if ((localType?.kind === "ref" || localType?.kind === "ref_null") && localType.typeIdx !== undefined) {
+          const vecTypeIdx = (localType as { typeIdx: number }).typeIdx;
+          const typeDef = ctx.mod.types[vecTypeIdx];
+          if (typeDef?.kind === "struct" && typeDef.fields[0]?.name === "length" && typeDef.fields[1]?.name === "data") {
+            fctx.body.push({ op: "local.get", index: localIdx });
+            fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
+            if (!ctx.fast) fctx.body.push({ op: "f64.convert_i32_s" });
+            return ctx.fast ? { kind: "i32" } : { kind: "f64" };
           }
         }
       }

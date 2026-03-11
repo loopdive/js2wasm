@@ -641,6 +641,72 @@ export function encodeInstr(instr: Instr, enc: WasmEncoder): void {
       enc.byte(OP.i64_const);
       enc.i64(instr.value);
       break;
+    case "i64.add":
+      enc.byte(OP.i64_add);
+      break;
+    case "i64.sub":
+      enc.byte(OP.i64_sub);
+      break;
+    case "i64.mul":
+      enc.byte(OP.i64_mul);
+      break;
+    case "i64.div_s":
+      enc.byte(OP.i64_div_s);
+      break;
+    case "i64.rem_s":
+      enc.byte(OP.i64_rem_s);
+      break;
+    case "i64.eq":
+      enc.byte(OP.i64_eq);
+      break;
+    case "i64.ne":
+      enc.byte(OP.i64_ne);
+      break;
+    case "i64.lt_s":
+      enc.byte(OP.i64_lt_s);
+      break;
+    case "i64.le_s":
+      enc.byte(OP.i64_le_s);
+      break;
+    case "i64.gt_s":
+      enc.byte(OP.i64_gt_s);
+      break;
+    case "i64.ge_s":
+      enc.byte(OP.i64_ge_s);
+      break;
+    case "i64.eqz":
+      enc.byte(OP.i64_eqz);
+      break;
+    case "i64.and":
+      enc.byte(OP.i64_and);
+      break;
+    case "i64.or":
+      enc.byte(OP.i64_or);
+      break;
+    case "i64.xor":
+      enc.byte(OP.i64_xor);
+      break;
+    case "i64.shl":
+      enc.byte(OP.i64_shl);
+      break;
+    case "i64.shr_s":
+      enc.byte(OP.i64_shr_s);
+      break;
+    case "i64.shr_u":
+      enc.byte(OP.i64_shr_u);
+      break;
+    case "i64.extend_i32_s":
+      enc.byte(OP.i64_extend_i32_s);
+      break;
+    case "i64.extend_i32_u":
+      enc.byte(OP.i64_extend_i32_u);
+      break;
+    case "i64.trunc_f64_s":
+      enc.byte(OP.i64_trunc_f64_s);
+      break;
+    case "f64.convert_i64_s":
+      enc.byte(OP.f64_convert_i64_s);
+      break;
     case "f64.const":
       enc.byte(OP.f64_const);
       enc.f64(instr.value);

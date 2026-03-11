@@ -6276,7 +6276,8 @@ function collectClassDeclaration(
         ts.isPropertyAccessExpression(stmt.expression.left) &&
         stmt.expression.left.expression.kind === ts.SyntaxKind.ThisKeyword
       ) {
-        const fieldName = stmt.expression.left.name.text;
+        const rawName = stmt.expression.left.name.text;
+        const fieldName = ts.isPrivateIdentifier(stmt.expression.left.name) ? rawName.slice(1) : rawName;
         // Skip if this field is already defined in parent
         if (parentFields.some((f) => f.name === fieldName)) continue;
         const fieldTsType = ctx.checker.getTypeAtLocation(stmt.expression.left);
@@ -6294,10 +6295,10 @@ function collectClassDeclaration(
     if (
       ts.isPropertyDeclaration(member) &&
       member.name &&
-      ts.isIdentifier(member.name)
+      (ts.isIdentifier(member.name) || ts.isPrivateIdentifier(member.name))
     ) {
       if (hasStaticModifier(member)) continue; // handled below
-      const fieldName = member.name.text;
+      const fieldName = ts.isPrivateIdentifier(member.name) ? member.name.text.slice(1) : member.name.text;
       // Skip if this field is already defined in parent
       if (parentFields.some((f) => f.name === fieldName)) continue;
       if (!ownFields.some((f) => f.name === fieldName)) {
@@ -6366,9 +6367,9 @@ function collectClassDeclaration(
     if (
       ts.isMethodDeclaration(member) &&
       member.name &&
-      ts.isIdentifier(member.name)
+      (ts.isIdentifier(member.name) || ts.isPrivateIdentifier(member.name))
     ) {
-      const methodName = member.name.text;
+      const methodName = ts.isPrivateIdentifier(member.name) ? member.name.text.slice(1) : member.name.text;
       ownMethodNames.add(methodName);
 
       // Abstract methods have no body — skip generating a wasm function stub
@@ -6548,14 +6549,16 @@ function collectClassDeclaration(
           ? [{ op: "f64.const", value: 0 }]
           : wasmType.kind === "i32"
             ? [{ op: "i32.const", value: 0 }]
-            : wasmType.kind === "ref_null" || wasmType.kind === "ref"
-              ? [
-                  {
-                    op: "ref.null",
-                    typeIdx: (wasmType as { typeIdx: number }).typeIdx,
-                  },
-                ]
-              : [{ op: "ref.null.extern" }];
+            : wasmType.kind === "i64"
+              ? [{ op: "i64.const", value: 0n } as unknown as Instr]
+              : wasmType.kind === "ref_null" || wasmType.kind === "ref"
+                ? [
+                    {
+                      op: "ref.null",
+                      typeIdx: (wasmType as { typeIdx: number }).typeIdx,
+                    },
+                  ]
+                : [{ op: "ref.null.extern" }];
 
       // Widen non-nullable ref to ref_null so the global can hold null initially
       const globalType: ValType =
@@ -6890,14 +6893,16 @@ function collectDeclarations(
           ? [{ op: "f64.const", value: 0 }]
           : wasmType.kind === "i32"
             ? [{ op: "i32.const", value: 0 }]
-            : wasmType.kind === "ref_null" || wasmType.kind === "ref"
-              ? [
-                  {
-                    op: "ref.null",
-                    typeIdx: (wasmType as { typeIdx: number }).typeIdx,
-                  },
-                ]
-              : [{ op: "ref.null.extern" }];
+            : wasmType.kind === "i64"
+              ? [{ op: "i64.const", value: 0n } as unknown as Instr]
+              : wasmType.kind === "ref_null" || wasmType.kind === "ref"
+                ? [
+                    {
+                      op: "ref.null",
+                      typeIdx: (wasmType as { typeIdx: number }).typeIdx,
+                    },
+                  ]
+                : [{ op: "ref.null.extern" }];
 
       // Widen non-nullable ref to ref_null so the global can hold null initially
       const globalType: ValType =
@@ -7294,6 +7299,25 @@ function compileClassBodies(
     fctx.localMap.set("this", selfLocal);
     ctx.currentFunc = fctx;
 
+    // Compile field initializers from property declarations (e.g., x: number = 42, #x: number = 42)
+    for (const member of decl.members) {
+      if (
+        ts.isPropertyDeclaration(member) &&
+        member.name &&
+        (ts.isIdentifier(member.name) || ts.isPrivateIdentifier(member.name)) &&
+        member.initializer &&
+        !hasStaticModifier(member)
+      ) {
+        const fieldName = ts.isPrivateIdentifier(member.name) ? member.name.text.slice(1) : member.name.text;
+        const fieldIdx = fields.findIndex((f) => f.name === fieldName);
+        if (fieldIdx !== -1) {
+          fctx.body.push({ op: "local.get", index: selfLocal });
+          compileExpression(ctx, fctx, member.initializer, fields[fieldIdx]!.type);
+          fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx });
+        }
+      }
+    }
+
     if (ctor?.body) {
       for (const stmt of ctor.body.statements) {
         // Handle super(args) calls: inline parent constructor field initialization
@@ -7330,9 +7354,9 @@ function compileClassBodies(
     if (
       ts.isMethodDeclaration(member) &&
       member.name &&
-      ts.isIdentifier(member.name)
+      (ts.isIdentifier(member.name) || ts.isPrivateIdentifier(member.name))
     ) {
-      const methodName = member.name.text;
+      const methodName = ts.isPrivateIdentifier(member.name) ? member.name.text.slice(1) : member.name.text;
       const fullName = `${className}_${methodName}`;
       const isStatic = ctx.staticMethodSet.has(fullName);
       const methodLocalIdx = funcByName.get(fullName);
@@ -7676,6 +7700,19 @@ function walkStmtForVars(
   }
 }
 
+/**
+ * Check if a function body references the `arguments` identifier.
+ * Only checks direct children (not nested functions/arrows which have their own `arguments`).
+ */
+function bodyUsesArguments(node: ts.Node): boolean {
+  if (ts.isIdentifier(node) && node.text === "arguments") return true;
+  // Don't recurse into nested functions/arrows — they have their own `arguments` scope
+  if (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node)) {
+    return false;
+  }
+  return ts.forEachChild(node, bodyUsesArguments) ?? false;
+}
+
 function compileFunctionBody(
   ctx: CodegenContext,
   decl: ts.FunctionDeclaration,
@@ -7813,6 +7850,49 @@ function compileFunctionBody(
         then: thenInstrs,
       });
     }
+  }
+
+  // Set up `arguments` object if the function body references it.
+  // We create a vec struct (same as Array) populated from all function parameters.
+  if (decl.body && bodyUsesArguments(decl.body)) {
+    const elemKey = ctx.fast ? "i32" : "f64";
+    const elemType: ValType = ctx.fast ? { kind: "i32" } : { kind: "f64" };
+    const vecTypeIdx = getOrRegisterVecType(ctx, elemKey, elemType);
+    const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
+    const vecRef: ValType = { kind: "ref", typeIdx: vecTypeIdx };
+
+    const argsLocal = allocLocal(fctx, "arguments", vecRef);
+    const arrTmp = allocLocal(fctx, "__args_arr_tmp", { kind: "ref", typeIdx: arrTypeIdx });
+
+    // Create backing array from parameters: push each param coerced to f64/i32
+    for (let i = 0; i < params.length; i++) {
+      const paramType = params[i]!.type;
+      fctx.body.push({ op: "local.get", index: i });
+      // Coerce parameter to the element type (f64 or i32 in fast mode)
+      if (ctx.fast) {
+        if (paramType.kind === "f64") {
+          fctx.body.push({ op: "i32.trunc_f64_s" });
+        } else if (paramType.kind === "externref" || paramType.kind === "ref" || paramType.kind === "ref_null") {
+          fctx.body.push({ op: "drop" });
+          fctx.body.push({ op: "i32.const", value: 0 });
+        }
+      } else {
+        if (paramType.kind === "i32") {
+          fctx.body.push({ op: "f64.convert_i32_s" });
+        } else if (paramType.kind === "externref" || paramType.kind === "ref" || paramType.kind === "ref_null") {
+          fctx.body.push({ op: "drop" });
+          fctx.body.push({ op: "f64.const", value: 0 });
+        }
+      }
+    }
+    // array.new_fixed creates the backing array
+    fctx.body.push({ op: "array.new_fixed", typeIdx: arrTypeIdx, length: params.length });
+    fctx.body.push({ op: "local.set", index: arrTmp });
+    // Create vec struct: { length: i32, data: ref $arr }
+    fctx.body.push({ op: "i32.const", value: params.length });
+    fctx.body.push({ op: "local.get", index: arrTmp });
+    fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
+    fctx.body.push({ op: "local.set", index: argsLocal });
   }
 
   if (isGenerator) {
@@ -8159,6 +8239,11 @@ export function ensureI32Condition(
     }
     // Fallback: non-null → true
     fctx.body.push({ op: "ref.is_null" });
+    fctx.body.push({ op: "i32.eqz" });
+  }
+  else if (condType.kind === "i64") {
+    // i64 truthiness: nonzero → true
+    fctx.body.push({ op: "i64.eqz" } as unknown as Instr);
     fctx.body.push({ op: "i32.eqz" });
   }
   // i32 is already valid as-is

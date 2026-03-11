@@ -116,6 +116,28 @@ type InstrBase =
   | { op: "global.set"; index: number }
   | { op: "i32.const"; value: number }
   | { op: "i64.const"; value: bigint }
+  | { op: "i64.add" }
+  | { op: "i64.sub" }
+  | { op: "i64.mul" }
+  | { op: "i64.div_s" }
+  | { op: "i64.rem_s" }
+  | { op: "i64.eq" }
+  | { op: "i64.ne" }
+  | { op: "i64.lt_s" }
+  | { op: "i64.le_s" }
+  | { op: "i64.gt_s" }
+  | { op: "i64.ge_s" }
+  | { op: "i64.eqz" }
+  | { op: "i64.and" }
+  | { op: "i64.or" }
+  | { op: "i64.xor" }
+  | { op: "i64.shl" }
+  | { op: "i64.shr_s" }
+  | { op: "i64.shr_u" }
+  | { op: "i64.extend_i32_s" }
+  | { op: "i64.extend_i32_u" }
+  | { op: "i64.trunc_f64_s" }
+  | { op: "f64.convert_i64_s" }
   | { op: "f64.const"; value: number }
   | { op: "f32.const"; value: number }
   | { op: "i32.add" }
