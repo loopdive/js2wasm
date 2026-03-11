@@ -38,6 +38,8 @@ _Details: [sprint-1.md](sprint-1.md)_
 | [170](issues/170.md) | Bug: class expression/declaration edge cases | Open | — |
 | [171](issues/171.md) | Bug: Boolean() edge cases | Open | — |
 | [172](issues/172.md) | Bug: Array.isArray edge case | Open | — |
+| [209](issues/209.md) | Bug: for-loop continue with any-typed string += | Review | — |
+| [217](issues/217.md) | Bug: while/do-while string conditions + labeled block break | Review | — |
 
 ## Backlog
 
