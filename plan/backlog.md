@@ -47,6 +47,7 @@ _Details: [sprint-1.md](sprint-1.md)_
 | -------------------- | -------------------------------------------------- | ---------- | ------------- |
 | [130](issues/130.md) | Shape inference Phase 4 — hashmap fallback + more methods | L   | 2,200+        |
 | [146](issues/146.md) | Unknown identifier / scope issues | M | ~269 |
+| [222](issues/222.md) | Var hoisting for destructuring, for-in/of, nested blocks | S | ~1200 |
 | [147](issues/147.md) | Function.name property | M | ~258 |
 | [149](issues/149.md) | Unsupported call expression patterns | L | ~637 |
 | [153](issues/153.md) | Iterator protocol for destructuring | M | ~67 |
