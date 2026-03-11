@@ -2619,6 +2619,58 @@ describe("Modulus with special values (#216)", () => {
         return makeBuilder().add(10).add(20).result();
       }
       `,
+  it("object destructuring var hoisting", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var obj = { x: 10, y: 20 };
+        var { x, y } = obj;
+        return x + y;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("array destructuring var hoisting", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var arr: number[] = [3, 7];
+        var [a, b] = arr;
+        return a + b;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("var in nested block is accessible after block", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var result = 0;
+        if (true) {
+          var x = 42;
+          result = x;
+        }
+        return result;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("var in for-loop body is hoisted", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        for (var i = 0; i < 3; i++) {
+          var x = i * 10;
+        }
+        return x;
+      }
+      `,
       [{ fn: "test", args: [] }],
     );
   });
