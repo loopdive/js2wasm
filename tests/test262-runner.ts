@@ -778,20 +778,23 @@ export function wrapTest(source: string): string {
   // Only route when the non-string argument is a simple expression (identifier,
   // member access, array index) — NOT a function call like String(expr).
   // assert_sameValue(simpleExpr, "literal") → assert_sameValue_str(simpleExpr, "literal")
+  // simpleExpr includes identifiers, member access, array/object bracket access
+  // e.g. obj['prop'], arr[0], foo.bar, simple identifiers
+  const simpleExprPat = "[\\w.]+(?:\\['[^']*'\\]|\\[\"[^\"]*\"\\]|\\[\\d+\\])*";
   body = body.replace(
-    /assert_sameValue\s*\(\s*([\w.\[\]]+)\s*,\s*("[^"]*")\s*\)/g,
+    new RegExp(`assert_sameValue\\s*\\(\\s*(${simpleExprPat})\\s*,\\s*("[^"]*")\\s*\\)`, 'g'),
     'assert_sameValue_str($1, $2)'
   );
   body = body.replace(
-    /assert_sameValue\s*\(\s*("[^"]*")\s*,\s*([\w.\[\]]+)\s*\)/g,
+    new RegExp(`assert_sameValue\\s*\\(\\s*("[^"]*")\\s*,\\s*(${simpleExprPat})\\s*\\)`, 'g'),
     'assert_sameValue_str($1, $2)'
   );
   body = body.replace(
-    /assert_sameValue\s*\(\s*([\w.\[\]]+)\s*,\s*('[^']*')\s*\)/g,
+    new RegExp(`assert_sameValue\\s*\\(\\s*(${simpleExprPat})\\s*,\\s*('[^']*')\\s*\\)`, 'g'),
     'assert_sameValue_str($1, $2)'
   );
   body = body.replace(
-    /assert_sameValue\s*\(\s*('[^']*')\s*,\s*([\w.\[\]]+)\s*\)/g,
+    new RegExp(`assert_sameValue\\s*\\(\\s*('[^']*')\\s*,\\s*(${simpleExprPat})\\s*\\)`, 'g'),
     'assert_sameValue_str($1, $2)'
   );
 
