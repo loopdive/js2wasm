@@ -1801,7 +1801,18 @@ function compileBinaryExpression(
   }
 
   // String operations — either operand being a string triggers string concat for +
-  if (isStringType(leftTsType) || (op === ts.SyntaxKind.PlusToken && isStringType(rightTsType))) {
+  // For relational/equality ops, also route to string path when right side is string
+  const isStringRelationalOrEquality =
+    op === ts.SyntaxKind.LessThanToken ||
+    op === ts.SyntaxKind.LessThanEqualsToken ||
+    op === ts.SyntaxKind.GreaterThanToken ||
+    op === ts.SyntaxKind.GreaterThanEqualsToken ||
+    op === ts.SyntaxKind.EqualsEqualsEqualsToken ||
+    op === ts.SyntaxKind.EqualsEqualsToken ||
+    op === ts.SyntaxKind.ExclamationEqualsEqualsToken ||
+    op === ts.SyntaxKind.ExclamationEqualsToken;
+  if (isStringType(leftTsType) || (op === ts.SyntaxKind.PlusToken && isStringType(rightTsType)) ||
+      (isStringRelationalOrEquality && isStringType(rightTsType))) {
     return compileStringBinaryOp(ctx, fctx, expr, op);
   }
 
@@ -2298,7 +2309,15 @@ function compileModulo(
   return { kind: "f64" };
 }
 
-/** Emit JS remainder (a % b = a - trunc(a/b) * b) — stack: [a_f64, b_f64] -> [result_f64] */
+/**
+ * Emit JS remainder (a % b) with correct IEEE 754 edge cases.
+ * Stack: [a_f64, b_f64] -> [result_f64]
+ *
+ * Edge cases handled:
+ * - x % Infinity = x (when x is finite)
+ * - -0 % x = -0 (sign of zero preserved via f64.copysign)
+ * - Infinity % x = NaN, x % 0 = NaN, NaN % x = NaN (handled naturally by formula)
+ */
 function emitModulo(fctx: FunctionContext): void {
   const tmpB = allocLocal(fctx, `__mod_b_${fctx.locals.length}`, { kind: "f64" });
   const tmpA = allocLocal(fctx, `__mod_a_${fctx.locals.length}`, { kind: "f64" });
@@ -2306,14 +2325,50 @@ function emitModulo(fctx: FunctionContext): void {
   fctx.body.push({ op: "local.set", index: tmpB });
   fctx.body.push({ op: "local.set", index: tmpA });
 
+  // Build the "then" branch: b is infinite and a is finite → result is a
+  const thenInstrs: Instr[] = [
+    { op: "local.get", index: tmpA },
+  ];
+
+  // Build the "else" branch: standard formula a - trunc(a/b) * b with copysign
+  const elseInstrs: Instr[] = [
+    { op: "local.get", index: tmpA },
+    { op: "local.get", index: tmpA },
+    { op: "local.get", index: tmpB },
+    { op: "f64.div" },
+    { op: "f64.trunc" }, // JS % uses truncation toward zero, not floor
+    { op: "local.get", index: tmpB },
+    { op: "f64.mul" },
+    { op: "f64.sub" },
+    // Preserve sign of dividend for zero results (-0 % x should be -0)
+    { op: "local.get", index: tmpA },
+    { op: "f64.copysign" } as unknown as Instr,
+  ];
+
+  // Check: if |b| == Infinity and a is finite, result is a
+  // (f64.abs(b) == Infinity) && (f64.abs(a) != Infinity) && (a == a) [not NaN]
+  fctx.body.push({ op: "local.get", index: tmpB });
+  fctx.body.push({ op: "f64.abs" });
+  fctx.body.push({ op: "f64.const", value: Infinity });
+  fctx.body.push({ op: "f64.eq" });
+  // a is finite: |a| != Infinity AND a is not NaN (a == a)
+  fctx.body.push({ op: "local.get", index: tmpA });
+  fctx.body.push({ op: "f64.abs" });
+  fctx.body.push({ op: "f64.const", value: Infinity });
+  fctx.body.push({ op: "f64.ne" });
+  fctx.body.push({ op: "i32.and" });
   fctx.body.push({ op: "local.get", index: tmpA });
   fctx.body.push({ op: "local.get", index: tmpA });
-  fctx.body.push({ op: "local.get", index: tmpB });
-  fctx.body.push({ op: "f64.div" });
-  fctx.body.push({ op: "f64.trunc" }); // JS % uses truncation toward zero, not floor
-  fctx.body.push({ op: "local.get", index: tmpB });
-  fctx.body.push({ op: "f64.mul" });
-  fctx.body.push({ op: "f64.sub" });
+  fctx.body.push({ op: "f64.eq" }); // NaN != NaN, so this checks not-NaN
+  fctx.body.push({ op: "i32.and" });
+
+  // if (b is infinite && a is finite) { a } else { standard formula }
+  fctx.body.push({
+    op: "if",
+    blockType: { kind: "val", type: { kind: "f64" } },
+    then: thenInstrs,
+    else: elseInstrs,
+  } as unknown as Instr);
 }
 
 function compileBooleanBinaryOp(
@@ -3732,7 +3787,15 @@ function compilePrefixUnary(
       }
       const operandType = compileExpression(ctx, fctx, expr.operand);
       if (operandType?.kind === "externref") {
-        // String → number: call parseFloat host import
+        // String → number: use __unbox_number (Number() semantics, not parseFloat)
+        // Number("") = 0, Number("123") = 123, Number("abc") = NaN
+        // parseFloat("") = NaN which is wrong for unary +
+        const unboxIdx = ctx.funcMap.get("__unbox_number");
+        if (unboxIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx: unboxIdx });
+          return { kind: "f64" };
+        }
+        // Fallback to parseFloat if __unbox_number not available
         const pfIdx = ctx.funcMap.get("parseFloat");
         if (pfIdx !== undefined) {
           fctx.body.push({ op: "call", funcIdx: pfIdx });
@@ -3742,6 +3805,11 @@ function compilePrefixUnary(
       // Struct ref → f64: coerce via valueOf (JS ToNumber semantics)
       if (operandType && (operandType.kind === "ref" || operandType.kind === "ref_null")) {
         coerceType(ctx, fctx, operandType, { kind: "f64" });
+        return { kind: "f64" };
+      }
+      // Boolean (i32) → f64: convert to number
+      if (operandType?.kind === "i32") {
+        fctx.body.push({ op: "f64.convert_i32_s" });
         return { kind: "f64" };
       }
       // Already numeric — no-op
@@ -8394,6 +8462,26 @@ function compileStringBinaryOp(
         }
         break;
       }
+      case ts.SyntaxKind.LessThanToken:
+      case ts.SyntaxKind.LessThanEqualsToken:
+      case ts.SyntaxKind.GreaterThanToken:
+      case ts.SyntaxKind.GreaterThanEqualsToken: {
+        // Lexicographic comparison via __str_compare (returns -1, 0, 1)
+        compileExpression(ctx, fctx, expr.left);
+        compileExpression(ctx, fctx, expr.right);
+        const funcIdx = ctx.nativeStrHelpers.get("__str_compare");
+        if (funcIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx });
+          fctx.body.push({ op: "i32.const", value: 0 });
+          const cmpOp = op === ts.SyntaxKind.LessThanToken ? "i32.lt_s"
+            : op === ts.SyntaxKind.LessThanEqualsToken ? "i32.le_s"
+            : op === ts.SyntaxKind.GreaterThanToken ? "i32.gt_s"
+            : "i32.ge_s";
+          fctx.body.push({ op: cmpOp as any });
+          return { kind: "i32" };
+        }
+        break;
+      }
       default: {
         // For any other operator, compile both but don't know what to do
         compileExpression(ctx, fctx, expr.left);
@@ -11893,6 +11981,11 @@ function compileArrayLastIndexOf(
 function tryStaticToNumber(ctx: CodegenContext, expr: ts.Expression): number | undefined {
   // Numeric literal
   if (ts.isNumericLiteral(expr)) return Number(expr.text);
+  // String literal: Number("") = 0, Number("123") = 123, Number("abc") = NaN
+  if (ts.isStringLiteral(expr)) return Number(expr.text);
+  // Boolean literals: true = 1, false = 0
+  if (expr.kind === ts.SyntaxKind.TrueKeyword) return 1;
+  if (expr.kind === ts.SyntaxKind.FalseKeyword) return 0;
   // NaN identifier
   if (ts.isIdentifier(expr) && expr.text === "NaN") return NaN;
   // Infinity identifier
