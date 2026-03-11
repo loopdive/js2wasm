@@ -375,6 +375,7 @@ export function compileSource(
     2408, // "Setters cannot return a value" — valid in JS, codegen handles it
     1345, // "An expression of type 'void' cannot be tested for truthiness"
     2350, // "Only a void function can be called with the 'new' keyword"
+    2403, // "Subsequent variable declarations must have the same type" — var re-declarations legal in JS
   ]);
 
   // Collect TS diagnostics as errors (or warnings for handled cases)
