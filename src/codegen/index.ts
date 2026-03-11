@@ -408,6 +408,9 @@ export function generateModule(
   // Register string literals for for-in field names (uses type checker, before func indices)
   collectForInStringLiterals(ctx, ast.sourceFile);
 
+  // Register string literals for dynamic `in` operator field names
+  collectInExprStringLiterals(ctx, ast.sourceFile);
+
   // Register string literals for Object.keys() / Object.values() calls
   collectObjectMethodStringLiterals(ctx, ast.sourceFile);
 
@@ -575,6 +578,7 @@ export function generateMultiModule(
     collectGeneratorImports(ctx, sf);
     collectIteratorImports(ctx, sf);
     collectForInStringLiterals(ctx, sf);
+    collectInExprStringLiterals(ctx, sf);
     collectObjectMethodStringLiterals(ctx, sf);
     collectUnknownConstructorImports(ctx, sf);
   }
@@ -4196,6 +4200,51 @@ function collectForInStringLiterals(
   // Ensure wasm:js-string imports exist (may already be registered)
   addStringImports(ctx);
 
+  for (const value of literals) {
+    addStringConstantGlobal(ctx, value);
+  }
+}
+
+/** Register struct field names as string literals for `key in obj` expressions
+ *  where the key is a dynamic (non-literal) value. Pre-registers field names
+ *  so they can be used for runtime string comparison. */
+function collectInExprStringLiterals(
+  ctx: CodegenContext,
+  sourceFile: ts.SourceFile,
+): void {
+  const literals = new Set<string>();
+
+  function visit(node: ts.Node) {
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.InKeyword) {
+      // Only collect for dynamic keys (non-string-literal, non-numeric-literal)
+      if (!ts.isStringLiteral(node.left) && !ts.isNumericLiteral(node.left)) {
+        const rightType = ctx.checker.getTypeAtLocation(node.right);
+        const props = rightType.getProperties();
+        for (const prop of props) {
+          if (!ctx.stringGlobalMap.has(prop.name)) literals.add(prop.name);
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  for (const stmt of sourceFile.statements) {
+    if (ts.isFunctionDeclaration(stmt) && stmt.body) {
+      visit(stmt.body);
+    }
+  }
+
+  if (literals.size === 0) return;
+
+  if (ctx.fast) {
+    ensureNativeStringHelpers(ctx);
+    for (const value of literals) {
+      if (!ctx.stringGlobalMap.has(value)) ctx.stringGlobalMap.set(value, -1);
+    }
+    return;
+  }
+
+  addStringImports(ctx);
   for (const value of literals) {
     addStringConstantGlobal(ctx, value);
   }
