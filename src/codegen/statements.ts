@@ -968,6 +968,16 @@ function compileSwitchStatement(
   compileExpression(ctx, fctx, stmt.expression, wasmType);
   fctx.body.push({ op: "local.set", index: tmpLocalIdx });
 
+  // Allocate a "matched" local to track fallthrough
+  const matchedLocalIdx = allocLocal(
+    fctx,
+    `__sw_matched_${fctx.locals.length}`,
+    { kind: "i32" },
+  );
+  // Initialize matched to 0
+  fctx.body.push({ op: "i32.const", value: 0 });
+  fctx.body.push({ op: "local.set", index: matchedLocalIdx });
+
   // Choose the equality opcode based on the switch expression type
   const eqOp: "f64.eq" | "i32.eq" =
     wasmType.kind === "i32" ? "i32.eq" : "f64.eq";
@@ -980,63 +990,75 @@ function compileSwitchStatement(
   for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!++;
   for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!++;
 
-  // Inside the block: br 1 exits the block ($break). No continueStack change.
-  // The value 1 accounts for the case if-wrapping (+1 from block).
+  // break from switch => br to outer block (depth 0 from inside the block).
+  // Each case body is wrapped in an if (+1 nesting), so break depth = 1.
   const switchBreakIdx = fctx.breakStack.length;
   fctx.breakStack.push(1);
 
   const clauses = stmt.caseBlock.clauses;
-  let defaultClause: ts.DefaultClause | undefined;
 
   for (const clause of clauses) {
     if (ts.isDefaultClause(clause)) {
-      // Defer the default clause — emit it after all case clauses
-      defaultClause = clause;
-      continue;
+      // Default: set matched = 1 unconditionally (but only if not already matched)
+      // This allows fallthrough into default and from default to subsequent cases
+      fctx.body.push({ op: "i32.const", value: 1 });
+      fctx.body.push({ op: "local.set", index: matchedLocalIdx });
+    } else {
+      // case X: if not yet matched, check condition
+      const caseClause = clause as ts.CaseClause;
+
+      // if (!matched) { matched = (tmp == caseExpr); }
+      const checkBody: Instr[] = [];
+      const outerBody = fctx.body;
+      fctx.body = checkBody;
+
+      fctx.body.push({ op: "local.get", index: tmpLocalIdx });
+      compileExpression(ctx, fctx, caseClause.expression);
+      fctx.body.push({ op: eqOp });
+      fctx.body.push({ op: "local.set", index: matchedLocalIdx });
+
+      fctx.body = outerBody;
+
+      // Wrap in: if (!matched) { ... }
+      fctx.body.push({ op: "local.get", index: matchedLocalIdx });
+      fctx.body.push({ op: "i32.eqz" });
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" },
+        then: checkBody,
+      });
     }
 
-    // case X:
-    const caseClause = clause as ts.CaseClause;
+    // Emit body: if (matched) { <statements> }
+    if (clause.statements.length > 0) {
+      const bodyInstrs: Instr[] = [];
+      const outerBody = fctx.body;
+      fctx.body = bodyInstrs;
 
-    // Condition: tmpLocal == caseExpr
-    fctx.body.push({ op: "local.get", index: tmpLocalIdx });
-    compileExpression(ctx, fctx, caseClause.expression);
-    fctx.body.push({ op: eqOp });
+      // Adjust outer entries for the if-wrapping (+1 nesting level).
+      // Only adjust entries before the switch's own entry — the switch's
+      // breakStack entry already accounts for the if.
+      for (let i = 0; i < switchBreakIdx; i++) fctx.breakStack[i]!++;
+      for (let i = 0; i < fctx.continueStack.length; i++)
+        fctx.continueStack[i]!++;
 
-    // Compile the clause body into a temp buffer to check for break
-    const savedBodyInner = fctx.body;
-    fctx.body = [];
+      for (const s of clause.statements) {
+        compileStatement(ctx, fctx, s);
+      }
 
-    // Adjust outer entries for the if-wrapping (+1 nesting level).
-    // Only adjust entries before the switch's own entry — the switch's
-    // breakStack entry already accounts for the if.
-    for (let i = 0; i < switchBreakIdx; i++) fctx.breakStack[i]!++;
-    for (let i = 0; i < fctx.continueStack.length; i++)
-      fctx.continueStack[i]!++;
+      // Restore depths after case body compilation
+      for (let i = 0; i < switchBreakIdx; i++) fctx.breakStack[i]!--;
+      for (let i = 0; i < fctx.continueStack.length; i++)
+        fctx.continueStack[i]!--;
 
-    for (const s of caseClause.statements) {
-      compileStatement(ctx, fctx, s);
-    }
+      fctx.body = outerBody;
 
-    // Restore depths after case body compilation
-    for (let i = 0; i < switchBreakIdx; i++) fctx.breakStack[i]!--;
-    for (let i = 0; i < fctx.continueStack.length; i++)
-      fctx.continueStack[i]!--;
-
-    const clauseBody = fctx.body;
-    fctx.body = savedBodyInner;
-
-    fctx.body.push({
-      op: "if",
-      blockType: { kind: "empty" },
-      then: clauseBody,
-    });
-  }
-
-  // Emit default clause body (if any) directly — no condition check needed
-  if (defaultClause) {
-    for (const s of defaultClause.statements) {
-      compileStatement(ctx, fctx, s);
+      fctx.body.push({ op: "local.get", index: matchedLocalIdx });
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" },
+        then: bodyInstrs,
+      });
     }
   }
 
