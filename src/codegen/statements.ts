@@ -341,6 +341,30 @@ function compileVariableStatement(
       continue;
     }
 
+    // For object literal initializers with computed property names that TS
+    // cannot resolve (resulting in 0 type properties), compile the expression
+    // first to get the actual struct ref type. Similar to arrow function handling.
+    if (
+      decl.initializer &&
+      ts.isObjectLiteralExpression(decl.initializer) &&
+      decl.initializer.properties.some(
+        (p) => ts.isPropertyAssignment(p) && p.name && ts.isComputedPropertyName(p.name)
+      )
+    ) {
+      const varType2 = ctx.checker.getTypeAtLocation(decl);
+      const tsProps = varType2.getProperties();
+      // Only use this path when TS cannot resolve any properties
+      // (i.e. all properties are computed and non-resolvable)
+      const hasUnresolvedComputed = tsProps.length < decl.initializer.properties.length;
+      if (hasUnresolvedComputed) {
+        const actualType = compileExpression(ctx, fctx, decl.initializer);
+        const objType = actualType ?? { kind: "externref" as const };
+        const localIdx = allocLocal(fctx, name, objType);
+        fctx.body.push({ op: "local.set", index: localIdx });
+        continue;
+      }
+    }
+
     // Check if this is a module-level global (already registered)
     const moduleGlobalIdx = ctx.moduleGlobals.get(name);
     if (moduleGlobalIdx !== undefined) {

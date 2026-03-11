@@ -1382,6 +1382,11 @@ function compileTypeofExpression(
     if (callSigs && callSigs.length > 0) {
       return compileStringLiteral(ctx, fctx, "function");
     }
+    // Also check construct signatures — classes have typeof "function"
+    const ctorSigs = tsType.getConstructSignatures?.();
+    if (ctorSigs && ctorSigs.length > 0) {
+      return compileStringLiteral(ctx, fctx, "function");
+    }
     return compileStringLiteral(ctx, fctx, "object");
   }
 
@@ -1464,7 +1469,8 @@ function compileTypeofComparison(
     else if (wasmType.kind === "i32") staticTypeof = isBooleanType(tsType) ? "boolean" : "number";
     else if ((wasmType.kind === "ref" || wasmType.kind === "ref_null") && !isAnyValue(wasmType, ctx)) {
       const callSigs = tsType.getCallSignatures?.();
-      staticTypeof = (callSigs && callSigs.length > 0) ? "function" : "object";
+      const ctorSigs2 = tsType.getConstructSignatures?.();
+      staticTypeof = (callSigs && callSigs.length > 0) || (ctorSigs2 && ctorSigs2.length > 0) ? "function" : "object";
     }
     else if (isStringType(tsType)) staticTypeof = "string";
   }
@@ -8155,6 +8161,50 @@ function resolveStructName(ctx: CodegenContext, tsType: ts.Type): string | undef
   return ctx.anonTypeMap.get(tsType);
 }
 
+/**
+ * Ensure that a struct registered for an object literal includes fields for
+ * computed property names that TypeScript cannot statically resolve.
+ * When TS returns 0 properties (e.g. { [1+1]: 2 }), we resolve the computed
+ * keys at compile time and create proper struct fields.
+ */
+function ensureComputedPropertyFields(
+  ctx: CodegenContext,
+  expr: ts.ObjectLiteralExpression,
+  tsType: ts.Type,
+): void {
+  const existingName = resolveStructName(ctx, tsType);
+  if (!existingName) return;
+  const existingFields = ctx.structFields.get(existingName);
+  if (!existingFields) return;
+
+  // Collect all property assignments with their resolved names
+  const resolvedProps: { name: string; valueExpr: ts.Expression }[] = [];
+  for (const prop of expr.properties) {
+    if (!ts.isPropertyAssignment(prop)) continue;
+    const propName = resolvePropertyNameText(ctx, prop);
+    if (propName === undefined) continue;
+    // Check if this field already exists in the struct
+    if (existingFields.some(f => f.name === propName)) continue;
+    resolvedProps.push({ name: propName, valueExpr: prop.initializer });
+  }
+
+  if (resolvedProps.length === 0) return;
+
+  // Need to add new fields. Create a replacement struct with the combined fields.
+  const fields = [...existingFields];
+  for (const rp of resolvedProps) {
+    const propType = ctx.checker.getTypeAtLocation(rp.valueExpr);
+    const wasmType = resolveWasmType(ctx, propType);
+    fields.push({ name: rp.name, type: wasmType, mutable: true });
+  }
+
+  // Update the existing struct in-place
+  const structTypeIdx = ctx.structMap.get(existingName)!;
+  const typeDef = ctx.mod.types[structTypeIdx] as any;
+  typeDef.fields = fields;
+  ctx.structFields.set(existingName, fields);
+}
+
 function compileObjectLiteral(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -8170,6 +8220,7 @@ function compileObjectLiteral(
       typeName = resolveStructName(ctx, type);
     }
     if (typeName) {
+      ensureComputedPropertyFields(ctx, expr, type);
       return compileObjectLiteralForStruct(ctx, fctx, expr, typeName);
     }
     ctx.errors.push({
@@ -8187,6 +8238,7 @@ function compileObjectLiteral(
     typeName = resolveStructName(ctx, contextType);
   }
   if (typeName) {
+    ensureComputedPropertyFields(ctx, expr, contextType);
     return compileObjectLiteralForStruct(ctx, fctx, expr, typeName);
   }
 
@@ -8198,6 +8250,7 @@ function compileObjectLiteral(
     inferredName = resolveStructName(ctx, inferredType);
   }
   if (inferredName) {
+    ensureComputedPropertyFields(ctx, expr, inferredType);
     return compileObjectLiteralForStruct(ctx, fctx, expr, inferredName);
   }
 
@@ -8220,6 +8273,10 @@ function resolveConstantExpression(
   expr: ts.Expression,
 ): number | string | undefined {
   if (ts.isNumericLiteral(expr)) return Number(expr.text);
+
+  // Boolean literals
+  if (expr.kind === ts.SyntaxKind.TrueKeyword) return 1;
+  if (expr.kind === ts.SyntaxKind.FalseKeyword) return 0;
   if (ts.isStringLiteral(expr)) return expr.text;
 
   // Parenthesized expression
@@ -8262,6 +8319,7 @@ function resolveConstantExpression(
       case ts.SyntaxKind.AsteriskToken: return left * right;
       case ts.SyntaxKind.SlashToken: return right !== 0 ? left / right : undefined;
       case ts.SyntaxKind.PercentToken: return right !== 0 ? left % right : undefined;
+      case ts.SyntaxKind.AsteriskAsteriskToken: return left ** right;
       default: return undefined;
     }
   }
