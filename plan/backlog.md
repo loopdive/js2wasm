@@ -1,12 +1,56 @@
 # ts2wasm Backlog
 
-## Open issues
+## Sprint 1 (current)
+
+_Goal: Eliminate all 146 test262 runtime failures (100% compilable pass rate) and reduce compile errors by ~700._
+_Details: [sprint-1.md](sprint-1.md)_
+
+| #   | Feature | Status | Assignee |
+| --- | ------- | ------ | -------- |
+| [138](issues/138.md) | Bug: valueOf/toString coercion on comparison operators | Open | — |
+| [139](issues/139.md) | Bug: valueOf/toString coercion on arithmetic operators | Open | — |
+| [140](issues/140.md) | Bug: object computed property names runtime | Open | — |
+| [141](issues/141.md) | Bug: tagged template literal runtime failures | Open | — |
+| [142](issues/142.md) | Bug: assignment destructuring failures | Open | — |
+| [143](issues/143.md) | Bug: for-loop edge cases | Open | — |
+| [144](issues/144.md) | Bug: new expression with class expressions | Open | — |
+| [145](issues/145.md) | allowJs type flexibility: boolean/string/void as number | Open | — |
+| [148](issues/148.md) | Element access (bracket notation) on struct types | Open | — |
+| [150](issues/150.md) | ClassDeclaration in expression positions | Open | — |
+| [151](issues/151.md) | `this` keyword in class methods for test262 | Open | — |
+| [152](issues/152.md) | Setter return value error in allowJs mode | Open | — |
+| [154](issues/154.md) | Bug: while/do-while loop condition evaluation | Open | — |
+| [155](issues/155.md) | Bug: logical-and/logical-or short-circuit | Open | — |
+| [156](issues/156.md) | Bug: conditional (ternary) expression evaluation | Open | — |
+| [157](issues/157.md) | Bug: void expression returns wrong value | Open | — |
+| [158](issues/158.md) | Bug: concatenation with non-string operands | Open | — |
+| [159](issues/159.md) | Bug: call expression edge cases | Open | — |
+| [160](issues/160.md) | Bug: Math method edge cases | Open | — |
+| [161](issues/161.md) | Bug: compound assignment edge cases | Open | — |
+| [162](issues/162.md) | Bug: switch statement matching | Open | — |
+| [163](issues/163.md) | Bug: return statement edge cases | Open | — |
+| [164](issues/164.md) | Bug: variable declaration edge cases | Open | — |
+| [165](issues/165.md) | Bug: function statement hoisting and edge cases | Open | — |
+| [166](issues/166.md) | Bug: `in` operator runtime failures | Open | — |
+| [167](issues/167.md) | Bug: typeof edge cases | Open | — |
+| [168](issues/168.md) | Bug: equality operators with null/undefined | Open | — |
+| [169](issues/169.md) | Bug: arrow function edge case | Open | — |
+| [170](issues/170.md) | Bug: class expression/declaration edge cases | Open | — |
+| [171](issues/171.md) | Bug: Boolean() edge cases | Open | — |
+| [172](issues/172.md) | Bug: Array.isArray edge case | Open | — |
+
+## Backlog
 
 ### Core language features
 
 | #                    | Feature                                            | Complexity | Tests blocked |
 | -------------------- | -------------------------------------------------- | ---------- | ------------- |
 | [130](issues/130.md) | Shape inference Phase 4 — hashmap fallback + more methods | L   | 2,200+        |
+| [146](issues/146.md) | Unknown identifier / scope issues | M | ~269 |
+| [147](issues/147.md) | Function.name property | M | ~258 |
+| [149](issues/149.md) | Unsupported call expression patterns | L | ~637 |
+| [153](issues/153.md) | Iterator protocol for destructuring | M | ~67 |
+| [173](issues/173.md) | Computed property names in classes | M | ~44 |
 
 ### Won't implement (fundamental JS runtime features)
 

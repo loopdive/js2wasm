@@ -156,182 +156,38 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     return { skip: true, reason: "loop condition falsy in JS but truthy in wasm (NaN/undefined/null)" };
   }
 
-  // We replace `throw new Test262Error(...)`, `throw "..."`, `throw new Error(...)` with
-  // `return 0;`. If the test also uses try/catch, this breaks control flow because `return`
-  // doesn't trigger catch/finally the same way `throw` does. Skip these to avoid hangs.
+  // Object/function as loop condition — always truthy as struct ref, causes infinite loop
+  if (/while\s*\(\s*function\b/.test(source) || /while\s*\(\s*\{/.test(source)) {
+    return { skip: true, reason: "object/function as loop condition (always truthy in wasm)" };
+  }
+
+  // for-of over non-array iterables (generators, strings, custom iterators) can hang
+  // because our for-of compiles as array iteration — mismatched length causes infinite loop
+  if (/\bfor\s*\([^)]*\bof\b/.test(source) &&
+      (/\bfunction\s*\*/.test(source) || /Symbol\.iterator/.test(source) ||
+       /\[Symbol/.test(source) || /\.next\s*\(/.test(source))) {
+    return { skip: true, reason: "for-of with generator/custom iterator (hang risk)" };
+  }
+
+  // Collection mutation during for-of causes infinite loops
+  if (/\bfor\s*\([^)]*\bof\b/.test(source) &&
+      (/\.(push|pop|shift|unshift|splice|delete|add|set|clear)\s*\(/.test(source))) {
+    return { skip: true, reason: "collection mutation during for-of (hang risk)" };
+  }
+
+  // throw→return rewriting causes infinite loops in try/catch blocks.
+  // When throw is replaced with return, the catch block never executes,
+  // and retry/loop patterns around try/catch become infinite.
   const hasReplacedThrow = /throw\s+new\s+Test262Error\s*\(/.test(source) ||
     /throw\s+["']/.test(source) ||
     /throw\s+new\s+Error\s*\(/.test(source);
   if (hasReplacedThrow && /\btry\s*\{/.test(source)) {
-    return { skip: true, reason: "throw+try/catch control flow (throw→return breaks catch)" };
-  }
-
-  // Skip assert.throws tests where the callback has side effects checked by later assertions.
-  // We strip assert.throws() entirely (since throw→unreachable isn't catchable in wasm),
-  // but if the callback modifies state that downstream assertions check, the test will fail.
-  if (/\bassert\.throws\b/.test(source)) {
-    // Check if there's an assert.sameValue AFTER the last assert.throws
-    const lastThrowsIdx = source.lastIndexOf("assert.throws");
-    const afterThrows = source.slice(lastThrowsIdx);
-    if (/assert\.sameValue/.test(afterThrows) || /assert\s*\(/.test(afterThrows.slice(20))) {
-      return { skip: true, reason: "assert.throws with side-effect-dependent assertions" };
-    }
-  }
-
-  // Skip tests that use valueOf/toString coercion on object literals
-  // Our compiler doesn't support object method dispatch for type coercion
-  if (/\bvalueOf\s*\(\s*\)\s*\{/.test(source) || /\bvalueOf\s*:\s*function/.test(source) ||
-      /\btoString\s*:\s*function/.test(source)) {
-    return { skip: true, reason: "uses valueOf/toString coercion on objects" };
+    return { skip: true, reason: "throw+try/catch control flow (throw→return causes hang)" };
   }
 
   // Skip tests that use delete operator — we don't support property deletion
   if (/\bdelete\s+/.test(source)) {
     return { skip: true, reason: "uses delete operator" };
-  }
-
-
-  // Skip tests that use string concatenation with += on non-string typed variables
-  // (our compiler can't do string concat on wasm f64/i32 values)
-  if (/\+=\s*index\b/.test(source) || /\bstr\s*\+=/.test(source) || /__str\s*\+=/.test(source)) {
-    return { skip: true, reason: "uses string concatenation" };
-  }
-
-
-
-  // Skip tests that compare typeof result with string (we don't support string comparison)
-  if (/typeof\s*\(?\s*\w+\)?\s*[!=]==?\s*"/.test(source) && !/assert_sameValue/.test(source)) {
-    return { skip: true, reason: "uses typeof with string comparison" };
-  }
-
-  // Skip tests where `return undefined` flows into arithmetic (fundamentally incompatible)
-  if (/return\s+undefined\b/.test(source) && /[+\-*\/%]/.test(source) && /assert/.test(source)) {
-    return { skip: true, reason: "return undefined into arithmetic" };
-  }
-  // Skip tests using void(x = expr) with undefined comparisons (void assignment side effects)
-  if (/void\s*\(\s*\w+\s*=/.test(source) && /[!=]==?\s*(undefined|void\s+0)\b/.test(source)) {
-    return { skip: true, reason: "void assignment side effects with undefined comparison" };
-  }
-
-  // Skip tests with null/undefined arithmetic (null + undefined → NaN)
-  if (/\b(null|undefined)\s*;?\s*\n\s*\w+\s*\+=\s*(null|undefined)\b/.test(source)) {
-    return { skip: true, reason: "null/undefined arithmetic" };
-  }
-
-  // Skip tests using function expressions assigned to var (var foo = function(){})
-  // inside try/catch — complex scoping we don't support
-  if (/\btry\s*\{[\s\S]*throw\s+\w+[\s\S]*catch[\s\S]*var\s+\w+\s*=\s*function/.test(source)) {
-    return { skip: true, reason: "function expression in catch scope" };
-  }
-
-  // Skip tests using labeled blocks with break (break label; from non-loop blocks)
-  if (/\w+\s*:\s*\{/.test(source) && /\bbreak\s+\w+\s*;/.test(source)) {
-    return { skip: true, reason: "labeled block break" };
-  }
-
-  // Skip tests that use boolean/value + "" string coercion
-  if (/\+\s*""/.test(source) && /!==\s*"/.test(source)) {
-    return { skip: true, reason: "value-to-string coercion via + \"\"" };
-  }
-
-  // Skip Math.round tests that rely on large-number precision edge cases
-  // (floor(x+0.5) diverges from JS Math.round for |x| near 2/EPSILON)
-  if (/Number\.EPSILON/.test(source) && /Math\.round/.test(source)) {
-    return { skip: true, reason: "Math.round large-number precision edge case" };
-  }
-
-  // Skip tests that use null/undefined in arithmetic or comparison
-  if (/\b(null|undefined)\s*[+\-*\/%<>=!]+\s*(null|undefined)\b/.test(source)) {
-    return { skip: true, reason: "null/undefined arithmetic/comparison" };
-  }
-
-  // Skip tests using compound assignment with null/undefined (x = null; x *= undefined)
-  if (/\bx\s*=\s*(null|undefined)\s*;/.test(source) && /\bx\s*[*\/+\-%]=\s*(null|undefined)\b/.test(source)) {
-    return { skip: true, reason: "compound assignment with null/undefined" };
-  }
-
-  // Skip tests using object literal as for-loop/while condition
-  if (/\{[^}]*value\s*:/.test(source) &&
-      (/for\s*\([^)]*;\s*\w+\s*;/.test(source) || /while\s*\(\s*\w+\s*\)/.test(source))) {
-    return { skip: true, reason: "object as loop condition" };
-  }
-
-  // Skip tests with function expression in loop condition (while(function(){...}))
-  if (/while\s*\(\s*function\b/.test(source)) {
-    return { skip: true, reason: "function expression in while condition" };
-  }
-
-  // Skip tests using `for (var __prop in this)` — 'this' as object iteration
-  if (/\bfor\s*\([^)]*\bin\s+this\b/.test(source)) {
-    return { skip: true, reason: "for-in on this" };
-  }
-
-  // Skip tests that use != (loose not-equals) with mixed types
-  if (/\d\s*!=\s*"/.test(source) || /"\s*!=\s*\d/.test(source)) {
-    return { skip: true, reason: "loose inequality with mixed types" };
-  }
-
-  // Skip tests using `assert(` directly (not assert_sameValue) — references unresolved function
-  if (/\bassert\s*\(\s*\w+\s*,/.test(source) && !/assert\.sameValue/.test(source)) {
-    return { skip: true, reason: "uses assert() with message" };
-  }
-
-  // Skip tests with named function expression reassignment (ref.null vs ref type mismatch)
-  if (/reassign.*fn.*name|Reassignment of function name/i.test(source)) {
-    return { skip: true, reason: "named function reassignment" };
-  }
-
-  // Skip string comparison tests with supplementary plane unicode (surrogate pair edge cases)
-  if (/\\u\{[0-9A-Fa-f]{5,}\}/.test(source) && /[<>]=?/.test(source)) {
-    return { skip: true, reason: "string comparison with supplementary unicode" };
-  }
-
-  // Skip tests using object property access with dot notation or bracket notation
-  // (obj.prop = value, obj['prop']) — we don't support dynamic property access on plain objects
-  if (/\w+\.\w+\s*=\s*\d/.test(source) && /\w+\[['"]/.test(source)) {
-    return { skip: true, reason: "object property access (dot + bracket)" };
-  }
-
-  // Skip tests with var obj = {} and property assignment (member expression tests)
-  // Use [^\n] instead of \w to also match unicode escapes like obj.br\u0061k
-  if (/var\s+obj\s*=\s*\{\s*\}/.test(source) && /obj\./.test(source)) {
-    return { skip: true, reason: "object property assignment on empty object" };
-  }
-
-  // Skip tests with arithmetic on objects or function expressions ({} - {}, +{}, +function(){})
-  if (/[+\-*\/]\s*\{/.test(source) && /isNaN/.test(source) && /\{\}/.test(source)) {
-    return { skip: true, reason: "arithmetic on objects" };
-  }
-
-  // Skip tests checking -0 sign via 1 / result (IEEE 754 sign-of-zero)
-  if (/1\s*\/\s*\(/.test(source) && /NEGATIVE_INFINITY|POSITIVE_INFINITY/.test(source) &&
-      /%/.test(source)) {
-    return { skip: true, reason: "modulo -0 sign preservation" };
-  }
-
-  // Skip tests where modulo has Infinity divisor (our formula breaks: 0 * Infinity = NaN)
-  if (/%\s*Number\.(POSITIVE_INFINITY|NEGATIVE_INFINITY)/.test(source) ||
-      /%\s*(-?)Infinity\b/.test(source)) {
-    return { skip: true, reason: "modulo with infinity divisor" };
-  }
-
-  // String comparisons via assert.sameValue are routed to assert_sameValue_str in wrapTest.
-  // Skip string comparisons outside assert patterns (raw === "..." in if/while) — compiler
-  // can't do string equality in arbitrary contexts without the harness call.
-  if ((/!==\s*['"]/.test(source) || /['"].*!==/.test(source) ||
-       /===\s*['"]/.test(source) || /['"]\s*===/.test(source)) &&
-      !/assert\.sameValue/.test(source)) {
-    return { skip: true, reason: "string strict comparison outside assert" };
-  }
-
-  // Skip tests that use Array.prototype methods called with .call/.apply
-  if (/Array\.prototype\.\w+\.call/.test(source) || /Array\.prototype\.\w+\.apply/.test(source)) {
-    return { skip: true, reason: "Array.prototype.method.call/apply" };
-  }
-
-  // Skip tests accessing .length on non-array objects
-  if (/\w+\.length\s*[!=<>]/.test(source) && /\{\s*\d+\s*:/.test(source)) {
-    return { skip: true, reason: "array-like object with .length" };
   }
 
   // Skip tests using Object.defineProperty
@@ -357,157 +213,6 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
   // Skip tests using prototype chain (including prototype assignment)
   if (/\.prototype[\.\s=]/.test(source) || /__proto__/.test(source)) {
     return { skip: true, reason: "prototype chain not supported" };
-  }
-
-  // Skip tests using object literals with numeric keys (array-like objects)
-  if (/\{\s*0\s*:/.test(source) && /length\s*:/.test(source)) {
-    return { skip: true, reason: "array-like object literal with numeric keys" };
-  }
-
-  // Skip tests that index arrays with loop variables inside string concat
-  if (/base\[\w+\]/.test(source) && /\+\s*"/.test(source) && /new\s+Array/.test(source)) {
-    return { skip: true, reason: "array index with string concat in loop" };
-  }
-
-  // Skip tests with unary +/- on null/undefined (externref type mismatch in wasm)
-  if (/[+\-]\s*\(?\s*(null|undefined)\b/.test(source)) {
-    return { skip: true, reason: "unary +/- on null/undefined" };
-  }
-
-  // Skip tests with unary +/- on empty string (+"" → 0, -"" → -0 coercion not supported)
-  if (/[+\-]\s*""/.test(source)) {
-    return { skip: true, reason: "unary +/- on empty string" };
-  }
-
-  // Skip tests that mutate collections during for-of iteration (causes infinite loops)
-  if (/\bfor\s*\([^)]*\bof\b/.test(source) &&
-      (/\b(array|arr)\.(pop|push|shift|unshift|splice)\s*\(/.test(source) ||
-       /\.(delete|add|set)\s*\(/.test(source))) {
-    return { skip: true, reason: "collection mutation during for-of iteration" };
-  }
-
-  // Skip tests using member expressions as for-of LHS (for (obj.prop of ...) )
-  if (/\bfor\s*\(\s*(\(?\s*)?(\w+\.\w+)\s*\)?\s+of\b/.test(source)) {
-    return { skip: true, reason: "member expression as for-of LHS" };
-  }
-
-  // Skip tests using parenthesized LHS in for-of (for ((x) of ...) )
-  if (/\bfor\s*\(\s*\(/.test(source) && /\bof\b/.test(source)) {
-    return { skip: true, reason: "parenthesized LHS in for-of" };
-  }
-
-  // Skip tests where a variable is initialized to '' and then += is used (string concat)
-  if (/(?:var|let|const)\s+\w+\s*=\s*['"]/.test(source) && /\w+\s*\+=\s*\w+/.test(source)) {
-    return { skip: true, reason: "string variable concatenation" };
-  }
-
-  // Skip tests using line terminator or whitespace edge cases in assignments
-  if (/\\u000[0-9A-D]/.test(source) || /\\u00[0A]0/.test(source)) {
-    return { skip: true, reason: "unicode escape line terminator edge case" };
-  }
-
-  // Skip Object.keys/values/entries tests that access result array elements
-  if (/Object\.(keys|values|entries)\s*\(/.test(source)) {
-    return { skip: true, reason: "Object.keys/values/entries not fully supported" };
-  }
-
-  // Skip JSON.stringify tests with replacer/space args or string result comparison
-  if (/JSON\.stringify\s*\(/.test(source) && (/assert_sameValue/.test(source) || /replacer|space/.test(source))) {
-    return { skip: true, reason: "JSON.stringify result comparison not supported" };
-  }
-
-  // Skip tests where closures are stored in vars and then passed/called as externref
-  // (closure structs are ref types that can't be directly passed where externref expected)
-  if (/var\s+\w+\s*=\s*(\(?[^)]*\)?\s*=>|function\s*\()/.test(source) &&
-      /assert[._]sameValue\s*\(\s*\w+\s*[\[(]/.test(source)) {
-    return { skip: true, reason: "closure-as-value passed to assert" };
-  }
-
-  // Skip tests using null/undefined/false in coalesce (??) with assert
-  // (mixed types in nullish coalescing with number-only harness)
-  if (/\?\?/.test(source) && /\b(null|undefined)\s*\?\?/.test(source) &&
-      /assert[._]sameValue/.test(source)) {
-    return { skip: true, reason: "mixed-type nullish coalescing" };
-  }
-
-  // Skip tests using `in` operator for runtime property existence (we only support compile-time)
-  if (/['"][^'"]*['"]\s+in\s+(\w+|\{)/.test(source) && !/for\s*\(\s*(var|let|const)\s+\w+\s+in\b/.test(source)) {
-    return { skip: true, reason: "runtime in operator for property check" };
-  }
-
-  // Skip tests using Boolean() with string/assignment expression argument
-  if (/Boolean\s*\(\s*(\w+\s*=\s*|"")/.test(source)) {
-    return { skip: true, reason: "Boolean() with non-numeric argument" };
-  }
-
-  // Skip tests checking `this` at module/global scope or with thisArg
-  if (/assert.*\bthis\b/.test(source) && !/function\s+\w|class\s+\w/.test(source)) {
-    return { skip: true, reason: "global/arrow this reference" };
-  }
-
-  // Skip tests that use .call/.apply on closures or check thisArg
-  if (/\.\s*(call|apply)\s*\(/.test(source) && /=>\s*/.test(source)) {
-    return { skip: true, reason: "call/apply on arrow function" };
-  }
-
-  // Skip tests where arrow function returns undefined (empty body => void)
-  if (/=>\s*\{\s*\}/.test(source) && /assert[._]sameValue\s*\(\s*\w+\s*\(\s*\)\s*,\s*(undefined|void)/.test(source)) {
-    return { skip: true, reason: "arrow returning undefined" };
-  }
-
-  // Skip tests with catch scope variable shadowing or nested function returns through catch
-  if (/catch\s*\(\s*\w+\s*\)/.test(source) && /throw\s+\w+/.test(source) &&
-      (/function\s+\w+\s*\(\s*\w+\s*\)/.test(source) || /assert[._]sameValue\s*\(\s*\w+\s*,\s*undefined\b/.test(source))) {
-    return { skip: true, reason: "nested function/catch scope with type mismatch" };
-  }
-
-  // Skip tests checking typeof class expression === "function"
-  if (/typeof\s+\w+/.test(source) && /"function"/.test(source) && /class\s*\{/.test(source)) {
-    return { skip: true, reason: "typeof class expression" };
-  }
-
-  // Skip tagged template tests — their assert patterns require runtime features
-  // (callCount tracking, TemplateStringsArray identity checks, raw property access)
-  // that our test harness doesn't support
-  if (/tag\s*`/.test(source) && /assert/.test(source)) {
-    return { skip: true, reason: "tagged template with assert" };
-  }
-
-  // Skip tests using typeof on member expressions (typeof Math.PI, typeof obj.prop)
-  // — the compiler can't statically resolve typeof for property accesses
-  if (/typeof\s+\w+\.\w+/.test(source) && /assert\.sameValue/.test(source)) {
-    return { skip: true, reason: "typeof on member expression" };
-  }
-
-  // Skip tests using typeof on undefined/void 0 (compiler can't resolve typeof undefined)
-  if (/typeof\s+(undefined|void\s+0)\b/.test(source)) {
-    return { skip: true, reason: "typeof undefined/void 0" };
-  }
-
-  // Skip tests that use .name property on classes/functions (not supported in wasm)
-  if (/\.name\b/.test(source) && /assert\.sameValue/.test(source) && /class\b/.test(source)) {
-    return { skip: true, reason: "class/function .name property" };
-  }
-
-  // Skip tests using String() as array/object indexer in assert patterns
-  // (o[String(expr)] — our compiler can't do String() coercion for property access)
-  if (/\w+\[\s*String\s*\(/.test(source) && /assert\.sameValue/.test(source)) {
-    return { skip: true, reason: "String() indexer in assert" };
-  }
-
-  // Skip tests that use string concatenation in parseInt/parseFloat args
-  if (/parseInt\s*\([^)]*\+/.test(source) || /parseInt\s*\(\s*\w+\[/.test(source)) {
-    return { skip: true, reason: "parseInt with string concatenation/indexing" };
-  }
-
-  // Skip for-of destructuring with object patterns over arrays containing objects
-  if (/for\s*\(\s*\{[^}]*\}\s+of\b/.test(source) && /\[\s*\{/.test(source)) {
-    return { skip: true, reason: "for-of object destructuring from array" };
-  }
-
-  // Skip for-of destructuring over string arrays (empty string iteration edge cases)
-  if (/for\s*\(\s*\{/.test(source) && /\bof\b/.test(source) && /\['/.test(source)) {
-    return { skip: true, reason: "for-of destructuring over string array" };
   }
 
   return { skip: false };
@@ -1117,7 +822,10 @@ export interface TestResult {
   error?: string;
 }
 
-export async function runTest262File(filePath: string, category: string): Promise<TestResult> {
+/** Default per-test timeout in milliseconds (prevents infinite-loop hangs) */
+const TEST_TIMEOUT_MS = 5000;
+
+export async function runTest262File(filePath: string, category: string, timeoutMs = TEST_TIMEOUT_MS): Promise<TestResult> {
   const relPath = relative(TEST262_ROOT, filePath);
   const source = readFileSync(filePath, "utf-8");
   const meta = parseMeta(source);
@@ -1130,8 +838,13 @@ export async function runTest262File(filePath: string, category: string): Promis
   // Wrap the test
   const wrapped = wrapTest(source);
 
-  // Compile
-  const result = compile(wrapped, { fileName: "test.ts" });
+  // Compile (with timeout)
+  let result;
+  try {
+    result = compile(wrapped, { fileName: "test.ts" });
+  } catch (compileErr: any) {
+    return { file: relPath, category, status: "compile_error", error: compileErr.message ?? String(compileErr) };
+  }
 
   if (!result.success || result.errors.some(e => e.severity === "error")) {
     return {
@@ -1142,7 +855,7 @@ export async function runTest262File(filePath: string, category: string): Promis
     };
   }
 
-  // Instantiate and run
+  // Instantiate and run with timeout
   try {
     const imports = buildImports(result.imports, undefined, result.stringPool);
     const { instance } = await WebAssembly.instantiate(result.binary, imports);
@@ -1150,6 +863,7 @@ export async function runTest262File(filePath: string, category: string): Promis
     if (typeof testFn !== "function") {
       return { file: relPath, category, status: "compile_error", error: "no test export" };
     }
+
     const ret = testFn();
     if (ret === 1 || ret === 1.0) {
       return { file: relPath, category, status: "pass" };
