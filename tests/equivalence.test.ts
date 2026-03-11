@@ -1599,4 +1599,194 @@ describe("IIFE and call expression edge cases", () => {
       [{ fn: "test", args: [] }],
     );
   });
+
+  // --- Issue #223: Computed property names in class declarations ---
+
+  it("class with string literal computed property name", async () => {
+    await assertEquivalent(
+      `
+      class Counter {
+        ["count"]: number;
+        constructor() {
+          this.count = 0;
+        }
+        ["increment"](): number {
+          this.count = this.count + 1;
+          return this.count;
+        }
+      }
+      export function test(): number {
+        const c = new Counter();
+        c.increment();
+        c.increment();
+        return c.count;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("class with numeric literal computed property name", async () => {
+    const exports = await compileToWasm(`
+      class Data {
+        ["value"]: number;
+        constructor(v: number) {
+          this.value = v;
+        }
+        ["double"](): number {
+          return this.value * 2;
+        }
+      }
+      export function test(n: number): number {
+        const d = new Data(n);
+        return d.double();
+      }
+    `);
+    expect(exports.test(21)).toBe(42);
+    expect(exports.test(5)).toBe(10);
+  });
+
+  // --- Issue #224: Prefix/postfix increment/decrement on member expressions ---
+
+  it("prefix increment on object property", async () => {
+    await assertEquivalent(
+      `
+      class Box {
+        value: number;
+        constructor(v: number) {
+          this.value = v;
+        }
+      }
+      export function test(): number {
+        const b = new Box(10);
+        const result = ++b.value;
+        return result;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("prefix decrement on object property", async () => {
+    await assertEquivalent(
+      `
+      class Box {
+        value: number;
+        constructor(v: number) {
+          this.value = v;
+        }
+      }
+      export function test(): number {
+        const b = new Box(10);
+        --b.value;
+        return b.value;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("postfix increment on object property", async () => {
+    await assertEquivalent(
+      `
+      class Box {
+        value: number;
+        constructor(v: number) {
+          this.value = v;
+        }
+      }
+      export function test(): number {
+        const b = new Box(10);
+        const old = b.value++;
+        return old;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("postfix increment stores new value", async () => {
+    await assertEquivalent(
+      `
+      class Box {
+        value: number;
+        constructor(v: number) {
+          this.value = v;
+        }
+      }
+      export function test(): number {
+        const b = new Box(10);
+        b.value++;
+        return b.value;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("postfix decrement on object property", async () => {
+    await assertEquivalent(
+      `
+      class Box {
+        value: number;
+        constructor(v: number) {
+          this.value = v;
+        }
+      }
+      export function test(): number {
+        const b = new Box(10);
+        const old = b.value--;
+        return old;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("multiple increments on object property", async () => {
+    await assertEquivalent(
+      `
+      class Counter {
+        count: number;
+        constructor() {
+          this.count = 0;
+        }
+      }
+      export function test(): number {
+        const c = new Counter();
+        ++c.count;
+        ++c.count;
+        c.count++;
+        return c.count;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("array element increment", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        const arr: number[] = [10, 20, 30];
+        arr[1]++;
+        return arr[1];
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("prefix increment on array element", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        const arr: number[] = [10, 20, 30];
+        const result = ++arr[0];
+        return result;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
 });

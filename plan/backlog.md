@@ -51,6 +51,8 @@ _Details: [sprint-1.md](sprint-1.md)_
 | [149](issues/149.md) | Unsupported call expression patterns | L | ~637 |
 | [153](issues/153.md) | Iterator protocol for destructuring | M | ~67 |
 | [173](issues/173.md) | Computed property names in classes | M | ~44 |
+| [223](issues/223.md) | Computed property names in class declarations | M | ~88 |
+| [224](issues/224.md) | Prefix/postfix increment/decrement on member expressions | M | ~50 |
 
 ### Won't implement (fundamental JS runtime features)
 
