@@ -4285,8 +4285,10 @@ function compileCallExpression(
     } else {
       // Normal call — compile provided arguments with type hints from function signature
       const paramTypes = getFuncParamTypes(ctx, funcIdx);
+      // Offset param types by the number of captures (captures are pushed separately above)
+      const captureOffset = nestedCaptures ? nestedCaptures.length : 0;
       for (let i = 0; i < expr.arguments.length; i++) {
-        compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+        compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[captureOffset + i]);
       }
 
       // Supply defaults for missing optional params
@@ -4324,12 +4326,169 @@ function compileCallExpression(
     return null;
   }
 
+  // IIFE: (function(params){body})(args) or (function name(params){body})(args)
+  // Unwrap parenthesized expressions to get to the function expression
+  let callee = expr.expression;
+  while (ts.isParenthesizedExpression(callee)) {
+    callee = callee.expression;
+  }
+  if ((ts.isFunctionExpression(callee) && !callee.asteriskToken) || ts.isArrowFunction(callee)) {
+    return compileIIFE(ctx, fctx, expr, callee);
+  }
+
   ctx.errors.push({
     message: "Unsupported call expression",
     line: getLine(expr),
     column: getCol(expr),
   });
   return null;
+}
+
+/**
+ * Compile an Immediately Invoked Function Expression (IIFE):
+ *   (function(params){ body })(args)
+ *   (() => expr)(args)
+ *
+ * Lifts the function to module level and calls it directly.
+ * Captures are passed as additional leading parameters (like compileNestedFunctionDeclaration).
+ */
+function compileIIFE(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  callExpr: ts.CallExpression,
+  callee: ts.FunctionExpression | ts.ArrowFunction,
+): ValType | null | typeof VOID_RESULT {
+  const iifeId = ctx.closureCounter++;
+  const iifeName = `__iife_${iifeId}`;
+
+  // Determine parameter types and return type
+  const paramTypes: ValType[] = [];
+  for (const p of callee.parameters) {
+    const paramType = ctx.checker.getTypeAtLocation(p);
+    paramTypes.push(resolveWasmType(ctx, paramType));
+  }
+
+  const sig = ctx.checker.getSignatureFromDeclaration(callee);
+  let returnType: ValType | null = null;
+  if (sig) {
+    const retType = ctx.checker.getReturnTypeOfSignature(sig);
+    if (!isVoidType(retType)) {
+      returnType = resolveWasmType(ctx, retType);
+    }
+  }
+
+  // Analyze captured variables from the enclosing scope
+  const body = callee.body;
+  const referencedNames = new Set<string>();
+  if (ts.isBlock(body)) {
+    for (const stmt of body.statements) {
+      collectReferencedIdentifiers(stmt, referencedNames);
+    }
+  } else {
+    collectReferencedIdentifiers(body, referencedNames);
+  }
+
+  const ownParamNames = new Set(
+    callee.parameters
+      .filter((p) => ts.isIdentifier(p.name))
+      .map((p) => (p.name as ts.Identifier).text),
+  );
+
+  const captures: { name: string; type: ValType; localIdx: number }[] = [];
+  for (const name of referencedNames) {
+    if (ownParamNames.has(name)) continue;
+    const localIdx = fctx.localMap.get(name);
+    if (localIdx === undefined) continue;
+    if (ctx.funcMap.has(name)) continue;
+    const type =
+      localIdx < fctx.params.length
+        ? fctx.params[localIdx]!.type
+        : (fctx.locals[localIdx - fctx.params.length]?.type ?? { kind: "f64" as const });
+    captures.push({ name, type, localIdx });
+  }
+
+  const results: ValType[] = returnType ? [returnType] : [];
+  const allParamTypes = [...captures.map((c) => c.type), ...paramTypes];
+
+  const funcTypeIdx = addFuncType(ctx, allParamTypes, results, `${iifeName}_type`);
+
+  // Build the lifted function context
+  const liftedFctx: FunctionContext = {
+    name: iifeName,
+    params: [
+      ...captures.map((c) => ({ name: c.name, type: c.type })),
+      ...callee.parameters.map((p, i) => ({
+        name: ts.isIdentifier(p.name) ? p.name.text : `__param${i}`,
+        type: paramTypes[i] ?? ({ kind: "f64" as const }),
+      })),
+    ],
+    locals: [],
+    localMap: new Map(),
+    returnType,
+    body: [],
+    blockDepth: 0,
+    breakStack: [],
+    continueStack: [],
+    labelMap: new Map(),
+  };
+  for (let i = 0; i < liftedFctx.params.length; i++) {
+    liftedFctx.localMap.set(liftedFctx.params[i]!.name, i);
+  }
+
+  const savedFunc = ctx.currentFunc;
+  ctx.currentFunc = liftedFctx;
+
+  if (ts.isBlock(body)) {
+    for (const stmt of body.statements) {
+      compileStatement(ctx, liftedFctx, stmt);
+    }
+  } else {
+    // Concise arrow: the body is an expression
+    const exprType = compileExpression(ctx, liftedFctx, body, returnType);
+    if (exprType !== null && returnType) {
+      // Expression result is the return value - already on stack
+    } else if (exprType !== null) {
+      liftedFctx.body.push({ op: "drop" });
+    }
+  }
+
+  // Append default return if needed
+  if (returnType) {
+    const lastInstr = liftedFctx.body[liftedFctx.body.length - 1];
+    if (!lastInstr || lastInstr.op !== "return") {
+      if (returnType.kind === "f64") liftedFctx.body.push({ op: "f64.const", value: 0 });
+      else if (returnType.kind === "i32") liftedFctx.body.push({ op: "i32.const", value: 0 });
+      else if (returnType.kind === "externref") liftedFctx.body.push({ op: "ref.null.extern" });
+    }
+  }
+
+  ctx.currentFunc = savedFunc;
+
+  // Register the lifted function
+  const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+  ctx.mod.functions.push({
+    name: iifeName,
+    typeIdx: funcTypeIdx,
+    locals: liftedFctx.locals,
+    body: liftedFctx.body,
+    exported: false,
+  });
+  ctx.funcMap.set(iifeName, funcIdx);
+
+  // At the call site: push captured values, then arguments, then call
+  for (const cap of captures) {
+    fctx.body.push({ op: "local.get", index: cap.localIdx });
+  }
+  for (let i = 0; i < callExpr.arguments.length; i++) {
+    compileExpression(ctx, fctx, callExpr.arguments[i]!, paramTypes[i]);
+  }
+
+  // Re-lookup funcIdx after argument compilation (addUnionImports may shift indices)
+  const finalFuncIdx = ctx.funcMap.get(iifeName) ?? funcIdx;
+  fctx.body.push({ op: "call", funcIdx: finalFuncIdx });
+
+  if (returnType) return returnType;
+  return VOID_RESULT;
 }
 
 // ── New expressions ──────────────────────────────────────────────────

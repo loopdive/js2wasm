@@ -247,6 +247,10 @@ function compileStatementInner(
   }
 
   if (ts.isFunctionDeclaration(stmt)) {
+    // Skip if already hoisted (pre-compiled in function hoisting pass)
+    if (stmt.name && ctx.funcMap.has(stmt.name.text)) return;
+    // Skip if hoisting was attempted but failed (avoid re-emitting errors)
+    if (stmt.name && ctx.hoistFailedFuncs?.has(stmt.name.text)) return;
     compileNestedFunctionDeclaration(ctx, fctx, stmt);
     return;
   }
@@ -1687,6 +1691,18 @@ function compileNestedFunctionDeclaration(
 
   const results: ValType[] = returnType ? [returnType] : [];
 
+  // Register optional/default parameters so call sites can supply defaults
+  const optionalParams: { index: number; type: ValType }[] = [];
+  for (let i = 0; i < stmt.parameters.length; i++) {
+    const param = stmt.parameters[i]!;
+    if (param.questionToken || param.initializer) {
+      optionalParams.push({ index: i, type: paramTypes[i]! });
+    }
+  }
+  if (optionalParams.length > 0) {
+    ctx.funcOptionalParams.set(funcName, optionalParams);
+  }
+
   if (captures.length === 0) {
     // No captures — compile as a regular module-level function
     const funcTypeIdx = addFuncType(
@@ -1716,6 +1732,10 @@ function compileNestedFunctionDeclaration(
 
     const savedFunc = ctx.currentFunc;
     ctx.currentFunc = liftedFctx;
+
+    // Emit default-value initialization for parameters with initializers
+    emitDefaultParamInit(ctx, liftedFctx, stmt, paramTypes, 0);
+
     for (const s of stmt.body.statements) {
       compileStatement(ctx, liftedFctx, s);
     }
@@ -1764,6 +1784,11 @@ function compileNestedFunctionDeclaration(
 
     const savedFunc = ctx.currentFunc;
     ctx.currentFunc = liftedFctx;
+
+    // Emit default-value initialization for parameters with initializers
+    // (offset by number of captures since they are prepended as leading params)
+    emitDefaultParamInit(ctx, liftedFctx, stmt, paramTypes, captures.length);
+
     for (const s of stmt.body.statements) {
       compileStatement(ctx, liftedFctx, s);
     }
@@ -1788,6 +1813,104 @@ function compileNestedFunctionDeclaration(
         outerLocalIdx: c.localIdx,
       })),
     );
+  }
+}
+
+/**
+ * Pre-pass: hoist function declarations inside a function body.
+ * JavaScript semantics require function declarations to be available
+ * before their textual position in the enclosing scope.
+ * This pre-compiles them so they are in funcMap before other statements run.
+ *
+ * If a function fails to compile during hoisting (e.g., uses unsupported features),
+ * it is rolled back and will be re-attempted during normal statement compilation.
+ */
+export function hoistFunctionDeclarations(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  stmts: ts.NodeArray<ts.Statement> | ts.Statement[],
+): void {
+  for (const stmt of stmts) {
+    if (ts.isFunctionDeclaration(stmt) && stmt.name && stmt.body) {
+      if (!ctx.funcMap.has(stmt.name.text)) {
+        // Save state so we can roll back if compilation fails
+        const errorsBefore = ctx.errors.length;
+        const funcsBefore = ctx.mod.functions.length;
+        const funcName = stmt.name.text;
+
+        compileNestedFunctionDeclaration(ctx, fctx, stmt);
+
+        // If new errors were added during hoisting, roll back
+        if (ctx.errors.length > errorsBefore) {
+          ctx.errors.length = errorsBefore;
+          ctx.mod.functions.length = funcsBefore;
+          ctx.funcMap.delete(funcName);
+          ctx.nestedFuncCaptures.delete(funcName);
+          ctx.funcOptionalParams.delete(funcName);
+          // Track failed hoist so compileStatement doesn't re-attempt
+          if (!ctx.hoistFailedFuncs) ctx.hoistFailedFuncs = new Set();
+          ctx.hoistFailedFuncs.add(funcName);
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Emit default-value initialization for parameters with initializers.
+ * For each param with a default value, check if the caller passed the sentinel
+ * (0 for f64/i32, ref.null for ref types) and if so compile the initializer.
+ * @param paramOffset - number of prepended params (captures) before the user params
+ */
+function emitDefaultParamInit(
+  ctx: CodegenContext,
+  liftedFctx: FunctionContext,
+  stmt: ts.FunctionDeclaration,
+  paramTypes: ValType[],
+  paramOffset: number,
+): void {
+  for (let i = 0; i < stmt.parameters.length; i++) {
+    const param = stmt.parameters[i]!;
+    if (!param.initializer) continue;
+
+    const paramIdx = paramOffset + i;
+    const paramType = paramTypes[i]!;
+
+    // Build the "then" block: compile default expression, local.set
+    const savedBody = liftedFctx.body;
+    liftedFctx.body = [];
+    compileExpression(ctx, liftedFctx, param.initializer, paramType);
+    liftedFctx.body.push({ op: "local.set", index: paramIdx });
+    const thenInstrs = liftedFctx.body;
+    liftedFctx.body = savedBody;
+
+    // Emit the null/zero check + conditional assignment
+    if (paramType.kind === "externref" || paramType.kind === "ref_null" || paramType.kind === "ref") {
+      liftedFctx.body.push({ op: "local.get", index: paramIdx });
+      liftedFctx.body.push({ op: "ref.is_null" });
+      liftedFctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" },
+        then: thenInstrs,
+      });
+    } else if (paramType.kind === "i32") {
+      liftedFctx.body.push({ op: "local.get", index: paramIdx });
+      liftedFctx.body.push({ op: "i32.eqz" });
+      liftedFctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" },
+        then: thenInstrs,
+      });
+    } else if (paramType.kind === "f64") {
+      liftedFctx.body.push({ op: "local.get", index: paramIdx });
+      liftedFctx.body.push({ op: "f64.const", value: 0 });
+      liftedFctx.body.push({ op: "f64.eq" });
+      liftedFctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" },
+        then: thenInstrs,
+      });
+    }
   }
 }
 
