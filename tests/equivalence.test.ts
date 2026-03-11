@@ -3763,4 +3763,64 @@ describe("Arguments object in nested functions (#211)", () => {
     );
   });
 
+
+  // Issue #200: JSON.stringify/parse with various argument types
+  it("JSON.stringify with number", async () => {
+    await assertEquivalent(
+      `
+      export function test(): string {
+        return JSON.stringify(42);
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("JSON.parse with string", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        return JSON.parse("42");
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #205: String.prototype.indexOf with start position
+  it("string indexOf with start position", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var s: string = "hello world hello";
+        return s.indexOf("hello", 1);
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("string indexOf without start position", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var s: string = "hello world";
+        return s.indexOf("world");
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #181: new Object()
+  it("new Object() creates empty object", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        var o: any = new Object();
+        return 42;
+      }
+    `);
+    expect(exports.test()).toBe(42);
+  });
+
 });

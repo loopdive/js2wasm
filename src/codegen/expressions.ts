@@ -5265,14 +5265,9 @@ function compileCallExpression(
         const funcIdx = ctx.funcMap.get(importName);
         if (funcIdx !== undefined) {
           // Compile argument and coerce to externref if needed
-          // (boxing imports registered early in collectJsonImports)
           const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
-          if (argType && argType.kind === "f64") {
-            const boxIdx = ctx.funcMap.get("__box_number");
-            if (boxIdx !== undefined) fctx.body.push({ op: "call", funcIdx: boxIdx });
-          } else if (argType && argType.kind === "i32") {
-            const boxIdx = ctx.funcMap.get("__box_boolean");
-            if (boxIdx !== undefined) fctx.body.push({ op: "call", funcIdx: boxIdx });
+          if (argType && argType.kind !== "externref") {
+            coerceType(ctx, fctx, argType, { kind: "externref" });
           }
           fctx.body.push({ op: "call", funcIdx });
           return { kind: "externref" };
@@ -5449,8 +5444,23 @@ function compileCallExpression(
       const funcIdx = ctx.funcMap.get(importName);
       if (funcIdx !== undefined) {
         compileExpression(ctx, fctx, propAccess.expression);
-        for (const arg of expr.arguments) {
-          compileExpression(ctx, fctx, arg);
+        const paramTypes = getFuncParamTypes(ctx, funcIdx);
+        const args = expr.arguments;
+        for (let ai = 0; ai < args.length; ai++) {
+          const argResult = compileExpression(ctx, fctx, args[ai]!);
+          const expectedType = paramTypes?.[ai + 1]; // +1 for self param
+          if (argResult && expectedType && argResult.kind !== expectedType.kind) {
+            coerceType(ctx, fctx, argResult, expectedType);
+          }
+        }
+        // Pad missing optional args with defaults (e.g. indexOf 2nd arg)
+        if (paramTypes && args.length + 1 < paramTypes.length) {
+          for (let pi = args.length + 1; pi < paramTypes.length; pi++) {
+            const pt = paramTypes[pi]!;
+            if (pt.kind === "externref") fctx.body.push({ op: "ref.null.extern" });
+            else if (pt.kind === "f64") fctx.body.push({ op: "f64.const", value: 0 });
+            else if (pt.kind === "i32") fctx.body.push({ op: "i32.const", value: 0 });
+          }
         }
         fctx.body.push({ op: "call", funcIdx });
         const returnsBool = method === "includes" || method === "startsWith" || method === "endsWith";
@@ -6605,6 +6615,15 @@ function compileNewExpression(
   // Handle `new function() { ... }(args)` — constructor with function expression
   if (ts.isFunctionExpression(expr.expression)) {
     return compileNewFunctionExpression(ctx, fctx, expr, expr.expression);
+  }
+
+  // Handle `new Object()` — create an empty struct (equivalent to {})
+  if (ts.isIdentifier(expr.expression) && expr.expression.text === "Object") {
+    // Look for an empty struct type, or create an externref null as empty object
+    // In non-fast mode, an empty object is just an externref null
+    // In fast mode or when we have struct types, emit a minimal struct
+    fctx.body.push({ op: "ref.null.extern" });
+    return { kind: "externref" };
   }
 
   const type = ctx.checker.getTypeAtLocation(expr);

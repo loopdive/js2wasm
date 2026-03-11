@@ -11,7 +11,7 @@ _Details: [sprint-1.md](sprint-1.md)_
 | [139](issues/139.md) | Bug: valueOf/toString coercion on arithmetic operators | Open | — |
 | [140](issues/140.md) | Bug: object computed property names runtime | Open | — |
 | [141](issues/141.md) | Bug: tagged template literal runtime failures | Open | — |
-| [142](issues/142.md) | Bug: assignment destructuring failures | Review | — |
+| [142](issues/142.md) | Bug: assignment destructuring failures | Open | — |
 | [143](issues/143.md) | Bug: for-loop edge cases | Open | — |
 | [144](issues/144.md) | Bug: new expression with class expressions | Open | — |
 | [145](issues/145.md) | allowJs type flexibility: boolean/string/void as number | Open | — |
@@ -50,9 +50,6 @@ _Details: [sprint-1.md](sprint-1.md)_
 | [147](issues/147.md) | Function.name property | M | ~258 |
 | [149](issues/149.md) | Unsupported call expression patterns | L | ~637 |
 | [153](issues/153.md) | Iterator protocol for destructuring | M | ~67 |
-| [180](issues/180.md) | JS var re-declaration type mismatch (TS2403) | Review | ~26 |
-| [196](issues/196.md) | Try/catch/finally compile errors | Review | ~66 |
-| [197](issues/197.md) | If-statement compile errors (function decls in branches) | Review | ~7 |
 | [173](issues/173.md) | Computed property names in classes | M | ~44 |
 
 ### Won't implement (fundamental JS runtime features)
@@ -211,12 +208,7 @@ _Details: [sprint-1.md](sprint-1.md)_
 | [135](issues/135.md)      | Ternary returning non-boolean values                    | type reconciliation across branches     |
 | [136](issues/136.md)      | Loose equality (== / !=)                                | mixed-type coercion dispatch            |
 | [137](issues/137.md)      | Object literal getter/setter                            | 3 in equivalence.test.ts                |
-| [177](issues/177.md)      | Spread operator in new expressions                      | in equivalence.test.ts                  |
-| [184](issues/184.md)      | Function arity mismatch padding                         | in equivalence.test.ts                  |
-| [211](issues/211.md)      | Arguments object in nested functions                    | in equivalence.test.ts                  |
+| [181](issues/181.md)      | new Object() + new Function() skip                      | 8 in equivalence.test.ts                |
+| [200](issues/200.md)      | JSON.stringify/parse externref coercion                  | 2 in equivalence.test.ts                |
+| [205](issues/205.md)      | String.prototype.indexOf start position coercion         | 2 in equivalence.test.ts                |
 
-| [175](issues/175.md) | Negative zero preservation in modulus | copysign fix |
-| [183](issues/183.md) | Template literal type coercion | ref/i64 span coercion |
-| [185](issues/185.md) | Unary plus on non-numeric types | static ToNumber |
-| [186](issues/186.md) | typeof null returns "object" | already fixed in #167 |
-| [193](issues/193.md) | Coalesce operator type mismatch | RHS-type unification |
