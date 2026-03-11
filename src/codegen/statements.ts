@@ -1013,7 +1013,7 @@ function compileSwitchStatement(
       fctx.body = checkBody;
 
       fctx.body.push({ op: "local.get", index: tmpLocalIdx });
-      compileExpression(ctx, fctx, caseClause.expression);
+      compileExpression(ctx, fctx, caseClause.expression, wasmType);
       fctx.body.push({ op: eqOp });
       fctx.body.push({ op: "local.set", index: matchedLocalIdx });
 
