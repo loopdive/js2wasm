@@ -50,6 +50,9 @@ _Details: [sprint-1.md](sprint-1.md)_
 | [147](issues/147.md) | Function.name property | M | ~258 |
 | [149](issues/149.md) | Unsupported call expression patterns | L | ~637 |
 | [153](issues/153.md) | Iterator protocol for destructuring | M | ~67 |
+| [180](issues/180.md) | JS var re-declaration type mismatch (TS2403) | Review | ~26 |
+| [196](issues/196.md) | Try/catch/finally compile errors | Review | ~66 |
+| [197](issues/197.md) | If-statement compile errors (function decls in branches) | Review | ~7 |
 | [173](issues/173.md) | Computed property names in classes | M | ~44 |
 
 ### Won't implement (fundamental JS runtime features)

@@ -1894,6 +1894,33 @@ export function hoistFunctionDeclarations(
         }
       }
     }
+    // Recurse into block-like structures to find nested function declarations.
+    // In JS, function declarations are hoisted to the enclosing function scope,
+    // even when inside if-branches, try/catch blocks, etc.
+    if (ts.isIfStatement(stmt)) {
+      if (ts.isBlock(stmt.thenStatement)) {
+        hoistFunctionDeclarations(ctx, fctx, stmt.thenStatement.statements);
+      }
+      if (stmt.elseStatement) {
+        if (ts.isBlock(stmt.elseStatement)) {
+          hoistFunctionDeclarations(ctx, fctx, stmt.elseStatement.statements);
+        } else if (ts.isIfStatement(stmt.elseStatement)) {
+          hoistFunctionDeclarations(ctx, fctx, [stmt.elseStatement]);
+        }
+      }
+    }
+    if (ts.isTryStatement(stmt)) {
+      hoistFunctionDeclarations(ctx, fctx, stmt.tryBlock.statements);
+      if (stmt.catchClause) {
+        hoistFunctionDeclarations(ctx, fctx, stmt.catchClause.block.statements);
+      }
+      if (stmt.finallyBlock) {
+        hoistFunctionDeclarations(ctx, fctx, stmt.finallyBlock.statements);
+      }
+    }
+    if (ts.isBlock(stmt)) {
+      hoistFunctionDeclarations(ctx, fctx, stmt.statements);
+    }
   }
 }
 
