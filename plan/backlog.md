@@ -6,7 +6,6 @@
 
 | #                    | Feature                                            | Complexity | Tests blocked |
 | -------------------- | -------------------------------------------------- | ---------- | ------------- |
-| [137](issues/137.md) | Object literal getter/setter                       | M          | ~60           |
 | [130](issues/130.md) | Shape inference Phase 4 — hashmap fallback + more methods | L   | 2,200+        |
 
 ### Won't implement (fundamental JS runtime features)
@@ -164,4 +163,5 @@
 | [134](issues/134.md)      | Switch fallthrough                                      | matched-flag rewrite                    |
 | [135](issues/135.md)      | Ternary returning non-boolean values                    | type reconciliation across branches     |
 | [136](issues/136.md)      | Loose equality (== / !=)                                | mixed-type coercion dispatch            |
+| [137](issues/137.md)      | Object literal getter/setter                            | 3 in equivalence.test.ts                |
 

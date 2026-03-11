@@ -1319,3 +1319,43 @@ describe("typeof comparison", () => {
     expect(exports.test()).toBe(1);
   });
 });
+
+describe("object literal getters/setters", () => {
+  it("getter returns computed value", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        const obj = { _val: 10, get x() { return this._val * 2; } };
+        return obj.x;
+      }
+    `);
+    expect(exports.test()).toBe(20);
+  });
+
+  it("setter stores value", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        const obj = {
+          _val: 0,
+          get x() { return this._val; },
+          set x(v: number) { this._val = v; }
+        };
+        obj.x = 42;
+        return obj.x;
+      }
+    `);
+    expect(exports.test()).toBe(42);
+  });
+
+  it("object literal method", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        const obj = {
+          val: 5,
+          double() { return this.val * 2; }
+        };
+        return obj.double();
+      }
+    `);
+    expect(exports.test()).toBe(10);
+  });
+});

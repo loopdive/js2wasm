@@ -349,11 +349,6 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     return { skip: true, reason: "Object mutability methods not supported" };
   }
 
-  // Skip tests using getter/setter in object literal
-  if (/\bget\s+\w+\s*\(\s*\)\s*\{/.test(source) || /\bset\s+\w+\s*\(/.test(source)) {
-    return { skip: true, reason: "getter/setter in object literal" };
-  }
-
   // Skip tests using hasOwnProperty or propertyIsEnumerable
   if (/hasOwnProperty|propertyIsEnumerable/.test(source)) {
     return { skip: true, reason: "property introspection not supported" };
