@@ -2515,8 +2515,25 @@ function compileDestructuringAssignment(
 
   // Determine struct type from the RHS expression's type
   const rhsType = ctx.checker.getTypeAtLocation(value);
-  const typeName =
-    ctx.anonTypeMap.get(rhsType) ?? rhsType.symbol?.name;
+  const symName = rhsType.symbol?.name;
+  let typeName =
+    symName &&
+    symName !== "__type" &&
+    symName !== "__object" &&
+    ctx.structMap.has(symName)
+      ? symName
+      : (ctx.anonTypeMap.get(rhsType) ?? symName);
+
+  // Auto-register anonymous object types (same as resolveWasmType logic)
+  if (
+    typeName &&
+    (typeName === "__type" || typeName === "__object") &&
+    !ctx.anonTypeMap.has(rhsType) &&
+    rhsType.getProperties().length > 0
+  ) {
+    ensureStructForType(ctx, rhsType);
+    typeName = ctx.anonTypeMap.get(rhsType) ?? typeName;
+  }
 
   if (!typeName) {
     ctx.errors.push({
@@ -2547,15 +2564,7 @@ function compileDestructuringAssignment(
     if (ts.isShorthandPropertyAssignment(prop)) {
       // { width } = ... → prop.name is "width"
       const propName = prop.name.text;
-      const localIdx = fctx.localMap.get(propName);
-      if (localIdx === undefined) {
-        ctx.errors.push({
-          message: `Unknown variable in destructuring: ${propName}`,
-          line: getLine(prop),
-          column: getCol(prop),
-        });
-        continue;
-      }
+      let localIdx = fctx.localMap.get(propName);
 
       const fieldIdx = fields.findIndex((f) => f.name === propName);
       if (fieldIdx === -1) {
@@ -2567,26 +2576,212 @@ function compileDestructuringAssignment(
         continue;
       }
 
+      // Auto-allocate local if not declared (e.g. destructuring creates new binding)
+      if (localIdx === undefined) {
+        const fieldType = fields[fieldIdx]!.type;
+        localIdx = allocLocal(fctx, propName, fieldType);
+      }
+
+      const fieldType = fields[fieldIdx]!.type;
+      const localType = getLocalType(fctx, localIdx);
+
       fctx.body.push({ op: "local.get", index: tmpLocal });
       fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
-      fctx.body.push({ op: "local.set", index: localIdx });
-    } else if (ts.isPropertyAssignment(prop)) {
-      // { width: w } = ... → prop.name is "width", prop.initializer is "w"
-      const propName = (prop.name as ts.Identifier).text;
-      const localName = ts.isIdentifier(prop.initializer) ? prop.initializer.text : propName;
-      const localIdx = fctx.localMap.get(localName);
-      if (localIdx === undefined) continue;
 
+      // Handle default value: { x = defaultVal } = obj
+      if (prop.objectAssignmentInitializer) {
+        if (fieldType.kind === "externref") {
+          const tmpField = allocLocal(fctx, `__dflt_${fctx.locals.length}`, fieldType);
+          fctx.body.push({ op: "local.tee", index: tmpField });
+          fctx.body.push({ op: "ref.is_null" } as Instr);
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: [
+              ...(() => {
+                const saved = fctx.body;
+                fctx.body = [];
+                compileExpression(ctx, fctx, prop.objectAssignmentInitializer!, localType ?? fieldType);
+                fctx.body.push({ op: "local.set", index: localIdx! } as Instr);
+                const instrs = fctx.body;
+                fctx.body = saved;
+                return instrs;
+              })(),
+            ],
+            else: [
+              { op: "local.get", index: tmpField } as Instr,
+              ...(() => {
+                if (localType && !valTypesMatch(fieldType, localType)) {
+                  const saved = fctx.body;
+                  fctx.body = [];
+                  coerceType(ctx, fctx, fieldType, localType);
+                  const instrs = fctx.body;
+                  fctx.body = saved;
+                  return instrs;
+                }
+                return [];
+              })(),
+              { op: "local.set", index: localIdx! } as Instr,
+            ],
+          });
+        } else {
+          // Coerce field type to local type if needed
+          if (localType && !valTypesMatch(fieldType, localType)) {
+            coerceType(ctx, fctx, fieldType, localType);
+          }
+          fctx.body.push({ op: "local.set", index: localIdx });
+        }
+      } else {
+        // Coerce field type to local type if needed
+        if (localType && !valTypesMatch(fieldType, localType)) {
+          coerceType(ctx, fctx, fieldType, localType);
+        }
+        fctx.body.push({ op: "local.set", index: localIdx });
+      }
+    } else if (ts.isPropertyAssignment(prop)) {
+      const propName = (prop.name as ts.Identifier).text;
       const fieldIdx = fields.findIndex((f) => f.name === propName);
       if (fieldIdx === -1) continue;
+      const fieldType = fields[fieldIdx]!.type;
 
-      fctx.body.push({ op: "local.get", index: tmpLocal });
-      fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
-      fctx.body.push({ op: "local.set", index: localIdx });
+      // Determine the target and optional default value
+      let targetExpr = prop.initializer;
+      let defaultExpr: ts.Expression | undefined;
+
+      // { y: x = defaultVal } — BinaryExpression with EqualsToken
+      if (ts.isBinaryExpression(targetExpr) &&
+          targetExpr.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+          ts.isIdentifier(targetExpr.left)) {
+        defaultExpr = targetExpr.right;
+        targetExpr = targetExpr.left;
+      }
+
+      if (ts.isIdentifier(targetExpr)) {
+        // { prop: ident } or { prop: ident = default }
+        const localName = targetExpr.text;
+        let localIdx = fctx.localMap.get(localName);
+
+        // Auto-allocate local if not declared
+        if (localIdx === undefined) {
+          localIdx = allocLocal(fctx, localName, fieldType);
+        }
+
+        const localType = getLocalType(fctx, localIdx);
+
+        fctx.body.push({ op: "local.get", index: tmpLocal });
+        fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+
+        if (defaultExpr) {
+          // Handle default value for property assignment target
+          if (fieldType.kind === "externref" || fieldType.kind === "ref" || fieldType.kind === "ref_null") {
+            const tmpField = allocLocal(fctx, `__dflt_${fctx.locals.length}`, fieldType);
+            fctx.body.push({ op: "local.tee", index: tmpField });
+            fctx.body.push({ op: "ref.is_null" } as Instr);
+            fctx.body.push({
+              op: "if",
+              blockType: { kind: "empty" },
+              then: [
+                ...(() => {
+                  const saved = fctx.body;
+                  fctx.body = [];
+                  compileExpression(ctx, fctx, defaultExpr!, localType ?? fieldType);
+                  fctx.body.push({ op: "local.set", index: localIdx! } as Instr);
+                  const instrs = fctx.body;
+                  fctx.body = saved;
+                  return instrs;
+                })(),
+              ],
+              else: [
+                { op: "local.get", index: tmpField } as Instr,
+                ...(() => {
+                  if (localType && !valTypesMatch(fieldType, localType)) {
+                    const saved = fctx.body;
+                    fctx.body = [];
+                    coerceType(ctx, fctx, fieldType, localType);
+                    const instrs = fctx.body;
+                    fctx.body = saved;
+                    return instrs;
+                  }
+                  return [];
+                })(),
+                { op: "local.set", index: localIdx! } as Instr,
+              ],
+            });
+          } else {
+            // Numeric field — just set the value (no undefined check needed for primitives)
+            if (localType && !valTypesMatch(fieldType, localType)) {
+              coerceType(ctx, fctx, fieldType, localType);
+            }
+            fctx.body.push({ op: "local.set", index: localIdx });
+          }
+        } else {
+          // No default — just coerce and set
+          if (localType && !valTypesMatch(fieldType, localType)) {
+            coerceType(ctx, fctx, fieldType, localType);
+          }
+          fctx.body.push({ op: "local.set", index: localIdx });
+        }
+      } else if (ts.isObjectLiteralExpression(targetExpr)) {
+        // { prop: { nested } } — nested destructuring
+        // Extract the field value into a temp, then recursively destructure
+        const tmpNested = allocLocal(fctx, `__nested_${fctx.locals.length}`, fieldType);
+        fctx.body.push({ op: "local.get", index: tmpLocal });
+        fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+        fctx.body.push({ op: "local.set", index: tmpNested });
+
+        // Build a synthetic assignment: targetExpr = tmpNestedRef
+        // We can reuse the destructuring logic by getting the nested struct type
+        const nestedTsType = ctx.checker.getTypeAtLocation(targetExpr);
+        const nestedSymName = nestedTsType.symbol?.name;
+        let nestedTypeName =
+          nestedSymName &&
+          nestedSymName !== "__type" &&
+          nestedSymName !== "__object" &&
+          ctx.structMap.has(nestedSymName)
+            ? nestedSymName
+            : (ctx.anonTypeMap.get(nestedTsType) ?? nestedSymName);
+
+        if (nestedTypeName && (nestedTypeName === "__type" || nestedTypeName === "__object")) {
+          ensureStructForType(ctx, nestedTsType);
+          nestedTypeName = ctx.anonTypeMap.get(nestedTsType) ?? nestedTypeName;
+        }
+
+        const nestedStructIdx = nestedTypeName ? ctx.structMap.get(nestedTypeName) : undefined;
+        const nestedFields = nestedTypeName ? ctx.structFields.get(nestedTypeName) : undefined;
+
+        if (nestedStructIdx !== undefined && nestedFields) {
+          // Recursively handle each property in the nested pattern
+          for (const nestedProp of targetExpr.properties) {
+            if (ts.isShorthandPropertyAssignment(nestedProp)) {
+              const nPropName = nestedProp.name.text;
+              let nLocalIdx = fctx.localMap.get(nPropName);
+              const nFieldIdx = nestedFields.findIndex((f) => f.name === nPropName);
+              if (nFieldIdx === -1) continue;
+
+              if (nLocalIdx === undefined) {
+                nLocalIdx = allocLocal(fctx, nPropName, nestedFields[nFieldIdx]!.type);
+              }
+
+              const nFieldType = nestedFields[nFieldIdx]!.type;
+              const nLocalType = getLocalType(fctx, nLocalIdx);
+
+              fctx.body.push({ op: "local.get", index: tmpNested });
+              fctx.body.push({ op: "struct.get", typeIdx: nestedStructIdx, fieldIdx: nFieldIdx });
+              if (nLocalType && !valTypesMatch(nFieldType, nLocalType)) {
+                coerceType(ctx, fctx, nFieldType, nLocalType);
+              }
+              fctx.body.push({ op: "local.set", index: nLocalIdx });
+            }
+          }
+        }
+      }
+      // else: unsupported target expression in property assignment — skip
     }
   }
 
-  return VOID_RESULT; // destructuring assignment has no result value
+  // The result of a destructuring assignment is the RHS value
+  fctx.body.push({ op: "local.get", index: tmpLocal });
+  return resultType;
 }
 
 function compilePropertyAssignment(
@@ -5954,6 +6149,15 @@ function compileElementAccess(
         }
         fctx.body.push({ op: "struct.get", typeIdx, fieldIdx });
         return typeDef.fields[fieldIdx]!.type;
+      }
+      // String literal key on struct → struct.get by field name
+      if (ts.isStringLiteral(expr.argumentExpression)) {
+        const fieldName = expr.argumentExpression.text;
+        const fieldIdx = typeDef.fields.findIndex((f) => f.name === fieldName);
+        if (fieldIdx !== -1) {
+          fctx.body.push({ op: "struct.get", typeIdx, fieldIdx });
+          return typeDef.fields[fieldIdx]!.type;
+        }
       }
       // Non-vec, non-tuple struct: element access not supported
       ctx.errors.push({
