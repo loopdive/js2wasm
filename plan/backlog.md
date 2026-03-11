@@ -209,3 +209,8 @@ _Details: [sprint-1.md](sprint-1.md)_
 | [136](issues/136.md)      | Loose equality (== / !=)                                | mixed-type coercion dispatch            |
 | [137](issues/137.md)      | Object literal getter/setter                            | 3 in equivalence.test.ts                |
 
+| [175](issues/175.md) | Negative zero preservation in modulus | copysign fix |
+| [183](issues/183.md) | Template literal type coercion | ref/i64 span coercion |
+| [185](issues/185.md) | Unary plus on non-numeric types | static ToNumber |
+| [186](issues/186.md) | typeof null returns "object" | already fixed in #167 |
+| [193](issues/193.md) | Coalesce operator type mismatch | RHS-type unification |
