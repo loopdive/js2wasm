@@ -3007,7 +3007,11 @@ function compilePropertyAssignment(
     }
   }
 
-  const typeName = resolveStructName(ctx, objType);
+  let typeName = resolveStructName(ctx, objType);
+  // Fallback: check widened variable struct map for empty objects that got properties added later
+  if (!typeName && ts.isIdentifier(target.expression)) {
+    typeName = ctx.widenedVarStructMap.get(target.expression.text);
+  }
   if (!typeName) return null;
 
   // Check for setter accessor on user-defined classes
@@ -7902,7 +7906,11 @@ function compilePropertyAccess(
   }
 
   // Handle getter accessor on user-defined classes
-  const typeName = resolveStructName(ctx, objType);
+  let typeName = resolveStructName(ctx, objType);
+  // Fallback: check widened variable struct map for empty objects with later-assigned props
+  if (!typeName && ts.isIdentifier(expr.expression)) {
+    typeName = ctx.widenedVarStructMap.get(expr.expression.text);
+  }
   if (typeName) {
     const accessorKey = `${typeName}_${propName}`;
     if (ctx.classAccessorSet.has(accessorKey)) {
@@ -8210,6 +8218,16 @@ function compileObjectLiteral(
   fctx: FunctionContext,
   expr: ts.ObjectLiteralExpression,
 ): ValType | null {
+  // If this empty object literal is the initializer of a variable with widened
+  // properties (from pre-pass), register the struct with those extra fields and
+  // compile as a struct.new with default values for the widened fields.
+  if (expr.properties.length === 0 && ts.isVariableDeclaration(expr.parent) && ts.isIdentifier(expr.parent.name)) {
+    const widenedProps = ctx.widenedTypeProperties.get(expr.parent.name.text);
+    if (widenedProps && widenedProps.length > 0) {
+      return compileWidenedEmptyObject(ctx, fctx, expr, widenedProps);
+    }
+  }
+
   const contextType = ctx.checker.getContextualType(expr);
   if (!contextType) {
     const type = ctx.checker.getTypeAtLocation(expr);
@@ -8446,6 +8464,80 @@ function resolveAccessorPropName(ctx: CodegenContext, name: ts.PropertyName): st
     return resolveComputedKeyExpression(ctx, name.expression);
   }
   return undefined;
+}
+
+/**
+ * Compile an empty object literal ({}) that has widened properties from
+ * later property assignments (e.g. `var obj = {}; obj.x = 42;`).
+ * Registers a struct type with the widened fields and emits struct.new
+ * with default values for each field.
+ */
+function compileWidenedEmptyObject(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.ObjectLiteralExpression,
+  widenedProps: { name: string; type: ValType }[],
+): ValType | null {
+  // The struct was already registered during the pre-pass (collectEmptyObjectWidening).
+  // Look it up via the anonTypeMap.
+  const type = ctx.checker.getTypeAtLocation(expr);
+  let typeName = ctx.anonTypeMap.get(type);
+  if (!typeName && ts.isVariableDeclaration(expr.parent) && ts.isIdentifier(expr.parent.name)) {
+    const varType = ctx.checker.getTypeAtLocation(expr.parent.name);
+    typeName = ctx.anonTypeMap.get(varType);
+  }
+  if (!typeName) {
+    // Fallback: the pre-pass should have registered it but didn't match type identity.
+    // Search by variable name in the struct map.
+    if (ts.isVariableDeclaration(expr.parent) && ts.isIdentifier(expr.parent.name)) {
+      // Register now as a last resort
+      const fields: FieldDef[] = widenedProps.map(wp => ({
+        name: wp.name,
+        type: wp.type,
+        mutable: true,
+      }));
+      typeName = `__anon_${ctx.anonTypeCounter++}`;
+      const typeIdx = ctx.mod.types.length;
+      ctx.mod.types.push({
+        kind: "struct",
+        name: typeName,
+        fields,
+      } as StructTypeDef);
+      ctx.structMap.set(typeName, typeIdx);
+      ctx.structFields.set(typeName, fields);
+      ctx.anonTypeMap.set(type, typeName);
+      const varType = ctx.checker.getTypeAtLocation(expr.parent.name);
+      ctx.anonTypeMap.set(varType, typeName);
+    }
+  }
+  if (!typeName) return null;
+
+  const structTypeIdx = ctx.structMap.get(typeName);
+  const fields = ctx.structFields.get(typeName);
+  if (structTypeIdx === undefined || !fields) return null;
+
+  // Emit default values for each field
+  for (const field of fields) {
+    switch (field.type.kind) {
+      case "f64":
+        fctx.body.push({ op: "f64.const", value: 0 });
+        break;
+      case "i32":
+        fctx.body.push({ op: "i32.const", value: 0 });
+        break;
+      case "externref":
+        fctx.body.push({ op: "ref.null", refType: "extern" } as unknown as Instr);
+        break;
+      default:
+        if (field.type.kind === "ref" || field.type.kind === "ref_null") {
+          fctx.body.push({ op: "ref.null", typeIdx: (field.type as { typeIdx: number }).typeIdx } as unknown as Instr);
+        } else {
+          fctx.body.push({ op: "f64.const", value: 0 });
+        }
+    }
+  }
+  fctx.body.push({ op: "struct.new", typeIdx: structTypeIdx });
+  return { kind: "ref", typeIdx: structTypeIdx };
 }
 
 function compileObjectLiteralForStruct(
