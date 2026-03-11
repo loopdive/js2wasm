@@ -54,6 +54,34 @@ function buildImports(result: CompileResult): WebAssembly.Imports {
     __box_number: (v: number) => v,
     __box_boolean: (v: number) => Boolean(v),
     __make_callback: () => null,
+    JSON_stringify: (v: unknown) => JSON.stringify(v),
+    JSON_parse: (v: unknown) => JSON.parse(v as string),
+    string_indexOf: (s: string, search: string, startPos?: unknown) => {
+      const pos = typeof startPos === "number" ? startPos : (startPos === undefined || startPos === null ? undefined : Number(startPos));
+      return (s as string).indexOf(search as string, pos);
+    },
+    string_lastIndexOf: (s: string, search: string, startPos?: unknown) => {
+      const pos = typeof startPos === "number" ? startPos : (startPos === undefined || startPos === null ? undefined : Number(startPos));
+      return (s as string).lastIndexOf(search as string, pos);
+    },
+    number_toFixed: (v: number, digits: number) => (v as number).toFixed(digits),
+    string_toUpperCase: (s: string) => (s as string).toUpperCase(),
+    string_toLowerCase: (s: string) => (s as string).toLowerCase(),
+    string_trim: (s: string) => (s as string).trim(),
+    string_charAt: (s: string, i: number) => (s as string).charAt(i),
+    string_slice: (s: string, a: number, b: number) => (s as string).slice(a, b),
+    string_substring: (s: string, a: number, b: number) => (s as string).substring(a, b),
+    string_includes: (s: string, search: string) => (s as string).includes(search as string) ? 1 : 0,
+    string_startsWith: (s: string, search: string) => (s as string).startsWith(search as string) ? 1 : 0,
+    string_endsWith: (s: string, search: string) => (s as string).endsWith(search as string) ? 1 : 0,
+    string_replace: (s: string, search: string, rep: string) => (s as string).replace(search as string, rep as string),
+    string_repeat: (s: string, count: number) => (s as string).repeat(count),
+    string_padStart: (s: string, len: number, fill: string) => (s as string).padStart(len, fill as string),
+    string_padEnd: (s: string, len: number, fill: string) => (s as string).padEnd(len, fill as string),
+    string_split: (s: string, sep: string) => (s as string).split(sep as string),
+    string_trimStart: (s: string) => (s as string).trimStart(),
+    string_trimEnd: (s: string) => (s as string).trimEnd(),
+    string_at: (s: string, i: number) => (s as string).at(i),
   };
   return {
     env,
@@ -1598,5 +1626,64 @@ describe("IIFE and call expression edge cases", () => {
       `,
       [{ fn: "test", args: [] }],
     );
+  });
+
+  // Issue #200: JSON.stringify/parse with various argument types
+  it("JSON.stringify with number", async () => {
+    await assertEquivalent(
+      `
+      export function test(): string {
+        return JSON.stringify(42);
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("JSON.parse with string", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        return JSON.parse("42");
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #205: String.prototype.indexOf with start position
+  it("string indexOf with start position", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var s: string = "hello world hello";
+        return s.indexOf("hello", 1);
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("string indexOf without start position", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var s: string = "hello world";
+        return s.indexOf("world");
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #181: new Object()
+  it("new Object() creates empty object", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        var o: any = new Object();
+        return 42;
+      }
+    `);
+    expect(exports.test()).toBe(42);
   });
 });
