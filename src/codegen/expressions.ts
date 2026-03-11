@@ -3482,6 +3482,54 @@ function compileStringCompoundAssignment(
   return { kind: "externref" };
 }
 
+/**
+ * Check if a variable named `name` is assigned a string value anywhere
+ * in the enclosing function/block scope. This handles the test262 pattern:
+ *   var __str;     // type: any
+ *   __str = ""     // string assignment
+ *   __str += index // should be string concat, not numeric add
+ */
+function hasStringAssignment(name: string, fromExpr: ts.Node): boolean {
+  // Walk up to the enclosing function body or source file
+  let scope: ts.Node = fromExpr;
+  while (scope && !ts.isFunctionDeclaration(scope) && !ts.isFunctionExpression(scope)
+         && !ts.isArrowFunction(scope) && !ts.isMethodDeclaration(scope)
+         && !ts.isSourceFile(scope)) {
+    scope = scope.parent;
+  }
+  if (!scope) return false;
+
+  let found = false;
+  function visit(node: ts.Node) {
+    if (found) return;
+    // Check: name = "stringLiteral" or name = `template`
+    if (ts.isBinaryExpression(node) &&
+        node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        ts.isIdentifier(node.left) && node.left.text === name) {
+      if (ts.isStringLiteral(node.right) ||
+          ts.isNoSubstitutionTemplateLiteral(node.right) ||
+          ts.isTemplateExpression(node.right)) {
+        found = true;
+        return;
+      }
+    }
+    // Check: var name = "stringLiteral"
+    if (ts.isVariableDeclaration(node) &&
+        ts.isIdentifier(node.name) && node.name.text === name &&
+        node.initializer) {
+      if (ts.isStringLiteral(node.initializer) ||
+          ts.isNoSubstitutionTemplateLiteral(node.initializer) ||
+          ts.isTemplateExpression(node.initializer)) {
+        found = true;
+        return;
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+  ts.forEachChild(scope, visit);
+  return found;
+}
+
 function compileCompoundAssignment(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -3502,7 +3550,15 @@ function compileCompoundAssignment(
   // String += : concat instead of numeric add
   if (op === ts.SyntaxKind.PlusEqualsToken) {
     const leftTsType = ctx.checker.getTypeAtLocation(expr.left);
-    if (isStringType(leftTsType)) {
+    let isStr = isStringType(leftTsType);
+    if (!isStr && (leftTsType.flags & ts.TypeFlags.Any) !== 0) {
+      // For `any`-typed variables (e.g. `var __str; __str=""`), check if
+      // the variable is ever assigned a string value in the enclosing scope.
+      // This handles the common test262 pattern where `var x; x=""` followed
+      // by `x += numericVar` should do string concatenation.
+      isStr = hasStringAssignment(name, expr);
+    }
+    if (isStr) {
       return compileStringCompoundAssignment(ctx, fctx, expr, name);
     }
   }
