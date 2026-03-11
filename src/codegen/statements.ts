@@ -903,25 +903,28 @@ function compileDoWhileStatement(
   fctx: FunctionContext,
   stmt: ts.DoStatement,
 ): void {
-  // block $break        (break target — depth 1 from inside the loop)
-  //   loop $continue    (continue target — depth 0)
-  //     <body>
+  // block $break {                    ; break target (depth 2 from body)
+  //   loop $loop {                    ; loop restart
+  //     block $continue {             ; continue target (depth 0 from body)
+  //       <body>
+  //     }
   //     <condition>
-  //     ensureI32Condition
-  //     br_if 0         (true → jump back to loop start)
-  //   end
-  // end
+  //     br_if $loop                   ; true → restart loop (depth 0 from loop level)
+  //   }
+  // }
 
   const savedBody = fctx.body;
   fctx.body = [];
 
-  // Adjust existing break/continue depths: block+loop adds 2 nesting levels
-  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! += 2;
+  // Adjust existing break/continue depths: block+loop+block adds 3 nesting levels
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! += 3;
   for (let i = 0; i < fctx.continueStack.length; i++)
-    fctx.continueStack[i]! += 2;
+    fctx.continueStack[i]! += 3;
 
-  // Inside this structure: br 1 = break (exits outer block), br 0 = continue (restarts loop)
-  fctx.breakStack.push(1);
+  // From body inside $continue block:
+  //   break = br 2 (exits $break block)
+  //   continue = br 0 (exits $continue block, falls through to condition)
+  fctx.breakStack.push(2);
   fctx.continueStack.push(0);
 
   // Compile body
@@ -932,23 +935,34 @@ function compileDoWhileStatement(
   } else {
     compileStatement(ctx, fctx, stmt.statement);
   }
+  const bodyInstrs = fctx.body;
 
   // Compile condition — true means continue looping
+  fctx.body = [];
   const condType = compileExpression(ctx, fctx, stmt.expression);
   ensureI32Condition(fctx, condType, ctx);
-  fctx.body.push({ op: "br_if", depth: 0 }); // continue loop if true
-
-  const loopBody = fctx.body;
+  fctx.body.push({ op: "br_if", depth: 0 }); // restart $loop if true
+  const condInstrs = fctx.body;
 
   fctx.breakStack.pop();
   fctx.continueStack.pop();
 
   // Restore existing break/continue depths
-  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! -= 2;
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! -= 3;
   for (let i = 0; i < fctx.continueStack.length; i++)
-    fctx.continueStack[i]! -= 2;
+    fctx.continueStack[i]! -= 3;
 
   fctx.body = savedBody;
+
+  // Build: block { loop { block { body } condition br_if } }
+  const loopBody: Instr[] = [
+    {
+      op: "block",
+      blockType: { kind: "empty" },
+      body: bodyInstrs,
+    },
+    ...condInstrs,
+  ];
 
   fctx.body.push({
     op: "block",
@@ -1186,12 +1200,23 @@ function compileForOfArray(
   fctx.body.push({ op: "i32.const", value: 0 });
   fctx.body.push({ op: "local.set", index: iLocal });
 
-  // Declare the loop variable
-  let elemLocal: number;
+  // Declare the loop variable(s)
+  let elemLocal: number = -1;
+  let isDestructuring = false;
+  let destructuringPattern: ts.ObjectBindingPattern | ts.ArrayBindingPattern | null = null;
+
   if (ts.isVariableDeclarationList(stmt.initializer)) {
     const decl = stmt.initializer.declarations[0]!;
-    const varName = (decl.name as ts.Identifier).text;
-    elemLocal = allocLocal(fctx, varName, elemType);
+    if (ts.isObjectBindingPattern(decl.name) || ts.isArrayBindingPattern(decl.name)) {
+      // Destructuring: for (const { a, b } of items)
+      // We'll store the element in a temp local and destructure after array.get
+      isDestructuring = true;
+      destructuringPattern = decl.name;
+      elemLocal = allocLocal(fctx, `__forof_elem_${fctx.locals.length}`, elemType);
+    } else {
+      const varName = (decl.name as ts.Identifier).text;
+      elemLocal = allocLocal(fctx, varName, elemType);
+    }
   } else {
     // Expression form: for (x of arr) — x is already declared
     const varName = (stmt.initializer as ts.Identifier).text;
@@ -1221,6 +1246,73 @@ function compileForOfArray(
   fctx.body.push({ op: "local.get", index: iLocal });
   fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
   fctx.body.push({ op: "local.set", index: elemLocal });
+
+  // Handle destructuring: extract fields from the element struct
+  if (isDestructuring && destructuringPattern && ts.isObjectBindingPattern(destructuringPattern)) {
+    // Determine struct type from element type
+    if (elemType.kind === "ref" || elemType.kind === "ref_null") {
+      const structTypeIdx = elemType.typeIdx;
+      const structDef = ctx.mod.types[structTypeIdx];
+      // Find the struct field names — look up in structFields by type index
+      let structFieldNames: { name: string; type: ValType }[] | undefined;
+      for (const [name, idx] of ctx.structMap.entries()) {
+        if (idx === structTypeIdx) {
+          structFieldNames = ctx.structFields.get(name);
+          break;
+        }
+      }
+      if (structDef && structDef.kind === "struct" && structFieldNames) {
+        for (const element of destructuringPattern.elements) {
+          if (!ts.isBindingElement(element)) continue;
+          const propName = (element.propertyName ?? element.name) as ts.Identifier;
+          const localName = (element.name as ts.Identifier).text;
+          const fieldIdx = structFieldNames.findIndex((f) => f.name === propName.text);
+          if (fieldIdx === -1) {
+            ctx.errors.push({
+              message: `Unknown field in for-of destructuring: ${propName.text}`,
+              line: getLine(element),
+              column: getCol(element),
+            });
+            continue;
+          }
+          const fieldType = structFieldNames[fieldIdx]!.type;
+          const localIdx = allocLocal(fctx, localName, fieldType);
+          fctx.body.push({ op: "local.get", index: elemLocal });
+          fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+          fctx.body.push({ op: "local.set", index: localIdx });
+        }
+      }
+    }
+  } else if (isDestructuring && destructuringPattern && ts.isArrayBindingPattern(destructuringPattern)) {
+    // Array destructuring in for-of: for (const [a, b] of items)
+    if (elemType.kind === "ref" || elemType.kind === "ref_null") {
+      const innerVecTypeIdx = elemType.typeIdx;
+      const innerArrTypeIdx = getArrTypeIdxFromVec(ctx, innerVecTypeIdx);
+      const innerArrDef = ctx.mod.types[innerArrTypeIdx];
+      if (innerArrDef && innerArrDef.kind === "array") {
+        const innerElemType = innerArrDef.element;
+        // Get the data array from the vec struct
+        const innerDataLocal = allocLocal(fctx, `__forof_inner_data_${fctx.locals.length}`, {
+          kind: "ref_null",
+          typeIdx: innerArrTypeIdx,
+        });
+        fctx.body.push({ op: "local.get", index: elemLocal });
+        fctx.body.push({ op: "struct.get", typeIdx: innerVecTypeIdx, fieldIdx: 1 });
+        fctx.body.push({ op: "local.set", index: innerDataLocal });
+        let arrIdx = 0;
+        for (const element of destructuringPattern.elements) {
+          if (!ts.isBindingElement(element)) { arrIdx++; continue; }
+          const localName = (element.name as ts.Identifier).text;
+          const localIdx = allocLocal(fctx, localName, innerElemType);
+          fctx.body.push({ op: "local.get", index: innerDataLocal });
+          fctx.body.push({ op: "i32.const", value: arrIdx });
+          fctx.body.push({ op: "array.get", typeIdx: innerArrTypeIdx });
+          fctx.body.push({ op: "local.set", index: localIdx });
+          arrIdx++;
+        }
+      }
+    }
+  }
 
   // Compile body
   if (ts.isBlock(stmt.statement)) {
