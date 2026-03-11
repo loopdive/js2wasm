@@ -258,8 +258,9 @@ function compileStatementInner(
     return;
   }
 
-  // ClassDeclaration in statement position (e.g., inside for loops, if blocks)
-  if (ts.isClassDeclaration(stmt) && stmt.name) {
+  // ClassDeclaration in statement position (e.g., inside for loops, if blocks,
+  // switch cases, labeled statements, try/catch/finally, etc.)
+  if (ts.isClassDeclaration(stmt)) {
     compileNestedClassDeclaration(ctx, stmt);
     return;
   }
