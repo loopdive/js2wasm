@@ -54,6 +54,8 @@ function buildImports(result: CompileResult): WebAssembly.Imports {
     __box_number: (v: number) => v,
     __box_boolean: (v: number) => Boolean(v),
     __make_callback: () => null,
+    parseFloat: (s: any) => parseFloat(String(s)),
+    string_compare: (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0),
   };
   return {
     env,
@@ -2373,6 +2375,203 @@ export function test(): number {
           i = 999;
         }
         return i;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+});
+
+// Issue #214: String relational operators
+describe("String relational operators (#214)", () => {
+  it("string < string", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        const a: string = "apple";
+        const b: string = "banana";
+        return (a < b) ? 1 : 0;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("string > string", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        const a: string = "banana";
+        const b: string = "apple";
+        return (a > b) ? 1 : 0;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("string <= string (equal)", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        const a: string = "hello";
+        const b: string = "hello";
+        return (a <= b) ? 1 : 0;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("string >= string (greater)", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        const a: string = "xyz";
+        const b: string = "abc";
+        return (a >= b) ? 1 : 0;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("string comparison with prefix", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        const a: string = "abc";
+        const b: string = "abcd";
+        return (a < b) ? 1 : 0;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("string comparison - not less than", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        const a: string = "banana";
+        const b: string = "apple";
+        return (a < b) ? 1 : 0;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+});
+
+// Issue #215: Unary plus coercion
+describe("Unary plus coercion (#215)", () => {
+  it('+\"\" should be 0', async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        return +"";
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("+true should be 1", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        return +true;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("+false should be 0", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        return +false;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it('+\"123\" should be 123', async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        return +"123";
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+});
+
+// Issue #216: Modulus with special values
+describe("Modulus with special values (#216)", () => {
+  it("x % Infinity should be x (finite x)", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        return 5 % Infinity;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("x % -Infinity should be x (finite x)", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        return 5 % -Infinity;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("Infinity % x should be NaN", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        return Infinity % 3;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("x % 0 should be NaN", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        return 5 % 0;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("basic modulo still works", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        return 7 % 3;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("negative modulo", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        return -7 % 3;
       }
       `,
       [{ fn: "test", args: [] }],
