@@ -1599,4 +1599,52 @@ describe("IIFE and call expression edge cases", () => {
       [{ fn: "test", args: [] }],
     );
   });
+
+  it("for-of with object destructuring", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let sum = 0;
+        const arr: {x: number, y: number}[] = [{x: 1, y: 2}, {x: 3, y: 4}];
+        for (const {x, y} of arr) {
+          sum = sum + x + y;
+        }
+        return sum;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("for-of with object destructuring and default values", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let sum = 0;
+        const arr: {x: number}[] = [{x: 10}, {x: 20}];
+        for (const {x} of arr) {
+          sum = sum + x;
+        }
+        return sum;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("for-of destructuring with var", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let result = 0;
+        const items: {a: number, b: number}[] = [{a: 5, b: 3}, {a: 7, b: 2}];
+        for (var {a, b} of items) {
+          result = result + a * b;
+        }
+        return result;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
 });

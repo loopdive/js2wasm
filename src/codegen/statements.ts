@@ -1091,6 +1091,204 @@ function compileSwitchStatement(
   });
 }
 
+/**
+ * Destructure a for-of element stored in `elemLocal` into the bindings of a
+ * destructuring pattern. Handles both object and array binding patterns with
+ * default values.
+ */
+function compileForOfDestructuring(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  pattern: ts.ObjectBindingPattern | ts.ArrayBindingPattern,
+  elemLocal: number,
+  elemType: ValType,
+  stmt: ts.ForOfStatement,
+): void {
+  if (ts.isObjectBindingPattern(pattern)) {
+    // Resolve the struct type from the element type
+    if (elemType.kind !== "ref" && elemType.kind !== "ref_null") {
+      ctx.errors.push({
+        message: "for-of destructuring: element is not a struct ref",
+        line: getLine(stmt),
+        column: getCol(stmt),
+      });
+      return;
+    }
+
+    const structTypeIdx = (elemType as { typeIdx: number }).typeIdx;
+    const typeDef = ctx.mod.types[structTypeIdx];
+    if (!typeDef || typeDef.kind !== "struct") {
+      ctx.errors.push({
+        message: "for-of destructuring: element type is not a struct",
+        line: getLine(stmt),
+        column: getCol(stmt),
+      });
+      return;
+    }
+
+    // Find the struct fields by looking up the struct name from structMap
+    let structName: string | undefined;
+    for (const [name, idx] of ctx.structMap) {
+      if (idx === structTypeIdx) { structName = name; break; }
+    }
+    const fields = structName ? ctx.structFields.get(structName) : undefined;
+    if (!fields) {
+      ctx.errors.push({
+        message: "for-of destructuring: cannot find struct fields",
+        line: getLine(stmt),
+        column: getCol(stmt),
+      });
+      return;
+    }
+
+    for (const element of pattern.elements) {
+      if (!ts.isBindingElement(element)) continue;
+      const propName = (element.propertyName ?? element.name) as ts.Identifier;
+      const localName = (element.name as ts.Identifier).text;
+
+      const fieldIdx = fields.findIndex((f) => f.name === propName.text);
+      if (fieldIdx === -1) {
+        ctx.errors.push({
+          message: `Unknown field in for-of destructuring: ${propName.text}`,
+          line: getLine(element),
+          column: getCol(element),
+        });
+        continue;
+      }
+
+      const fieldType = fields[fieldIdx]!.type;
+      const localIdx = allocLocal(fctx, localName, fieldType);
+
+      fctx.body.push({ op: "local.get", index: elemLocal });
+      fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+
+      // Handle default value
+      if (element.initializer && fieldType.kind === "externref") {
+        const tmpField = allocLocal(fctx, `__dflt_${fctx.locals.length}`, fieldType);
+        fctx.body.push({ op: "local.tee", index: tmpField });
+        fctx.body.push({ op: "ref.is_null" } as Instr);
+        fctx.body.push({
+          op: "if",
+          blockType: { kind: "empty" },
+          then: [
+            ...(() => {
+              const saved = fctx.body;
+              fctx.body = [];
+              compileExpression(ctx, fctx, element.initializer!, fieldType);
+              fctx.body.push({ op: "local.set", index: localIdx } as Instr);
+              const instrs = fctx.body;
+              fctx.body = saved;
+              return instrs;
+            })(),
+          ],
+          else: [
+            { op: "local.get", index: tmpField } as Instr,
+            { op: "local.set", index: localIdx } as Instr,
+          ],
+        });
+      } else if (element.initializer && (fieldType.kind === "f64" || fieldType.kind === "i32")) {
+        // For f64/i32 fields, check if value equals the "undefined" sentinel
+        // undefined fields in structs are initialized to NaN for f64, 0 for i32
+        if (fieldType.kind === "f64") {
+          // Check if field value is NaN (undefined marker) — use default if so
+          const tmpField = allocLocal(fctx, `__dflt_${fctx.locals.length}`, fieldType);
+          fctx.body.push({ op: "local.tee", index: tmpField });
+          // NaN !== NaN, so f64.ne with itself detects NaN
+          fctx.body.push({ op: "local.get", index: tmpField });
+          fctx.body.push({ op: "f64.ne" });
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: [
+              ...(() => {
+                const saved = fctx.body;
+                fctx.body = [];
+                compileExpression(ctx, fctx, element.initializer!, fieldType);
+                fctx.body.push({ op: "local.set", index: localIdx } as Instr);
+                const instrs = fctx.body;
+                fctx.body = saved;
+                return instrs;
+              })(),
+            ],
+            else: [
+              { op: "local.get", index: tmpField } as Instr,
+              { op: "local.set", index: localIdx } as Instr,
+            ],
+          });
+        } else {
+          fctx.body.push({ op: "local.set", index: localIdx });
+        }
+      } else {
+        fctx.body.push({ op: "local.set", index: localIdx });
+      }
+    }
+  } else if (ts.isArrayBindingPattern(pattern)) {
+    // Array destructuring in for-of: for (var [a, b] of arr)
+    // Element should be a vec struct; extract elements by index
+    if (elemType.kind !== "ref" && elemType.kind !== "ref_null") {
+      ctx.errors.push({
+        message: "for-of array destructuring: element is not a ref type",
+        line: getLine(stmt),
+        column: getCol(stmt),
+      });
+      return;
+    }
+
+    const vecTypeIdx = (elemType as { typeIdx: number }).typeIdx;
+    const innerArrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
+    const arrDef = ctx.mod.types[innerArrTypeIdx];
+    if (!arrDef || arrDef.kind !== "array") {
+      ctx.errors.push({
+        message: "for-of array destructuring: element is not an array type",
+        line: getLine(stmt),
+        column: getCol(stmt),
+      });
+      return;
+    }
+
+    const innerElemType = arrDef.element;
+    for (let i = 0; i < pattern.elements.length; i++) {
+      const element = pattern.elements[i]!;
+      if (ts.isOmittedExpression(element)) continue;
+
+      const localName = (element.name as ts.Identifier).text;
+      const localIdx = allocLocal(fctx, localName, innerElemType);
+
+      fctx.body.push({ op: "local.get", index: elemLocal });
+      fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
+      fctx.body.push({ op: "i32.const", value: i });
+      fctx.body.push({ op: "array.get", typeIdx: innerArrTypeIdx });
+
+      if (element.initializer && innerElemType.kind === "externref") {
+        const tmpElem = allocLocal(fctx, `__dflt_${fctx.locals.length}`, innerElemType);
+        fctx.body.push({ op: "local.tee", index: tmpElem });
+        fctx.body.push({ op: "ref.is_null" } as Instr);
+        fctx.body.push({
+          op: "if",
+          blockType: { kind: "empty" },
+          then: [
+            ...(() => {
+              const saved = fctx.body;
+              fctx.body = [];
+              compileExpression(ctx, fctx, element.initializer!, innerElemType);
+              fctx.body.push({ op: "local.set", index: localIdx } as Instr);
+              const instrs = fctx.body;
+              fctx.body = saved;
+              return instrs;
+            })(),
+          ],
+          else: [
+            { op: "local.get", index: tmpElem } as Instr,
+            { op: "local.set", index: localIdx } as Instr,
+          ],
+        });
+      } else {
+        fctx.body.push({ op: "local.set", index: localIdx });
+      }
+    }
+  }
+}
+
 function compileForOfStatement(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -1186,12 +1384,19 @@ function compileForOfArray(
   fctx.body.push({ op: "i32.const", value: 0 });
   fctx.body.push({ op: "local.set", index: iLocal });
 
-  // Declare the loop variable
+  // Declare the loop variable (may be a simple identifier or a destructuring pattern)
   let elemLocal: number;
+  let destructPattern: ts.ObjectBindingPattern | ts.ArrayBindingPattern | null = null;
   if (ts.isVariableDeclarationList(stmt.initializer)) {
     const decl = stmt.initializer.declarations[0]!;
-    const varName = (decl.name as ts.Identifier).text;
-    elemLocal = allocLocal(fctx, varName, elemType);
+    if (ts.isObjectBindingPattern(decl.name) || ts.isArrayBindingPattern(decl.name)) {
+      destructPattern = decl.name;
+      // Allocate a temp local to hold the element for destructuring
+      elemLocal = allocLocal(fctx, `__forof_elem_${fctx.locals.length}`, elemType);
+    } else {
+      const varName = (decl.name as ts.Identifier).text;
+      elemLocal = allocLocal(fctx, varName, elemType);
+    }
   } else {
     // Expression form: for (x of arr) — x is already declared
     const varName = (stmt.initializer as ts.Identifier).text;
@@ -1221,6 +1426,11 @@ function compileForOfArray(
   fctx.body.push({ op: "local.get", index: iLocal });
   fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
   fctx.body.push({ op: "local.set", index: elemLocal });
+
+  // If destructuring pattern, destructure from the element
+  if (destructPattern) {
+    compileForOfDestructuring(ctx, fctx, destructPattern, elemLocal, elemType, stmt);
+  }
 
   // Compile body
   if (ts.isBlock(stmt.statement)) {
@@ -1331,10 +1541,16 @@ function compileForOfIterator(
   // Declare the loop variable (element type is externref for iterator protocol)
   const elemType: ValType = { kind: "externref" };
   let elemLocal: number;
+  let destructPatternIter: ts.ObjectBindingPattern | ts.ArrayBindingPattern | null = null;
   if (ts.isVariableDeclarationList(stmt.initializer)) {
     const decl = stmt.initializer.declarations[0]!;
-    const varName = (decl.name as ts.Identifier).text;
-    elemLocal = allocLocal(fctx, varName, elemType);
+    if (ts.isObjectBindingPattern(decl.name) || ts.isArrayBindingPattern(decl.name)) {
+      destructPatternIter = decl.name;
+      elemLocal = allocLocal(fctx, `__forof_elem_${fctx.locals.length}`, elemType);
+    } else {
+      const varName = (decl.name as ts.Identifier).text;
+      elemLocal = allocLocal(fctx, varName, elemType);
+    }
   } else {
     // Expression form: for (x of arr) — x is already declared
     const varName = (stmt.initializer as ts.Identifier).text;
@@ -1367,6 +1583,11 @@ function compileForOfIterator(
   fctx.body.push({ op: "local.get", index: resultLocal });
   fctx.body.push({ op: "call", funcIdx: valueIdx });
   fctx.body.push({ op: "local.set", index: elemLocal });
+
+  // If destructuring pattern, destructure from the element
+  if (destructPatternIter) {
+    compileForOfDestructuring(ctx, fctx, destructPatternIter, elemLocal, elemType, stmt);
+  }
 
   // Compile body
   if (ts.isBlock(stmt.statement)) {
