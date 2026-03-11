@@ -2206,6 +2206,149 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
     });
   }
 
+  // --- $__str_compare(a: ref $NativeString, b: ref $NativeString) -> i32 ---
+  // Lexicographic comparison: returns -1 (a < b), 0 (a == b), or 1 (a > b)
+  {
+    const typeIdx = addFuncType(ctx, [strRef, strRef], [{ kind: "i32" }]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_compare", funcIdx);
+
+    // locals: lenA(2), lenB(3), minLen(4), i(5), aData(6), bData(7), aOff(8), bOff(9), ca(10), cb(11)
+    const body: Instr[] = [
+      // lenA = a.len
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 2 },
+
+      // lenB = b.len
+      { op: "local.get", index: 1 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 3 },
+
+      // minLen = min(lenA, lenB)
+      { op: "local.get", index: 2 },
+      { op: "local.get", index: 3 },
+      { op: "local.get", index: 2 },
+      { op: "local.get", index: 3 },
+      { op: "i32.lt_u" },
+      { op: "select" },
+      { op: "local.set", index: 4 },
+
+      // aOff = a.off
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 },
+      { op: "local.set", index: 8 },
+
+      // bOff = b.off
+      { op: "local.get", index: 1 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 },
+      { op: "local.set", index: 9 },
+
+      // aData = a.data
+      { op: "local.get", index: 0 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 },
+      { op: "local.set", index: 6 },
+
+      // bData = b.data
+      { op: "local.get", index: 1 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 },
+      { op: "local.set", index: 7 },
+
+      // i = 0
+      { op: "i32.const", value: 0 },
+      { op: "local.set", index: 5 },
+
+      // loop: compare element by element
+      { op: "block", blockType: { kind: "empty" }, body: [
+        { op: "loop", blockType: { kind: "empty" }, body: [
+          // if i >= minLen, break (common prefix is equal)
+          { op: "local.get", index: 5 },
+          { op: "local.get", index: 4 },
+          { op: "i32.ge_u" },
+          { op: "br_if", depth: 1 },
+
+          // ca = aData[aOff + i]
+          { op: "local.get", index: 6 },
+          { op: "local.get", index: 8 },
+          { op: "local.get", index: 5 },
+          { op: "i32.add" },
+          { op: "array.get_u", typeIdx: strDataTypeIdx },
+          { op: "local.set", index: 10 },
+
+          // cb = bData[bOff + i]
+          { op: "local.get", index: 7 },
+          { op: "local.get", index: 9 },
+          { op: "local.get", index: 5 },
+          { op: "i32.add" },
+          { op: "array.get_u", typeIdx: strDataTypeIdx },
+          { op: "local.set", index: 11 },
+
+          // if ca < cb return -1
+          { op: "local.get", index: 10 },
+          { op: "local.get", index: 11 },
+          { op: "i32.lt_u" },
+          { op: "if", blockType: { kind: "empty" },
+            then: [{ op: "i32.const", value: -1 }, { op: "return" }],
+          },
+
+          // if ca > cb return 1
+          { op: "local.get", index: 10 },
+          { op: "local.get", index: 11 },
+          { op: "i32.gt_u" },
+          { op: "if", blockType: { kind: "empty" },
+            then: [{ op: "i32.const", value: 1 }, { op: "return" }],
+          },
+
+          // i++
+          { op: "local.get", index: 5 },
+          { op: "i32.const", value: 1 },
+          { op: "i32.add" },
+          { op: "local.set", index: 5 },
+          { op: "br", depth: 0 },
+        ]},
+      ]},
+
+      // Common prefix is equal; compare by length
+      // if lenA < lenB return -1
+      { op: "local.get", index: 2 },
+      { op: "local.get", index: 3 },
+      { op: "i32.lt_u" },
+      { op: "if", blockType: { kind: "empty" },
+        then: [{ op: "i32.const", value: -1 }, { op: "return" }],
+      },
+
+      // if lenA > lenB return 1
+      { op: "local.get", index: 2 },
+      { op: "local.get", index: 3 },
+      { op: "i32.gt_u" },
+      { op: "if", blockType: { kind: "empty" },
+        then: [{ op: "i32.const", value: 1 }, { op: "return" }],
+      },
+
+      // return 0 (equal)
+      { op: "i32.const", value: 0 },
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_compare",
+      typeIdx,
+      locals: [
+        { name: "lenA", type: { kind: "i32" } },
+        { name: "lenB", type: { kind: "i32" } },
+        { name: "minLen", type: { kind: "i32" } },
+        { name: "i", type: { kind: "i32" } },
+        { name: "aData", type: strDataRef },
+        { name: "bData", type: strDataRef },
+        { name: "aOff", type: { kind: "i32" } },
+        { name: "bOff", type: { kind: "i32" } },
+        { name: "ca", type: { kind: "i32" } },
+        { name: "cb", type: { kind: "i32" } },
+      ],
+      body: wrapBodyWithFlatten(body, [0, 1]),
+      exported: false,
+    });
+  }
+
   // --- $__str_substring(s: ref $NativeString, start: i32, end: i32) -> ref $NativeString ---
   {
     const typeIdx = addFuncType(ctx, [strRef, { kind: "i32" }, { kind: "i32" }], [strRef]);

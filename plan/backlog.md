@@ -39,6 +39,14 @@ _Details: [sprint-1.md](sprint-1.md)_
 | [171](issues/171.md) | Bug: Boolean() edge cases | Open | — |
 | [172](issues/172.md) | Bug: Array.isArray edge case | Open | — |
 
+## Recently completed
+
+| #   | Feature | Status |
+| --- | ------- | ------ |
+| [214](issues/214.md) | Fix: string relational operators (<, >, <=, >=) | Review |
+| [215](issues/215.md) | Fix: unary plus coercion for strings/booleans | Review |
+| [216](issues/216.md) | Fix: modulus with special IEEE 754 values | Review |
+
 ## Backlog
 
 ### Core language features
