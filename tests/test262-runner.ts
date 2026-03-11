@@ -368,8 +368,17 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
   }
 
   // Skip tests using prototype chain (including prototype assignment)
-  if (/\.prototype[\.\s=]/.test(source) || /__proto__/.test(source)) {
-    return { skip: true, reason: "prototype chain not supported" };
+  // Only check executable code — strip comments and metadata first so that
+  // tests whose only .prototype mention is in the description/info block
+  // (e.g. "String.prototype.charAt(pos)") are not falsely skipped (#187).
+  {
+    const execCode = source
+      .replace(/\/\*---[\s\S]*?---\*\//, "")   // strip YAML metadata
+      .replace(/\/\/.*$/gm, "")                 // strip single-line comments
+      .replace(/\/\*[\s\S]*?\*\//g, "");         // strip multi-line comments
+    if (/\.prototype[\.\s=]/.test(execCode) || /__proto__/.test(execCode)) {
+      return { skip: true, reason: "prototype chain not supported" };
+    }
   }
 
   // Skip tests using object literals with numeric keys (array-like objects)
@@ -803,12 +812,14 @@ export function wrapTest(source: string): string {
   // Replace assert calls, stripping the optional 3rd message argument
   body = body.replace(/\bassert\.sameValue\b/g, "assert_sameValue");
   body = body.replace(/\bassert\.notSameValue\b/g, "assert_notSameValue");
+  body = body.replace(/\bassert\.compareArray\b/g, "assert_compareArray");
   body = body.replace(/\bassert\s*\(/g, "assert_true(");
 
   // Strip 3rd argument from assert_sameValue / assert_notSameValue calls
   // by finding the call, counting parens to find the 2nd comma, and removing everything after
   body = stripThirdArg(body, "assert_sameValue");
   body = stripThirdArg(body, "assert_notSameValue");
+  body = stripThirdArg(body, "assert_compareArray");
 
   // Convert typeof assertions to direct comparisons (our assert shims only handle numbers)
   // assert_sameValue(typeof X, "Y"); → if (typeof X !== "Y") { __fail = 1; }
@@ -880,6 +891,7 @@ export function wrapTest(source: string): string {
   const needsStrAssert = /\bassert_sameValue_str\b/.test(body);
   const needsBoolAssert = /\bassert_(sameValue|notSameValue)_bool\b/.test(body);
   const needsCompareArray = /\bcompareArray\b/.test(body);
+  const needsAssertCompareArray = /\bassert_compareArray\b/.test(body);
 
   let preamble = `let __fail: number = 0;
 
@@ -942,6 +954,17 @@ function compareArray(a: number[], b: number[]): number {
     if (a[i] !== b[i]) return 0;
   }
   return 1;
+}`;
+  }
+
+  if (needsAssertCompareArray) {
+    preamble += `
+
+function assert_compareArray(actual: number[], expected: number[]): void {
+  if (actual.length !== expected.length) { __fail = 1; return; }
+  for (let i: number = 0; i < actual.length; i++) {
+    if (actual[i] !== expected[i]) { __fail = 1; return; }
+  }
 }`;
   }
 
