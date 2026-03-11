@@ -466,11 +466,22 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     return { skip: true, reason: "typeof class expression" };
   }
 
-  // Skip tagged template tests — their assert patterns require runtime features
-  // (callCount tracking, TemplateStringsArray identity checks, raw property access)
-  // that our test harness doesn't support
-  if (/tag\s*`/.test(source) && /assert/.test(source)) {
-    return { skip: true, reason: "tagged template with assert" };
+  // Skip tagged template tests that access .raw property or template object identity —
+  // our strings array doesn't have a raw property yet
+  if (/\.raw\b/.test(source) && /`/.test(source)) {
+    return { skip: true, reason: "tagged template with .raw access" };
+  }
+  // Skip tagged template tests that check template object caching/identity
+  if (/templateObject\b|previousObject\b|firstObject\b/.test(source) && /tag\s*`/.test(source)) {
+    return { skip: true, reason: "tagged template object identity check" };
+  }
+  // Skip tagged template tests using IIFE or call expression as tag (not supported)
+  if (/\)\s*`/.test(source) && /function\s*\(/.test(source)) {
+    return { skip: true, reason: "IIFE or call expression as tagged template tag" };
+  }
+  // Skip chained tagged template tests (tag`x``y``z`) — not supported
+  if (/`\s*`/.test(source) && /tag\s*`/.test(source)) {
+    return { skip: true, reason: "chained tagged templates" };
   }
 
   // Skip tests using typeof on member expressions (typeof Math.PI, typeof obj.prop)
