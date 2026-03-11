@@ -1,6 +1,6 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext, ClosureInfo, RestParamInfo } from "./index.js";
-import { allocLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers, addStringImports, cacheStringLiterals } from "./index.js";
+import { allocLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers, addStringImports, cacheStringLiterals, addStringConstantGlobal } from "./index.js";
 import {
   mapTsTypeToWasm,
   isNumberType,
@@ -2998,9 +2998,14 @@ function compileStringCompoundAssignment(
     return null;
   }
   if (rhsType.kind === "f64" || rhsType.kind === "i32") {
-    if (rhsType.kind === "i32") fctx.body.push({ op: "f64.convert_i32_s" });
-    const toStr = ctx.funcMap.get("number_toString");
-    if (toStr !== undefined) fctx.body.push({ op: "call", funcIdx: toStr });
+    const rhsTsType = ctx.checker.getTypeAtLocation(expr.right);
+    if (isBooleanType(rhsTsType) && rhsType.kind === "i32") {
+      emitBoolToString(ctx, fctx);
+    } else {
+      if (rhsType.kind === "i32") fctx.body.push({ op: "f64.convert_i32_s" });
+      const toStr = ctx.funcMap.get("number_toString");
+      if (toStr !== undefined) fctx.body.push({ op: "call", funcIdx: toStr });
+    }
   }
 
   // Call concat
@@ -7023,6 +7028,27 @@ function compileTaggedTemplateExpression(
   fctx.body.push({ op: "ref.null.extern" });
   return { kind: "externref" };
 }
+/**
+ * Emit wasm code to convert a boolean (i32) on the stack to a string.
+ * Produces "true" or "false" string constant (externref) via if/else.
+ */
+function emitBoolToString(ctx: CodegenContext, fctx: FunctionContext): void {
+  // Ensure "true" and "false" string constants are registered
+  addStringConstantGlobal(ctx, "true");
+  addStringConstantGlobal(ctx, "false");
+
+  const trueIdx = ctx.stringGlobalMap.get("true")!;
+  const falseIdx = ctx.stringGlobalMap.get("false")!;
+
+  // i32 boolean value is on the stack → select "true" or "false" string constant
+  fctx.body.push({
+    op: "if",
+    blockType: { kind: "val", type: { kind: "externref" } },
+    then: [{ op: "global.get", index: trueIdx }],
+    else: [{ op: "global.get", index: falseIdx }],
+  } as any);
+}
+
 function compileStringBinaryOp(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -7093,18 +7119,31 @@ function compileStringBinaryOp(
   addStringImports(ctx);
 
   // Compile operands with coercion: if one side is a number/bool in a string
-  // context, inject number_toString to convert it to a string (JS ToNumber semantics)
+  // context, inject appropriate toString conversion.
+  // Booleans → "true"/"false" string constants (not number_toString which gives "1"/"0")
+  // Numbers → number_toString
+  const leftTsType = ctx.checker.getTypeAtLocation(expr.left);
   const leftType = compileExpression(ctx, fctx, expr.left);
   if (op === ts.SyntaxKind.PlusToken && leftType && (leftType.kind === "f64" || leftType.kind === "i32")) {
-    if (leftType.kind === "i32") fctx.body.push({ op: "f64.convert_i32_s" });
-    const toStr = ctx.funcMap.get("number_toString");
-    if (toStr !== undefined) fctx.body.push({ op: "call", funcIdx: toStr });
+    if (isBooleanType(leftTsType) && leftType.kind === "i32") {
+      // Boolean → "true"/"false" via conditional select of string constants
+      emitBoolToString(ctx, fctx);
+    } else {
+      if (leftType.kind === "i32") fctx.body.push({ op: "f64.convert_i32_s" });
+      const toStr = ctx.funcMap.get("number_toString");
+      if (toStr !== undefined) fctx.body.push({ op: "call", funcIdx: toStr });
+    }
   }
+  const rightTsType = ctx.checker.getTypeAtLocation(expr.right);
   const rightType = compileExpression(ctx, fctx, expr.right);
   if (op === ts.SyntaxKind.PlusToken && rightType && (rightType.kind === "f64" || rightType.kind === "i32")) {
-    if (rightType.kind === "i32") fctx.body.push({ op: "f64.convert_i32_s" });
-    const toStr = ctx.funcMap.get("number_toString");
-    if (toStr !== undefined) fctx.body.push({ op: "call", funcIdx: toStr });
+    if (isBooleanType(rightTsType) && rightType.kind === "i32") {
+      emitBoolToString(ctx, fctx);
+    } else {
+      if (rightType.kind === "i32") fctx.body.push({ op: "f64.convert_i32_s" });
+      const toStr = ctx.funcMap.get("number_toString");
+      if (toStr !== undefined) fctx.body.push({ op: "call", funcIdx: toStr });
+    }
   }
 
   switch (op) {
