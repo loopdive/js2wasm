@@ -1,6 +1,6 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext, ClosureInfo, RestParamInfo } from "./index.js";
-import { allocLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers, addStringImports } from "./index.js";
+import { allocLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers, addStringImports, cacheStringLiterals } from "./index.js";
 import {
   mapTsTypeToWasm,
   isNumberType,
@@ -3950,6 +3950,34 @@ function compileCallExpression(
       }
     }
 
+    // Check if receiver is a struct type (e.g. object literal with methods)
+    {
+      const structTypeName = resolveStructName(ctx, receiverType);
+      if (structTypeName) {
+        const methodName = propAccess.name.text;
+        const fullName = `${structTypeName}_${methodName}`;
+        const funcIdx = ctx.funcMap.get(fullName);
+        if (funcIdx !== undefined) {
+          // Push self (the receiver) as first argument
+          compileExpression(ctx, fctx, propAccess.expression);
+          // Push remaining arguments with type hints
+          const paramTypes = getFuncParamTypes(ctx, funcIdx);
+          for (let i = 0; i < expr.arguments.length; i++) {
+            compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
+          }
+          fctx.body.push({ op: "call", funcIdx });
+
+          const sig = ctx.checker.getResolvedSignature(expr);
+          if (sig) {
+            const retType = ctx.checker.getReturnTypeOfSignature(sig);
+            if (isVoidType(retType)) return VOID_RESULT;
+            return resolveWasmType(ctx, retType);
+          }
+          return VOID_RESULT;
+        }
+      }
+    }
+
     // Array method calls
     {
       const arrMethodResult = compileArrayMethodCall(ctx, fctx, propAccess, expr, receiverType);
@@ -6082,6 +6110,243 @@ function compileObjectLiteralForStruct(
   }
 
   fctx.body.push({ op: "struct.new", typeIdx: structTypeIdx });
+
+  // Register and compile getter/setter accessors on the object literal
+  for (const prop of expr.properties) {
+    if (
+      ts.isGetAccessorDeclaration(prop) &&
+      prop.name &&
+      ts.isIdentifier(prop.name)
+    ) {
+      const propName = prop.name.text;
+      const accessorKey = `${typeName}_${propName}`;
+      ctx.classAccessorSet.add(accessorKey);
+
+      const getterName = `${typeName}_get_${propName}`;
+      const getterParams: ValType[] = [{ kind: "ref", typeIdx: structTypeIdx }];
+      const sig = ctx.checker.getSignatureFromDeclaration(prop);
+      let getterResults: ValType[] = [];
+      if (sig) {
+        const retType = ctx.checker.getReturnTypeOfSignature(sig);
+        if (!isVoidType(retType)) {
+          getterResults = [resolveWasmType(ctx, retType)];
+        }
+      }
+
+      const getterTypeIdx = addFuncType(ctx, getterParams, getterResults, `${getterName}_type`);
+      const getterFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+      ctx.funcMap.set(getterName, getterFuncIdx);
+
+      const getterFunc: WasmFunction = {
+        name: getterName,
+        typeIdx: getterTypeIdx,
+        locals: [],
+        body: [],
+        exported: false,
+      };
+      ctx.mod.functions.push(getterFunc);
+
+      // Compile getter body
+      const getterFctx: FunctionContext = {
+        name: getterName,
+        params: [{ name: "this", type: { kind: "ref", typeIdx: structTypeIdx } }],
+        locals: [],
+        localMap: new Map(),
+        returnType: getterResults.length > 0 ? getterResults[0]! : null,
+        body: [],
+        blockDepth: 0,
+        breakStack: [],
+        continueStack: [],
+        labelMap: new Map(),
+      };
+      getterFctx.localMap.set("this", 0);
+
+      const savedFunc = ctx.currentFunc;
+      ctx.currentFunc = getterFctx;
+      if (prop.body) {
+        for (const stmt of prop.body.statements) {
+          compileStatement(ctx, getterFctx, stmt);
+        }
+      }
+      // Ensure valid return for non-void getters
+      if (getterFctx.returnType) {
+        const lastInstr = getterFctx.body[getterFctx.body.length - 1];
+        if (!lastInstr || lastInstr.op !== "return") {
+          if (getterFctx.returnType.kind === "f64") {
+            getterFctx.body.push({ op: "f64.const", value: 0 });
+          } else if (getterFctx.returnType.kind === "i32") {
+            getterFctx.body.push({ op: "i32.const", value: 0 });
+          } else if (getterFctx.returnType.kind === "externref") {
+            getterFctx.body.push({ op: "ref.null.extern" });
+          } else if (getterFctx.returnType.kind === "ref" || getterFctx.returnType.kind === "ref_null") {
+            getterFctx.body.push({ op: "ref.null", typeIdx: getterFctx.returnType.typeIdx });
+          }
+        }
+      }
+      cacheStringLiterals(ctx, getterFctx);
+      getterFunc.locals = getterFctx.locals;
+      getterFunc.body = getterFctx.body;
+      ctx.currentFunc = savedFunc;
+    }
+
+    if (
+      ts.isSetAccessorDeclaration(prop) &&
+      prop.name &&
+      ts.isIdentifier(prop.name)
+    ) {
+      const propName = prop.name.text;
+      const accessorKey = `${typeName}_${propName}`;
+      ctx.classAccessorSet.add(accessorKey);
+
+      const setterName = `${typeName}_set_${propName}`;
+      const setterParams: ValType[] = [{ kind: "ref", typeIdx: structTypeIdx }];
+      for (const param of prop.parameters) {
+        const paramType = ctx.checker.getTypeAtLocation(param);
+        setterParams.push(resolveWasmType(ctx, paramType));
+      }
+
+      const setterTypeIdx = addFuncType(ctx, setterParams, [], `${setterName}_type`);
+      const setterFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+      ctx.funcMap.set(setterName, setterFuncIdx);
+
+      const setterFunc: WasmFunction = {
+        name: setterName,
+        typeIdx: setterTypeIdx,
+        locals: [],
+        body: [],
+        exported: false,
+      };
+      ctx.mod.functions.push(setterFunc);
+
+      // Compile setter body
+      const setterFctxParams: { name: string; type: ValType }[] = [
+        { name: "this", type: { kind: "ref", typeIdx: structTypeIdx } },
+      ];
+      for (let pi = 0; pi < prop.parameters.length; pi++) {
+        const param = prop.parameters[pi]!;
+        const paramName = ts.isIdentifier(param.name) ? param.name.text : `__param${pi}`;
+        const paramType = ctx.checker.getTypeAtLocation(param);
+        setterFctxParams.push({ name: paramName, type: resolveWasmType(ctx, paramType) });
+      }
+
+      const setterFctx: FunctionContext = {
+        name: setterName,
+        params: setterFctxParams,
+        locals: [],
+        localMap: new Map(),
+        returnType: null,
+        body: [],
+        blockDepth: 0,
+        breakStack: [],
+        continueStack: [],
+        labelMap: new Map(),
+      };
+      for (let i = 0; i < setterFctxParams.length; i++) {
+        setterFctx.localMap.set(setterFctxParams[i]!.name, i);
+      }
+
+      const savedFunc = ctx.currentFunc;
+      ctx.currentFunc = setterFctx;
+      if (prop.body) {
+        for (const stmt of prop.body.statements) {
+          compileStatement(ctx, setterFctx, stmt);
+        }
+      }
+      cacheStringLiterals(ctx, setterFctx);
+      setterFunc.locals = setterFctx.locals;
+      setterFunc.body = setterFctx.body;
+      ctx.currentFunc = savedFunc;
+    }
+
+    // Object literal methods: { method() { ... } }
+    if (
+      ts.isMethodDeclaration(prop) &&
+      prop.name &&
+      ts.isIdentifier(prop.name)
+    ) {
+      const methodName = prop.name.text;
+      const fullName = `${typeName}_${methodName}`;
+      ctx.classMethodSet.add(fullName);
+
+      const methodParams: ValType[] = [{ kind: "ref", typeIdx: structTypeIdx }];
+      for (const param of prop.parameters) {
+        const paramType = ctx.checker.getTypeAtLocation(param);
+        methodParams.push(resolveWasmType(ctx, paramType));
+      }
+
+      const sig = ctx.checker.getSignatureFromDeclaration(prop);
+      const retType = sig ? ctx.checker.getReturnTypeOfSignature(sig) : undefined;
+      const methodResults: ValType[] = retType && !isVoidType(retType) ? [resolveWasmType(ctx, retType)] : [];
+
+      const methodTypeIdx = addFuncType(ctx, methodParams, methodResults, `${fullName}_type`);
+      const methodFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+      ctx.funcMap.set(fullName, methodFuncIdx);
+
+      const methodFunc: WasmFunction = {
+        name: fullName,
+        typeIdx: methodTypeIdx,
+        locals: [],
+        body: [],
+        exported: false,
+      };
+      ctx.mod.functions.push(methodFunc);
+
+      // Compile method body
+      const methodFctxParams: { name: string; type: ValType }[] = [
+        { name: "this", type: { kind: "ref", typeIdx: structTypeIdx } },
+      ];
+      for (let pi = 0; pi < prop.parameters.length; pi++) {
+        const param = prop.parameters[pi]!;
+        const paramName = ts.isIdentifier(param.name) ? param.name.text : `__param${pi}`;
+        const paramType = ctx.checker.getTypeAtLocation(param);
+        methodFctxParams.push({ name: paramName, type: resolveWasmType(ctx, paramType) });
+      }
+
+      const methodFctx: FunctionContext = {
+        name: fullName,
+        params: methodFctxParams,
+        locals: [],
+        localMap: new Map(),
+        returnType: methodResults.length > 0 ? methodResults[0]! : null,
+        body: [],
+        blockDepth: 0,
+        breakStack: [],
+        continueStack: [],
+        labelMap: new Map(),
+      };
+      for (let i = 0; i < methodFctxParams.length; i++) {
+        methodFctx.localMap.set(methodFctxParams[i]!.name, i);
+      }
+
+      const savedFunc = ctx.currentFunc;
+      ctx.currentFunc = methodFctx;
+      if (prop.body) {
+        for (const stmt of prop.body.statements) {
+          compileStatement(ctx, methodFctx, stmt);
+        }
+      }
+      // Ensure valid return for non-void methods
+      if (methodFctx.returnType) {
+        const lastInstr = methodFctx.body[methodFctx.body.length - 1];
+        if (!lastInstr || lastInstr.op !== "return") {
+          if (methodFctx.returnType.kind === "f64") {
+            methodFctx.body.push({ op: "f64.const", value: 0 });
+          } else if (methodFctx.returnType.kind === "i32") {
+            methodFctx.body.push({ op: "i32.const", value: 0 });
+          } else if (methodFctx.returnType.kind === "externref") {
+            methodFctx.body.push({ op: "ref.null.extern" });
+          } else if (methodFctx.returnType.kind === "ref" || methodFctx.returnType.kind === "ref_null") {
+            methodFctx.body.push({ op: "ref.null", typeIdx: methodFctx.returnType.typeIdx });
+          }
+        }
+      }
+      cacheStringLiterals(ctx, methodFctx);
+      methodFunc.locals = methodFctx.locals;
+      methodFunc.body = methodFctx.body;
+      ctx.currentFunc = savedFunc;
+    }
+  }
+
   return { kind: "ref", typeIdx: structTypeIdx };
 }
 
