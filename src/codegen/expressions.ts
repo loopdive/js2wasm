@@ -4181,6 +4181,11 @@ function compileCallExpression(
         return { kind: "i32" };
       }
       const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
+      // void / undefined → always false
+      if (argType === VOID_RESULT || argType === null) {
+        fctx.body.push({ op: "i32.const", value: 0 });
+        return { kind: "i32" };
+      }
       if (argType?.kind === "f64") {
         // f64: truthy if != 0 and != NaN
         const tmp = allocLocal(fctx, `__bool_${fctx.locals.length}`, { kind: "f64" });
@@ -4199,11 +4204,39 @@ function compileCallExpression(
         fctx.body.push({ op: "i32.ne" } as Instr);
         return { kind: "i32" };
       }
+      // String: truthy if length > 0
+      if ((argType?.kind === "ref" || argType?.kind === "ref_null") &&
+          ctx.fast && ctx.anyStrTypeIdx >= 0 &&
+          isStringType(ctx.checker.getTypeAtLocation(expr.arguments[0]!))) {
+        // Get length (field 0 of $AnyString) and check != 0
+        fctx.body.push({ op: "struct.get", typeIdx: ctx.anyStrTypeIdx, fieldIdx: 0 });
+        fctx.body.push({ op: "i32.const", value: 0 });
+        fctx.body.push({ op: "i32.ne" } as Instr);
+        return { kind: "i32" };
+      }
       if (argType?.kind === "externref") {
+        // Check if this is a string type — use string length > 0 for truthiness
+        const argTsType = ctx.checker.getTypeAtLocation(expr.arguments[0]!);
+        if (isStringType(argTsType)) {
+          addStringImports(ctx);
+          const lenIdx = ctx.funcMap.get("length");
+          if (lenIdx !== undefined) {
+            fctx.body.push({ op: "call", funcIdx: lenIdx });
+            fctx.body.push({ op: "i32.const", value: 0 });
+            fctx.body.push({ op: "i32.ne" } as Instr);
+            return { kind: "i32" };
+          }
+        }
         // externref: truthy if non-null (and not "" or 0 — but we can't check that without host)
         fctx.body.push({ op: "ref.is_null" } as Instr);
         fctx.body.push({ op: "i32.const", value: 1 });
         fctx.body.push({ op: "i32.xor" } as Instr);
+        return { kind: "i32" };
+      }
+      // Ref types (objects, arrays): always truthy — drop the ref, push 1
+      if (argType?.kind === "ref" || argType?.kind === "ref_null") {
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "i32.const", value: 1 });
         return { kind: "i32" };
       }
       // fallback: treat as truthy (non-null ref)
@@ -4314,6 +4347,105 @@ function compileCallExpression(
       return resolveWasmType(ctx, retType);
     }
     return { kind: "f64" };
+  }
+
+  // Handle IIFE: (function() { ... })() or (() => expr)() — inline the function body
+  {
+    // Unwrap parenthesized expression to find the function/arrow
+    let callee = expr.expression;
+    while (ts.isParenthesizedExpression(callee)) {
+      callee = callee.expression;
+    }
+    if (ts.isFunctionExpression(callee) || ts.isArrowFunction(callee)) {
+      const params = callee.parameters;
+      const args = expr.arguments;
+      // Support IIFEs with matching parameter/argument counts
+      if (params.length <= args.length) {
+        // Allocate locals for parameters and compile arguments
+        const paramLocals: number[] = [];
+        for (let i = 0; i < params.length; i++) {
+          const paramName = ts.isIdentifier(params[i]!.name) ? params[i]!.name.text : `__iife_p${i}`;
+          const argType = compileExpression(ctx, fctx, args[i]!);
+          const localType = argType ?? { kind: "f64" as const };
+          const idx = allocLocal(fctx, paramName, localType);
+          fctx.body.push({ op: "local.set", index: idx });
+          paramLocals.push(idx);
+        }
+        // Drop extra arguments
+        for (let i = params.length; i < args.length; i++) {
+          const t = compileExpression(ctx, fctx, args[i]!);
+          if (t && t !== VOID_RESULT) {
+            fctx.body.push({ op: "drop" });
+          }
+        }
+        // Compile body
+        if (ts.isArrowFunction(callee) && !ts.isBlock(callee.body)) {
+          // Concise body: expression — no return issue
+          return compileExpression(ctx, fctx, callee.body);
+        }
+
+        // Block body (arrow or function expression) — need to handle return
+        const bodyStmts = ts.isArrowFunction(callee) ? (callee.body as ts.Block).statements : callee.body.statements;
+        if (bodyStmts.length === 0) {
+          return VOID_RESULT;
+        }
+
+        // Determine return type from TS
+        const iifeRetType = ctx.checker.getTypeAtLocation(expr);
+        const iifeWasmRetType = isVoidType(iifeRetType) ? null : resolveWasmType(ctx, iifeRetType);
+
+        if (iifeWasmRetType) {
+          // Returning IIFE: allocate a result local, compile body into a block,
+          // and replace `return` with `local.set + br` to exit the block
+          const retLocal = allocLocal(fctx, `__iife_ret_${fctx.locals.length}`, iifeWasmRetType);
+          const savedBody = fctx.body;
+          const blockBody: Instr[] = [];
+          fctx.body = blockBody;
+
+          // Increase block depth so return→br targets the right level
+          fctx.blockDepth++;
+          for (const stmt of bodyStmts) {
+            compileStatement(ctx, fctx, stmt);
+          }
+          fctx.blockDepth--;
+          fctx.body = savedBody;
+
+          // Post-process: replace `return` ops with `local.set retLocal + br <depth>`
+          function patchReturns(instrs: Instr[], depth: number): void {
+            for (let i = 0; i < instrs.length; i++) {
+              if (instrs[i]!.op === "return") {
+                // The instruction before `return` is the return value expression.
+                // Replace `return` with `local.set + br`
+                instrs[i] = { op: "local.set", index: retLocal } as Instr;
+                instrs.splice(i + 1, 0, { op: "br", depth } as Instr);
+                i++; // skip the inserted br
+              }
+              // Recurse into sub-blocks (if/then/else/block/loop)
+              const instr = instrs[i] as any;
+              if (instr.then) patchReturns(instr.then, depth + 1);
+              if (instr.else) patchReturns(instr.else, depth + 1);
+              if (instr.body && Array.isArray(instr.body)) patchReturns(instr.body, depth + 1);
+            }
+          }
+          patchReturns(blockBody, 0);
+
+          // Emit: block { <body> } local.get retLocal
+          fctx.body.push({
+            op: "block",
+            blockType: { kind: "empty" },
+            body: blockBody,
+          } as Instr);
+          fctx.body.push({ op: "local.get", index: retLocal });
+          return iifeWasmRetType;
+        } else {
+          // Void IIFE — just compile inline
+          for (const stmt of bodyStmts) {
+            compileStatement(ctx, fctx, stmt);
+          }
+          return VOID_RESULT;
+        }
+      }
+    }
   }
 
   // Handle standalone super() calls (constructor chaining) — normally handled by

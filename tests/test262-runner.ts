@@ -795,12 +795,32 @@ export function wrapTest(source: string): string {
     'assert_sameValue_str($1, $2)'
   );
 
+  // Route boolean comparisons to boolean-aware assert
+  // assert_sameValue(expr, true/false) or assert_sameValue(true/false, expr)
+  body = body.replace(
+    /assert_sameValue\s*\(\s*([^,]+?)\s*,\s*(true|false)\s*\)/g,
+    'assert_sameValue_bool($1, $2)'
+  );
+  body = body.replace(
+    /assert_sameValue\s*\(\s*(true|false)\s*,\s*([^)]+?)\s*\)/g,
+    'assert_sameValue_bool($1, $2)'
+  );
+  body = body.replace(
+    /assert_notSameValue\s*\(\s*([^,]+?)\s*,\s*(true|false)\s*\)/g,
+    'assert_notSameValue_bool($1, $2)'
+  );
+  body = body.replace(
+    /assert_notSameValue\s*\(\s*(true|false)\s*,\s*([^)]+?)\s*\)/g,
+    'assert_notSameValue_bool($1, $2)'
+  );
+
   // Route compareArray assertions through assert_true
   body = body.replace(/\bassert_true\s*\(\s*compareArray\b/g, 'assert_true(compareArray');
 
   // Conditionally include harness helpers only when used (avoids compile errors
   // from unused string/array functions that confuse the type system)
   const needsStrAssert = /\bassert_sameValue_str\b/.test(body);
+  const needsBoolAssert = /\bassert_(sameValue|notSameValue)_bool\b/.test(body);
   const needsCompareArray = /\bcompareArray\b/.test(body);
 
   let preamble = `let __fail: number = 0;
@@ -834,6 +854,22 @@ function assert_true(value: number): void {
 
 function assert_sameValue_str(actual: string, expected: string): void {
   if (actual !== expected) {
+    __fail = 1;
+  }
+}`;
+  }
+
+  if (needsBoolAssert) {
+    preamble += `
+
+function assert_sameValue_bool(actual: boolean, expected: boolean): void {
+  if (actual !== expected) {
+    __fail = 1;
+  }
+}
+
+function assert_notSameValue_bool(actual: boolean, expected: boolean): void {
+  if (actual === expected) {
     __fail = 1;
   }
 }`;
