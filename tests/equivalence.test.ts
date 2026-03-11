@@ -1599,4 +1599,58 @@ describe("IIFE and call expression edge cases", () => {
       [{ fn: "test", args: [] }],
     );
   });
+
+  it("empty object with later property assignment", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var obj = {};
+        obj.x = 42;
+        return obj.x;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("empty object with multiple later property assignments", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var obj = {};
+        obj.a = 10;
+        obj.b = 20;
+        obj.c = 30;
+        return obj.a + obj.b + obj.c;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("empty object with unicode escape property name", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var obj = {};
+        obj.\u0078 = 42;
+        return obj.x;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("empty object property assigned and read via bracket notation", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var obj = {};
+        obj.value = 99;
+        return obj['value'];
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
 });
