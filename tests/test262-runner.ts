@@ -199,11 +199,7 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     return { skip: true, reason: "uses delete operator" };
   }
 
-  // Skip tests that use string concatenation with += on non-string typed variables
-  // (our compiler can't do string concat on wasm f64/i32 values)
-  if (/\+=\s*index\b/.test(source) || /\bstr\s*\+=/.test(source) || /__str\s*\+=/.test(source)) {
-    return { skip: true, reason: "uses string concatenation" };
-  }
+  // (Removed: string concatenation skip — now handled in codegen via number_toString coercion)
 
 
 
@@ -232,10 +228,7 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     return { skip: true, reason: "function expression in catch scope" };
   }
 
-  // Skip tests using labeled blocks with break (break label; from non-loop blocks)
-  if (/\w+\s*:\s*\{/.test(source) && /\bbreak\s+\w+\s*;/.test(source)) {
-    return { skip: true, reason: "labeled block break" };
-  }
+  // (Removed: labeled block break skip — now handled in codegen)
 
   // (Removed: value-to-string coercion via + "" — now handled in codegen)
 
@@ -255,11 +248,7 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     return { skip: true, reason: "compound assignment with null/undefined" };
   }
 
-  // Skip tests using object literal as for-loop/while condition
-  if (/\{[^}]*value\s*:/.test(source) &&
-      (/for\s*\([^)]*;\s*\w+\s*;/.test(source) || /while\s*\(\s*\w+\s*\)/.test(source))) {
-    return { skip: true, reason: "object as loop condition" };
-  }
+  // (Removed: object-as-loop-condition skip — ensureI32Condition now handles ref/externref conditions)
 
   // Skip tests with function expression in loop condition (while(function(){...}))
   if (/while\s*\(\s*function\b/.test(source)) {
@@ -276,10 +265,7 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     return { skip: true, reason: "loose inequality with mixed types" };
   }
 
-  // Skip tests using `assert(` directly (not assert_sameValue) — references unresolved function
-  if (/\bassert\s*\(\s*\w+\s*,/.test(source) && !/assert\.sameValue/.test(source)) {
-    return { skip: true, reason: "uses assert() with message" };
-  }
+  // (Removed: assert() with message skip — extra arguments are now properly handled)
 
   // Skip tests with named function expression reassignment (ref.null vs ref type mismatch)
   if (/reassign.*fn.*name|Reassignment of function name/i.test(source)) {
@@ -320,22 +306,7 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     return { skip: true, reason: "modulo with infinity divisor" };
   }
 
-  // String comparisons via assert.sameValue are routed to assert_sameValue_str in wrapTest.
-  // Skip string comparisons outside assert patterns (raw === "..." in if/while) — compiler
-  // can't do string equality in arbitrary contexts without the harness call.
-  // Strip string literal contents first to avoid false positives from error messages
-  // that contain === or !== as text.
-  {
-    const stripped = source.replace(/"(?:[^"\\]|\\.)*"/g, '""').replace(/'(?:[^'\\]|\\.)*'/g, "''");
-    if ((/!==\s*['"]/.test(stripped) || /['"]\s*!==/.test(stripped) ||
-         /===\s*['"]/.test(stripped) || /['"]\s*===/.test(stripped)) &&
-        !/assert\.sameValue/.test(source) &&
-        // Allow string comparisons in tests that use value + "" coercion patterns
-        // (the compiler handles string !== "literal" correctly via equals import)
-        !/\+\s*""/.test(source)) {
-      return { skip: true, reason: "string strict comparison outside assert" };
-    }
-  }
+  // (Removed: string strict comparison skip — compiler now handles string === / !== via equals import)
 
   // Skip tests that use Array.prototype methods called with .call/.apply
   if (/Array\.prototype\.\w+\.call/.test(source) || /Array\.prototype\.\w+\.apply/.test(source)) {
@@ -457,8 +428,12 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
   }
 
   // Skip tests using `in` operator for runtime property existence (we only support compile-time)
-  if (/['"][^'"]*['"]\s+in\s+(\w+|\{)/.test(source) && !/for\s*\(\s*(var|let|const)\s+\w+\s+in\b/.test(source)) {
-    return { skip: true, reason: "runtime in operator for property check" };
+  // Strip metadata block first to avoid false positives from description text like `"break" in order`
+  {
+    const sourceNoMeta = source.replace(/\/\*---[\s\S]*?---\*\//, "");
+    if (/['"][^'"]*['"]\s+in\s+(\w+|\{)/.test(sourceNoMeta) && !/for\s*\(\s*(var|let|const)\s+\w+\s+in\b/.test(sourceNoMeta)) {
+      return { skip: true, reason: "runtime in operator for property check" };
+    }
   }
 
   // (Removed: Boolean(x = 0) and Boolean("") — now handled in codegen)
