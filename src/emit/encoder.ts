@@ -37,8 +37,9 @@ export class WasmEncoder {
     }
   }
 
-  /** Signed LEB128 i64 */
+  /** Signed LEB128 i64 — truncate to 64 bits to prevent overflow */
   i64(value: bigint): void {
+    value = BigInt.asIntN(64, value);
     let more = true;
     while (more) {
       let b = Number(value & 0x7fn);
