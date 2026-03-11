@@ -27,7 +27,7 @@ import type {
 import { createEmptyModule } from "../ir/types.js";
 import { compileExpression } from "./expressions.js";
 import { collectShapes } from "../shape-inference.js";
-import { compileStatement } from "./statements.js";
+import { compileStatement, hoistFunctionDeclarations } from "./statements.js";
 
 /** Result returned by generateModule / generateMultiModule */
 export interface CodegenResult {
@@ -214,6 +214,8 @@ export interface CodegenContext {
   anyHelpersEmitted: boolean;
   /** Shape-inferred array-like variables: varName → { vecTypeIdx, arrTypeIdx, elemType } */
   shapeMap: Map<string, { vecTypeIdx: number; arrTypeIdx: number; elemType: ValType }>;
+  /** Set of function names that failed during hoisting pre-pass (to avoid re-emitting errors) */
+  hoistFailedFuncs?: Set<string>;
 }
 
 /** Metadata for a closure stored in a local variable */
@@ -7993,6 +7995,7 @@ function compileFunctionBody(
 
     if (decl.body) {
       hoistVarDeclarations(ctx, fctx, decl.body.statements);
+      hoistFunctionDeclarations(ctx, fctx, decl.body.statements);
       for (const stmt of decl.body.statements) {
         compileStatement(ctx, fctx, stmt);
       }
@@ -8021,6 +8024,9 @@ function compileFunctionBody(
       // Hoist `var` declarations: pre-allocate locals so variables are accessible
       // even before their declaration site (JS var hoisting semantics).
       hoistVarDeclarations(ctx, fctx, decl.body.statements);
+      // Hoist function declarations: JS semantics require function declarations
+      // to be available before their textual position in the enclosing scope.
+      hoistFunctionDeclarations(ctx, fctx, decl.body.statements);
       for (const stmt of decl.body.statements) {
         compileStatement(ctx, fctx, stmt);
       }
