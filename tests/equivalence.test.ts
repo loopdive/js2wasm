@@ -49,13 +49,13 @@ function buildImports(result: CompileResult): WebAssembly.Imports {
     __typeof_boolean: (v: unknown) => (typeof v === "boolean" ? 1 : 0),
     __typeof: (v: unknown) => typeof v,
     __is_truthy: (v: unknown) => (v ? 1 : 0),
+    parseFloat: (s: any) => parseFloat(String(s)),
+    string_compare: (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0),
     __unbox_number: (v: unknown) => Number(v),
     __unbox_boolean: (v: unknown) => (v ? 1 : 0),
     __box_number: (v: number) => v,
     __box_boolean: (v: number) => Boolean(v),
     __make_callback: () => null,
-    parseFloat: (s: any) => parseFloat(String(s)),
-    string_compare: (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0),
   };
   return {
     env,
@@ -669,75 +669,6 @@ describe("TS ↔ Wasm equivalence", () => {
       }
       export function test1(): string {
         return first\`\${42}trailing\`;
-      }
-      `,
-      [
-        { fn: "test1", args: [] },
-      ],
-    );
-  });
-
-  it("tagged template literals — same call site returns same object across calls", async () => {
-    await assertEquivalent(
-      `
-      function eq(a: string[], b: string[]): number {
-        return a === b ? 1 : 0;
-      }
-      function tag(strings: string[]): string[] {
-        return strings;
-      }
-      function getTemplate(): string[] {
-        return tag\`hello\`;
-      }
-      export function test1(): number {
-        const first = getTemplate();
-        const second = getTemplate();
-        return eq(first, second);
-      }
-      `,
-      [
-        { fn: "test1", args: [] },
-      ],
-    );
-  });
-
-  it("tagged template literals — different sites produce different objects", async () => {
-    await assertEquivalent(
-      `
-      function eq(a: string[], b: string[]): number {
-        return a === b ? 1 : 0;
-      }
-      function tag(strings: string[]): string[] {
-        return strings;
-      }
-      export function test1(): number {
-        const first = tag\`aaa\`;
-        const second = tag\`bbb\`;
-        return eq(first, second);
-      }
-      `,
-      [
-        { fn: "test1", args: [] },
-      ],
-    );
-  });
-
-  it("tagged template literals — same site caches even with different expression values", async () => {
-    await assertEquivalent(
-      `
-      function eq(a: string[], b: string[]): number {
-        return a === b ? 1 : 0;
-      }
-      function tag(strings: string[], ...subs: number[]): string[] {
-        return strings;
-      }
-      function getTemplate(x: number): string[] {
-        return tag\`head\${x}tail\`;
-      }
-      export function test1(): number {
-        const first = getTemplate(1);
-        const second = getTemplate(2);
-        return eq(first, second);
       }
       `,
       [
@@ -1671,6 +1602,10 @@ describe("IIFE and call expression edge cases", () => {
     );
   });
 
+
+  // === Tests from #218-219 ===
+
+
   // --- Issue #218: Boolean(x = 0) should return false ---
   it("Boolean with assignment expression argument", async () => {
     await assertEquivalent(
@@ -1746,118 +1681,6 @@ describe("IIFE and call expression edge cases", () => {
           case 1: result = 20; break;
           case 2: result = 30; break;
           default: result = -1;
-  it("for-of with object destructuring", async () => {
-    await assertEquivalent(
-      `
-      export function test(): number {
-        let sum = 0;
-        const arr: {x: number, y: number}[] = [{x: 1, y: 2}, {x: 3, y: 4}];
-        for (const {x, y} of arr) {
-          sum = sum + x + y;
-        }
-        return sum;
-  // -- Issue #208: computed property names with expressions --
-
-  it("computed property name with addition expression", async () => {
-    await assertEquivalent(
-      `
-      const key = "he" + "llo";
-      const obj: { hello: number } = { [key]: 42 };
-      export function test(): number {
-        return obj.hello;
-  // Issue #209: for-loop with continue and string concatenation of numbers
-  it("for-loop continue with string concat", async () => {
-    await assertEquivalent(
-      `
-      export function test(): string {
-        var __str = "";
-        for (var index = 0; index < 10; index += 1) {
-          if (index < 5) continue;
-          __str += index;
-        }
-        return __str;
-  it("comma operator indirect call: (0, fn)()", async () => {
-    await assertEquivalent(
-      `
-      function add(a: number, b: number): number { return a + b; }
-      export function test(): number {
-        return (0, add)(3, 4);
-  // --- Issue #223: Computed property names in class declarations ---
-
-  it("class with string literal computed property name", async () => {
-    await assertEquivalent(
-      `
-      class Counter {
-        ["count"]: number;
-        constructor() {
-          this.count = 0;
-        }
-        ["increment"](): number {
-          this.count = this.count + 1;
-          return this.count;
-        }
-      }
-      export function test(): number {
-        const c = new Counter();
-        c.increment();
-        c.increment();
-        return c.count;
-      }
-      `,
-      [{ fn: "test", args: [] }],
-    );
-  });
-
-  it("for-of with object destructuring and default values", async () => {
-    await assertEquivalent(
-      `
-      export function test(): number {
-        let sum = 0;
-        const arr: {x: number}[] = [{x: 10}, {x: 20}];
-        for (const {x} of arr) {
-          sum = sum + x;
-        }
-        return sum;
-  it("computed property name with ternary expression", async () => {
-    await assertEquivalent(
-      `
-      const flag = 1;
-      const obj: { yes: number } = { [flag ? "yes" : "no"]: 10 };
-      export function test(): number {
-        return obj.yes;
-  it("for-loop continue with string concat (all iterations)", async () => {
-    await assertEquivalent(
-      `
-      export function test(): string {
-        var s = "";
-        for (var i = 0; i < 5; i++) {
-          if (i === 2) continue;
-          s += i;
-        }
-        return s;
-  it("comma operator indirect call with side effects", async () => {
-    await assertEquivalent(
-      `
-      var counter: number = 0;
-      function inc(): number { counter = counter + 1; return counter; }
-      function double(x: number): number { return x * 2; }
-      export function test(): number {
-        const result = (inc(), double)(5);
-        return result + counter;
-      }
-      `,
-      [{ fn: "test", args: [] }],
-    );
-  });
-
-  it("for-of destructuring with var", async () => {
-    await assertEquivalent(
-      `
-      export function test(): number {
-        let result = 0;
-        const items: {a: number, b: number}[] = [{a: 5, b: 3}, {a: 7, b: 2}];
-        for (var {a, b} of items) {
-          result = result + a * b;
         }
         return result;
       }
@@ -1883,54 +1706,6 @@ describe("IIFE and call expression edge cases", () => {
       }
       export function test(): number {
         return myfunc(5) + myfunc(-1);
-  it("computed property name with template literal", async () => {
-    await assertEquivalent(
-      `
-      const part = "val";
-      const obj: { myval: number } = { [\`my\${part}\`]: 77 };
-      export function test(): number {
-        return obj.myval;
-  // Issue #209: for-loop with string literal as condition
-  it("for-loop with string literal condition", async () => {
-    await assertEquivalent(
-      `
-      export function test(): number {
-        var accessed: number = 0;
-        for (var i = 0; "hello"; ) {
-          accessed = 1;
-          break;
-        }
-        return accessed;
-  it("fn.call() with thisArg dropped", async () => {
-    await assertEquivalent(
-      `
-      function add(a: number, b: number): number { return a + b; }
-      export function test(): number {
-        return add.call(null, 10, 20);
-      }
-      `,
-      [{ fn: "test", args: [] }],
-    );
-  });
-
-  // Issue #209: for-loop with object as condition
-  it("for-loop with object condition", async () => {
-    await assertEquivalent(
-      `
-      export function test(): number {
-        var accessed: number = 0;
-        var obj = { value: false };
-        for (var i = 0; obj; ) {
-          accessed = 1;
-          break;
-        }
-        return accessed;
-  it("fn.call() with no extra args", async () => {
-    await assertEquivalent(
-      `
-      function getFortyTwo(): number { return 42; }
-      export function test(): number {
-        return getFortyTwo.call(null);
       }
       `,
       [{ fn: "test", args: [] }],
@@ -2000,6 +1775,64 @@ describe("IIFE and call expression edge cases", () => {
         return x + (b ? 100 : 0);
       }
       `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // === Tests from #210 ===
+
+
+  it("for-of with object destructuring", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let sum = 0;
+        const arr: {x: number, y: number}[] = [{x: 1, y: 2}, {x: 3, y: 4}];
+        for (const {x, y} of arr) {
+          sum = sum + x + y;
+        }
+        return sum;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("for-of with object destructuring and default values", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let sum = 0;
+        const arr: {x: number}[] = [{x: 10}, {x: 20}];
+        for (const {x} of arr) {
+          sum = sum + x;
+        }
+        return sum;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("for-of destructuring with var", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let result = 0;
+        const items: {a: number, b: number}[] = [{a: 5, b: 3}, {a: 7, b: 2}];
+        for (var {a, b} of items) {
+          result = result + a * b;
+        }
+        return result;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // === Tests from #211 ===
+
+
   it("void function returns undefined (=== undefined)", async () => {
     await assertEquivalent(
       `
@@ -2009,30 +1842,6 @@ describe("IIFE and call expression edge cases", () => {
         // void function call compared to undefined should be equal
         if (voidFunc() === undefined) return 1;
         return 0;
-  it("computed property name with numeric expression", async () => {
-    await assertEquivalent(
-      `
-      const arr: number[] = [0, 0, 0];
-      arr[1 + 1] = 99;
-      export function test(): number {
-        return arr[2];
-  // Issue #209: for-loop with number literal condition (non-boolean)
-  it("for-loop with numeric literal condition", async () => {
-    await assertEquivalent(
-      `
-      export function test(): number {
-        var accessed: number = 0;
-        for (var i = 0; 2; ) {
-          accessed = 1;
-          break;
-        }
-        return accessed;
-  it("fn.call() with undefined thisArg", async () => {
-    await assertEquivalent(
-      `
-      function multiply(a: number, b: number): number { return a * b; }
-      export function test(): number {
-        return multiply.call(undefined, 6, 7);
       }
       `,
       [{ fn: "test", args: [] }],
@@ -2051,27 +1860,6 @@ describe("IIFE and call expression edge cases", () => {
         if (voidFunc() !== undefined) return 0;
         if (x !== 1) return 0;
         return 1;
-  it("computed property name with const variable expression", async () => {
-    await assertEquivalent(
-      `
-      const a = "hel";
-      const b = "lo";
-      const key = a + b;
-      const obj: { hello: number } = { [key]: 55 };
-      export function test(): number {
-        return obj.hello;
-  // Issue #217: while/do-while with string truthiness in loop condition
-  it("while loop with string condition", async () => {
-    await assertEquivalent(
-      `
-      export function test(): number {
-        var s: string = "hello";
-        var count: number = 0;
-        while (s) {
-          count++;
-          if (count >= 3) s = "";
-        }
-        return count;
       }
       `,
       [{ fn: "test", args: [] }],
@@ -2086,17 +1874,6 @@ describe("IIFE and call expression edge cases", () => {
       function three(a: number, b: number, c: number): number { return a + b + c; }
       export function test(): number {
         return zero.length * 100 + one.length * 10 + three.length;
-  it("do-while loop with string concatenation condition", async () => {
-    await assertEquivalent(
-      `
-      export function test(): string {
-        var result: string = "";
-        var i: number = 0;
-        do {
-          result += i;
-          i++;
-        } while (i < 3);
-        return result;
       }
       `,
       [{ fn: "test", args: [] }],
@@ -2113,24 +1890,86 @@ describe("IIFE and call expression edge cases", () => {
         let x: number = 1;
         modify(x);
         return x;
-  // Issue #217: while loop with string variable condition
-  it("while loop with string variable truthiness", async () => {
-    await assertEquivalent(
-      `
-      export function test(): number {
-        var s: string = "abc";
-        var n: number = 0;
-        while (s) {
-          n++;
-          s = "";
-        }
-        return n;
       }
       `,
       [{ fn: "test", args: [] }],
     );
   });
-});
+
+  // === Tests from #212 ===
+
+  it("tagged template literals — same call site returns same object across calls", async () => {
+    await assertEquivalent(
+      `
+      function eq(a: string[], b: string[]): number {
+        return a === b ? 1 : 0;
+      }
+      function tag(strings: string[]): string[] {
+        return strings;
+      }
+      function getTemplate(): string[] {
+        return tag\`hello\`;
+      }
+      export function test1(): number {
+        const first = getTemplate();
+        const second = getTemplate();
+        return eq(first, second);
+      }
+      `,
+      [
+        { fn: "test1", args: [] },
+      ],
+    );
+  });
+
+  it("tagged template literals — different sites produce different objects", async () => {
+    await assertEquivalent(
+      `
+      function eq(a: string[], b: string[]): number {
+        return a === b ? 1 : 0;
+      }
+      function tag(strings: string[]): string[] {
+        return strings;
+      }
+      export function test1(): number {
+        const first = tag\`aaa\`;
+        const second = tag\`bbb\`;
+        return eq(first, second);
+      }
+      `,
+      [
+        { fn: "test1", args: [] },
+      ],
+    );
+  });
+
+  it("tagged template literals — same site caches even with different expression values", async () => {
+    await assertEquivalent(
+      `
+      function eq(a: string[], b: string[]): number {
+        return a === b ? 1 : 0;
+      }
+      function tag(strings: string[], ...subs: number[]): string[] {
+        return strings;
+      }
+      function getTemplate(x: number): string[] {
+        return tag\`head\${x}tail\`;
+      }
+      export function test1(): number {
+        const first = getTemplate(1);
+        const second = getTemplate(2);
+        return eq(first, second);
+      }
+      `,
+      [
+        { fn: "test1", args: [] },
+      ],
+    );
+  });
+
+
+  // === Tests from #213 ===
+
 
 describe("New expression with spread arguments (#213)", () => {
   it("spread-sngl-empty: new function(){}(...[])", async () => {
@@ -2235,6 +2074,221 @@ describe("New expression with spread arguments (#213)", () => {
       }
     `);
     expect(exports.test()).toBe(60);
+  });
+});
+
+  // === Tests from #207-208 ===
+
+
+  // -- Issue #208: computed property names with expressions --
+
+  it("computed property name with addition expression", async () => {
+    await assertEquivalent(
+      `
+      const key = "he" + "llo";
+      const obj: { hello: number } = { [key]: 42 };
+      export function test(): number {
+        return obj.hello;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("computed property name with ternary expression", async () => {
+    await assertEquivalent(
+      `
+      const flag = 1;
+      const obj: { yes: number } = { [flag ? "yes" : "no"]: 10 };
+      export function test(): number {
+        return obj.yes;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("computed property name with template literal", async () => {
+    await assertEquivalent(
+      `
+      const part = "val";
+      const obj: { myval: number } = { [\`my\${part}\`]: 77 };
+      export function test(): number {
+        return obj.myval;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("computed property name with numeric expression", async () => {
+    await assertEquivalent(
+      `
+      const arr: number[] = [0, 0, 0];
+      arr[1 + 1] = 99;
+      export function test(): number {
+        return arr[2];
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("computed property name with const variable expression", async () => {
+    await assertEquivalent(
+      `
+      const a = "hel";
+      const b = "lo";
+      const key = a + b;
+      const obj: { hello: number } = { [key]: 55 };
+      export function test(): number {
+        return obj.hello;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // === Tests from #209-217 ===
+
+
+  // Issue #209: for-loop with continue and string concatenation of numbers
+  it("for-loop continue with string concat", async () => {
+    await assertEquivalent(
+      `
+      export function test(): string {
+        var __str = "";
+        for (var index = 0; index < 10; index += 1) {
+          if (index < 5) continue;
+          __str += index;
+        }
+        return __str;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("for-loop continue with string concat (all iterations)", async () => {
+    await assertEquivalent(
+      `
+      export function test(): string {
+        var s = "";
+        for (var i = 0; i < 5; i++) {
+          if (i === 2) continue;
+          s += i;
+        }
+        return s;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #209: for-loop with string literal as condition
+  it("for-loop with string literal condition", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var accessed: number = 0;
+        for (var i = 0; "hello"; ) {
+          accessed = 1;
+          break;
+        }
+        return accessed;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #209: for-loop with object as condition
+  it("for-loop with object condition", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var accessed: number = 0;
+        var obj = { value: false };
+        for (var i = 0; obj; ) {
+          accessed = 1;
+          break;
+        }
+        return accessed;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #209: for-loop with number literal condition (non-boolean)
+  it("for-loop with numeric literal condition", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var accessed: number = 0;
+        for (var i = 0; 2; ) {
+          accessed = 1;
+          break;
+        }
+        return accessed;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #217: while/do-while with string truthiness in loop condition
+  it("while loop with string condition", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var s: string = "hello";
+        var count: number = 0;
+        while (s) {
+          count++;
+          if (count >= 3) s = "";
+        }
+        return count;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("do-while loop with string concatenation condition", async () => {
+    await assertEquivalent(
+      `
+      export function test(): string {
+        var result: string = "";
+        var i: number = 0;
+        do {
+          result += i;
+          i++;
+        } while (i < 3);
+        return result;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #217: while loop with string variable condition
+  it("while loop with string variable truthiness", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var s: string = "abc";
+        var n: number = 0;
+        while (s) {
+          n++;
+          s = "";
+        }
+        return n;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
 
   // Issue #217: do-while with string condition
   it("do-while with string truthiness condition", async () => {
@@ -2433,7 +2487,9 @@ export function test(): number {
       [{ fn: "test", args: [] }],
     );
   });
-});
+
+  // === Tests from #214-215-216 ===
+
 
 // Issue #214: String relational operators
 describe("String relational operators (#214)", () => {
@@ -2625,6 +2681,79 @@ describe("Modulus with special values (#216)", () => {
       `
       export function test(): number {
         return -7 % 3;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+});
+
+  // === Tests from #221 ===
+
+
+  it("comma operator indirect call: (0, fn)()", async () => {
+    await assertEquivalent(
+      `
+      function add(a: number, b: number): number { return a + b; }
+      export function test(): number {
+        return (0, add)(3, 4);
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("comma operator indirect call with side effects", async () => {
+    await assertEquivalent(
+      `
+      var counter: number = 0;
+      function inc(): number { counter = counter + 1; return counter; }
+      function double(x: number): number { return x * 2; }
+      export function test(): number {
+        const result = (inc(), double)(5);
+        return result + counter;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("fn.call() with thisArg dropped", async () => {
+    await assertEquivalent(
+      `
+      function add(a: number, b: number): number { return a + b; }
+      export function test(): number {
+        return add.call(null, 10, 20);
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("fn.call() with no extra args", async () => {
+    await assertEquivalent(
+      `
+      function getFortyTwo(): number { return 42; }
+      export function test(): number {
+        return getFortyTwo.call(null);
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("fn.call() with undefined thisArg", async () => {
+    await assertEquivalent(
+      `
+      function multiply(a: number, b: number): number { return a * b; }
+      export function test(): number {
+        return multiply.call(undefined, 6, 7);
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
   it("chained method call on returned value", async () => {
     await assertEquivalent(
       `
@@ -2639,6 +2768,13 @@ describe("Modulus with special values (#216)", () => {
         return makeBuilder().add(10).add(20).result();
       }
       `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // === Tests from #222 ===
+
+
   it("object destructuring var hoisting", async () => {
     await assertEquivalent(
       `
@@ -2674,6 +2810,56 @@ describe("Modulus with special values (#216)", () => {
           var x = 42;
           result = x;
         }
+        return result;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("var in for-loop body is hoisted", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        for (var i = 0; i < 3; i++) {
+          var x = i * 10;
+        }
+        return x;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // === Tests from #223-224 ===
+
+
+  // --- Issue #223: Computed property names in class declarations ---
+
+  it("class with string literal computed property name", async () => {
+    await assertEquivalent(
+      `
+      class Counter {
+        ["count"]: number;
+        constructor() {
+          this.count = 0;
+        }
+        ["increment"](): number {
+          this.count = this.count + 1;
+          return this.count;
+        }
+      }
+      export function test(): number {
+        const c = new Counter();
+        c.increment();
+        c.increment();
+        return c.count;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
   it("class with numeric literal computed property name", async () => {
     const exports = await compileToWasm(`
       class Data {
@@ -2715,14 +2901,6 @@ describe("Modulus with special values (#216)", () => {
     );
   });
 
-  it("var in for-loop body is hoisted", async () => {
-    await assertEquivalent(
-      `
-      export function test(): number {
-        for (var i = 0; i < 3; i++) {
-          var x = i * 10;
-        }
-        return x;
   it("prefix decrement on object property", async () => {
     await assertEquivalent(
       `
