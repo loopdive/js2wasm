@@ -38,6 +38,7 @@ _Details: [sprint-1.md](sprint-1.md)_
 | [170](issues/170.md) | Bug: class expression/declaration edge cases | Open | — |
 | [171](issues/171.md) | Bug: Boolean() edge cases | Open | — |
 | [172](issues/172.md) | Bug: Array.isArray edge case | Open | — |
+| [211](issues/211.md) | Bug: Function.length property and void function comparison | Review | — |
 
 ## Backlog
 
