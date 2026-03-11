@@ -6837,21 +6837,27 @@ function collectDeclarations(
 
   // Collect class declarations (struct types + constructor/method functions)
   // Also collect class expressions in variable declarations: const C = class { ... }
-  for (const stmt of sourceFile.statements) {
-    if (ts.isClassDeclaration(stmt) && stmt.name && !hasDeclareModifier(stmt)) {
-      collectClassDeclaration(ctx, stmt);
-    } else if (ts.isVariableStatement(stmt) && !hasDeclareModifier(stmt)) {
-      for (const decl of stmt.declarationList.declarations) {
-        if (
-          ts.isIdentifier(decl.name) &&
-          decl.initializer &&
-          ts.isClassExpression(decl.initializer)
-        ) {
-          collectClassDeclaration(ctx, decl.initializer, decl.name.text);
+  // Scan recursively into function bodies to find class expressions defined inside functions
+  function collectClassesFromStatements(stmts: ts.NodeArray<ts.Statement> | readonly ts.Statement[]): void {
+    for (const stmt of stmts) {
+      if (ts.isClassDeclaration(stmt) && stmt.name && !hasDeclareModifier(stmt)) {
+        collectClassDeclaration(ctx, stmt);
+      } else if (ts.isVariableStatement(stmt) && !hasDeclareModifier(stmt)) {
+        for (const decl of stmt.declarationList.declarations) {
+          if (
+            ts.isIdentifier(decl.name) &&
+            decl.initializer &&
+            ts.isClassExpression(decl.initializer)
+          ) {
+            collectClassDeclaration(ctx, decl.initializer, decl.name.text);
+          }
         }
+      } else if (ts.isFunctionDeclaration(stmt) && stmt.body) {
+        collectClassesFromStatements(stmt.body.statements);
       }
     }
   }
+  collectClassesFromStatements(sourceFile.statements);
 
   // Third: collect function declarations (uses resolveWasmType for real type indices)
   for (const stmt of sourceFile.statements) {
@@ -7147,31 +7153,37 @@ function compileDeclarations(
 
   // Compile class constructors and methods
   // Also compile class expressions in variable declarations
-  for (const stmt of sourceFile.statements) {
-    if (ts.isClassDeclaration(stmt) && stmt.name && !hasDeclareModifier(stmt)) {
-      try {
-        compileClassBodies(ctx, stmt, funcByName);
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        reportError(ctx, stmt, `Internal error compiling class '${stmt.name.text}': ${msg}`);
-      }
-    } else if (ts.isVariableStatement(stmt) && !hasDeclareModifier(stmt)) {
-      for (const decl of stmt.declarationList.declarations) {
-        if (
-          ts.isIdentifier(decl.name) &&
-          decl.initializer &&
-          ts.isClassExpression(decl.initializer)
-        ) {
-          try {
-            compileClassBodies(ctx, decl.initializer, funcByName, decl.name.text);
-          } catch (e) {
-            const msg = e instanceof Error ? e.message : String(e);
-            reportError(ctx, decl, `Internal error compiling class expression: ${msg}`);
+  // Scan recursively into function bodies for class expressions
+  function compileClassesFromStatements(stmts: ts.NodeArray<ts.Statement> | readonly ts.Statement[]): void {
+    for (const stmt of stmts) {
+      if (ts.isClassDeclaration(stmt) && stmt.name && !hasDeclareModifier(stmt)) {
+        try {
+          compileClassBodies(ctx, stmt, funcByName);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          reportError(ctx, stmt, `Internal error compiling class '${stmt.name.text}': ${msg}`);
+        }
+      } else if (ts.isVariableStatement(stmt) && !hasDeclareModifier(stmt)) {
+        for (const decl of stmt.declarationList.declarations) {
+          if (
+            ts.isIdentifier(decl.name) &&
+            decl.initializer &&
+            ts.isClassExpression(decl.initializer)
+          ) {
+            try {
+              compileClassBodies(ctx, decl.initializer, funcByName, decl.name.text);
+            } catch (e) {
+              const msg = e instanceof Error ? e.message : String(e);
+              reportError(ctx, decl, `Internal error compiling class expression: ${msg}`);
+            }
           }
         }
+      } else if (ts.isFunctionDeclaration(stmt) && stmt.body) {
+        compileClassesFromStatements(stmt.body.statements);
       }
     }
   }
+  compileClassesFromStatements(sourceFile.statements);
 
   // Compile top-level function declarations
   for (const stmt of sourceFile.statements) {
