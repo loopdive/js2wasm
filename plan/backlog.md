@@ -80,6 +80,13 @@ _Details: [sprint-2.md](sprint-2.md)_
 
 ## Backlog
 
+### Property names and computed keys
+
+| #                    | Feature                                            | Complexity | Tests blocked |
+| -------------------- | -------------------------------------------------- | ---------- | ------------- |
+| [207](issues/207.md) | Unicode escape sequences in property names         | S          | ~42           |
+| [208](issues/208.md) | Computed property names with complex expressions   | S          | ~15           |
+
 ### Core language features
 
 | #                    | Feature                                            | Complexity | Tests blocked |
