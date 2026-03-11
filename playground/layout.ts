@@ -54,7 +54,7 @@ export function getDefaultLayout(): LayoutNode {
         direction: "horizontal",
         ratio: 0.7,
         children: [
-          { type: "leaf", id: "output-left", tabs: ["errors", "preview", "console"], activeTab: "preview" },
+          { type: "leaf", id: "output-left", tabs: ["errors", "preview", "console", "test262"], activeTab: "preview" },
           { type: "leaf", id: "output-right", tabs: ["treemap"], activeTab: "treemap" },
         ],
       },
