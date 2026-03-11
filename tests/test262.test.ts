@@ -70,6 +70,24 @@ afterAll(() => {
 
   console.log("══════════════════════════════════════════════════════");
 
+  // Build compile error frequency map
+  const errorFreq = new Map<string, number>();
+  for (const r of allResults) {
+    if (r.status === "compile_error" && r.error) {
+      // Normalize: take first error message (before ";"), strip line/column specifics
+      const msgs = r.error.split("; ");
+      for (const msg of msgs) {
+        const normalized = msg
+          .replace(/'\w+'/g, "'X'")           // normalize identifier names
+          .replace(/type '\w+'/g, "type 'X'") // normalize type names
+          .replace(/struct type: __anon_\d+/g, "struct type: __anon_N")
+          .replace(/Cannot compile expression: \d+/g, "Cannot compile expression: N");
+        errorFreq.set(normalized, (errorFreq.get(normalized) ?? 0) + 1);
+      }
+    }
+  }
+  const errorFreqSorted = [...errorFreq.entries()].sort((a, b) => b[1] - a[1]);
+
   // Write JSON report for the report page
   const reportData = {
     timestamp: new Date().toISOString(),
@@ -79,9 +97,19 @@ afterAll(() => {
       ...s,
       compilable: s.pass + s.fail,
     })),
+    compileErrors: errorFreqSorted.map(([msg, count]) => ({ message: msg, count })),
   };
   const reportPath = join(import.meta.dirname ?? ".", "..", "benchmarks", "results", "test262-report.json");
   try { writeFileSync(reportPath, JSON.stringify(reportData, null, 2)); } catch {}
+
+  // Print compile error frequency
+  if (errorFreqSorted.length > 0) {
+    console.log("\n── Compile Error Frequency ─────────────────────────");
+    for (const [msg, count] of errorFreqSorted) {
+      console.log(`  ${String(count).padStart(4)}×  ${msg.substring(0, 100)}`);
+    }
+    console.log("────────────────────────────────────────────────────");
+  }
 
   // Print failures for debugging
   const failures = allResults.filter(r => r.status === "fail");
