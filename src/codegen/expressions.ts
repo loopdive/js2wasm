@@ -6936,7 +6936,9 @@ function compileTaggedTemplateExpression(
       }
 
       // Push substitution expressions as remaining arguments
-      for (let i = 0; i < substitutions.length; i++) {
+      // Only push up to the number of declared params (minus 1 for self, minus 1 for strings)
+      const closureMaxSubs = Math.min(substitutions.length, closureInfo.paramTypes.length - 1);
+      for (let i = 0; i < closureMaxSubs; i++) {
         const expectedParamType = closureInfo.paramTypes[i + 1];
         compileExpression(ctx, fctx, substitutions[i]!, expectedParamType);
       }
@@ -6971,26 +6973,37 @@ function compileTaggedTemplateExpression(
         fctx.body.push({ op: "extern.convert_any" });
       }
 
-      if (restInfo && restInfo.restIndex === 1) {
-        // Tag function has rest param at index 1: tag(strings, ...subs)
-        // Pack substitutions into a vec
-        const restArgCount = substitutions.length;
+      if (restInfo) {
+        // Tag function has rest param: push positional args before rest, then pack rest
+        const captureCount = nestedCaptures ? nestedCaptures.length : 0;
+        const restIdx = restInfo.restIndex - captureCount; // restIndex in user params (0-based after captures)
+        // Push positional substitutions before the rest param
+        for (let i = 0; i < Math.min(substitutions.length, restIdx - 1); i++) {
+          compileExpression(ctx, fctx, substitutions[i]!, paramTypes?.[i + 1 + captureCount]);
+        }
+        // Pack remaining substitutions into a vec for the rest param
+        const restStart = Math.max(0, restIdx - 1);
+        const restSubs = substitutions.slice(restStart);
+        const restArgCount = restSubs.length;
         fctx.body.push({ op: "i32.const", value: restArgCount });
-        for (const sub of substitutions) {
+        for (const sub of restSubs) {
           compileExpression(ctx, fctx, sub, restInfo.elemType);
         }
         fctx.body.push({ op: "array.new_fixed", typeIdx: restInfo.arrayTypeIdx, length: restArgCount });
         fctx.body.push({ op: "struct.new", typeIdx: restInfo.vecTypeIdx });
       } else {
         // No rest param — push substitutions as positional args
-        for (let i = 0; i < substitutions.length; i++) {
-          compileExpression(ctx, fctx, substitutions[i]!, paramTypes?.[i + 1]);
+        // Only push up to the number of declared params (excluding captures and strings array)
+        const captureCount = nestedCaptures ? nestedCaptures.length : 0;
+        const maxSubs = paramTypes ? Math.min(substitutions.length, paramTypes.length - 1 - captureCount) : substitutions.length;
+        for (let i = 0; i < maxSubs; i++) {
+          compileExpression(ctx, fctx, substitutions[i]!, paramTypes?.[i + 1 + captureCount]);
         }
 
         // Supply defaults for missing optional params
         const optInfo = ctx.funcOptionalParams.get(tagName);
         if (optInfo) {
-          const numProvided = substitutions.length + 1; // +1 for strings array
+          const numProvided = maxSubs + 1 + captureCount; // +1 for strings array + captures
           for (const opt of optInfo) {
             if (opt.index >= numProvided) {
               pushDefaultValue(fctx, opt.type);

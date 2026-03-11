@@ -594,6 +594,86 @@ describe("TS ↔ Wasm equivalence", () => {
     );
   });
 
+  it("tagged template literals — multiple string parts concatenated", async () => {
+    await assertEquivalent(
+      `
+      function tag(strings: string[], a: number): string {
+        return strings[0] + String(a) + strings[1];
+      }
+      export function test1(): string {
+        return tag\`hello \${42} world\`;
+      }
+      `,
+      [
+        { fn: "test1", args: [] },
+      ],
+    );
+  });
+
+  it("tagged template literals — return substitution directly", async () => {
+    await assertEquivalent(
+      `
+      function identity(strings: string[], val: number): number {
+        return val;
+      }
+      export function test1(): number {
+        return identity\`prefix \${99} suffix\`;
+      }
+      `,
+      [
+        { fn: "test1", args: [] },
+      ],
+    );
+  });
+
+  it("tagged template literals — string parts count with expressions", async () => {
+    await assertEquivalent(
+      `
+      function tag(strings: string[], a: number, b: number, c: number): number {
+        return strings.length;
+      }
+      export function test1(): number {
+        return tag\`a\${1}b\${2}c\${3}d\`;
+      }
+      `,
+      [
+        { fn: "test1", args: [] },
+      ],
+    );
+  });
+
+  it("tagged template literals — excess substitutions dropped", async () => {
+    await assertEquivalent(
+      `
+      function tag(strings: string[]): number {
+        return strings.length;
+      }
+      export function test1(): number {
+        return tag\`a\${1}b\${2}c\`;
+      }
+      `,
+      [
+        { fn: "test1", args: [] },
+      ],
+    );
+  });
+
+  it("tagged template literals — empty leading string part", async () => {
+    await assertEquivalent(
+      `
+      function first(strings: string[]): string {
+        return strings[0];
+      }
+      export function test1(): string {
+        return first\`\${42}trailing\`;
+      }
+      `,
+      [
+        { fn: "test1", args: [] },
+      ],
+    );
+  });
+
   it("typeof comparison — static resolution for number, string, boolean", async () => {
     await assertEquivalent(
       `
