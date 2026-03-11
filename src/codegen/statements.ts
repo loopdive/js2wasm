@@ -406,10 +406,15 @@ function compileVariableStatement(
     }
     // Override type for string methods returning host arrays (e.g. split() returns
     // externref but TS types as string[] which resolveWasmType maps to GC vec struct)
-    const wasmType = inferredVecType
-      ?? ((decl.initializer && isStringMethodReturningHostArray(ctx, decl.initializer))
-        ? { kind: "externref" as const }
-        : resolveWasmType(ctx, varType));
+    // Check if this variable has widened properties (empty obj with later prop assignments)
+    const widenedStructName = ctx.widenedVarStructMap.get(name);
+    const widenedTypeIdx = widenedStructName !== undefined ? ctx.structMap.get(widenedStructName) : undefined;
+    const wasmType = widenedTypeIdx !== undefined
+      ? { kind: "ref_null" as const, typeIdx: widenedTypeIdx }
+      : inferredVecType
+        ?? ((decl.initializer && isStringMethodReturningHostArray(ctx, decl.initializer))
+          ? { kind: "externref" as const }
+          : resolveWasmType(ctx, varType));
 
     // If this var was already pre-hoisted at function entry, reuse that slot.
     const existingIdx = fctx.localMap.get(name);

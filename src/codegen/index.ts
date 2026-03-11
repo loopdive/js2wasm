@@ -218,6 +218,10 @@ export interface CodegenContext {
   hoistFailedFuncs?: Set<string>;
   /** Counter for unique tagged template cache global variables */
   templateCacheCounter: number;
+  /** Extra properties for empty object variables (varName -> props to add) */
+  widenedTypeProperties: Map<string, { name: string; type: ValType }[]>;
+  /** Map from widened variable name to its registered struct name */
+  widenedVarStructMap: Map<string, string>;
 }
 
 /** Metadata for a closure stored in a local variable */
@@ -347,6 +351,8 @@ export function generateModule(
     anyHelpersEmitted: false,
     shapeMap: new Map(),
     templateCacheCounter: 0,
+    widenedTypeProperties: new Map(),
+    widenedVarStructMap: new Map(),
   };
 
   // Register native string types if fast mode
@@ -372,6 +378,10 @@ export function generateModule(
     collectExternDeclarations(ctx, libFile);
     collectDeclaredGlobals(ctx, libFile, ast.sourceFile);
   }
+
+  // Pre-pass: detect empty object literals that get properties assigned later
+  // Must run before import collectors so that widened types are known
+  collectEmptyObjectWidening(ctx, ast.checker, ast.sourceFile);
 
   // Register only the extern class imports actually used in source code
   collectUsedExternImports(ctx, ast.sourceFile);
@@ -536,6 +546,8 @@ export function generateMultiModule(
     anyHelpersEmitted: false,
     shapeMap: new Map(),
     templateCacheCounter: 0,
+    widenedTypeProperties: new Map(),
+    widenedVarStructMap: new Map(),
   };
 
   // Register native string types if fast mode
@@ -6323,7 +6335,9 @@ function collectUsedExternImports(
       const objType = ctx.checker.getTypeAtLocation(node.expression);
       const sym = objType.getSymbol();
       // Skip Array and tuple types — those use Wasm GC struct/array ops, not host import
-      if (sym?.name !== "Array" && sym?.name !== "__type" && sym?.name !== "__object" && !isTupleType(objType)) {
+      // Skip widened empty objects — those use struct.get, not host import
+      const isWidenedVar = ts.isIdentifier(node.expression) && ctx.widenedVarStructMap.has(node.expression.text);
+      if (sym?.name !== "Array" && sym?.name !== "__type" && sym?.name !== "__object" && !isTupleType(objType) && !isWidenedVar) {
         const wasmType = mapTsTypeToWasm(objType, ctx.checker);
         if (wasmType.kind === "externref") {
           register(
@@ -6920,6 +6934,117 @@ function resolveGenericCallSiteTypes(
 
   ts.forEachChild(sourceFile, visit);
   return found;
+}
+
+/**
+ * Pre-pass: detect empty object literals (`var obj = {}`) that later receive
+ * property assignments (`obj.prop = val`) and record the extra properties so
+ * that ensureStructForType creates a struct with the correct fields.
+ *
+ * This runs *before* collectDeclarations so the struct type is correct from
+ * the start.
+ */
+function collectEmptyObjectWidening(
+  ctx: CodegenContext,
+  checker: ts.TypeChecker,
+  sourceFile: ts.SourceFile,
+): void {
+  // Scan all statements (top-level and inside function bodies)
+  function scanStatements(stmts: readonly ts.Statement[]): void {
+    for (const stmt of stmts) {
+      // Look for var/let/const declarations with empty object literal initializer
+      if (ts.isVariableStatement(stmt)) {
+        for (const decl of stmt.declarationList.declarations) {
+          if (!ts.isIdentifier(decl.name)) continue;
+          if (!decl.initializer || !ts.isObjectLiteralExpression(decl.initializer)) continue;
+          if (decl.initializer.properties.length > 0) continue;
+
+          // Found `var X = {}` — now scan siblings for `X.prop = val`
+          const varName = decl.name.text;
+          const extraProps: { name: string; type: ValType }[] = [];
+          const seenProps = new Set<string>();
+
+          // Scan all following statements in the same block for property assignments
+          collectPropsFromStatements(checker, ctx, stmts, varName, extraProps, seenProps);
+
+          if (extraProps.length > 0) {
+            ctx.widenedTypeProperties.set(varName, extraProps);
+
+            // Register the struct type now so that collectDeclarations
+            // can resolve the variable type to a struct ref instead of externref
+            const fields: FieldDef[] = extraProps.map(wp => ({
+              name: wp.name,
+              type: wp.type,
+              mutable: true,
+            }));
+            const structName = `__anon_${ctx.anonTypeCounter++}`;
+            const typeIdx = ctx.mod.types.length;
+            ctx.mod.types.push({
+              kind: "struct",
+              name: structName,
+              fields,
+            } as StructTypeDef);
+            ctx.structMap.set(structName, typeIdx);
+            ctx.structFields.set(structName, fields);
+            // Map variable name to struct name for later lookup
+            ctx.widenedVarStructMap.set(varName, structName);
+            // Also try to map TS types (may not match later due to type identity)
+            const varType = checker.getTypeAtLocation(decl.name);
+            ctx.anonTypeMap.set(varType, structName);
+            const initType = checker.getTypeAtLocation(decl.initializer);
+            ctx.anonTypeMap.set(initType, structName);
+          }
+        }
+      }
+      // Recurse into function bodies
+      if (ts.isFunctionDeclaration(stmt) && stmt.body) {
+        scanStatements(stmt.body.statements);
+      }
+    }
+  }
+
+  scanStatements(sourceFile.statements);
+}
+
+function collectPropsFromStatements(
+  checker: ts.TypeChecker,
+  ctx: CodegenContext,
+  stmts: readonly ts.Statement[],
+  varName: string,
+  extraProps: { name: string; type: ValType }[],
+  seenProps: Set<string>,
+): void {
+  for (const s of stmts) {
+    // ExpressionStatement: obj.prop = value
+    if (ts.isExpressionStatement(s) && ts.isBinaryExpression(s.expression)) {
+      const bin = s.expression;
+      if (bin.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+          ts.isPropertyAccessExpression(bin.left) &&
+          ts.isIdentifier(bin.left.expression) &&
+          bin.left.expression.text === varName) {
+        const propName = bin.left.name.text;
+        if (!seenProps.has(propName)) {
+          seenProps.add(propName);
+          // Infer wasm type from the RHS
+          const rhsType = checker.getTypeAtLocation(bin.right);
+          const wasmType = resolveWasmType(ctx, rhsType);
+          extraProps.push({ name: propName, type: wasmType });
+        }
+      }
+    }
+    // Recurse into blocks (if/for/while bodies)
+    if (ts.isBlock(s)) {
+      collectPropsFromStatements(checker, ctx, s.statements, varName, extraProps, seenProps);
+    }
+    if (ts.isIfStatement(s)) {
+      if (ts.isBlock(s.thenStatement)) {
+        collectPropsFromStatements(checker, ctx, s.thenStatement.statements, varName, extraProps, seenProps);
+      }
+      if (s.elseStatement && ts.isBlock(s.elseStatement)) {
+        collectPropsFromStatements(checker, ctx, s.elseStatement.statements, varName, extraProps, seenProps);
+      }
+    }
+  }
 }
 
 /**
