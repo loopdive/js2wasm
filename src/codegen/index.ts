@@ -798,8 +798,8 @@ const STRING_METHODS: Record<string, { params: ValType[]; result: ValType }> = {
     params: [{ kind: "f64" }, { kind: "f64" }],
     result: { kind: "externref" },
   },
-  indexOf: { params: [{ kind: "externref" }], result: { kind: "f64" } },
-  lastIndexOf: { params: [{ kind: "externref" }], result: { kind: "f64" } },
+  indexOf: { params: [{ kind: "externref" }, { kind: "externref" }], result: { kind: "f64" } },
+  lastIndexOf: { params: [{ kind: "externref" }, { kind: "externref" }], result: { kind: "f64" } },
   includes: { params: [{ kind: "externref" }], result: { kind: "i32" } },
   startsWith: { params: [{ kind: "externref" }], result: { kind: "i32" } },
   endsWith: { params: [{ kind: "externref" }], result: { kind: "i32" } },
@@ -4621,7 +4621,7 @@ function collectParseImports(
 
 /** Known constructors handled natively (not needing __new_ imports) */
 const KNOWN_CONSTRUCTORS = new Set([
-  "Array", "Date", "Map", "Set", "RegExp", "Error", "TypeError", "RangeError",
+  "Array", "Date", "Map", "Set", "RegExp", "Error", "TypeError", "RangeError", "Object", "Function",
   "Promise", "WeakMap", "WeakSet", "WeakRef",
 ]);
 
