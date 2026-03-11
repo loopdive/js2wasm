@@ -26,6 +26,7 @@ import type {
 } from "../ir/types.js";
 import { createEmptyModule } from "../ir/types.js";
 import { compileExpression } from "./expressions.js";
+import { collectShapes } from "../shape-inference.js";
 import { compileStatement } from "./statements.js";
 
 /** Result returned by generateModule / generateMultiModule */
@@ -211,6 +212,8 @@ export interface CodegenContext {
   anyHelpers: Map<string, number>;
   /** Whether any-value helper functions have been emitted */
   anyHelpersEmitted: boolean;
+  /** Shape-inferred array-like variables: varName → { vecTypeIdx, arrTypeIdx, elemType } */
+  shapeMap: Map<string, { vecTypeIdx: number; arrTypeIdx: number; elemType: ValType }>;
 }
 
 /** Metadata for a closure stored in a local variable */
@@ -338,6 +341,7 @@ export function generateModule(
     anyValueTypeIdx: -1,
     anyHelpers: new Map(),
     anyHelpersEmitted: false,
+    shapeMap: new Map(),
   };
 
   // Register native string types if fast mode
@@ -412,6 +416,9 @@ export function generateModule(
 
   // Second pass: collect all function declarations and interfaces
   collectDeclarations(ctx, ast.sourceFile);
+
+  // Shape inference: detect array-like variables and override their types
+  applyShapeInference(ctx, ast.checker, ast.sourceFile);
 
   // Third pass: compile function bodies
   compileDeclarations(ctx, ast.sourceFile);
@@ -519,6 +526,7 @@ export function generateMultiModule(
     anyValueTypeIdx: -1,
     anyHelpers: new Map(),
     anyHelpersEmitted: false,
+    shapeMap: new Map(),
   };
 
   // Register native string types if fast mode
@@ -575,6 +583,11 @@ export function generateMultiModule(
   for (const sf of multiAst.sourceFiles) {
     const isEntry = sf === multiAst.entryFile;
     collectDeclarations(ctx, sf, isEntry);
+  }
+
+  // Shape inference: detect array-like variables and override their types
+  for (const sf of multiAst.sourceFiles) {
+    applyShapeInference(ctx, multiAst.checker, sf);
   }
 
   // Phase 3: Compile all function bodies
@@ -6614,6 +6627,67 @@ function resolveGenericCallSiteTypes(
   return found;
 }
 
+/**
+ * Apply shape inference: detect module-level variables used as array-like objects
+ * and override their global types from externref/AnyValue to vec struct types.
+ * Must be called after collectDeclarations (which registers module globals).
+ */
+function applyShapeInference(
+  ctx: CodegenContext,
+  checker: ts.TypeChecker,
+  sourceFile: ts.SourceFile,
+): void {
+  const shapes = collectShapes(checker, sourceFile);
+  if (shapes.size === 0) return;
+
+  for (const [varName, shape] of shapes) {
+    const globalIdx = ctx.moduleGlobals.get(varName);
+    if (globalIdx === undefined) continue;
+
+    // Determine element type for the vec struct from the shape's numeric value type
+    let elemType: ValType;
+    let elemKey: string;
+    if (shape.numericValueType === "number") {
+      if (ctx.fast) {
+        elemType = { kind: "i32" };
+        elemKey = "i32";
+      } else {
+        elemType = { kind: "f64" };
+        elemKey = "f64";
+      }
+    } else if (shape.numericValueType === "string") {
+      elemType = { kind: "externref" };
+      elemKey = "externref";
+    } else {
+      // Default to f64 for unknown numeric types
+      if (ctx.fast) {
+        elemType = { kind: "i32" };
+        elemKey = "i32";
+      } else {
+        elemType = { kind: "f64" };
+        elemKey = "f64";
+      }
+    }
+
+    // Register or reuse the vec struct type
+    const vecTypeIdx = getOrRegisterVecType(ctx, elemKey, elemType);
+    const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
+
+    // Override the module global's type to ref_null of the vec struct
+    const localIdx = localGlobalIdx(ctx, globalIdx);
+    const globalDef = ctx.mod.globals[localIdx];
+    if (globalDef) {
+      const newType: ValType = { kind: "ref_null", typeIdx: vecTypeIdx };
+      globalDef.type = newType;
+      // Update initializer to ref.null of the vec type
+      globalDef.init = [{ op: "ref.null", typeIdx: vecTypeIdx }];
+    }
+
+    // Record in shapeMap for use during compilation
+    ctx.shapeMap.set(varName, { vecTypeIdx, arrTypeIdx, elemType });
+  }
+}
+
 function collectDeclarations(
   ctx: CodegenContext,
   sourceFile: ts.SourceFile,
@@ -6851,6 +6925,26 @@ function collectDeclarations(
       ctx.moduleInitStatements.push(stmt);
     }
   }
+
+  // Fifth: collect module-level expression statements for init compilation
+  // (e.g. obj.length = 3, obj[0] = 10 for shape-inferred array-like variables)
+  for (const stmt of sourceFile.statements) {
+    if (!ts.isExpressionStatement(stmt)) continue;
+    const expr = stmt.expression;
+    // Only collect assignment expressions that target module-level globals
+    if (!ts.isBinaryExpression(expr)) continue;
+    if (expr.operatorToken.kind !== ts.SyntaxKind.EqualsToken) continue;
+    // Check if the left side references a known module global
+    let targetName: string | undefined;
+    if (ts.isPropertyAccessExpression(expr.left) && ts.isIdentifier(expr.left.expression)) {
+      targetName = expr.left.expression.text;
+    } else if (ts.isElementAccessExpression(expr.left) && ts.isIdentifier(expr.left.expression)) {
+      targetName = expr.left.expression.text;
+    }
+    if (targetName && ctx.moduleGlobals.has(targetName)) {
+      ctx.moduleInitStatements.push(stmt);
+    }
+  }
 }
 
 function collectInterface(
@@ -7028,6 +7122,73 @@ function compileDeclarations(
             ) {
               (instr as any).index += existingLocals;
             }
+          }
+        }
+      }
+    } else {
+      // No main() function — create a standalone __module_init and inject
+      // a guarded call at the start of every exported function.
+      const initFctx: FunctionContext = {
+        name: "__module_init",
+        params: [],
+        locals: [],
+        localMap: new Map(),
+        returnType: null,
+        body: [],
+        blockDepth: 0,
+        breakStack: [],
+        continueStack: [],
+        labelMap: new Map(),
+      };
+      ctx.currentFunc = initFctx;
+
+      for (const { globalIdx, initializer } of ctx.staticInitExprs) {
+        const globalDef = ctx.mod.globals[localGlobalIdx(ctx, globalIdx)];
+        compileExpression(ctx, initFctx, initializer, globalDef?.type);
+        initFctx.body.push({ op: "global.set", index: globalIdx });
+      }
+      for (const stmt of ctx.moduleInitStatements) {
+        compileStatement(ctx, initFctx, stmt);
+      }
+      ctx.currentFunc = null;
+
+      if (initFctx.body.length > 0) {
+        // Add a guard global: __init_done (i32, initially 0)
+        const guardGlobalIdx = nextModuleGlobalIdx(ctx);
+        ctx.mod.globals.push({
+          name: "__init_done",
+          type: { kind: "i32" },
+          mutable: true,
+          init: [{ op: "i32.const", value: 0 }],
+        });
+
+        // Create the __module_init function
+        const initTypeIdx = addFuncType(ctx, [], [], "__module_init_type");
+        const initFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+        ctx.mod.functions.push({
+          name: "__module_init",
+          typeIdx: initTypeIdx,
+          locals: initFctx.locals,
+          body: initFctx.body,
+          exported: false,
+        });
+
+        // Inject guarded call at the start of every exported function
+        const guardPreamble: Instr[] = [
+          { op: "global.get", index: guardGlobalIdx },
+          { op: "i32.eqz" },
+          { op: "if", blockType: { kind: "empty" },
+            then: [
+              { op: "i32.const", value: 1 } as Instr,
+              { op: "global.set", index: guardGlobalIdx } as Instr,
+              { op: "call", funcIdx: initFuncIdx } as Instr,
+            ],
+          } as Instr,
+        ];
+
+        for (const func of ctx.mod.functions) {
+          if (func.exported && func.name !== "__module_init") {
+            func.body = [...guardPreamble, ...func.body];
           }
         }
       }

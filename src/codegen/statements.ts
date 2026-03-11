@@ -330,6 +330,17 @@ function compileVariableStatement(
     // Check if this is a module-level global (already registered)
     const moduleGlobalIdx = ctx.moduleGlobals.get(name);
     if (moduleGlobalIdx !== undefined) {
+      // Shape-inferred array-like: compile {} as empty vec struct
+      const shapeInfo = ctx.shapeMap.get(name);
+      if (shapeInfo && decl.initializer) {
+        // Create an empty vec struct: struct.new(length=0, data=array.new_default(4))
+        fctx.body.push({ op: "i32.const", value: 0 }); // length = 0
+        fctx.body.push({ op: "i32.const", value: 4 }); // initial capacity
+        fctx.body.push({ op: "array.new_default", typeIdx: shapeInfo.arrTypeIdx } as Instr);
+        fctx.body.push({ op: "struct.new", typeIdx: shapeInfo.vecTypeIdx });
+        fctx.body.push({ op: "global.set", index: moduleGlobalIdx });
+        continue;
+      }
       // Module global: compile initializer and set global
       if (decl.initializer) {
         const globalDef = ctx.mod.globals[localGlobalIdx(ctx, moduleGlobalIdx)];

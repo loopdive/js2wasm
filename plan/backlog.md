@@ -2,7 +2,34 @@
 
 ## Open issues
 
-(none)
+### Test262 conformance — harness & skip filter improvements
+
+| #                    | Feature                                            | Complexity | Tests blocked |
+| -------------------- | -------------------------------------------------- | ---------- | ------------- |
+| [116](issues/116.md) | Unskip implemented features in test262 runner      | M          | ~4,000        |
+| [117](issues/117.md) | String comparison in test262 harness               | M          | 553           |
+| [118](issues/118.md) | compareArray.js test262 harness shim               | S          | 113           |
+| [119](issues/119.md) | assert.throws support in test262 harness           | S          | 557           |
+| [120](issues/120.md) | undefined/void 0 comparison support                | M          | 129           |
+
+### Language features
+
+| #                    | Feature                                            | Complexity | Tests blocked |
+| -------------------- | -------------------------------------------------- | ---------- | ------------- |
+| [130](issues/130.md) | Usage-based shape inference + call/apply inlining  | XL         | 2,200+        |
+| [122](issues/122.md) | arguments object                                   | M          | 399           |
+| [127](issues/127.md) | Private class members (#field, #method)            | M          | ~800          |
+| [128](issues/128.md) | BigInt type                                        | M          | 154           |
+| [126](issues/126.md) | valueOf/toString coercion                          | L          | 195           |
+
+### Won't implement (fundamental JS runtime features)
+
+| #                    | Feature                                            | Reason                    |
+| -------------------- | -------------------------------------------------- | ------------------------- |
+| [123](issues/123.md) | Wrapper constructors (new Number/String/Boolean)   | JS legacy, TS discourages |
+| [124](issues/124.md) | delete operator                                    | Fixed struct fields       |
+| [125](issues/125.md) | Object.defineProperty / property descriptors       | Runtime metaprogramming   |
+| [129](issues/129.md) | propertyHelper.js harness                          | Depends on #125           |
 
 
 
