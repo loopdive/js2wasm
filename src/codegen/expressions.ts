@@ -1340,6 +1340,16 @@ function compileTypeofExpression(
   }
 
   const tsType = ctx.checker.getTypeAtLocation(operand);
+
+  // Handle null and undefined before wasm type mapping, since they map
+  // to externref/i32 which would give wrong typeof results.
+  if (tsType.flags & ts.TypeFlags.Null) {
+    return compileStringLiteral(ctx, fctx, "object");
+  }
+  if (tsType.flags & ts.TypeFlags.Undefined || tsType.flags & ts.TypeFlags.Void) {
+    return compileStringLiteral(ctx, fctx, "undefined");
+  }
+
   const wasmType = resolveWasmType(ctx, tsType);
 
   // For statically known types, emit the constant string directly.
@@ -1444,6 +1454,10 @@ function compileTypeofComparison(
       ts.isIdentifier(operand.expression) &&
       operand.expression.text === "Math") {
     staticTypeof = "function";
+  } else if (tsType.flags & ts.TypeFlags.Null) {
+    staticTypeof = "object";
+  } else if (tsType.flags & ts.TypeFlags.Undefined || tsType.flags & ts.TypeFlags.Void) {
+    staticTypeof = "undefined";
   } else {
     const wasmType = resolveWasmType(ctx, tsType);
     if (wasmType.kind === "f64") staticTypeof = "number";
@@ -1637,18 +1651,64 @@ function compileBinaryExpression(
 
   // `key in obj` — compile-time property existence check
   if (op === ts.SyntaxKind.InKeyword) {
-    // Resolve whether the left (key) is a string literal we can check statically
     const rightType = ctx.checker.getTypeAtLocation(expr.right);
     const rightWasm = resolveWasmType(ctx, rightType);
-    if ((rightWasm.kind === "ref" || rightWasm.kind === "ref_null") && ts.isStringLiteral(expr.left)) {
-      const key = expr.left.text;
+
+    // Get struct field names if available
+    let structFieldNames: string[] | null = null;
+    if (rightWasm.kind === "ref" || rightWasm.kind === "ref_null") {
       const structDef = ctx.mod.types[(rightWasm as { typeIdx: number }).typeIdx];
       if (structDef?.kind === "struct") {
-        const has = structDef.fields.some(f => f.name === key);
-        fctx.body.push({ op: "i32.const", value: has ? 1 : 0 });
-        return { kind: "i32" };
+        structFieldNames = structDef.fields.map(f => f.name).filter((n): n is string => n !== undefined);
       }
     }
+
+    // Resolve the key to a compile-time string if possible
+    let staticKey: string | null = null;
+    if (ts.isStringLiteral(expr.left)) {
+      staticKey = expr.left.text;
+    } else if (ts.isNumericLiteral(expr.left)) {
+      staticKey = expr.left.text; // numeric key as string (e.g. 0 → "0")
+    }
+
+    // Static resolution: both key and struct fields known at compile time
+    if (staticKey !== null && structFieldNames !== null) {
+      const has = structFieldNames.includes(staticKey);
+      fctx.body.push({ op: "i32.const", value: has ? 1 : 0 });
+      return { kind: "i32" };
+    }
+
+    // Dynamic key with known struct fields: runtime string comparison
+    if (structFieldNames !== null && structFieldNames.length > 0) {
+      // Compile the key expression (should produce a string/externref)
+      const keyType = compileExpression(ctx, fctx, expr.left);
+      if (keyType) {
+        // Compare key against each field name using wasm:js-string equals
+        const equalsIdx = ctx.funcMap.get("__str_eq") ?? ctx.funcMap.get("string_equals");
+        const jsStrEquals = ctx.mod.imports.findIndex(
+          imp => imp.module === "wasm:js-string" && imp.name === "equals"
+        );
+        const eqFunc = jsStrEquals >= 0 ? jsStrEquals : equalsIdx;
+        if (eqFunc !== undefined && eqFunc >= 0) {
+          const keyLocal = allocLocal(fctx, `__in_key_${fctx.locals.length}`, keyType);
+          fctx.body.push({ op: "local.set", index: keyLocal });
+          // Start with false (0)
+          fctx.body.push({ op: "i32.const", value: 0 });
+          for (const fieldName of structFieldNames) {
+            // Load the key and the field name string, compare
+            fctx.body.push({ op: "local.get", index: keyLocal });
+            const strGlobal = ctx.stringGlobalMap.get(fieldName);
+            if (strGlobal !== undefined) {
+              fctx.body.push({ op: "global.get", index: strGlobal });
+              fctx.body.push({ op: "call", funcIdx: eqFunc });
+              fctx.body.push({ op: "i32.or" }); // OR with accumulated result
+            }
+          }
+          return { kind: "i32" };
+        }
+      }
+    }
+
     // Dynamic key or unknown type — emit false as safe fallback
     fctx.body.push({ op: "i32.const", value: 0 });
     return { kind: "i32" };
