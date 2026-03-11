@@ -136,10 +136,6 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     return { skip: true, reason: "uses dynamic code execution" };
   }
 
-  // Skip tests that use arguments object — not supported
-  if (/\barguments\b/.test(source) && !/\/\/.*arguments/.test(source)) {
-    return { skip: true, reason: "uses arguments object" };
-  }
 
   // Skip tests that use with statement
   if (/\bwith\s*\(/.test(source)) {

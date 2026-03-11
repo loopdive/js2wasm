@@ -3143,6 +3143,15 @@ function compilePrefixUnary(
         fctx.body.push({ op: "i32.sub" });
         return { kind: "i32" };
       }
+      if (operandType?.kind === "i64") {
+        // i64 negate: 0 - x
+        const tmp = allocLocal(fctx, `__neg_${fctx.locals.length}`, { kind: "i64" });
+        fctx.body.push({ op: "local.set", index: tmp });
+        fctx.body.push({ op: "i64.const", value: 0n });
+        fctx.body.push({ op: "local.get", index: tmp });
+        fctx.body.push({ op: "i64.sub" });
+        return { kind: "i64" };
+      }
       fctx.body.push({ op: "f64.neg" });
       return { kind: "f64" };
     }
@@ -3153,14 +3162,21 @@ function compilePrefixUnary(
       return { kind: "i32" };
     }
     case ts.SyntaxKind.TildeToken: {
+      const operandType = compileExpression(ctx, fctx, expr.operand);
+      if (operandType?.kind === "i64") {
+        // ~bigint => bigint ^ -1n
+        fctx.body.push({ op: "i64.const", value: -1n });
+        fctx.body.push({ op: "i64.xor" });
+        return { kind: "i64" };
+      }
       if (ctx.fast) {
-        compileExpression(ctx, fctx, expr.operand, { kind: "i32" });
+        if (operandType?.kind !== "i32") coerceType(ctx, fctx, operandType!, { kind: "i32" });
         fctx.body.push({ op: "i32.const", value: -1 });
         fctx.body.push({ op: "i32.xor" });
         return { kind: "i32" };
       }
       // ~x => f64.convert_i32_s(i32.xor(ToInt32(x), -1))
-      compileExpression(ctx, fctx, expr.operand, { kind: "f64" });
+      if (operandType?.kind !== "f64") coerceType(ctx, fctx, operandType!, { kind: "f64" });
       emitToInt32(fctx);
       fctx.body.push({ op: "i32.const", value: -1 });
       fctx.body.push({ op: "i32.xor" });

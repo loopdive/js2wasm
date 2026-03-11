@@ -2,22 +2,11 @@
 
 ## Open issues
 
-### Test262 conformance — harness & skip filter improvements
-
-| #                    | Feature                                            | Complexity | Tests blocked |
-| -------------------- | -------------------------------------------------- | ---------- | ------------- |
-| [119](issues/119.md) | assert.throws support in test262 harness           | S          | 557           |
-| [120](issues/120.md) | undefined/void 0 comparison support                | M          | 129           |
-
 ### Language features
 
 | #                    | Feature                                            | Complexity | Tests blocked |
 | -------------------- | -------------------------------------------------- | ---------- | ------------- |
 | [130](issues/130.md) | Shape inference Phase 4 — hashmap fallback + more methods | L   | 2,200+        |
-| [122](issues/122.md) | arguments object                                   | M          | 399           |
-| [127](issues/127.md) | Private class members (#field, #method)            | M          | ~800          |
-| [128](issues/128.md) | BigInt type                                        | M          | 154           |
-| [126](issues/126.md) | valueOf/toString coercion                          | L          | 195           |
 
 ### Won't implement (fundamental JS runtime features)
 
@@ -162,5 +151,10 @@
 | [117](issues/117.md)      | String comparison in test262 harness                    | assert_sameValue_str                    |
 | [118](issues/118.md)      | compareArray.js test262 harness shim                    | compareArray shim                       |
 | [130 Ph1-3](issues/130.md)| Shape inference + call/apply inlining                   | 4 in equivalence.test.ts                |
-
+| [119](issues/119.md)      | assert.throws support in test262 harness                | removeAssertThrows()                    |
+| [120](issues/120.md)      | undefined/void 0 comparison support                     | stripUndefinedThrowGuards()             |
+| [122](issues/122.md)      | arguments object                                        | vec struct from params                  |
+| [126](issues/126.md)      | valueOf/toString coercion                               | class method dispatch                   |
+| [127](issues/127.md)      | Private class members (#field, #method)                 | strip # prefix, field initializers      |
+| [128](issues/128.md)      | BigInt type                                             | i64 ops, literals, coercions            |
 
