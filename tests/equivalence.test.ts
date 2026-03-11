@@ -3557,4 +3557,210 @@ describe("Arguments object in nested functions (#211)", () => {
     expect(exports.test()).toBe(3);
   });
 
+  it("for-loop with continue", async () => {
+    await assertEquivalent(
+      `
+      export function test(): string {
+        let s = "";
+        for (let i = 0; i < 10; i++) {
+          if (i < 5) continue;
+          s += i;
+        }
+        return s;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("for-loop with break", async () => {
+    await assertEquivalent(
+      `
+      export function test(): string {
+        let s = "";
+        for (let i = 0; i < 10; i++) {
+          if (i > 5) break;
+          s += i;
+        }
+        return s;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("nested for-loop with labeled continue", async () => {
+    await assertEquivalent(
+      `
+      export function test(): string {
+        let s = "";
+        outer: for (let i = 0; i < 4; i++) {
+          inner: for (let j = 0; j <= i; j++) {
+            if (i * j === 6) continue outer;
+            s += "" + i + j;
+          }
+        }
+        return s;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("nested for-loop with labeled break", async () => {
+    await assertEquivalent(
+      `
+      export function test(): string {
+        let s = "";
+        outer: for (let i = 0; i < 4; i++) {
+          inner: for (let j = 0; j <= i; j++) {
+            if (i * j >= 4) break outer;
+            s += "" + i + j;
+          }
+        }
+        return s;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("while loop with complex condition", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let x = 10;
+        let sum = 0;
+        while (x > 0 && sum < 30) {
+          sum += x;
+          x -= 3;
+        }
+        return sum;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("do-while with continue", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let i = 0;
+        let sum = 0;
+        do {
+          i++;
+          if (i % 2 === 0) continue;
+          sum += i;
+        } while (i < 10);
+        return sum;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("for-of destructuring object", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        const items = [{ a: 1, b: 2 }, { a: 3, b: 4 }];
+        let sum = 0;
+        for (const { a, b } of items) {
+          sum += a + b;
+        }
+        return sum;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+
+  it("do-while with break", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let i = 0;
+        let sum = 0;
+        do {
+          i++;
+          sum += i;
+          if (sum > 10) break;
+        } while (i < 100);
+        return sum;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("while loop with assignment in condition", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let arr = [1, 2, 3, 4, 5];
+        let sum = 0;
+        let i = 0;
+        while (i < arr.length) {
+          sum += arr[i];
+          i++;
+        }
+        return sum;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("for-loop with function declaration in body", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let result = 0;
+        for (let i = 0; i < 3; i++) {
+          function addI(x: number): number { return x + i; }
+          result += addI(10);
+        }
+        return result;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("nested for-loop continue interaction", async () => {
+    await assertEquivalent(
+      `
+      export function test(): string {
+        let s = "";
+        for (let i = 0; i < 4; i++) {
+          for (let j = 0; j <= i; j++) {
+            if (i * j === 6) continue;
+            s += "" + i + j;
+          }
+        }
+        return s;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("for-of with simple variable", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        const arr = [10, 20, 30];
+        let sum = 0;
+        for (const x of arr) {
+          sum += x;
+        }
+        return sum;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
 });

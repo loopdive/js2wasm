@@ -904,25 +904,28 @@ function compileDoWhileStatement(
   fctx: FunctionContext,
   stmt: ts.DoStatement,
 ): void {
-  // block $break        (break target — depth 1 from inside the loop)
-  //   loop $continue    (continue target — depth 0)
-  //     <body>
+  // block $break {                    ; break target (depth 2 from body)
+  //   loop $loop {                    ; loop restart
+  //     block $continue {             ; continue target (depth 0 from body)
+  //       <body>
+  //     }
   //     <condition>
-  //     ensureI32Condition
-  //     br_if 0         (true → jump back to loop start)
-  //   end
-  // end
+  //     br_if $loop                   ; true → restart loop (depth 0 from loop level)
+  //   }
+  // }
 
   const savedBody = fctx.body;
   fctx.body = [];
 
-  // Adjust existing break/continue depths: block+loop adds 2 nesting levels
-  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! += 2;
+  // Adjust existing break/continue depths: block+loop+block adds 3 nesting levels
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! += 3;
   for (let i = 0; i < fctx.continueStack.length; i++)
-    fctx.continueStack[i]! += 2;
+    fctx.continueStack[i]! += 3;
 
-  // Inside this structure: br 1 = break (exits outer block), br 0 = continue (restarts loop)
-  fctx.breakStack.push(1);
+  // From body inside $continue block:
+  //   break = br 2 (exits $break block)
+  //   continue = br 0 (exits $continue block, falls through to condition)
+  fctx.breakStack.push(2);
   fctx.continueStack.push(0);
 
   // Compile body
@@ -933,23 +936,34 @@ function compileDoWhileStatement(
   } else {
     compileStatement(ctx, fctx, stmt.statement);
   }
+  const bodyInstrs = fctx.body;
 
   // Compile condition — true means continue looping
+  fctx.body = [];
   const condType = compileExpression(ctx, fctx, stmt.expression);
   ensureI32Condition(fctx, condType, ctx);
-  fctx.body.push({ op: "br_if", depth: 0 }); // continue loop if true
-
-  const loopBody = fctx.body;
+  fctx.body.push({ op: "br_if", depth: 0 }); // restart $loop if true
+  const condInstrs = fctx.body;
 
   fctx.breakStack.pop();
   fctx.continueStack.pop();
 
   // Restore existing break/continue depths
-  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! -= 2;
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! -= 3;
   for (let i = 0; i < fctx.continueStack.length; i++)
-    fctx.continueStack[i]! -= 2;
+    fctx.continueStack[i]! -= 3;
 
   fctx.body = savedBody;
+
+  // Build: block { loop { block { body } condition br_if } }
+  const loopBody: Instr[] = [
+    {
+      op: "block",
+      blockType: { kind: "empty" },
+      body: bodyInstrs,
+    },
+    ...condInstrs,
+  ];
 
   fctx.body.push({
     op: "block",
