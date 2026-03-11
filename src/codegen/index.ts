@@ -7068,11 +7068,25 @@ function collectDeclarations(
   }
 
   // Fifth: collect module-level expression statements for init compilation
-  // (e.g. obj.length = 3, obj[0] = 10 for shape-inferred array-like variables)
+  // (e.g. obj.length = 3, obj[0] = 10 for shape-inferred array-like variables,
+  //  new function(){}(args) constructor calls, standalone function calls)
   for (const stmt of sourceFile.statements) {
     if (!ts.isExpressionStatement(stmt)) continue;
     const expr = stmt.expression;
-    // Only collect assignment expressions that target module-level globals
+
+    // Collect `new` expression statements (e.g. `new function(){...}(args)`)
+    if (ts.isNewExpression(expr)) {
+      ctx.moduleInitStatements.push(stmt);
+      continue;
+    }
+
+    // Collect standalone function call statements (e.g. `foo()`)
+    if (ts.isCallExpression(expr)) {
+      ctx.moduleInitStatements.push(stmt);
+      continue;
+    }
+
+    // Collect assignment expressions that target module-level globals
     if (!ts.isBinaryExpression(expr)) continue;
     if (expr.operatorToken.kind !== ts.SyntaxKind.EqualsToken) continue;
     // Check if the left side references a known module global
