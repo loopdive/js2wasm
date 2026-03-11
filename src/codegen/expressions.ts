@@ -1793,10 +1793,10 @@ function compileBinaryExpression(
     return compileI64BinaryOp(ctx, fctx, op, expr);
   }
 
-  if (isNumberType(leftTsType) || leftType.kind === "f64") {
+  if ((isNumberType(leftTsType) || leftType.kind === "f64") && leftType.kind !== "externref" && rightType.kind !== "externref") {
     return compileNumericBinaryOp(ctx, fctx, op, expr);
   }
-  if (isBooleanType(leftTsType) || leftType.kind === "i32") {
+  if ((isBooleanType(leftTsType) || leftType.kind === "i32") && leftType.kind !== "externref" && rightType.kind !== "externref") {
     return compileBooleanBinaryOp(ctx, fctx, op);
   }
 
@@ -1816,19 +1816,26 @@ function compileBinaryExpression(
     return compileNumericBinaryOp(ctx, fctx, op, expr);
   }
 
-  // Externref equality: unbox to f64 and compare numerically
+  // Externref equality: unbox/coerce to f64 and compare numerically
   if ((leftType.kind === "externref" || rightType.kind === "externref") && (isEqOp || isNeqOp)) {
     addUnionImports(ctx);
     const unboxIdx = ctx.funcMap.get("__unbox_number")!;
-    // Unbox right side (top of stack)
+    // Coerce/unbox right side (top of stack) to f64
     if (rightType.kind === "externref") {
       fctx.body.push({ op: "call", funcIdx: unboxIdx });
+    } else if (rightType.kind === "i32") {
+      fctx.body.push({ op: "f64.convert_i32_s" });
     }
-    // Unbox left side (below right on stack)
+    // Coerce/unbox left side (below right on stack) to f64
     if (leftType.kind === "externref") {
       const tmpR = allocLocal(fctx, `__unbox_r_${fctx.locals.length}`, { kind: "f64" });
       fctx.body.push({ op: "local.set", index: tmpR });
       fctx.body.push({ op: "call", funcIdx: unboxIdx });
+      fctx.body.push({ op: "local.get", index: tmpR });
+    } else if (leftType.kind === "i32") {
+      const tmpR = allocLocal(fctx, `__unbox_r_${fctx.locals.length}`, { kind: "f64" });
+      fctx.body.push({ op: "local.set", index: tmpR });
+      fctx.body.push({ op: "f64.convert_i32_s" });
       fctx.body.push({ op: "local.get", index: tmpR });
     }
     fctx.body.push({ op: isEqOp ? "f64.eq" : "f64.ne" });
@@ -2233,21 +2240,52 @@ function compileLogicalAnd(
   fctx.body.push({ op: "local.tee", index: tmp });
   ensureI32Condition(fctx, leftType, ctx);
 
+  // Compile RHS in a side buffer to discover its natural type
+  const savedBody = fctx.body;
+  fctx.body = [];
+  const rightType = compileExpression(ctx, fctx, expr.right);
+  let thenInstrs = fctx.body;
+  fctx.body = savedBody;
+  const rType: ValType = rightType ?? { kind: "externref" };
+
+  // Determine common result type (like conditional expression)
+  let resultType: ValType = leftType;
+  if (!valTypesMatch(leftType, rType)) {
+    if ((leftType.kind === "i32" || leftType.kind === "f64") &&
+        (rType.kind === "i32" || rType.kind === "f64")) {
+      resultType = { kind: "f64" };
+    } else {
+      resultType = { kind: "externref" };
+    }
+  }
+
+  // Coerce then-branch (RHS) to common type if needed
+  if (!valTypesMatch(rType, resultType)) {
+    const coerceBody: Instr[] = [];
+    fctx.body = coerceBody;
+    coerceType(ctx, fctx, rType, resultType);
+    fctx.body = savedBody;
+    thenInstrs = [...thenInstrs, ...coerceBody];
+  }
+
+  // Build else-branch (LHS value) with coercion if needed
+  let elseInstrs: Instr[] = [{ op: "local.get", index: tmp } as Instr];
+  if (!valTypesMatch(leftType, resultType)) {
+    const coerceBody: Instr[] = [];
+    fctx.body = coerceBody;
+    coerceType(ctx, fctx, leftType, resultType);
+    fctx.body = savedBody;
+    elseInstrs = [...elseInstrs, ...coerceBody];
+  }
+
   fctx.body.push({
     op: "if",
-    blockType: { kind: "val", type: leftType },
-    then: (() => {
-      const saved = fctx.body;
-      fctx.body = [];
-      compileExpression(ctx, fctx, expr.right, leftType);
-      const result = fctx.body;
-      fctx.body = saved;
-      return result;
-    })(),
-    else: [{ op: "local.get", index: tmp } as Instr],
+    blockType: { kind: "val", type: resultType },
+    then: thenInstrs,
+    else: elseInstrs,
   });
 
-  return leftType;
+  return resultType;
 }
 
 function compileLogicalOr(
@@ -2264,21 +2302,52 @@ function compileLogicalOr(
   fctx.body.push({ op: "local.tee", index: tmp });
   ensureI32Condition(fctx, leftType, ctx);
 
+  // Compile RHS in a side buffer to discover its natural type
+  const savedBody = fctx.body;
+  fctx.body = [];
+  const rightType = compileExpression(ctx, fctx, expr.right);
+  let elseInstrs = fctx.body;
+  fctx.body = savedBody;
+  const rType: ValType = rightType ?? { kind: "externref" };
+
+  // Determine common result type (like conditional expression)
+  let resultType: ValType = leftType;
+  if (!valTypesMatch(leftType, rType)) {
+    if ((leftType.kind === "i32" || leftType.kind === "f64") &&
+        (rType.kind === "i32" || rType.kind === "f64")) {
+      resultType = { kind: "f64" };
+    } else {
+      resultType = { kind: "externref" };
+    }
+  }
+
+  // Build then-branch (LHS value) with coercion if needed
+  let thenInstrs: Instr[] = [{ op: "local.get", index: tmp } as Instr];
+  if (!valTypesMatch(leftType, resultType)) {
+    const coerceBody: Instr[] = [];
+    fctx.body = coerceBody;
+    coerceType(ctx, fctx, leftType, resultType);
+    fctx.body = savedBody;
+    thenInstrs = [...thenInstrs, ...coerceBody];
+  }
+
+  // Coerce else-branch (RHS) to common type if needed
+  if (!valTypesMatch(rType, resultType)) {
+    const coerceBody: Instr[] = [];
+    fctx.body = coerceBody;
+    coerceType(ctx, fctx, rType, resultType);
+    fctx.body = savedBody;
+    elseInstrs = [...elseInstrs, ...coerceBody];
+  }
+
   fctx.body.push({
     op: "if",
-    blockType: { kind: "val", type: leftType },
-    then: [{ op: "local.get", index: tmp } as Instr],
-    else: (() => {
-      const saved = fctx.body;
-      fctx.body = [];
-      compileExpression(ctx, fctx, expr.right, leftType);
-      const result = fctx.body;
-      fctx.body = saved;
-      return result;
-    })(),
+    blockType: { kind: "val", type: resultType },
+    then: thenInstrs,
+    else: elseInstrs,
   });
 
-  return leftType;
+  return resultType;
 }
 
 /** Nullish coalescing: a ?? b → if a is null, return b, else return a */
