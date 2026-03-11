@@ -1,6 +1,6 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext, ClosureInfo, RestParamInfo } from "./index.js";
-import { allocLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers, addStringImports, cacheStringLiterals, addStringConstantGlobal } from "./index.js";
+import { allocLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers, addStringImports, cacheStringLiterals, addStringConstantGlobal, nextModuleGlobalIdx } from "./index.js";
 import {
   mapTsTypeToWasm,
   isNumberType,
@@ -8192,6 +8192,10 @@ function compileTaggedTemplateExpression(
   }
 
   // Build the strings array as a WasmGC externref vec (same layout as array literals)
+  // Per spec, template objects are cached per call site — the same source location
+  // must yield the same template object on every call. We use a module global
+  // (initialized to ref.null) per call site; on first call we create the array
+  // and store it in the global, on subsequent calls we load the cached value.
   const elemKind = "externref";
   const elemWasm: ValType = { kind: "externref" };
   const vecTypeIdx = getOrRegisterVecType(ctx, elemKind, elemWasm);
@@ -8201,21 +8205,49 @@ function compileTaggedTemplateExpression(
     return null;
   }
 
-  // Push each string part onto the stack, then array.new_fixed
+  // Allocate a module global to cache this call site's template object
+  const cacheId = ctx.templateCacheCounter++;
+  const cacheGlobalType: ValType = { kind: "ref_null", typeIdx: vecTypeIdx };
+  const cacheGlobalIdx = nextModuleGlobalIdx(ctx);
+  ctx.mod.globals.push({
+    name: `__tt_cache_${cacheId}`,
+    type: cacheGlobalType,
+    mutable: true,
+    init: [{ op: "ref.null", typeIdx: vecTypeIdx }],
+  });
+
+  // Store the strings vec in a local so we can push it as an argument later
+  const stringsVecType: ValType = { kind: "ref_null", typeIdx: vecTypeIdx };
+  const stringsLocal = allocLocal(fctx, `__tt_strings_${fctx.locals.length}`, stringsVecType);
+
+  // Build the "then" body (cache miss: create and store the template array)
+  // Use savedBody pattern so compileStringLiteral pushes into a separate array
+  const savedBody = fctx.body;
+  fctx.body = [];
   for (const str of stringParts) {
     compileStringLiteral(ctx, fctx, str, expr);
   }
   fctx.body.push({ op: "array.new_fixed", typeIdx: arrTypeIdx, length: stringParts.length });
-  // Wrap in vec struct: { i32 length, array data }
   const tmpData = allocLocal(fctx, `__tt_arr_data_${fctx.locals.length}`, { kind: "ref", typeIdx: arrTypeIdx });
   fctx.body.push({ op: "local.set", index: tmpData });
   fctx.body.push({ op: "i32.const", value: stringParts.length });
   fctx.body.push({ op: "local.get", index: tmpData });
   fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
+  fctx.body.push({ op: "global.set", index: cacheGlobalIdx });
+  const thenBody = fctx.body;
+  fctx.body = savedBody;
 
-  // Store the strings vec in a local so we can push it as an argument later
-  const stringsVecType: ValType = { kind: "ref_null", typeIdx: vecTypeIdx };
-  const stringsLocal = allocLocal(fctx, `__tt_strings_${fctx.locals.length}`, stringsVecType);
+  // Check if cache global is null (first call at this site)
+  fctx.body.push({ op: "global.get", index: cacheGlobalIdx });
+  fctx.body.push({ op: "ref.is_null" });
+  fctx.body.push({
+    op: "if",
+    blockType: { kind: "empty" },
+    then: thenBody,
+  } as Instr);
+
+  // Load cached template object into the local
+  fctx.body.push({ op: "global.get", index: cacheGlobalIdx });
   fctx.body.push({ op: "local.set", index: stringsLocal });
 
   // Now compile the call to the tag function.

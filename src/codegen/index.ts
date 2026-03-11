@@ -216,6 +216,8 @@ export interface CodegenContext {
   shapeMap: Map<string, { vecTypeIdx: number; arrTypeIdx: number; elemType: ValType }>;
   /** Set of function names that failed during hoisting pre-pass (to avoid re-emitting errors) */
   hoistFailedFuncs?: Set<string>;
+  /** Counter for unique tagged template cache global variables */
+  templateCacheCounter: number;
 }
 
 /** Metadata for a closure stored in a local variable */
@@ -344,6 +346,7 @@ export function generateModule(
     anyHelpers: new Map(),
     anyHelpersEmitted: false,
     shapeMap: new Map(),
+    templateCacheCounter: 0,
   };
 
   // Register native string types if fast mode
@@ -532,6 +535,7 @@ export function generateMultiModule(
     anyHelpers: new Map(),
     anyHelpersEmitted: false,
     shapeMap: new Map(),
+    templateCacheCounter: 0,
   };
 
   // Register native string types if fast mode
@@ -5224,7 +5228,7 @@ export function addStringConstantGlobal(ctx: CodegenContext, value: string): voi
 }
 
 /** Return the absolute Wasm global index for a new module-defined global. */
-function nextModuleGlobalIdx(ctx: CodegenContext): number {
+export function nextModuleGlobalIdx(ctx: CodegenContext): number {
   return ctx.numImportGlobals + ctx.mod.globals.length;
 }
 
