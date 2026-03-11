@@ -4044,6 +4044,11 @@ function compileClosureCall(
     compileExpression(ctx, fctx, expr.arguments[i]!, info.paramTypes[i]);
   }
 
+  // Pad missing arguments with defaults (arity mismatch)
+  for (let i = expr.arguments.length; i < info.paramTypes.length; i++) {
+    pushDefaultValue(fctx, info.paramTypes[i]!);
+  }
+
   // Push the funcref from the closure struct (field 0) and cast to typed ref
   fctx.body.push({ op: "local.get", index: localIdx });
   fctx.body.push({ op: "struct.get", typeIdx: info.structTypeIdx, fieldIdx: 0 });
@@ -4350,6 +4355,12 @@ function compileCallExpression(
           for (let i = 0; i < expr.arguments.length; i++) {
             compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
           }
+          // Pad missing arguments with defaults
+          if (paramTypes) {
+            for (let i = expr.arguments.length; i < paramTypes.length; i++) {
+              pushDefaultValue(fctx, paramTypes[i]!);
+            }
+          }
           fctx.body.push({ op: "call", funcIdx });
 
           const sig = ctx.checker.getResolvedSignature(expr);
@@ -4397,6 +4408,12 @@ function compileCallExpression(
         for (let i = 0; i < expr.arguments.length; i++) {
           compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
         }
+        // Pad missing arguments with defaults (skip self param at index 0)
+        if (paramTypes) {
+          for (let i = expr.arguments.length + 1; i < paramTypes.length; i++) {
+            pushDefaultValue(fctx, paramTypes[i]!);
+          }
+        }
         fctx.body.push({ op: "call", funcIdx });
 
         // Determine return type
@@ -4424,6 +4441,12 @@ function compileCallExpression(
           const paramTypes = getFuncParamTypes(ctx, funcIdx);
           for (let i = 0; i < expr.arguments.length; i++) {
             compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
+          }
+          // Pad missing arguments with defaults (skip self param at index 0)
+          if (paramTypes) {
+            for (let i = expr.arguments.length + 1; i < paramTypes.length; i++) {
+              pushDefaultValue(fctx, paramTypes[i]!);
+            }
           }
           fctx.body.push({ op: "call", funcIdx });
 
@@ -4800,6 +4823,21 @@ function compileCallExpression(
           if (opt.index >= numProvided) {
             pushDefaultValue(fctx, opt.type);
           }
+        }
+      }
+
+      // Pad any remaining missing arguments with defaults
+      // (handles arity mismatch: calling f(a, b) with just f(1))
+      if (paramTypes) {
+        // Count how many args were actually pushed: provided args (capped at paramCount)
+        // plus optional param defaults already pushed
+        const providedCount = Math.min(expr.arguments.length, paramCount);
+        const optFilledCount = optInfo
+          ? optInfo.filter(o => o.index >= expr.arguments.length).length
+          : 0;
+        const totalPushed = providedCount + optFilledCount;
+        for (let i = totalPushed; i < paramTypes.length; i++) {
+          pushDefaultValue(fctx, paramTypes[i]!);
         }
       }
     }
@@ -5666,8 +5704,34 @@ function compileNewExpression(
     // Compile constructor arguments with type hints
     const paramTypes = getFuncParamTypes(ctx, funcIdx);
     const args = expr.arguments ?? [];
-    for (let i = 0; i < args.length; i++) {
-      compileExpression(ctx, fctx, args[i]!, paramTypes?.[i]);
+
+    // Check for spread arguments
+    const hasSpreadCtorArg = args.some((a) => ts.isSpreadElement(a));
+    if (hasSpreadCtorArg && paramTypes) {
+      // Flatten spread arguments for constructor call
+      const flatCtorArgs = flattenCallArgs(args);
+      if (flatCtorArgs) {
+        for (let i = 0; i < flatCtorArgs.length && i < paramTypes.length; i++) {
+          compileExpression(ctx, fctx, flatCtorArgs[i]!, paramTypes[i]);
+        }
+        // Pad missing args
+        for (let i = flatCtorArgs.length; i < paramTypes.length; i++) {
+          pushDefaultValue(fctx, paramTypes[i]!);
+        }
+      } else {
+        // Non-literal spread — compile via compileSpreadCallArgs
+        compileSpreadCallArgs(ctx, fctx, expr as unknown as ts.CallExpression, funcIdx, undefined);
+      }
+    } else {
+      for (let i = 0; i < args.length; i++) {
+        compileExpression(ctx, fctx, args[i]!, paramTypes?.[i]);
+      }
+      // Pad missing constructor arguments with defaults (arity mismatch)
+      if (paramTypes) {
+        for (let i = args.length; i < paramTypes.length; i++) {
+          pushDefaultValue(fctx, paramTypes[i]!);
+        }
+      }
     }
 
     fctx.body.push({ op: "call", funcIdx });
