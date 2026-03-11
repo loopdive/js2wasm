@@ -3633,6 +3633,16 @@ function compileCompoundAssignment(
   expr: ts.BinaryExpression,
   op: ts.SyntaxKind,
 ): ValType | null {
+  // Handle property access compound assignment: obj.prop += value
+  if (ts.isPropertyAccessExpression(expr.left)) {
+    return compilePropertyCompoundAssignment(ctx, fctx, expr.left, expr.right, op);
+  }
+
+  // Handle element access compound assignment: arr[i] += value
+  if (ts.isElementAccessExpression(expr.left)) {
+    return compileElementCompoundAssignment(ctx, fctx, expr.left, expr.right, op);
+  }
+
   if (!ts.isIdentifier(expr.left)) {
     ctx.errors.push({
       message: "Compound assignment only supported for simple identifiers",
@@ -4335,28 +4345,32 @@ function compilePrefixUnary(
       return compileMemberIncDec(ctx, fctx, expr.operand, "add", "prefix");
     }
     case ts.SyntaxKind.MinusMinusToken: {
+      const isIncrement = expr.operator === ts.SyntaxKind.PlusPlusToken;
+      const arithOp = isIncrement ? "f64.add" : "f64.sub";
+      const arithOpI32 = isIncrement ? "i32.add" : "i32.sub";
+
       if (ts.isIdentifier(expr.operand)) {
         const idx = fctx.localMap.get(expr.operand.text);
         if (idx !== undefined) {
-          const boxedMM = fctx.boxedCaptures?.get(expr.operand.text);
-          if (boxedMM) {
-            // --x through ref cell
+          const boxed = fctx.boxedCaptures?.get(expr.operand.text);
+          if (boxed) {
+            // ++x / --x through ref cell
             fctx.body.push({ op: "local.get", index: idx });
             fctx.body.push({ op: "local.get", index: idx });
-            fctx.body.push({ op: "struct.get", typeIdx: boxedMM.refCellTypeIdx, fieldIdx: 0 });
+            fctx.body.push({ op: "struct.get", typeIdx: boxed.refCellTypeIdx, fieldIdx: 0 });
             fctx.body.push({ op: "f64.const", value: 1 });
-            fctx.body.push({ op: "f64.sub" });
-            const mmTmp = allocLocal(fctx, `__mm_${fctx.locals.length}`, boxedMM.valType);
-            fctx.body.push({ op: "local.tee", index: mmTmp });
-            fctx.body.push({ op: "struct.set", typeIdx: boxedMM.refCellTypeIdx, fieldIdx: 0 });
-            fctx.body.push({ op: "local.get", index: mmTmp });
-            return boxedMM.valType;
+            fctx.body.push({ op: arithOp });
+            const tmp = allocLocal(fctx, `__pp_${fctx.locals.length}`, boxed.valType);
+            fctx.body.push({ op: "local.tee", index: tmp });
+            fctx.body.push({ op: "struct.set", typeIdx: boxed.refCellTypeIdx, fieldIdx: 0 });
+            fctx.body.push({ op: "local.get", index: tmp });
+            return boxed.valType;
           }
           const localType = getLocalType(fctx, idx);
           if (ctx.fast && localType?.kind === "i32") {
             fctx.body.push({ op: "local.get", index: idx });
             fctx.body.push({ op: "i32.const", value: 1 });
-            fctx.body.push({ op: "i32.sub" });
+            fctx.body.push({ op: arithOpI32 });
             fctx.body.push({ op: "local.tee", index: idx });
             return { kind: "i32" };
           }
@@ -4365,14 +4379,14 @@ function compilePrefixUnary(
             fctx.body.push({ op: "local.get", index: idx });
             fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
             fctx.body.push({ op: "f64.const", value: 1 });
-            fctx.body.push({ op: "f64.sub" });
+            fctx.body.push({ op: arithOp });
             fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__box_number")! });
             fctx.body.push({ op: "local.tee", index: idx });
             return { kind: "externref" };
           }
           fctx.body.push({ op: "local.get", index: idx });
           fctx.body.push({ op: "f64.const", value: 1 });
-          fctx.body.push({ op: "f64.sub" });
+          fctx.body.push({ op: arithOp });
           fctx.body.push({ op: "local.tee", index: idx });
           return { kind: "f64" };
         }
@@ -4401,73 +4415,410 @@ function compilePostfixUnary(
     return compileMemberIncDec(ctx, fctx, expr.operand, arithOp, "postfix");
   }
 
-  const idx = fctx.localMap.get(expr.operand.text);
-  if (idx === undefined) {
-    ctx.errors.push({
-      message: `Unknown variable: ${expr.operand.text}`,
-      line: getLine(expr),
-      column: getCol(expr),
-    });
-    return null;
-  }
+  if (ts.isIdentifier(expr.operand)) {
+    const idx = fctx.localMap.get(expr.operand.text);
+    if (idx === undefined) {
+      ctx.errors.push({
+        message: `Unknown variable: ${expr.operand.text}`,
+        line: getLine(expr),
+        column: getCol(expr),
+      });
+      return null;
+    }
 
-  // Handle boxed (ref cell) mutable captures for postfix
-  const boxedPost = fctx.boxedCaptures?.get(expr.operand.text);
-  if (boxedPost) {
-    // Return old value, store incremented/decremented
+    // Handle boxed (ref cell) mutable captures for postfix
+    const boxedPost = fctx.boxedCaptures?.get(expr.operand.text);
+    if (boxedPost) {
+      // Return old value, store incremented/decremented
+      fctx.body.push({ op: "local.get", index: idx });
+      fctx.body.push({ op: "struct.get", typeIdx: boxedPost.refCellTypeIdx, fieldIdx: 0 });
+      const oldTmp = allocLocal(fctx, `__postbox_${fctx.locals.length}`, boxedPost.valType);
+      fctx.body.push({ op: "local.tee", index: oldTmp });
+      fctx.body.push({ op: "f64.const", value: 1 });
+      fctx.body.push({ op: arithOp });
+      const newTmp = allocLocal(fctx, `__postnew_${fctx.locals.length}`, boxedPost.valType);
+      fctx.body.push({ op: "local.set", index: newTmp });
+      fctx.body.push({ op: "local.get", index: idx });
+      fctx.body.push({ op: "local.get", index: newTmp });
+      fctx.body.push({ op: "struct.set", typeIdx: boxedPost.refCellTypeIdx, fieldIdx: 0 });
+      fctx.body.push({ op: "local.get", index: oldTmp });
+      return boxedPost.valType;
+    }
+
+    const localType = getLocalType(fctx, idx);
+    if (ctx.fast && localType?.kind === "i32") {
+      fctx.body.push({ op: "local.get", index: idx });
+      fctx.body.push({ op: "local.get", index: idx });
+      fctx.body.push({ op: "i32.const", value: 1 });
+      fctx.body.push({ op: arithOpI32 });
+      fctx.body.push({ op: "local.set", index: idx });
+      return { kind: "i32" };
+    }
+
+    if (localType?.kind === "externref") {
+      // Postfix on externref: return old value (unboxed), store incremented (boxed)
+      addUnionImports(ctx);
+      fctx.body.push({ op: "local.get", index: idx });
+      fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+      const tmpOld = allocLocal(fctx, `__postfix_old_${fctx.locals.length}`, { kind: "f64" });
+      fctx.body.push({ op: "local.tee", index: tmpOld });
+      fctx.body.push({ op: "f64.const", value: 1 });
+      fctx.body.push({ op: arithOp });
+      fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__box_number")! });
+      fctx.body.push({ op: "local.set", index: idx });
+      fctx.body.push({ op: "local.get", index: tmpOld });
+      return { kind: "f64" };
+    }
+
     fctx.body.push({ op: "local.get", index: idx });
-    fctx.body.push({ op: "struct.get", typeIdx: boxedPost.refCellTypeIdx, fieldIdx: 0 });
-    const oldTmp = allocLocal(fctx, `__postbox_${fctx.locals.length}`, boxedPost.valType);
-    fctx.body.push({ op: "local.tee", index: oldTmp });
+    fctx.body.push({ op: "local.get", index: idx });
     fctx.body.push({ op: "f64.const", value: 1 });
-    fctx.body.push({ op: expr.operator === ts.SyntaxKind.PlusPlusToken ? "f64.add" : "f64.sub" });
-    const newTmp = allocLocal(fctx, `__postnew_${fctx.locals.length}`, boxedPost.valType);
-    fctx.body.push({ op: "local.set", index: newTmp });
-    fctx.body.push({ op: "local.get", index: idx });
-    fctx.body.push({ op: "local.get", index: newTmp });
-    fctx.body.push({ op: "struct.set", typeIdx: boxedPost.refCellTypeIdx, fieldIdx: 0 });
-    fctx.body.push({ op: "local.get", index: oldTmp });
-    return boxedPost.valType;
-  }
-
-  const localType = getLocalType(fctx, idx);
-  if (ctx.fast && localType?.kind === "i32") {
-    fctx.body.push({ op: "local.get", index: idx });
-    fctx.body.push({ op: "local.get", index: idx });
-    fctx.body.push({ op: "i32.const", value: 1 });
-    fctx.body.push({ op: expr.operator === ts.SyntaxKind.PlusPlusToken ? "i32.add" : "i32.sub" });
+    fctx.body.push({ op: arithOp });
     fctx.body.push({ op: "local.set", index: idx });
-    return { kind: "i32" };
-  }
-
-  if (localType?.kind === "externref") {
-    // Postfix on externref: return old value (unboxed), store incremented (boxed)
-    addUnionImports(ctx);
-    fctx.body.push({ op: "local.get", index: idx });
-    fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
-    // Stack: [old_f64]. Duplicate for arithmetic.
-    const tmpOld = allocLocal(fctx, `__postfix_old_${fctx.locals.length}`, { kind: "f64" });
-    fctx.body.push({ op: "local.tee", index: tmpOld });
-    fctx.body.push({ op: "f64.const", value: 1 });
-    fctx.body.push({ op: expr.operator === ts.SyntaxKind.PlusPlusToken ? "f64.add" : "f64.sub" });
-    fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__box_number")! });
-    fctx.body.push({ op: "local.set", index: idx });
-    fctx.body.push({ op: "local.get", index: tmpOld });
     return { kind: "f64" };
   }
 
-  fctx.body.push({ op: "local.get", index: idx });
-  fctx.body.push({ op: "local.get", index: idx });
-  fctx.body.push({ op: "f64.const", value: 1 });
-
-  if (expr.operator === ts.SyntaxKind.PlusPlusToken) {
-    fctx.body.push({ op: "f64.add" });
-  } else {
-    fctx.body.push({ op: "f64.sub" });
+  // obj.prop++ / obj.prop-- (property access target)
+  if (ts.isPropertyAccessExpression(expr.operand)) {
+    return compilePostfixIncrementProperty(ctx, fctx, expr.operand, isIncrement);
   }
 
-  fctx.body.push({ op: "local.set", index: idx });
+  // arr[i]++ / arr[i]-- (element access target)
+  if (ts.isElementAccessExpression(expr.operand)) {
+    return compilePostfixIncrementElement(ctx, fctx, expr.operand, isIncrement);
+  }
+
+  ctx.errors.push({
+    message: "Unsupported postfix unary target",
+    line: getLine(expr),
+    column: getCol(expr),
+  });
+  return null;
+}
+
+// ── Prefix/postfix increment helpers for property/element access ────
+
+/**
+ * ++obj.prop / --obj.prop: get field, increment, set field, return NEW value
+ */
+function compilePrefixIncrementProperty(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  target: ts.PropertyAccessExpression,
+  isIncrement: boolean,
+): ValType | null {
+  const objType = ctx.checker.getTypeAtLocation(target.expression);
+  const propName = ts.isPrivateIdentifier(target.name) ? target.name.text.slice(1) : target.name.text;
+  const typeName = resolveStructName(ctx, objType);
+  if (!typeName) {
+    ctx.errors.push({ message: `Cannot resolve struct for prefix increment on property: ${propName}`, line: getLine(target), column: getCol(target) });
+    return null;
+  }
+  const structTypeIdx = ctx.structMap.get(typeName);
+  const fields = ctx.structFields.get(typeName);
+  if (structTypeIdx === undefined || !fields) {
+    ctx.errors.push({ message: `Unknown struct type for prefix increment: ${typeName}`, line: getLine(target), column: getCol(target) });
+    return null;
+  }
+  const fieldIdx = fields.findIndex((f) => f.name === propName);
+  if (fieldIdx === -1) {
+    ctx.errors.push({ message: `Unknown field for prefix increment: ${propName}`, line: getLine(target), column: getCol(target) });
+    return null;
+  }
+
+  // Compile object ref and save it (we need it twice: once to get, once to set)
+  const objResult = compileExpression(ctx, fctx, target.expression);
+  if (!objResult) return null;
+  const objLocal = allocLocal(fctx, `__inc_obj_${fctx.locals.length}`, objResult);
+  fctx.body.push({ op: "local.set", index: objLocal });
+
+  // Get current field value
+  fctx.body.push({ op: "local.get", index: objLocal });
+  fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+
+  // Coerce to f64 if needed
+  const fieldType = fields[fieldIdx]!.type;
+  if (fieldType.kind !== "f64") {
+    coerceType(ctx, fctx, fieldType, { kind: "f64" });
+  }
+
+  // Increment/decrement
+  fctx.body.push({ op: "f64.const", value: 1 });
+  fctx.body.push({ op: isIncrement ? "f64.add" : "f64.sub" });
+
+  // Save new value
+  const newVal = allocLocal(fctx, `__inc_new_${fctx.locals.length}`, { kind: "f64" });
+  fctx.body.push({ op: "local.set", index: newVal });
+
+  // Set field: obj, newValue -> struct.set
+  fctx.body.push({ op: "local.get", index: objLocal });
+  fctx.body.push({ op: "local.get", index: newVal });
+  if (fieldType.kind !== "f64") {
+    coerceType(ctx, fctx, { kind: "f64" }, fieldType);
+  }
+  fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx });
+
+  // Return new value (prefix returns the new value)
+  fctx.body.push({ op: "local.get", index: newVal });
   return { kind: "f64" };
+}
+
+/**
+ * ++arr[i] / --arr[i]: get element, increment, set element, return NEW value
+ */
+function compilePrefixIncrementElement(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  target: ts.ElementAccessExpression,
+  isIncrement: boolean,
+): ValType | null {
+  const arrType = compileExpression(ctx, fctx, target.expression);
+  if (!arrType || (arrType.kind !== "ref" && arrType.kind !== "ref_null")) {
+    ctx.errors.push({ message: "Prefix increment on non-array element access", line: getLine(target), column: getCol(target) });
+    return null;
+  }
+  const typeIdx = (arrType as { typeIdx: number }).typeIdx;
+  const typeDef = ctx.mod.types[typeIdx];
+
+  // String-literal bracket access on struct: ++obj["prop"]
+  if (typeDef?.kind === "struct" && ts.isStringLiteral(target.argumentExpression)) {
+    const propName = target.argumentExpression.text;
+    const fieldIdx = typeDef.fields.findIndex((f: { name: string }) => f.name === propName);
+    if (fieldIdx !== -1) {
+      const objLocal = allocLocal(fctx, `__inc_obj_${fctx.locals.length}`, arrType);
+      fctx.body.push({ op: "local.set", index: objLocal });
+
+      fctx.body.push({ op: "local.get", index: objLocal });
+      fctx.body.push({ op: "struct.get", typeIdx, fieldIdx });
+      const fieldType = typeDef.fields[fieldIdx]!.type;
+      if (fieldType.kind !== "f64") coerceType(ctx, fctx, fieldType, { kind: "f64" });
+      fctx.body.push({ op: "f64.const", value: 1 });
+      fctx.body.push({ op: isIncrement ? "f64.add" : "f64.sub" });
+      const newVal = allocLocal(fctx, `__inc_new_${fctx.locals.length}`, { kind: "f64" });
+      fctx.body.push({ op: "local.set", index: newVal });
+      fctx.body.push({ op: "local.get", index: objLocal });
+      fctx.body.push({ op: "local.get", index: newVal });
+      if (fieldType.kind !== "f64") coerceType(ctx, fctx, { kind: "f64" }, fieldType);
+      fctx.body.push({ op: "struct.set", typeIdx, fieldIdx });
+      fctx.body.push({ op: "local.get", index: newVal });
+      return { kind: "f64" };
+    }
+  }
+
+  // Vec struct (array wrapped in {length, data})
+  const isVecStruct = typeDef?.kind === "struct" &&
+    typeDef.fields.length === 2 &&
+    typeDef.fields[0]?.name === "length" &&
+    typeDef.fields[1]?.name === "data";
+  if (isVecStruct) {
+    const arrTypeIdx = getArrTypeIdxFromVec(ctx, typeIdx);
+    const arrDef = ctx.mod.types[arrTypeIdx];
+    if (!arrDef || arrDef.kind !== "array") {
+      ctx.errors.push({ message: "Prefix increment: vec data is not array", line: getLine(target), column: getCol(target) });
+      return null;
+    }
+    const vecLocal = allocLocal(fctx, `__inc_vec_${fctx.locals.length}`, arrType);
+    fctx.body.push({ op: "local.set", index: vecLocal });
+    const idxResult = compileExpression(ctx, fctx, target.argumentExpression, { kind: "f64" });
+    if (!idxResult) return null;
+    fctx.body.push({ op: "i32.trunc_f64_s" });
+    const idxLocal = allocLocal(fctx, `__inc_idx_${fctx.locals.length}`, { kind: "i32" });
+    fctx.body.push({ op: "local.set", index: idxLocal });
+
+    // Get current value: vec.data[idx]
+    fctx.body.push({ op: "local.get", index: vecLocal });
+    fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 }); // data field
+    fctx.body.push({ op: "local.get", index: idxLocal });
+    fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx } as unknown as Instr);
+    const elemType = arrDef.element;
+    if (elemType.kind !== "f64") coerceType(ctx, fctx, elemType, { kind: "f64" });
+    fctx.body.push({ op: "f64.const", value: 1 });
+    fctx.body.push({ op: isIncrement ? "f64.add" : "f64.sub" });
+    const newVal = allocLocal(fctx, `__inc_new_${fctx.locals.length}`, { kind: "f64" });
+    fctx.body.push({ op: "local.set", index: newVal });
+
+    // Set: vec.data[idx] = newVal
+    fctx.body.push({ op: "local.get", index: vecLocal });
+    fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 });
+    fctx.body.push({ op: "local.get", index: idxLocal });
+    fctx.body.push({ op: "local.get", index: newVal });
+    if (elemType.kind !== "f64") coerceType(ctx, fctx, { kind: "f64" }, elemType);
+    fctx.body.push({ op: "array.set", typeIdx: arrTypeIdx } as unknown as Instr);
+
+    fctx.body.push({ op: "local.get", index: newVal });
+    return { kind: "f64" };
+  }
+
+  ctx.errors.push({ message: "Unsupported prefix increment element access target", line: getLine(target), column: getCol(target) });
+  return null;
+}
+
+/**
+ * obj.prop++ / obj.prop--: get field, save OLD, increment, set field, return OLD value
+ */
+function compilePostfixIncrementProperty(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  target: ts.PropertyAccessExpression,
+  isIncrement: boolean,
+): ValType | null {
+  const objType = ctx.checker.getTypeAtLocation(target.expression);
+  const propName = ts.isPrivateIdentifier(target.name) ? target.name.text.slice(1) : target.name.text;
+  const typeName = resolveStructName(ctx, objType);
+  if (!typeName) {
+    ctx.errors.push({ message: `Cannot resolve struct for postfix increment on property: ${propName}`, line: getLine(target), column: getCol(target) });
+    return null;
+  }
+  const structTypeIdx = ctx.structMap.get(typeName);
+  const fields = ctx.structFields.get(typeName);
+  if (structTypeIdx === undefined || !fields) {
+    ctx.errors.push({ message: `Unknown struct type for postfix increment: ${typeName}`, line: getLine(target), column: getCol(target) });
+    return null;
+  }
+  const fieldIdx = fields.findIndex((f) => f.name === propName);
+  if (fieldIdx === -1) {
+    ctx.errors.push({ message: `Unknown field for postfix increment: ${propName}`, line: getLine(target), column: getCol(target) });
+    return null;
+  }
+
+  // Compile object ref and save
+  const objResult = compileExpression(ctx, fctx, target.expression);
+  if (!objResult) return null;
+  const objLocal = allocLocal(fctx, `__postinc_obj_${fctx.locals.length}`, objResult);
+  fctx.body.push({ op: "local.set", index: objLocal });
+
+  // Get current field value
+  fctx.body.push({ op: "local.get", index: objLocal });
+  fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+
+  // Coerce to f64 if needed
+  const fieldType = fields[fieldIdx]!.type;
+  if (fieldType.kind !== "f64") {
+    coerceType(ctx, fctx, fieldType, { kind: "f64" });
+  }
+
+  // Save OLD value
+  const oldVal = allocLocal(fctx, `__postinc_old_${fctx.locals.length}`, { kind: "f64" });
+  fctx.body.push({ op: "local.set", index: oldVal });
+
+  // Compute new value
+  fctx.body.push({ op: "local.get", index: oldVal });
+  fctx.body.push({ op: "f64.const", value: 1 });
+  fctx.body.push({ op: isIncrement ? "f64.add" : "f64.sub" });
+
+  // Save new value for struct.set
+  const newVal = allocLocal(fctx, `__postinc_new_${fctx.locals.length}`, { kind: "f64" });
+  fctx.body.push({ op: "local.set", index: newVal });
+
+  // Set field: obj, newValue -> struct.set
+  fctx.body.push({ op: "local.get", index: objLocal });
+  fctx.body.push({ op: "local.get", index: newVal });
+  if (fieldType.kind !== "f64") {
+    coerceType(ctx, fctx, { kind: "f64" }, fieldType);
+  }
+  fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx });
+
+  // Return OLD value (postfix returns old value)
+  fctx.body.push({ op: "local.get", index: oldVal });
+  return { kind: "f64" };
+}
+
+/**
+ * arr[i]++ / arr[i]--: get element, save OLD, increment, set element, return OLD value
+ */
+function compilePostfixIncrementElement(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  target: ts.ElementAccessExpression,
+  isIncrement: boolean,
+): ValType | null {
+  const arrType = compileExpression(ctx, fctx, target.expression);
+  if (!arrType || (arrType.kind !== "ref" && arrType.kind !== "ref_null")) {
+    ctx.errors.push({ message: "Postfix increment on non-array element access", line: getLine(target), column: getCol(target) });
+    return null;
+  }
+  const typeIdx = (arrType as { typeIdx: number }).typeIdx;
+  const typeDef = ctx.mod.types[typeIdx];
+
+  // String-literal bracket access on struct: obj["prop"]++
+  if (typeDef?.kind === "struct" && ts.isStringLiteral(target.argumentExpression)) {
+    const propName = target.argumentExpression.text;
+    const fieldIdx = typeDef.fields.findIndex((f: { name: string }) => f.name === propName);
+    if (fieldIdx !== -1) {
+      const objLocal = allocLocal(fctx, `__postinc_obj_${fctx.locals.length}`, arrType);
+      fctx.body.push({ op: "local.set", index: objLocal });
+
+      fctx.body.push({ op: "local.get", index: objLocal });
+      fctx.body.push({ op: "struct.get", typeIdx, fieldIdx });
+      const fieldType = typeDef.fields[fieldIdx]!.type;
+      if (fieldType.kind !== "f64") coerceType(ctx, fctx, fieldType, { kind: "f64" });
+      const oldVal = allocLocal(fctx, `__postinc_old_${fctx.locals.length}`, { kind: "f64" });
+      fctx.body.push({ op: "local.set", index: oldVal });
+      fctx.body.push({ op: "local.get", index: oldVal });
+      fctx.body.push({ op: "f64.const", value: 1 });
+      fctx.body.push({ op: isIncrement ? "f64.add" : "f64.sub" });
+      const newVal = allocLocal(fctx, `__postinc_new_${fctx.locals.length}`, { kind: "f64" });
+      fctx.body.push({ op: "local.set", index: newVal });
+      fctx.body.push({ op: "local.get", index: objLocal });
+      fctx.body.push({ op: "local.get", index: newVal });
+      if (fieldType.kind !== "f64") coerceType(ctx, fctx, { kind: "f64" }, fieldType);
+      fctx.body.push({ op: "struct.set", typeIdx, fieldIdx });
+      fctx.body.push({ op: "local.get", index: oldVal });
+      return { kind: "f64" };
+    }
+  }
+
+  // Vec struct (array wrapped in {length, data})
+  const isVecStruct = typeDef?.kind === "struct" &&
+    typeDef.fields.length === 2 &&
+    typeDef.fields[0]?.name === "length" &&
+    typeDef.fields[1]?.name === "data";
+  if (isVecStruct) {
+    const arrTypeIdx = getArrTypeIdxFromVec(ctx, typeIdx);
+    const arrDef = ctx.mod.types[arrTypeIdx];
+    if (!arrDef || arrDef.kind !== "array") {
+      ctx.errors.push({ message: "Postfix increment: vec data is not array", line: getLine(target), column: getCol(target) });
+      return null;
+    }
+    const vecLocal = allocLocal(fctx, `__postinc_vec_${fctx.locals.length}`, arrType);
+    fctx.body.push({ op: "local.set", index: vecLocal });
+    const idxResult = compileExpression(ctx, fctx, target.argumentExpression, { kind: "f64" });
+    if (!idxResult) return null;
+    fctx.body.push({ op: "i32.trunc_f64_s" });
+    const idxLocal = allocLocal(fctx, `__postinc_idx_${fctx.locals.length}`, { kind: "i32" });
+    fctx.body.push({ op: "local.set", index: idxLocal });
+
+    // Get current value: vec.data[idx]
+    fctx.body.push({ op: "local.get", index: vecLocal });
+    fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 });
+    fctx.body.push({ op: "local.get", index: idxLocal });
+    fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx } as unknown as Instr);
+    const elemType = arrDef.element;
+    if (elemType.kind !== "f64") coerceType(ctx, fctx, elemType, { kind: "f64" });
+    const oldVal = allocLocal(fctx, `__postinc_old_${fctx.locals.length}`, { kind: "f64" });
+    fctx.body.push({ op: "local.set", index: oldVal });
+
+    // Compute new value
+    fctx.body.push({ op: "local.get", index: oldVal });
+    fctx.body.push({ op: "f64.const", value: 1 });
+    fctx.body.push({ op: isIncrement ? "f64.add" : "f64.sub" });
+
+    // Set: vec.data[idx] = newVal
+    const newVal = allocLocal(fctx, `__postinc_new_${fctx.locals.length}`, { kind: "f64" });
+    fctx.body.push({ op: "local.set", index: newVal });
+    fctx.body.push({ op: "local.get", index: vecLocal });
+    fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 });
+    fctx.body.push({ op: "local.get", index: idxLocal });
+    fctx.body.push({ op: "local.get", index: newVal });
+    if (elemType.kind !== "f64") coerceType(ctx, fctx, { kind: "f64" }, elemType);
+    fctx.body.push({ op: "array.set", typeIdx: arrTypeIdx } as unknown as Instr);
+
+    fctx.body.push({ op: "local.get", index: oldVal });
+    return { kind: "f64" };
+  }
+
+  ctx.errors.push({ message: "Unsupported postfix increment element access target", line: getLine(target), column: getCol(target) });
+  return null;
 }
 
 // ── Call expressions ─────────────────────────────────────────────────
