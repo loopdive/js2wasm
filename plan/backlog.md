@@ -78,6 +78,14 @@ _Details: [sprint-2.md](sprint-2.md)_
 | [142](issues/142.md) | Bug: assignment destructuring (carryover) | Open | -- |
 | [197](issues/197.md) | Statement-level if compile errors (~6 CE) | Open | -- |
 
+## Recently completed
+
+| #   | Feature | Status |
+| --- | ------- | ------ |
+| [214](issues/214.md) | Fix: string relational operators (<, >, <=, >=) | Review |
+| [215](issues/215.md) | Fix: unary plus coercion for strings/booleans | Review |
+| [216](issues/216.md) | Fix: modulus with special IEEE 754 values | Review |
+
 ## Backlog
 
 ### Property names and computed keys
