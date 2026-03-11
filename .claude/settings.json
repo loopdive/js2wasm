@@ -6,5 +6,18 @@
       "Bash(node --version)",
       "Bash(node node_modules/vitest/dist/cli.js run)"
     ]
+  },
+  "hooks": {
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -d 'Claude Code needs your attention' http://host.docker.internal:8090/loopdive-claude"
+          }
+        ]
+      }
+    ]
   }
 }

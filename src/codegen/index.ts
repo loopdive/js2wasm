@@ -4577,10 +4577,13 @@ function collectParseImports(
         needed.add("parseFloat");
       }
     }
-    // Unary + on string uses parseFloat for coercion
+    // Unary + on string uses parseFloat for coercion (but not for string literals
+    // which are statically resolved by tryStaticToNumber)
     if (
       ts.isPrefixUnaryExpression(node) &&
-      node.operator === ts.SyntaxKind.PlusToken
+      node.operator === ts.SyntaxKind.PlusToken &&
+      !ts.isStringLiteral(node.operand) &&
+      !ts.isNoSubstitutionTemplateLiteral(node.operand)
     ) {
       const operandType = ctx.checker.getTypeAtLocation(node.operand);
       if (operandType.flags & ts.TypeFlags.StringLike) {

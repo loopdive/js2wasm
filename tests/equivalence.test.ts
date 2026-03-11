@@ -3158,3 +3158,124 @@ describe("boolean relational comparison", () => {
     );
   });
 });
+
+// ── Issue #185: Unary plus on non-numeric types ──
+describe("unary plus coercion (#185)", () => {
+  it('+\"\" produces 0', async () => {
+    await assertEquivalent(
+      `export function test(): number { return +""; }`,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("+null produces 0", async () => {
+    await assertEquivalent(
+      `export function test(): number { return +null; }`,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("+undefined produces NaN", async () => {
+    await assertEquivalent(
+      `export function test(): number { return +undefined; }`,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("+true produces 1", async () => {
+    await assertEquivalent(
+      `export function test(): number { return +true; }`,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("+false produces 0", async () => {
+    await assertEquivalent(
+      `export function test(): number { return +false; }`,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it('+\"42\" produces 42', async () => {
+    await assertEquivalent(
+      `export function test(): number { return +"42"; }`,
+      [{ fn: "test", args: [] }],
+    );
+  });
+});
+
+// ── Issue #175: Negative zero preservation in modulus ──
+describe("negative zero modulus (#175)", () => {
+  it("-1 % -1 produces -0", async () => {
+    await assertEquivalent(
+      `export function test(): number { return 1 / (-1 % -1); }`,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("(-1) % 1 produces -0", async () => {
+    await assertEquivalent(
+      `export function test(): number { return 1 / ((-1) % 1); }`,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("7 % 3 produces 1 (positive case unchanged)", async () => {
+    await assertEquivalent(
+      `export function test(): number { return 7 % 3; }`,
+      [{ fn: "test", args: [] }],
+    );
+  });
+});
+
+// ── Issue #183: Template literal type coercion ──
+describe("template literal type coercion (#183)", () => {
+  it("template with number substitution", async () => {
+    await assertEquivalent(
+      `export function test(): string { return \`value: \${42}\`; }`,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("template with multiple number substitutions", async () => {
+    await assertEquivalent(
+      `export function test(): string {
+        return \`\${1} + \${2} = \${3}\`;
+      }`,
+      [{ fn: "test", args: [] }],
+    );
+  });
+});
+
+// ── Issue #193: Coalesce operator type mismatch ──
+describe("coalesce operator type unification (#193)", () => {
+  it("null string ?? default returns default", async () => {
+    await assertEquivalent(
+      `export function test(): string {
+        const x: string | null = null;
+        return x ?? "default";
+      }`,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("non-null string ?? fallback returns original", async () => {
+    await assertEquivalent(
+      `export function test(): string {
+        const x: string | null = "hello";
+        return x ?? "default";
+      }`,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("undefined string ?? default returns default", async () => {
+    await assertEquivalent(
+      `export function test(): string {
+        const x: string | undefined = undefined;
+        return x ?? "default";
+      }`,
+      [{ fn: "test", args: [] }],
+    );
+  });
+});

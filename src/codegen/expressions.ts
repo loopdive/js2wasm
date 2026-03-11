@@ -2359,16 +2359,16 @@ function emitModulo(fctx: FunctionContext): void {
   fctx.body.push({ op: "i32.and" });
   fctx.body.push({ op: "local.get", index: tmpA });
   fctx.body.push({ op: "local.get", index: tmpA });
-  fctx.body.push({ op: "f64.eq" }); // NaN != NaN, so this checks not-NaN
-  fctx.body.push({ op: "i32.and" });
-
-  // if (b is infinite && a is finite) { a } else { standard formula }
-  fctx.body.push({
-    op: "if",
-    blockType: { kind: "val", type: { kind: "f64" } },
-    then: thenInstrs,
-    else: elseInstrs,
-  } as unknown as Instr);
+  fctx.body.push({ op: "local.get", index: tmpB });
+  fctx.body.push({ op: "f64.div" });
+  fctx.body.push({ op: "f64.trunc" }); // JS % uses truncation toward zero, not floor
+  fctx.body.push({ op: "local.get", index: tmpB });
+  fctx.body.push({ op: "f64.mul" });
+  fctx.body.push({ op: "f64.sub" });
+  // Preserve negative zero: copysign the result with the dividend sign
+  // e.g. -1 % -1 = -0 (not +0), per JS spec the sign follows the dividend
+  fctx.body.push({ op: "local.get", index: tmpA });
+  fctx.body.push({ op: "f64.copysign" as unknown as Instr["op"] } as Instr);
 }
 
 function compileBooleanBinaryOp(
@@ -2547,21 +2547,57 @@ function compileNullishCoalescing(
   // Check if null
   fctx.body.push({ op: "ref.is_null" });
 
-  // if null → compile RHS; else → return tmp
+  // Compile RHS in a side buffer to discover its natural type
   const savedBody = fctx.body;
   fctx.body = [];
-  compileExpression(ctx, fctx, expr.right, resultKind);
-  const thenInstrs = fctx.body;
-
+  const rhsType = compileExpression(ctx, fctx, expr.right);
+  let thenInstrs = fctx.body;
   fctx.body = savedBody;
+
+  const rType = rhsType ?? { kind: "externref" as const };
+
+  // Unify types: if LHS and RHS have different wasm types, pick a common type
+  if (valTypesMatch(resultKind, rType)) {
+    // Types match — use as-is
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "val", type: resultKind },
+      then: thenInstrs,
+      else: [{ op: "local.get", index: tmp } as Instr],
+    });
+    return resultKind;
+  }
+
+  // Types differ — use RHS type as the unified type since when LHS is null
+  // (which is the whole point of ??), the result should be the RHS value.
+  // For the else branch (LHS non-null), coerce LHS to RHS type.
+  const unifiedType: ValType = rType;
+
+  // Coerce RHS (then branch) to unified type if needed (usually already matches)
+  if (!valTypesMatch(rType, unifiedType)) {
+    const coerceRhsBody: Instr[] = [];
+    fctx.body = coerceRhsBody;
+    coerceType(ctx, fctx, rType, unifiedType);
+    fctx.body = savedBody;
+    thenInstrs = [...thenInstrs, ...coerceRhsBody];
+  }
+
+  // Coerce LHS (else branch) to unified type
+  const elseInstrs: Instr[] = [{ op: "local.get", index: tmp } as Instr];
+  const coerceLhsBody: Instr[] = [];
+  fctx.body = coerceLhsBody;
+  coerceType(ctx, fctx, resultKind, unifiedType);
+  fctx.body = savedBody;
+  elseInstrs.push(...coerceLhsBody);
+
   fctx.body.push({
     op: "if",
-    blockType: { kind: "val", type: resultKind },
+    blockType: { kind: "val", type: unifiedType },
     then: thenInstrs,
-    else: [{ op: "local.get", index: tmp } as Instr],
+    else: elseInstrs,
   });
 
-  return resultKind;
+  return unifiedType;
 }
 
 function compileAssignment(
@@ -4179,7 +4215,7 @@ function compilePrefixUnary(
         coerceType(ctx, fctx, operandType, { kind: "f64" });
         return { kind: "f64" };
       }
-      // Boolean (i32) → f64: convert to number
+      // i32 (boolean) → f64 conversion for ToNumber
       if (operandType?.kind === "i32") {
         fctx.body.push({ op: "f64.convert_i32_s" });
         return { kind: "f64" };
@@ -8672,6 +8708,13 @@ function compileTemplateExpression(
     } else if (spanType && spanType.kind === "i32" && toStrIdx !== undefined) {
       fctx.body.push({ op: "f64.convert_i32_s" });
       fctx.body.push({ op: "call", funcIdx: toStrIdx });
+    } else if (spanType && spanType.kind === "i64" && toStrIdx !== undefined) {
+      // BigInt → f64 → string
+      fctx.body.push({ op: "f64.convert_i64_s" });
+      fctx.body.push({ op: "call", funcIdx: toStrIdx });
+    } else if (spanType && (spanType.kind === "ref" || spanType.kind === "ref_null")) {
+      // Struct ref → externref via extern.convert_any, then toString
+      fctx.body.push({ op: "extern.convert_any" });
     }
     // externref assumed to be string already
 
@@ -8724,6 +8767,18 @@ function compileNativeTemplateExpression(
     } else if (spanType && spanType.kind === "i32" && toStrIdx !== undefined) {
       fctx.body.push({ op: "f64.convert_i32_s" });
       fctx.body.push({ op: "call", funcIdx: toStrIdx });
+      if (fromExternIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: fromExternIdx });
+      }
+    } else if (spanType && spanType.kind === "i64" && toStrIdx !== undefined) {
+      fctx.body.push({ op: "f64.convert_i64_s" });
+      fctx.body.push({ op: "call", funcIdx: toStrIdx });
+      if (fromExternIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: fromExternIdx });
+      }
+    } else if (spanType && (spanType.kind === "ref" || spanType.kind === "ref_null") && toStrIdx !== undefined) {
+      // Struct ref → externref → string coercion
+      fctx.body.push({ op: "extern.convert_any" });
       if (fromExternIdx !== undefined) {
         fctx.body.push({ op: "call", funcIdx: fromExternIdx });
       }
@@ -12555,9 +12610,13 @@ function compileArrayLastIndexOf(
 function tryStaticToNumber(ctx: CodegenContext, expr: ts.Expression): number | undefined {
   // Numeric literal
   if (ts.isNumericLiteral(expr)) return Number(expr.text);
-  // String literal: Number("") = 0, Number("123") = 123, Number("abc") = NaN
-  if (ts.isStringLiteral(expr)) return Number(expr.text);
-  // Boolean literals: true = 1, false = 0
+  // String literal → ToNumber: "" → 0, "123" → 123, "abc" → NaN
+  if (ts.isStringLiteral(expr) || ts.isNoSubstitutionTemplateLiteral(expr)) return Number(expr.text);
+  // null → 0
+  if (expr.kind === ts.SyntaxKind.NullKeyword) return 0;
+  // undefined → NaN
+  if (ts.isIdentifier(expr) && expr.text === "undefined") return NaN;
+  // true → 1, false → 0
   if (expr.kind === ts.SyntaxKind.TrueKeyword) return 1;
   if (expr.kind === ts.SyntaxKind.FalseKeyword) return 0;
   // NaN identifier
