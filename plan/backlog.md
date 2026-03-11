@@ -208,4 +208,7 @@ _Details: [sprint-1.md](sprint-1.md)_
 | [135](issues/135.md)      | Ternary returning non-boolean values                    | type reconciliation across branches     |
 | [136](issues/136.md)      | Loose equality (== / !=)                                | mixed-type coercion dispatch            |
 | [137](issues/137.md)      | Object literal getter/setter                            | 3 in equivalence.test.ts                |
+| [177](issues/177.md)      | Spread operator in new expressions                      | in equivalence.test.ts                  |
+| [184](issues/184.md)      | Function arity mismatch padding                         | in equivalence.test.ts                  |
+| [211](issues/211.md)      | Arguments object in nested functions                    | in equivalence.test.ts                  |
 

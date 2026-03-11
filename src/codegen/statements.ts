@@ -1777,6 +1777,11 @@ function compileNestedFunctionDeclaration(
     // Emit default-value initialization for parameters with initializers
     emitDefaultParamInit(ctx, liftedFctx, stmt, paramTypes, 0);
 
+    // Set up `arguments` object if the function body references it
+    if (stmt.body && bodyUsesArguments(stmt.body)) {
+      emitArgumentsObject(ctx, liftedFctx, paramTypes, 0);
+    }
+
     for (const s of stmt.body.statements) {
       compileStatement(ctx, liftedFctx, s);
     }
@@ -1829,6 +1834,11 @@ function compileNestedFunctionDeclaration(
     // Emit default-value initialization for parameters with initializers
     // (offset by number of captures since they are prepended as leading params)
     emitDefaultParamInit(ctx, liftedFctx, stmt, paramTypes, captures.length);
+
+    // Set up `arguments` object if the function body references it
+    if (stmt.body && bodyUsesArguments(stmt.body)) {
+      emitArgumentsObject(ctx, liftedFctx, paramTypes, captures.length);
+    }
 
     for (const s of stmt.body.statements) {
       compileStatement(ctx, liftedFctx, s);
@@ -1982,4 +1992,53 @@ function getCol(node: ts.Node): number {
   if (!sf) return 0;
   const { character } = sf.getLineAndCharacterOfPosition(node.getStart());
   return character + 1;
+}
+
+/**
+ * Check if a node tree references the `arguments` identifier
+ * (skipping nested functions/arrows which have their own scope).
+ */
+function bodyUsesArguments(node: ts.Node): boolean {
+  if (ts.isIdentifier(node) && node.text === "arguments") return true;
+  if (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node)) {
+    return false;
+  }
+  return ts.forEachChild(node, bodyUsesArguments) ?? false;
+}
+
+/**
+ * Emit code to create an `arguments` vec struct from function parameters.
+ * paramOffset is the number of leading params to skip (e.g. captures).
+ */
+function emitArgumentsObject(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  paramTypes: ValType[],
+  paramOffset: number,
+): void {
+  const numArgs = paramTypes.length;
+  const elemType: ValType = { kind: "f64" };
+  const vti = getOrRegisterVecType(ctx, "f64", elemType);
+  const ati = getArrTypeIdxFromVec(ctx, vti);
+  const vecRef: ValType = { kind: "ref", typeIdx: vti };
+  const argsLocal = allocLocal(fctx, "arguments", vecRef);
+  const arrTmp = allocLocal(fctx, "__args_arr_tmp", { kind: "ref", typeIdx: ati });
+
+  // Push each param coerced to f64
+  for (let i = 0; i < numArgs; i++) {
+    fctx.body.push({ op: "local.get", index: i + paramOffset });
+    const pt = paramTypes[i]!;
+    if (pt.kind === "i32") {
+      fctx.body.push({ op: "f64.convert_i32_s" });
+    } else if (pt.kind === "externref" || pt.kind === "ref" || pt.kind === "ref_null") {
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "f64.const", value: 0 });
+    }
+  }
+  fctx.body.push({ op: "array.new_fixed", typeIdx: ati, length: numArgs });
+  fctx.body.push({ op: "local.set", index: arrTmp });
+  fctx.body.push({ op: "i32.const", value: numArgs });
+  fctx.body.push({ op: "local.get", index: arrTmp });
+  fctx.body.push({ op: "struct.new", typeIdx: vti });
+  fctx.body.push({ op: "local.set", index: argsLocal });
 }
