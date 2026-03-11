@@ -11,4 +11,5 @@ benchmarks/results/*.json
 benchmarks/results/*.md
 benchmarks/results/*.txt
 .pnpm-store/
-.claude/settings.local.json
+.claude/settings.local.json.claude/worktrees/
+.claude/agents/

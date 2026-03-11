@@ -6277,7 +6277,7 @@ function collectEnumDeclarations(
 
 /** Collect all function declarations and interfaces */
 /** Collect a class declaration or class expression: register struct type, constructor, and methods */
-function collectClassDeclaration(
+export function collectClassDeclaration(
   ctx: CodegenContext,
   decl: ts.ClassDeclaration | ts.ClassExpression,
   syntheticName?: string,
@@ -7291,7 +7291,7 @@ function collectDeclaredFuncRefs(ctx: CodegenContext): void {
 }
 
 /** Compile constructor and method bodies for a class declaration */
-function compileClassBodies(
+export function compileClassBodies(
   ctx: CodegenContext,
   decl: ts.ClassDeclaration | ts.ClassExpression,
   funcByName: Map<string, number>,
