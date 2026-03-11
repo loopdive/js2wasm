@@ -208,4 +208,7 @@ _Details: [sprint-1.md](sprint-1.md)_
 | [135](issues/135.md)      | Ternary returning non-boolean values                    | type reconciliation across branches     |
 | [136](issues/136.md)      | Loose equality (== / !=)                                | mixed-type coercion dispatch            |
 | [137](issues/137.md)      | Object literal getter/setter                            | 3 in equivalence.test.ts                |
+| [181](issues/181.md)      | new Object() + new Function() skip                      | 8 in equivalence.test.ts                |
+| [200](issues/200.md)      | JSON.stringify/parse externref coercion                  | 2 in equivalence.test.ts                |
+| [205](issues/205.md)      | String.prototype.indexOf start position coercion         | 2 in equivalence.test.ts                |
 
