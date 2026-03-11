@@ -1800,8 +1800,13 @@ function compileBinaryExpression(
     }
   }
 
-  // String operations — either operand being a string triggers string concat for +
-  if (isStringType(leftTsType) || (op === ts.SyntaxKind.PlusToken && isStringType(rightTsType))) {
+  // String operations — string triggers string concat for +, or string comparison when both strings
+  const isRelational = op === ts.SyntaxKind.LessThanToken || op === ts.SyntaxKind.LessThanEqualsToken ||
+    op === ts.SyntaxKind.GreaterThanToken || op === ts.SyntaxKind.GreaterThanEqualsToken;
+  if (isStringType(leftTsType) && (isStringType(rightTsType) || op === ts.SyntaxKind.PlusToken || (!isRelational && !isNumberType(rightTsType) && !isBooleanType(rightTsType)))) {
+    return compileStringBinaryOp(ctx, fctx, expr, op);
+  }
+  if (op === ts.SyntaxKind.PlusToken && isStringType(rightTsType)) {
     return compileStringBinaryOp(ctx, fctx, expr, op);
   }
 
@@ -2329,6 +2334,18 @@ function compileBooleanBinaryOp(
     case ts.SyntaxKind.ExclamationEqualsEqualsToken:
     case ts.SyntaxKind.ExclamationEqualsToken:
       fctx.body.push({ op: "i32.ne" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.LessThanToken:
+      fctx.body.push({ op: "i32.lt_s" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.LessThanEqualsToken:
+      fctx.body.push({ op: "i32.le_s" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.GreaterThanToken:
+      fctx.body.push({ op: "i32.gt_s" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.GreaterThanEqualsToken:
+      fctx.body.push({ op: "i32.ge_s" });
       return { kind: "i32" };
     default:
       return { kind: "i32" };
