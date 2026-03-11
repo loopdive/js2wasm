@@ -4767,8 +4767,18 @@ function compileCallExpression(
     } else {
       // Normal call — compile provided arguments with type hints from function signature
       const paramTypes = getFuncParamTypes(ctx, funcIdx);
+      const paramCount = paramTypes?.length ?? expr.arguments.length;
       for (let i = 0; i < expr.arguments.length; i++) {
-        compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+        if (i < paramCount) {
+          compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+        } else {
+          // Extra argument beyond function's parameter count — evaluate for
+          // side effects (JS semantics) and discard the result
+          const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+          if (extraType !== null) {
+            fctx.body.push({ op: "drop" });
+          }
+        }
       }
 
       // Supply defaults for missing optional params
@@ -4905,12 +4915,247 @@ function compileCallExpression(
     return null;
   }
 
+  // Handle IIFE: (function(...) { ... })(...) — immediately invoked function expression
+  {
+    const iifeResult = compileIIFE(ctx, fctx, expr);
+    if (iifeResult !== undefined) return iifeResult;
+  }
+
   ctx.errors.push({
     message: "Unsupported call expression",
     line: getLine(expr),
     column: getCol(expr),
   });
   return null;
+}
+
+/**
+ * Compile an IIFE (Immediately Invoked Function Expression):
+ *   (function(params) { body })(args)
+ *
+ * Strategy: compile the function expression as a named module-level function
+ * with a unique synthetic name, then emit a direct call to it.
+ * Captures from the enclosing scope are passed as extra leading parameters.
+ *
+ * Returns undefined if the expression is not an IIFE pattern.
+ */
+function compileIIFE(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.CallExpression,
+): InnerResult | undefined {
+  // Unwrap parenthesized expression to find the function expression
+  let callee = expr.expression;
+  while (ts.isParenthesizedExpression(callee)) {
+    callee = callee.expression;
+  }
+  if (!ts.isFunctionExpression(callee) && !ts.isArrowFunction(callee)) {
+    return undefined; // not an IIFE
+  }
+  const funcExpr = callee as ts.FunctionExpression | ts.ArrowFunction;
+
+  // Determine parameter types from the function's declared parameters
+  const paramTypes: ValType[] = [];
+  for (const p of funcExpr.parameters) {
+    const paramType = ctx.checker.getTypeAtLocation(p);
+    paramTypes.push(resolveWasmType(ctx, paramType));
+  }
+
+  // Determine return type
+  const sig = ctx.checker.getSignatureFromDeclaration(funcExpr);
+  let returnType: ValType | null = null;
+  if (sig) {
+    const retType = ctx.checker.getReturnTypeOfSignature(sig);
+    if (!isVoidType(retType)) {
+      returnType = resolveWasmType(ctx, retType);
+    }
+  }
+
+  // Analyze captured variables from the enclosing scope
+  const body = funcExpr.body;
+  const referencedNames = new Set<string>();
+  if (ts.isBlock(body)) {
+    for (const stmt of body.statements) {
+      collectReferencedIdentifiers(stmt, referencedNames);
+    }
+  } else {
+    collectReferencedIdentifiers(body, referencedNames);
+  }
+
+  // Detect which captured variables are written inside the IIFE body
+  const writtenInIIFE = new Set<string>();
+  if (ts.isBlock(body)) {
+    for (const stmt of body.statements) {
+      collectWrittenIdentifiers(stmt, writtenInIIFE);
+    }
+  } else {
+    collectWrittenIdentifiers(body, writtenInIIFE);
+  }
+
+  const ownParamNames = new Set(
+    funcExpr.parameters
+      .filter((p) => ts.isIdentifier(p.name))
+      .map((p) => (p.name as ts.Identifier).text),
+  );
+
+  const captures: { name: string; type: ValType; localIdx: number; mutable: boolean }[] = [];
+  for (const name of referencedNames) {
+    if (ownParamNames.has(name)) continue;
+    const localIdx = fctx.localMap.get(name);
+    if (localIdx === undefined) continue;
+    if (ctx.funcMap.has(name)) continue;
+    const type =
+      localIdx < fctx.params.length
+        ? fctx.params[localIdx]!.type
+        : (fctx.locals[localIdx - fctx.params.length]?.type ?? { kind: "f64" });
+    const isMutable = writtenInIIFE.has(name);
+    captures.push({ name, type, localIdx, mutable: isMutable });
+  }
+
+  // Generate a unique name for the IIFE
+  const iifeName = `__iife_${ctx.closureCounter++}`;
+  const results: ValType[] = returnType ? [returnType] : [];
+
+  // Build parameter types: for mutable captures use ref cells, others pass by value
+  const captureParamTypes = captures.map((c) => {
+    if (c.mutable) {
+      const refCellTypeIdx = getOrRegisterRefCellType(ctx, c.type);
+      return { kind: "ref" as const, typeIdx: refCellTypeIdx };
+    }
+    return c.type;
+  });
+  const allParamTypes = [...captureParamTypes, ...paramTypes];
+  const funcTypeIdx = addFuncType(ctx, allParamTypes, results, `${iifeName}_type`);
+
+  const liftedFctx: FunctionContext = {
+    name: iifeName,
+    params: [
+      ...captures.map((c, i) => ({ name: c.name, type: captureParamTypes[i]! })),
+      ...funcExpr.parameters.map((p, i) => ({
+        name: ts.isIdentifier(p.name) ? p.name.text : `__param${i}`,
+        type: paramTypes[i] ?? ({ kind: "f64" } as ValType),
+      })),
+    ],
+    locals: [],
+    localMap: new Map(),
+    returnType,
+    body: [],
+    blockDepth: 0,
+    breakStack: [],
+    continueStack: [],
+    labelMap: new Map(),
+  };
+
+  for (let i = 0; i < liftedFctx.params.length; i++) {
+    liftedFctx.localMap.set(liftedFctx.params[i]!.name, i);
+  }
+
+  // For mutable captures, register them as boxed so read/write uses struct.get/set
+  for (let i = 0; i < captures.length; i++) {
+    const cap = captures[i]!;
+    if (cap.mutable) {
+      const refCellTypeIdx = getOrRegisterRefCellType(ctx, cap.type);
+      if (!liftedFctx.boxedCaptures) liftedFctx.boxedCaptures = new Map();
+      liftedFctx.boxedCaptures.set(cap.name, { refCellTypeIdx, valType: cap.type });
+    }
+  }
+
+  const savedFunc = ctx.currentFunc;
+  ctx.currentFunc = liftedFctx;
+
+  if (ts.isBlock(body)) {
+    for (const stmt of body.statements) {
+      compileStatement(ctx, liftedFctx, stmt);
+    }
+  } else {
+    // Concise arrow body — expression is the return value
+    const exprType = compileExpression(ctx, liftedFctx, body);
+    if (exprType === null && returnType) {
+      // Push default return value
+      if (returnType.kind === "f64") liftedFctx.body.push({ op: "f64.const", value: 0 });
+      else if (returnType.kind === "i32") liftedFctx.body.push({ op: "i32.const", value: 0 });
+      else if (returnType.kind === "externref") liftedFctx.body.push({ op: "ref.null.extern" });
+    }
+  }
+
+  // Append default return if needed
+  if (returnType) {
+    const lastInstr = liftedFctx.body[liftedFctx.body.length - 1];
+    if (!lastInstr || lastInstr.op !== "return") {
+      if (returnType.kind === "f64") liftedFctx.body.push({ op: "f64.const", value: 0 });
+      else if (returnType.kind === "i32") liftedFctx.body.push({ op: "i32.const", value: 0 });
+      else if (returnType.kind === "externref") liftedFctx.body.push({ op: "ref.null.extern" });
+    }
+  }
+
+  ctx.currentFunc = savedFunc;
+
+  // Register the lifted function
+  const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+  ctx.mod.functions.push({
+    name: iifeName,
+    typeIdx: funcTypeIdx,
+    locals: liftedFctx.locals,
+    body: liftedFctx.body,
+    exported: false,
+  });
+  ctx.funcMap.set(iifeName, funcIdx);
+
+  // Emit the call: push captures (with ref cells for mutable ones), then arguments, then call
+  for (const cap of captures) {
+    if (cap.mutable) {
+      // Wrap the current value in a ref cell for mutable capture
+      const refCellTypeIdx = getOrRegisterRefCellType(ctx, cap.type);
+      // Check if the outer local is already boxed
+      if (fctx.boxedCaptures?.has(cap.name)) {
+        // Already a ref cell — pass directly
+        fctx.body.push({ op: "local.get", index: cap.localIdx });
+      } else {
+        // Create a ref cell, store value, keep ref on stack
+        fctx.body.push({ op: "local.get", index: cap.localIdx });
+        fctx.body.push({ op: "struct.new", typeIdx: refCellTypeIdx });
+        // Also box the outer local so subsequent reads/writes go through the ref cell
+        const boxedLocalIdx = allocLocal(fctx, `__boxed_${cap.name}`, { kind: "ref", typeIdx: refCellTypeIdx });
+        fctx.body.push({ op: "local.tee", index: boxedLocalIdx });
+        // Re-register the original name to point to the boxed local
+        fctx.localMap.set(cap.name, boxedLocalIdx);
+        if (!fctx.boxedCaptures) fctx.boxedCaptures = new Map();
+        fctx.boxedCaptures.set(cap.name, { refCellTypeIdx, valType: cap.type });
+      }
+    } else {
+      fctx.body.push({ op: "local.get", index: cap.localIdx });
+    }
+  }
+
+  // Compile call arguments, matching to declared params; extras are evaluated and dropped
+  const paramCount = paramTypes.length;
+  for (let i = 0; i < expr.arguments.length; i++) {
+    if (i < paramCount) {
+      compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes[i]);
+    } else {
+      // Extra argument — evaluate for side effects, drop result
+      const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+      if (extraType !== null) {
+        fctx.body.push({ op: "drop" });
+      }
+    }
+  }
+
+  // Supply defaults for missing params
+  for (let i = expr.arguments.length; i < paramCount; i++) {
+    const pt = paramTypes[i] ?? { kind: "f64" as const };
+    if (pt.kind === "f64") fctx.body.push({ op: "f64.const", value: 0 });
+    else if (pt.kind === "i32") fctx.body.push({ op: "i32.const", value: 0 });
+    else if (pt.kind === "externref") fctx.body.push({ op: "ref.null.extern" });
+    else if (pt.kind === "ref" || pt.kind === "ref_null") fctx.body.push({ op: "ref.null", typeIdx: pt.typeIdx });
+  }
+
+  // Re-lookup in case addUnionImports shifted indices
+  const finalFuncIdx = ctx.funcMap.get(iifeName) ?? funcIdx;
+  fctx.body.push({ op: "call", funcIdx: finalFuncIdx });
+
+  if (returnType) return returnType;
+  return VOID_RESULT;
 }
 
 // ── New expressions ──────────────────────────────────────────────────

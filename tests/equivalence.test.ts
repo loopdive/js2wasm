@@ -53,6 +53,7 @@ function buildImports(result: CompileResult): WebAssembly.Imports {
     __unbox_boolean: (v: unknown) => (v ? 1 : 0),
     __box_number: (v: number) => v,
     __box_boolean: (v: number) => Boolean(v),
+    __make_callback: () => null,
   };
   return {
     env,
@@ -1525,5 +1526,77 @@ describe("object literal getters/setters", () => {
     expect(exports.eqFalse()).toBe(0);
     expect(exports.neqTrue()).toBe(1);
     expect(exports.neqFalse()).toBe(0);
+  });
+});
+
+describe("IIFE and call expression edge cases", () => {
+  it("IIFE with no args", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        var result: number = 0;
+        (function() {
+          result = 42;
+        })();
+        return result;
+      }
+    `);
+    expect(exports.test()).toBe(42);
+  });
+
+  it("IIFE with args and return value", async () => {
+    await assertEquivalent(
+      `
+      export function test(a: number, b: number): number {
+        return (function(x: number, y: number): number {
+          return x + y;
+        })(a, b);
+      }
+      `,
+      [
+        { fn: "test", args: [10, 20] },
+        { fn: "test", args: [-5, 5] },
+        { fn: "test", args: [0, 0] },
+      ],
+    );
+  });
+
+  it("IIFE captures outer variable (mutable)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        var counter: number = 0;
+        (function() {
+          counter = counter + 10;
+        })();
+        return counter;
+      }
+    `);
+    expect(exports.test()).toBe(10);
+  });
+
+  it("extra arguments are evaluated for side effects", async () => {
+    await assertEquivalent(
+      `
+      var sideEffect: number = 0;
+      function f(): number { return 1; }
+      function g(): number { sideEffect = 99; return 5; }
+      export function test(): number {
+        f(g());
+        return sideEffect;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("extra arguments to zero-param function", async () => {
+    await assertEquivalent(
+      `
+      function f(): number { return 42; }
+      export function test(): number {
+        return f(1, 2, 3);
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
   });
 });
