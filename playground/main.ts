@@ -1439,6 +1439,140 @@ previewPanel.id = "preview-panel";
 const treemapPanel = document.createElement("div");
 treemapPanel.id = "treemap-panel";
 
+// ─── Test262 browser panel ──────────────────────────────────────────────────
+const test262Panel = document.createElement("div");
+test262Panel.id = "test262-panel";
+test262Panel.innerHTML = `
+  <div class="t262-browser">
+    <div class="t262-search-wrap">
+      <input class="t262-search" type="text" placeholder="Filter tests..." />
+    </div>
+    <div class="t262-list"></div>
+  </div>
+`;
+
+interface T262Category { name: string; path: string; fileCount: number; }
+let t262Index: T262Category[] | null = null;
+const t262ExpandedCats = new Set<string>();
+const t262FileCache = new Map<string, string[]>();
+let t262Filter = "";
+let t262Debounce: ReturnType<typeof setTimeout> | null = null;
+
+async function t262LoadIndex(): Promise<T262Category[]> {
+  if (t262Index) return t262Index;
+  const resp = await fetch("/api/test262-index");
+  const data = await resp.json();
+  t262Index = data.categories as T262Category[];
+  return t262Index;
+}
+
+async function t262LoadFiles(category: string): Promise<string[]> {
+  if (t262FileCache.has(category)) return t262FileCache.get(category)!;
+  const resp = await fetch(`/api/test262-files?category=${encodeURIComponent(category)}`);
+  const files = await resp.json() as string[];
+  t262FileCache.set(category, files);
+  return files;
+}
+
+async function t262LoadFile(path: string): Promise<string> {
+  const resp = await fetch(`/api/test262-file?path=${encodeURIComponent(path)}`);
+  return resp.text();
+}
+
+function t262FileName(fullPath: string): string {
+  const parts = fullPath.split("/");
+  return parts[parts.length - 1];
+}
+
+async function t262Render() {
+  const listEl = test262Panel.querySelector(".t262-list") as HTMLElement;
+  if (!listEl) return;
+  listEl.innerHTML = "";
+
+  const cats = await t262LoadIndex();
+  const filter = t262Filter.toLowerCase();
+
+  for (const cat of cats) {
+    const catNameLower = cat.name.toLowerCase();
+    const catMatches = !filter || catNameLower.includes(filter);
+
+    // If filter is active but category name doesn't match, check files
+    let filteredFiles: string[] | null = null;
+    if (filter && !catMatches) {
+      // Only show category if it has matching files (need to load them)
+      if (t262FileCache.has(cat.path)) {
+        const files = t262FileCache.get(cat.path)!;
+        filteredFiles = files.filter(f => f.toLowerCase().includes(filter));
+        if (filteredFiles.length === 0) continue;
+      } else {
+        // Don't load files lazily for filtering -- skip unless expanded
+        if (!t262ExpandedCats.has(cat.path)) continue;
+      }
+    }
+
+    const catEl = document.createElement("div");
+    catEl.className = "t262-category";
+
+    const headerEl = document.createElement("div");
+    headerEl.className = "t262-cat-header";
+    const isExpanded = t262ExpandedCats.has(cat.path) || (filter.length > 0 && catMatches);
+    headerEl.innerHTML = `<span class="t262-arrow">${isExpanded ? "&#9660;" : "&#9654;"}</span> <span class="t262-cat-name">${cat.name}</span> <span class="t262-cat-count">(${cat.fileCount})</span>`;
+
+    headerEl.addEventListener("click", async () => {
+      if (t262ExpandedCats.has(cat.path)) {
+        t262ExpandedCats.delete(cat.path);
+      } else {
+        t262ExpandedCats.add(cat.path);
+      }
+      await t262Render();
+    });
+
+    catEl.appendChild(headerEl);
+
+    if (isExpanded || (filteredFiles && filteredFiles.length > 0)) {
+      // Force expand if we have filtered files
+      if (!t262ExpandedCats.has(cat.path) && !catMatches) {
+        t262ExpandedCats.add(cat.path);
+      }
+      const files = filteredFiles ?? await t262LoadFiles(cat.path);
+      const displayFiles = filter && !filteredFiles
+        ? files.filter(f => f.toLowerCase().includes(filter))
+        : (filteredFiles ?? files);
+
+      const filesEl = document.createElement("div");
+      filesEl.className = "t262-files";
+      for (const file of displayFiles) {
+        const fileEl = document.createElement("div");
+        fileEl.className = "t262-file";
+        fileEl.textContent = t262FileName(file);
+        fileEl.title = file;
+        fileEl.addEventListener("click", async () => {
+          const content = await t262LoadFile(file);
+          inputFile.model.setValue(content);
+          compileOnly();
+        });
+        filesEl.appendChild(fileEl);
+      }
+      catEl.appendChild(filesEl);
+    }
+
+    listEl.appendChild(catEl);
+  }
+}
+
+// Wire up the search input
+const t262SearchInput = test262Panel.querySelector(".t262-search") as HTMLInputElement;
+t262SearchInput.addEventListener("input", () => {
+  if (t262Debounce) clearTimeout(t262Debounce);
+  t262Debounce = setTimeout(() => {
+    t262Filter = t262SearchInput.value;
+    t262Render();
+  }, 200);
+});
+
+// Lazy-load: render the test262 panel when it first becomes visible
+let t262Loaded = false;
+
 // Treemap
 const treemap = new WasmTreemap(treemapPanel);
 
@@ -1486,6 +1620,7 @@ const tabDefs: Record<string, TabContentDef> = {
   "preview": { kind: "dom", element: previewPanel },
   "console": { kind: "dom", element: consolePre },
   "treemap": { kind: "dom", element: treemapPanel },
+  "test262": { kind: "dom", element: test262Panel },
 };
 
 const layoutRoot = document.getElementById("layout-root")!;
@@ -1500,6 +1635,7 @@ layout.registerTab({ id: "errors", title: "Errors", kind: "dom" });
 layout.registerTab({ id: "preview", title: "Preview", kind: "dom" });
 layout.registerTab({ id: "console", title: "Console", kind: "dom" });
 layout.registerTab({ id: "treemap", title: "Treemap", kind: "dom" });
+layout.registerTab({ id: "test262", title: "Test262", kind: "dom" });
 
 // Mount callback: place content into panel
 layout.onMount = (panelId: string, tabId: string, contentEl: HTMLElement) => {
@@ -1530,6 +1666,11 @@ layout.onMount = (panelId: string, tabId: string, contentEl: HTMLElement) => {
     }
   } else {
     contentEl.appendChild(def.element);
+    // Lazy-load test262 browser on first mount
+    if (tabId === "test262" && !t262Loaded) {
+      t262Loaded = true;
+      t262Render();
+    }
   }
 };
 

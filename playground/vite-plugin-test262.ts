@@ -1,0 +1,211 @@
+import type { Plugin } from "vite";
+import { readdirSync, readFileSync, existsSync, statSync } from "fs";
+import { join, relative, resolve, normalize } from "path";
+
+const TEST_CATEGORIES = [
+  "built-ins/Math/abs", "built-ins/Math/ceil", "built-ins/Math/floor",
+  "built-ins/Math/round", "built-ins/Math/trunc", "built-ins/Math/sign",
+  "built-ins/Math/sqrt", "built-ins/Math/min", "built-ins/Math/max",
+  "built-ins/Math/clz32", "built-ins/Math/imul", "built-ins/Math/pow",
+  "built-ins/Math/exp", "built-ins/Math/log", "built-ins/Math/sin",
+  "built-ins/Math/cos", "built-ins/Math/tan", "built-ins/Math/asin",
+  "built-ins/Math/acos", "built-ins/Math/atan", "built-ins/Math/atan2",
+  "built-ins/Math/acosh", "built-ins/Math/asinh", "built-ins/Math/atanh",
+  "built-ins/Math/cbrt", "built-ins/Math/expm1", "built-ins/Math/log1p",
+  "built-ins/Math/log2", "built-ins/Math/log10", "built-ins/Math/fround",
+  "built-ins/Math/hypot",
+  "language/expressions/addition", "language/expressions/subtraction",
+  "language/expressions/multiplication", "language/expressions/division",
+  "language/expressions/modulus", "language/expressions/exponentiation",
+  "language/expressions/concatenation",
+  "language/expressions/bitwise-and", "language/expressions/bitwise-or",
+  "language/expressions/bitwise-xor", "language/expressions/bitwise-not",
+  "language/expressions/left-shift", "language/expressions/right-shift",
+  "language/expressions/equals", "language/expressions/does-not-equals",
+  "language/expressions/strict-equals", "language/expressions/strict-does-not-equals",
+  "language/expressions/greater-than", "language/expressions/greater-than-or-equal",
+  "language/expressions/less-than", "language/expressions/less-than-or-equal",
+  "language/expressions/logical-and", "language/expressions/logical-not",
+  "language/expressions/logical-or", "language/expressions/conditional",
+  "language/expressions/comma", "language/expressions/typeof",
+  "language/expressions/instanceof", "language/expressions/void",
+  "language/expressions/unary-plus", "language/expressions/unary-minus",
+  "language/expressions/prefix-increment", "language/expressions/prefix-decrement",
+  "language/expressions/postfix-increment", "language/expressions/postfix-decrement",
+  "language/expressions/compound-assignment", "language/expressions/logical-assignment",
+  "language/expressions/assignment", "language/expressions/grouping",
+  "language/expressions/call", "language/expressions/function",
+  "language/expressions/property-accessors", "language/expressions/unsigned-right-shift",
+  "language/expressions/new", "language/expressions/arrow-function",
+  "language/expressions/class", "language/expressions/object",
+  "language/expressions/array", "language/expressions/template-literal",
+  "language/expressions/tagged-template", "language/expressions/generators",
+  "language/expressions/async-arrow-function", "language/expressions/async-function",
+  "language/expressions/await", "language/expressions/assignmenttargettype",
+  "language/expressions/delete", "language/expressions/yield",
+  "language/expressions/coalesce", "language/expressions/in",
+  "language/expressions/this", "language/expressions/member-expression",
+  "language/expressions/new.target", "language/expressions/relational",
+  "language/statements/if", "language/statements/while",
+  "language/statements/do-while", "language/statements/for",
+  "language/statements/switch", "language/statements/break",
+  "language/statements/continue", "language/statements/return",
+  "language/statements/block", "language/statements/empty",
+  "language/statements/expression", "language/statements/variable",
+  "language/statements/labeled", "language/statements/throw",
+  "language/statements/try", "language/statements/function",
+  "language/statements/for-of", "language/statements/for-in",
+  "language/statements/class", "language/statements/generators",
+  "language/statements/async-function",
+  "built-ins/Array/isArray",
+  "built-ins/Array/prototype/push", "built-ins/Array/prototype/pop",
+  "built-ins/Array/prototype/indexOf", "built-ins/Array/prototype/lastIndexOf",
+  "built-ins/Array/prototype/includes", "built-ins/Array/prototype/slice",
+  "built-ins/Array/prototype/concat", "built-ins/Array/prototype/join",
+  "built-ins/Array/prototype/reverse", "built-ins/Array/prototype/fill",
+  "built-ins/Array/prototype/find", "built-ins/Array/prototype/findIndex",
+  "built-ins/Array/prototype/sort", "built-ins/Array/prototype/splice",
+  "built-ins/Array/prototype/map", "built-ins/Array/prototype/filter",
+  "built-ins/Array/prototype/forEach", "built-ins/Array/prototype/every",
+  "built-ins/Array/prototype/some", "built-ins/Array/prototype/reduce",
+  "built-ins/Number/isNaN", "built-ins/Number/isFinite",
+  "built-ins/Number/isInteger", "built-ins/Number/parseFloat",
+  "built-ins/Number/parseInt", "built-ins/Number/POSITIVE_INFINITY",
+  "built-ins/Number/NEGATIVE_INFINITY", "built-ins/Number/MAX_VALUE",
+  "built-ins/Number/MIN_VALUE", "built-ins/Number/EPSILON",
+  "built-ins/Number/MAX_SAFE_INTEGER", "built-ins/Number/MIN_SAFE_INTEGER",
+  "built-ins/Number/isSafeInteger",
+  "built-ins/Boolean",
+  "built-ins/parseInt", "built-ins/parseFloat",
+  "built-ins/isNaN", "built-ins/isFinite",
+  "language/types/number", "language/types/boolean",
+  "language/types/null", "language/types/undefined",
+  "language/types/string", "language/types/reference",
+  "built-ins/Object/keys", "built-ins/Object/values", "built-ins/Object/entries",
+  "built-ins/JSON/parse", "built-ins/JSON/stringify",
+  "built-ins/String/prototype/charAt", "built-ins/String/prototype/charCodeAt",
+  "built-ins/String/prototype/indexOf", "built-ins/String/prototype/lastIndexOf",
+  "built-ins/String/prototype/includes", "built-ins/String/prototype/startsWith",
+  "built-ins/String/prototype/endsWith", "built-ins/String/prototype/slice",
+  "built-ins/String/prototype/substring", "built-ins/String/prototype/trim",
+  "built-ins/String/prototype/trimStart", "built-ins/String/prototype/trimEnd",
+  "built-ins/String/prototype/toLowerCase", "built-ins/String/prototype/toUpperCase",
+  "built-ins/String/prototype/split", "built-ins/String/prototype/replace",
+  "built-ins/String/prototype/repeat", "built-ins/String/prototype/padStart",
+  "built-ins/String/prototype/padEnd", "built-ins/String/prototype/concat",
+  "built-ins/String/prototype/at",
+  "built-ins/Promise/resolve", "built-ins/Promise/reject",
+  "built-ins/Promise/all", "built-ins/Promise/race",
+];
+
+interface CategoryInfo {
+  name: string;
+  path: string;
+  fileCount: number;
+}
+
+function collectFiles(dir: string): string[] {
+  if (!existsSync(dir)) return [];
+  const files: string[] = [];
+  function walk(d: string) {
+    for (const entry of readdirSync(d, { withFileTypes: true })) {
+      const full = join(d, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name.endsWith(".js")) files.push(full);
+    }
+  }
+  walk(dir);
+  return files.sort();
+}
+
+export function test262Plugin(): Plugin {
+  const projectRoot = resolve(__dirname, "..");
+  const testBase = join(projectRoot, "test262", "test");
+
+  // Cache the index so we don't rescan on every request
+  let cachedIndex: { categories: CategoryInfo[] } | null = null;
+  // Cache file lists per category
+  const fileListCache = new Map<string, string[]>();
+
+  function getIndex() {
+    if (cachedIndex) return cachedIndex;
+    const categories: CategoryInfo[] = [];
+    for (const cat of TEST_CATEGORIES) {
+      const dir = join(testBase, cat);
+      const files = collectFiles(dir);
+      if (files.length > 0) {
+        categories.push({
+          name: cat,
+          path: cat,
+          fileCount: files.length,
+        });
+        fileListCache.set(cat, files.map(f => relative(testBase, f)));
+      }
+    }
+    cachedIndex = { categories };
+    return cachedIndex;
+  }
+
+  return {
+    name: "test262-browser",
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const url = new URL(req.url!, `http://${req.headers.host}`);
+
+        if (url.pathname === "/api/test262-index") {
+          const index = getIndex();
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify(index));
+          return;
+        }
+
+        if (url.pathname === "/api/test262-files") {
+          const cat = url.searchParams.get("category");
+          if (!cat) {
+            res.statusCode = 400;
+            res.end("Missing category parameter");
+            return;
+          }
+          // Ensure index is built
+          getIndex();
+          const files = fileListCache.get(cat) ?? [];
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify(files));
+          return;
+        }
+
+        if (url.pathname === "/api/test262-file") {
+          const filePath = url.searchParams.get("path");
+          if (!filePath) {
+            res.statusCode = 400;
+            res.end("Missing path parameter");
+            return;
+          }
+          // Path traversal protection
+          const resolved = normalize(join(testBase, filePath));
+          if (!resolved.startsWith(testBase)) {
+            res.statusCode = 403;
+            res.end("Forbidden");
+            return;
+          }
+          if (!existsSync(resolved)) {
+            res.statusCode = 404;
+            res.end("File not found");
+            return;
+          }
+          try {
+            const content = readFileSync(resolved, "utf-8");
+            res.setHeader("Content-Type", "text/plain");
+            res.end(content);
+          } catch {
+            res.statusCode = 500;
+            res.end("Error reading file");
+          }
+          return;
+        }
+
+        next();
+      });
+    },
+  };
+}
