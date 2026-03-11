@@ -2754,6 +2754,73 @@ function compileElementAssignment(
     return VOID_RESULT;
   }
 
+  // Plain struct (non-vec): resolve string/numeric literal index to struct.set
+  if (typeDef?.kind === "struct") {
+    let fieldName: string | undefined;
+    if (ts.isStringLiteral(target.argumentExpression)) {
+      fieldName = target.argumentExpression.text;
+    } else if (ts.isNumericLiteral(target.argumentExpression)) {
+      fieldName = target.argumentExpression.text;
+    } else if (ts.isIdentifier(target.argumentExpression)) {
+      const sym = ctx.checker.getSymbolAtLocation(target.argumentExpression);
+      if (sym) {
+        const decl = sym.valueDeclaration;
+        if (decl && ts.isVariableDeclaration(decl) && decl.initializer) {
+          const declList = decl.parent;
+          if (ts.isVariableDeclarationList(declList) && (declList.flags & ts.NodeFlags.Const) !== 0) {
+            if (ts.isStringLiteral(decl.initializer)) fieldName = decl.initializer.text;
+            else if (ts.isNumericLiteral(decl.initializer)) fieldName = decl.initializer.text;
+          }
+        }
+      }
+    }
+    if (fieldName === undefined) {
+      const constVal = resolveConstantExpression(ctx, target.argumentExpression);
+      if (constVal !== undefined) fieldName = String(constVal);
+    }
+    if (fieldName !== undefined) {
+      // Check for setter accessor first (obj['prop'] = val where prop has a setter)
+      const objTsType = ctx.checker.getTypeAtLocation(target.expression);
+      const sName = resolveStructName(ctx, objTsType);
+      if (sName) {
+        const accessorKey = `${sName}_${fieldName}`;
+        if (ctx.classAccessorSet.has(accessorKey)) {
+          const setterName = `${sName}_set_${fieldName}`;
+          const funcIdx = ctx.funcMap.get(setterName);
+          if (funcIdx !== undefined) {
+            // struct ref is already on stack; save it, compile value, then call setter
+            const objLocal = allocLocal(fctx, `__struct_obj_${fctx.locals.length}`, arrType);
+            fctx.body.push({ op: "local.set", index: objLocal });
+            const valResult = compileExpression(ctx, fctx, value);
+            if (!valResult) return null;
+            const valLocal = allocLocal(fctx, `__struct_val_${fctx.locals.length}`, valResult);
+            fctx.body.push({ op: "local.set", index: valLocal });
+            fctx.body.push({ op: "local.get", index: objLocal });
+            fctx.body.push({ op: "local.get", index: valLocal });
+            fctx.body.push({ op: "call", funcIdx });
+            return VOID_RESULT;
+          }
+        }
+      }
+
+      const fieldIdx = typeDef.fields.findIndex((f: { name?: string }) => f.name === fieldName);
+      if (fieldIdx >= 0) {
+        // struct ref is already on stack; save it, compile value, then struct.set
+        const objLocal = allocLocal(fctx, `__struct_obj_${fctx.locals.length}`, arrType);
+        fctx.body.push({ op: "local.set", index: objLocal });
+        const fieldType = typeDef.fields[fieldIdx]!.type;
+        const valResult = compileExpression(ctx, fctx, value, fieldType);
+        if (!valResult) return null;
+        const valLocal = allocLocal(fctx, `__struct_val_${fctx.locals.length}`, fieldType);
+        fctx.body.push({ op: "local.set", index: valLocal });
+        fctx.body.push({ op: "local.get", index: objLocal });
+        fctx.body.push({ op: "local.get", index: valLocal });
+        fctx.body.push({ op: "struct.set", typeIdx, fieldIdx });
+        return VOID_RESULT;
+      }
+    }
+  }
+
   if (!typeDef || typeDef.kind !== "array") {
     ctx.errors.push({ message: "Assignment to non-array type", line: getLine(target), column: getCol(target) });
     return null;
@@ -5830,6 +5897,61 @@ function compileElementAccess(
         fctx.body.push({ op: "struct.get", typeIdx, fieldIdx });
         return typeDef.fields[fieldIdx]!.type;
       }
+      // String/numeric literal index on a plain struct → resolve to struct.get by field name
+      let fieldName: string | undefined;
+      if (ts.isStringLiteral(expr.argumentExpression)) {
+        fieldName = expr.argumentExpression.text;
+      } else if (ts.isNumericLiteral(expr.argumentExpression)) {
+        fieldName = expr.argumentExpression.text;
+      } else if (ts.isIdentifier(expr.argumentExpression)) {
+        // Const variable reference: const key = "x"; obj[key]
+        const sym = ctx.checker.getSymbolAtLocation(expr.argumentExpression);
+        if (sym) {
+          const decl = sym.valueDeclaration;
+          if (decl && ts.isVariableDeclaration(decl) && decl.initializer) {
+            const declList = decl.parent;
+            if (ts.isVariableDeclarationList(declList) && (declList.flags & ts.NodeFlags.Const) !== 0) {
+              if (ts.isStringLiteral(decl.initializer)) {
+                fieldName = decl.initializer.text;
+              } else if (ts.isNumericLiteral(decl.initializer)) {
+                fieldName = decl.initializer.text;
+              }
+            }
+          }
+        }
+      }
+      // Also handle simple binary expressions that evaluate to a known value
+      // e.g. obj[1 + 1] where 1+1 = "2" as field name
+      if (fieldName === undefined) {
+        const constVal = resolveConstantExpression(ctx, expr.argumentExpression);
+        if (constVal !== undefined) {
+          fieldName = String(constVal);
+        }
+      }
+      if (fieldName !== undefined) {
+        // Check for getter accessor first (obj['prop'] where prop has a getter)
+        const objTsType = ctx.checker.getTypeAtLocation(expr.expression);
+        const sName = resolveStructName(ctx, objTsType);
+        if (sName) {
+          const accessorKey = `${sName}_${fieldName}`;
+          if (ctx.classAccessorSet.has(accessorKey)) {
+            const getterName = `${sName}_get_${fieldName}`;
+            const funcIdx = ctx.funcMap.get(getterName);
+            if (funcIdx !== undefined) {
+              // obj ref is already on stack from compileExpression above
+              fctx.body.push({ op: "call", funcIdx });
+              const propType = ctx.checker.getTypeAtLocation(expr);
+              return resolveWasmType(ctx, propType);
+            }
+          }
+        }
+
+        const fieldIdx = typeDef.fields.findIndex((f: { name?: string }) => f.name === fieldName);
+        if (fieldIdx >= 0) {
+          fctx.body.push({ op: "struct.get", typeIdx, fieldIdx });
+          return typeDef.fields[fieldIdx]!.type;
+        }
+      }
       // Non-vec, non-tuple struct: element access not supported
       ctx.errors.push({
         message: `Element access on struct type '${typeDef.name ?? "unknown"}'`,
@@ -5949,6 +6071,77 @@ function compileObjectLiteral(
 }
 
 /**
+ * Try to evaluate an expression to a constant numeric or string value at compile time.
+ * Supports: numeric literals, string literals, simple arithmetic (+, -, *, /),
+ * and const variable references.
+ * Returns the resolved value (number or string) or undefined if not resolvable.
+ */
+function resolveConstantExpression(
+  ctx: CodegenContext,
+  expr: ts.Expression,
+): number | string | undefined {
+  if (ts.isNumericLiteral(expr)) return Number(expr.text);
+  if (ts.isStringLiteral(expr)) return expr.text;
+
+  // Parenthesized expression
+  if (ts.isParenthesizedExpression(expr)) {
+    return resolveConstantExpression(ctx, expr.expression);
+  }
+
+  // Const variable reference
+  if (ts.isIdentifier(expr)) {
+    const sym = ctx.checker.getSymbolAtLocation(expr);
+    if (sym) {
+      const decl = sym.valueDeclaration;
+      if (decl && ts.isVariableDeclaration(decl) && decl.initializer) {
+        const declList = decl.parent;
+        if (ts.isVariableDeclarationList(declList) && (declList.flags & ts.NodeFlags.Const) !== 0) {
+          return resolveConstantExpression(ctx, decl.initializer);
+        }
+      }
+    }
+    return undefined;
+  }
+
+  // Binary expression: a + b, a - b, a * b, a / b
+  if (ts.isBinaryExpression(expr)) {
+    const left = resolveConstantExpression(ctx, expr.left);
+    const right = resolveConstantExpression(ctx, expr.right);
+    if (left === undefined || right === undefined) return undefined;
+
+    // String concatenation
+    if (typeof left === "string" || typeof right === "string") {
+      if (expr.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+        return String(left) + String(right);
+      }
+      return undefined;
+    }
+
+    switch (expr.operatorToken.kind) {
+      case ts.SyntaxKind.PlusToken: return left + right;
+      case ts.SyntaxKind.MinusToken: return left - right;
+      case ts.SyntaxKind.AsteriskToken: return left * right;
+      case ts.SyntaxKind.SlashToken: return right !== 0 ? left / right : undefined;
+      case ts.SyntaxKind.PercentToken: return right !== 0 ? left % right : undefined;
+      default: return undefined;
+    }
+  }
+
+  // Prefix unary: -x, +x
+  if (ts.isPrefixUnaryExpression(expr)) {
+    const operand = resolveConstantExpression(ctx, expr.operand);
+    if (typeof operand !== "number") return undefined;
+    switch (expr.operator) {
+      case ts.SyntaxKind.MinusToken: return -operand;
+      case ts.SyntaxKind.PlusToken: return operand;
+      default: return undefined;
+    }
+  }
+
+  return undefined;
+}
+
+/**
  * Resolve the property name of an ObjectLiteralElementLike to a static string.
  * Handles identifiers, string literals, and computed property names that can be
  * evaluated at compile time (string literal expressions, const variables, enum members).
@@ -5967,8 +6160,8 @@ function resolvePropertyNameText(
   // String literal property name: { "x": 1 }
   if (ts.isStringLiteral(name)) return name.text;
 
-  // Numeric literal property name: { 0: 1 }
-  if (ts.isNumericLiteral(name)) return name.text;
+  // Numeric literal property name: { 0: 1 } → canonical string form
+  if (ts.isNumericLiteral(name)) return String(Number(name.text));
 
   // Computed property name: { [expr]: 1 }
   if (ts.isComputedPropertyName(name)) {
@@ -5991,6 +6184,9 @@ function resolveComputedKeyExpression(
 ): string | undefined {
   // Direct string literal: ["x"]
   if (ts.isStringLiteral(expr)) return expr.text;
+
+  // Numeric literal: [0], [42], [0x10] → canonical string form
+  if (ts.isNumericLiteral(expr)) return String(Number(expr.text));
 
   // Identifier referencing a const variable: [key]
   if (ts.isIdentifier(expr)) {
@@ -6022,6 +6218,20 @@ function resolveComputedKeyExpression(
     if (enumNumVal !== undefined) return String(enumNumVal);
   }
 
+  return undefined;
+}
+
+/**
+ * Resolve the property name of a getter/setter accessor to a static string.
+ * Handles identifiers, string literals, numeric literals, and computed property names.
+ */
+function resolveAccessorPropName(ctx: CodegenContext, name: ts.PropertyName): string | undefined {
+  if (ts.isIdentifier(name)) return name.text;
+  if (ts.isStringLiteral(name)) return name.text;
+  if (ts.isNumericLiteral(name)) return String(Number(name.text));
+  if (ts.isComputedPropertyName(name)) {
+    return resolveComputedKeyExpression(ctx, name.expression);
+  }
   return undefined;
 }
 
@@ -6116,9 +6326,10 @@ function compileObjectLiteralForStruct(
     if (
       ts.isGetAccessorDeclaration(prop) &&
       prop.name &&
-      ts.isIdentifier(prop.name)
+      (ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name) || ts.isComputedPropertyName(prop.name) || ts.isNumericLiteral(prop.name))
     ) {
-      const propName = prop.name.text;
+      const propName = resolveAccessorPropName(ctx, prop.name);
+      if (propName === undefined) continue;
       const accessorKey = `${typeName}_${propName}`;
       ctx.classAccessorSet.add(accessorKey);
 
@@ -6192,9 +6403,10 @@ function compileObjectLiteralForStruct(
     if (
       ts.isSetAccessorDeclaration(prop) &&
       prop.name &&
-      ts.isIdentifier(prop.name)
+      (ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name) || ts.isComputedPropertyName(prop.name) || ts.isNumericLiteral(prop.name))
     ) {
-      const propName = prop.name.text;
+      const propName = resolveAccessorPropName(ctx, prop.name);
+      if (propName === undefined) continue;
       const accessorKey = `${typeName}_${propName}`;
       ctx.classAccessorSet.add(accessorKey);
 
