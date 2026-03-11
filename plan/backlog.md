@@ -49,6 +49,7 @@ _Details: [sprint-1.md](sprint-1.md)_
 | [146](issues/146.md) | Unknown identifier / scope issues | M | ~269 |
 | [147](issues/147.md) | Function.name property | M | ~258 |
 | [149](issues/149.md) | Unsupported call expression patterns | L | ~637 |
+| [221](issues/221.md) | .call()/.apply() and comma-operator indirect calls | M | ~200 |
 | [153](issues/153.md) | Iterator protocol for destructuring | M | ~67 |
 | [173](issues/173.md) | Computed property names in classes | M | ~44 |
 

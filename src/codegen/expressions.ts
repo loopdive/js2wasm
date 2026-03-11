@@ -4083,6 +4083,118 @@ function compileCallExpression(
       if (callResult !== undefined) return callResult;
     }
 
+    // Handle fn.call(thisArg, ...args) and fn.apply(thisArg, argsArray)
+    // For standalone functions (no `this`), drop thisArg and call directly.
+    // For class methods, use thisArg as the receiver.
+    if (propAccess.name.text === "call" || propAccess.name.text === "apply") {
+      const isCall = propAccess.name.text === "call";
+      const innerExpr = propAccess.expression;
+
+      // Case 1: identifier.call(thisArg, args...) — standalone function
+      if (ts.isIdentifier(innerExpr)) {
+        const funcName = innerExpr.text;
+        const closureInfo = ctx.closureMap.get(funcName);
+        const funcIdx = ctx.funcMap.get(funcName);
+
+        if (closureInfo || funcIdx !== undefined) {
+          // Evaluate and drop thisArg (first argument) if present
+          if (expr.arguments.length > 0) {
+            const thisType = compileExpression(ctx, fctx, expr.arguments[0]!);
+            if (thisType && thisType !== VOID_RESULT) {
+              fctx.body.push({ op: "drop" });
+            }
+          }
+
+          if (isCall) {
+            // .call(thisArg, arg1, arg2, ...) — remaining args are positional
+            const remainingArgs = expr.arguments.slice(1);
+
+            if (closureInfo) {
+              // Create a synthetic call expression with remaining args
+              const syntheticCall = ts.factory.createCallExpression(
+                innerExpr,
+                undefined,
+                remainingArgs as unknown as readonly ts.Expression[],
+              );
+              // Copy source file info for error reporting
+              (syntheticCall as any).parent = expr.parent;
+              return compileClosureCall(ctx, fctx, syntheticCall as ts.CallExpression, funcName, closureInfo);
+            }
+
+            // Regular function call
+            const paramTypes = getFuncParamTypes(ctx, funcIdx!);
+            for (let i = 0; i < remainingArgs.length; i++) {
+              compileExpression(ctx, fctx, remainingArgs[i]!, paramTypes?.[i]);
+            }
+
+            // Supply defaults for missing optional params
+            const optInfo = ctx.funcOptionalParams.get(funcName);
+            if (optInfo) {
+              const numProvided = remainingArgs.length;
+              for (const opt of optInfo) {
+                if (opt.index >= numProvided) {
+                  pushDefaultValue(fctx, opt.type);
+                }
+              }
+            }
+
+            const finalFuncIdx = ctx.funcMap.get(funcName) ?? funcIdx!;
+            fctx.body.push({ op: "call", funcIdx: finalFuncIdx });
+
+            const sig = ctx.checker.getResolvedSignature(expr);
+            if (sig) {
+              const retType = ctx.checker.getReturnTypeOfSignature(sig);
+              if (isVoidType(retType)) return VOID_RESULT;
+              return resolveWasmType(ctx, retType);
+            }
+            return { kind: "f64" };
+          }
+          // .apply() with array — skip for now (complex)
+        }
+      }
+
+      // Case 2: obj.method.call(otherObj, args...) — method call with different receiver
+      if (ts.isPropertyAccessExpression(innerExpr) && isCall) {
+        const methodName = innerExpr.name.text;
+        const objExpr = innerExpr.expression;
+        const objType = ctx.checker.getTypeAtLocation(objExpr);
+
+        // Resolve class name from the object's type
+        let className = objType.getSymbol()?.name;
+        if (className && !ctx.classSet.has(className)) {
+          className = ctx.classExprNameMap.get(className) ?? className;
+        }
+
+        // Also try struct name
+        if (!className || !ctx.classSet.has(className)) {
+          className = resolveStructName(ctx, objType) ?? undefined;
+        }
+
+        if (className && (ctx.classSet.has(className) || ctx.funcMap.has(`${className}_${methodName}`))) {
+          const fullName = `${className}_${methodName}`;
+          const funcIdx = ctx.funcMap.get(fullName);
+          if (funcIdx !== undefined && expr.arguments.length > 0) {
+            // First argument is the thisArg (receiver)
+            compileExpression(ctx, fctx, expr.arguments[0]!);
+            // Remaining arguments are the method args
+            const paramTypes = getFuncParamTypes(ctx, funcIdx);
+            for (let i = 1; i < expr.arguments.length; i++) {
+              compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]); // i maps to param i (0=self)
+            }
+            fctx.body.push({ op: "call", funcIdx });
+
+            const sig = ctx.checker.getResolvedSignature(expr);
+            if (sig) {
+              const retType = ctx.checker.getReturnTypeOfSignature(sig);
+              if (isVoidType(retType)) return VOID_RESULT;
+              return resolveWasmType(ctx, retType);
+            }
+            return VOID_RESULT;
+          }
+        }
+      }
+    }
+
     if (
       ts.isIdentifier(propAccess.expression) &&
       propAccess.expression.text === "console" &&
@@ -4930,6 +5042,32 @@ function compileCallExpression(
   {
     const iifeResult = compileIIFE(ctx, fctx, expr);
     if (iifeResult !== undefined) return iifeResult;
+  }
+
+  // Handle comma-operator indirect calls: (0, foo)() or (expr, fn)()
+  // Unwrap parenthesized comma expression, evaluate left for side effects, call right.
+  {
+    let callee = expr.expression;
+    while (ts.isParenthesizedExpression(callee)) {
+      callee = callee.expression;
+    }
+    if (ts.isBinaryExpression(callee) && callee.operatorToken.kind === ts.SyntaxKind.CommaToken) {
+      // Evaluate left side for side effects and drop
+      const leftType = compileExpression(ctx, fctx, callee.left);
+      if (leftType && leftType !== VOID_RESULT) {
+        fctx.body.push({ op: "drop" });
+      }
+      // Create a synthetic call with the right side as callee
+      const syntheticCall = ts.factory.createCallExpression(
+        callee.right as ts.Expression as ts.LeftHandSideExpression,
+        expr.typeArguments,
+        expr.arguments,
+      );
+      // Preserve parent for type checker resolution
+      ts.setTextRange(syntheticCall, expr);
+      (syntheticCall as any).parent = expr.parent;
+      return compileCallExpression(ctx, fctx, syntheticCall as ts.CallExpression);
+    }
   }
 
   ctx.errors.push({

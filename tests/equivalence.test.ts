@@ -1599,4 +1599,85 @@ describe("IIFE and call expression edge cases", () => {
       [{ fn: "test", args: [] }],
     );
   });
+
+  it("comma operator indirect call: (0, fn)()", async () => {
+    await assertEquivalent(
+      `
+      function add(a: number, b: number): number { return a + b; }
+      export function test(): number {
+        return (0, add)(3, 4);
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("comma operator indirect call with side effects", async () => {
+    await assertEquivalent(
+      `
+      var counter: number = 0;
+      function inc(): number { counter = counter + 1; return counter; }
+      function double(x: number): number { return x * 2; }
+      export function test(): number {
+        const result = (inc(), double)(5);
+        return result + counter;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("fn.call() with thisArg dropped", async () => {
+    await assertEquivalent(
+      `
+      function add(a: number, b: number): number { return a + b; }
+      export function test(): number {
+        return add.call(null, 10, 20);
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("fn.call() with no extra args", async () => {
+    await assertEquivalent(
+      `
+      function getFortyTwo(): number { return 42; }
+      export function test(): number {
+        return getFortyTwo.call(null);
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("fn.call() with undefined thisArg", async () => {
+    await assertEquivalent(
+      `
+      function multiply(a: number, b: number): number { return a * b; }
+      export function test(): number {
+        return multiply.call(undefined, 6, 7);
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("chained method call on returned value", async () => {
+    await assertEquivalent(
+      `
+      class Builder {
+        value: number;
+        constructor(v: number) { this.value = v; }
+        add(n: number): Builder { return new Builder(this.value + n); }
+        result(): number { return this.value; }
+      }
+      function makeBuilder(): Builder { return new Builder(0); }
+      export function test(): number {
+        return makeBuilder().add(10).add(20).result();
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
 });
