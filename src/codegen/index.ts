@@ -7153,53 +7153,72 @@ function collectDeclarations(
   }
 
   // Fourth: collect module-level variable declarations as wasm globals
+  /** Register a single module-level global variable with the given name and wasm type. */
+  function registerModuleGlobal(name: string, wasmType: ValType): void {
+    if (ctx.funcMap.has(name)) return; // skip if shadowed by function
+    if (ctx.moduleGlobals.has(name)) return; // skip if already registered
+    if (ctx.classSet.has(name)) return; // skip class expression variables
+
+    // Build null/zero initializer for the global
+    const init: Instr[] =
+      wasmType.kind === "f64"
+        ? [{ op: "f64.const", value: 0 }]
+        : wasmType.kind === "i32"
+          ? [{ op: "i32.const", value: 0 }]
+          : wasmType.kind === "i64"
+            ? [{ op: "i64.const", value: 0n } as unknown as Instr]
+            : wasmType.kind === "ref_null" || wasmType.kind === "ref"
+              ? [
+                  {
+                    op: "ref.null",
+                    typeIdx: (wasmType as { typeIdx: number }).typeIdx,
+                  },
+                ]
+              : [{ op: "ref.null.extern" }];
+
+    // Widen non-nullable ref to ref_null so the global can hold null initially
+    const globalType: ValType =
+      wasmType.kind === "ref"
+        ? {
+            kind: "ref_null",
+            typeIdx: (wasmType as { typeIdx: number }).typeIdx,
+          }
+        : wasmType;
+
+    const globalIdx = nextModuleGlobalIdx(ctx);
+    ctx.mod.globals.push({
+      name: `__mod_${name}`,
+      type: globalType,
+      mutable: true,
+      init,
+    });
+    ctx.moduleGlobals.set(name, globalIdx);
+  }
+
   for (const stmt of sourceFile.statements) {
     if (!ts.isVariableStatement(stmt)) continue;
     if (hasDeclareModifier(stmt)) continue;
     for (const decl of stmt.declarationList.declarations) {
-      if (!ts.isIdentifier(decl.name)) continue;
-      const name = decl.name.text;
-      if (ctx.funcMap.has(name)) continue; // skip if shadowed by function
-      if (ctx.moduleGlobals.has(name)) continue; // skip if already registered
-      if (ctx.classSet.has(name)) continue; // skip class expression variables
-
-      const varType = ctx.checker.getTypeAtLocation(decl);
-      const wasmType = resolveWasmType(ctx, varType);
-
-      // Build null/zero initializer for the global
-      const init: Instr[] =
-        wasmType.kind === "f64"
-          ? [{ op: "f64.const", value: 0 }]
-          : wasmType.kind === "i32"
-            ? [{ op: "i32.const", value: 0 }]
-            : wasmType.kind === "i64"
-              ? [{ op: "i64.const", value: 0n } as unknown as Instr]
-              : wasmType.kind === "ref_null" || wasmType.kind === "ref"
-                ? [
-                    {
-                      op: "ref.null",
-                      typeIdx: (wasmType as { typeIdx: number }).typeIdx,
-                    },
-                  ]
-                : [{ op: "ref.null.extern" }];
-
-      // Widen non-nullable ref to ref_null so the global can hold null initially
-      const globalType: ValType =
-        wasmType.kind === "ref"
-          ? {
-              kind: "ref_null",
-              typeIdx: (wasmType as { typeIdx: number }).typeIdx,
+      if (ts.isIdentifier(decl.name)) {
+        const varType = ctx.checker.getTypeAtLocation(decl);
+        const wasmType = resolveWasmType(ctx, varType);
+        registerModuleGlobal(decl.name.text, wasmType);
+      } else if (ts.isObjectBindingPattern(decl.name) || ts.isArrayBindingPattern(decl.name)) {
+        // Handle destructuring: var { x, y } = obj; var [a, b] = arr;
+        const registerBindingNames = (pattern: ts.BindingPattern): void => {
+          for (const element of pattern.elements) {
+            if (ts.isOmittedExpression(element)) continue;
+            if (ts.isIdentifier(element.name)) {
+              const elemType = ctx.checker.getTypeAtLocation(element);
+              const wasmType = resolveWasmType(ctx, elemType);
+              registerModuleGlobal(element.name.text, wasmType);
+            } else if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
+              registerBindingNames(element.name);
             }
-          : wasmType;
-
-      const globalIdx = nextModuleGlobalIdx(ctx);
-      ctx.mod.globals.push({
-        name: `__mod_${name}`,
-        type: globalType,
-        mutable: true,
-        init,
-      });
-      ctx.moduleGlobals.set(name, globalIdx);
+          }
+        };
+        registerBindingNames(decl.name);
+      }
     }
     // Collect the statement for init compilation (skip pure class expression bindings)
     const hasNonClassDecl = stmt.declarationList.declarations.some(
@@ -7923,6 +7942,51 @@ function hoistVarDeclarations(
   }
 }
 
+/**
+ * Walk a binding pattern and hoist all bound identifiers as locals.
+ * Handles nested patterns: var { a, b: { c } } = obj; var [x, [y, z]] = arr;
+ */
+function hoistBindingPattern(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  pattern: ts.BindingPattern,
+): void {
+  for (const element of pattern.elements) {
+    if (ts.isOmittedExpression(element)) continue;
+    if (ts.isIdentifier(element.name)) {
+      const name = element.name.text;
+      if (fctx.localMap.has(name)) continue;
+      if (ctx.moduleGlobals.has(name)) continue;
+      const elemType = ctx.checker.getTypeAtLocation(element);
+      const wasmType = resolveWasmType(ctx, elemType);
+      allocLocal(fctx, name, wasmType);
+    } else if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
+      hoistBindingPattern(ctx, fctx, element.name);
+    }
+  }
+}
+
+/** Hoist a single variable declaration (handles both simple identifiers and binding patterns). */
+function hoistVarDecl(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  decl: ts.VariableDeclaration,
+): void {
+  if (ts.isIdentifier(decl.name)) {
+    const name = decl.name.text;
+    if (fctx.localMap.has(name)) return;
+    if (ctx.moduleGlobals.has(name)) return;
+    const varType = ctx.checker.getTypeAtLocation(decl);
+    const wasmType = resolveWasmType(ctx, varType);
+    allocLocal(fctx, name, wasmType);
+    return;
+  }
+  // Handle destructuring patterns: var { x, y } = obj; var [a, b] = arr;
+  if (ts.isObjectBindingPattern(decl.name) || ts.isArrayBindingPattern(decl.name)) {
+    hoistBindingPattern(ctx, fctx, decl.name);
+  }
+}
+
 function walkStmtForVars(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -7933,14 +7997,7 @@ function walkStmtForVars(
     // Only hoist `var` (not let/const)
     if (list.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const)) return;
     for (const decl of list.declarations) {
-      if (!ts.isIdentifier(decl.name)) continue;
-      const name = decl.name.text;
-      if (fctx.localMap.has(name)) continue;
-      // Skip module globals
-      if (ctx.moduleGlobals.has(name)) continue;
-      const varType = ctx.checker.getTypeAtLocation(decl);
-      const wasmType = resolveWasmType(ctx, varType);
-      allocLocal(fctx, name, wasmType);
+      hoistVarDecl(ctx, fctx, decl);
     }
     return;
   }
@@ -7962,12 +8019,7 @@ function walkStmtForVars(
       const list = stmt.initializer;
       if (!(list.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const))) {
         for (const decl of list.declarations) {
-          if (!ts.isIdentifier(decl.name)) continue;
-          const name = decl.name.text;
-          if (fctx.localMap.has(name)) continue;
-          if (ctx.moduleGlobals.has(name)) continue;
-          const varType = ctx.checker.getTypeAtLocation(decl);
-          allocLocal(fctx, name, resolveWasmType(ctx, varType));
+          hoistVarDecl(ctx, fctx, decl);
         }
       }
     }
@@ -7975,6 +8027,15 @@ function walkStmtForVars(
     return;
   }
   if (ts.isForInStatement(stmt) || ts.isForOfStatement(stmt)) {
+    // Hoist the loop variable for `for (var x in obj)` / `for (var x of arr)`
+    if (stmt.initializer && ts.isVariableDeclarationList(stmt.initializer)) {
+      const list = stmt.initializer;
+      if (!(list.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const))) {
+        for (const decl of list.declarations) {
+          hoistVarDecl(ctx, fctx, decl);
+        }
+      }
+    }
     walkStmtForVars(ctx, fctx, stmt.statement);
     return;
   }
