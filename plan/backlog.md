@@ -2,10 +2,11 @@
 
 ## Open issues
 
-### Language features
+### Core language features
 
 | #                    | Feature                                            | Complexity | Tests blocked |
 | -------------------- | -------------------------------------------------- | ---------- | ------------- |
+| [137](issues/137.md) | Object literal getter/setter                       | M          | ~60           |
 | [130](issues/130.md) | Shape inference Phase 4 — hashmap fallback + more methods | L   | 2,200+        |
 
 ### Won't implement (fundamental JS runtime features)
@@ -157,4 +158,10 @@
 | [126](issues/126.md)      | valueOf/toString coercion                               | class method dispatch                   |
 | [127](issues/127.md)      | Private class members (#field, #method)                 | strip # prefix, field initializers      |
 | [128](issues/128.md)      | BigInt type                                             | i64 ops, literals, coercions            |
+| [131](issues/131.md)      | String concatenation with variables                     | addStringImports + compound assign      |
+| [132](issues/132.md)      | Logical operators returning values                      | already implemented, tests added        |
+| [133](issues/133.md)      | typeof runtime comparison                               | static resolution + callable detect     |
+| [134](issues/134.md)      | Switch fallthrough                                      | matched-flag rewrite                    |
+| [135](issues/135.md)      | Ternary returning non-boolean values                    | type reconciliation across branches     |
+| [136](issues/136.md)      | Loose equality (== / !=)                                | mixed-type coercion dispatch            |
 

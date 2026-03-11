@@ -1,6 +1,6 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext, ClosureInfo, RestParamInfo } from "./index.js";
-import { allocLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers } from "./index.js";
+import { allocLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers, addStringImports } from "./index.js";
 import {
   mapTsTypeToWasm,
   isNumberType,
@@ -93,6 +93,16 @@ export function compileExpression(
   }
   pushDefaultValue(fctx, wasmType);
   return wasmType;
+}
+
+/** Check if two ValTypes are structurally equal */
+function valTypesMatch(a: ValType, b: ValType): boolean {
+  if (a.kind !== b.kind) return false;
+  if ((a.kind === "ref" || a.kind === "ref_null") &&
+      (b.kind === "ref" || b.kind === "ref_null")) {
+    return (a as { typeIdx: number }).typeIdx === (b as { typeIdx: number }).typeIdx;
+  }
+  return true;
 }
 
 /** Coerce a value on the stack from one type to another */
@@ -1426,7 +1436,10 @@ function compileTypeofComparison(
     const wasmType = resolveWasmType(ctx, tsType);
     if (wasmType.kind === "f64") staticTypeof = "number";
     else if (wasmType.kind === "i32") staticTypeof = isBooleanType(tsType) ? "boolean" : "number";
-    else if ((wasmType.kind === "ref" || wasmType.kind === "ref_null") && !isAnyValue(wasmType, ctx)) staticTypeof = "object";
+    else if ((wasmType.kind === "ref" || wasmType.kind === "ref_null") && !isAnyValue(wasmType, ctx)) {
+      const callSigs = tsType.getCallSignatures?.();
+      staticTypeof = (callSigs && callSigs.length > 0) ? "function" : "object";
+    }
     else if (isStringType(tsType)) staticTypeof = "string";
   }
   if (staticTypeof !== null) {
@@ -1632,6 +1645,77 @@ function compileBinaryExpression(
   // Regular binary ops: evaluate both sides
   const leftTsType = ctx.checker.getTypeAtLocation(expr.left);
   const rightTsType = ctx.checker.getTypeAtLocation(expr.right);
+
+  // ── Loose equality (== / !=) with mixed types ──
+  // JS loose equality coerces types before comparing. Handle common cases:
+  //   number == boolean / boolean == number → coerce boolean to number
+  //   string == number / number == string → coerce string to number (parseFloat)
+  //   string == boolean / boolean == string → coerce both to number
+  const isLooseEq = op === ts.SyntaxKind.EqualsEqualsToken;
+  const isLooseNeq = op === ts.SyntaxKind.ExclamationEqualsToken;
+  if (isLooseEq || isLooseNeq) {
+    const leftIsNum = isNumberType(leftTsType);
+    const leftIsBool = isBooleanType(leftTsType);
+    const leftIsStr = isStringType(leftTsType);
+    const rightIsNum = isNumberType(rightTsType);
+    const rightIsBool = isBooleanType(rightTsType);
+    const rightIsStr = isStringType(rightTsType);
+
+    // number == boolean: coerce boolean (i32) → f64, then f64.eq
+    if (leftIsNum && rightIsBool) {
+      compileExpression(ctx, fctx, expr.left, { kind: "f64" });
+      compileExpression(ctx, fctx, expr.right);
+      fctx.body.push({ op: "f64.convert_i32_s" });
+      fctx.body.push({ op: isLooseEq ? "f64.eq" : "f64.ne" });
+      return { kind: "i32" };
+    }
+    // boolean == number: coerce boolean (i32) → f64, then f64.eq
+    if (leftIsBool && rightIsNum) {
+      compileExpression(ctx, fctx, expr.left);
+      fctx.body.push({ op: "f64.convert_i32_s" });
+      compileExpression(ctx, fctx, expr.right, { kind: "f64" });
+      fctx.body.push({ op: isLooseEq ? "f64.eq" : "f64.ne" });
+      return { kind: "i32" };
+    }
+    // string == number / number == string: coerce string to number via parseFloat
+    if ((leftIsStr && rightIsNum) || (leftIsNum && rightIsStr)) {
+      const pfIdx = ctx.funcMap.get("parseFloat");
+      if (pfIdx !== undefined) {
+        if (leftIsStr) {
+          // left is string, right is number
+          compileExpression(ctx, fctx, expr.left);
+          fctx.body.push({ op: "call", funcIdx: pfIdx });
+          compileExpression(ctx, fctx, expr.right, { kind: "f64" });
+        } else {
+          // left is number, right is string
+          compileExpression(ctx, fctx, expr.left, { kind: "f64" });
+          compileExpression(ctx, fctx, expr.right);
+          fctx.body.push({ op: "call", funcIdx: pfIdx });
+        }
+        fctx.body.push({ op: isLooseEq ? "f64.eq" : "f64.ne" });
+        return { kind: "i32" };
+      }
+    }
+    // string == boolean / boolean == string: coerce both to number
+    if ((leftIsStr && rightIsBool) || (leftIsBool && rightIsStr)) {
+      const pfIdx = ctx.funcMap.get("parseFloat");
+      if (pfIdx !== undefined) {
+        if (leftIsStr) {
+          compileExpression(ctx, fctx, expr.left);
+          fctx.body.push({ op: "call", funcIdx: pfIdx });
+          compileExpression(ctx, fctx, expr.right);
+          fctx.body.push({ op: "f64.convert_i32_s" });
+        } else {
+          compileExpression(ctx, fctx, expr.left);
+          fctx.body.push({ op: "f64.convert_i32_s" });
+          compileExpression(ctx, fctx, expr.right);
+          fctx.body.push({ op: "call", funcIdx: pfIdx });
+        }
+        fctx.body.push({ op: isLooseEq ? "f64.eq" : "f64.ne" });
+        return { kind: "i32" };
+      }
+    }
+  }
 
   // ── Fast mode: any-typed operand dispatch ──
   // When both operands are `any`, compile without numeric hint and call __any_* helpers
@@ -2859,6 +2943,83 @@ function isCompoundAssignment(op: ts.SyntaxKind): boolean {
   );
 }
 
+/**
+ * Handle string += : load current string value, compile RHS (coercing
+ * numbers to string if needed), call concat, store back.
+ */
+function compileStringCompoundAssignment(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.BinaryExpression,
+  name: string,
+): ValType | null {
+  // Ensure string imports are registered
+  addStringImports(ctx);
+
+  const concatIdx = ctx.funcMap.get("concat");
+  if (concatIdx === undefined) {
+    ctx.errors.push({
+      message: "String concat import not available",
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+
+  // Determine storage location
+  const localIdx = fctx.localMap.get(name);
+  const capturedIdx = ctx.capturedGlobals.get(name);
+  const moduleIdx = ctx.moduleGlobals.get(name);
+
+  // Load current value
+  if (localIdx !== undefined) {
+    fctx.body.push({ op: "local.get", index: localIdx });
+  } else if (capturedIdx !== undefined) {
+    fctx.body.push({ op: "global.get", index: capturedIdx });
+  } else if (moduleIdx !== undefined) {
+    fctx.body.push({ op: "global.get", index: moduleIdx });
+  } else {
+    ctx.errors.push({
+      message: `Unknown variable: ${name}`,
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+
+  // Compile RHS, coercing numbers to string
+  const rhsType = compileExpression(ctx, fctx, expr.right);
+  if (!rhsType) {
+    ctx.errors.push({
+      message: "Failed to compile string += RHS",
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+  if (rhsType.kind === "f64" || rhsType.kind === "i32") {
+    if (rhsType.kind === "i32") fctx.body.push({ op: "f64.convert_i32_s" });
+    const toStr = ctx.funcMap.get("number_toString");
+    if (toStr !== undefined) fctx.body.push({ op: "call", funcIdx: toStr });
+  }
+
+  // Call concat
+  fctx.body.push({ op: "call", funcIdx: concatIdx });
+
+  // Store back
+  if (localIdx !== undefined) {
+    fctx.body.push({ op: "local.tee", index: localIdx });
+  } else if (capturedIdx !== undefined) {
+    fctx.body.push({ op: "global.set", index: capturedIdx });
+    fctx.body.push({ op: "global.get", index: capturedIdx });
+  } else if (moduleIdx !== undefined) {
+    fctx.body.push({ op: "global.set", index: moduleIdx });
+    fctx.body.push({ op: "global.get", index: moduleIdx });
+  }
+
+  return { kind: "externref" };
+}
+
 function compileCompoundAssignment(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -2875,6 +3036,14 @@ function compileCompoundAssignment(
   }
 
   const name = expr.left.text;
+
+  // String += : concat instead of numeric add
+  if (op === ts.SyntaxKind.PlusEqualsToken) {
+    const leftTsType = ctx.checker.getTypeAtLocation(expr.left);
+    if (isStringType(leftTsType)) {
+      return compileStringCompoundAssignment(ctx, fctx, expr, name);
+    }
+  }
 
   // Check captured globals first
   const capturedIdx = ctx.capturedGlobals.get(name);
@@ -5058,16 +5227,64 @@ function compileConditionalExpression(
   const savedBody = fctx.body;
   fctx.body = [];
   const thenResultType = compileExpression(ctx, fctx, expr.whenTrue);
-  const thenInstrs = fctx.body;
+  let thenInstrs = fctx.body;
 
-  let resultValType: ValType = thenResultType ?? { kind: "i32" };
-
-  // Pass the then-branch type as hint so else-branch fallback matches
   fctx.body = [];
-  const elseResultType = compileExpression(ctx, fctx, expr.whenFalse, resultValType);
-  const elseInstrs = fctx.body;
+  const elseResultType = compileExpression(ctx, fctx, expr.whenFalse);
+  let elseInstrs = fctx.body;
 
   fctx.body = savedBody;
+
+  const thenType: ValType = thenResultType ?? { kind: "i32" };
+  const elseType: ValType = elseResultType ?? { kind: "i32" };
+
+  // Determine the common result type for both branches
+  let resultValType: ValType = thenType;
+
+  const sameKind = thenType.kind === elseType.kind;
+  const sameRefIdx = sameKind &&
+    (thenType.kind === "ref" || thenType.kind === "ref_null") &&
+    (thenType as { typeIdx: number }).typeIdx === (elseType as { typeIdx: number }).typeIdx;
+
+  if (!sameKind || ((thenType.kind === "ref" || thenType.kind === "ref_null") && !sameRefIdx)) {
+    // Types differ — find a common type and coerce both branches
+    if ((thenType.kind === "i32" || thenType.kind === "f64") &&
+        (elseType.kind === "i32" || elseType.kind === "f64")) {
+      // Both numeric — coerce to f64
+      resultValType = { kind: "f64" };
+    } else if ((thenType.kind === "ref" || thenType.kind === "ref_null") &&
+               (elseType.kind === "ref" || elseType.kind === "ref_null") &&
+               isAnyValue(thenType, ctx) === isAnyValue(elseType, ctx)) {
+      // Both refs but different typeIdx — use ref_null of the then type
+      resultValType = thenType.kind === "ref"
+        ? { kind: "ref_null", typeIdx: (thenType as { typeIdx: number }).typeIdx }
+        : thenType;
+    } else {
+      // Fallback: coerce both to externref
+      resultValType = { kind: "externref" };
+    }
+
+    // Coerce then-branch to the common type
+    if (!valTypesMatch(thenType, resultValType)) {
+      const coerceBody: Instr[] = [];
+      fctx.body = coerceBody;
+      coerceType(ctx, fctx, thenType, resultValType);
+      fctx.body = savedBody;
+      thenInstrs = [...thenInstrs, ...coerceBody];
+    }
+
+    // Coerce else-branch to the common type
+    if (!valTypesMatch(elseType, resultValType)) {
+      const coerceBody: Instr[] = [];
+      fctx.body = coerceBody;
+      coerceType(ctx, fctx, elseType, resultValType);
+      fctx.body = savedBody;
+      elseInstrs = [...elseInstrs, ...coerceBody];
+    }
+  } else {
+    // Same type — just pass the then-type through
+    resultValType = thenType;
+  }
 
   // Conditional results must be nullable — either branch could produce null
   if (resultValType.kind === "ref") {
@@ -6606,6 +6823,9 @@ function compileStringBinaryOp(
     });
     return null;
   }
+
+  // Ensure string imports are registered (may not be if no string literals in source)
+  addStringImports(ctx);
 
   // Compile operands with coercion: if one side is a number/bool in a string
   // context, inject number_toString to convert it to a string (JS ToNumber semantics)

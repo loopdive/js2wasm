@@ -44,6 +44,15 @@ function buildImports(result: CompileResult): WebAssembly.Imports {
     Math_expm1: Math.expm1,
     Math_log1p: Math.log1p,
     number_toString: (v: number) => String(v),
+    __typeof_number: (v: unknown) => (typeof v === "number" ? 1 : 0),
+    __typeof_string: (v: unknown) => (typeof v === "string" ? 1 : 0),
+    __typeof_boolean: (v: unknown) => (typeof v === "boolean" ? 1 : 0),
+    __typeof: (v: unknown) => typeof v,
+    __is_truthy: (v: unknown) => (v ? 1 : 0),
+    __unbox_number: (v: unknown) => Number(v),
+    __unbox_boolean: (v: unknown) => (v ? 1 : 0),
+    __box_number: (v: number) => v,
+    __box_boolean: (v: number) => Boolean(v),
   };
   return {
     env,
@@ -584,6 +593,35 @@ describe("TS ↔ Wasm equivalence", () => {
       ],
     );
   });
+
+  it("typeof comparison — static resolution for number, string, boolean", async () => {
+    await assertEquivalent(
+      `
+      export function typeofNumber(x: number): number {
+        return typeof x === "number" ? 1 : 0;
+      }
+      export function typeofString(x: string): number {
+        return typeof x === "string" ? 1 : 0;
+      }
+      export function typeofBoolean(x: boolean): number {
+        return typeof x === "boolean" ? 1 : 0;
+      }
+      export function typeofMismatch(x: number): number {
+        return typeof x === "string" ? 1 : 0;
+      }
+      export function typeofNeq(x: string): number {
+        return typeof x !== "number" ? 1 : 0;
+      }
+      `,
+      [
+        { fn: "typeofNumber", args: [42] },
+        { fn: "typeofString", args: ["hello"] },
+        { fn: "typeofBoolean", args: [true] },
+        { fn: "typeofMismatch", args: [42] },
+        { fn: "typeofNeq", args: ["hello"] },
+      ],
+    );
+  });
 });
 
 describe("Gradual typing: boxed any (fast mode)", () => {
@@ -984,6 +1022,297 @@ describe("BigInt", () => {
         const a: bigint = 42n;
         const b: bigint = 42n;
         if (a === b) return 1;
+        return 0;
+      }
+    `);
+    expect(exports.test()).toBe(1);
+  });
+});
+
+describe("Logical operators returning values", () => {
+  it("0 || 42 returns 42", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        return 0 || 42;
+      }
+    `);
+    expect(exports.test()).toBe(42);
+  });
+
+  it("5 || 42 returns 5", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        return 5 || 42;
+      }
+    `);
+    expect(exports.test()).toBe(5);
+  });
+
+  it("1 && 42 returns 42", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        return 1 && 42;
+      }
+    `);
+    expect(exports.test()).toBe(42);
+  });
+
+  it("0 && 42 returns 0", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        return 0 && 42;
+      }
+    `);
+    expect(exports.test()).toBe(0);
+  });
+
+  it("variable || default value", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        let x: number = 0;
+        let result = x || 99;
+        return result;
+      }
+    `);
+    expect(exports.test()).toBe(99);
+  });
+
+  it("truthy variable || default value returns variable", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        let x: number = 7;
+        let result = x || 99;
+        return result;
+      }
+    `);
+    expect(exports.test()).toBe(7);
+  });
+
+  it("chained logical or", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        return 0 || 0 || 3;
+      }
+    `);
+    expect(exports.test()).toBe(3);
+  });
+
+  it("chained logical and", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        return 1 && 2 && 3;
+      }
+    `);
+    expect(exports.test()).toBe(3);
+  });
+});
+describe("Switch fallthrough", () => {
+  it("fallthrough: case 1 falls through to case 2", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        let x = 0;
+        switch (1) {
+          case 1: x += 10;
+          case 2: x += 20; break;
+        }
+        return x;
+      }
+    `);
+    expect(exports.test()).toBe(30);
+  });
+  it("no fallthrough with break", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        let x = 0;
+        switch (1) {
+          case 1: x = 10; break;
+          case 2: x = 20; break;
+        }
+        return x;
+      }
+    `);
+    expect(exports.test()).toBe(10);
+  });
+  it("multiple cases sharing body", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        let x = 0;
+        switch (2) {
+          case 1:
+          case 2: x = 42; break;
+        }
+        return x;
+      }
+    `);
+    expect(exports.test()).toBe(42);
+  });
+  it("default fallthrough", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        let x = 0;
+        switch (99) {
+          case 1: x += 10; break;
+          default: x += 5;
+          case 2: x += 20; break;
+        }
+        return x;
+      }
+    `);
+    expect(exports.test()).toBe(25);
+  });
+});
+  it("string concatenation with variables", async () => {
+    await assertEquivalent(
+      `
+      export function greetFull(first: string, last: string): string {
+        return first + " " + last;
+      }
+      `,
+      [
+        { fn: "greetFull", args: ["Jane", "Doe"] },
+        { fn: "greetFull", args: ["", "Solo"] },
+        { fn: "greetFull", args: ["One", ""] },
+      ],
+    );
+  });
+  it("string += compound assignment", async () => {
+    await assertEquivalent(
+      `
+      export function buildGreeting(name: string): string {
+        let result: string = "Hello";
+        result += ", ";
+        result += name;
+        result += "!";
+        return result;
+      }
+      `,
+      [
+        { fn: "buildGreeting", args: ["World"] },
+        { fn: "buildGreeting", args: ["Alice"] },
+      ],
+    );
+  });
+  it("multi-variable string concat chain", async () => {
+    await assertEquivalent(
+      `
+      export function join3(a: string, b: string, c: string): string {
+        return a + b + c;
+      }
+      `,
+      [
+        { fn: "join3", args: ["x", "y", "z"] },
+        { fn: "join3", args: ["hello", " ", "world"] },
+        { fn: "join3", args: ["", "", ""] },
+      ],
+    );
+  });
+  it("ternary with non-boolean return values", async () => {
+    await assertEquivalent(
+      `
+      export function pickNum(flag: boolean): number {
+        return flag ? 10 : 20;
+      }
+      export function pickNested(x: number): number {
+        return x > 0 ? 100 : x < 0 ? -100 : 0;
+      }
+      export function ternaryMath(a: number, b: number): number {
+        return a > b ? a - b : b - a;
+      }
+      `,
+      [
+        { fn: "pickNum", args: [true] },
+        { fn: "pickNum", args: [false] },
+        { fn: "pickNested", args: [5] },
+        { fn: "pickNested", args: [-3] },
+        { fn: "pickNested", args: [0] },
+        { fn: "ternaryMath", args: [10, 3] },
+        { fn: "ternaryMath", args: [3, 10] },
+      ],
+    );
+  });
+describe("Loose equality (== / !=)", () => {
+  it("number == boolean coercion", async () => {
+    await assertEquivalent(
+      `
+      export function zeroEqFalse(): number { return (0 == false) ? 1 : 0; }
+      export function oneEqTrue(): number { return (1 == true) ? 1 : 0; }
+      export function twoNeqTrue(): number { return (2 != true) ? 1 : 0; }
+      `,
+      [
+        { fn: "zeroEqFalse", args: [] },
+        { fn: "oneEqTrue", args: [] },
+        { fn: "twoNeqTrue", args: [] },
+      ],
+    );
+  });
+  it("boolean == number coercion", async () => {
+    await assertEquivalent(
+      `
+      export function falseEqZero(): number { return (false == 0) ? 1 : 0; }
+      export function trueEqOne(): number { return (true == 1) ? 1 : 0; }
+      export function trueNeqTwo(): number { return (true != 2) ? 1 : 0; }
+      `,
+      [
+        { fn: "falseEqZero", args: [] },
+        { fn: "trueEqOne", args: [] },
+        { fn: "trueNeqTwo", args: [] },
+      ],
+    );
+  });
+  it("null == undefined coercion", async () => {
+    const exports = await compileToWasm(`
+      export function nullEqUndef(): number { return (null == undefined) ? 1 : 0; }
+      export function undefEqNull(): number { return (undefined == null) ? 1 : 0; }
+      export function nullNeqUndef(): number { return (null != undefined) ? 1 : 0; }
+    `);
+    expect(exports.nullEqUndef()).toBe(1);
+    expect(exports.undefEqNull()).toBe(1);
+    expect(exports.nullNeqUndef()).toBe(0);
+  });
+  it("same-type loose equality delegates to strict", async () => {
+    await assertEquivalent(
+      `
+      export function numEq(): number { return (5 == 5) ? 1 : 0; }
+      export function numNeq(): number { return (5 != 3) ? 1 : 0; }
+      export function boolEq(): number { return (true == true) ? 1 : 0; }
+      `,
+      [
+        { fn: "numEq", args: [] },
+        { fn: "numNeq", args: [] },
+        { fn: "boolEq", args: [] },
+      ],
+    );
+  });
+});
+
+
+describe("typeof comparison", () => {
+  it("typeof number === 'number'", async () => {
+    const exports = await compileToWasm(`
+      export function test(x: number): number {
+        if (typeof x === "number") return 1;
+        return 0;
+      }
+    `);
+    expect(exports.test(42)).toBe(1);
+  });
+
+  it("typeof string === 'string'", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        const s: string = "hello";
+        if (typeof s === "string") return 1;
+        return 0;
+      }
+    `);
+    expect(exports.test()).toBe(1);
+  });
+
+  it("typeof boolean === 'boolean'", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        const b: boolean = true;
+        if (typeof b === "boolean") return 1;
         return 0;
       }
     `);
