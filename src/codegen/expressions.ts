@@ -2619,6 +2619,17 @@ function compileElementAssignment(
   const typeIdx = (arrType as { typeIdx: number }).typeIdx;
   const typeDef = ctx.mod.types[typeIdx];
 
+  // String-literal bracket assignment on struct: obj["prop"] = value → struct.set
+  if (typeDef?.kind === "struct" && ts.isStringLiteral(target.argumentExpression)) {
+    const propName = target.argumentExpression.text;
+    const fieldIdx = typeDef.fields.findIndex((f: { name: string }) => f.name === propName);
+    if (fieldIdx !== -1) {
+      compileExpression(ctx, fctx, value, typeDef.fields[fieldIdx]!.type);
+      fctx.body.push({ op: "struct.set", typeIdx, fieldIdx });
+      return VOID_RESULT;
+    }
+  }
+
   // Handle vec struct (array wrapped in {length, data}) — only for actual __vec_* types
   const isVecStruct = typeDef?.kind === "struct" &&
     typeDef.fields.length === 2 &&
@@ -5829,6 +5840,15 @@ function compileElementAccess(
         }
         fctx.body.push({ op: "struct.get", typeIdx, fieldIdx });
         return typeDef.fields[fieldIdx]!.type;
+      }
+      // String-literal bracket access on struct: obj["prop"] → struct.get
+      if (ts.isStringLiteral(expr.argumentExpression)) {
+        const propName = expr.argumentExpression.text;
+        const fieldIdx = typeDef.fields.findIndex((f: { name: string }) => f.name === propName);
+        if (fieldIdx !== -1) {
+          fctx.body.push({ op: "struct.get", typeIdx, fieldIdx });
+          return typeDef.fields[fieldIdx]!.type;
+        }
       }
       // Non-vec, non-tuple struct: element access not supported
       ctx.errors.push({
