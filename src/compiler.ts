@@ -396,6 +396,7 @@ export function compileSource(
     2538, // "Type 'X' cannot be used as an index type" — valid JS pattern (e.g. symbol/boolean as index)
     1468, // "A computed property name must be of type 'string', 'number', 'symbol', or 'any'" — valid JS
     2741, // "Property 'X' is missing in type 'Y' but required in type 'Z'" — valid JS object patterns
+    1212, // "Identifier expected. 'X' is a reserved word in strict mode" — valid in sloppy JS (#270)
   ]);
 
   // Collect TS diagnostics as errors (or warnings for handled cases)

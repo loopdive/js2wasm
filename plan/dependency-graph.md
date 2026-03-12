@@ -26,7 +26,7 @@ Can all run in parallel (different diagnostic codes).
 | 262 | Argument type assignability — allowJs flexibility | ~325 CE | Done |
 | 265 | Computed property names in classes — TS diagnostic | — | Ready (coordinates #242) |
 | 269 | Setter return value diagnostic suppression | — | Ready (coordinates #152) |
-| 270 | Strict mode reserved words — let, yield, package | — | Ready |
+| ~~270~~ | ~~Strict mode reserved words — let, yield, package~~ | — | **Done** |
 | ~~275~~ | ~~Comma operator warning blocks compilation~~ | ~106 CE | **Done** |
 | 276 | Computed property name must be of assignable type | — | Ready (coordinates #242, #265) |
 
