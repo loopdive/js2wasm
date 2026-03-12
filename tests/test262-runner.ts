@@ -208,10 +208,10 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
 
 
 
-  // Skip tests that compare typeof result with string (we don't support string comparison)
-  if (/typeof\s*\(?\s*\w+\)?\s*[!=]==?\s*"/.test(source) && !/assert_sameValue/.test(source)) {
-    return { skip: true, reason: "uses typeof with string comparison" };
-  }
+  // (Removed: typeof string comparison skip — compileTypeofComparison now handles
+  //  typeof x === "type" / typeof x !== "type" statically at compile time,
+  //  and the wrapTest transform converts assert.sameValue(typeof X, "Y") to
+  //  if (typeof X !== "Y") { __fail = 1; } which the compiler resolves.)
 
   // Skip tests where `return undefined` flows into arithmetic (fundamentally incompatible)
   if (/return\s+undefined\b/.test(source) && /[+\-*\/%]/.test(source) && /assert/.test(source)) {
@@ -265,10 +265,9 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     return { skip: true, reason: "for-in on this" };
   }
 
-  // Skip tests that use != (loose not-equals) with mixed types
-  if (/\d\s*!=\s*"/.test(source) || /"\s*!=\s*\d/.test(source)) {
-    return { skip: true, reason: "loose inequality with mixed types" };
-  }
+  // (Removed: loose inequality skip — only matched 3 tests, and loose != between
+  //  number and string now compiles (the string side gets coerced to number).
+  //  Tests that still fail will show as compile_error, not hangs.)
 
   // (Removed: assert() with message skip — extra arguments are now properly handled)
 
