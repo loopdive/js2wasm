@@ -3349,14 +3349,66 @@ function compileElementAssignment(
   const typeIdx = (arrType as { typeIdx: number }).typeIdx;
   const typeDef = ctx.mod.types[typeIdx];
 
-  // String-literal bracket assignment on struct: obj["prop"] = value → struct.set
-  if (typeDef?.kind === "struct" && ts.isStringLiteral(target.argumentExpression)) {
-    const propName = target.argumentExpression.text;
-    const fieldIdx = typeDef.fields.findIndex((f: { name: string }) => f.name === propName);
-    if (fieldIdx !== -1) {
-      compileExpression(ctx, fctx, value, typeDef.fields[fieldIdx]!.type);
-      fctx.body.push({ op: "struct.set", typeIdx, fieldIdx });
-      return VOID_RESULT;
+  // Bracket assignment on struct: obj["prop"] = value → struct.set
+  // Resolve field name from string/numeric literal, const variable, or constant expression
+  if (typeDef?.kind === "struct") {
+    const isVecStructAssign = typeDef.fields.length === 2 &&
+      typeDef.fields[0]?.name === "length" &&
+      typeDef.fields[1]?.name === "data";
+    if (!isVecStructAssign) {
+      let fieldName: string | undefined;
+      if (ts.isStringLiteral(target.argumentExpression)) {
+        fieldName = target.argumentExpression.text;
+      } else if (ts.isNumericLiteral(target.argumentExpression)) {
+        fieldName = target.argumentExpression.text;
+      } else if (ts.isIdentifier(target.argumentExpression)) {
+        // Const variable reference: const key = "x"; obj[key] = val
+        const sym = ctx.checker.getSymbolAtLocation(target.argumentExpression);
+        if (sym) {
+          const decl = sym.valueDeclaration;
+          if (decl && ts.isVariableDeclaration(decl) && decl.initializer) {
+            const declList = decl.parent;
+            if (ts.isVariableDeclarationList(declList) && (declList.flags & ts.NodeFlags.Const) !== 0) {
+              if (ts.isStringLiteral(decl.initializer)) {
+                fieldName = decl.initializer.text;
+              } else if (ts.isNumericLiteral(decl.initializer)) {
+                fieldName = decl.initializer.text;
+              }
+            }
+          }
+        }
+      }
+      // Also handle constant expressions (e.g. "a" + "b")
+      if (fieldName === undefined) {
+        const constVal = resolveConstantExpression(ctx, target.argumentExpression);
+        if (constVal !== undefined) {
+          fieldName = String(constVal);
+        }
+      }
+      if (fieldName !== undefined) {
+        // Check for setter accessor first
+        const objTsType = ctx.checker.getTypeAtLocation(target.expression);
+        const sName = resolveStructName(ctx, objTsType);
+        if (sName) {
+          const accessorKey = `${sName}_${fieldName}`;
+          if (ctx.classAccessorSet.has(accessorKey)) {
+            const setterName = `${sName}_set_${fieldName}`;
+            const funcIdx = ctx.funcMap.get(setterName);
+            if (funcIdx !== undefined) {
+              compileExpression(ctx, fctx, value);
+              fctx.body.push({ op: "call", funcIdx });
+              return VOID_RESULT;
+            }
+          }
+        }
+
+        const fieldIdx = typeDef.fields.findIndex((f: { name?: string }) => f.name === fieldName);
+        if (fieldIdx !== -1) {
+          compileExpression(ctx, fctx, value, typeDef.fields[fieldIdx]!.type);
+          fctx.body.push({ op: "struct.set", typeIdx, fieldIdx });
+          return VOID_RESULT;
+        }
+      }
     }
   }
 
