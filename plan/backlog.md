@@ -326,4 +326,5 @@ _Details: [sprint-1.md](sprint-1.md)_
 | [205](issues/205.md)      | String.prototype.indexOf start position coercion         | 2 in equivalence.test.ts                |
 | [246](issues/246.md)      | For-of object destructuring missing property defaults    | 3 in equivalence.test.ts                |
 | [247](issues/247.md)      | Arithmetic with null/undefined produces wrong results     | 10 in equivalence.test.ts               |
+| [264](issues/264.md)      | Element access (bracket notation) on struct types         | **review** - runtime dispatch for dynamic keys |
 

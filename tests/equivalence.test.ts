@@ -4461,4 +4461,72 @@ describe("in operator edge cases", () => {
     `);
     expect(exports.test()).toBe(1);
   });
+
+  // === Tests from #264: Element access (bracket notation) on struct types ===
+
+  it("bracket notation with string literal on object", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        const obj = { x: 10, y: 20 };
+        return obj["x"] + obj["y"];
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("bracket notation with const variable key", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        const obj = { a: 3, b: 7 };
+        const key = "b";
+        return obj[key];
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("bracket notation with dynamic key on struct", async () => {
+    const exports = await compileToWasm(`
+      function getField(obj: { x: number; y: number }, key: "x" | "y"): number {
+        return obj[key];
+      }
+      export function test(): number {
+        const o = { x: 10, y: 20 };
+        return getField(o, "x") + getField(o, "y");
+      }
+    `);
+    expect(exports.test()).toBe(30);
+  });
+
+  it("bracket notation assignment with string literal", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        const obj = { x: 0, y: 0 };
+        obj["x"] = 5;
+        obj["y"] = 15;
+        return obj["x"] + obj["y"];
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("bracket notation with let variable key", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        const obj = { a: 100, b: 200 };
+        let key: "a" | "b" = "a";
+        const v1 = obj[key];
+        key = "b";
+        const v2 = obj[key];
+        return v1 + v2;
+      }
+    `);
+    expect(exports.test()).toBe(300);
+  });
 });

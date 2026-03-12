@@ -3349,14 +3349,43 @@ function compileElementAssignment(
   const typeIdx = (arrType as { typeIdx: number }).typeIdx;
   const typeDef = ctx.mod.types[typeIdx];
 
-  // String-literal bracket assignment on struct: obj["prop"] = value → struct.set
-  if (typeDef?.kind === "struct" && ts.isStringLiteral(target.argumentExpression)) {
-    const propName = target.argumentExpression.text;
-    const fieldIdx = typeDef.fields.findIndex((f: { name: string }) => f.name === propName);
-    if (fieldIdx !== -1) {
-      compileExpression(ctx, fctx, value, typeDef.fields[fieldIdx]!.type);
-      fctx.body.push({ op: "struct.set", typeIdx, fieldIdx });
-      return VOID_RESULT;
+  // Bracket assignment on struct: obj["prop"] = value → struct.set
+  // Resolve the key at compile time (string literal, const variable, or constant expression)
+  if (typeDef?.kind === "struct") {
+    let propName: string | undefined;
+    if (ts.isStringLiteral(target.argumentExpression)) {
+      propName = target.argumentExpression.text;
+    } else if (ts.isNumericLiteral(target.argumentExpression)) {
+      propName = target.argumentExpression.text;
+    } else if (ts.isIdentifier(target.argumentExpression)) {
+      const sym = ctx.checker.getSymbolAtLocation(target.argumentExpression);
+      if (sym) {
+        const decl = sym.valueDeclaration;
+        if (decl && ts.isVariableDeclaration(decl) && decl.initializer) {
+          const declList = decl.parent;
+          if (ts.isVariableDeclarationList(declList) && (declList.flags & ts.NodeFlags.Const) !== 0) {
+            if (ts.isStringLiteral(decl.initializer)) {
+              propName = decl.initializer.text;
+            } else if (ts.isNumericLiteral(decl.initializer)) {
+              propName = decl.initializer.text;
+            }
+          }
+        }
+      }
+    }
+    if (propName === undefined) {
+      const constVal = resolveConstantExpression(ctx, target.argumentExpression);
+      if (constVal !== undefined) {
+        propName = String(constVal);
+      }
+    }
+    if (propName !== undefined) {
+      const fieldIdx = typeDef.fields.findIndex((f: { name: string }) => f.name === propName);
+      if (fieldIdx !== -1) {
+        compileExpression(ctx, fctx, value, typeDef.fields[fieldIdx]!.type);
+        fctx.body.push({ op: "struct.set", typeIdx, fieldIdx });
+        return VOID_RESULT;
+      }
     }
   }
 
@@ -8356,7 +8385,80 @@ function compileElementAccess(
           return typeDef.fields[fieldIdx]!.type;
         }
       }
-      // Non-vec, non-tuple struct: element access not supported
+      // Dynamic key on struct: runtime dispatch using string comparison
+      // Save the struct ref (already on stack) to a local, then compile the key
+      const structLocal = allocLocal(fctx, `__ea_struct_${fctx.locals.length}`, { kind: "ref", typeIdx } as ValType);
+      fctx.body.push({ op: "local.set", index: structLocal });
+
+      // Compile key expression — should produce externref (string)
+      const keyType = compileExpression(ctx, fctx, expr.argumentExpression);
+      if (!keyType) return null;
+
+      const keyLocal = allocLocal(fctx, `__ea_key_${fctx.locals.length}`, keyType);
+      fctx.body.push({ op: "local.set", index: keyLocal });
+
+      // Find the string equals function
+      const eqFuncIdx = ctx.funcMap.get("__str_eq")
+        ?? ctx.funcMap.get("string_equals")
+        ?? ctx.mod.imports.findIndex(imp => imp.module === "wasm:js-string" && imp.name === "equals");
+
+      // Determine the common return type for all fields
+      const fieldTypes = typeDef.fields.map((f: { type: ValType }) => f.type);
+      const allF64 = fieldTypes.every((t: ValType) => t.kind === "f64");
+      const allI32 = fieldTypes.every((t: ValType) => t.kind === "i32");
+      const resultType: ValType = allF64 ? { kind: "f64" } : allI32 ? { kind: "i32" } : { kind: "f64" };
+
+      if (eqFuncIdx !== undefined && eqFuncIdx >= 0 && typeDef.fields.length > 0) {
+        // Build nested if/else chain: check each field name
+        const buildDispatch = (idx: number): Instr[] => {
+          if (idx >= typeDef.fields.length) {
+            // Default: return 0 (or NaN for f64)
+            if (resultType.kind === "f64") {
+              return [{ op: "f64.const", value: 0 } as Instr];
+            }
+            return [{ op: "i32.const", value: 0 } as Instr];
+          }
+          const field = typeDef.fields[idx]!;
+          const fname = (field as { name?: string }).name;
+          if (!fname) {
+            return buildDispatch(idx + 1);
+          }
+          // Ensure string constant is registered
+          addStringConstantGlobal(ctx, fname);
+          const strGlobal = ctx.stringGlobalMap.get(fname);
+          if (strGlobal === undefined) {
+            return buildDispatch(idx + 1);
+          }
+          // Build the "then" branch: struct.get for this field, coerce to resultType
+          const thenInstrs: Instr[] = [
+            { op: "local.get", index: structLocal } as Instr,
+            { op: "struct.get", typeIdx, fieldIdx: idx } as Instr,
+          ];
+          // Coerce field type to result type if needed
+          if (resultType.kind === "f64" && field.type.kind === "i32") {
+            thenInstrs.push({ op: "f64.convert_i32_s" } as Instr);
+          } else if (resultType.kind === "i32" && field.type.kind === "f64") {
+            thenInstrs.push({ op: "i32.trunc_f64_s" } as Instr);
+          }
+          return [
+            { op: "local.get", index: keyLocal } as Instr,
+            { op: "global.get", index: strGlobal } as Instr,
+            { op: "call", funcIdx: eqFuncIdx } as Instr,
+            {
+              op: "if",
+              blockType: { kind: "val" as const, type: resultType },
+              then: thenInstrs,
+              else: buildDispatch(idx + 1),
+            } as Instr,
+          ];
+        };
+        for (const instr of buildDispatch(0)) {
+          fctx.body.push(instr);
+        }
+        return resultType;
+      }
+
+      // Fallback: error if we can't do runtime dispatch
       ctx.errors.push({
         message: `Element access on struct type '${typeDef.name ?? "unknown"}'`,
         line: getLine(expr),
