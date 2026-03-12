@@ -187,4 +187,5 @@
 | 321 | 2026-03-12 | Collection functions don't scan top-level statements (__module_init) | Dep-driven |
 | 262 | 2026-03-12 | Argument type assignability -- allowJs flexibility for test262 | Dep-driven |
 | 275 | 2026-03-12 | Left side of comma operator warning blocks compilation | Dep-driven |
+| 270 | 2026-03-12 | Strict mode reserved words -- let, yield, package diagnostic suppression | Dep-driven |
 | 317 | 2026-03-12 | Unused $AnyValue preamble type + duplicate export cleanup | Dep-driven |
