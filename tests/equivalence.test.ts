@@ -4461,4 +4461,60 @@ describe("in operator edge cases", () => {
     `);
     expect(exports.test()).toBe(1);
   });
+
+  // Issue #283: Compound assignment type coercion
+  it("compound assignment on object property (+=)", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        const obj = { x: 10, y: 20 };
+        obj.x += 5;
+        obj.y -= 3;
+        return obj.x + obj.y;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("compound assignment multiply/divide on property", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        const obj = { val: 6 };
+        obj.val *= 7;
+        return obj.val;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("compound assignment on array element", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        const arr = [10, 20, 30];
+        arr[0] += 5;
+        arr[1] -= 3;
+        arr[2] *= 2;
+        return arr[0] + arr[1] + arr[2];
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("compound assignment with bitwise ops on property", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        const obj = { bits: 0xFF };
+        obj.bits &= 0x0F;
+        return obj.bits;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
 });

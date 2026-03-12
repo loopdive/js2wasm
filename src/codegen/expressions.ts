@@ -3927,91 +3927,65 @@ function compileCompoundAssignment(
   // Check captured globals first
   const capturedIdx = ctx.capturedGlobals.get(name);
   if (capturedIdx !== undefined && fctx.localMap.get(name) === undefined) {
+    const capturedGlobalDef = ctx.mod.globals[localGlobalIdx(ctx, capturedIdx)];
+    const capturedGlobalType = capturedGlobalDef?.type ?? { kind: "f64" };
+    const isCapturedExtern = capturedGlobalType.kind === "externref";
+
     fctx.body.push({ op: "global.get", index: capturedIdx });
+    if (isCapturedExtern) {
+      addUnionImports(ctx);
+      fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+    }
     const compoundRhsType1 = compileExpression(ctx, fctx, expr.right, { kind: "f64" });
     if (!compoundRhsType1) { ctx.errors.push({ message: "Failed to compile compound assignment RHS", line: getLine(expr), column: getCol(expr) }); return null; }
-
-    switch (op) {
-      case ts.SyntaxKind.PlusEqualsToken:
-        fctx.body.push({ op: "f64.add" });
-        break;
-      case ts.SyntaxKind.MinusEqualsToken:
-        fctx.body.push({ op: "f64.sub" });
-        break;
-      case ts.SyntaxKind.AsteriskEqualsToken:
-        fctx.body.push({ op: "f64.mul" });
-        break;
-      case ts.SyntaxKind.AsteriskAsteriskEqualsToken: {
-        const funcIdx = ctx.funcMap.get("Math_pow");
-        if (funcIdx !== undefined) {
-          fctx.body.push({ op: "call", funcIdx });
-        }
-        break;
-      }
-      case ts.SyntaxKind.SlashEqualsToken:
-        fctx.body.push({ op: "f64.div" });
-        break;
-      case ts.SyntaxKind.PercentEqualsToken:
-        emitModulo(fctx);
-        break;
-      case ts.SyntaxKind.AmpersandEqualsToken:
-      case ts.SyntaxKind.BarEqualsToken:
-      case ts.SyntaxKind.CaretEqualsToken:
-      case ts.SyntaxKind.LessThanLessThanEqualsToken:
-      case ts.SyntaxKind.GreaterThanGreaterThanEqualsToken:
-      case ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken:
-        emitBitwiseCompoundOp(fctx, op);
-        break;
+    if (compoundRhsType1.kind === "externref") {
+      addUnionImports(ctx);
+      fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+    } else if (compoundRhsType1.kind === "i32") {
+      fctx.body.push({ op: "f64.convert_i32_s" });
     }
 
+    emitCompoundArithmeticOp(ctx, fctx, op);
+
+    if (isCapturedExtern) {
+      addUnionImports(ctx);
+      fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__box_number")! });
+    }
     fctx.body.push({ op: "global.set", index: capturedIdx });
     fctx.body.push({ op: "global.get", index: capturedIdx });
-    return { kind: "f64" };
+    return isCapturedExtern ? { kind: "externref" } : { kind: "f64" };
   }
 
   // Check module-level globals
   const moduleIdx = ctx.moduleGlobals.get(name);
   if (moduleIdx !== undefined && fctx.localMap.get(name) === undefined) {
+    const moduleGlobalDef = ctx.mod.globals[localGlobalIdx(ctx, moduleIdx)];
+    const moduleGlobalType = moduleGlobalDef?.type ?? { kind: "f64" };
+    const isModuleExtern = moduleGlobalType.kind === "externref";
+
     fctx.body.push({ op: "global.get", index: moduleIdx });
+    if (isModuleExtern) {
+      addUnionImports(ctx);
+      fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+    }
     const compoundRhsType2 = compileExpression(ctx, fctx, expr.right, { kind: "f64" });
     if (!compoundRhsType2) { ctx.errors.push({ message: "Failed to compile compound assignment RHS", line: getLine(expr), column: getCol(expr) }); return null; }
-
-    switch (op) {
-      case ts.SyntaxKind.PlusEqualsToken:
-        fctx.body.push({ op: "f64.add" });
-        break;
-      case ts.SyntaxKind.MinusEqualsToken:
-        fctx.body.push({ op: "f64.sub" });
-        break;
-      case ts.SyntaxKind.AsteriskEqualsToken:
-        fctx.body.push({ op: "f64.mul" });
-        break;
-      case ts.SyntaxKind.AsteriskAsteriskEqualsToken: {
-        const funcIdx = ctx.funcMap.get("Math_pow");
-        if (funcIdx !== undefined) {
-          fctx.body.push({ op: "call", funcIdx });
-        }
-        break;
-      }
-      case ts.SyntaxKind.SlashEqualsToken:
-        fctx.body.push({ op: "f64.div" });
-        break;
-      case ts.SyntaxKind.PercentEqualsToken:
-        emitModulo(fctx);
-        break;
-      case ts.SyntaxKind.AmpersandEqualsToken:
-      case ts.SyntaxKind.BarEqualsToken:
-      case ts.SyntaxKind.CaretEqualsToken:
-      case ts.SyntaxKind.LessThanLessThanEqualsToken:
-      case ts.SyntaxKind.GreaterThanGreaterThanEqualsToken:
-      case ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken:
-        emitBitwiseCompoundOp(fctx, op);
-        break;
+    if (compoundRhsType2.kind === "externref") {
+      addUnionImports(ctx);
+      fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+    } else if (compoundRhsType2.kind === "i32") {
+      fctx.body.push({ op: "f64.convert_i32_s" });
     }
 
+    emitCompoundArithmeticOp(ctx, fctx, op);
+
+    if (isModuleExtern) {
+      addUnionImports(ctx);
+      fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__box_number")! });
+    }
     fctx.body.push({ op: "global.set", index: moduleIdx });
     fctx.body.push({ op: "global.get", index: moduleIdx });
-    return { kind: "f64" };
+    return isModuleExtern ? { kind: "externref" } : { kind: "f64" };
   }
 
   const localIdx = fctx.localMap.get(name);
@@ -4027,39 +4001,36 @@ function compileCompoundAssignment(
   // Handle boxed (ref cell) mutable captures
   const boxed = fctx.boxedCaptures?.get(name);
   if (boxed) {
+    const isBoxedExtern = boxed.valType.kind === "externref";
     // Read current value from ref cell
     fctx.body.push({ op: "local.get", index: localIdx });
     fctx.body.push({ op: "struct.get", typeIdx: boxed.refCellTypeIdx, fieldIdx: 0 });
-    const compoundRhsBoxed = compileExpression(ctx, fctx, expr.right, boxed.valType);
+    if (isBoxedExtern) {
+      addUnionImports(ctx);
+      fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+    }
+    const compoundRhsBoxed = compileExpression(ctx, fctx, expr.right, { kind: "f64" });
     if (!compoundRhsBoxed) { ctx.errors.push({ message: "Failed to compile compound assignment RHS", line: getLine(expr), column: getCol(expr) }); return null; }
-    switch (op) {
-      case ts.SyntaxKind.PlusEqualsToken: fctx.body.push({ op: "f64.add" }); break;
-      case ts.SyntaxKind.MinusEqualsToken: fctx.body.push({ op: "f64.sub" }); break;
-      case ts.SyntaxKind.AsteriskEqualsToken: fctx.body.push({ op: "f64.mul" }); break;
-      case ts.SyntaxKind.SlashEqualsToken: fctx.body.push({ op: "f64.div" }); break;
-      case ts.SyntaxKind.PercentEqualsToken: emitModulo(fctx); break;
-      case ts.SyntaxKind.AsteriskAsteriskEqualsToken: {
-        const fi = ctx.funcMap.get("Math_pow");
-        if (fi !== undefined) fctx.body.push({ op: "call", funcIdx: fi });
-        break;
-      }
-      case ts.SyntaxKind.AmpersandEqualsToken:
-      case ts.SyntaxKind.BarEqualsToken:
-      case ts.SyntaxKind.CaretEqualsToken:
-      case ts.SyntaxKind.LessThanLessThanEqualsToken:
-      case ts.SyntaxKind.GreaterThanGreaterThanEqualsToken:
-      case ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken:
-        emitBitwiseCompoundOp(fctx, op);
-        break;
+    if (compoundRhsBoxed.kind === "externref") {
+      addUnionImports(ctx);
+      fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+    } else if (compoundRhsBoxed.kind === "i32") {
+      fctx.body.push({ op: "f64.convert_i32_s" });
+    }
+    emitCompoundArithmeticOp(ctx, fctx, op);
+    if (isBoxedExtern) {
+      addUnionImports(ctx);
+      fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__box_number")! });
     }
     // Write back to ref cell
-    const tmpResult = allocLocal(fctx, `__box_cmp_${fctx.locals.length}`, boxed.valType);
+    const boxedResultType = isBoxedExtern ? { kind: "externref" } as ValType : boxed.valType;
+    const tmpResult = allocLocal(fctx, `__box_cmp_${fctx.locals.length}`, boxedResultType);
     fctx.body.push({ op: "local.set", index: tmpResult });
     fctx.body.push({ op: "local.get", index: localIdx });
     fctx.body.push({ op: "local.get", index: tmpResult });
     fctx.body.push({ op: "struct.set", typeIdx: boxed.refCellTypeIdx, fieldIdx: 0 });
     fctx.body.push({ op: "local.get", index: tmpResult });
-    return boxed.valType;
+    return boxedResultType;
   }
 
   const localType = getLocalType(fctx, localIdx);
@@ -4075,7 +4046,33 @@ function compileCompoundAssignment(
   }
   const compoundRhsType3 = compileExpression(ctx, fctx, expr.right, { kind: "f64" });
   if (!compoundRhsType3) { ctx.errors.push({ message: "Failed to compile compound assignment RHS", line: getLine(expr), column: getCol(expr) }); return null; }
+  if (compoundRhsType3.kind === "externref") {
+    addUnionImports(ctx);
+    fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+  } else if (compoundRhsType3.kind === "i32") {
+    fctx.body.push({ op: "f64.convert_i32_s" });
+  }
 
+  emitCompoundArithmeticOp(ctx, fctx, op);
+
+  if (isExternLocal) {
+    // Box result back to externref and store
+    fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__box_number")! });
+    fctx.body.push({ op: "local.tee", index: localIdx });
+    return { kind: "externref" };
+  }
+  fctx.body.push({ op: "local.tee", index: localIdx });
+  return { kind: "f64" };
+}
+
+/** Emit the arithmetic/bitwise operation for compound assignment.
+ *  Stack must have [left_f64, right_f64]. Result is f64.
+ */
+function emitCompoundArithmeticOp(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  op: ts.SyntaxKind,
+): void {
   switch (op) {
     case ts.SyntaxKind.PlusEqualsToken:
       fctx.body.push({ op: "f64.add" });
@@ -4108,15 +4105,355 @@ function compileCompoundAssignment(
       emitBitwiseCompoundOp(fctx, op);
       break;
   }
+}
 
-  if (isExternLocal) {
-    // Box result back to externref and store
-    fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__box_number")! });
-    fctx.body.push({ op: "local.tee", index: localIdx });
-    return { kind: "externref" };
+/**
+ * Compile property access compound assignment: obj.prop += value
+ * Loads obj.prop, compiles RHS, performs arithmetic op, stores result back.
+ */
+function compilePropertyCompoundAssignment(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  target: ts.PropertyAccessExpression,
+  rhs: ts.Expression,
+  op: ts.SyntaxKind,
+): ValType | null {
+  const objType = ctx.checker.getTypeAtLocation(target.expression);
+  const propName = ts.isPrivateIdentifier(target.name) ? target.name.text.slice(1) : target.name.text;
+
+  // Handle string += on property: obj.prop += "str"
+  if (op === ts.SyntaxKind.PlusEqualsToken) {
+    const propType = ctx.checker.getTypeAtLocation(target);
+    if (isStringType(propType)) {
+      // Load obj, get field, compile RHS as string, concat, set back
+      return compilePropertyStringCompoundAssignment(ctx, fctx, target, rhs);
+    }
   }
-  fctx.body.push({ op: "local.tee", index: localIdx });
-  return { kind: "f64" };
+
+  // Resolve struct type
+  let typeName = resolveStructName(ctx, objType);
+  if (!typeName && ts.isIdentifier(target.expression)) {
+    typeName = ctx.widenedVarStructMap.get(target.expression.text);
+  }
+  // Also try shape-inferred variables
+  if (ts.isIdentifier(target.expression)) {
+    const shapeInfo = ctx.shapeMap.get(target.expression.text);
+    if (shapeInfo) {
+      const vecDef = ctx.mod.types[shapeInfo.vecTypeIdx];
+      if (vecDef && vecDef.kind === "struct") {
+        const fieldIdx = vecDef.fields.findIndex((f: { name: string }) => f.name === propName);
+        if (fieldIdx >= 0) {
+          const fieldType = vecDef.fields[fieldIdx]!.type;
+          // Save obj ref
+          const objResult = compileExpression(ctx, fctx, target.expression);
+          if (!objResult) return null;
+          const objLocal = allocLocal(fctx, `__prop_cmp_obj_${fctx.locals.length}`, objResult);
+          fctx.body.push({ op: "local.set", index: objLocal });
+
+          // Load current field value
+          fctx.body.push({ op: "local.get", index: objLocal });
+          fctx.body.push({ op: "struct.get", typeIdx: shapeInfo.vecTypeIdx, fieldIdx });
+          const isFieldExtern = fieldType.kind === "externref";
+          if (isFieldExtern) {
+            addUnionImports(ctx);
+            fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+          }
+
+          // Compile RHS
+          const rhsType = compileExpression(ctx, fctx, rhs, { kind: "f64" });
+          if (!rhsType) return null;
+          if (rhsType.kind === "externref") {
+            addUnionImports(ctx);
+            fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+          } else if (rhsType.kind === "i32") {
+            fctx.body.push({ op: "f64.convert_i32_s" });
+          }
+
+          emitCompoundArithmeticOp(ctx, fctx, op);
+
+          // Coerce result to field type
+          if (isFieldExtern) {
+            addUnionImports(ctx);
+            fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__box_number")! });
+          }
+
+          // Store back
+          const resultLocal = allocLocal(fctx, `__prop_cmp_val_${fctx.locals.length}`, fieldType);
+          fctx.body.push({ op: "local.set", index: resultLocal });
+          fctx.body.push({ op: "local.get", index: objLocal });
+          fctx.body.push({ op: "local.get", index: resultLocal });
+          fctx.body.push({ op: "struct.set", typeIdx: shapeInfo.vecTypeIdx, fieldIdx });
+          fctx.body.push({ op: "local.get", index: resultLocal });
+          return fieldType;
+        }
+      }
+    }
+  }
+
+  if (!typeName) {
+    ctx.errors.push({ message: `Compound assignment: cannot resolve struct type for property '${propName}'`, line: getLine(target), column: getCol(target) });
+    return null;
+  }
+
+  const structTypeIdx = ctx.structMap.get(typeName);
+  const fields = ctx.structFields.get(typeName);
+  if (structTypeIdx === undefined || !fields) {
+    ctx.errors.push({ message: `Compound assignment: unknown struct '${typeName}'`, line: getLine(target), column: getCol(target) });
+    return null;
+  }
+
+  const fieldIdx = fields.findIndex((f) => f.name === propName);
+  if (fieldIdx === -1) {
+    ctx.errors.push({ message: `Compound assignment: no field '${propName}' on '${typeName}'`, line: getLine(target), column: getCol(target) });
+    return null;
+  }
+
+  const fieldType = fields[fieldIdx]!.type;
+  const isFieldExtern = fieldType.kind === "externref";
+
+  // Compile object expression and save to local
+  const objResult = compileExpression(ctx, fctx, target.expression);
+  if (!objResult) return null;
+  const objLocal = allocLocal(fctx, `__prop_cmp_obj_${fctx.locals.length}`, objResult);
+  fctx.body.push({ op: "local.set", index: objLocal });
+
+  // Load current value
+  fctx.body.push({ op: "local.get", index: objLocal });
+  fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+  if (isFieldExtern) {
+    addUnionImports(ctx);
+    fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+  }
+
+  // Compile RHS to f64
+  const rhsType = compileExpression(ctx, fctx, rhs, { kind: "f64" });
+  if (!rhsType) return null;
+  if (rhsType.kind === "externref") {
+    addUnionImports(ctx);
+    fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+  } else if (rhsType.kind === "i32") {
+    fctx.body.push({ op: "f64.convert_i32_s" });
+  }
+
+  emitCompoundArithmeticOp(ctx, fctx, op);
+
+  // Coerce result to field type and store back
+  if (isFieldExtern) {
+    addUnionImports(ctx);
+    fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__box_number")! });
+  }
+
+  const resultLocal = allocLocal(fctx, `__prop_cmp_val_${fctx.locals.length}`, fieldType);
+  fctx.body.push({ op: "local.set", index: resultLocal });
+  fctx.body.push({ op: "local.get", index: objLocal });
+  fctx.body.push({ op: "local.get", index: resultLocal });
+  fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx });
+  fctx.body.push({ op: "local.get", index: resultLocal });
+  return fieldType;
+}
+
+/**
+ * Handle string compound assignment on property: obj.prop += "str"
+ */
+function compilePropertyStringCompoundAssignment(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  target: ts.PropertyAccessExpression,
+  rhs: ts.Expression,
+): ValType | null {
+  addStringImports(ctx);
+  const concatIdx = ctx.funcMap.get("concat");
+  if (concatIdx === undefined) return null;
+
+  const objType = ctx.checker.getTypeAtLocation(target.expression);
+  const propName = ts.isPrivateIdentifier(target.name) ? target.name.text.slice(1) : target.name.text;
+  let typeName = resolveStructName(ctx, objType);
+  if (!typeName && ts.isIdentifier(target.expression)) {
+    typeName = ctx.widenedVarStructMap.get(target.expression.text);
+  }
+  if (!typeName) return null;
+
+  const structTypeIdx = ctx.structMap.get(typeName);
+  const fields = ctx.structFields.get(typeName);
+  if (structTypeIdx === undefined || !fields) return null;
+
+  const fieldIdx = fields.findIndex((f) => f.name === propName);
+  if (fieldIdx === -1) return null;
+
+  // Compile obj, save to local
+  const objResult = compileExpression(ctx, fctx, target.expression);
+  if (!objResult) return null;
+  const objLocal = allocLocal(fctx, `__pstr_obj_${fctx.locals.length}`, objResult);
+  fctx.body.push({ op: "local.set", index: objLocal });
+
+  // Load current string value
+  fctx.body.push({ op: "local.get", index: objLocal });
+  fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+
+  // Compile RHS
+  const rhsType = compileExpression(ctx, fctx, rhs);
+  if (!rhsType) return null;
+
+  // Concat
+  fctx.body.push({ op: "call", funcIdx: concatIdx });
+
+  // Store back
+  const resultLocal = allocLocal(fctx, `__pstr_val_${fctx.locals.length}`, { kind: "externref" });
+  fctx.body.push({ op: "local.set", index: resultLocal });
+  fctx.body.push({ op: "local.get", index: objLocal });
+  fctx.body.push({ op: "local.get", index: resultLocal });
+  fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx });
+  fctx.body.push({ op: "local.get", index: resultLocal });
+  return { kind: "externref" };
+}
+
+/**
+ * Compile element access compound assignment: arr[i] += value
+ * Loads arr[i], compiles RHS, performs arithmetic op, stores result back.
+ */
+function compileElementCompoundAssignment(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  target: ts.ElementAccessExpression,
+  rhs: ts.Expression,
+  op: ts.SyntaxKind,
+): ValType | null {
+  // Compile array/struct expression
+  const arrType = compileExpression(ctx, fctx, target.expression);
+  if (!arrType || (arrType.kind !== "ref" && arrType.kind !== "ref_null")) {
+    ctx.errors.push({ message: "Compound assignment: element access on non-ref type", line: getLine(target), column: getCol(target) });
+    return null;
+  }
+  const typeIdx = (arrType as { typeIdx: number }).typeIdx;
+  const typeDef = ctx.mod.types[typeIdx];
+
+  // Handle struct["prop"] compound assignment (string literal key)
+  if (typeDef?.kind === "struct" && ts.isStringLiteral(target.argumentExpression)) {
+    const propName = target.argumentExpression.text;
+    const fieldIdx = typeDef.fields.findIndex((f: { name: string }) => f.name === propName);
+    if (fieldIdx === -1) {
+      ctx.errors.push({ message: `Compound assignment: no field '${propName}' on struct`, line: getLine(target), column: getCol(target) });
+      return null;
+    }
+    const fieldType = typeDef.fields[fieldIdx]!.type;
+    const isFieldExtern = fieldType.kind === "externref";
+
+    const objLocal = allocLocal(fctx, `__elem_cmp_obj_${fctx.locals.length}`, arrType);
+    fctx.body.push({ op: "local.set", index: objLocal });
+
+    // Load current value
+    fctx.body.push({ op: "local.get", index: objLocal });
+    fctx.body.push({ op: "struct.get", typeIdx, fieldIdx });
+    if (isFieldExtern) {
+      addUnionImports(ctx);
+      fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+    }
+
+    const rhsType = compileExpression(ctx, fctx, rhs, { kind: "f64" });
+    if (!rhsType) return null;
+    if (rhsType.kind === "externref") {
+      addUnionImports(ctx);
+      fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+    } else if (rhsType.kind === "i32") {
+      fctx.body.push({ op: "f64.convert_i32_s" });
+    }
+
+    emitCompoundArithmeticOp(ctx, fctx, op);
+
+    if (isFieldExtern) {
+      addUnionImports(ctx);
+      fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__box_number")! });
+    }
+
+    const resultLocal = allocLocal(fctx, `__elem_cmp_val_${fctx.locals.length}`, fieldType);
+    fctx.body.push({ op: "local.set", index: resultLocal });
+    fctx.body.push({ op: "local.get", index: objLocal });
+    fctx.body.push({ op: "local.get", index: resultLocal });
+    fctx.body.push({ op: "struct.set", typeIdx, fieldIdx });
+    fctx.body.push({ op: "local.get", index: resultLocal });
+    return fieldType;
+  }
+
+  // Handle vec struct (array wrapped in {length, data})
+  const isVecStruct = typeDef?.kind === "struct" &&
+    typeDef.fields.length === 2 &&
+    typeDef.fields[0]?.name === "length" &&
+    typeDef.fields[1]?.name === "data";
+  if (isVecStruct) {
+    const arrTypeIdx = getArrTypeIdxFromVec(ctx, typeIdx);
+    const arrDef = ctx.mod.types[arrTypeIdx];
+    if (!arrDef || arrDef.kind !== "array") {
+      ctx.errors.push({ message: "Compound assignment: vec data is not array", line: getLine(target), column: getCol(target) });
+      return null;
+    }
+    const elemType = arrDef.element;
+    const isElemExtern = elemType.kind === "externref";
+
+    // Save vec ref
+    const vecLocal = allocLocal(fctx, `__elem_cmp_vec_${fctx.locals.length}`, arrType);
+    fctx.body.push({ op: "local.set", index: vecLocal });
+
+    // Compile index
+    const idxResult = compileExpression(ctx, fctx, target.argumentExpression, { kind: "f64" });
+    if (!idxResult) return null;
+    fctx.body.push({ op: "i32.trunc_f64_s" });
+    const idxLocal = allocLocal(fctx, `__elem_cmp_idx_${fctx.locals.length}`, { kind: "i32" });
+    fctx.body.push({ op: "local.set", index: idxLocal });
+
+    // Load current element: vec.data[idx]
+    fctx.body.push({ op: "local.get", index: vecLocal });
+    fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 }); // get data array
+    fctx.body.push({ op: "local.get", index: idxLocal });
+    fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
+    if (isElemExtern) {
+      addUnionImports(ctx);
+      fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+    } else if (elemType.kind === "i32") {
+      fctx.body.push({ op: "f64.convert_i32_s" });
+    }
+
+    // Compile RHS
+    const rhsType = compileExpression(ctx, fctx, rhs, { kind: "f64" });
+    if (!rhsType) return null;
+    if (rhsType.kind === "externref") {
+      addUnionImports(ctx);
+      fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+    } else if (rhsType.kind === "i32") {
+      fctx.body.push({ op: "f64.convert_i32_s" });
+    }
+
+    emitCompoundArithmeticOp(ctx, fctx, op);
+
+    // Coerce result back to element type
+    if (isElemExtern) {
+      addUnionImports(ctx);
+      fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__box_number")! });
+    } else if (elemType.kind === "i32") {
+      fctx.body.push({ op: "i32.trunc_f64_s" });
+    }
+
+    // Store back: vec.data[idx] = result
+    const resultLocal = allocLocal(fctx, `__elem_cmp_val_${fctx.locals.length}`, elemType);
+    fctx.body.push({ op: "local.set", index: resultLocal });
+    fctx.body.push({ op: "local.get", index: vecLocal });
+    fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 }); // get data array
+    fctx.body.push({ op: "local.get", index: idxLocal });
+    fctx.body.push({ op: "local.get", index: resultLocal });
+    fctx.body.push({ op: "array.set", typeIdx: arrTypeIdx });
+    fctx.body.push({ op: "local.get", index: resultLocal });
+
+    // Return f64 for numeric result even if stored as i32
+    if (elemType.kind === "f64" || elemType.kind === "i32") {
+      if (elemType.kind === "i32") {
+        fctx.body.push({ op: "f64.convert_i32_s" });
+      }
+      return { kind: "f64" };
+    }
+    return elemType;
+  }
+
+  ctx.errors.push({ message: "Compound assignment: unsupported element access target", line: getLine(target), column: getCol(target) });
+  return null;
 }
 
 /** Emit bitwise compound op: stack has [left_f64, right_f64], replaces with result f64 */
