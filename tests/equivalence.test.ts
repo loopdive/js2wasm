@@ -3823,4 +3823,136 @@ describe("Arguments object in nested functions (#211)", () => {
     expect(exports.test()).toBe(42);
   });
 
+  // Issue #225: string !== comparison with any-typed variable
+  it("string !== comparison (any-typed var vs string literal)", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var s: string = "";
+        for (var i: number = 0; i < 10; i += 1) {
+          if (i < 5) continue;
+          s += i;
+        }
+        if (s !== "56789") {
+          return 0;
+        }
+        return 1;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #225: string === comparison
+  it("string === comparison (typed variables)", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let a: string = "hello";
+        let b: string = "hel" + "lo";
+        if (a === b) {
+          return 1;
+        }
+        return 0;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #225: string !== with loop-built string (test262 pattern)
+  it("for-loop continue with string !== check", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var __str = "";
+        for (var index = 0; index < 10; index += 1) {
+          if (index < 5) continue;
+          __str += index;
+        }
+        if (__str !== "56789") {
+          return 0;
+        }
+        return 1;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #245: switch statement with string case values
+  it("switch with string case values", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let x: string = "b";
+        let result: number = 0;
+        switch (x) {
+          case "a":
+            result = 1;
+            break;
+          case "b":
+            result = 2;
+            break;
+          case "c":
+            result = 3;
+            break;
+          default:
+            result = -1;
+        }
+        return result;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #245: switch with string case values and fallthrough
+  it("switch with string case values and fallthrough", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let x: string = "a";
+        let result: number = 0;
+        switch (x) {
+          case "a":
+            result += 1;
+          case "b":
+            result += 10;
+            break;
+          case "c":
+            result += 100;
+            break;
+        }
+        return result;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #245: switch with string default case
+  it("switch with string case values - default case", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let x: string = "z";
+        let result: number = 0;
+        switch (x) {
+          case "a":
+            result = 1;
+            break;
+          case "b":
+            result = 2;
+            break;
+          default:
+            result = 99;
+        }
+        return result;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
 });
