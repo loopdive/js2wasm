@@ -23,7 +23,7 @@ Can all run in parallel (different diagnostic codes).
 |-----|-------|-------|--------|
 | 152 | Setter return value error in allowJs mode | — | Ready |
 | 242 | Computed property names in class declarations (TS diagnostic) | — | Ready |
-| 262 | Argument type assignability — allowJs flexibility | ~325 CE | Ready |
+| 262 | Argument type assignability — allowJs flexibility | ~325 CE | Done |
 | 265 | Computed property names in classes — TS diagnostic | — | Ready (coordinates #242) |
 | 269 | Setter return value diagnostic suppression | — | Ready (coordinates #152) |
 | 270 | Strict mode reserved words — let, yield, package | — | Ready |
