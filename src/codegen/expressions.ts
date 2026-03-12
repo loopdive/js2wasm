@@ -1966,8 +1966,67 @@ function compileBinaryExpression(
     return compileStringBinaryOp(ctx, fctx, expr, op);
   }
 
-  // BigInt operations — both operands must be bigint (mixed bigint/number is a TS error)
+  // BigInt operations — handle both pure bigint and mixed bigint/number cases
   if (isBigIntType(leftTsType) || isBigIntType(rightTsType)) {
+    const leftIsBigInt = isBigIntType(leftTsType);
+    const rightIsBigInt = isBigIntType(rightTsType);
+
+    // Mixed BigInt + Number: comparison and equality operators (#227, #228)
+    if (leftIsBigInt !== rightIsBigInt) {
+      const isStrictEq = op === ts.SyntaxKind.EqualsEqualsEqualsToken;
+      const isStrictNeq = op === ts.SyntaxKind.ExclamationEqualsEqualsToken;
+
+      // Strict equality: BigInt and Number are different types → always false/true
+      if (isStrictEq || isStrictNeq) {
+        // Compile both sides for side effects, then drop them
+        const lt = compileExpression(ctx, fctx, expr.left);
+        if (lt) fctx.body.push({ op: "drop" });
+        const rt = compileExpression(ctx, fctx, expr.right);
+        if (rt) fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "i32.const", value: isStrictNeq ? 1 : 0 });
+        return { kind: "i32" };
+      }
+
+      // Loose equality and comparisons: convert i64 → f64, then compare as f64
+      const isLooseEq = op === ts.SyntaxKind.EqualsEqualsToken;
+      const isLooseNeq = op === ts.SyntaxKind.ExclamationEqualsToken;
+      const isComparison = op === ts.SyntaxKind.LessThanToken ||
+        op === ts.SyntaxKind.LessThanEqualsToken ||
+        op === ts.SyntaxKind.GreaterThanToken ||
+        op === ts.SyntaxKind.GreaterThanEqualsToken;
+
+      if (isLooseEq || isLooseNeq || isComparison) {
+        // Compile left operand with its natural hint
+        const leftHint: ValType = leftIsBigInt ? { kind: "i64" } : { kind: "f64" };
+        const leftType = compileExpression(ctx, fctx, expr.left, leftHint);
+        if (!leftType) return null;
+        // Convert i64 left to f64
+        if (leftType.kind === "i64") {
+          fctx.body.push({ op: "f64.convert_i64_s" });
+        }
+
+        // Compile right operand with its natural hint
+        const rightHint: ValType = rightIsBigInt ? { kind: "i64" } : { kind: "f64" };
+        const rightType = compileExpression(ctx, fctx, expr.right, rightHint);
+        if (!rightType) return null;
+        // Convert i64 right to f64
+        if (rightType.kind === "i64") {
+          fctx.body.push({ op: "f64.convert_i64_s" });
+        }
+
+        // Emit f64 comparison
+        if (isLooseEq) {
+          fctx.body.push({ op: "f64.eq" });
+        } else if (isLooseNeq) {
+          fctx.body.push({ op: "f64.ne" });
+        } else {
+          return compileNumericBinaryOp(ctx, fctx, op, expr);
+        }
+        return { kind: "i32" };
+      }
+    }
+
+    // Both operands are BigInt — compile as i64
     const i64Hint: ValType = { kind: "i64" };
     const leftType = compileExpression(ctx, fctx, expr.left, i64Hint);
     const rightType = compileExpression(ctx, fctx, expr.right, i64Hint);
@@ -2061,6 +2120,42 @@ function compileBinaryExpression(
   // i64 operations (bigint detected by compiled type, e.g. from variables)
   if (leftType.kind === "i64" && rightType.kind === "i64") {
     return compileI64BinaryOp(ctx, fctx, op, expr);
+  }
+
+  // Mixed i64/f64 (BigInt vs Number detected by compiled type) — convert i64 to f64 (#227, #228)
+  if ((leftType.kind === "i64" && rightType.kind === "f64") ||
+      (leftType.kind === "f64" && rightType.kind === "i64")) {
+    const isStrictEq = op === ts.SyntaxKind.EqualsEqualsEqualsToken;
+    const isStrictNeq = op === ts.SyntaxKind.ExclamationEqualsEqualsToken;
+    if (isStrictEq || isStrictNeq) {
+      // Different types → always false (===) or true (!==)
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "i32.const", value: isStrictNeq ? 1 : 0 });
+      return { kind: "i32" };
+    }
+    // Convert i64 operand to f64 — right is on top of stack
+    if (rightType.kind === "i64") {
+      fctx.body.push({ op: "f64.convert_i64_s" });
+    } else {
+      // left is i64, need to swap: save right, convert left, restore right
+      const tmpR = allocLocal(fctx, `__i64cvt_r_${fctx.locals.length}`, { kind: "f64" });
+      fctx.body.push({ op: "local.set", index: tmpR });
+      fctx.body.push({ op: "f64.convert_i64_s" });
+      fctx.body.push({ op: "local.get", index: tmpR });
+    }
+    // Now both are f64 — use numeric comparison
+    const isLooseEq = op === ts.SyntaxKind.EqualsEqualsToken;
+    const isLooseNeq = op === ts.SyntaxKind.ExclamationEqualsToken;
+    if (isLooseEq) {
+      fctx.body.push({ op: "f64.eq" });
+      return { kind: "i32" };
+    }
+    if (isLooseNeq) {
+      fctx.body.push({ op: "f64.ne" });
+      return { kind: "i32" };
+    }
+    return compileNumericBinaryOp(ctx, fctx, op, expr);
   }
 
   if ((isNumberType(leftTsType) || leftType.kind === "f64") && leftType.kind !== "externref" && rightType.kind !== "externref") {
