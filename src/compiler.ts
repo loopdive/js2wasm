@@ -394,6 +394,16 @@ export function compileSource(
     2418, // "Type of computed property's value is not assignable to type" — valid JS
     1214, // "Identifier expected. 'yield' is a reserved word in strict mode" — sloppy-mode test262 tests
     1212, // "Identifier expected. 'X' is a reserved word in strict mode" — sloppy-mode test262 tests
+    2488, // "Type 'X' must have a '[Symbol.iterator]()' method that returns an iterator" — valid JS iterable patterns
+    2556, // "A spread argument must either have a tuple type or be passed to a rest parameter"
+    2698, // "Spread types may only be created from object types"
+    2493, // "Tuple type 'X' of length 'N' has no element at index 'M'" — valid JS array access
+    2693, // "'X' only refers to a type, but is being used as a value here" — valid JS patterns
+    2372, // "Parameter 'X' cannot reference identifier 'X' declared after it" — valid JS pattern
+    2373, // "Parameter 'X' cannot reference itself" — valid JS pattern
+    1100, // "Invalid use of 'X'. Modules are automatically in strict mode" — test262 sloppy-mode tests
+    2364, // "The left-hand side of an 'in' expression must be of type..." — valid JS
+    1128, // "Declaration or statement expected" — lenient parsing for JS patterns
   ]);
 
   // Collect TS diagnostics as errors (or warnings for handled cases)

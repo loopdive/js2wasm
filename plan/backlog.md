@@ -87,7 +87,7 @@ _Goal: Reduce compile errors from ~3465 to ~2000 by fixing the most common error
 | [259](issues/259.md) | ClassDeclaration in block/nested scope positions | Open | B |
 | [260](issues/260.md) | ClassDeclaration + call expression combined errors | Open | B |
 | [261](issues/261.md) | ClassDeclaration + new expression for anonymous classes | Open | B |
-| [262](issues/262.md) | Argument type assignability -- allowJs flexibility for test262 | Open | C |
+| [262](issues/262.md) | Argument type assignability -- allowJs flexibility for test262 | Review | C |
 | [263](issues/263.md) | Property does not exist on type -- dynamic property access | Open | C |
 | [264](issues/264.md) | Element access (bracket notation) on struct types | Open | C |
 | [265](issues/265.md) | Computed property names in class declarations (TypeScript diagnostic) | Review | C |
