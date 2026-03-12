@@ -1578,6 +1578,78 @@ describe("object literal getters/setters", () => {
     expect(exports.test()).toBe(10);
   });
 
+  it("object literal shorthand properties (#281)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        const x = 10;
+        const y = 20;
+        const obj = { x, y };
+        return obj.x + obj.y;
+      }
+    `);
+    expect(exports.test()).toBe(30);
+  });
+
+  it("object literal mixed shorthand and regular (#281)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        const a = 5;
+        const obj = { a, b: 10 };
+        return obj.a + obj.b;
+      }
+    `);
+    expect(exports.test()).toBe(15);
+  });
+
+  it("object literal spread (#281)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        const base = { x: 1, y: 2 };
+        const obj = { ...base, z: 3 };
+        return obj.x + obj.y + obj.z;
+      }
+    `);
+    expect(exports.test()).toBe(6);
+  });
+
+  it("object literal method with string literal name (#281)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        const obj = {
+          val: 7,
+          "getVal"() { return this.val; }
+        };
+        return obj.getVal();
+      }
+    `);
+    expect(exports.test()).toBe(7);
+  });
+
+  it("object literal method with computed name (#281)", async () => {
+    const exports = await compileToWasm(`
+      const key = "calc";
+      export function test(): number {
+        const obj = {
+          val: 3,
+          [key]() { return this.val * 3; }
+        };
+        return obj.calc();
+      }
+    `);
+    expect(exports.test()).toBe(9);
+  });
+
+  it("object literal spread overrides earlier properties (#281)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        const base = { x: 100 };
+        const obj = { x: 1, ...base };
+        return obj.x;
+      }
+    `);
+    expect(exports.test()).toBe(100);
+  });
+
   // ── valueOf/toString coercion on operators (#138/#139) ──
 
   it("valueOf coercion on comparison operators (#138)", async () => {

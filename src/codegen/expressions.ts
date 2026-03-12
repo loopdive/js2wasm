@@ -8830,22 +8830,37 @@ function compileObjectLiteralForStruct(
   }
 
   for (const field of fields) {
-    // First check for an explicit property assignment (identifier, string literal, or computed key)
-    const prop = expr.properties.find(
-      (p) => resolvePropertyNameText(ctx, p) === field.name,
-    );
-    // Also check for shorthand property assignment ({ x, y } where x/y are identifiers)
-    const shorthandProp = !prop
-      ? expr.properties.find(
-          (p) =>
-            ts.isShorthandPropertyAssignment(p) &&
-            p.name.text === field.name,
-        )
-      : undefined;
-    if (prop && ts.isPropertyAssignment(prop)) {
+    // Find the LAST property in source order that assigns this field.
+    // This respects JS semantics where later assignments override earlier ones,
+    // e.g. { x: 1, ...base } should use base.x if base has x.
+    let lastProp: ts.ObjectLiteralElementLike | undefined;
+    let lastSpreadSource: { local: number; srcStructTypeIdx: number; srcFields: { name: string }[] } | undefined;
+    let spreadIdx = 0;
+    for (const p of expr.properties) {
+      if (ts.isSpreadAssignment(p)) {
+        // Check if this spread source has the field
+        const src = spreadSources[spreadIdx];
+        if (src) {
+          const fi = src.srcFields.findIndex((f) => f.name === field.name);
+          if (fi >= 0) {
+            lastSpreadSource = src;
+            lastProp = undefined; // spread overrides any earlier explicit assignment
+          }
+          spreadIdx++;
+        }
+      } else if (ts.isPropertyAssignment(p) && resolvePropertyNameText(ctx, p) === field.name) {
+        lastProp = p;
+        lastSpreadSource = undefined; // explicit assignment overrides earlier spread
+      } else if (ts.isShorthandPropertyAssignment(p) && p.name.text === field.name) {
+        lastProp = p;
+        lastSpreadSource = undefined;
+      }
+    }
+
+    if (lastProp && ts.isPropertyAssignment(lastProp)) {
       // Track closure types for valueOf/toString fields
       const bodyLenBefore = fctx.body.length;
-      compileExpression(ctx, fctx, prop.initializer, field.type);
+      compileExpression(ctx, fctx, lastProp.initializer, field.type);
       if ((field.name === "valueOf" || field.name === "toString") && field.type.kind === "eqref") {
         // Find the struct.new instruction that creates the closure struct
         for (let bi = bodyLenBefore; bi < fctx.body.length; bi++) {
@@ -8860,35 +8875,27 @@ function compileObjectLiteralForStruct(
           }
         }
       }
-    } else if (shorthandProp && ts.isShorthandPropertyAssignment(shorthandProp)) {
+    } else if (lastProp && ts.isShorthandPropertyAssignment(lastProp)) {
       // Shorthand { x } means the value is the identifier x — compile it
-      compileExpression(ctx, fctx, shorthandProp.name, field.type);
-    } else {
-      // Check spread sources (last spread wins — JS semantics)
-      let found = false;
-      for (let si = spreadSources.length - 1; si >= 0; si--) {
-        const src = spreadSources[si]!;
-        const fieldIdx = src.srcFields.findIndex((f) => f.name === field.name);
-        if (fieldIdx >= 0) {
-          fctx.body.push({ op: "local.get", index: src.local });
-          fctx.body.push({ op: "struct.get", typeIdx: src.srcStructTypeIdx, fieldIdx });
-          found = true;
-          break;
-        }
+      compileExpression(ctx, fctx, lastProp.name, field.type);
+    } else if (lastSpreadSource) {
+      const fieldIdx = lastSpreadSource.srcFields.findIndex((f) => f.name === field.name);
+      if (fieldIdx >= 0) {
+        fctx.body.push({ op: "local.get", index: lastSpreadSource.local });
+        fctx.body.push({ op: "struct.get", typeIdx: lastSpreadSource.srcStructTypeIdx, fieldIdx });
       }
-      if (!found) {
-        // Default value
-        if (field.type.kind === "f64") {
-          fctx.body.push({ op: "f64.const", value: 0 });
-        } else if (field.type.kind === "externref") {
-          fctx.body.push({ op: "ref.null.extern" });
-        } else if (field.type.kind === "eqref") {
-          fctx.body.push({ op: "ref.null.eq" } as unknown as Instr);
-        } else if (field.type.kind === "ref" || field.type.kind === "ref_null") {
-          fctx.body.push({ op: "ref.null", typeIdx: field.type.typeIdx });
-        } else {
-          fctx.body.push({ op: "i32.const", value: 0 });
-        }
+    } else {
+      // Default value — no assignment found for this field
+      if (field.type.kind === "f64") {
+        fctx.body.push({ op: "f64.const", value: 0 });
+      } else if (field.type.kind === "externref") {
+        fctx.body.push({ op: "ref.null.extern" });
+      } else if (field.type.kind === "eqref") {
+        fctx.body.push({ op: "ref.null.eq" } as unknown as Instr);
+      } else if (field.type.kind === "ref" || field.type.kind === "ref_null") {
+        fctx.body.push({ op: "ref.null", typeIdx: field.type.typeIdx });
+      } else {
+        fctx.body.push({ op: "i32.const", value: 0 });
       }
     }
   }
@@ -9044,13 +9051,13 @@ function compileObjectLiteralForStruct(
       ctx.currentFunc = savedFunc;
     }
 
-    // Object literal methods: { method() { ... } }
+    // Object literal methods: { method() { ... } }, { "method"() { ... } }, { [key]() { ... } }
     if (
       ts.isMethodDeclaration(prop) &&
-      prop.name &&
-      ts.isIdentifier(prop.name)
+      prop.name
     ) {
-      const methodName = prop.name.text;
+      const methodName = resolveAccessorPropName(ctx, prop.name);
+      if (methodName === undefined) continue;
       const fullName = `${typeName}_${methodName}`;
       ctx.classMethodSet.add(fullName);
 
