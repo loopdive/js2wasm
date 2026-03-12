@@ -4461,4 +4461,27 @@ describe("in operator edge cases", () => {
     `);
     expect(exports.test()).toBe(1);
   });
+
+  it("array destructuring in for-loop initializer", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        let result = 0;
+        for (const [x, y, z] = [1, 2, 3]; result < 1; ) {
+          result = x + y + z;
+        }
+        return result;
+      }
+    `);
+    expect(exports.test()).toBe(6);
+  });
+
+  it("tuple array destructuring in variable declaration", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        const [x, y, z] = [10, 20, 30];
+        return x + y + z;
+      }
+    `);
+    expect(exports.test()).toBe(60);
+  });
 });

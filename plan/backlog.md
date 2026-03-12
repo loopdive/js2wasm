@@ -91,7 +91,7 @@ _Goal: Reduce compile errors from ~3465 to ~2000 by fixing the most common error
 | [263](issues/263.md) | Property does not exist on type -- dynamic property access | Open | C |
 | [264](issues/264.md) | Element access (bracket notation) on struct types | Open | C |
 | [265](issues/265.md) | Computed property names in class declarations (TypeScript diagnostic) | Open | C |
-| [266](issues/266.md) | Unknown identifier -- scope resolution for multi-variable patterns | Open | D |
+| [266](issues/266.md) | Unknown identifier -- scope resolution for multi-variable patterns | Review | D |
 | [267](issues/267.md) | Yield expression outside of generator function | Open | D |
 | [268](issues/268.md) | Iterator protocol -- Type must have a Symbol.iterator method | Open | D |
 | [269](issues/269.md) | Setter return value diagnostic suppression | Open | C |

@@ -625,6 +625,93 @@ function compileArrayDestructuring(
     return;
   }
 
+  // Check if this is a tuple struct (fields named _0, _1, ...)
+  const structDef = typeDef as { fields: { name: string; type: ValType }[] };
+  const isTuple = structDef.fields.length > 0 &&
+    structDef.fields[0]?.name === "_0";
+
+  if (isTuple) {
+    // Tuple struct path: read fields directly by index (_0, _1, ...)
+    const tmpLocal = allocLocal(
+      fctx,
+      `__destruct_${fctx.locals.length}`,
+      resultType,
+    );
+    fctx.body.push({ op: "local.set", index: tmpLocal });
+
+    for (let i = 0; i < pattern.elements.length; i++) {
+      const element = pattern.elements[i]!;
+      if (ts.isOmittedExpression(element)) continue;
+
+      if (i >= structDef.fields.length) break; // more bindings than tuple elements
+
+      const fieldType = structDef.fields[i]!.type;
+
+      // Determine the target local's type — use the TS-declared type of the binding
+      // element, falling back to the tuple field type
+      const elemTsType = ctx.checker.getTypeAtLocation(element);
+      const bindingType = resolveWasmType(ctx, elemTsType);
+
+      if (ts.isIdentifier(element.name)) {
+        const localName = element.name.text;
+        const localIdx = allocLocal(fctx, localName, bindingType);
+
+        fctx.body.push({ op: "local.get", index: tmpLocal });
+        fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: i });
+
+        // If field is externref but binding is f64, unbox
+        if (fieldType.kind === "externref" && bindingType.kind === "f64") {
+          addUnionImports(ctx);
+          const unboxIdx = ctx.funcMap.get("__unbox_number");
+          if (unboxIdx !== undefined) {
+            fctx.body.push({ op: "call", funcIdx: unboxIdx });
+          }
+        }
+
+        // Handle default value
+        if (element.initializer && fieldType.kind === "externref") {
+          const tmpElem = allocLocal(fctx, `__dflt_${fctx.locals.length}`, fieldType);
+          fctx.body.push({ op: "local.tee", index: tmpElem });
+          fctx.body.push({ op: "ref.is_null" } as Instr);
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: [
+              ...(() => {
+                const saved = fctx.body;
+                fctx.body = [];
+                compileExpression(ctx, fctx, element.initializer!, bindingType);
+                fctx.body.push({ op: "local.set", index: localIdx } as Instr);
+                const instrs = fctx.body;
+                fctx.body = saved;
+                return instrs;
+              })(),
+            ],
+            else: [
+              { op: "local.get", index: tmpElem } as Instr,
+              ...(fieldType.kind === "externref" && bindingType.kind === "f64"
+                ? (() => {
+                    addUnionImports(ctx);
+                    const unboxIdx = ctx.funcMap.get("__unbox_number");
+                    return unboxIdx !== undefined
+                      ? [{ op: "call", funcIdx: unboxIdx } as Instr]
+                      : [];
+                  })()
+                : []),
+              { op: "local.set", index: localIdx } as Instr,
+            ],
+          });
+        } else {
+          fctx.body.push({ op: "local.set", index: localIdx });
+        }
+      } else if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
+        // Nested destructuring: extract the tuple field, then destructure it
+        ensureBindingLocals(ctx, fctx, element.name);
+      }
+    }
+    return;
+  }
+
   const arrTypeIdx = getArrTypeIdxFromVec(ctx, typeIdx);
   const arrDef = ctx.mod.types[arrTypeIdx];
   if (!arrDef || arrDef.kind !== "array") {
@@ -853,7 +940,11 @@ function compileForStatement(
   if (stmt.initializer) {
     if (ts.isVariableDeclarationList(stmt.initializer)) {
       for (const decl of stmt.initializer.declarations) {
-        if (ts.isIdentifier(decl.name)) {
+        if (ts.isObjectBindingPattern(decl.name)) {
+          compileObjectDestructuring(ctx, fctx, decl);
+        } else if (ts.isArrayBindingPattern(decl.name)) {
+          compileArrayDestructuring(ctx, fctx, decl);
+        } else if (ts.isIdentifier(decl.name)) {
           const name = decl.name.text;
           const varType = ctx.checker.getTypeAtLocation(decl);
           const wasmType = resolveWasmType(ctx, varType);
