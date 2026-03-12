@@ -346,6 +346,7 @@ export function compileSource(
     2322, // "Type 'X' is not assignable to type 'Y'"
     2339, // "Property 'X' does not exist on type 'Y'" — dynamic property access
     2454, // "Variable 'X' is used before being assigned"
+    2548, // "Type 'X' is not an array type or a string type. Use '--downlevelIteration' to iterate over iterators"
     2531, // "Object is possibly 'null'"
     2532, // "Object is possibly 'undefined'"
     2367, // "This comparison appears to be unintentional" (always truthy/falsy)
