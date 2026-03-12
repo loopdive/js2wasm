@@ -4264,6 +4264,102 @@ describe("Arguments object in nested functions (#211)", () => {
     expect(exports.test()).toBe(1);
   });
 
+  // ── Issue #247: Arithmetic with null/undefined ──
+
+  it("null * null === 0 (#247)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        return (null as any) * (null as any);
+      }
+    `);
+    expect(exports.test()).toBe(0);
+  });
+
+  it("null + null === 0 (#247)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        return (null as any) + (null as any);
+      }
+    `);
+    expect(exports.test()).toBe(0);
+  });
+
+  it("null - null === 0 (#247)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        return (null as any) - (null as any);
+      }
+    `);
+    expect(exports.test()).toBe(0);
+  });
+
+  it("undefined - undefined is NaN (literal) (#247)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        return (undefined as any) - (undefined as any);
+      }
+    `);
+    expect(exports.test()).toBeNaN();
+  });
+
+  it("undefined * undefined is NaN (literal) (#247)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        return (undefined as any) * (undefined as any);
+      }
+    `);
+    expect(exports.test()).toBeNaN();
+  });
+
+  it("null - undefined is NaN (#247)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        return (null as any) - (undefined as any);
+      }
+    `);
+    expect(exports.test()).toBeNaN();
+  });
+
+  it("compound assignment with null literal (#247)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        var x: number = 0;
+        x *= (null as any);
+        return x;
+      }
+    `);
+    expect(exports.test()).toBe(0);
+  });
+
+  it("compound subtract undefined literal (#247)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        var x: number = 5;
+        x -= (undefined as any);
+        return x;
+      }
+    `);
+    expect(exports.test()).toBeNaN();
+  });
+
+  it("null / null is NaN (#247)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        return (null as any) / (null as any);
+      }
+    `);
+    expect(exports.test()).toBeNaN();
+  });
+
+  it("undefined + null is NaN (#247)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        return (undefined as any) + (null as any);
+      }
+    `);
+    expect(exports.test()).toBeNaN();
+  });
+
 });
 
 // ── in operator edge cases (#244) ──────────────────────────────
