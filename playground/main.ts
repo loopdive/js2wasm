@@ -807,7 +807,8 @@ function editorForPanel(panelId: string): EditorSlot | null {
 
 // Session storage for input
 inputFile.model.onDidChangeContent(() => {
-  if (!t262Loading) sessionStorage.setItem(STORAGE_KEY, inputFile.model.getValue());
+  if (t262Loading) return;
+  sessionStorage.setItem(STORAGE_KEY, inputFile.model.getValue());
   lastResult = null;
   compileBtn.disabled = false;
   runBtn.disabled = true;
@@ -893,12 +894,11 @@ async function t262LoadAndShow(filePath: string) {
   t262Loading = true;
   sessionStorage.removeItem(STORAGE_KEY);
   inputFile.model.setValue(content);
-  t262Loading = false;
   t262SetActive(filePath);
-  // Update ts-source tab title to show filename
   const fname = t262FileName(filePath);
   updateTabLabel("ts-source", fname);
   compileOnly();
+  t262Loading = false;
 }
 
 // Build a recursive tree from category paths
@@ -962,10 +962,10 @@ async function t262Render() {
         t262Loading = true;
         sessionStorage.removeItem(STORAGE_KEY);
         inputFile.model.setValue(content);
-        t262Loading = false;
         t262SetActive(ex.path);
         updateTabLabel("ts-source", ex.name);
         compileOnly();
+        t262Loading = false;
       });
       listEl.appendChild(entry);
     }
@@ -2262,10 +2262,10 @@ async function runBenchmark() {
     t262Loading = true;
     sessionStorage.removeItem(STORAGE_KEY);
     inputFile.model.setValue(content);
-    t262Loading = false;
     t262SetActive("examples/benchmarks.ts");
     updateTabLabel("ts-source", "benchmarks.ts");
     lastResult = null;
+    t262Loading = false;
   }
   if (!lastResult?.success) {
     compileOnly();
