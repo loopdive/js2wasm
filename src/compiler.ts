@@ -385,6 +385,9 @@ export function compileSource(
     2806, // "Private accessor was defined without a getter" — valid JS pattern
     18030, // "An optional chain cannot contain private identifiers" — valid JS pattern
     2729, // "Property 'X' is used before its initialization" — valid JS pattern
+    1163, // "A 'yield' expression is only allowed in a generator body" — #267
+    1166, // "A computed property name in a class property declaration must have a simple literal type" — #265
+    2464, // "A computed property name must be of type 'string', 'number', 'symbol', or 'any'" — #276
     18014, // "The property '#x' cannot be accessed on type 'X' within this class because it is shadowed" — valid JS
   ]);
 
