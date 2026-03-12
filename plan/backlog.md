@@ -211,4 +211,5 @@ _Details: [sprint-1.md](sprint-1.md)_
 | [181](issues/181.md)      | new Object() + new Function() skip                      | 8 in equivalence.test.ts                |
 | [200](issues/200.md)      | JSON.stringify/parse externref coercion                  | 2 in equivalence.test.ts                |
 | [205](issues/205.md)      | String.prototype.indexOf start position coercion         | 2 in equivalence.test.ts                |
+| [247](issues/247.md)      | Arithmetic with null/undefined produces wrong results     | 10 in equivalence.test.ts               |
 

@@ -33,20 +33,34 @@ export function compileExpression(
   expr: ts.Expression,
   expectedType?: ValType,
 ): ValType | null {
-  // Fast-path: null/undefined in numeric context — emit the correct f64 constant
+  // Fast-path: null/undefined in numeric context — emit the correct constant
   // directly instead of going through externref + __unbox_number, because wasm's
   // ref.null.extern is indistinguishable between null and undefined at the JS
   // boundary (both become JS null), so Number(null)=0 but Number(undefined)=NaN
   // cannot be recovered after the externref roundtrip.
-  if (expectedType?.kind === "f64") {
-    if (expr.kind === ts.SyntaxKind.NullKeyword) {
-      fctx.body.push({ op: "f64.const", value: 0 });
-      return { kind: "f64" };
+  // Unwrap type assertions and parenthesized expressions to detect the underlying
+  // null/undefined keyword (e.g. `(null as any)`, `(undefined as any)`).
+  if (expectedType?.kind === "f64" || expectedType?.kind === "i32") {
+    let inner: ts.Expression = expr;
+    while (ts.isAsExpression(inner) || ts.isNonNullExpression(inner) || ts.isParenthesizedExpression(inner) || ts.isTypeAssertionExpression(inner)) {
+      inner = ts.isParenthesizedExpression(inner) ? inner.expression :
+              ts.isAsExpression(inner) ? inner.expression :
+              ts.isNonNullExpression(inner) ? inner.expression :
+              (inner as ts.TypeAssertion).expression;
     }
-    if (expr.kind === ts.SyntaxKind.UndefinedKeyword ||
-        (ts.isIdentifier(expr) && expr.text === "undefined")) {
-      fctx.body.push({ op: "f64.const", value: NaN });
-      return { kind: "f64" };
+    const isNull = inner.kind === ts.SyntaxKind.NullKeyword;
+    const isUndefined = inner.kind === ts.SyntaxKind.UndefinedKeyword ||
+        (ts.isIdentifier(inner) && inner.text === "undefined");
+    if (isNull || isUndefined) {
+      if (expectedType.kind === "f64") {
+        fctx.body.push({ op: "f64.const", value: isNull ? 0 : NaN });
+        return { kind: "f64" };
+      }
+      // i32 context: null → 0, undefined → 0 (ToInt32(NaN) = 0)
+      if (expectedType.kind === "i32") {
+        fctx.body.push({ op: "i32.const", value: 0 });
+        return { kind: "i32" };
+      }
     }
   }
 
