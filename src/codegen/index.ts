@@ -188,6 +188,8 @@ export interface CodegenContext {
   classTagMap: Map<string, number>;
   /** Map from TS symbol name (e.g. "__class") → synthetic class name for class expressions */
   classExprNameMap: Map<string, string>;
+  /** Map from ClassExpression AST node → synthetic class name for anonymous class in new expressions */
+  anonClassExprNames: Map<ts.ClassExpression, string>;
   /** Whether to attach source positions for source map generation */
   sourceMap: boolean;
   /** Map from tuple type signature key → type index of the tuple struct */
@@ -339,6 +341,7 @@ export function generateModule(
     classTagCounter: 0,
     classTagMap: new Map(),
     classExprNameMap: new Map(),
+    anonClassExprNames: new Map(),
     sourceMap: options?.sourceMap ?? false,
     tupleTypeMap: new Map(),
     fast: options?.fast ?? false,
@@ -534,6 +537,7 @@ export function generateMultiModule(
     classTagCounter: 0,
     classTagMap: new Map(),
     classExprNameMap: new Map(),
+    anonClassExprNames: new Map(),
     sourceMap: options?.sourceMap ?? false,
     tupleTypeMap: new Map(),
     fast: options?.fast ?? false,
@@ -7210,6 +7214,25 @@ function collectDeclarations(
   // Collect class declarations (struct types + constructor/method functions)
   // Also collect class expressions in variable declarations: const C = class { ... }
   // Scan recursively into function bodies to find class expressions defined inside functions
+  // Recursively scan an AST node for `new (class { ... })()` patterns
+  // and pre-register the anonymous class so struct types are available during codegen
+  function collectAnonymousClassesInNewExpr(node: ts.Node): void {
+    if (ts.isNewExpression(node)) {
+      let inner: ts.Expression = node.expression;
+      while (ts.isParenthesizedExpression(inner)) {
+        inner = inner.expression;
+      }
+      if (ts.isClassExpression(inner) && !inner.name && !ctx.anonClassExprNames.has(inner)) {
+        // Generate a synthetic name and pre-register the class
+        const syntheticName = `__anonClass_${ctx.anonTypeCounter++}`;
+        // Store a mapping from the AST node to the synthetic name so codegen can find it
+        ctx.anonClassExprNames.set(inner, syntheticName);
+        collectClassDeclaration(ctx, inner, syntheticName);
+      }
+    }
+    ts.forEachChild(node, collectAnonymousClassesInNewExpr);
+  }
+
   function collectClassesFromStatements(stmts: ts.NodeArray<ts.Statement> | readonly ts.Statement[]): void {
     for (const stmt of stmts) {
       if (ts.isClassDeclaration(stmt) && stmt.name && !hasDeclareModifier(stmt)) {
@@ -7227,6 +7250,8 @@ function collectDeclarations(
       } else if (ts.isFunctionDeclaration(stmt) && stmt.body) {
         collectClassesFromStatements(stmt.body.statements);
       }
+      // Also scan all statements for new (class { ... })() patterns
+      collectAnonymousClassesInNewExpr(stmt);
     }
   }
   collectClassesFromStatements(sourceFile.statements);
@@ -7586,8 +7611,35 @@ function compileDeclarations(
       } else if (ts.isFunctionDeclaration(stmt) && stmt.body) {
         compileClassesFromStatements(stmt.body.statements);
       }
+      // Compile bodies for anonymous class expressions in new expressions
+      compileAnonymousClassBodiesInNode(stmt);
     }
   }
+
+  // Recursively scan for new (class { ... })() and compile the class bodies
+  const compiledAnonClasses = new Set<ts.ClassExpression>();
+  function compileAnonymousClassBodiesInNode(node: ts.Node): void {
+    if (ts.isNewExpression(node)) {
+      let inner: ts.Expression = node.expression;
+      while (ts.isParenthesizedExpression(inner)) {
+        inner = inner.expression;
+      }
+      if (ts.isClassExpression(inner) && !compiledAnonClasses.has(inner)) {
+        const syntheticName = ctx.anonClassExprNames.get(inner);
+        if (syntheticName) {
+          compiledAnonClasses.add(inner);
+          try {
+            compileClassBodies(ctx, inner, funcByName, syntheticName);
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            reportError(ctx, inner, `Internal error compiling anonymous class: ${msg}`);
+          }
+        }
+      }
+    }
+    ts.forEachChild(node, compileAnonymousClassBodiesInNode);
+  }
+
   compileClassesFromStatements(sourceFile.statements);
 
   // Compile top-level function declarations
