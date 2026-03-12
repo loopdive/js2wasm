@@ -110,7 +110,7 @@ _Goal: Reduce compile errors from ~3465 to ~2000 by fixing the most common error
 | [282](issues/282.md) | Variable declaration compile errors -- complex initializers | Open | D |
 | [283](issues/283.md) | Compound assignment compile errors -- type coercion gaps | Open | A |
 | [284](issues/284.md) | For-of compile errors -- destructuring and non-array iterables | Open | D |
-| [285](issues/285.md) | For-loop compile errors -- complex heads and function declarations | Open | D |
+| [285](issues/285.md) | For-loop compile errors -- complex heads and function declarations | Review | D |
 | [286](issues/286.md) | Logical assignment compile errors -- nullish and short-circuit | Open | A |
 
 ## Sprint 1

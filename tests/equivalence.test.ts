@@ -4461,4 +4461,103 @@ describe("in operator edge cases", () => {
     `);
     expect(exports.test()).toBe(1);
   });
+
+  // Issue #285: arrow function in for-loop initializer
+  it("for-loop with arrow function in init (#285)", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var sum = 0;
+        for (var fn = (x: number) => x * 2, i = 0; i < 3; i++) {
+          sum += fn(i);
+        }
+        return sum;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #285: multiple variable declarations in for-loop initializer
+  it("for-loop with multiple variable declarations in init (#285)", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var sum = 0;
+        for (var a = 0, b = 10; a < 5; a++, b--) {
+          sum += a + b;
+        }
+        return sum;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #285: comma expression in for-loop update
+  it("for-loop with comma expression in update (#285)", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var x = 0;
+        var y = 10;
+        for (var i = 0; i < 3; i++, y--) {
+          x += y;
+        }
+        return x;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #285: function declaration in for-loop body (non-block)
+  it("for-loop with standalone function declaration body (#285)", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var result = 0;
+        for (var i = 0; i < 3; i++) {
+          function getValue(): number { return 5; }
+          result += getValue();
+        }
+        return result;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #285: for-loop with no init, no condition, no update (infinite loop with break)
+  it("for-loop with empty head parts (#285)", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var count = 0;
+        for (;;) {
+          count++;
+          if (count >= 5) break;
+        }
+        return count;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #285: multiple var declarations with different types
+  it("for-loop with multiple declarations different inits (#285)", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var result = 0;
+        for (var i = 1, j = 100; i <= 3; i++, j -= 10) {
+          result += i * j;
+        }
+        return result;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
 });

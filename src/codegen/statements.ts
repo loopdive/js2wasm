@@ -853,15 +853,58 @@ function compileForStatement(
   if (stmt.initializer) {
     if (ts.isVariableDeclarationList(stmt.initializer)) {
       for (const decl of stmt.initializer.declarations) {
-        if (ts.isIdentifier(decl.name)) {
-          const name = decl.name.text;
-          const varType = ctx.checker.getTypeAtLocation(decl);
-          const wasmType = resolveWasmType(ctx, varType);
-          const localIdx = allocLocal(fctx, name, wasmType);
-          if (decl.initializer) {
-            compileExpression(ctx, fctx, decl.initializer, wasmType);
-            fctx.body.push({ op: "local.set", index: localIdx });
-          }
+        // Destructuring patterns: const { a, b } = obj; const [x, y] = arr;
+        if (ts.isObjectBindingPattern(decl.name)) {
+          compileObjectDestructuring(ctx, fctx, decl);
+          continue;
+        }
+        if (ts.isArrayBindingPattern(decl.name)) {
+          compileArrayDestructuring(ctx, fctx, decl);
+          continue;
+        }
+
+        if (!ts.isIdentifier(decl.name)) {
+          ctx.errors.push({
+            message: "Destructuring not supported",
+            line: getLine(decl),
+            column: getCol(decl),
+          });
+          continue;
+        }
+
+        const name = decl.name.text;
+
+        // Class expression: const C = class { ... }
+        if (decl.initializer && ts.isClassExpression(decl.initializer)) {
+          continue;
+        }
+
+        // Arrow/function expression initializers — get actual closure struct ref type
+        if (
+          decl.initializer &&
+          (ts.isArrowFunction(decl.initializer) ||
+            ts.isFunctionExpression(decl.initializer))
+        ) {
+          const actualType = compileExpression(ctx, fctx, decl.initializer);
+          const closureType = actualType ?? { kind: "externref" as const };
+          const localIdx = allocLocal(fctx, name, closureType);
+          fctx.body.push({ op: "local.set", index: localIdx });
+          continue;
+        }
+
+        const varType = ctx.checker.getTypeAtLocation(decl);
+        const wasmType = resolveWasmType(ctx, varType);
+
+        // Reuse pre-hoisted var slot if available
+        const existingIdx = fctx.localMap.get(name);
+        const isVar = !(decl.parent.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const));
+        const localIdx = (isVar && existingIdx !== undefined && existingIdx >= fctx.params.length)
+          ? existingIdx
+          : allocLocal(fctx, name, wasmType);
+
+        if (decl.initializer) {
+          compileExpression(ctx, fctx, decl.initializer, wasmType);
+          fctx.body.push({ op: "local.set", index: localIdx });
         }
       }
     } else {
