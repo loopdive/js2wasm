@@ -132,7 +132,7 @@ function valTypesMatch(a: ValType, b: ValType): boolean {
 }
 
 /** Coerce a value on the stack from one type to another */
-function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: ValType, to: ValType): void {
+export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: ValType, to: ValType): void {
   if (from.kind === to.kind) {
     // Same kind but check if ref typeIdx differs (e.g. ref $AnyValue vs ref $SomeStruct)
     if ((from.kind === "ref" || from.kind === "ref_null") &&
