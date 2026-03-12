@@ -3643,9 +3643,19 @@ function compileLogicalAssignment(
   expr: ts.BinaryExpression,
   op: ts.SyntaxKind,
 ): ValType | null {
+  // Handle property access logical assignment: obj.prop ??= default
+  if (ts.isPropertyAccessExpression(expr.left)) {
+    return compilePropertyLogicalAssignment(ctx, fctx, expr.left, expr.right, op);
+  }
+
+  // Handle element access logical assignment: arr[i] ||= default
+  if (ts.isElementAccessExpression(expr.left)) {
+    return compileElementLogicalAssignment(ctx, fctx, expr.left, expr.right, op);
+  }
+
   if (!ts.isIdentifier(expr.left)) {
     ctx.errors.push({
-      message: "Logical assignment only supported for simple identifiers",
+      message: "Logical assignment only supported for simple identifiers, property access, or element access",
       line: getLine(expr),
       column: getCol(expr),
     });
@@ -3770,6 +3780,280 @@ function compileLogicalAssignment(
     const thenInstrs = fctx.body;
 
     // Else (falsy): keep current value
+    fctx.body = [];
+    emitGet();
+    const elseInstrs = fctx.body;
+
+    fctx.body = savedBody;
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "val", type: varType },
+      then: thenInstrs,
+      else: elseInstrs,
+    });
+  }
+
+  return varType;
+}
+
+/**
+ * Compile logical assignment on property access: obj.prop ??= default, obj.prop ||= default, obj.prop &&= default
+ * Uses short-circuit semantics: RHS is only evaluated if the condition is met.
+ */
+function compilePropertyLogicalAssignment(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  target: ts.PropertyAccessExpression,
+  rhs: ts.Expression,
+  op: ts.SyntaxKind,
+): ValType | null {
+  const objType = ctx.checker.getTypeAtLocation(target.expression);
+  const propName = ts.isPrivateIdentifier(target.name) ? target.name.text.slice(1) : target.name.text;
+
+  // Resolve struct type
+  let typeName = resolveStructName(ctx, objType);
+  if (!typeName && ts.isIdentifier(target.expression)) {
+    typeName = ctx.widenedVarStructMap.get(target.expression.text);
+  }
+  if (!typeName) {
+    ctx.errors.push({
+      message: `Cannot resolve struct type for logical assignment on property '${propName}'`,
+      line: getLine(target),
+      column: getCol(target),
+    });
+    return null;
+  }
+
+  const structTypeIdx = ctx.structMap.get(typeName);
+  const fields = ctx.structFields.get(typeName);
+  if (structTypeIdx === undefined || !fields) {
+    ctx.errors.push({
+      message: `Unknown struct type '${typeName}' for logical assignment`,
+      line: getLine(target),
+      column: getCol(target),
+    });
+    return null;
+  }
+
+  const fieldIdx = fields.findIndex((f) => f.name === propName);
+  if (fieldIdx === -1) {
+    ctx.errors.push({
+      message: `Unknown field '${propName}' on struct '${typeName}'`,
+      line: getLine(target),
+      column: getCol(target),
+    });
+    return null;
+  }
+
+  const fieldType = fields[fieldIdx]!.type;
+
+  // Compile obj and save to a local for reuse
+  const objResult = compileExpression(ctx, fctx, target.expression);
+  if (!objResult) return null;
+  const objLocal = allocLocal(fctx, `__logprop_obj_${fctx.locals.length}`, objResult);
+  fctx.body.push({ op: "local.set", index: objLocal });
+
+  // Create helpers that read/write the field
+  const emitFieldGet = () => {
+    fctx.body.push({ op: "local.get", index: objLocal });
+    fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+  };
+  const emitFieldSet = () => {
+    // After RHS is on stack, save it, load obj, load value, struct.set, load value again for result
+    const tmpVal = allocLocal(fctx, `__logprop_val_${fctx.locals.length}`, fieldType);
+    fctx.body.push({ op: "local.set", index: tmpVal });
+    fctx.body.push({ op: "local.get", index: objLocal });
+    fctx.body.push({ op: "local.get", index: tmpVal });
+    fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx });
+    fctx.body.push({ op: "local.get", index: tmpVal });
+  };
+
+  return emitLogicalAssignmentPattern(ctx, fctx, rhs, op, fieldType, emitFieldGet, emitFieldSet);
+}
+
+/**
+ * Compile logical assignment on element access: arr[i] ??= default, arr[i] ||= default, arr[i] &&= default
+ * Uses short-circuit semantics.
+ */
+function compileElementLogicalAssignment(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  target: ts.ElementAccessExpression,
+  rhs: ts.Expression,
+  op: ts.SyntaxKind,
+): ValType | null {
+  // Compile object expression
+  const arrType = compileExpression(ctx, fctx, target.expression);
+  if (!arrType || (arrType.kind !== "ref" && arrType.kind !== "ref_null")) {
+    ctx.errors.push({ message: "Logical assignment on non-array element access", line: getLine(target), column: getCol(target) });
+    return null;
+  }
+
+  const typeIdx = (arrType as { typeIdx: number }).typeIdx;
+  const typeDef = ctx.mod.types[typeIdx];
+
+  // Handle struct bracket notation: obj["prop"] ??= default
+  if (typeDef?.kind === "struct") {
+    const isVecStruct = typeDef.fields.length === 2 &&
+      typeDef.fields[0]?.name === "length" &&
+      typeDef.fields[1]?.name === "data";
+    if (!isVecStruct) {
+      let fieldName: string | undefined;
+      if (ts.isStringLiteral(target.argumentExpression)) {
+        fieldName = target.argumentExpression.text;
+      } else if (ts.isNumericLiteral(target.argumentExpression)) {
+        fieldName = target.argumentExpression.text;
+      }
+      if (fieldName !== undefined) {
+        const fieldIdx = typeDef.fields.findIndex((f: { name?: string }) => f.name === fieldName);
+        if (fieldIdx !== -1) {
+          const fieldType = typeDef.fields[fieldIdx]!.type;
+
+          // Save obj ref
+          const objLocal = allocLocal(fctx, `__logelem_obj_${fctx.locals.length}`, arrType);
+          fctx.body.push({ op: "local.set", index: objLocal });
+
+          const emitFieldGet = () => {
+            fctx.body.push({ op: "local.get", index: objLocal });
+            fctx.body.push({ op: "struct.get", typeIdx, fieldIdx });
+          };
+          const emitFieldSet = () => {
+            const tmpVal = allocLocal(fctx, `__logelem_val_${fctx.locals.length}`, fieldType);
+            fctx.body.push({ op: "local.set", index: tmpVal });
+            fctx.body.push({ op: "local.get", index: objLocal });
+            fctx.body.push({ op: "local.get", index: tmpVal });
+            fctx.body.push({ op: "struct.set", typeIdx, fieldIdx });
+            fctx.body.push({ op: "local.get", index: tmpVal });
+          };
+
+          return emitLogicalAssignmentPattern(ctx, fctx, rhs, op, fieldType, emitFieldGet, emitFieldSet);
+        }
+      }
+    }
+
+    // Vec struct: array[i] ??= default
+    if (isVecStruct) {
+      const arrLocal = allocLocal(fctx, `__logelem_arr_${fctx.locals.length}`, arrType);
+      fctx.body.push({ op: "local.set", index: arrLocal });
+
+      // Compile index
+      const idxResult = compileExpression(ctx, fctx, target.argumentExpression, { kind: "f64" });
+      if (!idxResult) return null;
+      if (idxResult.kind !== "i32") {
+        fctx.body.push({ op: "i32.trunc_sat_f64_s" });
+      }
+      const idxLocal = allocLocal(fctx, `__logelem_idx_${fctx.locals.length}`, { kind: "i32" });
+      fctx.body.push({ op: "local.set", index: idxLocal });
+
+      const dataField = typeDef.fields[1]!;
+      const dataTypeIdx = (dataField.type as { typeIdx: number }).typeIdx;
+      const dataDef = ctx.mod.types[dataTypeIdx];
+      if (!dataDef || dataDef.kind !== "array") {
+        ctx.errors.push({ message: "Vec struct data field is not an array", line: getLine(target), column: getCol(target) });
+        return null;
+      }
+      const elemType = dataDef.element;
+
+      const emitElemGet = () => {
+        fctx.body.push({ op: "local.get", index: arrLocal });
+        fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 });
+        fctx.body.push({ op: "local.get", index: idxLocal });
+        fctx.body.push({ op: "array.get", typeIdx: dataTypeIdx });
+      };
+      const emitElemSet = () => {
+        const tmpVal = allocLocal(fctx, `__logelem_aval_${fctx.locals.length}`, elemType);
+        fctx.body.push({ op: "local.set", index: tmpVal });
+        fctx.body.push({ op: "local.get", index: arrLocal });
+        fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 });
+        fctx.body.push({ op: "local.get", index: idxLocal });
+        fctx.body.push({ op: "local.get", index: tmpVal });
+        fctx.body.push({ op: "array.set", typeIdx: dataTypeIdx });
+        fctx.body.push({ op: "local.get", index: tmpVal });
+      };
+
+      return emitLogicalAssignmentPattern(ctx, fctx, rhs, op, elemType, emitElemGet, emitElemSet);
+    }
+  }
+
+  ctx.errors.push({
+    message: "Unsupported element access logical assignment target",
+    line: getLine(target),
+    column: getCol(target),
+  });
+  return null;
+}
+
+/**
+ * Common logic for logical assignment patterns (??=, ||=, &&=).
+ * Given emitGet/emitSet closures for the target, emit the if/else with short-circuit semantics.
+ */
+function emitLogicalAssignmentPattern(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  rhs: ts.Expression,
+  op: ts.SyntaxKind,
+  varType: ValType,
+  emitGet: () => void,
+  emitSet: () => void,
+): ValType | null {
+  if (op === ts.SyntaxKind.QuestionQuestionEqualsToken) {
+    // target ??= rhs  →  if (target is null) { target = rhs }; result = target
+    emitGet();
+    fctx.body.push({ op: "ref.is_null" });
+
+    const savedBody = fctx.body;
+    fctx.body = [];
+    const rhsResult = compileExpression(ctx, fctx, rhs, varType);
+    if (!rhsResult) { fctx.body = savedBody; return null; }
+    emitSet();
+    const thenInstrs = fctx.body;
+
+    fctx.body = [];
+    emitGet();
+    const elseInstrs = fctx.body;
+
+    fctx.body = savedBody;
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "val", type: varType },
+      then: thenInstrs,
+      else: elseInstrs,
+    });
+  } else if (op === ts.SyntaxKind.BarBarEqualsToken) {
+    // target ||= rhs  →  if (target is truthy) { keep } else { target = rhs }
+    emitGet();
+    ensureI32Condition(fctx, varType, ctx);
+
+    const savedBody = fctx.body;
+    fctx.body = [];
+    emitGet();
+    const thenInstrs = fctx.body;
+
+    fctx.body = [];
+    const rhsResult = compileExpression(ctx, fctx, rhs, varType);
+    if (!rhsResult) { fctx.body = savedBody; return null; }
+    emitSet();
+    const elseInstrs = fctx.body;
+
+    fctx.body = savedBody;
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "val", type: varType },
+      then: thenInstrs,
+      else: elseInstrs,
+    });
+  } else {
+    // target &&= rhs  →  if (target is truthy) { target = rhs } else { keep }
+    emitGet();
+    ensureI32Condition(fctx, varType, ctx);
+
+    const savedBody = fctx.body;
+    fctx.body = [];
+    const rhsResult = compileExpression(ctx, fctx, rhs, varType);
+    if (!rhsResult) { fctx.body = savedBody; return null; }
+    emitSet();
+    const thenInstrs = fctx.body;
+
     fctx.body = [];
     emitGet();
     const elseInstrs = fctx.body;
@@ -4189,6 +4473,308 @@ function emitBitwiseCompoundOp(fctx: FunctionContext, op: ts.SyntaxKind): void {
   emitToInt32(fctx);
   fctx.body.push({ op: entry.i32op });
   fctx.body.push({ op: entry.unsigned ? "f64.convert_i32_u" : "f64.convert_i32_s" });
+}
+
+/** Emit the arithmetic/bitwise operation for compound assignment.
+ *  Stack must have [left_f64, right_f64]. Result is f64.
+ */
+function emitCompoundArithmeticOp(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  op: ts.SyntaxKind,
+): void {
+  switch (op) {
+    case ts.SyntaxKind.PlusEqualsToken:
+      fctx.body.push({ op: "f64.add" });
+      break;
+    case ts.SyntaxKind.MinusEqualsToken:
+      fctx.body.push({ op: "f64.sub" });
+      break;
+    case ts.SyntaxKind.AsteriskEqualsToken:
+      fctx.body.push({ op: "f64.mul" });
+      break;
+    case ts.SyntaxKind.AsteriskAsteriskEqualsToken: {
+      const funcIdx = ctx.funcMap.get("Math_pow");
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+      }
+      break;
+    }
+    case ts.SyntaxKind.SlashEqualsToken:
+      fctx.body.push({ op: "f64.div" });
+      break;
+    case ts.SyntaxKind.PercentEqualsToken:
+      emitModulo(fctx);
+      break;
+    case ts.SyntaxKind.AmpersandEqualsToken:
+    case ts.SyntaxKind.BarEqualsToken:
+    case ts.SyntaxKind.CaretEqualsToken:
+    case ts.SyntaxKind.LessThanLessThanEqualsToken:
+    case ts.SyntaxKind.GreaterThanGreaterThanEqualsToken:
+    case ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken:
+      emitBitwiseCompoundOp(fctx, op);
+      break;
+  }
+}
+
+/**
+ * Compile property access compound assignment: obj.prop += value
+ * Loads obj.prop, compiles RHS, performs arithmetic op, stores result back.
+ */
+function compilePropertyCompoundAssignment(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  target: ts.PropertyAccessExpression,
+  rhs: ts.Expression,
+  op: ts.SyntaxKind,
+): ValType | null {
+  const objType = ctx.checker.getTypeAtLocation(target.expression);
+  const propName = ts.isPrivateIdentifier(target.name) ? target.name.text.slice(1) : target.name.text;
+
+  // Resolve struct type
+  let typeName = resolveStructName(ctx, objType);
+  if (!typeName && ts.isIdentifier(target.expression)) {
+    typeName = ctx.widenedVarStructMap.get(target.expression.text);
+  }
+  if (!typeName) {
+    ctx.errors.push({
+      message: `Cannot resolve struct type for property compound assignment on '${propName}'`,
+      line: getLine(target),
+      column: getCol(target),
+    });
+    return null;
+  }
+
+  const structTypeIdx = ctx.structMap.get(typeName);
+  const fields = ctx.structFields.get(typeName);
+  if (structTypeIdx === undefined || !fields) {
+    ctx.errors.push({
+      message: `Unknown struct type '${typeName}' for property compound assignment`,
+      line: getLine(target),
+      column: getCol(target),
+    });
+    return null;
+  }
+
+  const fieldIdx = fields.findIndex((f) => f.name === propName);
+  if (fieldIdx === -1) {
+    ctx.errors.push({
+      message: `Unknown field '${propName}' on struct '${typeName}'`,
+      line: getLine(target),
+      column: getCol(target),
+    });
+    return null;
+  }
+
+  const fieldType = fields[fieldIdx]!.type;
+  const isFieldExtern = fieldType.kind === "externref";
+
+  // Compile obj and save to a local for reuse
+  const objResult = compileExpression(ctx, fctx, target.expression);
+  if (!objResult) return null;
+  const objLocal = allocLocal(fctx, `__prop_cmp_obj_${fctx.locals.length}`, objResult);
+  fctx.body.push({ op: "local.set", index: objLocal });
+
+  // Load current field value
+  fctx.body.push({ op: "local.get", index: objLocal });
+  fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+  if (isFieldExtern) {
+    addUnionImports(ctx);
+    fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+  }
+
+  // Compile RHS
+  const rhsResult = compileExpression(ctx, fctx, rhs, { kind: "f64" });
+  if (!rhsResult) return null;
+  if (rhsResult.kind === "externref") {
+    addUnionImports(ctx);
+    fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+  } else if (rhsResult.kind === "i32") {
+    fctx.body.push({ op: "f64.convert_i32_s" });
+  }
+
+  // Perform the arithmetic/bitwise operation
+  emitCompoundArithmeticOp(ctx, fctx, op);
+
+  // Box result back if the field is externref
+  if (isFieldExtern) {
+    addUnionImports(ctx);
+    fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__box_number")! });
+  }
+
+  // Save result for return, then store back to struct
+  const resultType = isFieldExtern ? { kind: "externref" } as ValType : { kind: "f64" } as ValType;
+  const tmpResult = allocLocal(fctx, `__prop_cmp_res_${fctx.locals.length}`, resultType);
+  fctx.body.push({ op: "local.set", index: tmpResult });
+  fctx.body.push({ op: "local.get", index: objLocal });
+  fctx.body.push({ op: "local.get", index: tmpResult });
+  fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx });
+  fctx.body.push({ op: "local.get", index: tmpResult });
+  return resultType;
+}
+
+/**
+ * Compile element access compound assignment: arr[i] += value
+ * Loads arr[i], compiles RHS, performs arithmetic op, stores result back.
+ */
+function compileElementCompoundAssignment(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  target: ts.ElementAccessExpression,
+  rhs: ts.Expression,
+  op: ts.SyntaxKind,
+): ValType | null {
+  // Compile object expression
+  const arrType = compileExpression(ctx, fctx, target.expression);
+  if (!arrType || (arrType.kind !== "ref" && arrType.kind !== "ref_null")) {
+    ctx.errors.push({ message: "Compound assignment on non-array element access", line: getLine(target), column: getCol(target) });
+    return null;
+  }
+
+  const typeIdx = (arrType as { typeIdx: number }).typeIdx;
+  const typeDef = ctx.mod.types[typeIdx];
+
+  // Handle struct bracket notation: obj["prop"] += value
+  if (typeDef?.kind === "struct") {
+    const isVecStruct = typeDef.fields.length === 2 &&
+      typeDef.fields[0]?.name === "length" &&
+      typeDef.fields[1]?.name === "data";
+    if (!isVecStruct) {
+      let fieldName: string | undefined;
+      if (ts.isStringLiteral(target.argumentExpression)) {
+        fieldName = target.argumentExpression.text;
+      } else if (ts.isNumericLiteral(target.argumentExpression)) {
+        fieldName = target.argumentExpression.text;
+      }
+      if (fieldName !== undefined) {
+        const fieldIdx = typeDef.fields.findIndex((f: { name?: string }) => f.name === fieldName);
+        if (fieldIdx !== -1) {
+          const fieldType = typeDef.fields[fieldIdx]!.type;
+          const isFieldExtern = fieldType.kind === "externref";
+
+          // Save obj ref
+          const objLocal = allocLocal(fctx, `__elem_cmp_obj_${fctx.locals.length}`, arrType);
+          fctx.body.push({ op: "local.set", index: objLocal });
+
+          // Load current value
+          fctx.body.push({ op: "local.get", index: objLocal });
+          fctx.body.push({ op: "struct.get", typeIdx, fieldIdx });
+          if (isFieldExtern) {
+            addUnionImports(ctx);
+            fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+          }
+
+          // Compile RHS
+          const rhsResult = compileExpression(ctx, fctx, rhs, { kind: "f64" });
+          if (!rhsResult) return null;
+          if (rhsResult.kind === "externref") {
+            addUnionImports(ctx);
+            fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+          } else if (rhsResult.kind === "i32") {
+            fctx.body.push({ op: "f64.convert_i32_s" });
+          }
+
+          emitCompoundArithmeticOp(ctx, fctx, op);
+
+          if (isFieldExtern) {
+            addUnionImports(ctx);
+            fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__box_number")! });
+          }
+
+          const resultType = isFieldExtern ? { kind: "externref" } as ValType : { kind: "f64" } as ValType;
+          const tmpResult = allocLocal(fctx, `__elem_cmp_res_${fctx.locals.length}`, resultType);
+          fctx.body.push({ op: "local.set", index: tmpResult });
+          fctx.body.push({ op: "local.get", index: objLocal });
+          fctx.body.push({ op: "local.get", index: tmpResult });
+          fctx.body.push({ op: "struct.set", typeIdx, fieldIdx });
+          fctx.body.push({ op: "local.get", index: tmpResult });
+          return resultType;
+        }
+      }
+    }
+
+    // Vec struct: array[i] += value
+    if (isVecStruct) {
+      const arrLocal = allocLocal(fctx, `__elem_cmp_arr_${fctx.locals.length}`, arrType);
+      fctx.body.push({ op: "local.set", index: arrLocal });
+
+      // Compile index
+      const idxResult = compileExpression(ctx, fctx, target.argumentExpression, { kind: "f64" });
+      if (!idxResult) return null;
+      if (idxResult.kind !== "i32") {
+        fctx.body.push({ op: "i32.trunc_sat_f64_s" });
+      }
+      const idxLocal = allocLocal(fctx, `__elem_cmp_idx_${fctx.locals.length}`, { kind: "i32" });
+      fctx.body.push({ op: "local.set", index: idxLocal });
+
+      // Get the data array type
+      const dataField = typeDef.fields[1]!;
+      const dataTypeIdx = (dataField.type as { typeIdx: number }).typeIdx;
+      const dataDef = ctx.mod.types[dataTypeIdx];
+      if (!dataDef || dataDef.kind !== "array") {
+        ctx.errors.push({ message: "Vec struct data field is not an array", line: getLine(target), column: getCol(target) });
+        return null;
+      }
+      const elemType = dataDef.element;
+
+      // Load current value: arr.data[idx]
+      fctx.body.push({ op: "local.get", index: arrLocal });
+      fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 });
+      fctx.body.push({ op: "local.get", index: idxLocal });
+      fctx.body.push({ op: "array.get", typeIdx: dataTypeIdx });
+
+      // Unbox if externref
+      const isElemExtern = elemType.kind === "externref";
+      if (isElemExtern) {
+        addUnionImports(ctx);
+        fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+      } else if (elemType.kind === "i32") {
+        fctx.body.push({ op: "f64.convert_i32_s" });
+      }
+
+      // Compile RHS
+      const rhsResult = compileExpression(ctx, fctx, rhs, { kind: "f64" });
+      if (!rhsResult) return null;
+      if (rhsResult.kind === "externref") {
+        addUnionImports(ctx);
+        fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+      } else if (rhsResult.kind === "i32") {
+        fctx.body.push({ op: "f64.convert_i32_s" });
+      }
+
+      emitCompoundArithmeticOp(ctx, fctx, op);
+
+      // Convert back to element type and store
+      const resultLocal = allocLocal(fctx, `__elem_cmp_val_${fctx.locals.length}`, { kind: "f64" });
+      fctx.body.push({ op: "local.tee", index: resultLocal });
+
+      // Convert f64 result to element type for storage
+      if (isElemExtern) {
+        addUnionImports(ctx);
+        fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__box_number")! });
+      } else if (elemType.kind === "i32") {
+        fctx.body.push({ op: "i32.trunc_sat_f64_s" });
+      }
+
+      const storeLocal = allocLocal(fctx, `__elem_cmp_store_${fctx.locals.length}`, elemType);
+      fctx.body.push({ op: "local.set", index: storeLocal });
+      fctx.body.push({ op: "local.get", index: arrLocal });
+      fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 });
+      fctx.body.push({ op: "local.get", index: idxLocal });
+      fctx.body.push({ op: "local.get", index: storeLocal });
+      fctx.body.push({ op: "array.set", typeIdx: dataTypeIdx });
+
+      fctx.body.push({ op: "local.get", index: resultLocal });
+      return { kind: "f64" };
+    }
+  }
+
+  ctx.errors.push({
+    message: "Unsupported element access compound assignment target",
+    line: getLine(target),
+    column: getCol(target),
+  });
+  return null;
 }
 
 /**
