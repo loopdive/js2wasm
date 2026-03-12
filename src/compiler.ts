@@ -345,6 +345,8 @@ export function compileSource(
     2345, // "Argument of type 'X' is not assignable to parameter of type 'Y'"
     2322, // "Type 'X' is not assignable to type 'Y'"
     2339, // "Property 'X' does not exist on type 'Y'" — dynamic property access
+    2551, // "Property 'X' does not exist on type 'Y'. Did you mean 'Z'?" — dynamic property access variant
+    7053, // "Element implicitly has an 'any' type because expression of type 'X' can't be used to index type 'Y'"
     2454, // "Variable 'X' is used before being assigned"
     2531, // "Object is possibly 'null'"
     2532, // "Object is possibly 'undefined'"
