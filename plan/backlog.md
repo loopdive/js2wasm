@@ -6,82 +6,118 @@ _Goal: Fix runtime failures and reduce compile errors via string comparison, val
 
 | #   | Feature | Status | Group |
 | --- | ------- | ------ | ----- |
-| [225](issues/225.md) | For-loop continue/break with string !== comparison | Done | A |
-| [226](issues/226.md) | valueOf/toString coercion on comparison operators | Done | A |
-| [227](issues/227.md) | BigInt comparison with Infinity (float-unrepresentable trap) | In Progress | A |
-| [228](issues/228.md) | BigInt equality/strict-equality with Number and Boolean | In Progress | A |
-| [229](issues/229.md) | Tagged template cache: array out of bounds | In Progress | A |
-| [230](issues/230.md) | Object computed property names with variable keys | In Progress | A |
-| [231](issues/231.md) | Member expression property assignment on empty objects | Done | C |
-| [232](issues/232.md) | Unsupported call expression -- method calls on object literals | In Progress | B |
-| [233](issues/233.md) | Unknown identifier from destructuring in catch/for-of | Done | A |
-| [234](issues/234.md) | ClassDeclaration in nested/expression positions | In Progress | B |
-| [235](issues/235.md) | Function.name property access (380 compile errors) | In Progress | B |
-| [236](issues/236.md) | allowJs type flexibility -- boolean/void/string as args | Done | C |
-| [237](issues/237.md) | WebAssembly type mismatch -- BigInt i64 vs externref | In Progress | B |
-| [238](issues/238.md) | Class expression new -- `new (class { ... })()` | In Progress | B |
-| [239](issues/239.md) | Element access on struct types (bracket notation) | In Progress | B |
-| [240](issues/240.md) | Setter return value -- allow return in setter bodies | Done | C |
-| [241](issues/241.md) | Yield expression in strict mode / module context | In Progress | B |
-| [242](issues/242.md) | Computed property names in class declarations | In Progress | C |
-| [243](issues/243.md) | Unsupported assignment target patterns | In Progress | B |
-| [244](issues/244.md) | `in` operator runtime failures | In Progress | A |
-| [245](issues/245.md) | Switch statement with string case values | Done | A |
-| [246](issues/246.md) | For-of object destructuring -- TypeError on primitive coercion | In Progress | A |
-| [247](issues/247.md) | Arithmetic with null/undefined produces wrong results | In Progress | A |
-| [248](issues/248.md) | Logical operators with object operands returning wrong values | Done | A |
-| [249](issues/249.md) | Miscellaneous runtime failures -- remaining small fixes | In Progress | A |
-| [250](issues/250.md) | For-loop with function declarations (113 compile errors) | In Progress | B |
-| [251](issues/251.md) | super() call required in derived class constructors | Done | C |
-| [252](issues/252.md) | Subsequent variable declarations type mismatch | Done | C |
-| [253](issues/253.md) | Narrow skip filters -- typeof string comparison | Done | C |
-| [254](issues/254.md) | Private class fields and methods (#field) | In Progress | C |
-| [255](issues/255.md) | 'this' implicit any type in class methods | Done | C |
-| [256](issues/256.md) | Unknown function: f -- locally declared functions not found | Done | C |
+| [225](issues/sprints/3/done/225.md) | For-loop continue/break with string !== comparison | Done | A |
+| [226](issues/sprints/3/done/226.md) | valueOf/toString coercion on comparison operators | Done | A |
+| [227](issues/sprints/3/227.md) | BigInt comparison with Infinity (float-unrepresentable trap) | In Progress | A |
+| [228](issues/sprints/3/228.md) | BigInt equality/strict-equality with Number and Boolean | In Progress | A |
+| [229](issues/sprints/3/229.md) | Tagged template cache: array out of bounds | In Progress | A |
+| [230](issues/sprints/3/230.md) | Object computed property names with variable keys | In Progress | A |
+| [231](issues/sprints/3/done/231.md) | Member expression property assignment on empty objects | Done | C |
+| [232](issues/sprints/3/232.md) | Unsupported call expression -- method calls on object literals | In Progress | B |
+| [233](issues/sprints/3/done/233.md) | Unknown identifier from destructuring in catch/for-of | Done | A |
+| [234](issues/sprints/3/234.md) | ClassDeclaration in nested/expression positions | In Progress | B |
+| [235](issues/sprints/3/235.md) | Function.name property access (380 compile errors) | In Progress | B |
+| [236](issues/sprints/3/done/236.md) | allowJs type flexibility -- boolean/void/string as args | Done | C |
+| [237](issues/sprints/3/237.md) | WebAssembly type mismatch -- BigInt i64 vs externref | In Progress | B |
+| [238](issues/sprints/3/238.md) | Class expression new -- `new (class { ... })()` | In Progress | B |
+| [239](issues/sprints/3/239.md) | Element access on struct types (bracket notation) | In Progress | B |
+| [240](issues/sprints/3/done/240.md) | Setter return value -- allow return in setter bodies | Done | C |
+| [241](issues/sprints/3/241.md) | Yield expression in strict mode / module context | In Progress | B |
+| [242](issues/sprints/3/242.md) | Computed property names in class declarations | In Progress | C |
+| [243](issues/sprints/3/243.md) | Unsupported assignment target patterns | In Progress | B |
+| [244](issues/sprints/3/244.md) | `in` operator runtime failures | In Progress | A |
+| [245](issues/sprints/3/done/245.md) | Switch statement with string case values | Done | A |
+| [246](issues/sprints/3/done/246.md) | For-of object destructuring -- TypeError on primitive coercion | In Progress | A |
+| [247](issues/sprints/3/done/247.md) | Arithmetic with null/undefined produces wrong results | In Progress | A |
+| [248](issues/sprints/3/done/248.md) | Logical operators with object operands returning wrong values | Done | A |
+| [249](issues/sprints/3/249.md) | Miscellaneous runtime failures -- remaining small fixes | In Progress | A |
+| [250](issues/sprints/3/250.md) | For-loop with function declarations (113 compile errors) | In Progress | B |
+| [251](issues/sprints/3/done/251.md) | super() call required in derived class constructors | Done | C |
+| [252](issues/sprints/3/done/252.md) | Subsequent variable declarations type mismatch | Done | C |
+| [253](issues/sprints/3/done/253.md) | Narrow skip filters -- typeof string comparison | Done | C |
+| [254](issues/sprints/3/254.md) | Private class fields and methods (#field) | In Progress | C |
+| [255](issues/sprints/3/done/255.md) | 'this' implicit any type in class methods | Done | C |
+| [256](issues/sprints/3/done/256.md) | Unknown function: f -- locally declared functions not found | Done | C |
 
 ## Sprint 5
 
-_Goal: Advanced compile error reduction, runtime correctness for all 62 remaining failures, test262 coverage expansion, and performance profiling. Target: reduce compile errors to ~2500, eliminate all runtime failures (62 -> 0), expand test categories._
+_Goal: Fix silent correctness bugs and high-impact compile errors. Focus: no wrong output, no invalid Wasm, unblock the most common language patterns._
 
-| #   | Feature | Status | Group |
-| [317](issues/317.md) | Unused $AnyValue preamble type + duplicate export cleanup | Open | **P0** |
-| [318](issues/318.md) | Infer parameter types from call-site arguments for untyped functions | Open | **P0** |
-| [319](issues/319.md) | Inline single-use function type signatures in WAT output | Open | D |
-| [322](issues/322.md) | Inline trig/transcendental Math methods as pure Wasm | Open | D |
-| [323](issues/323.md) | Native type annotations (:i32, :f32, :u8) for performance | Open | D |
-| [320](issues/320.md) | Dead import and type elimination (umbrella) | Open | **P0** |
-| [321](issues/321.md) | Collection functions don't scan top-level statements (__module_init) | Open | **P0** |
+### Tier 1 — Silent correctness bugs (wrong output / invalid Wasm)
+
+| #   | Feature | Status | Tests |
 | --- | ------- | ------ | ----- |
-| [287](issues/287.md) | Generator function compile errors -- yield in nested contexts | Open | A |
-| [288](issues/288.md) | Try/catch/finally compile errors -- complex patterns | Open | A |
-| [289](issues/289.md) | For-in compile errors -- property enumeration edge cases | Open | A |
-| [290](issues/290.md) | Instanceof compile errors -- class hierarchy and expressions | Open | A |
-| [291](issues/291.md) | In operator compile errors -- dynamic property checks | Open | A |
-| [292](issues/292.md) | Runtime failures -- for-loop incorrect computed values | Open | B |
-| [293](issues/293.md) | Runtime failures -- class method incorrect results | Open | B |
-| [294](issues/294.md) | Runtime failures -- assignment expression evaluation order | Open | B |
-| [295](issues/295.md) | Runtime failures -- comparison operators with type coercion | Open | B |
-| [296](issues/296.md) | Runtime failures -- strict equality edge cases | Open | B |
-| [297](issues/297.md) | Runtime failures -- switch statement fall-through | Open | B |
-| [298](issues/298.md) | Runtime failures -- function statement edge cases | Open | B |
-| [299](issues/299.md) | Runtime failures -- equals/does-not-equals loose comparison | Open | B |
-| [300](issues/300.md) | Runtime failures -- object to primitive conversion | Open | B |
-| [301](issues/301.md) | Runtime failures -- float unrepresentable in integer range | Open | B |
-| [302](issues/302.md) | Runtime failures -- Math.min/max edge cases | Open | B |
-| [303](issues/303.md) | Runtime failures -- parseInt edge cases | Open | B |
-| [304](issues/304.md) | Runtime failures -- unary minus and return edge cases | Open | B |
-| [305](issues/305.md) | Runtime failures -- computed property names and types/reference | Open | B |
-| [306](issues/306.md) | Prefix/postfix increment/decrement compile errors | Open | C |
-| [307](issues/307.md) | Promise.all and Promise.race compile errors | Open | C |
-| [308](issues/308.md) | Addition operator compile errors -- string/number coercion | Open | C |
-| [309](issues/309.md) | Expand test262 harness includes -- propertyIsEnumerable, fnGlobalObject | Open | D |
-| [310](issues/310.md) | Reduce skip filters -- re-evaluate conservative skips | Open | D |
-| [311](issues/311.md) | Test262 category expansion -- built-ins/String/prototype new methods | Open | D |
-| [312](issues/312.md) | Test262 category expansion -- built-ins/Number methods | Open | D |
-| [313](issues/313.md) | Test262 category expansion -- language/expressions new categories | Open | D |
-| [314](issues/314.md) | Performance -- compile time profiling and optimization | Open | D |
-| [315](issues/315.md) | Wasm validation error audit -- systematic fix for type mismatches | Open | C |
-| [316](issues/316.md) | Runtime failure -- array element access out of bounds | Open | B |
+| [321](issues/sprints/5/321.md) | Collection functions don't scan top-level statements (__module_init) | Open | **P0** |
+| [317](issues/sprints/5/317.md) | Unused $AnyValue preamble type + duplicate export cleanup | Open | **P0** |
+| [315](issues/sprints/5/315.md) | Wasm validation error audit -- systematic fix for type mismatches | Open | ~93 |
+| [292](issues/sprints/5/292.md) | Runtime failures -- for-loop incorrect computed values | Open | 15 |
+| [293](issues/sprints/5/293.md) | Runtime failures -- class method incorrect results | Open | 10 |
+| [295](issues/sprints/5/295.md) | Runtime failures -- comparison operators with type coercion | Open | 8 |
+| [294](issues/sprints/5/294.md) | Runtime failures -- assignment expression evaluation order | Open | 7 |
+| [300](issues/sprints/5/300.md) | Runtime failures -- object to primitive conversion | Open | 5 |
+| [296](issues/sprints/5/296.md) | Runtime failures -- strict equality edge cases | Open | 4 |
+
+### Tier 2 — High-impact compile error fixes
+
+| #   | Feature | Status | Tests |
+| --- | ------- | ------ | ----- |
+| [287](issues/sprints/5/287.md) | Generator function compile errors -- yield in nested contexts | Open | ~119 |
+| [306](issues/sprints/5/306.md) | Prefix/postfix increment/decrement compile errors | Open | ~44 |
+| [288](issues/sprints/5/288.md) | Try/catch/finally compile errors -- complex patterns | Open | ~40 |
+| [290](issues/sprints/5/290.md) | Instanceof compile errors -- class hierarchy and expressions | Open | ~20 |
+| [308](issues/sprints/5/308.md) | Addition operator compile errors -- string/number coercion | Open | 7 |
+
+## Sprint 6
+
+_Goal: Remaining runtime failures, codegen quality, and test infrastructure expansion._
+
+### Runtime failures (remaining)
+
+| #   | Feature | Status | Tests |
+| --- | ------- | ------ | ----- |
+| [297](issues/sprints/6/297.md) | Runtime failures -- switch statement fall-through | Open | 2 |
+| [298](issues/sprints/6/298.md) | Runtime failures -- function statement edge cases | Open | 2 |
+| [299](issues/sprints/6/299.md) | Runtime failures -- equals/does-not-equals loose comparison | Open | 2 |
+| [301](issues/sprints/6/301.md) | Runtime failures -- float unrepresentable in integer range | Open | 4 |
+| [302](issues/sprints/6/302.md) | Runtime failures -- Math.min/max edge cases | Open | 2 |
+| [303](issues/sprints/6/303.md) | Runtime failures -- parseInt edge cases | Open | 1 |
+| [304](issues/sprints/6/304.md) | Runtime failures -- unary minus and return edge cases | Open | 2 |
+| [305](issues/sprints/6/305.md) | Runtime failures -- computed property names and types/reference | Open | 2 |
+| [316](issues/sprints/6/316.md) | Runtime failure -- array element access out of bounds | Open | 1 |
+
+### Compile error fixes (lower impact)
+
+| #   | Feature | Status | Tests |
+| --- | ------- | ------ | ----- |
+| [289](issues/sprints/6/289.md) | For-in compile errors -- property enumeration edge cases | Open | ~13 |
+| [291](issues/sprints/6/291.md) | In operator compile errors -- dynamic property checks | Open | ~10 |
+| [307](issues/sprints/6/307.md) | Promise.all and Promise.race compile errors | Open | 7 |
+
+### Codegen quality
+
+| #   | Feature | Status |
+| --- | ------- | ------ |
+| [320](issues/sprints/6/320.md) | Dead import and type elimination (umbrella) | Open |
+| [318](issues/sprints/6/318.md) | Infer parameter types from call-site arguments for untyped functions | Open |
+| [319](issues/sprints/6/319.md) | Inline single-use function type signatures in WAT output | Open |
+
+### Test infrastructure
+
+| #   | Feature | Status |
+| --- | ------- | ------ |
+| [309](issues/sprints/6/309.md) | Expand test262 harness includes -- propertyIsEnumerable, fnGlobalObject | Open |
+| [310](issues/sprints/6/310.md) | Reduce skip filters -- re-evaluate conservative skips | Open |
+| [311](issues/sprints/6/311.md) | Test262 category expansion -- built-ins/String/prototype new methods | Open |
+| [312](issues/sprints/6/312.md) | Test262 category expansion -- built-ins/Number methods | Open |
+| [313](issues/sprints/6/313.md) | Test262 category expansion -- language/expressions new categories | Open |
+| [314](issues/sprints/6/314.md) | Performance -- compile time profiling and optimization | Open |
+
+### Future (low priority)
+
+| #   | Feature | Status |
+| --- | ------- | ------ |
+| [322](issues/sprints/6/322.md) | Inline trig/transcendental Math methods as pure Wasm | Open |
+| [323](issues/sprints/6/323.md) | Native type annotations (:i32, :f32, :u8) for performance | Open |
 
 ## Sprint 4 (current)
 
@@ -89,36 +125,36 @@ _Goal: Reduce compile errors from ~3465 to ~2000 by fixing the most common error
 
 | #   | Feature | Status | Group |
 | --- | ------- | ------ | ----- |
-| [257](issues/257.md) | Unsupported call expression -- method calls on returned values | Open | A |
-| [258](issues/258.md) | Unsupported call expression -- double/triple nested calls | Open | A |
-| [259](issues/259.md) | ClassDeclaration in block/nested scope positions | Open | B |
-| [260](issues/260.md) | ClassDeclaration + call expression combined errors | Open | B |
-| [261](issues/261.md) | ClassDeclaration + new expression for anonymous classes | Open | B |
-| [262](issues/262.md) | Argument type assignability -- allowJs flexibility for test262 | Open | C |
-| [263](issues/263.md) | Property does not exist on type -- dynamic property access | Open | C |
-| [264](issues/264.md) | Element access (bracket notation) on struct types | Open | C |
-| [265](issues/265.md) | Computed property names in class declarations (TypeScript diagnostic) | Open | C |
-| [266](issues/266.md) | Unknown identifier -- scope resolution for multi-variable patterns | Open | D |
-| [267](issues/267.md) | Yield expression outside of generator function | Open | D |
-| [268](issues/268.md) | Iterator protocol -- Type must have a Symbol.iterator method | Open | D |
-| [269](issues/269.md) | Setter return value diagnostic suppression | Open | C |
-| [270](issues/270.md) | Strict mode reserved words -- let, yield, package, etc. | Open | D |
-| [271](issues/271.md) | Cannot find name -- missing harness or global declarations | Open | D |
-| [272](issues/272.md) | WebAssembly type mismatch -- externref vs f64/i32 in compiled output | Open | A |
-| [273](issues/273.md) | Unsupported new expression for anonymous class expressions | Open | B |
-| [274](issues/274.md) | Property access on function type -- .name, .length, .call, .apply | Open | C |
-| [275](issues/275.md) | Left side of comma operator warning blocks compilation | Open | C |
-| [276](issues/276.md) | Computed property name must be of assignable type | Open | C |
-| [277](issues/277.md) | WebAssembly type mismatch -- local.set externref vs concrete types | Open | A |
-| [278](issues/278.md) | Cannot destructure -- not a known struct type | Open | D |
-| [279](issues/279.md) | Arrow function compile errors -- parameter and body patterns | Open | A |
-| [280](issues/280.md) | Function expression compile errors -- name binding and hoisting | Open | A |
-| [281](issues/281.md) | Object literal property patterns -- shorthand, spread, methods | Open | C |
-| [282](issues/282.md) | Variable declaration compile errors -- complex initializers | Open | D |
-| [283](issues/283.md) | Compound assignment compile errors -- type coercion gaps | Open | A |
-| [284](issues/284.md) | For-of compile errors -- destructuring and non-array iterables | Open | D |
-| [285](issues/285.md) | For-loop compile errors -- complex heads and function declarations | Open | D |
-| [286](issues/286.md) | Logical assignment compile errors -- nullish and short-circuit | Open | A |
+| [257](issues/sprints/4/257.md) | Unsupported call expression -- method calls on returned values | Open | A |
+| [258](issues/sprints/4/258.md) | Unsupported call expression -- double/triple nested calls | Open | A |
+| [259](issues/sprints/4/259.md) | ClassDeclaration in block/nested scope positions | Open | B |
+| [260](issues/sprints/4/260.md) | ClassDeclaration + call expression combined errors | Open | B |
+| [261](issues/sprints/4/261.md) | ClassDeclaration + new expression for anonymous classes | Open | B |
+| [262](issues/sprints/4/262.md) | Argument type assignability -- allowJs flexibility for test262 | Open | C |
+| [263](issues/sprints/4/263.md) | Property does not exist on type -- dynamic property access | Open | C |
+| [264](issues/sprints/4/264.md) | Element access (bracket notation) on struct types | Open | C |
+| [265](issues/sprints/4/265.md) | Computed property names in class declarations (TypeScript diagnostic) | Open | C |
+| [266](issues/sprints/4/266.md) | Unknown identifier -- scope resolution for multi-variable patterns | Open | D |
+| [267](issues/sprints/4/267.md) | Yield expression outside of generator function | Open | D |
+| [268](issues/sprints/4/268.md) | Iterator protocol -- Type must have a Symbol.iterator method | Open | D |
+| [269](issues/sprints/4/269.md) | Setter return value diagnostic suppression | Open | C |
+| [270](issues/sprints/4/270.md) | Strict mode reserved words -- let, yield, package, etc. | Open | D |
+| [271](issues/sprints/4/271.md) | Cannot find name -- missing harness or global declarations | Open | D |
+| [272](issues/sprints/4/272.md) | WebAssembly type mismatch -- externref vs f64/i32 in compiled output | Open | A |
+| [273](issues/sprints/4/273.md) | Unsupported new expression for anonymous class expressions | Open | B |
+| [274](issues/sprints/4/274.md) | Property access on function type -- .name, .length, .call, .apply | Open | C |
+| [275](issues/sprints/4/275.md) | Left side of comma operator warning blocks compilation | Open | C |
+| [276](issues/sprints/4/276.md) | Computed property name must be of assignable type | Open | C |
+| [277](issues/sprints/4/277.md) | WebAssembly type mismatch -- local.set externref vs concrete types | Open | A |
+| [278](issues/sprints/4/278.md) | Cannot destructure -- not a known struct type | Open | D |
+| [279](issues/sprints/4/279.md) | Arrow function compile errors -- parameter and body patterns | Open | A |
+| [280](issues/sprints/4/280.md) | Function expression compile errors -- name binding and hoisting | Open | A |
+| [281](issues/sprints/4/281.md) | Object literal property patterns -- shorthand, spread, methods | Open | C |
+| [282](issues/sprints/4/282.md) | Variable declaration compile errors -- complex initializers | Open | D |
+| [283](issues/sprints/4/283.md) | Compound assignment compile errors -- type coercion gaps | Open | A |
+| [284](issues/sprints/4/284.md) | For-of compile errors -- destructuring and non-array iterables | Open | D |
+| [285](issues/sprints/4/285.md) | For-loop compile errors -- complex heads and function declarations | Open | D |
+| [286](issues/sprints/4/286.md) | Logical assignment compile errors -- nullish and short-circuit | Open | A |
 
 ## Sprint 1
 
@@ -127,37 +163,37 @@ _Details: [sprint-1.md](sprint-1.md)_
 
 | #   | Feature | Status | Assignee |
 | --- | ------- | ------ | -------- |
-| [138](issues/138.md) | Bug: valueOf/toString coercion on comparison operators | Open | — |
-| [139](issues/139.md) | Bug: valueOf/toString coercion on arithmetic operators | Open | — |
-| [140](issues/140.md) | Bug: object computed property names runtime | Open | — |
-| [141](issues/141.md) | Bug: tagged template literal runtime failures | Open | — |
-| [142](issues/142.md) | Bug: assignment destructuring failures | Open | — |
-| [143](issues/143.md) | Bug: for-loop edge cases | Open | — |
-| [144](issues/144.md) | Bug: new expression with class expressions | Open | — |
-| [145](issues/145.md) | allowJs type flexibility: boolean/string/void as number | Open | — |
-| [148](issues/148.md) | Element access (bracket notation) on struct types | Open | — |
-| [150](issues/150.md) | ClassDeclaration in expression positions | Open | — |
-| [151](issues/151.md) | `this` keyword in class methods for test262 | Open | — |
-| [152](issues/152.md) | Setter return value error in allowJs mode | Open | — |
-| [154](issues/154.md) | Bug: while/do-while loop condition evaluation | Open | — |
-| [155](issues/155.md) | Bug: logical-and/logical-or short-circuit | Open | — |
-| [156](issues/156.md) | Bug: conditional (ternary) expression evaluation | Open | — |
-| [157](issues/157.md) | Bug: void expression returns wrong value | Open | — |
-| [158](issues/158.md) | Bug: concatenation with non-string operands | Open | — |
-| [159](issues/159.md) | Bug: call expression edge cases | Open | — |
-| [160](issues/160.md) | Bug: Math method edge cases | Open | — |
-| [161](issues/161.md) | Bug: compound assignment edge cases | Open | — |
-| [162](issues/162.md) | Bug: switch statement matching | Open | — |
-| [163](issues/163.md) | Bug: return statement edge cases | Open | — |
-| [164](issues/164.md) | Bug: variable declaration edge cases | Open | — |
-| [165](issues/165.md) | Bug: function statement hoisting and edge cases | Open | — |
-| [166](issues/166.md) | Bug: `in` operator runtime failures | Open | — |
-| [167](issues/167.md) | Bug: typeof edge cases | Open | — |
-| [168](issues/168.md) | Bug: equality operators with null/undefined | Open | — |
-| [169](issues/169.md) | Bug: arrow function edge case | Open | — |
-| [170](issues/170.md) | Bug: class expression/declaration edge cases | Open | — |
-| [171](issues/171.md) | Bug: Boolean() edge cases | Open | — |
-| [172](issues/172.md) | Bug: Array.isArray edge case | Open | — |
+| [138](issues/sprints/1/138.md) | Bug: valueOf/toString coercion on comparison operators | Open | — |
+| [139](issues/sprints/1/139.md) | Bug: valueOf/toString coercion on arithmetic operators | Open | — |
+| [140](issues/sprints/1/140.md) | Bug: object computed property names runtime | Open | — |
+| [141](issues/sprints/1/141.md) | Bug: tagged template literal runtime failures | Open | — |
+| [142](issues/sprints/1/142.md) | Bug: assignment destructuring failures | Open | — |
+| [143](issues/sprints/1/143.md) | Bug: for-loop edge cases | Open | — |
+| [144](issues/sprints/1/144.md) | Bug: new expression with class expressions | Open | — |
+| [145](issues/sprints/1/145.md) | allowJs type flexibility: boolean/string/void as number | Open | — |
+| [148](issues/sprints/1/148.md) | Element access (bracket notation) on struct types | Open | — |
+| [150](issues/sprints/1/150.md) | ClassDeclaration in expression positions | Open | — |
+| [151](issues/sprints/1/151.md) | `this` keyword in class methods for test262 | Open | — |
+| [152](issues/sprints/1/152.md) | Setter return value error in allowJs mode | Open | — |
+| [154](issues/sprints/1/154.md) | Bug: while/do-while loop condition evaluation | Open | — |
+| [155](issues/sprints/1/155.md) | Bug: logical-and/logical-or short-circuit | Open | — |
+| [156](issues/sprints/1/156.md) | Bug: conditional (ternary) expression evaluation | Open | — |
+| [157](issues/sprints/1/157.md) | Bug: void expression returns wrong value | Open | — |
+| [158](issues/sprints/1/158.md) | Bug: concatenation with non-string operands | Open | — |
+| [159](issues/sprints/1/159.md) | Bug: call expression edge cases | Open | — |
+| [160](issues/sprints/1/160.md) | Bug: Math method edge cases | Open | — |
+| [161](issues/sprints/1/161.md) | Bug: compound assignment edge cases | Open | — |
+| [162](issues/sprints/1/162.md) | Bug: switch statement matching | Open | — |
+| [163](issues/sprints/1/163.md) | Bug: return statement edge cases | Open | — |
+| [164](issues/sprints/1/164.md) | Bug: variable declaration edge cases | Open | — |
+| [165](issues/sprints/1/165.md) | Bug: function statement hoisting and edge cases | Open | — |
+| [166](issues/sprints/1/166.md) | Bug: `in` operator runtime failures | Open | — |
+| [167](issues/sprints/1/167.md) | Bug: typeof edge cases | Open | — |
+| [168](issues/sprints/1/168.md) | Bug: equality operators with null/undefined | Open | — |
+| [169](issues/sprints/1/169.md) | Bug: arrow function edge case | Open | — |
+| [170](issues/sprints/1/170.md) | Bug: class expression/declaration edge cases | Open | — |
+| [171](issues/sprints/1/171.md) | Bug: Boolean() edge cases | Open | — |
+| [172](issues/sprints/1/172.md) | Bug: Array.isArray edge case | Open | — |
 
 ## Backlog
 
@@ -165,21 +201,21 @@ _Details: [sprint-1.md](sprint-1.md)_
 
 | #                    | Feature                                            | Complexity | Tests blocked |
 | -------------------- | -------------------------------------------------- | ---------- | ------------- |
-| [130](issues/130.md) | Shape inference Phase 4 — hashmap fallback + more methods | L   | 2,200+        |
-| [146](issues/146.md) | Unknown identifier / scope issues | M | ~269 |
-| [147](issues/147.md) | Function.name property | M | ~258 |
-| [149](issues/149.md) | Unsupported call expression patterns | L | ~637 |
-| [153](issues/153.md) | Iterator protocol for destructuring | M | ~67 |
-| [173](issues/173.md) | Computed property names in classes | M | ~44 |
+| [130](issues/backlog/130.md) | Shape inference Phase 4 — hashmap fallback + more methods | L   | 2,200+        |
+| [146](issues/backlog/146.md) | Unknown identifier / scope issues | M | ~269 |
+| [147](issues/backlog/147.md) | Function.name property | M | ~258 |
+| [149](issues/backlog/149.md) | Unsupported call expression patterns | L | ~637 |
+| [153](issues/backlog/153.md) | Iterator protocol for destructuring | M | ~67 |
+| [173](issues/backlog/173.md) | Computed property names in classes | M | ~44 |
 
 ### Won't implement (fundamental JS runtime features)
 
 | #                    | Feature                                            | Reason                    |
 | -------------------- | -------------------------------------------------- | ------------------------- |
-| [123](issues/123.md) | Wrapper constructors (new Number/String/Boolean)   | JS legacy, TS discourages |
-| [124](issues/124.md) | delete operator                                    | Fixed struct fields       |
-| [125](issues/125.md) | Object.defineProperty / property descriptors       | Runtime metaprogramming   |
-| [129](issues/129.md) | propertyHelper.js harness                          | Depends on #125           |
+| [123](issues/backlog/123.md) | Wrapper constructors (new Number/String/Boolean)   | JS legacy, TS discourages |
+| [124](issues/backlog/124.md) | delete operator                                    | Fixed struct fields       |
+| [125](issues/backlog/125.md) | Object.defineProperty / property descriptors       | Runtime metaprogramming   |
+| [129](issues/backlog/129.md) | propertyHelper.js harness                          | Depends on #125           |
 
 
 
@@ -311,26 +347,26 @@ _Details: [sprint-1.md](sprint-1.md)_
 | [105](issues/done/105.md) | Test262 — Map/Set/Promise                               | 16 collection/promise categories        |
 | [106](issues/done/106.md) | Test262 — Object/Array extended                         | Array.isArray + skip filters            |
 | [107](issues/done/107.md) | Fix codegen null-dereference crashes                    | try-catch + null guards                 |
-| [116](issues/116.md)      | Unskip implemented features in test262 runner           | 26 features unskipped, +13 passing      |
-| [117](issues/117.md)      | String comparison in test262 harness                    | assert_sameValue_str                    |
-| [118](issues/118.md)      | compareArray.js test262 harness shim                    | compareArray shim                       |
-| [130 Ph1-3](issues/130.md)| Shape inference + call/apply inlining                   | 4 in equivalence.test.ts                |
-| [119](issues/119.md)      | assert.throws support in test262 harness                | removeAssertThrows()                    |
-| [120](issues/120.md)      | undefined/void 0 comparison support                     | stripUndefinedThrowGuards()             |
-| [122](issues/122.md)      | arguments object                                        | vec struct from params                  |
-| [126](issues/126.md)      | valueOf/toString coercion                               | class method dispatch                   |
-| [127](issues/127.md)      | Private class members (#field, #method)                 | strip # prefix, field initializers      |
-| [128](issues/128.md)      | BigInt type                                             | i64 ops, literals, coercions            |
-| [131](issues/131.md)      | String concatenation with variables                     | addStringImports + compound assign      |
-| [132](issues/132.md)      | Logical operators returning values                      | already implemented, tests added        |
-| [133](issues/133.md)      | typeof runtime comparison                               | static resolution + callable detect     |
-| [134](issues/134.md)      | Switch fallthrough                                      | matched-flag rewrite                    |
-| [135](issues/135.md)      | Ternary returning non-boolean values                    | type reconciliation across branches     |
-| [136](issues/136.md)      | Loose equality (== / !=)                                | mixed-type coercion dispatch            |
-| [137](issues/137.md)      | Object literal getter/setter                            | 3 in equivalence.test.ts                |
-| [181](issues/181.md)      | new Object() + new Function() skip                      | 8 in equivalence.test.ts                |
-| [200](issues/200.md)      | JSON.stringify/parse externref coercion                  | 2 in equivalence.test.ts                |
-| [205](issues/205.md)      | String.prototype.indexOf start position coercion         | 2 in equivalence.test.ts                |
-| [246](issues/246.md)      | For-of object destructuring missing property defaults    | 3 in equivalence.test.ts                |
-| [247](issues/247.md)      | Arithmetic with null/undefined produces wrong results     | 10 in equivalence.test.ts               |
+| [116](issues/sprints/2/done/116.md)      | Unskip implemented features in test262 runner           | 26 features unskipped, +13 passing      |
+| [117](issues/sprints/2/done/117.md)      | String comparison in test262 harness                    | assert_sameValue_str                    |
+| [118](issues/sprints/2/done/118.md)      | compareArray.js test262 harness shim                    | compareArray shim                       |
+| [130 Ph1-3](issues/backlog/130.md)| Shape inference + call/apply inlining                   | 4 in equivalence.test.ts                |
+| [119](issues/sprints/2/done/119.md)      | assert.throws support in test262 harness                | removeAssertThrows()                    |
+| [120](issues/sprints/2/done/120.md)      | undefined/void 0 comparison support                     | stripUndefinedThrowGuards()             |
+| [122](issues/sprints/2/done/122.md)      | arguments object                                        | vec struct from params                  |
+| [126](issues/sprints/2/done/126.md)      | valueOf/toString coercion                               | class method dispatch                   |
+| [127](issues/sprints/2/done/127.md)      | Private class members (#field, #method)                 | strip # prefix, field initializers      |
+| [128](issues/sprints/2/done/128.md)      | BigInt type                                             | i64 ops, literals, coercions            |
+| [131](issues/sprints/2/done/131.md)      | String concatenation with variables                     | addStringImports + compound assign      |
+| [132](issues/sprints/2/done/132.md)      | Logical operators returning values                      | already implemented, tests added        |
+| [133](issues/sprints/2/done/133.md)      | typeof runtime comparison                               | static resolution + callable detect     |
+| [134](issues/sprints/2/done/134.md)      | Switch fallthrough                                      | matched-flag rewrite                    |
+| [135](issues/sprints/2/done/135.md)      | Ternary returning non-boolean values                    | type reconciliation across branches     |
+| [136](issues/sprints/2/done/136.md)      | Loose equality (== / !=)                                | mixed-type coercion dispatch            |
+| [137](issues/sprints/2/done/137.md)      | Object literal getter/setter                            | 3 in equivalence.test.ts                |
+| [181](issues/sprints/2/done/181.md)      | new Object() + new Function() skip                      | 8 in equivalence.test.ts                |
+| [200](issues/sprints/2/done/200.md)      | JSON.stringify/parse externref coercion                  | 2 in equivalence.test.ts                |
+| [205](issues/sprints/2/done/205.md)      | String.prototype.indexOf start position coercion         | 2 in equivalence.test.ts                |
+| [246](issues/sprints/3/done/246.md)      | For-of object destructuring missing property defaults    | 3 in equivalence.test.ts                |
+| [247](issues/sprints/3/done/247.md)      | Arithmetic with null/undefined produces wrong results     | 10 in equivalence.test.ts               |
 
