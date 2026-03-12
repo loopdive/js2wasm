@@ -4658,6 +4658,83 @@ function collectParseImports(
   }
 }
 
+/**
+ * Ensure `parseFloat` is registered as a host import.
+ * Called on-demand when the compiler encounters string-to-number coercion
+ * (e.g. loose equality `"1" == 1`) but `parseFloat` was not explicitly used
+ * in the source code.  Analogous to addUnionImports / addStringImports.
+ */
+export function ensureParseFloat(ctx: CodegenContext): void {
+  if (ctx.funcMap.has("parseFloat")) return;
+
+  const importsBefore = ctx.numImportFuncs;
+  const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "f64" }]);
+  addImport(ctx, "env", "parseFloat", { kind: "func", typeIdx });
+
+  // Shift defined-function indices if imports were added late
+  const delta = ctx.numImportFuncs - importsBefore;
+  if (delta > 0 && ctx.mod.functions.length > 0) {
+    const newImportNames = new Set(["parseFloat"]);
+    for (const [name, idx] of ctx.funcMap) {
+      if (!newImportNames.has(name) && idx >= importsBefore) {
+        ctx.funcMap.set(name, idx + delta);
+      }
+    }
+    for (const exp of ctx.mod.exports) {
+      if (exp.desc.kind === "func" && exp.desc.index >= importsBefore) {
+        exp.desc.index += delta;
+      }
+    }
+    // Shift call instructions in already-compiled function bodies (recursive)
+    function shiftFuncIndices(instrs: Instr[]): void {
+      for (const instr of instrs) {
+        if (instr.op === "call" && instr.funcIdx >= importsBefore) {
+          instr.funcIdx += delta;
+        }
+        if (instr.op === "ref.func" && instr.funcIdx >= importsBefore) {
+          instr.funcIdx += delta;
+        }
+        if ("body" in instr && Array.isArray((instr as any).body)) {
+          shiftFuncIndices((instr as any).body);
+        }
+        if ("then" in instr && Array.isArray((instr as any).then)) {
+          shiftFuncIndices((instr as any).then);
+        }
+        if ("else" in instr && Array.isArray((instr as any).else)) {
+          shiftFuncIndices((instr as any).else);
+        }
+        if ("catches" in instr && Array.isArray((instr as any).catches)) {
+          for (const c of (instr as any).catches) {
+            if (Array.isArray(c.body)) shiftFuncIndices(c.body);
+          }
+        }
+        if ("catchAll" in instr && Array.isArray((instr as any).catchAll)) {
+          shiftFuncIndices((instr as any).catchAll);
+        }
+      }
+    }
+    for (const func of ctx.mod.functions) {
+      shiftFuncIndices(func.body);
+    }
+    if (ctx.currentFunc) {
+      const curBody = ctx.currentFunc.body;
+      const alreadyShifted = ctx.mod.functions.some(f => f.body === curBody);
+      if (!alreadyShifted) {
+        shiftFuncIndices(curBody);
+      }
+    }
+    for (const elem of ctx.mod.elements) {
+      if (elem.funcIndices) {
+        for (let i = 0; i < elem.funcIndices.length; i++) {
+          if (elem.funcIndices[i]! >= importsBefore) {
+            elem.funcIndices[i]! += delta;
+          }
+        }
+      }
+    }
+  }
+}
+
 /** Known constructors handled natively (not needing __new_ imports) */
 const KNOWN_CONSTRUCTORS = new Set([
   "Array", "Date", "Map", "Set", "RegExp", "Error", "TypeError", "RangeError", "Object", "Function",

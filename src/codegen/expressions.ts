@@ -1,6 +1,6 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext, ClosureInfo, RestParamInfo } from "./index.js";
-import { allocLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers, addStringImports, cacheStringLiterals, addStringConstantGlobal, nextModuleGlobalIdx } from "./index.js";
+import { allocLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers, addStringImports, cacheStringLiterals, addStringConstantGlobal, nextModuleGlobalIdx, ensureParseFloat } from "./index.js";
 import {
   mapTsTypeToWasm,
   isNumberType,
@@ -298,6 +298,26 @@ function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: ValType, t
     if (funcIdx !== undefined) {
       fctx.body.push({ op: "f64.convert_i32_s" });
       fctx.body.push({ op: "call", funcIdx });
+      return;
+    }
+  }
+  // i64 → externref (box BigInt as number to preserve value)
+  if (from.kind === "i64" && to.kind === "externref") {
+    addUnionImports(ctx);
+    const funcIdx = ctx.funcMap.get("__box_number");
+    if (funcIdx !== undefined) {
+      fctx.body.push({ op: "f64.convert_i64_s" });
+      fctx.body.push({ op: "call", funcIdx });
+      return;
+    }
+  }
+  // externref → i64
+  if (from.kind === "externref" && to.kind === "i64") {
+    addUnionImports(ctx);
+    const funcIdx = ctx.funcMap.get("__unbox_number");
+    if (funcIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx });
+      fctx.body.push({ op: "i64.trunc_f64_s" });
       return;
     }
   }
@@ -1478,13 +1498,9 @@ function compileTypeofExpression(
   const operandType = compileExpression(ctx, fctx, operand);
   if (operandType === null) return null;
 
-  // Coerce to externref if needed (e.g. f64 → boxed number)
-  if (operandType.kind === "f64") {
-    const boxIdx = ctx.funcMap.get("__box_number");
-    if (boxIdx !== undefined) fctx.body.push({ op: "call", funcIdx: boxIdx });
-  } else if (operandType.kind === "i32") {
-    const boxIdx = ctx.funcMap.get("__box_boolean");
-    if (boxIdx !== undefined) fctx.body.push({ op: "call", funcIdx: boxIdx });
+  // Coerce to externref if needed (e.g. f64 → boxed number, ref → extern.convert_any)
+  if (operandType.kind !== "externref") {
+    coerceType(ctx, fctx, operandType, { kind: "externref" });
   }
 
   fctx.body.push({ op: "call", funcIdx });
@@ -1907,6 +1923,7 @@ function compileBinaryExpression(
     }
     // string == number / number == string: coerce string to number via parseFloat
     if ((leftIsStr && rightIsNum) || (leftIsNum && rightIsStr)) {
+      ensureParseFloat(ctx);
       const pfIdx = ctx.funcMap.get("parseFloat");
       if (pfIdx !== undefined) {
         if (leftIsStr) {
@@ -1926,6 +1943,7 @@ function compileBinaryExpression(
     }
     // string == boolean / boolean == string: coerce both to number
     if ((leftIsStr && rightIsBool) || (leftIsBool && rightIsStr)) {
+      ensureParseFloat(ctx);
       const pfIdx = ctx.funcMap.get("parseFloat");
       if (pfIdx !== undefined) {
         if (leftIsStr) {
@@ -2181,11 +2199,14 @@ function compileBinaryExpression(
     return compileNumericBinaryOp(ctx, fctx, op, expr);
   }
 
-  // Externref equality: when either operand is a known string type, use
-  // string content comparison instead of numeric unboxing (#225).
+  // Externref equality: when BOTH operands are externref AND at least one is
+  // a known string type, use string content comparison (#225).
+  // When only one side is externref and the other is numeric (f64/i32/i64),
+  // fall through to numeric unboxing below.
   if ((leftType.kind === "externref" || rightType.kind === "externref") && (isEqOp || isNeqOp)) {
+    const bothExternref = leftType.kind === "externref" && rightType.kind === "externref";
     const eitherIsString = isStringType(leftTsType) || isStringType(rightTsType);
-    if (eitherIsString) {
+    if (bothExternref && eitherIsString) {
       addStringImports(ctx);
       const equalsIdx = ctx.funcMap.get("equals");
       if (equalsIdx !== undefined) {
@@ -2202,6 +2223,8 @@ function compileBinaryExpression(
       fctx.body.push({ op: "call", funcIdx: unboxIdx });
     } else if (rightType.kind === "i32") {
       fctx.body.push({ op: "f64.convert_i32_s" });
+    } else if (rightType.kind === "i64") {
+      fctx.body.push({ op: "f64.convert_i64_s" });
     }
     // Coerce/unbox left side (below right on stack) to f64
     if (leftType.kind === "externref") {
@@ -2213,6 +2236,11 @@ function compileBinaryExpression(
       const tmpR = allocLocal(fctx, `__unbox_r_${fctx.locals.length}`, { kind: "f64" });
       fctx.body.push({ op: "local.set", index: tmpR });
       fctx.body.push({ op: "f64.convert_i32_s" });
+      fctx.body.push({ op: "local.get", index: tmpR });
+    } else if (leftType.kind === "i64") {
+      const tmpR = allocLocal(fctx, `__unbox_r_${fctx.locals.length}`, { kind: "f64" });
+      fctx.body.push({ op: "local.set", index: tmpR });
+      fctx.body.push({ op: "f64.convert_i64_s" });
       fctx.body.push({ op: "local.get", index: tmpR });
     }
     fctx.body.push({ op: isEqOp ? "f64.eq" : "f64.ne" });
