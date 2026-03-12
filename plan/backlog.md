@@ -44,6 +44,11 @@ _Goal: Fix runtime failures and reduce compile errors via string comparison, val
 _Goal: Advanced compile error reduction, runtime correctness for all 62 remaining failures, test262 coverage expansion, and performance profiling. Target: reduce compile errors to ~2500, eliminate all runtime failures (62 -> 0), expand test categories._
 
 | #   | Feature | Status | Group |
+| [317](issues/317.md) | Unused $AnyValue preamble type + duplicate export cleanup | Open | **P0** |
+| [318](issues/318.md) | Infer parameter types from call-site arguments for untyped functions | Open | **P0** |
+| [319](issues/319.md) | Inline single-use function type signatures in WAT output | Open | D |
+| [320](issues/320.md) | Dead import and type elimination (umbrella) | Open | **P0** |
+| [321](issues/321.md) | String literals and console.log not emitted for top-level statements | Open | **P0** |
 | --- | ------- | ------ | ----- |
 | [287](issues/287.md) | Generator function compile errors -- yield in nested contexts | Open | A |
 | [288](issues/288.md) | Try/catch/finally compile errors -- complex patterns | Open | A |
