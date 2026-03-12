@@ -36,28 +36,23 @@ const MIN_PANEL_SIZE = 80; // px
 
 export function getDefaultLayout(): LayoutNode {
   return {
-    type: "split",
-    direction: "vertical",
-    ratio: 0.6,
+    type: "split", direction: "horizontal", ratio: 0.18,
     children: [
-      {
-        type: "split",
-        direction: "horizontal",
-        ratio: 0.5,
-        children: [
-          { type: "leaf", id: "editor-left", tabs: ["ts-source"], activeTab: "ts-source" },
-          { type: "leaf", id: "editor-right", tabs: ["wat-output", "wasm-hex", "modular-ts"], activeTab: "wat-output" },
-        ],
-      },
-      {
-        type: "split",
-        direction: "horizontal",
-        ratio: 0.7,
-        children: [
-          { type: "leaf", id: "output-left", tabs: ["errors", "preview", "console", "test262"], activeTab: "preview" },
-          { type: "leaf", id: "output-right", tabs: ["treemap"], activeTab: "treemap" },
-        ],
-      },
+      { type: "leaf", id: "sidebar-left", tabs: ["test262"], activeTab: "test262" },
+      { type: "split", direction: "vertical", ratio: 0.6, children: [
+        { type: "split", direction: "horizontal", ratio: 0.5,
+          children: [
+            { type: "leaf", id: "editor-left", tabs: ["ts-source"], activeTab: "ts-source" },
+            { type: "leaf", id: "editor-right", tabs: ["wat-output", "wasm-hex", "modular-ts"], activeTab: "wat-output" },
+          ],
+        },
+        { type: "split", direction: "horizontal", ratio: 0.5,
+          children: [
+            { type: "leaf", id: "output-left", tabs: ["errors", "preview", "console"], activeTab: "preview" },
+            { type: "leaf", id: "output-right", tabs: ["treemap"], activeTab: "treemap" },
+          ],
+        },
+      ]},
     ],
   };
 }
