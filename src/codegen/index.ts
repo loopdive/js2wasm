@@ -1337,24 +1337,48 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
 
   // Helper: get numeric value as f64 from an AnyValue (assumes tag is 2 or 3)
   // Used internally by arithmetic helpers.
-  // params: a(0)  locals: none
-  // Returns f64. If tag==2, converts i32val; if tag==3, returns f64val.
+  // params: a(0)  locals: tag(1)
+  // Returns f64 per JS ToNumber semantics:
+  //   tag 0 (null) → 0, tag 1 (undefined) → NaN, tag 2 (i32) → f64(i32val),
+  //   tag 3 (f64) → f64val, tag 4 (bool) → f64(i32val)
   addHelper("__any_to_f64", [anyRefNull], [{ kind: "f64" }], [
+    // tag = a.tag
     { op: "local.get", index: 0 },
-    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 }, // tag
-    { op: "i32.const", value: 2 },
+    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+    { op: "local.set", index: 1 },
+    // if tag == 1 (undefined) → NaN
+    { op: "local.get", index: 1 },
+    { op: "i32.const", value: 1 },
     { op: "i32.eq" },
     { op: "if", blockType: { kind: "val", type: { kind: "f64" } },
       then: [
-        { op: "local.get", index: 0 },
-        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 }, // i32val
-        { op: "f64.convert_i32_s" },
+        { op: "f64.const", value: NaN },
       ],
       else: [
-        { op: "local.get", index: 0 },
-        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 }, // f64val
+        // if tag == 2 (i32) or tag == 4 (bool) → convert i32val to f64
+        { op: "local.get", index: 1 },
+        { op: "i32.const", value: 2 },
+        { op: "i32.eq" },
+        { op: "local.get", index: 1 },
+        { op: "i32.const", value: 4 },
+        { op: "i32.eq" },
+        { op: "i32.or" },
+        { op: "if", blockType: { kind: "val", type: { kind: "f64" } },
+          then: [
+            { op: "local.get", index: 0 },
+            { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+            { op: "f64.convert_i32_s" },
+          ],
+          else: [
+            // tag 0 (null) → f64val (0.0), tag 3 (f64) → f64val
+            { op: "local.get", index: 0 },
+            { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 },
+          ],
+        } as unknown as Instr,
       ],
     } as unknown as Instr,
+  ], [
+    { name: "tag", type: { kind: "i32" } },
   ]);
 
   const toF64Idx = ctx.funcMap.get("__any_to_f64")!;
