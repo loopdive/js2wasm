@@ -48,7 +48,7 @@ _Goal: Fix silent correctness bugs and high-impact compile errors. Focus: no wro
 | #   | Feature | Status | Tests |
 | --- | ------- | ------ | ----- |
 | [321](../ready/321.md) | Collection functions don't scan top-level statements (__module_init) | Open | **P0** |
-| [317](../ready/317.md) | Unused $AnyValue preamble type + duplicate export cleanup | Open | **P0** |
+| [317](../done/317.md) | Unused $AnyValue preamble type + duplicate export cleanup | **Done** | **P0** |
 | [315](../ready/315.md) | Wasm validation error audit -- systematic fix for type mismatches | Open | ~93 |
 | [292](../ready/292.md) | Runtime failures -- for-loop incorrect computed values | Open | 15 |
 | [293](../ready/293.md) | Runtime failures -- class method incorrect results | Open | 10 |
