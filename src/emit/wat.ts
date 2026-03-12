@@ -165,6 +165,8 @@ function formatValType(t: ValType): string {
       return "funcref";
     case "externref":
       return "externref";
+    case "eqref":
+      return "eqref";
     case "ref_extern":
       return "(ref extern)";
     case "ref":
@@ -325,6 +327,8 @@ function formatInstr(instr: Instr, _depth: number): string {
       return `ref.null ${instr.typeIdx}`;
     case "ref.null.extern":
       return "ref.null extern";
+    case "ref.null.eq":
+      return "ref.null eq";
     case "ref.cast":
       return `ref.cast (ref ${instr.typeIdx})`;
     case "any.convert_extern":
