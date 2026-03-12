@@ -388,6 +388,9 @@ export function compileSource(
     1163, // "A 'yield' expression is only allowed in a generator body" — #267
     1166, // "A computed property name in a class property declaration must have a simple literal type" — #265
     2464, // "A computed property name must be of type 'string', 'number', 'symbol', or 'any'" — #276
+    2488, // "Type must have a '[Symbol.iterator]()' method" — #268
+    2548, // "Type is not an array type or does not have '[Symbol.iterator]()'" — #268
+    2549, // "Type is not an array/string type or does not have '[Symbol.iterator]()'" — #268
     18014, // "The property '#x' cannot be accessed on type 'X' within this class because it is shadowed" — valid JS
   ]);
 
