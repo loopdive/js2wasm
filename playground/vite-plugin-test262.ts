@@ -128,6 +128,34 @@ export function test262Plugin(): Plugin {
   // Cache file lists per category
   const fileListCache = new Map<string, string[]>();
 
+  // Cache equivalence test snippets
+  let cachedEquivTests: { name: string; source: string }[] | null = null;
+
+  function getEquivTests(): { name: string; source: string }[] {
+    if (cachedEquivTests) return cachedEquivTests;
+    const testFile = join(projectRoot, "tests", "equivalence.test.ts");
+    if (!existsSync(testFile)) return [];
+    const content = readFileSync(testFile, "utf-8");
+    const tests: { name: string; source: string }[] = [];
+    // Match it("name", async () => { ... compileToWasm(`...`) or assertEquivalent(`...`)
+    const itRegex = /it\("([^"]+)"[\s\S]*?(?:compileToWasm|assertEquivalent)\(\s*`([\s\S]*?)`/g;
+    let match;
+    while ((match = itRegex.exec(content)) !== null) {
+      const name = match[1];
+      let source = match[2];
+      // Dedent: find minimum indentation and remove it
+      const lines = source.split("\n");
+      const nonEmpty = lines.filter(l => l.trim().length > 0);
+      if (nonEmpty.length > 0) {
+        const minIndent = Math.min(...nonEmpty.map(l => l.match(/^(\s*)/)?.[1].length ?? 0));
+        source = lines.map(l => l.slice(minIndent)).join("\n").trim();
+      }
+      tests.push({ name, source });
+    }
+    cachedEquivTests = tests;
+    return tests;
+  }
+
   function getIndex() {
     if (cachedIndex) return cachedIndex;
     const categories: CategoryInfo[] = [];
@@ -204,6 +232,27 @@ export function test262Plugin(): Plugin {
             res.statusCode = 500;
             res.end("Error reading file");
           }
+          return;
+        }
+
+        if (url.pathname === "/api/equiv-index") {
+          const tests = getEquivTests();
+          const index = tests.map((t, i) => ({ name: t.name, index: i }));
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify(index));
+          return;
+        }
+
+        if (url.pathname === "/api/equiv-source") {
+          const idx = parseInt(url.searchParams.get("index") ?? "", 10);
+          const tests = getEquivTests();
+          if (isNaN(idx) || idx < 0 || idx >= tests.length) {
+            res.statusCode = 404;
+            res.end("Test not found");
+            return;
+          }
+          res.setHeader("Content-Type", "text/plain");
+          res.end(tests[idx].source);
           return;
         }
 
