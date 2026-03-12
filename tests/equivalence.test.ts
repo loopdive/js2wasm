@@ -4462,3 +4462,51 @@ describe("in operator edge cases", () => {
     expect(exports.test()).toBe(1);
   });
 });
+
+// ── Issue #273: Anonymous class expression instantiation ──────────────
+describe("anonymous class expression new", () => {
+  it("new (class { ... })() with constructor", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        const obj = new (class {
+          x: number;
+          constructor() {
+            this.x = 42;
+          }
+          getX(): number { return this.x; }
+        })();
+        return obj.getX();
+      }
+    `);
+    expect(exports.test()).toBe(42);
+  });
+
+  it("new (class { ... })() with constructor args", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        const obj = new (class {
+          val: number;
+          constructor(v: number) {
+            this.val = v;
+          }
+          get(): number { return this.val; }
+        })(99);
+        return obj.get();
+      }
+    `);
+    expect(exports.test()).toBe(99);
+  });
+
+  it("new (class { ... })() with no constructor (default)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        const obj = new (class {
+          x: number = 10;
+          getX(): number { return this.x; }
+        })();
+        return obj.getX();
+      }
+    `);
+    expect(exports.test()).toBe(10);
+  });
+});

@@ -1,6 +1,6 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext, ClosureInfo, RestParamInfo } from "./index.js";
-import { allocLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers, addStringImports, cacheStringLiterals, addStringConstantGlobal, nextModuleGlobalIdx } from "./index.js";
+import { allocLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers, addStringImports, cacheStringLiterals, addStringConstantGlobal, nextModuleGlobalIdx, collectClassDeclaration, compileClassBodies } from "./index.js";
 import {
   mapTsTypeToWasm,
   isNumberType,
@@ -6873,6 +6873,65 @@ function compileNewExpression(
   // Handle `new function() { ... }(args)` — constructor with function expression
   if (ts.isFunctionExpression(expr.expression)) {
     return compileNewFunctionExpression(ctx, fctx, expr, expr.expression);
+  }
+
+  // Handle `new (class { ... })()` — inline class expression instantiation
+  // Unwrap parenthesized expressions: `new (class { ... })()`
+  let newCallee: ts.Expression = expr.expression;
+  while (ts.isParenthesizedExpression(newCallee)) {
+    newCallee = newCallee.expression;
+  }
+  if (ts.isClassExpression(newCallee)) {
+    const classExpr = newCallee;
+    // Look up synthetic name from node map (set during collection phase)
+    // Fall back to generating a new name if not pre-collected
+    let syntheticName = ctx.classExprNodeMap.get(classExpr);
+    if (!syntheticName) {
+      syntheticName = classExpr.name?.text ?? `__anonClass_${ctx.anonTypeCounter++}`;
+    }
+
+    // Only collect + compile if not already registered (avoid duplicate registration)
+    if (!ctx.classSet.has(syntheticName)) {
+      // Register the class struct type, constructor, and methods
+      collectClassDeclaration(ctx, classExpr, syntheticName);
+      ctx.classExprNodeMap.set(classExpr, syntheticName);
+
+      // Build funcByName map and compile class bodies (constructor + methods)
+      const funcByName = new Map<string, number>();
+      for (let i = 0; i < ctx.mod.functions.length; i++) {
+        funcByName.set(ctx.mod.functions[i]!.name, i);
+      }
+      compileClassBodies(ctx, classExpr, funcByName, syntheticName);
+    }
+
+    // Now call the constructor using the normal path
+    const ctorName = `${syntheticName}_new`;
+    const funcIdx = ctx.funcMap.get(ctorName);
+    if (funcIdx === undefined) {
+      ctx.errors.push({
+        message: `Missing constructor for inline class: ${syntheticName}`,
+        line: getLine(expr),
+        column: getCol(expr),
+      });
+      return null;
+    }
+
+    // Compile constructor arguments with type hints
+    const paramTypes = getFuncParamTypes(ctx, funcIdx);
+    const args = expr.arguments ?? [];
+    for (let i = 0; i < args.length; i++) {
+      compileExpression(ctx, fctx, args[i]!, paramTypes?.[i]);
+    }
+    // Pad missing constructor arguments with defaults
+    if (paramTypes) {
+      for (let i = args.length; i < paramTypes.length; i++) {
+        pushDefaultValue(fctx, paramTypes[i]!);
+      }
+    }
+
+    fctx.body.push({ op: "call", funcIdx });
+    const structTypeIdx = ctx.structMap.get(syntheticName)!;
+    return { kind: "ref", typeIdx: structTypeIdx };
   }
 
   // Handle `new Object()` — create an empty struct (equivalent to {})

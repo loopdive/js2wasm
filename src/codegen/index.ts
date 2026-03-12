@@ -188,6 +188,8 @@ export interface CodegenContext {
   classTagMap: Map<string, number>;
   /** Map from TS symbol name (e.g. "__class") → synthetic class name for class expressions */
   classExprNameMap: Map<string, string>;
+  /** Map from ClassExpression AST node → synthetic class name (for inline new expressions) */
+  classExprNodeMap: Map<ts.Node, string>;
   /** Whether to attach source positions for source map generation */
   sourceMap: boolean;
   /** Map from tuple type signature key → type index of the tuple struct */
@@ -339,6 +341,7 @@ export function generateModule(
     classTagCounter: 0,
     classTagMap: new Map(),
     classExprNameMap: new Map(),
+    classExprNodeMap: new Map(),
     sourceMap: options?.sourceMap ?? false,
     tupleTypeMap: new Map(),
     fast: options?.fast ?? false,
@@ -534,6 +537,7 @@ export function generateMultiModule(
     classTagCounter: 0,
     classTagMap: new Map(),
     classExprNameMap: new Map(),
+    classExprNodeMap: new Map(),
     sourceMap: options?.sourceMap ?? false,
     tupleTypeMap: new Map(),
     fast: options?.fast ?? false,
@@ -7164,6 +7168,32 @@ function collectDeclarations(
   // Collect class declarations (struct types + constructor/method functions)
   // Also collect class expressions in variable declarations: const C = class { ... }
   // Scan recursively into function bodies to find class expressions defined inside functions
+  // Collect inline class expressions from new expressions: new (class { ... })()
+  function collectInlineClassExpressionsFromNode(node: ts.Node): void {
+    if (ts.isNewExpression(node)) {
+      let callee: ts.Expression = node.expression;
+      while (ts.isParenthesizedExpression(callee)) {
+        callee = callee.expression;
+      }
+      if (ts.isClassExpression(callee)) {
+        // Check if already collected via node map (avoid duplicate registration)
+        if (!ctx.classExprNodeMap.has(callee)) {
+          const syntheticName = callee.name?.text ?? `__anonClass_${ctx.anonTypeCounter++}`;
+          collectClassDeclaration(ctx, callee, syntheticName);
+          // Map the TS internal symbol name to the synthetic name
+          const tsType = ctx.checker.getTypeAtLocation(callee);
+          const symbolName = tsType.getSymbol()?.name;
+          if (symbolName && symbolName !== syntheticName) {
+            ctx.classExprNameMap.set(symbolName, syntheticName);
+          }
+          // Store node → name mapping for use during compilation
+          ctx.classExprNodeMap.set(callee, syntheticName);
+        }
+      }
+    }
+    ts.forEachChild(node, collectInlineClassExpressionsFromNode);
+  }
+
   function collectClassesFromStatements(stmts: ts.NodeArray<ts.Statement> | readonly ts.Statement[]): void {
     for (const stmt of stmts) {
       if (ts.isClassDeclaration(stmt) && stmt.name && !hasDeclareModifier(stmt)) {
@@ -7181,6 +7211,8 @@ function collectDeclarations(
       } else if (ts.isFunctionDeclaration(stmt) && stmt.body) {
         collectClassesFromStatements(stmt.body.statements);
       }
+      // Also scan all nodes in the statement for inline class expressions in new expressions
+      collectInlineClassExpressionsFromNode(stmt);
     }
   }
   collectClassesFromStatements(sourceFile.statements);
@@ -7513,6 +7545,36 @@ function compileDeclarations(
   // Compile class constructors and methods
   // Also compile class expressions in variable declarations
   // Scan recursively into function bodies for class expressions
+  // Track which classes have been compiled to avoid duplicates
+  const compiledClasses = new Set<string>();
+
+  function compileInlineClassExpressionsFromNode(node: ts.Node): void {
+    if (ts.isNewExpression(node)) {
+      let callee: ts.Expression = node.expression;
+      while (ts.isParenthesizedExpression(callee)) {
+        callee = callee.expression;
+      }
+      if (ts.isClassExpression(callee)) {
+        // Look up the synthetic name from the node map (set during collection)
+        const syntheticName = ctx.classExprNodeMap.get(callee);
+        if (syntheticName && ctx.classSet.has(syntheticName) && !compiledClasses.has(syntheticName)) {
+          compiledClasses.add(syntheticName);
+          // Rebuild funcByName to include recently added functions
+          for (let i = 0; i < ctx.mod.functions.length; i++) {
+            funcByName.set(ctx.mod.functions[i]!.name, i);
+          }
+          try {
+            compileClassBodies(ctx, callee, funcByName, syntheticName);
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            reportError(ctx, callee, `Internal error compiling inline class expression: ${msg}`);
+          }
+        }
+      }
+    }
+    ts.forEachChild(node, compileInlineClassExpressionsFromNode);
+  }
+
   function compileClassesFromStatements(stmts: ts.NodeArray<ts.Statement> | readonly ts.Statement[]): void {
     for (const stmt of stmts) {
       if (ts.isClassDeclaration(stmt) && stmt.name && !hasDeclareModifier(stmt)) {
@@ -7540,6 +7602,8 @@ function compileDeclarations(
       } else if (ts.isFunctionDeclaration(stmt) && stmt.body) {
         compileClassesFromStatements(stmt.body.statements);
       }
+      // Also compile inline class expressions in new expressions
+      compileInlineClassExpressionsFromNode(stmt);
     }
   }
   compileClassesFromStatements(sourceFile.statements);
