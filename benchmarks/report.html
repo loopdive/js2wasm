@@ -139,6 +139,28 @@
   }
   .speedup { font-size: 0.6875rem; margin-left: 0.5rem; }
   .timestamp { font-size: 0.75rem; color: var(--text-muted); margin-top: 2rem; text-align: center; }
+  .clickable { cursor: pointer; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 2px; }
+  .clickable:hover { text-decoration-style: solid; }
+  .detail-row td { padding: 0 !important; border-bottom: 1px solid var(--border); }
+  .detail-content {
+    max-height: 300px;
+    overflow-y: auto;
+    padding: 0.5rem 0.75rem;
+    background: rgba(0,0,0,0.2);
+    font-size: 0.6875rem;
+    font-family: "SF Mono", SFMono-Regular, Consolas, monospace;
+    scrollbar-color: #30363d #161b22;
+  }
+  .detail-content::-webkit-scrollbar { width: 6px; }
+  .detail-content::-webkit-scrollbar-track { background: #161b22; }
+  .detail-content::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+  .detail-file { padding: 2px 0; border-bottom: 1px solid rgba(48,54,61,0.5); display: flex; gap: 0.75rem; }
+  .detail-file:last-child { border-bottom: none; }
+  .detail-fname { color: var(--accent); min-width: 280px; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .detail-err { color: var(--error); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .detail-status-pass { color: var(--pass); }
+  .detail-status-fail { color: var(--fail); }
+  .detail-status-err { color: var(--error); }
   .no-data { color: var(--text-muted); font-style: italic; padding: 2rem; text-align: center; }
   .trend-grid {
     display: grid;
@@ -177,6 +199,27 @@
 const REPORT_JSON = "results/test262-report.json";
 const BENCH_JSON = "results/latest.json";
 const HISTORY_JSON = "results/history.json";
+const RESULTS_JSONL = "results/test262-results.jsonl";
+
+// Per-file results indexed by category
+let filesByCategory = null;
+async function loadFileResults() {
+  if (filesByCategory) return filesByCategory;
+  try {
+    const resp = await fetch(RESULTS_JSONL);
+    if (!resp.ok) return null;
+    const text = await resp.text();
+    filesByCategory = new Map();
+    for (const line of text.split("\n")) {
+      if (!line.trim()) continue;
+      const entry = JSON.parse(line);
+      const cat = entry.category;
+      if (!filesByCategory.has(cat)) filesByCategory.set(cat, []);
+      filesByCategory.get(cat).push(entry);
+    }
+    return filesByCategory;
+  } catch { return null; }
+}
 
 async function loadJSON(url) {
   try { const r = await fetch(url); return r.ok ? r.json() : null; } catch { return null; }
@@ -257,6 +300,45 @@ function makeCard(label, value, colorVar, subtext) {
   return card;
 }
 
+function toggleDetail(row, catName, statusFilter) {
+  const existing = row.nextElementSibling;
+  if (existing && existing.classList.contains("detail-row")) {
+    existing.remove();
+    return;
+  }
+  // Remove any other open detail rows in this table
+  row.closest("tbody").querySelectorAll(".detail-row").forEach(r => r.remove());
+
+  const detailRow = el("tr", { className: "detail-row" });
+  const detailCell = el("td", { colspan: "7" });
+  const content = el("div", { className: "detail-content" }, "Loading…");
+  detailCell.appendChild(content);
+  detailRow.appendChild(detailCell);
+  row.after(detailRow);
+
+  loadFileResults().then(map => {
+    if (!map) { content.textContent = "No file-level data available."; return; }
+    const files = map.get(catName) || [];
+    const filtered = statusFilter ? files.filter(f => f.status === statusFilter) : files;
+    if (filtered.length === 0) { content.textContent = "No matching files."; return; }
+    content.textContent = "";
+    // Sort: compile_error first, then fail, then pass
+    const order = { compile_error: 0, fail: 1, pass: 2, skip: 3 };
+    filtered.sort((a, b) => (order[a.status] ?? 4) - (order[b.status] ?? 4));
+    for (const f of filtered) {
+      const fname = f.file.replace("test/", "");
+      const fileEl = el("div", { className: "detail-file" });
+      const statusCls = f.status === "pass" ? "detail-status-pass"
+        : f.status === "fail" ? "detail-status-fail" : "detail-status-err";
+      fileEl.appendChild(el("span", { className: statusCls, style: { width: "18px", flexShrink: "0" } },
+        f.status === "pass" ? "\u2713" : f.status === "fail" ? "\u2717" : "\u26A0"));
+      fileEl.appendChild(el("span", { className: "detail-fname", title: fname }, fname));
+      if (f.error) fileEl.appendChild(el("span", { className: "detail-err", title: f.error }, f.error.split(";")[0]));
+      content.appendChild(fileEl);
+    }
+  });
+}
+
 function renderConformance(data, container) {
   const s = data.summary;
   const passRate = pct(s.pass, s.pass + s.fail);
@@ -313,15 +395,20 @@ function renderConformance(data, container) {
       const catPct = pct(cat.pass, compilable);
 
       const row = el("tr");
-      row.appendChild(el("td", { className: "cat-name" }, shortName(cat.name)));
+      const nameCell = el("td", { className: "cat-name clickable" }, shortName(cat.name));
+      nameCell.addEventListener("click", () => toggleDetail(row, cat.name, null));
+      row.appendChild(nameCell);
 
-      const passCell = el("td", { className: "num", style: { color: "var(--pass)" } }, String(cat.pass));
+      const passCell = el("td", { className: "num" + (cat.pass ? " clickable" : ""), style: { color: "var(--pass)" } }, String(cat.pass));
+      if (cat.pass) passCell.addEventListener("click", (e) => { e.stopPropagation(); toggleDetail(row, cat.name, "pass"); });
       row.appendChild(passCell);
 
-      const failCell = el("td", { className: "num", style: { color: cat.fail ? "var(--fail)" : "var(--text-muted)" } }, String(cat.fail));
+      const failCell = el("td", { className: "num" + (cat.fail ? " clickable" : ""), style: { color: cat.fail ? "var(--fail)" : "var(--text-muted)" } }, String(cat.fail));
+      if (cat.fail) failCell.addEventListener("click", (e) => { e.stopPropagation(); toggleDetail(row, cat.name, "fail"); });
       row.appendChild(failCell);
 
-      const errCell = el("td", { className: "num", style: { color: cat.compile_error ? "var(--error)" : "var(--text-muted)" } }, String(cat.compile_error));
+      const errCell = el("td", { className: "num" + (cat.compile_error ? " clickable" : ""), style: { color: cat.compile_error ? "var(--error)" : "var(--text-muted)" } }, String(cat.compile_error));
+      if (cat.compile_error) errCell.addEventListener("click", (e) => { e.stopPropagation(); toggleDetail(row, cat.name, "compile_error"); });
       row.appendChild(errCell);
 
       row.appendChild(el("td", { className: "num", style: { color: "var(--text-muted)" } }, String(cat.skip)));
