@@ -1271,11 +1271,31 @@ function compileForOfDestructuring(
 
       const fieldIdx = fields.findIndex((f) => f.name === propName.text);
       if (fieldIdx === -1) {
-        ctx.errors.push({
-          message: `Unknown field in for-of destructuring: ${propName.text}`,
-          line: getLine(element),
-          column: getCol(element),
-        });
+        // Field not found in struct — property is "undefined" at runtime.
+        // Use the default value if one is provided, otherwise use the
+        // appropriate "undefined" sentinel for the target type.
+        const bindingTsType = ctx.checker.getTypeAtLocation(element);
+        const bindingType = resolveWasmType(ctx, bindingTsType);
+        const localIdx = allocLocal(fctx, localName, bindingType);
+        if (element.initializer) {
+          const saved = fctx.body;
+          fctx.body = [];
+          compileExpression(ctx, fctx, element.initializer, bindingType);
+          fctx.body.push({ op: "local.set", index: localIdx } as Instr);
+          const instrs = fctx.body;
+          fctx.body = saved;
+          fctx.body.push(...instrs);
+        } else {
+          // No default — use "undefined" sentinel
+          if (bindingType.kind === "f64") {
+            fctx.body.push({ op: "f64.const", value: NaN });
+          } else if (bindingType.kind === "i32") {
+            fctx.body.push({ op: "i32.const", value: 0 });
+          } else {
+            fctx.body.push({ op: "ref.null", typeIdx: "extern" } as unknown as Instr);
+          }
+          fctx.body.push({ op: "local.set", index: localIdx });
+        }
         continue;
       }
 
