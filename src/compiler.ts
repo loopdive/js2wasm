@@ -386,6 +386,12 @@ export function compileSource(
     18030, // "An optional chain cannot contain private identifiers" — valid JS pattern
     2729, // "Property 'X' is used before its initialization" — valid JS pattern
     18014, // "The property '#x' cannot be accessed on type 'X' within this class because it is shadowed" — valid JS
+    1166, // "A computed property name in a class property declaration must have a simple literal type" — valid JS
+    1168, // "A computed property name in a method overload must refer to an expression whose type is a literal type"
+    1169, // "A computed property name in an interface must refer to an expression whose type is a literal type"
+    1170, // "A computed property name in a type literal must refer to an expression whose type is a literal type"
+    2464, // "A computed property name must be of type 'string', 'number', 'symbol', or 'any'" — valid JS
+    2418, // "Type of computed property's value is not assignable to type" — valid JS
   ]);
 
   // Collect TS diagnostics as errors (or warnings for handled cases)
