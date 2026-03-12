@@ -1,0 +1,1503 @@
+{
+  "nodes": [
+    {
+      "id": 70,
+      "title": "Fast mode — optimize for performance with restricted TypeScript",
+      "priority": "medium",
+      "status": "backlog",
+      "depends_on": [],
+      "files": []
+    },
+    {
+      "id": 74,
+      "title": "WASM SIMD support for string and array operations",
+      "priority": "medium",
+      "status": "backlog",
+      "depends_on": [],
+      "files": []
+    },
+    {
+      "id": 79,
+      "title": "Gradual typing — boxed `any` with runtime dispatch",
+      "priority": "medium",
+      "status": "backlog",
+      "depends_on": [],
+      "files": []
+    },
+    {
+      "id": 81,
+      "title": "npm package resolution and tree-shaking",
+      "priority": "medium",
+      "status": "backlog",
+      "depends_on": [],
+      "files": []
+    },
+    {
+      "id": 82,
+      "title": "Research Findings: Implementation Strategies",
+      "priority": "medium",
+      "status": "backlog",
+      "depends_on": [],
+      "files": []
+    },
+    {
+      "id": 121,
+      "title": "Function.prototype.call/apply",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": []
+    },
+    {
+      "id": 123,
+      "title": "Wrapper object constructors (new Number/String/Boolean)",
+      "priority": "medium",
+      "status": "wont-fix",
+      "depends_on": [],
+      "files": []
+    },
+    {
+      "id": 124,
+      "title": "delete operator",
+      "priority": "medium",
+      "status": "wont-fix",
+      "depends_on": [],
+      "files": []
+    },
+    {
+      "id": 125,
+      "title": "Object.defineProperty / property descriptors",
+      "priority": "medium",
+      "status": "wont-fix",
+      "depends_on": [],
+      "files": []
+    },
+    {
+      "id": 129,
+      "title": "propertyHelper.js test262 harness include",
+      "priority": "medium",
+      "status": "wont-fix",
+      "depends_on": [],
+      "files": []
+    },
+    {
+      "id": 130,
+      "title": "Usage-based shape inference + call/apply inlining",
+      "priority": "medium",
+      "status": "backlog",
+      "depends_on": [],
+      "files": []
+    },
+    {
+      "id": 138,
+      "title": "valueOf/toString coercion on comparison operators",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 139,
+      "title": "valueOf/toString coercion on arithmetic operators",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 140,
+      "title": "Bug: object computed property names not working at runtime",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 141,
+      "title": "Tagged template literal runtime failures",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts",
+        "tests/test262-runner.ts"
+      ]
+    },
+    {
+      "id": 142,
+      "title": "Assignment destructuring failures",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 143,
+      "title": "for-loop edge cases",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": []
+    },
+    {
+      "id": 144,
+      "title": "new expression with class expressions",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 145,
+      "title": "allowJs type flexibility — boolean/string/void as number",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 146,
+      "title": "Unknown identifier errors from scope/hoisting issues",
+      "priority": "medium",
+      "status": "backlog",
+      "depends_on": [],
+      "files": []
+    },
+    {
+      "id": 147,
+      "title": "Function.name property",
+      "priority": "medium",
+      "status": "backlog",
+      "depends_on": [],
+      "files": []
+    },
+    {
+      "id": 148,
+      "title": "Element access (bracket notation) on struct types",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 149,
+      "title": "Unsupported call expression patterns",
+      "priority": "medium",
+      "status": "backlog",
+      "depends_on": [],
+      "files": []
+    },
+    {
+      "id": 150,
+      "title": "ClassDeclaration in statement positions",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/statements.ts",
+        "src/codegen/index.ts"
+      ]
+    },
+    {
+      "id": 151,
+      "title": "`this` keyword in class methods for test262",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": []
+    },
+    {
+      "id": 152,
+      "title": "Setter return value error in allowJs mode",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/index.ts"
+      ]
+    },
+    {
+      "id": 153,
+      "title": "Iterator protocol for destructuring and for-of",
+      "priority": "medium",
+      "status": "backlog",
+      "depends_on": [],
+      "files": []
+    },
+    {
+      "id": 154,
+      "title": "while/do-while loop condition evaluation",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": []
+    },
+    {
+      "id": 155,
+      "title": "Logical-and/logical-or short-circuit returns wrong value",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 156,
+      "title": "Conditional (ternary) expression evaluation",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": []
+    },
+    {
+      "id": 157,
+      "title": "void expression returns wrong value",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": []
+    },
+    {
+      "id": 158,
+      "title": "String concatenation with non-string operands",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts",
+        "src/codegen/index.ts"
+      ]
+    },
+    {
+      "id": 159,
+      "title": "Call expression edge cases",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 160,
+      "title": "Math method edge cases",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "tests/test262-runner.ts"
+      ]
+    },
+    {
+      "id": 161,
+      "title": "Compound assignment edge cases",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/index.ts"
+      ]
+    },
+    {
+      "id": 162,
+      "title": "switch statement matching",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/statements.ts",
+        "tests/test262-runner.ts"
+      ]
+    },
+    {
+      "id": 163,
+      "title": "return statement edge cases",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "tests/test262-runner.ts"
+      ]
+    },
+    {
+      "id": 164,
+      "title": "variable declaration edge cases",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "tests/test262-runner.ts"
+      ]
+    },
+    {
+      "id": 165,
+      "title": "function statement hoisting and edge cases",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts",
+        "src/codegen/statements.ts",
+        "src/codegen/index.ts"
+      ]
+    },
+    {
+      "id": 166,
+      "title": "`in` operator runtime failures",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts",
+        "src/codegen/index.ts"
+      ]
+    },
+    {
+      "id": 167,
+      "title": "typeof edge cases",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 168,
+      "title": "equality operators with null/undefined",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": []
+    },
+    {
+      "id": 169,
+      "title": "Arrow function edge cases",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 170,
+      "title": "Class expression/declaration edge cases",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/index.ts"
+      ]
+    },
+    {
+      "id": 171,
+      "title": "Boolean() edge cases",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts",
+        "tests/test262-runner.ts"
+      ]
+    },
+    {
+      "id": 172,
+      "title": "Array.isArray edge case",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": []
+    },
+    {
+      "id": 173,
+      "title": "Computed property names in class declarations",
+      "priority": "medium",
+      "status": "backlog",
+      "depends_on": [],
+      "files": []
+    },
+    {
+      "id": 174,
+      "title": "Bug: BigInt cross-type comparison and arithmetic failures",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 176,
+      "title": "Bug: Unicode escape sequences in property names not resolved",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 178,
+      "title": "Wasm validation errors: type mismatches in emitted binary",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/index.ts"
+      ]
+    },
+    {
+      "id": 179,
+      "title": "Generator functions: yield in module mode errors",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/statements.ts",
+        "tests/test262-runner.ts"
+      ]
+    },
+    {
+      "id": 182,
+      "title": "Arrow function closure type coercion errors",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 188,
+      "title": "`instanceof` operator: 20 compile errors",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 189,
+      "title": "`new.target` meta-property: 7 compile errors",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 190,
+      "title": "Unsupported assignment target patterns",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 192,
+      "title": "Computed property names: compile errors in class and object contexts",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 194,
+      "title": "Logical assignment operators compile errors",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 198,
+      "title": "Switch statement compile errors and failures",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/statements.ts"
+      ]
+    },
+    {
+      "id": 199,
+      "title": "Labeled statements: 5 compile errors",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/statements.ts"
+      ]
+    },
+    {
+      "id": 201,
+      "title": "Object.keys/values/entries: 24 compile errors",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 202,
+      "title": "Variable scope and hoisting: \"Cannot find name\" / \"Unknown identifier\"",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/statements.ts",
+        "src/codegen/index.ts"
+      ]
+    },
+    {
+      "id": 204,
+      "title": "Array literal compile errors",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 227,
+      "title": "BigInt comparison with Infinity causes float-unrepresentable trap",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 228,
+      "title": "BigInt equality/strict-equality with Number and Boolean",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 229,
+      "title": "Tagged template cache: array out of bounds on top-level repeated calls",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 230,
+      "title": "Object computed property names with variable keys at runtime",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 232,
+      "title": "Unsupported call expression -- method calls on object literals",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 234,
+      "title": "ClassDeclaration in nested/expression positions (remaining 681 errors)",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/statements.ts",
+        "src/codegen/index.ts"
+      ]
+    },
+    {
+      "id": 235,
+      "title": "Function.name property access (380 compile errors)",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 237,
+      "title": "WebAssembly type mismatch -- BigInt i64 vs externref",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 238,
+      "title": "Class expression new -- `new (class { ... })()` pattern",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 239,
+      "title": "Element access on struct types (bracket notation)",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 241,
+      "title": "Yield expression in strict mode / module context",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/statements.ts",
+        "tests/test262-runner.ts"
+      ]
+    },
+    {
+      "id": 242,
+      "title": "Computed property names in class declarations (remaining 57 errors)",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/index.ts"
+      ]
+    },
+    {
+      "id": 243,
+      "title": "Unsupported assignment target patterns",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts",
+        "src/codegen/statements.ts"
+      ]
+    },
+    {
+      "id": 244,
+      "title": "`in` operator runtime failures",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 249,
+      "title": "Miscellaneous runtime failures -- remaining small fixes",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 250,
+      "title": "For-loop with function declarations (113 compile errors)",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/statements.ts"
+      ]
+    },
+    {
+      "id": 254,
+      "title": "Private class fields and methods (#field)",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts",
+        "src/codegen/index.ts"
+      ]
+    },
+    {
+      "id": 257,
+      "title": "Unsupported call expression -- method calls on returned values",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts",
+        "src/codegen/index.ts"
+      ]
+    },
+    {
+      "id": 258,
+      "title": "Unsupported call expression -- double/triple nested calls",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 259,
+      "title": "ClassDeclaration in block/nested scope positions",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/statements.ts"
+      ]
+    },
+    {
+      "id": 260,
+      "title": "ClassDeclaration + call expression combined errors",
+      "priority": "medium",
+      "status": "blocked",
+      "depends_on": [
+        234
+      ],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 261,
+      "title": "ClassDeclaration + new expression for anonymous classes",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 262,
+      "title": "Argument type assignability -- allowJs flexibility for test262",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/index.ts"
+      ]
+    },
+    {
+      "id": 263,
+      "title": "Property does not exist on type -- dynamic property access",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 264,
+      "title": "Element access (bracket notation) on struct types",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 265,
+      "title": "Computed property names in class declarations (TypeScript diagnostic)",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/index.ts"
+      ]
+    },
+    {
+      "id": 266,
+      "title": "Unknown identifier -- scope resolution for multi-variable patterns",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/statements.ts",
+        "src/codegen/index.ts"
+      ]
+    },
+    {
+      "id": 267,
+      "title": "Yield expression outside of generator function",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/statements.ts"
+      ]
+    },
+    {
+      "id": 268,
+      "title": "Iterator protocol -- Type must have a Symbol.iterator method",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/statements.ts"
+      ]
+    },
+    {
+      "id": 269,
+      "title": "Setter return value diagnostic suppression",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/index.ts"
+      ]
+    },
+    {
+      "id": 270,
+      "title": "Strict mode reserved words -- let, yield, package, etc.",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/index.ts",
+        "tests/test262-runner.ts"
+      ]
+    },
+    {
+      "id": 271,
+      "title": "Cannot find name -- missing harness or global declarations",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "tests/test262-runner.ts"
+      ]
+    },
+    {
+      "id": 272,
+      "title": "WebAssembly type mismatch -- externref vs f64/i32 in compiled output",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 273,
+      "title": "Unsupported new expression for anonymous class expressions",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 274,
+      "title": "Property access on function type -- .name, .length, .call, .apply",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 275,
+      "title": "Left side of comma operator warning blocks compilation",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/index.ts"
+      ]
+    },
+    {
+      "id": 276,
+      "title": "Computed property name must be of assignable type",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/index.ts"
+      ]
+    },
+    {
+      "id": 277,
+      "title": "WebAssembly type mismatch -- local.set externref vs concrete types",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 278,
+      "title": "Cannot destructure -- not a known struct type",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/statements.ts"
+      ]
+    },
+    {
+      "id": 279,
+      "title": "Arrow function compile errors -- parameter and body patterns",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts",
+        "src/codegen/statements.ts"
+      ]
+    },
+    {
+      "id": 280,
+      "title": "Function expression compile errors -- name binding and hoisting",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts",
+        "src/codegen/statements.ts"
+      ]
+    },
+    {
+      "id": 281,
+      "title": "Object literal property patterns -- shorthand, spread, methods",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 282,
+      "title": "Variable declaration compile errors -- complex initializers",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/index.ts"
+      ]
+    },
+    {
+      "id": 283,
+      "title": "Compound assignment compile errors -- type coercion gaps",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 284,
+      "title": "For-of compile errors -- destructuring and non-array iterables",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts",
+        "src/codegen/statements.ts"
+      ]
+    },
+    {
+      "id": 285,
+      "title": "For-loop compile errors -- complex heads and function declarations",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/statements.ts"
+      ]
+    },
+    {
+      "id": 286,
+      "title": "Logical assignment compile errors -- nullish and short-circuit",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 287,
+      "title": "Generator function compile errors -- yield in nested contexts",
+      "priority": "medium",
+      "status": "blocked",
+      "depends_on": [
+        241,
+        267
+      ],
+      "files": [
+        "src/codegen/statements.ts"
+      ]
+    },
+    {
+      "id": 288,
+      "title": "Try/catch/finally compile errors -- complex patterns",
+      "priority": "medium",
+      "status": "blocked",
+      "depends_on": [
+        287
+      ],
+      "files": [
+        "src/codegen/statements.ts"
+      ]
+    },
+    {
+      "id": 289,
+      "title": "For-in compile errors -- property enumeration edge cases",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/statements.ts"
+      ]
+    },
+    {
+      "id": 290,
+      "title": "Instanceof compile errors -- class hierarchy and expressions",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 291,
+      "title": "In operator compile errors -- dynamic property checks",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 292,
+      "title": "Runtime failures -- for-loop incorrect computed values",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/statements.ts"
+      ]
+    },
+    {
+      "id": 293,
+      "title": "Runtime failures -- class method incorrect results",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 294,
+      "title": "Runtime failures -- assignment expression evaluation order",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 295,
+      "title": "Runtime failures -- comparison operators with type coercion",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 296,
+      "title": "Runtime failures -- strict equality edge cases",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 297,
+      "title": "Runtime failures -- switch statement fall-through",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/statements.ts"
+      ]
+    },
+    {
+      "id": 298,
+      "title": "Runtime failures -- function statement edge cases",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/statements.ts"
+      ]
+    },
+    {
+      "id": 299,
+      "title": "Runtime failures -- equals/does-not-equals loose comparison",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 300,
+      "title": "Runtime failures -- object to primitive conversion",
+      "priority": "high",
+      "status": "blocked",
+      "depends_on": [
+        138,
+        139
+      ],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 301,
+      "title": "Runtime failures -- float unrepresentable in integer range",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 302,
+      "title": "Runtime failures -- Math.min/max edge cases",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 303,
+      "title": "Runtime failures -- parseInt edge cases",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 304,
+      "title": "Runtime failures -- unary minus and return edge cases",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 305,
+      "title": "Runtime failures -- computed property names and types/reference",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 306,
+      "title": "Prefix/postfix increment/decrement compile errors",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 307,
+      "title": "Promise.all and Promise.race compile errors",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 308,
+      "title": "Addition operator compile errors -- string/number coercion",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 309,
+      "title": "Expand test262 harness includes -- propertyIsEnumerable, fnGlobalObject",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "tests/test262-runner.ts"
+      ]
+    },
+    {
+      "id": 310,
+      "title": "Reduce skip filters -- re-evaluate conservative skips",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "tests/test262-runner.ts"
+      ]
+    },
+    {
+      "id": 311,
+      "title": "Test262 category expansion -- built-ins/String/prototype new methods",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "tests/test262-runner.ts"
+      ]
+    },
+    {
+      "id": 312,
+      "title": "Test262 category expansion -- built-ins/Number methods",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "tests/test262-runner.ts"
+      ]
+    },
+    {
+      "id": 313,
+      "title": "Test262 category expansion -- language/expressions new categories",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "tests/test262-runner.ts"
+      ]
+    },
+    {
+      "id": 314,
+      "title": "Performance -- compile time profiling and optimization",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": []
+    },
+    {
+      "id": 315,
+      "title": "Wasm validation error audit -- systematic fix for type mismatches",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 316,
+      "title": "Runtime failure -- array element access out of bounds",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 317,
+      "title": "[ts2wasm] Codegen: Unused `$AnyValue` preamble type + duplicate export for `main`",
+      "priority": "critical",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/index.ts"
+      ]
+    },
+    {
+      "id": 318,
+      "title": "[ts2wasm] Codegen: Infer parameter types from call-site arguments for untyped functions",
+      "priority": "medium",
+      "status": "blocked",
+      "depends_on": [
+        317,
+        320
+      ],
+      "files": [
+        "src/codegen/expressions.ts",
+        "src/codegen/index.ts"
+      ]
+    },
+    {
+      "id": 319,
+      "title": "[ts2wasm] Codegen: Inline single-use function type signatures in WAT output",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/index.ts"
+      ]
+    },
+    {
+      "id": 320,
+      "title": "[ts2wasm] Codegen: Dead import and type elimination",
+      "priority": "medium",
+      "status": "blocked",
+      "depends_on": [
+        317,
+        321
+      ],
+      "files": [
+        "src/codegen/index.ts"
+      ]
+    },
+    {
+      "id": 321,
+      "title": "[ts2wasm] Bug: Collection functions don't scan top-level statements (`__module_init`)",
+      "priority": "critical",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/index.ts"
+      ]
+    },
+    {
+      "id": 322,
+      "title": "[ts2wasm] Inline trig/transcendental Math methods as pure Wasm",
+      "priority": "medium",
+      "status": "blocked",
+      "depends_on": [
+        321
+      ],
+      "files": [
+        "src/codegen/expressions.ts"
+      ]
+    },
+    {
+      "id": 323,
+      "title": "[ts2wasm] Native type annotations for performance optimization",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [
+        "src/codegen/expressions.ts",
+        "src/codegen/index.ts"
+      ]
+    }
+  ],
+  "links": [
+    {
+      "source": 234,
+      "target": 260
+    },
+    {
+      "source": 241,
+      "target": 287
+    },
+    {
+      "source": 267,
+      "target": 287
+    },
+    {
+      "source": 287,
+      "target": 288
+    },
+    {
+      "source": 138,
+      "target": 300
+    },
+    {
+      "source": 139,
+      "target": 300
+    },
+    {
+      "source": 317,
+      "target": 318
+    },
+    {
+      "source": 320,
+      "target": 318
+    },
+    {
+      "source": 317,
+      "target": 320
+    },
+    {
+      "source": 321,
+      "target": 320
+    },
+    {
+      "source": 321,
+      "target": 322
+    }
+  ],
+  "generated": "2026-03-12T15:09:34.921Z"
+}
