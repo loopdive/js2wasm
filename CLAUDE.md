@@ -2,6 +2,12 @@
 
 TypeScript-to-WebAssembly compiler using WasmGC.
 
+## Running Tests
+- Run all tests: `npm test` (vitest — may OOM on full suite in constrained envs)
+- Run a specific test file: `npm test -- tests/issue-277.test.ts`
+- Run equivalence tests only: `npm test -- tests/equivalence.test.ts`
+- Test262 standalone: `npx tsx scripts/run-test262.ts [category...]` — writes JSONL + JSON report to `benchmarks/results/`, supports filtering by category
+
 ## Architecture Principles
 - **Never delegate to JS host** — the goal is pure Wasm, no JS runtime dependency. Inline Wasm implementations are always preferred over host imports.
 - Existing host imports (Math methods, string ops) are legacy/temporary — don't add new ones.
@@ -10,7 +16,7 @@ TypeScript-to-WebAssembly compiler using WasmGC.
 - Codegen: `src/codegen/expressions.ts`, `src/codegen/index.ts`, `src/codegen/statements.ts`
 - Tests: `tests/equivalence.test.ts` (main), `tests/test262.test.ts` (conformance dashboard, non-failing)
 - Test262 runner: `tests/test262-runner.ts` — TEST_CATEGORIES list
-- Standalone runner: `scripts/run-test262.ts` — writes JSONL + JSON report to `benchmarks/results/`. Supports `--resume` to continue interrupted runs.
+- Standalone runner: `scripts/run-test262.ts` — writes JSONL + JSON report to `benchmarks/results/`. Run via `npx tsx scripts/run-test262.ts [category...]`. Supports `--resume` to continue an interrupted run (same git HEAD only — code changes force a fresh run).
 - Backlog: `plan/issues/backlog/backlog.md`
 - Issues: `plan/issues/` — organized by state:
   - `ready/` — no blockers, pick any to start (priority in `dependency-graph.md`)
