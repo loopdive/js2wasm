@@ -759,6 +759,17 @@ function collectPrimitiveMethodImports(
       if (!isStringType(leftType) && isStringType(rightType)) {
         needed.add("number_toString");
       }
+      // For `any`-typed variables (e.g. `var __str; __str=""`), the left type
+      // won't be detected as string, but at runtime it may hold a string.
+      // When += is used with an `any`-typed LHS and a non-string RHS,
+      // register number_toString so the coercion is available at codegen time.
+      if (
+        node.operatorToken.kind === ts.SyntaxKind.PlusEqualsToken &&
+        (leftType.flags & ts.TypeFlags.Any) !== 0 &&
+        !isStringType(rightType)
+      ) {
+        needed.add("number_toString");
+      }
     }
     // String comparison operators (< > <= >=) on string types need string_compare import
     if (
