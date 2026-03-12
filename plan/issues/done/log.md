@@ -190,3 +190,6 @@
 | 270 | 2026-03-12 | Strict mode reserved words -- let, yield, package diagnostic suppression | Dep-driven |
 | 317 | 2026-03-12 | Unused $AnyValue preamble type + duplicate export cleanup | Dep-driven |
 | 295 | 2026-03-12 | Comparison operators with type coercion (BigInt vs String) | Dep-driven |
+| 242 | 2026-03-12 | Computed property names in class declarations -- diagnostic suppression | Dep-driven |
+| 265 | 2026-03-12 | Computed property names in classes -- TS1166 diagnostic | Dep-driven |
+| 276 | 2026-03-12 | Computed property name must be of assignable type -- TS2464 diagnostic | Dep-driven |
