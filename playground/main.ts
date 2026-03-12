@@ -874,6 +874,21 @@ async function t262LoadFile(path: string): Promise<string> {
   return resp.text();
 }
 
+interface EquivTest { name: string; index: number; }
+let equivIndex: EquivTest[] | null = null;
+
+async function loadEquivIndex(): Promise<EquivTest[]> {
+  if (equivIndex) return equivIndex;
+  const resp = await fetch("/api/equiv-index");
+  equivIndex = await resp.json() as EquivTest[];
+  return equivIndex;
+}
+
+async function loadEquivSource(idx: number): Promise<string> {
+  const resp = await fetch(`/api/equiv-source?index=${idx}`);
+  return resp.text();
+}
+
 function t262FileName(fullPath: string): string {
   const parts = fullPath.split("/");
   return parts[parts.length - 1];
@@ -971,14 +986,11 @@ async function t262Render() {
     }
   }
 
-  // ── TEST262 section ──
-  const t262Header = document.createElement("div");
-  t262Header.className = "t262-section-header";
-  t262Header.textContent = "TEST262";
-  listEl.appendChild(t262Header);
-
-  const cats = await t262LoadIndex();
-  const tree = t262BuildTree(cats);
+  // ── UNIT TESTS section ──
+  const unitHeader = document.createElement("div");
+  unitHeader.className = "t262-section-header";
+  unitHeader.textContent = "UNIT TESTS";
+  listEl.appendChild(unitHeader);
 
   // Count total files in a tree node (recursively)
   function nodeFileCount(node: T262TreeNode): number {
@@ -1002,7 +1014,6 @@ async function t262Render() {
 
   // Render a tree node recursively
   function renderNode(node: T262TreeNode, parent: HTMLElement, depth: number) {
-    // Sort children alphabetically
     const sortedChildren = [...node.children.entries()].sort((a, b) => a[0].localeCompare(b[0]));
 
     for (const [, child] of sortedChildren) {
@@ -1040,11 +1051,9 @@ async function t262Render() {
       el.appendChild(headerEl);
 
       if (expanded) {
-        // Render child folders
         if (child.children.size > 0) {
           renderNode(child, el, depth + 1);
         }
-        // Render leaf files
         for (const cat of child.categories) {
           const displayFiles = filter
             ? cat.files.filter(f => f.toLowerCase().includes(filter))
@@ -1072,7 +1081,77 @@ async function t262Render() {
     }
   }
 
-  renderNode(tree, listEl, 0);
+  // Helper to render a top-level folder
+  function renderTopFolder(
+    name: string, folderKey: string, parent: HTMLElement,
+    renderContents: (container: HTMLElement) => void,
+  ) {
+    if (filter && !name.toLowerCase().includes(filter)) {
+      // Still render if contents might match — caller handles filtering
+    }
+    const expanded = t262ExpandedFolders.has(folderKey);
+    const el = document.createElement("div");
+    el.className = "t262-category";
+
+    const headerEl = document.createElement("div");
+    headerEl.className = "t262-cat-header";
+    headerEl.innerHTML = `<span class="t262-arrow">${expanded ? "&#9660;" : "&#9654;"}</span> <span class="t262-cat-name">${name}</span>`;
+    headerEl.addEventListener("click", async () => {
+      if (t262ExpandedFolders.has(folderKey)) t262ExpandedFolders.delete(folderKey);
+      else t262ExpandedFolders.add(folderKey);
+      await t262Render();
+    });
+    el.appendChild(headerEl);
+
+    if (expanded) {
+      renderContents(el);
+    }
+
+    parent.appendChild(el);
+  }
+
+  // ── ts2wasm folder (equivalence tests) ──
+  const equivTests = await loadEquivIndex();
+  const equivMatches = filter
+    ? equivTests.filter(t => t.name.toLowerCase().includes(filter))
+    : equivTests;
+  if (!filter || equivMatches.length > 0 || "ts2wasm".includes(filter)) {
+    renderTopFolder("ts2wasm", "__ts2wasm__", listEl, (container) => {
+      const filesEl = document.createElement("div");
+      filesEl.className = "t262-files";
+      filesEl.style.paddingLeft = "22px";
+      for (const t of equivMatches) {
+        const path = `equiv:${t.index}`;
+        const fileEl = document.createElement("div");
+        fileEl.className = "t262-file" + (t262ActivePath === path ? " active" : "");
+        fileEl.textContent = t.name;
+        fileEl.title = t.name;
+        fileEl.dataset.path = path;
+        fileEl.addEventListener("click", async () => {
+          const source = await loadEquivSource(t.index);
+          t262Loading = true;
+          sessionStorage.removeItem(STORAGE_KEY);
+          inputFile.model.setValue(source);
+          t262SetActive(path);
+          updateTabLabel("ts-source", t.name);
+          compileOnly();
+          t262Loading = false;
+        });
+        filesEl.appendChild(fileEl);
+      }
+      container.appendChild(filesEl);
+    });
+  }
+
+  // ── test262 folder ──
+  const cats = await t262LoadIndex();
+  const tree = t262BuildTree(cats);
+  const t262Matches = !filter || nodeMatchesFilter(tree, filter) || "test262".includes(filter);
+  if (t262Matches) {
+    renderTopFolder("test262", "__test262__", listEl, (container) => {
+      renderNode(tree, container, 1);
+    });
+  }
 }
 
 // Wire up the search input
