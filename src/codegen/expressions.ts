@@ -945,6 +945,57 @@ function emitArrowParamDefaults(
   }
 }
 
+/**
+ * Emit default-value initialization for method/setter parameters with initializers.
+ * For each param with a default value, check if the caller omitted it
+ * (externref -> ref.is_null, i32 -> i32.eqz, f64 -> f64.eq 0.0) and if so
+ * compile the initializer expression and assign it to the param local.
+ */
+function emitMethodParamDefaults(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  params: ts.NodeArray<ts.ParameterDeclaration>,
+  paramOffset: number, // offset in fctx.params (usually 1 for 'this')
+): void {
+  for (let i = 0; i < params.length; i++) {
+    const param = params[i]!;
+    if (!param.initializer) continue;
+    if (!ts.isIdentifier(param.name)) continue;
+
+    const paramIdx = paramOffset + i;
+    const paramType = fctx.params[paramIdx]?.type;
+    if (!paramType) continue;
+
+    // Build the "then" block: compile default expression, local.set
+    const savedBody = fctx.body;
+    fctx.body = [];
+    compileExpression(ctx, fctx, param.initializer, paramType);
+    fctx.body.push({ op: "local.set", index: paramIdx });
+    const thenInstrs = fctx.body;
+    fctx.body = savedBody;
+
+    // Emit the null/zero check + conditional assignment
+    if (paramType.kind === "externref") {
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "ref.is_null" });
+      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
+    } else if (paramType.kind === "ref_null" || paramType.kind === "ref") {
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "ref.is_null" });
+      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
+    } else if (paramType.kind === "i32") {
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "i32.eqz" });
+      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
+    } else if (paramType.kind === "f64") {
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "f64.const", value: 0 });
+      fctx.body.push({ op: "f64.eq" });
+      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
+    }
+  }
+}
+
 /** Check if an arrow/function expression is used as a callback argument to a call */
 function isCallbackArgument(node: ts.Node): boolean {
   const parent = node.parent;
@@ -10435,13 +10486,14 @@ function compileObjectLiteralForStruct(
       ctx.currentFunc = savedFunc;
     }
 
-    // Object literal methods: { method() { ... } }
+    // Object literal methods: { method() { ... } }, { "method"() { ... } }, { [key]() { ... } }
     if (
       ts.isMethodDeclaration(prop) &&
       prop.name &&
-      ts.isIdentifier(prop.name)
+      (ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name) || ts.isNumericLiteral(prop.name) || ts.isComputedPropertyName(prop.name))
     ) {
-      const methodName = prop.name.text;
+      const methodName = resolveAccessorPropName(ctx, prop.name);
+      if (methodName === undefined) continue;
       const fullName = `${typeName}_${methodName}`;
       ctx.classMethodSet.add(fullName);
 
@@ -10497,6 +10549,10 @@ function compileObjectLiteralForStruct(
 
       const savedFunc = ctx.currentFunc;
       ctx.currentFunc = methodFctx;
+
+      // Emit default-value initialization for parameters with initializers
+      emitMethodParamDefaults(ctx, methodFctx, prop.parameters, 1); // 1 to skip 'this'
+
       if (prop.body) {
         for (const stmt of prop.body.statements) {
           compileStatement(ctx, methodFctx, stmt);
