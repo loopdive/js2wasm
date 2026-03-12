@@ -4191,6 +4191,330 @@ function emitBitwiseCompoundOp(fctx: FunctionContext, op: ts.SyntaxKind): void {
   fctx.body.push({ op: entry.unsigned ? "f64.convert_i32_u" : "f64.convert_i32_s" });
 }
 
+/** Emit the arithmetic/bitwise operation for a compound assignment operator.
+ *  Stack must contain [left_f64, right_f64]. Replaces with result f64. */
+function emitCompoundOp(ctx: CodegenContext, fctx: FunctionContext, op: ts.SyntaxKind): void {
+  switch (op) {
+    case ts.SyntaxKind.PlusEqualsToken:
+      fctx.body.push({ op: "f64.add" });
+      break;
+    case ts.SyntaxKind.MinusEqualsToken:
+      fctx.body.push({ op: "f64.sub" });
+      break;
+    case ts.SyntaxKind.AsteriskEqualsToken:
+      fctx.body.push({ op: "f64.mul" });
+      break;
+    case ts.SyntaxKind.AsteriskAsteriskEqualsToken: {
+      const funcIdx = ctx.funcMap.get("Math_pow");
+      if (funcIdx !== undefined) fctx.body.push({ op: "call", funcIdx });
+      break;
+    }
+    case ts.SyntaxKind.SlashEqualsToken:
+      fctx.body.push({ op: "f64.div" });
+      break;
+    case ts.SyntaxKind.PercentEqualsToken:
+      emitModulo(fctx);
+      break;
+    case ts.SyntaxKind.AmpersandEqualsToken:
+    case ts.SyntaxKind.BarEqualsToken:
+    case ts.SyntaxKind.CaretEqualsToken:
+    case ts.SyntaxKind.LessThanLessThanEqualsToken:
+    case ts.SyntaxKind.GreaterThanGreaterThanEqualsToken:
+    case ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken:
+      emitBitwiseCompoundOp(fctx, op);
+      break;
+  }
+}
+
+/**
+ * Compile compound assignment on a property access target: obj.prop += value
+ * Pattern: read obj.prop, compile RHS, apply op, store back into obj.prop
+ */
+function compilePropertyCompoundAssignment(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  target: ts.PropertyAccessExpression,
+  rhs: ts.Expression,
+  op: ts.SyntaxKind,
+): ValType | null {
+  const objType = ctx.checker.getTypeAtLocation(target.expression);
+  const propName = ts.isPrivateIdentifier(target.name) ? target.name.text.slice(1) : target.name.text;
+
+  // Handle static property compound assignment: ClassName.staticProp += value
+  if (ts.isIdentifier(target.expression) && ctx.classSet.has(target.expression.text)) {
+    const clsName = target.expression.text;
+    const fullName = `${clsName}_${propName}`;
+    const globalIdx = ctx.staticProps.get(fullName);
+    if (globalIdx !== undefined) {
+      // Read current value
+      fctx.body.push({ op: "global.get", index: globalIdx });
+      // Compile RHS
+      const rhsType = compileExpression(ctx, fctx, rhs, { kind: "f64" });
+      if (!rhsType) return null;
+      // Apply op
+      emitCompoundOp(ctx, fctx, op);
+      // Store back
+      fctx.body.push({ op: "global.set", index: globalIdx });
+      fctx.body.push({ op: "global.get", index: globalIdx });
+      return { kind: "f64" };
+    }
+  }
+
+  // Resolve struct type
+  let typeName = resolveStructName(ctx, objType);
+  if (!typeName && ts.isIdentifier(target.expression)) {
+    typeName = ctx.widenedVarStructMap.get(target.expression.text);
+  }
+  if (!typeName) {
+    ctx.errors.push({
+      message: `Cannot compile compound assignment on property '${propName}' — unresolvable type`,
+      line: getLine(target),
+      column: getCol(target),
+    });
+    return null;
+  }
+
+  const structTypeIdx = ctx.structMap.get(typeName);
+  const fields = ctx.structFields.get(typeName);
+  if (structTypeIdx === undefined || !fields) {
+    ctx.errors.push({
+      message: `Cannot compile compound assignment on property '${propName}' of '${typeName}'`,
+      line: getLine(target),
+      column: getCol(target),
+    });
+    return null;
+  }
+
+  const fieldIdx = fields.findIndex((f) => f.name === propName);
+  if (fieldIdx === -1) {
+    ctx.errors.push({
+      message: `Unknown field '${propName}' on struct '${typeName}'`,
+      line: getLine(target),
+      column: getCol(target),
+    });
+    return null;
+  }
+
+  const fieldType = fields[fieldIdx]!.type;
+
+  // Compile the object expression and save to a temp local
+  const objResult = compileExpression(ctx, fctx, target.expression);
+  if (!objResult) return null;
+  const objTmp = allocLocal(fctx, `__cmpd_obj_${fctx.locals.length}`, objResult);
+  fctx.body.push({ op: "local.set", index: objTmp });
+
+  // Read current value: obj.prop
+  fctx.body.push({ op: "local.get", index: objTmp });
+  fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+
+  // Coerce field value to f64 for arithmetic
+  if (fieldType.kind !== "f64") {
+    coerceType(ctx, fctx, fieldType, { kind: "f64" });
+  }
+
+  // Compile RHS as f64
+  const rhsType = compileExpression(ctx, fctx, rhs, { kind: "f64" });
+  if (!rhsType) return null;
+
+  // Apply compound operation
+  emitCompoundOp(ctx, fctx, op);
+
+  // Save result
+  const resultTmp = allocLocal(fctx, `__cmpd_res_${fctx.locals.length}`, { kind: "f64" });
+  fctx.body.push({ op: "local.set", index: resultTmp });
+
+  // Store back: obj.prop = result (coerced to field type)
+  fctx.body.push({ op: "local.get", index: objTmp });
+  fctx.body.push({ op: "local.get", index: resultTmp });
+  if (fieldType.kind !== "f64") {
+    coerceType(ctx, fctx, { kind: "f64" }, fieldType);
+  }
+  fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx });
+
+  // Return the result (as f64)
+  fctx.body.push({ op: "local.get", index: resultTmp });
+  return { kind: "f64" };
+}
+
+/**
+ * Compile compound assignment on an element access target: arr[i] += value
+ * Handles both vec structs (arrays) and plain structs (bracket notation).
+ */
+function compileElementCompoundAssignment(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  target: ts.ElementAccessExpression,
+  rhs: ts.Expression,
+  op: ts.SyntaxKind,
+): ValType | null {
+  // Compile the object expression
+  const objResult = compileExpression(ctx, fctx, target.expression);
+  if (!objResult) return null;
+
+  // Externref element access compound assignment
+  if (objResult.kind === "externref") {
+    ctx.errors.push({
+      message: "Compound assignment on externref element access not supported",
+      line: getLine(target),
+      column: getCol(target),
+    });
+    return null;
+  }
+
+  if (objResult.kind !== "ref" && objResult.kind !== "ref_null") {
+    ctx.errors.push({
+      message: "Compound assignment on non-ref element access",
+      line: getLine(target),
+      column: getCol(target),
+    });
+    return null;
+  }
+
+  const typeIdx = (objResult as { typeIdx: number }).typeIdx;
+  const typeDef = ctx.mod.types[typeIdx];
+
+  // Handle plain struct: obj["prop"] += value → struct.get + op + struct.set
+  if (typeDef?.kind === "struct") {
+    const isVec = typeDef.fields.length === 2 &&
+      typeDef.fields[0]?.name === "length" &&
+      typeDef.fields[1]?.name === "data";
+
+    if (!isVec) {
+      // Resolve field name from literal or const variable
+      let fieldName: string | undefined;
+      if (ts.isStringLiteral(target.argumentExpression)) {
+        fieldName = target.argumentExpression.text;
+      } else if (ts.isNumericLiteral(target.argumentExpression)) {
+        fieldName = target.argumentExpression.text;
+      } else if (ts.isIdentifier(target.argumentExpression)) {
+        const sym = ctx.checker.getSymbolAtLocation(target.argumentExpression);
+        if (sym) {
+          const decl = sym.valueDeclaration;
+          if (decl && ts.isVariableDeclaration(decl) && decl.initializer) {
+            const declList = decl.parent;
+            if (ts.isVariableDeclarationList(declList) && (declList.flags & ts.NodeFlags.Const) !== 0) {
+              if (ts.isStringLiteral(decl.initializer)) {
+                fieldName = decl.initializer.text;
+              } else if (ts.isNumericLiteral(decl.initializer)) {
+                fieldName = decl.initializer.text;
+              }
+            }
+          }
+        }
+      }
+      if (fieldName === undefined) {
+        const constVal = resolveConstantExpression(ctx, target.argumentExpression);
+        if (constVal !== undefined) {
+          fieldName = String(constVal);
+        }
+      }
+
+      if (fieldName !== undefined) {
+        const fieldIdx = typeDef.fields.findIndex((f: { name?: string }) => f.name === fieldName);
+        if (fieldIdx !== -1) {
+          const fieldType = typeDef.fields[fieldIdx]!.type;
+          const objTmp = allocLocal(fctx, `__cmpd_obj_${fctx.locals.length}`, objResult);
+          fctx.body.push({ op: "local.set", index: objTmp });
+
+          // Read current value
+          fctx.body.push({ op: "local.get", index: objTmp });
+          fctx.body.push({ op: "struct.get", typeIdx, fieldIdx });
+          if (fieldType.kind !== "f64") {
+            coerceType(ctx, fctx, fieldType, { kind: "f64" });
+          }
+
+          // Compile RHS as f64
+          const rhsType = compileExpression(ctx, fctx, rhs, { kind: "f64" });
+          if (!rhsType) return null;
+
+          // Apply compound operation
+          emitCompoundOp(ctx, fctx, op);
+
+          // Save result
+          const resultTmp = allocLocal(fctx, `__cmpd_res_${fctx.locals.length}`, { kind: "f64" });
+          fctx.body.push({ op: "local.set", index: resultTmp });
+
+          // Store back
+          fctx.body.push({ op: "local.get", index: objTmp });
+          fctx.body.push({ op: "local.get", index: resultTmp });
+          if (fieldType.kind !== "f64") {
+            coerceType(ctx, fctx, { kind: "f64" }, fieldType);
+          }
+          fctx.body.push({ op: "struct.set", typeIdx, fieldIdx });
+
+          fctx.body.push({ op: "local.get", index: resultTmp });
+          return { kind: "f64" };
+        }
+      }
+    }
+
+    // Vec struct: arr[i] += value
+    if (isVec) {
+      const objTmp = allocLocal(fctx, `__cmpd_arr_${fctx.locals.length}`, objResult);
+      fctx.body.push({ op: "local.set", index: objTmp });
+
+      // Compile index
+      const idxResult = compileExpression(ctx, fctx, target.argumentExpression);
+      if (!idxResult) return null;
+      if (idxResult.kind === "f64") {
+        fctx.body.push({ op: "i32.trunc_f64_s" });
+      }
+      const idxTmp = allocLocal(fctx, `__cmpd_idx_${fctx.locals.length}`, { kind: "i32" });
+      fctx.body.push({ op: "local.set", index: idxTmp });
+
+      // Get the data array type
+      const dataFieldType = typeDef.fields[1]!.type;
+      const arrayTypeIdx = (dataFieldType as { typeIdx: number }).typeIdx;
+      const arrayDef = ctx.mod.types[arrayTypeIdx];
+      const elemType = arrayDef && "elemType" in arrayDef
+        ? (arrayDef as { elemType: ValType }).elemType
+        : { kind: "f64" as const };
+
+      // Read current value: arr.data[idx]
+      fctx.body.push({ op: "local.get", index: objTmp });
+      fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 });
+      fctx.body.push({ op: "local.get", index: idxTmp });
+      fctx.body.push({ op: "array.get", typeIdx: arrayTypeIdx } as Instr);
+
+      // Coerce to f64 for arithmetic
+      if (elemType.kind !== "f64") {
+        coerceType(ctx, fctx, elemType, { kind: "f64" });
+      }
+
+      // Compile RHS as f64
+      const rhsType = compileExpression(ctx, fctx, rhs, { kind: "f64" });
+      if (!rhsType) return null;
+
+      // Apply compound operation
+      emitCompoundOp(ctx, fctx, op);
+
+      // Save result
+      const resultTmp = allocLocal(fctx, `__cmpd_res_${fctx.locals.length}`, { kind: "f64" });
+      fctx.body.push({ op: "local.set", index: resultTmp });
+
+      // Store back: arr.data[idx] = result
+      fctx.body.push({ op: "local.get", index: objTmp });
+      fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 });
+      fctx.body.push({ op: "local.get", index: idxTmp });
+      fctx.body.push({ op: "local.get", index: resultTmp });
+      if (elemType.kind !== "f64") {
+        coerceType(ctx, fctx, { kind: "f64" }, elemType);
+      }
+      fctx.body.push({ op: "array.set", typeIdx: arrayTypeIdx } as Instr);
+
+      fctx.body.push({ op: "local.get", index: resultTmp });
+      return { kind: "f64" };
+    }
+  }
+
+  ctx.errors.push({
+    message: `Unsupported compound assignment on element access`,
+    line: getLine(target),
+    column: getCol(target),
+  });
+  return null;
+}
+
 /**
  * Compile prefix/postfix increment/decrement on member expressions:
  *   ++obj.x, obj.x++, --obj[i], obj[i]--, etc.
