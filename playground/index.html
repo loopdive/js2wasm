@@ -6,6 +6,21 @@
       * {
         box-sizing: border-box;
         margin: 0;
+        scrollbar-color: #3b3b3b #181818;
+      }
+      *::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      *::-webkit-scrollbar-track {
+        background: #181818;
+      }
+      *::-webkit-scrollbar-thumb {
+        background: #3b3b3b;
+        border-radius: 4px;
+      }
+      *::-webkit-scrollbar-thumb:hover {
+        background: #555;
       }
       body {
         font-family: "SF Mono", "Fira Code", monospace;
@@ -485,20 +500,40 @@
         font-size: 11px;
       }
       .t262-files {
-        padding-left: 22px;
+        padding-left: 18px;
       }
       .t262-file {
+        font-size: 0.7rem;
+        color: #999;
         padding: 2px 10px;
-        font-size: 11px;
-        color: #aaa;
         cursor: pointer;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
       }
       .t262-file:hover {
-        color: #ccc;
-        background: rgba(255, 255, 255, 0.06);
+        color: #ddd;
+        background: #1a1a2e;
+      }
+      .t262-file.active {
+        color: #7c9dfc;
+        background: #1a1a3a;
+      }
+      .t262-section-header {
+        font-size: 0.65rem;
+        font-weight: bold;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #888;
+        padding: 10px 10px 6px;
+        border-bottom: 1px solid #2a2a2a;
+      }
+      .t262-group-header {
+        font-size: 0.75rem;
+        font-weight: bold;
+        color: #ddd;
+        padding: 4px 10px 2px;
+        margin-top: 4px;
       }
 
       /* ─── Hex viewer section decorations ──────────────── */

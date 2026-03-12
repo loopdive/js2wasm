@@ -8,6 +8,7 @@ import {
 import type { CodegenContext, FunctionContext } from "./index.js";
 import {
   addFuncType,
+  addStringImports,
   addUnionImports,
   allocLocal,
   attachSourcePos,
@@ -15,6 +16,7 @@ import {
   compileClassBodies,
   ensureExnTag,
   ensureI32Condition,
+  ensureNativeStringHelpers,
   getArrTypeIdxFromVec,
   getOrRegisterVecType,
   getSourcePos,
@@ -442,6 +444,32 @@ function compileVariableStatement(
   }
 }
 
+/**
+ * Ensure all binding names in a destructuring pattern are allocated as locals.
+ * This is a safety net: if the actual destructuring compilation fails, the
+ * identifiers will still be in scope (initialized to their zero/null defaults).
+ * For `var` declarations these are already hoisted, but `let`/`const` are not.
+ */
+function ensureBindingLocals(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  pattern: ts.BindingPattern,
+): void {
+  for (const element of pattern.elements) {
+    if (ts.isOmittedExpression(element)) continue;
+    if (ts.isIdentifier(element.name)) {
+      const name = element.name.text;
+      if (fctx.localMap.has(name)) continue;
+      if (ctx.moduleGlobals.has(name)) continue;
+      const elemType = ctx.checker.getTypeAtLocation(element);
+      const wasmType = resolveWasmType(ctx, elemType);
+      allocLocal(fctx, name, wasmType);
+    } else if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
+      ensureBindingLocals(ctx, fctx, element.name);
+    }
+  }
+}
+
 function compileObjectDestructuring(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -471,6 +499,7 @@ function compileObjectDestructuring(
 
   if (!typeName) {
     fctx.body.length = bodyLenBefore; // rollback — value would leak on stack
+    ensureBindingLocals(ctx, fctx, pattern);
     ctx.errors.push({
       message: "Cannot destructure: unknown type",
       line: getLine(decl),
@@ -483,6 +512,7 @@ function compileObjectDestructuring(
   const fields = ctx.structFields.get(typeName);
   if (structTypeIdx === undefined || !fields) {
     fctx.body.length = bodyLenBefore; // rollback — value would leak on stack
+    ensureBindingLocals(ctx, fctx, pattern);
     ctx.errors.push({
       message: `Cannot destructure: not a known struct type: ${typeName}`,
       line: getLine(decl),
@@ -571,6 +601,7 @@ function compileArrayDestructuring(
 
   if (resultType.kind !== "ref" && resultType.kind !== "ref_null") {
     fctx.body.length = bodyLenBefore;
+    ensureBindingLocals(ctx, fctx, pattern);
     ctx.errors.push({
       message: "Cannot destructure: not an array type",
       line: getLine(decl),
@@ -585,6 +616,7 @@ function compileArrayDestructuring(
   // Handle vec struct (array wrapped in {length, data})
   if (!typeDef || typeDef.kind !== "struct") {
     fctx.body.length = bodyLenBefore;
+    ensureBindingLocals(ctx, fctx, pattern);
     ctx.errors.push({
       message: "Cannot destructure: not an array type",
       line: getLine(decl),
@@ -597,6 +629,7 @@ function compileArrayDestructuring(
   const arrDef = ctx.mod.types[arrTypeIdx];
   if (!arrDef || arrDef.kind !== "array") {
     fctx.body.length = bodyLenBefore;
+    ensureBindingLocals(ctx, fctx, pattern);
     ctx.errors.push({
       message: "Cannot destructure: vec data is not array",
       line: getLine(decl),
@@ -1016,8 +1049,40 @@ function compileSwitchStatement(
   const exprType = ctx.checker.getTypeAtLocation(stmt.expression);
   let wasmType = resolveWasmType(ctx, exprType);
 
-  // Externref discriminant: unbox to f64 for numeric comparison
-  if (wasmType.kind === "externref") {
+  // Detect if the switch discriminant or any case value involves strings (#245).
+  // Check both the discriminant type and case expression types, since the
+  // discriminant may be `any` while case values are string literals.
+  let switchIsString = isStringType(exprType);
+  if (!switchIsString) {
+    for (const clause of stmt.caseBlock.clauses) {
+      if (ts.isCaseClause(clause)) {
+        const caseType = ctx.checker.getTypeAtLocation(clause.expression);
+        if (isStringType(caseType)) {
+          switchIsString = true;
+          break;
+        }
+      }
+    }
+  }
+
+  // For string switch: use the appropriate string type and comparison
+  let strEqFuncIdx: number | undefined;
+  if (switchIsString) {
+    if (ctx.fast && ctx.nativeStrTypeIdx >= 0) {
+      // Fast mode: native string comparison
+      ensureNativeStringHelpers(ctx);
+      const flattenIdx = ctx.nativeStrHelpers.get("__str_flatten");
+      const equalsIdx = ctx.nativeStrHelpers.get("__str_equals");
+      strEqFuncIdx = equalsIdx;
+      wasmType = { kind: "ref", typeIdx: ctx.anyStrTypeIdx };
+    } else {
+      // Non-fast mode: externref string comparison via wasm:js-string equals
+      addStringImports(ctx);
+      strEqFuncIdx = ctx.funcMap.get("equals");
+      wasmType = { kind: "externref" };
+    }
+  } else if (wasmType.kind === "externref") {
+    // Externref discriminant (non-string): unbox to f64 for numeric comparison
     wasmType = { kind: "f64" };
   }
 
@@ -1070,8 +1135,22 @@ function compileSwitchStatement(
       fctx.body = checkBody;
 
       fctx.body.push({ op: "local.get", index: tmpLocalIdx });
+      if (switchIsString && ctx.fast && ctx.nativeStrTypeIdx >= 0) {
+        // Fast mode: flatten both operands before comparison
+        const flattenIdx = ctx.nativeStrHelpers.get("__str_flatten")!;
+        fctx.body.push({ op: "call", funcIdx: flattenIdx });
+      }
       compileExpression(ctx, fctx, caseClause.expression, wasmType);
-      fctx.body.push({ op: eqOp });
+      if (switchIsString && ctx.fast && ctx.nativeStrTypeIdx >= 0) {
+        const flattenIdx = ctx.nativeStrHelpers.get("__str_flatten")!;
+        fctx.body.push({ op: "call", funcIdx: flattenIdx });
+      }
+      if (switchIsString && strEqFuncIdx !== undefined) {
+        // String comparison: call equals function
+        fctx.body.push({ op: "call", funcIdx: strEqFuncIdx });
+      } else {
+        fctx.body.push({ op: eqOp });
+      }
       fctx.body.push({ op: "local.set", index: matchedLocalIdx });
 
       fctx.body = outerBody;
@@ -1900,6 +1979,16 @@ function compileTryStatement(
     ) {
       const varName = stmt.catchClause.variableDeclaration.name.text;
       exnLocalIdx = allocLocal(fctx, varName, { kind: "externref" });
+    } else if (
+      stmt.catchClause.variableDeclaration &&
+      (ts.isObjectBindingPattern(stmt.catchClause.variableDeclaration.name) ||
+       ts.isArrayBindingPattern(stmt.catchClause.variableDeclaration.name))
+    ) {
+      // Destructuring in catch: `catch ({message})` or `catch ([a, b])`
+      // Allocate locals for all binding names so they are in scope
+      ensureBindingLocals(ctx, fctx, stmt.catchClause.variableDeclaration.name);
+      // Store the exception value in a temp so catch body can reference it
+      exnLocalIdx = allocLocal(fctx, `__catch_destruct_${fctx.locals.length}`, { kind: "externref" });
     }
 
     // Build "catch $exn" body: receives the externref value on the stack
@@ -2240,6 +2329,34 @@ export function hoistFunctionDeclarations(
     }
     if (ts.isBlock(stmt)) {
       hoistFunctionDeclarations(ctx, fctx, stmt.statements);
+    }
+    // Recurse into loop bodies — function declarations inside loops are hoisted
+    // to the enclosing function scope in JS semantics.
+    if (ts.isForStatement(stmt) || ts.isWhileStatement(stmt) || ts.isDoStatement(stmt)) {
+      if (ts.isBlock(stmt.statement)) {
+        hoistFunctionDeclarations(ctx, fctx, stmt.statement.statements);
+      } else {
+        hoistFunctionDeclarations(ctx, fctx, [stmt.statement]);
+      }
+    }
+    if (ts.isForInStatement(stmt) || ts.isForOfStatement(stmt)) {
+      if (ts.isBlock(stmt.statement)) {
+        hoistFunctionDeclarations(ctx, fctx, stmt.statement.statements);
+      } else {
+        hoistFunctionDeclarations(ctx, fctx, [stmt.statement]);
+      }
+    }
+    if (ts.isSwitchStatement(stmt)) {
+      for (const clause of stmt.caseBlock.clauses) {
+        hoistFunctionDeclarations(ctx, fctx, clause.statements);
+      }
+    }
+    if (ts.isLabeledStatement(stmt)) {
+      if (ts.isBlock(stmt.statement)) {
+        hoistFunctionDeclarations(ctx, fctx, stmt.statement.statements);
+      } else {
+        hoistFunctionDeclarations(ctx, fctx, [stmt.statement]);
+      }
     }
   }
 }
