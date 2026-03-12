@@ -1,6 +1,45 @@
 # ts2wasm Backlog
 
-## Sprint 1 (current)
+## Sprint 3 (current)
+
+_Goal: Fix runtime failures and reduce compile errors via string comparison, valueOf coercion, skip filter cleanup, BigInt fixes, and class/scope improvements._
+
+| #   | Feature | Status | Group |
+| --- | ------- | ------ | ----- |
+| [225](issues/225.md) | For-loop continue/break with string !== comparison | Done | A |
+| [226](issues/226.md) | valueOf/toString coercion on comparison operators | Done | A |
+| [227](issues/227.md) | BigInt comparison with Infinity (float-unrepresentable trap) | In Progress | A |
+| [228](issues/228.md) | BigInt equality/strict-equality with Number and Boolean | In Progress | A |
+| [229](issues/229.md) | Tagged template cache: array out of bounds | In Progress | A |
+| [230](issues/230.md) | Object computed property names with variable keys | In Progress | A |
+| [231](issues/231.md) | Member expression property assignment on empty objects | Done | C |
+| [232](issues/232.md) | Unsupported call expression -- method calls on object literals | In Progress | B |
+| [233](issues/233.md) | Unknown identifier from destructuring in catch/for-of | Done | A |
+| [234](issues/234.md) | ClassDeclaration in nested/expression positions | In Progress | B |
+| [235](issues/235.md) | Function.name property access (380 compile errors) | In Progress | B |
+| [236](issues/236.md) | allowJs type flexibility -- boolean/void/string as args | Done | C |
+| [237](issues/237.md) | WebAssembly type mismatch -- BigInt i64 vs externref | In Progress | B |
+| [238](issues/238.md) | Class expression new -- `new (class { ... })()` | In Progress | B |
+| [239](issues/239.md) | Element access on struct types (bracket notation) | In Progress | B |
+| [240](issues/240.md) | Setter return value -- allow return in setter bodies | Done | C |
+| [241](issues/241.md) | Yield expression in strict mode / module context | In Progress | B |
+| [242](issues/242.md) | Computed property names in class declarations | In Progress | C |
+| [243](issues/243.md) | Unsupported assignment target patterns | In Progress | B |
+| [244](issues/244.md) | `in` operator runtime failures | In Progress | A |
+| [245](issues/245.md) | Switch statement with string case values | Done | A |
+| [246](issues/246.md) | For-of object destructuring -- TypeError on primitive coercion | In Progress | A |
+| [247](issues/247.md) | Arithmetic with null/undefined produces wrong results | In Progress | A |
+| [248](issues/248.md) | Logical operators with object operands returning wrong values | Done | A |
+| [249](issues/249.md) | Miscellaneous runtime failures -- remaining small fixes | In Progress | A |
+| [250](issues/250.md) | For-loop with function declarations (113 compile errors) | In Progress | B |
+| [251](issues/251.md) | super() call required in derived class constructors | Done | C |
+| [252](issues/252.md) | Subsequent variable declarations type mismatch | Done | C |
+| [253](issues/253.md) | Narrow skip filters -- typeof string comparison | Done | C |
+| [254](issues/254.md) | Private class fields and methods (#field) | In Progress | C |
+| [255](issues/255.md) | 'this' implicit any type in class methods | Done | C |
+| [256](issues/256.md) | Unknown function: f -- locally declared functions not found | Done | C |
+
+## Sprint 1
 
 _Goal: Eliminate all 146 test262 runtime failures (100% compilable pass rate) and reduce compile errors by ~700._
 _Details: [sprint-1.md](sprint-1.md)_
