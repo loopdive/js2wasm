@@ -102,6 +102,7 @@ interface CategoryInfo {
   name: string;
   path: string;
   fileCount: number;
+  files: string[];
 }
 
 function collectFiles(dir: string): string[] {
@@ -134,12 +135,14 @@ export function test262Plugin(): Plugin {
       const dir = join(testBase, cat);
       const files = collectFiles(dir);
       if (files.length > 0) {
+        const relFiles = files.map(f => relative(testBase, f));
         categories.push({
           name: cat,
           path: cat,
           fileCount: files.length,
+          files: relFiles,
         });
-        fileListCache.set(cat, files.map(f => relative(testBase, f)));
+        fileListCache.set(cat, relFiles);
       }
     }
     cachedIndex = { categories };
