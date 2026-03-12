@@ -7942,6 +7942,17 @@ export function compileClassBodies(
 
       ctx.currentFunc = fctx;
 
+      // Destructure parameters with binding patterns
+      for (let pi = 0; pi < member.parameters.length; pi++) {
+        const param = member.parameters[pi]!;
+        const paramLocalIdx = isStatic ? pi : pi + 1; // account for 'this' param
+        if (ts.isObjectBindingPattern(param.name)) {
+          destructureParamObject(ctx, fctx, paramLocalIdx, param.name, params[paramLocalIdx]!.type);
+        } else if (ts.isArrayBindingPattern(param.name)) {
+          destructureParamArray(ctx, fctx, paramLocalIdx, param.name, params[paramLocalIdx]!.type);
+        }
+      }
+
       if (member.body) {
         for (const stmt of member.body.statements) {
           compileStatement(ctx, fctx, stmt);
@@ -8435,6 +8446,19 @@ function compileFunctionBody(
     }
   }
 
+  // Destructure parameters with binding patterns.
+  // When a parameter is declared as e.g. function([x, y, z]) or function({a, b}),
+  // the parameter is received as a single value (vec struct or struct ref) and
+  // we need to extract the individual bindings into separate locals.
+  for (let i = 0; i < decl.parameters.length; i++) {
+    const param = decl.parameters[i]!;
+    if (ts.isObjectBindingPattern(param.name)) {
+      destructureParamObject(ctx, fctx, i, param.name, params[i]!.type);
+    } else if (ts.isArrayBindingPattern(param.name)) {
+      destructureParamArray(ctx, fctx, i, param.name, params[i]!.type);
+    }
+  }
+
   // Set up `arguments` object if the function body references it.
   // We create a vec struct (same as Array) populated from all function parameters.
   if (decl.body && bodyUsesArguments(decl.body)) {
@@ -8566,6 +8590,182 @@ function compileFunctionBody(
   func.body = fctx.body;
 
   ctx.currentFunc = null;
+}
+
+/**
+ * Destructure a function parameter that is an ObjectBindingPattern.
+ * The parameter value (a struct ref) is at param index `paramIdx`.
+ * We extract each bound field into a new local.
+ */
+function destructureParamObject(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  paramIdx: number,
+  pattern: ts.ObjectBindingPattern,
+  paramType: ValType,
+): void {
+  if (paramType.kind !== "ref" && paramType.kind !== "ref_null") {
+    // Cannot destructure a non-ref type — register locals with defaults
+    for (const element of pattern.elements) {
+      if (ts.isOmittedExpression(element)) continue;
+      if (ts.isIdentifier(element.name)) {
+        const name = element.name.text;
+        if (!fctx.localMap.has(name)) {
+          const elemType = ctx.checker.getTypeAtLocation(element);
+          allocLocal(fctx, name, resolveWasmType(ctx, elemType));
+        }
+      }
+    }
+    return;
+  }
+
+  const structTypeIdx = (paramType as { typeIdx: number }).typeIdx;
+
+  // Find struct name and fields
+  let structName: string | undefined;
+  for (const [name, idx] of ctx.structMap) {
+    if (idx === structTypeIdx) { structName = name; break; }
+  }
+  const fields = structName ? ctx.structFields.get(structName) : undefined;
+  if (!fields) {
+    // Cannot find struct info — register locals with defaults
+    for (const element of pattern.elements) {
+      if (ts.isOmittedExpression(element)) continue;
+      if (ts.isIdentifier(element.name)) {
+        const name = element.name.text;
+        if (!fctx.localMap.has(name)) {
+          const elemType = ctx.checker.getTypeAtLocation(element);
+          allocLocal(fctx, name, resolveWasmType(ctx, elemType));
+        }
+      }
+    }
+    return;
+  }
+
+  for (const element of pattern.elements) {
+    if (!ts.isBindingElement(element)) continue;
+    const propName = (element.propertyName ?? element.name) as ts.Identifier;
+    if (!ts.isIdentifier(element.name)) {
+      // Nested pattern — recurse
+      if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
+        const fieldIdx = fields.findIndex((f) => f.name === propName.text);
+        if (fieldIdx === -1) continue;
+        const fieldType = fields[fieldIdx]!.type;
+        const tmpLocal = allocLocal(fctx, `__dparam_${fctx.locals.length}`, fieldType);
+        fctx.body.push({ op: "local.get", index: paramIdx });
+        fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+        fctx.body.push({ op: "local.set", index: tmpLocal });
+        if (ts.isObjectBindingPattern(element.name)) {
+          destructureParamObject(ctx, fctx, tmpLocal, element.name, fieldType);
+        } else {
+          destructureParamArray(ctx, fctx, tmpLocal, element.name, fieldType);
+        }
+      }
+      continue;
+    }
+    const localName = element.name.text;
+    const fieldIdx = fields.findIndex((f) => f.name === propName.text);
+    if (fieldIdx === -1) {
+      // Field not in struct — allocate local with default value
+      const elemType = ctx.checker.getTypeAtLocation(element);
+      const wasmType = resolveWasmType(ctx, elemType);
+      allocLocal(fctx, localName, wasmType);
+      continue;
+    }
+    const fieldType = fields[fieldIdx]!.type;
+    const localIdx = allocLocal(fctx, localName, fieldType);
+    fctx.body.push({ op: "local.get", index: paramIdx });
+    fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+    fctx.body.push({ op: "local.set", index: localIdx });
+  }
+}
+
+/**
+ * Destructure a function parameter that is an ArrayBindingPattern.
+ * The parameter value (a vec struct ref) is at param index `paramIdx`.
+ * We extract each element into a new local.
+ */
+function destructureParamArray(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  paramIdx: number,
+  pattern: ts.ArrayBindingPattern,
+  paramType: ValType,
+): void {
+  if (paramType.kind !== "ref" && paramType.kind !== "ref_null") {
+    // Cannot destructure a non-ref type — register locals with defaults
+    for (const element of pattern.elements) {
+      if (ts.isOmittedExpression(element)) continue;
+      if (ts.isIdentifier((element as ts.BindingElement).name)) {
+        const name = ((element as ts.BindingElement).name as ts.Identifier).text;
+        if (!fctx.localMap.has(name)) {
+          const elemType = ctx.checker.getTypeAtLocation(element);
+          allocLocal(fctx, name, resolveWasmType(ctx, elemType));
+        }
+      }
+    }
+    return;
+  }
+
+  const vecTypeIdx = (paramType as { typeIdx: number }).typeIdx;
+  const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
+  const arrDef = ctx.mod.types[arrTypeIdx];
+  if (!arrDef || arrDef.kind !== "array") {
+    // Not an array — register locals with defaults
+    for (const element of pattern.elements) {
+      if (ts.isOmittedExpression(element)) continue;
+      if (ts.isIdentifier((element as ts.BindingElement).name)) {
+        const name = ((element as ts.BindingElement).name as ts.Identifier).text;
+        if (!fctx.localMap.has(name)) {
+          const elemType = ctx.checker.getTypeAtLocation(element);
+          allocLocal(fctx, name, resolveWasmType(ctx, elemType));
+        }
+      }
+    }
+    return;
+  }
+
+  const elemType = arrDef.element;
+
+  for (let i = 0; i < pattern.elements.length; i++) {
+    const element = pattern.elements[i]!;
+    if (ts.isOmittedExpression(element)) continue;
+
+    // Handle nested binding patterns
+    if (ts.isBindingElement(element) &&
+        (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name))) {
+      const tmpLocal = allocLocal(fctx, `__dparam_${fctx.locals.length}`, elemType);
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 }); // get data
+      fctx.body.push({ op: "i32.const", value: i });
+      fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
+      fctx.body.push({ op: "local.set", index: tmpLocal });
+      if (ts.isObjectBindingPattern(element.name)) {
+        destructureParamObject(ctx, fctx, tmpLocal, element.name, elemType);
+      } else {
+        destructureParamArray(ctx, fctx, tmpLocal, element.name, elemType);
+      }
+      continue;
+    }
+
+    // Handle rest element: function([a, ...rest])
+    if (element.dotDotDotToken) {
+      const restName = (element.name as ts.Identifier).text;
+      // rest gets the remainder of the array as a new vec
+      // For simplicity, allocate as same vec type
+      const restLocal = allocLocal(fctx, restName, paramType);
+      // TODO: create a sub-array — for now just register the local
+      continue;
+    }
+
+    const localName = (element.name as ts.Identifier).text;
+    const localIdx = allocLocal(fctx, localName, elemType);
+    fctx.body.push({ op: "local.get", index: paramIdx });
+    fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 }); // get data
+    fctx.body.push({ op: "i32.const", value: i });
+    fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
+    fctx.body.push({ op: "local.set", index: localIdx });
+  }
 }
 
 /** Allocate a new local in the current function */
