@@ -386,6 +386,8 @@ export function compileSource(
     18030, // "An optional chain cannot contain private identifiers" — valid JS pattern
     2729, // "Property 'X' is used before its initialization" — valid JS pattern
     18014, // "The property '#x' cannot be accessed on type 'X' within this class because it is shadowed" — valid JS
+    1214, // "Identifier expected. 'yield' is a reserved word in strict mode" — sloppy-mode test262 tests
+    1212, // "Identifier expected. 'X' is a reserved word in strict mode" — sloppy-mode test262 tests
   ]);
 
   // Collect TS diagnostics as errors (or warnings for handled cases)
