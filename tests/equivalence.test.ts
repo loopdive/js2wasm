@@ -1830,6 +1830,56 @@ describe("IIFE and call expression edge cases", () => {
     );
   });
 
+  // === Issue #246: for-of object destructuring with missing properties ===
+
+  it("for-of destructuring missing property with default value", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let result = 0;
+        const arr: {y: number}[] = [{y: 2}];
+        for (const {x = 1} of arr) {
+          result = x;
+        }
+        return result;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("for-of destructuring some fields present some missing", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let result = 0;
+        const arr: {a: number}[] = [{a: 10}];
+        for (const {a, b = 5} of arr) {
+          result = a + b;
+        }
+        return result;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("for-of destructuring field exists with default, value takes precedence", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let result = 0;
+        const arr: {x: number}[] = [{x: 42}];
+        for (const {x = 99} of arr) {
+          result = x;
+        }
+        return result;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
   // === Tests from #211 ===
 
 
