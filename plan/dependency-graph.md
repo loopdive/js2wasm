@@ -22,13 +22,13 @@ Can all run in parallel (different diagnostic codes).
 | #   | Title | Tests | Ready? |
 |-----|-------|-------|--------|
 | 152 | Setter return value error in allowJs mode | — | Ready |
-| 242 | Computed property names in class declarations (TS diagnostic) | — | Ready |
+| ~~242~~ | ~~Computed property names in class declarations (TS diagnostic)~~ | — | **Done** |
 | 262 | Argument type assignability — allowJs flexibility | ~325 CE | Done |
-| 265 | Computed property names in classes — TS diagnostic | — | Ready (coordinates #242) |
+| ~~265~~ | ~~Computed property names in classes — TS diagnostic~~ | — | **Done** |
 | 269 | Setter return value diagnostic suppression | — | Ready (coordinates #152) |
 | ~~270~~ | ~~Strict mode reserved words — let, yield, package~~ | — | **Done** |
 | ~~275~~ | ~~Comma operator warning blocks compilation~~ | ~106 CE | **Done** |
-| 276 | Computed property name must be of assignable type | — | Ready (coordinates #242, #265) |
+| ~~276~~ | ~~Computed property name must be of assignable type~~ | — | **Done** |
 
 ---
 
@@ -277,7 +277,7 @@ All independent of each other and of codegen work.
 | 147 | Function.name property | — (M complexity) |
 | 149 | Unsupported call expression patterns | #232 is Phase 1 |
 | 153 | Iterator protocol for destructuring | #268 |
-| 173 | Computed property names in classes | #242, #265 |
+| 173 | Computed property names in classes | Ready (#242, #265 done) |
 | 79  | Gradual typing — boxed `any` | — (large scope) |
 | 70  | Fast mode Phase 4 — C ABI | — (depends on #46, #33) |
 | 74  | WASM SIMD | Blocked by #70 Phase 4 |
