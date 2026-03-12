@@ -1509,18 +1509,33 @@ async function t262LoadAndShow(filePath: string) {
   compileOnly();
 }
 
-// Group categories by parent path for nested display
-function t262GroupCategories(cats: T262Category[]): Map<string, T262Category[]> {
-  const groups = new Map<string, T262Category[]>();
-  for (const cat of cats) {
-    // e.g. "expressions/addition" -> parent="expressions", "Math/abs" -> parent="Math"
-    const parts = cat.name.split("/");
-    const parent = parts.length > 1 ? parts[0] : "";
-    if (!groups.has(parent)) groups.set(parent, []);
-    groups.get(parent)!.push(cat);
-  }
-  return groups;
+// Build a recursive tree from category paths
+interface T262TreeNode {
+  name: string;       // segment name (e.g. "Math")
+  fullPath: string;   // full path up to this node (e.g. "built-ins/Math")
+  children: Map<string, T262TreeNode>;
+  categories: T262Category[];  // leaf categories at this node
 }
+
+function t262BuildTree(cats: T262Category[]): T262TreeNode {
+  const root: T262TreeNode = { name: "", fullPath: "", children: new Map(), categories: [] };
+  for (const cat of cats) {
+    const parts = cat.name.split("/");
+    let node = root;
+    for (let i = 0; i < parts.length; i++) {
+      const seg = parts[i];
+      const path = parts.slice(0, i + 1).join("/");
+      if (!node.children.has(seg)) {
+        node.children.set(seg, { name: seg, fullPath: path, children: new Map(), categories: [] });
+      }
+      node = node.children.get(seg)!;
+    }
+    node.categories.push(cat);
+  }
+  return root;
+}
+
+const t262ExpandedFolders = new Set<string>();
 
 async function t262Render() {
   const listEl = test262Panel.querySelector(".t262-list") as HTMLElement;
@@ -1559,102 +1574,104 @@ async function t262Render() {
   listEl.appendChild(t262Header);
 
   const cats = await t262LoadIndex();
-  const groups = t262GroupCategories(cats);
+  const tree = t262BuildTree(cats);
 
-  for (const [groupName, groupCats] of groups) {
-    // Check if any category in this group matches filter
-    let groupHasMatch = false;
-    for (const cat of groupCats) {
-      const catNameLower = cat.name.toLowerCase();
-      if (!filter || catNameLower.includes(filter)) {
-        groupHasMatch = true;
-        break;
-      }
+  // Count total files in a tree node (recursively)
+  function nodeFileCount(node: T262TreeNode): number {
+    let count = 0;
+    for (const cat of node.categories) count += cat.fileCount;
+    for (const child of node.children.values()) count += nodeFileCount(child);
+    return count;
+  }
+
+  // Check if a node or its descendants match the filter
+  function nodeMatchesFilter(node: T262TreeNode, f: string): boolean {
+    if (node.fullPath.toLowerCase().includes(f)) return true;
+    for (const cat of node.categories) {
       if (t262FileCache.has(cat.path)) {
-        const files = t262FileCache.get(cat.path)!;
-        if (files.some(f => f.toLowerCase().includes(filter))) {
-          groupHasMatch = true;
-          break;
-        }
+        if (t262FileCache.get(cat.path)!.some(file => file.toLowerCase().includes(f))) return true;
       }
     }
-    if (filter && !groupHasMatch) continue;
-
-    // Show group header for multi-level categories
-    if (groupName) {
-      const groupHeader = document.createElement("div");
-      groupHeader.className = "t262-group-header";
-      groupHeader.textContent = groupName;
-      listEl.appendChild(groupHeader);
+    for (const child of node.children.values()) {
+      if (nodeMatchesFilter(child, f)) return true;
     }
+    return false;
+  }
 
-    for (const cat of groupCats) {
-      const catNameLower = cat.name.toLowerCase();
-      const catMatches = !filter || catNameLower.includes(filter);
+  // Render a tree node recursively
+  async function renderNode(node: T262TreeNode, parent: HTMLElement, depth: number) {
+    // Sort children alphabetically
+    const sortedChildren = [...node.children.entries()].sort((a, b) => a[0].localeCompare(b[0]));
 
-      // If filter is active but category name doesn't match, check files
-      let filteredFiles: string[] | null = null;
-      if (filter && !catMatches) {
-        if (t262FileCache.has(cat.path)) {
-          const files = t262FileCache.get(cat.path)!;
-          filteredFiles = files.filter(f => f.toLowerCase().includes(filter));
-          if (filteredFiles.length === 0) continue;
-        } else {
-          if (!t262ExpandedCats.has(cat.path)) continue;
-        }
-      }
+    for (const [, child] of sortedChildren) {
+      if (filter && !nodeMatchesFilter(child, filter)) continue;
 
-      const catEl = document.createElement("div");
-      catEl.className = "t262-category";
+      const isLeaf = child.children.size === 0 && child.categories.length > 0;
+      const folderKey = child.fullPath;
+      const expanded = isLeaf
+        ? t262ExpandedCats.has(child.categories[0]?.path)
+        : t262ExpandedFolders.has(folderKey);
+
+      const el = document.createElement("div");
+      el.className = "t262-category";
 
       const headerEl = document.createElement("div");
       headerEl.className = "t262-cat-header";
-      const isExpanded = t262ExpandedCats.has(cat.path) || (filter.length > 0 && catMatches);
-      // Show short name (after the slash) for grouped categories
-      const displayName = groupName && cat.name.startsWith(groupName + "/")
-        ? cat.name.slice(groupName.length + 1)
-        : cat.name;
-      headerEl.innerHTML = `<span class="t262-arrow">${isExpanded ? "&#9660;" : "&#9654;"}</span> <span class="t262-cat-name">${displayName}</span> <span class="t262-cat-count">(${cat.fileCount})</span>`;
+      headerEl.style.paddingLeft = (10 + depth * 12) + "px";
+      const count = nodeFileCount(child);
+      headerEl.innerHTML = `<span class="t262-arrow">${expanded ? "&#9660;" : "&#9654;"}</span> <span class="t262-cat-name">${child.name}</span> <span class="t262-cat-count">(${count})</span>`;
 
       headerEl.addEventListener("click", async () => {
-        if (t262ExpandedCats.has(cat.path)) {
-          t262ExpandedCats.delete(cat.path);
+        if (isLeaf) {
+          const catPath = child.categories[0]?.path;
+          if (catPath) {
+            if (t262ExpandedCats.has(catPath)) t262ExpandedCats.delete(catPath);
+            else t262ExpandedCats.add(catPath);
+          }
         } else {
-          t262ExpandedCats.add(cat.path);
+          if (t262ExpandedFolders.has(folderKey)) t262ExpandedFolders.delete(folderKey);
+          else t262ExpandedFolders.add(folderKey);
         }
         await t262Render();
       });
 
-      catEl.appendChild(headerEl);
+      el.appendChild(headerEl);
 
-      if (isExpanded || (filteredFiles && filteredFiles.length > 0)) {
-        if (!t262ExpandedCats.has(cat.path) && !catMatches) {
-          t262ExpandedCats.add(cat.path);
+      if (expanded) {
+        // Render child folders
+        if (child.children.size > 0) {
+          await renderNode(child, el, depth + 1);
         }
-        const files = filteredFiles ?? await t262LoadFiles(cat.path);
-        const displayFiles = filter && !filteredFiles
-          ? files.filter(f => f.toLowerCase().includes(filter))
-          : (filteredFiles ?? files);
+        // Render leaf files
+        for (const cat of child.categories) {
+          const files = await t262LoadFiles(cat.path);
+          const displayFiles = filter
+            ? files.filter(f => f.toLowerCase().includes(filter))
+            : files;
 
-        const filesEl = document.createElement("div");
-        filesEl.className = "t262-files";
-        for (const file of displayFiles) {
-          const fileEl = document.createElement("div");
-          fileEl.className = "t262-file" + (file === t262ActivePath ? " active" : "");
-          fileEl.textContent = t262FileName(file);
-          fileEl.title = file;
-          fileEl.dataset.path = file;
-          fileEl.addEventListener("click", () => {
-            t262LoadAndShow(file);
-          });
-          filesEl.appendChild(fileEl);
+          const filesEl = document.createElement("div");
+          filesEl.className = "t262-files";
+          filesEl.style.paddingLeft = (depth * 12) + "px";
+          for (const file of displayFiles) {
+            const fileEl = document.createElement("div");
+            fileEl.className = "t262-file" + (file === t262ActivePath ? " active" : "");
+            fileEl.textContent = t262FileName(file);
+            fileEl.title = file;
+            fileEl.dataset.path = file;
+            fileEl.addEventListener("click", () => {
+              t262LoadAndShow(file);
+            });
+            filesEl.appendChild(fileEl);
+          }
+          el.appendChild(filesEl);
         }
-        catEl.appendChild(filesEl);
       }
 
-      listEl.appendChild(catEl);
+      parent.appendChild(el);
     }
   }
+
+  await renderNode(tree, listEl, 0);
 }
 
 // Wire up the search input
