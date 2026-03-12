@@ -386,6 +386,19 @@ export function compileSource(
     18030, // "An optional chain cannot contain private identifiers" — valid JS pattern
     2729, // "Property 'X' is used before its initialization" — valid JS pattern
     18014, // "The property '#x' cannot be accessed on type 'X' within this class because it is shadowed" — valid JS
+    2488, // "Type 'X' must have a '[Symbol.iterator]()' method that returns an iterator" — valid JS iterable patterns
+    2556, // "A spread argument must either have a tuple type or be passed to a rest parameter"
+    2698, // "Spread types may only be created from object types"
+    1170, // "A computed property name in a class property declaration must have a simple literal type" — valid JS
+    2464, // "A computed property name must be of type 'string', 'number', 'symbol', or 'any'" — valid JS
+    2493, // "Tuple type 'X' of length 'N' has no element at index 'M'" — valid JS array access
+    2693, // "'X' only refers to a type, but is being used as a value here" — valid JS patterns
+    2372, // "Parameter 'X' cannot reference identifier 'X' declared after it" — valid JS pattern
+    2373, // "Parameter 'X' cannot reference itself" — valid JS pattern
+    1214, // "'X' is a reserved word in strict mode" — test262 sloppy-mode tests
+    1100, // "Invalid use of 'X'. Modules are automatically in strict mode" — test262 sloppy-mode tests
+    2364, // "The left-hand side of an 'in' expression must be of type..." — valid JS
+    1128, // "Declaration or statement expected" — lenient parsing for JS patterns
   ]);
 
   // Collect TS diagnostics as errors (or warnings for handled cases)
