@@ -4057,6 +4057,24 @@ describe("Arguments object in nested functions (#211)", () => {
     expect(exports.test()).toBe(99);
   });
 
+  // Issue #269: Setter that returns a value (TS2408 suppression)
+  it("setter with return value compiles (TS2408 suppressed)", async () => {
+    const exports = await compileToWasm(`
+      class Counter {
+        _count: number = 0;
+        get count(): number { return this._count; }
+        set count(v: number) { this._count = v; return v; }
+      }
+      export function test(): number {
+        var c = new Counter();
+        c.count = 10;
+        c.count = c.count + 5;
+        return c.count;
+      }
+    `);
+    expect(exports.test()).toBe(15);
+  });
+
   // Issue #225: string !== comparison with any-typed variable
   it("string !== comparison (any-typed var vs string literal)", async () => {
     await assertEquivalent(

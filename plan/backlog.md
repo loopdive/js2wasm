@@ -94,7 +94,7 @@ _Goal: Reduce compile errors from ~3465 to ~2000 by fixing the most common error
 | [266](issues/266.md) | Unknown identifier -- scope resolution for multi-variable patterns | Open | D |
 | [267](issues/267.md) | Yield expression outside of generator function | Open | D |
 | [268](issues/268.md) | Iterator protocol -- Type must have a Symbol.iterator method | Open | D |
-| [269](issues/269.md) | Setter return value diagnostic suppression | Open | C |
+| [269](issues/269.md) | Setter return value diagnostic suppression | Review | C |
 | [270](issues/270.md) | Strict mode reserved words -- let, yield, package, etc. | Open | D |
 | [271](issues/271.md) | Cannot find name -- missing harness or global declarations | Open | D |
 | [272](issues/272.md) | WebAssembly type mismatch -- externref vs f64/i32 in compiled output | Open | A |
