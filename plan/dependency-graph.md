@@ -124,9 +124,9 @@ Can all run in parallel (different diagnostic codes).
 |-----|-------|-------|--------|
 | 140 | Object computed property names runtime | — | Ready |
 | 239 | Element access on struct types (bracket notation) | — | Ready |
-| 263 | Property does not exist on type — dynamic access | — | Ready |
+| ~~263~~ | ~~Property does not exist on type — dynamic access~~ | — | **Done** |
 | 274 | Property access on function type (.name, .length) | — | Ready |
-| 281 | Object literal property patterns | — | Ready |
+| ~~281~~ | ~~Object literal property patterns~~ | — | **Done** |
 | 230 | Object computed property names with variable keys | — | Coordinates with #140 |
 | 305 | Computed property names runtime failures | 2 | Coordinates with #140, #230 |
 
@@ -226,9 +226,9 @@ Can all run in parallel (different diagnostic codes).
 
 | #   | Title | Tests | Ready? |
 |-----|-------|-------|--------|
-| 277 | Wasm type mismatch — local.set externref vs concrete | — | Ready |
+| ~~277~~ | ~~Wasm type mismatch — local.set externref vs concrete~~ | — | **Done** |
 | 178 | Wasm validation errors — LEB128, large type indices | — | Ready |
-| 315 | Wasm validation error audit — systematic fix | ~93 CE | After #277, #178 recommended |
+| 315 | Wasm validation error audit — systematic fix | ~93 CE | After #178 recommended (#277 done) |
 
 ---
 
@@ -252,11 +252,11 @@ All independent of each other and of codegen work.
 
 | #   | Title | File | Tests | Ready? |
 |-----|-------|------|-------|--------|
-| 235 | Function.name property access | [E] | ~380 CE | Ready |
+| 235 | Function.name property access | [E] | ~380 CE | Ready (partially addressed by #263) |
 | 244 | `in` operator runtime failures | [E] | — | Ready |
 | 249 | Misc runtime failures — small fixes | [E] | — | Ready |
 | 254 | Private class fields and methods (#field) | [E] | — | Ready |
-| 280 | Function expression name binding and hoisting | [E][S] | — | Ready |
+| ~~280~~ | ~~Function expression name binding and hoisting~~ | [E][S] | — | **Done** |
 | 290 | instanceof — class hierarchy and expressions | [E] | ~20 CE | Ready |
 | 291 | `in` operator compile errors — dynamic property | [E] | ~10 CE | Ready (coordinates #244) |
 | 293 | Class method incorrect results | [E] | 10 | Ready |

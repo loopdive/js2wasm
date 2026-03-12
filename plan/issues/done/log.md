@@ -180,3 +180,7 @@
 | 253 | 2026-03-11 | Narrow skip filters -- typeof string comparison, loose inequality | Sprint 3 |
 | 255 | 2026-03-11 | 'this' implicit any type in class methods | Sprint 3 |
 | 256 | 2026-03-11 | Unknown function: f -- locally declared functions not found | Sprint 3 |
+| 277 | 2026-03-12 | WebAssembly type mismatch -- local.set externref vs concrete types | Dep-driven |
+| 280 | 2026-03-12 | Function expression name binding and destructuring params | Dep-driven |
+| 281 | 2026-03-12 | Object literal method patterns and default params | Dep-driven |
+| 263 | 2026-03-12 | Dynamic property access fallback for unresolvable types | Dep-driven |
