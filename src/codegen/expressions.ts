@@ -2625,8 +2625,31 @@ function compileBinaryExpression(
 
   // Externref equality: when either operand is a known string type, use
   // string content comparison instead of numeric unboxing (#225).
+  // For strict equality (===, !==), cross-type comparisons always return false/true (#296).
   if ((leftType.kind === "externref" || rightType.kind === "externref") && (isEqOp || isNeqOp)) {
-    const eitherIsString = isStringType(leftTsType) || isStringType(rightTsType);
+    const isStrict = op === ts.SyntaxKind.EqualsEqualsEqualsToken ||
+      op === ts.SyntaxKind.ExclamationEqualsEqualsToken;
+    const isStrictNeq = op === ts.SyntaxKind.ExclamationEqualsEqualsToken;
+    const leftIsString = isStringType(leftTsType);
+    const rightIsString = isStringType(rightTsType);
+    const leftIsNumber = isNumberType(leftTsType);
+    const rightIsNumber = isNumberType(rightTsType);
+    const leftIsBool = isBooleanType(leftTsType);
+    const rightIsBool = isBooleanType(rightTsType);
+
+    // Strict equality: different JS types → always false (===) or true (!==)
+    if (isStrict) {
+      const leftJsKind = leftIsString ? "string" : leftIsNumber ? "number" : leftIsBool ? "boolean" : "other";
+      const rightJsKind = rightIsString ? "string" : rightIsNumber ? "number" : rightIsBool ? "boolean" : "other";
+      if (leftJsKind !== "other" && rightJsKind !== "other" && leftJsKind !== rightJsKind) {
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "i32.const", value: isStrictNeq ? 1 : 0 });
+        return { kind: "i32" };
+      }
+    }
+
+    const eitherIsString = leftIsString || rightIsString;
     if (eitherIsString) {
       addStringImports(ctx);
       const equalsIdx = ctx.funcMap.get("equals");
@@ -2690,11 +2713,13 @@ function compileAnyBinaryDispatch(
     case ts.SyntaxKind.SlashToken: helperName = "__any_div"; break;
     case ts.SyntaxKind.PercentToken: helperName = "__any_mod"; break;
     case ts.SyntaxKind.EqualsEqualsToken:
+      helperName = "__any_eq"; resultIsI32 = true; break;
     case ts.SyntaxKind.EqualsEqualsEqualsToken:
-      helperName = "__any_eq"; resultIsI32 = true; break;
+      helperName = "__any_strict_eq"; resultIsI32 = true; break;
     case ts.SyntaxKind.ExclamationEqualsToken:
-    case ts.SyntaxKind.ExclamationEqualsEqualsToken:
       helperName = "__any_eq"; resultIsI32 = true; break;
+    case ts.SyntaxKind.ExclamationEqualsEqualsToken:
+      helperName = "__any_strict_eq"; resultIsI32 = true; break;
     case ts.SyntaxKind.LessThanToken: helperName = "__any_lt"; resultIsI32 = true; break;
     case ts.SyntaxKind.GreaterThanToken: helperName = "__any_gt"; resultIsI32 = true; break;
     case ts.SyntaxKind.LessThanEqualsToken: helperName = "__any_le"; resultIsI32 = true; break;

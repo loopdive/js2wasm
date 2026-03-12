@@ -67,7 +67,7 @@ Can all run in parallel (different diagnostic codes).
 #237 (BigInt i64 vs externref) ─── coordinates with #227, #228
 
 #295 (comparison + type coercion) ── independent
-#296 (strict equality -0, NaN) ── independent
+#296 (strict equality -0, NaN) ── DONE
 #299 (loose equals null/undefined) ── independent
 #308 (addition + string/number coercion) ── independent
 #301 (float → int saturating trunc) ── independent
@@ -81,7 +81,7 @@ Can all run in parallel (different diagnostic codes).
 | 228 | BigInt equality with Number/Boolean | — | Ready (coordinates #227) |
 | 237 | BigInt i64 vs externref type mismatch | — | Ready (coordinates #227, #228) |
 | 295 | Comparison operators with type coercion | 8 | **Done** |
-| 296 | Strict equality edge cases (-0, NaN) | 4 | Ready |
+| 296 | Strict equality edge cases (-0, NaN) | 4 | Done |
 | 299 | Loose equals edge cases | 2 | Ready |
 | 301 | Float unrepresentable in integer range | 4 | Ready |
 | 308 | Addition operator + string/number coercion | 7 | Ready |
