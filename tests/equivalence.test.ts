@@ -4023,4 +4023,79 @@ describe("Arguments object in nested functions (#211)", () => {
     );
   });
 
+  // Issue #256: nested function declarations in for loops
+  it("nested function declaration in for loop body", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var result: number = 0;
+        for (var i: number = 0; i < 3; i++) {
+          function add10(): number { return 10; }
+          result = result + add10();
+        }
+        return result;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #256: nested function declarations in while loops
+  it("nested function declaration in while loop body", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var count: number = 0;
+        var done: boolean = false;
+        while (!done) {
+          function inc(): number { return 1; }
+          count = count + inc();
+          if (count >= 5) done = true;
+        }
+        return count;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #256: nested function declarations in switch cases
+  it("nested function declaration in switch case", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var x: number = 2;
+        switch (x) {
+          case 2: {
+            function getVal(): number { return 99; }
+            return getVal();
+          }
+          default:
+            return 0;
+        }
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #256: nested function declaration in do-while loop
+  it("nested function declaration in do-while loop", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var result: number = 0;
+        var count: number = 0;
+        do {
+          function getInc(): number { return 7; }
+          result = result + getInc();
+          count = count + 1;
+        } while (count < 2);
+        return result;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
 });
