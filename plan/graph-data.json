@@ -3,7 +3,7 @@
     {
       "id": 70,
       "title": "Fast mode — optimize for performance with restricted TypeScript",
-      "priority": "medium",
+      "priority": "low",
       "status": "backlog",
       "depends_on": [],
       "files": []
@@ -11,15 +11,17 @@
     {
       "id": 74,
       "title": "WASM SIMD support for string and array operations",
-      "priority": "medium",
+      "priority": "low",
       "status": "backlog",
-      "depends_on": [],
+      "depends_on": [
+        70
+      ],
       "files": []
     },
     {
       "id": 79,
       "title": "Gradual typing — boxed `any` with runtime dispatch",
-      "priority": "medium",
+      "priority": "low",
       "status": "backlog",
       "depends_on": [],
       "files": []
@@ -27,7 +29,7 @@
     {
       "id": 81,
       "title": "npm package resolution and tree-shaking",
-      "priority": "medium",
+      "priority": "low",
       "status": "backlog",
       "depends_on": [],
       "files": []
@@ -83,7 +85,7 @@
     {
       "id": 130,
       "title": "Usage-based shape inference + call/apply inlining",
-      "priority": "medium",
+      "priority": "low",
       "status": "backlog",
       "depends_on": [],
       "files": []
@@ -94,9 +96,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 139,
@@ -104,9 +104,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 140,
@@ -114,9 +112,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 141,
@@ -124,10 +120,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts",
-        "tests/test262-runner.ts"
-      ]
+      "files": []
     },
     {
       "id": 142,
@@ -135,9 +128,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 143,
@@ -153,9 +144,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 145,
@@ -163,9 +152,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 146,
@@ -189,16 +176,16 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 149,
       "title": "Unsupported call expression patterns",
-      "priority": "medium",
+      "priority": "high",
       "status": "backlog",
-      "depends_on": [],
+      "depends_on": [
+        232
+      ],
       "files": []
     },
     {
@@ -207,10 +194,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/statements.ts",
-        "src/codegen/index.ts"
-      ]
+      "files": []
     },
     {
       "id": 151,
@@ -226,16 +210,16 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/index.ts"
-      ]
+      "files": []
     },
     {
       "id": 153,
       "title": "Iterator protocol for destructuring and for-of",
       "priority": "medium",
       "status": "backlog",
-      "depends_on": [],
+      "depends_on": [
+        268
+      ],
       "files": []
     },
     {
@@ -252,9 +236,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 156,
@@ -278,10 +260,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts",
-        "src/codegen/index.ts"
-      ]
+      "files": []
     },
     {
       "id": 159,
@@ -289,9 +268,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 160,
@@ -299,9 +276,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "tests/test262-runner.ts"
-      ]
+      "files": []
     },
     {
       "id": 161,
@@ -309,9 +284,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/index.ts"
-      ]
+      "files": []
     },
     {
       "id": 162,
@@ -319,10 +292,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/statements.ts",
-        "tests/test262-runner.ts"
-      ]
+      "files": []
     },
     {
       "id": 163,
@@ -330,9 +300,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "tests/test262-runner.ts"
-      ]
+      "files": []
     },
     {
       "id": 164,
@@ -340,9 +308,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "tests/test262-runner.ts"
-      ]
+      "files": []
     },
     {
       "id": 165,
@@ -350,11 +316,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts",
-        "src/codegen/statements.ts",
-        "src/codegen/index.ts"
-      ]
+      "files": []
     },
     {
       "id": 166,
@@ -362,10 +324,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts",
-        "src/codegen/index.ts"
-      ]
+      "files": []
     },
     {
       "id": 167,
@@ -373,9 +332,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 168,
@@ -391,9 +348,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 170,
@@ -401,9 +356,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/index.ts"
-      ]
+      "files": []
     },
     {
       "id": 171,
@@ -411,17 +364,16 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts",
-        "tests/test262-runner.ts"
-      ]
+      "files": []
     },
     {
       "id": 172,
       "title": "Array.isArray edge case",
       "priority": "low",
       "status": "ready",
-      "depends_on": [],
+      "depends_on": [
+        171
+      ],
       "files": []
     },
     {
@@ -429,7 +381,10 @@
       "title": "Computed property names in class declarations",
       "priority": "medium",
       "status": "backlog",
-      "depends_on": [],
+      "depends_on": [
+        242,
+        265
+      ],
       "files": []
     },
     {
@@ -438,9 +393,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 176,
@@ -448,9 +401,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 178,
@@ -458,9 +409,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/index.ts"
-      ]
+      "files": []
     },
     {
       "id": 179,
@@ -468,10 +417,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/statements.ts",
-        "tests/test262-runner.ts"
-      ]
+      "files": []
     },
     {
       "id": 182,
@@ -479,9 +425,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 188,
@@ -489,9 +433,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 189,
@@ -499,9 +441,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 190,
@@ -509,9 +449,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 192,
@@ -519,9 +457,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 194,
@@ -529,9 +465,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 198,
@@ -539,9 +473,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/statements.ts"
-      ]
+      "files": []
     },
     {
       "id": 199,
@@ -549,9 +481,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/statements.ts"
-      ]
+      "files": []
     },
     {
       "id": 201,
@@ -559,9 +489,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 202,
@@ -569,10 +497,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/statements.ts",
-        "src/codegen/index.ts"
-      ]
+      "files": []
     },
     {
       "id": 204,
@@ -580,9 +505,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 227,
@@ -590,9 +513,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 228,
@@ -600,9 +521,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 229,
@@ -610,9 +529,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 230,
@@ -620,9 +537,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 232,
@@ -630,9 +545,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 234,
@@ -640,10 +553,7 @@
       "priority": "high",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/statements.ts",
-        "src/codegen/index.ts"
-      ]
+      "files": []
     },
     {
       "id": 235,
@@ -651,9 +561,7 @@
       "priority": "high",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 237,
@@ -661,9 +569,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 238,
@@ -671,9 +577,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 239,
@@ -681,9 +585,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 241,
@@ -691,10 +593,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/statements.ts",
-        "tests/test262-runner.ts"
-      ]
+      "files": []
     },
     {
       "id": 242,
@@ -702,9 +601,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/index.ts"
-      ]
+      "files": []
     },
     {
       "id": 243,
@@ -712,10 +609,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts",
-        "src/codegen/statements.ts"
-      ]
+      "files": []
     },
     {
       "id": 244,
@@ -723,9 +617,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 249,
@@ -733,9 +625,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 250,
@@ -743,9 +633,7 @@
       "priority": "high",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/statements.ts"
-      ]
+      "files": []
     },
     {
       "id": 254,
@@ -753,10 +641,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts",
-        "src/codegen/index.ts"
-      ]
+      "files": []
     },
     {
       "id": 257,
@@ -764,10 +649,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts",
-        "src/codegen/index.ts"
-      ]
+      "files": []
     },
     {
       "id": 258,
@@ -775,9 +657,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 259,
@@ -785,9 +665,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/statements.ts"
-      ]
+      "files": []
     },
     {
       "id": 260,
@@ -797,9 +675,7 @@
       "depends_on": [
         234
       ],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 261,
@@ -807,9 +683,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 262,
@@ -817,9 +691,7 @@
       "priority": "high",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/index.ts"
-      ]
+      "files": []
     },
     {
       "id": 263,
@@ -827,9 +699,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 264,
@@ -837,9 +707,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 265,
@@ -847,9 +715,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/index.ts"
-      ]
+      "files": []
     },
     {
       "id": 266,
@@ -857,10 +723,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/statements.ts",
-        "src/codegen/index.ts"
-      ]
+      "files": []
     },
     {
       "id": 267,
@@ -868,9 +731,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/statements.ts"
-      ]
+      "files": []
     },
     {
       "id": 268,
@@ -878,9 +739,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/statements.ts"
-      ]
+      "files": []
     },
     {
       "id": 269,
@@ -888,9 +747,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/index.ts"
-      ]
+      "files": []
     },
     {
       "id": 270,
@@ -898,10 +755,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/index.ts",
-        "tests/test262-runner.ts"
-      ]
+      "files": []
     },
     {
       "id": 271,
@@ -909,9 +763,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "tests/test262-runner.ts"
-      ]
+      "files": []
     },
     {
       "id": 272,
@@ -919,9 +771,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 273,
@@ -929,9 +779,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 274,
@@ -939,9 +787,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 275,
@@ -949,9 +795,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/index.ts"
-      ]
+      "files": []
     },
     {
       "id": 276,
@@ -959,9 +803,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/index.ts"
-      ]
+      "files": []
     },
     {
       "id": 277,
@@ -969,9 +811,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 278,
@@ -979,9 +819,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/statements.ts"
-      ]
+      "files": []
     },
     {
       "id": 279,
@@ -989,10 +827,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts",
-        "src/codegen/statements.ts"
-      ]
+      "files": []
     },
     {
       "id": 280,
@@ -1000,10 +835,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts",
-        "src/codegen/statements.ts"
-      ]
+      "files": []
     },
     {
       "id": 281,
@@ -1011,9 +843,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 282,
@@ -1021,9 +851,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/index.ts"
-      ]
+      "files": []
     },
     {
       "id": 283,
@@ -1031,9 +859,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 284,
@@ -1041,10 +867,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts",
-        "src/codegen/statements.ts"
-      ]
+      "files": []
     },
     {
       "id": 285,
@@ -1052,9 +875,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/statements.ts"
-      ]
+      "files": []
     },
     {
       "id": 286,
@@ -1062,9 +883,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 287,
@@ -1075,21 +894,15 @@
         241,
         267
       ],
-      "files": [
-        "src/codegen/statements.ts"
-      ]
+      "files": []
     },
     {
       "id": 288,
       "title": "Try/catch/finally compile errors -- complex patterns",
       "priority": "medium",
       "status": "blocked",
-      "depends_on": [
-        287
-      ],
-      "files": [
-        "src/codegen/statements.ts"
-      ]
+      "depends_on": [],
+      "files": []
     },
     {
       "id": 289,
@@ -1097,9 +910,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/statements.ts"
-      ]
+      "files": []
     },
     {
       "id": 290,
@@ -1107,9 +918,7 @@
       "priority": "high",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 291,
@@ -1117,9 +926,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 292,
@@ -1127,9 +934,7 @@
       "priority": "high",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/statements.ts"
-      ]
+      "files": []
     },
     {
       "id": 293,
@@ -1137,9 +942,7 @@
       "priority": "high",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 294,
@@ -1147,9 +950,7 @@
       "priority": "high",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 295,
@@ -1157,9 +958,7 @@
       "priority": "high",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 296,
@@ -1167,9 +966,7 @@
       "priority": "high",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 297,
@@ -1177,9 +974,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/statements.ts"
-      ]
+      "files": []
     },
     {
       "id": 298,
@@ -1187,9 +982,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/statements.ts"
-      ]
+      "files": []
     },
     {
       "id": 299,
@@ -1197,9 +990,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 300,
@@ -1210,9 +1001,7 @@
         138,
         139
       ],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 301,
@@ -1220,9 +1009,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 302,
@@ -1230,9 +1017,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 303,
@@ -1240,9 +1025,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 304,
@@ -1250,9 +1033,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 305,
@@ -1260,9 +1041,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 306,
@@ -1270,9 +1049,7 @@
       "priority": "high",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 307,
@@ -1280,9 +1057,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 308,
@@ -1290,9 +1065,7 @@
       "priority": "high",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 309,
@@ -1300,9 +1073,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "tests/test262-runner.ts"
-      ]
+      "files": []
     },
     {
       "id": 310,
@@ -1310,9 +1081,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "tests/test262-runner.ts"
-      ]
+      "files": []
     },
     {
       "id": 311,
@@ -1320,9 +1089,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "tests/test262-runner.ts"
-      ]
+      "files": []
     },
     {
       "id": 312,
@@ -1330,9 +1097,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "tests/test262-runner.ts"
-      ]
+      "files": []
     },
     {
       "id": 313,
@@ -1340,9 +1105,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "tests/test262-runner.ts"
-      ]
+      "files": []
     },
     {
       "id": 314,
@@ -1357,10 +1120,11 @@
       "title": "Wasm validation error audit -- systematic fix for type mismatches",
       "priority": "high",
       "status": "ready",
-      "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "depends_on": [
+        277,
+        178
+      ],
+      "files": []
     },
     {
       "id": 316,
@@ -1368,9 +1132,7 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 317,
@@ -1378,9 +1140,7 @@
       "priority": "critical",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/index.ts"
-      ]
+      "files": []
     },
     {
       "id": 318,
@@ -1391,10 +1151,7 @@
         317,
         320
       ],
-      "files": [
-        "src/codegen/expressions.ts",
-        "src/codegen/index.ts"
-      ]
+      "files": []
     },
     {
       "id": 319,
@@ -1402,9 +1159,7 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/index.ts"
-      ]
+      "files": []
     },
     {
       "id": 320,
@@ -1415,9 +1170,7 @@
         317,
         321
       ],
-      "files": [
-        "src/codegen/index.ts"
-      ]
+      "files": []
     },
     {
       "id": 321,
@@ -1425,9 +1178,7 @@
       "priority": "critical",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/index.ts"
-      ]
+      "files": []
     },
     {
       "id": 322,
@@ -1437,9 +1188,7 @@
       "depends_on": [
         321
       ],
-      "files": [
-        "src/codegen/expressions.ts"
-      ]
+      "files": []
     },
     {
       "id": 323,
@@ -1447,13 +1196,22 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": [
-        "src/codegen/expressions.ts",
-        "src/codegen/index.ts"
-      ]
+      "files": []
     }
   ],
   "links": [
+    {
+      "source": 171,
+      "target": 172
+    },
+    {
+      "source": 277,
+      "target": 315
+    },
+    {
+      "source": 178,
+      "target": 315
+    },
     {
       "source": 234,
       "target": 260
@@ -1465,10 +1223,6 @@
     {
       "source": 267,
       "target": 287
-    },
-    {
-      "source": 287,
-      "target": 288
     },
     {
       "source": 138,
@@ -1497,7 +1251,27 @@
     {
       "source": 321,
       "target": 322
+    },
+    {
+      "source": 232,
+      "target": 149
+    },
+    {
+      "source": 268,
+      "target": 153
+    },
+    {
+      "source": 242,
+      "target": 173
+    },
+    {
+      "source": 265,
+      "target": 173
+    },
+    {
+      "source": 70,
+      "target": 74
     }
   ],
-  "generated": "2026-03-12T15:11:00.308Z"
+  "generated": "2026-03-12T15:29:50.703Z"
 }
