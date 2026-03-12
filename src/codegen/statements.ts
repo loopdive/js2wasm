@@ -2,8 +2,10 @@ import ts from "typescript";
 import { isStringType, isVoidType } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";
 import {
+  coerceType,
   collectReferencedIdentifiers,
   compileExpression,
+  valTypesMatch,
 } from "./expressions.js";
 import type { CodegenContext, FunctionContext } from "./index.js";
 import {
@@ -18,6 +20,7 @@ import {
   ensureI32Condition,
   ensureNativeStringHelpers,
   getArrTypeIdxFromVec,
+  getLocalType,
   getOrRegisterVecType,
   getSourcePos,
   localGlobalIdx,
@@ -438,7 +441,11 @@ function compileVariableStatement(
     }
 
     if (decl.initializer) {
-      compileExpression(ctx, fctx, decl.initializer, wasmType);
+      const resultType = compileExpression(ctx, fctx, decl.initializer, wasmType);
+      // Coerce if expression result type doesn't match the local's declared type
+      if (resultType && !valTypesMatch(resultType, wasmType)) {
+        coerceType(ctx, fctx, resultType, wasmType);
+      }
       fctx.body.push({ op: "local.set", index: localIdx });
     }
   }
@@ -859,7 +866,10 @@ function compileForStatement(
           const wasmType = resolveWasmType(ctx, varType);
           const localIdx = allocLocal(fctx, name, wasmType);
           if (decl.initializer) {
-            compileExpression(ctx, fctx, decl.initializer, wasmType);
+            const initType = compileExpression(ctx, fctx, decl.initializer, wasmType);
+            if (initType && !valTypesMatch(initType, wasmType)) {
+              coerceType(ctx, fctx, initType, wasmType);
+            }
             fctx.body.push({ op: "local.set", index: localIdx });
           }
         }
@@ -1568,6 +1578,11 @@ function compileForOfArray(
   fctx.body.push({ op: "local.get", index: dataLocal });
   fctx.body.push({ op: "local.get", index: iLocal });
   fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
+  // Coerce array element type to match the local's declared type
+  const elemLocalType = getLocalType(fctx, elemLocal);
+  if (elemLocalType && !valTypesMatch(elemType, elemLocalType)) {
+    coerceType(ctx, fctx, elemType, elemLocalType);
+  }
   fctx.body.push({ op: "local.set", index: elemLocal });
 
   // If destructuring pattern, destructure from the element

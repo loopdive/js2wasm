@@ -102,7 +102,7 @@ _Goal: Reduce compile errors from ~3465 to ~2000 by fixing the most common error
 | [274](issues/274.md) | Property access on function type -- .name, .length, .call, .apply | Open | C |
 | [275](issues/275.md) | Left side of comma operator warning blocks compilation | Open | C |
 | [276](issues/276.md) | Computed property name must be of assignable type | Open | C |
-| [277](issues/277.md) | WebAssembly type mismatch -- local.set externref vs concrete types | Open | A |
+| [277](issues/277.md) | WebAssembly type mismatch -- local.set externref vs concrete types | Review | A |
 | [278](issues/278.md) | Cannot destructure -- not a known struct type | Open | D |
 | [279](issues/279.md) | Arrow function compile errors -- parameter and body patterns | Open | A |
 | [280](issues/280.md) | Function expression compile errors -- name binding and hoisting | Open | A |

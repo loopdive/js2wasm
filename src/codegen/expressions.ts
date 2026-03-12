@@ -122,7 +122,7 @@ export function compileExpression(
 }
 
 /** Check if two ValTypes are structurally equal */
-function valTypesMatch(a: ValType, b: ValType): boolean {
+export function valTypesMatch(a: ValType, b: ValType): boolean {
   if (a.kind !== b.kind) return false;
   if ((a.kind === "ref" || a.kind === "ref_null") &&
       (b.kind === "ref" || b.kind === "ref_null")) {
@@ -132,7 +132,7 @@ function valTypesMatch(a: ValType, b: ValType): boolean {
 }
 
 /** Coerce a value on the stack from one type to another */
-function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: ValType, to: ValType): void {
+export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: ValType, to: ValType): void {
   if (from.kind === to.kind) {
     // Same kind but check if ref typeIdx differs (e.g. ref $AnyValue vs ref $SomeStruct)
     if ((from.kind === "ref" || from.kind === "ref_null") &&
@@ -2879,8 +2879,12 @@ function compileAssignment(
         : fctx.locals[localIdx - fctx.params.length]?.type;
       const resultType = compileExpression(ctx, fctx, expr.right, localType);
       if (!resultType) { ctx.errors.push({ message: "Failed to compile assignment value", line: getLine(expr), column: getCol(expr) }); return null; }
+      // Coerce if the expression result type doesn't match the local's declared type
+      if (localType && !valTypesMatch(resultType, localType)) {
+        coerceType(ctx, fctx, resultType, localType);
+      }
       fctx.body.push({ op: "local.tee", index: localIdx });
-      return resultType;
+      return localType ?? resultType;
     }
     // Check captured globals
     const capturedIdx = ctx.capturedGlobals.get(name);
