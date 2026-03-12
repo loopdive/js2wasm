@@ -21,11 +21,11 @@ Can all run in parallel (different diagnostic codes).
 
 | #   | Title | Tests | Ready? |
 |-----|-------|-------|--------|
-| 152 | Setter return value error in allowJs mode | — | Ready |
+| ~~152~~ | ~~Setter return value error in allowJs mode~~ | — | **Done** |
 | ~~242~~ | ~~Computed property names in class declarations (TS diagnostic)~~ | — | **Done** |
 | 262 | Argument type assignability — allowJs flexibility | ~325 CE | Done |
 | ~~265~~ | ~~Computed property names in classes — TS diagnostic~~ | — | **Done** |
-| 269 | Setter return value diagnostic suppression | — | Ready (coordinates #152) |
+| ~~269~~ | ~~Setter return value diagnostic suppression~~ | — | **Done** |
 | ~~270~~ | ~~Strict mode reserved words — let, yield, package~~ | — | **Done** |
 | ~~275~~ | ~~Comma operator warning blocks compilation~~ | ~106 CE | **Done** |
 | ~~276~~ | ~~Computed property name must be of assignable type~~ | — | **Done** |
