@@ -4304,7 +4304,10 @@ function collectStringLiterals(
     ts.forEachChild(node, visit);
   }
 
-  // Scan function bodies and parameter initializers (skip declare namespaces, interfaces, etc.)
+  // Scan all top-level statements for string literals.
+  // Previously only function bodies were scanned, but top-level variable
+  // declarations, expression statements, class declarations, etc. can also
+  // contain string literals that need to be pre-registered.
   for (const stmt of sourceFile.statements) {
     if (ts.isFunctionDeclaration(stmt)) {
       // Scan parameter default values for string literals
@@ -4316,6 +4319,24 @@ function collectStringLiterals(
       if (stmt.body) {
         visit(stmt.body);
       }
+    } else if (
+      ts.isVariableStatement(stmt) ||
+      ts.isExpressionStatement(stmt) ||
+      ts.isIfStatement(stmt) ||
+      ts.isForStatement(stmt) ||
+      ts.isForOfStatement(stmt) ||
+      ts.isForInStatement(stmt) ||
+      ts.isWhileStatement(stmt) ||
+      ts.isDoStatement(stmt) ||
+      ts.isSwitchStatement(stmt) ||
+      ts.isReturnStatement(stmt) ||
+      ts.isThrowStatement(stmt) ||
+      ts.isTryStatement(stmt) ||
+      ts.isClassDeclaration(stmt) ||
+      ts.isBlock(stmt) ||
+      ts.isLabeledStatement(stmt)
+    ) {
+      visit(stmt);
     }
   }
 
@@ -4373,6 +4394,8 @@ function collectForInStringLiterals(
   for (const stmt of sourceFile.statements) {
     if (ts.isFunctionDeclaration(stmt) && stmt.body) {
       visit(stmt.body);
+    } else if (ts.isForInStatement(stmt)) {
+      visit(stmt);
     }
   }
 
@@ -4420,6 +4443,9 @@ function collectInExprStringLiterals(
   for (const stmt of sourceFile.statements) {
     if (ts.isFunctionDeclaration(stmt) && stmt.body) {
       visit(stmt.body);
+    } else if (!ts.isFunctionDeclaration(stmt)) {
+      // Also scan top-level statements for `in` expressions
+      visit(stmt);
     }
   }
 
@@ -4471,6 +4497,9 @@ function collectObjectMethodStringLiterals(
   for (const stmt of sourceFile.statements) {
     if (ts.isFunctionDeclaration(stmt) && stmt.body) {
       visit(stmt.body);
+    } else if (!ts.isFunctionDeclaration(stmt)) {
+      // Also scan top-level statements for Object.keys/values calls
+      visit(stmt);
     }
   }
 

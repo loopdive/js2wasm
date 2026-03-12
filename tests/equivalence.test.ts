@@ -4462,3 +4462,61 @@ describe("in operator edge cases", () => {
     expect(exports.test()).toBe(1);
   });
 });
+
+// --- Issue #282: Variable declaration with complex initializers ---
+describe("variable declaration complex initializers", () => {
+  it("top-level string literal in variable initializer", async () => {
+    const exports = await compileToWasm(`
+      var greeting = "hello";
+      export function test(): string {
+        return greeting;
+      }
+    `);
+    expect(exports.test()).toBe("hello");
+  });
+
+  it("top-level template literal in variable initializer", async () => {
+    const exports = await compileToWasm(`
+      var name = "world";
+      var msg = \`hello \${name}\`;
+      export function test(): string {
+        return msg;
+      }
+    `);
+    expect(exports.test()).toBe("hello world");
+  });
+
+  it("top-level conditional with string branches", async () => {
+    const exports = await compileToWasm(`
+      var x = true ? "yes" : "no";
+      export function test(): string {
+        return x;
+      }
+    `);
+    expect(exports.test()).toBe("yes");
+  });
+
+  it("multiple variable declarations with mixed types", async () => {
+    const exports = await compileToWasm(`
+      var a = 42, b = "hello";
+      export function testA(): number {
+        return a;
+      }
+      export function testB(): string {
+        return b;
+      }
+    `);
+    expect(exports.testA()).toBe(42);
+    expect(exports.testB()).toBe("hello");
+  });
+
+  it("top-level typeof in variable initializer", async () => {
+    const exports = await compileToWasm(`
+      export function test(): string {
+        var x = typeof undefined;
+        return x;
+      }
+    `);
+    expect(exports.test()).toBe("undefined");
+  });
+});
