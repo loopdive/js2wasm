@@ -11,7 +11,8 @@ type: project
 
 ## Conventions
 - Branch naming: `issue-{N}-{short-description}`
-- Issues in `plan/issues/{N}.md`, backlog at `plan/backlog.md`, sprint plans at `plan/sprint-{N}.md`
+- Issues organized by state: `plan/issues/ready/`, `blocked/`, `done/`, `backlog/`, `wont-fix/`
+- Backlog at `plan/issues/backlog/backlog.md`, dependency graph at `plan/dependency-graph.md`
 - Agent definitions in `.claude/agents/`
 - Team spec at `plan/team.md`
 
@@ -26,14 +27,21 @@ type: project
 3. **Developers don't touch `plan/`.** Update `backlog.md` and `issues/*.md` after merging, not during development.
 4. **Pair by source file.** Only run two developers in parallel if they touch different source files (e.g., one `expressions.ts`, one `statements.ts`). Two issues both needing `expressions.ts` must be sequential.
 
-## Sprint Workflow
-1. PO analyzes test262 results and plans sprint (creates issues, sprint plan, updates backlog)
-2. Batch-commit all diagnostic-only issues (manual, fast — no developer agent needed)
-3. Sort remaining codegen issues by which source file they modify
-4. Developers spawned in pairs (max 2), with worktree isolation, ensuring no file overlap between the pair
-5. After each pair completes, merge branches into main before starting the next pair
-6. Update `plan/backlog.md` and issue files after merging (not by developers)
-5. Run test262 standalone runner (`npx tsx scripts/run-test262.ts`) — lighter than vitest on memory
+## Execution Workflow (dependency-driven)
+
+Work is driven by the dependency graph, not sprint batches.
+
+1. **Pick work**: choose any issue from `plan/issues/ready/` — check `plan/dependency-graph.md` for contention
+2. **Batch diagnostics**: issues that only add a code to `DOWNGRADE_DIAG_CODES` don't need a developer agent
+3. **Launch developers**: max 2 in parallel, on non-conflicting files (check dependency graph "File contention" table)
+4. **After each completion**: merge branch, then follow issue completion procedure:
+   - Move `ready/{N}.md` → `done/{N}.md`
+   - Add `completed: YYYY-MM-DD` frontmatter
+   - Append `## Implementation Summary` (what was done, what worked, what didn't, files changed, tests now passing)
+   - Add entry to `plan/issues/done/log.md`
+   - Check `plan/issues/blocked/` — move newly unblocked issues to `ready/`
+   - Update `plan/dependency-graph.md`
+5. **Run tests**: `npx tsx scripts/run-test262.ts` (standalone runner, lighter than vitest on memory)
 
 ## Merge Lessons
 - Vitest test262 run is memory-heavy (~1.5GB+), gets OOM killed if run alongside agents
