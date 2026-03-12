@@ -8570,7 +8570,7 @@ function compileFunctionBody(
       // Coerce parameter to the element type (f64 or i32 in fast mode)
       if (ctx.fast) {
         if (paramType.kind === "f64") {
-          fctx.body.push({ op: "i32.trunc_f64_s" });
+          fctx.body.push({ op: "i32.trunc_sat_f64_s" });
         } else if (paramType.kind === "externref" || paramType.kind === "ref" || paramType.kind === "ref_null") {
           fctx.body.push({ op: "drop" });
           fctx.body.push({ op: "i32.const", value: 0 });

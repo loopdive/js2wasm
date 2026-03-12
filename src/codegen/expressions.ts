@@ -242,7 +242,7 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
   }
   // f64 → i64 (BigInt(number))
   if (from.kind === "f64" && to.kind === "i64") {
-    fctx.body.push({ op: "i64.trunc_f64_s" });
+    fctx.body.push({ op: "i64.trunc_sat_f64_s" });
     return;
   }
   // i32 → i64
@@ -264,7 +264,7 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
   }
   // f64 → i32
   if (from.kind === "f64" && to.kind === "i32") {
-    fctx.body.push({ op: "i32.trunc_f64_s" });
+    fctx.body.push({ op: "i32.trunc_sat_f64_s" });
     return;
   }
   // externref → i32 (unbox as number to preserve value, then truncate)
@@ -273,7 +273,7 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
     const funcIdx = ctx.funcMap.get("__unbox_number");
     if (funcIdx !== undefined) {
       fctx.body.push({ op: "call", funcIdx });
-      fctx.body.push({ op: "i32.trunc_f64_s" });
+      fctx.body.push({ op: "i32.trunc_sat_f64_s" });
       return;
     }
     fctx.body.push({ op: "ref.is_null" });
@@ -3913,7 +3913,7 @@ function compileElementAssignment(
     fctx.body.push({ op: "local.set", index: vecLocal });
     const idxResult = compileExpression(ctx, fctx, target.argumentExpression, { kind: "f64" });
     if (!idxResult) { ctx.errors.push({ message: "Failed to compile element index", line: getLine(target), column: getCol(target) }); return null; }
-    fctx.body.push({ op: "i32.trunc_f64_s" });
+    fctx.body.push({ op: "i32.trunc_sat_f64_s" });
     const idxLocal = allocLocal(fctx, `__idx_${fctx.locals.length}`, { kind: "i32" });
     fctx.body.push({ op: "local.set", index: idxLocal });
     // Compile value
@@ -4105,7 +4105,7 @@ function compileElementAssignment(
   // Push index (as i32)
   const plainIdxResult = compileExpression(ctx, fctx, target.argumentExpression, { kind: "f64" });
   if (!plainIdxResult) { ctx.errors.push({ message: "Failed to compile element index", line: getLine(target), column: getCol(target) }); return null; }
-  fctx.body.push({ op: "i32.trunc_f64_s" });
+  fctx.body.push({ op: "i32.trunc_sat_f64_s" });
   // Push value
   const plainValResult = compileExpression(ctx, fctx, value, typeDef.element);
   if (!plainValResult) { ctx.errors.push({ message: "Failed to compile element value", line: getLine(target), column: getCol(target) }); return null; }
@@ -5225,7 +5225,7 @@ function compileElementCompoundAssignment(
       const idxResult = compileExpression(ctx, fctx, target.argumentExpression);
       if (!idxResult) return null;
       if (idxResult.kind === "f64") {
-        fctx.body.push({ op: "i32.trunc_f64_s" });
+        fctx.body.push({ op: "i32.trunc_sat_f64_s" });
       }
       const idxTmp = allocLocal(fctx, `__cmpd_idx_${fctx.locals.length}`, { kind: "i32" });
       fctx.body.push({ op: "local.set", index: idxTmp });
@@ -5513,7 +5513,7 @@ function compileMemberIncDec(
         if (!idxResult) return null;
         // Convert index to i32
         if (idxResult.kind === "f64") {
-          fctx.body.push({ op: "i32.trunc_f64_s" });
+          fctx.body.push({ op: "i32.trunc_sat_f64_s" });
         }
         const idxTmp = allocLocal(fctx, `__incdec_idx_${fctx.locals.length}`, { kind: "i32" });
         fctx.body.push({ op: "local.set", index: idxTmp });
@@ -6023,7 +6023,7 @@ function compilePrefixIncrementElement(
     fctx.body.push({ op: "local.set", index: vecLocal });
     const idxResult = compileExpression(ctx, fctx, target.argumentExpression, { kind: "f64" });
     if (!idxResult) return null;
-    fctx.body.push({ op: "i32.trunc_f64_s" });
+    fctx.body.push({ op: "i32.trunc_sat_f64_s" });
     const idxLocal = allocLocal(fctx, `__inc_idx_${fctx.locals.length}`, { kind: "i32" });
     fctx.body.push({ op: "local.set", index: idxLocal });
 
@@ -6186,7 +6186,7 @@ function compilePostfixIncrementElement(
     fctx.body.push({ op: "local.set", index: vecLocal });
     const idxResult = compileExpression(ctx, fctx, target.argumentExpression, { kind: "f64" });
     if (!idxResult) return null;
-    fctx.body.push({ op: "i32.trunc_f64_s" });
+    fctx.body.push({ op: "i32.trunc_sat_f64_s" });
     const idxLocal = allocLocal(fctx, `__postinc_idx_${fctx.locals.length}`, { kind: "i32" });
     fctx.body.push({ op: "local.set", index: idxLocal });
 
@@ -6982,7 +6982,7 @@ function compileCallExpression(
     if (funcName === "BigInt" && expr.arguments.length >= 1) {
       const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
       if (argType?.kind === "f64") {
-        fctx.body.push({ op: "i64.trunc_f64_s" });
+        fctx.body.push({ op: "i64.trunc_sat_f64_s" });
         return { kind: "i64" };
       }
       if (argType?.kind === "i32") {
@@ -8558,7 +8558,7 @@ function compileNewExpression(
       // we create an array of size n with default values and set length to n
       // (JS semantics: sparse array with length n, all slots undefined)
       compileExpression(ctx, fctx, args[0]!, { kind: "f64" });
-      fctx.body.push({ op: "i32.trunc_f64_s" });
+      fctx.body.push({ op: "i32.trunc_sat_f64_s" });
       const sizeLocal = allocLocal(fctx, `__arr_size_${fctx.locals.length}`, { kind: "i32" });
       fctx.body.push({ op: "local.tee", index: sizeLocal });
       fctx.body.push({ op: "local.get", index: sizeLocal });
@@ -9938,7 +9938,7 @@ function compileElementAccess(
       compileExpression(ctx, fctx, expr.argumentExpression, { kind: "i32" });
     } else {
       compileExpression(ctx, fctx, expr.argumentExpression, { kind: "f64" });
-      fctx.body.push({ op: "i32.trunc_f64_s" });
+      fctx.body.push({ op: "i32.trunc_sat_f64_s" });
     }
     fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
     return arrDef.element;
@@ -9958,7 +9958,7 @@ function compileElementAccess(
     compileExpression(ctx, fctx, expr.argumentExpression, { kind: "i32" });
   } else {
     compileExpression(ctx, fctx, expr.argumentExpression, { kind: "f64" });
-    fctx.body.push({ op: "i32.trunc_f64_s" });
+    fctx.body.push({ op: "i32.trunc_sat_f64_s" });
   }
 
   fctx.body.push({ op: "array.get", typeIdx });
@@ -11672,7 +11672,7 @@ function compileNativeStringMethodCall(
     if (expr.arguments.length > 0) {
       const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
       if (argType && argType.kind === "f64") {
-        fctx.body.push({ op: "i32.trunc_f64_s" });
+        fctx.body.push({ op: "i32.trunc_sat_f64_s" });
       }
     } else {
       fctx.body.push({ op: "i32.const", value: 0 });
@@ -11689,7 +11689,7 @@ function compileNativeStringMethodCall(
     if (expr.arguments.length > 0) {
       const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
       if (argType && argType.kind === "f64") {
-        fctx.body.push({ op: "i32.trunc_f64_s" });
+        fctx.body.push({ op: "i32.trunc_sat_f64_s" });
       }
     } else {
       fctx.body.push({ op: "i32.const", value: 0 });
@@ -11714,7 +11714,7 @@ function compileNativeStringMethodCall(
     if (expr.arguments.length > 0) {
       const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
       if (argType && argType.kind === "f64") {
-        fctx.body.push({ op: "i32.trunc_f64_s" });
+        fctx.body.push({ op: "i32.trunc_sat_f64_s" });
       }
     } else {
       fctx.body.push({ op: "i32.const", value: 0 });
@@ -11750,7 +11750,7 @@ function compileNativeStringMethodCall(
     if (expr.arguments.length > 0) {
       const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
       if (argType && argType.kind === "f64") {
-        fctx.body.push({ op: "i32.trunc_f64_s" });
+        fctx.body.push({ op: "i32.trunc_sat_f64_s" });
       }
     } else {
       fctx.body.push({ op: "i32.const", value: 0 });
@@ -11759,7 +11759,7 @@ function compileNativeStringMethodCall(
     if (expr.arguments.length > 1) {
       const argType = compileExpression(ctx, fctx, expr.arguments[1]!);
       if (argType && argType.kind === "f64") {
-        fctx.body.push({ op: "i32.trunc_f64_s" });
+        fctx.body.push({ op: "i32.trunc_sat_f64_s" });
       }
     } else {
       // Default end = string length
@@ -11781,7 +11781,7 @@ function compileNativeStringMethodCall(
     if (expr.arguments.length > 0) {
       const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
       if (argType && argType.kind === "f64") {
-        fctx.body.push({ op: "i32.trunc_f64_s" });
+        fctx.body.push({ op: "i32.trunc_sat_f64_s" });
       }
     } else {
       fctx.body.push({ op: "i32.const", value: 0 });
@@ -11790,7 +11790,7 @@ function compileNativeStringMethodCall(
     if (expr.arguments.length > 1) {
       const argType = compileExpression(ctx, fctx, expr.arguments[1]!);
       if (argType && argType.kind === "f64") {
-        fctx.body.push({ op: "i32.trunc_f64_s" });
+        fctx.body.push({ op: "i32.trunc_sat_f64_s" });
       }
     } else {
       fctx.body.push({ op: "i32.const", value: 0x7FFFFFFF });
@@ -11815,7 +11815,7 @@ function compileNativeStringMethodCall(
     if (expr.arguments.length > 1) {
       const argType = compileExpression(ctx, fctx, expr.arguments[1]!);
       if (argType && argType.kind === "f64") {
-        fctx.body.push({ op: "i32.trunc_f64_s" });
+        fctx.body.push({ op: "i32.trunc_sat_f64_s" });
       }
     } else {
       fctx.body.push({ op: "i32.const", value: 0 });
@@ -11838,7 +11838,7 @@ function compileNativeStringMethodCall(
     if (expr.arguments.length > 1) {
       const argType = compileExpression(ctx, fctx, expr.arguments[1]!);
       if (argType && argType.kind === "f64") {
-        fctx.body.push({ op: "i32.trunc_f64_s" });
+        fctx.body.push({ op: "i32.trunc_sat_f64_s" });
       }
     } else {
       fctx.body.push({ op: "i32.const", value: 0x7FFFFFFF });
@@ -11861,7 +11861,7 @@ function compileNativeStringMethodCall(
     if (expr.arguments.length > 1) {
       const argType = compileExpression(ctx, fctx, expr.arguments[1]!);
       if (argType && argType.kind === "f64") {
-        fctx.body.push({ op: "i32.trunc_f64_s" });
+        fctx.body.push({ op: "i32.trunc_sat_f64_s" });
       }
     } else {
       fctx.body.push({ op: "i32.const", value: 0 });
@@ -11884,7 +11884,7 @@ function compileNativeStringMethodCall(
     if (expr.arguments.length > 1) {
       const argType = compileExpression(ctx, fctx, expr.arguments[1]!);
       if (argType && argType.kind === "f64") {
-        fctx.body.push({ op: "i32.trunc_f64_s" });
+        fctx.body.push({ op: "i32.trunc_sat_f64_s" });
       }
     } else {
       fctx.body.push({ op: "i32.const", value: 0 });
@@ -11909,7 +11909,7 @@ function compileNativeStringMethodCall(
     if (expr.arguments.length > 1) {
       const argType = compileExpression(ctx, fctx, expr.arguments[1]!);
       if (argType && argType.kind === "f64") {
-        fctx.body.push({ op: "i32.trunc_f64_s" });
+        fctx.body.push({ op: "i32.trunc_sat_f64_s" });
       }
     } else {
       fctx.body.push({ op: "i32.const", value: 0x7FFFFFFF });
@@ -11936,7 +11936,7 @@ function compileNativeStringMethodCall(
     if (expr.arguments.length > 0) {
       const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
       if (argType && argType.kind === "f64") {
-        fctx.body.push({ op: "i32.trunc_f64_s" });
+        fctx.body.push({ op: "i32.trunc_sat_f64_s" });
       }
     } else {
       fctx.body.push({ op: "i32.const", value: 0 });
@@ -11954,7 +11954,7 @@ function compileNativeStringMethodCall(
     if (expr.arguments.length > 0) {
       const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
       if (argType && argType.kind === "f64") {
-        fctx.body.push({ op: "i32.trunc_f64_s" });
+        fctx.body.push({ op: "i32.trunc_sat_f64_s" });
       }
     } else {
       fctx.body.push({ op: "i32.const", value: 0 });
@@ -11984,7 +11984,7 @@ function compileNativeStringMethodCall(
     if (expr.arguments.length > 0) {
       const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
       if (argType && argType.kind === "f64") {
-        fctx.body.push({ op: "i32.trunc_f64_s" });
+        fctx.body.push({ op: "i32.trunc_sat_f64_s" });
       }
     } else {
       fctx.body.push({ op: "i32.const", value: 0 });
@@ -12850,7 +12850,7 @@ function compileArrayAt(
   // Compile index argument
   const argType = compileExpression(ctx, fctx, callExpr.arguments[0]!, { kind: "i32" });
   if (argType && argType.kind === "f64") {
-    fctx.body.push({ op: "i32.trunc_f64_s" });
+    fctx.body.push({ op: "i32.trunc_sat_f64_s" });
   }
   fctx.body.push({ op: "local.set", index: idxTmp });
 
@@ -13402,7 +13402,7 @@ function compileArraySlice(
   // start arg
   if (callExpr.arguments.length >= 1) {
     compileExpression(ctx, fctx, callExpr.arguments[0]!, { kind: "f64" });
-    fctx.body.push({ op: "i32.trunc_f64_s" });
+    fctx.body.push({ op: "i32.trunc_sat_f64_s" });
   } else {
     fctx.body.push({ op: "i32.const", value: 0 });
   }
@@ -13411,7 +13411,7 @@ function compileArraySlice(
   // end arg
   if (callExpr.arguments.length >= 2) {
     compileExpression(ctx, fctx, callExpr.arguments[1]!, { kind: "f64" });
-    fctx.body.push({ op: "i32.trunc_f64_s" });
+    fctx.body.push({ op: "i32.trunc_sat_f64_s" });
   } else {
     fctx.body.push({ op: "local.get", index: lenTmp });
   }
@@ -13671,13 +13671,13 @@ function compileArraySplice(
 
   // start arg
   compileExpression(ctx, fctx, callExpr.arguments[0]!, { kind: "f64" });
-  fctx.body.push({ op: "i32.trunc_f64_s" });
+  fctx.body.push({ op: "i32.trunc_sat_f64_s" });
   fctx.body.push({ op: "local.set", index: startTmp });
 
   // deleteCount (default: len - start)
   if (callExpr.arguments.length >= 2) {
     compileExpression(ctx, fctx, callExpr.arguments[1]!, { kind: "f64" });
-    fctx.body.push({ op: "i32.trunc_f64_s" });
+    fctx.body.push({ op: "i32.trunc_sat_f64_s" });
   } else {
     fctx.body.push({ op: "local.get", index: lenTmp });
     fctx.body.push({ op: "local.get", index: startTmp });
@@ -14087,7 +14087,7 @@ function compileArrayMap(
     { op: "call", funcIdx: callBridgeIdx } as Instr,
 
     // Convert result to target element type if needed
-    ...(!ctx.fast && mapResultElemType.kind === "i32" ? [{ op: "i32.trunc_f64_s" } as Instr] : []),
+    ...(!ctx.fast && mapResultElemType.kind === "i32" ? [{ op: "i32.trunc_sat_f64_s" } as Instr] : []),
 
     // array.set
     { op: "array.set", typeIdx: mapArrTypeIdx } as Instr,
@@ -14756,7 +14756,7 @@ function compileArrayFill(
       compileExpression(ctx, fctx, callExpr.arguments[1]!, { kind: "i32" });
     } else {
       compileExpression(ctx, fctx, callExpr.arguments[1]!, { kind: "f64" });
-      fctx.body.push({ op: "i32.trunc_f64_s" });
+      fctx.body.push({ op: "i32.trunc_sat_f64_s" });
     }
   } else {
     fctx.body.push({ op: "i32.const", value: 0 });
@@ -14769,7 +14769,7 @@ function compileArrayFill(
       compileExpression(ctx, fctx, callExpr.arguments[2]!, { kind: "i32" });
     } else {
       compileExpression(ctx, fctx, callExpr.arguments[2]!, { kind: "f64" });
-      fctx.body.push({ op: "i32.trunc_f64_s" });
+      fctx.body.push({ op: "i32.trunc_sat_f64_s" });
     }
   } else {
     fctx.body.push({ op: "local.get", index: lenTmp });
@@ -14858,7 +14858,7 @@ function compileArrayCopyWithin(
     compileExpression(ctx, fctx, callExpr.arguments[0]!, { kind: "i32" });
   } else {
     compileExpression(ctx, fctx, callExpr.arguments[0]!, { kind: "f64" });
-    fctx.body.push({ op: "i32.trunc_f64_s" });
+    fctx.body.push({ op: "i32.trunc_sat_f64_s" });
   }
   fctx.body.push({ op: "local.set", index: targetTmp });
 
@@ -14867,7 +14867,7 @@ function compileArrayCopyWithin(
     compileExpression(ctx, fctx, callExpr.arguments[1]!, { kind: "i32" });
   } else {
     compileExpression(ctx, fctx, callExpr.arguments[1]!, { kind: "f64" });
-    fctx.body.push({ op: "i32.trunc_f64_s" });
+    fctx.body.push({ op: "i32.trunc_sat_f64_s" });
   }
   fctx.body.push({ op: "local.set", index: startTmp });
 
@@ -14877,7 +14877,7 @@ function compileArrayCopyWithin(
       compileExpression(ctx, fctx, callExpr.arguments[2]!, { kind: "i32" });
     } else {
       compileExpression(ctx, fctx, callExpr.arguments[2]!, { kind: "f64" });
-      fctx.body.push({ op: "i32.trunc_f64_s" });
+      fctx.body.push({ op: "i32.trunc_sat_f64_s" });
     }
   } else {
     fctx.body.push({ op: "local.get", index: lenTmp });
@@ -14946,7 +14946,7 @@ function compileArrayLastIndexOf(
       compileExpression(ctx, fctx, callExpr.arguments[1]!, { kind: "i32" });
     } else {
       compileExpression(ctx, fctx, callExpr.arguments[1]!, { kind: "f64" });
-      fctx.body.push({ op: "i32.trunc_f64_s" });
+      fctx.body.push({ op: "i32.trunc_sat_f64_s" });
     }
   } else {
     // Default: length - 1
