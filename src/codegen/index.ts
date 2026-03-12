@@ -366,8 +366,7 @@ export function generateModule(
     registerNativeStringTypes(ctx);
   }
 
-  // Register $AnyValue struct type for gradual typing
-  registerAnyValueType(ctx);
+  // $AnyValue struct type is now registered lazily via ensureAnyValueType()
 
   // Collect console.log imports (only variants actually used)
   collectConsoleImports(ctx, ast.sourceFile);
@@ -562,8 +561,7 @@ export function generateMultiModule(
     registerNativeStringTypes(ctx);
   }
 
-  // Register $AnyValue struct type for gradual typing
-  registerAnyValueType(ctx);
+  // $AnyValue struct type is now registered lazily via ensureAnyValueType()
 
   // Phase 1: Collect all import-phase declarations across all source files
   for (const sf of multiAst.sourceFiles) {
@@ -1108,8 +1106,11 @@ function registerNativeStringTypes(ctx: CodegenContext): void {
  * Register the $AnyValue struct type for boxing `any` typed values.
  * The struct has a tag field to distinguish the boxed type at runtime,
  * plus payload fields for each possible value kind.
+ *
+ * Called lazily — only emitted when the module actually uses `any`-typed values.
  */
-function registerAnyValueType(ctx: CodegenContext): void {
+export function ensureAnyValueType(ctx: CodegenContext): void {
+  if (ctx.anyValueTypeIdx >= 0) return; // already registered
   ctx.anyValueTypeIdx = ctx.mod.types.length;
   ctx.mod.types.push({
     kind: "struct",
@@ -1142,6 +1143,9 @@ export function isAnyValue(type: ValType, ctx: CodegenContext): boolean {
 export function ensureAnyHelpers(ctx: CodegenContext): void {
   if (ctx.anyHelpersEmitted) return;
   ctx.anyHelpersEmitted = true;
+
+  // Ensure the $AnyValue struct type is registered before emitting helpers
+  ensureAnyValueType(ctx);
 
   const anyTypeIdx = ctx.anyValueTypeIdx;
   const anyRef: ValType = { kind: "ref", typeIdx: anyTypeIdx };
@@ -5770,9 +5774,9 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type): ValType {
   // where there are no host-imported extern classes to conflict with.
   if (
     ctx.fast &&
-    (tsType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) &&
-    ctx.anyValueTypeIdx >= 0
+    (tsType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown))
   ) {
+    ensureAnyValueType(ctx);
     return { kind: "ref_null", typeIdx: ctx.anyValueTypeIdx };
   }
 

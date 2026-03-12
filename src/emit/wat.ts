@@ -187,8 +187,8 @@ function formatFunction(
   const typeRef = `(type ${f.typeIdx})`;
 
   // Find type for params display
-  const exportStr = f.exported ? ` (export "${f.name}")` : "";
-  lines.push(`  (func $${f.name}${exportStr} ${typeRef}`);
+  // Exports are emitted via mod.exports (trailing export section) — no inline export here
+  lines.push(`  (func $${f.name} ${typeRef}`);
 
   // Locals
   for (const local of f.locals) {
