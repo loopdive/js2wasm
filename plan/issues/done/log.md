@@ -200,3 +200,4 @@
 | 297 | 2026-03-12 | Switch statement fall-through and default positioning | Dep-driven |
 | 299 | 2026-03-12 | Loose equality edge cases (null == undefined, boolean coercion) | Dep-driven |
 | 302 | 2026-03-12 | Math.min/max edge cases | Dep-driven |
+| 292 | 2026-03-12 | For-loop incorrect computed values -- missing number_toString for any-typed += | Dep-driven |
