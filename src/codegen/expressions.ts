@@ -2121,27 +2121,90 @@ function compileBinaryExpression(
   // Must be detected before compiling both sides to avoid pushing unnecessary null
   const isEqOp = op === ts.SyntaxKind.EqualsEqualsEqualsToken || op === ts.SyntaxKind.EqualsEqualsToken;
   const isNeqOp = op === ts.SyntaxKind.ExclamationEqualsEqualsToken || op === ts.SyntaxKind.ExclamationEqualsToken;
+  const isStrictEqOp = op === ts.SyntaxKind.EqualsEqualsEqualsToken;
+  const isStrictNeqOp = op === ts.SyntaxKind.ExclamationEqualsEqualsToken;
+  const isLooseEqOp = op === ts.SyntaxKind.EqualsEqualsToken;
+  const isLooseNeqOp = op === ts.SyntaxKind.ExclamationEqualsToken;
   if (isEqOp || isNeqOp) {
-    const rightIsNull = expr.right.kind === ts.SyntaxKind.NullKeyword ||
-      (ts.isIdentifier(expr.right) && expr.right.text === "undefined");
-    const leftIsNull = expr.left.kind === ts.SyntaxKind.NullKeyword ||
-      (ts.isIdentifier(expr.left) && expr.left.text === "undefined");
-    if (rightIsNull || leftIsNull) {
-      // Compile only the non-null side
-      const nonNullExpr = rightIsNull ? expr.left : expr.right;
+    const rightIsNullKeyword = expr.right.kind === ts.SyntaxKind.NullKeyword;
+    const rightIsUndefinedId = ts.isIdentifier(expr.right) && expr.right.text === "undefined";
+    const rightIsNullish = rightIsNullKeyword || rightIsUndefinedId;
+    const leftIsNullKeyword = expr.left.kind === ts.SyntaxKind.NullKeyword;
+    const leftIsUndefinedId = ts.isIdentifier(expr.left) && expr.left.text === "undefined";
+    const leftIsNullish = leftIsNullKeyword || leftIsUndefinedId;
+    if (rightIsNullish || leftIsNullish) {
+      // Determine which side is the literal null/undefined and which is the expression
+      const nonNullExpr = rightIsNullish ? expr.left : expr.right;
+
+      // Check if the non-null side is also a null/undefined literal
+      const nonNullIsNullKeyword = rightIsNullish ? leftIsNullKeyword : rightIsNullKeyword;
+      const nonNullIsUndefinedId = rightIsNullish ? leftIsUndefinedId : rightIsUndefinedId;
+      const nullSideIsNullKeyword = rightIsNullish ? rightIsNullKeyword : leftIsNullKeyword;
+      const nullSideIsUndefinedId = rightIsNullish ? rightIsUndefinedId : leftIsUndefinedId;
+
+      // Both sides are null/undefined literals
+      if (nonNullIsNullKeyword || nonNullIsUndefinedId) {
+        // For strict equality: null === null or undefined === undefined → true;
+        //                      null === undefined → false
+        if (isStrictEqOp || isStrictNeqOp) {
+          const sameKind = (nonNullIsNullKeyword && nullSideIsNullKeyword) ||
+                           (nonNullIsUndefinedId && nullSideIsUndefinedId);
+          fctx.body.push({ op: "i32.const", value: isStrictEqOp ? (sameKind ? 1 : 0) : (sameKind ? 0 : 1) });
+          return { kind: "i32" };
+        }
+        // For loose equality: null == undefined → true
+        fctx.body.push({ op: "i32.const", value: isLooseEqOp ? 1 : 0 });
+        return { kind: "i32" };
+      }
+
+      // Check the TS type of the non-null side to detect undefined/null-typed variables
+      const nonNullTsType = ctx.checker.getTypeAtLocation(nonNullExpr);
+      const nonNullIsUndefinedType = (nonNullTsType.flags & ts.TypeFlags.Undefined) !== 0 ||
+                                      (nonNullTsType.flags & ts.TypeFlags.Void) !== 0;
+      const nonNullIsNullType = (nonNullTsType.flags & ts.TypeFlags.Null) !== 0;
+
+      // Compile the non-null side
       const valType = compileExpression(ctx, fctx, nonNullExpr);
       if (valType === null) {
         // Void expression (e.g. void function call) compared to null/undefined:
-        // void returns undefined, so undefined === undefined is true
-        fctx.body.push({ op: "i32.const", value: isEqOp ? 1 : 0 });
+        // void returns undefined, so undefined == undefined/null is true (loose)
+        // undefined === undefined is true, undefined === null is false (strict)
+        if (isStrictEqOp || isStrictNeqOp) {
+          const sameKind = nullSideIsUndefinedId; // void = undefined
+          fctx.body.push({ op: "i32.const", value: isStrictEqOp ? (sameKind ? 1 : 0) : (sameKind ? 0 : 1) });
+        } else {
+          fctx.body.push({ op: "i32.const", value: isEqOp ? 1 : 0 });
+        }
         return { kind: "i32" };
       }
       if (valType.kind === "externref") {
+        // For strict equality: if non-null side is externref (could be null-typed variable)
+        // and the literal side is undefined, null === undefined is false
+        if ((isStrictEqOp || isStrictNeqOp) && nonNullIsNullType && (nullSideIsUndefinedId)) {
+          fctx.body.push({ op: "drop" });
+          fctx.body.push({ op: "i32.const", value: isStrictNeqOp ? 1 : 0 });
+          return { kind: "i32" };
+        }
         fctx.body.push({ op: "ref.is_null" });
         if (isNeqOp) fctx.body.push({ op: "i32.eqz" });
         return { kind: "i32" };
       }
-      // For non-externref types compared with null, always not-equal
+      // Non-externref type compared with null/undefined:
+      // If the TS type is undefined or null, it's a nullish value stored as i32
+      if (nonNullIsUndefinedType || nonNullIsNullType) {
+        fctx.body.push({ op: "drop" });
+        // Loose equality: undefined/null == null/undefined → true
+        if (isLooseEqOp || isLooseNeqOp) {
+          fctx.body.push({ op: "i32.const", value: isLooseEqOp ? 1 : 0 });
+          return { kind: "i32" };
+        }
+        // Strict equality: only true if same kind
+        const sameKind = (nonNullIsUndefinedType && nullSideIsUndefinedId) ||
+                         (nonNullIsNullType && nullSideIsNullKeyword);
+        fctx.body.push({ op: "i32.const", value: isStrictEqOp ? (sameKind ? 1 : 0) : (sameKind ? 0 : 1) });
+        return { kind: "i32" };
+      }
+      // For other non-externref types (number, boolean), always not-equal to null/undefined
       fctx.body.push({ op: "drop" });
       fctx.body.push({ op: "i32.const", value: isNeqOp ? 1 : 0 });
       return { kind: "i32" };
