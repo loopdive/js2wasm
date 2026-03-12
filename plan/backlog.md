@@ -105,7 +105,7 @@ _Goal: Reduce compile errors from ~3465 to ~2000 by fixing the most common error
 | [277](issues/277.md) | WebAssembly type mismatch -- local.set externref vs concrete types | Open | A |
 | [278](issues/278.md) | Cannot destructure -- not a known struct type | Open | D |
 | [279](issues/279.md) | Arrow function compile errors -- parameter and body patterns | Open | A |
-| [280](issues/280.md) | Function expression compile errors -- name binding and hoisting | Open | A |
+| [280](issues/280.md) | Function expression compile errors -- name binding and hoisting | Review | A |
 | [281](issues/281.md) | Object literal property patterns -- shorthand, spread, methods | Open | C |
 | [282](issues/282.md) | Variable declaration compile errors -- complex initializers | Open | D |
 | [283](issues/283.md) | Compound assignment compile errors -- type coercion gaps | Open | A |

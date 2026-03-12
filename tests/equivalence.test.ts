@@ -4461,4 +4461,57 @@ describe("in operator edge cases", () => {
     `);
     expect(exports.test()).toBe(1);
   });
+
+  it("named function expression recursive call (factorial)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        var f = function factorial(n: number): number {
+          return n <= 1 ? 1 : n * factorial(n - 1);
+        };
+        return f(5);
+      }
+    `);
+    expect(exports.test()).toBe(120);
+  });
+
+  it("named function expression self-reference without captures", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        var countdown = function counter(n: number): number {
+          if (n <= 0) return 0;
+          return 1 + counter(n - 1);
+        };
+        return countdown(10);
+      }
+    `);
+    expect(exports.test()).toBe(10);
+  });
+
+  it("function expression assigned via = then called", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        var f: (x: number) => number;
+        f = function(x: number): number { return x * 2; };
+        return f(21);
+      }
+    `);
+    expect(exports.test()).toBe(42);
+  });
+
+  it("function expression hoisted var then called multiple times", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        var callCount = 0;
+        var f: () => number;
+        f = function(): number {
+          callCount = callCount + 1;
+          return callCount;
+        };
+        f();
+        f();
+        return f();
+      }
+    `);
+    expect(exports.test()).toBe(3);
+  });
 });

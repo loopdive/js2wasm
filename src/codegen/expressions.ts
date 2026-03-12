@@ -1023,6 +1023,17 @@ function compileArrowAsClosure(
   if (ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name)) {
     ctx.closureMap.set(parent.name.text, closureInfo);
   }
+  // Also handle assignment expressions: f = function(...) { ... }
+  // The parent is a BinaryExpression with = operator and left side is an identifier.
+  if (ts.isBinaryExpression(parent) &&
+      parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ts.isIdentifier(parent.left)) {
+    ctx.closureMap.set(parent.left.text, closureInfo);
+  }
+  // Handle property assignment in object literal: { fn: function(...) { ... } }
+  if (ts.isPropertyAssignment(parent) && ts.isIdentifier(parent.name)) {
+    ctx.closureMap.set(parent.name.text, closureInfo);
+  }
 
   return { kind: "ref", typeIdx: structTypeIdx };
 }
@@ -5117,11 +5128,21 @@ function compileClosureCall(
   const localIdx = fctx.localMap.get(varName);
   if (localIdx === undefined) return null;
 
+  // Determine the local's Wasm type to see if we need to cast externref → struct ref
+  const localType = localIdx < fctx.params.length
+    ? fctx.params[localIdx]?.type
+    : fctx.locals[localIdx - fctx.params.length]?.type;
+  const needsCast = localType?.kind === "externref";
+
   // Stack for call_ref needs: [closure_ref, ...args, funcref]
   // where the lifted func type is (ref $closure_struct, ...arrowParams) → results
 
   // Push closure ref as first arg (self param of the lifted function)
   fctx.body.push({ op: "local.get", index: localIdx });
+  if (needsCast) {
+    fctx.body.push({ op: "any.convert_extern" });
+    fctx.body.push({ op: "ref.cast", typeIdx: info.structTypeIdx });
+  }
 
   // Push call arguments
   for (let i = 0; i < expr.arguments.length; i++) {
@@ -5135,6 +5156,10 @@ function compileClosureCall(
 
   // Push the funcref from the closure struct (field 0) and cast to typed ref
   fctx.body.push({ op: "local.get", index: localIdx });
+  if (needsCast) {
+    fctx.body.push({ op: "any.convert_extern" });
+    fctx.body.push({ op: "ref.cast", typeIdx: info.structTypeIdx });
+  }
   fctx.body.push({ op: "struct.get", typeIdx: info.structTypeIdx, fieldIdx: 0 });
   fctx.body.push({ op: "ref.cast", typeIdx: info.funcTypeIdx });
 
@@ -5957,6 +5982,31 @@ function compileCallExpression(
 
     const funcIdx = ctx.funcMap.get(funcName);
     if (funcIdx === undefined) {
+      // Fallback: if the identifier is a local holding a closure ref,
+      // look up closure info by the local's type index.
+      const localIdxForCall = fctx.localMap.get(funcName);
+      if (localIdxForCall !== undefined) {
+        const localType = localIdxForCall < fctx.params.length
+          ? fctx.params[localIdxForCall]?.type
+          : fctx.locals[localIdxForCall - fctx.params.length]?.type;
+        if (localType && (localType.kind === "ref" || localType.kind === "ref_null") &&
+            localType.typeIdx !== undefined) {
+          const closureInfoFromType = ctx.closureInfoByTypeIdx.get(localType.typeIdx);
+          if (closureInfoFromType) {
+            return compileClosureCall(ctx, fctx, expr, funcName, closureInfoFromType);
+          }
+        }
+        // Also check externref locals that might hold closure refs
+        if (localType?.kind === "externref") {
+          // Check if there's closure info registered for this variable name
+          // (e.g. from a previous assignment like f = function() {...})
+          const closureInfoByName = ctx.closureMap.get(funcName);
+          if (closureInfoByName) {
+            return compileClosureCall(ctx, fctx, expr, funcName, closureInfoByName);
+          }
+        }
+      }
+
       ctx.errors.push({
         message: `Unknown function: ${funcName}`,
         line: getLine(expr),
