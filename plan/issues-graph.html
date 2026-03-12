@@ -20,7 +20,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 #info .dep-link { color: #58a6ff; cursor: pointer; text-decoration: underline; }
 #legend { position: fixed; bottom: 12px; left: 12px; z-index: 10; font-size: 11px; display: flex; gap: 12px; background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 8px 12px; }
 #legend span { display: flex; align-items: center; gap: 4px; }
-#legend .dot { border-radius: 50%; display: inline-block; }
+#legend .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 #stats { position: fixed; bottom: 12px; right: 12px; z-index: 10; font-size: 11px; color: #8b949e; background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 8px 12px; }
 svg { width: 100vw; height: 100vh; }
 .link { stroke-opacity: 0.4; fill: none; }
@@ -52,14 +52,14 @@ svg { width: 100vw; height: 100vh; }
   <div class="deps" id="info-deps"></div>
 </div>
 <div id="legend">
-  <span><span class="dot" style="width:20px;height:20px;background:rgba(255,255,0,0.5)"></span> Critical</span>
-  <span><span class="dot" style="width:15px;height:15px;background:rgba(255,255,0,0.5)"></span> High</span>
-  <span><span class="dot" style="width:10px;height:10px;background:rgba(255,255,0,0.5)"></span> Medium</span>
-  <span><span class="dot" style="width:5px;height:5px;background:rgba(255,255,0,0.5)"></span> Low</span>
+  <span><span class="dot" style="width:14px;height:14px"></span> Critical</span>
+  <span><span class="dot" style="width:11px;height:11px"></span> High</span>
+  <span><span class="dot" style="width:8px;height:8px"></span> Medium</span>
+  <span><span class="dot" style="width:6px;height:6px"></span> Low</span>
   <span>|</span>
-  <span><span class="dot" style="width:10px;height:10px;background:rgba(255,255,0,0.5)"></span> Ready</span>
-  <span><span class="dot" style="width:10px;height:10px;background:rgba(255,0,0,0.1);border:1px solid rgba(255,0,0,0.3)"></span> Blocked</span>
-  <span><span class="dot" style="width:10px;height:10px;background:rgba(0,255,0,0.1)"></span> Done</span>
+  <span><span class="dot" style="background:rgba(255,255,0,0.5)"></span> Ready</span>
+  <span><span class="dot" style="background:rgba(255,0,0,0.1);border:1px solid rgba(255,0,0,0.3)"></span> Blocked</span>
+  <span><span class="dot" style="background:rgba(0,255,0,0.1)"></span> Done</span>
 </div>
 <div id="stats"></div>
 <svg></svg>
@@ -74,7 +74,6 @@ const COLORS = {
   }
 };
 
-// Each priority level = radius * 10
 const RADIUS = { critical: 40, high: 30, medium: 20, low: 10 };
 
 async function init() {
@@ -108,21 +107,21 @@ async function init() {
     .attr('markerWidth', 6).attr('markerHeight', 6).attr('orient', 'auto')
     .append('path').attr('d', 'M0,-5L10,0L0,5').attr('fill', '#8b949e');
 
-  // All ready nodes on the same ring; non-ready pushed further out
-  const cx = width / 2, cy = height / 2;
-  const READY_RING = 300;
+  // Priority → radial distance: critical=0 (center), high=80, medium=160, low=280
+  const PRIORITY_RADIUS = { critical: 0, high: 80, medium: 160, low: 280 };
 
   const simulation = d3.forceSimulation(nodes)
-    .force('link', d3.forceLink(links).id(d => d.id).distance(50))
-    .force('charge', d3.forceManyBody().strength(-80))
-    .force('center', d3.forceCenter(cx, cy))
-    .force('collision', d3.forceCollide().radius(d => RADIUS[d.priority] + 4))
+    .force('link', d3.forceLink(links).id(d => d.id).distance(40))
+    .force('charge', d3.forceManyBody().strength(-60))
+    .force('center', d3.forceCenter(width / 2, height / 2))
+    .force('collision', d3.forceCollide().radius(d => RADIUS[d.priority] + 2))
     .force('radial', d3.forceRadial(
-      d => d.status === 'ready' ? READY_RING : 550,
-      cx, cy
-    ).strength(d => d.status === 'ready' ? 0.4 : 0.05));
+      d => d.status === 'ready' ? PRIORITY_RADIUS[d.priority] || 200 : 400,
+      width / 2, height / 2
+    ).strength(d => d.status === 'ready' ? 0.3 : 0.05));
 
   // Radial spokes: faint lines from center to all ready nodes
+  const cx = width / 2, cy = height / 2;
   const readyNodes = nodes.filter(n => n.status === 'ready');
   const spokeEl = g.append('g').selectAll('line')
     .data(readyNodes).join('line')
