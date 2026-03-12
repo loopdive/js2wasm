@@ -5154,6 +5154,29 @@ function compileCallExpression(
     return compileOptionalCallExpression(ctx, fctx, expr);
   }
 
+  // Unwrap parenthesized callee: (fn)(...), ((obj.method))(...) etc.
+  // This handles patterns like (0, fn)() which are already handled below,
+  // but also (fn)(), ((fn))(), (obj.method)() etc. which would otherwise fail.
+  if (ts.isParenthesizedExpression(expr.expression)) {
+    let unwrapped: ts.Expression = expr.expression;
+    while (ts.isParenthesizedExpression(unwrapped)) {
+      unwrapped = unwrapped.expression;
+    }
+    // Only unwrap if it's NOT a function expression or arrow (those are IIFEs, handled later)
+    // and NOT a binary/comma expression (handled separately below)
+    if (!ts.isFunctionExpression(unwrapped) && !ts.isArrowFunction(unwrapped) &&
+        !(ts.isBinaryExpression(unwrapped) && unwrapped.operatorToken.kind === ts.SyntaxKind.CommaToken)) {
+      const syntheticCall = ts.factory.createCallExpression(
+        unwrapped as ts.Expression as ts.LeftHandSideExpression,
+        expr.typeArguments,
+        expr.arguments,
+      );
+      ts.setTextRange(syntheticCall, expr);
+      (syntheticCall as any).parent = expr.parent;
+      return compileCallExpression(ctx, fctx, syntheticCall as ts.CallExpression);
+    }
+  }
+
   // Handle super.method() calls — resolve to ParentClass_method with this as first arg
   if (
     ts.isPropertyAccessExpression(expr.expression) &&
@@ -6199,6 +6222,100 @@ function compileCallExpression(
       ts.setTextRange(syntheticCall, expr);
       (syntheticCall as any).parent = expr.parent;
       return compileCallExpression(ctx, fctx, syntheticCall as ts.CallExpression);
+    }
+  }
+
+  // Handle CallExpression as callee: fn()(), makeAdder(10)(32), etc.
+  // The inner call returns a closure struct (possibly coerced to externref),
+  // and we need to call the returned closure with the outer arguments.
+  if (ts.isCallExpression(expr.expression)) {
+    // Get the TS type of the inner call result — should be a callable type
+    const innerResultTsType = ctx.checker.getTypeAtLocation(expr.expression);
+    const callSigs = innerResultTsType.getCallSignatures?.();
+
+    if (callSigs && callSigs.length > 0) {
+      const sig = callSigs[0]!;
+
+      // Find matching closure info by comparing param types and return type
+      // against all registered closure types
+      let matchedClosureInfo: ClosureInfo | undefined;
+      let matchedStructTypeIdx: number | undefined;
+
+      const sigParamCount = sig.parameters.length;
+      const sigRetType = ctx.checker.getReturnTypeOfSignature(sig);
+      const sigRetWasm = isVoidType(sigRetType) ? null : resolveWasmType(ctx, sigRetType);
+      const sigParamWasmTypes: ValType[] = [];
+      for (let i = 0; i < sigParamCount; i++) {
+        const paramType = ctx.checker.getTypeOfSymbol(sig.parameters[i]!);
+        sigParamWasmTypes.push(resolveWasmType(ctx, paramType));
+      }
+
+      for (const [typeIdx, info] of ctx.closureInfoByTypeIdx) {
+        if (info.paramTypes.length !== sigParamCount) continue;
+        // Check return type match
+        if (sigRetWasm === null && info.returnType !== null) continue;
+        if (sigRetWasm !== null && info.returnType === null) continue;
+        if (sigRetWasm !== null && info.returnType !== null && sigRetWasm.kind !== info.returnType.kind) continue;
+        // Check param types match
+        let paramsMatch = true;
+        for (let i = 0; i < sigParamCount; i++) {
+          if (sigParamWasmTypes[i]!.kind !== info.paramTypes[i]!.kind) {
+            paramsMatch = false;
+            break;
+          }
+        }
+        if (paramsMatch) {
+          matchedClosureInfo = info;
+          matchedStructTypeIdx = typeIdx;
+          break;
+        }
+      }
+
+      if (matchedClosureInfo && matchedStructTypeIdx !== undefined) {
+        // Compile the inner call expression to get the closure on the stack
+        const innerResultType = compileExpression(ctx, fctx, expr.expression);
+
+        // Save closure ref to a local so we can extract both args and funcref
+        let closureLocal: number;
+        if (innerResultType?.kind === "externref") {
+          // Need to convert externref back to the closure struct ref
+          const closureRefType: ValType = { kind: "ref_null", typeIdx: matchedStructTypeIdx };
+          closureLocal = allocLocal(fctx, `__call_ret_${fctx.locals.length}`, closureRefType);
+          fctx.body.push({ op: "any.convert_extern" });
+          fctx.body.push({ op: "ref.cast", typeIdx: matchedStructTypeIdx });
+          fctx.body.push({ op: "local.set", index: closureLocal });
+        } else {
+          const closureRefType: ValType = innerResultType ?? { kind: "ref", typeIdx: matchedStructTypeIdx };
+          closureLocal = allocLocal(fctx, `__call_ret_${fctx.locals.length}`, closureRefType);
+          fctx.body.push({ op: "local.set", index: closureLocal });
+        }
+
+        // Push closure ref as first arg (self param of the lifted function)
+        // The local is ref_null but the function expects non-null ref, so cast
+        fctx.body.push({ op: "local.get", index: closureLocal });
+        fctx.body.push({ op: "ref.as_non_null" } as Instr);
+
+        // Push call arguments
+        for (let i = 0; i < expr.arguments.length; i++) {
+          compileExpression(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
+        }
+
+        // Pad missing arguments with defaults
+        for (let i = expr.arguments.length; i < matchedClosureInfo.paramTypes.length; i++) {
+          pushDefaultValue(fctx, matchedClosureInfo.paramTypes[i]!);
+        }
+
+        // Push the funcref from the closure struct (field 0) and cast to typed ref
+        fctx.body.push({ op: "local.get", index: closureLocal });
+        fctx.body.push({ op: "ref.as_non_null" } as Instr);
+        fctx.body.push({ op: "struct.get", typeIdx: matchedStructTypeIdx, fieldIdx: 0 });
+        fctx.body.push({ op: "ref.cast", typeIdx: matchedClosureInfo.funcTypeIdx });
+
+        // call_ref with the lifted function's type index
+        fctx.body.push({ op: "call_ref", typeIdx: matchedClosureInfo.funcTypeIdx });
+
+        return matchedClosureInfo.returnType;
+      }
     }
   }
 
