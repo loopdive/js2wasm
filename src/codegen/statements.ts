@@ -442,6 +442,32 @@ function compileVariableStatement(
   }
 }
 
+/**
+ * Ensure all binding names in a destructuring pattern are allocated as locals.
+ * This is a safety net: if the actual destructuring compilation fails, the
+ * identifiers will still be in scope (initialized to their zero/null defaults).
+ * For `var` declarations these are already hoisted, but `let`/`const` are not.
+ */
+function ensureBindingLocals(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  pattern: ts.BindingPattern,
+): void {
+  for (const element of pattern.elements) {
+    if (ts.isOmittedExpression(element)) continue;
+    if (ts.isIdentifier(element.name)) {
+      const name = element.name.text;
+      if (fctx.localMap.has(name)) continue;
+      if (ctx.moduleGlobals.has(name)) continue;
+      const elemType = ctx.checker.getTypeAtLocation(element);
+      const wasmType = resolveWasmType(ctx, elemType);
+      allocLocal(fctx, name, wasmType);
+    } else if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
+      ensureBindingLocals(ctx, fctx, element.name);
+    }
+  }
+}
+
 function compileObjectDestructuring(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -471,6 +497,7 @@ function compileObjectDestructuring(
 
   if (!typeName) {
     fctx.body.length = bodyLenBefore; // rollback — value would leak on stack
+    ensureBindingLocals(ctx, fctx, pattern);
     ctx.errors.push({
       message: "Cannot destructure: unknown type",
       line: getLine(decl),
@@ -483,6 +510,7 @@ function compileObjectDestructuring(
   const fields = ctx.structFields.get(typeName);
   if (structTypeIdx === undefined || !fields) {
     fctx.body.length = bodyLenBefore; // rollback — value would leak on stack
+    ensureBindingLocals(ctx, fctx, pattern);
     ctx.errors.push({
       message: `Cannot destructure: not a known struct type: ${typeName}`,
       line: getLine(decl),
@@ -571,6 +599,7 @@ function compileArrayDestructuring(
 
   if (resultType.kind !== "ref" && resultType.kind !== "ref_null") {
     fctx.body.length = bodyLenBefore;
+    ensureBindingLocals(ctx, fctx, pattern);
     ctx.errors.push({
       message: "Cannot destructure: not an array type",
       line: getLine(decl),
@@ -585,6 +614,7 @@ function compileArrayDestructuring(
   // Handle vec struct (array wrapped in {length, data})
   if (!typeDef || typeDef.kind !== "struct") {
     fctx.body.length = bodyLenBefore;
+    ensureBindingLocals(ctx, fctx, pattern);
     ctx.errors.push({
       message: "Cannot destructure: not an array type",
       line: getLine(decl),
@@ -597,6 +627,7 @@ function compileArrayDestructuring(
   const arrDef = ctx.mod.types[arrTypeIdx];
   if (!arrDef || arrDef.kind !== "array") {
     fctx.body.length = bodyLenBefore;
+    ensureBindingLocals(ctx, fctx, pattern);
     ctx.errors.push({
       message: "Cannot destructure: vec data is not array",
       line: getLine(decl),
