@@ -188,3 +188,4 @@
 | 262 | 2026-03-12 | Argument type assignability -- allowJs flexibility for test262 | Dep-driven |
 | 275 | 2026-03-12 | Left side of comma operator warning blocks compilation | Dep-driven |
 | 317 | 2026-03-12 | Unused $AnyValue preamble type + duplicate export cleanup | Dep-driven |
+| 295 | 2026-03-12 | Comparison operators with type coercion (BigInt vs String) | Dep-driven |

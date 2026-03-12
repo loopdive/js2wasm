@@ -2384,12 +2384,12 @@ function compileBinaryExpression(
     const leftIsBigInt = isBigIntType(leftTsType);
     const rightIsBigInt = isBigIntType(rightTsType);
 
-    // Mixed BigInt + Number: comparison and equality operators (#227, #228)
+    // Mixed BigInt + Number/String: comparison and equality operators (#227, #228, #295)
     if (leftIsBigInt !== rightIsBigInt) {
       const isStrictEq = op === ts.SyntaxKind.EqualsEqualsEqualsToken;
       const isStrictNeq = op === ts.SyntaxKind.ExclamationEqualsEqualsToken;
 
-      // Strict equality: BigInt and Number are different types → always false/true
+      // Strict equality: BigInt and Number/String are different types → always false/true
       if (isStrictEq || isStrictNeq) {
         // Compile both sides for side effects, then drop them
         const lt = compileExpression(ctx, fctx, expr.left);
@@ -2400,7 +2400,11 @@ function compileBinaryExpression(
         return { kind: "i32" };
       }
 
-      // Loose equality and comparisons: convert i64 → f64, then compare as f64
+      // Loose equality and comparisons: convert both operands to f64, then compare
+      // For BigInt vs Number: i64 → f64 via f64.convert_i64_s
+      // For BigInt vs String: string → f64 via parseFloat, i64 → f64 (#295)
+      //   Incomparable strings (parseFloat returns NaN) make all comparisons false,
+      //   which matches the JS spec for BigInt vs non-numeric-string.
       const isLooseEq = op === ts.SyntaxKind.EqualsEqualsToken;
       const isLooseNeq = op === ts.SyntaxKind.ExclamationEqualsToken;
       const isComparison = op === ts.SyntaxKind.LessThanToken ||
@@ -2409,22 +2413,47 @@ function compileBinaryExpression(
         op === ts.SyntaxKind.GreaterThanEqualsToken;
 
       if (isLooseEq || isLooseNeq || isComparison) {
-        // Compile left operand with its natural hint
-        const leftHint: ValType = leftIsBigInt ? { kind: "i64" } : { kind: "f64" };
-        const leftType = compileExpression(ctx, fctx, expr.left, leftHint);
+        const leftIsStr = isStringType(leftTsType);
+        const rightIsStr = isStringType(rightTsType);
+
+        // Compile left operand
+        const leftType = compileExpression(ctx, fctx, expr.left, leftIsBigInt ? { kind: "i64" } : undefined);
         if (!leftType) return null;
-        // Convert i64 left to f64
+        // Convert left to f64
         if (leftType.kind === "i64") {
           fctx.body.push({ op: "f64.convert_i64_s" });
+        } else if (leftType.kind === "externref") {
+          // String/externref → f64 via parseFloat (NaN for incomparable strings)
+          const pfIdx = ctx.funcMap.get("parseFloat");
+          if (pfIdx !== undefined) {
+            fctx.body.push({ op: "call", funcIdx: pfIdx });
+          } else {
+            addUnionImports(ctx);
+            const unboxIdx = ctx.funcMap.get("__unbox_number")!;
+            fctx.body.push({ op: "call", funcIdx: unboxIdx });
+          }
+        } else if (leftType.kind === "i32") {
+          fctx.body.push({ op: "f64.convert_i32_s" });
         }
 
-        // Compile right operand with its natural hint
-        const rightHint: ValType = rightIsBigInt ? { kind: "i64" } : { kind: "f64" };
-        const rightType = compileExpression(ctx, fctx, expr.right, rightHint);
+        // Compile right operand
+        const rightType = compileExpression(ctx, fctx, expr.right, rightIsBigInt ? { kind: "i64" } : undefined);
         if (!rightType) return null;
-        // Convert i64 right to f64
+        // Convert right to f64
         if (rightType.kind === "i64") {
           fctx.body.push({ op: "f64.convert_i64_s" });
+        } else if (rightType.kind === "externref") {
+          // String/externref → f64 via parseFloat (NaN for incomparable strings)
+          const pfIdx = ctx.funcMap.get("parseFloat");
+          if (pfIdx !== undefined) {
+            fctx.body.push({ op: "call", funcIdx: pfIdx });
+          } else {
+            addUnionImports(ctx);
+            const unboxIdx = ctx.funcMap.get("__unbox_number")!;
+            fctx.body.push({ op: "call", funcIdx: unboxIdx });
+          }
+        } else if (rightType.kind === "i32") {
+          fctx.body.push({ op: "f64.convert_i32_s" });
         }
 
         // Emit f64 comparison
