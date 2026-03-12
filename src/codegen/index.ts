@@ -860,6 +860,14 @@ function collectStringMethodImports(
   for (const stmt of sourceFile.statements) {
     if (ts.isFunctionDeclaration(stmt) && stmt.body) {
       visit(stmt.body);
+    } else if (ts.isVariableStatement(stmt)) {
+      for (const decl of stmt.declarationList.declarations) {
+        if (decl.initializer) visit(decl.initializer);
+      }
+    } else if (ts.isClassDeclaration(stmt)) {
+      visit(stmt);
+    } else if (ts.isExpressionStatement(stmt)) {
+      visit(stmt.expression);
     }
   }
 
@@ -4304,7 +4312,8 @@ function collectStringLiterals(
     ts.forEachChild(node, visit);
   }
 
-  // Scan function bodies and parameter initializers (skip declare namespaces, interfaces, etc.)
+  // Scan all statement types that may contain runtime string literals:
+  // function bodies, variable initializers, class bodies, expression statements.
   for (const stmt of sourceFile.statements) {
     if (ts.isFunctionDeclaration(stmt)) {
       // Scan parameter default values for string literals
@@ -4316,6 +4325,19 @@ function collectStringLiterals(
       if (stmt.body) {
         visit(stmt.body);
       }
+    } else if (ts.isVariableStatement(stmt)) {
+      // Scan module-level variable initializers for string literals
+      for (const decl of stmt.declarationList.declarations) {
+        if (decl.initializer) {
+          visit(decl.initializer);
+        }
+      }
+    } else if (ts.isClassDeclaration(stmt)) {
+      // Scan class declaration bodies (methods, constructors, property initializers)
+      visit(stmt);
+    } else if (ts.isExpressionStatement(stmt)) {
+      // Scan module-level expression statements
+      visit(stmt.expression);
     }
   }
 
@@ -4373,6 +4395,14 @@ function collectForInStringLiterals(
   for (const stmt of sourceFile.statements) {
     if (ts.isFunctionDeclaration(stmt) && stmt.body) {
       visit(stmt.body);
+    } else if (ts.isVariableStatement(stmt)) {
+      for (const decl of stmt.declarationList.declarations) {
+        if (decl.initializer) visit(decl.initializer);
+      }
+    } else if (ts.isClassDeclaration(stmt)) {
+      visit(stmt);
+    } else if (ts.isExpressionStatement(stmt)) {
+      visit(stmt.expression);
     }
   }
 
@@ -4420,6 +4450,14 @@ function collectInExprStringLiterals(
   for (const stmt of sourceFile.statements) {
     if (ts.isFunctionDeclaration(stmt) && stmt.body) {
       visit(stmt.body);
+    } else if (ts.isVariableStatement(stmt)) {
+      for (const decl of stmt.declarationList.declarations) {
+        if (decl.initializer) visit(decl.initializer);
+      }
+    } else if (ts.isClassDeclaration(stmt)) {
+      visit(stmt);
+    } else if (ts.isExpressionStatement(stmt)) {
+      visit(stmt.expression);
     }
   }
 
@@ -4734,13 +4772,18 @@ function collectStringStaticImports(
   for (const stmt of sourceFile.statements) {
     if (ts.isFunctionDeclaration(stmt) && stmt.body) {
       visit(stmt.body);
-    }
-    if (ts.isClassDeclaration(stmt)) {
+    } else if (ts.isVariableStatement(stmt)) {
+      for (const decl of stmt.declarationList.declarations) {
+        if (decl.initializer) visit(decl.initializer);
+      }
+    } else if (ts.isClassDeclaration(stmt)) {
       for (const member of stmt.members) {
         if (ts.isMethodDeclaration(member) && member.body) {
           visit(member.body);
         }
       }
+    } else if (ts.isExpressionStatement(stmt)) {
+      visit(stmt.expression);
     }
   }
 
