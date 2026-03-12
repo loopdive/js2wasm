@@ -27,6 +27,35 @@ type: project
 3. **Developers don't touch `plan/`.** Update `backlog.md` and `issues/*.md` after merging, not during development.
 4. **Pair by source file.** Only run two developers in parallel if they touch different source files (e.g., one `expressions.ts`, one `statements.ts`). Two issues both needing `expressions.ts` must be sequential.
 
+## Issue Frontmatter
+
+Every open issue has YAML frontmatter:
+
+```yaml
+---
+priority: high
+depends_on: [234]
+files:
+  - src/codegen/expressions.ts
+breaking_changes:
+  - "compileCallExpression: new `calleeType` param added to signature"
+  - "coerceType: null handling changed — returns i32.const 0 instead of ref.null"
+---
+```
+
+Fields:
+- **priority**: `critical` | `high` | `medium` | `low`
+- **depends_on**: issue numbers that must be done first
+- **files**: source files this issue needs to modify (file locking — no two in-progress issues may claim the same file without PO approval)
+- **breaking_changes**: list of changes to existing functionality that other code depends on. Examples:
+  - Changed function signatures (new/removed/reordered params)
+  - Changed return types or semantics
+  - Renamed or removed exported functions/types
+  - Changed data structures (struct field order, type changes)
+  - Modified control flow that callers rely on (e.g., a function that used to return now throws)
+
+Breaking changes must be documented **before** implementation starts so the PO can check whether any other in-progress or ready issues depend on the affected code. After implementation, the breaking changes should be preserved in the issue's Implementation Summary for future reference.
+
 ## Execution Workflow (dependency-driven)
 
 Work is driven by the dependency graph, not sprint batches.
