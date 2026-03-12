@@ -84,7 +84,7 @@ _Goal: Reduce compile errors from ~3465 to ~2000 by fixing the most common error
 | --- | ------- | ------ | ----- |
 | [257](issues/257.md) | Unsupported call expression -- method calls on returned values | Open | A |
 | [258](issues/258.md) | Unsupported call expression -- double/triple nested calls | Open | A |
-| [259](issues/259.md) | ClassDeclaration in block/nested scope positions | Open | B |
+| [259](issues/259.md) | ClassDeclaration in block/nested scope positions | Review | B |
 | [260](issues/260.md) | ClassDeclaration + call expression combined errors | Open | B |
 | [261](issues/261.md) | ClassDeclaration + new expression for anonymous classes | Open | B |
 | [262](issues/262.md) | Argument type assignability -- allowJs flexibility for test262 | Open | C |

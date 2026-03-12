@@ -1136,7 +1136,7 @@ describe("Private class members", () => {
   });
 });
 
-describe("Nested class declarations (#150)", () => {
+describe("Nested class declarations (#150, #259)", () => {
   it("class inside if block", async () => {
     const exports = await compileToWasm(`
       export function test(): number {
@@ -1153,6 +1153,141 @@ describe("Nested class declarations (#150)", () => {
       }
     `);
     expect(exports.test()).toBe(42);
+  });
+
+  it("class inside for loop body", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        let result = 0;
+        for (let i = 0; i < 3; i++) {
+          class Adder {
+            val: number;
+            constructor(v: number) { this.val = v; }
+            get(): number { return this.val; }
+          }
+          const a = new Adder(10);
+          result = result + a.get();
+        }
+        return result;
+      }
+    `);
+    expect(exports.test()).toBe(30);
+  });
+
+  it("class at function scope (not nested in block)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        class Local {
+          x: number;
+          constructor(x: number) { this.x = x; }
+          double(): number { return this.x * 2; }
+        }
+        const obj = new Local(21);
+        return obj.double();
+      }
+    `);
+    expect(exports.test()).toBe(42);
+  });
+
+  it("class inside else block", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        if (false) {
+          return 0;
+        } else {
+          class Bar {
+            v: number;
+            constructor() { this.v = 99; }
+            value(): number { return this.v; }
+          }
+          const b = new Bar();
+          return b.value();
+        }
+      }
+    `);
+    expect(exports.test()).toBe(99);
+  });
+
+  it("class inside while loop", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        let i = 0;
+        let result = 0;
+        while (i < 2) {
+          class Item {
+            n: number;
+            constructor(n: number) { this.n = n; }
+            val(): number { return this.n; }
+          }
+          const item = new Item(5);
+          result = result + item.val();
+          i = i + 1;
+        }
+        return result;
+      }
+    `);
+    expect(exports.test()).toBe(10);
+  });
+
+  it("multiple classes in same function scope", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        class A {
+          x: number;
+          constructor(x: number) { this.x = x; }
+          get(): number { return this.x; }
+        }
+        class B {
+          y: number;
+          constructor(y: number) { this.y = y; }
+          get(): number { return this.y; }
+        }
+        const a = new A(10);
+        const b = new B(32);
+        return a.get() + b.get();
+      }
+    `);
+    expect(exports.test()).toBe(42);
+  });
+
+  it("class with inheritance in block scope", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        class Base {
+          x: number;
+          constructor(x: number) { this.x = x; }
+          value(): number { return this.x; }
+        }
+        class Child extends Base {
+          constructor(x: number) { super(x * 2); }
+        }
+        const c = new Child(21);
+        return c.value();
+      }
+    `);
+    expect(exports.test()).toBe(42);
+  });
+
+  it("class in switch case block", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        const x = 1;
+        switch (x as number) {
+          case 1: {
+            class Wrapper {
+              n: number;
+              constructor(n: number) { this.n = n; }
+              unwrap(): number { return this.n; }
+            }
+            const w = new Wrapper(77);
+            return w.unwrap();
+          }
+          default:
+            return 0;
+        }
+      }
+    `);
+    expect(exports.test()).toBe(77);
   });
 });
 
