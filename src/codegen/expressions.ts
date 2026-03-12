@@ -727,6 +727,231 @@ function isCallbackArgument(node: ts.Node): boolean {
   return false;
 }
 
+/**
+ * Emit destructuring code for arrow/function expression parameters that use
+ * binding patterns (array or object destructuring) or default values.
+ * @param paramOffset - number of prepended params before user params (e.g. 1 for __self or __captures)
+ */
+function emitArrowParamDestructuring(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  arrow: ts.ArrowFunction | ts.FunctionExpression,
+  paramOffset: number,
+): void {
+  for (let i = 0; i < arrow.parameters.length; i++) {
+    const param = arrow.parameters[i]!;
+    const paramIdx = paramOffset + i;
+
+    // Handle default parameter values
+    if (param.initializer && ts.isIdentifier(param.name)) {
+      const paramType = fctx.params[paramIdx]?.type ?? { kind: "f64" as const };
+      // Build the "then" block: compile default expression, local.set
+      const savedBody = fctx.body;
+      fctx.body = [];
+      compileExpression(ctx, fctx, param.initializer, paramType);
+      fctx.body.push({ op: "local.set", index: paramIdx });
+      const thenInstrs = fctx.body;
+      fctx.body = savedBody;
+
+      // Emit the null/zero check + conditional assignment
+      if (paramType.kind === "externref" || paramType.kind === "ref_null" || paramType.kind === "ref") {
+        fctx.body.push({ op: "local.get", index: paramIdx });
+        fctx.body.push({ op: "ref.is_null" });
+        fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
+      } else if (paramType.kind === "i32") {
+        fctx.body.push({ op: "local.get", index: paramIdx });
+        fctx.body.push({ op: "i32.eqz" });
+        fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
+      } else if (paramType.kind === "f64") {
+        fctx.body.push({ op: "local.get", index: paramIdx });
+        fctx.body.push({ op: "f64.const", value: 0 });
+        fctx.body.push({ op: "f64.eq" });
+        fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
+      }
+    }
+
+    // Handle array binding pattern: ([x, y, z]) => ...
+    if (ts.isArrayBindingPattern(param.name)) {
+      const pattern = param.name;
+      const paramType = fctx.params[paramIdx]?.type;
+      if (!paramType || (paramType.kind !== "ref" && paramType.kind !== "ref_null")) {
+        // Fall back: allocate locals for all binding names so body doesn't crash
+        for (const element of pattern.elements) {
+          if (ts.isOmittedExpression(element)) continue;
+          if (ts.isIdentifier(element.name)) {
+            const name = element.name.text;
+            if (!fctx.localMap.has(name)) {
+              const elemType = resolveWasmType(ctx, ctx.checker.getTypeAtLocation(element));
+              allocLocal(fctx, name, elemType);
+            }
+          }
+        }
+        continue;
+      }
+
+      const vecTypeIdx = (paramType as { typeIdx: number }).typeIdx;
+      const vecDef = ctx.mod.types[vecTypeIdx];
+      if (!vecDef || vecDef.kind !== "struct") {
+        // Not a vec struct — try as direct array
+        for (const element of pattern.elements) {
+          if (ts.isOmittedExpression(element)) continue;
+          if (ts.isIdentifier(element.name)) {
+            const name = element.name.text;
+            if (!fctx.localMap.has(name)) {
+              const elemType = resolveWasmType(ctx, ctx.checker.getTypeAtLocation(element));
+              allocLocal(fctx, name, elemType);
+            }
+          }
+        }
+        continue;
+      }
+
+      const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
+      const arrDef = ctx.mod.types[arrTypeIdx];
+      const elemType = arrDef && arrDef.kind === "array"
+        ? arrDef.element
+        : { kind: "f64" as const };
+
+      for (let j = 0; j < pattern.elements.length; j++) {
+        const element = pattern.elements[j]!;
+        if (ts.isOmittedExpression(element)) continue;
+
+        // Handle rest element: (...rest) at the end
+        if (element.dotDotDotToken) {
+          if (ts.isIdentifier(element.name)) {
+            const restName = element.name.text;
+            // Rest element collects remaining items into a new array
+            // For simplicity, allocate the local with the original vec type
+            const restLocal = allocLocal(fctx, restName, paramType);
+            // TODO: proper rest slicing; for now just assign the whole param
+            fctx.body.push({ op: "local.get", index: paramIdx });
+            fctx.body.push({ op: "local.set", index: restLocal });
+          }
+          continue;
+        }
+
+        if (ts.isIdentifier(element.name)) {
+          const localName = element.name.text;
+          const localIdx = allocLocal(fctx, localName, elemType);
+
+          // Get element at index j from the array
+          fctx.body.push({ op: "local.get", index: paramIdx });
+          fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 }); // data array
+          fctx.body.push({ op: "i32.const", value: j });
+          fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
+          fctx.body.push({ op: "local.set", index: localIdx });
+
+          // Handle default value for element
+          if (element.initializer) {
+            const savedBody = fctx.body;
+            fctx.body = [];
+            compileExpression(ctx, fctx, element.initializer, elemType);
+            fctx.body.push({ op: "local.set", index: localIdx });
+            const defaultInstrs = fctx.body;
+            fctx.body = savedBody;
+
+            if (elemType.kind === "f64") {
+              // Check if value is NaN (undefined becomes NaN)
+              fctx.body.push({ op: "local.get", index: localIdx });
+              fctx.body.push({ op: "local.get", index: localIdx });
+              fctx.body.push({ op: "f64.ne" }); // NaN !== NaN
+              fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: defaultInstrs });
+            } else if (elemType.kind === "externref" || elemType.kind === "ref_null" || elemType.kind === "ref") {
+              fctx.body.push({ op: "local.get", index: localIdx });
+              fctx.body.push({ op: "ref.is_null" });
+              fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: defaultInstrs });
+            }
+          }
+        }
+      }
+    }
+
+    // Handle object binding pattern: ({a, b}) => ...
+    if (ts.isObjectBindingPattern(param.name)) {
+      const pattern = param.name;
+      const paramType = fctx.params[paramIdx]?.type;
+      if (!paramType || (paramType.kind !== "ref" && paramType.kind !== "ref_null")) {
+        // Fall back: allocate locals for all binding names
+        for (const element of pattern.elements) {
+          if (!ts.isBindingElement(element)) continue;
+          if (ts.isIdentifier(element.name)) {
+            const name = element.name.text;
+            if (!fctx.localMap.has(name)) {
+              const elemType = resolveWasmType(ctx, ctx.checker.getTypeAtLocation(element));
+              allocLocal(fctx, name, elemType);
+            }
+          }
+        }
+        continue;
+      }
+
+      const structTypeIdx = (paramType as { typeIdx: number }).typeIdx;
+      const typeDef = ctx.mod.types[structTypeIdx];
+      if (!typeDef || typeDef.kind !== "struct") {
+        for (const element of pattern.elements) {
+          if (!ts.isBindingElement(element)) continue;
+          if (ts.isIdentifier(element.name)) {
+            const name = element.name.text;
+            if (!fctx.localMap.has(name)) {
+              const elemType = resolveWasmType(ctx, ctx.checker.getTypeAtLocation(element));
+              allocLocal(fctx, name, elemType);
+            }
+          }
+        }
+        continue;
+      }
+
+      // Resolve the struct name and fields
+      const structName = typeDef.name;
+      const fields = structName ? ctx.structFields.get(structName) : undefined;
+      if (!fields) {
+        for (const element of pattern.elements) {
+          if (!ts.isBindingElement(element)) continue;
+          if (ts.isIdentifier(element.name)) {
+            const name = element.name.text;
+            if (!fctx.localMap.has(name)) {
+              const elemType = resolveWasmType(ctx, ctx.checker.getTypeAtLocation(element));
+              allocLocal(fctx, name, elemType);
+            }
+          }
+        }
+        continue;
+      }
+
+      for (const element of pattern.elements) {
+        if (!ts.isBindingElement(element)) continue;
+        const propName = (element.propertyName ?? element.name) as ts.Identifier;
+        if (!ts.isIdentifier(element.name)) continue;
+        const localName = element.name.text;
+
+        const fieldIdx = fields.findIndex((f) => f.name === propName.text);
+        if (fieldIdx === -1) continue;
+
+        const fieldType = fields[fieldIdx]!.type;
+        const localIdx = allocLocal(fctx, localName, fieldType);
+
+        fctx.body.push({ op: "local.get", index: paramIdx });
+        fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+        fctx.body.push({ op: "local.set", index: localIdx });
+
+        // Handle default value
+        if (element.initializer && (fieldType.kind === "externref" || fieldType.kind === "ref_null" || fieldType.kind === "ref")) {
+          const savedBody = fctx.body;
+          fctx.body = [];
+          compileExpression(ctx, fctx, element.initializer, fieldType);
+          fctx.body.push({ op: "local.set", index: localIdx });
+          const defaultInstrs = fctx.body;
+          fctx.body = savedBody;
+
+          fctx.body.push({ op: "local.get", index: localIdx });
+          fctx.body.push({ op: "ref.is_null" });
+          fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: defaultInstrs });
+        }
+      }
+    }
+  }
+}
+
 function compileArrowFunction(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -753,6 +978,29 @@ function compileArrowAsClosure(
   // 1. Determine arrow parameter types and return type
   const arrowParams: ValType[] = [];
   for (const p of arrow.parameters) {
+    // For destructuring params, getTypeAtLocation returns the destructured shape
+    // (e.g. {} for number[]). Use the type annotation if present.
+    if ((ts.isArrayBindingPattern(p.name) || ts.isObjectBindingPattern(p.name)) && p.type) {
+      if (ts.isArrayTypeNode(p.type)) {
+        // number[] → get the element type and create a vec struct type
+        const elemTsType = ctx.checker.getTypeFromTypeNode(p.type.elementType);
+        const elemWasmType = resolveWasmType(ctx, elemTsType);
+        const elemKey = elemWasmType.kind === "i32" ? "i32" : elemWasmType.kind === "f64" ? "f64" : "externref";
+        const vecTypeIdx = getOrRegisterVecType(ctx, elemKey, elemWasmType);
+        arrowParams.push({ kind: "ref_null", typeIdx: vecTypeIdx });
+        continue;
+      }
+      // For other type annotations, resolve normally
+      const annotationType = ctx.checker.getTypeFromTypeNode(p.type);
+      arrowParams.push(resolveWasmType(ctx, annotationType));
+      continue;
+    }
+    // For destructuring params without type annotation (e.g. test262 JS),
+    // use externref since the type is effectively 'any'
+    if (ts.isArrayBindingPattern(p.name) || ts.isObjectBindingPattern(p.name)) {
+      arrowParams.push({ kind: "externref" });
+      continue;
+    }
     const paramType = ctx.checker.getTypeAtLocation(p);
     arrowParams.push(resolveWasmType(ctx, paramType));
   }
@@ -915,6 +1163,9 @@ function compileArrowAsClosure(
     ctx.closureMap.set(funcExprName, closureInfoForSelf);
   }
 
+  // Emit destructuring for parameters with binding patterns and default values
+  emitArrowParamDestructuring(ctx, liftedFctx, arrow, 1); // offset 1 for __self param
+
   let conciseBodyHasValue = false;
   if (ts.isBlock(body)) {
     for (const stmt of body.statements) {
@@ -1022,6 +1273,15 @@ function compileArrowAsClosure(
   const parent = arrow.parent;
   if (ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name)) {
     ctx.closureMap.set(parent.name.text, closureInfo);
+  }
+
+  // Also register when assigned via `f = (...) => { ... }` (BinaryExpression with = operator)
+  if (
+    ts.isBinaryExpression(parent) &&
+    parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+    ts.isIdentifier(parent.left)
+  ) {
+    ctx.closureMap.set(parent.left.text, closureInfo);
   }
 
   return { kind: "ref", typeIdx: structTypeIdx };
@@ -1139,6 +1399,9 @@ function compileArrowAsCallback(
   // 5. Compile the callback body
   const savedFunc = ctx.currentFunc;
   ctx.currentFunc = cbFctx;
+
+  // Emit destructuring for parameters with binding patterns and default values
+  emitArrowParamDestructuring(ctx, cbFctx, arrow, 1); // offset 1 for __captures param
 
   let exprBodyHasReturnValue = false;
   if (ts.isBlock(body)) {
@@ -5120,8 +5383,16 @@ function compileClosureCall(
   // Stack for call_ref needs: [closure_ref, ...args, funcref]
   // where the lifted func type is (ref $closure_struct, ...arrowParams) → results
 
+  // Determine if we need to downcast from externref to the closure struct ref type
+  const localType = getLocalType(fctx, localIdx);
+  const needsDowncast = localType?.kind === "externref";
+
   // Push closure ref as first arg (self param of the lifted function)
   fctx.body.push({ op: "local.get", index: localIdx });
+  if (needsDowncast) {
+    fctx.body.push({ op: "any.convert_extern" });
+    fctx.body.push({ op: "ref.cast", typeIdx: info.structTypeIdx });
+  }
 
   // Push call arguments
   for (let i = 0; i < expr.arguments.length; i++) {
@@ -5135,6 +5406,10 @@ function compileClosureCall(
 
   // Push the funcref from the closure struct (field 0) and cast to typed ref
   fctx.body.push({ op: "local.get", index: localIdx });
+  if (needsDowncast) {
+    fctx.body.push({ op: "any.convert_extern" });
+    fctx.body.push({ op: "ref.cast", typeIdx: info.structTypeIdx });
+  }
   fctx.body.push({ op: "struct.get", typeIdx: info.structTypeIdx, fieldIdx: 0 });
   fctx.body.push({ op: "ref.cast", typeIdx: info.funcTypeIdx });
 

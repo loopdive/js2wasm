@@ -4461,4 +4461,82 @@ describe("in operator edge cases", () => {
     `);
     expect(exports.test()).toBe(1);
   });
+
+  // === Issue #279: Arrow function parameter and body patterns ===
+
+  it("arrow with array destructuring parameter (#279)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        const f = ([a, b, c]: number[]) => a + b + c;
+        return f([10, 20, 30]);
+      }
+    `);
+    expect(exports.test()).toBe(60);
+  });
+
+  it("arrow with object destructuring parameter (#279)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        const f = ({x, y}: {x: number, y: number}) => x * y;
+        return f({x: 6, y: 7});
+      }
+    `);
+    expect(exports.test()).toBe(42);
+  });
+
+  it("arrow with default parameter value (#279)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        const f = (x: number = 10) => x + 5;
+        return f();
+      }
+    `);
+    expect(exports.test()).toBe(15);
+  });
+
+  it("arrow assigned via binary expression registers closure (#279)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        let f: (x: number) => number;
+        f = (x: number) => x * 3;
+        return f(7);
+      }
+    `);
+    expect(exports.test()).toBe(21);
+  });
+
+  it("arrow with destructuring param and captured variable (#279)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        const multiplier = 2;
+        const f = ([a, b]: number[]) => (a + b) * multiplier;
+        return f([3, 4]);
+      }
+    `);
+    expect(exports.test()).toBe(14);
+  });
+
+  it("function declaration with array destructuring parameter (#279)", async () => {
+    const exports = await compileToWasm(`
+      function sum([a, b, c]: number[]): number {
+        return a + b + c;
+      }
+      export function test(): number {
+        return sum([1, 2, 3]);
+      }
+    `);
+    expect(exports.test()).toBe(6);
+  });
+
+  it("function declaration with object destructuring parameter (#279)", async () => {
+    const exports = await compileToWasm(`
+      function getX({x, y}: {x: number, y: number}): number {
+        return x;
+      }
+      export function test(): number {
+        return getX({x: 42, y: 0});
+      }
+    `);
+    expect(exports.test()).toBe(42);
+  });
 });
