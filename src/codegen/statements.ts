@@ -8,6 +8,7 @@ import {
 import type { CodegenContext, FunctionContext } from "./index.js";
 import {
   addFuncType,
+  addStringImports,
   addUnionImports,
   allocLocal,
   attachSourcePos,
@@ -15,6 +16,7 @@ import {
   compileClassBodies,
   ensureExnTag,
   ensureI32Condition,
+  ensureNativeStringHelpers,
   getArrTypeIdxFromVec,
   getOrRegisterVecType,
   getSourcePos,
@@ -1047,8 +1049,40 @@ function compileSwitchStatement(
   const exprType = ctx.checker.getTypeAtLocation(stmt.expression);
   let wasmType = resolveWasmType(ctx, exprType);
 
-  // Externref discriminant: unbox to f64 for numeric comparison
-  if (wasmType.kind === "externref") {
+  // Detect if the switch discriminant or any case value involves strings (#245).
+  // Check both the discriminant type and case expression types, since the
+  // discriminant may be `any` while case values are string literals.
+  let switchIsString = isStringType(exprType);
+  if (!switchIsString) {
+    for (const clause of stmt.caseBlock.clauses) {
+      if (ts.isCaseClause(clause)) {
+        const caseType = ctx.checker.getTypeAtLocation(clause.expression);
+        if (isStringType(caseType)) {
+          switchIsString = true;
+          break;
+        }
+      }
+    }
+  }
+
+  // For string switch: use the appropriate string type and comparison
+  let strEqFuncIdx: number | undefined;
+  if (switchIsString) {
+    if (ctx.fast && ctx.nativeStrTypeIdx >= 0) {
+      // Fast mode: native string comparison
+      ensureNativeStringHelpers(ctx);
+      const flattenIdx = ctx.nativeStrHelpers.get("__str_flatten");
+      const equalsIdx = ctx.nativeStrHelpers.get("__str_equals");
+      strEqFuncIdx = equalsIdx;
+      wasmType = { kind: "ref", typeIdx: ctx.anyStrTypeIdx };
+    } else {
+      // Non-fast mode: externref string comparison via wasm:js-string equals
+      addStringImports(ctx);
+      strEqFuncIdx = ctx.funcMap.get("equals");
+      wasmType = { kind: "externref" };
+    }
+  } else if (wasmType.kind === "externref") {
+    // Externref discriminant (non-string): unbox to f64 for numeric comparison
     wasmType = { kind: "f64" };
   }
 
@@ -1101,8 +1135,22 @@ function compileSwitchStatement(
       fctx.body = checkBody;
 
       fctx.body.push({ op: "local.get", index: tmpLocalIdx });
+      if (switchIsString && ctx.fast && ctx.nativeStrTypeIdx >= 0) {
+        // Fast mode: flatten both operands before comparison
+        const flattenIdx = ctx.nativeStrHelpers.get("__str_flatten")!;
+        fctx.body.push({ op: "call", funcIdx: flattenIdx });
+      }
       compileExpression(ctx, fctx, caseClause.expression, wasmType);
-      fctx.body.push({ op: eqOp });
+      if (switchIsString && ctx.fast && ctx.nativeStrTypeIdx >= 0) {
+        const flattenIdx = ctx.nativeStrHelpers.get("__str_flatten")!;
+        fctx.body.push({ op: "call", funcIdx: flattenIdx });
+      }
+      if (switchIsString && strEqFuncIdx !== undefined) {
+        // String comparison: call equals function
+        fctx.body.push({ op: "call", funcIdx: strEqFuncIdx });
+      } else {
+        fctx.body.push({ op: eqOp });
+      }
       fctx.body.push({ op: "local.set", index: matchedLocalIdx });
 
       fctx.body = outerBody;

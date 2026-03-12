@@ -1942,8 +1942,20 @@ function compileBinaryExpression(
     return compileNumericBinaryOp(ctx, fctx, op, expr);
   }
 
-  // Externref equality: unbox/coerce to f64 and compare numerically
+  // Externref equality: when either operand is a known string type, use
+  // string content comparison instead of numeric unboxing (#225).
   if ((leftType.kind === "externref" || rightType.kind === "externref") && (isEqOp || isNeqOp)) {
+    const eitherIsString = isStringType(leftTsType) || isStringType(rightTsType);
+    if (eitherIsString) {
+      addStringImports(ctx);
+      const equalsIdx = ctx.funcMap.get("equals");
+      if (equalsIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: equalsIdx });
+        if (isNeqOp) fctx.body.push({ op: "i32.eqz" });
+        return { kind: "i32" };
+      }
+    }
+
     addUnionImports(ctx);
     const unboxIdx = ctx.funcMap.get("__unbox_number")!;
     // Coerce/unbox right side (top of stack) to f64
