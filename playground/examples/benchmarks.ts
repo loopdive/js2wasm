@@ -24,7 +24,7 @@ export function bench_loop(): number {
 }
 
 export function bench_dom(): number {
-  const host = document.getElementById("preview-panel")!;
+  const host = document.body;
   const box = document.createElement("div");
   box.style.cssText = "display:none";
   host.appendChild(box);
@@ -52,7 +52,7 @@ export function bench_array(): number {
 }
 
 export function bench_style(): number {
-  const host = document.getElementById("preview-panel")!;
+  const host = document.body;
   const box = document.createElement("div");
   box.style.cssText = "width:1px;height:1px;position:fixed;top:-9px";
   host.appendChild(box);
@@ -95,7 +95,7 @@ function addBenchCard(wrap: HTMLElement, title: string, desc: string, fn: () => 
 }
 
 export function main(): void {
-  const host = document.getElementById("preview-panel")!;
+  const host = document.body;
   host.innerHTML = "";
   host.style.cssText =
     "margin:0;background:#111;color:#ddd;" +
