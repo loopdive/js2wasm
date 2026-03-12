@@ -864,16 +864,56 @@ function compileForStatement(
   // Compile initializer (outside the loop)
   if (stmt.initializer) {
     if (ts.isVariableDeclarationList(stmt.initializer)) {
+      const isVar = !(stmt.initializer.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const));
       for (const decl of stmt.initializer.declarations) {
-        if (ts.isIdentifier(decl.name)) {
-          const name = decl.name.text;
-          const varType = ctx.checker.getTypeAtLocation(decl);
-          const wasmType = resolveWasmType(ctx, varType);
-          const localIdx = allocLocal(fctx, name, wasmType);
-          if (decl.initializer) {
-            compileExpression(ctx, fctx, decl.initializer, wasmType);
-            fctx.body.push({ op: "local.set", index: localIdx });
+        if (ts.isObjectBindingPattern(decl.name)) {
+          compileObjectDestructuring(ctx, fctx, decl);
+          continue;
+        }
+        if (ts.isArrayBindingPattern(decl.name)) {
+          compileArrayDestructuring(ctx, fctx, decl);
+          continue;
+        }
+        if (!ts.isIdentifier(decl.name)) continue;
+        const name = decl.name.text;
+
+        // Class expression: skip, already handled as class declaration
+        if (decl.initializer && ts.isClassExpression(decl.initializer)) {
+          continue;
+        }
+
+        // Arrow/function expression: compile first to get closure struct ref type
+        if (
+          decl.initializer &&
+          (ts.isArrowFunction(decl.initializer) ||
+            ts.isFunctionExpression(decl.initializer))
+        ) {
+          const actualType = compileExpression(ctx, fctx, decl.initializer);
+          const closureType = actualType ?? { kind: "externref" as const };
+          // Reuse existing local for var re-declaration
+          const existingIdx = fctx.localMap.get(name);
+          const localIdx = (isVar && existingIdx !== undefined && existingIdx >= fctx.params.length)
+            ? existingIdx
+            : allocLocal(fctx, name, closureType);
+          // Update local type if hoisted slot has a less precise type
+          if (isVar && existingIdx !== undefined && existingIdx >= fctx.params.length) {
+            const localSlot = fctx.locals[localIdx - fctx.params.length];
+            if (localSlot) localSlot.type = closureType;
           }
+          fctx.body.push({ op: "local.set", index: localIdx });
+          continue;
+        }
+
+        const varType = ctx.checker.getTypeAtLocation(decl);
+        const wasmType = resolveWasmType(ctx, varType);
+        // Reuse existing local for var re-declaration
+        const existingIdx = fctx.localMap.get(name);
+        const localIdx = (isVar && existingIdx !== undefined && existingIdx >= fctx.params.length)
+          ? existingIdx
+          : allocLocal(fctx, name, wasmType);
+        if (decl.initializer) {
+          compileExpression(ctx, fctx, decl.initializer, wasmType);
+          fctx.body.push({ op: "local.set", index: localIdx });
         }
       }
     } else {
