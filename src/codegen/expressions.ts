@@ -3591,9 +3591,17 @@ function compileLogicalAssignment(
   expr: ts.BinaryExpression,
   op: ts.SyntaxKind,
 ): ValType | null {
+  // Dispatch to property/element access handlers
+  if (ts.isPropertyAccessExpression(expr.left)) {
+    return compileLogicalAssignmentPropertyAccess(ctx, fctx, expr, expr.left, op);
+  }
+  if (ts.isElementAccessExpression(expr.left)) {
+    return compileLogicalAssignmentElementAccess(ctx, fctx, expr, expr.left, op);
+  }
+
   if (!ts.isIdentifier(expr.left)) {
     ctx.errors.push({
-      message: "Logical assignment only supported for simple identifiers",
+      message: "Logical assignment only supported for identifiers, property access, and element access",
       line: getLine(expr),
       column: getCol(expr),
     });
@@ -3653,9 +3661,31 @@ function compileLogicalAssignment(
     }
   };
 
+  return emitLogicalAssignmentCore(ctx, fctx, expr, op, varType, emitGet, emitSet);
+}
+
+/**
+ * Core logic for all logical assignment operators.
+ * Shared by identifier, property access, and element access targets.
+ */
+function emitLogicalAssignmentCore(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.BinaryExpression,
+  op: ts.SyntaxKind,
+  varType: ValType,
+  emitGet: () => void,
+  emitSet: () => void,
+): ValType | null {
   if (op === ts.SyntaxKind.QuestionQuestionEqualsToken) {
     // a ??= b  →  if (a is null) { a = b }; result = a
-    // This operates on externref (nullable) values
+    // For non-nullable types (f64, i32), the value is never null/undefined,
+    // so ??= is a no-op — just return the current value.
+    if (varType.kind === "f64" || varType.kind === "i32") {
+      emitGet();
+      return varType;
+    }
+    // This operates on externref/ref_null (nullable) values
     emitGet();
     fctx.body.push({ op: "ref.is_null" });
 
@@ -3732,6 +3762,245 @@ function compileLogicalAssignment(
   }
 
   return varType;
+}
+
+/**
+ * Logical assignment on property access target: obj.prop ??= value
+ * Compiles the object once, stores in a temp local, then uses struct.get/struct.set.
+ */
+function compileLogicalAssignmentPropertyAccess(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.BinaryExpression,
+  target: ts.PropertyAccessExpression,
+  op: ts.SyntaxKind,
+): ValType | null {
+  const objType = ctx.checker.getTypeAtLocation(target.expression);
+  const propName = ts.isPrivateIdentifier(target.name) ? target.name.text.slice(1) : target.name.text;
+
+  // Resolve the struct type for the object
+  let typeName = resolveStructName(ctx, objType);
+  if (!typeName && ts.isIdentifier(target.expression)) {
+    typeName = ctx.widenedVarStructMap.get(target.expression.text);
+  }
+
+  // Handle static property access: ClassName.staticProp ??= value
+  if (ts.isIdentifier(target.expression) && ctx.classSet.has(target.expression.text)) {
+    const clsName = target.expression.text;
+    const fullName = `${clsName}_${propName}`;
+    const globalIdx = ctx.staticProps.get(fullName);
+    if (globalIdx !== undefined) {
+      const globalDef = ctx.mod.globals[localGlobalIdx(ctx, globalIdx)];
+      const fieldType = globalDef?.type ?? { kind: "f64" } as ValType;
+
+      const emitGet = () => {
+        fctx.body.push({ op: "global.get", index: globalIdx });
+      };
+      const emitSet = () => {
+        fctx.body.push({ op: "global.set", index: globalIdx });
+        fctx.body.push({ op: "global.get", index: globalIdx });
+      };
+
+      return emitLogicalAssignmentCore(ctx, fctx, expr, op, fieldType, emitGet, emitSet);
+    }
+  }
+
+  if (!typeName) {
+    ctx.errors.push({
+      message: `Logical assignment: cannot resolve struct for property '${propName}'`,
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+
+  const structTypeIdx = ctx.structMap.get(typeName);
+  const fields = ctx.structFields.get(typeName);
+  if (structTypeIdx === undefined || !fields) {
+    ctx.errors.push({
+      message: `Logical assignment: no struct definition for '${typeName}'`,
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+
+  const fieldIdx = fields.findIndex((f) => f.name === propName);
+  if (fieldIdx === -1) {
+    ctx.errors.push({
+      message: `Logical assignment: field '${propName}' not found on '${typeName}'`,
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+
+  const fieldType = fields[fieldIdx]!.type;
+
+  // Compile the object expression once and store in a temp local
+  const objResult = compileExpression(ctx, fctx, target.expression);
+  if (!objResult) return null;
+  const objLocal = allocLocal(fctx, `__logassign_obj_${fctx.locals.length}`, objResult);
+  fctx.body.push({ op: "local.set", index: objLocal });
+
+  const emitGet = () => {
+    fctx.body.push({ op: "local.get", index: objLocal });
+    fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+  };
+  const emitSet = () => {
+    // Stack has the new value; store it in a temp, then do struct.set, then push value back
+    const tmpLocal = allocLocal(fctx, `__logassign_val_${fctx.locals.length}`, fieldType);
+    fctx.body.push({ op: "local.set", index: tmpLocal });
+    fctx.body.push({ op: "local.get", index: objLocal });
+    fctx.body.push({ op: "local.get", index: tmpLocal });
+    fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx });
+    fctx.body.push({ op: "local.get", index: tmpLocal });
+  };
+
+  return emitLogicalAssignmentCore(ctx, fctx, expr, op, fieldType, emitGet, emitSet);
+}
+
+/**
+ * Logical assignment on element access target: arr[i] ??= value
+ * Compiles the array and index once, stores in temp locals, then uses array.get/array.set.
+ */
+function compileLogicalAssignmentElementAccess(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.BinaryExpression,
+  target: ts.ElementAccessExpression,
+  op: ts.SyntaxKind,
+): ValType | null {
+  // Compile the array/object expression
+  const arrType = compileExpression(ctx, fctx, target.expression);
+  if (!arrType) return null;
+
+  if (arrType.kind !== "ref" && arrType.kind !== "ref_null") {
+    ctx.errors.push({
+      message: "Logical assignment on non-array element access",
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+
+  const typeIdx = (arrType as { typeIdx: number }).typeIdx;
+  const typeDef = ctx.mod.types[typeIdx];
+
+  // Handle struct with string-literal index: obj["prop"] ??= value
+  if (typeDef?.kind === "struct" && ts.isStringLiteral(target.argumentExpression)) {
+    const propName = target.argumentExpression.text;
+    const fieldIdx = typeDef.fields.findIndex((f: { name: string }) => f.name === propName);
+    if (fieldIdx === -1) {
+      ctx.errors.push({
+        message: `Logical assignment: field '${propName}' not found`,
+        line: getLine(expr),
+        column: getCol(expr),
+      });
+      return null;
+    }
+
+    const fieldType = typeDef.fields[fieldIdx]!.type;
+    const objLocal = allocLocal(fctx, `__logassign_obj_${fctx.locals.length}`, arrType);
+    fctx.body.push({ op: "local.set", index: objLocal });
+
+    const emitGet = () => {
+      fctx.body.push({ op: "local.get", index: objLocal });
+      fctx.body.push({ op: "struct.get", typeIdx, fieldIdx });
+    };
+    const emitSet = () => {
+      const tmpLocal = allocLocal(fctx, `__logassign_val_${fctx.locals.length}`, fieldType);
+      fctx.body.push({ op: "local.set", index: tmpLocal });
+      fctx.body.push({ op: "local.get", index: objLocal });
+      fctx.body.push({ op: "local.get", index: tmpLocal });
+      fctx.body.push({ op: "struct.set", typeIdx, fieldIdx });
+      fctx.body.push({ op: "local.get", index: tmpLocal });
+    };
+
+    return emitLogicalAssignmentCore(ctx, fctx, expr, op, fieldType, emitGet, emitSet);
+  }
+
+  // Handle vec struct (array wrapped in {length, data})
+  const isVecStruct = typeDef?.kind === "struct" &&
+    typeDef.fields.length === 2 &&
+    typeDef.fields[0]?.name === "length" &&
+    typeDef.fields[1]?.name === "data";
+
+  if (isVecStruct) {
+    const arrTypeIdx = getArrTypeIdxFromVec(ctx, typeIdx);
+    const arrDef = ctx.mod.types[arrTypeIdx];
+    if (!arrDef || arrDef.kind !== "array") {
+      ctx.errors.push({ message: "Logical assignment: vec data is not array", line: getLine(expr), column: getCol(expr) });
+      return null;
+    }
+
+    const elemType = arrDef.element;
+    const vecLocal = allocLocal(fctx, `__logassign_vec_${fctx.locals.length}`, arrType);
+    fctx.body.push({ op: "local.set", index: vecLocal });
+
+    // Compile the index expression
+    const idxResult = compileExpression(ctx, fctx, target.argumentExpression, { kind: "f64" });
+    if (!idxResult) return null;
+    fctx.body.push({ op: "i32.trunc_f64_s" });
+    const idxLocal = allocLocal(fctx, `__logassign_idx_${fctx.locals.length}`, { kind: "i32" });
+    fctx.body.push({ op: "local.set", index: idxLocal });
+
+    const emitGet = () => {
+      fctx.body.push({ op: "local.get", index: vecLocal });
+      fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 }); // get data array
+      fctx.body.push({ op: "local.get", index: idxLocal });
+      fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
+    };
+    const emitSet = () => {
+      const tmpLocal = allocLocal(fctx, `__logassign_val_${fctx.locals.length}`, elemType);
+      fctx.body.push({ op: "local.set", index: tmpLocal });
+      fctx.body.push({ op: "local.get", index: vecLocal });
+      fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 }); // get data array
+      fctx.body.push({ op: "local.get", index: idxLocal });
+      fctx.body.push({ op: "local.get", index: tmpLocal });
+      fctx.body.push({ op: "array.set", typeIdx: arrTypeIdx });
+      fctx.body.push({ op: "local.get", index: tmpLocal });
+    };
+
+    return emitLogicalAssignmentCore(ctx, fctx, expr, op, elemType, emitGet, emitSet);
+  }
+
+  // Handle plain array type
+  if (typeDef?.kind === "array") {
+    const elemType = typeDef.element;
+    const arrLocal = allocLocal(fctx, `__logassign_arr_${fctx.locals.length}`, arrType);
+    fctx.body.push({ op: "local.set", index: arrLocal });
+
+    const idxResult = compileExpression(ctx, fctx, target.argumentExpression, { kind: "f64" });
+    if (!idxResult) return null;
+    fctx.body.push({ op: "i32.trunc_f64_s" });
+    const idxLocal = allocLocal(fctx, `__logassign_idx_${fctx.locals.length}`, { kind: "i32" });
+    fctx.body.push({ op: "local.set", index: idxLocal });
+
+    const emitGet = () => {
+      fctx.body.push({ op: "local.get", index: arrLocal });
+      fctx.body.push({ op: "local.get", index: idxLocal });
+      fctx.body.push({ op: "array.get", typeIdx });
+    };
+    const emitSet = () => {
+      const tmpLocal = allocLocal(fctx, `__logassign_val_${fctx.locals.length}`, elemType);
+      fctx.body.push({ op: "local.set", index: tmpLocal });
+      fctx.body.push({ op: "local.get", index: arrLocal });
+      fctx.body.push({ op: "local.get", index: idxLocal });
+      fctx.body.push({ op: "local.get", index: tmpLocal });
+      fctx.body.push({ op: "array.set", typeIdx });
+      fctx.body.push({ op: "local.get", index: tmpLocal });
+    };
+
+    return emitLogicalAssignmentCore(ctx, fctx, expr, op, elemType, emitGet, emitSet);
+  }
+
+  ctx.errors.push({
+    message: "Logical assignment: unsupported element access target",
+    line: getLine(expr),
+    column: getCol(expr),
+  });
+  return null;
 }
 
 function isCompoundAssignment(op: ts.SyntaxKind): boolean {

@@ -4461,4 +4461,105 @@ describe("in operator edge cases", () => {
     `);
     expect(exports.test()).toBe(1);
   });
+
+  // --- Issue #286: Logical assignment on property and element access ---
+  it("nullish assignment on simple variable (??=)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        let x: number = 0;
+        x ??= 42;
+        return x;
+      }
+    `);
+    expect(exports.test()).toBe(0);
+  });
+
+  it("logical OR assignment on simple variable (||=)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        let x: number = 0;
+        x ||= 42;
+        return x;
+      }
+    `);
+    expect(exports.test()).toBe(42);
+  });
+
+  it("logical AND assignment on simple variable (&&=)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        let x: number = 5;
+        x &&= 42;
+        return x;
+      }
+    `);
+    expect(exports.test()).toBe(42);
+  });
+
+  it("logical AND assignment short-circuits on falsy (&&=)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        let x: number = 0;
+        x &&= 42;
+        return x;
+      }
+    `);
+    expect(exports.test()).toBe(0);
+  });
+
+  it("logical OR assignment on property access (||=)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        const obj = { x: 0 };
+        obj.x ||= 42;
+        return obj.x;
+      }
+    `);
+    expect(exports.test()).toBe(42);
+  });
+
+  it("logical AND assignment on property access (&&=)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        const obj = { x: 5 };
+        obj.x &&= 42;
+        return obj.x;
+      }
+    `);
+    expect(exports.test()).toBe(42);
+  });
+
+  it("logical AND assignment on property access short-circuits (&&=)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        const obj = { x: 0 };
+        obj.x &&= 42;
+        return obj.x;
+      }
+    `);
+    expect(exports.test()).toBe(0);
+  });
+
+  it("logical OR assignment on element access with string key (||=)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        const obj = { x: 0 };
+        obj["x"] ||= 99;
+        return obj.x;
+      }
+    `);
+    expect(exports.test()).toBe(99);
+  });
+
+  it("logical OR assignment on array element access (||=)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        const arr: number[] = [0, 1, 2];
+        arr[0] ||= 99;
+        arr[1] ||= 99;
+        return arr[0] * 100 + arr[1];
+      }
+    `);
+    expect(exports.test()).toBe(9901);
+  });
 });
