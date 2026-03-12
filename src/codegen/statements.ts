@@ -17,6 +17,7 @@ import {
   ensureExnTag,
   ensureI32Condition,
   ensureNativeStringHelpers,
+  ensureStructForType,
   getArrTypeIdxFromVec,
   getOrRegisterVecType,
   getSourcePos,
@@ -489,13 +490,24 @@ function compileObjectDestructuring(
   // Determine struct type from the initializer's type
   const initType = ctx.checker.getTypeAtLocation(decl.initializer);
   const symName = initType.symbol?.name;
-  const typeName =
+  let typeName =
     symName &&
     symName !== "__type" &&
     symName !== "__object" &&
     ctx.structMap.has(symName)
       ? symName
       : (ctx.anonTypeMap.get(initType) ?? symName);
+
+  // Auto-register anonymous object types (same as resolveWasmType / expressions.ts logic)
+  if (
+    typeName &&
+    (typeName === "__type" || typeName === "__object") &&
+    !ctx.anonTypeMap.has(initType) &&
+    initType.getProperties().length > 0
+  ) {
+    ensureStructForType(ctx, initType);
+    typeName = ctx.anonTypeMap.get(initType) ?? typeName;
+  }
 
   if (!typeName) {
     fctx.body.length = bodyLenBefore; // rollback — value would leak on stack
@@ -521,11 +533,20 @@ function compileObjectDestructuring(
     return;
   }
 
+  // If the compiled expression produced externref but we need a struct ref,
+  // cast: externref → anyref → ref $struct
+  let effectiveResultType = resultType;
+  if (resultType.kind === "externref") {
+    fctx.body.push({ op: "any.convert_extern" } as unknown as Instr);
+    fctx.body.push({ op: "ref.cast", typeIdx: structTypeIdx } as Instr);
+    effectiveResultType = { kind: "ref", typeIdx: structTypeIdx };
+  }
+
   // Save the struct ref into a temp local so we can access fields multiple times
   const tmpLocal = allocLocal(
     fctx,
     `__destruct_${fctx.locals.length}`,
-    resultType,
+    effectiveResultType,
   );
   fctx.body.push({ op: "local.set", index: tmpLocal });
 

@@ -2954,6 +2954,38 @@ describe("Modulus with special values (#216)", () => {
     );
   });
 
+  // === Tests from #278: destructuring non-struct types ===
+
+  it("object destructuring from function return value", async () => {
+    await assertEquivalent(
+      `
+      function getPoint(): { x: number; y: number } {
+        return { x: 10, y: 20 };
+      }
+      export function test(): number {
+        const { x, y } = getPoint();
+        return x + y;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("object destructuring from nested function return", async () => {
+    await assertEquivalent(
+      `
+      function makeObj(): { a: number; b: number; c: number } {
+        return { a: 1, b: 2, c: 3 };
+      }
+      export function test(): number {
+        const { a, b, c } = makeObj();
+        return a * 100 + b * 10 + c;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
   it("array destructuring var hoisting", async () => {
     await assertEquivalent(
       `

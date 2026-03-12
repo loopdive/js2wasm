@@ -2977,8 +2977,17 @@ function compileDestructuringAssignment(
     return null;
   }
 
+  // If the compiled expression produced externref but we need a struct ref,
+  // cast: externref → anyref → ref $struct
+  let effectiveResultType = resultType;
+  if (resultType.kind === "externref") {
+    fctx.body.push({ op: "any.convert_extern" } as unknown as Instr);
+    fctx.body.push({ op: "ref.cast", typeIdx: structTypeIdx } as Instr);
+    effectiveResultType = { kind: "ref", typeIdx: structTypeIdx };
+  }
+
   // Save the struct ref in a temp local
-  const tmpLocal = allocLocal(fctx, `__destruct_assign_${fctx.locals.length}`, resultType);
+  const tmpLocal = allocLocal(fctx, `__destruct_assign_${fctx.locals.length}`, effectiveResultType);
   fctx.body.push({ op: "local.set", index: tmpLocal });
 
   // For each property in the destructuring pattern, set the existing local
