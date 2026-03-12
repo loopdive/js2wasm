@@ -2351,30 +2351,23 @@ function emitModulo(fctx: FunctionContext): void {
     { op: "f64.copysign" } as unknown as Instr,
   ];
 
-  // Check: if |b| == Infinity and a is finite, result is a
-  // (f64.abs(b) == Infinity) && (f64.abs(a) != Infinity) && (a == a) [not NaN]
+  // Check: if |b| == Infinity and a is finite, result is a; else standard formula
   fctx.body.push({ op: "local.get", index: tmpB });
   fctx.body.push({ op: "f64.abs" });
   fctx.body.push({ op: "f64.const", value: Infinity });
   fctx.body.push({ op: "f64.eq" });
-  // a is finite: |a| != Infinity AND a is not NaN (a == a)
   fctx.body.push({ op: "local.get", index: tmpA });
   fctx.body.push({ op: "f64.abs" });
   fctx.body.push({ op: "f64.const", value: Infinity });
   fctx.body.push({ op: "f64.ne" });
   fctx.body.push({ op: "i32.and" });
-  fctx.body.push({ op: "local.get", index: tmpA });
-  fctx.body.push({ op: "local.get", index: tmpA });
-  fctx.body.push({ op: "local.get", index: tmpB });
-  fctx.body.push({ op: "f64.div" });
-  fctx.body.push({ op: "f64.trunc" }); // JS % uses truncation toward zero, not floor
-  fctx.body.push({ op: "local.get", index: tmpB });
-  fctx.body.push({ op: "f64.mul" });
-  fctx.body.push({ op: "f64.sub" });
-  // Preserve negative zero: copysign the result with the dividend sign
-  // e.g. -1 % -1 = -0 (not +0), per JS spec the sign follows the dividend
-  fctx.body.push({ op: "local.get", index: tmpA });
-  fctx.body.push({ op: "f64.copysign" as unknown as Instr["op"] } as Instr);
+  // Use if/then/else to select between Infinity shortcut and standard formula
+  fctx.body.push({
+    op: "if",
+    blockType: { kind: "val", type: { kind: "f64" } },
+    then: thenInstrs,
+    else: elseInstrs,
+  } as unknown as Instr);
 }
 
 function compileBooleanBinaryOp(
@@ -4419,10 +4412,14 @@ function compilePostfixUnary(
   fctx: FunctionContext,
   expr: ts.PostfixUnaryExpression,
 ): ValType | null {
+  const isIncrement = expr.operator === ts.SyntaxKind.PlusPlusToken;
+  const arithOp = isIncrement ? "f64.add" : "f64.sub";
+  const arithOpI32 = isIncrement ? "i32.add" : "i32.sub";
+
   if (!ts.isIdentifier(expr.operand)) {
     // obj.prop++ or obj[idx]++ — delegate to member increment helper
-    const arithOp = expr.operator === ts.SyntaxKind.PlusPlusToken ? "add" : "sub";
-    return compileMemberIncDec(ctx, fctx, expr.operand, arithOp, "postfix");
+    const memberOp = isIncrement ? "add" : "sub";
+    return compileMemberIncDec(ctx, fctx, expr.operand, memberOp, "postfix");
   }
 
   if (ts.isIdentifier(expr.operand)) {
