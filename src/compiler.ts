@@ -380,6 +380,12 @@ export function compileSource(
     2376, // "A 'super' call must be the first statement in the constructor" — valid JS pattern
     17009, // "'super' must be called before accessing 'this' in derived class constructor"
     17011, // "'super' must be called before accessing a property of 'super' in derived class constructor"
+    2540, // "Cannot assign to 'X' because it is a read-only property" — private fields are writable in JS
+    2803, // "Cannot assign to private method 'X'. Private methods are not writable" — valid JS pattern
+    2806, // "Private accessor was defined without a getter" — valid JS pattern
+    18030, // "An optional chain cannot contain private identifiers" — valid JS pattern
+    2729, // "Property 'X' is used before its initialization" — valid JS pattern
+    18014, // "The property '#x' cannot be accessed on type 'X' within this class because it is shadowed" — valid JS
   ]);
 
   // Collect TS diagnostics as errors (or warnings for handled cases)
