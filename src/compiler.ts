@@ -351,6 +351,7 @@ export function compileSource(
     2367, // "This comparison appears to be unintentional" (always truthy/falsy)
     2554, // "Expected N arguments, but got M"
     2683, // "'this' implicitly has type 'any'"
+    2695, // "Left side of comma operator is unused and has no side effects"
     2769, // "No overload matches this call"
     18049, // "'X' is declared but its value is never read" (unused vars)
     2358, // "The left-hand side of an 'instanceof' expression must be..."
