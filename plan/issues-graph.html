@@ -18,19 +18,20 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 #info .meta { color: #8b949e; margin-bottom: 4px; }
 #info .deps { margin-top: 6px; }
 #info .dep-link { color: #58a6ff; cursor: pointer; text-decoration: underline; }
-#legend { position: fixed; bottom: 12px; left: 12px; z-index: 10; font-size: 11px; display: flex; gap: 12px; background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 8px 12px; }
-#legend span { display: flex; align-items: center; gap: 4px; }
+#legend { position: fixed; bottom: 12px; left: 12px; z-index: 10; font-size: 11px; display: flex; gap: 12px; background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 8px 12px; flex-wrap: wrap; max-width: 80vw; }
+#legend span { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
 #legend .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 #stats { position: fixed; bottom: 12px; right: 12px; z-index: 10; font-size: 11px; color: #8b949e; background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 8px 12px; }
 svg { width: 100vw; height: 100vh; }
 .link { stroke-opacity: 0.4; fill: none; }
 .link.highlighted { stroke-opacity: 1; stroke-width: 2.5; }
 .node text { font-size: 10px; fill: #c9d1d9; pointer-events: none; }
-.node circle { stroke-width: 1.5; cursor: pointer; transition: r 0.15s; }
+.node circle { stroke-width: 1.5; cursor: pointer; }
 .node circle:hover { filter: brightness(1.3); }
 .node.dimmed circle { opacity: 0.15; }
 .node.dimmed text { opacity: 0.15; }
 .link.dimmed { stroke-opacity: 0.05; }
+.cluster-label { font-size: 11px; fill-opacity: 0.7; pointer-events: none; }
 </style>
 </head>
 <body>
@@ -57,24 +58,41 @@ svg { width: 100vw; height: 100vh; }
   <span><span class="dot" style="width:8px;height:8px"></span> Medium</span>
   <span><span class="dot" style="width:6px;height:6px"></span> Low</span>
   <span>|</span>
-  <span><span class="dot" style="background:rgba(255,255,0,0.5)"></span> Ready</span>
-  <span><span class="dot" style="background:rgba(255,0,0,0.1);border:1px solid rgba(255,0,0,0.3)"></span> Blocked</span>
-  <span><span class="dot" style="background:rgba(0,255,0,0.1)"></span> Done</span>
+  <span>CE:</span>
+  <span><span class="dot" style="background:hsla(60,80%,50%,0.7)"></span> Few</span>
+  <span><span class="dot" style="background:hsla(30,80%,50%,0.7)"></span> Some</span>
+  <span><span class="dot" style="background:hsla(0,80%,50%,0.7)"></span> Many</span>
+  <span><span class="dot" style="background:rgba(110,118,129,0.3)"></span> N/A</span>
+  <span>|</span>
+  <span style="border-bottom:1px dashed rgba(255,0,0,0.4);padding-bottom:1px">Blocked</span>
 </div>
 <div id="stats"></div>
 <svg></svg>
 <script>
-const COLORS = {
-  status: {
-    ready:    'rgba(255,255,0,0.5)',
-    blocked:  'rgba(255,0,0,0.1)',
-    done:     'rgba(0,255,0,0.1)',
-    backlog:  'rgba(110,118,129,0.2)',
-    'wont-fix': 'rgba(72,79,88,0.2)'
-  }
+const RADIUS = { critical: 40, high: 30, medium: 20, low: 10 };
+
+const CLUSTER_COLORS = {
+  'Diagnostics': '#58a6ff',
+  'Dead code / Scanning': '#bc8cff',
+  'Type coercion': '#f0883e',
+  'Class / New': '#3fb950',
+  'Property / Element': '#f778ba',
+  'Assignment / Destructuring': '#79c0ff',
+  'Generators / Yield': '#d2a8ff',
+  'Loops / Iteration': '#ffd33d',
+  'Scope / Identifiers': '#ff7b72',
+  'Wasm validation': '#7ee787',
+  'Test infrastructure': '#8b949e',
+  'Standalone': '#6e7681',
+  'Unclustered': '#484f58',
 };
 
-const RADIUS = { critical: 40, high: 30, medium: 20, low: 10 };
+function ceColor(d) {
+  if (!d.compiler_errors) return 'rgba(110,118,129,0.3)';
+  const t = Math.min(1, Math.log(d.compiler_errors + 1) / Math.log(1500));
+  const h = 60 * (1 - t);
+  return `hsla(${h}, 80%, 50%, 0.7)`;
+}
 
 async function init() {
   let data;
@@ -96,8 +114,6 @@ async function init() {
 
   const width = window.innerWidth, height = window.innerHeight;
   const svg = d3.select('svg').attr('viewBox', [0, 0, width, height]);
-
-  // Zoom
   const g = svg.append('g');
   svg.call(d3.zoom().scaleExtent([0.2, 5]).on('zoom', e => g.attr('transform', e.transform)));
 
@@ -107,47 +123,169 @@ async function init() {
     .attr('markerWidth', 6).attr('markerHeight', 6).attr('orient', 'auto')
     .append('path').attr('d', 'M0,-5L10,0L0,5').attr('fill', '#8b949e');
 
-  // Priority → radial distance: critical=0 (center), high=80, medium=160, low=280
-  const PRIORITY_RADIUS = { critical: 0, high: 80, medium: 160, low: 280 };
+  // ── Compute dependency depth (BFS from roots) ──
+  const dependents = new Map();
+  nodes.forEach(n => dependents.set(n.id, []));
+  links.forEach(l => {
+    const s = typeof l.source === 'object' ? l.source.id : l.source;
+    const t = typeof l.target === 'object' ? l.target.id : l.target;
+    if (dependents.has(s)) dependents.get(s).push(t);
+  });
 
+  const depth = new Map();
+  const queue = [];
+  nodes.forEach(n => {
+    const deps = (n.depends_on || []).filter(id => nodeMap.has(id));
+    if (deps.length === 0) { depth.set(n.id, 0); queue.push(n.id); }
+  });
+  let qi = 0;
+  while (qi < queue.length) {
+    const id = queue[qi++];
+    const d = depth.get(id);
+    for (const child of (dependents.get(id) || [])) {
+      const nd = d + 1;
+      if (!depth.has(child) || depth.get(child) < nd) {
+        depth.set(child, nd);
+        queue.push(child);
+      }
+    }
+  }
+  nodes.forEach(n => { if (!depth.has(n.id)) depth.set(n.id, 0); });
+  nodes.forEach(n => { n.depth = depth.get(n.id); });
+
+  const maxDepth = d3.max(nodes, n => n.depth) || 0;
+
+  // Group by depth, then sort by cluster then priority then CE
+  const PRIO_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
+  const clusterNames = [...new Set(nodes.map(n => n.cluster || 'Unclustered'))];
+  const columns = [];
+  for (let i = 0; i <= maxDepth; i++) {
+    const col = nodes.filter(n => n.depth === i);
+    col.sort((a, b) => {
+      const ca = clusterNames.indexOf(a.cluster || 'Unclustered');
+      const cb = clusterNames.indexOf(b.cluster || 'Unclustered');
+      if (ca !== cb) return ca - cb;
+      const pa = PRIO_ORDER[a.priority] || 3, pb = PRIO_ORDER[b.priority] || 3;
+      if (pa !== pb) return pa - pb;
+      return (b.compiler_errors || 0) - (a.compiler_errors || 0);
+    });
+    columns.push(col);
+  }
+
+  // ── Layout: fixed x per column, stack y with cluster group labels ──
+  const margin = { top: 60, bottom: 60, left: 120, right: 80 };
+  const colSpacing = 250;
+  const availHeight = height - margin.top - margin.bottom;
+
+  // Initial y positions: spread evenly, with extra gap between clusters
+  const clusterGap = 20;
+  const nodeGap = 6;
+  columns.forEach((col, ci) => {
+    const x = margin.left + ci * colSpacing;
+    // Count cluster transitions for extra gaps
+    let clusterBreaks = 0;
+    for (let j = 1; j < col.length; j++) {
+      if ((col[j].cluster || 'Unclustered') !== (col[j-1].cluster || 'Unclustered')) clusterBreaks++;
+    }
+    const totalDiam = col.reduce((s, n) => s + RADIUS[n.priority] * 2, 0);
+    const totalNeeded = totalDiam + (col.length - 1) * nodeGap + clusterBreaks * clusterGap;
+    const startY = margin.top + Math.max(0, (availHeight - totalNeeded) / 2);
+    let curY = startY;
+    let prevCluster = null;
+    col.forEach(n => {
+      const cl = n.cluster || 'Unclustered';
+      if (prevCluster !== null && cl !== prevCluster) curY += clusterGap;
+      prevCluster = cl;
+      const r = RADIUS[n.priority];
+      n.x = x;
+      n.fx = x;
+      n.y = curY + r;
+      curY += r * 2 + nodeGap;
+    });
+  });
+
+  // Build cross-column dependency map: for each node at depth>0,
+  // find the y targets from its dependencies in earlier columns
+  const depYTargets = new Map(); // nodeId -> [y values of deps in earlier columns]
+  links.forEach(l => {
+    const sid = typeof l.source === 'object' ? l.source.id : l.source;
+    const tid = typeof l.target === 'object' ? l.target.id : l.target;
+    const s = nodeMap.get(sid), t = nodeMap.get(tid);
+    if (s && t && s.depth < t.depth) {
+      if (!depYTargets.has(tid)) depYTargets.set(tid, []);
+      depYTargets.get(tid).push(s);
+    }
+  });
+
+  // Custom force: attract nodes toward the average y of their dependencies in earlier columns
+  function crossColumnAttract(alpha) {
+    const strength = alpha * 0.6;
+    for (const [nodeId, depNodes] of depYTargets) {
+      const n = nodeMap.get(nodeId);
+      if (!n) continue;
+      const avgY = depNodes.reduce((sum, d) => sum + d.y, 0) / depNodes.length;
+      n.vy += (avgY - n.y) * strength;
+    }
+  }
+
+  // Priority y targets: critical at top, low at bottom
+  const PRIO_Y = { critical: height * 0.15, high: height * 0.35, medium: height * 0.55, low: height * 0.75 };
+
+  // Simulation: fix x, custom y attraction + collision + priority stratification
   const simulation = d3.forceSimulation(nodes)
-    .force('link', d3.forceLink(links).id(d => d.id).distance(40))
-    .force('charge', d3.forceManyBody().strength(-60))
-    .force('center', d3.forceCenter(width / 2, height / 2))
-    .force('collision', d3.forceCollide().radius(d => RADIUS[d.priority] + 2))
-    .force('radial', d3.forceRadial(
-      d => d.status === 'ready' ? PRIORITY_RADIUS[d.priority] || 200 : 400,
-      width / 2, height / 2
-    ).strength(d => d.status === 'ready' ? 0.3 : 0.05));
+    .force('crossCol', crossColumnAttract)
+    .force('collideY', d3.forceCollide().radius(d => RADIUS[d.priority] + 4).strength(0.8))
+    .force('priorityY', d3.forceY(d => PRIO_Y[d.priority] || height / 2).strength(0.03))
+    .alphaDecay(0.02);
 
-  // Radial spokes: faint lines from center to all ready nodes
-  const cx = width / 2, cy = height / 2;
-  const readyNodes = nodes.filter(n => n.status === 'ready');
-  const spokeEl = g.append('g').selectAll('line')
-    .data(readyNodes).join('line')
-    .attr('class', 'spoke')
-    .attr('stroke', 'rgba(255,255,255,0.04)')
-    .attr('stroke-width', 0.5);
+  // ── Column headers ──
+  const headerGroup = g.append('g');
+  columns.forEach((col, ci) => {
+    if (!col.length) return;
+    const x = margin.left + ci * colSpacing;
+    const label = ci === 0 ? 'Ready' : `Depth ${ci}`;
+    headerGroup.append('text')
+      .attr('class', 'cluster-label')
+      .attr('x', x).attr('y', margin.top - 20)
+      .attr('text-anchor', 'middle')
+      .attr('fill', '#8b949e')
+      .attr('font-size', '12px')
+      .attr('font-weight', '600')
+      .text(`${label} (${col.length})`);
+    // Vertical guide
+    headerGroup.append('line')
+      .attr('x1', x).attr('y1', margin.top - 10)
+      .attr('x2', x).attr('y2', height - margin.bottom)
+      .attr('stroke', 'rgba(255,255,255,0.04)').attr('stroke-width', 1);
+  });
 
-  const linkEl = g.append('g').selectAll('line')
-    .data(links).join('line')
+  // ── Cluster group labels (updated on tick) ──
+  const clusterLabels = g.append('g');
+
+  // Dependency links — cubic bezier curves
+  const linkEl = g.append('g').selectAll('path')
+    .data(links).join('path')
     .attr('class', 'link')
     .attr('stroke', l => {
-      const s = typeof l.source === 'object' ? l.source : nodeMap.get(l.source);
-      const t = typeof l.target === 'object' ? l.target : nodeMap.get(l.target);
-      if (s && t && s.status === 'done' && t.status === 'ready') return 'rgba(255,255,255,0.1)';
-      return '#30363d';
+      const t = nodeMap.get(typeof l.target === 'object' ? l.target.id : l.target);
+      return t ? ceColor(t) : '#30363d';
     })
+    .attr('stroke-width', 1.5)
     .attr('marker-end', 'url(#arrow)');
 
+  // Nodes
   const nodeEl = g.append('g').selectAll('g')
     .data(nodes).join('g')
     .attr('class', 'node')
-    .call(d3.drag().on('start', dragStart).on('drag', dragged).on('end', dragEnd));
+    .call(d3.drag()
+      .on('start', (e, d) => { if (!e.active) simulation.alphaTarget(0.3).restart(); d.fy = d.y; })
+      .on('drag', (e, d) => { d.fy = e.y; })
+      .on('end', (e, d) => { if (!e.active) simulation.alphaTarget(0); d.fy = null; })
+    );
 
   nodeEl.append('circle')
     .attr('r', d => RADIUS[d.priority])
-    .attr('fill', d => COLORS.status[d.status] || 'rgba(110,118,129,0.3)')
+    .attr('fill', d => ceColor(d))
     .attr('stroke', d => d.status === 'blocked' ? 'rgba(255,0,0,0.3)' : 'none')
     .attr('stroke-dasharray', d => d.status === 'blocked' ? '3,2' : 'none');
 
@@ -191,7 +329,9 @@ async function init() {
     const info = document.getElementById('info');
     info.style.display = 'block';
     document.getElementById('info-title').textContent = `#${d.id}: ${d.title}`;
-    document.getElementById('info-meta').innerHTML = `<b>Priority:</b> ${d.priority} | <b>Status:</b> ${d.status}`;
+    let meta = `<b>Priority:</b> ${d.priority} | <b>Status:</b> ${d.status} | <b>Cluster:</b> ${d.cluster || 'Unclustered'}`;
+    if (d.compiler_errors) meta += ` | <b>CE:</b> ${d.compiler_errors}`;
+    document.getElementById('info-meta').innerHTML = meta;
     const deps = d.depends_on || [];
     const dependers = nodes.filter(n => n.depends_on && n.depends_on.includes(d.id));
     let html = '';
@@ -248,19 +388,71 @@ async function init() {
       return (statuses.has(s.status) && priorities.has(s.priority) && statuses.has(t.status) && priorities.has(t.priority)) ? null : 'none';
     });
   }
-
   applyFilters();
 
-  simulation.on('tick', () => {
-    spokeEl.attr('x1', cx).attr('y1', cy).attr('x2', d => d.x).attr('y2', d => d.y);
-    linkEl.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
-      .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
-    nodeEl.attr('transform', d => `translate(${d.x},${d.y})`);
+  // Resolve link source/target to node objects (since we don't use forceLink)
+  links.forEach(l => {
+    if (typeof l.source !== 'object') l.source = nodeMap.get(l.source);
+    if (typeof l.target !== 'object') l.target = nodeMap.get(l.target);
   });
 
-  function dragStart(e, d) { if (!e.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; }
-  function dragged(e, d) { d.fx = e.x; d.fy = e.y; }
-  function dragEnd(e, d) { if (!e.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }
+  // Tick: update node positions and link paths
+  function bezierLink(l) {
+    const s = l.source, t = l.target;
+    if (!s || !t) return '';
+    const dx = t.x - s.x;
+    return `M${s.x},${s.y}C${s.x + dx * 0.4},${s.y},${t.x - dx * 0.4},${t.y},${t.x},${t.y}`;
+  }
+
+  simulation.on('tick', () => {
+    // Enforce fixed x and clamp y to stay below column headers
+    nodes.forEach(n => {
+      n.x = n.fx;
+      const r = RADIUS[n.priority] || 10;
+      if (n.y < margin.top + r) n.y = margin.top + r;
+    });
+    nodeEl.attr('transform', d => `translate(${d.x},${d.y})`);
+    linkEl.attr('d', bezierLink);
+
+    // Update cluster labels + bracket lines based on current y positions
+    clusterLabels.selectAll('*').remove();
+    if (columns[0]) {
+      // Group nodes by cluster
+      const groups = [];
+      let cur = null;
+      columns[0].forEach(n => {
+        const cl = n.cluster || 'Unclustered';
+        if (!cur || cur.name !== cl) {
+          cur = { name: cl, nodes: [] };
+          groups.push(cur);
+        }
+        cur.nodes.push(n);
+      });
+      groups.forEach(grp => {
+        const first = grp.nodes[0], last = grp.nodes[grp.nodes.length - 1];
+        const topY = first.y - RADIUS[first.priority];
+        const botY = last.y + RADIUS[last.priority];
+        const midY = (topY + botY) / 2;
+        const color = CLUSTER_COLORS[grp.name] || '#6e7681';
+        const bx = margin.left - 20;
+        // Bracket line
+        clusterLabels.append('line')
+          .attr('x1', bx).attr('y1', topY)
+          .attr('x2', bx).attr('y2', botY)
+          .attr('stroke', color).attr('stroke-opacity', 0.4).attr('stroke-width', 2);
+        // Label
+        clusterLabels.append('text')
+          .attr('class', 'cluster-label')
+          .attr('x', bx - 6).attr('y', midY)
+          .attr('text-anchor', 'end')
+          .attr('dominant-baseline', 'middle')
+          .attr('fill', color)
+          .attr('font-size', '9px')
+          .text(grp.name);
+      });
+    }
+  });
+
 }
 
 init();

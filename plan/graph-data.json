@@ -6,7 +6,8 @@
       "priority": "low",
       "status": "backlog",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": 74,
@@ -16,7 +17,8 @@
       "depends_on": [
         70
       ],
-      "files": []
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": 79,
@@ -24,7 +26,8 @@
       "priority": "low",
       "status": "backlog",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": 81,
@@ -32,7 +35,8 @@
       "priority": "low",
       "status": "backlog",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": 82,
@@ -40,7 +44,8 @@
       "priority": "medium",
       "status": "backlog",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": 121,
@@ -48,7 +53,8 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": 123,
@@ -56,7 +62,8 @@
       "priority": "medium",
       "status": "wont-fix",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": 124,
@@ -64,7 +71,8 @@
       "priority": "medium",
       "status": "wont-fix",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": 125,
@@ -72,7 +80,8 @@
       "priority": "medium",
       "status": "wont-fix",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": 129,
@@ -80,7 +89,8 @@
       "priority": "medium",
       "status": "wont-fix",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": 130,
@@ -88,7 +98,8 @@
       "priority": "low",
       "status": "backlog",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": 138,
@@ -96,7 +107,8 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Type coercion"
     },
     {
       "id": 139,
@@ -104,15 +116,17 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Type coercion"
     },
     {
       "id": 140,
-      "title": "Bug: object computed property names not working at runtime",
+      "title": "Object computed property names not working at runtime",
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Property / Element"
     },
     {
       "id": 141,
@@ -120,7 +134,8 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": 142,
@@ -128,7 +143,8 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Assignment / Destructuring"
     },
     {
       "id": 143,
@@ -136,7 +152,8 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": 144,
@@ -144,7 +161,8 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": 145,
@@ -152,7 +170,9 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 262,
+      "cluster": "Unclustered"
     },
     {
       "id": 146,
@@ -160,7 +180,9 @@
       "priority": "medium",
       "status": "backlog",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 269,
+      "cluster": "Scope / Identifiers"
     },
     {
       "id": 147,
@@ -168,7 +190,9 @@
       "priority": "medium",
       "status": "backlog",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 262,
+      "cluster": "Unclustered"
     },
     {
       "id": 148,
@@ -176,7 +200,9 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 262,
+      "cluster": "Unclustered"
     },
     {
       "id": 149,
@@ -186,7 +212,9 @@
       "depends_on": [
         232
       ],
-      "files": []
+      "files": [],
+      "compiler_errors": 637,
+      "cluster": "Unclustered"
     },
     {
       "id": 150,
@@ -194,7 +222,8 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": 151,
@@ -202,7 +231,8 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": 152,
@@ -210,7 +240,9 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 262,
+      "cluster": "Diagnostics"
     },
     {
       "id": 153,
@@ -220,7 +252,9 @@
       "depends_on": [
         268
       ],
-      "files": []
+      "files": [],
+      "compiler_errors": 262,
+      "cluster": "Unclustered"
     },
     {
       "id": 154,
@@ -228,7 +262,8 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": 155,
@@ -236,7 +271,8 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": 156,
@@ -244,7 +280,8 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": 157,
@@ -252,7 +289,8 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": 158,
@@ -260,7 +298,8 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": 159,
@@ -268,7 +307,9 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 14,
+      "cluster": "Unclustered"
     },
     {
       "id": 160,
@@ -276,7 +317,8 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": 161,
@@ -284,7 +326,8 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": 162,
@@ -292,7 +335,8 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": 163,
@@ -300,7 +344,9 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 2,
+      "cluster": "Unclustered"
     },
     {
       "id": 164,
@@ -308,7 +354,8 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": 165,
@@ -316,7 +363,8 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": 166,
@@ -324,7 +372,8 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": 167,
@@ -332,7 +381,8 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": 168,
@@ -340,7 +390,8 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": 169,
@@ -348,7 +399,8 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": 170,
@@ -356,7 +408,8 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": 171,
@@ -364,7 +417,8 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": 172,
@@ -374,7 +428,8 @@
       "depends_on": [
         171
       ],
-      "files": []
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": 173,
@@ -385,7 +440,9 @@
         242,
         265
       ],
-      "files": []
+      "files": [],
+      "compiler_errors": 262,
+      "cluster": "Unclustered"
     },
     {
       "id": 174,
@@ -393,7 +450,8 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": 176,
@@ -401,7 +459,8 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Unclustered"
     },
     {
       "id": 178,
@@ -409,7 +468,9 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 262,
+      "cluster": "Wasm validation"
     },
     {
       "id": 179,
@@ -417,7 +478,9 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 262,
+      "cluster": "Unclustered"
     },
     {
       "id": 182,
@@ -425,7 +488,9 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 262,
+      "cluster": "Unclustered"
     },
     {
       "id": 188,
@@ -433,7 +498,9 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 262,
+      "cluster": "Unclustered"
     },
     {
       "id": 189,
@@ -441,7 +508,9 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 262,
+      "cluster": "Unclustered"
     },
     {
       "id": 190,
@@ -449,7 +518,9 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 262,
+      "cluster": "Assignment / Destructuring"
     },
     {
       "id": 192,
@@ -457,7 +528,9 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 262,
+      "cluster": "Unclustered"
     },
     {
       "id": 194,
@@ -465,7 +538,9 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 262,
+      "cluster": "Unclustered"
     },
     {
       "id": 198,
@@ -473,7 +548,9 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 262,
+      "cluster": "Unclustered"
     },
     {
       "id": 199,
@@ -481,7 +558,9 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 262,
+      "cluster": "Unclustered"
     },
     {
       "id": 201,
@@ -489,7 +568,9 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 262,
+      "cluster": "Unclustered"
     },
     {
       "id": 202,
@@ -497,7 +578,9 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 150,
+      "cluster": "Scope / Identifiers"
     },
     {
       "id": 204,
@@ -505,7 +588,9 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 262,
+      "cluster": "Unclustered"
     },
     {
       "id": 227,
@@ -513,7 +598,8 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Type coercion"
     },
     {
       "id": 228,
@@ -521,7 +607,8 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Type coercion"
     },
     {
       "id": 229,
@@ -529,7 +616,8 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Standalone"
     },
     {
       "id": 230,
@@ -537,7 +625,8 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Property / Element"
     },
     {
       "id": 232,
@@ -545,7 +634,9 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 1465,
+      "cluster": "Class / New"
     },
     {
       "id": 234,
@@ -553,7 +644,9 @@
       "priority": "high",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 681,
+      "cluster": "Class / New"
     },
     {
       "id": 235,
@@ -561,7 +654,9 @@
       "priority": "high",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 380,
+      "cluster": "Standalone"
     },
     {
       "id": 237,
@@ -569,7 +664,9 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 170,
+      "cluster": "Type coercion"
     },
     {
       "id": 238,
@@ -577,7 +674,9 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 158,
+      "cluster": "Class / New"
     },
     {
       "id": 239,
@@ -585,7 +684,9 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 119,
+      "cluster": "Property / Element"
     },
     {
       "id": 241,
@@ -593,7 +694,9 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 140,
+      "cluster": "Generators / Yield"
     },
     {
       "id": 242,
@@ -601,7 +704,9 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 57,
+      "cluster": "Diagnostics"
     },
     {
       "id": 243,
@@ -609,7 +714,9 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 55,
+      "cluster": "Assignment / Destructuring"
     },
     {
       "id": 244,
@@ -617,7 +724,8 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Standalone"
     },
     {
       "id": 249,
@@ -625,7 +733,8 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Standalone"
     },
     {
       "id": 250,
@@ -633,7 +742,9 @@
       "priority": "high",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 113,
+      "cluster": "Loops / Iteration"
     },
     {
       "id": 254,
@@ -641,7 +752,9 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 16,
+      "cluster": "Standalone"
     },
     {
       "id": 257,
@@ -649,7 +762,9 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 262,
+      "cluster": "Unclustered"
     },
     {
       "id": 258,
@@ -657,7 +772,9 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 40,
+      "cluster": "Unclustered"
     },
     {
       "id": 259,
@@ -665,7 +782,9 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 30,
+      "cluster": "Unclustered"
     },
     {
       "id": 260,
@@ -675,7 +794,9 @@
       "depends_on": [
         234
       ],
-      "files": []
+      "files": [],
+      "compiler_errors": 50,
+      "cluster": "Class / New"
     },
     {
       "id": 261,
@@ -683,7 +804,9 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 30,
+      "cluster": "Class / New"
     },
     {
       "id": 262,
@@ -691,15 +814,9 @@
       "priority": "high",
       "status": "ready",
       "depends_on": [],
-      "files": []
-    },
-    {
-      "id": 263,
-      "title": "Property does not exist on type -- dynamic property access",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 80,
+      "cluster": "Diagnostics"
     },
     {
       "id": 264,
@@ -707,7 +824,9 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 60,
+      "cluster": "Unclustered"
     },
     {
       "id": 265,
@@ -715,7 +834,9 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 50,
+      "cluster": "Diagnostics"
     },
     {
       "id": 266,
@@ -723,7 +844,9 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 40,
+      "cluster": "Scope / Identifiers"
     },
     {
       "id": 267,
@@ -731,7 +854,9 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 30,
+      "cluster": "Generators / Yield"
     },
     {
       "id": 268,
@@ -739,7 +864,9 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 50,
+      "cluster": "Loops / Iteration"
     },
     {
       "id": 269,
@@ -747,7 +874,9 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 20,
+      "cluster": "Diagnostics"
     },
     {
       "id": 270,
@@ -755,7 +884,9 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 30,
+      "cluster": "Diagnostics"
     },
     {
       "id": 271,
@@ -763,7 +894,9 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 20,
+      "cluster": "Test infrastructure"
     },
     {
       "id": 272,
@@ -771,7 +904,9 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 30,
+      "cluster": "Unclustered"
     },
     {
       "id": 273,
@@ -779,7 +914,9 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 20,
+      "cluster": "Unclustered"
     },
     {
       "id": 274,
@@ -787,7 +924,9 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 30,
+      "cluster": "Property / Element"
     },
     {
       "id": 275,
@@ -795,7 +934,9 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 50,
+      "cluster": "Diagnostics"
     },
     {
       "id": 276,
@@ -803,15 +944,18 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 20,
+      "cluster": "Diagnostics"
     },
     {
       "id": 277,
       "title": "WebAssembly type mismatch -- local.set externref vs concrete types",
-      "priority": "medium",
-      "status": "ready",
+      "priority": "low",
+      "status": "done",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Wasm validation"
     },
     {
       "id": 278,
@@ -819,7 +963,9 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 25,
+      "cluster": "Unclustered"
     },
     {
       "id": 279,
@@ -827,23 +973,9 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": []
-    },
-    {
-      "id": 280,
-      "title": "Function expression compile errors -- name binding and hoisting",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": []
-    },
-    {
-      "id": 281,
-      "title": "Object literal property patterns -- shorthand, spread, methods",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 30,
+      "cluster": "Assignment / Destructuring"
     },
     {
       "id": 282,
@@ -851,7 +983,9 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 20,
+      "cluster": "Unclustered"
     },
     {
       "id": 283,
@@ -859,7 +993,9 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 20,
+      "cluster": "Assignment / Destructuring"
     },
     {
       "id": 284,
@@ -867,7 +1003,9 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 30,
+      "cluster": "Unclustered"
     },
     {
       "id": 285,
@@ -875,7 +1013,9 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 20,
+      "cluster": "Unclustered"
     },
     {
       "id": 286,
@@ -883,7 +1023,9 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 15,
+      "cluster": "Assignment / Destructuring"
     },
     {
       "id": 287,
@@ -894,7 +1036,9 @@
         241,
         267
       ],
-      "files": []
+      "files": [],
+      "compiler_errors": 40,
+      "cluster": "Generators / Yield"
     },
     {
       "id": 288,
@@ -902,7 +1046,9 @@
       "priority": "medium",
       "status": "blocked",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 20,
+      "cluster": "Generators / Yield"
     },
     {
       "id": 289,
@@ -910,7 +1056,9 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 10,
+      "cluster": "Loops / Iteration"
     },
     {
       "id": 290,
@@ -918,7 +1066,9 @@
       "priority": "high",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 10,
+      "cluster": "Standalone"
     },
     {
       "id": 291,
@@ -926,7 +1076,9 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 8,
+      "cluster": "Standalone"
     },
     {
       "id": 292,
@@ -934,7 +1086,8 @@
       "priority": "high",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Loops / Iteration"
     },
     {
       "id": 293,
@@ -942,7 +1095,8 @@
       "priority": "high",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Standalone"
     },
     {
       "id": 294,
@@ -950,7 +1104,8 @@
       "priority": "high",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Assignment / Destructuring"
     },
     {
       "id": 295,
@@ -958,7 +1113,8 @@
       "priority": "high",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Type coercion"
     },
     {
       "id": 296,
@@ -966,7 +1122,8 @@
       "priority": "high",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Type coercion"
     },
     {
       "id": 297,
@@ -974,7 +1131,8 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Loops / Iteration"
     },
     {
       "id": 298,
@@ -982,7 +1140,8 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Loops / Iteration"
     },
     {
       "id": 299,
@@ -990,7 +1149,8 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Type coercion"
     },
     {
       "id": 300,
@@ -1001,7 +1161,8 @@
         138,
         139
       ],
-      "files": []
+      "files": [],
+      "cluster": "Type coercion"
     },
     {
       "id": 301,
@@ -1009,7 +1170,8 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Type coercion"
     },
     {
       "id": 302,
@@ -1017,7 +1179,8 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Standalone"
     },
     {
       "id": 303,
@@ -1025,7 +1188,8 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Standalone"
     },
     {
       "id": 304,
@@ -1033,7 +1197,8 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Standalone"
     },
     {
       "id": 305,
@@ -1041,7 +1206,8 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Property / Element"
     },
     {
       "id": 306,
@@ -1049,7 +1215,9 @@
       "priority": "high",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 30,
+      "cluster": "Assignment / Destructuring"
     },
     {
       "id": 307,
@@ -1057,7 +1225,9 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 5,
+      "cluster": "Standalone"
     },
     {
       "id": 308,
@@ -1065,7 +1235,9 @@
       "priority": "high",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "compiler_errors": 5,
+      "cluster": "Type coercion"
     },
     {
       "id": 309,
@@ -1073,7 +1245,8 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Test infrastructure"
     },
     {
       "id": 310,
@@ -1081,7 +1254,8 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Test infrastructure"
     },
     {
       "id": 311,
@@ -1089,7 +1263,8 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Test infrastructure"
     },
     {
       "id": 312,
@@ -1097,7 +1272,8 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Test infrastructure"
     },
     {
       "id": 313,
@@ -1105,7 +1281,8 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Test infrastructure"
     },
     {
       "id": 314,
@@ -1113,7 +1290,8 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Test infrastructure"
     },
     {
       "id": 315,
@@ -1124,7 +1302,8 @@
         277,
         178
       ],
-      "files": []
+      "files": [],
+      "cluster": "Wasm validation"
     },
     {
       "id": 316,
@@ -1132,7 +1311,8 @@
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Standalone"
     },
     {
       "id": 317,
@@ -1140,7 +1320,8 @@
       "priority": "critical",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Dead code / Scanning"
     },
     {
       "id": 318,
@@ -1151,7 +1332,8 @@
         317,
         320
       ],
-      "files": []
+      "files": [],
+      "cluster": "Dead code / Scanning"
     },
     {
       "id": 319,
@@ -1159,7 +1341,8 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Dead code / Scanning"
     },
     {
       "id": 320,
@@ -1170,7 +1353,8 @@
         317,
         321
       ],
-      "files": []
+      "files": [],
+      "cluster": "Dead code / Scanning"
     },
     {
       "id": 321,
@@ -1178,7 +1362,8 @@
       "priority": "critical",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Dead code / Scanning"
     },
     {
       "id": 322,
@@ -1188,7 +1373,8 @@
       "depends_on": [
         321
       ],
-      "files": []
+      "files": [],
+      "cluster": "Dead code / Scanning"
     },
     {
       "id": 323,
@@ -1196,7 +1382,8 @@
       "priority": "low",
       "status": "ready",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "cluster": "Unclustered"
     }
   ],
   "links": [
@@ -1273,5 +1460,5 @@
       "target": 74
     }
   ],
-  "generated": "2026-03-12T15:29:50.703Z"
+  "generated": "2026-03-12T18:30:40.495Z"
 }

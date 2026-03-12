@@ -16,6 +16,7 @@ interface IssueNode {
   depends_on: number[];
   files: Record<string, { new?: string[]; breaking?: string[] }> | string[];
   cluster?: string;
+  compiler_errors?: number;
 }
 
 interface GraphData {
@@ -69,6 +70,25 @@ function getTitle(content: string): string {
   return line.replace(/^#\s*/, "").replace(/^(Issue\s*)?#?\d+[\s:—-]*/, "");
 }
 
+/** Extract the largest compile-error count mentioned in the issue body */
+function extractCompilerErrors(content: string): number | undefined {
+  // Match patterns like "~681 compile errors", "At least 50 compile errors", "20 CE", "300 compiler errors"
+  const patterns = [
+    /~?(\d[\d,]*)\s+compil(?:e|er)\s+errors/gi,
+    /at\s+least\s+(\d[\d,]*)\s+compil(?:e|er)\s+errors/gi,
+    /(\d[\d,]*)\s+CE\b/g,
+  ];
+  let max = 0;
+  for (const pat of patterns) {
+    let m;
+    while ((m = pat.exec(content)) !== null) {
+      const n = parseInt(m[1].replace(/,/g, ""));
+      if (n > max) max = n;
+    }
+  }
+  return max > 0 ? max : undefined;
+}
+
 function scanFolder(
   folder: string,
   status: IssueNode["status"]
@@ -82,14 +102,17 @@ function scanFolder(
     if (isNaN(num)) continue;
     const content = fs.readFileSync(path.join(dir, file), "utf-8");
     const fm = parseFrontmatter(content);
-    nodes.push({
+    const ce = extractCompilerErrors(content);
+    const node: IssueNode = {
       id: num,
       title: getTitle(content),
       priority: fm.priority || (status === "done" ? "low" : "medium"),
       status,
       depends_on: Array.isArray(fm.depends_on) ? fm.depends_on : [],
       files: normalizeFiles(fm.files),
-    });
+    };
+    if (ce) node.compiler_errors = ce;
+    nodes.push(node);
   }
   return nodes;
 }
@@ -134,6 +157,29 @@ for (const doneId of openDeps) {
       files: [],
     });
   }
+}
+
+// Cluster assignments from dependency-graph.md
+const CLUSTERS: Record<number, string> = {};
+const clusterMap: [string, number[]][] = [
+  ["Diagnostics", [152, 242, 262, 265, 269, 270, 275, 276]],
+  ["Dead code / Scanning", [321, 317, 319, 320, 318, 322]],
+  ["Type coercion", [138, 139, 227, 228, 237, 295, 296, 299, 301, 308, 300]],
+  ["Class / New", [234, 232, 238, 261, 260]],
+  ["Property / Element", [140, 239, 263, 274, 281, 230, 305]],
+  ["Assignment / Destructuring", [142, 190, 243, 279, 283, 286, 306, 294]],
+  ["Generators / Yield", [241, 267, 287, 288]],
+  ["Loops / Iteration", [250, 292, 268, 289, 297, 298]],
+  ["Scope / Identifiers", [202, 146, 266]],
+  ["Wasm validation", [277, 178, 315]],
+  ["Test infrastructure", [271, 309, 310, 311, 312, 313, 314]],
+  ["Standalone", [235, 244, 249, 254, 280, 290, 291, 293, 302, 303, 304, 307, 316, 229]],
+];
+for (const [name, ids] of clusterMap) {
+  for (const id of ids) CLUSTERS[id] = name;
+}
+for (const n of nodes) {
+  n.cluster = CLUSTERS[n.id] || "Unclustered";
 }
 
 // Build links from depends_on
