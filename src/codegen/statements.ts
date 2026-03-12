@@ -5,6 +5,7 @@ import {
   coerceType,
   collectReferencedIdentifiers,
   compileExpression,
+  valTypesMatch,
 } from "./expressions.js";
 import type { CodegenContext, FunctionContext } from "./index.js";
 import {
@@ -1070,6 +1071,13 @@ function compileForStatement(
         const localIdx = (isVar && existingIdx !== undefined && existingIdx >= fctx.params.length)
           ? existingIdx
           : allocLocal(fctx, name, wasmType);
+        // If reusing a pre-hoisted slot, update the local's type to match
+        if (isVar && existingIdx !== undefined && existingIdx >= fctx.params.length) {
+          const localSlot = fctx.locals[localIdx - fctx.params.length];
+          if (localSlot && !valTypesMatch(wasmType, localSlot.type)) {
+            localSlot.type = wasmType;
+          }
+        }
         if (decl.initializer) {
           compileExpression(ctx, fctx, decl.initializer, wasmType);
           fctx.body.push({ op: "local.set", index: localIdx });
@@ -1630,7 +1638,7 @@ function compileForOfDestructuring(
       fctx.body.push({ op: "array.get", typeIdx: innerArrTypeIdx });
 
       // Coerce from Wasm array element type to the binding's declared type
-      if (innerElemType.kind !== bindingWasmType.kind) {
+      if (!valTypesMatch(innerElemType, bindingWasmType)) {
         coerceType(ctx, fctx, innerElemType, bindingWasmType);
       }
 
@@ -1720,7 +1728,7 @@ function compileForOfAssignDestructuring(
       const targetType = getLocalType(fctx, targetLocal);
       fctx.body.push({ op: "local.get", index: elemLocal });
       fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
-      if (targetType && fieldType.kind !== targetType.kind) {
+      if (targetType && !valTypesMatch(fieldType, targetType)) {
         coerceType(ctx, fctx, fieldType, targetType);
       }
       fctx.body.push({ op: "local.set", index: targetLocal });
@@ -1755,7 +1763,7 @@ function compileForOfAssignDestructuring(
       fctx.body.push({ op: "struct.get", typeIdx: innerVecTypeIdx, fieldIdx: 1 });
       fctx.body.push({ op: "i32.const", value: i });
       fctx.body.push({ op: "array.get", typeIdx: innerArrTypeIdx });
-      if (targetType && innerElemType.kind !== targetType.kind) {
+      if (targetType && !valTypesMatch(innerElemType, targetType)) {
         coerceType(ctx, fctx, innerElemType, targetType);
       }
       fctx.body.push({ op: "local.set", index: targetLocal });
@@ -1907,7 +1915,7 @@ function compileForOfArray(
   fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
   // Coerce from Wasm array element type to the local's declared type
   const elemLocalType = getLocalType(fctx, elemLocal);
-  if (elemLocalType && elemLocalType.kind !== elemType.kind) {
+  if (elemLocalType && !valTypesMatch(elemType, elemLocalType)) {
     coerceType(ctx, fctx, elemType, elemLocalType);
   }
   fctx.body.push({ op: "local.set", index: elemLocal });

@@ -100,6 +100,17 @@ export function compileExpression(
       coerceType(ctx, fctx, result, expectedType);
       return expectedType;
     }
+    // Also coerce when kinds match but ref typeIdx differs and involves AnyValue boxing/unboxing
+    if (expectedType && (result.kind === "ref" || result.kind === "ref_null") &&
+        (expectedType.kind === "ref" || expectedType.kind === "ref_null")) {
+      const resultIdx = (result as { typeIdx: number }).typeIdx;
+      const expectedIdx = (expectedType as { typeIdx: number }).typeIdx;
+      if (resultIdx !== expectedIdx &&
+          (isAnyValue(result, ctx) || isAnyValue(expectedType, ctx))) {
+        coerceType(ctx, fctx, result, expectedType);
+        return expectedType;
+      }
+    }
     return result;
   }
 
@@ -122,7 +133,7 @@ export function compileExpression(
 }
 
 /** Check if two ValTypes are structurally equal */
-function valTypesMatch(a: ValType, b: ValType): boolean {
+export function valTypesMatch(a: ValType, b: ValType): boolean {
   if (a.kind !== b.kind) return false;
   if ((a.kind === "ref" || a.kind === "ref_null") &&
       (b.kind === "ref" || b.kind === "ref_null")) {
@@ -160,7 +171,7 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
     }
     return;
   }
-  // ref is a subtype of ref_null — no coercion needed
+  // ref is a subtype of ref_null — no coercion needed for same typeIdx
   if (from.kind === "ref" && to.kind === "ref_null") {
     // But check for any-value boxing (ref $X → ref_null $AnyValue)
     if (isAnyValue(to, ctx) && !isAnyValue(from, ctx)) {
@@ -884,10 +895,8 @@ function emitArrowParamDestructuring(
       fctx.body.push({ op: "array.get", typeIdx: innerArrTypeIdx });
 
       // Coerce element type to binding type if needed
-      if (innerElemType.kind === "f64" && bindingWasmType.kind === "i32") {
-        fctx.body.push({ op: "i32.trunc_f64_s" });
-      } else if (innerElemType.kind === "i32" && bindingWasmType.kind === "f64") {
-        fctx.body.push({ op: "f64.convert_i32_s" });
+      if (!valTypesMatch(innerElemType, bindingWasmType)) {
+        coerceType(ctx, fctx, innerElemType, bindingWasmType);
       }
 
       fctx.body.push({ op: "local.set", index: localIdx });
@@ -3128,6 +3137,14 @@ function compileAssignment(
         : fctx.locals[localIdx - fctx.params.length]?.type;
       const resultType = compileExpression(ctx, fctx, expr.right, localType);
       if (!resultType) { ctx.errors.push({ message: "Failed to compile assignment value", line: getLine(expr), column: getCol(expr) }); return null; }
+      // Safety coercion: if the expression produced a type that doesn't match
+      // the local's declared type (e.g. compileExpression didn't have expectedType
+      // or coercion was incomplete), coerce before local.tee
+      if (localType && !valTypesMatch(resultType, localType)) {
+        coerceType(ctx, fctx, resultType, localType);
+        fctx.body.push({ op: "local.tee", index: localIdx });
+        return localType;
+      }
       fctx.body.push({ op: "local.tee", index: localIdx });
       return resultType;
     }
