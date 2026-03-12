@@ -5,6 +5,7 @@
  * Usage:
  *   npx tsx scripts/run-test262.ts              # run all categories
  *   npx tsx scripts/run-test262.ts Math Array    # run matching categories only
+ *   npx tsx scripts/run-test262.ts --resume      # resume an interrupted run (same git HEAD only)
  *
  * Output:
  *   benchmarks/results/test262-results.jsonl  — one JSON line per test result
@@ -13,20 +14,48 @@
 import { TEST_CATEGORIES, findTestFiles, runTest262File, type TestResult } from "../tests/test262-runner.js";
 import { join } from "path";
 import { writeFileSync, appendFileSync, readFileSync, existsSync } from "fs";
+import { execSync } from "child_process";
 
 const RESULTS_DIR = join(import.meta.dirname ?? ".", "..", "benchmarks", "results");
 const JSONL_PATH = join(RESULTS_DIR, "test262-results.jsonl");
 const REPORT_PATH = join(RESULTS_DIR, "test262-report.json");
+const META_PATH = join(RESULTS_DIR, "test262-run.meta.json");
 
-// Filter categories by CLI args if provided
-const filterArgs = process.argv.slice(2);
+function getGitHead(): string {
+  try { return execSync("git rev-parse HEAD", { encoding: "utf-8" }).trim(); }
+  catch { return "unknown"; }
+}
+
+// Parse CLI args: separate --resume flag from category filters
+const rawArgs = process.argv.slice(2);
+const resumeFlag = rawArgs.includes("--resume");
+const filterArgs = rawArgs.filter(a => a !== "--resume");
 const categories = filterArgs.length > 0
   ? TEST_CATEGORIES.filter(cat => filterArgs.some(f => cat.toLowerCase().includes(f.toLowerCase())))
   : TEST_CATEGORIES;
 
+// --resume: load completed tests from a previous interrupted run (same HEAD only)
+const completedFiles = new Set<string>();
+if (resumeFlag && existsSync(META_PATH) && existsSync(JSONL_PATH)) {
+  const meta = JSON.parse(readFileSync(META_PATH, "utf-8"));
+  const currentHead = getGitHead();
+  if (meta.gitHead === currentHead && meta.status === "running") {
+    // Same code, incomplete run — load already-completed test paths
+    for (const line of readFileSync(JSONL_PATH, "utf-8").split("\n")) {
+      if (!line.trim()) continue;
+      try { const r = JSON.parse(line); if (r.file) completedFiles.add(r.file); } catch {}
+    }
+    console.log(`Resuming interrupted run (${completedFiles.size} tests already done, HEAD=${currentHead.slice(0, 8)})\n`);
+  } else if (meta.gitHead !== currentHead) {
+    console.log(`Code changed since last run (${meta.gitHead?.slice(0, 8)} → ${currentHead.slice(0, 8)}), starting fresh.\n`);
+  } else {
+    console.log(`Previous run completed successfully, starting fresh.\n`);
+  }
+}
+
 // Load existing results (if running a subset, preserve other results)
 const existingResults = new Map<string, string>(); // file → jsonl line
-if (filterArgs.length > 0 && existsSync(JSONL_PATH)) {
+if (filterArgs.length > 0 && !resumeFlag && existsSync(JSONL_PATH)) {
   for (const line of readFileSync(JSONL_PATH, "utf-8").split("\n")) {
     if (!line.trim()) continue;
     try {
@@ -44,7 +73,7 @@ let total = 0;
 for (const cat of categories) total += findTestFiles(cat).length;
 
 // If running a subset, clear only those entries from existing results
-if (filterArgs.length > 0) {
+if (filterArgs.length > 0 && !resumeFlag) {
   for (const cat of categories) {
     for (const f of findTestFiles(cat)) {
       const relPath = f.replace(/.*test262\/test\//, "");
@@ -53,14 +82,19 @@ if (filterArgs.length > 0) {
   }
 }
 
-// Start fresh JSONL if running all categories
-if (filterArgs.length === 0) {
+// Start fresh JSONL unless resuming
+if (resumeFlag && completedFiles.size > 0) {
+  // Keep existing JSONL, we'll append new results
+} else if (filterArgs.length === 0) {
   writeFileSync(JSONL_PATH, "");
 } else {
   // Rewrite JSONL with existing results (minus categories being re-run)
   const lines = [...existingResults.values()];
   writeFileSync(JSONL_PATH, lines.length > 0 ? lines.join("\n") + "\n" : "");
 }
+
+// Write run metadata (status=running until we finish)
+writeFileSync(META_PATH, JSON.stringify({ gitHead: getGitHead(), status: "running", startedAt: new Date().toISOString() }));
 
 console.log(`Running ${total} tests across ${categories.length} categories...\n`);
 
@@ -100,6 +134,11 @@ for (const [batchName, batchCats] of batches) {
     if (files.length === 0) continue;
 
     for (const filePath of files) {
+      const relPath = filePath.replace(/.*test262\/test\//, "");
+      if (completedFiles.has(relPath)) {
+        processed++;
+        continue;
+      }
       const result = await runTest262File(filePath, category);
       allResults.push(result);
       stats[result.status]++;
@@ -204,6 +243,9 @@ if (failures.length > 0) {
     console.log(`  ✗ ${f.file}: ${f.error}`);
   }
 }
+
+// Mark run as complete
+writeFileSync(META_PATH, JSON.stringify({ gitHead: getGitHead(), status: "complete", finishedAt: new Date().toISOString() }));
 
 console.log(`\nResults: ${JSONL_PATH}`);
 console.log(`Report:  ${REPORT_PATH}`);
