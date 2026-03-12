@@ -7200,6 +7200,46 @@ function compileNewExpression(
     return compileNewFunctionExpression(ctx, fctx, expr, expr.expression);
   }
 
+  // Handle `new (class { ... })()` — anonymous class expression in new
+  // Unwrap parenthesized expressions to find the class expression
+  {
+    let unwrappedExpr: ts.Expression = expr.expression;
+    while (ts.isParenthesizedExpression(unwrappedExpr)) {
+      unwrappedExpr = unwrappedExpr.expression;
+    }
+    if (ts.isClassExpression(unwrappedExpr)) {
+      // Look up the synthetic name assigned during the collection phase
+      const syntheticName = ctx.anonClassExprNames.get(unwrappedExpr);
+      if (syntheticName) {
+        const ctorName = `${syntheticName}_new`;
+        const funcIdx = ctx.funcMap.get(ctorName);
+        if (funcIdx === undefined) {
+          ctx.errors.push({
+            message: `Missing constructor for anonymous class`,
+            line: getLine(expr),
+            column: getCol(expr),
+          });
+          return null;
+        }
+
+        const paramTypes = getFuncParamTypes(ctx, funcIdx);
+        const args = expr.arguments ?? [];
+        for (let i = 0; i < args.length; i++) {
+          compileExpression(ctx, fctx, args[i]!, paramTypes?.[i]);
+        }
+        if (paramTypes) {
+          for (let i = args.length; i < paramTypes.length; i++) {
+            pushDefaultValue(fctx, paramTypes[i]!);
+          }
+        }
+
+        fctx.body.push({ op: "call", funcIdx });
+        const structTypeIdx = ctx.structMap.get(syntheticName)!;
+        return { kind: "ref", typeIdx: structTypeIdx };
+      }
+    }
+  }
+
   // Handle `new Object()` — create an empty struct (equivalent to {})
   if (ts.isIdentifier(expr.expression) && expr.expression.text === "Object") {
     // Look for an empty struct type, or create an externref null as empty object
