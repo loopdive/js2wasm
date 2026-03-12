@@ -686,11 +686,8 @@ function collectConsoleImports(
     ts.forEachChild(node, visit);
   }
 
-  for (const stmt of sourceFile.statements) {
-    if (ts.isFunctionDeclaration(stmt) && stmt.body) {
-      visit(stmt.body);
-    }
-  }
+  // Scan all statements (including top-level code compiled into __module_init)
+  ts.forEachChild(sourceFile, visit);
 
   for (const method of CONSOLE_METHODS) {
     const needed = neededByMethod.get(method);
@@ -4316,34 +4313,8 @@ function collectStringLiterals(
     ts.forEachChild(node, visit);
   }
 
-  // Scan all statement types that may contain runtime string literals:
-  // function bodies, variable initializers, class bodies, expression statements.
-  for (const stmt of sourceFile.statements) {
-    if (ts.isFunctionDeclaration(stmt)) {
-      // Scan parameter default values for string literals
-      for (const param of stmt.parameters) {
-        if (param.initializer) {
-          visit(param.initializer);
-        }
-      }
-      if (stmt.body) {
-        visit(stmt.body);
-      }
-    } else if (ts.isVariableStatement(stmt)) {
-      // Scan module-level variable initializers for string literals
-      for (const decl of stmt.declarationList.declarations) {
-        if (decl.initializer) {
-          visit(decl.initializer);
-        }
-      }
-    } else if (ts.isClassDeclaration(stmt)) {
-      // Scan class declaration bodies (methods, constructors, property initializers)
-      visit(stmt);
-    } else if (ts.isExpressionStatement(stmt)) {
-      // Scan module-level expression statements
-      visit(stmt.expression);
-    }
-  }
+  // Scan all statements (including top-level code compiled into __module_init)
+  ts.forEachChild(sourceFile, visit);
 
   // typeof expressions may need type-name constants not present in source
   if (hasTypeofExpr) {
@@ -4607,11 +4578,8 @@ function collectMathImports(
     ts.forEachChild(node, visit);
   }
 
-  for (const stmt of sourceFile.statements) {
-    if (ts.isFunctionDeclaration(stmt) && stmt.body) {
-      visit(stmt.body);
-    }
-  }
+  // Scan all statements (including top-level code compiled into __module_init)
+  ts.forEachChild(sourceFile, visit);
 
   for (const method of needed) {
     if (method === "random") {
@@ -4674,18 +4642,8 @@ function collectParseImports(
     ts.forEachChild(node, visit);
   }
 
-  for (const stmt of sourceFile.statements) {
-    if (ts.isFunctionDeclaration(stmt) && stmt.body) {
-      visit(stmt.body);
-    }
-    if (ts.isClassDeclaration(stmt)) {
-      for (const member of stmt.members) {
-        if (ts.isMethodDeclaration(member) && member.body) {
-          visit(member.body);
-        }
-      }
-    }
-  }
+  // Scan all statements (including top-level code compiled into __module_init)
+  ts.forEachChild(sourceFile, visit);
 
   for (const name of needed) {
     if (name === "parseInt") {
