@@ -61,4 +61,18 @@ describe("Math.min / Math.max", () => {
     `);
     expect(e.test()).toBe(-2);
   });
+
+  it("Math.min with no args returns Infinity", async () => {
+    const e = await compileAndRun(`
+      export function test(): number { return Math.min(); }
+    `);
+    expect(e.test()).toBe(Infinity);
+  });
+
+  it("Math.max with no args returns -Infinity", async () => {
+    const e = await compileAndRun(`
+      export function test(): number { return Math.max(); }
+    `);
+    expect(e.test()).toBe(-Infinity);
+  });
 });
