@@ -1651,7 +1651,7 @@ async function t262Render() {
 
           const filesEl = document.createElement("div");
           filesEl.className = "t262-files";
-          filesEl.style.paddingLeft = (depth * 12) + "px";
+          filesEl.style.paddingLeft = (10 + (depth + 1) * 12) + "px";
           for (const file of displayFiles) {
             const fileEl = document.createElement("div");
             fileEl.className = "t262-file" + (file === t262ActivePath ? " active" : "");
