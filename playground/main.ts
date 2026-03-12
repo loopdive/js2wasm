@@ -10,7 +10,7 @@ import { buildImports, instantiateWasm } from "../src/runtime.js";
 import { WasmTreemap, parseWasm, parseWasmSpans, SECTION_COLORS } from "./wasm-treemap.js";
 import type { WasmData, WasmSection, WasmFunctionBody, ByteSpan } from "./wasm-treemap.js";
 import { LayoutManager } from "./layout.js";
-import DEFAULT_SOURCE from "./examples/calendar.ts?raw";
+import DEFAULT_SOURCE from "./examples/dom/calendar.ts?raw";
 
 self.MonacoEnvironment = {
   getWorker(_workerId: string, label: string) {
@@ -952,37 +952,53 @@ async function t262Render() {
   const filter = t262Filter.toLowerCase();
 
   // ── EXAMPLES section ──
-  const examples = [
-    { name: "calendar.ts", path: "examples/calendar.ts" },
-    { name: "builtins.ts", path: "examples/builtins.ts" },
-    { name: "benchmarks.ts", path: "examples/benchmarks.ts" },
+  const exampleGroups = [
+    { folder: "dom", files: [{ name: "calendar.ts", path: "examples/dom/calendar.ts" }] },
+    { folder: "js", files: [{ name: "builtins.ts", path: "examples/js/builtins.ts" }] },
   ];
-  const matchingExamples = examples.filter(
-    ex => !filter || ex.name.toLowerCase().includes(filter)
+
+  function renderExampleFile(ex: { name: string; path: string }, parent: HTMLElement) {
+    const entry = document.createElement("div");
+    entry.className = "t262-file" + (t262ActivePath === ex.path ? " active" : "");
+    entry.textContent = ex.name;
+    entry.dataset.path = ex.path;
+    entry.addEventListener("click", async () => {
+      const resp = await fetch("/" + ex.path);
+      const content = await resp.text();
+      t262Loading = true;
+      sessionStorage.removeItem(STORAGE_KEY);
+      inputFile.model.setValue(content);
+      t262SetActive(ex.path);
+      updateTabLabel("ts-source", ex.name);
+      compileOnly();
+      t262Loading = false;
+    });
+    parent.appendChild(entry);
+  }
+
+  const anyExampleMatches = exampleGroups.some(g =>
+    !filter || g.folder.includes(filter) || g.files.some(f => f.name.toLowerCase().includes(filter))
   );
-  if (matchingExamples.length > 0) {
+  if (anyExampleMatches) {
     const exHeader = document.createElement("div");
     exHeader.className = "t262-section-header";
     exHeader.textContent = "EXAMPLES";
     listEl.appendChild(exHeader);
 
-    for (const ex of matchingExamples) {
-      const entry = document.createElement("div");
-      entry.className = "t262-file" + (t262ActivePath === ex.path ? " active" : "");
-      entry.textContent = ex.name;
-      entry.dataset.path = ex.path;
-      entry.addEventListener("click", async () => {
-        const resp = await fetch("/" + ex.path);
-        const content = await resp.text();
-        t262Loading = true;
-        sessionStorage.removeItem(STORAGE_KEY);
-        inputFile.model.setValue(content);
-        t262SetActive(ex.path);
-        updateTabLabel("ts-source", ex.name);
-        compileOnly();
-        t262Loading = false;
+    for (const group of exampleGroups) {
+      const groupMatches = !filter || group.folder.includes(filter) ||
+        group.files.some(f => f.name.toLowerCase().includes(filter));
+      if (!groupMatches) continue;
+      renderTopFolder(group.folder, `__ex_${group.folder}__`, listEl, (container) => {
+        const filesEl = document.createElement("div");
+        filesEl.className = "t262-files";
+        filesEl.style.paddingLeft = "22px";
+        for (const f of group.files) {
+          if (filter && !f.name.toLowerCase().includes(filter) && !group.folder.includes(filter)) continue;
+          renderExampleFile(f, filesEl);
+        }
+        container.appendChild(filesEl);
       });
-      listEl.appendChild(entry);
     }
   }
 
@@ -1151,6 +1167,18 @@ async function t262Render() {
     renderTopFolder("ECMAScript Test Suite", "__test262__", listEl, (container) => {
       renderNode(tree, container, 1);
     });
+  }
+
+  // ── BENCHMARKS section ──
+  const benchFile = { name: "benchmarks.ts", path: "examples/benchmarks.ts" };
+  const benchMatches = !filter || "benchmarks".includes(filter);
+  if (benchMatches) {
+    const benchHeader = document.createElement("div");
+    benchHeader.className = "t262-section-header";
+    benchHeader.textContent = "BENCHMARKS";
+    listEl.appendChild(benchHeader);
+
+    renderExampleFile(benchFile, listEl);
   }
 }
 
@@ -2343,6 +2371,7 @@ async function runBenchmark() {
     inputFile.model.setValue(content);
     t262SetActive("examples/benchmarks.ts");
     updateTabLabel("ts-source", "benchmarks.ts");
+
     lastResult = null;
     t262Loading = false;
   }
