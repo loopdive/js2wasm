@@ -47,12 +47,12 @@ Can all run in parallel (different diagnostic codes).
 
 | #   | Title | Tests | Ready? |
 |-----|-------|-------|--------|
-| 321 | Collection functions don't scan top-level (__module_init) | **P0** | Ready |
+| 321 | Collection functions don't scan top-level (__module_init) | **P0** | **Done** |
 | 317 | Unused $AnyValue preamble + duplicate export cleanup | **P0** | Ready |
 | 319 | Inline single-use function type signatures | cosmetic | Ready |
-| 320 | Dead import and type elimination (umbrella) | — | Blocked by #317, #321 |
+| 320 | Dead import and type elimination (umbrella) | — | Blocked by #317 |
 | 318 | Infer parameter types from call-site arguments | — | Blocked by #317, #320 |
-| 322 | Inline trig/transcendental Math methods as pure Wasm | — | Blocked by #321 |
+| 322 | Inline trig/transcendental Math methods as pure Wasm | — | Ready |
 
 ---
 
