@@ -6202,6 +6202,162 @@ function compileCallExpression(
     }
   }
 
+  // Handle ElementAccessExpression calls: obj['method']() or obj[stringLiteral]()
+  // Convert to equivalent property access method call when the index is a string literal.
+  if (ts.isElementAccessExpression(expr.expression)) {
+    const elemAccess = expr.expression;
+    const argExpr = elemAccess.argumentExpression;
+    // Only handle string literal keys (e.g. obj['method']())
+    if (argExpr && ts.isStringLiteral(argExpr)) {
+      const methodName = argExpr.text;
+      const receiverType = ctx.checker.getTypeAtLocation(elemAccess.expression);
+
+      // Try class instance method: ClassName_methodName
+      let receiverClassName = receiverType.getSymbol()?.name;
+      if (receiverClassName && !ctx.classSet.has(receiverClassName)) {
+        receiverClassName = ctx.classExprNameMap.get(receiverClassName) ?? receiverClassName;
+      }
+      if (receiverClassName && ctx.classSet.has(receiverClassName)) {
+        const fullName = `${receiverClassName}_${methodName}`;
+        const funcIdx = ctx.funcMap.get(fullName);
+        if (funcIdx !== undefined) {
+          // Push self (the receiver) as first argument
+          compileExpression(ctx, fctx, elemAccess.expression);
+          // Push remaining arguments with type hints
+          const paramTypes = getFuncParamTypes(ctx, funcIdx);
+          for (let i = 0; i < expr.arguments.length; i++) {
+            compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
+          }
+          // Pad missing arguments with defaults (skip self param at index 0)
+          if (paramTypes) {
+            for (let i = expr.arguments.length + 1; i < paramTypes.length; i++) {
+              pushDefaultValue(fctx, paramTypes[i]!);
+            }
+          }
+          fctx.body.push({ op: "call", funcIdx });
+
+          const sig = ctx.checker.getResolvedSignature(expr);
+          if (sig) {
+            const retType = ctx.checker.getReturnTypeOfSignature(sig);
+            if (isVoidType(retType)) return VOID_RESULT;
+            return resolveWasmType(ctx, retType);
+          }
+          return VOID_RESULT;
+        }
+      }
+
+      // Try struct method: structName_methodName
+      const structTypeName = resolveStructName(ctx, receiverType);
+      if (structTypeName) {
+        const fullName = `${structTypeName}_${methodName}`;
+        const funcIdx = ctx.funcMap.get(fullName);
+        if (funcIdx !== undefined) {
+          compileExpression(ctx, fctx, elemAccess.expression);
+          const paramTypes = getFuncParamTypes(ctx, funcIdx);
+          for (let i = 0; i < expr.arguments.length; i++) {
+            compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
+          }
+          if (paramTypes) {
+            for (let i = expr.arguments.length + 1; i < paramTypes.length; i++) {
+              pushDefaultValue(fctx, paramTypes[i]!);
+            }
+          }
+          fctx.body.push({ op: "call", funcIdx });
+
+          const sig = ctx.checker.getResolvedSignature(expr);
+          if (sig) {
+            const retType = ctx.checker.getReturnTypeOfSignature(sig);
+            if (isVoidType(retType)) return VOID_RESULT;
+            return resolveWasmType(ctx, retType);
+          }
+          return VOID_RESULT;
+        }
+      }
+
+      // Try static method: ClassName.staticMethod via element access
+      if (ts.isIdentifier(elemAccess.expression) && ctx.classSet.has(elemAccess.expression.text)) {
+        const clsName = elemAccess.expression.text;
+        const fullName = `${clsName}_${methodName}`;
+        if (ctx.staticMethodSet.has(fullName)) {
+          const funcIdx = ctx.funcMap.get(fullName);
+          if (funcIdx !== undefined) {
+            const paramTypes = getFuncParamTypes(ctx, funcIdx);
+            for (let i = 0; i < expr.arguments.length; i++) {
+              compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+            }
+            if (paramTypes) {
+              for (let i = expr.arguments.length; i < paramTypes.length; i++) {
+                pushDefaultValue(fctx, paramTypes[i]!);
+              }
+            }
+            fctx.body.push({ op: "call", funcIdx });
+
+            const sig = ctx.checker.getResolvedSignature(expr);
+            if (sig) {
+              const retType = ctx.checker.getReturnTypeOfSignature(sig);
+              if (isVoidType(retType)) return VOID_RESULT;
+              return resolveWasmType(ctx, retType);
+            }
+            return VOID_RESULT;
+          }
+        }
+      }
+
+      // Try string method: string_methodName
+      if (isStringType(receiverType)) {
+        const importName = `string_${methodName}`;
+        const funcIdx = ctx.funcMap.get(importName);
+        if (funcIdx !== undefined) {
+          compileExpression(ctx, fctx, elemAccess.expression);
+          const paramTypes = getFuncParamTypes(ctx, funcIdx);
+          const args = expr.arguments;
+          for (let ai = 0; ai < args.length; ai++) {
+            const argResult = compileExpression(ctx, fctx, args[ai]!);
+            const expectedType = paramTypes?.[ai + 1];
+            if (argResult && expectedType && argResult.kind !== expectedType.kind) {
+              coerceType(ctx, fctx, argResult, expectedType);
+            }
+          }
+          if (paramTypes && args.length + 1 < paramTypes.length) {
+            for (let pi = args.length + 1; pi < paramTypes.length; pi++) {
+              const pt = paramTypes[pi]!;
+              if (pt.kind === "externref") fctx.body.push({ op: "ref.null.extern" });
+              else if (pt.kind === "f64") fctx.body.push({ op: "f64.const", value: 0 });
+              else if (pt.kind === "i32") fctx.body.push({ op: "i32.const", value: 0 });
+            }
+          }
+          fctx.body.push({ op: "call", funcIdx });
+          const returnsBool = methodName === "includes" || methodName === "startsWith" || methodName === "endsWith";
+          return returnsBool ? { kind: "i32" } : methodName === "indexOf" || methodName === "lastIndexOf" ? { kind: "f64" } : { kind: "externref" };
+        }
+      }
+
+      // Try number method: number.toString(), number.toFixed()
+      if (isNumberType(receiverType) && (methodName === "toString" || methodName === "toFixed")) {
+        const exprType = compileExpression(ctx, fctx, elemAccess.expression);
+        if (exprType && exprType.kind === "i32") {
+          fctx.body.push({ op: "f64.convert_i32_s" });
+        }
+        if (methodName === "toFixed" && expr.arguments.length > 0) {
+          compileExpression(ctx, fctx, expr.arguments[0]!);
+        } else if (methodName === "toFixed") {
+          fctx.body.push({ op: "f64.const", value: 0 });
+        }
+        const funcIdx = ctx.funcMap.get(methodName === "toFixed" ? "number_toFixed" : "number_toString");
+        if (funcIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx });
+          return { kind: "externref" };
+        }
+      }
+
+      // Try array method calls
+      {
+        const arrMethodResult = compileArrayMethodCall(ctx, fctx, elemAccess as any, expr, receiverType);
+        if (arrMethodResult !== undefined) return arrMethodResult;
+      }
+    }
+  }
+
   ctx.errors.push({
     message: "Unsupported call expression",
     line: getLine(expr),

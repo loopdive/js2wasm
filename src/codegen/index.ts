@@ -6365,12 +6365,15 @@ function collectUsedExternImports(
 
     // obj[idx] on externref (e.g. HTMLCollection) → __extern_get
     if (ts.isElementAccessExpression(node)) {
+      // Skip when element access is the callee of a call expression (e.g. obj['method']())
+      // — the call handler compiles this as a direct method call, not a property read
+      const isCallCallee = node.parent && ts.isCallExpression(node.parent) && node.parent.expression === node;
       const objType = ctx.checker.getTypeAtLocation(node.expression);
       const sym = objType.getSymbol();
       // Skip Array and tuple types — those use Wasm GC struct/array ops, not host import
       // Skip widened empty objects — those use struct.get, not host import
       const isWidenedVar = ts.isIdentifier(node.expression) && ctx.widenedVarStructMap.has(node.expression.text);
-      if (sym?.name !== "Array" && sym?.name !== "__type" && sym?.name !== "__object" && !isTupleType(objType) && !isWidenedVar) {
+      if (!isCallCallee && sym?.name !== "Array" && sym?.name !== "__type" && sym?.name !== "__object" && !isTupleType(objType) && !isWidenedVar) {
         const wasmType = mapTsTypeToWasm(objType, ctx.checker);
         if (wasmType.kind === "externref") {
           register(
