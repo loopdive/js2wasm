@@ -1,6 +1,6 @@
 # ts2wasm Backlog
 
-## Sprint 3 (current)
+## Sprint 3 (done)
 
 _Goal: Fix runtime failures and reduce compile errors via string comparison, valueOf coercion, skip filter cleanup, BigInt fixes, and class/scope improvements._
 
@@ -76,7 +76,7 @@ _Goal: Advanced compile error reduction, runtime correctness for all 62 remainin
 | [315](issues/315.md) | Wasm validation error audit -- systematic fix for type mismatches | Open | C |
 | [316](issues/316.md) | Runtime failure -- array element access out of bounds | Open | B |
 
-## Sprint 4
+## Sprint 4 (current)
 
 _Goal: Reduce compile errors from ~3465 to ~2000 by fixing the most common error patterns: unsupported call expressions, ClassDeclaration positioning, argument type flexibility, property access, element access, iterator protocol, and scope resolution._
 
