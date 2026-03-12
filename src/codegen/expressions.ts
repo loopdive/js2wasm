@@ -5345,7 +5345,9 @@ function compileCallExpression(
             for (let i = 1; i < expr.arguments.length; i++) {
               compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]); // i maps to param i (0=self)
             }
-            fctx.body.push({ op: "call", funcIdx });
+            // Re-lookup funcIdx: argument compilation may trigger addUnionImports
+            const finalCallIdx = ctx.funcMap.get(fullName) ?? funcIdx;
+            fctx.body.push({ op: "call", funcIdx: finalCallIdx });
 
             const sig = ctx.checker.getResolvedSignature(expr);
             if (sig) {
@@ -5627,7 +5629,9 @@ function compileCallExpression(
               pushDefaultValue(fctx, paramTypes[i]!);
             }
           }
-          fctx.body.push({ op: "call", funcIdx });
+          // Re-lookup funcIdx: argument compilation may trigger addUnionImports
+          const finalStaticIdx = ctx.funcMap.get(fullName) ?? funcIdx;
+          fctx.body.push({ op: "call", funcIdx: finalStaticIdx });
 
           const sig = ctx.checker.getResolvedSignature(expr);
           if (sig) {
@@ -5680,7 +5684,9 @@ function compileCallExpression(
             pushDefaultValue(fctx, paramTypes[i]!);
           }
         }
-        fctx.body.push({ op: "call", funcIdx });
+        // Re-lookup funcIdx: argument compilation may trigger addUnionImports
+        const finalMethodIdx = ctx.funcMap.get(fullName) ?? funcIdx;
+        fctx.body.push({ op: "call", funcIdx: finalMethodIdx });
 
         // Determine return type
         const sig = ctx.checker.getResolvedSignature(expr);
@@ -5714,7 +5720,9 @@ function compileCallExpression(
               pushDefaultValue(fctx, paramTypes[i]!);
             }
           }
-          fctx.body.push({ op: "call", funcIdx });
+          // Re-lookup funcIdx: argument compilation may trigger addUnionImports
+          const finalStructMethodIdx = ctx.funcMap.get(fullName) ?? funcIdx;
+          fctx.body.push({ op: "call", funcIdx: finalStructMethodIdx });
 
           const sig = ctx.checker.getResolvedSignature(expr);
           if (sig) {
@@ -6821,7 +6829,10 @@ function compileSuperMethodCall(
   for (let i = 0; i < expr.arguments.length; i++) {
     compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
   }
-  fctx.body.push({ op: "call", funcIdx });
+  // Re-lookup funcIdx: argument compilation may trigger addUnionImports
+  const resolvedName = `${ancestor}_${methodName}`;
+  const finalSuperIdx = ctx.funcMap.get(resolvedName) ?? funcIdx;
+  fctx.body.push({ op: "call", funcIdx: finalSuperIdx });
 
   // Determine return type
   const sig = ctx.checker.getResolvedSignature(expr);
@@ -7246,7 +7257,9 @@ function compileNewExpression(
           fctx.body.push({ op: "ref.null.extern" });
         }
       }
-      fctx.body.push({ op: "call", funcIdx });
+      // Re-lookup funcIdx: argument compilation may trigger addUnionImports
+      const finalNewIdx = ctx.funcMap.get(importName) ?? funcIdx;
+      fctx.body.push({ op: "call", funcIdx: finalNewIdx });
     } else {
       // Fallback: no import registered (shouldn't happen), produce null
       fctx.body.push({ op: "ref.null.extern" });
@@ -7300,7 +7313,10 @@ function compileNewExpression(
       }
     }
 
-    fctx.body.push({ op: "call", funcIdx });
+    // Re-lookup funcIdx: argument compilation may trigger addUnionImports
+    // which shifts defined-function indices, making the earlier lookup stale.
+    const finalCtorIdx = ctx.funcMap.get(ctorName) ?? funcIdx;
+    fctx.body.push({ op: "call", funcIdx: finalCtorIdx });
     const structTypeIdx = ctx.structMap.get(className)!;
     return { kind: "ref", typeIdx: structTypeIdx };
   }
@@ -8236,7 +8252,9 @@ function compileOptionalCallExpression(
             for (const arg of expr.arguments) {
               compileExpression(ctx, fctx, arg);
             }
-            fctx.body.push({ op: "call", funcIdx });
+            // Re-lookup funcIdx after arg compilation
+            const finalOptIdx = ctx.funcMap.get(importName) ?? funcIdx;
+            fctx.body.push({ op: "call", funcIdx: finalOptIdx });
           }
           break;
         }
