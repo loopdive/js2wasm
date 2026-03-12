@@ -194,3 +194,4 @@
 | 265 | 2026-03-12 | Computed property names in classes -- TS1166 diagnostic | Dep-driven |
 | 276 | 2026-03-12 | Computed property name must be of assignable type -- TS2464 diagnostic | Dep-driven |
 | 296 | 2026-03-12 | Strict equality edge cases (-0, NaN, cross-type) | Dep-driven |
+| 301 | 2026-03-12 | Float unrepresentable in integer range -- saturating trunc | Dep-driven |

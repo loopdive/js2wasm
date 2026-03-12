@@ -83,7 +83,7 @@ Can all run in parallel (different diagnostic codes).
 | 295 | Comparison operators with type coercion | 8 | **Done** |
 | 296 | Strict equality edge cases (-0, NaN) | 4 | Done |
 | 299 | Loose equals edge cases | 2 | Ready |
-| 301 | Float unrepresentable in integer range | 4 | Ready |
+| 301 | Float unrepresentable in integer range | 4 | **Done** |
 | 308 | Addition operator + string/number coercion | 7 | Ready |
 | 300 | Object to primitive conversion | 5 | Blocked by #138, #139 |
 

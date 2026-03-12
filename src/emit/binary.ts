@@ -777,6 +777,10 @@ export function encodeInstr(instr: Instr, enc: WasmEncoder): void {
       enc.byte(OP.misc_prefix);
       enc.byte(OP.i32_trunc_sat_f64_u);
       break;
+    case "i64.trunc_sat_f64_s":
+      enc.byte(OP.misc_prefix);
+      enc.byte(OP.i64_trunc_sat_f64_s);
+      break;
     case "f64.eq":
       enc.byte(OP.f64_eq);
       break;
