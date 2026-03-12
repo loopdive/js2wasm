@@ -39,6 +39,80 @@ _Goal: Fix runtime failures and reduce compile errors via string comparison, val
 | [255](issues/255.md) | 'this' implicit any type in class methods | Done | C |
 | [256](issues/256.md) | Unknown function: f -- locally declared functions not found | Done | C |
 
+## Sprint 5
+
+_Goal: Advanced compile error reduction, runtime correctness for all 62 remaining failures, test262 coverage expansion, and performance profiling. Target: reduce compile errors to ~2500, eliminate all runtime failures (62 -> 0), expand test categories._
+
+| #   | Feature | Status | Group |
+| --- | ------- | ------ | ----- |
+| [287](issues/287.md) | Generator function compile errors -- yield in nested contexts | Open | A |
+| [288](issues/288.md) | Try/catch/finally compile errors -- complex patterns | Open | A |
+| [289](issues/289.md) | For-in compile errors -- property enumeration edge cases | Open | A |
+| [290](issues/290.md) | Instanceof compile errors -- class hierarchy and expressions | Open | A |
+| [291](issues/291.md) | In operator compile errors -- dynamic property checks | Open | A |
+| [292](issues/292.md) | Runtime failures -- for-loop incorrect computed values | Open | B |
+| [293](issues/293.md) | Runtime failures -- class method incorrect results | Open | B |
+| [294](issues/294.md) | Runtime failures -- assignment expression evaluation order | Open | B |
+| [295](issues/295.md) | Runtime failures -- comparison operators with type coercion | Open | B |
+| [296](issues/296.md) | Runtime failures -- strict equality edge cases | Open | B |
+| [297](issues/297.md) | Runtime failures -- switch statement fall-through | Open | B |
+| [298](issues/298.md) | Runtime failures -- function statement edge cases | Open | B |
+| [299](issues/299.md) | Runtime failures -- equals/does-not-equals loose comparison | Open | B |
+| [300](issues/300.md) | Runtime failures -- object to primitive conversion | Open | B |
+| [301](issues/301.md) | Runtime failures -- float unrepresentable in integer range | Open | B |
+| [302](issues/302.md) | Runtime failures -- Math.min/max edge cases | Open | B |
+| [303](issues/303.md) | Runtime failures -- parseInt edge cases | Open | B |
+| [304](issues/304.md) | Runtime failures -- unary minus and return edge cases | Open | B |
+| [305](issues/305.md) | Runtime failures -- computed property names and types/reference | Open | B |
+| [306](issues/306.md) | Prefix/postfix increment/decrement compile errors | Open | C |
+| [307](issues/307.md) | Promise.all and Promise.race compile errors | Open | C |
+| [308](issues/308.md) | Addition operator compile errors -- string/number coercion | Open | C |
+| [309](issues/309.md) | Expand test262 harness includes -- propertyIsEnumerable, fnGlobalObject | Open | D |
+| [310](issues/310.md) | Reduce skip filters -- re-evaluate conservative skips | Open | D |
+| [311](issues/311.md) | Test262 category expansion -- built-ins/String/prototype new methods | Open | D |
+| [312](issues/312.md) | Test262 category expansion -- built-ins/Number methods | Open | D |
+| [313](issues/313.md) | Test262 category expansion -- language/expressions new categories | Open | D |
+| [314](issues/314.md) | Performance -- compile time profiling and optimization | Open | D |
+| [315](issues/315.md) | Wasm validation error audit -- systematic fix for type mismatches | Open | C |
+| [316](issues/316.md) | Runtime failure -- array element access out of bounds | Open | B |
+
+## Sprint 4
+
+_Goal: Reduce compile errors from ~3465 to ~2000 by fixing the most common error patterns: unsupported call expressions, ClassDeclaration positioning, argument type flexibility, property access, element access, iterator protocol, and scope resolution._
+
+| #   | Feature | Status | Group |
+| --- | ------- | ------ | ----- |
+| [257](issues/257.md) | Unsupported call expression -- method calls on returned values | Open | A |
+| [258](issues/258.md) | Unsupported call expression -- double/triple nested calls | Open | A |
+| [259](issues/259.md) | ClassDeclaration in block/nested scope positions | Open | B |
+| [260](issues/260.md) | ClassDeclaration + call expression combined errors | Open | B |
+| [261](issues/261.md) | ClassDeclaration + new expression for anonymous classes | Open | B |
+| [262](issues/262.md) | Argument type assignability -- allowJs flexibility for test262 | Open | C |
+| [263](issues/263.md) | Property does not exist on type -- dynamic property access | Open | C |
+| [264](issues/264.md) | Element access (bracket notation) on struct types | Open | C |
+| [265](issues/265.md) | Computed property names in class declarations (TypeScript diagnostic) | Open | C |
+| [266](issues/266.md) | Unknown identifier -- scope resolution for multi-variable patterns | Open | D |
+| [267](issues/267.md) | Yield expression outside of generator function | Open | D |
+| [268](issues/268.md) | Iterator protocol -- Type must have a Symbol.iterator method | Open | D |
+| [269](issues/269.md) | Setter return value diagnostic suppression | Open | C |
+| [270](issues/270.md) | Strict mode reserved words -- let, yield, package, etc. | Open | D |
+| [271](issues/271.md) | Cannot find name -- missing harness or global declarations | Open | D |
+| [272](issues/272.md) | WebAssembly type mismatch -- externref vs f64/i32 in compiled output | Open | A |
+| [273](issues/273.md) | Unsupported new expression for anonymous class expressions | Open | B |
+| [274](issues/274.md) | Property access on function type -- .name, .length, .call, .apply | Open | C |
+| [275](issues/275.md) | Left side of comma operator warning blocks compilation | Open | C |
+| [276](issues/276.md) | Computed property name must be of assignable type | Open | C |
+| [277](issues/277.md) | WebAssembly type mismatch -- local.set externref vs concrete types | Open | A |
+| [278](issues/278.md) | Cannot destructure -- not a known struct type | Open | D |
+| [279](issues/279.md) | Arrow function compile errors -- parameter and body patterns | Open | A |
+| [280](issues/280.md) | Function expression compile errors -- name binding and hoisting | Open | A |
+| [281](issues/281.md) | Object literal property patterns -- shorthand, spread, methods | Open | C |
+| [282](issues/282.md) | Variable declaration compile errors -- complex initializers | Open | D |
+| [283](issues/283.md) | Compound assignment compile errors -- type coercion gaps | Open | A |
+| [284](issues/284.md) | For-of compile errors -- destructuring and non-array iterables | Open | D |
+| [285](issues/285.md) | For-loop compile errors -- complex heads and function declarations | Open | D |
+| [286](issues/286.md) | Logical assignment compile errors -- nullish and short-circuit | Open | A |
+
 ## Sprint 1
 
 _Goal: Eliminate all 146 test262 runtime failures (100% compilable pass rate) and reduce compile errors by ~700._
