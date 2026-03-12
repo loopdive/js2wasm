@@ -1451,10 +1451,9 @@ test262Panel.innerHTML = `
   </div>
 `;
 
-interface T262Category { name: string; path: string; fileCount: number; }
+interface T262Category { name: string; path: string; fileCount: number; files: string[]; }
 let t262Index: T262Category[] | null = null;
 const t262ExpandedCats = new Set<string>();
-const t262FileCache = new Map<string, string[]>();
 let t262Filter = "";
 let t262Debounce: ReturnType<typeof setTimeout> | null = null;
 let t262ActivePath = "";
@@ -1466,14 +1465,6 @@ async function t262LoadIndex(): Promise<T262Category[]> {
   const data = await resp.json();
   t262Index = data.categories as T262Category[];
   return t262Index;
-}
-
-async function t262LoadFiles(category: string): Promise<string[]> {
-  if (t262FileCache.has(category)) return t262FileCache.get(category)!;
-  const resp = await fetch(`/api/test262-files?category=${encodeURIComponent(category)}`);
-  const files = await resp.json() as string[];
-  t262FileCache.set(category, files);
-  return files;
 }
 
 async function t262LoadFile(path: string): Promise<string> {
@@ -1545,26 +1536,26 @@ async function t262Render() {
   const filter = t262Filter.toLowerCase();
 
   // ── EXAMPLES section ──
-  if (!filter || "showreel".includes(filter)) {
+  if (!filter || "calendar.ts".includes(filter)) {
     const exHeader = document.createElement("div");
     exHeader.className = "t262-section-header";
     exHeader.textContent = "EXAMPLES";
     listEl.appendChild(exHeader);
 
-    const showreel = document.createElement("div");
-    showreel.className = "t262-file" + (t262ActivePath === "__showreel__" ? " active" : "");
-    showreel.textContent = "Showreel";
-    showreel.dataset.path = "__showreel__";
-    showreel.addEventListener("click", () => {
+    const calEntry = document.createElement("div");
+    calEntry.className = "t262-file" + (t262ActivePath === "__showreel__" ? " active" : "");
+    calEntry.textContent = "calendar.ts";
+    calEntry.dataset.path = "__showreel__";
+    calEntry.addEventListener("click", () => {
       t262Loading = true;
       sessionStorage.removeItem(STORAGE_KEY);
       inputFile.model.setValue(DEFAULT_SOURCE);
       t262Loading = false;
       t262SetActive("__showreel__");
-      updateTabLabel("ts-source", "TypeScript (.ts)");
+      updateTabLabel("ts-source", "calendar.ts");
       compileOnly();
     });
-    listEl.appendChild(showreel);
+    listEl.appendChild(calEntry);
   }
 
   // ── TEST262 section ──
@@ -1588,9 +1579,7 @@ async function t262Render() {
   function nodeMatchesFilter(node: T262TreeNode, f: string): boolean {
     if (node.fullPath.toLowerCase().includes(f)) return true;
     for (const cat of node.categories) {
-      if (t262FileCache.has(cat.path)) {
-        if (t262FileCache.get(cat.path)!.some(file => file.toLowerCase().includes(f))) return true;
-      }
+      if (cat.files.some(file => file.toLowerCase().includes(f))) return true;
     }
     for (const child of node.children.values()) {
       if (nodeMatchesFilter(child, f)) return true;
@@ -1599,7 +1588,7 @@ async function t262Render() {
   }
 
   // Render a tree node recursively
-  async function renderNode(node: T262TreeNode, parent: HTMLElement, depth: number) {
+  function renderNode(node: T262TreeNode, parent: HTMLElement, depth: number) {
     // Sort children alphabetically
     const sortedChildren = [...node.children.entries()].sort((a, b) => a[0].localeCompare(b[0]));
 
@@ -1640,14 +1629,13 @@ async function t262Render() {
       if (expanded) {
         // Render child folders
         if (child.children.size > 0) {
-          await renderNode(child, el, depth + 1);
+          renderNode(child, el, depth + 1);
         }
         // Render leaf files
         for (const cat of child.categories) {
-          const files = await t262LoadFiles(cat.path);
           const displayFiles = filter
-            ? files.filter(f => f.toLowerCase().includes(filter))
-            : files;
+            ? cat.files.filter(f => f.toLowerCase().includes(filter))
+            : cat.files;
 
           const filesEl = document.createElement("div");
           filesEl.className = "t262-files";
@@ -1671,7 +1659,7 @@ async function t262Render() {
     }
   }
 
-  await renderNode(tree, listEl, 0);
+  renderNode(tree, listEl, 0);
 }
 
 // Wire up the search input
