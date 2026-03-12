@@ -185,3 +185,4 @@
 | 281 | 2026-03-12 | Object literal method patterns and default params | Dep-driven |
 | 263 | 2026-03-12 | Dynamic property access fallback for unresolvable types | Dep-driven |
 | 321 | 2026-03-12 | Collection functions don't scan top-level statements (__module_init) | Dep-driven |
+| 262 | 2026-03-12 | Argument type assignability -- allowJs flexibility for test262 | Dep-driven |

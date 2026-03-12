@@ -1321,7 +1321,7 @@ export async function runTest262File(filePath: string, category: string, timeout
       file: relPath,
       category,
       status: "compile_error",
-      error: result.errors.map(e => e.message).join("; "),
+      error: (result.errors.filter(e => e.severity === "error").map(e => e.message).join("; ") || result.errors.map(e => e.message).join("; ")),
     };
   }
 
