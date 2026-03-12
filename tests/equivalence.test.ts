@@ -3823,4 +3823,72 @@ describe("Arguments object in nested functions (#211)", () => {
     expect(exports.test()).toBe(42);
   });
 
+  // Issue #251: super() call required in derived class constructors — diagnostic suppressed
+  it("derived class without explicit super compiles", async () => {
+    const exports = await compileToWasm(`
+      class Base {
+        getVal(): number { return 42; }
+      }
+      class Child extends Base {
+        run(): number { return this.getVal(); }
+      }
+      export function test(): number {
+        var c = new Child();
+        return c.run();
+      }
+    `);
+    expect(exports.test()).toBe(42);
+  });
+
+  // Issue #252: var re-declaration with different types
+  it("var re-declaration with different value", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        var x: number = 1;
+        var x: number = 42;
+        return x;
+      }
+    `);
+    expect(exports.test()).toBe(42);
+  });
+
+  // Issue #255: 'this' implicit any type in class methods
+  it("this in class method compiles", async () => {
+    const exports = await compileToWasm(`
+      class Counter {
+        count: number = 0;
+        increment(): void {
+          this.count = this.count + 1;
+        }
+        getCount(): number {
+          return this.count;
+        }
+      }
+      export function test(): number {
+        var c = new Counter();
+        c.increment();
+        c.increment();
+        return c.getCount();
+      }
+    `);
+    expect(exports.test()).toBe(2);
+  });
+
+  // Issue #240: Setter with return value
+  it("setter with return statement compiles", async () => {
+    const exports = await compileToWasm(`
+      class Box {
+        _value: number = 0;
+        get value(): number { return this._value; }
+        set value(v: number) { this._value = v; }
+      }
+      export function test(): number {
+        var b = new Box();
+        b.value = 99;
+        return b.value;
+      }
+    `);
+    expect(exports.test()).toBe(99);
+  });
+
 });
