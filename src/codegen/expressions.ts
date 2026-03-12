@@ -304,6 +304,11 @@ function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: ValType, t
     fctx.body.push({ op: "extern.convert_any" });
     return;
   }
+  // ref/ref_null → eqref: no-op (GC struct refs are subtypes of eqref)
+  if ((from.kind === "ref" || from.kind === "ref_null") && to.kind === "eqref") {
+    return;
+  }
+
   // i32/f64 → externref (fallback)
   if (to.kind === "externref") {
     fctx.body.push({ op: "drop" });
@@ -372,6 +377,61 @@ function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: ValType, t
         }
         if (valueOfField.type.kind === "externref") {
           // valueOf is externref (can't call_ref) — push NaN
+          fctx.body.push({ op: "drop" });
+          fctx.body.push({ op: "f64.const", value: NaN });
+          return;
+        }
+        if (valueOfField.type.kind === "eqref") {
+          // valueOf field is eqref (a closure struct stored without externref wrapping).
+          // Recover the closure and call it by trying each known closure type
+          // that was tracked for this struct's valueOf field.
+          const trackedTypes = ctx.valueOfClosureTypes.get(name) ?? [];
+          const f64ClosureTypes: { closureTypeIdx: number; info: ClosureInfo }[] = [];
+          for (const closureTypeIdx of trackedTypes) {
+            const info = ctx.closureInfoByTypeIdx.get(closureTypeIdx);
+            if (info && info.returnType && (info.returnType.kind === "f64" || info.returnType.kind === "i32") && info.paramTypes.length === 0) {
+              f64ClosureTypes.push({ closureTypeIdx, info });
+            }
+          }
+          if (f64ClosureTypes.length > 0) {
+            // Save struct ref, extract valueOf eqref
+            const structLocal = allocLocal(fctx, `__vo_struct_${fctx.locals.length}`, from);
+            fctx.body.push({ op: "local.set", index: structLocal });
+            fctx.body.push({ op: "local.get", index: structLocal });
+            fctx.body.push({ op: "struct.get", typeIdx, fieldIdx });
+            const eqLocal = allocLocal(fctx, `__vo_eq_${fctx.locals.length}`, { kind: "eqref" });
+            fctx.body.push({ op: "local.set", index: eqLocal });
+            // Try each closure type with nested if/else
+            const buildDispatch = (idx: number): Instr[] => {
+              if (idx >= f64ClosureTypes.length) {
+                return [{ op: "f64.const", value: NaN } as Instr];
+              }
+              const { closureTypeIdx, info } = f64ClosureTypes[idx]!;
+              const closureLocal = allocLocal(fctx, `__vo_cl_${fctx.locals.length}`, { kind: "ref", typeIdx: closureTypeIdx });
+              const thenInstrs: Instr[] = [
+                { op: "local.get", index: eqLocal } as Instr,
+                { op: "ref.cast", typeIdx: closureTypeIdx } as unknown as Instr,
+                { op: "local.tee", index: closureLocal } as Instr,
+                { op: "local.get", index: closureLocal } as Instr,
+                { op: "struct.get", typeIdx: closureTypeIdx, fieldIdx: 0 } as Instr,
+                { op: "ref.cast", typeIdx: info.funcTypeIdx } as unknown as Instr,
+                { op: "call_ref", typeIdx: info.funcTypeIdx } as unknown as Instr,
+              ];
+              if (info.returnType?.kind === "i32") {
+                thenInstrs.push({ op: "f64.convert_i32_s" } as Instr);
+              }
+              return [
+                { op: "local.get", index: eqLocal } as Instr,
+                { op: "ref.test", typeIdx: closureTypeIdx } as unknown as Instr,
+                { op: "if", blockType: { kind: "val" as const, type: { kind: "f64" as const } }, then: thenInstrs, else: buildDispatch(idx + 1) } as Instr,
+              ];
+            };
+            for (const instr of buildDispatch(0)) {
+              fctx.body.push(instr);
+            }
+            return;
+          }
+          // No closure types found — push NaN
           fctx.body.push({ op: "drop" });
           fctx.body.push({ op: "f64.const", value: NaN });
           return;
@@ -6963,6 +7023,9 @@ function pushDefaultValue(fctx: FunctionContext, type: ValType): void {
     case "externref":
       fctx.body.push({ op: "ref.null.extern" });
       break;
+    case "eqref":
+      fctx.body.push({ op: "ref.null.eq" } as unknown as Instr);
+      break;
     case "ref_null":
     case "ref":
       fctx.body.push({ op: "ref.null", typeIdx: type.typeIdx });
@@ -8601,7 +8664,23 @@ function compileObjectLiteralForStruct(
         )
       : undefined;
     if (prop && ts.isPropertyAssignment(prop)) {
+      // Track closure types for valueOf/toString fields
+      const bodyLenBefore = fctx.body.length;
       compileExpression(ctx, fctx, prop.initializer, field.type);
+      if ((field.name === "valueOf" || field.name === "toString") && field.type.kind === "eqref") {
+        // Find the struct.new instruction that creates the closure struct
+        for (let bi = bodyLenBefore; bi < fctx.body.length; bi++) {
+          const instr = fctx.body[bi]!;
+          if (instr.op === "struct.new" && ctx.closureInfoByTypeIdx.has((instr as any).typeIdx)) {
+            const closureTypeIdx = (instr as any).typeIdx as number;
+            const existing = ctx.valueOfClosureTypes.get(typeName) ?? [];
+            if (!existing.includes(closureTypeIdx)) {
+              existing.push(closureTypeIdx);
+              ctx.valueOfClosureTypes.set(typeName, existing);
+            }
+          }
+        }
+      }
     } else if (shorthandProp && ts.isShorthandPropertyAssignment(shorthandProp)) {
       // Shorthand { x } means the value is the identifier x — compile it
       compileExpression(ctx, fctx, shorthandProp.name, field.type);
@@ -8624,6 +8703,8 @@ function compileObjectLiteralForStruct(
           fctx.body.push({ op: "f64.const", value: 0 });
         } else if (field.type.kind === "externref") {
           fctx.body.push({ op: "ref.null.extern" });
+        } else if (field.type.kind === "eqref") {
+          fctx.body.push({ op: "ref.null.eq" } as unknown as Instr);
         } else if (field.type.kind === "ref" || field.type.kind === "ref_null") {
           fctx.body.push({ op: "ref.null", typeIdx: field.type.typeIdx });
         } else {
@@ -8871,6 +8952,7 @@ function compileObjectLiteralForStruct(
       methodFunc.body = methodFctx.body;
       ctx.currentFunc = savedFunc;
     }
+
   }
 
   return { kind: "ref", typeIdx: structTypeIdx };

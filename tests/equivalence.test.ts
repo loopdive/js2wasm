@@ -4098,4 +4098,68 @@ describe("Arguments object in nested functions (#211)", () => {
     );
   });
 
+  // Issue #248: Logical operators with null/undefined operands
+  it("logical AND returns null when RHS is null (#248)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        if ((true && null) !== null) return 0;
+        return 1;
+      }
+    `);
+    expect(exports.test()).toBe(1);
+  });
+
+  it("logical OR returns null when RHS is null (#248)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        if ((false || null) !== null) return 0;
+        return 1;
+      }
+    `);
+    expect(exports.test()).toBe(1);
+  });
+
+  // Issue #226: valueOf coercion on comparison operators
+  it("comparison operators invoke valueOf on object literals (#226)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        var obj1 = {
+          valueOf: function () { return 3; }
+        };
+        var obj2 = {
+          valueOf: function () { return 5; }
+        };
+        let result = 0;
+        if (obj1 < obj2) result += 1;
+        if (obj1 > obj2) result += 10;
+        if (obj1 <= obj2) result += 100;
+        if (obj1 >= obj2) result += 1000;
+        return result;
+      }
+    `);
+    // 3 < 5: true (+1), 3 > 5: false, 3 <= 5: true (+100), 3 >= 5: false
+    expect(exports.test()).toBe(101);
+  });
+
+  it("valueOf with captured variables (#226)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        var accessed = false;
+        var obj = {
+          valueOf: function () {
+            accessed = true;
+            return 42;
+          }
+        };
+        var obj2 = {
+          valueOf: function () { return 10; }
+        };
+        if (!(obj > obj2)) return 0;
+        if (!accessed) return 0;
+        return 1;
+      }
+    `);
+    expect(exports.test()).toBe(1);
+  });
+
 });
