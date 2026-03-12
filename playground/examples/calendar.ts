@@ -194,7 +194,7 @@ function updFoot(): void {
 }
 
 export function main(): void {
-  const host = document.getElementById("preview-panel")!;
+  const host = document.body;
   host.innerHTML = "";
   host.style.cssText =
     "margin:0;background:#111;color:#ddd;" +
