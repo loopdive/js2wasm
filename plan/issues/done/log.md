@@ -197,3 +197,4 @@
 | 152 | 2026-03-12 | Setter return value error in allowJs mode | Dep-driven |
 | 269 | 2026-03-12 | Setter return value diagnostic suppression | Dep-driven |
 | 301 | 2026-03-12 | Float unrepresentable in integer range -- saturating trunc | Dep-driven |
+| 299 | 2026-03-12 | Loose equality edge cases (null == undefined, boolean coercion) | Dep-driven |
