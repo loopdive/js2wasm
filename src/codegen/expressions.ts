@@ -1735,17 +1735,87 @@ function compileBinaryExpression(
       }
     }
 
-    // Resolve the key to a compile-time string if possible
+    // Resolve the key to a compile-time string if possible.
+    // For comma expressions like (x = y, "key"), extract the last element.
     let staticKey: string | null = null;
-    if (ts.isStringLiteral(expr.left)) {
-      staticKey = expr.left.text;
-    } else if (ts.isNumericLiteral(expr.left)) {
-      staticKey = expr.left.text; // numeric key as string (e.g. 0 → "0")
+    let leftExpr: ts.Expression = expr.left;
+    if (ts.isStringLiteral(leftExpr)) {
+      staticKey = leftExpr.text;
+    } else if (ts.isNumericLiteral(leftExpr)) {
+      staticKey = leftExpr.text;
+    } else if (ts.isBinaryExpression(leftExpr) && leftExpr.operatorToken.kind === ts.SyntaxKind.CommaToken) {
+      // Comma expression: extract the last element for the static key
+      let last: ts.Expression = leftExpr.right;
+      while (ts.isBinaryExpression(last) && last.operatorToken.kind === ts.SyntaxKind.CommaToken) {
+        last = last.right;
+      }
+      if (ts.isStringLiteral(last)) {
+        staticKey = last.text;
+      } else if (ts.isNumericLiteral(last)) {
+        staticKey = last.text;
+      }
+    } else if (ts.isParenthesizedExpression(leftExpr)) {
+      // Parenthesized expression: unwrap and check for comma or literal
+      let inner = leftExpr.expression;
+      if (ts.isBinaryExpression(inner) && inner.operatorToken.kind === ts.SyntaxKind.CommaToken) {
+        let last: ts.Expression = inner.right;
+        while (ts.isBinaryExpression(last) && last.operatorToken.kind === ts.SyntaxKind.CommaToken) {
+          last = last.right;
+        }
+        if (ts.isStringLiteral(last)) {
+          staticKey = last.text;
+        } else if (ts.isNumericLiteral(last)) {
+          staticKey = last.text;
+        }
+      } else if (ts.isStringLiteral(inner)) {
+        staticKey = inner.text;
+      } else if (ts.isNumericLiteral(inner)) {
+        staticKey = inner.text;
+      }
     }
 
-    // Static resolution: both key and struct fields known at compile time
-    if (staticKey !== null && structFieldNames !== null) {
-      const has = structFieldNames.includes(staticKey);
+    // Also check the TypeScript type system for property existence.
+    // This handles built-in constructors (Number.MAX_VALUE), prototype methods
+    // (valueOf, toString), and dynamically assigned properties.
+    let tsTypeHasProperty = false;
+    if (staticKey !== null) {
+      // Check direct properties on the TypeScript type
+      const prop = rightType.getProperty(staticKey);
+      if (prop) {
+        tsTypeHasProperty = true;
+      }
+      // Check the right side's type for comma expressions too
+      if (!tsTypeHasProperty && ts.isBinaryExpression(expr.right) && expr.right.operatorToken.kind === ts.SyntaxKind.CommaToken) {
+        let lastRight: ts.Expression = expr.right.right;
+        while (ts.isBinaryExpression(lastRight) && lastRight.operatorToken.kind === ts.SyntaxKind.CommaToken) {
+          lastRight = lastRight.right;
+        }
+        const lastRightType = ctx.checker.getTypeAtLocation(lastRight);
+        const prop2 = lastRightType.getProperty(staticKey);
+        if (prop2) tsTypeHasProperty = true;
+      }
+      // Also check apparent type (includes prototype methods like valueOf, toString)
+      if (!tsTypeHasProperty) {
+        const apparentType = ctx.checker.getApparentType(rightType);
+        const apparentProp = apparentType.getProperty(staticKey);
+        if (apparentProp) tsTypeHasProperty = true;
+      }
+    }
+
+    // Static resolution: key is known at compile time
+    if (staticKey !== null) {
+      const hasInStruct = structFieldNames !== null && structFieldNames.includes(staticKey);
+      const has = hasInStruct || tsTypeHasProperty;
+      // Evaluate both operands for side effects (needed for comma expressions like
+      // (NUMBER = Number, "MAX_VALUE") in NUMBER). Drop the produced values.
+      const leftResult = compileExpression(ctx, fctx, expr.left);
+      if (leftResult && leftResult !== VOID_RESULT) {
+        fctx.body.push({ op: "drop" });
+      }
+      const rightResult = compileExpression(ctx, fctx, expr.right);
+      if (rightResult && rightResult !== VOID_RESULT) {
+        fctx.body.push({ op: "drop" });
+      }
       fctx.body.push({ op: "i32.const", value: has ? 1 : 0 });
       return { kind: "i32" };
     }
