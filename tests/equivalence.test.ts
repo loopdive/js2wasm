@@ -4462,3 +4462,39 @@ describe("in operator edge cases", () => {
     expect(exports.test()).toBe(1);
   });
 });
+
+describe("new anonymous class expression issue-261", () => {
+  it("new anonymous class expression", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        const obj = new (class { x: number; constructor() { this.x = 42; } })();
+        return obj.x;
+      }
+    `);
+    expect(exports.test()).toBe(42);
+  });
+
+  it("new anonymous class expression with constructor args", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        const obj = new (class { value: number; constructor(v: number) { this.value = v; } })(10);
+        return obj.value;
+      }
+    `);
+    expect(exports.test()).toBe(10);
+  });
+
+  it("new anonymous class expression with method", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        const obj = new (class {
+          x: number;
+          constructor(v: number) { this.x = v; }
+          double(): number { return this.x * 2; }
+        })(5);
+        return obj.double();
+      }
+    `);
+    expect(exports.test()).toBe(10);
+  });
+});

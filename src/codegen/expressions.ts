@@ -1,6 +1,6 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext, ClosureInfo, RestParamInfo } from "./index.js";
-import { allocLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers, addStringImports, cacheStringLiterals, addStringConstantGlobal, nextModuleGlobalIdx } from "./index.js";
+import { allocLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers, addStringImports, cacheStringLiterals, addStringConstantGlobal, nextModuleGlobalIdx, collectClassDeclaration, compileClassBodies } from "./index.js";
 import {
   mapTsTypeToWasm,
   isNumberType,
@@ -6865,6 +6865,60 @@ function compileNewFunctionExpression(
   return { kind: "externref" };
 }
 
+/**
+ * Handle `new (class { constructor(...) { ... } })(...args)` — compile the
+ * inline class expression on-the-fly and call its constructor.
+ */
+function compileNewClassExpression(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.NewExpression,
+  classExpr: ts.ClassExpression,
+): ValType | null {
+  // Generate a unique synthetic name for the anonymous class
+  const syntheticName = `__anon_class_${ctx.closureCounter++}`;
+
+  // Phase 1: collect struct type, fields, constructor/method stubs
+  collectClassDeclaration(ctx, classExpr, syntheticName);
+
+  // Phase 2: build funcByName map and compile constructor/method bodies
+  const funcByName = new Map<string, number>();
+  for (let i = 0; i < ctx.mod.functions.length; i++) {
+    funcByName.set(ctx.mod.functions[i]!.name, i);
+  }
+  compileClassBodies(ctx, classExpr, funcByName, syntheticName);
+
+  // Now the class is fully registered — use the normal constructor call path
+  const className = syntheticName;
+  const ctorName = `${className}_new`;
+  const funcIdx = ctx.funcMap.get(ctorName);
+  if (funcIdx === undefined) {
+    ctx.errors.push({
+      message: `Missing constructor for inline class expression`,
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+
+  // Compile constructor arguments with type hints
+  const paramTypes = getFuncParamTypes(ctx, funcIdx);
+  const args = expr.arguments ?? [];
+  for (let i = 0; i < args.length; i++) {
+    compileExpression(ctx, fctx, args[i]!, paramTypes?.[i]);
+  }
+  // Pad missing constructor arguments with defaults
+  if (paramTypes) {
+    for (let i = args.length; i < paramTypes.length; i++) {
+      pushDefaultValue(fctx, paramTypes[i]!);
+    }
+  }
+
+  fctx.body.push({ op: "call", funcIdx });
+  const structTypeIdx = ctx.structMap.get(className)!;
+  return { kind: "ref", typeIdx: structTypeIdx };
+}
+
 function compileNewExpression(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -6873,6 +6927,18 @@ function compileNewExpression(
   // Handle `new function() { ... }(args)` — constructor with function expression
   if (ts.isFunctionExpression(expr.expression)) {
     return compileNewFunctionExpression(ctx, fctx, expr, expr.expression);
+  }
+
+  // Handle `new (class { ... })()` — inline class expression in new
+  // The class expression is often wrapped in parentheses: `new (class { ... })()`
+  {
+    let inner = expr.expression;
+    while (ts.isParenthesizedExpression(inner)) {
+      inner = inner.expression;
+    }
+    if (ts.isClassExpression(inner)) {
+      return compileNewClassExpression(ctx, fctx, expr, inner);
+    }
   }
 
   // Handle `new Object()` — create an empty struct (equivalent to {})

@@ -328,6 +328,23 @@ function compileVariableStatement(
       continue;
     }
 
+    // For `new (class { ... })()` initializers, compile the expression first
+    // to get the actual struct ref type (resolveWasmType returns externref for
+    // anonymous class types, but we need the concrete ref $struct)
+    if (decl.initializer && ts.isNewExpression(decl.initializer)) {
+      let inner = decl.initializer.expression;
+      while (ts.isParenthesizedExpression(inner)) {
+        inner = inner.expression;
+      }
+      if (ts.isClassExpression(inner)) {
+        const actualType = compileExpression(ctx, fctx, decl.initializer);
+        const structType = actualType ?? { kind: "externref" as const };
+        const localIdx = allocLocal(fctx, name, structType);
+        fctx.body.push({ op: "local.set", index: localIdx });
+        continue;
+      }
+    }
+
     // For arrow/function expression initializers, compile the expression first
     // to get the actual closure struct ref type (resolveWasmType returns externref
     // for function types, but closures need ref $struct)
