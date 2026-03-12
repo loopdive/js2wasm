@@ -14,7 +14,7 @@ interface IssueNode {
   priority: "critical" | "high" | "medium" | "low";
   status: "ready" | "blocked" | "done" | "backlog" | "wont-fix";
   depends_on: number[];
-  files: string[];
+  files: Record<string, { new?: string[]; breaking?: string[] }> | string[];
   cluster?: string;
 }
 
@@ -88,10 +88,18 @@ function scanFolder(
       priority: fm.priority || (status === "done" ? "low" : "medium"),
       status,
       depends_on: Array.isArray(fm.depends_on) ? fm.depends_on : [],
-      files: Array.isArray(fm.files) ? fm.files : [],
+      files: normalizeFiles(fm.files),
     });
   }
   return nodes;
+}
+
+/** Accept both old flat list and new nested map format */
+function normalizeFiles(raw: any): Record<string, { new?: string[]; breaking?: string[] }> | string[] {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw; // old format: ["src/codegen/expressions.ts"]
+  if (typeof raw === "object") return raw; // new format: { "src/...": { new: [], breaking: [] } }
+  return [];
 }
 
 // Scan all folders

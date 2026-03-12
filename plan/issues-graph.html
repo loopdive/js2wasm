@@ -177,8 +177,20 @@ async function init() {
       html += `<div><b>Unblocks:</b> ${dependers.map(n => `<span class="dep-link" onclick="focusNode(${n.id})">#${n.id}</span>`).join(', ')}</div>`;
     }
     if (!deps.length && !dependers.length) html += '<div style="color:#8b949e">No dependencies</div>';
-    if (d.files && d.files.length) {
-      html += `<div style="margin-top:6px"><b>Files:</b><br>${d.files.map(f => `<code style="font-size:11px;color:#7ee787">${f}</code>`).join('<br>')}</div>`;
+    const files = d.files;
+    if (files && (Array.isArray(files) ? files.length : Object.keys(files).length)) {
+      html += '<div style="margin-top:6px"><b>Files:</b>';
+      if (Array.isArray(files)) {
+        html += '<br>' + files.map(f => `<code style="font-size:11px;color:#7ee787">${f}</code>`).join('<br>');
+      } else {
+        for (const [file, info] of Object.entries(files)) {
+          html += `<div style="margin-top:4px"><code style="font-size:11px;color:#7ee787">${file}</code>`;
+          if (info.new && info.new.length) html += `<br><span style="color:#3fb950;font-size:10px">+ ${info.new.join('<br>+ ')}</span>`;
+          if (info.breaking && info.breaking.length) html += `<br><span style="color:#f85149;font-size:10px">! ${info.breaking.join('<br>! ')}</span>`;
+          html += '</div>';
+        }
+      }
+      html += '</div>';
     }
     document.getElementById('info-deps').innerHTML = html;
   }

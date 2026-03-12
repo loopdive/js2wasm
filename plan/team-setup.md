@@ -36,25 +36,32 @@ Every open issue has YAML frontmatter:
 priority: high
 depends_on: [234]
 files:
-  - src/codegen/expressions.ts
-breaking_changes:
-  - "compileCallExpression: new `calleeType` param added to signature"
-  - "coerceType: null handling changed — returns i32.const 0 instead of ref.null"
+  src/codegen/expressions.ts:
+    new:
+      - "compileMethodCallOnLiteral() — handles method calls on object literals"
+    breaking:
+      - "compileCallExpression: new `calleeType` param added to signature"
+      - "coerceType: null handling changed — returns i32.const 0 instead of ref.null"
+  src/codegen/index.ts:
+    new:
+      - "collectMethodCalls() — scans for method call patterns"
+    breaking: []
 ---
 ```
 
 Fields:
 - **priority**: `critical` | `high` | `medium` | `low`
 - **depends_on**: issue numbers that must be done first
-- **files**: source files this issue needs to modify (file locking — no two in-progress issues may claim the same file without PO approval)
-- **breaking_changes**: list of changes to existing functionality that other code depends on. Examples:
-  - Changed function signatures (new/removed/reordered params)
-  - Changed return types or semantics
-  - Renamed or removed exported functions/types
-  - Changed data structures (struct field order, type changes)
-  - Modified control flow that callers rely on (e.g., a function that used to return now throws)
+- **files**: map of source files this issue needs to modify. File locking — no two in-progress issues may claim the same file without PO approval. Each file entry has:
+  - **new**: new functions, types, exports being added
+  - **breaking**: changes to existing functionality that other code depends on:
+    - Changed function signatures (new/removed/reordered params)
+    - Changed return types or semantics
+    - Renamed or removed exported functions/types
+    - Changed data structures (struct field order, type changes)
+    - Modified control flow that callers rely on (e.g., a function that used to return now throws)
 
-Breaking changes must be documented **before** implementation starts so the PO can check whether any other in-progress or ready issues depend on the affected code. After implementation, the breaking changes should be preserved in the issue's Implementation Summary for future reference.
+Both `new` and `breaking` must be documented **before** implementation starts so the PO can check whether any other in-progress or ready issues depend on the affected code. After implementation, preserve them in the issue's Implementation Summary for future reference.
 
 ## Execution Workflow (dependency-driven)
 
