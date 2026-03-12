@@ -554,6 +554,18 @@ function bcrd(title: string, desc: string, parent: HTMLElement): HTMLElement {
   return card;
 }
 
+function addBenchCard(wrap: HTMLElement, title: string, desc: string, fn: () => number): void {
+  const card = bcrd(title, desc, wrap);
+  card.addEventListener("click", () => {
+    autoMode = 0;
+    const t0 = performance.now();
+    const v = fn();
+    const ms = performance.now() - t0;
+    const out = card.children[2];
+    out.textContent = v.toString() + " in " + ms.toFixed(2) + "ms";
+  });
+}
+
 function showBench(): void {
   if (pnl === null) return;
   const wrap = el("div", "padding:0.75rem;overflow-y:auto");
@@ -565,24 +577,12 @@ function showBench(): void {
     "Click a card to measure. Use the Bench button for WASM vs JS comparison.";
   wrap.appendChild(intro);
 
-  function addBench(title: string, desc: string, fn: () => number): void {
-    const card = bcrd(title, desc, wrap);
-    card.addEventListener("click", () => {
-      autoMode = 0;
-      const t0 = performance.now();
-      const v = fn();
-      const ms = performance.now() - t0;
-      const out = card.children[2];
-      out.textContent = v.toString() + " in " + ms.toFixed(2) + "ms";
-    });
-  }
-
-  addBench("fib(30)", "Recursive — pure i32/f64 math, no host calls", bench_fib);
-  addBench("Loop: sum 1..1M", "Tight numeric loop, no allocations", bench_loop);
-  addBench("DOM: 100 elements", "Host boundary — createElement + appendChild", bench_dom);
-  addBench("String: concat 1k", "wasm:js-string concat per iteration", bench_string);
-  addBench("Array: fill+sum 10k", "Wasm GC array — push / get loop", bench_array);
-  addBench("Style: 100 updates", "Host boundary — style.background per iteration", bench_style);
+  addBenchCard(wrap, "fib(30)", "Recursive — pure i32/f64 math, no host calls", bench_fib);
+  addBenchCard(wrap, "Loop: sum 1..1M", "Tight numeric loop, no allocations", bench_loop);
+  addBenchCard(wrap, "DOM: 100 elements", "Host boundary — createElement + appendChild", bench_dom);
+  addBenchCard(wrap, "String: concat 1k", "wasm:js-string concat per iteration", bench_string);
+  addBenchCard(wrap, "Array: fill+sum 10k", "Wasm GC array — push / get loop", bench_array);
+  addBenchCard(wrap, "Style: 100 updates", "Host boundary — style.background per iteration", bench_style);
 
   pnl.appendChild(wrap);
 }
@@ -1406,7 +1406,7 @@ function editorForPanel(panelId: string): EditorSlot | null {
 
 // Session storage for input
 inputFile.model.onDidChangeContent(() => {
-  sessionStorage.setItem(STORAGE_KEY, inputFile.model.getValue());
+  if (!t262Loading) sessionStorage.setItem(STORAGE_KEY, inputFile.model.getValue());
   lastResult = null;
   compileBtn.disabled = false;
   runBtn.disabled = true;
@@ -1457,6 +1457,8 @@ const t262ExpandedCats = new Set<string>();
 const t262FileCache = new Map<string, string[]>();
 let t262Filter = "";
 let t262Debounce: ReturnType<typeof setTimeout> | null = null;
+let t262ActivePath = "";
+let t262Loading = false;
 
 async function t262LoadIndex(): Promise<T262Category[]> {
   if (t262Index) return t262Index;
@@ -1484,79 +1486,174 @@ function t262FileName(fullPath: string): string {
   return parts[parts.length - 1];
 }
 
+function t262SetActive(filePath: string) {
+  t262ActivePath = filePath;
+  // Update active class on all file elements
+  const allFiles = test262Panel.querySelectorAll(".t262-file");
+  allFiles.forEach((el) => {
+    const htmlEl = el as HTMLElement;
+    htmlEl.classList.toggle("active", htmlEl.dataset.path === filePath);
+  });
+}
+
+async function t262LoadAndShow(filePath: string) {
+  const content = await t262LoadFile(filePath);
+  t262Loading = true;
+  sessionStorage.removeItem(STORAGE_KEY);
+  inputFile.model.setValue(content);
+  t262Loading = false;
+  t262SetActive(filePath);
+  // Update ts-source tab title to show filename
+  const fname = t262FileName(filePath);
+  updateTabLabel("ts-source", fname);
+  compileOnly();
+}
+
+// Group categories by parent path for nested display
+function t262GroupCategories(cats: T262Category[]): Map<string, T262Category[]> {
+  const groups = new Map<string, T262Category[]>();
+  for (const cat of cats) {
+    // e.g. "expressions/addition" -> parent="expressions", "Math/abs" -> parent="Math"
+    const parts = cat.name.split("/");
+    const parent = parts.length > 1 ? parts[0] : "";
+    if (!groups.has(parent)) groups.set(parent, []);
+    groups.get(parent)!.push(cat);
+  }
+  return groups;
+}
+
 async function t262Render() {
   const listEl = test262Panel.querySelector(".t262-list") as HTMLElement;
   if (!listEl) return;
   listEl.innerHTML = "";
 
-  const cats = await t262LoadIndex();
   const filter = t262Filter.toLowerCase();
 
-  for (const cat of cats) {
-    const catNameLower = cat.name.toLowerCase();
-    const catMatches = !filter || catNameLower.includes(filter);
+  // ── EXAMPLES section ──
+  if (!filter || "showreel".includes(filter)) {
+    const exHeader = document.createElement("div");
+    exHeader.className = "t262-section-header";
+    exHeader.textContent = "EXAMPLES";
+    listEl.appendChild(exHeader);
 
-    // If filter is active but category name doesn't match, check files
-    let filteredFiles: string[] | null = null;
-    if (filter && !catMatches) {
-      // Only show category if it has matching files (need to load them)
+    const showreel = document.createElement("div");
+    showreel.className = "t262-file" + (t262ActivePath === "__showreel__" ? " active" : "");
+    showreel.textContent = "Showreel";
+    showreel.dataset.path = "__showreel__";
+    showreel.addEventListener("click", () => {
+      t262Loading = true;
+      sessionStorage.removeItem(STORAGE_KEY);
+      inputFile.model.setValue(DEFAULT_SOURCE);
+      t262Loading = false;
+      t262SetActive("__showreel__");
+      updateTabLabel("ts-source", "TypeScript (.ts)");
+      compileOnly();
+    });
+    listEl.appendChild(showreel);
+  }
+
+  // ── TEST262 section ──
+  const t262Header = document.createElement("div");
+  t262Header.className = "t262-section-header";
+  t262Header.textContent = "TEST262";
+  listEl.appendChild(t262Header);
+
+  const cats = await t262LoadIndex();
+  const groups = t262GroupCategories(cats);
+
+  for (const [groupName, groupCats] of groups) {
+    // Check if any category in this group matches filter
+    let groupHasMatch = false;
+    for (const cat of groupCats) {
+      const catNameLower = cat.name.toLowerCase();
+      if (!filter || catNameLower.includes(filter)) {
+        groupHasMatch = true;
+        break;
+      }
       if (t262FileCache.has(cat.path)) {
         const files = t262FileCache.get(cat.path)!;
-        filteredFiles = files.filter(f => f.toLowerCase().includes(filter));
-        if (filteredFiles.length === 0) continue;
-      } else {
-        // Don't load files lazily for filtering -- skip unless expanded
-        if (!t262ExpandedCats.has(cat.path)) continue;
+        if (files.some(f => f.toLowerCase().includes(filter))) {
+          groupHasMatch = true;
+          break;
+        }
       }
     }
+    if (filter && !groupHasMatch) continue;
 
-    const catEl = document.createElement("div");
-    catEl.className = "t262-category";
-
-    const headerEl = document.createElement("div");
-    headerEl.className = "t262-cat-header";
-    const isExpanded = t262ExpandedCats.has(cat.path) || (filter.length > 0 && catMatches);
-    headerEl.innerHTML = `<span class="t262-arrow">${isExpanded ? "&#9660;" : "&#9654;"}</span> <span class="t262-cat-name">${cat.name}</span> <span class="t262-cat-count">(${cat.fileCount})</span>`;
-
-    headerEl.addEventListener("click", async () => {
-      if (t262ExpandedCats.has(cat.path)) {
-        t262ExpandedCats.delete(cat.path);
-      } else {
-        t262ExpandedCats.add(cat.path);
-      }
-      await t262Render();
-    });
-
-    catEl.appendChild(headerEl);
-
-    if (isExpanded || (filteredFiles && filteredFiles.length > 0)) {
-      // Force expand if we have filtered files
-      if (!t262ExpandedCats.has(cat.path) && !catMatches) {
-        t262ExpandedCats.add(cat.path);
-      }
-      const files = filteredFiles ?? await t262LoadFiles(cat.path);
-      const displayFiles = filter && !filteredFiles
-        ? files.filter(f => f.toLowerCase().includes(filter))
-        : (filteredFiles ?? files);
-
-      const filesEl = document.createElement("div");
-      filesEl.className = "t262-files";
-      for (const file of displayFiles) {
-        const fileEl = document.createElement("div");
-        fileEl.className = "t262-file";
-        fileEl.textContent = t262FileName(file);
-        fileEl.title = file;
-        fileEl.addEventListener("click", async () => {
-          const content = await t262LoadFile(file);
-          inputFile.model.setValue(content);
-          compileOnly();
-        });
-        filesEl.appendChild(fileEl);
-      }
-      catEl.appendChild(filesEl);
+    // Show group header for multi-level categories
+    if (groupName) {
+      const groupHeader = document.createElement("div");
+      groupHeader.className = "t262-group-header";
+      groupHeader.textContent = groupName;
+      listEl.appendChild(groupHeader);
     }
 
-    listEl.appendChild(catEl);
+    for (const cat of groupCats) {
+      const catNameLower = cat.name.toLowerCase();
+      const catMatches = !filter || catNameLower.includes(filter);
+
+      // If filter is active but category name doesn't match, check files
+      let filteredFiles: string[] | null = null;
+      if (filter && !catMatches) {
+        if (t262FileCache.has(cat.path)) {
+          const files = t262FileCache.get(cat.path)!;
+          filteredFiles = files.filter(f => f.toLowerCase().includes(filter));
+          if (filteredFiles.length === 0) continue;
+        } else {
+          if (!t262ExpandedCats.has(cat.path)) continue;
+        }
+      }
+
+      const catEl = document.createElement("div");
+      catEl.className = "t262-category";
+
+      const headerEl = document.createElement("div");
+      headerEl.className = "t262-cat-header";
+      const isExpanded = t262ExpandedCats.has(cat.path) || (filter.length > 0 && catMatches);
+      // Show short name (after the slash) for grouped categories
+      const displayName = groupName && cat.name.startsWith(groupName + "/")
+        ? cat.name.slice(groupName.length + 1)
+        : cat.name;
+      headerEl.innerHTML = `<span class="t262-arrow">${isExpanded ? "&#9660;" : "&#9654;"}</span> <span class="t262-cat-name">${displayName}</span> <span class="t262-cat-count">(${cat.fileCount})</span>`;
+
+      headerEl.addEventListener("click", async () => {
+        if (t262ExpandedCats.has(cat.path)) {
+          t262ExpandedCats.delete(cat.path);
+        } else {
+          t262ExpandedCats.add(cat.path);
+        }
+        await t262Render();
+      });
+
+      catEl.appendChild(headerEl);
+
+      if (isExpanded || (filteredFiles && filteredFiles.length > 0)) {
+        if (!t262ExpandedCats.has(cat.path) && !catMatches) {
+          t262ExpandedCats.add(cat.path);
+        }
+        const files = filteredFiles ?? await t262LoadFiles(cat.path);
+        const displayFiles = filter && !filteredFiles
+          ? files.filter(f => f.toLowerCase().includes(filter))
+          : (filteredFiles ?? files);
+
+        const filesEl = document.createElement("div");
+        filesEl.className = "t262-files";
+        for (const file of displayFiles) {
+          const fileEl = document.createElement("div");
+          fileEl.className = "t262-file" + (file === t262ActivePath ? " active" : "");
+          fileEl.textContent = t262FileName(file);
+          fileEl.title = file;
+          fileEl.dataset.path = file;
+          fileEl.addEventListener("click", () => {
+            t262LoadAndShow(file);
+          });
+          filesEl.appendChild(fileEl);
+        }
+        catEl.appendChild(filesEl);
+      }
+
+      listEl.appendChild(catEl);
+    }
   }
 }
 

@@ -3823,4 +3823,279 @@ describe("Arguments object in nested functions (#211)", () => {
     expect(exports.test()).toBe(42);
   });
 
+  // Issue #251: super() call required in derived class constructors — diagnostic suppressed
+  it("derived class without explicit super compiles", async () => {
+    const exports = await compileToWasm(`
+      class Base {
+        getVal(): number { return 42; }
+      }
+      class Child extends Base {
+        run(): number { return this.getVal(); }
+      }
+      export function test(): number {
+        var c = new Child();
+        return c.run();
+      }
+    `);
+    expect(exports.test()).toBe(42);
+  });
+
+  // Issue #252: var re-declaration with different types
+  it("var re-declaration with different value", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        var x: number = 1;
+        var x: number = 42;
+        return x;
+      }
+    `);
+    expect(exports.test()).toBe(42);
+  });
+
+  // Issue #255: 'this' implicit any type in class methods
+  it("this in class method compiles", async () => {
+    const exports = await compileToWasm(`
+      class Counter {
+        count: number = 0;
+        increment(): void {
+          this.count = this.count + 1;
+        }
+        getCount(): number {
+          return this.count;
+        }
+      }
+      export function test(): number {
+        var c = new Counter();
+        c.increment();
+        c.increment();
+        return c.getCount();
+      }
+    `);
+    expect(exports.test()).toBe(2);
+  });
+
+  // Issue #240: Setter with return value
+  it("setter with return statement compiles", async () => {
+    const exports = await compileToWasm(`
+      class Box {
+        _value: number = 0;
+        get value(): number { return this._value; }
+        set value(v: number) { this._value = v; }
+      }
+      export function test(): number {
+        var b = new Box();
+        b.value = 99;
+        return b.value;
+      }
+    `);
+    expect(exports.test()).toBe(99);
+  });
+
+  // Issue #225: string !== comparison with any-typed variable
+  it("string !== comparison (any-typed var vs string literal)", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var s: string = "";
+        for (var i: number = 0; i < 10; i += 1) {
+          if (i < 5) continue;
+          s += i;
+        }
+        if (s !== "56789") {
+          return 0;
+        }
+        return 1;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #225: string === comparison
+  it("string === comparison (typed variables)", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let a: string = "hello";
+        let b: string = "hel" + "lo";
+        if (a === b) {
+          return 1;
+        }
+        return 0;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #225: string !== with loop-built string (test262 pattern)
+  it("for-loop continue with string !== check", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var __str = "";
+        for (var index = 0; index < 10; index += 1) {
+          if (index < 5) continue;
+          __str += index;
+        }
+        if (__str !== "56789") {
+          return 0;
+        }
+        return 1;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #245: switch statement with string case values
+  it("switch with string case values", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let x: string = "b";
+        let result: number = 0;
+        switch (x) {
+          case "a":
+            result = 1;
+            break;
+          case "b":
+            result = 2;
+            break;
+          case "c":
+            result = 3;
+            break;
+          default:
+            result = -1;
+        }
+        return result;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #245: switch with string case values and fallthrough
+  it("switch with string case values and fallthrough", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let x: string = "a";
+        let result: number = 0;
+        switch (x) {
+          case "a":
+            result += 1;
+          case "b":
+            result += 10;
+            break;
+          case "c":
+            result += 100;
+            break;
+        }
+        return result;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #245: switch with string default case
+  it("switch with string case values - default case", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        let x: string = "z";
+        let result: number = 0;
+        switch (x) {
+          case "a":
+            result = 1;
+            break;
+          case "b":
+            result = 2;
+            break;
+          default:
+            result = 99;
+        }
+        return result;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #256: nested function declarations in for loops
+  it("nested function declaration in for loop body", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var result: number = 0;
+        for (var i: number = 0; i < 3; i++) {
+          function add10(): number { return 10; }
+          result = result + add10();
+        }
+        return result;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #256: nested function declarations in while loops
+  it("nested function declaration in while loop body", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var count: number = 0;
+        var done: boolean = false;
+        while (!done) {
+          function inc(): number { return 1; }
+          count = count + inc();
+          if (count >= 5) done = true;
+        }
+        return count;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #256: nested function declarations in switch cases
+  it("nested function declaration in switch case", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var x: number = 2;
+        switch (x) {
+          case 2: {
+            function getVal(): number { return 99; }
+            return getVal();
+          }
+          default:
+            return 0;
+        }
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #256: nested function declaration in do-while loop
+  it("nested function declaration in do-while loop", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var result: number = 0;
+        var count: number = 0;
+        do {
+          function getInc(): number { return 7; }
+          result = result + getInc();
+          count = count + 1;
+        } while (count < 2);
+        return result;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
 });
