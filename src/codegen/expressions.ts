@@ -8398,6 +8398,22 @@ function compilePropertyAccess(
     }
   }
 
+  // Handle Function.name — return the function name as a string
+  if (propName === "name") {
+    const callSigs = objType.getCallSignatures?.();
+    if (callSigs && callSigs.length > 0) {
+      // Resolve the function name from the type symbol or the expression
+      let funcName = objType.getSymbol()?.name ?? "";
+      // __type and __function are anonymous type names from TS checker
+      if (funcName === "__type" || funcName === "__function") funcName = "";
+      // If the expression is an identifier, use that as the name (more reliable)
+      if (ts.isIdentifier(expr.expression)) {
+        funcName = expr.expression.text;
+      }
+      return compileStringLiteral(ctx, fctx, funcName);
+    }
+  }
+
   // Handle array.length (vec struct: field 0 is the logical length)
   if (propName === "length") {
     // Shape-inferred array-like: obj.length → struct.get vec field 0
