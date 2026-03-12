@@ -133,6 +133,8 @@ export const OP = {
   misc_prefix: 0xfc,
   i32_trunc_sat_f64_s: 0x02,
   i32_trunc_sat_f64_u: 0x03,
+  i64_trunc_sat_f64_s: 0x06,
+  i64_trunc_sat_f64_u: 0x07,
   /** SIMD prefix byte — all SIMD instructions start with 0xFD */
   simd_prefix: 0xfd,
 } as const;
