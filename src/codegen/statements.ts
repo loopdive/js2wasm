@@ -17,6 +17,7 @@ import {
   ensureExnTag,
   ensureI32Condition,
   ensureNativeStringHelpers,
+  ensureStructForType,
   getArrTypeIdxFromVec,
   getOrRegisterVecType,
   getSourcePos,
@@ -489,13 +490,24 @@ function compileObjectDestructuring(
   // Determine struct type from the initializer's type
   const initType = ctx.checker.getTypeAtLocation(decl.initializer);
   const symName = initType.symbol?.name;
-  const typeName =
+  let typeName =
     symName &&
     symName !== "__type" &&
     symName !== "__object" &&
     ctx.structMap.has(symName)
       ? symName
       : (ctx.anonTypeMap.get(initType) ?? symName);
+
+  // Auto-register anonymous object types (same as expression-level destructuring)
+  if (
+    typeName &&
+    (typeName === "__type" || typeName === "__object") &&
+    !ctx.anonTypeMap.has(initType) &&
+    initType.getProperties().length > 0
+  ) {
+    ensureStructForType(ctx, initType);
+    typeName = ctx.anonTypeMap.get(initType) ?? typeName;
+  }
 
   if (!typeName) {
     fctx.body.length = bodyLenBefore; // rollback — value would leak on stack
