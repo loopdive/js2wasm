@@ -1979,6 +1979,16 @@ function compileTryStatement(
     ) {
       const varName = stmt.catchClause.variableDeclaration.name.text;
       exnLocalIdx = allocLocal(fctx, varName, { kind: "externref" });
+    } else if (
+      stmt.catchClause.variableDeclaration &&
+      (ts.isObjectBindingPattern(stmt.catchClause.variableDeclaration.name) ||
+       ts.isArrayBindingPattern(stmt.catchClause.variableDeclaration.name))
+    ) {
+      // Destructuring in catch: `catch ({message})` or `catch ([a, b])`
+      // Allocate locals for all binding names so they are in scope
+      ensureBindingLocals(ctx, fctx, stmt.catchClause.variableDeclaration.name);
+      // Store the exception value in a temp so catch body can reference it
+      exnLocalIdx = allocLocal(fctx, `__catch_destruct_${fctx.locals.length}`, { kind: "externref" });
     }
 
     // Build "catch $exn" body: receives the externref value on the stack
@@ -2319,6 +2329,34 @@ export function hoistFunctionDeclarations(
     }
     if (ts.isBlock(stmt)) {
       hoistFunctionDeclarations(ctx, fctx, stmt.statements);
+    }
+    // Recurse into loop bodies — function declarations inside loops are hoisted
+    // to the enclosing function scope in JS semantics.
+    if (ts.isForStatement(stmt) || ts.isWhileStatement(stmt) || ts.isDoStatement(stmt)) {
+      if (ts.isBlock(stmt.statement)) {
+        hoistFunctionDeclarations(ctx, fctx, stmt.statement.statements);
+      } else {
+        hoistFunctionDeclarations(ctx, fctx, [stmt.statement]);
+      }
+    }
+    if (ts.isForInStatement(stmt) || ts.isForOfStatement(stmt)) {
+      if (ts.isBlock(stmt.statement)) {
+        hoistFunctionDeclarations(ctx, fctx, stmt.statement.statements);
+      } else {
+        hoistFunctionDeclarations(ctx, fctx, [stmt.statement]);
+      }
+    }
+    if (ts.isSwitchStatement(stmt)) {
+      for (const clause of stmt.caseBlock.clauses) {
+        hoistFunctionDeclarations(ctx, fctx, clause.statements);
+      }
+    }
+    if (ts.isLabeledStatement(stmt)) {
+      if (ts.isBlock(stmt.statement)) {
+        hoistFunctionDeclarations(ctx, fctx, stmt.statement.statements);
+      } else {
+        hoistFunctionDeclarations(ctx, fctx, [stmt.statement]);
+      }
     }
   }
 }
