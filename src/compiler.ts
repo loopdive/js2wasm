@@ -392,6 +392,8 @@ export function compileSource(
     1170, // "A computed property name in a type literal must refer to an expression whose type is a literal type"
     2464, // "A computed property name must be of type 'string', 'number', 'symbol', or 'any'" — valid JS
     2418, // "Type of computed property's value is not assignable to type" — valid JS
+    1214, // "Identifier expected. 'yield' is a reserved word in strict mode" — sloppy-mode test262 tests
+    1212, // "Identifier expected. 'X' is a reserved word in strict mode" — sloppy-mode test262 tests
   ]);
 
   // Collect TS diagnostics as errors (or warnings for handled cases)
