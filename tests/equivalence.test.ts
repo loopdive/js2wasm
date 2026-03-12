@@ -3929,6 +3929,68 @@ describe("Arguments object in nested functions (#211)", () => {
     );
   });
 
+  // Issue #284: for-of array destructuring
+  it("for-of with array destructuring", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        const pairs: number[][] = [[1, 2], [3, 4], [5, 6]];
+        let sum = 0;
+        for (const [a, b] of pairs) {
+          sum += a + b;
+        }
+        return sum;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #284: for-of with rest element in array destructuring
+  it("for-of array destructuring with rest", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        const arr: number[][] = [[1, 2, 3, 4], [5, 6, 7, 8]];
+        let total = 0;
+        for (const [first, ...rest] of arr) {
+          total += first * 10 + rest.length;
+        }
+        return total;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #284: regular array destructuring with rest
+  it("array destructuring with rest element", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        const arr = [1, 2, 3, 4, 5];
+        const [a, b, ...rest] = arr;
+        return a + b + rest.length;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  // Issue #284: nested object destructuring in regular declaration
+  it("nested object destructuring", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        const obj = { a: { x: 10, y: 20 }, b: 30 };
+        const { a: { x, y }, b } = obj;
+        return x + y + b;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
 
   // Issue #200: JSON.stringify/parse with various argument types
   it("JSON.stringify with number", async () => {

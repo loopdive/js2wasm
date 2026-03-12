@@ -533,6 +533,23 @@ function compileObjectDestructuring(
   for (const element of pattern.elements) {
     if (!ts.isBindingElement(element)) continue;
     const propName = (element.propertyName ?? element.name) as ts.Identifier;
+
+    // Nested destructuring: const { a: { b, c } } = obj
+    if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
+      const fieldIdx = fields.findIndex((f) => f.name === propName.text);
+      if (fieldIdx === -1) {
+        ensureBindingLocals(ctx, fctx, element.name);
+        continue;
+      }
+      const fieldType = fields[fieldIdx]!.type;
+      const nestedLocal = allocLocal(fctx, `__nested_obj_${fctx.locals.length}`, fieldType);
+      fctx.body.push({ op: "local.get", index: tmpLocal });
+      fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+      fctx.body.push({ op: "local.set", index: nestedLocal });
+      compileForOfDestructuring(ctx, fctx, element.name, nestedLocal, fieldType, decl as unknown as ts.ForOfStatement);
+      continue;
+    }
+
     const localName = (element.name as ts.Identifier).text;
 
     const fieldIdx = fields.findIndex((f) => f.name === propName.text);
@@ -651,6 +668,69 @@ function compileArrayDestructuring(
   for (let i = 0; i < pattern.elements.length; i++) {
     const element = pattern.elements[i]!;
     if (ts.isOmittedExpression(element)) continue; // skip holes: [a, , c]
+
+    // Rest element: const [a, ...rest] = arr
+    if (element.dotDotDotToken) {
+      const restVecTypeIdx = typeIdx;
+      const restName = ts.isIdentifier(element.name)
+        ? element.name.text
+        : `__rest_${fctx.locals.length}`;
+      const restElemType: ValType = { kind: "ref_null" as const, typeIdx: restVecTypeIdx };
+      const restLocal = allocLocal(fctx, restName, restElemType);
+
+      const srcLenLocal = allocLocal(fctx, `__rest_srclen_${fctx.locals.length}`, { kind: "i32" });
+      fctx.body.push({ op: "local.get", index: tmpLocal });
+      fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 0 });
+      fctx.body.push({ op: "local.set", index: srcLenLocal });
+
+      const restLenLocal = allocLocal(fctx, `__rest_len_${fctx.locals.length}`, { kind: "i32" });
+      // restLen = max(0, srcLen - i): select(srcLen-i, 0, srcLen>=i)
+      fctx.body.push({ op: "local.get", index: srcLenLocal });
+      fctx.body.push({ op: "i32.const", value: i });
+      fctx.body.push({ op: "i32.sub" });
+      fctx.body.push({ op: "i32.const", value: 0 });
+      fctx.body.push({ op: "local.get", index: srcLenLocal });
+      fctx.body.push({ op: "i32.const", value: i });
+      fctx.body.push({ op: "i32.ge_s" });
+      fctx.body.push({ op: "select" } as unknown as Instr);
+      fctx.body.push({ op: "local.set", index: restLenLocal });
+
+      const restDataLocal = allocLocal(fctx, `__rest_data_${fctx.locals.length}`, { kind: "ref", typeIdx: arrTypeIdx });
+      fctx.body.push({ op: "local.get", index: restLenLocal });
+      fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx } as Instr);
+      fctx.body.push({ op: "local.set", index: restDataLocal });
+
+      fctx.body.push({ op: "local.get", index: restDataLocal });
+      fctx.body.push({ op: "i32.const", value: 0 });
+      fctx.body.push({ op: "local.get", index: tmpLocal });
+      fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 });
+      fctx.body.push({ op: "i32.const", value: i });
+      fctx.body.push({ op: "local.get", index: restLenLocal });
+      fctx.body.push({ op: "array.copy", dstTypeIdx: arrTypeIdx, srcTypeIdx: arrTypeIdx } as unknown as Instr);
+
+      fctx.body.push({ op: "local.get", index: restLenLocal });
+      fctx.body.push({ op: "local.get", index: restDataLocal });
+      fctx.body.push({ op: "struct.new", typeIdx: restVecTypeIdx });
+      fctx.body.push({ op: "local.set", index: restLocal });
+
+      if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
+        compileForOfDestructuring(ctx, fctx, element.name, restLocal, restElemType, decl as unknown as ts.ForOfStatement);
+      }
+      continue;
+    }
+
+    // Nested destructuring: const [{a, b}] = arr  or const [[x, y]] = arr
+    if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
+      const nestedLocal = allocLocal(fctx, `__nested_arr_${fctx.locals.length}`, elemType);
+      fctx.body.push({ op: "local.get", index: tmpLocal });
+      fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 });
+      fctx.body.push({ op: "i32.const", value: i });
+      fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
+      fctx.body.push({ op: "local.set", index: nestedLocal });
+      // Use the for-of destructuring helper (works generically with elem + type)
+      compileForOfDestructuring(ctx, fctx, element.name, nestedLocal, elemType, decl as unknown as ts.ForOfStatement);
+      continue;
+    }
 
     const localName = (element.name as ts.Identifier).text;
     const localIdx = allocLocal(fctx, localName, elemType);
@@ -1267,6 +1347,24 @@ function compileForOfDestructuring(
     for (const element of pattern.elements) {
       if (!ts.isBindingElement(element)) continue;
       const propName = (element.propertyName ?? element.name) as ts.Identifier;
+
+      // Nested destructuring: { a: { b, c } } — element.name is a binding pattern
+      if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
+        const fieldIdx = fields.findIndex((f) => f.name === propName.text);
+        if (fieldIdx === -1) {
+          // Field not found — allocate locals with defaults
+          ensureBindingLocals(ctx, fctx, element.name);
+          continue;
+        }
+        const fieldType = fields[fieldIdx]!.type;
+        const nestedLocal = allocLocal(fctx, `__nested_${fctx.locals.length}`, fieldType);
+        fctx.body.push({ op: "local.get", index: elemLocal });
+        fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+        fctx.body.push({ op: "local.set", index: nestedLocal });
+        compileForOfDestructuring(ctx, fctx, element.name, nestedLocal, fieldType, stmt);
+        continue;
+      }
+
       const localName = (element.name as ts.Identifier).text;
 
       const fieldIdx = fields.findIndex((f) => f.name === propName.text);
@@ -1394,6 +1492,74 @@ function compileForOfDestructuring(
       const element = pattern.elements[i]!;
       if (ts.isOmittedExpression(element)) continue;
 
+      // Rest element: ...rest — collect remaining elements into a new array
+      if (element.dotDotDotToken) {
+        // Rest element collects arr[i..len] into a new vec struct
+        const restVecTypeIdx = vecTypeIdx; // same vec type as the source
+        const restName = ts.isIdentifier(element.name)
+          ? element.name.text
+          : `__rest_${fctx.locals.length}`;
+        const restElemType: ValType = { kind: "ref_null" as const, typeIdx: restVecTypeIdx };
+        const restLocal = allocLocal(fctx, restName, restElemType);
+
+        // restLen = max(0, srcLen - i)
+        const srcLenLocal = allocLocal(fctx, `__rest_srclen_${fctx.locals.length}`, { kind: "i32" });
+        fctx.body.push({ op: "local.get", index: elemLocal });
+        fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
+        fctx.body.push({ op: "local.set", index: srcLenLocal });
+
+        const restLenLocal = allocLocal(fctx, `__rest_len_${fctx.locals.length}`, { kind: "i32" });
+        // restLen = max(0, srcLen - i): select(srcLen-i, 0, srcLen>=i)
+        fctx.body.push({ op: "local.get", index: srcLenLocal });
+        fctx.body.push({ op: "i32.const", value: i });
+        fctx.body.push({ op: "i32.sub" });
+        fctx.body.push({ op: "i32.const", value: 0 });
+        fctx.body.push({ op: "local.get", index: srcLenLocal });
+        fctx.body.push({ op: "i32.const", value: i });
+        fctx.body.push({ op: "i32.ge_s" });
+        fctx.body.push({ op: "select" } as unknown as Instr);
+        fctx.body.push({ op: "local.set", index: restLenLocal });
+
+        // Create new array: array.new_default(restLen)
+        const restDataLocal = allocLocal(fctx, `__rest_data_${fctx.locals.length}`, { kind: "ref", typeIdx: innerArrTypeIdx });
+        fctx.body.push({ op: "local.get", index: restLenLocal });
+        fctx.body.push({ op: "array.new_default", typeIdx: innerArrTypeIdx } as Instr);
+        fctx.body.push({ op: "local.set", index: restDataLocal });
+
+        // Copy elements: array.copy(dest, 0, src, i, restLen)
+        fctx.body.push({ op: "local.get", index: restDataLocal });
+        fctx.body.push({ op: "i32.const", value: 0 }); // destOffset
+        fctx.body.push({ op: "local.get", index: elemLocal });
+        fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 }); // srcData
+        fctx.body.push({ op: "i32.const", value: i }); // srcOffset
+        fctx.body.push({ op: "local.get", index: restLenLocal }); // length
+        fctx.body.push({ op: "array.copy", dstTypeIdx: innerArrTypeIdx, srcTypeIdx: innerArrTypeIdx } as unknown as Instr);
+
+        // Create vec struct: struct.new(restLen, restData)
+        fctx.body.push({ op: "local.get", index: restLenLocal });
+        fctx.body.push({ op: "local.get", index: restDataLocal });
+        fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
+        fctx.body.push({ op: "local.set", index: restLocal });
+
+        // If element.name is a nested pattern, recursively destructure
+        if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
+          compileForOfDestructuring(ctx, fctx, element.name, restLocal, restElemType, stmt);
+        }
+        continue;
+      }
+
+      // Nested destructuring: [{ a, b }] or [[x, y]]
+      if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
+        const nestedLocal = allocLocal(fctx, `__nested_arr_${fctx.locals.length}`, innerElemType);
+        fctx.body.push({ op: "local.get", index: elemLocal });
+        fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
+        fctx.body.push({ op: "i32.const", value: i });
+        fctx.body.push({ op: "array.get", typeIdx: innerArrTypeIdx });
+        fctx.body.push({ op: "local.set", index: nestedLocal });
+        compileForOfDestructuring(ctx, fctx, element.name, nestedLocal, innerElemType, stmt);
+        continue;
+      }
+
       const localName = (element.name as ts.Identifier).text;
       const localIdx = allocLocal(fctx, localName, innerElemType);
 
@@ -1428,6 +1594,142 @@ function compileForOfDestructuring(
       } else {
         fctx.body.push({ op: "local.set", index: localIdx });
       }
+    }
+  }
+}
+
+/**
+ * Handle assignment destructuring in for-of without let/const/var.
+ * E.g. `for ([a, b] of arr)` or `for ({a, b} of arr)` where a, b are
+ * already declared variables. We assign into the existing locals.
+ */
+function compileForOfAssignDestructuring(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  pattern: ts.ArrayLiteralExpression | ts.ObjectLiteralExpression,
+  elemLocal: number,
+  elemType: ValType,
+  stmt: ts.ForOfStatement,
+): void {
+  if (ts.isArrayLiteralExpression(pattern)) {
+    // for ([a, b] of arr) — pattern.elements are identifiers or spread
+    if (elemType.kind !== "ref" && elemType.kind !== "ref_null") {
+      // For externref element types (iterator protocol), assign each element
+      // We can't do array indexing on externref, so just assign the whole value
+      for (const elem of pattern.elements) {
+        if (ts.isIdentifier(elem)) {
+          const localIdx = fctx.localMap.get(elem.text);
+          if (localIdx !== undefined) {
+            fctx.body.push({ op: "local.get", index: elemLocal });
+            fctx.body.push({ op: "local.set", index: localIdx });
+          }
+        }
+      }
+      return;
+    }
+
+    const vecTypeIdx = (elemType as { typeIdx: number }).typeIdx;
+    const innerArrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
+    const arrDef = ctx.mod.types[innerArrTypeIdx];
+    if (!arrDef || arrDef.kind !== "array") return;
+
+    const innerElemType = arrDef.element;
+    for (let i = 0; i < pattern.elements.length; i++) {
+      const elem = pattern.elements[i]!;
+      if (ts.isOmittedExpression(elem)) continue;
+
+      if (ts.isSpreadElement(elem) && ts.isIdentifier(elem.expression)) {
+        // ...rest — create sub-array from position i onwards
+        const restName = elem.expression.text;
+        const restLocal = fctx.localMap.get(restName);
+        if (restLocal === undefined) continue;
+
+        const restVecTypeIdx = vecTypeIdx;
+        const srcLenLocal = allocLocal(fctx, `__assignrest_srclen_${fctx.locals.length}`, { kind: "i32" });
+        fctx.body.push({ op: "local.get", index: elemLocal });
+        fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
+        fctx.body.push({ op: "local.set", index: srcLenLocal });
+
+        const restLenLocal = allocLocal(fctx, `__assignrest_len_${fctx.locals.length}`, { kind: "i32" });
+        // restLen = max(0, srcLen - i): select(srcLen-i, 0, srcLen>=i)
+        fctx.body.push({ op: "local.get", index: srcLenLocal });
+        fctx.body.push({ op: "i32.const", value: i });
+        fctx.body.push({ op: "i32.sub" });
+        fctx.body.push({ op: "i32.const", value: 0 });
+        fctx.body.push({ op: "local.get", index: srcLenLocal });
+        fctx.body.push({ op: "i32.const", value: i });
+        fctx.body.push({ op: "i32.ge_s" }); // srcLen >= i?
+        fctx.body.push({ op: "select" } as unknown as Instr);
+        fctx.body.push({ op: "local.set", index: restLenLocal });
+
+        const restDataLocal = allocLocal(fctx, `__assignrest_data_${fctx.locals.length}`, { kind: "ref", typeIdx: innerArrTypeIdx });
+        fctx.body.push({ op: "local.get", index: restLenLocal });
+        fctx.body.push({ op: "array.new_default", typeIdx: innerArrTypeIdx } as Instr);
+        fctx.body.push({ op: "local.set", index: restDataLocal });
+
+        fctx.body.push({ op: "local.get", index: restDataLocal });
+        fctx.body.push({ op: "i32.const", value: 0 });
+        fctx.body.push({ op: "local.get", index: elemLocal });
+        fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
+        fctx.body.push({ op: "i32.const", value: i });
+        fctx.body.push({ op: "local.get", index: restLenLocal });
+        fctx.body.push({ op: "array.copy", dstTypeIdx: innerArrTypeIdx, srcTypeIdx: innerArrTypeIdx } as unknown as Instr);
+
+        fctx.body.push({ op: "local.get", index: restLenLocal });
+        fctx.body.push({ op: "local.get", index: restDataLocal });
+        fctx.body.push({ op: "struct.new", typeIdx: restVecTypeIdx });
+        fctx.body.push({ op: "local.set", index: restLocal });
+        continue;
+      }
+
+      if (ts.isIdentifier(elem)) {
+        const localIdx = fctx.localMap.get(elem.text);
+        if (localIdx === undefined) continue;
+
+        fctx.body.push({ op: "local.get", index: elemLocal });
+        fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
+        fctx.body.push({ op: "i32.const", value: i });
+        fctx.body.push({ op: "array.get", typeIdx: innerArrTypeIdx });
+        fctx.body.push({ op: "local.set", index: localIdx });
+      }
+    }
+  } else if (ts.isObjectLiteralExpression(pattern)) {
+    // for ({a, b} of arr) — pattern.properties are shorthand/property assignments
+    if (elemType.kind !== "ref" && elemType.kind !== "ref_null") return;
+
+    const structTypeIdx = (elemType as { typeIdx: number }).typeIdx;
+    const typeDef = ctx.mod.types[structTypeIdx];
+    if (!typeDef || typeDef.kind !== "struct") return;
+
+    let structName: string | undefined;
+    for (const [name, idx] of ctx.structMap) {
+      if (idx === structTypeIdx) { structName = name; break; }
+    }
+    const fields = structName ? ctx.structFields.get(structName) : undefined;
+    if (!fields) return;
+
+    for (const prop of pattern.properties) {
+      if (!ts.isPropertyAssignment(prop) && !ts.isShorthandPropertyAssignment(prop)) continue;
+
+      let propName: string;
+      let varName: string;
+      if (ts.isShorthandPropertyAssignment(prop)) {
+        propName = prop.name.text;
+        varName = prop.name.text;
+      } else {
+        propName = (prop.name as ts.Identifier).text;
+        varName = ts.isIdentifier(prop.initializer) ? prop.initializer.text : propName;
+      }
+
+      const fieldIdx = fields.findIndex((f) => f.name === propName);
+      if (fieldIdx === -1) continue;
+
+      const localIdx = fctx.localMap.get(varName);
+      if (localIdx === undefined) continue;
+
+      fctx.body.push({ op: "local.get", index: elemLocal });
+      fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+      fctx.body.push({ op: "local.set", index: localIdx });
     }
   }
 }
@@ -1530,6 +1832,7 @@ function compileForOfArray(
   // Declare the loop variable (may be a simple identifier or a destructuring pattern)
   let elemLocal: number;
   let destructPattern: ts.ObjectBindingPattern | ts.ArrayBindingPattern | null = null;
+  let assignDestructPattern: ts.ArrayLiteralExpression | ts.ObjectLiteralExpression | null = null;
   if (ts.isVariableDeclarationList(stmt.initializer)) {
     const decl = stmt.initializer.declarations[0]!;
     if (ts.isObjectBindingPattern(decl.name) || ts.isArrayBindingPattern(decl.name)) {
@@ -1540,6 +1843,14 @@ function compileForOfArray(
       const varName = (decl.name as ts.Identifier).text;
       elemLocal = allocLocal(fctx, varName, elemType);
     }
+  } else if (ts.isArrayLiteralExpression(stmt.initializer)) {
+    // Assignment pattern: for ([a, b] of arr) — destructure into existing variables
+    elemLocal = allocLocal(fctx, `__forof_elem_${fctx.locals.length}`, elemType);
+    assignDestructPattern = stmt.initializer;
+  } else if (ts.isObjectLiteralExpression(stmt.initializer)) {
+    // Assignment pattern: for ({a, b} of arr) — destructure into existing variables
+    elemLocal = allocLocal(fctx, `__forof_elem_${fctx.locals.length}`, elemType);
+    assignDestructPattern = stmt.initializer;
   } else {
     // Expression form: for (x of arr) — x is already declared
     const varName = (stmt.initializer as ts.Identifier).text;
@@ -1573,6 +1884,11 @@ function compileForOfArray(
   // If destructuring pattern, destructure from the element
   if (destructPattern) {
     compileForOfDestructuring(ctx, fctx, destructPattern, elemLocal, elemType, stmt);
+  }
+
+  // Assignment destructuring: for ([a, b] of arr) or for ({a, b} of arr)
+  if (assignDestructPattern) {
+    compileForOfAssignDestructuring(ctx, fctx, assignDestructPattern, elemLocal, elemType, stmt);
   }
 
   // Compile body
@@ -1685,6 +2001,7 @@ function compileForOfIterator(
   const elemType: ValType = { kind: "externref" };
   let elemLocal: number;
   let destructPatternIter: ts.ObjectBindingPattern | ts.ArrayBindingPattern | null = null;
+  let assignDestructPatternIter: ts.ArrayLiteralExpression | ts.ObjectLiteralExpression | null = null;
   if (ts.isVariableDeclarationList(stmt.initializer)) {
     const decl = stmt.initializer.declarations[0]!;
     if (ts.isObjectBindingPattern(decl.name) || ts.isArrayBindingPattern(decl.name)) {
@@ -1694,6 +2011,12 @@ function compileForOfIterator(
       const varName = (decl.name as ts.Identifier).text;
       elemLocal = allocLocal(fctx, varName, elemType);
     }
+  } else if (ts.isArrayLiteralExpression(stmt.initializer)) {
+    elemLocal = allocLocal(fctx, `__forof_elem_${fctx.locals.length}`, elemType);
+    assignDestructPatternIter = stmt.initializer;
+  } else if (ts.isObjectLiteralExpression(stmt.initializer)) {
+    elemLocal = allocLocal(fctx, `__forof_elem_${fctx.locals.length}`, elemType);
+    assignDestructPatternIter = stmt.initializer;
   } else {
     // Expression form: for (x of arr) — x is already declared
     const varName = (stmt.initializer as ts.Identifier).text;
@@ -1730,6 +2053,11 @@ function compileForOfIterator(
   // If destructuring pattern, destructure from the element
   if (destructPatternIter) {
     compileForOfDestructuring(ctx, fctx, destructPatternIter, elemLocal, elemType, stmt);
+  }
+
+  // Assignment destructuring: for ([a, b] of arr) or for ({a, b} of arr)
+  if (assignDestructPatternIter) {
+    compileForOfAssignDestructuring(ctx, fctx, assignDestructPatternIter, elemLocal, elemType, stmt);
   }
 
   // Compile body
