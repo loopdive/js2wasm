@@ -1143,11 +1143,94 @@ function compileArrowAsClosure(
   // Emit default-value initialization for simple params with defaults
   emitArrowParamDefaults(ctx, liftedFctx, arrow, 1 /* skip __self */);
 
-  // Emit destructuring code for binding pattern parameters
-  for (let i = 0; i < arrow.parameters.length; i++) {
-    const param = arrow.parameters[i]!;
-    if (ts.isObjectBindingPattern(param.name) || ts.isArrayBindingPattern(param.name)) {
-      emitArrowParamDestructuring(ctx, liftedFctx, param, 1 + i, arrowParams[i] ?? { kind: "f64" });
+  // Destructuring parameter initialization: for parameters with binding patterns
+  // (e.g. function([x, y]) or function({a, b})), extract values from the parameter
+  // and assign them to local variables.
+  for (let pi = 0; pi < arrow.parameters.length; pi++) {
+    const param = arrow.parameters[pi]!;
+    if (ts.isIdentifier(param.name)) continue; // simple param, already handled
+
+    const paramIdx = pi + 1; // +1 for __self
+    const paramType = arrowParams[pi]!;
+
+    // Helper: allocate locals for all identifiers in a binding pattern
+    // using TS type inference for each element. This is a fallback for when
+    // the Wasm type doesn't provide enough info to extract values.
+    const allocBindingLocals = (pattern: ts.BindingPattern) => {
+      for (const element of pattern.elements) {
+        if (ts.isOmittedExpression(element)) continue;
+        if (ts.isIdentifier(element.name)) {
+          const localName = element.name.text;
+          if (!liftedFctx.localMap.has(localName)) {
+            const elemTsType = ctx.checker.getTypeAtLocation(element);
+            const elemWasmType = resolveWasmType(ctx, elemTsType);
+            allocLocal(liftedFctx, localName, elemWasmType);
+          }
+        } else if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
+          allocBindingLocals(element.name);
+        }
+      }
+    };
+
+    if (ts.isArrayBindingPattern(param.name)) {
+      // Array destructuring: function([a, b, c]) { ... }
+      let handled = false;
+      if (paramType.kind === "ref" || paramType.kind === "ref_null") {
+        const typeIdx = paramType.typeIdx;
+        const typeDef = ctx.mod.types[typeIdx];
+        if (typeDef && typeDef.kind === "struct") {
+          const arrTypeIdx = getArrTypeIdxFromVec(ctx, typeIdx);
+          const arrDef = ctx.mod.types[arrTypeIdx];
+          if (arrDef && arrDef.kind === "array") {
+            const elemType = arrDef.element;
+            for (let ei = 0; ei < param.name.elements.length; ei++) {
+              const element = param.name.elements[ei]!;
+              if (ts.isOmittedExpression(element)) continue;
+              if (!ts.isIdentifier(element.name)) continue;
+              const localName = element.name.text;
+              const localIdx = allocLocal(liftedFctx, localName, elemType);
+              liftedFctx.body.push({ op: "local.get", index: paramIdx });
+              liftedFctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 });
+              liftedFctx.body.push({ op: "i32.const", value: ei });
+              liftedFctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
+              liftedFctx.body.push({ op: "local.set", index: localIdx });
+            }
+            handled = true;
+          }
+        }
+      }
+      if (!handled) {
+        allocBindingLocals(param.name);
+      }
+    } else if (ts.isObjectBindingPattern(param.name)) {
+      // Object destructuring: function({a, b}) { ... }
+      let handled = false;
+      if (paramType.kind === "ref" || paramType.kind === "ref_null") {
+        const typeIdx = paramType.typeIdx;
+        const typeDef = ctx.mod.types[typeIdx];
+        if (typeDef && typeDef.kind === "struct") {
+          let allFound = true;
+          for (const element of param.name.elements) {
+            if (ts.isOmittedExpression(element)) continue;
+            if (!ts.isIdentifier(element.name)) continue;
+            const localName = element.name.text;
+            const propName = element.propertyName
+              ? (ts.isIdentifier(element.propertyName) ? element.propertyName.text : localName)
+              : localName;
+            const fieldIdx = typeDef.fields.findIndex((f: any) => f.name === propName);
+            if (fieldIdx < 0) { allFound = false; continue; }
+            const fieldType = typeDef.fields[fieldIdx]!.type;
+            const localIdx = allocLocal(liftedFctx, localName, fieldType);
+            liftedFctx.body.push({ op: "local.get", index: paramIdx });
+            liftedFctx.body.push({ op: "struct.get", typeIdx, fieldIdx });
+            liftedFctx.body.push({ op: "local.set", index: localIdx });
+          }
+          handled = allFound;
+        }
+      }
+      if (!handled) {
+        allocBindingLocals(param.name);
+      }
     }
   }
 
@@ -1258,6 +1341,27 @@ function compileArrowAsClosure(
   const parent = arrow.parent;
   if (ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name)) {
     ctx.closureMap.set(parent.name.text, closureInfo);
+  } else if (
+    ts.isBinaryExpression(parent) &&
+    parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+    ts.isIdentifier(parent.left)
+  ) {
+    // Assignment expression: f = function() { ... }
+    // Only register if the target variable is a local in the current function context
+    // and not a boxed (mutable) capture, which stores values as externref.
+    const assignName = parent.left.text;
+    const currentFctx = ctx.currentFunc;
+    const localIdx = currentFctx.localMap.get(assignName);
+    if (localIdx !== undefined && !currentFctx.boxedCaptures?.has(assignName)) {
+      // It's a local variable (not a boxed capture) — safe to register as closure
+      ctx.closureMap.set(assignName, closureInfo);
+    }
+  } else if (
+    ts.isPropertyAssignment(parent) &&
+    ts.isIdentifier(parent.name)
+  ) {
+    // Object literal: { fn: function() { ... } }
+    // Don't register in closureMap (property, not variable)
   }
 
   return { kind: "ref", typeIdx: structTypeIdx };
@@ -3126,8 +3230,25 @@ function compileAssignment(
       const localType = localIdx < fctx.params.length
         ? fctx.params[localIdx]!.type
         : fctx.locals[localIdx - fctx.params.length]?.type;
-      const resultType = compileExpression(ctx, fctx, expr.right, localType);
+
+      // When assigning a function expression/arrow to a variable, don't pass
+      // externref type hint — let it compile to its native closure struct ref type.
+      // Then update the local's type so closure calls work correctly.
+      const isFuncExprRHS = ts.isFunctionExpression(expr.right) || ts.isArrowFunction(expr.right);
+      const typeHint = (isFuncExprRHS && localType?.kind === "externref") ? undefined : localType;
+      const resultType = compileExpression(ctx, fctx, expr.right, typeHint);
       if (!resultType) { ctx.errors.push({ message: "Failed to compile assignment value", line: getLine(expr), column: getCol(expr) }); return null; }
+
+      // If a closure struct ref was assigned to an externref local, update the local's type
+      if (isFuncExprRHS && resultType.kind === "ref" && localType?.kind === "externref") {
+        if (localIdx < fctx.params.length) {
+          fctx.params[localIdx]!.type = resultType;
+        } else {
+          const localEntry = fctx.locals[localIdx - fctx.params.length];
+          if (localEntry) localEntry.type = resultType;
+        }
+      }
+
       fctx.body.push({ op: "local.tee", index: localIdx });
       return resultType;
     }
@@ -6890,7 +7011,21 @@ function compileCallExpression(
     const funcName = expr.expression.text;
 
     // Check if this is a closure call
-    const closureInfo = ctx.closureMap.get(funcName);
+    let closureInfo = ctx.closureMap.get(funcName);
+    if (!closureInfo) {
+      // Fallback: if the variable is a local with a ref type, look up closure info
+      // by struct type index. This handles cases like:
+      //   var f; f = function() { ... }; f();
+      const localIdx = fctx.localMap.get(funcName);
+      if (localIdx !== undefined) {
+        const localType = localIdx < fctx.params.length
+          ? fctx.params[localIdx]?.type
+          : fctx.locals[localIdx - fctx.params.length]?.type;
+        if (localType && (localType.kind === "ref" || localType.kind === "ref_null")) {
+          closureInfo = ctx.closureInfoByTypeIdx.get(localType.typeIdx);
+        }
+      }
+    }
     if (closureInfo) {
       return compileClosureCall(ctx, fctx, expr, funcName, closureInfo);
     }

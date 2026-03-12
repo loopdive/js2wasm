@@ -20,7 +20,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 #info .dep-link { color: #58a6ff; cursor: pointer; text-decoration: underline; }
 #legend { position: fixed; bottom: 12px; left: 12px; z-index: 10; font-size: 11px; display: flex; gap: 12px; background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 8px 12px; }
 #legend span { display: flex; align-items: center; gap: 4px; }
-#legend .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+#legend .dot { border-radius: 50%; display: inline-block; }
 #stats { position: fixed; bottom: 12px; right: 12px; z-index: 10; font-size: 11px; color: #8b949e; background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 8px 12px; }
 svg { width: 100vw; height: 100vh; }
 .link { stroke-opacity: 0.4; fill: none; }
@@ -52,24 +52,30 @@ svg { width: 100vw; height: 100vh; }
   <div class="deps" id="info-deps"></div>
 </div>
 <div id="legend">
-  <span><span class="dot" style="background:#f85149"></span> Critical</span>
-  <span><span class="dot" style="background:#d29922"></span> High</span>
-  <span><span class="dot" style="background:#58a6ff"></span> Medium</span>
-  <span><span class="dot" style="background:#8b949e"></span> Low</span>
+  <span><span class="dot" style="width:20px;height:20px;background:rgba(255,255,0,0.5)"></span> Critical</span>
+  <span><span class="dot" style="width:15px;height:15px;background:rgba(255,255,0,0.5)"></span> High</span>
+  <span><span class="dot" style="width:10px;height:10px;background:rgba(255,255,0,0.5)"></span> Medium</span>
+  <span><span class="dot" style="width:5px;height:5px;background:rgba(255,255,0,0.5)"></span> Low</span>
   <span>|</span>
-  <span><span class="dot" style="background:#3fb950;opacity:0.5"></span> Ready</span>
-  <span><span class="dot" style="border:2px solid #d29922;background:transparent"></span> Blocked</span>
-  <span><span class="dot" style="background:#484f58"></span> Done</span>
+  <span><span class="dot" style="width:10px;height:10px;background:rgba(255,255,0,0.5)"></span> Ready</span>
+  <span><span class="dot" style="width:10px;height:10px;background:rgba(255,0,0,0.1);border:1px solid rgba(255,0,0,0.3)"></span> Blocked</span>
+  <span><span class="dot" style="width:10px;height:10px;background:rgba(0,255,0,0.1)"></span> Done</span>
 </div>
 <div id="stats"></div>
 <svg></svg>
 <script>
 const COLORS = {
-  priority: { critical: '#f85149', high: '#d29922', medium: '#58a6ff', low: '#8b949e' },
-  status: { ready: '#3fb950', blocked: '#d29922', done: '#484f58', backlog: '#6e7681', 'wont-fix': '#484f58' }
+  status: {
+    ready:    'rgba(255,255,0,0.5)',
+    blocked:  'rgba(255,0,0,0.1)',
+    done:     'rgba(0,255,0,0.1)',
+    backlog:  'rgba(110,118,129,0.2)',
+    'wont-fix': 'rgba(72,79,88,0.2)'
+  }
 };
 
-const RADIUS = { critical: 14, high: 11, medium: 8, low: 6 };
+// Each priority level = radius * 10
+const RADIUS = { critical: 40, high: 30, medium: 20, low: 10 };
 
 async function init() {
   let data;
@@ -102,16 +108,37 @@ async function init() {
     .attr('markerWidth', 6).attr('markerHeight', 6).attr('orient', 'auto')
     .append('path').attr('d', 'M0,-5L10,0L0,5').attr('fill', '#8b949e');
 
+  // All ready nodes on the same ring; non-ready pushed further out
+  const cx = width / 2, cy = height / 2;
+  const READY_RING = 300;
+
   const simulation = d3.forceSimulation(nodes)
-    .force('link', d3.forceLink(links).id(d => d.id).distance(80))
-    .force('charge', d3.forceManyBody().strength(-200))
-    .force('center', d3.forceCenter(width / 2, height / 2))
-    .force('collision', d3.forceCollide().radius(d => RADIUS[d.priority] + 4));
+    .force('link', d3.forceLink(links).id(d => d.id).distance(50))
+    .force('charge', d3.forceManyBody().strength(-80))
+    .force('center', d3.forceCenter(cx, cy))
+    .force('collision', d3.forceCollide().radius(d => RADIUS[d.priority] + 4))
+    .force('radial', d3.forceRadial(
+      d => d.status === 'ready' ? READY_RING : 550,
+      cx, cy
+    ).strength(d => d.status === 'ready' ? 0.4 : 0.05));
+
+  // Radial spokes: faint lines from center to all ready nodes
+  const readyNodes = nodes.filter(n => n.status === 'ready');
+  const spokeEl = g.append('g').selectAll('line')
+    .data(readyNodes).join('line')
+    .attr('class', 'spoke')
+    .attr('stroke', 'rgba(255,255,255,0.04)')
+    .attr('stroke-width', 0.5);
 
   const linkEl = g.append('g').selectAll('line')
     .data(links).join('line')
     .attr('class', 'link')
-    .attr('stroke', '#30363d')
+    .attr('stroke', l => {
+      const s = typeof l.source === 'object' ? l.source : nodeMap.get(l.source);
+      const t = typeof l.target === 'object' ? l.target : nodeMap.get(l.target);
+      if (s && t && s.status === 'done' && t.status === 'ready') return 'rgba(255,255,255,0.1)';
+      return '#30363d';
+    })
     .attr('marker-end', 'url(#arrow)');
 
   const nodeEl = g.append('g').selectAll('g')
@@ -121,10 +148,9 @@ async function init() {
 
   nodeEl.append('circle')
     .attr('r', d => RADIUS[d.priority])
-    .attr('fill', d => COLORS.priority[d.priority])
-    .attr('stroke', d => d.status === 'blocked' ? '#d29922' : d.status === 'done' ? '#484f58' : 'none')
-    .attr('stroke-dasharray', d => d.status === 'blocked' ? '3,2' : 'none')
-    .attr('opacity', d => d.status === 'done' ? 0.4 : 0.85);
+    .attr('fill', d => COLORS.status[d.status] || 'rgba(110,118,129,0.3)')
+    .attr('stroke', d => d.status === 'blocked' ? 'rgba(255,0,0,0.3)' : 'none')
+    .attr('stroke-dasharray', d => d.status === 'blocked' ? '3,2' : 'none');
 
   nodeEl.append('text')
     .attr('dx', d => RADIUS[d.priority] + 4)
@@ -227,6 +253,7 @@ async function init() {
   applyFilters();
 
   simulation.on('tick', () => {
+    spokeEl.attr('x1', cx).attr('y1', cy).attr('x2', d => d.x).attr('y2', d => d.y);
     linkEl.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
       .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
     nodeEl.attr('transform', d => `translate(${d.x},${d.y})`);
