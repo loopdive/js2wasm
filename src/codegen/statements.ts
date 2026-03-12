@@ -2,6 +2,7 @@ import ts from "typescript";
 import { isStringType, isVoidType } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";
 import {
+  coerceType,
   collectReferencedIdentifiers,
   compileExpression,
 } from "./expressions.js";
@@ -18,6 +19,7 @@ import {
   ensureI32Condition,
   ensureNativeStringHelpers,
   getArrTypeIdxFromVec,
+  getLocalType,
   getOrRegisterVecType,
   getSourcePos,
   localGlobalIdx,
@@ -1394,16 +1396,37 @@ function compileForOfDestructuring(
       const element = pattern.elements[i]!;
       if (ts.isOmittedExpression(element)) continue;
 
+      // Handle nested binding patterns: for (const [{ a, b }] of arr)
+      if (ts.isBindingElement(element) &&
+          (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name))) {
+        const nestedLocal = allocLocal(fctx, `__forof_nested_${fctx.locals.length}`, innerElemType);
+        fctx.body.push({ op: "local.get", index: elemLocal });
+        fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
+        fctx.body.push({ op: "i32.const", value: i });
+        fctx.body.push({ op: "array.get", typeIdx: innerArrTypeIdx });
+        fctx.body.push({ op: "local.set", index: nestedLocal });
+        compileForOfDestructuring(ctx, fctx, element.name, nestedLocal, innerElemType, stmt);
+        continue;
+      }
+
       const localName = (element.name as ts.Identifier).text;
-      const localIdx = allocLocal(fctx, localName, innerElemType);
+      // Use TypeScript-inferred type for the local to avoid type mismatches
+      const bindingTsType = ctx.checker.getTypeAtLocation(element);
+      const bindingWasmType = resolveWasmType(ctx, bindingTsType);
+      const localIdx = allocLocal(fctx, localName, bindingWasmType);
 
       fctx.body.push({ op: "local.get", index: elemLocal });
       fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
       fctx.body.push({ op: "i32.const", value: i });
       fctx.body.push({ op: "array.get", typeIdx: innerArrTypeIdx });
 
-      if (element.initializer && innerElemType.kind === "externref") {
-        const tmpElem = allocLocal(fctx, `__dflt_${fctx.locals.length}`, innerElemType);
+      // Coerce from Wasm array element type to the binding's declared type
+      if (innerElemType.kind !== bindingWasmType.kind) {
+        coerceType(ctx, fctx, innerElemType, bindingWasmType);
+      }
+
+      if (element.initializer && bindingWasmType.kind === "externref") {
+        const tmpElem = allocLocal(fctx, `__dflt_${fctx.locals.length}`, bindingWasmType);
         fctx.body.push({ op: "local.tee", index: tmpElem });
         fctx.body.push({ op: "ref.is_null" } as Instr);
         fctx.body.push({
@@ -1413,7 +1436,7 @@ function compileForOfDestructuring(
             ...(() => {
               const saved = fctx.body;
               fctx.body = [];
-              compileExpression(ctx, fctx, element.initializer!, innerElemType);
+              compileExpression(ctx, fctx, element.initializer!, bindingWasmType);
               fctx.body.push({ op: "local.set", index: localIdx } as Instr);
               const instrs = fctx.body;
               fctx.body = saved;
@@ -1428,6 +1451,105 @@ function compileForOfDestructuring(
       } else {
         fctx.body.push({ op: "local.set", index: localIdx });
       }
+    }
+  }
+}
+
+/**
+ * Handle assignment destructuring in for-of expression form:
+ *   for ({a, b} of arr) — assigns to already-declared variables
+ *   for ([x, y] of arr) — assigns to already-declared variables
+ */
+function compileForOfAssignDestructuring(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.ObjectLiteralExpression | ts.ArrayLiteralExpression,
+  elemLocal: number,
+  elemType: ValType,
+  vecTypeIdx: number,
+  arrTypeIdx: number,
+  stmt: ts.ForOfStatement,
+): void {
+  if (ts.isObjectLiteralExpression(expr)) {
+    // for ({a, b} of arr) — elem is a struct ref, extract fields
+    if (elemType.kind !== "ref" && elemType.kind !== "ref_null") {
+      ctx.errors.push({
+        message: "for-of assignment destructuring: element is not a struct ref",
+        line: getLine(stmt),
+        column: getCol(stmt),
+      });
+      return;
+    }
+
+    const structTypeIdx = (elemType as { typeIdx: number }).typeIdx;
+    const typeDef = ctx.mod.types[structTypeIdx];
+    if (!typeDef || typeDef.kind !== "struct") return;
+
+    let structName: string | undefined;
+    for (const [name, idx] of ctx.structMap) {
+      if (idx === structTypeIdx) { structName = name; break; }
+    }
+    const fields = structName ? ctx.structFields.get(structName) : undefined;
+    if (!fields) return;
+
+    for (const prop of expr.properties) {
+      if (!ts.isShorthandPropertyAssignment(prop) && !ts.isPropertyAssignment(prop)) continue;
+      const propName = ts.isShorthandPropertyAssignment(prop)
+        ? prop.name.text
+        : (prop.name as ts.Identifier).text;
+      const targetName = ts.isShorthandPropertyAssignment(prop)
+        ? prop.name.text
+        : ts.isIdentifier(prop.initializer) ? prop.initializer.text : propName;
+
+      const fieldIdx = fields.findIndex((f) => f.name === propName);
+      if (fieldIdx === -1) continue;
+
+      const targetLocal = fctx.localMap.get(targetName);
+      if (targetLocal === undefined) continue;
+
+      const fieldType = fields[fieldIdx]!.type;
+      const targetType = getLocalType(fctx, targetLocal);
+      fctx.body.push({ op: "local.get", index: elemLocal });
+      fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+      if (targetType && fieldType.kind !== targetType.kind) {
+        coerceType(ctx, fctx, fieldType, targetType);
+      }
+      fctx.body.push({ op: "local.set", index: targetLocal });
+    }
+  } else if (ts.isArrayLiteralExpression(expr)) {
+    // for ([x, y] of arr) — elem is a vec struct, extract by index
+    if (elemType.kind !== "ref" && elemType.kind !== "ref_null") {
+      ctx.errors.push({
+        message: "for-of assignment array destructuring: element is not a ref type",
+        line: getLine(stmt),
+        column: getCol(stmt),
+      });
+      return;
+    }
+
+    const innerVecTypeIdx = (elemType as { typeIdx: number }).typeIdx;
+    const innerArrTypeIdx = getArrTypeIdxFromVec(ctx, innerVecTypeIdx);
+    const innerArrDef = ctx.mod.types[innerArrTypeIdx];
+    if (!innerArrDef || innerArrDef.kind !== "array") return;
+
+    const innerElemType = innerArrDef.element;
+    for (let i = 0; i < expr.elements.length; i++) {
+      const el = expr.elements[i]!;
+      if (ts.isOmittedExpression(el)) continue;
+      if (!ts.isIdentifier(el)) continue;
+
+      const targetLocal = fctx.localMap.get(el.text);
+      if (targetLocal === undefined) continue;
+
+      const targetType = getLocalType(fctx, targetLocal);
+      fctx.body.push({ op: "local.get", index: elemLocal });
+      fctx.body.push({ op: "struct.get", typeIdx: innerVecTypeIdx, fieldIdx: 1 });
+      fctx.body.push({ op: "i32.const", value: i });
+      fctx.body.push({ op: "array.get", typeIdx: innerArrTypeIdx });
+      if (targetType && innerElemType.kind !== targetType.kind) {
+        coerceType(ctx, fctx, innerElemType, targetType);
+      }
+      fctx.body.push({ op: "local.set", index: targetLocal });
     }
   }
 }
@@ -1530,6 +1652,7 @@ function compileForOfArray(
   // Declare the loop variable (may be a simple identifier or a destructuring pattern)
   let elemLocal: number;
   let destructPattern: ts.ObjectBindingPattern | ts.ArrayBindingPattern | null = null;
+  let assignDestructExpr: ts.ObjectLiteralExpression | ts.ArrayLiteralExpression | null = null;
   if (ts.isVariableDeclarationList(stmt.initializer)) {
     const decl = stmt.initializer.declarations[0]!;
     if (ts.isObjectBindingPattern(decl.name) || ts.isArrayBindingPattern(decl.name)) {
@@ -1540,6 +1663,11 @@ function compileForOfArray(
       const varName = (decl.name as ts.Identifier).text;
       elemLocal = allocLocal(fctx, varName, elemType);
     }
+  } else if (ts.isObjectLiteralExpression(stmt.initializer) || ts.isArrayLiteralExpression(stmt.initializer)) {
+    // Expression form with destructuring: for ({a, b} of arr) or for ([x, y] of arr)
+    // These assign to already-declared variables
+    assignDestructExpr = stmt.initializer;
+    elemLocal = allocLocal(fctx, `__forof_elem_${fctx.locals.length}`, elemType);
   } else {
     // Expression form: for (x of arr) — x is already declared
     const varName = (stmt.initializer as ts.Identifier).text;
@@ -1568,11 +1696,20 @@ function compileForOfArray(
   fctx.body.push({ op: "local.get", index: dataLocal });
   fctx.body.push({ op: "local.get", index: iLocal });
   fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
+  // Coerce from Wasm array element type to the local's declared type
+  const elemLocalType = getLocalType(fctx, elemLocal);
+  if (elemLocalType && elemLocalType.kind !== elemType.kind) {
+    coerceType(ctx, fctx, elemType, elemLocalType);
+  }
   fctx.body.push({ op: "local.set", index: elemLocal });
 
-  // If destructuring pattern, destructure from the element
+  // If destructuring pattern (binding form), destructure from the element
   if (destructPattern) {
     compileForOfDestructuring(ctx, fctx, destructPattern, elemLocal, elemType, stmt);
+  }
+  // If assignment destructuring expression, assign to existing locals
+  if (assignDestructExpr) {
+    compileForOfAssignDestructuring(ctx, fctx, assignDestructExpr, elemLocal, elemType, vecTypeIdx, arrTypeIdx, stmt);
   }
 
   // Compile body
@@ -1685,6 +1822,7 @@ function compileForOfIterator(
   const elemType: ValType = { kind: "externref" };
   let elemLocal: number;
   let destructPatternIter: ts.ObjectBindingPattern | ts.ArrayBindingPattern | null = null;
+  let assignDestructExprIter: ts.ObjectLiteralExpression | ts.ArrayLiteralExpression | null = null;
   if (ts.isVariableDeclarationList(stmt.initializer)) {
     const decl = stmt.initializer.declarations[0]!;
     if (ts.isObjectBindingPattern(decl.name) || ts.isArrayBindingPattern(decl.name)) {
@@ -1694,6 +1832,10 @@ function compileForOfIterator(
       const varName = (decl.name as ts.Identifier).text;
       elemLocal = allocLocal(fctx, varName, elemType);
     }
+  } else if (ts.isObjectLiteralExpression(stmt.initializer) || ts.isArrayLiteralExpression(stmt.initializer)) {
+    // Expression form with destructuring: for ({a, b} of arr) or for ([x, y] of arr)
+    assignDestructExprIter = stmt.initializer;
+    elemLocal = allocLocal(fctx, `__forof_elem_${fctx.locals.length}`, elemType);
   } else {
     // Expression form: for (x of arr) — x is already declared
     const varName = (stmt.initializer as ts.Identifier).text;
@@ -1730,6 +1872,18 @@ function compileForOfIterator(
   // If destructuring pattern, destructure from the element
   if (destructPatternIter) {
     compileForOfDestructuring(ctx, fctx, destructPatternIter, elemLocal, elemType, stmt);
+  }
+  // If assignment destructuring expression, assign to existing locals
+  // Note: for iterator path, elemType is externref, so no vecTypeIdx/arrTypeIdx available;
+  // assignment destructuring for non-array iterables is not yet supported.
+  if (assignDestructExprIter) {
+    // For non-array iterables, elem is externref — assignment destructuring
+    // would need host unboxing which is not supported. Emit error.
+    ctx.errors.push({
+      message: "for-of assignment destructuring on non-array iterable is not supported",
+      line: getLine(stmt),
+      column: getCol(stmt),
+    });
   }
 
   // Compile body
