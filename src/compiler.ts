@@ -376,6 +376,10 @@ export function compileSource(
     1345, // "An expression of type 'void' cannot be tested for truthiness"
     2350, // "Only a void function can be called with the 'new' keyword"
     2403, // "Subsequent variable declarations must have the same type" — var re-declarations legal in JS
+    2377, // "Constructors for derived classes must contain a 'super' call" — valid JS pattern
+    2376, // "A 'super' call must be the first statement in the constructor" — valid JS pattern
+    17009, // "'super' must be called before accessing 'this' in derived class constructor"
+    17011, // "'super' must be called before accessing a property of 'super' in derived class constructor"
   ]);
 
   // Collect TS diagnostics as errors (or warnings for handled cases)
