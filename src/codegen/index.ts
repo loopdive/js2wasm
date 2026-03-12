@@ -162,6 +162,8 @@ export interface CodegenContext {
   genericResolved: Map<string, { params: ValType[]; results: ValType[] }>;
   /** Rest parameter info per function (functions with ...rest syntax) */
   funcRestParams: Map<string, RestParamInfo>;
+  /** Map from struct name → set of closure type indices used for valueOf fields */
+  valueOfClosureTypes: Map<string, number[]>;
   /** Tag index for the exception tag (-1 if not yet registered) */
   exnTagIdx: number;
   /** Whether union type helper imports have been registered */
@@ -324,6 +326,7 @@ export function generateModule(
     closureInfoByTypeIdx: new Map(),
     genericResolved: new Map(),
     funcRestParams: new Map(),
+    valueOfClosureTypes: new Map(),
     exnTagIdx: -1,
     hasUnionImports: false,
     asyncFunctions: new Set(),
@@ -5783,7 +5786,13 @@ export function ensureStructForType(ctx: CodegenContext, tsType: ts.Type): void 
     // Recursively register nested object types as structs before resolving
     ensureStructForType(ctx, propType);
     // Use resolveWasmType so nested structs get ref types, not externref
-    const wasmType = resolveWasmType(ctx, propType);
+    let wasmType = resolveWasmType(ctx, propType);
+    // For valueOf/toString callable properties, store as eqref instead of externref
+    // so coercion can recover the closure and call it via call_ref
+    if (wasmType.kind === "externref" && propType.getCallSignatures().length > 0 &&
+        (prop.name === "valueOf" || prop.name === "toString")) {
+      wasmType = { kind: "eqref" };
+    }
     fields.push({ name: prop.name, type: wasmType, mutable: true });
   }
 
