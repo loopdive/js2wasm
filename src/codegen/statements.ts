@@ -1309,19 +1309,106 @@ function compileSwitchStatement(
   compileExpression(ctx, fctx, stmt.expression, wasmType);
   fctx.body.push({ op: "local.set", index: tmpLocalIdx });
 
-  // Allocate a "matched" local to track fallthrough
-  const matchedLocalIdx = allocLocal(
+  // Use a "target" local to track which clause index to start executing from.
+  // Sentinel value = number of clauses means "no match yet".
+  const clauses = stmt.caseBlock.clauses;
+  const noMatchSentinel = clauses.length;
+
+  const targetLocalIdx = allocLocal(
     fctx,
-    `__sw_matched_${fctx.locals.length}`,
+    `__sw_target_${fctx.locals.length}`,
     { kind: "i32" },
   );
-  // Initialize matched to 0
-  fctx.body.push({ op: "i32.const", value: 0 });
-  fctx.body.push({ op: "local.set", index: matchedLocalIdx });
+  // Initialize target to sentinel (no match)
+  fctx.body.push({ op: "i32.const", value: noMatchSentinel });
+  fctx.body.push({ op: "local.set", index: targetLocalIdx });
 
   // Choose the equality opcode based on the switch expression type
   const eqOp: "f64.eq" | "i32.eq" =
     wasmType.kind === "i32" ? "i32.eq" : "f64.eq";
+
+  // --- Phase 1: Evaluate all case expressions to find the target clause ---
+  // Skip default clauses in this phase; just check case expressions.
+  let defaultIdx = -1;
+  for (let ci = 0; ci < clauses.length; ci++) {
+    const clause = clauses[ci]!;
+    if (ts.isDefaultClause(clause)) {
+      defaultIdx = ci;
+      continue;
+    }
+    const caseClause = clause as ts.CaseClause;
+
+    // if (target == sentinel) { if (tmp == caseExpr) { target = ci; } }
+    const checkBody: Instr[] = [];
+    const outerBody = fctx.body;
+    fctx.body = checkBody;
+
+    fctx.body.push({ op: "local.get", index: tmpLocalIdx });
+    if (switchIsString && ctx.fast && ctx.nativeStrTypeIdx >= 0) {
+      const flattenIdx = ctx.nativeStrHelpers.get("__str_flatten")!;
+      fctx.body.push({ op: "call", funcIdx: flattenIdx });
+    }
+    compileExpression(ctx, fctx, caseClause.expression, wasmType);
+    if (switchIsString && ctx.fast && ctx.nativeStrTypeIdx >= 0) {
+      const flattenIdx = ctx.nativeStrHelpers.get("__str_flatten")!;
+      fctx.body.push({ op: "call", funcIdx: flattenIdx });
+    }
+    if (switchIsString && strEqFuncIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: strEqFuncIdx });
+    } else {
+      fctx.body.push({ op: eqOp });
+    }
+    // if (comparison result) { target = ci; }
+    const setTarget: Instr[] = [
+      { op: "i32.const", value: ci },
+      { op: "local.set", index: targetLocalIdx },
+    ];
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: setTarget,
+    });
+
+    fctx.body = outerBody;
+
+    // Guard: only check if target is still sentinel (no match found yet)
+    fctx.body.push({ op: "local.get", index: targetLocalIdx });
+    fctx.body.push({ op: "i32.const", value: noMatchSentinel });
+    fctx.body.push({ op: "i32.eq" });
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: checkBody,
+    });
+  }
+
+  // After checking all cases: if no case matched, fall to default (if present)
+  if (defaultIdx >= 0) {
+    const setDefault: Instr[] = [
+      { op: "i32.const", value: defaultIdx },
+      { op: "local.set", index: targetLocalIdx },
+    ];
+    fctx.body.push({ op: "local.get", index: targetLocalIdx });
+    fctx.body.push({ op: "i32.const", value: noMatchSentinel });
+    fctx.body.push({ op: "i32.eq" });
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: setDefault,
+    });
+  }
+
+  // --- Phase 2: Emit clause bodies with fall-through ---
+  // A clause body executes if clauseIndex >= target.
+  // We use a "running" local that gets set to 1 once we reach the target
+  // and stays 1 for fall-through (until a break resets via br).
+  const runningLocalIdx = allocLocal(
+    fctx,
+    `__sw_running_${fctx.locals.length}`,
+    { kind: "i32" },
+  );
+  fctx.body.push({ op: "i32.const", value: 0 });
+  fctx.body.push({ op: "local.set", index: runningLocalIdx });
 
   // Collect instructions for the switch block body
   const savedBody = fctx.body;
@@ -1336,63 +1423,31 @@ function compileSwitchStatement(
   const switchBreakIdx = fctx.breakStack.length;
   fctx.breakStack.push(1);
 
-  const clauses = stmt.caseBlock.clauses;
+  for (let ci = 0; ci < clauses.length; ci++) {
+    const clause = clauses[ci]!;
 
-  for (const clause of clauses) {
-    if (ts.isDefaultClause(clause)) {
-      // Default: set matched = 1 unconditionally (but only if not already matched)
-      // This allows fallthrough into default and from default to subsequent cases
-      fctx.body.push({ op: "i32.const", value: 1 });
-      fctx.body.push({ op: "local.set", index: matchedLocalIdx });
-    } else {
-      // case X: if not yet matched, check condition
-      const caseClause = clause as ts.CaseClause;
+    // Set running = 1 if this clause is the target
+    // if (target == ci) { running = 1; }
+    const activateBody: Instr[] = [
+      { op: "i32.const", value: 1 },
+      { op: "local.set", index: runningLocalIdx },
+    ];
+    fctx.body.push({ op: "local.get", index: targetLocalIdx });
+    fctx.body.push({ op: "i32.const", value: ci });
+    fctx.body.push({ op: "i32.eq" });
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: activateBody,
+    });
 
-      // if (!matched) { matched = (tmp == caseExpr); }
-      const checkBody: Instr[] = [];
-      const outerBody = fctx.body;
-      fctx.body = checkBody;
-
-      fctx.body.push({ op: "local.get", index: tmpLocalIdx });
-      if (switchIsString && ctx.fast && ctx.nativeStrTypeIdx >= 0) {
-        // Fast mode: flatten both operands before comparison
-        const flattenIdx = ctx.nativeStrHelpers.get("__str_flatten")!;
-        fctx.body.push({ op: "call", funcIdx: flattenIdx });
-      }
-      compileExpression(ctx, fctx, caseClause.expression, wasmType);
-      if (switchIsString && ctx.fast && ctx.nativeStrTypeIdx >= 0) {
-        const flattenIdx = ctx.nativeStrHelpers.get("__str_flatten")!;
-        fctx.body.push({ op: "call", funcIdx: flattenIdx });
-      }
-      if (switchIsString && strEqFuncIdx !== undefined) {
-        // String comparison: call equals function
-        fctx.body.push({ op: "call", funcIdx: strEqFuncIdx });
-      } else {
-        fctx.body.push({ op: eqOp });
-      }
-      fctx.body.push({ op: "local.set", index: matchedLocalIdx });
-
-      fctx.body = outerBody;
-
-      // Wrap in: if (!matched) { ... }
-      fctx.body.push({ op: "local.get", index: matchedLocalIdx });
-      fctx.body.push({ op: "i32.eqz" });
-      fctx.body.push({
-        op: "if",
-        blockType: { kind: "empty" },
-        then: checkBody,
-      });
-    }
-
-    // Emit body: if (matched) { <statements> }
+    // Emit body: if (running) { <statements> }
     if (clause.statements.length > 0) {
       const bodyInstrs: Instr[] = [];
       const outerBody = fctx.body;
       fctx.body = bodyInstrs;
 
       // Adjust outer entries for the if-wrapping (+1 nesting level).
-      // Only adjust entries before the switch's own entry — the switch's
-      // breakStack entry already accounts for the if.
       for (let i = 0; i < switchBreakIdx; i++) fctx.breakStack[i]!++;
       for (let i = 0; i < fctx.continueStack.length; i++)
         fctx.continueStack[i]!++;
@@ -1408,7 +1463,7 @@ function compileSwitchStatement(
 
       fctx.body = outerBody;
 
-      fctx.body.push({ op: "local.get", index: matchedLocalIdx });
+      fctx.body.push({ op: "local.get", index: runningLocalIdx });
       fctx.body.push({
         op: "if",
         blockType: { kind: "empty" },

@@ -41,7 +41,7 @@ describe("Switch fallthrough", () => {
     `);
     expect(exports.test()).toBe(42);
   });
-  it("default fallthrough", async () => {
+  it("default fallthrough (no match)", async () => {
     const exports = await compileToWasm(`
       export function test(): number {
         let x = 0;
@@ -54,6 +54,51 @@ describe("Switch fallthrough", () => {
       }
     `);
     expect(exports.test()).toBe(25);
+  });
+  it("default in middle, later case matches", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        let x = 0;
+        switch (2) {
+          case 1: x += 10; break;
+          default: x += 5;
+          case 2: x += 20; break;
+        }
+        return x;
+      }
+    `);
+    // case 2 matches, so only case 2 body runs (not default)
+    expect(exports.test()).toBe(20);
+  });
+  it("default first, later case matches", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        let x = 0;
+        switch (3) {
+          default: x += 1;
+          case 2: x += 2;
+          case 3: x += 4; break;
+        }
+        return x;
+      }
+    `);
+    // case 3 matches, only case 3 body runs
+    expect(exports.test()).toBe(4);
+  });
+  it("default first, no match falls through all", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        let x = 0;
+        switch (99) {
+          default: x += 1;
+          case 2: x += 2;
+          case 3: x += 4;
+        }
+        return x;
+      }
+    `);
+    // No match: default reached, falls through case 2 and case 3
+    expect(exports.test()).toBe(7);
   });
 });
 
