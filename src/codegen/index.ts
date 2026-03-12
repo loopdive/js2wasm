@@ -158,6 +158,8 @@ export interface CodegenContext {
   closureMap: Map<string, ClosureInfo>;
   /** Map from closure struct type index → closure metadata (for anonymous closures) */
   closureInfoByTypeIdx: Map<number, ClosureInfo>;
+  /** Map from function name → closure struct type index that the function returns */
+  funcReturnsClosureType: Map<string, number>;
   /** Resolved concrete types for generic functions (from call-site analysis) */
   genericResolved: Map<string, { params: ValType[]; results: ValType[] }>;
   /** Rest parameter info per function (functions with ...rest syntax) */
@@ -324,6 +326,7 @@ export function generateModule(
     closureCounter: 0,
     closureMap: new Map(),
     closureInfoByTypeIdx: new Map(),
+    funcReturnsClosureType: new Map(),
     genericResolved: new Map(),
     funcRestParams: new Map(),
     valueOfClosureTypes: new Map(),
@@ -520,6 +523,7 @@ export function generateMultiModule(
     closureCounter: 0,
     closureMap: new Map(),
     closureInfoByTypeIdx: new Map(),
+    funcReturnsClosureType: new Map(),
     genericResolved: new Map(),
     funcRestParams: new Map(),
     hasUnionImports: false,

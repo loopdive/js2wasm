@@ -4461,4 +4461,60 @@ describe("in operator edge cases", () => {
     `);
     expect(exports.test()).toBe(1);
   });
+
+  it("nested call expression -- fn()()", async () => {
+    await assertEquivalent(
+      `
+      function makeAdder(x: number): (y: number) => number {
+        return (y: number) => x + y;
+      }
+      export function test(): number {
+        return makeAdder(10)(5);
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("nested call expression -- fn()() with no args", async () => {
+    await assertEquivalent(
+      `
+      function makeGreeter(): () => number {
+        return () => 42;
+      }
+      export function test(): number {
+        return makeGreeter()();
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("triple nested call -- fn()()()", async () => {
+    await assertEquivalent(
+      `
+      function outer(): () => () => number {
+        return () => () => 99;
+      }
+      export function test(): number {
+        return outer()()();
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("nested call with closure capture", async () => {
+    await assertEquivalent(
+      `
+      function multiplier(factor: number): (x: number) => number {
+        return (x: number) => x * factor;
+      }
+      export function test(): number {
+        return multiplier(2)(5) + multiplier(3)(5) + multiplier(4)(5);
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
 });

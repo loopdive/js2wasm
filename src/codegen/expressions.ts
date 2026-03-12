@@ -1019,6 +1019,12 @@ function compileArrowAsClosure(
   // Always register by struct type index (for valueOf coercion and anonymous closures)
   ctx.closureInfoByTypeIdx.set(structTypeIdx, closureInfo);
 
+  // Record that the enclosing function returns this closure type
+  // (used by nested call expressions like fn()() to resolve the struct type)
+  if (fctx.name) {
+    ctx.funcReturnsClosureType.set(fctx.name, structTypeIdx);
+  }
+
   const parent = arrow.parent;
   if (ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name)) {
     ctx.closureMap.set(parent.name.text, closureInfo);
@@ -6202,12 +6208,148 @@ function compileCallExpression(
     }
   }
 
+  // Handle nested call expressions: fn()(), fn()()(), etc.
+  // The callee is itself a call expression whose result is a closure.
+  {
+    const nestedResult = compileNestedCallExpression(ctx, fctx, expr);
+    if (nestedResult !== undefined) return nestedResult;
+  }
+
   ctx.errors.push({
     message: "Unsupported call expression",
     line: getLine(expr),
     column: getCol(expr),
   });
   return null;
+}
+
+/**
+ * Compile a nested call expression: fn()(), fn()()(), etc.
+ * The callee is itself a call expression whose result is a closure.
+ * Returns undefined if the pattern cannot be handled.
+ */
+function compileNestedCallExpression(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.CallExpression,
+): InnerResult | undefined {
+  // Unwrap parenthesized expressions
+  let callee = expr.expression;
+  while (ts.isParenthesizedExpression(callee)) {
+    callee = callee.expression;
+  }
+
+  // Check if the callee is a call expression (fn()())
+  if (!ts.isCallExpression(callee)) return undefined;
+
+  // Get the TS type of the inner call's result — must be callable
+  const innerTsType = ctx.checker.getTypeAtLocation(callee);
+  const callSigs = innerTsType.getCallSignatures();
+  if (callSigs.length === 0) return undefined;
+
+  // Try to determine the closure struct type from the inner call.
+  // Strategy 1: If the inner call's callee is an identifier, look up funcReturnsClosureType
+  let closureInfo: ClosureInfo | undefined;
+
+  let innerCallee = callee.expression;
+  while (ts.isParenthesizedExpression(innerCallee)) {
+    innerCallee = innerCallee.expression;
+  }
+
+  if (ts.isIdentifier(innerCallee)) {
+    const funcName = innerCallee.text;
+    const structTypeIdx = ctx.funcReturnsClosureType.get(funcName);
+    if (structTypeIdx !== undefined) {
+      closureInfo = ctx.closureInfoByTypeIdx.get(structTypeIdx);
+    }
+  }
+
+  // Strategy 2: If the inner callee is itself a call (triple nesting fn()()()),
+  // the inner call returns a closure. Recursively find the closure info
+  // by looking at the TS return type and matching by signature.
+  if (!closureInfo) {
+    // Try to find a matching ClosureInfo by signature in closureInfoByTypeIdx
+    const sig = callSigs[0]!;
+    const paramTypes: ValType[] = [];
+    for (const p of sig.getParameters()) {
+      const pType = ctx.checker.getTypeOfSymbolAtLocation(p, callee);
+      paramTypes.push(resolveWasmType(ctx, pType));
+    }
+    const retTsType = ctx.checker.getReturnTypeOfSignature(sig);
+    const returnType: ValType | null = isVoidType(retTsType) ? null : resolveWasmType(ctx, retTsType);
+
+    for (const [, info] of ctx.closureInfoByTypeIdx) {
+      if (info.paramTypes.length !== paramTypes.length) continue;
+      let match = true;
+      for (let i = 0; i < paramTypes.length; i++) {
+        if (info.paramTypes[i]!.kind !== paramTypes[i]!.kind) {
+          match = false;
+          break;
+        }
+      }
+      if (!match) continue;
+      // Check return type compatibility
+      if (returnType === null && info.returnType !== null) continue;
+      if (returnType !== null && (info.returnType === null || info.returnType.kind !== returnType.kind)) continue;
+      closureInfo = info;
+      break;
+    }
+  }
+
+  if (!closureInfo) return undefined;
+
+  // Compile the inner call expression — puts the result (externref or ref) on the stack
+  const innerType = compileExpression(ctx, fctx, callee);
+  if (!innerType || innerType === VOID_RESULT) return undefined;
+
+  return emitClosureCallRef(ctx, fctx, expr, innerType, closureInfo);
+}
+
+/**
+ * Emit call_ref for a closure value on the stack.
+ * Handles externref → ref conversion if needed.
+ */
+function emitClosureCallRef(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.CallExpression,
+  valueType: ValType,
+  closureInfo: ClosureInfo,
+): ValType | null {
+  const closureRefType: ValType = { kind: "ref", typeIdx: closureInfo.structTypeIdx };
+
+  // If the value is externref, convert back to the closure struct ref
+  if (valueType.kind === "externref") {
+    fctx.body.push({ op: "any.convert_extern" } as unknown as Instr);
+    fctx.body.push({ op: "ref.cast", typeIdx: closureInfo.structTypeIdx });
+  }
+
+  // Store the closure ref in a temp local
+  const tmpLocal = allocLocal(fctx, `__nested_call_${fctx.locals.length}`, closureRefType);
+  fctx.body.push({ op: "local.set", index: tmpLocal });
+
+  // Push closure ref as first arg (self param)
+  fctx.body.push({ op: "local.get", index: tmpLocal });
+
+  // Push call arguments
+  for (let i = 0; i < expr.arguments.length; i++) {
+    compileExpression(ctx, fctx, expr.arguments[i]!, closureInfo.paramTypes[i]);
+  }
+
+  // Pad missing arguments with defaults
+  for (let i = expr.arguments.length; i < closureInfo.paramTypes.length; i++) {
+    pushDefaultValue(fctx, closureInfo.paramTypes[i]!);
+  }
+
+  // Push the funcref from the closure struct (field 0) and cast
+  fctx.body.push({ op: "local.get", index: tmpLocal });
+  fctx.body.push({ op: "struct.get", typeIdx: closureInfo.structTypeIdx, fieldIdx: 0 });
+  fctx.body.push({ op: "ref.cast", typeIdx: closureInfo.funcTypeIdx });
+
+  // call_ref with the closure's function type
+  fctx.body.push({ op: "call_ref", typeIdx: closureInfo.funcTypeIdx });
+
+  return closureInfo.returnType;
 }
 
 /**
