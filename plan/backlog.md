@@ -47,8 +47,10 @@ _Goal: Advanced compile error reduction, runtime correctness for all 62 remainin
 | [317](issues/317.md) | Unused $AnyValue preamble type + duplicate export cleanup | Open | **P0** |
 | [318](issues/318.md) | Infer parameter types from call-site arguments for untyped functions | Open | **P0** |
 | [319](issues/319.md) | Inline single-use function type signatures in WAT output | Open | D |
+| [322](issues/322.md) | Inline trig/transcendental Math methods as pure Wasm | Open | D |
+| [323](issues/323.md) | Native type annotations (:i32, :f32, :u8) for performance | Open | D |
 | [320](issues/320.md) | Dead import and type elimination (umbrella) | Open | **P0** |
-| [321](issues/321.md) | String literals and console.log not emitted for top-level statements | Open | **P0** |
+| [321](issues/321.md) | Collection functions don't scan top-level statements (__module_init) | Open | **P0** |
 | --- | ------- | ------ | ----- |
 | [287](issues/287.md) | Generator function compile errors -- yield in nested contexts | Open | A |
 | [288](issues/288.md) | Try/catch/finally compile errors -- complex patterns | Open | A |
