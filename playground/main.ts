@@ -2254,6 +2254,19 @@ function downloadWasm() {
 // ─── Benchmark ───────────────────────────────────────────────────────────
 
 async function runBenchmark() {
+  // If current source has no bench_* exports, load benchmarks example
+  const src = inputFile.model.getValue();
+  if (!src.includes("bench_")) {
+    const resp = await fetch("/examples/benchmarks.ts");
+    const content = await resp.text();
+    t262Loading = true;
+    sessionStorage.removeItem(STORAGE_KEY);
+    inputFile.model.setValue(content);
+    t262Loading = false;
+    t262SetActive("examples/benchmarks.ts");
+    updateTabLabel("ts-source", "benchmarks.ts");
+    lastResult = null;
+  }
   if (!lastResult?.success) {
     compileOnly();
     if (!lastResult?.success) return;
