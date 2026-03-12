@@ -1115,8 +1115,8 @@ async function t262Render() {
   const equivMatches = filter
     ? equivTests.filter(t => t.name.toLowerCase().includes(filter))
     : equivTests;
-  if (!filter || equivMatches.length > 0 || "ts2wasm".includes(filter)) {
-    renderTopFolder("ts2wasm", "__ts2wasm__", listEl, (container) => {
+  if (!filter || equivMatches.length > 0 || "js2wasm test suite".includes(filter)) {
+    renderTopFolder("js2wasm Test Suite", "__ts2wasm__", listEl, (container) => {
       const filesEl = document.createElement("div");
       filesEl.className = "t262-files";
       filesEl.style.paddingLeft = "22px";
@@ -1146,9 +1146,9 @@ async function t262Render() {
   // ── test262 folder ──
   const cats = await t262LoadIndex();
   const tree = t262BuildTree(cats);
-  const t262Matches = !filter || nodeMatchesFilter(tree, filter) || "test262".includes(filter);
+  const t262Matches = !filter || nodeMatchesFilter(tree, filter) || "ecmascript test suite".includes(filter);
   if (t262Matches) {
-    renderTopFolder("test262", "__test262__", listEl, (container) => {
+    renderTopFolder("ECMAScript Test Suite", "__test262__", listEl, (container) => {
       renderNode(tree, container, 1);
     });
   }
