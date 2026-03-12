@@ -80,7 +80,7 @@ Can all run in parallel (different diagnostic codes).
 | 227 | BigInt comparison with Infinity | — | Ready |
 | 228 | BigInt equality with Number/Boolean | — | Ready (coordinates #227) |
 | 237 | BigInt i64 vs externref type mismatch | — | Ready (coordinates #227, #228) |
-| 295 | Comparison operators with type coercion | 8 | Ready |
+| 295 | Comparison operators with type coercion | 8 | **Done** |
 | 296 | Strict equality edge cases (-0, NaN) | 4 | Ready |
 | 299 | Loose equals edge cases | 2 | Ready |
 | 301 | Float unrepresentable in integer range | 4 | Ready |
