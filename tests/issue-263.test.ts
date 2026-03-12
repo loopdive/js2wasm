@@ -1,149 +1,144 @@
 import { describe, it, expect } from "vitest";
 import { compile } from "../src/index.js";
+import { buildImports } from "../src/runtime.js";
 
-describe("Issue #263: Dynamic property access fallback", () => {
-  it("compiles property access on any type without errors", () => {
-    const result = compile(`
-      export function test(x: any): any {
-        return x.foo;
-      }
-    `);
-    const propErrors = result.errors.filter(e =>
-      e.message.includes("Cannot access property")
+/**
+ * Helper: compile TS source, instantiate, and call the exported function.
+ */
+async function run(source: string, fn: string, args: unknown[] = []): Promise<unknown> {
+  const result = compile(source);
+  if (!result.success) {
+    throw new Error(
+      `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}\nWAT:\n${result.wat}`,
     );
-    expect(propErrors).toHaveLength(0);
-  });
-
-  it("compiles .length on any type without errors", () => {
-    const result = compile(`
-      export function test(x: any): any {
-        return x.length;
-      }
-    `);
-    const propErrors = result.errors.filter(e =>
-      e.message.includes("Cannot access property")
+  }
+  // Check for codegen errors (severity "error") that would block test262
+  const codegenErrors = result.errors.filter(e => e.severity === "error");
+  if (codegenErrors.length > 0) {
+    throw new Error(
+      `Codegen errors:\n${codegenErrors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}`,
     );
-    expect(propErrors).toHaveLength(0);
+  }
+  const imports = buildImports(result.imports, undefined, result.stringPool);
+  const { instance } = await WebAssembly.instantiate(result.binary, imports);
+  return (instance.exports as any)[fn](...args);
+}
+
+/**
+ * Helper: compile and assert no codegen errors (severity "error").
+ */
+function compileNoErrors(source: string, options?: { fileName?: string }): void {
+  const result = compile(source, options);
+  const codegenErrors = result.errors.filter(e => e.severity === "error");
+  expect(codegenErrors).toEqual([]);
+}
+
+describe("issue-263: dynamic property access", () => {
+
+  describe("Function.name property", () => {
+    it("compiles function.name without codegen errors", () => {
+      compileNoErrors(`
+        function foo() {}
+        export function test(): string { return foo.name; }
+      `);
+    });
+
+    it("function.name returns the function name", async () => {
+      const result = await run(`
+        function myFunc() {}
+        export function test(): string { return myFunc.name; }
+      `, "test");
+      expect(result).toBe("myFunc");
+    });
+
+    it("compiles arrow function .name without errors", () => {
+      compileNoErrors(`
+        const fn = () => {};
+        export function test(): string { return fn.name; }
+      `);
+    });
+
+    it("compiles generator function .name without errors", () => {
+      compileNoErrors(`
+        function* gen() { yield 1; }
+        export function test(): string { return gen.name; }
+      `);
+    });
   });
 
-  it("compiles .name on any type without errors", () => {
-    const result = compile(`
-      export function test(x: any): any {
-        return x.name;
-      }
-    `);
-    const propErrors = result.errors.filter(e =>
-      e.message.includes("Cannot access property")
-    );
-    expect(propErrors).toHaveLength(0);
+  describe("Constructor.name property (typeof cls)", () => {
+    it("compiles class.name without codegen errors", () => {
+      compileNoErrors(`
+        class Foo {}
+        export function test(): string { return Foo.name; }
+      `);
+    });
+
+    it("class.name returns the class name", async () => {
+      const result = await run(`
+        class MyClass {}
+        export function test(): string { return MyClass.name; }
+      `, "test");
+      expect(result).toBe("MyClass");
+    });
   });
 
-  it("compiles .constructor on any type without errors", () => {
-    const result = compile(`
-      export function test(x: any): any {
-        return x.constructor;
-      }
-    `);
-    const propErrors = result.errors.filter(e =>
-      e.message.includes("Cannot access property")
-    );
-    expect(propErrors).toHaveLength(0);
-  });
-
-  it("compiles property access on unknown struct field without errors", () => {
-    // Access a property that doesn't exist on a known struct type
-    const result = compile(`
-      function makeObj() { return { a: 1 }; }
-      export function test(): number {
-        const obj = makeObj();
-        return obj.a;
-      }
-    `);
-    // This should compile - 'a' is known on the struct
-    const propErrors = result.errors.filter(e =>
-      e.message.includes("Cannot access property")
-    );
-    expect(propErrors).toHaveLength(0);
-  });
-
-  it("produces valid wasm when accessing property on any", () => {
-    const result = compile(`
-      export function test(x: any): any {
-        return x.someProp;
-      }
-    `);
-    expect(result.success).toBe(true);
-    if (result.binary) {
-      expect(WebAssembly.validate(result.binary)).toBe(true);
-    }
-  });
-
-  it("produces valid wasm for chained property access on any", () => {
-    const result = compile(`
-      export function test(x: any): any {
-        return x.a;
-      }
-    `);
-    expect(result.success).toBe(true);
-    if (result.binary) {
-      expect(WebAssembly.validate(result.binary)).toBe(true);
-    }
-  });
-
-  it("compiles multiple property accesses on any without errors", () => {
-    const result = compile(`
-      export function test(x: any): any {
-        const a = x.foo;
-        const b = x.bar;
-        const c = x.baz;
-        return a;
-      }
-    `);
-    const propErrors = result.errors.filter(e =>
-      e.message.includes("Cannot access property")
-    );
-    expect(propErrors).toHaveLength(0);
-  });
-
-  it("no Cannot access property errors for typical test262 patterns", () => {
-    // Pattern from test262: accessing .length on arguments-like objects
-    const result = compile(`
-      export function test(): number {
-        const args: any = 42;
-        return args.length;
-      }
-    `);
-    const propErrors = result.errors.filter(e =>
-      e.message.includes("Cannot access property")
-    );
-    expect(propErrors).toHaveLength(0);
-  });
-
-  it("compiles .toString property access on number without errors", () => {
-    const result = compile(`
-      export function test(x: number): any {
-        return (x as any).toString;
-      }
-    `);
-    const propErrors = result.errors.filter(e =>
-      e.message.includes("Cannot access property")
-    );
-    expect(propErrors).toHaveLength(0);
-  });
-
-  it("compiles property access in conditional context", () => {
-    const result = compile(`
-      export function test(x: any): number {
-        if (x.enabled) {
-          return 1;
+  describe("Constructor.length property", () => {
+    it("compiles class.length (constructor arity)", async () => {
+      const result = await run(`
+        class Bar {
+          x: number;
+          y: number;
+          constructor(a: number, b: number) { this.x = a; this.y = b; }
         }
-        return 0;
-      }
-    `);
-    expect(result.success).toBe(true);
-    const propErrors = result.errors.filter(e =>
-      e.message.includes("Cannot access property")
-    );
-    expect(propErrors).toHaveLength(0);
+        export function test(): number { return Bar.length; }
+      `, "test");
+      expect(result).toBe(2);
+    });
+  });
+
+  describe("Property on Object type", () => {
+    it("compiles Object.prop access without codegen errors", () => {
+      compileNoErrors(`
+        export function test(): number {
+          var obj = new Object();
+          obj.prop = 1;
+          return obj.prop;
+        }
+      `);
+    });
+  });
+
+  describe("Property on empty object type {}", () => {
+    it("compiles {}.prop access without codegen errors", () => {
+      compileNoErrors(`
+        export function test(): number {
+          var o = {};
+          o.x = 42;
+          return o.x;
+        }
+      `);
+    });
+  });
+
+  describe("Dynamic fallback for unresolvable properties", () => {
+    it("does not produce codegen errors for unknown properties", () => {
+      compileNoErrors(`
+        function foo() {}
+        foo.customProp = 42;
+        export function test(): number { return foo.customProp; }
+      `);
+    });
+
+    it("does not produce codegen errors for .name on various function types", () => {
+      compileNoErrors(`
+        const f1 = function() {};
+        const f2 = () => {};
+        function f3() {}
+        export function test(): string {
+          return f1.name + f2.name + f3.name;
+        }
+      `);
+    });
   });
 });

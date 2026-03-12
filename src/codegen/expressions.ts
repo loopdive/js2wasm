@@ -100,17 +100,6 @@ export function compileExpression(
       coerceType(ctx, fctx, result, expectedType);
       return expectedType;
     }
-    // Also coerce when kinds match but ref typeIdx differs and involves AnyValue boxing/unboxing
-    if (expectedType && (result.kind === "ref" || result.kind === "ref_null") &&
-        (expectedType.kind === "ref" || expectedType.kind === "ref_null")) {
-      const resultIdx = (result as { typeIdx: number }).typeIdx;
-      const expectedIdx = (expectedType as { typeIdx: number }).typeIdx;
-      if (resultIdx !== expectedIdx &&
-          (isAnyValue(result, ctx) || isAnyValue(expectedType, ctx))) {
-        coerceType(ctx, fctx, result, expectedType);
-        return expectedType;
-      }
-    }
     return result;
   }
 
@@ -133,7 +122,7 @@ export function compileExpression(
 }
 
 /** Check if two ValTypes are structurally equal */
-export function valTypesMatch(a: ValType, b: ValType): boolean {
+function valTypesMatch(a: ValType, b: ValType): boolean {
   if (a.kind !== b.kind) return false;
   if ((a.kind === "ref" || a.kind === "ref_null") &&
       (b.kind === "ref" || b.kind === "ref_null")) {
@@ -171,7 +160,7 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
     }
     return;
   }
-  // ref is a subtype of ref_null — no coercion needed for same typeIdx
+  // ref is a subtype of ref_null — no coercion needed
   if (from.kind === "ref" && to.kind === "ref_null") {
     // But check for any-value boxing (ref $X → ref_null $AnyValue)
     if (isAnyValue(to, ctx) && !isAnyValue(from, ctx)) {
@@ -895,8 +884,10 @@ function emitArrowParamDestructuring(
       fctx.body.push({ op: "array.get", typeIdx: innerArrTypeIdx });
 
       // Coerce element type to binding type if needed
-      if (!valTypesMatch(innerElemType, bindingWasmType)) {
-        coerceType(ctx, fctx, innerElemType, bindingWasmType);
+      if (innerElemType.kind === "f64" && bindingWasmType.kind === "i32") {
+        fctx.body.push({ op: "i32.trunc_f64_s" });
+      } else if (innerElemType.kind === "i32" && bindingWasmType.kind === "f64") {
+        fctx.body.push({ op: "f64.convert_i32_s" });
       }
 
       fctx.body.push({ op: "local.set", index: localIdx });
@@ -918,57 +909,6 @@ function emitArrowParamDefaults(
     const param = arrow.parameters[i]!;
     if (!param.initializer) continue;
     // Only for simple identifier params (destructuring defaults handled separately)
-    if (!ts.isIdentifier(param.name)) continue;
-
-    const paramIdx = paramOffset + i;
-    const paramType = fctx.params[paramIdx]?.type;
-    if (!paramType) continue;
-
-    // Build the "then" block: compile default expression, local.set
-    const savedBody = fctx.body;
-    fctx.body = [];
-    compileExpression(ctx, fctx, param.initializer, paramType);
-    fctx.body.push({ op: "local.set", index: paramIdx });
-    const thenInstrs = fctx.body;
-    fctx.body = savedBody;
-
-    // Emit the null/zero check + conditional assignment
-    if (paramType.kind === "externref") {
-      fctx.body.push({ op: "local.get", index: paramIdx });
-      fctx.body.push({ op: "ref.is_null" });
-      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
-    } else if (paramType.kind === "ref_null" || paramType.kind === "ref") {
-      fctx.body.push({ op: "local.get", index: paramIdx });
-      fctx.body.push({ op: "ref.is_null" });
-      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
-    } else if (paramType.kind === "i32") {
-      fctx.body.push({ op: "local.get", index: paramIdx });
-      fctx.body.push({ op: "i32.eqz" });
-      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
-    } else if (paramType.kind === "f64") {
-      fctx.body.push({ op: "local.get", index: paramIdx });
-      fctx.body.push({ op: "f64.const", value: 0 });
-      fctx.body.push({ op: "f64.eq" });
-      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
-    }
-  }
-}
-
-/**
- * Emit default-value initialization for method/setter parameters with initializers.
- * For each param with a default value, check if the caller omitted it
- * (externref -> ref.is_null, i32 -> i32.eqz, f64 -> f64.eq 0.0) and if so
- * compile the initializer expression and assign it to the param local.
- */
-function emitMethodParamDefaults(
-  ctx: CodegenContext,
-  fctx: FunctionContext,
-  params: ts.NodeArray<ts.ParameterDeclaration>,
-  paramOffset: number, // offset in fctx.params (usually 1 for 'this')
-): void {
-  for (let i = 0; i < params.length; i++) {
-    const param = params[i]!;
-    if (!param.initializer) continue;
     if (!ts.isIdentifier(param.name)) continue;
 
     const paramIdx = paramOffset + i;
@@ -1203,94 +1143,11 @@ function compileArrowAsClosure(
   // Emit default-value initialization for simple params with defaults
   emitArrowParamDefaults(ctx, liftedFctx, arrow, 1 /* skip __self */);
 
-  // Destructuring parameter initialization: for parameters with binding patterns
-  // (e.g. function([x, y]) or function({a, b})), extract values from the parameter
-  // and assign them to local variables.
-  for (let pi = 0; pi < arrow.parameters.length; pi++) {
-    const param = arrow.parameters[pi]!;
-    if (ts.isIdentifier(param.name)) continue; // simple param, already handled
-
-    const paramIdx = pi + 1; // +1 for __self
-    const paramType = arrowParams[pi]!;
-
-    // Helper: allocate locals for all identifiers in a binding pattern
-    // using TS type inference for each element. This is a fallback for when
-    // the Wasm type doesn't provide enough info to extract values.
-    const allocBindingLocals = (pattern: ts.BindingPattern) => {
-      for (const element of pattern.elements) {
-        if (ts.isOmittedExpression(element)) continue;
-        if (ts.isIdentifier(element.name)) {
-          const localName = element.name.text;
-          if (!liftedFctx.localMap.has(localName)) {
-            const elemTsType = ctx.checker.getTypeAtLocation(element);
-            const elemWasmType = resolveWasmType(ctx, elemTsType);
-            allocLocal(liftedFctx, localName, elemWasmType);
-          }
-        } else if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
-          allocBindingLocals(element.name);
-        }
-      }
-    };
-
-    if (ts.isArrayBindingPattern(param.name)) {
-      // Array destructuring: function([a, b, c]) { ... }
-      let handled = false;
-      if (paramType.kind === "ref" || paramType.kind === "ref_null") {
-        const typeIdx = paramType.typeIdx;
-        const typeDef = ctx.mod.types[typeIdx];
-        if (typeDef && typeDef.kind === "struct") {
-          const arrTypeIdx = getArrTypeIdxFromVec(ctx, typeIdx);
-          const arrDef = ctx.mod.types[arrTypeIdx];
-          if (arrDef && arrDef.kind === "array") {
-            const elemType = arrDef.element;
-            for (let ei = 0; ei < param.name.elements.length; ei++) {
-              const element = param.name.elements[ei]!;
-              if (ts.isOmittedExpression(element)) continue;
-              if (!ts.isIdentifier(element.name)) continue;
-              const localName = element.name.text;
-              const localIdx = allocLocal(liftedFctx, localName, elemType);
-              liftedFctx.body.push({ op: "local.get", index: paramIdx });
-              liftedFctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 });
-              liftedFctx.body.push({ op: "i32.const", value: ei });
-              liftedFctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
-              liftedFctx.body.push({ op: "local.set", index: localIdx });
-            }
-            handled = true;
-          }
-        }
-      }
-      if (!handled) {
-        allocBindingLocals(param.name);
-      }
-    } else if (ts.isObjectBindingPattern(param.name)) {
-      // Object destructuring: function({a, b}) { ... }
-      let handled = false;
-      if (paramType.kind === "ref" || paramType.kind === "ref_null") {
-        const typeIdx = paramType.typeIdx;
-        const typeDef = ctx.mod.types[typeIdx];
-        if (typeDef && typeDef.kind === "struct") {
-          let allFound = true;
-          for (const element of param.name.elements) {
-            if (ts.isOmittedExpression(element)) continue;
-            if (!ts.isIdentifier(element.name)) continue;
-            const localName = element.name.text;
-            const propName = element.propertyName
-              ? (ts.isIdentifier(element.propertyName) ? element.propertyName.text : localName)
-              : localName;
-            const fieldIdx = typeDef.fields.findIndex((f: any) => f.name === propName);
-            if (fieldIdx < 0) { allFound = false; continue; }
-            const fieldType = typeDef.fields[fieldIdx]!.type;
-            const localIdx = allocLocal(liftedFctx, localName, fieldType);
-            liftedFctx.body.push({ op: "local.get", index: paramIdx });
-            liftedFctx.body.push({ op: "struct.get", typeIdx, fieldIdx });
-            liftedFctx.body.push({ op: "local.set", index: localIdx });
-          }
-          handled = allFound;
-        }
-      }
-      if (!handled) {
-        allocBindingLocals(param.name);
-      }
+  // Emit destructuring code for binding pattern parameters
+  for (let i = 0; i < arrow.parameters.length; i++) {
+    const param = arrow.parameters[i]!;
+    if (ts.isObjectBindingPattern(param.name) || ts.isArrayBindingPattern(param.name)) {
+      emitArrowParamDestructuring(ctx, liftedFctx, param, 1 + i, arrowParams[i] ?? { kind: "f64" });
     }
   }
 
@@ -1401,27 +1258,6 @@ function compileArrowAsClosure(
   const parent = arrow.parent;
   if (ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name)) {
     ctx.closureMap.set(parent.name.text, closureInfo);
-  } else if (
-    ts.isBinaryExpression(parent) &&
-    parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-    ts.isIdentifier(parent.left)
-  ) {
-    // Assignment expression: f = function() { ... }
-    // Only register if the target variable is a local in the current function context
-    // and not a boxed (mutable) capture, which stores values as externref.
-    const assignName = parent.left.text;
-    const currentFctx = ctx.currentFunc;
-    const localIdx = currentFctx.localMap.get(assignName);
-    if (localIdx !== undefined && !currentFctx.boxedCaptures?.has(assignName)) {
-      // It's a local variable (not a boxed capture) — safe to register as closure
-      ctx.closureMap.set(assignName, closureInfo);
-    }
-  } else if (
-    ts.isPropertyAssignment(parent) &&
-    ts.isIdentifier(parent.name)
-  ) {
-    // Object literal: { fn: function() { ... } }
-    // Don't register in closureMap (property, not variable)
   }
 
   return { kind: "ref", typeIdx: structTypeIdx };
@@ -3290,33 +3126,8 @@ function compileAssignment(
       const localType = localIdx < fctx.params.length
         ? fctx.params[localIdx]!.type
         : fctx.locals[localIdx - fctx.params.length]?.type;
-
-      // When assigning a function expression/arrow to a variable, don't pass
-      // externref type hint — let it compile to its native closure struct ref type.
-      // Then update the local's type so closure calls work correctly.
-      const isFuncExprRHS = ts.isFunctionExpression(expr.right) || ts.isArrowFunction(expr.right);
-      const typeHint = (isFuncExprRHS && localType?.kind === "externref") ? undefined : localType;
-      const resultType = compileExpression(ctx, fctx, expr.right, typeHint);
+      const resultType = compileExpression(ctx, fctx, expr.right, localType);
       if (!resultType) { ctx.errors.push({ message: "Failed to compile assignment value", line: getLine(expr), column: getCol(expr) }); return null; }
-
-      // If a closure struct ref was assigned to an externref local, update the local's type
-      if (isFuncExprRHS && resultType.kind === "ref" && localType?.kind === "externref") {
-        if (localIdx < fctx.params.length) {
-          fctx.params[localIdx]!.type = resultType;
-        } else {
-          const localEntry = fctx.locals[localIdx - fctx.params.length];
-          if (localEntry) localEntry.type = resultType;
-        }
-      }
-
-      // Safety coercion: if the expression produced a type that doesn't match
-      // the local's declared type (e.g. compileExpression didn't have expectedType
-      // or coercion was incomplete), coerce before local.tee
-      if (localType && !valTypesMatch(resultType, localType)) {
-        coerceType(ctx, fctx, resultType, localType);
-        fctx.body.push({ op: "local.tee", index: localIdx });
-        return localType;
-      }
       fctx.body.push({ op: "local.tee", index: localIdx });
       return resultType;
     }
@@ -3667,7 +3478,9 @@ function compilePropertyAssignment(
 
   // Handle externref property set
   if (isExternalDeclaredClass(objType, ctx.checker)) {
-    return compileExternPropertySet(ctx, fctx, target, value, objType);
+    const externSetResult = compileExternPropertySet(ctx, fctx, target, value, objType);
+    if (externSetResult !== null) return externSetResult;
+    // Fall through to struct-based assignment if import is missing
   }
 
   // Handle shape-inferred array-like variables: obj.length = N
@@ -3741,12 +3554,13 @@ function compileExternPropertySet(
   // Walk inheritance chain to find the class that declares the property
   const resolvedInfo = findExternInfoForMember(ctx, className, propName, "property");
   const propOwner = resolvedInfo ?? ctx.externClasses.get(className);
-  if (!propOwner) {
-    ctx.errors.push({
-      message: `Unknown extern class: ${className}`,
-      line: getLine(target),
-      column: getCol(target),
-    });
+  if (!propOwner) return null;
+
+  // Check if the import exists BEFORE compiling object+value to avoid dangling stack values
+  const importName = `${propOwner.importPrefix}_set_${propName}`;
+  const funcIdx = ctx.funcMap.get(importName);
+  if (funcIdx === undefined) {
+    // Import not found — return null silently to let caller handle fallback
     return null;
   }
 
@@ -3756,17 +3570,6 @@ function compileExternPropertySet(
   const propInfo = propOwner.properties.get(propName);
   const externValResult = compileExpression(ctx, fctx, value, propInfo?.type);
   if (!externValResult) { ctx.errors.push({ message: "Failed to compile extern property value", line: getLine(target), column: getCol(target) }); return null; }
-
-  const importName = `${propOwner.importPrefix}_set_${propName}`;
-  const funcIdx = ctx.funcMap.get(importName);
-  if (funcIdx === undefined) {
-    ctx.errors.push({
-      message: `Missing import for property set: ${importName}`,
-      line: getLine(target),
-      column: getCol(target),
-    });
-    return null;
-  }
 
   fctx.body.push({ op: "call", funcIdx });
   return VOID_RESULT;
@@ -7079,21 +6882,7 @@ function compileCallExpression(
     const funcName = expr.expression.text;
 
     // Check if this is a closure call
-    let closureInfo = ctx.closureMap.get(funcName);
-    if (!closureInfo) {
-      // Fallback: if the variable is a local with a ref type, look up closure info
-      // by struct type index. This handles cases like:
-      //   var f; f = function() { ... }; f();
-      const localIdx = fctx.localMap.get(funcName);
-      if (localIdx !== undefined) {
-        const localType = localIdx < fctx.params.length
-          ? fctx.params[localIdx]?.type
-          : fctx.locals[localIdx - fctx.params.length]?.type;
-        if (localType && (localType.kind === "ref" || localType.kind === "ref_null")) {
-          closureInfo = ctx.closureInfoByTypeIdx.get(localType.typeIdx);
-        }
-      }
-    }
+    const closureInfo = ctx.closureMap.get(funcName);
     if (closureInfo) {
       return compileClosureCall(ctx, fctx, expr, funcName, closureInfo);
     }
@@ -9444,9 +9233,11 @@ function compilePropertyAccess(
   // Handle Function.length — return the number of formal parameters
   if (propName === "length") {
     const callSigs = objType.getCallSignatures?.();
-    if (callSigs && callSigs.length > 0) {
-      // Use the first call signature's parameter count (excluding rest params)
-      const sig = callSigs[0]!;
+    const constructSigs2 = objType.getConstructSignatures?.();
+    const lengthSigs = (callSigs && callSigs.length > 0) ? callSigs : (constructSigs2 && constructSigs2.length > 0) ? constructSigs2 : null;
+    if (lengthSigs && lengthSigs.length > 0) {
+      // Use the first call/construct signature's parameter count (excluding rest params)
+      const sig = lengthSigs[0]!;
       const paramCount = sig.parameters.filter(
         (p: any) => {
           const decl = p.valueDeclaration;
@@ -9461,7 +9252,8 @@ function compilePropertyAccess(
   // Handle Function.name — return the function name as a string
   if (propName === "name") {
     const callSigs = objType.getCallSignatures?.();
-    if (callSigs && callSigs.length > 0) {
+    const constructSigs = objType.getConstructSignatures?.();
+    if ((callSigs && callSigs.length > 0) || (constructSigs && constructSigs.length > 0)) {
       // Resolve the function name from the type symbol or the expression
       let funcName = objType.getSymbol()?.name ?? "";
       // __type and __function are anonymous type names from TS checker
@@ -9470,6 +9262,8 @@ function compilePropertyAccess(
       if (ts.isIdentifier(expr.expression)) {
         funcName = expr.expression.text;
       }
+      // Ensure the string constant is registered before compiling
+      addStringConstantGlobal(ctx, funcName);
       return compileStringLiteral(ctx, fctx, funcName);
     }
   }
@@ -9612,7 +9406,9 @@ function compilePropertyAccess(
 
   // Handle externref property access
   if (isExternalDeclaredClass(objType, ctx.checker)) {
-    return compileExternPropertyGet(ctx, fctx, expr, objType, propName);
+    const externResult = compileExternPropertyGet(ctx, fctx, expr, objType, propName);
+    if (externResult !== null) return externResult;
+    // Fall through to dynamic fallback if import is missing
   }
 
   // Handle getter accessor on user-defined classes
@@ -9652,63 +9448,64 @@ function compilePropertyAccess(
     }
   }
 
-  // ── Dynamic property access fallback ──────────────────────────────
-  // When we cannot resolve the property statically (no struct field, no
-  // built-in handler), attempt to infer the expected result type from
-  // the TS checker and emit a reasonable default value.  This prevents
-  // compile errors for code that accesses properties TypeScript cannot
-  // prove exist on the type (common in test262 / allowJs scenarios).
+  // Dynamic property access fallback: instead of erroring, emit a default value.
+  // This handles cases where TypeScript cannot resolve the property statically
+  // (e.g., properties on Object, {}, undefined, or dynamically-typed values).
+  // Determine the expected result type from the TS checker at the access site.
+  const accessType = ctx.checker.getTypeAtLocation(expr);
+  const accessWasm = resolveWasmType(ctx, accessType);
 
-  // Try the TS checker's view of the property access expression type
-  const exprType = ctx.checker.getTypeAtLocation(expr);
-  const propSymbol = objType.getProperty?.(propName);
-
-  if (propSymbol || exprType) {
-    const propTsType = propSymbol
-      ? ctx.checker.getTypeOfSymbol(propSymbol)
-      : exprType;
-    const wasmType = resolveWasmType(ctx, propTsType);
-
-    // For properties that resolve to a concrete Wasm type, try to look up
-    // or register the struct field dynamically so future accesses also work.
-    // But at minimum, emit a sensible default value.
-
-    // If we have a struct and the field simply doesn't exist yet, add it
-    if (typeName) {
-      const structTypeIdx = ctx.structMap.get(typeName);
-      const fields = ctx.structFields.get(typeName);
-      if (structTypeIdx !== undefined && fields) {
-        // Field was not found earlier — try to compile expression and
-        // fall through to default value emission below
+  // For struct types with the property, try to compile the object and do struct.get
+  if (typeName) {
+    // typeName was already resolved above but field was not found;
+    // try auto-registering the property from the TS type
+    const props = objType.getProperties?.();
+    if (props) {
+      const tsProp = props.find(p => p.name === propName);
+      if (tsProp) {
+        const propTsType = ctx.checker.getTypeOfSymbolAtLocation(tsProp, expr);
+        const propWasmType = resolveWasmType(ctx, propTsType);
+        // Try to add the field to the struct dynamically
+        const structTypeIdx = ctx.structMap.get(typeName);
+        const fields = ctx.structFields.get(typeName);
+        if (structTypeIdx !== undefined && fields) {
+          const typeDef = ctx.mod.types[structTypeIdx];
+          if (typeDef?.kind === "struct") {
+            // Add the missing field
+            const newField: FieldDef = { name: propName, type: propWasmType, mutable: true };
+            fields.push(newField);
+            typeDef.fields.push(newField);
+            const fieldIdx = fields.length - 1;
+            compileExpression(ctx, fctx, expr.expression);
+            fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+            return propWasmType;
+          }
+        }
       }
-    }
-
-    // Emit a default value based on the resolved Wasm type
-    switch (wasmType.kind) {
-      case "f64":
-        // Property access on missing field yields undefined → NaN in f64
-        fctx.body.push({ op: "f64.const", value: NaN });
-        return { kind: "f64" };
-      case "i32":
-        fctx.body.push({ op: "i32.const", value: 0 });
-        return { kind: "i32" };
-      case "externref":
-        fctx.body.push({ op: "ref.null.extern" });
-        return { kind: "externref" };
-      case "ref":
-      case "ref_null":
-        fctx.body.push({ op: "ref.null.extern" });
-        return { kind: "externref" };
-      default:
-        fctx.body.push({ op: "ref.null.extern" });
-        return { kind: "externref" };
     }
   }
 
-  // Last resort: emit undefined (externref null) for completely unresolvable
-  // property access instead of a compile error
-  fctx.body.push({ op: "ref.null.extern" });
-  return { kind: "externref" };
+  // For externref objects (any, Object, unknown), try compiling the object
+  // and return a default value based on the inferred property type.
+  if (accessWasm.kind === "f64" || accessWasm.kind === "i32") {
+    // Property expected to be numeric — emit 0 as default
+    // (The object expression is not needed on the stack for a constant)
+    fctx.body.push({ op: accessWasm.kind === "f64" ? "f64.const" : "i32.const", value: 0 });
+    return accessWasm;
+  }
+  if (accessWasm.kind === "externref") {
+    // Emit ref.null extern as a safe default for unresolvable externref properties
+    fctx.body.push({ op: "ref.null", refType: "extern" } as unknown as Instr);
+    return { kind: "externref" };
+  }
+  if (accessWasm.kind === "ref" || accessWasm.kind === "ref_null") {
+    fctx.body.push({ op: "ref.null", refType: "extern" } as unknown as Instr);
+    return { kind: "externref" };
+  }
+
+  // Last resort: emit unreachable (this branch should rarely be hit)
+  fctx.body.push({ op: "unreachable" });
+  return null;
 }
 
 function compileExternPropertyGet(
@@ -9726,20 +9523,16 @@ function compileExternPropertyGet(
   const propOwner = resolvedInfo ?? ctx.externClasses.get(className);
   if (!propOwner) return null;
 
-  // Push the object
-  compileExpression(ctx, fctx, expr.expression);
-
   const importName = `${propOwner.importPrefix}_get_${propName}`;
   const funcIdx = ctx.funcMap.get(importName);
   if (funcIdx === undefined) {
-    ctx.errors.push({
-      message: `Missing import for property get: ${importName}`,
-      line: getLine(expr),
-      column: getCol(expr),
-    });
+    // Import not found — return null silently to let the caller's fallback handle it.
+    // Do NOT compile the object expression here to avoid dangling stack values.
     return null;
   }
 
+  // Push the object and call the getter
+  compileExpression(ctx, fctx, expr.expression);
   fctx.body.push({ op: "call", funcIdx });
 
   const propInfo = propOwner.properties.get(propName);
@@ -10554,14 +10347,13 @@ function compileObjectLiteralForStruct(
       ctx.currentFunc = savedFunc;
     }
 
-    // Object literal methods: { method() { ... } }, { "method"() { ... } }, { [key]() { ... } }
+    // Object literal methods: { method() { ... } }
     if (
       ts.isMethodDeclaration(prop) &&
       prop.name &&
-      (ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name) || ts.isNumericLiteral(prop.name) || ts.isComputedPropertyName(prop.name))
+      ts.isIdentifier(prop.name)
     ) {
-      const methodName = resolveAccessorPropName(ctx, prop.name);
-      if (methodName === undefined) continue;
+      const methodName = prop.name.text;
       const fullName = `${typeName}_${methodName}`;
       ctx.classMethodSet.add(fullName);
 
@@ -10617,10 +10409,6 @@ function compileObjectLiteralForStruct(
 
       const savedFunc = ctx.currentFunc;
       ctx.currentFunc = methodFctx;
-
-      // Emit default-value initialization for parameters with initializers
-      emitMethodParamDefaults(ctx, methodFctx, prop.parameters, 1); // 1 to skip 'this'
-
       if (prop.body) {
         for (const stmt of prop.body.statements) {
           compileStatement(ctx, methodFctx, stmt);
