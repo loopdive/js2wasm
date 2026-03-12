@@ -5162,9 +5162,32 @@ function compileCallExpression(
     return compileSuperMethodCall(ctx, fctx, expr);
   }
 
-  // Handle property access calls: console.log, Math.xxx, extern methods
-  if (ts.isPropertyAccessExpression(expr.expression)) {
-    const propAccess = expr.expression;
+  // Handle property access calls (including element access with string literal key):
+  // console.log, Math.xxx, extern methods, obj.method(), obj["method"]()
+  //
+  // For ElementAccessExpression with a string literal key like obj["method"](),
+  // we extract the property name and receiver just like PropertyAccessExpression.
+  // We keep the original `expr` for type resolution via getResolvedSignature.
+  if (
+    ts.isPropertyAccessExpression(expr.expression) ||
+    (ts.isElementAccessExpression(expr.expression) &&
+     (ts.isStringLiteral(expr.expression.argumentExpression) ||
+      ts.isNoSubstitutionTemplateLiteral(expr.expression.argumentExpression)))
+  ) {
+    // Normalize: extract propAccess-like info from either PropertyAccess or ElementAccess
+    const propAccess = ts.isPropertyAccessExpression(expr.expression)
+      ? expr.expression
+      : (() => {
+          // Create a synthetic PropertyAccessExpression for uniform handling
+          const ea = expr.expression as ts.ElementAccessExpression;
+          const synth = ts.factory.createPropertyAccessExpression(
+            ea.expression,
+            ts.factory.createIdentifier((ea.argumentExpression as ts.StringLiteral).text),
+          );
+          ts.setTextRange(synth, ea);
+          (synth as any).parent = ea.parent;
+          return synth;
+        })();
 
     // Handle Array.prototype.METHOD.call(obj, ...args) — inline as array method on shape-inferred obj
     {
@@ -5699,7 +5722,7 @@ function compileCallExpression(
       }
 
       const importName = `string_${method}`;
-      const funcIdx = ctx.funcMap.get(importName);
+      const funcIdx = ctx.funcMap.get(importName) ?? ctx.funcMap.get(method);
       if (funcIdx !== undefined) {
         compileExpression(ctx, fctx, propAccess.expression);
         const paramTypes = getFuncParamTypes(ctx, funcIdx);
@@ -6196,6 +6219,38 @@ function compileCallExpression(
         expr.arguments,
       );
       // Preserve parent for type checker resolution
+      ts.setTextRange(syntheticCall, expr);
+      (syntheticCall as any).parent = expr.parent;
+      return compileCallExpression(ctx, fctx, syntheticCall as ts.CallExpression);
+    }
+  }
+
+  // Unwrap parenthesized expressions and type assertions: (f)(), (x as T)(), etc.
+  // This creates a synthetic call with the unwrapped callee and retries compilation.
+  {
+    let callee: ts.Expression = expr.expression;
+    let unwrapped = false;
+    while (
+      ts.isParenthesizedExpression(callee) ||
+      ts.isAsExpression(callee) ||
+      ts.isNonNullExpression(callee) ||
+      ts.isTypeAssertionExpression(callee)
+    ) {
+      if (ts.isParenthesizedExpression(callee)) {
+        callee = callee.expression;
+      } else if (ts.isAsExpression(callee) || ts.isTypeAssertionExpression(callee)) {
+        callee = callee.expression;
+      } else {
+        callee = callee.expression;
+      }
+      unwrapped = true;
+    }
+    if (unwrapped) {
+      const syntheticCall = ts.factory.createCallExpression(
+        callee as ts.LeftHandSideExpression,
+        expr.typeArguments,
+        expr.arguments,
+      );
       ts.setTextRange(syntheticCall, expr);
       (syntheticCall as any).parent = expr.parent;
       return compileCallExpression(ctx, fctx, syntheticCall as ts.CallExpression);
