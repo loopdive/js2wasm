@@ -100,6 +100,17 @@ export function compileExpression(
       coerceType(ctx, fctx, result, expectedType);
       return expectedType;
     }
+    // Also coerce when kinds match but ref typeIdx differs and involves AnyValue boxing/unboxing
+    if (expectedType && (result.kind === "ref" || result.kind === "ref_null") &&
+        (expectedType.kind === "ref" || expectedType.kind === "ref_null")) {
+      const resultIdx = (result as { typeIdx: number }).typeIdx;
+      const expectedIdx = (expectedType as { typeIdx: number }).typeIdx;
+      if (resultIdx !== expectedIdx &&
+          (isAnyValue(result, ctx) || isAnyValue(expectedType, ctx))) {
+        coerceType(ctx, fctx, result, expectedType);
+        return expectedType;
+      }
+    }
     return result;
   }
 
@@ -122,7 +133,7 @@ export function compileExpression(
 }
 
 /** Check if two ValTypes are structurally equal */
-function valTypesMatch(a: ValType, b: ValType): boolean {
+export function valTypesMatch(a: ValType, b: ValType): boolean {
   if (a.kind !== b.kind) return false;
   if ((a.kind === "ref" || a.kind === "ref_null") &&
       (b.kind === "ref" || b.kind === "ref_null")) {
@@ -160,7 +171,7 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
     }
     return;
   }
-  // ref is a subtype of ref_null — no coercion needed
+  // ref is a subtype of ref_null — no coercion needed for same typeIdx
   if (from.kind === "ref" && to.kind === "ref_null") {
     // But check for any-value boxing (ref $X → ref_null $AnyValue)
     if (isAnyValue(to, ctx) && !isAnyValue(from, ctx)) {
@@ -884,10 +895,8 @@ function emitArrowParamDestructuring(
       fctx.body.push({ op: "array.get", typeIdx: innerArrTypeIdx });
 
       // Coerce element type to binding type if needed
-      if (innerElemType.kind === "f64" && bindingWasmType.kind === "i32") {
-        fctx.body.push({ op: "i32.trunc_f64_s" });
-      } else if (innerElemType.kind === "i32" && bindingWasmType.kind === "f64") {
-        fctx.body.push({ op: "f64.convert_i32_s" });
+      if (!valTypesMatch(innerElemType, bindingWasmType)) {
+        coerceType(ctx, fctx, innerElemType, bindingWasmType);
       }
 
       fctx.body.push({ op: "local.set", index: localIdx });
@@ -909,6 +918,57 @@ function emitArrowParamDefaults(
     const param = arrow.parameters[i]!;
     if (!param.initializer) continue;
     // Only for simple identifier params (destructuring defaults handled separately)
+    if (!ts.isIdentifier(param.name)) continue;
+
+    const paramIdx = paramOffset + i;
+    const paramType = fctx.params[paramIdx]?.type;
+    if (!paramType) continue;
+
+    // Build the "then" block: compile default expression, local.set
+    const savedBody = fctx.body;
+    fctx.body = [];
+    compileExpression(ctx, fctx, param.initializer, paramType);
+    fctx.body.push({ op: "local.set", index: paramIdx });
+    const thenInstrs = fctx.body;
+    fctx.body = savedBody;
+
+    // Emit the null/zero check + conditional assignment
+    if (paramType.kind === "externref") {
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "ref.is_null" });
+      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
+    } else if (paramType.kind === "ref_null" || paramType.kind === "ref") {
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "ref.is_null" });
+      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
+    } else if (paramType.kind === "i32") {
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "i32.eqz" });
+      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
+    } else if (paramType.kind === "f64") {
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "f64.const", value: 0 });
+      fctx.body.push({ op: "f64.eq" });
+      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
+    }
+  }
+}
+
+/**
+ * Emit default-value initialization for method/setter parameters with initializers.
+ * For each param with a default value, check if the caller omitted it
+ * (externref -> ref.is_null, i32 -> i32.eqz, f64 -> f64.eq 0.0) and if so
+ * compile the initializer expression and assign it to the param local.
+ */
+function emitMethodParamDefaults(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  params: ts.NodeArray<ts.ParameterDeclaration>,
+  paramOffset: number, // offset in fctx.params (usually 1 for 'this')
+): void {
+  for (let i = 0; i < params.length; i++) {
+    const param = params[i]!;
+    if (!param.initializer) continue;
     if (!ts.isIdentifier(param.name)) continue;
 
     const paramIdx = paramOffset + i;
@@ -1143,11 +1203,94 @@ function compileArrowAsClosure(
   // Emit default-value initialization for simple params with defaults
   emitArrowParamDefaults(ctx, liftedFctx, arrow, 1 /* skip __self */);
 
-  // Emit destructuring code for binding pattern parameters
-  for (let i = 0; i < arrow.parameters.length; i++) {
-    const param = arrow.parameters[i]!;
-    if (ts.isObjectBindingPattern(param.name) || ts.isArrayBindingPattern(param.name)) {
-      emitArrowParamDestructuring(ctx, liftedFctx, param, 1 + i, arrowParams[i] ?? { kind: "f64" });
+  // Destructuring parameter initialization: for parameters with binding patterns
+  // (e.g. function([x, y]) or function({a, b})), extract values from the parameter
+  // and assign them to local variables.
+  for (let pi = 0; pi < arrow.parameters.length; pi++) {
+    const param = arrow.parameters[pi]!;
+    if (ts.isIdentifier(param.name)) continue; // simple param, already handled
+
+    const paramIdx = pi + 1; // +1 for __self
+    const paramType = arrowParams[pi]!;
+
+    // Helper: allocate locals for all identifiers in a binding pattern
+    // using TS type inference for each element. This is a fallback for when
+    // the Wasm type doesn't provide enough info to extract values.
+    const allocBindingLocals = (pattern: ts.BindingPattern) => {
+      for (const element of pattern.elements) {
+        if (ts.isOmittedExpression(element)) continue;
+        if (ts.isIdentifier(element.name)) {
+          const localName = element.name.text;
+          if (!liftedFctx.localMap.has(localName)) {
+            const elemTsType = ctx.checker.getTypeAtLocation(element);
+            const elemWasmType = resolveWasmType(ctx, elemTsType);
+            allocLocal(liftedFctx, localName, elemWasmType);
+          }
+        } else if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
+          allocBindingLocals(element.name);
+        }
+      }
+    };
+
+    if (ts.isArrayBindingPattern(param.name)) {
+      // Array destructuring: function([a, b, c]) { ... }
+      let handled = false;
+      if (paramType.kind === "ref" || paramType.kind === "ref_null") {
+        const typeIdx = paramType.typeIdx;
+        const typeDef = ctx.mod.types[typeIdx];
+        if (typeDef && typeDef.kind === "struct") {
+          const arrTypeIdx = getArrTypeIdxFromVec(ctx, typeIdx);
+          const arrDef = ctx.mod.types[arrTypeIdx];
+          if (arrDef && arrDef.kind === "array") {
+            const elemType = arrDef.element;
+            for (let ei = 0; ei < param.name.elements.length; ei++) {
+              const element = param.name.elements[ei]!;
+              if (ts.isOmittedExpression(element)) continue;
+              if (!ts.isIdentifier(element.name)) continue;
+              const localName = element.name.text;
+              const localIdx = allocLocal(liftedFctx, localName, elemType);
+              liftedFctx.body.push({ op: "local.get", index: paramIdx });
+              liftedFctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 });
+              liftedFctx.body.push({ op: "i32.const", value: ei });
+              liftedFctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
+              liftedFctx.body.push({ op: "local.set", index: localIdx });
+            }
+            handled = true;
+          }
+        }
+      }
+      if (!handled) {
+        allocBindingLocals(param.name);
+      }
+    } else if (ts.isObjectBindingPattern(param.name)) {
+      // Object destructuring: function({a, b}) { ... }
+      let handled = false;
+      if (paramType.kind === "ref" || paramType.kind === "ref_null") {
+        const typeIdx = paramType.typeIdx;
+        const typeDef = ctx.mod.types[typeIdx];
+        if (typeDef && typeDef.kind === "struct") {
+          let allFound = true;
+          for (const element of param.name.elements) {
+            if (ts.isOmittedExpression(element)) continue;
+            if (!ts.isIdentifier(element.name)) continue;
+            const localName = element.name.text;
+            const propName = element.propertyName
+              ? (ts.isIdentifier(element.propertyName) ? element.propertyName.text : localName)
+              : localName;
+            const fieldIdx = typeDef.fields.findIndex((f: any) => f.name === propName);
+            if (fieldIdx < 0) { allFound = false; continue; }
+            const fieldType = typeDef.fields[fieldIdx]!.type;
+            const localIdx = allocLocal(liftedFctx, localName, fieldType);
+            liftedFctx.body.push({ op: "local.get", index: paramIdx });
+            liftedFctx.body.push({ op: "struct.get", typeIdx, fieldIdx });
+            liftedFctx.body.push({ op: "local.set", index: localIdx });
+          }
+          handled = allFound;
+        }
+      }
+      if (!handled) {
+        allocBindingLocals(param.name);
+      }
     }
   }
 
@@ -1258,6 +1401,27 @@ function compileArrowAsClosure(
   const parent = arrow.parent;
   if (ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name)) {
     ctx.closureMap.set(parent.name.text, closureInfo);
+  } else if (
+    ts.isBinaryExpression(parent) &&
+    parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+    ts.isIdentifier(parent.left)
+  ) {
+    // Assignment expression: f = function() { ... }
+    // Only register if the target variable is a local in the current function context
+    // and not a boxed (mutable) capture, which stores values as externref.
+    const assignName = parent.left.text;
+    const currentFctx = ctx.currentFunc;
+    const localIdx = currentFctx.localMap.get(assignName);
+    if (localIdx !== undefined && !currentFctx.boxedCaptures?.has(assignName)) {
+      // It's a local variable (not a boxed capture) — safe to register as closure
+      ctx.closureMap.set(assignName, closureInfo);
+    }
+  } else if (
+    ts.isPropertyAssignment(parent) &&
+    ts.isIdentifier(parent.name)
+  ) {
+    // Object literal: { fn: function() { ... } }
+    // Don't register in closureMap (property, not variable)
   }
 
   return { kind: "ref", typeIdx: structTypeIdx };
@@ -3126,8 +3290,33 @@ function compileAssignment(
       const localType = localIdx < fctx.params.length
         ? fctx.params[localIdx]!.type
         : fctx.locals[localIdx - fctx.params.length]?.type;
-      const resultType = compileExpression(ctx, fctx, expr.right, localType);
+
+      // When assigning a function expression/arrow to a variable, don't pass
+      // externref type hint — let it compile to its native closure struct ref type.
+      // Then update the local's type so closure calls work correctly.
+      const isFuncExprRHS = ts.isFunctionExpression(expr.right) || ts.isArrowFunction(expr.right);
+      const typeHint = (isFuncExprRHS && localType?.kind === "externref") ? undefined : localType;
+      const resultType = compileExpression(ctx, fctx, expr.right, typeHint);
       if (!resultType) { ctx.errors.push({ message: "Failed to compile assignment value", line: getLine(expr), column: getCol(expr) }); return null; }
+
+      // If a closure struct ref was assigned to an externref local, update the local's type
+      if (isFuncExprRHS && resultType.kind === "ref" && localType?.kind === "externref") {
+        if (localIdx < fctx.params.length) {
+          fctx.params[localIdx]!.type = resultType;
+        } else {
+          const localEntry = fctx.locals[localIdx - fctx.params.length];
+          if (localEntry) localEntry.type = resultType;
+        }
+      }
+
+      // Safety coercion: if the expression produced a type that doesn't match
+      // the local's declared type (e.g. compileExpression didn't have expectedType
+      // or coercion was incomplete), coerce before local.tee
+      if (localType && !valTypesMatch(resultType, localType)) {
+        coerceType(ctx, fctx, resultType, localType);
+        fctx.body.push({ op: "local.tee", index: localIdx });
+        return localType;
+      }
       fctx.body.push({ op: "local.tee", index: localIdx });
       return resultType;
     }
@@ -6882,7 +7071,21 @@ function compileCallExpression(
     const funcName = expr.expression.text;
 
     // Check if this is a closure call
-    const closureInfo = ctx.closureMap.get(funcName);
+    let closureInfo = ctx.closureMap.get(funcName);
+    if (!closureInfo) {
+      // Fallback: if the variable is a local with a ref type, look up closure info
+      // by struct type index. This handles cases like:
+      //   var f; f = function() { ... }; f();
+      const localIdx = fctx.localMap.get(funcName);
+      if (localIdx !== undefined) {
+        const localType = localIdx < fctx.params.length
+          ? fctx.params[localIdx]?.type
+          : fctx.locals[localIdx - fctx.params.length]?.type;
+        if (localType && (localType.kind === "ref" || localType.kind === "ref_null")) {
+          closureInfo = ctx.closureInfoByTypeIdx.get(localType.typeIdx);
+        }
+      }
+    }
     if (closureInfo) {
       return compileClosureCall(ctx, fctx, expr, funcName, closureInfo);
     }
@@ -9495,11 +9698,11 @@ function compilePropertyAccess(
   }
   if (accessWasm.kind === "externref") {
     // Emit ref.null extern as a safe default for unresolvable externref properties
-    fctx.body.push({ op: "ref.null", refType: "extern" } as unknown as Instr);
+    fctx.body.push({ op: "ref.null.extern" } as unknown as Instr);
     return { kind: "externref" };
   }
   if (accessWasm.kind === "ref" || accessWasm.kind === "ref_null") {
-    fctx.body.push({ op: "ref.null", refType: "extern" } as unknown as Instr);
+    fctx.body.push({ op: "ref.null.extern" } as unknown as Instr);
     return { kind: "externref" };
   }
 
@@ -10080,7 +10283,7 @@ function compileWidenedEmptyObject(
         fctx.body.push({ op: "i32.const", value: 0 });
         break;
       case "externref":
-        fctx.body.push({ op: "ref.null", refType: "extern" } as unknown as Instr);
+        fctx.body.push({ op: "ref.null.extern" } as unknown as Instr);
         break;
       default:
         if (field.type.kind === "ref" || field.type.kind === "ref_null") {
@@ -10347,13 +10550,14 @@ function compileObjectLiteralForStruct(
       ctx.currentFunc = savedFunc;
     }
 
-    // Object literal methods: { method() { ... } }
+    // Object literal methods: { method() { ... } }, { "method"() { ... } }, { [key]() { ... } }
     if (
       ts.isMethodDeclaration(prop) &&
       prop.name &&
-      ts.isIdentifier(prop.name)
+      (ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name) || ts.isNumericLiteral(prop.name) || ts.isComputedPropertyName(prop.name))
     ) {
-      const methodName = prop.name.text;
+      const methodName = resolveAccessorPropName(ctx, prop.name);
+      if (methodName === undefined) continue;
       const fullName = `${typeName}_${methodName}`;
       ctx.classMethodSet.add(fullName);
 
@@ -10409,6 +10613,10 @@ function compileObjectLiteralForStruct(
 
       const savedFunc = ctx.currentFunc;
       ctx.currentFunc = methodFctx;
+
+      // Emit default-value initialization for parameters with initializers
+      emitMethodParamDefaults(ctx, methodFctx, prop.parameters, 1); // 1 to skip 'this'
+
       if (prop.body) {
         for (const stmt of prop.body.statements) {
           compileStatement(ctx, methodFctx, stmt);
