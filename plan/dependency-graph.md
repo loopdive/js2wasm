@@ -251,7 +251,7 @@ All independent of each other and of codegen work.
 | 310 | Reduce skip filters — re-evaluate conservative skips | Ready |
 | 311 | Test262 category expansion — String methods | Ready |
 | 312 | Test262 category expansion — Number methods | Ready |
-| 313 | Test262 category expansion — new expression categories | Ready |
+| 313 | Test262 category expansion — new expression categories | Done |
 | 314 | Performance — compile time profiling | Ready |
 
 ---

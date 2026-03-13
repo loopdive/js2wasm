@@ -1227,6 +1227,12 @@ export const TEST_CATEGORIES = [
   "language/expressions/member-expression",
   "language/expressions/new.target",
   "language/expressions/relational",
+  // ── language/expressions (#313) ──
+  "language/expressions/optional-chaining",
+  "language/expressions/async-generator",
+  "language/expressions/dynamic-import",
+  "language/expressions/import.meta",
+  "language/expressions/super",
   // ── language/statements (#89) ──
   "language/statements/if",
   "language/statements/while",
