@@ -270,6 +270,8 @@ export interface FunctionContext {
   generatorReturnDepth?: number;
   /** Map from variable name → ref cell info (for mutable closure captures) */
   boxedCaptures?: Map<string, { refCellTypeIdx: number; valType: ValType }>;
+  /** Whether this function is a class constructor (for new.target support) */
+  isConstructor?: boolean;
 }
 
 /** Options for code generation */
@@ -8311,6 +8313,7 @@ export function compileClassBodies(
       breakStack: [],
       continueStack: [],
       labelMap: new Map(),
+      isConstructor: true,
     };
 
     for (let i = 0; i < params.length; i++) {
