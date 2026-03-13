@@ -5295,6 +5295,40 @@ function compilePropertyLogicalAssignment(
     return null;
   }
 
+  // Check for accessor properties (get/set) before looking up struct fields
+  const accessorKey = `${typeName}_${propName}`;
+  if (ctx.classAccessorSet.has(accessorKey)) {
+    const getterName = `${typeName}_get_${propName}`;
+    const setterName = `${typeName}_set_${propName}`;
+    const getterIdx = ctx.funcMap.get(getterName);
+    const setterIdx = ctx.funcMap.get(setterName);
+    if (getterIdx !== undefined && setterIdx !== undefined) {
+      // Compile obj and save to a local for reuse
+      const objResult = compileExpression(ctx, fctx, target.expression);
+      if (!objResult) return null;
+      const objLocal = allocLocal(fctx, `__logprop_acc_obj_${fctx.locals.length}`, objResult);
+      fctx.body.push({ op: "local.set", index: objLocal });
+
+      const propType = ctx.checker.getTypeAtLocation(target);
+      const fieldType = resolveWasmType(ctx, propType);
+
+      const emitFieldGet = () => {
+        fctx.body.push({ op: "local.get", index: objLocal });
+        fctx.body.push({ op: "call", funcIdx: getterIdx });
+      };
+      const emitFieldSet = () => {
+        const tmpVal = allocLocal(fctx, `__logprop_acc_val_${fctx.locals.length}`, fieldType);
+        fctx.body.push({ op: "local.set", index: tmpVal });
+        fctx.body.push({ op: "local.get", index: objLocal });
+        fctx.body.push({ op: "local.get", index: tmpVal });
+        fctx.body.push({ op: "call", funcIdx: setterIdx });
+        fctx.body.push({ op: "local.get", index: tmpVal });
+      };
+
+      return emitLogicalAssignmentPattern(ctx, fctx, rhs, op, fieldType, emitFieldGet, emitFieldSet);
+    }
+  }
+
   const structTypeIdx = ctx.structMap.get(typeName);
   const fields = ctx.structFields.get(typeName);
   if (structTypeIdx === undefined || !fields) {
@@ -5962,6 +5996,46 @@ function compilePropertyCompoundAssignment(
     return null;
   }
 
+  // Check for accessor properties (get/set) before looking up struct fields
+  const accessorKey = `${typeName}_${propName}`;
+  if (ctx.classAccessorSet.has(accessorKey)) {
+    const getterName = `${typeName}_get_${propName}`;
+    const setterName = `${typeName}_set_${propName}`;
+    const getterIdx = ctx.funcMap.get(getterName);
+    const setterIdx = ctx.funcMap.get(setterName);
+    if (getterIdx !== undefined && setterIdx !== undefined) {
+      // Compile the object expression and save to a temp local
+      const objResult = compileExpression(ctx, fctx, target.expression);
+      if (!objResult) return null;
+      const objTmp = allocLocal(fctx, `__cmpd_acc_obj_${fctx.locals.length}`, objResult);
+      fctx.body.push({ op: "local.set", index: objTmp });
+
+      // Read current value via getter: obj.get_prop()
+      fctx.body.push({ op: "local.get", index: objTmp });
+      fctx.body.push({ op: "call", funcIdx: getterIdx });
+
+      // Compile RHS as f64
+      const rhsType = compileExpression(ctx, fctx, rhs, { kind: "f64" });
+      if (!rhsType) return null;
+
+      // Apply compound operation
+      emitCompoundOp(ctx, fctx, op);
+
+      // Save result
+      const resultTmp = allocLocal(fctx, `__cmpd_acc_res_${fctx.locals.length}`, { kind: "f64" });
+      fctx.body.push({ op: "local.set", index: resultTmp });
+
+      // Store back via setter: obj.set_prop(result)
+      fctx.body.push({ op: "local.get", index: objTmp });
+      fctx.body.push({ op: "local.get", index: resultTmp });
+      fctx.body.push({ op: "call", funcIdx: setterIdx });
+
+      // Return the result
+      fctx.body.push({ op: "local.get", index: resultTmp });
+      return { kind: "f64" };
+    }
+  }
+
   const structTypeIdx = ctx.structMap.get(typeName);
   const fields = ctx.structFields.get(typeName);
   if (structTypeIdx === undefined || !fields) {
@@ -6247,6 +6321,54 @@ function compileMemberIncDec(
       // Gracefully emit NaN — incrementing an unresolvable property is NaN in JS
       fctx.body.push({ op: "f64.const", value: NaN });
       return { kind: "f64" };
+    }
+
+    // Check for accessor properties (get/set) before looking up struct fields
+    const accessorKey = `${typeName}_${propName}`;
+    if (ctx.classAccessorSet.has(accessorKey)) {
+      const getterName = `${typeName}_get_${propName}`;
+      const setterName = `${typeName}_set_${propName}`;
+      const getterIdx = ctx.funcMap.get(getterName);
+      const setterIdx = ctx.funcMap.get(setterName);
+      if (getterIdx !== undefined && setterIdx !== undefined) {
+        // Compile the object expression and save to a temp local
+        const objResult = compileExpression(ctx, fctx, operand.expression);
+        if (!objResult) return null;
+        const objTmp = allocLocal(fctx, `__incdec_acc_obj_${fctx.locals.length}`, objResult);
+        fctx.body.push({ op: "local.set", index: objTmp });
+
+        // Read current value via getter
+        fctx.body.push({ op: "local.get", index: objTmp });
+        fctx.body.push({ op: "call", funcIdx: getterIdx });
+
+        if (mode === "postfix") {
+          // Save old value, compute new, store via setter, return old
+          const oldTmp = allocLocal(fctx, `__incdec_acc_old_${fctx.locals.length}`, { kind: "f64" });
+          fctx.body.push({ op: "local.tee", index: oldTmp });
+          fctx.body.push({ op: "f64.const", value: 1 });
+          fctx.body.push({ op: f64Op });
+          const newTmp = allocLocal(fctx, `__incdec_acc_new_${fctx.locals.length}`, { kind: "f64" });
+          fctx.body.push({ op: "local.set", index: newTmp });
+          fctx.body.push({ op: "local.get", index: objTmp });
+          fctx.body.push({ op: "local.get", index: newTmp });
+          fctx.body.push({ op: "call", funcIdx: setterIdx });
+          fctx.body.push({ op: "local.get", index: oldTmp });
+        } else {
+          // Compute new, store via setter, return new
+          fctx.body.push({ op: "f64.const", value: 1 });
+          fctx.body.push({ op: f64Op });
+          const newTmp = allocLocal(fctx, `__incdec_acc_new_${fctx.locals.length}`, { kind: "f64" });
+          fctx.body.push({ op: "local.tee", index: newTmp });
+          // Store: setter expects [obj, val]
+          const valTmp = allocLocal(fctx, `__incdec_acc_val_${fctx.locals.length}`, { kind: "f64" });
+          fctx.body.push({ op: "local.set", index: valTmp });
+          fctx.body.push({ op: "local.get", index: objTmp });
+          fctx.body.push({ op: "local.get", index: valTmp });
+          fctx.body.push({ op: "call", funcIdx: setterIdx });
+          fctx.body.push({ op: "local.get", index: newTmp });
+        }
+        return { kind: "f64" };
+      }
     }
 
     const structTypeIdx = ctx.structMap.get(typeName);
