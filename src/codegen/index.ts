@@ -5219,14 +5219,24 @@ function collectFunctionalArrayImports(
   function visit(node: ts.Node) {
     if (
       ts.isCallExpression(node) &&
-      ts.isPropertyAccessExpression(node.expression)
-    ) {
+      ts.isPropertyAccessExpression(node.expression)) {
       const method = node.expression.name.text;
       if (FUNCTIONAL_ARRAY_METHODS.has(method)) {
         if (method === "reduce") {
           need2 = true;
         } else {
           need1 = true;
+        }
+      }
+      // Also detect Array.prototype.METHOD.call(...) pattern
+      if (method === "call" && ts.isPropertyAccessExpression(node.expression.expression)) {
+        const innerMethod = node.expression.expression.name.text;
+        if (FUNCTIONAL_ARRAY_METHODS.has(innerMethod)) {
+          if (innerMethod === "reduce") {
+            need2 = true;
+          } else {
+            need1 = true;
+          }
         }
       }
     }

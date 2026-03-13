@@ -13751,44 +13751,60 @@ function compileArrayPrototypeCall(
   // First argument to .call() is the receiver object
   if (callExpr.arguments.length < 1) return undefined;
   const receiverArg = callExpr.arguments[0]!;
-  if (!ts.isIdentifier(receiverArg)) return undefined;
 
-  // Check if the receiver is a shape-inferred variable
-  const shapeInfo = ctx.shapeMap.get(receiverArg.text);
-  if (!shapeInfo) return undefined;
+  // Check if the method is a known array method
+  if (!ARRAY_METHODS.has(methodName)) return undefined;
 
-  const { vecTypeIdx, arrTypeIdx, elemType } = shapeInfo;
-
-  // Build a synthetic PropertyAccessExpression-like call that routes to
-  // the existing array method compilers. The trick: existing compilers take
-  // (propAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType) where propAccess.expression
-  // is the receiver. We create a virtual call expression with the remaining args.
-
-  // For methods that take the receiver via propAccess.expression, we need to
-  // compile the receiver (first .call() arg) onto the stack before the method runs.
-  // The existing array methods compile propAccess.expression as the receiver.
-  // We'll use a wrapper approach: compile the receiver manually and use the
-  // existing inline compilers with the shape's type indices.
-
-  // The existing array method functions use compileExpression(ctx, fctx, propAccess.expression)
-  // to get the receiver. For .call(), the receiver is callExpr.arguments[0].
-  // We create a synthetic propAccess whose .expression is the receiver arg.
-  // TypeScript's AST nodes are immutable, so instead we'll compile directly.
-
-  switch (methodName) {
-    case "indexOf":
-      return compileArrayPrototypeIndexOf(ctx, fctx, callExpr, receiverArg, vecTypeIdx, arrTypeIdx, elemType);
-    case "includes":
-      return compileArrayPrototypeIncludes(ctx, fctx, callExpr, receiverArg, vecTypeIdx, arrTypeIdx, elemType);
-    case "every":
-      return compileArrayPrototypeEvery(ctx, fctx, callExpr, receiverArg, vecTypeIdx, arrTypeIdx, elemType);
-    case "some":
-      return compileArrayPrototypeSome(ctx, fctx, callExpr, receiverArg, vecTypeIdx, arrTypeIdx, elemType);
-    case "forEach":
-      return compileArrayPrototypeForEach(ctx, fctx, callExpr, receiverArg, vecTypeIdx, arrTypeIdx, elemType);
-    default:
-      return undefined;
+  // Resolve array info from shape map or TypeScript type
+  let receiverTsType: ts.Type | undefined;
+  if (ts.isIdentifier(receiverArg)) {
+    const shapeInfo = ctx.shapeMap.get(receiverArg.text);
+    if (shapeInfo) {
+      // Shape-inferred path: dispatch to existing dedicated implementations
+      const { vecTypeIdx, arrTypeIdx, elemType } = shapeInfo;
+      switch (methodName) {
+        case "indexOf":
+          return compileArrayPrototypeIndexOf(ctx, fctx, callExpr, receiverArg, vecTypeIdx, arrTypeIdx, elemType);
+        case "includes":
+          return compileArrayPrototypeIncludes(ctx, fctx, callExpr, receiverArg, vecTypeIdx, arrTypeIdx, elemType);
+        case "every":
+          return compileArrayPrototypeEvery(ctx, fctx, callExpr, receiverArg, vecTypeIdx, arrTypeIdx, elemType);
+        case "some":
+          return compileArrayPrototypeSome(ctx, fctx, callExpr, receiverArg, vecTypeIdx, arrTypeIdx, elemType);
+        case "forEach":
+          return compileArrayPrototypeForEach(ctx, fctx, callExpr, receiverArg, vecTypeIdx, arrTypeIdx, elemType);
+        default:
+          return undefined;
+      }
+    }
+    receiverTsType = ctx.checker.getTypeAtLocation(receiverArg);
+  } else {
+    receiverTsType = ctx.checker.getTypeAtLocation(receiverArg);
   }
+
+  if (!receiverTsType) return undefined;
+  const arrInfo = resolveArrayInfo(ctx, receiverTsType);
+  if (!arrInfo) return undefined;
+
+  // Create a synthetic PropertyAccessExpression: receiverArg.METHOD
+  const syntheticPropAccess = ts.factory.createPropertyAccessExpression(
+    receiverArg as ts.Expression,
+    methodName,
+  );
+  // Copy parent for error reporting
+  (syntheticPropAccess as any).parent = callExpr.parent;
+
+  // Create a synthetic CallExpression with the remaining args (skip the receiver)
+  const remainingArgs = callExpr.arguments.slice(1);
+  const syntheticCall = ts.factory.createCallExpression(
+    syntheticPropAccess,
+    undefined,
+    remainingArgs as unknown as readonly ts.Expression[],
+  );
+  (syntheticCall as any).parent = callExpr.parent;
+
+  // Route through the existing array method compiler
+  return compileArrayMethodCall(ctx, fctx, syntheticPropAccess, syntheticCall, receiverTsType);
 }
 
 /**
