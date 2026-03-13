@@ -6566,6 +6566,30 @@ function compilePrefixUnary(
           fctx.body.push({ op: "local.tee", index: idx });
           return { kind: "f64" };
         }
+        // Check module globals for prefix ++
+        const ppModIdx = ctx.moduleGlobals.get(ppOperand.text);
+        if (ppModIdx !== undefined) {
+          fctx.body.push({ op: "global.get", index: ppModIdx });
+          fctx.body.push({ op: "f64.const", value: 1 });
+          fctx.body.push({ op: "f64.add" });
+          const ppTmp = allocLocal(fctx, `__pp_mod_${fctx.locals.length}`, { kind: "f64" });
+          fctx.body.push({ op: "local.tee", index: ppTmp });
+          fctx.body.push({ op: "global.set", index: ppModIdx });
+          fctx.body.push({ op: "local.get", index: ppTmp });
+          return { kind: "f64" };
+        }
+        // Check captured globals for prefix ++
+        const ppCapIdx = ctx.capturedGlobals.get(ppOperand.text);
+        if (ppCapIdx !== undefined) {
+          fctx.body.push({ op: "global.get", index: ppCapIdx });
+          fctx.body.push({ op: "f64.const", value: 1 });
+          fctx.body.push({ op: "f64.add" });
+          const ppTmp = allocLocal(fctx, `__pp_cap_${fctx.locals.length}`, { kind: "f64" });
+          fctx.body.push({ op: "local.tee", index: ppTmp });
+          fctx.body.push({ op: "global.set", index: ppCapIdx });
+          fctx.body.push({ op: "local.get", index: ppTmp });
+          return { kind: "f64" };
+        }
       }
       // ++obj.prop or ++obj[idx] — delegate to member increment helper
       return compileMemberIncDec(ctx, fctx, expr.operand, "add", "prefix");
@@ -6623,6 +6647,30 @@ function compilePrefixUnary(
           fctx.body.push({ op: "local.tee", index: idx });
           return { kind: "f64" };
         }
+        // Check module globals for prefix --
+        const mmModIdx = ctx.moduleGlobals.get(mmOperand.text);
+        if (mmModIdx !== undefined) {
+          fctx.body.push({ op: "global.get", index: mmModIdx });
+          fctx.body.push({ op: "f64.const", value: 1 });
+          fctx.body.push({ op: arithOp });
+          const mmTmp = allocLocal(fctx, `__mm_mod_${fctx.locals.length}`, { kind: "f64" });
+          fctx.body.push({ op: "local.tee", index: mmTmp });
+          fctx.body.push({ op: "global.set", index: mmModIdx });
+          fctx.body.push({ op: "local.get", index: mmTmp });
+          return { kind: "f64" };
+        }
+        // Check captured globals for prefix --
+        const mmCapIdx = ctx.capturedGlobals.get(mmOperand.text);
+        if (mmCapIdx !== undefined) {
+          fctx.body.push({ op: "global.get", index: mmCapIdx });
+          fctx.body.push({ op: "f64.const", value: 1 });
+          fctx.body.push({ op: arithOp });
+          const mmTmp = allocLocal(fctx, `__mm_cap_${fctx.locals.length}`, { kind: "f64" });
+          fctx.body.push({ op: "local.tee", index: mmTmp });
+          fctx.body.push({ op: "global.set", index: mmCapIdx });
+          fctx.body.push({ op: "local.get", index: mmTmp });
+          return { kind: "f64" };
+        }
       }
       // --obj.prop or --obj[idx] — delegate to member decrement helper
       return compileMemberIncDec(ctx, fctx, expr.operand, "sub", "prefix");
@@ -6658,6 +6706,27 @@ function compilePostfixUnary(
   if (ts.isIdentifier(postOperand)) {
     const idx = fctx.localMap.get(postOperand.text);
     if (idx === undefined) {
+      // Check module globals for postfix ++/--
+      const postModIdx = ctx.moduleGlobals.get(postOperand.text);
+      if (postModIdx !== undefined) {
+        // Postfix: return old value, store new value
+        fctx.body.push({ op: "global.get", index: postModIdx });
+        fctx.body.push({ op: "global.get", index: postModIdx });
+        fctx.body.push({ op: "f64.const", value: 1 });
+        fctx.body.push({ op: arithOp });
+        fctx.body.push({ op: "global.set", index: postModIdx });
+        return { kind: "f64" };
+      }
+      // Check captured globals for postfix ++/--
+      const postCapIdx = ctx.capturedGlobals.get(postOperand.text);
+      if (postCapIdx !== undefined) {
+        fctx.body.push({ op: "global.get", index: postCapIdx });
+        fctx.body.push({ op: "global.get", index: postCapIdx });
+        fctx.body.push({ op: "f64.const", value: 1 });
+        fctx.body.push({ op: arithOp });
+        fctx.body.push({ op: "global.set", index: postCapIdx });
+        return { kind: "f64" };
+      }
       ctx.errors.push({
         message: `Unknown variable: ${postOperand.text}`,
         line: getLine(expr),
