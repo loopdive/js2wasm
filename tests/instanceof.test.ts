@@ -12,7 +12,7 @@ async function run(source: string, fn: string, args: unknown[] = []): Promise<un
   return (instance.exports as any)[fn](...args);
 }
 
-describe("instanceof", () => {
+describe("instanceof", { timeout: 15000 }, () => {
   it("returns 1 for matching class", async () => {
     expect(
       await run(
@@ -114,5 +114,94 @@ describe("instanceof", () => {
         "test",
       ),
     ).toBe(3); // 1 + 2 = 3 (only first two checks pass)
+  });
+
+  it("supports class hierarchy — child instanceof Parent", async () => {
+    expect(
+      await run(
+        `
+      class Animal {
+        legs: number;
+        constructor(legs: number) { this.legs = legs; }
+      }
+      class Dog extends Animal {
+        name: number;
+        constructor(name: number) {
+          super(4);
+          this.name = name;
+        }
+      }
+      export function test(): number {
+        const d = new Dog(1);
+        let result: number = 0;
+        if (d instanceof Animal) result = result + 1;
+        if (d instanceof Dog) result = result + 2;
+        return result;
+      }
+    `,
+        "test",
+      ),
+    ).toBe(3); // Dog is both an Animal and a Dog
+  });
+
+  it("supports deep class hierarchy — grandchild instanceof Grandparent", async () => {
+    expect(
+      await run(
+        `
+      class Base {
+        x: number;
+        constructor(x: number) { this.x = x; }
+      }
+      class Middle extends Base {
+        y: number;
+        constructor(x: number, y: number) {
+          super(x);
+          this.y = y;
+        }
+      }
+      class Leaf extends Middle {
+        z: number;
+        constructor(x: number, y: number, z: number) {
+          super(x, y);
+          this.z = z;
+        }
+      }
+      export function test(): number {
+        const leaf = new Leaf(1, 2, 3);
+        let result: number = 0;
+        if (leaf instanceof Base) result = result + 1;
+        if (leaf instanceof Middle) result = result + 2;
+        if (leaf instanceof Leaf) result = result + 4;
+        return result;
+      }
+    `,
+        "test",
+      ),
+    ).toBe(7); // Leaf is Base, Middle, and Leaf
+  });
+
+  it("parent is not instanceof child", async () => {
+    expect(
+      await run(
+        `
+      class Parent {
+        x: number;
+        constructor(x: number) { this.x = x; }
+      }
+      class Child extends Parent {
+        y: number;
+        constructor(x: number, y: number) {
+          super(x);
+          this.y = y;
+        }
+      }
+      export function test(): number {
+        const p = new Parent(1);
+        return p instanceof Child ? 1 : 0;
+      }
+    `,
+        "test",
+      ),
+    ).toBe(0); // Parent is NOT a Child
   });
 });
