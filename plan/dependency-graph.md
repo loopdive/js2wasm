@@ -69,7 +69,7 @@ Can all run in parallel (different diagnostic codes).
 #295 (comparison + type coercion) ── independent
 #296 (strict equality -0, NaN) ── DONE
 #299 (loose equals null/undefined) ── DONE
-#308 (addition + string/number coercion) ── independent
+#308 (addition + string/number coercion) ── DONE
 #301 (float → int saturating trunc) ── independent
 ```
 
@@ -84,7 +84,7 @@ Can all run in parallel (different diagnostic codes).
 | 296 | Strict equality edge cases (-0, NaN) | 4 | Done |
 | 299 | Loose equals edge cases | 7 | **Done** |
 | 301 | Float unrepresentable in integer range | 4 | **Done** |
-| 308 | Addition operator + string/number coercion | 7 | Ready |
+| 308 | Addition operator + string/number coercion | 7 | **Done** |
 | 300 | Object to primitive conversion | 5 | Blocked by #138, #139 |
 
 ---

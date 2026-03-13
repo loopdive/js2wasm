@@ -201,3 +201,4 @@
 | 299 | 2026-03-12 | Loose equality edge cases (null == undefined, boolean coercion) | Dep-driven |
 | 302 | 2026-03-12 | Math.min/max edge cases | Dep-driven |
 | 292 | 2026-03-12 | For-loop incorrect computed values -- missing number_toString for any-typed += | Dep-driven |
+| 308 | 2026-03-12 | Addition operator compile errors -- string/number coercion | Dep-driven |

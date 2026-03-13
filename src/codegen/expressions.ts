@@ -2747,6 +2747,43 @@ function compileBinaryExpression(
     return { kind: "i32" };
   }
 
+  // ── Fallback: coerce remaining type mismatches to f64 for numeric ops ──
+  // When operand types don't match any specific path above (e.g. ref + externref,
+  // i64 + externref, or other ambiguous combos), try to coerce both to f64.
+  if (isNumericOp) {
+    // Coerce right operand (top of stack) to f64
+    if (rightType.kind === "externref") {
+      addUnionImports(ctx);
+      const unboxIdx = ctx.funcMap.get("__unbox_number")!;
+      fctx.body.push({ op: "call", funcIdx: unboxIdx });
+    } else if (rightType.kind === "i32") {
+      fctx.body.push({ op: "f64.convert_i32_s" });
+    } else if (rightType.kind === "i64") {
+      fctx.body.push({ op: "f64.convert_i64_s" });
+    } else if (rightType.kind === "ref" || rightType.kind === "ref_null") {
+      coerceType(ctx, fctx, rightType, { kind: "f64" });
+    }
+    // Coerce left operand (below right on stack) — save right to local
+    if (leftType.kind === "externref" || leftType.kind === "i32" || leftType.kind === "i64" ||
+        leftType.kind === "ref" || leftType.kind === "ref_null") {
+      const tmpR = allocLocal(fctx, `__fallback_r_${fctx.locals.length}`, { kind: "f64" });
+      fctx.body.push({ op: "local.set", index: tmpR });
+      if (leftType.kind === "externref") {
+        addUnionImports(ctx);
+        const unboxIdx = ctx.funcMap.get("__unbox_number")!;
+        fctx.body.push({ op: "call", funcIdx: unboxIdx });
+      } else if (leftType.kind === "i32") {
+        fctx.body.push({ op: "f64.convert_i32_s" });
+      } else if (leftType.kind === "i64") {
+        fctx.body.push({ op: "f64.convert_i64_s" });
+      } else if (leftType.kind === "ref" || leftType.kind === "ref_null") {
+        coerceType(ctx, fctx, leftType, { kind: "f64" });
+      }
+      fctx.body.push({ op: "local.get", index: tmpR });
+    }
+    return compileNumericBinaryOp(ctx, fctx, op, expr);
+  }
+
   ctx.errors.push({
     message: `Unsupported binary operator for type`,
     line: getLine(expr),
@@ -11618,23 +11655,25 @@ function compileStringBinaryOp(
   // Numbers → number_toString
   const leftTsType = ctx.checker.getTypeAtLocation(expr.left);
   const leftType = compileExpression(ctx, fctx, expr.left);
-  if (op === ts.SyntaxKind.PlusToken && leftType && (leftType.kind === "f64" || leftType.kind === "i32")) {
+  if (op === ts.SyntaxKind.PlusToken && leftType && (leftType.kind === "f64" || leftType.kind === "i32" || leftType.kind === "i64")) {
     if (isBooleanType(leftTsType) && leftType.kind === "i32") {
       // Boolean → "true"/"false" via conditional select of string constants
       emitBoolToString(ctx, fctx);
     } else {
       if (leftType.kind === "i32") fctx.body.push({ op: "f64.convert_i32_s" });
+      else if (leftType.kind === "i64") fctx.body.push({ op: "f64.convert_i64_s" });
       const toStr = ctx.funcMap.get("number_toString");
       if (toStr !== undefined) fctx.body.push({ op: "call", funcIdx: toStr });
     }
   }
   const rightTsType = ctx.checker.getTypeAtLocation(expr.right);
   const rightType = compileExpression(ctx, fctx, expr.right);
-  if (op === ts.SyntaxKind.PlusToken && rightType && (rightType.kind === "f64" || rightType.kind === "i32")) {
+  if (op === ts.SyntaxKind.PlusToken && rightType && (rightType.kind === "f64" || rightType.kind === "i32" || rightType.kind === "i64")) {
     if (isBooleanType(rightTsType) && rightType.kind === "i32") {
       emitBoolToString(ctx, fctx);
     } else {
       if (rightType.kind === "i32") fctx.body.push({ op: "f64.convert_i32_s" });
+      else if (rightType.kind === "i64") fctx.body.push({ op: "f64.convert_i64_s" });
       const toStr = ctx.funcMap.get("number_toString");
       if (toStr !== undefined) fctx.body.push({ op: "call", funcIdx: toStr });
     }
