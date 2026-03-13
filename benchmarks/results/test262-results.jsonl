@@ -20884,3 +20884,103 @@
 {"file":"test/built-ins/Promise/race/same-reject-function.js","category":"built-ins/Promise/race","status":"compile_error","error":"'Promise' only refers to a type, but is being used as a value here. Do you need to change your target library? Try changing the 'lib' compiler option to es2015 or later.; Unknown function: executor; Unknown identifier: rejectFunction; Unknown identifier: rejectFunction; Unsupported call expression"}
 {"file":"test/built-ins/Promise/race/same-resolve-function.js","category":"built-ins/Promise/race","status":"compile_error","error":"'Promise' only refers to a type, but is being used as a value here. Do you need to change your target library? Try changing the 'lib' compiler option to es2015 or later.; Unknown function: executor; Unknown identifier: resolveFunction; Unknown identifier: resolveFunction; Unsupported call expression"}
 {"file":"test/built-ins/Promise/race/species-get-error.js","category":"built-ins/Promise/race","status":"skip","reason":"unsupported feature: Symbol.species"}
+{"file":"test/language/statements/for/12.6.3_2-3-a-ii-1.js","category":"language/statements/for","status":"pass"}
+{"file":"test/language/statements/for/12.6.3_2-3-a-ii-10.js","category":"language/statements/for","status":"skip","reason":"uses wrapper constructor"}
+{"file":"test/language/statements/for/12.6.3_2-3-a-ii-11.js","category":"language/statements/for","status":"skip","reason":"loop condition falsy in JS but truthy in wasm (NaN/undefined/null)"}
+{"file":"test/language/statements/for/12.6.3_2-3-a-ii-12.js","category":"language/statements/for","status":"skip","reason":"loop condition falsy in JS but truthy in wasm (NaN/undefined/null)"}
+{"file":"test/language/statements/for/12.6.3_2-3-a-ii-13.js","category":"language/statements/for","status":"pass"}
+{"file":"test/language/statements/for/12.6.3_2-3-a-ii-14.js","category":"language/statements/for","status":"skip","reason":"loop condition falsy in JS but truthy in wasm (NaN/undefined/null)"}
+{"file":"test/language/statements/for/12.6.3_2-3-a-ii-15.js","category":"language/statements/for","status":"pass"}
+{"file":"test/language/statements/for/12.6.3_2-3-a-ii-16.js","category":"language/statements/for","status":"pass"}
+{"file":"test/language/statements/for/12.6.3_2-3-a-ii-17.js","category":"language/statements/for","status":"pass"}
+{"file":"test/language/statements/for/12.6.3_2-3-a-ii-18.js","category":"language/statements/for","status":"pass"}
+{"file":"test/language/statements/for/12.6.3_2-3-a-ii-19.js","category":"language/statements/for","status":"pass"}
+{"file":"test/language/statements/for/12.6.3_2-3-a-ii-2.js","category":"language/statements/for","status":"skip","reason":"uses wrapper constructor"}
+{"file":"test/language/statements/for/12.6.3_2-3-a-ii-20.js","category":"language/statements/for","status":"pass"}
+{"file":"test/language/statements/for/12.6.3_2-3-a-ii-21.js","category":"language/statements/for","status":"pass"}
+{"file":"test/language/statements/for/12.6.3_2-3-a-ii-3.js","category":"language/statements/for","status":"skip","reason":"uses wrapper constructor"}
+{"file":"test/language/statements/for/12.6.3_2-3-a-ii-4.js","category":"language/statements/for","status":"skip","reason":"uses wrapper constructor"}
+{"file":"test/language/statements/for/12.6.3_2-3-a-ii-5.js","category":"language/statements/for","status":"skip","reason":"uses wrapper constructor"}
+{"file":"test/language/statements/for/12.6.3_2-3-a-ii-6.js","category":"language/statements/for","status":"skip","reason":"uses wrapper constructor"}
+{"file":"test/language/statements/for/12.6.3_2-3-a-ii-7.js","category":"language/statements/for","status":"skip","reason":"uses wrapper constructor"}
+{"file":"test/language/statements/for/12.6.3_2-3-a-ii-8.js","category":"language/statements/for","status":"skip","reason":"uses wrapper constructor"}
+{"file":"test/language/statements/for/12.6.3_2-3-a-ii-9.js","category":"language/statements/for","status":"skip","reason":"uses wrapper constructor"}
+{"file":"test/language/statements/for/S12.6.3_A1.js","category":"language/statements/for","status":"skip","reason":"throw+try/catch control flow (throw→return causes hang)"}
+{"file":"test/language/statements/for/S12.6.3_A10.1_T1.js","category":"language/statements/for","status":"skip","reason":"throw+try/catch control flow (throw→return causes hang)"}
+{"file":"test/language/statements/for/S12.6.3_A10.1_T2.js","category":"language/statements/for","status":"skip","reason":"throw+try/catch control flow (throw→return causes hang)"}
+{"file":"test/language/statements/for/S12.6.3_A10_T1.js","category":"language/statements/for","status":"skip","reason":"throw+try/catch control flow (throw→return causes hang)"}
+{"file":"test/language/statements/for/S12.6.3_A10_T2.js","category":"language/statements/for","status":"skip","reason":"throw+try/catch control flow (throw→return causes hang)"}
+{"file":"test/language/statements/for/S12.6.3_A11.1_T1.js","category":"language/statements/for","status":"pass"}
+{"file":"test/language/statements/for/S12.6.3_A11.1_T2.js","category":"language/statements/for","status":"pass"}
+{"file":"test/language/statements/for/S12.6.3_A11.1_T3.js","category":"language/statements/for","status":"skip","reason":"negative test"}
+{"file":"test/language/statements/for/S12.6.3_A11_T1.js","category":"language/statements/for","status":"pass"}
+{"file":"test/language/statements/for/S12.6.3_A11_T2.js","category":"language/statements/for","status":"pass"}
+{"file":"test/language/statements/for/S12.6.3_A11_T3.js","category":"language/statements/for","status":"skip","reason":"negative test"}
+{"file":"test/language/statements/for/S12.6.3_A12.1_T1.js","category":"language/statements/for","status":"pass"}
+{"file":"test/language/statements/for/S12.6.3_A12.1_T2.js","category":"language/statements/for","status":"pass"}
+{"file":"test/language/statements/for/S12.6.3_A12.1_T3.js","category":"language/statements/for","status":"skip","reason":"negative test"}
+{"file":"test/language/statements/for/S12.6.3_A12_T1.js","category":"language/statements/for","status":"pass"}
+{"file":"test/language/statements/for/S12.6.3_A12_T2.js","category":"language/statements/for","status":"pass"}
+{"file":"test/language/statements/for/S12.6.3_A12_T3.js","category":"language/statements/for","status":"skip","reason":"negative test"}
+{"file":"test/language/statements/for/S12.6.3_A13.js","category":"language/statements/for","status":"skip","reason":"throw+try/catch control flow (throw→return causes hang)"}
+{"file":"test/language/statements/for/S12.6.3_A14.js","category":"language/statements/for","status":"pass"}
+{"file":"test/language/statements/for/S12.6.3_A15.js","category":"language/statements/for","status":"pass"}
+{"file":"test/language/statements/for/S12.6.3_A2.1.js","category":"language/statements/for","status":"skip","reason":"throw+try/catch control flow (throw→return causes hang)"}
+{"file":"test/language/statements/for/S12.6.3_A2.2.js","category":"language/statements/for","status":"skip","reason":"throw+try/catch control flow (throw→return causes hang)"}
+{"file":"test/language/statements/for/S12.6.3_A2.js","category":"language/statements/for","status":"skip","reason":"throw+try/catch control flow (throw→return causes hang)"}
+{"file":"test/language/statements/for/S12.6.3_A3.js","category":"language/statements/for","status":"skip","reason":"throw+try/catch control flow (throw→return causes hang)"}
+{"file":"test/language/statements/for/S12.6.3_A4.1.js","category":"language/statements/for","status":"skip","reason":"negative test"}
+{"file":"test/language/statements/for/S12.6.3_A4_T1.js","category":"language/statements/for","status":"skip","reason":"negative test"}
+{"file":"test/language/statements/for/S12.6.3_A4_T2.js","category":"language/statements/for","status":"skip","reason":"negative test"}
+{"file":"test/language/statements/for/S12.6.3_A5.js","category":"language/statements/for","status":"skip","reason":"uses dynamic code execution"}
+{"file":"test/language/statements/for/S12.6.3_A6.js","category":"language/statements/for","status":"skip","reason":"throw+try/catch control flow (throw→return causes hang)"}
+{"file":"test/language/statements/for/S12.6.3_A7.1_T1.js","category":"language/statements/for","status":"skip","reason":"negative test"}
+{"file":"test/language/statements/for/S12.6.3_A7.1_T2.js","category":"language/statements/for","status":"skip","reason":"negative test"}
+{"file":"test/language/statements/for/S12.6.3_A7_T1.js","category":"language/statements/for","status":"skip","reason":"negative test"}
+{"file":"test/language/statements/for/S12.6.3_A7_T2.js","category":"language/statements/for","status":"skip","reason":"negative test"}
+{"file":"test/language/statements/for/S12.6.3_A8.1_T1.js","category":"language/statements/for","status":"skip","reason":"negative test"}
+{"file":"test/language/statements/for/S12.6.3_A8.1_T2.js","category":"language/statements/for","status":"skip","reason":"negative test"}
+{"file":"test/language/statements/for/S12.6.3_A8.1_T3.js","category":"language/statements/for","status":"skip","reason":"negative test"}
+{"file":"test/language/statements/for/S12.6.3_A8_T1.js","category":"language/statements/for","status":"skip","reason":"negative test"}
+{"file":"test/language/statements/for/S12.6.3_A8_T2.js","category":"language/statements/for","status":"skip","reason":"negative test"}
+{"file":"test/language/statements/for/S12.6.3_A8_T3.js","category":"language/statements/for","status":"skip","reason":"negative test"}
+{"file":"test/language/statements/for/cptn-decl-expr-iter.js","category":"language/statements/for","status":"skip","reason":"uses dynamic code execution"}
+{"file":"test/language/statements/for/cptn-decl-expr-no-iter.js","category":"language/statements/for","status":"skip","reason":"uses dynamic code execution"}
+{"file":"test/language/statements/for/cptn-expr-expr-iter.js","category":"language/statements/for","status":"skip","reason":"uses dynamic code execution"}
+{"file":"test/language/statements/for/cptn-expr-expr-no-iter.js","category":"language/statements/for","status":"skip","reason":"uses dynamic code execution"}
+{"file":"test/language/statements/for/decl-async-fun.js","category":"language/statements/for","status":"skip","reason":"negative test"}
+{"file":"test/language/statements/for/decl-async-gen.js","category":"language/statements/for","status":"skip","reason":"negative test"}
+{"file":"test/language/statements/for/decl-cls.js","category":"language/statements/for","status":"skip","reason":"negative test"}
+{"file":"test/language/statements/for/decl-const.js","category":"language/statements/for","status":"skip","reason":"negative test"}
+{"file":"test/language/statements/for/decl-fun.js","category":"language/statements/for","status":"skip","reason":"negative test"}
+{"file":"test/language/statements/for/decl-gen.js","category":"language/statements/for","status":"skip","reason":"negative test"}
+{"file":"test/language/statements/for/decl-let.js","category":"language/statements/for","status":"skip","reason":"negative test"}
+{"file":"test/language/statements/for/dstr/const-ary-init-iter-close.js","category":"language/statements/for","status":"skip","reason":"unsupported feature: Symbol.iterator"}
+{"file":"test/language/statements/for/dstr/const-ary-init-iter-get-err-array-prototype.js","category":"language/statements/for","status":"skip","reason":"unsupported feature: Symbol.iterator"}
+{"file":"test/language/statements/for/dstr/const-ary-init-iter-get-err.js","category":"language/statements/for","status":"skip","reason":"unsupported feature: Symbol.iterator"}
+{"file":"test/language/statements/for/dstr/const-ary-init-iter-no-close.js","category":"language/statements/for","status":"skip","reason":"unsupported feature: Symbol.iterator"}
+{"file":"test/language/statements/for/dstr/const-ary-name-iter-val.js","category":"language/statements/for","status":"pass"}
+{"file":"test/language/statements/for/dstr/const-ary-ptrn-elem-ary-elem-init.js","category":"language/statements/for","status":"compile_error","error":"WebAssembly.instantiate(): Compiling function #4:\"test\" failed: not enough arguments on the stack for struct.new (need 1, got 0) @+298"}
+{"file":"test/language/statements/for/dstr/const-ary-ptrn-elem-ary-elem-iter.js","category":"language/statements/for","status":"compile_error","error":"WebAssembly.instantiate(): Compiling function #4:\"test\" failed: struct.new[0] expected type (ref null 4), found struct.new of type (ref 7) @+348"}
+{"file":"test/language/statements/for/dstr/const-ary-ptrn-elem-ary-elision-init.js","category":"language/statements/for","status":"compile_error","error":"yield expression outside of generator function"}
+{"file":"test/language/statements/for/dstr/const-ary-ptrn-elem-ary-elision-iter.js","category":"language/statements/for","status":"pass"}
+{"file":"test/language/statements/for/dstr/const-ary-ptrn-elem-ary-empty-init.js","category":"language/statements/for","status":"compile_error","error":"WebAssembly.instantiate(): Compiling function #5:\"test\" failed: not enough arguments on the stack for struct.new (need 1, got 0) @+363"}
+{"file":"test/language/statements/for/dstr/const-ary-ptrn-elem-ary-empty-iter.js","category":"language/statements/for","status":"pass"}
+{"file":"test/language/statements/for/dstr/const-ary-ptrn-elem-ary-rest-init.js","category":"language/statements/for","status":"compile_error","error":"WebAssembly.instantiate(): Compiling function #4:\"test\" failed: not enough arguments on the stack for struct.new (need 1, got 0) @+361"}
+{"file":"test/language/statements/for/dstr/const-ary-ptrn-elem-ary-rest-iter.js","category":"language/statements/for","status":"fail","error":"TypeError: Cannot read properties of null (reading '0')"}
+{"file":"test/language/statements/for/dstr/const-ary-ptrn-elem-ary-val-null.js","category":"language/statements/for","status":"skip","reason":"unary +/- on null/undefined"}
+{"file":"test/language/statements/for/dstr/const-ary-ptrn-elem-id-init-exhausted.js","category":"language/statements/for","status":"compile_error","error":"WebAssembly.instantiate(): Compiling function #4:\"test\" failed: not enough arguments on the stack for struct.new (need 1, got 0) @+286"}
+{"file":"test/language/statements/for/dstr/const-ary-ptrn-elem-id-init-fn-name-arrow.js","category":"language/statements/for","status":"compile_error","error":"WebAssembly.instantiate(): Compiling function #11:\"test\" failed: not enough arguments on the stack for struct.new (need 1, got 0) @+536"}
+{"file":"test/language/statements/for/dstr/const-ary-ptrn-elem-id-init-fn-name-class.js","category":"language/statements/for","status":"skip","reason":"class/function .name property"}
+{"file":"test/language/statements/for/dstr/const-ary-ptrn-elem-id-init-fn-name-cover.js","category":"language/statements/for","status":"compile_error","error":"WebAssembly.instantiate(): Compiling function #20:\"test\" failed: not enough arguments on the stack for struct.new (need 2, got 0) @+767"}
+{"file":"test/language/statements/for/dstr/const-ary-ptrn-elem-id-init-fn-name-fn.js","category":"language/statements/for","status":"compile_error","error":"WebAssembly.instantiate(): Compiling function #20:\"test\" failed: not enough arguments on the stack for struct.new (need 2, got 0) @+761"}
+{"file":"test/language/statements/for/dstr/const-ary-ptrn-elem-id-init-fn-name-gen.js","category":"language/statements/for","status":"compile_error","error":"WebAssembly.instantiate(): Compiling function #20:\"test\" failed: not enough arguments on the stack for struct.new (need 2, got 0) @+763"}
+{"file":"test/language/statements/for/dstr/const-ary-ptrn-elem-id-init-hole.js","category":"language/statements/for","status":"compile_error","error":"Unsupported expression: OmittedExpression"}
+{"file":"test/language/statements/for/dstr/const-ary-ptrn-elem-id-init-skipped.js","category":"language/statements/for","status":"fail","error":"returned 0"}
+{"file":"test/language/statements/for/dstr/const-ary-ptrn-elem-id-init-throws.js","category":"language/statements/for","status":"skip","reason":"IIFE (immediately invoked function expression)"}
+{"file":"test/language/statements/for/dstr/const-ary-ptrn-elem-id-init-undef.js","category":"language/statements/for","status":"fail","error":"returned 0"}
+{"file":"test/language/statements/for/dstr/const-ary-ptrn-elem-id-init-unresolvable.js","category":"language/statements/for","status":"pass"}
+{"file":"test/language/statements/for/dstr/const-ary-ptrn-elem-id-iter-complete.js","category":"language/statements/for","status":"compile_error","error":"Tuple type '[]' of length '0' has no element at index '0'."}
+{"file":"test/language/statements/for/dstr/const-ary-ptrn-elem-id-iter-done.js","category":"language/statements/for","status":"compile_error","error":"Tuple type '[]' of length '0' has no element at index '0'.; Tuple type '[]' of length '0' has no element at index '1'."}
+{"file":"test/language/statements/for/dstr/const-ary-ptrn-elem-id-iter-step-err.js","category":"language/statements/for","status":"skip","reason":"unsupported feature: Symbol.iterator"}
+{"file":"test/language/statements/for/dstr/const-ary-ptrn-elem-id-iter-val-array-prototype.js","category":"language/statements/for","status":"skip","reason":"unsupported feature: Symbol.iterator"}
