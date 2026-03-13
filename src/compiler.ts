@@ -398,6 +398,7 @@ export function compileSource(
     1468, // "A computed property name must be of type 'string', 'number', 'symbol', or 'any'" — valid JS
     2741, // "Property 'X' is missing in type 'Y' but required in type 'Z'" — valid JS object patterns
     1212, // "Identifier expected. 'X' is a reserved word in strict mode" — valid in sloppy JS (#270)
+    1214, // "Identifier expected. 'yield' is a reserved word in strict mode. Modules are automatically in strict mode." — yield as identifier in sloppy JS (#241)
   ]);
 
   // Collect TS diagnostics as errors (or warnings for handled cases)
