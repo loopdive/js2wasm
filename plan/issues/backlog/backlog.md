@@ -35,7 +35,7 @@ _Goal: Fix runtime failures and reduce compile errors via string comparison, val
 | [251](../done/251.md) | super() call required in derived class constructors | Done | C |
 | [252](../done/252.md) | Subsequent variable declarations type mismatch | Done | C |
 | [253](../done/253.md) | Narrow skip filters -- typeof string comparison | Done | C |
-| [254](../ready/254.md) | Private class fields and methods (#field) | In Progress | C |
+| [254](../done/254.md) | Private class fields and methods (#field) | Done | C |
 | [255](../done/255.md) | 'this' implicit any type in class methods | Done | C |
 | [256](../done/256.md) | Unknown function: f -- locally declared functions not found | Done | C |
 
