@@ -2253,9 +2253,13 @@ function compileForInStatement(
   // Get the loop variable name
   const init = stmt.initializer;
   let varName: string;
+  let keyLocal: number;
   if (ts.isVariableDeclarationList(init)) {
     const decl = init.declarations[0]!;
     if (!ts.isIdentifier(decl.name)) {
+      // Destructuring patterns in for-in (e.g. `for (var [a] in obj)`)
+      // are exotic — the key is a string, destructuring it gives characters.
+      // For now, skip gracefully rather than crash.
       ctx.errors.push({
         message: "for-in variable must be an identifier",
         line: getLine(decl),
@@ -2264,17 +2268,38 @@ function compileForInStatement(
       return;
     }
     varName = decl.name.text;
+    // Allocate a local for the loop variable (string / externref)
+    keyLocal = allocLocal(fctx, varName, { kind: "externref" });
+  } else if (ts.isIdentifier(init)) {
+    // Bare identifier: `for (x in obj)` — look up existing local
+    varName = init.text;
+    const existingLocal = fctx.localMap.get(varName);
+    if (existingLocal !== undefined) {
+      keyLocal = existingLocal;
+    } else {
+      // Variable might be a global or not yet declared — allocate as local
+      keyLocal = allocLocal(fctx, varName, { kind: "externref" });
+    }
+  } else if (ts.isBinaryExpression(init) && init.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isIdentifier(init.left)) {
+    // Assignment expression: `for (x = defaultVal in obj)` — compile assignment, use the target
+    varName = init.left.text;
+    const existingLocal = fctx.localMap.get(varName);
+    if (existingLocal !== undefined) {
+      keyLocal = existingLocal;
+    } else {
+      keyLocal = allocLocal(fctx, varName, { kind: "externref" });
+    }
+    // Compile the initializer assignment (default value)
+    compileExpression(ctx, fctx, init.right);
+    fctx.body.push({ op: "local.set", index: keyLocal });
   } else {
     ctx.errors.push({
-      message: "for-in requires a variable declaration",
+      message: "for-in requires a variable declaration or identifier",
       line: getLine(stmt),
       column: getCol(stmt),
     });
     return;
   }
-
-  // Allocate a local for the loop variable (string / externref)
-  const keyLocal = allocLocal(fctx, varName, { kind: "externref" });
 
   // Unroll: emit one copy of the loop body per property
   for (const prop of props) {

@@ -198,6 +198,9 @@ Can all run in parallel (different diagnostic codes).
 | 289 | For-in compile errors | ~13 CE | Ready |
 | ~~297~~ | ~~Switch statement fall-through~~ | 2 | **Done** |
 | ~~298~~ | ~~Function statement edge cases~~ | 7 | **Done** |
+| ~~289~~ | ~~For-in compile errors~~ | ~13 CE | **Done** |
+| 297 | Switch statement fall-through | 2 | Done |
+| 298 | Function statement edge cases | 7 | Done |
 
 ---
 
