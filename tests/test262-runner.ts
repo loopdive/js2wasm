@@ -1564,7 +1564,7 @@ export function findTestFiles(category: string): string[] {
     for (const entry of readdirSync(d, { withFileTypes: true })) {
       const full = join(d, entry.name);
       if (entry.isDirectory()) walk(full);
-      else if (entry.name.endsWith(".js")) files.push(full);
+      else if (entry.name.endsWith(".js") && !entry.name.includes("_FIXTURE")) files.push(full);
     }
   }
   walk(dir);
