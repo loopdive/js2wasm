@@ -874,7 +874,11 @@ function compileReturnStatement(
   }
 
   if (stmt.expression) {
-    compileExpression(ctx, fctx, stmt.expression, fctx.returnType ?? undefined);
+    const exprType = compileExpression(ctx, fctx, stmt.expression, fctx.returnType ?? undefined);
+    // Coerce expression result to match function return type if they differ
+    if (exprType && fctx.returnType && exprType.kind !== fctx.returnType.kind) {
+      coerceType(ctx, fctx, exprType, fctx.returnType);
+    }
   } else if (fctx.returnType) {
     // Bare `return;` in a value-returning function — push default value
     if (fctx.returnType.kind === "f64") fctx.body.push({ op: "f64.const", value: 0 });
