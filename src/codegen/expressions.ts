@@ -661,6 +661,21 @@ function compileExpressionInner(
     return compileArrowFunction(ctx, fctx, expr);
   }
 
+  // MetaProperty: new.target
+  if (ts.isMetaProperty(expr) && expr.keywordToken === ts.SyntaxKind.NewKeyword && expr.name.text === "target") {
+    if (fctx.isConstructor) {
+      // Inside a constructor, new.target is always the constructor (truthy).
+      // Return i32 1 as a truthy sentinel since we don't have first-class
+      // constructor references as values.
+      fctx.body.push({ op: "i32.const", value: 1 });
+      return { kind: "i32" };
+    } else {
+      // Outside a constructor, new.target is undefined.
+      fctx.body.push({ op: "ref.null.extern" });
+      return { kind: "externref" };
+    }
+  }
+
   // RegExp literal (/pattern/flags) → desugar to new RegExp(pattern, flags)
   if (expr.kind === ts.SyntaxKind.RegularExpressionLiteral) {
     return compileRegExpLiteral(ctx, fctx, expr);
