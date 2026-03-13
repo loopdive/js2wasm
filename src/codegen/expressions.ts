@@ -9801,8 +9801,8 @@ function compilePropertyAccess(
       let funcName = objType.getSymbol()?.name ?? "";
       // __type and __function are anonymous type names from TS checker
       if (funcName === "__type" || funcName === "__function") funcName = "";
-      // If the expression is an identifier, use that as the name (more reliable)
-      if (ts.isIdentifier(expr.expression)) {
+      // If the symbol name is empty (anonymous function), infer from the variable name
+      if (funcName === "" && ts.isIdentifier(expr.expression)) {
         funcName = expr.expression.text;
       }
       // Ensure the string constant is registered before compiling
