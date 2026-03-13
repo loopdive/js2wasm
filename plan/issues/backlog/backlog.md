@@ -83,7 +83,7 @@ _Goal: Remaining runtime failures, codegen quality, and test infrastructure expa
 | [303](../ready/303.md) | Runtime failures -- parseInt edge cases | Open | 1 |
 | [304](../ready/304.md) | Runtime failures -- unary minus and return edge cases | Open | 2 |
 | [305](../ready/305.md) | Runtime failures -- computed property names and types/reference | Open | 2 |
-| [316](../ready/316.md) | Runtime failure -- array element access out of bounds | Open | 1 |
+| [316](../done/316.md) | Runtime failure -- array element access out of bounds | Done | 1 |
 
 ### Compile error fixes (lower impact)
 

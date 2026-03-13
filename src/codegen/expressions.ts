@@ -9859,6 +9859,76 @@ function compileExternPropertyGet(
   return propInfo?.type ?? { kind: "externref" };
 }
 
+/**
+ * Emit a bounds-checked array.get.  Stack must contain [arrayref, i32 index].
+ * If the index is out of bounds (< 0 or >= array.len), a default value for the
+ * element type is produced instead of trapping.
+ */
+function emitBoundsCheckedArrayGet(
+  fctx: FunctionContext,
+  arrTypeIdx: number,
+  elementType: ValType,
+): void {
+  // Save index and array ref to locals so we can use them in both branches
+  const idxLocal = allocLocal(fctx, `__bounds_idx_${fctx.locals.length}`, { kind: "i32" });
+  const arrLocal = allocLocal(fctx, `__bounds_arr_${fctx.locals.length}`, { kind: "ref", typeIdx: arrTypeIdx });
+
+  fctx.body.push({ op: "local.set", index: idxLocal });   // save index
+  fctx.body.push({ op: "local.set", index: arrLocal });   // save array ref
+
+  // Condition: idx >= 0 && idx < array.len(arr)
+  // We use: (unsigned)idx < array.len — this handles negative indices too
+  // since negative i32 interpreted as unsigned is > any valid length
+  fctx.body.push({ op: "local.get", index: idxLocal });
+  fctx.body.push({ op: "local.get", index: arrLocal });
+  fctx.body.push({ op: "array.len" });
+  fctx.body.push({ op: "i32.lt_u" } as Instr);
+
+  // Build the "then" branch: in-bounds → array.get
+  const thenInstrs: Instr[] = [
+    { op: "local.get", index: arrLocal } as Instr,
+    { op: "local.get", index: idxLocal } as Instr,
+    { op: "array.get", typeIdx: arrTypeIdx } as Instr,
+  ];
+
+  // Build the "else" branch: out-of-bounds → default value
+  const elseInstrs: Instr[] = defaultValueInstrs(elementType);
+
+  fctx.body.push({
+    op: "if",
+    blockType: { kind: "val" as const, type: elementType },
+    then: thenInstrs,
+    else: elseInstrs,
+  } as Instr);
+}
+
+/** Produce instructions that leave a default value on the stack for a given type. */
+function defaultValueInstrs(vt: ValType): Instr[] {
+  switch (vt.kind) {
+    case "f64":
+      return [{ op: "f64.const", value: NaN } as Instr];
+    case "f32":
+      return [{ op: "f32.const", value: 0 } as Instr];
+    case "i32":
+      return [{ op: "i32.const", value: 0 } as Instr];
+    case "i64":
+      return [{ op: "i64.const", value: 0n } as Instr];
+    case "externref":
+    case "ref_extern":
+      return [{ op: "ref.null.extern" } as Instr];
+    case "ref":
+    case "ref_null":
+      return [{ op: "ref.null", typeIdx: (vt as { typeIdx: number }).typeIdx } as unknown as Instr];
+    case "eqref":
+      return [{ op: "ref.null.eq" } as unknown as Instr];
+    case "funcref":
+      return [{ op: "ref.null.func" } as unknown as Instr];
+    default:
+      // Fallback: f64 NaN (most arrays are f64 in this compiler)
+      return [{ op: "f64.const", value: NaN } as Instr];
+  }
+}
+
 function compileElementAccess(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -10003,7 +10073,7 @@ function compileElementAccess(
       compileExpression(ctx, fctx, expr.argumentExpression, { kind: "f64" });
       fctx.body.push({ op: "i32.trunc_sat_f64_s" });
     }
-    fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
+    emitBoundsCheckedArrayGet(fctx, arrTypeIdx, arrDef.element);
     return arrDef.element;
   }
 
@@ -10024,7 +10094,7 @@ function compileElementAccess(
     fctx.body.push({ op: "i32.trunc_sat_f64_s" });
   }
 
-  fctx.body.push({ op: "array.get", typeIdx });
+  emitBoundsCheckedArrayGet(fctx, typeIdx, typeDef.element);
   return typeDef.element;
 }
 
