@@ -9,10 +9,7 @@
       "ZSH_IN_DOCKER_VERSION": "1.2.0"
     }
   },
-  "runArgs": [
-    "--cap-add=NET_ADMIN",
-    "--cap-add=NET_RAW"
-  ],
+  "runArgs": ["--cap-add=NET_ADMIN", "--cap-add=NET_RAW"],
   "customizations": {
     "vscode": {
       "extensions": [
@@ -27,14 +24,21 @@
         "editor.codeActionsOnSave": {
           "source.fixAll.eslint": "explicit"
         },
-        "terminal.integrated.defaultProfile.linux": "zsh",
+        "terminal.integrated.defaultProfile.linux": "tmux",
         "terminal.integrated.profiles.linux": {
-          "bash": {
-            "path": "bash",
-            "icon": "terminal-bash"
+          "tmux": {
+            "path": "zsh",
+            "args": [
+              "-c",
+              "tmux attach -t claude 2>/dev/null || tmux new -s claude"
+            ]
           },
           "zsh": {
             "path": "zsh"
+          },
+          "bash": {
+            "path": "bash",
+            "icon": "terminal-bash"
           }
         }
       }
@@ -52,7 +56,7 @@
   },
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
   "workspaceFolder": "/workspace",
-  "postStartCommand": "sudo /usr/local/bin/init-firewall.sh",
+  "postStartCommand": "sudo /usr/local/bin/init-firewall.sh && tmux new-session -d -s claude 2>/dev/null || true",
   "waitFor": "postStartCommand",
   "postCreateCommand": "mkdir -p ~/.claude && echo '#!/bin/bash\ntmux new-session -A -s claude \"$@\"' > ~/.claude/tmux-wrapper.sh && chmod +x ~/.claude/tmux-wrapper.sh"
 }
