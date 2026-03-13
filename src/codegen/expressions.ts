@@ -1968,10 +1968,15 @@ function compileTypeofExpression(
 ): ValType | null {
   const operand = expr.expression;
 
-  // typeof Math.<method> → "function" (static resolution)
+  // typeof Math.<prop> → "function" for methods, "number" for constants
   if (ts.isPropertyAccessExpression(operand) &&
       ts.isIdentifier(operand.expression) &&
       operand.expression.text === "Math") {
+    const mathConstants = new Set(["PI", "E", "LN2", "LN10", "SQRT2", "SQRT1_2", "LOG2E", "LOG10E"]);
+    const prop = operand.name.text;
+    if (mathConstants.has(prop)) {
+      return compileStringLiteral(ctx, fctx, "number");
+    }
     return compileStringLiteral(ctx, fctx, "function");
   }
 
@@ -2090,11 +2095,12 @@ function compileTypeofComparison(
   const operand = typeofExpr.expression;
   const tsType = ctx.checker.getTypeAtLocation(operand);
   let staticTypeof: string | null = null;
-  // Math.<method> → "function"
+  // Math.<prop> → "function" for methods, "number" for constants
   if (ts.isPropertyAccessExpression(operand) &&
       ts.isIdentifier(operand.expression) &&
       operand.expression.text === "Math") {
-    staticTypeof = "function";
+    const mathConsts = new Set(["PI", "E", "LN2", "LN10", "SQRT2", "SQRT1_2", "LOG2E", "LOG10E"]);
+    staticTypeof = mathConsts.has(operand.name.text) ? "number" : "function";
   } else if (tsType.flags & ts.TypeFlags.Null) {
     staticTypeof = "object";
   } else if (tsType.flags & ts.TypeFlags.Undefined || tsType.flags & ts.TypeFlags.Void) {
@@ -9554,17 +9560,39 @@ function compileMathCall(
   const f64Hint: ValType = { kind: "f64" };
 
   if (method === "round" && expr.arguments.length >= 1) {
-    // JS Math.round: floor(x + 0.5), but values in [-0.5, -0] must return -0.
-    // Use copysign(0, x) when floor(x+0.5) is zero to preserve the sign.
+    // JS Math.round: rounds to nearest integer, with ties going towards +infinity.
+    // floor(x + 0.5) has precision issues for large odd integers near 2^52
+    // because x + 0.5 can round up. Instead, compare x - floor(x) to 0.5:
+    //   frac = x - floor(x); if frac >= 0.5 then ceil(x) else floor(x)
+    // Special case: if result == 0, use copysign(0, x) to preserve -0.
     const xLocal = allocLocal(fctx, `__round_x_${fctx.locals.length}`, { kind: "f64" });
+    const floorLocal = allocLocal(fctx, `__round_fl_${fctx.locals.length}`, { kind: "f64" });
     const rLocal = allocLocal(fctx, `__round_r_${fctx.locals.length}`, { kind: "f64" });
     compileExpression(ctx, fctx, expr.arguments[0]!, f64Hint);
     fctx.body.push({ op: "local.tee", index: xLocal } as Instr);
-    fctx.body.push({ op: "f64.const", value: 0.5 } as Instr);
-    fctx.body.push({ op: "f64.add" } as Instr);
+    // Compute floor(x) and store it
     fctx.body.push({ op: "f64.floor" } as Instr);
+    fctx.body.push({ op: "local.set", index: floorLocal } as Instr);
+    // Compute frac = x - floor(x)
+    fctx.body.push({ op: "local.get", index: xLocal } as Instr);
+    fctx.body.push({ op: "local.get", index: floorLocal } as Instr);
+    fctx.body.push({ op: "f64.sub" } as Instr);
+    // If frac >= 0.5, use ceil(x), else use floor(x)
+    fctx.body.push({ op: "f64.const", value: 0.5 } as Instr);
+    fctx.body.push({ op: "f64.ge" } as Instr);
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "val", type: { kind: "f64" } },
+      then: [
+        { op: "local.get", index: xLocal } as Instr,
+        { op: "f64.ceil" } as Instr,
+      ],
+      else: [
+        { op: "local.get", index: floorLocal } as Instr,
+      ],
+    } as Instr);
+    // Store result, then handle -0: if result == 0, use copysign(0, x)
     fctx.body.push({ op: "local.tee", index: rLocal } as Instr);
-    // If result == 0, use copysign(0, x) to preserve -0
     fctx.body.push({ op: "f64.const", value: 0 } as Instr);
     fctx.body.push({ op: "f64.eq" } as Instr);
     fctx.body.push({
