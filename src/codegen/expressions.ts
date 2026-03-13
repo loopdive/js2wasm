@@ -6440,6 +6440,24 @@ function compilePrefixUnary(
       return operandType;
     }
     case ts.SyntaxKind.MinusToken: {
+      // Detect null/undefined operands before compiling — they are
+      // indistinguishable as externref (both ref.null.extern), so we must
+      // resolve them statically: -null === -0, -undefined === NaN.
+      {
+        let inner: ts.Expression = expr.operand;
+        while (ts.isParenthesizedExpression(inner)) inner = inner.expression;
+        const isNullOp = inner.kind === ts.SyntaxKind.NullKeyword;
+        const isUndefOp = inner.kind === ts.SyntaxKind.UndefinedKeyword ||
+          (ts.isIdentifier(inner) && inner.text === "undefined");
+        if (isNullOp) {
+          fctx.body.push({ op: "f64.const", value: -0 });
+          return { kind: "f64" };
+        }
+        if (isUndefOp) {
+          fctx.body.push({ op: "f64.const", value: NaN });
+          return { kind: "f64" };
+        }
+      }
       const operandType = compileExpression(ctx, fctx, expr.operand);
       if (!operandType) return null;
       // any-typed negate: call __any_neg
