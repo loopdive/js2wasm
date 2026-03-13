@@ -1111,15 +1111,6 @@ function compileForStatement(
           continue;
         }
 
-        if (ts.isObjectBindingPattern(decl.name)) {
-          compileObjectDestructuring(ctx, fctx, decl);
-          continue;
-        }
-        if (ts.isArrayBindingPattern(decl.name)) {
-          compileArrayDestructuring(ctx, fctx, decl);
-          continue;
-        }
-
         const varType = ctx.checker.getTypeAtLocation(decl);
         const wasmType = resolveWasmType(ctx, varType);
         // Reuse existing local for var re-declaration
