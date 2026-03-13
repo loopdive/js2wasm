@@ -11488,8 +11488,8 @@ function compileTemplateExpression(
       fctx.body.push({ op: "f64.convert_i64_s" });
       fctx.body.push({ op: "call", funcIdx: toStrIdx });
     } else if (spanType && (spanType.kind === "ref" || spanType.kind === "ref_null")) {
-      // Struct ref → externref via extern.convert_any, then toString
-      fctx.body.push({ op: "extern.convert_any" });
+      // Struct ref → externref: use coerceType which calls toString() if available
+      coerceType(ctx, fctx, spanType, { kind: "externref" });
     }
     // externref assumed to be string already
 
@@ -11552,8 +11552,8 @@ function compileNativeTemplateExpression(
         fctx.body.push({ op: "call", funcIdx: fromExternIdx });
       }
     } else if (spanType && (spanType.kind === "ref" || spanType.kind === "ref_null") && toStrIdx !== undefined) {
-      // Struct ref → externref → string coercion
-      fctx.body.push({ op: "extern.convert_any" });
+      // Struct ref → externref: use coerceType which calls toString() if available
+      coerceType(ctx, fctx, spanType, { kind: "externref" });
       if (fromExternIdx !== undefined) {
         fctx.body.push({ op: "call", funcIdx: fromExternIdx });
       }

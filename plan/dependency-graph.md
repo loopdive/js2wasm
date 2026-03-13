@@ -85,7 +85,7 @@ Can all run in parallel (different diagnostic codes).
 | 299 | Loose equals edge cases | 7 | **Done** |
 | 301 | Float unrepresentable in integer range | 4 | **Done** |
 | 308 | Addition operator + string/number coercion | 7 | **Done** |
-| 300 | Object to primitive conversion | 5 | Blocked by #138, #139 |
+| 300 | Object to primitive conversion | 5 | **Done** |
 
 ---
 
