@@ -254,3 +254,4 @@
 | 165 | 2026-03-13 | Function statement hoisting and edge cases | Dep-driven |
 | 310 | 2026-03-13 | Reduce skip filters — re-evaluate conservative skips | Dep-driven |
 | 288 | 2026-03-13 | Try/catch/finally complex patterns — finally with rethrow, try-only-finally | Dep-driven |
+| 318 | 2026-03-13 | Infer parameter types from call-site arguments for untyped functions | Dep-driven |
