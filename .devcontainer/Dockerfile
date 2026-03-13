@@ -26,7 +26,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   nano \
   vim \
   tmux \
+  dtach \
   locales \
+  openssh-server \
   && locale-gen en_US.UTF-8 \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
 
@@ -96,5 +98,24 @@ COPY init-firewall.sh /usr/local/bin/
 USER root
 RUN chmod +x /usr/local/bin/init-firewall.sh && \
   echo "node ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh" > /etc/sudoers.d/node-firewall && \
+  echo "node ALL=(root) NOPASSWD: /usr/sbin/sshd" >> /etc/sudoers.d/node-firewall && \
   chmod 0440 /etc/sudoers.d/node-firewall
+
+# Configure sshd
+RUN mkdir -p /var/run/sshd && \
+  sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config && \
+  sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config && \
+  sed -i 's/^#\?Port .*/Port 2222/' /etc/ssh/sshd_config
+
+# Set up authorized_keys for the node user
+RUN mkdir -p /home/node/.ssh && \
+  echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILMHAw2zZFdfHrwm1rMkZwnbyyxwrpAFBVqdoNKy+vxL thomas@loopdive" > /home/node/.ssh/authorized_keys && \
+  echo "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBFcvGGPtofV8AJzI504ynCSq2/zTzXojlNavftdhVtu196tJ6Oo3A1lm8PpK2ijHRhrJAoJ4rrMVcTnolO5Guac=" >> /home/node/.ssh/authorized_keys && \
+  chmod 700 /home/node/.ssh && \
+  chmod 600 /home/node/.ssh/authorized_keys && \
+  chown -R node:node /home/node/.ssh
+
+# Auto-attach/create tmux session on SSH login
+RUN echo 'if [ -n "$SSH_CONNECTION" ] && [ -z "$TMUX" ] && [ -t 0 ]; then tmux ls 2>/dev/null; fi' >> /home/node/.bashrc
+
 USER node

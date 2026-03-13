@@ -218,3 +218,4 @@
 | 315 | 2026-03-12 | Wasm validation error audit — stale local type fix | Dep-driven |
 | 235 | 2026-03-12 | Function.name — fix named expression priority | Dep-driven |
 | 234 | 2026-03-12 | ClassDeclaration in nested/expression positions -- recursive collection, ClassExpression handling | Dep-driven |
+| 238 | 2026-03-12 | Class expression new -- named class expressions in new | Dep-driven |

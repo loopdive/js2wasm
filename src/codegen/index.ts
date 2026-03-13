@@ -7307,9 +7307,13 @@ function collectDeclarations(
       while (ts.isParenthesizedExpression(inner)) {
         inner = inner.expression;
       }
-      if (ts.isClassExpression(inner) && !inner.name && !ctx.anonClassExprNames.has(inner)) {
+      if (ts.isClassExpression(inner) && !ctx.anonClassExprNames.has(inner)) {
         // Generate a synthetic name and pre-register the class
-        const syntheticName = `__anonClass_${ctx.anonTypeCounter++}`;
+        // For named class expressions (class C { ... }), use the name to avoid
+        // collisions; for anonymous ones, generate a counter-based name.
+        const syntheticName = inner.name
+          ? `__anonClass_${inner.name.text}_${ctx.anonTypeCounter++}`
+          : `__anonClass_${ctx.anonTypeCounter++}`;
         // Store a mapping from the AST node to the synthetic name so codegen can find it
         ctx.anonClassExprNames.set(inner, syntheticName);
         collectClassDeclaration(ctx, inner, syntheticName);

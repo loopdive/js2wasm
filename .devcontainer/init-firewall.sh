@@ -33,6 +33,9 @@ iptables -A INPUT -p udp --sport 53 -j ACCEPT
 iptables -A OUTPUT -p tcp --dport 22 -j ACCEPT
 # Allow inbound SSH responses
 iptables -A INPUT -p tcp --sport 22 -m state --state ESTABLISHED -j ACCEPT
+# Allow inbound SSH on port 2222
+iptables -A INPUT -p tcp --dport 2222 -j ACCEPT
+iptables -A OUTPUT -p tcp --sport 2222 -m state --state ESTABLISHED -j ACCEPT
 # Allow localhost
 iptables -A INPUT -i lo -j ACCEPT
 iptables -A OUTPUT -o lo -j ACCEPT
