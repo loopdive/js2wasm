@@ -10724,9 +10724,19 @@ function compilePropertyAccess(
       let funcName = objType.getSymbol()?.name ?? "";
       // __type, __function, __class, __object are anonymous type names from TS checker
       if (funcName === "__type" || funcName === "__function" || funcName === "__class" || funcName === "__object") funcName = "";
-      // If the symbol name is empty (anonymous function), infer from the variable name
-      if (funcName === "" && ts.isIdentifier(expr.expression)) {
-        funcName = expr.expression.text;
+      // If the symbol name is empty (anonymous function), infer from context:
+      if (funcName === "") {
+        if (ts.isIdentifier(expr.expression)) {
+          // Direct variable access: f.name => infer "f"
+          funcName = expr.expression.text;
+        } else if (ts.isPropertyAccessExpression(expr.expression)) {
+          // Property access: obj.method.name => infer "method"
+          funcName = expr.expression.name.text;
+        } else if (ts.isElementAccessExpression(expr.expression) &&
+                   ts.isStringLiteral(expr.expression.argumentExpression)) {
+          // Element access: obj["method"].name => infer "method"
+          funcName = expr.expression.argumentExpression.text;
+        }
       }
       // Ensure the string constant is registered before compiling
       addStringConstantGlobal(ctx, funcName);
