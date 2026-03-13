@@ -246,3 +246,4 @@
 | 227 | 2026-03-13 | BigInt comparison with Infinity causes float-unrepresentable trap | Dep-driven |
 | 267 | 2026-03-13 | Yield expression outside of generator function — diagnostic suppression | Dep-driven |
 | 282 | 2026-03-13 | Variable declaration compile errors -- collection scanning for remaining collect* functions | Dep-driven |
+| 228 | 2026-03-13 | BigInt equality/strict-equality with Number and Boolean | Dep-driven |
