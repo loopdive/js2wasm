@@ -2172,6 +2172,22 @@ function compileTypeofExpression(
     return compileStringLiteral(ctx, fctx, "string");
   }
 
+  // For externref types: check call/construct signatures for function types
+  if (wasmType.kind === "externref") {
+    const callSigs = tsType.getCallSignatures?.();
+    if (callSigs && callSigs.length > 0) {
+      return compileStringLiteral(ctx, fctx, "function");
+    }
+    const ctorSigs = tsType.getConstructSignatures?.();
+    if (ctorSigs && ctorSigs.length > 0) {
+      return compileStringLiteral(ctx, fctx, "function");
+    }
+    // If the TS type is a known object type (not any/unknown), resolve statically
+    if (tsType.flags & ts.TypeFlags.Object) {
+      return compileStringLiteral(ctx, fctx, "object");
+    }
+  }
+
   // For union/unknown externref types, call the __typeof host helper at runtime
   addUnionImports(ctx);
   const funcIdx = ctx.funcMap.get("__typeof");
@@ -2251,6 +2267,15 @@ function compileTypeofComparison(
       staticTypeof = (callSigs && callSigs.length > 0) || (ctorSigs2 && ctorSigs2.length > 0) ? "function" : "object";
     }
     else if (isStringType(tsType)) staticTypeof = "string";
+    else if (wasmType.kind === "externref") {
+      const callSigs = tsType.getCallSignatures?.();
+      const ctorSigs2 = tsType.getConstructSignatures?.();
+      if ((callSigs && callSigs.length > 0) || (ctorSigs2 && ctorSigs2.length > 0)) {
+        staticTypeof = "function";
+      } else if (tsType.flags & ts.TypeFlags.Object) {
+        staticTypeof = "object";
+      }
+    }
   }
   if (staticTypeof !== null) {
     const matches = staticTypeof === stringLiteral;
