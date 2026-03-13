@@ -197,6 +197,7 @@
 | 152 | 2026-03-12 | Setter return value error in allowJs mode | Dep-driven |
 | 269 | 2026-03-12 | Setter return value diagnostic suppression | Dep-driven |
 | 301 | 2026-03-12 | Float unrepresentable in integer range -- saturating trunc | Dep-driven |
+| 316 | 2026-03-12 | Runtime failure -- array element access out of bounds | Dep-driven |
 | 297 | 2026-03-12 | Switch statement fall-through and default positioning | Dep-driven |
 | 299 | 2026-03-12 | Loose equality edge cases (null == undefined, boolean coercion) | Dep-driven |
 | 302 | 2026-03-12 | Math.min/max edge cases | Dep-driven |
