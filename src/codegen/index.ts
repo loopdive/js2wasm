@@ -4577,6 +4577,14 @@ function collectObjectMethodStringLiterals(
   for (const stmt of sourceFile.statements) {
     if (ts.isFunctionDeclaration(stmt) && stmt.body) {
       visit(stmt.body);
+    } else if (ts.isVariableStatement(stmt)) {
+      for (const decl of stmt.declarationList.declarations) {
+        if (decl.initializer) visit(decl.initializer);
+      }
+    } else if (ts.isClassDeclaration(stmt)) {
+      visit(stmt);
+    } else if (ts.isExpressionStatement(stmt)) {
+      visit(stmt.expression);
     }
   }
 
@@ -4898,13 +4906,18 @@ function collectPromiseImports(
   for (const stmt of sourceFile.statements) {
     if (ts.isFunctionDeclaration(stmt) && stmt.body) {
       visit(stmt.body);
-    }
-    if (ts.isClassDeclaration(stmt)) {
+    } else if (ts.isVariableStatement(stmt)) {
+      for (const decl of stmt.declarationList.declarations) {
+        if (decl.initializer) visit(decl.initializer);
+      }
+    } else if (ts.isClassDeclaration(stmt)) {
       for (const member of stmt.members) {
         if (ts.isMethodDeclaration(member) && member.body) {
           visit(member.body);
         }
       }
+    } else if (ts.isExpressionStatement(stmt)) {
+      visit(stmt.expression);
     }
   }
 
@@ -4946,13 +4959,18 @@ function collectJsonImports(
   for (const stmt of sourceFile.statements) {
     if (ts.isFunctionDeclaration(stmt) && stmt.body) {
       visit(stmt.body);
-    }
-    if (ts.isClassDeclaration(stmt)) {
+    } else if (ts.isVariableStatement(stmt)) {
+      for (const decl of stmt.declarationList.declarations) {
+        if (decl.initializer) visit(decl.initializer);
+      }
+    } else if (ts.isClassDeclaration(stmt)) {
       for (const member of stmt.members) {
         if (ts.isMethodDeclaration(member) && member.body) {
           visit(member.body);
         }
       }
+    } else if (ts.isExpressionStatement(stmt)) {
+      visit(stmt.expression);
     }
   }
 
@@ -4986,10 +5004,18 @@ function collectCallbackImports(
   }
 
   for (const stmt of sourceFile.statements) {
+    if (found) break;
     if (ts.isFunctionDeclaration(stmt) && stmt.body) {
       visit(stmt.body);
+    } else if (ts.isVariableStatement(stmt)) {
+      for (const decl of stmt.declarationList.declarations) {
+        if (decl.initializer) visit(decl.initializer);
+      }
+    } else if (ts.isClassDeclaration(stmt)) {
+      visit(stmt);
+    } else if (ts.isExpressionStatement(stmt)) {
+      visit(stmt.expression);
     }
-    if (found) break;
   }
 
   if (found) {
@@ -5144,10 +5170,14 @@ function collectFunctionalArrayImports(
   for (const stmt of sourceFile.statements) {
     if (ts.isFunctionDeclaration(stmt) && stmt.body) {
       visit(stmt.body);
-    }
-    // Also scan module-level variable declarations
-    if (ts.isVariableStatement(stmt)) {
+    } else if (ts.isVariableStatement(stmt)) {
+      for (const decl of stmt.declarationList.declarations) {
+        if (decl.initializer) visit(decl.initializer);
+      }
+    } else if (ts.isClassDeclaration(stmt)) {
       visit(stmt);
+    } else if (ts.isExpressionStatement(stmt)) {
+      visit(stmt.expression);
     }
   }
 
@@ -5230,6 +5260,14 @@ function collectUnionImports(
   for (const stmt of sourceFile.statements) {
     if (ts.isFunctionDeclaration(stmt) && stmt.body) {
       visit(stmt);
+    } else if (ts.isVariableStatement(stmt)) {
+      for (const decl of stmt.declarationList.declarations) {
+        if (decl.initializer) visit(decl.initializer);
+      }
+    } else if (ts.isClassDeclaration(stmt)) {
+      visit(stmt);
+    } else if (ts.isExpressionStatement(stmt)) {
+      visit(stmt.expression);
     }
   }
 
@@ -5433,9 +5471,11 @@ function collectIteratorImports(
     if (found) break;
     if (ts.isFunctionDeclaration(stmt) && stmt.body) {
       visit(stmt.body);
-    }
-    // Also check class method bodies
-    if (ts.isClassDeclaration(stmt)) {
+    } else if (ts.isVariableStatement(stmt)) {
+      for (const decl of stmt.declarationList.declarations) {
+        if (decl.initializer) visit(decl.initializer);
+      }
+    } else if (ts.isClassDeclaration(stmt)) {
       for (const member of stmt.members) {
         if (found) break;
         if (
@@ -5445,9 +5485,9 @@ function collectIteratorImports(
           visit(member.body);
         }
       }
-    }
-    // Also check module-level statements (top-level for...of)
-    if (ts.isForOfStatement(stmt)) {
+    } else if (ts.isExpressionStatement(stmt)) {
+      visit(stmt.expression);
+    } else if (ts.isForOfStatement(stmt)) {
       visit(stmt);
     }
   }
