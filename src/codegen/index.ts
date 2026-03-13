@@ -5072,24 +5072,36 @@ function collectCallbackImports(
   }
 }
 
+/** Recursively check if any node in the tree is a generator (function*, method*) */
+function hasGeneratorInTree(node: ts.Node): boolean {
+  if (
+    ts.isFunctionDeclaration(node) &&
+    (node as ts.FunctionDeclaration).asteriskToken &&
+    (node as ts.FunctionDeclaration).body
+  ) {
+    return true;
+  }
+  if (
+    ts.isFunctionExpression(node) &&
+    (node as ts.FunctionExpression).asteriskToken
+  ) {
+    return true;
+  }
+  if (
+    ts.isMethodDeclaration(node) &&
+    (node as ts.MethodDeclaration).asteriskToken
+  ) {
+    return true;
+  }
+  return ts.forEachChild(node, hasGeneratorInTree) ?? false;
+}
+
 /** Scan source for generator functions (function*) and register generator host imports */
 function collectGeneratorImports(
   ctx: CodegenContext,
   sourceFile: ts.SourceFile,
 ): void {
-  let found = false;
-
-  for (const stmt of sourceFile.statements) {
-    if (
-      ts.isFunctionDeclaration(stmt) &&
-      stmt.asteriskToken &&
-      stmt.body &&
-      !hasDeclareModifier(stmt)
-    ) {
-      found = true;
-      break;
-    }
-  }
+  const found = hasGeneratorInTree(sourceFile);
 
   if (found && !ctx.funcMap.has("__gen_create_buffer")) {
     // __gen_create_buffer: () → externref  (creates an empty JS array)
@@ -7066,7 +7078,10 @@ export function collectClassDeclaration(
 
       const sig = ctx.checker.getSignatureFromDeclaration(member);
       let methodResults: ValType[] = [];
-      if (sig) {
+      if (member.asteriskToken) {
+        // Generator method: return type is always externref (Generator object)
+        methodResults = [{ kind: "externref" }];
+      } else if (sig) {
         const retType = ctx.checker.getReturnTypeOfSignature(sig);
         if (!isVoidType(retType)) {
           methodResults = [resolveWasmType(ctx, retType)];
@@ -8399,15 +8414,22 @@ export function compileClassBodies(
         params.push({ name: paramName, type: resolveWasmType(ctx, paramType) });
       }
 
+      // Check if this is a generator method (e.g. *method() { yield ... })
+      const isGeneratorMethod = member.asteriskToken !== undefined;
+      if (isGeneratorMethod) {
+        ctx.generatorFunctions.add(fullName);
+      }
+
       const fctx: FunctionContext = {
         name: fullName,
         params,
         locals: [],
         localMap: new Map(),
-        returnType:
-          retType && !isVoidType(retType)
-            ? resolveWasmType(ctx, retType)
-            : null,
+        returnType: isGeneratorMethod
+          ? { kind: "externref" }
+          : (retType && !isVoidType(retType)
+              ? resolveWasmType(ctx, retType)
+              : null),
         body: [],
         blockDepth: 0,
         breakStack: [],
@@ -8488,30 +8510,68 @@ export function compileClassBodies(
         }
       }
 
-      if (member.body) {
-        for (const stmt of member.body.statements) {
-          compileStatement(ctx, fctx, stmt);
-        }
-      }
+      if (isGeneratorMethod) {
+        // Generator method: set up buffer, wrap body in block, return generator
+        const bufferLocal = allocLocal(fctx, "__gen_buffer", { kind: "externref" });
+        const createBufIdx = ctx.funcMap.get("__gen_create_buffer")!;
+        fctx.body.push({ op: "call", funcIdx: createBufIdx });
+        fctx.body.push({ op: "local.set", index: bufferLocal });
 
-      // Ensure valid return for non-void methods
-      if (fctx.returnType) {
-        const lastInstr = fctx.body[fctx.body.length - 1];
-        if (!lastInstr || lastInstr.op !== "return") {
-          if (fctx.returnType.kind === "f64") {
-            fctx.body.push({ op: "f64.const", value: 0 });
-          } else if (fctx.returnType.kind === "i32") {
-            fctx.body.push({ op: "i32.const", value: 0 });
-          } else if (fctx.returnType.kind === "externref") {
-            fctx.body.push({ op: "ref.null.extern" });
-          } else if (
-            fctx.returnType.kind === "ref" ||
-            fctx.returnType.kind === "ref_null"
-          ) {
-            fctx.body.push({
-              op: "ref.null",
-              typeIdx: fctx.returnType.typeIdx,
-            });
+        const bodyInstrs: Instr[] = [];
+        const outerBody = fctx.body;
+        fctx.body = bodyInstrs;
+
+        fctx.blockDepth++;
+        for (let bi = 0; bi < fctx.breakStack.length; bi++) fctx.breakStack[bi]!++;
+        for (let ci = 0; ci < fctx.continueStack.length; ci++) fctx.continueStack[ci]!++;
+
+        if (member.body) {
+          for (const stmt of member.body.statements) {
+            compileStatement(ctx, fctx, stmt);
+          }
+        }
+
+        fctx.blockDepth--;
+        for (let bi = 0; bi < fctx.breakStack.length; bi++) fctx.breakStack[bi]!--;
+        for (let ci = 0; ci < fctx.continueStack.length; ci++) fctx.continueStack[ci]!--;
+
+        fctx.body = outerBody;
+        fctx.body.push({
+          op: "block",
+          blockType: { kind: "empty" },
+          body: bodyInstrs,
+        });
+
+        // Return __create_generator(__gen_buffer)
+        const createGenIdx = ctx.funcMap.get("__create_generator")!;
+        fctx.body.push({ op: "local.get", index: bufferLocal });
+        fctx.body.push({ op: "call", funcIdx: createGenIdx });
+      } else {
+        if (member.body) {
+          for (const stmt of member.body.statements) {
+            compileStatement(ctx, fctx, stmt);
+          }
+        }
+
+        // Ensure valid return for non-void methods
+        if (fctx.returnType) {
+          const lastInstr = fctx.body[fctx.body.length - 1];
+          if (!lastInstr || lastInstr.op !== "return") {
+            if (fctx.returnType.kind === "f64") {
+              fctx.body.push({ op: "f64.const", value: 0 });
+            } else if (fctx.returnType.kind === "i32") {
+              fctx.body.push({ op: "i32.const", value: 0 });
+            } else if (fctx.returnType.kind === "externref") {
+              fctx.body.push({ op: "ref.null.extern" });
+            } else if (
+              fctx.returnType.kind === "ref" ||
+              fctx.returnType.kind === "ref_null"
+            ) {
+              fctx.body.push({
+                op: "ref.null",
+                typeIdx: fctx.returnType.typeIdx,
+              });
+            }
           }
         }
       }

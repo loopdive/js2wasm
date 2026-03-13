@@ -1317,36 +1317,98 @@ function compileArrowAsClosure(
     }
   }
 
-  let conciseBodyHasValue = false;
-  if (ts.isBlock(body)) {
-    for (const stmt of body.statements) {
-      compileStatement(ctx, liftedFctx, stmt);
-    }
-  } else {
-    const exprType = compileExpression(ctx, liftedFctx, body);
-    if (exprType !== null && closureReturnType) {
-      // Expression result is the return value - already on stack
-      conciseBodyHasValue = true;
+  // Check if this is a generator function expression (function*() { ... })
+  const isGeneratorExpr = ts.isFunctionExpression(arrow) && arrow.asteriskToken !== undefined;
 
-      // The actual expression type may differ from the declared return type
-      // (e.g. TS infers `any`→externref but codegen produces f64 for arithmetic).
-      // Coerce the expression result to match the declared return type.
-      if (exprType.kind !== closureReturnType.kind) {
-        if (closureReturnType.kind === "externref" && (exprType.kind === "ref" || exprType.kind === "ref_null")) {
-          // Upcast struct ref to externref via extern.convert_any
-          liftedFctx.body.push({ op: "extern.convert_any" });
-        } else if (closureReturnType.kind === "externref" && exprType.kind === "f64") {
-          // f64 cannot be converted to externref; fix the return type instead
-          closureReturnType = exprType;
-          liftedFctx.returnType = exprType;
-          closureResults[0] = exprType;
-          liftedFuncTypeIdx = addFuncType(ctx, liftedParams, closureResults, `${closureName}_type`);
-          closureInfoForSelf.returnType = exprType;
-          closureInfoForSelf.funcTypeIdx = liftedFuncTypeIdx;
+  if (isGeneratorExpr) {
+    // Register the lifted closure as a generator function so yield expressions work
+    ctx.generatorFunctions.add(closureName);
+
+    // Override return type to externref (generator returns a Generator object)
+    closureReturnType = { kind: "externref" };
+    liftedFctx.returnType = closureReturnType;
+    closureResults[0] = closureReturnType;
+    liftedFuncTypeIdx = addFuncType(ctx, liftedParams, closureResults, `${closureName}_type`);
+    closureInfoForSelf.returnType = closureReturnType;
+    closureInfoForSelf.funcTypeIdx = liftedFuncTypeIdx;
+
+    // Set up generator buffer (same pattern as compileFunctionBody for generators)
+    const bufferLocal = allocLocal(liftedFctx, "__gen_buffer", { kind: "externref" });
+    const createBufIdx = ctx.funcMap.get("__gen_create_buffer")!;
+    liftedFctx.body.push({ op: "call", funcIdx: createBufIdx });
+    liftedFctx.body.push({ op: "local.set", index: bufferLocal });
+
+    // Wrap the generator body in a block so return can break out
+    const genBodyInstrs: Instr[] = [];
+    const genOuterBody = liftedFctx.body;
+    liftedFctx.body = genBodyInstrs;
+
+    liftedFctx.blockDepth++;
+    for (let i = 0; i < liftedFctx.breakStack.length; i++) liftedFctx.breakStack[i]!++;
+    for (let i = 0; i < liftedFctx.continueStack.length; i++) liftedFctx.continueStack[i]!++;
+
+    if (ts.isBlock(body)) {
+      for (const stmt of body.statements) {
+        compileStatement(ctx, liftedFctx, stmt);
+      }
+    }
+
+    liftedFctx.blockDepth--;
+    for (let i = 0; i < liftedFctx.breakStack.length; i++) liftedFctx.breakStack[i]!--;
+    for (let i = 0; i < liftedFctx.continueStack.length; i++) liftedFctx.continueStack[i]!--;
+
+    // Restore outer body and wrap compiled body in a block
+    liftedFctx.body = genOuterBody;
+    liftedFctx.body.push({
+      op: "block",
+      blockType: { kind: "empty" },
+      body: genBodyInstrs,
+    });
+
+    // Return __create_generator(__gen_buffer)
+    const createGenIdx = ctx.funcMap.get("__create_generator")!;
+    liftedFctx.body.push({ op: "local.get", index: bufferLocal });
+    liftedFctx.body.push({ op: "call", funcIdx: createGenIdx });
+    // The externref Generator object is now on the stack as the return value
+  } else {
+    let conciseBodyHasValue = false;
+    if (ts.isBlock(body)) {
+      for (const stmt of body.statements) {
+        compileStatement(ctx, liftedFctx, stmt);
+      }
+    } else {
+      const exprType = compileExpression(ctx, liftedFctx, body);
+      if (exprType !== null && closureReturnType) {
+        conciseBodyHasValue = true;
+        if (exprType.kind !== closureReturnType.kind) {
+          if (closureReturnType.kind === "externref" && (exprType.kind === "ref" || exprType.kind === "ref_null")) {
+            liftedFctx.body.push({ op: "extern.convert_any" });
+          } else if (closureReturnType.kind === "externref" && exprType.kind === "f64") {
+            closureReturnType = exprType;
+            liftedFctx.returnType = exprType;
+            closureResults[0] = exprType;
+            liftedFuncTypeIdx = addFuncType(ctx, liftedParams, closureResults, `${closureName}_type`);
+            closureInfoForSelf.returnType = exprType;
+            closureInfoForSelf.funcTypeIdx = liftedFuncTypeIdx;
+          }
+        }
+      } else if (exprType !== null) {
+        liftedFctx.body.push({ op: "drop" });
+      }
+    }
+
+    // Ensure return value for non-void functions (skip if concise body already left a value)
+    if (closureReturnType && !conciseBodyHasValue) {
+      const lastInstr = liftedFctx.body[liftedFctx.body.length - 1];
+      if (!lastInstr || lastInstr.op !== "return") {
+        if (closureReturnType.kind === "f64") {
+          liftedFctx.body.push({ op: "f64.const", value: 0 });
+        } else if (closureReturnType.kind === "i32") {
+          liftedFctx.body.push({ op: "i32.const", value: 0 });
+        } else if (closureReturnType.kind === "externref") {
+          liftedFctx.body.push({ op: "ref.null.extern" });
         }
       }
-    } else if (exprType !== null) {
-      liftedFctx.body.push({ op: "drop" });
     }
   }
 

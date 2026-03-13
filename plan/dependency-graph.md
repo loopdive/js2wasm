@@ -187,10 +187,10 @@ Can all run in parallel (different diagnostic codes).
 |-----|-------|-------|--------|
 | ~~241~~ | ~~Yield expression in strict mode / module context~~ | — | **Done** |
 | 267 | Yield expression outside of generator function | — | Ready |
-| 287 | Generator function compile errors — yield in loops/try | ~119 CE | Blocked by ~~#241~~, #267 |
+| 287 | Generator function compile errors — yield in loops/try | ~119 CE | **Done** |
 | 241 | Yield expression in strict mode / module context | — | Ready |
 | 267 | Yield expression outside of generator function | — | Done |
-| 287 | Generator function compile errors — yield in loops/try | ~119 CE | Blocked by #241 |
+| 287 | Generator function compile errors — yield in loops/try | ~119 CE | **Done** |
 | 288 | Try/catch/finally compile errors — complex patterns | ~40 CE | Coordinates with #287 |
 
 ---
