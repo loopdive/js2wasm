@@ -247,7 +247,7 @@ All independent of each other and of codegen work.
 | #   | Title | Ready? |
 |-----|-------|--------|
 | 271 | Cannot find name — missing harness/global declarations | Ready |
-| 309 | Expand test262 harness includes | Ready |
+| ~~309~~ | ~~Expand test262 harness includes~~ | **Done** |
 | 310 | Reduce skip filters — re-evaluate conservative skips | Ready |
 | 311 | Test262 category expansion — String methods | Ready |
 | 312 | Test262 category expansion — Number methods | Ready |
