@@ -58,11 +58,10 @@ svg { width: 100vw; height: 100vh; }
   <span><span class="dot" style="width:16px;height:10px;border-radius:2px"></span> Medium</span>
   <span><span class="dot" style="width:10px;height:10px;border-radius:2px"></span> Low</span>
   <span>|</span>
-  <span>CE:</span>
-  <span><span class="dot" style="background:hsla(60,80%,50%,0.7)"></span> Few</span>
-  <span><span class="dot" style="background:hsla(30,80%,50%,0.7)"></span> Some</span>
-  <span><span class="dot" style="background:hsla(0,80%,50%,0.7)"></span> Many</span>
-  <span><span class="dot" style="background:rgba(110,118,129,0.3)"></span> N/A</span>
+  <span>Impact:</span>
+  <span><span class="dot" style="background:rgba(255,255,0,0.9)"></span> High</span>
+  <span><span class="dot" style="background:rgba(157,159,34,0.65)"></span> Medium</span>
+  <span><span class="dot" style="background:rgba(60,63,68,0.5)"></span> None</span>
   <span>|</span>
   <span style="border-bottom:1px dashed rgba(255,0,0,0.4);padding-bottom:1px">Blocked</span>
 </div>
@@ -90,8 +89,9 @@ const CLUSTER_COLORS = {
 };
 
 function ceColor(d) {
-  if (!d.compiler_errors) return 'rgba(60,63,68,0.5)';
-  const t = Math.min(1, Math.log(d.compiler_errors + 1) / Math.log(1500));
+  const impact = (d.compiler_errors || 0) + (d.test262_skip || 0) + (d.test262_fail || 0) + (d.test262_ce || 0);
+  if (!impact) return 'rgba(60,63,68,0.5)';
+  const t = Math.min(1, Math.log(impact + 1) / Math.log(4000));
   // Interpolate from dark gray (60,63,68) to yellow (255,255,0)
   const r = Math.round(60 + t * (255 - 60));
   const g = Math.round(63 + t * (255 - 63));
@@ -340,6 +340,9 @@ async function init() {
     document.getElementById('info-title').textContent = `#${d.id}: ${d.title}`;
     let meta = `<b>Priority:</b> ${d.priority} | <b>Status:</b> ${d.status} | <b>Cluster:</b> ${d.cluster || 'Unclustered'}`;
     if (d.compiler_errors) meta += ` | <b>CE:</b> ${d.compiler_errors}`;
+    if (d.test262_skip) meta += ` | <b>Skip:</b> ${d.test262_skip}`;
+    if (d.test262_fail) meta += ` | <b>Fail:</b> ${d.test262_fail}`;
+    if (d.test262_ce) meta += ` | <b>T262 CE:</b> ${d.test262_ce}`;
     document.getElementById('info-meta').innerHTML = meta;
     const deps = d.depends_on || [];
     const dependers = nodes.filter(n => n.depends_on && n.depends_on.includes(d.id));
