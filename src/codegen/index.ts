@@ -7111,10 +7111,17 @@ function collectEmptyObjectWidening(
       if (ts.isVariableStatement(stmt)) {
         for (const decl of stmt.declarationList.declarations) {
           if (!ts.isIdentifier(decl.name)) continue;
-          if (!decl.initializer || !ts.isObjectLiteralExpression(decl.initializer)) continue;
-          if (decl.initializer.properties.length > 0) continue;
+          if (!decl.initializer) continue;
+          // Match empty object literal: `var X = {}`
+          const isEmptyObjLiteral = ts.isObjectLiteralExpression(decl.initializer) && decl.initializer.properties.length === 0;
+          // Match `new Object()`: `var X = new Object()`
+          const isNewObject = ts.isNewExpression(decl.initializer)
+            && ts.isIdentifier(decl.initializer.expression)
+            && decl.initializer.expression.text === "Object"
+            && (!decl.initializer.arguments || decl.initializer.arguments.length === 0);
+          if (!isEmptyObjLiteral && !isNewObject) continue;
 
-          // Found `var X = {}` — now scan siblings for `X.prop = val`
+          // Found `var X = {}` or `var X = new Object()` — now scan siblings for `X.prop = val`
           const varName = decl.name.text;
           const extraProps: { name: string; type: ValType }[] = [];
           const seenProps = new Set<string>();
@@ -7423,7 +7430,18 @@ function collectDeclarations(
             });
           } else {
             const paramType = ctx.checker.getTypeAtLocation(param);
-            const wasmType = resolveWasmType(ctx, paramType);
+            let wasmType = resolveWasmType(ctx, paramType);
+            // Normalize struct ref params to ref_null for non-class types
+            // (anonymous structs from interfaces / type literals) so callers
+            // can pass nullable refs from widened variable declarations.
+            if (wasmType.kind === "ref" && "typeIdx" in wasmType) {
+              const paramSym = paramType.getSymbol();
+              const symName = paramSym?.name;
+              const isClassType = symName && ctx.classSet.has(symName);
+              if (!isClassType) {
+                wasmType = { kind: "ref_null", typeIdx: (wasmType as { typeIdx: number }).typeIdx };
+              }
+            }
             params.push(wasmType);
           }
         }

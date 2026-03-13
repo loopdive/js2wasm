@@ -446,6 +446,25 @@ function compileVariableStatement(
 
     if (decl.initializer) {
       compileExpression(ctx, fctx, decl.initializer, wasmType);
+      // If the local type is ref (non-null) but the initializer is a reference to
+      // another variable that has ref_null type, widen the local to ref_null to
+      // avoid Wasm validation errors on assignment.
+      if (wasmType.kind === "ref" && "typeIdx" in wasmType && ts.isIdentifier(decl.initializer)) {
+        const srcName = decl.initializer.text;
+        const srcIdx = fctx.localMap.get(srcName);
+        if (srcIdx !== undefined) {
+          const srcSlotIdx = srcIdx - fctx.params.length;
+          const srcSlot = srcSlotIdx >= 0 ? fctx.locals[srcSlotIdx] : null;
+          const srcParam = srcSlotIdx < 0 ? fctx.params[srcIdx] : null;
+          const srcType = srcSlot?.type ?? srcParam;
+          if (srcType && srcType.kind === "ref_null") {
+            const localSlotIdx = localIdx - fctx.params.length;
+            if (localSlotIdx >= 0 && fctx.locals[localSlotIdx]) {
+              fctx.locals[localSlotIdx]!.type = { kind: "ref_null", typeIdx: (wasmType as any).typeIdx };
+            }
+          }
+        }
+      }
       fctx.body.push({ op: "local.set", index: localIdx });
     }
   }

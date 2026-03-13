@@ -8645,9 +8645,36 @@ function compileNewExpression(
 
   // Handle `new Object()` — create an empty struct (equivalent to {})
   if (ts.isIdentifier(expr.expression) && expr.expression.text === "Object") {
-    // Look for an empty struct type, or create an externref null as empty object
-    // In non-fast mode, an empty object is just an externref null
-    // In fast mode or when we have struct types, emit a minimal struct
+    // Check if this is the initializer of a variable with widened properties
+    if (ts.isVariableDeclaration(expr.parent) && ts.isIdentifier(expr.parent.name)) {
+      const varName = expr.parent.name.text;
+      const widenedProps = ctx.widenedTypeProperties.get(varName);
+      if (widenedProps && widenedProps.length > 0) {
+        const structName = ctx.widenedVarStructMap.get(varName);
+        if (structName) {
+          const structTypeIdx = ctx.structMap.get(structName);
+          const fields = ctx.structFields.get(structName);
+          if (structTypeIdx !== undefined && fields) {
+            for (const field of fields) {
+              if (field.type.kind === "f64") {
+                fctx.body.push({ op: "f64.const", value: 0 });
+              } else if (field.type.kind === "externref") {
+                fctx.body.push({ op: "ref.null.extern" });
+              } else if (field.type.kind === "eqref") {
+                fctx.body.push({ op: "ref.null.eq" } as unknown as Instr);
+              } else if (field.type.kind === "ref" || field.type.kind === "ref_null") {
+                fctx.body.push({ op: "ref.null", typeIdx: (field.type as { typeIdx: number }).typeIdx });
+              } else {
+                fctx.body.push({ op: "i32.const", value: 0 });
+              }
+            }
+            fctx.body.push({ op: "struct.new", typeIdx: structTypeIdx });
+            return { kind: "ref", typeIdx: structTypeIdx };
+          }
+        }
+      }
+    }
+    // Fallback: no widened properties — emit externref null
     fctx.body.push({ op: "ref.null.extern" });
     return { kind: "externref" };
   }
