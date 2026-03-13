@@ -417,6 +417,10 @@ export function encodeValType(t: ValType, enc: WasmEncoder): void {
       enc.byte(TYPE.ref_null);
       enc.byte(TYPE.eq);
       break;
+    case "anyref":
+      enc.byte(TYPE.ref_null);
+      enc.byte(TYPE.any);
+      break;
     case "i16":
       // i16 is only valid as a packed storage type in struct fields/array elements,
       // but if it appears in encodeValType, encode it as i32 (this shouldn't happen)
