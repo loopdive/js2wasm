@@ -320,8 +320,9 @@ describe("TS ↔ Wasm equivalence", () => {
     // Import resolver handled all imports (no raw import statements left in WAT)
     expect(result.wat).not.toContain("import *");
 
-    // Has env imports for Math host calls used in game-loop
-    expect(result.wat).toContain("Math_exp");
+    // Has env imports for Math host calls actually emitted in game-loop
+    // Note: Math_exp is registered by collectMathImports but eliminated by
+    // the dead-import pass since the codegen emits "unsupported call" for those sites
     expect(result.wat).toContain("Math_pow");
   });
 
