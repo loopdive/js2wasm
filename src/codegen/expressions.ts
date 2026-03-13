@@ -3663,6 +3663,10 @@ function compileAssignment(
     return compileDestructuringAssignment(ctx, fctx, expr.left, expr.right);
   }
 
+  if (ts.isArrayLiteralExpression(expr.left)) {
+    return compileArrayDestructuringAssignment(ctx, fctx, expr.left, expr.right);
+  }
+
   ctx.errors.push({
     message: "Unsupported assignment target",
     line: getLine(expr),
@@ -3948,6 +3952,229 @@ function compileDestructuringAssignment(
   }
 
   // The result of a destructuring assignment is the RHS value
+  fctx.body.push({ op: "local.get", index: tmpLocal });
+  return resultType;
+}
+
+function compileArrayDestructuringAssignment(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  target: ts.ArrayLiteralExpression,
+  value: ts.Expression,
+): InnerResult {
+  // Compile the RHS — should produce a vec struct ref (array)
+  const resultType = compileExpression(ctx, fctx, value);
+  if (!resultType) return null;
+
+  if (resultType.kind !== "ref" && resultType.kind !== "ref_null") {
+    ctx.errors.push({
+      message: "Array destructuring assignment: RHS is not a ref type",
+      line: getLine(target),
+      column: getCol(target),
+    });
+    return null;
+  }
+
+  const vecTypeIdx = (resultType as { typeIdx: number }).typeIdx;
+  const vecDef = ctx.mod.types[vecTypeIdx];
+
+  // Verify it's a vec struct with {length, data} shape
+  if (
+    !vecDef ||
+    vecDef.kind !== "struct" ||
+    vecDef.fields.length !== 2 ||
+    vecDef.fields[0]?.name !== "length" ||
+    vecDef.fields[1]?.name !== "data"
+  ) {
+    // Could be a tuple struct — try to handle as tuple
+    if (vecDef?.kind === "struct") {
+      return compileArrayDestructuringFromStruct(ctx, fctx, target, resultType, vecTypeIdx, vecDef);
+    }
+    ctx.errors.push({
+      message: "Array destructuring assignment: RHS is not a vec struct",
+      line: getLine(target),
+      column: getCol(target),
+    });
+    return null;
+  }
+
+  const innerArrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
+  const arrDef = ctx.mod.types[innerArrTypeIdx];
+  if (!arrDef || arrDef.kind !== "array") {
+    ctx.errors.push({
+      message: "Array destructuring assignment: vec data is not array",
+      line: getLine(target),
+      column: getCol(target),
+    });
+    return null;
+  }
+
+  const innerElemType = arrDef.element;
+
+  // Save the vec ref in a temp local
+  const tmpLocal = allocLocal(fctx, `__arr_destruct_${fctx.locals.length}`, resultType);
+  fctx.body.push({ op: "local.set", index: tmpLocal });
+
+  for (let i = 0; i < target.elements.length; i++) {
+    const el = target.elements[i]!;
+
+    // Handle omitted elements: [, , x] = arr
+    if (ts.isOmittedExpression(el)) continue;
+
+    // Handle spread/rest element: [...rest] = arr
+    if (ts.isSpreadElement(el)) {
+      // Rest elements in array destructuring are complex — skip for now
+      continue;
+    }
+
+    if (ts.isIdentifier(el)) {
+      const localName = el.text;
+      let localIdx = fctx.localMap.get(localName);
+
+      // Auto-allocate local if not declared
+      if (localIdx === undefined) {
+        const bindingTsType = ctx.checker.getTypeAtLocation(el);
+        const bindingWasmType = resolveWasmType(ctx, bindingTsType);
+        localIdx = allocLocal(fctx, localName, bindingWasmType);
+      }
+
+      const localType = getLocalType(fctx, localIdx);
+
+      // vec struct: { length: i32, data: ref $arr }
+      fctx.body.push({ op: "local.get", index: tmpLocal });
+      fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 }); // data
+      fctx.body.push({ op: "i32.const", value: i });
+      fctx.body.push({ op: "array.get", typeIdx: innerArrTypeIdx });
+
+      // Coerce element type to local type if needed
+      if (localType && !valTypesMatch(innerElemType, localType)) {
+        coerceType(ctx, fctx, innerElemType, localType);
+      }
+
+      fctx.body.push({ op: "local.set", index: localIdx });
+    } else if (ts.isArrayLiteralExpression(el)) {
+      // Nested array destructuring: [[a, b], c] = [[1, 2], 3]
+      const nestedTmp = allocLocal(fctx, `__nested_arr_${fctx.locals.length}`, innerElemType);
+      fctx.body.push({ op: "local.get", index: tmpLocal });
+      fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
+      fctx.body.push({ op: "i32.const", value: i });
+      fctx.body.push({ op: "array.get", typeIdx: innerArrTypeIdx });
+      fctx.body.push({ op: "local.set", index: nestedTmp });
+
+      // Recursively destructure using the nested element
+      // Build a synthetic binary expression and compile it
+      // For now, handle inline if the element is a vec struct
+      if (innerElemType.kind === "ref" || innerElemType.kind === "ref_null") {
+        const nestedVecTypeIdx = (innerElemType as { typeIdx: number }).typeIdx;
+        const nestedVecDef = ctx.mod.types[nestedVecTypeIdx];
+        if (
+          nestedVecDef?.kind === "struct" &&
+          nestedVecDef.fields.length === 2 &&
+          nestedVecDef.fields[0]?.name === "length" &&
+          nestedVecDef.fields[1]?.name === "data"
+        ) {
+          const nestedArrTypeIdx = getArrTypeIdxFromVec(ctx, nestedVecTypeIdx);
+          const nestedArrDef = ctx.mod.types[nestedArrTypeIdx];
+          if (nestedArrDef?.kind === "array") {
+            const nestedInnerElemType = nestedArrDef.element;
+            for (let j = 0; j < el.elements.length; j++) {
+              const nestedEl = el.elements[j]!;
+              if (ts.isOmittedExpression(nestedEl)) continue;
+              if (!ts.isIdentifier(nestedEl)) continue;
+
+              const nLocalName = nestedEl.text;
+              let nLocalIdx = fctx.localMap.get(nLocalName);
+              if (nLocalIdx === undefined) {
+                const nBindingType = resolveWasmType(ctx, ctx.checker.getTypeAtLocation(nestedEl));
+                nLocalIdx = allocLocal(fctx, nLocalName, nBindingType);
+              }
+
+              const nLocalType = getLocalType(fctx, nLocalIdx);
+              fctx.body.push({ op: "local.get", index: nestedTmp });
+              fctx.body.push({ op: "struct.get", typeIdx: nestedVecTypeIdx, fieldIdx: 1 });
+              fctx.body.push({ op: "i32.const", value: j });
+              fctx.body.push({ op: "array.get", typeIdx: nestedArrTypeIdx });
+              if (nLocalType && !valTypesMatch(nestedInnerElemType, nLocalType)) {
+                coerceType(ctx, fctx, nestedInnerElemType, nLocalType);
+              }
+              fctx.body.push({ op: "local.set", index: nLocalIdx });
+            }
+          }
+        }
+      }
+    } else if (ts.isObjectLiteralExpression(el)) {
+      // Array element is object destructuring: [{ a, b }] = [{ a: 1, b: 2 }]
+      const nestedTmp = allocLocal(fctx, `__nested_obj_${fctx.locals.length}`, innerElemType);
+      fctx.body.push({ op: "local.get", index: tmpLocal });
+      fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
+      fctx.body.push({ op: "i32.const", value: i });
+      fctx.body.push({ op: "array.get", typeIdx: innerArrTypeIdx });
+      fctx.body.push({ op: "local.set", index: nestedTmp });
+      // Object destructuring from the element would require further work
+      // For now, skip
+    } else if (ts.isBinaryExpression(el) && el.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+      // Default value: [a = 5] = arr
+      // For now, just assign the array element (ignore default)
+      if (ts.isIdentifier(el.left)) {
+        const localName = el.left.text;
+        let localIdx = fctx.localMap.get(localName);
+        if (localIdx === undefined) {
+          const bindingType = resolveWasmType(ctx, ctx.checker.getTypeAtLocation(el.left));
+          localIdx = allocLocal(fctx, localName, bindingType);
+        }
+        const localType = getLocalType(fctx, localIdx);
+        fctx.body.push({ op: "local.get", index: tmpLocal });
+        fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
+        fctx.body.push({ op: "i32.const", value: i });
+        fctx.body.push({ op: "array.get", typeIdx: innerArrTypeIdx });
+        if (localType && !valTypesMatch(innerElemType, localType)) {
+          coerceType(ctx, fctx, innerElemType, localType);
+        }
+        fctx.body.push({ op: "local.set", index: localIdx });
+      }
+    }
+  }
+
+  // The result of array destructuring assignment is the RHS value
+  fctx.body.push({ op: "local.get", index: tmpLocal });
+  return resultType;
+}
+
+function compileArrayDestructuringFromStruct(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  target: ts.ArrayLiteralExpression,
+  resultType: ValType,
+  structTypeIdx: number,
+  structDef: StructTypeDef,
+): InnerResult {
+  // Handle tuple-like structs: destructure by field index
+  const tmpLocal = allocLocal(fctx, `__tuple_destruct_${fctx.locals.length}`, resultType);
+  fctx.body.push({ op: "local.set", index: tmpLocal });
+
+  for (let i = 0; i < target.elements.length && i < structDef.fields.length; i++) {
+    const el = target.elements[i]!;
+    if (ts.isOmittedExpression(el)) continue;
+    if (!ts.isIdentifier(el)) continue;
+
+    const localName = el.text;
+    let localIdx = fctx.localMap.get(localName);
+    const fieldType = structDef.fields[i]!.type;
+
+    if (localIdx === undefined) {
+      const bindingType = resolveWasmType(ctx, ctx.checker.getTypeAtLocation(el));
+      localIdx = allocLocal(fctx, localName, bindingType);
+    }
+
+    const localType = getLocalType(fctx, localIdx);
+    fctx.body.push({ op: "local.get", index: tmpLocal });
+    fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx: i });
+    if (localType && !valTypesMatch(fieldType, localType)) {
+      coerceType(ctx, fctx, fieldType, localType);
+    }
+    fctx.body.push({ op: "local.set", index: localIdx });
+  }
+
   fctx.body.push({ op: "local.get", index: tmpLocal });
   return resultType;
 }
