@@ -1711,11 +1711,36 @@ function compileForOfDestructuring(
   if (ts.isObjectBindingPattern(pattern)) {
     // Resolve the struct type from the element type
     if (elemType.kind !== "ref" && elemType.kind !== "ref_null") {
-      ctx.errors.push({
-        message: "for-of destructuring: element is not a struct ref",
-        line: getLine(stmt),
-        column: getCol(stmt),
-      });
+      // Primitives (bool, number, string) are object-coercible in JS.
+      // Empty binding pattern `for (let {} of [val])` is a no-op — just iterate.
+      // Non-empty patterns: properties don't exist on primitives, so use defaults
+      // or the appropriate undefined sentinel.
+      for (const element of pattern.elements) {
+        if (!ts.isBindingElement(element)) continue;
+        const localName = (element.name as ts.Identifier).text;
+        const bindingTsType = ctx.checker.getTypeAtLocation(element);
+        const bindingType = resolveWasmType(ctx, bindingTsType);
+        const localIdx = allocLocal(fctx, localName, bindingType);
+        if (element.initializer) {
+          const saved = fctx.body;
+          fctx.body = [];
+          compileExpression(ctx, fctx, element.initializer, bindingType);
+          fctx.body.push({ op: "local.set", index: localIdx } as Instr);
+          const instrs = fctx.body;
+          fctx.body = saved;
+          fctx.body.push(...instrs);
+        } else {
+          // No default — use "undefined" sentinel
+          if (bindingType.kind === "f64") {
+            fctx.body.push({ op: "f64.const", value: NaN });
+          } else if (bindingType.kind === "i32") {
+            fctx.body.push({ op: "i32.const", value: 0 });
+          } else {
+            fctx.body.push({ op: "ref.null", typeIdx: "extern" } as unknown as Instr);
+          }
+          fctx.body.push({ op: "local.set", index: localIdx });
+        }
+      }
       return;
     }
 
@@ -1952,11 +1977,34 @@ function compileForOfAssignDestructuring(
   if (ts.isObjectLiteralExpression(expr)) {
     // for ({a, b} of arr) — elem is a struct ref, extract fields
     if (elemType.kind !== "ref" && elemType.kind !== "ref_null") {
-      ctx.errors.push({
-        message: "for-of assignment destructuring: element is not a struct ref",
-        line: getLine(stmt),
-        column: getCol(stmt),
-      });
+      // Primitives (bool, number, string) are object-coercible in JS.
+      // Empty destructuring `for ({} of [val])` is a no-op — just iterate.
+      // Non-empty patterns: properties don't exist on primitives, so use defaults.
+      for (const prop of expr.properties) {
+        if (ts.isSpreadAssignment(prop)) continue;
+        if (!ts.isShorthandPropertyAssignment(prop) && !ts.isPropertyAssignment(prop)) continue;
+        const targetName = ts.isShorthandPropertyAssignment(prop)
+          ? prop.name.text
+          : ts.isIdentifier(prop.initializer) ? prop.initializer.text
+          : (prop.name as ts.Identifier).text;
+        const targetLocal = fctx.localMap.get(targetName);
+        if (targetLocal === undefined) continue;
+
+        // Property doesn't exist on primitive — use default if provided
+        const init = ts.isShorthandPropertyAssignment(prop) ? prop.objectAssignmentInitializer
+          : ts.isPropertyAssignment(prop) && prop.initializer && ts.isAssignmentExpression
+            ? undefined : undefined;
+        if (init) {
+          const targetType = getLocalType(fctx, targetLocal);
+          const saved = fctx.body;
+          fctx.body = [];
+          compileExpression(ctx, fctx, init, targetType ?? { kind: "externref" });
+          fctx.body.push({ op: "local.set", index: targetLocal } as Instr);
+          const instrs = fctx.body;
+          fctx.body = saved;
+          fctx.body.push(...instrs);
+        }
+      }
       return;
     }
 
