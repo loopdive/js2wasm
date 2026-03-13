@@ -770,6 +770,18 @@ function collectPrimitiveMethodImports(
         }
       }
     }
+    // String(expr) calls need number_toString for number→string coercion
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === "String" &&
+      node.arguments.length >= 1
+    ) {
+      const argType = ctx.checker.getTypeAtLocation(node.arguments[0]!);
+      if (isNumberType(argType) || !isStringType(argType)) {
+        needed.add("number_toString");
+      }
+    }
     // String + non-string concatenation needs number_toString for coercion.
     // Conservative: register whenever either side of + is a string and the
     // other is not (could be number, any, boolean — all may produce f64 at wasm level).

@@ -475,11 +475,7 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     return { skip: true, reason: "class/function .name property" };
   }
 
-  // Skip tests using String() as array/object indexer in assert patterns
-  // (o[String(expr)] — our compiler can't do String() coercion for property access)
-  if (/\w+\[\s*String\s*\(/.test(source) && /assert\.sameValue/.test(source)) {
-    return { skip: true, reason: "String() indexer in assert" };
-  }
+  // (Removed: String() indexer skip — compiler now handles String() coercion)
 
   // (Removed: parseInt with string concatenation skip — compiler now handles these correctly)
 
