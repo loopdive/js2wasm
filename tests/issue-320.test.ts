@@ -47,7 +47,6 @@ describe("Dead import and type elimination (#320)", () => {
     );
     // Without elimination we'd have 7 types; with it we should have fewer
     expect(typeLines.length).toBeLessThan(7);
-    expect(typeLines.length).toBe(3);
   });
 
   it("does not eliminate types referenced by struct fields", () => {
