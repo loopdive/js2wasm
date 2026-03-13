@@ -8026,38 +8026,115 @@ function compileCallExpression(
     if (funcName === "String") {
       if (expr.arguments.length === 0) {
         // String() with no args → ""
-        const emptyStrFuncIdx = ctx.funcMap.get("__str_empty") ?? ctx.funcMap.get("string_empty");
-        if (emptyStrFuncIdx !== undefined) {
-          fctx.body.push({ op: "call", funcIdx: emptyStrFuncIdx });
+        addStringConstantGlobal(ctx, "");
+        const emptyIdx = ctx.stringGlobalMap.get("")!;
+        fctx.body.push({ op: "global.get", index: emptyIdx });
+        return { kind: "externref" };
+      }
+
+      // Check if argument is a null/undefined literal before compiling
+      const strArg0 = expr.arguments[0]!;
+      const strArg0IsNull = strArg0.kind === ts.SyntaxKind.NullKeyword;
+      const strArg0IsUndefined = strArg0.kind === ts.SyntaxKind.UndefinedKeyword ||
+        (ts.isIdentifier(strArg0) && strArg0.text === "undefined") ||
+        ts.isVoidExpression(strArg0);
+
+      if (strArg0IsNull) {
+        // String(null) → "null"
+        addStringConstantGlobal(ctx, "null");
+        const nullGIdx = ctx.stringGlobalMap.get("null")!;
+        fctx.body.push({ op: "global.get", index: nullGIdx });
+        return { kind: "externref" };
+      }
+
+      if (strArg0IsUndefined) {
+        // String(undefined) → "undefined"
+        addStringConstantGlobal(ctx, "undefined");
+        const undefGIdx = ctx.stringGlobalMap.get("undefined")!;
+        fctx.body.push({ op: "global.get", index: undefGIdx });
+        return { kind: "externref" };
+      }
+
+      const argType = compileExpression(ctx, fctx, strArg0);
+
+      if (argType === VOID_RESULT || argType === null) {
+        // String(void-expr) → "undefined"
+        addStringConstantGlobal(ctx, "undefined");
+        const undefGIdx = ctx.stringGlobalMap.get("undefined")!;
+        fctx.body.push({ op: "global.get", index: undefGIdx });
+        return { kind: "externref" };
+      }
+
+      if (argType?.kind === "i32") {
+        // Check if it's a boolean type → "true"/"false"
+        const argTsType = ctx.checker.getTypeAtLocation(strArg0);
+        if (isBooleanType(argTsType)) {
+          emitBoolToString(ctx, fctx);
           return { kind: "externref" };
         }
-        // Fallback: return empty string via toString
+        // number (i32) → string via f64 conversion
         const toStrIdx = ctx.funcMap.get("number_toString");
         if (toStrIdx !== undefined) {
-          fctx.body.push(ctx.fast ? { op: "i32.const", value: 0 } as Instr : { op: "f64.const", value: 0 } as Instr);
+          fctx.body.push({ op: "f64.convert_i32_s" } as Instr);
           fctx.body.push({ op: "call", funcIdx: toStrIdx });
           return { kind: "externref" };
         }
-        return { kind: "externref" };
       }
-      const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
-      if (argType?.kind === "f64" || argType?.kind === "i32") {
+
+      if (argType?.kind === "f64") {
         // number → string
         const toStrIdx = ctx.funcMap.get("number_toString");
         if (toStrIdx !== undefined) {
-          if (argType.kind === "i32") fctx.body.push({ op: "f64.convert_i32_s" } as Instr);
           fctx.body.push({ op: "call", funcIdx: toStrIdx });
           return { kind: "externref" };
         }
       }
+
       if (argType?.kind === "externref") {
-        // Already a string (or null/undefined) — use host toString
+        // Check TS type to determine what this externref actually is
+        const argTsType = ctx.checker.getTypeAtLocation(strArg0);
+        if (argTsType.flags & ts.TypeFlags.Null) {
+          // Drop the ref.null.extern, push "null" constant
+          fctx.body.push({ op: "drop" });
+          addStringConstantGlobal(ctx, "null");
+          const nullGIdx = ctx.stringGlobalMap.get("null")!;
+          fctx.body.push({ op: "global.get", index: nullGIdx });
+          return { kind: "externref" };
+        }
+        if (argTsType.flags & (ts.TypeFlags.Undefined | ts.TypeFlags.Void)) {
+          fctx.body.push({ op: "drop" });
+          addStringConstantGlobal(ctx, "undefined");
+          const undefGIdx = ctx.stringGlobalMap.get("undefined")!;
+          fctx.body.push({ op: "global.get", index: undefGIdx });
+          return { kind: "externref" };
+        }
+        if (isStringType(argTsType)) {
+          // Already a string — return as-is
+          return { kind: "externref" };
+        }
+        // Other externref — try extern_toString if available
         const toStrIdx = ctx.funcMap.get("extern_toString");
         if (toStrIdx !== undefined) {
           fctx.body.push({ op: "call", funcIdx: toStrIdx });
         }
         return { kind: "externref" };
       }
+
+      if ((argType?.kind === "ref" || argType?.kind === "ref_null") && ctx.fast) {
+        // Check if it's a native string type
+        const argTsType = ctx.checker.getTypeAtLocation(strArg0);
+        if (isStringType(argTsType)) {
+          // Already a native string — return as-is
+          return argType;
+        }
+        // Object ref → "[object Object]"
+        fctx.body.push({ op: "drop" });
+        addStringConstantGlobal(ctx, "[object Object]");
+        const objGIdx = ctx.stringGlobalMap.get("[object Object]")!;
+        fctx.body.push({ op: "global.get", index: objGIdx });
+        return { kind: "externref" };
+      }
+
       return argType ?? { kind: "externref" };
     }
 
