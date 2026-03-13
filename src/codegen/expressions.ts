@@ -2501,12 +2501,20 @@ function compileBinaryExpression(
     const rightType = ctx.checker.getTypeAtLocation(expr.right);
     const rightWasm = resolveWasmType(ctx, rightType);
 
-    // Get struct field names if available
+    // Get struct field names if available; detect vec (array) types
     let structFieldNames: string[] | null = null;
+    let isVecType = false;
+    let vecTypeIdx = -1;
     if (rightWasm.kind === "ref" || rightWasm.kind === "ref_null") {
-      const structDef = ctx.mod.types[(rightWasm as { typeIdx: number }).typeIdx];
+      const typeIdx = (rightWasm as { typeIdx: number }).typeIdx;
+      const structDef = ctx.mod.types[typeIdx];
       if (structDef?.kind === "struct") {
-        structFieldNames = structDef.fields.map(f => f.name).filter((n): n is string => n !== undefined);
+        if (structDef.name?.startsWith("__vec_")) {
+          isVecType = true;
+          vecTypeIdx = typeIdx;
+        } else {
+          structFieldNames = structDef.fields.map(f => f.name).filter((n): n is string => n !== undefined);
+        }
       }
     }
 
@@ -2574,6 +2582,43 @@ function compileBinaryExpression(
         const apparentType = ctx.checker.getApparentType(rightType);
         const apparentProp = apparentType.getProperty(staticKey);
         if (apparentProp) tsTypeHasProperty = true;
+      }
+    }
+
+    // Array (vec) index bounds check: `index in arr` → 0 <= index < arr.length
+    if (isVecType && staticKey !== null) {
+      const numIdx = Number(staticKey);
+      if (Number.isFinite(numIdx) && numIdx >= 0 && Number.isInteger(numIdx)) {
+        // Evaluate left for side effects, drop result
+        const leftResult = compileExpression(ctx, fctx, expr.left);
+        if (leftResult && leftResult !== VOID_RESULT) {
+          fctx.body.push({ op: "drop" });
+        }
+        // Compile the array expression to get the vec struct
+        const rightResult = compileExpression(ctx, fctx, expr.right);
+        if (rightResult && rightResult !== VOID_RESULT) {
+          // Read length field (field 0 of vec struct)
+          fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 } as unknown as Instr);
+          // Compare: numIdx < length
+          fctx.body.push({ op: "i32.const", value: numIdx });
+          fctx.body.push({ op: "i32.gt_s" }); // length > index  <==>  index < length
+        } else {
+          fctx.body.push({ op: "i32.const", value: 0 });
+        }
+        return { kind: "i32" };
+      }
+      // Non-numeric key like "length" on array — check TS type
+      if (staticKey === "length") {
+        const leftResult = compileExpression(ctx, fctx, expr.left);
+        if (leftResult && leftResult !== VOID_RESULT) {
+          fctx.body.push({ op: "drop" });
+        }
+        const rightResult = compileExpression(ctx, fctx, expr.right);
+        if (rightResult && rightResult !== VOID_RESULT) {
+          fctx.body.push({ op: "drop" });
+        }
+        fctx.body.push({ op: "i32.const", value: 1 });
+        return { kind: "i32" };
       }
     }
 
