@@ -75,7 +75,7 @@ Can all run in parallel (different diagnostic codes).
 
 | #   | Title | Tests | Ready? |
 |-----|-------|-------|--------|
-| 138 | valueOf/toString coercion on comparison operators | — | Ready |
+| 138 | valueOf/toString coercion on comparison operators | — | **Done** |
 | 139 | valueOf/toString coercion on arithmetic operators | — | Ready (coordinates #138) |
 | 227 | BigInt comparison with Infinity | — | Ready |
 | 228 | BigInt equality with Number/Boolean | — | Ready (coordinates #227) |
