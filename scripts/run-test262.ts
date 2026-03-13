@@ -139,7 +139,12 @@ for (const [batchName, batchCats] of batches) {
         processed++;
         continue;
       }
-      const result = await runTest262File(filePath, category);
+      let result: Awaited<ReturnType<typeof runTest262File>>;
+      try {
+        result = await runTest262File(filePath, category);
+      } catch (e: any) {
+        result = { file: relPath, category, status: "compile_error" as const, error: e?.message ?? String(e) } as any;
+      }
       allResults.push(result);
       stats[result.status]++;
       batchStats[result.status]++;
