@@ -98,7 +98,7 @@ _Goal: Remaining runtime failures, codegen quality, and test infrastructure expa
 | #   | Feature | Status |
 | --- | ------- | ------ |
 | [320](../ready/320.md) | Dead import and type elimination (umbrella) | Open |
-| [318](../ready/318.md) | Infer parameter types from call-site arguments for untyped functions | Open |
+| [318](../done/318.md) | Infer parameter types from call-site arguments for untyped functions | Done |
 | [319](../ready/319.md) | Inline single-use function type signatures in WAT output | Open |
 
 ### Test infrastructure

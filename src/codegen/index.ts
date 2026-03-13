@@ -7092,6 +7092,58 @@ function resolveGenericCallSiteTypes(
 }
 
 /**
+ * Infer a concrete type for an untyped function parameter by scanning call sites.
+ * When a parameter has no type annotation (TS gives it `any`), we look at every
+ * call to that function and collect the argument types at the given index.
+ * If all call sites agree on a single concrete wasm type, we return it.
+ * Returns null if no call site found or types disagree.
+ */
+function inferParamTypeFromCallSites(
+  ctx: CodegenContext,
+  funcName: string,
+  paramIndex: number,
+  sourceFile: ts.SourceFile,
+): ValType | null {
+  let agreed: ValType | null = null;
+  let conflict = false;
+
+  function visit(node: ts.Node) {
+    if (conflict) return;
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === funcName
+    ) {
+      const arg = node.arguments[paramIndex];
+      if (arg) {
+        const argType = ctx.checker.getTypeAtLocation(arg);
+        // Skip if the argument itself is also `any` — no useful info
+        if (argType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) {
+          // Don't count this call site — it doesn't help
+        } else {
+          const wasmType = resolveWasmType(ctx, argType);
+          if (agreed === null) {
+            agreed = wasmType;
+          } else if (agreed.kind !== wasmType.kind) {
+            conflict = true;
+          } else if (
+            (agreed.kind === "ref" || agreed.kind === "ref_null") &&
+            (wasmType.kind === "ref" || wasmType.kind === "ref_null") &&
+            (agreed as { typeIdx: number }).typeIdx !== (wasmType as { typeIdx: number }).typeIdx
+          ) {
+            conflict = true;
+          }
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  ts.forEachChild(sourceFile, visit);
+  return conflict ? null : agreed;
+}
+
+/**
  * Pre-pass: detect empty object literals (`var obj = {}`) that later receive
  * property assignments (`obj.prop = val`) and record the extra properties so
  * that ensureStructForType creates a struct with the correct fields.
@@ -7385,7 +7437,20 @@ function collectDeclarations(
         for (let i = 0; i < stmt.parameters.length; i++) {
           const param = stmt.parameters[i]!;
           const paramType = ctx.checker.getTypeAtLocation(param);
-          const wasmType = resolveWasmType(ctx, paramType);
+          let wasmType = resolveWasmType(ctx, paramType);
+          // Infer untyped any params from call sites (same as non-generator path)
+          if (
+            !param.type &&
+            (paramType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) &&
+            (wasmType.kind === "externref" ||
+              (wasmType.kind === "ref_null" && ctx.anyValueTypeIdx >= 0 &&
+                (wasmType as { typeIdx: number }).typeIdx === ctx.anyValueTypeIdx))
+          ) {
+            const inferred = inferParamTypeFromCallSites(ctx, name, i, sourceFile);
+            if (inferred) {
+              wasmType = inferred;
+            }
+          }
           params.push(wasmType);
         }
         results = [{ kind: "externref" }]; // Returns a JS Generator object
@@ -7423,7 +7488,21 @@ function collectDeclarations(
             });
           } else {
             const paramType = ctx.checker.getTypeAtLocation(param);
-            const wasmType = resolveWasmType(ctx, paramType);
+            let wasmType = resolveWasmType(ctx, paramType);
+            // If the parameter has no explicit type annotation and resolved to
+            // externref (from `any`), try to infer a concrete type from call sites.
+            if (
+              !param.type &&
+              (paramType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) &&
+              (wasmType.kind === "externref" ||
+                (wasmType.kind === "ref_null" && ctx.anyValueTypeIdx >= 0 &&
+                  (wasmType as { typeIdx: number }).typeIdx === ctx.anyValueTypeIdx))
+            ) {
+              const inferred = inferParamTypeFromCallSites(ctx, name, i, sourceFile);
+              if (inferred) {
+                wasmType = inferred;
+              }
+            }
             params.push(wasmType);
           }
         }
@@ -8582,7 +8661,12 @@ function compileFunctionBody(
         type: { kind: "ref_null", typeIdx: restInfo.vecTypeIdx },
       });
     } else {
+      // Prefer the type already established in the function signature (which
+      // may have been inferred from call sites for untyped params).
+      const funcType = ctx.mod.types[func.typeIdx];
+      const sigParamType = funcType?.kind === "func" ? funcType.params[i] : undefined;
       const paramType = resolved?.params[i]
+        ?? sigParamType
         ?? resolveWasmType(ctx, ctx.checker.getTypeAtLocation(param));
       params.push({ name: paramName, type: paramType });
     }
