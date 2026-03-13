@@ -250,3 +250,4 @@
 | 264 | 2026-03-13 | Element access (bracket notation) assignment on struct types | Dep-driven |
 | 291 | 2026-03-13 | In operator compile errors -- dynamic property checks | Dep-driven |
 | 143 | 2026-03-13 | for-loop edge cases -- test coverage verification | Dep-driven |
+| 141 | 2026-03-13 | Tagged template literal runtime failures -- test coverage | Dep-driven |
