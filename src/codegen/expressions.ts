@@ -50,7 +50,8 @@ export function compileExpression(
     }
     const isNull = inner.kind === ts.SyntaxKind.NullKeyword;
     const isUndefined = inner.kind === ts.SyntaxKind.UndefinedKeyword ||
-        (ts.isIdentifier(inner) && inner.text === "undefined");
+        (ts.isIdentifier(inner) && inner.text === "undefined") ||
+        ts.isOmittedExpression(inner);
     if (isNull || isUndefined) {
       if (expectedType.kind === "f64") {
         fctx.body.push({ op: "f64.const", value: isNull ? 0 : NaN });
@@ -560,6 +561,12 @@ function compileExpressionInner(
   }
 
   if (ts.isIdentifier(expr) && expr.text === "undefined") {
+    fctx.body.push({ op: "ref.null.extern" });
+    return { kind: "externref" };
+  }
+
+  // OmittedExpression — array hole/elision, equivalent to undefined
+  if (ts.isOmittedExpression(expr)) {
     fctx.body.push({ op: "ref.null.extern" });
     return { kind: "externref" };
   }
@@ -12662,15 +12669,19 @@ function compileArrayLiteral(
   // Check if any element is a spread
   const hasSpread = expr.elements.some((el) => ts.isSpreadElement(el));
 
-  // Determine element type from first non-spread element, or from spread source
+  // Determine element type from first non-omitted, non-spread element, or from spread source
   let elemWasm: ValType;
   let elemKind: string;
-  const firstElem = expr.elements[0]!;
+  const firstSignificantElem = expr.elements.find((el) => !ts.isOmittedExpression(el));
+  const firstElem = firstSignificantElem ?? expr.elements[0]!;
   if (ts.isSpreadElement(firstElem)) {
     const spreadType = ctx.checker.getTypeAtLocation(firstElem.expression);
     const typeArgs = ctx.checker.getTypeArguments(spreadType as ts.TypeReference);
     const innerType = typeArgs[0];
     elemWasm = innerType ? resolveWasmType(ctx, innerType) : { kind: "f64" };
+  } else if (ts.isOmittedExpression(firstElem)) {
+    // All elements are omitted — use externref (undefined)
+    elemWasm = { kind: "externref" };
   } else {
     const firstElemType = ctx.checker.getTypeAtLocation(firstElem);
     elemWasm = resolveWasmType(ctx, firstElemType);
