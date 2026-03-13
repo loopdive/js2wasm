@@ -269,8 +269,13 @@ All independent of each other and of codegen work.
 | 291 | `in` operator compile errors — dynamic property | [E] | ~10 CE | Ready (coordinates #244) |
 | ~~293~~ | ~~Class method incorrect results~~ | [E] | 10 | **Done** |
 | ~~302~~ | ~~Math.min/max edge cases~~ | [E] | 2 | **Done** |
+<<<<<<< HEAD
 | 303 | parseInt edge cases | [E] | 1 | Ready |
 | ~~304~~ | ~~Unary minus and return edge cases~~ | [E] | 2 | **Done** |
+=======
+| ~~303~~ | ~~parseInt edge cases~~ | [E] | 1 | **Done** |
+| 304 | Unary minus and return edge cases | [E] | 2 | Ready |
+>>>>>>> 0072a3e (fix: parseInt edge cases -- robust undefined assert stripping (#303))
 | 307 | Promise.all/race compile errors | [E] | 7 | Ready |
 | 316 | Array element access out of bounds | [E] | 1 | Done |
 | 229 | Tagged template cache: array out of bounds | [E] | — | Ready |

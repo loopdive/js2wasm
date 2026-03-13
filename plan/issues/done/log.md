@@ -204,6 +204,7 @@
 | 292 | 2026-03-12 | For-loop incorrect computed values -- missing number_toString for any-typed += | Dep-driven |
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 | 286 | 2026-03-12 | Logical assignment compile errors -- nullish and short-circuit | Dep-driven |
 | 283 | 2026-03-12 | Compound assignment type coercion gaps | Dep-driven |
 | 316 | 2026-03-12 | Array element access bounds checking | Dep-driven |
@@ -216,3 +217,6 @@
 =======
 | 294 | 2026-03-12 | Assignment expression evaluation order -- return RHS value | Dep-driven |
 >>>>>>> b69ab6b (fix: assignment expressions return RHS value instead of void (#294))
+=======
+| 303 | 2026-03-12 | parseInt edge cases -- fix undefined assert stripping in test runner | Dep-driven |
+>>>>>>> 0072a3e (fix: parseInt edge cases -- robust undefined assert stripping (#303))
