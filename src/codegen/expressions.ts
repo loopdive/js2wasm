@@ -9211,6 +9211,119 @@ function compileSuperMethodCall(
 }
 
 /**
+ * Compile `super.prop` — access a parent class property or getter via `this`.
+ * For getter accessors, calls the parent's getter function.
+ * For struct fields, accesses the field on `this` (child struct inherits parent fields).
+ */
+function compileSuperPropertyAccess(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.PropertyAccessExpression,
+  propName: string,
+): ValType | null {
+  // Determine which class we're in from the current function name (ClassName_methodName)
+  const currentFuncName = fctx.name;
+  const underscoreIdx = currentFuncName.indexOf("_");
+  if (underscoreIdx === -1) {
+    ctx.errors.push({
+      message: `Cannot use super outside of a class method: ${currentFuncName}`,
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+  const currentClassName = currentFuncName.substring(0, underscoreIdx);
+
+  // Find parent class
+  const parentClassName = ctx.classParentMap.get(currentClassName);
+  if (!parentClassName) {
+    ctx.errors.push({
+      message: `Cannot use super in class without parent: ${currentClassName}`,
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+
+  // Check for parent getter accessor — walk up inheritance chain
+  let ancestor: string | undefined = parentClassName;
+  while (ancestor) {
+    const accessorKey = `${ancestor}_${propName}`;
+    if (ctx.classAccessorSet.has(accessorKey)) {
+      const getterName = `${ancestor}_get_${propName}`;
+      const funcIdx = ctx.funcMap.get(getterName);
+      if (funcIdx !== undefined) {
+        // Push this as argument to the getter
+        const selfIdx = fctx.localMap.get("this");
+        if (selfIdx !== undefined) {
+          fctx.body.push({ op: "local.get", index: selfIdx });
+        }
+        fctx.body.push({ op: "call", funcIdx });
+        const propType = ctx.checker.getTypeAtLocation(expr);
+        return resolveWasmType(ctx, propType);
+      }
+    }
+    ancestor = ctx.classParentMap.get(ancestor);
+  }
+
+  // Fall back to struct field access on `this` — child struct includes parent fields
+  // Walk up to find which ancestor defines this field
+  ancestor = parentClassName;
+  while (ancestor) {
+    const structTypeIdx = ctx.structMap.get(ancestor);
+    const fields = ctx.structFields.get(ancestor);
+    if (structTypeIdx !== undefined && fields) {
+      const fieldIdx = fields.findIndex((f) => f.name === propName);
+      if (fieldIdx !== -1) {
+        // Use the current class's struct since it inherits all parent fields
+        const currentStructTypeIdx = ctx.structMap.get(currentClassName);
+        const currentFields = ctx.structFields.get(currentClassName);
+        if (currentStructTypeIdx !== undefined && currentFields) {
+          const currentFieldIdx = currentFields.findIndex((f) => f.name === propName);
+          if (currentFieldIdx !== -1) {
+            const selfIdx = fctx.localMap.get("this");
+            if (selfIdx !== undefined) {
+              fctx.body.push({ op: "local.get", index: selfIdx });
+            }
+            fctx.body.push({
+              op: "struct.get",
+              typeIdx: currentStructTypeIdx,
+              fieldIdx: currentFieldIdx,
+            });
+            return currentFields[currentFieldIdx]!.type;
+          }
+        }
+        // If not found in current, try parent struct directly
+        const selfIdx = fctx.localMap.get("this");
+        if (selfIdx !== undefined) {
+          fctx.body.push({ op: "local.get", index: selfIdx });
+        }
+        fctx.body.push({
+          op: "struct.get",
+          typeIdx: structTypeIdx,
+          fieldIdx,
+        });
+        return fields[fieldIdx]!.type;
+      }
+    }
+    ancestor = ctx.classParentMap.get(ancestor);
+  }
+
+  // Fallback: could be a method reference (not a call) — try to find a parent method
+  // For now, emit a default based on the TypeScript type at the access site
+  const accessType = ctx.checker.getTypeAtLocation(expr);
+  const wasmType = resolveWasmType(ctx, accessType);
+  if (wasmType.kind === "f64") {
+    fctx.body.push({ op: "f64.const", value: 0 });
+  } else if (wasmType.kind === "i32") {
+    fctx.body.push({ op: "i32.const", value: 0 });
+  } else {
+    fctx.body.push({ op: "ref.null.extern" });
+  }
+  return wasmType;
+}
+
+/**
  * Infer the element type of an untyped `new Array()` by scanning how the
  * target variable is used. Walks the enclosing function body for element
  * assignments (arr[i] = value) and push calls (arr.push(value)), then
@@ -10779,6 +10892,11 @@ function compilePropertyAccess(
 
   const objType = ctx.checker.getTypeAtLocation(expr.expression);
   const propName = ts.isPrivateIdentifier(expr.name) ? expr.name.text.slice(1) : expr.name.text;
+
+  // Handle super.prop — access parent class property/getter on current `this`
+  if (expr.expression.kind === ts.SyntaxKind.SuperKeyword) {
+    return compileSuperPropertyAccess(ctx, fctx, expr, propName);
+  }
 
   // Check for enum member access: EnumName.Member
   if (ts.isIdentifier(expr.expression)) {
