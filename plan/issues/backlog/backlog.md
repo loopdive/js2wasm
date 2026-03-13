@@ -107,7 +107,7 @@ _Goal: Remaining runtime failures, codegen quality, and test infrastructure expa
 | --- | ------- | ------ |
 | [309](../ready/309.md) | Expand test262 harness includes -- propertyIsEnumerable, fnGlobalObject | Open |
 | [310](../ready/310.md) | Reduce skip filters -- re-evaluate conservative skips | Open |
-| [311](../ready/311.md) | Test262 category expansion -- built-ins/String/prototype new methods | Open |
+| [311](../done/311.md) | Test262 category expansion -- built-ins/String/prototype new methods | Done |
 | [312](../ready/312.md) | Test262 category expansion -- built-ins/Number methods | Open |
 | [313](../ready/313.md) | Test262 category expansion -- language/expressions new categories | Open |
 | [314](../ready/314.md) | Performance -- compile time profiling and optimization | Open |
