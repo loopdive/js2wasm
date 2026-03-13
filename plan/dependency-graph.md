@@ -77,7 +77,7 @@ Can all run in parallel (different diagnostic codes).
 |-----|-------|-------|--------|
 | 138 | valueOf/toString coercion on comparison operators | — | **Done** |
 | 139 | valueOf/toString coercion on arithmetic operators | — | Ready (coordinates #138) |
-| 227 | BigInt comparison with Infinity | — | Ready |
+| 227 | BigInt comparison with Infinity | — | **Done** |
 | 228 | BigInt equality with Number/Boolean | — | Ready (coordinates #227) |
 | 237 | BigInt i64 vs externref type mismatch | — | Ready (coordinates #227, #228) |
 | 295 | Comparison operators with type coercion | 8 | **Done** |
