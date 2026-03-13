@@ -4364,8 +4364,13 @@ function compileLogicalAssignment(
   };
 
   if (op === ts.SyntaxKind.QuestionQuestionEqualsToken) {
-    // a ??= b  →  if (a is null) { a = b }; result = a
-    // This operates on externref (nullable) values
+    // a ??= b  →  if (a is null/undefined) { a = b }; result = a
+    // For value types (i32, i64, f32, f64, etc.), values can never be null/undefined,
+    // so just return the current value without evaluating RHS (short-circuit).
+    if (!isRefType(varType)) {
+      emitGet();
+      return varType;
+    }
     emitGet();
     fctx.body.push({ op: "ref.is_null" });
 
@@ -4632,6 +4637,15 @@ function compileElementLogicalAssignment(
 }
 
 /**
+ * Check if a ValType is a reference type (can be used with ref.is_null).
+ * Value types (i32, i64, f32, f64, v128, i16) are never null/undefined.
+ */
+function isRefType(t: ValType): boolean {
+  return t.kind === "ref" || t.kind === "ref_null" || t.kind === "funcref" ||
+         t.kind === "externref" || t.kind === "ref_extern" || t.kind === "eqref";
+}
+
+/**
  * Common logic for logical assignment patterns (??=, ||=, &&=).
  * Given emitGet/emitSet closures for the target, emit the if/else with short-circuit semantics.
  */
@@ -4645,7 +4659,13 @@ function emitLogicalAssignmentPattern(
   emitSet: () => void,
 ): ValType | null {
   if (op === ts.SyntaxKind.QuestionQuestionEqualsToken) {
-    // target ??= rhs  →  if (target is null) { target = rhs }; result = target
+    // target ??= rhs  →  if (target is null/undefined) { target = rhs }; result = target
+    // For value types (i32, i64, f32, f64, etc.), values can never be null/undefined,
+    // so just return the current value without evaluating RHS (short-circuit).
+    if (!isRefType(varType)) {
+      emitGet();
+      return varType;
+    }
     emitGet();
     fctx.body.push({ op: "ref.is_null" });
 
