@@ -28,6 +28,7 @@ import { createEmptyModule } from "../ir/types.js";
 import { compileExpression, resolveComputedKeyExpression } from "./expressions.js";
 import { collectShapes } from "../shape-inference.js";
 import { compileStatement, hoistFunctionDeclarations } from "./statements.js";
+import { emitInlineMathFunctions } from "./math-helpers.js";
 
 /** Result returned by generateModule / generateMultiModule */
 export interface CodegenResult {
@@ -226,6 +227,8 @@ export interface CodegenContext {
   widenedTypeProperties: Map<string, { name: string; type: ValType }[]>;
   /** Map from widened variable name to its registered struct name */
   widenedVarStructMap: Map<string, string>;
+  /** Math methods that need inline Wasm implementations (filled by collectMathImports, consumed by emitInlineMathFunctions) */
+  pendingMathMethods: Set<string>;
 }
 
 /** Metadata for a closure stored in a local variable */
@@ -359,6 +362,7 @@ export function generateModule(
     templateCacheCounter: 0,
     widenedTypeProperties: new Map(),
     widenedVarStructMap: new Map(),
+    pendingMathMethods: new Set(),
   };
 
   // Register native string types if fast mode
@@ -436,6 +440,11 @@ export function generateModule(
 
   // Collect unknown constructor imports (__new_X for `new X(...)` where X is not a known class)
   collectUnknownConstructorImports(ctx, ast.sourceFile);
+
+  // Emit inline Wasm implementations for Math methods (after all imports are registered)
+  if (ctx.pendingMathMethods.size > 0) {
+    emitInlineMathFunctions(ctx, ctx.pendingMathMethods);
+  }
 
   // Second pass: collect all function declarations and interfaces
   collectDeclarations(ctx, ast.sourceFile);
@@ -524,6 +533,7 @@ export function generateMultiModule(
     closureInfoByTypeIdx: new Map(),
     genericResolved: new Map(),
     funcRestParams: new Map(),
+    valueOfClosureTypes: new Map(),
     hasUnionImports: false,
     asyncFunctions: new Set(),
     generatorFunctions: new Set(),
@@ -554,6 +564,7 @@ export function generateMultiModule(
     templateCacheCounter: 0,
     widenedTypeProperties: new Map(),
     widenedVarStructMap: new Map(),
+    pendingMathMethods: new Set(),
   };
 
   // Register native string types if fast mode
@@ -604,6 +615,11 @@ export function generateMultiModule(
     collectInExprStringLiterals(ctx, sf);
     collectObjectMethodStringLiterals(ctx, sf);
     collectUnknownConstructorImports(ctx, sf);
+  }
+
+  // Emit inline Wasm implementations for Math methods (after all imports are registered)
+  if (ctx.pendingMathMethods.size > 0) {
+    emitInlineMathFunctions(ctx, ctx.pendingMathMethods);
   }
 
   // Phase 2: Collect all declarations — only entry file gets Wasm exports
@@ -4676,18 +4692,12 @@ function collectMathImports(
 
   for (const method of needed) {
     if (method === "random") {
+      // Math.random requires entropy — must remain a host import
       const typeIdx = addFuncType(ctx, [], [{ kind: "f64" }]);
       addImport(ctx, "env", `Math_${method}`, { kind: "func", typeIdx });
-    } else if (MATH_HOST_METHODS_2ARG.has(method)) {
-      const typeIdx = addFuncType(
-        ctx,
-        [{ kind: "f64" }, { kind: "f64" }],
-        [{ kind: "f64" }],
-      );
-      addImport(ctx, "env", `Math_${method}`, { kind: "func", typeIdx });
     } else {
-      const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "f64" }]);
-      addImport(ctx, "env", `Math_${method}`, { kind: "func", typeIdx });
+      // All other math methods get pure Wasm implementations
+      ctx.pendingMathMethods.add(method);
     }
   }
 
