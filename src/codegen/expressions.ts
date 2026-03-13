@@ -581,7 +581,9 @@ function compileExpressionInner(
       const localDef = fctx.locals[selfIdx - fctx.params.length];
       return localDef?.type ?? { kind: "externref" };
     }
-    return null;
+    // In module/global scope (strict mode), `this` is undefined.
+    fctx.body.push({ op: "ref.null.extern" });
+    return { kind: "externref" };
   }
 
   if (ts.isIdentifier(expr)) {
@@ -801,6 +803,11 @@ function compileRegExpLiteral(
 export function collectReferencedIdentifiers(node: ts.Node, names: Set<string>): void {
   if (ts.isIdentifier(node)) {
     names.add(node.text);
+  }
+  // Track `this` keyword references so arrow functions can capture the
+  // enclosing scope's `this` through the normal closure mechanism.
+  if (node.kind === ts.SyntaxKind.ThisKeyword) {
+    names.add("this");
   }
   ts.forEachChild(node, (child) => collectReferencedIdentifiers(child, names));
 }
