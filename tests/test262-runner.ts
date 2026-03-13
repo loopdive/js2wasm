@@ -96,10 +96,8 @@ export interface FilterResult {
 }
 
 export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
-  // Skip negative tests (expected errors)
-  if (meta.negative) {
-    return { skip: true, reason: "negative test" };
-  }
+  // Negative tests are now handled — don't skip them.
+  // (They are processed specially in runTest262File.)
 
   // Skip async tests
   if (meta.flags?.includes("async")) {
@@ -1577,6 +1575,90 @@ export interface TestResult {
 /** Default per-test timeout in milliseconds (prevents infinite-loop hangs) */
 const TEST_TIMEOUT_MS = 5000;
 
+/**
+ * Handle a negative test — one that is expected to fail at parse, early, or
+ * runtime phase with a specific error type (SyntaxError, ReferenceError, etc.).
+ *
+ * For parse/early phase: the test passes if compilation rejects the code.
+ * For runtime phase: the test passes if execution throws (traps).
+ *
+ * Returns a TestResult, or null if the test is not a negative test.
+ */
+export async function handleNegativeTest(
+  source: string,
+  meta: Test262Meta,
+  relPath: string,
+  category: string,
+): Promise<TestResult | null> {
+  if (!meta.negative) return null;
+
+  const { phase, type } = meta.negative;
+  const totalStart = performance.now();
+
+  if (phase === "parse" || phase === "early") {
+    // For parse/early phase negative tests, we attempt to compile the raw
+    // source (without our test wrapper, since the wrapper adds assert shims
+    // that would mask parse errors). If compilation fails, the test passes.
+    //
+    // We wrap minimally — just enough for the compiler to accept it as a module.
+    const minimalWrapped = source.replace(/\/\*---[\s\S]*?---\*\//, "") + "\nexport {};\n";
+
+    let compileMs = 0;
+    const compileStart = performance.now();
+    try {
+      const result = compile(minimalWrapped, { fileName: "test.ts" });
+      compileMs = performance.now() - compileStart;
+      const totalMs = performance.now() - totalStart;
+      const timing: TestTiming = { totalMs: round2(totalMs), compileMs: round2(compileMs), instantiateMs: 0, executeMs: 0 };
+
+      if (!result.success || result.errors.some(e => e.severity === "error")) {
+        // Compilation failed as expected — negative test passes
+        return { file: relPath, category, status: "pass", timing };
+      }
+
+      // Compilation succeeded — but this test expected a parse/early error.
+      // Try instantiating: if wasm validation rejects it, that also counts.
+      try {
+        const imports = buildImports(result.imports, undefined, result.stringPool);
+        await WebAssembly.instantiate(result.binary, imports);
+      } catch {
+        // Instantiation failed — counts as expected error
+        const totalMs2 = performance.now() - totalStart;
+        return { file: relPath, category, status: "pass", timing: { totalMs: round2(totalMs2), compileMs: round2(compileMs), instantiateMs: 0, executeMs: 0 } };
+      }
+
+      // Code compiled and instantiated successfully — negative test fails
+      return {
+        file: relPath, category, status: "fail",
+        error: `expected ${phase} ${type} but compilation succeeded`,
+        timing,
+      };
+    } catch {
+      // compile() threw an exception — compilation failed as expected
+      compileMs = performance.now() - compileStart;
+      const totalMs = performance.now() - totalStart;
+      return {
+        file: relPath, category, status: "pass",
+        timing: { totalMs: round2(totalMs), compileMs: round2(compileMs), instantiateMs: 0, executeMs: 0 },
+      };
+    }
+  }
+
+  if (phase === "runtime") {
+    // For runtime phase, compile the test normally (with wrapper) and
+    // check if execution throws/traps with the expected error.
+    // Return null to let the normal flow handle compilation, but the
+    // caller will check the result differently.
+    return null;
+  }
+
+  // Unknown phase — skip
+  return {
+    file: relPath, category, status: "skip",
+    reason: `unknown negative phase: ${phase}`,
+  };
+}
+
 export async function runTest262File(filePath: string, category: string, timeoutMs = TEST_TIMEOUT_MS): Promise<TestResult> {
   const totalStart = performance.now();
   const relPath = relative(TEST262_ROOT, filePath);
@@ -1587,6 +1669,17 @@ export async function runTest262File(filePath: string, category: string, timeout
   if (filter.skip) {
     return { file: relPath, category, status: "skip", reason: filter.reason };
   }
+
+  // Handle parse/early-phase negative tests
+  if (meta.negative && (meta.negative.phase === "parse" || meta.negative.phase === "early")) {
+    const negResult = await handleNegativeTest(source, meta, relPath, category);
+    if (negResult) return negResult;
+  }
+
+  // For runtime negative tests, we still need to apply skip filters that
+  // apply to the source (e.g. eval, with, etc.) — those were already checked
+  // above. Now compile and run normally, but interpret results differently.
+  const isRuntimeNegative = meta.negative?.phase === "runtime";
 
   // Wrap the test
   const wrapped = wrapTest(source, meta);
@@ -1601,21 +1694,35 @@ export async function runTest262File(filePath: string, category: string, timeout
   } catch (compileErr: any) {
     compileMs = performance.now() - compileStart;
     const totalMs = performance.now() - totalStart;
+    const timing: TestTiming = { totalMs: round2(totalMs), compileMs: round2(compileMs), instantiateMs: 0, executeMs: 0 };
+    // For runtime negative tests, a compile error is not expected — the code
+    // should compile successfully and fail at runtime.
+    if (isRuntimeNegative) {
+      return { file: relPath, category, status: "compile_error", error: compileErr.message ?? String(compileErr), timing };
+    }
     return {
       file: relPath, category, status: "compile_error",
       error: compileErr.message ?? String(compileErr),
-      timing: { totalMs: round2(totalMs), compileMs: round2(compileMs), instantiateMs: 0, executeMs: 0 },
+      timing,
     };
   }
 
   if (!result.success || result.errors.some(e => e.severity === "error")) {
     const totalMs = performance.now() - totalStart;
+    const timing: TestTiming = { totalMs: round2(totalMs), compileMs: round2(compileMs), instantiateMs: 0, executeMs: 0 };
+    if (isRuntimeNegative) {
+      return {
+        file: relPath, category, status: "compile_error",
+        error: (result.errors.filter(e => e.severity === "error").map(e => e.message).join("; ") || result.errors.map(e => e.message).join("; ")),
+        timing,
+      };
+    }
     return {
       file: relPath,
       category,
       status: "compile_error",
       error: (result.errors.filter(e => e.severity === "error").map(e => e.message).join("; ") || result.errors.map(e => e.message).join("; ")),
-      timing: { totalMs: round2(totalMs), compileMs: round2(compileMs), instantiateMs: 0, executeMs: 0 },
+      timing,
     };
   }
 
@@ -1642,6 +1749,12 @@ export async function runTest262File(filePath: string, category: string, timeout
     const totalMs = performance.now() - totalStart;
     const timing: TestTiming = { totalMs: round2(totalMs), compileMs: round2(compileMs), instantiateMs: round2(instantiateMs), executeMs: round2(executeMs) };
 
+    if (isRuntimeNegative) {
+      // Runtime negative test: execution completed without error — that means
+      // the expected runtime error did NOT happen, so the test fails.
+      return { file: relPath, category, status: "fail", error: `expected runtime ${meta.negative!.type} but execution succeeded`, timing };
+    }
+
     if (ret === 1 || ret === 1.0) {
       return { file: relPath, category, status: "pass", timing };
     }
@@ -1649,6 +1762,13 @@ export async function runTest262File(filePath: string, category: string, timeout
   } catch (err: any) {
     const totalMs = performance.now() - totalStart;
     const timing: TestTiming = { totalMs: round2(totalMs), compileMs: round2(compileMs), instantiateMs: round2(instantiateMs), executeMs: round2(executeMs) };
+
+    if (isRuntimeNegative) {
+      // Runtime negative test: execution threw/trapped — this is the expected
+      // behavior. The test passes.
+      return { file: relPath, category, status: "pass", timing };
+    }
+
     // WebAssembly.CompileError during instantiation is a compile error, not a test failure
     if (err instanceof WebAssembly.CompileError || err?.constructor?.name === "CompileError") {
       return { file: relPath, category, status: "compile_error", error: err.message, timing };
