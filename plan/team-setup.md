@@ -17,15 +17,18 @@ type: project
 - Team spec at `plan/team.md`
 
 ## Developer Constraints
-- **Max 2 developers at a time.** Do not launch large batches.
-- **No file overlap.** Before launching a pair of developers, check which files each issue will modify. If they overlap, run them sequentially.
-- **Merge before next.** After a developer finishes, merge their changes back to main before launching the next developer whose worktree should be based on the updated main.
+- **Up to 12 developers at a time.** Each runs in an isolated git worktree. Cherry-pick commits to main as they complete.
+- **Same-file is OK if different functions.** Most codegen issues touch `expressions.ts` but modify different functions. Git 3-way merge handles this cleanly. Only avoid parallel work on the *same function*.
+- **Cherry-pick, don't merge.** Each worktree is based on an older main. Cherry-pick individual commits to avoid pulling in stale state. Resolve `plan/` conflicts (log.md, dependency-graph.md) by keeping both sides.
+- **Batch diagnostic-only issues directly.** Issues that only add a code to `DOWNGRADE_DIAG_CODES` don't need a developer agent — do them in one commit.
 
 ## Conflict Avoidance Strategy
-1. **Separate test files per issue.** Each developer writes tests to `tests/issue-{N}.test.ts` instead of appending to `equivalence.test.ts`. Consolidate later if desired.
-2. **Batch diagnostic-only issues manually.** Issues that just add a code to `DOWNGRADE_DIAG_CODES` in `src/compiler.ts` don't need a developer agent — do them in one commit directly.
-3. **Developers don't touch `plan/`.** Update `backlog.md` and `issues/*.md` after merging, not during development.
-4. **Pair by source file.** Only run two developers in parallel if they touch different source files (e.g., one `expressions.ts`, one `statements.ts`). Two issues both needing `expressions.ts` must be sequential.
+1. **Separate test files per issue.** Each developer writes tests to `tests/issue-{N}.test.ts` or `tests/equivalence/{topic}.test.ts`. Never append to a shared file.
+2. **Batch diagnostic-only issues directly.** Issues that just add a code to `DOWNGRADE_DIAG_CODES` in `src/compiler.ts` don't need a developer agent — do them in one commit.
+3. **Developers update plan/ but conflicts are expected.** Plan file conflicts (log.md, dependency-graph.md) are trivial — keep both sides with `sed -i '/^<<<<<<</d; /^=======/d; /^>>>>>>>/d'`.
+4. **Pick issues targeting different functions.** Multiple agents can touch `expressions.ts` simultaneously if they modify different functions (e.g., one does `compileBinaryExpression`, another does `compileInstanceOf`). Avoid two agents modifying the same function.
+5. **Cherry-pick individual commits.** Never merge worktree branches — cherry-pick the single fix commit. This avoids pulling in stale base state. Use `git cherry-pick --no-commit` + inspect, or `git cherry-pick` directly if clean.
+6. **Already-done issues are common.** Many issues turn out to be already fixed by prior work. Agents should verify the issue is still open before implementing. Close these with just a plan file update.
 
 ## Issue Frontmatter
 
