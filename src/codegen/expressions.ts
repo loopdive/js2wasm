@@ -1904,7 +1904,88 @@ function compileInstanceOf(
   const leftType = compileExpression(ctx, fctx, expr.left);
   if (!leftType) return null;
 
-  // Resolve the struct type index from the left operand's type
+  // Resolve the struct type index for the right-side class (the target we test against)
+  const rightStructTypeIdx = ctx.structMap.get(className);
+
+  // Find the root ancestor of the right class (for casting externref values)
+  let rootClass = className;
+  while (ctx.classParentMap.has(rootClass)) {
+    rootClass = ctx.classParentMap.get(rootClass)!;
+  }
+  const rootStructTypeIdx = ctx.structMap.get(rootClass) ?? rightStructTypeIdx;
+
+  // --- Handle externref left operand (any type) ---
+  // When the left operand is externref, we cannot do struct.get directly.
+  // Convert externref -> anyref, try to cast to the root struct type,
+  // then read the __tag field and compare against compatible tags.
+  // We use ref.test first to avoid trapping on non-struct values (null, primitives).
+  if (leftType.kind === "externref") {
+    if (rootStructTypeIdx === undefined) {
+      // Cannot resolve any struct type — drop and emit false
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "i32.const", value: 0 });
+      return { kind: "i32" };
+    }
+
+    // Convert externref -> anyref, store in local
+    fctx.body.push({ op: "any.convert_extern" });
+    const anyLocalIdx = allocLocal(fctx, `__instanceof_any_${fctx.locals.length}`, { kind: "anyref" });
+    fctx.body.push({ op: "local.set", index: anyLocalIdx });
+
+    // Build the "then" branch: value is NOT a struct of the right root type → false
+    const thenBody: Instr[] = [
+      { op: "i32.const", value: 0 },
+    ];
+
+    // Build the "else" branch: value IS a struct → read __tag and compare
+    const elseBody: Instr[] = [
+      { op: "local.get", index: anyLocalIdx },
+      { op: "ref.cast", typeIdx: rootStructTypeIdx } as unknown as Instr,
+      { op: "struct.get", typeIdx: rootStructTypeIdx, fieldIdx: 0 },
+    ];
+
+    if (compatibleTags.length === 1) {
+      elseBody.push({ op: "i32.const", value: compatibleTags[0]! });
+      elseBody.push({ op: "i32.eq" });
+    } else {
+      const tagLocalIdx = allocLocal(fctx, `__instanceof_tag_${fctx.locals.length}`, { kind: "i32" });
+      elseBody.push({ op: "local.set", index: tagLocalIdx });
+      elseBody.push({ op: "local.get", index: tagLocalIdx });
+      elseBody.push({ op: "i32.const", value: compatibleTags[0]! });
+      elseBody.push({ op: "i32.eq" });
+      for (let i = 1; i < compatibleTags.length; i++) {
+        elseBody.push({ op: "local.get", index: tagLocalIdx });
+        elseBody.push({ op: "i32.const", value: compatibleTags[i]! });
+        elseBody.push({ op: "i32.eq" });
+        elseBody.push({ op: "i32.or" });
+      }
+    }
+
+    // Emit: (local.get $any) (ref.test (ref $rootStruct))
+    //        (if (result i32) (then i32.const 0) (else ...read tag...))
+    // Note: ref.test returns 0 for non-struct values and null, 1 for matching struct.
+    // We invert the condition: if ref.test FAILS → 0, if PASSES → check tag.
+    fctx.body.push({ op: "local.get", index: anyLocalIdx });
+    fctx.body.push({ op: "ref.test", typeIdx: rootStructTypeIdx } as unknown as Instr);
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "val", type: { kind: "i32" } },
+      then: elseBody,   // ref.test passed → check tag
+      else: thenBody,    // ref.test failed → false
+    } as unknown as Instr);
+
+    return { kind: "i32" };
+  }
+
+  // --- Handle i32 or f64 left operand (primitive types) ---
+  // Primitives are never instances of a class — drop and emit false
+  if (leftType.kind === "i32" || leftType.kind === "f64") {
+    fctx.body.push({ op: "drop" });
+    fctx.body.push({ op: "i32.const", value: 0 });
+    return { kind: "i32" };
+  }
+
+  // --- Resolve the struct type index from the left operand's type ---
   const leftTsType = ctx.checker.getTypeAtLocation(expr.left);
   let leftClassName = leftTsType.getSymbol()?.name;
   if (leftClassName && !ctx.structMap.has(leftClassName)) {
@@ -1915,16 +1996,7 @@ function compileInstanceOf(
   // If the left operand type is not directly resolvable, try to find any struct
   // that could be the base type. For union types or 'any', we try the right class's struct.
   if (leftStructTypeIdx === undefined) {
-    // Try using the right-side class's struct type as a cast target
-    const rightStructTypeIdx = ctx.structMap.get(className);
-    if (rightStructTypeIdx !== undefined) {
-      // Find the root ancestor of the right class to use as the cast type
-      let rootClass = className;
-      while (ctx.classParentMap.has(rootClass)) {
-        rootClass = ctx.classParentMap.get(rootClass)!;
-      }
-      leftStructTypeIdx = ctx.structMap.get(rootClass) ?? rightStructTypeIdx;
-    }
+    leftStructTypeIdx = rootStructTypeIdx;
   }
 
   if (leftStructTypeIdx === undefined) {
@@ -1934,6 +2006,57 @@ function compileInstanceOf(
     return { kind: "i32" };
   }
 
+  // --- Handle nullable ref (ref_null) — null instanceof X must be false ---
+  // For nullable refs, emit: if (ref.is_null) then 0 else (tag check)
+  const isNullable = leftType.kind === "ref_null";
+  if (isNullable) {
+    // Store the ref in a local so we can test it for null and re-use it
+    const refLocalIdx = allocLocal(fctx, `__instanceof_ref_${fctx.locals.length}`, leftType);
+    fctx.body.push({ op: "local.set", index: refLocalIdx });
+
+    // Build the "then" branch (null case → false)
+    const thenBody: Instr[] = [
+      { op: "i32.const", value: 0 },
+    ];
+
+    // Build the "else" branch (non-null case → read tag and compare)
+    const elseBody: Instr[] = [
+      { op: "local.get", index: refLocalIdx },
+      { op: "ref.cast", typeIdx: leftStructTypeIdx } as unknown as Instr,
+      { op: "struct.get", typeIdx: leftStructTypeIdx, fieldIdx: 0 },
+    ];
+
+    if (compatibleTags.length === 1) {
+      elseBody.push({ op: "i32.const", value: compatibleTags[0]! });
+      elseBody.push({ op: "i32.eq" });
+    } else {
+      const tagLocalIdx = allocLocal(fctx, `__instanceof_tag_${fctx.locals.length}`, { kind: "i32" });
+      elseBody.push({ op: "local.set", index: tagLocalIdx });
+      elseBody.push({ op: "local.get", index: tagLocalIdx });
+      elseBody.push({ op: "i32.const", value: compatibleTags[0]! });
+      elseBody.push({ op: "i32.eq" });
+      for (let i = 1; i < compatibleTags.length; i++) {
+        elseBody.push({ op: "local.get", index: tagLocalIdx });
+        elseBody.push({ op: "i32.const", value: compatibleTags[i]! });
+        elseBody.push({ op: "i32.eq" });
+        elseBody.push({ op: "i32.or" });
+      }
+    }
+
+    // Emit: (local.get $ref) (ref.is_null) (if (result i32) (then ...) (else ...))
+    fctx.body.push({ op: "local.get", index: refLocalIdx });
+    fctx.body.push({ op: "ref.is_null" });
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "val", type: { kind: "i32" } },
+      then: thenBody,
+      else: elseBody,
+    } as unknown as Instr);
+
+    return { kind: "i32" };
+  }
+
+  // --- Non-nullable ref path: read __tag field directly ---
   // Read the __tag field (field index 0) from the struct
   fctx.body.push({ op: "struct.get", typeIdx: leftStructTypeIdx, fieldIdx: 0 });
 

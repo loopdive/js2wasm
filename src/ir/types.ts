@@ -86,7 +86,8 @@ export type ValType =
   | { kind: "funcref" }
   | { kind: "externref" }
   | { kind: "ref_extern" }
-  | { kind: "eqref" };
+  | { kind: "eqref" }
+  | { kind: "anyref" };
 
 export interface WasmFunction {
   name: string;

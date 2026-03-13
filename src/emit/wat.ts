@@ -275,6 +275,8 @@ function formatValType(t: ValType): string {
       return "externref";
     case "eqref":
       return "eqref";
+    case "anyref":
+      return "anyref";
     case "ref_extern":
       return "(ref extern)";
     case "ref":
