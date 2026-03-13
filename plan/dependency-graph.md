@@ -192,7 +192,7 @@ Can all run in parallel (different diagnostic codes).
 ```
 #250 (for-loop with function declarations) ── independent
 #292 (for-loop incorrect computed values) ── independent
-#268 (iterator protocol / Symbol.iterator) ── independent
+#268 (iterator protocol / Symbol.iterator) ── DONE (strings only)
 #289 (for-in compile errors — property enum) ── independent
 #297 (switch fall-through) ── independent
 #298 (function statement hoisting in blocks) ── independent
@@ -202,7 +202,7 @@ Can all run in parallel (different diagnostic codes).
 |-----|-------|-------|--------|
 | 250 | For-loop with function declarations | ~113 CE | Ready |
 | 292 | For-loop incorrect computed values | 15 | Done |
-| 268 | Iterator protocol — Symbol.iterator | — | Ready |
+| 268 | Iterator protocol — Symbol.iterator | — | Done (strings) |
 | 289 | For-in compile errors | ~13 CE | Ready |
 | 297 | Switch statement fall-through | 2 | Done |
 | 298 | Function statement edge cases | 7 | Done |

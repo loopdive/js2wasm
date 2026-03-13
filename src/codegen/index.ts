@@ -5422,6 +5422,10 @@ function collectIteratorImports(
       const sym =
         (exprType as ts.TypeReference).symbol ?? (exprType as ts.Type).symbol;
       if (sym?.name !== "Array") {
+        // In fast mode, strings are iterated natively — no iterator imports needed
+        if (ctx.fast && ctx.anyStrTypeIdx >= 0 && isStringType(exprType)) {
+          return;
+        }
         found = true;
         return;
       }
