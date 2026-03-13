@@ -384,10 +384,9 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     return { skip: true, reason: "parenthesized LHS in for-of" };
   }
 
-  // Skip tests where a variable is initialized to '' and then += is used (string concat)
-  if (/(?:var|let|const)\s+\w+\s*=\s*['"]/.test(source) && /\w+\s*\+=\s*\w+/.test(source)) {
-    return { skip: true, reason: "string variable concatenation" };
-  }
+  // (Removed: string variable concatenation skip — string += now works correctly, and the
+  // original filter was overly broad, matching tests where a string var exists alongside
+  // unrelated numeric +=. Genuine string += tests are caught by other skip filters.)
 
   // (Removed: unicode escape line terminator skip — compiler now handles these correctly)
 
