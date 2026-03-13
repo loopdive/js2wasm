@@ -7170,7 +7170,7 @@ function compileClosureCall(
   expr: ts.CallExpression,
   varName: string,
   info: ClosureInfo,
-): ValType | null {
+): InnerResult {
   const localIdx = fctx.localMap.get(varName);
   if (localIdx === undefined) return null;
 
@@ -7198,7 +7198,9 @@ function compileClosureCall(
   // call_ref with the lifted function's type index
   fctx.body.push({ op: "call_ref", typeIdx: info.funcTypeIdx });
 
-  return info.returnType;
+  // Return VOID_RESULT for void closures so compileExpression doesn't treat
+  // the null return as a compilation failure and roll back the emitted instructions
+  return info.returnType ?? VOID_RESULT;
 }
 
 function compileCallExpression(
@@ -8786,7 +8788,9 @@ function compileCallExpression(
         // call_ref with the lifted function's type index
         fctx.body.push({ op: "call_ref", typeIdx: matchedClosureInfo.funcTypeIdx });
 
-        return matchedClosureInfo.returnType;
+        // Return VOID_RESULT for void closures so compileExpression doesn't
+        // treat the null return as a compilation failure and roll back instructions
+        return matchedClosureInfo.returnType ?? VOID_RESULT;
       }
     }
   }
@@ -12749,7 +12753,7 @@ function compileTaggedTemplateExpression(
       fctx.body.push({ op: "ref.cast", typeIdx: closureInfo.funcTypeIdx });
       fctx.body.push({ op: "call_ref", typeIdx: closureInfo.funcTypeIdx });
 
-      return closureInfo.returnType;
+      return closureInfo.returnType ?? VOID_RESULT;
     }
 
     // Case 2: tag is a known function
