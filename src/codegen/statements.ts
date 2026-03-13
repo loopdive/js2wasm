@@ -21,6 +21,7 @@ import {
   ensureI32Condition,
   ensureNativeStringHelpers,
   ensureStructForType,
+  nativeStringType,
   getArrTypeIdxFromVec,
   getLocalType,
   getOrRegisterRefCellType,
@@ -1903,6 +1904,14 @@ function compileForOfStatement(
 ): void {
   // Check the TS type of the iterable to decide compilation strategy
   const exprTsType = ctx.checker.getTypeAtLocation(stmt.expression);
+
+  // String iteration: for (const c of "hello") iterates characters
+  // In fast mode, use native string struct iteration (pure Wasm)
+  if (isStringType(exprTsType) && ctx.fast && ctx.anyStrTypeIdx >= 0) {
+    compileForOfString(ctx, fctx, stmt);
+    return;
+  }
+
   const sym =
     (exprTsType as ts.TypeReference).symbol ??
     (exprTsType as ts.Type).symbol;
@@ -1913,6 +1922,136 @@ function compileForOfStatement(
   } else {
     compileForOfIterator(ctx, fctx, stmt);
   }
+}
+
+/** Compile for...of over a string — iterate characters using __str_charAt */
+function compileForOfString(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  stmt: ts.ForOfStatement,
+): void {
+  // Ensure native string helpers are available (provides __str_charAt)
+  ensureNativeStringHelpers(ctx);
+
+  const charAtIdx = ctx.nativeStrHelpers.get("__str_charAt");
+  if (charAtIdx === undefined) {
+    ctx.errors.push({
+      message: "for-of on string: __str_charAt helper not available",
+      line: getLine(stmt),
+      column: getCol(stmt),
+    });
+    return;
+  }
+
+  const strType = nativeStringType(ctx);
+  const anyStrTypeIdx = ctx.anyStrTypeIdx;
+
+  // Compile the iterable expression (string ref)
+  const bodyLenBefore = fctx.body.length;
+  const compiledType = compileExpression(ctx, fctx, stmt.expression);
+  if (!compiledType) {
+    fctx.body.length = bodyLenBefore;
+    ctx.errors.push({
+      message: "for-of: failed to compile string expression",
+      line: getLine(stmt),
+      column: getCol(stmt),
+    });
+    return;
+  }
+
+  // Save string ref to temp local
+  const strLocal = allocLocal(fctx, `__forof_str_${fctx.locals.length}`, strType);
+  fctx.body.push({ op: "local.set", index: strLocal });
+
+  // Extract length from string (field 0 of AnyString struct)
+  const lenLocal = allocLocal(fctx, `__forof_len_${fctx.locals.length}`, { kind: "i32" });
+  fctx.body.push({ op: "local.get", index: strLocal });
+  fctx.body.push({ op: "struct.get", typeIdx: anyStrTypeIdx, fieldIdx: 0 });
+  fctx.body.push({ op: "local.set", index: lenLocal });
+
+  // Allocate counter local (i32)
+  const iLocal = allocLocal(fctx, `__forof_i_${fctx.locals.length}`, { kind: "i32" });
+  fctx.body.push({ op: "i32.const", value: 0 });
+  fctx.body.push({ op: "local.set", index: iLocal });
+
+  // Element type is string (each character is a single-char string)
+  const elemType = strType;
+
+  // Declare the loop variable
+  let elemLocal: number;
+  if (ts.isVariableDeclarationList(stmt.initializer)) {
+    const decl = stmt.initializer.declarations[0]!;
+    const varName = (decl.name as ts.Identifier).text;
+    elemLocal = allocLocal(fctx, varName, elemType);
+  } else {
+    // Expression form: for (x of str) — x is already declared
+    const varName = (stmt.initializer as ts.Identifier).text;
+    elemLocal = fctx.localMap.get(varName)!;
+  }
+
+  // Build loop body
+  const savedBody = fctx.body;
+  fctx.body = [];
+
+  // Adjust existing break/continue depths: block+loop adds 2 nesting levels
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! += 2;
+  for (let i = 0; i < fctx.continueStack.length; i++)
+    fctx.continueStack[i]! += 2;
+
+  fctx.breakStack.push(1); // break = depth 1 (exit block)
+  fctx.continueStack.push(0); // continue = depth 0 (restart loop)
+
+  // Condition: i >= length -> break
+  fctx.body.push({ op: "local.get", index: iLocal });
+  fctx.body.push({ op: "local.get", index: lenLocal });
+  fctx.body.push({ op: "i32.ge_s" });
+  fctx.body.push({ op: "br_if", depth: 1 }); // break
+
+  // Get character: c = charAt(str, i)
+  fctx.body.push({ op: "local.get", index: strLocal });
+  fctx.body.push({ op: "local.get", index: iLocal });
+  fctx.body.push({ op: "call", funcIdx: charAtIdx });
+  fctx.body.push({ op: "local.set", index: elemLocal });
+
+  // Compile body
+  if (ts.isBlock(stmt.statement)) {
+    for (const s of stmt.statement.statements) {
+      compileStatement(ctx, fctx, s);
+    }
+  } else {
+    compileStatement(ctx, fctx, stmt.statement);
+  }
+
+  // Increment i
+  fctx.body.push({ op: "local.get", index: iLocal });
+  fctx.body.push({ op: "i32.const", value: 1 });
+  fctx.body.push({ op: "i32.add" });
+  fctx.body.push({ op: "local.set", index: iLocal });
+
+  fctx.body.push({ op: "br", depth: 0 }); // continue loop
+
+  const loopBody = fctx.body;
+  fctx.breakStack.pop();
+  fctx.continueStack.pop();
+
+  // Restore existing break/continue depths
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! -= 2;
+  for (let i = 0; i < fctx.continueStack.length; i++)
+    fctx.continueStack[i]! -= 2;
+
+  fctx.body = savedBody;
+
+  fctx.body.push({
+    op: "block",
+    blockType: { kind: "empty" },
+    body: [
+      {
+        op: "loop",
+        blockType: { kind: "empty" },
+        body: loopBody,
+      },
+    ],
+  });
 }
 
 /** Compile for...of over an array using index-based loop (existing behavior) */
