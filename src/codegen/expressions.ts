@@ -686,6 +686,12 @@ function compileExpressionInner(
   if (ts.isTaggedTemplateExpression(expr)) {
     return compileTaggedTemplateExpression(ctx, fctx, expr);
   }
+
+  // ClassExpression: class { ... } used as a value
+  if (ts.isClassExpression(expr)) {
+    return compileClassExpression(ctx, fctx, expr);
+  }
+
   ctx.errors.push({
     message: `Unsupported expression: ${ts.SyntaxKind[expr.kind]}`,
     line: getLine(expr),
@@ -9475,6 +9481,46 @@ function compileNewFunctionExpression(
 
   // new expression returns the constructed object — produce externref null
   // since we don't construct actual objects, and callers typically discard the result
+  fctx.body.push({ op: "ref.null.extern" });
+  return { kind: "externref" };
+}
+
+/**
+ * Compile a ClassExpression used as a value (e.g. `x = class { ... }`).
+ * The class should already be collected during the collection phase.
+ * We produce the constructor function reference so the class can be instantiated.
+ */
+function compileClassExpression(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.ClassExpression,
+): ValType | null {
+  // Look up the synthetic name assigned during the collection phase
+  const syntheticName = ctx.anonClassExprNames.get(expr);
+  if (syntheticName) {
+    const ctorName = `${syntheticName}_new`;
+    const funcIdx = ctx.funcMap.get(ctorName);
+    if (funcIdx !== undefined) {
+      // Produce a ref.func to the constructor as the class value
+      fctx.body.push({ op: "ref.func", funcIdx });
+      return { kind: "funcref" };
+    }
+  }
+
+  // If the class has a name, check if it was collected under that name
+  if (expr.name) {
+    const className = expr.name.text;
+    if (ctx.classSet.has(className)) {
+      const ctorName = `${className}_new`;
+      const funcIdx = ctx.funcMap.get(ctorName);
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "ref.func", funcIdx });
+        return { kind: "funcref" };
+      }
+    }
+  }
+
+  // Fallback: produce externref null (class was not collected)
   fctx.body.push({ op: "ref.null.extern" });
   return { kind: "externref" };
 }
