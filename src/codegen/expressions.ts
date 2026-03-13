@@ -207,6 +207,15 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
       const funcIdx = ctx.funcMap.get("__any_box_f64");
       if (funcIdx !== undefined) { fctx.body.push({ op: "call", funcIdx }); return; }
     }
+    if (from.kind === "i64") {
+      // i64 → AnyValue: convert to f64 first, then box as f64
+      const funcIdx = ctx.funcMap.get("__any_box_f64");
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "f64.convert_i64_s" });
+        fctx.body.push({ op: "call", funcIdx });
+        return;
+      }
+    }
     if (from.kind === "externref") {
       const funcIdx = ctx.funcMap.get("__any_box_string");
       if (funcIdx !== undefined) { fctx.body.push({ op: "call", funcIdx }); return; }
@@ -227,6 +236,15 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
     if (to.kind === "f64") {
       const funcIdx = ctx.funcMap.get("__any_unbox_f64");
       if (funcIdx !== undefined) { fctx.body.push({ op: "call", funcIdx }); return; }
+    }
+    if (to.kind === "i64") {
+      // AnyValue → i64: unbox as f64 first, then truncate to i64
+      const funcIdx = ctx.funcMap.get("__any_unbox_f64");
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+        fctx.body.push({ op: "i64.trunc_sat_f64_s" });
+        return;
+      }
     }
     if (to.kind === "externref") {
       // Convert GC ref (AnyValue struct) to externref via extern.convert_any
