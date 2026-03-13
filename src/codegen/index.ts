@@ -893,6 +893,10 @@ const STRING_METHODS: Record<string, { params: ValType[]; result: ValType }> = {
     params: [{ kind: "externref" }, { kind: "externref" }],
     result: { kind: "externref" },
   },
+  replaceAll: {
+    params: [{ kind: "externref" }, { kind: "externref" }],
+    result: { kind: "externref" },
+  },
   repeat: { params: [{ kind: "f64" }], result: { kind: "externref" } },
   padStart: {
     params: [{ kind: "f64" }, { kind: "externref" }],
@@ -948,7 +952,7 @@ function collectStringMethodImports(
     "indexOf", "lastIndexOf", "includes", "startsWith", "endsWith",
     "trim", "trimStart", "trimEnd",
     "repeat", "padStart", "padEnd", "toLowerCase", "toUpperCase",
-    "replace", "split",
+    "replace", "replaceAll", "split",
   ]);
 
   for (const method of needed) {
@@ -4130,6 +4134,116 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
     });
   }
 
+  // --- $__str_replaceAll(s: ref $NativeString, search: ref $NativeString, replacement: ref $NativeString) -> ref $NativeString ---
+  // Replaces ALL occurrences of search with replacement. Pure wasm loop using indexOf + substring + concat.
+  {
+    const indexOfIdx = ctx.nativeStrHelpers.get("__str_indexOf")!;
+    const substringIdx = ctx.nativeStrHelpers.get("__str_substring")!;
+    const concatIdx = ctx.nativeStrHelpers.get("__str_concat")!;
+
+    const typeIdx = addFuncType(ctx, [strRef, strRef, strRef], [strRef]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_replaceAll", funcIdx);
+
+    // params: s(0), search(1), replacement(2)
+    // locals: result(3-nullable), pos(4), idx(5), searchLen(6), prefix(7-nullable)
+    const body: Instr[] = [
+      // searchLen = search.len
+      { op: "local.get", index: 1 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 6 },
+
+      // If searchLen == 0, return s unchanged (avoid infinite loop)
+      { op: "local.get", index: 6 },
+      { op: "i32.eqz" },
+      { op: "if", blockType: { kind: "val", type: strRef }, then: [
+        { op: "local.get", index: 0 },
+      ], else: [
+        // Build an empty result string (len=0, off=0, empty array)
+        { op: "i32.const", value: 0 },
+        { op: "i32.const", value: 0 },
+        { op: "i32.const", value: 0 },
+        { op: "array.new_default", typeIdx: ctx.nativeStrDataTypeIdx },
+        { op: "struct.new", typeIdx: strTypeIdx },
+        { op: "local.set", index: 3 },
+
+        // pos = 0
+        { op: "i32.const", value: 0 },
+        { op: "local.set", index: 4 },
+
+        // loop: find next occurrence
+        { op: "block", blockType: { kind: "empty" }, body: [
+          { op: "loop", blockType: { kind: "empty" }, body: [
+            // idx = indexOf(s, search, pos)
+            { op: "local.get", index: 0 },
+            { op: "local.get", index: 1 },
+            { op: "local.get", index: 4 },
+            { op: "call", funcIdx: indexOfIdx },
+            { op: "local.set", index: 5 },
+
+            // if idx == -1, break
+            { op: "local.get", index: 5 },
+            { op: "i32.const", value: -1 },
+            { op: "i32.eq" },
+            { op: "br_if", labelIdx: 1 },
+
+            // prefix = s.substring(pos, idx)
+            { op: "local.get", index: 0 },
+            { op: "local.get", index: 4 },
+            { op: "local.get", index: 5 },
+            { op: "call", funcIdx: substringIdx },
+            { op: "local.set", index: 7 },
+
+            // result = concat(result, prefix)
+            { op: "local.get", index: 3 },
+            { op: "ref.as_non_null" },
+            { op: "local.get", index: 7 },
+            { op: "ref.as_non_null" },
+            { op: "call", funcIdx: concatIdx },
+
+            // result = concat(result, replacement)
+            { op: "local.get", index: 2 },
+            { op: "call", funcIdx: concatIdx },
+            { op: "local.set", index: 3 },
+
+            // pos = idx + searchLen
+            { op: "local.get", index: 5 },
+            { op: "local.get", index: 6 },
+            { op: "i32.add" },
+            { op: "local.set", index: 4 },
+
+            // continue loop
+            { op: "br", labelIdx: 0 },
+          ]},
+        ]},
+
+        // Append remainder: result = concat(result, s.substring(pos, MAX))
+        { op: "local.get", index: 3 },
+        { op: "ref.as_non_null" },
+        { op: "local.get", index: 0 },
+        { op: "local.get", index: 4 },
+        { op: "i32.const", value: 0x7FFFFFFF },
+        { op: "call", funcIdx: substringIdx },
+        { op: "ref.as_non_null" },
+        { op: "call", funcIdx: concatIdx },
+      ]},
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_replaceAll",
+      typeIdx,
+      locals: [
+        { name: "result", type: { kind: "ref_null", typeIdx: anyStrTypeIdx } },
+        { name: "pos", type: { kind: "i32" } },
+        { name: "idx", type: { kind: "i32" } },
+        { name: "searchLen", type: { kind: "i32" } },
+        { name: "prefix", type: { kind: "ref_null", typeIdx: anyStrTypeIdx } },
+      ],
+      body: wrapBodyWithFlatten(body, [0, 1, 2]),
+      exported: false,
+    });
+  }
+
   // --- $__str_split(s: ref $NativeString, sep: ref $NativeString) -> ref $vec_nstr ---
   // Splits s by sep, returns a native array of native strings.
   {
@@ -7232,10 +7346,32 @@ export function collectClassDeclaration(
 
   // Register constructor function: takes ctor params, returns (ref $structTypeIdx)
   const ctorParams: ValType[] = [];
+  const ctorName = `${className}_new`;
   if (ctor) {
-    for (const param of ctor.parameters) {
-      const paramType = ctx.checker.getTypeAtLocation(param);
-      ctorParams.push(resolveWasmType(ctx, paramType));
+    for (let i = 0; i < ctor.parameters.length; i++) {
+      const param = ctor.parameters[i]!;
+      if (param.dotDotDotToken) {
+        // Rest parameter: ...args: T[] -> single (ref $__vec_elemKind) param (#382)
+        const paramType = ctx.checker.getTypeAtLocation(param);
+        const typeArgs = ctx.checker.getTypeArguments(paramType as ts.TypeReference);
+        const elemTsType = typeArgs[0];
+        const elemType: ValType = elemTsType ? resolveWasmType(ctx, elemTsType) : { kind: "f64" };
+        const elemKey = (elemType.kind === "ref" || elemType.kind === "ref_null")
+          ? `ref_${(elemType as { typeIdx: number }).typeIdx}`
+          : elemType.kind;
+        const vecTypeIdx = getOrRegisterVecType(ctx, elemKey, elemType);
+        const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
+        ctorParams.push({ kind: "ref_null", typeIdx: vecTypeIdx });
+        ctx.funcRestParams.set(ctorName, {
+          restIndex: i,
+          elemType,
+          arrayTypeIdx: arrTypeIdx,
+          vecTypeIdx,
+        });
+      } else {
+        const paramType = ctx.checker.getTypeAtLocation(param);
+        ctorParams.push(resolveWasmType(ctx, paramType));
+      }
     }
   }
   const ctorResults: ValType[] = [{ kind: "ref", typeIdx: structTypeIdx }];
@@ -7246,7 +7382,6 @@ export function collectClassDeclaration(
     `${className}_new_type`,
   );
   const ctorFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
-  const ctorName = `${className}_new`;
   ctx.funcMap.set(ctorName, ctorFuncIdx);
 
   ctx.mod.functions.push({
@@ -9190,15 +9325,56 @@ function compileSuperCall(
   const assignableParentFields = parentFields
     .map((f, idx) => ({ field: f, fieldIdx: idx }))
     .filter((e) => e.field.name !== "__tag");
-  for (
-    let i = 0;
-    i < callExpr.arguments.length && i < assignableParentFields.length;
-    i++
-  ) {
-    const { field, fieldIdx } = assignableParentFields[i]!;
-    fctx.body.push({ op: "local.get", index: selfLocal });
-    compileExpression(ctx, fctx, callExpr.arguments[i]!, field.type);
-    fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx });
+
+  // Check if any argument uses spread syntax: super(...args) (#382)
+  const hasSuperSpread = callExpr.arguments.some((a) => ts.isSpreadElement(a));
+
+  if (hasSuperSpread) {
+    // Handle spread arguments: super(...args) where args is a vec struct { length, data }
+    let fieldIdx2 = 0;
+    for (const arg of callExpr.arguments) {
+      if (ts.isSpreadElement(arg)) {
+        const vecType = compileExpression(ctx, fctx, arg.expression);
+        if (!vecType || (vecType.kind !== "ref" && vecType.kind !== "ref_null")) continue;
+        const vecLocal = allocLocal(fctx, `__super_spread_vec_${fctx.locals.length}`, vecType);
+        fctx.body.push({ op: "local.set", index: vecLocal });
+        const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecType.typeIdx);
+        if (arrTypeIdx < 0) continue;
+        const dataLocal = allocLocal(fctx, `__super_spread_data_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
+        fctx.body.push({ op: "local.get", index: vecLocal });
+        fctx.body.push({ op: "struct.get", typeIdx: vecType.typeIdx, fieldIdx: 1 });
+        fctx.body.push({ op: "local.set", index: dataLocal });
+        const remaining = assignableParentFields.length - fieldIdx2;
+        for (let i = 0; i < remaining; i++) {
+          const { fieldIdx } = assignableParentFields[fieldIdx2]!;
+          fctx.body.push({ op: "local.get", index: selfLocal });
+          fctx.body.push({ op: "local.get", index: dataLocal });
+          fctx.body.push({ op: "i32.const", value: i });
+          fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
+          fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx });
+          fieldIdx2++;
+        }
+      } else {
+        if (fieldIdx2 < assignableParentFields.length) {
+          const { field, fieldIdx } = assignableParentFields[fieldIdx2]!;
+          fctx.body.push({ op: "local.get", index: selfLocal });
+          compileExpression(ctx, fctx, arg, field.type);
+          fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx });
+          fieldIdx2++;
+        }
+      }
+    }
+  } else {
+    for (
+      let i = 0;
+      i < callExpr.arguments.length && i < assignableParentFields.length;
+      i++
+    ) {
+      const { field, fieldIdx } = assignableParentFields[i]!;
+      fctx.body.push({ op: "local.get", index: selfLocal });
+      compileExpression(ctx, fctx, callExpr.arguments[i]!, field.type);
+      fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx });
+    }
   }
 }
 

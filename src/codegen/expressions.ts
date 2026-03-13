@@ -10231,6 +10231,7 @@ function compileNewExpression(
     // Compile constructor arguments with type hints
     const paramTypes = getFuncParamTypes(ctx, funcIdx);
     const args = expr.arguments ?? [];
+    const ctorRestInfo = ctx.funcRestParams.get(ctorName);
 
     // Check for spread arguments
     const hasSpreadCtorArg = args.some((a) => ts.isSpreadElement(a));
@@ -10247,8 +10248,25 @@ function compileNewExpression(
         }
       } else {
         // Non-literal spread — compile via compileSpreadCallArgs
-        compileSpreadCallArgs(ctx, fctx, expr as unknown as ts.CallExpression, funcIdx, undefined);
+        compileSpreadCallArgs(ctx, fctx, expr as unknown as ts.CallExpression, funcIdx, ctorRestInfo);
       }
+    } else if (ctorRestInfo && !hasSpreadCtorArg) {
+      // Calling a rest-param constructor: pack trailing args into a GC array
+      for (let i = 0; i < ctorRestInfo.restIndex; i++) {
+        if (i < args.length) {
+          compileExpression(ctx, fctx, args[i]!, paramTypes?.[i]);
+        } else {
+          pushDefaultValue(fctx, paramTypes?.[i] ?? { kind: "f64" });
+        }
+      }
+      // Pack remaining arguments into a vec struct (array + length)
+      const restArgCount = Math.max(0, args.length - ctorRestInfo.restIndex);
+      fctx.body.push({ op: "i32.const", value: restArgCount });
+      for (let i = ctorRestInfo.restIndex; i < args.length; i++) {
+        compileExpression(ctx, fctx, args[i]!, ctorRestInfo.elemType);
+      }
+      fctx.body.push({ op: "array.new_fixed", typeIdx: ctorRestInfo.arrayTypeIdx, length: restArgCount });
+      fctx.body.push({ op: "struct.new", typeIdx: ctorRestInfo.vecTypeIdx });
     } else {
       for (let i = 0; i < args.length; i++) {
         compileExpression(ctx, fctx, args[i]!, paramTypes?.[i]);
@@ -14155,6 +14173,34 @@ function compileNativeStringMethodCall(
       fctx.body.push({ op: "struct.new", typeIdx: ctx.nativeStrTypeIdx });
     }
     const funcIdx = ctx.nativeStrHelpers.get("__str_replace")!;
+    fctx.body.push({ op: "call", funcIdx });
+    return nativeStringType(ctx);
+  }
+
+  // replaceAll(search, replacement): native helper
+  if (method === "replaceAll") {
+    compileExpression(ctx, fctx, propAccess.expression);
+    emitFlatten();
+    // search arg
+    if (expr.arguments.length > 0) {
+      compileExpression(ctx, fctx, expr.arguments[0]!);
+      emitFlatten();
+    } else {
+      fctx.body.push({ op: "ref.null", typeIdx: ctx.nativeStrTypeIdx });
+    }
+    // replacement arg
+    if (expr.arguments.length > 1) {
+      compileExpression(ctx, fctx, expr.arguments[1]!);
+      emitFlatten();
+    } else {
+      // default: empty string (len=0, off=0, [])
+      fctx.body.push({ op: "i32.const", value: 0 });  // len
+      fctx.body.push({ op: "i32.const", value: 0 });  // off
+      fctx.body.push({ op: "i32.const", value: 0 });
+      fctx.body.push({ op: "array.new_default", typeIdx: ctx.nativeStrDataTypeIdx });
+      fctx.body.push({ op: "struct.new", typeIdx: ctx.nativeStrTypeIdx });
+    }
+    const funcIdx = ctx.nativeStrHelpers.get("__str_replaceAll")!;
     fctx.body.push({ op: "call", funcIdx });
     return nativeStringType(ctx);
   }
