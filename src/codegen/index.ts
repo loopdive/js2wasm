@@ -7943,6 +7943,67 @@ export function compileClassBodies(
     fctx.localMap.set("this", selfLocal);
     ctx.currentFunc = fctx;
 
+    // Emit default-value initialization for constructor parameters with initializers.
+    // For each param with a default value, check if the caller passed the zero/null
+    // sentinel (meaning the argument was omitted) and if so, compile the initializer
+    // expression and assign it to the param local.
+    if (ctor) {
+      for (let i = 0; i < ctor.parameters.length; i++) {
+        const param = ctor.parameters[i]!;
+        if (!param.initializer) continue;
+
+        const paramIdx = i;
+        const paramType = params[i]!.type;
+
+        // Build the "then" block: compile default expression, local.set
+        const savedBody = fctx.body;
+        fctx.body = [];
+        compileExpression(ctx, fctx, param.initializer, paramType);
+        fctx.body.push({ op: "local.set", index: paramIdx });
+        const thenInstrs = fctx.body;
+        fctx.body = savedBody;
+
+        // Emit the null/zero check + conditional assignment
+        if (paramType.kind === "externref") {
+          fctx.body.push({ op: "local.get", index: paramIdx });
+          fctx.body.push({ op: "ref.is_null" });
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: thenInstrs,
+          });
+        } else if (
+          paramType.kind === "ref_null" ||
+          paramType.kind === "ref"
+        ) {
+          fctx.body.push({ op: "local.get", index: paramIdx });
+          fctx.body.push({ op: "ref.is_null" });
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: thenInstrs,
+          });
+        } else if (paramType.kind === "i32") {
+          fctx.body.push({ op: "local.get", index: paramIdx });
+          fctx.body.push({ op: "i32.eqz" });
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: thenInstrs,
+          });
+        } else if (paramType.kind === "f64") {
+          fctx.body.push({ op: "local.get", index: paramIdx });
+          fctx.body.push({ op: "f64.const", value: 0 });
+          fctx.body.push({ op: "f64.eq" });
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: thenInstrs,
+          });
+        }
+      }
+    }
+
     // Compile field initializers from property declarations (e.g., x: number = 42, #x: number = 42)
     for (const member of decl.members) {
       if (
@@ -8044,6 +8105,62 @@ export function compileClassBodies(
       }
 
       ctx.currentFunc = fctx;
+
+      // Emit default-value initialization for method parameters with initializers.
+      for (let pi = 0; pi < member.parameters.length; pi++) {
+        const param = member.parameters[pi]!;
+        if (!param.initializer) continue;
+
+        const paramLocalIdx = isStatic ? pi : pi + 1; // account for 'this' param
+        const paramType = params[paramLocalIdx]!.type;
+
+        // Build the "then" block: compile default expression, local.set
+        const savedBody = fctx.body;
+        fctx.body = [];
+        compileExpression(ctx, fctx, param.initializer, paramType);
+        fctx.body.push({ op: "local.set", index: paramLocalIdx });
+        const thenInstrs = fctx.body;
+        fctx.body = savedBody;
+
+        // Emit the null/zero check + conditional assignment
+        if (paramType.kind === "externref") {
+          fctx.body.push({ op: "local.get", index: paramLocalIdx });
+          fctx.body.push({ op: "ref.is_null" });
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: thenInstrs,
+          });
+        } else if (
+          paramType.kind === "ref_null" ||
+          paramType.kind === "ref"
+        ) {
+          fctx.body.push({ op: "local.get", index: paramLocalIdx });
+          fctx.body.push({ op: "ref.is_null" });
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: thenInstrs,
+          });
+        } else if (paramType.kind === "i32") {
+          fctx.body.push({ op: "local.get", index: paramLocalIdx });
+          fctx.body.push({ op: "i32.eqz" });
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: thenInstrs,
+          });
+        } else if (paramType.kind === "f64") {
+          fctx.body.push({ op: "local.get", index: paramLocalIdx });
+          fctx.body.push({ op: "f64.const", value: 0 });
+          fctx.body.push({ op: "f64.eq" });
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: thenInstrs,
+          });
+        }
+      }
 
       // Destructure parameters with binding patterns
       for (let pi = 0; pi < member.parameters.length; pi++) {

@@ -204,3 +204,5 @@
 | 292 | 2026-03-12 | For-loop incorrect computed values -- missing number_toString for any-typed += | Dep-driven |
 | 286 | 2026-03-12 | Logical assignment compile errors -- nullish and short-circuit | Dep-driven |
 | 283 | 2026-03-12 | Compound assignment type coercion gaps | Dep-driven |
+| 316 | 2026-03-12 | Array element access bounds checking | Dep-driven |
+| 293 | 2026-03-12 | Class method incorrect results -- default parameter initialization | Dep-driven |
