@@ -388,6 +388,7 @@ export function compileSource(
     18030, // "An optional chain cannot contain private identifiers" — valid JS pattern
     2729, // "Property 'X' is used before its initialization" — valid JS pattern
     1163, // "A 'yield' expression is only allowed in a generator body" — #267
+    1220, // "Generators are not allowed in an ambient context" — valid JS pattern (#267)
     1166, // "A computed property name in a class property declaration must have a simple literal type" — #265
     2464, // "A computed property name must be of type 'string', 'number', 'symbol', or 'any'" — #276
     2488, // "Type must have a '[Symbol.iterator]()' method" — #268
@@ -429,6 +430,7 @@ export function compileSource(
     1344, // "A label is not allowed here"
     1182, // "A destructuring declaration must have an initializer"
     1228, // "A type predicate is only allowed in return type position"
+    1163, // "A 'yield' expression is only allowed in a generator body" — syntactic diagnostic (#267)
   ]);
   const hasSyntaxErrors = ast.syntacticDiagnostics.some(
     (d) => d.category === 1 && d.file === ast.sourceFile && !TOLERATED_SYNTAX_CODES.has(d.code),
