@@ -4014,25 +4014,32 @@ function compileDestructuringAssignment(
     typeName = ctx.anonTypeMap.get(rhsType) ?? typeName;
   }
 
-  if (!typeName) {
-    ctx.errors.push({
-      message: "Cannot destructure: unknown type",
-      line: getLine(target),
-      column: getCol(target),
-    });
-    return null;
+  // When the RHS type is unknown or a primitive (boolean, number, string),
+  // there is no struct to destructure from.  For empty patterns like `{} = val`
+  // we just need the RHS value as the expression result.  For non-empty
+  // patterns the bindings stay at their defaults (mimics JS behaviour for
+  // destructuring primitives — the properties simply do not exist). (#379)
+  if (!typeName || !ctx.structMap.has(typeName) || !ctx.structFields.get(typeName)) {
+    // Ensure any target identifiers are allocated as locals
+    for (const prop of target.properties) {
+      if (ts.isShorthandPropertyAssignment(prop)) {
+        const name = prop.name.text;
+        if (!fctx.localMap.has(name) && !ctx.moduleGlobals.has(name)) {
+          allocLocal(fctx, name, { kind: "externref" });
+        }
+      } else if (ts.isSpreadAssignment(prop) && ts.isIdentifier(prop.expression)) {
+        const name = prop.expression.text;
+        if (!fctx.localMap.has(name) && !ctx.moduleGlobals.has(name)) {
+          allocLocal(fctx, name, { kind: "externref" });
+        }
+      }
+    }
+    // RHS value is already on the stack — return it as the expression result
+    return resultType;
   }
 
-  const structTypeIdx = ctx.structMap.get(typeName);
-  const fields = ctx.structFields.get(typeName);
-  if (structTypeIdx === undefined || !fields) {
-    ctx.errors.push({
-      message: `Cannot destructure: not a known struct type: ${typeName}`,
-      line: getLine(target),
-      column: getCol(target),
-    });
-    return null;
-  }
+  const structTypeIdx = ctx.structMap.get(typeName)!;
+  const fields = ctx.structFields.get(typeName)!;
 
   // Save the struct ref in a temp local
   const tmpLocal = allocLocal(fctx, `__destruct_assign_${fctx.locals.length}`, resultType);
@@ -4223,6 +4230,16 @@ function compileDestructuringAssignment(
         emitAssignToTarget(ctx, fctx, targetExpr, tmpElem, fieldType);
       }
       // else: unsupported target expression in property assignment — skip
+    } else if (ts.isSpreadAssignment(prop)) {
+      // { ...rest } = obj — rest element in object destructuring
+      // Allocate the rest local but skip actual collection (would require
+      // runtime object creation).  The variable just stays at its default. (#379)
+      if (ts.isIdentifier(prop.expression)) {
+        const restName = prop.expression.text;
+        if (!fctx.localMap.has(restName) && !ctx.moduleGlobals.has(restName)) {
+          allocLocal(fctx, restName, { kind: "externref" });
+        }
+      }
     }
   }
 
