@@ -14991,7 +14991,41 @@ function compileArrayIndexOf(
   compileExpression(ctx, fctx, callExpr.arguments[0]!, elemType);
   fctx.body.push({ op: "local.set", index: valTmp });
 
-  fctx.body.push({ op: "i32.const", value: 0 });
+  // fromIndex (optional 2nd arg, default 0)
+  if (callExpr.arguments.length >= 2) {
+    if (ctx.fast) {
+      compileExpression(ctx, fctx, callExpr.arguments[1]!, { kind: "i32" });
+    } else {
+      compileExpression(ctx, fctx, callExpr.arguments[1]!, { kind: "f64" });
+      fctx.body.push({ op: "i32.trunc_sat_f64_s" });
+    }
+    // Clamp negative fromIndex: if (fromIndex < 0) fromIndex = max(0, length + fromIndex)
+    const fromTmp = allocLocal(fctx, `__arr_iof_from_${fctx.locals.length}`, { kind: "i32" });
+    fctx.body.push({ op: "local.tee", index: fromTmp });
+    fctx.body.push({ op: "i32.const", value: 0 });
+    fctx.body.push({ op: "i32.lt_s" });
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: [
+        { op: "local.get", index: lenTmp } as Instr,
+        { op: "local.get", index: fromTmp } as Instr,
+        { op: "i32.add" } as Instr,
+        { op: "local.tee", index: fromTmp } as Instr,
+        { op: "i32.const", value: 0 } as Instr,
+        { op: "i32.lt_s" } as Instr,
+        { op: "if", blockType: { kind: "empty" },
+          then: [
+            { op: "i32.const", value: 0 } as Instr,
+            { op: "local.set", index: fromTmp } as Instr,
+          ],
+        } as Instr,
+      ],
+    } as Instr);
+    fctx.body.push({ op: "local.get", index: fromTmp });
+  } else {
+    fctx.body.push({ op: "i32.const", value: 0 });
+  }
   fctx.body.push({ op: "local.set", index: iTmp });
 
   const eqOp = elemType.kind === "f64" ? "f64.eq" : "i32.eq";
@@ -15084,7 +15118,41 @@ function compileArrayIncludes(
   compileExpression(ctx, fctx, callExpr.arguments[0]!, elemType);
   fctx.body.push({ op: "local.set", index: valTmp });
 
-  fctx.body.push({ op: "i32.const", value: 0 });
+  // fromIndex (optional 2nd arg, default 0)
+  if (callExpr.arguments.length >= 2) {
+    if (ctx.fast) {
+      compileExpression(ctx, fctx, callExpr.arguments[1]!, { kind: "i32" });
+    } else {
+      compileExpression(ctx, fctx, callExpr.arguments[1]!, { kind: "f64" });
+      fctx.body.push({ op: "i32.trunc_sat_f64_s" });
+    }
+    // Clamp negative fromIndex: if (fromIndex < 0) fromIndex = max(0, length + fromIndex)
+    const fromTmp = allocLocal(fctx, `__arr_inc_from_${fctx.locals.length}`, { kind: "i32" });
+    fctx.body.push({ op: "local.tee", index: fromTmp });
+    fctx.body.push({ op: "i32.const", value: 0 });
+    fctx.body.push({ op: "i32.lt_s" });
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: [
+        { op: "local.get", index: lenTmp } as Instr,
+        { op: "local.get", index: fromTmp } as Instr,
+        { op: "i32.add" } as Instr,
+        { op: "local.tee", index: fromTmp } as Instr,
+        { op: "i32.const", value: 0 } as Instr,
+        { op: "i32.lt_s" } as Instr,
+        { op: "if", blockType: { kind: "empty" },
+          then: [
+            { op: "i32.const", value: 0 } as Instr,
+            { op: "local.set", index: fromTmp } as Instr,
+          ],
+        } as Instr,
+      ],
+    } as Instr);
+    fctx.body.push({ op: "local.get", index: fromTmp });
+  } else {
+    fctx.body.push({ op: "i32.const", value: 0 });
+  }
   fctx.body.push({ op: "local.set", index: iTmp });
 
   const eqOp = elemType.kind === "f64" ? "f64.eq" : "i32.eq";
@@ -15219,8 +15287,8 @@ function compileArrayReverse(
 }
 
 /**
- * arr.push(val) → capacity-based amortized O(1) push.
- * Mutates vec struct in-place: grows backing array if needed, sets element, increments length.
+ * arr.push(val, ...) → capacity-based amortized push supporting multiple arguments.
+ * Mutates vec struct in-place: grows backing array if needed, sets elements, increments length.
  */
 function compileArrayPush(
   ctx: CodegenContext,
@@ -15236,6 +15304,7 @@ function compileArrayPush(
     return null;
   }
 
+  const argCount = callExpr.arguments.length;
   const vecTmp = allocLocal(fctx, `__arr_push_vec_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecTypeIdx });
   const dataTmp = allocLocal(fctx, `__arr_push_data_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
   const lenTmp = allocLocal(fctx, `__arr_push_len_${fctx.locals.length}`, { kind: "i32" });
@@ -15255,23 +15324,29 @@ function compileArrayPush(
   fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
   fctx.body.push({ op: "local.tee", index: dataTmp });
 
-  // Check: length == capacity?
+  // Check: length + argCount > capacity?
   fctx.body.push({ op: "array.len" });
   fctx.body.push({ op: "local.get", index: lenTmp });
-  fctx.body.push({ op: "i32.eq" });
+  fctx.body.push({ op: "i32.const", value: argCount });
+  fctx.body.push({ op: "i32.add" });
+  fctx.body.push({ op: "i32.lt_s" });
 
-  // if (length == capacity) → grow
+  // if (capacity < length + argCount) → grow
   fctx.body.push({
     op: "if",
     blockType: { kind: "empty" },
     then: [
-      // newCap = max(len * 2, 4)
+      // newCap = max((len + argCount) * 2, 4)
       { op: "local.get", index: lenTmp } as Instr,
+      { op: "i32.const", value: argCount } as Instr,
+      { op: "i32.add" } as Instr,
       { op: "i32.const", value: 1 } as Instr,
-      { op: "i32.shl" } as Instr,  // len * 2
+      { op: "i32.shl" } as Instr,  // (len + argCount) * 2
       { op: "i32.const", value: 4 } as Instr,
-      // select: if len*2 > 4 then len*2 else 4
+      // select: if (len+argCount)*2 > 4 then (len+argCount)*2 else 4
       { op: "local.get", index: lenTmp } as Instr,
+      { op: "i32.const", value: argCount } as Instr,
+      { op: "i32.add" } as Instr,
       { op: "i32.const", value: 1 } as Instr,
       { op: "i32.shl" } as Instr,
       { op: "i32.const", value: 4 } as Instr,
@@ -15304,22 +15379,28 @@ function compileArrayPush(
     ],
   } as Instr);
 
-  // Set element: data[length] = value
-  fctx.body.push({ op: "local.get", index: dataTmp });
-  fctx.body.push({ op: "local.get", index: lenTmp });
-  compileExpression(ctx, fctx, callExpr.arguments[0]!, elemType);
-  fctx.body.push({ op: "array.set", typeIdx: arrTypeIdx });
+  // Set elements: data[length + i] = args[i] for each argument (compile-time unrolled)
+  for (let i = 0; i < argCount; i++) {
+    fctx.body.push({ op: "local.get", index: dataTmp });
+    fctx.body.push({ op: "local.get", index: lenTmp });
+    if (i > 0) {
+      fctx.body.push({ op: "i32.const", value: i });
+      fctx.body.push({ op: "i32.add" });
+    }
+    compileExpression(ctx, fctx, callExpr.arguments[i]!, elemType);
+    fctx.body.push({ op: "array.set", typeIdx: arrTypeIdx });
+  }
 
-  // Increment length: vec.length = len + 1
+  // Update length: vec.length = len + argCount
   fctx.body.push({ op: "local.get", index: vecTmp });
   fctx.body.push({ op: "local.get", index: lenTmp });
-  fctx.body.push({ op: "i32.const", value: 1 });
+  fctx.body.push({ op: "i32.const", value: argCount });
   fctx.body.push({ op: "i32.add" });
   fctx.body.push({ op: "struct.set", typeIdx: vecTypeIdx, fieldIdx: 0 });
 
   // Return new length (i32 in fast mode, f64 otherwise)
   fctx.body.push({ op: "local.get", index: lenTmp });
-  fctx.body.push({ op: "i32.const", value: 1 });
+  fctx.body.push({ op: "i32.const", value: argCount });
   fctx.body.push({ op: "i32.add" });
   if (!ctx.fast) fctx.body.push({ op: "f64.convert_i32_s" });
   return ctx.fast ? { kind: "i32" } : { kind: "f64" };
