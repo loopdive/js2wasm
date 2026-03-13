@@ -202,21 +202,13 @@
 | 299 | 2026-03-12 | Loose equality edge cases (null == undefined, boolean coercion) | Dep-driven |
 | 302 | 2026-03-12 | Math.min/max edge cases | Dep-driven |
 | 292 | 2026-03-12 | For-loop incorrect computed values -- missing number_toString for any-typed += | Dep-driven |
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
 | 286 | 2026-03-12 | Logical assignment compile errors -- nullish and short-circuit | Dep-driven |
 | 283 | 2026-03-12 | Compound assignment type coercion gaps | Dep-driven |
 | 316 | 2026-03-12 | Array element access bounds checking | Dep-driven |
 | 293 | 2026-03-12 | Class method incorrect results -- default parameter initialization | Dep-driven |
 | 178 | 2026-03-12 | Wasm validation errors -- LEB128, type mismatches in binary | Dep-driven |
 | 306 | 2026-03-12 | Prefix/postfix increment/decrement -- parens unwrap, TS2356 suppress, ref type guard | Dep-driven |
-=======
 | 304 | 2026-03-12 | Runtime failures -- unary minus and return edge cases | Dep-driven |
->>>>>>> 231ee1a (fix: unary minus coercion and -0 preservation (#304))
-=======
 | 294 | 2026-03-12 | Assignment expression evaluation order -- return RHS value | Dep-driven |
->>>>>>> b69ab6b (fix: assignment expressions return RHS value instead of void (#294))
-=======
 | 303 | 2026-03-12 | parseInt edge cases -- fix undefined assert stripping in test runner | Dep-driven |
->>>>>>> 0072a3e (fix: parseInt edge cases -- robust undefined assert stripping (#303))
+| 308 | 2026-03-12 | Addition operator compile errors -- string/number coercion | Dep-driven |
