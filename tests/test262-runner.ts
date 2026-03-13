@@ -1339,6 +1339,13 @@ export const TEST_CATEGORIES = [
   "built-ins/Number/MAX_SAFE_INTEGER",
   "built-ins/Number/MIN_SAFE_INTEGER",
   "built-ins/Number/isSafeInteger",
+  "built-ins/Number/NaN",
+  "built-ins/Number/prototype/toFixed",
+  "built-ins/Number/prototype/toString",
+  "built-ins/Number/prototype/valueOf",
+  "built-ins/Number/prototype/toPrecision",
+  "built-ins/Number/prototype/toExponential",
+  "built-ins/Number/prototype/toLocaleString",
   // ── built-ins/Boolean ──
   "built-ins/Boolean",
   // ── built-ins/parseInt + parseFloat ──

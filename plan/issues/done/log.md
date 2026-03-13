@@ -257,3 +257,4 @@
 | 318 | 2026-03-13 | Infer parameter types from call-site arguments for untyped functions | Dep-driven |
 | 309 | 2026-03-13 | Expand test262 harness includes | Dep-driven |
 | 311 | 2026-03-13 | Test262 category expansion -- String.prototype new methods | Dep-driven |
+| 312 | 2026-03-13 | Test262 category expansion -- built-ins/Number methods | Dep-driven |
