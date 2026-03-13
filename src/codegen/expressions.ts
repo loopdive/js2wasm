@@ -6815,13 +6815,27 @@ function compileClosureCall(
   info: ClosureInfo,
 ): ValType | null {
   const localIdx = fctx.localMap.get(varName);
-  if (localIdx === undefined) return null;
+  const moduleGlobalIdx = ctx.moduleGlobals.get(varName);
+  if (localIdx === undefined && moduleGlobalIdx === undefined) return null;
+
+  // Determine how to load the closure ref (local variable or module global).
+  // Module globals use ref_null type, so we need ref.as_non_null to cast
+  // to the non-nullable ref expected by call_ref and struct.get.
+  const isModuleGlobal = localIdx === undefined;
+  const pushClosureRef = () => {
+    if (!isModuleGlobal) {
+      fctx.body.push({ op: "local.get", index: localIdx! });
+    } else {
+      fctx.body.push({ op: "global.get", index: moduleGlobalIdx! });
+      fctx.body.push({ op: "ref.as_non_null" } as Instr);
+    }
+  };
 
   // Stack for call_ref needs: [closure_ref, ...args, funcref]
   // where the lifted func type is (ref $closure_struct, ...arrowParams) → results
 
   // Push closure ref as first arg (self param of the lifted function)
-  fctx.body.push({ op: "local.get", index: localIdx });
+  pushClosureRef();
 
   // Push call arguments
   for (let i = 0; i < expr.arguments.length; i++) {
@@ -6834,7 +6848,7 @@ function compileClosureCall(
   }
 
   // Push the funcref from the closure struct (field 0) and cast to typed ref
-  fctx.body.push({ op: "local.get", index: localIdx });
+  pushClosureRef();
   fctx.body.push({ op: "struct.get", typeIdx: info.structTypeIdx, fieldIdx: 0 });
   fctx.body.push({ op: "ref.cast", typeIdx: info.funcTypeIdx });
 

@@ -53,6 +53,24 @@ describe("Issue #279: Arrow function parameter and body patterns", () => {
       // fn() with no args: x defaults to 5, result = 5 + 10 = 15
       expect(exports.test()).toBe(15);
     });
+
+    it("should handle simple arrow with single default param", async () => {
+      const source = `
+        const f = (x: number = 10): number => x;
+        export function test(): number { return f(); }
+      `;
+      const exports = await compileToWasm(source);
+      expect(exports.test()).toBe(10);
+    });
+
+    it("should handle arrow with multiple default params", async () => {
+      const source = `
+        const f = (a: number = 1, b: number = 2): number => a + b;
+        export function test(): number { return f(); }
+      `;
+      const exports = await compileToWasm(source);
+      expect(exports.test()).toBe(3);
+    });
   });
 
   describe("Arrow functions used as values in various contexts", () => {

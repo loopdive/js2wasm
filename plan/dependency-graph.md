@@ -142,7 +142,7 @@ Can all run in parallel (different diagnostic codes).
 #142 (assignment destructuring failures) ── independent
 #190 (unsupported assignment targets) ── independent [DONE]
 #243 (assignment target patterns — array/object) ── coordinates with #190
-#279 (arrow fn params — destructuring/defaults) ── coordinates with #243
+#279 (arrow fn params — destructuring/defaults) [DONE] ── coordinates with #243
 
 #283 (compound assignment — type coercion) ──┐
 #286 (logical assignment — nullish/short) [DONE] ┼── coordinates (same property/element access)
@@ -156,7 +156,7 @@ Can all run in parallel (different diagnostic codes).
 | 142 | Assignment destructuring failures | — | Ready |
 | ~~190~~ | ~~Unsupported assignment target patterns~~ | — | **Done** |
 | 243 | Unsupported assignment target patterns (array/object) | — | Ready (coordinates #190) |
-| 279 | Arrow function params — destructuring, defaults | — | Ready (coordinates #243) |
+| ~~279~~ | ~~Arrow function params — destructuring, defaults~~ | — | **Done** |
 | ~~283~~ | ~~Compound assignment — type coercion gaps~~ | — | **Done** |
 | ~~286~~ | ~~Logical assignment — nullish/short-circuit~~ | — | **Done** |
 | ~~306~~ | ~~Prefix/postfix increment/decrement~~ | ~44 CE | **Done** |
