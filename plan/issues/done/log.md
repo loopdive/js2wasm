@@ -221,3 +221,4 @@
 | 238 | 2026-03-12 | Class expression new -- named class expressions in new | Dep-driven |
 | 254 | 2026-03-12 | Private class fields and methods (#field) -- diagnostic suppression + tests | Dep-driven |
 | 289 | 2026-03-12 | For-in compile errors -- bare identifier and assignment expression initializers | Dep-driven |
+| 284 | 2026-03-12 | For-of destructuring and assignment patterns | Dep-driven |
