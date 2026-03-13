@@ -26,9 +26,9 @@ svg { width: 100vw; height: 100vh; }
 .link { stroke-opacity: 0.4; fill: none; }
 .link.highlighted { stroke-opacity: 1; stroke-width: 2.5; }
 .node text { font-size: 10px; fill: #c9d1d9; pointer-events: none; }
-.node circle { stroke-width: 1.5; cursor: pointer; }
-.node circle:hover { filter: brightness(1.3); }
-.node.dimmed circle { opacity: 0.15; }
+.node rect { stroke-width: 1.5; cursor: pointer; }
+.node rect:hover { filter: brightness(1.3); }
+.node.dimmed rect { opacity: 0.15; }
 .node.dimmed text { opacity: 0.15; }
 .link.dimmed { stroke-opacity: 0.05; }
 .cluster-label { font-size: 11px; fill-opacity: 0.7; pointer-events: none; }
@@ -53,10 +53,10 @@ svg { width: 100vw; height: 100vh; }
   <div class="deps" id="info-deps"></div>
 </div>
 <div id="legend">
-  <span><span class="dot" style="width:14px;height:14px"></span> Critical</span>
-  <span><span class="dot" style="width:11px;height:11px"></span> High</span>
-  <span><span class="dot" style="width:8px;height:8px"></span> Medium</span>
-  <span><span class="dot" style="width:6px;height:6px"></span> Low</span>
+  <span><span class="dot" style="width:30px;height:10px;border-radius:2px"></span> Critical</span>
+  <span><span class="dot" style="width:24px;height:10px;border-radius:2px"></span> High</span>
+  <span><span class="dot" style="width:16px;height:10px;border-radius:2px"></span> Medium</span>
+  <span><span class="dot" style="width:10px;height:10px;border-radius:2px"></span> Low</span>
   <span>|</span>
   <span>CE:</span>
   <span><span class="dot" style="background:hsla(60,80%,50%,0.7)"></span> Few</span>
@@ -69,7 +69,9 @@ svg { width: 100vw; height: 100vh; }
 <div id="stats"></div>
 <svg></svg>
 <script>
-const RADIUS = { critical: 40, high: 30, medium: 20, low: 10 };
+const RADIUS = { critical: 40, high: 30, medium: 20, low: 10 }; // kept for collision
+const BAR_W = { critical: 180, high: 140, medium: 100, low: 60 };
+const BAR_H = 18;
 
 const CLUSTER_COLORS = {
   'Diagnostics': '#58a6ff',
@@ -88,10 +90,13 @@ const CLUSTER_COLORS = {
 };
 
 function ceColor(d) {
-  if (!d.compiler_errors) return 'rgba(110,118,129,0.3)';
+  if (!d.compiler_errors) return 'rgba(60,63,68,0.5)';
   const t = Math.min(1, Math.log(d.compiler_errors + 1) / Math.log(1500));
-  const h = 60 * (1 - t);
-  return `hsla(${h}, 80%, 50%, 0.7)`;
+  // Interpolate from dark gray (60,63,68) to yellow (255,255,0)
+  const r = Math.round(60 + t * (255 - 60));
+  const g = Math.round(63 + t * (255 - 63));
+  const b = Math.round(68 + t * (0 - 68));
+  return `rgba(${r},${g},${b},${0.4 + t * 0.5})`;
 }
 
 async function init() {
@@ -187,8 +192,8 @@ async function init() {
     for (let j = 1; j < col.length; j++) {
       if ((col[j].cluster || 'Unclustered') !== (col[j-1].cluster || 'Unclustered')) clusterBreaks++;
     }
-    const totalDiam = col.reduce((s, n) => s + RADIUS[n.priority] * 2, 0);
-    const totalNeeded = totalDiam + (col.length - 1) * nodeGap + clusterBreaks * clusterGap;
+    const totalH = col.length * BAR_H;
+    const totalNeeded = totalH + (col.length - 1) * nodeGap + clusterBreaks * clusterGap;
     const startY = margin.top + Math.max(0, (availHeight - totalNeeded) / 2);
     let curY = startY;
     let prevCluster = null;
@@ -196,11 +201,10 @@ async function init() {
       const cl = n.cluster || 'Unclustered';
       if (prevCluster !== null && cl !== prevCluster) curY += clusterGap;
       prevCluster = cl;
-      const r = RADIUS[n.priority];
       n.x = x;
       n.fx = x;
-      n.y = curY + r;
-      curY += r * 2 + nodeGap;
+      n.y = curY + BAR_H / 2;
+      curY += BAR_H + nodeGap;
     });
   });
 
@@ -234,7 +238,7 @@ async function init() {
   // Simulation: fix x, custom y attraction + collision + priority stratification
   const simulation = d3.forceSimulation(nodes)
     .force('crossCol', crossColumnAttract)
-    .force('collideY', d3.forceCollide().radius(d => RADIUS[d.priority] + 4).strength(0.8))
+    .force('collideY', d3.forceCollide().radius(BAR_H / 2 + 2).strength(1).iterations(5))
     .force('priorityY', d3.forceY(d => PRIO_Y[d.priority] || height / 2).strength(0.03))
     .alphaDecay(0.02);
 
@@ -283,15 +287,20 @@ async function init() {
       .on('end', (e, d) => { if (!e.active) simulation.alphaTarget(0); d.fy = null; })
     );
 
-  nodeEl.append('circle')
-    .attr('r', d => RADIUS[d.priority])
+  nodeEl.append('rect')
+    .attr('x', 0)
+    .attr('y', -BAR_H / 2)
+    .attr('width', d => BAR_W[d.priority] || 60)
+    .attr('height', BAR_H)
+    .attr('rx', 3).attr('ry', 3)
     .attr('fill', d => ceColor(d))
     .attr('stroke', d => d.status === 'blocked' ? 'rgba(255,0,0,0.3)' : 'none')
     .attr('stroke-dasharray', d => d.status === 'blocked' ? '3,2' : 'none');
 
   nodeEl.append('text')
-    .attr('dx', d => RADIUS[d.priority] + 4)
-    .attr('dy', 3)
+    .attr('dx', 4)
+    .attr('dy', 4)
+    .attr('text-anchor', 'start')
     .text(d => `#${d.id}`);
 
   // Hover / click
@@ -400,16 +409,25 @@ async function init() {
   function bezierLink(l) {
     const s = l.source, t = l.target;
     if (!s || !t) return '';
-    const dx = t.x - s.x;
-    return `M${s.x},${s.y}C${s.x + dx * 0.4},${s.y},${t.x - dx * 0.4},${t.y},${t.x},${t.y}`;
+    const sx = s.x + (BAR_W[s.priority] || 60);  // right edge of source bar
+    const tx = t.x;                                // left edge of target bar
+    const dx = tx - sx;
+    return `M${sx},${s.y}C${sx + dx * 0.4},${s.y},${tx - dx * 0.4},${t.y},${tx},${t.y}`;
   }
 
   simulation.on('tick', () => {
     // Enforce fixed x and clamp y to stay below column headers
     nodes.forEach(n => {
       n.x = n.fx;
-      const r = RADIUS[n.priority] || 10;
-      if (n.y < margin.top + r) n.y = margin.top + r;
+      if (n.y < margin.top + BAR_H / 2) n.y = margin.top + BAR_H / 2;
+    });
+    // Prevent vertical overlap within each column
+    columns.forEach(col => {
+      col.sort((a, b) => a.y - b.y);
+      for (let i = 1; i < col.length; i++) {
+        const minY = col[i - 1].y + BAR_H + 2;
+        if (col[i].y < minY) col[i].y = minY;
+      }
     });
     nodeEl.attr('transform', d => `translate(${d.x},${d.y})`);
     linkEl.attr('d', bezierLink);
@@ -430,8 +448,8 @@ async function init() {
       });
       groups.forEach(grp => {
         const first = grp.nodes[0], last = grp.nodes[grp.nodes.length - 1];
-        const topY = first.y - RADIUS[first.priority];
-        const botY = last.y + RADIUS[last.priority];
+        const topY = first.y - BAR_H / 2;
+        const botY = last.y + BAR_H / 2;
         const midY = (topY + botY) / 2;
         const color = CLUSTER_COLORS[grp.name] || '#6e7681';
         const bx = margin.left - 20;
