@@ -207,3 +207,4 @@
 | 316 | 2026-03-12 | Array element access bounds checking | Dep-driven |
 | 293 | 2026-03-12 | Class method incorrect results -- default parameter initialization | Dep-driven |
 | 178 | 2026-03-12 | Wasm validation errors -- LEB128, type mismatches in binary | Dep-driven |
+| 306 | 2026-03-12 | Prefix/postfix increment/decrement -- parens unwrap, TS2356 suppress, ref type guard | Dep-driven |
