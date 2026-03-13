@@ -12522,11 +12522,24 @@ function compileObjectKeysOrValues(
 
     // Push each field name string onto the stack
     for (const entry of userFields) {
-      const importName = ctx.stringLiteralMap.get(entry.field.name);
-      if (!importName) continue;
-      const funcIdx = ctx.funcMap.get(importName);
-      if (funcIdx === undefined) continue;
-      fctx.body.push({ op: "call", funcIdx });
+      if (ctx.fast && ctx.nativeStrTypeIdx >= 0) {
+        compileNativeStringLiteral(ctx, fctx, entry.field.name);
+        // Object.keys returns externref strings, convert from native
+        fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+      } else {
+        const globalIdx = ctx.stringGlobalMap.get(entry.field.name);
+        if (globalIdx !== undefined) {
+          fctx.body.push({ op: "global.get", index: globalIdx });
+        } else {
+          const importName = ctx.stringLiteralMap.get(entry.field.name);
+          if (importName) {
+            const funcIdx = ctx.funcMap.get(importName);
+            if (funcIdx !== undefined) {
+              fctx.body.push({ op: "call", funcIdx });
+            }
+          }
+        }
+      }
     }
 
     // Create the backing array with array.new_fixed
@@ -12700,6 +12713,9 @@ function compileObjectKeysOrValues(
       if (boxIdx !== undefined) {
         fctx.body.push({ op: "call", funcIdx: boxIdx });
       }
+    } else if (entry.field.type.kind === "ref" || entry.field.type.kind === "ref_null") {
+      // Convert GC ref types (nested structs, etc.) to externref
+      fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
     }
     // externref fields (strings, etc.) don't need boxing
   }
