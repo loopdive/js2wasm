@@ -215,3 +215,4 @@
 | 298 | 2026-03-12 | Function statement edge cases -- mutable captures, capture arg padding, hoisting retry | Dep-driven |
 | 244 | 2026-03-12 | in operator runtime support | Dep-driven |
 | 266 | 2026-03-12 | Multi-variable declaration scope resolution | Dep-driven |
+| 315 | 2026-03-12 | Wasm validation error audit — stale local type fix | Dep-driven |

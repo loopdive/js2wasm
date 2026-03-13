@@ -3587,13 +3587,18 @@ function compileAssignment(
         }
       }
 
+      // Re-read local type after potential update (func expr may have changed it)
+      const effectiveLocalType = localIdx < fctx.params.length
+        ? fctx.params[localIdx]!.type
+        : fctx.locals[localIdx - fctx.params.length]?.type;
+
       // Safety coercion: if the expression produced a type that doesn't match
       // the local's declared type (e.g. compileExpression didn't have expectedType
       // or coercion was incomplete), coerce before local.tee
-      if (localType && !valTypesMatch(resultType, localType)) {
-        coerceType(ctx, fctx, resultType, localType);
+      if (effectiveLocalType && !valTypesMatch(resultType, effectiveLocalType)) {
+        coerceType(ctx, fctx, resultType, effectiveLocalType);
         fctx.body.push({ op: "local.tee", index: localIdx });
-        return localType;
+        return effectiveLocalType;
       }
       fctx.body.push({ op: "local.tee", index: localIdx });
       return resultType;
