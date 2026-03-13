@@ -170,7 +170,9 @@ function resolveImport(
     case "box":
       return intent.targetType === "boolean" ? (v: number) => Boolean(v) : (v: number) => v;
     case "unbox":
-      return intent.targetType === "boolean" ? (v: any) => (v ? 1 : 0) : (v: any) => Number(v);
+      return intent.targetType === "boolean" ? (v: any) => (v ? 1 : 0) : (v: any) => {
+        try { return Number(v); } catch { return NaN; }
+      };
     case "truthy_check":
       return (v: any) => (v ? 1 : 0);
     case "extern_get":
