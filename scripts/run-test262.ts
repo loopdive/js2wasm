@@ -11,7 +11,7 @@
  *   benchmarks/results/test262-results.jsonl  — one JSON line per test result
  *   benchmarks/results/test262-report.json    — summary with error frequency
  */
-import { TEST_CATEGORIES, findTestFiles, runTest262File, type TestResult } from "../tests/test262-runner.js";
+import { TEST_CATEGORIES, findTestFiles, runTest262File, type TestResult, type TestTiming } from "../tests/test262-runner.js";
 import { join } from "path";
 import { writeFileSync, appendFileSync, readFileSync, existsSync } from "fs";
 import { execSync } from "child_process";
@@ -151,6 +151,7 @@ for (const [batchName, batchCats] of batches) {
         status: result.status,
         ...(result.error ? { error: result.error.substring(0, 300) } : {}),
         ...(result.reason ? { reason: result.reason } : {}),
+        ...(result.timing ? { timing: result.timing } : {}),
       }));
 
       // Flush every 100 tests to balance I/O and progress tracking
@@ -199,6 +200,36 @@ function normalizeError(msg: string): string {
     .replace(/Cannot compile expression: \d+/g, "Cannot compile expression: N");
 }
 
+// Aggregate timing data
+const timedResults = allResults.filter(r => r.timing);
+const totalCompileMs = timedResults.reduce((s, r) => s + (r.timing?.compileMs ?? 0), 0);
+const totalInstantiateMs = timedResults.reduce((s, r) => s + (r.timing?.instantiateMs ?? 0), 0);
+const totalExecuteMs = timedResults.reduce((s, r) => s + (r.timing?.executeMs ?? 0), 0);
+const totalWallMs = timedResults.reduce((s, r) => s + (r.timing?.totalMs ?? 0), 0);
+
+// Top 20 slowest tests by compile time
+const slowestByCompile = [...timedResults]
+  .sort((a, b) => (b.timing?.compileMs ?? 0) - (a.timing?.compileMs ?? 0))
+  .slice(0, 20);
+
+// Top 20 slowest tests by total time
+const slowestByTotal = [...timedResults]
+  .sort((a, b) => (b.timing?.totalMs ?? 0) - (a.timing?.totalMs ?? 0))
+  .slice(0, 20);
+
+// Per-category average compile time
+const categoryTiming = new Map<string, { count: number; compileMs: number; totalMs: number }>();
+for (const r of timedResults) {
+  const entry = categoryTiming.get(r.category) ?? { count: 0, compileMs: 0, totalMs: 0 };
+  entry.count++;
+  entry.compileMs += r.timing!.compileMs;
+  entry.totalMs += r.timing!.totalMs;
+  categoryTiming.set(r.category, entry);
+}
+const categoryTimingSorted = [...categoryTiming.entries()]
+  .map(([cat, t]) => ({ category: cat, ...t, avgCompileMs: t.compileMs / t.count, avgTotalMs: t.totalMs / t.count }))
+  .sort((a, b) => b.avgCompileMs - a.avgCompileMs);
+
 // Write JSON report
 const compilable = stats.pass + stats.fail;
 const byCategory = new Map<string, { pass: number; fail: number; skip: number; compile_error: number }>();
@@ -214,6 +245,28 @@ const reportData = {
     name: cat, ...s, compilable: s.pass + s.fail,
   })),
   compileErrors: errorFreqSorted.map(([msg, { count, files }]) => ({ message: msg, count, examples: files })),
+  timing: {
+    totalWallMs: Math.round(totalWallMs),
+    totalCompileMs: Math.round(totalCompileMs),
+    totalInstantiateMs: Math.round(totalInstantiateMs),
+    totalExecuteMs: Math.round(totalExecuteMs),
+    timedTests: timedResults.length,
+    avgCompileMs: timedResults.length > 0 ? Math.round(totalCompileMs / timedResults.length * 100) / 100 : 0,
+    slowestByCompile: slowestByCompile.map(r => ({
+      file: r.file, status: r.status, compileMs: r.timing!.compileMs, totalMs: r.timing!.totalMs,
+    })),
+    slowestByTotal: slowestByTotal.map(r => ({
+      file: r.file, status: r.status,
+      compileMs: r.timing!.compileMs, instantiateMs: r.timing!.instantiateMs,
+      executeMs: r.timing!.executeMs, totalMs: r.timing!.totalMs,
+    })),
+    byCategory: categoryTimingSorted.slice(0, 30).map(c => ({
+      category: c.category, count: c.count,
+      avgCompileMs: Math.round(c.avgCompileMs * 100) / 100,
+      totalCompileMs: Math.round(c.compileMs),
+      avgTotalMs: Math.round(c.avgTotalMs * 100) / 100,
+    })),
+  },
 };
 try { writeFileSync(REPORT_PATH, JSON.stringify(reportData, null, 2)); } catch {}
 
@@ -232,6 +285,28 @@ if (errorFreqSorted.length > 0) {
   console.log("\n── Compile Error Frequency ─────────────────────────");
   for (const [msg, { count }] of errorFreqSorted) {
     console.log(`  ${String(count).padStart(4)}×  ${msg.substring(0, 100)}`);
+  }
+  console.log("────────────────────────────────────────────────────");
+}
+
+// Timing summary
+if (timedResults.length > 0) {
+  console.log("\n── Compilation Timing ──────────────────────────────");
+  console.log(`  Tests with timing:  ${timedResults.length}`);
+  console.log(`  Total compile:      ${(totalCompileMs / 1000).toFixed(1)}s`);
+  console.log(`  Total instantiate:  ${(totalInstantiateMs / 1000).toFixed(1)}s`);
+  console.log(`  Total execute:      ${(totalExecuteMs / 1000).toFixed(1)}s`);
+  console.log(`  Total wall-clock:   ${(totalWallMs / 1000).toFixed(1)}s`);
+  console.log(`  Avg compile/test:   ${(totalCompileMs / timedResults.length).toFixed(1)}ms`);
+  console.log("");
+  console.log("  Top 10 slowest to compile:");
+  for (const r of slowestByCompile.slice(0, 10)) {
+    console.log(`    ${r.timing!.compileMs.toFixed(0).padStart(6)}ms  ${r.file}`);
+  }
+  console.log("");
+  console.log("  Slowest categories (avg compile ms):");
+  for (const c of categoryTimingSorted.slice(0, 10)) {
+    console.log(`    ${c.avgCompileMs.toFixed(1).padStart(8)}ms  ${c.category}  (${c.count} tests)`);
   }
   console.log("────────────────────────────────────────────────────");
 }
