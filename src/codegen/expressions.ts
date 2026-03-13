@@ -1,6 +1,6 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext, ClosureInfo, RestParamInfo } from "./index.js";
-import { allocLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers, addStringImports, cacheStringLiterals, addStringConstantGlobal, nextModuleGlobalIdx, collectClassDeclaration, compileClassBodies } from "./index.js";
+import { allocLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers, addStringImports, cacheStringLiterals, addStringConstantGlobal, nextModuleGlobalIdx } from "./index.js";
 import {
   mapTsTypeToWasm,
   isNumberType,
@@ -653,31 +653,6 @@ function compileExpressionInner(
   if (ts.isTaggedTemplateExpression(expr)) {
     return compileTaggedTemplateExpression(ctx, fctx, expr);
   }
-
-  // ClassExpression as a standalone expression — evaluate for side effects only.
-  // The class struct/constructor are collected during the collection phase or
-  // by compileNestedClassDeclaration. As a standalone expression, we just need
-  // to return a reference (externref null as placeholder since class-as-value
-  // is not fully supported).
-  if (ts.isClassExpression(expr)) {
-    // Ensure the class is collected if not already
-    const className = expr.name?.text;
-    if (className && !ctx.classSet.has(className)) {
-      try {
-        collectClassDeclaration(ctx, expr, className);
-        const funcByName = new Map<string, number>();
-        for (let i = 0; i < ctx.mod.functions.length; i++) {
-          funcByName.set(ctx.mod.functions[i]!.name, i);
-        }
-        compileClassBodies(ctx, expr, funcByName, className);
-      } catch {
-        // Ignore errors — class may use unsupported features
-      }
-    }
-    fctx.body.push({ op: "ref.null.extern" });
-    return { kind: "externref" };
-  }
-
   ctx.errors.push({
     message: `Unsupported expression: ${ts.SyntaxKind[expr.kind]}`,
     line: getLine(expr),
@@ -1968,15 +1943,10 @@ function compileTypeofExpression(
 ): ValType | null {
   const operand = expr.expression;
 
-  // typeof Math.<prop> → "function" for methods, "number" for constants
+  // typeof Math.<method> → "function" (static resolution)
   if (ts.isPropertyAccessExpression(operand) &&
       ts.isIdentifier(operand.expression) &&
       operand.expression.text === "Math") {
-    const mathConstants = new Set(["PI", "E", "LN2", "LN10", "SQRT2", "SQRT1_2", "LOG2E", "LOG10E"]);
-    const prop = operand.name.text;
-    if (mathConstants.has(prop)) {
-      return compileStringLiteral(ctx, fctx, "number");
-    }
     return compileStringLiteral(ctx, fctx, "function");
   }
 
@@ -2095,12 +2065,11 @@ function compileTypeofComparison(
   const operand = typeofExpr.expression;
   const tsType = ctx.checker.getTypeAtLocation(operand);
   let staticTypeof: string | null = null;
-  // Math.<prop> → "function" for methods, "number" for constants
+  // Math.<method> → "function"
   if (ts.isPropertyAccessExpression(operand) &&
       ts.isIdentifier(operand.expression) &&
       operand.expression.text === "Math") {
-    const mathConsts = new Set(["PI", "E", "LN2", "LN10", "SQRT2", "SQRT1_2", "LOG2E", "LOG10E"]);
-    staticTypeof = mathConsts.has(operand.name.text) ? "number" : "function";
+    staticTypeof = "function";
   } else if (tsType.flags & ts.TypeFlags.Null) {
     staticTypeof = "object";
   } else if (tsType.flags & ts.TypeFlags.Undefined || tsType.flags & ts.TypeFlags.Void) {
@@ -3901,57 +3870,25 @@ function compileDestructuringAssignment(
         }
       } else if (ts.isObjectLiteralExpression(targetExpr)) {
         // { prop: { nested } } — nested destructuring
-        // Extract the field value into a temp, then recursively destructure
         const tmpNested = allocLocal(fctx, `__nested_${fctx.locals.length}`, fieldType);
         fctx.body.push({ op: "local.get", index: tmpLocal });
         fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
         fctx.body.push({ op: "local.set", index: tmpNested });
-
-        // Build a synthetic assignment: targetExpr = tmpNestedRef
-        // We can reuse the destructuring logic by getting the nested struct type
-        const nestedTsType = ctx.checker.getTypeAtLocation(targetExpr);
-        const nestedSymName = nestedTsType.symbol?.name;
-        let nestedTypeName =
-          nestedSymName &&
-          nestedSymName !== "__type" &&
-          nestedSymName !== "__object" &&
-          ctx.structMap.has(nestedSymName)
-            ? nestedSymName
-            : (ctx.anonTypeMap.get(nestedTsType) ?? nestedSymName);
-
-        if (nestedTypeName && (nestedTypeName === "__type" || nestedTypeName === "__object")) {
-          ensureStructForType(ctx, nestedTsType);
-          nestedTypeName = ctx.anonTypeMap.get(nestedTsType) ?? nestedTypeName;
-        }
-
-        const nestedStructIdx = nestedTypeName ? ctx.structMap.get(nestedTypeName) : undefined;
-        const nestedFields = nestedTypeName ? ctx.structFields.get(nestedTypeName) : undefined;
-
-        if (nestedStructIdx !== undefined && nestedFields) {
-          // Recursively handle each property in the nested pattern
-          for (const nestedProp of targetExpr.properties) {
-            if (ts.isShorthandPropertyAssignment(nestedProp)) {
-              const nPropName = nestedProp.name.text;
-              let nLocalIdx = fctx.localMap.get(nPropName);
-              const nFieldIdx = nestedFields.findIndex((f) => f.name === nPropName);
-              if (nFieldIdx === -1) continue;
-
-              if (nLocalIdx === undefined) {
-                nLocalIdx = allocLocal(fctx, nPropName, nestedFields[nFieldIdx]!.type);
-              }
-
-              const nFieldType = nestedFields[nFieldIdx]!.type;
-              const nLocalType = getLocalType(fctx, nLocalIdx);
-
-              fctx.body.push({ op: "local.get", index: tmpNested });
-              fctx.body.push({ op: "struct.get", typeIdx: nestedStructIdx, fieldIdx: nFieldIdx });
-              if (nLocalType && !valTypesMatch(nFieldType, nLocalType)) {
-                coerceType(ctx, fctx, nFieldType, nLocalType);
-              }
-              fctx.body.push({ op: "local.set", index: nLocalIdx });
-            }
-          }
-        }
+        emitObjectDestructureFromLocal(ctx, fctx, targetExpr, tmpNested, fieldType);
+      } else if (ts.isArrayLiteralExpression(targetExpr)) {
+        // { prop: [a, b] } — nested array destructuring
+        const tmpNested = allocLocal(fctx, `__nested_${fctx.locals.length}`, fieldType);
+        fctx.body.push({ op: "local.get", index: tmpLocal });
+        fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+        fctx.body.push({ op: "local.set", index: tmpNested });
+        emitArrayDestructureFromLocal(ctx, fctx, targetExpr, tmpNested, fieldType);
+      } else if (ts.isPropertyAccessExpression(targetExpr) || ts.isElementAccessExpression(targetExpr)) {
+        // { prop: obj.field } or { prop: arr[0] } — member expression target
+        const tmpElem = allocLocal(fctx, `__nested_elem_${fctx.locals.length}`, fieldType);
+        fctx.body.push({ op: "local.get", index: tmpLocal });
+        fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+        fctx.body.push({ op: "local.set", index: tmpElem });
+        emitAssignToTarget(ctx, fctx, targetExpr, tmpElem, fieldType);
       }
       // else: unsupported target expression in property assignment — skip
     }
@@ -3968,221 +3905,424 @@ function compileArrayDestructuringAssignment(
   target: ts.ArrayLiteralExpression,
   value: ts.Expression,
 ): InnerResult {
-  // Compile the RHS — should produce a vec struct ref (array)
+  // Compile the RHS — should produce a struct ref (either tuple or vec)
   const resultType = compileExpression(ctx, fctx, value);
   if (!resultType) return null;
 
   if (resultType.kind !== "ref" && resultType.kind !== "ref_null") {
     ctx.errors.push({
-      message: "Array destructuring assignment: RHS is not a ref type",
+      message: "Cannot destructure: not an array type",
       line: getLine(target),
       column: getCol(target),
     });
     return null;
   }
 
-  const vecTypeIdx = (resultType as { typeIdx: number }).typeIdx;
-  const vecDef = ctx.mod.types[vecTypeIdx];
+  const typeIdx = (resultType as { typeIdx: number }).typeIdx;
+  const typeDef = ctx.mod.types[typeIdx];
 
-  // Verify it's a vec struct with {length, data} shape
-  if (
-    !vecDef ||
-    vecDef.kind !== "struct" ||
-    vecDef.fields.length !== 2 ||
-    vecDef.fields[0]?.name !== "length" ||
-    vecDef.fields[1]?.name !== "data"
-  ) {
-    // Could be a tuple struct — try to handle as tuple
-    if (vecDef?.kind === "struct") {
-      return compileArrayDestructuringFromStruct(ctx, fctx, target, resultType, vecTypeIdx, vecDef);
+  if (!typeDef || typeDef.kind !== "struct") {
+    ctx.errors.push({
+      message: "Cannot destructure: not an array struct type",
+      line: getLine(target),
+      column: getCol(target),
+    });
+    return null;
+  }
+
+  // Detect whether RHS is a tuple struct (fields $_0, $_1, ...) or vec struct ({length, data})
+  const isVecStruct = typeDef.fields.length === 2 &&
+    typeDef.fields[0]?.name === "length" &&
+    typeDef.fields[1]?.name === "data";
+
+  let arrTypeIdx = -1;
+  let arrDef: { kind: string; element: ValType } | undefined;
+
+  if (isVecStruct) {
+    arrTypeIdx = getArrTypeIdxFromVec(ctx, typeIdx);
+    const ad = ctx.mod.types[arrTypeIdx];
+    if (!ad || ad.kind !== "array") {
+      ctx.errors.push({
+        message: "Cannot destructure: vec data is not array",
+        line: getLine(target),
+        column: getCol(target),
+      });
+      return null;
     }
-    ctx.errors.push({
-      message: "Array destructuring assignment: RHS is not a vec struct",
-      line: getLine(target),
-      column: getCol(target),
-    });
-    return null;
+    arrDef = ad as { kind: string; element: ValType };
   }
 
-  const innerArrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
-  const arrDef = ctx.mod.types[innerArrTypeIdx];
-  if (!arrDef || arrDef.kind !== "array") {
-    ctx.errors.push({
-      message: "Array destructuring assignment: vec data is not array",
-      line: getLine(target),
-      column: getCol(target),
-    });
-    return null;
-  }
-
-  const innerElemType = arrDef.element;
-
-  // Save the vec ref in a temp local
+  // Store struct ref in temp local
   const tmpLocal = allocLocal(fctx, `__arr_destruct_${fctx.locals.length}`, resultType);
   fctx.body.push({ op: "local.set", index: tmpLocal });
 
+  // Helper: get element type at index i
+  const getElemType = (i: number): ValType => {
+    if (isVecStruct) return arrDef!.element;
+    // Tuple: field type at index i
+    const field = typeDef.fields[i];
+    return field ? field.type : { kind: "f64" };
+  };
+
+  // Helper: emit instructions to get element i onto the stack
+  const emitElementGet = (i: number) => {
+    fctx.body.push({ op: "local.get", index: tmpLocal });
+    if (isVecStruct) {
+      fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 }); // get data array
+      fctx.body.push({ op: "i32.const", value: i });
+      fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
+    } else {
+      // Tuple: direct struct.get with field index
+      fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: i });
+    }
+  };
+
   for (let i = 0; i < target.elements.length; i++) {
-    const el = target.elements[i]!;
+    const element = target.elements[i]!;
 
-    // Handle omitted elements: [, , x] = arr
-    if (ts.isOmittedExpression(el)) continue;
+    // Skip holes: [a, , c] = arr
+    if (ts.isOmittedExpression(element)) continue;
 
-    // Handle spread/rest element: [...rest] = arr
-    if (ts.isSpreadElement(el)) {
-      // Rest elements in array destructuring are complex — skip for now
+    // Handle rest element: [a, ...rest] = arr (only for vec structs)
+    if (ts.isSpreadElement(element)) {
+      if (isVecStruct) {
+        const restTarget = element.expression;
+        if (ts.isIdentifier(restTarget)) {
+          const restName = restTarget.text;
+          let restLocalIdx = fctx.localMap.get(restName);
+          if (restLocalIdx === undefined) {
+            restLocalIdx = allocLocal(fctx, restName, resultType);
+          }
+          const tmpLen = allocLocal(fctx, `__rest_len_${fctx.locals.length}`, { kind: "i32" });
+          fctx.body.push({ op: "local.get", index: tmpLocal });
+          fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 0 }); // length
+          fctx.body.push({ op: "i32.const", value: i });
+          fctx.body.push({ op: "i32.sub" } as Instr);
+          fctx.body.push({ op: "local.tee", index: tmpLen });
+
+          fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx } as Instr);
+          const tmpRestArr = allocLocal(fctx, `__rest_arr_${fctx.locals.length}`, { kind: "ref", typeIdx: arrTypeIdx });
+          fctx.body.push({ op: "local.set", index: tmpRestArr });
+
+          const tmpJ = allocLocal(fctx, `__rest_j_${fctx.locals.length}`, { kind: "i32" });
+          fctx.body.push({ op: "i32.const", value: 0 });
+          fctx.body.push({ op: "local.set", index: tmpJ });
+
+          const loopBody: Instr[] = [
+            { op: "local.get", index: tmpJ } as Instr,
+            { op: "local.get", index: tmpLen } as Instr,
+            { op: "i32.lt_s" } as Instr,
+            { op: "i32.eqz" } as Instr,
+            { op: "br_if", depth: 1 } as Instr,
+            { op: "local.get", index: tmpRestArr } as Instr,
+            { op: "local.get", index: tmpJ } as Instr,
+            { op: "local.get", index: tmpLocal } as Instr,
+            { op: "struct.get", typeIdx, fieldIdx: 1 } as Instr,
+            { op: "local.get", index: tmpJ } as Instr,
+            { op: "i32.const", value: i } as Instr,
+            { op: "i32.add" } as Instr,
+            { op: "array.get", typeIdx: arrTypeIdx } as Instr,
+            { op: "array.set", typeIdx: arrTypeIdx } as Instr,
+            { op: "local.get", index: tmpJ } as Instr,
+            { op: "i32.const", value: 1 } as Instr,
+            { op: "i32.add" } as Instr,
+            { op: "local.set", index: tmpJ } as Instr,
+            { op: "br", depth: 0 } as Instr,
+          ];
+
+          fctx.body.push({
+            op: "block",
+            blockType: { kind: "empty" },
+            body: [{
+              op: "loop",
+              blockType: { kind: "empty" },
+              body: loopBody,
+            } as Instr],
+          } as Instr);
+
+          fctx.body.push({ op: "local.get", index: tmpLen });
+          fctx.body.push({ op: "local.get", index: tmpRestArr });
+          fctx.body.push({ op: "struct.new", typeIdx } as Instr);
+          fctx.body.push({ op: "local.set", index: restLocalIdx });
+        }
+      }
+      // Rest on tuples is not supported (would need type conversion)
       continue;
     }
 
-    if (ts.isIdentifier(el)) {
-      const localName = el.text;
+    const elemType = getElemType(i);
+
+    if (ts.isIdentifier(element)) {
+      const localName = element.text;
       let localIdx = fctx.localMap.get(localName);
-
-      // Auto-allocate local if not declared
       if (localIdx === undefined) {
-        const bindingTsType = ctx.checker.getTypeAtLocation(el);
-        const bindingWasmType = resolveWasmType(ctx, bindingTsType);
-        localIdx = allocLocal(fctx, localName, bindingWasmType);
+        localIdx = allocLocal(fctx, localName, elemType);
       }
-
+      emitElementGet(i);
       const localType = getLocalType(fctx, localIdx);
-
-      // vec struct: { length: i32, data: ref $arr }
-      fctx.body.push({ op: "local.get", index: tmpLocal });
-      fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 }); // data
-      fctx.body.push({ op: "i32.const", value: i });
-      fctx.body.push({ op: "array.get", typeIdx: innerArrTypeIdx });
-
-      // Coerce element type to local type if needed
-      if (localType && !valTypesMatch(innerElemType, localType)) {
-        coerceType(ctx, fctx, innerElemType, localType);
+      if (localType && !valTypesMatch(elemType, localType)) {
+        coerceType(ctx, fctx, elemType, localType);
       }
-
       fctx.body.push({ op: "local.set", index: localIdx });
-    } else if (ts.isArrayLiteralExpression(el)) {
-      // Nested array destructuring: [[a, b], c] = [[1, 2], 3]
-      const nestedTmp = allocLocal(fctx, `__nested_arr_${fctx.locals.length}`, innerElemType);
-      fctx.body.push({ op: "local.get", index: tmpLocal });
-      fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
-      fctx.body.push({ op: "i32.const", value: i });
-      fctx.body.push({ op: "array.get", typeIdx: innerArrTypeIdx });
-      fctx.body.push({ op: "local.set", index: nestedTmp });
-
-      // Recursively destructure using the nested element
-      // Build a synthetic binary expression and compile it
-      // For now, handle inline if the element is a vec struct
-      if (innerElemType.kind === "ref" || innerElemType.kind === "ref_null") {
-        const nestedVecTypeIdx = (innerElemType as { typeIdx: number }).typeIdx;
-        const nestedVecDef = ctx.mod.types[nestedVecTypeIdx];
-        if (
-          nestedVecDef?.kind === "struct" &&
-          nestedVecDef.fields.length === 2 &&
-          nestedVecDef.fields[0]?.name === "length" &&
-          nestedVecDef.fields[1]?.name === "data"
-        ) {
-          const nestedArrTypeIdx = getArrTypeIdxFromVec(ctx, nestedVecTypeIdx);
-          const nestedArrDef = ctx.mod.types[nestedArrTypeIdx];
-          if (nestedArrDef?.kind === "array") {
-            const nestedInnerElemType = nestedArrDef.element;
-            for (let j = 0; j < el.elements.length; j++) {
-              const nestedEl = el.elements[j]!;
-              if (ts.isOmittedExpression(nestedEl)) continue;
-              if (!ts.isIdentifier(nestedEl)) continue;
-
-              const nLocalName = nestedEl.text;
-              let nLocalIdx = fctx.localMap.get(nLocalName);
-              if (nLocalIdx === undefined) {
-                const nBindingType = resolveWasmType(ctx, ctx.checker.getTypeAtLocation(nestedEl));
-                nLocalIdx = allocLocal(fctx, nLocalName, nBindingType);
-              }
-
-              const nLocalType = getLocalType(fctx, nLocalIdx);
-              fctx.body.push({ op: "local.get", index: nestedTmp });
-              fctx.body.push({ op: "struct.get", typeIdx: nestedVecTypeIdx, fieldIdx: 1 });
-              fctx.body.push({ op: "i32.const", value: j });
-              fctx.body.push({ op: "array.get", typeIdx: nestedArrTypeIdx });
-              if (nLocalType && !valTypesMatch(nestedInnerElemType, nLocalType)) {
-                coerceType(ctx, fctx, nestedInnerElemType, nLocalType);
-              }
-              fctx.body.push({ op: "local.set", index: nLocalIdx });
-            }
-          }
-        }
-      }
-    } else if (ts.isObjectLiteralExpression(el)) {
-      // Array element is object destructuring: [{ a, b }] = [{ a: 1, b: 2 }]
-      const nestedTmp = allocLocal(fctx, `__nested_obj_${fctx.locals.length}`, innerElemType);
-      fctx.body.push({ op: "local.get", index: tmpLocal });
-      fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
-      fctx.body.push({ op: "i32.const", value: i });
-      fctx.body.push({ op: "array.get", typeIdx: innerArrTypeIdx });
-      fctx.body.push({ op: "local.set", index: nestedTmp });
-      // Object destructuring from the element would require further work
-      // For now, skip
-    } else if (ts.isBinaryExpression(el) && el.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
-      // Default value: [a = 5] = arr
-      // For now, just assign the array element (ignore default)
-      if (ts.isIdentifier(el.left)) {
-        const localName = el.left.text;
+    } else if (ts.isPropertyAccessExpression(element)) {
+      emitElementGet(i);
+      const tmpElem = allocLocal(fctx, `__arr_elem_${fctx.locals.length}`, elemType);
+      fctx.body.push({ op: "local.set", index: tmpElem });
+      emitAssignToTarget(ctx, fctx, element, tmpElem, elemType);
+    } else if (ts.isElementAccessExpression(element)) {
+      emitElementGet(i);
+      const tmpElem = allocLocal(fctx, `__arr_elem_${fctx.locals.length}`, elemType);
+      fctx.body.push({ op: "local.set", index: tmpElem });
+      emitAssignToTarget(ctx, fctx, element, tmpElem, elemType);
+    } else if (ts.isObjectLiteralExpression(element)) {
+      emitElementGet(i);
+      const tmpElem = allocLocal(fctx, `__arr_elem_${fctx.locals.length}`, elemType);
+      fctx.body.push({ op: "local.set", index: tmpElem });
+      emitObjectDestructureFromLocal(ctx, fctx, element, tmpElem, elemType);
+    } else if (ts.isArrayLiteralExpression(element)) {
+      emitElementGet(i);
+      const tmpElem = allocLocal(fctx, `__arr_elem_${fctx.locals.length}`, elemType);
+      fctx.body.push({ op: "local.set", index: tmpElem });
+      emitArrayDestructureFromLocal(ctx, fctx, element, tmpElem, elemType);
+    } else if (ts.isBinaryExpression(element) && element.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+      const assignTarget = element.left;
+      const defaultExpr = element.right;
+      if (ts.isIdentifier(assignTarget)) {
+        const localName = assignTarget.text;
         let localIdx = fctx.localMap.get(localName);
         if (localIdx === undefined) {
-          const bindingType = resolveWasmType(ctx, ctx.checker.getTypeAtLocation(el.left));
-          localIdx = allocLocal(fctx, localName, bindingType);
+          localIdx = allocLocal(fctx, localName, elemType);
         }
-        const localType = getLocalType(fctx, localIdx);
-        fctx.body.push({ op: "local.get", index: tmpLocal });
-        fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
-        fctx.body.push({ op: "i32.const", value: i });
-        fctx.body.push({ op: "array.get", typeIdx: innerArrTypeIdx });
-        if (localType && !valTypesMatch(innerElemType, localType)) {
-          coerceType(ctx, fctx, innerElemType, localType);
+        emitElementGet(i);
+        if (elemType.kind === "externref" || elemType.kind === "ref" || elemType.kind === "ref_null") {
+          const tmpElem = allocLocal(fctx, `__dflt_${fctx.locals.length}`, elemType);
+          fctx.body.push({ op: "local.tee", index: tmpElem });
+          fctx.body.push({ op: "ref.is_null" } as Instr);
+          const localType = getLocalType(fctx, localIdx);
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: [
+              ...(() => {
+                const saved = fctx.body;
+                fctx.body = [];
+                compileExpression(ctx, fctx, defaultExpr, localType ?? elemType);
+                fctx.body.push({ op: "local.set", index: localIdx! } as Instr);
+                const instrs = fctx.body;
+                fctx.body = saved;
+                return instrs;
+              })(),
+            ],
+            else: [
+              { op: "local.get", index: tmpElem } as Instr,
+              ...(() => {
+                if (localType && !valTypesMatch(elemType, localType)) {
+                  const saved = fctx.body;
+                  fctx.body = [];
+                  coerceType(ctx, fctx, elemType, localType);
+                  const instrs = fctx.body;
+                  fctx.body = saved;
+                  return instrs;
+                }
+                return [];
+              })(),
+              { op: "local.set", index: localIdx! } as Instr,
+            ],
+          });
+        } else {
+          const localType = getLocalType(fctx, localIdx);
+          if (localType && !valTypesMatch(elemType, localType)) {
+            coerceType(ctx, fctx, elemType, localType);
+          }
+          fctx.body.push({ op: "local.set", index: localIdx });
         }
-        fctx.body.push({ op: "local.set", index: localIdx });
       }
     }
+    // else: unsupported element target — skip
   }
 
-  // The result of array destructuring assignment is the RHS value
+  // The result of a destructuring assignment is the RHS value
   fctx.body.push({ op: "local.get", index: tmpLocal });
   return resultType;
 }
 
-function compileArrayDestructuringFromStruct(
+/** Assign value from a local to a property access or element access target */
+function emitAssignToTarget(
   ctx: CodegenContext,
   fctx: FunctionContext,
-  target: ts.ArrayLiteralExpression,
-  resultType: ValType,
-  structTypeIdx: number,
-  structDef: StructTypeDef,
-): InnerResult {
-  // Handle tuple-like structs: destructure by field index
-  const tmpLocal = allocLocal(fctx, `__tuple_destruct_${fctx.locals.length}`, resultType);
-  fctx.body.push({ op: "local.set", index: tmpLocal });
-
-  for (let i = 0; i < target.elements.length && i < structDef.fields.length; i++) {
-    const el = target.elements[i]!;
-    if (ts.isOmittedExpression(el)) continue;
-    if (!ts.isIdentifier(el)) continue;
-
-    const localName = el.text;
-    let localIdx = fctx.localMap.get(localName);
-    const fieldType = structDef.fields[i]!.type;
-
-    if (localIdx === undefined) {
-      const bindingType = resolveWasmType(ctx, ctx.checker.getTypeAtLocation(el));
-      localIdx = allocLocal(fctx, localName, bindingType);
+  target: ts.Expression,
+  valueLocal: number,
+  valueType: ValType,
+): void {
+  if (ts.isPropertyAccessExpression(target)) {
+    const objType = ctx.checker.getTypeAtLocation(target.expression);
+    let typeName = resolveStructName(ctx, objType);
+    if (!typeName && ts.isIdentifier(target.expression)) {
+      typeName = ctx.widenedVarStructMap.get(target.expression.text);
     }
+    if (!typeName) return;
 
-    const localType = getLocalType(fctx, localIdx);
-    fctx.body.push({ op: "local.get", index: tmpLocal });
-    fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx: i });
-    if (localType && !valTypesMatch(fieldType, localType)) {
-      coerceType(ctx, fctx, fieldType, localType);
+    const structTypeIdx = ctx.structMap.get(typeName);
+    const fields = ctx.structFields.get(typeName);
+    if (structTypeIdx === undefined || !fields) return;
+
+    const fieldName = target.name.text;
+    const fieldIdx = fields.findIndex((f) => f.name === fieldName);
+    if (fieldIdx === -1) return;
+
+    const fieldType = fields[fieldIdx]!.type;
+    // Push obj ref, then value
+    compileExpression(ctx, fctx, target.expression);
+    fctx.body.push({ op: "local.get", index: valueLocal });
+    if (!valTypesMatch(valueType, fieldType)) {
+      coerceType(ctx, fctx, valueType, fieldType);
     }
-    fctx.body.push({ op: "local.set", index: localIdx });
+    fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx });
+  } else if (ts.isElementAccessExpression(target)) {
+    const arrType = compileExpression(ctx, fctx, target.expression);
+    if (!arrType || (arrType.kind !== "ref" && arrType.kind !== "ref_null")) return;
+    const tIdx = (arrType as { typeIdx: number }).typeIdx;
+    const tDef = ctx.mod.types[tIdx];
+    // Handle vec struct
+    if (tDef?.kind === "struct" && tDef.fields.length === 2 && tDef.fields[0]?.name === "length" && tDef.fields[1]?.name === "data") {
+      const aIdx = getArrTypeIdxFromVec(ctx, tIdx);
+      // Push: data array, index, value
+      fctx.body.push({ op: "struct.get", typeIdx: tIdx, fieldIdx: 1 });
+      const idxResult = compileExpression(ctx, fctx, target.argumentExpression);
+      if (!idxResult) return;
+      if (idxResult.kind === "f64") {
+        fctx.body.push({ op: "i32.trunc_f64_s" } as Instr);
+      }
+      fctx.body.push({ op: "local.get", index: valueLocal });
+      fctx.body.push({ op: "array.set", typeIdx: aIdx });
+    }
   }
+}
 
-  fctx.body.push({ op: "local.get", index: tmpLocal });
-  return resultType;
+/** Destructure an object from a local variable (used for nested patterns) */
+function emitObjectDestructureFromLocal(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  pattern: ts.ObjectLiteralExpression,
+  srcLocal: number,
+  srcType: ValType,
+): void {
+  if (srcType.kind !== "ref" && srcType.kind !== "ref_null") return;
+  const srcTypeIdx = (srcType as { typeIdx: number }).typeIdx;
+
+  // Find struct name from type index
+  let structName: string | undefined;
+  for (const [name, idx] of ctx.structMap) {
+    if (idx === srcTypeIdx) { structName = name; break; }
+  }
+  if (!structName) return;
+
+  const fields = ctx.structFields.get(structName);
+  if (!fields) return;
+
+  for (const prop of pattern.properties) {
+    if (ts.isShorthandPropertyAssignment(prop)) {
+      const propName = prop.name.text;
+      const fieldIdx = fields.findIndex((f) => f.name === propName);
+      if (fieldIdx === -1) continue;
+
+      let localIdx = fctx.localMap.get(propName);
+      if (localIdx === undefined) {
+        localIdx = allocLocal(fctx, propName, fields[fieldIdx]!.type);
+      }
+
+      fctx.body.push({ op: "local.get", index: srcLocal });
+      fctx.body.push({ op: "struct.get", typeIdx: srcTypeIdx, fieldIdx });
+      const fieldType = fields[fieldIdx]!.type;
+      const localType = getLocalType(fctx, localIdx);
+      if (localType && !valTypesMatch(fieldType, localType)) {
+        coerceType(ctx, fctx, fieldType, localType);
+      }
+      fctx.body.push({ op: "local.set", index: localIdx });
+    } else if (ts.isPropertyAssignment(prop)) {
+      const propName = (prop.name as ts.Identifier).text;
+      const fieldIdx = fields.findIndex((f) => f.name === propName);
+      if (fieldIdx === -1) continue;
+      const fieldType = fields[fieldIdx]!.type;
+
+      const targetExpr = prop.initializer;
+      if (ts.isIdentifier(targetExpr)) {
+        let localIdx = fctx.localMap.get(targetExpr.text);
+        if (localIdx === undefined) {
+          localIdx = allocLocal(fctx, targetExpr.text, fieldType);
+        }
+        fctx.body.push({ op: "local.get", index: srcLocal });
+        fctx.body.push({ op: "struct.get", typeIdx: srcTypeIdx, fieldIdx });
+        const localType = getLocalType(fctx, localIdx);
+        if (localType && !valTypesMatch(fieldType, localType)) {
+          coerceType(ctx, fctx, fieldType, localType);
+        }
+        fctx.body.push({ op: "local.set", index: localIdx });
+      } else if (ts.isObjectLiteralExpression(targetExpr)) {
+        // Nested object: { x: { a, b } } = obj
+        const tmpNested = allocLocal(fctx, `__nested_${fctx.locals.length}`, fieldType);
+        fctx.body.push({ op: "local.get", index: srcLocal });
+        fctx.body.push({ op: "struct.get", typeIdx: srcTypeIdx, fieldIdx });
+        fctx.body.push({ op: "local.set", index: tmpNested });
+        emitObjectDestructureFromLocal(ctx, fctx, targetExpr, tmpNested, fieldType);
+      } else if (ts.isArrayLiteralExpression(targetExpr)) {
+        // Nested array: { x: [a, b] } = obj
+        const tmpNested = allocLocal(fctx, `__nested_${fctx.locals.length}`, fieldType);
+        fctx.body.push({ op: "local.get", index: srcLocal });
+        fctx.body.push({ op: "struct.get", typeIdx: srcTypeIdx, fieldIdx });
+        fctx.body.push({ op: "local.set", index: tmpNested });
+        emitArrayDestructureFromLocal(ctx, fctx, targetExpr, tmpNested, fieldType);
+      } else if (ts.isPropertyAccessExpression(targetExpr) || ts.isElementAccessExpression(targetExpr)) {
+        // Member expression target: { x: obj.prop } = obj2
+        const tmpElem = allocLocal(fctx, `__nested_elem_${fctx.locals.length}`, fieldType);
+        fctx.body.push({ op: "local.get", index: srcLocal });
+        fctx.body.push({ op: "struct.get", typeIdx: srcTypeIdx, fieldIdx });
+        fctx.body.push({ op: "local.set", index: tmpElem });
+        emitAssignToTarget(ctx, fctx, targetExpr, tmpElem, fieldType);
+      }
+    }
+  }
+}
+
+/** Destructure an array from a local variable (used for nested patterns) */
+function emitArrayDestructureFromLocal(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  pattern: ts.ArrayLiteralExpression,
+  srcLocal: number,
+  srcType: ValType,
+): void {
+  if (srcType.kind !== "ref" && srcType.kind !== "ref_null") return;
+  const srcTypeIdx = (srcType as { typeIdx: number }).typeIdx;
+  const srcDef = ctx.mod.types[srcTypeIdx];
+  if (!srcDef || srcDef.kind !== "struct") return;
+
+  const arrTypeIdx = getArrTypeIdxFromVec(ctx, srcTypeIdx);
+  const arrDef = ctx.mod.types[arrTypeIdx];
+  if (!arrDef || arrDef.kind !== "array") return;
+
+  const elemType = arrDef.element;
+
+  for (let i = 0; i < pattern.elements.length; i++) {
+    const element = pattern.elements[i]!;
+    if (ts.isOmittedExpression(element)) continue;
+
+    if (ts.isIdentifier(element)) {
+      let localIdx = fctx.localMap.get(element.text);
+      if (localIdx === undefined) {
+        localIdx = allocLocal(fctx, element.text, elemType);
+      }
+      fctx.body.push({ op: "local.get", index: srcLocal });
+      fctx.body.push({ op: "struct.get", typeIdx: srcTypeIdx, fieldIdx: 1 });
+      fctx.body.push({ op: "i32.const", value: i });
+      fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
+      const localType = getLocalType(fctx, localIdx);
+      if (localType && !valTypesMatch(elemType, localType)) {
+        coerceType(ctx, fctx, elemType, localType);
+      }
+      fctx.body.push({ op: "local.set", index: localIdx });
+    }
+  }
 }
 
 function compilePropertyAssignment(
@@ -4374,17 +4514,11 @@ function compileElementAssignment(
           }
         }
       }
-      // Also handle enum members, constant expressions (e.g. "a" + "b"), etc.
+      // Also handle constant expressions (e.g. "a" + "b")
       if (fieldName === undefined) {
-        fieldName = resolveComputedKeyExpression(ctx, target.argumentExpression);
-      }
-      // Last resort: use the TypeScript checker's type to infer the field name
-      if (fieldName === undefined) {
-        const argType = ctx.checker.getTypeAtLocation(target.argumentExpression);
-        if (argType.isStringLiteral()) {
-          fieldName = argType.value;
-        } else if (argType.isNumberLiteral()) {
-          fieldName = String(argType.value);
+        const constVal = resolveConstantExpression(ctx, target.argumentExpression);
+        if (constVal !== undefined) {
+          fieldName = String(constVal);
         }
       }
       if (fieldName !== undefined) {
@@ -5645,14 +5779,9 @@ function compileElementCompoundAssignment(
         }
       }
       if (fieldName === undefined) {
-        fieldName = resolveComputedKeyExpression(ctx, target.argumentExpression);
-      }
-      if (fieldName === undefined) {
-        const argType = ctx.checker.getTypeAtLocation(target.argumentExpression);
-        if (argType.isStringLiteral()) {
-          fieldName = argType.value;
-        } else if (argType.isNumberLiteral()) {
-          fieldName = String(argType.value);
+        const constVal = resolveConstantExpression(ctx, target.argumentExpression);
+        if (constVal !== undefined) {
+          fieldName = String(constVal);
         }
       }
 
@@ -5949,17 +6078,6 @@ function compileMemberIncDec(
           fieldName = operand.argumentExpression.text;
         } else if (ts.isNumericLiteral(operand.argumentExpression)) {
           fieldName = operand.argumentExpression.text;
-        }
-        if (fieldName === undefined) {
-          fieldName = resolveComputedKeyExpression(ctx, operand.argumentExpression);
-        }
-        if (fieldName === undefined) {
-          const argType = ctx.checker.getTypeAtLocation(operand.argumentExpression);
-          if (argType.isStringLiteral()) {
-            fieldName = argType.value;
-          } else if (argType.isNumberLiteral()) {
-            fieldName = String(argType.value);
-          }
         }
 
         if (fieldName) {
@@ -6681,54 +6799,31 @@ function compilePostfixIncrementElement(
   const typeIdx = (arrType as { typeIdx: number }).typeIdx;
   const typeDef = ctx.mod.types[typeIdx];
 
-  // Bracket access on struct: obj["prop"]++ / obj[constKey]++
-  if (typeDef?.kind === "struct") {
-    const isVecCheck = typeDef.fields.length === 2 &&
-      typeDef.fields[0]?.name === "length" &&
-      typeDef.fields[1]?.name === "data";
-    if (!isVecCheck) {
-      let propName: string | undefined;
-      if (ts.isStringLiteral(target.argumentExpression)) {
-        propName = target.argumentExpression.text;
-      } else if (ts.isNumericLiteral(target.argumentExpression)) {
-        propName = target.argumentExpression.text;
-      }
-      if (propName === undefined) {
-        propName = resolveComputedKeyExpression(ctx, target.argumentExpression);
-      }
-      if (propName === undefined) {
-        const argType = ctx.checker.getTypeAtLocation(target.argumentExpression);
-        if (argType.isStringLiteral()) {
-          propName = argType.value;
-        } else if (argType.isNumberLiteral()) {
-          propName = String(argType.value);
-        }
-      }
-      if (propName !== undefined) {
-        const fieldIdx = typeDef.fields.findIndex((f: { name: string }) => f.name === propName);
-        if (fieldIdx !== -1) {
-          const objLocal = allocLocal(fctx, `__postinc_obj_${fctx.locals.length}`, arrType);
-          fctx.body.push({ op: "local.set", index: objLocal });
+  // String-literal bracket access on struct: obj["prop"]++
+  if (typeDef?.kind === "struct" && ts.isStringLiteral(target.argumentExpression)) {
+    const propName = target.argumentExpression.text;
+    const fieldIdx = typeDef.fields.findIndex((f: { name: string }) => f.name === propName);
+    if (fieldIdx !== -1) {
+      const objLocal = allocLocal(fctx, `__postinc_obj_${fctx.locals.length}`, arrType);
+      fctx.body.push({ op: "local.set", index: objLocal });
 
-          fctx.body.push({ op: "local.get", index: objLocal });
-          fctx.body.push({ op: "struct.get", typeIdx, fieldIdx });
-          const fieldType = typeDef.fields[fieldIdx]!.type;
-          if (fieldType.kind !== "f64") coerceType(ctx, fctx, fieldType, { kind: "f64" });
-          const oldVal = allocLocal(fctx, `__postinc_old_${fctx.locals.length}`, { kind: "f64" });
-          fctx.body.push({ op: "local.set", index: oldVal });
-          fctx.body.push({ op: "local.get", index: oldVal });
-          fctx.body.push({ op: "f64.const", value: 1 });
-          fctx.body.push({ op: isIncrement ? "f64.add" : "f64.sub" });
-          const newVal = allocLocal(fctx, `__postinc_new_${fctx.locals.length}`, { kind: "f64" });
-          fctx.body.push({ op: "local.set", index: newVal });
-          fctx.body.push({ op: "local.get", index: objLocal });
-          fctx.body.push({ op: "local.get", index: newVal });
-          if (fieldType.kind !== "f64") coerceType(ctx, fctx, { kind: "f64" }, fieldType);
-          fctx.body.push({ op: "struct.set", typeIdx, fieldIdx });
-          fctx.body.push({ op: "local.get", index: oldVal });
-          return { kind: "f64" };
-        }
-      }
+      fctx.body.push({ op: "local.get", index: objLocal });
+      fctx.body.push({ op: "struct.get", typeIdx, fieldIdx });
+      const fieldType = typeDef.fields[fieldIdx]!.type;
+      if (fieldType.kind !== "f64") coerceType(ctx, fctx, fieldType, { kind: "f64" });
+      const oldVal = allocLocal(fctx, `__postinc_old_${fctx.locals.length}`, { kind: "f64" });
+      fctx.body.push({ op: "local.set", index: oldVal });
+      fctx.body.push({ op: "local.get", index: oldVal });
+      fctx.body.push({ op: "f64.const", value: 1 });
+      fctx.body.push({ op: isIncrement ? "f64.add" : "f64.sub" });
+      const newVal = allocLocal(fctx, `__postinc_new_${fctx.locals.length}`, { kind: "f64" });
+      fctx.body.push({ op: "local.set", index: newVal });
+      fctx.body.push({ op: "local.get", index: objLocal });
+      fctx.body.push({ op: "local.get", index: newVal });
+      if (fieldType.kind !== "f64") coerceType(ctx, fctx, { kind: "f64" }, fieldType);
+      fctx.body.push({ op: "struct.set", typeIdx, fieldIdx });
+      fctx.body.push({ op: "local.get", index: oldVal });
+      return { kind: "f64" };
     }
   }
 
@@ -6821,27 +6916,13 @@ function compileClosureCall(
   info: ClosureInfo,
 ): ValType | null {
   const localIdx = fctx.localMap.get(varName);
-  const moduleGlobalIdx = ctx.moduleGlobals.get(varName);
-  if (localIdx === undefined && moduleGlobalIdx === undefined) return null;
-
-  // Determine how to load the closure ref (local variable or module global).
-  // Module globals use ref_null type, so we need ref.as_non_null to cast
-  // to the non-nullable ref expected by call_ref and struct.get.
-  const isModuleGlobal = localIdx === undefined;
-  const pushClosureRef = () => {
-    if (!isModuleGlobal) {
-      fctx.body.push({ op: "local.get", index: localIdx! });
-    } else {
-      fctx.body.push({ op: "global.get", index: moduleGlobalIdx! });
-      fctx.body.push({ op: "ref.as_non_null" } as Instr);
-    }
-  };
+  if (localIdx === undefined) return null;
 
   // Stack for call_ref needs: [closure_ref, ...args, funcref]
   // where the lifted func type is (ref $closure_struct, ...arrowParams) → results
 
   // Push closure ref as first arg (self param of the lifted function)
-  pushClosureRef();
+  fctx.body.push({ op: "local.get", index: localIdx });
 
   // Push call arguments
   for (let i = 0; i < expr.arguments.length; i++) {
@@ -6854,7 +6935,7 @@ function compileClosureCall(
   }
 
   // Push the funcref from the closure struct (field 0) and cast to typed ref
-  pushClosureRef();
+  fctx.body.push({ op: "local.get", index: localIdx });
   fctx.body.push({ op: "struct.get", typeIdx: info.structTypeIdx, fieldIdx: 0 });
   fctx.body.push({ op: "ref.cast", typeIdx: info.funcTypeIdx });
 
@@ -7376,11 +7457,7 @@ function compileCallExpression(
         const funcIdx = ctx.funcMap.get(fullName);
         if (funcIdx !== undefined) {
           // Push self (the receiver) as first argument
-          const receiverResult = compileExpression(ctx, fctx, propAccess.expression);
-          // If receiver is ref_null (e.g. from a module global), cast to non-null ref
-          if (receiverResult && receiverResult.kind === "ref_null") {
-            fctx.body.push({ op: "ref.as_non_null" } as unknown as Instr);
-          }
+          compileExpression(ctx, fctx, propAccess.expression);
           // Push remaining arguments with type hints
           const paramTypes = getFuncParamTypes(ctx, funcIdx);
           for (let i = 0; i < expr.arguments.length; i++) {
@@ -9187,106 +9264,12 @@ function compileNewExpression(
     return { kind: "ref_null", typeIdx: vecTypeIdx };
   }
 
-  // className was resolved by the type checker but is not in classSet,
-  // externClasses, or Array. This can happen when:
-  // (a) The class expression has an internal name like "__class" and wasn't
-  //     collected during the initial pass (e.g., class defined inside a
-  //     nested function or returned from a factory).
-  // (b) The class is a built-in JS type (RangeError, String, Boolean, etc.)
-  //     that the type checker resolves but we don't model as a Wasm struct.
-  //
-  // Strategy: try to find the class declaration via the TS checker and
-  // compile it on-the-fly. If that fails, fall through to the unknown
-  // constructor import path (produce externref).
-
-  // (a) Try on-the-fly class compilation from the checker's symbol
-  if (symbol) {
-    const decls = symbol.getDeclarations() ?? [];
-    for (const decl of decls) {
-      let classNode: ts.ClassDeclaration | ts.ClassExpression | undefined;
-      let syntheticName: string | undefined;
-
-      if (ts.isClassDeclaration(decl) && decl.name) {
-        classNode = decl;
-      } else if (ts.isClassExpression(decl)) {
-        classNode = decl;
-        // Use the identifier from the new expression as the synthetic name
-        syntheticName = ts.isIdentifier(expr.expression) ? expr.expression.text : undefined;
-      } else if (ts.isVariableDeclaration(decl) && decl.initializer && ts.isClassExpression(decl.initializer)) {
-        classNode = decl.initializer;
-        syntheticName = ts.isIdentifier(decl.name) ? decl.name.text : undefined;
-      }
-
-      if (classNode && !ctx.structMap.has(syntheticName ?? classNode.name?.text ?? "")) {
-        const resolvedName = syntheticName ?? classNode.name?.text;
-        if (resolvedName) {
-          try {
-            collectClassDeclaration(ctx, classNode, syntheticName);
-            // Build funcByName map for compileClassBodies
-            const funcByName = new Map<string, number>();
-            for (let i = 0; i < ctx.mod.functions.length; i++) {
-              funcByName.set(ctx.mod.functions[i]!.name, i);
-            }
-            compileClassBodies(ctx, classNode, funcByName);
-            className = resolvedName;
-          } catch {
-            // On-the-fly compilation failed; fall through to externref fallback
-          }
-        }
-      } else if (classNode) {
-        // Already compiled — use the existing name
-        className = syntheticName ?? classNode.name?.text ?? className;
-      }
-
-      if (ctx.classSet.has(className)) break;
-    }
-  }
-
-  // Retry with potentially updated className
-  if (ctx.classSet.has(className)) {
-    const ctorName = `${className}_new`;
-    const funcIdx = ctx.funcMap.get(ctorName);
-    if (funcIdx !== undefined) {
-      const paramTypes = getFuncParamTypes(ctx, funcIdx);
-      const args = expr.arguments ?? [];
-      for (let i = 0; i < args.length; i++) {
-        compileExpression(ctx, fctx, args[i]!, paramTypes?.[i]);
-      }
-      if (paramTypes) {
-        for (let i = args.length; i < paramTypes.length; i++) {
-          pushDefaultValue(fctx, paramTypes[i]!);
-        }
-      }
-      const finalCtorIdx = ctx.funcMap.get(ctorName) ?? funcIdx;
-      fctx.body.push({ op: "call", funcIdx: finalCtorIdx });
-      const structTypeIdx = ctx.structMap.get(className)!;
-      return { kind: "ref", typeIdx: structTypeIdx };
-    }
-  }
-
-  // (b) Built-in or unresolvable class — treat as externref constructor
-  // Try to find a pre-registered __new_X import, or just produce externref null
-  {
-    const ctorName = ts.isIdentifier(expr.expression) ? expr.expression.text : className;
-    const importName = `__new_${ctorName}`;
-    const funcIdx = ctx.funcMap.get(importName);
-    if (funcIdx !== undefined) {
-      const args = expr.arguments ?? [];
-      for (const arg of args) {
-        const resultType = compileExpression(ctx, fctx, arg, { kind: "externref" });
-        if (resultType && resultType.kind !== "externref") {
-          fctx.body.push({ op: "drop" });
-          fctx.body.push({ op: "ref.null.extern" });
-        }
-      }
-      const finalNewIdx = ctx.funcMap.get(importName) ?? funcIdx;
-      fctx.body.push({ op: "call", funcIdx: finalNewIdx });
-    } else {
-      // No import available — produce externref null as a best-effort fallback
-      fctx.body.push({ op: "ref.null.extern" });
-    }
-    return { kind: "externref" };
-  }
+  ctx.errors.push({
+    message: `Unsupported new expression for class: ${className}`,
+    line: getLine(expr),
+    column: getCol(expr),
+  });
+  return null;
 }
 
 // ── Extern class inheritance helper ──────────────────────────────────
@@ -9560,39 +9543,17 @@ function compileMathCall(
   const f64Hint: ValType = { kind: "f64" };
 
   if (method === "round" && expr.arguments.length >= 1) {
-    // JS Math.round: rounds to nearest integer, with ties going towards +infinity.
-    // floor(x + 0.5) has precision issues for large odd integers near 2^52
-    // because x + 0.5 can round up. Instead, compare x - floor(x) to 0.5:
-    //   frac = x - floor(x); if frac >= 0.5 then ceil(x) else floor(x)
-    // Special case: if result == 0, use copysign(0, x) to preserve -0.
+    // JS Math.round: floor(x + 0.5), but values in [-0.5, -0] must return -0.
+    // Use copysign(0, x) when floor(x+0.5) is zero to preserve the sign.
     const xLocal = allocLocal(fctx, `__round_x_${fctx.locals.length}`, { kind: "f64" });
-    const floorLocal = allocLocal(fctx, `__round_fl_${fctx.locals.length}`, { kind: "f64" });
     const rLocal = allocLocal(fctx, `__round_r_${fctx.locals.length}`, { kind: "f64" });
     compileExpression(ctx, fctx, expr.arguments[0]!, f64Hint);
     fctx.body.push({ op: "local.tee", index: xLocal } as Instr);
-    // Compute floor(x) and store it
-    fctx.body.push({ op: "f64.floor" } as Instr);
-    fctx.body.push({ op: "local.set", index: floorLocal } as Instr);
-    // Compute frac = x - floor(x)
-    fctx.body.push({ op: "local.get", index: xLocal } as Instr);
-    fctx.body.push({ op: "local.get", index: floorLocal } as Instr);
-    fctx.body.push({ op: "f64.sub" } as Instr);
-    // If frac >= 0.5, use ceil(x), else use floor(x)
     fctx.body.push({ op: "f64.const", value: 0.5 } as Instr);
-    fctx.body.push({ op: "f64.ge" } as Instr);
-    fctx.body.push({
-      op: "if",
-      blockType: { kind: "val", type: { kind: "f64" } },
-      then: [
-        { op: "local.get", index: xLocal } as Instr,
-        { op: "f64.ceil" } as Instr,
-      ],
-      else: [
-        { op: "local.get", index: floorLocal } as Instr,
-      ],
-    } as Instr);
-    // Store result, then handle -0: if result == 0, use copysign(0, x)
+    fctx.body.push({ op: "f64.add" } as Instr);
+    fctx.body.push({ op: "f64.floor" } as Instr);
     fctx.body.push({ op: "local.tee", index: rLocal } as Instr);
+    // If result == 0, use copysign(0, x) to preserve -0
     fctx.body.push({ op: "f64.const", value: 0 } as Instr);
     fctx.body.push({ op: "f64.eq" } as Instr);
     fctx.body.push({
@@ -9755,11 +9716,10 @@ function compileMathCall(
     return { kind: "f64" };
   }
 
-  // Math methods (1-arg): sin, cos, tan, exp, log, etc. (now inline Wasm, not host-imported)
+  // Host-imported Math methods (1-arg): sin, cos, tan, exp, log, etc.
   const hostUnary = new Set([
     "exp", "log", "log2", "log10",
     "sin", "cos", "tan", "asin", "acos", "atan",
-    "sinh", "cosh", "tanh",
     "acosh", "asinh", "atanh", "cbrt", "expm1", "log1p",
   ]);
   if (hostUnary.has(method) && expr.arguments.length >= 1) {
@@ -9977,17 +9937,9 @@ function compileConditionalExpression(
     resultValType = thenType;
   }
 
-  // When both branches have the same concrete ref type (both non-null),
-  // keep the result as ref — both branches of the if guarantee a non-null value.
-  // Only widen to ref_null when the branches disagree on nullability or one is
-  // ref_null already (which is captured in the sameKind + sameRefIdx checks above).
+  // Conditional results must be nullable — either branch could produce null
   if (resultValType.kind === "ref") {
-    // Check if either branch could actually produce null
-    const thenCanBeNull = thenType.kind === "ref_null";
-    const elseCanBeNull = elseType.kind === "ref_null";
-    if (thenCanBeNull || elseCanBeNull) {
-      resultValType = { kind: "ref_null", typeIdx: (resultValType as { typeIdx: number }).typeIdx };
-    }
+    resultValType = { kind: "ref_null", typeIdx: (resultValType as { typeIdx: number }).typeIdx };
   }
 
   fctx.body.push({
@@ -10688,18 +10640,11 @@ function compileElementAccess(
           }
         }
       }
-      // Also handle enum members, binary expressions, and other compile-time-known values
+      // Also handle simple binary expressions that evaluate to a known value
       if (fieldName === undefined) {
-        fieldName = resolveComputedKeyExpression(ctx, expr.argumentExpression);
-      }
-      // Last resort: use the TypeScript checker's type to infer the field name
-      // e.g. for `let key: "x" = "x"; obj[key]` or `param: "a" | "b"` with single struct field match
-      if (fieldName === undefined) {
-        const argType = ctx.checker.getTypeAtLocation(expr.argumentExpression);
-        if (argType.isStringLiteral()) {
-          fieldName = argType.value;
-        } else if (argType.isNumberLiteral()) {
-          fieldName = String(argType.value);
+        const constVal = resolveConstantExpression(ctx, expr.argumentExpression);
+        if (constVal !== undefined) {
+          fieldName = String(constVal);
         }
       }
       if (fieldName !== undefined) {
@@ -10922,24 +10867,15 @@ function resolveConstantExpression(
     return resolveConstantExpression(ctx, expr.expression);
   }
 
-  // Variable reference — resolve const declarations, and let/var with literal initializers
+  // Const variable reference
   if (ts.isIdentifier(expr)) {
     const sym = ctx.checker.getSymbolAtLocation(expr);
     if (sym) {
       const decl = sym.valueDeclaration;
       if (decl && ts.isVariableDeclaration(decl) && decl.initializer) {
         const declList = decl.parent;
-        if (ts.isVariableDeclarationList(declList)) {
-          if ((declList.flags & ts.NodeFlags.Const) !== 0) {
-            // const — always safe to resolve
-            return resolveConstantExpression(ctx, decl.initializer);
-          }
-          // let/var — resolve if the initializer is a simple literal (not a complex expression
-          // that might depend on runtime state). This handles common patterns like:
-          //   let x = 1; let o = { [x]: '2' }
-          if (ts.isNumericLiteral(decl.initializer) || ts.isStringLiteral(decl.initializer)) {
-            return resolveConstantExpression(ctx, decl.initializer);
-          }
+        if (ts.isVariableDeclarationList(declList) && (declList.flags & ts.NodeFlags.Const) !== 0) {
+          return resolveConstantExpression(ctx, decl.initializer);
         }
       }
     }
@@ -11443,27 +11379,18 @@ function compileObjectLiteralForStruct(
       const retType = sig ? ctx.checker.getReturnTypeOfSignature(sig) : undefined;
       const methodResults: ValType[] = retType && !isVoidType(retType) ? [resolveWasmType(ctx, retType)] : [];
 
-      // Check if this method was pre-registered by ensureStructForType.
-      // If so, reuse the existing placeholder function; otherwise create a new one.
-      let methodFunc: WasmFunction;
-      const existingFuncIdx = ctx.funcMap.get(fullName);
-      if (existingFuncIdx !== undefined) {
-        // Reuse the pre-registered placeholder function
-        methodFunc = ctx.mod.functions[existingFuncIdx - ctx.numImportFuncs]!;
-      } else {
-        const methodTypeIdx = addFuncType(ctx, methodParams, methodResults, `${fullName}_type`);
-        const methodFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
-        ctx.funcMap.set(fullName, methodFuncIdx);
+      const methodTypeIdx = addFuncType(ctx, methodParams, methodResults, `${fullName}_type`);
+      const methodFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+      ctx.funcMap.set(fullName, methodFuncIdx);
 
-        methodFunc = {
-          name: fullName,
-          typeIdx: methodTypeIdx,
-          locals: [],
-          body: [],
-          exported: false,
-        };
-        ctx.mod.functions.push(methodFunc);
-      }
+      const methodFunc: WasmFunction = {
+        name: fullName,
+        typeIdx: methodTypeIdx,
+        locals: [],
+        body: [],
+        exported: false,
+      };
+      ctx.mod.functions.push(methodFunc);
 
       // Compile method body
       const methodFctxParams: { name: string; type: ValType }[] = [
@@ -11959,8 +11886,8 @@ function compileTemplateExpression(
       fctx.body.push({ op: "f64.convert_i64_s" });
       fctx.body.push({ op: "call", funcIdx: toStrIdx });
     } else if (spanType && (spanType.kind === "ref" || spanType.kind === "ref_null")) {
-      // Struct ref → externref: use coerceType which calls toString() if available
-      coerceType(ctx, fctx, spanType, { kind: "externref" });
+      // Struct ref → externref via extern.convert_any, then toString
+      fctx.body.push({ op: "extern.convert_any" });
     }
     // externref assumed to be string already
 
@@ -12023,8 +11950,8 @@ function compileNativeTemplateExpression(
         fctx.body.push({ op: "call", funcIdx: fromExternIdx });
       }
     } else if (spanType && (spanType.kind === "ref" || spanType.kind === "ref_null") && toStrIdx !== undefined) {
-      // Struct ref → externref: use coerceType which calls toString() if available
-      coerceType(ctx, fctx, spanType, { kind: "externref" });
+      // Struct ref → externref → string coercion
+      fctx.body.push({ op: "extern.convert_any" });
       if (fromExternIdx !== undefined) {
         fctx.body.push({ op: "call", funcIdx: fromExternIdx });
       }

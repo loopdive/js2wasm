@@ -161,6 +161,9 @@ Can all run in parallel (different diagnostic codes).
 | ~~190~~ | ~~Unsupported assignment target patterns~~ | — | **Done** |
 | 243 | Unsupported assignment target patterns (array/object) | — | Ready (coordinates #190) |
 | ~~279~~ | ~~Arrow function params — destructuring, defaults~~ | — | **Done** |
+| 190 | Unsupported assignment target patterns | — | Ready |
+| ~~243~~ | ~~Unsupported assignment target patterns (array/object)~~ | — | **Done** |
+| 279 | Arrow function params — destructuring, defaults | — | Ready (coordinates #243) |
 | ~~283~~ | ~~Compound assignment — type coercion gaps~~ | — | **Done** |
 | ~~286~~ | ~~Logical assignment — nullish/short-circuit~~ | — | **Done** |
 | ~~306~~ | ~~Prefix/postfix increment/decrement~~ | ~44 CE | **Done** |
