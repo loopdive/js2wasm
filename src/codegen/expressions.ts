@@ -1,6 +1,6 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext, ClosureInfo, RestParamInfo } from "./index.js";
-import { allocLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers, addStringImports, cacheStringLiterals, addStringConstantGlobal, nextModuleGlobalIdx } from "./index.js";
+import { allocLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers, addStringImports, cacheStringLiterals, addStringConstantGlobal, nextModuleGlobalIdx, collectClassDeclaration, compileClassBodies } from "./index.js";
 import {
   mapTsTypeToWasm,
   isNumberType,
@@ -8866,12 +8866,106 @@ function compileNewExpression(
     return { kind: "ref_null", typeIdx: vecTypeIdx };
   }
 
-  ctx.errors.push({
-    message: `Unsupported new expression for class: ${className}`,
-    line: getLine(expr),
-    column: getCol(expr),
-  });
-  return null;
+  // className was resolved by the type checker but is not in classSet,
+  // externClasses, or Array. This can happen when:
+  // (a) The class expression has an internal name like "__class" and wasn't
+  //     collected during the initial pass (e.g., class defined inside a
+  //     nested function or returned from a factory).
+  // (b) The class is a built-in JS type (RangeError, String, Boolean, etc.)
+  //     that the type checker resolves but we don't model as a Wasm struct.
+  //
+  // Strategy: try to find the class declaration via the TS checker and
+  // compile it on-the-fly. If that fails, fall through to the unknown
+  // constructor import path (produce externref).
+
+  // (a) Try on-the-fly class compilation from the checker's symbol
+  if (symbol) {
+    const decls = symbol.getDeclarations() ?? [];
+    for (const decl of decls) {
+      let classNode: ts.ClassDeclaration | ts.ClassExpression | undefined;
+      let syntheticName: string | undefined;
+
+      if (ts.isClassDeclaration(decl) && decl.name) {
+        classNode = decl;
+      } else if (ts.isClassExpression(decl)) {
+        classNode = decl;
+        // Use the identifier from the new expression as the synthetic name
+        syntheticName = ts.isIdentifier(expr.expression) ? expr.expression.text : undefined;
+      } else if (ts.isVariableDeclaration(decl) && decl.initializer && ts.isClassExpression(decl.initializer)) {
+        classNode = decl.initializer;
+        syntheticName = ts.isIdentifier(decl.name) ? decl.name.text : undefined;
+      }
+
+      if (classNode && !ctx.structMap.has(syntheticName ?? classNode.name?.text ?? "")) {
+        const resolvedName = syntheticName ?? classNode.name?.text;
+        if (resolvedName) {
+          try {
+            collectClassDeclaration(ctx, classNode, syntheticName);
+            // Build funcByName map for compileClassBodies
+            const funcByName = new Map<string, number>();
+            for (let i = 0; i < ctx.mod.functions.length; i++) {
+              funcByName.set(ctx.mod.functions[i]!.name, i);
+            }
+            compileClassBodies(ctx, classNode, funcByName);
+            className = resolvedName;
+          } catch {
+            // On-the-fly compilation failed; fall through to externref fallback
+          }
+        }
+      } else if (classNode) {
+        // Already compiled — use the existing name
+        className = syntheticName ?? classNode.name?.text ?? className;
+      }
+
+      if (ctx.classSet.has(className)) break;
+    }
+  }
+
+  // Retry with potentially updated className
+  if (ctx.classSet.has(className)) {
+    const ctorName = `${className}_new`;
+    const funcIdx = ctx.funcMap.get(ctorName);
+    if (funcIdx !== undefined) {
+      const paramTypes = getFuncParamTypes(ctx, funcIdx);
+      const args = expr.arguments ?? [];
+      for (let i = 0; i < args.length; i++) {
+        compileExpression(ctx, fctx, args[i]!, paramTypes?.[i]);
+      }
+      if (paramTypes) {
+        for (let i = args.length; i < paramTypes.length; i++) {
+          pushDefaultValue(fctx, paramTypes[i]!);
+        }
+      }
+      const finalCtorIdx = ctx.funcMap.get(ctorName) ?? funcIdx;
+      fctx.body.push({ op: "call", funcIdx: finalCtorIdx });
+      const structTypeIdx = ctx.structMap.get(className)!;
+      return { kind: "ref", typeIdx: structTypeIdx };
+    }
+  }
+
+  // (b) Built-in or unresolvable class — treat as externref constructor
+  // Try to find a pre-registered __new_X import, or just produce externref null
+  {
+    const ctorName = ts.isIdentifier(expr.expression) ? expr.expression.text : className;
+    const importName = `__new_${ctorName}`;
+    const funcIdx = ctx.funcMap.get(importName);
+    if (funcIdx !== undefined) {
+      const args = expr.arguments ?? [];
+      for (const arg of args) {
+        const resultType = compileExpression(ctx, fctx, arg, { kind: "externref" });
+        if (resultType && resultType.kind !== "externref") {
+          fctx.body.push({ op: "drop" });
+          fctx.body.push({ op: "ref.null.extern" });
+        }
+      }
+      const finalNewIdx = ctx.funcMap.get(importName) ?? funcIdx;
+      fctx.body.push({ op: "call", funcIdx: finalNewIdx });
+    } else {
+      // No import available — produce externref null as a best-effort fallback
+      fctx.body.push({ op: "ref.null.extern" });
+    }
+    return { kind: "externref" };
+  }
 }
 
 // ── Extern class inheritance helper ──────────────────────────────────

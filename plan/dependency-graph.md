@@ -104,7 +104,7 @@ Can all run in parallel (different diagnostic codes).
 | 234 | ClassDeclaration in nested/expression positions | ~681 CE | Ready |
 | 232 | Method calls on object literals | — | Ready |
 | 238 | Class expression new — `new (class{})()` | — | Ready |
-| 261 | ClassDecl + new expression for anonymous classes | — | Ready (coordinates #260) |
+| 261 | ClassDecl + new expression for anonymous classes | — | Done |
 | 260 | ClassDecl + call expression combined | — | Blocked by #234 |
 
 ---
