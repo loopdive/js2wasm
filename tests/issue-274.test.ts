@@ -34,24 +34,23 @@ describe("Issue #274: Property access on function type", () => {
   });
 
   it("fn.name returns the function name as a string", async () => {
-    const source = `
+    await assertEquivalent(
+      `
       function myFunc(): number { return 1; }
       export function test(): string { return myFunc.name; }
-    `;
-    const result = compile(source);
-    expect(result.success).toBe(true);
-    // Verify no compile errors about property access
-    const propErrors = result.errors.filter(e => e.message.includes("Cannot access property"));
-    expect(propErrors).toHaveLength(0);
+      `,
+      [{ fn: "test", args: [] }],
+    );
   });
 
-  it("fn.name compiles without errors", async () => {
-    const source = `
+  it("fn.name returns correct name for multi-param function", async () => {
+    await assertEquivalent(
+      `
       function add(a: number, b: number): number { return a + b; }
       export function test(): string { return add.name; }
-    `;
-    const result = compile(source);
-    expect(result.success).toBe(true);
+      `,
+      [{ fn: "test", args: [] }],
+    );
   });
 
   it("fn.call() works for standalone functions", async () => {
@@ -94,14 +93,23 @@ describe("Issue #274: Property access on function type", () => {
     );
   });
 
-  it("fn.name does not produce compile errors for arrow functions", async () => {
-    const source = `
+  it("fn.name for arrow function assigned to variable", async () => {
+    await assertEquivalent(
+      `
       const myArrow = (x: number): number => x * 2;
       export function test(): string { return myArrow.name; }
-    `;
-    const result = compile(source);
-    // Should compile without "Cannot access property 'name'" error
-    const propErrors = result.errors.filter(e => e.message.includes("Cannot access property 'name'"));
-    expect(propErrors).toHaveLength(0);
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("bar.length returns 2 for two-param function", async () => {
+    await assertEquivalent(
+      `
+      function bar(a: number, b: number) { return a + b; }
+      export function test(): number { return bar.length; }
+      `,
+      [{ fn: "test", args: [] }],
+    );
   });
 });
