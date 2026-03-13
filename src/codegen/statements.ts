@@ -345,8 +345,31 @@ function compileVariableStatement(
     ) {
       const actualType = compileExpression(ctx, fctx, decl.initializer);
       const closureType = actualType ?? { kind: "externref" as const };
-      const localIdx = allocLocal(fctx, name, closureType);
-      fctx.body.push({ op: "local.set", index: localIdx });
+
+      // If this is a module-level variable, also store in the module global
+      // so other functions can access the closure via global.get.
+      const modGlobalIdx = ctx.moduleGlobals.get(name);
+      if (modGlobalIdx !== undefined) {
+        // Update the global's type to match the actual closure ref type
+        const globalDef = ctx.mod.globals[localGlobalIdx(ctx, modGlobalIdx)];
+        if (globalDef) {
+          const nullableType: ValType = closureType.kind === "ref"
+            ? { kind: "ref_null", typeIdx: (closureType as { typeIdx: number }).typeIdx }
+            : closureType;
+          globalDef.type = nullableType;
+          // Also fix the init expression to match the new type
+          if (nullableType.kind === "ref_null") {
+            globalDef.init = [{ op: "ref.null", typeIdx: (nullableType as { typeIdx: number }).typeIdx }];
+          }
+        }
+        // Duplicate value on stack: one for the global, one for the local
+        const localIdx = allocLocal(fctx, name, closureType);
+        fctx.body.push({ op: "local.tee", index: localIdx });
+        fctx.body.push({ op: "global.set", index: modGlobalIdx });
+      } else {
+        const localIdx = allocLocal(fctx, name, closureType);
+        fctx.body.push({ op: "local.set", index: localIdx });
+      }
       continue;
     }
 

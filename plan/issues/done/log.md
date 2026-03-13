@@ -231,3 +231,4 @@
 | 139 | 2026-03-13 | valueOf/toString coercion on arithmetic operators | Dep-driven |
 | 140 | 2026-03-13 | Object computed property names -- bracket access, assignment, accessor names | Dep-driven |
 | 261 | 2026-03-12 | ClassDeclaration + new expression for anonymous classes | Dep-driven |
+| 279 | 2026-03-12 | Arrow function params — destructuring, defaults, module-level closures | Dep-driven |
