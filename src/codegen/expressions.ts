@@ -7556,7 +7556,11 @@ function compileCallExpression(
       const funcIdx = ctx.funcMap.get(fullName);
       if (funcIdx !== undefined) {
         // Push self (the receiver) as first argument
-        compileExpression(ctx, fctx, propAccess.expression);
+        const recvType = compileExpression(ctx, fctx, propAccess.expression);
+        // Conditionals/ternaries produce ref_null but method params expect ref — narrow
+        if (recvType && recvType.kind === "ref_null") {
+          fctx.body.push({ op: "ref.as_non_null" } as Instr);
+        }
         // Push remaining arguments with type hints
         const paramTypes = getFuncParamTypes(ctx, funcIdx);
         for (let i = 0; i < expr.arguments.length; i++) {
@@ -8370,6 +8374,133 @@ function compileCallExpression(
       {
         const arrMethodResult = compileArrayMethodCall(ctx, fctx, elemAccess as any, expr, receiverType);
         if (arrMethodResult !== undefined) return arrMethodResult;
+      }
+    }
+  }
+
+  // Handle fn.bind(thisArg, ...partialArgs)(...remainingArgs) — immediate bind+call
+  // Transform to fn(...partialArgs, ...remainingArgs), dropping thisArg.
+  if (ts.isCallExpression(expr.expression)) {
+    const bindCall = expr.expression;
+    if (ts.isPropertyAccessExpression(bindCall.expression) &&
+        bindCall.expression.name.text === "bind") {
+      const bindTarget = bindCall.expression.expression;
+
+      // Case: identifier.bind(thisArg, ...partialArgs)(...args)
+      if (ts.isIdentifier(bindTarget)) {
+        const funcName = bindTarget.text;
+        const closureInfo = ctx.closureMap.get(funcName);
+        const funcIdx = ctx.funcMap.get(funcName);
+
+        if (closureInfo || funcIdx !== undefined) {
+          // Evaluate and drop thisArg (first bind argument) for side effects
+          if (bindCall.arguments.length > 0) {
+            const thisType = compileExpression(ctx, fctx, bindCall.arguments[0]!);
+            if (thisType && thisType !== VOID_RESULT) {
+              fctx.body.push({ op: "drop" });
+            }
+          }
+
+          // Collect all effective arguments: partial args from bind + remaining args from outer call
+          const partialArgs = bindCall.arguments.length > 1
+            ? Array.from(bindCall.arguments).slice(1)
+            : [];
+          const allArgs = [...partialArgs, ...Array.from(expr.arguments)];
+
+          if (closureInfo) {
+            const syntheticCall = ts.factory.createCallExpression(
+              bindTarget,
+              undefined,
+              allArgs as unknown as readonly ts.Expression[],
+            );
+            (syntheticCall as any).parent = expr.parent;
+            return compileClosureCall(ctx, fctx, syntheticCall as ts.CallExpression, funcName, closureInfo);
+          }
+
+          // Regular function call
+          const paramTypes = getFuncParamTypes(ctx, funcIdx!);
+          for (let i = 0; i < allArgs.length; i++) {
+            compileExpression(ctx, fctx, allArgs[i]!, paramTypes?.[i]);
+          }
+
+          // Supply defaults for missing optional params
+          const optInfo = ctx.funcOptionalParams.get(funcName);
+          if (optInfo) {
+            for (const opt of optInfo) {
+              if (opt.index >= allArgs.length) {
+                pushDefaultValue(fctx, opt.type);
+              }
+            }
+          }
+
+          // Pad remaining missing params
+          if (paramTypes) {
+            const optFilledCount = optInfo
+              ? optInfo.filter(o => o.index >= allArgs.length).length
+              : 0;
+            const totalPushed = allArgs.length + optFilledCount;
+            for (let i = totalPushed; i < paramTypes.length; i++) {
+              pushDefaultValue(fctx, paramTypes[i]!);
+            }
+          }
+
+          const finalFuncIdx = ctx.funcMap.get(funcName) ?? funcIdx!;
+          fctx.body.push({ op: "call", funcIdx: finalFuncIdx });
+
+          const sig = ctx.checker.getResolvedSignature(expr);
+          if (sig) {
+            const retType = ctx.checker.getReturnTypeOfSignature(sig);
+            if (isVoidType(retType)) return VOID_RESULT;
+            return resolveWasmType(ctx, retType);
+          }
+          return { kind: "f64" };
+        }
+      }
+
+      // Case: obj.method.bind(thisArg)(...args) — method call with different receiver
+      if (ts.isPropertyAccessExpression(bindTarget)) {
+        const methodName = bindTarget.name.text;
+        const objExpr = bindTarget.expression;
+        const objType = ctx.checker.getTypeAtLocation(objExpr);
+
+        let className = objType.getSymbol()?.name;
+        if (className && !ctx.classSet.has(className)) {
+          className = ctx.classExprNameMap.get(className) ?? className;
+        }
+        if (!className || !ctx.classSet.has(className)) {
+          className = resolveStructName(ctx, objType) ?? undefined;
+        }
+
+        if (className && (ctx.classSet.has(className) || ctx.funcMap.has(`${className}_${methodName}`))) {
+          const fullName = `${className}_${methodName}`;
+          const funcIdx = ctx.funcMap.get(fullName);
+          if (funcIdx !== undefined && bindCall.arguments.length > 0) {
+            // First bind argument is the thisArg (receiver)
+            compileExpression(ctx, fctx, bindCall.arguments[0]!);
+
+            // Remaining bind args + outer call args
+            const partialArgs = bindCall.arguments.length > 1
+              ? Array.from(bindCall.arguments).slice(1)
+              : [];
+            const allArgs = [...partialArgs, ...Array.from(expr.arguments)];
+
+            const paramTypes = getFuncParamTypes(ctx, funcIdx);
+            for (let i = 0; i < allArgs.length; i++) {
+              compileExpression(ctx, fctx, allArgs[i]!, paramTypes?.[i + 1]);
+            }
+
+            const finalCallIdx = ctx.funcMap.get(fullName) ?? funcIdx;
+            fctx.body.push({ op: "call", funcIdx: finalCallIdx });
+
+            const sig = ctx.checker.getResolvedSignature(expr);
+            if (sig) {
+              const retType = ctx.checker.getReturnTypeOfSignature(sig);
+              if (isVoidType(retType)) return VOID_RESULT;
+              return resolveWasmType(ctx, retType);
+            }
+            return VOID_RESULT;
+          }
+        }
       }
     }
   }
