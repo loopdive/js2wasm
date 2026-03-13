@@ -10922,15 +10922,24 @@ function resolveConstantExpression(
     return resolveConstantExpression(ctx, expr.expression);
   }
 
-  // Const variable reference
+  // Variable reference — resolve const declarations, and let/var with literal initializers
   if (ts.isIdentifier(expr)) {
     const sym = ctx.checker.getSymbolAtLocation(expr);
     if (sym) {
       const decl = sym.valueDeclaration;
       if (decl && ts.isVariableDeclaration(decl) && decl.initializer) {
         const declList = decl.parent;
-        if (ts.isVariableDeclarationList(declList) && (declList.flags & ts.NodeFlags.Const) !== 0) {
-          return resolveConstantExpression(ctx, decl.initializer);
+        if (ts.isVariableDeclarationList(declList)) {
+          if ((declList.flags & ts.NodeFlags.Const) !== 0) {
+            // const — always safe to resolve
+            return resolveConstantExpression(ctx, decl.initializer);
+          }
+          // let/var — resolve if the initializer is a simple literal (not a complex expression
+          // that might depend on runtime state). This handles common patterns like:
+          //   let x = 1; let o = { [x]: '2' }
+          if (ts.isNumericLiteral(decl.initializer) || ts.isStringLiteral(decl.initializer)) {
+            return resolveConstantExpression(ctx, decl.initializer);
+          }
         }
       }
     }
