@@ -6664,12 +6664,66 @@ function compileCallExpression(
             }
             return { kind: "f64" };
           }
-          // .apply() with array — skip for now (complex)
+          // .apply(thisArg, argsArray) — spread array literal elements as positional args
+          if (!isCall && expr.arguments.length >= 2) {
+            const argsExpr = expr.arguments[1]!;
+            if (ts.isArrayLiteralExpression(argsExpr)) {
+              const elements = argsExpr.elements;
+              if (closureInfo) {
+                const syntheticCall = ts.factory.createCallExpression(
+                  innerExpr, undefined,
+                  elements as unknown as readonly ts.Expression[],
+                );
+                (syntheticCall as any).parent = expr.parent;
+                return compileClosureCall(ctx, fctx, syntheticCall as ts.CallExpression, funcName, closureInfo);
+              }
+              const paramTypes = getFuncParamTypes(ctx, funcIdx!);
+              for (let i = 0; i < elements.length; i++) {
+                compileExpression(ctx, fctx, elements[i]!, paramTypes?.[i]);
+              }
+              const optInfo = ctx.funcOptionalParams.get(funcName);
+              if (optInfo) {
+                for (const opt of optInfo) {
+                  if (opt.index >= elements.length) pushDefaultValue(fctx, opt.type);
+                }
+              }
+              const finalFuncIdx = ctx.funcMap.get(funcName) ?? funcIdx!;
+              fctx.body.push({ op: "call", funcIdx: finalFuncIdx });
+              const sig = ctx.checker.getResolvedSignature(expr);
+              if (sig) {
+                const retType = ctx.checker.getReturnTypeOfSignature(sig);
+                if (isVoidType(retType)) return VOID_RESULT;
+                return resolveWasmType(ctx, retType);
+              }
+              return { kind: "f64" };
+            }
+          }
+          // .apply() with no args array — call with no args
+          if (!isCall) {
+            if (closureInfo) {
+              const syntheticCall = ts.factory.createCallExpression(innerExpr, undefined, []);
+              (syntheticCall as any).parent = expr.parent;
+              return compileClosureCall(ctx, fctx, syntheticCall as ts.CallExpression, funcName, closureInfo);
+            }
+            const finalFuncIdx = ctx.funcMap.get(funcName) ?? funcIdx!;
+            const optInfo = ctx.funcOptionalParams.get(funcName);
+            if (optInfo) {
+              for (const opt of optInfo) pushDefaultValue(fctx, opt.type);
+            }
+            fctx.body.push({ op: "call", funcIdx: finalFuncIdx });
+            const sig = ctx.checker.getResolvedSignature(expr);
+            if (sig) {
+              const retType = ctx.checker.getReturnTypeOfSignature(sig);
+              if (isVoidType(retType)) return VOID_RESULT;
+              return resolveWasmType(ctx, retType);
+            }
+            return { kind: "f64" };
+          }
         }
       }
 
-      // Case 2: obj.method.call(otherObj, args...) — method call with different receiver
-      if (ts.isPropertyAccessExpression(innerExpr) && isCall) {
+      // Case 2: obj.method.call/apply — method call with different receiver
+      if (ts.isPropertyAccessExpression(innerExpr)) {
         const methodName = innerExpr.name.text;
         const objExpr = innerExpr.expression;
         const objType = ctx.checker.getTypeAtLocation(objExpr);
@@ -6691,11 +6745,22 @@ function compileCallExpression(
           if (funcIdx !== undefined && expr.arguments.length > 0) {
             // First argument is the thisArg (receiver)
             compileExpression(ctx, fctx, expr.arguments[0]!);
-            // Remaining arguments are the method args
-            const paramTypes = getFuncParamTypes(ctx, funcIdx);
-            for (let i = 1; i < expr.arguments.length; i++) {
-              compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]); // i maps to param i (0=self)
+
+            if (isCall) {
+              // .call(thisArg, arg1, arg2, ...) — remaining args are positional
+              const paramTypes = getFuncParamTypes(ctx, funcIdx);
+              for (let i = 1; i < expr.arguments.length; i++) {
+                compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+              }
+            } else if (expr.arguments.length >= 2 && ts.isArrayLiteralExpression(expr.arguments[1]!)) {
+              // .apply(thisArg, [arg1, arg2, ...]) — spread array literal
+              const elements = (expr.arguments[1] as ts.ArrayLiteralExpression).elements;
+              const paramTypes = getFuncParamTypes(ctx, funcIdx);
+              for (let i = 0; i < elements.length; i++) {
+                compileExpression(ctx, fctx, elements[i]!, paramTypes?.[i + 1]); // param 0 = self
+              }
             }
+
             // Re-lookup funcIdx: argument compilation may trigger addUnionImports
             const finalCallIdx = ctx.funcMap.get(fullName) ?? funcIdx;
             fctx.body.push({ op: "call", funcIdx: finalCallIdx });
@@ -10117,12 +10182,25 @@ function emitBoundsCheckedArrayGet(
   // Build the "else" branch: out-of-bounds → default value
   const elseInstrs: Instr[] = defaultValueInstrs(elementType);
 
+  // When the element type is a non-null ref, the else branch produces ref.null
+  // which is ref_null. Use ref_null as the block type so both branches validate,
+  // then narrow back to ref with ref.as_non_null.
+  const needsNullableBlock = elementType.kind === "ref";
+  const blockType: ValType = needsNullableBlock
+    ? { kind: "ref_null", typeIdx: (elementType as { typeIdx: number }).typeIdx }
+    : elementType;
+
   fctx.body.push({
     op: "if",
-    blockType: { kind: "val" as const, type: elementType },
+    blockType: { kind: "val" as const, type: blockType },
     then: thenInstrs,
     else: elseInstrs,
   } as Instr);
+
+  // Narrow ref_null back to ref so downstream struct.get etc. validate
+  if (needsNullableBlock) {
+    fctx.body.push({ op: "ref.as_non_null" } as unknown as Instr);
+  }
 }
 
 /** Produce instructions that leave a default value on the stack for a given type. */
