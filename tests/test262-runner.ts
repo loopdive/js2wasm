@@ -1457,18 +1457,31 @@ export function findTestFiles(category: string): string[] {
 
 // ── Compilation and execution ───────────────────────────────────────
 
+export interface TestTiming {
+  /** Total wall-clock time in ms */
+  totalMs: number;
+  /** Time spent in ts2wasm compile() in ms */
+  compileMs: number;
+  /** Time spent in WebAssembly.instantiate() in ms */
+  instantiateMs: number;
+  /** Time spent executing the test function in ms */
+  executeMs: number;
+}
+
 export interface TestResult {
   file: string;
   category: string;
   status: "pass" | "fail" | "skip" | "compile_error";
   reason?: string;
   error?: string;
+  timing?: TestTiming;
 }
 
 /** Default per-test timeout in milliseconds (prevents infinite-loop hangs) */
 const TEST_TIMEOUT_MS = 5000;
 
 export async function runTest262File(filePath: string, category: string, timeoutMs = TEST_TIMEOUT_MS): Promise<TestResult> {
+  const totalStart = performance.now();
   const relPath = relative(TEST262_ROOT, filePath);
   const source = readFileSync(filePath, "utf-8");
   const meta = parseMeta(source);
@@ -1483,44 +1496,75 @@ export async function runTest262File(filePath: string, category: string, timeout
 
   // Compile (with timeout)
   let result;
+  const compileStart = performance.now();
+  let compileMs = 0;
   try {
     result = compile(wrapped, { fileName: "test.ts" });
+    compileMs = performance.now() - compileStart;
   } catch (compileErr: any) {
-    return { file: relPath, category, status: "compile_error", error: compileErr.message ?? String(compileErr) };
+    compileMs = performance.now() - compileStart;
+    const totalMs = performance.now() - totalStart;
+    return {
+      file: relPath, category, status: "compile_error",
+      error: compileErr.message ?? String(compileErr),
+      timing: { totalMs: round2(totalMs), compileMs: round2(compileMs), instantiateMs: 0, executeMs: 0 },
+    };
   }
 
   if (!result.success || result.errors.some(e => e.severity === "error")) {
+    const totalMs = performance.now() - totalStart;
     return {
       file: relPath,
       category,
       status: "compile_error",
       error: (result.errors.filter(e => e.severity === "error").map(e => e.message).join("; ") || result.errors.map(e => e.message).join("; ")),
+      timing: { totalMs: round2(totalMs), compileMs: round2(compileMs), instantiateMs: 0, executeMs: 0 },
     };
   }
 
   // Instantiate and run with timeout
+  let instantiateMs = 0;
+  let executeMs = 0;
   try {
     const imports = buildImports(result.imports, undefined, result.stringPool);
+    const instantiateStart = performance.now();
     const { instance } = await WebAssembly.instantiate(result.binary, imports);
+    instantiateMs = performance.now() - instantiateStart;
     const testFn = (instance.exports as any).test;
     if (typeof testFn !== "function") {
-      return { file: relPath, category, status: "compile_error", error: "no test export" };
+      const totalMs = performance.now() - totalStart;
+      return {
+        file: relPath, category, status: "compile_error", error: "no test export",
+        timing: { totalMs: round2(totalMs), compileMs: round2(compileMs), instantiateMs: round2(instantiateMs), executeMs: 0 },
+      };
     }
 
+    const executeStart = performance.now();
     const ret = testFn();
+    executeMs = performance.now() - executeStart;
+    const totalMs = performance.now() - totalStart;
+    const timing: TestTiming = { totalMs: round2(totalMs), compileMs: round2(compileMs), instantiateMs: round2(instantiateMs), executeMs: round2(executeMs) };
+
     if (ret === 1 || ret === 1.0) {
-      return { file: relPath, category, status: "pass" };
+      return { file: relPath, category, status: "pass", timing };
     }
-    return { file: relPath, category, status: "fail", error: `returned ${ret}` };
+    return { file: relPath, category, status: "fail", error: `returned ${ret}`, timing };
   } catch (err: any) {
+    const totalMs = performance.now() - totalStart;
+    const timing: TestTiming = { totalMs: round2(totalMs), compileMs: round2(compileMs), instantiateMs: round2(instantiateMs), executeMs: round2(executeMs) };
     // WebAssembly.CompileError during instantiation is a compile error, not a test failure
     if (err instanceof WebAssembly.CompileError || err?.constructor?.name === "CompileError") {
-      return { file: relPath, category, status: "compile_error", error: err.message };
+      return { file: relPath, category, status: "compile_error", error: err.message, timing };
     }
     // Traps from unreachable() count as assertion failures
     if (err?.message?.includes("unreachable") || err?.message?.includes("wasm")) {
-      return { file: relPath, category, status: "fail", error: err.message };
+      return { file: relPath, category, status: "fail", error: err.message, timing };
     }
-    return { file: relPath, category, status: "fail", error: String(err) };
+    return { file: relPath, category, status: "fail", error: String(err), timing };
   }
+}
+
+/** Round to 2 decimal places for readable timing output */
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
 }
