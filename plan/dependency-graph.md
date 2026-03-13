@@ -95,7 +95,7 @@ Can all run in parallel (different diagnostic codes).
 #234 (ClassDecl in nested positions) ──┐
                                        ├──► #260 (ClassDecl + call expression)
 #232 (method calls on object literals) ┘
-#238 (class expression new) ── independent
+#238 (class expression new) ── DONE
 #261 (ClassDecl + new for anonymous) ── coordinates with #260
 ```
 
@@ -103,7 +103,7 @@ Can all run in parallel (different diagnostic codes).
 |-----|-------|-------|--------|
 | 234 | ClassDeclaration in nested/expression positions | ~681 CE | **Done** |
 | 232 | Method calls on object literals | — | Ready |
-| 238 | Class expression new — `new (class{})()` | — | Ready |
+| 238 | Class expression new — `new (class{})()` | — | Done |
 | 261 | ClassDecl + new expression for anonymous classes | — | Ready (coordinates #260) |
 | 260 | ClassDecl + call expression combined | — | Ready (unblocked by #234) |
 
@@ -261,7 +261,6 @@ All independent of each other and of codegen work.
 | 291 | `in` operator compile errors — dynamic property | [E] | ~10 CE | Ready (coordinates #244) |
 | ~~293~~ | ~~Class method incorrect results~~ | [E] | 10 | **Done** |
 | ~~302~~ | ~~Math.min/max edge cases~~ | [E] | 2 | **Done** |
-<<<<<<< HEAD
 | ~~303~~ | ~~parseInt edge cases~~ | [E] | 1 | **Done** |
 | ~~304~~ | ~~Unary minus and return edge cases~~ | [E] | 2 | **Done** |
 | 307 | Promise.all/race compile errors | [E] | 7 | Ready |
