@@ -6445,7 +6445,12 @@ function compilePrefixUnary(
       // resolve them statically: -null === -0, -undefined === NaN.
       {
         let inner: ts.Expression = expr.operand;
-        while (ts.isParenthesizedExpression(inner)) inner = inner.expression;
+        while (ts.isParenthesizedExpression(inner) || ts.isAsExpression(inner) || ts.isNonNullExpression(inner) || ts.isTypeAssertionExpression(inner)) {
+          inner = ts.isParenthesizedExpression(inner) ? inner.expression :
+                  ts.isAsExpression(inner) ? inner.expression :
+                  ts.isNonNullExpression(inner) ? inner.expression :
+                  (inner as ts.TypeAssertion).expression;
+        }
         const isNullOp = inner.kind === ts.SyntaxKind.NullKeyword;
         const isUndefOp = inner.kind === ts.SyntaxKind.UndefinedKeyword ||
           (ts.isIdentifier(inner) && inner.text === "undefined");
@@ -16448,6 +16453,13 @@ function compileArrayLastIndexOf(
  * Returns undefined if the value cannot be determined at compile time.
  */
 function tryStaticToNumber(ctx: CodegenContext, expr: ts.Expression): number | undefined {
+  // Unwrap type assertions and parenthesized expressions
+  while (ts.isAsExpression(expr) || ts.isNonNullExpression(expr) || ts.isParenthesizedExpression(expr) || ts.isTypeAssertionExpression(expr)) {
+    expr = ts.isParenthesizedExpression(expr) ? expr.expression :
+            ts.isAsExpression(expr) ? expr.expression :
+            ts.isNonNullExpression(expr) ? expr.expression :
+            (expr as ts.TypeAssertion).expression;
+  }
   // Numeric literal
   if (ts.isNumericLiteral(expr)) return Number(expr.text);
   // String literal → ToNumber: "" → 0, "123" → 123, "abc" → NaN

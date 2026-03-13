@@ -350,14 +350,9 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     }
   }
 
-  // Skip tests with unary +/- on null/undefined (externref type mismatch in wasm)
-  // Strip throw statements (which become return 0; in wrapTest) to avoid matching error message text
-  {
-    const noThrow = source.replace(/^\s*throw\b.*$/gm, "");
-    if (/[+\-]\s*\(?\s*(null|undefined)\b/.test(noThrow)) {
-      return { skip: true, reason: "unary +/- on null/undefined" };
-    }
-  }
+
+  // (Removed: unary +/- on null/undefined skip — compiler now handles null/undefined arithmetic coercion)
+
 
   // Skip tests with unary +/- on empty string (+"" → 0, -"" → -0 coercion not supported)
   // Match unary +/- (preceded by operator/delimiter, not by a value) on empty string
