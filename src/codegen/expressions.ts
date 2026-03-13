@@ -1828,6 +1828,12 @@ function compileIdentifier(
     return { kind: "f64" };
   }
 
+  // globalThis — no true global object in Wasm; emit undefined (ref.null extern)
+  if (name === "globalThis") {
+    fctx.body.push({ op: "ref.null.extern" });
+    return { kind: "externref" };
+  }
+
   ctx.errors.push({
     message: `Unknown identifier: ${name}`,
     line: getLine(id),
