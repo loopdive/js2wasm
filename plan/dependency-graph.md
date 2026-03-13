@@ -135,7 +135,7 @@ Can all run in parallel (different diagnostic codes).
 | ~~263~~ | ~~Property does not exist on type — dynamic access~~ | — | **Done** |
 | 274 | Property access on function type (.name, .length) | — | Ready |
 | ~~281~~ | ~~Object literal property patterns~~ | — | **Done** |
-| 230 | Object computed property names with variable keys | — | Coordinates with #140 |
+| ~~230~~ | ~~Object computed property names with variable keys~~ | — | **Done** |
 | 305 | Computed property names runtime failures | 2 | Coordinates with #140, #230 |
 
 ---
