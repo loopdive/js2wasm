@@ -252,3 +252,4 @@
 | 143 | 2026-03-13 | for-loop edge cases -- test coverage verification | Dep-driven |
 | 141 | 2026-03-13 | Tagged template literal runtime failures -- test coverage | Dep-driven |
 | 165 | 2026-03-13 | Function statement hoisting and edge cases | Dep-driven |
+| 310 | 2026-03-13 | Reduce skip filters — re-evaluate conservative skips | Dep-driven |
