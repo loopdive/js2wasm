@@ -54,20 +54,20 @@ TypeScript-to-WebAssembly compiler using WasmGC.
 
 See [plan/team-setup.md](plan/team-setup.md) for full team config, roles, and merge lessons.
 
-### Dependency-driven execution (no sprint batching)
+### Continuous execution (rolling pool, dependency-driven)
 
-Work is driven by `plan/dependency-graph.md`, not sprint batches. The flow:
+Work is driven by `plan/dependency-graph.md`. Maintain a **rolling pool of 8 developer agents** — whenever one finishes, cherry-pick its work and immediately launch a replacement on the next ready issue.
 
 1. **Pick work**: choose by priority (critical > high > medium > low) from `plan/issues/ready/`
-2. **File locking**: each issue's frontmatter has a `files:` list claiming which source files it modifies. Before starting, check no other in-progress issue claims the same files. If overlap exists, wait or request PO approval for concurrent access.
-3. **Complete work**: when done, follow the issue completion procedure:
+2. **Function locking**: no two agents touch the same *function* concurrently. Same file is OK if different functions (Git 3-way merge handles separate hunks).
+3. **Complete work**: cherry-pick to main, then follow the issue completion procedure:
    - Move issue from `ready/` to `done/`
    - Add `completed: YYYY-MM-DD` frontmatter
    - Append `## Implementation Summary` with: what was done, what worked, what didn't, files changed, tests now passing
    - Add entry to `plan/issues/done/log.md`
    - Check `plan/issues/blocked/` for issues unblocked by this completion — move newly unblocked to `ready/`
    - Update `plan/dependency-graph.md`
-4. **Max 8 developer agents** running concurrently on non-conflicting issues
+4. **Immediately launch replacement**: pick next ready issue, launch new agent — keep 8 slots filled until no ready issues remain
 
 ### Sprint History
 - **Sprint 1**: 550 → 1,509 pass (+174%), 167 fail, 5,700 CE. Issues #138-#173.

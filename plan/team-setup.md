@@ -66,19 +66,20 @@ Fields:
 
 Both `new` and `breaking` must be documented **before** implementation starts so the PO can check whether any other in-progress or ready issues depend on the affected code. After implementation, preserve them in the issue's Implementation Summary for future reference.
 
-## Execution Workflow (dependency-driven)
+## Execution Workflow (continuous, dependency-driven)
 
-Work is driven by the dependency graph, not sprint batches.
+Work is driven by the dependency graph, not sprint batches. Maintain a **rolling pool of 8 developer agents** — whenever one finishes, cherry-pick its work to main and immediately launch a new agent on the next ready issue.
 
 1. **Pick work**: choose any issue from `plan/issues/ready/` — check `plan/dependency-graph.md` for contention
 2. **Batch diagnostics**: issues that only add a code to `DOWNGRADE_DIAG_CODES` don't need a developer agent
-3. **Launch developers**: max 8 in parallel, on non-conflicting files (check dependency graph "File contention" table)
-4. **After each completion**: merge branch, then follow issue completion procedure:
+3. **Launch developers**: max 8 in parallel, on non-conflicting functions (check dependency graph "File contention" table)
+4. **After each completion**: cherry-pick commit to main, then follow issue completion procedure:
    - Move `ready/{N}.md` → `done/{N}.md`
    - Add `completed: YYYY-MM-DD` frontmatter
    - Append `## Implementation Summary` (what was done, what worked, what didn't, files changed, tests now passing)
    - Add entry to `plan/issues/done/log.md`
    - Check `plan/issues/blocked/` — move newly unblocked issues to `ready/`
+5. **Immediately launch replacement**: pick the next ready issue that doesn't conflict with running agents and launch a new developer agent — keep 8 slots filled at all times until no ready issues remain
    - Update `plan/dependency-graph.md`
 5. **Run tests**: `npx tsx scripts/run-test262.ts` (standalone runner, lighter than vitest on memory)
 

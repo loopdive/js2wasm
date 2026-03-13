@@ -224,3 +224,4 @@
 | 284 | 2026-03-12 | For-of destructuring and assignment patterns | Dep-driven |
 | 239 | 2026-03-12 | Element access on struct types (bracket notation) | Dep-driven |
 | 260 | 2026-03-12 | ClassDeclaration + call expression combined errors | Dep-driven |
+| 138 | 2026-03-12 | valueOf/toString coercion on comparison operators | Dep-driven |
