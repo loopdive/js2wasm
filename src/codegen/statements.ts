@@ -647,6 +647,19 @@ function compileObjectDestructuring(
       continue;
     }
 
+    // Handle rest element: const { a, ...rest } = obj
+    // Allocate the local but skip value collection (would require runtime
+    // object creation).  The variable stays at its default value. (#379)
+    if (element.dotDotDotToken) {
+      if (ts.isIdentifier(element.name)) {
+        const restName = element.name.text;
+        if (!fctx.localMap.has(restName) && !ctx.moduleGlobals.has(restName)) {
+          allocLocal(fctx, restName, { kind: "externref" });
+        }
+      }
+      continue;
+    }
+
     const localName = (element.name as ts.Identifier).text;
 
     const fieldIdx = fields.findIndex((f) => f.name === propName.text);
@@ -770,6 +783,11 @@ function compileArrayDestructuring(
   if (isTupleStruct) {
     // Tuple destructuring: extract fields directly from the struct by index
     const tupleFields = (typeDef as { fields: { name?: string; type: ValType }[] }).fields;
+
+    // Pre-allocate all binding locals so they exist even when the tuple is
+    // shorter than the pattern (e.g. `var [x] = []`) (#379)
+    ensureBindingLocals(ctx, fctx, pattern);
+
     for (let i = 0; i < pattern.elements.length; i++) {
       const element = pattern.elements[i]!;
       if (ts.isOmittedExpression(element)) continue;
