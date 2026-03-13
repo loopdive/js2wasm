@@ -227,3 +227,4 @@
 | 138 | 2026-03-12 | valueOf/toString coercion on comparison operators | Dep-driven |
 | 202 | 2026-03-13 | Variable scope and hoisting — var hoisting already implemented, added tests | Dep-driven |
 | 190 | 2026-03-12 | Unsupported assignment target patterns | Dep-driven |
+| 142 | 2026-03-12 | Assignment destructuring failures — tests and verification | Dep-driven |
