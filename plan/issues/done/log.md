@@ -217,3 +217,4 @@
 | 266 | 2026-03-12 | Multi-variable declaration scope resolution | Dep-driven |
 | 315 | 2026-03-12 | Wasm validation error audit — stale local type fix | Dep-driven |
 | 235 | 2026-03-12 | Function.name — fix named expression priority | Dep-driven |
+| 289 | 2026-03-12 | For-in compile errors -- bare identifier and assignment expression initializers | Dep-driven |

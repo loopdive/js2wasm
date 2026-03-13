@@ -203,7 +203,7 @@ Can all run in parallel (different diagnostic codes).
 | 250 | For-loop with function declarations | ~113 CE | Ready |
 | 292 | For-loop incorrect computed values | 15 | Done |
 | 268 | Iterator protocol — Symbol.iterator | — | Ready |
-| 289 | For-in compile errors | ~13 CE | Ready |
+| ~~289~~ | ~~For-in compile errors~~ | ~13 CE | **Done** |
 | 297 | Switch statement fall-through | 2 | Done |
 | 298 | Function statement edge cases | 7 | Done |
 
