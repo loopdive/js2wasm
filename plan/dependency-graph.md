@@ -151,7 +151,7 @@ Can all run in parallel (different diagnostic codes).
 |-----|-------|-------|--------|
 | 142 | Assignment destructuring failures | — | Ready |
 | 190 | Unsupported assignment target patterns | — | Ready |
-| 243 | Unsupported assignment target patterns (array/object) | — | Ready (coordinates #190) |
+| ~~243~~ | ~~Unsupported assignment target patterns (array/object)~~ | — | **Done** |
 | 279 | Arrow function params — destructuring, defaults | — | Ready (coordinates #243) |
 | ~~283~~ | ~~Compound assignment — type coercion gaps~~ | — | **Done** |
 | ~~286~~ | ~~Logical assignment — nullish/short-circuit~~ | — | **Done** |
