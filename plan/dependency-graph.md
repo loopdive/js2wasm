@@ -263,7 +263,7 @@ All independent of each other and of codegen work.
 | 271 | Cannot find name — missing harness/global declarations | Ready |
 | ~~309~~ | ~~Expand test262 harness includes~~ | **Done** |
 | 310 | Reduce skip filters — re-evaluate conservative skips | Ready |
-| 311 | Test262 category expansion — String methods | Ready |
+| 311 | Test262 category expansion — String methods | Done |
 | 312 | Test262 category expansion — Number methods | Ready |
 | 313 | Test262 category expansion — new expression categories | Ready |
 | 314 | Performance — compile time profiling | Ready |
