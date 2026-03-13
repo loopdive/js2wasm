@@ -136,7 +136,7 @@ Can all run in parallel (different diagnostic codes).
 
 ```
 #142 (assignment destructuring failures) ── independent
-#190 (unsupported assignment targets) ── independent
+#190 (unsupported assignment targets) ── independent [DONE]
 #243 (assignment target patterns — array/object) ── coordinates with #190
 #279 (arrow fn params — destructuring/defaults) ── coordinates with #243
 
@@ -150,7 +150,7 @@ Can all run in parallel (different diagnostic codes).
 | #   | Title | Tests | Ready? |
 |-----|-------|-------|--------|
 | 142 | Assignment destructuring failures | — | Ready |
-| 190 | Unsupported assignment target patterns | — | Ready |
+| ~~190~~ | ~~Unsupported assignment target patterns~~ | — | **Done** |
 | 243 | Unsupported assignment target patterns (array/object) | — | Ready (coordinates #190) |
 | 279 | Arrow function params — destructuring, defaults | — | Ready (coordinates #243) |
 | ~~283~~ | ~~Compound assignment — type coercion gaps~~ | — | **Done** |
