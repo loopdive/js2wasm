@@ -1,5 +1,6 @@
 import ts from "typescript";
 import type { MultiTypedAST, TypedAST } from "../checker/index.js";
+import { eliminateDeadImports } from "./dead-elimination.js";
 import {
   isBooleanType,
   isExternalDeclaredClass,
@@ -479,6 +480,9 @@ export function generateModule(
   mod.stringLiteralValues = ctx.stringLiteralValues;
   mod.asyncFunctions = ctx.asyncFunctions;
 
+  // Dead import and type elimination pass
+  eliminateDeadImports(mod);
+
   return { module: mod, errors: ctx.errors };
 }
 
@@ -661,6 +665,9 @@ export function generateMultiModule(
   }
   mod.stringLiteralValues = ctx.stringLiteralValues;
   mod.asyncFunctions = ctx.asyncFunctions;
+
+  // Dead import and type elimination pass
+  eliminateDeadImports(mod);
 
   return { module: mod, errors: ctx.errors };
 }
