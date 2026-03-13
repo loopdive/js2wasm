@@ -2465,9 +2465,35 @@ function compileBinaryExpression(
       }
     }
 
-    // Dynamic key or unknown type — emit false as safe fallback
-    fctx.body.push({ op: "i32.const", value: 0 });
-    return { kind: "i32" };
+    // Dynamic key with no struct fields — try TS type system for known properties
+    // Compile both sides for side effects, then use TS type system if the key
+    // can be resolved from its type (e.g., a string variable with a known literal type).
+    {
+      const leftResult = compileExpression(ctx, fctx, expr.left);
+      if (leftResult && leftResult !== VOID_RESULT) {
+        fctx.body.push({ op: "drop" });
+      }
+      const rightResult = compileExpression(ctx, fctx, expr.right);
+      if (rightResult && rightResult !== VOID_RESULT) {
+        fctx.body.push({ op: "drop" });
+      }
+
+      // Try to resolve key from the TS type of the left expression
+      const leftType = ctx.checker.getTypeAtLocation(expr.left);
+      if (leftType.isStringLiteral()) {
+        const key = leftType.value;
+        const prop = rightType.getProperty(key);
+        const apparentType = ctx.checker.getApparentType(rightType);
+        const apparentProp = apparentType.getProperty(key);
+        const has = !!(prop || apparentProp || (structFieldNames && structFieldNames.includes(key)));
+        fctx.body.push({ op: "i32.const", value: has ? 1 : 0 });
+        return { kind: "i32" };
+      }
+
+      // Fully dynamic — emit false as safe fallback
+      fctx.body.push({ op: "i32.const", value: 0 });
+      return { kind: "i32" };
+    }
   }
 
   // Regular binary ops: evaluate both sides
