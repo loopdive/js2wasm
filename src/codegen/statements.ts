@@ -2422,6 +2422,17 @@ function compileTryStatement(
   let catches: { tagIdx: number; body: Instr[] }[] = [];
   let catchAllBody: Instr[] | undefined;
 
+  // If there's a finally block but no catch clause, we need a catch_all
+  // that runs the finally block and then rethrows the exception.
+  if (stmt.finallyBlock && !stmt.catchClause) {
+    fctx.body = [];
+    for (const s of stmt.finallyBlock.statements) {
+      compileStatement(ctx, fctx, s);
+    }
+    fctx.body.push({ op: "rethrow", depth: 0 } as any);
+    catchAllBody = fctx.body;
+  }
+
   if (stmt.catchClause) {
     // Allocate the catch variable local (if any) before compiling catch bodies
     // so it's available in both catch $tag and catch_all bodies.
@@ -2452,11 +2463,49 @@ function compileTryStatement(
       } else {
         fctx.body.push({ op: "drop" });
       }
-      for (const s of stmt.catchClause.block.statements) {
-        compileStatement(ctx, fctx, s);
-      }
+
       if (stmt.finallyBlock) {
+        // Wrap catch body in inner try/catch_all so that if the catch body
+        // throws, the finally block still executes before the exception
+        // propagates.
+        const catchSavedBody = fctx.body;
+        fctx.body = [];
+        // The inner try adds one label level for break/continue
+        for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!++;
+        for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!++;
+
+        for (const s of stmt.catchClause.block.statements) {
+          compileStatement(ctx, fctx, s);
+        }
+        const innerTryBody = fctx.body;
+
+        // Build inner catch_all: run finally then rethrow
+        fctx.body = [];
         for (const s of stmt.finallyBlock.statements) {
+          compileStatement(ctx, fctx, s);
+        }
+        // rethrow depth 0 = rethrow exception from this catch_all's try
+        fctx.body.push({ op: "rethrow", depth: 0 } as any);
+        const innerCatchAllBody = fctx.body;
+
+        for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!--;
+        for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!--;
+
+        fctx.body = catchSavedBody;
+        fctx.body.push({
+          op: "try",
+          blockType: { kind: "empty" },
+          body: innerTryBody,
+          catches: [],
+          catchAll: innerCatchAllBody,
+        } as any);
+
+        // Finally on normal exit path (no exception in catch body)
+        for (const s of stmt.finallyBlock.statements) {
+          compileStatement(ctx, fctx, s);
+        }
+      } else {
+        for (const s of stmt.catchClause.block.statements) {
           compileStatement(ctx, fctx, s);
         }
       }
@@ -2470,11 +2519,43 @@ function compileTryStatement(
         fctx.body.push({ op: "ref.null.extern" });
         fctx.body.push({ op: "local.set", index: exnLocalIdx });
       }
-      for (const s of stmt.catchClause.block.statements) {
-        compileStatement(ctx, fctx, s);
-      }
+
       if (stmt.finallyBlock) {
+        // Same wrapping as catch $exn body above
+        const catchAllSavedBody = fctx.body;
+        fctx.body = [];
+        for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!++;
+        for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!++;
+
+        for (const s of stmt.catchClause.block.statements) {
+          compileStatement(ctx, fctx, s);
+        }
+        const innerTryBody = fctx.body;
+
+        fctx.body = [];
         for (const s of stmt.finallyBlock.statements) {
+          compileStatement(ctx, fctx, s);
+        }
+        fctx.body.push({ op: "rethrow", depth: 0 } as any);
+        const innerCatchAllBody = fctx.body;
+
+        for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!--;
+        for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!--;
+
+        fctx.body = catchAllSavedBody;
+        fctx.body.push({
+          op: "try",
+          blockType: { kind: "empty" },
+          body: innerTryBody,
+          catches: [],
+          catchAll: innerCatchAllBody,
+        } as any);
+
+        for (const s of stmt.finallyBlock.statements) {
+          compileStatement(ctx, fctx, s);
+        }
+      } else {
+        for (const s of stmt.catchClause.block.statements) {
           compileStatement(ctx, fctx, s);
         }
       }
