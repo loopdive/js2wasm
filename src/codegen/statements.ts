@@ -944,8 +944,11 @@ function compileReturnStatement(
         fctx.body.push({ op: "drop" });
       }
     }
-    // Break out of the generator body block (depth = blockDepth, i.e. the outermost block)
-    fctx.body.push({ op: "br", depth: fctx.blockDepth });
+    // Break out of the generator body block.
+    // generatorReturnDepth tracks the correct br depth accounting for
+    // nested loops/blocks that wrap the body instructions.
+    const genReturnDepth = fctx.generatorReturnDepth ?? fctx.blockDepth;
+    fctx.body.push({ op: "br", depth: genReturnDepth });
     return;
   }
 
@@ -977,6 +980,7 @@ function compileIfStatement(
   // so that br instructions emitted inside the if branches target the correct labels.
   for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!++;
   for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!++;
+  if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth++;
 
   // Compile then branch
   const savedBody = fctx.body;
@@ -1009,6 +1013,7 @@ function compileIfStatement(
   // Restore break/continue depths
   for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!--;
   for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!--;
+  if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth--;
 
   fctx.body.push({
     op: "if",
@@ -1040,6 +1045,7 @@ function compileWhileStatement(
   for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! += 2;
   for (let i = 0; i < fctx.continueStack.length; i++)
     fctx.continueStack[i]! += 2;
+  if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth += 2;
 
   // Track break/continue depths
   // Inside the generated structure, br 1 = break, br 0 = continue
@@ -1071,6 +1077,7 @@ function compileWhileStatement(
   for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! -= 2;
   for (let i = 0; i < fctx.continueStack.length; i++)
     fctx.continueStack[i]! -= 2;
+  if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth -= 2;
 
   fctx.body = savedBody;
 
@@ -1178,6 +1185,7 @@ function compileForStatement(
   for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! += 3;
   for (let i = 0; i < fctx.continueStack.length; i++)
     fctx.continueStack[i]! += 3;
+  if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth += 3;
 
   // From body inside $continue block:
   //   break = br 2 (exits $break block)
@@ -1223,6 +1231,7 @@ function compileForStatement(
   for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! -= 3;
   for (let i = 0; i < fctx.continueStack.length; i++)
     fctx.continueStack[i]! -= 3;
+  if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth -= 3;
 
   fctx.body = savedBody;
 
@@ -1273,6 +1282,7 @@ function compileDoWhileStatement(
   for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! += 3;
   for (let i = 0; i < fctx.continueStack.length; i++)
     fctx.continueStack[i]! += 3;
+  if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth += 3;
 
   // From body inside $continue block:
   //   break = br 2 (exits $break block)
@@ -1304,6 +1314,7 @@ function compileDoWhileStatement(
   for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! -= 3;
   for (let i = 0; i < fctx.continueStack.length; i++)
     fctx.continueStack[i]! -= 3;
+  if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth -= 3;
 
   fctx.body = savedBody;
 
@@ -1488,6 +1499,7 @@ function compileSwitchStatement(
   // Adjust existing break/continue depths: block adds 1 nesting level
   for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!++;
   for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!++;
+  if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth++;
 
   // break from switch => br to outer block (depth 0 from inside the block).
   // Each case body is wrapped in an if (+1 nesting), so break depth = 1.
@@ -1522,6 +1534,7 @@ function compileSwitchStatement(
       for (let i = 0; i < switchBreakIdx; i++) fctx.breakStack[i]!++;
       for (let i = 0; i < fctx.continueStack.length; i++)
         fctx.continueStack[i]!++;
+      if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth++;
 
       for (const s of clause.statements) {
         compileStatement(ctx, fctx, s);
@@ -1531,6 +1544,7 @@ function compileSwitchStatement(
       for (let i = 0; i < switchBreakIdx; i++) fctx.breakStack[i]!--;
       for (let i = 0; i < fctx.continueStack.length; i++)
         fctx.continueStack[i]!--;
+      if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth--;
 
       fctx.body = outerBody;
 
@@ -1548,6 +1562,7 @@ function compileSwitchStatement(
   // Restore existing break/continue depths
   for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!--;
   for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!--;
+  if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth--;
 
   const switchBody = fctx.body;
   fctx.body = savedBody;
@@ -2163,6 +2178,7 @@ function compileForOfArray(
   for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! += 2;
   for (let i = 0; i < fctx.continueStack.length; i++)
     fctx.continueStack[i]! += 2;
+  if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth += 2;
 
   fctx.breakStack.push(1); // break = depth 1 (exit block)
   fctx.continueStack.push(0); // continue = depth 0 (restart loop)
@@ -2218,6 +2234,7 @@ function compileForOfArray(
   for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! -= 2;
   for (let i = 0; i < fctx.continueStack.length; i++)
     fctx.continueStack[i]! -= 2;
+  if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth -= 2;
 
   fctx.body = savedBody;
 
@@ -2331,6 +2348,7 @@ function compileForOfIterator(
   for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! += 2;
   for (let i = 0; i < fctx.continueStack.length; i++)
     fctx.continueStack[i]! += 2;
+  if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth += 2;
 
   fctx.breakStack.push(1); // break = depth 1 (exit block)
   fctx.continueStack.push(0); // continue = depth 0 (restart loop)
@@ -2386,6 +2404,7 @@ function compileForOfIterator(
   for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! -= 2;
   for (let i = 0; i < fctx.continueStack.length; i++)
     fctx.continueStack[i]! -= 2;
+  if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth -= 2;
 
   fctx.body = savedBody;
 
@@ -2516,6 +2535,7 @@ function compileLabeledStatement(
     // Adjust existing break/continue depths: block adds 1 nesting level
     for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!++;
     for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!++;
+    if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth++;
 
     // Push break entry for this labeled block: br 0 exits the block
     const breakIdx = fctx.breakStack.length;
@@ -2533,6 +2553,7 @@ function compileLabeledStatement(
     // Restore existing break/continue depths
     for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!--;
     for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!--;
+    if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth--;
 
     fctx.body = savedBody;
     fctx.body.push({
@@ -2631,6 +2652,7 @@ function compileTryStatement(
   // Adjust break/continue depths: the try block adds one label level
   for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!++;
   for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!++;
+  if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth++;
 
   for (const s of stmt.tryBlock.statements) {
     compileStatement(ctx, fctx, s);
@@ -2714,6 +2736,7 @@ function compileTryStatement(
   // Restore break/continue depths
   for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!--;
   for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!--;
+  if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth--;
 
   // Emit the try instruction with catch $tag + catch_all
   fctx.body.push({
