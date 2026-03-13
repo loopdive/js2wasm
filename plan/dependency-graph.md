@@ -219,7 +219,7 @@ Can all run in parallel (different diagnostic codes).
 
 | #   | Title | Tests | Ready? |
 |-----|-------|-------|--------|
-| 202 | Variable scope and hoisting | — | Ready |
+| 202 | Variable scope and hoisting | — | Done |
 | 146 | Unknown identifier / scope issues | ~269 CE | Ready (coordinates #202) |
 | 266 | Unknown identifier — multi-variable patterns | — | Ready (coordinates #202) |
 
