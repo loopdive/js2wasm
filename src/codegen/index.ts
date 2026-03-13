@@ -5981,6 +5981,63 @@ export function ensureStructForType(ctx: CodegenContext, tsType: ts.Type): void 
   ctx.structMap.set(structName, typeIdx);
   ctx.structFields.set(structName, fields);
   ctx.anonTypeMap.set(tsType, structName);
+
+  // Pre-register placeholder functions for callable properties (methods).
+  // This ensures that struct method calls (e.g. obj.foo()) can resolve
+  // the function index during the first pass, before the object literal's
+  // method bodies are compiled in compileObjectLiteralForStruct.
+  for (const prop of props) {
+    const propType = ctx.checker.getTypeOfSymbol(prop);
+    const callSigs = propType.getCallSignatures();
+    if (callSigs.length === 0) continue;
+
+    // Only pre-register methods that have a user-defined declaration
+    // (MethodDeclaration or PropertyAssignment with function initializer in user code).
+    // Skip inherited/prototype methods (toString, valueOf from Object.prototype)
+    // and lib type method signatures, as they won't have a body to compile
+    // in compileObjectLiteralForStruct.
+    const decl = prop.valueDeclaration;
+    if (!decl) continue;
+    const isUserMethod = ts.isMethodDeclaration(decl) ||
+      (ts.isPropertyAssignment(decl) && (ts.isFunctionExpression(decl.initializer) || ts.isArrowFunction(decl.initializer)));
+    if (!isUserMethod) continue;
+    // Also skip declarations from .d.ts files (lib types)
+    const declSourceFile = decl.getSourceFile();
+    if (declSourceFile && declSourceFile.isDeclarationFile) continue;
+
+    const fullName = `${structName}_${prop.name}`;
+    if (ctx.funcMap.has(fullName)) continue; // already registered
+
+    const sig = callSigs[0]!;
+    // Build parameter types: self (ref $structTypeIdx) + declared params
+    const methodParams: ValType[] = [{ kind: "ref", typeIdx }];
+    for (const param of sig.parameters) {
+      const paramDecl = param.valueDeclaration;
+      if (paramDecl) {
+        const pt = ctx.checker.getTypeAtLocation(paramDecl);
+        methodParams.push(resolveWasmType(ctx, pt));
+      } else {
+        methodParams.push({ kind: "f64" });
+      }
+    }
+    const retType = ctx.checker.getReturnTypeOfSignature(sig);
+    const methodResults: ValType[] = retType && !isVoidType(retType)
+      ? [resolveWasmType(ctx, retType)]
+      : [];
+
+    const methodTypeIdx = addFuncType(ctx, methodParams, methodResults, `${fullName}_type`);
+    const methodFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.funcMap.set(fullName, methodFuncIdx);
+
+    const methodFunc: WasmFunction = {
+      name: fullName,
+      typeIdx: methodTypeIdx,
+      locals: [],
+      body: [],
+      exported: false,
+    };
+    ctx.mod.functions.push(methodFunc);
+  }
 }
 
 // ── Extern class collection ──────────────────────────────────────────
