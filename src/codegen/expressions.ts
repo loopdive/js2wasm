@@ -7752,6 +7752,11 @@ function compileCallExpression(
       return compileExternMethodCall(ctx, fctx, propAccess, expr);
     }
 
+    // Property introspection: hasOwnProperty / propertyIsEnumerable
+    if (propAccess.name.text === "hasOwnProperty" || propAccess.name.text === "propertyIsEnumerable") {
+      return compilePropertyIntrospection(ctx, fctx, propAccess, expr);
+    }
+
     // Generator method calls: gen.next()
     if (isGeneratorType(receiverType) && propAccess.name.text === "next") {
       compileExpression(ctx, fctx, propAccess.expression);
@@ -16616,6 +16621,142 @@ function isStaticNaN(ctx: CodegenContext, expr: ts.Expression): boolean {
     }
   }
   return false;
+}
+
+/**
+ * Compile obj.hasOwnProperty(key) / obj.propertyIsEnumerable(key).
+ * For WasmGC structs all own fields are enumerable, so both methods behave
+ * identically: return true iff `key` names an own field of the struct type.
+ *
+ * Static resolution (string literal arg): constant fold to i32.const 0/1.
+ * Dynamic resolution: runtime string comparison against known field names.
+ */
+function compilePropertyIntrospection(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  propAccess: ts.PropertyAccessExpression,
+  expr: ts.CallExpression,
+): InnerResult {
+  const receiverType = ctx.checker.getTypeAtLocation(propAccess.expression);
+  const receiverWasm = resolveWasmType(ctx, receiverType);
+
+  // Collect struct field names from the Wasm struct definition
+  let structFieldNames: string[] | null = null;
+  if (receiverWasm.kind === "ref" || receiverWasm.kind === "ref_null") {
+    const structDef = ctx.mod.types[(receiverWasm as { typeIdx: number }).typeIdx];
+    if (structDef?.kind === "struct") {
+      structFieldNames = structDef.fields.map(f => f.name).filter((n): n is string => n !== undefined);
+    }
+  }
+
+  // Also check the TypeScript type system for properties (prototype methods etc.)
+  const tsProps = new Set<string>();
+  for (const prop of receiverType.getProperties()) {
+    tsProps.add(prop.name);
+  }
+  // Include apparent type properties (valueOf, toString, etc.) for hasOwnProperty
+  // Note: hasOwnProperty should NOT include prototype properties, but in our
+  // struct model there is no prototype chain so we only check own + struct fields.
+  // propertyIsEnumerable likewise only applies to own properties.
+
+  // Get the first argument (the property name to check)
+  const arg = expr.arguments[0];
+  if (!arg) {
+    // No argument — hasOwnProperty() with no args returns false in JS
+    // Compile receiver for side effects
+    const recvType = compileExpression(ctx, fctx, propAccess.expression);
+    if (recvType && recvType !== VOID_RESULT) {
+      fctx.body.push({ op: "drop" });
+    }
+    fctx.body.push({ op: "i32.const", value: 0 });
+    return { kind: "i32" };
+  }
+
+  // Try to resolve the key at compile time
+  let staticKey: string | null = null;
+  if (ts.isStringLiteral(arg)) {
+    staticKey = arg.text;
+  } else if (ts.isNumericLiteral(arg)) {
+    staticKey = arg.text;
+  } else {
+    // Check if TS can resolve the type to a string literal
+    const argType = ctx.checker.getTypeAtLocation(arg);
+    if (argType.isStringLiteral()) {
+      staticKey = argType.value;
+    }
+  }
+
+  if (staticKey !== null) {
+    // Static resolution: check if the key is a known own property
+    const hasInStruct = structFieldNames !== null && structFieldNames.includes(staticKey);
+    const hasInTs = tsProps.has(staticKey);
+    const has = hasInStruct || hasInTs;
+
+    // Compile receiver and argument for side effects, then drop
+    const recvType = compileExpression(ctx, fctx, propAccess.expression);
+    if (recvType && recvType !== VOID_RESULT) {
+      fctx.body.push({ op: "drop" });
+    }
+    const argType = compileExpression(ctx, fctx, arg);
+    if (argType && argType !== VOID_RESULT) {
+      fctx.body.push({ op: "drop" });
+    }
+    fctx.body.push({ op: "i32.const", value: has ? 1 : 0 });
+    return { kind: "i32" };
+  }
+
+  // Dynamic key: runtime string comparison against known field names
+  const allFieldNames = new Set<string>();
+  if (structFieldNames) {
+    for (const f of structFieldNames) allFieldNames.add(f);
+  }
+  for (const p of tsProps) allFieldNames.add(p);
+
+  if (allFieldNames.size > 0) {
+    // Compile receiver for side effects, drop it
+    const recvType = compileExpression(ctx, fctx, propAccess.expression);
+    if (recvType && recvType !== VOID_RESULT) {
+      fctx.body.push({ op: "drop" });
+    }
+
+    // Compile the key argument
+    const keyType = compileExpression(ctx, fctx, arg);
+    if (keyType) {
+      const equalsIdx = ctx.funcMap.get("__str_eq") ?? ctx.funcMap.get("string_equals");
+      const jsStrEquals = ctx.mod.imports.findIndex(
+        imp => imp.module === "wasm:js-string" && imp.name === "equals"
+      );
+      const eqFunc = jsStrEquals >= 0 ? jsStrEquals : equalsIdx;
+      if (eqFunc !== undefined && eqFunc >= 0) {
+        const keyLocal = allocLocal(fctx, `__hop_key_${fctx.locals.length}`, keyType);
+        fctx.body.push({ op: "local.set", index: keyLocal });
+        // Start with false (0)
+        fctx.body.push({ op: "i32.const", value: 0 });
+        for (const fieldName of allFieldNames) {
+          fctx.body.push({ op: "local.get", index: keyLocal });
+          const strGlobal = ctx.stringGlobalMap.get(fieldName);
+          if (strGlobal !== undefined) {
+            fctx.body.push({ op: "global.get", index: strGlobal });
+            fctx.body.push({ op: "call", funcIdx: eqFunc });
+            fctx.body.push({ op: "i32.or" });
+          }
+        }
+        return { kind: "i32" };
+      }
+    }
+  }
+
+  // Fallback: compile both sides for side effects, return false
+  const recvType = compileExpression(ctx, fctx, propAccess.expression);
+  if (recvType && recvType !== VOID_RESULT) {
+    fctx.body.push({ op: "drop" });
+  }
+  const argType = compileExpression(ctx, fctx, arg);
+  if (argType && argType !== VOID_RESULT) {
+    fctx.body.push({ op: "drop" });
+  }
+  fctx.body.push({ op: "i32.const", value: 0 });
+  return { kind: "i32" };
 }
 
 function getLine(node: ts.Node): number {
