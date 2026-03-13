@@ -948,7 +948,7 @@ function emitArrowParamDestructuring(
       fctx.body.push({ op: "local.get", index: paramIdx });
       fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 }); // data
       fctx.body.push({ op: "i32.const", value: i });
-      fctx.body.push({ op: "array.get", typeIdx: innerArrTypeIdx });
+      emitBoundsCheckedArrayGet(fctx, innerArrTypeIdx, innerElemType);
 
       // Coerce element type to binding type if needed
       if (!valTypesMatch(innerElemType, bindingWasmType)) {
@@ -4157,7 +4157,7 @@ function compileArrayDestructuringAssignment(
     if (isVecStruct) {
       fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 }); // get data array
       fctx.body.push({ op: "i32.const", value: i });
-      fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
+      emitBoundsCheckedArrayGet(fctx, arrTypeIdx, arrDef!.element);
     } else {
       // Tuple: direct struct.get with field index
       fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: i });
@@ -4502,7 +4502,7 @@ function emitArrayDestructureFromLocal(
       fctx.body.push({ op: "local.get", index: srcLocal });
       fctx.body.push({ op: "struct.get", typeIdx: srcTypeIdx, fieldIdx: 1 });
       fctx.body.push({ op: "i32.const", value: i });
-      fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
+      emitBoundsCheckedArrayGet(fctx, arrTypeIdx, elemType);
       const localType = getLocalType(fctx, localIdx);
       if (localType && !valTypesMatch(elemType, localType)) {
         coerceType(ctx, fctx, elemType, localType);
@@ -11020,7 +11020,7 @@ function compileExternPropertyGet(
  * If the index is out of bounds (< 0 or >= array.len), a default value for the
  * element type is produced instead of trapping.
  */
-function emitBoundsCheckedArrayGet(
+export function emitBoundsCheckedArrayGet(
   fctx: FunctionContext,
   arrTypeIdx: number,
   elementType: ValType,
