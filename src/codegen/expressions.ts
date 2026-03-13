@@ -6118,25 +6118,24 @@ function compileMemberIncDec(
     const propName = ts.isPrivateIdentifier(operand.name) ? operand.name.text.slice(1) : operand.name.text;
     // Ensure anonymous types are registered as structs before resolving
     ensureStructForType(ctx, objType);
-    const typeName = resolveStructName(ctx, objType);
+    let typeName = resolveStructName(ctx, objType);
+    // Fallback: check widened variable struct map (matches compilePropertyAssignment)
+    if (!typeName && ts.isIdentifier(operand.expression)) {
+      typeName = ctx.widenedVarStructMap.get(operand.expression.text);
+    }
     if (!typeName) {
-      ctx.errors.push({
-        message: `Cannot increment/decrement property '${propName}' — unresolvable type`,
-        line: getLine(operand),
-        column: getCol(operand),
-      });
-      return null;
+      // Unresolvable type (e.g. this.x in module scope, new Object().prop)
+      // Gracefully emit NaN — incrementing an unresolvable property is NaN in JS
+      fctx.body.push({ op: "f64.const", value: NaN });
+      return { kind: "f64" };
     }
 
     const structTypeIdx = ctx.structMap.get(typeName);
     const fields = ctx.structFields.get(typeName);
     if (structTypeIdx === undefined || !fields) {
-      ctx.errors.push({
-        message: `Cannot increment/decrement property '${propName}' on '${typeName}'`,
-        line: getLine(operand),
-        column: getCol(operand),
-      });
-      return null;
+      // Struct not found — gracefully emit NaN
+      fctx.body.push({ op: "f64.const", value: NaN });
+      return { kind: "f64" };
     }
 
     const fieldIdx = fields.findIndex((f) => f.name === propName);
@@ -6236,24 +6235,24 @@ function compileMemberIncDec(
     const objResult = compileExpression(ctx, fctx, operand.expression);
     if (!objResult) return null;
 
-    // Externref element access: delegate to host
+    // Externref element access: cannot do struct.get/struct.set on externref,
+    // gracefully emit NaN (incrementing a dynamic property produces NaN)
     if (objResult.kind === "externref") {
-      ctx.errors.push({
-        message: "Increment/decrement on externref element access not supported",
-        line: getLine(operand),
-        column: getCol(operand),
-      });
-      return null;
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "f64.const", value: NaN });
+      return { kind: "f64" };
     }
 
     if (objResult.kind !== "ref" && objResult.kind !== "ref_null") {
-      ctx.errors.push({
-        message: "Increment/decrement on non-array element access",
-        line: getLine(operand),
-        column: getCol(operand),
-      });
-      return null;
+      // Non-ref element access: gracefully emit NaN
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "f64.const", value: NaN });
+      return { kind: "f64" };
     }
+
+    // Save object to a temp local early so the stack is clean for fallback paths
+    const elemObjTmp = allocLocal(fctx, `__incdec_eobj_${fctx.locals.length}`, objResult);
+    fctx.body.push({ op: "local.set", index: elemObjTmp });
 
     const typeIdx = (objResult as { typeIdx: number }).typeIdx;
     const typeDef = ctx.mod.types[typeIdx];
@@ -6277,11 +6276,9 @@ function compileMemberIncDec(
           const fieldIdx = typeDef.fields.findIndex((f: { name: string }) => f.name === fieldName);
           if (fieldIdx !== -1) {
             const fieldType = typeDef.fields[fieldIdx]!.type;
-            const objTmp = allocLocal(fctx, `__incdec_obj_${fctx.locals.length}`, objResult);
-            fctx.body.push({ op: "local.set", index: objTmp });
 
             // Read current value
-            fctx.body.push({ op: "local.get", index: objTmp });
+            fctx.body.push({ op: "local.get", index: elemObjTmp });
             fctx.body.push({ op: "struct.get", typeIdx, fieldIdx });
 
             if (fieldType.kind !== "f64") {
@@ -6296,7 +6293,7 @@ function compileMemberIncDec(
               if (fieldType.kind !== "f64") coerceType(ctx, fctx, { kind: "f64" }, fieldType);
               const newTmp = allocLocal(fctx, `__incdec_new_${fctx.locals.length}`, fieldType);
               fctx.body.push({ op: "local.set", index: newTmp });
-              fctx.body.push({ op: "local.get", index: objTmp });
+              fctx.body.push({ op: "local.get", index: elemObjTmp });
               fctx.body.push({ op: "local.get", index: newTmp });
               fctx.body.push({ op: "struct.set", typeIdx, fieldIdx });
               fctx.body.push({ op: "local.get", index: oldTmp });
@@ -6306,7 +6303,7 @@ function compileMemberIncDec(
               fctx.body.push({ op: f64Op });
               const newTmp = allocLocal(fctx, `__incdec_new_${fctx.locals.length}`, { kind: "f64" });
               fctx.body.push({ op: "local.set", index: newTmp });
-              fctx.body.push({ op: "local.get", index: objTmp });
+              fctx.body.push({ op: "local.get", index: elemObjTmp });
               fctx.body.push({ op: "local.get", index: newTmp });
               if (fieldType.kind !== "f64") coerceType(ctx, fctx, { kind: "f64" }, fieldType);
               fctx.body.push({ op: "struct.set", typeIdx, fieldIdx });
@@ -6319,8 +6316,7 @@ function compileMemberIncDec(
 
       // Vec struct: arr[i]++ — array element increment/decrement
       if (isVec) {
-        const objTmp = allocLocal(fctx, `__incdec_arr_${fctx.locals.length}`, objResult);
-        fctx.body.push({ op: "local.set", index: objTmp });
+        const objTmp = elemObjTmp;
 
         // Compile index
         const idxResult = compileExpression(ctx, fctx, operand.argumentExpression);
@@ -6393,12 +6389,9 @@ function compileMemberIncDec(
     }
   }
 
-  ctx.errors.push({
-    message: `Unsupported increment/decrement on ${ts.SyntaxKind[operand.kind]}`,
-    line: getLine(operand),
-    column: getCol(operand),
-  });
-  return null;
+  // Unsupported operand kind — gracefully emit NaN instead of hard error
+  fctx.body.push({ op: "f64.const", value: NaN });
+  return { kind: "f64" };
 }
 
 function compilePrefixUnary(
