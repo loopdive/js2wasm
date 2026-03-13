@@ -282,7 +282,7 @@ All independent of each other and of codegen work.
 | 254 | Private class fields and methods (#field) | [E] | — | Ready |
 | ~~280~~ | ~~Function expression name binding and hoisting~~ | [E][S] | — | **Done** |
 | ~~290~~ | ~~instanceof — class hierarchy and expressions~~ | [E] | ~20 CE | **Done** |
-| 291 | `in` operator compile errors — dynamic property | [E] | ~10 CE | Ready (coordinates #244) |
+| ~~291~~ | ~~`in` operator compile errors — dynamic property~~ | [E] | ~10 CE | **Done** |
 | ~~293~~ | ~~Class method incorrect results~~ | [E] | 10 | **Done** |
 | ~~302~~ | ~~Math.min/max edge cases~~ | [E] | 2 | **Done** |
 | ~~303~~ | ~~parseInt edge cases~~ | [E] | 1 | **Done** |
