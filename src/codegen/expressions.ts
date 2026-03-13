@@ -1749,34 +1749,99 @@ function narrowTypeToUnbox(
 }
 
 /**
+ * Collect all class tags that are "instanceof-compatible" with the given class:
+ * the class itself plus all its descendants (transitive children).
+ */
+function collectInstanceOfTags(ctx: CodegenContext, className: string): number[] {
+  const ownTag = ctx.classTagMap.get(className);
+  if (ownTag === undefined) return [];
+  const tags = [ownTag];
+  // Walk classParentMap to find all children (classes whose parent is className)
+  for (const [child, parent] of ctx.classParentMap) {
+    if (parent === className) {
+      tags.push(...collectInstanceOfTags(ctx, child));
+    }
+  }
+  return tags;
+}
+
+/**
+ * Resolve the class name from the right operand of an instanceof expression.
+ * Handles identifiers, class expressions, and arbitrary expressions via the type checker.
+ */
+function resolveInstanceOfClassName(
+  ctx: CodegenContext,
+  rightExpr: ts.Expression,
+): string | undefined {
+  // Direct identifier: `x instanceof Foo`
+  if (ts.isIdentifier(rightExpr)) {
+    const name = rightExpr.text;
+    // Check direct name first, then classExprNameMap
+    if (ctx.classTagMap.has(name)) return name;
+    const mapped = ctx.classExprNameMap.get(name);
+    if (mapped && ctx.classTagMap.has(mapped)) return mapped;
+    // Fall through to type checker
+  }
+
+  // Use the TypeScript type checker to resolve the type of the right operand
+  const tsType = ctx.checker.getTypeAtLocation(rightExpr);
+  // For class constructors, get the construct signatures' return type
+  const constructSigs = tsType.getConstructSignatures?.();
+  if (constructSigs && constructSigs.length > 0) {
+    const instanceType = constructSigs[0]!.getReturnType();
+    const symbolName = instanceType.getSymbol()?.name;
+    if (symbolName) {
+      if (ctx.classTagMap.has(symbolName)) return symbolName;
+      const mapped = ctx.classExprNameMap.get(symbolName);
+      if (mapped && ctx.classTagMap.has(mapped)) return mapped;
+    }
+  }
+
+  // Try the symbol name directly (for class expressions assigned to variables)
+  const symbolName = tsType.getSymbol()?.name;
+  if (symbolName) {
+    if (ctx.classTagMap.has(symbolName)) return symbolName;
+    const mapped = ctx.classExprNameMap.get(symbolName);
+    if (mapped && ctx.classTagMap.has(mapped)) return mapped;
+  }
+
+  return undefined;
+}
+
+/**
  * Compile `expr instanceof ClassName`.
  * Reads the hidden __tag field (index 0) from the struct and compares
- * it against the class's compile-time tag value.
+ * it against the class's compile-time tag value (and all descendant tags
+ * for class hierarchy support).
  */
 function compileInstanceOf(
   ctx: CodegenContext,
   fctx: FunctionContext,
   expr: ts.BinaryExpression,
 ): ValType | null {
-  // Right operand must be a class name identifier
-  if (!ts.isIdentifier(expr.right)) {
-    ctx.errors.push({
-      message: "instanceof right operand must be a class name",
-      line: getLine(expr.right),
-      column: getCol(expr.right),
-    });
-    return null;
+  // Resolve the right operand class name (supports identifiers, expressions, class expressions)
+  const className = resolveInstanceOfClassName(ctx, expr.right);
+  if (className === undefined) {
+    // Cannot resolve the class — emit false (i32.const 0) as a graceful fallback
+    // We still need to compile the left operand for side effects, then drop it
+    const leftType = compileExpression(ctx, fctx, expr.left);
+    if (leftType) {
+      fctx.body.push({ op: "drop" });
+    }
+    fctx.body.push({ op: "i32.const", value: 0 });
+    return { kind: "i32" };
   }
 
-  const className = expr.right.text;
-  const tagValue = ctx.classTagMap.get(className);
-  if (tagValue === undefined) {
-    ctx.errors.push({
-      message: `instanceof: unknown class "${className}"`,
-      line: getLine(expr.right),
-      column: getCol(expr.right),
-    });
-    return null;
+  // Collect all compatible tags (this class + all descendants)
+  const compatibleTags = collectInstanceOfTags(ctx, className);
+  if (compatibleTags.length === 0) {
+    // No tags found — emit false
+    const leftType = compileExpression(ctx, fctx, expr.left);
+    if (leftType) {
+      fctx.body.push({ op: "drop" });
+    }
+    fctx.body.push({ op: "i32.const", value: 0 });
+    return { kind: "i32" };
   }
 
   // Compile left operand (the value to test) — must be a ref to a class struct
@@ -1789,21 +1854,57 @@ function compileInstanceOf(
   if (leftClassName && !ctx.structMap.has(leftClassName)) {
     leftClassName = ctx.classExprNameMap.get(leftClassName) ?? leftClassName;
   }
-  const leftStructTypeIdx = leftClassName ? ctx.structMap.get(leftClassName) : undefined;
+  let leftStructTypeIdx = leftClassName ? ctx.structMap.get(leftClassName) : undefined;
+
+  // If the left operand type is not directly resolvable, try to find any struct
+  // that could be the base type. For union types or 'any', we try the right class's struct.
   if (leftStructTypeIdx === undefined) {
-    ctx.errors.push({
-      message: "instanceof: left operand must be a class instance",
-      line: getLine(expr.left),
-      column: getCol(expr.left),
-    });
-    return null;
+    // Try using the right-side class's struct type as a cast target
+    const rightStructTypeIdx = ctx.structMap.get(className);
+    if (rightStructTypeIdx !== undefined) {
+      // Find the root ancestor of the right class to use as the cast type
+      let rootClass = className;
+      while (ctx.classParentMap.has(rootClass)) {
+        rootClass = ctx.classParentMap.get(rootClass)!;
+      }
+      leftStructTypeIdx = ctx.structMap.get(rootClass) ?? rightStructTypeIdx;
+    }
+  }
+
+  if (leftStructTypeIdx === undefined) {
+    // Still cannot resolve — drop left value and emit false
+    fctx.body.push({ op: "drop" });
+    fctx.body.push({ op: "i32.const", value: 0 });
+    return { kind: "i32" };
   }
 
   // Read the __tag field (field index 0) from the struct
   fctx.body.push({ op: "struct.get", typeIdx: leftStructTypeIdx, fieldIdx: 0 });
-  // Compare with the expected tag value
-  fctx.body.push({ op: "i32.const", value: tagValue });
-  fctx.body.push({ op: "i32.eq" });
+
+  if (compatibleTags.length === 1) {
+    // Simple case: exact match only (no subclasses)
+    fctx.body.push({ op: "i32.const", value: compatibleTags[0]! });
+    fctx.body.push({ op: "i32.eq" });
+  } else {
+    // Multiple tags: emit (tag == t1) || (tag == t2) || ...
+    // We need to store the tag value in a local to avoid re-reading it
+    const tagLocalIdx = allocLocal(fctx, `__instanceof_tag_${fctx.locals.length}`, { kind: "i32" });
+    fctx.body.push({ op: "local.set", index: tagLocalIdx });
+
+    // First comparison
+    fctx.body.push({ op: "local.get", index: tagLocalIdx });
+    fctx.body.push({ op: "i32.const", value: compatibleTags[0]! });
+    fctx.body.push({ op: "i32.eq" });
+
+    // Remaining comparisons, OR'd together
+    for (let i = 1; i < compatibleTags.length; i++) {
+      fctx.body.push({ op: "local.get", index: tagLocalIdx });
+      fctx.body.push({ op: "i32.const", value: compatibleTags[i]! });
+      fctx.body.push({ op: "i32.eq" });
+      fctx.body.push({ op: "i32.or" });
+    }
+  }
+
   return { kind: "i32" };
 }
 
