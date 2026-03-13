@@ -4732,6 +4732,27 @@ function collectParseImports(
         needed.add("parseFloat");
       }
     }
+    // Loose equality (== / !=) between string and number/boolean needs parseFloat
+    // to coerce the string operand to a number for comparison (#178)
+    if (
+      ts.isBinaryExpression(node) &&
+      (node.operatorToken.kind === ts.SyntaxKind.EqualsEqualsToken ||
+       node.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsToken)
+    ) {
+      try {
+        const leftType = ctx.checker.getTypeAtLocation(node.left);
+        const rightType = ctx.checker.getTypeAtLocation(node.right);
+        const leftIsStr = isStringType(leftType);
+        const rightIsStr = isStringType(rightType);
+        const leftIsNumOrBool = isNumberType(leftType) || isBooleanType(leftType);
+        const rightIsNumOrBool = isNumberType(rightType) || isBooleanType(rightType);
+        if ((leftIsStr && rightIsNumOrBool) || (rightIsStr && leftIsNumOrBool)) {
+          needed.add("parseFloat");
+        }
+      } catch {
+        // Type resolution may fail for some nodes — skip
+      }
+    }
     ts.forEachChild(node, visit);
   }
 
