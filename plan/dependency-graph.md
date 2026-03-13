@@ -255,7 +255,7 @@ All independent of each other and of codegen work.
 | 235 | Function.name property access | [E] | ~380 CE | Ready (partially addressed by #263) |
 | 244 | `in` operator runtime failures | [E] | — | Ready |
 | 249 | Misc runtime failures — small fixes | [E] | — | Ready |
-| 254 | Private class fields and methods (#field) | [E] | — | Ready |
+| ~~254~~ | ~~Private class fields and methods (#field)~~ | [E] | — | **Done** |
 | ~~280~~ | ~~Function expression name binding and hoisting~~ | [E][S] | — | **Done** |
 | ~~290~~ | ~~instanceof — class hierarchy and expressions~~ | [E] | ~20 CE | **Done** |
 | 291 | `in` operator compile errors — dynamic property | [E] | ~10 CE | Ready (coordinates #244) |
