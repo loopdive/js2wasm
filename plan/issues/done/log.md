@@ -213,3 +213,4 @@
 | 303 | 2026-03-12 | parseInt edge cases -- fix undefined assert stripping in test runner | Dep-driven |
 | 308 | 2026-03-12 | Addition operator compile errors -- string/number coercion | Dep-driven |
 | 298 | 2026-03-12 | Function statement edge cases -- mutable captures, capture arg padding, hoisting retry | Dep-driven |
+| 244 | 2026-03-12 | in operator runtime support | Dep-driven |
