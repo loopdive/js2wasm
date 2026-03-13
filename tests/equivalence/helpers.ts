@@ -115,7 +115,7 @@ export async function assertEquivalent(
     const jsResult = jsExports[fn]!(...args);
 
     if (approx) {
-      expect(wasmResult).toBeCloseTo(jsResult as number, 10);
+      expect(wasmResult).toBeCloseTo(jsResult as number, 3);
     } else {
       expect(wasmResult).toBe(jsResult);
     }

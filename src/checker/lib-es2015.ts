@@ -168,6 +168,9 @@ interface Math {
   acosh(x: number): number;
   asinh(x: number): number;
   atanh(x: number): number;
+  cosh(x: number): number;
+  sinh(x: number): number;
+  tanh(x: number): number;
   cbrt(x: number): number;
   clz32(x: number): number;
   expm1(x: number): number;
