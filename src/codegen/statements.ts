@@ -716,7 +716,14 @@ function compileArrayDestructuring(
 
   const arrTypeIdx = getArrTypeIdxFromVec(ctx, typeIdx);
   const arrDef = ctx.mod.types[arrTypeIdx];
-  if (!arrDef || arrDef.kind !== "array") {
+  const isVecArray = arrDef && arrDef.kind === "array";
+
+  // Check if this is a tuple struct (fields named _0, _1, etc.)
+  const isTupleStruct = !isVecArray && typeDef.kind === "struct" &&
+    typeDef.fields.length > 0 &&
+    typeDef.fields.every((f: { name?: string }, idx: number) => f.name === `_${idx}`);
+
+  if (!isVecArray && !isTupleStruct) {
     fctx.body.length = bodyLenBefore;
     ensureBindingLocals(ctx, fctx, pattern);
     ctx.errors.push({
@@ -727,15 +734,57 @@ function compileArrayDestructuring(
     return;
   }
 
-  const elemType = arrDef.element;
-
-  // Store vec ref in temp local
+  // Store ref in temp local
   const tmpLocal = allocLocal(
     fctx,
     `__destruct_${fctx.locals.length}`,
     resultType,
   );
   fctx.body.push({ op: "local.set", index: tmpLocal });
+
+  if (isTupleStruct) {
+    // Tuple destructuring: extract fields directly from the struct by index
+    const tupleFields = (typeDef as { fields: { name?: string; type: ValType }[] }).fields;
+    for (let i = 0; i < pattern.elements.length; i++) {
+      const element = pattern.elements[i]!;
+      if (ts.isOmittedExpression(element)) continue;
+
+      if (i >= tupleFields.length) break; // more bindings than tuple fields
+
+      const fieldType = tupleFields[i]!.type;
+
+      // Handle rest element — skip for tuples (not meaningful)
+      if (ts.isBindingElement(element) && element.dotDotDotToken) {
+        const restName = ts.isIdentifier(element.name)
+          ? element.name.text
+          : `__rest_${fctx.locals.length}`;
+        allocLocal(fctx, restName, { kind: "externref" });
+        continue;
+      }
+
+      // Handle nested binding patterns
+      if (ts.isBindingElement(element) &&
+          (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name))) {
+        const nestedLocal = allocLocal(fctx, `__destruct_nested_${fctx.locals.length}`, fieldType);
+        fctx.body.push({ op: "local.get", index: tmpLocal });
+        fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: i });
+        fctx.body.push({ op: "local.set", index: nestedLocal });
+        ensureBindingLocals(ctx, fctx, element.name);
+        continue;
+      }
+
+      const localName = (element.name as ts.Identifier).text;
+      const localIdx = allocLocal(fctx, localName, fieldType);
+
+      fctx.body.push({ op: "local.get", index: tmpLocal });
+      fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: i });
+      fctx.body.push({ op: "local.set", index: localIdx });
+    }
+    return;
+  }
+
+  // Vec array destructuring (original path)
+  const elemType = arrDef!.element;
 
   for (let i = 0; i < pattern.elements.length; i++) {
     const element = pattern.elements[i]!;
