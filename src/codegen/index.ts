@@ -4588,10 +4588,10 @@ function collectObjectMethodStringLiterals(
       ts.isPropertyAccessExpression(node.expression) &&
       ts.isIdentifier(node.expression.expression) &&
       node.expression.expression.text === "Object" &&
-      (node.expression.name.text === "keys" || node.expression.name.text === "values") &&
+      (node.expression.name.text === "keys" || node.expression.name.text === "values" || node.expression.name.text === "entries") &&
       node.arguments.length === 1
     ) {
-      if (node.expression.name.text === "values") hasValues = true;
+      if (node.expression.name.text === "values" || node.expression.name.text === "entries") hasValues = true;
       const argType = ctx.checker.getTypeAtLocation(node.arguments[0]!);
       const props = argType.getProperties();
       for (const prop of props) {
