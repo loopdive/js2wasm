@@ -222,3 +222,4 @@
 | 254 | 2026-03-12 | Private class fields and methods (#field) -- diagnostic suppression + tests | Dep-driven |
 | 289 | 2026-03-12 | For-in compile errors -- bare identifier and assignment expression initializers | Dep-driven |
 | 284 | 2026-03-12 | For-of destructuring and assignment patterns | Dep-driven |
+| 239 | 2026-03-12 | Element access on struct types (bracket notation) | Dep-driven |
