@@ -248,3 +248,4 @@
 | 282 | 2026-03-13 | Variable declaration compile errors -- collection scanning for remaining collect* functions | Dep-driven |
 | 228 | 2026-03-13 | BigInt equality/strict-equality with Number and Boolean | Dep-driven |
 | 264 | 2026-03-13 | Element access (bracket notation) assignment on struct types | Dep-driven |
+| 291 | 2026-03-13 | In operator compile errors -- dynamic property checks | Dep-driven |
