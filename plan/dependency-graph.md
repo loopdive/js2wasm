@@ -227,8 +227,8 @@ Can all run in parallel (different diagnostic codes).
 | #   | Title | Tests | Ready? |
 |-----|-------|-------|--------|
 | ~~277~~ | ~~Wasm type mismatch — local.set externref vs concrete~~ | — | **Done** |
-| 178 | Wasm validation errors — LEB128, large type indices | — | Ready |
-| 315 | Wasm validation error audit — systematic fix | ~93 CE | After #178 recommended (#277 done) |
+| ~~178~~ | ~~Wasm validation errors — LEB128, large type indices~~ | — | **Done** |
+| 315 | Wasm validation error audit — systematic fix | ~93 CE | Ready (#277, #178 done) |
 
 ---
 
