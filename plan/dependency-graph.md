@@ -153,7 +153,7 @@ Can all run in parallel (different diagnostic codes).
 | 190 | Unsupported assignment target patterns | — | Ready |
 | 243 | Unsupported assignment target patterns (array/object) | — | Ready (coordinates #190) |
 | 279 | Arrow function params — destructuring, defaults | — | Ready (coordinates #243) |
-| 283 | Compound assignment — type coercion gaps | — | Ready |
+| 283 | Compound assignment — type coercion gaps | — | Done |
 | 286 | Logical assignment — nullish/short-circuit | — | Ready (coordinates #283) |
 | 306 | Prefix/postfix increment/decrement | ~44 CE | Ready (coordinates #283) |
 | 294 | Assignment expression evaluation order | 7 | Ready |
