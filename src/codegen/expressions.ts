@@ -3900,9 +3900,14 @@ function compilePropertyAssignment(
     const globalIdx = ctx.staticProps.get(fullName);
     if (globalIdx !== undefined) {
       const globalDef = ctx.mod.globals[localGlobalIdx(ctx, globalIdx)];
-      compileExpression(ctx, fctx, value, globalDef?.type);
+      const valType = compileExpression(ctx, fctx, value, globalDef?.type);
+      if (!valType) return null;
+      // Save value, set global, return value (assignment expression result)
+      const tmpVal = allocLocal(fctx, `__prop_assign_${fctx.locals.length}`, valType);
+      fctx.body.push({ op: "local.tee", index: tmpVal });
       fctx.body.push({ op: "global.set", index: globalIdx });
-      return VOID_RESULT;
+      fctx.body.push({ op: "local.get", index: tmpVal });
+      return valType;
     }
   }
 
@@ -3924,9 +3929,13 @@ function compilePropertyAssignment(
         if (fieldIdx >= 0) {
           const structObjResult = compileExpression(ctx, fctx, target.expression);
           if (!structObjResult) return null;
-          compileExpression(ctx, fctx, value, vecDef.fields[fieldIdx]!.type);
+          const valType = compileExpression(ctx, fctx, value, vecDef.fields[fieldIdx]!.type);
+          if (!valType) return null;
+          const tmpVal = allocLocal(fctx, `__prop_assign_${fctx.locals.length}`, valType);
+          fctx.body.push({ op: "local.tee", index: tmpVal });
           fctx.body.push({ op: "struct.set", typeIdx: shapeInfo.vecTypeIdx, fieldIdx });
-          return VOID_RESULT;
+          fctx.body.push({ op: "local.get", index: tmpVal });
+          return valType;
         }
       }
     }
@@ -3950,8 +3959,15 @@ function compilePropertyAssignment(
       if (!setterObjResult) { ctx.errors.push({ message: "Failed to compile setter receiver", line: getLine(target), column: getCol(target) }); return null; }
       const setterValResult = compileExpression(ctx, fctx, value);
       if (!setterValResult) { ctx.errors.push({ message: "Failed to compile setter value", line: getLine(target), column: getCol(target) }); return null; }
+      // Save value for assignment expression result
+      const setterTmpVal = allocLocal(fctx, `__setter_assign_${fctx.locals.length}`, setterValResult);
+      fctx.body.push({ op: "local.tee", index: setterTmpVal });
+      // Re-order stack: we need [obj, val] but tee left val on stack after obj
+      // Actually obj is already on stack before val; tee saved val. Pop val, call, re-push val.
+      // Stack is: [obj, val] after tee. But we need obj then val for call. That's correct.
       fctx.body.push({ op: "call", funcIdx });
-      return VOID_RESULT;
+      fctx.body.push({ op: "local.get", index: setterTmpVal });
+      return setterValResult;
     }
   }
 
@@ -3964,10 +3980,15 @@ function compilePropertyAssignment(
 
   const structObjResult = compileExpression(ctx, fctx, target.expression);
   if (!structObjResult) { ctx.errors.push({ message: "Failed to compile struct field receiver", line: getLine(target), column: getCol(target) }); return null; }
-  compileExpression(ctx, fctx, value, fields[fieldIdx]!.type);
+  const valType = compileExpression(ctx, fctx, value, fields[fieldIdx]!.type);
+  if (!valType) return null;
+  // Save value so assignment expression returns the RHS
+  const tmpVal = allocLocal(fctx, `__prop_assign_${fctx.locals.length}`, valType);
+  fctx.body.push({ op: "local.tee", index: tmpVal });
   fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx });
+  fctx.body.push({ op: "local.get", index: tmpVal });
 
-  return VOID_RESULT;
+  return valType;
 }
 
 function compileExternPropertySet(
@@ -4001,8 +4022,12 @@ function compileExternPropertySet(
   const externValResult = compileExpression(ctx, fctx, value, propInfo?.type);
   if (!externValResult) { ctx.errors.push({ message: "Failed to compile extern property value", line: getLine(target), column: getCol(target) }); return null; }
 
+  // Save value for assignment expression result
+  const externTmpVal = allocLocal(fctx, `__extern_assign_${fctx.locals.length}`, externValResult);
+  fctx.body.push({ op: "local.tee", index: externTmpVal });
   fctx.body.push({ op: "call", funcIdx });
-  return VOID_RESULT;
+  fctx.body.push({ op: "local.get", index: externTmpVal });
+  return externValResult;
 }
 
 function compileElementAssignment(
@@ -4066,18 +4091,26 @@ function compileElementAssignment(
             const setterName = `${sName}_set_${fieldName}`;
             const funcIdx = ctx.funcMap.get(setterName);
             if (funcIdx !== undefined) {
-              compileExpression(ctx, fctx, value);
+              const setValResult = compileExpression(ctx, fctx, value);
+              if (!setValResult) return null;
+              const setValLocal = allocLocal(fctx, `__setter_assign_${fctx.locals.length}`, setValResult);
+              fctx.body.push({ op: "local.tee", index: setValLocal });
               fctx.body.push({ op: "call", funcIdx });
-              return VOID_RESULT;
+              fctx.body.push({ op: "local.get", index: setValLocal });
+              return setValResult;
             }
           }
         }
 
         const fieldIdx = typeDef.fields.findIndex((f: { name?: string }) => f.name === fieldName);
         if (fieldIdx !== -1) {
-          compileExpression(ctx, fctx, value, typeDef.fields[fieldIdx]!.type);
+          const valType = compileExpression(ctx, fctx, value, typeDef.fields[fieldIdx]!.type);
+          if (!valType) return null;
+          const tmpVal = allocLocal(fctx, `__elem_assign_${fctx.locals.length}`, valType);
+          fctx.body.push({ op: "local.tee", index: tmpVal });
           fctx.body.push({ op: "struct.set", typeIdx, fieldIdx });
-          return VOID_RESULT;
+          fctx.body.push({ op: "local.get", index: tmpVal });
+          return valType;
         }
       }
     }
@@ -4215,7 +4248,9 @@ function compileElementAssignment(
         { op: "struct.set", typeIdx, fieldIdx: 0 },
       ],
     });
-    return VOID_RESULT;
+    // Return the assigned value (assignment expression result)
+    fctx.body.push({ op: "local.get", index: valLocal });
+    return elemValResult;
   }
 
   // Plain struct (non-vec): resolve string/numeric literal index to struct.set
@@ -4262,7 +4297,9 @@ function compileElementAssignment(
             fctx.body.push({ op: "local.get", index: objLocal });
             fctx.body.push({ op: "local.get", index: valLocal });
             fctx.body.push({ op: "call", funcIdx });
-            return VOID_RESULT;
+            // Return the assigned value (assignment expression result)
+            fctx.body.push({ op: "local.get", index: valLocal });
+            return valResult;
           }
         }
       }
@@ -4280,7 +4317,9 @@ function compileElementAssignment(
         fctx.body.push({ op: "local.get", index: objLocal });
         fctx.body.push({ op: "local.get", index: valLocal });
         fctx.body.push({ op: "struct.set", typeIdx, fieldIdx });
-        return VOID_RESULT;
+        // Return the assigned value (assignment expression result)
+        fctx.body.push({ op: "local.get", index: valLocal });
+        return valResult;
       }
     }
   }
@@ -4296,8 +4335,12 @@ function compileElementAssignment(
   // Push value
   const plainValResult = compileExpression(ctx, fctx, value, typeDef.element);
   if (!plainValResult) { ctx.errors.push({ message: "Failed to compile element value", line: getLine(target), column: getCol(target) }); return null; }
+  // Save value for assignment expression result
+  const plainValLocal = allocLocal(fctx, `__arr_assign_${fctx.locals.length}`, plainValResult);
+  fctx.body.push({ op: "local.tee", index: plainValLocal });
   fctx.body.push({ op: "array.set", typeIdx });
-  return VOID_RESULT;
+  fctx.body.push({ op: "local.get", index: plainValLocal });
+  return plainValResult;
 }
 
 /**

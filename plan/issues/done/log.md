@@ -203,6 +203,7 @@
 | 302 | 2026-03-12 | Math.min/max edge cases | Dep-driven |
 | 292 | 2026-03-12 | For-loop incorrect computed values -- missing number_toString for any-typed += | Dep-driven |
 <<<<<<< HEAD
+<<<<<<< HEAD
 | 286 | 2026-03-12 | Logical assignment compile errors -- nullish and short-circuit | Dep-driven |
 | 283 | 2026-03-12 | Compound assignment type coercion gaps | Dep-driven |
 | 316 | 2026-03-12 | Array element access bounds checking | Dep-driven |
@@ -212,3 +213,6 @@
 =======
 | 304 | 2026-03-12 | Runtime failures -- unary minus and return edge cases | Dep-driven |
 >>>>>>> 231ee1a (fix: unary minus coercion and -0 preservation (#304))
+=======
+| 294 | 2026-03-12 | Assignment expression evaluation order -- return RHS value | Dep-driven |
+>>>>>>> b69ab6b (fix: assignment expressions return RHS value instead of void (#294))
