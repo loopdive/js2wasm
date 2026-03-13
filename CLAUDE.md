@@ -67,7 +67,7 @@ Work is driven by `plan/dependency-graph.md`, not sprint batches. The flow:
    - Add entry to `plan/issues/done/log.md`
    - Check `plan/issues/blocked/` for issues unblocked by this completion — move newly unblocked to `ready/`
    - Update `plan/dependency-graph.md`
-4. **Max 2 developer agents** running concurrently on non-conflicting issues
+4. **Max 8 developer agents** running concurrently on non-conflicting issues
 
 ### Sprint History
 - **Sprint 1**: 550 → 1,509 pass (+174%), 167 fail, 5,700 CE. Issues #138-#173.

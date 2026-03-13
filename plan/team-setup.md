@@ -17,7 +17,7 @@ type: project
 - Team spec at `plan/team.md`
 
 ## Developer Constraints
-- **Up to 12 developers at a time.** Each runs in an isolated git worktree. Cherry-pick commits to main as they complete.
+- **Up to 8 developers at a time.** Each runs in an isolated git worktree. Cherry-pick commits to main as they complete.
 - **Same-file is OK if different functions.** Most codegen issues touch `expressions.ts` but modify different functions. Git 3-way merge handles this cleanly. Only avoid parallel work on the *same function*.
 - **Cherry-pick, don't merge.** Each worktree is based on an older main. Cherry-pick individual commits to avoid pulling in stale state. Resolve `plan/` conflicts (log.md, dependency-graph.md) by keeping both sides.
 - **Batch diagnostic-only issues directly.** Issues that only add a code to `DOWNGRADE_DIAG_CODES` don't need a developer agent — do them in one commit.
@@ -72,7 +72,7 @@ Work is driven by the dependency graph, not sprint batches.
 
 1. **Pick work**: choose any issue from `plan/issues/ready/` — check `plan/dependency-graph.md` for contention
 2. **Batch diagnostics**: issues that only add a code to `DOWNGRADE_DIAG_CODES` don't need a developer agent
-3. **Launch developers**: max 2 in parallel, on non-conflicting files (check dependency graph "File contention" table)
+3. **Launch developers**: max 8 in parallel, on non-conflicting files (check dependency graph "File contention" table)
 4. **After each completion**: merge branch, then follow issue completion procedure:
    - Move `ready/{N}.md` → `done/{N}.md`
    - Add `completed: YYYY-MM-DD` frontmatter

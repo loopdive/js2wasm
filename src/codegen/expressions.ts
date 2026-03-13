@@ -9610,9 +9610,17 @@ function compileConditionalExpression(
     resultValType = thenType;
   }
 
-  // Conditional results must be nullable — either branch could produce null
+  // When both branches have the same concrete ref type (both non-null),
+  // keep the result as ref — both branches of the if guarantee a non-null value.
+  // Only widen to ref_null when the branches disagree on nullability or one is
+  // ref_null already (which is captured in the sameKind + sameRefIdx checks above).
   if (resultValType.kind === "ref") {
-    resultValType = { kind: "ref_null", typeIdx: (resultValType as { typeIdx: number }).typeIdx };
+    // Check if either branch could actually produce null
+    const thenCanBeNull = thenType.kind === "ref_null";
+    const elseCanBeNull = elseType.kind === "ref_null";
+    if (thenCanBeNull || elseCanBeNull) {
+      resultValType = { kind: "ref_null", typeIdx: (resultValType as { typeIdx: number }).typeIdx };
+    }
   }
 
   fctx.body.push({
