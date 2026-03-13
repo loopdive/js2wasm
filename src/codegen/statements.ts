@@ -6,6 +6,7 @@ import {
   collectReferencedIdentifiers,
   collectWrittenIdentifiers,
   compileExpression,
+  emitBoundsCheckedArrayGet,
   valTypesMatch,
 } from "./expressions.js";
 import type { CodegenContext, FunctionContext } from "./index.js";
@@ -920,7 +921,7 @@ function compileArrayDestructuring(
             fctx.body.push({ op: "local.get", index: nestedTmpLocal });
             fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 });
             fctx.body.push({ op: "i32.const", value: j });
-            fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
+            emitBoundsCheckedArrayGet(fctx, arrTypeIdx, elemType);
             fctx.body.push({ op: "local.set", index: nLocalIdx });
           }
         }
@@ -940,7 +941,7 @@ function compileArrayDestructuring(
       fctx.body.push({ op: "local.get", index: tmpLocal });
       fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 }); // get data from vec
       fctx.body.push({ op: "i32.const", value: i });
-      fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
+      emitBoundsCheckedArrayGet(fctx, arrTypeIdx, elemType);
       fctx.body.push({ op: "local.set", index: nestedLocal });
 
       // Create a synthetic VariableDeclaration-like node for the nested pattern
@@ -987,7 +988,7 @@ function compileArrayDestructuring(
               fctx.body.push({ op: "local.get", index: nestedLocal });
               fctx.body.push({ op: "struct.get", typeIdx: nestedVecTypeIdx, fieldIdx: 1 });
               fctx.body.push({ op: "i32.const", value: j });
-              fctx.body.push({ op: "array.get", typeIdx: nestedArrTypeIdx });
+              emitBoundsCheckedArrayGet(fctx, nestedArrTypeIdx, nestedElemType);
               fctx.body.push({ op: "local.set", index: nLocalIdx });
             }
           }
@@ -1002,7 +1003,7 @@ function compileArrayDestructuring(
     fctx.body.push({ op: "local.get", index: tmpLocal });
     fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 }); // get data from vec
     fctx.body.push({ op: "i32.const", value: i });
-    fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
+    emitBoundsCheckedArrayGet(fctx, arrTypeIdx, elemType);
 
     // Handle default value: `const [a = defaultVal] = arr`
     if (element.initializer && elemType.kind === "externref") {
@@ -1881,7 +1882,7 @@ function compileForOfDestructuring(
         fctx.body.push({ op: "local.get", index: elemLocal });
         fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
         fctx.body.push({ op: "i32.const", value: i });
-        fctx.body.push({ op: "array.get", typeIdx: innerArrTypeIdx });
+        emitBoundsCheckedArrayGet(fctx, innerArrTypeIdx, innerElemType);
         fctx.body.push({ op: "local.set", index: nestedLocal });
         compileForOfDestructuring(ctx, fctx, element.name, nestedLocal, innerElemType, stmt);
         continue;
@@ -1896,7 +1897,7 @@ function compileForOfDestructuring(
       fctx.body.push({ op: "local.get", index: elemLocal });
       fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
       fctx.body.push({ op: "i32.const", value: i });
-      fctx.body.push({ op: "array.get", typeIdx: innerArrTypeIdx });
+      emitBoundsCheckedArrayGet(fctx, innerArrTypeIdx, innerElemType);
 
       // Coerce from Wasm array element type to the binding's declared type
       if (!valTypesMatch(innerElemType, bindingWasmType)) {
@@ -2023,7 +2024,7 @@ function compileForOfAssignDestructuring(
       fctx.body.push({ op: "local.get", index: elemLocal });
       fctx.body.push({ op: "struct.get", typeIdx: innerVecTypeIdx, fieldIdx: 1 });
       fctx.body.push({ op: "i32.const", value: i });
-      fctx.body.push({ op: "array.get", typeIdx: innerArrTypeIdx });
+      emitBoundsCheckedArrayGet(fctx, innerArrTypeIdx, innerElemType);
       if (targetType && !valTypesMatch(innerElemType, targetType)) {
         coerceType(ctx, fctx, innerElemType, targetType);
       }
