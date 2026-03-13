@@ -243,3 +243,4 @@
 | 229 | 2026-03-12 | Tagged template cache — fix global index shift on late string imports | Dep-driven |
 | 319 | 2026-03-13 | Inline single-use function type signatures in WAT output | Dep-driven |
 | 307 | 2026-03-13 | Promise.all/race/resolve/reject compile errors | Dep-driven |
+| 227 | 2026-03-13 | BigInt comparison with Infinity causes float-unrepresentable trap | Dep-driven |
