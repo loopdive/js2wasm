@@ -7384,6 +7384,8 @@ function collectDeclarations(
       if (expr.body) {
         collectClassesFromStatements(expr.body.statements);
       }
+      // Also scan all statements for new (class { ... })() patterns
+      collectAnonymousClassesInNewExpr(stmt);
     }
   }
   collectClassesFromStatements(sourceFile.statements);
@@ -7792,6 +7794,8 @@ function compileDeclarations(
       if (expr.body) {
         compileClassesFromStatements(expr.body.statements);
       }
+      // Compile bodies for anonymous class expressions in new expressions
+      compileAnonymousClassBodiesInNode(stmt);
     }
   }
 
