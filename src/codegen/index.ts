@@ -230,6 +230,12 @@ export interface CodegenContext {
   widenedVarStructMap: Map<string, string>;
   /** Math methods that need inline Wasm implementations (filled by collectMathImports, consumed by emitInlineMathFunctions) */
   pendingMathMethods: Set<string>;
+  /** Type index for $WrapperNumber struct (-1 if not registered) */
+  wrapperNumberTypeIdx: number;
+  /** Type index for $WrapperString struct (-1 if not registered) */
+  wrapperStringTypeIdx: number;
+  /** Type index for $WrapperBoolean struct (-1 if not registered) */
+  wrapperBooleanTypeIdx: number;
 }
 
 /** Metadata for a closure stored in a local variable */
@@ -368,6 +374,9 @@ export function generateModule(
     widenedTypeProperties: new Map(),
     widenedVarStructMap: new Map(),
     pendingMathMethods: new Set(),
+    wrapperNumberTypeIdx: -1,
+    wrapperStringTypeIdx: -1,
+    wrapperBooleanTypeIdx: -1,
   };
 
   // Register native string types if fast mode
@@ -443,6 +452,9 @@ export function generateModule(
   // Register string literals for Object.keys() / Object.values() calls
   collectObjectMethodStringLiterals(ctx, ast.sourceFile);
 
+  // Collect wrapper constructor usage (new Number/String/Boolean)
+  collectWrapperConstructors(ctx, ast.sourceFile);
+
   // Collect unknown constructor imports (__new_X for `new X(...)` where X is not a known class)
   collectUnknownConstructorImports(ctx, ast.sourceFile);
 
@@ -450,6 +462,9 @@ export function generateModule(
   if (ctx.pendingMathMethods.size > 0) {
     emitInlineMathFunctions(ctx, ctx.pendingMathMethods);
   }
+
+  // Emit wrapper valueOf functions (after all imports registered, before user funcs)
+  emitWrapperValueOfFunctions(ctx);
 
   // Second pass: collect all function declarations and interfaces
   collectDeclarations(ctx, ast.sourceFile);
@@ -573,6 +588,9 @@ export function generateMultiModule(
     widenedTypeProperties: new Map(),
     widenedVarStructMap: new Map(),
     pendingMathMethods: new Set(),
+    wrapperNumberTypeIdx: -1,
+    wrapperStringTypeIdx: -1,
+    wrapperBooleanTypeIdx: -1,
   };
 
   // Register native string types if fast mode
@@ -622,6 +640,7 @@ export function generateMultiModule(
     collectForInStringLiterals(ctx, sf);
     collectInExprStringLiterals(ctx, sf);
     collectObjectMethodStringLiterals(ctx, sf);
+    collectWrapperConstructors(ctx, sf);
     collectUnknownConstructorImports(ctx, sf);
   }
 
@@ -629,6 +648,9 @@ export function generateMultiModule(
   if (ctx.pendingMathMethods.size > 0) {
     emitInlineMathFunctions(ctx, ctx.pendingMathMethods);
   }
+
+  // Emit wrapper valueOf functions (after all imports registered, before user funcs)
+  emitWrapperValueOfFunctions(ctx);
 
   // Phase 2: Collect all declarations — only entry file gets Wasm exports
   for (const sf of multiAst.sourceFiles) {
@@ -1173,6 +1195,134 @@ export function ensureAnyValueType(ctx: CodegenContext): void {
       { name: "externval", type: { kind: "externref" }, mutable: false },
     ],
   });
+}
+
+/**
+ * Lazily register wrapper struct types for Number, String, Boolean.
+ * Each wrapper is a struct with a single `value` field holding the primitive.
+ * Also registers WrapperX_valueOf functions that extract the value.
+ * Must be called before resolveWasmType is used for wrapper types.
+ */
+export function ensureWrapperTypes(ctx: CodegenContext): void {
+  if (ctx.wrapperNumberTypeIdx >= 0) return; // already registered
+
+  // $WrapperNumber: struct { value: f64 }
+  ctx.wrapperNumberTypeIdx = ctx.mod.types.length;
+  ctx.mod.types.push({
+    kind: "struct",
+    name: "WrapperNumber",
+    fields: [
+      { name: "value", type: { kind: "f64" }, mutable: false },
+    ],
+  } as StructTypeDef);
+  ctx.structMap.set("WrapperNumber", ctx.wrapperNumberTypeIdx);
+  ctx.structFields.set("WrapperNumber", [
+    { name: "value", type: { kind: "f64" }, mutable: false },
+  ]);
+
+  // $WrapperString: struct { value: externref }
+  ctx.wrapperStringTypeIdx = ctx.mod.types.length;
+  const strValType: ValType = ctx.fast ? nativeStringType(ctx) : { kind: "externref" };
+  ctx.mod.types.push({
+    kind: "struct",
+    name: "WrapperString",
+    fields: [
+      { name: "value", type: strValType, mutable: false },
+    ],
+  } as StructTypeDef);
+  ctx.structMap.set("WrapperString", ctx.wrapperStringTypeIdx);
+  ctx.structFields.set("WrapperString", [
+    { name: "value", type: strValType, mutable: false },
+  ]);
+
+  // $WrapperBoolean: struct { value: i32 }
+  ctx.wrapperBooleanTypeIdx = ctx.mod.types.length;
+  ctx.mod.types.push({
+    kind: "struct",
+    name: "WrapperBoolean",
+    fields: [
+      { name: "value", type: { kind: "i32" }, mutable: false },
+    ],
+  } as StructTypeDef);
+  ctx.structMap.set("WrapperBoolean", ctx.wrapperBooleanTypeIdx);
+  ctx.structFields.set("WrapperBoolean", [
+    { name: "value", type: { kind: "i32" }, mutable: false },
+  ]);
+}
+
+/**
+ * Emit valueOf helper functions for wrapper types.
+ * Must be called after all imports are registered (so function indices are stable)
+ * but before user functions that call valueOf.
+ */
+function emitWrapperValueOfFunctions(ctx: CodegenContext): void {
+  if (ctx.wrapperNumberTypeIdx < 0) return;
+  if (ctx.funcMap.has("WrapperNumber_valueOf")) return; // already emitted
+
+  const strValType: ValType = ctx.fast ? nativeStringType(ctx) : { kind: "externref" };
+
+  // WrapperNumber_valueOf(self: ref $WrapperNumber) -> f64
+  {
+    const funcTypeIdx = ctx.mod.types.length;
+    ctx.mod.types.push({
+      kind: "func",
+      params: [{ kind: "ref", typeIdx: ctx.wrapperNumberTypeIdx }],
+      results: [{ kind: "f64" }],
+    });
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.mod.functions.push({
+      name: "WrapperNumber_valueOf",
+      typeIdx: funcTypeIdx,
+      locals: [],
+      body: [
+        { op: "local.get", index: 0 },
+        { op: "struct.get", typeIdx: ctx.wrapperNumberTypeIdx, fieldIdx: 0 },
+      ] as Instr[],
+    });
+    ctx.funcMap.set("WrapperNumber_valueOf", funcIdx);
+  }
+
+  // WrapperString_valueOf(self: ref $WrapperString) -> externref/ref
+  {
+    const funcTypeIdx = ctx.mod.types.length;
+    ctx.mod.types.push({
+      kind: "func",
+      params: [{ kind: "ref", typeIdx: ctx.wrapperStringTypeIdx }],
+      results: [strValType],
+    });
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.mod.functions.push({
+      name: "WrapperString_valueOf",
+      typeIdx: funcTypeIdx,
+      locals: [],
+      body: [
+        { op: "local.get", index: 0 },
+        { op: "struct.get", typeIdx: ctx.wrapperStringTypeIdx, fieldIdx: 0 },
+      ] as Instr[],
+    });
+    ctx.funcMap.set("WrapperString_valueOf", funcIdx);
+  }
+
+  // WrapperBoolean_valueOf(self: ref $WrapperBoolean) -> i32
+  {
+    const funcTypeIdx = ctx.mod.types.length;
+    ctx.mod.types.push({
+      kind: "func",
+      params: [{ kind: "ref", typeIdx: ctx.wrapperBooleanTypeIdx }],
+      results: [{ kind: "i32" }],
+    });
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.mod.functions.push({
+      name: "WrapperBoolean_valueOf",
+      typeIdx: funcTypeIdx,
+      locals: [],
+      body: [
+        { op: "local.get", index: 0 },
+        { op: "struct.get", typeIdx: ctx.wrapperBooleanTypeIdx, fieldIdx: 0 },
+      ] as Instr[],
+    });
+    ctx.funcMap.set("WrapperBoolean_valueOf", funcIdx);
+  }
 }
 
 /**
@@ -4820,6 +4970,7 @@ function collectParseImports(
 const KNOWN_CONSTRUCTORS = new Set([
   "Array", "Date", "Map", "Set", "RegExp", "Error", "TypeError", "RangeError", "Object", "Function",
   "Promise", "WeakMap", "WeakSet", "WeakRef",
+  "Number", "String", "Boolean",
 ]);
 
 /**
@@ -4866,6 +5017,36 @@ function collectUnknownConstructorImports(
     const params: ValType[] = Array.from({ length: argCount }, () => ({ kind: "externref" } as ValType));
     const typeIdx = addFuncType(ctx, params, [{ kind: "externref" }]);
     addImport(ctx, "env", importName, { kind: "func", typeIdx });
+  }
+}
+
+/**
+ * Scan source for `new Number(x)`, `new String(x)`, `new Boolean(x)` and
+ * register wrapper struct types so that resolveWasmType returns the correct
+ * ref type for wrapper-typed variables.
+ */
+function collectWrapperConstructors(
+  ctx: CodegenContext,
+  sourceFile: ts.SourceFile,
+): void {
+  let found = false;
+
+  function visit(node: ts.Node) {
+    if (found) return;
+    if (ts.isNewExpression(node) && ts.isIdentifier(node.expression)) {
+      const name = node.expression.text;
+      if (name === "Number" || name === "String" || name === "Boolean") {
+        found = true;
+        return;
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  ts.forEachChild(sourceFile, visit);
+
+  if (found) {
+    ensureWrapperTypes(ctx);
   }
 }
 
@@ -6008,6 +6189,18 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type): ValType {
       const vecIdx = getOrRegisterVecType(ctx, elemKey, elemWasm);
       // Use ref_null so locals can default-initialize to null
       return { kind: "ref_null", typeIdx: vecIdx };
+    }
+
+    // Check wrapper types (Number, String, Boolean) before externref —
+    // these are declared in lib.d.ts but we compile them to Wasm GC structs
+    if (sym?.name === "Number" && ctx.wrapperNumberTypeIdx >= 0) {
+      return { kind: "ref", typeIdx: ctx.wrapperNumberTypeIdx };
+    }
+    if (sym?.name === "String" && ctx.wrapperStringTypeIdx >= 0 && (tsType.flags & ts.TypeFlags.Object)) {
+      return { kind: "ref", typeIdx: ctx.wrapperStringTypeIdx };
+    }
+    if (sym?.name === "Boolean" && ctx.wrapperBooleanTypeIdx >= 0 && (tsType.flags & ts.TypeFlags.Object)) {
+      return { kind: "ref", typeIdx: ctx.wrapperBooleanTypeIdx };
     }
 
     // Check externref AFTER Array check — Array is declared in lib but should use wasm GC arrays
