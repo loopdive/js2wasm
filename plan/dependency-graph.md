@@ -155,16 +155,8 @@ Can all run in parallel (different diagnostic codes).
 | 279 | Arrow function params — destructuring, defaults | — | Ready (coordinates #243) |
 | ~~283~~ | ~~Compound assignment — type coercion gaps~~ | — | **Done** |
 | ~~286~~ | ~~Logical assignment — nullish/short-circuit~~ | — | **Done** |
-| 306 | Prefix/postfix increment/decrement | ~44 CE | Ready (coordinates #283) |
-| 283 | Compound assignment — type coercion gaps | — | Ready |
-| 286 | Logical assignment — nullish/short-circuit | — | Ready (coordinates #283) |
-<<<<<<< HEAD
 | ~~306~~ | ~~Prefix/postfix increment/decrement~~ | ~44 CE | **Done** |
-| 294 | Assignment expression evaluation order | 7 | Ready |
-=======
-| 306 | Prefix/postfix increment/decrement | ~44 CE | Ready (coordinates #283) |
-| 294 | Assignment expression evaluation order | 7 | **Done** |
->>>>>>> b69ab6b (fix: assignment expressions return RHS value instead of void (#294))
+| ~~294~~ | ~~Assignment expression evaluation order~~ | 7 | **Done** |
 
 ---
 
@@ -200,12 +192,12 @@ Can all run in parallel (different diagnostic codes).
 
 | #   | Title | Tests | Ready? |
 |-----|-------|-------|--------|
-| 250 | For-loop with function declarations | ~113 CE | Ready |
-| 292 | For-loop incorrect computed values | 15 | Done |
+| ~~250~~ | ~~For-loop with function declarations~~ | ~113 CE | **Done** |
+| ~~292~~ | ~~For-loop incorrect computed values~~ | 15 | **Done** |
 | 268 | Iterator protocol — Symbol.iterator | — | Ready |
 | 289 | For-in compile errors | ~13 CE | Ready |
-| 297 | Switch statement fall-through | 2 | Done |
-| 298 | Function statement edge cases | 7 | Done |
+| ~~297~~ | ~~Switch statement fall-through~~ | 2 | **Done** |
+| ~~298~~ | ~~Function statement edge cases~~ | 7 | **Done** |
 
 ---
 
@@ -270,12 +262,8 @@ All independent of each other and of codegen work.
 | ~~293~~ | ~~Class method incorrect results~~ | [E] | 10 | **Done** |
 | ~~302~~ | ~~Math.min/max edge cases~~ | [E] | 2 | **Done** |
 <<<<<<< HEAD
-| 303 | parseInt edge cases | [E] | 1 | Ready |
-| ~~304~~ | ~~Unary minus and return edge cases~~ | [E] | 2 | **Done** |
-=======
 | ~~303~~ | ~~parseInt edge cases~~ | [E] | 1 | **Done** |
-| 304 | Unary minus and return edge cases | [E] | 2 | Ready |
->>>>>>> 0072a3e (fix: parseInt edge cases -- robust undefined assert stripping (#303))
+| ~~304~~ | ~~Unary minus and return edge cases~~ | [E] | 2 | **Done** |
 | 307 | Promise.all/race compile errors | [E] | 7 | Ready |
 | 316 | Array element access out of bounds | [E] | 1 | Done |
 | 229 | Tagged template cache: array out of bounds | [E] | — | Ready |
@@ -300,7 +288,7 @@ All independent of each other and of codegen work.
 | 125 | Object.defineProperty | Won't implement |
 | 129 | propertyHelper.js harness | Blocked by #125 |
 | 323 | Native type annotations (:i32, :f32, :u8) | Blocked by #70 |
-| 322 | Inline trig Math methods | Blocked by #321 |
+| ~~322~~ | ~~Inline trig Math methods~~ | **Done** |
 
 ---
 

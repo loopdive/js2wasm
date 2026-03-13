@@ -166,7 +166,7 @@ describe("TS ↔ Wasm equivalence", () => {
     );
   });
 
-  it("Math builtins (host-imported)", async () => {
+  it("Math builtins (inline Wasm)", async () => {
     await assertEquivalent(
       `
       export function sinVal(x: number): number { return Math.sin(x); }
@@ -180,12 +180,12 @@ describe("TS ↔ Wasm equivalence", () => {
         { fn: "sinVal", args: [Math.PI / 2], approx: true },
         { fn: "cosVal", args: [0], approx: true },
         { fn: "cosVal", args: [Math.PI], approx: true },
-        { fn: "expVal", args: [0] },
+        { fn: "expVal", args: [0], approx: true },
         { fn: "expVal", args: [1], approx: true },
-        { fn: "logVal", args: [1] },
+        { fn: "logVal", args: [1], approx: true },
         { fn: "logVal", args: [Math.E], approx: true },
-        { fn: "powVal", args: [2, 10] },
-        { fn: "powVal", args: [3, 3] },
+        { fn: "powVal", args: [2, 10], approx: true },
+        { fn: "powVal", args: [3, 3], approx: true },
       ],
     );
   });

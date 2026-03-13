@@ -9343,10 +9343,11 @@ function compileMathCall(
     return { kind: "f64" };
   }
 
-  // Host-imported Math methods (1-arg): sin, cos, tan, exp, log, etc.
+  // Math methods (1-arg): sin, cos, tan, exp, log, etc. (now inline Wasm, not host-imported)
   const hostUnary = new Set([
     "exp", "log", "log2", "log10",
     "sin", "cos", "tan", "asin", "acos", "atan",
+    "sinh", "cosh", "tanh",
     "acosh", "asinh", "atanh", "cbrt", "expm1", "log1p",
   ]);
   if (hostUnary.has(method) && expr.arguments.length >= 1) {

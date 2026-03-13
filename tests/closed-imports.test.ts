@@ -13,14 +13,14 @@ describe("ImportDescriptor manifest", () => {
     expect(result.stringPool).toContain("hello");
   });
 
-  it("includes Math imports", () => {
+  it("Math methods are inlined (no host imports for trig/transcendental)", () => {
     const result = compile(`
       export function f(x: number): number { return Math.exp(x); }
     `);
     expect(result.success).toBe(true);
+    // Math.exp is now inlined as pure Wasm — no host import
     const mathImport = result.imports.find(i => i.name === "Math_exp");
-    expect(mathImport).toBeDefined();
-    expect(mathImport!.intent).toEqual({ type: "math", method: "exp" });
+    expect(mathImport).toBeUndefined();
   });
 
   it("includes console_log imports", () => {
@@ -180,8 +180,7 @@ describe("security: closed import surface", () => {
       }
     `);
     expect(result.success).toBe(true);
-    // Math.exp is a host import (not a native wasm opcode like Math.floor)
-    expect(result.imports.length).toBeGreaterThan(0);
+    // Math.exp is now inlined as pure Wasm — may have zero host imports
 
     const imports = buildImports(result.imports);
     const { instance } = await WebAssembly.instantiate(

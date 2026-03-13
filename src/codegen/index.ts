@@ -4638,6 +4638,9 @@ const MATH_HOST_METHODS_1ARG = new Set([
   "asin",
   "acos",
   "atan",
+  "sinh",
+  "cosh",
+  "tanh",
   "acosh",
   "asinh",
   "atanh",
@@ -7385,7 +7388,7 @@ function collectDeclarations(
         collectClassesFromStatements(expr.body.statements);
       }
       // Also scan all statements for new (class { ... })() patterns
-      collectAnonymousClassesInNewExpr(stmt);
+      collectAnonymousClassesInNewExpr(expr);
     }
   }
   collectClassesFromStatements(sourceFile.statements);
@@ -7795,7 +7798,7 @@ function compileDeclarations(
         compileClassesFromStatements(expr.body.statements);
       }
       // Compile bodies for anonymous class expressions in new expressions
-      compileAnonymousClassBodiesInNode(stmt);
+      compileAnonymousClassBodiesInNode(expr);
     }
   }
 

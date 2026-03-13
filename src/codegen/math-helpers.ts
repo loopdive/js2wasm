@@ -554,7 +554,7 @@ export function emitInlineMathFunctions(
       name: "Math_atan2",
       params: [f64Type, f64Type],
       results: f64Result,
-      locals: [],
+      locals: [{ name: "atmp", type: f64Type }], // local 2 = atan_result temp
       body: buildAtan2Body(atanIdx),
     });
   }
@@ -890,12 +890,12 @@ function buildAtan2Body(atanIdx: number): Instr[] {
         localGet(1), f64c(0), flt,
         ifElse(f64Type,
           [
-            localGet(0), localGet(1), div, call(atanIdx),
+            localGet(0), localGet(1), div, call(atanIdx), localSet(2),
             // Add or subtract pi based on sign of y
             localGet(0), f64c(0), fge,
             ifElse(f64Type,
-              [f64c(PI), add],
-              [f64c(PI), sub],
+              [localGet(2), f64c(PI), add],
+              [localGet(2), f64c(PI), sub],
             ),
           ],
           [
