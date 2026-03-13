@@ -514,7 +514,9 @@ function stripThirdArg(code: string, fnName: string): string {
     }
     result += code.slice(i, idx + fnName.length + 1); // include "fnName("
     let pos = idx + fnName.length + 1;
-    let depth = 1;
+    let depth = 1;       // tracks () nesting
+    let bracketDepth = 0; // tracks [] nesting
+    let braceDepth = 0;   // tracks {} nesting
     let commaCount = 0;
     let secondCommaPos = -1;
     let closeParenPos = -1;
@@ -522,7 +524,14 @@ function stripThirdArg(code: string, fnName: string): string {
       const ch = code[pos]!;
       if (ch === "(") depth++;
       else if (ch === ")") { depth--; if (depth === 0) { closeParenPos = pos; break; } }
-      else if (ch === "," && depth === 1) { commaCount++; if (commaCount === 2) secondCommaPos = pos; }
+      else if (ch === "[") bracketDepth++;
+      else if (ch === "]") bracketDepth--;
+      else if (ch === "{") braceDepth++;
+      else if (ch === "}") braceDepth--;
+      else if (ch === "," && depth === 1 && bracketDepth === 0 && braceDepth === 0) {
+        commaCount++;
+        if (commaCount === 2) secondCommaPos = pos;
+      }
       else if (ch === "'" || ch === '"') {
         // Skip string literal
         const quote = ch;
@@ -783,6 +792,8 @@ function stripUndefinedAssert(code: string, fnName: string): string {
     }
     let pos = idx + fnName.length + 1; // past the opening '('
     let depth = 1;
+    let bracketDepth = 0; // tracks [] nesting
+    let braceDepth = 0;   // tracks {} nesting
     let commaCount = 0;
     let firstCommaPos = -1;
     let closeParenPos = -1;
@@ -790,7 +801,14 @@ function stripUndefinedAssert(code: string, fnName: string): string {
       const ch = code[pos]!;
       if (ch === "(") depth++;
       else if (ch === ")") { depth--; if (depth === 0) { closeParenPos = pos; break; } }
-      else if (ch === "," && depth === 1) { commaCount++; if (commaCount === 1) firstCommaPos = pos; }
+      else if (ch === "[") bracketDepth++;
+      else if (ch === "]") bracketDepth--;
+      else if (ch === "{") braceDepth++;
+      else if (ch === "}") braceDepth--;
+      else if (ch === "," && depth === 1 && bracketDepth === 0 && braceDepth === 0) {
+        commaCount++;
+        if (commaCount === 1) firstCommaPos = pos;
+      }
       else if (ch === "'" || ch === '"') {
         const quote = ch;
         pos++;
@@ -806,11 +824,19 @@ function stripUndefinedAssert(code: string, fnName: string): string {
       let secondArgEnd = closeParenPos;
       let scanPos = firstCommaPos + 1;
       let scanDepth = 1;
+      let scanBracketDepth = 0;
+      let scanBraceDepth = 0;
       while (scanPos < closeParenPos) {
         const ch = code[scanPos]!;
         if (ch === "(") scanDepth++;
         else if (ch === ")") scanDepth--;
-        else if (ch === "," && scanDepth === 1) { secondArgEnd = scanPos; break; }
+        else if (ch === "[") scanBracketDepth++;
+        else if (ch === "]") scanBracketDepth--;
+        else if (ch === "{") scanBraceDepth++;
+        else if (ch === "}") scanBraceDepth--;
+        else if (ch === "," && scanDepth === 1 && scanBracketDepth === 0 && scanBraceDepth === 0) {
+          secondArgEnd = scanPos; break;
+        }
         else if (ch === "'" || ch === '"') {
           const quote = ch;
           scanPos++;
