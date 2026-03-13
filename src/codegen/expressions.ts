@@ -7327,17 +7327,23 @@ function compileCallExpression(
       return compileObjectKeysOrValues(ctx, fctx, propAccess.name.text, expr);
     }
 
-    // Handle Promise.all / Promise.race — host-delegated static calls
+    // Handle Promise.all / Promise.race / Promise.resolve / Promise.reject — host-delegated static calls
     if (
       ts.isIdentifier(propAccess.expression) &&
       propAccess.expression.text === "Promise" &&
-      (propAccess.name.text === "all" || propAccess.name.text === "race") &&
-      expr.arguments.length >= 1
+      (propAccess.name.text === "all" || propAccess.name.text === "race" ||
+       propAccess.name.text === "resolve" || propAccess.name.text === "reject")
     ) {
-      const importName = `Promise_${propAccess.name.text}`;
+      const methodName = propAccess.name.text;
+      const importName = `Promise_${methodName}`;
       const funcIdx = ctx.funcMap.get(importName);
       if (funcIdx !== undefined) {
-        compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "externref" });
+        if (expr.arguments.length >= 1) {
+          compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "externref" });
+        } else {
+          // Promise.resolve() with no args — pass undefined (ref.null extern)
+          fctx.body.push({ op: "ref.null.extern" });
+        }
         fctx.body.push({ op: "call", funcIdx });
         return { kind: "externref" };
       }
@@ -9052,6 +9058,24 @@ function compileNewExpression(
         return { kind: "ref", typeIdx: structTypeIdx };
       }
     }
+  }
+
+  // Handle `new Promise(executor)` — delegate to host import
+  if (ts.isIdentifier(expr.expression) && expr.expression.text === "Promise") {
+    const funcIdx = ctx.funcMap.get("Promise_new");
+    if (funcIdx !== undefined) {
+      const args = expr.arguments ?? [];
+      if (args.length >= 1) {
+        compileExpression(ctx, fctx, args[0]!, { kind: "externref" });
+      } else {
+        fctx.body.push({ op: "ref.null.extern" });
+      }
+      fctx.body.push({ op: "call", funcIdx });
+    } else {
+      // No import registered — fallback to null
+      fctx.body.push({ op: "ref.null.extern" });
+    }
+    return { kind: "externref" };
   }
 
   // Handle `new Object()` — create an empty struct (equivalent to {})
