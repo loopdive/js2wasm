@@ -217,15 +217,9 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
   if (/return\s+undefined\b/.test(source) && /[+\-*\/%]/.test(source) && /assert/.test(source)) {
     return { skip: true, reason: "return undefined into arithmetic" };
   }
-  // Skip tests using void(x = expr) with undefined comparisons (void assignment side effects)
-  if (/void\s*\(\s*\w+\s*=/.test(source) && /[!=]==?\s*(undefined|void\s+0)\b/.test(source)) {
-    return { skip: true, reason: "void assignment side effects with undefined comparison" };
-  }
+  // (Removed: void assignment side effects skip — compiler now handles void(x = expr) correctly)
 
-  // Skip tests with null/undefined arithmetic (null + undefined → NaN)
-  if (/\b(null|undefined)\s*;?\s*\n\s*\w+\s*\+=\s*(null|undefined)\b/.test(source)) {
-    return { skip: true, reason: "null/undefined arithmetic" };
-  }
+  // (Removed: null/undefined arithmetic skip — compiler now handles null/undefined in arithmetic)
 
   // Skip tests using function expressions assigned to var (var foo = function(){})
   // inside try/catch — complex scoping we don't support
@@ -243,27 +237,15 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     return { skip: true, reason: "Math.round large-number precision edge case" };
   }
 
-  // Skip tests that use null/undefined in arithmetic or comparison
-  if (/\b(null|undefined)\s*[+\-*\/%<>=!]+\s*(null|undefined)\b/.test(source)) {
-    return { skip: true, reason: "null/undefined arithmetic/comparison" };
-  }
+  // (Removed: null/undefined arithmetic/comparison skip — most tests now pass correctly)
 
-  // Skip tests using compound assignment with null/undefined (x = null; x *= undefined)
-  if (/\bx\s*=\s*(null|undefined)\s*;/.test(source) && /\bx\s*[*\/+\-%]=\s*(null|undefined)\b/.test(source)) {
-    return { skip: true, reason: "compound assignment with null/undefined" };
-  }
+  // (Removed: compound assignment with null/undefined skip — compiler now handles this)
 
   // (Removed: object-as-loop-condition skip — ensureI32Condition now handles ref/externref conditions)
 
-  // Skip tests with function expression in loop condition (while(function(){...}))
-  if (/while\s*\(\s*function\b/.test(source)) {
-    return { skip: true, reason: "function expression in while condition" };
-  }
+  // (Removed: function expression in while condition — duplicate of object/function loop condition filter above)
 
-  // Skip tests using `for (var __prop in this)` — 'this' as object iteration
-  if (/\bfor\s*\([^)]*\bin\s+this\b/.test(source)) {
-    return { skip: true, reason: "for-in on this" };
-  }
+  // (Removed: for-in on this skip — most tests now pass correctly)
 
   // (Removed: loose inequality skip — only matched 3 tests, and loose != between
   //  number and string now compiles (the string side gets coerced to number).
@@ -287,28 +269,16 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     return { skip: true, reason: "object property access (dot + bracket)" };
   }
 
-  // Skip tests with var obj = {} and property assignment (member expression tests)
-  // Use [^\n] instead of \w to also match unicode escapes like obj.br\u0061k
-  if (/var\s+obj\s*=\s*\{\s*\}/.test(source) && /obj\./.test(source)) {
-    return { skip: true, reason: "object property assignment on empty object" };
-  }
+  // (Removed: object property assignment on empty object skip — most tests now compile and pass)
 
   // Skip tests with arithmetic on objects or function expressions ({} - {}, +{}, +function(){})
   if (/[+\-*\/]\s*\{/.test(source) && /isNaN/.test(source) && /\{\}/.test(source)) {
     return { skip: true, reason: "arithmetic on objects" };
   }
 
-  // Skip tests checking -0 sign via 1 / result (IEEE 754 sign-of-zero)
-  if (/1\s*\/\s*\(/.test(source) && /NEGATIVE_INFINITY|POSITIVE_INFINITY/.test(source) &&
-      /%/.test(source)) {
-    return { skip: true, reason: "modulo -0 sign preservation" };
-  }
+  // (Removed: modulo -0 sign preservation skip — tests now pass correctly)
 
-  // Skip tests where modulo has Infinity divisor (our formula breaks: 0 * Infinity = NaN)
-  if (/%\s*Number\.(POSITIVE_INFINITY|NEGATIVE_INFINITY)/.test(source) ||
-      /%\s*(-?)Infinity\b/.test(source)) {
-    return { skip: true, reason: "modulo with infinity divisor" };
-  }
+  // (Removed: modulo with infinity divisor skip — tests now pass correctly)
 
   // (Removed: string strict comparison skip — compiler now handles string === / !== via equals import)
 
@@ -411,10 +381,7 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     return { skip: true, reason: "string variable concatenation" };
   }
 
-  // Skip tests using line terminator or whitespace edge cases in assignments
-  if (/\\u000[0-9A-D]/.test(source) || /\\u00[0A]0/.test(source)) {
-    return { skip: true, reason: "unicode escape line terminator edge case" };
-  }
+  // (Removed: unicode escape line terminator skip — compiler now handles these correctly)
 
   // Skip Object.keys/values/entries tests that access result array elements
   if (/Object\.(keys|values|entries)\s*\(/.test(source)) {
@@ -433,12 +400,7 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     return { skip: true, reason: "closure-as-value passed to assert" };
   }
 
-  // Skip tests using null/undefined/false in coalesce (??) with assert
-  // (mixed types in nullish coalescing with number-only harness)
-  if (/\?\?/.test(source) && /\b(null|undefined)\s*\?\?/.test(source) &&
-      /assert[._]sameValue/.test(source)) {
-    return { skip: true, reason: "mixed-type nullish coalescing" };
-  }
+  // (Removed: mixed-type nullish coalescing skip — most tests now pass correctly)
 
   // Skip tests using `in` operator for runtime property existence (we only support compile-time)
   // Strip metadata block first to avoid false positives from description text like `"break" in order`
@@ -472,10 +434,7 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     return { skip: true, reason: "nested function/catch scope with type mismatch" };
   }
 
-  // Skip tests checking typeof class expression === "function"
-  if (/typeof\s+\w+/.test(source) && /"function"/.test(source) && /class\s*\{/.test(source)) {
-    return { skip: true, reason: "typeof class expression" };
-  }
+  // (Removed: typeof class expression skip — compiler now resolves typeof on class expressions)
 
   // Skip tagged template tests that access .raw property or template object identity —
   // our strings array doesn't have a raw property yet
@@ -501,10 +460,7 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     return { skip: true, reason: "typeof on member expression" };
   }
 
-  // Skip tests using typeof on undefined/void 0 (compiler can't resolve typeof undefined)
-  if (/typeof\s+(undefined|void\s+0)\b/.test(source)) {
-    return { skip: true, reason: "typeof undefined/void 0" };
-  }
+  // (Removed: typeof undefined/void 0 skip — compiler now resolves typeof undefined)
 
   // Skip tests that use .name property on classes/functions (not supported in wasm)
   if (/\.name\b/.test(source) && /assert\.sameValue/.test(source) && /class\b/.test(source)) {
@@ -517,31 +473,18 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     return { skip: true, reason: "String() indexer in assert" };
   }
 
-  // Skip tests that use string concatenation in parseInt/parseFloat args
-  if (/parseInt\s*\([^)]*\+/.test(source) || /parseInt\s*\(\s*\w+\[/.test(source)) {
-    return { skip: true, reason: "parseInt with string concatenation/indexing" };
-  }
+  // (Removed: parseInt with string concatenation skip — compiler now handles these correctly)
 
   // Skip for-of destructuring with object patterns over arrays containing objects
   if (/for\s*\(\s*\{[^}]*\}\s+of\b/.test(source) && /\[\s*\{/.test(source)) {
     return { skip: true, reason: "for-of object destructuring from array" };
   }
 
-  // Skip for-of destructuring over string arrays (empty string iteration edge cases)
-  if (/for\s*\(\s*\{/.test(source) && /\bof\b/.test(source) && /\['/.test(source)) {
-    return { skip: true, reason: "for-of destructuring over string array" };
-  }
+  // (Removed: for-of destructuring over string array skip — compiler now handles this)
 
-  // Skip tests using IIFEs (immediately invoked function expressions)
-  // — compiler doesn't support calling function expressions directly
-  if (/\(\s*function\s*[\w$]*\s*\([^)]*\)\s*\{/.test(source) && /\}\s*\)\s*\(/.test(source)) {
-    return { skip: true, reason: "IIFE (immediately invoked function expression)" };
-  }
+  // (Removed: IIFE skip — compiler now handles immediately invoked function expressions)
 
-  // Skip tests using indirect eval (var s = eval; s(...))
-  if (/\bvar\s+\w+\s*=\s*eval\b/.test(source)) {
-    return { skip: true, reason: "indirect eval" };
-  }
+  // (Removed: indirect eval skip — these tests don't actually call eval, just assign it)
 
   return { skip: false };
 }
