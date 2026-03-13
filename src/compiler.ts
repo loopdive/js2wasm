@@ -367,6 +367,7 @@ export function compileSource(
     2349, // "This expression is not callable"
     2552, // "Cannot find name 'X'. Did you mean 'Y'?"
     18046, // "'X' is of type 'unknown'"
+    2881, // "This expression is never nullish" — false positive in allowJs mode
     2871, // "This expression is always nullish"
     18048, // "'X' is possibly 'undefined'"
     2839, // "This condition will always return true/false since JS compares objects by reference"
