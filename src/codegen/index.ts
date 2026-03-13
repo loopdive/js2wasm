@@ -262,6 +262,8 @@ export interface FunctionContext {
   continueStack: number[];
   /** Map from label name to break/continue stack indices for labeled break/continue */
   labelMap: Map<string, { breakIdx: number; continueIdx: number }>;
+  /** Depth for `return` inside generator body -- adjusted by loop/block nesting */
+  generatorReturnDepth?: number;
   /** Map from variable name → ref cell info (for mutable closure captures) */
   boxedCaptures?: Map<string, { refCellTypeIdx: number; valType: ValType }>;
 }
@@ -8760,6 +8762,9 @@ function compileFunctionBody(
     const outerBody = fctx.body;
     fctx.body = bodyInstrs;
 
+    // Set generator return depth for correct `br` depth in nested contexts
+    fctx.generatorReturnDepth = 0;
+
     // Push a block label level so return can break out
     fctx.blockDepth++;
     for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!++;
@@ -8776,6 +8781,7 @@ function compileFunctionBody(
     fctx.blockDepth--;
     for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!--;
     for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!--;
+    fctx.generatorReturnDepth = undefined;
 
     // Restore outer body and wrap compiled body in a block
     fctx.body = outerBody;
