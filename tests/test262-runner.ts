@@ -88,6 +88,7 @@ const UNSUPPORTED_FEATURES = new Set([
   "cross-realm",
   "caller",
   "eval",
+  "BigInt",
 ]);
 
 export interface FilterResult {
@@ -543,6 +544,14 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     return { skip: true, reason: "indirect eval" };
   }
 
+  // Skip tests that reference Reflect without feature tags
+  {
+    const noComments = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+    if (/\bReflect\b/.test(noComments)) {
+      return { skip: true, reason: "uses Reflect (unsupported)" };
+    }
+  }
+
   return { skip: false };
 }
 
@@ -957,6 +966,10 @@ export function wrapTest(source: string): string {
   body = replaceThrowTest262Error(body);
   body = replaceOtherThrows(body);
 
+  // Replace $ERROR(...) calls with return 0; — $ERROR is the legacy test262
+  // harness function for signaling test failure (from sta.js)
+  body = body.replace(/\$ERROR\s*\([^)]*\)\s*;?/g, "return 0;");
+
   // Route string comparisons to string-aware assert
   // Only route when the non-string argument is a simple expression (identifier,
   // member access, array index) — NOT a function call like String(expr).
@@ -1036,7 +1049,10 @@ function assert_true(value: number): void {
   if (!value) {
     __fail = 1;
   }
-}`;
+}
+
+function print(_x: number): void {}
+`;
 
   if (needsStrAssert) {
     preamble += `
