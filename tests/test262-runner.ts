@@ -746,7 +746,15 @@ function stripUndefinedThrowGuards(code: string): string {
       elseBody = code.slice(elseStart, elseEnd - 1);
       endPos = elseEnd;
     }
-    result += code.slice(lastIdx, ifStart) + elseBody;
+    // If the condition contains a function call (side effect), preserve it
+    // e.g. if (__func() !== undefined) { throw ... } → __func();
+    let sideEffect = "";
+    const callMatch = condition.match(/^(.+?)\s*!==?\s*undefined\s*$/) ||
+                      condition.match(/^undefined\s*!==?\s*(.+)$/);
+    if (callMatch && /\(/.test(callMatch[1]!)) {
+      sideEffect = callMatch[1]!.trim() + ";\n";
+    }
+    result += code.slice(lastIdx, ifStart) + sideEffect + elseBody;
     lastIdx = endPos;
     pattern.lastIndex = endPos;
   }

@@ -7221,7 +7221,30 @@ function compileCallExpression(
     const nestedCaptures = ctx.nestedFuncCaptures.get(funcName);
     if (nestedCaptures) {
       for (const cap of nestedCaptures) {
-        fctx.body.push({ op: "local.get", index: cap.outerLocalIdx });
+        if (cap.mutable && cap.valType) {
+          // Mutable capture: wrap in a ref cell so writes propagate back
+          const refCellTypeIdx = getOrRegisterRefCellType(ctx, cap.valType);
+          // Check if this local is already boxed (from a previous call to the same or another closure)
+          if (fctx.boxedCaptures?.has(cap.name)) {
+            // Already a ref cell — pass the ref cell reference directly
+            const currentLocalIdx = fctx.localMap.get(cap.name)!;
+            fctx.body.push({ op: "local.get", index: currentLocalIdx });
+          } else {
+            // Create a ref cell, store the current value, keep ref on stack
+            fctx.body.push({ op: "local.get", index: cap.outerLocalIdx });
+            fctx.body.push({ op: "struct.new", typeIdx: refCellTypeIdx } as unknown as Instr);
+            // Also box the outer local so subsequent reads/writes go through the ref cell
+            const boxedLocalIdx = allocLocal(fctx, `__boxed_${cap.name}`, { kind: "ref", typeIdx: refCellTypeIdx });
+            // Duplicate: need the ref cell for the call AND for the outer local
+            fctx.body.push({ op: "local.tee", index: boxedLocalIdx });
+            // Re-register the original name to point to the boxed local
+            fctx.localMap.set(cap.name, boxedLocalIdx);
+            if (!fctx.boxedCaptures) fctx.boxedCaptures = new Map();
+            fctx.boxedCaptures.set(cap.name, { refCellTypeIdx, valType: cap.valType });
+          }
+        } else {
+          fctx.body.push({ op: "local.get", index: cap.outerLocalIdx });
+        }
       }
     }
 
@@ -7259,10 +7282,13 @@ function compileCallExpression(
     } else {
       // Normal call — compile provided arguments with type hints from function signature
       const paramTypes = getFuncParamTypes(ctx, funcIdx);
-      const paramCount = paramTypes?.length ?? expr.arguments.length;
+      const captureCount = nestedCaptures ? nestedCaptures.length : 0;
+      // User-visible param count excludes capture params (which are prepended internally)
+      const paramCount = paramTypes ? paramTypes.length - captureCount : expr.arguments.length;
       for (let i = 0; i < expr.arguments.length; i++) {
         if (i < paramCount) {
-          compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+          // Offset into paramTypes by captureCount since captures are the leading params
+          compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + captureCount]);
         } else {
           // Extra argument beyond function's parameter count — evaluate for
           // side effects (JS semantics) and discard the result
@@ -7289,7 +7315,8 @@ function compileCallExpression(
       if (paramTypes) {
         // Count how many args were actually pushed: provided args (capped at paramCount)
         // plus optional param defaults already pushed
-        const providedCount = Math.min(expr.arguments.length, paramCount);
+        // plus capture params already pushed by nestedCaptures loop above
+        const providedCount = Math.min(expr.arguments.length, paramCount) + captureCount;
         const optFilledCount = optInfo
           ? optInfo.filter(o => o.index >= expr.arguments.length).length
           : 0;

@@ -4,6 +4,7 @@ import type { Instr, ValType } from "../ir/types.js";
 import {
   coerceType,
   collectReferencedIdentifiers,
+  collectWrittenIdentifiers,
   compileExpression,
   valTypesMatch,
 } from "./expressions.js";
@@ -22,6 +23,7 @@ import {
   ensureStructForType,
   getArrTypeIdxFromVec,
   getLocalType,
+  getOrRegisterRefCellType,
   getOrRegisterVecType,
   getSourcePos,
   localGlobalIdx,
@@ -258,8 +260,9 @@ function compileStatementInner(
   if (ts.isFunctionDeclaration(stmt)) {
     // Skip if already hoisted (pre-compiled in function hoisting pass)
     if (stmt.name && ctx.funcMap.has(stmt.name.text)) return;
-    // Skip if hoisting was attempted but failed (avoid re-emitting errors)
-    if (stmt.name && ctx.hoistFailedFuncs?.has(stmt.name.text)) return;
+    // Re-attempt compilation even if hoisting failed — the failure may have been
+    // due to const/let captures not yet in scope during the hoisting pre-pass.
+    // Now that we're in statement order, those locals should be available.
     compileNestedFunctionDeclaration(ctx, fctx, stmt);
     return;
   }
@@ -2556,13 +2559,19 @@ function compileNestedFunctionDeclaration(
     collectReferencedIdentifiers(s, referencedNames);
   }
 
+  // Detect which captured variables are written inside the function body
+  const writtenInBody = new Set<string>();
+  for (const s of stmt.body.statements) {
+    collectWrittenIdentifiers(s, writtenInBody);
+  }
+
   const ownParamNames = new Set(
     stmt.parameters
       .filter((p) => ts.isIdentifier(p.name))
       .map((p) => (p.name as ts.Identifier).text),
   );
 
-  const captures: { name: string; type: ValType; localIdx: number }[] = [];
+  const captures: { name: string; type: ValType; localIdx: number; mutable: boolean }[] = [];
   for (const name of referencedNames) {
     if (ownParamNames.has(name)) continue;
     const localIdx = fctx.localMap.get(name);
@@ -2572,7 +2581,8 @@ function compileNestedFunctionDeclaration(
       localIdx < fctx.params.length
         ? fctx.params[localIdx]!.type
         : (fctx.locals[localIdx - fctx.params.length]?.type ?? { kind: "f64" });
-    captures.push({ name, type, localIdx });
+    const isMutable = writtenInBody.has(name);
+    captures.push({ name, type, localIdx, mutable: isMutable });
   }
 
   const results: ValType[] = returnType ? [returnType] : [];
@@ -2644,7 +2654,15 @@ function compileNestedFunctionDeclaration(
     ctx.funcMap.set(funcName, funcIdx);
   } else {
     // Has captures — lift with captures as leading parameters, use direct call
-    const allParamTypes = [...captures.map((c) => c.type), ...paramTypes];
+    // For mutable captures, use ref cell types so writes propagate back
+    const captureParamTypes = captures.map((c) => {
+      if (c.mutable) {
+        const refCellTypeIdx = getOrRegisterRefCellType(ctx, c.type);
+        return { kind: "ref" as const, typeIdx: refCellTypeIdx };
+      }
+      return c.type;
+    });
+    const allParamTypes = [...captureParamTypes, ...paramTypes];
     const funcTypeIdx = addFuncType(
       ctx,
       allParamTypes,
@@ -2654,7 +2672,7 @@ function compileNestedFunctionDeclaration(
     const liftedFctx: FunctionContext = {
       name: funcName,
       params: [
-        ...captures.map((c) => ({ name: c.name, type: c.type })),
+        ...captures.map((c, i) => ({ name: c.name, type: captureParamTypes[i]! })),
         ...stmt.parameters.map((p, i) => ({
           name: (p.name as ts.Identifier).text,
           type: paramTypes[i]!,
@@ -2671,6 +2689,15 @@ function compileNestedFunctionDeclaration(
     };
     for (let i = 0; i < liftedFctx.params.length; i++) {
       liftedFctx.localMap.set(liftedFctx.params[i]!.name, i);
+    }
+
+    // Register mutable captures as boxed so reads/writes use struct.get/set
+    for (const cap of captures) {
+      if (cap.mutable) {
+        const refCellTypeIdx = getOrRegisterRefCellType(ctx, cap.type);
+        if (!liftedFctx.boxedCaptures) liftedFctx.boxedCaptures = new Map();
+        liftedFctx.boxedCaptures.set(cap.name, { refCellTypeIdx, valType: cap.type });
+      }
     }
 
     const savedFunc = ctx.currentFunc;
@@ -2707,6 +2734,8 @@ function compileNestedFunctionDeclaration(
       captures.map((c) => ({
         name: c.name,
         outerLocalIdx: c.localIdx,
+        mutable: c.mutable,
+        valType: c.type,
       })),
     );
   }

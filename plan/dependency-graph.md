@@ -197,7 +197,7 @@ Can all run in parallel (different diagnostic codes).
 | 268 | Iterator protocol — Symbol.iterator | — | Ready |
 | 289 | For-in compile errors | ~13 CE | Ready |
 | 297 | Switch statement fall-through | 2 | Done |
-| 298 | Function statement edge cases | 2 | Ready |
+| 298 | Function statement edge cases | 7 | Done |
 
 ---
 
