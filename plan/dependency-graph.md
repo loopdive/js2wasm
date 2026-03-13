@@ -122,7 +122,7 @@ Can all run in parallel (different diagnostic codes).
 
 | #   | Title | Tests | Ready? |
 |-----|-------|-------|--------|
-| 140 | Object computed property names runtime | — | Ready |
+| ~~140~~ | ~~Object computed property names runtime~~ | — | **Done** |
 | 239 | Element access on struct types (bracket notation) | — | Ready |
 | ~~263~~ | ~~Property does not exist on type — dynamic access~~ | — | **Done** |
 | 274 | Property access on function type (.name, .length) | — | Ready |
