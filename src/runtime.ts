@@ -73,9 +73,12 @@ function resolveImport(
       if (name === "__js_array_new") return () => [];
       if (name === "__js_array_push") return (arr: any[], val: any) => { arr.push(val); };
       if (name === "__tagged_template") return (tag: Function, strings: any[], subs: any[]) => tag(strings, ...subs);
-      // Promise combinators
+      // Promise combinators and constructors
       if (name === "Promise_all") return (arr: any) => Promise.all(arr);
       if (name === "Promise_race") return (arr: any) => Promise.race(arr);
+      if (name === "Promise_resolve") return (val: any) => Promise.resolve(val);
+      if (name === "Promise_reject") return (val: any) => Promise.reject(val);
+      if (name === "Promise_new") return (executor: any) => new Promise(executor);
       // Generator support: buffer management and generator creation
       if (name === "__gen_create_buffer") return () => [];
       if (name === "__gen_push_f64") return (buf: any[], v: number) => { buf.push(v); };

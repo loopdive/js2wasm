@@ -91,7 +91,7 @@ _Goal: Remaining runtime failures, codegen quality, and test infrastructure expa
 | --- | ------- | ------ | ----- |
 | [289](../ready/289.md) | For-in compile errors -- property enumeration edge cases | Open | ~13 |
 | [291](../ready/291.md) | In operator compile errors -- dynamic property checks | Open | ~10 |
-| [307](../ready/307.md) | Promise.all and Promise.race compile errors | Open | 7 |
+| [307](../done/307.md) | Promise.all and Promise.race compile errors | **Done** | 7 |
 
 ### Codegen quality
 

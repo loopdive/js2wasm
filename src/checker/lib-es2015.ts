@@ -180,6 +180,22 @@ interface Math {
   trunc(x: number): number;
 }
 
+// ── Promise ES2015 ──────────────────────────────────────────────
+
+interface PromiseConstructor {
+  readonly prototype: Promise<any>;
+  new <T>(executor: (resolve: (value: T | PromiseLike<T>) => void, reject: (reason?: any) => void) => void): Promise<T>;
+  all<T extends readonly unknown[] | []>(values: T): Promise<{ -readonly [P in keyof T]: Awaited<T[P]> }>;
+  all<T>(values: Iterable<T | PromiseLike<T>>): Promise<Awaited<T>[]>;
+  race<T extends readonly unknown[] | []>(values: T): Promise<Awaited<T[number]>>;
+  race<T>(values: Iterable<T | PromiseLike<T>>): Promise<Awaited<T>>;
+  reject<T = never>(reason?: any): Promise<T>;
+  resolve(): Promise<void>;
+  resolve<T>(value: T): Promise<Awaited<T>>;
+  resolve<T>(value: T | PromiseLike<T>): Promise<Awaited<T>>;
+}
+declare var Promise: PromiseConstructor;
+
 // ── Object.entries / Object.keys ES2017 ─────────────────────────
 
 interface ObjectConstructor {
