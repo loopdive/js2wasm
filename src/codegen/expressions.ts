@@ -7564,11 +7564,11 @@ function compileCallExpression(
       }
     }
 
-    // Handle Object.keys(obj) and Object.values(obj)
+    // Handle Object.keys(obj), Object.values(obj), and Object.entries(obj)
     if (
       ts.isIdentifier(propAccess.expression) &&
       propAccess.expression.text === "Object" &&
-      (propAccess.name.text === "keys" || propAccess.name.text === "values") &&
+      (propAccess.name.text === "keys" || propAccess.name.text === "values" || propAccess.name.text === "entries") &&
       expr.arguments.length === 1
     ) {
       return compileObjectKeysOrValues(ctx, fctx, propAccess.name.text, expr);
@@ -12188,6 +12188,127 @@ function compileObjectKeysOrValues(
     fctx.body.push({ op: "local.get", index: tmpData });
     fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
     return { kind: "ref_null", typeIdx: vecTypeIdx };
+  }
+
+  if (method === "entries") {
+    // Build [string, T][] by resolving the TS return type to get the correct
+    // tuple struct and vec types that match what resolveWasmType produces.
+    const argResult = compileExpression(ctx, fctx, arg);
+    if (!argResult) return null;
+    const objLocal = allocLocal(fctx, `__obj_entries_src_${fctx.locals.length}`, { kind: "ref", typeIdx: structTypeIdx });
+    fctx.body.push({ op: "local.set", index: objLocal });
+
+    // Resolve the return type from the TS signature to get proper tuple/vec types
+    const sig = ctx.checker.getResolvedSignature(expr);
+    const retType = sig ? ctx.checker.getReturnTypeOfSignature(sig) : undefined;
+    const resolvedRet = retType ? resolveWasmType(ctx, retType) : undefined;
+
+    // The return type should be ref_null to a vec struct (Array<[string, T]>)
+    // Extract the vec type index and from it the array type index and entry tuple type
+    let outerVecTypeIdx: number;
+    let outerArrTypeIdx: number;
+    let entryTupleTypeIdx: number;
+
+    if (resolvedRet && (resolvedRet.kind === "ref" || resolvedRet.kind === "ref_null") && "typeIdx" in resolvedRet) {
+      outerVecTypeIdx = resolvedRet.typeIdx;
+      outerArrTypeIdx = getArrTypeIdxFromVec(ctx, outerVecTypeIdx);
+      // The array element type is a ref to the tuple struct
+      // Get it from the vec's array type definition
+      const arrTypeDef = ctx.mod.types[outerArrTypeIdx];
+      if (arrTypeDef && arrTypeDef.kind === "array" && (arrTypeDef as any).element &&
+          ((arrTypeDef as any).element.kind === "ref" || (arrTypeDef as any).element.kind === "ref_null")) {
+        entryTupleTypeIdx = (arrTypeDef as any).element.typeIdx;
+      } else {
+        // Fallback: create a tuple with [externref, externref]
+        entryTupleTypeIdx = getOrRegisterTupleType(ctx, [{ kind: "externref" }, { kind: "externref" }]);
+      }
+    } else {
+      // Fallback: create externref-based types
+      entryTupleTypeIdx = getOrRegisterTupleType(ctx, [{ kind: "externref" }, { kind: "externref" }]);
+      const entryElemKind = `ref_${entryTupleTypeIdx}`;
+      outerVecTypeIdx = getOrRegisterVecType(ctx, entryElemKind, { kind: "ref", typeIdx: entryTupleTypeIdx });
+      outerArrTypeIdx = getArrTypeIdxFromVec(ctx, outerVecTypeIdx);
+    }
+
+    if (outerArrTypeIdx < 0) {
+      ctx.errors.push({
+        message: `Object.entries(): cannot resolve outer array type`,
+        line: getLine(expr),
+        column: getCol(expr),
+      });
+      return null;
+    }
+
+    // Get the tuple struct fields to know the value type
+    const tupleTypeDef = ctx.mod.types[entryTupleTypeIdx];
+    const tupleFields = tupleTypeDef && tupleTypeDef.kind === "struct" ? (tupleTypeDef as any).fields : undefined;
+    // Field 0 is the key (string), field 1 is the value
+    const valueFieldType: ValType | undefined = tupleFields?.[1]?.type;
+
+    // Ensure union boxing imports are registered (needed for boxing primitives)
+    addUnionImports(ctx);
+
+    // For each field, create a tuple struct [key, value]
+    for (const entry of userFields) {
+      // Push key string (field 0 of tuple)
+      if (ctx.fast && ctx.nativeStrTypeIdx >= 0) {
+        compileNativeStringLiteral(ctx, fctx, entry.field.name);
+        // If tuple expects externref for the key, convert
+        if (tupleFields && tupleFields[0]?.type?.kind === "externref") {
+          fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+        }
+      } else {
+        const globalIdx = ctx.stringGlobalMap.get(entry.field.name);
+        if (globalIdx !== undefined) {
+          fctx.body.push({ op: "global.get", index: globalIdx });
+        } else {
+          const importName = ctx.stringLiteralMap.get(entry.field.name);
+          if (importName) {
+            const funcIdx = ctx.funcMap.get(importName);
+            if (funcIdx !== undefined) {
+              fctx.body.push({ op: "call", funcIdx });
+            }
+          }
+        }
+      }
+
+      // Push value (field 1 of tuple)
+      fctx.body.push({ op: "local.get", index: objLocal });
+      fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx: entry.fieldIdx });
+
+      // Coerce the struct field value to match the tuple's value field type
+      const fieldKind = entry.field.type.kind;
+      const targetKind = valueFieldType?.kind ?? "externref";
+
+      if (targetKind === "externref") {
+        // Box primitives to externref
+        if (fieldKind === "f64") {
+          const boxIdx = ctx.funcMap.get("__box_number");
+          if (boxIdx !== undefined) fctx.body.push({ op: "call", funcIdx: boxIdx });
+        } else if (fieldKind === "i32") {
+          fctx.body.push({ op: "f64.convert_i32_s" });
+          const boxIdx = ctx.funcMap.get("__box_number");
+          if (boxIdx !== undefined) fctx.body.push({ op: "call", funcIdx: boxIdx });
+        } else if (fieldKind === "ref" || fieldKind === "ref_null") {
+          fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+        }
+      }
+      // If target is f64 and field is f64, no conversion needed
+      // If target is i32 and field is i32, no conversion needed
+
+      // Create tuple struct
+      fctx.body.push({ op: "struct.new", typeIdx: entryTupleTypeIdx });
+    }
+
+    // Create outer array from the entry tuples on the stack
+    const count = userFields.length;
+    fctx.body.push({ op: "array.new_fixed", typeIdx: outerArrTypeIdx, length: count });
+    const outerData = allocLocal(fctx, `__obj_entries_data_${fctx.locals.length}`, { kind: "ref", typeIdx: outerArrTypeIdx });
+    fctx.body.push({ op: "local.set", index: outerData });
+    fctx.body.push({ op: "i32.const", value: count });
+    fctx.body.push({ op: "local.get", index: outerData });
+    fctx.body.push({ op: "struct.new", typeIdx: outerVecTypeIdx });
+    return { kind: "ref_null", typeIdx: outerVecTypeIdx };
   }
 
   // method === "values"
