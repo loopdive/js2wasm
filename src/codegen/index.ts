@@ -7871,37 +7871,149 @@ function collectDeclarations(
     ctx.moduleGlobals.set(name, globalIdx);
   }
 
-  for (const stmt of sourceFile.statements) {
-    if (!ts.isVariableStatement(stmt)) continue;
-    if (hasDeclareModifier(stmt)) continue;
-    for (const decl of stmt.declarationList.declarations) {
+  /** Register binding names from destructuring patterns as module globals. */
+  function registerBindingNames(pattern: ts.BindingPattern): void {
+    for (const element of pattern.elements) {
+      if (ts.isOmittedExpression(element)) continue;
+      if (ts.isIdentifier(element.name)) {
+        const elemType = ctx.checker.getTypeAtLocation(element);
+        const wasmType = resolveWasmType(ctx, elemType);
+        registerModuleGlobal(element.name.text, wasmType);
+      } else if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
+        registerBindingNames(element.name);
+      }
+    }
+  }
+
+  /** Register var declarations from a variable declaration list as module globals. */
+  function registerVarDeclListGlobals(list: ts.VariableDeclarationList): void {
+    // Only hoist `var` (not let/const) — let/const are block-scoped
+    if (list.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const)) return;
+    for (const decl of list.declarations) {
       if (ts.isIdentifier(decl.name)) {
         const varType = ctx.checker.getTypeAtLocation(decl);
         const wasmType = resolveWasmType(ctx, varType);
         registerModuleGlobal(decl.name.text, wasmType);
       } else if (ts.isObjectBindingPattern(decl.name) || ts.isArrayBindingPattern(decl.name)) {
-        // Handle destructuring: var { x, y } = obj; var [a, b] = arr;
-        const registerBindingNames = (pattern: ts.BindingPattern): void => {
-          for (const element of pattern.elements) {
-            if (ts.isOmittedExpression(element)) continue;
-            if (ts.isIdentifier(element.name)) {
-              const elemType = ctx.checker.getTypeAtLocation(element);
-              const wasmType = resolveWasmType(ctx, elemType);
-              registerModuleGlobal(element.name.text, wasmType);
-            } else if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
-              registerBindingNames(element.name);
-            }
-          }
-        };
         registerBindingNames(decl.name);
       }
     }
-    // Collect the statement for init compilation (skip pure class expression bindings)
-    const hasNonClassDecl = stmt.declarationList.declarations.some(
-      (d) => !(ts.isIdentifier(d.name) && d.initializer && ts.isClassExpression(d.initializer)),
-    );
-    if (hasNonClassDecl) {
+  }
+
+  /**
+   * Recursively walk a statement to find and register `var` declarations
+   * as module globals. This implements JavaScript var-hoisting semantics
+   * at the module level: `var` declarations inside for-loops, if-blocks,
+   * try/catch, switch, etc. are hoisted to the module scope.
+   */
+  function walkModuleStmtForVars(stmt: ts.Statement): void {
+    if (ts.isVariableStatement(stmt)) {
+      if (hasDeclareModifier(stmt)) return;
+      registerVarDeclListGlobals(stmt.declarationList);
+      return;
+    }
+    if (ts.isBlock(stmt)) {
+      for (const s of stmt.statements) walkModuleStmtForVars(s);
+      return;
+    }
+    if (ts.isIfStatement(stmt)) {
+      walkModuleStmtForVars(stmt.thenStatement);
+      if (stmt.elseStatement) walkModuleStmtForVars(stmt.elseStatement);
+      return;
+    }
+    if (ts.isWhileStatement(stmt) || ts.isDoStatement(stmt)) {
+      walkModuleStmtForVars(stmt.statement);
+      return;
+    }
+    if (ts.isForStatement(stmt)) {
+      if (stmt.initializer && ts.isVariableDeclarationList(stmt.initializer)) {
+        registerVarDeclListGlobals(stmt.initializer);
+      }
+      walkModuleStmtForVars(stmt.statement);
+      return;
+    }
+    if (ts.isForInStatement(stmt) || ts.isForOfStatement(stmt)) {
+      if (stmt.initializer && ts.isVariableDeclarationList(stmt.initializer)) {
+        registerVarDeclListGlobals(stmt.initializer);
+      }
+      walkModuleStmtForVars(stmt.statement);
+      return;
+    }
+    if (ts.isLabeledStatement(stmt)) {
+      walkModuleStmtForVars(stmt.statement);
+      return;
+    }
+    if (ts.isTryStatement(stmt)) {
+      for (const s of stmt.tryBlock.statements) walkModuleStmtForVars(s);
+      if (stmt.catchClause) {
+        for (const s of stmt.catchClause.block.statements) walkModuleStmtForVars(s);
+      }
+      if (stmt.finallyBlock) {
+        for (const s of stmt.finallyBlock.statements) walkModuleStmtForVars(s);
+      }
+      return;
+    }
+    if (ts.isSwitchStatement(stmt)) {
+      for (const clause of stmt.caseBlock.clauses) {
+        for (const s of clause.statements) walkModuleStmtForVars(s);
+      }
+    }
+  }
+
+  for (const stmt of sourceFile.statements) {
+    if (ts.isVariableStatement(stmt)) {
+      if (hasDeclareModifier(stmt)) continue;
+      for (const decl of stmt.declarationList.declarations) {
+        if (ts.isIdentifier(decl.name)) {
+          const varType = ctx.checker.getTypeAtLocation(decl);
+          const wasmType = resolveWasmType(ctx, varType);
+          registerModuleGlobal(decl.name.text, wasmType);
+        } else if (ts.isObjectBindingPattern(decl.name) || ts.isArrayBindingPattern(decl.name)) {
+          registerBindingNames(decl.name);
+        }
+      }
+      // Collect the statement for init compilation (skip pure class expression bindings)
+      const hasNonClassDecl = stmt.declarationList.declarations.some(
+        (d) => !(ts.isIdentifier(d.name) && d.initializer && ts.isClassExpression(d.initializer)),
+      );
+      if (hasNonClassDecl) {
+        ctx.moduleInitStatements.push(stmt);
+      }
+      continue;
+    }
+    // For control-flow statements at module level, recursively scan for
+    // `var` declarations (JavaScript var-hoisting) and collect the statement
+    // for init compilation so it executes at module load time.
+    if (ts.isForStatement(stmt) || ts.isForInStatement(stmt) || ts.isForOfStatement(stmt)
+        || ts.isWhileStatement(stmt) || ts.isDoStatement(stmt)) {
+      walkModuleStmtForVars(stmt);
       ctx.moduleInitStatements.push(stmt);
+      continue;
+    }
+    if (ts.isIfStatement(stmt)) {
+      walkModuleStmtForVars(stmt);
+      ctx.moduleInitStatements.push(stmt);
+      continue;
+    }
+    if (ts.isTryStatement(stmt)) {
+      walkModuleStmtForVars(stmt);
+      ctx.moduleInitStatements.push(stmt);
+      continue;
+    }
+    if (ts.isSwitchStatement(stmt)) {
+      walkModuleStmtForVars(stmt);
+      ctx.moduleInitStatements.push(stmt);
+      continue;
+    }
+    if (ts.isLabeledStatement(stmt)) {
+      walkModuleStmtForVars(stmt);
+      ctx.moduleInitStatements.push(stmt);
+      continue;
+    }
+    if (ts.isBlock(stmt)) {
+      walkModuleStmtForVars(stmt);
+      ctx.moduleInitStatements.push(stmt);
+      continue;
     }
   }
 
