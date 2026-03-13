@@ -398,6 +398,7 @@ export function compileSource(
     18014, // "The property '#x' cannot be accessed on type 'X' within this class because it is shadowed" — valid JS
     2538, // "Type 'X' cannot be used as an index type" — valid JS pattern (e.g. symbol/boolean as index)
     1468, // "A computed property name must be of type 'string', 'number', 'symbol', or 'any'" — valid JS
+    2556, // "A spread argument must either have a tuple type or be passed to a rest parameter" — valid JS spread (#382)
     2741, // "Property 'X' is missing in type 'Y' but required in type 'Z'" — valid JS object patterns
     2493, // "Tuple type '[]' of length 'N' has no element at index 'M'" — destructuring empty/short tuples (#379)
     2700, // "Rest types may only be created from object types" — object rest on primitives (#379)
