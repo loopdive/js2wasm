@@ -19,7 +19,23 @@ function buildImports(result: CompileResult): WebAssembly.Imports {
     console_log_bool: () => {},
     Math_sin: Math.sin,
     Math_cos: Math.cos,
+    Math_tan: Math.tan,
+    Math_asin: Math.asin,
+    Math_acos: Math.acos,
+    Math_atan: Math.atan,
+    Math_atan2: Math.atan2,
+    Math_exp: Math.exp,
+    Math_log: Math.log,
+    Math_log2: Math.log2,
+    Math_log10: Math.log10,
     Math_pow: Math.pow,
+    Math_random: Math.random,
+    Math_acosh: Math.acosh,
+    Math_asinh: Math.asinh,
+    Math_atanh: Math.atanh,
+    Math_cbrt: Math.cbrt,
+    Math_expm1: Math.expm1,
+    Math_log1p: Math.log1p,
     number_toString: (v: number) => String(v),
     __typeof_number: (v: unknown) => (typeof v === "number" ? 1 : 0),
     __typeof_string: (v: unknown) => (typeof v === "string" ? 1 : 0),
@@ -177,6 +193,41 @@ describe("Issue #284: for-of destructuring", () => {
           total = total + a * b;
         }
         return total;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("for-of with property rename in object destructuring", async () => {
+    await assertEquivalent(
+      `
+      interface Pair { a: number; b: number; }
+      export function test(): number {
+        const items: Pair[] = [{a: 5, b: 10}, {a: 15, b: 20}];
+        let sum = 0;
+        for (const {a: x, b: y} of items) {
+          sum = sum + x + y;
+        }
+        return sum;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("for-of array destructuring accumulates across iterations", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        const coords: number[][] = [[1, 0], [0, 1], [1, 1]];
+        let xSum = 0;
+        let ySum = 0;
+        for (const [x, y] of coords) {
+          xSum = xSum + x;
+          ySum = ySum + y;
+        }
+        return xSum * 10 + ySum;
       }
       `,
       [{ fn: "test", args: [] }],
