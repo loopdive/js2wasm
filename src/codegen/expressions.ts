@@ -10117,12 +10117,25 @@ function emitBoundsCheckedArrayGet(
   // Build the "else" branch: out-of-bounds → default value
   const elseInstrs: Instr[] = defaultValueInstrs(elementType);
 
+  // When the element type is a non-null ref, the else branch produces ref.null
+  // which is ref_null. Use ref_null as the block type so both branches validate,
+  // then narrow back to ref with ref.as_non_null.
+  const needsNullableBlock = elementType.kind === "ref";
+  const blockType: ValType = needsNullableBlock
+    ? { kind: "ref_null", typeIdx: (elementType as { typeIdx: number }).typeIdx }
+    : elementType;
+
   fctx.body.push({
     op: "if",
-    blockType: { kind: "val" as const, type: elementType },
+    blockType: { kind: "val" as const, type: blockType },
     then: thenInstrs,
     else: elseInstrs,
   } as Instr);
+
+  // Narrow ref_null back to ref so downstream struct.get etc. validate
+  if (needsNullableBlock) {
+    fctx.body.push({ op: "ref.as_non_null" } as unknown as Instr);
+  }
 }
 
 /** Produce instructions that leave a default value on the stack for a given type. */
