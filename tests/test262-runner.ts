@@ -843,6 +843,106 @@ function stripUndefinedAssert(code: string, fnName: string): string {
 }
 
 /**
+ * Rename `yield` used as an identifier to `_yield`, but preserve `yield`
+ * inside generator function bodies (function*) where it's a keyword.
+ *
+ * In sloppy-mode JS, `yield` is a valid identifier. But since we wrap
+ * test262 tests as modules (strict mode), `yield` is a reserved word
+ * and must be renamed — except inside generator bodies where it's the
+ * yield keyword.
+ *
+ * Algorithm: scan through the source tracking brace depth. When we see
+ * `function*`, we note the brace depth of its opening `{`. While inside
+ * that generator body, `yield` tokens are preserved. Outside, they are
+ * renamed to `_yield`.
+ */
+function renameYieldOutsideGenerators(source: string): string {
+  if (!/\byield\b/.test(source)) return source;
+
+  // If no generator functions, just rename all yield identifiers
+  if (!/\bfunction\s*\*/.test(source)) {
+    return source.replace(/\byield\b/g, "_yield");
+  }
+
+  // Track which regions are inside generator function bodies.
+  // We scan for `function*` followed by optional name, optional params `(...)`, then `{`.
+  // We track brace depth to find the matching `}`.
+  const generatorBodyRanges: Array<{ start: number; end: number }> = [];
+
+  // Find all function* declarations/expressions
+  const genRegex = /\bfunction\s*\*/g;
+  let genMatch: RegExpExecArray | null;
+  while ((genMatch = genRegex.exec(source)) !== null) {
+    // Find the opening brace of the generator body
+    let i = genMatch.index + genMatch[0].length;
+    // Skip optional name
+    while (i < source.length && /\s/.test(source[i]!)) i++;
+    if (i < source.length && /[a-zA-Z_$]/.test(source[i]!)) {
+      while (i < source.length && /[\w$]/.test(source[i]!)) i++;
+    }
+    // Skip whitespace
+    while (i < source.length && /\s/.test(source[i]!)) i++;
+    // Skip params (...)
+    if (i < source.length && source[i] === "(") {
+      let parenDepth = 1;
+      i++;
+      while (i < source.length && parenDepth > 0) {
+        if (source[i] === "(") parenDepth++;
+        else if (source[i] === ")") parenDepth--;
+        i++;
+      }
+    }
+    // Skip whitespace
+    while (i < source.length && /\s/.test(source[i]!)) i++;
+    // Skip optional return type annotation (: Type)
+    if (i < source.length && source[i] === ":") {
+      i++;
+      while (i < source.length && /\s/.test(source[i]!)) i++;
+      // Skip type until we hit {
+      while (i < source.length && source[i] !== "{") i++;
+    }
+    // Now we should be at the opening brace
+    if (i < source.length && source[i] === "{") {
+      const bodyStart = i;
+      let braceDepth = 1;
+      i++;
+      while (i < source.length && braceDepth > 0) {
+        if (source[i] === "{") braceDepth++;
+        else if (source[i] === "}") braceDepth--;
+        // Skip string literals to avoid counting braces inside them
+        else if (source[i] === '"' || source[i] === "'" || source[i] === "`") {
+          const quote = source[i]!;
+          i++;
+          while (i < source.length && source[i] !== quote) {
+            if (source[i] === "\\" ) i++; // skip escaped char
+            i++;
+          }
+        }
+        i++;
+      }
+      generatorBodyRanges.push({ start: bodyStart, end: i });
+    }
+  }
+
+  // Now replace yield outside generator body ranges
+  const yieldRegex = /\byield\b/g;
+  let result = "";
+  let lastIndex = 0;
+  let yieldMatch: RegExpExecArray | null;
+  while ((yieldMatch = yieldRegex.exec(source)) !== null) {
+    const pos = yieldMatch.index;
+    const insideGenerator = generatorBodyRanges.some(
+      r => pos >= r.start && pos < r.end
+    );
+    result += source.slice(lastIndex, pos);
+    result += insideGenerator ? "yield" : "_yield";
+    lastIndex = pos + "yield".length;
+  }
+  result += source.slice(lastIndex);
+  return result;
+}
+
+/**
  * Wrap a test262 test into a compilable TS module.
  *
  * Strategy: provide a shim for assert.sameValue that traps on mismatch.
@@ -865,12 +965,9 @@ export function wrapTest(source: string, meta?: Test262Meta): string {
 
   // Rename `yield` used as an identifier to `_yield` — in sloppy-mode JS
   // `yield` is a valid identifier, but modules are strict mode where it's reserved.
-  // Only rename when NOT inside a generator function (where yield is a keyword).
-  // We detect identifier usage via word-boundary patterns like `var yield`, `yield =`, etc.
-  if (!/\bfunction\s*\*/.test(body)) {
-    // No generator functions → safe to rename all yield identifiers
-    body = body.replace(/\byield\b/g, "_yield");
-  }
+  // When generator functions are present, only rename `yield` outside generator bodies
+  // (inside generator bodies, `yield` is the keyword and must be preserved).
+  body = renameYieldOutsideGenerators(body);
 
   // Widen switch discriminants from literal types to `number` to avoid
   // TypeScript strict narrowing errors like "Type '1' is not comparable to type '0'"
