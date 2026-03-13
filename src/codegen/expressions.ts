@@ -293,6 +293,19 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
     fctx.body.push({ op: "f64.const", value: 0 });
     return;
   }
+  // externref → i64 (unbox number then truncate to i64)
+  if (from.kind === "externref" && to.kind === "i64") {
+    addUnionImports(ctx);
+    const funcIdx = ctx.funcMap.get("__unbox_number");
+    if (funcIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx });
+      fctx.body.push({ op: "i64.trunc_sat_f64_s" });
+      return;
+    }
+    fctx.body.push({ op: "drop" });
+    fctx.body.push({ op: "i64.const", value: 0n });
+    return;
+  }
   // f64 → externref (box number)
   if (from.kind === "f64" && to.kind === "externref") {
     addUnionImports(ctx);
@@ -308,6 +321,16 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
     const funcIdx = ctx.funcMap.get("__box_number");
     if (funcIdx !== undefined) {
       fctx.body.push({ op: "f64.convert_i32_s" });
+      fctx.body.push({ op: "call", funcIdx });
+      return;
+    }
+  }
+  // i64 → externref (box as number: convert i64 → f64, then box)
+  if (from.kind === "i64" && to.kind === "externref") {
+    addUnionImports(ctx);
+    const funcIdx = ctx.funcMap.get("__box_number");
+    if (funcIdx !== undefined) {
+      fctx.body.push({ op: "f64.convert_i64_s" });
       fctx.body.push({ op: "call", funcIdx });
       return;
     }
@@ -2536,10 +2559,10 @@ function compileBinaryExpression(
   // String operations — string triggers string concat for +, or string comparison when both strings
   const isRelational = op === ts.SyntaxKind.LessThanToken || op === ts.SyntaxKind.LessThanEqualsToken ||
     op === ts.SyntaxKind.GreaterThanToken || op === ts.SyntaxKind.GreaterThanEqualsToken;
-  if (isStringType(leftTsType) && (isStringType(rightTsType) || op === ts.SyntaxKind.PlusToken || (!isRelational && !isNumberType(rightTsType) && !isBooleanType(rightTsType)))) {
+  if (isStringType(leftTsType) && (isStringType(rightTsType) || op === ts.SyntaxKind.PlusToken || (!isRelational && !isNumberType(rightTsType) && !isBooleanType(rightTsType) && !isBigIntType(rightTsType)))) {
     return compileStringBinaryOp(ctx, fctx, expr, op);
   }
-  if (op === ts.SyntaxKind.PlusToken && isStringType(rightTsType)) {
+  if (op === ts.SyntaxKind.PlusToken && isStringType(rightTsType) && !isBigIntType(leftTsType)) {
     return compileStringBinaryOp(ctx, fctx, expr, op);
   }
 
