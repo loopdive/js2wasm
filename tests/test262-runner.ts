@@ -802,6 +802,86 @@ function resolveUnicodeEscapes(source: string): string {
 }
 
 /**
+ * Strip assert.sameValue(expr, undefined) / assert.sameValue(expr, void 0, msg) calls.
+ * Uses paren-counting to correctly handle nested calls like
+ * assert.sameValue(parseInt("11", undefined), parseInt("11", 10)).
+ * Only strips when `undefined` or `void 0` is the second top-level argument.
+ */
+function stripUndefinedAssert(code: string, fnName: string): string {
+  let result = "";
+  let i = 0;
+  while (i < code.length) {
+    const idx = code.indexOf(fnName + "(", i);
+    if (idx === -1) {
+      result += code.slice(i);
+      break;
+    }
+    // Check word boundary before fnName
+    if (idx > 0 && /\w/.test(code[idx - 1]!)) {
+      result += code.slice(i, idx + fnName.length);
+      i = idx + fnName.length;
+      continue;
+    }
+    let pos = idx + fnName.length + 1; // past the opening '('
+    let depth = 1;
+    let commaCount = 0;
+    let firstCommaPos = -1;
+    let closeParenPos = -1;
+    while (pos < code.length && depth > 0) {
+      const ch = code[pos]!;
+      if (ch === "(") depth++;
+      else if (ch === ")") { depth--; if (depth === 0) { closeParenPos = pos; break; } }
+      else if (ch === "," && depth === 1) { commaCount++; if (commaCount === 1) firstCommaPos = pos; }
+      else if (ch === "'" || ch === '"') {
+        const quote = ch;
+        pos++;
+        while (pos < code.length && code[pos] !== quote) {
+          if (code[pos] === "\\") pos++;
+          pos++;
+        }
+      }
+      pos++;
+    }
+    if (firstCommaPos >= 0 && closeParenPos >= 0) {
+      // Find the end of the second argument (second comma at depth 1, or close paren)
+      let secondArgEnd = closeParenPos;
+      let scanPos = firstCommaPos + 1;
+      let scanDepth = 1;
+      while (scanPos < closeParenPos) {
+        const ch = code[scanPos]!;
+        if (ch === "(") scanDepth++;
+        else if (ch === ")") scanDepth--;
+        else if (ch === "," && scanDepth === 1) { secondArgEnd = scanPos; break; }
+        else if (ch === "'" || ch === '"') {
+          const quote = ch;
+          scanPos++;
+          while (scanPos < code.length && code[scanPos] !== quote) {
+            if (code[scanPos] === "\\") scanPos++;
+            scanPos++;
+          }
+        }
+        scanPos++;
+      }
+      const secondArg = code.slice(firstCommaPos + 1, secondArgEnd).trim();
+      if (secondArg === "undefined" || /^void\s+0$/.test(secondArg)) {
+        // Strip the entire assert call
+        result += code.slice(i, idx);
+        let endPos = closeParenPos + 1;
+        // Skip optional semicolon and whitespace
+        while (endPos < code.length && (code[endPos] === ";" || code[endPos] === " ")) endPos++;
+        result += "/* stripped undefined assert */";
+        i = endPos;
+        continue;
+      }
+    }
+    // Not an undefined assert -- keep as-is
+    result += code.slice(i, idx + fnName.length + 1);
+    i = idx + fnName.length + 1;
+  }
+  return result;
+}
+
+/**
  * Wrap a test262 test into a compilable TS module.
  *
  * Strategy: provide a shim for assert.sameValue that traps on mismatch.
@@ -832,8 +912,9 @@ export function wrapTest(source: string): string {
 
   // Strip undefined-related patterns that can't work in wasm
   // assert.sameValue(expr, undefined) / assert.sameValue(expr, void 0, msg) → comment out
-  body = body.replace(/\bassert\.sameValue\s*\([^,]+,\s*(undefined|void\s+0)\b[^)]*\)\s*;?/g, "/* stripped undefined assert */");
-  body = body.replace(/\bassert\.notSameValue\s*\([^,]+,\s*(undefined|void\s+0)\b[^)]*\)\s*;?/g, "/* stripped undefined assert */");
+  // Use paren-counting to correctly handle nested calls like assert.sameValue(parseInt("11", undefined), ...)
+  body = stripUndefinedAssert(body, "assert.sameValue");
+  body = stripUndefinedAssert(body, "assert.notSameValue");
   // var x = undefined; → var x: number = 0;
   body = body.replace(/\bvar\s+(\w+)\s*=\s*undefined\s*;/g, "var $1: number = 0;");
   // Strip `if (expr !== undefined) { throw ... }` guards
