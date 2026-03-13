@@ -284,7 +284,7 @@ All independent of each other and of codegen work.
 | ~~304~~ | ~~Unary minus and return edge cases~~ | [E] | 2 | **Done** |
 | 307 | Promise.all/race compile errors | [E] | 7 | Ready |
 | 316 | Array element access out of bounds | [E] | 1 | Done |
-| 229 | Tagged template cache: array out of bounds | [E] | — | Ready |
+| 229 | Tagged template cache: array out of bounds | [E] | — | Done |
 
 ---
 
