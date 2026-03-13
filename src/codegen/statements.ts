@@ -1115,6 +1115,21 @@ function compileForStatement(
         if (!ts.isIdentifier(decl.name)) continue;
         const name = decl.name.text;
 
+        // Check if this variable is a module-level global (e.g., for(var i...)
+        // at the top level). If so, use global.set instead of local.set.
+        const moduleGlobalIdx = ctx.moduleGlobals.get(name);
+        if (moduleGlobalIdx !== undefined) {
+          if (decl.initializer) {
+            const globalDef = ctx.mod.globals[localGlobalIdx(ctx, moduleGlobalIdx)];
+            const wasmType =
+              globalDef?.type ??
+              resolveWasmType(ctx, ctx.checker.getTypeAtLocation(decl));
+            compileExpression(ctx, fctx, decl.initializer, wasmType);
+            fctx.body.push({ op: "global.set", index: moduleGlobalIdx });
+          }
+          continue;
+        }
+
         // Class expression: skip, already handled as class declaration
         if (decl.initializer && ts.isClassExpression(decl.initializer)) {
           continue;
