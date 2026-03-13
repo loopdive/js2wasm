@@ -155,7 +155,7 @@ Can all run in parallel (different diagnostic codes).
 | 279 | Arrow function params — destructuring, defaults | — | Ready (coordinates #243) |
 | 283 | Compound assignment — type coercion gaps | — | Ready |
 | 286 | Logical assignment — nullish/short-circuit | — | Ready (coordinates #283) |
-| 306 | Prefix/postfix increment/decrement | ~44 CE | Ready (coordinates #283) |
+| ~~306~~ | ~~Prefix/postfix increment/decrement~~ | ~44 CE | **Done** |
 | 294 | Assignment expression evaluation order | 7 | Ready |
 
 ---

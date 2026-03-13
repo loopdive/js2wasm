@@ -355,6 +355,7 @@ export function compileSource(
     2769, // "No overload matches this call"
     18049, // "'X' is declared but its value is never read" (unused vars)
     2358, // "The left-hand side of an 'instanceof' expression must be..."
+    2356, // "An arithmetic operand must be of type 'any', 'number', 'bigint' or an enum type" — prefix/postfix inc/dec on non-number
     2362, // "The left-hand side of an arithmetic operation must be..."
     2365, // "Operator 'X' cannot be applied to types 'Y' and 'Z'"
     18050, // "The value 'null'/'undefined' cannot be used here"

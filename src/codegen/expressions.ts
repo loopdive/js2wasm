@@ -5346,6 +5346,14 @@ function compileElementCompoundAssignment(
   return null;
 }
 
+/** Unwrap parenthesized expressions: (x) -> x, ((x)) -> x, etc. */
+function unwrapParens(node: ts.Expression): ts.Expression {
+  while (ts.isParenthesizedExpression(node)) {
+    node = node.expression;
+  }
+  return node;
+}
+
 /**
  * Compile prefix/postfix increment/decrement on member expressions:
  *   ++obj.x, obj.x++, --obj[i], obj[i]--, etc.
@@ -5363,10 +5371,15 @@ function compileMemberIncDec(
   const f64Op = arithOp === "add" ? "f64.add" : "f64.sub";
   const i32Op = arithOp === "add" ? "i32.add" : "i32.sub";
 
+  // Unwrap parenthesized expressions: ++(obj.x) -> ++obj.x
+  operand = unwrapParens(operand);
+
   // Handle obj.prop
   if (ts.isPropertyAccessExpression(operand)) {
     const objType = ctx.checker.getTypeAtLocation(operand.expression);
     const propName = ts.isPrivateIdentifier(operand.name) ? operand.name.text.slice(1) : operand.name.text;
+    // Ensure anonymous types are registered as structs before resolving
+    ensureStructForType(ctx, objType);
     const typeName = resolveStructName(ctx, objType);
     if (!typeName) {
       ctx.errors.push({
@@ -5760,10 +5773,12 @@ function compilePrefixUnary(
       return { kind: "f64" };
     }
     case ts.SyntaxKind.PlusPlusToken: {
-      if (ts.isIdentifier(expr.operand)) {
-        const idx = fctx.localMap.get(expr.operand.text);
+      // Unwrap parenthesized expressions: ++(x) -> ++x
+      const ppOperand = unwrapParens(expr.operand);
+      if (ts.isIdentifier(ppOperand)) {
+        const idx = fctx.localMap.get(ppOperand.text);
         if (idx !== undefined) {
-          const boxedPP = fctx.boxedCaptures?.get(expr.operand.text);
+          const boxedPP = fctx.boxedCaptures?.get(ppOperand.text);
           if (boxedPP) {
             // ++x through ref cell
             fctx.body.push({ op: "local.get", index: idx });
@@ -5795,6 +5810,11 @@ function compilePrefixUnary(
             fctx.body.push({ op: "local.tee", index: idx });
             return { kind: "externref" };
           }
+          // ref/ref_null: struct/array reference — ToNumber gives NaN, NaN + 1 = NaN
+          if (localType?.kind === "ref" || localType?.kind === "ref_null") {
+            fctx.body.push({ op: "f64.const", value: NaN });
+            return { kind: "f64" };
+          }
           fctx.body.push({ op: "local.get", index: idx });
           fctx.body.push({ op: "f64.const", value: 1 });
           fctx.body.push({ op: "f64.add" });
@@ -5810,10 +5830,12 @@ function compilePrefixUnary(
       const arithOp = isIncrement ? "f64.add" : "f64.sub";
       const arithOpI32 = isIncrement ? "i32.add" : "i32.sub";
 
-      if (ts.isIdentifier(expr.operand)) {
-        const idx = fctx.localMap.get(expr.operand.text);
+      // Unwrap parenthesized expressions: --(x) -> --x
+      const mmOperand = unwrapParens(expr.operand);
+      if (ts.isIdentifier(mmOperand)) {
+        const idx = fctx.localMap.get(mmOperand.text);
         if (idx !== undefined) {
-          const boxed = fctx.boxedCaptures?.get(expr.operand.text);
+          const boxed = fctx.boxedCaptures?.get(mmOperand.text);
           if (boxed) {
             // ++x / --x through ref cell
             fctx.body.push({ op: "local.get", index: idx });
@@ -5845,6 +5867,11 @@ function compilePrefixUnary(
             fctx.body.push({ op: "local.tee", index: idx });
             return { kind: "externref" };
           }
+          // ref/ref_null: struct/array reference — ToNumber gives NaN, NaN - 1 = NaN
+          if (localType?.kind === "ref" || localType?.kind === "ref_null") {
+            fctx.body.push({ op: "f64.const", value: NaN });
+            return { kind: "f64" };
+          }
           fctx.body.push({ op: "local.get", index: idx });
           fctx.body.push({ op: "f64.const", value: 1 });
           fctx.body.push({ op: arithOp });
@@ -5874,17 +5901,20 @@ function compilePostfixUnary(
   const arithOp = isIncrement ? "f64.add" : "f64.sub";
   const arithOpI32 = isIncrement ? "i32.add" : "i32.sub";
 
-  if (!ts.isIdentifier(expr.operand)) {
+  // Unwrap parenthesized expressions: (x)++ -> x++
+  const postOperand = unwrapParens(expr.operand);
+
+  if (!ts.isIdentifier(postOperand)) {
     // obj.prop++ or obj[idx]++ — delegate to member increment helper
     const memberOp = isIncrement ? "add" : "sub";
     return compileMemberIncDec(ctx, fctx, expr.operand, memberOp, "postfix");
   }
 
-  if (ts.isIdentifier(expr.operand)) {
-    const idx = fctx.localMap.get(expr.operand.text);
+  if (ts.isIdentifier(postOperand)) {
+    const idx = fctx.localMap.get(postOperand.text);
     if (idx === undefined) {
       ctx.errors.push({
-        message: `Unknown variable: ${expr.operand.text}`,
+        message: `Unknown variable: ${postOperand.text}`,
         line: getLine(expr),
         column: getCol(expr),
       });
@@ -5892,7 +5922,7 @@ function compilePostfixUnary(
     }
 
     // Handle boxed (ref cell) mutable captures for postfix
-    const boxedPost = fctx.boxedCaptures?.get(expr.operand.text);
+    const boxedPost = fctx.boxedCaptures?.get(postOperand.text);
     if (boxedPost) {
       // Return old value, store incremented/decremented
       fctx.body.push({ op: "local.get", index: idx });
@@ -5932,6 +5962,12 @@ function compilePostfixUnary(
       fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__box_number")! });
       fctx.body.push({ op: "local.set", index: idx });
       fctx.body.push({ op: "local.get", index: tmpOld });
+      return { kind: "f64" };
+    }
+
+    // ref/ref_null: struct/array reference — ToNumber gives NaN, postfix returns NaN (old value)
+    if (localType?.kind === "ref" || localType?.kind === "ref_null") {
+      fctx.body.push({ op: "f64.const", value: NaN });
       return { kind: "f64" };
     }
 
