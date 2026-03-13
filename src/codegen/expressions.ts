@@ -7457,7 +7457,11 @@ function compileCallExpression(
         const funcIdx = ctx.funcMap.get(fullName);
         if (funcIdx !== undefined) {
           // Push self (the receiver) as first argument
-          compileExpression(ctx, fctx, propAccess.expression);
+          const recvType = compileExpression(ctx, fctx, propAccess.expression);
+          // Module globals produce ref_null but method params expect ref — narrow
+          if (recvType && recvType.kind === "ref_null") {
+            fctx.body.push({ op: "ref.as_non_null" } as Instr);
+          }
           // Push remaining arguments with type hints
           const paramTypes = getFuncParamTypes(ctx, funcIdx);
           for (let i = 0; i < expr.arguments.length; i++) {
@@ -8125,7 +8129,11 @@ function compileCallExpression(
         const fullName = `${structTypeName}_${methodName}`;
         const funcIdx = ctx.funcMap.get(fullName);
         if (funcIdx !== undefined) {
-          compileExpression(ctx, fctx, elemAccess.expression);
+          const recvType = compileExpression(ctx, fctx, elemAccess.expression);
+          // Module globals produce ref_null but method params expect ref — narrow
+          if (recvType && recvType.kind === "ref_null") {
+            fctx.body.push({ op: "ref.as_non_null" } as Instr);
+          }
           const paramTypes = getFuncParamTypes(ctx, funcIdx);
           for (let i = 0; i < expr.arguments.length; i++) {
             compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
@@ -10876,6 +10884,12 @@ function resolveConstantExpression(
         const declList = decl.parent;
         if (ts.isVariableDeclarationList(declList) && (declList.flags & ts.NodeFlags.Const) !== 0) {
           return resolveConstantExpression(ctx, decl.initializer);
+        }
+        // Also resolve let/var with simple literal initializers
+        if (ts.isVariableDeclarationList(declList) && decl.initializer) {
+          if (ts.isStringLiteral(decl.initializer) || ts.isNumericLiteral(decl.initializer)) {
+            return ts.isStringLiteral(decl.initializer) ? decl.initializer.text : String(Number(decl.initializer.text));
+          }
         }
       }
     }
