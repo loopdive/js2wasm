@@ -1,6 +1,7 @@
 import type {
   WasmModule,
   TypeDef,
+  FuncTypeDef,
   ValType,
   Instr,
   BlockType,
@@ -8,15 +9,122 @@ import type {
   FieldDef,
 } from "../ir/types.js";
 
+/**
+ * Compute the set of type indices that can be inlined into their sole
+ * referencing function definition.  A func type qualifies when:
+ *   1. It is a plain "func" type (not struct/array/rec/sub).
+ *   2. It is referenced exactly once across the entire module.
+ *   3. That single reference comes from a WasmFunction.typeIdx (not from
+ *      an import, tag, call_indirect, call_ref, block type, or ValType ref).
+ */
+function computeInlineableTypes(mod: WasmModule): Set<number> {
+  // refCount: total number of references to each type index
+  const refCount = new Map<number, number>();
+  // nonFuncRef: type indices referenced from non-func-definition contexts
+  const nonFuncRef = new Set<number>();
+
+  const bump = (idx: number) => refCount.set(idx, (refCount.get(idx) ?? 0) + 1);
+  const markNonFunc = (idx: number) => { bump(idx); nonFuncRef.add(idx); };
+
+  // --- Imports ---
+  for (const imp of mod.imports) {
+    if (imp.desc.kind === "func") markNonFunc(imp.desc.typeIdx);
+  }
+
+  // --- Tags ---
+  for (const tag of mod.tags) {
+    markNonFunc(tag.typeIdx);
+  }
+
+  // --- Functions (the one "func definition" reference) ---
+  for (const f of mod.functions) {
+    bump(f.typeIdx);
+    // Scan instructions for call_indirect, call_ref, and block-type refs
+    walkInstrs(f.body, (instr) => {
+      if (instr.op === "call_indirect") markNonFunc(instr.typeIdx);
+      if (instr.op === "call_ref") markNonFunc(instr.typeIdx);
+    });
+    walkBlockTypes(f.body, (bt) => {
+      if (bt.kind === "type") markNonFunc(bt.typeIdx);
+    });
+  }
+
+  // Build result set
+  const inlineable = new Set<number>();
+  for (let i = 0; i < mod.types.length; i++) {
+    const t = mod.types[i]!;
+    if (
+      t.kind === "func" &&
+      (refCount.get(i) ?? 0) === 1 &&
+      !nonFuncRef.has(i)
+    ) {
+      inlineable.add(i);
+    }
+  }
+  return inlineable;
+}
+
+/** Walk all instructions (recursively into blocks) and call visitor on each */
+function walkInstrs(instrs: Instr[], visitor: (instr: Instr) => void): void {
+  for (const instr of instrs) {
+    visitor(instr);
+    if ("body" in instr && Array.isArray((instr as any).body)) {
+      walkInstrs((instr as any).body, visitor);
+    }
+    if ("then" in instr && Array.isArray((instr as any).then)) {
+      walkInstrs((instr as any).then, visitor);
+    }
+    if ("else" in instr && Array.isArray((instr as any).else)) {
+      walkInstrs((instr as any).else, visitor);
+    }
+    if ("catches" in instr && Array.isArray((instr as any).catches)) {
+      for (const c of (instr as any).catches) {
+        if (Array.isArray(c.body)) walkInstrs(c.body, visitor);
+      }
+    }
+    if ("catchAll" in instr && Array.isArray((instr as any).catchAll)) {
+      walkInstrs((instr as any).catchAll, visitor);
+    }
+  }
+}
+
+/** Walk all block types in instructions */
+function walkBlockTypes(instrs: Instr[], visitor: (bt: BlockType) => void): void {
+  for (const instr of instrs) {
+    if ("blockType" in instr) {
+      visitor((instr as any).blockType);
+    }
+    if ("body" in instr && Array.isArray((instr as any).body)) {
+      walkBlockTypes((instr as any).body, visitor);
+    }
+    if ("then" in instr && Array.isArray((instr as any).then)) {
+      walkBlockTypes((instr as any).then, visitor);
+    }
+    if ("else" in instr && Array.isArray((instr as any).else)) {
+      walkBlockTypes((instr as any).else, visitor);
+    }
+    if ("catches" in instr && Array.isArray((instr as any).catches)) {
+      for (const c of (instr as any).catches) {
+        if (Array.isArray(c.body)) walkBlockTypes(c.body, visitor);
+      }
+    }
+    if ("catchAll" in instr && Array.isArray((instr as any).catchAll)) {
+      walkBlockTypes((instr as any).catchAll, visitor);
+    }
+  }
+}
+
 /** Emit a WAT text representation of the IR module */
 export function emitWat(mod: WasmModule): string {
   const lines: string[] = [];
   const indent = (depth: number) => "  ".repeat(depth);
+  const inlineableTypes = computeInlineableTypes(mod);
 
   lines.push("(module");
 
-  // Types
+  // Types — skip single-use func types that will be inlined on their function
   for (let i = 0; i < mod.types.length; i++) {
+    if (inlineableTypes.has(i)) continue;
     const t = mod.types[i]!;
     lines.push(`${indent(1)}${formatTypeDef(t, i)}`);
   }
@@ -93,7 +201,7 @@ export function emitWat(mod: WasmModule): string {
 
   for (let i = 0; i < mod.functions.length; i++) {
     const f = mod.functions[i]!;
-    lines.push(formatFunction(f, i + numImportFuncs, mod));
+    lines.push(formatFunction(f, i + numImportFuncs, mod, inlineableTypes));
   }
 
   // Exports
@@ -181,14 +289,24 @@ function formatValType(t: ValType): string {
 function formatFunction(
   f: WasmFunction,
   _globalIdx: number,
-  _mod: WasmModule,
+  mod: WasmModule,
+  inlineableTypes: Set<number>,
 ): string {
   const lines: string[] = [];
-  const typeRef = `(type ${f.typeIdx})`;
 
-  // Find type for params display
+  // If the function's type is single-use, inline the signature instead of referencing the type
+  let sigStr: string;
+  if (inlineableTypes.has(f.typeIdx)) {
+    const t = mod.types[f.typeIdx] as FuncTypeDef;
+    const params = t.params.map((p) => formatValType(p)).join(" ");
+    const results = t.results.map((r) => formatValType(r)).join(" ");
+    sigStr = `${params ? ` (param ${params})` : ""}${results ? ` (result ${results})` : ""}`;
+  } else {
+    sigStr = ` (type ${f.typeIdx})`;
+  }
+
   // Exports are emitted via mod.exports (trailing export section) — no inline export here
-  lines.push(`  (func $${f.name} ${typeRef}`);
+  lines.push(`  (func $${f.name}${sigStr}`);
 
   // Locals
   for (const local of f.locals) {
