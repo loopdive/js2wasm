@@ -141,7 +141,7 @@ Can all run in parallel (different diagnostic codes).
 #279 (arrow fn params — destructuring/defaults) ── coordinates with #243
 
 #283 (compound assignment — type coercion) ──┐
-#286 (logical assignment — nullish/short) ───┼── coordinates (same property/element access)
+#286 (logical assignment — nullish/short) [DONE] ┼── coordinates (same property/element access)
 #306 (prefix/postfix inc/dec on members) ────┘
 
 #294 (assignment evaluation order) ── independent
@@ -154,7 +154,7 @@ Can all run in parallel (different diagnostic codes).
 | 243 | Unsupported assignment target patterns (array/object) | — | Ready (coordinates #190) |
 | 279 | Arrow function params — destructuring, defaults | — | Ready (coordinates #243) |
 | 283 | Compound assignment — type coercion gaps | — | Ready |
-| 286 | Logical assignment — nullish/short-circuit | — | Ready (coordinates #283) |
+| 286 | Logical assignment — nullish/short-circuit | — | Done |
 | 306 | Prefix/postfix increment/decrement | ~44 CE | Ready (coordinates #283) |
 | 294 | Assignment expression evaluation order | 7 | Ready |
 
