@@ -4931,91 +4931,45 @@ function compileCompoundAssignment(
   // Check captured globals first
   const capturedIdx = ctx.capturedGlobals.get(name);
   if (capturedIdx !== undefined && fctx.localMap.get(name) === undefined) {
+    const globalDef = ctx.mod.globals[localGlobalIdx(ctx, capturedIdx)];
+    const globalType: ValType = globalDef?.type ?? { kind: "f64" };
+    const needsCoerce = globalType.kind !== "f64";
+
     fctx.body.push({ op: "global.get", index: capturedIdx });
+    if (needsCoerce) coerceType(ctx, fctx, globalType, { kind: "f64" });
+
     const compoundRhsType1 = compileExpression(ctx, fctx, expr.right, { kind: "f64" });
     if (!compoundRhsType1) { ctx.errors.push({ message: "Failed to compile compound assignment RHS", line: getLine(expr), column: getCol(expr) }); return null; }
+    if (compoundRhsType1.kind !== "f64") coerceType(ctx, fctx, compoundRhsType1, { kind: "f64" });
 
-    switch (op) {
-      case ts.SyntaxKind.PlusEqualsToken:
-        fctx.body.push({ op: "f64.add" });
-        break;
-      case ts.SyntaxKind.MinusEqualsToken:
-        fctx.body.push({ op: "f64.sub" });
-        break;
-      case ts.SyntaxKind.AsteriskEqualsToken:
-        fctx.body.push({ op: "f64.mul" });
-        break;
-      case ts.SyntaxKind.AsteriskAsteriskEqualsToken: {
-        const funcIdx = ctx.funcMap.get("Math_pow");
-        if (funcIdx !== undefined) {
-          fctx.body.push({ op: "call", funcIdx });
-        }
-        break;
-      }
-      case ts.SyntaxKind.SlashEqualsToken:
-        fctx.body.push({ op: "f64.div" });
-        break;
-      case ts.SyntaxKind.PercentEqualsToken:
-        emitModulo(fctx);
-        break;
-      case ts.SyntaxKind.AmpersandEqualsToken:
-      case ts.SyntaxKind.BarEqualsToken:
-      case ts.SyntaxKind.CaretEqualsToken:
-      case ts.SyntaxKind.LessThanLessThanEqualsToken:
-      case ts.SyntaxKind.GreaterThanGreaterThanEqualsToken:
-      case ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken:
-        emitBitwiseCompoundOp(fctx, op);
-        break;
-    }
+    emitCompoundOp(ctx, fctx, op);
 
+    if (needsCoerce) coerceType(ctx, fctx, { kind: "f64" }, globalType);
     fctx.body.push({ op: "global.set", index: capturedIdx });
     fctx.body.push({ op: "global.get", index: capturedIdx });
-    return { kind: "f64" };
+    return globalType;
   }
 
   // Check module-level globals
   const moduleIdx = ctx.moduleGlobals.get(name);
   if (moduleIdx !== undefined && fctx.localMap.get(name) === undefined) {
+    const globalDef = ctx.mod.globals[localGlobalIdx(ctx, moduleIdx)];
+    const globalType: ValType = globalDef?.type ?? { kind: "f64" };
+    const needsCoerce = globalType.kind !== "f64";
+
     fctx.body.push({ op: "global.get", index: moduleIdx });
+    if (needsCoerce) coerceType(ctx, fctx, globalType, { kind: "f64" });
+
     const compoundRhsType2 = compileExpression(ctx, fctx, expr.right, { kind: "f64" });
     if (!compoundRhsType2) { ctx.errors.push({ message: "Failed to compile compound assignment RHS", line: getLine(expr), column: getCol(expr) }); return null; }
+    if (compoundRhsType2.kind !== "f64") coerceType(ctx, fctx, compoundRhsType2, { kind: "f64" });
 
-    switch (op) {
-      case ts.SyntaxKind.PlusEqualsToken:
-        fctx.body.push({ op: "f64.add" });
-        break;
-      case ts.SyntaxKind.MinusEqualsToken:
-        fctx.body.push({ op: "f64.sub" });
-        break;
-      case ts.SyntaxKind.AsteriskEqualsToken:
-        fctx.body.push({ op: "f64.mul" });
-        break;
-      case ts.SyntaxKind.AsteriskAsteriskEqualsToken: {
-        const funcIdx = ctx.funcMap.get("Math_pow");
-        if (funcIdx !== undefined) {
-          fctx.body.push({ op: "call", funcIdx });
-        }
-        break;
-      }
-      case ts.SyntaxKind.SlashEqualsToken:
-        fctx.body.push({ op: "f64.div" });
-        break;
-      case ts.SyntaxKind.PercentEqualsToken:
-        emitModulo(fctx);
-        break;
-      case ts.SyntaxKind.AmpersandEqualsToken:
-      case ts.SyntaxKind.BarEqualsToken:
-      case ts.SyntaxKind.CaretEqualsToken:
-      case ts.SyntaxKind.LessThanLessThanEqualsToken:
-      case ts.SyntaxKind.GreaterThanGreaterThanEqualsToken:
-      case ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken:
-        emitBitwiseCompoundOp(fctx, op);
-        break;
-    }
+    emitCompoundOp(ctx, fctx, op);
 
+    if (needsCoerce) coerceType(ctx, fctx, { kind: "f64" }, globalType);
     fctx.body.push({ op: "global.set", index: moduleIdx });
     fctx.body.push({ op: "global.get", index: moduleIdx });
-    return { kind: "f64" };
+    return globalType;
   }
 
   const localIdx = fctx.localMap.get(name);
@@ -5066,58 +5020,22 @@ function compileCompoundAssignment(
     return boxed.valType;
   }
 
-  const localType = getLocalType(fctx, localIdx);
-  const isExternLocal = localType?.kind === "externref";
+  const localType = getLocalType(fctx, localIdx) ?? { kind: "f64" as const };
+  const needsLocalCoerce = localType.kind !== "f64";
 
-  if (isExternLocal) {
-    // Externref local used in arithmetic — unbox to f64 first
-    addUnionImports(ctx);
-    fctx.body.push({ op: "local.get", index: localIdx });
-    fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
-  } else {
-    fctx.body.push({ op: "local.get", index: localIdx });
-  }
+  fctx.body.push({ op: "local.get", index: localIdx });
+  if (needsLocalCoerce) coerceType(ctx, fctx, localType, { kind: "f64" });
+
   const compoundRhsType3 = compileExpression(ctx, fctx, expr.right, { kind: "f64" });
   if (!compoundRhsType3) { ctx.errors.push({ message: "Failed to compile compound assignment RHS", line: getLine(expr), column: getCol(expr) }); return null; }
+  if (compoundRhsType3.kind !== "f64") coerceType(ctx, fctx, compoundRhsType3, { kind: "f64" });
 
-  switch (op) {
-    case ts.SyntaxKind.PlusEqualsToken:
-      fctx.body.push({ op: "f64.add" });
-      break;
-    case ts.SyntaxKind.MinusEqualsToken:
-      fctx.body.push({ op: "f64.sub" });
-      break;
-    case ts.SyntaxKind.AsteriskEqualsToken:
-      fctx.body.push({ op: "f64.mul" });
-      break;
-    case ts.SyntaxKind.AsteriskAsteriskEqualsToken: {
-      const funcIdx = ctx.funcMap.get("Math_pow");
-      if (funcIdx !== undefined) {
-        fctx.body.push({ op: "call", funcIdx });
-      }
-      break;
-    }
-    case ts.SyntaxKind.SlashEqualsToken:
-      fctx.body.push({ op: "f64.div" });
-      break;
-    case ts.SyntaxKind.PercentEqualsToken:
-      emitModulo(fctx);
-      break;
-    case ts.SyntaxKind.AmpersandEqualsToken:
-    case ts.SyntaxKind.BarEqualsToken:
-    case ts.SyntaxKind.CaretEqualsToken:
-    case ts.SyntaxKind.LessThanLessThanEqualsToken:
-    case ts.SyntaxKind.GreaterThanGreaterThanEqualsToken:
-    case ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken:
-      emitBitwiseCompoundOp(fctx, op);
-      break;
-  }
+  emitCompoundOp(ctx, fctx, op);
 
-  if (isExternLocal) {
-    // Box result back to externref and store
-    fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__box_number")! });
+  if (needsLocalCoerce) {
+    coerceType(ctx, fctx, { kind: "f64" }, localType);
     fctx.body.push({ op: "local.tee", index: localIdx });
-    return { kind: "externref" };
+    return localType;
   }
   fctx.body.push({ op: "local.tee", index: localIdx });
   return { kind: "f64" };
