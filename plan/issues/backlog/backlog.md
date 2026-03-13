@@ -166,7 +166,7 @@ _Details: [sprint.md](../ready/sprint.md)_
 | [138](../ready/138.md) | Bug: valueOf/toString coercion on comparison operators | Open | — |
 | [139](../done/139.md) | Bug: valueOf/toString coercion on arithmetic operators | Done | 2026-03-13 |
 | [140](../ready/140.md) | Bug: object computed property names runtime | Open | — |
-| [141](../ready/141.md) | Bug: tagged template literal runtime failures | Open | — |
+| [141](../done/141.md) | Bug: tagged template literal runtime failures | Done | 2026-03-13 |
 | [142](../ready/142.md) | Bug: assignment destructuring failures | Open | — |
 | [143](../ready/143.md) | Bug: for-loop edge cases | Open | — |
 | [144](../ready/144.md) | Bug: new expression with class expressions | Open | — |
