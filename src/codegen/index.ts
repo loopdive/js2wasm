@@ -8253,12 +8253,33 @@ function compileDeclarations(
 /** Scan all function bodies for ref.func instructions and record their targets */
 function collectDeclaredFuncRefs(ctx: CodegenContext): void {
   const refs = new Set<number>();
-  for (const func of ctx.mod.functions) {
-    for (const instr of func.body) {
+  function scanInstrs(instrs: Instr[]): void {
+    for (const instr of instrs) {
       if (instr.op === "ref.func") {
         refs.add((instr as { op: "ref.func"; funcIdx: number }).funcIdx);
       }
+      // Recurse into nested instruction arrays (if/then/else, block/body, loop, try/catch)
+      if ("body" in instr && Array.isArray((instr as any).body)) {
+        scanInstrs((instr as any).body);
+      }
+      if ("then" in instr && Array.isArray((instr as any).then)) {
+        scanInstrs((instr as any).then);
+      }
+      if ("else" in instr && Array.isArray((instr as any).else)) {
+        scanInstrs((instr as any).else);
+      }
+      if ("catches" in instr && Array.isArray((instr as any).catches)) {
+        for (const c of (instr as any).catches) {
+          if (Array.isArray(c.body)) scanInstrs(c.body);
+        }
+      }
+      if ("catchAll" in instr && Array.isArray((instr as any).catchAll)) {
+        scanInstrs((instr as any).catchAll);
+      }
     }
+  }
+  for (const func of ctx.mod.functions) {
+    scanInstrs(func.body);
   }
   if (refs.size > 0) {
     ctx.mod.declaredFuncRefs = [...refs].sort((a, b) => a - b);
