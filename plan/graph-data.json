@@ -871,16 +871,6 @@
       "cluster": "Modules / Imports"
     },
     {
-      "id": 334,
-      "title": "Private class fields and methods",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_ce": 15,
-      "cluster": "Class / New"
-    },
-    {
       "id": 335,
       "title": "Parser comma errors (non-computed-property contexts)",
       "priority": "medium",
@@ -1058,16 +1048,6 @@
       "cluster": "Unclustered"
     },
     {
-      "id": 352,
-      "title": "Delete operator",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_skip": 264,
-      "cluster": "Unclustered"
-    },
-    {
       "id": 353,
       "title": "For-of with generators and custom iterators",
       "priority": "medium",
@@ -1206,16 +1186,6 @@
       "cluster": "Unclustered"
     },
     {
-      "id": 367,
-      "title": "String variable concatenation in comparisons",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_skip": 14,
-      "cluster": "String / Template literals"
-    },
-    {
       "id": 368,
       "title": "Global/arrow `this` reference",
       "priority": "low",
@@ -1336,16 +1306,6 @@
       "cluster": "Scope / Identifiers"
     },
     {
-      "id": 381,
-      "title": "Nullish coalescing false positives",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_ce": 4,
-      "cluster": "Diagnostics"
-    },
-    {
       "id": 382,
       "title": "Spread argument in super/function calls",
       "priority": "low",
@@ -1464,5 +1424,5 @@
       "target": 74
     }
   ],
-  "generated": "2026-03-13T14:14:19.280Z"
+  "generated": "2026-03-13T14:26:45.088Z"
 }
