@@ -7318,12 +7318,62 @@ function collectDeclarations(
           ) {
             collectClassDeclaration(ctx, decl.initializer, decl.name.text);
           }
+          // Recurse into arrow functions and function expressions
+          if (decl.initializer) {
+            collectClassesFromFunctionBody(decl.initializer);
+          }
         }
       } else if (ts.isFunctionDeclaration(stmt) && stmt.body) {
         collectClassesFromStatements(stmt.body.statements);
+      } else if (ts.isIfStatement(stmt)) {
+        // Recurse into if/else blocks
+        if (ts.isBlock(stmt.thenStatement)) {
+          collectClassesFromStatements(stmt.thenStatement.statements);
+        }
+        if (stmt.elseStatement && ts.isBlock(stmt.elseStatement)) {
+          collectClassesFromStatements(stmt.elseStatement.statements);
+        }
+      } else if (ts.isBlock(stmt)) {
+        collectClassesFromStatements(stmt.statements);
+      } else if (ts.isForStatement(stmt) || ts.isForInStatement(stmt) || ts.isForOfStatement(stmt) || ts.isWhileStatement(stmt) || ts.isDoStatement(stmt)) {
+        const body = stmt.statement;
+        if (ts.isBlock(body)) {
+          collectClassesFromStatements(body.statements);
+        }
+      } else if (ts.isSwitchStatement(stmt)) {
+        for (const clause of stmt.caseBlock.clauses) {
+          collectClassesFromStatements(clause.statements);
+        }
+      } else if (ts.isTryStatement(stmt)) {
+        collectClassesFromStatements(stmt.tryBlock.statements);
+        if (stmt.catchClause) {
+          collectClassesFromStatements(stmt.catchClause.block.statements);
+        }
+        if (stmt.finallyBlock) {
+          collectClassesFromStatements(stmt.finallyBlock.statements);
+        }
+      } else if (ts.isLabeledStatement(stmt)) {
+        if (ts.isBlock(stmt.statement)) {
+          collectClassesFromStatements(stmt.statement.statements);
+        }
+      } else if (ts.isExportAssignment(stmt) || ts.isExportDeclaration(stmt)) {
+        // handled at top level
       }
       // Also scan all statements for new (class { ... })() patterns
       collectAnonymousClassesInNewExpr(stmt);
+    }
+  }
+
+  /** Recurse into arrow functions and function expressions to find class declarations */
+  function collectClassesFromFunctionBody(expr: ts.Expression): void {
+    if (ts.isArrowFunction(expr)) {
+      if (ts.isBlock(expr.body)) {
+        collectClassesFromStatements(expr.body.statements);
+      }
+    } else if (ts.isFunctionExpression(expr)) {
+      if (expr.body) {
+        collectClassesFromStatements(expr.body.statements);
+      }
     }
   }
   collectClassesFromStatements(sourceFile.statements);
@@ -7679,12 +7729,59 @@ function compileDeclarations(
               reportError(ctx, decl, `Internal error compiling class expression: ${msg}`);
             }
           }
+          // Recurse into arrow functions and function expressions
+          if (decl.initializer) {
+            compileClassesFromFunctionBody(decl.initializer);
+          }
         }
       } else if (ts.isFunctionDeclaration(stmt) && stmt.body) {
         compileClassesFromStatements(stmt.body.statements);
+      } else if (ts.isIfStatement(stmt)) {
+        if (ts.isBlock(stmt.thenStatement)) {
+          compileClassesFromStatements(stmt.thenStatement.statements);
+        }
+        if (stmt.elseStatement && ts.isBlock(stmt.elseStatement)) {
+          compileClassesFromStatements(stmt.elseStatement.statements);
+        }
+      } else if (ts.isBlock(stmt)) {
+        compileClassesFromStatements(stmt.statements);
+      } else if (ts.isForStatement(stmt) || ts.isForInStatement(stmt) || ts.isForOfStatement(stmt) || ts.isWhileStatement(stmt) || ts.isDoStatement(stmt)) {
+        const body = stmt.statement;
+        if (ts.isBlock(body)) {
+          compileClassesFromStatements(body.statements);
+        }
+      } else if (ts.isSwitchStatement(stmt)) {
+        for (const clause of stmt.caseBlock.clauses) {
+          compileClassesFromStatements(clause.statements);
+        }
+      } else if (ts.isTryStatement(stmt)) {
+        compileClassesFromStatements(stmt.tryBlock.statements);
+        if (stmt.catchClause) {
+          compileClassesFromStatements(stmt.catchClause.block.statements);
+        }
+        if (stmt.finallyBlock) {
+          compileClassesFromStatements(stmt.finallyBlock.statements);
+        }
+      } else if (ts.isLabeledStatement(stmt)) {
+        if (ts.isBlock(stmt.statement)) {
+          compileClassesFromStatements(stmt.statement.statements);
+        }
       }
       // Compile bodies for anonymous class expressions in new expressions
       compileAnonymousClassBodiesInNode(stmt);
+    }
+  }
+
+  /** Recurse into arrow functions and function expressions to compile class bodies */
+  function compileClassesFromFunctionBody(expr: ts.Expression): void {
+    if (ts.isArrowFunction(expr)) {
+      if (ts.isBlock(expr.body)) {
+        compileClassesFromStatements(expr.body.statements);
+      }
+    } else if (ts.isFunctionExpression(expr)) {
+      if (expr.body) {
+        compileClassesFromStatements(expr.body.statements);
+      }
     }
   }
 

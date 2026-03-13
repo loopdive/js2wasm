@@ -1,6 +1,6 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext, ClosureInfo, RestParamInfo } from "./index.js";
-import { allocLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers, addStringImports, cacheStringLiterals, addStringConstantGlobal, nextModuleGlobalIdx } from "./index.js";
+import { allocLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers, addStringImports, cacheStringLiterals, addStringConstantGlobal, nextModuleGlobalIdx, collectClassDeclaration, compileClassBodies } from "./index.js";
 import {
   mapTsTypeToWasm,
   isNumberType,
@@ -653,6 +653,31 @@ function compileExpressionInner(
   if (ts.isTaggedTemplateExpression(expr)) {
     return compileTaggedTemplateExpression(ctx, fctx, expr);
   }
+
+  // ClassExpression as a standalone expression — evaluate for side effects only.
+  // The class struct/constructor are collected during the collection phase or
+  // by compileNestedClassDeclaration. As a standalone expression, we just need
+  // to return a reference (externref null as placeholder since class-as-value
+  // is not fully supported).
+  if (ts.isClassExpression(expr)) {
+    // Ensure the class is collected if not already
+    const className = expr.name?.text;
+    if (className && !ctx.classSet.has(className)) {
+      try {
+        collectClassDeclaration(ctx, expr, className);
+        const funcByName = new Map<string, number>();
+        for (let i = 0; i < ctx.mod.functions.length; i++) {
+          funcByName.set(ctx.mod.functions[i]!.name, i);
+        }
+        compileClassBodies(ctx, expr, funcByName, className);
+      } catch {
+        // Ignore errors — class may use unsupported features
+      }
+    }
+    fctx.body.push({ op: "ref.null.extern" });
+    return { kind: "externref" };
+  }
+
   ctx.errors.push({
     message: `Unsupported expression: ${ts.SyntaxKind[expr.kind]}`,
     line: getLine(expr),
