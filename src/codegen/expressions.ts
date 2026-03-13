@@ -4116,11 +4116,17 @@ function compileElementAssignment(
           }
         }
       }
-      // Also handle constant expressions (e.g. "a" + "b")
+      // Also handle enum members, constant expressions (e.g. "a" + "b"), etc.
       if (fieldName === undefined) {
-        const constVal = resolveConstantExpression(ctx, target.argumentExpression);
-        if (constVal !== undefined) {
-          fieldName = String(constVal);
+        fieldName = resolveComputedKeyExpression(ctx, target.argumentExpression);
+      }
+      // Last resort: use the TypeScript checker's type to infer the field name
+      if (fieldName === undefined) {
+        const argType = ctx.checker.getTypeAtLocation(target.argumentExpression);
+        if (argType.isStringLiteral()) {
+          fieldName = argType.value;
+        } else if (argType.isNumberLiteral()) {
+          fieldName = String(argType.value);
         }
       }
       if (fieldName !== undefined) {
@@ -5381,9 +5387,14 @@ function compileElementCompoundAssignment(
         }
       }
       if (fieldName === undefined) {
-        const constVal = resolveConstantExpression(ctx, target.argumentExpression);
-        if (constVal !== undefined) {
-          fieldName = String(constVal);
+        fieldName = resolveComputedKeyExpression(ctx, target.argumentExpression);
+      }
+      if (fieldName === undefined) {
+        const argType = ctx.checker.getTypeAtLocation(target.argumentExpression);
+        if (argType.isStringLiteral()) {
+          fieldName = argType.value;
+        } else if (argType.isNumberLiteral()) {
+          fieldName = String(argType.value);
         }
       }
 
@@ -5680,6 +5691,17 @@ function compileMemberIncDec(
           fieldName = operand.argumentExpression.text;
         } else if (ts.isNumericLiteral(operand.argumentExpression)) {
           fieldName = operand.argumentExpression.text;
+        }
+        if (fieldName === undefined) {
+          fieldName = resolveComputedKeyExpression(ctx, operand.argumentExpression);
+        }
+        if (fieldName === undefined) {
+          const argType = ctx.checker.getTypeAtLocation(operand.argumentExpression);
+          if (argType.isStringLiteral()) {
+            fieldName = argType.value;
+          } else if (argType.isNumberLiteral()) {
+            fieldName = String(argType.value);
+          }
         }
 
         if (fieldName) {
@@ -6401,31 +6423,54 @@ function compilePostfixIncrementElement(
   const typeIdx = (arrType as { typeIdx: number }).typeIdx;
   const typeDef = ctx.mod.types[typeIdx];
 
-  // String-literal bracket access on struct: obj["prop"]++
-  if (typeDef?.kind === "struct" && ts.isStringLiteral(target.argumentExpression)) {
-    const propName = target.argumentExpression.text;
-    const fieldIdx = typeDef.fields.findIndex((f: { name: string }) => f.name === propName);
-    if (fieldIdx !== -1) {
-      const objLocal = allocLocal(fctx, `__postinc_obj_${fctx.locals.length}`, arrType);
-      fctx.body.push({ op: "local.set", index: objLocal });
+  // Bracket access on struct: obj["prop"]++ / obj[constKey]++
+  if (typeDef?.kind === "struct") {
+    const isVecCheck = typeDef.fields.length === 2 &&
+      typeDef.fields[0]?.name === "length" &&
+      typeDef.fields[1]?.name === "data";
+    if (!isVecCheck) {
+      let propName: string | undefined;
+      if (ts.isStringLiteral(target.argumentExpression)) {
+        propName = target.argumentExpression.text;
+      } else if (ts.isNumericLiteral(target.argumentExpression)) {
+        propName = target.argumentExpression.text;
+      }
+      if (propName === undefined) {
+        propName = resolveComputedKeyExpression(ctx, target.argumentExpression);
+      }
+      if (propName === undefined) {
+        const argType = ctx.checker.getTypeAtLocation(target.argumentExpression);
+        if (argType.isStringLiteral()) {
+          propName = argType.value;
+        } else if (argType.isNumberLiteral()) {
+          propName = String(argType.value);
+        }
+      }
+      if (propName !== undefined) {
+        const fieldIdx = typeDef.fields.findIndex((f: { name: string }) => f.name === propName);
+        if (fieldIdx !== -1) {
+          const objLocal = allocLocal(fctx, `__postinc_obj_${fctx.locals.length}`, arrType);
+          fctx.body.push({ op: "local.set", index: objLocal });
 
-      fctx.body.push({ op: "local.get", index: objLocal });
-      fctx.body.push({ op: "struct.get", typeIdx, fieldIdx });
-      const fieldType = typeDef.fields[fieldIdx]!.type;
-      if (fieldType.kind !== "f64") coerceType(ctx, fctx, fieldType, { kind: "f64" });
-      const oldVal = allocLocal(fctx, `__postinc_old_${fctx.locals.length}`, { kind: "f64" });
-      fctx.body.push({ op: "local.set", index: oldVal });
-      fctx.body.push({ op: "local.get", index: oldVal });
-      fctx.body.push({ op: "f64.const", value: 1 });
-      fctx.body.push({ op: isIncrement ? "f64.add" : "f64.sub" });
-      const newVal = allocLocal(fctx, `__postinc_new_${fctx.locals.length}`, { kind: "f64" });
-      fctx.body.push({ op: "local.set", index: newVal });
-      fctx.body.push({ op: "local.get", index: objLocal });
-      fctx.body.push({ op: "local.get", index: newVal });
-      if (fieldType.kind !== "f64") coerceType(ctx, fctx, { kind: "f64" }, fieldType);
-      fctx.body.push({ op: "struct.set", typeIdx, fieldIdx });
-      fctx.body.push({ op: "local.get", index: oldVal });
-      return { kind: "f64" };
+          fctx.body.push({ op: "local.get", index: objLocal });
+          fctx.body.push({ op: "struct.get", typeIdx, fieldIdx });
+          const fieldType = typeDef.fields[fieldIdx]!.type;
+          if (fieldType.kind !== "f64") coerceType(ctx, fctx, fieldType, { kind: "f64" });
+          const oldVal = allocLocal(fctx, `__postinc_old_${fctx.locals.length}`, { kind: "f64" });
+          fctx.body.push({ op: "local.set", index: oldVal });
+          fctx.body.push({ op: "local.get", index: oldVal });
+          fctx.body.push({ op: "f64.const", value: 1 });
+          fctx.body.push({ op: isIncrement ? "f64.add" : "f64.sub" });
+          const newVal = allocLocal(fctx, `__postinc_new_${fctx.locals.length}`, { kind: "f64" });
+          fctx.body.push({ op: "local.set", index: newVal });
+          fctx.body.push({ op: "local.get", index: objLocal });
+          fctx.body.push({ op: "local.get", index: newVal });
+          if (fieldType.kind !== "f64") coerceType(ctx, fctx, { kind: "f64" }, fieldType);
+          fctx.body.push({ op: "struct.set", typeIdx, fieldIdx });
+          fctx.body.push({ op: "local.get", index: oldVal });
+          return { kind: "f64" };
+        }
+      }
     }
   }
 
@@ -10242,11 +10287,18 @@ function compileElementAccess(
           }
         }
       }
-      // Also handle simple binary expressions that evaluate to a known value
+      // Also handle enum members, binary expressions, and other compile-time-known values
       if (fieldName === undefined) {
-        const constVal = resolveConstantExpression(ctx, expr.argumentExpression);
-        if (constVal !== undefined) {
-          fieldName = String(constVal);
+        fieldName = resolveComputedKeyExpression(ctx, expr.argumentExpression);
+      }
+      // Last resort: use the TypeScript checker's type to infer the field name
+      // e.g. for `let key: "x" = "x"; obj[key]` or `param: "a" | "b"` with single struct field match
+      if (fieldName === undefined) {
+        const argType = ctx.checker.getTypeAtLocation(expr.argumentExpression);
+        if (argType.isStringLiteral()) {
+          fieldName = argType.value;
+        } else if (argType.isNumberLiteral()) {
+          fieldName = String(argType.value);
         }
       }
       if (fieldName !== undefined) {

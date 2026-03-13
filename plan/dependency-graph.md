@@ -113,7 +113,7 @@ Can all run in parallel (different diagnostic codes).
 
 ```
 #140 (computed property names runtime) ──► #230 (variable keys in computed props)
-#239 (element access on struct types) ── independent
+#239 (element access on struct types) ── DONE
 #263 (property does not exist — dynamic) ── independent
 #274 (fn.name, fn.length, fn.call, fn.apply) ── independent
 #281 (object literal patterns — shorthand, spread) ── independent
