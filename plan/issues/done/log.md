@@ -217,3 +217,4 @@
 | 266 | 2026-03-12 | Multi-variable declaration scope resolution | Dep-driven |
 | 315 | 2026-03-12 | Wasm validation error audit — stale local type fix | Dep-driven |
 | 235 | 2026-03-12 | Function.name — fix named expression priority | Dep-driven |
+| 279 | 2026-03-12 | Arrow function params — destructuring, defaults, module-level closures | Dep-driven |

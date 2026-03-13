@@ -7714,6 +7714,44 @@ function compileDeclarations(
 
   compileClassesFromStatements(sourceFile.statements);
 
+  // Compile module-level init statements BEFORE function bodies so that
+  // closureMap is populated for module-level arrow function variables.
+  // This allows function bodies (e.g. test()) to reference module-level closures.
+  const hasModuleInits = ctx.moduleInitStatements.length > 0;
+  const hasStaticInits = ctx.staticInitExprs.length > 0;
+  let compiledInitFctx: FunctionContext | null = null;
+
+  if (hasModuleInits || hasStaticInits) {
+    const initFctx: FunctionContext = {
+      name: "__module_init",
+      params: [],
+      locals: [],
+      localMap: new Map(),
+      returnType: null,
+      body: [],
+      blockDepth: 0,
+      breakStack: [],
+      continueStack: [],
+      labelMap: new Map(),
+    };
+    ctx.currentFunc = initFctx;
+
+    // Compile static property initializers
+    for (const { globalIdx, initializer } of ctx.staticInitExprs) {
+      const globalDef = ctx.mod.globals[localGlobalIdx(ctx, globalIdx)];
+      compileExpression(ctx, initFctx, initializer, globalDef?.type);
+      initFctx.body.push({ op: "global.set", index: globalIdx });
+    }
+
+    // Compile module-level variable init statements
+    for (const stmt of ctx.moduleInitStatements) {
+      compileStatement(ctx, initFctx, stmt);
+    }
+
+    ctx.currentFunc = null;
+    compiledInitFctx = initFctx;
+  }
+
   // Compile top-level function declarations
   for (const stmt of sourceFile.statements) {
     if (
@@ -7736,130 +7774,71 @@ function compileDeclarations(
     }
   }
 
-  // Compile module-level init statements and static property initializers into the start of main()
-  const hasModuleInits = ctx.moduleInitStatements.length > 0;
-  const hasStaticInits = ctx.staticInitExprs.length > 0;
-
-  if (hasModuleInits || hasStaticInits) {
+  // Inject the compiled init body into the appropriate location
+  if (compiledInitFctx && compiledInitFctx.body.length > 0) {
     const mainIdx = funcByName.get("main");
     if (mainIdx !== undefined) {
       const mainFunc = ctx.mod.functions[mainIdx]!;
-      // Create a temporary FunctionContext for compiling init statements
-      const initFctx: FunctionContext = {
-        name: "__module_init",
-        params: [],
-        locals: [],
-        localMap: new Map(),
-        returnType: null,
-        body: [],
-        blockDepth: 0,
-        breakStack: [],
-        continueStack: [],
-        labelMap: new Map(),
-      };
-      ctx.currentFunc = initFctx;
-
-      // Compile static property initializers
-      for (const { globalIdx, initializer } of ctx.staticInitExprs) {
-        const globalDef = ctx.mod.globals[localGlobalIdx(ctx, globalIdx)];
-        compileExpression(ctx, initFctx, initializer, globalDef?.type);
-        initFctx.body.push({ op: "global.set", index: globalIdx });
-      }
-
-      // Compile module-level variable init statements
-      for (const stmt of ctx.moduleInitStatements) {
-        compileStatement(ctx, initFctx, stmt);
-      }
-
-      ctx.currentFunc = null;
-
       // Prepend init body + init locals to main's body
-      if (initFctx.body.length > 0) {
-        mainFunc.body = [...initFctx.body, ...mainFunc.body];
-        // Add init locals to main's locals (adjust any local indices in init body)
-        // Find number of existing main locals
-        const existingLocals = mainFunc.locals.length;
-        // Append init locals to main's locals
-        mainFunc.locals = [...mainFunc.locals, ...initFctx.locals];
-        // Adjust local indices in init body (shift by existing locals count in main)
-        if (existingLocals > 0) {
-          for (const instr of initFctx.body) {
-            if (
-              (instr.op === "local.get" ||
-                instr.op === "local.set" ||
-                instr.op === "local.tee") &&
-              typeof (instr as any).index === "number"
-            ) {
-              (instr as any).index += existingLocals;
-            }
+      mainFunc.body = [...compiledInitFctx.body, ...mainFunc.body];
+      // Add init locals to main's locals (adjust any local indices in init body)
+      // Find number of existing main locals
+      const existingLocals = mainFunc.locals.length;
+      // Append init locals to main's locals
+      mainFunc.locals = [...mainFunc.locals, ...compiledInitFctx.locals];
+      // Adjust local indices in init body (shift by existing locals count in main)
+      if (existingLocals > 0) {
+        for (const instr of compiledInitFctx.body) {
+          if (
+            (instr.op === "local.get" ||
+              instr.op === "local.set" ||
+              instr.op === "local.tee") &&
+            typeof (instr as any).index === "number"
+          ) {
+            (instr as any).index += existingLocals;
           }
         }
       }
     } else {
       // No main() function — create a standalone __module_init and inject
       // a guarded call at the start of every exported function.
-      const initFctx: FunctionContext = {
+
+      // Add a guard global: __init_done (i32, initially 0)
+      const guardGlobalIdx = nextModuleGlobalIdx(ctx);
+      ctx.mod.globals.push({
+        name: "__init_done",
+        type: { kind: "i32" },
+        mutable: true,
+        init: [{ op: "i32.const", value: 0 }],
+      });
+
+      // Create the __module_init function
+      const initTypeIdx = addFuncType(ctx, [], [], "__module_init_type");
+      const initFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+      ctx.mod.functions.push({
         name: "__module_init",
-        params: [],
-        locals: [],
-        localMap: new Map(),
-        returnType: null,
-        body: [],
-        blockDepth: 0,
-        breakStack: [],
-        continueStack: [],
-        labelMap: new Map(),
-      };
-      ctx.currentFunc = initFctx;
+        typeIdx: initTypeIdx,
+        locals: compiledInitFctx.locals,
+        body: compiledInitFctx.body,
+        exported: false,
+      });
 
-      for (const { globalIdx, initializer } of ctx.staticInitExprs) {
-        const globalDef = ctx.mod.globals[localGlobalIdx(ctx, globalIdx)];
-        compileExpression(ctx, initFctx, initializer, globalDef?.type);
-        initFctx.body.push({ op: "global.set", index: globalIdx });
-      }
-      for (const stmt of ctx.moduleInitStatements) {
-        compileStatement(ctx, initFctx, stmt);
-      }
-      ctx.currentFunc = null;
+      // Inject guarded call at the start of every exported function
+      const guardPreamble: Instr[] = [
+        { op: "global.get", index: guardGlobalIdx },
+        { op: "i32.eqz" },
+        { op: "if", blockType: { kind: "empty" },
+          then: [
+            { op: "i32.const", value: 1 } as Instr,
+            { op: "global.set", index: guardGlobalIdx } as Instr,
+            { op: "call", funcIdx: initFuncIdx } as Instr,
+          ],
+        } as Instr,
+      ];
 
-      if (initFctx.body.length > 0) {
-        // Add a guard global: __init_done (i32, initially 0)
-        const guardGlobalIdx = nextModuleGlobalIdx(ctx);
-        ctx.mod.globals.push({
-          name: "__init_done",
-          type: { kind: "i32" },
-          mutable: true,
-          init: [{ op: "i32.const", value: 0 }],
-        });
-
-        // Create the __module_init function
-        const initTypeIdx = addFuncType(ctx, [], [], "__module_init_type");
-        const initFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
-        ctx.mod.functions.push({
-          name: "__module_init",
-          typeIdx: initTypeIdx,
-          locals: initFctx.locals,
-          body: initFctx.body,
-          exported: false,
-        });
-
-        // Inject guarded call at the start of every exported function
-        const guardPreamble: Instr[] = [
-          { op: "global.get", index: guardGlobalIdx },
-          { op: "i32.eqz" },
-          { op: "if", blockType: { kind: "empty" },
-            then: [
-              { op: "i32.const", value: 1 } as Instr,
-              { op: "global.set", index: guardGlobalIdx } as Instr,
-              { op: "call", funcIdx: initFuncIdx } as Instr,
-            ],
-          } as Instr,
-        ];
-
-        for (const func of ctx.mod.functions) {
-          if (func.exported && func.name !== "__module_init") {
-            func.body = [...guardPreamble, ...func.body];
-          }
+      for (const func of ctx.mod.functions) {
+        if (func.exported && func.name !== "__module_init") {
+          func.body = [...guardPreamble, ...func.body];
         }
       }
     }
