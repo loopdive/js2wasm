@@ -1,6 +1,6 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext, ClosureInfo, RestParamInfo } from "./index.js";
-import { allocLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers, addStringImports, cacheStringLiterals, addStringConstantGlobal, nextModuleGlobalIdx } from "./index.js";
+import { allocLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers, addStringImports, cacheStringLiterals, addStringConstantGlobal, nextModuleGlobalIdx, ensureWrapperTypes } from "./index.js";
 import {
   mapTsTypeToWasm,
   isNumberType,
@@ -7760,6 +7760,39 @@ function compileCallExpression(
       }
     }
 
+    // Handle wrapper type method calls: new Number(x).valueOf(), etc.
+    {
+      const wrapperMethodName = propAccess.name.text;
+      const recvSymName = receiverType.getSymbol()?.name;
+      if (recvSymName === "Number" && wrapperMethodName === "valueOf" && ctx.wrapperNumberTypeIdx >= 0) {
+        const recvType = compileExpression(ctx, fctx, propAccess.expression);
+        if (recvType && recvType.kind === "ref_null") {
+          fctx.body.push({ op: "ref.as_non_null" } as Instr);
+        }
+        const funcIdx = ctx.funcMap.get("WrapperNumber_valueOf")!;
+        fctx.body.push({ op: "call", funcIdx });
+        return { kind: "f64" };
+      }
+      if (recvSymName === "String" && wrapperMethodName === "valueOf" && ctx.wrapperStringTypeIdx >= 0) {
+        const recvType = compileExpression(ctx, fctx, propAccess.expression);
+        if (recvType && recvType.kind === "ref_null") {
+          fctx.body.push({ op: "ref.as_non_null" } as Instr);
+        }
+        const funcIdx = ctx.funcMap.get("WrapperString_valueOf")!;
+        fctx.body.push({ op: "call", funcIdx });
+        return ctx.fast ? nativeStringType(ctx) : { kind: "externref" };
+      }
+      if (recvSymName === "Boolean" && wrapperMethodName === "valueOf" && ctx.wrapperBooleanTypeIdx >= 0) {
+        const recvType = compileExpression(ctx, fctx, propAccess.expression);
+        if (recvType && recvType.kind === "ref_null") {
+          fctx.body.push({ op: "ref.as_non_null" } as Instr);
+        }
+        const funcIdx = ctx.funcMap.get("WrapperBoolean_valueOf")!;
+        fctx.body.push({ op: "call", funcIdx });
+        return { kind: "i32" };
+      }
+    }
+
     // Check if receiver is a local class instance
     let receiverClassName = receiverType.getSymbol()?.name;
     // Map class expression symbol names to their synthetic names
@@ -9779,6 +9812,69 @@ function compileNewExpression(
       fctx.body.push({ op: "ref.null.extern" });
     }
     return { kind: "externref" };
+  }
+
+  // Handle `new Number(x)`, `new String(x)`, `new Boolean(x)` — wrapper constructors
+  if (ts.isIdentifier(expr.expression)) {
+    const ctorName = expr.expression.text;
+    if (ctorName === "Number" || ctorName === "String" || ctorName === "Boolean") {
+      ensureWrapperTypes(ctx);
+      const args = expr.arguments ?? [];
+
+      if (ctorName === "Number") {
+        // Compile argument as f64 (default 0)
+        if (args.length >= 1) {
+          compileExpression(ctx, fctx, args[0]!, { kind: "f64" });
+        } else {
+          fctx.body.push({ op: "f64.const", value: 0 });
+        }
+        fctx.body.push({ op: "struct.new", typeIdx: ctx.wrapperNumberTypeIdx });
+        return { kind: "ref", typeIdx: ctx.wrapperNumberTypeIdx };
+      }
+
+      if (ctorName === "String") {
+        // Compile argument as string
+        const strType = ctx.fast ? nativeStringType(ctx) : { kind: "externref" } as ValType;
+        if (args.length >= 1) {
+          compileExpression(ctx, fctx, args[0]!, strType);
+        } else {
+          if (ctx.fast) {
+            // Empty native string
+            ensureNativeStringHelpers(ctx);
+            const emptyIdx = ctx.funcMap.get("__str_empty");
+            if (emptyIdx !== undefined) {
+              fctx.body.push({ op: "call", funcIdx: emptyIdx });
+            } else {
+              // Fallback: create a 0-length native string
+              fctx.body.push({ op: "i32.const", value: 0 });
+              fctx.body.push({ op: "i32.const", value: 0 });
+              fctx.body.push({ op: "i32.const", value: 0 } as unknown as Instr);
+              fctx.body.push({ op: "array.new_default", typeIdx: ctx.nativeStrDataTypeIdx } as unknown as Instr);
+              fctx.body.push({ op: "struct.new", typeIdx: ctx.nativeStrTypeIdx });
+            }
+          } else {
+            // Empty string constant
+            const emptyStrResult = compileStringLiteral(ctx, fctx, "");
+            if (!emptyStrResult) {
+              fctx.body.push({ op: "ref.null.extern" });
+            }
+          }
+        }
+        fctx.body.push({ op: "struct.new", typeIdx: ctx.wrapperStringTypeIdx });
+        return { kind: "ref", typeIdx: ctx.wrapperStringTypeIdx };
+      }
+
+      if (ctorName === "Boolean") {
+        // Compile argument as i32 boolean (default false)
+        if (args.length >= 1) {
+          compileExpression(ctx, fctx, args[0]!, { kind: "i32" });
+        } else {
+          fctx.body.push({ op: "i32.const", value: 0 });
+        }
+        fctx.body.push({ op: "struct.new", typeIdx: ctx.wrapperBooleanTypeIdx });
+        return { kind: "ref", typeIdx: ctx.wrapperBooleanTypeIdx };
+      }
+    }
   }
 
   // Handle `new Object()` — create an empty struct (equivalent to {})
