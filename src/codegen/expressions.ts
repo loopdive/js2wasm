@@ -657,6 +657,11 @@ function compileExpressionInner(
     return { kind: "externref" };
   }
 
+  // delete expr — compile operand for side effects, return boolean
+  if (ts.isDeleteExpression(expr)) {
+    return compileDeleteExpression(ctx, fctx, expr);
+  }
+
   if (ts.isArrowFunction(expr) || ts.isFunctionExpression(expr)) {
     return compileArrowFunction(ctx, fctx, expr);
   }
@@ -698,6 +703,50 @@ function compileExpressionInner(
     column: getCol(expr),
   });
   return null;
+}
+
+// ── Delete expression ─────────────────────────────────────────────────
+
+/**
+ * Compile `delete expr`.
+ * - `delete obj.prop` / `delete obj[key]`: compile object for side effects, drop, return true (i32 1)
+ * - `delete identifier`: return false (i32 0) — variables are not deletable
+ * - `delete otherExpr`: compile for side effects, drop, return true (i32 1)
+ *
+ * True deletion from WasmGC structs is impossible (fields are fixed at compile time),
+ * but returning the correct boolean unblocks the majority of test262 cases.
+ */
+function compileDeleteExpression(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.DeleteExpression,
+): InnerResult {
+  const operand = expr.expression;
+
+  // Unwrap parenthesized/type-assertion wrappers to find the underlying expression
+  let inner: ts.Expression = operand;
+  while (ts.isParenthesizedExpression(inner) || ts.isAsExpression(inner) ||
+         ts.isNonNullExpression(inner) || ts.isTypeAssertionExpression(inner)) {
+    inner = ts.isParenthesizedExpression(inner) ? inner.expression :
+            ts.isAsExpression(inner) ? inner.expression :
+            ts.isNonNullExpression(inner) ? inner.expression :
+            (inner as ts.TypeAssertion).expression;
+  }
+
+  if (ts.isIdentifier(inner)) {
+    // Variables are not deletable — return false
+    fctx.body.push({ op: "i32.const", value: 0 });
+    return { kind: "i32" };
+  }
+
+  // For property access / element access / other expressions:
+  // compile the operand for side effects, drop, return true
+  const operandType = compileExpressionInner(ctx, fctx, operand);
+  if (operandType !== null && operandType !== VOID_RESULT) {
+    fctx.body.push({ op: "drop" });
+  }
+  fctx.body.push({ op: "i32.const", value: 1 });
+  return { kind: "i32" };
 }
 
 // ── RegExp literal ────────────────────────────────────────────────────
