@@ -4886,12 +4886,14 @@ function collectStringStaticImports(
   }
 }
 
-/** Scan source for Promise.all / Promise.race calls and register host imports */
+/** Scan source for Promise.all / Promise.race / Promise.resolve / Promise.reject
+ *  calls and `new Promise(...)` constructor usage, and register host imports */
 function collectPromiseImports(
   ctx: CodegenContext,
   sourceFile: ts.SourceFile,
 ): void {
   const needed = new Set<string>();
+  let needConstructor = false;
 
   function visit(node: ts.Node) {
     if (
@@ -4901,9 +4903,17 @@ function collectPromiseImports(
       node.expression.expression.text === "Promise"
     ) {
       const method = node.expression.name.text;
-      if (method === "all" || method === "race") {
+      if (method === "all" || method === "race" || method === "resolve" || method === "reject") {
         needed.add(method);
       }
+    }
+    // Detect `new Promise(...)`
+    if (
+      ts.isNewExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === "Promise"
+    ) {
+      needConstructor = true;
     }
     ts.forEachChild(node, visit);
   }
@@ -4919,6 +4929,16 @@ function collectPromiseImports(
         }
       }
     }
+    // Also visit top-level variable declarations and expressions
+    if (ts.isVariableStatement(stmt)) {
+      visit(stmt);
+    }
+    if (ts.isExpressionStatement(stmt)) {
+      visit(stmt);
+    }
+    if (ts.isReturnStatement(stmt)) {
+      visit(stmt);
+    }
   }
 
   for (const method of needed) {
@@ -4931,6 +4951,16 @@ function collectPromiseImports(
       );
       addImport(ctx, "env", importName, { kind: "func", typeIdx });
     }
+  }
+
+  // Register new Promise() constructor import: (externref) -> externref
+  if (needConstructor && !ctx.funcMap.has("Promise_new")) {
+    const typeIdx = addFuncType(
+      ctx,
+      [{ kind: "externref" }],
+      [{ kind: "externref" }],
+    );
+    addImport(ctx, "env", "Promise_new", { kind: "func", typeIdx });
   }
 }
 
