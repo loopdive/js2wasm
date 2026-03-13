@@ -7370,7 +7370,11 @@ function compileCallExpression(
         const funcIdx = ctx.funcMap.get(fullName);
         if (funcIdx !== undefined) {
           // Push self (the receiver) as first argument
-          compileExpression(ctx, fctx, propAccess.expression);
+          const receiverResult = compileExpression(ctx, fctx, propAccess.expression);
+          // If receiver is ref_null (e.g. from a module global), cast to non-null ref
+          if (receiverResult && receiverResult.kind === "ref_null") {
+            fctx.body.push({ op: "ref.as_non_null" } as unknown as Instr);
+          }
           // Push remaining arguments with type hints
           const paramTypes = getFuncParamTypes(ctx, funcIdx);
           for (let i = 0; i < expr.arguments.length; i++) {
@@ -11402,18 +11406,27 @@ function compileObjectLiteralForStruct(
       const retType = sig ? ctx.checker.getReturnTypeOfSignature(sig) : undefined;
       const methodResults: ValType[] = retType && !isVoidType(retType) ? [resolveWasmType(ctx, retType)] : [];
 
-      const methodTypeIdx = addFuncType(ctx, methodParams, methodResults, `${fullName}_type`);
-      const methodFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
-      ctx.funcMap.set(fullName, methodFuncIdx);
+      // Check if this method was pre-registered by ensureStructForType.
+      // If so, reuse the existing placeholder function; otherwise create a new one.
+      let methodFunc: WasmFunction;
+      const existingFuncIdx = ctx.funcMap.get(fullName);
+      if (existingFuncIdx !== undefined) {
+        // Reuse the pre-registered placeholder function
+        methodFunc = ctx.mod.functions[existingFuncIdx - ctx.numImportFuncs]!;
+      } else {
+        const methodTypeIdx = addFuncType(ctx, methodParams, methodResults, `${fullName}_type`);
+        const methodFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+        ctx.funcMap.set(fullName, methodFuncIdx);
 
-      const methodFunc: WasmFunction = {
-        name: fullName,
-        typeIdx: methodTypeIdx,
-        locals: [],
-        body: [],
-        exported: false,
-      };
-      ctx.mod.functions.push(methodFunc);
+        methodFunc = {
+          name: fullName,
+          typeIdx: methodTypeIdx,
+          locals: [],
+          body: [],
+          exported: false,
+        };
+        ctx.mod.functions.push(methodFunc);
+      }
 
       // Compile method body
       const methodFctxParams: { name: string; type: ValType }[] = [
