@@ -106,6 +106,7 @@ Can all run in parallel (different diagnostic codes).
 | 238 | Class expression new — `new (class{})()` | — | Done |
 | 261 | ClassDecl + new expression for anonymous classes | — | Ready (coordinates #260) |
 | 260 | ClassDecl + call expression combined | — | Ready (unblocked by #234) |
+| 260 | ClassDecl + call expression combined | — | **Done** |
 
 ---
 
