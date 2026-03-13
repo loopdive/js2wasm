@@ -12524,6 +12524,44 @@ function compileObjectLiteralForStruct(
 
       const savedFunc = ctx.currentFunc;
       ctx.currentFunc = setterFctx;
+
+      // Emit default-value initialization for setter parameters with initializers (#377)
+      for (let pi = 0; pi < prop.parameters.length; pi++) {
+        const param = prop.parameters[pi]!;
+        if (!param.initializer) continue;
+
+        const paramLocalIdx = pi + 1; // account for 'this' param
+        const paramType = setterFctxParams[paramLocalIdx]!.type;
+
+        // Build the "then" block: compile default expression, local.set
+        const savedBody = setterFctx.body;
+        setterFctx.body = [];
+        compileExpression(ctx, setterFctx, param.initializer, paramType);
+        setterFctx.body.push({ op: "local.set", index: paramLocalIdx });
+        const thenInstrs = setterFctx.body;
+        setterFctx.body = savedBody;
+
+        // Emit the null/zero check + conditional assignment
+        if (paramType.kind === "externref") {
+          setterFctx.body.push({ op: "local.get", index: paramLocalIdx });
+          setterFctx.body.push({ op: "ref.is_null" });
+          setterFctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
+        } else if (paramType.kind === "ref_null" || paramType.kind === "ref") {
+          setterFctx.body.push({ op: "local.get", index: paramLocalIdx });
+          setterFctx.body.push({ op: "ref.is_null" });
+          setterFctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
+        } else if (paramType.kind === "i32") {
+          setterFctx.body.push({ op: "local.get", index: paramLocalIdx });
+          setterFctx.body.push({ op: "i32.eqz" });
+          setterFctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
+        } else if (paramType.kind === "f64") {
+          setterFctx.body.push({ op: "local.get", index: paramLocalIdx });
+          setterFctx.body.push({ op: "f64.const", value: 0 });
+          setterFctx.body.push({ op: "f64.eq" });
+          setterFctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
+        }
+      }
+
       if (prop.body) {
         for (const stmt of prop.body.statements) {
           compileStatement(ctx, setterFctx, stmt);

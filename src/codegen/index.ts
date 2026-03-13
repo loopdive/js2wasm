@@ -9113,6 +9113,43 @@ export function compileClassBodies(
 
       ctx.currentFunc = fctx;
 
+      // Emit default-value initialization for setter parameters with initializers (#377)
+      for (let pi = 0; pi < member.parameters.length; pi++) {
+        const param = member.parameters[pi]!;
+        if (!param.initializer) continue;
+
+        const paramLocalIdx = pi + 1; // account for 'this' param
+        const paramType = params[paramLocalIdx]!.type;
+
+        // Build the "then" block: compile default expression, local.set
+        const savedBody = fctx.body;
+        fctx.body = [];
+        compileExpression(ctx, fctx, param.initializer, paramType);
+        fctx.body.push({ op: "local.set", index: paramLocalIdx });
+        const thenInstrs = fctx.body;
+        fctx.body = savedBody;
+
+        // Emit the null/zero check + conditional assignment
+        if (paramType.kind === "externref") {
+          fctx.body.push({ op: "local.get", index: paramLocalIdx });
+          fctx.body.push({ op: "ref.is_null" });
+          fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
+        } else if (paramType.kind === "ref_null" || paramType.kind === "ref") {
+          fctx.body.push({ op: "local.get", index: paramLocalIdx });
+          fctx.body.push({ op: "ref.is_null" });
+          fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
+        } else if (paramType.kind === "i32") {
+          fctx.body.push({ op: "local.get", index: paramLocalIdx });
+          fctx.body.push({ op: "i32.eqz" });
+          fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
+        } else if (paramType.kind === "f64") {
+          fctx.body.push({ op: "local.get", index: paramLocalIdx });
+          fctx.body.push({ op: "f64.const", value: 0 });
+          fctx.body.push({ op: "f64.eq" });
+          fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
+        }
+      }
+
       if (member.body) {
         for (const stmt of member.body.statements) {
           compileStatement(ctx, fctx, stmt);

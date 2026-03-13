@@ -403,6 +403,9 @@ export function compileSource(
     2700, // "Rest types may only be created from object types" — object rest on primitives (#379)
     1212, // "Identifier expected. 'X' is a reserved word in strict mode" — valid in sloppy JS (#270)
     1214, // "Identifier expected. 'yield' is a reserved word in strict mode. Modules are automatically in strict mode." — yield as identifier in sloppy JS (#241)
+    2378, // "A 'get' accessor must return a value" — valid JS pattern, getter can return undefined implicitly (#377)
+    1052, // "A 'set' accessor parameter cannot have an initializer" — valid JS pattern, setter params can have defaults (#377)
+    7033, // "Property 'X' implicitly has type 'any', because its get accessor lacks a return type annotation" — valid JS (#377)
   ]);
 
   // Collect TS diagnostics as errors (or warnings for handled cases)
