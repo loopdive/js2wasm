@@ -245,3 +245,4 @@
 | 307 | 2026-03-13 | Promise.all/race/resolve/reject compile errors | Dep-driven |
 | 227 | 2026-03-13 | BigInt comparison with Infinity causes float-unrepresentable trap | Dep-driven |
 | 267 | 2026-03-13 | Yield expression outside of generator function — diagnostic suppression | Dep-driven |
+| 282 | 2026-03-13 | Variable declaration compile errors -- collection scanning for remaining collect* functions | Dep-driven |
