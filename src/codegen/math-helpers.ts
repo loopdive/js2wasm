@@ -559,27 +559,117 @@ export function emitInlineMathFunctions(
     });
   }
 
-  // Math.log2 = log(x) * LOG2E
+  // Math.log2(x) = e + log2(f), computed via range reduction (exact for powers of 2)
+  // Locals: 0=x, 1=e, 2=f, 3=t, 4=t2
   if (needed.has("log2")) {
-    const logIdx = getFuncIdx("Math_log");
     addMathFunc({
       name: "Math_log2",
       params: f64Param,
       results: f64Result,
-      locals: [],
-      body: [localGet(0), call(logIdx), f64c(LOG2E), mul],
+      locals: [
+        { name: "e", type: f64Type },
+        { name: "f", type: f64Type },
+        { name: "t", type: f64Type },
+        { name: "t2", type: f64Type },
+      ],
+      body: [
+        ...ifThenRet([localGet(0), f64c(0), flt], [f64c(NaN)]),
+        ...ifThenRet([localGet(0), f64c(0), feq], [f64c(-Infinity)]),
+        ...ifThenRet([localGet(0), localGet(0), fne], [f64c(NaN)]),
+        ...ifThenRet([localGet(0), f64c(Infinity), feq], [f64c(Infinity)]),
+        ...ifThenRet([localGet(0), f64c(1), feq], [f64c(0)]),
+
+        // Range reduction: x = f * 2^e, f in [0.5, 2)
+        f64c(0), localSet(1),
+        localGet(0), localSet(2),
+
+        // While f >= 2, halve f and increment e
+        blockLoop([
+          localGet(2), f64c(2), flt, { op: "br_if", depth: 1 } as Instr,
+          localGet(2), f64c(0.5), mul, localSet(2),
+          localGet(1), f64c(1), add, localSet(1),
+          { op: "br", depth: 0 } as Instr,
+        ]),
+
+        // While f < 0.5, double f and decrement e
+        blockLoop([
+          localGet(2), f64c(0.5), fge, { op: "br_if", depth: 1 } as Instr,
+          localGet(2), f64c(2), mul, localSet(2),
+          localGet(1), f64c(1), sub, localSet(1),
+          { op: "br", depth: 0 } as Instr,
+        ]),
+
+        // Adjust to [sqrt(0.5), sqrt(2)]
+        localGet(2), f64c(1.4142135623730951), fgt,
+        { op: "if", blockType: { kind: "empty" },
+          then: [
+            localGet(2), f64c(0.5), mul, localSet(2),
+            localGet(1), f64c(1), add, localSet(1),
+          ],
+        } as Instr,
+
+        // If f == 1, result is exactly e (avoids precision loss)
+        localGet(2), f64c(1), feq,
+        { op: "if", blockType: { kind: "empty" },
+          then: [localGet(1), ret],
+        } as Instr,
+
+        // t = (f - 1) / (f + 1)
+        localGet(2), f64c(1), sub,
+        localGet(2), f64c(1), add,
+        div, localSet(3),
+
+        // t2 = t * t
+        localGet(3), localGet(3), mul, localSet(4),
+
+        // log(f) via atanh series = 2*t*(1 + t2*(1/3 + t2*(1/5 + t2*(1/7 + t2*(1/9 + t2*(1/11 + t2/13))))))
+        localGet(4), f64c(1.0 / 13), mul,
+        f64c(1.0 / 11), add,
+        localGet(4), mul,
+        f64c(1.0 / 9), add,
+        localGet(4), mul,
+        f64c(1.0 / 7), add,
+        localGet(4), mul,
+        f64c(1.0 / 5), add,
+        localGet(4), mul,
+        f64c(1.0 / 3), add,
+        localGet(4), mul,
+        f64c(1), add,
+        localGet(3), mul,
+        f64c(2), mul,
+
+        // log2(f) = log(f) * LOG2E
+        f64c(LOG2E), mul,
+
+        // result = e + log2(f)
+        localGet(1), add,
+      ],
     });
   }
 
-  // Math.log10 = log(x) * LOG10E
+  // Math.log10(x) = log(x) * LOG10E, with integer rounding for exact powers of 10
+  // Locals: 0=x, 1=result, 2=rounded
   if (needed.has("log10")) {
     const logIdx = getFuncIdx("Math_log");
     addMathFunc({
       name: "Math_log10",
       params: f64Param,
       results: f64Result,
-      locals: [],
-      body: [localGet(0), call(logIdx), f64c(LOG10E), mul],
+      locals: [
+        { name: "result", type: f64Type },
+        { name: "rounded", type: f64Type },
+      ],
+      body: [
+        // Compute log(x) * LOG10E
+        localGet(0), call(logIdx), f64c(LOG10E), mul,
+        localSet(1),
+
+        // Round-to-nearest integer when very close (within 1e-12)
+        // This corrects precision loss for exact powers of 10
+        localGet(1), { op: "f64.nearest" } as Instr, localSet(2),
+        localGet(1), localGet(2), sub, fabs, f64c(1e-12), flt,
+        ifElse(f64Type, [localGet(2)], [localGet(1)]),
+      ],
     });
   }
 
@@ -913,11 +1003,11 @@ function buildPowBody(expIdx: number, logIdx: number): Instr[] {
   return [
     // exp == 0 → 1 (for any base, including NaN)
     ...ifThenRet([localGet(1), f64c(0), feq], [f64c(1)]),
-    // base == 1 → 1
-    ...ifThenRet([localGet(0), f64c(1), feq], [f64c(1)]),
-    // NaN checks
+    // NaN checks (must come before base==1, per spec: pow(1, NaN) → NaN)
     ...ifThenRet([localGet(0), localGet(0), fne], [f64c(NaN)]),
     ...ifThenRet([localGet(1), localGet(1), fne], [f64c(NaN)]),
+    // base == 1 → 1
+    ...ifThenRet([localGet(0), f64c(1), feq], [f64c(1)]),
     // exp == 1 → base
     ...ifThenRet([localGet(1), f64c(1), feq], [localGet(0)]),
     // exp == -1 → 1/base
@@ -927,10 +1017,29 @@ function buildPowBody(expIdx: number, logIdx: number): Instr[] {
     // exp == 2 → base*base
     ...ifThenRet([localGet(1), f64c(2), feq], [localGet(0), localGet(0), mul]),
 
-    // base == 0
+    // base == 0: check sign of base and parity of exponent
     localGet(0), f64c(0), feq,
     { op: "if", blockType: { kind: "empty" },
       then: [
+        // isNegZero AND isOddInt? → result has negative sign
+        // isNegZero: 1/base == -Infinity
+        // isOddInt: trunc(exp) == exp AND floor(exp/2)*2 != trunc(exp)
+        f64c(1), localGet(0), div, f64c(-Infinity), feq,  // isNegZero?
+        localGet(1), localGet(1), ftrunc, feq,             // isInteger?
+        { op: "i32.and" } as Instr,
+        localGet(1), ftrunc, f64c(2), div, ffloor,        // isOdd?
+        f64c(2), mul, localGet(1), ftrunc, fne,
+        { op: "i32.and" } as Instr,
+        // Stack: i32 (isNegZeroAndOddInt)
+        { op: "if", blockType: { kind: "empty" },
+          then: [
+            // Negative zero base + odd integer exp
+            localGet(1), f64c(0), fgt,
+            ifElse(f64Type, [f64c(-0.0)], [f64c(-Infinity)]),
+            ret,
+          ],
+        } as Instr,
+        // Positive zero base (or even/non-integer exp)
         localGet(1), f64c(0), fgt,
         ifElse(f64Type, [f64c(0)], [f64c(Infinity)]),
         ret,
@@ -943,10 +1052,25 @@ function buildPowBody(expIdx: number, logIdx: number): Instr[] {
       ifElse(f64Type, [f64c(Infinity)], [f64c(0)]),
     ]),
 
-    // base == -Inf
+    // base == -Inf: sign depends on whether exponent is odd integer
     localGet(0), f64c(-Infinity), feq,
     { op: "if", blockType: { kind: "empty" },
       then: [
+        // isOddInt: trunc(exp) == exp AND floor(exp/2)*2 != trunc(exp)
+        localGet(1), localGet(1), ftrunc, feq,             // isInteger?
+        localGet(1), ftrunc, f64c(2), div, ffloor,         // isOdd?
+        f64c(2), mul, localGet(1), ftrunc, fne,
+        { op: "i32.and" } as Instr,
+        // Now i32 isOddInt is on stack
+        { op: "if", blockType: { kind: "empty" },
+          then: [
+            // Odd integer exponent: -Inf or -0
+            localGet(1), f64c(0), fgt,
+            ifElse(f64Type, [f64c(-Infinity)], [f64c(-0.0)]),
+            ret,
+          ],
+        } as Instr,
+        // Even/non-integer exponent: +Inf or +0
         localGet(1), f64c(0), fgt,
         ifElse(f64Type, [f64c(Infinity)], [f64c(0)]),
         ret,

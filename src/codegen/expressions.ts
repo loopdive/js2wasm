@@ -10287,8 +10287,15 @@ function compileMathCall(
       return { kind: "f64" };
     }
 
-    // Check if any argument is statically NaN → short-circuit
+    // Check if any argument is statically NaN → evaluate all args for side effects, then return NaN
     if (expr.arguments.some(a => isStaticNaN(ctx, a))) {
+      // Must still evaluate all arguments (ToNumber coercion / side effects)
+      for (const arg of expr.arguments) {
+        if (!isStaticNaN(ctx, arg)) {
+          compileExpression(ctx, fctx, arg, f64Hint);
+          fctx.body.push({ op: "drop" } as Instr);
+        }
+      }
       fctx.body.push({ op: "f64.const", value: NaN });
       return { kind: "f64" };
     }
@@ -10808,6 +10815,9 @@ function compilePropertyAccess(
       LN2: Math.LN2,
       LN10: Math.LN10,
       SQRT2: Math.SQRT2,
+      SQRT1_2: Math.SQRT1_2,
+      LOG2E: Math.LOG2E,
+      LOG10E: Math.LOG10E,
     };
     if (propName in mathConstants) {
       fctx.body.push({ op: "f64.const", value: mathConstants[propName]! });
