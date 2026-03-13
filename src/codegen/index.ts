@@ -179,7 +179,7 @@ export interface CodegenContext {
   /** Module-level variable initializers (compiled into __module_init) */
   moduleInitStatements: ts.Statement[];
   /** Nested function capture info: funcName → list of captures with outer local indices */
-  nestedFuncCaptures: Map<string, { name: string; outerLocalIdx: number }[]>;
+  nestedFuncCaptures: Map<string, { name: string; outerLocalIdx: number; mutable?: boolean; valType?: ValType }[]>;
   /** Map from child className → parent className (for local class inheritance) */
   classParentMap: Map<string, string>;
   /** Counter for assigning unique class tags (for instanceof support) */
