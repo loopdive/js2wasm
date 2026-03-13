@@ -95,7 +95,7 @@ Can all run in parallel (different diagnostic codes).
 #234 (ClassDecl in nested positions) ──┐
                                        ├──► #260 (ClassDecl + call expression)
 #232 (method calls on object literals) ┘
-#238 (class expression new) ── independent
+#238 (class expression new) ── DONE
 #261 (ClassDecl + new for anonymous) ── coordinates with #260
 ```
 
@@ -103,7 +103,7 @@ Can all run in parallel (different diagnostic codes).
 |-----|-------|-------|--------|
 | 234 | ClassDeclaration in nested/expression positions | ~681 CE | Ready |
 | 232 | Method calls on object literals | — | Ready |
-| 238 | Class expression new — `new (class{})()` | — | Ready |
+| 238 | Class expression new — `new (class{})()` | — | Done |
 | 261 | ClassDecl + new expression for anonymous classes | — | Ready (coordinates #260) |
 | 260 | ClassDecl + call expression combined | — | Blocked by #234 |
 
