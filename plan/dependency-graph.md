@@ -23,12 +23,14 @@ Can all run in parallel (different diagnostic codes).
 |-----|-------|-------|--------|
 | ~~152~~ | ~~Setter return value error in allowJs mode~~ | — | **Done** |
 | ~~242~~ | ~~Computed property names in class declarations (TS diagnostic)~~ | — | **Done** |
-| 262 | Argument type assignability — allowJs flexibility | ~325 CE | Done |
+| ~~262~~ | ~~Argument type assignability — allowJs flexibility~~ | ~325 CE | **Done** |
 | ~~265~~ | ~~Computed property names in classes — TS diagnostic~~ | — | **Done** |
 | ~~269~~ | ~~Setter return value diagnostic suppression~~ | — | **Done** |
 | ~~270~~ | ~~Strict mode reserved words — let, yield, package~~ | — | **Done** |
 | ~~275~~ | ~~Comma operator warning blocks compilation~~ | ~106 CE | **Done** |
 | ~~276~~ | ~~Computed property name must be of assignable type~~ | — | **Done** |
+| 381 | Nullish coalescing false positives | — | Ready |
+| 383 | Label not allowed / let declaration errors | — | Ready |
 
 ---
 
@@ -47,12 +49,12 @@ Can all run in parallel (different diagnostic codes).
 
 | #   | Title | Tests | Ready? |
 |-----|-------|-------|--------|
-| 321 | Collection functions don't scan top-level (__module_init) | **P0** | **Done** |
-| 317 | Unused $AnyValue preamble + duplicate export cleanup | **P0** | **Done** |
+| ~~321~~ | ~~Collection functions don't scan top-level (__module_init)~~ | **P0** | **Done** |
+| ~~317~~ | ~~Unused $AnyValue preamble + duplicate export cleanup~~ | **P0** | **Done** |
 | ~~319~~ | ~~Inline single-use function type signatures~~ | cosmetic | **Done** |
 | 320 | Dead import and type elimination (umbrella) | — | Blocked by #317 |
 | ~~318~~ | ~~Infer parameter types from call-site arguments~~ | — | **Done** |
-| 322 | Inline trig/transcendental Math methods as pure Wasm | — | Ready |
+| ~~322~~ | ~~Inline trig/transcendental Math methods as pure Wasm~~ | — | **Done** |
 
 ---
 
@@ -66,29 +68,30 @@ Can all run in parallel (different diagnostic codes).
 #228 (BigInt == Number) ───────┘
 #237 (BigInt i64 vs externref) ─── coordinates with #227, #228
 
-#295 (comparison + type coercion) ── independent
+#295 (comparison + type coercion) ── DONE
 #296 (strict equality -0, NaN) ── DONE
 #299 (loose equals null/undefined) ── DONE
 #308 (addition + string/number coercion) ── DONE
-#301 (float → int saturating trunc) ── independent
+#301 (float → int saturating trunc) ── DONE
+#324 (runtime test failures) ── DONE
+#348 (null/undefined arithmetic) ── DONE
 ```
 
 | #   | Title | Tests | Ready? |
 |-----|-------|-------|--------|
-| 138 | valueOf/toString coercion on comparison operators | — | **Done** |
+| ~~138~~ | ~~valueOf/toString coercion on comparison operators~~ | — | **Done** |
 | 139 | valueOf/toString coercion on arithmetic operators | — | Ready (coordinates #138) |
-| 227 | BigInt comparison with Infinity | — | **Done** |
-| 228 | BigInt equality with Number/Boolean | — | Ready (coordinates #227) |
-| 227 | BigInt comparison with Infinity | — | Ready |
-| 228 | BigInt equality with Number/Boolean | — | **Done** |
+| ~~227~~ | ~~BigInt comparison with Infinity~~ | — | **Done** |
+| ~~228~~ | ~~BigInt equality with Number/Boolean~~ | — | **Done** |
 | 237 | BigInt i64 vs externref type mismatch | — | Ready (coordinates #227, #228) |
-| 295 | Comparison operators with type coercion | 8 | **Done** |
-| 296 | Strict equality edge cases (-0, NaN) | 4 | Done |
-| 299 | Loose equals edge cases | 7 | **Done** |
-| 301 | Float unrepresentable in integer range | 4 | **Done** |
-| 308 | Addition operator + string/number coercion | 7 | **Done** |
-| 300 | Object to primitive conversion | 5 | Blocked by #138 (139 done) |
-| 300 | Object to primitive conversion | 5 | **Done** |
+| ~~295~~ | ~~Comparison operators with type coercion~~ | 8 | **Done** |
+| ~~296~~ | ~~Strict equality edge cases (-0, NaN)~~ | 4 | **Done** |
+| ~~299~~ | ~~Loose equals edge cases~~ | 7 | **Done** |
+| ~~301~~ | ~~Float unrepresentable in integer range~~ | 4 | **Done** |
+| ~~308~~ | ~~Addition operator + string/number coercion~~ | 7 | **Done** |
+| ~~300~~ | ~~Object to primitive conversion~~ | 5 | **Done** |
+| ~~324~~ | ~~Runtime test failures (wrong return values)~~ | 396 fail | **Done** |
+| ~~348~~ | ~~Null/undefined arithmetic coercion~~ | — | **Done** |
 
 ---
 
@@ -99,23 +102,22 @@ Can all run in parallel (different diagnostic codes).
                                        ├──► #260 (ClassDecl + call expression)
 #232 (method calls on object literals) ┘
 #238 (class expression new) ── DONE
-#261 (ClassDecl + new for anonymous) ── coordinates with #260
+#261 (ClassDecl + new for anonymous) ── DONE
+#330 (ClassExpression in unsupported positions) ── DONE
 ```
 
 | #   | Title | Tests | Ready? |
 |-----|-------|-------|--------|
-| 234 | ClassDeclaration in nested/expression positions | ~681 CE | **Done** |
-| 232 | Method calls on object literals | — | Ready |
-| 238 | Class expression new — `new (class{})()` | — | Done |
-| 234 | ClassDeclaration in nested/expression positions | ~681 CE | Ready |
-| 232 | Method calls on object literals | — | Done |
-| 238 | Class expression new — `new (class{})()` | — | Ready |
-| 261 | ClassDecl + new expression for anonymous classes | — | Ready (coordinates #260) |
-| 260 | ClassDecl + call expression combined | — | Ready (unblocked by #234) |
-| 260 | ClassDecl + call expression combined | — | **Done** |
-| 238 | Class expression new — `new (class{})()` | — | Ready |
-| 261 | ClassDecl + new expression for anonymous classes | — | Done |
-| 260 | ClassDecl + call expression combined | — | Blocked by #234 |
+| ~~234~~ | ~~ClassDeclaration in nested/expression positions~~ | ~681 CE | **Done** |
+| ~~232~~ | ~~Method calls on object literals~~ | — | **Done** |
+| ~~238~~ | ~~Class expression new — `new (class{})()` ~~ | — | **Done** |
+| ~~261~~ | ~~ClassDecl + new expression for anonymous classes~~ | — | **Done** |
+| ~~260~~ | ~~ClassDecl + call expression combined~~ | — | **Done** |
+| ~~330~~ | ~~ClassExpression in unsupported positions~~ | — | **Done** |
+| 329 | Object.setPrototypeOf support | — | Ready |
+| 334 | Private class fields and methods | — | Ready |
+| 375 | Unsupported expression: SuperKeyword | — | Ready |
+| 377 | Getter/setter accessor edge cases | — | Ready |
 
 ---
 
@@ -124,10 +126,15 @@ Can all run in parallel (different diagnostic codes).
 ```
 #140 (computed property names runtime) ──► #230 (variable keys in computed props)
 #239 (element access on struct types) ── DONE
-#263 (property does not exist — dynamic) ── independent
+#263 (property does not exist — dynamic) ── DONE
 #274 (fn.name, fn.length, fn.call, fn.apply) ── independent
-#281 (object literal patterns — shorthand, spread) ── independent
+#281 (object literal patterns — shorthand, spread) ── DONE
 #305 (computed property runtime failures) ── coordinates with #140, #230
+#326 (array element access out of bounds) ── DONE
+#337 (null property access at runtime) ── independent
+#361 (runtime `in` operator for property checks) ── independent
+#362 (typeof on member expressions) ── independent
+#378 (increment/decrement on property/element access) ── DONE
 ```
 
 | #   | Title | Tests | Ready? |
@@ -139,6 +146,11 @@ Can all run in parallel (different diagnostic codes).
 | ~~281~~ | ~~Object literal property patterns~~ | — | **Done** |
 | ~~230~~ | ~~Object computed property names with variable keys~~ | — | **Done** |
 | 305 | Computed property names runtime failures | 2 | Coordinates with #140, #230 |
+| ~~326~~ | ~~Array element access out of bounds~~ | 17 fail | **Done** |
+| 337 | Null property access at runtime | — | Ready |
+| 361 | Runtime `in` operator for property checks | — | Ready |
+| 362 | typeof on member expressions | — | Ready |
+| ~~378~~ | ~~Increment/decrement on property/element access~~ | — | **Done** |
 
 ---
 
@@ -146,51 +158,48 @@ Can all run in parallel (different diagnostic codes).
 
 ```
 #142 (assignment destructuring failures) ── independent
-#190 (unsupported assignment targets) ── independent [DONE]
-#243 (assignment target patterns — array/object) ── coordinates with #190
-#279 (arrow fn params — destructuring/defaults) [DONE] ── coordinates with #243
-
-#283 (compound assignment — type coercion) ──┐
-#286 (logical assignment — nullish/short) [DONE] ┼── coordinates (same property/element access)
-#306 (prefix/postfix inc/dec on members) ────┘
-
-#294 (assignment evaluation order) ── independent ── DONE
+#190 (unsupported assignment targets) ── DONE
+#243 (assignment target patterns — array/object) ── DONE
+#279 (arrow fn params — destructuring/defaults) ── DONE
+#283 (compound assignment — type coercion) ── DONE
+#286 (logical assignment — nullish/short) ── DONE
+#306 (prefix/postfix inc/dec on members) ── DONE
+#294 (assignment evaluation order) ── DONE
+#325 (null pointer dereference at runtime) ── DONE
+#328 (OmittedExpression — array holes/elision) ── independent
+#379 (tuple/destructuring type errors) ── independent
 ```
 
 | #   | Title | Tests | Ready? |
 |-----|-------|-------|--------|
 | 142 | Assignment destructuring failures | — | Ready |
 | ~~190~~ | ~~Unsupported assignment target patterns~~ | — | **Done** |
-| 243 | Unsupported assignment target patterns (array/object) | — | Ready (coordinates #190) |
-| ~~279~~ | ~~Arrow function params — destructuring, defaults~~ | — | **Done** |
-| 190 | Unsupported assignment target patterns | — | Ready |
 | ~~243~~ | ~~Unsupported assignment target patterns (array/object)~~ | — | **Done** |
-| 279 | Arrow function params — destructuring, defaults | — | Ready (coordinates #243) |
+| ~~279~~ | ~~Arrow function params — destructuring, defaults~~ | — | **Done** |
 | ~~283~~ | ~~Compound assignment — type coercion gaps~~ | — | **Done** |
 | ~~286~~ | ~~Logical assignment — nullish/short-circuit~~ | — | **Done** |
 | ~~306~~ | ~~Prefix/postfix increment/decrement~~ | ~44 CE | **Done** |
 | ~~294~~ | ~~Assignment expression evaluation order~~ | 7 | **Done** |
+| ~~325~~ | ~~Null pointer dereference at runtime~~ | 32 fail | **Done** |
+| 328 | OmittedExpression (array holes/elision) | — | Ready |
+| 379 | Tuple/destructuring type errors | — | Ready |
 
 ---
 
 ## Cluster 7: Generators / Yield `[S][E]`
 
 ```
-#241 (yield in strict mode) ──┐
-#267 (yield outside generator)┼──► #287 (generator compile errors — yield in loops/try)
-                              │     └──► #288 (try/catch in generators)
-                              │
-#179 (generator module mode) ─┘   (test262-runner wrapping)
+#241 (yield in strict mode) ── DONE
+#267 (yield outside generator) ── DONE
+#287 (generator compile errors — yield in loops/try) ── blocked by #267
+#288 (try/catch in generators) ── coordinates with #287
 ```
 
 | #   | Title | Tests | Ready? |
 |-----|-------|-------|--------|
 | ~~241~~ | ~~Yield expression in strict mode / module context~~ | — | **Done** |
-| 267 | Yield expression outside of generator function | — | Ready |
-| 287 | Generator function compile errors — yield in loops/try | ~119 CE | Blocked by ~~#241~~, #267 |
-| 241 | Yield expression in strict mode / module context | — | Ready |
-| 267 | Yield expression outside of generator function | — | Done |
-| 287 | Generator function compile errors — yield in loops/try | ~119 CE | Blocked by #241 |
+| ~~267~~ | ~~Yield expression outside of generator function~~ | — | **Done** |
+| 287 | Generator function compile errors — yield in loops/try | ~119 CE | Blocked by #267 |
 | 288 | Try/catch/finally compile errors — complex patterns | ~40 CE | Coordinates with #287 |
 
 ---
@@ -198,52 +207,55 @@ Can all run in parallel (different diagnostic codes).
 ## Cluster 8: Loops / Iteration `[S]`
 
 ```
-#250 (for-loop with function declarations) ── independent
-#292 (for-loop incorrect computed values) ── independent
+#250 (for-loop with function declarations) ── DONE
+#292 (for-loop incorrect computed values) ── DONE
 #268 (iterator protocol / Symbol.iterator) ── DONE (strings only)
-#289 (for-in compile errors — property enum) ── independent
-#297 (switch fall-through) ── independent
-#298 (function statement hoisting in blocks) ── independent
+#289 (for-in compile errors) ── DONE
+#297 (switch fall-through) ── DONE
+#298 (function statement hoisting in blocks) ── DONE
+#353 (for-of with generators and custom iterators) ── independent
+#373 (object as loop condition / falsy value handling) ── independent
 ```
 
 | #   | Title | Tests | Ready? |
 |-----|-------|-------|--------|
 | ~~250~~ | ~~For-loop with function declarations~~ | ~113 CE | **Done** |
 | ~~292~~ | ~~For-loop incorrect computed values~~ | 15 | **Done** |
-| 268 | Iterator protocol — Symbol.iterator | — | Ready |
-| 250 | For-loop with function declarations | ~113 CE | Ready |
-| 292 | For-loop incorrect computed values | 15 | Done |
-| 268 | Iterator protocol — Symbol.iterator | — | Done (strings) |
-| 289 | For-in compile errors | ~13 CE | Ready |
+| ~~268~~ | ~~Iterator protocol — Symbol.iterator~~ | — | **Done** (strings) |
+| ~~289~~ | ~~For-in compile errors~~ | ~13 CE | **Done** |
 | ~~297~~ | ~~Switch statement fall-through~~ | 2 | **Done** |
 | ~~298~~ | ~~Function statement edge cases~~ | 7 | **Done** |
-| ~~289~~ | ~~For-in compile errors~~ | ~13 CE | **Done** |
-| 297 | Switch statement fall-through | 2 | Done |
-| 298 | Function statement edge cases | 7 | Done |
+| 353 | For-of with generators and custom iterators | — | Ready |
+| 373 | Object as loop condition / falsy value handling | — | Ready |
 
 ---
 
 ## Cluster 9: Scope / Identifiers `[I][S]`
 
 ```
-#202 (variable scope and hoisting) ──┐
-#146 (unknown identifier errors)  ───┼── all touch scope resolution
-#266 (multi-variable destructuring) ─┘
+#202 (variable scope and hoisting) ── DONE
+#146 (unknown identifier errors) ── coordinates with #202
+#266 (multi-variable destructuring) ── coordinates with #202
+#331 (strict mode arguments/eval restriction) ── independent
+#380 (unknown variable/function in test scope) ── independent
 ```
 
 | #   | Title | Tests | Ready? |
 |-----|-------|-------|--------|
-| 202 | Variable scope and hoisting | — | Done |
+| ~~202~~ | ~~Variable scope and hoisting~~ | — | **Done** |
 | 146 | Unknown identifier / scope issues | ~269 CE | Ready (coordinates #202) |
 | 266 | Unknown identifier — multi-variable patterns | — | Ready (coordinates #202) |
+| 331 | Strict mode arguments/eval identifier restriction | — | Ready |
+| 380 | Unknown variable/function in test scope | — | Ready |
 
 ---
 
 ## Cluster 10: Wasm validation / Type mismatch `[E][I]`
 
 ```
-#277 (local.set externref vs concrete) ──┐
-#178 (LEB128 / large type indices)    ───┼──► #315 (systematic validation audit)
+#277 (local.set externref vs concrete) ── DONE
+#178 (LEB128 / large type indices) ── DONE
+#315 (systematic validation audit) ── ready
 ```
 
 | #   | Title | Tests | Ready? |
@@ -263,23 +275,79 @@ All independent of each other and of codegen work.
 | 271 | Cannot find name — missing harness/global declarations | Ready |
 | ~~309~~ | ~~Expand test262 harness includes~~ | **Done** |
 | 310 | Reduce skip filters — re-evaluate conservative skips | Ready |
-| 311 | Test262 category expansion — String methods | Done |
+| ~~311~~ | ~~Test262 category expansion — String methods~~ | **Done** |
 | 312 | Test262 category expansion — Number methods | Ready |
-| 313 | Test262 category expansion — new expression categories | Done |
+| ~~313~~ | ~~Test262 category expansion — new expression categories~~ | **Done** |
 | 314 | Performance — compile time profiling | Ready |
+| ~~338~~ | ~~Negative test support in test262 runner~~ | — | **Done** |
+| 360 | JSON.stringify result comparison | — | Ready |
 
 ---
 
-## Cluster 12: Standalone / Unclustered
+## Cluster 12: Built-ins / Runtime `[E]`
+
+Runtime built-in methods and global functions.
+
+| #   | Title | Tests | Ready? |
+|-----|-------|-------|--------|
+| ~~342~~ | ~~Array.prototype.method.call/apply patterns~~ | — | **Done** |
+| 344 | Wrapper constructors (new Number, new String, new Boolean) | — | Ready |
+| ~~347~~ | ~~Function/class .name property completion~~ | — | **Done** |
+| ~~349~~ | ~~String() constructor as function~~ | — | **Done** |
+| ~~355~~ | ~~Object.keys/values/entries completion~~ | — | **Done** |
+| 359 | Object mutability methods (Object.freeze/seal/preventExtensions) | — | Ready |
+| 369 | globalThis support | — | Ready |
+| 384 | replaceAll and other missing string methods | — | Ready |
+| 385 | Array method argument count errors | — | Ready |
+
+---
+
+## Cluster 13: Functions / Closures `[E]`
+
+Function calling patterns, closures, and `this` binding.
+
+| #   | Title | Tests | Ready? |
+|-----|-------|-------|--------|
+| 356 | Closure-as-value in assert and array-like objects | — | Ready |
+| 364 | call/apply on arrow functions | — | Ready |
+| 368 | Global/arrow `this` reference | — | Ready |
+| 382 | Spread argument in super/function calls | — | Ready |
+
+---
+
+## Cluster 14: String / Template literals `[E]`
+
+String operations and tagged template patterns.
+
+| #   | Title | Tests | Ready? |
+|-----|-------|-------|--------|
+| 357 | IIFE tagged templates | — | Ready |
+| 363 | Tagged template .raw property and identity | — | Ready |
+| 367 | String variable concatenation in comparisons | — | Ready |
+| 372 | String.prototype.matchAll | — | Ready |
+
+---
+
+## Cluster 15: Modules / Imports `[I]`
+
+Module system and import/export patterns.
+
+| #   | Title | Tests | Ready? |
+|-----|-------|-------|--------|
+| 332 | Export declaration at top level errors | — | Ready |
+| 333 | Dynamic import modifier syntax errors | — | Ready |
+| 371 | import.meta support | — | Ready |
+
+---
+
+## Cluster 16: Standalone / Unclustered
 
 | #   | Title | File | Tests | Ready? |
 |-----|-------|------|-------|--------|
 | 235 | Function.name property access | [E] | ~380 CE | Ready (partially addressed by #263) |
 | 244 | `in` operator runtime failures | [E] | — | Ready |
-| 249 | Misc runtime failures — small fixes | [E] | — | Ready |
 | ~~254~~ | ~~Private class fields and methods (#field)~~ | [E] | — | **Done** |
 | ~~249~~ | ~~Misc runtime failures — small fixes~~ | [E] | — | **Done** |
-| 254 | Private class fields and methods (#field) | [E] | — | Ready |
 | ~~280~~ | ~~Function expression name binding and hoisting~~ | [E][S] | — | **Done** |
 | ~~290~~ | ~~instanceof — class hierarchy and expressions~~ | [E] | ~20 CE | **Done** |
 | ~~291~~ | ~~`in` operator compile errors — dynamic property~~ | [E] | ~10 CE | **Done** |
@@ -287,11 +355,15 @@ All independent of each other and of codegen work.
 | ~~302~~ | ~~Math.min/max edge cases~~ | [E] | 2 | **Done** |
 | ~~303~~ | ~~parseInt edge cases~~ | [E] | 1 | **Done** |
 | ~~304~~ | ~~Unary minus and return edge cases~~ | [E] | 2 | **Done** |
-| 307 | Promise.all/race compile errors | [E] | 7 | Ready |
-| 304 | Unary minus and return edge cases | [E] | 2 | Ready |
 | ~~307~~ | ~~Promise.all/race compile errors~~ | [E] | 7 | **Done** |
-| 316 | Array element access out of bounds | [E] | 1 | Done |
-| 229 | Tagged template cache: array out of bounds | [E] | — | Done |
+| ~~316~~ | ~~Array element access out of bounds~~ | [E] | 1 | **Done** |
+| ~~229~~ | ~~Tagged template cache: array out of bounds~~ | [E] | — | **Done** |
+| ~~327~~ | ~~Object-to-primitive coercion (valueOf/toString)~~ | [E] | — | **Done** |
+| ~~335~~ | ~~Parser comma errors (non-computed-property contexts)~~ | [E] | — | **Done** |
+| ~~336~~ | ~~For-of assignment destructuring on non-struct refs~~ | [S] | — | **Done** |
+| ~~341~~ | ~~Property introspection (hasOwnProperty, propertyIsEnumerable)~~ | [E] | — | **Done** |
+| ~~386~~ | ~~Remaining small CE patterns~~ | [E] | — | **Done** |
+| 374 | Miscellaneous small patterns | [E] | — | Ready |
 
 ---
 
@@ -314,6 +386,20 @@ All independent of each other and of codegen work.
 | 129 | propertyHelper.js harness | Blocked by #125 |
 | 323 | Native type annotations (:i32, :f32, :u8) | Blocked by #70 |
 | ~~322~~ | ~~Inline trig Math methods~~ | **Done** |
+| 339 | Async function and await support | — (large scope) |
+| 340 | Error throwing and try/catch/finally | — (high priority, large scope) |
+| 343 | Prototype chain support | — (large scope) |
+| 345 | Symbol.iterator and iterable protocol | — (large scope) |
+| 346 | Object.defineProperty support | — (large scope) |
+| 350 | Symbol type (general) | — (large scope) |
+| 351 | Async iteration (for-await-of) | — (depends on #339) |
+| 352 | Delete operator | — (low priority) |
+| 354 | Reflect.construct | — (low priority) |
+| 358 | Dynamic import support | — (low priority) |
+| 365 | Collection mutation during for-of | — (low priority) |
+| 366 | Object.create support | — (low priority) |
+| 370 | WeakMap and WeakSet | — (low priority) |
+| 376 | Decorator syntax support | — (low priority) |
 
 ---
 
@@ -324,16 +410,22 @@ function in the same file. Key contention points:
 
 | Function | Issues |
 |----------|--------|
-| `compileBinaryExpression` | 138, 139, 174, 227, 228, 237, 244, 291, 295, 296, 299, 308 |
-| `compileCallExpression` | 232, 260, 280 |
-| `compileElementAccess` | 140, 176, 239 |
-| `compilePropertyAccess` | 263, 274 |
+| `compileBinaryExpression` | 138, 139, 174, 227, 228, 237, 244, 291, 295, 296, 299, 308, 324, 348 |
+| `compileCallExpression` | 232, 260, 280, 342, 364, 382 |
+| `compileElementAccess` | 140, 176, 239, 326, 337, 361 |
+| `compilePropertyAccess` | 263, 274, 347, 362, 378 |
 | `compileObjectLiteralForStruct` | 230, 281 |
-| `compileDestructuringAssignment` | 142, 190, 243 |
-| `compileNewExpression` | 238, 261 |
-| `coerceType` | 237, 277, 300, 301, 315 |
-| diagnostic suppression (index.ts) | 152, 242, 262, 265, 269, 270, 275, 276 |
+| `compileDestructuringAssignment` | 142, 190, 243, 325, 328, 379 |
+| `compileNewExpression` | 238, 261, 344 |
+| `coerceType` | 237, 277, 300, 301, 315, 348 |
+| diagnostic suppression (index.ts) | 152, 242, 262, 265, 269, 270, 275, 276, 381, 383 |
 | `collectStringLiterals/MathImports` | 321, 320 |
 | `registerAnyValueType` | 317, 320 |
-| scope resolution | 146, 202, 266 |
+| scope resolution | 146, 202, 266, 331, 380 |
 | generator codegen | 241, 267, 287, 288 |
+| string methods | 349, 367, 372, 384 |
+| template literals | 357, 363 |
+| module/import handling | 332, 333, 371 |
+| class codegen | 329, 334, 375, 377 |
+| loop codegen | 353, 373 |
+| built-in runtime | 344, 355, 359, 369, 385 |

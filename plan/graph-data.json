@@ -54,6 +54,16 @@
       "status": "ready",
       "depends_on": [],
       "files": [],
+      "test262_ce": 13,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": "121",
+      "title": "Function.prototype.call/apply",
+      "priority": "low",
+      "status": "done",
+      "depends_on": [],
+      "files": [],
       "cluster": "Unclustered"
     },
     {
@@ -102,60 +112,6 @@
       "cluster": "Unclustered"
     },
     {
-      "id": 138,
-      "title": "valueOf/toString coercion on comparison operators",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Type coercion"
-    },
-    {
-      "id": 139,
-      "title": "valueOf/toString coercion on arithmetic operators",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Type coercion"
-    },
-    {
-      "id": 140,
-      "title": "Object computed property names not working at runtime",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Property / Element"
-    },
-    {
-      "id": 141,
-      "title": "Tagged template literal runtime failures",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 142,
-      "title": "Assignment destructuring failures",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Assignment / Destructuring"
-    },
-    {
-      "id": 143,
-      "title": "for-loop edge cases",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Unclustered"
-    },
-    {
       "id": 144,
       "title": "new expression with class expressions",
       "priority": "low",
@@ -182,6 +138,7 @@
       "depends_on": [],
       "files": [],
       "compiler_errors": 269,
+      "test262_ce": 1531,
       "cluster": "Scope / Identifiers"
     },
     {
@@ -202,6 +159,7 @@
       "depends_on": [],
       "files": [],
       "compiler_errors": 262,
+      "test262_ce": 32,
       "cluster": "Unclustered"
     },
     {
@@ -214,6 +172,7 @@
       ],
       "files": [],
       "compiler_errors": 637,
+      "test262_ce": 730,
       "cluster": "Unclustered"
     },
     {
@@ -254,29 +213,13 @@
       ],
       "files": [],
       "compiler_errors": 262,
+      "test262_fail": 7,
+      "test262_ce": 11,
       "cluster": "Unclustered"
     },
     {
       "id": 154,
       "title": "while/do-while loop condition evaluation",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 155,
-      "title": "Logical-and/logical-or short-circuit returns wrong value",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 156,
-      "title": "Conditional (ternary) expression evaluation",
       "priority": "low",
       "status": "ready",
       "depends_on": [],
@@ -327,6 +270,7 @@
       "status": "ready",
       "depends_on": [],
       "files": [],
+      "test262_ce": 12,
       "cluster": "Unclustered"
     },
     {
@@ -351,15 +295,6 @@
     {
       "id": 164,
       "title": "variable declaration edge cases",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 165,
-      "title": "function statement hoisting and edge cases",
       "priority": "low",
       "status": "ready",
       "depends_on": [],
@@ -409,6 +344,7 @@
       "status": "ready",
       "depends_on": [],
       "files": [],
+      "test262_ce": 343,
       "cluster": "Unclustered"
     },
     {
@@ -463,16 +399,6 @@
       "cluster": "Unclustered"
     },
     {
-      "id": 178,
-      "title": "Wasm validation errors: type mismatches in emitted binary",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 262,
-      "cluster": "Wasm validation"
-    },
-    {
       "id": 179,
       "title": "Generator functions: yield in module mode errors",
       "priority": "low",
@@ -480,6 +406,7 @@
       "depends_on": [],
       "files": [],
       "compiler_errors": 262,
+      "test262_ce": 49,
       "cluster": "Unclustered"
     },
     {
@@ -513,16 +440,6 @@
       "cluster": "Unclustered"
     },
     {
-      "id": 190,
-      "title": "Unsupported assignment target patterns",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 262,
-      "cluster": "Assignment / Destructuring"
-    },
-    {
       "id": 192,
       "title": "Computed property names: compile errors in class and object contexts",
       "priority": "low",
@@ -530,6 +447,7 @@
       "depends_on": [],
       "files": [],
       "compiler_errors": 262,
+      "test262_ce": 7,
       "cluster": "Unclustered"
     },
     {
@@ -573,16 +491,6 @@
       "cluster": "Unclustered"
     },
     {
-      "id": 202,
-      "title": "Variable scope and hoisting: \"Cannot find name\" / \"Unknown identifier\"",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 150,
-      "cluster": "Scope / Identifiers"
-    },
-    {
       "id": 204,
       "title": "Array literal compile errors",
       "priority": "low",
@@ -590,73 +498,26 @@
       "depends_on": [],
       "files": [],
       "compiler_errors": 262,
+      "test262_ce": 25,
       "cluster": "Unclustered"
-    },
-    {
-      "id": 227,
-      "title": "BigInt comparison with Infinity causes float-unrepresentable trap",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Type coercion"
-    },
-    {
-      "id": 228,
-      "title": "BigInt equality/strict-equality with Number and Boolean",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Type coercion"
-    },
-    {
-      "id": 229,
-      "title": "Tagged template cache: array out of bounds on top-level repeated calls",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Standalone"
-    },
-    {
-      "id": 230,
-      "title": "Object computed property names with variable keys at runtime",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Property / Element"
     },
     {
       "id": 232,
       "title": "Unsupported call expression -- method calls on object literals",
-      "priority": "medium",
-      "status": "ready",
+      "priority": "low",
+      "status": "done",
       "depends_on": [],
       "files": [],
-      "compiler_errors": 1465,
       "cluster": "Class / New"
     },
     {
       "id": 234,
       "title": "ClassDeclaration in nested/expression positions (remaining 681 errors)",
-      "priority": "high",
-      "status": "ready",
+      "priority": "low",
+      "status": "done",
       "depends_on": [],
       "files": [],
-      "compiler_errors": 681,
       "cluster": "Class / New"
-    },
-    {
-      "id": 235,
-      "title": "Function.name property access (380 compile errors)",
-      "priority": "high",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 380,
-      "cluster": "Standalone"
     },
     {
       "id": 237,
@@ -669,72 +530,22 @@
       "cluster": "Type coercion"
     },
     {
-      "id": 238,
-      "title": "Class expression new -- `new (class { ... })()` pattern",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 158,
-      "cluster": "Class / New"
-    },
-    {
-      "id": 239,
-      "title": "Element access on struct types (bracket notation)",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 119,
-      "cluster": "Property / Element"
-    },
-    {
       "id": 241,
       "title": "Yield expression in strict mode / module context",
       "priority": "low",
-      "status": "ready",
+      "status": "done",
       "depends_on": [],
       "files": [],
-      "compiler_errors": 140,
       "cluster": "Generators / Yield"
     },
     {
       "id": 242,
       "title": "Computed property names in class declarations (remaining 57 errors)",
       "priority": "low",
-      "status": "ready",
+      "status": "done",
       "depends_on": [],
       "files": [],
-      "compiler_errors": 57,
       "cluster": "Diagnostics"
-    },
-    {
-      "id": 243,
-      "title": "Unsupported assignment target patterns",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 55,
-      "cluster": "Assignment / Destructuring"
-    },
-    {
-      "id": 244,
-      "title": "`in` operator runtime failures",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Standalone"
-    },
-    {
-      "id": 249,
-      "title": "Miscellaneous runtime failures -- remaining small fixes",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Standalone"
     },
     {
       "id": 250,
@@ -745,16 +556,6 @@
       "files": [],
       "compiler_errors": 113,
       "cluster": "Loops / Iteration"
-    },
-    {
-      "id": 254,
-      "title": "Private class fields and methods (#field)",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 16,
-      "cluster": "Standalone"
     },
     {
       "id": 257,
@@ -790,7 +591,7 @@
       "id": 260,
       "title": "ClassDeclaration + call expression combined errors",
       "priority": "medium",
-      "status": "blocked",
+      "status": "ready",
       "depends_on": [
         234
       ],
@@ -799,73 +600,30 @@
       "cluster": "Class / New"
     },
     {
-      "id": 261,
-      "title": "ClassDeclaration + new expression for anonymous classes",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 30,
-      "cluster": "Class / New"
-    },
-    {
-      "id": 262,
-      "title": "Argument type assignability -- allowJs flexibility for test262",
-      "priority": "high",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 80,
-      "cluster": "Diagnostics"
-    },
-    {
-      "id": 264,
-      "title": "Element access (bracket notation) on struct types",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 60,
-      "cluster": "Unclustered"
-    },
-    {
       "id": 265,
       "title": "Computed property names in class declarations (TypeScript diagnostic)",
       "priority": "low",
-      "status": "ready",
+      "status": "done",
       "depends_on": [],
       "files": [],
-      "compiler_errors": 50,
       "cluster": "Diagnostics"
-    },
-    {
-      "id": 266,
-      "title": "Unknown identifier -- scope resolution for multi-variable patterns",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 40,
-      "cluster": "Scope / Identifiers"
     },
     {
       "id": 267,
       "title": "Yield expression outside of generator function",
       "priority": "low",
-      "status": "ready",
+      "status": "done",
       "depends_on": [],
       "files": [],
-      "compiler_errors": 30,
       "cluster": "Generators / Yield"
     },
     {
       "id": 268,
       "title": "Iterator protocol -- Type must have a Symbol.iterator method",
-      "priority": "medium",
-      "status": "ready",
+      "priority": "low",
+      "status": "done",
       "depends_on": [],
       "files": [],
-      "compiler_errors": 50,
       "cluster": "Loops / Iteration"
     },
     {
@@ -876,16 +634,6 @@
       "depends_on": [],
       "files": [],
       "compiler_errors": 20,
-      "cluster": "Diagnostics"
-    },
-    {
-      "id": 270,
-      "title": "Strict mode reserved words -- let, yield, package, etc.",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 30,
       "cluster": "Diagnostics"
     },
     {
@@ -906,6 +654,7 @@
       "depends_on": [],
       "files": [],
       "compiler_errors": 30,
+      "test262_ce": 548,
       "cluster": "Unclustered"
     },
     {
@@ -929,35 +678,6 @@
       "cluster": "Property / Element"
     },
     {
-      "id": 275,
-      "title": "Left side of comma operator warning blocks compilation",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 50,
-      "cluster": "Diagnostics"
-    },
-    {
-      "id": 276,
-      "title": "Computed property name must be of assignable type",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 20,
-      "cluster": "Diagnostics"
-    },
-    {
-      "id": 277,
-      "title": "WebAssembly type mismatch -- local.set externref vs concrete types",
-      "priority": "low",
-      "status": "done",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Wasm validation"
-    },
-    {
       "id": 278,
       "title": "Cannot destructure -- not a known struct type",
       "priority": "low",
@@ -965,46 +685,7 @@
       "depends_on": [],
       "files": [],
       "compiler_errors": 25,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 279,
-      "title": "Arrow function compile errors -- parameter and body patterns",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 30,
-      "cluster": "Assignment / Destructuring"
-    },
-    {
-      "id": 282,
-      "title": "Variable declaration compile errors -- complex initializers",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 20,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 283,
-      "title": "Compound assignment compile errors -- type coercion gaps",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 20,
-      "cluster": "Assignment / Destructuring"
-    },
-    {
-      "id": 284,
-      "title": "For-of compile errors -- destructuring and non-array iterables",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 30,
+      "test262_ce": 36,
       "cluster": "Unclustered"
     },
     {
@@ -1016,16 +697,6 @@
       "files": [],
       "compiler_errors": 20,
       "cluster": "Unclustered"
-    },
-    {
-      "id": 286,
-      "title": "Logical assignment compile errors -- nullish and short-circuit",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 15,
-      "cluster": "Assignment / Destructuring"
     },
     {
       "id": 287,
@@ -1041,26 +712,6 @@
       "cluster": "Generators / Yield"
     },
     {
-      "id": 288,
-      "title": "Try/catch/finally compile errors -- complex patterns",
-      "priority": "medium",
-      "status": "blocked",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 20,
-      "cluster": "Generators / Yield"
-    },
-    {
-      "id": 289,
-      "title": "For-in compile errors -- property enumeration edge cases",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 10,
-      "cluster": "Loops / Iteration"
-    },
-    {
       "id": 290,
       "title": "Instanceof compile errors -- class hierarchy and expressions",
       "priority": "high",
@@ -1068,136 +719,6 @@
       "depends_on": [],
       "files": [],
       "compiler_errors": 10,
-      "cluster": "Standalone"
-    },
-    {
-      "id": 291,
-      "title": "In operator compile errors -- dynamic property checks",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 8,
-      "cluster": "Standalone"
-    },
-    {
-      "id": 292,
-      "title": "Runtime failures -- for-loop incorrect computed values",
-      "priority": "high",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Loops / Iteration"
-    },
-    {
-      "id": 293,
-      "title": "Runtime failures -- class method incorrect results",
-      "priority": "high",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Standalone"
-    },
-    {
-      "id": 294,
-      "title": "Runtime failures -- assignment expression evaluation order",
-      "priority": "high",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Assignment / Destructuring"
-    },
-    {
-      "id": 295,
-      "title": "Runtime failures -- comparison operators with type coercion",
-      "priority": "high",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Type coercion"
-    },
-    {
-      "id": 296,
-      "title": "Runtime failures -- strict equality edge cases",
-      "priority": "high",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Type coercion"
-    },
-    {
-      "id": 297,
-      "title": "Runtime failures -- switch statement fall-through",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Loops / Iteration"
-    },
-    {
-      "id": 298,
-      "title": "Runtime failures -- function statement edge cases",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Loops / Iteration"
-    },
-    {
-      "id": 299,
-      "title": "Runtime failures -- equals/does-not-equals loose comparison",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Type coercion"
-    },
-    {
-      "id": 300,
-      "title": "Runtime failures -- object to primitive conversion",
-      "priority": "high",
-      "status": "blocked",
-      "depends_on": [
-        138,
-        139
-      ],
-      "files": [],
-      "cluster": "Type coercion"
-    },
-    {
-      "id": 301,
-      "title": "Runtime failures -- float unrepresentable in integer range",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Type coercion"
-    },
-    {
-      "id": 302,
-      "title": "Runtime failures -- Math.min/max edge cases",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Standalone"
-    },
-    {
-      "id": 303,
-      "title": "Runtime failures -- parseInt edge cases",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Standalone"
-    },
-    {
-      "id": 304,
-      "title": "Runtime failures -- unary minus and return edge cases",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
       "cluster": "Standalone"
     },
     {
@@ -1210,74 +731,8 @@
       "cluster": "Property / Element"
     },
     {
-      "id": 306,
-      "title": "Prefix/postfix increment/decrement compile errors",
-      "priority": "high",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 30,
-      "cluster": "Assignment / Destructuring"
-    },
-    {
-      "id": 307,
-      "title": "Promise.all and Promise.race compile errors",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 5,
-      "cluster": "Standalone"
-    },
-    {
-      "id": 308,
-      "title": "Addition operator compile errors -- string/number coercion",
-      "priority": "high",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 5,
-      "cluster": "Type coercion"
-    },
-    {
       "id": 309,
       "title": "Expand test262 harness includes -- propertyIsEnumerable, fnGlobalObject",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Test infrastructure"
-    },
-    {
-      "id": 310,
-      "title": "Reduce skip filters -- re-evaluate conservative skips",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Test infrastructure"
-    },
-    {
-      "id": 311,
-      "title": "Test262 category expansion -- built-ins/String/prototype new methods",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Test infrastructure"
-    },
-    {
-      "id": 312,
-      "title": "Test262 category expansion -- built-ins/Number methods",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Test infrastructure"
-    },
-    {
-      "id": 313,
-      "title": "Test262 category expansion -- language/expressions new categories",
       "priority": "low",
       "status": "ready",
       "depends_on": [],
@@ -1294,31 +749,10 @@
       "cluster": "Test infrastructure"
     },
     {
-      "id": 315,
-      "title": "Wasm validation error audit -- systematic fix for type mismatches",
-      "priority": "high",
-      "status": "ready",
-      "depends_on": [
-        277,
-        178
-      ],
-      "files": [],
-      "cluster": "Wasm validation"
-    },
-    {
-      "id": 316,
-      "title": "Runtime failure -- array element access out of bounds",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Standalone"
-    },
-    {
       "id": 317,
       "title": "[ts2wasm] Codegen: Unused `$AnyValue` preamble type + duplicate export for `main`",
-      "priority": "critical",
-      "status": "ready",
+      "priority": "low",
+      "status": "done",
       "depends_on": [],
       "files": [],
       "cluster": "Dead code / Scanning"
@@ -1332,15 +766,6 @@
         317,
         320
       ],
-      "files": [],
-      "cluster": "Dead code / Scanning"
-    },
-    {
-      "id": 319,
-      "title": "[ts2wasm] Codegen: Inline single-use function type signatures in WAT output",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
       "files": [],
       "cluster": "Dead code / Scanning"
     },
@@ -1359,8 +784,8 @@
     {
       "id": 321,
       "title": "[ts2wasm] Bug: Collection functions don't scan top-level statements (`__module_init`)",
-      "priority": "critical",
-      "status": "ready",
+      "priority": "low",
+      "status": "done",
       "depends_on": [],
       "files": [],
       "cluster": "Dead code / Scanning"
@@ -1369,7 +794,7 @@
       "id": 322,
       "title": "[ts2wasm] Inline trig/transcendental Math methods as pure Wasm",
       "priority": "medium",
-      "status": "blocked",
+      "status": "ready",
       "depends_on": [
         321
       ],
@@ -1384,6 +809,593 @@
       "depends_on": [],
       "files": [],
       "cluster": "Unclustered"
+    },
+    {
+      "id": 328,
+      "title": "OmittedExpression (array holes/elision)",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_ce": 15,
+      "cluster": "Assignment / Destructuring"
+    },
+    {
+      "id": 329,
+      "title": "Object.setPrototypeOf support",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_ce": 7,
+      "cluster": "Class / New"
+    },
+    {
+      "id": 330,
+      "title": "ClassExpression in unsupported positions",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_ce": 25,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 331,
+      "title": "Strict mode arguments/eval identifier restriction",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_ce": 27,
+      "cluster": "Scope / Identifiers"
+    },
+    {
+      "id": 332,
+      "title": "Export declaration at top level errors",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_ce": 17,
+      "cluster": "Modules / Imports"
+    },
+    {
+      "id": 333,
+      "title": "Dynamic import modifier syntax errors",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_ce": 12,
+      "cluster": "Modules / Imports"
+    },
+    {
+      "id": 334,
+      "title": "Private class fields and methods",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_ce": 15,
+      "cluster": "Class / New"
+    },
+    {
+      "id": 335,
+      "title": "Parser comma errors (non-computed-property contexts)",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_ce": 75,
+      "cluster": "Standalone"
+    },
+    {
+      "id": 336,
+      "title": "For-of assignment destructuring on non-struct refs",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_ce": 11,
+      "cluster": "Standalone"
+    },
+    {
+      "id": 337,
+      "title": "Null property access at runtime",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_fail": 13,
+      "cluster": "Property / Element"
+    },
+    {
+      "id": 338,
+      "title": "Negative test support in test262 runner",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 3247,
+      "cluster": "Test infrastructure"
+    },
+    {
+      "id": 339,
+      "title": "Async function and await support",
+      "priority": "medium",
+      "status": "backlog",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 3317,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 340,
+      "title": "Error throwing and try/catch/finally",
+      "priority": "high",
+      "status": "backlog",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 1337,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 341,
+      "title": "Property introspection (hasOwnProperty, propertyIsEnumerable)",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 1001,
+      "cluster": "Standalone"
+    },
+    {
+      "id": 342,
+      "title": "Array.prototype.method.call/apply patterns",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [
+        "121"
+      ],
+      "files": [],
+      "test262_skip": 766,
+      "cluster": "Built-ins / Runtime"
+    },
+    {
+      "id": 343,
+      "title": "Prototype chain support",
+      "priority": "low",
+      "status": "backlog",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 763,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 344,
+      "title": "Wrapper constructors (new Number, new String, new Boolean)",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 762,
+      "cluster": "Built-ins / Runtime"
+    },
+    {
+      "id": 345,
+      "title": "Symbol.iterator and iterable protocol",
+      "priority": "medium",
+      "status": "backlog",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 702,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 346,
+      "title": "Object.defineProperty support",
+      "priority": "low",
+      "status": "backlog",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 421,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 347,
+      "title": "Function/class .name property completion",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [
+        "147"
+      ],
+      "files": [],
+      "test262_skip": 404,
+      "cluster": "Built-ins / Runtime"
+    },
+    {
+      "id": 348,
+      "title": "Null/undefined arithmetic coercion",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 362,
+      "cluster": "Type coercion"
+    },
+    {
+      "id": 349,
+      "title": "String() constructor as function",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 261,
+      "cluster": "Built-ins / Runtime"
+    },
+    {
+      "id": 350,
+      "title": "Symbol type (general)",
+      "priority": "low",
+      "status": "backlog",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 398,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 351,
+      "title": "Async iteration (for-await-of)",
+      "priority": "low",
+      "status": "backlog",
+      "depends_on": [
+        "339",
+        "345"
+      ],
+      "files": [],
+      "test262_skip": 329,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 352,
+      "title": "Delete operator",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 264,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 353,
+      "title": "For-of with generators and custom iterators",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [
+        "153"
+      ],
+      "files": [],
+      "test262_skip": 152,
+      "cluster": "Loops / Iteration"
+    },
+    {
+      "id": 354,
+      "title": "Reflect.construct",
+      "priority": "low",
+      "status": "backlog",
+      "depends_on": [
+        "343"
+      ],
+      "files": [],
+      "test262_skip": 120,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 356,
+      "title": "Closure-as-value in assert and array-like objects",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 106,
+      "cluster": "Functions / Closures"
+    },
+    {
+      "id": 357,
+      "title": "IIFE tagged templates",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 17,
+      "cluster": "String / Template literals"
+    },
+    {
+      "id": 358,
+      "title": "Dynamic import support",
+      "priority": "low",
+      "status": "backlog",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 200,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 359,
+      "title": "Object mutability methods (Object.freeze/seal/preventExtensions)",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 31,
+      "cluster": "Built-ins / Runtime"
+    },
+    {
+      "id": 360,
+      "title": "JSON.stringify result comparison",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 30,
+      "cluster": "Test infrastructure"
+    },
+    {
+      "id": 361,
+      "title": "Runtime `in` operator for property checks",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 21,
+      "cluster": "Property / Element"
+    },
+    {
+      "id": 362,
+      "title": "typeof on member expressions",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 16,
+      "cluster": "Property / Element"
+    },
+    {
+      "id": 363,
+      "title": "Tagged template .raw property and identity",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 24,
+      "cluster": "String / Template literals"
+    },
+    {
+      "id": 364,
+      "title": "call/apply on arrow functions",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [
+        "121"
+      ],
+      "files": [],
+      "test262_skip": 15,
+      "cluster": "Functions / Closures"
+    },
+    {
+      "id": 365,
+      "title": "Collection mutation during for-of",
+      "priority": "low",
+      "status": "backlog",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 15,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 366,
+      "title": "Object.create support",
+      "priority": "low",
+      "status": "backlog",
+      "depends_on": [
+        "343"
+      ],
+      "files": [],
+      "test262_skip": 14,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 367,
+      "title": "String variable concatenation in comparisons",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 14,
+      "cluster": "String / Template literals"
+    },
+    {
+      "id": 368,
+      "title": "Global/arrow `this` reference",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 13,
+      "cluster": "Functions / Closures"
+    },
+    {
+      "id": 369,
+      "title": "globalThis support",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 10,
+      "cluster": "Built-ins / Runtime"
+    },
+    {
+      "id": 370,
+      "title": "WeakMap and WeakSet",
+      "priority": "low",
+      "status": "backlog",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 18,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 371,
+      "title": "import.meta support",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 10,
+      "cluster": "Modules / Imports"
+    },
+    {
+      "id": 372,
+      "title": "String.prototype.matchAll",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 7,
+      "cluster": "String / Template literals"
+    },
+    {
+      "id": 373,
+      "title": "Object as loop condition / falsy value handling",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 12,
+      "cluster": "Loops / Iteration"
+    },
+    {
+      "id": 374,
+      "title": "Miscellaneous small patterns",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 42,
+      "cluster": "Standalone"
+    },
+    {
+      "id": 375,
+      "title": "Unsupported expression: SuperKeyword",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_ce": 5,
+      "cluster": "Class / New"
+    },
+    {
+      "id": 376,
+      "title": "Decorator syntax support",
+      "priority": "low",
+      "status": "backlog",
+      "depends_on": [],
+      "files": [],
+      "test262_ce": 10,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 377,
+      "title": "Getter/setter accessor edge cases",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_ce": 10,
+      "cluster": "Class / New"
+    },
+    {
+      "id": 379,
+      "title": "Tuple/destructuring type errors",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_ce": 10,
+      "cluster": "Assignment / Destructuring"
+    },
+    {
+      "id": 380,
+      "title": "Unknown variable/function in test scope",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_ce": 25,
+      "cluster": "Scope / Identifiers"
+    },
+    {
+      "id": 381,
+      "title": "Nullish coalescing false positives",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_ce": 4,
+      "cluster": "Diagnostics"
+    },
+    {
+      "id": 382,
+      "title": "Spread argument in super/function calls",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_ce": 4,
+      "cluster": "Functions / Closures"
+    },
+    {
+      "id": 383,
+      "title": "Label not allowed / let declaration errors",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_ce": 8,
+      "cluster": "Diagnostics"
+    },
+    {
+      "id": 384,
+      "title": "replaceAll and other missing string methods",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_ce": 5,
+      "cluster": "Built-ins / Runtime"
+    },
+    {
+      "id": 385,
+      "title": "Array method argument count errors",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_ce": 5,
+      "cluster": "Built-ins / Runtime"
+    },
+    {
+      "id": 386,
+      "title": "Remaining small CE patterns",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "compiler_errors": 200,
+      "test262_fail": 5,
+      "test262_ce": 200,
+      "cluster": "Standalone"
     }
   ],
   "links": [
@@ -1392,16 +1404,20 @@
       "target": 172
     },
     {
-      "source": 277,
-      "target": 315
-    },
-    {
-      "source": 178,
-      "target": 315
-    },
-    {
       "source": 234,
       "target": 260
+    },
+    {
+      "source": 321,
+      "target": 322
+    },
+    {
+      "source": "121",
+      "target": 342
+    },
+    {
+      "source": "121",
+      "target": 364
     },
     {
       "source": 241,
@@ -1410,14 +1426,6 @@
     {
       "source": 267,
       "target": 287
-    },
-    {
-      "source": 138,
-      "target": 300
-    },
-    {
-      "source": 139,
-      "target": 300
     },
     {
       "source": 317,
@@ -1434,10 +1442,6 @@
     {
       "source": 321,
       "target": 320
-    },
-    {
-      "source": 321,
-      "target": 322
     },
     {
       "source": 232,
@@ -1460,5 +1464,5 @@
       "target": 74
     }
   ],
-  "generated": "2026-03-12T18:30:40.495Z"
+  "generated": "2026-03-13T14:14:19.280Z"
 }

@@ -17,6 +17,9 @@ interface IssueNode {
   files: Record<string, { new?: string[]; breaking?: string[] }> | string[];
   cluster?: string;
   compiler_errors?: number;
+  test262_skip?: number;
+  test262_fail?: number;
+  test262_ce?: number;
 }
 
 interface GraphData {
@@ -112,6 +115,9 @@ function scanFolder(
       files: normalizeFiles(fm.files),
     };
     if (ce) node.compiler_errors = ce;
+    if (fm.test262_skip) node.test262_skip = parseInt(String(fm.test262_skip)) || undefined;
+    if (fm.test262_fail) node.test262_fail = parseInt(String(fm.test262_fail)) || undefined;
+    if (fm.test262_ce) node.test262_ce = parseInt(String(fm.test262_ce)) || undefined;
     nodes.push(node);
   }
   return nodes;
@@ -162,18 +168,22 @@ for (const doneId of openDeps) {
 // Cluster assignments from dependency-graph.md
 const CLUSTERS: Record<number, string> = {};
 const clusterMap: [string, number[]][] = [
-  ["Diagnostics", [152, 242, 262, 265, 269, 270, 275, 276]],
+  ["Diagnostics", [152, 242, 262, 265, 269, 270, 275, 276, 381, 383]],
   ["Dead code / Scanning", [321, 317, 319, 320, 318, 322]],
-  ["Type coercion", [138, 139, 227, 228, 237, 295, 296, 299, 301, 308, 300]],
-  ["Class / New", [234, 232, 238, 261, 260]],
-  ["Property / Element", [140, 239, 263, 274, 281, 230, 305]],
-  ["Assignment / Destructuring", [142, 190, 243, 279, 283, 286, 306, 294]],
+  ["Type coercion", [138, 139, 227, 228, 237, 295, 296, 299, 301, 308, 300, 324, 348]],
+  ["Class / New", [234, 232, 238, 261, 260, 329, 334, 375, 377]],
+  ["Property / Element", [140, 239, 263, 274, 281, 230, 305, 326, 337, 361, 362, 378]],
+  ["Assignment / Destructuring", [142, 190, 243, 279, 283, 286, 306, 294, 325, 328, 379]],
   ["Generators / Yield", [241, 267, 287, 288]],
-  ["Loops / Iteration", [250, 292, 268, 289, 297, 298]],
-  ["Scope / Identifiers", [202, 146, 266]],
+  ["Loops / Iteration", [250, 292, 268, 289, 297, 298, 353, 373]],
+  ["Scope / Identifiers", [202, 146, 266, 331, 380]],
   ["Wasm validation", [277, 178, 315]],
-  ["Test infrastructure", [271, 309, 310, 311, 312, 313, 314]],
-  ["Standalone", [235, 244, 249, 254, 280, 290, 291, 293, 302, 303, 304, 307, 316, 229]],
+  ["Test infrastructure", [271, 309, 310, 311, 312, 313, 314, 338, 360]],
+  ["Built-ins / Runtime", [342, 344, 347, 349, 355, 359, 369, 384, 385]],
+  ["Functions / Closures", [356, 364, 368, 382]],
+  ["String / Template literals", [357, 363, 367, 372]],
+  ["Modules / Imports", [332, 333, 371]],
+  ["Standalone", [235, 244, 249, 254, 280, 290, 291, 293, 302, 303, 304, 307, 316, 229, 327, 335, 336, 341, 374, 386]],
 ];
 for (const [name, ids] of clusterMap) {
   for (const id of ids) CLUSTERS[id] = name;
