@@ -910,6 +910,15 @@ export function wrapTest(source: string): string {
   // Replace \uNNNN sequences outside of string literals with the actual character.
   body = resolveUnicodeEscapes(body);
 
+  // Rename `yield` used as an identifier to `_yield` — in sloppy-mode JS
+  // `yield` is a valid identifier, but modules are strict mode where it's reserved.
+  // Only rename when NOT inside a generator function (where yield is a keyword).
+  // We detect identifier usage via word-boundary patterns like `var yield`, `yield =`, etc.
+  if (!/\bfunction\s*\*/.test(body)) {
+    // No generator functions → safe to rename all yield identifiers
+    body = body.replace(/\byield\b/g, "_yield");
+  }
+
   // Widen switch discriminants from literal types to `number` to avoid
   // TypeScript strict narrowing errors like "Type '1' is not comparable to type '0'"
   body = body.replace(/\bswitch\s*\(\s*(-?\d+(?:\.\d+)?)\s*\)/g, "switch ($1 as number)");
