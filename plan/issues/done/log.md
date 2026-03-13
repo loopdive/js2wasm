@@ -236,3 +236,4 @@
 | 235 | 2026-03-12 | Function.name -- fix named expression priority | Dep-driven |
 | 268 | 2026-03-13 | Iterator protocol -- for-of on strings | Dep-driven |
 | 241 | 2026-03-13 | Yield expression in strict mode / module context | Dep-driven |
+| 300 | 2026-03-13 | Object to primitive conversion — template toString fix | Dep-driven |
