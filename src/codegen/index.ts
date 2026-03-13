@@ -5518,6 +5518,11 @@ export function addImport(
 export function addStringConstantGlobal(ctx: CodegenContext, value: string): void {
   if (ctx.stringGlobalMap.has(value)) return; // already registered
 
+  // If module-defined globals already exist, adding a new import global
+  // shifts their absolute indices by 1. Fix up all existing instructions.
+  const hasModuleGlobals = ctx.mod.globals.length > 0 || ctx.mod.functions.length > 0;
+  const oldNumImportGlobals = ctx.numImportGlobals;
+
   const globalIdx = ctx.numImportGlobals; // next global import index
   addImport(ctx, "string_constants", value, {
     kind: "global",
@@ -5529,6 +5534,14 @@ export function addStringConstantGlobal(ctx: CodegenContext, value: string): voi
   ctx.stringLiteralValues.set(`__str_${ctx.stringLiteralCounter}`, value);
   ctx.stringLiteralCounter++;
   ctx.mod.stringPool.push(value);
+
+  // Fix up global indices in already-compiled function bodies and the
+  // current function being compiled. Any global.get/global.set with
+  // index >= oldNumImportGlobals was referencing a module-defined global
+  // and must be shifted by +1 since we just inserted a new import global.
+  if (hasModuleGlobals) {
+    fixupModuleGlobalIndices(ctx, oldNumImportGlobals, 1);
+  }
 }
 
 /** Return the absolute Wasm global index for a new module-defined global. */
@@ -5539,6 +5552,59 @@ export function nextModuleGlobalIdx(ctx: CodegenContext): number {
 /** Convert an absolute Wasm global index to a local module-globals array index. */
 export function localGlobalIdx(ctx: CodegenContext, absIdx: number): number {
   return absIdx - ctx.numImportGlobals;
+}
+
+/**
+ * Fix up module-global absolute indices in all compiled function bodies.
+ * When addStringConstantGlobal is called during codegen (e.g. from emitBoolToString
+ * or function .name access), numImportGlobals increases, shifting the absolute
+ * indices of all module-defined globals. This function walks all instructions
+ * and adjusts global.get/global.set indices that reference module globals.
+ *
+ * @param ctx - codegen context
+ * @param threshold - the numImportGlobals value at the time module globals were allocated
+ * @param delta - how many new import globals were added (shift amount)
+ */
+function fixupModuleGlobalIndices(
+  ctx: CodegenContext,
+  threshold: number,
+  delta: number,
+): void {
+  function shiftGlobalIndices(instrs: Instr[]): void {
+    for (const instr of instrs) {
+      if (
+        (instr.op === "global.get" || instr.op === "global.set") &&
+        instr.index >= threshold
+      ) {
+        instr.index += delta;
+      }
+      // Recurse into nested instruction arrays (if/else/block/loop)
+      if ("body" in instr && Array.isArray((instr as any).body)) {
+        shiftGlobalIndices((instr as any).body);
+      }
+      if ("then" in instr && Array.isArray((instr as any).then)) {
+        shiftGlobalIndices((instr as any).then);
+      }
+      if ("else" in instr && Array.isArray((instr as any).else)) {
+        shiftGlobalIndices((instr as any).else);
+      }
+    }
+  }
+
+  for (const func of ctx.mod.functions) {
+    shiftGlobalIndices(func.body);
+  }
+
+  // Also fix up the current function being compiled (its body is not yet
+  // in ctx.mod.functions — it's in the FunctionContext's body array)
+  if (ctx.currentFunc) {
+    shiftGlobalIndices(ctx.currentFunc.body);
+  }
+
+  // Also fix up global init expressions (e.g. globals that reference other globals)
+  for (const g of ctx.mod.globals) {
+    if (g.init) shiftGlobalIndices(g.init);
+  }
 }
 
 /**

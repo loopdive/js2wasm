@@ -278,7 +278,7 @@ All independent of each other and of codegen work.
 >>>>>>> 0072a3e (fix: parseInt edge cases -- robust undefined assert stripping (#303))
 | 307 | Promise.all/race compile errors | [E] | 7 | Ready |
 | 316 | Array element access out of bounds | [E] | 1 | Done |
-| 229 | Tagged template cache: array out of bounds | [E] | — | Ready |
+| 229 | Tagged template cache: array out of bounds | [E] | — | Done |
 
 ---
 
