@@ -9035,15 +9035,9 @@ function compileCallExpression(
     }
 
     // Array(n) — create array of length n, or Array(a,b,c) → [a,b,c]
+    // Treat Array() the same as new Array() — they have identical semantics in JS.
     if (funcName === "Array") {
-      if (expr.arguments.length === 0) {
-        // Array() → [] — emit empty array literal
-        return compileExpression(ctx, fctx, ts.factory.createArrayLiteralExpression([]));
-      }
-      // For single numeric arg: treated as new Array literal with those elements
-      // (full semantics require Array(n) → length-n sparse array, but the simplest
-      // safe fallback is to compile as if it were [...args])
-      // Fall through to "Unknown function" — tests that need Array(n) skip gracefully
+      return compileArrayConstructorCall(ctx, fctx, expr);
     }
   }
 
@@ -13753,6 +13747,77 @@ function compileArrayLiteral(
   fctx.body.push({ op: "local.get", index: writeIdx });    // length field (field 0)
   fctx.body.push({ op: "local.get", index: resultLocal }); // data field (field 1)
   fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx }); // wrap in vec struct
+  return { kind: "ref_null", typeIdx: vecTypeIdx };
+}
+
+/**
+ * Compile Array(n) or Array(a,b,c) function calls (non-new).
+ * Array(n) creates a sparse array of length n (all slots undefined/default).
+ * Array(a,b,c) creates [a, b, c].
+ * These have identical semantics to new Array(...).
+ */
+function compileArrayConstructorCall(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.CallExpression,
+): ValType | null {
+  const args = expr.arguments;
+
+  // Determine element type from contextual type or expression type
+  const ctxType = ctx.checker.getContextualType(expr);
+  let exprType = ctxType ?? ctx.checker.getTypeAtLocation(expr);
+
+  // Infer element type
+  let elemWasm: ValType;
+  const rawTypeArgs = ctx.checker.getTypeArguments(exprType as ts.TypeReference);
+  const elemTsType = rawTypeArgs?.[0];
+  if (elemTsType && !(elemTsType.flags & ts.TypeFlags.Any)) {
+    elemWasm = resolveWasmType(ctx, elemTsType);
+  } else {
+    // Default to f64 for untyped arrays
+    elemWasm = { kind: "f64" };
+  }
+
+  const elemKind = (elemWasm.kind === "ref" || elemWasm.kind === "ref_null")
+    ? `ref_${(elemWasm as { typeIdx: number }).typeIdx}` : elemWasm.kind;
+  const vecTypeIdx = getOrRegisterVecType(ctx, elemKind, elemWasm);
+  const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
+  if (arrTypeIdx < 0) {
+    ctx.errors.push({ message: "Array(): invalid vec type", line: getLine(expr), column: getCol(expr) });
+    return null;
+  }
+
+  if (args.length === 0) {
+    // Array() → empty array
+    fctx.body.push({ op: "i32.const", value: 0 });           // length = 0
+    fctx.body.push({ op: "i32.const", value: 0 });           // size for array.new_default
+    fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx });
+    fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
+    return { kind: "ref_null", typeIdx: vecTypeIdx };
+  }
+
+  if (args.length === 1) {
+    // Array(n) → sparse array of length n with default values
+    compileExpression(ctx, fctx, args[0]!, { kind: "f64" });
+    fctx.body.push({ op: "i32.trunc_sat_f64_s" });
+    const sizeLocal = allocLocal(fctx, `__arr_size_${fctx.locals.length}`, { kind: "i32" });
+    fctx.body.push({ op: "local.tee", index: sizeLocal });
+    fctx.body.push({ op: "local.get", index: sizeLocal });
+    fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx });
+    fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
+    return { kind: "ref_null", typeIdx: vecTypeIdx };
+  }
+
+  // Array(a, b, c) → [a, b, c]
+  for (const arg of args) {
+    compileExpression(ctx, fctx, arg, elemWasm);
+  }
+  fctx.body.push({ op: "array.new_fixed", typeIdx: arrTypeIdx, length: args.length });
+  const tmpData = allocLocal(fctx, `__arr_data_${fctx.locals.length}`, { kind: "ref", typeIdx: arrTypeIdx });
+  fctx.body.push({ op: "local.set", index: tmpData });
+  fctx.body.push({ op: "i32.const", value: args.length });
+  fctx.body.push({ op: "local.get", index: tmpData });
+  fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
   return { kind: "ref_null", typeIdx: vecTypeIdx };
 }
 
