@@ -292,3 +292,4 @@
 | 271 | 2026-03-16 | Missing harness/global declarations — 11 diagnostics downgraded | Dep-driven |
 | 237 | 2026-03-16 | BigInt i64 vs externref type mismatch (coercion paths verified complete) | Dep-driven |
 | 359 | 2026-03-16 | Object.freeze/seal/preventExtensions stubs (31 skip removed) | Dep-driven |
+| 399 | 2026-03-16 | Array prototype methods rewritten with call_ref (72 FAIL) | Dep-driven |
