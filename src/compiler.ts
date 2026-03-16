@@ -204,8 +204,9 @@ function classifyImport(name: string, mod: WasmModule): ImportIntent {
   if (name === "__is_truthy") return { type: "truthy_check" };
   if (name === "__typeof") return { type: "builtin", name: "__typeof" };
 
-  // Extern get
+  // Extern get/set
   if (name === "__extern_get") return { type: "extern_get" };
+  if (name === "__extern_set") return { type: "extern_set" };
 
   // Declared globals (like `declare const document: Document`)
   if (name.startsWith("global_")) return { type: "declared_global", name: name.slice(7) };
