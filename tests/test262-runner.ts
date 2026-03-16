@@ -73,7 +73,8 @@ const UNSUPPORTED_FEATURES = new Set([
   "Proxy", "Reflect", "Reflect.construct", "Reflect.apply",
   "WeakRef", "FinalizationRegistry", "WeakMap", "WeakSet",
   "SharedArrayBuffer", "Atomics",
-  "dynamic-import", "import.meta",
+  // dynamic-import: checked separately in shouldSkip (only skip when source uses import())
+  // import.meta: implemented (#371), no longer needs skipping
   "promise-all-settled", "Promise.any", "Promise.allSettled",
   "TypedArray", "DataView", "ArrayBuffer",
   "RegExp", "regexp-dotall", "regexp-lookbehind", "regexp-named-groups",
@@ -124,6 +125,16 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     const body = source.replace(/\/\*---[\s\S]*?---\*\//, "");
     if (/\bSymbol\b/.test(body)) {
       return { skip: true, reason: "uses Symbol in source" };
+    }
+  }
+
+  // dynamic-import feature tag: only skip if the source actually uses import().
+  // Many tests are tagged with dynamic-import because the spec references it,
+  // but the test code itself does not use import() and can run fine without it.
+  if (meta.features?.includes("dynamic-import")) {
+    const body = source.replace(/\/\*---[\s\S]*?---\*\//, "");
+    if (/\bimport\s*\(/.test(body)) {
+      return { skip: true, reason: "uses dynamic import() in source" };
     }
   }
 
