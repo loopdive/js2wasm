@@ -275,3 +275,4 @@
 | 356 | 2026-03-16 | Closure-as-value skip filter removal (23 tests unblocked) | Dep-driven |
 | 362 | 2026-03-16 | typeof on member expressions — skip filter removal | Dep-driven |
 | 373 | 2026-03-16 | Object as loop condition / falsy value handling | Dep-driven |
+| 388 | 2026-03-16 | Element access on externref — string/dynamic keys | Dep-driven |
