@@ -56,6 +56,8 @@ export function buildImports(result: CompileResult): WebAssembly.Imports {
     __box_number: (v: number) => v,
     __box_boolean: (v: number) => Boolean(v),
     __make_callback: () => null,
+    __extern_get: (obj: any, key: any) => (obj == null ? undefined : obj[key]),
+    __extern_length: (obj: any) => (obj == null ? 0 : obj.length),
     JSON_stringify: (v: any) => JSON.stringify(v),
     JSON_parse: (s: any) => JSON.parse(s),
   };
