@@ -199,7 +199,7 @@ Can all run in parallel (different diagnostic codes).
 |-----|-------|-------|--------|
 | ~~241~~ | ~~Yield expression in strict mode / module context~~ | — | **Done** |
 | ~~267~~ | ~~Yield expression outside of generator function~~ | — | **Done** |
-| 287 | Generator function compile errors — yield in loops/try | ~119 CE | Blocked by #267 |
+| 287 | Generator function compile errors — yield in loops/try | ~119 CE | **Ready** (#267 done) |
 | 288 | Try/catch/finally compile errors — complex patterns | ~40 CE | Coordinates with #287 |
 
 ---
