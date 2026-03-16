@@ -158,19 +158,11 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
   // Wrapper constructors (new Number, new String, new Boolean) now compile to primitives.
   // No longer skipped.
 
-  // NaN/undefined/null are falsy in JS but wasm's f64.ne(0) treats NaN as truthy.
-  // Skip tests using these as loop conditions — they become infinite loops in wasm.
-  if (/for\s*\([^)]*;\s*(NaN|undefined|null)\s*;/.test(source)) {
-    return { skip: true, reason: "loop condition falsy in JS but truthy in wasm (NaN/undefined/null)" };
-  }
-  if (/while\s*\(\s*(NaN|undefined|null)\s*\)/.test(source)) {
-    return { skip: true, reason: "loop condition falsy in JS but truthy in wasm (NaN/undefined/null)" };
-  }
-
-  // Object/function as loop condition — always truthy as struct ref, causes infinite loop
-  if (/while\s*\(\s*function\b/.test(source) || /while\s*\(\s*\{/.test(source)) {
-    return { skip: true, reason: "object/function as loop condition (always truthy in wasm)" };
-  }
+  // NaN/undefined/null loop conditions and object/function loop conditions
+  // are now handled correctly by ensureI32Condition in codegen:
+  //   - f64 (NaN): f64.abs + f64.gt(0) correctly treats NaN as falsy
+  //   - externref (undefined/null): ref.is_null correctly treats null refs as falsy
+  //   - ref types (objects/functions): non-null refs are correctly truthy
 
   // for-of over non-array iterables (generators, strings, custom iterators) can hang
   // because our for-of compiles as array iteration — mismatched length causes infinite loop
