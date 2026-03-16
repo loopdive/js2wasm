@@ -303,3 +303,4 @@
 | 339 | 2026-03-16 | Async/await — Promise unwrapping + skip filter removal (3,300 tests) | Dep-driven |
 | 146 | 2026-03-16 | Type-aware unknown identifier fallback + scope hoisting tests | Dep-driven |
 | 353 | 2026-03-16 | For-of with generators — skip filter + test helper imports | Dep-driven |
+| 345 | 2026-03-16 | Symbol.iterator skip filter narrowed (54 tests unblocked) | Dep-driven |
