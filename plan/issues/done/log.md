@@ -289,3 +289,4 @@
 | 174 | 2026-03-16 | BigInt cross-type comparison (already resolved, tests added) | Dep-driven |
 | 374 | 2026-03-16 | Misc small patterns (unary +/- strings, named fn readonly) | Dep-driven |
 | 394 | 2026-03-16 | Destructuring struct type mismatch + interface field resolution (326 FAIL) | Dep-driven |
+| 271 | 2026-03-16 | Missing harness/global declarations — 11 diagnostics downgraded | Dep-driven |
