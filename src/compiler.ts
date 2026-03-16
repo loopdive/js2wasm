@@ -299,6 +299,85 @@ function checkJsTypeCoverage(ast: TypedAST): CompileError[] {
   return warnings;
 }
 
+// TS diagnostics that the wasm codegen can handle gracefully —
+// downgrade from error to warning so they don't block compilation.
+const DOWNGRADE_DIAG_CODES = new Set([
+  2304, // "Cannot find name 'X'" — unknown identifiers compiled as externref/unreachable
+  2345, // "Argument of type 'X' is not assignable to parameter of type 'Y'"
+  2322, // "Type 'X' is not assignable to type 'Y'"
+  2339, // "Property 'X' does not exist on type 'Y'" — dynamic property access
+  2454, // "Variable 'X' is used before being assigned"
+  2531, // "Object is possibly 'null'"
+  2532, // "Object is possibly 'undefined'"
+  2367, // "This comparison appears to be unintentional" (always truthy/falsy)
+  2554, // "Expected N arguments, but got M"
+  2683, // "'this' implicitly has type 'any'"
+  2695, // "Left side of comma operator is unused and has no side effects"
+  2769, // "No overload matches this call"
+  18049, // "'X' is declared but its value is never read" (unused vars)
+  2358, // "The left-hand side of an 'instanceof' expression must be..."
+  2356, // "An arithmetic operand must be of type 'any', 'number', 'bigint' or an enum type" — prefix/postfix inc/dec on non-number
+  2362, // "The left-hand side of an arithmetic operation must be..."
+  2365, // "Operator 'X' cannot be applied to types 'Y' and 'Z'"
+  18050, // "The value 'null'/'undefined' cannot be used here"
+  2872, // "This kind of expression is always truthy"
+  2873, // "This kind of expression is always falsy"
+  2363, // "The right-hand side of an arithmetic operation must be..."
+  2869, // "Right operand of ?? is unreachable because the left operand is never nullish"
+  2349, // "This expression is not callable"
+  2552, // "Cannot find name 'X'. Did you mean 'Y'?"
+  18046, // "'X' is of type 'unknown'"
+  2881, // "This expression is never nullish" — false positive in allowJs mode
+  2871, // "This expression is always nullish"
+  18048, // "'X' is possibly 'undefined'"
+  2839, // "This condition will always return true/false since JS compares objects by reference"
+  2703, // "The operand of a 'delete' operator must be a property reference"
+  2630, // "Cannot assign to 'X' because it is a function"
+  2447, // "The '|'/'&' operator is not allowed for boolean types"
+  2300, // "Duplicate identifier 'X'"
+  2408, // "Setters cannot return a value" — valid in JS, codegen handles it
+  1345, // "An expression of type 'void' cannot be tested for truthiness"
+  2350, // "Only a void function can be called with the 'new' keyword"
+  2403, // "Subsequent variable declarations must have the same type" — var re-declarations legal in JS
+  2377, // "Constructors for derived classes must contain a 'super' call" — valid JS pattern
+  2376, // "A 'super' call must be the first statement in the constructor" — valid JS pattern
+  17009, // "'super' must be called before accessing 'this' in derived class constructor"
+  17011, // "'super' must be called before accessing a property of 'super' in derived class constructor"
+  2540, // "Cannot assign to 'X' because it is a read-only property" — private fields are writable in JS
+  2803, // "Cannot assign to private method 'X'. Private methods are not writable" — valid JS pattern
+  2806, // "Private accessor was defined without a getter" — valid JS pattern
+  18030, // "An optional chain cannot contain private identifiers" — valid JS pattern
+  2729, // "Property 'X' is used before its initialization" — valid JS pattern
+  1163, // "A 'yield' expression is only allowed in a generator body" — #267
+  1220, // "Generators are not allowed in an ambient context" — valid JS pattern (#267)
+  1166, // "A computed property name in a class property declaration must have a simple literal type" — #265
+  2464, // "A computed property name must be of type 'string', 'number', 'symbol', or 'any'" — #276
+  2488, // "Type must have a '[Symbol.iterator]()' method" — #268
+  2548, // "Type is not an array type or does not have '[Symbol.iterator]()'" — #268
+  2549, // "Type is not an array/string type or does not have '[Symbol.iterator]()'" — #268
+  18014, // "The property '#x' cannot be accessed on type 'X' within this class because it is shadowed" — valid JS
+  2538, // "Type 'X' cannot be used as an index type" — valid JS pattern (e.g. symbol/boolean as index)
+  1468, // "A computed property name must be of type 'string', 'number', 'symbol', or 'any'" — valid JS
+  2556, // "A spread argument must either have a tuple type or be passed to a rest parameter" — valid JS spread (#382)
+  2741, // "Property 'X' is missing in type 'Y' but required in type 'Z'" — valid JS object patterns
+  2493, // "Tuple type '[]' of length 'N' has no element at index 'M'" — destructuring empty/short tuples (#379)
+  2700, // "Rest types may only be created from object types" — object rest on primitives (#379)
+  1212, // "Identifier expected. 'X' is a reserved word in strict mode" — valid in sloppy JS (#270)
+  1214, // "Identifier expected. 'yield' is a reserved word in strict mode. Modules are automatically in strict mode." — yield as identifier in sloppy JS (#241)
+  2378, // "A 'get' accessor must return a value" — valid JS pattern, getter can return undefined implicitly (#377)
+  1052, // "A 'set' accessor parameter cannot have an initializer" — valid JS pattern, setter params can have defaults (#377)
+  7033, // "Property 'X' implicitly has type 'any', because its get accessor lacks a return type annotation" — valid JS (#377)
+  1100, // "Invalid use of 'X' in strict mode" — sloppy-mode JS allows assignment to eval/arguments (#331)
+  1215, // "Invalid use of 'X'. Modules are automatically in strict mode" — sloppy-mode JS allows eval/arguments as targets (#331)
+  1210, // "Code contained in a class is evaluated in strict mode which does not allow this use of 'X'" — sloppy-mode JS pattern (#331)
+  1156, // "'let' declarations can only be declared inside a block" — sloppy-mode JS pattern (#383)
+  1313, // "The body of an 'if' statement cannot be the empty statement" — sloppy-mode JS pattern (#383)
+  1344, // "A label is not allowed here" — labeled function declarations in sloppy-mode JS (#383)
+  1182, // "A destructuring declaration must have an initializer" — valid JS pattern (#383)
+  1228, // "A type predicate is only allowed in return type position" — valid JS pattern (#383)
+  7053, // "Element implicitly has an 'any' type because expression can't be used to index type" — numeric/string index on plain objects (#391)
+]);
+
 /**
  * Orchestrates the full compilation pipeline:
  * TS Source → tsc Parser+Checker → Codegen → Binary + WAT
@@ -341,82 +420,7 @@ export function compileSource(
 
   // TS diagnostics that the wasm codegen can handle gracefully —
   // downgrade from error to warning so they don't block compilation.
-  const DOWNGRADE_DIAG_CODES = new Set([
-    2304, // "Cannot find name 'X'" — unknown identifiers compiled as externref/unreachable
-    2345, // "Argument of type 'X' is not assignable to parameter of type 'Y'"
-    2322, // "Type 'X' is not assignable to type 'Y'"
-    2339, // "Property 'X' does not exist on type 'Y'" — dynamic property access
-    2454, // "Variable 'X' is used before being assigned"
-    2531, // "Object is possibly 'null'"
-    2532, // "Object is possibly 'undefined'"
-    2367, // "This comparison appears to be unintentional" (always truthy/falsy)
-    2554, // "Expected N arguments, but got M"
-    2683, // "'this' implicitly has type 'any'"
-    2695, // "Left side of comma operator is unused and has no side effects"
-    2769, // "No overload matches this call"
-    18049, // "'X' is declared but its value is never read" (unused vars)
-    2358, // "The left-hand side of an 'instanceof' expression must be..."
-    2356, // "An arithmetic operand must be of type 'any', 'number', 'bigint' or an enum type" — prefix/postfix inc/dec on non-number
-    2362, // "The left-hand side of an arithmetic operation must be..."
-    2365, // "Operator 'X' cannot be applied to types 'Y' and 'Z'"
-    18050, // "The value 'null'/'undefined' cannot be used here"
-    2872, // "This kind of expression is always truthy"
-    2873, // "This kind of expression is always falsy"
-    2363, // "The right-hand side of an arithmetic operation must be..."
-    2695, // "Left side of comma operator is unused and has no side effects"
-    2869, // "Right operand of ?? is unreachable because the left operand is never nullish"
-    2349, // "This expression is not callable"
-    2552, // "Cannot find name 'X'. Did you mean 'Y'?"
-    18046, // "'X' is of type 'unknown'"
-    2881, // "This expression is never nullish" — false positive in allowJs mode
-    2871, // "This expression is always nullish"
-    18048, // "'X' is possibly 'undefined'"
-    2839, // "This condition will always return true/false since JS compares objects by reference"
-    2703, // "The operand of a 'delete' operator must be a property reference"
-    2630, // "Cannot assign to 'X' because it is a function"
-    2447, // "The '|'/'&' operator is not allowed for boolean types"
-    2300, // "Duplicate identifier 'X'"
-    2408, // "Setters cannot return a value" — valid in JS, codegen handles it
-    1345, // "An expression of type 'void' cannot be tested for truthiness"
-    2350, // "Only a void function can be called with the 'new' keyword"
-    2403, // "Subsequent variable declarations must have the same type" — var re-declarations legal in JS
-    2377, // "Constructors for derived classes must contain a 'super' call" — valid JS pattern
-    2376, // "A 'super' call must be the first statement in the constructor" — valid JS pattern
-    17009, // "'super' must be called before accessing 'this' in derived class constructor"
-    17011, // "'super' must be called before accessing a property of 'super' in derived class constructor"
-    2540, // "Cannot assign to 'X' because it is a read-only property" — private fields are writable in JS
-    2803, // "Cannot assign to private method 'X'. Private methods are not writable" — valid JS pattern
-    2806, // "Private accessor was defined without a getter" — valid JS pattern
-    18030, // "An optional chain cannot contain private identifiers" — valid JS pattern
-    2729, // "Property 'X' is used before its initialization" — valid JS pattern
-    1163, // "A 'yield' expression is only allowed in a generator body" — #267
-    1220, // "Generators are not allowed in an ambient context" — valid JS pattern (#267)
-    1166, // "A computed property name in a class property declaration must have a simple literal type" — #265
-    2464, // "A computed property name must be of type 'string', 'number', 'symbol', or 'any'" — #276
-    2488, // "Type must have a '[Symbol.iterator]()' method" — #268
-    2548, // "Type is not an array type or does not have '[Symbol.iterator]()'" — #268
-    2549, // "Type is not an array/string type or does not have '[Symbol.iterator]()'" — #268
-    18014, // "The property '#x' cannot be accessed on type 'X' within this class because it is shadowed" — valid JS
-    2538, // "Type 'X' cannot be used as an index type" — valid JS pattern (e.g. symbol/boolean as index)
-    1468, // "A computed property name must be of type 'string', 'number', 'symbol', or 'any'" — valid JS
-    2556, // "A spread argument must either have a tuple type or be passed to a rest parameter" — valid JS spread (#382)
-    2741, // "Property 'X' is missing in type 'Y' but required in type 'Z'" — valid JS object patterns
-    2493, // "Tuple type '[]' of length 'N' has no element at index 'M'" — destructuring empty/short tuples (#379)
-    2700, // "Rest types may only be created from object types" — object rest on primitives (#379)
-    1212, // "Identifier expected. 'X' is a reserved word in strict mode" — valid in sloppy JS (#270)
-    1214, // "Identifier expected. 'yield' is a reserved word in strict mode. Modules are automatically in strict mode." — yield as identifier in sloppy JS (#241)
-    2378, // "A 'get' accessor must return a value" — valid JS pattern, getter can return undefined implicitly (#377)
-    1052, // "A 'set' accessor parameter cannot have an initializer" — valid JS pattern, setter params can have defaults (#377)
-    7033, // "Property 'X' implicitly has type 'any', because its get accessor lacks a return type annotation" — valid JS (#377)
-    1100, // "Invalid use of 'X' in strict mode" — sloppy-mode JS allows assignment to eval/arguments (#331)
-    1215, // "Invalid use of 'X'. Modules are automatically in strict mode" — sloppy-mode JS allows eval/arguments as targets (#331)
-    1210, // "Code contained in a class is evaluated in strict mode which does not allow this use of 'X'" — sloppy-mode JS pattern (#331)
-    1156, // "'let' declarations can only be declared inside a block" — sloppy-mode JS pattern (#383)
-    1313, // "The body of an 'if' statement cannot be the empty statement" — sloppy-mode JS pattern (#383)
-    1344, // "A label is not allowed here" — labeled function declarations in sloppy-mode JS (#383)
-    1182, // "A destructuring declaration must have an initializer" — valid JS pattern (#383)
-    1228, // "A type predicate is only allowed in return type position" — valid JS pattern (#383)
-  ]);
+  // (Uses module-level DOWNGRADE_DIAG_CODES set defined above)
 
   // Collect TS diagnostics as errors (or warnings for handled cases)
   for (const diag of ast.diagnostics) {
@@ -1193,6 +1197,7 @@ export function compileToObjectSource(
       const pos = diag.file
         ? diag.file.getLineAndCharacterOfPosition(diag.start ?? 0)
         : { line: 0, character: 0 };
+      const severity = DOWNGRADE_DIAG_CODES.has(diag.code) ? "warning" : "error";
       errors.push({
         message:
           typeof diag.messageText === "string"
@@ -1200,7 +1205,7 @@ export function compileToObjectSource(
             : diag.messageText.messageText,
         line: pos.line + 1,
         column: pos.character + 1,
-        severity: "error",
+        severity: severity as "error" | "warning",
       });
     }
   }
