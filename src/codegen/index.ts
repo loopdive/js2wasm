@@ -4720,6 +4720,13 @@ function collectStringLiterals(
     if (ts.isTypeOfExpression(node)) {
       hasTypeofExpr = true;
     }
+    // import.meta needs placeholder strings
+    if (ts.isMetaProperty(node) &&
+        node.keywordToken === ts.SyntaxKind.ImportKeyword &&
+        node.name.text === "meta") {
+      literals.add("module.wasm");
+      literals.add("[object Object]");
+    }
     ts.forEachChild(node, visit);
   }
 

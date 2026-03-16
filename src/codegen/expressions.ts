@@ -690,6 +690,16 @@ function compileExpressionInner(
     }
   }
 
+  // MetaProperty: import.meta — compile as an object with a `url` property.
+  // Bare `import.meta` is rare; typically accessed as `import.meta.url`.
+  // We return a string placeholder since the object shape is simple.
+  if (ts.isMetaProperty(expr) && expr.keywordToken === ts.SyntaxKind.ImportKeyword && expr.name.text === "meta") {
+    // Return a non-null externref as a truthy object sentinel.
+    // In most real usage, import.meta.url is accessed via PropertyAccess
+    // which is handled separately in compilePropertyAccess.
+    return compileStringLiteral(ctx, fctx, "[object Object]");
+  }
+
   // RegExp literal (/pattern/flags) → desugar to new RegExp(pattern, flags)
   if (expr.kind === ts.SyntaxKind.RegularExpressionLiteral) {
     return compileRegExpLiteral(ctx, fctx, expr);
@@ -2183,6 +2193,13 @@ function compileTypeofExpression(
       return compileStringLiteral(ctx, fctx, "number");
     }
     return compileStringLiteral(ctx, fctx, "function");
+  }
+
+  // typeof import.meta → "object"
+  if (ts.isMetaProperty(operand) &&
+      operand.keywordToken === ts.SyntaxKind.ImportKeyword &&
+      operand.name.text === "meta") {
+    return compileStringLiteral(ctx, fctx, "object");
   }
 
   const tsType = ctx.checker.getTypeAtLocation(operand);
@@ -11312,6 +11329,18 @@ function compilePropertyAccess(
   // Handle super.prop — access parent class property/getter on current `this`
   if (expr.expression.kind === ts.SyntaxKind.SuperKeyword) {
     return compileSuperPropertyAccess(ctx, fctx, expr, propName);
+  }
+
+  // Handle import.meta.url and other import.meta properties
+  if (ts.isMetaProperty(expr.expression) &&
+      expr.expression.keywordToken === ts.SyntaxKind.ImportKeyword &&
+      expr.expression.name.text === "meta") {
+    if (propName === "url") {
+      return compileStringLiteral(ctx, fctx, "module.wasm");
+    }
+    // For any other import.meta property, return undefined
+    fctx.body.push({ op: "ref.null.extern" });
+    return { kind: "externref" };
   }
 
   // Check for enum member access: EnumName.Member
