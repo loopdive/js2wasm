@@ -8034,6 +8034,93 @@ function collectPropsFromStatements(
         }
       }
     }
+    // Object.defineProperty(obj, "prop", { value: v }) — treat as obj.prop = v for widening
+    if (ts.isExpressionStatement(s) && ts.isCallExpression(s.expression)) {
+      const call = s.expression;
+      if (
+        ts.isPropertyAccessExpression(call.expression) &&
+        ts.isIdentifier(call.expression.expression) &&
+        call.expression.expression.text === "Object" &&
+        ts.isIdentifier(call.expression.name) &&
+        call.expression.name.text === "defineProperty" &&
+        call.arguments.length >= 3
+      ) {
+        const objArg = call.arguments[0]!;
+        const propArg = call.arguments[1]!;
+        const descArg = call.arguments[2]!;
+        if (
+          ts.isIdentifier(objArg) &&
+          objArg.text === varName &&
+          ts.isStringLiteral(propArg)
+        ) {
+          const propName = propArg.text;
+          if (!seenProps.has(propName)) {
+            seenProps.add(propName);
+            // Try to get value type from descriptor.value
+            let wasmType: ValType = { kind: "externref" };
+            if (ts.isObjectLiteralExpression(descArg)) {
+              for (const prop of descArg.properties) {
+                if (
+                  ts.isPropertyAssignment(prop) &&
+                  ts.isIdentifier(prop.name) &&
+                  prop.name.text === "value"
+                ) {
+                  const rhsType = checker.getTypeAtLocation(prop.initializer);
+                  wasmType = resolveWasmType(ctx, rhsType);
+                  break;
+                }
+              }
+            }
+            extraProps.push({ name: propName, type: wasmType });
+          }
+        }
+      }
+    }
+    // Also handle: const result = Object.defineProperty(obj, ...)
+    if (ts.isVariableStatement(s)) {
+      for (const decl of s.declarationList.declarations) {
+        if (decl.initializer && ts.isCallExpression(decl.initializer)) {
+          const call = decl.initializer;
+          if (
+            ts.isPropertyAccessExpression(call.expression) &&
+            ts.isIdentifier(call.expression.expression) &&
+            call.expression.expression.text === "Object" &&
+            ts.isIdentifier(call.expression.name) &&
+            call.expression.name.text === "defineProperty" &&
+            call.arguments.length >= 3
+          ) {
+            const objArg = call.arguments[0]!;
+            const propArg = call.arguments[1]!;
+            const descArg = call.arguments[2]!;
+            if (
+              ts.isIdentifier(objArg) &&
+              objArg.text === varName &&
+              ts.isStringLiteral(propArg)
+            ) {
+              const propName = propArg.text;
+              if (!seenProps.has(propName)) {
+                seenProps.add(propName);
+                let wasmType: ValType = { kind: "externref" };
+                if (ts.isObjectLiteralExpression(descArg)) {
+                  for (const prop of descArg.properties) {
+                    if (
+                      ts.isPropertyAssignment(prop) &&
+                      ts.isIdentifier(prop.name) &&
+                      prop.name.text === "value"
+                    ) {
+                      const rhsType = checker.getTypeAtLocation(prop.initializer);
+                      wasmType = resolveWasmType(ctx, rhsType);
+                      break;
+                    }
+                  }
+                }
+                extraProps.push({ name: propName, type: wasmType });
+              }
+            }
+          }
+        }
+      }
+    }
     // Recurse into blocks (if/for/while bodies)
     if (ts.isBlock(s)) {
       collectPropsFromStatements(checker, ctx, s.statements, varName, extraProps, seenProps);
