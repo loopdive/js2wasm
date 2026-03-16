@@ -312,7 +312,9 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     return { skip: true, reason: "property introspection not supported" };
   }
 
-  // Skip tests using prototype chain (including prototype assignment)
+  // Skip tests using prototype chain manipulation (#343: narrowed from broad
+  // ".prototype" filter to only match mutation/chain traversal patterns).
+  // Read-only prototype method access like Array.prototype.indexOf is allowed.
   // Only check executable code — strip comments and metadata first so that
   // tests whose only .prototype mention is in the description/info block
   // (e.g. "String.prototype.charAt(pos)") are not falsely skipped (#187).
@@ -321,7 +323,14 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
       .replace(/\/\*---[\s\S]*?---\*\//, "")   // strip YAML metadata
       .replace(/\/\/.*$/gm, "")                 // strip single-line comments
       .replace(/\/\*[\s\S]*?\*\//g, "");         // strip multi-line comments
-    if (/\.prototype[\.\s=]/.test(execCode) || /__proto__/.test(execCode)) {
+    if (
+      /\.prototype\s*=[^=]/.test(execCode) ||            // prototype assignment: Foo.prototype = {...}
+      /\.prototype\.\w+\s*=[^=]/.test(execCode) ||     // prototype property set: Foo.prototype.bar = ...
+      /__proto__/.test(execCode) ||                     // __proto__ access
+      /Object\.getPrototypeOf/.test(execCode) ||        // prototype chain introspection
+      /Object\.setPrototypeOf/.test(execCode) ||        // prototype chain mutation
+      /\.isPrototypeOf/.test(execCode)                  // prototype chain check
+    ) {
       return { skip: true, reason: "prototype chain not supported" };
     }
   }
