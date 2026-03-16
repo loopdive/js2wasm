@@ -73,7 +73,8 @@ const UNSUPPORTED_FEATURES = new Set([
   "Proxy",
   "WeakRef", "FinalizationRegistry", "WeakMap", "WeakSet",
   "SharedArrayBuffer", "Atomics",
-  "dynamic-import", "import.meta",
+  // dynamic-import: checked separately in shouldSkip (only skip when source uses import())
+  // import.meta: implemented (#371), no longer needs skipping
   "promise-all-settled", "Promise.any", "Promise.allSettled",
   "TypedArray", "DataView", "ArrayBuffer",
   "RegExp", "regexp-dotall", "regexp-lookbehind", "regexp-named-groups",
@@ -128,13 +129,18 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
   }
 
   // Reflect feature tags: only skip if the source actually uses Reflect.
-  // Many tests are tagged with Reflect.construct or Reflect because the spec
-  // references Reflect internally, but the test code itself never calls Reflect
-  // and can run fine without Reflect support.
   if (meta.features?.some(f => f === "Reflect" || f.startsWith("Reflect."))) {
     const body = source.replace(/\/\*---[\s\S]*?---\*\//, "");
     if (/\bReflect\b/.test(body)) {
       return { skip: true, reason: "uses Reflect in source" };
+    }
+  }
+
+  // dynamic-import feature tag: only skip if the source actually uses import().
+  if (meta.features?.includes("dynamic-import")) {
+    const body = source.replace(/\/\*---[\s\S]*?---\*\//, "");
+    if (/\bimport\s*\(/.test(body)) {
+      return { skip: true, reason: "uses dynamic import() in source" };
     }
   }
 
