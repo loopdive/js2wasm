@@ -285,3 +285,4 @@
 | 395 | 2026-03-16 | Function references as callable values (closure wrapping) | Dep-driven |
 | 393 | 2026-03-16 | Compound assignment on externref element access | Dep-driven |
 | 274 | 2026-03-16 | fn.name/fn.length + global index fixup for pending init body | Dep-driven |
+| 398 | 2026-03-16 | Parent field initializers + inherited accessors in child classes | Dep-driven |
