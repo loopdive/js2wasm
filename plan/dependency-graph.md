@@ -226,7 +226,7 @@ Can all run in parallel (different diagnostic codes).
 | ~~297~~ | ~~Switch statement fall-through~~ | 2 | **Done** |
 | ~~298~~ | ~~Function statement edge cases~~ | 7 | **Done** |
 | 353 | For-of with generators and custom iterators | — | Ready |
-| 373 | Object as loop condition / falsy value handling | — | Ready |
+| ~~373~~ | ~~Object as loop condition / falsy value handling~~ | — | **Done** |
 
 ---
 
