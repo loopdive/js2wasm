@@ -70,7 +70,7 @@ const UNSUPPORTED_FEATURES = new Set([
   // actually uses Symbol (many tests are tagged with Symbol.iterator because the
   // spec uses the iterator protocol internally, but the test code itself does not
   // reference Symbol at all and can run fine without Symbol support).
-  "Proxy", "Reflect", "Reflect.construct", "Reflect.apply",
+  "Proxy",
   "WeakRef", "FinalizationRegistry", "WeakMap", "WeakSet",
   "SharedArrayBuffer", "Atomics",
   "dynamic-import", "import.meta",
@@ -124,6 +124,17 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     const body = source.replace(/\/\*---[\s\S]*?---\*\//, "");
     if (/\bSymbol\b/.test(body)) {
       return { skip: true, reason: "uses Symbol in source" };
+    }
+  }
+
+  // Reflect feature tags: only skip if the source actually uses Reflect.
+  // Many tests are tagged with Reflect.construct or Reflect because the spec
+  // references Reflect internally, but the test code itself never calls Reflect
+  // and can run fine without Reflect support.
+  if (meta.features?.some(f => f === "Reflect" || f.startsWith("Reflect."))) {
+    const body = source.replace(/\/\*---[\s\S]*?---\*\//, "");
+    if (/\bReflect\b/.test(body)) {
+      return { skip: true, reason: "uses Reflect in source" };
     }
   }
 
