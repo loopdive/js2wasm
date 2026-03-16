@@ -10816,6 +10816,29 @@ function compileNewExpression(
     }
   }
 
+  // Handle `new Error(msg)`, `new TypeError(msg)`, `new RangeError(msg)` — inline as externref
+  // Instead of importing a host constructor, we represent the error as its message string
+  // boxed to externref. This keeps the compilation pure-Wasm.
+  if (ts.isIdentifier(expr.expression)) {
+    const ctorName = expr.expression.text;
+    if (ctorName === "Error" || ctorName === "TypeError" || ctorName === "RangeError" ||
+        ctorName === "SyntaxError" || ctorName === "URIError" || ctorName === "EvalError" ||
+        ctorName === "ReferenceError") {
+      const args = expr.arguments ?? [];
+      if (args.length >= 1) {
+        // Compile the message argument to externref
+        const resultType = compileExpression(ctx, fctx, args[0]!, { kind: "externref" });
+        if (resultType && resultType.kind !== "externref") {
+          coerceType(ctx, fctx, resultType, { kind: "externref" });
+        }
+      } else {
+        // No message — push null externref
+        fctx.body.push({ op: "ref.null.extern" });
+      }
+      return { kind: "externref" };
+    }
+  }
+
   // Handle `new Object()` — create an empty struct (equivalent to {})
   if (ts.isIdentifier(expr.expression) && expr.expression.text === "Object") {
     // Look for an empty struct type, or create an externref null as empty object
