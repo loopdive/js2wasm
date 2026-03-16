@@ -6660,6 +6660,13 @@ function collectExternDeclarations(
             "DataView",
             "JSON",
             "Math",
+            "Error",
+            "TypeError",
+            "RangeError",
+            "SyntaxError",
+            "URIError",
+            "EvalError",
+            "ReferenceError",
           ]);
           if (!BUILTIN_SKIP.has(varName)) {
             const refType = ctx.checker.getTypeAtLocation(decl.type);
@@ -6700,6 +6707,7 @@ function collectExternClass(
   namespacePath: string[],
 ): void {
   const className = decl.name!.text;
+  if (ERROR_TYPES_SKIP.has(className)) return;
   const prefix = [...namespacePath, className].join("_");
 
   const info: ExternClassInfo = {
@@ -6765,12 +6773,19 @@ function collectExternClass(
   ctx.externClasses.set(fullName, info);
 }
 
+/** Error types handled natively — skip extern class registration */
+const ERROR_TYPES_SKIP = new Set([
+  "Error", "TypeError", "RangeError", "SyntaxError",
+  "URIError", "EvalError", "ReferenceError",
+]);
+
 /** Collect extern class info from a `declare var X: { prototype: X; new(): X }` (lib.dom.d.ts pattern) */
 function collectExternFromDeclareVar(
   ctx: CodegenContext,
   decl: ts.VariableDeclaration,
 ): void {
   const className = (decl.name as ts.Identifier).text;
+  if (ERROR_TYPES_SKIP.has(className)) return;
   if (ctx.externClasses.has(className)) return;
 
   const symbol = ctx.checker.getSymbolAtLocation(decl.name);

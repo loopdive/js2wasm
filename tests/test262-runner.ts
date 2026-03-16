@@ -178,15 +178,8 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     return { skip: true, reason: "collection mutation during for-of (hang risk)" };
   }
 
-  // throw→return rewriting causes infinite loops in try/catch blocks.
-  // When throw is replaced with return, the catch block never executes,
-  // and retry/loop patterns around try/catch become infinite.
-  const hasReplacedThrow = /throw\s+new\s+Test262Error\s*\(/.test(source) ||
-    /throw\s+["']/.test(source) ||
-    /throw\s+new\s+Error\s*\(/.test(source);
-  if (hasReplacedThrow && /\btry\s*\{/.test(source)) {
-    return { skip: true, reason: "throw+try/catch control flow (throw→return causes hang)" };
-  }
+  // throw+try/catch is now supported natively via Wasm exception handling.
+  // No longer need to skip these tests.
 
   // assert.throws tests are now handled by transforming them into assert_throws(fn)
   // calls with a try/catch shim, so we no longer skip them.
@@ -1024,10 +1017,10 @@ export function wrapTest(source: string, meta?: Test262Meta): string {
     'if (typeof $1 === "$2") { __fail = 1; }',
   );
 
-  // Replace throw statements with `return 0;` — mirrors original harness
-  // where throw exits loops and the test. return 0 does the same in wasm.
-  body = replaceThrowTest262Error(body);
-  body = replaceOtherThrows(body);
+  // With proper Wasm exception handling, throw statements are now compiled
+  // natively. Test262Error throws signal test failure and are caught by the
+  // try/catch wrapper in the test function (see wrapTest output below).
+  // We no longer rewrite them to `return 0;`.
 
   // Route string comparisons to string-aware assert
   // Only route when the non-string argument is a simple expression (identifier,
@@ -1339,7 +1332,12 @@ function assertNativeFunction(f: number): void {}`;
 ${preamble}
 ${hoistedDecls}
 export function test(): number {
-  ${implicitDecls}${bodyForFunc.trim()}
+  ${implicitDecls}
+  try {
+    ${bodyForFunc.trim()}
+  } catch (e) {
+    __fail = 1;
+  }
   if (__fail) { return 0; }
   return 1;
 }
