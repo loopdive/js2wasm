@@ -976,7 +976,7 @@ function collectStringMethodImports(
   // In fast mode, native split returns a native string array — no extern helpers needed.
   if (needed.has("split") && !ctx.fast) {
     if (!ctx.funcMap.has("__extern_get")) {
-      const getType = addFuncType(ctx, [{ kind: "externref" }, { kind: "f64" }], [{ kind: "externref" }]);
+      const getType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
       addImport(ctx, "env", "__extern_get", { kind: "func", typeIdx: getType });
     }
     if (!ctx.funcMap.has("__extern_length")) {
@@ -7117,7 +7117,7 @@ function collectUsedExternImports(
         if (wasmType.kind === "externref") {
           register(
             "__extern_get",
-            [{ kind: "externref" }, { kind: "f64" }],
+            [{ kind: "externref" }, { kind: "externref" }],
             [{ kind: "externref" }],
           );
         }

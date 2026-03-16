@@ -11848,19 +11848,42 @@ function compileElementAccess(
   const objType = compileExpression(ctx, fctx, expr.expression);
   if (!objType) return null;
 
-  // Externref element access: obj[idx] → host import __extern_get(obj, f64) → externref
+  // Externref element access: obj[key] → host import __extern_get(obj, externref) → externref
   if (objType.kind === "externref") {
-    compileExpression(ctx, fctx, expr.argumentExpression, { kind: "f64" });
-    const funcIdx = ctx.funcMap.get("__extern_get");
+    compileExpression(ctx, fctx, expr.argumentExpression, { kind: "externref" });
+    // Lazily register __extern_get if not already registered
+    let funcIdx = ctx.funcMap.get("__extern_get");
+    if (funcIdx === undefined) {
+      const importsBefore = ctx.numImportFuncs;
+      const getType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+      addImport(ctx, "env", "__extern_get", { kind: "func", typeIdx: getType });
+      const added = ctx.numImportFuncs - importsBefore;
+      if (added > 0) {
+        // Shift function indices in all already-compiled function bodies
+        for (const func of ctx.mod.functions) {
+          for (const instr of func.body) {
+            if ("funcIdx" in instr && typeof instr.funcIdx === "number") {
+              if (instr.funcIdx >= importsBefore) {
+                instr.funcIdx += added;
+              }
+            }
+          }
+        }
+        // Also shift the current function body being compiled
+        for (const instr of fctx.body) {
+          if ("funcIdx" in instr && typeof instr.funcIdx === "number") {
+            if (instr.funcIdx >= importsBefore) {
+              instr.funcIdx += added;
+            }
+          }
+        }
+      }
+      funcIdx = ctx.funcMap.get("__extern_get");
+    }
     if (funcIdx !== undefined) {
       fctx.body.push({ op: "call", funcIdx });
       return { kind: "externref" };
     }
-    ctx.errors.push({
-      message: "Element access on externref requires __extern_get import",
-      line: getLine(expr),
-      column: getCol(expr),
-    });
     return null;
   }
 
