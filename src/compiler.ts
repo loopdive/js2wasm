@@ -376,6 +376,17 @@ const DOWNGRADE_DIAG_CODES = new Set([
   1182, // "A destructuring declaration must have an initializer" — valid JS pattern (#383)
   1228, // "A type predicate is only allowed in return type position" — valid JS pattern (#383)
   7053, // "Element implicitly has an 'any' type because expression can't be used to index type" — numeric/string index on plain objects (#391)
+  2318, // "Cannot find global type 'X'" — e.g. ClassDecoratorContext, AsyncIterableIterator (#271)
+  2468, // "Cannot find global value 'X'" — e.g. Promise (#271)
+  2583, // "Cannot find name 'X'. Do you need to change your target library?" — e.g. BigInt, Reflect (#271)
+  2585, // "'X' only refers to a type, but is being used as a value here" (target library) (#271)
+  2693, // "'X' only refers to a type, but is being used as a value here" (#271)
+  2697, // "An async function or method must return a 'Promise'" (#271)
+  2705, // "An async function or method in ES5 requires the 'Promise' constructor" (#271)
+  1238, // "Unable to resolve signature of class decorator when called as an expression" (#271)
+  1239, // "Unable to resolve signature of parameter decorator when called as an expression" (#271)
+  1240, // "Unable to resolve signature of property decorator when called as an expression" (#271)
+  1241, // "Unable to resolve signature of method decorator when called as an expression" (#271)
 ]);
 
 /**
