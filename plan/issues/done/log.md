@@ -290,3 +290,4 @@
 | 374 | 2026-03-16 | Misc small patterns (unary +/- strings, named fn readonly) | Dep-driven |
 | 394 | 2026-03-16 | Destructuring struct type mismatch + interface field resolution (326 FAIL) | Dep-driven |
 | 271 | 2026-03-16 | Missing harness/global declarations — 11 diagnostics downgraded | Dep-driven |
+| 237 | 2026-03-16 | BigInt i64 vs externref type mismatch (coercion paths verified complete) | Dep-driven |
