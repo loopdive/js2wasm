@@ -300,3 +300,4 @@
 | 340 | 2026-03-16 | Inline Error constructors + enable throw/catch (1,337 tests unblocked) | Dep-driven |
 | 153 | 2026-03-16 | savedBody index shifting + eager union imports + iterator diagnostics | Dep-driven |
 | 149 | 2026-03-16 | Conditional callee + generic closure call fallback (730 CE) | Dep-driven |
+| 339 | 2026-03-16 | Async/await — Promise unwrapping + skip filter removal (3,300 tests) | Dep-driven |
