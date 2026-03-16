@@ -287,3 +287,4 @@
 | 274 | 2026-03-16 | fn.name/fn.length + global index fixup for pending init body | Dep-driven |
 | 398 | 2026-03-16 | Parent field initializers + inherited accessors in child classes | Dep-driven |
 | 174 | 2026-03-16 | BigInt cross-type comparison (already resolved, tests added) | Dep-driven |
+| 237 | 2026-03-16 | BigInt i64 vs externref type mismatch (coercion paths verified complete) | Dep-driven |
