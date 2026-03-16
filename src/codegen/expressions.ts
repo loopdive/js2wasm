@@ -8370,6 +8370,50 @@ function compileCallExpression(
       return compileObjectKeysOrValues(ctx, fctx, propAccess.name.text, expr);
     }
 
+    // Handle Object.freeze/seal/preventExtensions — stub: return object unchanged
+    if (
+      ts.isIdentifier(propAccess.expression) &&
+      propAccess.expression.text === "Object" &&
+      (propAccess.name.text === "freeze" || propAccess.name.text === "seal" || propAccess.name.text === "preventExtensions") &&
+      expr.arguments.length >= 1
+    ) {
+      // Compile the argument and return it as-is (no-op stub)
+      const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
+      return argType;
+    }
+
+    // Handle Object.isFrozen/isSealed — stub: return false
+    if (
+      ts.isIdentifier(propAccess.expression) &&
+      propAccess.expression.text === "Object" &&
+      (propAccess.name.text === "isFrozen" || propAccess.name.text === "isSealed") &&
+      expr.arguments.length >= 1
+    ) {
+      // Compile and drop the argument, then return false (i32 0)
+      const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
+      if (argType) {
+        fctx.body.push({ op: "drop" });
+      }
+      fctx.body.push({ op: "i32.const", value: 0 });
+      return { kind: "i32" };
+    }
+
+    // Handle Object.isExtensible — stub: return true
+    if (
+      ts.isIdentifier(propAccess.expression) &&
+      propAccess.expression.text === "Object" &&
+      propAccess.name.text === "isExtensible" &&
+      expr.arguments.length >= 1
+    ) {
+      // Compile and drop the argument, then return true (i32 1)
+      const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
+      if (argType) {
+        fctx.body.push({ op: "drop" });
+      }
+      fctx.body.push({ op: "i32.const", value: 1 });
+      return { kind: "i32" };
+    }
+
     // Handle Promise.all / Promise.race / Promise.resolve / Promise.reject — host-delegated static calls
     if (
       ts.isIdentifier(propAccess.expression) &&
