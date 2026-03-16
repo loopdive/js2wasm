@@ -336,7 +336,7 @@ Module system and import/export patterns.
 |-----|-------|-------|--------|
 | 332 | Export declaration at top level errors | — | Ready |
 | 333 | Dynamic import modifier syntax errors | — | Ready |
-| 371 | import.meta support | — | Ready |
+| ~~371~~ | ~~import.meta support~~ | — | **Done** |
 
 ---
 

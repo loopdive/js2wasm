@@ -266,3 +266,4 @@
 | 361 | 2026-03-16 | Runtime `in` operator for property checks | Dep-driven |
 | 364 | 2026-03-16 | call/apply on arrow functions + module-level closures | Dep-driven |
 | 363 | 2026-03-16 | Tagged template .raw property and identity | Dep-driven |
+| 371 | 2026-03-16 | import.meta expression support | Dep-driven |
