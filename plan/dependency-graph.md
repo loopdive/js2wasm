@@ -324,7 +324,7 @@ String operations and tagged template patterns.
 | ~~357~~ | ~~IIFE tagged templates~~ | — | **Done** |
 | ~~363~~ | ~~Tagged template .raw property and identity~~ | — | **Done** |
 | 367 | String variable concatenation in comparisons | — | Ready |
-| 372 | String.prototype.matchAll | — | Ready |
+| 372 | String.prototype.matchAll | — | Review |
 
 ---
 
