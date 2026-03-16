@@ -77,6 +77,20 @@ describe("Object mutability stubs", () => {
     );
   });
 
+  it("Object.setPrototypeOf compiles and returns object (stub)", async () => {
+    await assertEquivalent(
+      `
+      export function test(): number {
+        const obj = { a: 7 };
+        const proto = { b: 3 };
+        Object.setPrototypeOf(obj, proto);
+        return obj.a;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
   it("Object.freeze chained with variable", async () => {
     await assertEquivalent(
       `
