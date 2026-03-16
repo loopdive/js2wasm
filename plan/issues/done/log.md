@@ -307,3 +307,4 @@
 | 343 | 2026-03-16 | Prototype skip filter narrowed (6,944 tests unblocked!) | Dep-driven |
 | 350 | 2026-03-16 | Symbol skip filter narrowed (~95 tests unblocked) | Dep-driven |
 | 351 | 2026-03-16 | Async iteration / for-await-of | Dep-driven |
+| 372 | 2026-03-16 | String.prototype.matchAll skip filter removed | Dep-driven |
