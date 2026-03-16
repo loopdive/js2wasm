@@ -240,6 +240,8 @@ export interface CodegenContext {
   wrapperBooleanTypeIdx: number;
   /** Cache for function reference wrappers: signature key → ClosureInfo */
   funcRefWrapperCache: Map<string, ClosureInfo>;
+  /** Pending module-init body (not yet in mod.functions) that needs global index fixup */
+  pendingInitBody: Instr[] | null;
 }
 
 /** Metadata for a closure stored in a local variable */
@@ -383,6 +385,7 @@ export function generateModule(
     wrapperStringTypeIdx: -1,
     wrapperBooleanTypeIdx: -1,
     funcRefWrapperCache: new Map(),
+    pendingInitBody: null,
   };
 
   // Register native string types if fast mode
@@ -599,6 +602,7 @@ export function generateMultiModule(
     wrapperStringTypeIdx: -1,
     wrapperBooleanTypeIdx: -1,
     funcRefWrapperCache: new Map(),
+    pendingInitBody: null,
   };
 
   // Register native string types if fast mode
@@ -6046,6 +6050,11 @@ function fixupModuleGlobalIndices(
     shiftGlobalIndices(ctx.currentFunc.body);
   }
 
+  // Also fix up the pending module-init body (compiled but not yet in ctx.mod.functions)
+  if (ctx.pendingInitBody) {
+    shiftGlobalIndices(ctx.pendingInitBody);
+  }
+
   // Also fix up global init expressions (e.g. globals that reference other globals)
   for (const g of ctx.mod.globals) {
     if (g.init) shiftGlobalIndices(g.init);
@@ -8722,6 +8731,9 @@ function compileDeclarations(
 
     ctx.currentFunc = null;
     compiledInitFctx = initFctx;
+    // Expose the pending init body so fixupModuleGlobalIndices can adjust it
+    // when addStringConstantGlobal is called during function body compilation.
+    ctx.pendingInitBody = initFctx.body;
   }
 
   // Compile top-level function declarations
@@ -8745,6 +8757,9 @@ function compileDeclarations(
       }
     }
   }
+
+  // Clear pendingInitBody before injection (it will be in mod.functions or main body after this)
+  ctx.pendingInitBody = null;
 
   // Inject the compiled init body into the appropriate location
   if (compiledInitFctx && compiledInitFctx.body.length > 0) {
