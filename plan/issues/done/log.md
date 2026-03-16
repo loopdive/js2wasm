@@ -315,3 +315,4 @@
 | 376 | 2026-03-16 | Decorator syntax diagnostic suppression | Dep-driven |
 | 366 | 2026-03-16 | Object.create skip filter removed | Dep-driven |
 | 370 | 2026-03-16 | WeakMap/WeakSet skip filter narrowed | Dep-driven |
+| 365 | 2026-03-16 | Collection mutation during for-of skip filter removed | Dep-driven |
