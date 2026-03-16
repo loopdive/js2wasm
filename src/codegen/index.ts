@@ -6375,16 +6375,16 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type): ValType {
       return { kind: "ref_null", typeIdx: vecIdx };
     }
 
-    // Check wrapper types (Number, String, Boolean) before externref —
-    // these are declared in lib.d.ts but we compile them to Wasm GC structs
-    if (sym?.name === "Number" && ctx.wrapperNumberTypeIdx >= 0) {
-      return { kind: "ref", typeIdx: ctx.wrapperNumberTypeIdx };
+    // Wrapper types (Number, String, Boolean) — map to primitives directly.
+    // new Number(x), new String(x), new Boolean(x) return primitives, not object wrappers.
+    if (sym?.name === "Number" && (tsType.flags & ts.TypeFlags.Object)) {
+      return { kind: "f64" };
     }
-    if (sym?.name === "String" && ctx.wrapperStringTypeIdx >= 0 && (tsType.flags & ts.TypeFlags.Object)) {
-      return { kind: "ref", typeIdx: ctx.wrapperStringTypeIdx };
+    if (sym?.name === "String" && (tsType.flags & ts.TypeFlags.Object)) {
+      return ctx.fast ? nativeStringType(ctx) : { kind: "externref" };
     }
-    if (sym?.name === "Boolean" && ctx.wrapperBooleanTypeIdx >= 0 && (tsType.flags & ts.TypeFlags.Object)) {
-      return { kind: "ref", typeIdx: ctx.wrapperBooleanTypeIdx };
+    if (sym?.name === "Boolean" && (tsType.flags & ts.TypeFlags.Object)) {
+      return { kind: "i32" };
     }
 
     // Check externref AFTER Array check — Array is declared in lib but should use wasm GC arrays
