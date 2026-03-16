@@ -409,14 +409,7 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
 
   // (Removed: mixed-type nullish coalescing skip — most tests now pass correctly)
 
-  // Skip tests using `in` operator for runtime property existence (we only support compile-time)
-  // Strip metadata block first to avoid false positives from description text like `"break" in order`
-  {
-    const sourceNoMeta = source.replace(/\/\*---[\s\S]*?---\*\//, "");
-    if (/['"][^'"]*['"]\s+in\s+(\w+|\{)/.test(sourceNoMeta) && !/for\s*\(\s*(var|let|const)\s+\w+\s+in\b/.test(sourceNoMeta)) {
-      return { skip: true, reason: "runtime in operator for property check" };
-    }
-  }
+  // (Removed: runtime in operator skip — now handled in codegen)
 
   // (Removed: Boolean(x = 0) and Boolean("") — now handled in codegen)
 
