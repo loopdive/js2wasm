@@ -291,7 +291,7 @@ Runtime built-in methods and global functions.
 | #   | Title | Tests | Ready? |
 |-----|-------|-------|--------|
 | ~~342~~ | ~~Array.prototype.method.call/apply patterns~~ | — | **Done** |
-| 344 | Wrapper constructors (new Number, new String, new Boolean) | — | Ready |
+| ~~344~~ | ~~Wrapper constructors (new Number, new String, new Boolean)~~ | — | **Done** |
 | ~~347~~ | ~~Function/class .name property completion~~ | — | **Done** |
 | ~~349~~ | ~~String() constructor as function~~ | — | **Done** |
 | ~~355~~ | ~~Object.keys/values/entries completion~~ | — | **Done** |
