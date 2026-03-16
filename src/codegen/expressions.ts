@@ -2055,10 +2055,29 @@ function compileIdentifier(
     if (refType) return refType;
   }
 
-  // Graceful fallback for unknown identifiers — emit ref.null extern (undefined)
+  // Graceful fallback for unknown identifiers — emit a type-appropriate default
   // instead of a hard compile error. This allows the compiler to continue past
   // references to unimplemented globals (Symbol, Object, Reflect, etc.) and
   // test harness variables.
+  // Use the TypeScript type to determine the correct Wasm default value:
+  //   number → f64.const 0 (matches JS `undefined` coerced to number = NaN,
+  //            but 0 is a safe default for hoisted vars)
+  //   boolean → i32.const 0
+  //   otherwise → ref.null extern
+  const tsType = ctx.checker.getTypeAtLocation(id);
+  const wasmType = resolveWasmType(ctx, tsType);
+  if (wasmType.kind === "f64") {
+    fctx.body.push({ op: "f64.const", value: 0 });
+    return { kind: "f64" };
+  }
+  if (wasmType.kind === "i32") {
+    fctx.body.push({ op: "i32.const", value: 0 });
+    return { kind: "i32" };
+  }
+  if (wasmType.kind === "i64") {
+    fctx.body.push({ op: "i64.const", value: 0n });
+    return { kind: "i64" };
+  }
   fctx.body.push({ op: "ref.null.extern" });
   return { kind: "externref" };
 }
@@ -6194,15 +6213,14 @@ function compileCompoundAssignment(
     return globalType;
   }
 
-  const localIdx = fctx.localMap.get(name);
+  let localIdx = fctx.localMap.get(name);
   if (localIdx === undefined) {
-    // Graceful fallback: compile RHS for side effects, return externref
-    const rhsFallback = compileExpression(ctx, fctx, expr.right);
-    if (rhsFallback) {
-      fctx.body.push({ op: "drop" });
-    }
-    fctx.body.push({ op: "ref.null.extern" });
-    return { kind: "externref" };
+    // Graceful fallback: auto-allocate a local for the unknown identifier
+    // so compound assignments work correctly (the variable is initialized
+    // to the appropriate zero value).
+    const tsType = ctx.checker.getTypeAtLocation(expr.left);
+    const wasmType = resolveWasmType(ctx, tsType);
+    localIdx = allocLocal(fctx, name, wasmType);
   }
 
   // Handle boxed (ref cell) mutable captures
