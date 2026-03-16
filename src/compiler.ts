@@ -407,6 +407,9 @@ export function compileSource(
     2378, // "A 'get' accessor must return a value" — valid JS pattern, getter can return undefined implicitly (#377)
     1052, // "A 'set' accessor parameter cannot have an initializer" — valid JS pattern, setter params can have defaults (#377)
     7033, // "Property 'X' implicitly has type 'any', because its get accessor lacks a return type annotation" — valid JS (#377)
+    1100, // "Invalid use of 'X' in strict mode" — sloppy-mode JS allows assignment to eval/arguments (#331)
+    1215, // "Invalid use of 'X'. Modules are automatically in strict mode" — sloppy-mode JS allows eval/arguments as targets (#331)
+    1210, // "Code contained in a class is evaluated in strict mode which does not allow this use of 'X'" — sloppy-mode JS pattern (#331)
   ]);
 
   // Collect TS diagnostics as errors (or warnings for handled cases)
