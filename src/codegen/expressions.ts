@@ -8414,6 +8414,51 @@ function compileCallExpression(
       return { kind: "i32" };
     }
 
+    // Handle Object.setPrototypeOf(obj, proto) — stub: compile both args, drop proto, return obj
+    if (
+      ts.isIdentifier(propAccess.expression) &&
+      propAccess.expression.text === "Object" &&
+      propAccess.name.text === "setPrototypeOf" &&
+      expr.arguments.length >= 2
+    ) {
+      const objType = compileExpression(ctx, fctx, expr.arguments[0]!);
+      const protoType = compileExpression(ctx, fctx, expr.arguments[1]!);
+      if (protoType) {
+        fctx.body.push({ op: "drop" });
+      }
+      return objType;
+    }
+
+    // Handle Object.getPrototypeOf(obj) — stub: compile and drop arg, return null
+    if (
+      ts.isIdentifier(propAccess.expression) &&
+      propAccess.expression.text === "Object" &&
+      propAccess.name.text === "getPrototypeOf" &&
+      expr.arguments.length >= 1
+    ) {
+      const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
+      if (argType) {
+        fctx.body.push({ op: "drop" });
+      }
+      fctx.body.push({ op: "ref.null.extern" });
+      return { kind: "externref" };
+    }
+
+    // Handle Object.create(proto) — stub: compile and drop arg, return empty object (ref.null extern)
+    if (
+      ts.isIdentifier(propAccess.expression) &&
+      propAccess.expression.text === "Object" &&
+      propAccess.name.text === "create" &&
+      expr.arguments.length >= 1
+    ) {
+      const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
+      if (argType) {
+        fctx.body.push({ op: "drop" });
+      }
+      fctx.body.push({ op: "ref.null.extern" });
+      return { kind: "externref" };
+    }
+
     // Handle Promise.all / Promise.race / Promise.resolve / Promise.reject — host-delegated static calls
     if (
       ts.isIdentifier(propAccess.expression) &&
