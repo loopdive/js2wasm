@@ -6445,6 +6445,18 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type): ValType {
       return { kind: "i32" };
     }
 
+    // Promise<T> → unwrap to T.
+    // Async functions are compiled synchronously, so Promise<T> is just T at the Wasm level.
+    if (sym?.name === "Promise") {
+      const typeArgs = ctx.checker.getTypeArguments(tsType as ts.TypeReference);
+      if (typeArgs.length > 0) {
+        const inner = typeArgs[0]!;
+        if (isVoidType(inner)) return { kind: "externref" }; // Promise<void> → externref (no value)
+        return resolveWasmType(ctx, inner);
+      }
+      return { kind: "externref" }; // bare Promise without type arg
+    }
+
     // Check externref AFTER Array check — Array is declared in lib but should use wasm GC arrays
     if (isExternalDeclaredClass(tsType, ctx.checker))
       return { kind: "externref" };
