@@ -273,3 +273,4 @@
 | 375 | 2026-03-16 | Super property access (equivalence tests added) | Dep-driven |
 | 360 | 2026-03-16 | JSON.stringify result comparison — skip filter narrowed | Dep-driven |
 | 356 | 2026-03-16 | Closure-as-value skip filter removal (23 tests unblocked) | Dep-driven |
+| 362 | 2026-03-16 | typeof on member expressions — skip filter removal | Dep-driven |
