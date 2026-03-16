@@ -263,4 +263,218 @@ describe("Gradual typing: boxed any (fast mode)", () => {
     expect(exports.negAny(-3)).toBe(3);
     expect(exports.negAny(0)).toBe(0);
   });
+
+  it("any in conditional (if statement)", async () => {
+    const exports = await compileFast(`
+      export function test(x: number): number {
+        let a: any = x;
+        if (a) return 1;
+        return 0;
+      }
+    `);
+    expect(exports.test(5)).toBe(1);
+    expect(exports.test(0)).toBe(0);
+    expect(exports.test(-1)).toBe(1);
+  });
+
+  it("any in ternary expression", async () => {
+    const exports = await compileFast(`
+      export function test(x: number): number {
+        let a: any = x;
+        return a ? 1 : 0;
+      }
+    `);
+    expect(exports.test(5)).toBe(1);
+    expect(exports.test(0)).toBe(0);
+  });
+
+  it("any === any: strict equality", async () => {
+    const exports = await compileFast(`
+      export function test(x: number, y: number): number {
+        let a: any = x;
+        let b: any = y;
+        return (a === b) ? 1 : 0;
+      }
+    `);
+    expect(exports.test(5, 5)).toBe(1);
+    expect(exports.test(5, 6)).toBe(0);
+  });
+
+  it("any !== any: strict inequality", async () => {
+    const exports = await compileFast(`
+      export function test(x: number, y: number): number {
+        let a: any = x;
+        let b: any = y;
+        return (a !== b) ? 1 : 0;
+      }
+    `);
+    expect(exports.test(5, 5)).toBe(0);
+    expect(exports.test(5, 6)).toBe(1);
+  });
+
+  it("any compound assignment +=", async () => {
+    const exports = await compileFast(`
+      export function test(x: number): number {
+        let a: any = x;
+        a += 1;
+        return a as number;
+      }
+    `);
+    expect(exports.test(5)).toBe(6);
+    expect(exports.test(0)).toBe(1);
+    expect(exports.test(-3)).toBe(-2);
+  });
+
+  it("any compound assignment -=", async () => {
+    const exports = await compileFast(`
+      export function test(x: number): number {
+        let a: any = x;
+        a -= 3;
+        return a as number;
+      }
+    `);
+    expect(exports.test(10)).toBe(7);
+    expect(exports.test(0)).toBe(-3);
+  });
+
+  it("any null boxing — truthiness", async () => {
+    const exports = await compileFast(`
+      export function test(): number {
+        let a: any = null;
+        return a ? 1 : 0;
+      }
+    `);
+    expect(exports.test()).toBe(0);
+  });
+
+  it("any undefined boxing — truthiness", async () => {
+    const exports = await compileFast(`
+      export function test(): number {
+        let a: any = undefined;
+        return a ? 1 : 0;
+      }
+    `);
+    expect(exports.test()).toBe(0);
+  });
+
+  it("any boolean boxing and unboxing", async () => {
+    const exports = await compileFast(`
+      export function testTrue(): number {
+        let a: any = true;
+        return a ? 1 : 0;
+      }
+      export function testFalse(): number {
+        let b: any = false;
+        return b ? 1 : 0;
+      }
+    `);
+    expect(exports.testTrue()).toBe(1);
+    expect(exports.testFalse()).toBe(0);
+  });
+
+  it("any type used as function return", async () => {
+    const exports = await compileFast(`
+      function identity(x: any): any {
+        return x;
+      }
+      export function test(x: number): number {
+        let result: any = identity(x);
+        return result as number;
+      }
+    `);
+    expect(exports.test(42)).toBe(42);
+    expect(exports.test(-7)).toBe(-7);
+  });
+
+  it("any mixed arithmetic: any + any with different box paths", async () => {
+    const exports = await compileFast(`
+      export function test(x: number, y: number): number {
+        let a: any = x;
+        let b: any = y;
+        let c: any = a + b;
+        let d = (c as number) + 1;
+        return d;
+      }
+    `);
+    expect(exports.test(3, 4)).toBe(8);
+    expect(exports.test(0, 0)).toBe(1);
+  });
+
+  it("any unary plus coercion", async () => {
+    const exports = await compileFast(`
+      export function test(x: number): number {
+        let a: any = x;
+        return +a;
+      }
+    `);
+    expect(exports.test(42)).toBe(42);
+    expect(exports.test(-5)).toBe(-5);
+  });
+
+  it("any double negation (!!a)", async () => {
+    const exports = await compileFast(`
+      export function test(x: number): number {
+        let a: any = x;
+        return !!a ? 1 : 0;
+      }
+    `);
+    expect(exports.test(5)).toBe(1);
+    expect(exports.test(0)).toBe(0);
+  });
+
+  it("any-typed variable reassignment", async () => {
+    const exports = await compileFast(`
+      export function test(): number {
+        let a: any = 10;
+        a = 20;
+        return a as number;
+      }
+    `);
+    expect(exports.test()).toBe(20);
+  });
+
+  it("any in while loop condition", async () => {
+    const exports = await compileFast(`
+      export function test(x: number): number {
+        let a: any = x;
+        let count: number = 0;
+        while ((a as number) > 0) {
+          count += 1;
+          a = (a as number) - 1;
+        }
+        return count;
+      }
+    `);
+    expect(exports.test(3)).toBe(3);
+    expect(exports.test(0)).toBe(0);
+  });
+
+  it("typeof any boolean: runtime tag check", async () => {
+    const exports = await compileFast(`
+      export function testBool(): number {
+        let a: any = true;
+        if (typeof a === "boolean") return 1;
+        return 0;
+      }
+      export function testNum(): number {
+        let a: any = 42;
+        if (typeof a === "number") return 1;
+        return 0;
+      }
+    `);
+    expect(exports.testBool()).toBe(1);
+    expect(exports.testNum()).toBe(1);
+  });
+
+  it("any passed to typed function parameter", async () => {
+    const exports = await compileFast(`
+      function add(a: number, b: number): number { return a + b; }
+      export function test(x: number): number {
+        let a: any = x;
+        return add(a as number, 1);
+      }
+    `);
+    expect(exports.test(10)).toBe(11);
+    expect(exports.test(0)).toBe(1);
+  });
 });
