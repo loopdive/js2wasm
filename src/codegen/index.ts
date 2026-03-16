@@ -286,6 +286,8 @@ export interface FunctionContext {
   boxedCaptures?: Map<string, { refCellTypeIdx: number; valType: ValType }>;
   /** Whether this function is a class constructor (for new.target support) */
   isConstructor?: boolean;
+  /** Set of variable names that are read-only bindings (e.g. named function expression name) */
+  readOnlyBindings?: Set<string>;
 }
 
 /** Options for code generation */

@@ -1318,6 +1318,9 @@ function compileArrowAsClosure(
     funcExprName = arrow.name.text;
     // Map the name to the __self param (index 0) inside the lifted body
     liftedFctx.localMap.set(funcExprName, 0);
+    // The function name binding is read-only (assignments are silently ignored)
+    if (!liftedFctx.readOnlyBindings) liftedFctx.readOnlyBindings = new Set();
+    liftedFctx.readOnlyBindings.add(funcExprName);
   }
 
   const savedFunc = ctx.currentFunc;
@@ -4065,6 +4068,13 @@ function compileAssignment(
   }
   if (ts.isIdentifier(expr.left)) {
     const name = expr.left.text;
+    // Named function expression name binding is read-only — assignments are
+    // silently ignored in sloppy mode (the RHS is still evaluated for side effects)
+    if (fctx.readOnlyBindings?.has(name)) {
+      const rhsType = compileExpression(ctx, fctx, expr.right);
+      // The assignment is a no-op, but the expression evaluates to the RHS value
+      return rhsType;
+    }
     const localIdx = fctx.localMap.get(name);
     if (localIdx !== undefined) {
       // Check if this is a boxed (ref cell) mutable capture
@@ -7123,23 +7133,11 @@ function compilePrefixUnary(
       return operandType;
     }
     case ts.SyntaxKind.MinusToken: {
-      // Detect null/undefined operands before compiling — they are
-      // indistinguishable as externref (both ref.null.extern), so we must
-      // resolve them statically: -null === -0, -undefined === NaN.
-      {
-        let inner: ts.Expression = expr.operand;
-        while (ts.isParenthesizedExpression(inner)) inner = inner.expression;
-        const isNullOp = inner.kind === ts.SyntaxKind.NullKeyword;
-        const isUndefOp = inner.kind === ts.SyntaxKind.UndefinedKeyword ||
-          (ts.isIdentifier(inner) && inner.text === "undefined");
-        if (isNullOp) {
-          fctx.body.push({ op: "f64.const", value: -0 });
-          return { kind: "f64" };
-        }
-        if (isUndefOp) {
-          fctx.body.push({ op: "f64.const", value: NaN });
-          return { kind: "f64" };
-        }
+      // Try static resolution first (handles strings, null, undefined, booleans, etc.)
+      const staticVal = tryStaticToNumber(ctx, expr.operand);
+      if (staticVal !== undefined) {
+        fctx.body.push({ op: "f64.const", value: -staticVal });
+        return { kind: "f64" };
       }
       const operandType = compileExpression(ctx, fctx, expr.operand);
       if (!operandType) return null;
