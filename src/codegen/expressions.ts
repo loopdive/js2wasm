@@ -119,6 +119,41 @@ export function compileExpression(
     }
   }
 
+  // Fast-path: null/undefined/boolean literals in AnyValue context — emit the
+  // correct boxing call directly to avoid type mismatches and preserve type tags.
+  if (expectedType && isAnyValue(expectedType, ctx)) {
+    let inner: ts.Expression = expr;
+    while (ts.isAsExpression(inner) || ts.isNonNullExpression(inner) || ts.isParenthesizedExpression(inner) || ts.isTypeAssertionExpression(inner)) {
+      inner = ts.isParenthesizedExpression(inner) ? inner.expression :
+              ts.isAsExpression(inner) ? inner.expression :
+              ts.isNonNullExpression(inner) ? inner.expression :
+              (inner as ts.TypeAssertion).expression;
+    }
+    const isNull = inner.kind === ts.SyntaxKind.NullKeyword;
+    const isUndefined = inner.kind === ts.SyntaxKind.UndefinedKeyword ||
+        (ts.isIdentifier(inner) && inner.text === "undefined") ||
+        ts.isOmittedExpression(inner);
+    if (isNull || isUndefined) {
+      ensureAnyHelpers(ctx);
+      const helperName = isNull ? "__any_box_null" : "__any_box_undefined";
+      const funcIdx = ctx.funcMap.get(helperName);
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+        return expectedType;
+      }
+    }
+    // Boolean literals: box with __any_box_bool to preserve tag=4 for typeof checks
+    if (inner.kind === ts.SyntaxKind.TrueKeyword || inner.kind === ts.SyntaxKind.FalseKeyword) {
+      ensureAnyHelpers(ctx);
+      const funcIdx = ctx.funcMap.get("__any_box_bool");
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "i32.const", value: inner.kind === ts.SyntaxKind.TrueKeyword ? 1 : 0 });
+        fctx.body.push({ op: "call", funcIdx });
+        return expectedType;
+      }
+    }
+  }
+
   const bodyLenBefore = fctx.body.length;
   let result: InnerResult;
   try {
@@ -152,6 +187,19 @@ export function compileExpression(
   if (result !== null) {
     // Coerce to expected type if there's a mismatch
     if (expectedType && result.kind !== expectedType.kind) {
+      // Special case: i32 → AnyValue with boolean TS type → use __any_box_bool
+      // to preserve tag=4 for correct typeof checks at runtime.
+      if (result.kind === "i32" && isAnyValue(expectedType, ctx)) {
+        const tsType = ctx.checker.getTypeAtLocation(expr);
+        if (tsType.flags & ts.TypeFlags.BooleanLike) {
+          ensureAnyHelpers(ctx);
+          const funcIdx = ctx.funcMap.get("__any_box_bool");
+          if (funcIdx !== undefined) {
+            fctx.body.push({ op: "call", funcIdx });
+            return expectedType;
+          }
+        }
+      }
       coerceType(ctx, fctx, result, expectedType);
       return expectedType;
     }
@@ -2649,10 +2697,10 @@ function compileTypeofComparison(
     return { kind: "i32" };
   }
 
-  // Fast mode: any-typed typeof comparison via tag check
+  // Any-typed typeof comparison via tag check
   // Instead of calling __any_typeof + string comparison, we can directly check the tag
   // on the $AnyValue struct. This avoids pulling in the full native string helpers.
-  if (ctx.fast && isAnyValue(resolveWasmType(ctx, tsType), ctx)) {
+  if (isAnyValue(resolveWasmType(ctx, tsType), ctx)) {
     ensureAnyHelpers(ctx);
     // Map the string literal to tag check(s)
     let tagChecks: number[] | null = null;
@@ -3173,9 +3221,9 @@ function compileBinaryExpression(
     }
   }
 
-  // ── Fast mode: any-typed operand dispatch ──
+  // ── Any-typed operand dispatch ──
   // When both operands are `any`, compile without numeric hint and call __any_* helpers
-  if (ctx.fast && ctx.anyValueTypeIdx >= 0) {
+  if (ctx.anyValueTypeIdx >= 0) {
     const leftIsAny = (leftTsType.flags & ts.TypeFlags.Any) !== 0;
     const rightIsAny = (rightTsType.flags & ts.TypeFlags.Any) !== 0;
     if (leftIsAny && rightIsAny) {
@@ -7192,7 +7240,7 @@ function compilePrefixUnary(
       const operandType = compileExpression(ctx, fctx, expr.operand);
       if (!operandType) return null;
       // any-typed negate: call __any_neg
-      if (ctx.fast && isAnyValue(operandType, ctx)) {
+      if (isAnyValue(operandType, ctx)) {
         ensureAnyHelpers(ctx);
         const negIdx = ctx.funcMap.get("__any_neg");
         if (negIdx !== undefined) {

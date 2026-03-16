@@ -6529,10 +6529,8 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type): ValType {
   }
 
   // any/unknown → ref_null $AnyValue (boxed any) when available.
-  // Only for explicitly-typed `any` — not for unresolved imports that default to `any`.
-  // We detect unresolved-import `any` by checking if the type has no symbol and no error flag,
-  // or if it comes from an external declaration. For Phase 1, we restrict this to fast mode
-  // where there are no host-imported extern classes to conflict with.
+  // Only in fast mode where there are no host-imported extern classes to conflict with.
+  // In non-fast mode, any/unknown falls through to mapTsTypeToWasm → externref.
   if (
     ctx.fast &&
     (tsType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown))
