@@ -5523,12 +5523,9 @@ function compilePropertyLogicalAssignment(
 
   const fieldIdx = fields.findIndex((f) => f.name === propName);
   if (fieldIdx === -1) {
-    ctx.errors.push({
-      message: `Unknown field '${propName}' on struct '${typeName}'`,
-      line: getLine(target),
-      column: getCol(target),
-    });
-    return null;
+    // Unknown field — gracefully emit NaN (reading undefined property in numeric context)
+    fctx.body.push({ op: "f64.const", value: NaN });
+    return { kind: "f64" };
   }
 
   const fieldType = fields[fieldIdx]!.type;
@@ -6232,12 +6229,9 @@ function compilePropertyCompoundAssignment(
 
   const fieldIdx = fields.findIndex((f) => f.name === propName);
   if (fieldIdx === -1) {
-    ctx.errors.push({
-      message: `Unknown field '${propName}' on struct '${typeName}'`,
-      line: getLine(target),
-      column: getCol(target),
-    });
-    return null;
+    // Unknown field — gracefully emit NaN (reading undefined property in numeric context)
+    fctx.body.push({ op: "f64.const", value: NaN });
+    return { kind: "f64" };
   }
 
   const fieldType = fields[fieldIdx]!.type;
@@ -6564,12 +6558,9 @@ function compileMemberIncDec(
 
     const fieldIdx = fields.findIndex((f) => f.name === propName);
     if (fieldIdx === -1) {
-      ctx.errors.push({
-        message: `Unknown field '${propName}' on struct '${typeName}'`,
-        line: getLine(operand),
-        column: getCol(operand),
-      });
-      return null;
+      // Unknown field — gracefully emit NaN (reading undefined property in numeric context)
+      fctx.body.push({ op: "f64.const", value: NaN });
+      return { kind: "f64" };
     }
 
     const fieldType = fields[fieldIdx]!.type;
@@ -7275,8 +7266,9 @@ function compilePrefixIncrementProperty(
   }
   const fieldIdx = fields.findIndex((f) => f.name === propName);
   if (fieldIdx === -1) {
-    ctx.errors.push({ message: `Unknown field for prefix increment: ${propName}`, line: getLine(target), column: getCol(target) });
-    return null;
+    // Unknown field — gracefully emit NaN (reading undefined property in numeric context)
+    fctx.body.push({ op: "f64.const", value: NaN });
+    return { kind: "f64" };
   }
 
   // Compile object ref and save it (we need it twice: once to get, once to set)
@@ -7430,8 +7422,9 @@ function compilePostfixIncrementProperty(
   }
   const fieldIdx = fields.findIndex((f) => f.name === propName);
   if (fieldIdx === -1) {
-    ctx.errors.push({ message: `Unknown field for postfix increment: ${propName}`, line: getLine(target), column: getCol(target) });
-    return null;
+    // Unknown field — gracefully emit NaN (reading undefined property in numeric context)
+    fctx.body.push({ op: "f64.const", value: NaN });
+    return { kind: "f64" };
   }
 
   // Compile object ref and save
