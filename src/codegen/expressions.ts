@@ -1761,6 +1761,138 @@ function compileArrowAsCallback(
   return { kind: "externref" };
 }
 
+/**
+ * Look up a function's parameter and result types from its index.
+ */
+function getFuncSignature(ctx: CodegenContext, funcIdx: number): { params: ValType[]; results: ValType[] } | null {
+  if (funcIdx < ctx.numImportFuncs) {
+    let importFuncCount = 0;
+    for (const imp of ctx.mod.imports) {
+      if (imp.desc.kind === "func") {
+        if (importFuncCount === funcIdx) {
+          const typeDef = ctx.mod.types[imp.desc.typeIdx];
+          if (typeDef?.kind === "func") return { params: typeDef.params, results: typeDef.results };
+          return null;
+        }
+        importFuncCount++;
+      }
+    }
+  } else {
+    const localIdx = funcIdx - ctx.numImportFuncs;
+    const func = ctx.mod.functions[localIdx];
+    if (func) {
+      const typeDef = ctx.mod.types[func.typeIdx];
+      if (typeDef?.kind === "func") return { params: typeDef.params, results: typeDef.results };
+    }
+  }
+  return null;
+}
+
+/**
+ * Get or create the closure struct type and lifted func type for wrapping
+ * plain functions with a given signature. Struct type and func type are shared
+ * across all functions with the same signature, but each function gets its own
+ * trampoline.
+ */
+function getOrCreateFuncRefWrapperTypes(
+  ctx: CodegenContext,
+  userParams: ValType[],
+  resultTypes: ValType[],
+): { structTypeIdx: number; liftedFuncTypeIdx: number; closureInfo: ClosureInfo } | null {
+  // Build cache key from param types and result types
+  const sigKey = `${userParams.map(p => p.kind + ((p as any).typeIdx ?? "")).join(",")}->${resultTypes.map(r => r.kind + ((r as any).typeIdx ?? "")).join(",")}`;
+
+  const cached = ctx.funcRefWrapperCache.get(sigKey);
+  if (cached) {
+    return { structTypeIdx: cached.structTypeIdx, liftedFuncTypeIdx: cached.funcTypeIdx, closureInfo: cached };
+  }
+
+  // Create the closure struct type: just (field $func funcref), no captures
+  const closureName = `__fn_wrap_${ctx.closureCounter++}`;
+  const structFields = [
+    { name: "func", type: { kind: "funcref" as const }, mutable: false },
+  ];
+  const structTypeIdx = ctx.mod.types.length;
+  ctx.mod.types.push({
+    kind: "struct",
+    name: `${closureName}_struct`,
+    fields: structFields,
+  });
+
+  // Create the lifted function type: (ref $struct, ...userParams) -> results
+  const liftedParams: ValType[] = [
+    { kind: "ref", typeIdx: structTypeIdx },
+    ...userParams,
+  ];
+  const liftedFuncTypeIdx = addFuncType(ctx, liftedParams, resultTypes, `${closureName}_type`);
+
+  const closureInfo: ClosureInfo = {
+    structTypeIdx,
+    funcTypeIdx: liftedFuncTypeIdx,
+    returnType: resultTypes.length > 0 ? resultTypes[0]! : null,
+    paramTypes: userParams,
+  };
+  ctx.closureInfoByTypeIdx.set(structTypeIdx, closureInfo);
+  ctx.funcRefWrapperCache.set(sigKey, closureInfo);
+
+  return { structTypeIdx, liftedFuncTypeIdx, closureInfo };
+}
+
+/**
+ * Emit a closure struct wrapping a plain function. Creates a per-function
+ * trampoline that delegates to the original function.  Struct types are shared
+ * across functions with the same signature so they can be reassigned.
+ * Pushes the closure struct ref onto the stack and returns its type.
+ */
+function emitFuncRefAsClosure(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  funcName: string,
+  funcIdx: number,
+): ValType | null {
+  const sig = getFuncSignature(ctx, funcIdx);
+  if (!sig) return null;
+
+  // Skip functions with nested-func captures (their first N params are capture values
+  // from the enclosing scope, which can't be threaded through a generic trampoline)
+  const nestedCaptures = ctx.nestedFuncCaptures.get(funcName);
+  if (nestedCaptures && nestedCaptures.length > 0) return null;
+
+  const userParams = sig.params;
+
+  const wrapperTypes = getOrCreateFuncRefWrapperTypes(ctx, userParams, sig.results);
+  if (!wrapperTypes) return null;
+
+  const { structTypeIdx, liftedFuncTypeIdx, closureInfo } = wrapperTypes;
+
+  // Create a trampoline function for THIS specific function.
+  // The trampoline takes (self, ...userParams) and calls the original function.
+  const trampolineName = `__fn_tramp_${funcName}_${ctx.closureCounter++}`;
+  const trampolineBody: Instr[] = [];
+
+  // Push the user-visible params (skip self at param 0)
+  for (let i = 0; i < userParams.length; i++) {
+    trampolineBody.push({ op: "local.get", index: i + 1 } as Instr);
+  }
+  trampolineBody.push({ op: "call", funcIdx } as Instr);
+
+  const trampolineFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+  ctx.mod.functions.push({
+    name: trampolineName,
+    typeIdx: liftedFuncTypeIdx,
+    locals: [],
+    body: trampolineBody,
+    exported: false,
+  });
+  ctx.funcMap.set(trampolineName, trampolineFuncIdx);
+
+  // Emit: ref.func $trampoline, struct.new $closure_struct
+  fctx.body.push({ op: "ref.func", funcIdx: trampolineFuncIdx });
+  fctx.body.push({ op: "struct.new", typeIdx: structTypeIdx });
+
+  return { kind: "ref", typeIdx: structTypeIdx };
+}
+
 function compileIdentifier(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -1842,6 +1974,30 @@ function compileIdentifier(
   if (name === "globalThis") {
     fctx.body.push({ op: "ref.null.extern" });
     return { kind: "externref" };
+  }
+
+  // Function reference as value: when a known function name is used as an
+  // expression (not called), wrap it in a closure struct so it can be stored
+  // in a variable and later called via call_ref.
+  // Only wrap user-defined functions (skip internal helpers and class constructors).
+  const funcRefIdx = ctx.funcMap.get(name);
+  if (funcRefIdx !== undefined &&
+      !name.startsWith("__") &&
+      !ctx.classSet.has(name)) {
+    // Check if there's already a closure registered (e.g. from closureMap)
+    const existingClosure = ctx.closureMap.get(name);
+    if (existingClosure) {
+      // Already a closure — check if there's a module-level global for it
+      const closureModGlobal = ctx.moduleGlobals.get(name);
+      if (closureModGlobal !== undefined) {
+        fctx.body.push({ op: "global.get", index: closureModGlobal });
+        const globalDef = ctx.mod.globals[localGlobalIdx(ctx, closureModGlobal)];
+        return globalDef?.type ?? { kind: "ref", typeIdx: existingClosure.structTypeIdx };
+      }
+    }
+    // Wrap the plain function in a closure struct
+    const refType = emitFuncRefAsClosure(ctx, fctx, name, funcRefIdx);
+    if (refType) return refType;
   }
 
   // Graceful fallback for unknown identifiers — emit ref.null extern (undefined)
@@ -3918,16 +4074,24 @@ function compileAssignment(
         ? fctx.params[localIdx]!.type
         : fctx.locals[localIdx - fctx.params.length]?.type;
 
-      // When assigning a function expression/arrow to a variable, don't pass
-      // externref type hint — let it compile to its native closure struct ref type.
-      // Then update the local's type so closure calls work correctly.
+      // When assigning a function expression/arrow or a function reference
+      // to a variable, don't pass externref type hint — let it compile to
+      // its native closure struct ref type. Then update the local's type so
+      // closure calls work correctly.
       const isFuncExprRHS = ts.isFunctionExpression(expr.right) || ts.isArrowFunction(expr.right);
-      const typeHint = (isFuncExprRHS && localType?.kind === "externref") ? undefined : localType;
+      const isFuncRefRHS = ts.isIdentifier(expr.right) && ctx.funcMap.has(expr.right.text);
+      const isCallableRHS = isFuncExprRHS || isFuncRefRHS;
+      // Also detect when the local already has a closure type (reassignment case)
+      const localIsClosureRef = localType && (localType.kind === "ref" || localType.kind === "ref_null") &&
+        ctx.closureInfoByTypeIdx.has((localType as { typeIdx: number }).typeIdx);
+      const typeHint = ((isCallableRHS || localIsClosureRef) && localType?.kind === "externref") ? undefined
+        : localIsClosureRef ? undefined  // Don't pass closure ref type as hint either — let RHS produce its own
+        : localType;
       const resultType = compileExpression(ctx, fctx, expr.right, typeHint);
       if (!resultType) { ctx.errors.push({ message: "Failed to compile assignment value", line: getLine(expr), column: getCol(expr) }); return null; }
 
       // If a closure struct ref was assigned to an externref local, update the local's type
-      if (isFuncExprRHS && resultType.kind === "ref" && localType?.kind === "externref") {
+      if ((isCallableRHS || localIsClosureRef) && resultType.kind === "ref" && (localType?.kind === "externref" || localIsClosureRef)) {
         if (localIdx < fctx.params.length) {
           fctx.params[localIdx]!.type = resultType;
         } else {

@@ -238,6 +238,8 @@ export interface CodegenContext {
   wrapperStringTypeIdx: number;
   /** Type index for $WrapperBoolean struct (-1 if not registered) */
   wrapperBooleanTypeIdx: number;
+  /** Cache for function reference wrappers: signature key → ClosureInfo */
+  funcRefWrapperCache: Map<string, ClosureInfo>;
 }
 
 /** Metadata for a closure stored in a local variable */
@@ -380,6 +382,7 @@ export function generateModule(
     wrapperNumberTypeIdx: -1,
     wrapperStringTypeIdx: -1,
     wrapperBooleanTypeIdx: -1,
+    funcRefWrapperCache: new Map(),
   };
 
   // Register native string types if fast mode
@@ -595,6 +598,7 @@ export function generateMultiModule(
     wrapperNumberTypeIdx: -1,
     wrapperStringTypeIdx: -1,
     wrapperBooleanTypeIdx: -1,
+    funcRefWrapperCache: new Map(),
   };
 
   // Register native string types if fast mode
