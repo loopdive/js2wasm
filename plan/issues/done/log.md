@@ -269,3 +269,4 @@
 | 371 | 2026-03-16 | import.meta expression support | Dep-driven |
 | 357 | 2026-03-16 | IIFE tagged templates | Dep-driven |
 | 344 | 2026-03-16 | Wrapper constructors — primitive return (762 tests unblocked) | Dep-driven |
+| 305 | 2026-03-16 | Computed property runtime failures | Dep-driven |

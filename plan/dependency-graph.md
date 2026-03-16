@@ -145,7 +145,7 @@ Can all run in parallel (different diagnostic codes).
 | 274 | Property access on function type (.name, .length) | — | Ready |
 | ~~281~~ | ~~Object literal property patterns~~ | — | **Done** |
 | ~~230~~ | ~~Object computed property names with variable keys~~ | — | **Done** |
-| 305 | Computed property names runtime failures | 2 | Coordinates with #140, #230 |
+| ~~305~~ | ~~Computed property names runtime failures~~ | 2 | **Done** |
 | ~~326~~ | ~~Array element access out of bounds~~ | 17 fail | **Done** |
 | ~~337~~ | ~~Null property access at runtime~~ | — | **Done** |
 | ~~361~~ | ~~Runtime `in` operator for property checks~~ | — | **Done** |
