@@ -163,13 +163,9 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
   //   - externref (undefined/null): ref.is_null correctly treats null refs as falsy
   //   - ref types (objects/functions): non-null refs are correctly truthy
 
-  // for-of over non-array iterables (generators, strings, custom iterators) can hang
-  // because our for-of compiles as array iteration — mismatched length causes infinite loop
-  if (/\bfor\s*\([^)]*\bof\b/.test(source) &&
-      (/\bfunction\s*\*/.test(source) || /Symbol\.iterator/.test(source) ||
-       /\[Symbol/.test(source) || /\.next\s*\(/.test(source))) {
-    return { skip: true, reason: "for-of with generator/custom iterator (hang risk)" };
-  }
+  // for-of with generators and custom iterators now works via the iterator protocol
+  // host imports (__iterator, __iterator_next, __iterator_done, __iterator_value).
+  // No longer skipped — see issue #353.
 
   // Collection mutation during for-of causes infinite loops
   if (/\bfor\s*\([^)]*\bof\b/.test(source) &&
