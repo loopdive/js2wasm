@@ -4844,9 +4844,14 @@ function compileElementAssignment(
 ): InnerResult {
   // Push array ref
   const arrType = compileExpression(ctx, fctx, target.expression);
-  if (!arrType || (arrType.kind !== "ref" && arrType.kind !== "ref_null")) {
+  if (!arrType) {
     ctx.errors.push({ message: "Assignment to non-array", line: getLine(target), column: getCol(target) });
     return null;
+  }
+
+  // Non-ref types (externref, f64, i32): fallback to __extern_set(obj, key, val)
+  if (arrType.kind !== "ref" && arrType.kind !== "ref_null") {
+    return compileExternSetFallback(ctx, fctx, target, value, arrType);
   }
   const typeIdx = (arrType as { typeIdx: number }).typeIdx;
   const typeDef = ctx.mod.types[typeIdx];
@@ -5131,8 +5136,8 @@ function compileElementAssignment(
   }
 
   if (!typeDef || typeDef.kind !== "array") {
-    ctx.errors.push({ message: "Assignment to non-array type", line: getLine(target), column: getCol(target) });
-    return null;
+    // Fallback: convert struct/unknown ref to externref and use __extern_set
+    return compileExternSetFallback(ctx, fctx, target, value, arrType);
   }
   // Push index (as i32)
   const plainIdxResult = compileExpression(ctx, fctx, target.argumentExpression, { kind: "f64" });
@@ -5147,6 +5152,104 @@ function compileElementAssignment(
   fctx.body.push({ op: "array.set", typeIdx });
   fctx.body.push({ op: "local.get", index: plainValLocal });
   return plainValResult;
+}
+
+/**
+ * Fallback for element assignment on non-array types.
+ * Converts the object to externref and calls __extern_set(obj, key, val).
+ * The object value is already on the stack.
+ */
+function compileExternSetFallback(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  target: ts.ElementAccessExpression,
+  value: ts.Expression,
+  objType: ValType,
+): InnerResult {
+  // Convert object on stack to externref
+  if (objType.kind === "externref") {
+    // Already externref, nothing to do
+  } else if (objType.kind === "f64") {
+    const boxIdx = ctx.funcMap.get("__box_number");
+    if (boxIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: boxIdx });
+    } else {
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "ref.null.extern" });
+    }
+  } else if (objType.kind === "i32") {
+    fctx.body.push({ op: "f64.convert_i32_s" });
+    const boxIdx = ctx.funcMap.get("__box_number");
+    if (boxIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: boxIdx });
+    } else {
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "ref.null.extern" });
+    }
+  } else if (objType.kind === "ref" || objType.kind === "ref_null") {
+    fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+  } else {
+    ctx.errors.push({ message: "Unsupported element assignment target type", line: getLine(target), column: getCol(target) });
+    return null;
+  }
+
+  // Save obj externref to local
+  const objLocal = allocLocal(fctx, `__eset_obj_${fctx.locals.length}`, { kind: "externref" });
+  fctx.body.push({ op: "local.set", index: objLocal });
+
+  // Compile value first so we can save it for return
+  const valResult = compileExpression(ctx, fctx, value, { kind: "externref" });
+  if (!valResult) return null;
+  const valLocal = allocLocal(fctx, `__eset_val_${fctx.locals.length}`, { kind: "externref" });
+  fctx.body.push({ op: "local.set", index: valLocal });
+
+  // Push args: obj, key, val
+  fctx.body.push({ op: "local.get", index: objLocal });
+  compileExpression(ctx, fctx, target.argumentExpression, { kind: "externref" });
+  fctx.body.push({ op: "local.get", index: valLocal });
+
+  // Lazily register __extern_set if not already registered
+  let funcIdx = ctx.funcMap.get("__extern_set");
+  if (funcIdx === undefined) {
+    const importsBefore = ctx.numImportFuncs;
+    const setType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }], []);
+    addImport(ctx, "env", "__extern_set", { kind: "func", typeIdx: setType });
+    const added = ctx.numImportFuncs - importsBefore;
+    if (added > 0) {
+      // Shift function indices in all already-compiled function bodies
+      for (const func of ctx.mod.functions) {
+        for (const instr of func.body) {
+          if ("funcIdx" in instr && typeof instr.funcIdx === "number") {
+            if (instr.funcIdx >= importsBefore) {
+              instr.funcIdx += added;
+            }
+          }
+        }
+      }
+      // Also shift the current function body being compiled
+      for (const instr of fctx.body) {
+        if ("funcIdx" in instr && typeof instr.funcIdx === "number") {
+          if (instr.funcIdx >= importsBefore) {
+            instr.funcIdx += added;
+          }
+        }
+      }
+      // Shift function indices in export descriptors
+      for (const exp of ctx.mod.exports) {
+        if (exp.desc.kind === "func" && exp.desc.index >= importsBefore) {
+          exp.desc.index += added;
+        }
+      }
+    }
+    funcIdx = ctx.funcMap.get("__extern_set");
+  }
+  if (funcIdx !== undefined) {
+    fctx.body.push({ op: "call", funcIdx });
+  }
+
+  // Return the assigned value
+  fctx.body.push({ op: "local.get", index: valLocal });
+  return { kind: "externref" };
 }
 
 /**
