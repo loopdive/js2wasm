@@ -353,8 +353,12 @@ const DOWNGRADE_DIAG_CODES = new Set([
   1166, // "A computed property name in a class property declaration must have a simple literal type" — #265
   2464, // "A computed property name must be of type 'string', 'number', 'symbol', or 'any'" — #276
   2488, // "Type must have a '[Symbol.iterator]()' method" — #268
+  2489, // "An iterator must have a 'next()' method" — iterator protocol (#153)
   2548, // "Type is not an array type or does not have '[Symbol.iterator]()'" — #268
   2549, // "Type is not an array/string type or does not have '[Symbol.iterator]()'" — #268
+  2763, // "Cannot iterate value because the 'next' method expects type X" — for-of iteration (#153)
+  2764, // "Cannot iterate value because the 'next' method expects type X (array spread)" — (#153)
+  2765, // "Cannot iterate value because the 'next' method expects type X (destructuring)" — (#153)
   18014, // "The property '#x' cannot be accessed on type 'X' within this class because it is shadowed" — valid JS
   2538, // "Type 'X' cannot be used as an index type" — valid JS pattern (e.g. symbol/boolean as index)
   1468, // "A computed property name must be of type 'string', 'number', 'symbol', or 'any'" — valid JS
