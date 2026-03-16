@@ -155,10 +155,8 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     return { skip: true, reason: "uses with statement" };
   }
 
-  // Skip tests that use String/Number/Boolean as constructors (new Number(), etc.)
-  if (/new\s+(Number|String|Boolean)\s*\(/.test(source)) {
-    return { skip: true, reason: "uses wrapper constructor" };
-  }
+  // Wrapper constructors (new Number, new String, new Boolean) now compile to primitives.
+  // No longer skipped.
 
   // NaN/undefined/null are falsy in JS but wasm's f64.ne(0) treats NaN as truthy.
   // Skip tests using these as loop conditions — they become infinite loops in wasm.
