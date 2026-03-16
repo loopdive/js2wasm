@@ -410,6 +410,11 @@ export function compileSource(
     1100, // "Invalid use of 'X' in strict mode" — sloppy-mode JS allows assignment to eval/arguments (#331)
     1215, // "Invalid use of 'X'. Modules are automatically in strict mode" — sloppy-mode JS allows eval/arguments as targets (#331)
     1210, // "Code contained in a class is evaluated in strict mode which does not allow this use of 'X'" — sloppy-mode JS pattern (#331)
+    1156, // "'let' declarations can only be declared inside a block" — sloppy-mode JS pattern (#383)
+    1313, // "The body of an 'if' statement cannot be the empty statement" — sloppy-mode JS pattern (#383)
+    1344, // "A label is not allowed here" — labeled function declarations in sloppy-mode JS (#383)
+    1182, // "A destructuring declaration must have an initializer" — valid JS pattern (#383)
+    1228, // "A type predicate is only allowed in return type position" — valid JS pattern (#383)
   ]);
 
   // Collect TS diagnostics as errors (or warnings for handled cases)
