@@ -581,50 +581,73 @@ function compileObjectDestructuring(
   const resultType = compileExpression(ctx, fctx, decl.initializer);
   if (!resultType) return;
 
-  // Determine struct type from the initializer's type
-  const initType = ctx.checker.getTypeAtLocation(decl.initializer);
-  const symName = initType.symbol?.name;
-  let typeName =
-    symName &&
-    symName !== "__type" &&
-    symName !== "__object" &&
-    ctx.structMap.has(symName)
-      ? symName
-      : (ctx.anonTypeMap.get(initType) ?? symName);
+  // Determine struct type — prefer the actual Wasm type from compileExpression
+  // over the TS checker, because anonymous object literals may register different
+  // ts.Type objects for the initializer vs the destructuring pattern, leading to
+  // mismatched struct type indices.
+  let structTypeIdx: number | undefined;
+  let fields: { name: string; type: ValType; mutable: boolean }[] | undefined;
+  let typeName: string | undefined;
 
-  // Auto-register anonymous object types (same as expression-level destructuring)
-  if (
-    typeName &&
-    (typeName === "__type" || typeName === "__object") &&
-    !ctx.anonTypeMap.has(initType) &&
-    initType.getProperties().length > 0
-  ) {
-    ensureStructForType(ctx, initType);
-    typeName = ctx.anonTypeMap.get(initType) ?? typeName;
+  if (resultType.kind === "ref" || resultType.kind === "ref_null") {
+    const actualTypeIdx = (resultType as { typeIdx: number }).typeIdx;
+    // Look up the struct name by its type index
+    for (const [sName, sIdx] of ctx.structMap) {
+      if (sIdx === actualTypeIdx) {
+        typeName = sName;
+        structTypeIdx = sIdx;
+        fields = ctx.structFields.get(sName);
+        break;
+      }
+    }
   }
 
-  if (!typeName) {
-    fctx.body.length = bodyLenBefore; // rollback — value would leak on stack
-    ensureBindingLocals(ctx, fctx, pattern);
-    ctx.errors.push({
-      message: "Cannot destructure: unknown type",
-      line: getLine(decl),
-      column: getCol(decl),
-    });
-    return;
-  }
-
-  const structTypeIdx = ctx.structMap.get(typeName);
-  const fields = ctx.structFields.get(typeName);
+  // Fallback to TS checker resolution if resultType didn't give us a struct
   if (structTypeIdx === undefined || !fields) {
-    fctx.body.length = bodyLenBefore; // rollback — value would leak on stack
-    ensureBindingLocals(ctx, fctx, pattern);
-    ctx.errors.push({
-      message: `Cannot destructure: not a known struct type: ${typeName}`,
-      line: getLine(decl),
-      column: getCol(decl),
-    });
-    return;
+    const initType = ctx.checker.getTypeAtLocation(decl.initializer);
+    const symName = initType.symbol?.name;
+    typeName =
+      symName &&
+      symName !== "__type" &&
+      symName !== "__object" &&
+      ctx.structMap.has(symName)
+        ? symName
+        : (ctx.anonTypeMap.get(initType) ?? symName);
+
+    // Auto-register anonymous object types (same as expression-level destructuring)
+    if (
+      typeName &&
+      (typeName === "__type" || typeName === "__object") &&
+      !ctx.anonTypeMap.has(initType) &&
+      initType.getProperties().length > 0
+    ) {
+      ensureStructForType(ctx, initType);
+      typeName = ctx.anonTypeMap.get(initType) ?? typeName;
+    }
+
+    if (!typeName) {
+      fctx.body.length = bodyLenBefore; // rollback — value would leak on stack
+      ensureBindingLocals(ctx, fctx, pattern);
+      ctx.errors.push({
+        message: "Cannot destructure: unknown type",
+        line: getLine(decl),
+        column: getCol(decl),
+      });
+      return;
+    }
+
+    structTypeIdx = ctx.structMap.get(typeName);
+    fields = ctx.structFields.get(typeName);
+    if (structTypeIdx === undefined || !fields) {
+      fctx.body.length = bodyLenBefore; // rollback — value would leak on stack
+      ensureBindingLocals(ctx, fctx, pattern);
+      ctx.errors.push({
+        message: `Cannot destructure: not a known struct type: ${typeName}`,
+        line: getLine(decl),
+        column: getCol(decl),
+      });
+      return;
+    }
   }
 
   // Save the struct ref into a temp local so we can access fields multiple times
