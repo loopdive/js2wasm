@@ -387,10 +387,27 @@ const DOWNGRADE_DIAG_CODES = new Set([
   2693, // "'X' only refers to a type, but is being used as a value here" (#271)
   2697, // "An async function or method must return a 'Promise'" (#271)
   2705, // "An async function or method in ES5 requires the 'Promise' constructor" (#271)
+  1206, // "Decorators are not valid here" — decorator syntax suppressed, decorators ignored (#376)
+  1207, // "Decorators cannot be applied to multiple get/set accessors of the same name" (#376)
+  1236, // "The return type of a property decorator function must be either 'void' or 'any'" (#376)
+  1237, // "The return type of a parameter decorator function must be either 'void' or 'any'" (#376)
   1238, // "Unable to resolve signature of class decorator when called as an expression" (#271)
   1239, // "Unable to resolve signature of parameter decorator when called as an expression" (#271)
   1240, // "Unable to resolve signature of property decorator when called as an expression" (#271)
   1241, // "Unable to resolve signature of method decorator when called as an expression" (#271)
+  1249, // "A decorator can only decorate a method implementation, not an overload" (#376)
+  1270, // "Decorator function return type is not assignable" (#376)
+  1271, // "Decorator function return type is not void or any" (#376)
+  1278, // "The runtime will invoke the decorator with N arguments, but the decorator expects M" (#376)
+  1279, // "The runtime will invoke the decorator with N arguments, but the decorator expects at least M" (#376)
+  1329, // "Decorator accepts too few arguments" (#376)
+  1433, // "Neither decorators nor modifiers may be applied to 'this' parameters" (#376)
+  1436, // "Decorators must precede the name and all keywords of property declarations" (#376)
+  1486, // "Decorator used before 'export' here" (#376)
+  1497, // "Expression must be enclosed in parentheses to be used as a decorator" (#376)
+  1498, // "Invalid syntax in decorator" (#376)
+  8038, // "Decorators may not appear after 'export' or 'export default'" (#376)
+  18036, // "Class decorators can't be used with static private identifier" (#376)
 ]);
 
 /**
@@ -466,6 +483,13 @@ export function compileSource(
     1182, // "A destructuring declaration must have an initializer"
     1228, // "A type predicate is only allowed in return type position"
     1163, // "A 'yield' expression is only allowed in a generator body" — syntactic diagnostic (#267)
+    1206, // "Decorators are not valid here" — decorator syntax tolerated, decorators ignored (#376)
+    1207, // "Decorators cannot be applied to multiple get/set accessors" (#376)
+    1436, // "Decorators must precede the name and all keywords of property declarations" (#376)
+    1486, // "Decorator used before 'export' here" (#376)
+    1497, // "Expression must be enclosed in parentheses to be used as a decorator" (#376)
+    1498, // "Invalid syntax in decorator" (#376)
+    8038, // "Decorators may not appear after 'export' or 'export default'" (#376)
   ]);
   const hasSyntaxErrors = ast.syntacticDiagnostics.some(
     (d) => d.category === 1 && d.file === ast.sourceFile && !TOLERATED_SYNTAX_CODES.has(d.code),
