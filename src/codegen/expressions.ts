@@ -8515,6 +8515,48 @@ function compileCallExpression(
       return { kind: "externref" };
     }
 
+    // Handle Object.defineProperty(obj, prop, descriptor) — stub
+    // If descriptor is an object literal with a `value` property, sets obj[prop] = value via __extern_set.
+    // Otherwise compiles all args for side effects and returns obj.
+    if (
+      ts.isIdentifier(propAccess.expression) &&
+      propAccess.expression.text === "Object" &&
+      propAccess.name.text === "defineProperty" &&
+      expr.arguments.length >= 3
+    ) {
+      return compileObjectDefineProperty(ctx, fctx, expr);
+    }
+
+    // Handle Object.defineProperties(obj, props) — stub: compile both args, drop props, return obj
+    if (
+      ts.isIdentifier(propAccess.expression) &&
+      propAccess.expression.text === "Object" &&
+      propAccess.name.text === "defineProperties" &&
+      expr.arguments.length >= 2
+    ) {
+      const objType = compileExpression(ctx, fctx, expr.arguments[0]!);
+      const propsType = compileExpression(ctx, fctx, expr.arguments[1]!);
+      if (propsType) {
+        fctx.body.push({ op: "drop" });
+      }
+      return objType;
+    }
+
+    // Handle Object.getOwnPropertyDescriptor(obj, prop) — stub: return undefined (ref.null extern)
+    if (
+      ts.isIdentifier(propAccess.expression) &&
+      propAccess.expression.text === "Object" &&
+      propAccess.name.text === "getOwnPropertyDescriptor" &&
+      expr.arguments.length >= 2
+    ) {
+      const objType = compileExpression(ctx, fctx, expr.arguments[0]!);
+      if (objType) fctx.body.push({ op: "drop" });
+      const propType = compileExpression(ctx, fctx, expr.arguments[1]!);
+      if (propType) fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "ref.null.extern" });
+      return { kind: "externref" };
+    }
+
     // Handle Promise.all / Promise.race / Promise.resolve / Promise.reject — host-delegated static calls
     if (
       ts.isIdentifier(propAccess.expression) &&
@@ -14234,6 +14276,179 @@ function compileArrayConstructorCall(
   fctx.body.push({ op: "local.get", index: tmpData });
   fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
   return { kind: "ref_null", typeIdx: vecTypeIdx };
+}
+
+// ── Object.defineProperty ─────────────────────────────────────────────
+
+/**
+ * Compile Object.defineProperty(obj, prop, descriptor).
+ *
+ * If the descriptor is an object literal with a `value` property, we extract
+ * the value and emit __extern_set(obj, prop, value). Otherwise we compile all
+ * arguments for side effects and return the object unchanged.
+ *
+ * Returns obj (externref).
+ */
+function compileObjectDefineProperty(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.CallExpression,
+): ValType | null {
+  const objArg = expr.arguments[0]!;
+  const propArg = expr.arguments[1]!;
+  const descArg = expr.arguments[2]!;
+
+  // Check if descriptor is an object literal with a `value` property
+  let valueExpr: ts.Expression | undefined;
+  if (ts.isObjectLiteralExpression(descArg)) {
+    for (const prop of descArg.properties) {
+      if (
+        ts.isPropertyAssignment(prop) &&
+        ts.isIdentifier(prop.name) &&
+        prop.name.text === "value"
+      ) {
+        valueExpr = prop.initializer;
+        break;
+      }
+    }
+  }
+
+  // Resolve the property name at compile time (string literal)
+  let propName: string | undefined;
+  if (ts.isStringLiteral(propArg)) {
+    propName = propArg.text;
+  }
+
+  // Check if obj is a struct type with the given field
+  const objTsType = ctx.checker.getTypeAtLocation(objArg);
+  const structName = resolveStructName(ctx, objTsType)
+    || (ts.isIdentifier(objArg) ? ctx.widenedVarStructMap.get(objArg.text) : undefined);
+  const structTypeIdx = structName ? ctx.structMap.get(structName) : undefined;
+  const fields = structName ? ctx.structFields.get(structName) : undefined;
+  const fieldIdx = (fields && propName) ? fields.findIndex(f => f.name === propName) : -1;
+  const useStruct = structTypeIdx !== undefined && fields && fieldIdx >= 0 && valueExpr;
+
+  if (valueExpr && useStruct) {
+    // Struct path: Object.defineProperty(obj, "prop", { value: v }) → struct.set
+
+    // Compile obj and save to local
+    const objType = compileExpression(ctx, fctx, objArg);
+    if (!objType) return null;
+    const objLocal = allocLocal(fctx, `__defprop_obj_${fctx.locals.length}`, objType);
+    fctx.body.push({ op: "local.set", index: objLocal });
+
+    // Compile remaining descriptor properties for side effects (before value)
+    for (const prop of (descArg as ts.ObjectLiteralExpression).properties) {
+      if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === "value") continue;
+      if (ts.isPropertyAssignment(prop)) {
+        const sideType = compileExpression(ctx, fctx, prop.initializer);
+        if (sideType) fctx.body.push({ op: "drop" });
+      }
+    }
+
+    // Emit struct.set: push obj, then value, then struct.set
+    const fieldType = fields![fieldIdx]!.type;
+    fctx.body.push({ op: "local.get", index: objLocal });
+    const valType = compileExpression(ctx, fctx, valueExpr, fieldType);
+    if (!valType) {
+      // Drop the obj ref we just pushed
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "local.get", index: objLocal });
+      return objType;
+    }
+    if (valType.kind !== fieldType.kind) {
+      coerceType(ctx, fctx, valType, fieldType);
+    }
+    fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx!, fieldIdx });
+
+    // Return obj
+    fctx.body.push({ op: "local.get", index: objLocal });
+    return objType;
+
+  } else if (valueExpr) {
+    // Externref path: Object.defineProperty(obj, prop, { value: v }) → __extern_set(obj, prop, v)
+
+    // Compile obj and coerce to externref
+    const objType = compileExpression(ctx, fctx, objArg, { kind: "externref" });
+    if (!objType) return null;
+    if (objType.kind !== "externref") {
+      coerceType(ctx, fctx, objType, { kind: "externref" });
+    }
+    const objLocal = allocLocal(fctx, `__defprop_obj_${fctx.locals.length}`, { kind: "externref" });
+    fctx.body.push({ op: "local.set", index: objLocal });
+
+    // Compile prop key as externref
+    const propType = compileExpression(ctx, fctx, propArg, { kind: "externref" });
+    if (!propType) {
+      fctx.body.push({ op: "local.get", index: objLocal });
+      return { kind: "externref" };
+    }
+    if (propType.kind !== "externref") {
+      coerceType(ctx, fctx, propType, { kind: "externref" });
+    }
+    const propLocal = allocLocal(fctx, `__defprop_key_${fctx.locals.length}`, { kind: "externref" });
+    fctx.body.push({ op: "local.set", index: propLocal });
+
+    // Compile value as externref
+    const valType = compileExpression(ctx, fctx, valueExpr, { kind: "externref" });
+    if (!valType) {
+      fctx.body.push({ op: "local.get", index: objLocal });
+      return { kind: "externref" };
+    }
+    if (valType.kind !== "externref") {
+      coerceType(ctx, fctx, valType, { kind: "externref" });
+    }
+    const valLocal = allocLocal(fctx, `__defprop_val_${fctx.locals.length}`, { kind: "externref" });
+    fctx.body.push({ op: "local.set", index: valLocal });
+
+    // Compile remaining descriptor properties for side effects
+    for (const prop of (descArg as ts.ObjectLiteralExpression).properties) {
+      if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === "value") continue;
+      if (ts.isPropertyAssignment(prop)) {
+        const sideType = compileExpression(ctx, fctx, prop.initializer);
+        if (sideType) fctx.body.push({ op: "drop" });
+      }
+    }
+
+    // Push args: obj, key, val and call __extern_set
+    fctx.body.push({ op: "local.get", index: objLocal });
+    fctx.body.push({ op: "local.get", index: propLocal });
+    fctx.body.push({ op: "local.get", index: valLocal });
+
+    // Lazily register __extern_set if not already registered
+    let funcIdx = ctx.funcMap.get("__extern_set");
+    if (funcIdx === undefined) {
+      const importsBefore = ctx.numImportFuncs;
+      const setType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }], []);
+      addImport(ctx, "env", "__extern_set", { kind: "func", typeIdx: setType });
+      shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+      funcIdx = ctx.funcMap.get("__extern_set");
+    }
+    if (funcIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx });
+    }
+
+    // Return obj
+    fctx.body.push({ op: "local.get", index: objLocal });
+    return { kind: "externref" };
+
+  } else {
+    // No value property or descriptor is not an object literal:
+    // Compile all args for side effects, return obj
+    const objType = compileExpression(ctx, fctx, objArg);
+    if (!objType) return null;
+    const objLocal = allocLocal(fctx, `__defprop_obj_${fctx.locals.length}`, objType);
+    fctx.body.push({ op: "local.set", index: objLocal });
+
+    const propType = compileExpression(ctx, fctx, propArg);
+    if (propType) fctx.body.push({ op: "drop" });
+
+    const descType = compileExpression(ctx, fctx, descArg);
+    if (descType) fctx.body.push({ op: "drop" });
+
+    fctx.body.push({ op: "local.get", index: objLocal });
+    return objType;
+  }
 }
 
 // ── Object.keys / Object.values ───────────────────────────────────────

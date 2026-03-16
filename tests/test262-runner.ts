@@ -317,11 +317,6 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     return { skip: true, reason: "array-like object with .length" };
   }
 
-  // Skip tests using Object.defineProperty
-  if (/Object\.defineProperty/.test(source)) {
-    return { skip: true, reason: "Object.defineProperty not supported" };
-  }
-
   // Skip tests using Object.create
   if (/Object\.create/.test(source)) {
     return { skip: true, reason: "Object.create not supported" };
