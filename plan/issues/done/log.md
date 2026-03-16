@@ -309,3 +309,5 @@
 | 351 | 2026-03-16 | Async iteration / for-await-of | Dep-driven |
 | 372 | 2026-03-16 | String.prototype.matchAll skip filter removed | Dep-driven |
 | 287 | 2026-03-16 | Generator expressions + class methods + yield in loops | Dep-driven |
+| 354 | 2026-03-16 | Reflect skip filter narrowed | Dep-driven |
+| 358 | 2026-03-16 | Dynamic import / import.meta skip filter narrowed | Dep-driven |
