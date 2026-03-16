@@ -283,3 +283,4 @@
 | 392 | 2026-03-16 | Unknown field access fallback on class structs | Dep-driven |
 | 391 | 2026-03-16 | Numeric index signature diagnostic suppression | Dep-driven |
 | 395 | 2026-03-16 | Function references as callable values (closure wrapping) | Dep-driven |
+| 393 | 2026-03-16 | Compound assignment on externref element access | Dep-driven |
