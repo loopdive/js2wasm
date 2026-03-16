@@ -11,6 +11,7 @@ export type ImportIntent =
   | { type: "box"; targetType: string }
   | { type: "unbox"; targetType: string }
   | { type: "extern_get" }
+  | { type: "extern_set" }
   | { type: "truthy_check" }
   | { type: "date_new" }
   | { type: "date_method"; method: string }

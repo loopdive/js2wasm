@@ -68,6 +68,7 @@ function resolveImport(
       if (name === "JSON_stringify") return (v: any) => JSON.stringify(v);
       if (name === "JSON_parse") return (s: any) => JSON.parse(s);
       if (name === "__extern_get") return (obj: any, key: any) => (obj == null ? undefined : obj[key]);
+      if (name === "__extern_set") return (obj: any, key: any, val: any) => { if (obj != null) obj[key] = val; };
       if (name === "__extern_length") return (obj: any) => (obj == null ? 0 : obj.length);
       // Tagged template support: JS array builder and tagged template caller
       if (name === "__js_array_new") return () => [];
@@ -177,6 +178,8 @@ function resolveImport(
       return (v: any) => (v ? 1 : 0);
     case "extern_get":
       return (obj: any, key: any) => (obj == null ? undefined : obj[key]);
+    case "extern_set":
+      return (obj: any, key: any, val: any) => { if (obj != null) obj[key] = val; };
     case "date_new":
       return () => new Date();
     case "date_method": {
