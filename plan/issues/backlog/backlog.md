@@ -246,7 +246,7 @@ _Details: [sprint.md](../ready/sprint.md)_
 | [147](./147.md) | Function.name property | M | ~258 |
 | [149](./149.md) | Unsupported call expression patterns | L | ~637 |
 | [153](./153.md) | Iterator protocol for destructuring | M | ~67 |
-| [173](./173.md) | Computed property names in classes | M | ~44 |
+| [173](./173.md) | Computed property names in classes | M | ~44 | **review** |
 
 ### Won't implement (fundamental JS runtime features)
 
