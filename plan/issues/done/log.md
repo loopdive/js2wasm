@@ -262,3 +262,4 @@
 | 384 | 2026-03-16 | replaceAll and other missing string methods (ES2021+ lib) | Dep-driven |
 | 331 | 2026-03-16 | Strict mode arguments/eval identifier restriction | Dep-driven |
 | 337 | 2026-03-16 | Null property access at runtime | Dep-driven |
+| 383 | 2026-03-16 | Label not allowed / let declaration errors | Dep-driven |

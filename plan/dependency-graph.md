@@ -30,7 +30,7 @@ Can all run in parallel (different diagnostic codes).
 | ~~275~~ | ~~Comma operator warning blocks compilation~~ | ~106 CE | **Done** |
 | ~~276~~ | ~~Computed property name must be of assignable type~~ | — | **Done** |
 | 381 | Nullish coalescing false positives | — | Ready |
-| 383 | Label not allowed / let declaration errors | — | Ready |
+| ~~383~~ | ~~Label not allowed / let declaration errors~~ | — | **Done** |
 
 ---
 
