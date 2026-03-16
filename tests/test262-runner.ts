@@ -66,10 +66,10 @@ export function parseMeta(source: string): Test262Meta {
 /** Features we definitely cannot support in wasm */
 const UNSUPPORTED_FEATURES = new Set([
   // --- genuinely unsupported ---
-  "Symbol", "Symbol.iterator", "Symbol.toPrimitive", "Symbol.toStringTag",
-  "Symbol.species", "Symbol.hasInstance", "Symbol.match", "Symbol.replace",
-  "Symbol.search", "Symbol.split", "Symbol.unscopables", "Symbol.asyncIterator",
-  "Symbol.matchAll",
+  // Symbol features are checked separately in shouldSkip — only skip when source
+  // actually uses Symbol (many tests are tagged with Symbol.iterator because the
+  // spec uses the iterator protocol internally, but the test code itself does not
+  // reference Symbol at all and can run fine without Symbol support).
   "Proxy", "Reflect", "Reflect.construct", "Reflect.apply",
   "WeakRef", "FinalizationRegistry", "WeakMap", "WeakSet",
   "SharedArrayBuffer", "Atomics",
@@ -114,6 +114,18 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
       if (UNSUPPORTED_FEATURES.has(feat)) {
         return { skip: true, reason: `unsupported feature: ${feat}` };
       }
+    }
+  }
+
+  // Symbol feature tags: only skip if the source actually uses Symbol.
+  // Many tests (esp. destructuring) are tagged with Symbol.iterator because the
+  // spec defines array destructuring via the iterator protocol, but the test code
+  // never references Symbol and works fine with our direct array destructuring.
+  if (meta.features?.some(f => f === "Symbol" || f.startsWith("Symbol."))) {
+    // Strip metadata block before checking for Symbol usage in actual test code
+    const body = source.replace(/\/\*---[\s\S]*?---\*\//, "");
+    if (/\bSymbol\b/.test(body)) {
+      return { skip: true, reason: "uses Symbol in source" };
     }
   }
 
