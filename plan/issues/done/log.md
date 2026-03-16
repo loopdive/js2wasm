@@ -308,3 +308,4 @@
 | 350 | 2026-03-16 | Symbol skip filter narrowed (~95 tests unblocked) | Dep-driven |
 | 351 | 2026-03-16 | Async iteration / for-await-of | Dep-driven |
 | 372 | 2026-03-16 | String.prototype.matchAll skip filter removed | Dep-driven |
+| 287 | 2026-03-16 | Generator expressions + class methods + yield in loops | Dep-driven |
