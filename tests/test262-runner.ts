@@ -465,11 +465,8 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     return { skip: true, reason: "chained tagged templates" };
   }
 
-  // Skip tests using typeof on member expressions (typeof Math.PI, typeof obj.prop)
-  // — the compiler can't statically resolve typeof for property accesses
-  if (/typeof\s+\w+\.\w+/.test(source) && /assert\.sameValue/.test(source)) {
-    return { skip: true, reason: "typeof on member expression" };
-  }
+  // (Removed: typeof member expression skip — compiler now resolves typeof on member
+  //  expressions via ctx.checker.getTypeAtLocation(), which works on property accesses)
 
   // (Removed: typeof undefined/void 0 skip — compiler now resolves typeof undefined)
 
