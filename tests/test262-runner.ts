@@ -318,10 +318,8 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     return { skip: true, reason: "Object.create not supported" };
   }
 
-  // Skip tests using Object.freeze / Object.isFrozen
-  if (/Object\.(freeze|isFrozen|seal|isSealed|preventExtensions|isExtensible)/.test(source)) {
-    return { skip: true, reason: "Object mutability methods not supported" };
-  }
+  // Object.freeze/seal/preventExtensions are now stubbed (no-op, return object)
+  // Object.isFrozen/isSealed return false, Object.isExtensible returns true
 
   // Skip tests using hasOwnProperty or propertyIsEnumerable
   if (/hasOwnProperty|propertyIsEnumerable/.test(source)) {
