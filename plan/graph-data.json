@@ -48,25 +48,6 @@
       "cluster": "Unclustered"
     },
     {
-      "id": 121,
-      "title": "Function.prototype.call/apply",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_ce": 13,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": "121",
-      "title": "Function.prototype.call/apply",
-      "priority": "low",
-      "status": "done",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Unclustered"
-    },
-    {
       "id": 123,
       "title": "Wrapper object constructors (new Number/String/Boolean)",
       "priority": "medium",
@@ -112,25 +93,6 @@
       "cluster": "Unclustered"
     },
     {
-      "id": 144,
-      "title": "new expression with class expressions",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 145,
-      "title": "allowJs type flexibility — boolean/string/void as number",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 262,
-      "cluster": "Unclustered"
-    },
-    {
       "id": 146,
       "title": "Unknown identifier errors from scope/hoisting issues",
       "priority": "medium",
@@ -152,17 +114,6 @@
       "cluster": "Unclustered"
     },
     {
-      "id": 148,
-      "title": "Element access (bracket notation) on struct types",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 262,
-      "test262_ce": 32,
-      "cluster": "Unclustered"
-    },
-    {
       "id": 149,
       "title": "Unsupported call expression patterns",
       "priority": "high",
@@ -174,34 +125,6 @@
       "compiler_errors": 637,
       "test262_ce": 730,
       "cluster": "Unclustered"
-    },
-    {
-      "id": 150,
-      "title": "ClassDeclaration in statement positions",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 151,
-      "title": "`this` keyword in class methods for test262",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 152,
-      "title": "Setter return value error in allowJs mode",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 262,
-      "cluster": "Diagnostics"
     },
     {
       "id": 153,
@@ -224,53 +147,6 @@
       "status": "ready",
       "depends_on": [],
       "files": [],
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 157,
-      "title": "void expression returns wrong value",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 158,
-      "title": "String concatenation with non-string operands",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 159,
-      "title": "Call expression edge cases",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 14,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 160,
-      "title": "Math method edge cases",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 161,
-      "title": "Compound assignment edge cases",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_ce": 12,
       "cluster": "Unclustered"
     },
     {
@@ -302,72 +178,6 @@
       "cluster": "Unclustered"
     },
     {
-      "id": 166,
-      "title": "`in` operator runtime failures",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 167,
-      "title": "typeof edge cases",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 168,
-      "title": "equality operators with null/undefined",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 169,
-      "title": "Arrow function edge cases",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 170,
-      "title": "Class expression/declaration edge cases",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_ce": 343,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 171,
-      "title": "Boolean() edge cases",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 172,
-      "title": "Array.isArray edge case",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [
-        171
-      ],
-      "files": [],
-      "cluster": "Unclustered"
-    },
-    {
       "id": 173,
       "title": "Computed property names in class declarations",
       "priority": "medium",
@@ -390,56 +200,6 @@
       "cluster": "Unclustered"
     },
     {
-      "id": 176,
-      "title": "Bug: Unicode escape sequences in property names not resolved",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 179,
-      "title": "Generator functions: yield in module mode errors",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 262,
-      "test262_ce": 49,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 182,
-      "title": "Arrow function closure type coercion errors",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 262,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 188,
-      "title": "`instanceof` operator: 20 compile errors",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 262,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 189,
-      "title": "`new.target` meta-property: 7 compile errors",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 262,
-      "cluster": "Unclustered"
-    },
-    {
       "id": 192,
       "title": "Computed property names: compile errors in class and object contexts",
       "priority": "low",
@@ -448,46 +208,6 @@
       "files": [],
       "compiler_errors": 262,
       "test262_ce": 7,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 194,
-      "title": "Logical assignment operators compile errors",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 262,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 198,
-      "title": "Switch statement compile errors and failures",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 262,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 199,
-      "title": "Labeled statements: 5 compile errors",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 262,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 201,
-      "title": "Object.keys/values/entries: 24 compile errors",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 262,
       "cluster": "Unclustered"
     },
     {
@@ -504,15 +224,6 @@
     {
       "id": 232,
       "title": "Unsupported call expression -- method calls on object literals",
-      "priority": "low",
-      "status": "done",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Class / New"
-    },
-    {
-      "id": 234,
-      "title": "ClassDeclaration in nested/expression positions (remaining 681 errors)",
       "priority": "low",
       "status": "done",
       "depends_on": [],
@@ -548,58 +259,6 @@
       "cluster": "Diagnostics"
     },
     {
-      "id": 250,
-      "title": "For-loop with function declarations (113 compile errors)",
-      "priority": "high",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 113,
-      "cluster": "Loops / Iteration"
-    },
-    {
-      "id": 257,
-      "title": "Unsupported call expression -- method calls on returned values",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 262,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 258,
-      "title": "Unsupported call expression -- double/triple nested calls",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 40,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 259,
-      "title": "ClassDeclaration in block/nested scope positions",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 30,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 260,
-      "title": "ClassDeclaration + call expression combined errors",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [
-        234
-      ],
-      "files": [],
-      "compiler_errors": 50,
-      "cluster": "Class / New"
-    },
-    {
       "id": 265,
       "title": "Computed property names in class declarations (TypeScript diagnostic)",
       "priority": "low",
@@ -627,16 +286,6 @@
       "cluster": "Loops / Iteration"
     },
     {
-      "id": 269,
-      "title": "Setter return value diagnostic suppression",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 20,
-      "cluster": "Diagnostics"
-    },
-    {
       "id": 271,
       "title": "Cannot find name -- missing harness or global declarations",
       "priority": "low",
@@ -647,27 +296,6 @@
       "cluster": "Test infrastructure"
     },
     {
-      "id": 272,
-      "title": "WebAssembly type mismatch -- externref vs f64/i32 in compiled output",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 30,
-      "test262_ce": 548,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 273,
-      "title": "Unsupported new expression for anonymous class expressions",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 20,
-      "cluster": "Unclustered"
-    },
-    {
       "id": 274,
       "title": "Property access on function type -- .name, .length, .call, .apply",
       "priority": "medium",
@@ -676,27 +304,6 @@
       "files": [],
       "compiler_errors": 30,
       "cluster": "Property / Element"
-    },
-    {
-      "id": 278,
-      "title": "Cannot destructure -- not a known struct type",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 25,
-      "test262_ce": 36,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 285,
-      "title": "For-loop compile errors -- complex heads and function declarations",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 20,
-      "cluster": "Unclustered"
     },
     {
       "id": 287,
@@ -712,27 +319,8 @@
       "cluster": "Generators / Yield"
     },
     {
-      "id": 290,
-      "title": "Instanceof compile errors -- class hierarchy and expressions",
-      "priority": "high",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 10,
-      "cluster": "Standalone"
-    },
-    {
       "id": 309,
       "title": "Expand test262 harness includes -- propertyIsEnumerable, fnGlobalObject",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Test infrastructure"
-    },
-    {
-      "id": 314,
-      "title": "Performance -- compile time profiling and optimization",
       "priority": "low",
       "status": "ready",
       "depends_on": [],
@@ -782,17 +370,6 @@
       "cluster": "Dead code / Scanning"
     },
     {
-      "id": 322,
-      "title": "[ts2wasm] Inline trig/transcendental Math methods as pure Wasm",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [
-        321
-      ],
-      "files": [],
-      "cluster": "Dead code / Scanning"
-    },
-    {
       "id": 323,
       "title": "[ts2wasm] Native type annotations for performance optimization",
       "priority": "low",
@@ -808,48 +385,8 @@
       "status": "ready",
       "depends_on": [],
       "files": [],
-      "test262_ce": 7,
+      "test262_ce": 16,
       "cluster": "Class / New"
-    },
-    {
-      "id": 330,
-      "title": "ClassExpression in unsupported positions",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_ce": 25,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 335,
-      "title": "Parser comma errors (non-computed-property contexts)",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_ce": 75,
-      "cluster": "Standalone"
-    },
-    {
-      "id": 336,
-      "title": "For-of assignment destructuring on non-struct refs",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_ce": 11,
-      "cluster": "Standalone"
-    },
-    {
-      "id": 338,
-      "title": "Negative test support in test262 runner",
-      "priority": "high",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_skip": 3247,
-      "cluster": "Test infrastructure"
     },
     {
       "id": 339,
@@ -870,28 +407,6 @@
       "files": [],
       "test262_skip": 1337,
       "cluster": "Unclustered"
-    },
-    {
-      "id": 341,
-      "title": "Property introspection (hasOwnProperty, propertyIsEnumerable)",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_skip": 1001,
-      "cluster": "Standalone"
-    },
-    {
-      "id": 342,
-      "title": "Array.prototype.method.call/apply patterns",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [
-        "121"
-      ],
-      "files": [],
-      "test262_skip": 766,
-      "cluster": "Built-ins / Runtime"
     },
     {
       "id": 343,
@@ -922,38 +437,6 @@
       "files": [],
       "test262_skip": 421,
       "cluster": "Unclustered"
-    },
-    {
-      "id": 347,
-      "title": "Function/class .name property completion",
-      "priority": "high",
-      "status": "ready",
-      "depends_on": [
-        "147"
-      ],
-      "files": [],
-      "test262_skip": 404,
-      "cluster": "Built-ins / Runtime"
-    },
-    {
-      "id": 348,
-      "title": "Null/undefined arithmetic coercion",
-      "priority": "high",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_skip": 362,
-      "cluster": "Type coercion"
-    },
-    {
-      "id": 349,
-      "title": "String() constructor as function",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_skip": 261,
-      "cluster": "Built-ins / Runtime"
     },
     {
       "id": 350,
@@ -1003,16 +486,6 @@
       "cluster": "Unclustered"
     },
     {
-      "id": 356,
-      "title": "Closure-as-value in assert and array-like objects",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_skip": 106,
-      "cluster": "Functions / Closures"
-    },
-    {
       "id": 358,
       "title": "Dynamic import support",
       "priority": "low",
@@ -1031,16 +504,6 @@
       "files": [],
       "test262_skip": 31,
       "cluster": "Built-ins / Runtime"
-    },
-    {
-      "id": 362,
-      "title": "typeof on member expressions",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_skip": 16,
-      "cluster": "Property / Element"
     },
     {
       "id": 365,
@@ -1085,16 +548,6 @@
       "cluster": "String / Template literals"
     },
     {
-      "id": 373,
-      "title": "Object as loop condition / falsy value handling",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_skip": 12,
-      "cluster": "Loops / Iteration"
-    },
-    {
       "id": 374,
       "title": "Miscellaneous small patterns",
       "priority": "low",
@@ -1115,34 +568,151 @@
       "cluster": "Unclustered"
     },
     {
-      "id": 386,
-      "title": "Remaining small CE patterns",
-      "priority": "low",
+      "id": 387,
+      "title": "Unsupported call expression (1165 CE)",
+      "priority": "high",
       "status": "ready",
       "depends_on": [],
       "files": [],
-      "compiler_errors": 200,
-      "test262_fail": 5,
-      "test262_ce": 200,
-      "cluster": "Standalone"
+      "compiler_errors": 1165,
+      "test262_ce": 1165,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 388,
+      "title": "Element access on externref (104 CE)",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "compiler_errors": 262,
+      "test262_ce": 104,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 389,
+      "title": "Element access on class instances (76 CE)",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "compiler_errors": 262,
+      "test262_ce": 76,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 390,
+      "title": "Assignment to non-array types (70 CE)",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "compiler_errors": 262,
+      "test262_ce": 70,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 391,
+      "title": "Numeric index signature on object types (30 CE)",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "compiler_errors": 262,
+      "test262_ce": 30,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 392,
+      "title": "Unknown field access on class structs (18 CE)",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "compiler_errors": 262,
+      "test262_ce": 18,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 393,
+      "title": "Compound assignment on externref element access (13 CE)",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [
+        "388"
+      ],
+      "files": [],
+      "compiler_errors": 262,
+      "test262_ce": 13,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 394,
+      "title": "Destructuring produces wrong return values (326 FAIL)",
+      "priority": "critical",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_fail": 326,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 395,
+      "title": "\"fn is not a function\" in call/apply and array callbacks (70 FAIL)",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_fail": 70,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 396,
+      "title": "Null pointer dereference in destructuring (64 FAIL)",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [
+        394
+      ],
+      "files": [],
+      "test262_fail": 64,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 397,
+      "title": "assert.throws test support (952 SKIP)",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 952,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 398,
+      "title": "Private class fields/methods return wrong values (98 FAIL)",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_fail": 98,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 399,
+      "title": "Prototype method calls return wrong values (72 FAIL)",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_fail": 72,
+      "cluster": "Unclustered"
     }
   ],
   "links": [
     {
-      "source": 171,
-      "target": 172
-    },
-    {
-      "source": 234,
-      "target": 260
-    },
-    {
-      "source": 321,
-      "target": 322
-    },
-    {
-      "source": "121",
-      "target": 342
+      "source": 394,
+      "target": 396
     },
     {
       "source": 241,
@@ -1189,5 +759,5 @@
       "target": 74
     }
   ],
-  "generated": "2026-03-16T14:27:33.740Z"
+  "generated": "2026-03-16T15:39:56.132Z"
 }
