@@ -6455,13 +6455,118 @@ function compileElementCompoundAssignment(
   if (!objResult) return null;
 
   // Externref element access compound assignment
+  // Pattern: read via __extern_get, unbox, operate, box, write via __extern_set
   if (objResult.kind === "externref") {
-    ctx.errors.push({
-      message: "Compound assignment on externref element access not supported",
-      line: getLine(target),
-      column: getCol(target),
-    });
-    return null;
+    // Save obj to local
+    const objLocal = allocLocal(fctx, `__cmpd_eobj_${fctx.locals.length}`, { kind: "externref" });
+    fctx.body.push({ op: "local.set", index: objLocal });
+
+    // Compile key as externref and save to local
+    const keyResult = compileExpression(ctx, fctx, target.argumentExpression, { kind: "externref" });
+    if (!keyResult) return null;
+    const keyLocal = allocLocal(fctx, `__cmpd_ekey_${fctx.locals.length}`, { kind: "externref" });
+    fctx.body.push({ op: "local.set", index: keyLocal });
+
+    // Read current value: __extern_get(obj, key) -> externref
+    fctx.body.push({ op: "local.get", index: objLocal });
+    fctx.body.push({ op: "local.get", index: keyLocal });
+    let getIdx = ctx.funcMap.get("__extern_get");
+    if (getIdx === undefined) {
+      const importsBefore = ctx.numImportFuncs;
+      const getType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+      addImport(ctx, "env", "__extern_get", { kind: "func", typeIdx: getType });
+      const added = ctx.numImportFuncs - importsBefore;
+      if (added > 0) {
+        for (const func of ctx.mod.functions) {
+          for (const instr of func.body) {
+            if ("funcIdx" in instr && typeof instr.funcIdx === "number") {
+              if (instr.funcIdx >= importsBefore) instr.funcIdx += added;
+            }
+          }
+        }
+        for (const instr of fctx.body) {
+          if ("funcIdx" in instr && typeof instr.funcIdx === "number") {
+            if (instr.funcIdx >= importsBefore) instr.funcIdx += added;
+          }
+        }
+        for (const exp of ctx.mod.exports) {
+          if (exp.desc.kind === "func" && exp.desc.index >= importsBefore) exp.desc.index += added;
+        }
+      }
+      getIdx = ctx.funcMap.get("__extern_get");
+    }
+    if (getIdx === undefined) return null;
+    fctx.body.push({ op: "call", funcIdx: getIdx });
+
+    // Ensure union imports (including __unbox_number, __box_number) are registered
+    addUnionImports(ctx);
+
+    // Unbox to f64: __unbox_number(externref) -> f64
+    const unboxIdx = ctx.funcMap.get("__unbox_number");
+    if (unboxIdx === undefined) {
+      ctx.errors.push({ message: "Missing __unbox_number for compound externref assignment", line: getLine(target), column: getCol(target) });
+      return null;
+    }
+    fctx.body.push({ op: "call", funcIdx: unboxIdx });
+
+    // Compile RHS as f64
+    const rhsType = compileExpression(ctx, fctx, rhs, { kind: "f64" });
+    if (!rhsType) return null;
+
+    // Apply compound operation (stack: [lhs_f64, rhs_f64] -> result_f64)
+    emitCompoundOp(ctx, fctx, op);
+
+    // Save result for return value
+    const resultLocal = allocLocal(fctx, `__cmpd_eres_${fctx.locals.length}`, { kind: "f64" });
+    fctx.body.push({ op: "local.set", index: resultLocal });
+
+    // Box result to externref: __box_number(f64) -> externref
+    fctx.body.push({ op: "local.get", index: resultLocal });
+    const boxIdx = ctx.funcMap.get("__box_number");
+    if (boxIdx === undefined) {
+      ctx.errors.push({ message: "Missing __box_number for compound externref assignment", line: getLine(target), column: getCol(target) });
+      return null;
+    }
+    fctx.body.push({ op: "call", funcIdx: boxIdx });
+    const boxedLocal = allocLocal(fctx, `__cmpd_eboxed_${fctx.locals.length}`, { kind: "externref" });
+    fctx.body.push({ op: "local.set", index: boxedLocal });
+
+    // Write back: __extern_set(obj, key, boxed_result)
+    fctx.body.push({ op: "local.get", index: objLocal });
+    fctx.body.push({ op: "local.get", index: keyLocal });
+    fctx.body.push({ op: "local.get", index: boxedLocal });
+    let setIdx = ctx.funcMap.get("__extern_set");
+    if (setIdx === undefined) {
+      const importsBefore = ctx.numImportFuncs;
+      const setType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }], []);
+      addImport(ctx, "env", "__extern_set", { kind: "func", typeIdx: setType });
+      const added = ctx.numImportFuncs - importsBefore;
+      if (added > 0) {
+        for (const func of ctx.mod.functions) {
+          for (const instr of func.body) {
+            if ("funcIdx" in instr && typeof instr.funcIdx === "number") {
+              if (instr.funcIdx >= importsBefore) instr.funcIdx += added;
+            }
+          }
+        }
+        for (const instr of fctx.body) {
+          if ("funcIdx" in instr && typeof instr.funcIdx === "number") {
+            if (instr.funcIdx >= importsBefore) instr.funcIdx += added;
+          }
+        }
+        for (const exp of ctx.mod.exports) {
+          if (exp.desc.kind === "func" && exp.desc.index >= importsBefore) exp.desc.index += added;
+        }
+      }
+      setIdx = ctx.funcMap.get("__extern_set");
+    }
+    if (setIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: setIdx });
+    }
+
+    // Return the result as f64
+    fctx.body.push({ op: "local.get", index: resultLocal });
+    return { kind: "f64" };
   }
 
   if (objResult.kind !== "ref" && objResult.kind !== "ref_null") {
