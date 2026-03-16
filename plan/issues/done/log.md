@@ -271,3 +271,4 @@
 | 344 | 2026-03-16 | Wrapper constructors — primitive return (762 tests unblocked) | Dep-driven |
 | 305 | 2026-03-16 | Computed property runtime failures | Dep-driven |
 | 375 | 2026-03-16 | Super property access (equivalence tests added) | Dep-driven |
+| 360 | 2026-03-16 | JSON.stringify result comparison — skip filter narrowed | Dep-driven |
