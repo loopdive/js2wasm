@@ -251,10 +251,7 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
 
   // (Removed: assert() with message skip — extra arguments are now properly handled)
 
-  // Skip tests with named function expression reassignment (ref.null vs ref type mismatch)
-  if (/reassign.*fn.*name|Reassignment of function name/i.test(source)) {
-    return { skip: true, reason: "named function reassignment" };
-  }
+  // (Removed: named function expression reassignment skip — readOnlyBindings now makes name binding immutable)
 
   // Skip string comparison tests with supplementary plane unicode (surrogate pair edge cases)
   if (/\\u\{[0-9A-Fa-f]{5,}\}/.test(source) && /[<>]=?/.test(source)) {
@@ -368,15 +365,7 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     }
   }
 
-  // Skip tests with unary +/- on empty string (+"" → 0, -"" → -0 coercion not supported)
-  // Match unary +/- (preceded by operator/delimiter, not by a value) on empty string
-  // Strip throw statements first to avoid matching error message text
-  {
-    const noThrow = source.replace(/^\s*throw\b.*$/gm, "");
-    if (/[=;({,]\s*[+\-]\s*""/.test(noThrow) || /^\s*[+\-]\s*""/m.test(noThrow)) {
-      return { skip: true, reason: "unary +/- on empty string" };
-    }
-  }
+  // (Removed: unary +/- on empty string skip — tryStaticToNumber now resolves +""/−"" at compile time)
 
   // Skip tests that mutate collections during for-of iteration (causes infinite loops)
   if (/\bfor\s*\([^)]*\bof\b/.test(source) &&
