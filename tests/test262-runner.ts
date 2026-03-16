@@ -99,10 +99,9 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
   // Negative tests are now handled — don't skip them.
   // (They are processed specially in runTest262File.)
 
-  // Skip async tests
-  if (meta.flags?.includes("async")) {
-    return { skip: true, reason: "async flag" };
-  }
+  // async tests are now compiled synchronously (async function → regular function,
+  // await → identity). Many will fail at compile/runtime due to .then() chains,
+  // but some simpler tests pass.
 
   // Skip tests requiring onlyStrict or noStrict flags we can't handle
   if (meta.flags?.includes("raw")) {
@@ -1260,6 +1259,18 @@ function isNativeFunction(f: number): number { return 1; }`;
 
 function assertNativeFunction(f: number): void {}`;
     }
+  }
+
+  // $DONE — async test completion callback.
+  // In async-flagged test262 tests, $DONE() signals success and $DONE(err) signals
+  // failure. Since we compile async functions synchronously, $DONE is a no-op shim
+  // that sets __fail if an error argument is provided.
+  if (/\$DONE\b/.test(body)) {
+    preamble += `
+
+function $DONE(err?: any): void {
+  if (err) { __fail = 1; }
+}`;
   }
 
   // Auto-declare variables used as destructuring assignment targets but not
