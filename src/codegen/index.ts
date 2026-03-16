@@ -224,6 +224,8 @@ export interface CodegenContext {
   hoistFailedFuncs?: Set<string>;
   /** Counter for unique tagged template cache global variables */
   templateCacheCounter: number;
+  /** Type index for template vec struct (vec + raw field), -1 if not yet registered */
+  templateVecTypeIdx: number;
   /** Extra properties for empty object variables (varName -> props to add) */
   widenedTypeProperties: Map<string, { name: string; type: ValType }[]>;
   /** Map from widened variable name to its registered struct name */
@@ -371,6 +373,7 @@ export function generateModule(
     anyHelpersEmitted: false,
     shapeMap: new Map(),
     templateCacheCounter: 0,
+    templateVecTypeIdx: -1,
     widenedTypeProperties: new Map(),
     widenedVarStructMap: new Map(),
     pendingMathMethods: new Set(),
@@ -585,6 +588,7 @@ export function generateMultiModule(
     anyHelpersEmitted: false,
     shapeMap: new Map(),
     templateCacheCounter: 0,
+    templateVecTypeIdx: -1,
     widenedTypeProperties: new Map(),
     widenedVarStructMap: new Map(),
     pendingMathMethods: new Set(),
@@ -4665,6 +4669,7 @@ function collectStringLiterals(
 ): void {
   const literals = new Set<string>();
   let hasTypeofExpr = false;
+  let hasTaggedTemplate = false;
 
   function visit(node: ts.Node) {
     // Skip computed property names — their string literals are resolved at
@@ -4685,14 +4690,23 @@ function collectStringLiterals(
       }
     }
     // Tagged template expressions: collect ALL string parts (including empty strings)
-    // because tagged templates pass the full strings array to the tag function
+    // because tagged templates pass the full strings array to the tag function.
+    // Also collect rawText values for the .raw property on template objects.
+    // Register the template vec type early so tag function bodies can access .raw.
     if (ts.isTaggedTemplateExpression(node)) {
+      hasTaggedTemplate = true;
       if (ts.isNoSubstitutionTemplateLiteral(node.template)) {
         literals.add(node.template.text);
+        const rawText = (node.template as any).rawText;
+        if (rawText !== undefined) literals.add(rawText);
       } else if (ts.isTemplateExpression(node.template)) {
         literals.add(node.template.head.text); // include empty strings
+        const headRaw = (node.template.head as any).rawText;
+        if (headRaw !== undefined) literals.add(headRaw);
         for (const span of node.template.templateSpans) {
           literals.add(span.literal.text); // include empty strings
+          const spanRaw = (span.literal as any).rawText;
+          if (spanRaw !== undefined) literals.add(spanRaw);
         }
       }
     }
@@ -4717,6 +4731,11 @@ function collectStringLiterals(
     for (const s of ["number", "string", "boolean", "object", "undefined", "function"]) {
       literals.add(s);
     }
+  }
+
+  // Register the template vec type early so tag function bodies can use .raw
+  if (hasTaggedTemplate) {
+    getOrRegisterTemplateVecType(ctx);
   }
 
   if (literals.size === 0) return;
@@ -6146,6 +6165,50 @@ export function getOrRegisterVecType(
   });
   ctx.vecTypeMap.set(elemKind, vecIdx);
   return vecIdx;
+}
+
+/**
+ * Get or register the template vec struct type for tagged template string arrays.
+ * This is a vec struct with an additional `raw` field pointing to another vec:
+ *   (struct (field $length (mut i32)) (field $data (ref $arr)) (field $raw (ref_null $vec)))
+ *
+ * The `raw` field holds the unprocessed (raw) template strings.
+ */
+export function getOrRegisterTemplateVecType(ctx: CodegenContext): number {
+  if (ctx.templateVecTypeIdx >= 0) return ctx.templateVecTypeIdx;
+
+  // Ensure the base vec type for externref exists
+  const baseVecTypeIdx = getOrRegisterVecType(ctx, "externref", { kind: "externref" });
+  const arrTypeIdx = getArrTypeIdxFromVec(ctx, baseVecTypeIdx);
+
+  // Mark the base vec struct as non-final so template vec can subtype it
+  const baseVecDef = ctx.mod.types[baseVecTypeIdx];
+  if (baseVecDef && baseVecDef.kind === "struct" && baseVecDef.superTypeIdx === undefined) {
+    baseVecDef.superTypeIdx = -1; // non-final root
+  }
+
+  // Register template vec as subtype of base vec: { length: i32, data: ref $arr, raw: ref_null $vec }
+  const templateVecIdx = ctx.mod.types.length;
+  ctx.mod.types.push({
+    kind: "struct",
+    name: "__template_vec_externref",
+    superTypeIdx: baseVecTypeIdx,
+    fields: [
+      { name: "length", type: { kind: "i32" }, mutable: true },
+      {
+        name: "data",
+        type: { kind: "ref", typeIdx: arrTypeIdx },
+        mutable: true,
+      },
+      {
+        name: "raw",
+        type: { kind: "ref_null", typeIdx: baseVecTypeIdx },
+        mutable: false,
+      },
+    ],
+  });
+  ctx.templateVecTypeIdx = templateVecIdx;
+  return templateVecIdx;
 }
 
 /**

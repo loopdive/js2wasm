@@ -557,6 +557,54 @@ describe("TS ↔ Wasm equivalence", () => {
     );
   });
 
+  it("tagged template literals — raw property access", async () => {
+    await assertEquivalent(
+      `
+      function tag(strings: string[]): string {
+        return strings.raw[0];
+      }
+      export function test1(): string {
+        return tag\`hello world\`;
+      }
+      `,
+      [
+        { fn: "test1", args: [] },
+      ],
+    );
+  });
+
+  it("tagged template literals — raw vs cooked escape sequences", async () => {
+    await assertEquivalent(
+      `
+      function tag(strings: string[]): string {
+        return strings.raw[0];
+      }
+      export function test1(): string {
+        return tag\`hello\\nworld\`;
+      }
+      `,
+      [
+        { fn: "test1", args: [] },
+      ],
+    );
+  });
+
+  it("tagged template literals — raw length matches cooked length", async () => {
+    await assertEquivalent(
+      `
+      function tag(strings: string[], a: number): number {
+        return strings.raw.length;
+      }
+      export function test1(): number {
+        return tag\`hello \${42} world\`;
+      }
+      `,
+      [
+        { fn: "test1", args: [] },
+      ],
+    );
+  });
+
   it("typeof comparison — static resolution for number, string, boolean", async () => {
     await assertEquivalent(
       `
