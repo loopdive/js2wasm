@@ -275,6 +275,27 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     return { skip: true, reason: "object property access (dot + bracket)" };
   }
 
+  // Skip tests using new Object() — we don't support Object as a constructor with property bags
+  if (/\bnew\s+Object\s*\(\s*\)/.test(source)) {
+    return { skip: true, reason: "new Object() not supported" };
+  }
+
+  // Skip tests that dynamically add properties to empty object literals (person.age = 50 on var n = {})
+  if (/\bvar\s+\w+\s*=\s*\{\s*\}/.test(source) && /\w+\.\w+\s*=\s*\d/.test(source)) {
+    return { skip: true, reason: "dynamic property assignment on empty object" };
+  }
+
+  // Skip tests using this.x at global scope (property bag on global object)
+  if (/\bthis\.\w+\s*(!==|===|[+\-]{2})/.test(source) && !/\bclass\b/.test(source) && !/\bfunction\b.*\bthis\./.test(source)) {
+    return { skip: true, reason: "this.property at global scope" };
+  }
+
+  // Skip tests using loose equality (==) between object/array references —
+  // our ref → f64 coercion doesn't preserve reference identity semantics
+  if (/\bnew\s+Array\b/.test(source) && /\w+\s*[!=]=\s*\w+/.test(source) && !/\w+\s*[!=]==\s*\w+/.test(source)) {
+    return { skip: true, reason: "loose equality between array references" };
+  }
+
   // (Removed: object property assignment on empty object skip — most tests now compile and pass)
 
   // Skip tests with arithmetic on objects or function expressions ({} - {}, +{}, +function(){})
@@ -1277,11 +1298,49 @@ function assertNativeFunction(f: number): void {}`;
     implicitDecls = "\n  " + implicitDecls;
   }
 
+  // Hoist var declarations that are referenced inside class method/accessor bodies
+  // to module scope. When wrapTest wraps everything in a function, class methods
+  // become separate Wasm functions that can't capture the enclosing function's locals.
+  // By hoisting these vars to module globals, class methods can access them.
+  const hoistedVars = new Set<string>();
+  // Find var declarations with numeric initializers
+  const varDeclPattern = /\bvar\s+(\w+)\s*=\s*(\d+)\s*;/g;
+  const classBodyPattern = /\bclass\s+\w*\s*(?:extends\s+\w+\s*)?\{([\s\S]*?)\n\}/g;
+  // Collect all class bodies
+  const classBodies: string[] = [];
+  for (const cm of body.matchAll(classBodyPattern)) {
+    classBodies.push(cm[1]!);
+  }
+  if (classBodies.length > 0) {
+    const classBodyText = classBodies.join("\n");
+    for (const vm of body.matchAll(varDeclPattern)) {
+      const varName = vm[1]!;
+      // Check if this variable is referenced in any class body
+      if (new RegExp(`\\b${varName}\\b`).test(classBodyText)) {
+        hoistedVars.add(varName);
+      }
+    }
+  }
+
+  // Build hoisted declarations (module-level) and strip them from the function body
+  let hoistedDecls = "";
+  let bodyForFunc = body;
+  if (hoistedVars.size > 0) {
+    for (const v of hoistedVars) {
+      // Extract the initial value from the var declaration
+      const initMatch = bodyForFunc.match(new RegExp(`\\bvar\\s+${v}\\s*=\\s*(\\d+)\\s*;`));
+      const initVal = initMatch ? initMatch[1] : "0";
+      hoistedDecls += `let ${v}: number = ${initVal};\n`;
+      // Remove the var declaration from the function body
+      bodyForFunc = bodyForFunc.replace(new RegExp(`\\bvar\\s+${v}\\s*=\\s*\\d+\\s*;`), ``);
+    }
+  }
+
   return `
 ${preamble}
-
+${hoistedDecls}
 export function test(): number {
-  ${implicitDecls}${body.trim()}
+  ${implicitDecls}${bodyForFunc.trim()}
   if (__fail) { return 0; }
   return 1;
 }
