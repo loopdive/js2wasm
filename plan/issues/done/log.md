@@ -312,3 +312,4 @@
 | 354 | 2026-03-16 | Reflect skip filter narrowed | Dep-driven |
 | 358 | 2026-03-16 | Dynamic import / import.meta skip filter narrowed | Dep-driven |
 | 346 | 2026-03-16 | Object.defineProperty struct-aware codegen (421 skip removed) | Dep-driven |
+| 365 | 2026-03-16 | Collection mutation during for-of skip filter removed | Dep-driven |

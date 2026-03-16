@@ -194,11 +194,9 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
   // host imports (__iterator, __iterator_next, __iterator_done, __iterator_value).
   // No longer skipped — see issue #353.
 
-  // Collection mutation during for-of causes infinite loops
-  if (/\bfor\s*\([^)]*\bof\b/.test(source) &&
-      (/\.(push|pop|shift|unshift|splice|delete|add|set|clear)\s*\(/.test(source))) {
-    return { skip: true, reason: "collection mutation during for-of (hang risk)" };
-  }
+  // (Removed: collection mutation during for-of skip — filter was overly broad,
+  // matching any .push/.pop etc anywhere in source even outside the for-of body.
+  // Most tests with arrays in for-of don't actually cause infinite loops.)
 
   // throw+try/catch is now supported natively via Wasm exception handling.
   // No longer need to skip these tests.
@@ -378,12 +376,8 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
 
   // (Removed: unary +/- on empty string skip — tryStaticToNumber now resolves +""/−"" at compile time)
 
-  // Skip tests that mutate collections during for-of iteration (causes infinite loops)
-  if (/\bfor\s*\([^)]*\bof\b/.test(source) &&
-      (/\b(array|arr)\.(pop|push|shift|unshift|splice)\s*\(/.test(source) ||
-       /\.(delete|add|set)\s*\(/.test(source))) {
-    return { skip: true, reason: "collection mutation during for-of iteration" };
-  }
+  // (Removed: collection mutation during for-of iteration skip — duplicate of the
+  // earlier filter, both overly broad. Tests are now attempted.)
 
   // Skip tests using member expressions as for-of LHS (for (obj.prop of ...) )
   if (/\bfor\s*\(\s*(\(?\s*)?(\w+\.\w+)\s*\)?\s+of\b/.test(source)) {
