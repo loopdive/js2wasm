@@ -8115,11 +8115,61 @@ function compileCallExpression(
       if (funcIdx !== undefined) {
         // Push self (the receiver) as first argument
         const recvType = compileExpression(ctx, fctx, propAccess.expression);
-        // Conditionals/ternaries produce ref_null but method params expect ref — narrow
+        // Null-guard: if receiver is ref_null, check for null before calling method
         if (recvType && recvType.kind === "ref_null") {
+          // Determine return type early so we can build null-guard
+          const sig = ctx.checker.getResolvedSignature(expr);
+          let callReturnType: ValType | typeof VOID_RESULT = VOID_RESULT;
+          if (sig) {
+            const retType = ctx.checker.getReturnTypeOfSignature(sig);
+            if (!isVoidType(retType)) callReturnType = resolveWasmType(ctx, retType);
+          }
+          const tmp = allocLocal(fctx, `__ng_recv_${fctx.locals.length}`, recvType);
+          fctx.body.push({ op: "local.tee", index: tmp });
+          fctx.body.push({ op: "ref.is_null" });
+
+          // Build the else branch (non-null path) with the full call
+          const savedBody = fctx.body;
+          fctx.body = [];
+          fctx.body.push({ op: "local.get", index: tmp });
           fctx.body.push({ op: "ref.as_non_null" } as Instr);
+          const paramTypes = getFuncParamTypes(ctx, funcIdx);
+          for (let i = 0; i < expr.arguments.length; i++) {
+            compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
+          }
+          if (paramTypes) {
+            for (let i = expr.arguments.length + 1; i < paramTypes.length; i++) {
+              pushDefaultValue(fctx, paramTypes[i]!);
+            }
+          }
+          const finalMethodIdx = ctx.funcMap.get(fullName) ?? funcIdx;
+          fctx.body.push({ op: "call", funcIdx: finalMethodIdx });
+          const elseInstrs = fctx.body;
+          fctx.body = savedBody;
+
+          if (callReturnType === VOID_RESULT) {
+            // Void method: if null, skip; else call
+            fctx.body.push({
+              op: "if",
+              blockType: { kind: "empty" },
+              then: [] as Instr[],
+              else: elseInstrs,
+            });
+            return VOID_RESULT;
+          } else {
+            const resultType: ValType = callReturnType.kind === "ref"
+              ? { kind: "ref_null", typeIdx: (callReturnType as any).typeIdx }
+              : callReturnType;
+            fctx.body.push({
+              op: "if",
+              blockType: { kind: "val" as const, type: resultType },
+              then: defaultValueInstrs(resultType),
+              else: elseInstrs,
+            });
+            return resultType;
+          }
         }
-        // Push remaining arguments with type hints
+        // Non-nullable receiver: emit call directly
         const paramTypes = getFuncParamTypes(ctx, funcIdx);
         for (let i = 0; i < expr.arguments.length; i++) {
           compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
@@ -8155,11 +8205,58 @@ function compileCallExpression(
         if (funcIdx !== undefined) {
           // Push self (the receiver) as first argument
           const recvType = compileExpression(ctx, fctx, propAccess.expression);
-          // Module globals produce ref_null but method params expect ref — narrow
+          // Module globals produce ref_null but method params expect ref — null-guard
           if (recvType && recvType.kind === "ref_null") {
+            const sig = ctx.checker.getResolvedSignature(expr);
+            let callReturnType: ValType | typeof VOID_RESULT = VOID_RESULT;
+            if (sig) {
+              const retType = ctx.checker.getReturnTypeOfSignature(sig);
+              if (!isVoidType(retType)) callReturnType = resolveWasmType(ctx, retType);
+            }
+            const tmp = allocLocal(fctx, `__ng_srecv_${fctx.locals.length}`, recvType);
+            fctx.body.push({ op: "local.tee", index: tmp });
+            fctx.body.push({ op: "ref.is_null" });
+
+            const savedBody = fctx.body;
+            fctx.body = [];
+            fctx.body.push({ op: "local.get", index: tmp });
             fctx.body.push({ op: "ref.as_non_null" } as Instr);
+            const paramTypes = getFuncParamTypes(ctx, funcIdx);
+            for (let i = 0; i < expr.arguments.length; i++) {
+              compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
+            }
+            if (paramTypes) {
+              for (let i = expr.arguments.length + 1; i < paramTypes.length; i++) {
+                pushDefaultValue(fctx, paramTypes[i]!);
+              }
+            }
+            const finalStructMethodIdx = ctx.funcMap.get(fullName) ?? funcIdx;
+            fctx.body.push({ op: "call", funcIdx: finalStructMethodIdx });
+            const elseInstrs = fctx.body;
+            fctx.body = savedBody;
+
+            if (callReturnType === VOID_RESULT) {
+              fctx.body.push({
+                op: "if",
+                blockType: { kind: "empty" },
+                then: [] as Instr[],
+                else: elseInstrs,
+              });
+              return VOID_RESULT;
+            } else {
+              const resultType: ValType = callReturnType.kind === "ref"
+                ? { kind: "ref_null", typeIdx: (callReturnType as any).typeIdx }
+                : callReturnType;
+              fctx.body.push({
+                op: "if",
+                blockType: { kind: "val" as const, type: resultType },
+                then: defaultValueInstrs(resultType),
+                else: elseInstrs,
+              });
+              return resultType;
+            }
           }
-          // Push remaining arguments with type hints
+          // Non-nullable receiver
           const paramTypes = getFuncParamTypes(ctx, funcIdx);
           for (let i = 0; i < expr.arguments.length; i++) {
             compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
@@ -8908,10 +9005,57 @@ function compileCallExpression(
         const funcIdx = ctx.funcMap.get(fullName);
         if (funcIdx !== undefined) {
           const recvType = compileExpression(ctx, fctx, elemAccess.expression);
-          // Module globals produce ref_null but method params expect ref — narrow
+          // Null-guard: if receiver is ref_null, check for null before calling method
           if (recvType && recvType.kind === "ref_null") {
+            const sig = ctx.checker.getResolvedSignature(expr);
+            let callReturnType: ValType | typeof VOID_RESULT = VOID_RESULT;
+            if (sig) {
+              const retType = ctx.checker.getReturnTypeOfSignature(sig);
+              if (!isVoidType(retType)) callReturnType = resolveWasmType(ctx, retType);
+            }
+            const tmp = allocLocal(fctx, `__ng_ea_recv_${fctx.locals.length}`, recvType);
+            fctx.body.push({ op: "local.tee", index: tmp });
+            fctx.body.push({ op: "ref.is_null" });
+
+            const savedBody = fctx.body;
+            fctx.body = [];
+            fctx.body.push({ op: "local.get", index: tmp });
             fctx.body.push({ op: "ref.as_non_null" } as Instr);
+            const paramTypes = getFuncParamTypes(ctx, funcIdx);
+            for (let i = 0; i < expr.arguments.length; i++) {
+              compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
+            }
+            if (paramTypes) {
+              for (let i = expr.arguments.length + 1; i < paramTypes.length; i++) {
+                pushDefaultValue(fctx, paramTypes[i]!);
+              }
+            }
+            fctx.body.push({ op: "call", funcIdx });
+            const elseInstrs = fctx.body;
+            fctx.body = savedBody;
+
+            if (callReturnType === VOID_RESULT) {
+              fctx.body.push({
+                op: "if",
+                blockType: { kind: "empty" },
+                then: [] as Instr[],
+                else: elseInstrs,
+              });
+              return VOID_RESULT;
+            } else {
+              const resultType: ValType = callReturnType.kind === "ref"
+                ? { kind: "ref_null", typeIdx: (callReturnType as any).typeIdx }
+                : callReturnType;
+              fctx.body.push({
+                op: "if",
+                blockType: { kind: "val" as const, type: resultType },
+                then: defaultValueInstrs(resultType),
+                else: elseInstrs,
+              });
+              return resultType;
+            }
           }
+          // Non-nullable receiver
           const paramTypes = getFuncParamTypes(ctx, funcIdx);
           for (let i = 0; i < expr.arguments.length; i++) {
             compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
@@ -10547,6 +10691,48 @@ function pushDefaultValue(fctx: FunctionContext, type: ValType): void {
   }
 }
 
+/**
+ * Emit a null-guarded struct.get: if the object ref on the stack is null,
+ * push a default value instead of trapping.
+ *
+ * Expects the object ref to be on the Wasm stack. Emits:
+ *   local.tee $tmp
+ *   ref.is_null
+ *   if (result fieldType)
+ *     <default_value>
+ *   else
+ *     local.get $tmp
+ *     struct.get typeIdx fieldIdx
+ *   end
+ *
+ * Returns the field's ValType.
+ */
+function emitNullGuardedStructGet(
+  fctx: FunctionContext,
+  objType: ValType,
+  fieldType: ValType,
+  typeIdx: number,
+  fieldIdx: number,
+): void {
+  // For result type in the if block, normalize ref to ref_null so the null branch is valid
+  const resultType: ValType = fieldType.kind === "ref"
+    ? { kind: "ref_null", typeIdx: (fieldType as any).typeIdx }
+    : fieldType;
+
+  const tmp = allocLocal(fctx, `__ng_${fctx.locals.length}`, objType);
+  fctx.body.push({ op: "local.tee", index: tmp });
+  fctx.body.push({ op: "ref.is_null" });
+  fctx.body.push({
+    op: "if",
+    blockType: { kind: "val" as const, type: resultType },
+    then: defaultValueInstrs(resultType),
+    else: [
+      { op: "local.get", index: tmp } as Instr,
+      { op: "struct.get", typeIdx, fieldIdx } as Instr,
+    ],
+  });
+}
+
 // ── Spread in function calls ─────────────────────────────────────────
 
 /**
@@ -11655,13 +11841,24 @@ function compilePropertyAccess(
     if (structTypeIdx !== undefined && fields) {
       const fieldIdx = fields.findIndex((f) => f.name === propName);
       if (fieldIdx !== -1) {
-        compileExpression(ctx, fctx, expr.expression);
-        fctx.body.push({
-          op: "struct.get",
-          typeIdx: structTypeIdx,
-          fieldIdx,
-        });
-        return fields[fieldIdx]!.type;
+        const objResult = compileExpression(ctx, fctx, expr.expression);
+        const fieldType = fields[fieldIdx]!.type;
+        // Null-guard: if the object ref could be null (ref_null), prevent trap
+        if (objResult && objResult.kind === "ref_null") {
+          emitNullGuardedStructGet(fctx, objResult, fieldType, structTypeIdx, fieldIdx);
+          // The null guard if-block returns ref_null for ref fields
+          if (fieldType.kind === "ref") {
+            return { kind: "ref_null", typeIdx: (fieldType as any).typeIdx };
+          }
+          return fieldType;
+        } else {
+          fctx.body.push({
+            op: "struct.get",
+            typeIdx: structTypeIdx,
+            fieldIdx,
+          });
+        }
+        return fieldType;
       }
     }
   }
@@ -11694,8 +11891,12 @@ function compilePropertyAccess(
             fields.push(newField);
             typeDef.fields.push(newField);
             const fieldIdx = fields.length - 1;
-            compileExpression(ctx, fctx, expr.expression);
-            fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+            const objResult = compileExpression(ctx, fctx, expr.expression);
+            if (objResult && objResult.kind === "ref_null") {
+              emitNullGuardedStructGet(fctx, objResult, propWasmType, structTypeIdx, fieldIdx);
+            } else {
+              fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+            }
             return propWasmType;
           }
         }
@@ -11848,6 +12049,60 @@ function compileElementAccess(
   const objType = compileExpression(ctx, fctx, expr.expression);
   if (!objType) return null;
 
+  // Null-guard for ref_null: narrow to ref after null check
+  // This prevents traps on null array/struct references
+  if (objType.kind === "ref_null") {
+    const tmp = allocLocal(fctx, `__ng_ea_${fctx.locals.length}`, objType);
+    fctx.body.push({ op: "local.tee", index: tmp });
+    fctx.body.push({ op: "ref.is_null" });
+
+    // Determine the element result type
+    const accessTsType = ctx.checker.getTypeAtLocation(expr);
+    const accessResultType = resolveWasmType(ctx, accessTsType);
+    const resultType: ValType = accessResultType.kind === "ref"
+      ? { kind: "ref_null", typeIdx: (accessResultType as any).typeIdx }
+      : accessResultType;
+
+    // Build else branch (non-null): local.get tmp, ref.as_non_null, then compile inner
+    const savedBody = fctx.body;
+    fctx.body = [];
+    fctx.body.push({ op: "local.get", index: tmp });
+    fctx.body.push({ op: "ref.as_non_null" } as Instr);
+    // Continue with the rest of element access logic using the non-null ref
+    const nonNullObjType: ValType = { kind: "ref", typeIdx: (objType as any).typeIdx };
+    const innerResult = compileElementAccessBody(ctx, fctx, expr, nonNullObjType);
+    const elseInstrs = fctx.body;
+    fctx.body = savedBody;
+
+    if (innerResult !== null) {
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "val" as const, type: resultType },
+        then: defaultValueInstrs(resultType),
+        else: elseInstrs,
+      });
+      return resultType;
+    }
+    // If inner compilation returned null (error), just fall through with default
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "val" as const, type: resultType },
+      then: defaultValueInstrs(resultType),
+      else: elseInstrs.length > 0 ? elseInstrs : defaultValueInstrs(resultType),
+    });
+    return resultType;
+  }
+
+  return compileElementAccessBody(ctx, fctx, expr, objType);
+}
+
+/** Inner element access logic — assumes objType is on the stack and non-null */
+function compileElementAccessBody(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.ElementAccessExpression,
+  objType: ValType,
+): ValType | null {
   // Externref element access: obj[key] → host import __extern_get(obj, externref) → externref
   if (objType.kind === "externref") {
     compileExpression(ctx, fctx, expr.argumentExpression, { kind: "externref" });
