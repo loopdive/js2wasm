@@ -1,6 +1,6 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext, ClosureInfo, RestParamInfo } from "./index.js";
-import { allocLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers, addStringImports, cacheStringLiterals, addStringConstantGlobal, nextModuleGlobalIdx, ensureWrapperTypes } from "./index.js";
+import { allocLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers, addStringImports, cacheStringLiterals, addStringConstantGlobal, nextModuleGlobalIdx, ensureWrapperTypes, getOrRegisterTemplateVecType } from "./index.js";
 import {
   mapTsTypeToWasm,
   isNumberType,
@@ -11464,6 +11464,66 @@ function compilePropertyAccess(
         return ctx.fast ? { kind: "i32" } : { kind: "f64" };
       }
     }
+    // Fallback: compile the expression and check the actual wasm return type
+    // This handles cases like strings.raw.length where TS doesn't know the type
+    {
+      const savedLen = fctx.body.length;
+      const exprType = compileExpression(ctx, fctx, expr.expression);
+      if (exprType && (exprType.kind === "ref" || exprType.kind === "ref_null") && (exprType as { typeIdx: number }).typeIdx !== undefined) {
+        const vecTypeIdx = (exprType as { typeIdx: number }).typeIdx;
+        const typeDef = ctx.mod.types[vecTypeIdx];
+        if (typeDef?.kind === "struct" && typeDef.fields[0]?.name === "length" && typeDef.fields[1]?.name === "data") {
+          fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
+          if (!ctx.fast) fctx.body.push({ op: "f64.convert_i32_s" });
+          return ctx.fast ? { kind: "i32" } : { kind: "f64" };
+        }
+      }
+      // Undo the compiled expression if it didn't match
+      fctx.body.length = savedLen;
+    }
+  }
+
+  // Handle .raw on tagged template strings arrays (template vec struct)
+  // The strings parameter is typed as a base vec, but at runtime it's a
+  // template vec (subtype with an extra raw field). We ref.cast to the
+  // template vec type and then struct.get field 2.
+  if (propName === "raw" && ctx.templateVecTypeIdx >= 0) {
+    const templateVecTypeIdx = ctx.templateVecTypeIdx;
+    // Check if the object is a vec-like type (base vec or template vec)
+    let isVecLike = false;
+    if (ts.isIdentifier(expr.expression)) {
+      const localIdx = fctx.localMap.get(expr.expression.text);
+      if (localIdx !== undefined) {
+        const localType = localIdx < fctx.params.length
+          ? fctx.params[localIdx]!.type
+          : fctx.locals[localIdx - fctx.params.length]?.type;
+        if ((localType?.kind === "ref" || localType?.kind === "ref_null") && localType.typeIdx !== undefined) {
+          const typeIdx = (localType as { typeIdx: number }).typeIdx;
+          const typeDef = ctx.mod.types[typeIdx];
+          if (typeDef?.kind === "struct" && typeDef.fields[0]?.name === "length" && typeDef.fields[1]?.name === "data") {
+            isVecLike = true;
+          }
+        }
+      }
+    }
+    if (!isVecLike) {
+      const objWasmType = resolveWasmType(ctx, objType);
+      if (objWasmType.kind === "ref" || objWasmType.kind === "ref_null") {
+        const typeIdx = (objWasmType as { typeIdx: number }).typeIdx;
+        const typeDef = ctx.mod.types[typeIdx];
+        if (typeDef?.kind === "struct" && typeDef.fields[0]?.name === "length" && typeDef.fields[1]?.name === "data") {
+          isVecLike = true;
+        }
+      }
+    }
+    if (isVecLike) {
+      // Compile the object expression, cast to template vec, and get raw field
+      compileExpression(ctx, fctx, expr.expression);
+      fctx.body.push({ op: "ref.cast", typeIdx: templateVecTypeIdx } as unknown as Instr);
+      fctx.body.push({ op: "struct.get", typeIdx: templateVecTypeIdx, fieldIdx: 2 });
+      const baseVecTypeIdx = getOrRegisterVecType(ctx, "externref", { kind: "externref" });
+      return { kind: "ref_null", typeIdx: baseVecTypeIdx };
+    }
   }
 
   // Handle Math constants
@@ -11808,9 +11868,9 @@ function compileElementAccess(
 
   // Handle tuple struct — element access with literal index → struct.get
   if (typeDef?.kind === "struct") {
-    const isVecStructAccess = typeDef.fields.length === 2 &&
-      typeDef.fields[0]?.name === "length" &&
-      typeDef.fields[1]?.name === "data";
+    const isVecStructAccess = typeDef.fields[0]?.name === "length" &&
+      typeDef.fields[1]?.name === "data" &&
+      (typeDef.fields.length === 2 || (typeDef.fields.length === 3 && typeDef.fields[2]?.name === "raw"));
 
     if (!isVecStructAccess) {
       // Check if this is a tuple struct (registered in tupleTypeMap)
@@ -13394,65 +13454,90 @@ function compileTaggedTemplateExpression(
   fctx: FunctionContext,
   expr: ts.TaggedTemplateExpression,
 ): ValType | null {
-  // Extract string parts and substitution expressions from the template
+  // Extract string parts (cooked + raw) and substitution expressions from the template
   const stringParts: string[] = [];
+  const rawParts: string[] = [];
   const substitutions: ts.Expression[] = [];
 
   if (ts.isNoSubstitutionTemplateLiteral(expr.template)) {
     // tag`just a string` — one string part, no substitutions
     stringParts.push(expr.template.text);
+    rawParts.push((expr.template as any).rawText ?? expr.template.text);
   } else {
     // TemplateExpression: head + spans
     const tmpl = expr.template as ts.TemplateExpression;
     stringParts.push(tmpl.head.text);
+    rawParts.push((tmpl.head as any).rawText ?? tmpl.head.text);
     for (const span of tmpl.templateSpans) {
       substitutions.push(span.expression);
       stringParts.push(span.literal.text);
+      rawParts.push((span.literal as any).rawText ?? span.literal.text);
     }
   }
 
-  // Build the strings array as a WasmGC externref vec (same layout as array literals)
+  // Build the strings array as a WasmGC template vec (vec + raw field)
   // Per spec, template objects are cached per call site — the same source location
   // must yield the same template object on every call. We use a module global
   // (initialized to ref.null) per call site; on first call we create the array
   // and store it in the global, on subsequent calls we load the cached value.
   const elemKind = "externref";
   const elemWasm: ValType = { kind: "externref" };
-  const vecTypeIdx = getOrRegisterVecType(ctx, elemKind, elemWasm);
-  const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
+  const baseVecTypeIdx = getOrRegisterVecType(ctx, elemKind, elemWasm);
+  const arrTypeIdx = getArrTypeIdxFromVec(ctx, baseVecTypeIdx);
   if (arrTypeIdx < 0) {
     ctx.errors.push({ message: "Tagged template: invalid vec type for strings array", line: getLine(expr), column: getCol(expr) });
     return null;
   }
 
+  // Register the template vec type (vec struct + raw field)
+  const templateVecTypeIdx = getOrRegisterTemplateVecType(ctx);
+
   // Allocate a module global to cache this call site's template object
   const cacheId = ctx.templateCacheCounter++;
-  const cacheGlobalType: ValType = { kind: "ref_null", typeIdx: vecTypeIdx };
+  const cacheGlobalType: ValType = { kind: "ref_null", typeIdx: templateVecTypeIdx };
   const cacheGlobalIdx = nextModuleGlobalIdx(ctx);
   ctx.mod.globals.push({
     name: `__tt_cache_${cacheId}`,
     type: cacheGlobalType,
     mutable: true,
-    init: [{ op: "ref.null", typeIdx: vecTypeIdx }],
+    init: [{ op: "ref.null", typeIdx: templateVecTypeIdx }],
   });
 
   // Store the strings vec in a local so we can push it as an argument later
-  const stringsVecType: ValType = { kind: "ref_null", typeIdx: vecTypeIdx };
+  const stringsVecType: ValType = { kind: "ref_null", typeIdx: templateVecTypeIdx };
   const stringsLocal = allocLocal(fctx, `__tt_strings_${fctx.locals.length}`, stringsVecType);
 
   // Build the "then" body (cache miss: create and store the template array)
   // Use savedBody pattern so compileStringLiteral pushes into a separate array
   const savedBody = fctx.body;
   fctx.body = [];
+
+  // First: build the raw strings array as a regular vec
+  for (const raw of rawParts) {
+    compileStringLiteral(ctx, fctx, raw, expr);
+  }
+  fctx.body.push({ op: "array.new_fixed", typeIdx: arrTypeIdx, length: rawParts.length });
+  const tmpRawData = allocLocal(fctx, `__tt_raw_data_${fctx.locals.length}`, { kind: "ref", typeIdx: arrTypeIdx });
+  fctx.body.push({ op: "local.set", index: tmpRawData });
+  fctx.body.push({ op: "i32.const", value: rawParts.length });
+  fctx.body.push({ op: "local.get", index: tmpRawData });
+  fctx.body.push({ op: "struct.new", typeIdx: baseVecTypeIdx });
+  const tmpRawVec = allocLocal(fctx, `__tt_raw_vec_${fctx.locals.length}`, { kind: "ref", typeIdx: baseVecTypeIdx });
+  fctx.body.push({ op: "local.set", index: tmpRawVec });
+
+  // Second: build the cooked strings array
   for (const str of stringParts) {
     compileStringLiteral(ctx, fctx, str, expr);
   }
   fctx.body.push({ op: "array.new_fixed", typeIdx: arrTypeIdx, length: stringParts.length });
   const tmpData = allocLocal(fctx, `__tt_arr_data_${fctx.locals.length}`, { kind: "ref", typeIdx: arrTypeIdx });
   fctx.body.push({ op: "local.set", index: tmpData });
+
+  // Create the template vec struct: { length, data, raw }
   fctx.body.push({ op: "i32.const", value: stringParts.length });
   fctx.body.push({ op: "local.get", index: tmpData });
-  fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
+  fctx.body.push({ op: "local.get", index: tmpRawVec });
+  fctx.body.push({ op: "struct.new", typeIdx: templateVecTypeIdx });
   fctx.body.push({ op: "global.set", index: cacheGlobalIdx });
   const thenBody = fctx.body;
   fctx.body = savedBody;
