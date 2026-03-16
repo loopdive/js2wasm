@@ -280,7 +280,7 @@ All independent of each other and of codegen work.
 | ~~313~~ | ~~Test262 category expansion — new expression categories~~ | **Done** |
 | 314 | Performance — compile time profiling | Ready |
 | ~~338~~ | ~~Negative test support in test262 runner~~ | — | **Done** |
-| 360 | JSON.stringify result comparison | — | Ready |
+| ~~360~~ | ~~JSON.stringify result comparison~~ | — | **Done** |
 
 ---
 
