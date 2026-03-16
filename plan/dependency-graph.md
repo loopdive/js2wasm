@@ -225,7 +225,7 @@ Can all run in parallel (different diagnostic codes).
 | ~~289~~ | ~~For-in compile errors~~ | ~13 CE | **Done** |
 | ~~297~~ | ~~Switch statement fall-through~~ | 2 | **Done** |
 | ~~298~~ | ~~Function statement edge cases~~ | 7 | **Done** |
-| 353 | For-of with generators and custom iterators | — | Ready |
+| 353 | For-of with generators and custom iterators | — | Review |
 | ~~373~~ | ~~Object as loop condition / falsy value handling~~ | — | **Done** |
 
 ---
