@@ -7467,13 +7467,25 @@ function compileClosureCall(
   info: ClosureInfo,
 ): InnerResult {
   const localIdx = fctx.localMap.get(varName);
-  if (localIdx === undefined) return null;
+  const moduleIdx = localIdx === undefined ? ctx.moduleGlobals.get(varName) : undefined;
+  if (localIdx === undefined && moduleIdx === undefined) return null;
+
+  // Determine how to push the closure ref (local vs module global)
+  const pushClosureRef = () => {
+    if (localIdx !== undefined) {
+      fctx.body.push({ op: "local.get", index: localIdx });
+    } else {
+      fctx.body.push({ op: "global.get", index: moduleIdx! });
+      // Module globals use ref_null type; cast to non-null ref
+      fctx.body.push({ op: "ref.as_non_null" });
+    }
+  };
 
   // Stack for call_ref needs: [closure_ref, ...args, funcref]
   // where the lifted func type is (ref $closure_struct, ...arrowParams) → results
 
   // Push closure ref as first arg (self param of the lifted function)
-  fctx.body.push({ op: "local.get", index: localIdx });
+  pushClosureRef();
 
   // Push call arguments
   for (let i = 0; i < expr.arguments.length; i++) {
@@ -7486,7 +7498,7 @@ function compileClosureCall(
   }
 
   // Push the funcref from the closure struct (field 0) and cast to typed ref
-  fctx.body.push({ op: "local.get", index: localIdx });
+  pushClosureRef();
   fctx.body.push({ op: "struct.get", typeIdx: info.structTypeIdx, fieldIdx: 0 });
   fctx.body.push({ op: "ref.cast", typeIdx: info.funcTypeIdx });
 
@@ -7559,8 +7571,23 @@ function compileCallExpression(
       // Case 1: identifier.call(thisArg, args...) — standalone function
       if (ts.isIdentifier(innerExpr)) {
         const funcName = innerExpr.text;
-        const closureInfo = ctx.closureMap.get(funcName);
+        let closureInfo = ctx.closureMap.get(funcName);
         const funcIdx = ctx.funcMap.get(funcName);
+
+        // Fallback: if the variable is a local with a ref type, look up closure info
+        // by struct type index. This handles cases like:
+        //   const f = makeAdder(5); f.call(null, 10);
+        if (!closureInfo && funcIdx === undefined) {
+          const localIdx = fctx.localMap.get(funcName);
+          if (localIdx !== undefined) {
+            const localType = localIdx < fctx.params.length
+              ? fctx.params[localIdx]?.type
+              : fctx.locals[localIdx - fctx.params.length]?.type;
+            if (localType && (localType.kind === "ref" || localType.kind === "ref_null")) {
+              closureInfo = ctx.closureInfoByTypeIdx.get(localType.typeIdx);
+            }
+          }
+        }
 
         if (closureInfo || funcIdx !== undefined) {
           // Evaluate and drop thisArg (first argument) if present
