@@ -317,3 +317,4 @@
 | 370 | 2026-03-16 | WeakMap/WeakSet skip filter narrowed | Dep-driven |
 | 365 | 2026-03-16 | Collection mutation during for-of skip filter removed | Dep-driven |
 | 130 | 2026-03-16 | Shape inference Phase 1-2 confirmed working (10 tests added) | Dep-driven |
+| 79 | 2026-03-16 | Gradual typing — fix null/undefined/boolean AnyValue boxing | Dep-driven |
