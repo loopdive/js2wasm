@@ -276,3 +276,4 @@
 | 362 | 2026-03-16 | typeof on member expressions — skip filter removal | Dep-driven |
 | 373 | 2026-03-16 | Object as loop condition / falsy value handling | Dep-driven |
 | 388 | 2026-03-16 | Element access on externref — string/dynamic keys | Dep-driven |
+| 389 | 2026-03-16 | Element access on class instances — struct/primitive fallback | Dep-driven |
