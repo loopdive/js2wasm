@@ -13703,7 +13703,146 @@ function compileTaggedTemplateExpression(
     }
   }
 
-  // Fallback: unsupported tag expression type
+  // Fallback: general expression tag (call expressions, IIFE, parenthesized, etc.)
+  // Use the TypeScript type checker to resolve the tag expression's callable type,
+  // then find a matching registered closure by signature. This handles cases like
+  // getTag()`hello`, (function(s){ return s; })`hello`, etc.
+  {
+    // First, try to resolve the tag expression's type and find a matching closure
+    const tagTsType = ctx.checker.getTypeAtLocation(expr.tag);
+    const callSigs = tagTsType.getCallSignatures?.();
+
+    let matchedClosureInfo: ClosureInfo | undefined;
+    let matchedStructTypeIdx: number | undefined;
+
+    if (callSigs && callSigs.length > 0) {
+      const sig = callSigs[0]!;
+      const sigParamCount = sig.parameters.length;
+      const sigRetType = ctx.checker.getReturnTypeOfSignature(sig);
+      const sigRetWasm = isVoidType(sigRetType) ? null : resolveWasmType(ctx, sigRetType);
+      const sigParamWasmTypes: ValType[] = [];
+      for (let i = 0; i < sigParamCount; i++) {
+        const paramType = ctx.checker.getTypeOfSymbol(sig.parameters[i]!);
+        sigParamWasmTypes.push(resolveWasmType(ctx, paramType));
+      }
+
+      for (const [typeIdx, info] of ctx.closureInfoByTypeIdx) {
+        if (info.paramTypes.length !== sigParamCount) continue;
+        if (sigRetWasm === null && info.returnType !== null) continue;
+        if (sigRetWasm !== null && info.returnType === null) continue;
+        if (sigRetWasm !== null && info.returnType !== null && sigRetWasm.kind !== info.returnType.kind) continue;
+        let paramsMatch = true;
+        for (let i = 0; i < sigParamCount; i++) {
+          if (sigParamWasmTypes[i]!.kind !== info.paramTypes[i]!.kind) {
+            paramsMatch = false;
+            break;
+          }
+        }
+        if (paramsMatch) {
+          matchedClosureInfo = info;
+          matchedStructTypeIdx = typeIdx;
+          break;
+        }
+      }
+    }
+
+    if (matchedClosureInfo && matchedStructTypeIdx !== undefined) {
+      // Compile the tag expression to get the closure on the stack
+      const tagResult = compileExpression(ctx, fctx, expr.tag);
+
+      // Save closure ref to a local
+      let closureLocal: number;
+      if (tagResult?.kind === "externref") {
+        // Need to convert externref back to the closure struct ref
+        const closureRefType: ValType = { kind: "ref_null", typeIdx: matchedStructTypeIdx };
+        closureLocal = allocLocal(fctx, `__tt_tag_${fctx.locals.length}`, closureRefType);
+        fctx.body.push({ op: "any.convert_extern" });
+        fctx.body.push({ op: "ref.cast", typeIdx: matchedStructTypeIdx });
+        fctx.body.push({ op: "local.set", index: closureLocal });
+      } else {
+        const closureRefType: ValType = tagResult ?? { kind: "ref", typeIdx: matchedStructTypeIdx };
+        closureLocal = allocLocal(fctx, `__tt_tag_${fctx.locals.length}`, closureRefType);
+        fctx.body.push({ op: "local.set", index: closureLocal });
+      }
+
+      // Push closure ref as self param (first arg of lifted function)
+      fctx.body.push({ op: "local.get", index: closureLocal });
+      fctx.body.push({ op: "ref.as_non_null" } as Instr);
+
+      // Push strings array as first argument
+      fctx.body.push({ op: "local.get", index: stringsLocal });
+      // Coerce if the closure expects externref for the first param
+      if (matchedClosureInfo.paramTypes[0] && matchedClosureInfo.paramTypes[0].kind === "externref") {
+        fctx.body.push({ op: "extern.convert_any" });
+      }
+
+      // Push substitution expressions as remaining arguments
+      const closureMaxSubs = Math.min(substitutions.length, matchedClosureInfo.paramTypes.length - 1);
+      for (let i = 0; i < closureMaxSubs; i++) {
+        const expectedParamType = matchedClosureInfo.paramTypes[i + 1];
+        compileExpression(ctx, fctx, substitutions[i]!, expectedParamType);
+      }
+
+      // Pad missing arguments with defaults
+      for (let i = substitutions.length + 1; i < matchedClosureInfo.paramTypes.length; i++) {
+        pushDefaultValue(fctx, matchedClosureInfo.paramTypes[i]!);
+      }
+
+      // Push funcref from closure struct field 0 and call_ref
+      fctx.body.push({ op: "local.get", index: closureLocal });
+      fctx.body.push({ op: "ref.as_non_null" } as Instr);
+      fctx.body.push({ op: "struct.get", typeIdx: matchedStructTypeIdx, fieldIdx: 0 });
+      fctx.body.push({ op: "ref.cast", typeIdx: matchedClosureInfo.funcTypeIdx });
+      fctx.body.push({ op: "call_ref", typeIdx: matchedClosureInfo.funcTypeIdx });
+
+      return matchedClosureInfo.returnType ?? VOID_RESULT;
+    }
+
+    // No matching closure found — try compiling the tag as a general expression
+    // and checking if the result is a recognizable closure ref type
+    {
+      const tagResult = compileExpression(ctx, fctx, expr.tag);
+      if (tagResult && (tagResult.kind === "ref" || tagResult.kind === "ref_null")) {
+        const closureTypeIdx = (tagResult as { typeIdx: number }).typeIdx;
+        const closureInfo = ctx.closureInfoByTypeIdx.get(closureTypeIdx);
+        if (closureInfo) {
+          const closureLocal = allocLocal(fctx, `__tt_tag_${fctx.locals.length}`, tagResult);
+          fctx.body.push({ op: "local.set", index: closureLocal });
+
+          fctx.body.push({ op: "local.get", index: closureLocal });
+
+          fctx.body.push({ op: "local.get", index: stringsLocal });
+          if (closureInfo.paramTypes[0] && closureInfo.paramTypes[0].kind === "externref") {
+            fctx.body.push({ op: "extern.convert_any" });
+          }
+
+          const closureMaxSubs = Math.min(substitutions.length, closureInfo.paramTypes.length - 1);
+          for (let i = 0; i < closureMaxSubs; i++) {
+            const expectedParamType = closureInfo.paramTypes[i + 1];
+            compileExpression(ctx, fctx, substitutions[i]!, expectedParamType);
+          }
+
+          for (let i = substitutions.length + 1; i < closureInfo.paramTypes.length; i++) {
+            pushDefaultValue(fctx, closureInfo.paramTypes[i]!);
+          }
+
+          fctx.body.push({ op: "local.get", index: closureLocal });
+          fctx.body.push({ op: "struct.get", typeIdx: closureInfo.structTypeIdx, fieldIdx: 0 });
+          fctx.body.push({ op: "ref.cast", typeIdx: closureInfo.funcTypeIdx });
+          fctx.body.push({ op: "call_ref", typeIdx: closureInfo.funcTypeIdx });
+
+          return closureInfo.returnType ?? VOID_RESULT;
+        }
+      }
+
+      // If the tag expression compiled but didn't return a recognizable closure,
+      // drop it and emit null as fallback
+      if (tagResult && tagResult !== VOID_RESULT) {
+        fctx.body.push({ op: "drop" });
+      }
+    }
+  }
+
   ctx.errors.push({
     message: `Tagged template: unsupported tag expression kind ${ts.SyntaxKind[expr.tag.kind]}`,
     line: getLine(expr),
