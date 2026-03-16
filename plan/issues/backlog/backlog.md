@@ -119,7 +119,47 @@ _Goal: Remaining runtime failures, codegen quality, and test infrastructure expa
 | [322](../ready/322.md) | Inline trig/transcendental Math methods as pure Wasm | Open |
 | [323](../ready/323.md) | Native type annotations (:i32, :f32, :u8) for performance | Open |
 
-## Sprint 4 (current)
+## Sprint 7 (current) — Test262 Error-Driven
+
+_Goal: Fix the highest-impact patterns identified from test262 analysis (22,767 tests: 4,749 pass, 1,212 fail, 3,695 CE, 13,111 skip). Focus on destructuring (1,219 tests blocked), call expressions, and class features._
+
+### Tier 1 — Destructuring (1,219 tests blocked)
+
+| #   | Feature | Type | Count | Status |
+| --- | ------- | ---- | ----- | ------ |
+| [394](../ready/394.md) | Destructuring wrong return values | FAIL | 326 | Open |
+| [396](../ready/396.md) | Null pointer in destructuring | FAIL | 64 | Open |
+| [387](../ready/387.md) | Unsupported call expression (71% destructuring) | CE | 1165 | Open |
+| [388](../ready/388.md) | Element access on externref | CE | 104 | Open |
+| [389](../ready/389.md) | Element access on class instances | CE | 76 | Open |
+| [390](../ready/390.md) | Assignment to non-array types | CE | 70 | Open |
+
+### Tier 2 — Class & runtime failures
+
+| #   | Feature | Type | Count | Status |
+| --- | ------- | ---- | ----- | ------ |
+| [398](../ready/398.md) | Private field/method wrong values | FAIL | 98 | Open |
+| [399](../ready/399.md) | Prototype method wrong values | FAIL | 72 | Open |
+| [395](../ready/395.md) | "fn is not a function" (call/apply + callbacks) | FAIL | 70 | Open |
+| [392](../ready/392.md) | Unknown field access on class structs | CE | 18 | Open |
+
+### Tier 3 — Compile error patterns
+
+| #   | Feature | Type | Count | Status |
+| --- | ------- | ---- | ----- | ------ |
+| [391](../ready/391.md) | Numeric index signature on objects | CE | 30 | Open |
+| [393](../ready/393.md) | Compound assignment on externref element | CE | 13 | Open |
+| [397](../ready/397.md) | assert.throws test support | SKIP | 952 | Open |
+
+### Tier 4 — Negative tests & skip filter
+
+| #   | Feature | Type | Count | Status |
+| --- | ------- | ---- | ----- | ------ |
+| [338](../done/338.md) | Negative test handling (expected SyntaxError) | FAIL | 393 | Done (partial) |
+
+---
+
+## Sprint 4 (legacy)
 
 _Goal: Reduce compile errors from ~3465 to ~2000 by fixing the most common error patterns: unsupported call expressions, ClassDeclaration positioning, argument type flexibility, property access, element access, iterator protocol, and scope resolution._
 

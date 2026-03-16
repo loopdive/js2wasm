@@ -295,3 +295,4 @@
 | 399 | 2026-03-16 | Array prototype methods rewritten with call_ref (72 FAIL) | Dep-driven |
 | 204 | 2026-03-16 | Array() constructor function calls + sparse array support | Dep-driven |
 | 329 | 2026-03-16 | Object.setPrototypeOf/getPrototypeOf/create stubs | Dep-driven |
+| 397 | 2026-03-16 | assert.throws try/catch shim (952 tests unblocked) | Dep-driven |
