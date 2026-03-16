@@ -419,12 +419,8 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     return { skip: true, reason: "JSON.stringify replacer/space args not supported" };
   }
 
-  // Skip tests where closures are stored in vars and then passed/called as externref
-  // (closure structs are ref types that can't be directly passed where externref expected)
-  if (/var\s+\w+\s*=\s*(\(?[^)]*\)?\s*=>|function\s*\()/.test(source) &&
-      /assert[._]sameValue\s*\(\s*\w+\s*[\[(]/.test(source)) {
-    return { skip: true, reason: "closure-as-value passed to assert" };
-  }
+  // (Removed: closure-as-value skip — most tests pass now; regex was overly broad,
+  //  matching array indexing and function calls in assert, not just closure references)
 
   // (Removed: mixed-type nullish coalescing skip — most tests now pass correctly)
 
