@@ -245,7 +245,7 @@ Can all run in parallel (different diagnostic codes).
 | ~~202~~ | ~~Variable scope and hoisting~~ | — | **Done** |
 | 146 | Unknown identifier / scope issues | ~269 CE | Ready (coordinates #202) |
 | 266 | Unknown identifier — multi-variable patterns | — | Ready (coordinates #202) |
-| 331 | Strict mode arguments/eval identifier restriction | — | Ready |
+| ~~331~~ | ~~Strict mode arguments/eval identifier restriction~~ | — | **Done** |
 | 380 | Unknown variable/function in test scope | — | Ready |
 
 ---
@@ -297,7 +297,7 @@ Runtime built-in methods and global functions.
 | ~~355~~ | ~~Object.keys/values/entries completion~~ | — | **Done** |
 | 359 | Object mutability methods (Object.freeze/seal/preventExtensions) | — | Ready |
 | 369 | globalThis support | — | Ready |
-| 384 | replaceAll and other missing string methods | — | Ready |
+| ~~384~~ | ~~replaceAll and other missing string methods~~ | — | **Done** |
 | 385 | Array method argument count errors | — | Ready |
 
 ---
