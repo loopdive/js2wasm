@@ -5465,16 +5465,34 @@ function collectGeneratorImports(
 ): void {
   let found = false;
 
-  for (const stmt of sourceFile.statements) {
+  function visitNode(node: ts.Node): void {
+    if (found) return;
+    // Generator function declarations: function* foo() { ... }
     if (
-      ts.isFunctionDeclaration(stmt) &&
-      stmt.asteriskToken &&
-      stmt.body &&
-      !hasDeclareModifier(stmt)
+      ts.isFunctionDeclaration(node) &&
+      node.asteriskToken &&
+      node.body &&
+      !hasDeclareModifier(node)
     ) {
       found = true;
-      break;
+      return;
     }
+    // Generator function expressions: const gen = function*() { ... }
+    if (ts.isFunctionExpression(node) && node.asteriskToken) {
+      found = true;
+      return;
+    }
+    // Generator class methods: class Foo { *bar() { ... } }
+    if (ts.isMethodDeclaration(node) && node.asteriskToken && node.body) {
+      found = true;
+      return;
+    }
+    ts.forEachChild(node, visitNode);
+  }
+
+  for (const stmt of sourceFile.statements) {
+    visitNode(stmt);
+    if (found) break;
   }
 
   if (found && !ctx.funcMap.has("__gen_create_buffer")) {
@@ -7581,9 +7599,18 @@ export function collectClassDeclaration(
         methodParams.push(resolveWasmType(ctx, paramType));
       }
 
+      // Track generator methods (method*)
+      const isGeneratorMethod = member.asteriskToken !== undefined;
+      if (isGeneratorMethod) {
+        ctx.generatorFunctions.add(fullName);
+      }
+
       const sig = ctx.checker.getSignatureFromDeclaration(member);
       let methodResults: ValType[] = [];
-      if (sig) {
+      if (isGeneratorMethod) {
+        // Generator methods return externref (JS Generator object)
+        methodResults = [{ kind: "externref" }];
+      } else if (sig) {
         const retType = ctx.checker.getReturnTypeOfSignature(sig);
         if (!isVoidType(retType)) {
           methodResults = [resolveWasmType(ctx, retType)];
@@ -9343,15 +9370,18 @@ export function compileClassBodies(
         params.push({ name: paramName, type: resolveWasmType(ctx, paramType) });
       }
 
+      const isGeneratorMethod = member.asteriskToken !== undefined;
+
       const fctx: FunctionContext = {
         name: fullName,
         params,
         locals: [],
         localMap: new Map(),
-        returnType:
-          retType && !isVoidType(retType)
+        returnType: isGeneratorMethod
+          ? { kind: "externref" }
+          : (retType && !isVoidType(retType)
             ? resolveWasmType(ctx, retType)
-            : null,
+            : null),
         body: [],
         blockDepth: 0,
         breakStack: [],
@@ -9432,14 +9462,52 @@ export function compileClassBodies(
         }
       }
 
-      if (member.body) {
+      if (isGeneratorMethod && member.body) {
+        // Generator method: eagerly evaluate body, collect yields into a buffer,
+        // then wrap with __create_generator to return a Generator-like object.
+        const bufferLocal = allocLocal(fctx, "__gen_buffer", { kind: "externref" });
+        const createBufIdx = ctx.funcMap.get("__gen_create_buffer")!;
+        fctx.body.push({ op: "call", funcIdx: createBufIdx });
+        fctx.body.push({ op: "local.set", index: bufferLocal });
+
+        // Wrap body in a block so return can br out
+        const bodyInstrs: Instr[] = [];
+        const outerBody = fctx.body;
+        fctx.body = bodyInstrs;
+
+        fctx.generatorReturnDepth = 0;
+        fctx.blockDepth++;
+        for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!++;
+        for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!++;
+
+        for (const stmt of member.body.statements) {
+          compileStatement(ctx, fctx, stmt);
+        }
+
+        fctx.blockDepth--;
+        for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!--;
+        for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!--;
+        fctx.generatorReturnDepth = undefined;
+
+        fctx.body = outerBody;
+        fctx.body.push({
+          op: "block",
+          blockType: { kind: "empty" },
+          body: bodyInstrs,
+        });
+
+        // Return __create_generator(__gen_buffer)
+        const createGenIdx = ctx.funcMap.get("__create_generator")!;
+        fctx.body.push({ op: "local.get", index: bufferLocal });
+        fctx.body.push({ op: "call", funcIdx: createGenIdx });
+      } else if (member.body) {
         for (const stmt of member.body.statements) {
           compileStatement(ctx, fctx, stmt);
         }
       }
 
-      // Ensure valid return for non-void methods
-      if (fctx.returnType) {
+      // Ensure valid return for non-void, non-generator methods
+      if (fctx.returnType && !isGeneratorMethod) {
         const lastInstr = fctx.body[fctx.body.length - 1];
         if (!lastInstr || lastInstr.op !== "return") {
           if (fctx.returnType.kind === "f64") {
