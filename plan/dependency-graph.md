@@ -148,7 +148,7 @@ Can all run in parallel (different diagnostic codes).
 | 305 | Computed property names runtime failures | 2 | Coordinates with #140, #230 |
 | ~~326~~ | ~~Array element access out of bounds~~ | 17 fail | **Done** |
 | ~~337~~ | ~~Null property access at runtime~~ | — | **Done** |
-| 361 | Runtime `in` operator for property checks | — | Ready |
+| ~~361~~ | ~~Runtime `in` operator for property checks~~ | — | **Done** |
 | 362 | typeof on member expressions | — | Ready |
 | ~~378~~ | ~~Increment/decrement on property/element access~~ | — | **Done** |
 
