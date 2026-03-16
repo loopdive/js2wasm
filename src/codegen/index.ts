@@ -232,6 +232,8 @@ export interface CodegenContext {
   widenedVarStructMap: Map<string, string>;
   /** Math methods that need inline Wasm implementations (filled by collectMathImports, consumed by emitInlineMathFunctions) */
   pendingMathMethods: Set<string>;
+  /** Map from class name → class AST declaration node (for inherited field initializers) */
+  classDeclarationMap: Map<string, ts.ClassDeclaration | ts.ClassExpression>;
   /** Type index for $WrapperNumber struct (-1 if not registered) */
   wrapperNumberTypeIdx: number;
   /** Type index for $WrapperString struct (-1 if not registered) */
@@ -381,6 +383,7 @@ export function generateModule(
     widenedTypeProperties: new Map(),
     widenedVarStructMap: new Map(),
     pendingMathMethods: new Set(),
+    classDeclarationMap: new Map(),
     wrapperNumberTypeIdx: -1,
     wrapperStringTypeIdx: -1,
     wrapperBooleanTypeIdx: -1,
@@ -598,6 +601,7 @@ export function generateMultiModule(
     widenedTypeProperties: new Map(),
     widenedVarStructMap: new Map(),
     pendingMathMethods: new Set(),
+    classDeclarationMap: new Map(),
     wrapperNumberTypeIdx: -1,
     wrapperStringTypeIdx: -1,
     wrapperBooleanTypeIdx: -1,
@@ -7304,6 +7308,7 @@ export function collectClassDeclaration(
 ): void {
   const className = syntheticName ?? decl.name!.text;
   ctx.classSet.add(className);
+  ctx.classDeclarationMap.set(className, decl);
 
   // For class expressions, map the TS symbol name to the synthetic class name
   // so that resolveStructName and compileNewExpression can find the struct
@@ -7613,29 +7618,70 @@ export function collectClassDeclaration(
     }
   }
 
-  // Register inherited methods: if parent has methods that child doesn't override,
-  // map ChildClass_methodName → ParentClass_methodName func index
+  // Register inherited methods and accessors: if parent has methods/accessors
+  // that child doesn't override, map ChildClass_X → ParentClass_X func index
   if (parentClassName) {
-    // Walk the parent chain to find all inherited methods
+    // Collect own accessor names for override detection
+    const ownAccessorNames = new Set<string>();
+    for (const member of decl.members) {
+      if ((ts.isGetAccessorDeclaration(member) || ts.isSetAccessorDeclaration(member)) && member.name) {
+        const accName = resolveClassMemberName(ctx, member.name);
+        if (accName) ownAccessorNames.add(accName);
+      }
+    }
+
+    // Walk the parent chain to find all inherited methods and accessors
     let ancestor: string | undefined = parentClassName;
     while (ancestor) {
+      // Inherit methods
       for (const [key, funcIdx] of ctx.funcMap) {
         if (
           key.startsWith(`${ancestor}_`) &&
           !key.endsWith("_new") &&
           !key.endsWith("_type")
         ) {
-          const methodName = key.substring(ancestor.length + 1);
-          // Skip _new_type suffix entries
-          if (methodName.includes("_")) continue;
-          const childFullName = `${className}_${methodName}`;
-          // Only inherit if child doesn't define its own version
-          if (
-            !ownMethodNames.has(methodName) &&
-            !ctx.funcMap.has(childFullName)
-          ) {
-            ctx.funcMap.set(childFullName, funcIdx);
-            ctx.classMethodSet.add(childFullName);
+          const suffix = key.substring(ancestor.length + 1);
+          // Skip constructor-related entries
+          if (suffix === "new" || suffix.startsWith("new_")) continue;
+          // Check if this is a getter/setter (get_X or set_X)
+          const getMatch = suffix.match(/^get_(.+)$/);
+          const setMatch = suffix.match(/^set_(.+)$/);
+          if (getMatch || setMatch) {
+            // Accessor inheritance
+            const accPropName = (getMatch || setMatch)![1]!;
+            if (!ownAccessorNames.has(accPropName)) {
+              const childFullName = `${className}_${suffix}`;
+              if (!ctx.funcMap.has(childFullName)) {
+                ctx.funcMap.set(childFullName, funcIdx);
+              }
+              // Also inherit accessor set entry
+              const parentAccessorKey = `${ancestor}_${accPropName}`;
+              const childAccessorKey = `${className}_${accPropName}`;
+              if (ctx.classAccessorSet.has(parentAccessorKey) && !ctx.classAccessorSet.has(childAccessorKey)) {
+                ctx.classAccessorSet.add(childAccessorKey);
+              }
+            }
+          } else if (!suffix.includes("_")) {
+            // Regular method (no underscores in method name)
+            const childFullName = `${className}_${suffix}`;
+            if (
+              !ownMethodNames.has(suffix) &&
+              !ctx.funcMap.has(childFullName)
+            ) {
+              ctx.funcMap.set(childFullName, funcIdx);
+              ctx.classMethodSet.add(childFullName);
+            }
+          } else {
+            // Method name contains underscore (e.g., my_method) — still inherit it
+            const childFullName = `${className}_${suffix}`;
+            if (
+              !ownMethodNames.has(suffix) &&
+              !ctx.funcMap.has(childFullName) &&
+              ctx.classMethodSet.has(key)
+            ) {
+              ctx.funcMap.set(childFullName, funcIdx);
+              ctx.classMethodSet.add(childFullName);
+            }
           }
         }
       }
@@ -9009,6 +9055,72 @@ export function compileClassBodies(
             blockType: { kind: "empty" },
             then: thenInstrs,
           });
+        }
+      }
+    }
+
+    // When a child class has no explicit constructor, run inherited field
+    // initializers from the parent chain (implicit super() semantics).
+    // This must happen before own field initializers.
+    if (!ctor) {
+      const parentClassName = ctx.classParentMap.get(className);
+      if (parentClassName) {
+        // Walk the parent chain (grandparent first) and compile field initializers
+        const ancestors: string[] = [];
+        let anc: string | undefined = parentClassName;
+        while (anc) {
+          ancestors.unshift(anc);
+          anc = ctx.classParentMap.get(anc);
+        }
+        for (const ancName of ancestors) {
+          const ancDecl = ctx.classDeclarationMap.get(ancName);
+          if (!ancDecl) continue;
+          for (const member of ancDecl.members) {
+            if (
+              ts.isPropertyDeclaration(member) &&
+              member.name &&
+              member.initializer &&
+              !hasStaticModifier(member)
+            ) {
+              const fieldName = resolveClassMemberName(ctx, member.name);
+              if (!fieldName) continue;
+              const fieldIdx = fields.findIndex((f) => f.name === fieldName);
+              if (fieldIdx !== -1) {
+                fctx.body.push({ op: "local.get", index: selfLocal });
+                compileExpression(ctx, fctx, member.initializer, fields[fieldIdx]!.type);
+                fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx });
+              }
+            }
+          }
+          // Also run constructor body assignments (this.x = ...) from the parent
+          const ancCtor = ancDecl.members.find(ts.isConstructorDeclaration) as ts.ConstructorDeclaration | undefined;
+          if (ancCtor?.body) {
+            for (const stmt of ancCtor.body.statements) {
+              if (
+                ts.isExpressionStatement(stmt) &&
+                ts.isCallExpression(stmt.expression) &&
+                stmt.expression.expression.kind === ts.SyntaxKind.SuperKeyword
+              ) {
+                continue; // skip super() — already handled by ancestor chain order
+              }
+              if (
+                ts.isExpressionStatement(stmt) &&
+                ts.isBinaryExpression(stmt.expression) &&
+                stmt.expression.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+                ts.isPropertyAccessExpression(stmt.expression.left) &&
+                stmt.expression.left.expression.kind === ts.SyntaxKind.ThisKeyword
+              ) {
+                const rawName = stmt.expression.left.name.text;
+                const fieldName = ts.isPrivateIdentifier(stmt.expression.left.name) ? rawName.slice(1) : rawName;
+                const fieldIdx = fields.findIndex((f) => f.name === fieldName);
+                if (fieldIdx !== -1) {
+                  fctx.body.push({ op: "local.get", index: selfLocal });
+                  compileExpression(ctx, fctx, stmt.expression.right, fields[fieldIdx]!.type);
+                  fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx });
+                }
+              }
+            }
+          }
         }
       }
     }
