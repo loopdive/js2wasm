@@ -312,3 +312,4 @@
 | 354 | 2026-03-16 | Reflect skip filter narrowed | Dep-driven |
 | 358 | 2026-03-16 | Dynamic import / import.meta skip filter narrowed | Dep-driven |
 | 346 | 2026-03-16 | Object.defineProperty struct-aware codegen (421 skip removed) | Dep-driven |
+| 376 | 2026-03-16 | Decorator syntax diagnostic suppression | Dep-driven |
