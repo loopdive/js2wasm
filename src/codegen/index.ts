@@ -288,6 +288,30 @@ export interface FunctionContext {
   isConstructor?: boolean;
   /** Set of variable names that are read-only bindings (e.g. named function expression name) */
   readOnlyBindings?: Set<string>;
+  /** Stack of saved body arrays for addUnionImports index shifting */
+  savedBodies: Instr[][];
+}
+
+/**
+ * Swap fctx.body to a fresh array, pushing the current body onto the
+ * savedBodies stack so that addUnionImports (and any other late import
+ * addition) can shift function indices in the saved body too.
+ * Returns the saved body reference for later restoration via popBody().
+ */
+export function pushBody(fctx: FunctionContext): Instr[] {
+  const saved = fctx.body;
+  fctx.savedBodies.push(saved);
+  fctx.body = [];
+  return saved;
+}
+
+/**
+ * Restore fctx.body from a previously-saved reference, popping the
+ * savedBodies stack.
+ */
+export function popBody(fctx: FunctionContext, saved: Instr[]): void {
+  fctx.savedBodies.pop();
+  fctx.body = saved;
 }
 
 /** Options for code generation */
@@ -449,8 +473,12 @@ export function generateModule(
   // Collect host callback bridges for functional array methods (filter, map, etc.)
   collectFunctionalArrayImports(ctx, ast.sourceFile);
 
-  // Collect union type helper imports (typeof checks, boxing/unboxing)
-  collectUnionImports(ctx, ast.sourceFile);
+  // Collect union type helper imports (typeof checks, boxing/unboxing).
+  // Always register union imports eagerly to avoid late-addition index shifting
+  // that can corrupt savedBody instruction arrays (see #153). The pre-scan
+  // collectUnionImports catches many cases but misses some (e.g. coercion inside
+  // for-of loop bodies), so we unconditionally add them here.
+  addUnionImports(ctx);
 
   // Collect generator imports (function* support)
   collectGeneratorImports(ctx, ast.sourceFile);
@@ -5833,6 +5861,17 @@ export function addUnionImports(ctx: CodegenContext): void {
       if (!alreadyShifted) {
         shiftFuncIndices(curBody);
       }
+      // Also shift any saved body arrays (from savedBody swap pattern).
+      // When fctx.body is swapped to a fresh [] for inner block compilation,
+      // the outer body (savedBody) is pushed onto this stack. Without shifting
+      // these, call/ref.func indices in the outer body become stale.
+      for (const sb of ctx.currentFunc.savedBodies) {
+        // Skip if this is the same array as curBody (would double-shift)
+        if (sb === curBody) continue;
+        // Skip if already in mod.functions (would double-shift)
+        if (ctx.mod.functions.some(f => f.body === sb)) continue;
+        shiftFuncIndices(sb);
+      }
     }
     // Update table elements
     for (const elem of ctx.mod.elements) {
@@ -8846,6 +8885,7 @@ function compileDeclarations(
       breakStack: [],
       continueStack: [],
       labelMap: new Map(),
+      savedBodies: [],
     };
     ctx.currentFunc = initFctx;
 
@@ -9048,6 +9088,7 @@ export function compileClassBodies(
       breakStack: [],
       continueStack: [],
       labelMap: new Map(),
+      savedBodies: [],
       isConstructor: true,
     };
 
@@ -9097,12 +9138,11 @@ export function compileClassBodies(
         const paramType = params[i]!.type;
 
         // Build the "then" block: compile default expression, local.set
-        const savedBody = fctx.body;
-        fctx.body = [];
+        const savedBody = pushBody(fctx);
         compileExpression(ctx, fctx, param.initializer, paramType);
         fctx.body.push({ op: "local.set", index: paramIdx });
         const thenInstrs = fctx.body;
-        fctx.body = savedBody;
+        popBody(fctx, savedBody);
 
         // Emit the null/zero check + conditional assignment
         if (paramType.kind === "externref") {
@@ -9305,6 +9345,7 @@ export function compileClassBodies(
         breakStack: [],
         continueStack: [],
         labelMap: new Map(),
+        savedBodies: [],
       };
 
       for (let i = 0; i < params.length; i++) {
@@ -9322,12 +9363,11 @@ export function compileClassBodies(
         const paramType = params[paramLocalIdx]!.type;
 
         // Build the "then" block: compile default expression, local.set
-        const savedBody = fctx.body;
-        fctx.body = [];
+        const savedBody = pushBody(fctx);
         compileExpression(ctx, fctx, param.initializer, paramType);
         fctx.body.push({ op: "local.set", index: paramLocalIdx });
         const thenInstrs = fctx.body;
-        fctx.body = savedBody;
+        popBody(fctx, savedBody);
 
         // Emit the null/zero check + conditional assignment
         if (paramType.kind === "externref") {
@@ -9451,6 +9491,7 @@ export function compileClassBodies(
         breakStack: [],
         continueStack: [],
         labelMap: new Map(),
+        savedBodies: [],
       };
 
       for (let i = 0; i < params.length; i++) {
@@ -9527,6 +9568,7 @@ export function compileClassBodies(
         breakStack: [],
         continueStack: [],
         labelMap: new Map(),
+        savedBodies: [],
       };
 
       for (let i = 0; i < params.length; i++) {
@@ -9544,12 +9586,11 @@ export function compileClassBodies(
         const paramType = params[paramLocalIdx]!.type;
 
         // Build the "then" block: compile default expression, local.set
-        const savedBody = fctx.body;
-        fctx.body = [];
+        const savedBody = pushBody(fctx);
         compileExpression(ctx, fctx, param.initializer, paramType);
         fctx.body.push({ op: "local.set", index: paramLocalIdx });
         const thenInstrs = fctx.body;
-        fctx.body = savedBody;
+        popBody(fctx, savedBody);
 
         // Emit the null/zero check + conditional assignment
         if (paramType.kind === "externref") {
@@ -9880,6 +9921,7 @@ function compileFunctionBody(
     breakStack: [],
     continueStack: [],
     labelMap: new Map(),
+    savedBodies: [],
   };
 
   // Register params as locals
@@ -9909,12 +9951,11 @@ function compileFunctionBody(
     const paramType = params[i]!.type;
 
     // Build the "then" block: compile default expression, local.set
-    const savedBody = fctx.body;
-    fctx.body = [];
+    const savedBody = pushBody(fctx);
     compileExpression(ctx, fctx, param.initializer, paramType);
     fctx.body.push({ op: "local.set", index: paramIdx });
     const thenInstrs = fctx.body;
-    fctx.body = savedBody;
+    popBody(fctx, savedBody);
 
     // Emit the null/zero check + conditional assignment
     if (paramType.kind === "externref") {
