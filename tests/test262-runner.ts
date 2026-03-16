@@ -73,7 +73,6 @@ const UNSUPPORTED_FEATURES = new Set([
   "Proxy", "Reflect", "Reflect.construct", "Reflect.apply",
   "WeakRef", "FinalizationRegistry", "WeakMap", "WeakSet",
   "SharedArrayBuffer", "Atomics",
-  "async-iteration",
   "dynamic-import", "import.meta",
   "promise-all-settled", "Promise.any", "Promise.allSettled",
   "TypedArray", "DataView", "ArrayBuffer",
