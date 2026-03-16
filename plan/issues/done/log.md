@@ -279,3 +279,4 @@
 | 389 | 2026-03-16 | Element access on class instances — struct/primitive fallback | Dep-driven |
 | 396 | 2026-03-16 | Null dereference guards at codegen level | Dep-driven |
 | 387 | 2026-03-16 | Unsupported assignment target fallback (342 CE) | Dep-driven |
+| 390 | 2026-03-16 | Element assignment on non-array types via __extern_set | Dep-driven |
