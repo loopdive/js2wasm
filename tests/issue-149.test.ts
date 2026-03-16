@@ -174,4 +174,61 @@ describe("Issue #149: Unsupported call expression patterns", () => {
     `);
     expect(exports.test()).toBe(42);
   });
+
+  it("conditional (ternary) function call: (flag ? a : b)()", async () => {
+    const exports = await compileToWasm(`
+      function a(): number { return 1; }
+      function b(): number { return 2; }
+      export function test(flag: number): number {
+        return (flag ? a : b)();
+      }
+    `);
+    expect(exports.test(1)).toBe(1);
+    expect(exports.test(0)).toBe(2);
+  });
+
+  it("conditional call with arguments: (flag ? add : sub)(a, b)", async () => {
+    const exports = await compileToWasm(`
+      function add(a: number, b: number): number { return a + b; }
+      function sub(a: number, b: number): number { return a - b; }
+      export function test(flag: number): number {
+        return (flag ? add : sub)(10, 3);
+      }
+    `);
+    expect(exports.test(1)).toBe(13);
+    expect(exports.test(0)).toBe(7);
+  });
+
+  it("nested conditional call: (a ? (b ? f1 : f2) : f3)()", async () => {
+    const exports = await compileToWasm(`
+      function f1(): number { return 1; }
+      function f2(): number { return 2; }
+      function f3(): number { return 3; }
+      export function test(a: number, b: number): number {
+        return (a ? (b ? f1 : f2) : f3)();
+      }
+    `);
+    expect(exports.test(1, 1)).toBe(1);
+    expect(exports.test(1, 0)).toBe(2);
+    expect(exports.test(0, 1)).toBe(3);
+    expect(exports.test(0, 0)).toBe(3);
+  });
+
+  it("conditional call with closure branches", async () => {
+    const exports = await compileToWasm(`
+      function makeAdder(n: number): (x: number) => number {
+        return (x: number): number => x + n;
+      }
+      function makeMultiplier(n: number): (x: number) => number {
+        return (x: number): number => x * n;
+      }
+      export function test(flag: number): number {
+        const add5 = makeAdder(5);
+        const mul3 = makeMultiplier(3);
+        return (flag ? add5 : mul3)(10);
+      }
+    `);
+    expect(exports.test(1)).toBe(15);
+    expect(exports.test(0)).toBe(30);
+  });
 });

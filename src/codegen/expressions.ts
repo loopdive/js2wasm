@@ -7935,6 +7935,12 @@ function compileCallExpression(
     // and NOT a binary/comma expression (handled separately below)
     if (!ts.isFunctionExpression(unwrapped) && !ts.isArrowFunction(unwrapped) &&
         !(ts.isBinaryExpression(unwrapped) && unwrapped.operatorToken.kind === ts.SyntaxKind.CommaToken)) {
+      // Handle conditional callee inline: (cond ? fn1 : fn2)(args)
+      // Cannot create a synthetic call because ts.factory wraps non-LeftHandSide
+      // expressions in ParenthesizedExpression, causing infinite recursion.
+      if (ts.isConditionalExpression(unwrapped)) {
+        return compileConditionalCallee(ctx, fctx, expr, unwrapped);
+      }
       const syntheticCall = ts.factory.createCallExpression(
         unwrapped as ts.Expression as ts.LeftHandSideExpression,
         expr.typeArguments,
@@ -9872,12 +9878,302 @@ function compileCallExpression(
     }
   }
 
+  // Handle ConditionalExpression as callee (not wrapped in parens):
+  // (cond ? fn1 : fn2)(args) — handled directly
+  if (ts.isConditionalExpression(expr.expression)) {
+    return compileConditionalCallee(ctx, fctx, expr, expr.expression);
+  }
+
+  // Generic fallback: compile the callee expression to get a value on the stack,
+  // then try to use it as a closure call. This handles patterns like
+  // accessing function values from complex expressions.
+  {
+    const calleeTsType = ctx.checker.getTypeAtLocation(expr.expression);
+    const callSigs = calleeTsType.getCallSignatures?.();
+
+    if (callSigs && callSigs.length > 0) {
+      const sig = callSigs[0]!;
+
+      // Look for a matching closure type
+      const sigParamCount = sig.parameters.length;
+      const sigRetType = ctx.checker.getReturnTypeOfSignature(sig);
+      const sigRetWasm = isVoidType(sigRetType) ? null : resolveWasmType(ctx, sigRetType);
+      const sigParamWasmTypes: ValType[] = [];
+      for (let i = 0; i < sigParamCount; i++) {
+        const paramType = ctx.checker.getTypeOfSymbol(sig.parameters[i]!);
+        sigParamWasmTypes.push(resolveWasmType(ctx, paramType));
+      }
+
+      let matchedClosureInfo: ClosureInfo | undefined;
+      let matchedStructTypeIdx: number | undefined;
+
+      for (const [typeIdx, info] of ctx.closureInfoByTypeIdx) {
+        if (info.paramTypes.length !== sigParamCount) continue;
+        if (sigRetWasm === null && info.returnType !== null) continue;
+        if (sigRetWasm !== null && info.returnType === null) continue;
+        if (sigRetWasm !== null && info.returnType !== null && sigRetWasm.kind !== info.returnType.kind) continue;
+        let paramsMatch = true;
+        for (let i = 0; i < sigParamCount; i++) {
+          if (sigParamWasmTypes[i]!.kind !== info.paramTypes[i]!.kind) {
+            paramsMatch = false;
+            break;
+          }
+        }
+        if (paramsMatch) {
+          matchedClosureInfo = info;
+          matchedStructTypeIdx = typeIdx;
+          break;
+        }
+      }
+
+      if (matchedClosureInfo && matchedStructTypeIdx !== undefined) {
+        // Compile the callee expression to get the closure on the stack
+        const innerResultType = compileExpression(ctx, fctx, expr.expression);
+
+        // Save closure ref to a local
+        let closureLocal: number;
+        if (innerResultType?.kind === "externref") {
+          const closureRefType: ValType = { kind: "ref_null", typeIdx: matchedStructTypeIdx };
+          closureLocal = allocLocal(fctx, `__cond_call_${fctx.locals.length}`, closureRefType);
+          fctx.body.push({ op: "any.convert_extern" });
+          fctx.body.push({ op: "ref.cast", typeIdx: matchedStructTypeIdx });
+          fctx.body.push({ op: "local.set", index: closureLocal });
+        } else {
+          const closureRefType: ValType = innerResultType ?? { kind: "ref", typeIdx: matchedStructTypeIdx };
+          closureLocal = allocLocal(fctx, `__cond_call_${fctx.locals.length}`, closureRefType);
+          fctx.body.push({ op: "local.set", index: closureLocal });
+        }
+
+        // Push closure ref as first arg (self param)
+        fctx.body.push({ op: "local.get", index: closureLocal });
+        fctx.body.push({ op: "ref.as_non_null" } as Instr);
+
+        // Push call arguments
+        for (let i = 0; i < expr.arguments.length; i++) {
+          compileExpression(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
+        }
+
+        // Pad missing arguments
+        for (let i = expr.arguments.length; i < matchedClosureInfo.paramTypes.length; i++) {
+          pushDefaultValue(fctx, matchedClosureInfo.paramTypes[i]!);
+        }
+
+        // Push the funcref from closure struct and call_ref
+        fctx.body.push({ op: "local.get", index: closureLocal });
+        fctx.body.push({ op: "ref.as_non_null" } as Instr);
+        fctx.body.push({ op: "struct.get", typeIdx: matchedStructTypeIdx, fieldIdx: 0 });
+        fctx.body.push({ op: "ref.cast", typeIdx: matchedClosureInfo.funcTypeIdx });
+        fctx.body.push({ op: "call_ref", typeIdx: matchedClosureInfo.funcTypeIdx });
+
+        return matchedClosureInfo.returnType ?? VOID_RESULT;
+      }
+    }
+
+  }
+
   ctx.errors.push({
     message: "Unsupported call expression",
     line: getLine(expr),
     column: getCol(expr),
   });
   return null;
+}
+
+/**
+ * Compile a call with a ConditionalExpression callee: (cond ? fn1 : fn2)(args)
+ *
+ * We compile the condition, then emit an if/else where each branch makes
+ * the call with the respective callee.
+ *
+ * Cannot create synthetic CallExpression via ts.factory because it wraps
+ * non-LeftHandSideExpression callees in ParenthesizedExpression, causing
+ * infinite recursion with the paren-unwrapping handler above.
+ */
+function compileConditionalCallee(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.CallExpression,
+  condExpr: ts.ConditionalExpression,
+): InnerResult {
+  // Compile condition
+  const condType = compileExpression(ctx, fctx, condExpr.condition);
+  if (!condType) {
+    fctx.body.push({ op: "i32.const", value: 0 });
+  } else {
+    ensureI32Condition(fctx, condType, ctx);
+  }
+
+  // Determine the expected return type of the call from the original expression
+  const callSig = ctx.checker.getResolvedSignature(expr);
+  let callRetType: ValType | null = null;
+  if (callSig) {
+    const retTsType = ctx.checker.getReturnTypeOfSignature(callSig);
+    if (!isVoidType(retTsType)) {
+      callRetType = resolveWasmType(ctx, retTsType);
+    }
+  }
+
+  // Helper: compile a call branch by constructing the call inline
+  // Uses the branch expression (whenTrue or whenFalse) as the callee.
+  function compileBranchCall(branchExpr: ts.Expression): InnerResult {
+    // If the branch is an identifier referencing a known function, call it directly
+    if (ts.isIdentifier(branchExpr)) {
+      const funcName = branchExpr.text;
+      let closureInfo = ctx.closureMap.get(funcName);
+      // Fallback: if variable is a local with ref type, look up closure info by type idx
+      if (!closureInfo) {
+        const localIdx = fctx.localMap.get(funcName);
+        if (localIdx !== undefined) {
+          const localType = localIdx < fctx.params.length
+            ? fctx.params[localIdx]?.type
+            : fctx.locals[localIdx - fctx.params.length]?.type;
+          if (localType && (localType.kind === "ref" || localType.kind === "ref_null")) {
+            closureInfo = ctx.closureInfoByTypeIdx.get(localType.typeIdx);
+          }
+        }
+      }
+      if (closureInfo) {
+        // Use the original expr's arguments but with this identifier as callee
+        // Create a minimal synthetic object that mimics a CallExpression
+        // for compileClosureCall
+        const syntheticCall = Object.create(expr);
+        syntheticCall.expression = branchExpr;
+        return compileClosureCall(ctx, fctx, syntheticCall as ts.CallExpression, funcName, closureInfo);
+      }
+      const funcIdx = ctx.funcMap.get(funcName);
+      if (funcIdx !== undefined) {
+        const paramTypes = getFuncParamTypes(ctx, funcIdx);
+        for (let i = 0; i < expr.arguments.length; i++) {
+          compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+        }
+        // Pad missing arguments with defaults
+        if (paramTypes) {
+          for (let i = expr.arguments.length; i < paramTypes.length; i++) {
+            pushDefaultValue(fctx, paramTypes[i]!);
+          }
+        }
+        const finalFuncIdx = ctx.funcMap.get(funcName) ?? funcIdx;
+        fctx.body.push({ op: "call", funcIdx: finalFuncIdx });
+        if (callRetType) return callRetType;
+        // Try to determine return type from the branch function's signature
+        const branchType = ctx.checker.getTypeAtLocation(branchExpr);
+        const branchSigs = branchType.getCallSignatures?.();
+        if (branchSigs && branchSigs.length > 0) {
+          const retType = ctx.checker.getReturnTypeOfSignature(branchSigs[0]!);
+          if (isVoidType(retType)) return VOID_RESULT;
+          return resolveWasmType(ctx, retType);
+        }
+        return callRetType ?? { kind: "f64" };
+      }
+    }
+
+    // If the branch is itself a conditional, recurse
+    if (ts.isConditionalExpression(branchExpr)) {
+      return compileConditionalCallee(ctx, fctx, expr, branchExpr);
+    }
+
+    // If the branch is wrapped in parens, unwrap
+    if (ts.isParenthesizedExpression(branchExpr)) {
+      let inner: ts.Expression = branchExpr;
+      while (ts.isParenthesizedExpression(inner)) {
+        inner = inner.expression;
+      }
+      return compileBranchCall(inner);
+    }
+
+    // If the branch is a property access, try method call
+    if (ts.isPropertyAccessExpression(branchExpr)) {
+      // Create a synthetic call with the property access as callee
+      // PropertyAccessExpression IS a LeftHandSideExpression so no infinite recursion
+      const syntheticCall = ts.factory.createCallExpression(
+        branchExpr,
+        expr.typeArguments,
+        expr.arguments,
+      );
+      ts.setTextRange(syntheticCall, expr);
+      (syntheticCall as any).parent = expr.parent;
+      return compileCallExpression(ctx, fctx, syntheticCall as ts.CallExpression);
+    }
+
+    // Fallback: compile expression value and try to use as closure call
+    const calleeType = compileExpression(ctx, fctx, branchExpr);
+    if (calleeType) {
+      fctx.body.push({ op: "drop" });
+    }
+    for (const arg of expr.arguments) {
+      const argType = compileExpression(ctx, fctx, arg);
+      if (argType) {
+        fctx.body.push({ op: "drop" });
+      }
+    }
+    if (callRetType) {
+      pushDefaultValue(fctx, callRetType);
+      return callRetType;
+    }
+    fctx.body.push({ op: "f64.const", value: 0 });
+    return { kind: "f64" };
+  }
+
+  // Compile then-branch call
+  const savedBody = fctx.body;
+  fctx.body = [];
+  let thenType = compileBranchCall(condExpr.whenTrue);
+  let thenInstrs = fctx.body;
+
+  // Compile else-branch call
+  fctx.body = [];
+  let elseType = compileBranchCall(condExpr.whenFalse);
+  let elseInstrs = fctx.body;
+
+  fctx.body = savedBody;
+
+  // Determine result type
+  if (thenType === VOID_RESULT && elseType === VOID_RESULT) {
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: thenInstrs,
+      else: elseInstrs,
+    });
+    return VOID_RESULT;
+  }
+
+  // Coerce branches to a common type
+  const thenVal: ValType = thenType && thenType !== VOID_RESULT ? thenType : callRetType ?? { kind: "f64" };
+  const elseVal: ValType = elseType && elseType !== VOID_RESULT ? elseType : callRetType ?? { kind: "f64" };
+  let resultType: ValType = callRetType ?? thenVal;
+
+  // If types don't match, coerce both to the result type
+  if (thenVal.kind !== resultType.kind) {
+    const coerceBody: Instr[] = [];
+    fctx.body = coerceBody;
+    coerceType(ctx, fctx, thenVal, resultType);
+    fctx.body = savedBody;
+    thenInstrs = [...thenInstrs, ...coerceBody];
+  }
+  if (elseVal.kind !== resultType.kind) {
+    const coerceBody: Instr[] = [];
+    fctx.body = coerceBody;
+    coerceType(ctx, fctx, elseVal, resultType);
+    fctx.body = savedBody;
+    elseInstrs = [...elseInstrs, ...coerceBody];
+  }
+
+  // Handle void branches that need to produce a value
+  if (thenType === VOID_RESULT || thenType === null) {
+    thenInstrs = [...thenInstrs, ...defaultValueInstrs(resultType)];
+  }
+  if (elseType === VOID_RESULT || elseType === null) {
+    elseInstrs = [...elseInstrs, ...defaultValueInstrs(resultType)];
+  }
+
+  fctx.body.push({
+    op: "if",
+    blockType: { kind: "val" as const, type: resultType },
+    then: thenInstrs,
+    else: elseInstrs,
+  });
+  return resultType;
 }
 
 /**
