@@ -1,6 +1,6 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext, ClosureInfo, RestParamInfo } from "./index.js";
-import { allocLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers, addStringImports, cacheStringLiterals, addStringConstantGlobal, nextModuleGlobalIdx, getOrRegisterTemplateVecType } from "./index.js";
+import { allocLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers, addStringImports, cacheStringLiterals, addStringConstantGlobal, nextModuleGlobalIdx, getOrRegisterTemplateVecType, pushBody, popBody } from "./index.js";
 import {
   mapTsTypeToWasm,
   isNumberType,
@@ -21,6 +21,60 @@ import { ensureTimsortHelper } from "./timsort.js";
 /** Sentinel: expression compiled successfully but produces no value (void) */
 const VOID_RESULT = Symbol("void");
 type InnerResult = ValType | null | typeof VOID_RESULT;
+
+/**
+ * Shift function indices after a late import addition. This must update all
+ * already-compiled function bodies, the current function body, any saved bodies
+ * from the savedBody swap pattern, and export descriptors.
+ */
+function shiftLateImportIndices(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  importsBefore: number,
+  added: number,
+): void {
+  if (added <= 0) return;
+  function shiftInstrs(instrs: Instr[]): void {
+    for (const instr of instrs) {
+      if ("funcIdx" in instr && typeof (instr as any).funcIdx === "number") {
+        if ((instr as any).funcIdx >= importsBefore) {
+          (instr as any).funcIdx += added;
+        }
+      }
+      // Recurse into nested blocks
+      if ("body" in instr && Array.isArray((instr as any).body)) {
+        shiftInstrs((instr as any).body);
+      }
+      if ("then" in instr && Array.isArray((instr as any).then)) {
+        shiftInstrs((instr as any).then);
+      }
+      if ("else" in instr && Array.isArray((instr as any).else)) {
+        shiftInstrs((instr as any).else);
+      }
+    }
+  }
+  for (const func of ctx.mod.functions) {
+    shiftInstrs(func.body);
+  }
+  // Shift current function body
+  const curBody = fctx.body;
+  const alreadyShifted = ctx.mod.functions.some(f => f.body === curBody);
+  if (!alreadyShifted) {
+    shiftInstrs(curBody);
+  }
+  // Shift saved body arrays
+  for (const sb of fctx.savedBodies) {
+    if (sb === curBody) continue;
+    if (ctx.mod.functions.some(f => f.body === sb)) continue;
+    shiftInstrs(sb);
+  }
+  // Shift export descriptors
+  for (const exp of ctx.mod.exports) {
+    if (exp.desc.kind === "func" && exp.desc.index >= importsBefore) {
+      exp.desc.index += added;
+    }
+  }
+}
 
 /**
  * Compile an expression, pushing its result onto the Wasm stack.
@@ -957,8 +1011,7 @@ function emitArrowParamDestructuring(
           const tmpField = allocLocal(fctx, `__dflt_${fctx.locals.length}`, fieldType);
           fctx.body.push({ op: "local.tee", index: tmpField });
           fctx.body.push({ op: "ref.is_null" } as Instr);
-          const savedBody = fctx.body;
-          fctx.body = [];
+          const savedBody = pushBody(fctx);
           compileExpression(ctx, fctx, element.initializer, fieldType);
           fctx.body.push({ op: "local.set", index: localIdx } as Instr);
           const thenInstrs = fctx.body;
@@ -978,8 +1031,7 @@ function emitArrowParamDestructuring(
           fctx.body.push({ op: "local.tee", index: tmpField });
           fctx.body.push({ op: "local.get", index: tmpField });
           fctx.body.push({ op: "f64.ne" });
-          const savedBody = fctx.body;
-          fctx.body = [];
+          const savedBody = pushBody(fctx);
           compileExpression(ctx, fctx, element.initializer, fieldType);
           fctx.body.push({ op: "local.set", index: localIdx } as Instr);
           const thenInstrs = fctx.body;
@@ -1060,8 +1112,7 @@ function emitArrowParamDefaults(
     if (!paramType) continue;
 
     // Build the "then" block: compile default expression, local.set
-    const savedBody = fctx.body;
-    fctx.body = [];
+    const savedBody = pushBody(fctx);
     compileExpression(ctx, fctx, param.initializer, paramType);
     fctx.body.push({ op: "local.set", index: paramIdx });
     const thenInstrs = fctx.body;
@@ -1111,8 +1162,7 @@ function emitMethodParamDefaults(
     if (!paramType) continue;
 
     // Build the "then" block: compile default expression, local.set
-    const savedBody = fctx.body;
-    fctx.body = [];
+    const savedBody = pushBody(fctx);
     compileExpression(ctx, fctx, param.initializer, paramType);
     fctx.body.push({ op: "local.set", index: paramIdx });
     const thenInstrs = fctx.body;
@@ -1281,6 +1331,7 @@ function compileArrowAsClosure(
     breakStack: [],
     continueStack: [],
     labelMap: new Map(),
+    savedBodies: [],
   };
 
   for (let i = 0; i < liftedFctx.params.length; i++) {
@@ -1651,6 +1702,7 @@ function compileArrowAsCallback(
     breakStack: [],
     continueStack: [],
     labelMap: new Map(),
+    savedBodies: [],
   };
 
   // Register params as locals (param 0 = __captures, then arrow params)
@@ -3866,8 +3918,7 @@ function compileLogicalAnd(
   ensureI32Condition(fctx, leftType, ctx);
 
   // Compile RHS in a side buffer to discover its natural type
-  const savedBody = fctx.body;
-  fctx.body = [];
+  const savedBody = pushBody(fctx);
   const rightType = compileExpression(ctx, fctx, expr.right);
   let thenInstrs = fctx.body;
   fctx.body = savedBody;
@@ -3928,8 +3979,7 @@ function compileLogicalOr(
   ensureI32Condition(fctx, leftType, ctx);
 
   // Compile RHS in a side buffer to discover its natural type
-  const savedBody = fctx.body;
-  fctx.body = [];
+  const savedBody = pushBody(fctx);
   const rightType = compileExpression(ctx, fctx, expr.right);
   let elseInstrs = fctx.body;
   fctx.body = savedBody;
@@ -3997,8 +4047,7 @@ function compileNullishCoalescing(
   fctx.body.push({ op: "ref.is_null" });
 
   // Compile RHS in a side buffer to discover its natural type
-  const savedBody = fctx.body;
-  fctx.body = [];
+  const savedBody = pushBody(fctx);
   const rhsType = compileExpression(ctx, fctx, expr.right);
   let thenInstrs = fctx.body;
   fctx.body = savedBody;
@@ -5411,33 +5460,7 @@ function compileExternSetFallback(
     const importsBefore = ctx.numImportFuncs;
     const setType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }], []);
     addImport(ctx, "env", "__extern_set", { kind: "func", typeIdx: setType });
-    const added = ctx.numImportFuncs - importsBefore;
-    if (added > 0) {
-      // Shift function indices in all already-compiled function bodies
-      for (const func of ctx.mod.functions) {
-        for (const instr of func.body) {
-          if ("funcIdx" in instr && typeof instr.funcIdx === "number") {
-            if (instr.funcIdx >= importsBefore) {
-              instr.funcIdx += added;
-            }
-          }
-        }
-      }
-      // Also shift the current function body being compiled
-      for (const instr of fctx.body) {
-        if ("funcIdx" in instr && typeof instr.funcIdx === "number") {
-          if (instr.funcIdx >= importsBefore) {
-            instr.funcIdx += added;
-          }
-        }
-      }
-      // Shift function indices in export descriptors
-      for (const exp of ctx.mod.exports) {
-        if (exp.desc.kind === "func" && exp.desc.index >= importsBefore) {
-          exp.desc.index += added;
-        }
-      }
-    }
+    shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
     funcIdx = ctx.funcMap.get("__extern_set");
   }
   if (funcIdx !== undefined) {
@@ -5548,8 +5571,7 @@ function compileLogicalAssignment(
     fctx.body.push({ op: "ref.is_null" });
 
     // Compile the RHS in a separate body
-    const savedBody = fctx.body;
-    fctx.body = [];
+    const savedBody = pushBody(fctx);
     const nullishRhsResult = compileExpression(ctx, fctx, expr.right, varType);
     if (!nullishRhsResult) { fctx.body = savedBody; return null; }
     emitSet();
@@ -5573,8 +5595,7 @@ function compileLogicalAssignment(
     ensureI32Condition(fctx, varType, ctx);
 
     // Then (truthy): keep current value
-    const savedBody = fctx.body;
-    fctx.body = [];
+    const savedBody = pushBody(fctx);
     emitGet();
     const thenInstrs = fctx.body;
 
@@ -5598,8 +5619,7 @@ function compileLogicalAssignment(
     ensureI32Condition(fctx, varType, ctx);
 
     // Then (truthy): assign RHS
-    const savedBody = fctx.body;
-    fctx.body = [];
+    const savedBody = pushBody(fctx);
     const andRhsResult = compileExpression(ctx, fctx, expr.right, varType);
     if (!andRhsResult) { fctx.body = savedBody; return null; }
     emitSet();
@@ -5873,8 +5893,7 @@ function emitLogicalAssignmentPattern(
     emitGet();
     fctx.body.push({ op: "ref.is_null" });
 
-    const savedBody = fctx.body;
-    fctx.body = [];
+    const savedBody = pushBody(fctx);
     const rhsResult = compileExpression(ctx, fctx, rhs, varType);
     if (!rhsResult) { fctx.body = savedBody; return null; }
     emitSet();
@@ -5896,8 +5915,7 @@ function emitLogicalAssignmentPattern(
     emitGet();
     ensureI32Condition(fctx, varType, ctx);
 
-    const savedBody = fctx.body;
-    fctx.body = [];
+    const savedBody = pushBody(fctx);
     emitGet();
     const thenInstrs = fctx.body;
 
@@ -5919,8 +5937,7 @@ function emitLogicalAssignmentPattern(
     emitGet();
     ensureI32Condition(fctx, varType, ctx);
 
-    const savedBody = fctx.body;
-    fctx.body = [];
+    const savedBody = pushBody(fctx);
     const rhsResult = compileExpression(ctx, fctx, rhs, varType);
     if (!rhsResult) { fctx.body = savedBody; return null; }
     emitSet();
@@ -6485,24 +6502,7 @@ function compileElementCompoundAssignment(
       const importsBefore = ctx.numImportFuncs;
       const getType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
       addImport(ctx, "env", "__extern_get", { kind: "func", typeIdx: getType });
-      const added = ctx.numImportFuncs - importsBefore;
-      if (added > 0) {
-        for (const func of ctx.mod.functions) {
-          for (const instr of func.body) {
-            if ("funcIdx" in instr && typeof instr.funcIdx === "number") {
-              if (instr.funcIdx >= importsBefore) instr.funcIdx += added;
-            }
-          }
-        }
-        for (const instr of fctx.body) {
-          if ("funcIdx" in instr && typeof instr.funcIdx === "number") {
-            if (instr.funcIdx >= importsBefore) instr.funcIdx += added;
-          }
-        }
-        for (const exp of ctx.mod.exports) {
-          if (exp.desc.kind === "func" && exp.desc.index >= importsBefore) exp.desc.index += added;
-        }
-      }
+      shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
       getIdx = ctx.funcMap.get("__extern_get");
     }
     if (getIdx === undefined) return null;
@@ -6550,24 +6550,7 @@ function compileElementCompoundAssignment(
       const importsBefore = ctx.numImportFuncs;
       const setType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }], []);
       addImport(ctx, "env", "__extern_set", { kind: "func", typeIdx: setType });
-      const added = ctx.numImportFuncs - importsBefore;
-      if (added > 0) {
-        for (const func of ctx.mod.functions) {
-          for (const instr of func.body) {
-            if ("funcIdx" in instr && typeof instr.funcIdx === "number") {
-              if (instr.funcIdx >= importsBefore) instr.funcIdx += added;
-            }
-          }
-        }
-        for (const instr of fctx.body) {
-          if ("funcIdx" in instr && typeof instr.funcIdx === "number") {
-            if (instr.funcIdx >= importsBefore) instr.funcIdx += added;
-          }
-        }
-        for (const exp of ctx.mod.exports) {
-          if (exp.desc.kind === "func" && exp.desc.index >= importsBefore) exp.desc.index += added;
-        }
-      }
+      shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
       setIdx = ctx.funcMap.get("__extern_set");
     }
     if (setIdx !== undefined) {
@@ -8613,8 +8596,7 @@ function compileCallExpression(
           fctx.body.push({ op: "ref.is_null" });
 
           // Build the else branch (non-null path) with the full call
-          const savedBody = fctx.body;
-          fctx.body = [];
+          const savedBody = pushBody(fctx);
           fctx.body.push({ op: "local.get", index: tmp });
           fctx.body.push({ op: "ref.as_non_null" } as Instr);
           const paramTypes = getFuncParamTypes(ctx, funcIdx);
@@ -8701,8 +8683,7 @@ function compileCallExpression(
             fctx.body.push({ op: "local.tee", index: tmp });
             fctx.body.push({ op: "ref.is_null" });
 
-            const savedBody = fctx.body;
-            fctx.body = [];
+            const savedBody = pushBody(fctx);
             fctx.body.push({ op: "local.get", index: tmp });
             fctx.body.push({ op: "ref.as_non_null" } as Instr);
             const paramTypes = getFuncParamTypes(ctx, funcIdx);
@@ -9343,6 +9324,7 @@ function compileCallExpression(
           // and replace `return` with `local.set + br` to exit the block
           const retLocal = allocLocal(fctx, `__iife_ret_${fctx.locals.length}`, iifeWasmRetType);
           const savedBody = fctx.body;
+          fctx.savedBodies.push(savedBody);
           const blockBody: Instr[] = [];
           fctx.body = blockBody;
 
@@ -9352,6 +9334,7 @@ function compileCallExpression(
             compileStatement(ctx, fctx, stmt);
           }
           fctx.blockDepth--;
+          fctx.savedBodies.pop();
           fctx.body = savedBody;
 
           // Post-process: replace `return` ops with `local.set retLocal + br <depth>`
@@ -9495,8 +9478,7 @@ function compileCallExpression(
             fctx.body.push({ op: "local.tee", index: tmp });
             fctx.body.push({ op: "ref.is_null" });
 
-            const savedBody = fctx.body;
-            fctx.body = [];
+            const savedBody = pushBody(fctx);
             fctx.body.push({ op: "local.get", index: tmp });
             fctx.body.push({ op: "ref.as_non_null" } as Instr);
             const paramTypes = getFuncParamTypes(ctx, funcIdx);
@@ -9985,6 +9967,7 @@ function compileIIFE(
     breakStack: [],
     continueStack: [],
     labelMap: new Map(),
+    savedBodies: [],
   };
 
   for (let i = 0; i < liftedFctx.params.length; i++) {
@@ -10524,6 +10507,7 @@ function compileNewFunctionExpression(
     breakStack: [],
     continueStack: [],
     labelMap: new Map(),
+    savedBodies: [],
   };
 
   for (let i = 0; i < liftedFctx.params.length; i++) {
@@ -11718,8 +11702,7 @@ function compileConditionalExpression(
     ensureI32Condition(fctx, condType, ctx);
   }
 
-  const savedBody = fctx.body;
-  fctx.body = [];
+  const savedBody = pushBody(fctx);
   const thenResultType = compileExpression(ctx, fctx, expr.whenTrue);
   // If the then-branch is void (no value on stack), push a default value
   // so the ternary has a consistent result. JS treats void as undefined → NaN for numbers.
@@ -11827,6 +11810,7 @@ function compileOptionalPropertyAccess(
   const resultType: ValType = { kind: "externref" };
 
   const savedBody = fctx.body;
+  fctx.savedBodies.push(savedBody);
 
   // then branch (null path): push null
   const thenInstrs: Instr[] = [{ op: "ref.null.extern" }];
@@ -11850,7 +11834,7 @@ function compileOptionalPropertyAccess(
   }
   const elseInstrs = fctx.body;
 
-  fctx.body = savedBody;
+  popBody(fctx, savedBody);
   fctx.body.push({
     op: "if",
     blockType: { kind: "val", type: resultType },
@@ -11908,6 +11892,7 @@ function compileOptionalCallExpression(
   const resultType: ValType = { kind: "externref" };
 
   const savedBody = fctx.body;
+  fctx.savedBodies.push(savedBody);
 
   // then branch (null path): push null
   const thenInstrs: Instr[] = [{ op: "ref.null.extern" }];
@@ -11945,7 +11930,7 @@ function compileOptionalCallExpression(
   }
   const elseInstrs = fctx.body;
 
-  fctx.body = savedBody;
+  popBody(fctx, savedBody);
   fctx.body.push({
     op: "if",
     blockType: { kind: "val", type: resultType },
@@ -12542,8 +12527,7 @@ function compileElementAccess(
       : accessResultType;
 
     // Build else branch (non-null): local.get tmp, ref.as_non_null, then compile inner
-    const savedBody = fctx.body;
-    fctx.body = [];
+    const savedBody = pushBody(fctx);
     fctx.body.push({ op: "local.get", index: tmp });
     fctx.body.push({ op: "ref.as_non_null" } as Instr);
     // Continue with the rest of element access logic using the non-null ref
@@ -12590,27 +12574,7 @@ function compileElementAccessBody(
       const importsBefore = ctx.numImportFuncs;
       const getType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
       addImport(ctx, "env", "__extern_get", { kind: "func", typeIdx: getType });
-      const added = ctx.numImportFuncs - importsBefore;
-      if (added > 0) {
-        // Shift function indices in all already-compiled function bodies
-        for (const func of ctx.mod.functions) {
-          for (const instr of func.body) {
-            if ("funcIdx" in instr && typeof instr.funcIdx === "number") {
-              if (instr.funcIdx >= importsBefore) {
-                instr.funcIdx += added;
-              }
-            }
-          }
-        }
-        // Also shift the current function body being compiled
-        for (const instr of fctx.body) {
-          if ("funcIdx" in instr && typeof instr.funcIdx === "number") {
-            if (instr.funcIdx >= importsBefore) {
-              instr.funcIdx += added;
-            }
-          }
-        }
-      }
+      shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
       funcIdx = ctx.funcMap.get("__extern_get");
     }
     if (funcIdx !== undefined) {
@@ -12655,25 +12619,7 @@ function compileElementAccessBody(
       const importsBefore = ctx.numImportFuncs;
       const getType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
       addImport(ctx, "env", "__extern_get", { kind: "func", typeIdx: getType });
-      const added = ctx.numImportFuncs - importsBefore;
-      if (added > 0) {
-        for (const func of ctx.mod.functions) {
-          for (const instr of func.body) {
-            if ("funcIdx" in instr && typeof instr.funcIdx === "number") {
-              if (instr.funcIdx >= importsBefore) {
-                instr.funcIdx += added;
-              }
-            }
-          }
-        }
-        for (const instr of fctx.body) {
-          if ("funcIdx" in instr && typeof instr.funcIdx === "number") {
-            if (instr.funcIdx >= importsBefore) {
-              instr.funcIdx += added;
-            }
-          }
-        }
-      }
+      shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
       funcIdx = ctx.funcMap.get("__extern_get");
     }
     if (funcIdx !== undefined) {
@@ -12782,25 +12728,7 @@ function compileElementAccessBody(
           const importsBefore = ctx.numImportFuncs;
           const getType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
           addImport(ctx, "env", "__extern_get", { kind: "func", typeIdx: getType });
-          const added = ctx.numImportFuncs - importsBefore;
-          if (added > 0) {
-            for (const func of ctx.mod.functions) {
-              for (const instr of func.body) {
-                if ("funcIdx" in instr && typeof instr.funcIdx === "number") {
-                  if (instr.funcIdx >= importsBefore) {
-                    instr.funcIdx += added;
-                  }
-                }
-              }
-            }
-            for (const instr of fctx.body) {
-              if ("funcIdx" in instr && typeof instr.funcIdx === "number") {
-                if (instr.funcIdx >= importsBefore) {
-                  instr.funcIdx += added;
-                }
-              }
-            }
-          }
+          shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
           funcIdx = ctx.funcMap.get("__extern_get");
         }
         if (funcIdx !== undefined) {
@@ -13395,6 +13323,7 @@ function compileObjectLiteralForStruct(
         breakStack: [],
         continueStack: [],
         labelMap: new Map(),
+        savedBodies: [],
       };
       getterFctx.localMap.set("this", 0);
 
@@ -13478,6 +13407,7 @@ function compileObjectLiteralForStruct(
         breakStack: [],
         continueStack: [],
         labelMap: new Map(),
+        savedBodies: [],
       };
       for (let i = 0; i < setterFctxParams.length; i++) {
         setterFctx.localMap.set(setterFctxParams[i]!.name, i);
@@ -13495,12 +13425,11 @@ function compileObjectLiteralForStruct(
         const paramType = setterFctxParams[paramLocalIdx]!.type;
 
         // Build the "then" block: compile default expression, local.set
-        const savedBody = setterFctx.body;
-        setterFctx.body = [];
+        const savedBody = pushBody(setterFctx);
         compileExpression(ctx, setterFctx, param.initializer, paramType);
         setterFctx.body.push({ op: "local.set", index: paramLocalIdx });
         const thenInstrs = setterFctx.body;
-        setterFctx.body = savedBody;
+        popBody(setterFctx, savedBody);
 
         // Emit the null/zero check + conditional assignment
         if (paramType.kind === "externref") {
@@ -13590,6 +13519,7 @@ function compileObjectLiteralForStruct(
         breakStack: [],
         continueStack: [],
         labelMap: new Map(),
+        savedBodies: [],
       };
       for (let i = 0; i < methodFctxParams.length; i++) {
         methodFctx.localMap.set(methodFctxParams[i]!.name, i);
@@ -14432,8 +14362,7 @@ function compileTaggedTemplateExpression(
 
   // Build the "then" body (cache miss: create and store the template array)
   // Use savedBody pattern so compileStringLiteral pushes into a separate array
-  const savedBody = fctx.body;
-  fctx.body = [];
+  const savedBody = pushBody(fctx);
 
   // First: build the raw strings array as a regular vec
   for (const raw of rawParts) {

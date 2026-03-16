@@ -31,6 +31,8 @@ import {
   localGlobalIdx,
   reportError,
   resolveWasmType,
+  pushBody,
+  popBody,
 } from "./index.js";
 
 /**
@@ -1193,8 +1195,7 @@ function compileIfStatement(
   if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth++;
 
   // Compile then branch
-  const savedBody = fctx.body;
-  fctx.body = [];
+  const savedBody = pushBody(fctx);
   if (ts.isBlock(stmt.thenStatement)) {
     for (const s of stmt.thenStatement.statements) {
       compileStatement(ctx, fctx, s);
@@ -1218,7 +1219,7 @@ function compileIfStatement(
     elseInstrs = fctx.body;
   }
 
-  fctx.body = savedBody;
+  popBody(fctx, savedBody);
 
   // Restore break/continue depths
   for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!--;
@@ -1248,8 +1249,7 @@ function compileWhileStatement(
   //   end
   // end
 
-  const savedBody = fctx.body;
-  fctx.body = [];
+  const savedBody = pushBody(fctx);
 
   // Adjust existing break/continue depths: block+loop adds 2 nesting levels
   for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! += 2;
@@ -1289,7 +1289,7 @@ function compileWhileStatement(
     fctx.continueStack[i]! -= 2;
   if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth -= 2;
 
-  fctx.body = savedBody;
+  popBody(fctx, savedBody);
 
   fctx.body.push({
     op: "block",
@@ -1403,8 +1403,7 @@ function compileForStatement(
   //     br $loop
   //   }
   // }
-  const savedBody = fctx.body;
-  fctx.body = [];
+  const savedBody = pushBody(fctx);
 
   // Adjust existing break/continue depths: block+loop+block adds 3 nesting levels
   for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! += 3;
@@ -1458,7 +1457,7 @@ function compileForStatement(
     fctx.continueStack[i]! -= 3;
   if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth -= 3;
 
-  fctx.body = savedBody;
+  popBody(fctx, savedBody);
 
   // Build the loop body: condition + block $continue { body } + incrementor + br $loop
   const loopBody: Instr[] = [
@@ -1500,8 +1499,7 @@ function compileDoWhileStatement(
   //   }
   // }
 
-  const savedBody = fctx.body;
-  fctx.body = [];
+  const savedBody = pushBody(fctx);
 
   // Adjust existing break/continue depths: block+loop+block adds 3 nesting levels
   for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! += 3;
@@ -1541,7 +1539,7 @@ function compileDoWhileStatement(
     fctx.continueStack[i]! -= 3;
   if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth -= 3;
 
-  fctx.body = savedBody;
+  popBody(fctx, savedBody);
 
   // Build: block { loop { block { body } condition br_if } }
   const loopBody: Instr[] = [
@@ -1718,8 +1716,7 @@ function compileSwitchStatement(
   fctx.body.push({ op: "local.set", index: runningLocalIdx });
 
   // Collect instructions for the switch block body
-  const savedBody = fctx.body;
-  fctx.body = [];
+  const savedBody = pushBody(fctx);
 
   // Adjust existing break/continue depths: block adds 1 nesting level
   for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!++;
@@ -1790,7 +1787,7 @@ function compileSwitchStatement(
   if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth--;
 
   const switchBody = fctx.body;
-  fctx.body = savedBody;
+  popBody(fctx, savedBody);
 
   fctx.body.push({
     op: "block",
@@ -2278,8 +2275,7 @@ function compileForOfString(
   }
 
   // Build loop body
-  const savedBody = fctx.body;
-  fctx.body = [];
+  const savedBody = pushBody(fctx);
 
   // Adjust existing break/continue depths: block+loop adds 2 nesting levels
   for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! += 2;
@@ -2327,7 +2323,7 @@ function compileForOfString(
   for (let i = 0; i < fctx.continueStack.length; i++)
     fctx.continueStack[i]! -= 2;
 
-  fctx.body = savedBody;
+  popBody(fctx, savedBody);
 
   fctx.body.push({
     op: "block",
@@ -2444,8 +2440,7 @@ function compileForOfArray(
   }
 
   // Build loop body
-  const savedBody = fctx.body;
-  fctx.body = [];
+  const savedBody = pushBody(fctx);
 
   // Adjust existing break/continue depths: block+loop adds 2 nesting levels
   for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! += 2;
@@ -2509,7 +2504,7 @@ function compileForOfArray(
     fctx.continueStack[i]! -= 2;
   if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth -= 2;
 
-  fctx.body = savedBody;
+  popBody(fctx, savedBody);
 
   fctx.body.push({
     op: "block",
@@ -2614,8 +2609,7 @@ function compileForOfIterator(
   }
 
   // Build loop body
-  const savedBody = fctx.body;
-  fctx.body = [];
+  const savedBody = pushBody(fctx);
 
   // Adjust existing break/continue depths: block+loop adds 2 nesting levels
   for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! += 2;
@@ -2679,7 +2673,7 @@ function compileForOfIterator(
     fctx.continueStack[i]! -= 2;
   if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth -= 2;
 
-  fctx.body = savedBody;
+  popBody(fctx, savedBody);
 
   fctx.body.push({
     op: "block",
@@ -2802,8 +2796,7 @@ function compileLabeledStatement(
     //   block $label {
     //     body
     //   }
-    const savedBody = fctx.body;
-    fctx.body = [];
+    const savedBody = pushBody(fctx);
 
     // Adjust existing break/continue depths: block adds 1 nesting level
     for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!++;
@@ -2828,7 +2821,7 @@ function compileLabeledStatement(
     for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!--;
     if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth--;
 
-    fctx.body = savedBody;
+    popBody(fctx, savedBody);
     fctx.body.push({
       op: "block",
       blockType: { kind: "empty" },
@@ -2919,8 +2912,7 @@ function compileTryStatement(
   const tagIdx = ensureExnTag(ctx);
 
   // Compile the try block body
-  const savedBody = fctx.body;
-  fctx.body = [];
+  const savedBody = pushBody(fctx);
 
   // Adjust break/continue depths: the try block adds one label level
   for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!++;
@@ -3085,7 +3077,7 @@ function compileTryStatement(
     }
   }
 
-  fctx.body = savedBody;
+  popBody(fctx, savedBody);
 
   // Restore break/continue depths
   for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!--;
@@ -3229,6 +3221,7 @@ function compileNestedFunctionDeclaration(
       breakStack: [],
       continueStack: [],
       labelMap: new Map(),
+      savedBodies: [],
     };
     for (let i = 0; i < liftedFctx.params.length; i++) {
       liftedFctx.localMap.set(liftedFctx.params[i]!.name, i);
@@ -3294,6 +3287,7 @@ function compileNestedFunctionDeclaration(
       breakStack: [],
       continueStack: [],
       labelMap: new Map(),
+      savedBodies: [],
     };
     for (let i = 0; i < liftedFctx.params.length; i++) {
       liftedFctx.localMap.set(liftedFctx.params[i]!.name, i);
@@ -3465,12 +3459,11 @@ function emitDefaultParamInit(
     const paramType = paramTypes[i]!;
 
     // Build the "then" block: compile default expression, local.set
-    const savedBody = liftedFctx.body;
-    liftedFctx.body = [];
+    const savedBody = pushBody(liftedFctx);
     compileExpression(ctx, liftedFctx, param.initializer, paramType);
     liftedFctx.body.push({ op: "local.set", index: paramIdx });
     const thenInstrs = liftedFctx.body;
-    liftedFctx.body = savedBody;
+    popBody(liftedFctx, savedBody);
 
     // Emit the null/zero check + conditional assignment
     if (paramType.kind === "externref" || paramType.kind === "ref_null" || paramType.kind === "ref") {
