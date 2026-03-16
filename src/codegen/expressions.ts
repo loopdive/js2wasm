@@ -1223,6 +1223,12 @@ function compileArrowAsClosure(
   const closureName = `__closure_${closureId}`;
   const body = arrow.body;
 
+  // Check if this is a generator function expression (function*() { ... })
+  const isGenerator = ts.isFunctionExpression(arrow) && arrow.asteriskToken !== undefined;
+  if (isGenerator) {
+    ctx.generatorFunctions.add(closureName);
+  }
+
   // 1. Determine arrow parameter types and return type
   const arrowParams: ValType[] = [];
   for (const p of arrow.parameters) {
@@ -1232,7 +1238,10 @@ function compileArrowAsClosure(
 
   const sig = ctx.checker.getSignatureFromDeclaration(arrow);
   let closureReturnType: ValType | null = null;
-  if (sig) {
+  if (isGenerator) {
+    // Generator function expressions always return externref (JS Generator object)
+    closureReturnType = { kind: "externref" };
+  } else if (sig) {
     const retType = ctx.checker.getReturnTypeOfSignature(sig);
     if (!isVoidType(retType)) {
       closureReturnType = resolveWasmType(ctx, retType);
@@ -1484,7 +1493,47 @@ function compileArrowAsClosure(
   }
 
   let conciseBodyHasValue = false;
-  if (ts.isBlock(body)) {
+
+  if (isGenerator && ts.isBlock(body)) {
+    // Generator function expression: eagerly evaluate body, collect yields
+    // into a buffer, then wrap with __create_generator.
+    const bufferLocal = allocLocal(liftedFctx, "__gen_buffer", { kind: "externref" });
+    const createBufIdx = ctx.funcMap.get("__gen_create_buffer")!;
+    liftedFctx.body.push({ op: "call", funcIdx: createBufIdx });
+    liftedFctx.body.push({ op: "local.set", index: bufferLocal });
+
+    // Wrap body in a block so return can br out
+    const bodyInstrs: Instr[] = [];
+    const outerBody = liftedFctx.body;
+    liftedFctx.body = bodyInstrs;
+
+    liftedFctx.generatorReturnDepth = 0;
+    liftedFctx.blockDepth++;
+    for (let i = 0; i < liftedFctx.breakStack.length; i++) liftedFctx.breakStack[i]!++;
+    for (let i = 0; i < liftedFctx.continueStack.length; i++) liftedFctx.continueStack[i]!++;
+
+    for (const stmt of body.statements) {
+      compileStatement(ctx, liftedFctx, stmt);
+    }
+
+    liftedFctx.blockDepth--;
+    for (let i = 0; i < liftedFctx.breakStack.length; i++) liftedFctx.breakStack[i]!--;
+    for (let i = 0; i < liftedFctx.continueStack.length; i++) liftedFctx.continueStack[i]!--;
+    liftedFctx.generatorReturnDepth = undefined;
+
+    liftedFctx.body = outerBody;
+    liftedFctx.body.push({
+      op: "block",
+      blockType: { kind: "empty" },
+      body: bodyInstrs,
+    });
+
+    // Return __create_generator(__gen_buffer)
+    const createGenIdx = ctx.funcMap.get("__create_generator")!;
+    liftedFctx.body.push({ op: "local.get", index: bufferLocal });
+    liftedFctx.body.push({ op: "call", funcIdx: createGenIdx });
+    conciseBodyHasValue = true; // generator return value is already on stack
+  } else if (ts.isBlock(body)) {
     for (const stmt of body.statements) {
       compileStatement(ctx, liftedFctx, stmt);
     }
@@ -1495,7 +1544,7 @@ function compileArrowAsClosure(
       conciseBodyHasValue = true;
 
       // The actual expression type may differ from the declared return type
-      // (e.g. TS infers `any`→externref but codegen produces f64 for arithmetic).
+      // (e.g. TS infers `any`->externref but codegen produces f64 for arithmetic).
       // Coerce the expression result to match the declared return type.
       if (exprType.kind !== closureReturnType.kind) {
         if (closureReturnType.kind === "externref" && (exprType.kind === "ref" || exprType.kind === "ref_null")) {
