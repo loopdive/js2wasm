@@ -297,3 +297,4 @@
 | 329 | 2026-03-16 | Object.setPrototypeOf/getPrototypeOf/create stubs | Dep-driven |
 | 397 | 2026-03-16 | assert.throws try/catch shim (952 tests unblocked) | Dep-driven |
 | 173 | 2026-03-16 | Computed property names in classes — element access call resolution | Dep-driven |
+| 340 | 2026-03-16 | Inline Error constructors + enable throw/catch (1,337 tests unblocked) | Dep-driven |
