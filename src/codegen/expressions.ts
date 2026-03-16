@@ -9432,14 +9432,24 @@ function compileCallExpression(
     }
   }
 
-  // Handle ElementAccessExpression calls: obj['method']() or obj[stringLiteral]()
-  // Convert to equivalent property access method call when the index is a string literal.
+  // Handle ElementAccessExpression calls: obj['method']() or obj[0]() or obj[constKey]()
+  // Convert to equivalent property access method call when the index resolves to a static key.
   if (ts.isElementAccessExpression(expr.expression)) {
     const elemAccess = expr.expression;
     const argExpr = elemAccess.argumentExpression;
-    // Only handle string literal keys (e.g. obj['method']())
-    if (argExpr && ts.isStringLiteral(argExpr)) {
-      const methodName = argExpr.text;
+    // Resolve the key to a static string: string literals, numeric literals, const variables, etc.
+    let resolvedMethodName: string | undefined;
+    if (argExpr) {
+      if (ts.isStringLiteral(argExpr)) {
+        resolvedMethodName = argExpr.text;
+      } else if (ts.isNumericLiteral(argExpr)) {
+        resolvedMethodName = String(Number(argExpr.text));
+      } else {
+        resolvedMethodName = resolveComputedKeyExpression(ctx, argExpr);
+      }
+    }
+    if (resolvedMethodName !== undefined) {
+      const methodName = resolvedMethodName;
       const receiverType = ctx.checker.getTypeAtLocation(elemAccess.expression);
 
       // Try class instance method: ClassName_methodName
