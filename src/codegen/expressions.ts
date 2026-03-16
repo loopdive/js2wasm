@@ -8498,8 +8498,17 @@ function compileCallExpression(
     }
     if (receiverClassName && ctx.classSet.has(receiverClassName)) {
       const methodName = ts.isPrivateIdentifier(propAccess.name) ? propAccess.name.text.slice(1) : propAccess.name.text;
-      const fullName = `${receiverClassName}_${methodName}`;
-      const funcIdx = ctx.funcMap.get(fullName);
+      let fullName = `${receiverClassName}_${methodName}`;
+      let funcIdx = ctx.funcMap.get(fullName);
+      // Walk inheritance chain to find the method in a parent class
+      if (funcIdx === undefined) {
+        let ancestor = ctx.classParentMap.get(receiverClassName);
+        while (ancestor && funcIdx === undefined) {
+          fullName = `${ancestor}_${methodName}`;
+          funcIdx = ctx.funcMap.get(fullName);
+          ancestor = ctx.classParentMap.get(ancestor);
+        }
+      }
       if (funcIdx !== undefined) {
         // Push self (the receiver) as first argument
         const recvType = compileExpression(ctx, fctx, propAccess.expression);
