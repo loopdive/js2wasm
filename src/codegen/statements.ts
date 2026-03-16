@@ -470,7 +470,70 @@ function compileVariableStatement(
     }
 
     if (decl.initializer) {
-      compileExpression(ctx, fctx, decl.initializer, wasmType);
+      // Check if the variable has a callable type (function reference).
+      // If so, compile without an externref hint to preserve the closure ref type.
+      const callSigs = varType.getCallSignatures?.();
+      const isCallable = callSigs && callSigs.length > 0 && wasmType.kind === "externref";
+      if (isCallable) {
+        // Compile without type hint to get the actual closure/ref type
+        const actualType = compileExpression(ctx, fctx, decl.initializer);
+        const closureType = actualType ?? { kind: "externref" as const };
+        // If the result is a closure ref, update the local's type
+        if ((closureType.kind === "ref" || closureType.kind === "ref_null") &&
+            ctx.closureInfoByTypeIdx.has((closureType as { typeIdx: number }).typeIdx)) {
+          // Update the local slot type to the actual closure type
+          if (localIdx >= fctx.params.length) {
+            const localSlot = fctx.locals[localIdx - fctx.params.length];
+            if (localSlot) localSlot.type = closureType;
+          }
+        } else if (closureType.kind === "externref" && callSigs!.length > 0) {
+          // The initializer returned externref but the type is callable.
+          // This happens when a function returns a closure coerced to externref.
+          // Find the matching closure info by comparing the TS call signature
+          // against registered closure types and unbox (any.convert_extern + ref.cast).
+          const sig = callSigs![0]!;
+          const sigParamCount = sig.parameters.length;
+          const sigRetType = ctx.checker.getReturnTypeOfSignature(sig);
+          const sigRetWasm = isVoidType(sigRetType) ? null : resolveWasmType(ctx, sigRetType);
+          const sigParamWasmTypes: ValType[] = [];
+          for (let i = 0; i < sigParamCount; i++) {
+            const paramType = ctx.checker.getTypeOfSymbol(sig.parameters[i]!);
+            sigParamWasmTypes.push(resolveWasmType(ctx, paramType));
+          }
+
+          let matchedClosureInfo: { structTypeIdx: number; info: typeof ctx.closureInfoByTypeIdx extends Map<number, infer V> ? V : never } | undefined;
+          for (const [typeIdx, info] of ctx.closureInfoByTypeIdx) {
+            if (info.paramTypes.length !== sigParamCount) continue;
+            if (sigRetWasm === null && info.returnType !== null) continue;
+            if (sigRetWasm !== null && info.returnType === null) continue;
+            if (sigRetWasm !== null && info.returnType !== null && sigRetWasm.kind !== info.returnType.kind) continue;
+            let paramsMatch = true;
+            for (let i = 0; i < sigParamCount; i++) {
+              if (sigParamWasmTypes[i]!.kind !== info.paramTypes[i]!.kind) {
+                paramsMatch = false;
+                break;
+              }
+            }
+            if (paramsMatch) {
+              matchedClosureInfo = { structTypeIdx: typeIdx, info };
+              break;
+            }
+          }
+
+          if (matchedClosureInfo) {
+            // Convert externref back to closure struct ref
+            fctx.body.push({ op: "any.convert_extern" } as Instr);
+            fctx.body.push({ op: "ref.cast", typeIdx: matchedClosureInfo.structTypeIdx } as Instr);
+            const castType: ValType = { kind: "ref", typeIdx: matchedClosureInfo.structTypeIdx };
+            if (localIdx >= fctx.params.length) {
+              const localSlot = fctx.locals[localIdx - fctx.params.length];
+              if (localSlot) localSlot.type = castType;
+            }
+          }
+        }
+      } else {
+        compileExpression(ctx, fctx, decl.initializer, wasmType);
+      }
       fctx.body.push({ op: "local.set", index: localIdx });
     }
   }
