@@ -66,7 +66,9 @@ export function parseMeta(source: string): Test262Meta {
 /** Features we definitely cannot support in wasm */
 const UNSUPPORTED_FEATURES = new Set([
   // --- genuinely unsupported ---
-  "Symbol", "Symbol.iterator", "Symbol.toPrimitive", "Symbol.toStringTag",
+  // Note: Symbol.iterator is handled specially below — tests tagged with it
+  // but not actually using Symbol in their source body are allowed through.
+  "Symbol", "Symbol.toPrimitive", "Symbol.toStringTag",
   "Symbol.species", "Symbol.hasInstance", "Symbol.match", "Symbol.replace",
   "Symbol.search", "Symbol.split", "Symbol.unscopables", "Symbol.asyncIterator",
   "Symbol.matchAll",
@@ -114,6 +116,18 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
       if (UNSUPPORTED_FEATURES.has(feat)) {
         return { skip: true, reason: `unsupported feature: ${feat}` };
       }
+    }
+  }
+
+  // Symbol.iterator: many tests are tagged with this feature because the spec
+  // defines array destructuring/spread/for-of via the iterator protocol, but the
+  // test itself only uses plain arrays and never references Symbol. Allow those
+  // tests through; only skip if the source body actually uses Symbol.
+  if (meta.features?.includes("Symbol.iterator")) {
+    // Strip metadata block to check only the actual test body
+    const body = source.replace(/\/\*---[\s\S]*?---\*\//, "");
+    if (/\bSymbol\b/.test(body)) {
+      return { skip: true, reason: "unsupported feature: Symbol.iterator" };
     }
   }
 
