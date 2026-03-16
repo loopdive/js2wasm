@@ -722,15 +722,6 @@
       "cluster": "Standalone"
     },
     {
-      "id": 305,
-      "title": "Runtime failures -- computed property names and types/reference",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Property / Element"
-    },
-    {
       "id": 309,
       "title": "Expand test262 harness includes -- propertyIsEnumerable, fnGlobalObject",
       "priority": "low",
@@ -811,16 +802,6 @@
       "cluster": "Unclustered"
     },
     {
-      "id": 328,
-      "title": "OmittedExpression (array holes/elision)",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_ce": 15,
-      "cluster": "Assignment / Destructuring"
-    },
-    {
       "id": 329,
       "title": "Object.setPrototypeOf support",
       "priority": "low",
@@ -841,36 +822,6 @@
       "cluster": "Unclustered"
     },
     {
-      "id": 331,
-      "title": "Strict mode arguments/eval identifier restriction",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_ce": 27,
-      "cluster": "Scope / Identifiers"
-    },
-    {
-      "id": 332,
-      "title": "Export declaration at top level errors",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_ce": 17,
-      "cluster": "Modules / Imports"
-    },
-    {
-      "id": 333,
-      "title": "Dynamic import modifier syntax errors",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_ce": 12,
-      "cluster": "Modules / Imports"
-    },
-    {
       "id": 335,
       "title": "Parser comma errors (non-computed-property contexts)",
       "priority": "medium",
@@ -889,16 +840,6 @@
       "files": [],
       "test262_ce": 11,
       "cluster": "Standalone"
-    },
-    {
-      "id": 337,
-      "title": "Null property access at runtime",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_fail": 13,
-      "cluster": "Property / Element"
     },
     {
       "id": 338,
@@ -961,16 +902,6 @@
       "files": [],
       "test262_skip": 763,
       "cluster": "Unclustered"
-    },
-    {
-      "id": 344,
-      "title": "Wrapper constructors (new Number, new String, new Boolean)",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_skip": 762,
-      "cluster": "Built-ins / Runtime"
     },
     {
       "id": 345,
@@ -1082,16 +1013,6 @@
       "cluster": "Functions / Closures"
     },
     {
-      "id": 357,
-      "title": "IIFE tagged templates",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_skip": 17,
-      "cluster": "String / Template literals"
-    },
-    {
       "id": 358,
       "title": "Dynamic import support",
       "priority": "low",
@@ -1112,26 +1033,6 @@
       "cluster": "Built-ins / Runtime"
     },
     {
-      "id": 360,
-      "title": "JSON.stringify result comparison",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_skip": 30,
-      "cluster": "Test infrastructure"
-    },
-    {
-      "id": 361,
-      "title": "Runtime `in` operator for property checks",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_skip": 21,
-      "cluster": "Property / Element"
-    },
-    {
       "id": 362,
       "title": "typeof on member expressions",
       "priority": "low",
@@ -1140,28 +1041,6 @@
       "files": [],
       "test262_skip": 16,
       "cluster": "Property / Element"
-    },
-    {
-      "id": 363,
-      "title": "Tagged template .raw property and identity",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_skip": 24,
-      "cluster": "String / Template literals"
-    },
-    {
-      "id": 364,
-      "title": "call/apply on arrow functions",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [
-        "121"
-      ],
-      "files": [],
-      "test262_skip": 15,
-      "cluster": "Functions / Closures"
     },
     {
       "id": 365,
@@ -1186,26 +1065,6 @@
       "cluster": "Unclustered"
     },
     {
-      "id": 368,
-      "title": "Global/arrow `this` reference",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_skip": 13,
-      "cluster": "Functions / Closures"
-    },
-    {
-      "id": 369,
-      "title": "globalThis support",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_skip": 10,
-      "cluster": "Built-ins / Runtime"
-    },
-    {
       "id": 370,
       "title": "WeakMap and WeakSet",
       "priority": "low",
@@ -1214,16 +1073,6 @@
       "files": [],
       "test262_skip": 18,
       "cluster": "Unclustered"
-    },
-    {
-      "id": 371,
-      "title": "import.meta support",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_skip": 10,
-      "cluster": "Modules / Imports"
     },
     {
       "id": 372,
@@ -1256,16 +1105,6 @@
       "cluster": "Standalone"
     },
     {
-      "id": 375,
-      "title": "Unsupported expression: SuperKeyword",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_ce": 5,
-      "cluster": "Class / New"
-    },
-    {
       "id": 376,
       "title": "Decorator syntax support",
       "priority": "low",
@@ -1274,76 +1113,6 @@
       "files": [],
       "test262_ce": 10,
       "cluster": "Unclustered"
-    },
-    {
-      "id": 377,
-      "title": "Getter/setter accessor edge cases",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_ce": 10,
-      "cluster": "Class / New"
-    },
-    {
-      "id": 379,
-      "title": "Tuple/destructuring type errors",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_ce": 10,
-      "cluster": "Assignment / Destructuring"
-    },
-    {
-      "id": 380,
-      "title": "Unknown variable/function in test scope",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_ce": 25,
-      "cluster": "Scope / Identifiers"
-    },
-    {
-      "id": 382,
-      "title": "Spread argument in super/function calls",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_ce": 4,
-      "cluster": "Functions / Closures"
-    },
-    {
-      "id": 383,
-      "title": "Label not allowed / let declaration errors",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_ce": 8,
-      "cluster": "Diagnostics"
-    },
-    {
-      "id": 384,
-      "title": "replaceAll and other missing string methods",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_ce": 5,
-      "cluster": "Built-ins / Runtime"
-    },
-    {
-      "id": 385,
-      "title": "Array method argument count errors",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_ce": 5,
-      "cluster": "Built-ins / Runtime"
     },
     {
       "id": 386,
@@ -1374,10 +1143,6 @@
     {
       "source": "121",
       "target": 342
-    },
-    {
-      "source": "121",
-      "target": 364
     },
     {
       "source": 241,
@@ -1424,5 +1189,5 @@
       "target": 74
     }
   ],
-  "generated": "2026-03-13T14:26:45.088Z"
+  "generated": "2026-03-16T14:27:33.740Z"
 }
