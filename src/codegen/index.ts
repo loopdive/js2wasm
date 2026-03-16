@@ -8035,6 +8035,12 @@ function collectDeclarations(
     }
   }
 
+  // Resolve struct field types: now that all interfaces and type aliases are
+  // registered, re-resolve any externref fields that should be ref $struct.
+  // This fixes ordering issues (e.g. Outer references Inner, regardless of
+  // declaration order) and ensures nested destructuring works correctly.
+  resolveStructFieldTypes(ctx, sourceFile);
+
   // Collect class declarations (struct types + constructor/method functions)
   // Also collect class expressions in variable declarations: const C = class { ... }
   // Scan recursively into function bodies to find class expressions defined inside functions
@@ -8582,6 +8588,69 @@ function collectInterface(
   } as StructTypeDef);
   ctx.structMap.set(name, typeIdx);
   ctx.structFields.set(name, fields);
+}
+
+/**
+ * After all interfaces and type aliases are collected, re-resolve field types
+ * that were initially mapped to externref but should be ref $struct.
+ * This handles cross-references between interfaces regardless of declaration order.
+ */
+function resolveStructFieldTypes(
+  ctx: CodegenContext,
+  sourceFile: ts.SourceFile,
+): void {
+  for (const stmt of sourceFile.statements) {
+    if (!ts.isInterfaceDeclaration(stmt) && !ts.isTypeAliasDeclaration(stmt)) continue;
+
+    const name = ts.isInterfaceDeclaration(stmt) ? stmt.name.text : stmt.name.text;
+    const fields = ctx.structFields.get(name);
+    const structTypeIdx = ctx.structMap.get(name);
+    if (!fields || structTypeIdx === undefined) continue;
+
+    let changed = false;
+    for (let i = 0; i < fields.length; i++) {
+      const field = fields[i]!;
+      if (field.type.kind !== "externref") continue;
+
+      // Try to re-resolve using resolveWasmType which knows about structs
+      let memberTsType: ts.Type | undefined;
+      if (ts.isInterfaceDeclaration(stmt)) {
+        for (const member of stmt.members) {
+          if (ts.isPropertySignature(member) && member.name) {
+            const memberName = (member.name as ts.Identifier).text;
+            if (memberName === field.name) {
+              memberTsType = ctx.checker.getTypeAtLocation(member);
+              break;
+            }
+          }
+        }
+      } else {
+        const aliasType = ctx.checker.getTypeAtLocation(stmt);
+        const props = aliasType.getProperties();
+        for (const prop of props) {
+          if (prop.name === field.name) {
+            memberTsType = ctx.checker.getTypeOfSymbol(prop);
+            break;
+          }
+        }
+      }
+
+      if (!memberTsType) continue;
+      const resolved = resolveWasmType(ctx, memberTsType);
+      if (resolved.kind === "ref" || resolved.kind === "ref_null") {
+        field.type = resolved;
+        changed = true;
+      }
+    }
+
+    // If any fields changed, update the type definition in mod.types too
+    if (changed) {
+      const typeDef = ctx.mod.types[structTypeIdx];
+      if (typeDef && typeDef.kind === "struct") {
+        (typeDef as any).fields = fields;
+      }
+    }
+  }
 }
 
 function collectObjectType(
