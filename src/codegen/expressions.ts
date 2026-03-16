@@ -11888,11 +11888,65 @@ function compileElementAccess(
   }
 
   if (objType.kind !== "ref" && objType.kind !== "ref_null") {
-    ctx.errors.push({
-      message: "Element access on non-array value",
-      line: getLine(expr),
-      column: getCol(expr),
-    });
+    // Primitive types (f64, i32): box to externref and use __extern_get
+    if (objType.kind === "f64") {
+      // Box f64 to externref via __box_number
+      let boxIdx = ctx.funcMap.get("__box_number");
+      if (boxIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: boxIdx });
+      } else {
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "ref.null.extern" });
+      }
+    } else if (objType.kind === "i32") {
+      fctx.body.push({ op: "f64.convert_i32_s" });
+      let boxIdx = ctx.funcMap.get("__box_number");
+      if (boxIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: boxIdx });
+      } else {
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "ref.null.extern" });
+      }
+    } else {
+      ctx.errors.push({
+        message: "Element access on non-array value",
+        line: getLine(expr),
+        column: getCol(expr),
+      });
+      return null;
+    }
+    // Compile key as externref and call __extern_get
+    compileExpression(ctx, fctx, expr.argumentExpression, { kind: "externref" });
+    let funcIdx = ctx.funcMap.get("__extern_get");
+    if (funcIdx === undefined) {
+      const importsBefore = ctx.numImportFuncs;
+      const getType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+      addImport(ctx, "env", "__extern_get", { kind: "func", typeIdx: getType });
+      const added = ctx.numImportFuncs - importsBefore;
+      if (added > 0) {
+        for (const func of ctx.mod.functions) {
+          for (const instr of func.body) {
+            if ("funcIdx" in instr && typeof instr.funcIdx === "number") {
+              if (instr.funcIdx >= importsBefore) {
+                instr.funcIdx += added;
+              }
+            }
+          }
+        }
+        for (const instr of fctx.body) {
+          if ("funcIdx" in instr && typeof instr.funcIdx === "number") {
+            if (instr.funcIdx >= importsBefore) {
+              instr.funcIdx += added;
+            }
+          }
+        }
+      }
+      funcIdx = ctx.funcMap.get("__extern_get");
+    }
+    if (funcIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx });
+      return { kind: "externref" };
+    }
     return null;
   }
 
@@ -11983,12 +12037,44 @@ function compileElementAccess(
           return typeDef.fields[fieldIdx]!.type;
         }
       }
-      // Non-vec, non-tuple struct: element access not supported
-      ctx.errors.push({
-        message: `Element access on struct type '${typeDef.name ?? "unknown"}'`,
-        line: getLine(expr),
-        column: getCol(expr),
-      });
+      // Non-vec, non-tuple struct: fallback to externref conversion + __extern_get
+      // Convert struct ref (already on stack) to externref
+      fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+      // Compile the key as externref
+      compileExpression(ctx, fctx, expr.argumentExpression, { kind: "externref" });
+      // Call __extern_get(externref, externref) → externref
+      {
+        let funcIdx = ctx.funcMap.get("__extern_get");
+        if (funcIdx === undefined) {
+          const importsBefore = ctx.numImportFuncs;
+          const getType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+          addImport(ctx, "env", "__extern_get", { kind: "func", typeIdx: getType });
+          const added = ctx.numImportFuncs - importsBefore;
+          if (added > 0) {
+            for (const func of ctx.mod.functions) {
+              for (const instr of func.body) {
+                if ("funcIdx" in instr && typeof instr.funcIdx === "number") {
+                  if (instr.funcIdx >= importsBefore) {
+                    instr.funcIdx += added;
+                  }
+                }
+              }
+            }
+            for (const instr of fctx.body) {
+              if ("funcIdx" in instr && typeof instr.funcIdx === "number") {
+                if (instr.funcIdx >= importsBefore) {
+                  instr.funcIdx += added;
+                }
+              }
+            }
+          }
+          funcIdx = ctx.funcMap.get("__extern_get");
+        }
+        if (funcIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx });
+          return { kind: "externref" };
+        }
+      }
       return null;
     }
 
