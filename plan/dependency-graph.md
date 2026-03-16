@@ -309,7 +309,7 @@ Function calling patterns, closures, and `this` binding.
 | #   | Title | Tests | Ready? |
 |-----|-------|-------|--------|
 | 356 | Closure-as-value in assert and array-like objects | — | Ready |
-| 364 | call/apply on arrow functions | — | Ready |
+| 364 | call/apply on arrow functions | — | Review |
 | 368 | Global/arrow `this` reference | — | Ready |
 | 382 | Spread argument in super/function calls | — | Ready |
 

@@ -418,10 +418,6 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     return { skip: true, reason: "global/arrow this reference" };
   }
 
-  // Skip tests that use .call/.apply on closures or check thisArg
-  if (/\.\s*(call|apply)\s*\(/.test(source) && /=>\s*/.test(source)) {
-    return { skip: true, reason: "call/apply on arrow function" };
-  }
 
   // Skip tests where arrow function returns undefined (empty body => void)
   if (/=>\s*\{\s*\}/.test(source) && /assert[._]sameValue\s*\(\s*\w+\s*\(\s*\)\s*,\s*(undefined|void)/.test(source)) {
