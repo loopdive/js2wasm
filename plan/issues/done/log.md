@@ -264,3 +264,4 @@
 | 337 | 2026-03-16 | Null property access at runtime | Dep-driven |
 | 383 | 2026-03-16 | Label not allowed / let declaration errors | Dep-driven |
 | 361 | 2026-03-16 | Runtime `in` operator for property checks | Dep-driven |
+| 364 | 2026-03-16 | call/apply on arrow functions + module-level closures | Dep-driven |
