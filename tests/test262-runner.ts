@@ -414,9 +414,9 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     return { skip: true, reason: "Object.keys/values/entries not fully supported" };
   }
 
-  // Skip JSON.stringify tests with replacer/space args or string result comparison
-  if (/JSON\.stringify\s*\(/.test(source) && (/assert_sameValue/.test(source) || /replacer|space/.test(source))) {
-    return { skip: true, reason: "JSON.stringify result comparison not supported" };
+  // Skip JSON.stringify tests with replacer/space args (we only pass one argument)
+  if (/JSON\.stringify\s*\(/.test(source) && /replacer|space/.test(source)) {
+    return { skip: true, reason: "JSON.stringify replacer/space args not supported" };
   }
 
   // Skip tests where closures are stored in vars and then passed/called as externref
