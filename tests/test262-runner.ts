@@ -78,7 +78,6 @@ const UNSUPPORTED_FEATURES = new Set([
   "TypedArray", "DataView", "ArrayBuffer",
   "RegExp", "regexp-dotall", "regexp-lookbehind", "regexp-named-groups",
   "regexp-unicode-property-escapes",
-  "String.prototype.matchAll",
   "globalThis",
   "top-level-await",
   "json-superset", "well-formed-json-stringify",
