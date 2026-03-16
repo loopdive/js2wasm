@@ -281,3 +281,4 @@
 | 387 | 2026-03-16 | Unsupported assignment target fallback (342 CE) | Dep-driven |
 | 390 | 2026-03-16 | Element assignment on non-array types via __extern_set | Dep-driven |
 | 392 | 2026-03-16 | Unknown field access fallback on class structs | Dep-driven |
+| 391 | 2026-03-16 | Numeric index signature diagnostic suppression | Dep-driven |
