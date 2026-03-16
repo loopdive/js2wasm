@@ -61,6 +61,36 @@ export function buildImports(result: CompileResult): WebAssembly.Imports {
     __extern_length: (obj: any) => (obj == null ? 0 : obj.length),
     JSON_stringify: (v: any) => JSON.stringify(v),
     JSON_parse: (s: any) => JSON.parse(s),
+    // Generator support: buffer management and generator creation
+    __gen_create_buffer: () => [] as any[],
+    __gen_push_f64: (buf: any[], v: number) => { buf.push(v); },
+    __gen_push_i32: (buf: any[], v: number) => { buf.push(v); },
+    __gen_push_ref: (buf: any[], v: any) => { buf.push(v); },
+    __create_generator: (buf: any[]) => {
+      let index = 0;
+      return {
+        next() {
+          if (index < buf.length) {
+            return { value: buf[index++], done: false };
+          }
+          return { value: undefined, done: true };
+        },
+        return(value: any) {
+          index = buf.length;
+          return { value, done: true };
+        },
+        [Symbol.iterator]() { return this; },
+      };
+    },
+    __gen_next: (gen: any) => gen.next(),
+    __gen_result_value: (result: any) => result.value,
+    __gen_result_value_f64: (result: any) => Number(result.value),
+    __gen_result_done: (result: any) => result.done ? 1 : 0,
+    // Iterator protocol: host-delegated iteration for non-array types
+    __iterator: (obj: any) => obj[Symbol.iterator](),
+    __iterator_next: (iter: any) => iter.next(),
+    __iterator_done: (result: any) => result.done ? 1 : 0,
+    __iterator_value: (result: any) => result.value,
   };
   return {
     env,
