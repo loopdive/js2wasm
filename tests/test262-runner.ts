@@ -188,14 +188,8 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     return { skip: true, reason: "throw+try/catch control flow (throw→return causes hang)" };
   }
 
-  // Skip assert.throws tests where the callback has side effects checked by later assertions.
-  if (/\bassert\.throws\b/.test(source)) {
-    const lastThrowsIdx = source.lastIndexOf("assert.throws");
-    const afterThrows = source.slice(lastThrowsIdx);
-    if (/assert\.sameValue/.test(afterThrows) || /assert\s*\(/.test(afterThrows.slice(20))) {
-      return { skip: true, reason: "assert.throws with side-effect-dependent assertions" };
-    }
-  }
+  // assert.throws tests are now handled by transforming them into assert_throws(fn)
+  // calls with a try/catch shim, so we no longer skip them.
 
   // Skip tests that use delete operator — we don't support property deletion
   if (/\bdelete\s+/.test(source)) {
@@ -581,16 +575,16 @@ function replaceOtherThrows(code: string): string {
 }
 
 /**
- * Remove `assert.throws(ErrorType, fn)` calls entirely.
+ * Transform `assert.throws(ErrorType, fn)` into `assert_throws(fn)`.
  *
- * These test that calling `fn` throws an error of the given type. Our compiler
- * compiles `throw` to `unreachable` (a wasm trap) which is not catchable by
- * wasm-level try/catch. We can't test error-throwing behavior, so we strip
- * these calls. The rest of the test's assertions still run.
+ * These test that calling `fn` throws an error of the given type. We strip
+ * the error type argument (first arg) and optional message (third arg),
+ * keeping only the function callback (second arg). A shim `assert_throws`
+ * in the preamble calls fn() inside try/catch.
  *
  * Uses paren-counting to handle nested parens in the function argument.
  */
-function removeAssertThrows(code: string): string {
+function transformAssertThrows(code: string): string {
   const pattern = "assert.throws(";
   let result = "";
   let i = 0;
@@ -601,14 +595,22 @@ function removeAssertThrows(code: string): string {
       break;
     }
     result += code.slice(i, idx);
-    // Skip past the opening paren and find the matching close
+
+    // Parse the arguments inside assert.throws(...)
     let pos = idx + pattern.length;
     let depth = 1;
+    const args: string[] = [];
+    let currentArgStart = pos;
+
     while (pos < code.length && depth > 0) {
       const ch = code[pos]!;
       if (ch === "(") depth++;
       else if (ch === ")") depth--;
-      else if (ch === "'" || ch === '"' || ch === "`") {
+      else if (ch === "," && depth === 1) {
+        // Top-level comma — separates arguments
+        args.push(code.slice(currentArgStart, pos).trim());
+        currentArgStart = pos + 1;
+      } else if (ch === "'" || ch === '"' || ch === "`") {
         // Skip string literal
         const quote = ch;
         pos++;
@@ -617,12 +619,24 @@ function removeAssertThrows(code: string): string {
           pos++;
         }
       }
+      if (depth === 0) {
+        // End of assert.throws(...) — capture last argument (excluding closing paren)
+        args.push(code.slice(currentArgStart, pos).trim());
+      }
       pos++;
     }
+
+    // pos now points to the char after the closing paren
     // Skip optional semicolon and whitespace
-    while (pos < code.length && (code[pos] === ";" || code[pos] === " " || code[pos] === "\n" || code[pos] === "\r")) pos++;
-    // Replace with empty (the call is removed entirely)
-    i = pos;
+    let endPos = pos;
+    while (endPos < code.length && (code[endPos] === ";" || code[endPos] === " " || code[endPos] === "\n" || code[endPos] === "\r")) endPos++;
+
+    // args[0] = ErrorType, args[1] = fn, args[2] = optional message
+    if (args.length >= 2 && args[1]) {
+      result += `assert_throws(${args[1]});`;
+    }
+    // If we couldn't parse args properly, just strip the call (fallback)
+    i = endPos;
   }
   return result;
 }
@@ -973,8 +987,8 @@ export function wrapTest(source: string, meta?: Test262Meta): string {
   body = body.replace(/\bswitch\s*\(\s*(-?\d+(?:\.\d+)?)\s*\)/g, "switch ($1 as number)");
   body = body.replace(/\bswitch\s*\(\s*(null)\s*\)/g, "switch ($1 as any)");
 
-  // Remove assert.throws() calls — we can't test error-throwing in wasm
-  body = removeAssertThrows(body);
+  // Transform assert.throws(ErrorType, fn) → assert_throws(fn)
+  body = transformAssertThrows(body);
 
   // Strip undefined-related patterns that can't work in wasm
   // assert.sameValue(expr, undefined) / assert.sameValue(expr, void 0, msg) → comment out
@@ -1069,6 +1083,7 @@ export function wrapTest(source: string, meta?: Test262Meta): string {
   const needsBoolAssert = /\bassert_(sameValue|notSameValue)_bool\b/.test(body);
   const needsCompareArray = /\bcompareArray\b/.test(body);
   const needsAssertCompareArray = /\bassert_compareArray\b/.test(body);
+  const needsAssertThrows = /\bassert_throws\b/.test(body);
 
   let preamble = `let __fail: number = 0;
 
@@ -1095,6 +1110,18 @@ function assert_true(value: number): void {
     __fail = 1;
   }
 }`;
+
+  if (needsAssertThrows) {
+    preamble += `
+
+function assert_throws(fn: () => void): void {
+  try {
+    fn();
+  } catch (e) {
+    return;
+  }
+}`;
+  }
 
   if (needsStrAssert) {
     preamble += `
