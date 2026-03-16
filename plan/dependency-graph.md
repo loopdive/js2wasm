@@ -116,7 +116,7 @@ Can all run in parallel (different diagnostic codes).
 | ~~330~~ | ~~ClassExpression in unsupported positions~~ | — | **Done** |
 | 329 | Object.setPrototypeOf support | — | Ready |
 | 334 | Private class fields and methods | — | Ready |
-| 375 | Unsupported expression: SuperKeyword | — | Ready |
+| ~~375~~ | ~~Unsupported expression: SuperKeyword~~ | — | **Done** |
 | 377 | Getter/setter accessor edge cases | — | Ready |
 
 ---
