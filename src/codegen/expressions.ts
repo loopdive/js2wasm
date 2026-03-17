@@ -6474,12 +6474,8 @@ function compilePropertyCompoundAssignment(
     typeName = ctx.widenedVarStructMap.get(target.expression.text);
   }
   if (!typeName) {
-    ctx.errors.push({
-      message: `Cannot compile compound assignment on property '${propName}' — unresolvable type`,
-      line: getLine(target),
-      column: getCol(target),
-    });
-    return null;
+    // Fallback: treat as externref property access via __extern_get / __extern_set
+    return compilePropertyCompoundAssignmentExternref(ctx, fctx, target, rhs, op, propName);
   }
 
   // Check for accessor properties (get/set) before looking up struct fields
@@ -6525,19 +6521,14 @@ function compilePropertyCompoundAssignment(
   const structTypeIdx = ctx.structMap.get(typeName);
   const fields = ctx.structFields.get(typeName);
   if (structTypeIdx === undefined || !fields) {
-    ctx.errors.push({
-      message: `Cannot compile compound assignment on property '${propName}' of '${typeName}'`,
-      line: getLine(target),
-      column: getCol(target),
-    });
-    return null;
+    // Struct not found — fall back to externref property access
+    return compilePropertyCompoundAssignmentExternref(ctx, fctx, target, rhs, op, propName);
   }
 
   const fieldIdx = fields.findIndex((f) => f.name === propName);
   if (fieldIdx === -1) {
-    // Unknown field — gracefully emit NaN (reading undefined property in numeric context)
-    fctx.body.push({ op: "f64.const", value: NaN });
-    return { kind: "f64" };
+    // Unknown field — fall back to externref property access
+    return compilePropertyCompoundAssignmentExternref(ctx, fctx, target, rhs, op, propName);
   }
 
   const fieldType = fields[fieldIdx]!.type;
@@ -6578,6 +6569,219 @@ function compilePropertyCompoundAssignment(
 
   // Return the result (as f64)
   fctx.body.push({ op: "local.get", index: resultTmp });
+  return { kind: "f64" };
+}
+
+/**
+ * Fallback for compound assignment on a property access target when the
+ * struct type cannot be resolved statically.
+ *
+ * Strategy:
+ * 1. Compile the object expression to discover its runtime Wasm type.
+ * 2. If the result is a struct ref, look up the field by name in that struct
+ *    and perform struct.get / struct.set.
+ * 3. If the result is externref, use __extern_get / __extern_set with the
+ *    property name as a string key (same pattern as element access compound).
+ */
+function compilePropertyCompoundAssignmentExternref(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  target: ts.PropertyAccessExpression,
+  rhs: ts.Expression,
+  op: ts.SyntaxKind,
+  propName: string,
+): ValType | null {
+  // Compile the object expression to discover its runtime type
+  const objResult = compileExpression(ctx, fctx, target.expression);
+  if (!objResult) return null;
+
+  // --- Path A: The object compiled to a struct ref ---
+  if (objResult.kind === "ref" || objResult.kind === "ref_null") {
+    const typeIdx = (objResult as { typeIdx: number }).typeIdx;
+    // Find the struct fields by looking up which typeName maps to this typeIdx
+    let resolvedTypeName: string | undefined;
+    for (const [name, idx] of ctx.structMap.entries()) {
+      if (idx === typeIdx) { resolvedTypeName = name; break; }
+    }
+    if (resolvedTypeName) {
+      const fields = ctx.structFields.get(resolvedTypeName);
+      if (fields) {
+        let fieldIdx = fields.findIndex((f) => f.name === propName);
+
+        // If the field doesn't exist yet, try to add it dynamically from TS type info
+        if (fieldIdx === -1) {
+          const objTsType = ctx.checker.getTypeAtLocation(target.expression);
+          const tsProps = objTsType.getProperties?.();
+          if (tsProps) {
+            const tsProp = tsProps.find(p => p.name === propName);
+            if (tsProp) {
+              const propTsType = ctx.checker.getTypeOfSymbolAtLocation(tsProp, target);
+              const propWasmType = resolveWasmType(ctx, propTsType);
+              const newField: FieldDef = { name: propName, type: propWasmType, mutable: true };
+              fields.push(newField);
+              const typeDef = ctx.mod.types[typeIdx];
+              if (typeDef?.kind === "struct") {
+                typeDef.fields.push(newField);
+              }
+              fieldIdx = fields.length - 1;
+            }
+          }
+        }
+
+        if (fieldIdx !== -1) {
+          const fieldType = fields[fieldIdx]!.type;
+          // Save object to temp local
+          const objTmp = allocLocal(fctx, `__cmpd_obj_${fctx.locals.length}`, objResult);
+          fctx.body.push({ op: "local.set", index: objTmp });
+
+          // Read current value
+          fctx.body.push({ op: "local.get", index: objTmp });
+          fctx.body.push({ op: "struct.get", typeIdx, fieldIdx });
+
+          // Coerce field value to f64 for arithmetic
+          if (fieldType.kind !== "f64") {
+            coerceType(ctx, fctx, fieldType, { kind: "f64" });
+          }
+
+          // Compile RHS as f64
+          const rhsType = compileExpression(ctx, fctx, rhs, { kind: "f64" });
+          if (!rhsType) return null;
+
+          // Apply compound operation
+          emitCompoundOp(ctx, fctx, op);
+
+          // Save result
+          const resultTmp = allocLocal(fctx, `__cmpd_res_${fctx.locals.length}`, { kind: "f64" });
+          fctx.body.push({ op: "local.set", index: resultTmp });
+
+          // Store back
+          fctx.body.push({ op: "local.get", index: objTmp });
+          fctx.body.push({ op: "local.get", index: resultTmp });
+          if (fieldType.kind !== "f64") {
+            coerceType(ctx, fctx, { kind: "f64" }, fieldType);
+          }
+          fctx.body.push({ op: "struct.set", typeIdx, fieldIdx });
+
+          // Return the result as f64
+          fctx.body.push({ op: "local.get", index: resultTmp });
+          return { kind: "f64" };
+        }
+      }
+    }
+
+    // Struct ref but field not found — convert to externref and fall through to path B
+    fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+  } else if (objResult.kind !== "externref") {
+    // For f64/i32, box to externref
+    if (objResult.kind === "f64") {
+      const boxIdx = ctx.funcMap.get("__box_number");
+      if (boxIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: boxIdx });
+      } else {
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "f64.const", value: NaN });
+        return { kind: "f64" };
+      }
+    } else if (objResult.kind === "i32") {
+      fctx.body.push({ op: "f64.convert_i32_s" });
+      const boxIdx = ctx.funcMap.get("__box_number");
+      if (boxIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: boxIdx });
+      } else {
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "f64.const", value: NaN });
+        return { kind: "f64" };
+      }
+    } else {
+      // Unknown type — emit NaN as graceful fallback
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "f64.const", value: NaN });
+      return { kind: "f64" };
+    }
+  }
+
+  // --- Path B: externref-based property compound assignment ---
+  // Save obj to local
+  const objLocal = allocLocal(fctx, `__cmpd_pobj_${fctx.locals.length}`, { kind: "externref" });
+  fctx.body.push({ op: "local.set", index: objLocal });
+
+  // Ensure the property name string constant is registered
+  addStringConstantGlobal(ctx, propName);
+
+  // Compile propName as externref string and save to local
+  const keyResult = compileStringLiteral(ctx, fctx, propName);
+  if (!keyResult) return null;
+  if (keyResult.kind !== "externref") {
+    coerceType(ctx, fctx, keyResult, { kind: "externref" });
+  }
+  const keyLocal = allocLocal(fctx, `__cmpd_pkey_${fctx.locals.length}`, { kind: "externref" });
+  fctx.body.push({ op: "local.set", index: keyLocal });
+
+  // Read current value: __extern_get(obj, key) -> externref
+  fctx.body.push({ op: "local.get", index: objLocal });
+  fctx.body.push({ op: "local.get", index: keyLocal });
+  let getIdx = ctx.funcMap.get("__extern_get");
+  if (getIdx === undefined) {
+    const importsBefore = ctx.numImportFuncs;
+    const getType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", "__extern_get", { kind: "func", typeIdx: getType });
+    shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+    getIdx = ctx.funcMap.get("__extern_get");
+  }
+  if (getIdx === undefined) return null;
+  fctx.body.push({ op: "call", funcIdx: getIdx });
+
+  // Ensure union imports (including __unbox_number, __box_number) are registered
+  addUnionImports(ctx);
+
+  // Unbox to f64: __unbox_number(externref) -> f64
+  const unboxIdx = ctx.funcMap.get("__unbox_number");
+  if (unboxIdx === undefined) {
+    ctx.errors.push({ message: "Missing __unbox_number for compound externref property assignment", line: getLine(target), column: getCol(target) });
+    return null;
+  }
+  fctx.body.push({ op: "call", funcIdx: unboxIdx });
+
+  // Compile RHS as f64
+  const rhsType = compileExpression(ctx, fctx, rhs, { kind: "f64" });
+  if (!rhsType) return null;
+
+  // Apply compound operation (stack: [lhs_f64, rhs_f64] -> result_f64)
+  emitCompoundOp(ctx, fctx, op);
+
+  // Save result for return value
+  const resultLocal = allocLocal(fctx, `__cmpd_pres_${fctx.locals.length}`, { kind: "f64" });
+  fctx.body.push({ op: "local.set", index: resultLocal });
+
+  // Box result to externref: __box_number(f64) -> externref
+  fctx.body.push({ op: "local.get", index: resultLocal });
+  const boxIdx = ctx.funcMap.get("__box_number");
+  if (boxIdx === undefined) {
+    ctx.errors.push({ message: "Missing __box_number for compound externref property assignment", line: getLine(target), column: getCol(target) });
+    return null;
+  }
+  fctx.body.push({ op: "call", funcIdx: boxIdx });
+  const boxedLocal = allocLocal(fctx, `__cmpd_pboxed_${fctx.locals.length}`, { kind: "externref" });
+  fctx.body.push({ op: "local.set", index: boxedLocal });
+
+  // Write back: __extern_set(obj, key, boxed_result)
+  fctx.body.push({ op: "local.get", index: objLocal });
+  fctx.body.push({ op: "local.get", index: keyLocal });
+  fctx.body.push({ op: "local.get", index: boxedLocal });
+  let setIdx = ctx.funcMap.get("__extern_set");
+  if (setIdx === undefined) {
+    const importsBefore = ctx.numImportFuncs;
+    const setType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }], []);
+    addImport(ctx, "env", "__extern_set", { kind: "func", typeIdx: setType });
+    shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+    setIdx = ctx.funcMap.get("__extern_set");
+  }
+  if (setIdx !== undefined) {
+    fctx.body.push({ op: "call", funcIdx: setIdx });
+  }
+
+  // Return the result as f64
+  fctx.body.push({ op: "local.get", index: resultLocal });
   return { kind: "f64" };
 }
 
