@@ -314,6 +314,37 @@ export function valTypesMatch(a: ValType, b: ValType): boolean {
   return true;
 }
 
+/**
+ * Emit a local.set with automatic type coercion.
+ * If the value on the stack (stackType) doesn't match the local's declared type,
+ * inserts coercion instructions before the local.set to prevent Wasm validation errors.
+ */
+export function emitCoercedLocalSet(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  localIdx: number,
+  stackType: ValType,
+): void {
+  const localType = getLocalType(fctx, localIdx);
+  if (localType && !valTypesMatch(stackType, localType)) {
+    // Special case: ref_null is a subtype of ref with same typeIdx — no coercion needed
+    // But ref (non-nullable) from ref_null needs care
+    const sameRefTypeIdx =
+      (stackType.kind === "ref" || stackType.kind === "ref_null") &&
+      (localType.kind === "ref" || localType.kind === "ref_null") &&
+      (stackType as { typeIdx: number }).typeIdx === (localType as { typeIdx: number }).typeIdx;
+    if (sameRefTypeIdx && stackType.kind === "ref_null" && localType.kind === "ref") {
+      // ref_null -> ref: need ref.as_non_null
+      fctx.body.push({ op: "ref.as_non_null" } as Instr);
+    } else if (sameRefTypeIdx) {
+      // ref -> ref_null: subtype, no coercion needed
+    } else {
+      coerceType(ctx, fctx, stackType, localType);
+    }
+  }
+  fctx.body.push({ op: "local.set", index: localIdx });
+}
+
 /** Coerce a value on the stack from one type to another */
 export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: ValType, to: ValType): void {
   if (from.kind === to.kind) {
@@ -1488,9 +1519,11 @@ function compileArrowAsClosure(
     fields: structFields,
   });
 
-  // 4. Create the lifted function type: (ref $closure_struct, ...arrowParams) → results
+  // 4. Create the lifted function type: (ref_null $closure_struct, ...arrowParams) → results
+  // Use ref_null for __self so that var-hoisted variables shadowing the function name
+  // (e.g. `var g` inside `function g()`) can be default-initialized to null.
   const liftedParams: ValType[] = [
-    { kind: "ref", typeIdx: structTypeIdx },
+    { kind: "ref_null", typeIdx: structTypeIdx },
     ...arrowParams,
   ];
   let liftedFuncTypeIdx = addFuncType(ctx, liftedParams, closureResults, `${closureName}_type`);
@@ -1499,7 +1532,7 @@ function compileArrowAsClosure(
   const liftedFctx: FunctionContext = {
     name: closureName,
     params: [
-      { name: "__self", type: { kind: "ref", typeIdx: structTypeIdx } },
+      { name: "__self", type: { kind: "ref_null", typeIdx: structTypeIdx } },
       ...arrow.parameters.map((p, i) => ({
         name: ts.isIdentifier(p.name) ? p.name.text : `__param${i}`,
         type: arrowParams[i] ?? { kind: "f64" as const },
@@ -11418,10 +11451,15 @@ function compileIIFE(
   const results: ValType[] = returnType ? [returnType] : [];
 
   // Build parameter types: for mutable captures use ref cells, others pass by value
+  // Use ref_null for ref types to allow null default initialization (var hoisting)
   const captureParamTypes = captures.map((c) => {
     if (c.mutable) {
       const refCellTypeIdx = getOrRegisterRefCellType(ctx, c.type);
-      return { kind: "ref" as const, typeIdx: refCellTypeIdx };
+      return { kind: "ref_null" as const, typeIdx: refCellTypeIdx };
+    }
+    // Widen ref to ref_null so hoisted vars initialized to null can be passed
+    if (c.type.kind === "ref") {
+      return { kind: "ref_null" as const, typeIdx: (c.type as { typeIdx: number }).typeIdx };
     }
     return c.type;
   });

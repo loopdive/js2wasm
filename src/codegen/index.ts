@@ -27,7 +27,7 @@ import type {
   WasmModule,
 } from "../ir/types.js";
 import { createEmptyModule } from "../ir/types.js";
-import { compileExpression, resolveComputedKeyExpression } from "./expressions.js";
+import { compileExpression, resolveComputedKeyExpression, coerceType, valTypesMatch } from "./expressions.js";
 import { collectShapes } from "../shape-inference.js";
 import { compileStatement, hoistFunctionDeclarations } from "./statements.js";
 import { emitInlineMathFunctions } from "./math-helpers.js";
@@ -9387,7 +9387,10 @@ export function compileClassBodies(
 
         // Build the "then" block: compile default expression, local.set
         const savedBody = pushBody(fctx);
-        compileExpression(ctx, fctx, param.initializer, paramType);
+        const ctorDfltType = compileExpression(ctx, fctx, param.initializer, paramType);
+        if (ctorDfltType && !valTypesMatch(ctorDfltType, paramType)) {
+          coerceType(ctx, fctx, ctorDfltType, paramType);
+        }
         fctx.body.push({ op: "local.set", index: paramIdx });
         const thenInstrs = fctx.body;
         popBody(fctx, savedBody);
@@ -9618,7 +9621,10 @@ export function compileClassBodies(
 
         // Build the "then" block: compile default expression, local.set
         const savedBody = pushBody(fctx);
-        compileExpression(ctx, fctx, param.initializer, paramType);
+        const methDfltType = compileExpression(ctx, fctx, param.initializer, paramType);
+        if (methDfltType && !valTypesMatch(methDfltType, paramType)) {
+          coerceType(ctx, fctx, methDfltType, paramType);
+        }
         fctx.body.push({ op: "local.set", index: paramLocalIdx });
         const thenInstrs = fctx.body;
         popBody(fctx, savedBody);
@@ -9879,7 +9885,10 @@ export function compileClassBodies(
 
         // Build the "then" block: compile default expression, local.set
         const savedBody = pushBody(fctx);
-        compileExpression(ctx, fctx, param.initializer, paramType);
+        const getSetDfltType = compileExpression(ctx, fctx, param.initializer, paramType);
+        if (getSetDfltType && !valTypesMatch(getSetDfltType, paramType)) {
+          coerceType(ctx, fctx, getSetDfltType, paramType);
+        }
         fctx.body.push({ op: "local.set", index: paramLocalIdx });
         const thenInstrs = fctx.body;
         popBody(fctx, savedBody);
@@ -10244,7 +10253,11 @@ function compileFunctionBody(
 
     // Build the "then" block: compile default expression, local.set
     const savedBody = pushBody(fctx);
-    compileExpression(ctx, fctx, param.initializer, paramType);
+    const defaultResultType = compileExpression(ctx, fctx, param.initializer, paramType);
+    // Coerce if the default expression produced a different type than the param
+    if (defaultResultType && !valTypesMatch(defaultResultType, paramType)) {
+      coerceType(ctx, fctx, defaultResultType, paramType);
+    }
     fctx.body.push({ op: "local.set", index: paramIdx });
     const thenInstrs = fctx.body;
     popBody(fctx, savedBody);
