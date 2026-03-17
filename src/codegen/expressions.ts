@@ -2884,6 +2884,105 @@ function compileTypeofComparison(
   return { kind: "i32" };
 }
 
+/**
+ * Operators eligible for chain flattening — arithmetic and bitwise ops that
+ * take two numeric operands and produce a numeric result of the same type.
+ * We exclude ** (exponentiation) because it calls Math_pow and comparison
+ * operators because they produce i32 (boolean), not f64.
+ */
+const FLATTENABLE_OPS = new Set<ts.SyntaxKind>([
+  ts.SyntaxKind.PlusToken,
+  ts.SyntaxKind.MinusToken,
+  ts.SyntaxKind.AsteriskToken,
+  ts.SyntaxKind.SlashToken,
+  ts.SyntaxKind.PercentToken,
+  ts.SyntaxKind.AmpersandToken,
+  ts.SyntaxKind.BarToken,
+  ts.SyntaxKind.CaretToken,
+  ts.SyntaxKind.LessThanLessThanToken,
+  ts.SyntaxKind.GreaterThanGreaterThanToken,
+  ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken,
+]);
+
+/**
+ * Try to flatten a left-recursive chain of the same binary operator into an
+ * iterative compilation. For expressions like `a + b + c + d` (AST:
+ * `((a + b) + c) + d`), this avoids O(n) JS call-stack depth and improves
+ * compilation speed for long chains.
+ *
+ * Returns null if flattening is not applicable (not the same operator
+ * throughout, non-numeric operands, chain too short, etc.).
+ */
+function tryFlattenBinaryChain(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.BinaryExpression,
+  op: ts.SyntaxKind,
+): InnerResult | null {
+  // Only flatten operators that produce the same type as their inputs
+  if (!FLATTENABLE_OPS.has(op)) return null;
+
+  // Must have at least 3 operands (i.e., left is also a binary expr with same op)
+  if (!ts.isBinaryExpression(expr.left) || expr.left.operatorToken.kind !== op) {
+    return null;
+  }
+
+  // Collect all leaf operands by walking the left-recursive spine
+  const operands: ts.Expression[] = [];
+  let node: ts.Expression = expr;
+  while (ts.isBinaryExpression(node) && node.operatorToken.kind === op) {
+    operands.push(node.right);
+    node = node.left;
+  }
+  operands.push(node); // leftmost operand
+  operands.reverse(); // now in left-to-right order
+
+  // Verify all operands are numeric (not string, not any, not bigint)
+  // If plus and any operand is a string type, bail out — it's string concat
+  for (const operand of operands) {
+    const tsType = ctx.checker.getTypeAtLocation(operand);
+    if (isStringType(tsType)) return null;
+    if (isBigIntType(tsType)) return null;
+    if ((tsType.flags & ts.TypeFlags.Any) !== 0) return null;
+  }
+
+  // Determine numeric hint
+  const isDivOrPow = op === ts.SyntaxKind.SlashToken || op === ts.SyntaxKind.AsteriskAsteriskToken;
+  const numericHint: ValType = { kind: (ctx.fast && !isDivOrPow) ? "i32" : "f64" };
+
+  // Compile first operand
+  let resultType = compileExpression(ctx, fctx, operands[0], numericHint);
+  if (!resultType) return null;
+
+  // Compile subsequent operands, emitting the operator after each pair
+  for (let i = 1; i < operands.length; i++) {
+    let rightType = compileExpression(ctx, fctx, operands[i], numericHint);
+    if (!rightType) return null;
+
+    // Promote i32/f64 mismatch
+    if (resultType.kind === "i32" && rightType.kind === "f64") {
+      const tmpR = allocLocal(fctx, `__flat_r_${fctx.locals.length}`, { kind: "f64" });
+      fctx.body.push({ op: "local.set", index: tmpR });
+      fctx.body.push({ op: "f64.convert_i32_s" });
+      fctx.body.push({ op: "local.get", index: tmpR });
+      resultType = { kind: "f64" };
+      rightType = { kind: "f64" };
+    } else if (resultType.kind === "f64" && rightType.kind === "i32") {
+      fctx.body.push({ op: "f64.convert_i32_s" });
+      rightType = { kind: "f64" };
+    }
+
+    // Fast mode i32 path
+    if (ctx.fast && resultType.kind === "i32" && rightType.kind === "i32") {
+      resultType = compileI32BinaryOp(ctx, fctx, op, expr);
+    } else {
+      resultType = compileNumericBinaryOp(ctx, fctx, op, expr);
+    }
+  }
+
+  return resultType;
+}
+
 function compileBinaryExpression(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -3246,6 +3345,14 @@ function compileBinaryExpression(
       fctx.body.push({ op: "i32.const", value: 0 });
       return { kind: "i32" };
     }
+  }
+
+  // ── Flatten long chains of same numeric operator ──
+  // For expressions like a + b + c + d (left-recursive AST), flatten into an
+  // iterative loop to avoid deep JS recursion and improve compilation speed.
+  {
+    const flatResult = tryFlattenBinaryChain(ctx, fctx, expr, op);
+    if (flatResult !== null) return flatResult;
   }
 
   // Regular binary ops: evaluate both sides
