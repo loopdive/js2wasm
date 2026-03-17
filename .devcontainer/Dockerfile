@@ -118,4 +118,8 @@ RUN mkdir -p /home/node/.ssh && \
 # Auto-attach/create tmux session on SSH login
 RUN echo 'if [ -n "$SSH_CONNECTION" ] && [ -z "$TMUX" ] && [ -t 0 ]; then tmux ls 2>/dev/null; fi' >> /home/node/.bashrc
 
+# Install ttyd for web-based terminal access (phone/remote)
+RUN wget -q "https://github.com/tsl0922/ttyd/releases/latest/download/ttyd.$(uname -m)" -O /usr/local/bin/ttyd && \
+  chmod +x /usr/local/bin/ttyd
+
 USER node
