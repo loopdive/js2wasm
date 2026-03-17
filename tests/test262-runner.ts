@@ -423,10 +423,9 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
 
   // (Removed: unicode escape line terminator skip — compiler now handles these correctly)
 
-  // Skip Object.keys/values/entries tests that access result array elements
-  if (/Object\.(keys|values|entries)\s*\(/.test(source)) {
-    return { skip: true, reason: "Object.keys/values/entries not fully supported" };
-  }
+  // (Removed: Object.keys/values/entries skip — implemented in issue #355.
+  // Compile-time struct field expansion handles known object types.
+  // Edge cases like non-enumerable properties are caught by other skip filters.)
 
   // Skip JSON.stringify tests with replacer/space args (we only pass one argument)
   if (/JSON\.stringify\s*\(/.test(source) && /replacer|space/.test(source)) {
