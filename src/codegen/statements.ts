@@ -551,7 +551,7 @@ function compileVariableStatement(
  * identifiers will still be in scope (initialized to their zero/null defaults).
  * For `var` declarations these are already hoisted, but `let`/`const` are not.
  */
-function ensureBindingLocals(
+export function ensureBindingLocals(
   ctx: CodegenContext,
   fctx: FunctionContext,
   pattern: ts.BindingPattern,
@@ -998,23 +998,18 @@ function compileArrayDestructuring(
 
     // Handle rest element: const [a, ...rest] = arr
     if (ts.isBindingElement(element) && element.dotDotDotToken) {
-      // Compute rest length: original.length - i
+      // Compute rest length: max(0, original.length - i)
       const restLenLocal = allocLocal(fctx, `__rest_len_${fctx.locals.length}`, { kind: "i32" });
+      // First compute len - i and store it
       fctx.body.push({ op: "local.get", index: tmpLocal });
       fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 0 }); // length
       fctx.body.push({ op: "i32.const", value: i });
       fctx.body.push({ op: "i32.sub" } as Instr);
-      // Clamp to 0 if negative (more elements skipped than available)
+      fctx.body.push({ op: "local.set", index: restLenLocal });
+      // Clamp to 0 if negative: select(0, len-i, len-i < 0)
       fctx.body.push({ op: "i32.const", value: 0 } as Instr);
-      fctx.body.push({ op: "local.get", index: tmpLocal });
-      fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 0 });
-      fctx.body.push({ op: "i32.const", value: i });
-      fctx.body.push({ op: "i32.sub" } as Instr);
-      // select(0, len-i, len-i < 0) — picks 0 when negative
-      fctx.body.push({ op: "local.get", index: tmpLocal });
-      fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 0 });
-      fctx.body.push({ op: "i32.const", value: i });
-      fctx.body.push({ op: "i32.sub" } as Instr);
+      fctx.body.push({ op: "local.get", index: restLenLocal });
+      fctx.body.push({ op: "local.get", index: restLenLocal });
       fctx.body.push({ op: "i32.const", value: 0 } as Instr);
       fctx.body.push({ op: "i32.lt_s" } as Instr);
       fctx.body.push({ op: "select" } as Instr);
@@ -1060,19 +1055,16 @@ function compileArrayDestructuring(
           if (neBinding.dotDotDotToken && ts.isIdentifier(neBinding.name)) {
             // Nested rest: [...[...x]] — x gets a sub-array from j onwards
             const innerRestLenLocal = allocLocal(fctx, `__inner_rest_len_${fctx.locals.length}`, { kind: "i32" });
+            // Compute len - j and store it
             fctx.body.push({ op: "local.get", index: nestedTmpLocal });
             fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 0 });
             fctx.body.push({ op: "i32.const", value: j });
             fctx.body.push({ op: "i32.sub" } as Instr);
+            fctx.body.push({ op: "local.set", index: innerRestLenLocal });
+            // Clamp to 0: select(0, len-j, len-j < 0)
             fctx.body.push({ op: "i32.const", value: 0 } as Instr);
-            fctx.body.push({ op: "local.get", index: nestedTmpLocal });
-            fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 0 });
-            fctx.body.push({ op: "i32.const", value: j });
-            fctx.body.push({ op: "i32.sub" } as Instr);
-            fctx.body.push({ op: "local.get", index: nestedTmpLocal });
-            fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 0 });
-            fctx.body.push({ op: "i32.const", value: j });
-            fctx.body.push({ op: "i32.sub" } as Instr);
+            fctx.body.push({ op: "local.get", index: innerRestLenLocal });
+            fctx.body.push({ op: "local.get", index: innerRestLenLocal });
             fctx.body.push({ op: "i32.const", value: 0 } as Instr);
             fctx.body.push({ op: "i32.lt_s" } as Instr);
             fctx.body.push({ op: "select" } as Instr);
