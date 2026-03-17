@@ -7427,6 +7427,11 @@ export function collectClassDeclaration(
         const baseExpr = clause.types[0]!.expression;
         if (ts.isIdentifier(baseExpr)) {
           parentClassName = baseExpr.text;
+          // Guard against circular inheritance (e.g., class X extends X)
+          if (parentClassName === className) {
+            parentClassName = undefined;
+            break;
+          }
           parentStructTypeIdx = ctx.structMap.get(parentClassName);
           parentFields = ctx.structFields.get(parentClassName) ?? [];
           // Record parent-child relationship
@@ -7734,8 +7739,11 @@ export function collectClassDeclaration(
     }
 
     // Walk the parent chain to find all inherited methods and accessors
+    // Guard against circular inheritance (e.g., class X extends X)
+    const visitedAncestors = new Set<string>();
     let ancestor: string | undefined = parentClassName;
-    while (ancestor) {
+    while (ancestor && !visitedAncestors.has(ancestor)) {
+      visitedAncestors.add(ancestor);
       // Inherit methods
       for (const [key, funcIdx] of ctx.funcMap) {
         if (
@@ -9333,9 +9341,12 @@ export function compileClassBodies(
       const parentClassName = ctx.classParentMap.get(className);
       if (parentClassName) {
         // Walk the parent chain (grandparent first) and compile field initializers
+        // Guard against circular inheritance (e.g., class X extends X)
         const ancestors: string[] = [];
+        const visitedAnc = new Set<string>();
         let anc: string | undefined = parentClassName;
-        while (anc) {
+        while (anc && !visitedAnc.has(anc)) {
+          visitedAnc.add(anc);
           ancestors.unshift(anc);
           anc = ctx.classParentMap.get(anc);
         }
