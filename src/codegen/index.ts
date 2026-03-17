@@ -480,11 +480,11 @@ export function generateModule(
   collectFunctionalArrayImports(ctx, ast.sourceFile);
 
   // Collect union type helper imports (typeof checks, boxing/unboxing).
-  // Always register union imports eagerly to avoid late-addition index shifting
-  // that can corrupt savedBody instruction arrays (see #153). The pre-scan
-  // collectUnionImports catches many cases but misses some (e.g. coercion inside
-  // for-of loop bodies), so we unconditionally add them here.
-  addUnionImports(ctx);
+  // Only register when the source actually uses union types (heterogeneous unions,
+  // typeof expressions). Cases missed by collectUnionImports (e.g. coercion inside
+  // for-of loop bodies) are handled by on-demand addUnionImports calls at the
+  // specific codegen sites that need them, with proper index shifting (#153).
+  collectUnionImports(ctx, ast.sourceFile);
 
   // Collect generator imports (function* support)
   collectGeneratorImports(ctx, ast.sourceFile);
@@ -5744,6 +5744,30 @@ function collectUnionImports(
       found = true;
       return;
     }
+    // Generator functions use externref-based iteration which triggers
+    // ensureI32Condition with externref → needs __is_truthy from union imports
+    if (ts.isFunctionDeclaration(node) && node.asteriskToken && node.body) {
+      found = true;
+      return;
+    }
+    if (ts.isFunctionExpression(node) && node.asteriskToken) {
+      found = true;
+      return;
+    }
+    if (ts.isMethodDeclaration(node) && node.asteriskToken && node.body) {
+      found = true;
+      return;
+    }
+    // for-of on non-array types uses externref iterator protocol which
+    // may trigger ensureI32Condition with externref
+    if (ts.isForOfStatement(node)) {
+      const exprType = ctx.checker.getTypeAtLocation(node.expression);
+      const sym = (exprType as ts.TypeReference).symbol ?? (exprType as ts.Type).symbol;
+      if (sym?.name !== "Array") {
+        found = true;
+        return;
+      }
+    }
     ts.forEachChild(node, visit);
   }
 
@@ -5753,6 +5777,7 @@ function collectUnionImports(
     } else if (ts.isVariableStatement(stmt)) {
       for (const decl of stmt.declarationList.declarations) {
         if (decl.initializer) visit(decl.initializer);
+        visit(decl);
       }
     } else if (ts.isClassDeclaration(stmt)) {
       visit(stmt);
