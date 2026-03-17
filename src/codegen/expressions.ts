@@ -9695,14 +9695,44 @@ function compileCallExpression(
       return { kind: "externref" };
     }
 
-    // Handle Object.create(proto) — stub: compile and drop arg, return empty object (ref.null extern)
+    // Handle Object.create(proto) — create instances for known prototypes
     if (
       ts.isIdentifier(propAccess.expression) &&
       propAccess.expression.text === "Object" &&
       propAccess.name.text === "create" &&
       expr.arguments.length >= 1
     ) {
-      const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
+      const arg0 = expr.arguments[0]!;
+
+      // Object.create(null) → empty object (externref null)
+      if (arg0.kind === ts.SyntaxKind.NullKeyword) {
+        fctx.body.push({ op: "ref.null.extern" });
+        return { kind: "externref" };
+      }
+
+      // Object.create(Foo.prototype) → struct.new with default fields
+      if (
+        ts.isPropertyAccessExpression(arg0) &&
+        ts.isIdentifier(arg0.expression) &&
+        arg0.name.text === "prototype"
+      ) {
+        const protoClassName = arg0.expression.text;
+        if (ctx.classSet.has(protoClassName)) {
+          const structTypeIdx = ctx.structMap.get(protoClassName);
+          const fields = ctx.structFields.get(protoClassName);
+          if (structTypeIdx !== undefined && fields) {
+            // Push default values for all fields, then struct.new
+            for (const field of fields) {
+              pushDefaultValue(fctx, field.type);
+            }
+            fctx.body.push({ op: "struct.new", typeIdx: structTypeIdx });
+            return { kind: "ref", typeIdx: structTypeIdx };
+          }
+        }
+      }
+
+      // Fallback: compile and drop arg, return null externref
+      const argType = compileExpression(ctx, fctx, arg0);
       if (argType) {
         fctx.body.push({ op: "drop" });
       }
