@@ -354,9 +354,16 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
   // Object.freeze/seal/preventExtensions are now stubbed (no-op, return object)
   // Object.isFrozen/isSealed return false, Object.isExtensible returns true
 
-  // Skip tests using hasOwnProperty or propertyIsEnumerable
-  if (/hasOwnProperty|propertyIsEnumerable/.test(source)) {
-    return { skip: true, reason: "property introspection not supported" };
+  // Skip tests using propertyIsEnumerable (not fully supported on built-ins)
+  if (/propertyIsEnumerable/.test(source)) {
+    return { skip: true, reason: "propertyIsEnumerable not supported" };
+  }
+
+  // Skip tests using Object.prototype.hasOwnProperty.call/apply pattern --
+  // our hasOwnProperty implementation (#341) handles obj.hasOwnProperty(key)
+  // directly but not the .call() indirection through the prototype.
+  if (/Object\.prototype\.hasOwnProperty\.(call|apply)/.test(source)) {
+    return { skip: true, reason: "Object.prototype.hasOwnProperty.call not supported" };
   }
 
   // Skip tests using prototype chain manipulation (#343: narrowed from broad

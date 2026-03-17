@@ -46,7 +46,7 @@ TypeScript-to-WebAssembly compiler using WasmGC.
 
 ## Test262
 - test262.test.ts has no assertions — all vitest tests pass; conformance is tracked via report
-- Skip filters: eval, with, wrapper constructors, NaN/undefined loops, delete, Object.defineProperty/create/freeze/seal, hasOwnProperty, prototype chain, throw+try/catch, for-of+generators, object as loop condition
+- Skip filters: eval, with, wrapper constructors, NaN/undefined loops, delete, Object.defineProperty/create/freeze/seal, Object.prototype.hasOwnProperty.call, propertyIsEnumerable, prototype chain, throw+try/catch, for-of+generators, object as loop condition
 - Issues #138-#256 cover all identified failure patterns
 - parseInt import: `(externref, f64) -> f64` with NaN sentinel for missing radix
 
