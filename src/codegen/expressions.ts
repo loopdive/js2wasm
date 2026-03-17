@@ -16462,6 +16462,17 @@ function compileArrayPrototypeIndexOf(
   const eqOp = elemType.kind === "f64" ? "f64.eq" : "i32.eq";
   const getOp = elemType.kind === "i16" ? "array.get_s" : "array.get";
 
+  // Use a result local instead of `return` to avoid returning from the
+  // enclosing function when indexOf is inlined.
+  const resType: ValType = ctx.fast ? { kind: "i32" } : { kind: "f64" };
+  const resTmp = allocLocal(fctx, `__apc_iof_res_${fctx.locals.length}`, resType);
+  if (ctx.fast) {
+    fctx.body.push({ op: "i32.const", value: -1 });
+  } else {
+    fctx.body.push({ op: "f64.const", value: -1 });
+  }
+  fctx.body.push({ op: "local.set", index: resTmp });
+
   const loopBody: Instr[] = [
     { op: "local.get", index: iTmp },
     { op: "local.get", index: lenTmp },
@@ -16477,12 +16488,14 @@ function compileArrayPrototypeIndexOf(
       then: ctx.fast
         ? [
             { op: "local.get", index: iTmp } as Instr,
-            { op: "return" } as Instr,
+            { op: "local.set", index: resTmp } as Instr,
+            { op: "br", depth: 2 } as Instr,
           ]
         : [
             { op: "local.get", index: iTmp } as Instr,
             { op: "f64.convert_i32_s" } as Instr,
-            { op: "return" } as Instr,
+            { op: "local.set", index: resTmp } as Instr,
+            { op: "br", depth: 2 } as Instr,
           ],
     } as Instr,
 
@@ -16501,11 +16514,11 @@ function compileArrayPrototypeIndexOf(
     ],
   });
 
+  fctx.body.push({ op: "local.get", index: resTmp });
+
   if (ctx.fast) {
-    fctx.body.push({ op: "i32.const", value: -1 });
     return { kind: "i32" };
   }
-  fctx.body.push({ op: "f64.const", value: -1 });
   return { kind: "f64" };
 }
 
@@ -16549,6 +16562,12 @@ function compileArrayPrototypeIncludes(
   const eqOp = elemType.kind === "f64" ? "f64.eq" : "i32.eq";
   const getOp = elemType.kind === "i16" ? "array.get_s" : "array.get";
 
+  // Use a result local instead of `return` to avoid returning from the
+  // enclosing function when includes is inlined.
+  const resTmp = allocLocal(fctx, `__apc_inc_res_${fctx.locals.length}`, { kind: "i32" });
+  fctx.body.push({ op: "i32.const", value: 0 });
+  fctx.body.push({ op: "local.set", index: resTmp });
+
   const loopBody: Instr[] = [
     { op: "local.get", index: iTmp },
     { op: "local.get", index: lenTmp },
@@ -16562,7 +16581,8 @@ function compileArrayPrototypeIncludes(
     { op: "if", blockType: { kind: "empty" },
       then: [
         { op: "i32.const", value: 1 } as Instr,
-        { op: "return" } as Instr,
+        { op: "local.set", index: resTmp } as Instr,
+        { op: "br", depth: 2 } as Instr, // break out of block
       ],
     } as Instr,
     { op: "local.get", index: iTmp },
@@ -16580,7 +16600,7 @@ function compileArrayPrototypeIncludes(
     ],
   });
 
-  fctx.body.push({ op: "i32.const", value: 0 });
+  fctx.body.push({ op: "local.get", index: resTmp });
   return { kind: "i32" };
 }
 
@@ -16640,7 +16660,13 @@ function compileArrayPrototypeEvery(
 
   const getOp = elemType.kind === "i16" ? "array.get_s" : "array.get";
 
-  // Loop: for each element, call the closure; if it returns falsy, return 0
+  // Use a result local instead of `return` to avoid returning from the
+  // enclosing function when every is inlined.
+  const resTmp = allocLocal(fctx, `__apc_ev_res_${fctx.locals.length}`, { kind: "i32" });
+  fctx.body.push({ op: "i32.const", value: 1 }); // default: all passed
+  fctx.body.push({ op: "local.set", index: resTmp });
+
+  // Loop: for each element, call the closure; if it returns falsy, set result to 0
   const loopBody: Instr[] = [
     { op: "local.get", index: iTmp },
     { op: "local.get", index: lenTmp },
@@ -16671,7 +16697,8 @@ function compileArrayPrototypeEvery(
     { op: "if", blockType: { kind: "empty" },
       then: [
         { op: "i32.const", value: 0 } as Instr,
-        { op: "return" } as Instr,
+        { op: "local.set", index: resTmp } as Instr,
+        { op: "br", depth: 2 } as Instr, // break out of block
       ],
     } as Instr,
 
@@ -16690,7 +16717,7 @@ function compileArrayPrototypeEvery(
     ],
   });
 
-  fctx.body.push({ op: "i32.const", value: 1 });
+  fctx.body.push({ op: "local.get", index: resTmp });
   return { kind: "i32" };
 }
 
@@ -16739,6 +16766,12 @@ function compileArrayPrototypeSome(
 
   const getOp = elemType.kind === "i16" ? "array.get_s" : "array.get";
 
+  // Use a result local instead of `return` to avoid returning from the
+  // enclosing function when some is inlined.
+  const resTmp = allocLocal(fctx, `__apc_some_res_${fctx.locals.length}`, { kind: "i32" });
+  fctx.body.push({ op: "i32.const", value: 0 }); // default: none matched
+  fctx.body.push({ op: "local.set", index: resTmp });
+
   const loopBody: Instr[] = [
     { op: "local.get", index: iTmp },
     { op: "local.get", index: lenTmp },
@@ -16759,7 +16792,8 @@ function compileArrayPrototypeSome(
     { op: "if", blockType: { kind: "empty" },
       then: [
         { op: "i32.const", value: 1 } as Instr,
-        { op: "return" } as Instr,
+        { op: "local.set", index: resTmp } as Instr,
+        { op: "br", depth: 2 } as Instr, // break out of block
       ],
     } as Instr,
     { op: "local.get", index: iTmp },
@@ -16777,7 +16811,7 @@ function compileArrayPrototypeSome(
     ],
   });
 
-  fctx.body.push({ op: "i32.const", value: 0 });
+  fctx.body.push({ op: "local.get", index: resTmp });
   return { kind: "i32" };
 }
 
@@ -17173,6 +17207,17 @@ function compileArrayIndexOf(
   const eqOp = elemType.kind === "f64" ? "f64.eq" : "i32.eq";
   const getOp = elemType.kind === "i16" ? "array.get_s" : "array.get";
 
+  // Use a result local instead of `return` to avoid returning from the
+  // enclosing function when indexOf is inlined.
+  const resType: ValType = ctx.fast ? { kind: "i32" } : { kind: "f64" };
+  const resTmp = allocLocal(fctx, `__arr_iof_res_${fctx.locals.length}`, resType);
+  if (ctx.fast) {
+    fctx.body.push({ op: "i32.const", value: -1 });
+  } else {
+    fctx.body.push({ op: "f64.const", value: -1 });
+  }
+  fctx.body.push({ op: "local.set", index: resTmp });
+
   const loopBody: Instr[] = [
     { op: "local.get", index: iTmp },
     { op: "local.get", index: lenTmp },
@@ -17188,12 +17233,14 @@ function compileArrayIndexOf(
       then: ctx.fast
         ? [
             { op: "local.get", index: iTmp } as Instr,
-            { op: "return" } as Instr,
+            { op: "local.set", index: resTmp } as Instr,
+            { op: "br", depth: 2 } as Instr, // break out of block
           ]
         : [
             { op: "local.get", index: iTmp } as Instr,
             { op: "f64.convert_i32_s" } as Instr,
-            { op: "return" } as Instr,
+            { op: "local.set", index: resTmp } as Instr,
+            { op: "br", depth: 2 } as Instr, // break out of block
           ],
     } as Instr,
 
@@ -17212,11 +17259,11 @@ function compileArrayIndexOf(
     ],
   });
 
+  fctx.body.push({ op: "local.get", index: resTmp });
+
   if (ctx.fast) {
-    fctx.body.push({ op: "i32.const", value: -1 });
     return { kind: "i32" };
   }
-  fctx.body.push({ op: "f64.const", value: -1 });
   return { kind: "f64" };
 }
 
@@ -18918,6 +18965,20 @@ function compileArrayFind(
     ];
   }
 
+  // Use a result local instead of `return` to avoid returning from the
+  // enclosing function when find is inlined.
+  const findResType: ValType = ctx.fast ? elemType : { kind: "f64" };
+  const findResTmp = allocLocal(fctx, `__arr_find_res_${fctx.locals.length}`, findResType);
+  // Default: not found. For f64 mode, NaN (0/0); for fast/i32, 0.
+  if (ctx.fast) {
+    fctx.body.push({ op: "i32.const", value: 0 });
+  } else {
+    fctx.body.push({ op: "f64.const", value: 0 });
+    fctx.body.push({ op: "f64.const", value: 0 });
+    fctx.body.push({ op: "f64.div" }); // NaN
+  }
+  fctx.body.push({ op: "local.set", index: findResTmp });
+
   const loopBody: Instr[] = [
     { op: "local.get", index: iTmp } as Instr,
     { op: "local.get", index: lenTmp } as Instr,
@@ -18934,7 +18995,8 @@ function compileArrayFind(
       then: [
         { op: "local.get", index: elemTmpLocal } as Instr,
         ...(!ctx.fast && elemType.kind === "i32" ? [{ op: "f64.convert_i32_s" } as Instr] : []),
-        { op: "return" } as Instr,
+        { op: "local.set", index: findResTmp } as Instr,
+        { op: "br", depth: 2 } as Instr, // break out of block
       ],
     } as Instr,
 
@@ -18953,13 +19015,11 @@ function compileArrayFind(
     ],
   });
 
+  fctx.body.push({ op: "local.get", index: findResTmp });
+
   if (ctx.fast) {
-    fctx.body.push({ op: "i32.const", value: 0 });
-    return { kind: "i32" };
+    return elemType;
   }
-  fctx.body.push({ op: "f64.const", value: 0 });
-  fctx.body.push({ op: "f64.const", value: 0 });
-  fctx.body.push({ op: "f64.div" });
   return { kind: "f64" };
 }
 
@@ -19062,6 +19122,17 @@ function compileArrayFindIndex(
     ];
   }
 
+  // Use a result local instead of `return` to avoid returning from the
+  // enclosing function when findIndex is inlined.
+  const fiResType: ValType = ctx.fast ? { kind: "i32" } : { kind: "f64" };
+  const fiResTmp = allocLocal(fctx, `__arr_fi_res_${fctx.locals.length}`, fiResType);
+  if (ctx.fast) {
+    fctx.body.push({ op: "i32.const", value: -1 });
+  } else {
+    fctx.body.push({ op: "f64.const", value: -1 });
+  }
+  fctx.body.push({ op: "local.set", index: fiResTmp });
+
   const loopBody: Instr[] = [
     { op: "local.get", index: iTmp } as Instr,
     { op: "local.get", index: lenTmp } as Instr,
@@ -19073,7 +19144,8 @@ function compileArrayFindIndex(
       then: [
         { op: "local.get", index: iTmp } as Instr,
         ...(ctx.fast ? [] : [{ op: "f64.convert_i32_s" } as Instr]),
-        { op: "return" } as Instr,
+        { op: "local.set", index: fiResTmp } as Instr,
+        { op: "br", depth: 2 } as Instr, // break out of block
       ],
     } as Instr,
 
@@ -19092,11 +19164,11 @@ function compileArrayFindIndex(
     ],
   });
 
+  fctx.body.push({ op: "local.get", index: fiResTmp });
+
   if (ctx.fast) {
-    fctx.body.push({ op: "i32.const", value: -1 });
     return { kind: "i32" };
   }
-  fctx.body.push({ op: "f64.const", value: -1 });
   return { kind: "f64" };
 }
 
@@ -19676,7 +19748,18 @@ function compileArrayLastIndexOf(
   const eqOp = elemType.kind === "f64" ? "f64.eq" : "i32.eq";
   const getOp = elemType.kind === "i16" ? "array.get_s" : "array.get";
 
-  // Loop: while (i >= 0) { if data[i] == val return i; i--; }
+  // Use a result local instead of `return` to avoid returning from the
+  // enclosing function when lastIndexOf is inlined.
+  const liofResType: ValType = ctx.fast ? { kind: "i32" } : { kind: "f64" };
+  const liofResTmp = allocLocal(fctx, `__arr_liof_res_${fctx.locals.length}`, liofResType);
+  if (ctx.fast) {
+    fctx.body.push({ op: "i32.const", value: -1 });
+  } else {
+    fctx.body.push({ op: "f64.const", value: -1 });
+  }
+  fctx.body.push({ op: "local.set", index: liofResTmp });
+
+  // Loop: while (i >= 0) { if data[i] == val, store i and break; i--; }
   const loopBody: Instr[] = [
     // if (i < 0) break
     { op: "local.get", index: iTmp },
@@ -19684,7 +19767,7 @@ function compileArrayLastIndexOf(
     { op: "i32.lt_s" },
     { op: "br_if", depth: 1 },
 
-    // if (data[i] == val) return i
+    // if (data[i] == val) store result and break
     { op: "local.get", index: dataTmp },
     { op: "local.get", index: iTmp },
     { op: getOp, typeIdx: arrTypeIdx } as Instr,
@@ -19694,12 +19777,14 @@ function compileArrayLastIndexOf(
       then: ctx.fast
         ? [
             { op: "local.get", index: iTmp } as Instr,
-            { op: "return" } as Instr,
+            { op: "local.set", index: liofResTmp } as Instr,
+            { op: "br", depth: 2 } as Instr, // break out of block
           ]
         : [
             { op: "local.get", index: iTmp } as Instr,
             { op: "f64.convert_i32_s" } as Instr,
-            { op: "return" } as Instr,
+            { op: "local.set", index: liofResTmp } as Instr,
+            { op: "br", depth: 2 } as Instr, // break out of block
           ],
     } as Instr,
 
@@ -19719,14 +19804,12 @@ function compileArrayLastIndexOf(
     ],
   });
 
-  // Not found → return -1
+  fctx.body.push({ op: "local.get", index: liofResTmp });
+
   if (ctx.fast) {
-    fctx.body.push({ op: "i32.const", value: -1 });
     return { kind: "i32" };
-  } else {
-    fctx.body.push({ op: "f64.const", value: -1 });
-    return { kind: "f64" };
   }
+  return { kind: "f64" };
 }
 
 /** Check if an expression is statically known to be NaN at compile time */
