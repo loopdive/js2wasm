@@ -4034,12 +4034,41 @@ function compileI64BinaryOp(
       fctx.body.push({ op: "i64.rem_s" });
       return { kind: "i64" };
     case ts.SyntaxKind.AsteriskAsteriskToken: {
-      // BigInt ** not supported in wasm — report error
-      ctx.errors.push({
-        message: "BigInt exponentiation (**) is not supported in Wasm",
-        line: getLine(expr),
-        column: getCol(expr),
-      });
+      // BigInt exponentiation: base ** exp implemented as a loop
+      // Stack: [base: i64, exp: i64] → [result: i64]
+      const expLocal = allocLocal(fctx, `__bigpow_exp_${fctx.locals.length}`, { kind: "i64" });
+      const baseLocal = allocLocal(fctx, `__bigpow_base_${fctx.locals.length}`, { kind: "i64" });
+      const resultLocal = allocLocal(fctx, `__bigpow_result_${fctx.locals.length}`, { kind: "i64" });
+      // Save exponent (top of stack), then base
+      fctx.body.push({ op: "local.set", index: expLocal });
+      fctx.body.push({ op: "local.set", index: baseLocal });
+      // result = 1
+      fctx.body.push({ op: "i64.const", value: 1n });
+      fctx.body.push({ op: "local.set", index: resultLocal });
+      // block $break { loop $continue {
+      fctx.body.push({ op: "block", blockType: { kind: "empty" }, body: [
+        { op: "loop", blockType: { kind: "empty" }, body: [
+          // if exp <= 0 then break
+          { op: "local.get", index: expLocal },
+          { op: "i64.const", value: 0n },
+          { op: "i64.le_s" },
+          { op: "br_if", depth: 1 }, // break out of block
+          // result = result * base
+          { op: "local.get", index: resultLocal },
+          { op: "local.get", index: baseLocal },
+          { op: "i64.mul" },
+          { op: "local.set", index: resultLocal },
+          // exp = exp - 1
+          { op: "local.get", index: expLocal },
+          { op: "i64.const", value: 1n },
+          { op: "i64.sub" },
+          { op: "local.set", index: expLocal },
+          // continue loop
+          { op: "br", depth: 0 },
+        ] as unknown as Instr[] },
+      ] as unknown as Instr[] } as unknown as Instr);
+      // Push result
+      fctx.body.push({ op: "local.get", index: resultLocal });
       return { kind: "i64" };
     }
     case ts.SyntaxKind.EqualsEqualsEqualsToken:
@@ -16176,6 +16205,9 @@ function compileTemplateExpression(
   if (ctx.fast && ctx.nativeStrTypeIdx >= 0) {
     return compileNativeTemplateExpression(ctx, fctx, expr);
   }
+
+  // Ensure string imports (concat, etc.) are available — template literals need concat
+  addStringImports(ctx);
 
   const concatIdx = ctx.funcMap.get("concat");
   const toStrIdx = ctx.funcMap.get("number_toString");

@@ -2,6 +2,7 @@ import ts from "typescript";
 import type { MultiTypedAST, TypedAST } from "../checker/index.js";
 import { eliminateDeadImports } from "./dead-elimination.js";
 import {
+  isBigIntType,
   isBooleanType,
   isExternalDeclaredClass,
   isHeterogeneousUnion,
@@ -835,11 +836,11 @@ function collectPrimitiveMethodImports(
         needed.add("number_toFixed");
       }
     }
-    // Template expressions with number substitutions need number_toString
+    // Template expressions with number/boolean/bigint substitutions need number_toString
     if (ts.isTemplateExpression(node)) {
       for (const span of node.templateSpans) {
         const spanType = ctx.checker.getTypeAtLocation(span.expression);
-        if (isNumberType(spanType) || isBooleanType(spanType)) {
+        if (isNumberType(spanType) || isBooleanType(spanType) || isBigIntType(spanType)) {
           needed.add("number_toString");
         }
       }
