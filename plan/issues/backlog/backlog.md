@@ -121,15 +121,21 @@ _Goal: Remaining runtime failures, codegen quality, and test infrastructure expa
 
 ## Current — Test262 Error-Driven (March 2026)
 
-_Baseline: 22,767 tests — 4,749 pass (20.9%), 1,212 fail, 3,695 CE, 13,111 skip. Issues prioritized by test impact, executed dependency-driven (see `plan/dependency-graph.md`)._
+_Updated baseline (2026-03-16): 22,959 tests — 5,312 pass (23.1%), 2,010 fail, 7,314 CE, 8,323 skip. Issues prioritized by test impact, executed dependency-driven (see `plan/dependency-graph.md`)._
+
+### Wasm validation (3,672 CE) — CRITICAL
+
+| #   | Feature | Type | Count |
+| --- | ------- | ---- | ----- |
+| [401](../ready/401.md) | Wasm validation errors (call args, struct.new, type mismatch, stack) | CE | 3672 |
 
 ### Destructuring (1,219 tests blocked)
 
 | #   | Feature | Type | Count |
 | --- | ------- | ---- | ----- |
-| [394](../ready/394.md) | Destructuring wrong return values | FAIL | 326 |
-| [396](../ready/396.md) | Null pointer in destructuring | FAIL | 64 |
-| [387](../ready/387.md) | Unsupported call expression (71% destructuring) | CE | 1165 |
+| [394](../done/394.md) | Destructuring wrong return values | FAIL | 1438 |
+| [396](../done/396.md) | Null pointer in destructuring | FAIL | 118 |
+| [387](../done/387.md) | Unsupported call expression (71% destructuring) | CE | 2356 |
 | [388](../ready/388.md) | Element access on externref | CE | 104 |
 | [389](../ready/389.md) | Element access on class instances | CE | 76 |
 | [390](../ready/390.md) | Assignment to non-array types | CE | 70 |
@@ -138,18 +144,29 @@ _Baseline: 22,767 tests — 4,749 pass (20.9%), 1,212 fail, 3,695 CE, 13,111 ski
 
 | #   | Feature | Type | Count |
 | --- | ------- | ---- | ----- |
-| [398](../ready/398.md) | Private field/method wrong values | FAIL | 98 |
-| [399](../ready/399.md) | Prototype method wrong values | FAIL | 72 |
-| [395](../ready/395.md) | "fn is not a function" (call/apply + callbacks) | FAIL | 70 |
+| [398](../done/398.md) | Private field/method wrong values | FAIL | 98 |
+| [399](../done/399.md) | Prototype method wrong values | FAIL | 72 |
+| [395](../done/395.md) | "fn is not a function" (call/apply + callbacks) | FAIL | 70 |
 | [392](../ready/392.md) | Unknown field access on class structs | CE | 18 |
 
 ### Compile error patterns
 
 | #   | Feature | Type | Count |
 | --- | ------- | ---- | ----- |
+| [404](../ready/404.md) | Compound assignment on unresolvable property type | CE | 88 |
+| [403](../ready/403.md) | import.source meta-property errors | CE | 86 |
+| [406](../ready/406.md) | 'base' is possibly null errors | CE | 81 |
+| [405](../ready/405.md) | Internal compiler errors (undefined properties) | CE | 64 |
+| [407](../ready/407.md) | Deferred imports module flag error | CE | 54 |
 | [391](../ready/391.md) | Numeric index signature on objects | CE | 30 |
 | [393](../ready/393.md) | Compound assignment on externref element | CE | 13 |
-| [397](../ready/397.md) | assert.throws test support | SKIP | 952 |
+
+### Test infrastructure
+
+| #   | Feature | Type | Count |
+| --- | ------- | ---- | ----- |
+| [402](../ready/402.md) | Negative tests: expected SyntaxError not raised | FAIL | 434 |
+| [397](../done/397.md) | assert.throws test support | SKIP | 952 |
 
 ---
 

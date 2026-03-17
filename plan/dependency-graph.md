@@ -183,6 +183,7 @@ Can all run in parallel (different diagnostic codes).
 | ~~325~~ | ~~Null pointer dereference at runtime~~ | 32 fail | **Done** |
 | 328 | OmittedExpression (array holes/elision) | — | Ready |
 | 379 | Tuple/destructuring type errors | — | Ready |
+| 404 | Compound assignment on unresolvable property type | 88 CE | **Ready** |
 
 ---
 
@@ -256,6 +257,9 @@ Can all run in parallel (different diagnostic codes).
 #277 (local.set externref vs concrete) ── DONE
 #178 (LEB128 / large type indices) ── DONE
 #315 (systematic validation audit) ── ready
+#401 (Wasm validation errors — 3672 CE) ── ready (supersedes #315 scope)
+#405 (internal compiler errors — undefined properties) ── ready
+#406 ('base' is possibly null) ── ready
 ```
 
 | #   | Title | Tests | Ready? |
@@ -263,6 +267,9 @@ Can all run in parallel (different diagnostic codes).
 | ~~277~~ | ~~Wasm type mismatch — local.set externref vs concrete~~ | — | **Done** |
 | ~~178~~ | ~~Wasm validation errors — LEB128, large type indices~~ | — | **Done** |
 | 315 | Wasm validation error audit — systematic fix | ~93 CE | Ready (#277, #178 done) |
+| 401 | Wasm validation errors (call args, struct.new, type mismatch, stack) | 3672 CE | **Ready** (critical) |
+| 405 | Internal compiler errors — undefined properties | 64 CE | **Ready** |
+| 406 | 'base' is possibly null errors | 81 CE | **Ready** |
 
 ---
 
@@ -281,6 +288,9 @@ All independent of each other and of codegen work.
 | 314 | Performance — compile time profiling | Ready |
 | ~~338~~ | ~~Negative test support in test262 runner~~ | — | **Done** |
 | ~~360~~ | ~~JSON.stringify result comparison~~ | — | **Done** |
+| 402 | Negative tests: expected SyntaxError not raised | 434 fail | **Ready** |
+| 403 | import.source meta-property errors | 86 CE | **Ready** |
+| 407 | Deferred imports module flag error | 54 CE | **Ready** |
 
 ---
 
@@ -416,6 +426,7 @@ function in the same file. Key contention points:
 | `compilePropertyAccess` | 263, 274, 347, 362, 378 |
 | `compileObjectLiteralForStruct` | 230, 281 |
 | `compileDestructuringAssignment` | 142, 190, 243, 325, 328, 379 |
+| `compileAssignment` (compound) | 283, 393, 404 |
 | `compileNewExpression` | 238, 261, 344 |
 | `coerceType` | 237, 277, 300, 301, 315, 348 |
 | diagnostic suppression (index.ts) | 152, 242, 262, 265, 269, 270, 275, 276, 381, 383 |
