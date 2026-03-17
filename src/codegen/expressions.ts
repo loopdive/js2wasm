@@ -51,6 +51,14 @@ function shiftLateImportIndices(
       if ("else" in instr && Array.isArray((instr as any).else)) {
         shiftInstrs((instr as any).else);
       }
+      if ("catches" in instr && Array.isArray((instr as any).catches)) {
+        for (const c of (instr as any).catches) {
+          if (Array.isArray(c.body)) shiftInstrs(c.body);
+        }
+      }
+      if ("catchAll" in instr && Array.isArray((instr as any).catchAll)) {
+        shiftInstrs((instr as any).catchAll);
+      }
     }
   }
   for (const func of ctx.mod.functions) {
@@ -68,11 +76,42 @@ function shiftLateImportIndices(
     if (ctx.mod.functions.some(f => f.body === sb)) continue;
     shiftInstrs(sb);
   }
+  // Shift funcMap entries for defined functions (not import entries).
+  // Defined functions had indices >= importsBefore (before the shift) and need
+  // to move up by `added`. Import entries (indices < numImportFuncs after addition)
+  // are already correct and must not be shifted.
+  // Build set of import function names for fast lookup.
+  const importNames = new Set<string>();
+  for (const imp of ctx.mod.imports) {
+    if (imp.desc.kind === "func") importNames.add(imp.name);
+  }
+  for (const [name, idx] of ctx.funcMap) {
+    if (importNames.has(name)) continue; // skip all imports
+    if (idx >= importsBefore) {
+      ctx.funcMap.set(name, idx + added);
+    }
+  }
   // Shift export descriptors
   for (const exp of ctx.mod.exports) {
     if (exp.desc.kind === "func" && exp.desc.index >= importsBefore) {
       exp.desc.index += added;
     }
+  }
+  // Shift table elements
+  for (const elem of ctx.mod.elements) {
+    if (elem.funcIndices) {
+      for (let i = 0; i < elem.funcIndices.length; i++) {
+        if (elem.funcIndices[i]! >= importsBefore) {
+          elem.funcIndices[i]! += added;
+        }
+      }
+    }
+  }
+  // Shift declared func refs
+  if (ctx.mod.declaredFuncRefs.length > 0) {
+    ctx.mod.declaredFuncRefs = ctx.mod.declaredFuncRefs.map(
+      idx => idx >= importsBefore ? idx + added : idx,
+    );
   }
 }
 
@@ -11847,7 +11886,7 @@ function compileMathCall(
     compileExpression(ctx, fctx, expr.arguments[0]!, f64Hint);
     fctx.body.push({ op: "local.tee", index: xLocal } as Instr);
     fctx.body.push({ op: "f64.floor" } as Instr);
-    fctx.body.push({ op: "local.tee", index: floorLocal } as Instr);
+    fctx.body.push({ op: "local.set", index: floorLocal } as Instr);
     // frac = x - floor(x)
     fctx.body.push({ op: "local.get", index: xLocal } as Instr);
     fctx.body.push({ op: "local.get", index: floorLocal } as Instr);
