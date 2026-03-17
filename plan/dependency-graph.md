@@ -398,7 +398,7 @@ New issues from re-analysis of 21,872 tests (5,447 pass, 6,643 CE, 2,067 fail, 7
 #422 (generator type mismatch — 19 CE) ── blocked by #287 [S][E]
 #423 (invalid field index — 16 CE) ── independent [E]
 #424 (logical assignment struct — 14 CE) ── independent [E]
-#425 (async/yield parsing — 12 CE) ── independent [I]
+#425 (async/yield parsing — 12 CE) ── independent [I] **DONE**
 #426 (compound assignment element — 11 CE) ── coordinates with #424 [E]
 #427 (super keyword remaining — 11 CE) ── independent [E], successor to #375
 ```
@@ -430,7 +430,7 @@ New issues from re-analysis of 21,872 tests (5,447 pass, 6,643 CE, 2,067 fail, 7
 | 422 | Generator type mismatch errors | 19 CE | Blocked by #287 |
 | 423 | Invalid field index in struct access | 16 CE | **Ready** (medium) |
 | 424 | Logical assignment on unresolved struct | 14 CE | **Ready** (medium) |
-| 425 | Async/yield keyword parsing edge cases | 12 CE | **Ready** (low) |
+| 425 | Async/yield keyword parsing edge cases | 12 CE | **Done** |
 | 426 | Compound assignment on non-ref element | 11 CE | **Ready** (low, coordinates #424) |
 | 427 | SuperKeyword unsupported in remaining contexts | 11 CE | **Ready** (low) |
 | 428 | Expected ReferenceError but succeeded | 6 fail | **Ready** (low) |
