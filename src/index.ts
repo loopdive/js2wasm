@@ -101,6 +101,8 @@ export interface CompileOptions {
   /** ABI for exported functions: "default" (normal) or "c" (C-compatible calling conventions).
    *  C ABI is only supported with target: "linear". Strings/arrays become (ptr, len) pairs. */
   abi?: "default" | "c";
+  /** Enable hardened mode: reject eval, Function constructor, with, __proto__ at compile time */
+  hardened?: boolean;
 }
 
 import * as path from "path";
