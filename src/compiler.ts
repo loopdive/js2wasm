@@ -410,6 +410,9 @@ const DOWNGRADE_DIAG_CODES = new Set([
   1498, // "Invalid syntax in decorator" (#376)
   8038, // "Decorators may not appear after 'export' or 'export default'" (#376)
   18036, // "Class decorators can't be used with static private identifier" (#376)
+  2372, // "Parameter 'x' cannot reference itself" — valid JS pattern (#413)
+  2373, // "Parameter 'x' cannot reference identifier 'y' declared after it" — valid JS pattern (#413)
+  2735, // "Initializer of parameter 'x' cannot reference identifier 'y'" — valid JS pattern (#413)
 ]);
 
 /**
