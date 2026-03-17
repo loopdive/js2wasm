@@ -394,9 +394,12 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
     }
   }
 
-  // Skip tests using object literals with numeric keys (array-like objects)
-  if (/\{\s*0\s*:/.test(source) && /length\s*:/.test(source)) {
-    return { skip: true, reason: "array-like object literal with numeric keys" };
+  // Skip tests using rest-destructuring with object patterns containing numeric
+  // keys (e.g. [...{ 0: v, 1: w, length: z }] = arr).  The compiler handles
+  // plain object literals with numeric keys ({0: "a", 1: "b"}) as structs,
+  // but rest-spread into an object destructuring pattern is unsupported.
+  if (/\.\.\.\s*\{\s*\d+\s*:/.test(source) && /length\s*:/.test(source)) {
+    return { skip: true, reason: "rest-destructuring with numeric-key object pattern" };
   }
 
   // Skip tests that index arrays with loop variables inside string concat
