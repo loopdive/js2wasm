@@ -978,7 +978,7 @@ function collectStringMethodImports(
       const prop = node.expression;
       const receiverType = ctx.checker.getTypeAtLocation(prop.expression);
       const methodName = prop.name.text;
-      if (isStringType(receiverType) && methodName in STRING_METHODS) {
+      if (isStringType(receiverType) && Object.prototype.hasOwnProperty.call(STRING_METHODS, methodName)) {
         needed.add(methodName);
       }
     }
