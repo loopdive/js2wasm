@@ -7691,6 +7691,17 @@ export function collectClassDeclaration(
         ctx.classMethodSet.add(fullName);
       }
 
+      // Track generator methods (method*)
+      const isGeneratorMethod = member.asteriskToken !== undefined;
+      if (isGeneratorMethod) {
+        ctx.generatorFunctions.add(fullName);
+      }
+
+      // Skip if a function with this name is already registered (e.g., when
+      // both a static and instance method share the same name, they produce
+      // the same function name — avoid creating duplicate placeholders).
+      if (ctx.funcMap.has(fullName)) continue;
+
       // Static methods have no self parameter; instance methods get self: (ref $structTypeIdx)
       const methodParams: ValType[] = isStatic
         ? []
@@ -7698,12 +7709,6 @@ export function collectClassDeclaration(
       for (const param of member.parameters) {
         const paramType = ctx.checker.getTypeAtLocation(param);
         methodParams.push(resolveWasmType(ctx, paramType));
-      }
-
-      // Track generator methods (method*)
-      const isGeneratorMethod = member.asteriskToken !== undefined;
-      if (isGeneratorMethod) {
-        ctx.generatorFunctions.add(fullName);
       }
 
       const sig = ctx.checker.getSignatureFromDeclaration(member);
@@ -7749,6 +7754,11 @@ export function collectClassDeclaration(
       ctx.classAccessorSet.add(accessorKey);
 
       const getterName = `${className}_get_${propName}`;
+      // Skip if a function with this name is already registered (e.g., when
+      // both a static and instance getter share the same computed property name,
+      // they produce the same function name — avoid creating duplicates that
+      // leave empty-body placeholders causing "stack fallthru" validation errors).
+      if (ctx.funcMap.has(getterName)) continue;
       // Getter takes self, returns the accessor return type
       const getterParams: ValType[] = [{ kind: "ref", typeIdx: structTypeIdx }];
       const sig = ctx.checker.getSignatureFromDeclaration(member);
@@ -7788,6 +7798,8 @@ export function collectClassDeclaration(
       ctx.classAccessorSet.add(accessorKey);
 
       const setterName = `${className}_set_${propName}`;
+      // Skip if already registered (same collision guard as getter above)
+      if (ctx.funcMap.has(setterName)) continue;
       // Setter takes self + value, returns void
       const setterParams: ValType[] = [{ kind: "ref", typeIdx: structTypeIdx }];
       for (const param of member.parameters) {
@@ -9556,6 +9568,9 @@ export function compileClassBodies(
   }
 
   // Compile methods (instance and static)
+  // Track which methods have been compiled to avoid overwriting when
+  // both static and instance methods share the same name.
+  const compiledMethods = new Set<string>();
   for (const member of decl.members) {
     if (
       ts.isMethodDeclaration(member) &&
@@ -9564,6 +9579,8 @@ export function compileClassBodies(
       const methodName = resolveClassMemberName(ctx, member.name);
       if (!methodName) continue; // dynamic computed name — skip
       const fullName = `${className}_${methodName}`;
+      if (compiledMethods.has(fullName)) continue; // already compiled
+      compiledMethods.add(fullName);
       const isStatic = ctx.staticMethodSet.has(fullName);
       const methodLocalIdx = funcByName.get(fullName);
       if (methodLocalIdx === undefined) continue;
@@ -9754,6 +9771,9 @@ export function compileClassBodies(
   }
 
   // Compile getter/setter accessor bodies
+  // Track which accessors have been compiled to avoid overwriting when
+  // both static and instance accessors share the same computed property name.
+  const compiledAccessors = new Set<string>();
   for (const member of decl.members) {
     if (
       ts.isGetAccessorDeclaration(member) &&
@@ -9762,6 +9782,8 @@ export function compileClassBodies(
       const propName = resolveClassMemberName(ctx, member.name);
       if (!propName) continue; // dynamic computed name — skip
       const getterName = `${className}_get_${propName}`;
+      if (compiledAccessors.has(getterName)) continue; // already compiled
+      compiledAccessors.add(getterName);
       const getterLocalIdx = funcByName.get(getterName);
       if (getterLocalIdx === undefined) continue;
 
@@ -9839,6 +9861,8 @@ export function compileClassBodies(
       const propName = resolveClassMemberName(ctx, member.name);
       if (!propName) continue; // dynamic computed name — skip
       const setterName = `${className}_set_${propName}`;
+      if (compiledAccessors.has(setterName)) continue; // already compiled
+      compiledAccessors.add(setterName);
       const setterLocalIdx = funcByName.get(setterName);
       if (setterLocalIdx === undefined) continue;
 
