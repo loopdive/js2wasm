@@ -395,7 +395,7 @@ New issues from re-analysis of 21,872 tests (5,447 pass, 6,643 CE, 2,067 fail, 7
 #419 (semicolon expected parser — 28 CE) ── independent [I]
 #420 (destructure non-array — 26 CE) ── independent [E]
 #421 (Array.reduce support — 23 CE) ── independent [E]
-#422 (generator type mismatch — 19 CE) ── blocked by #287 [S][E]
+#422 (generator type mismatch — 19 CE) ── review [S][E]
 #423 (invalid field index — 16 CE) ── independent [E]
 #424 (logical assignment struct — 14 CE) ── independent [E]
 #425 (async/yield parsing — 12 CE) ── independent [I]
