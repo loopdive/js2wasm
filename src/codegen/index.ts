@@ -5135,6 +5135,33 @@ function collectParseImports(
         // Type resolution may fail for some nodes — skip
       }
     }
+    // Arithmetic/bitwise operators on string operands need parseFloat (#430)
+    if (ts.isBinaryExpression(node)) {
+      const opKind = node.operatorToken.kind;
+      const isArithOrBitwise =
+        opKind === ts.SyntaxKind.MinusToken ||
+        opKind === ts.SyntaxKind.AsteriskToken ||
+        opKind === ts.SyntaxKind.AsteriskAsteriskToken ||
+        opKind === ts.SyntaxKind.SlashToken ||
+        opKind === ts.SyntaxKind.PercentToken ||
+        opKind === ts.SyntaxKind.AmpersandToken ||
+        opKind === ts.SyntaxKind.BarToken ||
+        opKind === ts.SyntaxKind.CaretToken ||
+        opKind === ts.SyntaxKind.LessThanLessThanToken ||
+        opKind === ts.SyntaxKind.GreaterThanGreaterThanToken ||
+        opKind === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken;
+      if (isArithOrBitwise) {
+        try {
+          const leftType = ctx.checker.getTypeAtLocation(node.left);
+          const rightType = ctx.checker.getTypeAtLocation(node.right);
+          if (isStringType(leftType) || isStringType(rightType)) {
+            needed.add("parseFloat");
+          }
+        } catch {
+          // Type resolution may fail — skip
+        }
+      }
+    }
     ts.forEachChild(node, visit);
   }
 
