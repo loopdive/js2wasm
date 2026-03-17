@@ -838,6 +838,18 @@ export function compileSource(
     }
   }
 
+  // Step 1c: Hardened mode validation
+  if (options.hardened) {
+    const hardenedErrors = validateHardenedMode(ast.sourceFile);
+    errors.push(...hardenedErrors);
+    if (hardenedErrors.length > 0) {
+      return {
+        binary: new Uint8Array(0), wat: "", dts: "", importsHelper: "",
+        success: false, errors, stringPool: [], imports: [],
+      };
+    }
+  }
+
   const emitSourceMap = options.sourceMap === true;
   const useLinear = options.target === "linear";
 
@@ -1605,4 +1617,42 @@ export function compileToObjectSource(
   }
 
   return { object, success: true, errors };
+}
+
+/**
+ * Hardened mode: walk AST and reject dangerous patterns.
+ * Inspired by Endo/SES — compile-time rejection of insecure features.
+ */
+function validateHardenedMode(sourceFile: ts.SourceFile): Array<{ message: string; line: number; column: number; severity: "error" }> {
+  const errors: Array<{ message: string; line: number; column: number; severity: "error" }> = [];
+
+  function visit(node: ts.Node): void {
+    // Reject eval() calls
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "eval") {
+      const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart());
+      errors.push({ message: "[hardened] eval() is not allowed", line: line + 1, column: character, severity: "error" });
+    }
+    // Reject new Function()
+    if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "Function") {
+      const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart());
+      errors.push({ message: "[hardened] new Function() is not allowed", line: line + 1, column: character, severity: "error" });
+    }
+    // Reject with statements
+    if (ts.isWithStatement(node)) {
+      const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart());
+      errors.push({ message: "[hardened] with statement is not allowed", line: line + 1, column: character, severity: "error" });
+    }
+    // Reject __proto__ assignment
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+      const left = node.left;
+      if (ts.isPropertyAccessExpression(left) && left.name.text === "__proto__") {
+        const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart());
+        errors.push({ message: "[hardened] __proto__ assignment is not allowed", line: line + 1, column: character, severity: "error" });
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return errors;
 }
