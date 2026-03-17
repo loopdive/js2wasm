@@ -95,7 +95,20 @@ export interface FilterResult {
   reason?: string;
 }
 
-export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
+// Tests that cause the compiler to hang (infinite loop during compilation)
+const HANGING_TESTS = new Set([
+  "test/built-ins/Promise/race/invoke-then.js", // #408: Promise.race compilation hang
+]);
+
+export function shouldSkip(source: string, meta: Test262Meta, filePath?: string): FilterResult {
+  // Skip known hanging tests by file path
+  if (filePath) {
+    const relPath = filePath.replace(/.*test262\//, "");
+    if (HANGING_TESTS.has(relPath)) {
+      return { skip: true, reason: "compiler hang (see HANGING_TESTS)" };
+    }
+  }
+
   // Negative tests are now handled — don't skip them.
   // (They are processed specially in runTest262File.)
 
@@ -1883,6 +1896,14 @@ export async function runTest262File(filePath: string, category: string, timeout
   const source = readFileSync(filePath, "utf-8");
   const meta = parseMeta(source);
 
+  // Check for known hanging tests FIRST — before any compilation
+  if (filePath) {
+    const relTest = filePath.replace(/.*test262\//, "");
+    if (HANGING_TESTS.has(relTest)) {
+      return { file: relPath, category, status: "skip", reason: "compiler hang (see HANGING_TESTS)" };
+    }
+  }
+
   // Handle parse/early/resolution-phase negative tests BEFORE shouldSkip —
   // these tests contain intentionally invalid code (eval, with, delete, etc.)
   // that shouldSkip would filter out. Since the test expects a parse error,
@@ -1892,7 +1913,7 @@ export async function runTest262File(filePath: string, category: string, timeout
     if (negResult) return negResult;
   }
 
-  const filter = shouldSkip(source, meta);
+  const filter = shouldSkip(source, meta, filePath);
   if (filter.skip) {
     return { file: relPath, category, status: "skip", reason: filter.reason };
   }

@@ -13,7 +13,7 @@
  */
 import { TEST_CATEGORIES, findTestFiles, runTest262File, type TestResult, type TestTiming } from "../tests/test262-runner.js";
 import { join } from "path";
-import { writeFileSync, appendFileSync, readFileSync, existsSync } from "fs";
+import { writeFileSync, appendFileSync, readFileSync, existsSync, openSync, closeSync, writeSync, unlinkSync } from "fs";
 import { execSync } from "child_process";
 
 const RESULTS_DIR = join(import.meta.dirname ?? ".", "..", "benchmarks", "results");
@@ -21,77 +21,120 @@ const JSONL_PATH = join(RESULTS_DIR, "test262-results.jsonl");
 const REPORT_PATH = join(RESULTS_DIR, "test262-report.json");
 const META_PATH = join(RESULTS_DIR, "test262-run.meta.json");
 
+// Lockfile to prevent concurrent runs
+const LOCK_PATH = join(RESULTS_DIR, "test262.lock");
+
+function acquireLock(): void {
+  try {
+    const fd = openSync(LOCK_PATH, "wx");
+    writeSync(fd, JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() }));
+    closeSync(fd);
+  } catch (e: any) {
+    if (e.code === "EEXIST") {
+      try {
+        const lock = JSON.parse(readFileSync(LOCK_PATH, "utf-8"));
+        try {
+          process.kill(lock.pid, 0);
+          console.error(`Another test262 run is active (PID ${lock.pid}, started ${lock.startedAt}). Exiting.`);
+          process.exit(1);
+        } catch {
+          console.log(`Removing stale lock from dead PID ${lock.pid}\n`);
+          unlinkSync(LOCK_PATH);
+          return acquireLock();
+        }
+      } catch {
+        unlinkSync(LOCK_PATH);
+        return acquireLock();
+      }
+    }
+    throw e;
+  }
+}
+
+function releaseLock(): void {
+  try { unlinkSync(LOCK_PATH); } catch {}
+}
+
+acquireLock();
+process.on("exit", releaseLock);
+process.on("SIGINT", () => { releaseLock(); process.exit(130); });
+process.on("SIGTERM", () => { releaseLock(); process.exit(143); });
+
 function getGitHead(): string {
   try { return execSync("git rev-parse HEAD", { encoding: "utf-8" }).trim(); }
   catch { return "unknown"; }
 }
 
-// Parse CLI args: separate --resume flag from category filters
+// Parse CLI args
 const rawArgs = process.argv.slice(2);
 const resumeFlag = rawArgs.includes("--resume");
-const filterArgs = rawArgs.filter(a => a !== "--resume");
+const fullFlag = rawArgs.includes("--full");
+const recheckFlag = !fullFlag; // recheck is the default; --full overrides
+const filterArgs = rawArgs.filter(a => a !== "--resume" && a !== "--full");
 const categories = filterArgs.length > 0
   ? TEST_CATEGORIES.filter(cat => filterArgs.some(f => cat.toLowerCase().includes(f.toLowerCase())))
   : TEST_CATEGORIES;
 
-// --resume: load completed tests from a previous interrupted run (same HEAD only)
+// Determine whether to resume or start fresh
 const completedFiles = new Set<string>();
-if (resumeFlag && existsSync(META_PATH) && existsSync(JSONL_PATH)) {
-  const meta = JSON.parse(readFileSync(META_PATH, "utf-8"));
-  const currentHead = getGitHead();
-  if (meta.gitHead === currentHead && meta.status === "running") {
-    // Same code, incomplete run — load already-completed test paths
-    for (const line of readFileSync(JSONL_PATH, "utf-8").split("\n")) {
-      if (!line.trim()) continue;
-      try { const r = JSON.parse(line); if (r.file) completedFiles.add(r.file); } catch {}
-    }
-    console.log(`Resuming interrupted run (${completedFiles.size} tests already done, HEAD=${currentHead.slice(0, 8)})\n`);
-  } else if (meta.gitHead !== currentHead) {
-    console.log(`Code changed since last run (${meta.gitHead?.slice(0, 8)} → ${currentHead.slice(0, 8)}), starting fresh.\n`);
-  } else {
-    console.log(`Previous run completed successfully, starting fresh.\n`);
-  }
+const hasPrevious = existsSync(META_PATH) && existsSync(JSONL_PATH);
+const prevMeta = hasPrevious ? JSON.parse(readFileSync(META_PATH, "utf-8")) : null;
+const isInterrupted = prevMeta?.status === "running";
+
+function loadPreviousLines(): string[] {
+  if (!existsSync(JSONL_PATH)) return [];
+  return readFileSync(JSONL_PATH, "utf-8").split("\n").filter(l => l.trim());
 }
 
-// Load existing results (if running a subset, preserve other results)
-const existingResults = new Map<string, string>(); // file → jsonl line
-if (filterArgs.length > 0 && !resumeFlag && existsSync(JSONL_PATH)) {
-  for (const line of readFileSync(JSONL_PATH, "utf-8").split("\n")) {
-    if (!line.trim()) continue;
+if (hasPrevious && (isInterrupted || resumeFlag) && !fullFlag) {
+  // Auto-resume interrupted run (or --resume flag)
+  for (const line of loadPreviousLines()) {
+    try { const r = JSON.parse(line); if (r.file) completedFiles.add(r.file); } catch {}
+  }
+  const reason = isInterrupted ? 'interrupted run detected' : '--resume flag';
+  console.log(`Auto-resuming (${reason}, ${completedFiles.size} tests already done)\n`);
+} else if (recheckFlag && hasPrevious && !fullFlag) {
+  // Default: carry forward pass/skip, re-run failures + compile errors
+  const prevLines = loadPreviousLines();
+  const carryForwardLines: string[] = [];
+  let carried = 0, recheck = 0;
+  for (const line of prevLines) {
     try {
       const r = JSON.parse(line);
-      if (r.file) existingResults.set(r.file, line);
+      if (r.file && (r.status === "pass" || r.status === "skip")) {
+        completedFiles.add(r.file);
+        carryForwardLines.push(line);
+        carried++;
+      } else if (r.file) { recheck++; }
     } catch {}
+  }
+  writeFileSync(JSONL_PATH, carryForwardLines.length > 0 ? carryForwardLines.join("\n") + "\n" : "");
+  console.log(`Recheck mode: carrying forward ${carried} pass/skip, re-running ${recheck} failures\n`);
+} else {
+  // Fresh run (--full or no previous data)
+  if (filterArgs.length > 0 && hasPrevious) {
+    // Subset run: carry forward results not in selected categories
+    const existingResults = new Map<string, string>();
+    for (const line of loadPreviousLines()) {
+      try { const r = JSON.parse(line); if (r.file) existingResults.set(r.file, line); } catch {}
+    }
+    for (const cat of categories) {
+      for (const f of findTestFiles(cat)) {
+        existingResults.delete(f.replace(/.*test262\/test\//, ""));
+      }
+    }
+    const lines = [...existingResults.values()];
+    writeFileSync(JSONL_PATH, lines.length > 0 ? lines.join("\n") + "\n" : "");
+  } else {
+    writeFileSync(JSONL_PATH, "");
   }
 }
 
 const allResults: TestResult[] = [];
 const stats = { pass: 0, fail: 0, skip: 0, compile_error: 0 };
 
-// Count total
 let total = 0;
 for (const cat of categories) total += findTestFiles(cat).length;
-
-// If running a subset, clear only those entries from existing results
-if (filterArgs.length > 0 && !resumeFlag) {
-  for (const cat of categories) {
-    for (const f of findTestFiles(cat)) {
-      const relPath = f.replace(/.*test262\/test\//, "");
-      existingResults.delete(relPath);
-    }
-  }
-}
-
-// Start fresh JSONL unless resuming
-if (resumeFlag && completedFiles.size > 0) {
-  // Keep existing JSONL, we'll append new results
-} else if (filterArgs.length === 0) {
-  writeFileSync(JSONL_PATH, "");
-} else {
-  // Rewrite JSONL with existing results (minus categories being re-run)
-  const lines = [...existingResults.values()];
-  writeFileSync(JSONL_PATH, lines.length > 0 ? lines.join("\n") + "\n" : "");
-}
 
 // Write run metadata (status=running until we finish)
 writeFileSync(META_PATH, JSON.stringify({ gitHead: getGitHead(), status: "running", startedAt: new Date().toISOString() }));
@@ -181,9 +224,19 @@ for (const [batchName, batchCats] of batches) {
   );
 }
 
+// Build final results from complete JSONL (deduplicated, last entry wins)
+const resultsByFile = new Map<string, any>();
+for (const line of readFileSync(JSONL_PATH, "utf-8").split("\n")) {
+  if (!line.trim()) continue;
+  try { const r = JSON.parse(line); if (r.file && r.status) resultsByFile.set(r.file, r); } catch {}
+}
+const finalResults: TestResult[] = [...resultsByFile.values()];
+const finalStats = { pass: 0, fail: 0, skip: 0, compile_error: 0 };
+for (const r of finalResults) finalStats[r.status as keyof typeof finalStats]++;
+
 // Build compile error frequency map
 const errorFreq = new Map<string, { count: number; files: string[] }>();
-for (const r of allResults) {
+for (const r of finalResults) {
   if (r.status === "compile_error" && r.error) {
     const msgs = r.error.split("; ");
     for (const msg of msgs) {
@@ -206,7 +259,7 @@ function normalizeError(msg: string): string {
 }
 
 // Aggregate timing data
-const timedResults = allResults.filter(r => r.timing);
+const timedResults = finalResults.filter(r => r.timing);
 const totalCompileMs = timedResults.reduce((s, r) => s + (r.timing?.compileMs ?? 0), 0);
 const totalInstantiateMs = timedResults.reduce((s, r) => s + (r.timing?.instantiateMs ?? 0), 0);
 const totalExecuteMs = timedResults.reduce((s, r) => s + (r.timing?.executeMs ?? 0), 0);
@@ -236,16 +289,16 @@ const categoryTimingSorted = [...categoryTiming.entries()]
   .sort((a, b) => b.avgCompileMs - a.avgCompileMs);
 
 // Write JSON report
-const compilable = stats.pass + stats.fail;
+const compilable = finalStats.pass + finalStats.fail;
 const byCategory = new Map<string, { pass: number; fail: number; skip: number; compile_error: number }>();
-for (const r of allResults) {
+for (const r of finalResults) {
   if (!byCategory.has(r.category)) byCategory.set(r.category, { pass: 0, fail: 0, skip: 0, compile_error: 0 });
   byCategory.get(r.category)![r.status]++;
 }
 
 const reportData = {
   timestamp: new Date().toISOString(),
-  summary: { total: allResults.length, ...stats, compilable },
+  summary: { total: finalResults.length, ...finalStats, compilable },
   categories: [...byCategory.entries()].sort().map(([cat, s]) => ({
     name: cat, ...s, compilable: s.pass + s.fail,
   })),
@@ -279,11 +332,11 @@ try { writeFileSync(REPORT_PATH, JSON.stringify(reportData, null, 2)); } catch {
 console.log("\n══════════════════════════════════════════════════════");
 console.log("           Test262 Conformance Report");
 console.log("══════════════════════════════════════════════════════");
-console.log(`  Total tests:     ${allResults.length}`);
-console.log(`  Passed:          ${stats.pass}  (${compilable > 0 ? ((stats.pass / compilable * 100) | 0) : 0}% of compilable)`);
-console.log(`  Failed:          ${stats.fail}`);
-console.log(`  Compile errors:  ${stats.compile_error}`);
-console.log(`  Skipped:         ${stats.skip}`);
+console.log(`  Total tests:     ${finalResults.length}`);
+console.log(`  Passed:          ${finalStats.pass}  (${compilable > 0 ? ((finalStats.pass / compilable * 100) | 0) : 0}% of compilable)`);
+console.log(`  Failed:          ${finalStats.fail}`);
+console.log(`  Compile errors:  ${finalStats.compile_error}`);
+console.log(`  Skipped:         ${finalStats.skip}`);
 console.log("──────────────────────────────────────────────────────");
 
 if (errorFreqSorted.length > 0) {
@@ -316,7 +369,7 @@ if (timedResults.length > 0) {
   console.log("────────────────────────────────────────────────────");
 }
 
-const failures = allResults.filter(r => r.status === "fail");
+const failures = finalResults.filter(r => r.status === "fail");
 if (failures.length > 0) {
   console.log(`\nFailing tests (${failures.length}):`);
   for (const f of failures) {
