@@ -9196,21 +9196,22 @@ function compileDeclarations(
         exported: false,
       });
 
-      // Inject guarded call at the start of every exported function
-      const guardPreamble: Instr[] = [
-        { op: "global.get", index: guardGlobalIdx },
-        { op: "i32.eqz" },
-        { op: "if", blockType: { kind: "empty" },
-          then: [
-            { op: "i32.const", value: 1 } as Instr,
-            { op: "global.set", index: guardGlobalIdx } as Instr,
-            { op: "call", funcIdx: initFuncIdx } as Instr,
-          ],
-        } as Instr,
-      ];
-
+      // Inject guarded call at the start of every exported function.
+      // Each function gets its own deep copy of the guard preamble instructions
+      // to avoid shared-object bugs during dead-import elimination's index remapping.
       for (const func of ctx.mod.functions) {
         if (func.exported && func.name !== "__module_init") {
+          const guardPreamble: Instr[] = [
+            { op: "global.get", index: guardGlobalIdx },
+            { op: "i32.eqz" },
+            { op: "if", blockType: { kind: "empty" },
+              then: [
+                { op: "i32.const", value: 1 } as Instr,
+                { op: "global.set", index: guardGlobalIdx } as Instr,
+                { op: "call", funcIdx: initFuncIdx } as Instr,
+              ],
+            } as Instr,
+          ];
           func.body = [...guardPreamble, ...func.body];
         }
       }
