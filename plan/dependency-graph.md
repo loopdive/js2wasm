@@ -377,6 +377,40 @@ Module system and import/export patterns.
 
 ---
 
+## Cluster 17: March 2026 Error Analysis `[E][S][I]`
+
+New issues from re-analysis of 21,872 tests (5,447 pass, 6,643 CE, 2,067 fail).
+
+```
+#409 (unsupported call expression — 1652 CE) ── independent, successor to #387
+#410 (stack fallthru mismatch — 590 CE) ── independent, successor to #401
+#411 (struct.new stack mismatch — 517 CE) ── coordinates with #410 (both Wasm validation)
+#412 (yield outside generator — 166 CE) ── independent, successor to #287
+#413 (parameter self-reference — 59 CE) ── independent
+#414 (super keyword remaining — 11 CE) ── independent, successor to #375
+#415 (logical assignment struct — 14 CE) ── independent
+#416 (compound assignment element — 11 CE) ── coordinates with #415
+#417 (wrong return value — 1489 fail) ── umbrella, triage-first
+#418 (missing SyntaxError — 442 fail) ── independent, successor to #402
+#419 (null pointer destructuring — 116 fail) ── independent, successor to #396
+```
+
+| #   | Title | Tests | Ready? |
+|-----|-------|-------|--------|
+| 409 | Unsupported call expression (spread, optional chaining, super, property methods) | 1,652 CE | **Ready** (critical) |
+| 410 | Stack fallthru mismatch (control flow branches) | 590 CE | **Ready** (critical) |
+| 411 | struct.new stack mismatch (class/object construction) | 517 CE | **Ready** (critical, coordinates #410) |
+| 412 | Yield outside generator (generator body not recognized) | 166 CE | **Ready** |
+| 413 | Parameter self-reference (default param too strict) | 59 CE | **Ready** |
+| 414 | Super keyword unsupported in remaining positions | 11 CE | **Ready** |
+| 415 | Logical assignment struct resolution failure | 14 CE | **Ready** |
+| 416 | Compound assignment on element access (non-ref) | 11 CE | **Ready** (coordinates #415) |
+| 417 | Wrong return value (returned 0) — broad correctness | 1,489 fail | **Ready** (critical, triage first) |
+| 418 | Missing SyntaxError validation | 442 fail | **Ready** |
+| 419 | Null pointer in destructuring | 116 fail | **Ready** |
+
+---
+
 ## Backlog (long-term / blocked)
 
 | #   | Title | Blocked by |
@@ -421,22 +455,22 @@ function in the same file. Key contention points:
 | Function | Issues |
 |----------|--------|
 | `compileBinaryExpression` | 138, 139, 174, 227, 228, 237, 244, 291, 295, 296, 299, 308, 324, 348 |
-| `compileCallExpression` | 232, 260, 280, 342, 364, 382 |
+| `compileCallExpression` | 232, 260, 280, 342, 364, 382, 409 |
 | `compileElementAccess` | 140, 176, 239, 326, 337, 361 |
 | `compilePropertyAccess` | 263, 274, 347, 362, 378 |
 | `compileObjectLiteralForStruct` | 230, 281 |
-| `compileDestructuringAssignment` | 142, 190, 243, 325, 328, 379 |
-| `compileAssignment` (compound) | 283, 393, 404 |
+| `compileDestructuringAssignment` | 142, 190, 243, 325, 328, 379, 419 |
+| `compileAssignment` (compound) | 283, 393, 404, 415, 416 |
 | `compileNewExpression` | 238, 261, 344 |
-| `coerceType` | 237, 277, 300, 301, 315, 348 |
+| `coerceType` | 237, 277, 300, 301, 315, 348, 410, 411 |
 | diagnostic suppression (index.ts) | 152, 242, 262, 265, 269, 270, 275, 276, 381, 383 |
 | `collectStringLiterals/MathImports` | 321, 320 |
 | `registerAnyValueType` | 317, 320 |
 | scope resolution | 146, 202, 266, 331, 380 |
-| generator codegen | 241, 267, 287, 288 |
+| generator codegen | 241, 267, 287, 288, 412 |
 | string methods | 349, 367, 372, 384 |
 | template literals | 357, 363 |
 | module/import handling | 332, 333, 371 |
-| class codegen | 329, 334, 375, 377 |
+| class codegen | 329, 334, 375, 377, 414 |
 | loop codegen | 353, 373 |
 | built-in runtime | 344, 355, 359, 369, 385 |

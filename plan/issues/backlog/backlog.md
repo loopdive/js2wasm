@@ -123,50 +123,63 @@ _Goal: Remaining runtime failures, codegen quality, and test infrastructure expa
 
 _Updated baseline (2026-03-16): 22,959 tests — 5,312 pass (23.1%), 2,010 fail, 7,314 CE, 8,323 skip. Issues prioritized by test impact, executed dependency-driven (see `plan/dependency-graph.md`)._
 
-### Wasm validation (3,672 CE) — CRITICAL
+_Prior round issues (#387-#408) moved to done/. Numbers below reflect re-analysis on 21,872 unique tests: 5,447 pass (24.9%), 6,643 CE, 2,067 fail, 7,715 skip._
+
+### Compile errors — Critical (2,759 CE)
+
+| #   | Feature | Type | Count | Priority |
+| --- | ------- | ---- | ----- | -------- |
+| [409](../ready/409.md) | Unsupported call expression (spread, optional chaining, super, property methods) | CE | 1,652 | Critical |
+| [410](../ready/410.md) | Stack fallthru mismatch (control flow branches) | CE | 590 | Critical |
+| [411](../ready/411.md) | struct.new stack mismatch (class/object construction) | CE | 517 | Critical |
+
+### Compile errors — Medium (250 CE)
+
+| #   | Feature | Type | Count | Priority |
+| --- | ------- | ---- | ----- | -------- |
+| [412](../ready/412.md) | Yield outside generator (generator body not recognized) | CE | 166 | Medium |
+| [413](../ready/413.md) | Parameter self-reference (default param validation too strict) | CE | 59 | Medium |
+| [415](../ready/415.md) | Logical assignment struct resolution failure | CE | 14 | Medium |
+| [416](../ready/416.md) | Compound assignment on element access (non-ref targets) | CE | 11 | Medium |
+
+### Compile errors — Low (11 CE)
+
+| #   | Feature | Type | Count | Priority |
+| --- | ------- | ---- | ----- | -------- |
+| [414](../ready/414.md) | Super keyword unsupported in remaining positions | CE | 11 | Low |
+
+### Runtime failures (2,047 fail)
+
+| #   | Feature | Type | Count | Priority |
+| --- | ------- | ---- | ----- | -------- |
+| [417](../ready/417.md) | Wrong return value (returned 0) -- broad correctness failures | FAIL | 1,489 | Critical |
+| [418](../ready/418.md) | Missing SyntaxError validation (invalid code compiles) | FAIL | 442 | High |
+| [419](../ready/419.md) | Null pointer in destructuring (dereferencing null struct) | FAIL | 116 | High |
+
+### Prior round (done)
 
 | #   | Feature | Type | Count |
 | --- | ------- | ---- | ----- |
-| [401](../ready/401.md) | Wasm validation errors (call args, struct.new, type mismatch, stack) | CE | 3672 |
-
-### Destructuring (1,219 tests blocked)
-
-| #   | Feature | Type | Count |
-| --- | ------- | ---- | ----- |
-| [394](../ready/394.md) | Destructuring wrong return values | FAIL | 1438 |
-| [396](../ready/396.md) | Null pointer in destructuring | FAIL | 118 |
-| [387](../ready/387.md) | Unsupported call expression (71% destructuring) | CE | 2356 |
-| [388](../ready/388.md) | Element access on externref | CE | 104 |
-| [389](../ready/389.md) | Element access on class instances | CE | 76 |
-| [390](../ready/390.md) | Assignment to non-array types | CE | 70 |
-
-### Class & runtime failures
-
-| #   | Feature | Type | Count |
-| --- | ------- | ---- | ----- |
-| [398](../ready/398.md) | Private field/method wrong values | FAIL | 98 |
-| [399](../ready/399.md) | Prototype method wrong values | FAIL | 72 |
-| [395](../ready/395.md) | "fn is not a function" (call/apply + callbacks) | FAIL | 70 |
-| [392](../ready/392.md) | Unknown field access on class structs | CE | 18 |
-
-### Compile error patterns
-
-| #   | Feature | Type | Count |
-| --- | ------- | ---- | ----- |
-| [404](../ready/404.md) | Compound assignment on unresolvable property type | CE | 88 |
-| [403](../ready/403.md) | import.source meta-property errors | CE | 86 |
-| [406](../ready/406.md) | 'base' is possibly null errors | CE | 81 |
-| [405](../ready/405.md) | Internal compiler errors (undefined properties) | CE | 64 |
-| [407](../ready/407.md) | Deferred imports module flag error | CE | 54 |
-| [391](../ready/391.md) | Numeric index signature on objects | CE | 30 |
-| [393](../ready/393.md) | Compound assignment on externref element | CE | 13 |
-
-### Test infrastructure
-
-| #   | Feature | Type | Count |
-| --- | ------- | ---- | ----- |
-| [402](../ready/402.md) | Negative tests: expected SyntaxError not raised | FAIL | 434 |
-| [397](../ready/397.md) | assert.throws test support | SKIP | 952 |
+| [401](../done/401.md) | Wasm validation errors (call args, struct.new, type mismatch, stack) | CE | 3672 |
+| [394](../done/394.md) | Destructuring wrong return values | FAIL | 1438 |
+| [396](../done/396.md) | Null pointer in destructuring | FAIL | 118 |
+| [387](../done/387.md) | Unsupported call expression (71% destructuring) | CE | 2356 |
+| [388](../done/388.md) | Element access on externref | CE | 104 |
+| [389](../done/389.md) | Element access on class instances | CE | 76 |
+| [390](../done/390.md) | Assignment to non-array types | CE | 70 |
+| [398](../done/398.md) | Private field/method wrong values | FAIL | 98 |
+| [399](../done/399.md) | Prototype method wrong values | FAIL | 72 |
+| [395](../done/395.md) | "fn is not a function" (call/apply + callbacks) | FAIL | 70 |
+| [392](../done/392.md) | Unknown field access on class structs | CE | 18 |
+| [404](../done/404.md) | Compound assignment on unresolvable property type | CE | 88 |
+| [403](../done/403.md) | import.source meta-property errors | CE | 86 |
+| [406](../done/406.md) | 'base' is possibly null errors | CE | 81 |
+| [405](../done/405.md) | Internal compiler errors (undefined properties) | CE | 64 |
+| [407](../done/407.md) | Deferred imports module flag error | CE | 54 |
+| [391](../done/391.md) | Numeric index signature on objects | CE | 30 |
+| [393](../done/393.md) | Compound assignment on externref element | CE | 13 |
+| [402](../done/402.md) | Negative tests: expected SyntaxError not raised | FAIL | 434 |
+| [397](../done/397.md) | assert.throws test support | SKIP | 952 |
 
 ---
 
