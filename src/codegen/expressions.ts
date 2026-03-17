@@ -16295,8 +16295,10 @@ function compileArrayConstructorCall(
  * Compile Object.defineProperty(obj, prop, descriptor).
  *
  * If the descriptor is an object literal with a `value` property, we extract
- * the value and emit __extern_set(obj, prop, value). Otherwise we compile all
- * arguments for side effects and return the object unchanged.
+ * the value and emit __extern_set(obj, prop, value).
+ * If the descriptor has `get` and/or `set` properties, we compile them as
+ * struct accessor methods (getter/setter functions).
+ * Otherwise we compile all arguments for side effects and return the object unchanged.
  *
  * Returns obj (externref).
  */
@@ -16309,8 +16311,10 @@ function compileObjectDefineProperty(
   const propArg = expr.arguments[1]!;
   const descArg = expr.arguments[2]!;
 
-  // Check if descriptor is an object literal with a `value` property
+  // Check if descriptor is an object literal with a `value`, `get`, or `set` property
   let valueExpr: ts.Expression | undefined;
+  let getNode: ts.MethodDeclaration | ts.GetAccessorDeclaration | ts.FunctionExpression | ts.ArrowFunction | undefined;
+  let setNode: ts.MethodDeclaration | ts.SetAccessorDeclaration | ts.FunctionExpression | ts.ArrowFunction | undefined;
   if (ts.isObjectLiteralExpression(descArg)) {
     for (const prop of descArg.properties) {
       if (
@@ -16319,7 +16323,42 @@ function compileObjectDefineProperty(
         prop.name.text === "value"
       ) {
         valueExpr = prop.initializer;
-        break;
+      }
+      // get: function() { ... } or get: () => ...
+      if (
+        ts.isPropertyAssignment(prop) &&
+        ts.isIdentifier(prop.name) &&
+        prop.name.text === "get" &&
+        (ts.isFunctionExpression(prop.initializer) || ts.isArrowFunction(prop.initializer))
+      ) {
+        getNode = prop.initializer;
+      }
+      // get() { ... } (method shorthand)
+      if (
+        ts.isMethodDeclaration(prop) &&
+        prop.name &&
+        ts.isIdentifier(prop.name) &&
+        prop.name.text === "get"
+      ) {
+        getNode = prop;
+      }
+      // set: function(v) { ... } or set: (v) => ...
+      if (
+        ts.isPropertyAssignment(prop) &&
+        ts.isIdentifier(prop.name) &&
+        prop.name.text === "set" &&
+        (ts.isFunctionExpression(prop.initializer) || ts.isArrowFunction(prop.initializer))
+      ) {
+        setNode = prop.initializer;
+      }
+      // set(v) { ... } (method shorthand)
+      if (
+        ts.isMethodDeclaration(prop) &&
+        prop.name &&
+        ts.isIdentifier(prop.name) &&
+        prop.name.text === "set"
+      ) {
+        setNode = prop;
       }
     }
   }
@@ -16338,6 +16377,197 @@ function compileObjectDefineProperty(
   const fields = structName ? ctx.structFields.get(structName) : undefined;
   const fieldIdx = (fields && propName) ? fields.findIndex(f => f.name === propName) : -1;
   const useStruct = structTypeIdx !== undefined && fields && fieldIdx >= 0 && valueExpr;
+
+  // ── Getter/setter path ──────────────────────────────────────────────
+  // Object.defineProperty(obj, "prop", { get() {...}, set(v) {...} })
+  // Compile as struct accessor methods, analogous to object literal getters/setters.
+  if ((getNode || setNode) && !valueExpr && structName && structTypeIdx !== undefined && propName) {
+    // Compile obj and save to local
+    const objType = compileExpression(ctx, fctx, objArg);
+    if (!objType) return null;
+    const objLocal = allocLocal(fctx, `__defprop_obj_${fctx.locals.length}`, objType);
+    fctx.body.push({ op: "local.set", index: objLocal });
+
+    const accessorKey = `${structName}_${propName}`;
+    ctx.classAccessorSet.add(accessorKey);
+
+    // Helper to get body statements from a getter/setter node
+    const getBodyStatements = (node: ts.MethodDeclaration | ts.GetAccessorDeclaration | ts.SetAccessorDeclaration | ts.FunctionExpression | ts.ArrowFunction): ts.Statement[] => {
+      if (ts.isArrowFunction(node) && !ts.isBlock(node.body)) {
+        // Arrow with expression body: wrap as return statement
+        return [];
+      }
+      const body = ts.isArrowFunction(node) ? (node.body as ts.Block) : node.body;
+      return body ? [...body.statements] : [];
+    };
+
+    // Helper to get parameters from a node
+    const getParams = (node: ts.MethodDeclaration | ts.SetAccessorDeclaration | ts.FunctionExpression | ts.ArrowFunction): readonly ts.ParameterDeclaration[] => {
+      return node.parameters;
+    };
+
+    // Compile getter
+    if (getNode) {
+      const getterName = `${structName}_get_${propName}`;
+      if (!ctx.funcMap.has(getterName)) {
+        const getterParams: ValType[] = [{ kind: "ref", typeIdx: structTypeIdx }];
+
+        // Determine return type from the getter function signature
+        const sig = ctx.checker.getSignatureFromDeclaration(getNode);
+        let getterResults: ValType[] = [];
+        if (sig) {
+          const retType = ctx.checker.getReturnTypeOfSignature(sig);
+          if (!isVoidType(retType)) {
+            getterResults = [resolveWasmType(ctx, retType)];
+          }
+        }
+
+        const getterTypeIdx = addFuncType(ctx, getterParams, getterResults, `${getterName}_type`);
+        const getterFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+        ctx.funcMap.set(getterName, getterFuncIdx);
+
+        const getterFunc: WasmFunction = {
+          name: getterName,
+          typeIdx: getterTypeIdx,
+          locals: [],
+          body: [],
+          exported: false,
+        };
+        ctx.mod.functions.push(getterFunc);
+
+        // Compile getter body
+        const getterFctx: FunctionContext = {
+          name: getterName,
+          params: [{ name: "this", type: { kind: "ref", typeIdx: structTypeIdx } }],
+          locals: [],
+          localMap: new Map(),
+          returnType: getterResults.length > 0 ? getterResults[0]! : null,
+          body: [],
+          blockDepth: 0,
+          breakStack: [],
+          continueStack: [],
+          labelMap: new Map(),
+          savedBodies: [],
+        };
+        getterFctx.localMap.set("this", 0);
+
+        const savedFunc = ctx.currentFunc;
+        ctx.currentFunc = getterFctx;
+
+        if (ts.isArrowFunction(getNode) && !ts.isBlock(getNode.body)) {
+          // Arrow with expression body: compile as return expression
+          const retType = compileExpression(ctx, getterFctx, getNode.body as ts.Expression, getterFctx.returnType ?? undefined);
+          if (retType && getterFctx.returnType && retType.kind !== getterFctx.returnType.kind) {
+            coerceType(ctx, getterFctx, retType, getterFctx.returnType);
+          }
+        } else {
+          const stmts = getBodyStatements(getNode);
+          for (const stmt of stmts) {
+            compileStatement(ctx, getterFctx, stmt);
+          }
+        }
+
+        // Ensure valid return for non-void getters
+        if (getterFctx.returnType) {
+          const lastInstr = getterFctx.body[getterFctx.body.length - 1];
+          if (!lastInstr || lastInstr.op !== "return") {
+            if (getterFctx.returnType.kind === "f64") {
+              getterFctx.body.push({ op: "f64.const", value: 0 });
+            } else if (getterFctx.returnType.kind === "i32") {
+              getterFctx.body.push({ op: "i32.const", value: 0 });
+            } else if (getterFctx.returnType.kind === "externref") {
+              getterFctx.body.push({ op: "ref.null.extern" });
+            } else if (getterFctx.returnType.kind === "ref" || getterFctx.returnType.kind === "ref_null") {
+              getterFctx.body.push({ op: "ref.null", typeIdx: getterFctx.returnType.typeIdx });
+            }
+          }
+        }
+        cacheStringLiterals(ctx, getterFctx);
+        getterFunc.locals = getterFctx.locals;
+        getterFunc.body = getterFctx.body;
+        ctx.currentFunc = savedFunc;
+      }
+    }
+
+    // Compile setter
+    if (setNode) {
+      const setterName = `${structName}_set_${propName}`;
+      if (!ctx.funcMap.has(setterName)) {
+        const setterParams: ValType[] = [{ kind: "ref", typeIdx: structTypeIdx }];
+        const allNodeParams = getParams(setNode);
+        // Filter out the TS `this` parameter (explicit this type annotation)
+        const nodeParams = allNodeParams.filter(p => !(ts.isIdentifier(p.name) && p.name.text === "this"));
+        for (const param of nodeParams) {
+          const paramType = ctx.checker.getTypeAtLocation(param);
+          setterParams.push(resolveWasmType(ctx, paramType));
+        }
+
+        const setterTypeIdx = addFuncType(ctx, setterParams, [], `${setterName}_type`);
+        const setterFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+        ctx.funcMap.set(setterName, setterFuncIdx);
+
+        const setterFunc: WasmFunction = {
+          name: setterName,
+          typeIdx: setterTypeIdx,
+          locals: [],
+          body: [],
+          exported: false,
+        };
+        ctx.mod.functions.push(setterFunc);
+
+        // Compile setter body
+        const setterFctxParams: { name: string; type: ValType }[] = [
+          { name: "this", type: { kind: "ref", typeIdx: structTypeIdx } },
+        ];
+        for (let pi = 0; pi < nodeParams.length; pi++) {
+          const param = nodeParams[pi]!;
+          const paramName = ts.isIdentifier(param.name) ? param.name.text : `__param${pi}`;
+          const paramType = ctx.checker.getTypeAtLocation(param);
+          setterFctxParams.push({ name: paramName, type: resolveWasmType(ctx, paramType) });
+        }
+
+        const setterFctx: FunctionContext = {
+          name: setterName,
+          params: setterFctxParams,
+          locals: [],
+          localMap: new Map(),
+          returnType: null,
+          body: [],
+          blockDepth: 0,
+          breakStack: [],
+          continueStack: [],
+          labelMap: new Map(),
+          savedBodies: [],
+        };
+        for (let i = 0; i < setterFctxParams.length; i++) {
+          setterFctx.localMap.set(setterFctxParams[i]!.name, i);
+        }
+
+        const savedFunc = ctx.currentFunc;
+        ctx.currentFunc = setterFctx;
+
+        if (ts.isArrowFunction(setNode) && !ts.isBlock(setNode.body)) {
+          // Arrow with expression body: compile for side effects
+          const retType = compileExpression(ctx, setterFctx, setNode.body as ts.Expression);
+          if (retType) setterFctx.body.push({ op: "drop" });
+        } else {
+          const stmts = getBodyStatements(setNode as ts.MethodDeclaration);
+          for (const stmt of stmts) {
+            compileStatement(ctx, setterFctx, stmt);
+          }
+        }
+
+        cacheStringLiterals(ctx, setterFctx);
+        setterFunc.locals = setterFctx.locals;
+        setterFunc.body = setterFctx.body;
+        ctx.currentFunc = savedFunc;
+      }
+    }
+
+    // Return obj
+    fctx.body.push({ op: "local.get", index: objLocal });
+    return objType;
+  }
 
   if (valueExpr && useStruct) {
     // Struct path: Object.defineProperty(obj, "prop", { value: v }) → struct.set
