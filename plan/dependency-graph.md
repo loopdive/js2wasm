@@ -464,7 +464,7 @@ Priority order reflects react-reconciler dependency.
 |-----|-------|-------------|--------|
 | 456 | Well-known Symbol support (Symbol.iterator, toPrimitive) | ~1,767 skip | **Ready** (critical) |
 | 457 | WeakMap/WeakSet via host imports | React caching | **Ready** (high) |
-| 458 | Map/Set via host imports | React memoization | **Ready** (high) |
+| 458 | Map/Set via host imports | React memoization | **Done** |
 | 409 | Spread in function calls | 1,752 CE | **Review** (critical) |
 | 459 | Object.defineProperty getter/setter subset | React internals | **Ready** (medium) |
 | 460 | Object.create for known prototypes | React patterns | **Ready** (medium) |
