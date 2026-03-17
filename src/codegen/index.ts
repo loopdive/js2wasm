@@ -7518,8 +7518,10 @@ export function collectClassDeclaration(
   ctx.classTagMap.set(className, classTag);
 
   // Add hidden __tag field at the beginning for instanceof discrimination
-  // Only for root classes — child classes inherit __tag via parentFields
-  if (!parentClassName) {
+  // Only for root classes — child classes inherit __tag via parentFields.
+  // Also treat as root when extending a built-in (parentClassName set but no
+  // struct type registered), since built-ins have no Wasm struct fields to inherit.
+  if (!parentClassName || parentStructTypeIdx === undefined) {
     fields.unshift({ name: "__tag", type: { kind: "i32" }, mutable: false });
   }
 
