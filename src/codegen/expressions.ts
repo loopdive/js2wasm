@@ -8955,19 +8955,55 @@ function compileCallExpression(
               return compileClosureCall(ctx, fctx, syntheticCall as ts.CallExpression, funcName, closureInfo);
             }
 
-            // Regular function call
-            const paramTypes = getFuncParamTypes(ctx, funcIdx!);
-            for (let i = 0; i < remainingArgs.length; i++) {
-              compileExpression(ctx, fctx, remainingArgs[i]!, paramTypes?.[i]);
-            }
+            // Check for rest parameters on the callee
+            const callRestInfo = ctx.funcRestParams.get(funcName);
 
-            // Supply defaults for missing optional params
-            const optInfo = ctx.funcOptionalParams.get(funcName);
-            if (optInfo) {
-              const numProvided = remainingArgs.length;
-              for (const opt of optInfo) {
-                if (opt.index >= numProvided) {
-                  pushDefaultValue(fctx, opt.type);
+            if (callRestInfo) {
+              // Calling a rest-param function via .call(): pack trailing args into a GC array
+              const paramTypes = getFuncParamTypes(ctx, funcIdx!);
+              // Compile non-rest arguments
+              for (let i = 0; i < callRestInfo.restIndex; i++) {
+                if (i < remainingArgs.length) {
+                  compileExpression(ctx, fctx, remainingArgs[i]!, paramTypes?.[i]);
+                } else {
+                  pushDefaultValue(fctx, paramTypes?.[i] ?? { kind: "f64" });
+                }
+              }
+              // Pack remaining arguments into a vec struct (array + length)
+              const restArgCount = Math.max(0, remainingArgs.length - callRestInfo.restIndex);
+              fctx.body.push({ op: "i32.const", value: restArgCount });
+              for (let i = callRestInfo.restIndex; i < remainingArgs.length; i++) {
+                compileExpression(ctx, fctx, remainingArgs[i]!, callRestInfo.elemType);
+              }
+              fctx.body.push({ op: "array.new_fixed", typeIdx: callRestInfo.arrayTypeIdx, length: restArgCount });
+              fctx.body.push({ op: "struct.new", typeIdx: callRestInfo.vecTypeIdx });
+            } else {
+              // Regular function call
+              const paramTypes = getFuncParamTypes(ctx, funcIdx!);
+              for (let i = 0; i < remainingArgs.length; i++) {
+                compileExpression(ctx, fctx, remainingArgs[i]!, paramTypes?.[i]);
+              }
+
+              // Supply defaults for missing optional params
+              const optInfo = ctx.funcOptionalParams.get(funcName);
+              if (optInfo) {
+                const numProvided = remainingArgs.length;
+                for (const opt of optInfo) {
+                  if (opt.index >= numProvided) {
+                    pushDefaultValue(fctx, opt.type);
+                  }
+                }
+              }
+
+              // Pad any remaining missing arguments with defaults
+              if (paramTypes) {
+                const providedCount = Math.min(remainingArgs.length, paramTypes.length);
+                const optFilledCount = ctx.funcOptionalParams.get(funcName)
+                  ? ctx.funcOptionalParams.get(funcName)!.filter(o => o.index >= remainingArgs.length).length
+                  : 0;
+                const totalPushed = providedCount + optFilledCount;
+                for (let i = totalPushed; i < paramTypes.length; i++) {
+                  pushDefaultValue(fctx, paramTypes[i]!);
                 }
               }
             }
@@ -8996,14 +9032,45 @@ function compileCallExpression(
                 (syntheticCall as any).parent = expr.parent;
                 return compileClosureCall(ctx, fctx, syntheticCall as ts.CallExpression, funcName, closureInfo);
               }
-              const paramTypes = getFuncParamTypes(ctx, funcIdx!);
-              for (let i = 0; i < elements.length; i++) {
-                compileExpression(ctx, fctx, elements[i]!, paramTypes?.[i]);
-              }
-              const optInfo = ctx.funcOptionalParams.get(funcName);
-              if (optInfo) {
-                for (const opt of optInfo) {
-                  if (opt.index >= elements.length) pushDefaultValue(fctx, opt.type);
+              const applyRestInfo = ctx.funcRestParams.get(funcName);
+              if (applyRestInfo) {
+                // Rest-param function via .apply(): pack trailing elements into vec
+                const paramTypes = getFuncParamTypes(ctx, funcIdx!);
+                for (let i = 0; i < applyRestInfo.restIndex; i++) {
+                  if (i < elements.length) {
+                    compileExpression(ctx, fctx, elements[i]!, paramTypes?.[i]);
+                  } else {
+                    pushDefaultValue(fctx, paramTypes?.[i] ?? { kind: "f64" });
+                  }
+                }
+                const restArgCount = Math.max(0, elements.length - applyRestInfo.restIndex);
+                fctx.body.push({ op: "i32.const", value: restArgCount });
+                for (let i = applyRestInfo.restIndex; i < elements.length; i++) {
+                  compileExpression(ctx, fctx, elements[i]!, applyRestInfo.elemType);
+                }
+                fctx.body.push({ op: "array.new_fixed", typeIdx: applyRestInfo.arrayTypeIdx, length: restArgCount });
+                fctx.body.push({ op: "struct.new", typeIdx: applyRestInfo.vecTypeIdx });
+              } else {
+                const paramTypes = getFuncParamTypes(ctx, funcIdx!);
+                for (let i = 0; i < elements.length; i++) {
+                  compileExpression(ctx, fctx, elements[i]!, paramTypes?.[i]);
+                }
+                const optInfo = ctx.funcOptionalParams.get(funcName);
+                if (optInfo) {
+                  for (const opt of optInfo) {
+                    if (opt.index >= elements.length) pushDefaultValue(fctx, opt.type);
+                  }
+                }
+                // Pad any remaining missing arguments with defaults
+                if (paramTypes) {
+                  const providedCount = Math.min(elements.length, paramTypes.length);
+                  const optFilledCount = ctx.funcOptionalParams.get(funcName)
+                    ? ctx.funcOptionalParams.get(funcName)!.filter(o => o.index >= elements.length).length
+                    : 0;
+                  const totalPushed = providedCount + optFilledCount;
+                  for (let i = totalPushed; i < paramTypes.length; i++) {
+                    pushDefaultValue(fctx, paramTypes[i]!);
+                  }
                 }
               }
               const finalFuncIdx = ctx.funcMap.get(funcName) ?? funcIdx!;
@@ -9024,11 +9091,33 @@ function compileCallExpression(
               (syntheticCall as any).parent = expr.parent;
               return compileClosureCall(ctx, fctx, syntheticCall as ts.CallExpression, funcName, closureInfo);
             }
-            const finalFuncIdx = ctx.funcMap.get(funcName) ?? funcIdx!;
-            const optInfo = ctx.funcOptionalParams.get(funcName);
-            if (optInfo) {
-              for (const opt of optInfo) pushDefaultValue(fctx, opt.type);
+            const applyNoArgsRestInfo = ctx.funcRestParams.get(funcName);
+            if (applyNoArgsRestInfo) {
+              // Rest-param function with no args: push empty vec
+              const paramTypes = getFuncParamTypes(ctx, funcIdx!);
+              for (let i = 0; i < applyNoArgsRestInfo.restIndex; i++) {
+                pushDefaultValue(fctx, paramTypes?.[i] ?? { kind: "f64" });
+              }
+              fctx.body.push({ op: "i32.const", value: 0 });
+              fctx.body.push({ op: "array.new_fixed", typeIdx: applyNoArgsRestInfo.arrayTypeIdx, length: 0 });
+              fctx.body.push({ op: "struct.new", typeIdx: applyNoArgsRestInfo.vecTypeIdx });
+            } else {
+              const optInfo = ctx.funcOptionalParams.get(funcName);
+              if (optInfo) {
+                for (const opt of optInfo) pushDefaultValue(fctx, opt.type);
+              }
+              // Pad any remaining missing arguments with defaults
+              const paramTypes = getFuncParamTypes(ctx, funcIdx!);
+              if (paramTypes) {
+                const optFilledCount = ctx.funcOptionalParams.get(funcName)
+                  ? ctx.funcOptionalParams.get(funcName)!.length
+                  : 0;
+                for (let i = optFilledCount; i < paramTypes.length; i++) {
+                  pushDefaultValue(fctx, paramTypes[i]!);
+                }
+              }
             }
+            const finalFuncIdx = ctx.funcMap.get(funcName) ?? funcIdx!;
             fctx.body.push({ op: "call", funcIdx: finalFuncIdx });
             const sig = ctx.checker.getResolvedSignature(expr);
             if (sig) {
@@ -9796,8 +9885,10 @@ function compileCallExpression(
         if (charCodeAtIdx !== undefined) {
           compileExpression(ctx, fctx, propAccess.expression);
           if (expr.arguments.length > 0) {
-            const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
-            if (argType && argType.kind === "f64") {
+            const argType = compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "f64" });
+            if (!argType || argType === VOID_RESULT) {
+              fctx.body.push({ op: "i32.const", value: 0 });
+            } else if (argType.kind === "f64") {
               fctx.body.push({ op: "i32.trunc_sat_f64_s" });
             }
           } else {
@@ -9815,10 +9906,13 @@ function compileCallExpression(
         const paramTypes = getFuncParamTypes(ctx, funcIdx);
         const args = expr.arguments;
         for (let ai = 0; ai < args.length; ai++) {
-          const argResult = compileExpression(ctx, fctx, args[ai]!);
-          const expectedType = paramTypes?.[ai + 1]; // +1 for self param
-          if (argResult && expectedType && argResult.kind !== expectedType.kind) {
-            coerceType(ctx, fctx, argResult, expectedType);
+          const expectedArgType = paramTypes?.[ai + 1]; // +1 for self param
+          const argResult = compileExpression(ctx, fctx, args[ai]!, expectedArgType);
+          if (!argResult || argResult === VOID_RESULT) {
+            // void/null result — push a default value for the expected type
+            pushDefaultValue(fctx, expectedArgType ?? { kind: "f64" });
+          } else if (expectedArgType && argResult.kind !== expectedArgType.kind) {
+            coerceType(ctx, fctx, argResult, expectedArgType);
           }
         }
         // Pad missing optional args with defaults (e.g. indexOf 2nd arg)
@@ -17073,8 +17167,10 @@ function compileNativeStringMethodCall(
     fctx.body.push({ op: "local.get", index: tmpLocal });
     fctx.body.push({ op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 }); // .off
     if (expr.arguments.length > 0) {
-      const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
-      if (argType && argType.kind === "f64") {
+      const argType = compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "f64" });
+      if (!argType || argType === VOID_RESULT) {
+        fctx.body.push({ op: "i32.const", value: 0 });
+      } else if (argType.kind === "f64") {
         fctx.body.push({ op: "i32.trunc_sat_f64_s" });
       }
     } else {
@@ -17090,8 +17186,10 @@ function compileNativeStringMethodCall(
     compileExpression(ctx, fctx, propAccess.expression);
     emitFlatten();
     if (expr.arguments.length > 0) {
-      const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
-      if (argType && argType.kind === "f64") {
+      const argType = compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "f64" });
+      if (!argType || argType === VOID_RESULT) {
+        fctx.body.push({ op: "i32.const", value: 0 });
+      } else if (argType.kind === "f64") {
         fctx.body.push({ op: "i32.trunc_sat_f64_s" });
       }
     } else {
@@ -17115,8 +17213,10 @@ function compileNativeStringMethodCall(
     // Compile index
     const idxTmp = allocLocal(fctx, `__str_at_idx_${fctx.locals.length}`, { kind: "i32" });
     if (expr.arguments.length > 0) {
-      const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
-      if (argType && argType.kind === "f64") {
+      const argType = compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "f64" });
+      if (!argType || argType === VOID_RESULT) {
+        fctx.body.push({ op: "i32.const", value: 0 });
+      } else if (argType.kind === "f64") {
         fctx.body.push({ op: "i32.trunc_sat_f64_s" });
       }
     } else {
@@ -17151,8 +17251,11 @@ function compileNativeStringMethodCall(
     emitFlatten();
     // start
     if (expr.arguments.length > 0) {
-      const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
-      if (argType && argType.kind === "f64") {
+      const argType = compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "f64" });
+      if (!argType || argType === VOID_RESULT) {
+        // void/null result — push default 0
+        fctx.body.push({ op: "i32.const", value: 0 });
+      } else if (argType.kind === "f64") {
         fctx.body.push({ op: "i32.trunc_sat_f64_s" });
       }
     } else {
@@ -17160,8 +17263,10 @@ function compileNativeStringMethodCall(
     }
     // end
     if (expr.arguments.length > 1) {
-      const argType = compileExpression(ctx, fctx, expr.arguments[1]!);
-      if (argType && argType.kind === "f64") {
+      const argType = compileExpression(ctx, fctx, expr.arguments[1]!, { kind: "f64" });
+      if (!argType || argType === VOID_RESULT) {
+        fctx.body.push({ op: "i32.const", value: 0x7FFFFFFF });
+      } else if (argType.kind === "f64") {
         fctx.body.push({ op: "i32.trunc_sat_f64_s" });
       }
     } else {
@@ -17182,8 +17287,10 @@ function compileNativeStringMethodCall(
     emitFlatten();
     // start
     if (expr.arguments.length > 0) {
-      const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
-      if (argType && argType.kind === "f64") {
+      const argType = compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "f64" });
+      if (!argType || argType === VOID_RESULT) {
+        fctx.body.push({ op: "i32.const", value: 0 });
+      } else if (argType.kind === "f64") {
         fctx.body.push({ op: "i32.trunc_sat_f64_s" });
       }
     } else {
@@ -17191,8 +17298,10 @@ function compileNativeStringMethodCall(
     }
     // end
     if (expr.arguments.length > 1) {
-      const argType = compileExpression(ctx, fctx, expr.arguments[1]!);
-      if (argType && argType.kind === "f64") {
+      const argType = compileExpression(ctx, fctx, expr.arguments[1]!, { kind: "f64" });
+      if (!argType || argType === VOID_RESULT) {
+        fctx.body.push({ op: "i32.const", value: 0x7FFFFFFF });
+      } else if (argType.kind === "f64") {
         fctx.body.push({ op: "i32.trunc_sat_f64_s" });
       }
     } else {
@@ -17216,8 +17325,10 @@ function compileNativeStringMethodCall(
     }
     // fromIndex arg
     if (expr.arguments.length > 1) {
-      const argType = compileExpression(ctx, fctx, expr.arguments[1]!);
-      if (argType && argType.kind === "f64") {
+      const argType = compileExpression(ctx, fctx, expr.arguments[1]!, { kind: "f64" });
+      if (!argType || argType === VOID_RESULT) {
+        fctx.body.push({ op: "i32.const", value: 0 });
+      } else if (argType.kind === "f64") {
         fctx.body.push({ op: "i32.trunc_sat_f64_s" });
       }
     } else {
@@ -17239,8 +17350,10 @@ function compileNativeStringMethodCall(
       fctx.body.push({ op: "ref.null", typeIdx: strTypeIdx });
     }
     if (expr.arguments.length > 1) {
-      const argType = compileExpression(ctx, fctx, expr.arguments[1]!);
-      if (argType && argType.kind === "f64") {
+      const argType = compileExpression(ctx, fctx, expr.arguments[1]!, { kind: "f64" });
+      if (!argType || argType === VOID_RESULT) {
+        fctx.body.push({ op: "i32.const", value: 0x7FFFFFFF });
+      } else if (argType.kind === "f64") {
         fctx.body.push({ op: "i32.trunc_sat_f64_s" });
       }
     } else {
