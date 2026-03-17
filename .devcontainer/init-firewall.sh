@@ -103,6 +103,10 @@ fi
 HOST_NETWORK=$(echo "$HOST_IP" | sed "s/\.[0-9]*$/.0\/24/")
 echo "Host network detected as: $HOST_NETWORK"
 
+# Restrict ttyd (port 7681) to Tailscale CGNAT range only
+iptables -A INPUT -p tcp --dport 7681 -s 100.64.0.0/10 -j ACCEPT
+iptables -A INPUT -p tcp --dport 7681 -j DROP
+
 # Set up remaining iptables rules
 iptables -A INPUT -s "$HOST_NETWORK" -j ACCEPT
 iptables -A OUTPUT -d "$HOST_NETWORK" -j ACCEPT
