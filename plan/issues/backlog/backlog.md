@@ -123,7 +123,7 @@ _Goal: Remaining runtime failures, codegen quality, and test infrastructure expa
 
 _Updated baseline (2026-03-16): 22,959 tests — 5,312 pass (23.1%), 2,010 fail, 7,314 CE, 8,323 skip. Issues prioritized by test impact, executed dependency-driven (see `plan/dependency-graph.md`)._
 
-_Prior round issues (#387-#408) moved to done/. Numbers below reflect re-analysis on 21,872 unique tests: 5,447 pass (24.9%), 6,643 CE, 2,067 fail, 7,715 skip._
+_Latest run (2026-03-17): 17,606 unique tests — 5,735 pass (32.6%), 2,064 fail, 3,703 CE, 6,104 skip. Prior round issues (#387-#408) in done/._
 
 ### Compile errors — Critical (2,759 CE)
 
