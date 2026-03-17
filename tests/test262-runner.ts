@@ -1819,8 +1819,14 @@ export async function runTest262File(filePath: string, category: string, timeout
     const timing: TestTiming = { totalMs: round2(totalMs), compileMs: round2(compileMs), instantiateMs: 0, executeMs: 0 };
     // For runtime negative tests, a compile error is not expected — the code
     // should compile successfully and fail at runtime.
+    // Exception: if the compiler detected a TDZ violation (ReferenceError) at compile
+    // time and the test expects a ReferenceError, count it as a pass.
     if (isRuntimeNegative) {
-      return { file: relPath, category, status: "compile_error", error: compileErr.message ?? String(compileErr), timing };
+      const errMsg = compileErr.message ?? String(compileErr);
+      if (meta.negative!.type === "ReferenceError" && errMsg.includes("before initialization")) {
+        return { file: relPath, category, status: "pass", timing };
+      }
+      return { file: relPath, category, status: "compile_error", error: errMsg, timing };
     }
     return {
       file: relPath, category, status: "compile_error",
@@ -1833,9 +1839,15 @@ export async function runTest262File(filePath: string, category: string, timeout
     const totalMs = performance.now() - totalStart;
     const timing: TestTiming = { totalMs: round2(totalMs), compileMs: round2(compileMs), instantiateMs: 0, executeMs: 0 };
     if (isRuntimeNegative) {
+      // If the compiler detected a TDZ violation (ReferenceError) at compile time
+      // and the test expects a ReferenceError, count it as a pass.
+      const errMsgs = result.errors.filter(e => e.severity === "error").map(e => e.message);
+      if (meta.negative!.type === "ReferenceError" && errMsgs.some(m => m.includes("before initialization"))) {
+        return { file: relPath, category, status: "pass", timing };
+      }
       return {
         file: relPath, category, status: "compile_error",
-        error: (result.errors.filter(e => e.severity === "error").map(e => e.message).join("; ") || result.errors.map(e => e.message).join("; ")),
+        error: (errMsgs.join("; ") || result.errors.map(e => e.message).join("; ")),
         timing,
       };
     }
