@@ -5825,12 +5825,8 @@ function compilePropertyLogicalAssignment(
     typeName = ctx.widenedVarStructMap.get(target.expression.text);
   }
   if (!typeName) {
-    ctx.errors.push({
-      message: `Cannot resolve struct type for logical assignment on property '${propName}'`,
-      line: getLine(target),
-      column: getCol(target),
-    });
-    return null;
+    // Fallback: treat as externref property access via __extern_get / __extern_set
+    return compilePropertyLogicalAssignmentExternref(ctx, fctx, target, rhs, op, propName);
   }
 
   // Check for accessor properties (get/set) before looking up struct fields
@@ -5909,6 +5905,178 @@ function compilePropertyLogicalAssignment(
   };
 
   return emitLogicalAssignmentPattern(ctx, fctx, rhs, op, fieldType, emitFieldGet, emitFieldSet);
+}
+
+/**
+ * Fallback for logical assignment on a property access target when the
+ * struct type cannot be resolved statically.
+ *
+ * Strategy:
+ * 1. Compile the object expression to discover its runtime Wasm type.
+ * 2. If the result is a struct ref, look up the field by name and use struct.get/struct.set.
+ * 3. Otherwise, convert to externref and use __extern_get / __extern_set.
+ */
+function compilePropertyLogicalAssignmentExternref(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  target: ts.PropertyAccessExpression,
+  rhs: ts.Expression,
+  op: ts.SyntaxKind,
+  propName: string,
+): ValType | null {
+  // Compile the object expression to discover its runtime type
+  const objResult = compileExpression(ctx, fctx, target.expression);
+  if (!objResult) return null;
+
+  // --- Path A: The object compiled to a struct ref ---
+  if (objResult.kind === "ref" || objResult.kind === "ref_null") {
+    const typeIdx = (objResult as { typeIdx: number }).typeIdx;
+    let resolvedTypeName: string | undefined;
+    for (const [name, idx] of ctx.structMap.entries()) {
+      if (idx === typeIdx) { resolvedTypeName = name; break; }
+    }
+    if (resolvedTypeName) {
+      const fields = ctx.structFields.get(resolvedTypeName);
+      if (fields) {
+        let fieldIdx = fields.findIndex((f) => f.name === propName);
+
+        // If the field doesn't exist yet, try to add it dynamically from TS type info
+        if (fieldIdx === -1) {
+          const objTsType = ctx.checker.getTypeAtLocation(target.expression);
+          const tsProps = objTsType.getProperties?.();
+          if (tsProps) {
+            const tsProp = tsProps.find(p => p.name === propName);
+            if (tsProp) {
+              const propTsType = ctx.checker.getTypeOfSymbolAtLocation(tsProp, target);
+              const propWasmType = resolveWasmType(ctx, propTsType);
+              const newField: FieldDef = { name: propName, type: propWasmType, mutable: true };
+              fields.push(newField);
+              const typeDef = ctx.mod.types[typeIdx];
+              if (typeDef?.kind === "struct") {
+                typeDef.fields.push(newField);
+              }
+              fieldIdx = fields.length - 1;
+            }
+          }
+        }
+
+        if (fieldIdx !== -1) {
+          const fieldType = fields[fieldIdx]!.type;
+          const objTmp = allocLocal(fctx, `__logprop_ext_obj_${fctx.locals.length}`, objResult);
+          fctx.body.push({ op: "local.set", index: objTmp });
+
+          const emitGet = () => {
+            fctx.body.push({ op: "local.get", index: objTmp });
+            fctx.body.push({ op: "struct.get", typeIdx, fieldIdx });
+          };
+          const emitSet = () => {
+            const tmpVal = allocLocal(fctx, `__logprop_ext_val_${fctx.locals.length}`, fieldType);
+            fctx.body.push({ op: "local.set", index: tmpVal });
+            fctx.body.push({ op: "local.get", index: objTmp });
+            fctx.body.push({ op: "local.get", index: tmpVal });
+            fctx.body.push({ op: "struct.set", typeIdx, fieldIdx });
+            fctx.body.push({ op: "local.get", index: tmpVal });
+          };
+
+          return emitLogicalAssignmentPattern(ctx, fctx, rhs, op, fieldType, emitGet, emitSet);
+        }
+      }
+    }
+
+    // Struct ref but field not found — convert to externref and fall through to path B
+    fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+  } else if (objResult.kind !== "externref") {
+    // For f64/i32, box to externref
+    if (objResult.kind === "f64") {
+      const boxIdx = ctx.funcMap.get("__box_number");
+      if (boxIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: boxIdx });
+      } else {
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "f64.const", value: NaN });
+        return { kind: "f64" };
+      }
+    } else if (objResult.kind === "i32") {
+      fctx.body.push({ op: "f64.convert_i32_s" });
+      const boxIdx = ctx.funcMap.get("__box_number");
+      if (boxIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: boxIdx });
+      } else {
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "f64.const", value: NaN });
+        return { kind: "f64" };
+      }
+    } else {
+      // Unknown type — emit NaN as graceful fallback
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "f64.const", value: NaN });
+      return { kind: "f64" };
+    }
+  }
+
+  // --- Path B: externref-based property logical assignment ---
+  const objLocal = allocLocal(fctx, `__logprop_pobj_${fctx.locals.length}`, { kind: "externref" });
+  fctx.body.push({ op: "local.set", index: objLocal });
+
+  // Compile propName as externref string key
+  addStringConstantGlobal(ctx, propName);
+  const keyResult = compileStringLiteral(ctx, fctx, propName);
+  if (!keyResult) return null;
+  if (keyResult.kind !== "externref") {
+    coerceType(ctx, fctx, keyResult, { kind: "externref" });
+  }
+  const keyLocal = allocLocal(fctx, `__logprop_pkey_${fctx.locals.length}`, { kind: "externref" });
+  fctx.body.push({ op: "local.set", index: keyLocal });
+
+  // Ensure __extern_get is available
+  let getIdx = ctx.funcMap.get("__extern_get");
+  if (getIdx === undefined) {
+    const importsBefore = ctx.numImportFuncs;
+    const getType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", "__extern_get", { kind: "func", typeIdx: getType });
+    shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+    getIdx = ctx.funcMap.get("__extern_get");
+  }
+  if (getIdx === undefined) return null;
+
+  // Ensure __extern_set is available
+  let setIdx = ctx.funcMap.get("__extern_set");
+  if (setIdx === undefined) {
+    const importsBefore = ctx.numImportFuncs;
+    const setType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }], []);
+    addImport(ctx, "env", "__extern_set", { kind: "func", typeIdx: setType });
+    shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+    setIdx = ctx.funcMap.get("__extern_set");
+  }
+  if (setIdx === undefined) return null;
+
+  // Ensure union imports (including __unbox_number, __box_number) are registered
+  addUnionImports(ctx);
+
+  const varType: ValType = { kind: "externref" };
+
+  // Capture final getIdx/setIdx values for closures
+  const finalGetIdx = getIdx;
+  const finalSetIdx = setIdx;
+
+  const emitGet = () => {
+    fctx.body.push({ op: "local.get", index: objLocal });
+    fctx.body.push({ op: "local.get", index: keyLocal });
+    fctx.body.push({ op: "call", funcIdx: finalGetIdx });
+  };
+
+  const emitSet = () => {
+    // Stack has the new value (externref) on top
+    const tmpVal = allocLocal(fctx, `__logprop_pval_${fctx.locals.length}`, { kind: "externref" });
+    fctx.body.push({ op: "local.set", index: tmpVal });
+    fctx.body.push({ op: "local.get", index: objLocal });
+    fctx.body.push({ op: "local.get", index: keyLocal });
+    fctx.body.push({ op: "local.get", index: tmpVal });
+    fctx.body.push({ op: "call", funcIdx: finalSetIdx });
+    fctx.body.push({ op: "local.get", index: tmpVal });
+  };
+
+  return emitLogicalAssignmentPattern(ctx, fctx, rhs, op, varType, emitGet, emitSet);
 }
 
 /**
