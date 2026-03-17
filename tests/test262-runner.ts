@@ -210,9 +210,18 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
   }
 
 
-  // Skip tests that use with statement
-  if (/\bwith\s*\(/.test(source)) {
-    return { skip: true, reason: "uses with statement" };
+  // Skip tests that use with statement — strip metadata block and comments first
+  // so we don't false-positive on "with" appearing in descriptions or comments.
+  {
+    const bodyForWith = source
+      .replace(/\/\*---[\s\S]*?---\*\//, "")  // strip YAML metadata
+      .replace(/\/\*[\s\S]*?\*\//g, "")        // strip block comments
+      .replace(/\/\/.*$/gm, "")               // strip line comments
+      .replace(/"(?:[^"\\]|\\.)*"/g, '""')    // strip double-quoted strings
+      .replace(/'(?:[^'\\]|\\.)*'/g, "''");   // strip single-quoted strings
+    if (/\bwith\s*\(/.test(bodyForWith)) {
+      return { skip: true, reason: "uses with statement" };
+    }
   }
 
   // Wrapper constructors (new Number, new String, new Boolean) now compile to primitives.
