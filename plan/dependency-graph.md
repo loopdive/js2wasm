@@ -379,35 +379,61 @@ Module system and import/export patterns.
 
 ## Cluster 17: March 2026 Error Analysis `[E][S][I]`
 
-New issues from re-analysis of 21,872 tests (5,447 pass, 6,643 CE, 2,067 fail).
+New issues from re-analysis of 21,872 tests (5,447 pass, 6,643 CE, 2,067 fail, 7,715 skip).
+
+### Compile errors (6,643 tests, 30.4%)
 
 ```
-#409 (unsupported call expression — 1652 CE) ── independent, successor to #387
-#410 (stack fallthru mismatch — 590 CE) ── independent, successor to #401
-#411 (struct.new stack mismatch — 517 CE) ── coordinates with #410 (both Wasm validation)
-#412 (yield outside generator — 166 CE) ── independent, successor to #287
-#413 (parameter self-reference — 59 CE) ── independent
-#414 (super keyword remaining — 11 CE) ── independent, successor to #375
-#415 (logical assignment struct — 14 CE) ── independent
-#416 (compound assignment element — 11 CE) ── coordinates with #415
-#417 (wrong return value — 1489 fail) ── umbrella, triage-first
-#418 (missing SyntaxError — 442 fail) ── independent, successor to #402
-#419 (null pointer destructuring — 116 fail) ── independent, successor to #396
+#409 (unsupported call expression — 1,652 CE) ── independent [E]
+#410 (stack args mismatch for call — 643 CE) ── independent [E][I]
+#411 (stack fallthru mismatch — 590 CE) ── independent [S][E], successor to #401
+#412 (struct.new stack mismatch — 517 CE) ── coordinates with #410, #411 [E][I]
+#415 (yield outside generator — 238 CE) ── coordinates with #287 [S][E]
+#416 (parameter self-reference — 59 CE) ── independent [E]
+#417 (for-of array destructuring type — 33 CE) ── independent [S]
+#418 (read .text of undefined — 30 CE) ── independent [E][S], successor to #405
+#419 (semicolon expected parser — 28 CE) ── independent [I]
+#420 (destructure non-array — 26 CE) ── independent [E]
+#421 (Array.reduce support — 23 CE) ── independent [E]
+#422 (generator type mismatch — 19 CE) ── blocked by #287 [S][E]
+#423 (invalid field index — 16 CE) ── independent [E]
+#424 (logical assignment struct — 14 CE) ── independent [E]
+#425 (async/yield parsing — 12 CE) ── independent [I]
+#426 (compound assignment element — 11 CE) ── coordinates with #424 [E]
+#427 (super keyword remaining — 11 CE) ── independent [E], successor to #375
+```
+
+### Runtime failures (2,067 tests, 9.5%)
+
+```
+#413 (wrong return value 0 — 1,489 fail) ── umbrella, triage-first [E][S]
+#402 (expected SyntaxError — 442 fail) ── existing issue [T]
+#414 (null pointer dereference — 116 fail) ── independent [E], successor to #325/#396
+#428 (expected ReferenceError — 6 fail) ── independent [S]
 ```
 
 | #   | Title | Tests | Ready? |
 |-----|-------|-------|--------|
-| 409 | Unsupported call expression (spread, optional chaining, super, property methods) | 1,652 CE | **Ready** (critical) |
-| 410 | Stack fallthru mismatch (control flow branches) | 590 CE | **Ready** (critical) |
-| 411 | struct.new stack mismatch (class/object construction) | 517 CE | **Ready** (critical, coordinates #410) |
-| 412 | Yield outside generator (generator body not recognized) | 166 CE | **Ready** |
-| 413 | Parameter self-reference (default param too strict) | 59 CE | **Ready** |
-| 414 | Super keyword unsupported in remaining positions | 11 CE | **Ready** |
-| 415 | Logical assignment struct resolution failure | 14 CE | **Ready** |
-| 416 | Compound assignment on element access (non-ref) | 11 CE | **Ready** (coordinates #415) |
-| 417 | Wrong return value (returned 0) — broad correctness | 1,489 fail | **Ready** (critical, triage first) |
-| 418 | Missing SyntaxError validation | 442 fail | **Ready** |
-| 419 | Null pointer in destructuring | 116 fail | **Ready** |
+| 409 | Unsupported call expression patterns | 1,652 CE | **Ready** (critical) |
+| 410 | Stack args mismatch for call instructions | 643 CE | **Ready** (critical) |
+| 411 | Stack fallthru mismatch at block boundaries | 590 CE | **Ready** (critical) |
+| 412 | Stack args mismatch for struct.new | 517 CE | **Ready** (critical, coordinates #410) |
+| 413 | Runtime wrong return value (returned 0) | 1,489 fail | **Ready** (critical, triage first) |
+| 414 | Null pointer dereference at runtime | 116 fail | **Ready** (high) |
+| 415 | Yield outside generator detection failures | 238 CE | **Ready** (high, coordinates #287) |
+| 416 | Parameter default self-reference | 59 CE | **Ready** (medium) |
+| 417 | for-of array destructuring type errors | 33 CE | **Ready** (medium) |
+| 418 | Internal error: reading .text of undefined | 30 CE | **Ready** (medium) |
+| 419 | Parser errors: semicolon expected | 28 CE | **Ready** (medium) |
+| 420 | Cannot destructure non-array types | 26 CE | **Ready** (medium) |
+| 421 | Array.reduce requires callback and initial value | 23 CE | **Ready** (medium) |
+| 422 | Generator type mismatch errors | 19 CE | Blocked by #287 |
+| 423 | Invalid field index in struct access | 16 CE | **Ready** (medium) |
+| 424 | Logical assignment on unresolved struct | 14 CE | **Ready** (medium) |
+| 425 | Async/yield keyword parsing edge cases | 12 CE | **Ready** (low) |
+| 426 | Compound assignment on non-ref element | 11 CE | **Ready** (low, coordinates #424) |
+| 427 | SuperKeyword unsupported in remaining contexts | 11 CE | **Ready** (low) |
+| 428 | Expected ReferenceError but succeeded | 6 fail | **Ready** (low) |
 
 ---
 
@@ -455,22 +481,24 @@ function in the same file. Key contention points:
 | Function | Issues |
 |----------|--------|
 | `compileBinaryExpression` | 138, 139, 174, 227, 228, 237, 244, 291, 295, 296, 299, 308, 324, 348 |
-| `compileCallExpression` | 232, 260, 280, 342, 364, 382, 409 |
-| `compileElementAccess` | 140, 176, 239, 326, 337, 361 |
-| `compilePropertyAccess` | 263, 274, 347, 362, 378 |
-| `compileObjectLiteralForStruct` | 230, 281 |
-| `compileDestructuringAssignment` | 142, 190, 243, 325, 328, 379, 419 |
-| `compileAssignment` (compound) | 283, 393, 404, 415, 416 |
-| `compileNewExpression` | 238, 261, 344 |
-| `coerceType` | 237, 277, 300, 301, 315, 348, 410, 411 |
-| diagnostic suppression (index.ts) | 152, 242, 262, 265, 269, 270, 275, 276, 381, 383 |
+| `compileCallExpression` | 232, 260, 280, 342, 364, 382, 409, 410 |
+| `compileElementAccess` | 140, 176, 239, 326, 337, 361, 426 |
+| `compilePropertyAccess` | 263, 274, 347, 362, 378, 423 |
+| `compileObjectLiteralForStruct` | 230, 281, 412 |
+| `compileDestructuringAssignment` | 142, 190, 243, 325, 328, 379, 417, 420 |
+| `compileAssignment` (compound) | 283, 393, 404, 424, 426 |
+| `compileNewExpression` | 238, 261, 344, 412 |
+| `coerceType` | 237, 277, 300, 301, 315, 348, 411 |
+| diagnostic suppression (index.ts) | 152, 242, 262, 265, 269, 270, 275, 276, 381, 383, 419 |
 | `collectStringLiterals/MathImports` | 321, 320 |
 | `registerAnyValueType` | 317, 320 |
-| scope resolution | 146, 202, 266, 331, 380 |
-| generator codegen | 241, 267, 287, 288, 412 |
+| scope resolution | 146, 202, 266, 331, 380, 416, 428 |
+| generator codegen | 241, 267, 287, 288, 415, 422 |
 | string methods | 349, 367, 372, 384 |
 | template literals | 357, 363 |
 | module/import handling | 332, 333, 371 |
-| class codegen | 329, 334, 375, 377, 414 |
-| loop codegen | 353, 373 |
-| built-in runtime | 344, 355, 359, 369, 385 |
+| class codegen | 329, 334, 375, 377, 427 |
+| loop codegen | 353, 373, 417 |
+| built-in runtime | 344, 355, 359, 369, 385, 421 |
+| block/stack balance | 411, 410, 412 |
+| AST null safety | 405, 418 |
