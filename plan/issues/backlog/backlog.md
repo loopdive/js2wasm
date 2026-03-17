@@ -139,7 +139,7 @@ _Latest run (2026-03-17): 17,606 unique tests — 5,735 pass (32.6%), 2,064 fail
 | [444](../ready/444.md) | local.set type mismatch | CE | 292 | High |
 | [445](../ready/445.md) | call args missing | CE | 72 | Medium |
 | [446](../ready/446.md) | call_ref type mismatch | CE | 56 | Medium |
-| [447](../ready/447.md) | stack fallthru (residual after #410) | CE | 48 | Medium |
+| [447](../ready/447.md) | stack fallthru (residual after #410) | CE | 48 | Medium | in-progress |
 | [448](../ready/448.md) | type mismatch i32 expected | CE | 47 | Medium |
 | [449](../ready/449.md) | call_ref null function reference | CE | 15 | Low |
 | [411](../ready/411.md) | struct.new args missing (see above) | CE | 114 | Critical |

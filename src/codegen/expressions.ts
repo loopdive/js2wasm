@@ -4532,10 +4532,18 @@ function compileNullishCoalescing(
     return resultKind;
   }
 
-  // Types differ — use RHS type as the unified type since when LHS is null
-  // (which is the whole point of ??), the result should be the RHS value.
-  // For the else branch (LHS non-null), coerce LHS to RHS type.
-  const unifiedType: ValType = rType;
+  // Types differ — use externref as the unified type when both sides are
+  // different types (e.g., struct ref vs f64). This ensures both branches
+  // can produce a compatible wasm type. If the RHS is already externref
+  // or a ref type, use externref; if both are numeric but different, prefer f64.
+  let unifiedType: ValType;
+  if (rType.kind === "f64" && (resultKind.kind === "externref" || resultKind.kind === "ref" || resultKind.kind === "ref_null")) {
+    unifiedType = { kind: "externref" };
+  } else if (resultKind.kind === "f64" && (rType.kind === "externref" || rType.kind === "ref" || rType.kind === "ref_null")) {
+    unifiedType = { kind: "externref" };
+  } else {
+    unifiedType = rType;
+  }
 
   // Coerce RHS (then branch) to unified type if needed (usually already matches)
   if (!valTypesMatch(rType, unifiedType)) {
@@ -13604,15 +13612,26 @@ function compileOptionalPropertyAccess(
   fctx.body.push({ op: "local.tee", index: tmp });
   fctx.body.push({ op: "ref.is_null" });
 
-  // Determine result type by compiling the non-optional access in isolation
-  // Create a synthetic non-optional expression to get the property type
-  const resultType: ValType = { kind: "externref" };
+  // Determine result type from the TS type of the property being accessed
+  const tsPropType = ctx.checker.getTypeAtLocation(expr);
+  let resultType: ValType = resolveWasmType(ctx, tsPropType);
+  // For ref types, use externref as the block type to avoid null-subtyping issues
+  if (resultType.kind === "ref" || resultType.kind === "ref_null") {
+    resultType = { kind: "externref" };
+  }
 
   const savedBody = fctx.body;
   fctx.savedBodies.push(savedBody);
 
-  // then branch (null path): push null
-  const thenInstrs: Instr[] = [{ op: "ref.null.extern" }];
+  // then branch (null path): push the appropriate null/zero default
+  let thenInstrs: Instr[];
+  if (resultType.kind === "f64") {
+    thenInstrs = [{ op: "f64.const", value: 0 }];
+  } else if (resultType.kind === "i32") {
+    thenInstrs = [{ op: "i32.const", value: 0 }];
+  } else {
+    thenInstrs = [{ op: "ref.null.extern" }];
+  }
 
   // else branch (non-null path): get the property from the temp
   fctx.body = [];
@@ -13620,8 +13639,10 @@ function compileOptionalPropertyAccess(
   // Compile the property access part without the receiver
   const tsObjType = ctx.checker.getTypeAtLocation(expr.expression);
   const propName = expr.name.text;
+  let elseResultType: ValType | null = null;
   if (isExternalDeclaredClass(tsObjType, ctx.checker)) {
     compileExternPropertyGetFromStack(ctx, fctx, tsObjType, propName);
+    elseResultType = { kind: "externref" };
   } else if (isStringType(tsObjType) && propName === "length") {
     if (ctx.fast && ctx.anyStrTypeIdx >= 0) {
       // len is field 0 of $AnyString — works for both FlatString and ConsString
@@ -13630,6 +13651,46 @@ function compileOptionalPropertyAccess(
       const funcIdx = ctx.funcMap.get("length");
       if (funcIdx !== undefined) fctx.body.push({ op: "call", funcIdx });
     }
+    elseResultType = { kind: "i32" };
+  } else {
+    // General struct field access: look up the struct type and field index
+    const structName = resolveStructName(ctx, tsObjType);
+    if (structName) {
+      const structTypeIdx = ctx.structMap.get(structName);
+      const fields = ctx.structFields.get(structName);
+      if (structTypeIdx !== undefined && fields) {
+        // Check for accessor first
+        const accessorKey = `${structName}_${propName}`;
+        const getterName = `${structName}_get_${propName}`;
+        const getterIdx = ctx.funcMap.get(getterName);
+        if (ctx.classAccessorSet.has(accessorKey) && getterIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx: getterIdx });
+          // Determine getter return type
+          const funcDef = ctx.mod.functions[getterIdx - ctx.numImportFuncs];
+          if (funcDef) {
+            const typeDef = ctx.mod.types[funcDef.typeIdx];
+            if (typeDef && typeDef.kind === "func" && typeDef.results.length > 0) {
+              elseResultType = typeDef.results[0]!;
+            }
+          }
+        } else {
+          const fieldIdx = fields.findIndex((f: any) => f.name === propName);
+          if (fieldIdx >= 0) {
+            // Cast to the concrete struct type if needed
+            if (objType.kind !== "ref" || objType.typeIdx !== structTypeIdx) {
+              fctx.body.push({ op: "ref.cast", typeIdx: structTypeIdx } as unknown as Instr);
+            }
+            fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+            elseResultType = fields[fieldIdx]!.type;
+          }
+        }
+      }
+    }
+  }
+
+  // Coerce else branch result to match the block result type
+  if (elseResultType && !valTypesMatch(elseResultType, resultType)) {
+    coerceType(ctx, fctx, elseResultType, resultType);
   }
   const elseInstrs = fctx.body;
 
