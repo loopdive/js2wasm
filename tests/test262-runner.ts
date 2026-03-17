@@ -311,10 +311,7 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
     return { skip: true, reason: "new Object() not supported" };
   }
 
-  // Skip tests that dynamically add properties to empty object literals (person.age = 50 on var n = {})
-  if (/\bvar\s+\w+\s*=\s*\{\s*\}/.test(source) && /\w+\.\w+\s*=\s*\d/.test(source)) {
-    return { skip: true, reason: "dynamic property assignment on empty object" };
-  }
+  // (Removed: dynamic property assignment on empty object skip — shape inference #130 handles this)
 
   // Skip tests using this.x at global scope (property bag on global object)
   if (/\bthis\.\w+\s*(!==|===|[+\-]{2})/.test(source) && !/\bclass\b/.test(source) && !/\bfunction\b.*\bthis\./.test(source)) {
