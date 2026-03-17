@@ -6638,9 +6638,11 @@ export function ensureStructForType(ctx: CodegenContext, tsType: ts.Type): void 
     // in compileObjectLiteralForStruct.
     const decl = prop.valueDeclaration;
     if (!decl) continue;
-    const isUserMethod = ts.isMethodDeclaration(decl) ||
-      (ts.isPropertyAssignment(decl) && (ts.isFunctionExpression(decl.initializer) || ts.isArrowFunction(decl.initializer)));
-    if (!isUserMethod) continue;
+    // Only pre-register MethodDeclaration — PropertyAssignment with function
+    // initializers are compiled as closures (eqref fields), not direct calls,
+    // so a placeholder function would never be filled and remain with an empty
+    // body causing "stack for fallthru" validation errors.
+    if (!ts.isMethodDeclaration(decl)) continue;
     // Also skip declarations from .d.ts files (lib types)
     const declSourceFile = decl.getSourceFile();
     if (declSourceFile && declSourceFile.isDeclarationFile) continue;
