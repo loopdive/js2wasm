@@ -1073,12 +1073,16 @@ function emitArrowParamDestructuring(
     const fields = ctx.structFields.get(typeName);
     if (structTypeIdx === undefined || !fields) return;
 
+    // Null guard for ref_null param types
+    const savedBodyAPD = fctx.body;
+    const apdInstrs: Instr[] = [];
+    fctx.body = apdInstrs;
+
     for (const element of pattern.elements) {
       if (!ts.isBindingElement(element)) continue;
       if (ts.isOmittedExpression(element as any)) continue;
       const propName = (element.propertyName ?? element.name) as ts.Identifier;
       if (!ts.isIdentifier(element.name)) {
-        // Nested destructuring — skip for now
         continue;
       }
       const localName = element.name.text;
@@ -1092,7 +1096,6 @@ function emitArrowParamDestructuring(
       fctx.body.push({ op: "local.get", index: paramIdx });
       fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
 
-      // Handle default value in destructuring: ({ x = 5 }) => ...
       if (element.initializer) {
         if (fieldType.kind === "externref") {
           const tmpField = allocLocal(fctx, `__dflt_${fctx.locals.length}`, fieldType);
@@ -1113,7 +1116,6 @@ function emitArrowParamDestructuring(
             ],
           });
         } else if (fieldType.kind === "f64") {
-          // Check for NaN (undefined marker)
           const tmpField = allocLocal(fctx, `__dflt_${fctx.locals.length}`, fieldType);
           fctx.body.push({ op: "local.tee", index: tmpField });
           fctx.body.push({ op: "local.get", index: tmpField });
@@ -1139,6 +1141,16 @@ function emitArrowParamDestructuring(
         fctx.body.push({ op: "local.set", index: localIdx });
       }
     }
+
+    // Close null guard
+    fctx.body = savedBodyAPD;
+    if (paramType.kind === "ref_null" && apdInstrs.length > 0) {
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "ref.is_null" } as Instr);
+      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: apdInstrs });
+    } else {
+      fctx.body.push(...apdInstrs);
+    }
   } else if (ts.isArrayBindingPattern(param.name)) {
     // Array destructuring: const [a, b] = param
     const pattern = param.name;
@@ -1152,6 +1164,11 @@ function emitArrowParamDestructuring(
 
     const innerElemType = arrDef.element;
 
+    // Null guard for ref_null param types
+    const savedBodyAPDA = fctx.body;
+    const apdaInstrs: Instr[] = [];
+    fctx.body = apdaInstrs;
+
     for (let i = 0; i < pattern.elements.length; i++) {
       const element = pattern.elements[i]!;
       if (ts.isOmittedExpression(element)) continue;
@@ -1162,18 +1179,26 @@ function emitArrowParamDestructuring(
       const bindingWasmType = resolveWasmType(ctx, bindingTsType);
       const localIdx = allocLocal(fctx, localName, bindingWasmType);
 
-      // vec struct: { length: i32, data: ref $arr }
       fctx.body.push({ op: "local.get", index: paramIdx });
-      fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 }); // data
+      fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
       fctx.body.push({ op: "i32.const", value: i });
       emitBoundsCheckedArrayGet(fctx, innerArrTypeIdx, innerElemType);
 
-      // Coerce element type to binding type if needed
       if (!valTypesMatch(innerElemType, bindingWasmType)) {
         coerceType(ctx, fctx, innerElemType, bindingWasmType);
       }
 
       fctx.body.push({ op: "local.set", index: localIdx });
+    }
+
+    // Close null guard
+    fctx.body = savedBodyAPDA;
+    if (paramType.kind === "ref_null" && apdaInstrs.length > 0) {
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "ref.is_null" } as Instr);
+      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: apdaInstrs });
+    } else {
+      fctx.body.push(...apdaInstrs);
     }
   }
 }
@@ -1528,6 +1553,9 @@ function compileArrowAsClosure(
           const arrDef = ctx.mod.types[arrTypeIdx];
           if (arrDef && arrDef.kind === "array") {
             const elemType = arrDef.element;
+            const savedBodyFPAD = liftedFctx.body;
+            const fpadInstrs: Instr[] = [];
+            liftedFctx.body = fpadInstrs;
             for (let ei = 0; ei < param.name.elements.length; ei++) {
               const element = param.name.elements[ei]!;
               if (ts.isOmittedExpression(element)) continue;
@@ -1539,6 +1567,14 @@ function compileArrowAsClosure(
               liftedFctx.body.push({ op: "i32.const", value: ei });
               liftedFctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
               liftedFctx.body.push({ op: "local.set", index: localIdx });
+            }
+            liftedFctx.body = savedBodyFPAD;
+            if (paramType.kind === "ref_null" && fpadInstrs.length > 0) {
+              liftedFctx.body.push({ op: "local.get", index: paramIdx });
+              liftedFctx.body.push({ op: "ref.is_null" } as Instr);
+              liftedFctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: fpadInstrs });
+            } else {
+              liftedFctx.body.push(...fpadInstrs);
             }
             handled = true;
           }
@@ -1555,6 +1591,9 @@ function compileArrowAsClosure(
         const typeDef = ctx.mod.types[typeIdx];
         if (typeDef && typeDef.kind === "struct") {
           let allFound = true;
+          const savedBodyFPOD = liftedFctx.body;
+          const fpodInstrs: Instr[] = [];
+          liftedFctx.body = fpodInstrs;
           for (const element of param.name.elements) {
             if (ts.isOmittedExpression(element)) continue;
             if (!ts.isIdentifier(element.name)) continue;
@@ -1569,6 +1608,14 @@ function compileArrowAsClosure(
             liftedFctx.body.push({ op: "local.get", index: paramIdx });
             liftedFctx.body.push({ op: "struct.get", typeIdx, fieldIdx });
             liftedFctx.body.push({ op: "local.set", index: localIdx });
+          }
+          liftedFctx.body = savedBodyFPOD;
+          if (paramType.kind === "ref_null" && fpodInstrs.length > 0) {
+            liftedFctx.body.push({ op: "local.get", index: paramIdx });
+            liftedFctx.body.push({ op: "ref.is_null" } as Instr);
+            liftedFctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: fpodInstrs });
+          } else {
+            liftedFctx.body.push(...fpodInstrs);
           }
           handled = allFound;
         }
@@ -4463,6 +4510,12 @@ function compileDestructuringAssignment(
   const tmpLocal = allocLocal(fctx, `__destruct_assign_${fctx.locals.length}`, resultType);
   fctx.body.push({ op: "local.set", index: tmpLocal });
 
+  // Null guard for ref_null types
+  const isNullableDA = resultType.kind === "ref_null";
+  const savedBodyDA = fctx.body;
+  const destructInstrsDA: Instr[] = [];
+  fctx.body = destructInstrsDA;
+
   // For each property in the destructuring pattern, set the existing local
   for (const prop of target.properties) {
     if (ts.isShorthandPropertyAssignment(prop)) {
@@ -4665,6 +4718,16 @@ function compileDestructuringAssignment(
     }
   }
 
+  // Close null guard
+  fctx.body = savedBodyDA;
+  if (isNullableDA && destructInstrsDA.length > 0) {
+    fctx.body.push({ op: "local.get", index: tmpLocal });
+    fctx.body.push({ op: "ref.is_null" } as Instr);
+    fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: destructInstrsDA });
+  } else {
+    fctx.body.push(...destructInstrsDA);
+  }
+
   // The result of a destructuring assignment is the RHS value
   fctx.body.push({ op: "local.get", index: tmpLocal });
   return resultType;
@@ -4726,6 +4789,12 @@ function compileArrayDestructuringAssignment(
   // Store struct ref in temp local
   const tmpLocal = allocLocal(fctx, `__arr_destruct_${fctx.locals.length}`, resultType);
   fctx.body.push({ op: "local.set", index: tmpLocal });
+
+  // Null guard for ref_null types
+  const isNullableADA = resultType.kind === "ref_null";
+  const savedBodyADA = fctx.body;
+  const arrDestructInstrsADA: Instr[] = [];
+  fctx.body = arrDestructInstrsADA;
 
   // Helper: get element type at index i
   const getElemType = (i: number): ValType => {
@@ -4912,6 +4981,16 @@ function compileArrayDestructuringAssignment(
     // else: unsupported element target — skip
   }
 
+  // Close null guard
+  fctx.body = savedBodyADA;
+  if (isNullableADA && arrDestructInstrsADA.length > 0) {
+    fctx.body.push({ op: "local.get", index: tmpLocal });
+    fctx.body.push({ op: "ref.is_null" } as Instr);
+    fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: arrDestructInstrsADA });
+  } else {
+    fctx.body.push(...arrDestructInstrsADA);
+  }
+
   // The result of a destructuring assignment is the RHS value
   fctx.body.push({ op: "local.get", index: tmpLocal });
   return resultType;
@@ -4991,6 +5070,11 @@ function emitObjectDestructureFromLocal(
   const fields = ctx.structFields.get(structName);
   if (!fields) return;
 
+  // Null guard for ref_null types
+  const savedBodyODFL = fctx.body;
+  const odflInstrs: Instr[] = [];
+  fctx.body = odflInstrs;
+
   for (const prop of pattern.properties) {
     if (ts.isShorthandPropertyAssignment(prop)) {
       const propName = prop.name.text;
@@ -5057,6 +5141,16 @@ function emitObjectDestructureFromLocal(
       }
     }
   }
+
+  // Close null guard
+  fctx.body = savedBodyODFL;
+  if (srcType.kind === "ref_null" && odflInstrs.length > 0) {
+    fctx.body.push({ op: "local.get", index: srcLocal });
+    fctx.body.push({ op: "ref.is_null" } as Instr);
+    fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: odflInstrs });
+  } else {
+    fctx.body.push(...odflInstrs);
+  }
 }
 
 /** Destructure an array from a local variable (used for nested patterns) */
@@ -5078,6 +5172,11 @@ function emitArrayDestructureFromLocal(
 
   const elemType = arrDef.element;
 
+  // Null guard for ref_null types
+  const savedBodyADFL = fctx.body;
+  const adflInstrs: Instr[] = [];
+  fctx.body = adflInstrs;
+
   for (let i = 0; i < pattern.elements.length; i++) {
     const element = pattern.elements[i]!;
     if (ts.isOmittedExpression(element)) continue;
@@ -5097,6 +5196,16 @@ function emitArrayDestructureFromLocal(
       }
       fctx.body.push({ op: "local.set", index: localIdx });
     }
+  }
+
+  // Close null guard
+  fctx.body = savedBodyADFL;
+  if (srcType.kind === "ref_null" && adflInstrs.length > 0) {
+    fctx.body.push({ op: "local.get", index: srcLocal });
+    fctx.body.push({ op: "ref.is_null" } as Instr);
+    fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: adflInstrs });
+  } else {
+    fctx.body.push(...adflInstrs);
   }
 }
 
