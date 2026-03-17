@@ -9244,6 +9244,13 @@ export function compileClassBodies(
         fctx.body.push({ op: "ref.null.extern" });
       } else if (field.type.kind === "ref" || field.type.kind === "ref_null") {
         fctx.body.push({ op: "ref.null", typeIdx: field.type.typeIdx });
+      } else if ((field.type as any).kind === "i64") {
+        fctx.body.push({ op: "i64.const", value: 0n } as unknown as Instr);
+      } else if ((field.type as any).kind === "eqref") {
+        fctx.body.push({ op: "ref.null.eq" } as unknown as Instr);
+      } else {
+        // Fallback for any unhandled type — push i32 0
+        fctx.body.push({ op: "i32.const", value: 0 });
       }
     }
     fctx.body.push({ op: "struct.new", typeIdx: structTypeIdx });
