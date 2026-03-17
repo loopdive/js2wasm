@@ -663,11 +663,15 @@ function compileObjectDestructuring(
   // For each binding element, create a local and extract the field
   for (const element of pattern.elements) {
     if (!ts.isBindingElement(element)) continue;
-    const propName = (element.propertyName ?? element.name) as ts.Identifier;
+    const propNameNode = element.propertyName ?? element.name;
+    const propName = ts.isIdentifier(propNameNode) ? propNameNode
+      : ts.isStringLiteral(propNameNode) ? propNameNode
+      : ts.isNumericLiteral(propNameNode) ? propNameNode
+      : undefined;
 
     // Handle nested binding patterns: const { b: { c, d } } = obj
     if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
-      const nestedPropName = element.propertyName as ts.Identifier | undefined;
+      const nestedPropName = element.propertyName && ts.isIdentifier(element.propertyName) ? element.propertyName : undefined;
       if (!nestedPropName) {
         ensureBindingLocals(ctx, fctx, element.name);
         continue;
@@ -695,9 +699,13 @@ function compileObjectDestructuring(
           for (const ne of element.name.elements) {
             if (!ts.isBindingElement(ne)) continue;
             if (!ts.isIdentifier(ne.name)) continue;
-            const nePropName = (ne.propertyName ?? ne.name) as ts.Identifier;
+            const nePropNode = ne.propertyName ?? ne.name;
+            const nePropText = ts.isIdentifier(nePropNode) ? nePropNode.text
+              : ts.isStringLiteral(nePropNode) ? nePropNode.text
+              : undefined;
+            if (!nePropText) continue; // skip computed property names
             const neLocalName = ne.name.text;
-            const neFieldIdx = nestedFields.findIndex((f) => f.name === nePropName.text);
+            const neFieldIdx = nestedFields.findIndex((f) => f.name === nePropText);
             if (neFieldIdx === -1) continue;
             const neFieldType = nestedFields[neFieldIdx]!.type;
             const neLocalIdx = allocLocal(fctx, neLocalName, neFieldType);
@@ -748,12 +756,15 @@ function compileObjectDestructuring(
       continue;
     }
 
-    const localName = (element.name as ts.Identifier).text;
+    if (!ts.isIdentifier(element.name)) continue; // skip non-identifier binding names
+    const localName = element.name.text;
 
-    const fieldIdx = fields.findIndex((f) => f.name === propName.text);
+    if (!propName) continue; // skip computed property names
+    const propNameText = propName.text;
+    const fieldIdx = fields.findIndex((f) => f.name === propNameText);
     if (fieldIdx === -1) {
       ctx.errors.push({
-        message: `Unknown field in destructuring: ${propName.text}`,
+        message: `Unknown field in destructuring: ${propNameText}`,
         line: getLine(element),
         column: getCol(element),
       });
@@ -904,7 +915,8 @@ function compileArrayDestructuring(
         continue;
       }
 
-      const localName = (element.name as ts.Identifier).text;
+      if (!ts.isIdentifier(element.name)) continue; // skip non-identifier binding names
+      const localName = element.name.text;
       const localIdx = allocLocal(fctx, localName, fieldType);
 
       fctx.body.push({ op: "local.get", index: tmpLocal });
@@ -1019,11 +1031,13 @@ function compileArrayDestructuring(
             fctx.body.push({ op: "local.get", index: innerRestLenLocal });
             fctx.body.push({ op: "local.get", index: innerRestArrLocal });
             fctx.body.push({ op: "struct.new", typeIdx } as Instr);
-            const innerRestLocal = fctx.localMap.get(neBinding.name.text)!;
+            const innerRestLocal = fctx.localMap.get(neBinding.name.text);
+            if (innerRestLocal === undefined) continue;
             fctx.body.push({ op: "local.set", index: innerRestLocal });
           } else if (ts.isIdentifier(neBinding.name)) {
             // Simple element: [...[a, b]] — extract element j
-            const nLocalIdx = fctx.localMap.get(neBinding.name.text)!;
+            const nLocalIdx = fctx.localMap.get(neBinding.name.text);
+            if (nLocalIdx === undefined) continue;
             fctx.body.push({ op: "local.get", index: nestedTmpLocal });
             fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 });
             fctx.body.push({ op: "i32.const", value: j });
@@ -1066,13 +1080,19 @@ function compileArrayDestructuring(
           if (nestedFields) {
             for (const nestedElem of element.name.elements) {
               if (!ts.isBindingElement(nestedElem)) continue;
-              const propN = (nestedElem.propertyName ?? nestedElem.name) as ts.Identifier;
+              const propNNode = nestedElem.propertyName ?? nestedElem.name;
+              const propNText = ts.isIdentifier(propNNode) ? propNNode.text
+                : ts.isStringLiteral(propNNode) ? propNNode.text
+                : ts.isNumericLiteral(propNNode) ? propNNode.text
+                : undefined;
               if (!ts.isIdentifier(nestedElem.name)) continue;
+              if (!propNText) continue; // skip computed property names
               const nLocalName = nestedElem.name.text;
-              const nFieldIdx = nestedFields.findIndex((f) => f.name === propN.text);
+              const nFieldIdx = nestedFields.findIndex((f) => f.name === propNText);
               if (nFieldIdx === -1) continue;
               const nFieldType = nestedFields[nFieldIdx]!.type;
-              const nLocalIdx = fctx.localMap.get(nLocalName)!;
+              const nLocalIdx = fctx.localMap.get(nLocalName);
+              if (nLocalIdx === undefined) continue;
               fctx.body.push({ op: "local.get", index: nestedLocal });
               fctx.body.push({ op: "struct.get", typeIdx: nestedTypeIdx, fieldIdx: nFieldIdx });
               fctx.body.push({ op: "local.set", index: nLocalIdx });
@@ -1088,9 +1108,10 @@ function compileArrayDestructuring(
             for (let j = 0; j < element.name.elements.length; j++) {
               const ne = element.name.elements[j]!;
               if (ts.isOmittedExpression(ne)) continue;
-              if (!ts.isIdentifier((ne as ts.BindingElement).name)) continue;
-              const nName = ((ne as ts.BindingElement).name as ts.Identifier).text;
-              const nLocalIdx = fctx.localMap.get(nName)!;
+              if (!ts.isBindingElement(ne) || !ts.isIdentifier(ne.name)) continue;
+              const nName = ne.name.text;
+              const nLocalIdx = fctx.localMap.get(nName);
+              if (nLocalIdx === undefined) continue;
               fctx.body.push({ op: "local.get", index: nestedLocal });
               fctx.body.push({ op: "struct.get", typeIdx: nestedVecTypeIdx, fieldIdx: 1 });
               fctx.body.push({ op: "i32.const", value: j });
@@ -1103,7 +1124,8 @@ function compileArrayDestructuring(
       continue;
     }
 
-    const localName = (element.name as ts.Identifier).text;
+    if (!ts.isIdentifier(element.name)) continue; // skip non-identifier binding names
+    const localName = element.name.text;
     const localIdx = allocLocal(fctx, localName, elemType);
 
     fctx.body.push({ op: "local.get", index: tmpLocal });
@@ -1818,7 +1840,8 @@ function compileForOfDestructuring(
       // or the appropriate undefined sentinel.
       for (const element of pattern.elements) {
         if (!ts.isBindingElement(element)) continue;
-        const localName = (element.name as ts.Identifier).text;
+        if (!ts.isIdentifier(element.name)) continue; // skip non-identifier binding names
+        const localName = element.name.text;
         const bindingTsType = ctx.checker.getTypeAtLocation(element);
         const bindingType = resolveWasmType(ctx, bindingTsType);
         const localIdx = allocLocal(fctx, localName, bindingType);
@@ -1873,10 +1896,16 @@ function compileForOfDestructuring(
 
     for (const element of pattern.elements) {
       if (!ts.isBindingElement(element)) continue;
-      const propName = (element.propertyName ?? element.name) as ts.Identifier;
-      const localName = (element.name as ts.Identifier).text;
+      const propNameNode = element.propertyName ?? element.name;
+      const propNameText = ts.isIdentifier(propNameNode) ? propNameNode.text
+        : ts.isStringLiteral(propNameNode) ? propNameNode.text
+        : ts.isNumericLiteral(propNameNode) ? propNameNode.text
+        : undefined;
+      if (!ts.isIdentifier(element.name)) continue; // skip non-identifier binding names
+      const localName = element.name.text;
+      if (!propNameText) continue; // skip computed property names
 
-      const fieldIdx = fields.findIndex((f) => f.name === propName.text);
+      const fieldIdx = fields.findIndex((f) => f.name === propNameText);
       if (fieldIdx === -1) {
         // Field not found in struct — property is "undefined" at runtime.
         // Use the default value if one is provided, otherwise use the
@@ -2014,7 +2043,8 @@ function compileForOfDestructuring(
         continue;
       }
 
-      const localName = (element.name as ts.Identifier).text;
+      if (!ts.isIdentifier(element.name)) continue; // skip non-identifier binding names
+      const localName = element.name.text;
       // Use TypeScript-inferred type for the local to avoid type mismatches
       const bindingTsType = ctx.checker.getTypeAtLocation(element);
       const bindingWasmType = resolveWasmType(ctx, bindingTsType);
@@ -2086,8 +2116,10 @@ function compileForOfAssignDestructuring(
         if (!ts.isShorthandPropertyAssignment(prop) && !ts.isPropertyAssignment(prop)) continue;
         const targetName = ts.isShorthandPropertyAssignment(prop)
           ? prop.name.text
-          : ts.isIdentifier(prop.initializer) ? prop.initializer.text
-          : (prop.name as ts.Identifier).text;
+          : ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.initializer) ? prop.initializer.text
+          : ts.isIdentifier(prop.name) ? prop.name.text
+          : undefined;
+        if (!targetName) continue; // skip computed property names
         const targetLocal = fctx.localMap.get(targetName);
         if (targetLocal === undefined) continue;
 
@@ -2124,10 +2156,13 @@ function compileForOfAssignDestructuring(
       if (!ts.isShorthandPropertyAssignment(prop) && !ts.isPropertyAssignment(prop)) continue;
       const propName = ts.isShorthandPropertyAssignment(prop)
         ? prop.name.text
-        : (prop.name as ts.Identifier).text;
+        : ts.isIdentifier(prop.name) ? prop.name.text
+        : ts.isStringLiteral(prop.name) ? prop.name.text
+        : undefined;
+      if (!propName) continue; // skip computed property names
       const targetName = ts.isShorthandPropertyAssignment(prop)
         ? prop.name.text
-        : ts.isIdentifier(prop.initializer) ? prop.initializer.text : propName;
+        : ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.initializer) ? prop.initializer.text : propName;
 
       const fieldIdx = fields.findIndex((f) => f.name === propName);
       if (fieldIdx === -1) continue;
@@ -2266,12 +2301,14 @@ function compileForOfString(
   let elemLocal: number;
   if (ts.isVariableDeclarationList(stmt.initializer)) {
     const decl = stmt.initializer.declarations[0]!;
-    const varName = (decl.name as ts.Identifier).text;
+    const varName = ts.isIdentifier(decl.name) ? decl.name.text : `__forof_elem_${fctx.locals.length}`;
     elemLocal = allocLocal(fctx, varName, elemType);
-  } else {
+  } else if (ts.isIdentifier(stmt.initializer)) {
     // Expression form: for (x of str) — x is already declared
-    const varName = (stmt.initializer as ts.Identifier).text;
-    elemLocal = fctx.localMap.get(varName)!;
+    const varName = stmt.initializer.text;
+    elemLocal = fctx.localMap.get(varName) ?? allocLocal(fctx, varName, elemType);
+  } else {
+    elemLocal = allocLocal(fctx, `__forof_elem_${fctx.locals.length}`, elemType);
   }
 
   // Build loop body
@@ -2425,7 +2462,7 @@ function compileForOfArray(
       // Allocate a temp local to hold the element for destructuring
       elemLocal = allocLocal(fctx, `__forof_elem_${fctx.locals.length}`, elemType);
     } else {
-      const varName = (decl.name as ts.Identifier).text;
+      const varName = ts.isIdentifier(decl.name) ? decl.name.text : `__forof_elem_${fctx.locals.length}`;
       elemLocal = allocLocal(fctx, varName, elemType);
     }
   } else if (ts.isObjectLiteralExpression(stmt.initializer) || ts.isArrayLiteralExpression(stmt.initializer)) {
@@ -2433,10 +2470,12 @@ function compileForOfArray(
     // These assign to already-declared variables
     assignDestructExpr = stmt.initializer;
     elemLocal = allocLocal(fctx, `__forof_elem_${fctx.locals.length}`, elemType);
-  } else {
+  } else if (ts.isIdentifier(stmt.initializer)) {
     // Expression form: for (x of arr) — x is already declared
-    const varName = (stmt.initializer as ts.Identifier).text;
-    elemLocal = fctx.localMap.get(varName)!;
+    const varName = stmt.initializer.text;
+    elemLocal = fctx.localMap.get(varName) ?? allocLocal(fctx, varName, elemType);
+  } else {
+    elemLocal = allocLocal(fctx, `__forof_elem_${fctx.locals.length}`, elemType);
   }
 
   // Build loop body
@@ -2595,17 +2634,19 @@ function compileForOfIterator(
       destructPatternIter = decl.name;
       elemLocal = allocLocal(fctx, `__forof_elem_${fctx.locals.length}`, elemType);
     } else {
-      const varName = (decl.name as ts.Identifier).text;
+      const varName = ts.isIdentifier(decl.name) ? decl.name.text : `__forof_elem_${fctx.locals.length}`;
       elemLocal = allocLocal(fctx, varName, elemType);
     }
   } else if (ts.isObjectLiteralExpression(stmt.initializer) || ts.isArrayLiteralExpression(stmt.initializer)) {
     // Expression form with destructuring: for ({a, b} of arr) or for ([x, y] of arr)
     assignDestructExprIter = stmt.initializer;
     elemLocal = allocLocal(fctx, `__forof_elem_${fctx.locals.length}`, elemType);
-  } else {
+  } else if (ts.isIdentifier(stmt.initializer)) {
     // Expression form: for (x of arr) — x is already declared
-    const varName = (stmt.initializer as ts.Identifier).text;
-    elemLocal = fctx.localMap.get(varName)!;
+    const varName = stmt.initializer.text;
+    elemLocal = fctx.localMap.get(varName) ?? allocLocal(fctx, varName, elemType);
+  } else {
+    elemLocal = allocLocal(fctx, `__forof_elem_${fctx.locals.length}`, elemType);
   }
 
   // Build loop body
@@ -3210,7 +3251,7 @@ function compileNestedFunctionDeclaration(
     const liftedFctx: FunctionContext = {
       name: funcName,
       params: stmt.parameters.map((p, i) => ({
-        name: (p.name as ts.Identifier).text,
+        name: ts.isIdentifier(p.name) ? p.name.text : `__param${i}`,
         type: paramTypes[i]!,
       })),
       locals: [],
@@ -3275,7 +3316,7 @@ function compileNestedFunctionDeclaration(
       params: [
         ...captures.map((c, i) => ({ name: c.name, type: captureParamTypes[i]! })),
         ...stmt.parameters.map((p, i) => ({
-          name: (p.name as ts.Identifier).text,
+          name: ts.isIdentifier(p.name) ? p.name.text : `__param${i}`,
           type: paramTypes[i]!,
         })),
       ],
@@ -3511,17 +3552,25 @@ function appendDefaultReturn(
 }
 
 function getLine(node: ts.Node): number {
-  const sf = node.getSourceFile();
-  if (!sf) return 0;
-  const { line } = sf.getLineAndCharacterOfPosition(node.getStart());
-  return line + 1;
+  try {
+    const sf = node.getSourceFile();
+    if (!sf) return 0;
+    const { line } = sf.getLineAndCharacterOfPosition(node.getStart());
+    return line + 1;
+  } catch {
+    return 0;
+  }
 }
 
 function getCol(node: ts.Node): number {
-  const sf = node.getSourceFile();
-  if (!sf) return 0;
-  const { character } = sf.getLineAndCharacterOfPosition(node.getStart());
-  return character + 1;
+  try {
+    const sf = node.getSourceFile();
+    if (!sf) return 0;
+    const { character } = sf.getLineAndCharacterOfPosition(node.getStart());
+    return character + 1;
+  } catch {
+    return 0;
+  }
 }
 
 /**
