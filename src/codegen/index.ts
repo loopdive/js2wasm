@@ -8423,6 +8423,11 @@ function collectDeclarations(
           const param = stmt.parameters[i]!;
           const paramType = ctx.checker.getTypeAtLocation(param);
           let wasmType = resolveWasmType(ctx, paramType);
+          // If the parameter has a default value and is a non-null ref type,
+          // widen to ref_null so callers can pass ref.null as a sentinel for "use default"
+          if (param.initializer && wasmType.kind === "ref") {
+            wasmType = { kind: "ref_null", typeIdx: (wasmType as { kind: "ref"; typeIdx: number }).typeIdx };
+          }
           // Infer untyped any params from call sites (same as non-generator path)
           if (
             !param.type &&
@@ -8474,6 +8479,11 @@ function collectDeclarations(
           } else {
             const paramType = ctx.checker.getTypeAtLocation(param);
             let wasmType = resolveWasmType(ctx, paramType);
+            // If the parameter has a default value and is a non-null ref type,
+            // widen to ref_null so callers can pass ref.null as a sentinel for "use default"
+            if (param.initializer && wasmType.kind === "ref") {
+              wasmType = { kind: "ref_null", typeIdx: (wasmType as { kind: "ref"; typeIdx: number }).typeIdx };
+            }
             // If the parameter has no explicit type annotation and resolved to
             // externref (from `any`), try to infer a concrete type from call sites.
             if (
