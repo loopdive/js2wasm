@@ -156,6 +156,22 @@ export function compileExpression(
         return { kind: "i32" };
       }
     }
+    // void expr in numeric context: evaluate operand for side effects, then
+    // produce the correct undefined-as-number constant (NaN for f64, 0 for i32).
+    // This avoids the externref roundtrip where null and undefined are
+    // indistinguishable.
+    if (ts.isVoidExpression(inner)) {
+      const operandType = compileExpressionInner(ctx, fctx, inner.expression);
+      if (operandType !== null && operandType !== VOID_RESULT) {
+        fctx.body.push({ op: "drop" });
+      }
+      if (expectedType.kind === "f64") {
+        fctx.body.push({ op: "f64.const", value: NaN });
+        return { kind: "f64" };
+      }
+      fctx.body.push({ op: "i32.const", value: 0 });
+      return { kind: "i32" };
+    }
   }
 
   // Fast-path: null/undefined/boolean literals in AnyValue context — emit the
@@ -176,6 +192,20 @@ export function compileExpression(
       ensureAnyHelpers(ctx);
       const helperName = isNull ? "__any_box_null" : "__any_box_undefined";
       const funcIdx = ctx.funcMap.get(helperName);
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+        return expectedType;
+      }
+    }
+    // void expr in AnyValue context: evaluate operand for side effects, then
+    // produce __any_box_undefined() to preserve the undefined tag.
+    if (ts.isVoidExpression(inner)) {
+      const operandType = compileExpressionInner(ctx, fctx, inner.expression);
+      if (operandType !== null && operandType !== VOID_RESULT) {
+        fctx.body.push({ op: "drop" });
+      }
+      ensureAnyHelpers(ctx);
+      const funcIdx = ctx.funcMap.get("__any_box_undefined");
       if (funcIdx !== undefined) {
         fctx.body.push({ op: "call", funcIdx });
         return expectedType;
