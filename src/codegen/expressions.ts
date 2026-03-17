@@ -1467,12 +1467,27 @@ function emitMethodParamDefaults(
   }
 }
 
-/** Check if an arrow/function expression is used as a callback argument to a call */
-function isCallbackArgument(node: ts.Node): boolean {
+/** Check if an arrow/function expression is used as a callback argument to a call
+ *  that targets a HOST import (not a user-defined function). User-defined functions
+ *  should receive closures via the GC struct path, not the __make_callback host path. */
+function isHostCallbackArgument(node: ts.Node, ctx: CodegenContext): boolean {
   const parent = node.parent;
   if (!parent) return false;
   if (ts.isCallExpression(parent)) {
-    return parent.arguments.some((arg) => arg === node);
+    if (!parent.arguments.some((arg) => arg === node)) return false;
+    // Check if the callee is a user-defined function — if so, NOT a host callback
+    if (ts.isIdentifier(parent.expression)) {
+      const calleeName = parent.expression.text;
+      const funcIdx = ctx.funcMap.get(calleeName);
+      if (funcIdx !== undefined && funcIdx >= ctx.numImportFuncs) {
+        // User-defined function — use closure path, not host callback
+        return false;
+      }
+    }
+    // For method calls (property access), check if the method is known array HOF
+    // (filter, map, etc.) — those have dedicated inline compilation and ARE handled
+    // as closure calls. For other property accesses, treat as host callback.
+    return true;
   }
   return false;
 }
@@ -1483,7 +1498,7 @@ function compileArrowFunction(
   arrow: ts.ArrowFunction | ts.FunctionExpression,
 ): ValType | null {
   // If used as callback argument to a host call, use the __make_callback path
-  if (isCallbackArgument(arrow)) {
+  if (isHostCallbackArgument(arrow, ctx)) {
     return compileArrowAsCallback(ctx, fctx, arrow);
   }
   // Otherwise, compile as a first-class closure value
@@ -1572,46 +1587,82 @@ function compileArrowAsClosure(
   //    For mutable captures, the field type is a ref cell (struct { value: T })
   const closureResults: ValType[] = closureReturnType ? [closureReturnType] : [];
 
-  const structFields = [
-    { name: "func", type: { kind: "funcref" as const }, mutable: false },
-    ...captures.map((c) => {
-      if (c.mutable) {
-        const refCellTypeIdx = getOrRegisterRefCellType(ctx, c.type);
+  // For closures with no captures, reuse the shared wrapper struct type from
+  // getOrCreateFuncRefWrapperTypes. This ensures all no-capture closures with
+  // the same signature share the same struct type, enabling consistent call_ref
+  // dispatch when closures are passed as callable parameters (externref).
+  let structTypeIdx: number;
+  let liftedFuncTypeIdx: number;
+  const isNamedFuncExpr = ts.isFunctionExpression(arrow) && arrow.name;
+
+  if (captures.length === 0 && !isNamedFuncExpr) {
+    const wrapperTypes = getOrCreateFuncRefWrapperTypes(ctx, arrowParams, closureResults);
+    if (wrapperTypes) {
+      structTypeIdx = wrapperTypes.structTypeIdx;
+      liftedFuncTypeIdx = wrapperTypes.liftedFuncTypeIdx;
+    } else {
+      // Fallback: create a unique struct type
+      const structFields = [
+        { name: "func", type: { kind: "funcref" as const }, mutable: false },
+      ];
+      structTypeIdx = ctx.mod.types.length;
+      ctx.mod.types.push({
+        kind: "struct",
+        name: `${closureName}_struct`,
+        fields: structFields,
+      });
+      const liftedParams: ValType[] = [
+        { kind: "ref", typeIdx: structTypeIdx },
+        ...arrowParams,
+      ];
+      liftedFuncTypeIdx = addFuncType(ctx, liftedParams, closureResults, `${closureName}_type`);
+    }
+  } else {
+    const structFields = [
+      { name: "func", type: { kind: "funcref" as const }, mutable: false },
+      ...captures.map((c) => {
+        if (c.mutable) {
+          const refCellTypeIdx = getOrRegisterRefCellType(ctx, c.type);
+          return {
+            name: c.name,
+            type: { kind: "ref_null" as const, typeIdx: refCellTypeIdx },
+            mutable: false,
+          };
+        }
         return {
           name: c.name,
-          type: { kind: "ref_null" as const, typeIdx: refCellTypeIdx },
+          type: c.type,
           mutable: false,
         };
-      }
-      return {
-        name: c.name,
-        type: c.type,
-        mutable: false,
-      };
-    }),
-  ];
+      }),
+    ];
 
-  const structTypeIdx = ctx.mod.types.length;
-  ctx.mod.types.push({
-    kind: "struct",
-    name: `${closureName}_struct`,
-    fields: structFields,
-  });
+    structTypeIdx = ctx.mod.types.length;
+    ctx.mod.types.push({
+      kind: "struct",
+      name: `${closureName}_struct`,
+      fields: structFields,
+    });
 
-  // 4. Create the lifted function type: (ref_null $closure_struct, ...arrowParams) → results
-  // Use ref_null for __self so that var-hoisted variables shadowing the function name
-  // (e.g. `var g` inside `function g()`) can be default-initialized to null.
-  const liftedParams: ValType[] = [
-    { kind: "ref_null", typeIdx: structTypeIdx },
-    ...arrowParams,
-  ];
-  let liftedFuncTypeIdx = addFuncType(ctx, liftedParams, closureResults, `${closureName}_type`);
+    // 4. Create the lifted function type: (ref_null $closure_struct, ...arrowParams) → results
+    // Use ref_null for __self so that var-hoisted variables shadowing the function name
+    // (e.g. `var g` inside `function g()`) can be default-initialized to null.
+    const liftedParams: ValType[] = [
+      { kind: "ref_null", typeIdx: structTypeIdx },
+      ...arrowParams,
+    ];
+    liftedFuncTypeIdx = addFuncType(ctx, liftedParams, closureResults, `${closureName}_type`);
+  }
 
   // 5. Build the lifted function body
+  // For no-capture closures using wrapper types, self param is non-null ref;
+  // for closures with captures or named func exprs, self param is ref_null
+  // (to support null initialization for var-hoisted function name shadowing).
+  const selfParamKind = (captures.length === 0 && !isNamedFuncExpr) ? "ref" as const : "ref_null" as const;
   const liftedFctx: FunctionContext = {
     name: closureName,
     params: [
-      { name: "__self", type: { kind: "ref_null", typeIdx: structTypeIdx } },
+      { name: "__self", type: { kind: selfParamKind, typeIdx: structTypeIdx } },
       ...arrow.parameters.map((p, i) => ({
         name: ts.isIdentifier(p.name) ? p.name.text : `__param${i}`,
         type: arrowParams[i] ?? { kind: "f64" as const },
@@ -10482,6 +10533,81 @@ function compileCallExpression(
 
     const funcIdx = ctx.funcMap.get(funcName);
     if (funcIdx === undefined) {
+      // Before giving up, check if this identifier is a local/param with callable TS type
+      // (e.g. function parameter `fn: (x: number) => number` stored as externref).
+      // If so, create or find a matching closure wrapper type and dispatch via call_ref.
+      // Only attempt this for actual locals/params — not for unknown imported functions.
+      const calleeLocalIdx = fctx.localMap.get(funcName);
+      const calleeModGlobal = calleeLocalIdx === undefined ? ctx.moduleGlobals.get(funcName) : undefined;
+      const calleeCapturedGlobal = calleeLocalIdx === undefined && calleeModGlobal === undefined ? ctx.capturedGlobals.get(funcName) : undefined;
+      const isKnownVariable = calleeLocalIdx !== undefined || calleeModGlobal !== undefined || calleeCapturedGlobal !== undefined;
+      const calleeTsType = ctx.checker.getTypeAtLocation(expr.expression);
+      const callSigs = isKnownVariable ? calleeTsType.getCallSignatures?.() : undefined;
+      if (callSigs && callSigs.length > 0) {
+        const sig = callSigs[0]!;
+        const sigParamCount = sig.parameters.length;
+        const sigRetType = ctx.checker.getReturnTypeOfSignature(sig);
+        const sigRetWasm = isVoidType(sigRetType) ? null : resolveWasmType(ctx, sigRetType);
+        const sigParamWasmTypes: ValType[] = [];
+        for (let i = 0; i < sigParamCount; i++) {
+          const paramType = ctx.checker.getTypeOfSymbol(sig.parameters[i]!);
+          sigParamWasmTypes.push(resolveWasmType(ctx, paramType));
+        }
+
+        // Eagerly create the closure wrapper types for this signature so the
+        // lookup succeeds even when no actual closure with this signature has
+        // been compiled yet (compilation order issue).
+        // All callers must wrap their closures into this wrapper type before
+        // passing them (see coercion in compileExpression and compileAssignment).
+        const resultTypes = sigRetWasm ? [sigRetWasm] : [];
+        const wrapperTypes = getOrCreateFuncRefWrapperTypes(ctx, sigParamWasmTypes, resultTypes);
+
+        if (wrapperTypes) {
+          const matchedClosureInfo = wrapperTypes.closureInfo;
+          const matchedStructTypeIdx = wrapperTypes.structTypeIdx;
+
+          // Compile the callee to get the value on the stack
+          const innerResultType = compileExpression(ctx, fctx, expr.expression);
+
+          // Save closure ref to a local
+          let closureLocal: number;
+          if (innerResultType?.kind === "externref") {
+            const closureRefType: ValType = { kind: "ref_null", typeIdx: matchedStructTypeIdx };
+            closureLocal = allocLocal(fctx, `__callable_param_${fctx.locals.length}`, closureRefType);
+            fctx.body.push({ op: "any.convert_extern" });
+            fctx.body.push({ op: "ref.cast", typeIdx: matchedStructTypeIdx });
+            fctx.body.push({ op: "local.set", index: closureLocal });
+          } else {
+            const closureRefType: ValType = innerResultType ?? { kind: "ref", typeIdx: matchedStructTypeIdx };
+            closureLocal = allocLocal(fctx, `__callable_param_${fctx.locals.length}`, closureRefType);
+            fctx.body.push({ op: "local.set", index: closureLocal });
+          }
+
+          // Push closure ref as first arg (self param of the lifted function)
+          fctx.body.push({ op: "local.get", index: closureLocal });
+          fctx.body.push({ op: "ref.as_non_null" } as Instr);
+
+          // Push call arguments with type coercion
+          for (let i = 0; i < expr.arguments.length; i++) {
+            compileExpression(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
+          }
+
+          // Pad missing arguments with defaults
+          for (let i = expr.arguments.length; i < matchedClosureInfo.paramTypes.length; i++) {
+            pushDefaultValue(fctx, matchedClosureInfo.paramTypes[i]!);
+          }
+
+          // Push the funcref from the closure struct (field 0) and call_ref
+          fctx.body.push({ op: "local.get", index: closureLocal });
+          fctx.body.push({ op: "ref.as_non_null" } as Instr);
+          fctx.body.push({ op: "struct.get", typeIdx: matchedStructTypeIdx, fieldIdx: 0 });
+          fctx.body.push({ op: "ref.cast", typeIdx: matchedClosureInfo.funcTypeIdx });
+          fctx.body.push({ op: "call_ref", typeIdx: matchedClosureInfo.funcTypeIdx });
+
+          return matchedClosureInfo.returnType ?? VOID_RESULT;
+        }
+      }
+
       // Graceful fallback for unknown functions — compile arguments (for side effects)
       // then emit ref.null extern (undefined) as the return value.
       for (const arg of expr.arguments) {
