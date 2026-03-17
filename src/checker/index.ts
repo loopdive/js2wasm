@@ -74,7 +74,7 @@ export function analyzeSource(
 
   const compilerOptions: ts.CompilerOptions = {
     target: ts.ScriptTarget.ES2022,
-    module: ts.ModuleKind.ES2022,
+    module: ts.ModuleKind.ESNext,
     strict: !isJs,
     noImplicitAny: false,
     noEmit: true,
@@ -221,7 +221,7 @@ export function analyzeMultiSource(
     rootNames,
     {
       target: ts.ScriptTarget.ES2022,
-      module: ts.ModuleKind.ES2022,
+      module: ts.ModuleKind.ESNext,
       moduleResolution: ts.ModuleResolutionKind.Bundler,
       strict: true,
       noImplicitAny: false,
