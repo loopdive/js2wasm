@@ -133,9 +133,9 @@ _Updated baseline (2026-03-16): 22,959 tests — 5,312 pass (23.1%), 2,010 fail,
 
 | #   | Feature | Type | Count |
 | --- | ------- | ---- | ----- |
-| [394](../done/394.md) | Destructuring wrong return values | FAIL | 1438 |
-| [396](../done/396.md) | Null pointer in destructuring | FAIL | 118 |
-| [387](../done/387.md) | Unsupported call expression (71% destructuring) | CE | 2356 |
+| [394](../ready/394.md) | Destructuring wrong return values | FAIL | 1438 |
+| [396](../ready/396.md) | Null pointer in destructuring | FAIL | 118 |
+| [387](../ready/387.md) | Unsupported call expression (71% destructuring) | CE | 2356 |
 | [388](../ready/388.md) | Element access on externref | CE | 104 |
 | [389](../ready/389.md) | Element access on class instances | CE | 76 |
 | [390](../ready/390.md) | Assignment to non-array types | CE | 70 |
@@ -144,9 +144,9 @@ _Updated baseline (2026-03-16): 22,959 tests — 5,312 pass (23.1%), 2,010 fail,
 
 | #   | Feature | Type | Count |
 | --- | ------- | ---- | ----- |
-| [398](../done/398.md) | Private field/method wrong values | FAIL | 98 |
-| [399](../done/399.md) | Prototype method wrong values | FAIL | 72 |
-| [395](../done/395.md) | "fn is not a function" (call/apply + callbacks) | FAIL | 70 |
+| [398](../ready/398.md) | Private field/method wrong values | FAIL | 98 |
+| [399](../ready/399.md) | Prototype method wrong values | FAIL | 72 |
+| [395](../ready/395.md) | "fn is not a function" (call/apply + callbacks) | FAIL | 70 |
 | [392](../ready/392.md) | Unknown field access on class structs | CE | 18 |
 
 ### Compile error patterns
@@ -166,7 +166,7 @@ _Updated baseline (2026-03-16): 22,959 tests — 5,312 pass (23.1%), 2,010 fail,
 | #   | Feature | Type | Count |
 | --- | ------- | ---- | ----- |
 | [402](../ready/402.md) | Negative tests: expected SyntaxError not raised | FAIL | 434 |
-| [397](../done/397.md) | assert.throws test support | SKIP | 952 |
+| [397](../ready/397.md) | assert.throws test support | SKIP | 952 |
 
 ---
 
