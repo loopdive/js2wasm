@@ -46,13 +46,17 @@ export function reportError(
   node: ts.Node,
   message: string,
 ): void {
-  const sf = node.getSourceFile();
-  if (sf) {
-    const { line, character } = sf.getLineAndCharacterOfPosition(
-      node.getStart(),
-    );
-    ctx.errors.push({ message, line: line + 1, column: character + 1 });
-  } else {
+  try {
+    const sf = node.getSourceFile();
+    if (sf) {
+      const { line, character } = sf.getLineAndCharacterOfPosition(
+        node.getStart(),
+      );
+      ctx.errors.push({ message, line: line + 1, column: character + 1 });
+    } else {
+      ctx.errors.push({ message, line: 0, column: 0 });
+    }
+  } catch {
     ctx.errors.push({ message, line: 0, column: 0 });
   }
 }
@@ -10762,10 +10766,14 @@ export function getSourcePos(
   node: ts.Node,
 ): SourcePos | undefined {
   if (!ctx.sourceMap) return undefined;
-  const sf = node.getSourceFile();
-  if (!sf) return undefined;
-  const pos = sf.getLineAndCharacterOfPosition(node.getStart());
-  return { file: sf.fileName, line: pos.line, column: pos.character };
+  try {
+    const sf = node.getSourceFile();
+    if (!sf) return undefined;
+    const pos = sf.getLineAndCharacterOfPosition(node.getStart());
+    return { file: sf.fileName, line: pos.line, column: pos.character };
+  } catch {
+    return undefined;
+  }
 }
 
 /** Attach a source position to an instruction (mutates in place) */
