@@ -434,6 +434,13 @@ New issues from re-analysis of 21,872 tests (5,447 pass, 6,643 CE, 2,067 fail, 7
 | 426 | Compound assignment on non-ref element | 11 CE | **Ready** (low, coordinates #424) |
 | 427 | SuperKeyword unsupported in remaining contexts | 11 CE | **Ready** (low) |
 | 428 | Expected ReferenceError but succeeded | 6 fail | **Ready** (low) |
+| 429 | Undeclared variable access — ReferenceError + immutable global | 71 tests | **Ready** (high, coordinates #428) |
+| 430 | String-to-number coercion for non-addition arithmetic | 36 CE | **Ready** (medium) |
+| 431 | Math.pow/min/max fallthru type mismatch | 27 CE | **Ready** (medium) |
+| 432 | `new` on non-constructor builtins — stack underflow | 42 CE | **Ready** (medium) |
+| 433 | Equality operators mixed type i32/f64 mismatch | 10 CE | **Ready** (medium) |
+| 434 | BigInt remaining failures across operators | 27 fail | **Ready** (low) |
+| 435 | Logical/conditional must preserve object identity | 16 fail | **Ready** (medium) |
 
 ---
 
@@ -480,19 +487,19 @@ function in the same file. Key contention points:
 
 | Function | Issues |
 |----------|--------|
-| `compileBinaryExpression` | 138, 139, 174, 227, 228, 237, 244, 291, 295, 296, 299, 308, 324, 348 |
+| `compileBinaryExpression` | 138, 139, 174, 227, 228, 237, 244, 291, 295, 296, 299, 308, 324, 348, 430, 433, 434 |
 | `compileCallExpression` | 232, 260, 280, 342, 364, 382, 409, 410 |
 | `compileElementAccess` | 140, 176, 239, 326, 337, 361, 426 |
 | `compilePropertyAccess` | 263, 274, 347, 362, 378, 423 |
 | `compileObjectLiteralForStruct` | 230, 281, 412 |
 | `compileDestructuringAssignment` | 142, 190, 243, 325, 328, 379, 417, 420 |
 | `compileAssignment` (compound) | 283, 393, 404, 424, 426 |
-| `compileNewExpression` | 238, 261, 344, 412 |
-| `coerceType` | 237, 277, 300, 301, 315, 348, 411 |
+| `compileNewExpression` | 238, 261, 344, 412, 432 |
+| `coerceType` | 237, 277, 300, 301, 315, 348, 411, 431 |
 | diagnostic suppression (index.ts) | 152, 242, 262, 265, 269, 270, 275, 276, 381, 383, 419 |
 | `collectStringLiterals/MathImports` | 321, 320 |
 | `registerAnyValueType` | 317, 320 |
-| scope resolution | 146, 202, 266, 331, 380, 416, 428 |
+| scope resolution | 146, 202, 266, 331, 380, 416, 428, 429 |
 | generator codegen | 241, 267, 287, 288, 415, 422 |
 | string methods | 349, 367, 372, 384 |
 | template literals | 357, 363 |
@@ -500,5 +507,6 @@ function in the same file. Key contention points:
 | class codegen | 329, 334, 375, 377, 427 |
 | loop codegen | 353, 373, 417 |
 | built-in runtime | 344, 355, 359, 369, 385, 421 |
+| logical/conditional codegen | 435 |
 | block/stack balance | 411, 410, 412 |
 | AST null safety | 405, 418 |
