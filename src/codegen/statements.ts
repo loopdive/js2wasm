@@ -893,7 +893,11 @@ function compileArrayDestructuring(
     typeDef.fields.length > 0 &&
     typeDef.fields.every((f: { name?: string }, idx: number) => f.name === `_${idx}`);
 
-  if (!isVecArray && !isTupleStruct) {
+  // Check if this is a string type (AnyString, NativeString, ConsString)
+  const isStringStruct = ctx.fast && ctx.anyStrTypeIdx >= 0 &&
+    (typeIdx === ctx.anyStrTypeIdx || typeIdx === ctx.nativeStrTypeIdx || typeIdx === ctx.consStrTypeIdx);
+
+  if (!isVecArray && !isTupleStruct && !isStringStruct) {
     fctx.body.length = bodyLenBefore;
     ensureBindingLocals(ctx, fctx, pattern);
     ctx.errors.push({
@@ -901,6 +905,12 @@ function compileArrayDestructuring(
       line: getLine(decl),
       column: getCol(decl),
     });
+    return;
+  }
+
+  // String destructuring: use __str_charAt to extract individual characters
+  if (isStringStruct) {
+    compileStringDestructuring(ctx, fctx, pattern, resultType, bodyLenBefore);
     return;
   }
 
@@ -1219,6 +1229,89 @@ function compileArrayDestructuring(
     fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: arrDestructInstrs });
   } else {
     fctx.body.push(...arrDestructInstrs);
+  }
+}
+
+/**
+ * Compile array destructuring of a string value.
+ * Each binding variable gets a single-character string via __str_charAt.
+ * e.g. `const [a, b, c] = "abc"` -> a = charAt(str, 0), b = charAt(str, 1), c = charAt(str, 2)
+ */
+function compileStringDestructuring(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  pattern: ts.ArrayBindingPattern,
+  resultType: ValType,
+  bodyLenBefore: number,
+): void {
+  // Ensure __str_charAt is available
+  ensureNativeStringHelpers(ctx);
+  const charAtIdx = ctx.nativeStrHelpers.get("__str_charAt");
+  if (charAtIdx === undefined) {
+    fctx.body.length = bodyLenBefore;
+    ensureBindingLocals(ctx, fctx, pattern);
+    ctx.errors.push({
+      message: "Cannot destructure string: __str_charAt helper not available",
+      line: 0,
+      column: 0,
+    });
+    return;
+  }
+
+  const strType = nativeStringType(ctx);
+
+  // Store string ref in temp local
+  const tmpLocal = allocLocal(fctx, `__destruct_str_${fctx.locals.length}`, resultType);
+  fctx.body.push({ op: "local.set", index: tmpLocal });
+
+  // Null guard for ref_null types
+  const isNullable = resultType.kind === "ref_null";
+  const savedBody = fctx.body;
+  const destructInstrs: Instr[] = [];
+  fctx.body = destructInstrs;
+
+  // Pre-allocate all binding locals
+  ensureBindingLocals(ctx, fctx, pattern);
+
+  for (let i = 0; i < pattern.elements.length; i++) {
+    const element = pattern.elements[i]!;
+    if (ts.isOmittedExpression(element)) continue;
+
+    // Rest element: const [a, ...rest] = "hello" — rest is not supported for strings yet
+    if (ts.isBindingElement(element) && element.dotDotDotToken) {
+      // Allocate a local but leave it default-initialized
+      if (ts.isIdentifier(element.name)) {
+        allocLocal(fctx, element.name.text, { kind: "externref" });
+      }
+      continue;
+    }
+
+    // Nested patterns: skip for strings
+    if (ts.isBindingElement(element) &&
+        (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name))) {
+      ensureBindingLocals(ctx, fctx, element.name);
+      continue;
+    }
+
+    if (!ts.isIdentifier(element.name)) continue;
+    const localName = element.name.text;
+    const localIdx = allocLocal(fctx, localName, strType);
+
+    // Call charAt(str, i)
+    fctx.body.push({ op: "local.get", index: tmpLocal });
+    fctx.body.push({ op: "i32.const", value: i });
+    fctx.body.push({ op: "call", funcIdx: charAtIdx });
+    fctx.body.push({ op: "local.set", index: localIdx });
+  }
+
+  // Close null guard
+  fctx.body = savedBody;
+  if (isNullable && destructInstrs.length > 0) {
+    fctx.body.push({ op: "local.get", index: tmpLocal });
+    fctx.body.push({ op: "ref.is_null" } as Instr);
+    fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: destructInstrs });
+  } else {
+    fctx.body.push(...destructInstrs);
   }
 }
 
