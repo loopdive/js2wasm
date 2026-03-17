@@ -3363,7 +3363,13 @@ function compileNestedFunctionDeclaration(
   const paramTypes: ValType[] = [];
   for (const p of stmt.parameters) {
     const paramType = ctx.checker.getTypeAtLocation(p);
-    paramTypes.push(resolveWasmType(ctx, paramType));
+    let wasmType = resolveWasmType(ctx, paramType);
+    // If the parameter has a default value and is a non-null ref type,
+    // widen to ref_null so callers can pass ref.null as a sentinel for "use default"
+    if (p.initializer && wasmType.kind === "ref") {
+      wasmType = { kind: "ref_null", typeIdx: (wasmType as { kind: "ref"; typeIdx: number }).typeIdx };
+    }
+    paramTypes.push(wasmType);
   }
 
 

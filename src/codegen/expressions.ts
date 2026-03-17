@@ -1359,7 +1359,13 @@ function compileArrowAsClosure(
   const arrowParams: ValType[] = [];
   for (const p of arrow.parameters) {
     const paramType = ctx.checker.getTypeAtLocation(p);
-    arrowParams.push(resolveWasmType(ctx, paramType));
+    let wasmType = resolveWasmType(ctx, paramType);
+    // If the parameter has a default value and is a non-null ref type,
+    // widen to ref_null so callers can pass ref.null as a sentinel for "use default"
+    if (p.initializer && wasmType.kind === "ref") {
+      wasmType = { kind: "ref_null", typeIdx: (wasmType as { kind: "ref"; typeIdx: number }).typeIdx };
+    }
+    arrowParams.push(wasmType);
   }
 
   const sig = ctx.checker.getSignatureFromDeclaration(arrow);
@@ -15221,7 +15227,13 @@ function compileObjectLiteralForStruct(
       const methodParams: ValType[] = [{ kind: "ref", typeIdx: structTypeIdx }];
       for (const param of prop.parameters) {
         const paramType = ctx.checker.getTypeAtLocation(param);
-        methodParams.push(resolveWasmType(ctx, paramType));
+        let wasmType = resolveWasmType(ctx, paramType);
+        // If the parameter has a default value and is a non-null ref type,
+        // widen to ref_null so callers can pass ref.null as a sentinel for "use default"
+        if (param.initializer && wasmType.kind === "ref") {
+          wasmType = { kind: "ref_null", typeIdx: (wasmType as { kind: "ref"; typeIdx: number }).typeIdx };
+        }
+        methodParams.push(wasmType);
       }
 
       const sig = ctx.checker.getSignatureFromDeclaration(prop);
@@ -15369,10 +15381,26 @@ function compileTupleLiteral(
   const elemTypes = getTupleElementTypes(ctx, tupleType);
   const tupleIdx = getOrRegisterTupleType(ctx, elemTypes);
 
-  // Compile each element with the expected field type
-  for (let i = 0; i < expr.elements.length; i++) {
+  // Compile each element with the expected field type.
+  // If the array literal has fewer elements than the tuple expects,
+  // push default values (0 for f64/i32, ref.null for ref types) for
+  // the missing fields so struct.new gets the right number of arguments.
+  for (let i = 0; i < elemTypes.length; i++) {
     const expectedType = elemTypes[i] ?? { kind: "externref" as const };
-    compileExpression(ctx, fctx, expr.elements[i]!, expectedType);
+    if (i < expr.elements.length) {
+      compileExpression(ctx, fctx, expr.elements[i]!, expectedType);
+    } else {
+      // Push a default value for the missing tuple element
+      if (expectedType.kind === "f64") {
+        fctx.body.push({ op: "f64.const", value: 0 });
+      } else if (expectedType.kind === "i32") {
+        fctx.body.push({ op: "i32.const", value: 0 });
+      } else if (expectedType.kind === "externref") {
+        fctx.body.push({ op: "ref.null.extern" });
+      } else if (expectedType.kind === "ref" || expectedType.kind === "ref_null") {
+        fctx.body.push({ op: "ref.null", typeIdx: (expectedType as { typeIdx: number }).typeIdx } as any);
+      }
+    }
   }
 
   fctx.body.push({ op: "struct.new", typeIdx: tupleIdx });
