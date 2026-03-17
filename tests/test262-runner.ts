@@ -236,9 +236,12 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
   // assert.throws tests are now handled by transforming them into assert_throws(fn)
   // calls with a try/catch shim, so we no longer skip them.
 
-  // Skip tests that use delete operator — we don't support property deletion
-  if (/\bdelete\s+/.test(source)) {
-    return { skip: true, reason: "uses delete operator" };
+  // Skip tests that use delete on object properties — strip metadata/comments first.
+  {
+    const bodyForDelete = source.replace(/\/\*---[\s\S]*?---\*\//, "").replace(/\/\/.*$/gm, "");
+    if (/\bdelete\s+\w+\s*[.[]/m.test(bodyForDelete) || /\bdelete\s+this\s*\./m.test(bodyForDelete)) {
+      return { skip: true, reason: "uses delete operator" };
+    }
   }
 
   // (Removed: string concatenation skip — now handled in codegen via number_toString coercion)
