@@ -660,6 +660,12 @@ function compileObjectDestructuring(
   );
   fctx.body.push({ op: "local.set", index: tmpLocal });
 
+  // Null guard: if the source is nullable (ref_null), skip destructuring when null
+  const isNullableRef = resultType.kind === "ref_null";
+  const savedBodyForGuard = fctx.body;
+  const destructInstrs: Instr[] = [];
+  fctx.body = destructInstrs;
+
   // For each binding element, create a local and extract the field
   for (const element of pattern.elements) {
     if (!ts.isBindingElement(element)) continue;
@@ -687,7 +693,7 @@ function compileObjectDestructuring(
       fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx: nFieldIdx });
       fctx.body.push({ op: "local.set", index: nestedTmp });
 
-      // Recursively destructure the nested value
+      // Recursively destructure the nested value (with null guard for ref_null)
       if (ts.isObjectBindingPattern(element.name) && (nFieldType.kind === "ref" || nFieldType.kind === "ref_null")) {
         const nestedTypeIdx = (nFieldType as { typeIdx: number }).typeIdx;
         let nestedStructName: string | undefined;
@@ -696,6 +702,9 @@ function compileObjectDestructuring(
         }
         const nestedFields = nestedStructName ? ctx.structFields.get(nestedStructName) : undefined;
         if (nestedFields) {
+          const nestedInstrs: Instr[] = [];
+          const savedNestedBody = fctx.body;
+          fctx.body = nestedInstrs;
           for (const ne of element.name.elements) {
             if (!ts.isBindingElement(ne)) continue;
             if (!ts.isIdentifier(ne.name)) continue;
@@ -703,7 +712,7 @@ function compileObjectDestructuring(
             const nePropText = ts.isIdentifier(nePropNode) ? nePropNode.text
               : ts.isStringLiteral(nePropNode) ? nePropNode.text
               : undefined;
-            if (!nePropText) continue; // skip computed property names
+            if (!nePropText) continue;
             const neLocalName = ne.name.text;
             const neFieldIdx = nestedFields.findIndex((f) => f.name === nePropText);
             if (neFieldIdx === -1) continue;
@@ -712,6 +721,14 @@ function compileObjectDestructuring(
             fctx.body.push({ op: "local.get", index: nestedTmp });
             fctx.body.push({ op: "struct.get", typeIdx: nestedTypeIdx, fieldIdx: neFieldIdx });
             fctx.body.push({ op: "local.set", index: neLocalIdx });
+          }
+          fctx.body = savedNestedBody;
+          if (nFieldType.kind === "ref_null" && nestedInstrs.length > 0) {
+            fctx.body.push({ op: "local.get", index: nestedTmp });
+            fctx.body.push({ op: "ref.is_null" } as Instr);
+            fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: nestedInstrs });
+          } else {
+            fctx.body.push(...nestedInstrs);
           }
         } else {
           ensureBindingLocals(ctx, fctx, element.name);
@@ -722,6 +739,9 @@ function compileObjectDestructuring(
         const nestedArrDef = ctx.mod.types[nestedArrTypeIdx];
         if (nestedArrDef && nestedArrDef.kind === "array") {
           const nestedElemType = nestedArrDef.element;
+          const nestedArrInstrs: Instr[] = [];
+          const savedNestedArrBody = fctx.body;
+          fctx.body = nestedArrInstrs;
           for (let j = 0; j < element.name.elements.length; j++) {
             const ne = element.name.elements[j]!;
             if (ts.isOmittedExpression(ne)) continue;
@@ -734,6 +754,14 @@ function compileObjectDestructuring(
             fctx.body.push({ op: "array.get", typeIdx: nestedArrTypeIdx });
             fctx.body.push({ op: "local.set", index: neLocalIdx });
           }
+          fctx.body = savedNestedArrBody;
+          if (nFieldType.kind === "ref_null" && nestedArrInstrs.length > 0) {
+            fctx.body.push({ op: "local.get", index: nestedTmp });
+            fctx.body.push({ op: "ref.is_null" } as Instr);
+            fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: nestedArrInstrs });
+          } else {
+            fctx.body.push(...nestedArrInstrs);
+          }
         } else {
           ensureBindingLocals(ctx, fctx, element.name);
         }
@@ -744,8 +772,6 @@ function compileObjectDestructuring(
     }
 
     // Handle rest element: const { a, ...rest } = obj
-    // Allocate the local but skip value collection (would require runtime
-    // object creation).  The variable stays at its default value. (#379)
     if (element.dotDotDotToken) {
       if (ts.isIdentifier(element.name)) {
         const restName = element.name.text;
@@ -756,10 +782,10 @@ function compileObjectDestructuring(
       continue;
     }
 
-    if (!ts.isIdentifier(element.name)) continue; // skip non-identifier binding names
+    if (!ts.isIdentifier(element.name)) continue;
     const localName = element.name.text;
 
-    if (!propName) continue; // skip computed property names
+    if (!propName) continue;
     const propNameText = propName.text;
     const fieldIdx = fields.findIndex((f) => f.name === propNameText);
     if (fieldIdx === -1) {
@@ -779,7 +805,6 @@ function compileObjectDestructuring(
 
     // Handle default value: `const { x = defaultVal } = obj`
     if (element.initializer && fieldType.kind === "externref") {
-      // If field is null/undefined, use default value
       const tmpField = allocLocal(fctx, `__dflt_${fctx.locals.length}`, fieldType);
       fctx.body.push({ op: "local.tee", index: tmpField });
       fctx.body.push({ op: "ref.is_null" } as Instr);
@@ -803,12 +828,20 @@ function compileObjectDestructuring(
         ],
       });
     } else if (element.initializer && (fieldType.kind === "f64" || fieldType.kind === "i32")) {
-      // For numeric fields, check against NaN (undefined → NaN after unboxing)
       fctx.body.push({ op: "local.set", index: localIdx });
-      // Numeric defaults are less common; just set the field value for now
     } else {
       fctx.body.push({ op: "local.set", index: localIdx });
     }
+  }
+
+  // Close null guard
+  fctx.body = savedBodyForGuard;
+  if (isNullableRef && destructInstrs.length > 0) {
+    fctx.body.push({ op: "local.get", index: tmpLocal });
+    fctx.body.push({ op: "ref.is_null" } as Instr);
+    fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: destructInstrs });
+  } else {
+    fctx.body.push(...destructInstrs);
   }
 }
 
@@ -879,6 +912,12 @@ function compileArrayDestructuring(
   );
   fctx.body.push({ op: "local.set", index: tmpLocal });
 
+  // Null guard: collect destructuring instrs and wrap for ref_null types
+  const isNullableArr = resultType.kind === "ref_null";
+  const savedBodyForArrGuard = fctx.body;
+  const arrDestructInstrs: Instr[] = [];
+  fctx.body = arrDestructInstrs;
+
   if (isTupleStruct) {
     // Tuple destructuring: extract fields directly from the struct by index
     const tupleFields = (typeDef as { fields: { name?: string; type: ValType }[] }).fields;
@@ -922,6 +961,16 @@ function compileArrayDestructuring(
       fctx.body.push({ op: "local.get", index: tmpLocal });
       fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: i });
       fctx.body.push({ op: "local.set", index: localIdx });
+    }
+
+    // Close null guard for tuple path
+    fctx.body = savedBodyForArrGuard;
+    if (isNullableArr && arrDestructInstrs.length > 0) {
+      fctx.body.push({ op: "local.get", index: tmpLocal });
+      fctx.body.push({ op: "ref.is_null" } as Instr);
+      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: arrDestructInstrs });
+    } else {
+      fctx.body.push(...arrDestructInstrs);
     }
     return;
   }
@@ -1160,6 +1209,16 @@ function compileArrayDestructuring(
     } else {
       fctx.body.push({ op: "local.set", index: localIdx });
     }
+  }
+
+  // Close null guard for vec array path
+  fctx.body = savedBodyForArrGuard;
+  if (isNullableArr && arrDestructInstrs.length > 0) {
+    fctx.body.push({ op: "local.get", index: tmpLocal });
+    fctx.body.push({ op: "ref.is_null" } as Instr);
+    fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: arrDestructInstrs });
+  } else {
+    fctx.body.push(...arrDestructInstrs);
   }
 }
 
@@ -1894,6 +1953,11 @@ function compileForOfDestructuring(
       return;
     }
 
+    // Null guard: collect field extractions for ref_null types
+    const savedBodyFOD = fctx.body;
+    const fodInstrs: Instr[] = [];
+    fctx.body = fodInstrs;
+
     for (const element of pattern.elements) {
       if (!ts.isBindingElement(element)) continue;
       const propNameNode = element.propertyName ?? element.name;
@@ -2001,6 +2065,16 @@ function compileForOfDestructuring(
         fctx.body.push({ op: "local.set", index: localIdx });
       }
     }
+
+    // Close null guard for for-of object destructuring
+    fctx.body = savedBodyFOD;
+    if (elemType.kind === "ref_null" && fodInstrs.length > 0) {
+      fctx.body.push({ op: "local.get", index: elemLocal });
+      fctx.body.push({ op: "ref.is_null" } as Instr);
+      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: fodInstrs });
+    } else {
+      fctx.body.push(...fodInstrs);
+    }
   } else if (ts.isArrayBindingPattern(pattern)) {
     // Array destructuring in for-of: for (var [a, b] of arr)
     // Element should be a vec struct; extract elements by index
@@ -2026,6 +2100,12 @@ function compileForOfDestructuring(
     }
 
     const innerElemType = arrDef.element;
+
+    // Null guard for for-of array destructuring
+    const savedBodyFOAD = fctx.body;
+    const foadInstrs: Instr[] = [];
+    fctx.body = foadInstrs;
+
     for (let i = 0; i < pattern.elements.length; i++) {
       const element = pattern.elements[i]!;
       if (ts.isOmittedExpression(element)) continue;
@@ -2043,9 +2123,8 @@ function compileForOfDestructuring(
         continue;
       }
 
-      if (!ts.isIdentifier(element.name)) continue; // skip non-identifier binding names
+      if (!ts.isIdentifier(element.name)) continue;
       const localName = element.name.text;
-      // Use TypeScript-inferred type for the local to avoid type mismatches
       const bindingTsType = ctx.checker.getTypeAtLocation(element);
       const bindingWasmType = resolveWasmType(ctx, bindingTsType);
       const localIdx = allocLocal(fctx, localName, bindingWasmType);
@@ -2055,7 +2134,6 @@ function compileForOfDestructuring(
       fctx.body.push({ op: "i32.const", value: i });
       emitBoundsCheckedArrayGet(fctx, innerArrTypeIdx, innerElemType);
 
-      // Coerce from Wasm array element type to the binding's declared type
       if (!valTypesMatch(innerElemType, bindingWasmType)) {
         coerceType(ctx, fctx, innerElemType, bindingWasmType);
       }
@@ -2086,6 +2164,16 @@ function compileForOfDestructuring(
       } else {
         fctx.body.push({ op: "local.set", index: localIdx });
       }
+    }
+
+    // Close null guard for for-of array destructuring
+    fctx.body = savedBodyFOAD;
+    if (elemType.kind === "ref_null" && foadInstrs.length > 0) {
+      fctx.body.push({ op: "local.get", index: elemLocal });
+      fctx.body.push({ op: "ref.is_null" } as Instr);
+      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: foadInstrs });
+    } else {
+      fctx.body.push(...foadInstrs);
     }
   }
 }
