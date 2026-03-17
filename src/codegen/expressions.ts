@@ -14211,6 +14211,12 @@ function compileObjectLiteralForStruct(
       const fullName = `${typeName}_${methodName}`;
       ctx.classMethodSet.add(fullName);
 
+      // Check if this is a generator method (*method() { ... })
+      const isGeneratorMethod = prop.asteriskToken !== undefined;
+      if (isGeneratorMethod) {
+        ctx.generatorFunctions.add(fullName);
+      }
+
       const methodParams: ValType[] = [{ kind: "ref", typeIdx: structTypeIdx }];
       for (const param of prop.parameters) {
         const paramType = ctx.checker.getTypeAtLocation(param);
@@ -14219,7 +14225,9 @@ function compileObjectLiteralForStruct(
 
       const sig = ctx.checker.getSignatureFromDeclaration(prop);
       const retType = sig ? ctx.checker.getReturnTypeOfSignature(sig) : undefined;
-      const methodResults: ValType[] = retType && !isVoidType(retType) ? [resolveWasmType(ctx, retType)] : [];
+      const methodResults: ValType[] = isGeneratorMethod
+        ? [{ kind: "externref" }]
+        : (retType && !isVoidType(retType) ? [resolveWasmType(ctx, retType)] : []);
 
       const methodTypeIdx = addFuncType(ctx, methodParams, methodResults, `${fullName}_type`);
       const methodFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
@@ -14268,13 +14276,50 @@ function compileObjectLiteralForStruct(
       // Emit default-value initialization for parameters with initializers
       emitMethodParamDefaults(ctx, methodFctx, prop.parameters, 1); // 1 to skip 'this'
 
-      if (prop.body) {
+      if (isGeneratorMethod && prop.body) {
+        // Generator method: eagerly evaluate body, collect yields into a buffer,
+        // then wrap with __create_generator to return a Generator-like object.
+        const bufferLocal = allocLocal(methodFctx, "__gen_buffer", { kind: "externref" });
+        const createBufIdx = ctx.funcMap.get("__gen_create_buffer")!;
+        methodFctx.body.push({ op: "call", funcIdx: createBufIdx });
+        methodFctx.body.push({ op: "local.set", index: bufferLocal });
+
+        const bodyInstrs: Instr[] = [];
+        const outerBody = methodFctx.body;
+        methodFctx.body = bodyInstrs;
+
+        methodFctx.generatorReturnDepth = 0;
+        methodFctx.blockDepth++;
+        for (let i = 0; i < methodFctx.breakStack.length; i++) methodFctx.breakStack[i]!++;
+        for (let i = 0; i < methodFctx.continueStack.length; i++) methodFctx.continueStack[i]!++;
+
+        for (const stmt of prop.body.statements) {
+          compileStatement(ctx, methodFctx, stmt);
+        }
+
+        methodFctx.blockDepth--;
+        for (let i = 0; i < methodFctx.breakStack.length; i++) methodFctx.breakStack[i]!--;
+        for (let i = 0; i < methodFctx.continueStack.length; i++) methodFctx.continueStack[i]!--;
+        methodFctx.generatorReturnDepth = undefined;
+
+        methodFctx.body = outerBody;
+        methodFctx.body.push({
+          op: "block",
+          blockType: { kind: "empty" },
+          body: bodyInstrs,
+        });
+
+        // Return __create_generator(__gen_buffer)
+        const createGenIdx = ctx.funcMap.get("__create_generator")!;
+        methodFctx.body.push({ op: "local.get", index: bufferLocal });
+        methodFctx.body.push({ op: "call", funcIdx: createGenIdx });
+      } else if (prop.body) {
         for (const stmt of prop.body.statements) {
           compileStatement(ctx, methodFctx, stmt);
         }
       }
-      // Ensure valid return for non-void methods
-      if (methodFctx.returnType) {
+      // Ensure valid return for non-void, non-generator methods
+      if (methodFctx.returnType && !isGeneratorMethod) {
         const lastInstr = methodFctx.body[methodFctx.body.length - 1];
         if (!lastInstr || lastInstr.op !== "return") {
           if (methodFctx.returnType.kind === "f64") {
