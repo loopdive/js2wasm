@@ -4543,7 +4543,11 @@ function compileDestructuringAssignment(
         fctx.body.push({ op: "local.set", index: localIdx });
       }
     } else if (ts.isPropertyAssignment(prop)) {
-      const propName = (prop.name as ts.Identifier).text;
+      const propName = ts.isIdentifier(prop.name) ? prop.name.text
+        : ts.isStringLiteral(prop.name) ? prop.name.text
+        : ts.isNumericLiteral(prop.name) ? prop.name.text
+        : undefined;
+      if (!propName) continue; // computed or unsupported property name — skip
       const fieldIdx = fields.findIndex((f) => f.name === propName);
       if (fieldIdx === -1) continue;
       const fieldType = fields[fieldIdx]!.type;
@@ -5007,7 +5011,11 @@ function emitObjectDestructureFromLocal(
       }
       fctx.body.push({ op: "local.set", index: localIdx });
     } else if (ts.isPropertyAssignment(prop)) {
-      const propName = (prop.name as ts.Identifier).text;
+      const propName = ts.isIdentifier(prop.name) ? prop.name.text
+        : ts.isStringLiteral(prop.name) ? prop.name.text
+        : ts.isNumericLiteral(prop.name) ? prop.name.text
+        : undefined;
+      if (!propName) continue; // computed or unsupported property name — skip
       const fieldIdx = fields.findIndex((f) => f.name === propName);
       if (fieldIdx === -1) continue;
       const fieldType = fields[fieldIdx]!.type;
@@ -19969,15 +19977,23 @@ function compilePropertyIntrospection(
 }
 
 function getLine(node: ts.Node): number {
-  const sf = node.getSourceFile();
-  if (!sf) return 0;
-  const { line } = sf.getLineAndCharacterOfPosition(node.getStart());
-  return line + 1;
+  try {
+    const sf = node.getSourceFile();
+    if (!sf) return 0;
+    const { line } = sf.getLineAndCharacterOfPosition(node.getStart());
+    return line + 1;
+  } catch {
+    return 0;
+  }
 }
 
 function getCol(node: ts.Node): number {
-  const sf = node.getSourceFile();
-  if (!sf) return 0;
-  const { character } = sf.getLineAndCharacterOfPosition(node.getStart());
-  return character + 1;
+  try {
+    const sf = node.getSourceFile();
+    if (!sf) return 0;
+    const { character } = sf.getLineAndCharacterOfPosition(node.getStart());
+    return character + 1;
+  } catch {
+    return 0;
+  }
 }
