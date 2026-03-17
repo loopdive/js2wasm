@@ -307,14 +307,16 @@ const DOWNGRADE_DIAG_CODES = new Set([
   2322, // "Type 'X' is not assignable to type 'Y'"
   2339, // "Property 'X' does not exist on type 'Y'" — dynamic property access
   2454, // "Variable 'X' is used before being assigned"
-  2531, // "Object is possibly 'null'"
-  2532, // "Object is possibly 'undefined'"
+  2531, // "Object is possibly 'null'" — codegen has null guards (#406)
+  2532, // "Object is possibly 'undefined'" — codegen has null guards (#406)
+  2533, // "Object is possibly 'null' or 'undefined'" — codegen has null guards (#406)
   2367, // "This comparison appears to be unintentional" (always truthy/falsy)
   2554, // "Expected N arguments, but got M"
   2683, // "'this' implicitly has type 'any'"
   2695, // "Left side of comma operator is unused and has no side effects"
   2769, // "No overload matches this call"
-  18049, // "'X' is declared but its value is never read" (unused vars)
+  18047, // "'X' is possibly 'null'" — codegen has null guards (#406)
+  18049, // "'X' is possibly 'null' or 'undefined'" — codegen has null guards (#406)
   2358, // "The left-hand side of an 'instanceof' expression must be..."
   2356, // "An arithmetic operand must be of type 'any', 'number', 'bigint' or an enum type" — prefix/postfix inc/dec on non-number
   2362, // "The left-hand side of an arithmetic operation must be..."
