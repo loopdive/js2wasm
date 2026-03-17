@@ -857,6 +857,20 @@ function compileExpressionInner(
     return compileClassExpression(ctx, fctx, expr);
   }
 
+  // `super` as standalone expression — in remaining contexts, treat as `this` reference.
+  // Primary super uses (super.prop, super[expr], super.method(), super()) are handled
+  // earlier in their respective access/call compilers.
+  if (expr.kind === ts.SyntaxKind.SuperKeyword) {
+    const selfIdx = fctx.localMap.get("this");
+    if (selfIdx !== undefined) {
+      fctx.body.push({ op: "local.get", index: selfIdx });
+      const selfType = fctx.locals[selfIdx];
+      if (selfType) return selfType;
+    }
+    fctx.body.push({ op: "ref.null.extern" });
+    return { kind: "externref" };
+  }
+
   ctx.errors.push({
     message: `Unsupported expression: ${ts.SyntaxKind[expr.kind]}`,
     line: getLine(expr),
@@ -9850,6 +9864,12 @@ function compileCallExpression(
         resolvedMethodName = resolveComputedKeyExpression(ctx, argExpr);
       }
     }
+
+    // Handle super['method']() calls — resolve to ParentClass_method with this as first arg
+    if (elemAccess.expression.kind === ts.SyntaxKind.SuperKeyword && resolvedMethodName !== undefined) {
+      return compileSuperElementMethodCall(ctx, fctx, expr, resolvedMethodName);
+    }
+
     if (resolvedMethodName !== undefined) {
       const methodName = resolvedMethodName;
       const receiverType = ctx.checker.getTypeAtLocation(elemAccess.expression);
@@ -10874,6 +10894,77 @@ function compileSuperMethodCall(
 }
 
 /**
+ * Compile `super['method'](args)` — resolve to ParentClass_method and call with this.
+ * Same logic as compileSuperMethodCall but the method name comes from a computed key.
+ */
+function compileSuperElementMethodCall(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.CallExpression,
+  methodName: string,
+): ValType | null {
+  // Determine which class we're in from the current function name (ClassName_methodName)
+  const currentFuncName = fctx.name;
+  const underscoreIdx = currentFuncName.indexOf("_");
+  if (underscoreIdx === -1) return null;
+  const currentClassName = currentFuncName.substring(0, underscoreIdx);
+
+  // Find parent class
+  const parentClassName = ctx.classParentMap.get(currentClassName);
+  if (!parentClassName) {
+    ctx.errors.push({
+      message: `Cannot use super in class without parent: ${currentClassName}`,
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+
+  // Resolve parent method — walk up the inheritance chain
+  let ancestor: string | undefined = parentClassName;
+  let funcIdx: number | undefined;
+  while (ancestor) {
+    funcIdx = ctx.funcMap.get(`${ancestor}_${methodName}`);
+    if (funcIdx !== undefined) break;
+    ancestor = ctx.classParentMap.get(ancestor);
+  }
+
+  if (funcIdx === undefined) {
+    ctx.errors.push({
+      message: `Cannot find method '${methodName}' on parent class '${parentClassName}'`,
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+
+  // Push this as first argument
+  const selfIdx = fctx.localMap.get("this");
+  if (selfIdx !== undefined) {
+    fctx.body.push({ op: "local.get", index: selfIdx });
+  }
+
+  // Push remaining arguments with type hints
+  const paramTypes = getFuncParamTypes(ctx, funcIdx);
+  for (let i = 0; i < expr.arguments.length; i++) {
+    compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
+  }
+  // Re-lookup funcIdx: argument compilation may trigger addUnionImports
+  const resolvedName = `${ancestor}_${methodName}`;
+  const finalSuperIdx = ctx.funcMap.get(resolvedName) ?? funcIdx;
+  fctx.body.push({ op: "call", funcIdx: finalSuperIdx });
+
+  // Determine return type
+  const sig = ctx.checker.getResolvedSignature(expr);
+  if (sig) {
+    const retType = ctx.checker.getReturnTypeOfSignature(sig);
+    if (isVoidType(retType)) return VOID_RESULT;
+    return resolveWasmType(ctx, retType);
+  }
+  return VOID_RESULT;
+}
+
+/**
  * Compile `super.prop` — access a parent class property or getter via `this`.
  * For getter accessors, calls the parent's getter function.
  * For struct fields, accesses the field on `this` (child struct inherits parent fields).
@@ -10974,6 +11065,141 @@ function compileSuperPropertyAccess(
 
   // Fallback: could be a method reference (not a call) — try to find a parent method
   // For now, emit a default based on the TypeScript type at the access site
+  const accessType = ctx.checker.getTypeAtLocation(expr);
+  const wasmType = resolveWasmType(ctx, accessType);
+  if (wasmType.kind === "f64") {
+    fctx.body.push({ op: "f64.const", value: 0 });
+  } else if (wasmType.kind === "i32") {
+    fctx.body.push({ op: "i32.const", value: 0 });
+  } else {
+    fctx.body.push({ op: "ref.null.extern" });
+  }
+  return wasmType;
+}
+
+/**
+ * Compile `super[expr]` — access a parent class property via computed key on `this`.
+ * Resolves the key at compile time if possible and delegates to compileSuperPropertyAccess logic.
+ * For dynamic keys, falls back to default value for the access type.
+ */
+function compileSuperElementAccess(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.ElementAccessExpression,
+): ValType | null {
+  const argExpr = expr.argumentExpression;
+  // Try to resolve the key to a static string
+  let propName: string | undefined;
+  if (argExpr) {
+    if (ts.isStringLiteral(argExpr)) {
+      propName = argExpr.text;
+    } else if (ts.isNumericLiteral(argExpr)) {
+      propName = String(Number(argExpr.text));
+    } else {
+      propName = resolveComputedKeyExpression(ctx, argExpr);
+    }
+  }
+
+  if (propName === undefined) {
+    // Dynamic key on super — cannot resolve at compile time
+    // Emit default value for the access type
+    const accessType = ctx.checker.getTypeAtLocation(expr);
+    const wasmType = resolveWasmType(ctx, accessType);
+    if (wasmType.kind === "f64") {
+      fctx.body.push({ op: "f64.const", value: 0 });
+    } else if (wasmType.kind === "i32") {
+      fctx.body.push({ op: "i32.const", value: 0 });
+    } else {
+      fctx.body.push({ op: "ref.null.extern" });
+    }
+    return wasmType;
+  }
+
+  // Determine which class we're in from the current function name (ClassName_methodName)
+  const currentFuncName = fctx.name;
+  const underscoreIdx = currentFuncName.indexOf("_");
+  if (underscoreIdx === -1) {
+    ctx.errors.push({
+      message: `Cannot use super outside of a class method: ${currentFuncName}`,
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+  const currentClassName = currentFuncName.substring(0, underscoreIdx);
+
+  // Find parent class
+  const parentClassName = ctx.classParentMap.get(currentClassName);
+  if (!parentClassName) {
+    ctx.errors.push({
+      message: `Cannot use super in class without parent: ${currentClassName}`,
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
+  }
+
+  // Check for parent getter accessor — walk up inheritance chain
+  let ancestor: string | undefined = parentClassName;
+  while (ancestor) {
+    const accessorKey = `${ancestor}_${propName}`;
+    if (ctx.classAccessorSet.has(accessorKey)) {
+      const getterName = `${ancestor}_get_${propName}`;
+      const funcIdx = ctx.funcMap.get(getterName);
+      if (funcIdx !== undefined) {
+        const selfIdx = fctx.localMap.get("this");
+        if (selfIdx !== undefined) {
+          fctx.body.push({ op: "local.get", index: selfIdx });
+        }
+        fctx.body.push({ op: "call", funcIdx });
+        const propType = ctx.checker.getTypeAtLocation(expr);
+        return resolveWasmType(ctx, propType);
+      }
+    }
+    ancestor = ctx.classParentMap.get(ancestor);
+  }
+
+  // Fall back to struct field access on `this`
+  ancestor = parentClassName;
+  while (ancestor) {
+    const structTypeIdx = ctx.structMap.get(ancestor);
+    const fields = ctx.structFields.get(ancestor);
+    if (structTypeIdx !== undefined && fields) {
+      const fieldIdx = fields.findIndex((f) => f.name === propName);
+      if (fieldIdx !== -1) {
+        const currentStructTypeIdx = ctx.structMap.get(currentClassName);
+        const currentFields = ctx.structFields.get(currentClassName);
+        if (currentStructTypeIdx !== undefined && currentFields) {
+          const currentFieldIdx = currentFields.findIndex((f) => f.name === propName);
+          if (currentFieldIdx !== -1) {
+            const selfIdx = fctx.localMap.get("this");
+            if (selfIdx !== undefined) {
+              fctx.body.push({ op: "local.get", index: selfIdx });
+            }
+            fctx.body.push({
+              op: "struct.get",
+              typeIdx: currentStructTypeIdx,
+              fieldIdx: currentFieldIdx,
+            });
+            return currentFields[currentFieldIdx]!.type;
+          }
+        }
+        const selfIdx = fctx.localMap.get("this");
+        if (selfIdx !== undefined) {
+          fctx.body.push({ op: "local.get", index: selfIdx });
+        }
+        fctx.body.push({
+          op: "struct.get",
+          typeIdx: structTypeIdx,
+          fieldIdx,
+        });
+        return fields[fieldIdx]!.type;
+      }
+    }
+    ancestor = ctx.classParentMap.get(ancestor);
+  }
+
+  // Fallback: emit default value based on TypeScript type
   const accessType = ctx.checker.getTypeAtLocation(expr);
   const wasmType = resolveWasmType(ctx, accessType);
   if (wasmType.kind === "f64") {
@@ -13529,6 +13755,11 @@ function compileElementAccess(
   fctx: FunctionContext,
   expr: ts.ElementAccessExpression,
 ): ValType | null {
+  // Handle super[expr] — access parent class property via computed key on `this`
+  if (expr.expression.kind === ts.SyntaxKind.SuperKeyword) {
+    return compileSuperElementAccess(ctx, fctx, expr);
+  }
+
   const objType = compileExpression(ctx, fctx, expr.expression);
   if (!objType) return null;
 
