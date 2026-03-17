@@ -9694,6 +9694,24 @@ function compileCallExpression(
         return compileNativeStringMethodCall(ctx, fctx, expr, propAccess, method);
       }
 
+      // charCodeAt: uses wasm:js-string charCodeAt import (not string_charCodeAt)
+      if (method === "charCodeAt") {
+        const charCodeAtIdx = ctx.funcMap.get("charCodeAt");
+        if (charCodeAtIdx !== undefined) {
+          compileExpression(ctx, fctx, propAccess.expression);
+          if (expr.arguments.length > 0) {
+            const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
+            if (argType && argType.kind === "f64") {
+              fctx.body.push({ op: "i32.trunc_sat_f64_s" });
+            }
+          } else {
+            fctx.body.push({ op: "i32.const", value: 0 });
+          }
+          fctx.body.push({ op: "call", funcIdx: charCodeAtIdx });
+          return { kind: "i32" };
+        }
+      }
+
       const importName = `string_${method}`;
       const funcIdx = ctx.funcMap.get(importName);
       if (funcIdx !== undefined) {
