@@ -900,83 +900,182 @@ function stripUndefinedAssert(code: string, fnName: string): string {
 function renameYieldOutsideGenerators(source: string): string {
   if (!/\byield\b/.test(source)) return source;
 
-  // If no generator functions, just rename all yield identifiers
-  if (!/\bfunction\s*\*/.test(source)) {
+  // If no generator functions (neither `function*` nor `*method()` syntax),
+  // just rename all yield identifiers.
+  const hasGeneratorFunction = /\bfunction\s*\*/.test(source);
+  const hasGeneratorMethod = /(?:^|[,{;)\s])\s*\*\s*(?:[\w$]+|\[[\s\S]*?\])\s*\(/.test(source);
+  if (!hasGeneratorFunction && !hasGeneratorMethod) {
     return source.replace(/\byield\b/g, "_yield");
   }
 
-  // Track which regions are inside generator function bodies.
-  // We scan for `function*` followed by optional name, optional params `(...)`, then `{`.
-  // We track brace depth to find the matching `}`.
-  const generatorBodyRanges: Array<{ start: number; end: number }> = [];
+  // Strategy: find all function/function* and *method() ranges, build a nesting
+  // tree, then for each `yield` occurrence check if the innermost enclosing
+  // function is a generator. If yes, keep `yield` as-is (keyword); otherwise
+  // rename to `_yield`.
 
-  // Find all function* declarations/expressions
-  const genRegex = /\bfunction\s*\*/g;
-  let genMatch: RegExpExecArray | null;
-  while ((genMatch = genRegex.exec(source)) !== null) {
-    // Find the opening brace of the generator body
-    let i = genMatch.index + genMatch[0].length;
-    // Skip optional name
-    while (i < source.length && /\s/.test(source[i]!)) i++;
-    if (i < source.length && /[a-zA-Z_$]/.test(source[i]!)) {
-      while (i < source.length && /[\w$]/.test(source[i]!)) i++;
-    }
-    // Skip whitespace
-    while (i < source.length && /\s/.test(source[i]!)) i++;
-    // Skip params (...)
-    if (i < source.length && source[i] === "(") {
-      let parenDepth = 1;
+  // Helper: skip a string literal starting at position i (on the quote char).
+  function skipString(src: string, i: number): number {
+    const quote = src[i]!;
+    i++;
+    while (i < src.length && src[i] !== quote) {
+      if (src[i] === "\\") i++;
       i++;
-      while (i < source.length && parenDepth > 0) {
-        if (source[i] === "(") parenDepth++;
-        else if (source[i] === ")") parenDepth--;
-        i++;
-      }
     }
-    // Skip whitespace
-    while (i < source.length && /\s/.test(source[i]!)) i++;
-    // Skip optional return type annotation (: Type)
-    if (i < source.length && source[i] === ":") {
-      i++;
-      while (i < source.length && /\s/.test(source[i]!)) i++;
-      // Skip type until we hit {
-      while (i < source.length && source[i] !== "{") i++;
-    }
-    // Now we should be at the opening brace
-    if (i < source.length && source[i] === "{") {
-      const bodyStart = i;
-      let braceDepth = 1;
-      i++;
-      while (i < source.length && braceDepth > 0) {
-        if (source[i] === "{") braceDepth++;
-        else if (source[i] === "}") braceDepth--;
-        // Skip string literals to avoid counting braces inside them
-        else if (source[i] === '"' || source[i] === "'" || source[i] === "`") {
-          const quote = source[i]!;
-          i++;
-          while (i < source.length && source[i] !== quote) {
-            if (source[i] === "\\" ) i++; // skip escaped char
-            i++;
-          }
-        }
-        i++;
-      }
-      generatorBodyRanges.push({ start: bodyStart, end: i });
-    }
+    return i + 1;
   }
 
-  // Now replace yield outside generator body ranges
+  // Helper: find matching closing brace from an opening brace at position i.
+  function findMatchingBrace(src: string, openIdx: number): number {
+    let depth = 1;
+    let j = openIdx + 1;
+    while (j < src.length && depth > 0) {
+      if (src[j] === "{") depth++;
+      else if (src[j] === "}") depth--;
+      else if (src[j] === '"' || src[j] === "'" || src[j] === "`") {
+        j = skipString(src, j);
+        continue;
+      }
+      j++;
+    }
+    return j;
+  }
+
+  // Helper: skip past params `(...)` starting at position i (on the `(`).
+  function skipParams(src: string, i: number): number {
+    let depth = 1;
+    i++;
+    while (i < src.length && depth > 0) {
+      if (src[i] === "(") depth++;
+      else if (src[i] === ")") depth--;
+      else if (src[i] === '"' || src[i] === "'" || src[i] === "`") {
+        i = skipString(src, i);
+        continue;
+      }
+      i++;
+    }
+    return i;
+  }
+
+  // Helper: starting after the function keyword (and optional `*`),
+  // find the param start `(` and body start `{`.
+  // Returns { paramStart, bodyStart, bodyEnd } or null.
+  function findFunctionExtent(src: string, startIdx: number): { paramStart: number; bodyEnd: number } | null {
+    let i = startIdx;
+    // Skip whitespace
+    while (i < src.length && /\s/.test(src[i]!)) i++;
+    // Skip optional name
+    if (i < src.length && /[a-zA-Z_$]/.test(src[i]!)) {
+      while (i < src.length && /[\w$]/.test(src[i]!)) i++;
+    }
+    // Skip whitespace
+    while (i < src.length && /\s/.test(src[i]!)) i++;
+    // Find params
+    if (i >= src.length || src[i] !== "(") return null;
+    const paramStart = i;
+    i = skipParams(src, i);
+    // Skip whitespace
+    while (i < src.length && /\s/.test(src[i]!)) i++;
+    // Skip optional return type annotation (: Type)
+    if (i < src.length && src[i] === ":") {
+      i++;
+      while (i < src.length && src[i] !== "{") i++;
+    }
+    if (i >= src.length || src[i] !== "{") return null;
+    const bodyEnd = findMatchingBrace(src, i);
+    return { paramStart, bodyEnd };
+  }
+
+  type FuncRange = { start: number; end: number; isGenerator: boolean; children: FuncRange[] };
+  const allFuncs: FuncRange[] = [];
+
+  // Find all `function` and `function*` declarations/expressions
+  const funcRegex = /\bfunction\s*(\*?)/g;
+  let match: RegExpExecArray | null;
+  while ((match = funcRegex.exec(source)) !== null) {
+    const isGen = match[1] === "*";
+    const afterKeyword = match.index + match[0].length;
+    // For non-generators, check word boundary after 'function'
+    if (!isGen && afterKeyword < source.length && /[\w$]/.test(source[afterKeyword]!)) continue;
+    const extent = findFunctionExtent(source, afterKeyword);
+    if (!extent) continue;
+    // Range covers from param start to body end (so yield in default params is "inside" the function)
+    allFuncs.push({ start: extent.paramStart, end: extent.bodyEnd, isGenerator: isGen, children: [] });
+  }
+
+  // Find `*method()` generator method syntax (not caught by function regex)
+  const methodRegex = /\*\s*(?:[\w$]+|\[[\s\S]*?\])\s*\(/g;
+  let methodMatch: RegExpExecArray | null;
+  while ((methodMatch = methodRegex.exec(source)) !== null) {
+    // Distinguish from multiply operator: check preceding context
+    const before = source.substring(Math.max(0, methodMatch.index - 20), methodMatch.index).trimEnd();
+    if (!(before.endsWith(",") || before.endsWith("{") || before.endsWith(";") || before.endsWith(")") || before.length === 0)) {
+      continue;
+    }
+    // Find the opening `(` position (it's at the end of the match minus 1)
+    const parenStart = methodMatch.index + methodMatch[0].length - 1;
+    let j = skipParams(source, parenStart);
+    // Skip whitespace
+    while (j < source.length && /\s/.test(source[j]!)) j++;
+    if (j >= source.length || source[j] !== "{") continue;
+    const bodyEnd = findMatchingBrace(source, j);
+    // Range covers from param start to body end
+    allFuncs.push({ start: parenStart, end: bodyEnd, isGenerator: true, children: [] });
+  }
+
+  // Also handle arrow functions: `(...) =>` or `name =>`
+  // Arrow functions are non-generators, so yield inside them should be renamed.
+  const arrowRegex = /=>\s*\{/g;
+  let arrowMatch: RegExpExecArray | null;
+  while ((arrowMatch = arrowRegex.exec(source)) !== null) {
+    const braceIdx = arrowMatch.index + arrowMatch[0].length - 1;
+    const bodyEnd = findMatchingBrace(source, braceIdx);
+    allFuncs.push({ start: braceIdx, end: bodyEnd, isGenerator: false, children: [] });
+  }
+
+  // Sort by start position
+  allFuncs.sort((a, b) => a.start - b.start);
+
+  // Build nesting tree: find the smallest enclosing range for each function
+  for (const r of allFuncs) {
+    let parent: FuncRange | null = null;
+    for (const candidate of allFuncs) {
+      if (candidate === r) continue;
+      if (candidate.start < r.start && candidate.end > r.end) {
+        if (!parent || candidate.start > parent.start) {
+          parent = candidate;
+        }
+      }
+    }
+    if (parent) {
+      parent.children.push(r);
+    }
+  }
+  const roots = allFuncs.filter(r =>
+    !allFuncs.some(c => c !== r && c.start < r.start && c.end > r.end),
+  );
+
+  // For a given position, find the innermost enclosing function
+  function findInnermostFunc(pos: number, ranges: FuncRange[]): FuncRange | null {
+    for (const r of ranges) {
+      if (pos >= r.start && pos < r.end) {
+        const child = findInnermostFunc(pos, r.children);
+        return child || r;
+      }
+    }
+    return null;
+  }
+
+  // Replace yield: keep as keyword only if innermost function is a generator
   const yieldRegex = /\byield\b/g;
   let result = "";
   let lastIndex = 0;
   let yieldMatch: RegExpExecArray | null;
   while ((yieldMatch = yieldRegex.exec(source)) !== null) {
     const pos = yieldMatch.index;
-    const insideGenerator = generatorBodyRanges.some(
-      r => pos >= r.start && pos < r.end
-    );
+    const innermost = findInnermostFunc(pos, roots);
+    const isKeyword = innermost !== null && innermost.isGenerator;
     result += source.slice(lastIndex, pos);
-    result += insideGenerator ? "yield" : "_yield";
+    result += isKeyword ? "yield" : "_yield";
     lastIndex = pos + "yield".length;
   }
   result += source.slice(lastIndex);

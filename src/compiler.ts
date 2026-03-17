@@ -704,6 +704,7 @@ const DOWNGRADE_DIAG_CODES = new Set([
   2372, // "Parameter 'x' cannot reference itself" — valid JS pattern (#413)
   2373, // "Parameter 'x' cannot reference identifier 'y' declared after it" — valid JS pattern (#413)
   2735, // "Initializer of parameter 'x' cannot reference identifier 'y'" — valid JS pattern (#413)
+  1106, // "The left-hand side of a 'for...of' statement may not be 'async'" — valid in sloppy-mode JS (#425)
 ]);
 
 /**
