@@ -396,7 +396,7 @@ Updated with latest run (2026-03-17): 17,606 unique tests — 5,735 pass, 2,064 
 #436 (for-of destructuring ref type — 42 CE) ── independent [S], NEW
 #437 (empty_FIXTURE.js — 38 CE) ── test infra [T], NEW
 #420 (destructure non-array — 34 CE) ── independent [E], updated from 26
-#438 (internal error undefined — 20 CE) ── independent [E], NEW
+#438 (internal error undefined — 20 CE) ── DONE (already resolved by prior commits)
 #439 (generator missing next/return/throw — 16 CE) ── blocked by #412 [E], NEW
 #440 (dynamic import specifier — 16 CE) ── independent [E], NEW
 #415 (logical assignment struct — 14 CE) ── independent [E]
@@ -431,7 +431,7 @@ Updated with latest run (2026-03-17): 17,606 unique tests — 5,735 pass, 2,064 
 | 436 | for-of array destructuring ref type | 42 CE | **Ready** (medium) |
 | 437 | Cannot find module empty_FIXTURE.js | 38 CE | **Ready** (low, test infra) |
 | 420 | Cannot destructure non-array types | 34 CE | **Ready** (medium) |
-| 438 | Internal error: undefined property access | 20 CE | **Ready** (medium) |
+| 438 | Internal error: undefined property access | 0 CE | **Done** (resolved by prior commits) |
 | 421 | Array.reduce requires callback and initial value | 23 CE | **Ready** (medium) |
 | 439 | Generator type missing next/return/throw | 16 CE | Blocked by #412 |
 | 440 | Dynamic import specifier type | 16 CE | **Ready** (low) |
@@ -520,7 +520,7 @@ function in the same file. Key contention points:
 | built-in runtime | 344, 355, 359, 369, 385, 421 |
 | logical/conditional codegen | 435 |
 | block/stack balance | 411, 410, 412, 447 |
-| AST null safety | 405, 418, 438 |
+| AST null safety | 405, 418, ~~438~~ |
 | null guard emission | 441 |
 | ref.cast / type narrowing | 442 |
 | local.set coercion | 444 |
