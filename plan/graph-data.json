@@ -126,6 +126,146 @@
       "cluster": "Unclustered"
     },
     {
+      "id": 387,
+      "title": "Unsupported call expression (2356 CE)",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "compiler_errors": 2356,
+      "test262_ce": 2356,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 388,
+      "title": "Element access on externref (104 CE)",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "compiler_errors": 262,
+      "test262_ce": 104,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 389,
+      "title": "Element access on class instances (76 CE)",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "compiler_errors": 262,
+      "test262_ce": 76,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 390,
+      "title": "Assignment to non-array types (70 CE)",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "compiler_errors": 262,
+      "test262_ce": 70,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 391,
+      "title": "Numeric index signature on object types (30 CE)",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "compiler_errors": 262,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 392,
+      "title": "Unknown field access on class structs (18 CE)",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "compiler_errors": 262,
+      "test262_ce": 18,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 393,
+      "title": "Compound assignment on externref element access (13 CE)",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [
+        "388"
+      ],
+      "files": [],
+      "compiler_errors": 262,
+      "test262_ce": 13,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 394,
+      "title": "Destructuring produces wrong return values",
+      "priority": "critical",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_fail": 1438,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 395,
+      "title": "Runtime \"fn is not a function\" errors (70 FAIL)",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_fail": 70,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 396,
+      "title": "Null pointer dereference in destructuring (118 FAIL)",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [
+        394
+      ],
+      "files": [],
+      "test262_fail": 118,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 397,
+      "title": "assert.throws test support (952 SKIP)",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 952,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 398,
+      "title": "Private class fields/methods return wrong values (98 FAIL)",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_fail": 98,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 399,
+      "title": "Prototype method calls return wrong values (72 FAIL)",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_fail": 72,
+      "cluster": "Unclustered"
+    },
+    {
       "id": 400,
       "title": "Endo/SES-like freezing/locking of insecure language features",
       "priority": "low",
@@ -213,6 +353,10 @@
   ],
   "links": [
     {
+      "source": 394,
+      "target": 396
+    },
+    {
       "source": 317,
       "target": 318
     },
@@ -233,5 +377,5 @@
       "target": 74
     }
   ],
-  "generated": "2026-03-17T00:26:09.361Z"
+  "generated": "2026-03-17T01:18:07.126Z"
 }
