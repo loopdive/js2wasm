@@ -75,6 +75,7 @@ const UNSUPPORTED_FEATURES = new Set([
   "SharedArrayBuffer", "Atomics",
   // dynamic-import: checked separately in shouldSkip (only skip when source uses import())
   // import.meta: implemented (#371), no longer needs skipping
+  "source-phase-imports", // import.source — Stage 3 TC39 proposal, not supported
   "promise-all-settled", "Promise.any", "Promise.allSettled",
   "TypedArray", "DataView", "ArrayBuffer",
   "RegExp", "regexp-dotall", "regexp-lookbehind", "regexp-named-groups",
@@ -155,6 +156,11 @@ export function shouldSkip(source: string, meta: Test262Meta): FilterResult {
     if (/\bimport\s*\(/.test(body)) {
       return { skip: true, reason: "uses dynamic import() in source" };
     }
+  }
+
+  // import.source — Stage 3 TC39 proposal, not supported by ts2wasm
+  if (/\bimport\.source\b/.test(source)) {
+    return { skip: true, reason: "import.source not supported" };
   }
 
   // Skip tests requiring harness includes we have not shimmed
