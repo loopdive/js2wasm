@@ -8272,6 +8272,11 @@ function compileCallExpression(
     return compileOptionalCallExpression(ctx, fctx, expr);
   }
 
+  // Optional chaining on direct call: fn?.()
+  if (expr.questionDotToken && ts.isIdentifier(expr.expression)) {
+    return compileOptionalDirectCall(ctx, fctx, expr);
+  }
+
   // Unwrap parenthesized callee: (fn)(...), ((obj.method))(...) etc.
   // This handles patterns like (0, fn)() which are already handled below,
   // but also (fn)(), ((fn))(), (obj.method)() etc. which would otherwise fail.
@@ -12626,22 +12631,27 @@ function compileOptionalCallExpression(
   fctx.body.push({ op: "local.tee", index: tmp });
   fctx.body.push({ op: "ref.is_null" });
 
-  const resultType: ValType = { kind: "externref" };
-
-  const savedBody = fctx.body;
-  fctx.savedBodies.push(savedBody);
-
-  // then branch (null path): push null
-  const thenInstrs: Instr[] = [{ op: "ref.null.extern" }];
+  // Determine the call's return type from the resolved signature
+  let callReturnType: ValType | typeof VOID_RESULT = VOID_RESULT;
+  const sig = ctx.checker.getResolvedSignature(expr);
+  if (sig) {
+    const retType = ctx.checker.getReturnTypeOfSignature(sig);
+    if (!isVoidType(retType)) callReturnType = resolveWasmType(ctx, retType);
+  }
+  // Default result type for the if/else block
+  let resultType: ValType = callReturnType === VOID_RESULT
+    ? { kind: "externref" }
+    : callReturnType;
 
   // else branch (non-null path): call the method
-  fctx.body = [];
-  // Re-push receiver from temp, then compile the call normally
-  fctx.body.push({ op: "local.get", index: tmp });
+  const savedBody = pushBody(fctx);
+
   const tsReceiverType = ctx.checker.getTypeAtLocation(propAccess.expression);
-  const methodName = propAccess.name.text;
-  if (isExternalDeclaredClass(tsReceiverType, ctx.checker)) {
-    // Find the method import and call it
+  const methodName = ts.isPrivateIdentifier(propAccess.name) ? propAccess.name.text.slice(1) : propAccess.name.text;
+  let methodResolved = false;
+
+  // 1. External declared class methods
+  if (!methodResolved && isExternalDeclaredClass(tsReceiverType, ctx.checker)) {
     const className = tsReceiverType.getSymbol()?.name;
     if (className) {
       let current: string | undefined = className;
@@ -12651,13 +12661,13 @@ function compileOptionalCallExpression(
           const importName = `${info.importPrefix}_${methodName}`;
           const funcIdx = ctx.funcMap.get(importName);
           if (funcIdx !== undefined) {
-            // Compile arguments
+            fctx.body.push({ op: "local.get", index: tmp });
             for (const arg of expr.arguments) {
               compileExpression(ctx, fctx, arg);
             }
-            // Re-lookup funcIdx after arg compilation
             const finalOptIdx = ctx.funcMap.get(importName) ?? funcIdx;
             fctx.body.push({ op: "call", funcIdx: finalOptIdx });
+            methodResolved = true;
           }
           break;
         }
@@ -12665,13 +12675,286 @@ function compileOptionalCallExpression(
       }
     }
   }
-  const elseInstrs = fctx.body;
 
+  // 2. Local class instance methods
+  if (!methodResolved) {
+    let receiverClassName = tsReceiverType.getSymbol()?.name;
+    if (receiverClassName && !ctx.classSet.has(receiverClassName)) {
+      receiverClassName = ctx.classExprNameMap.get(receiverClassName) ?? receiverClassName;
+    }
+    if (receiverClassName && ctx.classSet.has(receiverClassName)) {
+      let fullName = `${receiverClassName}_${methodName}`;
+      let funcIdx = ctx.funcMap.get(fullName);
+      // Walk inheritance chain
+      if (funcIdx === undefined) {
+        let ancestor = ctx.classParentMap.get(receiverClassName);
+        while (ancestor && funcIdx === undefined) {
+          fullName = `${ancestor}_${methodName}`;
+          funcIdx = ctx.funcMap.get(fullName);
+          ancestor = ctx.classParentMap.get(ancestor);
+        }
+      }
+      if (funcIdx !== undefined) {
+        // Push receiver as self, with ref.as_non_null if needed
+        fctx.body.push({ op: "local.get", index: tmp });
+        if (objType.kind === "ref_null") {
+          fctx.body.push({ op: "ref.as_non_null" } as Instr);
+        }
+        const paramTypes = getFuncParamTypes(ctx, funcIdx);
+        for (let i = 0; i < expr.arguments.length; i++) {
+          compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
+        }
+        if (paramTypes) {
+          for (let i = expr.arguments.length + 1; i < paramTypes.length; i++) {
+            pushDefaultValue(fctx, paramTypes[i]!);
+          }
+        }
+        const finalMethodIdx = ctx.funcMap.get(fullName) ?? funcIdx;
+        fctx.body.push({ op: "call", funcIdx: finalMethodIdx });
+        methodResolved = true;
+      }
+    }
+  }
+
+  // 3. Struct type methods (object literal with methods)
+  if (!methodResolved) {
+    const structTypeName = resolveStructName(ctx, tsReceiverType);
+    if (structTypeName) {
+      const fullName = `${structTypeName}_${methodName}`;
+      const funcIdx = ctx.funcMap.get(fullName);
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "local.get", index: tmp });
+        if (objType.kind === "ref_null") {
+          fctx.body.push({ op: "ref.as_non_null" } as Instr);
+        }
+        const paramTypes = getFuncParamTypes(ctx, funcIdx);
+        for (let i = 0; i < expr.arguments.length; i++) {
+          compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
+        }
+        if (paramTypes) {
+          for (let i = expr.arguments.length + 1; i < paramTypes.length; i++) {
+            pushDefaultValue(fctx, paramTypes[i]!);
+          }
+        }
+        const finalStructIdx = ctx.funcMap.get(fullName) ?? funcIdx;
+        fctx.body.push({ op: "call", funcIdx: finalStructIdx });
+        methodResolved = true;
+      }
+    }
+  }
+
+  // 4. String method calls
+  if (!methodResolved && isStringType(tsReceiverType)) {
+    if (ctx.fast && ctx.nativeStrTypeIdx >= 0) {
+      // Native string methods compile the receiver themselves from propAccess
+      const nativeResult = compileNativeStringMethodCall(ctx, fctx, expr, propAccess, methodName);
+      if (nativeResult !== null && nativeResult !== VOID_RESULT) {
+        resultType = nativeResult as ValType;
+        methodResolved = true;
+      }
+    } else {
+      const importName = `string_${methodName}`;
+      const funcIdx = ctx.funcMap.get(importName);
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "local.get", index: tmp });
+        const paramTypes = getFuncParamTypes(ctx, funcIdx);
+        for (let ai = 0; ai < expr.arguments.length; ai++) {
+          const argResult = compileExpression(ctx, fctx, expr.arguments[ai]!);
+          const expectedType = paramTypes?.[ai + 1];
+          if (argResult && expectedType && argResult.kind !== expectedType.kind) {
+            coerceType(ctx, fctx, argResult, expectedType);
+          }
+        }
+        if (paramTypes && expr.arguments.length + 1 < paramTypes.length) {
+          for (let pi = expr.arguments.length + 1; pi < paramTypes.length; pi++) {
+            const pt = paramTypes[pi]!;
+            if (pt.kind === "externref") fctx.body.push({ op: "ref.null.extern" });
+            else if (pt.kind === "f64") fctx.body.push({ op: "f64.const", value: 0 });
+            else if (pt.kind === "i32") fctx.body.push({ op: "i32.const", value: 0 });
+          }
+        }
+        fctx.body.push({ op: "call", funcIdx });
+        const returnsBool = methodName === "includes" || methodName === "startsWith" || methodName === "endsWith";
+        resultType = returnsBool ? { kind: "i32" } : methodName === "indexOf" || methodName === "lastIndexOf" ? { kind: "f64" } : { kind: "externref" };
+        methodResolved = true;
+      }
+    }
+  }
+
+  // 5. Number method calls (toString, toFixed)
+  if (!methodResolved && isNumberType(tsReceiverType)) {
+    if (methodName === "toString") {
+      fctx.body.push({ op: "local.get", index: tmp });
+      if (objType.kind === "i32") {
+        fctx.body.push({ op: "f64.convert_i32_s" });
+      }
+      const funcIdx = ctx.funcMap.get("number_toString");
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+        resultType = { kind: "externref" };
+        methodResolved = true;
+      }
+    } else if (methodName === "toFixed") {
+      fctx.body.push({ op: "local.get", index: tmp });
+      if (objType.kind === "i32") {
+        fctx.body.push({ op: "f64.convert_i32_s" });
+      }
+      if (expr.arguments.length > 0) {
+        compileExpression(ctx, fctx, expr.arguments[0]!);
+      } else {
+        fctx.body.push({ op: "f64.const", value: 0 });
+      }
+      const funcIdx = ctx.funcMap.get("number_toFixed");
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+        resultType = { kind: "externref" };
+        methodResolved = true;
+      }
+    }
+  }
+
+  // 6. Array method calls (compiles the receiver itself from propAccess)
+  if (!methodResolved) {
+    const bodyBefore = fctx.body.length;
+    const arrResult = compileArrayMethodCall(ctx, fctx, propAccess, expr, tsReceiverType);
+    if (arrResult !== undefined) {
+      if (arrResult !== VOID_RESULT && arrResult !== null) {
+        resultType = arrResult as ValType;
+      }
+      methodResolved = true;
+    } else {
+      // Array method didn't handle it; trim anything it may have emitted
+      fctx.body.length = bodyBefore;
+    }
+  }
+
+  if (!methodResolved) {
+    // No method was resolved; push a default value so the else branch has a result
+    resultType = { kind: "externref" };
+    fctx.body.push(...defaultValueInstrs(resultType));
+  }
+
+  const elseInstrs = fctx.body;
   popBody(fctx, savedBody);
+
+  // If the result type is ref, widen to ref_null for the nullable branch
+  if (resultType.kind === "ref") {
+    resultType = { kind: "ref_null", typeIdx: (resultType as any).typeIdx };
+  }
+
+  // Build the if/else block
   fctx.body.push({
     op: "if",
     blockType: { kind: "val", type: resultType },
-    then: thenInstrs,
+    then: defaultValueInstrs(resultType),
+    else: elseInstrs,
+  });
+
+  return resultType;
+}
+
+/**
+ * Optional direct call: fn?.()
+ * Compiles fn, checks if null → returns undefined, else calls fn normally.
+ */
+function compileOptionalDirectCall(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.CallExpression,
+): ValType | null {
+  const callee = expr.expression as ts.Identifier;
+
+  // Compile the callee and check for null
+  const calleeType = compileExpression(ctx, fctx, callee);
+  if (!calleeType) return null;
+
+  // If the callee is not a reference type, it can't be null-checked
+  if (calleeType.kind !== "ref" && calleeType.kind !== "ref_null" && calleeType.kind !== "externref") {
+    // Non-nullable primitive: just call it normally (strip questionDotToken)
+    // The callee is already on the stack, but compileCallExpression will re-compile.
+    // Drop it and delegate.
+    fctx.body.push({ op: "drop" });
+    const syntheticCall = ts.factory.createCallExpression(
+      callee,
+      expr.typeArguments,
+      expr.arguments,
+    );
+    ts.setTextRange(syntheticCall, expr);
+    (syntheticCall as any).parent = expr.parent;
+    return compileCallExpression(ctx, fctx, syntheticCall as ts.CallExpression);
+  }
+
+  const tmp = allocLocal(fctx, `__optdcall_${fctx.locals.length}`, calleeType);
+  fctx.body.push({ op: "local.tee", index: tmp });
+  fctx.body.push({ op: "ref.is_null" });
+
+  // Determine the call's return type
+  let resultType: ValType = { kind: "externref" };
+  const sig = ctx.checker.getResolvedSignature(expr);
+  if (sig) {
+    const retType = ctx.checker.getReturnTypeOfSignature(sig);
+    if (!isVoidType(retType)) {
+      const resolved = resolveWasmType(ctx, retType);
+      if (resolved.kind === "ref") {
+        resultType = { kind: "ref_null", typeIdx: (resolved as any).typeIdx };
+      } else {
+        resultType = resolved;
+      }
+    }
+  }
+
+  // else branch (non-null path): call the function
+  const savedBody = pushBody(fctx);
+
+  // Try to resolve as closure
+  const funcName = callee.text;
+  const closureInfo = ctx.closureMap.get(funcName);
+  const funcIdx = ctx.funcMap.get(funcName);
+  let resolved = false;
+
+  if (closureInfo) {
+    // Closure call
+    fctx.body.push({ op: "local.get", index: tmp });
+    if (calleeType.kind === "ref_null") {
+      fctx.body.push({ op: "ref.as_non_null" } as Instr);
+    }
+    // Duplicate self for struct.get of the inner func ref
+    const closureTmp = allocLocal(fctx, `__optdcall_cls_${fctx.locals.length}`, { kind: "ref", typeIdx: (calleeType as any).typeIdx });
+    fctx.body.push({ op: "local.tee", index: closureTmp });
+    fctx.body.push({ op: "local.get", index: closureTmp });
+    for (const arg of expr.arguments) {
+      compileExpression(ctx, fctx, arg);
+    }
+    fctx.body.push({ op: "call_ref", typeIdx: closureInfo.funcTypeIdx } as unknown as Instr);
+    resolved = true;
+  } else if (funcIdx !== undefined) {
+    // Direct function call
+    const paramTypes = getFuncParamTypes(ctx, funcIdx);
+    for (let i = 0; i < expr.arguments.length; i++) {
+      compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+    }
+    if (paramTypes) {
+      for (let i = expr.arguments.length; i < paramTypes.length; i++) {
+        pushDefaultValue(fctx, paramTypes[i]!);
+      }
+    }
+    const finalIdx = ctx.funcMap.get(funcName) ?? funcIdx;
+    fctx.body.push({ op: "call", funcIdx: finalIdx });
+    resolved = true;
+  }
+
+  if (!resolved) {
+    // Fallback: push undefined
+    fctx.body.push(...defaultValueInstrs(resultType));
+  }
+
+  const elseInstrs = fctx.body;
+  popBody(fctx, savedBody);
+
+  fctx.body.push({
+    op: "if",
+    blockType: { kind: "val", type: resultType },
+    then: defaultValueInstrs(resultType),
     else: elseInstrs,
   });
 
