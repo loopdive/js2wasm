@@ -14513,17 +14513,28 @@ function compileObjectLiteralForStruct(
         : (retType && !isVoidType(retType) ? [resolveWasmType(ctx, retType)] : []);
 
       const methodTypeIdx = addFuncType(ctx, methodParams, methodResults, `${fullName}_type`);
-      const methodFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
-      ctx.funcMap.set(fullName, methodFuncIdx);
 
-      const methodFunc: WasmFunction = {
-        name: fullName,
-        typeIdx: methodTypeIdx,
-        locals: [],
-        body: [],
-        exported: false,
-      };
-      ctx.mod.functions.push(methodFunc);
+      // Check if a placeholder function was already pre-registered (by ensureStructForType).
+      // If so, reuse it instead of pushing a duplicate with an empty body.
+      const existingFuncIdx = ctx.funcMap.get(fullName);
+      let methodFunc: WasmFunction;
+      if (existingFuncIdx !== undefined) {
+        const localIdx = existingFuncIdx - ctx.numImportFuncs;
+        methodFunc = ctx.mod.functions[localIdx]!;
+        // Update type in case it was refined
+        methodFunc.typeIdx = methodTypeIdx;
+      } else {
+        const methodFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+        ctx.funcMap.set(fullName, methodFuncIdx);
+        methodFunc = {
+          name: fullName,
+          typeIdx: methodTypeIdx,
+          locals: [],
+          body: [],
+          exported: false,
+        };
+        ctx.mod.functions.push(methodFunc);
+      }
 
       // Compile method body
       const methodFctxParams: { name: string; type: ValType }[] = [
