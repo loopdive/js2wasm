@@ -13722,19 +13722,38 @@ function compileOptionalDirectCall(
   let resolved = false;
 
   if (closureInfo) {
-    // Closure call
+    // Closure call — stack needs: [closure_ref(self), ...args, funcref]
+    const closureStructTypeIdx = (calleeType as any).typeIdx as number;
+    const closureRefType: ValType = { kind: "ref", typeIdx: closureStructTypeIdx };
+    const closureTmp = allocLocal(fctx, `__optdcall_cls_${fctx.locals.length}`, closureRefType);
+
+    // Get closure ref from tmp, cast to non-null, save to closureTmp
     fctx.body.push({ op: "local.get", index: tmp });
     if (calleeType.kind === "ref_null") {
       fctx.body.push({ op: "ref.as_non_null" } as Instr);
     }
-    // Duplicate self for struct.get of the inner func ref
-    const closureTmp = allocLocal(fctx, `__optdcall_cls_${fctx.locals.length}`, { kind: "ref", typeIdx: (calleeType as any).typeIdx });
-    fctx.body.push({ op: "local.tee", index: closureTmp });
+    fctx.body.push({ op: "local.set", index: closureTmp });
+
+    // Push closure ref as first arg (self param of the lifted function)
     fctx.body.push({ op: "local.get", index: closureTmp });
-    for (const arg of expr.arguments) {
-      compileExpression(ctx, fctx, arg);
+
+    // Push call arguments with type coercion
+    for (let i = 0; i < expr.arguments.length; i++) {
+      compileExpression(ctx, fctx, expr.arguments[i]!, closureInfo.paramTypes[i]);
     }
-    fctx.body.push({ op: "call_ref", typeIdx: closureInfo.funcTypeIdx } as unknown as Instr);
+
+    // Pad missing arguments with defaults (arity mismatch)
+    for (let i = expr.arguments.length; i < closureInfo.paramTypes.length; i++) {
+      pushDefaultValue(fctx, closureInfo.paramTypes[i]!);
+    }
+
+    // Push the funcref from the closure struct (field 0) and cast to typed ref
+    fctx.body.push({ op: "local.get", index: closureTmp });
+    fctx.body.push({ op: "struct.get", typeIdx: closureStructTypeIdx, fieldIdx: 0 });
+    fctx.body.push({ op: "ref.cast", typeIdx: closureInfo.funcTypeIdx });
+
+    // call_ref with the lifted function's type index
+    fctx.body.push({ op: "call_ref", typeIdx: closureInfo.funcTypeIdx });
     resolved = true;
   } else if (funcIdx !== undefined) {
     // Direct function call
