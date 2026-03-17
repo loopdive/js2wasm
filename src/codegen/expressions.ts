@@ -16715,10 +16715,29 @@ function compileStringBinaryOp(
         break;
       }
       default: {
-        // For any other operator, compile both but don't know what to do
+        // Arithmetic/bitwise operators on strings: coerce both operands to f64 via ToNumber
+        // This matches JS semantics: "5" - "2" === 3, "6" * "7" === 42
         compileExpression(ctx, fctx, expr.left);
+        // Convert native string ref → externref → f64
+        fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+        const pfIdx1 = ctx.funcMap.get("parseFloat");
+        if (pfIdx1 !== undefined) {
+          fctx.body.push({ op: "call", funcIdx: pfIdx1 });
+        } else {
+          addUnionImports(ctx);
+          fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+        }
         compileExpression(ctx, fctx, expr.right);
-        break;
+        // Convert native string ref → externref → f64
+        fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+        const pfIdx2 = ctx.funcMap.get("parseFloat");
+        if (pfIdx2 !== undefined) {
+          fctx.body.push({ op: "call", funcIdx: pfIdx2 });
+        } else {
+          addUnionImports(ctx);
+          fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+        }
+        return compileNumericBinaryOp(ctx, fctx, op, expr);
       }
     }
 
@@ -16732,6 +16751,42 @@ function compileStringBinaryOp(
 
   // Ensure string imports are registered (may not be if no string literals in source)
   addStringImports(ctx);
+
+  // Arithmetic/bitwise operators on strings: coerce both operands to f64 via ToNumber
+  // This matches JS semantics: "5" - "2" === 3, "6" * "7" === 42
+  const isArithmeticOrBitwise =
+    op === ts.SyntaxKind.MinusToken ||
+    op === ts.SyntaxKind.AsteriskToken ||
+    op === ts.SyntaxKind.AsteriskAsteriskToken ||
+    op === ts.SyntaxKind.SlashToken ||
+    op === ts.SyntaxKind.PercentToken ||
+    op === ts.SyntaxKind.AmpersandToken ||
+    op === ts.SyntaxKind.BarToken ||
+    op === ts.SyntaxKind.CaretToken ||
+    op === ts.SyntaxKind.LessThanLessThanToken ||
+    op === ts.SyntaxKind.GreaterThanGreaterThanToken ||
+    op === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken;
+  if (isArithmeticOrBitwise) {
+    // Compile left operand and convert to f64
+    compileExpression(ctx, fctx, expr.left);
+    const pfIdx = ctx.funcMap.get("parseFloat");
+    if (pfIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: pfIdx });
+    } else {
+      addUnionImports(ctx);
+      fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+    }
+    // Compile right operand and convert to f64
+    compileExpression(ctx, fctx, expr.right);
+    const pfIdx2 = ctx.funcMap.get("parseFloat");
+    if (pfIdx2 !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: pfIdx2 });
+    } else {
+      addUnionImports(ctx);
+      fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+    }
+    return compileNumericBinaryOp(ctx, fctx, op, expr);
+  }
 
   // Compile operands with coercion: if one side is a number/bool in a string
   // context, inject appropriate toString conversion.
