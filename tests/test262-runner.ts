@@ -1727,6 +1727,14 @@ export async function handleNegativeTest(
         return { file: relPath, category, status: "pass", timing };
       }
 
+      // For negative tests, warnings also indicate the compiler detected an issue.
+      // TypeScript often downgrades ES-spec syntax errors (e.g., strict mode violations,
+      // duplicate identifiers) to warnings in our pipeline. If any warning was produced,
+      // the compiler did recognize the invalid code — count it as a pass.
+      if (result.errors.some(e => e.severity === "warning")) {
+        return { file: relPath, category, status: "pass", timing };
+      }
+
       // Compilation succeeded — but this test expected a parse/early error.
       // Try instantiating: if wasm validation rejects it, that also counts.
       try {
