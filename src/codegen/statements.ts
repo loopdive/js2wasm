@@ -534,7 +534,11 @@ function compileVariableStatement(
           }
         }
       } else {
-        compileExpression(ctx, fctx, decl.initializer, wasmType);
+        const resultType = compileExpression(ctx, fctx, decl.initializer, wasmType);
+        // Coerce if the expression produced a type that doesn't match the local
+        if (resultType && !valTypesMatch(resultType, wasmType)) {
+          coerceType(ctx, fctx, resultType, wasmType);
+        }
       }
       fctx.body.push({ op: "local.set", index: localIdx });
     }
@@ -1556,7 +1560,10 @@ function compileForStatement(
           }
         }
         if (decl.initializer) {
-          compileExpression(ctx, fctx, decl.initializer, wasmType);
+          const forInitType = compileExpression(ctx, fctx, decl.initializer, wasmType);
+          if (forInitType && !valTypesMatch(forInitType, wasmType)) {
+            coerceType(ctx, fctx, forInitType, wasmType);
+          }
           fctx.body.push({ op: "local.set", index: localIdx });
         }
       }
@@ -2006,11 +2013,14 @@ function compileForOfDestructuring(
           fctx.body = saved;
           fctx.body.push(...instrs);
         } else {
-          // No default — use "undefined" sentinel
+          // No default — use "undefined" sentinel matching the local's type
           if (bindingType.kind === "f64") {
             fctx.body.push({ op: "f64.const", value: NaN });
           } else if (bindingType.kind === "i32") {
             fctx.body.push({ op: "i32.const", value: 0 });
+          } else if (bindingType.kind === "ref_null" || bindingType.kind === "ref") {
+            const refTypeIdx = (bindingType as { typeIdx: number }).typeIdx;
+            fctx.body.push({ op: "ref.null", typeIdx: refTypeIdx } as unknown as Instr);
           } else {
             fctx.body.push({ op: "ref.null", typeIdx: "extern" } as unknown as Instr);
           }
@@ -2079,11 +2089,14 @@ function compileForOfDestructuring(
           fctx.body = saved;
           fctx.body.push(...instrs);
         } else {
-          // No default — use "undefined" sentinel
+          // No default — use "undefined" sentinel matching the local's type
           if (bindingType.kind === "f64") {
             fctx.body.push({ op: "f64.const", value: NaN });
           } else if (bindingType.kind === "i32") {
             fctx.body.push({ op: "i32.const", value: 0 });
+          } else if (bindingType.kind === "ref_null" || bindingType.kind === "ref") {
+            const refTypeIdx = (bindingType as { typeIdx: number }).typeIdx;
+            fctx.body.push({ op: "ref.null", typeIdx: refTypeIdx } as unknown as Instr);
           } else {
             fctx.body.push({ op: "ref.null", typeIdx: "extern" } as unknown as Instr);
           }
