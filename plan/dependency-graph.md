@@ -455,6 +455,30 @@ Updated with latest run (2026-03-17): 17,606 unique tests — 5,735 pass, 2,064 
 
 ---
 
+## Cluster 18: React-reconciler prerequisites `[E][I]`
+
+Features needed to compile react-reconciler and other real-world codebases.
+Priority order reflects react-reconciler dependency.
+
+| #   | Title | Tests/Impact | Ready? |
+|-----|-------|-------------|--------|
+| 456 | Well-known Symbol support (Symbol.iterator, toPrimitive) | ~1,767 skip | **Ready** (critical) |
+| 457 | WeakMap/WeakSet via host imports | React caching | **Ready** (high) |
+| 458 | Map/Set via host imports | React memoization | **Ready** (high) |
+| 409 | Spread in function calls | 1,752 CE | **Review** (critical) |
+| 459 | Object.defineProperty getter/setter subset | React internals | **Ready** (medium) |
+| 460 | Object.create for known prototypes | React patterns | **Ready** (medium) |
+
+**Dependency chain:**
+- #456 (Symbol.iterator) unblocks iterator-based `for-of` on custom types, Map/Set iteration
+- #458 (Map/Set) depends on #456 for `for-of` iteration support
+- #457 (WeakMap) is independent
+- #409 (spread) is independent
+- #459 (defineProperty) is independent
+- #460 (Object.create) is independent
+
+---
+
 ## Backlog (long-term / blocked)
 
 | #   | Title | Blocked by |
@@ -477,16 +501,16 @@ Updated with latest run (2026-03-17): 17,606 unique tests — 5,735 pass, 2,064 
 | 339 | Async function and await support | — (large scope) |
 | 340 | Error throwing and try/catch/finally | — (high priority, large scope) |
 | 343 | Prototype chain support | — (large scope) |
-| 345 | Symbol.iterator and iterable protocol | — (large scope) |
-| 346 | Object.defineProperty support | — (large scope) |
-| 350 | Symbol type (general) | — (large scope) |
+| ~~345~~ | ~~Symbol.iterator and iterable protocol~~ | Superseded by #456 |
+| ~~346~~ | ~~Object.defineProperty support~~ | Superseded by #459 |
+| ~~350~~ | ~~Symbol type (general)~~ | Superseded by #456 (well-known only) |
 | 351 | Async iteration (for-await-of) | — (depends on #339) |
 | 352 | Delete operator | — (low priority) |
 | 354 | Reflect.construct | — (low priority) |
 | 358 | Dynamic import support | — (low priority) |
 | 365 | Collection mutation during for-of | — (low priority) |
-| 366 | Object.create support | — (low priority) |
-| 370 | WeakMap and WeakSet | — (low priority) |
+| ~~366~~ | ~~Object.create support~~ | Superseded by #460 |
+| ~~370~~ | ~~WeakMap and WeakSet~~ | Superseded by #457 |
 | 376 | Decorator syntax support | — (low priority) |
 
 ---
@@ -527,3 +551,7 @@ function in the same file. Key contention points:
 | call args / call_ref | 445, 446, 449 |
 | test262 runner / harness | 437 |
 | destructuring codegen | 420, 436 |
+| Symbol / iterator protocol | 456 |
+| collection imports (Map/Set/WeakMap) | 457, 458 |
+| Object.defineProperty | 459 |
+| Object.create | 460 |
