@@ -14281,13 +14281,17 @@ function compileElementAccess(
     fctx.body = savedBody;
 
     if (innerResult !== null) {
+      // Use the actual inner result type for the if block when it differs from
+      // the TS-inferred resultType (e.g., TS says `any` → externref, but the
+      // actual array element type is f64). This prevents fallthru type mismatches.
+      const blockValType = !valTypesMatch(innerResult, resultType) ? innerResult : resultType;
       fctx.body.push({
         op: "if",
-        blockType: { kind: "val" as const, type: resultType },
-        then: defaultValueInstrs(resultType),
+        blockType: { kind: "val" as const, type: blockValType },
+        then: defaultValueInstrs(blockValType),
         else: elseInstrs,
       });
-      return resultType;
+      return blockValType;
     }
     // If inner compilation returned null (error), just fall through with default
     fctx.body.push({

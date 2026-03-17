@@ -436,7 +436,7 @@ New issues from re-analysis of 21,872 tests (5,447 pass, 6,643 CE, 2,067 fail, 7
 | 428 | Expected ReferenceError but succeeded | 6 fail | **Ready** (low) |
 | 429 | Undeclared variable access — ReferenceError + immutable global | 71 tests | **Ready** (high, coordinates #428) |
 | 430 | String-to-number coercion for non-addition arithmetic | 36 CE | **Ready** (medium) |
-| 431 | Math.pow/min/max fallthru type mismatch | 27 CE | **Ready** (medium) |
+| 431 | Math.pow/min/max fallthru type mismatch | 27 CE | **Done** |
 | 432 | `new` on non-constructor builtins — stack underflow | 42 CE | **Ready** (medium) |
 | 433 | Equality operators mixed type i32/f64 mismatch | 10 CE | **Ready** (medium) |
 | 434 | BigInt remaining failures across operators | 27 fail | **Ready** (low) |
