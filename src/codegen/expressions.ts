@@ -17151,7 +17151,12 @@ function compileStringBinaryOp(
   // Numbers → number_toString
   const leftTsType = ctx.checker.getTypeAtLocation(expr.left);
   const leftType = compileExpression(ctx, fctx, expr.left);
-  if (op === ts.SyntaxKind.PlusToken && leftType && (leftType.kind === "f64" || leftType.kind === "i32" || leftType.kind === "i64")) {
+  if (op === ts.SyntaxKind.PlusToken && !leftType) {
+    // Void function return used in string concat → push "undefined"
+    addStringConstantGlobal(ctx, "undefined");
+    const undefGIdx = ctx.stringGlobalMap.get("undefined")!;
+    fctx.body.push({ op: "global.get", index: undefGIdx });
+  } else if (op === ts.SyntaxKind.PlusToken && leftType && (leftType.kind === "f64" || leftType.kind === "i32" || leftType.kind === "i64")) {
     if (isBooleanType(leftTsType) && leftType.kind === "i32") {
       // Boolean → "true"/"false" via conditional select of string constants
       emitBoolToString(ctx, fctx);
@@ -17164,7 +17169,12 @@ function compileStringBinaryOp(
   }
   const rightTsType = ctx.checker.getTypeAtLocation(expr.right);
   const rightType = compileExpression(ctx, fctx, expr.right);
-  if (op === ts.SyntaxKind.PlusToken && rightType && (rightType.kind === "f64" || rightType.kind === "i32" || rightType.kind === "i64")) {
+  if (op === ts.SyntaxKind.PlusToken && !rightType) {
+    // Void function return used in string concat → push "undefined"
+    addStringConstantGlobal(ctx, "undefined");
+    const undefGIdx = ctx.stringGlobalMap.get("undefined")!;
+    fctx.body.push({ op: "global.get", index: undefGIdx });
+  } else if (op === ts.SyntaxKind.PlusToken && rightType && (rightType.kind === "f64" || rightType.kind === "i32" || rightType.kind === "i64")) {
     if (isBooleanType(rightTsType) && rightType.kind === "i32") {
       emitBoolToString(ctx, fctx);
     } else {
@@ -18345,6 +18355,10 @@ function compileArrayPrototypeForEach(
     ...(numParams >= 2 ? [
       { op: "local.get", index: iTmp } as Instr,
       ...(!ctx.fast ? [{ op: "f64.convert_i32_s" } as Instr] : []),
+    ] : []),
+    // Push array (3rd user param) if callback expects it
+    ...(numParams >= 3 ? [
+      { op: "local.get", index: vecTmp } as Instr,
     ] : []),
     { op: "local.get", index: closureTmp },
     { op: "struct.get", typeIdx: closureTypeIdx, fieldIdx: 0 } as Instr,
@@ -19771,6 +19785,10 @@ function compileArrayFilter(
         { op: "local.get", index: iTmp } as Instr,
         ...(!ctx.fast ? [{ op: "f64.convert_i32_s" } as Instr] : []),
       ] : []),
+      // Push array (3rd user param) if callback expects it
+      ...(numParams >= 3 ? [
+        { op: "local.get", index: vecTmp } as Instr,
+      ] : []),
       { op: "local.get", index: closureTmp } as Instr,
       { op: "struct.get", typeIdx: closureTypeIdx, fieldIdx: 0 } as Instr,
       { op: "ref.cast", typeIdx: closureInfo.funcTypeIdx } as Instr,
@@ -19975,6 +19993,10 @@ function compileArrayMap(
         { op: "local.get", index: iTmp } as Instr,
         ...(!ctx.fast ? [{ op: "f64.convert_i32_s" } as Instr] : []),
       ] : []),
+      // Push array (3rd user param) if callback expects it
+      ...(numParams >= 3 ? [
+        { op: "local.get", index: vecTmp } as Instr,
+      ] : []),
       { op: "local.get", index: closureTmp2 } as Instr,
       { op: "struct.get", typeIdx: closureTypeIdx2, fieldIdx: 0 } as Instr,
       { op: "ref.cast", typeIdx: closureInfo.funcTypeIdx } as Instr,
@@ -20124,13 +20146,23 @@ function compileArrayReduce(
   // Build callback invocation
   let callInstrs: Instr[];
   if (closureInfo && closureTypeIdx2 !== undefined && closureTmp2 !== undefined) {
+    const numParams = closureInfo.paramTypes.length;
     callInstrs = [
-      // acc = closure(acc, data[i])
+      // acc = closure(acc, data[i], [i, [arr]])
       { op: "local.get", index: closureTmp2 } as Instr,
       { op: "local.get", index: accTmp } as Instr,
       { op: "local.get", index: dataTmp } as Instr,
       { op: "local.get", index: iTmp } as Instr,
       { op: getOp, typeIdx: arrTypeIdx } as Instr,
+      // Push index (3rd user param) if callback expects it
+      ...(numParams >= 3 ? [
+        { op: "local.get", index: iTmp } as Instr,
+        ...(!ctx.fast ? [{ op: "f64.convert_i32_s" } as Instr] : []),
+      ] : []),
+      // Push array (4th user param) if callback expects it
+      ...(numParams >= 4 ? [
+        { op: "local.get", index: vecTmp } as Instr,
+      ] : []),
       { op: "local.get", index: closureTmp2 } as Instr,
       { op: "struct.get", typeIdx: closureTypeIdx2, fieldIdx: 0 } as Instr,
       { op: "ref.cast", typeIdx: closureInfo.funcTypeIdx } as Instr,
@@ -20250,6 +20282,10 @@ function compileArrayForEach(
         ...(numParams >= 2 ? [
           { op: "local.get", index: iTmp } as Instr,
           ...(!ctx.fast ? [{ op: "f64.convert_i32_s" } as Instr] : []),
+        ] : []),
+        // Push array (3rd user param) if callback expects it
+        ...(numParams >= 3 ? [
+          { op: "local.get", index: vecTmp } as Instr,
         ] : []),
         // Get funcref and call
         { op: "local.get", index: closureTmp },
@@ -20427,6 +20463,10 @@ function compileArrayFind(
         { op: "local.get", index: iTmp } as Instr,
         ...(!ctx.fast ? [{ op: "f64.convert_i32_s" } as Instr] : []),
       ] : []),
+      // Push array (3rd user param) if callback expects it
+      ...(numParams >= 3 ? [
+        { op: "local.get", index: vecTmp } as Instr,
+      ] : []),
       { op: "local.get", index: closureTmp2 } as Instr,
       { op: "struct.get", typeIdx: closureTypeIdx2, fieldIdx: 0 } as Instr,
       { op: "ref.cast", typeIdx: closureInfo.funcTypeIdx } as Instr,
@@ -20582,6 +20622,10 @@ function compileArrayFindIndex(
         { op: "local.get", index: iTmp } as Instr,
         ...(!ctx.fast ? [{ op: "f64.convert_i32_s" } as Instr] : []),
       ] : []),
+      // Push array (3rd user param) if callback expects it
+      ...(numParams >= 3 ? [
+        { op: "local.get", index: vecTmp } as Instr,
+      ] : []),
       { op: "local.get", index: closureTmp2 } as Instr,
       { op: "struct.get", typeIdx: closureTypeIdx2, fieldIdx: 0 } as Instr,
       { op: "ref.cast", typeIdx: closureInfo.funcTypeIdx } as Instr,
@@ -20731,6 +20775,10 @@ function compileArraySome(
         { op: "local.get", index: iTmp } as Instr,
         ...(!ctx.fast ? [{ op: "f64.convert_i32_s" } as Instr] : []),
       ] : []),
+      // Push array (3rd user param) if callback expects it
+      ...(numParams >= 3 ? [
+        { op: "local.get", index: vecTmp } as Instr,
+      ] : []),
       { op: "local.get", index: closureTmp2 } as Instr,
       { op: "struct.get", typeIdx: closureTypeIdx2, fieldIdx: 0 } as Instr,
       { op: "ref.cast", typeIdx: closureInfo.funcTypeIdx } as Instr,
@@ -20872,6 +20920,10 @@ function compileArrayEvery(
       ...(numParams >= 2 ? [
         { op: "local.get", index: iTmp } as Instr,
         ...(!ctx.fast ? [{ op: "f64.convert_i32_s" } as Instr] : []),
+      ] : []),
+      // Push array (3rd user param) if callback expects it
+      ...(numParams >= 3 ? [
+        { op: "local.get", index: vecTmp } as Instr,
       ] : []),
       { op: "local.get", index: closureTmp2 } as Instr,
       { op: "struct.get", typeIdx: closureTypeIdx2, fieldIdx: 0 } as Instr,
