@@ -6291,13 +6291,19 @@ export function getOrRegisterArrayType(
   elemTypeOverride?: ValType,
 ): number {
   if (ctx.arrayTypeMap.has(elemKind)) return ctx.arrayTypeMap.get(elemKind)!;
-  const elemType: ValType =
+  let elemType: ValType =
     elemTypeOverride ??
     (elemKind === "f64"
       ? { kind: "f64" }
       : elemKind === "i32"
         ? { kind: "i32" }
         : { kind: "externref" });
+  // WasmGC: array.new_default requires a defaultable element type.
+  // `ref $T` is NOT defaultable, but `ref null $T` IS (defaults to null).
+  // Convert non-nullable struct refs to nullable so array.new_default works.
+  if (elemType.kind === "ref") {
+    elemType = { kind: "ref_null", typeIdx: (elemType as { typeIdx: number }).typeIdx };
+  }
   const idx = ctx.mod.types.length;
   ctx.mod.types.push({
     kind: "array",
