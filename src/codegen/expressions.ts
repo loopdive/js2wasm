@@ -9874,6 +9874,11 @@ function compileCallExpression(
     if (isStringType(receiverType)) {
       const method = propAccess.name.text;
 
+      // string.toString() and string.valueOf() — identity, just return the string itself
+      if (method === "toString" || method === "valueOf") {
+        return compileExpression(ctx, fctx, propAccess.expression);
+      }
+
       // Fast mode: native string method dispatch
       if (ctx.fast && ctx.nativeStrTypeIdx >= 0) {
         return compileNativeStringMethodCall(ctx, fctx, expr, propAccess, method);
@@ -9928,6 +9933,64 @@ function compileCallExpression(
         const returnsBool = method === "includes" || method === "startsWith" || method === "endsWith";
         return returnsBool ? { kind: "i32" } : method === "indexOf" || method === "lastIndexOf" ? { kind: "f64" } : { kind: "externref" };
       }
+    }
+
+    // Boolean method calls: bool.toString(), bool.valueOf()
+    if (isBooleanType(receiverType)) {
+      const method = propAccess.name.text;
+      if (method === "toString") {
+        compileExpression(ctx, fctx, propAccess.expression);
+        emitBoolToString(ctx, fctx);
+        return { kind: "externref" };
+      }
+      if (method === "valueOf") {
+        // Boolean.valueOf() returns the boolean primitive — just compile the expression
+        return compileExpression(ctx, fctx, propAccess.expression);
+      }
+    }
+
+    // number.valueOf() — return the number itself
+    if (isNumberType(receiverType) && propAccess.name.text === "valueOf") {
+      return compileExpression(ctx, fctx, propAccess.expression);
+    }
+
+    // Fallback .toString() for any type not already handled above
+    // Handles: function.toString(), object.toString(), array.toString(), class instance.toString()
+    if (propAccess.name.text === "toString" && expr.arguments.length === 0) {
+      const exprType = compileExpression(ctx, fctx, propAccess.expression);
+      if (exprType && exprType !== VOID_RESULT) {
+        fctx.body.push({ op: "drop" });
+      }
+      // For arrays, emit "[object Array]"; for everything else, "[object Object]"
+      const tsType = ctx.checker.getTypeAtLocation(propAccess.expression);
+      const wasm = resolveWasmType(ctx, tsType);
+      // Check if it's an array type (ref to vec struct)
+      let isArray = false;
+      if (wasm.kind === "ref" || wasm.kind === "ref_null") {
+        const arrInfo = resolveArrayInfo(ctx, tsType);
+        if (arrInfo) isArray = true;
+      }
+      // Check if this is a function type (has call signatures, is not a class/interface)
+      const callSigs = tsType.getCallSignatures?.();
+      const isFunc = callSigs && callSigs.length > 0 && !tsType.getProperties?.()?.length;
+
+      if (isFunc) {
+        addStringConstantGlobal(ctx, "function () { [native code] }");
+        const idx = ctx.stringGlobalMap.get("function () { [native code] }")!;
+        fctx.body.push({ op: "global.get", index: idx });
+      } else {
+        const str = isArray ? "[object Array]" : "[object Object]";
+        addStringConstantGlobal(ctx, str);
+        const idx = ctx.stringGlobalMap.get(str)!;
+        fctx.body.push({ op: "global.get", index: idx });
+      }
+      return { kind: "externref" };
+    }
+
+    // Fallback .valueOf() for any type not already handled above
+    // valueOf() on non-primitive types typically returns the object itself
+    if (propAccess.name.text === "valueOf" && expr.arguments.length === 0) {
+      return compileExpression(ctx, fctx, propAccess.expression);
     }
   }
 
