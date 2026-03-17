@@ -19503,8 +19503,8 @@ function compileArrayReduce(
   arrTypeIdx: number,
   elemType: ValType,
 ): ValType | null {
-  if (callExpr.arguments.length < 2) {
-    ctx.errors.push({ message: "reduce requires a callback and initial value", line: getLine(callExpr), column: getCol(callExpr) });
+  if (callExpr.arguments.length < 1) {
+    ctx.errors.push({ message: "reduce requires at least a callback", line: getLine(callExpr), column: getCol(callExpr) });
     return null;
   }
 
@@ -19560,13 +19560,23 @@ function compileArrayReduce(
   fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
   fctx.body.push({ op: "local.set", index: dataTmp });
 
-  // Compile initial value
-  compileExpression(ctx, fctx, callExpr.arguments[1]!, { kind: numKind as any });
-  fctx.body.push({ op: "local.set", index: accTmp });
-
-  // i = 0
-  fctx.body.push({ op: "i32.const", value: 0 });
-  fctx.body.push({ op: "local.set", index: iTmp });
+  // Compile initial value or use arr[0] as default
+  if (callExpr.arguments.length >= 2) {
+    compileExpression(ctx, fctx, callExpr.arguments[1]!, { kind: numKind as any });
+    fctx.body.push({ op: "local.set", index: accTmp });
+    // i = 0
+    fctx.body.push({ op: "i32.const", value: 0 });
+    fctx.body.push({ op: "local.set", index: iTmp });
+  } else {
+    // No initial value: acc = data[0], start from i = 1
+    fctx.body.push({ op: "local.get", index: dataTmp });
+    fctx.body.push({ op: "i32.const", value: 0 });
+    fctx.body.push({ op: elemType.kind === "i16" ? "array.get_s" : "array.get", typeIdx: arrTypeIdx } as unknown as Instr);
+    fctx.body.push({ op: "local.set", index: accTmp });
+    // i = 1
+    fctx.body.push({ op: "i32.const", value: 1 });
+    fctx.body.push({ op: "local.set", index: iTmp });
+  }
 
   const getOp = elemType.kind === "i16" ? "array.get_s" : "array.get";
 
