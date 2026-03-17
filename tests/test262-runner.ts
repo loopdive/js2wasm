@@ -1706,10 +1706,10 @@ export async function handleNegativeTest(
   const { phase, type } = meta.negative;
   const totalStart = performance.now();
 
-  if (phase === "parse" || phase === "early") {
-    // For parse/early phase negative tests, we attempt to compile the raw
-    // source (without our test wrapper, since the wrapper adds assert shims
-    // that would mask parse errors). If compilation fails, the test passes.
+  if (phase === "parse" || phase === "early" || phase === "resolution") {
+    // For parse/early/resolution phase negative tests, we attempt to compile
+    // the raw source (without our test wrapper, since the wrapper adds assert
+    // shims that would mask parse errors). If compilation fails, the test passes.
     //
     // We wrap minimally — just enough for the compiler to accept it as a module.
     const minimalWrapped = source.replace(/\/\*---[\s\S]*?---\*\//, "") + "\nexport {};\n";
@@ -1776,15 +1776,18 @@ export async function runTest262File(filePath: string, category: string, timeout
   const source = readFileSync(filePath, "utf-8");
   const meta = parseMeta(source);
 
+  // Handle parse/early/resolution-phase negative tests BEFORE shouldSkip —
+  // these tests contain intentionally invalid code (eval, with, delete, etc.)
+  // that shouldSkip would filter out. Since the test expects a parse error,
+  // we should try to compile and check for errors, not skip.
+  if (meta.negative && (meta.negative.phase === "parse" || meta.negative.phase === "early" || meta.negative.phase === "resolution")) {
+    const negResult = await handleNegativeTest(source, meta, relPath, category);
+    if (negResult) return negResult;
+  }
+
   const filter = shouldSkip(source, meta);
   if (filter.skip) {
     return { file: relPath, category, status: "skip", reason: filter.reason };
-  }
-
-  // Handle parse/early-phase negative tests
-  if (meta.negative && (meta.negative.phase === "parse" || meta.negative.phase === "early")) {
-    const negResult = await handleNegativeTest(source, meta, relPath, category);
-    if (negResult) return negResult;
   }
 
   // For runtime negative tests, we still need to apply skip filters that
