@@ -153,7 +153,7 @@ _Prior round issues (#387-#408) moved to done/. Numbers below reflect re-analysi
 | #   | Feature | Type | Count | Priority |
 | --- | ------- | ---- | ----- | -------- |
 | [417](../ready/417.md) | Wrong return value (returned 0) -- broad correctness failures | FAIL | 1,489 | Critical |
-| [418](../ready/418.md) | Missing SyntaxError validation (invalid code compiles) | FAIL | 442 | High |
+| [418](../ready/418.md) | Missing SyntaxError validation (invalid code compiles) | FAIL | 442 | High | **in-progress** |
 | [419](../ready/419.md) | Null pointer in destructuring (dereferencing null struct) | FAIL | 116 | High |
 
 ### Prior round (done)

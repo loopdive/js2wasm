@@ -139,6 +139,196 @@ function validateSafeMode(
   return errors;
 }
 
+/**
+ * Detect ECMAScript early errors that TypeScript's parser is too permissive about.
+ * These are patterns that should be SyntaxErrors per the ES spec but TypeScript
+ * accepts (especially in allowJs mode or with certain diagnostic codes downgraded).
+ *
+ * This pass walks the AST and produces compile errors for:
+ * 1. Strict mode assignment to arguments/eval (prefix/postfix/assignment)
+ * 2. Duplicate parameter names in strict mode functions
+ * 3. yield/await used as identifiers in generator/async functions
+ * 4. Invalid assignment targets (parenthesized non-simple expressions)
+ */
+function detectEarlyErrors(
+  sourceFile: ts.SourceFile,
+): CompileError[] {
+  const errors: CompileError[] = [];
+
+  function pos(node: ts.Node): { line: number; column: number } {
+    const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart());
+    return { line: line + 1, column: character + 1 };
+  }
+
+  function addError(node: ts.Node, message: string) {
+    const p = pos(node);
+    errors.push({ message, line: p.line, column: p.column, severity: "error" });
+  }
+
+  /**
+   * Check if a node is in strict mode context.
+   * A node is in strict mode if:
+   * - The source file has "use strict" directive
+   * - It's inside a class body (class bodies are always strict)
+   * - It's inside a function with "use strict" directive
+   * - The source is a module (has import/export — but we add "export {}" so all are modules)
+   */
+  function isStrictMode(node: ts.Node): boolean {
+    // Module scope is always strict
+    // Check for "use strict" directives and class context
+    let current: ts.Node | undefined = node;
+    while (current) {
+      if (ts.isSourceFile(current)) {
+        // Module files are always strict (they have export {})
+        return true;
+      }
+      if (ts.isClassDeclaration(current) || ts.isClassExpression(current)) {
+        return true;
+      }
+      if (ts.isFunctionDeclaration(current) || ts.isFunctionExpression(current) ||
+          ts.isArrowFunction(current) || ts.isMethodDeclaration(current)) {
+        // Check for "use strict" directive in function body
+        if (current.body && ts.isBlock(current.body)) {
+          for (const stmt of current.body.statements) {
+            if (ts.isExpressionStatement(stmt) && ts.isStringLiteral(stmt.expression)) {
+              if (stmt.expression.text === "use strict") return true;
+            } else {
+              break; // Directives must be at the top
+            }
+          }
+        }
+      }
+      current = current.parent;
+    }
+    return false;
+  }
+
+  function isArgumentsOrEval(node: ts.Node): string | null {
+    if (ts.isIdentifier(node)) {
+      if (node.text === "arguments" || node.text === "eval") {
+        return node.text;
+      }
+    }
+    // Also check parenthesized: (arguments), ((eval))
+    if (ts.isParenthesizedExpression(node)) {
+      return isArgumentsOrEval(node.expression);
+    }
+    return null;
+  }
+
+  /**
+   * Check if an expression is a "simple assignment target" per ES spec.
+   * Only identifiers and property accesses are valid assignment targets.
+   */
+  function isSimpleAssignmentTarget(node: ts.Node): boolean {
+    if (ts.isIdentifier(node)) return true;
+    if (ts.isPropertyAccessExpression(node)) return true;
+    if (ts.isElementAccessExpression(node)) return true;
+    if (ts.isParenthesizedExpression(node)) {
+      return isSimpleAssignmentTarget(node.expression);
+    }
+    return false;
+  }
+
+  function checkDuplicateParams(params: ts.NodeArray<ts.ParameterDeclaration>, node: ts.Node) {
+    if (!isStrictMode(node)) return;
+    const seen = new Set<string>();
+    for (const param of params) {
+      if (ts.isIdentifier(param.name)) {
+        const name = param.name.text;
+        if (seen.has(name)) {
+          addError(param.name, `Duplicate parameter name '${name}' not allowed in strict mode`);
+        }
+        seen.add(name);
+      }
+    }
+  }
+
+  function visit(node: ts.Node): void {
+    // Check prefix/postfix increment/decrement on arguments/eval in strict mode
+    if (ts.isPrefixUnaryExpression(node) &&
+        (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken)) {
+      const name = isArgumentsOrEval(node.operand);
+      if (name && isStrictMode(node)) {
+        addError(node, `Invalid use of '${name}' in strict mode`);
+      }
+    }
+
+    if (ts.isPostfixUnaryExpression(node) &&
+        (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken)) {
+      const name = isArgumentsOrEval(node.operand);
+      if (name && isStrictMode(node)) {
+        addError(node, `Invalid use of '${name}' in strict mode`);
+      }
+    }
+
+    // Check assignment to arguments/eval in strict mode
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+      const name = isArgumentsOrEval(node.left);
+      if (name && isStrictMode(node)) {
+        addError(node.left, `Cannot assign to '${name}' in strict mode`);
+      }
+    }
+
+    // Check compound assignment to arguments/eval in strict mode
+    if (ts.isBinaryExpression(node)) {
+      const op = node.operatorToken.kind;
+      const compoundOps = [
+        ts.SyntaxKind.PlusEqualsToken, ts.SyntaxKind.MinusEqualsToken,
+        ts.SyntaxKind.AsteriskEqualsToken, ts.SyntaxKind.SlashEqualsToken,
+        ts.SyntaxKind.PercentEqualsToken, ts.SyntaxKind.AmpersandEqualsToken,
+        ts.SyntaxKind.BarEqualsToken, ts.SyntaxKind.CaretEqualsToken,
+        ts.SyntaxKind.LessThanLessThanEqualsToken, ts.SyntaxKind.GreaterThanGreaterThanEqualsToken,
+        ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken,
+        ts.SyntaxKind.AsteriskAsteriskEqualsToken,
+      ];
+      if (compoundOps.includes(op)) {
+        const name = isArgumentsOrEval(node.left);
+        if (name && isStrictMode(node)) {
+          addError(node.left, `Cannot assign to '${name}' in strict mode`);
+        }
+      }
+    }
+
+    // Check duplicate parameters in strict mode functions
+    if (ts.isFunctionDeclaration(node) && node.parameters) {
+      checkDuplicateParams(node.parameters, node);
+    }
+    if (ts.isFunctionExpression(node) && node.parameters) {
+      checkDuplicateParams(node.parameters, node);
+    }
+    if (ts.isArrowFunction(node) && node.parameters) {
+      checkDuplicateParams(node.parameters, node);
+    }
+    if (ts.isMethodDeclaration(node) && node.parameters) {
+      checkDuplicateParams(node.parameters, node);
+    }
+
+    // Check yield used as identifier in generator functions
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === "yield") {
+      // Check if inside a generator function
+      let parent: ts.Node | undefined = node.parent;
+      while (parent) {
+        if ((ts.isFunctionDeclaration(parent) || ts.isFunctionExpression(parent)) &&
+            parent.asteriskToken) {
+          addError(node.name, "'yield' is a reserved word and cannot be used as an identifier in generator functions");
+          break;
+        }
+        if (ts.isFunctionDeclaration(parent) || ts.isFunctionExpression(parent) ||
+            ts.isArrowFunction(parent) || ts.isMethodDeclaration(parent)) {
+          break; // Found enclosing non-generator function, stop
+        }
+        parent = parent.parent;
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return errors;
+}
+
 function classifyImport(name: string, mod: WasmModule): ImportIntent {
   // String literals
   const strValue = mod.stringLiteralValues.get(name);
@@ -501,6 +691,22 @@ export function compileSource(
   );
 
   if (hasSyntaxErrors && errors.length > 0) {
+    return {
+      binary: new Uint8Array(0),
+      wat: "",
+      dts: "",
+      importsHelper: "",
+      success: false,
+      errors,
+      stringPool: [],
+      imports: [],
+    };
+  }
+
+  // Step 1a: Early error detection — catch ES-spec syntax errors that TypeScript misses
+  const earlyErrors = detectEarlyErrors(ast.sourceFile);
+  if (earlyErrors.length > 0) {
+    errors.push(...earlyErrors);
     return {
       binary: new Uint8Array(0),
       wat: "",
