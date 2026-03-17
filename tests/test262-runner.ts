@@ -306,10 +306,7 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
     return { skip: true, reason: "object property access (dot + bracket)" };
   }
 
-  // Skip tests using new Object() — we don't support Object as a constructor with property bags
-  if (/\bnew\s+Object\s*\(\s*\)/.test(source)) {
-    return { skip: true, reason: "new Object() not supported" };
-  }
+  // (Removed: new Object() skip — compiles as empty struct via shape inference)
 
   // (Removed: dynamic property assignment on empty object skip — shape inference #130 handles this)
 
