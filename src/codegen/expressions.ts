@@ -971,7 +971,7 @@ export function collectReferencedIdentifiers(node: ts.Node, names: Set<string>):
   }
   // Track `this` keyword references so arrow functions can capture the
   // enclosing scope's `this` through the normal closure mechanism.
-  if (node.kind === ts.SyntaxKind.ThisKeyword) {
+  if (node.kind === ts.SyntaxKind.ThisKeyword || node.kind === ts.SyntaxKind.SuperKeyword) {
     names.add("this");
   }
   ts.forEachChild(node, (child) => collectReferencedIdentifiers(child, names));
@@ -1467,6 +1467,7 @@ function compileArrowAsClosure(
     continueStack: [],
     labelMap: new Map(),
     savedBodies: [],
+    enclosingClassName: fctx.enclosingClassName ?? resolveEnclosingClassName(fctx),
   };
 
   for (let i = 0; i < liftedFctx.params.length; i++) {
@@ -1900,6 +1901,7 @@ function compileArrowAsCallback(
     continueStack: [],
     labelMap: new Map(),
     savedBodies: [],
+    enclosingClassName: fctx.enclosingClassName ?? resolveEnclosingClassName(fctx),
   };
 
   // Register params as locals (param 0 = __captures, then arrow params)
@@ -11182,6 +11184,15 @@ function compileIIFE(
 
 // ── New expressions ──────────────────────────────────────────────────
 
+/** Resolve the enclosing class name from a FunctionContext.
+ *  Uses enclosingClassName if set (e.g. closures), otherwise parses ClassName from "ClassName_methodName". */
+function resolveEnclosingClassName(fctx: FunctionContext): string | undefined {
+  if (fctx.enclosingClassName) return fctx.enclosingClassName;
+  const underscoreIdx = fctx.name.indexOf("_");
+  if (underscoreIdx > 0) return fctx.name.substring(0, underscoreIdx);
+  return undefined;
+}
+
 /** Compile super.method(args) — resolve to ParentClass_method and call with this */
 function compileSuperMethodCall(
   ctx: CodegenContext,
@@ -11191,11 +11202,9 @@ function compileSuperMethodCall(
   const propAccess = expr.expression as ts.PropertyAccessExpression;
   const methodName = propAccess.name.text;
 
-  // Determine which class we're in from the current function name (ClassName_methodName)
-  const currentFuncName = fctx.name;
-  const underscoreIdx = currentFuncName.indexOf("_");
-  if (underscoreIdx === -1) return null;
-  const currentClassName = currentFuncName.substring(0, underscoreIdx);
+  // Determine which class we're in
+  const currentClassName = resolveEnclosingClassName(fctx);
+  if (!currentClassName) return null;
 
   // Find parent class
   const parentClassName = ctx.classParentMap.get(currentClassName);
@@ -11262,11 +11271,9 @@ function compileSuperElementMethodCall(
   expr: ts.CallExpression,
   methodName: string,
 ): ValType | null {
-  // Determine which class we're in from the current function name (ClassName_methodName)
-  const currentFuncName = fctx.name;
-  const underscoreIdx = currentFuncName.indexOf("_");
-  if (underscoreIdx === -1) return null;
-  const currentClassName = currentFuncName.substring(0, underscoreIdx);
+  // Determine which class we're in
+  const currentClassName = resolveEnclosingClassName(fctx);
+  if (!currentClassName) return null;
 
   // Find parent class
   const parentClassName = ctx.classParentMap.get(currentClassName);
@@ -11334,18 +11341,16 @@ function compileSuperPropertyAccess(
   expr: ts.PropertyAccessExpression,
   propName: string,
 ): ValType | null {
-  // Determine which class we're in from the current function name (ClassName_methodName)
-  const currentFuncName = fctx.name;
-  const underscoreIdx = currentFuncName.indexOf("_");
-  if (underscoreIdx === -1) {
+  // Determine which class we're in
+  const currentClassName = resolveEnclosingClassName(fctx);
+  if (!currentClassName) {
     ctx.errors.push({
-      message: `Cannot use super outside of a class method: ${currentFuncName}`,
+      message: `Cannot use super outside of a class method: ${fctx.name}`,
       line: getLine(expr),
       column: getCol(expr),
     });
     return null;
   }
-  const currentClassName = currentFuncName.substring(0, underscoreIdx);
 
   // Find parent class
   const parentClassName = ctx.classParentMap.get(currentClassName);
@@ -11474,18 +11479,16 @@ function compileSuperElementAccess(
     return wasmType;
   }
 
-  // Determine which class we're in from the current function name (ClassName_methodName)
-  const currentFuncName = fctx.name;
-  const underscoreIdx = currentFuncName.indexOf("_");
-  if (underscoreIdx === -1) {
+  // Determine which class we're in
+  const currentClassName = resolveEnclosingClassName(fctx);
+  if (!currentClassName) {
     ctx.errors.push({
-      message: `Cannot use super outside of a class method: ${currentFuncName}`,
+      message: `Cannot use super outside of a class method: ${fctx.name}`,
       line: getLine(expr),
       column: getCol(expr),
     });
     return null;
   }
-  const currentClassName = currentFuncName.substring(0, underscoreIdx);
 
   // Find parent class
   const parentClassName = ctx.classParentMap.get(currentClassName);
