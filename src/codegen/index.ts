@@ -294,6 +294,8 @@ export interface FunctionContext {
   readOnlyBindings?: Set<string>;
   /** Stack of saved body arrays for addUnionImports index shifting */
   savedBodies: Instr[][];
+  /** Enclosing class name — propagated to closures for super keyword resolution */
+  enclosingClassName?: string;
 }
 
 /**
