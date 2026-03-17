@@ -440,7 +440,7 @@ New issues from re-analysis of 21,872 tests (5,447 pass, 6,643 CE, 2,067 fail, 7
 | 432 | `new` on non-constructor builtins — stack underflow | 42 CE | **Ready** (medium) |
 | 433 | Equality operators mixed type i32/f64 mismatch | 10 CE | **Ready** (medium) |
 | 434 | BigInt remaining failures across operators | 27 fail | **Ready** (low) |
-| 435 | Logical/conditional must preserve object identity | 16 fail | **Ready** (medium) |
+| 435 | Logical/conditional must preserve object identity | 16 fail | **Review** (medium) |
 
 ---
 
