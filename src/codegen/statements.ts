@@ -7,6 +7,7 @@ import {
   collectWrittenIdentifiers,
   compileExpression,
   emitBoundsCheckedArrayGet,
+  emitCoercedLocalSet,
   valTypesMatch,
 } from "./expressions.js";
 import type { CodegenContext, FunctionContext } from "./index.js";
@@ -372,7 +373,7 @@ function compileVariableStatement(
         fctx.body.push({ op: "global.set", index: modGlobalIdx });
       } else {
         const localIdx = allocLocal(fctx, name, closureType);
-        fctx.body.push({ op: "local.set", index: localIdx });
+        emitCoercedLocalSet(ctx, fctx, localIdx, closureType);
       }
       continue;
     }
@@ -476,6 +477,7 @@ function compileVariableStatement(
       // If so, compile without an externref hint to preserve the closure ref type.
       const callSigs = varType.getCallSignatures?.();
       const isCallable = callSigs && callSigs.length > 0 && wasmType.kind === "externref";
+      let stackType: ValType = wasmType;
       if (isCallable) {
         // Compile without type hint to get the actual closure/ref type
         const actualType = compileExpression(ctx, fctx, decl.initializer);
@@ -488,6 +490,7 @@ function compileVariableStatement(
             const localSlot = fctx.locals[localIdx - fctx.params.length];
             if (localSlot) localSlot.type = closureType;
           }
+          stackType = closureType;
         } else if (closureType.kind === "externref" && callSigs!.length > 0) {
           // The initializer returned externref but the type is callable.
           // This happens when a function returns a closure coerced to externref.
@@ -531,16 +534,23 @@ function compileVariableStatement(
               const localSlot = fctx.locals[localIdx - fctx.params.length];
               if (localSlot) localSlot.type = castType;
             }
+            stackType = castType;
+          } else {
+            stackType = closureType;
           }
+        } else {
+          stackType = closureType;
         }
       } else {
         const resultType = compileExpression(ctx, fctx, decl.initializer, wasmType);
+        stackType = resultType ?? wasmType;
         // Coerce if the expression produced a type that doesn't match the local
         if (resultType && !valTypesMatch(resultType, wasmType)) {
           coerceType(ctx, fctx, resultType, wasmType);
+          stackType = wasmType; // after coercion, stack is wasmType
         }
       }
-      fctx.body.push({ op: "local.set", index: localIdx });
+      emitCoercedLocalSet(ctx, fctx, localIdx, stackType);
     }
   }
 }
@@ -1345,7 +1355,7 @@ function compileReturnStatement(
   if (stmt.expression) {
     const exprType = compileExpression(ctx, fctx, stmt.expression, fctx.returnType ?? undefined);
     // Coerce expression result to match function return type if they differ
-    if (exprType && fctx.returnType && exprType.kind !== fctx.returnType.kind) {
+    if (exprType && fctx.returnType && !valTypesMatch(exprType, fctx.returnType)) {
       coerceType(ctx, fctx, exprType, fctx.returnType);
     }
   } else if (fctx.returnType) {
@@ -1541,7 +1551,7 @@ function compileForStatement(
             const localSlot = fctx.locals[localIdx - fctx.params.length];
             if (localSlot) localSlot.type = closureType;
           }
-          fctx.body.push({ op: "local.set", index: localIdx });
+          emitCoercedLocalSet(ctx, fctx, localIdx, closureType);
           continue;
         }
 
@@ -1564,7 +1574,7 @@ function compileForStatement(
           if (forInitType && !valTypesMatch(forInitType, wasmType)) {
             coerceType(ctx, fctx, forInitType, wasmType);
           }
-          fctx.body.push({ op: "local.set", index: localIdx });
+          emitCoercedLocalSet(ctx, fctx, localIdx, forInitType ?? wasmType);
         }
       }
     } else {
@@ -2371,7 +2381,7 @@ function compileForOfAssignDestructuring(
       if (targetType && !valTypesMatch(fieldType, targetType)) {
         coerceType(ctx, fctx, fieldType, targetType);
       }
-      fctx.body.push({ op: "local.set", index: targetLocal });
+      emitCoercedLocalSet(ctx, fctx, targetLocal, fieldType);
     }
   } else if (ts.isArrayLiteralExpression(expr)) {
     // for ([x, y] of arr) — elem is a vec struct, extract by index
@@ -2406,7 +2416,7 @@ function compileForOfAssignDestructuring(
       if (targetType && !valTypesMatch(innerElemType, targetType)) {
         coerceType(ctx, fctx, innerElemType, targetType);
       }
-      fctx.body.push({ op: "local.set", index: targetLocal });
+      emitCoercedLocalSet(ctx, fctx, targetLocal, innerElemType);
     }
   }
 }
@@ -2699,7 +2709,7 @@ function compileForOfArray(
   if (elemLocalType && !valTypesMatch(elemType, elemLocalType)) {
     coerceType(ctx, fctx, elemType, elemLocalType);
   }
-  fctx.body.push({ op: "local.set", index: elemLocal });
+  emitCoercedLocalSet(ctx, fctx, elemLocal, elemType);
 
   // If destructuring pattern (binding form), destructure from the element
   if (destructPattern) {

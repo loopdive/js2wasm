@@ -327,15 +327,14 @@ export function emitCoercedLocalSet(
 ): void {
   const localType = getLocalType(fctx, localIdx);
   if (localType && !valTypesMatch(stackType, localType)) {
-    // Special case: ref_null is a subtype of ref with same typeIdx — no coercion needed
-    // But ref (non-nullable) from ref_null needs care
     const sameRefTypeIdx =
       (stackType.kind === "ref" || stackType.kind === "ref_null") &&
       (localType.kind === "ref" || localType.kind === "ref_null") &&
       (stackType as { typeIdx: number }).typeIdx === (localType as { typeIdx: number }).typeIdx;
     if (sameRefTypeIdx && stackType.kind === "ref_null" && localType.kind === "ref") {
-      // ref_null -> ref: need ref.as_non_null
-      fctx.body.push({ op: "ref.as_non_null" } as Instr);
+      // ref_null -> ref: widen the local to ref_null instead of asserting non-null
+      // This avoids trapping on null values while fixing Wasm validation
+      widenLocalToNullable(fctx, localIdx);
     } else if (sameRefTypeIdx) {
       // ref -> ref_null: subtype, no coercion needed
     } else {
@@ -343,6 +342,25 @@ export function emitCoercedLocalSet(
     }
   }
   fctx.body.push({ op: "local.set", index: localIdx });
+}
+
+/**
+ * Widen a local's declared type from ref $X to ref_null $X.
+ * This fixes Wasm validation errors when a nullable value is stored into a
+ * non-nullable local, without inserting runtime assertions that would trap.
+ */
+function widenLocalToNullable(fctx: FunctionContext, localIdx: number): void {
+  if (localIdx < fctx.params.length) {
+    const param = fctx.params[localIdx];
+    if (param && param.type.kind === "ref") {
+      param.type = { kind: "ref_null", typeIdx: (param.type as { typeIdx: number }).typeIdx };
+    }
+  } else {
+    const local = fctx.locals[localIdx - fctx.params.length];
+    if (local && local.type.kind === "ref") {
+      local.type = { kind: "ref_null", typeIdx: (local.type as { typeIdx: number }).typeIdx };
+    }
+  }
 }
 
 /** Coerce a value on the stack from one type to another */
@@ -371,6 +389,10 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
         fctx.body.push({ op: "ref.cast", typeIdx: toIdx });
         return;
       }
+      // Different struct types, neither is AnyValue — cannot safely cast
+      // between unrelated Wasm GC struct types. The caller should ensure
+      // the local type matches, or handle this via extern.convert_any boxing.
+      return;
     }
     return;
   }
@@ -385,6 +407,8 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
         return;
       }
     }
+    // ref $X is a subtype of ref_null $X for same typeIdx — no coercion needed.
+    // For different typeIdx, cannot safely cast between unrelated struct types.
     return;
   }
   if (from.kind === "ref_null" && to.kind === "ref") {
@@ -575,6 +599,61 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
   }
   // ref/ref_null → eqref: no-op (GC struct refs are subtypes of eqref)
   if ((from.kind === "ref" || from.kind === "ref_null") && to.kind === "eqref") {
+    return;
+  }
+  // ref/ref_null → anyref: no-op (GC struct refs are subtypes of anyref)
+  if ((from.kind === "ref" || from.kind === "ref_null") && to.kind === "anyref") {
+    return;
+  }
+  // externref → ref (non-nullable): convert to anyref then cast
+  if (from.kind === "externref" && to.kind === "ref") {
+    const toIdx = (to as { typeIdx: number }).typeIdx;
+    fctx.body.push({ op: "any.convert_extern" } as Instr);
+    fctx.body.push({ op: "ref.cast", typeIdx: toIdx } as Instr);
+    return;
+  }
+  // externref → ref_null: convert to anyref, then use if/else to handle null
+  // Since we don't have ref.cast_null in the IR, we emit a null guard:
+  //   any.convert_extern → if ref.is_null then ref.null $typeIdx else ref.cast $typeIdx
+  if (from.kind === "externref" && to.kind === "ref_null") {
+    const toIdx = (to as { typeIdx: number }).typeIdx;
+    fctx.body.push({ op: "any.convert_extern" } as Instr);
+    // Store in a temp local, check for null
+    const tmpLocal = allocLocal(fctx, `__coerce_ext_${fctx.locals.length}`, { kind: "anyref" });
+    fctx.body.push({ op: "local.tee", index: tmpLocal });
+    fctx.body.push({ op: "ref.is_null" } as Instr);
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "val", type: to },
+      then: [{ op: "ref.null", typeIdx: toIdx } as unknown as Instr],
+      else: [
+        { op: "local.get", index: tmpLocal } as Instr,
+        { op: "ref.cast", typeIdx: toIdx } as Instr,
+      ],
+    });
+    return;
+  }
+  // eqref/anyref → ref: cast to target struct type (traps on null)
+  if ((from.kind === "eqref" || from.kind === "anyref") && to.kind === "ref") {
+    const toIdx = (to as { typeIdx: number }).typeIdx;
+    fctx.body.push({ op: "ref.cast", typeIdx: toIdx } as Instr);
+    return;
+  }
+  // eqref/anyref → ref_null: null-safe cast
+  if ((from.kind === "eqref" || from.kind === "anyref") && to.kind === "ref_null") {
+    const toIdx = (to as { typeIdx: number }).typeIdx;
+    const tmpLocal = allocLocal(fctx, `__coerce_any_${fctx.locals.length}`, from);
+    fctx.body.push({ op: "local.tee", index: tmpLocal });
+    fctx.body.push({ op: "ref.is_null" } as Instr);
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "val", type: to },
+      then: [{ op: "ref.null", typeIdx: toIdx } as unknown as Instr],
+      else: [
+        { op: "local.get", index: tmpLocal } as Instr,
+        { op: "ref.cast", typeIdx: toIdx } as Instr,
+      ],
+    });
     return;
   }
 
@@ -5368,7 +5447,7 @@ function emitObjectDestructureFromLocal(
         if (localType && !valTypesMatch(fieldType, localType)) {
           coerceType(ctx, fctx, fieldType, localType);
         }
-        fctx.body.push({ op: "local.set", index: localIdx });
+        emitCoercedLocalSet(ctx, fctx, localIdx, fieldType);
       } else if (ts.isObjectLiteralExpression(targetExpr)) {
         // Nested object: { x: { a, b } } = obj
         const tmpNested = allocLocal(fctx, `__nested_${fctx.locals.length}`, fieldType);
@@ -5446,7 +5525,7 @@ function emitArrayDestructureFromLocal(
       if (localType && !valTypesMatch(elemType, localType)) {
         coerceType(ctx, fctx, elemType, localType);
       }
-      fctx.body.push({ op: "local.set", index: localIdx });
+      emitCoercedLocalSet(ctx, fctx, localIdx, elemType);
     }
   }
 
