@@ -6133,6 +6133,14 @@ function fixupModuleGlobalIndices(
       if ("else" in instr && Array.isArray((instr as any).else)) {
         shiftGlobalIndices((instr as any).else);
       }
+      if ("catches" in instr && Array.isArray((instr as any).catches)) {
+        for (const c of (instr as any).catches) {
+          if (Array.isArray(c.body)) shiftGlobalIndices(c.body);
+        }
+      }
+      if ("catchAll" in instr && Array.isArray((instr as any).catchAll)) {
+        shiftGlobalIndices((instr as any).catchAll);
+      }
     }
   }
 
@@ -6144,6 +6152,15 @@ function fixupModuleGlobalIndices(
   // in ctx.mod.functions — it's in the FunctionContext's body array)
   if (ctx.currentFunc) {
     shiftGlobalIndices(ctx.currentFunc.body);
+    // Also shift any saved body arrays (from savedBody swap pattern).
+    // When fctx.body is swapped to a fresh [] for inner block compilation
+    // (e.g. try/catch, if/else), the outer body is pushed onto savedBodies.
+    // Without shifting these, global indices in the outer body become stale.
+    for (const sb of ctx.currentFunc.savedBodies) {
+      if (sb === ctx.currentFunc.body) continue;
+      if (ctx.mod.functions.some(f => f.body === sb)) continue;
+      shiftGlobalIndices(sb);
+    }
   }
 
   // Also fix up the pending module-init body (compiled but not yet in ctx.mod.functions)
@@ -6155,6 +6172,20 @@ function fixupModuleGlobalIndices(
   for (const g of ctx.mod.globals) {
     if (g.init) shiftGlobalIndices(g.init);
   }
+
+  // Fix up index maps that store absolute global indices.
+  // Without this, code compiled after the shift would use stale indices
+  // from these maps, emitting global.get/set with wrong targets.
+  function shiftMap(map: Map<string, number>): void {
+    for (const [key, idx] of map) {
+      if (idx >= threshold) {
+        map.set(key, idx + delta);
+      }
+    }
+  }
+  shiftMap(ctx.moduleGlobals);
+  shiftMap(ctx.capturedGlobals);
+  shiftMap(ctx.staticProps);
 }
 
 /**
