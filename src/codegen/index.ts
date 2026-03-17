@@ -6660,10 +6660,14 @@ export function ensureStructForType(ctx: CodegenContext, tsType: ts.Type): void 
         methodParams.push({ kind: "f64" });
       }
     }
+    // Check if this is a generator method (*method() { ... })
+    const isGenMethod = ts.isMethodDeclaration(decl) && decl.asteriskToken !== undefined;
     const retType = ctx.checker.getReturnTypeOfSignature(sig);
-    const methodResults: ValType[] = retType && !isVoidType(retType)
-      ? [resolveWasmType(ctx, retType)]
-      : [];
+    const methodResults: ValType[] = isGenMethod
+      ? [{ kind: "externref" }]
+      : (retType && !isVoidType(retType)
+        ? [resolveWasmType(ctx, retType)]
+        : []);
 
     const methodTypeIdx = addFuncType(ctx, methodParams, methodResults, `${fullName}_type`);
     const methodFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;

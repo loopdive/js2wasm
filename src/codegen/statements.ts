@@ -3185,9 +3185,18 @@ function compileNestedFunctionDeclaration(
     paramTypes.push(resolveWasmType(ctx, paramType));
   }
 
+
+  // Check if this is a generator function declaration (function* name() { ... })
+  const isGenerator = stmt.asteriskToken !== undefined;
+  if (isGenerator) {
+    ctx.generatorFunctions.add(funcName);
+  }
   const sig = ctx.checker.getSignatureFromDeclaration(stmt);
   let returnType: ValType | null = null;
-  if (sig) {
+  if (isGenerator) {
+    // Generator functions return externref (JS Generator object)
+    returnType = { kind: "externref" };
+  } else if (sig) {
     const retType = ctx.checker.getReturnTypeOfSignature(sig);
     if (!isVoidType(retType)) {
       returnType = resolveWasmType(ctx, retType);
@@ -3279,10 +3288,49 @@ function compileNestedFunctionDeclaration(
       emitArgumentsObject(ctx, liftedFctx, paramTypes, 0);
     }
 
-    for (const s of stmt.body.statements) {
-      compileStatement(ctx, liftedFctx, s);
+    if (isGenerator) {
+      // Generator function: eagerly evaluate body, collect yields into a JS array,
+      // then wrap it with __create_generator to return a Generator-like object.
+      const bufferLocal = allocLocal(liftedFctx, "__gen_buffer", { kind: "externref" });
+      const createBufIdx = ctx.funcMap.get("__gen_create_buffer")!;
+      liftedFctx.body.push({ op: "call", funcIdx: createBufIdx });
+      liftedFctx.body.push({ op: "local.set", index: bufferLocal });
+
+      const bodyInstrs: Instr[] = [];
+      const outerBody = liftedFctx.body;
+      liftedFctx.body = bodyInstrs;
+
+      liftedFctx.generatorReturnDepth = 0;
+      liftedFctx.blockDepth++;
+      for (let i = 0; i < liftedFctx.breakStack.length; i++) liftedFctx.breakStack[i]!++;
+      for (let i = 0; i < liftedFctx.continueStack.length; i++) liftedFctx.continueStack[i]!++;
+
+      for (const s of stmt.body.statements) {
+        compileStatement(ctx, liftedFctx, s);
+      }
+
+      liftedFctx.blockDepth--;
+      for (let i = 0; i < liftedFctx.breakStack.length; i++) liftedFctx.breakStack[i]!--;
+      for (let i = 0; i < liftedFctx.continueStack.length; i++) liftedFctx.continueStack[i]!--;
+      liftedFctx.generatorReturnDepth = undefined;
+
+      liftedFctx.body = outerBody;
+      liftedFctx.body.push({
+        op: "block",
+        blockType: { kind: "empty" },
+        body: bodyInstrs,
+      });
+
+      // Return __create_generator(__gen_buffer)
+      const createGenIdx = ctx.funcMap.get("__create_generator")!;
+      liftedFctx.body.push({ op: "local.get", index: bufferLocal });
+      liftedFctx.body.push({ op: "call", funcIdx: createGenIdx });
+    } else {
+      for (const s of stmt.body.statements) {
+        compileStatement(ctx, liftedFctx, s);
+      }
+      appendDefaultReturn(liftedFctx, returnType);
     }
-    appendDefaultReturn(liftedFctx, returnType);
     ctx.currentFunc = savedFunc;
 
     const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
@@ -3355,10 +3403,49 @@ function compileNestedFunctionDeclaration(
       emitArgumentsObject(ctx, liftedFctx, paramTypes, captures.length);
     }
 
-    for (const s of stmt.body.statements) {
-      compileStatement(ctx, liftedFctx, s);
+    if (isGenerator) {
+      // Generator function: eagerly evaluate body, collect yields into a JS array,
+      // then wrap it with __create_generator to return a Generator-like object.
+      const bufferLocal = allocLocal(liftedFctx, "__gen_buffer", { kind: "externref" });
+      const createBufIdx = ctx.funcMap.get("__gen_create_buffer")!;
+      liftedFctx.body.push({ op: "call", funcIdx: createBufIdx });
+      liftedFctx.body.push({ op: "local.set", index: bufferLocal });
+
+      const bodyInstrs: Instr[] = [];
+      const outerBody = liftedFctx.body;
+      liftedFctx.body = bodyInstrs;
+
+      liftedFctx.generatorReturnDepth = 0;
+      liftedFctx.blockDepth++;
+      for (let i = 0; i < liftedFctx.breakStack.length; i++) liftedFctx.breakStack[i]!++;
+      for (let i = 0; i < liftedFctx.continueStack.length; i++) liftedFctx.continueStack[i]!++;
+
+      for (const s of stmt.body.statements) {
+        compileStatement(ctx, liftedFctx, s);
+      }
+
+      liftedFctx.blockDepth--;
+      for (let i = 0; i < liftedFctx.breakStack.length; i++) liftedFctx.breakStack[i]!--;
+      for (let i = 0; i < liftedFctx.continueStack.length; i++) liftedFctx.continueStack[i]!--;
+      liftedFctx.generatorReturnDepth = undefined;
+
+      liftedFctx.body = outerBody;
+      liftedFctx.body.push({
+        op: "block",
+        blockType: { kind: "empty" },
+        body: bodyInstrs,
+      });
+
+      // Return __create_generator(__gen_buffer)
+      const createGenIdx = ctx.funcMap.get("__create_generator")!;
+      liftedFctx.body.push({ op: "local.get", index: bufferLocal });
+      liftedFctx.body.push({ op: "call", funcIdx: createGenIdx });
+    } else {
+      for (const s of stmt.body.statements) {
+        compileStatement(ctx, liftedFctx, s);
+      }
+      appendDefaultReturn(liftedFctx, returnType);
     }
-    appendDefaultReturn(liftedFctx, returnType);
     ctx.currentFunc = savedFunc;
 
     const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
