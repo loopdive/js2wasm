@@ -8,7 +8,14 @@ type: project
 - **Tech Lead**: opus model, manages the main working copy. Dispatches and monitors developer agents, cherry-picks completed work to main, manages issue lifecycle (ready → done), resolves merge conflicts, and tracks the rolling pool. This is the orchestrator role — it controls git state on main.
 - **Product Owner**: opus model, manages plan/ files, sprint planning and review. **Must use worktree isolation** for all file changes — the Tech Lead controls the main working copy.
 - **Developer**: opus model, worktree isolation, implements fixes in src/ and tests/
-- **Tester**: sonnet model, runs tests, evaluates results, creates issues
+- **Tester**: sonnet model, runs test262 suite, monitors for hangs, analyzes results, creates/updates issues. Responsibilities:
+  - Run `npx tsx scripts/run-test262.ts` (full or `--recheck`)
+  - Monitor `benchmarks/results/test262-current.txt` for hanging tests
+  - When a test hangs: kill the runner, add a skip filter to `tests/test262-runner.ts` with comment referencing the issue, create/update an issue in `plan/issues/ready/`, resume with `--resume`
+  - After run completes: analyze error patterns, update issue metrics (test262_ce, test262_fail, test262_skip), create new issues for unmatched patterns
+  - Every skip filter MUST have a corresponding issue — skips are workarounds, not fixes
+  - Update `benchmarks/results/conformance-history.json` (auto-appended by runner)
+  - Regenerate graph: `npx tsx plan/generate-graph.ts`
 
 ## Conventions
 - Branch naming: `issue-{N}-{short-description}`
