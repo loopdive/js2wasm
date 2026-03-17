@@ -639,7 +639,18 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
             }
             return;
           }
-          // No closure types found — push NaN
+          // No closure types found — check for a standalone ClassName_valueOf function (#433)
+          // Method shorthand syntax (e.g. { valueOf() { ... } }) compiles as a standalone
+          // function rather than a closure stored in the struct field.
+          const standaloneValueOf = ctx.funcMap.get(`${name}_valueOf`);
+          if (standaloneValueOf !== undefined) {
+            fctx.body.push({ op: "call", funcIdx: standaloneValueOf });
+            const funcType = ctx.mod.types[ctx.mod.functions[standaloneValueOf - ctx.numImportFuncs]?.typeIdx ?? -1];
+            if (funcType?.kind === "func" && funcType.results?.[0]?.kind === "i32") {
+              fctx.body.push({ op: "f64.convert_i32_s" });
+            }
+            return;
+          }
           fctx.body.push({ op: "drop" });
           fctx.body.push({ op: "f64.const", value: NaN });
           return;
@@ -3606,9 +3617,17 @@ function compileBinaryExpression(
       // Strict equality: reference identity comparison (no valueOf coercion)
       const isStrictEq = op === ts.SyntaxKind.EqualsEqualsEqualsToken;
       const isStrictNeq = op === ts.SyntaxKind.ExclamationEqualsEqualsToken;
-      if ((isStrictEq || isStrictNeq) && leftIsRef && rightIsRef) {
-        fctx.body.push({ op: "ref.eq" } as unknown as Instr);
-        if (isStrictNeq) fctx.body.push({ op: "i32.eqz" });
+      if (isStrictEq || isStrictNeq) {
+        if (leftIsRef && rightIsRef) {
+          fctx.body.push({ op: "ref.eq" } as unknown as Instr);
+          if (isStrictNeq) fctx.body.push({ op: "i32.eqz" });
+          return { kind: "i32" };
+        }
+        // Strict equality with one ref and one primitive → always false (===) or true (!==)
+        // since objects and primitives are different types in JS strict equality
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "i32.const", value: isStrictNeq ? 1 : 0 });
         return { kind: "i32" };
       }
 
@@ -3621,11 +3640,23 @@ function compileBinaryExpression(
         }
         // Coerce left operand (below right on stack) — save right to local
         if (leftIsRef) {
-          const tmpR = allocLocal(fctx, `__vo_r_${fctx.locals.length}`, { kind: "f64" });
+          const tmpR = allocLocal(fctx, `__vo_r_${fctx.locals.length}`, rightType);
           fctx.body.push({ op: "local.set", index: tmpR });
           coerceType(ctx, fctx, leftType, { kind: "f64" });
           fctx.body.push({ op: "local.get", index: tmpR });
           leftType = { kind: "f64" };
+        }
+        // After valueOf coercion, one side may be f64 (from ref) and the other
+        // may still be i32 (boolean/integer). Promote i32 → f64 to avoid type mismatch. (#433)
+        if (leftType.kind === "i32" && rightType.kind === "f64") {
+          const tmpR = allocLocal(fctx, `__vo_promote_r_${fctx.locals.length}`, { kind: "f64" });
+          fctx.body.push({ op: "local.set", index: tmpR });
+          fctx.body.push({ op: "f64.convert_i32_s" });
+          fctx.body.push({ op: "local.get", index: tmpR });
+          leftType = { kind: "f64" };
+        } else if (leftType.kind === "f64" && rightType.kind === "i32") {
+          fctx.body.push({ op: "f64.convert_i32_s" });
+          rightType = { kind: "f64" };
         }
         // Now both operands are f64 — fall through to numeric dispatch below
       }
