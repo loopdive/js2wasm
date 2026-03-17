@@ -29,7 +29,7 @@ import type {
 import { createEmptyModule } from "../ir/types.js";
 import { compileExpression, resolveComputedKeyExpression, coerceType, valTypesMatch } from "./expressions.js";
 import { collectShapes } from "../shape-inference.js";
-import { compileStatement, hoistFunctionDeclarations } from "./statements.js";
+import { compileStatement, ensureBindingLocals, hoistFunctionDeclarations } from "./statements.js";
 import { emitInlineMathFunctions } from "./math-helpers.js";
 
 /** Result returned by generateModule / generateMultiModule */
@@ -10587,6 +10587,17 @@ function destructureParamArray(
 
   const elemType = arrDef.element;
 
+  // Pre-allocate all binding locals so they exist even when param is null
+  ensureBindingLocals(ctx, fctx, pattern);
+
+  // Null guard: wrap destructuring in if-not-null for ref_null params
+  const isNullable = paramType.kind === "ref_null";
+  const savedBody = fctx.body;
+  const destructInstrs: Instr[] = [];
+  if (isNullable) {
+    fctx.body = destructInstrs;
+  }
+
   for (let i = 0; i < pattern.elements.length; i++) {
     const element = pattern.elements[i]!;
     if (ts.isOmittedExpression(element)) continue;
@@ -10610,21 +10621,85 @@ function destructureParamArray(
 
     // Handle rest element: function([a, ...rest])
     if (element.dotDotDotToken) {
-      const restName = (element.name as ts.Identifier).text;
-      // rest gets the remainder of the array as a new vec
-      // For simplicity, allocate as same vec type
-      const restLocal = allocLocal(fctx, restName, paramType);
-      // TODO: create a sub-array — for now just register the local
+      // Compute rest length: max(0, param.length - i)
+      const restLenLocal = allocLocal(fctx, `__rest_len_${fctx.locals.length}`, { kind: "i32" });
+      // First compute len - i and store it
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 }); // length
+      fctx.body.push({ op: "i32.const", value: i });
+      fctx.body.push({ op: "i32.sub" } as Instr);
+      fctx.body.push({ op: "local.set", index: restLenLocal });
+      // Clamp to 0 if negative: select(0, len-i, len-i < 0)
+      fctx.body.push({ op: "i32.const", value: 0 } as Instr);
+      fctx.body.push({ op: "local.get", index: restLenLocal });
+      fctx.body.push({ op: "local.get", index: restLenLocal });
+      fctx.body.push({ op: "i32.const", value: 0 } as Instr);
+      fctx.body.push({ op: "i32.lt_s" } as Instr);
+      fctx.body.push({ op: "select" } as Instr);
+      fctx.body.push({ op: "local.set", index: restLenLocal });
+
+      // Create new data array: array.new_default(restLen)
+      const restArrLocal = allocLocal(fctx, `__rest_arr_${fctx.locals.length}`, { kind: "ref", typeIdx: arrTypeIdx });
+      fctx.body.push({ op: "local.get", index: restLenLocal });
+      fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx } as Instr);
+      fctx.body.push({ op: "local.set", index: restArrLocal });
+
+      // array.copy(restArr, 0, srcData, i, restLen)
+      fctx.body.push({ op: "local.get", index: restArrLocal });
+      fctx.body.push({ op: "i32.const", value: 0 });
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 }); // src data
+      fctx.body.push({ op: "i32.const", value: i });
+      fctx.body.push({ op: "local.get", index: restLenLocal });
+      fctx.body.push({ op: "array.copy", dstTypeIdx: arrTypeIdx, srcTypeIdx: arrTypeIdx } as Instr);
+
+      // Create new vec struct: struct.new(restLen, restArr)
+      fctx.body.push({ op: "local.get", index: restLenLocal });
+      fctx.body.push({ op: "local.get", index: restArrLocal });
+      fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx } as Instr);
+
+      if (ts.isIdentifier(element.name)) {
+        const restName = element.name.text;
+        // Only allocate if not already pre-allocated by ensureBindingLocals
+        if (!fctx.localMap.has(restName)) {
+          allocLocal(fctx, restName, paramType);
+        }
+        const restLocal = fctx.localMap.get(restName)!;
+        fctx.body.push({ op: "local.set", index: restLocal });
+      } else if (ts.isArrayBindingPattern(element.name)) {
+        // Nested rest with array pattern: function([...[a, b]])
+        const nestedTmpLocal = allocLocal(fctx, `__rest_nested_${fctx.locals.length}`, paramType);
+        fctx.body.push({ op: "local.set", index: nestedTmpLocal });
+        destructureParamArray(ctx, fctx, nestedTmpLocal, element.name, paramType);
+      } else {
+        // Unsupported pattern — just drop the struct
+        fctx.body.push({ op: "drop" });
+      }
       continue;
     }
 
-    const localName = (element.name as ts.Identifier).text;
-    const localIdx = allocLocal(fctx, localName, elemType);
+    if (!ts.isIdentifier(element.name)) continue;
+    const localName = element.name.text;
+    // Only allocate if not already pre-allocated by ensureBindingLocals
+    if (!fctx.localMap.has(localName)) {
+      allocLocal(fctx, localName, elemType);
+    }
+    const localIdx = fctx.localMap.get(localName)!;
     fctx.body.push({ op: "local.get", index: paramIdx });
     fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 }); // get data
     fctx.body.push({ op: "i32.const", value: i });
     fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
     fctx.body.push({ op: "local.set", index: localIdx });
+  }
+
+  // Close null guard
+  if (isNullable) {
+    fctx.body = savedBody;
+    if (destructInstrs.length > 0) {
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "ref.is_null" } as Instr);
+      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: destructInstrs });
+    }
   }
 }
 
