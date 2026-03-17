@@ -196,10 +196,12 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
     }
   }
 
-  // Skip tests that use dynamic code execution — we can't compile these
-  const evalPattern = /\beval\s*\(/;
-  if (evalPattern.test(source)) {
-    return { skip: true, reason: "uses dynamic code execution" };
+  // Skip tests that use eval() in their actual body — strip metadata/comments first
+  {
+    const bodyForEval = source.replace(/\/\*---[\s\S]*?---\*\//, "").replace(/\/\/.*$/gm, "");
+    if (/\beval\s*\(/.test(bodyForEval)) {
+      return { skip: true, reason: "uses dynamic code execution" };
+    }
   }
 
   // Skip tests that use new Function() — dynamic code generation impossible in wasm
