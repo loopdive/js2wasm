@@ -3773,9 +3773,21 @@ function compileBinaryExpression(
   }
 
   if ((isNumberType(leftTsType) || leftType.kind === "f64") && leftType.kind !== "externref" && rightType.kind !== "externref") {
+    // Ensure right operand is also f64 (may be i32 from boolean context)
+    if (rightType.kind === "i32") {
+      fctx.body.push({ op: "f64.convert_i32_s" });
+    }
     return compileNumericBinaryOp(ctx, fctx, op, expr);
   }
   if ((isBooleanType(leftTsType) || leftType.kind === "i32") && leftType.kind !== "externref" && rightType.kind !== "externref") {
+    // Ensure both operands are i32; if right is f64, promote left to f64 and use numeric path
+    if (rightType.kind === "f64") {
+      const tmpR = allocLocal(fctx, `__bool_promote_r_${fctx.locals.length}`, { kind: "f64" });
+      fctx.body.push({ op: "local.set", index: tmpR });
+      fctx.body.push({ op: "f64.convert_i32_s" });
+      fctx.body.push({ op: "local.get", index: tmpR });
+      return compileNumericBinaryOp(ctx, fctx, op, expr);
+    }
     return compileBooleanBinaryOp(ctx, fctx, op);
   }
 
@@ -8219,6 +8231,20 @@ function compilePrefixUnary(
             fctx.body.push({ op: "f64.const", value: NaN });
             return { kind: "f64" };
           }
+          // i32 (boolean) in non-fast mode: coerce to f64 before increment
+          if (localType?.kind === "i32") {
+            fctx.body.push({ op: "local.get", index: idx });
+            fctx.body.push({ op: "f64.convert_i32_s" });
+            fctx.body.push({ op: "f64.const", value: 1 });
+            fctx.body.push({ op: "f64.add" });
+            // Store back as f64 — but local is i32, so truncate
+            const ppF64Tmp = allocLocal(fctx, `__pp_f64_${fctx.locals.length}`, { kind: "f64" });
+            fctx.body.push({ op: "local.tee", index: ppF64Tmp });
+            fctx.body.push({ op: "i32.trunc_sat_f64_s" });
+            fctx.body.push({ op: "local.set", index: idx });
+            fctx.body.push({ op: "local.get", index: ppF64Tmp });
+            return { kind: "f64" };
+          }
           fctx.body.push({ op: "local.get", index: idx });
           fctx.body.push({ op: "f64.const", value: 1 });
           fctx.body.push({ op: "f64.add" });
@@ -8298,6 +8324,19 @@ function compilePrefixUnary(
           // ref/ref_null: struct/array reference — ToNumber gives NaN, NaN - 1 = NaN
           if (localType?.kind === "ref" || localType?.kind === "ref_null") {
             fctx.body.push({ op: "f64.const", value: NaN });
+            return { kind: "f64" };
+          }
+          // i32 (boolean) in non-fast mode: coerce to f64 before decrement
+          if (localType?.kind === "i32") {
+            fctx.body.push({ op: "local.get", index: idx });
+            fctx.body.push({ op: "f64.convert_i32_s" });
+            fctx.body.push({ op: "f64.const", value: 1 });
+            fctx.body.push({ op: arithOp });
+            const mmF64Tmp = allocLocal(fctx, `__mm_f64_${fctx.locals.length}`, { kind: "f64" });
+            fctx.body.push({ op: "local.tee", index: mmF64Tmp });
+            fctx.body.push({ op: "i32.trunc_sat_f64_s" });
+            fctx.body.push({ op: "local.set", index: idx });
+            fctx.body.push({ op: "local.get", index: mmF64Tmp });
             return { kind: "f64" };
           }
           fctx.body.push({ op: "local.get", index: idx });
@@ -8438,6 +8477,20 @@ function compilePostfixUnary(
     // ref/ref_null: struct/array reference — ToNumber gives NaN, postfix returns NaN (old value)
     if (localType?.kind === "ref" || localType?.kind === "ref_null") {
       fctx.body.push({ op: "f64.const", value: NaN });
+      return { kind: "f64" };
+    }
+
+    // i32 (boolean) in non-fast mode: coerce to f64 for postfix ++/--
+    if (localType?.kind === "i32") {
+      fctx.body.push({ op: "local.get", index: idx });
+      fctx.body.push({ op: "f64.convert_i32_s" });
+      const postOldTmp = allocLocal(fctx, `__post_old_${fctx.locals.length}`, { kind: "f64" });
+      fctx.body.push({ op: "local.tee", index: postOldTmp });
+      fctx.body.push({ op: "f64.const", value: 1 });
+      fctx.body.push({ op: arithOp });
+      fctx.body.push({ op: "i32.trunc_sat_f64_s" });
+      fctx.body.push({ op: "local.set", index: idx });
+      fctx.body.push({ op: "local.get", index: postOldTmp });
       return { kind: "f64" };
     }
 
@@ -17929,8 +17982,21 @@ function compileArrayPrototypeIndexOf(
   fctx.body.push({ op: "i32.const", value: 0 });
   fctx.body.push({ op: "local.set", index: iTmp });
 
-  const eqOp = elemType.kind === "f64" ? "f64.eq" : "i32.eq";
   const getOp = elemType.kind === "i16" ? "array.get_s" : "array.get";
+
+  // For externref elements, use the `equals` string import (JS ===) for comparison
+  // For ref/ref_null elements, use ref.eq for reference identity comparison
+  let apcEqInstrs: Instr[];
+  if (elemType.kind === "externref") {
+    addStringImports(ctx);
+    const equalsIdx = ctx.funcMap.get("equals")!;
+    apcEqInstrs = [{ op: "call", funcIdx: equalsIdx } as Instr];
+  } else if (elemType.kind === "ref" || elemType.kind === "ref_null") {
+    apcEqInstrs = [{ op: "ref.eq" } as unknown as Instr];
+  } else {
+    const eqOp = elemType.kind === "f64" ? "f64.eq" : "i32.eq";
+    apcEqInstrs = [{ op: eqOp } as Instr];
+  }
 
   // Use a result local instead of `return` to avoid returning from the
   // enclosing function when indexOf is inlined.
@@ -17953,7 +18019,7 @@ function compileArrayPrototypeIndexOf(
     { op: "local.get", index: iTmp },
     { op: getOp, typeIdx: arrTypeIdx } as Instr,
     { op: "local.get", index: valTmp },
-    { op: eqOp } as Instr,
+    ...apcEqInstrs,
     { op: "if", blockType: { kind: "empty" },
       then: ctx.fast
         ? [
@@ -18674,8 +18740,21 @@ function compileArrayIndexOf(
   }
   fctx.body.push({ op: "local.set", index: iTmp });
 
-  const eqOp = elemType.kind === "f64" ? "f64.eq" : "i32.eq";
   const getOp = elemType.kind === "i16" ? "array.get_s" : "array.get";
+
+  // For externref elements, use the `equals` string import (JS ===) for comparison
+  // For ref/ref_null elements, use ref.eq for reference identity comparison
+  let eqInstrs: Instr[];
+  if (elemType.kind === "externref") {
+    addStringImports(ctx);
+    const equalsIdx = ctx.funcMap.get("equals")!;
+    eqInstrs = [{ op: "call", funcIdx: equalsIdx } as Instr];
+  } else if (elemType.kind === "ref" || elemType.kind === "ref_null") {
+    eqInstrs = [{ op: "ref.eq" } as unknown as Instr];
+  } else {
+    const eqOp = elemType.kind === "f64" ? "f64.eq" : "i32.eq";
+    eqInstrs = [{ op: eqOp } as Instr];
+  }
 
   // Use a result local instead of `return` to avoid returning from the
   // enclosing function when indexOf is inlined.
@@ -18698,7 +18777,7 @@ function compileArrayIndexOf(
     { op: "local.get", index: iTmp },
     { op: getOp, typeIdx: arrTypeIdx } as Instr,
     { op: "local.get", index: valTmp },
-    { op: eqOp } as Instr,
+    ...eqInstrs,
     { op: "if", blockType: { kind: "empty" },
       then: ctx.fast
         ? [
@@ -18814,8 +18893,21 @@ function compileArrayIncludes(
   }
   fctx.body.push({ op: "local.set", index: iTmp });
 
-  const eqOp = elemType.kind === "f64" ? "f64.eq" : "i32.eq";
   const getOp = elemType.kind === "i16" ? "array.get_s" : "array.get";
+
+  // For externref elements, use the `equals` string import (JS ===) for comparison
+  // For ref/ref_null elements, use ref.eq for reference identity comparison
+  let incEqInstrs: Instr[];
+  if (elemType.kind === "externref") {
+    addStringImports(ctx);
+    const equalsIdx = ctx.funcMap.get("equals")!;
+    incEqInstrs = [{ op: "call", funcIdx: equalsIdx } as Instr];
+  } else if (elemType.kind === "ref" || elemType.kind === "ref_null") {
+    incEqInstrs = [{ op: "ref.eq" } as unknown as Instr];
+  } else {
+    const eqOp = elemType.kind === "f64" ? "f64.eq" : "i32.eq";
+    incEqInstrs = [{ op: eqOp } as Instr];
+  }
 
   // Use a result local instead of `return` to avoid type mismatch with enclosing function
   const resTmp = allocLocal(fctx, `__arr_inc_res_${fctx.locals.length}`, { kind: "i32" });
@@ -18832,7 +18924,7 @@ function compileArrayIncludes(
     { op: "local.get", index: iTmp },
     { op: getOp, typeIdx: arrTypeIdx } as Instr,
     { op: "local.get", index: valTmp },
-    { op: eqOp } as Instr,
+    ...incEqInstrs,
     { op: "if", blockType: { kind: "empty" },
       then: [
         { op: "i32.const", value: 1 } as Instr,
@@ -21225,8 +21317,21 @@ function compileArrayLastIndexOf(
   compileExpression(ctx, fctx, callExpr.arguments[0]!, elemType);
   fctx.body.push({ op: "local.set", index: valTmp });
 
-  const eqOp = elemType.kind === "f64" ? "f64.eq" : "i32.eq";
   const getOp = elemType.kind === "i16" ? "array.get_s" : "array.get";
+
+  // For externref elements, use the `equals` string import (JS ===) for comparison
+  // For ref/ref_null elements, use ref.eq for reference identity comparison
+  let liofEqInstrs: Instr[];
+  if (elemType.kind === "externref") {
+    addStringImports(ctx);
+    const equalsIdx = ctx.funcMap.get("equals")!;
+    liofEqInstrs = [{ op: "call", funcIdx: equalsIdx } as Instr];
+  } else if (elemType.kind === "ref" || elemType.kind === "ref_null") {
+    liofEqInstrs = [{ op: "ref.eq" } as unknown as Instr];
+  } else {
+    const eqOp = elemType.kind === "f64" ? "f64.eq" : "i32.eq";
+    liofEqInstrs = [{ op: eqOp } as Instr];
+  }
 
   // Use a result local instead of `return` to avoid returning from the
   // enclosing function when lastIndexOf is inlined.
@@ -21252,7 +21357,7 @@ function compileArrayLastIndexOf(
     { op: "local.get", index: iTmp },
     { op: getOp, typeIdx: arrTypeIdx } as Instr,
     { op: "local.get", index: valTmp },
-    { op: eqOp } as Instr,
+    ...liofEqInstrs,
     { op: "if", blockType: { kind: "empty" },
       then: ctx.fast
         ? [
