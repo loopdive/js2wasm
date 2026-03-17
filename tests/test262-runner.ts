@@ -477,9 +477,15 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
 
   // (Removed: typeof undefined/void 0 skip — compiler now resolves typeof undefined)
 
-  // Skip tests that use .name property on classes/functions (not supported in wasm)
-  if (/\.name\b/.test(source) && /assert\.sameValue/.test(source) && /class\b/.test(source)) {
-    return { skip: true, reason: "class/function .name property" };
+  // Skip tests that check .name property descriptor behavior or .name on bound/constructor —
+  // simple fn.name / ClassName.name assertions are handled (#347, #274).
+  if (/\.name\b/.test(source) && (
+    /getOwnPropertyDescriptor\b/.test(source) ||
+    (/\.bind\s*\(/.test(source) && /\.name\b/.test(source)) ||
+    /constructor\.name\b/.test(source) ||
+    /this\.name\b/.test(source)
+  )) {
+    return { skip: true, reason: "function .name descriptor/bind/constructor.name" };
   }
 
   // (Removed: String() indexer skip — compiler now handles String() coercion)
