@@ -321,3 +321,5 @@
 | 461 | 2026-03-17 | Array of structs: array.new_default fails for non-defaultable ref types | Dep-driven |
 | 437 | 2026-03-18 | Cannot find module empty_FIXTURE.js -- skip FIXTURE imports | Dep-driven |
 | 480 | 2026-03-18 | String() indexer in assert -- skip filter already removed by #349 | Dep-driven |
+| 479 | 2026-03-18 | Wrapper constructor skip -- already resolved by #344 | Dep-driven |
+| 472 | 2026-03-18 | Async/await skip filters -- already resolved by #339 and #351 | Dep-driven |
