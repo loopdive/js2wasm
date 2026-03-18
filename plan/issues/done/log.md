@@ -322,3 +322,4 @@
 | 437 | 2026-03-18 | Cannot find module empty_FIXTURE.js -- skip FIXTURE imports | Dep-driven |
 | 480 | 2026-03-18 | String() indexer in assert -- skip filter already removed by #349 | Dep-driven |
 | 500 | 2026-03-18 | Remove cross-realm skip filter (33 tests) | Dep-driven |
+| 514 | 2026-03-18 | Generator/async-gen 'options is not defined' (~684 CE) | Dep-driven |

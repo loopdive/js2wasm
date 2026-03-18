@@ -388,7 +388,7 @@ Updated with fresh run (2026-03-18): 23,021 tests -- 6,366 pass, 4,367 fail, 9,0
 
 ```
 #409 (unsupported call expression -- 3,931 CE) -- independent [E], review
-#514 (options is not defined -- 684 CE) -- independent [I], NEW from #509
+#514 (options is not defined -- 684 CE) -- DONE (fixed in 4446cb86)
 #411 (struct.new stack mismatch -- 975 CE) -- independent [E][I]
 #511 (call/call_ref type mismatch -- 514 CE) -- independent [E], updated from #509
 #444 (local.set type mismatch -- 483 CE) -- independent [E][S]
@@ -411,7 +411,7 @@ Updated with fresh run (2026-03-18): 23,021 tests -- 6,366 pass, 4,367 fail, 9,0
 | #   | Title | Tests | Ready? |
 |-----|-------|-------|--------|
 | 409 | Unsupported call expression patterns | 3,931 CE | **Review** (critical) |
-| 514 | Generator/async-gen "options is not defined" | 684 CE | **Ready** (critical, NEW) |
+| 514 | Generator/async-gen "options is not defined" | 684 CE | **Done** (fixed in 4446cb86) |
 | 515 | Uninitialized local + struct.get/set type errors | 470 CE | **Ready** (high, NEW) |
 | 511 | Wasm validation: call/call_ref type mismatch | 514 CE | **Ready** (critical, updated) |
 | 444 | Wasm validation: local.set type mismatch | 483 CE | **Ready** (high) |
