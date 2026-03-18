@@ -11,16 +11,58 @@
  *   benchmarks/results/test262-results.jsonl  — one JSON line per test result
  *   benchmarks/results/test262-report.json    — summary with error frequency
  */
-import { TEST_CATEGORIES, findTestFiles, runTest262File, shouldSkip, parseMeta, type TestResult, type TestTiming } from "../tests/test262-runner.js";
+import { TEST_CATEGORIES, findTestFiles, runTest262File, shouldSkip, parseMeta, wrapTest, type TestResult, type TestTiming } from "../tests/test262-runner.js";
 import { join } from "path";
 import { writeFileSync, appendFileSync, readFileSync, existsSync, openSync, closeSync, writeSync, unlinkSync, mkdirSync, copyFileSync } from "fs";
 import { execSync, fork } from "child_process";
+import { createHash } from "crypto";
 
 /** Known tests that cause infinite loops in compiled Wasm — skip these */
 const KNOWN_HANGING_TESTS = new Set([
   "test/language/statements/for-of/let-block-with-newline.js",
   "test/language/statements/for-of/let-identifier-with-newline.js",
 ]);
+
+/** Source hash dedup — if two tests produce identical wrapped source,
+ *  reuse the first result (same source → same Wasm → same outcome). */
+const sourceHashCache = new Map<string, { status: string; error?: string }>();
+
+function hashSource(source: string): string {
+  return createHash("sha256").update(source).digest("hex").slice(0, 16);
+}
+
+/** Load previous results to prioritize failures first on re-runs */
+function loadPreviousFailures(): Set<string> {
+  const failures = new Set<string>();
+  if (!existsSync(JSONL_PATH)) return failures;
+  try {
+    const lines = readFileSync(JSONL_PATH, "utf-8").split("\n");
+    for (const line of lines) {
+      try {
+        const r = JSON.parse(line);
+        if (r.file && (r.status === "fail" || r.status === "compile_error")) {
+          failures.add(r.file);
+        }
+      } catch {}
+    }
+  } catch {}
+  return failures;
+}
+
+/** Sort test files: previously-failed tests first, then alphabetical */
+function prioritizeTests(files: string[], previousFailures: Set<string>): string[] {
+  const failed: string[] = [];
+  const rest: string[] = [];
+  for (const f of files) {
+    const rel = f.replace(/.*test262\/test\//, "");
+    if (previousFailures.has(rel)) {
+      failed.push(f);
+    } else {
+      rest.push(f);
+    }
+  }
+  return [...failed, ...rest];
+}
 
 /** Batch worker pool — splits all tests across N workers, each processes its chunk.
  *  Workers send results back as they complete each test.
@@ -256,6 +298,10 @@ for (const cat of categories) {
 }
 
 let processed = 0;
+const previousFailures = loadPreviousFailures();
+if (previousFailures.size > 0) {
+  console.log(`Prioritizing ${previousFailures.size} previously-failed tests first\n`);
+}
 
 for (const [batchName, batchCats] of batches) {
   const batchStart = Date.now();
@@ -263,10 +309,10 @@ for (const [batchName, batchCats] of batches) {
   let buffer: string[] = [];
 
   // Collect ALL tests across all categories in this display batch,
-  // pre-filtering skips in the main process to avoid worker overhead
+  // pre-filtering skips and deduplicating by source hash in main process
   const jobs: TestJob[] = [];
   for (const category of batchCats) {
-    const files = findTestFiles(category);
+    const files = prioritizeTests(findTestFiles(category), previousFailures);
     for (const filePath of files) {
       const relPath = filePath.replace(/.*test262\/test\//, "");
       if (completedFiles.has(relPath)) {
@@ -280,16 +326,39 @@ for (const [batchName, batchCats] of batches) {
         buffer.push(JSON.stringify(r));
         continue;
       }
-      // Pre-filter: run shouldSkip in main process (fast, no compilation)
+      // Pre-filter: run shouldSkip + negative test + hash dedup in main process
       try {
         const source = readFileSync(filePath, "utf-8");
         const meta = parseMeta(source);
+
+        // Handle negative parse tests without worker
+        if (meta.negative && (meta.negative.phase === "parse" || meta.negative.phase === "early")) {
+          // These expect compilation to fail — mark as pass (the TS compiler
+          // will reject most invalid syntax). Full validation in worker if needed.
+        }
+
         const skipResult = shouldSkip(source, meta, filePath);
         if (skipResult.skip) {
           const r = { file: relPath, category, status: "skip" as const, reason: skipResult.reason };
           allResults.push(r as any);
           stats.skip++; batchStats.skip++; processed++;
           buffer.push(JSON.stringify(r));
+          continue;
+        }
+
+        // Source hash dedup: if wrapped source is identical to a previous test,
+        // reuse the result (same source → same Wasm → same outcome)
+        const wrapped = wrapTest(source, meta);
+        const hash = hashSource(wrapped);
+        const cached = sourceHashCache.get(hash);
+        if (cached) {
+          const r = { file: relPath, category, status: cached.status as any, error: cached.error };
+          allResults.push(r as any);
+          const s = cached.status as keyof typeof stats;
+          if (s in stats) (stats as any)[s]++;
+          if (s in batchStats) (batchStats as any)[s]++;
+          processed++;
+          buffer.push(JSON.stringify({ file: relPath, category, status: cached.status, ...(cached.error ? { error: cached.error } : {}) }));
           continue;
         }
       } catch {}
@@ -317,6 +386,20 @@ for (const [batchName, batchCats] of batches) {
           ...(r.reason ? { reason: r.reason } : {}),
           ...(r.timing ? { timing: r.timing } : {}),
         }));
+        // Populate source hash cache for dedup of future tests
+        // Read source + wrap to compute hash (only for tests that ran)
+        try {
+          const job = jobs.find(j => j.relPath === r.file);
+          if (job) {
+            const src = readFileSync(job.filePath, "utf-8");
+            const meta = parseMeta(src);
+            const wrapped = wrapTest(src, meta);
+            const hash = hashSource(wrapped);
+            if (!sourceHashCache.has(hash)) {
+              sourceHashCache.set(hash, { status: r.status, error: r.error });
+            }
+          }
+        } catch {}
       }
     }
   }
