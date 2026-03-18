@@ -2691,7 +2691,6 @@ function compileForOfAssignDestructuring(
         }
         fctx.body.push({ op: "local.set", index: targetLocal });
       }
-      emitCoercedLocalSet(ctx, fctx, targetLocal, innerElemType);
     }
   }
 }
