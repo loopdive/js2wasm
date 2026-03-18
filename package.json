@@ -30,6 +30,7 @@
     "upload": "pnpm run build:playground && node ../file-registry-cli/dist/bin/main.js commit && node ../file-registry-cli/dist/bin/main.js push"
   },
   "dependencies": {
+    "pako": "^2.1.0",
     "typescript": "^5.7"
   },
   "devDependencies": {
