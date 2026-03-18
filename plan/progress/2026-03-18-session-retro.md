@@ -20,7 +20,10 @@
 2. **Never delete data files** — ask first, always
 3. **Lead with "here's the approach"** not "this can't be done"
 4. **One test run at a time** — wait for completion before starting another
-5. **Respect role boundaries** — PO creates issues and analyzes results, tech lead controls main working copy and scripts
+5. **File ownership boundary (established this session)**:
+   - PO: writes only `plan/` (issues, progress, backlog, graph, dependency-graph)
+   - Tech Lead: writes everything outside `plan/` (src, tests, scripts, benchmarks, config) + moves issues to `done/`
+   - Zero overlap, zero conflicts
 
 ## Metrics
 
