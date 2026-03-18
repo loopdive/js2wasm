@@ -128,6 +128,38 @@ export function test262Plugin(): Plugin {
   // Cache file lists per category
   const fileListCache = new Map<string, string[]>();
 
+  // Cache JSONL results by category
+  let cachedJsonlByCategory: Map<string, { file: string; status: string; error?: string }[]> | null = null;
+  let cachedJsonlMtime: number = 0;
+
+  function getJsonlByCategory(): Map<string, { file: string; status: string; error?: string }[]> {
+    const jsonlPath = join(projectRoot, "benchmarks", "results", "test262-results.jsonl");
+    if (!existsSync(jsonlPath)) return new Map();
+    const stat = statSync(jsonlPath);
+    if (cachedJsonlByCategory && stat.mtimeMs === cachedJsonlMtime) return cachedJsonlByCategory;
+
+    const map = new Map<string, { file: string; status: string; error?: string }[]>();
+    const content = readFileSync(jsonlPath, "utf-8");
+    for (const line of content.split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        const entry = JSON.parse(line);
+        if (!entry.category) continue;
+        const item: { file: string; status: string; error?: string } = {
+          file: entry.file,
+          status: entry.status,
+        };
+        if (entry.error) item.error = entry.error;
+        const list = map.get(entry.category);
+        if (list) list.push(item);
+        else map.set(entry.category, [item]);
+      } catch { /* skip malformed lines */ }
+    }
+    cachedJsonlByCategory = map;
+    cachedJsonlMtime = stat.mtimeMs;
+    return map;
+  }
+
   // Cache equivalence test snippets
   let cachedEquivTests: { name: string; source: string }[] | null = null;
 
@@ -253,6 +285,45 @@ export function test262Plugin(): Plugin {
           }
           res.setHeader("Content-Type", "text/plain");
           res.end(tests[idx].source);
+          return;
+        }
+
+        // ── Test262 results endpoints ──
+
+        if (url.pathname === "/api/test262-results") {
+          const reportPath = join(projectRoot, "benchmarks", "results", "test262-report.json");
+          if (!existsSync(reportPath)) {
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ error: "no-report" }));
+            return;
+          }
+          try {
+            const content = readFileSync(reportPath, "utf-8");
+            res.setHeader("Content-Type", "application/json");
+            res.end(content);
+          } catch {
+            res.statusCode = 500;
+            res.end("Error reading report");
+          }
+          return;
+        }
+
+        if (url.pathname === "/api/test262-file-results") {
+          const category = url.searchParams.get("category");
+          if (!category) {
+            res.statusCode = 400;
+            res.end("Missing category parameter");
+            return;
+          }
+          try {
+            const byCategory = getJsonlByCategory();
+            const results = byCategory.get(category) ?? [];
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify(results));
+          } catch {
+            res.statusCode = 500;
+            res.end("Error reading results");
+          }
           return;
         }
 
