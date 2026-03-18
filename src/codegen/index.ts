@@ -4816,7 +4816,7 @@ function collectStringLiterals(
 
   // typeof expressions may need type-name constants not present in source
   if (hasTypeofExpr) {
-    for (const s of ["number", "string", "boolean", "object", "undefined", "function"]) {
+    for (const s of ["number", "string", "boolean", "object", "undefined", "function", "symbol"]) {
       literals.add(s);
     }
   }
