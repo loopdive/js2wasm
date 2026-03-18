@@ -22,100 +22,79 @@ const KNOWN_HANGING_TESTS = new Set([
   "test/language/statements/for-of/let-identifier-with-newline.js",
 ]);
 
-/** Worker pool — persistent child processes with per-test timeout.
- *  If a test hangs (infinite loop in Wasm), the worker is killed and replaced. */
+/** Batch worker pool — splits all tests across N workers, each processes its chunk.
+ *  Workers send results back as they complete each test.
+ *  If a worker doesn't send a result for 30s, it's killed (hung test). */
 const POOL_SIZE = 8;
+const WORKER_TIMEOUT_MS = 30_000;
 const workerPath = join(process.cwd(), "scripts", "test262-worker.ts");
-type WorkerSlot = { proc: ReturnType<typeof fork>; busy: boolean; ready: boolean };
-const pool: WorkerSlot[] = [];
 
-function spawnWorker(): WorkerSlot {
-  const proc = fork(workerPath, [], { stdio: "pipe", execArgv: ["--import", "tsx"] });
-  proc.setMaxListeners(0); // prevent listener leak warnings
-  const slot: WorkerSlot = { proc, busy: false, ready: false };
-  proc.once("message", (msg: any) => { if (msg.ready) slot.ready = true; });
-  return slot;
-}
+type TestJob = { filePath: string; category: string; relPath: string };
+type WorkerResult = { file: string; category: string; status: string; error?: string; reason?: string; timing?: any };
 
-function initPool() {
-  for (let i = 0; i < POOL_SIZE; i++) pool.push(spawnWorker());
-}
+/** Dispatch a batch of tests to a fresh worker. Returns all results.
+ *  If the worker hangs on a test for > 30s, it's killed and remaining tests
+ *  in the batch are reported as "timeout". */
+function runBatch(batch: TestJob[]): Promise<WorkerResult[]> {
+  return new Promise((resolve) => {
+    const results: WorkerResult[] = [];
+    const proc = fork(workerPath, [], { stdio: "pipe", execArgv: ["--import", "tsx"] });
+    proc.setMaxListeners(0);
+    let lastActivity = Date.now();
+    let done = false;
 
-function getWorker(): Promise<WorkerSlot> {
-  const free = pool.find(s => !s.busy && s.ready);
-  if (free) return Promise.resolve(free);
-  return new Promise(resolve => {
-    const check = setInterval(() => {
-      const f = pool.find(s => !s.busy && s.ready);
-      if (f) { clearInterval(check); resolve(f); }
-    }, 10);
+    // Watchdog: kill worker if no activity for WORKER_TIMEOUT_MS
+    const watchdog = setInterval(() => {
+      if (done) return;
+      if (Date.now() - lastActivity > WORKER_TIMEOUT_MS) {
+        clearInterval(watchdog);
+        done = true;
+        try { proc.kill("SIGKILL"); } catch {}
+        // Report remaining tests as timeout
+        const completed = new Set(results.map(r => r.file));
+        for (const job of batch) {
+          if (!completed.has(job.relPath)) {
+            results.push({ file: job.relPath, category: job.category, status: "fail", error: "timeout: worker hung > 30s" });
+          }
+        }
+        resolve(results);
+      }
+    }, 5000);
+
+    proc.on("message", (msg: any) => {
+      if (msg.ready) {
+        // Worker ready — send the batch
+        proc.send({ batch });
+        return;
+      }
+      if (msg.batchDone) {
+        clearInterval(watchdog);
+        done = true;
+        proc.kill();
+        resolve(results);
+        return;
+      }
+      // Individual test result
+      lastActivity = Date.now();
+      results.push(msg);
+    });
+
+    proc.on("exit", () => {
+      if (!done) {
+        clearInterval(watchdog);
+        done = true;
+        // Report remaining as crashed
+        const completed = new Set(results.map(r => r.file));
+        for (const job of batch) {
+          if (!completed.has(job.relPath)) {
+            results.push({ file: job.relPath, category: job.category, status: "compile_error", error: "worker crashed" });
+          }
+        }
+        resolve(results);
+      }
+    });
   });
 }
-
-function replaceWorker(slot: WorkerSlot) {
-  const idx = pool.indexOf(slot);
-  try { slot.proc.removeAllListeners(); slot.proc.kill("SIGKILL"); } catch {}
-  if (idx >= 0) { pool[idx] = spawnWorker(); }
-}
-
-function runTestWithTimeout(
-  filePath: string, category: string, relPath: string, timeoutMs: number
-): Promise<any> {
-  return new Promise(async (resolve) => {
-    const slot = await getWorker();
-    slot.busy = true;
-    let settled = false;
-
-    const cleanup = () => {
-      slot.proc.removeListener("message", onMsg);
-      slot.proc.removeListener("exit", onExit);
-    };
-
-    const timer = setTimeout(() => {
-      if (!settled) {
-        settled = true;
-        cleanup();
-        slot.busy = false;
-        replaceWorker(slot);
-        resolve({ file: relPath, category, status: "fail", error: "timeout: test exceeded " + (timeoutMs/1000) + "s" });
-      }
-    }, timeoutMs);
-
-    const onMsg = (msg: any) => {
-      if (!settled && !msg.ready) {
-        settled = true;
-        clearTimeout(timer);
-        cleanup();
-        slot.busy = false;
-        resolve(msg);
-      }
-    };
-
-    const onExit = () => {
-      if (!settled) {
-        settled = true;
-        clearTimeout(timer);
-        cleanup();
-        slot.busy = false;
-        const idx = pool.indexOf(slot);
-        if (idx >= 0) pool[idx] = spawnWorker();
-        resolve({ file: relPath, category, status: "compile_error", error: "worker crashed" });
-      }
-    };
-
-    slot.proc.on("message", onMsg);
-    slot.proc.on("exit", onExit);
-    slot.proc.send({ filePath, category, relPath });
-  });
-}
-
-// Initialize worker pool
-initPool();
-await new Promise<void>(resolve => {
-  const check = setInterval(() => {
-    if (pool.every(s => s.ready)) { clearInterval(check); resolve(); }
-  }, 50);
-});
 
 const RESULTS_DIR = join(import.meta.dirname ?? ".", "..", "benchmarks", "results");
 const JSONL_PATH = join(RESULTS_DIR, "test262-results.jsonl");
@@ -287,58 +266,50 @@ for (const [batchName, batchCats] of batches) {
     const files = findTestFiles(category);
     if (files.length === 0) continue;
 
-    // Dispatch tests in parallel up to POOL_SIZE concurrency
-    const pending: Promise<void>[] = [];
+    // Collect all tests for this category
+    const jobs: TestJob[] = [];
     for (const filePath of files) {
       const relPath = filePath.replace(/.*test262\/test\//, "");
       if (completedFiles.has(relPath)) {
         processed++;
         continue;
       }
-      const job = (async () => {
-        let result: Awaited<ReturnType<typeof runTest262File>>;
-        if (KNOWN_HANGING_TESTS.has(relPath)) {
-          result = { file: relPath, category, status: "fail" as const, error: "known hanging test (infinite loop in compiled Wasm)" } as any;
-        } else {
-          try {
-            result = await runTestWithTimeout(filePath, category, relPath, 30_000);
-          } catch (e: any) {
-            result = { file: relPath, category, status: "compile_error" as const, error: (e?.message ?? String(e)) } as any;
-          }
-        }
-      allResults.push(result);
-      stats[result.status]++;
-      batchStats[result.status]++;
-      processed++;
-
-      buffer.push(JSON.stringify({
-        file: result.file,
-        category: result.category,
-        status: result.status,
-        ...(result.error ? { error: result.error.substring(0, 300) } : {}),
-        ...(result.reason ? { reason: result.reason } : {}),
-        ...(result.timing ? { timing: result.timing } : {}),
-      }));
-
-      // Flush every 100 tests to balance I/O and progress tracking
-      if (buffer.length >= 100) {
-        appendFileSync(RUN_JSONL, buffer.join("\n") + "\n");
-        buffer = [];
+      if (KNOWN_HANGING_TESTS.has(relPath)) {
+        const r = { file: relPath, category, status: "fail" as const, error: "known hanging test" };
+        allResults.push(r as any);
+        stats.fail++;
+        batchStats.fail++;
+        processed++;
+        buffer.push(JSON.stringify(r));
+        continue;
       }
-      })();
-      pending.push(job);
-      // Limit concurrency to POOL_SIZE
-      if (pending.length >= POOL_SIZE) {
-        await Promise.race(pending);
-        // Remove settled promises
-        for (let i = pending.length - 1; i >= 0; i--) {
-          const settled = await Promise.race([pending[i], Promise.resolve("pending")]);
-          if (settled !== "pending") pending.splice(i, 1);
+      jobs.push({ filePath, category, relPath });
+    }
+    if (jobs.length > 0) {
+      // Split jobs across POOL_SIZE workers
+      const chunkSize = Math.ceil(jobs.length / POOL_SIZE);
+      const chunks: TestJob[][] = [];
+      for (let i = 0; i < jobs.length; i += chunkSize) {
+        chunks.push(jobs.slice(i, i + chunkSize));
+      }
+      // Dispatch all chunks in parallel
+      const batchResults = await Promise.all(chunks.map(chunk => runBatch(chunk)));
+      for (const results of batchResults) {
+        for (const r of results) {
+          allResults.push(r as any);
+          const s = r.status as keyof typeof stats;
+          if (s in stats) stats[s]++;
+          if (s in batchStats) batchStats[s]++;
+          processed++;
+          buffer.push(JSON.stringify({
+            file: r.file, category: r.category, status: r.status,
+            ...(r.error ? { error: r.error.substring(0, 300) } : {}),
+            ...(r.reason ? { reason: r.reason } : {}),
+            ...(r.timing ? { timing: r.timing } : {}),
+          }));
         }
       }
     }
-    // Wait for remaining tests in this category
-    await Promise.all(pending);
   }
   // Flush remaining
   if (buffer.length > 0) {
