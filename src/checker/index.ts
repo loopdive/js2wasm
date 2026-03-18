@@ -94,7 +94,7 @@ export function analyzeSource(
   );
 
   const syntacticDiagnostics = program.getSyntacticDiagnostics();
-  const semanticDiagnostics = options?.skipSemanticDiagnostics ? [] as ts.Diagnostic[] : program.getSemanticDiagnostics();
+  const semanticDiagnostics = analyzeOptions?.skipSemanticDiagnostics ? [] as ts.Diagnostic[] : program.getSemanticDiagnostics();
   const diagnostics = [...syntacticDiagnostics, ...semanticDiagnostics];
 
   return {
