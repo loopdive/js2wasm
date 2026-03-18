@@ -162,14 +162,29 @@ _Fresh run (2026-03-18, #509): 23,021 tests -- 6,366 pass (27.7%), 4,367 fail, 9
 | [426](../ready/426.md) | Compound assignment on element access (non-ref targets) | CE | 11 | Low |
 | [427](../ready/427.md) | Super keyword unsupported in remaining positions | CE | 11 | Low |
 
+### Compile errors — New sub-issues (from 2026-03-18 analysis)
+
+| #   | Feature | Type | Count | Priority |
+| --- | ------- | ---- | ----- | -------- |
+| [516](../ready/516.md) | struct.new argument count in class constructors | CE | 1,781 | High |
+| [517](../ready/517.md) | Unsupported call expr: class/generator/built-in methods | CE | 2,164 | High |
+| [518](../ready/518.md) | Cannot destructure non-array type | CE | 74 | Medium |
+| [519](../ready/519.md) | Internal error: targetLocal not defined | CE | 66 | High |
+| [520](../ready/520.md) | Delete operator: operand must be optional | CE | 80 | Medium |
+| [521](../ready/521.md) | Yield keyword not recognized in nested contexts | CE | 53 | Medium |
+| [522](../ready/522.md) | Object.keys() requires struct type argument | CE | 43 | Medium |
+| [523](../ready/523.md) | Internal compiler errors: undefined .text + SpreadElement | CE | 59 | Medium |
+| [524](../ready/524.md) | Type '{}' missing Function properties | CE | 40 | Low |
+
 ### Runtime failures (4,367 fail)
 
 | #   | Feature | Type | Count | Priority |
 | --- | ------- | ---- | ----- | -------- |
-| [513](../ready/513.md) | Wrong return value (returned 0) -- broad correctness failures | FAIL | 3,436 | Critical (updated) |
-| [512](../ready/512.md) | RuntimeError: illegal cast | FAIL | 683 | Critical (updated) |
+| [513](../ready/513.md) | Wrong return value (returned 0) -- broad correctness failures | FAIL | 3,436 | Critical |
+| [525](../ready/525.md) | RuntimeError: illegal cast | FAIL | 683 | High |
+| [526](../ready/526.md) | RuntimeError: null pointer dereference | FAIL | 129 | High |
+| [512](../ready/512.md) | RuntimeError: illegal cast (original) | FAIL | 683 | High |
 | [441](../ready/441.md) | Null pointer dereference (residual after #419) | FAIL | 129 | High |
-| [418](../ready/418.md) | Missing SyntaxError validation (negative tests now skipped) | FAIL | 0 | Low |
 | [443](../ready/443.md) | Expected ReferenceError but succeeded | FAIL | 6 | Low |
 
 ### Infrastructure (Tech Lead)
