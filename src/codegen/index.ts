@@ -7562,6 +7562,15 @@ export function collectClassDeclaration(
     }
   }
 
+  // Pre-register the struct type index BEFORE resolving field types.
+  // This allows self-referencing fields (e.g. `next: ListNode | null` in class ListNode)
+  // to resolve to `ref null $structTypeIdx` instead of falling back to externref.
+  // WasmGC supports recursive types natively via rec groups.
+  const structTypeIdx = ctx.mod.types.length;
+  const placeholderDef: StructTypeDef = { kind: "struct", name: className, fields: [] };
+  ctx.mod.types.push(placeholderDef);
+  ctx.structMap.set(className, structTypeIdx);
+
   // Find the constructor to determine struct fields from `this.x = ...` assignments
   const ctor = decl.members.find(ts.isConstructorDeclaration) as
     | ts.ConstructorDeclaration
@@ -7634,14 +7643,12 @@ export function collectClassDeclaration(
     fields.unshift({ name: "__tag", type: { kind: "i32" }, mutable: false });
   }
 
-  // Register the struct type
-  const structTypeIdx = ctx.mod.types.length;
+  // Update the placeholder struct type with resolved fields
   const structDef: StructTypeDef = { kind: "struct", name: className, fields };
   if (parentStructTypeIdx !== undefined) {
     structDef.superTypeIdx = parentStructTypeIdx;
   }
-  ctx.mod.types.push(structDef);
-  ctx.structMap.set(className, structTypeIdx);
+  ctx.mod.types[structTypeIdx] = structDef;
   ctx.structFields.set(className, fields);
 
   // Register constructor function: takes ctor params, returns (ref $structTypeIdx)
