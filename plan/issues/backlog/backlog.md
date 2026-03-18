@@ -175,7 +175,7 @@ _Latest run (2026-03-17): 17,606 unique tests — 5,735 pass (32.6%), 2,064 fail
 | #   | Feature | Priority |
 | --- | ------- | -------- |
 | [501](../ready/501.md) | Complete test262 baseline run + pin results | Critical |
-| [502](../ready/502.md) | Quick wins: narrow stale skip filters (~1,160 tests) | Critical |
+| [502](../done/502.md) | Quick wins: narrow stale skip filters (~1,160 tests) | Critical — **review** |
 | [503](../ready/503.md) | Runner safe-write: don't corrupt report on crash | High |
 
 ### Skip feature unlocks — Symbol (1,846 tests)
