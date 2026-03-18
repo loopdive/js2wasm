@@ -154,7 +154,7 @@ _Latest run (2026-03-17): 17,606 unique tests — 5,735 pass (32.6%), 2,064 fail
 | [437](../done/437.md) | Cannot find module empty_FIXTURE.js (test infra) | CE | 38 | **Done** |
 | [420](../ready/420.md) | Cannot destructure non-array types | CE | 34 | Medium |
 | [438](../ready/438.md) | Internal error: Cannot read properties of undefined | CE | 20 | Medium |
-| [439](../ready/439.md) | Generator type missing next/return/throw | CE | 16 | Medium | **in-progress** |
+| [439](../ready/439.md) | Generator type missing next/return/throw | CE | 16 | Medium | **review** |
 | [440](../ready/440.md) | Dynamic import specifier type | CE | 16 | Low |
 | [415](../ready/415.md) | Logical assignment struct resolution failure | CE | 14 | Medium |
 | [426](../ready/426.md) | Compound assignment on element access (non-ref targets) | CE | 11 | Low |
