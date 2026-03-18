@@ -84,284 +84,221 @@
       "cluster": "Unclustered"
     },
     {
-      "id": 409,
-      "title": "Unsupported call expression: spread, optional chaining, super, property methods",
-      "priority": "critical",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_ce": 1752,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 411,
-      "title": "struct.new stack mismatch: class/object construction emits wrong argument count",
-      "priority": "critical",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_ce": 114,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 412,
-      "title": "Yield outside generator: generator function body not recognized",
+      "id": 450,
+      "title": "Performance benchmarks: JS runtime vs precompiled Wasm",
       "priority": "medium",
-      "status": "ready",
+      "status": "backlog",
       "depends_on": [],
       "files": [],
-      "test262_ce": 166,
       "cluster": "Unclustered"
     },
     {
-      "id": 413,
-      "title": "Parameter self-reference: default param validation too strict",
+      "id": 451,
+      "title": "Compile lodash to Wasm",
+      "priority": "low",
+      "status": "backlog",
+      "depends_on": [],
+      "files": [],
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 452,
+      "title": "Compile TypeScript compiler to Wasm",
+      "priority": "low",
+      "status": "backlog",
+      "depends_on": [],
+      "files": [],
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 453,
+      "title": "Compile Three.js to Wasm",
+      "priority": "low",
+      "status": "backlog",
+      "depends_on": [],
+      "files": [],
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 454,
+      "title": "Compile pako (zlib) to Wasm and benchmark vs JS",
       "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
+      "status": "backlog",
+      "depends_on": [
+        450
+      ],
       "files": [],
-      "test262_ce": 59,
       "cluster": "Unclustered"
     },
     {
-      "id": 415,
-      "title": "Logical assignment struct resolution failure",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_ce": 14,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 417,
-      "title": "Wrong return value (returned 0): broad runtime correctness failures",
-      "priority": "critical",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_fail": 1979,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 418,
-      "title": "Missing SyntaxError validation: invalid code compiles successfully",
+      "id": 455,
+      "title": "Compile React to Wasm",
       "priority": "high",
-      "status": "ready",
+      "status": "backlog",
       "depends_on": [],
       "files": [],
       "cluster": "Unclustered"
     },
     {
-      "id": 420,
-      "title": "Cannot destructure non-array types (26 CE)",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 34,
-      "test262_ce": 34,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 421,
-      "title": "Array.reduce requires callback and initial value (23 CE)",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 23,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 424,
-      "title": "Logical assignment on unresolved struct type (14 CE)",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 14,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 426,
-      "title": "Compound assignment on non-ref element access (11 CE)",
+      "id": 471,
+      "title": "Symbol support for test262 conformance",
       "priority": "low",
-      "status": "ready",
+      "status": "done",
       "depends_on": [],
       "files": [],
-      "compiler_errors": 11,
       "cluster": "Unclustered"
     },
     {
-      "id": 427,
-      "title": "SuperKeyword unsupported in remaining contexts (11 CE)",
+      "id": 481,
+      "title": "Well-known Symbol.iterator as compile-time struct field (1,327 tests)",
       "priority": "low",
-      "status": "ready",
+      "status": "done",
       "depends_on": [],
       "files": [],
-      "compiler_errors": 11,
       "cluster": "Unclustered"
     },
     {
-      "id": 436,
-      "title": "for-of array destructuring: element is not a ref type (42 CE)",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 42,
-      "test262_ce": 42,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 437,
-      "title": "Cannot find module empty_FIXTURE.js: test infrastructure gap (38 CE)",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 38,
-      "test262_ce": 38,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 438,
-      "title": "Internal error: Cannot read properties of undefined in expression compilation (20 CE)",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 20,
-      "test262_ce": 20,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 439,
-      "title": "Generator type missing next/return/throw methods (16 CE)",
+      "id": 483,
+      "title": "Symbol() constructor and typeof symbol (207 tests)",
       "priority": "medium",
       "status": "ready",
       "depends_on": [
-        "412"
+        471
       ],
       "files": [],
-      "compiler_errors": 16,
-      "test262_ce": 16,
+      "test262_skip": 207,
       "cluster": "Unclustered"
     },
     {
-      "id": 440,
-      "title": "Dynamic import specifier type error (16 CE)",
+      "id": 484,
+      "title": "Well-known Symbol.species for constructor delegation (52 tests)",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [
+        481
+      ],
+      "files": [],
+      "test262_skip": 52,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 486,
+      "title": "Well-known Symbol.toStringTag and Symbol.hasInstance (22 tests)",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [
+        481
+      ],
+      "files": [],
+      "test262_skip": 22,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 487,
+      "title": "User Symbol as property key via tagged struct variant (~60 tests)",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [
+        481,
+        483
+      ],
+      "files": [],
+      "test262_skip": 60,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 496,
+      "title": "eval() and new Function() source transform for test262 (533 tests)",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 533,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 498,
+      "title": "Proxy via type-aware compilation with trap inlining (70 tests)",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 70,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 500,
+      "title": "Remove cross-realm skip filter (33 tests)",
       "priority": "low",
       "status": "ready",
       "depends_on": [],
       "files": [],
-      "compiler_errors": 16,
-      "test262_ce": 16,
+      "test262_skip": 33,
       "cluster": "Unclustered"
     },
     {
-      "id": 441,
-      "title": "RuntimeError: dereferencing a null pointer -- residual after #419 (88 fail)",
+      "id": 501,
+      "title": "Complete test262 baseline run and pin results",
+      "priority": "critical",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 502,
+      "title": "Quick wins: narrow stale skip filters (~1,160 tests)",
+      "priority": "critical",
+      "status": "ready",
+      "depends_on": [
+        471
+      ],
+      "files": [],
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 503,
+      "title": "Runner safe-write: don't corrupt report on crash",
       "priority": "high",
       "status": "ready",
       "depends_on": [],
       "files": [],
-      "test262_fail": 88,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 442,
-      "title": "RuntimeError: illegal cast at runtime (6 fail)",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_fail": 6,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 443,
-      "title": "Expected runtime ReferenceError but execution succeeded (6 fail)",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_fail": 6,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 444,
-      "title": "Wasm validation: local.set type mismatch (292 CE)",
-      "priority": "high",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 292,
-      "test262_ce": 292,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 445,
-      "title": "Wasm validation: call args missing (72 CE)",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 72,
-      "test262_ce": 72,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 446,
-      "title": "Wasm validation: call_ref type mismatch (56 CE)",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 56,
-      "test262_ce": 56,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 447,
-      "title": "Wasm validation: stack fallthru type mismatch -- residual after #410 (48 CE)",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 590,
-      "test262_ce": 48,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 448,
-      "title": "Wasm validation: type mismatch i32 expected (47 CE)",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 47,
-      "test262_ce": 47,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 449,
-      "title": "Wasm validation: call_ref on null function reference (15 CE)",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 15,
-      "test262_ce": 15,
       "cluster": "Unclustered"
     }
   ],
   "links": [
     {
+      "source": 471,
+      "target": 483
+    },
+    {
+      "source": 481,
+      "target": 484
+    },
+    {
+      "source": 481,
+      "target": 486
+    },
+    {
+      "source": 481,
+      "target": 487
+    },
+    {
+      "source": 483,
+      "target": 487
+    },
+    {
+      "source": 471,
+      "target": 502
+    },
+    {
+      "source": 450,
+      "target": 454
+    },
+    {
       "source": 70,
       "target": 74
     }
   ],
-  "generated": "2026-03-17T22:25:12.109Z"
+  "generated": "2026-03-18T18:39:54.795Z"
 }

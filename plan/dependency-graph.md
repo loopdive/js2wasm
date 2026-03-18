@@ -291,6 +291,9 @@ All independent of each other and of codegen work.
 | 402 | Negative tests: expected SyntaxError not raised | 434 fail | **Ready** |
 | 403 | import.source meta-property errors | 86 CE | **Ready** |
 | 407 | Deferred imports module flag error | 54 CE | **Ready** |
+| 491 | Remove stale null/undefined filter | — | **Ready** (medium) |
+| 494 | Remove stale skip filters | — | **Ready** (medium) |
+| 500 | Remove cross-realm filter | — | **Ready** (low) |
 
 ---
 
@@ -479,6 +482,92 @@ Priority order reflects react-reconciler dependency.
 
 ---
 
+## Cluster 19: Symbol / Well-known `[E]`
+
+Symbol.iterator and related well-known symbol support, plus user-defined symbols.
+
+```
+#481 (Symbol.iterator) ──┬──► #482 (Symbol.toPrimitive)
+                         ├──► #484 (Symbol.species)
+                         ├──► #485 (Symbol RegExp protocol)
+                         ├──► #486 (Symbol.toStringTag/hasInstance)
+                         └──┬─► #487 (user Symbol as property key)
+                            │
+#483 (Symbol() narrow filter, depends #471) ──┘
+```
+
+| #   | Title | Tests | Ready? |
+|-----|-------|-------|--------|
+| 481 | Symbol.iterator | — | **Ready** (critical) |
+| 482 | Symbol.toPrimitive | — | Blocked by #481 |
+| 483 | Symbol() constructor narrow filter | — | **Ready** (medium, depends #471 done) |
+| 484 | Symbol.species | — | Blocked by #481 |
+| 485 | Symbol RegExp protocol | — | Blocked by #481 |
+| 486 | Symbol.toStringTag/hasInstance | — | Blocked by #481 |
+| 487 | User Symbol as property key | — | Blocked by #481, #483 |
+
+---
+
+## Cluster 20: Property Introspection `[E]`
+
+Property introspection and related patterns.
+
+```
+#488 (hasOwnProperty) ──┬──► #495 (Array-like objects)
+                        └──► #499 (with statement) [Cluster 22]
+```
+
+| #   | Title | Tests | Ready? |
+|-----|-------|-------|--------|
+| 488 | Property introspection hasOwnProperty | — | **Ready** (critical) |
+| 495 | Array-like objects | — | Blocked by #488 |
+
+---
+
+## Cluster 21: Functions / Call patterns `[E]`
+
+General function calling patterns (`.call()`, `.apply()`, `.name`).
+
+| #   | Title | Tests | Ready? |
+|-----|-------|-------|--------|
+| 489 | General .call()/.apply() | — | **Ready** (critical) |
+| 490 | Function .name property | — | **Ready** (high) |
+
+---
+
+## Cluster 22: Dynamic Execution `[E][I]`
+
+eval, Function(), and dynamic import.
+
+| #   | Title | Tests | Ready? |
+|-----|-------|-------|--------|
+| 496 | eval/Function() via host compilation | — | **Ready** (medium) |
+| 497 | Dynamic import() | — | **Ready** (medium) |
+
+---
+
+## Cluster 23: Metaprogramming `[E]`
+
+Proxy, with statement, and related dynamic features.
+
+| #   | Title | Tests | Ready? |
+|-----|-------|-------|--------|
+| 498 | Proxy | — | **Ready** (medium) |
+| 499 | with statement | — | Blocked by #488 |
+
+---
+
+## Cluster 24: Runtime Features `[E]`
+
+delete operator and prototype filter improvements.
+
+| #   | Title | Tests | Ready? |
+|-----|-------|-------|--------|
+| 492 | delete operator | — | **Ready** (medium) |
+| 493 | Narrow prototype filter | — | **Ready** (medium) |
+
+---
+
 ## Backlog (long-term / blocked)
 
 | #   | Title | Blocked by |
@@ -523,9 +612,9 @@ function in the same file. Key contention points:
 | Function | Issues |
 |----------|--------|
 | `compileBinaryExpression` | 138, 139, 174, 227, 228, 237, 244, 291, 295, 296, 299, 308, 324, 348, 430, 433, 434 |
-| `compileCallExpression` | 232, 260, 280, 342, 364, 382, 409, 410 |
+| `compileCallExpression` | 232, 260, 280, 342, 364, 382, 409, 410, 489 |
 | `compileElementAccess` | 140, 176, 239, 326, 337, 361, 426 |
-| `compilePropertyAccess` | 263, 274, 347, 362, 378, 423 |
+| `compilePropertyAccess` | 263, 274, 347, 362, 378, 423, 488, 490 |
 | `compileObjectLiteralForStruct` | 230, 281, 412 |
 | `compileDestructuringAssignment` | 142, 190, 243, 325, 328, 379, 417, 420 |
 | `compileAssignment` (compound) | 283, 393, 404, 424, 426 |
@@ -551,7 +640,13 @@ function in the same file. Key contention points:
 | call args / call_ref | 445, 446, 449 |
 | test262 runner / harness | 437 |
 | destructuring codegen | 420, 436 |
-| Symbol / iterator protocol | 456 |
+| Symbol / iterator protocol | 456, 481, 482, 483, 484, 485, 486, 487 |
 | collection imports (Map/Set/WeakMap) | 457, 458 |
 | Object.defineProperty | 459 |
 | Object.create | 460 |
+| test262 runner / skip filters | 491, 494, 500 |
+| delete operator codegen | 492 |
+| prototype filter | 493 |
+| property introspection | 488, 495 |
+| eval / dynamic execution | 496, 497 |
+| Proxy / metaprogramming | 498, 499 |

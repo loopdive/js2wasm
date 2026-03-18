@@ -170,6 +170,54 @@ _Latest run (2026-03-17): 17,606 unique tests — 5,735 pass (32.6%), 2,064 fail
 | [442](../ready/442.md) | RuntimeError: illegal cast | FAIL | 6 | Low |
 | [443](../ready/443.md) | Expected ReferenceError but succeeded | FAIL | 6 | Low |
 
+### Infrastructure (Tech Lead)
+
+| #   | Feature | Priority |
+| --- | ------- | -------- |
+| [501](../ready/501.md) | Complete test262 baseline run + pin results | Critical |
+| [502](../ready/502.md) | Quick wins: narrow stale skip filters (~1,160 tests) | Critical |
+| [503](../ready/503.md) | Runner safe-write: don't corrupt report on crash | High |
+
+### Skip feature unlocks — Symbol (1,846 tests)
+
+| #   | Feature | Tests | Priority |
+| --- | ------- | ----: | -------- |
+| [483](../ready/483.md) | Symbol() constructor — narrow skip filter | 207 | Medium |
+| [481](../ready/481.md) | Symbol.iterator as compile-time struct field | 1,327 | Critical |
+| [482](../ready/482.md) | Symbol.toPrimitive for type coercion | 113 | High |
+| [485](../ready/485.md) | Symbol.match/replace/search/split (RegExp) | 87 | Low |
+| [484](../ready/484.md) | Symbol.species for constructor delegation | 52 | Medium |
+| [486](../ready/486.md) | Symbol.toStringTag + hasInstance | 22 | Low |
+| [487](../ready/487.md) | User Symbol as property key (tagged struct) | 60 | Low |
+
+### Skip feature unlocks — Property & Function features (3,015 tests)
+
+| #   | Feature | Tests | Priority |
+| --- | ------- | ----: | -------- |
+| [488](../ready/488.md) | Property introspection (hasOwnProperty) | 1,617 | Critical |
+| [489](../ready/489.md) | General .call()/.apply() | 822 | Critical |
+| [490](../ready/490.md) | Function/class .name property | 576 | High |
+
+### Skip feature unlocks — Partial features (615 tests)
+
+| #   | Feature | Tests | Priority |
+| --- | ------- | ----: | -------- |
+| [492](../ready/492.md) | delete operator via undefined sentinel | 288 | Medium |
+| [493](../ready/493.md) | Narrow prototype chain filter | 233 | Medium |
+| [495](../ready/495.md) | Array-like objects with numeric keys | 77 | Low |
+| [491](../ready/491.md) | Remove stale null/undefined filter | 480 | Medium |
+| [494](../ready/494.md) | Remove stale skip filters | 194 | Medium |
+
+### Skip feature unlocks — "Impossible" features (1,139 tests)
+
+| #   | Feature | Tests | Priority |
+| --- | ------- | ----: | -------- |
+| [496](../ready/496.md) | eval/Function() via host compilation | 533 | Medium |
+| [497](../ready/497.md) | Dynamic import() via host loading | 442 | Medium |
+| [498](../ready/498.md) | Proxy via type-aware compilation + trap inlining | 70 | Medium |
+| [499](../ready/499.md) | with statement via static identifier dispatch | 94 | Low |
+| [500](../ready/500.md) | Remove cross-realm filter | 33 | Low |
+
 ### Prior round (done)
 
 | #   | Feature | Type | Count |
