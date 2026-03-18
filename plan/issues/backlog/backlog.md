@@ -169,7 +169,7 @@ _Fresh run (2026-03-18, #509): 23,021 tests -- 6,366 pass (27.7%), 4,367 fail, 9
 | [516](../ready/516.md) | struct.new argument count in class constructors | CE | 1,781 | High |
 | [517](../ready/517.md) | Unsupported call expr: class/generator/built-in methods | CE | 2,164 | High |
 | [518](../ready/518.md) | Cannot destructure non-array type | CE | 74 | Medium |
-| [519](../ready/519.md) | Internal error: targetLocal not defined | CE | 66 | High |
+| [519](../done/519.md) | Internal error: targetLocal not defined | CE | 66 | High | **done** |
 | [520](../ready/520.md) | Delete operator: operand must be optional | CE | 80 | Medium |
 | [521](../ready/521.md) | Yield keyword not recognized in nested contexts | CE | 53 | Medium |
 | [522](../ready/522.md) | Object.keys() requires struct type argument | CE | 43 | Medium |
