@@ -365,12 +365,8 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
     return { skip: true, reason: "propertyIsEnumerable not supported" };
   }
 
-  // Skip tests using Object.prototype.hasOwnProperty.call/apply pattern --
-  // our hasOwnProperty implementation (#341) handles obj.hasOwnProperty(key)
-  // directly but not the .call() indirection through the prototype.
-  if (/Object\.prototype\.hasOwnProperty\.(call|apply)/.test(source)) {
-    return { skip: true, reason: "Object.prototype.hasOwnProperty.call not supported" };
-  }
+  // Object.prototype.hasOwnProperty.call(obj, key) is now compiled inline
+  // as property introspection on the receiver (#476).
 
   // Skip tests using prototype chain manipulation (#343: narrowed from broad
   // ".prototype" filter to only match mutation/chain traversal patterns).
