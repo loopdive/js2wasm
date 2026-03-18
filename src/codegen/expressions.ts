@@ -5744,6 +5744,36 @@ function compilePropertyAssignment(
     }
   }
 
+  // Handle arr.length = N on typed arrays (vec struct field 0 = length)
+  if (target.name.text === "length") {
+    const arrInfo = resolveArrayInfo(ctx, objType);
+    if (arrInfo) {
+      const { vecTypeIdx } = arrInfo;
+      // Compile receiver (vec struct ref)
+      const structObjResult = compileExpression(ctx, fctx, target.expression);
+      if (!structObjResult) return null;
+      const vecTmp = allocLocal(fctx, `__arr_len_set_vec_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecTypeIdx });
+      fctx.body.push({ op: "local.set", index: vecTmp });
+      // Compile value (the new length)
+      const valType = compileExpression(ctx, fctx, value);
+      if (!valType) return null;
+      // Convert f64 to i32 if needed
+      const newLenTmp = allocLocal(fctx, `__arr_len_set_nl_${fctx.locals.length}`, { kind: "i32" });
+      if (valType.kind === "f64") {
+        fctx.body.push({ op: "i32.trunc_f64_s" as any });
+      }
+      fctx.body.push({ op: "local.set", index: newLenTmp });
+      // Set vec.length = newLen
+      fctx.body.push({ op: "local.get", index: vecTmp });
+      fctx.body.push({ op: "local.get", index: newLenTmp });
+      fctx.body.push({ op: "struct.set", typeIdx: vecTypeIdx, fieldIdx: 0 });
+      // Return the new length as the assignment expression result
+      fctx.body.push({ op: "local.get", index: newLenTmp });
+      if (!ctx.fast) fctx.body.push({ op: "f64.convert_i32_s" });
+      return ctx.fast ? { kind: "i32" } : { kind: "f64" };
+    }
+  }
+
   let typeName = resolveStructName(ctx, objType);
   // Fallback: check widened variable struct map for empty objects that got properties added later
   if (!typeName && ts.isIdentifier(target.expression)) {
