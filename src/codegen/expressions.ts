@@ -709,6 +709,7 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
             fctx.body.push({ op: "local.get", index: closureLocal });
             fctx.body.push({ op: "struct.get", typeIdx: closureTypeIdx, fieldIdx: 0 });
             fctx.body.push({ op: "ref.cast", typeIdx: closureInfo.funcTypeIdx });
+            fctx.body.push({ op: "ref.as_non_null" });
             fctx.body.push({ op: "call_ref", typeIdx: closureInfo.funcTypeIdx });
             // If valueOf returns void/null, result is NaN; if f64, keep it
             if (!closureInfo.returnType || closureInfo.returnType.kind === "i32") {
@@ -763,6 +764,7 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
                 { op: "local.get", index: closureLocal } as Instr,
                 { op: "struct.get", typeIdx: closureTypeIdx, fieldIdx: 0 } as Instr,
                 { op: "ref.cast", typeIdx: info.funcTypeIdx } as unknown as Instr,
+                { op: "ref.as_non_null" } as Instr,
                 { op: "call_ref", typeIdx: info.funcTypeIdx } as unknown as Instr,
               ];
               if (info.returnType?.kind === "i32") {
@@ -9061,6 +9063,7 @@ function compileClosureCall(
   pushClosureRef();
   fctx.body.push({ op: "struct.get", typeIdx: info.structTypeIdx, fieldIdx: 0 });
   fctx.body.push({ op: "ref.cast", typeIdx: info.funcTypeIdx });
+  fctx.body.push({ op: "ref.as_non_null" });
 
   // call_ref with the lifted function's type index
   fctx.body.push({ op: "call_ref", typeIdx: info.funcTypeIdx });
@@ -10638,6 +10641,7 @@ function compileCallExpression(
           fctx.body.push({ op: "ref.as_non_null" } as Instr);
           fctx.body.push({ op: "struct.get", typeIdx: matchedStructTypeIdx, fieldIdx: 0 });
           fctx.body.push({ op: "ref.cast", typeIdx: matchedClosureInfo.funcTypeIdx });
+          fctx.body.push({ op: "ref.as_non_null" });
           fctx.body.push({ op: "call_ref", typeIdx: matchedClosureInfo.funcTypeIdx });
 
           return matchedClosureInfo.returnType ?? VOID_RESULT;
@@ -11356,6 +11360,7 @@ function compileCallExpression(
         fctx.body.push({ op: "ref.as_non_null" } as Instr);
         fctx.body.push({ op: "struct.get", typeIdx: matchedStructTypeIdx, fieldIdx: 0 });
         fctx.body.push({ op: "ref.cast", typeIdx: matchedClosureInfo.funcTypeIdx });
+        fctx.body.push({ op: "ref.as_non_null" });
 
         // call_ref with the lifted function's type index
         fctx.body.push({ op: "call_ref", typeIdx: matchedClosureInfo.funcTypeIdx });
@@ -11452,6 +11457,7 @@ function compileCallExpression(
         fctx.body.push({ op: "ref.as_non_null" } as Instr);
         fctx.body.push({ op: "struct.get", typeIdx: matchedStructTypeIdx, fieldIdx: 0 });
         fctx.body.push({ op: "ref.cast", typeIdx: matchedClosureInfo.funcTypeIdx });
+        fctx.body.push({ op: "ref.as_non_null" });
         fctx.body.push({ op: "call_ref", typeIdx: matchedClosureInfo.funcTypeIdx });
 
         return matchedClosureInfo.returnType ?? VOID_RESULT;
@@ -14301,6 +14307,7 @@ function compileOptionalDirectCall(
     fctx.body.push({ op: "local.get", index: closureTmp });
     fctx.body.push({ op: "struct.get", typeIdx: closureStructTypeIdx, fieldIdx: 0 });
     fctx.body.push({ op: "ref.cast", typeIdx: closureInfo.funcTypeIdx });
+    fctx.body.push({ op: "ref.as_non_null" });
 
     // call_ref with the lifted function's type index
     fctx.body.push({ op: "call_ref", typeIdx: closureInfo.funcTypeIdx });
@@ -17337,6 +17344,7 @@ function compileTaggedTemplateExpression(
       fctx.body.push({ op: "local.get", index: localIdx });
       fctx.body.push({ op: "struct.get", typeIdx: closureInfo.structTypeIdx, fieldIdx: 0 });
       fctx.body.push({ op: "ref.cast", typeIdx: closureInfo.funcTypeIdx });
+      fctx.body.push({ op: "ref.as_non_null" });
       fctx.body.push({ op: "call_ref", typeIdx: closureInfo.funcTypeIdx });
 
       return closureInfo.returnType ?? VOID_RESULT;
@@ -17507,6 +17515,7 @@ function compileTaggedTemplateExpression(
       fctx.body.push({ op: "ref.as_non_null" } as Instr);
       fctx.body.push({ op: "struct.get", typeIdx: matchedStructTypeIdx, fieldIdx: 0 });
       fctx.body.push({ op: "ref.cast", typeIdx: matchedClosureInfo.funcTypeIdx });
+      fctx.body.push({ op: "ref.as_non_null" });
       fctx.body.push({ op: "call_ref", typeIdx: matchedClosureInfo.funcTypeIdx });
 
       return matchedClosureInfo.returnType ?? VOID_RESULT;
@@ -17543,6 +17552,7 @@ function compileTaggedTemplateExpression(
           fctx.body.push({ op: "local.get", index: closureLocal });
           fctx.body.push({ op: "struct.get", typeIdx: closureInfo.structTypeIdx, fieldIdx: 0 });
           fctx.body.push({ op: "ref.cast", typeIdx: closureInfo.funcTypeIdx });
+          fctx.body.push({ op: "ref.as_non_null" });
           fctx.body.push({ op: "call_ref", typeIdx: closureInfo.funcTypeIdx });
 
           return closureInfo.returnType ?? VOID_RESULT;
@@ -18760,6 +18770,7 @@ function compileArrayPrototypeEvery(
     { op: "local.get", index: closureTmp },
     { op: "struct.get", typeIdx: closureTypeIdx, fieldIdx: 0 } as Instr,
     { op: "ref.cast", typeIdx: closureInfo.funcTypeIdx } as Instr,
+    { op: "ref.as_non_null" } as Instr,
     { op: "call_ref", typeIdx: closureInfo.funcTypeIdx } as Instr,
 
     // Check if result is falsy (0 for i32, 0.0 for f64)
@@ -18862,6 +18873,7 @@ function compileArrayPrototypeSome(
     { op: "local.get", index: closureTmp },
     { op: "struct.get", typeIdx: closureTypeIdx, fieldIdx: 0 } as Instr,
     { op: "ref.cast", typeIdx: closureInfo.funcTypeIdx } as Instr,
+    { op: "ref.as_non_null" } as Instr,
     { op: "call_ref", typeIdx: closureInfo.funcTypeIdx } as Instr,
     ...(closureInfo.returnType?.kind === "f64"
       ? [{ op: "f64.const", value: 0 } as Instr, { op: "f64.ne" } as Instr]
@@ -18961,6 +18973,7 @@ function compileArrayPrototypeForEach(
     { op: "local.get", index: closureTmp },
     { op: "struct.get", typeIdx: closureTypeIdx, fieldIdx: 0 } as Instr,
     { op: "ref.cast", typeIdx: closureInfo.funcTypeIdx } as Instr,
+    { op: "ref.as_non_null" } as Instr,
     { op: "call_ref", typeIdx: closureInfo.funcTypeIdx } as Instr,
     // Drop the result if there is one
     ...(closureInfo.returnType ? [{ op: "drop" } as Instr] : []),
@@ -20416,6 +20429,7 @@ function compileArrayFilter(
       { op: "local.get", index: closureTmp } as Instr,
       { op: "struct.get", typeIdx: closureTypeIdx, fieldIdx: 0 } as Instr,
       { op: "ref.cast", typeIdx: closureInfo.funcTypeIdx } as Instr,
+      { op: "ref.as_non_null" } as Instr,
       { op: "call_ref", typeIdx: closureInfo.funcTypeIdx } as Instr,
     ];
     // Check truthiness based on return type
@@ -20624,6 +20638,7 @@ function compileArrayMap(
       { op: "local.get", index: closureTmp2 } as Instr,
       { op: "struct.get", typeIdx: closureTypeIdx2, fieldIdx: 0 } as Instr,
       { op: "ref.cast", typeIdx: closureInfo.funcTypeIdx } as Instr,
+      { op: "ref.as_non_null" } as Instr,
       { op: "call_ref", typeIdx: closureInfo.funcTypeIdx } as Instr,
     ];
   } else {
@@ -20790,6 +20805,7 @@ function compileArrayReduce(
       { op: "local.get", index: closureTmp2 } as Instr,
       { op: "struct.get", typeIdx: closureTypeIdx2, fieldIdx: 0 } as Instr,
       { op: "ref.cast", typeIdx: closureInfo.funcTypeIdx } as Instr,
+      { op: "ref.as_non_null" } as Instr,
       { op: "call_ref", typeIdx: closureInfo.funcTypeIdx } as Instr,
       { op: "local.set", index: accTmp } as Instr,
     ];
@@ -20915,6 +20931,7 @@ function compileArrayForEach(
         { op: "local.get", index: closureTmp },
         { op: "struct.get", typeIdx: closureTypeIdx, fieldIdx: 0 } as Instr,
         { op: "ref.cast", typeIdx: closureInfo.funcTypeIdx } as Instr,
+        { op: "ref.as_non_null" } as Instr,
         { op: "call_ref", typeIdx: closureInfo.funcTypeIdx } as Instr,
         // Drop result if callback returns something
         ...(closureInfo.returnType ? [{ op: "drop" } as Instr] : []),
@@ -21094,6 +21111,7 @@ function compileArrayFind(
       { op: "local.get", index: closureTmp2 } as Instr,
       { op: "struct.get", typeIdx: closureTypeIdx2, fieldIdx: 0 } as Instr,
       { op: "ref.cast", typeIdx: closureInfo.funcTypeIdx } as Instr,
+      { op: "ref.as_non_null" } as Instr,
       { op: "call_ref", typeIdx: closureInfo.funcTypeIdx } as Instr,
       ...(closureInfo.returnType?.kind === "f64"
         ? [{ op: "f64.const", value: 0 } as Instr, { op: "f64.ne" } as Instr]
@@ -21253,6 +21271,7 @@ function compileArrayFindIndex(
       { op: "local.get", index: closureTmp2 } as Instr,
       { op: "struct.get", typeIdx: closureTypeIdx2, fieldIdx: 0 } as Instr,
       { op: "ref.cast", typeIdx: closureInfo.funcTypeIdx } as Instr,
+      { op: "ref.as_non_null" } as Instr,
       { op: "call_ref", typeIdx: closureInfo.funcTypeIdx } as Instr,
       ...(closureInfo.returnType?.kind === "f64"
         ? [{ op: "f64.const", value: 0 } as Instr, { op: "f64.ne" } as Instr]
@@ -21406,6 +21425,7 @@ function compileArraySome(
       { op: "local.get", index: closureTmp2 } as Instr,
       { op: "struct.get", typeIdx: closureTypeIdx2, fieldIdx: 0 } as Instr,
       { op: "ref.cast", typeIdx: closureInfo.funcTypeIdx } as Instr,
+      { op: "ref.as_non_null" } as Instr,
       { op: "call_ref", typeIdx: closureInfo.funcTypeIdx } as Instr,
       ...(closureInfo.returnType?.kind === "f64"
         ? [{ op: "f64.const", value: 0 } as Instr, { op: "f64.ne" } as Instr]
@@ -21552,6 +21572,7 @@ function compileArrayEvery(
       { op: "local.get", index: closureTmp2 } as Instr,
       { op: "struct.get", typeIdx: closureTypeIdx2, fieldIdx: 0 } as Instr,
       { op: "ref.cast", typeIdx: closureInfo.funcTypeIdx } as Instr,
+      { op: "ref.as_non_null" } as Instr,
       { op: "call_ref", typeIdx: closureInfo.funcTypeIdx } as Instr,
       // Check if result is falsy
       ...(closureInfo.returnType?.kind === "f64"
