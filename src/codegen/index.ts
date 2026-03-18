@@ -297,6 +297,8 @@ export interface FunctionContext {
   savedBodies: Instr[][];
   /** Enclosing class name — propagated to closures for super keyword resolution */
   enclosingClassName?: string;
+  /** Set of variable names known to be non-null in the current scope (type narrowing) */
+  narrowedNonNull?: Set<string>;
 }
 
 /**

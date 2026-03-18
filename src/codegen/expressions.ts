@@ -2394,6 +2394,13 @@ function compileIdentifier(
       if (narrowed) return narrowed;
     }
 
+    // Null narrowing: if this variable is known non-null (e.g. inside `if (x !== null)`),
+    // emit ref.as_non_null and return ref instead of ref_null to skip downstream null guards.
+    if (declaredType.kind === "ref_null" && fctx.narrowedNonNull?.has(name)) {
+      fctx.body.push({ op: "ref.as_non_null" } as unknown as Instr);
+      return { kind: "ref", typeIdx: (declaredType as any).typeIdx };
+    }
+
     return declaredType;
   }
 
@@ -2404,7 +2411,7 @@ function compileIdentifier(
     const globalDef = ctx.mod.globals[localGlobalIdx(ctx, capturedIdx)];
     const gType = globalDef?.type ?? { kind: "f64" };
     // Globals widened from ref to ref_null for null init — narrow back
-    if (gType.kind === "ref_null" && ctx.capturedGlobalsWidened.has(name)) {
+    if (gType.kind === "ref_null" && (ctx.capturedGlobalsWidened.has(name) || fctx.narrowedNonNull?.has(name))) {
       fctx.body.push({ op: "ref.as_non_null" });
       return { kind: "ref", typeIdx: gType.typeIdx };
     }
@@ -2416,7 +2423,13 @@ function compileIdentifier(
   if (moduleIdx !== undefined) {
     fctx.body.push({ op: "global.get", index: moduleIdx });
     const globalDef = ctx.mod.globals[localGlobalIdx(ctx, moduleIdx)];
-    return globalDef?.type ?? { kind: "f64" };
+    const mType = globalDef?.type ?? { kind: "f64" };
+    // Null narrowing for module globals
+    if (mType.kind === "ref_null" && fctx.narrowedNonNull?.has(name)) {
+      fctx.body.push({ op: "ref.as_non_null" } as unknown as Instr);
+      return { kind: "ref", typeIdx: (mType as any).typeIdx };
+    }
+    return mType;
   }
 
   // Check declared globals (e.g. document, window)
