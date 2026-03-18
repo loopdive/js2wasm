@@ -18,7 +18,8 @@ import { execSync, fork } from "child_process";
 
 /** Persistent worker pool — keeps N workers alive, sends jobs, kills on timeout */
 const POOL_SIZE = 2;
-const workerPath = join(import.meta.dirname ?? ".", "test262-worker.ts");
+// Use absolute path to avoid worktree resolution issues
+const workerPath = join(process.cwd(), "scripts", "test262-worker.ts");
 type WorkerSlot = { proc: ReturnType<typeof fork>; busy: boolean; ready: boolean };
 const pool: WorkerSlot[] = [];
 
