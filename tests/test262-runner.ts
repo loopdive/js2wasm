@@ -217,8 +217,9 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
   }
 
 
-  // Skip tests that use with statement — strip metadata block and comments first
-  // so we don't false-positive on "with" appearing in descriptions or comments.
+  // Skip tests that use with statement (84 tests, wont-fix #499 — requires dynamic
+  // scope resolution with Reference semantics, incompatible with static compilation).
+  // Strip metadata block, comments, and string literals to avoid false positives.
   {
     const bodyForWith = source
       .replace(/\/\*---[\s\S]*?---\*\//, "")  // strip YAML metadata

@@ -294,6 +294,7 @@ _Details: [sprint.md](../ready/sprint.md)_
 | [124](./124.md) | delete operator                                    | Fixed struct fields       |
 | [125](./125.md) | Object.defineProperty / property descriptors       | Runtime metaprogramming   |
 | [129](./129.md) | propertyHelper.js harness                          | Depends on #125           |
+| [499](../wont-fix/499.md) | with statement (84 tests)                    | Dynamic scope resolution  |
 
 
 
