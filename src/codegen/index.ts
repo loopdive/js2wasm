@@ -249,6 +249,20 @@ export interface CodegenContext {
   funcRefWrapperCache: Map<string, ClosureInfo>;
   /** Pending module-init body (not yet in mod.functions) that needs global index fixup */
   pendingInitBody: Instr[] | null;
+  /** Map from function name to inlinable function info (small functions eligible for call-site inlining) */
+  inlinableFunctions: Map<string, InlinableFunctionInfo>;
+}
+
+/** Metadata for a function eligible for call-site inlining */
+export interface InlinableFunctionInfo {
+  /** The compiled body instructions (shallow copy, safe to re-emit) */
+  body: Instr[];
+  /** Number of parameters */
+  paramCount: number;
+  /** Parameter types (for allocating temp locals) */
+  paramTypes: ValType[];
+  /** Return type (null = void) */
+  returnType: ValType | null;
 }
 
 /** Metadata for a closure stored in a local variable */
@@ -429,6 +443,7 @@ export function generateModule(
     wrapperBooleanTypeIdx: -1,
     funcRefWrapperCache: new Map(),
     pendingInitBody: null,
+    inlinableFunctions: new Map(),
   };
 
   // Register native string types if fast mode
@@ -651,6 +666,7 @@ export function generateMultiModule(
     wrapperBooleanTypeIdx: -1,
     funcRefWrapperCache: new Map(),
     pendingInitBody: null,
+    inlinableFunctions: new Map(),
   };
 
   // Register native string types if fast mode
@@ -9212,6 +9228,7 @@ function compileDeclarations(
           const func = ctx.mod.functions[idx]!;
           try {
             compileFunctionBody(ctx, stmt, func);
+            registerInlinableFunction(ctx, stmt.name.text, func);
           } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
             reportError(ctx, stmt, `Internal error compiling function '${stmt.name.text}': ${msg}`);
@@ -10217,6 +10234,70 @@ function bodyUsesArguments(node: ts.Node): boolean {
   return ts.forEachChild(node, bodyUsesArguments) ?? false;
 }
 
+
+/** Maximum number of instructions for a function body to be considered inlinable */
+const INLINE_MAX_INSTRS = 10;
+
+/** Set of instruction ops that disqualify a function body from inlining */
+const INLINE_DISALLOWED_OPS = new Set([
+  "block", "loop", "if", "br", "br_if", "return",
+  "try", "throw", "rethrow", "unreachable",
+  "call", "call_ref", "call_indirect",
+  "local.set", "local.tee",
+]);
+
+/**
+ * After compiling a function, check if it is eligible for call-site inlining.
+ * Criteria:
+ * - Body has <= INLINE_MAX_INSTRS instructions
+ * - No control flow, calls, or local mutations
+ * - No extra locals beyond parameters
+ * - Not a rest-param or capture function
+ */
+function registerInlinableFunction(
+  ctx: CodegenContext,
+  funcName: string,
+  func: WasmFunction,
+): void {
+  // Skip functions with rest params or captures
+  if (ctx.funcRestParams.has(funcName)) return;
+  if (ctx.nestedFuncCaptures.has(funcName)) return;
+
+  const body = func.body;
+  if (body.length === 0 || body.length > INLINE_MAX_INSTRS) return;
+
+  // Filter out nop instructions (source position markers)
+  const realBody = body.filter(instr => instr.op !== "nop");
+  if (realBody.length === 0 || realBody.length > INLINE_MAX_INSTRS) return;
+
+  // Get param count from type definition
+  const funcType = ctx.mod.types[func.typeIdx];
+  if (!funcType || funcType.kind !== "func") return;
+  const paramCount = funcType.params.length;
+
+  // No extra locals beyond params
+  if (func.locals.length > 0) return;
+
+  // Check all instructions are safe to inline
+  for (const instr of realBody) {
+    if (INLINE_DISALLOWED_OPS.has(instr.op)) return;
+
+    // local.get must reference params only (index < paramCount)
+    if (instr.op === "local.get") {
+      if ((instr as any).index >= paramCount) return;
+    }
+  }
+
+  // Determine return type from function type
+  const returnType = funcType.results.length > 0 ? funcType.results[0]! : null;
+
+  ctx.inlinableFunctions.set(funcName, {
+    body: realBody,
+    paramCount,
+    paramTypes: funcType.params.slice(),
+    returnType,
+  });
+}
 function compileFunctionBody(
   ctx: CodegenContext,
   decl: ts.FunctionDeclaration,
