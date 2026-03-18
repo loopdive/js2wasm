@@ -68,24 +68,33 @@ async function compileToWasm(source: string) {
   return instance.exports as Record<string, Function>;
 }
 
-// The parser uses the Scanner class (proven in scanner tests) plus
-// standalone functions for recursive-descent parsing and AST evaluation.
+// Expression parser compiled to WebAssembly.
 //
-// Design constraints (compiler workarounds):
-// - No class with a number[] field (causes type-index forward-reference bug)
-// - No class with a class-typed field (causes non-nullable ref in struct.new)
-// - Use global Scanner + state variables instead of a Parser class
-// - Use a global number[] for AST node storage (flat encoding)
+// Architecture:
+// - Scanner class handles lexing (reused from ts-scanner-test)
+// - AST nodes stored in a global flat number[] array (5 slots per node)
+// - Parser state uses global Scanner instance + fields on Scanner class
+// - Recursive descent with operator precedence (* / before + -)
 //
-// AST encoding: each node is 5 consecutive slots in the nodes[] array:
-//   [base+0] = kind (1=NumberLiteral, 2=BinaryExpr, 3=UnaryExpr, 4=ParenExpr)
+// Each AST node occupies 5 consecutive slots in the nodes[] array:
+//   [base+0] = kind (enum NodeKind)
 //   [base+1] = value (for NumberLiteral)
-//   [base+2] = op (TokenKind for Binary/Unary)
-//   [base+3] = left child index (Binary) or inner (Paren)
-//   [base+4] = right child index (Binary/Unary)
+//   [base+2] = op (TokenKind for Binary/Unary operators)
+//   [base+3] = left child base index (Binary) or inner (Paren)
+//   [base+4] = right child base index (Binary/Unary)
 //
-// Tests: recursive descent, operator precedence, enum-based dispatch,
-//        class methods, global mutable state, array indexing with expressions.
+// Tests: classes with methods, recursive descent, enum-based dispatch,
+//        nullable AST node references (via integer IDs), operator precedence.
+//
+// Compiler workarounds applied:
+// - Only ONE class (Scanner) to avoid type-index forward-reference bugs
+//   that occur when multiple classes with array fields or cross-class refs
+//   are compiled together
+// - Global number[] for AST storage (not wrapped in a class)
+// - Parser state stored as fields on Scanner class (avoids a second class
+//   with a Scanner-typed field, which triggers non-nullable ref bugs)
+// - All mutable accumulation uses class fields or while loops (sequential
+//   local variable reassignment is broken by incorrect constant folding)
 const fullSource = `
   enum TokenKind {
     EOF = 0,
@@ -110,11 +119,16 @@ const fullSource = `
     source: string;
     pos: number;
     len: number;
+    // Parser state stored directly in Scanner to avoid needing a second class
+    currentToken: number;
+    tokenStart: number;
 
     constructor(source: string) {
       this.source = source;
       this.pos = 0;
       this.len = source.length;
+      this.currentToken = TokenKind.EOF;
+      this.tokenStart = 0;
     }
 
     isDigit(ch: number): number {
@@ -165,9 +179,19 @@ const fullSource = `
       }
       return result;
     }
+
+    // Advance to next non-whitespace token, storing it in class fields
+    advance(): void {
+      this.tokenStart = this.pos;
+      this.currentToken = this.scan();
+      while (this.currentToken === TokenKind.Whitespace) {
+        this.tokenStart = this.pos;
+        this.currentToken = this.scan();
+      }
+    }
   }
 
-  // ---- AST node pool (global flat array) ----
+  // ---- AST node pool (global flat array, no class wrapper) ----
   let nodes: number[] = [];
   let nextSlot: number = 0;
 
@@ -237,47 +261,29 @@ const fullSource = `
     return 0;
   }
 
-  // ---- Parser state (globals instead of class to avoid struct ref issues) ----
-  let pScanner: Scanner = new Scanner("");
-  let pCurrentToken: number = 0;
-  let pTokenStart: number = 0;
+  // ---- Global parser state ----
+  let sc: Scanner = new Scanner("");
 
-  function parserInit(input: string): void {
-    nodes = [];
-    nextSlot = 0;
-    pScanner = new Scanner(input);
-    pCurrentToken = TokenKind.EOF;
-    pTokenStart = 0;
-    parserAdvance();
-  }
-
-  function parserAdvance(): void {
-    pTokenStart = pScanner.pos;
-    pCurrentToken = pScanner.scan();
-    while (pCurrentToken === TokenKind.Whitespace) {
-      pTokenStart = pScanner.pos;
-      pCurrentToken = pScanner.scan();
-    }
-  }
-
-  // Recursive descent: expr = term (('+' | '-') term)*
-  //                     term = factor (('*' | '/') factor)*
-  //                     factor = NUMBER | '(' expr ')' | ('-' factor)
+  // Recursive descent parser.
+  // Grammar:
+  //   expr   = term (('+' | '-') term)*
+  //   term   = factor (('*' | '/') factor)*
+  //   factor = NUMBER | '(' expr ')' | '-' factor
 
   function parseFactor(): number {
-    if (pCurrentToken === TokenKind.Number) {
-      let val: number = pScanner.getNumber(pTokenStart);
-      parserAdvance();
+    if (sc.currentToken === TokenKind.Number) {
+      let val: number = sc.getNumber(sc.tokenStart);
+      sc.advance();
       return makeNumber(val);
     }
-    if (pCurrentToken === TokenKind.LParen) {
-      parserAdvance();
+    if (sc.currentToken === TokenKind.LParen) {
+      sc.advance();
       let inner: number = parseExpr();
-      parserAdvance(); // skip ')'
+      sc.advance(); // skip ')'
       return makeParen(inner);
     }
-    if (pCurrentToken === TokenKind.Minus) {
-      parserAdvance();
+    if (sc.currentToken === TokenKind.Minus) {
+      sc.advance();
       let operand: number = parseFactor();
       return makeUnary(TokenKind.Minus, operand);
     }
@@ -286,9 +292,9 @@ const fullSource = `
 
   function parseTerm(): number {
     let left: number = parseFactor();
-    while (pCurrentToken === TokenKind.Star || pCurrentToken === TokenKind.Slash) {
-      let op: number = pCurrentToken;
-      parserAdvance();
+    while (sc.currentToken === TokenKind.Star || sc.currentToken === TokenKind.Slash) {
+      let op: number = sc.currentToken;
+      sc.advance();
       let right: number = parseFactor();
       left = makeBinary(op, left, right);
     }
@@ -297,9 +303,9 @@ const fullSource = `
 
   function parseExpr(): number {
     let left: number = parseTerm();
-    while (pCurrentToken === TokenKind.Plus || pCurrentToken === TokenKind.Minus) {
-      let op: number = pCurrentToken;
-      parserAdvance();
+    while (sc.currentToken === TokenKind.Plus || sc.currentToken === TokenKind.Minus) {
+      let op: number = sc.currentToken;
+      sc.advance();
       let right: number = parseTerm();
       left = makeBinary(op, left, right);
     }
@@ -307,7 +313,10 @@ const fullSource = `
   }
 
   function parse(input: string): number {
-    parserInit(input);
+    nodes = [];
+    nextSlot = 0;
+    sc = new Scanner(input);
+    sc.advance();
     return parseExpr();
   }
 `;
@@ -323,7 +332,7 @@ describe("TS Parser (expression parser compiled to Wasm)", () => {
     ).toBe(true);
   });
 
-  it("parses and evaluates a single number", async () => {
+  it("parses and evaluates a single number: 42", async () => {
     const exports = await compileToWasm(fullSource + `
       export function test(): number {
         let ast: number = parse("42");
@@ -333,7 +342,7 @@ describe("TS Parser (expression parser compiled to Wasm)", () => {
     expect(exports.test()).toBe(42);
   });
 
-  it("parses and evaluates simple addition: 3 + 4", async () => {
+  it("parses and evaluates simple addition: 3+4 = 7", async () => {
     const exports = await compileToWasm(fullSource + `
       export function test(): number {
         let ast: number = parse("3+4");
@@ -343,7 +352,7 @@ describe("TS Parser (expression parser compiled to Wasm)", () => {
     expect(exports.test()).toBe(7);
   });
 
-  it("parses and evaluates simple subtraction: 10 - 3", async () => {
+  it("parses and evaluates simple subtraction: 10-3 = 7", async () => {
     const exports = await compileToWasm(fullSource + `
       export function test(): number {
         let ast: number = parse("10-3");
@@ -353,7 +362,7 @@ describe("TS Parser (expression parser compiled to Wasm)", () => {
     expect(exports.test()).toBe(7);
   });
 
-  it("parses and evaluates multiplication: 6 * 7", async () => {
+  it("parses and evaluates multiplication: 6*7 = 42", async () => {
     const exports = await compileToWasm(fullSource + `
       export function test(): number {
         let ast: number = parse("6*7");
@@ -363,7 +372,7 @@ describe("TS Parser (expression parser compiled to Wasm)", () => {
     expect(exports.test()).toBe(42);
   });
 
-  it("parses and evaluates division: 20 / 4", async () => {
+  it("parses and evaluates division: 20/4 = 5", async () => {
     const exports = await compileToWasm(fullSource + `
       export function test(): number {
         let ast: number = parse("20/4");
@@ -373,7 +382,7 @@ describe("TS Parser (expression parser compiled to Wasm)", () => {
     expect(exports.test()).toBe(5);
   });
 
-  it("respects operator precedence: 1 + 2 * 3 = 7 (not 9)", async () => {
+  it("respects operator precedence: 1+2*3 = 7 (not 9)", async () => {
     const exports = await compileToWasm(fullSource + `
       export function test(): number {
         let ast: number = parse("1+2*3");
@@ -384,7 +393,7 @@ describe("TS Parser (expression parser compiled to Wasm)", () => {
     expect(exports.test()).toBe(7);
   });
 
-  it("respects precedence: 2 * 3 + 4 = 10", async () => {
+  it("respects precedence: 2*3+4 = 10", async () => {
     const exports = await compileToWasm(fullSource + `
       export function test(): number {
         let ast: number = parse("2*3+4");
@@ -394,7 +403,7 @@ describe("TS Parser (expression parser compiled to Wasm)", () => {
     expect(exports.test()).toBe(10);
   });
 
-  it("handles parentheses overriding precedence: (1 + 2) * 3 = 9", async () => {
+  it("handles parentheses overriding precedence: (1+2)*3 = 9", async () => {
     const exports = await compileToWasm(fullSource + `
       export function test(): number {
         let ast: number = parse("(1+2)*3");
@@ -404,7 +413,7 @@ describe("TS Parser (expression parser compiled to Wasm)", () => {
     expect(exports.test()).toBe(9);
   });
 
-  it("handles nested parentheses: ((5))", async () => {
+  it("handles nested parentheses: ((5)) = 5", async () => {
     const exports = await compileToWasm(fullSource + `
       export function test(): number {
         let ast: number = parse("((5))");
@@ -414,7 +423,7 @@ describe("TS Parser (expression parser compiled to Wasm)", () => {
     expect(exports.test()).toBe(5);
   });
 
-  it("handles subtraction yielding negative: 0 - 7", async () => {
+  it("handles subtraction yielding negative: 0-7 = -7", async () => {
     const exports = await compileToWasm(fullSource + `
       export function test(): number {
         let ast: number = parse("0-7");
@@ -424,7 +433,7 @@ describe("TS Parser (expression parser compiled to Wasm)", () => {
     expect(exports.test()).toBe(-7);
   });
 
-  it("handles whitespace in expressions: 1 + 2 * 3", async () => {
+  it("handles whitespace in expressions: 1 + 2 * 3 = 7", async () => {
     const exports = await compileToWasm(fullSource + `
       export function test(): number {
         let ast: number = parse("1 + 2 * 3");
@@ -434,7 +443,7 @@ describe("TS Parser (expression parser compiled to Wasm)", () => {
     expect(exports.test()).toBe(7);
   });
 
-  it("builds correct AST structure: checks node kind", async () => {
+  it("builds correct AST structure for 1+2: BinaryExpr with two NumberLiterals", async () => {
     const exports = await compileToWasm(fullSource + `
       export function testRootKind(): number {
         let ast: number = parse("1+2");
@@ -458,7 +467,7 @@ describe("TS Parser (expression parser compiled to Wasm)", () => {
     expect(exports.testRightKind()).toBe(1);
   });
 
-  it("builds correct AST for 1+2*3: right child is BinaryExpr", async () => {
+  it("builds correct AST for 1+2*3: right child is BinaryExpr(Star)", async () => {
     const exports = await compileToWasm(fullSource + `
       export function testRootOp(): number {
         let ast: number = parse("1+2*3");
@@ -475,15 +484,15 @@ describe("TS Parser (expression parser compiled to Wasm)", () => {
         return nodes[rightId + 2];
       }
     `);
-    // Root op should be Plus (2)
+    // Root op should be Plus (TokenKind.Plus = 2)
     expect(exports.testRootOp()).toBe(2);
-    // Right child should be BinaryExpr (2)
+    // Right child should be BinaryExpr (NodeKind.BinaryExpr = 2)
     expect(exports.testRightKind()).toBe(2);
-    // Right child op should be Star (4)
+    // Right child op should be Star (TokenKind.Star = 4)
     expect(exports.testRightOp()).toBe(4);
   });
 
-  it("complex expression: (10 + 20) * 3 - 4 = 86", async () => {
+  it("complex expression: (10+20)*3-4 = 86", async () => {
     const exports = await compileToWasm(fullSource + `
       export function test(): number {
         let ast: number = parse("(10+20)*3-4");
@@ -494,7 +503,7 @@ describe("TS Parser (expression parser compiled to Wasm)", () => {
     expect(exports.test()).toBe(86);
   });
 
-  it("chained operations: 2+3+4+5 = 14", async () => {
+  it("chained addition: 2+3+4+5 = 14", async () => {
     const exports = await compileToWasm(fullSource + `
       export function test(): number {
         let ast: number = parse("2+3+4+5");
@@ -515,13 +524,13 @@ describe("TS Parser (expression parser compiled to Wasm)", () => {
     expect(exports.test()).toBe(11);
   });
 
-  it("unary minus: -5 + 3 = -2", async () => {
+  it("subtraction chain: 100-30-20 = 50", async () => {
     const exports = await compileToWasm(fullSource + `
       export function test(): number {
-        let ast: number = parse("0-5+3");
+        let ast: number = parse("100-30-20");
         return evaluate(ast);
       }
     `);
-    expect(exports.test()).toBe(-2);
+    expect(exports.test()).toBe(50);
   });
 });
