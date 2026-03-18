@@ -3344,6 +3344,12 @@ function compileBinaryExpression(
         fctx.body.push({ op: "i32.const", value: isStrictEqOp ? (sameKind ? 1 : 0) : (sameKind ? 0 : 1) });
         return { kind: "i32" };
       }
+      // For ref/ref_null struct types, use ref.is_null to check nullability
+      if (valType.kind === "ref" || valType.kind === "ref_null") {
+        fctx.body.push({ op: "ref.is_null" } as unknown as Instr);
+        if (isNeqOp) fctx.body.push({ op: "i32.eqz" });
+        return { kind: "i32" };
+      }
       // For other non-externref types (number, boolean), always not-equal to null/undefined
       fctx.body.push({ op: "drop" });
       fctx.body.push({ op: "i32.const", value: isNeqOp ? 1 : 0 });
