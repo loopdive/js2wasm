@@ -1373,6 +1373,16 @@ function verifyConfigurable(a: number, b: number): void {}`;
 
 function verifyNotConfigurable(a: number, b: number): void {}`;
     }
+    if (/\bverifyEqualTo\b/.test(body)) {
+      preamble += `
+
+function verifyEqualTo(a: number, b: number, c: number): void {}`;
+    }
+    if (/\bverifyNotEqualTo\b/.test(body)) {
+      preamble += `
+
+function verifyNotEqualTo(a: number, b: number, c: number): void {}`;
+    }
   }
 
   // fnGlobalObject.js — returns a reference to the global object.
