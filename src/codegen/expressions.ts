@@ -3591,6 +3591,15 @@ function compileBinaryExpression(
     if (flatResult !== null) return flatResult;
   }
 
+  // ── Constant folding: emit a single constant when both operands are compile-time known ──
+  {
+    const folded = tryStaticToNumber(ctx, expr);
+    if (folded !== undefined) {
+      fctx.body.push({ op: "f64.const", value: folded });
+      return { kind: "f64" };
+    }
+  }
+
   // Regular binary ops: evaluate both sides
   const leftTsType = ctx.checker.getTypeAtLocation(expr.left);
   const rightTsType = ctx.checker.getTypeAtLocation(expr.right);
@@ -22199,13 +22208,46 @@ function tryStaticToNumber(ctx: CodegenContext, expr: ts.Expression): number | u
     const inner = tryStaticToNumber(ctx, expr.operand);
     if (inner !== undefined) return -inner;
   }
-  // 0/0 → NaN
-  if (
-    ts.isBinaryExpression(expr) &&
-    expr.operatorToken.kind === ts.SyntaxKind.SlashToken &&
-    ts.isNumericLiteral(expr.left) && Number(expr.left.text) === 0 &&
-    ts.isNumericLiteral(expr.right) && Number(expr.right.text) === 0
-  ) return NaN;
+  // Binary expressions: fold constant operands at compile time
+  if (ts.isBinaryExpression(expr)) {
+    const left = tryStaticToNumber(ctx, expr.left);
+    const right = tryStaticToNumber(ctx, expr.right);
+    if (left !== undefined && right !== undefined) {
+      switch (expr.operatorToken.kind) {
+        case ts.SyntaxKind.PlusToken: return left + right;
+        case ts.SyntaxKind.MinusToken: return left - right;
+        case ts.SyntaxKind.AsteriskToken: return left * right;
+        case ts.SyntaxKind.SlashToken: return left / right;
+        case ts.SyntaxKind.PercentToken: return left % right;
+        case ts.SyntaxKind.AsteriskAsteriskToken: return left ** right;
+        case ts.SyntaxKind.AmpersandToken: return left & right;
+        case ts.SyntaxKind.BarToken: return left | right;
+        case ts.SyntaxKind.CaretToken: return left ^ right;
+        case ts.SyntaxKind.LessThanLessThanToken: return left << right;
+        case ts.SyntaxKind.GreaterThanGreaterThanToken: return left >> right;
+        case ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken: return left >>> right;
+        default: break; // non-numeric binary op, fall through
+      }
+    }
+  }
+  // Property access on string literals: "hello".length → 5
+  if (ts.isPropertyAccessExpression(expr) && expr.name.text === "length") {
+    const obj = expr.expression;
+    if (ts.isStringLiteral(obj) || ts.isNoSubstitutionTemplateLiteral(obj)) {
+      return obj.text.length;
+    }
+    // Also resolve through const variables: const s = "hello"; s.length → 5
+    if (ts.isIdentifier(obj)) {
+      const sym = ctx.checker.getSymbolAtLocation(obj);
+      const decl = sym?.valueDeclaration;
+      if (decl && ts.isVariableDeclaration(decl) && decl.initializer) {
+        const init = decl.initializer;
+        if (ts.isStringLiteral(init) || ts.isNoSubstitutionTemplateLiteral(init)) {
+          return init.text.length;
+        }
+      }
+    }
+  }
   // Object literal: check valueOf or return NaN for {}
   if (ts.isObjectLiteralExpression(expr)) {
     const valueOfProp = expr.properties.find(
@@ -22224,6 +22266,14 @@ function tryStaticToNumber(ctx: CodegenContext, expr: ts.Expression): number | u
       if (returnsVoid(init)) return NaN;
     }
     return NaN; // Fallback for objects: ToNumber always produces NaN for non-primitive valueOf
+  }
+  // Parenthesized expression: unwrap parentheses
+  if (ts.isParenthesizedExpression(expr)) {
+    return tryStaticToNumber(ctx, expr.expression);
+  }
+  // Unary + (ToNumber coercion): +expr
+  if (ts.isPrefixUnaryExpression(expr) && expr.operator === ts.SyntaxKind.PlusToken) {
+    return tryStaticToNumber(ctx, expr.operand);
   }
   // Variable: trace to initializer
   if (ts.isIdentifier(expr)) {
