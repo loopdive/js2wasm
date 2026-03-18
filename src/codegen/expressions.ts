@@ -17361,12 +17361,26 @@ function compileObjectKeysOrValues(
   // Resolve struct name from the argument type
   const structName = resolveStructName(ctx, argType);
   if (!structName) {
-    ctx.errors.push({
-      message: `Object.${method}() requires a struct type argument`,
-      line: getLine(expr),
-      column: getCol(expr),
-    });
-    return null;
+    // Non-struct argument (any, externref, etc.) — compile and drop the arg,
+    // then return an empty array as a graceful fallback.
+    const argResult = compileExpression(ctx, fctx, arg);
+    if (argResult) {
+      fctx.body.push({ op: "drop" });
+    }
+    const elemKind = "externref";
+    const vecTypeIdx = getOrRegisterVecType(ctx, elemKind);
+    const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
+    if (arrTypeIdx < 0) {
+      return null;
+    }
+    // Create empty backing array and wrap in vec struct (length=0)
+    fctx.body.push({ op: "array.new_fixed", typeIdx: arrTypeIdx, length: 0 });
+    const tmpData = allocLocal(fctx, `__obj_${method}_empty_data_${fctx.locals.length}`, { kind: "ref", typeIdx: arrTypeIdx });
+    fctx.body.push({ op: "local.set", index: tmpData });
+    fctx.body.push({ op: "i32.const", value: 0 });
+    fctx.body.push({ op: "local.get", index: tmpData });
+    fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
+    return { kind: "ref_null", typeIdx: vecTypeIdx };
   }
 
   const structTypeIdx = ctx.structMap.get(structName);
