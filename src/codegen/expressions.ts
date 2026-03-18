@@ -12,6 +12,7 @@ import {
   isHeterogeneousUnion,
   isGeneratorType,
   isIteratorResultType,
+  isSymbolType,
 } from "../checker/type-mapper.js";
 import type { Instr, ValType, WasmFunction, FieldDef, StructTypeDef } from "../ir/types.js";
 import { ensureI32Condition } from "./index.js";
@@ -2895,7 +2896,10 @@ function compileTypeofExpression(
     return compileStringLiteral(ctx, fctx, "number");
   }
   if (wasmType.kind === "i32") {
-    // Determine if this is boolean or number (i32 is used for both)
+    // Determine if this is boolean, symbol, or number (i32 is used for all three)
+    if (isSymbolType(tsType)) {
+      return compileStringLiteral(ctx, fctx, "symbol");
+    }
     if (isBooleanType(tsType)) {
       return compileStringLiteral(ctx, fctx, "boolean");
     }
@@ -3020,7 +3024,7 @@ function compileTypeofComparison(
   } else {
     const wasmType = resolveWasmType(ctx, tsType);
     if (wasmType.kind === "f64") staticTypeof = "number";
-    else if (wasmType.kind === "i32") staticTypeof = isBooleanType(tsType) ? "boolean" : "number";
+    else if (wasmType.kind === "i32") staticTypeof = isSymbolType(tsType) ? "symbol" : isBooleanType(tsType) ? "boolean" : "number";
     else if ((wasmType.kind === "ref" || wasmType.kind === "ref_null") && !isAnyValue(wasmType, ctx)) {
       const callSigs = tsType.getCallSignatures?.();
       const ctorSigs2 = tsType.getConstructSignatures?.();
@@ -10457,6 +10461,11 @@ function compileCallExpression(
       return ctx.fast ? { kind: "i32" } : { kind: "f64" };
     }
 
+    // Symbol() / Symbol('description') — create unique i32 symbol ID
+    if (funcName === "Symbol") {
+      return compileSymbolCall(ctx, fctx, expr.arguments);
+    }
+
     // String(x) — ToString coercion
     if (funcName === "String") {
       if (expr.arguments.length === 0) {
@@ -14793,6 +14802,18 @@ function compilePropertyAccess(
     }
   }
 
+  // Handle Symbol.iterator, Symbol.hasInstance, etc. → constant i32
+  if (
+    ts.isIdentifier(expr.expression) &&
+    expr.expression.text === "Symbol"
+  ) {
+    const symId = getWellKnownSymbolId(propName);
+    if (symId !== undefined) {
+      fctx.body.push({ op: "i32.const", value: symId });
+      return { kind: "i32" };
+    }
+  }
+
   // Handle string.length
   if (isStringType(objType) && propName === "length") {
     compileExpression(ctx, fctx, expr.expression);
@@ -15650,6 +15671,85 @@ function resolvePropertyNameText(
   }
 
   return undefined;
+}
+
+/**
+ * Well-known symbol IDs — fixed i32 constants used internally.
+ * User-created symbols start at ID 100 via the global counter.
+ */
+const WELL_KNOWN_SYMBOLS: Record<string, number> = {
+  iterator: 1,
+  hasInstance: 2,
+  toPrimitive: 3,
+  toStringTag: 4,
+  species: 5,
+  isConcatSpreadable: 6,
+  match: 7,
+  replace: 8,
+  search: 9,
+  split: 10,
+  unscopables: 11,
+  asyncIterator: 12,
+};
+
+/**
+ * Map a well-known Symbol property name (e.g. "iterator") to a reserved
+ * property key string "@@iterator" for use as struct field names.
+ */
+function resolveWellKnownSymbol(name: string): string | undefined {
+  if (name in WELL_KNOWN_SYMBOLS) return `@@${name}`;
+  return undefined;
+}
+
+/**
+ * Get the i32 constant for a well-known symbol, or undefined if not well-known.
+ */
+function getWellKnownSymbolId(name: string): number | undefined {
+  return WELL_KNOWN_SYMBOLS[name];
+}
+
+/**
+ * Ensure the __symbol_counter mutable global exists (lazy init).
+ * Starts at 100 so well-known symbol IDs (1-12) never collide.
+ */
+function ensureSymbolCounter(ctx: CodegenContext): number {
+  if (ctx.symbolCounterGlobalIdx >= 0) return ctx.symbolCounterGlobalIdx;
+  const idx = nextModuleGlobalIdx(ctx);
+  ctx.mod.globals.push({
+    name: "__symbol_counter",
+    type: { kind: "i32" },
+    mutable: true,
+    init: [{ op: "i32.const", value: 100 }],
+  });
+  ctx.symbolCounterGlobalIdx = idx;
+  return idx;
+}
+
+/**
+ * Compile a Symbol() call — returns a unique i32 by incrementing a global counter.
+ * The description argument (if any) is evaluated for side effects but discarded.
+ */
+function compileSymbolCall(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  args: readonly ts.Expression[],
+): ValType {
+  // Evaluate description arg for side effects, then drop it
+  if (args.length > 0) {
+    const argType = compileExpression(ctx, fctx, args[0]!);
+    if (argType !== null) {
+      fctx.body.push({ op: "drop" });
+    }
+  }
+
+  const counterIdx = ensureSymbolCounter(ctx);
+  // ++counter; return counter
+  fctx.body.push({ op: "global.get", index: counterIdx });
+  fctx.body.push({ op: "i32.const", value: 1 });
+  fctx.body.push({ op: "i32.add" });
+  fctx.body.push({ op: "global.set", index: counterIdx });
+  fctx.body.push({ op: "global.get", index: counterIdx });
+  return { kind: "i32" };
 }
 
 /**
