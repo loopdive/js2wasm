@@ -14979,6 +14979,23 @@ function defaultValueInstrs(vt: ValType): Instr[] {
   }
 }
 
+
+/**
+ * Check if an element access expression matches a safe bounds-check-eliminated
+ * pattern from a for-loop (e.g., arr[i] inside `for (...; i < arr.length; ...)`).
+ */
+function isSafeBoundsEliminated(
+  fctx: FunctionContext,
+  expr: ts.ElementAccessExpression,
+): boolean {
+  if (!fctx.safeIndexedArrays || fctx.safeIndexedArrays.size === 0) return false;
+  // Both the array and the index must be simple identifiers
+  if (!ts.isIdentifier(expr.expression) || !ts.isIdentifier(expr.argumentExpression)) return false;
+  const arrayVar = expr.expression.text;
+  const indexVar = expr.argumentExpression.text;
+  return fctx.safeIndexedArrays.has(arrayVar + ":" + indexVar);
+}
+
 function compileElementAccess(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -15238,7 +15255,12 @@ function compileElementAccessBody(
       compileExpression(ctx, fctx, expr.argumentExpression, { kind: "f64" });
       fctx.body.push({ op: "i32.trunc_sat_f64_s" });
     }
-    emitBoundsCheckedArrayGet(fctx, arrTypeIdx, arrDef.element);
+    if (isSafeBoundsEliminated(fctx, expr)) {
+      // Bounds check elided: loop guard guarantees index < array.length
+      fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx } as Instr);
+    } else {
+      emitBoundsCheckedArrayGet(fctx, arrTypeIdx, arrDef.element);
+    }
     return arrDef.element;
   }
 
@@ -15259,7 +15281,12 @@ function compileElementAccessBody(
     fctx.body.push({ op: "i32.trunc_sat_f64_s" });
   }
 
-  emitBoundsCheckedArrayGet(fctx, typeIdx, typeDef.element);
+  if (isSafeBoundsEliminated(fctx, expr)) {
+    // Bounds check elided: loop guard guarantees index < array.length
+    fctx.body.push({ op: "array.get", typeIdx } as Instr);
+  } else {
+    emitBoundsCheckedArrayGet(fctx, typeIdx, typeDef.element);
+  }
   return typeDef.element;
 }
 
