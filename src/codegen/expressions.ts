@@ -679,10 +679,27 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
           if (valueOfFuncIdx !== undefined) {
             // Call ClassName_valueOf(self) — self is already on stack
             fctx.body.push({ op: "call", funcIdx: valueOfFuncIdx });
-            // Check return type — if i32, convert to f64
+            // Check return type — if not f64, convert to f64
             const funcType = ctx.mod.types[ctx.mod.functions[valueOfFuncIdx - ctx.numImportFuncs]?.typeIdx ?? -1];
             if (funcType?.kind === "func" && funcType.results?.[0]?.kind === "i32") {
               fctx.body.push({ op: "f64.convert_i32_s" });
+            } else if (funcType?.kind === "func" && funcType.results?.[0]?.kind === "externref") {
+              // valueOf returned externref (e.g. WrapperString_valueOf returns a string)
+              // Convert externref → f64 via __unbox_number or parseFloat
+              addUnionImports(ctx);
+              const unboxIdx = ctx.funcMap.get("__unbox_number");
+              if (unboxIdx !== undefined) {
+                fctx.body.push({ op: "call", funcIdx: unboxIdx });
+              } else {
+                const pfIdx = ctx.funcMap.get("parseFloat");
+                if (pfIdx !== undefined) {
+                  fctx.body.push({ op: "call", funcIdx: pfIdx });
+                } else {
+                  // Last resort: drop and push NaN
+                  fctx.body.push({ op: "drop" });
+                  fctx.body.push({ op: "f64.const", value: NaN });
+                }
+              }
             }
             return;
           }
