@@ -320,3 +320,4 @@
 | 79 | 2026-03-16 | Gradual typing — fix null/undefined/boolean AnyValue boxing | Dep-driven |
 | 461 | 2026-03-17 | Array of structs: array.new_default fails for non-defaultable ref types | Dep-driven |
 | 437 | 2026-03-18 | Cannot find module empty_FIXTURE.js -- skip FIXTURE imports | Dep-driven |
+| 324 | 2026-03-18 | React hooks state machine (useState, setState, linked list) | Dep-driven |
