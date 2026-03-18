@@ -1273,6 +1273,7 @@ function assert_throws(fn: () => void): void {
   } catch (e) {
     return;
   }
+  __fail = 1;
 }`;
   }
 
