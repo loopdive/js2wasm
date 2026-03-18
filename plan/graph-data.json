@@ -84,49 +84,11 @@
       "cluster": "Unclustered"
     },
     {
-      "id": 450,
-      "title": "Performance benchmarks: JS runtime vs precompiled Wasm",
-      "priority": "medium",
-      "status": "backlog",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 451,
-      "title": "Compile lodash to Wasm",
-      "priority": "low",
-      "status": "backlog",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Unclustered"
-    },
-    {
       "id": 452,
       "title": "Compile TypeScript compiler to Wasm",
-      "priority": "low",
-      "status": "backlog",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 453,
-      "title": "Compile Three.js to Wasm",
-      "priority": "low",
-      "status": "backlog",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 454,
-      "title": "Compile pako (zlib) to Wasm and benchmark vs JS",
       "priority": "medium",
       "status": "backlog",
-      "depends_on": [
-        450
-      ],
+      "depends_on": [],
       "files": [],
       "cluster": "Unclustered"
     },
@@ -140,165 +102,160 @@
       "cluster": "Unclustered"
     },
     {
-      "id": 471,
-      "title": "Symbol support for test262 conformance",
-      "priority": "low",
-      "status": "done",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 481,
-      "title": "Well-known Symbol.iterator as compile-time struct field (1,327 tests)",
-      "priority": "low",
-      "status": "done",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 483,
-      "title": "Symbol() constructor and typeof symbol (207 tests)",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [
-        471
-      ],
-      "files": [],
-      "test262_skip": 207,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 484,
-      "title": "Well-known Symbol.species for constructor delegation (52 tests)",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [
-        481
-      ],
-      "files": [],
-      "test262_skip": 52,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 486,
-      "title": "Well-known Symbol.toStringTag and Symbol.hasInstance (22 tests)",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [
-        481
-      ],
-      "files": [],
-      "test262_skip": 22,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 487,
-      "title": "User Symbol as property key via tagged struct variant (~60 tests)",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [
-        481,
-        483
-      ],
-      "files": [],
-      "test262_skip": 60,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 496,
-      "title": "eval() and new Function() source transform for test262 (533 tests)",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_skip": 533,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 498,
-      "title": "Proxy via type-aware compilation with trap inlining (70 tests)",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_skip": 70,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 500,
-      "title": "Remove cross-realm skip filter (33 tests)",
-      "priority": "low",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_skip": 33,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 501,
-      "title": "Complete test262 baseline run and pin results",
+      "id": 512,
+      "title": "RuntimeError: illegal cast (~683 FAIL)",
       "priority": "critical",
       "status": "ready",
       "depends_on": [],
       "files": [],
+      "test262_fail": 683,
       "cluster": "Unclustered"
     },
     {
-      "id": 502,
-      "title": "Quick wins: narrow stale skip filters (~1,160 tests)",
+      "id": 513,
+      "title": "returned 0: wrong return value (~3,436 FAIL)",
       "priority": "critical",
       "status": "ready",
-      "depends_on": [
-        471
-      ],
+      "depends_on": [],
       "files": [],
+      "test262_fail": 3436,
       "cluster": "Unclustered"
     },
     {
-      "id": 503,
-      "title": "Runner safe-write: don't corrupt report on crash",
+      "id": 515,
+      "title": "Wasm validation: uninitialized non-defaultable local + struct.get/set type errors (~470 CE)",
       "priority": "high",
       "status": "ready",
       "depends_on": [],
       "files": [],
+      "compiler_errors": 470,
+      "test262_ce": 470,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 516,
+      "title": "struct.new argument count mismatch in class constructors (1,781 CE)",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "compiler_errors": 1781,
+      "test262_ce": 1781,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 517,
+      "title": "Unsupported call expression: class/generator/built-in method calls (2,164+ CE)",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_ce": 2164,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 518,
+      "title": "Cannot destructure: not an array type (74 CE)",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "compiler_errors": 74,
+      "test262_ce": 74,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 519,
+      "title": "Internal error: targetLocal is not defined (66 CE)",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "compiler_errors": 66,
+      "test262_ce": 66,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 520,
+      "title": "Delete operator: operand must be optional (80 CE)",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "compiler_errors": 80,
+      "test262_ce": 80,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 521,
+      "title": "Yield keyword not recognized in nested contexts (53 CE)",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "compiler_errors": 53,
+      "test262_ce": 53,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 522,
+      "title": "Object.keys() requires struct type argument (43 CE)",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "compiler_errors": 43,
+      "test262_ce": 43,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 523,
+      "title": "Internal compiler errors: undefined property access (59 CE)",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "compiler_errors": 59,
+      "test262_ce": 59,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 524,
+      "title": "Type '{}' missing Function properties (40 CE)",
+      "priority": "low",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "compiler_errors": 40,
+      "test262_ce": 40,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 525,
+      "title": "RuntimeError: illegal cast (683 FAIL)",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_fail": 683,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 526,
+      "title": "RuntimeError: dereferencing a null pointer (129 FAIL)",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_fail": 129,
       "cluster": "Unclustered"
     }
   ],
   "links": [
     {
-      "source": 471,
-      "target": 483
-    },
-    {
-      "source": 481,
-      "target": 484
-    },
-    {
-      "source": 481,
-      "target": 486
-    },
-    {
-      "source": 481,
-      "target": 487
-    },
-    {
-      "source": 483,
-      "target": 487
-    },
-    {
-      "source": 471,
-      "target": 502
-    },
-    {
-      "source": 450,
-      "target": 454
-    },
-    {
       "source": 70,
       "target": 74
     }
   ],
-  "generated": "2026-03-18T18:39:54.795Z"
+  "generated": "2026-03-18T22:31:30.582Z"
 }
