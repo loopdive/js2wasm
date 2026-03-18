@@ -182,7 +182,7 @@ _Fresh run (2026-03-18, #509): 23,021 tests -- 6,366 pass (27.7%), 4,367 fail, 9
 | --- | ------- | ---- | ----- | -------- |
 | [513](../ready/513.md) | Wrong return value (returned 0) -- broad correctness failures | FAIL | 3,436 | Critical |
 | [525](../ready/525.md) | RuntimeError: illegal cast | FAIL | 683 | High |
-| [526](../ready/526.md) | RuntimeError: null pointer dereference | FAIL | 129 | High |
+| [526](../ready/526.md) | RuntimeError: null pointer dereference | FAIL | 129 | High | in-progress |
 | [512](../ready/512.md) | RuntimeError: illegal cast (original) | FAIL | 683 | High |
 | [441](../ready/441.md) | Null pointer dereference (residual after #419) | FAIL | 129 | High |
 | [443](../ready/443.md) | Expected ReferenceError but succeeded | FAIL | 6 | Low |

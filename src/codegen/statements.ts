@@ -2473,6 +2473,55 @@ function compileForOfDestructuring(
       const element = pattern.elements[i]!;
       if (ts.isOmittedExpression(element)) continue;
 
+      // Handle rest element: for (const [...x] of arr) or for (const [a, ...rest] of arr)
+      if (ts.isBindingElement(element) && element.dotDotDotToken) {
+        // Compute rest length: max(0, original.length - i)
+        const restLenLocal = allocLocal(fctx, `__forof_rest_len_${fctx.locals.length}`, { kind: "i32" });
+        fctx.body.push({ op: "local.get", index: elemLocal });
+        fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx: 0 }); // length
+        fctx.body.push({ op: "i32.const", value: i });
+        fctx.body.push({ op: "i32.sub" } as Instr);
+        fctx.body.push({ op: "local.set", index: restLenLocal });
+        // Clamp to 0 if negative: select(0, len-i, len-i < 0)
+        fctx.body.push({ op: "i32.const", value: 0 } as Instr);
+        fctx.body.push({ op: "local.get", index: restLenLocal });
+        fctx.body.push({ op: "local.get", index: restLenLocal });
+        fctx.body.push({ op: "i32.const", value: 0 } as Instr);
+        fctx.body.push({ op: "i32.lt_s" } as Instr);
+        fctx.body.push({ op: "select" } as Instr);
+        fctx.body.push({ op: "local.set", index: restLenLocal });
+
+        // Create new data array: array.new_default(restLen)
+        const restArrLocal = allocLocal(fctx, `__forof_rest_arr_${fctx.locals.length}`, { kind: "ref", typeIdx: innerArrTypeIdx });
+        fctx.body.push({ op: "local.get", index: restLenLocal });
+        fctx.body.push({ op: "array.new_default", typeIdx: innerArrTypeIdx } as Instr);
+        fctx.body.push({ op: "local.set", index: restArrLocal });
+
+        // array.copy(restArr, 0, srcData, i, restLen)
+        fctx.body.push({ op: "local.get", index: restArrLocal });
+        fctx.body.push({ op: "i32.const", value: 0 });
+        fctx.body.push({ op: "local.get", index: elemLocal });
+        fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx: 1 }); // src data
+        fctx.body.push({ op: "i32.const", value: i });
+        fctx.body.push({ op: "local.get", index: restLenLocal });
+        fctx.body.push({ op: "array.copy", dstTypeIdx: innerArrTypeIdx, srcTypeIdx: innerArrTypeIdx } as Instr);
+
+        // Create new vec struct: struct.new(restLen, restArr)
+        fctx.body.push({ op: "local.get", index: restLenLocal });
+        fctx.body.push({ op: "local.get", index: restArrLocal });
+        fctx.body.push({ op: "struct.new", typeIdx: structTypeIdx } as Instr);
+
+        if (ts.isIdentifier(element.name)) {
+          const restName = element.name.text;
+          const restLocal = allocLocal(fctx, restName, elemType);
+          fctx.body.push({ op: "local.set", index: restLocal });
+        } else {
+          // Unsupported rest pattern -- drop the value
+          fctx.body.push({ op: "drop" } as Instr);
+        }
+        continue;
+      }
+
       // Handle nested binding patterns: for (const [{ a, b }] of arr)
       if (ts.isBindingElement(element) &&
           (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name))) {
