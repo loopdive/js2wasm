@@ -14,7 +14,55 @@
 import { TEST_CATEGORIES, findTestFiles, runTest262File, type TestResult, type TestTiming } from "../tests/test262-runner.js";
 import { join } from "path";
 import { writeFileSync, appendFileSync, readFileSync, existsSync, openSync, closeSync, writeSync, unlinkSync, mkdirSync, copyFileSync } from "fs";
-import { execSync } from "child_process";
+import { execSync, fork } from "child_process";
+
+/** Run a single test262 file in a child process with a timeout.
+ *  If the test hangs (infinite loop in compiled Wasm), the child is killed
+ *  and the result is reported as "timeout". */
+function runTestWithTimeout(
+  filePath: string, category: string, relPath: string, timeoutMs: number
+): Promise<any> {
+  return new Promise((resolve) => {
+    const workerPath = join(import.meta.dirname ?? ".", "test262-worker.ts");
+    const child = fork(workerPath, [], { stdio: "pipe", execArgv: ["--import", "tsx"] });
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        child.kill("SIGKILL");
+        resolve({ file: relPath, category, status: "fail", error: "timeout: test exceeded " + (timeoutMs/1000) + "s" });
+      }
+    }, timeoutMs);
+    let gotReady = false;
+    child.on("message", (msg: any) => {
+      if (msg.ready && !gotReady) {
+        gotReady = true;
+        child.send({ filePath, category, relPath });
+        return;
+      }
+      if (!settled && gotReady) {
+        settled = true;
+        clearTimeout(timer);
+        child.kill();
+        resolve(msg);
+      }
+    });
+    child.on("exit", () => {
+      if (!settled) {
+        settled = true;
+        clearTimeout(timer);
+        resolve({ file: relPath, category, status: "compile_error", error: "worker exited unexpectedly" });
+      }
+    });
+    child.on("error", (err) => {
+      if (!settled) {
+        settled = true;
+        clearTimeout(timer);
+        resolve({ file: relPath, category, status: "compile_error", error: err.message });
+      }
+    });
+  });
+}
 
 const RESULTS_DIR = join(import.meta.dirname ?? ".", "..", "benchmarks", "results");
 const JSONL_PATH = join(RESULTS_DIR, "test262-results.jsonl");
@@ -192,11 +240,12 @@ for (const [batchName, batchCats] of batches) {
         processed++;
         continue;
       }
+      const TEST_TIMEOUT_MS = 30_000; // 30 second per-test timeout
       let result: Awaited<ReturnType<typeof runTest262File>>;
       try {
-        result = await runTest262File(filePath, category);
+        result = await runTestWithTimeout(filePath, category, relPath, TEST_TIMEOUT_MS);
       } catch (e: any) {
-        result = { file: relPath, category, status: "compile_error" as const, error: e?.message ?? String(e) } as any;
+        result = { file: relPath, category, status: "compile_error" as const, error: (e?.message ?? String(e)) } as any;
       }
       allResults.push(result);
       stats[result.status]++;
