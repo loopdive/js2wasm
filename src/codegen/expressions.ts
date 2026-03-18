@@ -10711,6 +10711,45 @@ function compileCallExpression(
       return { kind: "externref" };
     }
 
+
+    // Check if this function is eligible for call-site inlining
+    const inlineInfo = ctx.inlinableFunctions.get(funcName);
+    if (inlineInfo && !expr.arguments.some((a: any) => ts.isSpreadElement(a))) {
+      // Inline the function body: compile arguments into temp locals, then emit body
+      const argLocals: number[] = [];
+      for (let i = 0; i < inlineInfo.paramCount; i++) {
+        if (i < expr.arguments.length) {
+          compileExpression(ctx, fctx, expr.arguments[i]!, inlineInfo.paramTypes[i]);
+        } else {
+          pushDefaultValue(fctx, inlineInfo.paramTypes[i]!);
+        }
+        const tmpLocal = allocLocal(fctx, `__inline_${funcName}_p${i}_${fctx.locals.length}`, inlineInfo.paramTypes[i]!);
+        fctx.body.push({ op: "local.set", index: tmpLocal });
+        argLocals.push(tmpLocal);
+      }
+      // Drop extra arguments (evaluate for side effects)
+      for (let i = inlineInfo.paramCount; i < expr.arguments.length; i++) {
+        const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+        if (extraType !== null) {
+          fctx.body.push({ op: "drop" });
+        }
+      }
+      // Emit the inlined body, remapping local.get indices to the temp locals
+      for (const instr of inlineInfo.body) {
+        if (instr.op === "local.get") {
+          const mapped = argLocals[(instr as any).index];
+          if (mapped !== undefined) {
+            fctx.body.push({ op: "local.get", index: mapped });
+          } else {
+            fctx.body.push(instr); // should not happen for valid inline candidates
+          }
+        } else {
+          fctx.body.push(instr);
+        }
+      }
+      return inlineInfo.returnType ?? VOID_RESULT;
+    }
+
     // Prepend captured values for nested functions with captures
     const nestedCaptures = ctx.nestedFuncCaptures.get(funcName);
     if (nestedCaptures) {
