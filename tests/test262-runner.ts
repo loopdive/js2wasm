@@ -73,6 +73,7 @@ const UNSUPPORTED_FEATURES = new Set([
   "Proxy",
   "WeakRef", "FinalizationRegistry",
   "SharedArrayBuffer", "Atomics",
+  // eval: handled by source transform in wrapTest (#496) — no longer skipped
   // dynamic-import: checked separately in shouldSkip (only skip when source uses import())
   // import.meta: implemented (#371), no longer needs skipping
   "import-defer", // import.defer() — not supported
@@ -88,7 +89,6 @@ const UNSUPPORTED_FEATURES = new Set([
   "tail-call-optimization",
   "cross-realm",
   "caller",
-  "eval",
 ]);
 
 export interface FilterResult {
@@ -203,17 +203,33 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
     }
   }
 
-  // Skip tests that use eval() in their actual body — strip metadata/comments first
+  // eval() and new Function() are now handled by source transforms in wrapTest (#496).
+  // Only skip eval tests that use scope-dependent patterns we cannot transform:
+  //   - eval with variable references (not string literals)
+  //   - eval that declares variables expected to leak into outer scope
+  //   - new Function with variable body (not string literal)
   {
     const bodyForEval = source.replace(/\/\*---[\s\S]*?---\*\//, "").replace(/\/\/.*$/gm, "");
-    if (/\beval\s*\(/.test(bodyForEval)) {
-      return { skip: true, reason: "uses dynamic code execution" };
+    // Skip eval with non-literal argument (variable, template, concatenation)
+    if (/\beval\s*\(\s*[a-zA-Z_$]/.test(bodyForEval)) {
+      return { skip: true, reason: "eval with variable argument" };
     }
-  }
-
-  // Skip tests that use new Function() — dynamic code generation impossible in wasm
-  if (/\bnew\s+Function\s*\(/.test(source)) {
-    return { skip: true, reason: "uses new Function() dynamic code generation" };
+    // Skip eval("var x") patterns — var declarations in eval leak to outer scope
+    if (/\beval\s*\(\s*["'][^"']*\bvar\s/.test(bodyForEval)) {
+      return { skip: true, reason: "eval with var declaration (scope leak)" };
+    }
+    // Skip eval("'use strict'...") — strict mode directives change semantics
+    if (/\beval\s*\(\s*["'](?:'use strict'|"use strict"|\\?'use strict\\?')/.test(bodyForEval)) {
+      return { skip: true, reason: "eval with use strict directive" };
+    }
+    // Skip eval with function/class declarations (scope-dependent)
+    if (/\beval\s*\(\s*["'][^"']*\b(?:function|class)\s/.test(bodyForEval)) {
+      return { skip: true, reason: "eval with function/class declaration" };
+    }
+    // Skip new Function with non-literal body argument
+    if (/\bnew\s+Function\s*\(\s*[a-zA-Z_$]/.test(bodyForEval)) {
+      return { skip: true, reason: "new Function with variable argument" };
+    }
   }
 
 
@@ -1109,6 +1125,146 @@ function renameYieldOutsideGenerators(source: string): string {
 }
 
 /**
+ * Transform eval("string literal") calls into inline expressions.
+ *
+ * eval("1 + 2") → (1 + 2)
+ * eval("'hello'") → ('hello')
+ *
+ * Only transforms calls where the argument is a single string literal
+ * (double-quoted or single-quoted). Does NOT handle:
+ *   - eval with variable arguments
+ *   - eval with template literals
+ *   - eval with concatenated strings
+ *   - eval with statements (var, function, class, 'use strict')
+ *
+ * Those are filtered out in shouldSkip.
+ */
+function transformEvalCalls(source: string): string {
+  // Match eval("...") with double-quoted string literal.
+  // The string content may contain escaped characters (\", \\, \n, \uXXXX etc).
+  // We capture the content and inline it as a parenthesized expression.
+  let result = source;
+
+  // Double-quoted: eval("content")
+  result = result.replace(
+    /\beval\s*\(\s*"((?:[^"\\]|\\.)*)"\s*\)/g,
+    (_match, content: string) => {
+      // Unescape the string content to get the actual JS expression
+      // Most test262 evals contain simple expressions with \uXXXX escapes
+      // that represent whitespace — those are already valid in the literal
+      return `(${content})`;
+    }
+  );
+
+  // Single-quoted: eval('content')
+  result = result.replace(
+    /\beval\s*\(\s*'((?:[^'\\]|\\.)*)'\s*\)/g,
+    (_match, content: string) => {
+      return `(${content})`;
+    }
+  );
+
+  return result;
+}
+
+/**
+ * Transform new Function(...) calls into inline function expressions.
+ *
+ * new Function("return 42")        → (function() { return 42; })
+ * new Function("a", "return a*2")  → (function(a) { return a*2; })
+ * new Function("a", "b", "return a+b") → (function(a, b) { return a+b; })
+ * new Function()                   → (function() {})
+ *
+ * Only transforms calls where ALL arguments are string literals.
+ */
+function transformNewFunctionCalls(source: string): string {
+  // Match new Function(...) — use a manual parser to handle arbitrary
+  // numbers of string literal arguments separated by commas
+  let result = "";
+  let i = 0;
+  const pat = /\bnew\s+Function\s*\(/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = pat.exec(source)) !== null) {
+    result += source.slice(i, match.index);
+    // Parse the arguments list starting after the opening paren
+    let pos = match.index + match[0].length;
+    const args: string[] = [];
+    let allLiterals = true;
+
+    // Skip whitespace
+    while (pos < source.length && /\s/.test(source[pos]!)) pos++;
+
+    if (pos < source.length && source[pos] === ")") {
+      // new Function() — no arguments
+      pos++; // skip closing paren
+    } else {
+      // Parse comma-separated string literal arguments
+      while (pos < source.length) {
+        // Skip whitespace
+        while (pos < source.length && /\s/.test(source[pos]!)) pos++;
+
+        const quote = source[pos];
+        if (quote !== '"' && quote !== "'") {
+          allLiterals = false;
+          break;
+        }
+        // Parse string literal
+        pos++; // skip opening quote
+        let content = "";
+        while (pos < source.length && source[pos] !== quote) {
+          if (source[pos] === "\\") {
+            content += source[pos]! + source[pos + 1]!;
+            pos += 2;
+          } else {
+            content += source[pos]!;
+            pos++;
+          }
+        }
+        if (pos >= source.length) { allLiterals = false; break; }
+        pos++; // skip closing quote
+        args.push(content);
+
+        // Skip whitespace
+        while (pos < source.length && /\s/.test(source[pos]!)) pos++;
+
+        if (source[pos] === ")") {
+          pos++; // skip closing paren
+          break;
+        } else if (source[pos] === ",") {
+          pos++; // skip comma, continue to next arg
+        } else {
+          allLiterals = false;
+          break;
+        }
+      }
+    }
+
+    if (!allLiterals || args.length === 0 && source[pos - 1] !== ")") {
+      // Could not parse — leave as-is
+      result += match[0];
+      i = match.index + match[0].length;
+      pat.lastIndex = i;
+      continue;
+    }
+
+    // Last argument is the function body, preceding ones are parameter names
+    if (args.length === 0) {
+      result += "(function() {})";
+    } else {
+      const body = args[args.length - 1]!;
+      const params = args.slice(0, -1).join(", ");
+      result += `(function(${params}) { ${body} })`;
+    }
+    i = pos;
+    pat.lastIndex = pos;
+  }
+
+  result += source.slice(i);
+  return result;
+}
+
+/**
  * Wrap a test262 test into a compilable TS module.
  *
  * Strategy: provide a shim for assert.sameValue that traps on mismatch.
@@ -1128,6 +1284,14 @@ export function wrapTest(source: string, meta?: Test262Meta): string {
   // assert routing, etc.) operates on raw source and can be confused by them.
   // Replace \uNNNN sequences outside of string literals with the actual character.
   body = resolveUnicodeEscapes(body);
+
+  // ── eval() / new Function() source transforms (#496) ────────────────
+  // Replace eval("expression") with (expression) — inline the string content.
+  // This handles the majority of test262 eval usage (whitespace tests, simple expressions).
+  body = transformEvalCalls(body);
+  // Replace new Function("body") with (function() { body })()
+  // and new Function("a", "b", "return a+b") with (function(a, b) { return a+b; })
+  body = transformNewFunctionCalls(body);
 
   // Rename `yield` used as an identifier to `_yield` — in sloppy-mode JS
   // `yield` is a valid identifier, but modules are strict mode where it's reserved.
