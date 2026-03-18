@@ -1387,17 +1387,17 @@ function verifyNotEqualTo(a: any, b: any, c: any): void {}`;
     if (/\bverifyCallableProperty\b/.test(body)) {
       preamble += `
 
-function verifyCallableProperty(a: number, b: number, c: number, d: number, e: number, f: number): void {}`;
+function verifyCallableProperty(a: any, b: any, c: any, d: any, e: any, f: any): void {}`;
     }
     if (/\bverifyPrimordialProperty\b/.test(body)) {
       preamble += `
 
-function verifyPrimordialProperty(a: number, b: number, c: number, d: number): void {}`;
+function verifyPrimordialProperty(a: any, b: any, c: any, d: any): void {}`;
     }
     if (/\bverifyPrimordialCallableProperty\b/.test(body)) {
       preamble += `
 
-function verifyPrimordialCallableProperty(a: number, b: number, c: number, d: number, e: number, f: number): void {}`;
+function verifyPrimordialCallableProperty(a: any, b: any, c: any, d: any, e: any, f: any): void {}`;
     }
   }
 
