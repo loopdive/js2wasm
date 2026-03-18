@@ -512,6 +512,8 @@ Priority order reflects react-reconciler dependency.
 | ~~366~~ | ~~Object.create support~~ | Superseded by #460 |
 | ~~370~~ | ~~WeakMap and WeakSet~~ | Superseded by #457 |
 | 376 | Decorator syntax support | — (low priority) |
+| 484 | Symbol.species for constructor delegation | Blocked by #487, #343 (51 tests, low ROI) |
+| 487 | User Symbol as property key | Blocked by #483 (~17 genuine tests, low ROI) |
 
 ---
 
