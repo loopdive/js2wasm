@@ -139,56 +139,74 @@ interface CompileOptions {
 
 Returns only the WAT text (debug).
 
-## Supported TypeScript Subset
+## Test262 Conformance
 
-| Feature              | Example                                                                               |
-| -------------------- | ------------------------------------------------------------------------------------- |
-| Arithmetic           | `a + b`, `a * b`, `a / b`, `-x`                                                       |
-| Comparisons          | `<`, `<=`, `>`, `>=`, `===`, `!==`                                                    |
-| Logical operators    | `&&`, `\|\|`, `!`                                                                     |
-| Variables            | `let x: number = 10;`, `const y: number = 20;`                                        |
-| If/Else              | `if (x > 0) { ... } else { ... }`                                                     |
-| While loop           | `while (i < n) { ... }`                                                               |
-| For loop             | `for (let i: number = 0; i < n; i = i + 1) { ... }`                                   |
-| Break/Continue       | `break;`, `continue;`                                                                 |
-| Functions            | Named, recursive, multiple exports, optional parameters                               |
-| Ternary              | `x > 0 ? x : -x`                                                                      |
-| Math builtins        | `Math.sqrt`, `Math.abs`, `Math.floor`, `Math.ceil`, `Math.min`, `Math.max`, `Math.PI` |
-| Interfaces → Structs | `interface Point { x: number; y: number }`                                            |
-| Property access      | `p.x`, `p.y`                                                                          |
-| Object literals      | `{ x: 1, y: 2 }`                                                                      |
-| Destructuring        | `const { x, y } = p`, `const [a, b] = arr`                                            |
-| Optional chaining    | `obj?.prop`, `obj?.method()`                                                          |
-| Nullish coalescing   | `a ?? b`                                                                              |
-| for-in               | `for (const key in obj)` → compile-time unrolling                                     |
-| Arrays               | `[1, 2, 3]`, `arr[i]`, `arr.length` → GC arrays                                       |
-| Enums                | `enum Dir { Up, Down }` → inlined constants                                           |
-| Strings              | `"hello"`, `a + b`, `===` → externref + wasm:js-string                                |
-| String methods       | `.toUpperCase()`, `.indexOf()`, `.slice()`, `.trim()`, etc.                           |
-| Template literals    | `` `value: ${x}` `` → string concat chain                                             |
-| Do-while             | `do { ... } while (cond)`                                                             |
-| Switch               | `switch (x) { case 1: ... break; default: ... }`                                      |
-| for-of               | `for (const x of arr) { ... }`                                                        |
-| External classes     | `declare class Foo { ... }` → opaque externref                                        |
-| console.log          | Numbers, booleans, strings via host imports                                           |
-| Export               | `export function ...` → Wasm exports                                                  |
-| Import resolution    | `import * as X from "..."` → auto-generated `declare` stubs                           |
-| Classes              | `class Foo { constructor(); method() }` — constructors, methods, inheritance           |
-| Closures             | Capturing outer variables in nested functions / arrow functions                        |
-| Generics             | `function identity<T>(x: T): T` — type parameters with constraints                    |
-| Array methods        | `.map()`, `.filter()`, `.reduce()`, `.push()`, `.forEach()` with callbacks             |
-| Bitwise operators    | `&`, `\|`, `^`, `<<`, `>>`, `>>>`                                                     |
-| Spread / rest        | `...args`, `[...arr]`, `{ ...obj }` — rest params, array/object spread                |
-| Try / catch          | `try { ... } catch (e) { ... } finally { ... }` — Wasm exception handling             |
-| Type narrowing       | `typeof x === "number"` — union types with boxing/unboxing                             |
-| Multi-file modules   | `import { foo } from "./bar"` — cross-file compilation via `compileMulti()`            |
-| Async / await        | `async function`, `await` — host-delegated Promises                                   |
+<!-- AUTO:COVERAGE:START -->
+### Summary
 
-### Not supported
+| Metric | Count |
+|--------|------:|
+| Total tests | 15,740 |
+| Pass | 5,770 |
+| Fail | 17 |
+| Compile error | 13 |
+| Skip | 9,940 |
+| **Pass rate (excl. skip)** | **99%** |
 
-| Feature               | Notes                                         |
-| --------------------- | --------------------------------------------- |
-| `var`, `eval`, `with` | Not planned — use `let`/`const` instead       |
+### Feature Coverage
+
+| Feature | Status | Pass | Total | Rate |
+|---------|--------|-----:|------:|-----:|
+| Array methods | 🟢 Full | 195 | 195 | 100% |
+| Assignment & destructuring | 🟢 Full | 531 | 531 | 100% |
+| Async / Await | 🟢 Full | 163 | 163 | 100% |
+| Bitwise operators | 🟢 Full | 130 | 130 | 100% |
+| Boolean | 🟢 Full | 21 | 21 | 100% |
+| Classes | 🟢 Full | 1048 | 1048 | 100% |
+| Collections (Map, Set) | 🟢 Full | 25 | 25 | 100% |
+| Comparison operators | 🟢 Full | 187 | 187 | 100% |
+| Compound assignment | 🟢 Full | 268 | 268 | 100% |
+| Computed property names | 🟢 Full | 12 | 12 | 100% |
+| Conditional (ternary) | 🟢 Full | 11 | 11 | 100% |
+| Control flow (if, switch, try/catch, break, continue) | 🟢 Full | 274 | 274 | 100% |
+| Dynamic import | 🟢 Full | 313 | 313 | 100% |
+| Functions | 🟢 Full | 364 | 364 | 100% |
+| Generators | 🟢 Full | 66 | 66 | 100% |
+| Global functions | 🟢 Full | 94 | 94 | 100% |
+| Increment / Decrement | 🟢 Full | 82 | 82 | 100% |
+| JSON | 🟢 Full | 34 | 34 | 100% |
+| Logical operators | 🟢 Full | 77 | 77 | 100% |
+| Loops (for, for-of, for-in, while, do-while) | 🟢 Full | 295 | 295 | 100% |
+| new / new.target | 🟢 Full | 9 | 9 | 100% |
+| Number built-ins | 🟢 Full | 108 | 108 | 100% |
+| Object built-ins | 🟢 Full | 2 | 2 | 100% |
+| Object literals | 🟢 Full | 326 | 326 | 100% |
+| Optional chaining & nullish coalescing | 🟢 Full | 16 | 16 | 100% |
+| Promises | 🟢 Full | 11 | 11 | 100% |
+| Rest parameters | 🟢 Full | 3 | 3 | 100% |
+| String methods | 🟢 Full | 101 | 101 | 100% |
+| super | 🟢 Full | 7 | 7 | 100% |
+| Template literals | 🟢 Full | 33 | 33 | 100% |
+| typeof / void / delete / in / instanceof | 🟢 Full | 33 | 33 | 100% |
+| Types (number, string, boolean, null, undefined) | 🟢 Full | 46 | 46 | 100% |
+| Variables (let, const) | 🟢 Full | 90 | 90 | 100% |
+| Math methods | 🟢 Full | 528 | 533 | 99% |
+| Arithmetic operators | 🟡 Mostly | 202 | 227 | 89% |
+
+**Overall: 5705 / 5735 tests passing (99%)**
+
+### Not Supported
+
+| Feature | Notes |
+|---------|-------|
+| `var`, `eval`, `with` | Not planned — use `let`/`const` instead |
+<!-- AUTO:COVERAGE:END -->
+
+### Benchmarks
+
+<!-- AUTO:BENCHMARKS:START -->
+_No benchmark data available. Run benchmarks to populate this section._
+<!-- AUTO:BENCHMARKS:END -->
 
 ## Architecture
 
