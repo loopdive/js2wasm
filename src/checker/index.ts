@@ -155,6 +155,8 @@ function normalizeFileName(name: string): string {
 export function analyzeMultiSource(
   files: Record<string, string>,
   entryFile: string,
+  /** Optional mapping from bare specifiers to file keys (e.g. { "lodash": "lodash/index.ts" }) */
+  specifierMap?: Record<string, string>,
 ): MultiTypedAST {
   const normalizedFiles = new Map<string, string>();
   for (const [name, content] of Object.entries(files)) {
@@ -162,6 +164,35 @@ export function analyzeMultiSource(
   }
   const normalizedEntry = normalizeFileName(entryFile);
   const rootNames = Array.from(normalizedFiles.keys());
+
+  // Build a bare-specifier-to-normalized-file lookup.
+  // Explicit specifierMap entries take priority, then we auto-derive
+  // mappings from file keys (e.g. "utils.ts" -> bare specifier "utils").
+  const bareSpecifierLookup = new Map<string, string>();
+  // Auto-derive: for each file key, register its basename without extension
+  // and the full key without extension as potential bare specifiers.
+  for (const normalized of normalizedFiles.keys()) {
+    // "foo/bar.ts" -> bare specifiers "foo/bar" and "bar"
+    const withoutExt = normalized.replace(/\.ts$/, "");
+    bareSpecifierLookup.set(withoutExt, normalized);
+    const basename = withoutExt.split("/").pop()!;
+    if (basename && !bareSpecifierLookup.has(basename)) {
+      bareSpecifierLookup.set(basename, normalized);
+    }
+    // Also support "foo/index.ts" -> bare specifier "foo"
+    if (basename === "index") {
+      const dir = withoutExt.replace(/\/index$/, "");
+      if (dir && !bareSpecifierLookup.has(dir)) {
+        bareSpecifierLookup.set(dir, normalized);
+      }
+    }
+  }
+  // Explicit specifierMap overrides auto-derived entries
+  if (specifierMap) {
+    for (const [specifier, fileKey] of Object.entries(specifierMap)) {
+      bareSpecifierLookup.set(specifier, normalizeFileName(fileKey));
+    }
+  }
 
   const compilerHost: ts.CompilerHost = {
     getSourceFile(name, languageVersion) {
@@ -201,7 +232,8 @@ export function analyzeMultiSource(
           const containingDir = containingFile.replace(/[^/]*$/, "");
           resolved = normalizeFileName(containingDir + moduleName);
         } else {
-          resolved = normalizeFileName(moduleName);
+          // Bare specifier: check the lookup map first, then fall back to normalizeFileName
+          resolved = bareSpecifierLookup.get(moduleName) ?? normalizeFileName(moduleName);
         }
         if (normalizedFiles.has(resolved)) {
           return {
