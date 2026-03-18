@@ -16,88 +16,11 @@ import { join } from "path";
 import { writeFileSync, appendFileSync, readFileSync, existsSync, openSync, closeSync, writeSync, unlinkSync, mkdirSync, copyFileSync } from "fs";
 import { execSync, fork } from "child_process";
 
-/** Persistent worker pool — keeps N workers alive, sends jobs, kills on timeout */
-const POOL_SIZE = 2;
-// Use absolute path to avoid worktree resolution issues
-const workerPath = join(process.cwd(), "scripts", "test262-worker.ts");
-type WorkerSlot = { proc: ReturnType<typeof fork>; busy: boolean; ready: boolean };
-const pool: WorkerSlot[] = [];
-
-function spawnWorker(): WorkerSlot {
-  const proc = fork(workerPath, [], { stdio: "pipe", execArgv: ["--import", "tsx"] });
-  const slot: WorkerSlot = { proc, busy: false, ready: false };
-  proc.once("message", (msg: any) => { if (msg.ready) slot.ready = true; });
-  return slot;
-}
-
-function initPool() {
-  for (let i = 0; i < POOL_SIZE; i++) pool.push(spawnWorker());
-}
-
-function getWorker(): Promise<WorkerSlot> {
-  const free = pool.find(s => !s.busy && s.ready);
-  if (free) return Promise.resolve(free);
-  return new Promise(resolve => {
-    const check = setInterval(() => {
-      const f = pool.find(s => !s.busy && s.ready);
-      if (f) { clearInterval(check); resolve(f); }
-    }, 10);
-  });
-}
-
-function replaceWorker(slot: WorkerSlot) {
-  const idx = pool.indexOf(slot);
-  try { slot.proc.kill("SIGKILL"); } catch {}
-  if (idx >= 0) { pool[idx] = spawnWorker(); }
-}
-
-function runTestWithTimeout(
-  filePath: string, category: string, relPath: string, timeoutMs: number
-): Promise<any> {
-  return new Promise(async (resolve) => {
-    const slot = await getWorker();
-    slot.busy = true;
-    let settled = false;
-    const timer = setTimeout(() => {
-      if (!settled) {
-        settled = true;
-        slot.busy = false;
-        replaceWorker(slot); // kill hung worker, spawn fresh one
-        resolve({ file: relPath, category, status: "fail", error: "timeout: test exceeded " + (timeoutMs/1000) + "s" });
-      }
-    }, timeoutMs);
-    const onMsg = (msg: any) => {
-      if (!settled && !msg.ready) {
-        settled = true;
-        clearTimeout(timer);
-        slot.busy = false;
-        slot.proc.removeListener("message", onMsg);
-        resolve(msg);
-      }
-    };
-    slot.proc.on("message", onMsg);
-    slot.proc.on("exit", () => {
-      if (!settled) {
-        settled = true;
-        clearTimeout(timer);
-        slot.busy = false;
-        const idx = pool.indexOf(slot);
-        if (idx >= 0) pool[idx] = spawnWorker();
-        resolve({ file: relPath, category, status: "compile_error", error: "worker crashed" });
-      }
-    });
-    slot.proc.send({ filePath, category, relPath });
-  });
-}
-
-// Initialize pool before test loop
-initPool();
-// Wait for workers to be ready
-await new Promise<void>(resolve => {
-  const check = setInterval(() => {
-    if (pool.every(s => s.ready)) { clearInterval(check); resolve(); }
-  }, 50);
-});
+/** Known tests that cause infinite loops in compiled Wasm — skip these */
+const KNOWN_HANGING_TESTS = new Set([
+  "test/language/statements/for-of/let-block-with-newline.js",
+  "test/language/statements/for-of/let-identifier-with-newline.js",
+]);
 
 const RESULTS_DIR = join(import.meta.dirname ?? ".", "..", "benchmarks", "results");
 const JSONL_PATH = join(RESULTS_DIR, "test262-results.jsonl");
@@ -276,10 +199,14 @@ for (const [batchName, batchCats] of batches) {
         continue;
       }
       let result: Awaited<ReturnType<typeof runTest262File>>;
-      try {
-        result = await runTestWithTimeout(filePath, category, relPath, 30_000);
-      } catch (e: any) {
-        result = { file: relPath, category, status: "compile_error" as const, error: (e?.message ?? String(e)) } as any;
+      if (KNOWN_HANGING_TESTS.has(relPath)) {
+        result = { file: relPath, category, status: "fail" as const, error: "known hanging test (infinite loop in compiled Wasm)" } as any;
+      } else {
+        try {
+          result = await runTest262File(filePath, category);
+        } catch (e: any) {
+          result = { file: relPath, category, status: "compile_error" as const, error: (e?.message ?? String(e)) } as any;
+        }
       }
       allResults.push(result);
       stats[result.status]++;
