@@ -5588,6 +5588,23 @@ function collectGeneratorImports(
       typeIdx: genType,
     });
 
+    // __gen_return: (generator: externref, value: externref) → externref (calls gen.return(value), returns IteratorResult)
+    const genReturnType = addFuncType(
+      ctx,
+      [{ kind: "externref" }, { kind: "externref" }],
+      [{ kind: "externref" }],
+    );
+    addImport(ctx, "env", "__gen_return", {
+      kind: "func",
+      typeIdx: genReturnType,
+    });
+
+    // __gen_throw: (generator: externref, error: externref) → externref (calls gen.throw(error), returns IteratorResult)
+    addImport(ctx, "env", "__gen_throw", {
+      kind: "func",
+      typeIdx: genReturnType,
+    });
+
     // __gen_result_value: (result: externref) → externref (returns result.value)
     addImport(ctx, "env", "__gen_result_value", {
       kind: "func",

@@ -705,8 +705,10 @@ const DOWNGRADE_DIAG_CODES = new Set([
   2373, // "Parameter 'x' cannot reference identifier 'y' declared after it" — valid JS pattern (#413)
   2735, // "Initializer of parameter 'x' cannot reference identifier 'y'" — valid JS pattern (#413)
   1106, // "The left-hand side of a 'for...of' statement may not be 'async'" — valid in sloppy-mode JS (#425)
-  2711, // "A dynamic import call returns a 'Promise'. Make sure you have a declaration for 'Promise'" — dynamic import() (#440)
-  2792, // "Cannot find module 'X'. Did you mean to set the 'moduleResolution' option..." — dynamic import() module resolution (#440)
+  2711, // "A dynamic import call returns a 'Promise'" — dynamic import() (#440)
+  2792, // "Cannot find module 'X'" — dynamic import() module resolution (#440)
+  2739, // "Type 'X' is missing properties: next, return, throw" — generator type mismatch (#439)
+  2802, // "Type 'X' can only be iterated through when using '--downlevelIteration'" — generators in for-of (#439)
 ]);
 
 /**
