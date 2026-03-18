@@ -81,7 +81,8 @@ const UNSUPPORTED_FEATURES = new Set([
   "TypedArray", "DataView", "ArrayBuffer",
   "RegExp", "regexp-dotall", "regexp-lookbehind", "regexp-named-groups",
   "regexp-unicode-property-escapes",
-  "globalThis",
+  // globalThis: removed (#502) — compiles as ref.null extern; tests that use it
+  // will fail at runtime rather than being hidden as skips.
   "top-level-await",
   "json-superset", "well-formed-json-stringify",
   "Intl",
@@ -524,10 +525,7 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
 
   // (Removed: parseInt with string concatenation skip — compiler now handles these correctly)
 
-  // Skip for-of destructuring with object patterns over arrays containing objects
-  if (/for\s*\(\s*\{[^}]*\}\s+of\b/.test(source) && /\[\s*\{/.test(source)) {
-    return { skip: true, reason: "for-of object destructuring from array" };
-  }
+  // (Removed: for-of object destructuring from array skip — codegen handles this pattern now)
 
   // (Removed: for-of destructuring over string array skip — compiler now handles this)
 
