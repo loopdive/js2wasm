@@ -137,7 +137,7 @@ _Fresh run (2026-03-18, #509): 23,021 tests -- 6,366 pass (27.7%), 4,367 fail, 9
 
 | #   | Feature | Type | Count | Priority |
 | --- | ------- | ---- | ----- | -------- |
-| [511](../ready/511.md) | call/call_ref type mismatch (ref.null + externref) | CE | 514 | Critical (updated) |
+| [511](../ready/511.md) | call/call_ref type mismatch (ref.null + externref) | CE | 514 | Critical (in-progress) |
 | [444](../ready/444.md) | local.set type mismatch | CE | 483 | High |
 | [515](../ready/515.md) | Uninitialized local + struct.get/set type errors | CE | 470 | High (NEW) |
 | [445](../ready/445.md) | call args missing | CE | 72 | Medium |
