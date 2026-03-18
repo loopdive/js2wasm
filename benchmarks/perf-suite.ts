@@ -7,10 +7,10 @@
  *
  * Workloads:
  *   1. Fibonacci (recursive, n=35)         - pure computation
- *   2. Quicksort (10,000 elements)          - array manipulation
+ *   2. Quicksort (1,000 elements)           - array manipulation
  *   3. Matrix multiply (100x100)            - numeric compute
- *   4. Sieve of Eratosthenes (100,000)      - array + conditionals
- *   5. Binary search (1M array, 10K lookups) - branching
+ *   4. Sieve of Eratosthenes (10,000)       - array + conditionals
+ *   5. Binary search (10K array, 1K lookups) - branching
  *
  * Usage:
  *   npx tsx benchmarks/perf-suite.ts
@@ -73,8 +73,8 @@ function fibonacciJS(): number {
 
 function quicksortJS(): number {
   const arr: number[] = [];
-  for (let i = 0; i < 10000; i++) {
-    arr.push((i * 2654435761 + 13) % 10000);
+  for (let i = 0; i < 1000; i++) {
+    arr.push((i * 2654435761 + 13) % 1000);
   }
 
   function qsort(a: number[], lo: number, hi: number): void {
@@ -124,7 +124,7 @@ function matrixMultiplyJS(): number {
 }
 
 function sieveJS(): number {
-  const N = 100000;
+  const N = 10000;
   const isPrime: number[] = [];
   for (let i = 0; i < N; i++) isPrime.push(1);
   isPrime[0] = 0;
@@ -144,7 +144,7 @@ function sieveJS(): number {
 }
 
 function binarySearchJS(): number {
-  const N = 1000000;
+  const N = 10000;
   const arr: number[] = [];
   for (let i = 0; i < N; i++) arr.push(i * 2);
 
@@ -162,7 +162,7 @@ function binarySearchJS(): number {
   }
 
   let found = 0;
-  for (let i = 0; i < 10000; i++) {
+  for (let i = 0; i < 1000; i++) {
     const target = ((i * 7919) % N) * 2;
     if (search(arr, target) >= 0) found++;
   }
@@ -190,7 +190,7 @@ export function run(): number {
   },
   {
     name: "quicksort",
-    description: "Quicksort on 10,000 elements - array manipulation",
+    description: "Quicksort on 1,000 elements - array manipulation",
     js: quicksortJS,
     source: `
 function qsort(a: number[], lo: number, hi: number): void {
@@ -217,8 +217,8 @@ function qsort(a: number[], lo: number, hi: number): void {
 
 export function run(): number {
   const arr: number[] = [];
-  for (let i = 0; i < 10000; i = i + 1) {
-    arr.push((i * 2654435761 + 13) % 10000);
+  for (let i = 0; i < 1000; i = i + 1) {
+    arr.push((i * 2654435761 + 13) % 1000);
   }
   qsort(arr, 0, arr.length - 1);
   return arr[0];
@@ -253,11 +253,11 @@ export function run(): number {
   },
   {
     name: "sieve-eratosthenes",
-    description: "Primes up to 100,000 - array + conditionals",
+    description: "Primes up to 10,000 - array + conditionals",
     js: sieveJS,
     source: `
 export function run(): number {
-  const N = 100000;
+  const N = 10000;
   const isPrime: number[] = [];
   for (let i = 0; i < N; i = i + 1) {
     isPrime.push(1);
@@ -280,7 +280,7 @@ export function run(): number {
   },
   {
     name: "binary-search",
-    description: "1M element array, 10K lookups - branching",
+    description: "10K element array, 1K lookups - branching",
     js: binarySearchJS,
     source: `
 function search(a: number[], target: number): number {
@@ -297,13 +297,13 @@ function search(a: number[], target: number): number {
 }
 
 export function run(): number {
-  const N = 1000000;
+  const N = 10000;
   const arr: number[] = [];
   for (let i = 0; i < N; i = i + 1) {
     arr.push(i * 2);
   }
   let found = 0;
-  for (let i = 0; i < 10000; i = i + 1) {
+  for (let i = 0; i < 1000; i = i + 1) {
     const target = ((i * 7919) % N) * 2;
     if (search(arr, target) >= 0) found = found + 1;
   }
