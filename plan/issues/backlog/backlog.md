@@ -174,7 +174,7 @@ _Fresh run (2026-03-18, #509): 23,021 tests -- 6,366 pass (27.7%), 4,367 fail, 9
 | [521](../ready/521.md) | Yield keyword not recognized in nested contexts | CE | 53 | Medium |
 | [522](../ready/522.md) | Object.keys() requires struct type argument | CE | 43 | Medium |
 | [523](../ready/523.md) | Internal compiler errors: undefined .text + SpreadElement | CE | 59 | Medium |
-| [524](../ready/524.md) | Type '{}' missing Function properties | CE | 40 | Low |
+| ~~524~~ | ~~Type '{}' missing Function properties~~ | ~~CE~~ | ~~40~~ | ~~Done (already fixed by #439)~~ |
 
 ### Runtime failures (4,367 fail)
 
