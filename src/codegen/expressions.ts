@@ -1624,7 +1624,11 @@ function compileArrowAsClosure(
     closureReturnType = { kind: "externref" };
   } else if (sig) {
     const retType = ctx.checker.getReturnTypeOfSignature(sig);
-    if (!isVoidType(retType)) {
+    // Treat `never` the same as `void` — a function returning `never` (e.g.
+    // always throws) never produces a value, so it should have no Wasm result.
+    // Without this, `never` resolves to externref and creates a mismatched
+    // closure wrapper type vs. the `() => void` signature expected by callers.
+    if (!isVoidType(retType) && !(retType.flags & ts.TypeFlags.Never)) {
       closureReturnType = resolveWasmType(ctx, retType);
     }
   }
@@ -1649,7 +1653,7 @@ function compileArrowAsClosure(
     collectWrittenIdentifiers(body, writtenInClosure);
   }
 
-  const captures: { name: string; type: ValType; localIdx: number; mutable: boolean }[] = [];
+  const captures: { name: string; type: ValType; localIdx: number; mutable: boolean; alreadyBoxed: boolean }[] = [];
   for (const name of referencedNames) {
     const localIdx = fctx.localMap.get(name);
     if (localIdx === undefined) continue;
@@ -1663,7 +1667,10 @@ function compileArrowAsClosure(
       : fctx.locals[localIdx - fctx.params.length]?.type ?? { kind: "f64" };
     // A capture is mutable if the closure writes to it
     const isMutable = writtenInClosure.has(name);
-    captures.push({ name, type, localIdx, mutable: isMutable });
+    // Check if the variable is already boxed from a previous closure capture.
+    // If so, the local already holds a ref cell — don't wrap it again.
+    const alreadyBoxed = !!fctx.boxedCaptures?.has(name);
+    captures.push({ name, type, localIdx, mutable: isMutable, alreadyBoxed });
   }
 
   // 3. Create struct type: field 0 = funcref, fields 1..N = captured vars
@@ -1704,11 +1711,20 @@ function compileArrowAsClosure(
     const structFields = [
       { name: "func", type: { kind: "funcref" as const }, mutable: false },
       ...captures.map((c) => {
-        if (c.mutable) {
+        if (c.mutable && !c.alreadyBoxed) {
+          // First time boxing: create ref cell type for the capture value type
           const refCellTypeIdx = getOrRegisterRefCellType(ctx, c.type);
           return {
             name: c.name,
             type: { kind: "ref_null" as const, typeIdx: refCellTypeIdx },
+            mutable: false,
+          };
+        }
+        if (c.mutable && c.alreadyBoxed) {
+          // Already boxed: the capture's type IS the ref cell type already
+          return {
+            name: c.name,
+            type: c.type,
             mutable: false,
           };
         }
@@ -1720,32 +1736,58 @@ function compileArrowAsClosure(
       }),
     ];
 
-    structTypeIdx = ctx.mod.types.length;
-    ctx.mod.types.push({
-      kind: "struct",
-      name: `${closureName}_struct`,
-      fields: structFields,
-    });
+    // For closures with captures (but not named func exprs), make the struct
+    // a subtype of the shared wrapper struct so ref.cast at call sites succeeds.
+    // Named func exprs need ref_null __self (for var hoisting), so they can't
+    // share the wrapper's lifted func type which uses non-null ref.
+    const wrapperTypes = !isNamedFuncExpr
+      ? getOrCreateFuncRefWrapperTypes(ctx, arrowParams, closureResults)
+      : null;
 
-    // 4. Create the lifted function type: (ref_null $closure_struct, ...arrowParams) → results
-    // Use ref_null for __self so that var-hoisted variables shadowing the function name
-    // (e.g. `var g` inside `function g()`) can be default-initialized to null.
-    const liftedParams: ValType[] = [
-      { kind: "ref_null", typeIdx: structTypeIdx },
-      ...arrowParams,
-    ];
-    liftedFuncTypeIdx = addFuncType(ctx, liftedParams, closureResults, `${closureName}_type`);
+    structTypeIdx = ctx.mod.types.length;
+    if (wrapperTypes) {
+      // Subtype of the wrapper struct — inherits field 0 (funcref), adds captures
+      ctx.mod.types.push({
+        kind: "struct",
+        name: `${closureName}_struct`,
+        fields: structFields,
+        superTypeIdx: wrapperTypes.structTypeIdx,
+      });
+      // Share the wrapper's lifted func type so call_ref dispatches correctly.
+      // The __self param is (ref $wrapperStruct), and the lifted body will
+      // ref.cast to the specific subtype to access captures.
+      liftedFuncTypeIdx = wrapperTypes.liftedFuncTypeIdx;
+    } else {
+      ctx.mod.types.push({
+        kind: "struct",
+        name: `${closureName}_struct`,
+        fields: structFields,
+      });
+      // 4. Create the lifted function type: (ref_null $closure_struct, ...arrowParams) → results
+      // Use ref_null for __self so that var-hoisted variables shadowing the function name
+      // (e.g. `var g` inside `function g()`) can be default-initialized to null.
+      const liftedParams: ValType[] = [
+        { kind: "ref_null", typeIdx: structTypeIdx },
+        ...arrowParams,
+      ];
+      liftedFuncTypeIdx = addFuncType(ctx, liftedParams, closureResults, `${closureName}_type`);
+    }
   }
 
   // 5. Build the lifted function body
-  // For no-capture closures using wrapper types, self param is non-null ref;
-  // for closures with captures or named func exprs, self param is ref_null
-  // (to support null initialization for var-hoisted function name shadowing).
-  const selfParamKind = (captures.length === 0 && !isNamedFuncExpr) ? "ref" as const : "ref_null" as const;
+  // For no-capture closures using wrapper types, self param is non-null ref.
+  // For captured closures sharing wrapper types, self param uses the WRAPPER struct
+  // type (non-null ref) — captures are accessed via ref.cast to the subtype.
+  // For named func exprs, self param is ref_null (var hoisting support).
+  const usesWrapperFuncType = captures.length > 0 && !isNamedFuncExpr && !!getOrCreateFuncRefWrapperTypes(ctx, arrowParams, closureResults);
+  const selfParamKind = isNamedFuncExpr ? "ref_null" as const : "ref" as const;
+  const selfTypeIdx = usesWrapperFuncType
+    ? getOrCreateFuncRefWrapperTypes(ctx, arrowParams, closureResults)!.structTypeIdx
+    : structTypeIdx;
   const liftedFctx: FunctionContext = {
     name: closureName,
     params: [
-      { name: "__self", type: { kind: selfParamKind, typeIdx: structTypeIdx } },
+      { name: "__self", type: { kind: selfParamKind, typeIdx: selfTypeIdx } },
       ...arrow.parameters.map((p, i) => ({
         name: ts.isIdentifier(p.name) ? p.name.text : `__param${i}`,
         type: arrowParams[i] ?? { kind: "f64" as const },
@@ -1767,23 +1809,46 @@ function compileArrowAsClosure(
     liftedFctx.localMap.set(liftedFctx.params[i]!.name, i);
   }
 
-  // Initialize locals for captured variables from struct fields
+  // Initialize locals for captured variables from struct fields.
+  // When using wrapper func types, __self is typed as the wrapper base struct —
+  // cast it to the specific subtype to access capture fields.
+  let selfLocalForCaptures = 0; // default: param 0 (__self)
+  if (usesWrapperFuncType && captures.length > 0) {
+    const castLocal = allocLocal(liftedFctx, "__self_cast", { kind: "ref", typeIdx: structTypeIdx });
+    liftedFctx.body.push({ op: "local.get", index: 0 }); // __self (wrapper base type)
+    liftedFctx.body.push({ op: "ref.cast", typeIdx: structTypeIdx } as Instr);
+    liftedFctx.body.push({ op: "local.set", index: castLocal });
+    selfLocalForCaptures = castLocal;
+  }
   for (let i = 0; i < captures.length; i++) {
     const cap = captures[i]!;
     if (cap.mutable) {
-      // Mutable capture: store the ref cell reference itself
-      const refCellTypeIdx = getOrRegisterRefCellType(ctx, cap.type);
+      // Mutable capture: store the ref cell reference itself.
+      // If already boxed, cap.type IS the ref cell type — extract the existing
+      // ref cell type index instead of creating a new wrapper.
+      let refCellTypeIdx: number;
+      let valType: ValType;
+      if (cap.alreadyBoxed && (cap.type.kind === "ref" || cap.type.kind === "ref_null")) {
+        // Already boxed: the field stores the ref cell directly
+        refCellTypeIdx = (cap.type as { typeIdx: number }).typeIdx;
+        // Look up the original value type from the outer scope's boxed capture info
+        const outerBoxed = fctx.boxedCaptures?.get(cap.name);
+        valType = outerBoxed?.valType ?? { kind: "f64" };
+      } else {
+        refCellTypeIdx = getOrRegisterRefCellType(ctx, cap.type);
+        valType = cap.type;
+      }
       const refCellType: ValType = { kind: "ref_null", typeIdx: refCellTypeIdx };
       const localIdx = allocLocal(liftedFctx, cap.name, refCellType);
-      liftedFctx.body.push({ op: "local.get", index: 0 }); // __self
+      liftedFctx.body.push({ op: "local.get", index: selfLocalForCaptures });
       liftedFctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx: i + 1 });
       liftedFctx.body.push({ op: "local.set", index: localIdx });
       // Register as boxed so identifier read/write uses struct.get/set
       if (!liftedFctx.boxedCaptures) liftedFctx.boxedCaptures = new Map();
-      liftedFctx.boxedCaptures.set(cap.name, { refCellTypeIdx, valType: cap.type });
+      liftedFctx.boxedCaptures.set(cap.name, { refCellTypeIdx, valType });
     } else {
       const localIdx = allocLocal(liftedFctx, cap.name, cap.type);
-      liftedFctx.body.push({ op: "local.get", index: 0 }); // __self
+      liftedFctx.body.push({ op: "local.get", index: selfLocalForCaptures });
       liftedFctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx: i + 1 });
       liftedFctx.body.push({ op: "local.set", index: localIdx });
     }
@@ -2354,7 +2419,9 @@ function getOrCreateFuncRefWrapperTypes(
     return { structTypeIdx: cached.structTypeIdx, liftedFuncTypeIdx: cached.funcTypeIdx, closureInfo: cached };
   }
 
-  // Create the closure struct type: just (field $func funcref), no captures
+  // Create the closure struct type: just (field $func funcref), no captures.
+  // Mark as non-final (superTypeIdx = -1) so closures with captures can be
+  // subtypes of this wrapper struct, enabling ref.cast to succeed at call sites.
   const closureName = `__fn_wrap_${ctx.closureCounter++}`;
   const structFields = [
     { name: "func", type: { kind: "funcref" as const }, mutable: false },
@@ -2364,6 +2431,7 @@ function getOrCreateFuncRefWrapperTypes(
     kind: "struct",
     name: `${closureName}_struct`,
     fields: structFields,
+    superTypeIdx: -1, // non-final, no parent — allows subtypes
   });
 
   // Create the lifted function type: (ref $struct, ...userParams) -> results
