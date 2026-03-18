@@ -2079,7 +2079,7 @@ export async function runTest262File(filePath: string, category: string, timeout
   const compileStart = performance.now();
   let compileMs = 0;
   try {
-    result = compile(wrapped, { fileName: "test.ts", skipSemanticDiagnostics: true });
+    result = compile(wrapped, { fileName: "test.ts" });
     compileMs = performance.now() - compileStart;
   } catch (compileErr: any) {
     compileMs = performance.now() - compileStart;
