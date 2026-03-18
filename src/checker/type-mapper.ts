@@ -200,6 +200,16 @@ export function isStringType(type: ts.Type): boolean {
 }
 
 /**
+ * Check if a ts.Type is a Symbol type.
+ */
+export function isSymbolType(type: ts.Type): boolean {
+  return (
+    (type.flags & ts.TypeFlags.ESSymbol) !== 0 ||
+    (type.flags & ts.TypeFlags.UniqueESSymbol) !== 0
+  );
+}
+
+/**
  * Check if a ts.Type is Promise<T>.
  * Returns true for the built-in Promise generic type.
  */
