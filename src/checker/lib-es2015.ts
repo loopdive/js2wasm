@@ -9,7 +9,22 @@ export default `
 // ── Symbol / Iterable protocol ──────────────────────────────────
 
 interface SymbolConstructor {
+  (description?: string | number): symbol;
   readonly iterator: unique symbol;
+  readonly hasInstance: unique symbol;
+  readonly toPrimitive: unique symbol;
+  readonly toStringTag: unique symbol;
+  readonly isConcatSpreadable: unique symbol;
+  readonly match: unique symbol;
+  readonly replace: unique symbol;
+  readonly search: unique symbol;
+  readonly split: unique symbol;
+  readonly species: unique symbol;
+  readonly unscopables: unique symbol;
+  readonly asyncIterator: unique symbol;
+  readonly dispose: unique symbol;
+  readonly asyncDispose: unique symbol;
+  readonly matchAll: unique symbol;
 }
 declare var Symbol: SymbolConstructor;
 

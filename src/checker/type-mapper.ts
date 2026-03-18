@@ -50,6 +50,14 @@ export function mapTsTypeToWasm(
     return { kind: "externref" };
   }
 
+  // Symbol types (ESSymbol, UniqueESSymbol) → i32 (unique counter ID)
+  if (
+    (type.flags & ts.TypeFlags.ESSymbol) !== 0 ||
+    (type.flags & ts.TypeFlags.UniqueESSymbol) !== 0
+  ) {
+    return { kind: "i32" };
+  }
+
   // Union with null/undefined → unwrap to inner type
   if (type.isUnion()) {
     const nonNullish = type.types.filter(
