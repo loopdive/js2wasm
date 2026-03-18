@@ -705,6 +705,8 @@ const DOWNGRADE_DIAG_CODES = new Set([
   2373, // "Parameter 'x' cannot reference identifier 'y' declared after it" — valid JS pattern (#413)
   2735, // "Initializer of parameter 'x' cannot reference identifier 'y'" — valid JS pattern (#413)
   1106, // "The left-hand side of a 'for...of' statement may not be 'async'" — valid in sloppy-mode JS (#425)
+  2739, // "Type 'X' is missing the following properties from type 'Y': next, return, throw" — generator type mismatch in JS patterns (#439)
+  2802, // "Type 'X' can only be iterated through when using '--downlevelIteration'" — generators in for-of (#439)
 ]);
 
 /**

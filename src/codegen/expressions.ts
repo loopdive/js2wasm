@@ -9876,13 +9876,42 @@ function compileCallExpression(
       return compilePropertyIntrospection(ctx, fctx, propAccess, expr);
     }
 
-    // Generator method calls: gen.next()
-    if (isGeneratorType(receiverType) && propAccess.name.text === "next") {
-      compileExpression(ctx, fctx, propAccess.expression);
-      const funcIdx = ctx.funcMap.get("__gen_next");
-      if (funcIdx !== undefined) {
-        fctx.body.push({ op: "call", funcIdx });
-        return { kind: "externref" }; // Returns IteratorResult as externref
+    // Generator method calls: gen.next(), gen.return(value), gen.throw(error)
+    if (isGeneratorType(receiverType)) {
+      const methodName = propAccess.name.text;
+      if (methodName === "next") {
+        compileExpression(ctx, fctx, propAccess.expression);
+        const funcIdx = ctx.funcMap.get("__gen_next");
+        if (funcIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx });
+          return { kind: "externref" }; // Returns IteratorResult as externref
+        }
+      } else if (methodName === "return") {
+        compileExpression(ctx, fctx, propAccess.expression);
+        // Push the argument (value to return), default to ref.null if none
+        if (expr.arguments.length > 0) {
+          compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "externref" });
+        } else {
+          fctx.body.push({ op: "ref.null", type: "extern" } as unknown as Instr);
+        }
+        const funcIdx = ctx.funcMap.get("__gen_return");
+        if (funcIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx });
+          return { kind: "externref" }; // Returns IteratorResult as externref
+        }
+      } else if (methodName === "throw") {
+        compileExpression(ctx, fctx, propAccess.expression);
+        // Push the argument (error to throw), default to ref.null if none
+        if (expr.arguments.length > 0) {
+          compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "externref" });
+        } else {
+          fctx.body.push({ op: "ref.null", type: "extern" } as unknown as Instr);
+        }
+        const funcIdx = ctx.funcMap.get("__gen_throw");
+        if (funcIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx });
+          return { kind: "externref" }; // Returns IteratorResult as externref
+        }
       }
     }
 
