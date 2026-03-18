@@ -328,11 +328,7 @@ export function test(): number {
       expect(await run(source)).toBe(5);
     });
 
-    // KNOWN ISSUE: siftDown after first pop does not correctly restore heap
-    // order. First pop returns the correct minimum (root), but subsequent
-    // pops return wrong values because siftDown places the replacement
-    // element incorrectly. Returns 199 = second element is wrong.
-    it.fails("pop returns elements in sorted order", async () => {
+    it("pop returns elements in sorted order", async () => {
       const source = HEAP_TS_SOURCE + `
 export function test(): number {
   resetHeap();
@@ -363,9 +359,7 @@ export function test(): number {
       expect(await run(source)).toBe(-1);
     });
 
-    // KNOWN ISSUE: same siftDown bug as above -- first pop is correct
-    // but subsequent pops return wrong order. Returns 199.
-    it.fails("tie-breaking by id", async () => {
+    it("tie-breaking by id", async () => {
       const source = HEAP_TS_SOURCE + `
 export function test(): number {
   resetHeap();
@@ -386,11 +380,7 @@ export function test(): number {
       expect(await run(source)).toBe(0);
     });
 
-    // KNOWN ISSUE: array element access out of bounds -- after pop reduces
-    // heapSize, subsequent push writes to heap[heapSize] which may be past
-    // the Wasm array's allocated length (arrays don't auto-grow on indexed
-    // write in the current implementation).
-    it.fails("mixed push/pop maintains heap invariant", async () => {
+    it("mixed push/pop maintains heap invariant", async () => {
       const source = HEAP_TS_SOURCE + `
 export function test(): number {
   resetHeap();
@@ -419,9 +409,7 @@ export function test(): number {
       expect(await run(source)).toBe(0);
     });
 
-    // KNOWN ISSUE: siftDown bug -- first pop (10) is correct but the
-    // second pop returns a non-monotonic value. Returns 99.
-    it.fails("handles 7 elements correctly", async () => {
+    it("handles 7 elements correctly", async () => {
       const source = HEAP_TS_SOURCE + `
 export function test(): number {
   resetHeap();
@@ -448,8 +436,7 @@ export function test(): number {
       expect(await run(source)).toBe(0);
     });
 
-    // KNOWN ISSUE: depends on multiple pops working correctly (siftDown bug).
-    it.fails("simulates React priority levels", async () => {
+    it("simulates React priority levels", async () => {
       const source = HEAP_TS_SOURCE + `
 // React scheduler priority timeouts (from scheduler source lines 307-320)
 // ImmediatePriority: -1
