@@ -5912,12 +5912,9 @@ function compileElementAssignment(
           }
         }
       }
-      // Also handle constant expressions (e.g. "a" + "b")
+      // Also handle computed key expressions (well-known symbols, enums, binary exprs)
       if (fieldName === undefined) {
-        const constVal = resolveConstantExpression(ctx, target.argumentExpression);
-        if (constVal !== undefined) {
-          fieldName = String(constVal);
-        }
+        fieldName = resolveComputedKeyExpression(ctx, target.argumentExpression);
       }
       if (fieldName !== undefined) {
         // Check for setter accessor first
@@ -6112,8 +6109,7 @@ function compileElementAssignment(
       }
     }
     if (fieldName === undefined) {
-      const constVal = resolveConstantExpression(ctx, target.argumentExpression);
-      if (constVal !== undefined) fieldName = String(constVal);
+      fieldName = resolveComputedKeyExpression(ctx, target.argumentExpression);
     }
     if (fieldName !== undefined) {
       // Check for setter accessor first (obj['prop'] = val where prop has a setter)
@@ -7834,10 +7830,7 @@ function compileElementCompoundAssignment(
         }
       }
       if (fieldName === undefined) {
-        const constVal = resolveConstantExpression(ctx, target.argumentExpression);
-        if (constVal !== undefined) {
-          fieldName = String(constVal);
-        }
+        fieldName = resolveComputedKeyExpression(ctx, target.argumentExpression);
       }
 
       if (fieldName !== undefined) {
@@ -15329,12 +15322,9 @@ function compileElementAccessBody(
           }
         }
       }
-      // Also handle simple binary expressions that evaluate to a known value
+      // Also handle computed key expressions (well-known symbols, enums, binary exprs)
       if (fieldName === undefined) {
-        const constVal = resolveConstantExpression(ctx, expr.argumentExpression);
-        if (constVal !== undefined) {
-          fieldName = String(constVal);
-        }
+        fieldName = resolveComputedKeyExpression(ctx, expr.argumentExpression);
       }
       if (fieldName !== undefined) {
         // Check for getter accessor first
