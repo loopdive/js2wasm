@@ -1341,47 +1341,47 @@ function assert_compareArray(actual: number[], expected: number[]): void {
     if (/\bverifyProperty\b/.test(body)) {
       preamble += `
 
-function verifyProperty(a: number, b: number, c: number): void {}`;
+function verifyProperty(obj: any, prop: any, desc: any): void {}`;
     }
     if (/\bverifyEnumerable\b/.test(body)) {
       preamble += `
 
-function verifyEnumerable(a: number, b: number): void {}`;
+function verifyEnumerable(obj: any, prop: any): void {}`;
     }
     if (/\bverifyNotEnumerable\b/.test(body)) {
       preamble += `
 
-function verifyNotEnumerable(a: number, b: number): void {}`;
+function verifyNotEnumerable(obj: any, prop: any): void {}`;
     }
     if (/\bverifyWritable\b/.test(body)) {
       preamble += `
 
-function verifyWritable(a: number, b: number): void {}`;
+function verifyWritable(obj: any, prop: any): void {}`;
     }
     if (/\bverifyNotWritable\b/.test(body)) {
       preamble += `
 
-function verifyNotWritable(a: number, b: number): void {}`;
+function verifyNotWritable(obj: any, prop: any): void {}`;
     }
     if (/\bverifyConfigurable\b/.test(body)) {
       preamble += `
 
-function verifyConfigurable(a: number, b: number): void {}`;
+function verifyConfigurable(obj: any, prop: any): void {}`;
     }
     if (/\bverifyNotConfigurable\b/.test(body)) {
       preamble += `
 
-function verifyNotConfigurable(a: number, b: number): void {}`;
+function verifyNotConfigurable(obj: any, prop: any): void {}`;
     }
     if (/\bverifyEqualTo\b/.test(body)) {
       preamble += `
 
-function verifyEqualTo(a: number, b: number, c: number): void {}`;
+function verifyEqualTo(obj: any, prop: any, value: any): void {}`;
     }
     if (/\bverifyNotEqualTo\b/.test(body)) {
       preamble += `
 
-function verifyNotEqualTo(a: number, b: number, c: number): void {}`;
+function verifyNotEqualTo(obj: any, prop: any, value: any): void {}`;
     }
   }
 
