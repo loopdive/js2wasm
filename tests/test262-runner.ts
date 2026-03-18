@@ -749,16 +749,22 @@ function transformAssertThrows(code: string): string {
 
     // Parse the arguments inside assert.throws(...)
     let pos = idx + pattern.length;
-    let depth = 1;
+    let parenDepth = 1;   // paren depth — starts at 1 (inside opening paren)
+    let braceDepth = 0;   // curly brace depth — track function bodies
+    let bracketDepth = 0; // square bracket depth — track array destructuring
     const args: string[] = [];
     let currentArgStart = pos;
 
-    while (pos < code.length && depth > 0) {
+    while (pos < code.length && parenDepth > 0) {
       const ch = code[pos]!;
-      if (ch === "(") depth++;
-      else if (ch === ")") depth--;
-      else if (ch === "," && depth === 1) {
-        // Top-level comma — separates arguments
+      if (ch === "(") parenDepth++;
+      else if (ch === ")") parenDepth--;
+      else if (ch === "{") braceDepth++;
+      else if (ch === "}") braceDepth--;
+      else if (ch === "[") bracketDepth++;
+      else if (ch === "]") bracketDepth--;
+      else if (ch === "," && parenDepth === 1 && braceDepth === 0 && bracketDepth === 0) {
+        // Top-level comma — separates arguments (only when not inside braces/brackets)
         args.push(code.slice(currentArgStart, pos).trim());
         currentArgStart = pos + 1;
       } else if (ch === "'" || ch === '"' || ch === "`") {
@@ -770,7 +776,7 @@ function transformAssertThrows(code: string): string {
           pos++;
         }
       }
-      if (depth === 0) {
+      if (parenDepth === 0) {
         // End of assert.throws(...) — capture last argument (excluding closing paren)
         args.push(code.slice(currentArgStart, pos).trim());
       }
