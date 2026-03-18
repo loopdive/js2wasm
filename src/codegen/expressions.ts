@@ -9518,6 +9518,201 @@ function compileClosureCall(
   return info.returnType ?? VOID_RESULT;
 }
 
+/**
+ * Handle calls to callable struct fields: obj.callback() where callback
+ * is a function-typed property stored in a struct field (not a method).
+ * Returns undefined if the property is not a callable struct field,
+ * allowing the caller to fall through to other handling.
+ */
+function compileCallablePropertyCall(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.CallExpression,
+  propAccess: ts.PropertyAccessExpression,
+  className: string,
+): InnerResult | undefined {
+  const methodName = ts.isPrivateIdentifier(propAccess.name) ? propAccess.name.text.slice(1) : propAccess.name.text;
+
+  // Check if this property name is a struct field
+  const structTypeIdx = ctx.structMap.get(className);
+  const fields = ctx.structFields.get(className);
+  if (structTypeIdx === undefined || !fields) return undefined;
+
+  const fieldIdx = fields.findIndex(f => f.name === methodName);
+  if (fieldIdx === -1) return undefined;
+
+  const fieldType = fields[fieldIdx]!.type;
+
+  // The field must be a callable type — check via TS type checker
+  const propTsType = ctx.checker.getTypeAtLocation(propAccess);
+  const callSigs = propTsType.getCallSignatures?.();
+  if (!callSigs || callSigs.length === 0) return undefined;
+
+  const sig = callSigs[0]!;
+  const sigParamCount = sig.parameters.length;
+  const sigRetType = ctx.checker.getReturnTypeOfSignature(sig);
+  const sigRetWasm = isVoidType(sigRetType) ? null : resolveWasmType(ctx, sigRetType);
+  const sigParamWasmTypes: ValType[] = [];
+  for (let i = 0; i < sigParamCount; i++) {
+    const paramType = ctx.checker.getTypeOfSymbol(sig.parameters[i]!);
+    sigParamWasmTypes.push(resolveWasmType(ctx, paramType));
+  }
+
+  // If the field is a ref type, check if it's a known closure struct
+  if (fieldType.kind === "ref" || fieldType.kind === "ref_null") {
+    const closureInfo = ctx.closureInfoByTypeIdx.get((fieldType as { typeIdx: number }).typeIdx);
+    if (closureInfo) {
+      // Compile receiver, get field value (closure struct ref)
+      compileExpression(ctx, fctx, propAccess.expression);
+      fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+
+      const closureLocal = allocLocal(fctx, `__cprop_${fctx.locals.length}`, fieldType);
+      fctx.body.push({ op: "local.set", index: closureLocal });
+
+      // Push closure ref as first arg (self param)
+      fctx.body.push({ op: "local.get", index: closureLocal });
+      if (fieldType.kind === "ref_null") {
+        fctx.body.push({ op: "ref.as_non_null" } as Instr);
+      }
+
+      // Push call arguments
+      for (let i = 0; i < expr.arguments.length; i++) {
+        compileExpression(ctx, fctx, expr.arguments[i]!, closureInfo.paramTypes[i]);
+      }
+      // Pad missing arguments
+      for (let i = expr.arguments.length; i < closureInfo.paramTypes.length; i++) {
+        pushDefaultValue(fctx, closureInfo.paramTypes[i]!);
+      }
+
+      // Get funcref from closure struct field 0 and call_ref
+      fctx.body.push({ op: "local.get", index: closureLocal });
+      if (fieldType.kind === "ref_null") {
+        fctx.body.push({ op: "ref.as_non_null" } as Instr);
+      }
+      fctx.body.push({ op: "struct.get", typeIdx: (fieldType as { typeIdx: number }).typeIdx, fieldIdx: 0 });
+      fctx.body.push({ op: "ref.cast", typeIdx: closureInfo.funcTypeIdx });
+      fctx.body.push({ op: "ref.as_non_null" });
+      fctx.body.push({ op: "call_ref", typeIdx: closureInfo.funcTypeIdx });
+
+      return closureInfo.returnType ?? VOID_RESULT;
+    }
+  }
+
+  // Field is externref — try to find or create matching closure wrapper types
+  if (fieldType.kind === "externref") {
+    const resultTypes = sigRetWasm ? [sigRetWasm] : [];
+    const wrapperTypes = getOrCreateFuncRefWrapperTypes(ctx, sigParamWasmTypes, resultTypes);
+
+    if (wrapperTypes) {
+      const { structTypeIdx: wrapperStructIdx, closureInfo: matchedClosureInfo } = wrapperTypes;
+
+      // Compile receiver, get field value (externref)
+      compileExpression(ctx, fctx, propAccess.expression);
+      fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+
+      // Convert externref -> closure struct ref
+      const closureRefType: ValType = { kind: "ref_null", typeIdx: wrapperStructIdx };
+      const closureLocal = allocLocal(fctx, `__cprop_ext_${fctx.locals.length}`, closureRefType);
+      fctx.body.push({ op: "any.convert_extern" });
+      fctx.body.push({ op: "ref.cast", typeIdx: wrapperStructIdx });
+      fctx.body.push({ op: "local.set", index: closureLocal });
+
+      // Push closure ref as first arg (self param)
+      fctx.body.push({ op: "local.get", index: closureLocal });
+      fctx.body.push({ op: "ref.as_non_null" } as Instr);
+
+      // Push call arguments
+      for (let i = 0; i < expr.arguments.length; i++) {
+        compileExpression(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
+      }
+      // Pad missing arguments
+      for (let i = expr.arguments.length; i < matchedClosureInfo.paramTypes.length; i++) {
+        pushDefaultValue(fctx, matchedClosureInfo.paramTypes[i]!);
+      }
+
+      // Get funcref from closure struct and call_ref
+      fctx.body.push({ op: "local.get", index: closureLocal });
+      fctx.body.push({ op: "ref.as_non_null" } as Instr);
+      fctx.body.push({ op: "struct.get", typeIdx: wrapperStructIdx, fieldIdx: 0 });
+      fctx.body.push({ op: "ref.cast", typeIdx: matchedClosureInfo.funcTypeIdx });
+      fctx.body.push({ op: "ref.as_non_null" });
+      fctx.body.push({ op: "call_ref", typeIdx: matchedClosureInfo.funcTypeIdx });
+
+      return matchedClosureInfo.returnType ?? VOID_RESULT;
+    }
+  }
+
+  // For ref types that aren't known closures, try matching against registered closure types
+  if (fieldType.kind === "ref" || fieldType.kind === "ref_null") {
+    // Try to find a matching closure type by signature
+    let matchedClosureInfo: ClosureInfo | undefined;
+    let matchedStructTypeIdx: number | undefined;
+
+    for (const [typeIdx, info] of ctx.closureInfoByTypeIdx) {
+      if (info.paramTypes.length !== sigParamCount) continue;
+      if (sigRetWasm === null && info.returnType !== null) continue;
+      if (sigRetWasm !== null && info.returnType === null) continue;
+      if (sigRetWasm !== null && info.returnType !== null && sigRetWasm.kind !== info.returnType.kind) continue;
+      let paramsMatch = true;
+      for (let i = 0; i < sigParamCount; i++) {
+        if (sigParamWasmTypes[i]!.kind !== info.paramTypes[i]!.kind) {
+          paramsMatch = false;
+          break;
+        }
+      }
+      if (paramsMatch) {
+        matchedClosureInfo = info;
+        matchedStructTypeIdx = typeIdx;
+        break;
+      }
+    }
+
+    if (matchedClosureInfo && matchedStructTypeIdx !== undefined) {
+      // Compile receiver, get field value
+      compileExpression(ctx, fctx, propAccess.expression);
+      fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+
+      const closureLocal = allocLocal(fctx, `__cprop_ref_${fctx.locals.length}`, fieldType);
+      fctx.body.push({ op: "local.set", index: closureLocal });
+
+      // Push closure ref as self
+      fctx.body.push({ op: "local.get", index: closureLocal });
+      if (fieldType.kind === "ref_null") {
+        fctx.body.push({ op: "ref.as_non_null" } as Instr);
+      }
+      // May need to cast to matching struct type
+      if ((fieldType as { typeIdx: number }).typeIdx !== matchedStructTypeIdx) {
+        fctx.body.push({ op: "ref.cast", typeIdx: matchedStructTypeIdx });
+      }
+
+      // Push call arguments
+      for (let i = 0; i < expr.arguments.length; i++) {
+        compileExpression(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
+      }
+      for (let i = expr.arguments.length; i < matchedClosureInfo.paramTypes.length; i++) {
+        pushDefaultValue(fctx, matchedClosureInfo.paramTypes[i]!);
+      }
+
+      // Get funcref and call_ref
+      fctx.body.push({ op: "local.get", index: closureLocal });
+      if (fieldType.kind === "ref_null") {
+        fctx.body.push({ op: "ref.as_non_null" } as Instr);
+      }
+      if ((fieldType as { typeIdx: number }).typeIdx !== matchedStructTypeIdx) {
+        fctx.body.push({ op: "ref.cast", typeIdx: matchedStructTypeIdx });
+      }
+      fctx.body.push({ op: "struct.get", typeIdx: matchedStructTypeIdx, fieldIdx: 0 });
+      fctx.body.push({ op: "ref.cast", typeIdx: matchedClosureInfo.funcTypeIdx });
+      fctx.body.push({ op: "ref.as_non_null" });
+      fctx.body.push({ op: "call_ref", typeIdx: matchedClosureInfo.funcTypeIdx });
+
+      return matchedClosureInfo.returnType ?? VOID_RESULT;
+    }
+  }
+
+  return undefined;
+}
+
 function compileCallExpression(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -10415,6 +10610,12 @@ function compileCallExpression(
           ancestor = ctx.classParentMap.get(ancestor);
         }
       }
+      // If no method found, check if the property is a callable struct field
+      // (e.g. this.callback() where callback is a function-typed property)
+      if (funcIdx === undefined) {
+        const callablePropResult = compileCallablePropertyCall(ctx, fctx, expr, propAccess, receiverClassName);
+        if (callablePropResult !== undefined) return callablePropResult;
+      }
       if (funcIdx !== undefined) {
         // Push self (the receiver) as first argument
         const recvType = compileExpression(ctx, fctx, propAccess.expression);
@@ -10504,6 +10705,11 @@ function compileCallExpression(
         const methodName = propAccess.name.text;
         const fullName = `${structTypeName}_${methodName}`;
         const funcIdx = ctx.funcMap.get(fullName);
+        // If no method found, check callable property on struct
+        if (funcIdx === undefined) {
+          const callablePropResult = compileCallablePropertyCall(ctx, fctx, expr, propAccess, structTypeName);
+          if (callablePropResult !== undefined) return callablePropResult;
+        }
         if (funcIdx !== undefined) {
           // Push self (the receiver) as first argument
           const recvType = compileExpression(ctx, fctx, propAccess.expression);
