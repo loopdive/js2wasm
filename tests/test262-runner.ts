@@ -360,10 +360,8 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
   // Object.freeze/seal/preventExtensions are now stubbed (no-op, return object)
   // Object.isFrozen/isSealed return false, Object.isExtensible returns true
 
-  // Skip tests using propertyIsEnumerable (not fully supported on built-ins)
-  if (/propertyIsEnumerable/.test(source)) {
-    return { skip: true, reason: "propertyIsEnumerable not supported" };
-  }
+  // propertyIsEnumerable is now rewritten to hasOwnProperty in wrapTest (#488).
+  // All own struct fields are enumerable in our Wasm model.
 
   // Object.prototype.hasOwnProperty.call(obj, key) is now compiled inline
   // as property introspection on the receiver (#476).
@@ -575,6 +573,87 @@ function stripThirdArg(code: string, fnName: string): string {
       // No 3rd arg — include as-is
       result += code.slice(idx + fnName.length + 1, closeParenPos + 1);
       i = closeParenPos + 1;
+    }
+  }
+  return result;
+}
+
+/**
+ * Transform `Pattern.call(obj, key)` → `(obj).hasOwnProperty(key)`.
+ *
+ * Used for:
+ *   Object.prototype.hasOwnProperty.call(obj, key)  → (obj).hasOwnProperty(key)
+ *   Object.prototype.propertyIsEnumerable.call(obj, key) → (obj).hasOwnProperty(key)
+ *
+ * Uses paren-counting to correctly extract the first argument (obj),
+ * then emits `(obj).hasOwnProperty(` followed by the remaining args.
+ */
+function transformPrototypeCall(code: string, pattern: string): string {
+  const search = pattern + "(";
+  let result = "";
+  let i = 0;
+  while (i < code.length) {
+    const idx = code.indexOf(search, i);
+    if (idx === -1) {
+      result += code.slice(i);
+      break;
+    }
+    result += code.slice(i, idx);
+    let pos = idx + search.length;
+    // Extract first argument (obj) by finding the comma at depth 0
+    let depth = 1;
+    let firstArgStart = pos;
+    let commaPos = -1;
+    while (pos < code.length && depth > 0) {
+      const ch = code[pos]!;
+      if (ch === "(") depth++;
+      else if (ch === ")") {
+        depth--;
+        if (depth === 0) break;
+      } else if (ch === "," && depth === 1 && commaPos === -1) {
+        commaPos = pos;
+        break;
+      } else if (ch === "'" || ch === '"') {
+        const quote = ch;
+        pos++;
+        while (pos < code.length && code[pos] !== quote) {
+          if (code[pos] === "\\") pos++;
+          pos++;
+        }
+      }
+      pos++;
+    }
+    if (commaPos >= 0) {
+      const firstArg = code.slice(firstArgStart, commaPos).trim();
+      // Skip whitespace after comma
+      let afterComma = commaPos + 1;
+      while (afterComma < code.length && code[afterComma] === " ") afterComma++;
+      // Find the closing paren for the entire call
+      pos = afterComma;
+      depth = 1;
+      while (pos < code.length && depth > 0) {
+        const ch = code[pos]!;
+        if (ch === "(") depth++;
+        else if (ch === ")") {
+          depth--;
+          if (depth === 0) break;
+        } else if (ch === "'" || ch === '"') {
+          const quote = ch;
+          pos++;
+          while (pos < code.length && code[pos] !== quote) {
+            if (code[pos] === "\\") pos++;
+            pos++;
+          }
+        }
+        pos++;
+      }
+      const secondArg = code.slice(afterComma, pos).trim();
+      result += `(${firstArg}).hasOwnProperty(${secondArg})`;
+      i = pos + 1; // skip closing paren
+    } else {
+      // No comma found — malformed, emit as-is
+      result += search;
+      i = idx + search.length;
     }
   }
   return result;
@@ -1139,6 +1218,18 @@ export function wrapTest(source: string, meta?: Test262Meta): string {
   // TypeScript strict narrowing errors like "Type '1' is not comparable to type '0'"
   body = body.replace(/\bswitch\s*\(\s*(-?\d+(?:\.\d+)?)\s*\)/g, "switch ($1 as number)");
   body = body.replace(/\bswitch\s*\(\s*(null)\s*\)/g, "switch ($1 as any)");
+
+  // Transform Object.prototype.hasOwnProperty.call(obj, key) → (obj).hasOwnProperty(key)
+  // This is semantically equivalent, and our compiler handles obj.hasOwnProperty("key").
+  body = transformPrototypeCall(body, "Object.prototype.hasOwnProperty.call");
+
+  // Transform Object.prototype.propertyIsEnumerable.call(obj, key) → (obj).hasOwnProperty(key)
+  // All own struct fields are enumerable in our model, so propertyIsEnumerable === hasOwnProperty.
+  body = transformPrototypeCall(body, "Object.prototype.propertyIsEnumerable.call");
+
+  // Transform obj.propertyIsEnumerable(key) → obj.hasOwnProperty(key)
+  // All own struct fields are enumerable in our Wasm model.
+  body = body.replace(/\.propertyIsEnumerable\s*\(/g, ".hasOwnProperty(");
 
   // Transform assert.throws(ErrorType, fn) → assert_throws(fn)
   body = transformAssertThrows(body);
