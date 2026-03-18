@@ -625,6 +625,8 @@ const DOWNGRADE_DIAG_CODES = new Set([
   18048, // "'X' is possibly 'undefined'"
   2839, // "This condition will always return true/false since JS compares objects by reference"
   2703, // "The operand of a 'delete' operator must be a property reference"
+  2704, // "The operand of a 'delete' operator cannot be a read-only property" — valid JS delete (#520)
+  2790, // "The operand of a 'delete' operator must be optional" — valid JS delete (#520)
   2630, // "Cannot assign to 'X' because it is a function"
   2447, // "The '|'/'&' operator is not allowed for boolean types"
   2300, // "Duplicate identifier 'X'"
