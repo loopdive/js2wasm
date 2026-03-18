@@ -369,14 +369,18 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
   // Skip tests using prototype chain manipulation (#343: narrowed from broad
   // ".prototype" filter to only match mutation/chain traversal patterns).
   // Read-only prototype method access like Array.prototype.indexOf is allowed.
-  // Only check executable code — strip comments and metadata first so that
-  // tests whose only .prototype mention is in the description/info block
-  // (e.g. "String.prototype.charAt(pos)") are not falsely skipped (#187).
+  // Only check executable code — strip comments, metadata, and string literals
+  // first so that tests whose only .prototype/__proto__ mention is in the
+  // description/info block or in assert messages are not falsely skipped
+  // (#187, #493).
   {
     const execCode = source
       .replace(/\/\*---[\s\S]*?---\*\//, "")   // strip YAML metadata
       .replace(/\/\/.*$/gm, "")                 // strip single-line comments
-      .replace(/\/\*[\s\S]*?\*\//g, "");         // strip multi-line comments
+      .replace(/\/\*[\s\S]*?\*\//g, "")          // strip multi-line comments
+      .replace(/`[^`]*`/g, '""')                // strip template literals
+      .replace(/"(?:[^"\\]|\\.)*"/g, '""')       // strip double-quoted strings
+      .replace(/'(?:[^'\\]|\\.)*'/g, '""');      // strip single-quoted strings
     if (
       /\.prototype\s*=[^=]/.test(execCode) ||            // prototype assignment: Foo.prototype = {...}
       /\.prototype\.\w+\s*=[^=]/.test(execCode) ||     // prototype property set: Foo.prototype.bar = ...
