@@ -69,7 +69,7 @@ function prioritizeTests(files: string[], previousFailures: Set<string>): string
   const failed: string[] = [];
   const rest: string[] = [];
   for (const f of files) {
-    const rel = f.replace(/.*test262\/test\//, "");
+    const rel = f.replace(/.*test262\//, "");
     if (previousFailures.has(rel)) {
       failed.push(f);
     } else {
@@ -292,7 +292,7 @@ if (hasPrevious && (isInterrupted || resumeFlag) && !fullFlag) {
     }
     for (const cat of categories) {
       for (const f of findTestFiles(cat)) {
-        existingResults.delete(f.replace(/.*test262\/test\//, ""));
+        existingResults.delete(f.replace(/.*test262\//, ""));
       }
     }
     const lines = [...existingResults.values()];
@@ -354,7 +354,7 @@ for (const [batchName, batchCats] of batches) {
   for (const category of batchCats) {
     const files = prioritizeTests(findTestFiles(category), previousFailures);
     for (const filePath of files) {
-      const relPath = filePath.replace(/.*test262\/test\//, "");
+      const relPath = filePath.replace(/.*test262\//, "");
       if (completedFiles.has(relPath)) {
         processed++;
         continue;
