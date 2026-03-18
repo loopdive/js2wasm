@@ -24,7 +24,7 @@ const KNOWN_HANGING_TESTS = new Set([
 
 /** Worker pool — persistent child processes with per-test timeout.
  *  If a test hangs (infinite loop in Wasm), the worker is killed and replaced. */
-const POOL_SIZE = 2;
+const POOL_SIZE = 8;
 const workerPath = join(process.cwd(), "scripts", "test262-worker.ts");
 type WorkerSlot = { proc: ReturnType<typeof fork>; busy: boolean; ready: boolean };
 const pool: WorkerSlot[] = [];
