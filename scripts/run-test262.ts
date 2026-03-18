@@ -287,22 +287,25 @@ for (const [batchName, batchCats] of batches) {
     const files = findTestFiles(category);
     if (files.length === 0) continue;
 
+    // Dispatch tests in parallel up to POOL_SIZE concurrency
+    const pending: Promise<void>[] = [];
     for (const filePath of files) {
       const relPath = filePath.replace(/.*test262\/test\//, "");
       if (completedFiles.has(relPath)) {
         processed++;
         continue;
       }
-      let result: Awaited<ReturnType<typeof runTest262File>>;
-      if (KNOWN_HANGING_TESTS.has(relPath)) {
-        result = { file: relPath, category, status: "fail" as const, error: "known hanging test (infinite loop in compiled Wasm)" } as any;
-      } else {
-        try {
-          result = await runTestWithTimeout(filePath, category, relPath, 30_000);
-        } catch (e: any) {
-          result = { file: relPath, category, status: "compile_error" as const, error: (e?.message ?? String(e)) } as any;
+      const job = (async () => {
+        let result: Awaited<ReturnType<typeof runTest262File>>;
+        if (KNOWN_HANGING_TESTS.has(relPath)) {
+          result = { file: relPath, category, status: "fail" as const, error: "known hanging test (infinite loop in compiled Wasm)" } as any;
+        } else {
+          try {
+            result = await runTestWithTimeout(filePath, category, relPath, 30_000);
+          } catch (e: any) {
+            result = { file: relPath, category, status: "compile_error" as const, error: (e?.message ?? String(e)) } as any;
+          }
         }
-      }
       allResults.push(result);
       stats[result.status]++;
       batchStats[result.status]++;
@@ -322,7 +325,20 @@ for (const [batchName, batchCats] of batches) {
         appendFileSync(RUN_JSONL, buffer.join("\n") + "\n");
         buffer = [];
       }
+      })();
+      pending.push(job);
+      // Limit concurrency to POOL_SIZE
+      if (pending.length >= POOL_SIZE) {
+        await Promise.race(pending);
+        // Remove settled promises
+        for (let i = pending.length - 1; i >= 0; i--) {
+          const settled = await Promise.race([pending[i], Promise.resolve("pending")]);
+          if (settled !== "pending") pending.splice(i, 1);
+        }
+      }
     }
+    // Wait for remaining tests in this category
+    await Promise.all(pending);
   }
   // Flush remaining
   if (buffer.length > 0) {
