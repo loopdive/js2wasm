@@ -23,13 +23,55 @@ const KNOWN_HANGING_TESTS = new Set([
   "test/language/statements/for-of/let-identifier-with-newline.js",
 ]);
 
-/** Source hash dedup — if two tests produce identical wrapped source,
- *  reuse the first result (same source → same Wasm → same outcome). */
-const sourceHashCache = new Map<string, { status: string; error?: string }>();
-
-function hashSource(source: string): string {
-  return createHash("sha256").update(source).digest("hex").slice(0, 16);
+/** Compute a short hash of a string or buffer */
+function shortHash(data: string | Uint8Array): string {
+  return createHash("sha256").update(data).digest("hex").slice(0, 16);
 }
+
+/** Compiler fingerprint — hash of all source files in src/.
+ *  If this changes, all cached results are invalidated. */
+function computeCompilerHash(): string {
+  try {
+    // Use git hash of src/ for speed — covers all compiler changes
+    const hash = execSync("git rev-parse HEAD:src", { cwd: process.cwd(), encoding: "utf-8" }).trim();
+    return hash.slice(0, 16);
+  } catch {
+    return "unknown";
+  }
+}
+
+const compilerHash = computeCompilerHash();
+console.log(`Compiler hash: ${compilerHash}`);
+
+/** Cache file: maps (compilerHash + sourceHash) → { status, error, wasmHash }
+ *  Persisted to disk so results survive across runs. */
+const CACHE_PATH = join(RESULTS_DIR, "test262-cache.json");
+type CacheEntry = { status: string; error?: string; wasmHash?: string };
+let resultCache = new Map<string, CacheEntry>();
+
+function loadCache() {
+  if (!existsSync(CACHE_PATH)) return;
+  try {
+    const data = JSON.parse(readFileSync(CACHE_PATH, "utf-8"));
+    if (data.compilerHash === compilerHash && data.entries) {
+      resultCache = new Map(Object.entries(data.entries));
+      console.log(`Loaded ${resultCache.size} cached results (compiler ${compilerHash})`);
+    } else {
+      console.log(`Cache invalidated (compiler changed: ${data.compilerHash} → ${compilerHash})`);
+    }
+  } catch {}
+}
+
+function saveCache() {
+  const entries: Record<string, CacheEntry> = {};
+  for (const [k, v] of resultCache) entries[k] = v;
+  writeFileSync(CACHE_PATH, JSON.stringify({ compilerHash, entries }, null, 0));
+}
+
+loadCache();
+
+/** Source hash dedup within a single run */
+const sourceHashCache = new Map<string, CacheEntry>();
 
 /** Load previous results to prioritize failures first on re-runs */
 function loadPreviousFailures(): Set<string> {
@@ -346,11 +388,11 @@ for (const [batchName, batchCats] of batches) {
           continue;
         }
 
-        // Source hash dedup: if wrapped source is identical to a previous test,
-        // reuse the result (same source → same Wasm → same outcome)
+        // Check persistent cache: (compiler + source) hash
         const wrapped = wrapTest(source, meta);
-        const hash = hashSource(wrapped);
-        const cached = sourceHashCache.get(hash);
+        const srcHash = shortHash(wrapped);
+        const cacheKey = srcHash; // compiler hash already validated on load
+        const cached = resultCache.get(cacheKey) || sourceHashCache.get(cacheKey);
         if (cached) {
           const r = { file: relPath, category, status: cached.status as any, error: cached.error };
           allResults.push(r as any);
@@ -386,18 +428,17 @@ for (const [batchName, batchCats] of batches) {
           ...(r.reason ? { reason: r.reason } : {}),
           ...(r.timing ? { timing: r.timing } : {}),
         }));
-        // Populate source hash cache for dedup of future tests
-        // Read source + wrap to compute hash (only for tests that ran)
+        // Populate both caches for dedup
         try {
           const job = jobs.find(j => j.relPath === r.file);
           if (job) {
             const src = readFileSync(job.filePath, "utf-8");
             const meta = parseMeta(src);
             const wrapped = wrapTest(src, meta);
-            const hash = hashSource(wrapped);
-            if (!sourceHashCache.has(hash)) {
-              sourceHashCache.set(hash, { status: r.status, error: r.error });
-            }
+            const hash = shortHash(wrapped);
+            const entry: CacheEntry = { status: r.status, error: r.error };
+            sourceHashCache.set(hash, entry);
+            resultCache.set(hash, entry);
           }
         } catch {}
       }
@@ -575,6 +616,10 @@ if (failures.length > 0) {
 // Run completed successfully — promote run files to main paths (atomic for same-device)
 try { copyFileSync(RUN_JSONL, JSONL_PATH); } catch {}
 try { copyFileSync(RUN_REPORT, REPORT_PATH); } catch {}
+
+// Save result cache for future runs
+saveCache();
+console.log(`Saved ${resultCache.size} entries to result cache`);
 
 // Mark run as complete
 writeFileSync(META_PATH, JSON.stringify({ gitHead: getGitHead(), status: "complete", finishedAt: new Date().toISOString() }));
