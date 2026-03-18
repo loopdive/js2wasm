@@ -16,53 +16,87 @@ import { join } from "path";
 import { writeFileSync, appendFileSync, readFileSync, existsSync, openSync, closeSync, writeSync, unlinkSync, mkdirSync, copyFileSync } from "fs";
 import { execSync, fork } from "child_process";
 
-/** Run a single test262 file in a child process with a timeout.
- *  If the test hangs (infinite loop in compiled Wasm), the child is killed
- *  and the result is reported as "timeout". */
+/** Persistent worker pool — keeps N workers alive, sends jobs, kills on timeout */
+const POOL_SIZE = 2;
+const workerPath = join(import.meta.dirname ?? ".", "test262-worker.ts");
+type WorkerSlot = { proc: ReturnType<typeof fork>; busy: boolean; ready: boolean };
+const pool: WorkerSlot[] = [];
+
+function spawnWorker(): WorkerSlot {
+  const proc = fork(workerPath, [], { stdio: "pipe", execArgv: ["--import", "tsx"] });
+  const slot: WorkerSlot = { proc, busy: false, ready: false };
+  proc.once("message", (msg: any) => { if (msg.ready) slot.ready = true; });
+  return slot;
+}
+
+function initPool() {
+  for (let i = 0; i < POOL_SIZE; i++) pool.push(spawnWorker());
+}
+
+function getWorker(): Promise<WorkerSlot> {
+  const free = pool.find(s => !s.busy && s.ready);
+  if (free) return Promise.resolve(free);
+  return new Promise(resolve => {
+    const check = setInterval(() => {
+      const f = pool.find(s => !s.busy && s.ready);
+      if (f) { clearInterval(check); resolve(f); }
+    }, 10);
+  });
+}
+
+function replaceWorker(slot: WorkerSlot) {
+  const idx = pool.indexOf(slot);
+  try { slot.proc.kill("SIGKILL"); } catch {}
+  if (idx >= 0) { pool[idx] = spawnWorker(); }
+}
+
 function runTestWithTimeout(
   filePath: string, category: string, relPath: string, timeoutMs: number
 ): Promise<any> {
-  return new Promise((resolve) => {
-    const workerPath = join(import.meta.dirname ?? ".", "test262-worker.ts");
-    const child = fork(workerPath, [], { stdio: "pipe", execArgv: ["--import", "tsx"] });
+  return new Promise(async (resolve) => {
+    const slot = await getWorker();
+    slot.busy = true;
     let settled = false;
     const timer = setTimeout(() => {
       if (!settled) {
         settled = true;
-        child.kill("SIGKILL");
+        slot.busy = false;
+        replaceWorker(slot); // kill hung worker, spawn fresh one
         resolve({ file: relPath, category, status: "fail", error: "timeout: test exceeded " + (timeoutMs/1000) + "s" });
       }
     }, timeoutMs);
-    let gotReady = false;
-    child.on("message", (msg: any) => {
-      if (msg.ready && !gotReady) {
-        gotReady = true;
-        child.send({ filePath, category, relPath });
-        return;
-      }
-      if (!settled && gotReady) {
+    const onMsg = (msg: any) => {
+      if (!settled && !msg.ready) {
         settled = true;
         clearTimeout(timer);
-        child.kill();
+        slot.busy = false;
+        slot.proc.removeListener("message", onMsg);
         resolve(msg);
       }
-    });
-    child.on("exit", () => {
+    };
+    slot.proc.on("message", onMsg);
+    slot.proc.on("exit", () => {
       if (!settled) {
         settled = true;
         clearTimeout(timer);
-        resolve({ file: relPath, category, status: "compile_error", error: "worker exited unexpectedly" });
+        slot.busy = false;
+        const idx = pool.indexOf(slot);
+        if (idx >= 0) pool[idx] = spawnWorker();
+        resolve({ file: relPath, category, status: "compile_error", error: "worker crashed" });
       }
     });
-    child.on("error", (err) => {
-      if (!settled) {
-        settled = true;
-        clearTimeout(timer);
-        resolve({ file: relPath, category, status: "compile_error", error: err.message });
-      }
-    });
+    slot.proc.send({ filePath, category, relPath });
   });
 }
+
+// Initialize pool before test loop
+initPool();
+// Wait for workers to be ready
+await new Promise<void>(resolve => {
+  const check = setInterval(() => {
+    if (pool.every(s => s.ready)) { clearInterval(check); resolve(); }
+  }, 50);
+});
 
 const RESULTS_DIR = join(import.meta.dirname ?? ".", "..", "benchmarks", "results");
 const JSONL_PATH = join(RESULTS_DIR, "test262-results.jsonl");
@@ -240,10 +274,9 @@ for (const [batchName, batchCats] of batches) {
         processed++;
         continue;
       }
-      const TEST_TIMEOUT_MS = 30_000; // 30 second per-test timeout
       let result: Awaited<ReturnType<typeof runTest262File>>;
       try {
-        result = await runTestWithTimeout(filePath, category, relPath, TEST_TIMEOUT_MS);
+        result = await runTestWithTimeout(filePath, category, relPath, 30_000);
       } catch (e: any) {
         result = { file: relPath, category, status: "compile_error" as const, error: (e?.message ?? String(e)) } as any;
       }
