@@ -382,49 +382,41 @@ Module system and import/export patterns.
 
 ## Cluster 17: March 2026 Error Analysis `[E][S][I]`
 
-Updated with latest run (2026-03-17): 17,606 unique tests — 5,735 pass, 2,064 fail, 3,703 CE, 6,104 skip.
+Updated with fresh run (2026-03-18): 23,021 tests -- 6,366 pass, 4,367 fail, 9,062 CE, 3,226 skip.
 
-### Compile errors — top patterns
-
-```
-#409 (unsupported call expression — 1,752 CE) ── independent [E], review
-#444 (local.set type mismatch — 292 CE) ── independent [E][S], NEW
-#411 (struct.new stack mismatch — 114 CE) ── independent [E][I], reduced from 517
-#412 (yield outside generator — 166 CE) ── coordinates with #287 [S][E]
-#445 (call args missing — 72 CE) ── independent [E], NEW
-#413 (parameter self-reference — 59 CE) ── independent [E]
-#446 (call_ref type mismatch — 56 CE) ── independent [E], NEW
-#447 (stack fallthru residual — 48 CE) ── independent [S][E], successor to #410, NEW
-#448 (type mismatch i32 — 47 CE) ── independent [E][S], NEW
-#436 (for-of destructuring ref type — 42 CE) ── independent [S], NEW
-#437 (empty_FIXTURE.js — 38 CE) ── test infra [T], DONE
-#420 (destructure non-array — 34 CE) ── independent [E], updated from 26
-#438 (internal error undefined — 20 CE) ── independent [E], NEW
-#439 (generator missing next/return/throw — 16 CE) ── blocked by #412 [E], NEW
-#440 (dynamic import specifier — 16 CE) ── independent [E], NEW
-#415 (logical assignment struct — 14 CE) ── independent [E]
-#449 (call_ref null — 15 CE) ── independent [E], NEW
-#421 (Array.reduce — 23 CE) ── independent [E]
-#424 (logical assignment struct — 14 CE) ── independent [E]
-#426 (compound assignment element — 11 CE) ── coordinates with #424 [E]
-#427 (super keyword remaining — 11 CE) ── independent [E], successor to #375
-```
-
-### Runtime failures (2,064 tests)
+### Compile errors -- top patterns (9,062 total)
 
 ```
-#417 (wrong return value 0 — 1,979 fail) ── umbrella, triage-first [E][S]
-#441 (null pointer dereference — 88 fail) ── independent [E], successor to #419, NEW
-#418 (expected SyntaxError — 0 fail, now skipped) ── in-progress [T]
-#442 (illegal cast — 6 fail) ── independent [E], NEW
-#443 (expected ReferenceError — 6 fail) ── independent [S], NEW
+#409 (unsupported call expression -- 3,931 CE) -- independent [E], review
+#514 (options is not defined -- 684 CE) -- independent [I], NEW from #509
+#411 (struct.new stack mismatch -- 975 CE) -- independent [E][I]
+#511 (call/call_ref type mismatch -- 514 CE) -- independent [E], updated from #509
+#444 (local.set type mismatch -- 483 CE) -- independent [E][S]
+#515 (uninitialized local + struct.get/set -- 470 CE) -- independent [E][I], NEW from #509
+#510 (TS parse errors -- 175 CE) -- test infra [T], updated from #509
+#420 (destructure non-array -- 83 CE) -- independent [E]
+#405 (targetLocal not defined -- 61 CE) -- independent [E]
+#492 (delete operator -- 88 CE) -- independent [E]
+```
+
+### Runtime failures (4,367 total)
+
+```
+#513 (wrong return value 0 -- 3,436 fail) -- umbrella, triage-first [E][S], updated from #509
+#512 (illegal cast -- 683 fail) -- independent [E], updated from #509
+#441 (null pointer dereference -- 129 fail) -- independent [E]
+#418 (expected SyntaxError -- skipped) -- in-progress [T]
 ```
 
 | #   | Title | Tests | Ready? |
 |-----|-------|-------|--------|
-| 409 | Unsupported call expression patterns | 1,752 CE | **Review** (critical) |
-| 444 | Wasm validation: local.set type mismatch | 292 CE | **Ready** (high) |
-| 411 | struct.new stack mismatch | 114 CE | **Ready** (critical) |
+| 409 | Unsupported call expression patterns | 3,931 CE | **Review** (critical) |
+| 514 | Generator/async-gen "options is not defined" | 684 CE | **Ready** (critical, NEW) |
+| 515 | Uninitialized local + struct.get/set type errors | 470 CE | **Ready** (high, NEW) |
+| 511 | Wasm validation: call/call_ref type mismatch | 514 CE | **Ready** (critical, updated) |
+| 444 | Wasm validation: local.set type mismatch | 483 CE | **Ready** (high) |
+| 411 | struct.new stack mismatch | 975 CE | **Ready** (critical) |
+| 510 | TS parse errors from test wrapping | 175 CE | **Ready** (high, updated) |
 | 412 | Yield outside generator | 166 CE | **Ready** (medium) |
 | 445 | Wasm validation: call args missing | 72 CE | **Ready** (medium) |
 | 413 | Parameter default self-reference | 59 CE | **Ready** (medium) |
@@ -433,7 +425,7 @@ Updated with latest run (2026-03-17): 17,606 unique tests — 5,735 pass, 2,064 
 | 448 | Wasm validation: type mismatch i32 | 47 CE | **Ready** (medium) |
 | 436 | for-of array destructuring ref type | 42 CE | **Ready** (medium) |
 | 437 | Cannot find module empty_FIXTURE.js | 38 CE | **Done** |
-| 420 | Cannot destructure non-array types | 34 CE | **Ready** (medium) |
+| 420 | Cannot destructure non-array types | 83 CE | **Ready** (medium, updated) |
 | 438 | Internal error: undefined property access | 20 CE | **Ready** (medium) |
 | 421 | Array.reduce requires callback and initial value | 23 CE | **Ready** (medium) |
 | 439 | Generator type missing next/return/throw | 16 CE | Blocked by #412 |
@@ -443,15 +435,16 @@ Updated with latest run (2026-03-17): 17,606 unique tests — 5,735 pass, 2,064 
 | 424 | Logical assignment on unresolved struct | 14 CE | **Ready** (medium) |
 | 426 | Compound assignment on non-ref element | 11 CE | **Ready** (low, coordinates #424) |
 | 427 | SuperKeyword unsupported in remaining contexts | 11 CE | **Ready** (low) |
-| 417 | Wrong return value (returned 0) | 1,979 fail | **Ready** (critical, triage first) |
-| 441 | Null pointer dereference (residual) | 88 fail | **Ready** (high) |
+| 513 | Wrong return value (returned 0) | 3,436 fail | **Ready** (critical, updated) |
+| 512 | RuntimeError: illegal cast | 683 fail | **Ready** (critical, updated) |
+| 441 | Null pointer dereference (residual) | 129 fail | **Ready** (high) |
 | 418 | Missing SyntaxError validation | 0 fail | **In-progress** (skipped now) |
-| 442 | RuntimeError: illegal cast | 6 fail | **Ready** (low) |
+| 442 | RuntimeError: illegal cast (original) | 6 fail | Subsumed by #512 |
 | 443 | Expected ReferenceError but succeeded | 6 fail | **Ready** (low) |
-| 429 | Undeclared variable access — ReferenceError + immutable global | 71 tests | **Ready** (high, coordinates #443) |
+| 429 | Undeclared variable access -- ReferenceError + immutable global | 71 tests | **Ready** (high, coordinates #443) |
 | 430 | String-to-number coercion for non-addition arithmetic | 36 CE | **Ready** (medium) |
 | 431 | Math.pow/min/max fallthru type mismatch | 27 CE | **Ready** (medium) |
-| 432 | `new` on non-constructor builtins — stack underflow | 42 CE | **Review** (medium) |
+| 432 | `new` on non-constructor builtins -- stack underflow | 42 CE | **Review** (medium) |
 | 433 | Equality operators mixed type i32/f64 mismatch | 10 CE | **Ready** (medium) |
 | 434 | BigInt remaining failures across operators | 27 fail | **Ready** (low) |
 | 435 | Logical/conditional must preserve object identity | 16 fail | **Ready** (medium) |
