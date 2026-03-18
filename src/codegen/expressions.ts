@@ -22422,12 +22422,16 @@ function tryStaticToNumber(ctx: CodegenContext, expr: ts.Expression): number | u
   if (ts.isPrefixUnaryExpression(expr) && expr.operator === ts.SyntaxKind.PlusToken) {
     return tryStaticToNumber(ctx, expr.operand);
   }
-  // Variable: trace to initializer
+  // Variable: trace to initializer (only for const declarations to avoid
+  // incorrectly folding mutable variables like `let heapSize = 0`)
   if (ts.isIdentifier(expr)) {
     const sym = ctx.checker.getSymbolAtLocation(expr);
     const decl = sym?.valueDeclaration;
     if (decl && ts.isVariableDeclaration(decl) && decl.initializer) {
-      return tryStaticToNumber(ctx, decl.initializer);
+      const declList = decl.parent;
+      if (ts.isVariableDeclarationList(declList) && (declList.flags & ts.NodeFlags.Const) !== 0) {
+        return tryStaticToNumber(ctx, decl.initializer);
+      }
     }
   }
   return undefined;
