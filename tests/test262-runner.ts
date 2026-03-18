@@ -1342,47 +1342,62 @@ function assert_compareArray(actual: number[], expected: number[]): void {
     if (/\bverifyProperty\b/.test(body)) {
       preamble += `
 
-function verifyProperty(a: number, b: number, c: number): void {}`;
+function verifyProperty(a: any, b: any, c: any): void {}`;
     }
     if (/\bverifyEnumerable\b/.test(body)) {
       preamble += `
 
-function verifyEnumerable(a: number, b: number): void {}`;
+function verifyEnumerable(a: any, b: any): void {}`;
     }
     if (/\bverifyNotEnumerable\b/.test(body)) {
       preamble += `
 
-function verifyNotEnumerable(a: number, b: number): void {}`;
+function verifyNotEnumerable(a: any, b: any): void {}`;
     }
     if (/\bverifyWritable\b/.test(body)) {
       preamble += `
 
-function verifyWritable(a: number, b: number): void {}`;
+function verifyWritable(a: any, b: any): void {}`;
     }
     if (/\bverifyNotWritable\b/.test(body)) {
       preamble += `
 
-function verifyNotWritable(a: number, b: number): void {}`;
+function verifyNotWritable(a: any, b: any): void {}`;
     }
     if (/\bverifyConfigurable\b/.test(body)) {
       preamble += `
 
-function verifyConfigurable(a: number, b: number): void {}`;
+function verifyConfigurable(a: any, b: any): void {}`;
     }
     if (/\bverifyNotConfigurable\b/.test(body)) {
       preamble += `
 
-function verifyNotConfigurable(a: number, b: number): void {}`;
+function verifyNotConfigurable(a: any, b: any): void {}`;
     }
     if (/\bverifyEqualTo\b/.test(body)) {
       preamble += `
 
-function verifyEqualTo(a: number, b: number, c: number): void {}`;
+function verifyEqualTo(a: any, b: any, c: any): void {}`;
     }
     if (/\bverifyNotEqualTo\b/.test(body)) {
       preamble += `
 
-function verifyNotEqualTo(a: number, b: number, c: number): void {}`;
+function verifyNotEqualTo(a: any, b: any, c: any): void {}`;
+    }
+    if (/\bverifyCallableProperty\b/.test(body)) {
+      preamble += `
+
+function verifyCallableProperty(a: number, b: number, c: number, d: number, e: number, f: number): void {}`;
+    }
+    if (/\bverifyPrimordialProperty\b/.test(body)) {
+      preamble += `
+
+function verifyPrimordialProperty(a: number, b: number, c: number, d: number): void {}`;
+    }
+    if (/\bverifyPrimordialCallableProperty\b/.test(body)) {
+      preamble += `
+
+function verifyPrimordialCallableProperty(a: number, b: number, c: number, d: number, e: number, f: number): void {}`;
     }
   }
 
