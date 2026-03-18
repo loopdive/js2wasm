@@ -151,7 +151,7 @@ _Latest run (2026-03-17): 17,606 unique tests — 5,735 pass (32.6%), 2,064 fail
 | [412](../ready/412.md) | Yield outside generator (generator body not recognized) | CE | 166 | Medium |
 | [413](../ready/413.md) | Parameter self-reference (default param validation too strict) | CE | 59 | Medium |
 | [436](../ready/436.md) | for-of array destructuring: element not a ref type | CE | 42 | Medium |
-| [437](../ready/437.md) | Cannot find module empty_FIXTURE.js (test infra) | CE | 38 | Low |
+| [437](../done/437.md) | Cannot find module empty_FIXTURE.js (test infra) | CE | 38 | **Done** |
 | [420](../ready/420.md) | Cannot destructure non-array types | CE | 34 | Medium |
 | [438](../ready/438.md) | Internal error: Cannot read properties of undefined | CE | 20 | Medium |
 | [439](../ready/439.md) | Generator type missing next/return/throw | CE | 16 | Medium |

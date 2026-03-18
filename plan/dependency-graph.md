@@ -394,7 +394,7 @@ Updated with latest run (2026-03-17): 17,606 unique tests — 5,735 pass, 2,064 
 #447 (stack fallthru residual — 48 CE) ── independent [S][E], successor to #410, NEW
 #448 (type mismatch i32 — 47 CE) ── independent [E][S], NEW
 #436 (for-of destructuring ref type — 42 CE) ── independent [S], NEW
-#437 (empty_FIXTURE.js — 38 CE) ── test infra [T], NEW
+#437 (empty_FIXTURE.js — 38 CE) ── test infra [T], DONE
 #420 (destructure non-array — 34 CE) ── independent [E], updated from 26
 #438 (internal error undefined — 20 CE) ── independent [E], NEW
 #439 (generator missing next/return/throw — 16 CE) ── blocked by #412 [E], NEW
@@ -429,7 +429,7 @@ Updated with latest run (2026-03-17): 17,606 unique tests — 5,735 pass, 2,064 
 | 447 | Wasm validation: stack fallthru (residual) | 48 CE | **Ready** (medium) |
 | 448 | Wasm validation: type mismatch i32 | 47 CE | **Ready** (medium) |
 | 436 | for-of array destructuring ref type | 42 CE | **Ready** (medium) |
-| 437 | Cannot find module empty_FIXTURE.js | 38 CE | **Ready** (low, test infra) |
+| 437 | Cannot find module empty_FIXTURE.js | 38 CE | **Done** |
 | 420 | Cannot destructure non-array types | 34 CE | **Ready** (medium) |
 | 438 | Internal error: undefined property access | 20 CE | **Ready** (medium) |
 | 421 | Array.reduce requires callback and initial value | 23 CE | **Ready** (medium) |
