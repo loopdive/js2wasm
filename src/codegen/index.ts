@@ -1851,85 +1851,110 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
   // __any_eq(a, b) -> i32
   // Same tag: compare values. Different tag: return 0.
   addHelper("__any_eq", [anyRefNull, anyRefNull], [{ kind: "i32" }], [
-    // tagA = a.tag
+    // Fast path: if both refs point to the same AnyValue struct, they are equal.
     { op: "local.get", index: 0 },
-    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
-    { op: "local.set", index: 2 },
-    // tagB = b.tag
     { op: "local.get", index: 1 },
-    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
-    { op: "local.set", index: 3 },
-    // if tagA != tagB → 0
-    { op: "local.get", index: 2 },
-    { op: "local.get", index: 3 },
-    { op: "i32.ne" },
+    { op: "ref.eq" } as unknown as Instr,
     { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
       then: [
-        // Cross-tag numeric equality: if one is i32(2) and other is f64(3), compare as f64
-        { op: "local.get", index: 2 },
-        { op: "local.get", index: 3 },
-        { op: "i32.add" },
-        { op: "i32.const", value: 5 }, // 2+3 = 5
-        { op: "i32.eq" },
-        { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
-          then: [
-            { op: "local.get", index: 0 },
-            { op: "call", funcIdx: toF64Idx },
-            { op: "local.get", index: 1 },
-            { op: "call", funcIdx: toF64Idx },
-            { op: "f64.eq" },
-          ],
-          else: [
-            { op: "i32.const", value: 0 },
-          ],
-        } as unknown as Instr,
+        { op: "i32.const", value: 1 },
       ],
       else: [
-        // Same tag — compare by tag type
+        // tagA = a.tag
+        { op: "local.get", index: 0 },
+        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+        { op: "local.set", index: 2 },
+        // tagB = b.tag
+        { op: "local.get", index: 1 },
+        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+        { op: "local.set", index: 3 },
+        // if tagA != tagB → 0
         { op: "local.get", index: 2 },
-        { op: "i32.const", value: 2 },
-        { op: "i32.eq" },
+        { op: "local.get", index: 3 },
+        { op: "i32.ne" },
         { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
           then: [
-            // i32 eq
-            { op: "local.get", index: 0 },
-            { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
-            { op: "local.get", index: 1 },
-            { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
-            { op: "i32.eq" },
-          ],
-          else: [
+            // Cross-tag numeric equality: if one is i32(2) and other is f64(3), compare as f64
             { op: "local.get", index: 2 },
-            { op: "i32.const", value: 3 },
+            { op: "local.get", index: 3 },
+            { op: "i32.add" },
+            { op: "i32.const", value: 5 }, // 2+3 = 5
             { op: "i32.eq" },
             { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
               then: [
-                // f64 eq
                 { op: "local.get", index: 0 },
-                { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 },
+                { op: "call", funcIdx: toF64Idx },
                 { op: "local.get", index: 1 },
-                { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 },
+                { op: "call", funcIdx: toF64Idx },
                 { op: "f64.eq" },
               ],
               else: [
+                { op: "i32.const", value: 0 },
+              ],
+            } as unknown as Instr,
+          ],
+          else: [
+            // Same tag — compare by tag type
+            { op: "local.get", index: 2 },
+            { op: "i32.const", value: 2 },
+            { op: "i32.eq" },
+            { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
+              then: [
+                // i32 eq
+                { op: "local.get", index: 0 },
+                { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+                { op: "local.get", index: 1 },
+                { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+                { op: "i32.eq" },
+              ],
+              else: [
                 { op: "local.get", index: 2 },
-                { op: "i32.const", value: 4 },
+                { op: "i32.const", value: 3 },
                 { op: "i32.eq" },
                 { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
                   then: [
-                    // bool eq (compare i32val)
+                    // f64 eq
                     { op: "local.get", index: 0 },
-                    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+                    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 },
                     { op: "local.get", index: 1 },
-                    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
-                    { op: "i32.eq" },
+                    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 },
+                    { op: "f64.eq" },
                   ],
                   else: [
-                    // null/undefined: both same tag → equal
                     { op: "local.get", index: 2 },
-                    { op: "i32.const", value: 2 },
-                    { op: "i32.lt_s" },
-                    // tag < 2 means 0 (null) or 1 (undefined), both equal to themselves
+                    { op: "i32.const", value: 4 },
+                    { op: "i32.eq" },
+                    { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
+                      then: [
+                        // bool eq (compare i32val)
+                        { op: "local.get", index: 0 },
+                        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+                        { op: "local.get", index: 1 },
+                        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+                        { op: "i32.eq" },
+                      ],
+                      else: [
+                        // tag 6 (ref): compare refval (eqref) with ref.eq
+                        { op: "local.get", index: 2 },
+                        { op: "i32.const", value: 6 },
+                        { op: "i32.eq" },
+                        { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
+                          then: [
+                            { op: "local.get", index: 0 },
+                            { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 3 },
+                            { op: "local.get", index: 1 },
+                            { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 3 },
+                            { op: "ref.eq" } as unknown as Instr,
+                          ],
+                          else: [
+                            // null/undefined (tag < 2): both same tag → equal
+                            { op: "local.get", index: 2 },
+                            { op: "i32.const", value: 2 },
+                            { op: "i32.lt_s" },
+                          ],
+                        } as unknown as Instr,
+                      ],
+                    } as unknown as Instr,
                   ],
                 } as unknown as Instr,
               ],
@@ -1946,68 +1971,96 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
   // __any_strict_eq(a, b) -> i32
   // Strict equality (===): different tags always return 0 (no cross-type coercion). (#296)
   addHelper("__any_strict_eq", [anyRefNull, anyRefNull], [{ kind: "i32" }], [
-    // tagA = a.tag
+    // Fast path: if both refs point to the same AnyValue struct, they are equal.
+    // This handles object identity (var b = a) for all tag types.
     { op: "local.get", index: 0 },
-    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
-    { op: "local.set", index: 2 },
-    // tagB = b.tag
     { op: "local.get", index: 1 },
-    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
-    { op: "local.set", index: 3 },
-    // if tagA != tagB → 0 (strict: no cross-type coercion)
-    { op: "local.get", index: 2 },
-    { op: "local.get", index: 3 },
-    { op: "i32.ne" },
+    { op: "ref.eq" } as unknown as Instr,
     { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
       then: [
-        { op: "i32.const", value: 0 },
+        { op: "i32.const", value: 1 },
       ],
       else: [
-        // Same tag — compare by tag type
+        // tagA = a.tag
+        { op: "local.get", index: 0 },
+        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+        { op: "local.set", index: 2 },
+        // tagB = b.tag
+        { op: "local.get", index: 1 },
+        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
+        { op: "local.set", index: 3 },
+        // if tagA != tagB → 0 (strict: no cross-type coercion)
         { op: "local.get", index: 2 },
-        { op: "i32.const", value: 2 },
-        { op: "i32.eq" },
+        { op: "local.get", index: 3 },
+        { op: "i32.ne" },
         { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
           then: [
-            // i32 eq
-            { op: "local.get", index: 0 },
-            { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
-            { op: "local.get", index: 1 },
-            { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
-            { op: "i32.eq" },
+            { op: "i32.const", value: 0 },
           ],
           else: [
+            // Same tag — compare by tag type
             { op: "local.get", index: 2 },
-            { op: "i32.const", value: 3 },
+            { op: "i32.const", value: 2 },
             { op: "i32.eq" },
             { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
               then: [
-                // f64 eq
+                // i32 eq
                 { op: "local.get", index: 0 },
-                { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 },
+                { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
                 { op: "local.get", index: 1 },
-                { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 },
-                { op: "f64.eq" },
+                { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+                { op: "i32.eq" },
               ],
               else: [
                 { op: "local.get", index: 2 },
-                { op: "i32.const", value: 4 },
+                { op: "i32.const", value: 3 },
                 { op: "i32.eq" },
                 { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
                   then: [
-                    // bool eq (compare i32val)
+                    // f64 eq
                     { op: "local.get", index: 0 },
-                    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+                    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 },
                     { op: "local.get", index: 1 },
-                    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
-                    { op: "i32.eq" },
+                    { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 },
+                    { op: "f64.eq" },
                   ],
                   else: [
-                    // null/undefined: both same tag → equal
                     { op: "local.get", index: 2 },
-                    { op: "i32.const", value: 2 },
-                    { op: "i32.lt_s" },
-                    // tag < 2 means 0 (null) or 1 (undefined), both equal to themselves
+                    { op: "i32.const", value: 4 },
+                    { op: "i32.eq" },
+                    { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
+                      then: [
+                        // bool eq (compare i32val)
+                        { op: "local.get", index: 0 },
+                        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+                        { op: "local.get", index: 1 },
+                        { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
+                        { op: "i32.eq" },
+                      ],
+                      else: [
+                        // tag 6 (ref): compare refval (eqref) with ref.eq
+                        { op: "local.get", index: 2 },
+                        { op: "i32.const", value: 6 },
+                        { op: "i32.eq" },
+                        { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
+                          then: [
+                            { op: "local.get", index: 0 },
+                            { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 3 },
+                            { op: "local.get", index: 1 },
+                            { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 3 },
+                            { op: "ref.eq" } as unknown as Instr,
+                          ],
+                          else: [
+                            // null/undefined (tag < 2): both same tag → equal
+                            // string (tag 5): different AnyValue boxes → not same ref
+                            // (string content equality is handled by string-specific codepaths)
+                            { op: "local.get", index: 2 },
+                            { op: "i32.const", value: 2 },
+                            { op: "i32.lt_s" },
+                          ],
+                        } as unknown as Instr,
+                      ],
+                    } as unknown as Instr,
                   ],
                 } as unknown as Instr,
               ],

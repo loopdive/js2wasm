@@ -4167,6 +4167,101 @@ function compileBinaryExpression(
       }
     }
 
+    // Reference identity fast-path for externref equality.
+    // When both operands are externref (e.g. objects stored as any), check if they
+    // are the same GC reference before falling back to numeric unboxing.
+    // This fixes `var a = {}; var b = a; a === b` which was incorrectly returning false
+    // because numeric unboxing of objects produces NaN, and NaN !== NaN.
+    // Uses any.convert_extern to get anyref, then ref.test/ref.cast to eqref for ref.eq.
+    // The eq abstract heap type is encoded as -19 in signed LEB128 (= 0x6d).
+    const EQ_HEAP_TYPE = -19;
+    if (leftType.kind === "externref" && rightType.kind === "externref" &&
+        !leftIsString && !rightIsString && !leftIsNumber && !rightIsNumber &&
+        !leftIsBool && !rightIsBool) {
+      // Save both externrefs to temp locals for potential reuse in numeric fallback
+      const tmpRight = allocTempLocal(fctx, { kind: "externref" });
+      const tmpLeft = allocTempLocal(fctx, { kind: "externref" });
+      fctx.body.push({ op: "local.set", index: tmpRight });
+      fctx.body.push({ op: "local.set", index: tmpLeft });
+
+      // Convert left to anyref and test if it's an eqref (GC ref)
+      fctx.body.push({ op: "local.get", index: tmpLeft });
+      fctx.body.push({ op: "any.convert_extern" } as unknown as Instr);
+      const tmpAnyLeft = allocTempLocal(fctx, { kind: "anyref" });
+      fctx.body.push({ op: "local.tee", index: tmpAnyLeft });
+      fctx.body.push({ op: "ref.test", typeIdx: EQ_HEAP_TYPE } as unknown as Instr);
+      fctx.body.push({
+        op: "if", blockType: { kind: "val", type: { kind: "i32" } },
+        then: [
+          // Left is eqref-compatible — check right too
+          { op: "local.get", index: tmpRight },
+          { op: "any.convert_extern" } as unknown as Instr,
+          ...(() => {
+            const tmpAnyRight = allocTempLocal(fctx, { kind: "anyref" });
+            const instrs: Instr[] = [
+              { op: "local.tee", index: tmpAnyRight },
+              { op: "ref.test", typeIdx: EQ_HEAP_TYPE } as unknown as Instr,
+              {
+                op: "if", blockType: { kind: "val", type: { kind: "i32" } },
+                then: [
+                  // Both are eqref — cast and compare with ref.eq
+                  { op: "local.get", index: tmpAnyLeft },
+                  { op: "ref.cast", typeIdx: EQ_HEAP_TYPE } as unknown as Instr,
+                  { op: "local.get", index: tmpAnyRight },
+                  { op: "ref.cast", typeIdx: EQ_HEAP_TYPE } as unknown as Instr,
+                  { op: "ref.eq" } as unknown as Instr,
+                ],
+                else: [
+                  // Right is not eqref — cannot be equal to a GC ref
+                  { op: "i32.const", value: 0 },
+                ],
+              } as unknown as Instr,
+            ];
+            releaseTempLocal(fctx, tmpAnyRight);
+            return instrs;
+          })(),
+        ],
+        else: [
+          // Left is not eqref — fall through to numeric comparison
+          // by pushing -1 as sentinel to indicate "not handled"
+          { op: "i32.const", value: -1 },
+        ],
+      } as unknown as Instr);
+      releaseTempLocal(fctx, tmpAnyLeft);
+
+      // Check if the identity comparison produced a definitive result (0 or 1)
+      // vs the sentinel -1 (meaning we need numeric fallback)
+      const identityResult = allocTempLocal(fctx, { kind: "i32" });
+      fctx.body.push({ op: "local.tee", index: identityResult });
+      fctx.body.push({ op: "i32.const", value: -1 });
+      fctx.body.push({ op: "i32.ne" });
+      fctx.body.push({
+        op: "if", blockType: { kind: "val", type: { kind: "i32" } },
+        then: [
+          // Identity check produced 0 or 1 — use it directly
+          // For != / !==, negate
+          { op: "local.get", index: identityResult },
+          ...(isNeqOp ? [{ op: "i32.eqz" } as Instr] : []),
+        ],
+        else: (() => {
+          // Numeric fallback: unbox both externrefs to f64 and compare
+          addUnionImports(ctx);
+          const unboxIdx = ctx.funcMap.get("__unbox_number")!;
+          return [
+            { op: "local.get", index: tmpLeft },
+            { op: "call", funcIdx: unboxIdx },
+            { op: "local.get", index: tmpRight },
+            { op: "call", funcIdx: unboxIdx },
+            { op: isEqOp ? "f64.eq" : "f64.ne" } as Instr,
+          ] as Instr[];
+        })(),
+      } as unknown as Instr);
+      releaseTempLocal(fctx, identityResult);
+      releaseTempLocal(fctx, tmpRight);
+      releaseTempLocal(fctx, tmpLeft);
+      return { kind: "i32" };
+    }
+
     addUnionImports(ctx);
     const unboxIdx = ctx.funcMap.get("__unbox_number")!;
     // Coerce/unbox right side (top of stack) to f64
