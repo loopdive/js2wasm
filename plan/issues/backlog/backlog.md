@@ -123,51 +123,53 @@ _Goal: Remaining runtime failures, codegen quality, and test infrastructure expa
 
 _Updated baseline (2026-03-16): 22,959 tests — 5,312 pass (23.1%), 2,010 fail, 7,314 CE, 8,323 skip. Issues prioritized by test impact, executed dependency-driven (see `plan/dependency-graph.md`)._
 
-_Latest run (2026-03-17): 17,606 unique tests — 5,735 pass (32.6%), 2,064 fail, 3,703 CE, 6,104 skip. Prior round issues (#387-#435) in done/._
+_Fresh run (2026-03-18, #509): 23,021 tests -- 6,366 pass (27.7%), 4,367 fail, 9,062 CE, 3,226 skip._
 
-### Compile errors — Critical (1,866 CE)
-
-| #   | Feature | Type | Count | Priority |
-| --- | ------- | ---- | ----- | -------- |
-| [409](../ready/409.md) | Unsupported call expression (spread, optional chaining, super, property methods) | CE | 1,752 | Critical |
-| [411](../ready/411.md) | struct.new stack mismatch (class/object construction) | CE | 114 | Critical |
-
-### Compile errors — Wasm validation (577 CE)
+### Compile errors -- Critical (5,590 CE)
 
 | #   | Feature | Type | Count | Priority |
 | --- | ------- | ---- | ----- | -------- |
-| [444](../ready/444.md) | local.set type mismatch | CE | 292 | High |
+| [409](../ready/409.md) | Unsupported call expression (spread, optional chaining, super, property methods) | CE | 3,931 | Critical |
+| [411](../ready/411.md) | struct.new stack mismatch (class/object construction) | CE | 975 | Critical |
+| [514](../ready/514.md) | Generator/async-gen "options is not defined" | CE | 684 | Critical (NEW) |
+
+### Compile errors -- Wasm validation (1,467 CE)
+
+| #   | Feature | Type | Count | Priority |
+| --- | ------- | ---- | ----- | -------- |
+| [511](../ready/511.md) | call/call_ref type mismatch (ref.null + externref) | CE | 514 | Critical (updated) |
+| [444](../ready/444.md) | local.set type mismatch | CE | 483 | High |
+| [515](../ready/515.md) | Uninitialized local + struct.get/set type errors | CE | 470 | High (NEW) |
 | [445](../ready/445.md) | call args missing | CE | 72 | Medium |
-| [446](../ready/446.md) | call_ref type mismatch | CE | 56 | Medium |
-| [447](../ready/447.md) | stack fallthru (residual after #410) | CE | 48 | Medium | in-progress |
+| [447](../ready/447.md) | stack fallthru (residual after #410) | CE | 48 | Medium |
 | [448](../ready/448.md) | type mismatch i32 expected | CE | 47 | Medium |
 | [449](../ready/449.md) | call_ref null function reference | CE | 15 | Low |
-| [411](../ready/411.md) | struct.new args missing (see above) | CE | 114 | Critical |
 
-### Compile errors — Medium (352 CE)
+### Compile errors -- Medium (352 CE)
 
 | #   | Feature | Type | Count | Priority |
 | --- | ------- | ---- | ----- | -------- |
+| [510](../ready/510.md) | TS parse errors from test wrapping | CE | 175 | High (updated) |
 | [412](../ready/412.md) | Yield outside generator (generator body not recognized) | CE | 166 | Medium |
+| [420](../ready/420.md) | Cannot destructure non-array types | CE | 83 | Medium |
 | [413](../ready/413.md) | Parameter self-reference (default param validation too strict) | CE | 59 | Medium |
 | [436](../ready/436.md) | for-of array destructuring: element not a ref type | CE | 42 | Medium |
 | [437](../done/437.md) | Cannot find module empty_FIXTURE.js (test infra) | CE | 38 | **Done** |
-| [420](../ready/420.md) | Cannot destructure non-array types | CE | 34 | Medium |
 | [438](../ready/438.md) | Internal error: Cannot read properties of undefined | CE | 20 | Medium |
-| [439](../ready/439.md) | Generator type missing next/return/throw | CE | 16 | Medium | **in-progress** |
+| [439](../ready/439.md) | Generator type missing next/return/throw | CE | 16 | Medium |
 | [440](../ready/440.md) | Dynamic import specifier type | CE | 16 | Low |
 | [415](../ready/415.md) | Logical assignment struct resolution failure | CE | 14 | Medium |
 | [426](../ready/426.md) | Compound assignment on element access (non-ref targets) | CE | 11 | Low |
 | [427](../ready/427.md) | Super keyword unsupported in remaining positions | CE | 11 | Low |
 
-### Runtime failures (2,064 fail)
+### Runtime failures (4,367 fail)
 
 | #   | Feature | Type | Count | Priority |
 | --- | ------- | ---- | ----- | -------- |
-| [417](../ready/417.md) | Wrong return value (returned 0) -- broad correctness failures | FAIL | 1,979 | Critical |
-| [418](../ready/418.md) | Missing SyntaxError validation (negative tests now skipped) | FAIL | 0 | Low | **in-progress** |
-| [441](../ready/441.md) | Null pointer dereference (residual after #419) | FAIL | 88 | High |
-| [442](../ready/442.md) | RuntimeError: illegal cast | FAIL | 6 | Low |
+| [513](../ready/513.md) | Wrong return value (returned 0) -- broad correctness failures | FAIL | 3,436 | Critical (updated) |
+| [512](../ready/512.md) | RuntimeError: illegal cast | FAIL | 683 | Critical (updated) |
+| [441](../ready/441.md) | Null pointer dereference (residual after #419) | FAIL | 129 | High |
+| [418](../ready/418.md) | Missing SyntaxError validation (negative tests now skipped) | FAIL | 0 | Low |
 | [443](../ready/443.md) | Expected ReferenceError but succeeded | FAIL | 6 | Low |
 
 ### Infrastructure (Tech Lead)
