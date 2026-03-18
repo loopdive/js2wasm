@@ -132,15 +132,30 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
     }
   }
 
-  // Symbol feature tags: only skip if the source actually uses Symbol.
-  // Many tests (esp. destructuring) are tagged with Symbol.iterator because the
-  // spec defines array destructuring via the iterator protocol, but the test code
-  // never references Symbol and works fine with our direct array destructuring.
+  // Symbol feature tags: only skip if the source uses Symbol features we don't support.
+  // We support: Symbol() constructor (returns unique i32), typeof === "symbol",
+  // identity comparison (===, !==), and well-known symbol access (Symbol.iterator, etc.).
+  // We do NOT support: Symbol.for/keyFor (registry), .description, Symbol as an object,
+  // Symbol.prototype, Object(Symbol()), String(symbol), or symbol coercion.
   if (meta.features?.some(f => f === "Symbol" || f.startsWith("Symbol."))) {
-    // Strip metadata block before checking for Symbol usage in actual test code
     const body = source.replace(/\/\*---[\s\S]*?---\*\//, "");
     if (/\bSymbol\b/.test(body)) {
-      return { skip: true, reason: "uses Symbol in source" };
+      // Check for unsupported Symbol patterns that would crash or hang the compiler.
+      // Tests that just fail at runtime are fine — they show up as test failures.
+      const unsupportedSymbol =
+        // Symbol.for / Symbol.keyFor — registry not implemented
+        /\bSymbol\s*\.\s*(?:for|keyFor)\b/.test(body) ||
+        // Symbol.prototype — prototype chain not available
+        /\bSymbol\s*\.\s*prototype\b/.test(body) ||
+        // Using Symbol as an object (property access beyond well-known symbols)
+        // e.g. Symbol.length, Symbol.name — Symbol is a function, not an object
+        /\bSymbol\s*\.\s*(?:length|name)\b/.test(body) ||
+        // Object(Symbol()) — wrapper objects not supported
+        /\bObject\s*\(\s*Symbol/.test(body);
+      if (unsupportedSymbol) {
+        return { skip: true, reason: "uses unsupported Symbol feature" };
+      }
+      // Allow tests that just use Symbol() constructor, typeof, comparison
     }
   }
 
