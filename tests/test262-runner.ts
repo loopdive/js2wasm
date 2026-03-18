@@ -75,6 +75,7 @@ const UNSUPPORTED_FEATURES = new Set([
   "SharedArrayBuffer", "Atomics",
   // dynamic-import: checked separately in shouldSkip (only skip when source uses import())
   // import.meta: implemented (#371), no longer needs skipping
+  "import-defer", // import.defer() — not supported
   "source-phase-imports", // import.source — Stage 3 TC39 proposal, not supported
   "promise-all-settled", "Promise.any", "Promise.allSettled",
   "TypedArray", "DataView", "ArrayBuffer",
@@ -174,6 +175,12 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
   // import.source — Stage 3 TC39 proposal, not supported by ts2wasm
   if (/\bimport\.source\b/.test(source)) {
     return { skip: true, reason: "import.source not supported" };
+  }
+
+  // Skip tests that import _FIXTURE files — these are test262 infrastructure
+  // helper modules that we cannot resolve (e.g. empty_FIXTURE.js, sync_FIXTURE.js)
+  if (/_FIXTURE\.js/.test(source)) {
+    return { skip: true, reason: "imports _FIXTURE helper module" };
   }
 
   // Skip tests requiring harness includes we have not shimmed
