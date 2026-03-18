@@ -299,6 +299,11 @@ export interface FunctionContext {
   enclosingClassName?: string;
   /** Set of variable names known to be non-null in the current scope (type narrowing) */
   narrowedNonNull?: Set<string>;
+  /**
+   * Set of "arrayVar:indexVar" keys where bounds checks can be elided.
+   * Populated when a for-loop condition guarantees indexVar < arrayVar.length.
+   */
+  safeIndexedArrays?: Set<string>;
 }
 
 /**

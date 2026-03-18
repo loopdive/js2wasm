@@ -1679,6 +1679,38 @@ function compileForStatement(
     fctx.body = condBody;
   }
 
+  // --- Bounds check elimination: detect `i < arr.length` pattern ---
+  // When the condition is `indexVar < arrayVar.length` (or `arrayVar.length > indexVar`),
+  // mark the pair so element accesses like `arrayVar[indexVar]` can skip bounds checks.
+  const savedSafeIndexed = fctx.safeIndexedArrays;
+  if (stmt.condition && ts.isBinaryExpression(stmt.condition)) {
+    const cond = stmt.condition;
+    const op = cond.operatorToken.kind;
+    let indexExpr: ts.Expression | undefined;
+    let lengthExpr: ts.Expression | undefined;
+    // i < arr.length  OR  i <= arr.length - 1
+    if (op === ts.SyntaxKind.LessThanToken || op === ts.SyntaxKind.LessThanEqualsToken) {
+      indexExpr = cond.left;
+      lengthExpr = cond.right;
+    }
+    // arr.length > i  OR  arr.length >= i + 1
+    if (op === ts.SyntaxKind.GreaterThanToken || op === ts.SyntaxKind.GreaterThanEqualsToken) {
+      indexExpr = cond.right;
+      lengthExpr = cond.left;
+    }
+    if (indexExpr && lengthExpr && ts.isIdentifier(indexExpr) &&
+        ts.isPropertyAccessExpression(lengthExpr) &&
+        ts.isIdentifier(lengthExpr.name) && lengthExpr.name.text === "length" &&
+        ts.isIdentifier(lengthExpr.expression)) {
+      const indexVar = indexExpr.text;
+      const arrayVar = lengthExpr.expression.text;
+      if (!fctx.safeIndexedArrays) {
+        fctx.safeIndexedArrays = new Set();
+      }
+      fctx.safeIndexedArrays.add(arrayVar + ":" + indexVar);
+    }
+  }
+
   // Body (inside $continue block)
   if (ts.isBlock(stmt.statement)) {
     for (const s of stmt.statement.statements) {
@@ -1688,6 +1720,9 @@ function compileForStatement(
     compileStatement(ctx, fctx, stmt.statement);
   }
   const bodyInstrs = fctx.body;
+
+  // Restore previous safeIndexedArrays (scoped to this loop)
+  fctx.safeIndexedArrays = savedSafeIndexed;
 
   // Incrementor (inside $loop, after $continue block)
   fctx.body = [];
