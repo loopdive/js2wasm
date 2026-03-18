@@ -83,6 +83,8 @@ export function buildImports(result: CompileResult): WebAssembly.Imports {
       };
     },
     __gen_next: (gen: any) => gen.next(),
+    __gen_return: (gen: any, val: any) => gen.return(val),
+    __gen_throw: (gen: any, err: any) => gen.throw(err),
     __gen_result_value: (result: any) => result.value,
     __gen_result_value_f64: (result: any) => Number(result.value),
     __gen_result_done: (result: any) => result.done ? 1 : 0,

@@ -106,6 +106,8 @@ function resolveImport(
         };
       };
       if (name === "__gen_next") return (gen: any) => gen.next();
+      if (name === "__gen_return") return (gen: any, val: any) => gen.return(val);
+      if (name === "__gen_throw") return (gen: any, err: any) => gen.throw(err);
       if (name === "__gen_result_value") return (result: any) => result.value;
       if (name === "__gen_result_value_f64") return (result: any) => Number(result.value);
       if (name === "__gen_result_done") return (result: any) => result.done ? 1 : 0;
