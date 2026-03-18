@@ -103,6 +103,8 @@ export interface CompileOptions {
   abi?: "default" | "c";
   /** Enable hardened mode: reject eval, Function constructor, with, __proto__ at compile time */
   hardened?: boolean;
+  /** Skip semantic diagnostics for faster compilation (checker still available for type queries) */
+  skipSemanticDiagnostics?: boolean;
 }
 
 import * as path from "path";

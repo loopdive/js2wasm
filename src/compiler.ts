@@ -729,7 +729,7 @@ export function compileSource(
   let isJsMode = options.allowJs === true || (options.fileName?.endsWith(".js") ?? false);
   const defaultFileName = options.fileName ?? (isJsMode ? "input.js" : "input.ts");
   const effectiveFileName = options.moduleName ?? defaultFileName;
-  let ast = analyzeSource(processedSource, effectiveFileName, { allowJs: options.allowJs });
+  let ast = analyzeSource(processedSource, effectiveFileName, { allowJs: options.allowJs, skipSemanticDiagnostics: options.skipSemanticDiagnostics });
 
   // Auto-detect: if parsing as TS fails with syntax errors that look like
   // the source is plain JS, retry with allowJs mode enabled.

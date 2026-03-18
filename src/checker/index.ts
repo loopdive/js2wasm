@@ -27,6 +27,8 @@ const LIB_FILES: Record<string, string> = {
 export interface AnalyzeOptions {
   /** Allow JavaScript source files (enables allowJs + checkJs in TS compiler) */
   allowJs?: boolean;
+  /** Skip semantic diagnostics collection (faster — checker still available for type queries) */
+  skipSemanticDiagnostics?: boolean;
 }
 
 /**
@@ -92,7 +94,7 @@ export function analyzeSource(
   );
 
   const syntacticDiagnostics = program.getSyntacticDiagnostics();
-  const semanticDiagnostics = program.getSemanticDiagnostics();
+  const semanticDiagnostics = options?.skipSemanticDiagnostics ? [] as ts.Diagnostic[] : program.getSemanticDiagnostics();
   const diagnostics = [...syntacticDiagnostics, ...semanticDiagnostics];
 
   return {
