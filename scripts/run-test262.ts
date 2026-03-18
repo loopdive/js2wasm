@@ -11,7 +11,7 @@
  *   benchmarks/results/test262-results.jsonl  — one JSON line per test result
  *   benchmarks/results/test262-report.json    — summary with error frequency
  */
-import { TEST_CATEGORIES, findTestFiles, runTest262File, type TestResult, type TestTiming } from "../tests/test262-runner.js";
+import { TEST_CATEGORIES, findTestFiles, runTest262File, shouldSkip, parseMeta, type TestResult, type TestTiming } from "../tests/test262-runner.js";
 import { join } from "path";
 import { writeFileSync, appendFileSync, readFileSync, existsSync, openSync, closeSync, writeSync, unlinkSync, mkdirSync, copyFileSync } from "fs";
 import { execSync, fork } from "child_process";
@@ -262,12 +262,11 @@ for (const [batchName, batchCats] of batches) {
   const batchStats = { pass: 0, fail: 0, skip: 0, compile_error: 0 };
   let buffer: string[] = [];
 
+  // Collect ALL tests across all categories in this display batch,
+  // pre-filtering skips in the main process to avoid worker overhead
+  const jobs: TestJob[] = [];
   for (const category of batchCats) {
     const files = findTestFiles(category);
-    if (files.length === 0) continue;
-
-    // Collect all tests for this category
-    const jobs: TestJob[] = [];
     for (const filePath of files) {
       const relPath = filePath.replace(/.*test262\/test\//, "");
       if (completedFiles.has(relPath)) {
@@ -277,37 +276,47 @@ for (const [batchName, batchCats] of batches) {
       if (KNOWN_HANGING_TESTS.has(relPath)) {
         const r = { file: relPath, category, status: "fail" as const, error: "known hanging test" };
         allResults.push(r as any);
-        stats.fail++;
-        batchStats.fail++;
-        processed++;
+        stats.fail++; batchStats.fail++; processed++;
         buffer.push(JSON.stringify(r));
         continue;
       }
+      // Pre-filter: run shouldSkip in main process (fast, no compilation)
+      try {
+        const source = readFileSync(filePath, "utf-8");
+        const meta = parseMeta(source);
+        const skipResult = shouldSkip(source, meta, filePath);
+        if (skipResult.skip) {
+          const r = { file: relPath, category, status: "skip" as const, reason: skipResult.reason };
+          allResults.push(r as any);
+          stats.skip++; batchStats.skip++; processed++;
+          buffer.push(JSON.stringify(r));
+          continue;
+        }
+      } catch {}
       jobs.push({ filePath, category, relPath });
     }
-    if (jobs.length > 0) {
-      // Split jobs across POOL_SIZE workers
-      const chunkSize = Math.ceil(jobs.length / POOL_SIZE);
-      const chunks: TestJob[][] = [];
-      for (let i = 0; i < jobs.length; i += chunkSize) {
-        chunks.push(jobs.slice(i, i + chunkSize));
-      }
-      // Dispatch all chunks in parallel
-      const batchResults = await Promise.all(chunks.map(chunk => runBatch(chunk)));
-      for (const results of batchResults) {
-        for (const r of results) {
-          allResults.push(r as any);
-          const s = r.status as keyof typeof stats;
-          if (s in stats) stats[s]++;
-          if (s in batchStats) batchStats[s]++;
-          processed++;
-          buffer.push(JSON.stringify({
-            file: r.file, category: r.category, status: r.status,
-            ...(r.error ? { error: r.error.substring(0, 300) } : {}),
-            ...(r.reason ? { reason: r.reason } : {}),
-            ...(r.timing ? { timing: r.timing } : {}),
-          }));
-        }
+  }
+  if (jobs.length > 0) {
+    // Split across workers globally for better load balancing
+    const chunkSize = Math.max(1, Math.ceil(jobs.length / POOL_SIZE));
+    const chunks: TestJob[][] = [];
+    for (let i = 0; i < jobs.length; i += chunkSize) {
+      chunks.push(jobs.slice(i, i + chunkSize));
+    }
+    const batchResults = await Promise.all(chunks.map(chunk => runBatch(chunk)));
+    for (const results of batchResults) {
+      for (const r of results) {
+        allResults.push(r as any);
+        const s = r.status as keyof typeof stats;
+        if (s in stats) stats[s]++;
+        if (s in batchStats) batchStats[s]++;
+        processed++;
+        buffer.push(JSON.stringify({
+          file: r.file, category: r.category, status: r.status,
+          ...(r.error ? { error: r.error.substring(0, 300) } : {}),
+          ...(r.reason ? { reason: r.reason } : {}),
+          ...(r.timing ? { timing: r.timing } : {}),
+        }));
       }
     }
   }
