@@ -536,6 +536,81 @@
         margin-top: 4px;
       }
 
+      /* ─── Test262 results dashboard ────────────────────── */
+      .t262-stats-bar {
+        padding: 8px 10px;
+        border-bottom: 1px solid #2b2b2b;
+        flex-shrink: 0;
+        background: #1e1e1e;
+      }
+      .t262-stats-segments {
+        display: flex;
+        height: 6px;
+        border-radius: 3px;
+        overflow: hidden;
+        margin-bottom: 4px;
+      }
+      .t262-stats-segments > div {
+        height: 100%;
+        min-width: 1px;
+      }
+      .t262-seg-pass { background: #4caf50; }
+      .t262-seg-fail { background: #f44336; }
+      .t262-seg-ce { background: #ff9800; }
+      .t262-seg-skip { background: #555; }
+      .t262-stats-text {
+        font-size: 11px;
+        color: #888;
+      }
+      .t262-stats-text strong {
+        color: #ccc;
+        font-weight: 600;
+      }
+      .t262-no-results {
+        padding: 16px 10px;
+        font-size: 12px;
+        color: #666;
+        text-align: center;
+        font-style: italic;
+      }
+      .t262-cat-stats {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        margin-left: 6px;
+        font-size: 10px;
+      }
+      .t262-cat-bar {
+        display: inline-block;
+        width: 40px;
+        height: 4px;
+        border-radius: 2px;
+        background: #333;
+        overflow: hidden;
+        vertical-align: middle;
+      }
+      .t262-cat-bar-fill {
+        height: 100%;
+        border-radius: 2px;
+      }
+      .t262-cat-pct {
+        color: #888;
+        font-size: 10px;
+        min-width: 32px;
+        text-align: right;
+      }
+      .t262-file-status {
+        display: inline-block;
+        width: 12px;
+        margin-right: 4px;
+        text-align: center;
+        font-size: 10px;
+      }
+      .t262-status-pass { color: #4caf50; }
+      .t262-status-fail { color: #f44336; }
+      .t262-status-ce { color: #ff9800; }
+      .t262-status-skip { color: #666; }
+
       /* ─── Hex viewer section decorations ──────────────── */
       /* Background and label colors generated dynamically from SECTION_COLORS */
       .hex-sec-label {
