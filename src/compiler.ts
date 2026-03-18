@@ -17,7 +17,7 @@ import { generateSourceMap } from "./emit/sourcemap.js";
 import { emitWat } from "./emit/wat.js";
 import { preprocessImports } from "./import-resolver.js";
 import type { CompileError, CompileOptions, CompileResult, ImportDescriptor, ImportIntent } from "./index.js";
-import type { WasmModule, FuncTypeDef } from "./ir/types.js";
+import type { WasmModule, FuncTypeDef, ValType } from "./ir/types.js";
 import { generateCHeader, extractCHeaderExports } from "./emit/c-header.js";
 import type { CabiExportInfo, CabiParam, ParamDef } from "./codegen-linear/c-abi.js";
 import { mapParamsToCabi, mapResultToCabi, emitCabiWrappers, inferSemantic } from "./codegen-linear/c-abi.js";
@@ -904,6 +904,10 @@ export function compileSource(
     cHeader = cabiResult.cHeader;
   }
 
+  // Step 2c: Widen non-defaultable ref types to ref_null in locals, params, and results.
+  // This avoids "uninitialized non-defaultable local" and struct.get/set type errors.
+  widenNonDefaultableTypes(mod);
+
   // Step 3: Emit binary (with source map collection if enabled)
   let binary: Uint8Array;
   let sourceMapJson: string | undefined;
@@ -1165,6 +1169,9 @@ export function compileMultiSource(
       imports: [],
     };
   }
+
+  // Widen non-defaultable ref types to ref_null in locals, params, and results
+  widenNonDefaultableTypes(mod);
 
   let binary: Uint8Array;
   let sourceMapJson: string | undefined;
@@ -1662,4 +1669,76 @@ function validateHardenedMode(sourceFile: ts.SourceFile): Array<{ message: strin
 
   visit(sourceFile);
   return errors;
+}
+
+/**
+ * Post-processing pass: widen all non-defaultable `ref` types to `ref_null`
+ * throughout the module. This fixes two classes of Wasm validation errors:
+ *
+ * 1. "uninitialized non-defaultable local" -- locals with `ref $T` type have
+ *    no implicit default value, so any code path that reads them before writing
+ *    causes a validation error. Widening to `ref null $T` gives them a null default.
+ *
+ * 2. "struct.get/set expected type (ref null N), found ..." -- when function
+ *    signatures use `ref` but callers/callees produce `ref_null` (or vice versa),
+ *    the Wasm validator rejects the type mismatch. Consistently using `ref_null`
+ *    in function types, locals, and globals avoids this.
+ */
+function widenNonDefaultableTypes(mod: WasmModule): void {
+  function widenValType(t: ValType): ValType {
+    return t.kind === "ref" ? { kind: "ref_null", typeIdx: t.typeIdx } : t;
+  }
+
+  // Widen all type definitions (func types, struct fields, array elements)
+  function widenTypeDef(typeDef: typeof mod.types[number]): void {
+    switch (typeDef.kind) {
+      case "func":
+        for (let i = 0; i < typeDef.params.length; i++) {
+          typeDef.params[i] = widenValType(typeDef.params[i]!);
+        }
+        for (let i = 0; i < typeDef.results.length; i++) {
+          typeDef.results[i] = widenValType(typeDef.results[i]!);
+        }
+        break;
+      case "struct":
+        for (const field of typeDef.fields) {
+          field.type = widenValType(field.type);
+        }
+        break;
+      case "array":
+        typeDef.element = widenValType(typeDef.element);
+        break;
+      case "rec":
+        for (const inner of typeDef.types) {
+          widenTypeDef(inner);
+        }
+        break;
+      case "sub":
+        widenTypeDef(typeDef.type);
+        break;
+    }
+  }
+
+  for (const typeDef of mod.types) {
+    widenTypeDef(typeDef);
+  }
+
+  // Widen function locals
+  for (const func of mod.functions) {
+    for (const local of func.locals) {
+      local.type = widenValType(local.type);
+    }
+  }
+
+  // Widen global types
+  for (const global of mod.globals) {
+    global.type = widenValType(global.type);
+  }
+
+  // Widen import desc type for non-func imports (globals)
+  for (const imp of mod.imports) {
+    if (imp.desc.kind === "global") {
+      imp.desc.type = widenValType(imp.desc.type);
+    }
+  }
 }
