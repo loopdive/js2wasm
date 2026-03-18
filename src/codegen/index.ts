@@ -35,7 +35,7 @@ import { emitInlineMathFunctions } from "./math-helpers.js";
 /** Result returned by generateModule / generateMultiModule */
 export interface CodegenResult {
   module: WasmModule;
-  errors: { message: string; line: number; column: number }[];
+  errors: { message: string; line: number; column: number; severity?: "error" | "warning" }[];
 }
 
 /**
@@ -108,7 +108,7 @@ export interface CodegenContext {
   /** Current function context (set during function compilation) */
   currentFunc: FunctionContext | null;
   /** Errors accumulated during codegen */
-  errors: { message: string; line: number; column: number }[];
+  errors: { message: string; line: number; column: number; severity?: "error" | "warning" }[];
   /** Registry of external declared classes */
   externClasses: Map<string, ExternClassInfo>;
   /** Optional parameter info per function */
@@ -324,7 +324,7 @@ export function popBody(fctx: FunctionContext, saved: Instr[]): void {
 /** Options for code generation */
 export interface CodegenResult {
   module: WasmModule;
-  errors: { message: string; line: number; column: number }[];
+  errors: { message: string; line: number; column: number; severity?: "error" | "warning" }[];
 }
 
 export interface CodegenOptions {
@@ -340,7 +340,7 @@ export function generateModule(
   options?: CodegenOptions,
 ): {
   module: WasmModule;
-  errors: { message: string; line: number; column: number }[];
+  errors: { message: string; line: number; column: number; severity?: "error" | "warning" }[];
 } {
   const mod = createEmptyModule();
 
@@ -562,7 +562,7 @@ export function generateMultiModule(
   options?: CodegenOptions,
 ): {
   module: WasmModule;
-  errors: { message: string; line: number; column: number }[];
+  errors: { message: string; line: number; column: number; severity?: "error" | "warning" }[];
 } {
   const mod = createEmptyModule();
 
