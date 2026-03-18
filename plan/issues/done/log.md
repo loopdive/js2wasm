@@ -321,3 +321,4 @@
 | 461 | 2026-03-17 | Array of structs: array.new_default fails for non-defaultable ref types | Dep-driven |
 | 437 | 2026-03-18 | Cannot find module empty_FIXTURE.js -- skip FIXTURE imports | Dep-driven |
 | 480 | 2026-03-18 | String() indexer in assert -- skip filter already removed by #349 | Dep-driven |
+| 473 | 2026-03-18 | Array.prototype .call/.apply -- wont-fix, all 852 tests use non-array receivers | Dep-driven |
