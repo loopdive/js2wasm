@@ -7400,6 +7400,8 @@ const LIB_GLOBALS = new Set([
   "Date",
   "Map",
   "Set",
+  "WeakMap",
+  "WeakSet",
   "RegExp",
   "Error",
   "HTMLElement",
