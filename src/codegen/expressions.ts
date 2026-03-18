@@ -612,24 +612,23 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
     fctx.body.push({ op: "ref.cast", typeIdx: toIdx } as Instr);
     return;
   }
-  // externref → ref_null: convert to anyref, then use if/else to handle null
-  // Since we don't have ref.cast_null in the IR, we emit a null guard:
-  //   any.convert_extern → if ref.is_null then ref.null $typeIdx else ref.cast $typeIdx
+  // externref → ref_null: convert to anyref, then use if/else to handle null and type mismatch
   if (from.kind === "externref" && to.kind === "ref_null") {
     const toIdx = (to as { typeIdx: number }).typeIdx;
     fctx.body.push({ op: "any.convert_extern" } as Instr);
-    // Store in a temp local, check for null
+    // Store in a temp local, check for null or type mismatch
     const tmpLocal = allocLocal(fctx, `__coerce_ext_${fctx.locals.length}`, { kind: "anyref" });
     fctx.body.push({ op: "local.tee", index: tmpLocal });
-    fctx.body.push({ op: "ref.is_null" } as Instr);
+    // Use ref.test to check both null and type compatibility (ref.test returns 0 for null)
+    fctx.body.push({ op: "ref.test", typeIdx: toIdx } as unknown as Instr);
     fctx.body.push({
       op: "if",
       blockType: { kind: "val", type: to },
-      then: [{ op: "ref.null", typeIdx: toIdx } as unknown as Instr],
-      else: [
+      then: [
         { op: "local.get", index: tmpLocal } as Instr,
         { op: "ref.cast", typeIdx: toIdx } as Instr,
       ],
+      else: [{ op: "ref.null", typeIdx: toIdx } as unknown as Instr],
     });
     return;
   }
@@ -639,20 +638,21 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
     fctx.body.push({ op: "ref.cast", typeIdx: toIdx } as Instr);
     return;
   }
-  // eqref/anyref → ref_null: null-safe cast
+  // eqref/anyref → ref_null: null-safe and type-safe cast
   if ((from.kind === "eqref" || from.kind === "anyref") && to.kind === "ref_null") {
     const toIdx = (to as { typeIdx: number }).typeIdx;
     const tmpLocal = allocLocal(fctx, `__coerce_any_${fctx.locals.length}`, from);
     fctx.body.push({ op: "local.tee", index: tmpLocal });
-    fctx.body.push({ op: "ref.is_null" } as Instr);
+    // Use ref.test to check both null and type compatibility (ref.test returns 0 for null)
+    fctx.body.push({ op: "ref.test", typeIdx: toIdx } as unknown as Instr);
     fctx.body.push({
       op: "if",
       blockType: { kind: "val", type: to },
-      then: [{ op: "ref.null", typeIdx: toIdx } as unknown as Instr],
-      else: [
+      then: [
         { op: "local.get", index: tmpLocal } as Instr,
         { op: "ref.cast", typeIdx: toIdx } as Instr,
       ],
+      else: [{ op: "ref.null", typeIdx: toIdx } as unknown as Instr],
     });
     return;
   }
@@ -6398,12 +6398,8 @@ function compilePropertyLogicalAssignment(
   const structTypeIdx = ctx.structMap.get(typeName);
   const fields = ctx.structFields.get(typeName);
   if (structTypeIdx === undefined || !fields) {
-    ctx.errors.push({
-      message: `Unknown struct type '${typeName}' for logical assignment`,
-      line: getLine(target),
-      column: getCol(target),
-    });
-    return null;
+    // Struct name resolved but type not in structMap — fall back to externref path
+    return compilePropertyLogicalAssignmentExternref(ctx, fctx, target, rhs, op, propName);
   }
 
   const fieldIdx = fields.findIndex((f) => f.name === propName);
@@ -13978,11 +13974,30 @@ function compileOptionalPropertyAccess(
         } else {
           const fieldIdx = fields.findIndex((f: any) => f.name === propName);
           if (fieldIdx >= 0) {
-            // Cast to the concrete struct type if needed
+            // Cast to the concrete struct type if needed, using ref.test guard to avoid illegal cast traps
             if (objType.kind !== "ref" || objType.typeIdx !== structTypeIdx) {
-              fctx.body.push({ op: "ref.cast", typeIdx: structTypeIdx } as unknown as Instr);
+              // Use ref.test to guard against illegal casts at runtime
+              const castTmp = allocLocal(fctx, `__optcast_tmp_${fctx.locals.length}`, objType);
+              fctx.body.push({ op: "local.tee", index: castTmp });
+              fctx.body.push({ op: "ref.test", typeIdx: structTypeIdx } as unknown as Instr);
+              fctx.body.push({
+                op: "if",
+                blockType: { kind: "val", type: fields[fieldIdx]!.type },
+                then: [
+                  { op: "local.get", index: castTmp },
+                  { op: "ref.cast", typeIdx: structTypeIdx } as unknown as Instr,
+                  { op: "struct.get", typeIdx: structTypeIdx, fieldIdx },
+                ],
+                else: [
+                  // Type mismatch at runtime — emit a safe default
+                  ...(fields[fieldIdx]!.type.kind === "f64" ? [{ op: "f64.const", value: NaN }] :
+                     fields[fieldIdx]!.type.kind === "i32" ? [{ op: "i32.const", value: 0 }] :
+                     [{ op: "ref.null.extern" }]) as Instr[],
+                ],
+              } as unknown as Instr);
+            } else {
+              fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
             }
-            fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
             elseResultType = fields[fieldIdx]!.type;
           }
         }
@@ -15530,11 +15545,19 @@ export function resolveComputedKeyExpression(
   ctx: CodegenContext,
   expr: ts.Expression,
 ): string | undefined {
-  // Property access for enum members: [MyEnum.Key]
-  // Check this first since resolveConstantExpression doesn't know about enums.
+  // Well-known Symbol property access: [Symbol.iterator], [Symbol.toPrimitive], etc.
+  // Map these to reserved names like "@@iterator", "@@toPrimitive" at compile time.
   if (ts.isPropertyAccessExpression(expr) && ts.isIdentifier(expr.expression)) {
     const objName = expr.expression.text;
     const propName = expr.name.text;
+
+    if (objName === "Symbol") {
+      const wellKnown = resolveWellKnownSymbol(propName);
+      if (wellKnown !== undefined) return wellKnown;
+    }
+
+    // Property access for enum members: [MyEnum.Key]
+    // Check this after Symbol since resolveConstantExpression doesn't know about enums.
     const enumKey = `${objName}.${propName}`;
     const enumStrVal = ctx.enumStringValues.get(enumKey);
     if (enumStrVal !== undefined) return enumStrVal;
