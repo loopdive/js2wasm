@@ -41,36 +41,9 @@ function computeCompilerHash(): string {
 }
 
 const compilerHash = computeCompilerHash();
-console.log(`Compiler hash: ${compilerHash}`);
-
-/** Cache file: maps (compilerHash + sourceHash) → { status, error, wasmHash }
- *  Persisted to disk so results survive across runs. */
-const CACHE_PATH = join(RESULTS_DIR, "test262-cache.json");
+// Compiler hash logged after RESULTS_DIR is set up
 type CacheEntry = { status: string; error?: string; wasmHash?: string };
 let resultCache = new Map<string, CacheEntry>();
-
-function loadCache() {
-  if (!existsSync(CACHE_PATH)) return;
-  try {
-    const data = JSON.parse(readFileSync(CACHE_PATH, "utf-8"));
-    if (data.compilerHash === compilerHash && data.entries) {
-      resultCache = new Map(Object.entries(data.entries));
-      console.log(`Loaded ${resultCache.size} cached results (compiler ${compilerHash})`);
-    } else {
-      console.log(`Cache invalidated (compiler changed: ${data.compilerHash} → ${compilerHash})`);
-    }
-  } catch {}
-}
-
-function saveCache() {
-  const entries: Record<string, CacheEntry> = {};
-  for (const [k, v] of resultCache) entries[k] = v;
-  writeFileSync(CACHE_PATH, JSON.stringify({ compilerHash, entries }, null, 0));
-}
-
-loadCache();
-
-/** Source hash dedup within a single run */
 const sourceHashCache = new Map<string, CacheEntry>();
 
 /** Load previous results to prioritize failures first on re-runs */
@@ -191,6 +164,31 @@ mkdirSync(RUNS_DIR, { recursive: true });
 const RUN_TIMESTAMP = new Date().toISOString().replace(/[:.]/g, "-");
 const RUN_JSONL = join(RUNS_DIR, `${RUN_TIMESTAMP}-results.jsonl`);
 const RUN_REPORT = join(RUNS_DIR, `${RUN_TIMESTAMP}-report.json`);
+
+// Initialize persistent cache (after RESULTS_DIR is available)
+const CACHE_PATH = join(RESULTS_DIR, "test262-cache.json");
+console.log(`Compiler hash: ${compilerHash}`);
+
+function loadCache() {
+  if (!existsSync(CACHE_PATH)) return;
+  try {
+    const data = JSON.parse(readFileSync(CACHE_PATH, "utf-8"));
+    if (data.compilerHash === compilerHash && data.entries) {
+      resultCache = new Map(Object.entries(data.entries));
+      console.log(`Loaded ${resultCache.size} cached results (compiler ${compilerHash})`);
+    } else {
+      console.log(`Cache invalidated (compiler changed: ${data.compilerHash} → ${compilerHash})`);
+    }
+  } catch {}
+}
+
+function saveCache() {
+  const entries: Record<string, CacheEntry> = {};
+  for (const [k, v] of resultCache) entries[k] = v;
+  writeFileSync(CACHE_PATH, JSON.stringify({ compilerHash, entries }, null, 0));
+}
+
+loadCache();
 
 // Lockfile to prevent concurrent runs
 const LOCK_PATH = join(RESULTS_DIR, "test262.lock");
