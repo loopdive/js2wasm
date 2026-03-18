@@ -846,6 +846,7 @@ const test262Panel = document.createElement("div");
 test262Panel.id = "test262-panel";
 test262Panel.innerHTML = `
   <div class="t262-browser">
+    <div class="t262-stats-bar" id="t262-stats-bar" style="display:none"></div>
     <div class="t262-search-wrap">
       <input class="t262-search" type="text" placeholder="Filter tests..." />
     </div>
@@ -855,6 +856,63 @@ test262Panel.innerHTML = `
 
 interface T262Category { name: string; path: string; fileCount: number; files: string[]; }
 let t262Index: T262Category[] | null = null;
+
+// ── Test262 results data ──
+interface T262Report {
+  summary: { total: number; pass: number; fail: number; skip: number; compile_error: number };
+  categories: { name: string; pass: number; fail: number; skip: number; compile_error: number }[];
+}
+interface T262FileResult { file: string; status: string; error?: string; }
+
+let t262Report: T262Report | null = null;
+const t262FileResultsCache = new Map<string, T262FileResult[]>();
+
+async function t262LoadReport(): Promise<T262Report | null> {
+  if (t262Report) return t262Report;
+  try {
+    const resp = await fetch("/api/test262-results");
+    const data = await resp.json();
+    if (data.error) return null;
+    if (!data.summary || data.summary.total === 0) return null;
+    t262Report = data as T262Report;
+    return t262Report;
+  } catch {
+    return null;
+  }
+}
+
+async function t262LoadFileResults(category: string): Promise<T262FileResult[]> {
+  if (t262FileResultsCache.has(category)) return t262FileResultsCache.get(category)!;
+  try {
+    const resp = await fetch(`/api/test262-file-results?category=${encodeURIComponent(category)}`);
+    const data = await resp.json() as T262FileResult[];
+    t262FileResultsCache.set(category, data);
+    return data;
+  } catch {
+    return [];
+  }
+}
+
+function t262GetCategoryStats(catName: string): { pass: number; fail: number; skip: number; compile_error: number } | null {
+  if (!t262Report) return null;
+  return t262Report.categories.find(c => c.name === catName) ?? null;
+}
+
+function t262StatusIcon(status: string): string {
+  switch (status) {
+    case "pass": return '<span class="t262-file-status t262-status-pass">&#10003;</span>';
+    case "fail": return '<span class="t262-file-status t262-status-fail">&#10007;</span>';
+    case "compile_error": return '<span class="t262-file-status t262-status-ce">&#9888;</span>';
+    case "skip": return '<span class="t262-file-status t262-status-skip">&#9675;</span>';
+    default: return '<span class="t262-file-status" style="color:#555">?</span>';
+  }
+}
+
+function t262PassRateColor(pct: number): string {
+  if (pct >= 90) return "#4caf50";
+  if (pct >= 50) return "#ff9800";
+  return "#f44336";
+}
 const t262ExpandedCats = new Set<string>();
 let t262Filter = "";
 let t262Debounce: ReturnType<typeof setTimeout> | null = null;
@@ -949,6 +1007,36 @@ async function t262Render() {
   if (!listEl) return;
   listEl.innerHTML = "";
 
+  // Load test262 results report
+  const report = await t262LoadReport();
+  const statsBar = test262Panel.querySelector("#t262-stats-bar") as HTMLElement;
+  if (report && statsBar) {
+    const s = report.summary;
+    const total = s.total;
+    const passP = total > 0 ? (s.pass / total * 100) : 0;
+    const failP = total > 0 ? (s.fail / total * 100) : 0;
+    const ceP = total > 0 ? (s.compile_error / total * 100) : 0;
+    const skipP = total > 0 ? (s.skip / total * 100) : 0;
+    statsBar.style.display = "";
+    statsBar.innerHTML = `
+      <div class="t262-stats-segments">
+        <div class="t262-seg-pass" style="width:${passP}%"></div>
+        <div class="t262-seg-fail" style="width:${failP}%"></div>
+        <div class="t262-seg-ce" style="width:${ceP}%"></div>
+        <div class="t262-seg-skip" style="width:${skipP}%"></div>
+      </div>
+      <div class="t262-stats-text">
+        <strong>${s.pass.toLocaleString()}</strong> pass /
+        <strong>${total.toLocaleString()}</strong> total
+        (${passP.toFixed(1)}%)
+        &mdash;
+        ${s.fail} fail, ${s.compile_error} CE, ${s.skip} skip
+      </div>
+    `;
+  } else if (statsBar) {
+    statsBar.style.display = "none";
+  }
+
   const filter = t262Filter.toLowerCase();
 
   // ── EXAMPLES section ──
@@ -989,7 +1077,7 @@ async function t262Render() {
       const groupMatches = !filter || group.folder.includes(filter) ||
         group.files.some(f => f.name.toLowerCase().includes(filter));
       if (!groupMatches) continue;
-      renderTopFolder(group.folder, `__ex_${group.folder}__`, listEl, (container) => {
+      await renderTopFolder(group.folder, `__ex_${group.folder}__`, listEl, (container) => {
         const filesEl = document.createElement("div");
         filesEl.className = "t262-files";
         filesEl.style.paddingLeft = "22px";
@@ -1028,8 +1116,46 @@ async function t262Render() {
     return false;
   }
 
+  // Aggregate stats for a tree node (sum across all categories in subtree)
+  function nodeStats(node: T262TreeNode): { pass: number; fail: number; skip: number; ce: number; total: number } {
+    let pass = 0, fail = 0, skip = 0, ce = 0;
+    for (const cat of node.categories) {
+      const s = t262GetCategoryStats(cat.path);
+      if (s) { pass += s.pass; fail += s.fail; skip += s.skip; ce += s.compile_error; }
+    }
+    for (const child of node.children.values()) {
+      const cs = nodeStats(child);
+      pass += cs.pass; fail += cs.fail; skip += cs.skip; ce += cs.ce;
+    }
+    return { pass, fail, skip, ce, total: pass + fail + skip + ce };
+  }
+
+  // Build a stats badge HTML string
+  function statsBadge(stats: { pass: number; fail: number; skip: number; ce: number; total: number }): string {
+    if (!report || stats.total === 0) return "";
+    const pct = stats.total > 0 ? (stats.pass / stats.total * 100) : 0;
+    const color = t262PassRateColor(pct);
+    return `<span class="t262-cat-stats"><span class="t262-cat-bar"><span class="t262-cat-bar-fill" style="width:${pct.toFixed(0)}%;background:${color}"></span></span><span class="t262-cat-pct" style="color:${color}">${pct.toFixed(0)}%</span></span>`;
+  }
+
+  // Build a file-result lookup for a category (keyed by filename in test/ prefix form)
+  const fileResultLookups = new Map<string, Map<string, T262FileResult>>();
+  async function getFileResultLookup(catPath: string): Promise<Map<string, T262FileResult>> {
+    if (fileResultLookups.has(catPath)) return fileResultLookups.get(catPath)!;
+    const results = await t262LoadFileResults(catPath);
+    const lookup = new Map<string, T262FileResult>();
+    for (const r of results) {
+      // The JSONL file field is like "test/built-ins/Math/abs/S15.8.2.1_A1.js"
+      // The tree file field is like "built-ins/Math/abs/S15.8.2.1_A1.js" (relative to testBase)
+      const key = r.file.startsWith("test/") ? r.file.slice(5) : r.file;
+      lookup.set(key, r);
+    }
+    fileResultLookups.set(catPath, lookup);
+    return lookup;
+  }
+
   // Render a tree node recursively
-  function renderNode(node: T262TreeNode, parent: HTMLElement, depth: number) {
+  async function renderNode(node: T262TreeNode, parent: HTMLElement, depth: number) {
     const sortedChildren = [...node.children.entries()].sort((a, b) => a[0].localeCompare(b[0]));
 
     for (const [, child] of sortedChildren) {
@@ -1048,7 +1174,9 @@ async function t262Render() {
       headerEl.className = "t262-cat-header";
       headerEl.style.paddingLeft = (10 + depth * 12) + "px";
       const count = nodeFileCount(child);
-      headerEl.innerHTML = `<span class="t262-arrow">${expanded ? "&#9660;" : "&#9654;"}</span> <span class="t262-cat-name">${child.name}</span> <span class="t262-cat-count">(${count})</span>`;
+      const stats = nodeStats(child);
+      const badge = statsBadge(stats);
+      headerEl.innerHTML = `<span class="t262-arrow">${expanded ? "&#9660;" : "&#9654;"}</span> <span class="t262-cat-name">${child.name}</span> <span class="t262-cat-count">(${count})</span>${badge}`;
 
       headerEl.addEventListener("click", async () => {
         if (isLeaf) {
@@ -1068,7 +1196,7 @@ async function t262Render() {
 
       if (expanded) {
         if (child.children.size > 0) {
-          renderNode(child, el, depth + 1);
+          await renderNode(child, el, depth + 1);
         }
         for (const cat of child.categories) {
           const displayFiles = filter
@@ -1078,11 +1206,17 @@ async function t262Render() {
           const filesEl = document.createElement("div");
           filesEl.className = "t262-files";
           filesEl.style.paddingLeft = (10 + (depth + 1) * 12) + "px";
+
+          // Pre-load file results for this category if report is available
+          const resultLookup = report ? await getFileResultLookup(cat.path) : null;
+
           for (const file of displayFiles) {
             const fileEl = document.createElement("div");
             fileEl.className = "t262-file" + (file === t262ActivePath ? " active" : "");
-            fileEl.textContent = t262FileName(file);
-            fileEl.title = file;
+            const fileResult = resultLookup?.get(file);
+            const statusHtml = fileResult ? t262StatusIcon(fileResult.status) : "";
+            fileEl.innerHTML = statusHtml + t262FileName(file);
+            fileEl.title = fileResult ? `${file} (${fileResult.status})` : file;
             fileEl.dataset.path = file;
             fileEl.addEventListener("click", () => {
               t262LoadAndShow(file);
@@ -1098,9 +1232,9 @@ async function t262Render() {
   }
 
   // Helper to render a top-level folder
-  function renderTopFolder(
+  async function renderTopFolder(
     name: string, folderKey: string, parent: HTMLElement,
-    renderContents: (container: HTMLElement) => void,
+    renderContents: (container: HTMLElement) => void | Promise<void>,
   ) {
     if (filter && !name.toLowerCase().includes(filter)) {
       // Still render if contents might match — caller handles filtering
@@ -1120,7 +1254,7 @@ async function t262Render() {
     el.appendChild(headerEl);
 
     if (expanded) {
-      renderContents(el);
+      await renderContents(el);
     }
 
     parent.appendChild(el);
@@ -1132,7 +1266,7 @@ async function t262Render() {
     ? equivTests.filter(t => t.name.toLowerCase().includes(filter))
     : equivTests;
   if (!filter || equivMatches.length > 0 || "js2wasm test suite".includes(filter)) {
-    renderTopFolder("js2wasm Test Suite", "__ts2wasm__", listEl, (container) => {
+    await renderTopFolder("js2wasm Test Suite", "__ts2wasm__", listEl, (container) => {
       const filesEl = document.createElement("div");
       filesEl.className = "t262-files";
       filesEl.style.paddingLeft = "22px";
@@ -1164,8 +1298,8 @@ async function t262Render() {
   const tree = t262BuildTree(cats);
   const t262Matches = !filter || nodeMatchesFilter(tree, filter) || "ecmascript test suite".includes(filter);
   if (t262Matches) {
-    renderTopFolder("ECMAScript Test Suite", "__test262__", listEl, (container) => {
-      renderNode(tree, container, 1);
+    await renderTopFolder("ECMAScript Test Suite", "__test262__", listEl, async (container) => {
+      await renderNode(tree, container, 1);
     });
   }
 
