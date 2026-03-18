@@ -13,13 +13,20 @@
  */
 import { TEST_CATEGORIES, findTestFiles, runTest262File, type TestResult, type TestTiming } from "../tests/test262-runner.js";
 import { join } from "path";
-import { writeFileSync, appendFileSync, readFileSync, existsSync, openSync, closeSync, writeSync, unlinkSync } from "fs";
+import { writeFileSync, appendFileSync, readFileSync, existsSync, openSync, closeSync, writeSync, unlinkSync, mkdirSync, copyFileSync } from "fs";
 import { execSync } from "child_process";
 
 const RESULTS_DIR = join(import.meta.dirname ?? ".", "..", "benchmarks", "results");
 const JSONL_PATH = join(RESULTS_DIR, "test262-results.jsonl");
 const REPORT_PATH = join(RESULTS_DIR, "test262-report.json");
 const META_PATH = join(RESULTS_DIR, "test262-run.meta.json");
+
+// Safe-write: all writes go to a timestamped run file; main files updated only on success
+const RUNS_DIR = join(RESULTS_DIR, "runs");
+mkdirSync(RUNS_DIR, { recursive: true });
+const RUN_TIMESTAMP = new Date().toISOString().replace(/[:.]/g, "-");
+const RUN_JSONL = join(RUNS_DIR, `${RUN_TIMESTAMP}-results.jsonl`);
+const RUN_REPORT = join(RUNS_DIR, `${RUN_TIMESTAMP}-report.json`);
 
 // Lockfile to prevent concurrent runs
 const LOCK_PATH = join(RESULTS_DIR, "test262.lock");
@@ -88,9 +95,12 @@ function loadPreviousLines(): string[] {
 
 if (hasPrevious && (isInterrupted || resumeFlag) && !fullFlag) {
   // Auto-resume interrupted run (or --resume flag)
-  for (const line of loadPreviousLines()) {
+  const prevLines = loadPreviousLines();
+  for (const line of prevLines) {
     try { const r = JSON.parse(line); if (r.file) completedFiles.add(r.file); } catch {}
   }
+  // Seed run file with previous results so new results append correctly
+  writeFileSync(RUN_JSONL, prevLines.length > 0 ? prevLines.join("\n") + "\n" : "");
   const reason = isInterrupted ? 'interrupted run detected' : '--resume flag';
   console.log(`Auto-resuming (${reason}, ${completedFiles.size} tests already done)\n`);
 } else if (recheckFlag && hasPrevious && !fullFlag) {
@@ -108,7 +118,7 @@ if (hasPrevious && (isInterrupted || resumeFlag) && !fullFlag) {
       } else if (r.file) { recheck++; }
     } catch {}
   }
-  writeFileSync(JSONL_PATH, carryForwardLines.length > 0 ? carryForwardLines.join("\n") + "\n" : "");
+  writeFileSync(RUN_JSONL, carryForwardLines.length > 0 ? carryForwardLines.join("\n") + "\n" : "");
   console.log(`Recheck mode: carrying forward ${carried} pass/skip, re-running ${recheck} failures\n`);
 } else {
   // Fresh run (--full or no previous data)
@@ -124,9 +134,9 @@ if (hasPrevious && (isInterrupted || resumeFlag) && !fullFlag) {
       }
     }
     const lines = [...existingResults.values()];
-    writeFileSync(JSONL_PATH, lines.length > 0 ? lines.join("\n") + "\n" : "");
+    writeFileSync(RUN_JSONL, lines.length > 0 ? lines.join("\n") + "\n" : "");
   } else {
-    writeFileSync(JSONL_PATH, "");
+    writeFileSync(RUN_JSONL, "");
   }
 }
 
@@ -204,14 +214,14 @@ for (const [batchName, batchCats] of batches) {
 
       // Flush every 100 tests to balance I/O and progress tracking
       if (buffer.length >= 100) {
-        appendFileSync(JSONL_PATH, buffer.join("\n") + "\n");
+        appendFileSync(RUN_JSONL, buffer.join("\n") + "\n");
         buffer = [];
       }
     }
   }
   // Flush remaining
   if (buffer.length > 0) {
-    appendFileSync(JSONL_PATH, buffer.join("\n") + "\n");
+    appendFileSync(RUN_JSONL, buffer.join("\n") + "\n");
     buffer = [];
   }
 
@@ -226,7 +236,7 @@ for (const [batchName, batchCats] of batches) {
 
 // Build final results from complete JSONL (deduplicated, last entry wins)
 const resultsByFile = new Map<string, any>();
-for (const line of readFileSync(JSONL_PATH, "utf-8").split("\n")) {
+for (const line of readFileSync(RUN_JSONL, "utf-8").split("\n")) {
   if (!line.trim()) continue;
   try { const r = JSON.parse(line); if (r.file && r.status) resultsByFile.set(r.file, r); } catch {}
 }
@@ -326,7 +336,8 @@ const reportData = {
     })),
   },
 };
-try { writeFileSync(REPORT_PATH, JSON.stringify(reportData, null, 2)); } catch {}
+// Write report to run-specific path first; main files promoted on success below
+try { writeFileSync(RUN_REPORT, JSON.stringify(reportData, null, 2)); } catch {}
 
 // Console summary
 console.log("\n══════════════════════════════════════════════════════");
@@ -377,8 +388,13 @@ if (failures.length > 0) {
   }
 }
 
+// Run completed successfully — promote run files to main paths (atomic for same-device)
+try { copyFileSync(RUN_JSONL, JSONL_PATH); } catch {}
+try { copyFileSync(RUN_REPORT, REPORT_PATH); } catch {}
+
 // Mark run as complete
 writeFileSync(META_PATH, JSON.stringify({ gitHead: getGitHead(), status: "complete", finishedAt: new Date().toISOString() }));
 
 console.log(`\nResults: ${JSONL_PATH}`);
 console.log(`Report:  ${REPORT_PATH}`);
+console.log(`Run:     ${RUN_JSONL}`);
