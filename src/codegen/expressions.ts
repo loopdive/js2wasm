@@ -1,6 +1,6 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext, ClosureInfo, RestParamInfo } from "./index.js";
-import { allocLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers, addStringImports, cacheStringLiterals, addStringConstantGlobal, nextModuleGlobalIdx, getOrRegisterTemplateVecType, pushBody, popBody } from "./index.js";
+import { allocLocal, allocTempLocal, releaseTempLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers, addStringImports, cacheStringLiterals, addStringConstantGlobal, nextModuleGlobalIdx, getOrRegisterTemplateVecType, pushBody, popBody } from "./index.js";
 import {
   mapTsTypeToWasm,
   isNumberType,
@@ -617,7 +617,7 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
     const toIdx = (to as { typeIdx: number }).typeIdx;
     fctx.body.push({ op: "any.convert_extern" } as Instr);
     // Store in a temp local, check for null or type mismatch
-    const tmpLocal = allocLocal(fctx, `__coerce_ext_${fctx.locals.length}`, { kind: "anyref" });
+    const tmpLocal = allocTempLocal(fctx, { kind: "anyref" });
     fctx.body.push({ op: "local.tee", index: tmpLocal });
     // Use ref.test to check both null and type compatibility (ref.test returns 0 for null)
     fctx.body.push({ op: "ref.test", typeIdx: toIdx } as unknown as Instr);
@@ -630,6 +630,7 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
       ],
       else: [{ op: "ref.null", typeIdx: toIdx } as unknown as Instr],
     });
+    releaseTempLocal(fctx, tmpLocal);
     return;
   }
   // eqref/anyref → ref: cast to target struct type (traps on null)
@@ -641,7 +642,7 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
   // eqref/anyref → ref_null: null-safe and type-safe cast
   if ((from.kind === "eqref" || from.kind === "anyref") && to.kind === "ref_null") {
     const toIdx = (to as { typeIdx: number }).typeIdx;
-    const tmpLocal = allocLocal(fctx, `__coerce_any_${fctx.locals.length}`, from);
+    const tmpLocal = allocTempLocal(fctx, from);
     fctx.body.push({ op: "local.tee", index: tmpLocal });
     // Use ref.test to check both null and type compatibility (ref.test returns 0 for null)
     fctx.body.push({ op: "ref.test", typeIdx: toIdx } as unknown as Instr);
@@ -654,6 +655,7 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
       ],
       else: [{ op: "ref.null", typeIdx: toIdx } as unknown as Instr],
     });
+    releaseTempLocal(fctx, tmpLocal);
     return;
   }
 
@@ -2668,7 +2670,7 @@ function compileInstanceOf(
 
     // Convert externref -> anyref, store in local
     fctx.body.push({ op: "any.convert_extern" });
-    const anyLocalIdx = allocLocal(fctx, `__instanceof_any_${fctx.locals.length}`, { kind: "anyref" });
+    const anyLocalIdx = allocTempLocal(fctx, { kind: "anyref" });
     fctx.body.push({ op: "local.set", index: anyLocalIdx });
 
     // Build the "then" branch: value is NOT a struct of the right root type → false
@@ -2712,6 +2714,7 @@ function compileInstanceOf(
       then: elseBody,   // ref.test passed → check tag
       else: thenBody,    // ref.test failed → false
     } as unknown as Instr);
+    releaseTempLocal(fctx, anyLocalIdx);
 
     return { kind: "i32" };
   }
@@ -3049,7 +3052,7 @@ function compileTypeofComparison(
         fctx.body.push({ op: "i32.eq" });
       } else {
         // Multiple tags: (tag == t1) || (tag == t2)
-        const tagLocal = allocLocal(fctx, `__typeof_tag_${fctx.locals.length}`, { kind: "i32" });
+        const tagLocal = allocTempLocal(fctx, { kind: "i32" });
         fctx.body.push({ op: "local.set", index: tagLocal });
         fctx.body.push({ op: "local.get", index: tagLocal });
         fctx.body.push({ op: "i32.const", value: tagChecks[0]! });
@@ -3060,6 +3063,7 @@ function compileTypeofComparison(
           fctx.body.push({ op: "i32.eq" });
           fctx.body.push({ op: "i32.or" });
         }
+        releaseTempLocal(fctx, tagLocal);
       }
       if (isNeq) {
         fctx.body.push({ op: "i32.eqz" });
@@ -3186,10 +3190,11 @@ function tryFlattenBinaryChain(
 
     // Promote i32/f64 mismatch
     if (resultType.kind === "i32" && rightType.kind === "f64") {
-      const tmpR = allocLocal(fctx, `__flat_r_${fctx.locals.length}`, { kind: "f64" });
+      const tmpR = allocTempLocal(fctx, { kind: "f64" });
       fctx.body.push({ op: "local.set", index: tmpR });
       fctx.body.push({ op: "f64.convert_i32_s" });
       fctx.body.push({ op: "local.get", index: tmpR });
+      releaseTempLocal(fctx, tmpR);
       resultType = { kind: "f64" };
       rightType = { kind: "f64" };
     } else if (resultType.kind === "f64" && rightType.kind === "i32") {
@@ -3810,10 +3815,11 @@ function compileBinaryExpression(
 
   // Promote i32↔f64 mismatch (e.g. string.length:i32 !== 8:f64)
   if (leftType.kind === "i32" && rightType.kind === "f64") {
-    const tmpR = allocLocal(fctx, `__promote_r_${fctx.locals.length}`, { kind: "f64" });
+    const tmpR = allocTempLocal(fctx, { kind: "f64" });
     fctx.body.push({ op: "local.set", index: tmpR });
     fctx.body.push({ op: "f64.convert_i32_s" });
     fctx.body.push({ op: "local.get", index: tmpR });
+    releaseTempLocal(fctx, tmpR);
     leftType = { kind: "f64" };
   } else if (leftType.kind === "f64" && rightType.kind === "i32") {
     fctx.body.push({ op: "f64.convert_i32_s" });
@@ -3854,19 +3860,21 @@ function compileBinaryExpression(
         }
         // Coerce left operand (below right on stack) — save right to local
         if (leftIsRef) {
-          const tmpR = allocLocal(fctx, `__vo_r_${fctx.locals.length}`, rightType);
+          const tmpR = allocTempLocal(fctx, rightType);
           fctx.body.push({ op: "local.set", index: tmpR });
           coerceType(ctx, fctx, leftType, { kind: "f64" });
           fctx.body.push({ op: "local.get", index: tmpR });
+          releaseTempLocal(fctx, tmpR);
           leftType = { kind: "f64" };
         }
         // After valueOf coercion, one side may be f64 (from ref) and the other
         // may still be i32 (boolean/integer). Promote i32 → f64 to avoid type mismatch. (#433)
         if (leftType.kind === "i32" && rightType.kind === "f64") {
-          const tmpR = allocLocal(fctx, `__vo_promote_r_${fctx.locals.length}`, { kind: "f64" });
+          const tmpR = allocTempLocal(fctx, { kind: "f64" });
           fctx.body.push({ op: "local.set", index: tmpR });
           fctx.body.push({ op: "f64.convert_i32_s" });
           fctx.body.push({ op: "local.get", index: tmpR });
+          releaseTempLocal(fctx, tmpR);
           leftType = { kind: "f64" };
         } else if (leftType.kind === "f64" && rightType.kind === "i32") {
           fctx.body.push({ op: "f64.convert_i32_s" });
@@ -3904,10 +3912,11 @@ function compileBinaryExpression(
       fctx.body.push({ op: "f64.convert_i64_s" });
     } else {
       // left is i64, need to swap: save right, convert left, restore right
-      const tmpR = allocLocal(fctx, `__i64cvt_r_${fctx.locals.length}`, { kind: "f64" });
+      const tmpR = allocTempLocal(fctx, { kind: "f64" });
       fctx.body.push({ op: "local.set", index: tmpR });
       fctx.body.push({ op: "f64.convert_i64_s" });
       fctx.body.push({ op: "local.get", index: tmpR });
+      releaseTempLocal(fctx, tmpR);
     }
     // Now both are f64 — use numeric comparison
     const isLooseEq = op === ts.SyntaxKind.EqualsEqualsToken;
@@ -3933,10 +3942,11 @@ function compileBinaryExpression(
   if ((isBooleanType(leftTsType) || leftType.kind === "i32") && leftType.kind !== "externref" && rightType.kind !== "externref") {
     // Ensure both operands are i32; if right is f64, promote left to f64 and use numeric path
     if (rightType.kind === "f64") {
-      const tmpR = allocLocal(fctx, `__bool_promote_r_${fctx.locals.length}`, { kind: "f64" });
+      const tmpR = allocTempLocal(fctx, { kind: "f64" });
       fctx.body.push({ op: "local.set", index: tmpR });
       fctx.body.push({ op: "f64.convert_i32_s" });
       fctx.body.push({ op: "local.get", index: tmpR });
+      releaseTempLocal(fctx, tmpR);
       return compileNumericBinaryOp(ctx, fctx, op, expr);
     }
     return compileBooleanBinaryOp(ctx, fctx, op);
@@ -3950,10 +3960,11 @@ function compileBinaryExpression(
       fctx.body.push({ op: "call", funcIdx: unboxIdx });
     }
     if (leftType.kind === "externref") {
-      const tmpR = allocLocal(fctx, `__unbox_r_${fctx.locals.length}`, { kind: "f64" });
+      const tmpR = allocTempLocal(fctx, { kind: "f64" });
       fctx.body.push({ op: "local.set", index: tmpR });
       fctx.body.push({ op: "call", funcIdx: unboxIdx });
       fctx.body.push({ op: "local.get", index: tmpR });
+      releaseTempLocal(fctx, tmpR);
     }
     return compileNumericBinaryOp(ctx, fctx, op, expr);
   }
@@ -4005,15 +4016,17 @@ function compileBinaryExpression(
     }
     // Coerce/unbox left side (below right on stack) to f64
     if (leftType.kind === "externref") {
-      const tmpR = allocLocal(fctx, `__unbox_r_${fctx.locals.length}`, { kind: "f64" });
+      const tmpR = allocTempLocal(fctx, { kind: "f64" });
       fctx.body.push({ op: "local.set", index: tmpR });
       fctx.body.push({ op: "call", funcIdx: unboxIdx });
       fctx.body.push({ op: "local.get", index: tmpR });
+      releaseTempLocal(fctx, tmpR);
     } else if (leftType.kind === "i32") {
-      const tmpR = allocLocal(fctx, `__unbox_r_${fctx.locals.length}`, { kind: "f64" });
+      const tmpR = allocTempLocal(fctx, { kind: "f64" });
       fctx.body.push({ op: "local.set", index: tmpR });
       fctx.body.push({ op: "f64.convert_i32_s" });
       fctx.body.push({ op: "local.get", index: tmpR });
+      releaseTempLocal(fctx, tmpR);
     }
     fctx.body.push({ op: isEqOp ? "f64.eq" : "f64.ne" });
     return { kind: "i32" };
@@ -4038,7 +4051,7 @@ function compileBinaryExpression(
     // Coerce left operand (below right on stack) — save right to local
     if (leftType.kind === "externref" || leftType.kind === "i32" || leftType.kind === "i64" ||
         leftType.kind === "ref" || leftType.kind === "ref_null") {
-      const tmpR = allocLocal(fctx, `__fallback_r_${fctx.locals.length}`, { kind: "f64" });
+      const tmpR = allocTempLocal(fctx, { kind: "f64" });
       fctx.body.push({ op: "local.set", index: tmpR });
       if (leftType.kind === "externref") {
         addUnionImports(ctx);
@@ -4052,6 +4065,7 @@ function compileBinaryExpression(
         coerceType(ctx, fctx, leftType, { kind: "f64" });
       }
       fctx.body.push({ op: "local.get", index: tmpR });
+      releaseTempLocal(fctx, tmpR);
     }
     return compileNumericBinaryOp(ctx, fctx, op, expr);
   }
@@ -4293,9 +4307,9 @@ function compileI64BinaryOp(
     case ts.SyntaxKind.AsteriskAsteriskToken: {
       // BigInt exponentiation: base ** exp implemented as a loop
       // Stack: [base: i64, exp: i64] → [result: i64]
-      const expLocal = allocLocal(fctx, `__bigpow_exp_${fctx.locals.length}`, { kind: "i64" });
-      const baseLocal = allocLocal(fctx, `__bigpow_base_${fctx.locals.length}`, { kind: "i64" });
-      const resultLocal = allocLocal(fctx, `__bigpow_result_${fctx.locals.length}`, { kind: "i64" });
+      const expLocal = allocTempLocal(fctx, { kind: "i64" });
+      const baseLocal = allocTempLocal(fctx, { kind: "i64" });
+      const resultLocal = allocTempLocal(fctx, { kind: "i64" });
       // Save exponent (top of stack), then base
       fctx.body.push({ op: "local.set", index: expLocal });
       fctx.body.push({ op: "local.set", index: baseLocal });
@@ -4326,6 +4340,9 @@ function compileI64BinaryOp(
       ] as unknown as Instr[] } as unknown as Instr);
       // Push result
       fctx.body.push({ op: "local.get", index: resultLocal });
+      releaseTempLocal(fctx, expLocal);
+      releaseTempLocal(fctx, baseLocal);
+      releaseTempLocal(fctx, resultLocal);
       return { kind: "i64" };
     }
     case ts.SyntaxKind.EqualsEqualsEqualsToken:
@@ -4396,7 +4413,7 @@ function emitToInt32(fctx: FunctionContext): void {
   // Step 3: trunc_sat_f64_u gives correct bit pattern
   // NaN/Infinity: trunc(NaN)=NaN, Inf-Inf=NaN, trunc_sat_u(NaN)=0. Correct.
   fctx.body.push({ op: "f64.trunc" });
-  const tmp = allocLocal(fctx, `__toint32_${fctx.locals.length}`, { kind: "f64" });
+  const tmp = allocTempLocal(fctx, { kind: "f64" });
   fctx.body.push({ op: "local.tee", index: tmp });
   fctx.body.push({ op: "local.get", index: tmp });
   fctx.body.push({ op: "f64.const", value: 4294967296 });
@@ -4406,6 +4423,7 @@ function emitToInt32(fctx: FunctionContext): void {
   fctx.body.push({ op: "f64.mul" });
   fctx.body.push({ op: "f64.sub" });
   fctx.body.push({ op: "i32.trunc_sat_f64_u" });
+  releaseTempLocal(fctx, tmp);
 }
 
 /** Truncate two f64 operands to i32 via ToInt32, apply an i32 bitwise op, convert back to f64 */
@@ -4415,10 +4433,11 @@ function compileBitwiseBinaryOp(
   unsigned: boolean,
 ): ValType {
   // Stack: [left_f64, right_f64]
-  const tmpR = allocLocal(fctx, `__bw_r_${fctx.locals.length}`, { kind: "f64" });
+  const tmpR = allocTempLocal(fctx, { kind: "f64" });
   fctx.body.push({ op: "local.set", index: tmpR });
   emitToInt32(fctx);
   fctx.body.push({ op: "local.get", index: tmpR });
+  releaseTempLocal(fctx, tmpR);
   emitToInt32(fctx);
   fctx.body.push({ op: i32op });
   fctx.body.push({ op: unsigned ? "f64.convert_i32_u" : "f64.convert_i32_s" });
@@ -4444,8 +4463,8 @@ function compileModulo(
  * - Infinity % x = NaN, x % 0 = NaN, NaN % x = NaN (handled naturally by formula)
  */
 function emitModulo(fctx: FunctionContext): void {
-  const tmpB = allocLocal(fctx, `__mod_b_${fctx.locals.length}`, { kind: "f64" });
-  const tmpA = allocLocal(fctx, `__mod_a_${fctx.locals.length}`, { kind: "f64" });
+  const tmpB = allocTempLocal(fctx, { kind: "f64" });
+  const tmpA = allocTempLocal(fctx, { kind: "f64" });
 
   fctx.body.push({ op: "local.set", index: tmpB });
   fctx.body.push({ op: "local.set", index: tmpA });
@@ -4487,6 +4506,8 @@ function emitModulo(fctx: FunctionContext): void {
     then: thenInstrs,
     else: elseInstrs,
   } as unknown as Instr);
+  releaseTempLocal(fctx, tmpA);
+  releaseTempLocal(fctx, tmpB);
 }
 
 function compileBooleanBinaryOp(
@@ -4530,7 +4551,7 @@ function compileLogicalAnd(
   if (!leftType) { ensureI32Condition(fctx, leftType, ctx); return { kind: "i32" }; }
 
   // Save LHS value for JS value semantics, then check truthiness
-  const tmp = allocLocal(fctx, `__and_left_${fctx.locals.length}`, leftType);
+  const tmp = allocTempLocal(fctx, leftType);
   fctx.body.push({ op: "local.tee", index: tmp });
   ensureI32Condition(fctx, leftType, ctx);
 
@@ -4577,6 +4598,7 @@ function compileLogicalAnd(
     then: thenInstrs,
     else: elseInstrs,
   });
+  releaseTempLocal(fctx, tmp);
 
   return resultType;
 }
@@ -4591,7 +4613,7 @@ function compileLogicalOr(
   if (!leftType) { ensureI32Condition(fctx, leftType, ctx); return { kind: "i32" }; }
 
   // Save LHS value for JS value semantics, then check truthiness
-  const tmp = allocLocal(fctx, `__or_left_${fctx.locals.length}`, leftType);
+  const tmp = allocTempLocal(fctx, leftType);
   fctx.body.push({ op: "local.tee", index: tmp });
   ensureI32Condition(fctx, leftType, ctx);
 
@@ -4638,6 +4660,7 @@ function compileLogicalOr(
     then: thenInstrs,
     else: elseInstrs,
   });
+  releaseTempLocal(fctx, tmp);
 
   return resultType;
 }
@@ -4652,11 +4675,12 @@ function compileNullishCoalescing(
   const leftType = compileExpression(ctx, fctx, expr.left);
   if (!leftType) { ctx.errors.push({ message: "Failed to compile nullish coalescing LHS", line: getLine(expr), column: getCol(expr) }); return { kind: "externref" }; }
   const resultKind: ValType = leftType ?? { kind: "externref" };
-  const tmp = allocLocal(fctx, `__nullish_${fctx.locals.length}`, resultKind);
+  const tmp = allocTempLocal(fctx, resultKind);
   fctx.body.push({ op: "local.tee", index: tmp });
 
   // If the left side is a value type (i32/f64), it can never be null — short-circuit
   if (resultKind.kind === "i32" || resultKind.kind === "f64") {
+    releaseTempLocal(fctx, tmp);
     return resultKind;
   }
 
@@ -4680,6 +4704,7 @@ function compileNullishCoalescing(
       then: thenInstrs,
       else: [{ op: "local.get", index: tmp } as Instr],
     });
+    releaseTempLocal(fctx, tmp);
     return resultKind;
   }
 
@@ -4719,6 +4744,7 @@ function compileNullishCoalescing(
     then: thenInstrs,
     else: elseInstrs,
   });
+  releaseTempLocal(fctx, tmp);
 
   return unifiedType;
 }

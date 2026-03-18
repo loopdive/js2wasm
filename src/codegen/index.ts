@@ -318,6 +318,11 @@ export interface FunctionContext {
    * Populated when a for-loop condition guarantees indexVar < arrayVar.length.
    */
   safeIndexedArrays?: Set<string>;
+  /**
+   * Free list for temporary locals, keyed by ValType key string.
+   * Used by allocTempLocal/releaseTempLocal to reuse locals of the same type.
+   */
+  tempFreeList?: Map<string, number[]>;
 }
 
 /**
@@ -10857,6 +10862,46 @@ export function allocLocal(
   fctx.locals.push({ name, type });
   fctx.localMap.set(name, index);
   return index;
+}
+
+/** Canonical string key for a ValType, used for temp local free-list bucketing */
+function valTypeKey(type: ValType): string {
+  switch (type.kind) {
+    case "ref":
+      return `ref:${type.typeIdx}`;
+    case "ref_null":
+      return `ref_null:${type.typeIdx}`;
+    default:
+      return type.kind;
+  }
+}
+
+/**
+ * Allocate a temporary local, reusing one from the free list if available.
+ * Call releaseTempLocal when the temp is no longer needed.
+ */
+export function allocTempLocal(fctx: FunctionContext, type: ValType): number {
+  if (!fctx.tempFreeList) fctx.tempFreeList = new Map();
+  const key = valTypeKey(type);
+  const bucket = fctx.tempFreeList.get(key);
+  if (bucket && bucket.length > 0) {
+    return bucket.pop()!;
+  }
+  return allocLocal(fctx, `__tmp_${fctx.locals.length}`, type);
+}
+
+/** Release a temporary local back to the free list for reuse */
+export function releaseTempLocal(fctx: FunctionContext, index: number): void {
+  const type = getLocalType(fctx, index);
+  if (!type) return;
+  if (!fctx.tempFreeList) fctx.tempFreeList = new Map();
+  const key = valTypeKey(type);
+  let bucket = fctx.tempFreeList.get(key);
+  if (!bucket) {
+    bucket = [];
+    fctx.tempFreeList.set(key, bucket);
+  }
+  bucket.push(index);
 }
 
 /** Get the ValType of a local by index (param or local slot) */
