@@ -20,13 +20,17 @@
   .card-fail { background: #1f0d0d; } .card-fail .count { color: #f85149; }
   .card-ce { background: #1f1a0d; } .card-ce .count { color: #d29922; }
   .card-skip { background: #0d1520; } .card-skip .count { color: #58a6ff; }
+  .tabs { display: flex; gap: 0; padding: 0 32px; background: #161b22; border-bottom: 1px solid #30363d; }
+  .tab { padding: 10px 20px; cursor: pointer; color: #8b949e; font-size: 14px; border-bottom: 2px solid transparent; }
+  .tab:hover { color: #c9d1d9; }
+  .tab.active { color: #f0f6fc; border-bottom-color: #58a6ff; }
   .filters { padding: 12px 32px; background: #161b22; border-bottom: 1px solid #30363d; display: flex; gap: 12px; align-items: center; }
   .filters input { background: #0d1117; border: 1px solid #30363d; color: #c9d1d9; padding: 8px 12px; border-radius: 6px; width: 300px; font-size: 14px; }
   .filters .count-label { color: #8b949e; font-size: 13px; }
   .list { padding: 0 32px 32px; }
   .list-item { padding: 12px 16px; border-bottom: 1px solid #21262d; display: flex; gap: 12px; align-items: flex-start; font-size: 13px; font-family: 'SF Mono', 'Fira Code', monospace; }
   .list-item:hover { background: #161b22; }
-  .list-item .status { min-width: 80px; font-weight: 600; border-radius: 4px; padding: 2px 8px; text-align: center; font-size: 12px; }
+  .list-item .status { min-width: 80px; font-weight: 600; border-radius: 4px; padding: 2px 8px; text-align: center; font-size: 12px; flex-shrink: 0; }
   .status-pass { background: #23842a; color: #fff; }
   .status-fail { background: #b62324; color: #fff; }
   .status-compile_error { background: #9e6a03; color: #fff; }
@@ -34,8 +38,15 @@
   .list-item .file { flex: 1; color: #c9d1d9; word-break: break-all; }
   .list-item .error { color: #f85149; font-size: 12px; margin-top: 4px; white-space: pre-wrap; }
   .list-item .reason { color: #58a6ff; font-size: 12px; margin-top: 4px; }
-  .list-item .timing { color: #8b949e; font-size: 11px; min-width: 80px; text-align: right; }
-  .loading { padding: 48px; text-align: center; color: #8b949e; }
+  .list-item .timing { color: #8b949e; font-size: 11px; min-width: 80px; text-align: right; flex-shrink: 0; }
+  .group-header { padding: 14px 16px; border-bottom: 1px solid #30363d; background: #161b22; display: flex; gap: 12px; align-items: center; cursor: pointer; font-size: 14px; }
+  .group-header:hover { background: #1c2128; }
+  .group-header .group-count { background: #30363d; color: #c9d1d9; padding: 2px 10px; border-radius: 10px; font-size: 12px; font-weight: 600; min-width: 40px; text-align: center; }
+  .group-header .group-reason { flex: 1; color: #c9d1d9; }
+  .group-header .expand-icon { color: #8b949e; font-size: 12px; min-width: 20px; }
+  .group-items { display: none; border-left: 3px solid #30363d; margin-left: 16px; }
+  .group-items.open { display: block; }
+  .group-items .list-item { padding-left: 24px; font-size: 12px; }
   .perf-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin-top: 12px; }
   .perf-bar .seg-pass { background: #3fb950; }
   .perf-bar .seg-fail { background: #f85149; }
@@ -50,8 +61,12 @@
   <div class="perf-bar" id="perf-bar"></div>
 </div>
 <div class="summary" id="summary"></div>
+<div class="tabs" id="tabs" style="display:none;">
+  <div class="tab active" data-view="list" onclick="setView('list')">Individual Tests</div>
+  <div class="tab" data-view="grouped" onclick="setView('grouped')">Grouped by Reason</div>
+</div>
 <div class="filters" id="filters" style="display:none;">
-  <input type="text" id="search" placeholder="Filter by file path or error message...">
+  <input type="text" id="search" placeholder="Filter by file path, error, or reason...">
   <span class="count-label" id="filtered-count"></span>
 </div>
 <div class="list" id="list"></div>
@@ -60,9 +75,9 @@
 let allResults = [];
 let activeFilter = null;
 let searchTerm = '';
+let currentView = 'list';
 
 async function loadData() {
-  // Try loading JSONL from same directory
   const resp = await fetch('test262-results.jsonl');
   const text = await resp.text();
   allResults = text.trim().split('\n').map(line => {
@@ -74,9 +89,8 @@ async function loadData() {
   const total = allResults.length;
 
   document.getElementById('subtitle').textContent =
-    `${total.toLocaleString()} tests | ${new Date().toLocaleDateString()}`;
+    `${total.toLocaleString()} tests | Compilable pass rate: ${(summary.pass / (summary.pass + summary.fail) * 100).toFixed(1)}%`;
 
-  // Performance bar
   const bar = document.getElementById('perf-bar');
   bar.innerHTML = `
     <div class="seg-pass" style="width:${summary.pass/total*100}%"></div>
@@ -85,47 +99,47 @@ async function loadData() {
     <div class="seg-skip" style="width:${summary.skip/total*100}%"></div>
   `;
 
-  // Summary cards
   const cards = [
     { key: 'pass', label: 'Passed', cls: 'card-pass' },
     { key: 'fail', label: 'Failed', cls: 'card-fail' },
     { key: 'compile_error', label: 'Compile Errors', cls: 'card-ce' },
     { key: 'skip', label: 'Skipped', cls: 'card-skip' },
   ];
-  const summaryEl = document.getElementById('summary');
-  summaryEl.innerHTML = cards.map(c => `
+  document.getElementById('summary').innerHTML = cards.map(c => `
     <div class="card ${c.cls}" data-filter="${c.key}" onclick="toggleFilter('${c.key}')">
-      <div class="count">${summary[c.key].toLocaleString()}</div>
+      <div class="count">${(summary[c.key]||0).toLocaleString()}</div>
       <div class="label">${c.label}</div>
-      <div class="pct">${(summary[c.key]/total*100).toFixed(1)}%</div>
+      <div class="pct">${((summary[c.key]||0)/total*100).toFixed(1)}%</div>
     </div>
   `).join('');
 
   document.getElementById('filters').style.display = 'flex';
+  document.getElementById('tabs').style.display = 'flex';
   document.getElementById('search').addEventListener('input', e => {
     searchTerm = e.target.value.toLowerCase();
-    renderList();
+    render();
   });
 }
 
 function toggleFilter(status) {
-  if (activeFilter === status) {
-    activeFilter = null;
-  } else {
-    activeFilter = status;
-  }
-  // Update card active state
+  activeFilter = activeFilter === status ? null : status;
   document.querySelectorAll('.card').forEach(c => {
     c.classList.toggle('active', c.dataset.filter === activeFilter);
   });
-  renderList();
+  render();
 }
 
-function renderList() {
+function setView(view) {
+  currentView = view;
+  document.querySelectorAll('.tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.view === view);
+  });
+  render();
+}
+
+function getFiltered() {
   let filtered = allResults;
-  if (activeFilter) {
-    filtered = filtered.filter(r => r.status === activeFilter);
-  }
+  if (activeFilter) filtered = filtered.filter(r => r.status === activeFilter);
   if (searchTerm) {
     filtered = filtered.filter(r =>
       (r.file || '').toLowerCase().includes(searchTerm) ||
@@ -133,11 +147,103 @@ function renderList() {
       (r.reason || '').toLowerCase().includes(searchTerm)
     );
   }
+  return filtered;
+}
 
+function normalizeReason(r) {
+  if (r.reason) return r.reason;
+  if (r.error) {
+    // Normalize Wasm error messages by removing function numbers and offsets
+    let e = r.error;
+    e = e.replace(/function #\d+:"?\w+"?/g, 'function #N');
+    e = e.replace(/@\+\d+/g, '');
+    e = e.replace(/\(need \d+, got \d+\)/g, '(need N, got M)');
+    // Truncate to first meaningful part
+    if (e.length > 100) e = e.substring(0, 100) + '...';
+    return e;
+  }
+  return '(no reason)';
+}
+
+function render() {
+  if (currentView === 'grouped') renderGrouped();
+  else renderList();
+}
+
+function renderGrouped() {
+  const filtered = getFiltered();
   document.getElementById('filtered-count').textContent =
     `${filtered.length.toLocaleString()} results`;
 
-  // Limit rendering to 500 for performance
+  // Group by normalized reason
+  const groups = new Map();
+  filtered.forEach(r => {
+    const reason = normalizeReason(r);
+    if (!groups.has(reason)) groups.set(reason, []);
+    groups.get(reason).push(r);
+  });
+
+  // Sort groups by count descending
+  const sorted = [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
+
+  const listEl = document.getElementById('list');
+  // Limit to 100 groups for performance
+  const shown = sorted.slice(0, 100);
+  let html = '';
+  shown.forEach(([reason, items], idx) => {
+    const statusCounts = {};
+    items.forEach(r => { statusCounts[r.status] = (statusCounts[r.status] || 0) + 1; });
+    const badges = Object.entries(statusCounts).map(([s, c]) =>
+      `<span class="status status-${s}" style="font-size:11px;padding:1px 6px;">${s === 'compile_error' ? 'CE' : s.toUpperCase()} ${c}</span>`
+    ).join(' ');
+
+    html += `<div class="group-header" onclick="toggleGroup(${idx})">
+      <span class="expand-icon" id="icon-${idx}">&#9654;</span>
+      <span class="group-count">${items.length}</span>
+      <span class="group-reason">${escHtml(reason)}</span>
+      ${badges}
+    </div>
+    <div class="group-items" id="group-${idx}">`;
+
+    // Show up to 20 items per group
+    items.slice(0, 20).forEach(r => {
+      const timing = r.timing ? `<div class="timing">${r.timing.totalMs.toFixed(0)}ms</div>` : '';
+      html += `<div class="list-item">
+        <div class="file">${escHtml(r.file || '?')}</div>
+        ${timing}
+      </div>`;
+    });
+    if (items.length > 20) {
+      html += `<div class="list-item" style="color:#8b949e;">...and ${items.length - 20} more</div>`;
+    }
+    html += '</div>';
+  });
+
+  if (sorted.length > 100) {
+    html += `<div class="group-header" style="color:#8b949e;justify-content:center;">
+      Showing 100 of ${sorted.length} groups. Use search to narrow.
+    </div>`;
+  }
+  listEl.innerHTML = html;
+}
+
+function toggleGroup(idx) {
+  const el = document.getElementById(`group-${idx}`);
+  const icon = document.getElementById(`icon-${idx}`);
+  if (el.classList.contains('open')) {
+    el.classList.remove('open');
+    icon.innerHTML = '&#9654;';
+  } else {
+    el.classList.add('open');
+    icon.innerHTML = '&#9660;';
+  }
+}
+
+function renderList() {
+  const filtered = getFiltered();
+  document.getElementById('filtered-count').textContent =
+    `${filtered.length.toLocaleString()} results`;
+
   const shown = filtered.slice(0, 500);
   const listEl = document.getElementById('list');
   listEl.innerHTML = shown.map(r => {
