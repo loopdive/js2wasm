@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ts2wasm Test262 Conformance Report</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0d1117; color: #c9d1d9; }
+  .header { padding: 24px 32px; background: #161b22; border-bottom: 1px solid #30363d; }
+  .header h1 { font-size: 24px; color: #f0f6fc; }
+  .header .subtitle { color: #8b949e; margin-top: 4px; }
+  .summary { display: flex; gap: 16px; padding: 24px 32px; flex-wrap: wrap; }
+  .card { flex: 1; min-width: 160px; padding: 20px; border-radius: 8px; cursor: pointer; transition: transform 0.1s, box-shadow 0.2s; border: 1px solid #30363d; }
+  .card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
+  .card.active { border-color: #58a6ff; box-shadow: 0 0 0 2px rgba(88,166,255,0.3); }
+  .card .count { font-size: 36px; font-weight: 700; }
+  .card .label { font-size: 14px; color: #8b949e; margin-top: 4px; }
+  .card .pct { font-size: 14px; color: #8b949e; }
+  .card-pass { background: #0d1f0d; } .card-pass .count { color: #3fb950; }
+  .card-fail { background: #1f0d0d; } .card-fail .count { color: #f85149; }
+  .card-ce { background: #1f1a0d; } .card-ce .count { color: #d29922; }
+  .card-skip { background: #0d1520; } .card-skip .count { color: #58a6ff; }
+  .filters { padding: 12px 32px; background: #161b22; border-bottom: 1px solid #30363d; display: flex; gap: 12px; align-items: center; }
+  .filters input { background: #0d1117; border: 1px solid #30363d; color: #c9d1d9; padding: 8px 12px; border-radius: 6px; width: 300px; font-size: 14px; }
+  .filters .count-label { color: #8b949e; font-size: 13px; }
+  .list { padding: 0 32px 32px; }
+  .list-item { padding: 12px 16px; border-bottom: 1px solid #21262d; display: flex; gap: 12px; align-items: flex-start; font-size: 13px; font-family: 'SF Mono', 'Fira Code', monospace; }
+  .list-item:hover { background: #161b22; }
+  .list-item .status { min-width: 80px; font-weight: 600; border-radius: 4px; padding: 2px 8px; text-align: center; font-size: 12px; }
+  .status-pass { background: #23842a; color: #fff; }
+  .status-fail { background: #b62324; color: #fff; }
+  .status-compile_error { background: #9e6a03; color: #fff; }
+  .status-skip { background: #1f6feb; color: #fff; }
+  .list-item .file { flex: 1; color: #c9d1d9; word-break: break-all; }
+  .list-item .error { color: #f85149; font-size: 12px; margin-top: 4px; white-space: pre-wrap; }
+  .list-item .reason { color: #58a6ff; font-size: 12px; margin-top: 4px; }
+  .list-item .timing { color: #8b949e; font-size: 11px; min-width: 80px; text-align: right; }
+  .loading { padding: 48px; text-align: center; color: #8b949e; }
+  .perf-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin-top: 12px; }
+  .perf-bar .seg-pass { background: #3fb950; }
+  .perf-bar .seg-fail { background: #f85149; }
+  .perf-bar .seg-ce { background: #d29922; }
+  .perf-bar .seg-skip { background: #1f6feb; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>ts2wasm Test262 Conformance Report</h1>
+  <div class="subtitle" id="subtitle">Loading...</div>
+  <div class="perf-bar" id="perf-bar"></div>
+</div>
+<div class="summary" id="summary"></div>
+<div class="filters" id="filters" style="display:none;">
+  <input type="text" id="search" placeholder="Filter by file path or error message...">
+  <span class="count-label" id="filtered-count"></span>
+</div>
+<div class="list" id="list"></div>
+
+<script>
+let allResults = [];
+let activeFilter = null;
+let searchTerm = '';
+
+async function loadData() {
+  // Try loading JSONL from same directory
+  const resp = await fetch('test262-results.jsonl');
+  const text = await resp.text();
+  allResults = text.trim().split('\n').map(line => {
+    try { return JSON.parse(line); } catch { return null; }
+  }).filter(Boolean);
+
+  const summary = { pass: 0, fail: 0, compile_error: 0, skip: 0 };
+  allResults.forEach(r => { summary[r.status] = (summary[r.status] || 0) + 1; });
+  const total = allResults.length;
+
+  document.getElementById('subtitle').textContent =
+    `${total.toLocaleString()} tests | ${new Date().toLocaleDateString()}`;
+
+  // Performance bar
+  const bar = document.getElementById('perf-bar');
+  bar.innerHTML = `
+    <div class="seg-pass" style="width:${summary.pass/total*100}%"></div>
+    <div class="seg-fail" style="width:${summary.fail/total*100}%"></div>
+    <div class="seg-ce" style="width:${summary.compile_error/total*100}%"></div>
+    <div class="seg-skip" style="width:${summary.skip/total*100}%"></div>
+  `;
+
+  // Summary cards
+  const cards = [
+    { key: 'pass', label: 'Passed', cls: 'card-pass' },
+    { key: 'fail', label: 'Failed', cls: 'card-fail' },
+    { key: 'compile_error', label: 'Compile Errors', cls: 'card-ce' },
+    { key: 'skip', label: 'Skipped', cls: 'card-skip' },
+  ];
+  const summaryEl = document.getElementById('summary');
+  summaryEl.innerHTML = cards.map(c => `
+    <div class="card ${c.cls}" data-filter="${c.key}" onclick="toggleFilter('${c.key}')">
+      <div class="count">${summary[c.key].toLocaleString()}</div>
+      <div class="label">${c.label}</div>
+      <div class="pct">${(summary[c.key]/total*100).toFixed(1)}%</div>
+    </div>
+  `).join('');
+
+  document.getElementById('filters').style.display = 'flex';
+  document.getElementById('search').addEventListener('input', e => {
+    searchTerm = e.target.value.toLowerCase();
+    renderList();
+  });
+}
+
+function toggleFilter(status) {
+  if (activeFilter === status) {
+    activeFilter = null;
+  } else {
+    activeFilter = status;
+  }
+  // Update card active state
+  document.querySelectorAll('.card').forEach(c => {
+    c.classList.toggle('active', c.dataset.filter === activeFilter);
+  });
+  renderList();
+}
+
+function renderList() {
+  let filtered = allResults;
+  if (activeFilter) {
+    filtered = filtered.filter(r => r.status === activeFilter);
+  }
+  if (searchTerm) {
+    filtered = filtered.filter(r =>
+      (r.file || '').toLowerCase().includes(searchTerm) ||
+      (r.error || '').toLowerCase().includes(searchTerm) ||
+      (r.reason || '').toLowerCase().includes(searchTerm)
+    );
+  }
+
+  document.getElementById('filtered-count').textContent =
+    `${filtered.length.toLocaleString()} results`;
+
+  // Limit rendering to 500 for performance
+  const shown = filtered.slice(0, 500);
+  const listEl = document.getElementById('list');
+  listEl.innerHTML = shown.map(r => {
+    const statusCls = `status-${r.status}`;
+    const statusLabel = r.status === 'compile_error' ? 'CE' : r.status.toUpperCase();
+    const detail = r.error
+      ? `<div class="error">${escHtml(r.error)}</div>`
+      : r.reason
+        ? `<div class="reason">Skip: ${escHtml(r.reason)}</div>`
+        : '';
+    const timing = r.timing
+      ? `<div class="timing">${r.timing.totalMs.toFixed(0)}ms</div>`
+      : '';
+    return `<div class="list-item">
+      <span class="status ${statusCls}">${statusLabel}</span>
+      <div class="file">${escHtml(r.file || '?')}${detail}</div>
+      ${timing}
+    </div>`;
+  }).join('');
+
+  if (filtered.length > 500) {
+    listEl.innerHTML += `<div class="list-item" style="color:#8b949e;justify-content:center;">
+      Showing 500 of ${filtered.length.toLocaleString()} results. Use search to narrow.
+    </div>`;
+  }
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+loadData();
+</script>
+</body>
+</html>
