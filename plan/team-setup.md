@@ -5,6 +5,7 @@ type: project
 ---
 
 ## Team Roles
+- **Project Lead** (human): Owns the architecture and vision. Thinks in compilation strategies — frames problems as "what compilation approach makes this work?" not "does the target support this?" Challenges assumptions aggressively: every feature labeled "impossible" (eval, Proxy, with) got a viable implementation path after pushback. Key design decisions (Proxy trap inlining, eval via host compilation, tagged struct variants for Symbol keys) come from the project lead. Delegates implementation to agents but steers the design.
 - **Tech Lead**: opus model, manages the main working copy. Dispatches and monitors developer agents, cherry-picks completed work to main, manages issue lifecycle (ready → done), resolves merge conflicts, and tracks the rolling pool. This is the orchestrator role — it controls git state on main.
 - **Product Owner**: opus model, manages plan/ files, sprint planning and review. **Must use worktree isolation** for all file changes — the Tech Lead controls the main working copy.
 - **Developer**: opus model, worktree isolation, implements fixes in src/ and tests/
