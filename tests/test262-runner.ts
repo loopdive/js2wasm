@@ -86,7 +86,8 @@ const UNSUPPORTED_FEATURES = new Set([
   "json-superset", "well-formed-json-stringify",
   "Intl",
   "tail-call-optimization",
-  "cross-realm",
+  // cross-realm: removed (#500) — single-module Wasm has no cross-realm issues;
+  // tests fail for unrelated reasons ($262.createRealm API not available)
   "caller",
   "eval",
 ]);
