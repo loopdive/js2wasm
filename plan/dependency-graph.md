@@ -434,7 +434,7 @@ Updated with latest run (2026-03-17): 17,606 unique tests — 5,735 pass, 2,064 
 | 438 | Internal error: undefined property access | 20 CE | **Ready** (medium) |
 | 421 | Array.reduce requires callback and initial value | 23 CE | **Ready** (medium) |
 | 439 | Generator type missing next/return/throw | 16 CE | Blocked by #412 |
-| 440 | Dynamic import specifier type | 16 CE | **Ready** (low) |
+| 440 | Dynamic import specifier type | 16 CE | **Review** |
 | 449 | Wasm validation: call_ref null | 15 CE | **Ready** (low) |
 | 415 | Logical assignment struct resolution | 14 CE | **Ready** (medium) |
 | 424 | Logical assignment on unresolved struct | 14 CE | **Ready** (medium) |

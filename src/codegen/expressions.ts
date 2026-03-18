@@ -9085,6 +9085,19 @@ function compileCallExpression(
     return compileOptionalDirectCall(ctx, fctx, expr);
   }
 
+  // Dynamic import() — not supported in AOT Wasm compilation.
+  // Emit unreachable so compilation succeeds; the call will trap at runtime.
+  if (expr.expression.kind === ts.SyntaxKind.ImportKeyword) {
+    ctx.errors.push({
+      message: "Dynamic import() is not supported in AOT Wasm compilation",
+      line: getLine(expr),
+      column: getCol(expr),
+      severity: "warning",
+    });
+    fctx.body.push({ kind: "unreachable" } as unknown as Instr);
+    return null;
+  }
+
   // Unwrap parenthesized callee: (fn)(...), ((obj.method))(...) etc.
   // This handles patterns like (0, fn)() which are already handled below,
   // but also (fn)(), ((fn))(), (obj.method)() etc. which would otherwise fail.
