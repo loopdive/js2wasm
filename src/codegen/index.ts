@@ -9785,6 +9785,18 @@ export function compileClassBodies(
       isConstructor: true,
     };
 
+    // Re-resolve the constructor function type now that all class struct types
+    // are registered. Constructor parameter types that reference forward-declared
+    // classes may have resolved to externref during the collection phase.
+    {
+      const resolvedParams = params.map((p) => p.type);
+      const resolvedResults: ValType[] = [{ kind: "ref", typeIdx: structTypeIdx }];
+      const updatedTypeIdx = addFuncType(ctx, resolvedParams, resolvedResults, `${ctorName}_type`);
+      if (updatedTypeIdx !== func.typeIdx) {
+        func.typeIdx = updatedTypeIdx;
+      }
+    }
+
     for (let i = 0; i < params.length; i++) {
       fctx.localMap.set(params[i]!.name, i);
     }
@@ -10062,6 +10074,20 @@ export function compileClassBodies(
         savedBodies: [],
       };
 
+      // Re-resolve the function type now that all class struct types are registered.
+      // During the collection phase, forward-referenced class types (e.g., a method
+      // returning a class declared later in the source) resolve to externref because
+      // the target struct type doesn't exist yet. By this point all struct types are
+      // registered, so re-resolving produces the correct ref types.
+      {
+        const resolvedParams = params.map((p) => p.type);
+        const resolvedResults: ValType[] = fctx.returnType ? [fctx.returnType] : [];
+        const updatedTypeIdx = addFuncType(ctx, resolvedParams, resolvedResults, `${fullName}_type`);
+        if (updatedTypeIdx !== func.typeIdx) {
+          func.typeIdx = updatedTypeIdx;
+        }
+      }
+
       for (let i = 0; i < params.length; i++) {
         fctx.localMap.set(params[i]!.name, i);
       }
@@ -10254,6 +10280,16 @@ export function compileClassBodies(
         savedBodies: [],
       };
 
+      // Re-resolve getter function type (see method type re-resolution above)
+      {
+        const resolvedParams = params.map((p) => p.type);
+        const resolvedResults: ValType[] = fctx.returnType ? [fctx.returnType] : [];
+        const updatedTypeIdx = addFuncType(ctx, resolvedParams, resolvedResults, `${getterName}_type`);
+        if (updatedTypeIdx !== func.typeIdx) {
+          func.typeIdx = updatedTypeIdx;
+        }
+      }
+
       for (let i = 0; i < params.length; i++) {
         fctx.localMap.set(params[i]!.name, i);
       }
@@ -10332,6 +10368,16 @@ export function compileClassBodies(
         labelMap: new Map(),
         savedBodies: [],
       };
+
+      // Re-resolve setter function type (see method type re-resolution above)
+      {
+        const resolvedParams = params.map((p) => p.type);
+        const resolvedResults: ValType[] = [];
+        const updatedTypeIdx = addFuncType(ctx, resolvedParams, resolvedResults, `${setterName}_type`);
+        if (updatedTypeIdx !== func.typeIdx) {
+          func.typeIdx = updatedTypeIdx;
+        }
+      }
 
       for (let i = 0; i < params.length; i++) {
         fctx.localMap.set(params[i]!.name, i);
