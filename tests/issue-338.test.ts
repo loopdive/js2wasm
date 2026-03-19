@@ -149,14 +149,16 @@ var x = 1;`;
       expect(result).toBeNull();
     });
 
-    it("skips for unknown phase", async () => {
+    it("handles resolution phase (same as parse/early)", async () => {
+      // Resolution phase negative tests are compiled like parse/early.
+      // This source has valid syntax, so the test should fail (compilation succeeds).
       const meta: Test262Meta = {
-        negative: { phase: "resolution" as any, type: "SyntaxError" },
+        negative: { phase: "resolution", type: "SyntaxError" },
       };
       const result = await handleNegativeTest("var x = 1;", meta, "test.js", "test");
       expect(result).not.toBeNull();
-      expect(result!.status).toBe("skip");
-      expect(result!.reason).toContain("unknown negative phase");
+      // Valid code compiles successfully, so negative test fails
+      expect(result!.status).toBe("fail");
     });
   });
 });
