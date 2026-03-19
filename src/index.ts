@@ -105,6 +105,10 @@ export interface CompileOptions {
   hardened?: boolean;
   /** Skip semantic diagnostics for faster compilation (checker still available for type queries) */
   skipSemanticDiagnostics?: boolean;
+  /** Run Binaryen wasm-opt post-processing on the output binary (default: false).
+   *  Requires either the 'binaryen' npm package or wasm-opt on PATH.
+   *  Set to true for -O3 defaults, or pass a number (1-4) for a specific level. */
+  optimize?: boolean | 1 | 2 | 3 | 4;
 }
 
 import * as path from "path";
