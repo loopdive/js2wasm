@@ -13,7 +13,7 @@
  */
 import { TEST_CATEGORIES, findTestFiles, runTest262File, shouldSkip, parseMeta, wrapTest, type TestResult, type TestTiming } from "../tests/test262-runner.js";
 import { join } from "path";
-import { writeFileSync, appendFileSync, readFileSync, existsSync, openSync, closeSync, writeSync, unlinkSync, mkdirSync, copyFileSync } from "fs";
+import { writeFileSync, appendFileSync, readFileSync, existsSync, openSync, closeSync, writeSync, unlinkSync, mkdirSync, copyFileSync, readdirSync, statSync } from "fs";
 import { execSync, fork } from "child_process";
 import { createHash } from "crypto";
 
@@ -28,13 +28,34 @@ function shortHash(data: string | Uint8Array): string {
   return createHash("sha256").update(data).digest("hex").slice(0, 16);
 }
 
-/** Compiler fingerprint — hash of all source files in src/.
- *  If this changes, all cached results are invalidated. */
+/** Recursively collect all file paths under a directory, sorted for determinism */
+function collectFiles(dir: string): string[] {
+  const results: string[] = [];
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry);
+    const st = statSync(full);
+    if (st.isDirectory()) {
+      results.push(...collectFiles(full));
+    } else if (st.isFile()) {
+      results.push(full);
+    }
+  }
+  return results.sort();
+}
+
+/** Compiler fingerprint — hash of actual file contents in src/.
+ *  Detects uncommitted changes, unlike git rev-parse. */
 function computeCompilerHash(): string {
   try {
-    // Use git hash of src/ for speed — covers all compiler changes
-    const hash = execSync("git rev-parse HEAD:src", { cwd: process.cwd(), encoding: "utf-8" }).trim();
-    return hash.slice(0, 16);
+    const srcDir = join(process.cwd(), "src");
+    const files = collectFiles(srcDir);
+    const hash = createHash("sha256");
+    for (const f of files) {
+      // Include relative path so renames are detected
+      hash.update(f.slice(srcDir.length));
+      hash.update(readFileSync(f));
+    }
+    return hash.digest("hex").slice(0, 16);
   } catch {
     return "unknown";
   }
