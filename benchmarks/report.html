@@ -141,6 +141,51 @@
   .timestamp { font-size: 0.75rem; color: var(--text-muted); margin-top: 2rem; text-align: center; }
   .clickable { cursor: pointer; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 2px; }
   .clickable:hover { text-decoration-style: solid; }
+  .filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+  }
+  .search-box {
+    flex: 1;
+    min-width: 200px;
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 0.8125rem;
+    outline: none;
+  }
+  .search-box::placeholder { color: var(--text-muted); }
+  .search-box:focus { border-color: var(--accent); }
+  .filter-toggles {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .filter-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.375rem 0.75rem;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    cursor: pointer;
+    user-select: none;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .filter-toggle:hover { border-color: var(--text-muted); }
+  .filter-toggle.active { border-color: var(--accent); background: rgba(88, 166, 255, 0.08); color: var(--text); }
+  .filter-toggle .dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+  .card.filter-card { cursor: pointer; user-select: none; transition: border-color 0.15s; }
+  .card.filter-card:hover { border-color: var(--text-muted); }
+  .card.filter-card.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
   .detail-row td { padding: 0 !important; border-bottom: 1px solid var(--border); }
   .detail-content {
     max-height: 300px;
@@ -345,12 +390,58 @@ function renderConformance(data, container) {
 
   container.appendChild(el("h2", null, "Test262 Conformance"));
 
+  // --- Summary cards (clickable as status filters) ---
   const summary = el("div", { className: "summary" });
-  summary.appendChild(makeCard("Total Tests", s.total.toLocaleString()));
-  summary.appendChild(makeCard("Passed", s.pass, "var(--pass)", passRate + "% of compilable"));
-  summary.appendChild(makeCard("Failed", s.fail, s.fail ? "var(--fail)" : "inherit"));
-  summary.appendChild(makeCard("Compile Errors", s.compile_error, "var(--error)"));
-  summary.appendChild(makeCard("Skipped", s.skip.toLocaleString(), "var(--text-muted)", "unsupported features"));
+
+  const totalCard = makeCard("Total Tests", s.total.toLocaleString());
+  summary.appendChild(totalCard);
+
+  const statusCards = {
+    pass: makeCard("Passed", s.pass, "var(--pass)", passRate + "% of compilable"),
+    fail: makeCard("Failed", s.fail, s.fail ? "var(--fail)" : "inherit"),
+    compile_error: makeCard("Compile Errors", s.compile_error, "var(--error)"),
+    skip: makeCard("Skipped", s.skip.toLocaleString(), "var(--text-muted)", "unsupported features")
+  };
+
+  let activeStatusFilter = null;
+
+  function applyFilters() {
+    const query = searchInput.value.toLowerCase().trim();
+    // Remove any open detail rows
+    tbody.querySelectorAll(".detail-row").forEach(r => r.remove());
+
+    for (const [group, { groupRow, catRows }] of rowsByGroup) {
+      let groupVisible = false;
+      for (const { row, cat } of catRows) {
+        const nameMatch = !query || cat.name.toLowerCase().includes(query) || shortName(cat.name).toLowerCase().includes(query);
+        let statusMatch = true;
+        if (activeStatusFilter) {
+          statusMatch = cat[activeStatusFilter] > 0;
+        }
+        const visible = nameMatch && statusMatch;
+        row.style.display = visible ? "" : "none";
+        if (visible) groupVisible = true;
+      }
+      groupRow.style.display = groupVisible ? "" : "none";
+    }
+  }
+
+  for (const [status, card] of Object.entries(statusCards)) {
+    card.classList.add("filter-card");
+    card.addEventListener("click", () => {
+      if (activeStatusFilter === status) {
+        activeStatusFilter = null;
+        card.classList.remove("active");
+      } else {
+        for (const c of Object.values(statusCards)) c.classList.remove("active");
+        activeStatusFilter = status;
+        card.classList.add("active");
+      }
+      applyFilters();
+    });
+    summary.appendChild(card);
+  }
+
   container.appendChild(summary);
 
   container.appendChild(makeBar(pct(s.pass, s.total), pct(s.fail, s.total), pct(s.compile_error, s.total), "overall-bar"));
@@ -359,6 +450,13 @@ function renderConformance(data, container) {
     ["Pass", "var(--pass)"], ["Fail", "var(--fail)"],
     ["Compile Error", "var(--error)"], ["Skip", "var(--bar-bg)"]
   ]));
+
+  // --- Search / filter bar ---
+  const filterBar = el("div", { className: "filter-bar" });
+  const searchInput = el("input", { className: "search-box", type: "text", placeholder: "Search categories..." });
+  searchInput.addEventListener("input", applyFilters);
+  filterBar.appendChild(searchInput);
+  container.appendChild(filterBar);
 
   container.appendChild(el("h3", null, "By Category"));
 
@@ -381,6 +479,9 @@ function renderConformance(data, container) {
     groups.get(g).push(cat);
   }
 
+  // Track rows for filtering
+  const rowsByGroup = new Map();
+
   for (const [group, cats] of groups) {
     const gPass = cats.reduce((a, c) => a + c.pass, 0);
     const gTotal = cats.reduce((a, c) => a + c.pass + c.fail + c.skip + c.compile_error, 0);
@@ -388,6 +489,8 @@ function renderConformance(data, container) {
     const groupRow = el("tr", { className: "group-header" });
     groupRow.appendChild(el("td", { colspan: "7" }, group + " (" + gPass + " pass / " + gTotal + " total)"));
     tbody.appendChild(groupRow);
+
+    const catRows = [];
 
     for (const cat of cats) {
       const total = cat.pass + cat.fail + cat.skip + cat.compile_error;
@@ -419,7 +522,10 @@ function renderConformance(data, container) {
       row.appendChild(barCell);
 
       tbody.appendChild(row);
+      catRows.push({ row, cat });
     }
+
+    rowsByGroup.set(group, { groupRow, catRows });
   }
 
   table.appendChild(tbody);
