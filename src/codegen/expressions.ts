@@ -12062,6 +12062,11 @@ function compileConditionalCallee(
     elseInstrs = [...elseInstrs, ...defaultValueInstrs(resultType)];
   }
 
+  // Widen ref to ref_null when a branch uses defaultValueInstrs (which produces ref.null)
+  if (resultType.kind === "ref" && (thenType === VOID_RESULT || thenType === null || elseType === VOID_RESULT || elseType === null)) {
+    resultType = { kind: "ref_null", typeIdx: (resultType as any).typeIdx };
+  }
+
   fctx.body.push({
     op: "if",
     blockType: { kind: "val" as const, type: resultType },
@@ -13602,9 +13607,10 @@ function pushDefaultValue(fctx: FunctionContext, type: ValType): void {
       break;
     case "ref":
       // ref.null produces (ref null N), but (ref N) is non-nullable.
-      // Push ref.null then ref.as_non_null to satisfy the type checker
-      // (will trap at runtime if the null is actually consumed, but this
-      // is a default/missing-arg path so the trap is acceptable).
+      // Push ref.null then ref.as_non_null to satisfy Wasm validation.
+      // This traps at runtime if actually executed, but parameter-padding
+      // contexts typically don't reach non-null ref params with null values.
+      // For if/else branches, callers should widen to ref_null first.
       fctx.body.push({ op: "ref.null", typeIdx: type.typeIdx });
       fctx.body.push({ op: "ref.as_non_null" } as Instr);
       break;
@@ -15335,10 +15341,7 @@ function defaultValueInstrs(vt: ValType): Instr[] {
     case "ref_extern":
       return [{ op: "ref.null.extern" } as Instr];
     case "ref":
-      return [
-        { op: "ref.null", typeIdx: (vt as { typeIdx: number }).typeIdx } as unknown as Instr,
-        { op: "ref.as_non_null" } as unknown as Instr,
-      ];
+      return [{ op: "ref.null", typeIdx: (vt as { typeIdx: number }).typeIdx } as unknown as Instr];
     case "ref_null":
       return [{ op: "ref.null", typeIdx: (vt as { typeIdx: number }).typeIdx } as unknown as Instr];
     case "eqref":
@@ -15463,7 +15466,11 @@ function compileElementAccess(
       // Use the actual inner result type for the if block when it differs from
       // the TS-inferred resultType (e.g., TS says `any` → externref, but the
       // actual array element type is f64). This prevents fallthru type mismatches.
-      const blockValType = !valTypesMatch(innerResult, resultType) ? innerResult : resultType;
+      let blockValType = !valTypesMatch(innerResult, resultType) ? innerResult : resultType;
+      // Widen ref to ref_null since defaultValueInstrs produces ref.null (nullable)
+      if (blockValType.kind === "ref") {
+        blockValType = { kind: "ref_null", typeIdx: (blockValType as any).typeIdx };
+      }
       fctx.body.push({
         op: "if",
         blockType: { kind: "val" as const, type: blockValType },
@@ -15473,13 +15480,17 @@ function compileElementAccess(
       return blockValType;
     }
     // If inner compilation returned null (error), just fall through with default
+    let fallbackType = resultType;
+    if (fallbackType.kind === "ref") {
+      fallbackType = { kind: "ref_null", typeIdx: (fallbackType as any).typeIdx };
+    }
     fctx.body.push({
       op: "if",
-      blockType: { kind: "val" as const, type: resultType },
-      then: defaultValueInstrs(resultType),
-      else: elseInstrs.length > 0 ? elseInstrs : defaultValueInstrs(resultType),
+      blockType: { kind: "val" as const, type: fallbackType },
+      then: defaultValueInstrs(fallbackType),
+      else: elseInstrs.length > 0 ? elseInstrs : defaultValueInstrs(fallbackType),
     });
-    return resultType;
+    return fallbackType;
   }
 
   return compileElementAccessBody(ctx, fctx, expr, objType);
