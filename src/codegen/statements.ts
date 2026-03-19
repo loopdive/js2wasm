@@ -1350,6 +1350,11 @@ function compileReturnStatement(
     if (exprType && fctx.returnType && !valTypesMatch(exprType, fctx.returnType)) {
       coerceType(ctx, fctx, exprType, fctx.returnType);
     }
+    // (#585) If the function is void (no return type) but the expression produced
+    // a value, drop it — Wasm requires an empty stack before `return` in void funcs.
+    if (exprType && !fctx.returnType) {
+      fctx.body.push({ op: "drop" });
+    }
   } else if (fctx.returnType) {
     // Bare `return;` in a value-returning function — push default value
     if (fctx.returnType.kind === "f64") fctx.body.push({ op: "f64.const", value: 0 });
