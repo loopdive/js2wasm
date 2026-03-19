@@ -645,6 +645,7 @@ const DOWNGRADE_DIAG_CODES = new Set([
   18030, // "An optional chain cannot contain private identifiers" — valid JS pattern
   2729, // "Property 'X' is used before its initialization" — valid JS pattern
   1163, // "A 'yield' expression is only allowed in a generator body" — #267
+  1435, // "Unknown keyword or identifier. Did you mean 'X'?" — yield in nested generator contexts (#521)
   1220, // "Generators are not allowed in an ambient context" — valid JS pattern (#267)
   1166, // "A computed property name in a class property declaration must have a simple literal type" — #265
   2464, // "A computed property name must be of type 'string', 'number', 'symbol', or 'any'" — #276
@@ -808,6 +809,7 @@ export function compileSource(
     1109, // "Expression expected" — valid JS patterns in test262 (#537)
     1135, // "Argument expression expected" — valid JS patterns in test262 (#537)
     1262, // "Identifier expected. 'X' is a reserved word at the top-level of a module" — await as identifier (#537)
+    1435, // "Unknown keyword or identifier. Did you mean 'X'?" — yield in nested generator contexts (#521)
   ]);
   const hasSyntaxErrors = ast.syntacticDiagnostics.some(
     (d) => d.category === 1 && d.file === ast.sourceFile && !TOLERATED_SYNTAX_CODES.has(d.code),
@@ -1603,6 +1605,7 @@ export function compileToObjectSource(
   }
 
   const TOLERATED_SYNTAX_CODES_2 = new Set([
+  const TOLERATED_SYNTAX_CODES_OBJ = new Set([
     1156, // "'let' declarations can only be declared inside a block"
     1313, // "The body of an 'if' statement cannot be the empty statement"
     1344, // "A label is not allowed here"
@@ -1623,6 +1626,10 @@ export function compileToObjectSource(
   ]);
   const hasSyntaxErrors = ast.syntacticDiagnostics.some(
     (d) => d.category === 1 && d.file === ast.sourceFile && !TOLERATED_SYNTAX_CODES_2.has(d.code),
+    1435, // "Unknown keyword or identifier. Did you mean 'X'?" — yield in nested generator contexts (#521)
+  ]);
+  const hasSyntaxErrors = ast.syntacticDiagnostics.some(
+    (d) => d.category === 1 && d.file === ast.sourceFile && !TOLERATED_SYNTAX_CODES_OBJ.has(d.code),
   );
 
   if (hasSyntaxErrors && errors.length > 0) {
