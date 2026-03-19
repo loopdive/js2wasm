@@ -6805,6 +6805,13 @@ export function ensureStructForType(ctx: CodegenContext, tsType: ts.Type): void 
     }
   }
 
+  // Widen non-null ref fields to ref_null so struct.new can use ref.null defaults
+  for (const field of fields) {
+    if (field.type.kind === "ref") {
+      field.type = { kind: "ref_null", typeIdx: field.type.typeIdx };
+    }
+  }
+
   const structName = `__anon_${ctx.anonTypeCounter++}`;
   const typeIdx = ctx.mod.types.length;
   ctx.mod.types.push({
@@ -7714,6 +7721,16 @@ export function collectClassDeclaration(
 
   // Build full fields list: parent fields first, then own fields
   const fields: FieldDef[] = [...parentFields, ...ownFields];
+
+  // Widen non-null ref fields to ref_null so the constructor can create the
+  // struct with ref.null default values before assigning real values.
+  // Without this, struct.new would require non-null refs for fields that
+  // haven't been initialized yet, causing a Wasm validation error.
+  for (const field of fields) {
+    if (field.type.kind === "ref") {
+      field.type = { kind: "ref_null", typeIdx: field.type.typeIdx };
+    }
+  }
 
   // Register the struct type with optional super-type
   // Assign a unique class tag for instanceof support
