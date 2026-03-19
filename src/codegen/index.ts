@@ -6830,6 +6830,21 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type): ValType {
       return { kind: "externref" }; // bare Promise without type arg
     }
 
+    // TypedArray types → vec struct with f64 elements (same representation as number[])
+    // Covers: Int8Array, Uint8Array, Uint8ClampedArray, Int16Array, Uint16Array,
+    //         Int32Array, Uint32Array, Float32Array, Float64Array
+    const TYPED_ARRAY_NAMES = new Set([
+      "Int8Array", "Uint8Array", "Uint8ClampedArray",
+      "Int16Array", "Uint16Array",
+      "Int32Array", "Uint32Array",
+      "Float32Array", "Float64Array",
+    ]);
+    if (sym?.name && TYPED_ARRAY_NAMES.has(sym.name)) {
+      const elemWasm: ValType = { kind: "f64" };
+      const vecIdx = getOrRegisterVecType(ctx, "f64", elemWasm);
+      return { kind: "ref_null", typeIdx: vecIdx };
+    }
+
     // Check externref AFTER Array check — Array is declared in lib but should use wasm GC arrays
     if (isExternalDeclaredClass(tsType, ctx.checker))
       return { kind: "externref" };

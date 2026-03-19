@@ -14533,6 +14533,115 @@ function compileNewExpression(
     return { kind: "externref" };
   }
 
+  // Handle `new TypedArray(n)` — TypedArray constructors (Uint8Array, Int32Array, Float64Array, etc.)
+  // TypedArrays are fixed-length numeric arrays. We represent them as vec structs with f64 elements,
+  // where length equals capacity (no dynamic growth like regular arrays).
+  if (ts.isIdentifier(expr.expression)) {
+    const TYPED_ARRAY_NAMES = new Set([
+      "Int8Array", "Uint8Array", "Uint8ClampedArray",
+      "Int16Array", "Uint16Array",
+      "Int32Array", "Uint32Array",
+      "Float32Array", "Float64Array",
+    ]);
+    if (TYPED_ARRAY_NAMES.has(expr.expression.text)) {
+      const elemWasm: ValType = { kind: "f64" };
+      const vecTypeIdx = getOrRegisterVecType(ctx, "f64", elemWasm);
+      const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
+      const args = expr.arguments ?? [];
+
+      if (args.length === 0) {
+        // new TypedArray() → empty array, length 0
+        fctx.body.push({ op: "i32.const", value: 0 });           // length = 0
+        fctx.body.push({ op: "i32.const", value: 0 });
+        fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx });
+        fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
+        return { kind: "ref_null", typeIdx: vecTypeIdx };
+      }
+
+      if (args.length === 1) {
+        // Check if argument is a numeric literal or expression (size constructor)
+        // vs an array/iterable (copy constructor)
+        const argType = ctx.checker.getTypeAtLocation(args[0]!);
+        const argSym = argType.getSymbol?.();
+        const isArrayLike = argSym?.name === "Array" ||
+          (argType.flags & ts.TypeFlags.Object) !== 0 &&
+          argSym?.name !== undefined &&
+          TYPED_ARRAY_NAMES.has(argSym.name);
+
+        if (!isArrayLike || ts.isNumericLiteral(args[0]!)) {
+          // new TypedArray(n) → fixed-size array of length n, all zeros
+          compileExpression(ctx, fctx, args[0]!, { kind: "f64" });
+          fctx.body.push({ op: "i32.trunc_sat_f64_s" });
+          const sizeLocal = allocLocal(fctx, `__ta_size_${fctx.locals.length}`, { kind: "i32" });
+          fctx.body.push({ op: "local.tee", index: sizeLocal }); // length = n
+          fctx.body.push({ op: "local.get", index: sizeLocal });
+          fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx });
+          fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
+          return { kind: "ref_null", typeIdx: vecTypeIdx };
+        }
+
+        // new TypedArray(arrayLike) — copy from source array
+        // Compile source, then copy elements
+        const srcResult = compileExpression(ctx, fctx, args[0]!);
+        if (srcResult && (srcResult.kind === "ref" || srcResult.kind === "ref_null")) {
+          const srcTypeIdx = (srcResult as { typeIdx: number }).typeIdx;
+          const srcTypeDef = ctx.mod.types[srcTypeIdx];
+          // Check if source is a vec struct
+          if (srcTypeDef?.kind === "struct" && srcTypeDef.fields[0]?.name === "length" && srcTypeDef.fields[1]?.name === "data") {
+            const srcVecLocal = allocLocal(fctx, `__ta_src_${fctx.locals.length}`, srcResult);
+            fctx.body.push({ op: "local.set", index: srcVecLocal });
+            // Get source length
+            fctx.body.push({ op: "local.get", index: srcVecLocal });
+            fctx.body.push({ op: "struct.get", typeIdx: srcTypeIdx, fieldIdx: 0 });
+            const lenLocal = allocLocal(fctx, `__ta_len_${fctx.locals.length}`, { kind: "i32" });
+            fctx.body.push({ op: "local.tee", index: lenLocal });
+            // Create new array of that length
+            fctx.body.push({ op: "local.get", index: lenLocal });
+            fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx });
+            const dstDataLocal = allocLocal(fctx, `__ta_dst_${fctx.locals.length}`, { kind: "ref", typeIdx: arrTypeIdx });
+            fctx.body.push({ op: "local.set", index: dstDataLocal });
+
+            // If source and dest have the same array type, use array.copy
+            const srcArrTypeIdx = getArrTypeIdxFromVec(ctx, srcTypeIdx);
+            if (srcArrTypeIdx === arrTypeIdx) {
+              fctx.body.push({ op: "local.get", index: dstDataLocal });
+              fctx.body.push({ op: "i32.const", value: 0 });
+              fctx.body.push({ op: "local.get", index: srcVecLocal });
+              fctx.body.push({ op: "struct.get", typeIdx: srcTypeIdx, fieldIdx: 1 });
+              fctx.body.push({ op: "i32.const", value: 0 });
+              fctx.body.push({ op: "local.get", index: lenLocal });
+              fctx.body.push({ op: "array.copy", dstTypeIdx: arrTypeIdx, srcTypeIdx: arrTypeIdx } as Instr);
+            }
+            // Build result vec struct
+            fctx.body.push({ op: "local.get", index: lenLocal });
+            fctx.body.push({ op: "local.get", index: dstDataLocal });
+            fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
+            return { kind: "ref_null", typeIdx: vecTypeIdx };
+          }
+        }
+        // Fallback: treat argument as length
+        // (source was already compiled and is on stack — drop it and recompile as f64)
+        if (srcResult) fctx.body.push({ op: "drop" });
+        compileExpression(ctx, fctx, args[0]!, { kind: "f64" });
+        fctx.body.push({ op: "i32.trunc_sat_f64_s" });
+        const fallbackSize = allocLocal(fctx, `__ta_fsz_${fctx.locals.length}`, { kind: "i32" });
+        fctx.body.push({ op: "local.tee", index: fallbackSize });
+        fctx.body.push({ op: "local.get", index: fallbackSize });
+        fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx });
+        fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
+        return { kind: "ref_null", typeIdx: vecTypeIdx };
+      }
+
+      // new TypedArray() with multiple args — shouldn't happen per spec, but handle gracefully
+      // Treat like new TypedArray(0)
+      fctx.body.push({ op: "i32.const", value: 0 });
+      fctx.body.push({ op: "i32.const", value: 0 });
+      fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx });
+      fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
+      return { kind: "ref_null", typeIdx: vecTypeIdx };
+    }
+  }
+
   const type = ctx.checker.getTypeAtLocation(expr);
   const symbol = type.getSymbol();
   let className = symbol?.name;
