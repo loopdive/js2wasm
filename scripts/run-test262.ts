@@ -694,7 +694,7 @@ closeJsonlWriter();
   const timedOut: TestJob[] = [];
   for (const r of allResults) {
     if (r.status === "fail" && r.error && r.error.startsWith("timeout:")) {
-      const testDir = join(process.cwd(), "test262", "test");
+      const testDir = join(process.cwd(), "test262");
       const filePath = join(testDir, r.file);
       timedOut.push({ filePath, category: r.category, relPath: r.file });
     }
