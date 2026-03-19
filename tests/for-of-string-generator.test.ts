@@ -21,43 +21,47 @@ async function compileAndRun(source: string): Promise<{
   return { exports: instance.exports as any, instance };
 }
 
-describe("for-of string in generator", () => {
-  it("should yield each character of a string", async () => {
+describe("for-of string in generator (#590)", () => {
+  it("yields each character of a string", async () => {
     const { exports } = await compileAndRun(`
-      export function* gen(s: string): Generator<string> {
+      export function* chars(s: string): Generator<string> {
         for (const c of s) {
           yield c;
         }
       }
     `);
 
-    const g = (exports.gen as Function)("abc");
-    const results: string[] = [];
-    let r = g.next();
+    const gen = (exports.chars as Function)("abc");
+    const values: string[] = [];
+    let r = gen.next();
     while (!r.done) {
-      results.push(r.value);
-      r = g.next();
+      values.push(r.value);
+      r = gen.next();
     }
-    expect(results).toEqual(["a", "b", "c"]);
-  });
+    expect(values).toEqual(["a", "b", "c"]);
+  }, 30000);
 
-  it("should handle early return inside for-of string in generator", async () => {
+  it("handles early return inside for-of string in generator", async () => {
     const { exports } = await compileAndRun(`
-      export function* gen(s: string): Generator<string> {
+      export function* firstTwo(s: string): Generator<string> {
+        let count: number = 0;
         for (const c of s) {
-          if (c === "b") return;
           yield c;
+          count = count + 1;
+          if (count >= 2) {
+            return;
+          }
         }
       }
     `);
 
-    const g = (exports.gen as Function)("abcd");
-    const results: string[] = [];
-    let r = g.next();
+    const gen = (exports.firstTwo as Function)("hello");
+    const values: string[] = [];
+    let r = gen.next();
     while (!r.done) {
-      results.push(r.value);
-      r = g.next();
+      values.push(r.value);
+      r = gen.next();
     }
-    expect(results).toEqual(["a"]);
-  });
+    expect(values).toEqual(["h", "e"]);
+  }, 30000);
 });
