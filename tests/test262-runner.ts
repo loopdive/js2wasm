@@ -282,10 +282,7 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
   //  and the wrapTest transform converts assert.sameValue(typeof X, "Y") to
   //  if (typeof X !== "Y") { __fail = 1; } which the compiler resolves.)
 
-  // Skip tests where `return undefined` flows into arithmetic (fundamentally incompatible)
-  if (/return\s+undefined\b/.test(source) && /[+\-*\/%]/.test(source) && /assert/.test(source)) {
-    return { skip: true, reason: "return undefined into arithmetic" };
-  }
+  // (Removed: return undefined into arithmetic skip — null/undefined coercion now works correctly)
   // (Removed: void assignment side effects skip — compiler now handles void(x = expr) correctly)
 
   // (Removed: null/undefined arithmetic skip — compiler now handles null/undefined in arithmetic)
@@ -352,10 +349,7 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
 
   // (Removed: object property assignment on empty object skip — most tests now compile and pass)
 
-  // Skip tests with arithmetic on objects or function expressions ({} - {}, +{}, +function(){})
-  if (/[+\-*\/]\s*\{/.test(source) && /isNaN/.test(source) && /\{\}/.test(source)) {
-    return { skip: true, reason: "arithmetic on objects" };
-  }
+  // (Removed: arithmetic on objects skip — valueOf coercion now exists)
 
   // (Removed: modulo -0 sign preservation skip — tests now pass correctly)
 
@@ -368,10 +362,7 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
     return { skip: true, reason: "Array.prototype.method.call/apply" };
   }
 
-  // Skip tests accessing .length on non-array objects
-  if (/\w+\.length\s*[!=<>]/.test(source) && /\{\s*\d+\s*:/.test(source)) {
-    return { skip: true, reason: "array-like object with .length" };
-  }
+  // (Removed: array-like object with .length skip — .length access now works on structs)
 
 
   // Object.freeze/seal/preventExtensions are now stubbed (no-op, return object)
