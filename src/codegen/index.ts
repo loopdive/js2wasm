@@ -253,6 +253,8 @@ export interface CodegenContext {
   inlinableFunctions: Map<string, InlinableFunctionInfo>;
   /** Global index of the __symbol_counter (mutable i32, starts at 100). -1 if not yet registered. */
   symbolCounterGlobalIdx: number;
+  /** Pending late import shift: importsBefore value captured when first deferred import was added. */
+  pendingLateImportShift: { importsBefore: number } | null;
 }
 
 /** Metadata for a function eligible for call-site inlining */
@@ -452,6 +454,7 @@ export function generateModule(
     pendingInitBody: null,
     inlinableFunctions: new Map(),
     symbolCounterGlobalIdx: -1,
+    pendingLateImportShift: null,
   };
 
   // Register native string types if fast mode
@@ -676,6 +679,7 @@ export function generateMultiModule(
     pendingInitBody: null,
     inlinableFunctions: new Map(),
     symbolCounterGlobalIdx: -1,
+    pendingLateImportShift: null,
   };
 
   // Register native string types if fast mode
