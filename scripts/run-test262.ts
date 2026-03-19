@@ -266,14 +266,16 @@ if (hasPrevious && (isInterrupted || resumeFlag) && !fullFlag) {
   const reason = isInterrupted ? 'interrupted run detected' : '--resume flag';
   console.log(`Auto-resuming (${reason}, ${completedFiles.size} tests already done)\n`);
 } else if (recheckFlag && hasPrevious && !fullFlag) {
-  // Default: carry forward pass/skip, re-run failures + compile errors
+  // Default: carry forward pass only, re-run failures + compile errors + skips
+  // Skips are always re-evaluated because skip filters change over time
+  // (e.g. a feature gets implemented and the skip filter is removed)
   const prevLines = loadPreviousLines();
   const carryForwardLines: string[] = [];
   let carried = 0, recheck = 0;
   for (const line of prevLines) {
     try {
       const r = JSON.parse(line);
-      if (r.file && (r.status === "pass" || r.status === "skip")) {
+      if (r.file && r.status === "pass") {
         completedFiles.add(r.file);
         carryForwardLines.push(line);
         carried++;
@@ -281,7 +283,7 @@ if (hasPrevious && (isInterrupted || resumeFlag) && !fullFlag) {
     } catch {}
   }
   writeFileSync(RUN_JSONL, carryForwardLines.length > 0 ? carryForwardLines.join("\n") + "\n" : "");
-  console.log(`Recheck mode: carrying forward ${carried} pass/skip, re-running ${recheck} failures\n`);
+  console.log(`Recheck mode: carrying forward ${carried} passes, re-running ${recheck} failures/skips\n`);
 } else {
   // Fresh run (--full or no previous data)
   if (filterArgs.length > 0 && hasPrevious) {
