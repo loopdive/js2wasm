@@ -282,19 +282,13 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
   //  and the wrapTest transform converts assert.sameValue(typeof X, "Y") to
   //  if (typeof X !== "Y") { __fail = 1; } which the compiler resolves.)
 
-  // Skip tests where `return undefined` flows into arithmetic (fundamentally incompatible)
-  if (/return\s+undefined\b/.test(source) && /[+\-*\/%]/.test(source) && /assert/.test(source)) {
-    return { skip: true, reason: "return undefined into arithmetic" };
-  }
+  // (Removed: return undefined into arithmetic skip — tests should CE/fail rather than hide)
+
   // (Removed: void assignment side effects skip — compiler now handles void(x = expr) correctly)
 
   // (Removed: null/undefined arithmetic skip — compiler now handles null/undefined in arithmetic)
 
-  // Skip tests using function expressions assigned to var (var foo = function(){})
-  // inside try/catch — complex scoping we don't support
-  if (/\btry\s*\{[\s\S]*throw\s+\w+[\s\S]*catch[\s\S]*var\s+\w+\s*=\s*function/.test(source)) {
-    return { skip: true, reason: "function expression in catch scope" };
-  }
+  // (Removed: function expression in catch scope skip — tests should CE/fail rather than hide)
 
   // (Removed: labeled block break skip — now handled in codegen)
 
@@ -324,38 +318,21 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
 
   // (Removed: named function expression reassignment skip — readOnlyBindings now makes name binding immutable)
 
-  // Skip string comparison tests with supplementary plane unicode (surrogate pair edge cases)
-  if (/\\u\{[0-9A-Fa-f]{5,}\}/.test(source) && /[<>]=?/.test(source)) {
-    return { skip: true, reason: "string comparison with supplementary unicode" };
-  }
+  // (Removed: string comparison with supplementary unicode skip — tests should CE/fail rather than hide)
 
-  // Skip tests using object property access with dot notation or bracket notation
-  // (obj.prop = value, obj['prop']) — we don't support dynamic property access on plain objects
-  if (/\w+\.\w+\s*=\s*\d/.test(source) && /\w+\[['"]/.test(source)) {
-    return { skip: true, reason: "object property access (dot + bracket)" };
-  }
+  // (Removed: object property access (dot + bracket) skip — overly broad, tests should CE/fail)
 
   // (Removed: new Object() skip — compiles as empty struct via shape inference)
 
   // (Removed: dynamic property assignment on empty object skip — shape inference #130 handles this)
 
-  // Skip tests using this.x at global scope (property bag on global object)
-  if (/\bthis\.\w+\s*(!==|===|[+\-]{2})/.test(source) && !/\bclass\b/.test(source) && !/\bfunction\b.*\bthis\./.test(source)) {
-    return { skip: true, reason: "this.property at global scope" };
-  }
+  // (Removed: this.property at global scope skip — tests should CE/fail rather than hide)
 
-  // Skip tests using loose equality (==) between object/array references —
-  // our ref → f64 coercion doesn't preserve reference identity semantics
-  if (/\bnew\s+Array\b/.test(source) && /\w+\s*[!=]=\s*\w+/.test(source) && !/\w+\s*[!=]==\s*\w+/.test(source)) {
-    return { skip: true, reason: "loose equality between array references" };
-  }
+  // (Removed: loose equality between array references skip — tests should CE/fail rather than hide)
 
   // (Removed: object property assignment on empty object skip — most tests now compile and pass)
 
-  // Skip tests with arithmetic on objects or function expressions ({} - {}, +{}, +function(){})
-  if (/[+\-*\/]\s*\{/.test(source) && /isNaN/.test(source) && /\{\}/.test(source)) {
-    return { skip: true, reason: "arithmetic on objects" };
-  }
+  // (Removed: arithmetic on objects skip — tests should CE/fail rather than hide)
 
   // (Removed: modulo -0 sign preservation skip — tests now pass correctly)
 
@@ -363,15 +340,9 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
 
   // (Removed: string strict comparison skip — compiler now handles string === / !== via equals import)
 
-  // Skip tests that use Array.prototype methods called with .call/.apply
-  if (/Array\.prototype\.\w+\.call/.test(source) || /Array\.prototype\.\w+\.apply/.test(source)) {
-    return { skip: true, reason: "Array.prototype.method.call/apply" };
-  }
+  // (Removed: Array.prototype.method.call/apply skip — tests should CE/fail rather than hide)
 
-  // Skip tests accessing .length on non-array objects
-  if (/\w+\.length\s*[!=<>]/.test(source) && /\{\s*\d+\s*:/.test(source)) {
-    return { skip: true, reason: "array-like object with .length" };
-  }
+  // (Removed: array-like object with .length skip — overly broad, tests should CE/fail)
 
 
   // Object.freeze/seal/preventExtensions are now stubbed (no-op, return object)
@@ -383,49 +354,13 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
   // Object.prototype.hasOwnProperty.call(obj, key) is now compiled inline
   // as property introspection on the receiver (#476).
 
-  // Skip tests using prototype chain manipulation (#343: narrowed from broad
-  // ".prototype" filter to only match mutation/chain traversal patterns).
-  // Read-only prototype method access like Array.prototype.indexOf is allowed.
-  // Only check executable code — strip comments, metadata, and string literals
-  // first so that tests whose only .prototype/__proto__ mention is in the
-  // description/info block or in assert messages are not falsely skipped
-  // (#187, #493).
-  {
-    const execCode = source
-      .replace(/\/\*---[\s\S]*?---\*\//, "")   // strip YAML metadata
-      .replace(/\/\/.*$/gm, "")                 // strip single-line comments
-      .replace(/\/\*[\s\S]*?\*\//g, "")          // strip multi-line comments
-      .replace(/`[^`]*`/g, '""')                // strip template literals
-      .replace(/"(?:[^"\\]|\\.)*"/g, '""')       // strip double-quoted strings
-      .replace(/'(?:[^'\\]|\\.)*'/g, '""');      // strip single-quoted strings
-    if (
-      /\.prototype\s*=[^=]/.test(execCode) ||            // prototype assignment: Foo.prototype = {...}
-      /\.prototype\.\w+\s*=[^=]/.test(execCode) ||     // prototype property set: Foo.prototype.bar = ...
-      /__proto__/.test(execCode) ||                     // __proto__ access
-      /Object\.getPrototypeOf/.test(execCode) ||        // prototype chain introspection
-      /Object\.setPrototypeOf/.test(execCode) ||        // prototype chain mutation
-      /\.isPrototypeOf/.test(execCode)                  // prototype chain check
-    ) {
-      return { skip: true, reason: "prototype chain not supported" };
-    }
-  }
+  // (Removed: prototype chain skip — tests should CE/fail rather than hide.
+  // Prototype chain manipulation is not supported in WasmGC structs, but hiding
+  // these tests as skips prevents visibility into what patterns actually fail.)
 
-  // Skip tests using rest-destructuring with object patterns containing numeric
-  // keys (e.g. [...{ 0: v, 1: w, length: z }] = arr).  The compiler handles
-  // plain object literals with numeric keys ({0: "a", 1: "b"}) as structs,
-  // but rest-spread into an object destructuring pattern is unsupported.
-  if (/\.\.\.\s*\{\s*\d+\s*:/.test(source) && /length\s*:/.test(source)) {
-    return { skip: true, reason: "rest-destructuring with numeric-key object pattern" };
-  }
+  // (Removed: rest-destructuring with numeric-key object pattern skip — tests should CE/fail)
 
-  // Skip tests that index arrays with loop variables inside string concat
-  // Strip throw statements first to avoid matching error message text
-  {
-    const noThrow = source.replace(/^\s*throw\b.*$/gm, "");
-    if (/base\[\w+\]/.test(noThrow) && /\+\s*"/.test(noThrow) && /new\s+Array/.test(noThrow)) {
-      return { skip: true, reason: "array index with string concat in loop" };
-    }
-  }
+  // (Removed: array index with string concat in loop skip — tests should CE/fail)
 
   // (Removed: unary +/- on null/undefined skip — tryStaticToNumber resolves these at compile time)
 
@@ -434,15 +369,9 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
   // (Removed: collection mutation during for-of iteration skip — duplicate of the
   // earlier filter, both overly broad. Tests are now attempted.)
 
-  // Skip tests using member expressions as for-of LHS (for (obj.prop of ...) )
-  if (/\bfor\s*\(\s*(\(?\s*)?(\w+\.\w+)\s*\)?\s+of\b/.test(source)) {
-    return { skip: true, reason: "member expression as for-of LHS" };
-  }
+  // (Removed: member expression as for-of LHS skip — tests should CE/fail)
 
-  // Skip tests using parenthesized LHS in for-of (for ((x) of ...) )
-  if (/\bfor\s*\(\s*\(/.test(source) && /\bof\b/.test(source)) {
-    return { skip: true, reason: "parenthesized LHS in for-of" };
-  }
+  // (Removed: parenthesized LHS in for-of skip — tests should CE/fail)
 
   // (Removed: string variable concatenation skip — string += now works correctly, and the
   // original filter was overly broad, matching tests where a string var exists alongside
@@ -468,22 +397,11 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
 
   // (Removed: Boolean(x = 0) and Boolean("") — now handled in codegen)
 
-  // Skip tests checking `this` at module/global scope or with thisArg
-  if (/assert.*\bthis\b/.test(source) && !/function\s+\w|class\s+\w/.test(source)) {
-    return { skip: true, reason: "global/arrow this reference" };
-  }
+  // (Removed: global/arrow this reference skip — tests should CE/fail rather than hide)
 
+  // (Removed: arrow returning undefined skip — tests should CE/fail rather than hide)
 
-  // Skip tests where arrow function returns undefined (empty body => void)
-  if (/=>\s*\{\s*\}/.test(source) && /assert[._]sameValue\s*\(\s*\w+\s*\(\s*\)\s*,\s*(undefined|void)/.test(source)) {
-    return { skip: true, reason: "arrow returning undefined" };
-  }
-
-  // Skip tests with catch scope variable shadowing or nested function returns through catch
-  if (/catch\s*\(\s*\w+\s*\)/.test(source) && /throw\s+\w+/.test(source) &&
-      (/function\s+\w+\s*\(\s*\w+\s*\)/.test(source) || /assert[._]sameValue\s*\(\s*\w+\s*,\s*undefined\b/.test(source))) {
-    return { skip: true, reason: "nested function/catch scope with type mismatch" };
-  }
+  // (Removed: nested function/catch scope with type mismatch skip — tests should CE/fail)
 
   // (Removed: typeof class expression skip — compiler now resolves typeof on class expressions)
 
@@ -510,16 +428,7 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
 
   // (Removed: typeof undefined/void 0 skip — compiler now resolves typeof undefined)
 
-  // Skip tests that check .name property descriptor behavior or .name on bound/constructor —
-  // simple fn.name / ClassName.name assertions are handled (#347, #274).
-  if (/\.name\b/.test(source) && (
-    /getOwnPropertyDescriptor\b/.test(source) ||
-    (/\.bind\s*\(/.test(source) && /\.name\b/.test(source)) ||
-    /constructor\.name\b/.test(source) ||
-    /this\.name\b/.test(source)
-  )) {
-    return { skip: true, reason: "function .name descriptor/bind/constructor.name" };
-  }
+  // (Removed: function .name descriptor/bind/constructor.name skip — tests should CE/fail)
 
   // (Removed: String() indexer skip — compiler now handles String() coercion)
 
