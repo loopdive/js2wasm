@@ -4114,6 +4114,15 @@ function compileBinaryExpression(
         }
         return { kind: "i32" };
       }
+
+      // Mixed BigInt + Number arithmetic (e.g. 1n + 1): always a TypeError in JS.
+      // Compile both sides for side effects, drop their values, and trap.
+      const lt = compileExpression(ctx, fctx, expr.left);
+      if (lt) fctx.body.push({ op: "drop" });
+      const rt = compileExpression(ctx, fctx, expr.right);
+      if (rt) fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "unreachable" });
+      return { kind: "i32" };
     }
 
     // Both operands are BigInt — compile as i64
