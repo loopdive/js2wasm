@@ -166,7 +166,7 @@ _Fresh run (2026-03-18, #509): 23,021 tests -- 6,366 pass (27.7%), 4,367 fail, 9
 
 | #   | Feature | Type | Count | Priority |
 | --- | ------- | ---- | ----- | -------- |
-| [516](../ready/516.md) | struct.new argument count in class constructors | CE | 1,781 | High |
+| [516](../ready/516.md) | struct.new argument count in class constructors | CE | 1,781 | Done |
 | [517](../ready/517.md) | Unsupported call expr: class/generator/built-in methods | CE | 2,164 | High |
 | [518](../ready/518.md) | Cannot destructure non-array type | CE | 74 | Medium |
 | [519](../ready/519.md) | Internal error: targetLocal not defined | CE | 66 | High |

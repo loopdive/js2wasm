@@ -554,6 +554,11 @@ export function generateModule(
   // Third pass: compile function bodies
   compileDeclarations(ctx, ast.sourceFile);
 
+  // Fixup pass: reconcile struct.new argument counts with actual struct field counts.
+  // Dynamic field additions during expression compilation can add fields to struct types
+  // after the constructor's struct.new was already emitted (#516).
+  fixupStructNewArgCounts(ctx);
+
   // Collect ref.func targets so the binary emitter can add a declarative element segment
   collectDeclaredFuncRefs(ctx);
 
@@ -9371,6 +9376,147 @@ function compileDeclarations(
           func.body = [...guardPreamble, ...func.body];
         }
       }
+    }
+  }
+}
+
+/**
+ * Post-compilation fixup: reconcile struct.new argument counts.
+ *
+ * During expression compilation, fields can be dynamically added to struct
+ * types (e.g., when a property access finds a field the TS type checker knows
+ * about but wasn't in the original struct definition). This causes the
+ * struct type to have more fields than the constructor's struct.new pushes
+ * values for, resulting in Wasm validation failure.
+ *
+ * This pass scans all function bodies for struct.new instructions on class
+ * struct types and inserts default-value instructions for any missing fields.
+ */
+function fixupStructNewArgCounts(ctx: CodegenContext): void {
+  // Build a reverse map: typeIdx -> className
+  const typeIdxToClass = new Map<number, string>();
+  for (const [className, typeIdx] of ctx.structMap.entries()) {
+    if (ctx.classSet.has(className)) {
+      typeIdxToClass.set(typeIdx, className);
+    }
+  }
+  if (typeIdxToClass.size === 0) return;
+
+  // Helper: generate default value instructions for a field type
+  function defaultInstrForType(type: ValType): Instr[] {
+    switch (type.kind) {
+      case "f64":
+        return [{ op: "f64.const", value: 0 }];
+      case "i32":
+        return [{ op: "i32.const", value: 0 }];
+      case "externref":
+        return [{ op: "ref.null.extern" }];
+      case "ref":
+        return [
+          { op: "ref.null", typeIdx: (type as { typeIdx: number }).typeIdx },
+          { op: "ref.as_non_null" } as Instr,
+        ];
+      case "ref_null":
+        return [{ op: "ref.null", typeIdx: (type as { typeIdx: number }).typeIdx }];
+      default:
+        if ((type as any).kind === "i64") {
+          return [{ op: "i64.const", value: 0n } as unknown as Instr];
+        }
+        if ((type as any).kind === "eqref") {
+          return [{ op: "ref.null.eq" } as unknown as Instr];
+        }
+        return [{ op: "i32.const", value: 0 }];
+    }
+  }
+
+  // Scan all functions for struct.new instructions that need fixup
+  function fixupInstrs(instrs: Instr[]): void {
+    for (let i = 0; i < instrs.length; i++) {
+      const instr = instrs[i]!;
+
+      // Recurse into nested instruction arrays
+      if ("body" in instr && Array.isArray((instr as any).body)) {
+        fixupInstrs((instr as any).body);
+      }
+      if ("then" in instr && Array.isArray((instr as any).then)) {
+        fixupInstrs((instr as any).then);
+      }
+      if ("else" in instr && Array.isArray((instr as any).else)) {
+        fixupInstrs((instr as any).else);
+      }
+      if ("catches" in instr && Array.isArray((instr as any).catches)) {
+        for (const c of (instr as any).catches) {
+          if (Array.isArray(c.body)) fixupInstrs(c.body);
+        }
+      }
+      if ("catchAll" in instr && Array.isArray((instr as any).catchAll)) {
+        fixupInstrs((instr as any).catchAll);
+      }
+
+      if (instr.op !== "struct.new") continue;
+      const typeIdx = (instr as { typeIdx: number }).typeIdx;
+      const typeDef = ctx.mod.types[typeIdx];
+      if (!typeDef || typeDef.kind !== "struct") continue;
+
+      // Only fix class struct types (not vec/closure/string structs)
+      const className = typeIdxToClass.get(typeIdx);
+      if (!className) continue;
+
+      const expectedFieldCount = typeDef.fields.length;
+      const fields = ctx.structFields.get(className);
+      if (!fields) continue;
+
+      // The fields array should match typeDef.fields (they share a reference
+      // or were independently grown). Use typeDef as the source of truth.
+      // Count backwards from struct.new to find how many default-value
+      // instructions were pushed. We look for a contiguous run of
+      // const/ref.null/ref.as_non_null ops.
+      let pushedCount = 0;
+      let j = i - 1;
+      while (j >= 0) {
+        const prev = instrs[j]!;
+        const op = prev.op;
+        if (
+          op === "f64.const" || op === "i32.const" || op === "i64.const" ||
+          op === "ref.null" || op === "ref.null.extern" || op === "ref.null.eq" ||
+          op === "ref.as_non_null"
+        ) {
+          // ref.as_non_null doesn't push a new value, it converts the top.
+          // Don't count it as a separate pushed value.
+          if (op !== "ref.as_non_null") {
+            pushedCount++;
+          }
+          j--;
+        } else {
+          break;
+        }
+      }
+
+      if (pushedCount < expectedFieldCount && pushedCount > 0) {
+        // Only fix if we found SOME defaults (confirming this is a constructor
+        // struct.new pattern, not some other struct.new usage)
+        const newInstrs: Instr[] = [];
+        for (let k = pushedCount; k < expectedFieldCount; k++) {
+          const field = typeDef.fields[k]!;
+          if (field.name === "__tag") {
+            const tagValue = ctx.classTagMap.get(className) ?? 0;
+            newInstrs.push({ op: "i32.const", value: tagValue });
+          } else {
+            newInstrs.push(...defaultInstrForType(field.type));
+          }
+        }
+        // Insert missing field defaults right before struct.new
+        instrs.splice(i, 0, ...newInstrs);
+        // Adjust loop index since we inserted instructions
+        i += newInstrs.length;
+      }
+    }
+  }
+
+  // Only scan constructor functions and Object.create paths
+  for (const func of ctx.mod.functions) {
+    if (func.body.length > 0) {
+      fixupInstrs(func.body);
     }
   }
 }
