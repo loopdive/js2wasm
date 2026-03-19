@@ -2797,6 +2797,7 @@ function compileForOfString(
   for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! += 2;
   for (let i = 0; i < fctx.continueStack.length; i++)
     fctx.continueStack[i]! += 2;
+  if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth += 2;
 
   fctx.breakStack.push(1); // break = depth 1 (exit block)
   fctx.continueStack.push(0); // continue = depth 0 (restart loop)
@@ -2838,6 +2839,7 @@ function compileForOfString(
   for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! -= 2;
   for (let i = 0; i < fctx.continueStack.length; i++)
     fctx.continueStack[i]! -= 2;
+  if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth -= 2;
 
   popBody(fctx, savedBody);
 
