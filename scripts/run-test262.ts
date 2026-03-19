@@ -13,7 +13,7 @@
  */
 import { TEST_CATEGORIES, findTestFiles, runTest262File, shouldSkip, parseMeta, wrapTest, type TestResult, type TestTiming } from "../tests/test262-runner.js";
 import { join } from "path";
-import { writeFileSync, appendFileSync, readFileSync, existsSync, openSync, closeSync, writeSync, unlinkSync, mkdirSync, copyFileSync } from "fs";
+import { writeFileSync, readFileSync, existsSync, openSync, closeSync, writeSync, unlinkSync, mkdirSync, copyFileSync } from "fs";
 import { execSync, fork } from "child_process";
 import { createHash } from "crypto";
 
@@ -89,16 +89,24 @@ const workerPath = join(process.cwd(), "scripts", "test262-worker.ts");
 type TestJob = { filePath: string; category: string; relPath: string };
 type WorkerResult = { file: string; category: string; status: string; error?: string; reason?: string; timing?: any };
 
-/** Dispatch a batch of tests to a fresh worker. Returns all results.
+/** Dispatch a batch of tests to a fresh worker.
+ *  Calls onResult for each individual result as it arrives from the worker,
+ *  serializing writes through the main process to avoid JSONL corruption.
+ *  Returns all results when the worker finishes.
  *  If the worker hangs on a test for > 30s, it's killed and remaining tests
  *  in the batch are reported as "timeout". */
-function runBatch(batch: TestJob[]): Promise<WorkerResult[]> {
+function runBatch(batch: TestJob[], onResult?: (r: WorkerResult) => void): Promise<WorkerResult[]> {
   return new Promise((resolve) => {
     const results: WorkerResult[] = [];
     const proc = fork(workerPath, [], { stdio: "pipe", execArgv: ["--import", "tsx"] });
     proc.setMaxListeners(0);
     let lastActivity = Date.now();
     let done = false;
+
+    function emitResult(r: WorkerResult) {
+      results.push(r);
+      if (onResult) onResult(r);
+    }
 
     // Watchdog: kill worker if no activity for WORKER_TIMEOUT_MS
     const watchdog = setInterval(() => {
@@ -111,7 +119,7 @@ function runBatch(batch: TestJob[]): Promise<WorkerResult[]> {
         const completed = new Set(results.map(r => r.file));
         for (const job of batch) {
           if (!completed.has(job.relPath)) {
-            results.push({ file: job.relPath, category: job.category, status: "fail", error: "timeout: worker hung > 30s" });
+            emitResult({ file: job.relPath, category: job.category, status: "fail", error: "timeout: worker hung > 30s" });
           }
         }
         resolve(results);
@@ -133,7 +141,7 @@ function runBatch(batch: TestJob[]): Promise<WorkerResult[]> {
       }
       // Individual test result
       lastActivity = Date.now();
-      results.push(msg);
+      emitResult(msg);
     });
 
     proc.on("exit", () => {
@@ -144,7 +152,7 @@ function runBatch(batch: TestJob[]): Promise<WorkerResult[]> {
         const completed = new Set(results.map(r => r.file));
         for (const job of batch) {
           if (!completed.has(job.relPath)) {
-            results.push({ file: job.relPath, category: job.category, status: "compile_error", error: "worker crashed" });
+            emitResult({ file: job.relPath, category: job.category, status: "compile_error", error: "worker crashed" });
           }
         }
         resolve(results);
@@ -161,6 +169,28 @@ const META_PATH = join(RESULTS_DIR, "test262-run.meta.json");
 // Safe-write: all writes go to a timestamped run file; main files updated only on success
 const RUNS_DIR = join(RESULTS_DIR, "runs");
 mkdirSync(RUNS_DIR, { recursive: true });
+
+/** Serialized JSONL writer — all writes go through this function to prevent
+ *  corruption from interleaved partial lines. Uses a file descriptor and
+ *  writeSync to guarantee each line is written atomically. */
+let jsonlFd: number | null = null;
+
+function openJsonlWriter(path: string, append: boolean) {
+  jsonlFd = openSync(path, append ? "a" : "w");
+}
+
+function writeResultLine(line: string) {
+  if (jsonlFd !== null) {
+    writeSync(jsonlFd, line + "\n");
+  }
+}
+
+function closeJsonlWriter() {
+  if (jsonlFd !== null) {
+    closeSync(jsonlFd);
+    jsonlFd = null;
+  }
+}
 const RUN_TIMESTAMP = new Date().toISOString().replace(/[:.]/g, "-");
 const RUN_JSONL = join(RUNS_DIR, `${RUN_TIMESTAMP}-results.jsonl`);
 const RUN_REPORT = join(RUNS_DIR, `${RUN_TIMESTAMP}-report.json`);
@@ -225,9 +255,9 @@ function releaseLock(): void {
 }
 
 acquireLock();
-process.on("exit", releaseLock);
-process.on("SIGINT", () => { releaseLock(); process.exit(130); });
-process.on("SIGTERM", () => { releaseLock(); process.exit(143); });
+process.on("exit", () => { closeJsonlWriter(); releaseLock(); });
+process.on("SIGINT", () => { closeJsonlWriter(); releaseLock(); process.exit(130); });
+process.on("SIGTERM", () => { closeJsonlWriter(); releaseLock(); process.exit(143); });
 
 function getGitHead(): string {
   try { return execSync("git rev-parse HEAD", { encoding: "utf-8" }).trim(); }
@@ -343,10 +373,28 @@ if (previousFailures.size > 0) {
   console.log(`Prioritizing ${previousFailures.size} previously-failed tests first\n`);
 }
 
+// Open the JSONL writer — all result lines are serialized through writeResultLine()
+// which uses writeSync on a single fd to guarantee atomic, non-interleaved writes.
+openJsonlWriter(RUN_JSONL, /* append */ true);
+
+/** Record a result: update in-memory stats and write to JSONL atomically */
+function recordResult(r: WorkerResult, batchStats: Record<string, number>) {
+  allResults.push(r as any);
+  const s = r.status as keyof typeof stats;
+  if (s in stats) stats[s]++;
+  if (s in batchStats) batchStats[s]++;
+  processed++;
+  writeResultLine(JSON.stringify({
+    file: r.file, category: r.category, status: r.status,
+    ...(r.error ? { error: typeof r.error === 'string' ? r.error.substring(0, 300) : r.error } : {}),
+    ...(r.reason ? { reason: r.reason } : {}),
+    ...(r.timing ? { timing: r.timing } : {}),
+  }));
+}
+
 for (const [batchName, batchCats] of batches) {
   const batchStart = Date.now();
   const batchStats = { pass: 0, fail: 0, skip: 0, compile_error: 0 };
-  let buffer: string[] = [];
 
   // Collect ALL tests across all categories in this display batch,
   // pre-filtering skips and deduplicating by source hash in main process
@@ -360,10 +408,7 @@ for (const [batchName, batchCats] of batches) {
         continue;
       }
       if (KNOWN_HANGING_TESTS.has(relPath)) {
-        const r = { file: relPath, category, status: "fail" as const, error: "known hanging test" };
-        allResults.push(r as any);
-        stats.fail++; batchStats.fail++; processed++;
-        buffer.push(JSON.stringify(r));
+        recordResult({ file: relPath, category, status: "fail", error: "known hanging test" }, batchStats);
         continue;
       }
       // Pre-filter: run shouldSkip + negative test + hash dedup in main process
@@ -379,10 +424,7 @@ for (const [batchName, batchCats] of batches) {
 
         const skipResult = shouldSkip(source, meta, filePath);
         if (skipResult.skip) {
-          const r = { file: relPath, category, status: "skip" as const, reason: skipResult.reason };
-          allResults.push(r as any);
-          stats.skip++; batchStats.skip++; processed++;
-          buffer.push(JSON.stringify(r));
+          recordResult({ file: relPath, category, status: "skip", reason: skipResult.reason }, batchStats);
           continue;
         }
 
@@ -392,13 +434,7 @@ for (const [batchName, batchCats] of batches) {
         const cacheKey = srcHash; // compiler hash already validated on load
         const cached = resultCache.get(cacheKey) || sourceHashCache.get(cacheKey);
         if (cached) {
-          const r = { file: relPath, category, status: cached.status as any, error: cached.error };
-          allResults.push(r as any);
-          const s = cached.status as keyof typeof stats;
-          if (s in stats) (stats as any)[s]++;
-          if (s in batchStats) (batchStats as any)[s]++;
-          processed++;
-          buffer.push(JSON.stringify({ file: relPath, category, status: cached.status, ...(cached.error ? { error: cached.error } : {}) }));
+          recordResult({ file: relPath, category, status: cached.status, error: cached.error }, batchStats);
           continue;
         }
       } catch {}
@@ -412,40 +448,27 @@ for (const [batchName, batchCats] of batches) {
     for (let i = 0; i < jobs.length; i += chunkSize) {
       chunks.push(jobs.slice(i, i + chunkSize));
     }
-    const batchResults = await Promise.all(chunks.map(chunk => runBatch(chunk)));
-    for (const results of batchResults) {
-      for (const r of results) {
-        allResults.push(r as any);
-        const s = r.status as keyof typeof stats;
-        if (s in stats) stats[s]++;
-        if (s in batchStats) batchStats[s]++;
-        processed++;
-        buffer.push(JSON.stringify({
-          file: r.file, category: r.category, status: r.status,
-          ...(r.error ? { error: r.error.substring(0, 300) } : {}),
-          ...(r.reason ? { reason: r.reason } : {}),
-          ...(r.timing ? { timing: r.timing } : {}),
-        }));
-        // Populate both caches for dedup
-        try {
-          const job = jobs.find(j => j.relPath === r.file);
-          if (job) {
-            const src = readFileSync(job.filePath, "utf-8");
-            const meta = parseMeta(src);
-            const wrapped = wrapTest(src, meta);
-            const hash = shortHash(wrapped);
-            const entry: CacheEntry = { status: r.status, error: r.error };
-            sourceHashCache.set(hash, entry);
-            resultCache.set(hash, entry);
-          }
-        } catch {}
-      }
-    }
-  }
-  // Flush remaining
-  if (buffer.length > 0) {
-    appendFileSync(RUN_JSONL, buffer.join("\n") + "\n");
-    buffer = [];
+    // Each worker calls onResult on the main thread as results arrive —
+    // writeResultLine uses writeSync which is atomic per call, so even with
+    // multiple workers sending results concurrently, lines never interleave.
+    const batchResults = await Promise.all(chunks.map(chunk => runBatch(chunk, (r) => {
+      recordResult(r, batchStats);
+      // Populate both caches for dedup
+      try {
+        const job = jobs.find(j => j.relPath === r.file);
+        if (job) {
+          const src = readFileSync(job.filePath, "utf-8");
+          const meta = parseMeta(src);
+          const wrapped = wrapTest(src, meta);
+          const hash = shortHash(wrapped);
+          const entry: CacheEntry = { status: r.status, error: r.error };
+          sourceHashCache.set(hash, entry);
+          resultCache.set(hash, entry);
+        }
+      } catch {}
+    })));
+    // Results already recorded via onResult callback — no post-processing needed
+    void batchResults;
   }
 
   const elapsed = ((Date.now() - batchStart) / 1000).toFixed(1);
@@ -456,6 +479,9 @@ for (const [batchName, batchCats] of batches) {
     `err:${String(batchStats.compile_error).padStart(3)}  skip:${String(batchStats.skip).padStart(4)}  (${elapsed}s)`
   );
 }
+
+// Close the JSONL writer now that all batches are done
+closeJsonlWriter();
 
 // Build final results from complete JSONL (deduplicated, last entry wins)
 const resultsByFile = new Map<string, any>();
