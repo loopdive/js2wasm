@@ -117,6 +117,22 @@ function shiftLateImportIndices(
 }
 
 /**
+ * Lazily ensure __extern_get import is registered and return its funcIdx.
+ * Shared by expressions.ts and statements.ts for externref array destructuring.
+ */
+export function ensureExternGetImport(ctx: CodegenContext, fctx: FunctionContext): number | undefined {
+  let getIdx = ctx.funcMap.get("__extern_get");
+  if (getIdx === undefined) {
+    const importsBefore = ctx.numImportFuncs;
+    const getType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", "__extern_get", { kind: "func", typeIdx: getType });
+    shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+    getIdx = ctx.funcMap.get("__extern_get");
+  }
+  return getIdx;
+}
+
+/**
  * Compile an expression, pushing its result onto the Wasm stack.
  * Returns null only for void expressions that intentionally produce no value.
  * For failed expressions, pushes a typed fallback to keep the stack balanced.
@@ -5438,6 +5454,129 @@ function compileDestructuringAssignment(
   return resultType;
 }
 
+/**
+ * Fallback array destructuring assignment for externref values.
+ * Uses __extern_get(obj, index) to extract elements by numeric index.
+ */
+function compileExternrefArrayDestructuringAssignment(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  target: ts.ArrayLiteralExpression,
+  resultType: ValType,
+): InnerResult {
+  // Store externref in temp local
+  const tmpLocal = allocLocal(fctx, `__ext_arr_destruct_${fctx.locals.length}`, { kind: "externref" });
+  fctx.body.push({ op: "local.set", index: tmpLocal });
+
+  // Ensure __extern_get is available
+  const getIdx = ensureExternGetImport(ctx, fctx);
+  if (getIdx === undefined) return null;
+
+  // Ensure __box_number is available for boxing numeric indices to externref
+  addUnionImports(ctx);
+  const boxIdx = ctx.funcMap.get("__box_number");
+
+  for (let i = 0; i < target.elements.length; i++) {
+    const element = target.elements[i]!;
+
+    // Skip holes: [a, , c] = arr
+    if (ts.isOmittedExpression(element)) continue;
+
+    // Handle rest element: [...rest] = arr — not supported for externref
+    if (ts.isSpreadElement(element)) continue;
+
+    // Emit: __extern_get(tmpLocal, i) -> externref
+    const emitExternGetAtIndex = () => {
+      fctx.body.push({ op: "local.get", index: tmpLocal });
+      // Box the numeric index to externref
+      fctx.body.push({ op: "f64.const", value: i });
+      if (boxIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: boxIdx });
+      }
+      fctx.body.push({ op: "call", funcIdx: getIdx! });
+    };
+
+    if (ts.isIdentifier(element)) {
+      const localName = element.text;
+      let localIdx = fctx.localMap.get(localName);
+      if (localIdx === undefined) {
+        localIdx = allocLocal(fctx, localName, { kind: "externref" });
+      }
+      emitExternGetAtIndex();
+      const localType = getLocalType(fctx, localIdx);
+      if (localType && localType.kind !== "externref") {
+        coerceType(ctx, fctx, { kind: "externref" }, localType);
+      }
+      fctx.body.push({ op: "local.set", index: localIdx });
+    } else if (ts.isBinaryExpression(element) && element.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+      // Default value: [a = defaultVal] = arr
+      const assignTarget = element.left;
+      if (ts.isIdentifier(assignTarget)) {
+        const localName = assignTarget.text;
+        let localIdx = fctx.localMap.get(localName);
+        if (localIdx === undefined) {
+          localIdx = allocLocal(fctx, localName, { kind: "externref" });
+        }
+        emitExternGetAtIndex();
+        const tmpElem = allocLocal(fctx, `__ext_dflt_${fctx.locals.length}`, { kind: "externref" });
+        fctx.body.push({ op: "local.tee", index: tmpElem });
+        fctx.body.push({ op: "ref.is_null" } as Instr);
+        const localType = getLocalType(fctx, localIdx);
+        fctx.body.push({
+          op: "if",
+          blockType: { kind: "empty" },
+          then: [
+            ...(() => {
+              const saved = fctx.body;
+              fctx.body = [];
+              compileExpression(ctx, fctx, element.right, localType ?? { kind: "externref" });
+              fctx.body.push({ op: "local.set", index: localIdx! } as Instr);
+              const instrs = fctx.body;
+              fctx.body = saved;
+              return instrs;
+            })(),
+          ],
+          else: [
+            { op: "local.get", index: tmpElem } as Instr,
+            ...(() => {
+              if (localType && localType.kind !== "externref") {
+                const saved = fctx.body;
+                fctx.body = [];
+                coerceType(ctx, fctx, { kind: "externref" }, localType);
+                const instrs = fctx.body;
+                fctx.body = saved;
+                return instrs;
+              }
+              return [];
+            })(),
+            { op: "local.set", index: localIdx! } as Instr,
+          ],
+        });
+      }
+    } else if (ts.isPropertyAccessExpression(element) || ts.isElementAccessExpression(element)) {
+      emitExternGetAtIndex();
+      const tmpElem = allocLocal(fctx, `__ext_arr_elem_${fctx.locals.length}`, { kind: "externref" });
+      fctx.body.push({ op: "local.set", index: tmpElem });
+      emitAssignToTarget(ctx, fctx, element, tmpElem, { kind: "externref" });
+    } else if (ts.isArrayLiteralExpression(element)) {
+      emitExternGetAtIndex();
+      const tmpElem = allocLocal(fctx, `__ext_arr_elem_${fctx.locals.length}`, { kind: "externref" });
+      fctx.body.push({ op: "local.set", index: tmpElem });
+      emitArrayDestructureFromLocal(ctx, fctx, element, tmpElem, { kind: "externref" });
+    } else if (ts.isObjectLiteralExpression(element)) {
+      emitExternGetAtIndex();
+      const tmpElem = allocLocal(fctx, `__ext_arr_elem_${fctx.locals.length}`, { kind: "externref" });
+      fctx.body.push({ op: "local.set", index: tmpElem });
+      emitObjectDestructureFromLocal(ctx, fctx, element, tmpElem, { kind: "externref" });
+    }
+    // Other element types: skip
+  }
+
+  // The result of a destructuring assignment is the RHS value
+  fctx.body.push({ op: "local.get", index: tmpLocal });
+  return { kind: "externref" };
+}
+
 function compileArrayDestructuringAssignment(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -5449,6 +5588,26 @@ function compileArrayDestructuringAssignment(
   if (!resultType) return null;
 
   if (resultType.kind !== "ref" && resultType.kind !== "ref_null") {
+    // Externref fallback: treat the value as an array-like and extract elements
+    // by numeric index using __extern_get(obj, index).
+    if (resultType.kind === "externref") {
+      return compileExternrefArrayDestructuringAssignment(ctx, fctx, target, resultType);
+    }
+    // For f64/i32, box to externref first
+    if (resultType.kind === "f64") {
+      const boxIdx = ctx.funcMap.get("__box_number");
+      if (boxIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: boxIdx });
+        return compileExternrefArrayDestructuringAssignment(ctx, fctx, target, { kind: "externref" });
+      }
+    } else if (resultType.kind === "i32") {
+      fctx.body.push({ op: "f64.convert_i32_s" });
+      const boxIdx = ctx.funcMap.get("__box_number");
+      if (boxIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: boxIdx });
+        return compileExternrefArrayDestructuringAssignment(ctx, fctx, target, { kind: "externref" });
+      }
+    }
     ctx.errors.push({
       message: "Cannot destructure: not an array type",
       line: getLine(target),
