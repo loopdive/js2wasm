@@ -9458,6 +9458,26 @@ function compileDeclarations(
   // Clear pendingInitBody before injection (it will be in mod.functions or main body after this)
   ctx.pendingInitBody = null;
 
+  // Helper: recursively shift local indices in instruction trees
+  function shiftLocalIndices(instrs: Instr[], shift: number): void {
+    for (const instr of instrs) {
+      if (
+        (instr.op === "local.get" ||
+          instr.op === "local.set" ||
+          instr.op === "local.tee") &&
+        typeof (instr as any).index === "number"
+      ) {
+        (instr as any).index += shift;
+      }
+      // Recurse into nested blocks
+      const a = instr as any;
+      if (a.then) shiftLocalIndices(a.then, shift);
+      if (a.else) shiftLocalIndices(a.else, shift);
+      if (a.body) shiftLocalIndices(a.body, shift);
+      if (a.instrs) shiftLocalIndices(a.instrs, shift);
+    }
+  }
+
   // Inject the compiled init body into the appropriate location
   if (compiledInitFctx && compiledInitFctx.body.length > 0) {
     const mainIdx = funcByName.get("main");
@@ -9471,17 +9491,9 @@ function compileDeclarations(
       // Append init locals to main's locals
       mainFunc.locals = [...mainFunc.locals, ...compiledInitFctx.locals];
       // Adjust local indices in init body (shift by existing locals count in main)
+      // Must recurse into nested blocks (if/then/else, block, loop)
       if (existingLocals > 0) {
-        for (const instr of compiledInitFctx.body) {
-          if (
-            (instr.op === "local.get" ||
-              instr.op === "local.set" ||
-              instr.op === "local.tee") &&
-            typeof (instr as any).index === "number"
-          ) {
-            (instr as any).index += existingLocals;
-          }
-        }
+        shiftLocalIndices(compiledInitFctx.body, existingLocals);
       }
     } else {
       // No main() function — create a standalone __module_init and inject
