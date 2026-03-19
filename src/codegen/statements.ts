@@ -1739,6 +1739,64 @@ function compileWhileStatement(
   });
 }
 
+/**
+ * Detect integer loop counter pattern: for (let i = INT; i < EXPR; i++)
+ * Returns the variable name and initial integer value if the pattern matches,
+ * or null if it doesn't match.
+ */
+function detectI32LoopVar(stmt: ts.ForStatement): { name: string; initValue: number } | null {
+  // 1. Check initializer: must be a single variable declaration with an integer literal
+  if (!stmt.initializer || !ts.isVariableDeclarationList(stmt.initializer)) return null;
+  const decls = stmt.initializer.declarations;
+  if (decls.length !== 1) return null;
+  const decl = decls[0];
+  if (!ts.isIdentifier(decl.name)) return null;
+  const name = decl.name.text;
+  if (!decl.initializer || !ts.isNumericLiteral(decl.initializer)) return null;
+  const initValue = Number(decl.initializer.text.replace(/_/g, ""));
+  if (!Number.isInteger(initValue) || initValue < -2147483648 || initValue > 2147483647) return null;
+
+  // 2. Check condition: must be i < EXPR, i <= EXPR, EXPR > i, or EXPR >= i
+  if (!stmt.condition || !ts.isBinaryExpression(stmt.condition)) return null;
+  const cond = stmt.condition;
+  const op = cond.operatorToken.kind;
+  let isValidCondition = false;
+  if ((op === ts.SyntaxKind.LessThanToken || op === ts.SyntaxKind.LessThanEqualsToken) &&
+      ts.isIdentifier(cond.left) && cond.left.text === name) {
+    isValidCondition = true;
+  }
+  if ((op === ts.SyntaxKind.GreaterThanToken || op === ts.SyntaxKind.GreaterThanEqualsToken) &&
+      ts.isIdentifier(cond.right) && cond.right.text === name) {
+    isValidCondition = true;
+  }
+  if (!isValidCondition) return null;
+
+  // 3. Check incrementor: must be i++, ++i, i--, --i, i += INT, or i -= INT
+  if (!stmt.incrementor) return null;
+  const incr = stmt.incrementor;
+  if (ts.isPostfixUnaryExpression(incr)) {
+    if (!ts.isIdentifier(incr.operand) || incr.operand.text !== name) return null;
+    if (incr.operator !== ts.SyntaxKind.PlusPlusToken &&
+        incr.operator !== ts.SyntaxKind.MinusMinusToken) return null;
+  } else if (ts.isPrefixUnaryExpression(incr)) {
+    if (!ts.isIdentifier(incr.operand) || incr.operand.text !== name) return null;
+    if (incr.operator !== ts.SyntaxKind.PlusPlusToken &&
+        incr.operator !== ts.SyntaxKind.MinusMinusToken) return null;
+  } else if (ts.isBinaryExpression(incr)) {
+    if (!ts.isIdentifier(incr.left) || incr.left.text !== name) return null;
+    if (incr.operatorToken.kind !== ts.SyntaxKind.PlusEqualsToken &&
+        incr.operatorToken.kind !== ts.SyntaxKind.MinusEqualsToken) return null;
+    // The RHS must be an integer literal
+    if (!ts.isNumericLiteral(incr.right)) return null;
+    const stepVal = Number(incr.right.text.replace(/_/g, ""));
+    if (!Number.isInteger(stepVal)) return null;
+  } else {
+    return null;
+  }
+
+  return { name, initValue };
+}
+
 function compileForStatement(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -1803,7 +1861,16 @@ function compileForStatement(
         }
 
         const varType = ctx.checker.getTypeAtLocation(decl);
-        const wasmType = resolveWasmType(ctx, varType);
+        let wasmType = resolveWasmType(ctx, varType);
+
+        // Integer loop inference: if this variable is detected as an integer loop
+        // counter (e.g. for (let i = 0; i < n; i++)), use i32 instead of f64
+        const i32LoopInfo = detectI32LoopVar(stmt);
+        const isI32LoopVar = i32LoopInfo !== null && i32LoopInfo.name === name && wasmType.kind === "f64";
+        if (isI32LoopVar) {
+          wasmType = { kind: "i32" };
+        }
+
         // Reuse existing local for var re-declaration
         const existingIdx = fctx.localMap.get(name);
         const localIdx = (isVar && existingIdx !== undefined && existingIdx >= fctx.params.length)
@@ -1817,11 +1884,17 @@ function compileForStatement(
           }
         }
         if (decl.initializer) {
-          const forInitType = compileExpression(ctx, fctx, decl.initializer, wasmType);
-          if (forInitType && !valTypesMatch(forInitType, wasmType)) {
-            coerceType(ctx, fctx, forInitType, wasmType);
+          if (isI32LoopVar) {
+            // Emit i32.const directly for the integer init value
+            fctx.body.push({ op: "i32.const", value: i32LoopInfo!.initValue });
+            fctx.body.push({ op: "local.set", index: localIdx });
+          } else {
+            const forInitType = compileExpression(ctx, fctx, decl.initializer, wasmType);
+            if (forInitType && !valTypesMatch(forInitType, wasmType)) {
+              coerceType(ctx, fctx, forInitType, wasmType);
+            }
+            emitCoercedLocalSet(ctx, fctx, localIdx, forInitType ?? wasmType);
           }
-          emitCoercedLocalSet(ctx, fctx, localIdx, forInitType ?? wasmType);
         }
       }
     } else {
