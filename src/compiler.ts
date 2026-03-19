@@ -644,6 +644,7 @@ const DOWNGRADE_DIAG_CODES = new Set([
   18030, // "An optional chain cannot contain private identifiers" — valid JS pattern
   2729, // "Property 'X' is used before its initialization" — valid JS pattern
   1163, // "A 'yield' expression is only allowed in a generator body" — #267
+  1435, // "Unknown keyword or identifier. Did you mean 'X'?" — yield in nested generator contexts (#521)
   1220, // "Generators are not allowed in an ambient context" — valid JS pattern (#267)
   1166, // "A computed property name in a class property declaration must have a simple literal type" — #265
   2464, // "A computed property name must be of type 'string', 'number', 'symbol', or 'any'" — #276
@@ -793,6 +794,7 @@ export function compileSource(
     1497, // "Expression must be enclosed in parentheses to be used as a decorator" (#376)
     1498, // "Invalid syntax in decorator" (#376)
     8038, // "Decorators may not appear after 'export' or 'export default'" (#376)
+    1435, // "Unknown keyword or identifier. Did you mean 'X'?" — yield in nested generator contexts (#521)
   ]);
   const hasSyntaxErrors = ast.syntacticDiagnostics.some(
     (d) => d.category === 1 && d.file === ast.sourceFile && !TOLERATED_SYNTAX_CODES.has(d.code),
@@ -1580,8 +1582,24 @@ export function compileToObjectSource(
     }
   }
 
+  const TOLERATED_SYNTAX_CODES_OBJ = new Set([
+    1156, // "'let' declarations can only be declared inside a block"
+    1313, // "The body of an 'if' statement cannot be the empty statement"
+    1344, // "A label is not allowed here"
+    1182, // "A destructuring declaration must have an initializer"
+    1228, // "A type predicate is only allowed in return type position"
+    1163, // "A 'yield' expression is only allowed in a generator body"
+    1206, // "Decorators are not valid here"
+    1207, // "Decorators cannot be applied to multiple get/set accessors"
+    1436, // "Decorators must precede the name and all keywords of property declarations"
+    1486, // "Decorator used before 'export' here"
+    1497, // "Expression must be enclosed in parentheses to be used as a decorator"
+    1498, // "Invalid syntax in decorator"
+    8038, // "Decorators may not appear after 'export' or 'export default'"
+    1435, // "Unknown keyword or identifier. Did you mean 'X'?" — yield in nested generator contexts (#521)
+  ]);
   const hasSyntaxErrors = ast.syntacticDiagnostics.some(
-    (d) => d.category === 1 && d.file === ast.sourceFile,
+    (d) => d.category === 1 && d.file === ast.sourceFile && !TOLERATED_SYNTAX_CODES_OBJ.has(d.code),
   );
 
   if (hasSyntaxErrors && errors.length > 0) {
