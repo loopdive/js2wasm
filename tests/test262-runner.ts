@@ -1910,6 +1910,10 @@ export async function runTest262File(filePath: string, category: string, timeout
   // with, etc.) would prevent us from even trying — but we should attempt
   // compilation and execution. If compilation fails, the existing runtime
   // negative handler reports compile_error appropriately.
+  // Runtime negative tests expect the code to throw at runtime — they
+  // intentionally use constructs like eval, with, etc. that shouldSkip would
+  // filter out. Bypass shouldSkip for these tests so handleNegativeTest can
+  // process them (compile + run, checking that execution throws/traps).
   const isRuntimeNegative = meta.negative?.phase === "runtime";
 
   if (!isRuntimeNegative) {
