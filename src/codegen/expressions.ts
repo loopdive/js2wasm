@@ -491,11 +491,40 @@ export function emitCoercedLocalSet(
       widenLocalToNullable(fctx, localIdx);
     } else if (sameRefTypeIdx) {
       // ref -> ref_null: subtype, no coercion needed
+    } else if (
+      (stackType.kind === "ref" || stackType.kind === "ref_null") &&
+      (localType.kind === "ref" || localType.kind === "ref_null")
+    ) {
+      // Different typeIdx: the local was declared for a different struct type than
+      // what struct.new produced (e.g. var re-declaration with different object shape,
+      // or subclass instance stored in parent-typed variable). Try coercion first;
+      // if coerceType emits nothing (unrelated struct types), update the local's
+      // declared type to match the stack type.
+      const bodyLenBefore = fctx.body.length;
+      coerceType(ctx, fctx, stackType, localType);
+      if (fctx.body.length === bodyLenBefore) {
+        // coerceType didn't emit anything -- update local type to match stack.
+        updateLocalType(fctx, localIdx, stackType);
+      }
     } else {
       coerceType(ctx, fctx, stackType, localType);
     }
   }
   fctx.body.push({ op: "local.set", index: localIdx });
+}
+
+/**
+ * Update a local's declared type to a new type.
+ * Used when a variable is reassigned to a value of a different struct type.
+ */
+function updateLocalType(fctx: FunctionContext, localIdx: number, newType: ValType): void {
+  if (localIdx < fctx.params.length) {
+    const param = fctx.params[localIdx];
+    if (param) param.type = newType;
+  } else {
+    const local = fctx.locals[localIdx - fctx.params.length];
+    if (local) local.type = newType;
+  }
 }
 
 /**
@@ -5417,7 +5446,18 @@ function compileAssignment(
       // the local's declared type (e.g. compileExpression didn't have expectedType
       // or coercion was incomplete), coerce before local.tee
       if (effectiveLocalType && !valTypesMatch(resultType, effectiveLocalType)) {
+        const bodyLenBeforeCoerce = fctx.body.length;
         coerceType(ctx, fctx, resultType, effectiveLocalType);
+        if (fctx.body.length === bodyLenBeforeCoerce &&
+            (resultType.kind === "ref" || resultType.kind === "ref_null") &&
+            (effectiveLocalType.kind === "ref" || effectiveLocalType.kind === "ref_null")) {
+          // coerceType didn't emit anything for different struct types --
+          // update the local's type to match the stack type instead of
+          // emitting an invalid local.tee with mismatched types.
+          updateLocalType(fctx, localIdx, resultType);
+          fctx.body.push({ op: "local.tee", index: localIdx });
+          return resultType;
+        }
         fctx.body.push({ op: "local.tee", index: localIdx });
         return effectiveLocalType;
       }
