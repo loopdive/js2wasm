@@ -62,20 +62,27 @@ export function shiftLateImportIndices(
       }
     }
   }
+  // Track which body arrays have been shifted to prevent double-shifting.
+  // Using a Set avoids reliance on reference equality between bodies that
+  // may be the same logical array referenced from multiple places.
+  const shifted = new Set<Instr[]>();
   for (const func of ctx.mod.functions) {
-    shiftInstrs(func.body);
+    if (!shifted.has(func.body)) {
+      shiftInstrs(func.body);
+      shifted.add(func.body);
+    }
   }
-  // Shift current function body
+  // Shift current function body (if not already shifted via mod.functions)
   const curBody = fctx.body;
-  const alreadyShifted = ctx.mod.functions.some(f => f.body === curBody);
-  if (!alreadyShifted) {
+  if (!shifted.has(curBody)) {
     shiftInstrs(curBody);
+    shifted.add(curBody);
   }
-  // Shift saved body arrays
+  // Shift saved body arrays (if not already shifted)
   for (const sb of fctx.savedBodies) {
-    if (sb === curBody) continue;
-    if (ctx.mod.functions.some(f => f.body === sb)) continue;
+    if (shifted.has(sb)) continue;
     shiftInstrs(sb);
+    shifted.add(sb);
   }
   // Shift funcMap entries for defined functions (not import entries).
   // Defined functions had indices >= importsBefore (before the shift) and need
@@ -614,22 +621,16 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
           // Default to "externref" for imports (funcDefIdx < 0) which typically return externref
           const retKind = (funcType?.kind === "func" && funcType.results?.[0]?.kind) || "externref";
           if (retKind === "f64") {
-            const boxIdx = ctx.funcMap.get("__box_number");
-            if (boxIdx !== undefined) {
-              fctx.body.push({ op: "call", funcIdx: boxIdx });
-            } else {
-              fctx.body.push({ op: "drop" });
-              fctx.body.push({ op: "ref.null.extern" });
-            }
+            // Ensure __box_number is available via union imports
+            addUnionImports(ctx);
+            const boxIdx = ctx.funcMap.get("__box_number")!;
+            fctx.body.push({ op: "call", funcIdx: boxIdx });
           } else if (retKind === "i32") {
             fctx.body.push({ op: "f64.convert_i32_s" });
-            const boxIdx = ctx.funcMap.get("__box_number");
-            if (boxIdx !== undefined) {
-              fctx.body.push({ op: "call", funcIdx: boxIdx });
-            } else {
-              fctx.body.push({ op: "drop" });
-              fctx.body.push({ op: "ref.null.extern" });
-            }
+            // Ensure __box_number is available via union imports
+            addUnionImports(ctx);
+            const boxIdx = ctx.funcMap.get("__box_number")!;
+            fctx.body.push({ op: "call", funcIdx: boxIdx });
           }
           // externref/ref return → use extern.convert_any for ref types
           if (retKind === "ref" || retKind === "ref_null") {
