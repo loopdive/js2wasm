@@ -124,6 +124,48 @@ export function shiftLateImportIndices(
 }
 
 /**
+ * Add a late import if it does not already exist, deferring the index shift.
+ * Records ctx.pendingLateImportShift.importsBefore on the first deferred addition
+ * so that flushLateImportShifts() can do a single O(B) traversal for all imports
+ * added in the batch, instead of O(I*B) for I individual additions.
+ * Returns the funcIdx of the import (looked up after addImport).
+ */
+function ensureLateImport(
+  ctx: CodegenContext,
+  name: string,
+  paramTypes: ValType[],
+  resultTypes: ValType[],
+): number | undefined {
+  const existing = ctx.funcMap.get(name);
+  if (existing !== undefined) return existing;
+  // Record importsBefore on the FIRST deferred addition in this batch
+  if (ctx.pendingLateImportShift === null) {
+    ctx.pendingLateImportShift = { importsBefore: ctx.numImportFuncs };
+  }
+  const typeIdx = addFuncType(ctx, paramTypes, resultTypes);
+  addImport(ctx, "env", name, { kind: "func", typeIdx });
+  return ctx.funcMap.get(name);
+}
+
+/**
+ * Flush any pending late import shifts. Performs a single traversal of all
+ * function bodies to shift indices, instead of one traversal per import.
+ * Must be called after a batch of ensureLateImport() calls before any
+ * funcIdx values are used in emitted instructions.
+ */
+function flushLateImportShifts(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+): void {
+  const pending = ctx.pendingLateImportShift;
+  if (pending === null) return;
+  const added = ctx.numImportFuncs - pending.importsBefore;
+  ctx.pendingLateImportShift = null;
+  if (added <= 0) return;
+  shiftLateImportIndices(ctx, fctx, pending.importsBefore, added);
+}
+
+/**
  * Compile an expression, pushing its result onto the Wasm stack.
  * Returns null only for void expressions that intentionally produce no value.
  * For failed expressions, pushes a typed fallback to keep the stack balanced.
@@ -6758,14 +6800,8 @@ function compileExternSetFallback(
   fctx.body.push({ op: "local.get", index: valLocal });
 
   // Lazily register __extern_set if not already registered
-  let funcIdx = ctx.funcMap.get("__extern_set");
-  if (funcIdx === undefined) {
-    const importsBefore = ctx.numImportFuncs;
-    const setType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }], []);
-    addImport(ctx, "env", "__extern_set", { kind: "func", typeIdx: setType });
-    shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
-    funcIdx = ctx.funcMap.get("__extern_set");
-  }
+  let funcIdx = ensureLateImport(ctx, "__extern_set", [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }], []);
+  flushLateImportShifts(ctx, fctx);
   if (funcIdx !== undefined) {
     fctx.body.push({ op: "call", funcIdx });
   }
@@ -7165,25 +7201,12 @@ function compilePropertyLogicalAssignmentExternref(
   fctx.body.push({ op: "local.set", index: keyLocal });
 
   // Ensure __extern_get is available
-  let getIdx = ctx.funcMap.get("__extern_get");
-  if (getIdx === undefined) {
-    const importsBefore = ctx.numImportFuncs;
-    const getType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
-    addImport(ctx, "env", "__extern_get", { kind: "func", typeIdx: getType });
-    shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
-    getIdx = ctx.funcMap.get("__extern_get");
-  }
+  let getIdx = ensureLateImport(ctx, "__extern_get", [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
   if (getIdx === undefined) return null;
 
   // Ensure __extern_set is available
-  let setIdx = ctx.funcMap.get("__extern_set");
-  if (setIdx === undefined) {
-    const importsBefore = ctx.numImportFuncs;
-    const setType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }], []);
-    addImport(ctx, "env", "__extern_set", { kind: "func", typeIdx: setType });
-    shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
-    setIdx = ctx.funcMap.get("__extern_set");
-  }
+  let setIdx = ensureLateImport(ctx, "__extern_set", [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }], []);
+  flushLateImportShifts(ctx, fctx);
   if (setIdx === undefined) return null;
 
   // Ensure union imports (including __unbox_number, __box_number) are registered
@@ -8084,14 +8107,8 @@ function compilePropertyCompoundAssignmentExternref(
   // Read current value: __extern_get(obj, key) -> externref
   fctx.body.push({ op: "local.get", index: objLocal });
   fctx.body.push({ op: "local.get", index: keyLocal });
-  let getIdx = ctx.funcMap.get("__extern_get");
-  if (getIdx === undefined) {
-    const importsBefore = ctx.numImportFuncs;
-    const getType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
-    addImport(ctx, "env", "__extern_get", { kind: "func", typeIdx: getType });
-    shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
-    getIdx = ctx.funcMap.get("__extern_get");
-  }
+  let getIdx = ensureLateImport(ctx, "__extern_get", [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+  flushLateImportShifts(ctx, fctx);
   if (getIdx === undefined) return null;
   fctx.body.push({ op: "call", funcIdx: getIdx });
 
@@ -8132,14 +8149,8 @@ function compilePropertyCompoundAssignmentExternref(
   fctx.body.push({ op: "local.get", index: objLocal });
   fctx.body.push({ op: "local.get", index: keyLocal });
   fctx.body.push({ op: "local.get", index: boxedLocal });
-  let setIdx = ctx.funcMap.get("__extern_set");
-  if (setIdx === undefined) {
-    const importsBefore = ctx.numImportFuncs;
-    const setType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }], []);
-    addImport(ctx, "env", "__extern_set", { kind: "func", typeIdx: setType });
-    shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
-    setIdx = ctx.funcMap.get("__extern_set");
-  }
+  let setIdx = ensureLateImport(ctx, "__extern_set", [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }], []);
+  flushLateImportShifts(ctx, fctx);
   if (setIdx !== undefined) {
     fctx.body.push({ op: "call", funcIdx: setIdx });
   }
@@ -8180,14 +8191,8 @@ function compileElementCompoundAssignment(
     // Read current value: __extern_get(obj, key) -> externref
     fctx.body.push({ op: "local.get", index: objLocal });
     fctx.body.push({ op: "local.get", index: keyLocal });
-    let getIdx = ctx.funcMap.get("__extern_get");
-    if (getIdx === undefined) {
-      const importsBefore = ctx.numImportFuncs;
-      const getType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
-      addImport(ctx, "env", "__extern_get", { kind: "func", typeIdx: getType });
-      shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
-      getIdx = ctx.funcMap.get("__extern_get");
-    }
+    let getIdx = ensureLateImport(ctx, "__extern_get", [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+    flushLateImportShifts(ctx, fctx);
     if (getIdx === undefined) return null;
     fctx.body.push({ op: "call", funcIdx: getIdx });
 
@@ -8228,14 +8233,8 @@ function compileElementCompoundAssignment(
     fctx.body.push({ op: "local.get", index: objLocal });
     fctx.body.push({ op: "local.get", index: keyLocal });
     fctx.body.push({ op: "local.get", index: boxedLocal });
-    let setIdx = ctx.funcMap.get("__extern_set");
-    if (setIdx === undefined) {
-      const importsBefore = ctx.numImportFuncs;
-      const setType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }], []);
-      addImport(ctx, "env", "__extern_set", { kind: "func", typeIdx: setType });
-      shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
-      setIdx = ctx.funcMap.get("__extern_set");
-    }
+    let setIdx = ensureLateImport(ctx, "__extern_set", [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }], []);
+    flushLateImportShifts(ctx, fctx);
     if (setIdx !== undefined) {
       fctx.body.push({ op: "call", funcIdx: setIdx });
     }
@@ -8262,14 +8261,8 @@ function compileElementCompoundAssignment(
     // Read current value: __extern_get(obj, key) -> externref
     fctx.body.push({ op: "local.get", index: objLocal });
     fctx.body.push({ op: "local.get", index: keyLocal });
-    let getIdx = ctx.funcMap.get("__extern_get");
-    if (getIdx === undefined) {
-      const importsBefore = ctx.numImportFuncs;
-      const getType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
-      addImport(ctx, "env", "__extern_get", { kind: "func", typeIdx: getType });
-      shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
-      getIdx = ctx.funcMap.get("__extern_get");
-    }
+    let getIdx = ensureLateImport(ctx, "__extern_get", [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+    flushLateImportShifts(ctx, fctx);
     if (getIdx === undefined) return null;
     fctx.body.push({ op: "call", funcIdx: getIdx });
 
@@ -8310,14 +8303,8 @@ function compileElementCompoundAssignment(
     fctx.body.push({ op: "local.get", index: objLocal });
     fctx.body.push({ op: "local.get", index: keyLocal });
     fctx.body.push({ op: "local.get", index: boxedLocal });
-    let setIdx = ctx.funcMap.get("__extern_set");
-    if (setIdx === undefined) {
-      const importsBefore = ctx.numImportFuncs;
-      const setType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }], []);
-      addImport(ctx, "env", "__extern_set", { kind: "func", typeIdx: setType });
-      shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
-      setIdx = ctx.funcMap.get("__extern_set");
-    }
+    let setIdx = ensureLateImport(ctx, "__extern_set", [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }], []);
+    flushLateImportShifts(ctx, fctx);
     if (setIdx !== undefined) {
       fctx.body.push({ op: "call", funcIdx: setIdx });
     }
@@ -16303,14 +16290,8 @@ function compileElementAccessBody(
   if (objType.kind === "externref") {
     compileExpression(ctx, fctx, expr.argumentExpression, { kind: "externref" });
     // Lazily register __extern_get if not already registered
-    let funcIdx = ctx.funcMap.get("__extern_get");
-    if (funcIdx === undefined) {
-      const importsBefore = ctx.numImportFuncs;
-      const getType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
-      addImport(ctx, "env", "__extern_get", { kind: "func", typeIdx: getType });
-      shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
-      funcIdx = ctx.funcMap.get("__extern_get");
-    }
+    let funcIdx = ensureLateImport(ctx, "__extern_get", [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+    flushLateImportShifts(ctx, fctx);
     if (funcIdx !== undefined) {
       fctx.body.push({ op: "call", funcIdx });
       return { kind: "externref" };
@@ -16348,14 +16329,8 @@ function compileElementAccessBody(
     }
     // Compile key as externref and call __extern_get
     compileExpression(ctx, fctx, expr.argumentExpression, { kind: "externref" });
-    let funcIdx = ctx.funcMap.get("__extern_get");
-    if (funcIdx === undefined) {
-      const importsBefore = ctx.numImportFuncs;
-      const getType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
-      addImport(ctx, "env", "__extern_get", { kind: "func", typeIdx: getType });
-      shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
-      funcIdx = ctx.funcMap.get("__extern_get");
-    }
+    let funcIdx = ensureLateImport(ctx, "__extern_get", [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+    flushLateImportShifts(ctx, fctx);
     if (funcIdx !== undefined) {
       fctx.body.push({ op: "call", funcIdx });
       return { kind: "externref" };
@@ -16454,14 +16429,8 @@ function compileElementAccessBody(
       compileExpression(ctx, fctx, expr.argumentExpression, { kind: "externref" });
       // Call __extern_get(externref, externref) → externref
       {
-        let funcIdx = ctx.funcMap.get("__extern_get");
-        if (funcIdx === undefined) {
-          const importsBefore = ctx.numImportFuncs;
-          const getType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
-          addImport(ctx, "env", "__extern_get", { kind: "func", typeIdx: getType });
-          shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
-          funcIdx = ctx.funcMap.get("__extern_get");
-        }
+        let funcIdx = ensureLateImport(ctx, "__extern_get", [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+        flushLateImportShifts(ctx, fctx);
         if (funcIdx !== undefined) {
           fctx.body.push({ op: "call", funcIdx });
           return { kind: "externref" };
@@ -18138,14 +18107,8 @@ function compileObjectDefineProperty(
     fctx.body.push({ op: "local.get", index: valLocal });
 
     // Lazily register __extern_set if not already registered
-    let funcIdx = ctx.funcMap.get("__extern_set");
-    if (funcIdx === undefined) {
-      const importsBefore = ctx.numImportFuncs;
-      const setType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }], []);
-      addImport(ctx, "env", "__extern_set", { kind: "func", typeIdx: setType });
-      shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
-      funcIdx = ctx.funcMap.get("__extern_set");
-    }
+    let funcIdx = ensureLateImport(ctx, "__extern_set", [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }], []);
+    flushLateImportShifts(ctx, fctx);
     if (funcIdx !== undefined) {
       fctx.body.push({ op: "call", funcIdx });
     }
