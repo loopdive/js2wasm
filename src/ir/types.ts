@@ -50,6 +50,8 @@ export interface StructTypeDef {
   fields: FieldDef[];
   /** Type index of the parent struct (for class inheritance sub-typing) */
   superTypeIdx?: number;
+  /** When true and superTypeIdx is set, emit sub_final instead of sub (leaf types in hierarchy) */
+  final?: boolean;
 }
 export interface ArrayTypeDef {
   kind: "array";

@@ -227,8 +227,9 @@ function formatTypeDef(t: TypeDef, idx: number): string {
         .map((f) => formatFieldDef(f))
         .join(" ");
       if (t.superTypeIdx !== undefined) {
+        const finalStr = t.final ? " final" : "";
         const superStr = t.superTypeIdx >= 0 ? ` $type${t.superTypeIdx}` : "";
-        return `(type $${t.name} (sub${superStr} (struct ${fields})))`;
+        return `(type $${t.name} (sub${finalStr}${superStr} (struct ${fields})))`;
       }
       return `(type $${t.name} (struct ${fields}))`;
     }

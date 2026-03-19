@@ -39,6 +39,56 @@ export interface CodegenResult {
 }
 
 /**
+ * Post-processing pass: mark leaf struct types in subtype hierarchies as final.
+ *
+ * V8 can devirtualize struct.get/struct.set when a type is known to be final
+ * (no subtypes). Struct types without superTypeIdx are already implicitly final
+ * in the Wasm binary encoding. This pass finds struct types that participate in
+ * subtyping (have superTypeIdx set) but are never referenced as a parent by any
+ * other type, and marks them as final so the emitter uses sub_final (0x4F).
+ */
+function markLeafStructsFinal(mod: WasmModule): void {
+  // Collect all type indices that are used as a supertype
+  const hasSubtypes = new Set<number>();
+
+  for (let i = 0; i < mod.types.length; i++) {
+    const td = mod.types[i];
+    if (td.kind === "struct" && td.superTypeIdx !== undefined && td.superTypeIdx >= 0) {
+      hasSubtypes.add(td.superTypeIdx);
+    } else if (td.kind === "rec") {
+      for (const inner of td.types) {
+        if (inner.kind === "struct" && inner.superTypeIdx !== undefined && inner.superTypeIdx >= 0) {
+          hasSubtypes.add(inner.superTypeIdx);
+        } else if (inner.kind === "sub" && inner.superType !== null && inner.superType >= 0) {
+          hasSubtypes.add(inner.superType);
+        }
+      }
+    } else if (td.kind === "sub" && td.superType !== null && td.superType >= 0) {
+      hasSubtypes.add(td.superType);
+    }
+  }
+
+  // Mark leaf struct types as final
+  for (let i = 0; i < mod.types.length; i++) {
+    const td = mod.types[i];
+    if (td.kind === "struct" && td.superTypeIdx !== undefined && !hasSubtypes.has(i)) {
+      td.final = true;
+    } else if (td.kind === "rec") {
+      // Types inside rec groups have their own indices (rec groups occupy consecutive indices)
+      // We need to compute the base index for types within the rec group
+      // Actually, rec group members are indexed consecutively starting at i
+      let innerIdx = i;
+      for (const inner of td.types) {
+        if (inner.kind === "struct" && inner.superTypeIdx !== undefined && !hasSubtypes.has(innerIdx)) {
+          inner.final = true;
+        }
+        innerIdx++;
+      }
+    }
+  }
+}
+
+/**
  * Report a codegen error with source location extracted from an AST node.
  * Pushes the error into ctx.errors so it can be propagated to the caller.
  */
@@ -576,6 +626,9 @@ export function generateModule(
   mod.stringLiteralValues = ctx.stringLiteralValues;
   mod.asyncFunctions = ctx.asyncFunctions;
 
+  // Mark leaf struct types as final for V8 devirtualization
+  markLeafStructsFinal(mod);
+
   // Dead import and type elimination pass
   eliminateDeadImports(mod);
 
@@ -774,6 +827,9 @@ export function generateMultiModule(
   }
   mod.stringLiteralValues = ctx.stringLiteralValues;
   mod.asyncFunctions = ctx.asyncFunctions;
+
+  // Mark leaf struct types as final for V8 devirtualization
+  markLeafStructsFinal(mod);
 
   // Dead import and type elimination pass
   eliminateDeadImports(mod);
