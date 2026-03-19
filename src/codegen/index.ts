@@ -253,6 +253,14 @@ export interface CodegenContext {
   inlinableFunctions: Map<string, InlinableFunctionInfo>;
   /** Global index of the __symbol_counter (mutable i32, starts at 100). -1 if not yet registered. */
   symbolCounterGlobalIdx: number;
+  /** Whether targeting WASI (use fd_write/proc_exit instead of JS host imports) */
+  wasi: boolean;
+  /** WASI fd_write function index (-1 if not registered) */
+  wasiFdWriteIdx: number;
+  /** WASI proc_exit function index (-1 if not registered) */
+  wasiProcExitIdx: number;
+  /** WASI: bump allocator pointer for linear memory string data */
+  wasiBumpPtrGlobalIdx: number;
 }
 
 /** Metadata for a function eligible for call-site inlining */
@@ -360,6 +368,8 @@ export interface CodegenOptions {
   sourceMap?: boolean;
   /** Fast mode: i32 default numbers */
   fast?: boolean;
+  /** WASI target: emit WASI imports (fd_write, proc_exit) instead of JS host imports */
+  wasi?: boolean;
 }
 
 /** Compile a typed AST into a WasmModule IR */
@@ -452,6 +462,10 @@ export function generateModule(
     pendingInitBody: null,
     inlinableFunctions: new Map(),
     symbolCounterGlobalIdx: -1,
+    wasi: options?.wasi ?? false,
+    wasiFdWriteIdx: -1,
+    wasiProcExitIdx: -1,
+    wasiBumpPtrGlobalIdx: -1,
   };
 
   // Register native string types if fast mode
@@ -459,10 +473,17 @@ export function generateModule(
     registerNativeStringTypes(ctx);
   }
 
+  // WASI target: register linear memory, bump pointer global, and WASI imports
+  if (ctx.wasi) {
+    registerWasiImports(ctx, ast.sourceFile);
+  }
+
   // $AnyValue struct type is now registered lazily via ensureAnyValueType()
 
   // Collect console.log imports (only variants actually used)
-  collectConsoleImports(ctx, ast.sourceFile);
+  if (!ctx.wasi) {
+    collectConsoleImports(ctx, ast.sourceFile);
+  }
 
   // Collect primitive method imports (.toString() on numbers, etc.)
   collectPrimitiveMethodImports(ctx, ast.sourceFile);
@@ -576,10 +597,49 @@ export function generateModule(
   mod.stringLiteralValues = ctx.stringLiteralValues;
   mod.asyncFunctions = ctx.asyncFunctions;
 
+  // WASI: export _start entry point (before dead import elimination adjusts indices)
+  if (ctx.wasi) {
+    addWasiStartExport(ctx);
+  }
+
   // Dead import and type elimination pass
   eliminateDeadImports(mod);
 
   return { module: mod, errors: ctx.errors };
+}
+
+/** Add a _start export for WASI — wraps main() or __module_init */
+function addWasiStartExport(ctx: CodegenContext): void {
+  // Find main or __module_init by name in the functions array
+  let targetIdx = ctx.funcMap.get("main");
+  if (targetIdx === undefined) {
+    // Search functions array for __module_init
+    for (let i = 0; i < ctx.mod.functions.length; i++) {
+      if (ctx.mod.functions[i]!.name === "__module_init") {
+        targetIdx = ctx.numImportFuncs + i;
+        break;
+      }
+    }
+  }
+
+  if (targetIdx !== undefined) {
+    // Create _start wrapper that calls the target function
+    const startTypeIdx = addFuncType(ctx, [], [], "$wasi_start_type");
+    const startFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+
+    ctx.mod.functions.push({
+      name: "_start",
+      typeIdx: startTypeIdx,
+      locals: [],
+      body: [{ op: "call", funcIdx: targetIdx }],
+      exported: true,
+    });
+
+    ctx.mod.exports.push({
+      name: "_start",
+      desc: { kind: "func", index: startFuncIdx },
+    });
+  }
 }
 
 /**
@@ -844,6 +904,123 @@ function collectConsoleImports(
       });
     }
   }
+}
+
+/** Register WASI imports: fd_write, proc_exit, linear memory, bump pointer global */
+function registerWasiImports(
+  ctx: CodegenContext,
+  sourceFile: ts.SourceFile,
+): void {
+  // Add linear memory (1 page = 64KB) for string data + iovec structs
+  ctx.mod.memories.push({ min: 1 });
+  // WASI requires the memory to be exported as "memory"
+  ctx.mod.exports.push({ name: "memory", desc: { kind: "memory", index: 0 } });
+
+  // Add bump pointer global (mutable i32, starts at 0)
+  // We reserve the first 1024 bytes for iovec scratch space
+  const bumpGlobalIdx = ctx.numImportGlobals + ctx.mod.globals.length;
+  ctx.mod.globals.push({
+    name: "__wasi_bump_ptr",
+    type: { kind: "i32" },
+    mutable: true,
+    init: [{ op: "i32.const", value: 1024 } as Instr],
+  });
+  ctx.wasiBumpPtrGlobalIdx = bumpGlobalIdx;
+
+  // Check if source uses console.log/warn/error
+  let needsFdWrite = false;
+  let needsProcExit = false;
+
+  function visit(node: ts.Node) {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression)
+    ) {
+      const propAccess = node.expression;
+      if (
+        ts.isIdentifier(propAccess.expression) &&
+        propAccess.expression.text === "console" &&
+        ["log", "warn", "error"].includes(propAccess.name.text)
+      ) {
+        needsFdWrite = true;
+      }
+      if (
+        ts.isIdentifier(propAccess.expression) &&
+        propAccess.expression.text === "process" &&
+        propAccess.name.text === "exit"
+      ) {
+        needsProcExit = true;
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+  ts.forEachChild(sourceFile, visit);
+
+  // fd_write(fd: i32, iovs: i32, iovs_len: i32, nwritten: i32) -> i32
+  if (needsFdWrite) {
+    const fdWriteType = addFuncType(
+      ctx,
+      [{ kind: "i32" }, { kind: "i32" }, { kind: "i32" }, { kind: "i32" }],
+      [{ kind: "i32" }],
+      "$wasi_fd_write",
+    );
+    addImport(ctx, "wasi_snapshot_preview1", "fd_write", { kind: "func", typeIdx: fdWriteType });
+    ctx.wasiFdWriteIdx = ctx.funcMap.get("fd_write")!;
+  }
+
+  // proc_exit(code: i32) -> void
+  if (needsProcExit) {
+    const procExitType = addFuncType(
+      ctx,
+      [{ kind: "i32" }],
+      [],
+      "$wasi_proc_exit",
+    );
+    addImport(ctx, "wasi_snapshot_preview1", "proc_exit", { kind: "func", typeIdx: procExitType });
+    ctx.wasiProcExitIdx = ctx.funcMap.get("proc_exit")!;
+  }
+
+  // Register a helper function: __wasi_write_string(strPtr: i32, strLen: i32) -> void
+  // This writes to stdout (fd=1) using fd_write
+  if (needsFdWrite) {
+    emitWasiWriteStringHelper(ctx);
+  }
+}
+
+/** Emit __wasi_write_string(ptr: i32, len: i32) helper that calls fd_write(1, iov, 1, nwritten) */
+function emitWasiWriteStringHelper(ctx: CodegenContext): void {
+  const funcTypeIdx = addFuncType(ctx, [{ kind: "i32" }, { kind: "i32" }], []);
+  const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+  ctx.funcMap.set("__wasi_write_string", funcIdx);
+
+  // Parameters: 0=ptr, 1=len
+  // iovec at memory[0]: { buf_ptr: i32, buf_len: i32 }
+  // nwritten at memory[8]
+  const body: Instr[] = [
+    // Store ptr at memory[0] (iovec.buf)
+    { op: "i32.const", value: 0 } as Instr,
+    { op: "local.get", index: 0 } as Instr,
+    { op: "i32.store", align: 2, offset: 0 } as Instr,
+    // Store len at memory[4] (iovec.buf_len)
+    { op: "i32.const", value: 4 } as Instr,
+    { op: "local.get", index: 1 } as Instr,
+    { op: "i32.store", align: 2, offset: 0 } as Instr,
+    // Call fd_write(fd=1, iovs=0, iovs_len=1, nwritten=8)
+    { op: "i32.const", value: 1 } as Instr,   // fd = stdout
+    { op: "i32.const", value: 0 } as Instr,   // iovs pointer
+    { op: "i32.const", value: 1 } as Instr,   // iovs_len = 1
+    { op: "i32.const", value: 8 } as Instr,   // nwritten pointer
+    { op: "call", funcIdx: ctx.wasiFdWriteIdx } as Instr,
+    { op: "drop" } as Instr,  // drop the return value (errno)
+  ];
+
+  ctx.mod.functions.push({
+    name: "__wasi_write_string",
+    typeIdx: funcTypeIdx,
+    locals: [],
+    body,
+    exported: false,
+  });
 }
 
 /** Scan source for .toString() / .toFixed() on number types and register needed imports */
