@@ -253,6 +253,8 @@ export interface CodegenContext {
   inlinableFunctions: Map<string, InlinableFunctionInfo>;
   /** Global index of the __symbol_counter (mutable i32, starts at 100). -1 if not yet registered. */
   symbolCounterGlobalIdx: number;
+  /** Hash-based lookup for anonymous struct deduplication: fields hash key → struct name */
+  anonStructHash: Map<string, string>;
 }
 
 /** Metadata for a function eligible for call-site inlining */
@@ -452,6 +454,7 @@ export function generateModule(
     pendingInitBody: null,
     inlinableFunctions: new Map(),
     symbolCounterGlobalIdx: -1,
+    anonStructHash: new Map(),
   };
 
   // Register native string types if fast mode
@@ -676,6 +679,7 @@ export function generateMultiModule(
     pendingInitBody: null,
     inlinableFunctions: new Map(),
     symbolCounterGlobalIdx: -1,
+    anonStructHash: new Map(),
   };
 
   // Register native string types if fast mode
@@ -6741,6 +6745,23 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type): ValType {
 }
 
 /**
+ * Compute a hash key for a list of struct fields (for O(1) structural dedup).
+ * The key encodes field names, type kinds, and typeIdx for ref/ref_null types.
+ */
+function fieldsHashKey(fields: FieldDef[]): string {
+  const parts: string[] = [];
+  for (const f of fields) {
+    const t = f.type;
+    if (t.kind === "ref" || t.kind === "ref_null") {
+      parts.push(`${f.name}:${t.kind}:${(t as { typeIdx: number }).typeIdx}`);
+    } else {
+      parts.push(`${f.name}:${t.kind}`);
+    }
+  }
+  return parts.join("|");
+}
+
+/**
  * Ensure a ts.Type that's an object type is registered as a struct.
  * For named types already in structMap, this is a no-op.
  * For anonymous types, auto-registers them with a generated name.
@@ -6786,23 +6807,14 @@ export function ensureStructForType(ctx: CodegenContext, tsType: ts.Type): void 
     fields.push({ name: prop.name, type: wasmType, mutable: true });
   }
 
-  // Structural dedup: check if an existing anonymous struct has the exact same fields.
+  // Structural dedup: O(1) hash-based lookup for matching anonymous struct fields.
   // This avoids creating duplicate struct types for the same shape when TS returns
   // different ts.Type objects (e.g. variable type vs. initializer type).
-  for (const [existingName, existingFields] of ctx.structFields) {
-    if (!existingName.startsWith("__anon_")) continue;
-    if (existingFields.length !== fields.length) continue;
-    const match = existingFields.every((ef, i) => {
-      const nf = fields[i]!;
-      if (ef.name !== nf.name || ef.type.kind !== nf.type.kind) return false;
-      if ((ef.type.kind === "ref" || ef.type.kind === "ref_null") &&
-          (ef.type as { typeIdx: number }).typeIdx !== (nf.type as { typeIdx: number }).typeIdx) return false;
-      return true;
-    });
-    if (match) {
-      ctx.anonTypeMap.set(tsType, existingName);
-      return;
-    }
+  const hashKey = fieldsHashKey(fields);
+  const existingName = ctx.anonStructHash.get(hashKey);
+  if (existingName) {
+    ctx.anonTypeMap.set(tsType, existingName);
+    return;
   }
 
   const structName = `__anon_${ctx.anonTypeCounter++}`;
@@ -6814,6 +6826,7 @@ export function ensureStructForType(ctx: CodegenContext, tsType: ts.Type): void 
   } as StructTypeDef);
   ctx.structMap.set(structName, typeIdx);
   ctx.structFields.set(structName, fields);
+  ctx.anonStructHash.set(hashKey, structName);
   ctx.anonTypeMap.set(tsType, structName);
 
   // Pre-register placeholder functions for callable properties (methods).
