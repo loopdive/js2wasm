@@ -613,6 +613,7 @@ const DOWNGRADE_DIAG_CODES = new Set([
   2362, // "The left-hand side of an arithmetic operation must be..."
   2365, // "Operator 'X' cannot be applied to types 'Y' and 'Z'"
   18050, // "The value 'null'/'undefined' cannot be used here"
+  2698, // "Spread types may only be created from object types" — codegen handles spread generically (#536)
   2872, // "This kind of expression is always truthy"
   2873, // "This kind of expression is always falsy"
   2363, // "The right-hand side of an arithmetic operation must be..."
