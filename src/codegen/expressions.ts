@@ -13398,6 +13398,87 @@ function compileNewExpression(
     return { kind: "externref" };
   }
 
+  // new Uint8Array(n), new Int32Array(n), new Float64Array(n), etc. → vec struct with f64 elements
+  {
+    const TYPED_ARRAY_CTORS = new Set([
+      "Int8Array", "Uint8Array", "Int16Array", "Uint16Array",
+      "Int32Array", "Uint32Array", "Float32Array", "Float64Array",
+    ]);
+    if (className && TYPED_ARRAY_CTORS.has(className)) {
+      const elemType: ValType = { kind: "f64" };
+      const vecTypeIdx = getOrRegisterVecType(ctx, "f64", elemType);
+      const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
+      const args = expr.arguments ?? [];
+
+      if (args.length === 0) {
+        // new Uint8Array() → empty array
+        fctx.body.push({ op: "i32.const", value: 0 });
+        fctx.body.push({ op: "i32.const", value: 0 });
+        fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx });
+        fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
+      } else {
+        // new Uint8Array(n) → array of size n, all zeros
+        compileExpression(ctx, fctx, args[0]!, { kind: "f64" });
+        fctx.body.push({ op: "i32.trunc_sat_f64_s" });
+        const sizeLocal = allocLocal(fctx, `__ta_size_${fctx.locals.length}`, { kind: "i32" });
+        fctx.body.push({ op: "local.tee", index: sizeLocal });
+        fctx.body.push({ op: "local.get", index: sizeLocal });
+        fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx });
+        fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
+      }
+      return { kind: "ref_null", typeIdx: vecTypeIdx };
+    }
+  }
+
+  // new ArrayBuffer(byteLength) → vec struct with i32 elements (1 byte per element)
+  if (className === "ArrayBuffer") {
+    const elemType: ValType = { kind: "i32" };
+    const vecTypeIdx = getOrRegisterVecType(ctx, "i32_byte", elemType);
+    const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
+    const args = expr.arguments ?? [];
+
+    if (args.length >= 1) {
+      // new ArrayBuffer(byteLength) → create vec with byteLength elements, all 0
+      compileExpression(ctx, fctx, args[0]!, { kind: "f64" });
+      fctx.body.push({ op: "i32.trunc_sat_f64_s" });
+    } else {
+      fctx.body.push({ op: "i32.const", value: 0 });
+    }
+
+    const sizeLocal = allocLocal(fctx, `__ab_size_${fctx.locals.length}`, { kind: "i32" });
+    fctx.body.push({ op: "local.tee", index: sizeLocal });
+    fctx.body.push({ op: "local.get", index: sizeLocal });
+    fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx });
+    fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
+    return { kind: "ref_null", typeIdx: vecTypeIdx };
+  }
+
+  // new DataView(buffer) → wrap the ArrayBuffer reference (same vec struct)
+  if (className === "DataView") {
+    const elemType: ValType = { kind: "i32" };
+    const vecTypeIdx = getOrRegisterVecType(ctx, "i32_byte", elemType);
+    const args = expr.arguments ?? [];
+    if (args.length >= 1) {
+      // new DataView(buffer) → compile buffer arg, which should be an ArrayBuffer vec ref
+      const resultType = compileExpression(ctx, fctx, args[0]!);
+      // If the result is already the right vec type, return it directly
+      if (resultType && (resultType.kind === "ref" || resultType.kind === "ref_null")) {
+        return resultType;
+      }
+      // If we got a different type (e.g. externref), just return as-is
+      if (resultType) return resultType;
+      return { kind: "ref_null", typeIdx: vecTypeIdx };
+    } else {
+      // No buffer — create empty ArrayBuffer-like vec
+      const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
+      fctx.body.push({ op: "i32.const", value: 0 });
+      fctx.body.push({ op: "i32.const", value: 0 });
+      fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx });
+      fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
+      return { kind: "ref_null", typeIdx: vecTypeIdx };
+    }
+  }
+
   // new Array() / new Array(n) / new Array(a, b, c)
   if (className === "Array") {
     // Use contextual type (from variable declaration) if available, else expression type.
