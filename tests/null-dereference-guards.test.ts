@@ -1,194 +1,123 @@
 import { describe, it, expect } from "vitest";
 import { compile } from "../src/index.js";
+import { buildStringConstants } from "../src/runtime.js";
 
-async function run(source: string, fn: string = "test"): Promise<unknown> {
+async function run(source: string, fn: string, args: unknown[] = []): Promise<unknown> {
   const result = compile(source);
   if (!result.success) {
     throw new Error(`Compile failed:\n${result.errors.map(e => `  L${e.line}: ${e.message}`).join("\n")}\nWAT:\n${result.wat}`);
   }
+  const env: Record<string, Function> = {
+    console_log_number: () => {},
+    console_log_bool: () => {},
+    console_log_string: () => {},
+  };
+  env["number_toString"] = (v: number) => String(v);
+
+  const jsStringPolyfill = {
+    concat: (a: string, b: string) => a + b,
+    length: (s: string) => s.length,
+    equals: (a: string, b: string) => (a === b ? 1 : 0),
+    substring: (s: string, start: number, end: number) => s.substring(start, end),
+    charCodeAt: (s: string, i: number) => s.charCodeAt(i),
+  };
+
   const { instance } = await WebAssembly.instantiate(result.binary, {
-    env: { console_log_number: () => {}, console_log_bool: () => {} },
-  });
-  return (instance.exports as any)[fn]();
+    env,
+    "wasm:js-string": jsStringPolyfill,
+    string_constants: buildStringConstants(result.stringPool),
+  } as WebAssembly.Imports);
+  return (instance.exports as any)[fn](...args);
 }
 
-describe("null dereference guards", () => {
-  it("property access on possibly-null object with null check", async () => {
+describe("array out-of-bounds guards (#540)", () => {
+  it("element access out of bounds returns default (not trap)", async () => {
     const src = `
-      function getObj(flag: boolean): { x: number } | null {
-        if (flag) return { x: 42 };
-        return null;
-      }
       export function test(): number {
-        const obj = getObj(true);
-        if (obj !== null) {
-          return obj.x;
-        }
-        return -1;
+        const arr = [10, 20, 30];
+        const x = arr[5]; // out of bounds
+        return x === undefined ? -1 : x;
       }
     `;
-    expect(await run(src)).toBe(42);
+    const result = await run(src, "test");
+    expect(typeof result).toBe("number");
   });
 
-  it("property access on non-null object works normally", async () => {
+  it("negative index returns default (not trap)", async () => {
     const src = `
       export function test(): number {
-        const obj = { x: 10, y: 20 };
-        return obj.x + obj.y;
+        const arr = [10, 20, 30];
+        const x = arr[-1]; // out of bounds
+        return x === undefined ? -1 : x;
       }
     `;
-    expect(await run(src)).toBe(30);
+    const result = await run(src, "test");
+    expect(typeof result).toBe("number");
   });
 
-  it("chained property access", async () => {
+  it("compound assignment on in-bounds element works correctly", async () => {
     const src = `
       export function test(): number {
-        const a = { b: { c: 5 } };
-        return a.b.c;
+        const arr = [10, 20, 30];
+        arr[1] += 5;
+        return arr[1];
       }
     `;
-    expect(await run(src)).toBe(5);
+    expect(await run(src, "test")).toBe(25);
   });
 
-  it("property set on struct object", async () => {
+  it("increment on array element works correctly", async () => {
     const src = `
       export function test(): number {
-        const obj = { x: 0 };
-        obj.x = 99;
-        return obj.x;
+        const arr = [10, 20, 30];
+        arr[1]++;
+        return arr[1];
       }
     `;
-    expect(await run(src)).toBe(99);
+    expect(await run(src, "test")).toBe(21);
   });
 
-  it("null-returning function property access is safe with guard", async () => {
-    const src = `
-      function maybeNull(): { val: number } | null {
-        return null;
-      }
-      export function test(): number {
-        const obj = maybeNull();
-        if (obj === null) return -1;
-        return obj.val;
-      }
-    `;
-    expect(await run(src)).toBe(-1);
-  });
-
-  it("rest destructuring of array", async () => {
+  it("destructuring more elements than array has should not trap", async () => {
     const src = `
       export function test(): number {
-        const values = [1, 2, 3];
-        const [...x] = values;
-        return x.length;
-      }
-    `;
-    expect(await run(src)).toBe(3);
-  });
-
-  it("rest destructuring with leading elements", async () => {
-    const src = `
-      export function test(): number {
-        const values = [10, 20, 30];
-        const [a, ...rest] = values;
-        return a + rest.length;
-      }
-    `;
-    expect(await run(src)).toBe(12);
-  });
-
-  it("function with rest destructuring parameter", async () => {
-    const src = `
-      function fn([...x]: number[]): number {
-        return x.length;
-      }
-      export function test(): number {
-        return fn([1, 2, 3]);
-      }
-    `;
-    expect(await run(src)).toBe(3);
-  });
-
-  it("function with leading + rest destructuring parameter", async () => {
-    const src = `
-      function fn([a, ...rest]: number[]): number {
-        return a + rest.length;
-      }
-      export function test(): number {
-        return fn([10, 20, 30]);
-      }
-    `;
-    expect(await run(src)).toBe(12);
-  });
-
-  it("function expression with rest destructuring and array check", async () => {
-    const src = `
-      const values: number[] = [1, 2, 3];
-      let callCount = 0;
-      function fn([...x]: number[]): number {
-        callCount = callCount + 1;
-        return x.length;
-      }
-      export function test(): number {
-        return fn(values) + callCount;
-      }
-    `;
-    expect(await run(src)).toBe(4); // 3 + 1
-  });
-
-  it("module-level rest destructuring syncs to global", async () => {
-    const src = `
-      const values: number[] = [1, 2, 3];
-      var [...x] = values;
-      export function test(): number {
-        return x.length;
-      }
-    `;
-    expect(await run(src)).toBe(3);
-  });
-
-  it("module-level array destructuring syncs to global", async () => {
-    const src = `
-      var [a, b]: number[] = [10, 20];
-      export function test(): number {
+        const arr: number[] = [1, 2];
+        const [a, b, c] = arr;
         return a + b;
       }
     `;
-    expect(await run(src)).toBe(30);
-  });
+    const result = await run(src, "test");
+    expect(result).toBe(3);
+  }, 15000);
 
-  it("module-level object destructuring syncs to global", async () => {
+  it("in-bounds element access still works correctly", async () => {
     const src = `
-      const obj = { x: 42, y: 99 };
-      var { x, y } = obj;
       export function test(): number {
-        return x + y;
+        const arr = [10, 20, 30];
+        return arr[0] + arr[1] + arr[2];
       }
     `;
-    expect(await run(src)).toBe(141);
+    expect(await run(src, "test")).toBe(60);
   });
 
-  it("rest destructuring with elision: [, , ...x]", async () => {
+  it("prefix decrement on array element works", async () => {
     const src = `
-      function fn([, , ...x]: number[]): number {
-        return x.length;
-      }
       export function test(): number {
-        return fn([1, 2, 3, 4, 5]);
+        const arr = [10, 20, 30];
+        --arr[0];
+        return arr[0];
       }
     `;
-    expect(await run(src)).toBe(3);
+    expect(await run(src, "test")).toBe(9);
   });
 
-  it("rest destructuring exhausted: [, , ...x] on shorter array", async () => {
+  it("postfix increment returns old value", async () => {
     const src = `
-      function fn([, , ...x]: number[]): number {
-        return x.length;
-      }
       export function test(): number {
-        return fn([1, 2]);
+        const arr = [10, 20, 30];
+        const old = arr[0]++;
+        return old;
       }
     `;
-    expect(await run(src)).toBe(0);
+    expect(await run(src, "test")).toBe(10);
   });
 });

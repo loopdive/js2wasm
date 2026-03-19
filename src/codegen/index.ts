@@ -27,7 +27,7 @@ import type {
   WasmModule,
 } from "../ir/types.js";
 import { createEmptyModule } from "../ir/types.js";
-import { compileExpression, resolveComputedKeyExpression, coerceType, valTypesMatch } from "./expressions.js";
+import { compileExpression, resolveComputedKeyExpression, coerceType, valTypesMatch, emitBoundsCheckedArrayGet } from "./expressions.js";
 import { collectShapes } from "../shape-inference.js";
 import { compileStatement, ensureBindingLocals, hoistFunctionDeclarations } from "./statements.js";
 import { emitInlineMathFunctions } from "./math-helpers.js";
@@ -10145,13 +10145,15 @@ function compileSuperCall(
         fctx.body.push({ op: "local.get", index: vecLocal });
         fctx.body.push({ op: "struct.get", typeIdx: vecType.typeIdx, fieldIdx: 1 });
         fctx.body.push({ op: "local.set", index: dataLocal });
+        const arrDefSpread = ctx.mod.types[arrTypeIdx];
+        const spreadElemType = arrDefSpread && arrDefSpread.kind === "array" ? arrDefSpread.element : { kind: "f64" as const };
         const remaining = assignableParentFields.length - fieldIdx2;
         for (let i = 0; i < remaining; i++) {
           const { fieldIdx } = assignableParentFields[fieldIdx2]!;
           fctx.body.push({ op: "local.get", index: selfLocal });
           fctx.body.push({ op: "local.get", index: dataLocal });
           fctx.body.push({ op: "i32.const", value: i });
-          fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
+          emitBoundsCheckedArrayGet(fctx, arrTypeIdx, spreadElemType);
           fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx });
           fieldIdx2++;
         }
@@ -10845,7 +10847,7 @@ function destructureParamArray(
       fctx.body.push({ op: "local.get", index: paramIdx });
       fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 }); // get data
       fctx.body.push({ op: "i32.const", value: i });
-      fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
+      emitBoundsCheckedArrayGet(fctx, arrTypeIdx, elemType);
       fctx.body.push({ op: "local.set", index: tmpLocal });
       if (ts.isObjectBindingPattern(element.name)) {
         destructureParamObject(ctx, fctx, tmpLocal, element.name, elemType);
@@ -10924,7 +10926,7 @@ function destructureParamArray(
     fctx.body.push({ op: "local.get", index: paramIdx });
     fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 }); // get data
     fctx.body.push({ op: "i32.const", value: i });
-    fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
+    emitBoundsCheckedArrayGet(fctx, arrTypeIdx, elemType);
     fctx.body.push({ op: "local.set", index: localIdx });
   }
 
