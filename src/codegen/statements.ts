@@ -583,6 +583,34 @@ export function ensureBindingLocals(
   }
 }
 
+/**
+ * After destructuring, sync any bound locals that have corresponding module
+ * globals. Destructuring stores values into locals, but module-level variables
+ * need to also be written via global.set so other functions can read them.
+ */
+function syncDestructuredLocalsToGlobals(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  pattern: ts.BindingPattern,
+): void {
+  for (const element of pattern.elements) {
+    if (ts.isOmittedExpression(element)) continue;
+    if (ts.isBindingElement(element)) {
+      if (ts.isIdentifier(element.name)) {
+        const name = element.name.text;
+        const moduleGlobalIdx = ctx.moduleGlobals.get(name);
+        const localIdx = fctx.localMap.get(name);
+        if (moduleGlobalIdx !== undefined && localIdx !== undefined) {
+          fctx.body.push({ op: "local.get", index: localIdx });
+          fctx.body.push({ op: "global.set", index: moduleGlobalIdx });
+        }
+      } else if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
+        syncDestructuredLocalsToGlobals(ctx, fctx, element.name);
+      }
+    }
+  }
+}
+
 function compileObjectDestructuring(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -859,6 +887,9 @@ function compileObjectDestructuring(
   } else {
     fctx.body.push(...destructInstrs);
   }
+
+  // Sync destructured locals to module globals
+  syncDestructuredLocalsToGlobals(ctx, fctx, pattern);
 }
 
 /**
@@ -1367,6 +1398,9 @@ function compileArrayDestructuring(
   } else {
     fctx.body.push(...arrDestructInstrs);
   }
+
+  // Sync destructured locals to module globals
+  syncDestructuredLocalsToGlobals(ctx, fctx, pattern);
 }
 
 /**
