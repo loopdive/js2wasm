@@ -16412,23 +16412,6 @@ function compilePropertyAccess(
             // fields === typeDef.fields (same array ref from structFields map)
             patchStructNewForAddedField(ctx, fctx, structTypeIdx, propWasmType);
             const fieldIdx = fields.length - 1;
-          // Re-check if field already exists (may have been added by a parallel path)
-          let fieldIdx = fields.findIndex((f) => f.name === propName);
-          if (fieldIdx === -1) {
-            const typeDef = ctx.mod.types[structTypeIdx];
-            if (typeDef?.kind === "struct") {
-              // Add the missing field (fields and typeDef.fields may be the
-              // same array, so only push to fields to avoid duplicates)
-              const newField: FieldDef = { name: propName, type: propWasmType, mutable: true };
-              fields.push(newField);
-              if (typeDef.fields !== fields) {
-                typeDef.fields.push(newField);
-              }
-              // Patch existing struct.new instructions to include the new field
-              patchStructNewForDynamicField(ctx, structTypeIdx, propWasmType);
-              fieldIdx = fields.length - 1;
-            }
-          }
           if (fieldIdx !== -1) {
             const fieldType = fields[fieldIdx]!.type;
             const objResult = compileExpression(ctx, fctx, expr.expression);
@@ -16469,6 +16452,7 @@ function compilePropertyAccess(
   // Last resort: emit unreachable (this branch should rarely be hit)
   fctx.body.push({ op: "unreachable" });
   return null;
+}
 }
 
 function compileExternPropertyGet(
