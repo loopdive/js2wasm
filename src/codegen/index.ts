@@ -327,6 +327,8 @@ export interface FunctionContext {
   boxedCaptures?: Map<string, { refCellTypeIdx: number; valType: ValType }>;
   /** Whether this function is a class constructor (for new.target support) */
   isConstructor?: boolean;
+  /** Whether this function is a generator (function*) */
+  isGenerator?: boolean;
   /** Set of variable names that are read-only bindings (e.g. named function expression name) */
   readOnlyBindings?: Set<string>;
   /** Stack of saved body arrays for addUnionImports index shifting */
@@ -11102,6 +11104,7 @@ export function compileClassBodies(
         continueStack: [],
         labelMap: new Map(),
         savedBodies: [],
+        isGenerator: isGeneratorMethod,
       };
 
       // Re-resolve the function type now that all class struct types are registered.
@@ -11830,6 +11833,7 @@ function compileFunctionBody(
     continueStack: [],
     labelMap: new Map(),
     savedBodies: [],
+    isGenerator,
   };
 
   // Register params as locals

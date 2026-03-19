@@ -1537,7 +1537,7 @@ function compileReturnStatement(
 ): void {
   // Inside a generator function, `return` should break out of the body block
   // (not use the wasm `return` opcode, which would skip __create_generator).
-  if (ctx.generatorFunctions.has(fctx.name)) {
+  if (fctx.isGenerator) {
     // If there's a return expression, evaluate it for side effects but discard the value
     if (stmt.expression) {
       const resultType = compileExpression(ctx, fctx, stmt.expression);
@@ -4065,6 +4065,7 @@ function compileNestedFunctionDeclaration(
       continueStack: [],
       labelMap: new Map(),
       savedBodies: [],
+      isGenerator,
     };
     for (let i = 0; i < liftedFctx.params.length; i++) {
       liftedFctx.localMap.set(liftedFctx.params[i]!.name, i);
@@ -4174,6 +4175,7 @@ function compileNestedFunctionDeclaration(
       continueStack: [],
       labelMap: new Map(),
       savedBodies: [],
+      isGenerator,
     };
     for (let i = 0; i < liftedFctx.params.length; i++) {
       liftedFctx.localMap.set(liftedFctx.params[i]!.name, i);
