@@ -232,6 +232,18 @@ export function emitWat(mod: WasmModule): string {
     );
   }
 
+  // Data segments (active, for linear memory)
+  if (mod.dataSegments && mod.dataSegments.length > 0) {
+    for (const seg of mod.dataSegments) {
+      const hexBytes = Array.from(seg.bytes)
+        .map((b) => `\\${b.toString(16).padStart(2, "0")}`)
+        .join("");
+      lines.push(
+        `${indent(1)}(data (i32.const ${seg.offset}) "${hexBytes}")`,
+      );
+    }
+  }
+
   lines.push(")");
   return lines.join("\n");
 }
