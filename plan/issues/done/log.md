@@ -323,3 +323,11 @@
 | 480 | 2026-03-18 | String() indexer in assert -- skip filter already removed by #349 | Dep-driven |
 | 500 | 2026-03-18 | Remove cross-realm skip filter (33 tests) | Dep-driven |
 | 514 | 2026-03-18 | Generator/async-gen 'options is not defined' (~684 CE) | Dep-driven |
+| 515 | 2026-03-18 | Widen non-defaultable ref types to ref_null before emission (~470 CE) | Dep-driven |
+| 519 | 2026-03-18 | Remove stray targetLocal reference in vec-of-vec destructuring (66 CE) | Dep-driven |
+| 522 | 2026-03-18 | Object.keys() accepts non-struct (any/externref) arguments (43 CE) | Dep-driven |
+| 518 | 2026-03-18 | Externref array destructuring fallback (74 CE) | Dep-driven |
+| 524 | 2026-03-18 | Type '{}' missing Function properties — already fixed by TS2739 (40 CE) | Dep-driven |
+| 517 | 2026-03-18 | Callable property calls on class/struct instances (2,164 CE) | Dep-driven |
+| 526 | 2026-03-18 | Null pointer dereference guards in destructuring (129 FAIL) | Dep-driven |
+| 529 | 2026-03-18 | Fix test262 runner path format mismatch (cache/recheck broken) | Dep-driven |
