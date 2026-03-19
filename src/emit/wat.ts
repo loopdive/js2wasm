@@ -114,6 +114,27 @@ function walkBlockTypes(instrs: Instr[], visitor: (bt: BlockType) => void): void
   }
 }
 
+/** Escape a string for WAT text format (inside double quotes).
+ *  Handles backslash, double-quote, and control characters. */
+export function escapeWatString(s: string): string {
+  let out = "";
+  for (let i = 0; i < s.length; i++) {
+    const ch = s.charCodeAt(i);
+    if (ch === 0x5c) out += "\\\\";        // backslash
+    else if (ch === 0x22) out += '\\"';     // double-quote
+    else if (ch === 0x0a) out += "\\n";     // newline
+    else if (ch === 0x0d) out += "\\r";     // carriage return
+    else if (ch === 0x09) out += "\\t";     // tab
+    else if (ch < 0x20 || ch === 0x7f) {
+      // Other control characters — emit as \xx hex escape
+      out += "\\" + ch.toString(16).padStart(2, "0");
+    } else {
+      out += s[i];
+    }
+  }
+  return out;
+}
+
 /** Emit a WAT text representation of the IR module */
 export function emitWat(mod: WasmModule): string {
   const lines: string[] = [];
@@ -138,7 +159,7 @@ export function emitWat(mod: WasmModule): string {
           ? `(global $${imp.name} ${imp.desc.mutable ? `(mut ${formatValType(imp.desc.type)})` : formatValType(imp.desc.type)})`
           : `(table ${imp.desc.min} ${imp.desc.max ?? ""} ${imp.desc.elementType})`;
     lines.push(
-      `${indent(1)}(import "${imp.module}" "${imp.name}" ${desc})`,
+      `${indent(1)}(import "${escapeWatString(imp.module)}" "${escapeWatString(imp.name)}" ${desc})`,
     );
   }
 
@@ -207,7 +228,7 @@ export function emitWat(mod: WasmModule): string {
   // Exports
   for (const exp of mod.exports) {
     lines.push(
-      `${indent(1)}(export "${exp.name}" (${exp.desc.kind} ${exp.desc.index}))`,
+      `${indent(1)}(export "${escapeWatString(exp.name)}" (${exp.desc.kind} ${exp.desc.index}))`,
     );
   }
 
