@@ -114,10 +114,6 @@ function walkBlockTypes(instrs: Instr[], visitor: (bt: BlockType) => void): void
   }
 }
 
-/** Escape a string for use inside WAT double-quoted literals.
- *  Backslashes and double-quotes must be escaped to prevent injection. */
-function escapeWatString(s: string): string {
-  return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 /** Escape a string for WAT text format (inside double quotes).
  *  Handles backslash, double-quote, and control characters. */
 function escapeWatString(s: string): string {
