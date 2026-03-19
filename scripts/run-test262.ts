@@ -371,19 +371,19 @@ for (const [batchName, batchCats] of batches) {
         const source = readFileSync(filePath, "utf-8");
         const meta = parseMeta(source);
 
-        // Handle negative parse tests without worker
-        if (meta.negative && (meta.negative.phase === "parse" || meta.negative.phase === "early")) {
-          // These expect compilation to fail — mark as pass (the TS compiler
-          // will reject most invalid syntax). Full validation in worker if needed.
-        }
-
-        const skipResult = shouldSkip(source, meta, filePath);
-        if (skipResult.skip) {
-          const r = { file: relPath, category, status: "skip" as const, reason: skipResult.reason };
-          allResults.push(r as any);
-          stats.skip++; batchStats.skip++; processed++;
-          buffer.push(JSON.stringify(r));
-          continue;
+        // Negative tests (parse/early/resolution/runtime) bypass shouldSkip
+        // entirely — they are handled specially in the worker (runTest262File).
+        // Skipping them here would prevent the worker from trying to compile
+        // and validate the expected error behavior.
+        if (!meta.negative) {
+          const skipResult = shouldSkip(source, meta, filePath);
+          if (skipResult.skip) {
+            const r = { file: relPath, category, status: "skip" as const, reason: skipResult.reason };
+            allResults.push(r as any);
+            stats.skip++; batchStats.skip++; processed++;
+            buffer.push(JSON.stringify(r));
+            continue;
+          }
         }
 
         // Check persistent cache: (compiler + source) hash

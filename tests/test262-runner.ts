@@ -2067,15 +2067,19 @@ export async function runTest262File(filePath: string, category: string, timeout
     if (negResult) return negResult;
   }
 
-  const filter = shouldSkip(source, meta, filePath);
-  if (filter.skip) {
-    return { file: relPath, category, status: "skip", reason: filter.reason };
-  }
-
-  // For runtime negative tests, we still need to apply skip filters that
-  // apply to the source (e.g. eval, with, etc.) — those were already checked
-  // above. Now compile and run normally, but interpret results differently.
+  // For runtime negative tests, bypass shouldSkip entirely. These tests
+  // expect the code to compile but throw at runtime. Skip filters (eval,
+  // with, etc.) would prevent us from even trying — but we should attempt
+  // compilation and execution. If compilation fails, the existing runtime
+  // negative handler reports compile_error appropriately.
   const isRuntimeNegative = meta.negative?.phase === "runtime";
+
+  if (!isRuntimeNegative) {
+    const filter = shouldSkip(source, meta, filePath);
+    if (filter.skip) {
+      return { file: relPath, category, status: "skip", reason: filter.reason };
+    }
+  }
 
   // Wrap the test
   const wrapped = wrapTest(source, meta);
