@@ -1401,6 +1401,15 @@ function compileExpressionInner(
     return compileClassExpression(ctx, fctx, expr);
   }
 
+  // PrivateIdentifier (e.g., `#x`) — when used as a standalone expression it
+  // typically appears as the LHS of `#x in obj`.  As an expression it has no
+  // runtime value; emit `i32.const 1` (truthy) so the surrounding `in`
+  // operator can proceed.
+  if (ts.isPrivateIdentifier(expr)) {
+    fctx.body.push({ op: "i32.const", value: 1 });
+    return { kind: "i32" };
+  }
+
   // `super` as standalone expression — in remaining contexts, treat as `this` reference.
   // Primary super uses (super.prop, super[expr], super.method(), super()) are handled
   // earlier in their respective access/call compilers.
