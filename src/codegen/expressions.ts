@@ -3008,6 +3008,17 @@ function compileTypeofExpression(
     return compileStringLiteral(ctx, fctx, "object");
   }
 
+  // typeof new.target → "function" inside constructors, "undefined" outside
+  if (ts.isMetaProperty(operand) &&
+      operand.keywordToken === ts.SyntaxKind.NewKeyword &&
+      operand.name.text === "target") {
+    if (fctx.isConstructor) {
+      return compileStringLiteral(ctx, fctx, "function");
+    } else {
+      return compileStringLiteral(ctx, fctx, "undefined");
+    }
+  }
+
   const tsType = ctx.checker.getTypeAtLocation(operand);
 
   // Handle null and undefined before wasm type mapping, since they map
@@ -3553,9 +3564,12 @@ function compileBinaryExpression(
 
     // Resolve the key to a compile-time string if possible.
     // For comma expressions like (x = y, "key"), extract the last element.
+    // For PrivateIdentifier (#field in obj), extract the field name without '#'.
     let staticKey: string | null = null;
     let leftExpr: ts.Expression = expr.left;
-    if (ts.isStringLiteral(leftExpr)) {
+    if (ts.isPrivateIdentifier(leftExpr)) {
+      staticKey = leftExpr.text.startsWith("#") ? leftExpr.text.slice(1) : leftExpr.text;
+    } else if (ts.isStringLiteral(leftExpr)) {
       staticKey = leftExpr.text;
     } else if (ts.isNumericLiteral(leftExpr)) {
       staticKey = leftExpr.text;
