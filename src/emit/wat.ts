@@ -42,7 +42,7 @@ function computeInlineableTypes(mod: WasmModule): Set<number> {
     // Scan instructions for call_indirect, call_ref, and block-type refs
     walkInstrs(f.body, (instr) => {
       if (instr.op === "call_indirect") markNonFunc(instr.typeIdx);
-      if (instr.op === "call_ref") markNonFunc(instr.typeIdx);
+      if (instr.op === "call_ref" || instr.op === "return_call_ref") markNonFunc(instr.typeIdx);
     });
     walkBlockTypes(f.body, (bt) => {
       if (bt.kind === "type") markNonFunc(bt.typeIdx);
@@ -438,6 +438,8 @@ function formatInstr(instr: Instr, _depth: number): string {
       return `br_if ${instr.depth}`;
     case "call":
       return `call ${instr.funcIdx}`;
+    case "return_call":
+      return `return_call ${instr.funcIdx}`;
     case "call_indirect":
       return `call_indirect (type ${instr.typeIdx})`;
     case "struct.new":
@@ -484,6 +486,8 @@ function formatInstr(instr: Instr, _depth: number): string {
       return `ref.func ${instr.funcIdx}`;
     case "call_ref":
       return `call_ref ${instr.typeIdx}`;
+    case "return_call_ref":
+      return `return_call_ref ${instr.typeIdx}`;
     case "throw":
       return `throw ${instr.tagIdx}`;
     case "rethrow":

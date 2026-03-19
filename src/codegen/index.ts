@@ -1213,7 +1213,7 @@ export function addStringImports(ctx: CodegenContext): void {
     }
     function shiftFuncIndices(instrs: Instr[]): void {
       for (const instr of instrs) {
-        if (instr.op === "call" && instr.funcIdx >= importsBefore) {
+        if ((instr.op === "call" || instr.op === "return_call") && instr.funcIdx >= importsBefore) {
           instr.funcIdx += delta;
         }
         if (instr.op === "ref.func" && instr.funcIdx >= importsBefore) {
@@ -6100,7 +6100,7 @@ export function addUnionImports(ctx: CodegenContext): void {
     // Update call instructions in already-compiled function bodies (recursive)
     function shiftFuncIndices(instrs: Instr[]): void {
       for (const instr of instrs) {
-        if (instr.op === "call" && instr.funcIdx >= importsBefore) {
+        if ((instr.op === "call" || instr.op === "return_call") && instr.funcIdx >= importsBefore) {
           instr.funcIdx += delta;
         }
         if (instr.op === "ref.func" && instr.funcIdx >= importsBefore) {
@@ -10703,6 +10703,7 @@ const INLINE_DISALLOWED_OPS = new Set([
   "block", "loop", "if", "br", "br_if", "return",
   "try", "throw", "rethrow", "unreachable",
   "call", "call_ref", "call_indirect",
+  "return_call", "return_call_ref",
   "local.set", "local.tee",
 ]);
 
@@ -11426,7 +11427,7 @@ function collectStringCalls(
   found: Set<number>,
 ): void {
   for (const instr of instrs) {
-    if (instr.op === "call" && strFuncIdxSet.has(instr.funcIdx)) {
+    if ((instr.op === "call" || instr.op === "return_call") && strFuncIdxSet.has(instr.funcIdx)) {
       found.add(instr.funcIdx);
     }
     // Recurse into nested blocks
@@ -11452,7 +11453,7 @@ function replaceStringCalls(
 ): void {
   for (let i = 0; i < instrs.length; i++) {
     const instr = instrs[i]!;
-    if (instr.op === "call" && cacheMap.has(instr.funcIdx)) {
+    if ((instr.op === "call" || instr.op === "return_call") && cacheMap.has(instr.funcIdx)) {
       // Replace in-place: swap the call with a local.get
       const localIdx = cacheMap.get(instr.funcIdx)!;
       (instrs as any)[i] = { op: "local.get", index: localIdx };

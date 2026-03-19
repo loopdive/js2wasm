@@ -1545,6 +1545,20 @@ function compileReturnStatement(
     else if (fctx.returnType.kind === "ref_null") fctx.body.push({ op: "ref.null", typeIdx: fctx.returnType.typeIdx } as unknown as Instr);
     else if (fctx.returnType.kind === "ref") fctx.body.push({ op: "ref.null", typeIdx: fctx.returnType.typeIdx } as unknown as Instr);
   }
+
+  // Tail call optimization: if the last instruction is a call or call_ref,
+  // replace it with return_call / return_call_ref to eliminate stack growth
+  // for recursive and tail-position calls.
+  const lastInstr = fctx.body[fctx.body.length - 1];
+  if (lastInstr && lastInstr.op === "call") {
+    (lastInstr as any).op = "return_call";
+    return; // return_call implicitly returns — no need for explicit return
+  }
+  if (lastInstr && lastInstr.op === "call_ref") {
+    (lastInstr as any).op = "return_call_ref";
+    return; // return_call_ref implicitly returns — no need for explicit return
+  }
+
   fctx.body.push({ op: "return" });
 }
 
