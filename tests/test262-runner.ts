@@ -86,7 +86,8 @@ const UNSUPPORTED_FEATURES = new Set([
   "top-level-await",
   "json-superset", "well-formed-json-stringify",
   "Intl",
-  "tail-call-optimization",
+  // tail-call-optimization: removed (#546) — tests will fail at runtime
+  // (stack overflow without return_call), but shouldn't be hidden as skips.
   // cross-realm: removed (#500) — single-module Wasm has no cross-realm issues;
   // tests fail for unrelated reasons ($262.createRealm API not available)
   "caller",
@@ -468,10 +469,8 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
 
   // (Removed: Boolean(x = 0) and Boolean("") — now handled in codegen)
 
-  // Skip tests checking `this` at module/global scope or with thisArg
-  if (/assert.*\bthis\b/.test(source) && !/function\s+\w|class\s+\w/.test(source)) {
-    return { skip: true, reason: "global/arrow this reference" };
-  }
+  // (Removed: global/arrow this reference skip — #546. Tests may fail at runtime
+  //  but shouldn't crash the compiler.)
 
 
   // Skip tests where arrow function returns undefined (empty body => void)
@@ -487,23 +486,14 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
 
   // (Removed: typeof class expression skip — compiler now resolves typeof on class expressions)
 
-  // Skip tagged template tests that access .raw property or template object identity —
-  // our strings array doesn't have a raw property yet
-  if (/\.raw\b/.test(source) && /`/.test(source)) {
-    return { skip: true, reason: "tagged template with .raw access" };
-  }
-  // Skip tagged template tests that check template object caching/identity
-  if (/templateObject\b|previousObject\b|firstObject\b/.test(source) && /tag\s*`/.test(source)) {
-    return { skip: true, reason: "tagged template object identity check" };
-  }
-  // Skip tagged template tests using IIFE or call expression as tag (not supported)
-  if (/\)\s*`/.test(source) && /function\s*\(/.test(source)) {
-    return { skip: true, reason: "IIFE or call expression as tagged template tag" };
-  }
-  // Skip chained tagged template tests (tag`x``y``z`) — not supported
-  if (/`\s*`/.test(source) && /tag\s*`/.test(source)) {
-    return { skip: true, reason: "chained tagged templates" };
-  }
+  // (Removed: tagged template .raw access skip — #546. Tests may fail at runtime
+  //  but shouldn't crash the compiler.)
+
+  // (Removed: tagged template object identity check skip — #546)
+
+  // (Removed: IIFE or call expression as tagged template tag skip — #546)
+
+  // (Removed: chained tagged templates skip — #546)
 
   // (Removed: typeof member expression skip — compiler now resolves typeof on member
   //  expressions via ctx.checker.getTypeAtLocation(), which works on property accesses)
