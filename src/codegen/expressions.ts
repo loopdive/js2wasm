@@ -4158,6 +4158,19 @@ function compileBinaryExpression(
 
     const eitherIsString = leftIsString || rightIsString;
     if (eitherIsString) {
+      // Ensure both operands are externref before calling equals.
+      // One side might be f64 (e.g. from a mistyped addition like new String("1") + new String("1"))
+      // or i32 (from boolean). Coerce non-externref operands to externref first.
+      if (rightType.kind !== "externref") {
+        coerceType(ctx, fctx, rightType, { kind: "externref" });
+      }
+      if (leftType.kind !== "externref") {
+        const tmpR = allocTempLocal(fctx, { kind: "externref" });
+        fctx.body.push({ op: "local.set", index: tmpR });
+        coerceType(ctx, fctx, leftType, { kind: "externref" });
+        fctx.body.push({ op: "local.get", index: tmpR });
+        releaseTempLocal(fctx, tmpR);
+      }
       addStringImports(ctx);
       const equalsIdx = ctx.funcMap.get("equals");
       if (equalsIdx !== undefined) {
@@ -22669,7 +22682,15 @@ function tryStaticToNumber(ctx: CodegenContext, expr: ts.Expression): number | u
     const right = tryStaticToNumber(ctx, expr.right);
     if (left !== undefined && right !== undefined) {
       switch (expr.operatorToken.kind) {
-        case ts.SyntaxKind.PlusToken: return left + right;
+        case ts.SyntaxKind.PlusToken: {
+          // For +, check if either operand is a string type in TS.
+          // If so, + is string concatenation, not numeric addition,
+          // and we cannot fold to a number.
+          const leftTsType = ctx.checker.getTypeAtLocation(expr.left);
+          const rightTsType = ctx.checker.getTypeAtLocation(expr.right);
+          if (isStringType(leftTsType) || isStringType(rightTsType)) return undefined;
+          return left + right;
+        }
         case ts.SyntaxKind.MinusToken: return left - right;
         case ts.SyntaxKind.AsteriskToken: return left * right;
         case ts.SyntaxKind.SlashToken: return left / right;
