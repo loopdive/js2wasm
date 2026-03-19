@@ -651,8 +651,13 @@ const DOWNGRADE_DIAG_CODES = new Set([
   2464, // "A computed property name must be of type 'string', 'number', 'symbol', or 'any'" — #276
   2488, // "Type must have a '[Symbol.iterator]()' method" — #268
   2489, // "An iterator must have a 'next()' method" — iterator protocol (#153)
+  1103, // "'for await' loops are only allowed within async functions and at the top levels of modules" — #612
+  2504, // "Type must have a '[Symbol.asyncIterator]()' method that returns an async iterator" — #612
+  2519, // "An async iterator must have a 'next()' method" — async iterator protocol (#612)
+  2547, // "The type returned by the 'next()' method of an async iterator must be a promise for a type with a 'value' property" — #612
   2548, // "Type is not an array type or does not have '[Symbol.iterator]()'" — #268
   2549, // "Type is not an array/string type or does not have '[Symbol.iterator]()'" — #268
+  2768, // "The 'next' property of an async iterator must be a method" — #612
   2763, // "Cannot iterate value because the 'next' method expects type X" — for-of iteration (#153)
   2764, // "Cannot iterate value because the 'next' method expects type X (array spread)" — (#153)
   2765, // "Cannot iterate value because the 'next' method expects type X (destructuring)" — (#153)
