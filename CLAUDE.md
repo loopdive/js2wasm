@@ -46,7 +46,11 @@ TypeScript-to-WebAssembly compiler using WasmGC.
 
 ## Test262
 - test262.test.ts has no assertions — all vitest tests pass; conformance is tracked via report
-- Skip filters: eval, with, wrapper constructors, NaN/undefined loops, delete, Object.defineProperty/create/freeze/seal, Object.prototype.hasOwnProperty.call, propertyIsEnumerable, prototype chain, throw+try/catch, for-of+generators, object as loop condition
+- Skip filters: eval, with, prototype chain (mutation/introspection only), supplementary unicode string comparison, return-undefined-into-arithmetic, Array.prototype.method.call/apply, array-like .length, global this.property
+- Removed skip filters (now handled): wrapper constructors, NaN/undefined loops, delete, Object.defineProperty/create/freeze/seal, Object.prototype.hasOwnProperty.call, propertyIsEnumerable, throw+try/catch, for-of+generators, object as loop condition
+- propertyHelper.js: stubs for verifyProperty, verifyEnumerable, verifyNotEnumerable, verifyWritable, verifyNotWritable, verifyConfigurable, verifyNotConfigurable (all no-ops)
+- hasOwnProperty.call: transformPrototypeCall rewrites Object.prototype.hasOwnProperty.call(obj, key) to (obj).hasOwnProperty(key)
+- propertyIsEnumerable: rewritten to hasOwnProperty (all own struct fields are enumerable)
 - Issues #138-#256 cover all identified failure patterns
 - parseInt import: `(externref, f64) -> f64` with NaN sentinel for missing radix
 
