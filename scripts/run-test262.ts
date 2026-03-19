@@ -136,15 +136,39 @@ function runBatch(batch: TestJob[]): Promise<WorkerResult[]> {
       results.push(msg);
     });
 
-    proc.on("exit", () => {
+    // Track spawn/communication errors so exit handler can include details
+    let lastError: string | undefined;
+
+    proc.on("error", (err: Error) => {
+      lastError = err.message;
       if (!done) {
         clearInterval(watchdog);
         done = true;
-        // Report remaining as crashed
         const completed = new Set(results.map(r => r.file));
         for (const job of batch) {
           if (!completed.has(job.relPath)) {
-            results.push({ file: job.relPath, category: job.category, status: "compile_error", error: "worker crashed" });
+            results.push({ file: job.relPath, category: job.category, status: "compile_error", error: `worker error: ${err.message}`.substring(0, 300) });
+          }
+        }
+        resolve(results);
+      }
+    });
+
+    proc.on("exit", (code: number | null, signal: string | null) => {
+      if (!done) {
+        clearInterval(watchdog);
+        done = true;
+        // Build a descriptive error message including exit code/signal
+        const detail = signal
+          ? `worker killed by signal ${signal}`
+          : code !== null && code !== 0
+            ? `worker exited with code ${code}`
+            : "worker exited unexpectedly";
+        const errorMsg = lastError ? `${detail}: ${lastError}`.substring(0, 300) : detail;
+        const completed = new Set(results.map(r => r.file));
+        for (const job of batch) {
+          if (!completed.has(job.relPath)) {
+            results.push({ file: job.relPath, category: job.category, status: "compile_error", error: errorMsg });
           }
         }
         resolve(results);
