@@ -1107,6 +1107,12 @@ function compileExpressionInner(
     return { kind: "externref" };
   }
 
+  // SpreadElement encountered as a standalone expression (e.g. ...arr passed
+  // through a code path that didn't filter spread).  Compile just the operand.
+  if (ts.isSpreadElement(expr as any)) {
+    return compileExpressionInner(ctx, fctx, (expr as any as ts.SpreadElement).expression, hint);
+  }
+
   ctx.errors.push({
     message: `Unsupported expression: ${ts.SyntaxKind[expr.kind]}`,
     line: getLine(expr),
@@ -1331,10 +1337,15 @@ function emitArrowParamDestructuring(
     for (const element of pattern.elements) {
       if (!ts.isBindingElement(element)) continue;
       if (ts.isOmittedExpression(element as any)) continue;
-      const propName = (element.propertyName ?? element.name) as ts.Identifier;
+      const propNameNode = element.propertyName ?? element.name;
       if (!ts.isIdentifier(element.name)) {
         continue;
       }
+      // propName must be an identifier or string literal to extract field name
+      if (!ts.isIdentifier(propNameNode) && !ts.isStringLiteral(propNameNode)) {
+        continue;
+      }
+      const propName = propNameNode as ts.Identifier;
       const localName = element.name.text;
 
       const fieldIdx = fields.findIndex((f) => f.name === propName.text);
@@ -13002,13 +13013,18 @@ function compileIIFE(
   }
 
   // Compile call arguments, matching to declared params; extras are evaluated and dropped
+  // Flatten spread elements on array literals into individual expressions
+  const flatIIFEArgs = flattenCallArgs(expr.arguments) ?? expr.arguments as unknown as ts.Expression[];
   const paramCount = paramTypes.length;
-  for (let i = 0; i < expr.arguments.length; i++) {
+  for (let i = 0; i < flatIIFEArgs.length; i++) {
+    const arg = flatIIFEArgs[i]!;
+    // Skip any remaining spread elements that couldn't be flattened
+    if (ts.isSpreadElement(arg)) continue;
     if (i < paramCount) {
-      compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes[i]);
+      compileExpression(ctx, fctx, arg, paramTypes[i]);
     } else {
       // Extra argument — evaluate for side effects, drop result
-      const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+      const extraType = compileExpression(ctx, fctx, arg);
       if (extraType !== null) {
         fctx.body.push({ op: "drop" });
       }
@@ -13016,7 +13032,7 @@ function compileIIFE(
   }
 
   // Supply defaults for missing params
-  for (let i = expr.arguments.length; i < paramCount; i++) {
+  for (let i = flatIIFEArgs.length; i < paramCount; i++) {
     const pt = paramTypes[i] ?? { kind: "f64" as const };
     if (pt.kind === "f64") fctx.body.push({ op: "f64.const", value: 0 });
     else if (pt.kind === "i32") fctx.body.push({ op: "i32.const", value: 0 });
