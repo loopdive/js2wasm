@@ -7303,6 +7303,12 @@ function compilePropertyLogicalAssignmentExternref(
               fields.push(newField);
               // fields === typeDef.fields (same array ref from structFields map)
               patchStructNewForAddedField(ctx, fctx, typeIdx, propWasmType);
+              const typeDef = ctx.mod.types[typeIdx];
+              if (typeDef?.kind === "struct" && typeDef.fields !== fields) {
+                typeDef.fields.push(newField);
+              }
+              // Patch existing struct.new instructions to include the new field
+              patchStructNewForDynamicField(ctx, typeIdx, propWasmType);
               fieldIdx = fields.length - 1;
             }
           }
@@ -8184,6 +8190,12 @@ function compilePropertyCompoundAssignmentExternref(
               fields.push(newField);
               // fields === typeDef.fields (same array ref from structFields map)
               patchStructNewForAddedField(ctx, fctx, typeIdx, propWasmType);
+              const typeDef = ctx.mod.types[typeIdx];
+              if (typeDef?.kind === "struct" && typeDef.fields !== fields) {
+                typeDef.fields.push(newField);
+              }
+              // Patch existing struct.new instructions to include the new field
+              patchStructNewForDynamicField(ctx, typeIdx, propWasmType);
               fieldIdx = fields.length - 1;
             }
           }
@@ -14720,6 +14732,91 @@ function pushDefaultValue(fctx: FunctionContext, type: ValType): void {
 }
 
 /**
+ * After dynamically adding a field to a struct type, patch all existing
+ * struct.new instructions in compiled function bodies so they push a default
+ * value for the new field. Without this, struct.new expects N values on the
+ * stack but the constructor only pushed N-1.
+ */
+function patchStructNewForDynamicField(
+  ctx: CodegenContext,
+  structTypeIdx: number,
+  newFieldType: ValType,
+): void {
+  // Walk all compiled function bodies and patch struct.new instructions
+  for (const func of ctx.mod.functions) {
+    if (!func.body || func.body.length === 0) continue;
+    patchStructNewInBody(func.body, structTypeIdx, newFieldType);
+  }
+  // Also patch the current function being compiled (if any)
+  if (ctx.currentFunc) {
+    patchStructNewInBody(ctx.currentFunc.body, structTypeIdx, newFieldType);
+    // Also patch saved bodies (from pushBody/popBody pattern)
+    if (ctx.currentFunc.savedBodies) {
+      for (const savedBody of ctx.currentFunc.savedBodies) {
+        patchStructNewInBody(savedBody, structTypeIdx, newFieldType);
+      }
+    }
+  }
+}
+
+/** Recursively patch struct.new instructions in a body (handles nested if/block/loop). */
+function patchStructNewInBody(body: Instr[], structTypeIdx: number, newFieldType: ValType): void {
+  for (let i = 0; i < body.length; i++) {
+    const instr = body[i]!;
+    if (instr.op === "struct.new" && (instr as any).typeIdx === structTypeIdx) {
+      // Insert default value instruction before this struct.new
+      const defaultInstr = defaultValueInstrForType(newFieldType);
+      body.splice(i, 0, ...defaultInstr);
+      i += defaultInstr.length; // skip past inserted instructions
+    }
+    // Recurse into nested blocks
+    if ((instr as any).then) patchStructNewInBody((instr as any).then, structTypeIdx, newFieldType);
+    if ((instr as any).else) patchStructNewInBody((instr as any).else, structTypeIdx, newFieldType);
+    if ((instr as any).body) {
+      // block, loop, try instructions
+      const nestedBody = (instr as any).body;
+      if (Array.isArray(nestedBody)) patchStructNewInBody(nestedBody, structTypeIdx, newFieldType);
+    }
+    if ((instr as any).instrs) {
+      const nestedInstrs = (instr as any).instrs;
+      if (Array.isArray(nestedInstrs)) patchStructNewInBody(nestedInstrs, structTypeIdx, newFieldType);
+    }
+    // try/catch blocks
+    if ((instr as any).catches) {
+      for (const c of (instr as any).catches) {
+        if (Array.isArray(c.body)) patchStructNewInBody(c.body, structTypeIdx, newFieldType);
+      }
+    }
+    if ((instr as any).catchAll) {
+      if (Array.isArray((instr as any).catchAll)) patchStructNewInBody((instr as any).catchAll, structTypeIdx, newFieldType);
+    }
+  }
+}
+
+/** Return instructions that produce a default value for a given type. */
+function defaultValueInstrForType(type: ValType): Instr[] {
+  switch (type.kind) {
+    case "f64":
+      return [{ op: "f64.const", value: 0 } as Instr];
+    case "i32":
+      return [{ op: "i32.const", value: 0 } as Instr];
+    case "externref":
+      return [{ op: "ref.null.extern" } as Instr];
+    case "ref_null":
+      return [{ op: "ref.null", typeIdx: type.typeIdx } as Instr];
+    case "ref":
+      return [
+        { op: "ref.null", typeIdx: type.typeIdx } as Instr,
+        { op: "ref.as_non_null" } as Instr,
+      ];
+    case "eqref":
+      return [{ op: "ref.null.eq" } as unknown as Instr];
+    default:
+      return [{ op: "i32.const", value: 0 } as Instr];
+  }
+}
+
+/**
  * Emit a null-guarded struct.get: if the object ref on the stack is null,
  * push a default value instead of trapping.
  *
@@ -15938,6 +16035,13 @@ function compilePropertyAccess(
         const globalDef = ctx.mod.globals[localGlobalIdx(ctx, globalIdx)];
         return globalDef?.type ?? { kind: "f64" };
       }
+      // ClassName.prototype, ClassName.constructor — these are JS-level
+      // meta-properties that don't map to struct fields. Return a default
+      // value to avoid breaking struct definitions with phantom fields.
+      if (propName === "prototype" || propName === "constructor") {
+        fctx.body.push({ op: "ref.null.extern" } as unknown as Instr);
+        return { kind: "externref" };
+      }
     }
   }
 
@@ -16308,13 +16412,36 @@ function compilePropertyAccess(
             // fields === typeDef.fields (same array ref from structFields map)
             patchStructNewForAddedField(ctx, fctx, structTypeIdx, propWasmType);
             const fieldIdx = fields.length - 1;
+          // Re-check if field already exists (may have been added by a parallel path)
+          let fieldIdx = fields.findIndex((f) => f.name === propName);
+          if (fieldIdx === -1) {
+            const typeDef = ctx.mod.types[structTypeIdx];
+            if (typeDef?.kind === "struct") {
+              // Add the missing field (fields and typeDef.fields may be the
+              // same array, so only push to fields to avoid duplicates)
+              const newField: FieldDef = { name: propName, type: propWasmType, mutable: true };
+              fields.push(newField);
+              if (typeDef.fields !== fields) {
+                typeDef.fields.push(newField);
+              }
+              // Patch existing struct.new instructions to include the new field
+              patchStructNewForDynamicField(ctx, structTypeIdx, propWasmType);
+              fieldIdx = fields.length - 1;
+            }
+          }
+          if (fieldIdx !== -1) {
+            const fieldType = fields[fieldIdx]!.type;
             const objResult = compileExpression(ctx, fctx, expr.expression);
             if (objResult && objResult.kind === "ref_null") {
-              emitNullGuardedStructGet(fctx, objResult, propWasmType, structTypeIdx, fieldIdx);
+              emitNullGuardedStructGet(fctx, objResult, fieldType, structTypeIdx, fieldIdx);
+              if (fieldType.kind === "ref") {
+                return { kind: "ref_null", typeIdx: (fieldType as any).typeIdx };
+              }
+              return fieldType;
             } else {
               fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
             }
-            return propWasmType;
+            return fieldType;
           }
         }
       }
