@@ -1799,6 +1799,7 @@ function compileArrowAsClosure(
   // dispatch when closures are passed as callable parameters (externref).
   let structTypeIdx: number;
   let liftedFuncTypeIdx: number;
+  let liftedParams: ValType[];
   const isNamedFuncExpr = ts.isFunctionExpression(arrow) && arrow.name;
 
   if (captures.length === 0 && !isNamedFuncExpr) {
@@ -1806,6 +1807,10 @@ function compileArrowAsClosure(
     if (wrapperTypes) {
       structTypeIdx = wrapperTypes.structTypeIdx;
       liftedFuncTypeIdx = wrapperTypes.liftedFuncTypeIdx;
+      liftedParams = [
+        { kind: "ref", typeIdx: structTypeIdx },
+        ...arrowParams,
+      ];
     } else {
       // Fallback: create a unique struct type
       const structFields = [
@@ -1817,7 +1822,7 @@ function compileArrowAsClosure(
         name: `${closureName}_struct`,
         fields: structFields,
       });
-      const liftedParams: ValType[] = [
+      liftedParams = [
         { kind: "ref", typeIdx: structTypeIdx },
         ...arrowParams,
       ];
@@ -1873,6 +1878,10 @@ function compileArrowAsClosure(
       // The __self param is (ref $wrapperStruct), and the lifted body will
       // ref.cast to the specific subtype to access captures.
       liftedFuncTypeIdx = wrapperTypes.liftedFuncTypeIdx;
+      liftedParams = [
+        { kind: "ref_null", typeIdx: structTypeIdx },
+        ...arrowParams,
+      ];
     } else {
       ctx.mod.types.push({
         kind: "struct",
@@ -1882,7 +1891,7 @@ function compileArrowAsClosure(
       // 4. Create the lifted function type: (ref_null $closure_struct, ...arrowParams) → results
       // Use ref_null for __self so that var-hoisted variables shadowing the function name
       // (e.g. `var g` inside `function g()`) can be default-initialized to null.
-      const liftedParams: ValType[] = [
+      liftedParams = [
         { kind: "ref_null", typeIdx: structTypeIdx },
         ...arrowParams,
       ];
@@ -12334,7 +12343,7 @@ function compileCallExpression(
 
       // Try array method calls
       {
-        const arrMethodResult = compileArrayMethodCall(ctx, fctx, elemAccess as any, expr, receiverType);
+        const arrMethodResult = compileArrayMethodCall(ctx, fctx, elemAccess, expr, receiverType, methodName);
         if (arrMethodResult !== undefined) return arrMethodResult;
       }
     }
@@ -20548,12 +20557,13 @@ const ARRAY_METHODS = new Set([
 function compileArrayMethodCall(
   ctx: CodegenContext,
   fctx: FunctionContext,
-  propAccess: ts.PropertyAccessExpression,
+  propAccess: ts.PropertyAccessExpression | ts.ElementAccessExpression,
   callExpr: ts.CallExpression,
   receiverType: ts.Type,
+  overrideMethodName?: string,
 ): ValType | null | undefined | typeof VOID_RESULT {
-  const methodName = propAccess.name.text;
-  if (!ARRAY_METHODS.has(methodName)) return undefined;
+  const methodName = overrideMethodName ?? (ts.isPropertyAccessExpression(propAccess) ? propAccess.name.text : undefined);
+  if (!methodName || !ARRAY_METHODS.has(methodName)) return undefined;
 
   const arrInfo = resolveArrayInfo(ctx, receiverType);
   if (!arrInfo) return undefined;
