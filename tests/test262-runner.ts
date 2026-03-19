@@ -282,9 +282,17 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
   //  and the wrapTest transform converts assert.sameValue(typeof X, "Y") to
   //  if (typeof X !== "Y") { __fail = 1; } which the compiler resolves.)
 
-  // Skip tests where `return undefined` flows into arithmetic (fundamentally incompatible)
-  if (/return\s+undefined\b/.test(source) && /[+\-*\/%]/.test(source) && /assert/.test(source)) {
-    return { skip: true, reason: "return undefined into arithmetic" };
+  // Skip tests where `return undefined` flows into arithmetic (fundamentally incompatible).
+  // Only check executable code — strip metadata and comments so that tests whose only
+  // "return undefined" mention is in the description/info block are not falsely skipped.
+  {
+    const bodyForRetUndef = source
+      .replace(/\/\*---[\s\S]*?---\*\//, "")  // strip YAML metadata
+      .replace(/\/\*[\s\S]*?\*\//g, "")        // strip block comments
+      .replace(/\/\/.*$/gm, "");               // strip line comments
+    if (/return\s+undefined\b/.test(bodyForRetUndef) && /[+\-*\/%]/.test(bodyForRetUndef) && /assert/.test(bodyForRetUndef)) {
+      return { skip: true, reason: "return undefined into arithmetic" };
+    }
   }
   // (Removed: void assignment side effects skip — compiler now handles void(x = expr) correctly)
 
@@ -300,11 +308,8 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
 
   // (Removed: value-to-string coercion via + "" — now handled in codegen)
 
-  // Skip Math.round tests that rely on large-number precision edge cases
-  // (floor(x+0.5) diverges from JS Math.round for |x| near 2/EPSILON)
-  if (/Number\.EPSILON/.test(source) && /Math\.round/.test(source)) {
-    return { skip: true, reason: "Math.round large-number precision edge case" };
-  }
+  // (Removed: Math.round large-number precision edge case skip — only 1 test,
+  //  let it fail visibly rather than being hidden)
 
   // (Removed: null/undefined arithmetic/comparison skip — most tests now pass correctly)
 
@@ -324,10 +329,8 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
 
   // (Removed: named function expression reassignment skip — readOnlyBindings now makes name binding immutable)
 
-  // Skip string comparison tests with supplementary plane unicode (surrogate pair edge cases)
-  if (/\\u\{[0-9A-Fa-f]{5,}\}/.test(source) && /[<>]=?/.test(source)) {
-    return { skip: true, reason: "string comparison with supplementary unicode" };
-  }
+  // (Removed: string comparison with supplementary unicode skip — 13 tests,
+  //  let them fail visibly rather than being hidden)
 
   // Skip tests using object property access with dot notation or bracket notation
   // (obj.prop = value, obj['prop']) — we don't support dynamic property access on plain objects
@@ -344,18 +347,12 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
     return { skip: true, reason: "this.property at global scope" };
   }
 
-  // Skip tests using loose equality (==) between object/array references —
-  // our ref → f64 coercion doesn't preserve reference identity semantics
-  if (/\bnew\s+Array\b/.test(source) && /\w+\s*[!=]=\s*\w+/.test(source) && !/\w+\s*[!=]==\s*\w+/.test(source)) {
-    return { skip: true, reason: "loose equality between array references" };
-  }
+  // (Removed: loose equality between array references skip — only 6 tests,
+  //  let them fail visibly rather than being hidden as skips)
 
   // (Removed: object property assignment on empty object skip — most tests now compile and pass)
 
-  // Skip tests with arithmetic on objects or function expressions ({} - {}, +{}, +function(){})
-  if (/[+\-*\/]\s*\{/.test(source) && /isNaN/.test(source) && /\{\}/.test(source)) {
-    return { skip: true, reason: "arithmetic on objects" };
-  }
+  // (Removed: arithmetic on objects skip — only 5 tests, let them fail visibly)
 
   // (Removed: modulo -0 sign preservation skip — tests now pass correctly)
 
@@ -418,14 +415,8 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
     return { skip: true, reason: "rest-destructuring with numeric-key object pattern" };
   }
 
-  // Skip tests that index arrays with loop variables inside string concat
-  // Strip throw statements first to avoid matching error message text
-  {
-    const noThrow = source.replace(/^\s*throw\b.*$/gm, "");
-    if (/base\[\w+\]/.test(noThrow) && /\+\s*"/.test(noThrow) && /new\s+Array/.test(noThrow)) {
-      return { skip: true, reason: "array index with string concat in loop" };
-    }
-  }
+  // (Removed: array index with string concat in loop skip — only 3 tests,
+  //  let them fail visibly rather than being hidden as skips)
 
   // (Removed: unary +/- on null/undefined skip — tryStaticToNumber resolves these at compile time)
 
@@ -474,10 +465,8 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
   }
 
 
-  // Skip tests where arrow function returns undefined (empty body => void)
-  if (/=>\s*\{\s*\}/.test(source) && /assert[._]sameValue\s*\(\s*\w+\s*\(\s*\)\s*,\s*(undefined|void)/.test(source)) {
-    return { skip: true, reason: "arrow returning undefined" };
-  }
+  // (Removed: arrow returning undefined skip — let these tests fail visibly as
+  //  compile_error/runtime_error rather than being hidden as skips)
 
   // Skip tests with catch scope variable shadowing or nested function returns through catch
   if (/catch\s*\(\s*\w+\s*\)/.test(source) && /throw\s+\w+/.test(source) &&
