@@ -4263,13 +4263,26 @@ function compileBinaryExpression(
   }
 
   // ── Any-typed operand dispatch ──
-  // When both operands are `any`, compile without numeric hint and call __any_* helpers
+  // When both operands are `any`, use AnyValue dispatch ONLY for operators that
+  // may have non-numeric semantics (+ can do string concat, equality needs type
+  // awareness). For strictly numeric ops (-, *, /, %, **, comparisons, bitwise),
+  // skip AnyValue and compile with a numeric hint so operands unbox to f64
+  // directly, avoiding the overhead of AnyValue tag dispatch.
   if (ctx.anyValueTypeIdx >= 0) {
     const leftIsAny = (leftTsType.flags & ts.TypeFlags.Any) !== 0;
     const rightIsAny = (rightTsType.flags & ts.TypeFlags.Any) !== 0;
     if (leftIsAny && rightIsAny) {
-      const anyDispatch = compileAnyBinaryDispatch(ctx, fctx, expr, op);
-      if (anyDispatch !== null) return anyDispatch;
+      const isPlusOp = op === ts.SyntaxKind.PlusToken;
+      const isEqualityOp = op === ts.SyntaxKind.EqualsEqualsToken ||
+        op === ts.SyntaxKind.ExclamationEqualsToken ||
+        op === ts.SyntaxKind.EqualsEqualsEqualsToken ||
+        op === ts.SyntaxKind.ExclamationEqualsEqualsToken;
+      // Only dispatch through AnyValue for + (string concat possible) and equality
+      if (isPlusOp || isEqualityOp) {
+        const anyDispatch = compileAnyBinaryDispatch(ctx, fctx, expr, op);
+        if (anyDispatch !== null) return anyDispatch;
+      }
+      // For strictly numeric ops, fall through to compile with numeric hint
     }
   }
 
