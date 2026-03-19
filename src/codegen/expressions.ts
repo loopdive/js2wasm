@@ -163,6 +163,9 @@ function flushLateImportShifts(
   ctx.pendingLateImportShift = null;
   if (added <= 0) return;
   shiftLateImportIndices(ctx, fctx, pending.importsBefore, added);
+}
+
+/**
  * After dynamically adding a field to a struct type, patch all existing
  * struct.new instructions for that type by inserting a default value
  * instruction immediately before each struct.new.  This ensures the
