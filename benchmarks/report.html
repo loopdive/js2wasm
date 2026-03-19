@@ -296,6 +296,16 @@ function groupName(cat) {
   return "Other";
 }
 
+function escapeHtml(str) {
+  if (typeof str !== "string") return str;
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function pct(n, d) { return d > 0 ? Math.round(n / d * 100) : 0; }
 function fmt(ms) {
   if (ms < 0.001) return "<0.001ms";
@@ -372,13 +382,15 @@ function toggleDetail(row, catName, statusFilter) {
     filtered.sort((a, b) => (order[a.status] ?? 4) - (order[b.status] ?? 4));
     for (const f of filtered) {
       const fname = f.file.replace("test/", "");
+      const safeFname = escapeHtml(fname);
+      const safeError = f.error ? escapeHtml(f.error) : "";
       const fileEl = el("div", { className: "detail-file" });
       const statusCls = f.status === "pass" ? "detail-status-pass"
         : f.status === "fail" ? "detail-status-fail" : "detail-status-err";
       fileEl.appendChild(el("span", { className: statusCls, style: { width: "18px", flexShrink: "0" } },
         f.status === "pass" ? "\u2713" : f.status === "fail" ? "\u2717" : "\u26A0"));
-      fileEl.appendChild(el("span", { className: "detail-fname", title: fname }, fname));
-      if (f.error) fileEl.appendChild(el("span", { className: "detail-err", title: f.error }, f.error.split(";")[0]));
+      fileEl.appendChild(el("span", { className: "detail-fname", title: safeFname }, safeFname));
+      if (f.error) fileEl.appendChild(el("span", { className: "detail-err", title: safeError }, safeError.split(";")[0]));
       content.appendChild(fileEl);
     }
   });
