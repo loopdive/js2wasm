@@ -668,6 +668,7 @@ const DOWNGRADE_DIAG_CODES = new Set([
   2556, // "A spread argument must either have a tuple type or be passed to a rest parameter" — valid JS spread (#382)
   2741, // "Property 'X' is missing in type 'Y' but required in type 'Z'" — valid JS object patterns
   2493, // "Tuple type '[]' of length 'N' has no element at index 'M'" — destructuring empty/short tuples (#379)
+  2689, // "Cannot extend an interface 'X'. Did you mean 'implements'?" — Iterator/Generator class patterns (#616)
   2700, // "Rest types may only be created from object types" — object rest on primitives (#379)
   1212, // "Identifier expected. 'X' is a reserved word in strict mode" — valid in sloppy JS (#270)
   1214, // "Identifier expected. 'yield' is a reserved word in strict mode. Modules are automatically in strict mode." — yield as identifier in sloppy JS (#241)
