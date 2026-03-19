@@ -224,6 +224,28 @@ export function compileExpression(
     }
   }
 
+  // Fast-path: null/undefined in struct ref context — emit ref.null with the
+  // correct struct type index instead of ref.null.extern (externref), which would
+  // cause Wasm validation errors ("struct.get expected (ref null N), found ref.null").
+  if (expectedType && (expectedType.kind === "ref_null" || expectedType.kind === "ref")) {
+    let inner: ts.Expression = expr;
+    while (ts.isAsExpression(inner) || ts.isNonNullExpression(inner) || ts.isParenthesizedExpression(inner) || ts.isTypeAssertionExpression(inner)) {
+      inner = ts.isParenthesizedExpression(inner) ? inner.expression :
+              ts.isAsExpression(inner) ? inner.expression :
+              ts.isNonNullExpression(inner) ? inner.expression :
+              (inner as ts.TypeAssertion).expression;
+    }
+    const isNull = inner.kind === ts.SyntaxKind.NullKeyword;
+    const isUndefined = inner.kind === ts.SyntaxKind.UndefinedKeyword ||
+        (ts.isIdentifier(inner) && inner.text === "undefined") ||
+        ts.isOmittedExpression(inner);
+    if (isNull || isUndefined) {
+      const typeIdx = (expectedType as { typeIdx: number }).typeIdx;
+      fctx.body.push({ op: "ref.null", typeIdx } as unknown as Instr);
+      return { kind: "ref_null", typeIdx };
+    }
+  }
+
   // Fast-path: null/undefined/boolean literals in AnyValue context — emit the
   // correct boxing call directly to avoid type mismatches and preserve type tags.
   if (expectedType && isAnyValue(expectedType, ctx)) {
@@ -601,6 +623,18 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
     }
     fctx.body.push({ op: "drop" });
     fctx.body.push({ op: "i64.const", value: 0n });
+    return;
+  }
+  // externref → ref/ref_null: convert externref back to anyref, then cast to target struct type.
+  // Uses any.convert_extern + ref.cast (non-nullable) or ref.cast_null (nullable).
+  if (from.kind === "externref" && (to.kind === "ref" || to.kind === "ref_null")) {
+    const toIdx = (to as { typeIdx: number }).typeIdx;
+    fctx.body.push({ op: "any.convert_extern" } as Instr);
+    if (to.kind === "ref_null") {
+      fctx.body.push({ op: "ref.cast_null", typeIdx: toIdx } as unknown as Instr);
+    } else {
+      fctx.body.push({ op: "ref.cast", typeIdx: toIdx } as unknown as Instr);
+    }
     return;
   }
   // f64 → externref (box number)
