@@ -260,6 +260,8 @@ export interface CodegenContext {
   symbolCounterGlobalIdx: number;
   /** Hash-based lookup for anonymous struct deduplication: fields hash key → struct name */
   anonStructHash: Map<string, string>;
+  /** Pending late import shift: importsBefore value captured when first deferred import was added. */
+  pendingLateImportShift: { importsBefore: number } | null;
 }
 
 /** Metadata for a function eligible for call-site inlining */
@@ -462,6 +464,7 @@ export function generateModule(
     symbolCounterGlobalIdx: -1,
     anonStructHash: new Map(),
     funcTypeCache: new Map(),
+    pendingLateImportShift: null,
   };
 
   // Register native string types if fast mode
@@ -694,6 +697,7 @@ export function generateMultiModule(
     symbolCounterGlobalIdx: -1,
     anonStructHash: new Map(),
     funcTypeCache: new Map(),
+    pendingLateImportShift: null,
   };
 
   // Register native string types if fast mode
