@@ -107,6 +107,10 @@ export interface CodegenContext {
   numImportFuncs: number;
   /** Current function context (set during function compilation) */
   currentFunc: FunctionContext | null;
+  /** Stack of parent function body arrays that need index shifting when addUnionImports runs.
+   *  When entering closure compilation, the parent's body (and savedBodies) are pushed here
+   *  so that addUnionImports can shift call/ref.func indices in those bodies too. */
+  activeParentBodies: Instr[][];
   /** Errors accumulated during codegen */
   errors: { message: string; line: number; column: number; severity?: "error" | "warning" }[];
   /** Registry of external declared classes */
@@ -349,6 +353,39 @@ export function popBody(fctx: FunctionContext, saved: Instr[]): void {
   fctx.body = saved;
 }
 
+/**
+ * Enter nested function compilation (closure, method, getter/setter).
+ * Pushes the current function's body and savedBodies onto ctx.activeParentBodies
+ * so that addUnionImports can shift indices in those bodies if called during
+ * the nested compilation.  Returns a count used by leaveNestedFunc to pop.
+ */
+export function enterNestedFunc(ctx: CodegenContext): number {
+  const parentFctx = ctx.currentFunc;
+  if (!parentFctx) return 0;
+  let pushed = 0;
+  // Push the parent's active body
+  ctx.activeParentBodies.push(parentFctx.body);
+  pushed++;
+  // Push any saved bodies (from body-swap pattern in parent)
+  for (const sb of parentFctx.savedBodies) {
+    if (sb !== parentFctx.body) {
+      ctx.activeParentBodies.push(sb);
+      pushed++;
+    }
+  }
+  return pushed;
+}
+
+/**
+ * Leave nested function compilation.  Pops the entries that were pushed
+ * by the corresponding enterNestedFunc call.
+ */
+export function leaveNestedFunc(ctx: CodegenContext, pushed: number): void {
+  for (let i = 0; i < pushed; i++) {
+    ctx.activeParentBodies.pop();
+  }
+}
+
 /** Options for code generation */
 export interface CodegenResult {
   module: WasmModule;
@@ -380,6 +417,7 @@ export function generateModule(
     structFields: new Map(),
     numImportFuncs: 0,
     currentFunc: null,
+    activeParentBodies: [],
     errors: [],
     externClasses: new Map(),
     funcOptionalParams: new Map(),
@@ -604,6 +642,7 @@ export function generateMultiModule(
     structFields: new Map(),
     numImportFuncs: 0,
     currentFunc: null,
+    activeParentBodies: [],
     errors: [],
     externClasses: new Map(),
     funcOptionalParams: new Map(),
@@ -1184,6 +1223,18 @@ export function addStringImports(ctx: CodegenContext): void {
       if (!alreadyShifted) {
         shiftFuncIndices(curBody);
       }
+      // Shift saved bodies in current function context
+      for (const sb of ctx.currentFunc.savedBodies) {
+        if (sb === curBody) continue;
+        if (ctx.mod.functions.some(f => f.body === sb)) continue;
+        shiftFuncIndices(sb);
+      }
+    }
+    // Shift parent function bodies (same fix as addUnionImports)
+    for (const parentBody of ctx.activeParentBodies) {
+      if (ctx.mod.functions.some(f => f.body === parentBody)) continue;
+      if (ctx.currentFunc && parentBody === ctx.currentFunc.body) continue;
+      shiftFuncIndices(parentBody);
     }
     for (const elem of ctx.mod.elements) {
       if (elem.funcIndices) {
@@ -6051,6 +6102,16 @@ export function addUnionImports(ctx: CodegenContext): void {
         if (ctx.mod.functions.some(f => f.body === sb)) continue;
         shiftFuncIndices(sb);
       }
+    }
+    // Shift parent function bodies that are still being compiled.
+    // When addUnionImports is called during closure/method compilation,
+    // ctx.currentFunc is the closure — but ancestor function bodies
+    // (which already contain call/ref.func instructions) also need shifting.
+    for (const parentBody of ctx.activeParentBodies) {
+      // Skip if already shifted above (in mod.functions or currentFunc)
+      if (ctx.mod.functions.some(f => f.body === parentBody)) continue;
+      if (ctx.currentFunc && parentBody === ctx.currentFunc.body) continue;
+      shiftFuncIndices(parentBody);
     }
     // Update table elements
     for (const elem of ctx.mod.elements) {

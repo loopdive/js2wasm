@@ -34,6 +34,8 @@ import {
   resolveWasmType,
   pushBody,
   popBody,
+  enterNestedFunc,
+  leaveNestedFunc,
 } from "./index.js";
 
 /**
@@ -3763,6 +3765,7 @@ function compileNestedFunctionDeclaration(
     }
 
     const savedFunc = ctx.currentFunc;
+    const nestedPushedStmt = enterNestedFunc(ctx);
     ctx.currentFunc = liftedFctx;
 
     // Emit default-value initialization for parameters with initializers
@@ -3816,6 +3819,7 @@ function compileNestedFunctionDeclaration(
       }
       appendDefaultReturn(liftedFctx, returnType);
     }
+    leaveNestedFunc(ctx, nestedPushedStmt);
     ctx.currentFunc = savedFunc;
 
     const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
@@ -3877,6 +3881,7 @@ function compileNestedFunctionDeclaration(
     }
 
     const savedFunc = ctx.currentFunc;
+    const nestedPushedStmt2 = enterNestedFunc(ctx);
     ctx.currentFunc = liftedFctx;
 
     // Emit default-value initialization for parameters with initializers
@@ -3931,6 +3936,7 @@ function compileNestedFunctionDeclaration(
       }
       appendDefaultReturn(liftedFctx, returnType);
     }
+    leaveNestedFunc(ctx, nestedPushedStmt2);
     ctx.currentFunc = savedFunc;
 
     const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;

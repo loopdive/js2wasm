@@ -1,6 +1,6 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext, ClosureInfo, RestParamInfo } from "./index.js";
-import { allocLocal, allocTempLocal, releaseTempLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers, addStringImports, cacheStringLiterals, addStringConstantGlobal, nextModuleGlobalIdx, getOrRegisterTemplateVecType, pushBody, popBody } from "./index.js";
+import { allocLocal, allocTempLocal, releaseTempLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers, addStringImports, cacheStringLiterals, addStringConstantGlobal, nextModuleGlobalIdx, getOrRegisterTemplateVecType, pushBody, popBody, enterNestedFunc, leaveNestedFunc } from "./index.js";
 import {
   mapTsTypeToWasm,
   isNumberType,
@@ -76,6 +76,12 @@ function shiftLateImportIndices(
     if (sb === curBody) continue;
     if (ctx.mod.functions.some(f => f.body === sb)) continue;
     shiftInstrs(sb);
+  }
+  // Shift parent function bodies (from activeParentBodies stack)
+  for (const parentBody of ctx.activeParentBodies) {
+    if (ctx.mod.functions.some(f => f.body === parentBody)) continue;
+    if (parentBody === curBody) continue;
+    shiftInstrs(parentBody);
   }
   // Shift funcMap entries for defined functions (not import entries).
   // Defined functions had indices >= importsBefore (before the shift) and need
@@ -1871,6 +1877,7 @@ function compileArrowAsClosure(
   }
 
   const savedFunc = ctx.currentFunc;
+  const nestedPushed = enterNestedFunc(ctx);
   ctx.currentFunc = liftedFctx;
 
   // Temporarily register closure info for named function expressions so
@@ -2093,6 +2100,7 @@ function compileArrowAsClosure(
     }
   }
 
+  leaveNestedFunc(ctx, nestedPushed);
   ctx.currentFunc = savedFunc;
 
   // 6. Register the lifted function
@@ -2289,6 +2297,7 @@ function compileArrowAsCallback(
 
   // 5. Compile the callback body
   const savedFunc = ctx.currentFunc;
+  const nestedPushed2 = enterNestedFunc(ctx);
   ctx.currentFunc = cbFctx;
 
   // Emit default-value initialization for simple params with defaults
@@ -2330,6 +2339,7 @@ function compileArrowAsCallback(
     }
   }
 
+  leaveNestedFunc(ctx, nestedPushed2);
   ctx.currentFunc = savedFunc;
 
   // 6. Register and export the callback function
@@ -12209,6 +12219,7 @@ function compileIIFE(
   }
 
   const savedFunc = ctx.currentFunc;
+  const nestedPushed3 = enterNestedFunc(ctx);
   ctx.currentFunc = liftedFctx;
 
   if (ts.isBlock(body)) {
@@ -12236,6 +12247,7 @@ function compileIIFE(
     }
   }
 
+  leaveNestedFunc(ctx, nestedPushed3);
   ctx.currentFunc = savedFunc;
 
   // Register the lifted function
@@ -12996,10 +13008,12 @@ function compileNewFunctionExpression(
 
   // 6. Compile the function body
   const savedFunc = ctx.currentFunc;
+  const nestedPushed4 = enterNestedFunc(ctx);
   ctx.currentFunc = liftedFctx;
   for (const stmt of body.statements) {
     compileStatement(ctx, liftedFctx, stmt);
   }
+  leaveNestedFunc(ctx, nestedPushed4);
   ctx.currentFunc = savedFunc;
 
   // 7. Register the lifted function
@@ -16349,6 +16363,7 @@ function compileObjectLiteralForStruct(
       getterFctx.localMap.set("this", 0);
 
       const savedFunc = ctx.currentFunc;
+      const nestedPushedGetter = enterNestedFunc(ctx);
       ctx.currentFunc = getterFctx;
       if (prop.body) {
         for (const stmt of prop.body.statements) {
@@ -16373,6 +16388,7 @@ function compileObjectLiteralForStruct(
       cacheStringLiterals(ctx, getterFctx);
       getterFunc.locals = getterFctx.locals;
       getterFunc.body = getterFctx.body;
+      leaveNestedFunc(ctx, nestedPushedGetter);
       ctx.currentFunc = savedFunc;
     }
 
@@ -16435,6 +16451,7 @@ function compileObjectLiteralForStruct(
       }
 
       const savedFunc = ctx.currentFunc;
+      const nestedPushedSetter = enterNestedFunc(ctx);
       ctx.currentFunc = setterFctx;
 
       // Emit default-value initialization for setter parameters with initializers (#377)
@@ -16481,6 +16498,7 @@ function compileObjectLiteralForStruct(
       cacheStringLiterals(ctx, setterFctx);
       setterFunc.locals = setterFctx.locals;
       setterFunc.body = setterFctx.body;
+      leaveNestedFunc(ctx, nestedPushedSetter);
       ctx.currentFunc = savedFunc;
     }
 
@@ -16572,6 +16590,7 @@ function compileObjectLiteralForStruct(
       }
 
       const savedFunc = ctx.currentFunc;
+      const nestedPushedMethod = enterNestedFunc(ctx);
       ctx.currentFunc = methodFctx;
 
       // Emit default-value initialization for parameters with initializers
@@ -16637,6 +16656,7 @@ function compileObjectLiteralForStruct(
       cacheStringLiterals(ctx, methodFctx);
       methodFunc.locals = methodFctx.locals;
       methodFunc.body = methodFctx.body;
+      leaveNestedFunc(ctx, nestedPushedMethod);
       ctx.currentFunc = savedFunc;
     }
 
@@ -17102,6 +17122,7 @@ function compileObjectDefineProperty(
         getterFctx.localMap.set("this", 0);
 
         const savedFunc = ctx.currentFunc;
+        const nestedPushedGetter2 = enterNestedFunc(ctx);
         ctx.currentFunc = getterFctx;
 
         if (ts.isArrowFunction(getNode) && !ts.isBlock(getNode.body)) {
@@ -17135,6 +17156,7 @@ function compileObjectDefineProperty(
         cacheStringLiterals(ctx, getterFctx);
         getterFunc.locals = getterFctx.locals;
         getterFunc.body = getterFctx.body;
+        leaveNestedFunc(ctx, nestedPushedGetter2);
         ctx.currentFunc = savedFunc;
       }
     }
@@ -17194,6 +17216,7 @@ function compileObjectDefineProperty(
         }
 
         const savedFunc = ctx.currentFunc;
+        const nestedPushedSetter2 = enterNestedFunc(ctx);
         ctx.currentFunc = setterFctx;
 
         if (ts.isArrowFunction(setNode) && !ts.isBlock(setNode.body)) {
@@ -17210,6 +17233,7 @@ function compileObjectDefineProperty(
         cacheStringLiterals(ctx, setterFctx);
         setterFunc.locals = setterFctx.locals;
         setterFunc.body = setterFctx.body;
+        leaveNestedFunc(ctx, nestedPushedSetter2);
         ctx.currentFunc = savedFunc;
       }
     }
