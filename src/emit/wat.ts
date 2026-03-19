@@ -114,6 +114,12 @@ function walkBlockTypes(instrs: Instr[], visitor: (bt: BlockType) => void): void
   }
 }
 
+/** Escape a string for use inside WAT double-quoted literals.
+ *  Backslashes and double-quotes must be escaped to prevent injection. */
+function escapeWatString(s: string): string {
+  return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
 /** Emit a WAT text representation of the IR module */
 export function emitWat(mod: WasmModule): string {
   const lines: string[] = [];
@@ -138,7 +144,7 @@ export function emitWat(mod: WasmModule): string {
           ? `(global $${imp.name} ${imp.desc.mutable ? `(mut ${formatValType(imp.desc.type)})` : formatValType(imp.desc.type)})`
           : `(table ${imp.desc.min} ${imp.desc.max ?? ""} ${imp.desc.elementType})`;
     lines.push(
-      `${indent(1)}(import "${imp.module}" "${imp.name}" ${desc})`,
+      `${indent(1)}(import "${escapeWatString(imp.module)}" "${escapeWatString(imp.name)}" ${desc})`,
     );
   }
 
@@ -207,7 +213,7 @@ export function emitWat(mod: WasmModule): string {
   // Exports
   for (const exp of mod.exports) {
     lines.push(
-      `${indent(1)}(export "${exp.name}" (${exp.desc.kind} ${exp.desc.index}))`,
+      `${indent(1)}(export "${escapeWatString(exp.name)}" (${exp.desc.kind} ${exp.desc.index}))`,
     );
   }
 
