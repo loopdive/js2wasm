@@ -13,6 +13,7 @@ import {
   isGeneratorType,
   isIteratorResultType,
   isSymbolType,
+  unwrapPromiseType,
 } from "../checker/type-mapper.js";
 import type { Instr, ValType, WasmFunction, FieldDef, StructTypeDef } from "../ir/types.js";
 import { ensureI32Condition } from "./index.js";
@@ -22,6 +23,57 @@ import { ensureTimsortHelper } from "./timsort.js";
 /** Sentinel: expression compiled successfully but produces no value (void) */
 const VOID_RESULT = Symbol("void");
 type InnerResult = ValType | null | typeof VOID_RESULT;
+
+/**
+ * Check if a TS return type is effectively void for Wasm purposes.
+ * For async functions, the TS checker reports `Promise<void>` which is not
+ * caught by `isVoidType`. This helper unwraps Promise types for async
+ * functions before checking.
+ *
+ * Use this instead of bare `isVoidType(retType)` at all call-return-type
+ * resolution points to prevent emitting `drop` on an empty stack.
+ */
+function isEffectivelyVoidReturn(
+  ctx: CodegenContext,
+  retType: ts.Type,
+  funcName?: string,
+): boolean {
+  if (isVoidType(retType)) return true;
+  // For async functions, unwrap Promise<T> and check if T is void
+  if (funcName && ctx.asyncFunctions.has(funcName)) {
+    const unwrapped = unwrapPromiseType(retType, ctx.checker);
+    if (isVoidType(unwrapped)) return true;
+  }
+  return false;
+}
+
+/**
+ * Check if a Wasm function (by index) has a void return type by inspecting
+ * the actual function type in the module. This is the ground truth for whether
+ * a `call` instruction pushes a value onto the stack.
+ */
+function wasmFuncReturnsVoid(ctx: CodegenContext, funcIdx: number): boolean {
+  if (funcIdx < ctx.numImportFuncs) {
+    let importFuncCount = 0;
+    for (const imp of ctx.mod.imports) {
+      if (imp.desc.kind === "func") {
+        if (importFuncCount === funcIdx) {
+          const typeDef = ctx.mod.types[imp.desc.typeIdx];
+          return !typeDef || typeDef.kind !== "func" || typeDef.results.length === 0;
+        }
+        importFuncCount++;
+      }
+    }
+    return true; // not found — assume void to be safe
+  }
+  const localIdx = funcIdx - ctx.numImportFuncs;
+  const func = ctx.mod.functions[localIdx];
+  if (func) {
+    const typeDef = ctx.mod.types[func.typeIdx];
+    return !typeDef || typeDef.kind !== "func" || typeDef.results.length === 0;
+  }
+  return true; // not found — assume void to be safe
+}
 
 /**
  * Shift function indices after a late import addition. This must update all
@@ -253,6 +305,22 @@ export function compileExpression(
       return expectedType;
     }
     return null; // void — no value on stack
+  }
+  // Safety net: if the inner compilation claims a value was produced but the
+  // last instruction is a `call` to a Wasm function with void return, the TS
+  // type was misleading (e.g. async functions returning Promise<void>). Correct
+  // the result to avoid emitting `drop` on an empty stack.
+  if (result !== null && fctx.body.length > bodyLenBefore) {
+    const lastInstr = fctx.body[fctx.body.length - 1];
+    if (lastInstr && (lastInstr as any).op === "call" && (lastInstr as any).funcIdx !== undefined) {
+      if (wasmFuncReturnsVoid(ctx, (lastInstr as any).funcIdx)) {
+        if (expectedType) {
+          pushDefaultValue(fctx, expectedType);
+          return expectedType;
+        }
+        return null;
+      }
+    }
   }
   if (result !== null) {
     // Coerce to expected type if there's a mismatch
@@ -9574,7 +9642,8 @@ function compileCallExpression(
             const sig = ctx.checker.getResolvedSignature(expr);
             if (sig) {
               const retType = ctx.checker.getReturnTypeOfSignature(sig);
-              if (isVoidType(retType)) return VOID_RESULT;
+              if (isEffectivelyVoidReturn(ctx, retType, funcName)) return VOID_RESULT;
+              if (wasmFuncReturnsVoid(ctx, finalFuncIdx)) return VOID_RESULT;
               return resolveWasmType(ctx, retType);
             }
             return { kind: "f64" };
@@ -9638,7 +9707,8 @@ function compileCallExpression(
               const sig = ctx.checker.getResolvedSignature(expr);
               if (sig) {
                 const retType = ctx.checker.getReturnTypeOfSignature(sig);
-                if (isVoidType(retType)) return VOID_RESULT;
+                if (isEffectivelyVoidReturn(ctx, retType, funcName)) return VOID_RESULT;
+                if (wasmFuncReturnsVoid(ctx, finalFuncIdx)) return VOID_RESULT;
                 return resolveWasmType(ctx, retType);
               }
               return { kind: "f64" };
@@ -9682,7 +9752,8 @@ function compileCallExpression(
             const sig = ctx.checker.getResolvedSignature(expr);
             if (sig) {
               const retType = ctx.checker.getReturnTypeOfSignature(sig);
-              if (isVoidType(retType)) return VOID_RESULT;
+              if (isEffectivelyVoidReturn(ctx, retType, funcName)) return VOID_RESULT;
+              if (wasmFuncReturnsVoid(ctx, finalFuncIdx)) return VOID_RESULT;
               return resolveWasmType(ctx, retType);
             }
             return { kind: "f64" };
@@ -9736,7 +9807,8 @@ function compileCallExpression(
             const sig = ctx.checker.getResolvedSignature(expr);
             if (sig) {
               const retType = ctx.checker.getReturnTypeOfSignature(sig);
-              if (isVoidType(retType)) return VOID_RESULT;
+              if (isEffectivelyVoidReturn(ctx, retType, fullName)) return VOID_RESULT;
+              if (wasmFuncReturnsVoid(ctx, finalCallIdx)) return VOID_RESULT;
               return resolveWasmType(ctx, retType);
             }
             return VOID_RESULT;
@@ -10187,7 +10259,8 @@ function compileCallExpression(
           const sig = ctx.checker.getResolvedSignature(expr);
           if (sig) {
             const retType = ctx.checker.getReturnTypeOfSignature(sig);
-            if (isVoidType(retType)) return VOID_RESULT;
+            if (isEffectivelyVoidReturn(ctx, retType, fullName)) return VOID_RESULT;
+            if (wasmFuncReturnsVoid(ctx, finalStaticIdx)) return VOID_RESULT;
             return resolveWasmType(ctx, retType);
           }
           return VOID_RESULT;
@@ -10294,7 +10367,7 @@ function compileCallExpression(
           let callReturnType: ValType | typeof VOID_RESULT = VOID_RESULT;
           if (sig) {
             const retType = ctx.checker.getReturnTypeOfSignature(sig);
-            if (!isVoidType(retType)) callReturnType = resolveWasmType(ctx, retType);
+            if (!isEffectivelyVoidReturn(ctx, retType, fullName)) callReturnType = resolveWasmType(ctx, retType);
           }
           const tmp = allocLocal(fctx, `__ng_recv_${fctx.locals.length}`, recvType);
           fctx.body.push({ op: "local.tee", index: tmp });
@@ -10359,7 +10432,8 @@ function compileCallExpression(
         const sig = ctx.checker.getResolvedSignature(expr);
         if (sig) {
           const retType = ctx.checker.getReturnTypeOfSignature(sig);
-          if (isVoidType(retType)) return VOID_RESULT;
+          if (isEffectivelyVoidReturn(ctx, retType, fullName)) return VOID_RESULT;
+          if (wasmFuncReturnsVoid(ctx, finalMethodIdx)) return VOID_RESULT;
           return resolveWasmType(ctx, retType);
         }
         return VOID_RESULT;
@@ -10382,7 +10456,7 @@ function compileCallExpression(
             let callReturnType: ValType | typeof VOID_RESULT = VOID_RESULT;
             if (sig) {
               const retType = ctx.checker.getReturnTypeOfSignature(sig);
-              if (!isVoidType(retType)) callReturnType = resolveWasmType(ctx, retType);
+              if (!isEffectivelyVoidReturn(ctx, retType, fullName)) callReturnType = resolveWasmType(ctx, retType);
             }
             const tmp = allocLocal(fctx, `__ng_srecv_${fctx.locals.length}`, recvType);
             fctx.body.push({ op: "local.tee", index: tmp });
@@ -10444,7 +10518,8 @@ function compileCallExpression(
           const sig = ctx.checker.getResolvedSignature(expr);
           if (sig) {
             const retType = ctx.checker.getReturnTypeOfSignature(sig);
-            if (isVoidType(retType)) return VOID_RESULT;
+            if (isEffectivelyVoidReturn(ctx, retType, fullName)) return VOID_RESULT;
+            if (wasmFuncReturnsVoid(ctx, finalStructMethodIdx)) return VOID_RESULT;
             return resolveWasmType(ctx, retType);
           }
           return VOID_RESULT;
@@ -11179,7 +11254,10 @@ function compileCallExpression(
     const sig = ctx.checker.getResolvedSignature(expr);
     if (sig) {
       const retType = ctx.checker.getReturnTypeOfSignature(sig);
-      if (isVoidType(retType)) return VOID_RESULT;
+      if (isEffectivelyVoidReturn(ctx, retType, funcName)) return VOID_RESULT;
+      // Safety check: if the Wasm function actually has void return (e.g. async
+      // functions with Promise<void>), the TS type may be misleading
+      if (wasmFuncReturnsVoid(ctx, finalFuncIdx)) return VOID_RESULT;
       return resolveWasmType(ctx, retType);
     }
     return { kind: "f64" };
@@ -11379,7 +11457,8 @@ function compileCallExpression(
           const sig = ctx.checker.getResolvedSignature(expr);
           if (sig) {
             const retType = ctx.checker.getReturnTypeOfSignature(sig);
-            if (isVoidType(retType)) return VOID_RESULT;
+            if (isEffectivelyVoidReturn(ctx, retType, fullName)) return VOID_RESULT;
+            if (wasmFuncReturnsVoid(ctx, funcIdx)) return VOID_RESULT;
             return resolveWasmType(ctx, retType);
           }
           return VOID_RESULT;
@@ -11399,7 +11478,7 @@ function compileCallExpression(
             let callReturnType: ValType | typeof VOID_RESULT = VOID_RESULT;
             if (sig) {
               const retType = ctx.checker.getReturnTypeOfSignature(sig);
-              if (!isVoidType(retType)) callReturnType = resolveWasmType(ctx, retType);
+              if (!isEffectivelyVoidReturn(ctx, retType, fullName)) callReturnType = resolveWasmType(ctx, retType);
             }
             const tmp = allocLocal(fctx, `__ng_ea_recv_${fctx.locals.length}`, recvType);
             fctx.body.push({ op: "local.tee", index: tmp });
@@ -11457,7 +11536,8 @@ function compileCallExpression(
           const sig = ctx.checker.getResolvedSignature(expr);
           if (sig) {
             const retType = ctx.checker.getReturnTypeOfSignature(sig);
-            if (isVoidType(retType)) return VOID_RESULT;
+            if (isEffectivelyVoidReturn(ctx, retType, fullName)) return VOID_RESULT;
+            if (wasmFuncReturnsVoid(ctx, funcIdx)) return VOID_RESULT;
             return resolveWasmType(ctx, retType);
           }
           return VOID_RESULT;
@@ -11485,7 +11565,8 @@ function compileCallExpression(
             const sig = ctx.checker.getResolvedSignature(expr);
             if (sig) {
               const retType = ctx.checker.getReturnTypeOfSignature(sig);
-              if (isVoidType(retType)) return VOID_RESULT;
+              if (isEffectivelyVoidReturn(ctx, retType, fullName)) return VOID_RESULT;
+              if (wasmFuncReturnsVoid(ctx, funcIdx)) return VOID_RESULT;
               return resolveWasmType(ctx, retType);
             }
             return VOID_RESULT;
@@ -11620,7 +11701,8 @@ function compileCallExpression(
           const sig = ctx.checker.getResolvedSignature(expr);
           if (sig) {
             const retType = ctx.checker.getReturnTypeOfSignature(sig);
-            if (isVoidType(retType)) return VOID_RESULT;
+            if (isEffectivelyVoidReturn(ctx, retType, funcName)) return VOID_RESULT;
+            if (wasmFuncReturnsVoid(ctx, finalFuncIdx)) return VOID_RESULT;
             return resolveWasmType(ctx, retType);
           }
           return { kind: "f64" };
@@ -11665,7 +11747,8 @@ function compileCallExpression(
             const sig = ctx.checker.getResolvedSignature(expr);
             if (sig) {
               const retType = ctx.checker.getReturnTypeOfSignature(sig);
-              if (isVoidType(retType)) return VOID_RESULT;
+              if (isEffectivelyVoidReturn(ctx, retType, fullName)) return VOID_RESULT;
+              if (wasmFuncReturnsVoid(ctx, finalCallIdx)) return VOID_RESULT;
               return resolveWasmType(ctx, retType);
             }
             return VOID_RESULT;
@@ -11955,7 +12038,8 @@ function compileConditionalCallee(
         const branchSigs = branchType.getCallSignatures?.();
         if (branchSigs && branchSigs.length > 0) {
           const retType = ctx.checker.getReturnTypeOfSignature(branchSigs[0]!);
-          if (isVoidType(retType)) return VOID_RESULT;
+          if (isEffectivelyVoidReturn(ctx, retType, funcName)) return VOID_RESULT;
+          if (wasmFuncReturnsVoid(ctx, finalFuncIdx)) return VOID_RESULT;
           return resolveWasmType(ctx, retType);
         }
         return callRetType ?? { kind: "f64" };
@@ -12379,7 +12463,8 @@ function compileSuperMethodCall(
   const sig = ctx.checker.getResolvedSignature(expr);
   if (sig) {
     const retType = ctx.checker.getReturnTypeOfSignature(sig);
-    if (isVoidType(retType)) return null;
+    if (isEffectivelyVoidReturn(ctx, retType, resolvedName)) return null;
+    if (wasmFuncReturnsVoid(ctx, finalSuperIdx)) return null;
     return resolveWasmType(ctx, retType);
   }
   return null;
@@ -12448,7 +12533,8 @@ function compileSuperElementMethodCall(
   const sig = ctx.checker.getResolvedSignature(expr);
   if (sig) {
     const retType = ctx.checker.getReturnTypeOfSignature(sig);
-    if (isVoidType(retType)) return VOID_RESULT;
+    if (isEffectivelyVoidReturn(ctx, retType, resolvedName)) return VOID_RESULT;
+    if (wasmFuncReturnsVoid(ctx, finalSuperIdx)) return VOID_RESULT;
     return resolveWasmType(ctx, retType);
   }
   return VOID_RESULT;
@@ -14427,7 +14513,7 @@ function compileOptionalCallExpression(
   const sig = ctx.checker.getResolvedSignature(expr);
   if (sig) {
     const retType = ctx.checker.getReturnTypeOfSignature(sig);
-    if (!isVoidType(retType)) callReturnType = resolveWasmType(ctx, retType);
+    if (!isEffectivelyVoidReturn(ctx, retType)) callReturnType = resolveWasmType(ctx, retType);
   }
   // Default result type for the if/else block
   let resultType: ValType = callReturnType === VOID_RESULT
