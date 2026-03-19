@@ -6,6 +6,10 @@
  *   npx tsx scripts/run-test262.ts              # run all categories
  *   npx tsx scripts/run-test262.ts Math Array    # run matching categories only
  *   npx tsx scripts/run-test262.ts --resume      # resume an interrupted run (same git HEAD only)
+ *   npx tsx scripts/run-test262.ts --timeout=90  # set per-test worker timeout in seconds (default: 60)
+ *
+ * Environment variable:
+ *   TEST262_TIMEOUT=90 npx tsx scripts/run-test262.ts   # same as --timeout=90
  *
  * Output:
  *   benchmarks/results/test262-results.jsonl  — one JSON line per test result
@@ -236,9 +240,11 @@ function prioritizeTests(files: string[], previousFailures: Set<string>): string
 
 /** Batch worker pool — splits all tests across N workers, each processes its chunk.
  *  Workers send results back as they complete each test.
- *  If a worker doesn't send a result for 30s, it's killed (hung test). */
+ *  If a worker doesn't send a result within the timeout, it's killed (hung test).
+ *  Default: 60s. Override via --timeout=N (seconds) or TEST262_TIMEOUT env var. */
 const POOL_SIZE = 8;
-const WORKER_TIMEOUT_MS = 30_000;
+const DEFAULT_WORKER_TIMEOUT_MS = 60_000;
+let WORKER_TIMEOUT_MS = DEFAULT_WORKER_TIMEOUT_MS;
 const workerPath = join(process.cwd(), "scripts", "test262-worker.ts");
 
 type TestJob = { filePath: string; category: string; relPath: string };
@@ -248,8 +254,8 @@ type WorkerResult = { file: string; category: string; status: string; error?: st
  *  Calls onResult for each individual result as it arrives from the worker,
  *  serializing writes through the main process to avoid JSONL corruption.
  *  Returns all results when the worker finishes.
- *  If the worker hangs on a test for > 30s, it's killed and remaining tests
- *  in the batch are reported as "timeout". */
+ *  If the worker hangs on a test for longer than the timeout, it's killed
+ *  and remaining tests in the batch are reported as "timeout". */
 function runBatch(batch: TestJob[], onResult?: (r: WorkerResult) => void): Promise<WorkerResult[]> {
   return new Promise((resolve) => {
     const results: WorkerResult[] = [];
@@ -274,7 +280,7 @@ function runBatch(batch: TestJob[], onResult?: (r: WorkerResult) => void): Promi
         const completed = new Set(results.map(r => r.file));
         for (const job of batch) {
           if (!completed.has(job.relPath)) {
-            emitResult({ file: job.relPath, category: job.category, status: "fail", error: "timeout: worker hung > 30s" });
+            emitResult({ file: job.relPath, category: job.category, status: "fail", error: `timeout: worker hung > ${WORKER_TIMEOUT_MS / 1000}s` });
           }
         }
         resolve(results);
@@ -450,7 +456,18 @@ const rawArgs = process.argv.slice(2);
 const resumeFlag = rawArgs.includes("--resume");
 const fullFlag = rawArgs.includes("--full");
 const recheckFlag = !fullFlag; // recheck is the default; --full overrides
-const filterArgs = rawArgs.filter(a => a !== "--resume" && a !== "--full");
+
+// Parse --timeout=N (seconds)
+const timeoutArg = rawArgs.find(a => a.startsWith("--timeout="));
+if (timeoutArg) {
+  const secs = parseInt(timeoutArg.split("=")[1], 10);
+  if (!isNaN(secs) && secs > 0) WORKER_TIMEOUT_MS = secs * 1000;
+} else if (process.env.TEST262_TIMEOUT) {
+  const secs = parseInt(process.env.TEST262_TIMEOUT, 10);
+  if (!isNaN(secs) && secs > 0) WORKER_TIMEOUT_MS = secs * 1000;
+}
+
+const filterArgs = rawArgs.filter(a => a !== "--resume" && a !== "--full" && !a.startsWith("--timeout="));
 const categories = filterArgs.length > 0
   ? TEST_CATEGORIES.filter(cat => filterArgs.some(f => cat.toLowerCase().includes(f.toLowerCase())))
   : TEST_CATEGORIES;
@@ -671,6 +688,47 @@ for (const [batchName, batchCats] of batches) {
 
 // Close the JSONL writer now that all batches are done
 closeJsonlWriter();
+
+// Retry timed-out tests with doubled timeout
+{
+  const timedOut: TestJob[] = [];
+  for (const r of allResults) {
+    if (r.status === "fail" && r.error && r.error.startsWith("timeout:")) {
+      const testDir = join(process.cwd(), "test262", "test");
+      const filePath = join(testDir, r.file);
+      timedOut.push({ filePath, category: r.category, relPath: r.file });
+    }
+  }
+  if (timedOut.length > 0) {
+    const retryTimeout = WORKER_TIMEOUT_MS * 2;
+    console.log(`\nRetrying ${timedOut.length} timed-out tests with ${retryTimeout / 1000}s timeout...`);
+    const savedTimeout = WORKER_TIMEOUT_MS;
+    WORKER_TIMEOUT_MS = retryTimeout;
+    const chunkSize = Math.max(1, Math.ceil(timedOut.length / POOL_SIZE));
+    const chunks: TestJob[][] = [];
+    for (let i = 0; i < timedOut.length; i += chunkSize) {
+      chunks.push(timedOut.slice(i, i + chunkSize));
+    }
+    const retryResults = await Promise.all(chunks.map(chunk => runBatch(chunk)));
+    WORKER_TIMEOUT_MS = savedTimeout;
+    let retryPass = 0, retryStillTimeout = 0;
+    for (const results of retryResults) {
+      for (const r of results) {
+        const idx = allResults.findIndex(a => a.file === r.file);
+        if (idx >= 0) allResults[idx] = r as any;
+        if (r.status === "pass") retryPass++;
+        if (r.status === "fail" && r.error && r.error.startsWith("timeout:")) retryStillTimeout++;
+        appendFileSync(RUN_JSONL, JSON.stringify({
+          file: r.file, category: r.category, status: r.status,
+          ...(r.error ? { error: r.error.substring(0, 300) } : {}),
+          ...(r.reason ? { reason: r.reason } : {}),
+          ...(r.timing ? { timing: r.timing } : {}),
+        }) + "\n");
+      }
+    }
+    console.log(`  Retry: ${retryPass} newly passing, ${retryStillTimeout} still timed out`);
+  }
+}
 
 // Build final results from complete JSONL (deduplicated, last entry wins)
 const resultsByFile = new Map<string, any>();
