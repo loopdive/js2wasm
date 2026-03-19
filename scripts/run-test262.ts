@@ -340,10 +340,16 @@ for (const cat of categories) {
 let processed = 0;
 const previousFailures = loadPreviousFailures();
 if (previousFailures.size > 0) {
-  console.log(`Prioritizing ${previousFailures.size} previously-failed tests first\n`);
+  console.log(`  Retesting ${previousFailures.size} previously-failed tests...\n`);
 }
 
 for (const [batchName, batchCats] of batches) {
+  // Count tests in this batch (before filtering) for progress display
+  let batchTestCount = 0;
+  for (const category of batchCats) batchTestCount += findTestFiles(category).length;
+  const pctStart = total > 0 ? ((processed / total) * 100).toFixed(0) : "0";
+  console.log(`  [${pctStart.padStart(3)}%] ${batchName} (${batchTestCount} tests)...`);
+
   const batchStart = Date.now();
   const batchStats = { pass: 0, fail: 0, skip: 0, compile_error: 0 };
   let buffer: string[] = [];
@@ -449,7 +455,7 @@ for (const [batchName, batchCats] of batches) {
   }
 
   const elapsed = ((Date.now() - batchStart) / 1000).toFixed(1);
-  const pct = ((processed / total) * 100).toFixed(0);
+  const pct = total > 0 ? ((processed / total) * 100).toFixed(0) : "0";
   console.log(
     `  [${pct.padStart(3)}%] ${batchName.padEnd(20)} ` +
     `pass:${String(batchStats.pass).padStart(3)}  fail:${String(batchStats.fail).padStart(2)}  ` +
