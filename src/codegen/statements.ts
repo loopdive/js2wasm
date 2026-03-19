@@ -3698,6 +3698,33 @@ function compileTryStatement(
       exnLocalIdx = allocLocal(fctx, `__catch_destruct_${fctx.locals.length}`, { kind: "externref" });
     }
 
+    // Pre-compile the catch clause body once.  When a finally block exists the
+    // catch body is placed inside an inner try, so we compile at +1 depth.
+    // The resulting instructions are cloned for the catch_all handler.
+    let catchBodyInstrs: Instr[];
+    {
+      const prevBody = fctx.body;
+      fctx.body = [];
+      if (finallyInstrs) {
+        for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!++;
+        for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!++;
+      }
+      for (const s of stmt.catchClause.block.statements) {
+        compileStatement(ctx, fctx, s);
+      }
+      if (finallyInstrs) {
+        for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!--;
+        for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!--;
+      }
+      catchBodyInstrs = fctx.body;
+      fctx.body = prevBody;
+    }
+
+    /** Deep-clone the catch body instructions for reuse in catch_all. */
+    function cloneCatchBody(): Instr[] {
+      return JSON.parse(JSON.stringify(catchBodyInstrs));
+    }
+
     // Build "catch $exn" body: receives the externref value on the stack
     {
       fctx.body = [];
@@ -3711,31 +3738,15 @@ function compileTryStatement(
         // Wrap catch body in inner try/catch_all so that if the catch body
         // throws, the finally block still executes before the exception
         // propagates.
-        const catchSavedBody = fctx.body;
-        fctx.body = [];
-        // The inner try adds one label level for break/continue
-        for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!++;
-        for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!++;
-
-        for (const s of stmt.catchClause.block.statements) {
-          compileStatement(ctx, fctx, s);
-        }
-        const innerTryBody = fctx.body;
-
-        // Build inner catch_all: run finally then rethrow
         const innerCatchAllBody: Instr[] = [
           ...cloneFinally(),
           { op: "rethrow", depth: 0 } as any,
         ];
 
-        for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!--;
-        for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!--;
-
-        fctx.body = catchSavedBody;
         fctx.body.push({
           op: "try",
           blockType: { kind: "empty" },
-          body: innerTryBody,
+          body: catchBodyInstrs,
           catches: [],
           catchAll: innerCatchAllBody,
         } as any);
@@ -3743,9 +3754,7 @@ function compileTryStatement(
         // Finally on normal exit path (no exception in catch body)
         fctx.body.push(...cloneFinally());
       } else {
-        for (const s of stmt.catchClause.block.statements) {
-          compileStatement(ctx, fctx, s);
-        }
+        fctx.body.push(...catchBodyInstrs);
       }
       catches = [{ tagIdx, body: fctx.body }];
     }
@@ -3759,39 +3768,23 @@ function compileTryStatement(
       }
 
       if (finallyInstrs) {
-        // Same wrapping as catch $exn body above
-        const catchAllSavedBody = fctx.body;
-        fctx.body = [];
-        for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!++;
-        for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!++;
-
-        for (const s of stmt.catchClause.block.statements) {
-          compileStatement(ctx, fctx, s);
-        }
-        const innerTryBody = fctx.body;
-
+        // Same wrapping as catch $exn body above, but with cloned catch body
         const innerCatchAllBody: Instr[] = [
           ...cloneFinally(),
           { op: "rethrow", depth: 0 } as any,
         ];
 
-        for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!--;
-        for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!--;
-
-        fctx.body = catchAllSavedBody;
         fctx.body.push({
           op: "try",
           blockType: { kind: "empty" },
-          body: innerTryBody,
+          body: cloneCatchBody(),
           catches: [],
           catchAll: innerCatchAllBody,
         } as any);
 
         fctx.body.push(...cloneFinally());
       } else {
-        for (const s of stmt.catchClause.block.statements) {
-          compileStatement(ctx, fctx, s);
-        }
+        fctx.body.push(...cloneCatchBody());
       }
       catchAllBody = fctx.body;
     }
