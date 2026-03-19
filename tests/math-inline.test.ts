@@ -219,9 +219,66 @@ describe("Inline Math functions (no host imports)", () => {
       expect(Math.abs(e.test())).toBeLessThan(EPSILON);
     });
 
+    it("expm1(NaN) = NaN", async () => {
+      const e = await compileAndRun(`export function test(): number { return Math.expm1(NaN); }`);
+      expect(e.test()).toBeNaN();
+    });
+
+    it("expm1(-Infinity) = -1", async () => {
+      const e = await compileAndRun(`export function test(): number { return Math.expm1(-Infinity); }`);
+      expect(e.test()).toBe(-1);
+    });
+
+    it("expm1(+Infinity) = +Infinity", async () => {
+      const e = await compileAndRun(`export function test(): number { return Math.expm1(Infinity); }`);
+      expect(e.test()).toBe(Infinity);
+    });
+
+    it("expm1(-0) preserves negative zero", async () => {
+      const e = await compileAndRun(`export function test(): number { return 1 / Math.expm1(-0); }`);
+      expect(e.test()).toBe(-Infinity);
+    });
+
+    it("expm1(+0) preserves positive zero", async () => {
+      const e = await compileAndRun(`export function test(): number { return 1 / Math.expm1(0); }`);
+      expect(e.test()).toBe(Infinity);
+    });
+
     it("log1p(0) = 0", async () => {
       const e = await compileAndRun(`export function test(): number { return Math.log1p(0); }`);
       expect(Math.abs(e.test())).toBeLessThan(EPSILON);
+    });
+  });
+
+  describe("Math.atanh special values", () => {
+    it("atanh(NaN) = NaN", async () => {
+      const e = await compileAndRun(`export function test(): number { return Math.atanh(NaN); }`);
+      expect(e.test()).toBeNaN();
+    });
+
+    it("atanh(1) = +Infinity", async () => {
+      const e = await compileAndRun(`export function test(): number { return Math.atanh(1); }`);
+      expect(e.test()).toBe(Infinity);
+    });
+
+    it("atanh(-1) = -Infinity", async () => {
+      const e = await compileAndRun(`export function test(): number { return Math.atanh(-1); }`);
+      expect(e.test()).toBe(-Infinity);
+    });
+
+    it("atanh(2) = NaN (|x| > 1)", async () => {
+      const e = await compileAndRun(`export function test(): number { return Math.atanh(2); }`);
+      expect(e.test()).toBeNaN();
+    });
+
+    it("atanh(-0) preserves negative zero", async () => {
+      const e = await compileAndRun(`export function test(): number { return 1 / Math.atanh(-0); }`);
+      expect(e.test()).toBe(-Infinity);
+    });
+
+    it("atanh(+0) preserves positive zero", async () => {
+      const e = await compileAndRun(`export function test(): number { return 1 / Math.atanh(0); }`);
+      expect(e.test()).toBe(Infinity);
     });
   });
 
