@@ -290,21 +290,13 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
 
   // (Removed: null/undefined arithmetic skip — compiler now handles null/undefined in arithmetic)
 
-  // Skip tests using function expressions assigned to var (var foo = function(){})
-  // inside try/catch — complex scoping we don't support
-  if (/\btry\s*\{[\s\S]*throw\s+\w+[\s\S]*catch[\s\S]*var\s+\w+\s*=\s*function/.test(source)) {
-    return { skip: true, reason: "function expression in catch scope" };
-  }
+  // (Removed: function expression in catch scope skip — try/catch + function expressions now work)
 
   // (Removed: labeled block break skip — now handled in codegen)
 
   // (Removed: value-to-string coercion via + "" — now handled in codegen)
 
-  // Skip Math.round tests that rely on large-number precision edge cases
-  // (floor(x+0.5) diverges from JS Math.round for |x| near 2/EPSILON)
-  if (/Number\.EPSILON/.test(source) && /Math\.round/.test(source)) {
-    return { skip: true, reason: "Math.round large-number precision edge case" };
-  }
+  // (Removed: Math.round large-number precision edge case skip — tests now pass correctly)
 
   // (Removed: null/undefined arithmetic/comparison skip — most tests now pass correctly)
 
@@ -324,10 +316,7 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
 
   // (Removed: named function expression reassignment skip — readOnlyBindings now makes name binding immutable)
 
-  // Skip string comparison tests with supplementary plane unicode (surrogate pair edge cases)
-  if (/\\u\{[0-9A-Fa-f]{5,}\}/.test(source) && /[<>]=?/.test(source)) {
-    return { skip: true, reason: "string comparison with supplementary unicode" };
-  }
+  // (Removed: string comparison with supplementary unicode skip — tests now pass or fail naturally)
 
   // Skip tests using object property access with dot notation or bracket notation
   // (obj.prop = value, obj['prop']) — we don't support dynamic property access on plain objects
@@ -339,23 +328,13 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
 
   // (Removed: dynamic property assignment on empty object skip — shape inference #130 handles this)
 
-  // Skip tests using this.x at global scope (property bag on global object)
-  if (/\bthis\.\w+\s*(!==|===|[+\-]{2})/.test(source) && !/\bclass\b/.test(source) && !/\bfunction\b.*\bthis\./.test(source)) {
-    return { skip: true, reason: "this.property at global scope" };
-  }
+  // (Removed: this.property at global scope skip — tests now compile and fail/pass naturally)
 
-  // Skip tests using loose equality (==) between object/array references —
-  // our ref → f64 coercion doesn't preserve reference identity semantics
-  if (/\bnew\s+Array\b/.test(source) && /\w+\s*[!=]=\s*\w+/.test(source) && !/\w+\s*[!=]==\s*\w+/.test(source)) {
-    return { skip: true, reason: "loose equality between array references" };
-  }
+  // (Removed: loose equality between array references skip — tests now compile and fail naturally)
 
   // (Removed: object property assignment on empty object skip — most tests now compile and pass)
 
-  // Skip tests with arithmetic on objects or function expressions ({} - {}, +{}, +function(){})
-  if (/[+\-*\/]\s*\{/.test(source) && /isNaN/.test(source) && /\{\}/.test(source)) {
-    return { skip: true, reason: "arithmetic on objects" };
-  }
+  // (Removed: arithmetic on objects skip — tests now compile and fail/pass naturally)
 
   // (Removed: modulo -0 sign preservation skip — tests now pass correctly)
 
@@ -418,14 +397,7 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
     return { skip: true, reason: "rest-destructuring with numeric-key object pattern" };
   }
 
-  // Skip tests that index arrays with loop variables inside string concat
-  // Strip throw statements first to avoid matching error message text
-  {
-    const noThrow = source.replace(/^\s*throw\b.*$/gm, "");
-    if (/base\[\w+\]/.test(noThrow) && /\+\s*"/.test(noThrow) && /new\s+Array/.test(noThrow)) {
-      return { skip: true, reason: "array index with string concat in loop" };
-    }
-  }
+  // (Removed: array index with string concat in loop skip — tests now pass or fail naturally)
 
   // (Removed: unary +/- on null/undefined skip — tryStaticToNumber resolves these at compile time)
 
@@ -454,9 +426,19 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
   // Compile-time struct field expansion handles known object types.
   // Edge cases like non-enumerable properties are caught by other skip filters.)
 
-  // Skip JSON.stringify tests with replacer/space args (we only pass one argument)
-  if (/JSON\.stringify\s*\(/.test(source) && /replacer|space/.test(source)) {
-    return { skip: true, reason: "JSON.stringify replacer/space args not supported" };
+  // Skip JSON.stringify tests with replacer/space args (we only pass one argument).
+  // Only match executable code — strip metadata/comments/strings first so tests
+  // whose only "replacer"/"space" mention is in the description are not falsely skipped.
+  {
+    const execCodeJson = source
+      .replace(/\/\*---[\s\S]*?---\*\//, "")  // strip YAML metadata
+      .replace(/\/\/.*$/gm, "")                // strip line comments
+      .replace(/\/\*[\s\S]*?\*\//g, "")         // strip block comments
+      .replace(/"(?:[^"\\]|\\.)*"/g, '""')      // strip double-quoted strings
+      .replace(/'(?:[^'\\]|\\.)*'/g, "''");     // strip single-quoted strings
+    if (/JSON\.stringify\s*\(/.test(execCodeJson) && /\breplacer\b|\bspace\b/.test(execCodeJson)) {
+      return { skip: true, reason: "JSON.stringify replacer/space args not supported" };
+    }
   }
 
   // (Removed: closure-as-value skip — most tests pass now; regex was overly broad,
@@ -468,22 +450,12 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
 
   // (Removed: Boolean(x = 0) and Boolean("") — now handled in codegen)
 
-  // Skip tests checking `this` at module/global scope or with thisArg
-  if (/assert.*\bthis\b/.test(source) && !/function\s+\w|class\s+\w/.test(source)) {
-    return { skip: true, reason: "global/arrow this reference" };
-  }
+  // (Removed: global/arrow this reference skip — tests now compile and fail/pass naturally)
 
 
-  // Skip tests where arrow function returns undefined (empty body => void)
-  if (/=>\s*\{\s*\}/.test(source) && /assert[._]sameValue\s*\(\s*\w+\s*\(\s*\)\s*,\s*(undefined|void)/.test(source)) {
-    return { skip: true, reason: "arrow returning undefined" };
-  }
+  // (Removed: arrow returning undefined skip — compiler now handles empty arrow body correctly)
 
-  // Skip tests with catch scope variable shadowing or nested function returns through catch
-  if (/catch\s*\(\s*\w+\s*\)/.test(source) && /throw\s+\w+/.test(source) &&
-      (/function\s+\w+\s*\(\s*\w+\s*\)/.test(source) || /assert[._]sameValue\s*\(\s*\w+\s*,\s*undefined\b/.test(source))) {
-    return { skip: true, reason: "nested function/catch scope with type mismatch" };
-  }
+  // (Removed: nested function/catch scope with type mismatch skip — exception handling now works correctly)
 
   // (Removed: typeof class expression skip — compiler now resolves typeof on class expressions)
 
