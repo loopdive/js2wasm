@@ -1920,8 +1920,46 @@ function compileArrowAsClosure(
     if (ts.isArrayBindingPattern(param.name)) {
       // Array destructuring: function([a, b, c]) { ... }
       let handled = false;
-      if (paramType.kind === "ref" || paramType.kind === "ref_null") {
-        const typeIdx = paramType.typeIdx;
+
+      // Resolve the vec type — for externref params, try to infer the
+      // concrete array type from TS so we can any.convert_extern + ref.cast.
+      // First try the TS checker, then fall back to the default f64 vec type.
+      let resolvedParamType = paramType;
+      let srcParamIdx = paramIdx;
+      if (paramType.kind === "externref") {
+        // Infer the actual array type from TS checker
+        const tsParamType = ctx.checker.getTypeAtLocation(param);
+        let inferred = resolveWasmType(ctx, tsParamType);
+        // If TS returns externref (e.g. any), fall back to the default f64 vec type
+        if (inferred.kind === "externref") {
+          const elemKey = ctx.fast ? "i32" : "f64";
+          const elemType2: ValType = ctx.fast ? { kind: "i32" } : { kind: "f64" };
+          const vecIdx = getOrRegisterVecType(ctx, elemKey, elemType2);
+          inferred = { kind: "ref_null", typeIdx: vecIdx };
+        }
+        if (inferred.kind === "ref" || inferred.kind === "ref_null") {
+          // Convert externref to the concrete vec type via any.convert_extern + ref.cast
+          const castLocal = allocLocal(liftedFctx, `__cast_arr_${liftedFctx.locals.length}`, { kind: "ref_null", typeIdx: inferred.typeIdx });
+          liftedFctx.body.push({ op: "local.get", index: paramIdx });
+          liftedFctx.body.push({ op: "ref.is_null" } as Instr);
+          liftedFctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: [],
+            else: [
+              { op: "local.get", index: paramIdx } as Instr,
+              { op: "any.convert_extern" } as unknown as Instr,
+              { op: "ref.cast", typeIdx: inferred.typeIdx, nullable: true } as unknown as Instr,
+              { op: "local.set", index: castLocal } as Instr,
+            ],
+          });
+          resolvedParamType = { kind: "ref_null", typeIdx: inferred.typeIdx };
+          srcParamIdx = castLocal;
+        }
+      }
+
+      if (resolvedParamType.kind === "ref" || resolvedParamType.kind === "ref_null") {
+        const typeIdx = resolvedParamType.typeIdx;
         const typeDef = ctx.mod.types[typeIdx];
         if (typeDef && typeDef.kind === "struct") {
           const arrTypeIdx = getArrTypeIdxFromVec(ctx, typeIdx);
@@ -1934,18 +1972,65 @@ function compileArrowAsClosure(
             for (let ei = 0; ei < param.name.elements.length; ei++) {
               const element = param.name.elements[ei]!;
               if (ts.isOmittedExpression(element)) continue;
+              if (!ts.isBindingElement(element)) continue;
+
+              // Handle rest element: function([a, ...rest])
+              if (element.dotDotDotToken && ts.isIdentifier(element.name)) {
+                const restName = element.name.text;
+                const restLenLocal = allocLocal(liftedFctx, `__rest_len_${liftedFctx.locals.length}`, { kind: "i32" });
+                // Compute rest length: max(0, param.length - ei)
+                liftedFctx.body.push({ op: "local.get", index: srcParamIdx });
+                liftedFctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 0 }); // length
+                liftedFctx.body.push({ op: "i32.const", value: ei });
+                liftedFctx.body.push({ op: "i32.sub" } as Instr);
+                liftedFctx.body.push({ op: "local.set", index: restLenLocal });
+                // Clamp to 0 if negative
+                liftedFctx.body.push({ op: "i32.const", value: 0 } as Instr);
+                liftedFctx.body.push({ op: "local.get", index: restLenLocal });
+                liftedFctx.body.push({ op: "local.get", index: restLenLocal });
+                liftedFctx.body.push({ op: "i32.const", value: 0 } as Instr);
+                liftedFctx.body.push({ op: "i32.lt_s" } as Instr);
+                liftedFctx.body.push({ op: "select" } as Instr);
+                liftedFctx.body.push({ op: "local.set", index: restLenLocal });
+
+                // Create new data array
+                const restArrLocal = allocLocal(liftedFctx, `__rest_arr_${liftedFctx.locals.length}`, { kind: "ref", typeIdx: arrTypeIdx });
+                liftedFctx.body.push({ op: "local.get", index: restLenLocal });
+                liftedFctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx } as Instr);
+                liftedFctx.body.push({ op: "local.set", index: restArrLocal });
+
+                // array.copy(restArr, 0, srcData, ei, restLen)
+                liftedFctx.body.push({ op: "local.get", index: restArrLocal });
+                liftedFctx.body.push({ op: "i32.const", value: 0 });
+                liftedFctx.body.push({ op: "local.get", index: srcParamIdx });
+                liftedFctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 }); // src data
+                liftedFctx.body.push({ op: "i32.const", value: ei });
+                liftedFctx.body.push({ op: "local.get", index: restLenLocal });
+                liftedFctx.body.push({ op: "array.copy", dstTypeIdx: arrTypeIdx, srcTypeIdx: arrTypeIdx } as Instr);
+
+                // Create new vec struct: struct.new(restLen, restArr)
+                liftedFctx.body.push({ op: "local.get", index: restLenLocal });
+                liftedFctx.body.push({ op: "local.get", index: restArrLocal });
+                liftedFctx.body.push({ op: "struct.new", typeIdx } as Instr);
+
+                const vecType: ValType = { kind: "ref_null", typeIdx };
+                const restLocal = allocLocal(liftedFctx, restName, vecType);
+                liftedFctx.body.push({ op: "local.set", index: restLocal });
+                continue;
+              }
+
               if (!ts.isIdentifier(element.name)) continue;
               const localName = element.name.text;
               const localIdx = allocLocal(liftedFctx, localName, elemType);
-              liftedFctx.body.push({ op: "local.get", index: paramIdx });
+              liftedFctx.body.push({ op: "local.get", index: srcParamIdx });
               liftedFctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 });
               liftedFctx.body.push({ op: "i32.const", value: ei });
               liftedFctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
               liftedFctx.body.push({ op: "local.set", index: localIdx });
             }
             liftedFctx.body = savedBodyFPAD;
-            if (paramType.kind === "ref_null" && fpadInstrs.length > 0) {
-              liftedFctx.body.push({ op: "local.get", index: paramIdx });
+            if ((resolvedParamType.kind === "ref_null") && fpadInstrs.length > 0) {
+              liftedFctx.body.push({ op: "local.get", index: srcParamIdx });
               liftedFctx.body.push({ op: "ref.is_null" } as Instr);
               liftedFctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: fpadInstrs });
             } else {
