@@ -3612,6 +3612,25 @@ function compileTryStatement(
 ): void {
   const tagIdx = ensureExnTag(ctx);
 
+  // Pre-compile the finally body once so we can clone it into each
+  // control-flow path instead of re-compiling the TS statements 2-5 times.
+  // This avoids duplicating compilation side-effects and reduces code size
+  // variance between insertion points.
+  let finallyInstrs: Instr[] | null = null;
+  if (stmt.finallyBlock) {
+    const savedForFinally = pushBody(fctx);
+    for (const s of stmt.finallyBlock.statements) {
+      compileStatement(ctx, fctx, s);
+    }
+    finallyInstrs = fctx.body;
+    popBody(fctx, savedForFinally);
+  }
+
+  /** Return a deep clone of the pre-compiled finally instructions. */
+  function cloneFinally(): Instr[] {
+    return JSON.parse(JSON.stringify(finallyInstrs!));
+  }
+
   // Compile the try block body
   const savedBody = pushBody(fctx);
 
@@ -3625,10 +3644,8 @@ function compileTryStatement(
   }
 
   // If there's a finally block, inline it at the end of the try body (normal path)
-  if (stmt.finallyBlock) {
-    for (const s of stmt.finallyBlock.statements) {
-      compileStatement(ctx, fctx, s);
-    }
+  if (finallyInstrs) {
+    fctx.body.push(...cloneFinally());
   }
 
   const tryBody = fctx.body;
@@ -3639,11 +3656,9 @@ function compileTryStatement(
 
   // If there's a finally block but no catch clause, we need a catch_all
   // that runs the finally block and then rethrows the exception.
-  if (stmt.finallyBlock && !stmt.catchClause) {
+  if (finallyInstrs && !stmt.catchClause) {
     fctx.body = [];
-    for (const s of stmt.finallyBlock.statements) {
-      compileStatement(ctx, fctx, s);
-    }
+    fctx.body.push(...cloneFinally());
     fctx.body.push({ op: "rethrow", depth: 0 } as any);
     catchAllBody = fctx.body;
   }
@@ -3679,7 +3694,7 @@ function compileTryStatement(
         fctx.body.push({ op: "drop" });
       }
 
-      if (stmt.finallyBlock) {
+      if (finallyInstrs) {
         // Wrap catch body in inner try/catch_all so that if the catch body
         // throws, the finally block still executes before the exception
         // propagates.
@@ -3695,13 +3710,10 @@ function compileTryStatement(
         const innerTryBody = fctx.body;
 
         // Build inner catch_all: run finally then rethrow
-        fctx.body = [];
-        for (const s of stmt.finallyBlock.statements) {
-          compileStatement(ctx, fctx, s);
-        }
-        // rethrow depth 0 = rethrow exception from this catch_all's try
-        fctx.body.push({ op: "rethrow", depth: 0 } as any);
-        const innerCatchAllBody = fctx.body;
+        const innerCatchAllBody: Instr[] = [
+          ...cloneFinally(),
+          { op: "rethrow", depth: 0 } as any,
+        ];
 
         for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!--;
         for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!--;
@@ -3716,9 +3728,7 @@ function compileTryStatement(
         } as any);
 
         // Finally on normal exit path (no exception in catch body)
-        for (const s of stmt.finallyBlock.statements) {
-          compileStatement(ctx, fctx, s);
-        }
+        fctx.body.push(...cloneFinally());
       } else {
         for (const s of stmt.catchClause.block.statements) {
           compileStatement(ctx, fctx, s);
@@ -3735,7 +3745,7 @@ function compileTryStatement(
         fctx.body.push({ op: "local.set", index: exnLocalIdx });
       }
 
-      if (stmt.finallyBlock) {
+      if (finallyInstrs) {
         // Same wrapping as catch $exn body above
         const catchAllSavedBody = fctx.body;
         fctx.body = [];
@@ -3747,12 +3757,10 @@ function compileTryStatement(
         }
         const innerTryBody = fctx.body;
 
-        fctx.body = [];
-        for (const s of stmt.finallyBlock.statements) {
-          compileStatement(ctx, fctx, s);
-        }
-        fctx.body.push({ op: "rethrow", depth: 0 } as any);
-        const innerCatchAllBody = fctx.body;
+        const innerCatchAllBody: Instr[] = [
+          ...cloneFinally(),
+          { op: "rethrow", depth: 0 } as any,
+        ];
 
         for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!--;
         for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!--;
@@ -3766,9 +3774,7 @@ function compileTryStatement(
           catchAll: innerCatchAllBody,
         } as any);
 
-        for (const s of stmt.finallyBlock.statements) {
-          compileStatement(ctx, fctx, s);
-        }
+        fctx.body.push(...cloneFinally());
       } else {
         for (const s of stmt.catchClause.block.statements) {
           compileStatement(ctx, fctx, s);
