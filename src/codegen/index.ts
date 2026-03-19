@@ -7762,7 +7762,12 @@ export function collectClassDeclaration(
         });
       } else {
         const paramType = ctx.checker.getTypeAtLocation(param);
-        ctorParams.push(resolveWasmType(ctx, paramType));
+        let wasmType = resolveWasmType(ctx, paramType);
+        // Parameters with default values may receive null when the caller omits the argument
+        if (param.initializer && wasmType.kind === "ref") {
+          wasmType = { kind: "ref_null", typeIdx: (wasmType as { typeIdx: number }).typeIdx };
+        }
+        ctorParams.push(wasmType);
       }
     }
   }
@@ -7825,7 +7830,14 @@ export function collectClassDeclaration(
         : [{ kind: "ref", typeIdx: structTypeIdx }];
       for (const param of member.parameters) {
         const paramType = ctx.checker.getTypeAtLocation(param);
-        methodParams.push(resolveWasmType(ctx, paramType));
+        let wasmType = resolveWasmType(ctx, paramType);
+        // Parameters with default values may receive null at runtime when
+        // the caller omits the argument.  Use ref_null so pushDefaultValue
+        // can push ref.null without ref.as_non_null (which would trap).
+        if (param.initializer && wasmType.kind === "ref") {
+          wasmType = { kind: "ref_null", typeIdx: (wasmType as { typeIdx: number }).typeIdx };
+        }
+        methodParams.push(wasmType);
       }
 
       const sig = ctx.checker.getSignatureFromDeclaration(member);
@@ -7921,7 +7933,11 @@ export function collectClassDeclaration(
       const setterParams: ValType[] = [{ kind: "ref", typeIdx: structTypeIdx }];
       for (const param of member.parameters) {
         const paramType = ctx.checker.getTypeAtLocation(param);
-        setterParams.push(resolveWasmType(ctx, paramType));
+        let wasmType = resolveWasmType(ctx, paramType);
+        if (param.initializer && wasmType.kind === "ref") {
+          wasmType = { kind: "ref_null", typeIdx: (wasmType as { typeIdx: number }).typeIdx };
+        }
+        setterParams.push(wasmType);
       }
 
       const setterTypeIdx = addFuncType(
@@ -9444,7 +9460,11 @@ export function compileClassBodies(
         const param = ctor.parameters[pi]!;
         const paramName = ts.isIdentifier(param.name) ? param.name.text : `__param${pi}`;
         const paramType = ctx.checker.getTypeAtLocation(param);
-        params.push({ name: paramName, type: resolveWasmType(ctx, paramType) });
+        let wasmType = resolveWasmType(ctx, paramType);
+        if (param.initializer && wasmType.kind === "ref") {
+          wasmType = { kind: "ref_null", typeIdx: (wasmType as { typeIdx: number }).typeIdx };
+        }
+        params.push({ name: paramName, type: wasmType });
       }
     }
 
@@ -9717,7 +9737,11 @@ export function compileClassBodies(
         const param = member.parameters[pi]!;
         const paramName = ts.isIdentifier(param.name) ? param.name.text : `__param${pi}`;
         const paramType = ctx.checker.getTypeAtLocation(param);
-        params.push({ name: paramName, type: resolveWasmType(ctx, paramType) });
+        let wasmType = resolveWasmType(ctx, paramType);
+        if (param.initializer && wasmType.kind === "ref") {
+          wasmType = { kind: "ref_null", typeIdx: (wasmType as { typeIdx: number }).typeIdx };
+        }
+        params.push({ name: paramName, type: wasmType });
       }
 
       const isGeneratorMethod = member.asteriskToken !== undefined;
@@ -9994,7 +10018,11 @@ export function compileClassBodies(
         const param = member.parameters[pi]!;
         const paramName = ts.isIdentifier(param.name) ? param.name.text : `__param${pi}`;
         const paramType = ctx.checker.getTypeAtLocation(param);
-        params.push({ name: paramName, type: resolveWasmType(ctx, paramType) });
+        let wasmType = resolveWasmType(ctx, paramType);
+        if (param.initializer && wasmType.kind === "ref") {
+          wasmType = { kind: "ref_null", typeIdx: (wasmType as { typeIdx: number }).typeIdx };
+        }
+        params.push({ name: paramName, type: wasmType });
       }
 
       const fctx: FunctionContext = {
@@ -10708,6 +10736,29 @@ function destructureParamObject(
     return;
   }
 
+  // Pre-allocate all binding locals so they exist even when param is null
+  for (const element of pattern.elements) {
+    if (!ts.isBindingElement(element)) continue;
+    if (ts.isIdentifier(element.name)) {
+      const propName = (element.propertyName ?? element.name) as ts.Identifier;
+      const fieldIdx = fields.findIndex((f) => f.name === propName.text);
+      const fieldType = fieldIdx !== -1 ? fields[fieldIdx]!.type : resolveWasmType(ctx, ctx.checker.getTypeAtLocation(element));
+      if (!fctx.localMap.has(element.name.text)) {
+        allocLocal(fctx, element.name.text, fieldType);
+      }
+    } else if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
+      ensureBindingLocals(ctx, fctx, element.name);
+    }
+  }
+
+  // Null guard: wrap destructuring in if-not-null for ref_null params
+  const isNullable = paramType.kind === "ref_null";
+  const savedBody = fctx.body;
+  const destructInstrs: Instr[] = [];
+  if (isNullable) {
+    fctx.body = destructInstrs;
+  }
+
   for (const element of pattern.elements) {
     if (!ts.isBindingElement(element)) continue;
     const propName = (element.propertyName ?? element.name) as ts.Identifier;
@@ -10732,17 +10783,25 @@ function destructureParamObject(
     const localName = element.name.text;
     const fieldIdx = fields.findIndex((f) => f.name === propName.text);
     if (fieldIdx === -1) {
-      // Field not in struct — allocate local with default value
-      const elemType = ctx.checker.getTypeAtLocation(element);
-      const wasmType = resolveWasmType(ctx, elemType);
-      allocLocal(fctx, localName, wasmType);
+      // Field not in struct — already pre-allocated above
       continue;
     }
     const fieldType = fields[fieldIdx]!.type;
-    const localIdx = allocLocal(fctx, localName, fieldType);
+    // Use pre-allocated local (don't allocate again)
+    const localIdx = fctx.localMap.get(localName)!;
     fctx.body.push({ op: "local.get", index: paramIdx });
     fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
     fctx.body.push({ op: "local.set", index: localIdx });
+  }
+
+  // Close null guard
+  if (isNullable) {
+    fctx.body = savedBody;
+    if (destructInstrs.length > 0) {
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "ref.is_null" } as Instr);
+      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: destructInstrs });
+    }
   }
 }
 
