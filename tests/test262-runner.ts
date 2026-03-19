@@ -214,6 +214,9 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
       "nans.js",
       "nativeFunctionMatcher.js",
       "asyncHelpers.js",
+      "tcoHelper.js",
+      "deepEqual.js",
+      "compareIterator.js",
     ]);
     for (const inc of meta.includes) {
       if (!allowed.has(inc)) {
@@ -1230,6 +1233,11 @@ export function wrapTest(source: string, meta?: Test262Meta): string {
   // Transform assert.throws(ErrorType, fn) → assert_throws(fn)
   body = transformAssertThrows(body);
 
+  // Transform assert.throwsAsync(ErrorType, fn) → assert_throws(fn)
+  // Since we compile async synchronously, throwsAsync is equivalent to throws.
+  body = body.replace(/\bassert\.throwsAsync\s*\(/g, "assert.throws(");
+  body = transformAssertThrows(body);
+
   // Strip undefined-related patterns that can't work in wasm
   // assert.sameValue(expr, undefined) / assert.sameValue(expr, void 0, msg) → comment out
   // Use paren-counting to correctly handle nested calls like assert.sameValue(parseInt("11", undefined), ...)
@@ -1499,6 +1507,13 @@ function isNativeFunction(f: number): number { return 1; }`;
 
 function assertNativeFunction(f: number): void {}`;
     }
+  }
+
+  // tcoHelper.js — provides $MAX_ITERATIONS for tail call optimization tests.
+  if (includes.includes("tcoHelper.js") && /\$MAX_ITERATIONS\b/.test(body)) {
+    preamble += `
+
+let $MAX_ITERATIONS: number = 100000;`;
   }
 
   // $DONE — async test completion callback.
