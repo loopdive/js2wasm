@@ -15733,8 +15733,11 @@ function compilePropertyAccess(
         if (structTypeIdx !== undefined && fields) {
           const typeDef = ctx.mod.types[structTypeIdx];
           if (typeDef?.kind === "struct") {
-            // Add the missing field
-            const newField: FieldDef = { name: propName, type: propWasmType, mutable: true };
+            // Add the missing field (widen ref to ref_null for default initialization)
+            const fieldType = propWasmType.kind === "ref"
+              ? { kind: "ref_null" as const, typeIdx: (propWasmType as { typeIdx: number }).typeIdx }
+              : propWasmType;
+            const newField: FieldDef = { name: propName, type: fieldType, mutable: true };
             fields.push(newField);
             typeDef.fields.push(newField);
             const fieldIdx = fields.length - 1;
@@ -16719,9 +16722,12 @@ function compileWidenedEmptyObject(
     // Search by variable name in the struct map.
     if (ts.isVariableDeclaration(expr.parent) && ts.isIdentifier(expr.parent.name)) {
       // Register now as a last resort
+      // Widen ref to ref_null so struct.new can use ref.null defaults
       const fields: FieldDef[] = widenedProps.map(wp => ({
         name: wp.name,
-        type: wp.type,
+        type: wp.type.kind === "ref"
+          ? { kind: "ref_null" as const, typeIdx: (wp.type as { typeIdx: number }).typeIdx }
+          : wp.type,
         mutable: true,
       }));
       typeName = `__anon_${ctx.anonTypeCounter++}`;
