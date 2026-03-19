@@ -290,11 +290,8 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
 
   // (Removed: null/undefined arithmetic skip — compiler now handles null/undefined in arithmetic)
 
-  // Skip tests using function expressions assigned to var (var foo = function(){})
-  // inside try/catch — complex scoping we don't support
-  if (/\btry\s*\{[\s\S]*throw\s+\w+[\s\S]*catch[\s\S]*var\s+\w+\s*=\s*function/.test(source)) {
-    return { skip: true, reason: "function expression in catch scope" };
-  }
+  // (Removed: function expression in catch scope skip — 30s worker timeout
+  // prevents hangs; tests will timeout and report as such. See #545.)
 
   // (Removed: labeled block break skip — now handled in codegen)
 
@@ -434,15 +431,11 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
   // (Removed: collection mutation during for-of iteration skip — duplicate of the
   // earlier filter, both overly broad. Tests are now attempted.)
 
-  // Skip tests using member expressions as for-of LHS (for (obj.prop of ...) )
-  if (/\bfor\s*\(\s*(\(?\s*)?(\w+\.\w+)\s*\)?\s+of\b/.test(source)) {
-    return { skip: true, reason: "member expression as for-of LHS" };
-  }
+  // (Removed: member expression as for-of LHS skip — 30s worker timeout
+  // prevents hangs; tests will timeout and report as such. See #545.)
 
-  // Skip tests using parenthesized LHS in for-of (for ((x) of ...) )
-  if (/\bfor\s*\(\s*\(/.test(source) && /\bof\b/.test(source)) {
-    return { skip: true, reason: "parenthesized LHS in for-of" };
-  }
+  // (Removed: parenthesized LHS in for-of skip — 30s worker timeout
+  // prevents hangs; tests will timeout and report as such. See #545.)
 
   // (Removed: string variable concatenation skip — string += now works correctly, and the
   // original filter was overly broad, matching tests where a string var exists alongside
@@ -479,11 +472,8 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
     return { skip: true, reason: "arrow returning undefined" };
   }
 
-  // Skip tests with catch scope variable shadowing or nested function returns through catch
-  if (/catch\s*\(\s*\w+\s*\)/.test(source) && /throw\s+\w+/.test(source) &&
-      (/function\s+\w+\s*\(\s*\w+\s*\)/.test(source) || /assert[._]sameValue\s*\(\s*\w+\s*,\s*undefined\b/.test(source))) {
-    return { skip: true, reason: "nested function/catch scope with type mismatch" };
-  }
+  // (Removed: nested function/catch scope with type mismatch skip — 30s worker timeout
+  // prevents hangs; tests will timeout and report as such. See #545.)
 
   // (Removed: typeof class expression skip — compiler now resolves typeof on class expressions)
 
