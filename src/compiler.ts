@@ -711,6 +711,15 @@ const DOWNGRADE_DIAG_CODES = new Set([
   2792, // "Cannot find module 'X'" — dynamic import() module resolution (#440)
   2739, // "Type 'X' is missing properties: next, return, throw" — generator type mismatch (#439)
   2802, // "Type 'X' can only be iterated through when using '--downlevelIteration'" — generators in for-of (#439)
+  1184, // "Modifiers cannot appear here" — valid JS patterns in test262 (#537)
+  1109, // "Expression expected" — valid JS patterns in test262 (#537)
+  1135, // "Argument expression expected" — valid JS patterns in test262 (#537)
+  2351, // "This expression is not constructable" — valid JS patterns in test262 (#537)
+  2335, // "'super' can only be referenced in a derived class" — valid JS patterns in test262 (#537)
+  2660, // "'super' can only be referenced in members of derived classes or object literal expressions" — valid JS (#537)
+  2508, // "No base constructor has the specified number of type arguments" — valid JS patterns in test262 (#537)
+  1262, // "Identifier expected. 'X' is a reserved word at the top-level of a module" — await as identifier (#537)
+  2393, // "Duplicate function implementation" — valid JS function re-declarations (#537)
 ]);
 
 /**
@@ -793,6 +802,10 @@ export function compileSource(
     1497, // "Expression must be enclosed in parentheses to be used as a decorator" (#376)
     1498, // "Invalid syntax in decorator" (#376)
     8038, // "Decorators may not appear after 'export' or 'export default'" (#376)
+    1184, // "Modifiers cannot appear here" — valid JS patterns in test262 (#537)
+    1109, // "Expression expected" — valid JS patterns in test262 (#537)
+    1135, // "Argument expression expected" — valid JS patterns in test262 (#537)
+    1262, // "Identifier expected. 'X' is a reserved word at the top-level of a module" — await as identifier (#537)
   ]);
   const hasSyntaxErrors = ast.syntacticDiagnostics.some(
     (d) => d.category === 1 && d.file === ast.sourceFile && !TOLERATED_SYNTAX_CODES.has(d.code),
@@ -1580,8 +1593,27 @@ export function compileToObjectSource(
     }
   }
 
+  const TOLERATED_SYNTAX_CODES_2 = new Set([
+    1156, // "'let' declarations can only be declared inside a block"
+    1313, // "The body of an 'if' statement cannot be the empty statement"
+    1344, // "A label is not allowed here"
+    1182, // "A destructuring declaration must have an initializer"
+    1228, // "A type predicate is only allowed in return type position"
+    1163, // "A 'yield' expression is only allowed in a generator body"
+    1206, // "Decorators are not valid here"
+    1207, // "Decorators cannot be applied to multiple get/set accessors"
+    1436, // "Decorators must precede the name and all keywords of property declarations"
+    1486, // "Decorator used before 'export' here"
+    1497, // "Expression must be enclosed in parentheses to be used as a decorator"
+    1498, // "Invalid syntax in decorator"
+    8038, // "Decorators may not appear after 'export' or 'export default'"
+    1184, // "Modifiers cannot appear here" (#537)
+    1109, // "Expression expected" (#537)
+    1135, // "Argument expression expected" (#537)
+    1262, // "Identifier expected. 'X' is a reserved word at the top-level of a module" (#537)
+  ]);
   const hasSyntaxErrors = ast.syntacticDiagnostics.some(
-    (d) => d.category === 1 && d.file === ast.sourceFile,
+    (d) => d.category === 1 && d.file === ast.sourceFile && !TOLERATED_SYNTAX_CODES_2.has(d.code),
   );
 
   if (hasSyntaxErrors && errors.length > 0) {
