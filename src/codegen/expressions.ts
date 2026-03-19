@@ -818,14 +818,15 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
           // Recover the closure and call it by trying each known closure type
           // that was tracked for this struct's valueOf field.
           const trackedTypes = ctx.valueOfClosureTypes.get(name) ?? [];
-          const f64ClosureTypes: { closureTypeIdx: number; info: ClosureInfo }[] = [];
+          const callableClosureTypes: { closureTypeIdx: number; info: ClosureInfo }[] = [];
           for (const closureTypeIdx of trackedTypes) {
             const info = ctx.closureInfoByTypeIdx.get(closureTypeIdx);
-            if (info && info.returnType && (info.returnType.kind === "f64" || info.returnType.kind === "i32") && info.paramTypes.length === 0) {
-              f64ClosureTypes.push({ closureTypeIdx, info });
+            // Include all zero-param closures: f64/i32 return for value, void/null for side effects (returns NaN)
+            if (info && info.paramTypes.length === 0) {
+              callableClosureTypes.push({ closureTypeIdx, info });
             }
           }
-          if (f64ClosureTypes.length > 0) {
+          if (callableClosureTypes.length > 0) {
             // Save struct ref, extract valueOf eqref
             const structLocal = allocLocal(fctx, `__vo_struct_${fctx.locals.length}`, from);
             fctx.body.push({ op: "local.set", index: structLocal });
@@ -835,10 +836,10 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
             fctx.body.push({ op: "local.set", index: eqLocal });
             // Try each closure type with nested if/else
             const buildDispatch = (idx: number): Instr[] => {
-              if (idx >= f64ClosureTypes.length) {
+              if (idx >= callableClosureTypes.length) {
                 return [{ op: "f64.const", value: NaN } as Instr];
               }
-              const { closureTypeIdx, info } = f64ClosureTypes[idx]!;
+              const { closureTypeIdx, info } = callableClosureTypes[idx]!;
               const closureLocal = allocLocal(fctx, `__vo_cl_${fctx.locals.length}`, { kind: "ref", typeIdx: closureTypeIdx });
               const thenInstrs: Instr[] = [
                 { op: "local.get", index: eqLocal } as Instr,
@@ -852,6 +853,9 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
               ];
               if (info.returnType?.kind === "i32") {
                 thenInstrs.push({ op: "f64.convert_i32_s" } as Instr);
+              } else if (!info.returnType || info.returnType.kind !== "f64") {
+                // void/null return — call was for side effects; push NaN (ToNumber(undefined) = NaN)
+                thenInstrs.push({ op: "f64.const", value: NaN } as Instr);
               }
               return [
                 { op: "local.get", index: eqLocal } as Instr,
