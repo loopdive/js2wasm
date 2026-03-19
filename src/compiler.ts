@@ -17,6 +17,7 @@ import { generateSourceMap } from "./emit/sourcemap.js";
 import { emitWat } from "./emit/wat.js";
 import { preprocessImports } from "./import-resolver.js";
 import type { CompileError, CompileOptions, CompileResult, ImportDescriptor, ImportIntent } from "./index.js";
+import { optimizeBinary } from "./optimize.js";
 import type { WasmModule, FuncTypeDef } from "./ir/types.js";
 import { generateCHeader, extractCHeaderExports } from "./emit/c-header.js";
 import type { CabiExportInfo, CabiParam, ParamDef } from "./codegen-linear/c-abi.js";
@@ -955,6 +956,23 @@ export function compileSource(
     };
   }
 
+  // Step 3b: Optimize binary with Binaryen (optional)
+  if (options.optimize) {
+    const level = typeof options.optimize === "number" ? options.optimize : 3;
+    const optResult = optimizeBinary(binary, { level });
+    if (optResult.optimized) {
+      binary = optResult.binary;
+    }
+    if (optResult.warning) {
+      errors.push({
+        message: optResult.warning,
+        line: 0,
+        column: 0,
+        severity: "warning",
+      });
+    }
+  }
+
   // Step 4: Emit WAT (optional)
   let wat = "";
   if (emitWatOutput) {
@@ -1215,6 +1233,23 @@ export function compileMultiSource(
       stringPool: [],
       imports: [],
     };
+  }
+
+  // Optimize binary with Binaryen (optional)
+  if (options.optimize) {
+    const level = typeof options.optimize === "number" ? options.optimize : 3;
+    const optResult = optimizeBinary(binary, { level });
+    if (optResult.optimized) {
+      binary = optResult.binary;
+    }
+    if (optResult.warning) {
+      errors.push({
+        message: optResult.warning,
+        line: 0,
+        column: 0,
+        severity: "warning",
+      });
+    }
   }
 
   let wat = "";

@@ -15,6 +15,8 @@ Options:
   --wat             Emit only WAT (no binary)
   --no-wat          Skip WAT output
   --no-dts          Skip .d.ts output
+  -O, --optimize    Run Binaryen wasm-opt optimizer (default: -O3)
+  -O1..-O4          Set optimization level (1-4)
   -h, --help        Show this help
 
 Output files:
@@ -31,6 +33,7 @@ let emitWasm = true;
 let emitWat = true;
 let emitDts = true;
 let watOnly = false;
+let optimize: boolean | 1 | 2 | 3 | 4 = false;
 
 for (let i = 0; i < args.length; i++) {
   const arg = args[i]!;
@@ -42,6 +45,10 @@ for (let i = 0; i < args.length; i++) {
     emitWat = false;
   } else if (arg === "--no-dts") {
     emitDts = false;
+  } else if (arg === "-O" || arg === "--optimize") {
+    optimize = true;
+  } else if (/^-O[1-4]$/.test(arg)) {
+    optimize = parseInt(arg.slice(2)) as 1 | 2 | 3 | 4;
   } else if (!arg.startsWith("-")) {
     inputPath = arg;
   } else {
@@ -60,7 +67,7 @@ const source = readFileSync(absInput, "utf-8");
 const name = basename(absInput, ".ts");
 const dir = outDir ? resolve(outDir) : dirname(absInput);
 
-const result = compile(source);
+const result = compile(source, optimize ? { optimize } : undefined);
 
 if (!result.success) {
   for (const e of result.errors) {
@@ -68,6 +75,13 @@ if (!result.success) {
     console.error(`${absInput}:${e.line}:${e.column} - ${severity}: ${e.message}`);
   }
   process.exit(1);
+}
+
+// Print any warnings (e.g. wasm-opt not available)
+for (const e of result.errors) {
+  if (e.severity === "warning") {
+    console.error(`warning: ${e.message}`);
+  }
 }
 
 if (watOnly) {
