@@ -9263,7 +9263,8 @@ function compilePrefixUnary(
             return boxedPP.valType;
           }
           const localType = getLocalType(fctx, idx);
-          if (ctx.fast && localType?.kind === "i32") {
+          if (localType?.kind === "i32") {
+            // Use i32 ops for i32 locals (both fast mode and i32-inferred loop counters)
             fctx.body.push({ op: "local.get", index: idx });
             fctx.body.push({ op: "i32.const", value: 1 });
             fctx.body.push({ op: "i32.add" });
@@ -9283,20 +9284,6 @@ function compilePrefixUnary(
           // ref/ref_null: struct/array reference — ToNumber gives NaN, NaN + 1 = NaN
           if (localType?.kind === "ref" || localType?.kind === "ref_null") {
             fctx.body.push({ op: "f64.const", value: NaN });
-            return { kind: "f64" };
-          }
-          // i32 (boolean) in non-fast mode: coerce to f64 before increment
-          if (localType?.kind === "i32") {
-            fctx.body.push({ op: "local.get", index: idx });
-            fctx.body.push({ op: "f64.convert_i32_s" });
-            fctx.body.push({ op: "f64.const", value: 1 });
-            fctx.body.push({ op: "f64.add" });
-            // Store back as f64 — but local is i32, so truncate
-            const ppF64Tmp = allocLocal(fctx, `__pp_f64_${fctx.locals.length}`, { kind: "f64" });
-            fctx.body.push({ op: "local.tee", index: ppF64Tmp });
-            fctx.body.push({ op: "i32.trunc_sat_f64_s" });
-            fctx.body.push({ op: "local.set", index: idx });
-            fctx.body.push({ op: "local.get", index: ppF64Tmp });
             return { kind: "f64" };
           }
           fctx.body.push({ op: "local.get", index: idx });
@@ -9358,7 +9345,8 @@ function compilePrefixUnary(
             return boxed.valType;
           }
           const localType = getLocalType(fctx, idx);
-          if (ctx.fast && localType?.kind === "i32") {
+          if (localType?.kind === "i32") {
+            // Use i32 ops for i32 locals (both fast mode and i32-inferred loop counters)
             fctx.body.push({ op: "local.get", index: idx });
             fctx.body.push({ op: "i32.const", value: 1 });
             fctx.body.push({ op: arithOpI32 });
@@ -9378,19 +9366,6 @@ function compilePrefixUnary(
           // ref/ref_null: struct/array reference — ToNumber gives NaN, NaN - 1 = NaN
           if (localType?.kind === "ref" || localType?.kind === "ref_null") {
             fctx.body.push({ op: "f64.const", value: NaN });
-            return { kind: "f64" };
-          }
-          // i32 (boolean) in non-fast mode: coerce to f64 before decrement
-          if (localType?.kind === "i32") {
-            fctx.body.push({ op: "local.get", index: idx });
-            fctx.body.push({ op: "f64.convert_i32_s" });
-            fctx.body.push({ op: "f64.const", value: 1 });
-            fctx.body.push({ op: arithOp });
-            const mmF64Tmp = allocLocal(fctx, `__mm_f64_${fctx.locals.length}`, { kind: "f64" });
-            fctx.body.push({ op: "local.tee", index: mmF64Tmp });
-            fctx.body.push({ op: "i32.trunc_sat_f64_s" });
-            fctx.body.push({ op: "local.set", index: idx });
-            fctx.body.push({ op: "local.get", index: mmF64Tmp });
             return { kind: "f64" };
           }
           fctx.body.push({ op: "local.get", index: idx });
@@ -9504,7 +9479,8 @@ function compilePostfixUnary(
     }
 
     const localType = getLocalType(fctx, idx);
-    if (ctx.fast && localType?.kind === "i32") {
+    if (localType?.kind === "i32") {
+      // Use i32 ops for i32 locals (both fast mode and i32-inferred loop counters)
       fctx.body.push({ op: "local.get", index: idx });
       fctx.body.push({ op: "local.get", index: idx });
       fctx.body.push({ op: "i32.const", value: 1 });
@@ -9531,20 +9507,6 @@ function compilePostfixUnary(
     // ref/ref_null: struct/array reference — ToNumber gives NaN, postfix returns NaN (old value)
     if (localType?.kind === "ref" || localType?.kind === "ref_null") {
       fctx.body.push({ op: "f64.const", value: NaN });
-      return { kind: "f64" };
-    }
-
-    // i32 (boolean) in non-fast mode: coerce to f64 for postfix ++/--
-    if (localType?.kind === "i32") {
-      fctx.body.push({ op: "local.get", index: idx });
-      fctx.body.push({ op: "f64.convert_i32_s" });
-      const postOldTmp = allocLocal(fctx, `__post_old_${fctx.locals.length}`, { kind: "f64" });
-      fctx.body.push({ op: "local.tee", index: postOldTmp });
-      fctx.body.push({ op: "f64.const", value: 1 });
-      fctx.body.push({ op: arithOp });
-      fctx.body.push({ op: "i32.trunc_sat_f64_s" });
-      fctx.body.push({ op: "local.set", index: idx });
-      fctx.body.push({ op: "local.get", index: postOldTmp });
       return { kind: "f64" };
     }
 
