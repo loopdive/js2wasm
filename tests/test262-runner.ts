@@ -1178,6 +1178,45 @@ function renameYieldOutsideGenerators(source: string): string {
 }
 
 /**
+ * Strip all occurrences of `name(...)` call statements from source,
+ * handling balanced parentheses so multi-line calls with nested braces
+ * (like object literal descriptors) are fully removed.
+ */
+function stripBalancedCall(source: string, name: string): string {
+  const pattern = new RegExp(`\\b${name}\\s*\\(`, "g");
+  let result = source;
+  let match;
+  // Process from end to start so indices stay valid
+  const matches: { start: number; end: number }[] = [];
+  while ((match = pattern.exec(result)) !== null) {
+    const callStart = match.index;
+    // Find balanced closing paren
+    let depth = 0;
+    let i = match.index + match[0].length - 1; // position of '('
+    for (; i < result.length; i++) {
+      if (result[i] === "(") depth++;
+      else if (result[i] === ")") {
+        depth--;
+        if (depth === 0) break;
+      }
+    }
+    if (depth !== 0) continue; // unbalanced — skip
+    // Include trailing semicolon and whitespace
+    let end = i + 1;
+    while (end < result.length && (result[end] === ";" || result[end] === " " || result[end] === "\t")) end++;
+    // Include trailing newline
+    if (end < result.length && result[end] === "\n") end++;
+    matches.push({ start: callStart, end });
+  }
+  // Remove from end to start
+  for (let j = matches.length - 1; j >= 0; j--) {
+    const m = matches[j];
+    result = result.slice(0, m.start) + result.slice(m.end);
+  }
+  return result;
+}
+
+/**
  * Wrap a test262 test into a compilable TS module.
  *
  * Strategy: provide a shim for assert.sameValue that traps on mismatch.
@@ -1417,53 +1456,19 @@ function assert_compareArray(actual: number[], expected: number[]): void {
 
   // propertyHelper.js — verifyProperty and friends.
   // Most tests that include this use verifyProperty(obj, prop, {value, writable, ...}).
-  // We cannot inspect property descriptors in Wasm, so we provide a no-op that
-  // always passes — the test still validates the main value/behavior.
+  // We strip these calls entirely rather than providing a stub — the object literal
+  // descriptors crash the compiler when passed to `any`-typed parameters (no struct
+  // shape inference for anonymous objects). See issue #580.
   if (includes.includes("propertyHelper.js")) {
-    if (/\bverifyProperty\b/.test(body)) {
-      preamble += `
-
-function verifyProperty(a: any, b: any, c: any): void {}`;
-    }
-    if (/\bverifyEnumerable\b/.test(body)) {
-      preamble += `
-
-function verifyEnumerable(a: any, b: any): void {}`;
-    }
-    if (/\bverifyNotEnumerable\b/.test(body)) {
-      preamble += `
-
-function verifyNotEnumerable(a: any, b: any): void {}`;
-    }
-    if (/\bverifyWritable\b/.test(body)) {
-      preamble += `
-
-function verifyWritable(a: any, b: any): void {}`;
-    }
-    if (/\bverifyNotWritable\b/.test(body)) {
-      preamble += `
-
-function verifyNotWritable(a: any, b: any): void {}`;
-    }
-    if (/\bverifyConfigurable\b/.test(body)) {
-      preamble += `
-
-function verifyConfigurable(a: any, b: any): void {}`;
-    }
-    if (/\bverifyNotConfigurable\b/.test(body)) {
-      preamble += `
-
-function verifyNotConfigurable(a: any, b: any): void {}`;
-    }
-    if (/\bverifyEqualTo\b/.test(body)) {
-      preamble += `
-
-function verifyEqualTo(a: any, b: any, c: any): void {}`;
-    }
-    if (/\bverifyNotEqualTo\b/.test(body)) {
-      preamble += `
-
-function verifyNotEqualTo(a: any, b: any, c: any): void {}`;
+    const helperNames = [
+      "verifyProperty", "verifyEnumerable", "verifyNotEnumerable",
+      "verifyWritable", "verifyNotWritable", "verifyConfigurable",
+      "verifyNotConfigurable", "verifyEqualTo", "verifyNotEqualTo",
+    ];
+    for (const name of helperNames) {
+      if (new RegExp(`\\b${name}\\b`).test(body)) {
+        body = stripBalancedCall(body, name);
+      }
     }
     if (/\bverifyCallableProperty\b/.test(body)) {
       preamble += `
