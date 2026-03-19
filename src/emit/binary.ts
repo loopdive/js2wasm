@@ -321,7 +321,7 @@ export function encodeTypeDef(t: TypeDef, enc: WasmEncoder): void {
     case "struct":
       if (t.superTypeIdx !== undefined) {
         // Wrap in sub-type encoding for class inheritance
-        enc.byte(TYPE.sub); // 0x50 = non-final sub
+        enc.byte(t.final ? TYPE.sub_final : TYPE.sub);
         if (t.superTypeIdx >= 0) {
           enc.u32(1); // 1 supertype
           enc.u32(t.superTypeIdx);
