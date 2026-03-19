@@ -7301,10 +7301,7 @@ function compilePropertyLogicalAssignmentExternref(
               const propWasmType = resolveWasmType(ctx, propTsType);
               const newField: FieldDef = { name: propName, type: propWasmType, mutable: true };
               fields.push(newField);
-              const typeDef = ctx.mod.types[typeIdx];
-              if (typeDef?.kind === "struct") {
-                typeDef.fields.push(newField);
-              }
+              // fields === typeDef.fields (same array ref from structFields map)
               patchStructNewForAddedField(ctx, fctx, typeIdx, propWasmType);
               fieldIdx = fields.length - 1;
             }
@@ -8185,10 +8182,7 @@ function compilePropertyCompoundAssignmentExternref(
               const propWasmType = resolveWasmType(ctx, propTsType);
               const newField: FieldDef = { name: propName, type: propWasmType, mutable: true };
               fields.push(newField);
-              const typeDef = ctx.mod.types[typeIdx];
-              if (typeDef?.kind === "struct") {
-                typeDef.fields.push(newField);
-              }
+              // fields === typeDef.fields (same array ref from structFields map)
               patchStructNewForAddedField(ctx, fctx, typeIdx, propWasmType);
               fieldIdx = fields.length - 1;
             }
@@ -16311,7 +16305,7 @@ function compilePropertyAccess(
               : propWasmType;
             const newField: FieldDef = { name: propName, type: fieldType, mutable: true };
             fields.push(newField);
-            typeDef.fields.push(newField);
+            // fields === typeDef.fields (same array ref from structFields map)
             patchStructNewForAddedField(ctx, fctx, structTypeIdx, propWasmType);
             const fieldIdx = fields.length - 1;
             const objResult = compileExpression(ctx, fctx, expr.expression);
