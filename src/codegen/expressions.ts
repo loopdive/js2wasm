@@ -1954,6 +1954,23 @@ function compileArrowAsClosure(
     }
   }
 
+  // (#585) Check the contextual type (e.g., a parameter type like `() => void`).
+  // If the contextual type expects a void-returning callable but the closure's
+  // actual return type is non-void, override to void so the closure uses the
+  // same wrapper struct type that callers will ref.cast against.
+  if (closureReturnType !== null) {
+    const ctxType = ctx.checker.getContextualType(arrow);
+    if (ctxType) {
+      const ctxCallSigs = ctxType.getCallSignatures?.();
+      if (ctxCallSigs && ctxCallSigs.length > 0) {
+        const ctxRetType = ctx.checker.getReturnTypeOfSignature(ctxCallSigs[0]!);
+        if (isVoidType(ctxRetType)) {
+          closureReturnType = null;
+        }
+      }
+    }
+  }
+
   // 2. Analyze captured variables
   const referencedNames = new Set<string>();
   if (ts.isBlock(body)) {
