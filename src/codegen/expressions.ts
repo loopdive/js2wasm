@@ -84,6 +84,19 @@ export function shiftLateImportIndices(
     shiftInstrs(sb);
     shifted.add(sb);
   }
+  // Shift parent function bodies (enclosing functions still being compiled)
+  {
+    const done = new Set<Instr[]>();
+    for (const func of ctx.mod.functions) done.add(func.body);
+    done.add(curBody);
+    for (const sb of fctx.savedBodies) done.add(sb);
+    for (const pb of ctx.parentBodiesStack) {
+      if (!done.has(pb)) {
+        shiftInstrs(pb);
+        done.add(pb);
+      }
+    }
+  }
   // Shift funcMap entries for defined functions (not import entries).
   // Defined functions had indices >= importsBefore (before the shift) and need
   // to move up by `added`. Import entries (indices < numImportFuncs after addition)
@@ -2118,6 +2131,7 @@ function compileArrowAsClosure(
   }
 
   const savedFunc = ctx.currentFunc;
+  if (savedFunc) ctx.parentBodiesStack.push(savedFunc.body);
   if (savedFunc) ctx.funcStack.push(savedFunc);
   ctx.currentFunc = liftedFctx;
 
@@ -2427,6 +2441,7 @@ function compileArrowAsClosure(
   }
 
   if (savedFunc) ctx.funcStack.pop();
+  if (savedFunc) ctx.parentBodiesStack.pop();
   ctx.currentFunc = savedFunc;
 
   // 6. Register the lifted function
@@ -2623,6 +2638,7 @@ function compileArrowAsCallback(
 
   // 5. Compile the callback body
   const savedFunc = ctx.currentFunc;
+  if (savedFunc) ctx.parentBodiesStack.push(savedFunc.body);
   if (savedFunc) ctx.funcStack.push(savedFunc);
   ctx.currentFunc = cbFctx;
 
@@ -2666,6 +2682,7 @@ function compileArrowAsCallback(
   }
 
   if (savedFunc) ctx.funcStack.pop();
+  if (savedFunc) ctx.parentBodiesStack.pop();
   ctx.currentFunc = savedFunc;
 
   // 6. Register and export the callback function
@@ -13411,6 +13428,7 @@ function compileIIFE(
   }
 
   const savedFunc = ctx.currentFunc;
+  if (savedFunc) ctx.parentBodiesStack.push(savedFunc.body);
   if (savedFunc) ctx.funcStack.push(savedFunc);
   ctx.currentFunc = liftedFctx;
 
@@ -13440,6 +13458,7 @@ function compileIIFE(
   }
 
   if (savedFunc) ctx.funcStack.pop();
+  if (savedFunc) ctx.parentBodiesStack.pop();
   ctx.currentFunc = savedFunc;
 
   // Register the lifted function
@@ -14205,12 +14224,14 @@ function compileNewFunctionExpression(
 
   // 6. Compile the function body
   const savedFunc = ctx.currentFunc;
+  if (savedFunc) ctx.parentBodiesStack.push(savedFunc.body);
   if (savedFunc) ctx.funcStack.push(savedFunc);
   ctx.currentFunc = liftedFctx;
   for (const stmt of body.statements) {
     compileStatement(ctx, liftedFctx, stmt);
   }
   if (savedFunc) ctx.funcStack.pop();
+  if (savedFunc) ctx.parentBodiesStack.pop();
   ctx.currentFunc = savedFunc;
 
   // 7. Register the lifted function
@@ -17748,6 +17769,7 @@ function compileObjectLiteralForStruct(
       getterFctx.localMap.set("this", 0);
 
       const savedFunc = ctx.currentFunc;
+      if (savedFunc) ctx.parentBodiesStack.push(savedFunc.body);
       if (savedFunc) ctx.funcStack.push(savedFunc);
       ctx.currentFunc = getterFctx;
       if (prop.body) {
@@ -17774,6 +17796,7 @@ function compileObjectLiteralForStruct(
       getterFunc.locals = getterFctx.locals;
       getterFunc.body = getterFctx.body;
       if (savedFunc) ctx.funcStack.pop();
+      if (savedFunc) ctx.parentBodiesStack.pop();
       ctx.currentFunc = savedFunc;
     }
 
@@ -17836,6 +17859,7 @@ function compileObjectLiteralForStruct(
       }
 
       const savedFunc = ctx.currentFunc;
+      if (savedFunc) ctx.parentBodiesStack.push(savedFunc.body);
       if (savedFunc) ctx.funcStack.push(savedFunc);
       ctx.currentFunc = setterFctx;
 
@@ -17884,6 +17908,7 @@ function compileObjectLiteralForStruct(
       setterFunc.locals = setterFctx.locals;
       setterFunc.body = setterFctx.body;
       if (savedFunc) ctx.funcStack.pop();
+      if (savedFunc) ctx.parentBodiesStack.pop();
       ctx.currentFunc = savedFunc;
     }
 
@@ -17975,6 +18000,7 @@ function compileObjectLiteralForStruct(
       }
 
       const savedFunc = ctx.currentFunc;
+      if (savedFunc) ctx.parentBodiesStack.push(savedFunc.body);
       if (savedFunc) ctx.funcStack.push(savedFunc);
       ctx.currentFunc = methodFctx;
 
@@ -18053,6 +18079,7 @@ function compileObjectLiteralForStruct(
       methodFunc.locals = methodFctx.locals;
       methodFunc.body = methodFctx.body;
       if (savedFunc) ctx.funcStack.pop();
+      if (savedFunc) ctx.parentBodiesStack.pop();
       ctx.currentFunc = savedFunc;
     }
 
@@ -18569,6 +18596,7 @@ function compileObjectDefineProperty(
         getterFctx.localMap.set("this", 0);
 
         const savedFunc = ctx.currentFunc;
+        if (savedFunc) ctx.parentBodiesStack.push(savedFunc.body);
         if (savedFunc) ctx.funcStack.push(savedFunc);
         ctx.currentFunc = getterFctx;
 
@@ -18604,6 +18632,7 @@ function compileObjectDefineProperty(
         getterFunc.locals = getterFctx.locals;
         getterFunc.body = getterFctx.body;
         if (savedFunc) ctx.funcStack.pop();
+        if (savedFunc) ctx.parentBodiesStack.pop();
         ctx.currentFunc = savedFunc;
       }
     }
@@ -18664,6 +18693,7 @@ function compileObjectDefineProperty(
         }
 
         const savedFunc = ctx.currentFunc;
+        if (savedFunc) ctx.parentBodiesStack.push(savedFunc.body);
         if (savedFunc) ctx.funcStack.push(savedFunc);
         ctx.currentFunc = setterFctx;
 
@@ -18682,6 +18712,7 @@ function compileObjectDefineProperty(
         setterFunc.locals = setterFctx.locals;
         setterFunc.body = setterFctx.body;
         if (savedFunc) ctx.funcStack.pop();
+        if (savedFunc) ctx.parentBodiesStack.pop();
         ctx.currentFunc = savedFunc;
       }
     }

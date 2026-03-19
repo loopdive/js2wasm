@@ -258,6 +258,8 @@ export interface CodegenContext {
   inlinableFunctions: Map<string, InlinableFunctionInfo>;
   /** Global index of the __symbol_counter (mutable i32, starts at 100). -1 if not yet registered. */
   symbolCounterGlobalIdx: number;
+  /** Stack of in-progress parent function bodies for addUnionImports index shifting during closure compilation */
+  parentBodiesStack: Instr[][];
   /** Hash-based lookup for anonymous struct deduplication: fields hash key → struct name */
   anonStructHash: Map<string, string>;
   /** Pending late import shift: importsBefore value captured when first deferred import was added. */
@@ -462,6 +464,7 @@ export function generateModule(
     pendingInitBody: null,
     inlinableFunctions: new Map(),
     symbolCounterGlobalIdx: -1,
+    parentBodiesStack: [],
     anonStructHash: new Map(),
     funcTypeCache: new Map(),
     pendingLateImportShift: null,
@@ -695,6 +698,7 @@ export function generateMultiModule(
     pendingInitBody: null,
     inlinableFunctions: new Map(),
     symbolCounterGlobalIdx: -1,
+    parentBodiesStack: [],
     anonStructHash: new Map(),
     funcTypeCache: new Map(),
     pendingLateImportShift: null,
@@ -6154,6 +6158,23 @@ export function addUnionImports(ctx: CodegenContext): void {
         if (!shifted.has(sb)) {
           shiftFuncIndices(sb);
           shifted.add(sb);
+        }
+      }
+    }
+    // Shift parent function bodies still being compiled. When a closure
+    // triggers addUnionImports, the enclosing function's body is neither
+    // in mod.functions nor ctx.currentFunc.
+    {
+      const done = new Set<Instr[]>();
+      for (const func of ctx.mod.functions) done.add(func.body);
+      if (ctx.currentFunc) {
+        done.add(ctx.currentFunc.body);
+        for (const sb of ctx.currentFunc.savedBodies) done.add(sb);
+      }
+      for (const pb of ctx.parentBodiesStack) {
+        if (!done.has(pb)) {
+          shiftFuncIndices(pb);
+          done.add(pb);
         }
       }
     }
