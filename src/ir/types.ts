@@ -189,6 +189,7 @@ type InstrBase =
   | { op: "br_if"; depth: number }
   | { op: "return" }
   | { op: "call"; funcIdx: number }
+  | { op: "return_call"; funcIdx: number }
   | { op: "call_indirect"; typeIdx: number; tableIdx: number }
   | { op: "drop" }
   | { op: "select" }
@@ -216,6 +217,7 @@ type InstrBase =
   | { op: "ref.eq" }
   | { op: "ref.func"; funcIdx: number }
   | { op: "call_ref"; typeIdx: number }
+  | { op: "return_call_ref"; typeIdx: number }
   | { op: "memory.size" }
   | { op: "memory.grow" }
   | { op: "try"; blockType: BlockType; body: Instr[]; catches: CatchClause[]; catchAll?: Instr[] }

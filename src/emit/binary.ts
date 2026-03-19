@@ -606,6 +606,10 @@ export function encodeInstr(instr: Instr, enc: WasmEncoder): void {
       enc.byte(OP.call);
       enc.u32(instr.funcIdx);
       break;
+    case "return_call":
+      enc.byte(OP.return_call);
+      enc.u32(instr.funcIdx);
+      break;
     case "call_indirect":
       enc.byte(OP.call_indirect);
       enc.u32(instr.typeIdx);
@@ -972,6 +976,10 @@ export function encodeInstr(instr: Instr, enc: WasmEncoder): void {
       break;
     case "call_ref":
       enc.byte(OP.call_ref);
+      enc.u32(instr.typeIdx);
+      break;
+    case "return_call_ref":
+      enc.byte(OP.return_call_ref);
       enc.u32(instr.typeIdx);
       break;
     case "memory.size":
