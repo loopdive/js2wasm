@@ -7921,7 +7921,12 @@ export function collectClassDeclaration(
         });
       } else {
         const paramType = ctx.checker.getTypeAtLocation(param);
-        ctorParams.push(resolveWasmType(ctx, paramType));
+        let wasmType = resolveWasmType(ctx, paramType);
+        // Widen ref to ref_null for params with defaults
+        if (param.initializer && wasmType.kind === "ref") {
+          wasmType = { kind: "ref_null", typeIdx: (wasmType as any).typeIdx };
+        }
+        ctorParams.push(wasmType);
       }
     }
   }
@@ -7984,7 +7989,12 @@ export function collectClassDeclaration(
         : [{ kind: "ref", typeIdx: structTypeIdx }];
       for (const param of member.parameters) {
         const paramType = ctx.checker.getTypeAtLocation(param);
-        methodParams.push(resolveWasmType(ctx, paramType));
+        let wasmType = resolveWasmType(ctx, paramType);
+        // Widen ref to ref_null for params with defaults (caller passes ref.null as sentinel)
+        if (param.initializer && wasmType.kind === "ref") {
+          wasmType = { kind: "ref_null", typeIdx: (wasmType as any).typeIdx };
+        }
+        methodParams.push(wasmType);
       }
 
       const sig = ctx.checker.getSignatureFromDeclaration(member);
