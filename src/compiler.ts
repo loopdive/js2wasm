@@ -711,6 +711,7 @@ const DOWNGRADE_DIAG_CODES = new Set([
   2792, // "Cannot find module 'X'" — dynamic import() module resolution (#440)
   2739, // "Type 'X' is missing properties: next, return, throw" — generator type mismatch (#439)
   2802, // "Type 'X' can only be iterated through when using '--downlevelIteration'" — generators in for-of (#439)
+  1102, // "'delete' cannot be called on an identifier in strict mode" — valid sloppy-mode JS (#535)
 ]);
 
 /**
