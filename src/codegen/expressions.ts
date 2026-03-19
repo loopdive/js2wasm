@@ -10107,6 +10107,39 @@ function compileCallExpression(
         const objExpr = innerExpr.expression;
         const objType = ctx.checker.getTypeAtLocation(objExpr);
 
+        // Case 2a: Type.prototype.method.call(receiver, ...args)
+        // Rewrite as receiver.method(...args) — create a synthetic call expression
+        if (
+          ts.isPropertyAccessExpression(objExpr) &&
+          objExpr.name.text === "prototype" &&
+          ts.isIdentifier(objExpr.expression) &&
+          isCall &&
+          expr.arguments.length >= 1
+        ) {
+          const typeName = objExpr.expression.text;
+          // Rewrite Type.prototype.method.call(receiver, ...args) as a synthetic
+          // property access call on the receiver: receiver.method(...args).
+          // This handles String.prototype.slice.call("hello", 0, 2) → "hello".slice(0, 2)
+          // and Array.prototype.push.call(arr, 1) → arr.push(1), etc.
+          if ((typeName === "String" || typeName === "Number" || typeName === "Array" || typeName === "Boolean") &&
+              expr.arguments.length >= 1) {
+            const receiverArg = expr.arguments[0]!;
+            const remainingArgs = Array.from(expr.arguments).slice(1);
+            const syntheticPropAccess = ts.factory.createPropertyAccessExpression(
+              receiverArg as ts.Expression,
+              methodName
+            );
+            const syntheticCall = ts.factory.createCallExpression(
+              syntheticPropAccess,
+              expr.typeArguments,
+              remainingArgs as unknown as readonly ts.Expression[],
+            );
+            ts.setTextRange(syntheticCall, expr);
+            (syntheticCall as any).parent = expr.parent;
+            return compileCallExpression(ctx, fctx, syntheticCall as ts.CallExpression);
+          }
+        }
+
         // Resolve class name from the object's type
         let className = objType.getSymbol()?.name;
         if (className && !ctx.classSet.has(className)) {
@@ -10656,6 +10689,27 @@ function compileCallExpression(
       }
     }
 
+    // Handle Promise instance methods: .then(cb), .catch(cb)
+    // Promise values are externref; delegate to host imports
+    {
+      const method = propAccess.name.text;
+      if ((method === "then" || method === "catch") && expr.arguments.length >= 1) {
+        const importName = `Promise_${method}`;
+        const funcIdx = ctx.funcMap.get(importName);
+        if (funcIdx !== undefined) {
+          // Compile the Promise value (receiver)
+          compileExpression(ctx, fctx, propAccess.expression, { kind: "externref" });
+          // Compile the callback argument, coercing to externref
+          const cbType = compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "externref" });
+          if (cbType && cbType.kind !== "externref") {
+            coerceType(ctx, fctx, cbType, { kind: "externref" });
+          }
+          fctx.body.push({ op: "call", funcIdx });
+          return { kind: "externref" };
+        }
+      }
+    }
+
     // Handle wrapper type method calls: new Number(x).valueOf(), etc.
     // Since wrapper constructors now return primitives, valueOf() is a no-op identity.
     {
@@ -10682,6 +10736,105 @@ function compileCallExpression(
     if (receiverClassName && !ctx.classSet.has(receiverClassName)) {
       receiverClassName = ctx.classExprNameMap.get(receiverClassName) ?? receiverClassName;
     }
+    // Fallback for union types, interfaces, abstract classes:
+    // When the direct symbol name is not a known class, try to resolve via
+    // union members, apparent type, or base types.
+    if (!receiverClassName || !ctx.classSet.has(receiverClassName)) {
+      const methodName = ts.isPrivateIdentifier(propAccess.name) ? propAccess.name.text.slice(1) : propAccess.name.text;
+      // Try union type members: for `A | B`, check each member for a known class
+      if (receiverType.isUnion()) {
+        for (const memberType of (receiverType as ts.UnionType).types) {
+          let memberName = memberType.getSymbol()?.name;
+          if (memberName && !ctx.classSet.has(memberName)) {
+            memberName = ctx.classExprNameMap.get(memberName) ?? memberName;
+          }
+          if (memberName && ctx.classSet.has(memberName)) {
+            const fullName = `${memberName}_${methodName}`;
+            if (ctx.funcMap.has(fullName)) {
+              receiverClassName = memberName;
+              break;
+            }
+            // Walk inheritance chain
+            let ancestor = ctx.classParentMap.get(memberName);
+            while (ancestor) {
+              if (ctx.funcMap.has(`${ancestor}_${methodName}`)) {
+                receiverClassName = memberName;
+                break;
+              }
+              ancestor = ctx.classParentMap.get(ancestor);
+            }
+            if (receiverClassName && ctx.classSet.has(receiverClassName)) break;
+          }
+        }
+      }
+      // Try apparent type (handles interfaces, abstract classes)
+      if (!receiverClassName || !ctx.classSet.has(receiverClassName)) {
+        const apparentType = ctx.checker.getApparentType(receiverType);
+        if (apparentType !== receiverType) {
+          let apparentName = apparentType.getSymbol()?.name;
+          if (apparentName && !ctx.classSet.has(apparentName)) {
+            apparentName = ctx.classExprNameMap.get(apparentName) ?? apparentName;
+          }
+          if (apparentName && ctx.classSet.has(apparentName) && ctx.funcMap.has(`${apparentName}_${methodName}`)) {
+            receiverClassName = apparentName;
+          }
+        }
+      }
+      // Try base types: if the receiver type has base types (e.g. abstract class → concrete class)
+      if (!receiverClassName || !ctx.classSet.has(receiverClassName)) {
+        const baseTypes = receiverType.getBaseTypes?.();
+        if (baseTypes) {
+          for (const baseType of baseTypes) {
+            let baseName = baseType.getSymbol()?.name;
+            if (baseName && !ctx.classSet.has(baseName)) {
+              baseName = ctx.classExprNameMap.get(baseName) ?? baseName;
+            }
+            if (baseName && ctx.classSet.has(baseName) && ctx.funcMap.has(`${baseName}_${methodName}`)) {
+              receiverClassName = baseName;
+              break;
+            }
+          }
+        }
+      }
+      // Try struct name from the receiver's wasm type
+      if (!receiverClassName || !ctx.classSet.has(receiverClassName)) {
+        const structName = resolveStructName(ctx, receiverType);
+        if (structName && ctx.classSet.has(structName) && ctx.funcMap.has(`${structName}_${methodName}`)) {
+          receiverClassName = structName;
+        }
+      }
+      // Final fallback: scan all known classes for one that has the method.
+      // This handles interface types and abstract classes where we can't determine
+      // the implementing class from the type alone. We pick the first class that
+      // has the method and whose struct fields are a superset of the receiver type's properties.
+      if (!receiverClassName || !ctx.classSet.has(receiverClassName)) {
+        const recvProps = receiverType.getProperties?.() ?? [];
+        const recvPropNames = new Set(recvProps.map(p => p.name));
+        for (const className of ctx.classSet) {
+          if (!ctx.funcMap.has(`${className}_${methodName}`)) continue;
+          // Quick heuristic: check that the class has at least the same property names
+          // as the interface (structural compatibility check)
+          const classFields = ctx.structFields.get(className);
+          if (classFields && recvPropNames.size > 0) {
+            const classFieldNames = new Set(classFields.map(f => f.name));
+            let compatible = true;
+            for (const prop of recvPropNames) {
+              // Methods won't be in struct fields, so skip function-typed properties
+              const propSymbol = recvProps.find(p => p.name === prop);
+              const propType = propSymbol ? ctx.checker.getTypeOfSymbol(propSymbol) : undefined;
+              const isMethod = propType && (propType.getCallSignatures?.()?.length ?? 0) > 0;
+              if (!isMethod && !classFieldNames.has(prop)) {
+                compatible = false;
+                break;
+              }
+            }
+            if (!compatible) continue;
+          }
+          receiverClassName = className;
+          break;
+        }
+      }
+    }
     if (receiverClassName && ctx.classSet.has(receiverClassName)) {
       const methodName = ts.isPrivateIdentifier(propAccess.name) ? propAccess.name.text.slice(1) : propAccess.name.text;
       let fullName = `${receiverClassName}_${methodName}`;
@@ -10695,6 +10848,20 @@ function compileCallExpression(
           ancestor = ctx.classParentMap.get(ancestor);
         }
       }
+      // Walk child classes (handles abstract class → concrete subclass)
+      if (funcIdx === undefined) {
+        for (const [childClass, parentClass] of ctx.classParentMap) {
+          if (parentClass === receiverClassName || parentClass === fullName.split('_')[0]) {
+            const childFullName = `${childClass}_${methodName}`;
+            const childFuncIdx = ctx.funcMap.get(childFullName);
+            if (childFuncIdx !== undefined) {
+              fullName = childFullName;
+              funcIdx = childFuncIdx;
+              break;
+            }
+          }
+        }
+      }
       // If no method found, check if the property is a callable struct field
       // (e.g. this.callback() where callback is a function-typed property)
       if (funcIdx === undefined) {
@@ -10703,7 +10870,16 @@ function compileCallExpression(
       }
       if (funcIdx !== undefined) {
         // Push self (the receiver) as first argument
-        const recvType = compileExpression(ctx, fctx, propAccess.expression);
+        let recvType = compileExpression(ctx, fctx, propAccess.expression);
+        // If receiver is externref but the method expects a struct ref, coerce
+        if (recvType && recvType.kind === "externref") {
+          const structTypeIdx = ctx.structMap.get(receiverClassName);
+          if (structTypeIdx !== undefined) {
+            fctx.body.push({ op: "any.convert_extern" } as Instr);
+            fctx.body.push({ op: "ref.cast", typeIdx: structTypeIdx } as Instr);
+            recvType = { kind: "ref", typeIdx: structTypeIdx };
+          }
+        }
         // Null-guard: if receiver is ref_null, check for null before calling method
         if (recvType && recvType.kind === "ref_null") {
           // Determine return type early so we can build null-guard
