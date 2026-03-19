@@ -116,7 +116,7 @@ function walkBlockTypes(instrs: Instr[], visitor: (bt: BlockType) => void): void
 
 /** Escape a string for WAT text format (inside double quotes).
  *  Handles backslash, double-quote, and control characters. */
-function escapeWatString(s: string): string {
+export function escapeWatString(s: string): string {
   let out = "";
   for (let i = 0; i < s.length; i++) {
     const ch = s.charCodeAt(i);
