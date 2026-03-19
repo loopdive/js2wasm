@@ -461,12 +461,6 @@ export function generateModule(
 
   // $AnyValue struct type is now registered lazily via ensureAnyValueType()
 
-  // Collect console.log imports (only variants actually used)
-  collectConsoleImports(ctx, ast.sourceFile);
-
-  // Collect primitive method imports (.toString() on numbers, etc.)
-  collectPrimitiveMethodImports(ctx, ast.sourceFile);
-
   // First pass: collect declare namespaces (registers imports before local funcs)
   collectExternDeclarations(ctx, ast.sourceFile);
 
@@ -484,58 +478,12 @@ export function generateModule(
   // Register only the extern class imports actually used in source code
   collectUsedExternImports(ctx, ast.sourceFile);
 
-  // Collect string literals and register imports (must be before local func indices)
-  collectStringLiterals(ctx, ast.sourceFile);
-
-  // Collect string method imports (.toUpperCase(), .indexOf(), etc.)
-  collectStringMethodImports(ctx, ast.sourceFile);
-
-  // Collect Math host imports for methods without native Wasm equivalents
-  collectMathImports(ctx, ast.sourceFile);
-
-  // Collect parseInt / parseFloat host imports
-  collectParseImports(ctx, ast.sourceFile);
-
-  // Collect String.fromCharCode host imports
-  collectStringStaticImports(ctx, ast.sourceFile);
-
-  // Collect Promise.all / Promise.race host imports
-  collectPromiseImports(ctx, ast.sourceFile);
-  // Collect JSON.parse / JSON.stringify host imports
-  collectJsonImports(ctx, ast.sourceFile);
-
-  // Collect __make_callback import if arrow functions are used as call arguments
-  collectCallbackImports(ctx, ast.sourceFile);
-
-  // Collect host callback bridges for functional array methods (filter, map, etc.)
-  collectFunctionalArrayImports(ctx, ast.sourceFile);
-
-  // Collect union type helper imports (typeof checks, boxing/unboxing).
-  // Only register when the source actually uses union types (heterogeneous unions,
-  // typeof expressions). Cases missed by collectUnionImports (e.g. coercion inside
-  // for-of loop bodies) are handled by on-demand addUnionImports calls at the
-  // specific codegen sites that need them, with proper index shifting (#153).
-  collectUnionImports(ctx, ast.sourceFile);
-
-  // Collect generator imports (function* support)
-  collectGeneratorImports(ctx, ast.sourceFile);
-  // Collect iterator protocol imports for for...of on non-array types (strings, etc.)
-  collectIteratorImports(ctx, ast.sourceFile);
-
-  // Register string literals for for-in field names (uses type checker, before func indices)
-  collectForInStringLiterals(ctx, ast.sourceFile);
-
-  // Register string literals for dynamic `in` operator field names
-  collectInExprStringLiterals(ctx, ast.sourceFile);
-
-  // Register string literals for Object.keys() / Object.values() calls
-  collectObjectMethodStringLiterals(ctx, ast.sourceFile);
-
-  // Collect wrapper constructor usage (new Number/String/Boolean)
-  collectWrapperConstructors(ctx, ast.sourceFile);
-
-  // Collect unknown constructor imports (__new_X for `new X(...)` where X is not a known class)
-  collectUnknownConstructorImports(ctx, ast.sourceFile);
+  // Single-pass collection of all source imports (#592):
+  // console, primitives, string literals, string methods, Math, parseInt/parseFloat,
+  // String.fromCharCode, Promise, JSON, callbacks, functional array methods,
+  // union types, generators, iterators, for-in/in-expr/Object.keys string literals,
+  // wrapper constructors, unknown constructor imports.
+  collectAllSourceImports(ctx, ast.sourceFile);
 
   // Emit inline Wasm implementations for Math methods (after all imports are registered)
   if (ctx.pendingMathMethods.size > 0) {
@@ -685,10 +633,8 @@ export function generateMultiModule(
 
   // $AnyValue struct type is now registered lazily via ensureAnyValueType()
 
-  // Phase 1: Collect all import-phase declarations across all source files
+  // Phase 1: Collect extern declarations first (needed before import collectors)
   for (const sf of multiAst.sourceFiles) {
-    collectConsoleImports(ctx, sf);
-    collectPrimitiveMethodImports(ctx, sf);
     collectExternDeclarations(ctx, sf);
   }
 
@@ -708,25 +654,10 @@ export function generateMultiModule(
     }
   }
 
+  // Single-pass collection of all source imports for each file (#592)
   for (const sf of multiAst.sourceFiles) {
     collectUsedExternImports(ctx, sf);
-    collectStringLiterals(ctx, sf);
-    collectStringMethodImports(ctx, sf);
-    collectMathImports(ctx, sf);
-    collectParseImports(ctx, sf);
-    collectStringStaticImports(ctx, sf);
-    collectPromiseImports(ctx, sf);
-    collectJsonImports(ctx, sf);
-    collectCallbackImports(ctx, sf);
-    collectFunctionalArrayImports(ctx, sf);
-    collectUnionImports(ctx, sf);
-    collectGeneratorImports(ctx, sf);
-    collectIteratorImports(ctx, sf);
-    collectForInStringLiterals(ctx, sf);
-    collectInExprStringLiterals(ctx, sf);
-    collectObjectMethodStringLiterals(ctx, sf);
-    collectWrapperConstructors(ctx, sf);
-    collectUnknownConstructorImports(ctx, sf);
+    collectAllSourceImports(ctx, sf);
   }
 
   // Emit inline Wasm implementations for Math methods (after all imports are registered)
@@ -779,6 +710,886 @@ export function generateMultiModule(
   eliminateDeadImports(mod);
 
   return { module: mod, errors: ctx.errors };
+}
+
+// ── Unified single-pass import collector (#592) ─────────────────────
+//
+// Instead of walking the AST 19+ times with separate collect* functions,
+// collectAllSourceImports performs a SINGLE recursive traversal and
+// dispatches to all collector logic on every node.  The individual
+// collect* functions below are preserved but no longer called from
+// generateModule / generateMultiModule — they remain as reference and
+// for any call sites that need them independently.
+
+/** Accumulated state for the single-pass collector */
+interface UnifiedCollectorState {
+  // -- collectConsoleImports --
+  consoleNeededByMethod: Map<string, Set<"number" | "bool" | "string" | "externref">>;
+  // -- collectPrimitiveMethodImports --
+  primitiveNeeded: Set<string>;
+  // -- collectStringLiterals --
+  stringLiterals: Set<string>;
+  hasTypeofExprForStrings: boolean;
+  hasTaggedTemplate: boolean;
+  insideComputedPropertyName: number; // depth counter
+  // -- collectStringMethodImports --
+  stringMethodNeeded: Set<string>;
+  // -- collectMathImports --
+  mathNeeded: Set<string>;
+  mathNeedsToUint32: boolean;
+  // -- collectParseImports --
+  parseNeeded: Set<string>;
+  // -- collectStringStaticImports --
+  needsFromCharCode: boolean;
+  // -- collectPromiseImports --
+  promiseNeeded: Set<string>;
+  promiseNeedConstructor: boolean;
+  // -- collectJsonImports --
+  jsonNeedStringify: boolean;
+  jsonNeedParse: boolean;
+  // -- collectCallbackImports --
+  callbackFound: boolean;
+  // -- collectFunctionalArrayImports --
+  funcArrayNeed1: boolean;
+  funcArrayNeed2: boolean;
+  // -- collectUnionImports --
+  unionFound: boolean;
+  // -- collectGeneratorImports --
+  generatorFound: boolean;
+  // -- collectIteratorImports --
+  iteratorFound: boolean;
+  // -- collectForInStringLiterals --
+  forInLiterals: Set<string>;
+  // -- collectInExprStringLiterals --
+  inExprLiterals: Set<string>;
+  // -- collectObjectMethodStringLiterals --
+  objectMethodLiterals: Set<string>;
+  objectMethodHasValues: boolean;
+  // -- collectWrapperConstructors --
+  wrapperFound: boolean;
+  // -- collectUnknownConstructorImports --
+  unknownCtorNeeded: Map<string, number>;
+  // context
+  sourceFile: ts.SourceFile;
+}
+
+const CONSOLE_METHODS_SET = new Set(["log", "warn", "error"]);
+
+function createUnifiedCollectorState(sourceFile: ts.SourceFile): UnifiedCollectorState {
+  return {
+    consoleNeededByMethod: new Map(),
+    primitiveNeeded: new Set(),
+    stringLiterals: new Set(),
+    hasTypeofExprForStrings: false,
+    hasTaggedTemplate: false,
+    insideComputedPropertyName: 0,
+    stringMethodNeeded: new Set(),
+    mathNeeded: new Set(),
+    mathNeedsToUint32: false,
+    parseNeeded: new Set(),
+    needsFromCharCode: false,
+    promiseNeeded: new Set(),
+    promiseNeedConstructor: false,
+    jsonNeedStringify: false,
+    jsonNeedParse: false,
+    callbackFound: false,
+    funcArrayNeed1: false,
+    funcArrayNeed2: false,
+    unionFound: false,
+    generatorFound: false,
+    iteratorFound: false,
+    forInLiterals: new Set(),
+    inExprLiterals: new Set(),
+    objectMethodLiterals: new Set(),
+    objectMethodHasValues: false,
+    wrapperFound: false,
+    unknownCtorNeeded: new Map(),
+    sourceFile,
+  };
+}
+
+/** Single-pass visitor called on every AST node */
+function unifiedVisitNode(
+  ctx: CodegenContext,
+  state: UnifiedCollectorState,
+  node: ts.Node,
+): void {
+  // ── collectStringLiterals (skip computed property names) ──
+  if (state.insideComputedPropertyName === 0) {
+    if (ts.isStringLiteral(node)) {
+      state.stringLiterals.add(node.text);
+    }
+    if (ts.isNoSubstitutionTemplateLiteral(node)) {
+      state.stringLiterals.add(node.text);
+    }
+    if (ts.isTemplateExpression(node)) {
+      if (node.head.text) state.stringLiterals.add(node.head.text);
+      for (const span of node.templateSpans) {
+        if (span.literal.text) state.stringLiterals.add(span.literal.text);
+      }
+    }
+    if (ts.isTaggedTemplateExpression(node)) {
+      state.hasTaggedTemplate = true;
+      if (ts.isNoSubstitutionTemplateLiteral(node.template)) {
+        state.stringLiterals.add(node.template.text);
+        const rawText = (node.template as any).rawText;
+        if (rawText !== undefined) state.stringLiterals.add(rawText);
+      } else if (ts.isTemplateExpression(node.template)) {
+        state.stringLiterals.add(node.template.head.text);
+        const headRaw = (node.template.head as any).rawText;
+        if (headRaw !== undefined) state.stringLiterals.add(headRaw);
+        for (const span of node.template.templateSpans) {
+          state.stringLiterals.add(span.literal.text);
+          const spanRaw = (span.literal as any).rawText;
+          if (spanRaw !== undefined) state.stringLiterals.add(spanRaw);
+        }
+      }
+    }
+    if (node.kind === ts.SyntaxKind.RegularExpressionLiteral) {
+      const { pattern, flags } = parseRegExpLiteral(node.getText());
+      state.stringLiterals.add(pattern);
+      if (flags) state.stringLiterals.add(flags);
+    }
+    if (ts.isTypeOfExpression(node)) {
+      state.hasTypeofExprForStrings = true;
+    }
+    if (ts.isMetaProperty(node) &&
+        node.keywordToken === ts.SyntaxKind.ImportKeyword &&
+        node.name.text === "meta") {
+      state.stringLiterals.add("module.wasm");
+      state.stringLiterals.add("[object Object]");
+    }
+  }
+
+  // ── collectConsoleImports ──
+  if (
+    ts.isCallExpression(node) &&
+    ts.isPropertyAccessExpression(node.expression) &&
+    ts.isIdentifier(node.expression.expression) &&
+    node.expression.expression.text === "console"
+  ) {
+    const method = node.expression.name.text;
+    if (CONSOLE_METHODS_SET.has(method)) {
+      if (!state.consoleNeededByMethod.has(method)) state.consoleNeededByMethod.set(method, new Set());
+      const needed = state.consoleNeededByMethod.get(method)!;
+      for (const arg of node.arguments) {
+        const argType = ctx.checker.getTypeAtLocation(arg);
+        if (isStringType(argType)) {
+          needed.add("string");
+        } else if (isBooleanType(argType)) {
+          needed.add("bool");
+        } else if (isNumberType(argType)) {
+          needed.add("number");
+        } else {
+          needed.add("externref");
+        }
+      }
+    }
+  }
+
+  // ── collectPrimitiveMethodImports ──
+  if (
+    ts.isCallExpression(node) &&
+    ts.isPropertyAccessExpression(node.expression)
+  ) {
+    const prop = node.expression;
+    const receiverType = ctx.checker.getTypeAtLocation(prop.expression);
+    const methodName = prop.name.text;
+    if (isNumberType(receiverType) && methodName === "toString") {
+      state.primitiveNeeded.add("number_toString");
+    }
+    if (isNumberType(receiverType) && methodName === "toFixed") {
+      state.primitiveNeeded.add("number_toFixed");
+    }
+    // ── collectStringMethodImports (also uses call+propertyAccess) ──
+    if (isStringType(receiverType) && Object.prototype.hasOwnProperty.call(STRING_METHODS, methodName)) {
+      state.stringMethodNeeded.add(methodName);
+    }
+  }
+  // Template expressions with number/boolean/bigint substitutions need number_toString
+  if (ts.isTemplateExpression(node)) {
+    for (const span of node.templateSpans) {
+      const spanType = ctx.checker.getTypeAtLocation(span.expression);
+      if (isNumberType(spanType) || isBooleanType(spanType) || isBigIntType(spanType)) {
+        state.primitiveNeeded.add("number_toString");
+      }
+    }
+  }
+  // String(expr) calls need number_toString
+  if (
+    ts.isCallExpression(node) &&
+    ts.isIdentifier(node.expression) &&
+    node.expression.text === "String" &&
+    node.arguments.length >= 1
+  ) {
+    const argType = ctx.checker.getTypeAtLocation(node.arguments[0]!);
+    if (isNumberType(argType) || !isStringType(argType)) {
+      state.primitiveNeeded.add("number_toString");
+    }
+  }
+  // String + non-string concatenation
+  if (
+    ts.isBinaryExpression(node) &&
+    (node.operatorToken.kind === ts.SyntaxKind.PlusToken ||
+     node.operatorToken.kind === ts.SyntaxKind.PlusEqualsToken)
+  ) {
+    const leftType = ctx.checker.getTypeAtLocation(node.left);
+    const rightType = ctx.checker.getTypeAtLocation(node.right);
+    if (isStringType(leftType) && !isStringType(rightType)) {
+      state.primitiveNeeded.add("number_toString");
+    }
+    if (!isStringType(leftType) && isStringType(rightType)) {
+      state.primitiveNeeded.add("number_toString");
+    }
+    if (
+      node.operatorToken.kind === ts.SyntaxKind.PlusEqualsToken &&
+      (leftType.flags & ts.TypeFlags.Any) !== 0 &&
+      !isStringType(rightType)
+    ) {
+      state.primitiveNeeded.add("number_toString");
+    }
+  }
+  // String comparison operators
+  if (
+    ts.isBinaryExpression(node) &&
+    (node.operatorToken.kind === ts.SyntaxKind.LessThanToken ||
+     node.operatorToken.kind === ts.SyntaxKind.LessThanEqualsToken ||
+     node.operatorToken.kind === ts.SyntaxKind.GreaterThanToken ||
+     node.operatorToken.kind === ts.SyntaxKind.GreaterThanEqualsToken)
+  ) {
+    const leftType = ctx.checker.getTypeAtLocation(node.left);
+    if (isStringType(leftType)) {
+      state.primitiveNeeded.add("string_compare");
+    }
+  }
+
+  // ── collectMathImports ──
+  if (
+    ts.isCallExpression(node) &&
+    ts.isPropertyAccessExpression(node.expression) &&
+    ts.isIdentifier(node.expression.expression) &&
+    node.expression.expression.text === "Math"
+  ) {
+    const method = node.expression.name.text;
+    if (
+      MATH_HOST_METHODS_1ARG.has(method) ||
+      MATH_HOST_METHODS_2ARG.has(method) ||
+      method === "random"
+    ) {
+      state.mathNeeded.add(method);
+    }
+    if (method === "clz32" || method === "imul") {
+      state.mathNeedsToUint32 = true;
+    }
+  }
+  if (
+    ts.isBinaryExpression(node) &&
+    (node.operatorToken.kind === ts.SyntaxKind.AsteriskAsteriskToken ||
+      node.operatorToken.kind === ts.SyntaxKind.AsteriskAsteriskEqualsToken)
+  ) {
+    state.mathNeeded.add("pow");
+  }
+
+  // ── collectParseImports ──
+  if (
+    ts.isCallExpression(node) &&
+    ts.isIdentifier(node.expression)
+  ) {
+    const name = node.expression.text;
+    if (name === "parseInt" || name === "parseFloat") {
+      state.parseNeeded.add(name);
+    }
+    if (name === "Number") {
+      state.parseNeeded.add("parseFloat");
+    }
+  }
+  if (
+    ts.isPrefixUnaryExpression(node) &&
+    node.operator === ts.SyntaxKind.PlusToken &&
+    !ts.isStringLiteral(node.operand) &&
+    !ts.isNoSubstitutionTemplateLiteral(node.operand)
+  ) {
+    const operandType = ctx.checker.getTypeAtLocation(node.operand);
+    if (operandType.flags & ts.TypeFlags.StringLike) {
+      state.parseNeeded.add("parseFloat");
+    }
+  }
+  if (
+    ts.isBinaryExpression(node) &&
+    (node.operatorToken.kind === ts.SyntaxKind.EqualsEqualsToken ||
+     node.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsToken)
+  ) {
+    try {
+      const leftType = ctx.checker.getTypeAtLocation(node.left);
+      const rightType = ctx.checker.getTypeAtLocation(node.right);
+      const leftIsStr = isStringType(leftType);
+      const rightIsStr = isStringType(rightType);
+      const leftIsNumOrBool = isNumberType(leftType) || isBooleanType(leftType);
+      const rightIsNumOrBool = isNumberType(rightType) || isBooleanType(rightType);
+      if ((leftIsStr && rightIsNumOrBool) || (rightIsStr && leftIsNumOrBool)) {
+        state.parseNeeded.add("parseFloat");
+      }
+    } catch {
+      // Type resolution may fail for some nodes
+    }
+  }
+  if (ts.isBinaryExpression(node)) {
+    const opKind = node.operatorToken.kind;
+    const isArithOrBitwise =
+      opKind === ts.SyntaxKind.MinusToken ||
+      opKind === ts.SyntaxKind.AsteriskToken ||
+      opKind === ts.SyntaxKind.AsteriskAsteriskToken ||
+      opKind === ts.SyntaxKind.SlashToken ||
+      opKind === ts.SyntaxKind.PercentToken ||
+      opKind === ts.SyntaxKind.AmpersandToken ||
+      opKind === ts.SyntaxKind.BarToken ||
+      opKind === ts.SyntaxKind.CaretToken ||
+      opKind === ts.SyntaxKind.LessThanLessThanToken ||
+      opKind === ts.SyntaxKind.GreaterThanGreaterThanToken ||
+      opKind === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken;
+    if (isArithOrBitwise) {
+      try {
+        const leftType = ctx.checker.getTypeAtLocation(node.left);
+        const rightType = ctx.checker.getTypeAtLocation(node.right);
+        if (isStringType(leftType) || isStringType(rightType)) {
+          state.parseNeeded.add("parseFloat");
+        }
+      } catch {
+        // Type resolution may fail
+      }
+    }
+  }
+
+  // ── collectStringStaticImports (String.fromCharCode) ──
+  if (
+    ts.isCallExpression(node) &&
+    ts.isPropertyAccessExpression(node.expression) &&
+    ts.isIdentifier(node.expression.expression) &&
+    node.expression.expression.text === "String" &&
+    node.expression.name.text === "fromCharCode"
+  ) {
+    state.needsFromCharCode = true;
+  }
+
+  // ── collectPromiseImports ──
+  if (
+    ts.isCallExpression(node) &&
+    ts.isPropertyAccessExpression(node.expression) &&
+    ts.isIdentifier(node.expression.expression) &&
+    node.expression.expression.text === "Promise"
+  ) {
+    const method = node.expression.name.text;
+    if (method === "all" || method === "race" || method === "resolve" || method === "reject") {
+      state.promiseNeeded.add(method);
+    }
+  }
+  if (
+    ts.isNewExpression(node) &&
+    ts.isIdentifier(node.expression) &&
+    node.expression.text === "Promise"
+  ) {
+    state.promiseNeedConstructor = true;
+  }
+
+  // ── collectJsonImports ──
+  if (
+    ts.isCallExpression(node) &&
+    ts.isPropertyAccessExpression(node.expression) &&
+    ts.isIdentifier(node.expression.expression) &&
+    node.expression.expression.text === "JSON"
+  ) {
+    const method = node.expression.name.text;
+    if (method === "stringify") state.jsonNeedStringify = true;
+    if (method === "parse") state.jsonNeedParse = true;
+  }
+
+  // ── collectCallbackImports ──
+  if (!state.callbackFound) {
+    if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) {
+      state.callbackFound = true;
+    }
+  }
+
+  // ── collectFunctionalArrayImports ──
+  if (
+    ts.isCallExpression(node) &&
+    ts.isPropertyAccessExpression(node.expression)
+  ) {
+    const method = node.expression.name.text;
+    if (FUNCTIONAL_ARRAY_METHODS.has(method)) {
+      if (method === "reduce") {
+        state.funcArrayNeed2 = true;
+      } else {
+        state.funcArrayNeed1 = true;
+      }
+    }
+    if (method === "call" && ts.isPropertyAccessExpression(node.expression.expression)) {
+      const innerMethod = node.expression.expression.name.text;
+      if (FUNCTIONAL_ARRAY_METHODS.has(innerMethod)) {
+        if (innerMethod === "reduce") {
+          state.funcArrayNeed2 = true;
+        } else {
+          state.funcArrayNeed1 = true;
+        }
+      }
+    }
+  }
+
+  // ── collectUnionImports ──
+  if (!state.unionFound) {
+    if (ts.isFunctionDeclaration(node) && node.parameters) {
+      for (const param of node.parameters) {
+        const paramType = ctx.checker.getTypeAtLocation(param);
+        if (isHeterogeneousUnion(paramType, ctx.checker)) {
+          state.unionFound = true;
+          break;
+        }
+      }
+    }
+    if (!state.unionFound && ts.isVariableDeclaration(node) && node.type) {
+      const varType = ctx.checker.getTypeAtLocation(node);
+      if (isHeterogeneousUnion(varType, ctx.checker)) {
+        state.unionFound = true;
+      }
+    }
+    if (!state.unionFound && ts.isTypeOfExpression(node)) {
+      state.unionFound = true;
+    }
+    if (!state.unionFound && ts.isFunctionDeclaration(node) && node.asteriskToken && node.body && !hasDeclareModifier(node)) {
+      state.unionFound = true;
+    }
+    if (!state.unionFound && ts.isFunctionExpression(node) && node.asteriskToken) {
+      state.unionFound = true;
+    }
+    if (!state.unionFound && ts.isMethodDeclaration(node) && node.asteriskToken && node.body) {
+      state.unionFound = true;
+    }
+    if (!state.unionFound && ts.isForOfStatement(node)) {
+      const exprType = ctx.checker.getTypeAtLocation(node.expression);
+      const sym = (exprType as ts.TypeReference).symbol ?? (exprType as ts.Type).symbol;
+      if (sym?.name !== "Array") {
+        state.unionFound = true;
+      }
+    }
+  }
+
+  // ── collectGeneratorImports ──
+  if (!state.generatorFound) {
+    if (
+      ts.isFunctionDeclaration(node) &&
+      node.asteriskToken &&
+      node.body &&
+      !hasDeclareModifier(node)
+    ) {
+      state.generatorFound = true;
+    }
+    if (!state.generatorFound && ts.isFunctionExpression(node) && node.asteriskToken) {
+      state.generatorFound = true;
+    }
+    if (!state.generatorFound && ts.isMethodDeclaration(node) && node.asteriskToken && node.body) {
+      state.generatorFound = true;
+    }
+  }
+
+  // ── collectIteratorImports ──
+  if (!state.iteratorFound && ts.isForOfStatement(node)) {
+    const exprType = ctx.checker.getTypeAtLocation(node.expression);
+    const sym =
+      (exprType as ts.TypeReference).symbol ?? (exprType as ts.Type).symbol;
+    if (sym?.name !== "Array") {
+      if (ctx.fast && ctx.anyStrTypeIdx >= 0 && isStringType(exprType)) {
+        // In fast mode, strings are iterated natively
+      } else {
+        state.iteratorFound = true;
+      }
+    }
+  }
+
+  // ── collectForInStringLiterals ──
+  if (ts.isForInStatement(node)) {
+    const exprType = ctx.checker.getTypeAtLocation(node.expression);
+    const props = exprType.getProperties();
+    for (const prop of props) {
+      if (!ctx.stringGlobalMap.has(prop.name)) state.forInLiterals.add(prop.name);
+    }
+  }
+
+  // ── collectInExprStringLiterals ──
+  if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.InKeyword) {
+    if (!ts.isStringLiteral(node.left) && !ts.isNumericLiteral(node.left)) {
+      const rightType = ctx.checker.getTypeAtLocation(node.right);
+      const props = rightType.getProperties();
+      for (const prop of props) {
+        if (!ctx.stringGlobalMap.has(prop.name)) state.inExprLiterals.add(prop.name);
+      }
+    }
+  }
+
+  // ── collectObjectMethodStringLiterals ──
+  if (
+    ts.isCallExpression(node) &&
+    ts.isPropertyAccessExpression(node.expression) &&
+    ts.isIdentifier(node.expression.expression) &&
+    node.expression.expression.text === "Object" &&
+    (node.expression.name.text === "keys" || node.expression.name.text === "values" || node.expression.name.text === "entries") &&
+    node.arguments.length === 1
+  ) {
+    if (node.expression.name.text === "values" || node.expression.name.text === "entries") state.objectMethodHasValues = true;
+    const argType = ctx.checker.getTypeAtLocation(node.arguments[0]!);
+    const props = argType.getProperties();
+    for (const prop of props) {
+      if (!ctx.stringLiteralMap.has(prop.name)) state.objectMethodLiterals.add(prop.name);
+    }
+  }
+
+  // ── collectWrapperConstructors ──
+  if (!state.wrapperFound && ts.isNewExpression(node) && ts.isIdentifier(node.expression)) {
+    const name = node.expression.text;
+    if (name === "Number" || name === "String" || name === "Boolean") {
+      state.wrapperFound = true;
+    }
+  }
+
+  // ── collectUnknownConstructorImports ──
+  if (ts.isNewExpression(node) && ts.isIdentifier(node.expression)) {
+    const name = node.expression.text;
+    if (!KNOWN_CONSTRUCTORS.has(name)) {
+      const sym = ctx.checker.getSymbolAtLocation(node.expression);
+      const decls = sym?.getDeclarations() ?? [];
+      const isLocalClass = decls.some(d => {
+        if (ts.isClassDeclaration(d) || ts.isClassExpression(d)) return d.getSourceFile() === state.sourceFile;
+        if (ts.isVariableDeclaration(d) && d.initializer && ts.isClassExpression(d.initializer)) return d.getSourceFile() === state.sourceFile;
+        return false;
+      });
+      const isExtern = ctx.externClasses.has(name);
+      if (!isLocalClass && !isExtern) {
+        const argCount = node.arguments?.length ?? 0;
+        const prev = state.unknownCtorNeeded.get(name) ?? 0;
+        state.unknownCtorNeeded.set(name, Math.max(prev, argCount));
+      }
+    }
+  }
+
+  // ── Recurse into children ──
+  // Track computed property name depth for string literal collection
+  if (ts.isComputedPropertyName(node)) {
+    state.insideComputedPropertyName++;
+    ts.forEachChild(node, child => unifiedVisitNode(ctx, state, child));
+    state.insideComputedPropertyName--;
+    return; // already recursed
+  }
+  ts.forEachChild(node, child => unifiedVisitNode(ctx, state, child));
+}
+
+/** Run all post-walk finalization (register imports based on collected state) */
+function finalizeUnifiedCollector(
+  ctx: CodegenContext,
+  state: UnifiedCollectorState,
+): void {
+  // ── collectConsoleImports finalize ──
+  const CONSOLE_METHODS = ["log", "warn", "error"] as const;
+  for (const method of CONSOLE_METHODS) {
+    const needed = state.consoleNeededByMethod.get(method);
+    if (!needed) continue;
+    if (needed.has("number")) {
+      const t = addFuncType(ctx, [{ kind: "f64" }], []);
+      addImport(ctx, "env", `console_${method}_number`, { kind: "func", typeIdx: t });
+    }
+    if (needed.has("bool")) {
+      const t = addFuncType(ctx, [{ kind: "i32" }], []);
+      addImport(ctx, "env", `console_${method}_bool`, { kind: "func", typeIdx: t });
+    }
+    if (needed.has("string")) {
+      const t = addFuncType(ctx, [{ kind: "externref" }], []);
+      addImport(ctx, "env", `console_${method}_string`, { kind: "func", typeIdx: t });
+    }
+    if (needed.has("externref")) {
+      const t = addFuncType(ctx, [{ kind: "externref" }], []);
+      addImport(ctx, "env", `console_${method}_externref`, { kind: "func", typeIdx: t });
+    }
+  }
+
+  // ── collectPrimitiveMethodImports finalize ──
+  if (state.primitiveNeeded.has("number_toString")) {
+    const t = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", "number_toString", { kind: "func", typeIdx: t });
+  }
+  if (state.primitiveNeeded.has("number_toFixed")) {
+    const t = addFuncType(ctx, [{ kind: "f64" }, { kind: "f64" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", "number_toFixed", { kind: "func", typeIdx: t });
+  }
+  if (state.primitiveNeeded.has("string_compare")) {
+    const t = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "i32" }]);
+    addImport(ctx, "env", "string_compare", { kind: "func", typeIdx: t });
+  }
+
+  // ── collectStringLiterals finalize ──
+  if (state.hasTypeofExprForStrings) {
+    for (const s of ["number", "string", "boolean", "object", "undefined", "function", "symbol"]) {
+      state.stringLiterals.add(s);
+    }
+  }
+  if (state.hasTaggedTemplate) {
+    getOrRegisterTemplateVecType(ctx);
+  }
+  if (state.stringLiterals.size > 0) {
+    if (ctx.fast) {
+      ensureNativeStringHelpers(ctx);
+      for (const value of state.stringLiterals) {
+        if (!ctx.stringGlobalMap.has(value)) {
+          ctx.stringGlobalMap.set(value, -1);
+        }
+      }
+    } else {
+      addStringImports(ctx);
+      for (const value of state.stringLiterals) {
+        addStringConstantGlobal(ctx, value);
+      }
+    }
+  }
+
+  // ── collectStringMethodImports finalize ──
+  {
+    const NATIVE_STR_METHODS = new Set([
+      "charAt", "substring", "slice", "at",
+      "indexOf", "lastIndexOf", "includes", "startsWith", "endsWith",
+      "trim", "trimStart", "trimEnd",
+      "repeat", "padStart", "padEnd", "toLowerCase", "toUpperCase",
+      "replace", "replaceAll", "split",
+    ]);
+    for (const method of state.stringMethodNeeded) {
+      if (ctx.fast && NATIVE_STR_METHODS.has(method)) {
+        ensureNativeStringHelpers(ctx);
+        continue;
+      }
+      const sig = STRING_METHODS[method]!;
+      const params: ValType[] = [{ kind: "externref" }, ...sig.params];
+      const t = addFuncType(ctx, params, [sig.result]);
+      addImport(ctx, "env", `string_${method}`, { kind: "func", typeIdx: t });
+    }
+    if (state.stringMethodNeeded.has("split") && !ctx.fast) {
+      if (!ctx.funcMap.has("__extern_get")) {
+        const getType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+        addImport(ctx, "env", "__extern_get", { kind: "func", typeIdx: getType });
+      }
+      if (!ctx.funcMap.has("__extern_length")) {
+        const lenType = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "f64" }]);
+        addImport(ctx, "env", "__extern_length", { kind: "func", typeIdx: lenType });
+      }
+    }
+  }
+
+  // ── collectMathImports finalize ──
+  for (const method of state.mathNeeded) {
+    if (method === "random") {
+      const typeIdx = addFuncType(ctx, [], [{ kind: "f64" }]);
+      addImport(ctx, "env", `Math_${method}`, { kind: "func", typeIdx });
+    } else {
+      ctx.pendingMathMethods.add(method);
+    }
+  }
+  if (state.mathNeedsToUint32 && !ctx.funcMap.has("__toUint32")) {
+    const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "i32" }]);
+    addImport(ctx, "env", "__toUint32", { kind: "func", typeIdx });
+  }
+
+  // ── collectParseImports finalize ──
+  for (const name of state.parseNeeded) {
+    if (name === "parseInt") {
+      const typeIdx = addFuncType(ctx, [{ kind: "externref" }, { kind: "f64" }], [{ kind: "f64" }]);
+      addImport(ctx, "env", name, { kind: "func", typeIdx });
+    } else {
+      const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "f64" }]);
+      addImport(ctx, "env", name, { kind: "func", typeIdx });
+    }
+  }
+
+  // ── collectStringStaticImports finalize ──
+  if (state.needsFromCharCode) {
+    const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", "String_fromCharCode", { kind: "func", typeIdx });
+    if (ctx.fast) {
+      ensureNativeStringHelpers(ctx);
+    }
+  }
+
+  // ── collectPromiseImports finalize ──
+  for (const method of state.promiseNeeded) {
+    const importName = `Promise_${method}`;
+    if (!ctx.funcMap.has(importName)) {
+      const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
+      addImport(ctx, "env", importName, { kind: "func", typeIdx });
+    }
+  }
+  if (state.promiseNeedConstructor && !ctx.funcMap.has("Promise_new")) {
+    const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", "Promise_new", { kind: "func", typeIdx });
+  }
+
+  // ── collectJsonImports finalize ──
+  if (state.jsonNeedStringify || state.jsonNeedParse) {
+    addUnionImports(ctx);
+  }
+  if (state.jsonNeedStringify) {
+    const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", "JSON_stringify", { kind: "func", typeIdx });
+  }
+  if (state.jsonNeedParse) {
+    const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", "JSON_parse", { kind: "func", typeIdx });
+  }
+
+  // ── collectCallbackImports finalize ──
+  if (state.callbackFound) {
+    const typeIdx = addFuncType(
+      ctx,
+      [{ kind: "i32" }, { kind: "externref" }],
+      [{ kind: "externref" }],
+    );
+    addImport(ctx, "env", "__make_callback", { kind: "func", typeIdx });
+  }
+
+  // ── collectFunctionalArrayImports finalize ──
+  if (state.funcArrayNeed1) {
+    if (ctx.fast) {
+      const typeIdx = addFuncType(ctx, [{ kind: "externref" }, { kind: "i32" }], [{ kind: "i32" }]);
+      addImport(ctx, "env", "__call_1_i32", { kind: "func", typeIdx });
+    } else {
+      const typeIdx = addFuncType(ctx, [{ kind: "externref" }, { kind: "f64" }], [{ kind: "f64" }]);
+      addImport(ctx, "env", "__call_1_f64", { kind: "func", typeIdx });
+    }
+  }
+  if (state.funcArrayNeed2) {
+    if (ctx.fast) {
+      const typeIdx = addFuncType(ctx, [{ kind: "externref" }, { kind: "i32" }, { kind: "i32" }], [{ kind: "i32" }]);
+      addImport(ctx, "env", "__call_2_i32", { kind: "func", typeIdx });
+    } else {
+      const typeIdx = addFuncType(ctx, [{ kind: "externref" }, { kind: "f64" }, { kind: "f64" }], [{ kind: "f64" }]);
+      addImport(ctx, "env", "__call_2_f64", { kind: "func", typeIdx });
+    }
+  }
+
+  // ── collectUnionImports finalize ──
+  if (state.unionFound) {
+    addUnionImports(ctx);
+  }
+
+  // ── collectGeneratorImports finalize ──
+  if (state.generatorFound && !ctx.funcMap.has("__gen_create_buffer")) {
+    const bufType = addFuncType(ctx, [], [{ kind: "externref" }]);
+    addImport(ctx, "env", "__gen_create_buffer", { kind: "func", typeIdx: bufType });
+
+    const pushF64Type = addFuncType(ctx, [{ kind: "externref" }, { kind: "f64" }], []);
+    addImport(ctx, "env", "__gen_push_f64", { kind: "func", typeIdx: pushF64Type });
+
+    const pushI32Type = addFuncType(ctx, [{ kind: "externref" }, { kind: "i32" }], []);
+    addImport(ctx, "env", "__gen_push_i32", { kind: "func", typeIdx: pushI32Type });
+
+    const pushRefType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], []);
+    addImport(ctx, "env", "__gen_push_ref", { kind: "func", typeIdx: pushRefType });
+
+    const genType = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", "__create_generator", { kind: "func", typeIdx: genType });
+    addImport(ctx, "env", "__gen_next", { kind: "func", typeIdx: genType });
+
+    const genReturnType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", "__gen_return", { kind: "func", typeIdx: genReturnType });
+    addImport(ctx, "env", "__gen_throw", { kind: "func", typeIdx: genReturnType });
+
+    addImport(ctx, "env", "__gen_result_value", { kind: "func", typeIdx: genType });
+
+    const resultValF64Type = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "f64" }]);
+    addImport(ctx, "env", "__gen_result_value_f64", { kind: "func", typeIdx: resultValF64Type });
+
+    const resultDoneType = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "i32" }]);
+    addImport(ctx, "env", "__gen_result_done", { kind: "func", typeIdx: resultDoneType });
+  }
+
+  // ── collectIteratorImports finalize ──
+  if (state.iteratorFound) {
+    addIteratorImports(ctx);
+  }
+
+  // ── collectForInStringLiterals finalize ──
+  if (state.forInLiterals.size > 0) {
+    if (ctx.fast) {
+      ensureNativeStringHelpers(ctx);
+      for (const value of state.forInLiterals) {
+        if (!ctx.stringGlobalMap.has(value)) ctx.stringGlobalMap.set(value, -1);
+      }
+    } else {
+      addStringImports(ctx);
+      for (const value of state.forInLiterals) {
+        addStringConstantGlobal(ctx, value);
+      }
+    }
+  }
+
+  // ── collectInExprStringLiterals finalize ──
+  if (state.inExprLiterals.size > 0) {
+    if (ctx.fast) {
+      ensureNativeStringHelpers(ctx);
+      for (const value of state.inExprLiterals) {
+        if (!ctx.stringGlobalMap.has(value)) ctx.stringGlobalMap.set(value, -1);
+      }
+    } else {
+      addStringImports(ctx);
+      for (const value of state.inExprLiterals) {
+        addStringConstantGlobal(ctx, value);
+      }
+    }
+  }
+
+  // ── collectObjectMethodStringLiterals finalize ──
+  if (state.objectMethodHasValues) {
+    addUnionImports(ctx);
+  }
+  if (state.objectMethodLiterals.size > 0) {
+    if (ctx.fast) {
+      ensureNativeStringHelpers(ctx);
+      for (const value of state.objectMethodLiterals) {
+        if (!ctx.stringGlobalMap.has(value)) ctx.stringGlobalMap.set(value, -1);
+      }
+    } else {
+      addStringImports(ctx);
+      const strThunkType = addFuncType(ctx, [], [{ kind: "externref" }]);
+      for (const value of state.objectMethodLiterals) {
+        const name = `__str_${ctx.stringLiteralCounter++}`;
+        addImport(ctx, "env", name, { kind: "func", typeIdx: strThunkType });
+        ctx.stringLiteralMap.set(value, name);
+        ctx.stringLiteralValues.set(name, value);
+        ctx.mod.stringPool.push(value);
+      }
+    }
+  }
+
+  // ── collectWrapperConstructors finalize ──
+  if (state.wrapperFound) {
+    ensureWrapperTypes(ctx);
+  }
+
+  // ── collectUnknownConstructorImports finalize ──
+  for (const [name, argCount] of state.unknownCtorNeeded) {
+    const importName = `__new_${name}`;
+    if (ctx.funcMap.has(importName)) continue;
+    const params: ValType[] = Array.from({ length: argCount }, () => ({ kind: "externref" } as ValType));
+    const typeIdx = addFuncType(ctx, params, [{ kind: "externref" }]);
+    addImport(ctx, "env", importName, { kind: "func", typeIdx });
+  }
+}
+
+/**
+ * Perform a single AST walk that collects all import-phase information.
+ * Replaces 19 separate collect* passes with one O(n) traversal.
+ * (#592)
+ */
+function collectAllSourceImports(
+  ctx: CodegenContext,
+  sourceFile: ts.SourceFile,
+): void {
+  const state = createUnifiedCollectorState(sourceFile);
+  ts.forEachChild(sourceFile, node => unifiedVisitNode(ctx, state, node));
+  finalizeUnifiedCollector(ctx, state);
 }
 
 /** Scan source for console.log/warn/error() calls and register only needed import variants */
