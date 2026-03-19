@@ -6098,51 +6098,45 @@ export function addUnionImports(ctx: CodegenContext): void {
         }
       }
     }
+    // Track which body arrays have been shifted to prevent double-shifting.
+    // Using a single Set from the start avoids reliance on reference equality
+    // (e.g. sb === curBody, ctx.mod.functions.some(f => f.body === sb)) which
+    // can miss shared references and cause double-shifts.
+    const shifted = new Set<Instr[]>();
     for (const func of ctx.mod.functions) {
-      shiftFuncIndices(func.body);
+      if (!shifted.has(func.body)) {
+        shiftFuncIndices(func.body);
+        shifted.add(func.body);
+      }
     }
     // Also shift indices in the currently-being-compiled function body,
     // which may differ from func.body (fctx.body starts as [] and is
     // assigned to func.body only after compilation completes).
     if (ctx.currentFunc) {
-      // Check that we don't double-shift (fctx.body won't be in
-      // ctx.mod.functions until func.body = fctx.body runs later).
-      const curBody = ctx.currentFunc.body;
-      const alreadyShifted = ctx.mod.functions.some(f => f.body === curBody);
-      if (!alreadyShifted) {
-        shiftFuncIndices(curBody);
+      if (!shifted.has(ctx.currentFunc.body)) {
+        shiftFuncIndices(ctx.currentFunc.body);
+        shifted.add(ctx.currentFunc.body);
       }
       // Also shift any saved body arrays (from savedBody swap pattern).
-      // When fctx.body is swapped to a fresh [] for inner block compilation,
-      // the outer body (savedBody) is pushed onto this stack. Without shifting
-      // these, call/ref.func indices in the outer body become stale.
       for (const sb of ctx.currentFunc.savedBodies) {
-        // Skip if this is the same array as curBody (would double-shift)
-        if (sb === curBody) continue;
-        // Skip if already in mod.functions (would double-shift)
-        if (ctx.mod.functions.some(f => f.body === sb)) continue;
+        if (shifted.has(sb)) continue;
         shiftFuncIndices(sb);
+        shifted.add(sb);
       }
     }
     // Shift parent function contexts saved on the funcStack during nested
     // closure compilation. These are in-flight function bodies that are NOT
     // in ctx.mod.functions and NOT ctx.currentFunc, so they would otherwise
     // be missed by the index shift.
-    const shiftedArrays = new Set<Instr[]>();
-    if (ctx.currentFunc) {
-      shiftedArrays.add(ctx.currentFunc.body);
-      for (const sb of ctx.currentFunc.savedBodies) shiftedArrays.add(sb);
-    }
-    for (const func of ctx.mod.functions) shiftedArrays.add(func.body);
     for (const parentFctx of ctx.funcStack) {
-      if (!shiftedArrays.has(parentFctx.body)) {
+      if (!shifted.has(parentFctx.body)) {
         shiftFuncIndices(parentFctx.body);
-        shiftedArrays.add(parentFctx.body);
+        shifted.add(parentFctx.body);
       }
       for (const sb of parentFctx.savedBodies) {
-        if (!shiftedArrays.has(sb)) {
+        if (!shifted.has(sb)) {
           shiftFuncIndices(sb);
-          shiftedArrays.add(sb);
+          shifted.add(sb);
         }
       }
     }
@@ -6366,22 +6360,30 @@ function fixupModuleGlobalIndices(
     }
   }
 
+  // Track which body arrays have been shifted to prevent double-shifting.
+  const shifted = new Set<Instr[]>();
   for (const func of ctx.mod.functions) {
-    shiftGlobalIndices(func.body);
+    if (!shifted.has(func.body)) {
+      shiftGlobalIndices(func.body);
+      shifted.add(func.body);
+    }
   }
 
   // Also fix up the current function being compiled (its body is not yet
   // in ctx.mod.functions — it's in the FunctionContext's body array)
   if (ctx.currentFunc) {
-    shiftGlobalIndices(ctx.currentFunc.body);
+    if (!shifted.has(ctx.currentFunc.body)) {
+      shiftGlobalIndices(ctx.currentFunc.body);
+      shifted.add(ctx.currentFunc.body);
+    }
     // Also shift any saved body arrays (from savedBody swap pattern).
     // When fctx.body is swapped to a fresh [] for inner block compilation
     // (e.g. try/catch, if/else), the outer body is pushed onto savedBodies.
     // Without shifting these, global indices in the outer body become stale.
     for (const sb of ctx.currentFunc.savedBodies) {
-      if (sb === ctx.currentFunc.body) continue;
-      if (ctx.mod.functions.some(f => f.body === sb)) continue;
+      if (shifted.has(sb)) continue;
       shiftGlobalIndices(sb);
+      shifted.add(sb);
     }
   }
 
