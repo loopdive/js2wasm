@@ -10478,7 +10478,7 @@ function compileCallExpression(
       }
       // Compile the digits argument (default 0)
       if (expr.arguments.length > 0) {
-        compileExpression(ctx, fctx, expr.arguments[0]!);
+        compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "f64" });
       } else {
         fctx.body.push({ op: "f64.const", value: 0 });
       }
@@ -11502,10 +11502,12 @@ function compileCallExpression(
           const paramTypes = getFuncParamTypes(ctx, funcIdx);
           const args = expr.arguments;
           for (let ai = 0; ai < args.length; ai++) {
-            const argResult = compileExpression(ctx, fctx, args[ai]!);
-            const expectedType = paramTypes?.[ai + 1];
-            if (argResult && expectedType && argResult.kind !== expectedType.kind) {
-              coerceType(ctx, fctx, argResult, expectedType);
+            const expectedArgType = paramTypes?.[ai + 1]; // +1 for self param
+            const argResult = compileExpression(ctx, fctx, args[ai]!, expectedArgType);
+            if (!argResult || argResult === VOID_RESULT) {
+              pushDefaultValue(fctx, expectedArgType ?? { kind: "f64" });
+            } else if (expectedArgType && argResult.kind !== expectedArgType.kind) {
+              coerceType(ctx, fctx, argResult, expectedArgType);
             }
           }
           if (paramTypes && args.length + 1 < paramTypes.length) {
@@ -11529,7 +11531,7 @@ function compileCallExpression(
           fctx.body.push({ op: "f64.convert_i32_s" });
         }
         if (methodName === "toFixed" && expr.arguments.length > 0) {
-          compileExpression(ctx, fctx, expr.arguments[0]!);
+          compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "f64" });
         } else if (methodName === "toFixed") {
           fctx.body.push({ op: "f64.const", value: 0 });
         }
@@ -14550,10 +14552,12 @@ function compileOptionalCallExpression(
         fctx.body.push({ op: "local.get", index: tmp });
         const paramTypes = getFuncParamTypes(ctx, funcIdx);
         for (let ai = 0; ai < expr.arguments.length; ai++) {
-          const argResult = compileExpression(ctx, fctx, expr.arguments[ai]!);
-          const expectedType = paramTypes?.[ai + 1];
-          if (argResult && expectedType && argResult.kind !== expectedType.kind) {
-            coerceType(ctx, fctx, argResult, expectedType);
+          const expectedArgType = paramTypes?.[ai + 1]; // +1 for self param
+          const argResult = compileExpression(ctx, fctx, expr.arguments[ai]!, expectedArgType);
+          if (!argResult || argResult === VOID_RESULT) {
+            pushDefaultValue(fctx, expectedArgType ?? { kind: "f64" });
+          } else if (expectedArgType && argResult.kind !== expectedArgType.kind) {
+            coerceType(ctx, fctx, argResult, expectedArgType);
           }
         }
         if (paramTypes && expr.arguments.length + 1 < paramTypes.length) {
@@ -14591,7 +14595,7 @@ function compileOptionalCallExpression(
         fctx.body.push({ op: "f64.convert_i32_s" });
       }
       if (expr.arguments.length > 0) {
-        compileExpression(ctx, fctx, expr.arguments[0]!);
+        compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "f64" });
       } else {
         fctx.body.push({ op: "f64.const", value: 0 });
       }
@@ -18276,26 +18280,52 @@ function compileStringBinaryOp(
       default: {
         // Arithmetic/bitwise operators on strings: coerce both operands to f64 via ToNumber
         // This matches JS semantics: "5" - "2" === 3, "6" * "7" === 42
-        compileExpression(ctx, fctx, expr.left);
-        // Convert native string ref → externref → f64
-        fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
-        const pfIdx1 = ctx.funcMap.get("parseFloat");
-        if (pfIdx1 !== undefined) {
-          fctx.body.push({ op: "call", funcIdx: pfIdx1 });
-        } else {
-          addUnionImports(ctx);
-          fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+        const fastLeftResult = compileExpression(ctx, fctx, expr.left);
+        if (fastLeftResult && (fastLeftResult.kind === "ref" || fastLeftResult.kind === "ref_null")) {
+          // Convert native string ref → externref → f64
+          fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+          const pfIdx1 = ctx.funcMap.get("parseFloat");
+          if (pfIdx1 !== undefined) {
+            fctx.body.push({ op: "call", funcIdx: pfIdx1 });
+          } else {
+            addUnionImports(ctx);
+            fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+          }
+        } else if (fastLeftResult && fastLeftResult.kind === "externref") {
+          const pfIdx1 = ctx.funcMap.get("parseFloat");
+          if (pfIdx1 !== undefined) {
+            fctx.body.push({ op: "call", funcIdx: pfIdx1 });
+          } else {
+            addUnionImports(ctx);
+            fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+          }
+        } else if (fastLeftResult && fastLeftResult.kind === "i32") {
+          fctx.body.push({ op: "f64.convert_i32_s" });
         }
-        compileExpression(ctx, fctx, expr.right);
-        // Convert native string ref → externref → f64
-        fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
-        const pfIdx2 = ctx.funcMap.get("parseFloat");
-        if (pfIdx2 !== undefined) {
-          fctx.body.push({ op: "call", funcIdx: pfIdx2 });
-        } else {
-          addUnionImports(ctx);
-          fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+        // f64 needs no conversion
+        const fastRightResult = compileExpression(ctx, fctx, expr.right);
+        if (fastRightResult && (fastRightResult.kind === "ref" || fastRightResult.kind === "ref_null")) {
+          // Convert native string ref → externref → f64
+          fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+          const pfIdx2 = ctx.funcMap.get("parseFloat");
+          if (pfIdx2 !== undefined) {
+            fctx.body.push({ op: "call", funcIdx: pfIdx2 });
+          } else {
+            addUnionImports(ctx);
+            fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+          }
+        } else if (fastRightResult && fastRightResult.kind === "externref") {
+          const pfIdx2 = ctx.funcMap.get("parseFloat");
+          if (pfIdx2 !== undefined) {
+            fctx.body.push({ op: "call", funcIdx: pfIdx2 });
+          } else {
+            addUnionImports(ctx);
+            fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+          }
+        } else if (fastRightResult && fastRightResult.kind === "i32") {
+          fctx.body.push({ op: "f64.convert_i32_s" });
         }
+        // f64 needs no conversion
         return compileNumericBinaryOp(ctx, fctx, op, expr);
       }
     }
@@ -18327,22 +18357,34 @@ function compileStringBinaryOp(
     op === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken;
   if (isArithmeticOrBitwise) {
     // Compile left operand and convert to f64
-    compileExpression(ctx, fctx, expr.left);
-    const pfIdx = ctx.funcMap.get("parseFloat");
-    if (pfIdx !== undefined) {
-      fctx.body.push({ op: "call", funcIdx: pfIdx });
-    } else {
-      addUnionImports(ctx);
-      fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+    const leftResult = compileExpression(ctx, fctx, expr.left);
+    if (leftResult && leftResult.kind === "externref") {
+      const pfIdx = ctx.funcMap.get("parseFloat");
+      if (pfIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: pfIdx });
+      } else {
+        addUnionImports(ctx);
+        fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+      }
+    } else if (leftResult && leftResult.kind === "i32") {
+      fctx.body.push({ op: "f64.convert_i32_s" });
+    } else if (leftResult && (leftResult.kind === "ref" || leftResult.kind === "ref_null")) {
+      coerceType(ctx, fctx, leftResult, { kind: "f64" });
     }
     // Compile right operand and convert to f64
-    compileExpression(ctx, fctx, expr.right);
-    const pfIdx2 = ctx.funcMap.get("parseFloat");
-    if (pfIdx2 !== undefined) {
-      fctx.body.push({ op: "call", funcIdx: pfIdx2 });
-    } else {
-      addUnionImports(ctx);
-      fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+    const rightResult = compileExpression(ctx, fctx, expr.right);
+    if (rightResult && rightResult.kind === "externref") {
+      const pfIdx2 = ctx.funcMap.get("parseFloat");
+      if (pfIdx2 !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: pfIdx2 });
+      } else {
+        addUnionImports(ctx);
+        fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+      }
+    } else if (rightResult && rightResult.kind === "i32") {
+      fctx.body.push({ op: "f64.convert_i32_s" });
+    } else if (rightResult && (rightResult.kind === "ref" || rightResult.kind === "ref_null")) {
+      coerceType(ctx, fctx, rightResult, { kind: "f64" });
     }
     return compileNumericBinaryOp(ctx, fctx, op, expr);
   }
@@ -18368,6 +18410,9 @@ function compileStringBinaryOp(
       const toStr = ctx.funcMap.get("number_toString");
       if (toStr !== undefined) fctx.body.push({ op: "call", funcIdx: toStr });
     }
+  } else if (op === ts.SyntaxKind.PlusToken && leftType && (leftType.kind === "ref" || leftType.kind === "ref_null")) {
+    // Struct ref in string concat → coerce to externref via extern.convert_any
+    coerceType(ctx, fctx, leftType, { kind: "externref" });
   }
   const rightTsType = ctx.checker.getTypeAtLocation(expr.right);
   const rightType = compileExpression(ctx, fctx, expr.right);
@@ -18385,6 +18430,9 @@ function compileStringBinaryOp(
       const toStr = ctx.funcMap.get("number_toString");
       if (toStr !== undefined) fctx.body.push({ op: "call", funcIdx: toStr });
     }
+  } else if (op === ts.SyntaxKind.PlusToken && rightType && (rightType.kind === "ref" || rightType.kind === "ref_null")) {
+    // Struct ref in string concat → coerce to externref via extern.convert_any
+    coerceType(ctx, fctx, rightType, { kind: "externref" });
   }
 
   switch (op) {
