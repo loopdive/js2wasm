@@ -253,6 +253,8 @@ export interface CodegenContext {
   inlinableFunctions: Map<string, InlinableFunctionInfo>;
   /** Global index of the __symbol_counter (mutable i32, starts at 100). -1 if not yet registered. */
   symbolCounterGlobalIdx: number;
+  /** Stack of in-progress parent function bodies for addUnionImports index shifting during closure compilation */
+  parentBodiesStack: Instr[][];
 }
 
 /** Metadata for a function eligible for call-site inlining */
@@ -452,6 +454,7 @@ export function generateModule(
     pendingInitBody: null,
     inlinableFunctions: new Map(),
     symbolCounterGlobalIdx: -1,
+    parentBodiesStack: [],
   };
 
   // Register native string types if fast mode
@@ -676,6 +679,7 @@ export function generateMultiModule(
     pendingInitBody: null,
     inlinableFunctions: new Map(),
     symbolCounterGlobalIdx: -1,
+    parentBodiesStack: [],
   };
 
   // Register native string types if fast mode
@@ -6050,6 +6054,23 @@ export function addUnionImports(ctx: CodegenContext): void {
         // Skip if already in mod.functions (would double-shift)
         if (ctx.mod.functions.some(f => f.body === sb)) continue;
         shiftFuncIndices(sb);
+      }
+    }
+    // Shift parent function bodies still being compiled. When a closure
+    // triggers addUnionImports, the enclosing function's body is neither
+    // in mod.functions nor ctx.currentFunc.
+    {
+      const done = new Set<Instr[]>();
+      for (const func of ctx.mod.functions) done.add(func.body);
+      if (ctx.currentFunc) {
+        done.add(ctx.currentFunc.body);
+        for (const sb of ctx.currentFunc.savedBodies) done.add(sb);
+      }
+      for (const pb of ctx.parentBodiesStack) {
+        if (!done.has(pb)) {
+          shiftFuncIndices(pb);
+          done.add(pb);
+        }
       }
     }
     // Update table elements
