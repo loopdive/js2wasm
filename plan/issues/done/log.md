@@ -367,3 +367,4 @@
 | 556 | 2026-03-19 | O(n²) → O(1) struct dedup via hash map (perf) | Dep-driven |
 | 557 | 2026-03-19 | Batch late import index shifts O(I*B) → O(B) (perf) | Dep-driven |
 | 558 | 2026-03-19 | O(n) → O(1) funcType dedup via hash cache (perf) | Dep-driven |
+| 605 | 2026-03-19 | Narrow negative test skip filter (892 tests) | Dep-driven |
