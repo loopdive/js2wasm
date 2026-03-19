@@ -127,6 +127,17 @@ export function compileStatement(
   fctx: FunctionContext,
   stmt: ts.Statement,
 ): void {
+  // Guard: if the AST node is undefined/null, report an error and return
+  // instead of crashing with "Cannot read 'kind' of undefined".
+  if (!stmt) {
+    ctx.errors.push({
+      message: "unexpected undefined AST node in compileStatement",
+      line: 0,
+      column: 0,
+    });
+    return;
+  }
+
   try {
     compileStatementInner(ctx, fctx, stmt);
   } catch (e) {

@@ -127,6 +127,19 @@ export function compileExpression(
   expr: ts.Expression,
   expectedType?: ValType,
 ): ValType | null {
+  // Guard: if the AST node is undefined/null, report an error and produce a
+  // typed default value instead of crashing with "Cannot read 'kind' of undefined".
+  if (!expr) {
+    ctx.errors.push({
+      message: "unexpected undefined AST node in compileExpression",
+      line: 0,
+      column: 0,
+    });
+    const fallbackType = expectedType ?? { kind: "f64" as const };
+    pushDefaultValue(fctx, fallbackType);
+    return fallbackType;
+  }
+
   // Fast-path: null/undefined in numeric context — emit the correct constant
   // directly instead of going through externref + __unbox_number, because wasm's
   // ref.null.extern is indistinguishable between null and undefined at the JS
