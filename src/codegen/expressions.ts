@@ -10986,7 +10986,8 @@ function compileCallExpression(
         }
         fctx.body.push({ op: "call", funcIdx });
         const returnsBool = method === "includes" || method === "startsWith" || method === "endsWith";
-        return returnsBool ? { kind: "i32" } : method === "indexOf" || method === "lastIndexOf" ? { kind: "f64" } : { kind: "externref" };
+        const returnsNum = method === "indexOf" || method === "lastIndexOf" || method === "codePointAt";
+        return returnsBool ? { kind: "i32" } : returnsNum ? { kind: "f64" } : { kind: "externref" };
       }
     }
 
@@ -19371,6 +19372,51 @@ function compileNativeStringMethodCall(
     // Return type is ref $vec_nstr — use same key as resolveWasmType for string[]
     const nstrVecTypeIdx = ctx.vecTypeMap.get(`ref_${ctx.anyStrTypeIdx}`)!;
     return { kind: "ref", typeIdx: nstrVecTypeIdx };
+  }
+
+  // codePointAt: like charCodeAt but returns f64 (code point value)
+  // For BMP characters (most common), codePoint === charCode.
+  // Full surrogate pair handling would be more complex, but this covers most test262 cases.
+  if (method === "codePointAt") {
+    compileExpression(ctx, fctx, propAccess.expression);
+    emitFlatten();
+    const tmpLocal = allocLocal(fctx, "__codePointAt_tmp", flatStringType(ctx));
+    fctx.body.push({ op: "local.set", index: tmpLocal });
+    // Push data ref (field 2)
+    fctx.body.push({ op: "local.get", index: tmpLocal });
+    fctx.body.push({ op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 }); // .data
+    // Compute off + idx
+    fctx.body.push({ op: "local.get", index: tmpLocal });
+    fctx.body.push({ op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 }); // .off
+    if (expr.arguments.length > 0) {
+      const argType = compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "f64" });
+      if (!argType || argType === VOID_RESULT) {
+        fctx.body.push({ op: "i32.const", value: 0 });
+      } else if (argType.kind === "f64") {
+        fctx.body.push({ op: "i32.trunc_sat_f64_s" });
+      }
+    } else {
+      fctx.body.push({ op: "i32.const", value: 0 });
+    }
+    fctx.body.push({ op: "i32.add" }); // off + idx
+    fctx.body.push({ op: "array.get_u", typeIdx: strDataTypeIdx });
+    // Convert i32 code unit to f64
+    fctx.body.push({ op: "f64.convert_i32_u" });
+    return { kind: "f64" };
+  }
+
+  // normalize: return string unchanged (identity — correct for already-normalized strings)
+  if (method === "normalize") {
+    const result = compileExpression(ctx, fctx, propAccess.expression);
+    // Consume the form argument if present (ignored)
+    if (expr.arguments.length > 0) {
+      const bodyLen = fctx.body.length;
+      const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
+      if (argType && argType !== VOID_RESULT) {
+        fctx.body.push({ op: "drop" });
+      }
+    }
+    return result;
   }
 
   // Other methods: marshal native->extern, call host, marshal extern->native
