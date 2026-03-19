@@ -331,3 +331,39 @@
 | 517 | 2026-03-18 | Callable property calls on class/struct instances (2,164 CE) | Dep-driven |
 | 526 | 2026-03-18 | Null pointer dereference guards in destructuring (129 FAIL) | Dep-driven |
 | 529 | 2026-03-18 | Fix test262 runner path format mismatch (cache/recheck broken) | Dep-driven |
+| 506 | 2026-03-19 | Remove redundant conformance-report.html | Dep-driven |
+| 516 | 2026-03-19 | Reconcile struct.new argument counts after dynamic field additions (760 CE) | Dep-driven |
+| 517 | 2026-03-19 | Callable property calls on class/struct instances (2,164 CE) | Dep-driven |
+| 521 | 2026-03-19 | Tolerate TS1435 yield in nested generator contexts (16 CE) | Dep-driven |
+| 523 | 2026-03-19 | SpreadElement in IIFE args + null guards for .text access (32 CE) | Dep-driven |
+| 527 | 2026-03-19 | Fix test262 script: use tsx instead of node | Dep-driven |
+| 528 | 2026-03-19 | Test262 runner: show batch progress before dispatch | Dep-driven |
+| 530 | 2026-03-19 | Union/interface/abstract/prototype call expression patterns (1,745 CE) | Dep-driven |
+| 531 | 2026-03-19 | Widen struct ref fields to ref_null for class instances (400 FAIL) | Dep-driven |
+| 532 | 2026-03-19 | String addition folding fix + type coercion before equals (256 CE) | Dep-driven |
+| 533 | 2026-03-19 | Parameter destructuring for object literal methods (125 CE) | Dep-driven |
+| 534 | 2026-03-19 | funcStack tracking for addUnionImports during nested compilation (64 CE) | Dep-driven |
+| 535 | 2026-03-19 | Downgrade TS1102 delete strict mode diagnostic (20 CE) | Dep-driven |
+| 536 | 2026-03-19 | Downgrade TS2698 spread types diagnostic (16 CE) | Dep-driven |
+| 537 | 2026-03-19 | Suppress 9 TypeScript diagnostics for test262 allowJs mode (62 CE) | Dep-driven |
+| 538 | 2026-03-19 | PrivateIdentifier in `in` operator + typeof new.target (19 CE) | Dep-driven |
+| 539 | 2026-03-19 | String.codePointAt/normalize/matchAll + empty template fix (37 CE) | Dep-driven |
+| 540 | 2026-03-19 | Array bounds guards for compound assignment/increment/destructuring (21 FAIL) | Dep-driven |
+| 541 | 2026-03-19 | Re-evaluate skip results in recheck mode (1,311 tests unblocked) | Dep-driven |
+| 542 | 2026-03-19 | Bypass shouldSkip for negative tests (892 tests unblocked) | Dep-driven |
+| 543 | 2026-03-19 | propertyHelper stubs + hasOwnProperty transform (already done) | Dep-driven |
+| 544 | 2026-03-19 | Remove 10 stale skip filters + narrow JSON.stringify (266 tests) | Dep-driven |
+| 545 | 2026-03-19 | Remove hang-risk skip filters (139 tests unblocked) | Dep-driven |
+| 546 | 2026-03-19 | Remove 6 stale skip filters (86 tests unblocked) | Dep-driven |
+| 547 | 2026-03-19 | Restore search/filter UI in report.html | Dep-driven |
+| 548 | 2026-03-19 | WAT string escaping + memory bounds validation (security) | Dep-driven |
+| 549 | 2026-03-19 | Resolve symlinks before path traversal check (security) | Dep-driven |
+| 550 | 2026-03-19 | HTML entity escaping in report.html (security) | Dep-driven |
+| 551 | 2026-03-19 | Set-based double-shift prevention for function/global indices | Dep-driven |
+| 552 | 2026-03-19 | Null guards and coercion fallbacks in codegen | Dep-driven |
+| 553 | 2026-03-19 | Zero-divisor guards in constant folding | Dep-driven |
+| 554 | 2026-03-19 | Serialize JSONL writes through single fd (corruption fix) | Dep-driven |
+| 555 | 2026-03-19 | File content hash for test262 cache invalidation | Dep-driven |
+| 556 | 2026-03-19 | O(n²) → O(1) struct dedup via hash map (perf) | Dep-driven |
+| 557 | 2026-03-19 | Batch late import index shifts O(I*B) → O(B) (perf) | Dep-driven |
+| 558 | 2026-03-19 | O(n) → O(1) funcType dedup via hash cache (perf) | Dep-driven |
