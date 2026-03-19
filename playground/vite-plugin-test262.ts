@@ -1,5 +1,5 @@
 import type { Plugin } from "vite";
-import { readdirSync, readFileSync, existsSync, statSync } from "fs";
+import { readdirSync, readFileSync, existsSync, statSync, realpathSync } from "fs";
 import { join, relative, resolve, normalize } from "path";
 
 const TEST_CATEGORIES = [
@@ -254,6 +254,14 @@ export function test262Plugin(): Plugin {
           if (!existsSync(resolved)) {
             res.statusCode = 404;
             res.end("File not found");
+            return;
+          }
+          // Resolve symlinks and re-check to prevent symlink-based traversal
+          const real = realpathSync(resolved);
+          const realBase = realpathSync(testBase);
+          if (!real.startsWith(realBase)) {
+            res.statusCode = 403;
+            res.end("Forbidden");
             return;
           }
           try {
