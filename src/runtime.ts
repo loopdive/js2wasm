@@ -80,6 +80,8 @@ function resolveImport(
       if (name === "Promise_resolve") return (val: any) => Promise.resolve(val);
       if (name === "Promise_reject") return (val: any) => Promise.reject(val);
       if (name === "Promise_new") return (executor: any) => new Promise(executor);
+      if (name === "Promise_then") return (p: any, cb: any) => p.then(cb);
+      if (name === "Promise_catch") return (p: any, cb: any) => p.catch(cb);
       // Generator support: buffer management and generator creation
       if (name === "__gen_create_buffer") return () => [];
       if (name === "__gen_push_f64") return (buf: any[], v: number) => { buf.push(v); };
