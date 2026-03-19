@@ -993,6 +993,8 @@ const STRING_METHODS: Record<string, { params: ValType[]; result: ValType }> = {
   },
   split: { params: [{ kind: "externref" }], result: { kind: "externref" } },
   at: { params: [{ kind: "f64" }], result: { kind: "externref" } },
+  codePointAt: { params: [{ kind: "f64" }], result: { kind: "f64" } },
+  normalize: { params: [{ kind: "externref" }], result: { kind: "externref" } },
 };
 
 /** Scan source for method calls on string types and register needed imports */
@@ -1038,6 +1040,7 @@ function collectStringMethodImports(
     "trim", "trimStart", "trimEnd",
     "repeat", "padStart", "padEnd", "toLowerCase", "toUpperCase",
     "replace", "replaceAll", "split",
+    "codePointAt", "normalize",
   ]);
 
   for (const method of needed) {
@@ -4816,11 +4819,11 @@ function collectStringLiterals(
     if (ts.isNoSubstitutionTemplateLiteral(node)) {
       literals.add(node.text);
     }
-    // Template expressions: collect head and span literal texts
+    // Template expressions: collect head and span literal texts (include empty strings)
     if (ts.isTemplateExpression(node)) {
-      if (node.head.text) literals.add(node.head.text);
+      literals.add(node.head.text);
       for (const span of node.templateSpans) {
-        if (span.literal.text) literals.add(span.literal.text);
+        literals.add(span.literal.text);
       }
     }
     // Tagged template expressions: collect ALL string parts (including empty strings)

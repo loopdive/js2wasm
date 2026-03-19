@@ -632,8 +632,7 @@ function compileObjectDestructuring(
 
     // Auto-register anonymous object types (same as expression-level destructuring)
     if (
-      typeName &&
-      (typeName === "__type" || typeName === "__object") &&
+      (!typeName || typeName === "__type" || typeName === "__object") &&
       !ctx.anonTypeMap.has(initType) &&
       initType.getProperties().length > 0
     ) {
