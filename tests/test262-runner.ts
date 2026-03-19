@@ -78,7 +78,7 @@ const UNSUPPORTED_FEATURES = new Set([
   "import-defer", // import.defer() — not supported
   "source-phase-imports", // import.source — Stage 3 TC39 proposal, not supported
   "promise-all-settled", "Promise.any", "Promise.allSettled",
-  "TypedArray", "DataView", "ArrayBuffer",
+  // TypedArray, DataView, ArrayBuffer: removed (#608, #614) — now supported
   "RegExp", "regexp-dotall", "regexp-lookbehind", "regexp-named-groups",
   "regexp-unicode-property-escapes",
   // globalThis: removed (#502) — compiles as ref.null extern; tests that use it
