@@ -44,11 +44,7 @@ function resolveImport(
         const builtinCtors: Record<string, Function> = { Map, Set, WeakMap, WeakSet, RegExp };
         const Ctor = deps?.[intent.className] ?? builtinCtors[intent.className];
         if (!Ctor) return (...args: any[]) => { throw new Error(`No dependency provided for extern class "${intent.className}"`); };
-        return (...args: any[]) => {
-          // Strip trailing null/undefined args (wasm pads optionals with ref.null)
-          while (args.length > 0 && args[args.length - 1] == null) args.pop();
-          return new Ctor(...args);
-        };
+        return (...args: any[]) => new Ctor(...args);
       }
       if (intent.action === "get") {
         const member = intent.member!;
@@ -270,11 +266,13 @@ function wrapWithContainment(
     return true; // If domRoot doesn't support contains, pass through
   }
 
-  // Helper: check if a value looks like a DOM node (duck-typed)
+  // Helper: check if a value is a DOM node
   function isNodeLike(v: any): boolean {
-    return v != null && typeof v === "object" && (
-      "parentElement" in v || "parentNode" in v || "nodeType" in v || "tagName" in v
-    );
+    if (v == null || typeof v !== "object") return false;
+    // Prefer instanceof Node when available (browser environment)
+    if (typeof Node !== "undefined") return v instanceof Node;
+    // Fallback: check for nodeType (a number), the most reliable DOM indicator
+    return typeof v.nodeType === "number";
   }
 
   // For "new" action — constructor (e.g. new Document)
