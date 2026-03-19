@@ -107,6 +107,9 @@ export interface CodegenContext {
   numImportFuncs: number;
   /** Current function context (set during function compilation) */
   currentFunc: FunctionContext | null;
+  /** Stack of parent function contexts saved during nested closure compilation.
+   *  Used by addUnionImports to shift func indices in all in-flight bodies. */
+  funcStack: FunctionContext[];
   /** Errors accumulated during codegen */
   errors: { message: string; line: number; column: number; severity?: "error" | "warning" }[];
   /** Registry of external declared classes */
@@ -380,6 +383,7 @@ export function generateModule(
     structFields: new Map(),
     numImportFuncs: 0,
     currentFunc: null,
+    funcStack: [],
     errors: [],
     externClasses: new Map(),
     funcOptionalParams: new Map(),
@@ -604,6 +608,7 @@ export function generateMultiModule(
     structFields: new Map(),
     numImportFuncs: 0,
     currentFunc: null,
+    funcStack: [],
     errors: [],
     externClasses: new Map(),
     funcOptionalParams: new Map(),
@@ -6053,6 +6058,28 @@ export function addUnionImports(ctx: CodegenContext): void {
         // Skip if already in mod.functions (would double-shift)
         if (ctx.mod.functions.some(f => f.body === sb)) continue;
         shiftFuncIndices(sb);
+      }
+    }
+    // Shift parent function contexts saved on the funcStack during nested
+    // closure compilation. These are in-flight function bodies that are NOT
+    // in ctx.mod.functions and NOT ctx.currentFunc, so they would otherwise
+    // be missed by the index shift.
+    const shiftedArrays = new Set<Instr[]>();
+    if (ctx.currentFunc) {
+      shiftedArrays.add(ctx.currentFunc.body);
+      for (const sb of ctx.currentFunc.savedBodies) shiftedArrays.add(sb);
+    }
+    for (const func of ctx.mod.functions) shiftedArrays.add(func.body);
+    for (const parentFctx of ctx.funcStack) {
+      if (!shiftedArrays.has(parentFctx.body)) {
+        shiftFuncIndices(parentFctx.body);
+        shiftedArrays.add(parentFctx.body);
+      }
+      for (const sb of parentFctx.savedBodies) {
+        if (!shiftedArrays.has(sb)) {
+          shiftFuncIndices(sb);
+          shiftedArrays.add(sb);
+        }
       }
     }
     // Update table elements

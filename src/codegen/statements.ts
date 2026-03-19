@@ -3926,6 +3926,7 @@ function compileNestedFunctionDeclaration(
     }
 
     const savedFunc = ctx.currentFunc;
+    if (savedFunc) ctx.funcStack.push(savedFunc);
     ctx.currentFunc = liftedFctx;
 
     // Emit default-value initialization for parameters with initializers
@@ -3979,6 +3980,7 @@ function compileNestedFunctionDeclaration(
       }
       appendDefaultReturn(liftedFctx, returnType);
     }
+    if (savedFunc) ctx.funcStack.pop();
     ctx.currentFunc = savedFunc;
 
     const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
@@ -4040,6 +4042,7 @@ function compileNestedFunctionDeclaration(
     }
 
     const savedFunc = ctx.currentFunc;
+    if (savedFunc) ctx.funcStack.push(savedFunc);
     ctx.currentFunc = liftedFctx;
 
     // Emit default-value initialization for parameters with initializers
@@ -4094,6 +4097,7 @@ function compileNestedFunctionDeclaration(
       }
       appendDefaultReturn(liftedFctx, returnType);
     }
+    if (savedFunc) ctx.funcStack.pop();
     ctx.currentFunc = savedFunc;
 
     const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
