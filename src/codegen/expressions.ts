@@ -163,6 +163,85 @@ function flushLateImportShifts(
   ctx.pendingLateImportShift = null;
   if (added <= 0) return;
   shiftLateImportIndices(ctx, fctx, pending.importsBefore, added);
+ * After dynamically adding a field to a struct type, patch all existing
+ * struct.new instructions for that type by inserting a default value
+ * instruction immediately before each struct.new.  This ensures the
+ * operand count matches the (now larger) field list.
+ */
+function patchStructNewForAddedField(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  typeIdx: number,
+  fieldType: ValType,
+): void {
+  function defaultInstrFor(ft: ValType): Instr {
+    switch (ft.kind) {
+      case "f64":
+        return { op: "f64.const", value: 0 } as Instr;
+      case "i32":
+        return { op: "i32.const", value: 0 } as Instr;
+      case "externref":
+        return { op: "ref.null.extern" } as unknown as Instr;
+      case "ref":
+      case "ref_null":
+        return { op: "ref.null", typeIdx: (ft as { typeIdx: number }).typeIdx } as unknown as Instr;
+      default:
+        if ((ft as any).kind === "i64") {
+          return { op: "i64.const", value: 0n } as unknown as Instr;
+        }
+        if ((ft as any).kind === "eqref") {
+          return { op: "ref.null.eq" } as unknown as Instr;
+        }
+        return { op: "i32.const", value: 0 } as Instr;
+    }
+  }
+
+  function patchInstrs(instrs: Instr[]): void {
+    for (let i = instrs.length - 1; i >= 0; i--) {
+      const instr = instrs[i]!;
+      if (instr.op === "struct.new" && (instr as any).typeIdx === typeIdx) {
+        // Insert a default value right before the struct.new
+        instrs.splice(i, 0, defaultInstrFor(fieldType));
+      }
+      // Recurse into nested blocks
+      if ("body" in instr && Array.isArray((instr as any).body)) {
+        patchInstrs((instr as any).body);
+      }
+      if ("then" in instr && Array.isArray((instr as any).then)) {
+        patchInstrs((instr as any).then);
+      }
+      if ("else" in instr && Array.isArray((instr as any).else)) {
+        patchInstrs((instr as any).else);
+      }
+      if ("catches" in instr && Array.isArray((instr as any).catches)) {
+        for (const c of (instr as any).catches) {
+          if (Array.isArray(c.body)) patchInstrs(c.body);
+        }
+      }
+      if ("catchAll" in instr && Array.isArray((instr as any).catchAll)) {
+        patchInstrs((instr as any).catchAll);
+      }
+    }
+  }
+
+  // Patch all already-compiled function bodies
+  const patched = new Set<Instr[]>();
+  for (const func of ctx.mod.functions) {
+    patchInstrs(func.body);
+    patched.add(func.body);
+  }
+  // Patch current function body (if not already part of mod.functions)
+  if (!patched.has(fctx.body)) {
+    patchInstrs(fctx.body);
+    patched.add(fctx.body);
+  }
+  // Patch saved bodies from the savedBody swap pattern
+  for (const sb of fctx.savedBodies) {
+    if (!patched.has(sb)) {
+      patchInstrs(sb);
+      patched.add(sb);
+    }
+  }
 }
 
 /**
@@ -7183,6 +7262,7 @@ function compilePropertyLogicalAssignmentExternref(
               if (typeDef?.kind === "struct") {
                 typeDef.fields.push(newField);
               }
+              patchStructNewForAddedField(ctx, fctx, typeIdx, propWasmType);
               fieldIdx = fields.length - 1;
             }
           }
@@ -8066,6 +8146,7 @@ function compilePropertyCompoundAssignmentExternref(
               if (typeDef?.kind === "struct") {
                 typeDef.fields.push(newField);
               }
+              patchStructNewForAddedField(ctx, fctx, typeIdx, propWasmType);
               fieldIdx = fields.length - 1;
             }
           }
@@ -16011,6 +16092,7 @@ function compilePropertyAccess(
             const newField: FieldDef = { name: propName, type: fieldType, mutable: true };
             fields.push(newField);
             typeDef.fields.push(newField);
+            patchStructNewForAddedField(ctx, fctx, structTypeIdx, propWasmType);
             const fieldIdx = fields.length - 1;
             const objResult = compileExpression(ctx, fctx, expr.expression);
             if (objResult && objResult.kind === "ref_null") {
@@ -16568,6 +16650,7 @@ function resolveStructName(ctx: CodegenContext, tsType: ts.Type): string | undef
  */
 function ensureComputedPropertyFields(
   ctx: CodegenContext,
+  fctx: FunctionContext,
   expr: ts.ObjectLiteralExpression,
   tsType: ts.Type,
 ): void {
@@ -16602,6 +16685,13 @@ function ensureComputedPropertyFields(
   const typeDef = ctx.mod.types[structTypeIdx] as any;
   typeDef.fields = fields;
   ctx.structFields.set(existingName, fields);
+
+  // Patch existing struct.new instructions for this type with defaults for new fields
+  for (const rp of resolvedProps) {
+    const propType = ctx.checker.getTypeAtLocation(rp.valueExpr);
+    const wasmType = resolveWasmType(ctx, propType);
+    patchStructNewForAddedField(ctx, fctx, structTypeIdx, wasmType);
+  }
 }
 
 function compileObjectLiteral(
@@ -16629,7 +16719,7 @@ function compileObjectLiteral(
       typeName = resolveStructName(ctx, type);
     }
     if (typeName) {
-      ensureComputedPropertyFields(ctx, expr, type);
+      ensureComputedPropertyFields(ctx, fctx, expr, type);
       return compileObjectLiteralForStruct(ctx, fctx, expr, typeName);
     }
     ctx.errors.push({
@@ -16647,7 +16737,7 @@ function compileObjectLiteral(
     typeName = resolveStructName(ctx, contextType);
   }
   if (typeName) {
-    ensureComputedPropertyFields(ctx, expr, contextType);
+    ensureComputedPropertyFields(ctx, fctx, expr, contextType);
     return compileObjectLiteralForStruct(ctx, fctx, expr, typeName);
   }
 
@@ -16659,7 +16749,7 @@ function compileObjectLiteral(
     inferredName = resolveStructName(ctx, inferredType);
   }
   if (inferredName) {
-    ensureComputedPropertyFields(ctx, expr, inferredType);
+    ensureComputedPropertyFields(ctx, fctx, expr, inferredType);
     return compileObjectLiteralForStruct(ctx, fctx, expr, inferredName);
   }
 
