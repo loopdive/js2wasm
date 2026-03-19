@@ -213,6 +213,7 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
       "decimalToHexString.js",
       "nans.js",
       "nativeFunctionMatcher.js",
+      "asyncHelpers.js",
     ]);
     for (const inc of meta.includes) {
       if (!allowed.has(inc)) {
@@ -1510,6 +1511,30 @@ function assertNativeFunction(f: number): void {}`;
 function $DONE(err?: any): void {
   if (err) { __fail = 1; }
 }`;
+  }
+
+  // asyncHelpers.js — asyncTest wrapper for async tests.
+  // The real asyncTest calls fn().then($DONE, $DONE), but since we compile
+  // async functions synchronously, we just call fn() directly and catch errors.
+  if (includes.includes("asyncHelpers.js") && /\basyncTest\b/.test(body)) {
+    preamble += `
+
+function asyncTest(fn: () => void): void {
+  try {
+    fn();
+    $DONE();
+  } catch (e) {
+    $DONE(e);
+  }
+}`;
+    // Ensure $DONE is also available (asyncTest calls it)
+    if (!/\$DONE\b/.test(body)) {
+      preamble += `
+
+function $DONE(err?: any): void {
+  if (err) { __fail = 1; }
+}`;
+    }
   }
 
   // Auto-declare variables used as destructuring assignment targets but not
