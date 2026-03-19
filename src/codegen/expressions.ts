@@ -9433,6 +9433,21 @@ function compileCallExpression(
       if (ts.isConditionalExpression(unwrapped)) {
         return compileConditionalCallee(ctx, fctx, expr, unwrapped);
       }
+
+      // Handle assignment/binary expressions as callee: (x = fn)(), (a || fn)()
+      // These are non-LeftHandSideExpressions, so ts.factory.createCallExpression
+      // would re-wrap them in ParenthesizedExpression, causing infinite recursion.
+      // Instead, compile the expression for its side effects and value, then use
+      // the generic closure-matching path to call the result.
+      if (ts.isBinaryExpression(unwrapped)) {
+        return compileExpressionCallee(ctx, fctx, expr, unwrapped);
+      }
+
+      // Handle prefix/postfix unary as callee (rare but possible)
+      if (ts.isPrefixUnaryExpression(unwrapped) || ts.isPostfixUnaryExpression(unwrapped)) {
+        return compileExpressionCallee(ctx, fctx, expr, unwrapped);
+      }
+
       const syntheticCall = ts.factory.createCallExpression(
         unwrapped as ts.Expression as ts.LeftHandSideExpression,
         expr.typeArguments,
@@ -12069,6 +12084,168 @@ function compileConditionalCallee(
     else: elseInstrs,
   });
   return resultType;
+}
+
+/**
+ * Compile a call where the callee is an arbitrary expression that is not a
+ * LeftHandSideExpression (e.g. assignment: `(x = fn)()`, logical: `(a || fn)()`).
+ *
+ * We cannot use ts.factory.createCallExpression for these because it wraps
+ * non-LeftHandSideExpression callees in ParenthesizedExpression, causing
+ * infinite recursion with the paren-unwrapping handler.
+ *
+ * Strategy: compile the callee expression to get its value on the stack,
+ * then try to use the result as a closure call (closure-matching by type),
+ * or as a direct function call if the expression resolves to a known function.
+ */
+function compileExpressionCallee(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.CallExpression,
+  calleeExpr: ts.Expression,
+): InnerResult {
+  // For assignment expressions, we can look at the RHS to identify the function
+  // being called, while still compiling the full assignment for side effects.
+  if (ts.isBinaryExpression(calleeExpr) &&
+      calleeExpr.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+      calleeExpr.operatorToken.kind <= ts.SyntaxKind.LastAssignment &&
+      calleeExpr.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+    // For simple assignment (x = fn)(), compile the assignment for side effects
+    // then call the RHS function directly if it's identifiable.
+    const rhs = calleeExpr.right;
+    if (ts.isIdentifier(rhs)) {
+      const funcIdx = ctx.funcMap.get(rhs.text);
+      const closureInfo = ctx.closureMap.get(rhs.text);
+      if (funcIdx !== undefined || closureInfo) {
+        // Compile the full assignment for side effects (stores value in LHS)
+        const assignResult = compileExpression(ctx, fctx, calleeExpr);
+        if (assignResult && assignResult !== VOID_RESULT) {
+          fctx.body.push({ op: "drop" });
+        }
+        // Now make a direct call using the RHS identifier as callee
+        const syntheticCall = ts.factory.createCallExpression(
+          rhs,
+          expr.typeArguments,
+          expr.arguments,
+        );
+        ts.setTextRange(syntheticCall, expr);
+        (syntheticCall as any).parent = expr.parent;
+        return compileCallExpression(ctx, fctx, syntheticCall as ts.CallExpression);
+      }
+    }
+  }
+
+  // Generic path: compile the callee expression and try closure-matching
+  const calleeTsType = ctx.checker.getTypeAtLocation(calleeExpr);
+  const callSigs = calleeTsType.getCallSignatures?.();
+
+  if (callSigs && callSigs.length > 0) {
+    const sig = callSigs[0]!;
+
+    // Look for a matching closure type
+    const sigParamCount = sig.parameters.length;
+    const sigRetType = ctx.checker.getReturnTypeOfSignature(sig);
+    const sigRetWasm = isVoidType(sigRetType) ? null : resolveWasmType(ctx, sigRetType);
+    const sigParamWasmTypes: ValType[] = [];
+    for (let i = 0; i < sigParamCount; i++) {
+      const paramType = ctx.checker.getTypeOfSymbol(sig.parameters[i]!);
+      sigParamWasmTypes.push(resolveWasmType(ctx, paramType));
+    }
+
+    let matchedClosureInfo: ClosureInfo | undefined;
+    let matchedStructTypeIdx: number | undefined;
+
+    for (const [typeIdx, info] of ctx.closureInfoByTypeIdx) {
+      if (info.paramTypes.length !== sigParamCount) continue;
+      if (sigRetWasm === null && info.returnType !== null) continue;
+      if (sigRetWasm !== null && info.returnType === null) continue;
+      if (sigRetWasm !== null && info.returnType !== null && sigRetWasm.kind !== info.returnType.kind) continue;
+      let paramsMatch = true;
+      for (let i = 0; i < sigParamCount; i++) {
+        if (sigParamWasmTypes[i]!.kind !== info.paramTypes[i]!.kind) {
+          paramsMatch = false;
+          break;
+        }
+      }
+      if (paramsMatch) {
+        matchedClosureInfo = info;
+        matchedStructTypeIdx = typeIdx;
+        break;
+      }
+    }
+
+    if (matchedClosureInfo && matchedStructTypeIdx !== undefined) {
+      // Compile the callee expression to get the closure on the stack
+      const innerResultType = compileExpression(ctx, fctx, calleeExpr);
+
+      // Save closure ref to a local
+      let closureLocal: number;
+      if (innerResultType?.kind === "externref") {
+        const closureRefType: ValType = { kind: "ref_null", typeIdx: matchedStructTypeIdx };
+        closureLocal = allocLocal(fctx, `__expr_call_${fctx.locals.length}`, closureRefType);
+        fctx.body.push({ op: "any.convert_extern" });
+        fctx.body.push({ op: "ref.cast", typeIdx: matchedStructTypeIdx });
+        fctx.body.push({ op: "local.set", index: closureLocal });
+      } else {
+        const closureRefType: ValType = innerResultType ?? { kind: "ref", typeIdx: matchedStructTypeIdx };
+        closureLocal = allocLocal(fctx, `__expr_call_${fctx.locals.length}`, closureRefType);
+        fctx.body.push({ op: "local.set", index: closureLocal });
+      }
+
+      // Push closure ref as first arg (self param)
+      fctx.body.push({ op: "local.get", index: closureLocal });
+      fctx.body.push({ op: "ref.as_non_null" } as Instr);
+
+      // Push call arguments
+      for (let i = 0; i < expr.arguments.length; i++) {
+        compileExpression(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
+      }
+
+      // Pad missing arguments
+      for (let i = expr.arguments.length; i < matchedClosureInfo.paramTypes.length; i++) {
+        pushDefaultValue(fctx, matchedClosureInfo.paramTypes[i]!);
+      }
+
+      // Push the funcref from closure struct and call_ref
+      fctx.body.push({ op: "local.get", index: closureLocal });
+      fctx.body.push({ op: "ref.as_non_null" } as Instr);
+      fctx.body.push({ op: "struct.get", typeIdx: matchedStructTypeIdx, fieldIdx: 0 });
+      fctx.body.push({ op: "ref.cast", typeIdx: matchedClosureInfo.funcTypeIdx });
+      fctx.body.push({ op: "ref.as_non_null" });
+      fctx.body.push({ op: "call_ref", typeIdx: matchedClosureInfo.funcTypeIdx });
+
+      return matchedClosureInfo.returnType ?? VOID_RESULT;
+    }
+  }
+
+  // Last resort: compile the callee for side effects and try to resolve
+  // the call via the RHS of an assignment or the last operand
+  if (ts.isBinaryExpression(calleeExpr)) {
+    const assignResult = compileExpression(ctx, fctx, calleeExpr);
+    if (assignResult && assignResult !== VOID_RESULT) {
+      fctx.body.push({ op: "drop" });
+    }
+    // Try calling the RHS (for assignment) or right operand (for logical)
+    const rhs = calleeExpr.right;
+    if (ts.isIdentifier(rhs) || ts.isPropertyAccessExpression(rhs)) {
+      const syntheticCall = ts.factory.createCallExpression(
+        rhs as ts.LeftHandSideExpression,
+        expr.typeArguments,
+        expr.arguments,
+      );
+      ts.setTextRange(syntheticCall, expr);
+      (syntheticCall as any).parent = expr.parent;
+      return compileCallExpression(ctx, fctx, syntheticCall as ts.CallExpression);
+    }
+  }
+
+  // Absolute fallback: push error and return null
+  ctx.errors.push({
+    message: "Unsupported call expression (non-LHSE callee)",
+    line: getLine(expr),
+    column: getCol(expr),
+  });
+  return null;
 }
 
 /**
