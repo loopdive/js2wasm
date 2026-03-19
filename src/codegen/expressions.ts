@@ -18368,6 +18368,19 @@ function compileStringBinaryOp(
       const toStr = ctx.funcMap.get("number_toString");
       if (toStr !== undefined) fctx.body.push({ op: "call", funcIdx: toStr });
     }
+  } else if (op === ts.SyntaxKind.PlusToken && leftType && leftType.kind === "externref") {
+    // null/undefined externref in string concat → coerce to "null"/"undefined" string
+    const leftIsNull = (leftTsType.flags & ts.TypeFlags.Null) !== 0;
+    const leftIsUndef = (leftTsType.flags & (ts.TypeFlags.Undefined | ts.TypeFlags.Void)) !== 0;
+    if (leftIsNull) {
+      fctx.body.push({ op: "drop" });
+      addStringConstantGlobal(ctx, "null");
+      fctx.body.push({ op: "global.get", index: ctx.stringGlobalMap.get("null")! });
+    } else if (leftIsUndef) {
+      fctx.body.push({ op: "drop" });
+      addStringConstantGlobal(ctx, "undefined");
+      fctx.body.push({ op: "global.get", index: ctx.stringGlobalMap.get("undefined")! });
+    }
   }
   const rightTsType = ctx.checker.getTypeAtLocation(expr.right);
   const rightType = compileExpression(ctx, fctx, expr.right);
@@ -18384,6 +18397,19 @@ function compileStringBinaryOp(
       else if (rightType.kind === "i64") fctx.body.push({ op: "f64.convert_i64_s" });
       const toStr = ctx.funcMap.get("number_toString");
       if (toStr !== undefined) fctx.body.push({ op: "call", funcIdx: toStr });
+    }
+  } else if (op === ts.SyntaxKind.PlusToken && rightType && rightType.kind === "externref") {
+    // null/undefined externref in string concat → coerce to "null"/"undefined" string
+    const rightIsNull = (rightTsType.flags & ts.TypeFlags.Null) !== 0;
+    const rightIsUndef = (rightTsType.flags & (ts.TypeFlags.Undefined | ts.TypeFlags.Void)) !== 0;
+    if (rightIsNull) {
+      fctx.body.push({ op: "drop" });
+      addStringConstantGlobal(ctx, "null");
+      fctx.body.push({ op: "global.get", index: ctx.stringGlobalMap.get("null")! });
+    } else if (rightIsUndef) {
+      fctx.body.push({ op: "drop" });
+      addStringConstantGlobal(ctx, "undefined");
+      fctx.body.push({ op: "global.get", index: ctx.stringGlobalMap.get("undefined")! });
     }
   }
 
@@ -22665,6 +22691,12 @@ function tryStaticToNumber(ctx: CodegenContext, expr: ts.Expression): number | u
   }
   // Binary expressions: fold constant operands at compile time
   if (ts.isBinaryExpression(expr)) {
+    // Don't fold string + anything as numeric — JS semantics requires string concat
+    if (expr.operatorToken.kind === ts.SyntaxKind.PlusToken &&
+        (ts.isStringLiteral(expr.left) || ts.isNoSubstitutionTemplateLiteral(expr.left) ||
+         ts.isStringLiteral(expr.right) || ts.isNoSubstitutionTemplateLiteral(expr.right))) {
+      return undefined;
+    }
     const left = tryStaticToNumber(ctx, expr.left);
     const right = tryStaticToNumber(ctx, expr.right);
     if (left !== undefined && right !== undefined) {

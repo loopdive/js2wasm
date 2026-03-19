@@ -802,6 +802,8 @@ export function emitInlineMathFunctions(
         ...ifThenRet([localGet(0), f64c(1), feq], [f64c(Infinity)]),
         ...ifThenRet([localGet(0), f64c(-1), feq], [f64c(-Infinity)]),
         ...ifThenRet([localGet(0), localGet(0), fne], [f64c(NaN)]),
+        // atanh(+/-0) = +/-0: return x to preserve sign of zero
+        ...ifThenRet([localGet(0), f64c(0), feq], [localGet(0)]),
         f64c(1), localGet(0), add,
         f64c(1), localGet(0), sub,
         div,
@@ -859,7 +861,10 @@ export function emitInlineMathFunctions(
       locals: [],
       body: [
         ...ifThenRet([localGet(0), localGet(0), fne], [f64c(NaN)]),
+        ...ifThenRet([localGet(0), f64c(Infinity), feq], [f64c(Infinity)]),
         ...ifThenRet([localGet(0), f64c(-Infinity), feq], [f64c(-1)]),
+        // expm1(+/-0) = +/-0: return x to preserve sign of zero
+        ...ifThenRet([localGet(0), f64c(0), feq], [localGet(0)]),
         // For small |x|, use Taylor series for precision
         localGet(0), fabs, f64c(1e-5), flt,
         ifElse(f64Type,

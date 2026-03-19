@@ -52,3 +52,41 @@ describe("string to number coercion", () => {
     expect(e.test()).toBe(20);
   });
 });
+
+describe("string + null/undefined coercion", () => {
+  it('"1" + null === "1null"', async () => {
+    const e = await compileAndRun(`
+      export function test(): string {
+        return "1" + null;
+      }
+    `);
+    expect(e.test()).toBe("1null");
+  });
+
+  it('null + "1" === "null1"', async () => {
+    const e = await compileAndRun(`
+      export function test(): string {
+        return null + "1";
+      }
+    `);
+    expect(e.test()).toBe("null1");
+  });
+
+  it('"1" + undefined === "1undefined"', async () => {
+    const e = await compileAndRun(`
+      export function test(): string {
+        return "1" + undefined;
+      }
+    `);
+    expect(e.test()).toBe("1undefined");
+  });
+
+  it('undefined + "1" === "undefined1"', async () => {
+    const e = await compileAndRun(`
+      export function test(): string {
+        return undefined + "1";
+      }
+    `);
+    expect(e.test()).toBe("undefined1");
+  });
+});
