@@ -872,6 +872,19 @@ function collectPrimitiveMethodImports(
       if (isNumberType(receiverType) && methodName === "toFixed") {
         needed.add("number_toFixed");
       }
+      // Detect Number.prototype.method.call/apply patterns
+      if ((methodName === "call" || methodName === "apply") &&
+          ts.isPropertyAccessExpression(prop.expression)) {
+        const innerProp = prop.expression;
+        const innerMethodName = innerProp.name.text;
+        if (ts.isPropertyAccessExpression(innerProp.expression) &&
+            innerProp.expression.name.text === "prototype" &&
+            ts.isIdentifier(innerProp.expression.expression) &&
+            innerProp.expression.expression.text === "Number") {
+          if (innerMethodName === "toString") needed.add("number_toString");
+          if (innerMethodName === "toFixed") needed.add("number_toFixed");
+        }
+      }
     }
     // Template expressions with number/boolean/bigint substitutions need number_toString
     if (ts.isTemplateExpression(node)) {
@@ -1019,6 +1032,20 @@ function collectStringMethodImports(
       const methodName = prop.name.text;
       if (isStringType(receiverType) && Object.prototype.hasOwnProperty.call(STRING_METHODS, methodName)) {
         needed.add(methodName);
+      }
+      // Detect String.prototype.method.call(str, ...) and String.prototype.method.apply(str, ...)
+      // These patterns rewrite to str.method(...) at compile time, so we need the import
+      if ((methodName === "call" || methodName === "apply") &&
+          ts.isPropertyAccessExpression(prop.expression)) {
+        const innerProp = prop.expression;
+        const innerMethodName = innerProp.name.text;
+        if (ts.isPropertyAccessExpression(innerProp.expression) &&
+            innerProp.expression.name.text === "prototype" &&
+            ts.isIdentifier(innerProp.expression.expression) &&
+            innerProp.expression.expression.text === "String" &&
+            Object.prototype.hasOwnProperty.call(STRING_METHODS, innerMethodName)) {
+          needed.add(innerMethodName);
+        }
       }
     }
     ts.forEachChild(node, visit);
@@ -5428,6 +5455,25 @@ function collectPromiseImports(
         needed.add(method);
       }
     }
+    // Detect .then() / .catch() on Promise-typed values
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression)
+    ) {
+      const method = node.expression.name.text;
+      if (method === "then" || method === "catch") {
+        const receiverType = ctx.checker.getTypeAtLocation(node.expression.expression);
+        const symName = receiverType.getSymbol()?.name;
+        if (symName === "Promise" || (receiverType as any).resolvedTypeArguments) {
+          needed.add(method);
+        }
+        // Also check if the TS type is a Promise via its apparent type
+        const apparent = ctx.checker.getApparentType(receiverType);
+        if (apparent.getSymbol()?.name === "Promise") {
+          needed.add(method);
+        }
+      }
+    }
     // Detect `new Promise(...)`
     if (
       ts.isNewExpression(node) &&
@@ -5476,6 +5522,24 @@ function collectPromiseImports(
         [{ kind: "externref" }],
       );
       addImport(ctx, "env", importName, { kind: "func", typeIdx });
+    }
+  }
+
+  // Register Promise instance methods: .then(cb) and .catch(cb)
+  // These are detected from calls on Promise-typed values (e.g. p.then(...))
+  for (const method of needed) {
+    if (method === "then" || method === "catch") {
+      const importName = `Promise_${method}`;
+      if (!ctx.funcMap.has(importName)) {
+        // Promise_then(promise, callback) -> promise
+        // Promise_catch(promise, callback) -> promise
+        const typeIdx = addFuncType(
+          ctx,
+          [{ kind: "externref" }, { kind: "externref" }],
+          [{ kind: "externref" }],
+        );
+        addImport(ctx, "env", importName, { kind: "func", typeIdx });
+      }
     }
   }
 
