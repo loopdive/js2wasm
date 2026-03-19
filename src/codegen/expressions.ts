@@ -23225,10 +23225,270 @@ function compileYieldExpression(
 }
 
 // ── Functional array methods (filter, map, reduce, forEach, find, findIndex, some, every) ──
+// Shared helpers to reduce duplication across callback-based array methods.
+
+/** Result of setting up a callback for an array method (closure or host bridge). */
+interface ArrayCallbackSetup {
+  closureInfo?: ClosureInfo;
+  closureTypeIdx?: number;
+  closureTmp?: number;
+  callBridgeIdx?: number;
+  cbTmp?: number;
+}
+
+/**
+ * Compile the callback argument and set up either a closure (call_ref) path
+ * or a host bridge fallback. Returns null if setup fails (error pushed).
+ */
+function setupArrayCallback(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  callExpr: ts.CallExpression,
+  methodName: string,
+  tag: string,
+  bridgeName?: string,
+): ArrayCallbackSetup | null {
+  const cbArg = callExpr.arguments[0]!;
+  const cbResult = (ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg))
+    ? compileArrowAsClosure(ctx, fctx, cbArg)
+    : compileExpression(ctx, fctx, cbArg);
+
+  let closureInfo: ClosureInfo | undefined;
+  let closureTypeIdx: number | undefined;
+  let closureTmp: number | undefined;
+
+  if (cbResult && (cbResult.kind === "ref" || cbResult.kind === "ref_null")) {
+    closureTypeIdx = (cbResult as { typeIdx: number }).typeIdx;
+    closureInfo = ctx.closureInfoByTypeIdx.get(closureTypeIdx);
+    if (closureInfo) {
+      closureTmp = allocLocal(fctx, `__arr_${tag}_clcb_${fctx.locals.length}`, cbResult);
+      fctx.body.push({ op: "local.set", index: closureTmp });
+    }
+  }
+
+  let callBridgeIdx: number | undefined;
+  let cbTmp: number | undefined;
+  if (!closureInfo) {
+    const bridge = bridgeName ?? (ctx.fast ? "__call_1_i32" : "__call_1_f64");
+    callBridgeIdx = ctx.funcMap.get(bridge);
+    if (callBridgeIdx === undefined) {
+      ctx.errors.push({ message: `Missing ${bridge} import for ${methodName}`, line: getLine(callExpr), column: getCol(callExpr) });
+      return null;
+    }
+    cbTmp = allocLocal(fctx, `__arr_${tag}_cb_${fctx.locals.length}`, { kind: "externref" });
+    fctx.body.push({ op: "local.set", index: cbTmp });
+  }
+
+  return { closureInfo, closureTypeIdx, closureTmp, callBridgeIdx, cbTmp };
+}
+
+/** Common locals for array iteration loops. */
+interface ArrayLoopLocals {
+  vecTmp: number;
+  dataTmp: number;
+  lenTmp: number;
+  iTmp: number;
+  getOp: string;
+}
+
+/**
+ * Compile receiver, extract vec/data/len, alloc loop locals, set i = 0.
+ */
+function setupArrayLoop(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  propAccess: ts.PropertyAccessExpression,
+  vecTypeIdx: number,
+  arrTypeIdx: number,
+  elemType: ValType,
+  tag: string,
+): ArrayLoopLocals {
+  const vecTmp = allocLocal(fctx, `__arr_${tag}_vec_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecTypeIdx });
+  const dataTmp = allocLocal(fctx, `__arr_${tag}_data_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
+  const lenTmp = allocLocal(fctx, `__arr_${tag}_len_${fctx.locals.length}`, { kind: "i32" });
+  const iTmp = allocLocal(fctx, `__arr_${tag}_i_${fctx.locals.length}`, { kind: "i32" });
+
+  compileExpression(ctx, fctx, propAccess.expression);
+  fctx.body.push({ op: "local.tee", index: vecTmp });
+  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
+  fctx.body.push({ op: "local.set", index: lenTmp });
+  fctx.body.push({ op: "local.get", index: vecTmp });
+  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
+  fctx.body.push({ op: "local.set", index: dataTmp });
+
+  fctx.body.push({ op: "i32.const", value: 0 });
+  fctx.body.push({ op: "local.set", index: iTmp });
+
+  const getOp = elemType.kind === "i16" ? "array.get_s" : "array.get";
+  return { vecTmp, dataTmp, lenTmp, iTmp, getOp };
+}
+
+/**
+ * Build closure call_ref instructions for a 1-arg callback (element, [index, [array]]).
+ * The element source can be either an elemTmp local or inline data[i].
+ */
+function buildClosureCallInstrs(
+  ctx: CodegenContext,
+  setup: ArrayCallbackSetup,
+  elemType: ValType,
+  vecTypeIdx: number,
+  arrTypeIdx: number,
+  loop: ArrayLoopLocals,
+  elemSource: { kind: "local"; index: number } | { kind: "inline" },
+): Instr[] {
+  const { closureInfo, closureTypeIdx, closureTmp } = setup;
+  if (!closureInfo || closureTypeIdx === undefined || closureTmp === undefined) return [];
+  const numParams = closureInfo.paramTypes.length;
+  const elemCoerce = closureInfo.paramTypes[0] ? coercionInstrs(ctx, elemType, closureInfo.paramTypes[0]) : [];
+
+  return [
+    { op: "local.get", index: closureTmp } as Instr,
+    // Element value
+    ...(elemSource.kind === "local"
+      ? [{ op: "local.get", index: elemSource.index } as Instr]
+      : [
+          { op: "local.get", index: loop.dataTmp } as Instr,
+          { op: "local.get", index: loop.iTmp } as Instr,
+          { op: loop.getOp, typeIdx: arrTypeIdx } as Instr,
+        ]),
+    ...elemCoerce,
+    // Index (2nd user param)
+    ...(numParams >= 2 ? [
+      { op: "local.get", index: loop.iTmp } as Instr,
+      ...coercionInstrs(ctx, { kind: "i32" }, closureInfo.paramTypes[1] ?? { kind: "i32" }),
+    ] : []),
+    // Array (3rd user param)
+    ...(numParams >= 3 ? [
+      { op: "local.get", index: loop.vecTmp } as Instr,
+      ...coercionInstrs(ctx, { kind: "ref_null", typeIdx: vecTypeIdx }, closureInfo.paramTypes[2] ?? { kind: "ref_null", typeIdx: vecTypeIdx }),
+    ] : []),
+    { op: "local.get", index: closureTmp } as Instr,
+    { op: "struct.get", typeIdx: closureTypeIdx, fieldIdx: 0 } as Instr,
+    { op: "ref.cast", typeIdx: closureInfo.funcTypeIdx } as Instr,
+    { op: "ref.as_non_null" } as Instr,
+    { op: "call_ref", typeIdx: closureInfo.funcTypeIdx } as Instr,
+  ];
+}
+
+/**
+ * Build host bridge call instructions for a 1-arg callback.
+ * The element is always loaded inline from data[i].
+ */
+function buildBridgeCallInstrs(
+  ctx: CodegenContext,
+  setup: ArrayCallbackSetup,
+  elemType: ValType,
+  arrTypeIdx: number,
+  loop: ArrayLoopLocals,
+  elemSource: { kind: "local"; index: number } | { kind: "inline" },
+): Instr[] {
+  return [
+    { op: "local.get", index: setup.cbTmp! } as Instr,
+    ...(elemSource.kind === "local"
+      ? [
+          { op: "local.get", index: elemSource.index } as Instr,
+          ...(!ctx.fast && elemType.kind === "i32" ? [{ op: "f64.convert_i32_s" } as Instr] : []),
+        ]
+      : [
+          { op: "local.get", index: loop.dataTmp } as Instr,
+          { op: "local.get", index: loop.iTmp } as Instr,
+          { op: loop.getOp, typeIdx: arrTypeIdx } as Instr,
+          ...(!ctx.fast && elemType.kind === "i32" ? [{ op: "f64.convert_i32_s" } as Instr] : []),
+        ]),
+    { op: "call", funcIdx: setup.callBridgeIdx! } as Instr,
+  ];
+}
+
+/** Build instructions to check truthiness of a callback result (-> i32). */
+function buildTruthyCheck(ctx: CodegenContext, setup: ArrayCallbackSetup): Instr[] {
+  if (setup.closureInfo) {
+    if (setup.closureInfo.returnType?.kind === "f64") {
+      return [{ op: "f64.const", value: 0 } as Instr, { op: "f64.ne" } as Instr];
+    }
+    return []; // i32 is already truthy/falsy
+  }
+  return ctx.fast ? [] : [{ op: "f64.const", value: 0 } as Instr, { op: "f64.ne" } as Instr];
+}
+
+/** Build instructions to check falsiness of a callback result (-> i32). */
+function buildFalsyCheck(ctx: CodegenContext, setup: ArrayCallbackSetup): Instr[] {
+  if (setup.closureInfo) {
+    if (setup.closureInfo.returnType?.kind === "f64") {
+      return [{ op: "f64.const", value: 0 } as Instr, { op: "f64.eq" } as Instr];
+    }
+    if (setup.closureInfo.returnType?.kind === "i32") {
+      return [{ op: "i32.eqz" } as Instr];
+    }
+    return [{ op: "i32.eqz" } as Instr];
+  }
+  return ctx.fast ? [{ op: "i32.eqz" } as Instr] : [{ op: "f64.const", value: 0 } as Instr, { op: "f64.eq" } as Instr];
+}
+
+/**
+ * Emit the standard block/loop wrapper used by all functional array methods.
+ */
+function emitArrayLoop(fctx: FunctionContext, loopBody: Instr[]): void {
+  fctx.body.push({
+    op: "block",
+    blockType: { kind: "empty" },
+    body: [
+      { op: "loop", blockType: { kind: "empty" }, body: loopBody } as Instr,
+    ],
+  });
+}
+
+/**
+ * Build the standard loop-exit check: if (i >= len) br 1.
+ */
+function loopExitCheck(loop: ArrayLoopLocals): Instr[] {
+  return [
+    { op: "local.get", index: loop.iTmp } as Instr,
+    { op: "local.get", index: loop.lenTmp } as Instr,
+    { op: "i32.ge_s" } as Instr,
+    { op: "br_if", depth: 1 } as Instr,
+  ];
+}
+
+/**
+ * Build the standard i++ / br 0 at the end of each iteration.
+ */
+function loopIncrement(loop: ArrayLoopLocals): Instr[] {
+  return [
+    { op: "local.get", index: loop.iTmp } as Instr,
+    { op: "i32.const", value: 1 } as Instr,
+    { op: "i32.add" } as Instr,
+    { op: "local.set", index: loop.iTmp } as Instr,
+    { op: "br", depth: 0 } as Instr,
+  ];
+}
+
+/**
+ * Build callback call + optional truthiness/falsiness check for a 1-arg callback.
+ * Used by filter, find, findIndex, some, every, forEach.
+ */
+function buildCallAndCheck(
+  ctx: CodegenContext,
+  setup: ArrayCallbackSetup,
+  elemType: ValType,
+  vecTypeIdx: number,
+  arrTypeIdx: number,
+  loop: ArrayLoopLocals,
+  elemSource: { kind: "local"; index: number } | { kind: "inline" },
+  check: "truthy" | "falsy" | "none",
+): Instr[] {
+  const callInstrs = setup.closureInfo
+    ? buildClosureCallInstrs(ctx, setup, elemType, vecTypeIdx, arrTypeIdx, loop, elemSource)
+    : buildBridgeCallInstrs(ctx, setup, elemType, arrTypeIdx, loop, elemSource);
+  const checkInstrs = check === "truthy" ? buildTruthyCheck(ctx, setup)
+    : check === "falsy" ? buildFalsyCheck(ctx, setup)
+    : [];
+  return [...callInstrs, ...checkInstrs];
+}
+
+// ── Individual method implementations using shared helpers ──
 
 /**
  * arr.filter(cb) → iterate elements, call callback, build new array from truthy results.
- * Uses call_ref for known closures (pure Wasm), falls back to host bridge.
  */
 function compileArrayFilter(
   ctx: CodegenContext,
@@ -23244,147 +23504,43 @@ function compileArrayFilter(
     return null;
   }
 
-  // Try to compile callback as a closure for call_ref path
-  const cbArg = callExpr.arguments[0]!;
-  const cbResult = (ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg))
-    ? compileArrowAsClosure(ctx, fctx, cbArg)
-    : compileExpression(ctx, fctx, cbArg);
-  let closureInfo: ClosureInfo | undefined;
-  let closureTypeIdx: number | undefined;
-  let closureTmp: number | undefined;
+  const setup = setupArrayCallback(ctx, fctx, callExpr, "filter", "flt");
+  if (!setup) return null;
 
-  if (cbResult && (cbResult.kind === "ref" || cbResult.kind === "ref_null")) {
-    closureTypeIdx = (cbResult as { typeIdx: number }).typeIdx;
-    closureInfo = ctx.closureInfoByTypeIdx.get(closureTypeIdx);
-    if (closureInfo) {
-      closureTmp = allocLocal(fctx, `__arr_flt_clcb_${fctx.locals.length}`, cbResult);
-      fctx.body.push({ op: "local.set", index: closureTmp });
-    }
-  }
-
-  // If no closure, fall back to host bridge
-  let callBridgeIdx: number | undefined;
-  let cbTmp: number | undefined;
-  if (!closureInfo) {
-    callBridgeIdx = ctx.funcMap.get(ctx.fast ? "__call_1_i32" : "__call_1_f64");
-    if (callBridgeIdx === undefined) {
-      ctx.errors.push({ message: "Missing __call_1_f64 import for filter", line: getLine(callExpr), column: getCol(callExpr) });
-      return null;
-    }
-    cbTmp = allocLocal(fctx, `__arr_flt_cb_${fctx.locals.length}`, { kind: "externref" });
-    fctx.body.push({ op: "local.set", index: cbTmp });
-  }
-
-  const vecTmp = allocLocal(fctx, `__arr_flt_vec_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecTypeIdx });
-  const dataTmp = allocLocal(fctx, `__arr_flt_data_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
-  const lenTmp = allocLocal(fctx, `__arr_flt_len_${fctx.locals.length}`, { kind: "i32" });
-  const iTmp = allocLocal(fctx, `__arr_flt_i_${fctx.locals.length}`, { kind: "i32" });
   const resData = allocLocal(fctx, `__arr_flt_rd_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
   const resLen = allocLocal(fctx, `__arr_flt_rl_${fctx.locals.length}`, { kind: "i32" });
   const elemTmp = allocLocal(fctx, `__arr_flt_el_${fctx.locals.length}`, elemType);
 
-  // Compile receiver → vec ref
-  compileExpression(ctx, fctx, propAccess.expression);
-  fctx.body.push({ op: "local.tee", index: vecTmp });
-
-  // Extract length
-  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
-  fctx.body.push({ op: "local.set", index: lenTmp });
-
-  // Extract data
-  fctx.body.push({ op: "local.get", index: vecTmp });
-  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
-  fctx.body.push({ op: "local.set", index: dataTmp });
+  const loop = setupArrayLoop(ctx, fctx, propAccess, vecTypeIdx, arrTypeIdx, elemType, "flt");
 
   // Allocate result array with same capacity as source
-  fctx.body.push({ op: "local.get", index: lenTmp });
+  fctx.body.push({ op: "local.get", index: loop.lenTmp });
   fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx });
   fctx.body.push({ op: "local.set", index: resData });
 
-  // resLen = 0, i = 0
   fctx.body.push({ op: "i32.const", value: 0 });
   fctx.body.push({ op: "local.set", index: resLen });
-  fctx.body.push({ op: "i32.const", value: 0 });
-  fctx.body.push({ op: "local.set", index: iTmp });
 
-  const getOp = elemType.kind === "i16" ? "array.get_s" : "array.get";
+  const callAndCheck = buildCallAndCheck(ctx, setup, elemType, vecTypeIdx, arrTypeIdx, loop, { kind: "local", index: elemTmp }, "truthy");
 
-  // Build the callback invocation instructions
-  let callInstrs: Instr[];
-  let truthyCheckInstrs: Instr[];
-
-  if (closureInfo && closureTypeIdx !== undefined && closureTmp !== undefined) {
-    const numParams = closureInfo.paramTypes.length;
-    // Coerce element value from elemType to the closure's expected param type
-    const elemCoerce = closureInfo.paramTypes[0] ? coercionInstrs(ctx, elemType, closureInfo.paramTypes[0]) : [];
-    callInstrs = [
-      { op: "local.get", index: closureTmp } as Instr,
-      { op: "local.get", index: elemTmp } as Instr,
-      ...elemCoerce,
-      // Push index if callback expects it
-      ...(numParams >= 2 ? [
-        { op: "local.get", index: iTmp } as Instr,
-        ...coercionInstrs(ctx, { kind: "i32" }, closureInfo.paramTypes[1] ?? { kind: "i32" }),
-      ] : []),
-      // Push array (3rd user param) if callback expects it
-      ...(numParams >= 3 ? [
-        { op: "local.get", index: vecTmp } as Instr,
-        ...coercionInstrs(ctx, { kind: "ref_null", typeIdx: vecTypeIdx }, closureInfo.paramTypes[2] ?? { kind: "ref_null", typeIdx: vecTypeIdx }),
-      ] : []),
-      { op: "local.get", index: closureTmp } as Instr,
-      { op: "struct.get", typeIdx: closureTypeIdx, fieldIdx: 0 } as Instr,
-      { op: "ref.cast", typeIdx: closureInfo.funcTypeIdx } as Instr,
-      { op: "ref.as_non_null" } as Instr,
-      { op: "call_ref", typeIdx: closureInfo.funcTypeIdx } as Instr,
-    ];
-    // Check truthiness based on return type
-    if (closureInfo.returnType?.kind === "f64") {
-      truthyCheckInstrs = [
-        { op: "f64.const", value: 0 } as Instr,
-        { op: "f64.ne" } as Instr,
-      ];
-    } else {
-      truthyCheckInstrs = []; // i32 is already truthy/falsy
-    }
-  } else {
-    callInstrs = [
-      { op: "local.get", index: cbTmp! } as Instr,
-      { op: "local.get", index: elemTmp } as Instr,
-      ...(!ctx.fast && elemType.kind === "i32" ? [{ op: "f64.convert_i32_s" } as Instr] : []),
-      { op: "call", funcIdx: callBridgeIdx! } as Instr,
-    ];
-    truthyCheckInstrs = ctx.fast
-      ? []
-      : [{ op: "f64.const", value: 0 } as Instr, { op: "f64.ne" } as Instr];
-  }
-
-  // Loop: for each element, call callback, if truthy push to result
   const loopBody: Instr[] = [
-    // if (i >= len) break
-    { op: "local.get", index: iTmp } as Instr,
-    { op: "local.get", index: lenTmp } as Instr,
-    { op: "i32.ge_s" } as Instr,
-    { op: "br_if", depth: 1 } as Instr,
+    ...loopExitCheck(loop),
 
     // elem = data[i]
-    { op: "local.get", index: dataTmp } as Instr,
-    { op: "local.get", index: iTmp } as Instr,
-    { op: getOp, typeIdx: arrTypeIdx } as Instr,
+    { op: "local.get", index: loop.dataTmp } as Instr,
+    { op: "local.get", index: loop.iTmp } as Instr,
+    { op: loop.getOp, typeIdx: arrTypeIdx } as Instr,
     { op: "local.set", index: elemTmp } as Instr,
 
-    // call callback(elem) or callback(elem, i)
-    ...callInstrs,
-    ...truthyCheckInstrs,
+    ...callAndCheck,
 
     // if result is truthy, add element to result
     { op: "if", blockType: { kind: "empty" },
       then: [
-        // resData[resLen] = elem
         { op: "local.get", index: resData } as Instr,
         { op: "local.get", index: resLen } as Instr,
         { op: "local.get", index: elemTmp } as Instr,
         { op: "array.set", typeIdx: arrTypeIdx } as Instr,
-        // resLen++
         { op: "local.get", index: resLen } as Instr,
         { op: "i32.const", value: 1 } as Instr,
         { op: "i32.add" } as Instr,
@@ -23392,23 +23548,11 @@ function compileArrayFilter(
       ],
     } as Instr,
 
-    // i++
-    { op: "local.get", index: iTmp } as Instr,
-    { op: "i32.const", value: 1 } as Instr,
-    { op: "i32.add" } as Instr,
-    { op: "local.set", index: iTmp } as Instr,
-    { op: "br", depth: 0 } as Instr,
+    ...loopIncrement(loop),
   ];
 
-  fctx.body.push({
-    op: "block",
-    blockType: { kind: "empty" },
-    body: [
-      { op: "loop", blockType: { kind: "empty" }, body: loopBody } as Instr,
-    ],
-  });
+  emitArrayLoop(fctx, loopBody);
 
-  // Return new vec struct { resLen, resData }
   fctx.body.push({ op: "local.get", index: resLen });
   fctx.body.push({ op: "local.get", index: resData });
   fctx.body.push({ op: "ref.as_non_null" });
@@ -23418,7 +23562,6 @@ function compileArrayFilter(
 
 /**
  * arr.map(cb) → iterate elements, call callback, store results in new array.
- * Uses call_ref for known closures (pure Wasm), falls back to host bridge.
  */
 function compileArrayMap(
   ctx: CodegenContext,
@@ -23436,17 +23579,15 @@ function compileArrayMap(
 
   const cbArg = callExpr.arguments[0]!;
   // Determine the result element type from the callback's own return type
-  let mapResultElemType: ValType = elemType; // default: same as source
+  let mapResultElemType: ValType = elemType;
   let mapArrTypeIdx = arrTypeIdx;
   let mapVecTypeIdx = vecTypeIdx;
 
-  // Try to get the callback's return type (not the .map() call's return type)
   if (ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg)) {
     const cbSig = ctx.checker.getSignatureFromDeclaration(cbArg);
     if (cbSig) {
       const retType = ctx.checker.getReturnTypeOfSignature(cbSig);
       const mapped = resolveWasmType(ctx, retType);
-      // If return type differs from source element, create new array types
       if (mapped.kind !== elemType.kind) {
         mapResultElemType = mapped;
         mapArrTypeIdx = getOrRegisterArrayType(ctx, mapResultElemType.kind, mapResultElemType);
@@ -23455,145 +23596,52 @@ function compileArrayMap(
     }
   }
 
-  // Try to compile callback as a closure for call_ref path
-  const cbResult = (ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg))
-    ? compileArrowAsClosure(ctx, fctx, cbArg)
-    : compileExpression(ctx, fctx, cbArg);
-  let closureInfo: ClosureInfo | undefined;
-  let closureTypeIdx2: number | undefined;
-  let closureTmp2: number | undefined;
+  const setup = setupArrayCallback(ctx, fctx, callExpr, "map", "map");
+  if (!setup) return null;
 
-  if (cbResult && (cbResult.kind === "ref" || cbResult.kind === "ref_null")) {
-    closureTypeIdx2 = (cbResult as { typeIdx: number }).typeIdx;
-    closureInfo = ctx.closureInfoByTypeIdx.get(closureTypeIdx2);
-    if (closureInfo) {
-      closureTmp2 = allocLocal(fctx, `__arr_map_clcb_${fctx.locals.length}`, cbResult);
-      fctx.body.push({ op: "local.set", index: closureTmp2 });
-
-      // Update map result type from closure return type if available
-      if (closureInfo.returnType && closureInfo.returnType.kind !== mapResultElemType.kind) {
-        mapResultElemType = closureInfo.returnType;
-        mapArrTypeIdx = getOrRegisterArrayType(ctx, mapResultElemType.kind, mapResultElemType);
-        mapVecTypeIdx = getOrRegisterVecType(ctx, mapResultElemType.kind, mapResultElemType);
-      }
-    }
+  // Update map result type from closure return type if available
+  if (setup.closureInfo?.returnType && setup.closureInfo.returnType.kind !== mapResultElemType.kind) {
+    mapResultElemType = setup.closureInfo.returnType;
+    mapArrTypeIdx = getOrRegisterArrayType(ctx, mapResultElemType.kind, mapResultElemType);
+    mapVecTypeIdx = getOrRegisterVecType(ctx, mapResultElemType.kind, mapResultElemType);
   }
 
-  // If no closure, fall back to host bridge
-  let callBridgeIdx: number | undefined;
-  let cbTmp: number | undefined;
-  if (!closureInfo) {
-    callBridgeIdx = ctx.funcMap.get(ctx.fast ? "__call_1_i32" : "__call_1_f64");
-    if (callBridgeIdx === undefined) {
-      ctx.errors.push({ message: "Missing __call_1_f64 import for map", line: getLine(callExpr), column: getCol(callExpr) });
-      return null;
-    }
-    cbTmp = allocLocal(fctx, `__arr_map_cb_${fctx.locals.length}`, { kind: "externref" });
-    fctx.body.push({ op: "local.set", index: cbTmp });
-  }
+  const loop = setupArrayLoop(ctx, fctx, propAccess, vecTypeIdx, arrTypeIdx, elemType, "map");
 
-  const vecTmp = allocLocal(fctx, `__arr_map_vec_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecTypeIdx });
-  const dataTmp = allocLocal(fctx, `__arr_map_data_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
-  const lenTmp = allocLocal(fctx, `__arr_map_len_${fctx.locals.length}`, { kind: "i32" });
-  const iTmp = allocLocal(fctx, `__arr_map_i_${fctx.locals.length}`, { kind: "i32" });
   const resData = allocLocal(fctx, `__arr_map_rd_${fctx.locals.length}`, { kind: "ref_null", typeIdx: mapArrTypeIdx });
 
-  // Compile receiver → vec ref
-  compileExpression(ctx, fctx, propAccess.expression);
-  fctx.body.push({ op: "local.tee", index: vecTmp });
-
-  // Extract length
-  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
-  fctx.body.push({ op: "local.set", index: lenTmp });
-
-  // Extract data
-  fctx.body.push({ op: "local.get", index: vecTmp });
-  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
-  fctx.body.push({ op: "local.set", index: dataTmp });
-
   // Allocate result array with same length
-  fctx.body.push({ op: "local.get", index: lenTmp });
+  fctx.body.push({ op: "local.get", index: loop.lenTmp });
   fctx.body.push({ op: "array.new_default", typeIdx: mapArrTypeIdx });
   fctx.body.push({ op: "local.set", index: resData });
 
-  // i = 0
-  fctx.body.push({ op: "i32.const", value: 0 });
-  fctx.body.push({ op: "local.set", index: iTmp });
-
-  const getOp = elemType.kind === "i16" ? "array.get_s" : "array.get";
-
-  // Build callback invocation
+  // Build callback invocation (result stays on stack)
   let callInstrs: Instr[];
-  if (closureInfo && closureTypeIdx2 !== undefined && closureTmp2 !== undefined) {
-    const numParams = closureInfo.paramTypes.length;
-    const elemCoerce = closureInfo.paramTypes[0] ? coercionInstrs(ctx, elemType, closureInfo.paramTypes[0]) : [];
-    callInstrs = [
-      { op: "local.get", index: closureTmp2 } as Instr,
-      { op: "local.get", index: dataTmp } as Instr,
-      { op: "local.get", index: iTmp } as Instr,
-      { op: getOp, typeIdx: arrTypeIdx } as Instr,
-      ...elemCoerce,
-      // Push index if callback expects it
-      ...(numParams >= 2 ? [
-        { op: "local.get", index: iTmp } as Instr,
-        ...coercionInstrs(ctx, { kind: "i32" }, closureInfo.paramTypes[1] ?? { kind: "i32" }),
-      ] : []),
-      // Push array (3rd user param) if callback expects it
-      ...(numParams >= 3 ? [
-        { op: "local.get", index: vecTmp } as Instr,
-        ...coercionInstrs(ctx, { kind: "ref_null", typeIdx: vecTypeIdx }, closureInfo.paramTypes[2] ?? { kind: "ref_null", typeIdx: vecTypeIdx }),
-      ] : []),
-      { op: "local.get", index: closureTmp2 } as Instr,
-      { op: "struct.get", typeIdx: closureTypeIdx2, fieldIdx: 0 } as Instr,
-      { op: "ref.cast", typeIdx: closureInfo.funcTypeIdx } as Instr,
-      { op: "ref.as_non_null" } as Instr,
-      { op: "call_ref", typeIdx: closureInfo.funcTypeIdx } as Instr,
-    ];
+  if (setup.closureInfo) {
+    callInstrs = buildClosureCallInstrs(ctx, setup, elemType, vecTypeIdx, arrTypeIdx, loop, { kind: "inline" });
   } else {
     callInstrs = [
-      { op: "local.get", index: cbTmp! } as Instr,
-      { op: "local.get", index: dataTmp } as Instr,
-      { op: "local.get", index: iTmp } as Instr,
-      { op: getOp, typeIdx: arrTypeIdx } as Instr,
-      ...(!ctx.fast && elemType.kind === "i32" ? [{ op: "f64.convert_i32_s" } as Instr] : []),
-      { op: "call", funcIdx: callBridgeIdx! } as Instr,
+      ...buildBridgeCallInstrs(ctx, setup, elemType, arrTypeIdx, loop, { kind: "inline" }),
       // Convert result to target element type if needed
       ...(!ctx.fast && mapResultElemType.kind === "i32" ? [{ op: "i32.trunc_sat_f64_s" } as Instr] : []),
     ];
   }
 
-  // Loop: for each element, resData[i] = cb(data[i])
   const loopBody: Instr[] = [
-    // if (i >= len) break
-    { op: "local.get", index: iTmp } as Instr,
-    { op: "local.get", index: lenTmp } as Instr,
-    { op: "i32.ge_s" } as Instr,
-    { op: "br_if", depth: 1 } as Instr,
+    ...loopExitCheck(loop),
 
     // resData[i] = cb(data[i])
     { op: "local.get", index: resData } as Instr,
-    { op: "local.get", index: iTmp } as Instr,
+    { op: "local.get", index: loop.iTmp } as Instr,
     ...callInstrs,
     { op: "array.set", typeIdx: mapArrTypeIdx } as Instr,
 
-    // i++
-    { op: "local.get", index: iTmp } as Instr,
-    { op: "i32.const", value: 1 } as Instr,
-    { op: "i32.add" } as Instr,
-    { op: "local.set", index: iTmp } as Instr,
-    { op: "br", depth: 0 } as Instr,
+    ...loopIncrement(loop),
   ];
 
-  fctx.body.push({
-    op: "block",
-    blockType: { kind: "empty" },
-    body: [
-      { op: "loop", blockType: { kind: "empty" }, body: loopBody } as Instr,
-    ],
-  });
+  emitArrayLoop(fctx, loopBody);
 
-  // Return new vec struct { len, resData }
-  fctx.body.push({ op: "local.get", index: lenTmp });
+  fctx.body.push({ op: "local.get", index: loop.lenTmp });
   fctx.body.push({ op: "local.get", index: resData });
   fctx.body.push({ op: "ref.as_non_null" });
   fctx.body.push({ op: "struct.new", typeIdx: mapVecTypeIdx });
@@ -23602,7 +23650,7 @@ function compileArrayMap(
 
 /**
  * arr.reduce(cb, initial) → iterate elements, accumulate result via callback.
- * Uses call_ref for known closures (pure Wasm), falls back to host bridge.
+ * Reduce has a 2-arg callback (acc, elem) so it uses custom call logic.
  */
 function compileArrayReduce(
   ctx: CodegenContext,
@@ -23619,157 +23667,85 @@ function compileArrayReduce(
   }
 
   const numKind = ctx.fast ? "i32" : "f64";
+  const bridgeName = ctx.fast ? "__call_2_i32" : "__call_2_f64";
+  const setup = setupArrayCallback(ctx, fctx, callExpr, "reduce", "red", bridgeName);
+  if (!setup) return null;
 
-  // Try to compile callback as a closure for call_ref path
-  const cbArg = callExpr.arguments[0]!;
-  const cbResult = (ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg))
-    ? compileArrowAsClosure(ctx, fctx, cbArg)
-    : compileExpression(ctx, fctx, cbArg);
-  let closureInfo: ClosureInfo | undefined;
-  let closureTypeIdx2: number | undefined;
-  let closureTmp2: number | undefined;
-
-  if (cbResult && (cbResult.kind === "ref" || cbResult.kind === "ref_null")) {
-    closureTypeIdx2 = (cbResult as { typeIdx: number }).typeIdx;
-    closureInfo = ctx.closureInfoByTypeIdx.get(closureTypeIdx2);
-    if (closureInfo) {
-      closureTmp2 = allocLocal(fctx, `__arr_red_clcb_${fctx.locals.length}`, cbResult);
-      fctx.body.push({ op: "local.set", index: closureTmp2 });
-    }
-  }
-
-  // If no closure, fall back to host bridge
-  let callBridgeIdx: number | undefined;
-  let cbTmp: number | undefined;
-  if (!closureInfo) {
-    callBridgeIdx = ctx.funcMap.get(ctx.fast ? "__call_2_i32" : "__call_2_f64");
-    if (callBridgeIdx === undefined) {
-      ctx.errors.push({ message: `Missing ${ctx.fast ? "__call_2_i32" : "__call_2_f64"} import for reduce`, line: getLine(callExpr), column: getCol(callExpr) });
-      return null;
-    }
-    cbTmp = allocLocal(fctx, `__arr_red_cb_${fctx.locals.length}`, { kind: "externref" });
-    fctx.body.push({ op: "local.set", index: cbTmp });
-  }
-
-  const vecTmp = allocLocal(fctx, `__arr_red_vec_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecTypeIdx });
-  const dataTmp = allocLocal(fctx, `__arr_red_data_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
-  const lenTmp = allocLocal(fctx, `__arr_red_len_${fctx.locals.length}`, { kind: "i32" });
-  const iTmp = allocLocal(fctx, `__arr_red_i_${fctx.locals.length}`, { kind: "i32" });
+  const loop = setupArrayLoop(ctx, fctx, propAccess, vecTypeIdx, arrTypeIdx, elemType, "red");
   const accTmp = allocLocal(fctx, `__arr_red_acc_${fctx.locals.length}`, { kind: numKind as any });
-
-  // Compile receiver
-  compileExpression(ctx, fctx, propAccess.expression);
-  fctx.body.push({ op: "local.tee", index: vecTmp });
-
-  // Extract length
-  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
-  fctx.body.push({ op: "local.set", index: lenTmp });
-
-  // Extract data
-  fctx.body.push({ op: "local.get", index: vecTmp });
-  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
-  fctx.body.push({ op: "local.set", index: dataTmp });
 
   // Compile initial value or use arr[0] as default
   if (callExpr.arguments.length >= 2) {
     compileExpression(ctx, fctx, callExpr.arguments[1]!, { kind: numKind as any });
     fctx.body.push({ op: "local.set", index: accTmp });
-    // i = 0
-    fctx.body.push({ op: "i32.const", value: 0 });
-    fctx.body.push({ op: "local.set", index: iTmp });
+    // i already = 0 from setupArrayLoop
   } else {
     // No initial value: acc = data[0], start from i = 1
-    fctx.body.push({ op: "local.get", index: dataTmp });
+    fctx.body.push({ op: "local.get", index: loop.dataTmp });
     fctx.body.push({ op: "i32.const", value: 0 });
     fctx.body.push({ op: elemType.kind === "i16" ? "array.get_s" : "array.get", typeIdx: arrTypeIdx } as unknown as Instr);
     fctx.body.push({ op: "local.set", index: accTmp });
-    // i = 1
     fctx.body.push({ op: "i32.const", value: 1 });
-    fctx.body.push({ op: "local.set", index: iTmp });
+    fctx.body.push({ op: "local.set", index: loop.iTmp });
   }
 
-  const getOp = elemType.kind === "i16" ? "array.get_s" : "array.get";
-
-  // Build callback invocation
+  // Build reduce-specific callback invocation (2-arg: acc, elem)
   let callInstrs: Instr[];
-  if (closureInfo && closureTypeIdx2 !== undefined && closureTmp2 !== undefined) {
-    const numParams = closureInfo.paramTypes.length;
-    // Coerce accumulator and element to closure's expected types
-    const accCoerce = closureInfo.paramTypes[0] ? coercionInstrs(ctx, { kind: numKind as any }, closureInfo.paramTypes[0]) : [];
-    const elemCoerce = closureInfo.paramTypes[1] ? coercionInstrs(ctx, elemType, closureInfo.paramTypes[1]) : [];
+  if (setup.closureInfo && setup.closureTypeIdx !== undefined && setup.closureTmp !== undefined) {
+    const ci = setup.closureInfo;
+    const numParams = ci.paramTypes.length;
+    const accCoerce = ci.paramTypes[0] ? coercionInstrs(ctx, { kind: numKind as any }, ci.paramTypes[0]) : [];
+    const elemCoerce = ci.paramTypes[1] ? coercionInstrs(ctx, elemType, ci.paramTypes[1]) : [];
     callInstrs = [
-      // acc = closure(acc, data[i], [i, [arr]])
-      { op: "local.get", index: closureTmp2 } as Instr,
+      { op: "local.get", index: setup.closureTmp } as Instr,
       { op: "local.get", index: accTmp } as Instr,
       ...accCoerce,
-      { op: "local.get", index: dataTmp } as Instr,
-      { op: "local.get", index: iTmp } as Instr,
-      { op: getOp, typeIdx: arrTypeIdx } as Instr,
+      { op: "local.get", index: loop.dataTmp } as Instr,
+      { op: "local.get", index: loop.iTmp } as Instr,
+      { op: loop.getOp, typeIdx: arrTypeIdx } as Instr,
       ...elemCoerce,
-      // Push index (3rd user param) if callback expects it
       ...(numParams >= 3 ? [
-        { op: "local.get", index: iTmp } as Instr,
-        ...coercionInstrs(ctx, { kind: "i32" }, closureInfo.paramTypes[2] ?? { kind: "i32" }),
+        { op: "local.get", index: loop.iTmp } as Instr,
+        ...coercionInstrs(ctx, { kind: "i32" }, ci.paramTypes[2] ?? { kind: "i32" }),
       ] : []),
-      // Push array (4th user param) if callback expects it
       ...(numParams >= 4 ? [
-        { op: "local.get", index: vecTmp } as Instr,
-        ...coercionInstrs(ctx, { kind: "ref_null", typeIdx: vecTypeIdx }, closureInfo.paramTypes[3] ?? { kind: "ref_null", typeIdx: vecTypeIdx }),
+        { op: "local.get", index: loop.vecTmp } as Instr,
+        ...coercionInstrs(ctx, { kind: "ref_null", typeIdx: vecTypeIdx }, ci.paramTypes[3] ?? { kind: "ref_null", typeIdx: vecTypeIdx }),
       ] : []),
-      { op: "local.get", index: closureTmp2 } as Instr,
-      { op: "struct.get", typeIdx: closureTypeIdx2, fieldIdx: 0 } as Instr,
-      { op: "ref.cast", typeIdx: closureInfo.funcTypeIdx } as Instr,
+      { op: "local.get", index: setup.closureTmp } as Instr,
+      { op: "struct.get", typeIdx: setup.closureTypeIdx, fieldIdx: 0 } as Instr,
+      { op: "ref.cast", typeIdx: ci.funcTypeIdx } as Instr,
       { op: "ref.as_non_null" } as Instr,
-      { op: "call_ref", typeIdx: closureInfo.funcTypeIdx } as Instr,
+      { op: "call_ref", typeIdx: ci.funcTypeIdx } as Instr,
       { op: "local.set", index: accTmp } as Instr,
     ];
   } else {
     callInstrs = [
-      // acc = __call_2_f64(cb, acc, data[i])
-      { op: "local.get", index: cbTmp! } as Instr,
+      { op: "local.get", index: setup.cbTmp! } as Instr,
       { op: "local.get", index: accTmp } as Instr,
-      { op: "local.get", index: dataTmp } as Instr,
-      { op: "local.get", index: iTmp } as Instr,
-      { op: getOp, typeIdx: arrTypeIdx } as Instr,
+      { op: "local.get", index: loop.dataTmp } as Instr,
+      { op: "local.get", index: loop.iTmp } as Instr,
+      { op: loop.getOp, typeIdx: arrTypeIdx } as Instr,
       ...(!ctx.fast && elemType.kind === "i32" ? [{ op: "f64.convert_i32_s" } as Instr] : []),
-      { op: "call", funcIdx: callBridgeIdx! } as Instr,
+      { op: "call", funcIdx: setup.callBridgeIdx! } as Instr,
       { op: "local.set", index: accTmp } as Instr,
     ];
   }
 
-  // Loop: acc = cb(acc, data[i])
   const loopBody: Instr[] = [
-    { op: "local.get", index: iTmp } as Instr,
-    { op: "local.get", index: lenTmp } as Instr,
-    { op: "i32.ge_s" } as Instr,
-    { op: "br_if", depth: 1 } as Instr,
-
+    ...loopExitCheck(loop),
     ...callInstrs,
-
-    // i++
-    { op: "local.get", index: iTmp } as Instr,
-    { op: "i32.const", value: 1 } as Instr,
-    { op: "i32.add" } as Instr,
-    { op: "local.set", index: iTmp } as Instr,
-    { op: "br", depth: 0 } as Instr,
+    ...loopIncrement(loop),
   ];
 
-  fctx.body.push({
-    op: "block",
-    blockType: { kind: "empty" },
-    body: [
-      { op: "loop", blockType: { kind: "empty" }, body: loopBody } as Instr,
-    ],
-  });
+  emitArrayLoop(fctx, loopBody);
 
-  // Return accumulator
   fctx.body.push({ op: "local.get", index: accTmp });
   return { kind: numKind as any };
 }
 
 /**
  * arr.forEach(cb) → iterate elements, call callback, return void.
- * Uses call_ref for known closures (pure Wasm), falls back to host bridge.
  */
 function compileArrayForEach(
   ctx: CodegenContext,
@@ -23785,166 +23761,41 @@ function compileArrayForEach(
     return null;
   }
 
-  // Compile callback: prefer closure (call_ref) over host bridge
-  const cbArg = callExpr.arguments[0]!;
-  const cbResult = (ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg))
-    ? compileArrowAsClosure(ctx, fctx, cbArg)
-    : compileExpression(ctx, fctx, cbArg);
+  const setup = setupArrayCallback(ctx, fctx, callExpr, "forEach", "fe");
+  if (!setup) return null;
 
-  // Check if we got a closure ref
-  if (cbResult && (cbResult.kind === "ref" || cbResult.kind === "ref_null")) {
-    const closureTypeIdx = (cbResult as { typeIdx: number }).typeIdx;
-    const closureInfo = ctx.closureInfoByTypeIdx.get(closureTypeIdx);
-    if (closureInfo) {
-      // Pure Wasm path using call_ref
-      const closureTmp = allocLocal(fctx, `__arr_fe_cb_${fctx.locals.length}`, cbResult);
-      fctx.body.push({ op: "local.set", index: closureTmp });
+  const loop = setupArrayLoop(ctx, fctx, propAccess, vecTypeIdx, arrTypeIdx, elemType, "fe");
 
-      const vecTmp = allocLocal(fctx, `__arr_fe_vec_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecTypeIdx });
-      const dataTmp = allocLocal(fctx, `__arr_fe_data_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
-      const lenTmp = allocLocal(fctx, `__arr_fe_len_${fctx.locals.length}`, { kind: "i32" });
-      const iTmp = allocLocal(fctx, `__arr_fe_i_${fctx.locals.length}`, { kind: "i32" });
+  if (setup.closureInfo) {
+    const callInstrs = buildClosureCallInstrs(ctx, setup, elemType, vecTypeIdx, arrTypeIdx, loop, { kind: "inline" });
+    const dropInstrs: Instr[] = setup.closureInfo.returnType ? [{ op: "drop" } as Instr] : [];
 
-      // Compile receiver
-      compileExpression(ctx, fctx, propAccess.expression);
-      fctx.body.push({ op: "local.tee", index: vecTmp });
-      fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
-      fctx.body.push({ op: "local.set", index: lenTmp });
-      fctx.body.push({ op: "local.get", index: vecTmp });
-      fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
-      fctx.body.push({ op: "local.set", index: dataTmp });
+    const loopBody: Instr[] = [
+      ...loopExitCheck(loop),
+      ...callInstrs,
+      ...dropInstrs,
+      ...loopIncrement(loop),
+    ];
 
-      fctx.body.push({ op: "i32.const", value: 0 });
-      fctx.body.push({ op: "local.set", index: iTmp });
+    emitArrayLoop(fctx, loopBody);
+  } else {
+    const callInstrs = buildBridgeCallInstrs(ctx, setup, elemType, arrTypeIdx, loop, { kind: "inline" });
 
-      const getOp = elemType.kind === "i16" ? "array.get_s" : "array.get";
-      const numParams = closureInfo.paramTypes.length;
+    const loopBody: Instr[] = [
+      ...loopExitCheck(loop),
+      ...callInstrs,
+      { op: "drop" } as Instr,
+      ...loopIncrement(loop),
+    ];
 
-      const loopBody: Instr[] = [
-        { op: "local.get", index: iTmp },
-        { op: "local.get", index: lenTmp },
-        { op: "i32.ge_s" },
-        { op: "br_if", depth: 1 },
-
-        // Push closure ref (self param for call_ref)
-        { op: "local.get", index: closureTmp },
-        // Push element (1st user param)
-        { op: "local.get", index: dataTmp },
-        { op: "local.get", index: iTmp },
-        { op: getOp, typeIdx: arrTypeIdx } as Instr,
-        ...coercionInstrs(ctx, elemType, closureInfo.paramTypes[0] ?? elemType),
-        // Push index (2nd user param) if callback expects it
-        ...(numParams >= 2 ? [
-          { op: "local.get", index: iTmp } as Instr,
-          ...coercionInstrs(ctx, { kind: "i32" }, closureInfo.paramTypes[1] ?? { kind: "i32" }),
-        ] : []),
-        // Push array (3rd user param) if callback expects it
-        ...(numParams >= 3 ? [
-          { op: "local.get", index: vecTmp } as Instr,
-          ...coercionInstrs(ctx, { kind: "ref_null", typeIdx: vecTypeIdx }, closureInfo.paramTypes[2] ?? { kind: "ref_null", typeIdx: vecTypeIdx }),
-        ] : []),
-        // Get funcref and call
-        { op: "local.get", index: closureTmp },
-        { op: "struct.get", typeIdx: closureTypeIdx, fieldIdx: 0 } as Instr,
-        { op: "ref.cast", typeIdx: closureInfo.funcTypeIdx } as Instr,
-        { op: "ref.as_non_null" } as Instr,
-        { op: "call_ref", typeIdx: closureInfo.funcTypeIdx } as Instr,
-        // Drop result if callback returns something
-        ...(closureInfo.returnType ? [{ op: "drop" } as Instr] : []),
-
-        // i++
-        { op: "local.get", index: iTmp },
-        { op: "i32.const", value: 1 },
-        { op: "i32.add" },
-        { op: "local.set", index: iTmp },
-        { op: "br", depth: 0 },
-      ];
-
-      fctx.body.push({
-        op: "block",
-        blockType: { kind: "empty" },
-        body: [
-          { op: "loop", blockType: { kind: "empty" }, body: loopBody } as Instr,
-        ],
-      });
-
-      return null;
-    }
+    emitArrayLoop(fctx, loopBody);
   }
 
-  // Fallback: host call bridge path (legacy)
-  const callBridgeIdx = ctx.funcMap.get(ctx.fast ? "__call_1_i32" : "__call_1_f64");
-  if (callBridgeIdx === undefined) {
-    ctx.errors.push({ message: "Missing __call_1_f64 import for forEach", line: getLine(callExpr), column: getCol(callExpr) });
-    return null;
-  }
-
-  const vecTmp = allocLocal(fctx, `__arr_fe_vec_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecTypeIdx });
-  const dataTmp = allocLocal(fctx, `__arr_fe_data_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
-  const lenTmp = allocLocal(fctx, `__arr_fe_len_${fctx.locals.length}`, { kind: "i32" });
-  const iTmp = allocLocal(fctx, `__arr_fe_i_${fctx.locals.length}`, { kind: "i32" });
-  // cbResult was already compiled above — store as externref
-  const cbTmp = allocLocal(fctx, `__arr_fe_cb_${fctx.locals.length}`, { kind: "externref" });
-  fctx.body.push({ op: "local.set", index: cbTmp });
-
-  // Compile receiver
-  compileExpression(ctx, fctx, propAccess.expression);
-  fctx.body.push({ op: "local.tee", index: vecTmp });
-
-  // Extract length
-  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
-  fctx.body.push({ op: "local.set", index: lenTmp });
-
-  // Extract data
-  fctx.body.push({ op: "local.get", index: vecTmp });
-  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
-  fctx.body.push({ op: "local.set", index: dataTmp });
-
-  // i = 0
-  fctx.body.push({ op: "i32.const", value: 0 });
-  fctx.body.push({ op: "local.set", index: iTmp });
-
-  const getOp = elemType.kind === "i16" ? "array.get_s" : "array.get";
-
-  // Loop: call cb(data[i]), drop result
-  const loopBody: Instr[] = [
-    { op: "local.get", index: iTmp } as Instr,
-    { op: "local.get", index: lenTmp } as Instr,
-    { op: "i32.ge_s" } as Instr,
-    { op: "br_if", depth: 1 } as Instr,
-
-    // __call_1_f64(cb, data[i]) → f64 (dropped)
-    { op: "local.get", index: cbTmp } as Instr,
-    { op: "local.get", index: dataTmp } as Instr,
-    { op: "local.get", index: iTmp } as Instr,
-    { op: getOp, typeIdx: arrTypeIdx } as Instr,
-    ...(!ctx.fast && elemType.kind === "i32" ? [{ op: "f64.convert_i32_s" } as Instr] : []),
-    { op: "call", funcIdx: callBridgeIdx } as Instr,
-    { op: "drop" } as Instr,
-
-    // i++
-    { op: "local.get", index: iTmp } as Instr,
-    { op: "i32.const", value: 1 } as Instr,
-    { op: "i32.add" } as Instr,
-    { op: "local.set", index: iTmp } as Instr,
-    { op: "br", depth: 0 } as Instr,
-  ];
-
-  fctx.body.push({
-    op: "block",
-    blockType: { kind: "empty" },
-    body: [
-      { op: "loop", blockType: { kind: "empty" }, body: loopBody } as Instr,
-    ],
-  });
-
-  // forEach returns void — return null to indicate no value on stack
   return null;
 }
 
 /**
  * arr.find(cb) → iterate, return first element where cb returns truthy, else NaN.
- * Uses call_ref for known closures (pure Wasm), falls back to host bridge.
  */
 function compileArrayFind(
   ctx: CodegenContext,
@@ -23960,96 +23811,18 @@ function compileArrayFind(
     return null;
   }
 
-  // Try to compile callback as a closure
-  const cbArg = callExpr.arguments[0]!;
-  const cbResult = (ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg))
-    ? compileArrowAsClosure(ctx, fctx, cbArg)
-    : compileExpression(ctx, fctx, cbArg);
-  let closureInfo: ClosureInfo | undefined;
-  let closureTypeIdx2: number | undefined;
-  let closureTmp2: number | undefined;
+  const setup = setupArrayCallback(ctx, fctx, callExpr, "find", "find");
+  if (!setup) return null;
 
-  if (cbResult && (cbResult.kind === "ref" || cbResult.kind === "ref_null")) {
-    closureTypeIdx2 = (cbResult as { typeIdx: number }).typeIdx;
-    closureInfo = ctx.closureInfoByTypeIdx.get(closureTypeIdx2);
-    if (closureInfo) {
-      closureTmp2 = allocLocal(fctx, `__arr_find_clcb_${fctx.locals.length}`, cbResult);
-      fctx.body.push({ op: "local.set", index: closureTmp2 });
-    }
-  }
-
-  let callBridgeIdx: number | undefined;
-  let cbTmp: number | undefined;
-  if (!closureInfo) {
-    callBridgeIdx = ctx.funcMap.get(ctx.fast ? "__call_1_i32" : "__call_1_f64");
-    if (callBridgeIdx === undefined) {
-      ctx.errors.push({ message: "Missing __call_1_f64 import for find", line: getLine(callExpr), column: getCol(callExpr) });
-      return null;
-    }
-    cbTmp = allocLocal(fctx, `__arr_find_cb_${fctx.locals.length}`, { kind: "externref" });
-    fctx.body.push({ op: "local.set", index: cbTmp });
-  }
-
-  const vecTmp = allocLocal(fctx, `__arr_find_vec_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecTypeIdx });
-  const dataTmp = allocLocal(fctx, `__arr_find_data_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
-  const lenTmp = allocLocal(fctx, `__arr_find_len_${fctx.locals.length}`, { kind: "i32" });
-  const iTmp = allocLocal(fctx, `__arr_find_i_${fctx.locals.length}`, { kind: "i32" });
   const elemTmpLocal = allocLocal(fctx, `__arr_find_el_${fctx.locals.length}`, elemType);
 
-  compileExpression(ctx, fctx, propAccess.expression);
-  fctx.body.push({ op: "local.tee", index: vecTmp });
-  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
-  fctx.body.push({ op: "local.set", index: lenTmp });
-  fctx.body.push({ op: "local.get", index: vecTmp });
-  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
-  fctx.body.push({ op: "local.set", index: dataTmp });
+  const loop = setupArrayLoop(ctx, fctx, propAccess, vecTypeIdx, arrTypeIdx, elemType, "find");
 
-  fctx.body.push({ op: "i32.const", value: 0 });
-  fctx.body.push({ op: "local.set", index: iTmp });
+  const callAndCheck = buildCallAndCheck(ctx, setup, elemType, vecTypeIdx, arrTypeIdx, loop, { kind: "local", index: elemTmpLocal }, "truthy");
 
-  const getOp = elemType.kind === "i16" ? "array.get_s" : "array.get";
-
-  // Build callback invocation + truthiness check
-  let callAndCheckInstrs: Instr[];
-  if (closureInfo && closureTypeIdx2 !== undefined && closureTmp2 !== undefined) {
-    const numParams = closureInfo.paramTypes.length;
-    callAndCheckInstrs = [
-      { op: "local.get", index: closureTmp2 } as Instr,
-      { op: "local.get", index: elemTmpLocal } as Instr,
-      ...coercionInstrs(ctx, elemType, closureInfo.paramTypes[0] ?? elemType),
-      ...(numParams >= 2 ? [
-        { op: "local.get", index: iTmp } as Instr,
-        ...coercionInstrs(ctx, { kind: "i32" }, closureInfo.paramTypes[1] ?? { kind: "i32" }),
-      ] : []),
-      // Push array (3rd user param) if callback expects it
-      ...(numParams >= 3 ? [
-        { op: "local.get", index: vecTmp } as Instr,
-        ...coercionInstrs(ctx, { kind: "ref_null", typeIdx: vecTypeIdx }, closureInfo.paramTypes[2] ?? { kind: "ref_null", typeIdx: vecTypeIdx }),
-      ] : []),
-      { op: "local.get", index: closureTmp2 } as Instr,
-      { op: "struct.get", typeIdx: closureTypeIdx2, fieldIdx: 0 } as Instr,
-      { op: "ref.cast", typeIdx: closureInfo.funcTypeIdx } as Instr,
-      { op: "ref.as_non_null" } as Instr,
-      { op: "call_ref", typeIdx: closureInfo.funcTypeIdx } as Instr,
-      ...(closureInfo.returnType?.kind === "f64"
-        ? [{ op: "f64.const", value: 0 } as Instr, { op: "f64.ne" } as Instr]
-        : []),
-    ];
-  } else {
-    callAndCheckInstrs = [
-      { op: "local.get", index: cbTmp! } as Instr,
-      { op: "local.get", index: elemTmpLocal } as Instr,
-      ...(!ctx.fast && elemType.kind === "i32" ? [{ op: "f64.convert_i32_s" } as Instr] : []),
-      { op: "call", funcIdx: callBridgeIdx! } as Instr,
-      ...(ctx.fast ? [] : [{ op: "f64.const", value: 0 } as Instr, { op: "f64.ne" } as Instr]),
-    ];
-  }
-
-  // Use a result local instead of `return` to avoid returning from the
-  // enclosing function when find is inlined.
+  // Result local — NaN (not found) or element value
   const findResType: ValType = ctx.fast ? elemType : { kind: "f64" };
   const findResTmp = allocLocal(fctx, `__arr_find_res_${fctx.locals.length}`, findResType);
-  // Default: not found. For f64 mode, NaN (0/0); for fast/i32, 0.
   if (ctx.fast) {
     fctx.body.push({ op: "i32.const", value: 0 });
   } else {
@@ -24060,52 +23833,34 @@ function compileArrayFind(
   fctx.body.push({ op: "local.set", index: findResTmp });
 
   const loopBody: Instr[] = [
-    { op: "local.get", index: iTmp } as Instr,
-    { op: "local.get", index: lenTmp } as Instr,
-    { op: "i32.ge_s" } as Instr,
-    { op: "br_if", depth: 1 } as Instr,
+    ...loopExitCheck(loop),
 
-    { op: "local.get", index: dataTmp } as Instr,
-    { op: "local.get", index: iTmp } as Instr,
-    { op: getOp, typeIdx: arrTypeIdx } as Instr,
+    { op: "local.get", index: loop.dataTmp } as Instr,
+    { op: "local.get", index: loop.iTmp } as Instr,
+    { op: loop.getOp, typeIdx: arrTypeIdx } as Instr,
     { op: "local.set", index: elemTmpLocal } as Instr,
 
-    ...callAndCheckInstrs,
+    ...callAndCheck,
     { op: "if", blockType: { kind: "empty" },
       then: [
         { op: "local.get", index: elemTmpLocal } as Instr,
         ...(!ctx.fast && elemType.kind === "i32" ? [{ op: "f64.convert_i32_s" } as Instr] : []),
         { op: "local.set", index: findResTmp } as Instr,
-        { op: "br", depth: 2 } as Instr, // break out of block
+        { op: "br", depth: 2 } as Instr,
       ],
     } as Instr,
 
-    { op: "local.get", index: iTmp } as Instr,
-    { op: "i32.const", value: 1 } as Instr,
-    { op: "i32.add" } as Instr,
-    { op: "local.set", index: iTmp } as Instr,
-    { op: "br", depth: 0 } as Instr,
+    ...loopIncrement(loop),
   ];
 
-  fctx.body.push({
-    op: "block",
-    blockType: { kind: "empty" },
-    body: [
-      { op: "loop", blockType: { kind: "empty" }, body: loopBody } as Instr,
-    ],
-  });
+  emitArrayLoop(fctx, loopBody);
 
   fctx.body.push({ op: "local.get", index: findResTmp });
-
-  if (ctx.fast) {
-    return elemType;
-  }
-  return { kind: "f64" };
+  return ctx.fast ? elemType : { kind: "f64" };
 }
 
 /**
  * arr.findIndex(cb) → iterate, return index (f64) of first truthy cb result, else -1.
- * Uses call_ref for known closures (pure Wasm), falls back to host bridge.
  */
 function compileArrayFindIndex(
   ctx: CodegenContext,
@@ -24121,96 +23876,13 @@ function compileArrayFindIndex(
     return null;
   }
 
-  // Try to compile callback as a closure
-  const cbArg = callExpr.arguments[0]!;
-  const cbResult = (ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg))
-    ? compileArrowAsClosure(ctx, fctx, cbArg)
-    : compileExpression(ctx, fctx, cbArg);
-  let closureInfo: ClosureInfo | undefined;
-  let closureTypeIdx2: number | undefined;
-  let closureTmp2: number | undefined;
+  const setup = setupArrayCallback(ctx, fctx, callExpr, "findIndex", "fi");
+  if (!setup) return null;
 
-  if (cbResult && (cbResult.kind === "ref" || cbResult.kind === "ref_null")) {
-    closureTypeIdx2 = (cbResult as { typeIdx: number }).typeIdx;
-    closureInfo = ctx.closureInfoByTypeIdx.get(closureTypeIdx2);
-    if (closureInfo) {
-      closureTmp2 = allocLocal(fctx, `__arr_fi_clcb_${fctx.locals.length}`, cbResult);
-      fctx.body.push({ op: "local.set", index: closureTmp2 });
-    }
-  }
+  const loop = setupArrayLoop(ctx, fctx, propAccess, vecTypeIdx, arrTypeIdx, elemType, "fi");
 
-  let callBridgeIdx: number | undefined;
-  let cbTmp: number | undefined;
-  if (!closureInfo) {
-    callBridgeIdx = ctx.funcMap.get(ctx.fast ? "__call_1_i32" : "__call_1_f64");
-    if (callBridgeIdx === undefined) {
-      ctx.errors.push({ message: "Missing __call_1_f64 import for findIndex", line: getLine(callExpr), column: getCol(callExpr) });
-      return null;
-    }
-    cbTmp = allocLocal(fctx, `__arr_fi_cb_${fctx.locals.length}`, { kind: "externref" });
-    fctx.body.push({ op: "local.set", index: cbTmp });
-  }
+  const callAndCheck = buildCallAndCheck(ctx, setup, elemType, vecTypeIdx, arrTypeIdx, loop, { kind: "inline" }, "truthy");
 
-  const vecTmp = allocLocal(fctx, `__arr_fi_vec_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecTypeIdx });
-  const dataTmp = allocLocal(fctx, `__arr_fi_data_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
-  const lenTmp = allocLocal(fctx, `__arr_fi_len_${fctx.locals.length}`, { kind: "i32" });
-  const iTmp = allocLocal(fctx, `__arr_fi_i_${fctx.locals.length}`, { kind: "i32" });
-
-  compileExpression(ctx, fctx, propAccess.expression);
-  fctx.body.push({ op: "local.tee", index: vecTmp });
-  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
-  fctx.body.push({ op: "local.set", index: lenTmp });
-  fctx.body.push({ op: "local.get", index: vecTmp });
-  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
-  fctx.body.push({ op: "local.set", index: dataTmp });
-
-  fctx.body.push({ op: "i32.const", value: 0 });
-  fctx.body.push({ op: "local.set", index: iTmp });
-
-  const getOp = elemType.kind === "i16" ? "array.get_s" : "array.get";
-
-  // Build callback invocation + truthiness check
-  let callAndCheckInstrs: Instr[];
-  if (closureInfo && closureTypeIdx2 !== undefined && closureTmp2 !== undefined) {
-    const numParams = closureInfo.paramTypes.length;
-    callAndCheckInstrs = [
-      { op: "local.get", index: closureTmp2 } as Instr,
-      { op: "local.get", index: dataTmp } as Instr,
-      { op: "local.get", index: iTmp } as Instr,
-      { op: getOp, typeIdx: arrTypeIdx } as Instr,
-      ...coercionInstrs(ctx, elemType, closureInfo.paramTypes[0] ?? elemType),
-      ...(numParams >= 2 ? [
-        { op: "local.get", index: iTmp } as Instr,
-        ...coercionInstrs(ctx, { kind: "i32" }, closureInfo.paramTypes[1] ?? { kind: "i32" }),
-      ] : []),
-      // Push array (3rd user param) if callback expects it
-      ...(numParams >= 3 ? [
-        { op: "local.get", index: vecTmp } as Instr,
-        ...coercionInstrs(ctx, { kind: "ref_null", typeIdx: vecTypeIdx }, closureInfo.paramTypes[2] ?? { kind: "ref_null", typeIdx: vecTypeIdx }),
-      ] : []),
-      { op: "local.get", index: closureTmp2 } as Instr,
-      { op: "struct.get", typeIdx: closureTypeIdx2, fieldIdx: 0 } as Instr,
-      { op: "ref.cast", typeIdx: closureInfo.funcTypeIdx } as Instr,
-      { op: "ref.as_non_null" } as Instr,
-      { op: "call_ref", typeIdx: closureInfo.funcTypeIdx } as Instr,
-      ...(closureInfo.returnType?.kind === "f64"
-        ? [{ op: "f64.const", value: 0 } as Instr, { op: "f64.ne" } as Instr]
-        : []),
-    ];
-  } else {
-    callAndCheckInstrs = [
-      { op: "local.get", index: cbTmp! } as Instr,
-      { op: "local.get", index: dataTmp } as Instr,
-      { op: "local.get", index: iTmp } as Instr,
-      { op: getOp, typeIdx: arrTypeIdx } as Instr,
-      ...(!ctx.fast && elemType.kind === "i32" ? [{ op: "f64.convert_i32_s" } as Instr] : []),
-      { op: "call", funcIdx: callBridgeIdx! } as Instr,
-      ...(ctx.fast ? [] : [{ op: "f64.const", value: 0 } as Instr, { op: "f64.ne" } as Instr]),
-    ];
-  }
-
-  // Use a result local instead of `return` to avoid returning from the
-  // enclosing function when findIndex is inlined.
   const fiResType: ValType = ctx.fast ? { kind: "i32" } : { kind: "f64" };
   const fiResTmp = allocLocal(fctx, `__arr_fi_res_${fctx.locals.length}`, fiResType);
   if (ctx.fast) {
@@ -24221,47 +23893,29 @@ function compileArrayFindIndex(
   fctx.body.push({ op: "local.set", index: fiResTmp });
 
   const loopBody: Instr[] = [
-    { op: "local.get", index: iTmp } as Instr,
-    { op: "local.get", index: lenTmp } as Instr,
-    { op: "i32.ge_s" } as Instr,
-    { op: "br_if", depth: 1 } as Instr,
+    ...loopExitCheck(loop),
 
-    ...callAndCheckInstrs,
+    ...callAndCheck,
     { op: "if", blockType: { kind: "empty" },
       then: [
-        { op: "local.get", index: iTmp } as Instr,
+        { op: "local.get", index: loop.iTmp } as Instr,
         ...(ctx.fast ? [] : [{ op: "f64.convert_i32_s" } as Instr]),
         { op: "local.set", index: fiResTmp } as Instr,
-        { op: "br", depth: 2 } as Instr, // break out of block
+        { op: "br", depth: 2 } as Instr,
       ],
     } as Instr,
 
-    { op: "local.get", index: iTmp } as Instr,
-    { op: "i32.const", value: 1 } as Instr,
-    { op: "i32.add" } as Instr,
-    { op: "local.set", index: iTmp } as Instr,
-    { op: "br", depth: 0 } as Instr,
+    ...loopIncrement(loop),
   ];
 
-  fctx.body.push({
-    op: "block",
-    blockType: { kind: "empty" },
-    body: [
-      { op: "loop", blockType: { kind: "empty" }, body: loopBody } as Instr,
-    ],
-  });
+  emitArrayLoop(fctx, loopBody);
 
   fctx.body.push({ op: "local.get", index: fiResTmp });
-
-  if (ctx.fast) {
-    return { kind: "i32" };
-  }
-  return { kind: "f64" };
+  return ctx.fast ? { kind: "i32" } : { kind: "f64" };
 }
 
 /**
  * arr.some(cb) → returns i32 (1 if any element passes callback, 0 otherwise).
- * Uses call_ref for known closures (pure Wasm), falls back to host bridge.
  */
 function compileArraySome(
   ctx: CodegenContext,
@@ -24277,132 +23931,33 @@ function compileArraySome(
     return null;
   }
 
-  // Try to compile callback as a closure
-  const cbArg = callExpr.arguments[0]!;
-  const cbResult = (ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg))
-    ? compileArrowAsClosure(ctx, fctx, cbArg)
-    : compileExpression(ctx, fctx, cbArg);
-  let closureInfo: ClosureInfo | undefined;
-  let closureTypeIdx2: number | undefined;
-  let closureTmp2: number | undefined;
+  const setup = setupArrayCallback(ctx, fctx, callExpr, "some", "some");
+  if (!setup) return null;
 
-  if (cbResult && (cbResult.kind === "ref" || cbResult.kind === "ref_null")) {
-    closureTypeIdx2 = (cbResult as { typeIdx: number }).typeIdx;
-    closureInfo = ctx.closureInfoByTypeIdx.get(closureTypeIdx2);
-    if (closureInfo) {
-      closureTmp2 = allocLocal(fctx, `__arr_some_clcb_${fctx.locals.length}`, cbResult);
-      fctx.body.push({ op: "local.set", index: closureTmp2 });
-    }
-  }
+  const loop = setupArrayLoop(ctx, fctx, propAccess, vecTypeIdx, arrTypeIdx, elemType, "some");
 
-  let callBridgeIdx: number | undefined;
-  let cbTmp: number | undefined;
-  if (!closureInfo) {
-    callBridgeIdx = ctx.funcMap.get(ctx.fast ? "__call_1_i32" : "__call_1_f64");
-    if (callBridgeIdx === undefined) {
-      ctx.errors.push({ message: "Missing __call_1_f64 import for some", line: getLine(callExpr), column: getCol(callExpr) });
-      return null;
-    }
-    cbTmp = allocLocal(fctx, `__arr_some_cb_${fctx.locals.length}`, { kind: "externref" });
-    fctx.body.push({ op: "local.set", index: cbTmp });
-  }
+  const callAndCheck = buildCallAndCheck(ctx, setup, elemType, vecTypeIdx, arrTypeIdx, loop, { kind: "inline" }, "truthy");
 
-  const vecTmp = allocLocal(fctx, `__arr_some_vec_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecTypeIdx });
-  const dataTmp = allocLocal(fctx, `__arr_some_data_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
-  const lenTmp = allocLocal(fctx, `__arr_some_len_${fctx.locals.length}`, { kind: "i32" });
-  const iTmp = allocLocal(fctx, `__arr_some_i_${fctx.locals.length}`, { kind: "i32" });
-
-  compileExpression(ctx, fctx, propAccess.expression);
-  fctx.body.push({ op: "local.tee", index: vecTmp });
-  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
-  fctx.body.push({ op: "local.set", index: lenTmp });
-  fctx.body.push({ op: "local.get", index: vecTmp });
-  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
-  fctx.body.push({ op: "local.set", index: dataTmp });
-
-  fctx.body.push({ op: "i32.const", value: 0 });
-  fctx.body.push({ op: "local.set", index: iTmp });
-
-  const getOp = elemType.kind === "i16" ? "array.get_s" : "array.get";
-
-  // Build callback invocation + truthiness check
-  let callAndCheckInstrs: Instr[];
-  if (closureInfo && closureTypeIdx2 !== undefined && closureTmp2 !== undefined) {
-    const numParams = closureInfo.paramTypes.length;
-    callAndCheckInstrs = [
-      { op: "local.get", index: closureTmp2 } as Instr,
-      { op: "local.get", index: dataTmp } as Instr,
-      { op: "local.get", index: iTmp } as Instr,
-      { op: getOp, typeIdx: arrTypeIdx } as Instr,
-      ...coercionInstrs(ctx, elemType, closureInfo.paramTypes[0] ?? elemType),
-      ...(numParams >= 2 ? [
-        { op: "local.get", index: iTmp } as Instr,
-        ...coercionInstrs(ctx, { kind: "i32" }, closureInfo.paramTypes[1] ?? { kind: "i32" }),
-      ] : []),
-      // Push array (3rd user param) if callback expects it
-      ...(numParams >= 3 ? [
-        { op: "local.get", index: vecTmp } as Instr,
-        ...coercionInstrs(ctx, { kind: "ref_null", typeIdx: vecTypeIdx }, closureInfo.paramTypes[2] ?? { kind: "ref_null", typeIdx: vecTypeIdx }),
-      ] : []),
-      { op: "local.get", index: closureTmp2 } as Instr,
-      { op: "struct.get", typeIdx: closureTypeIdx2, fieldIdx: 0 } as Instr,
-      { op: "ref.cast", typeIdx: closureInfo.funcTypeIdx } as Instr,
-      { op: "ref.as_non_null" } as Instr,
-      { op: "call_ref", typeIdx: closureInfo.funcTypeIdx } as Instr,
-      ...(closureInfo.returnType?.kind === "f64"
-        ? [{ op: "f64.const", value: 0 } as Instr, { op: "f64.ne" } as Instr]
-        : closureInfo.returnType?.kind === "i32"
-          ? []
-          : []),
-    ];
-  } else {
-    callAndCheckInstrs = [
-      { op: "local.get", index: cbTmp! } as Instr,
-      { op: "local.get", index: dataTmp } as Instr,
-      { op: "local.get", index: iTmp } as Instr,
-      { op: getOp, typeIdx: arrTypeIdx } as Instr,
-      ...(!ctx.fast && elemType.kind === "i32" ? [{ op: "f64.convert_i32_s" } as Instr] : []),
-      { op: "call", funcIdx: callBridgeIdx! } as Instr,
-      ...(ctx.fast ? [] : [{ op: "f64.const", value: 0 } as Instr, { op: "f64.ne" } as Instr]),
-    ];
-  }
-
-  // Use a result local instead of `return` to avoid type mismatch with enclosing function
   const resTmp = allocLocal(fctx, `__arr_some_res_${fctx.locals.length}`, { kind: "i32" });
-
-  // Default result: 0 (no match)
   fctx.body.push({ op: "i32.const", value: 0 });
   fctx.body.push({ op: "local.set", index: resTmp });
 
   const loopBody: Instr[] = [
-    { op: "local.get", index: iTmp } as Instr,
-    { op: "local.get", index: lenTmp } as Instr,
-    { op: "i32.ge_s" } as Instr,
-    { op: "br_if", depth: 1 } as Instr,
+    ...loopExitCheck(loop),
 
-    ...callAndCheckInstrs,
+    ...callAndCheck,
     { op: "if", blockType: { kind: "empty" },
       then: [
         { op: "i32.const", value: 1 } as Instr,
         { op: "local.set", index: resTmp } as Instr,
-        { op: "br", depth: 2 } as Instr, // break out of block
+        { op: "br", depth: 2 } as Instr,
       ],
     } as Instr,
 
-    { op: "local.get", index: iTmp } as Instr,
-    { op: "i32.const", value: 1 } as Instr,
-    { op: "i32.add" } as Instr,
-    { op: "local.set", index: iTmp } as Instr,
-    { op: "br", depth: 0 } as Instr,
+    ...loopIncrement(loop),
   ];
 
-  fctx.body.push({
-    op: "block",
-    blockType: { kind: "empty" },
-    body: [
-      { op: "loop", blockType: { kind: "empty" }, body: loopBody } as Instr,
-    ],
-  });
+  emitArrayLoop(fctx, loopBody);
 
   fctx.body.push({ op: "local.get", index: resTmp });
   return { kind: "i32" };
@@ -24410,7 +23965,6 @@ function compileArraySome(
 
 /**
  * arr.every(cb) → returns i32 (1 if all elements pass callback, 0 otherwise).
- * Uses call_ref for known closures (pure Wasm), falls back to host bridge.
  */
 function compileArrayEvery(
   ctx: CodegenContext,
@@ -24426,133 +23980,33 @@ function compileArrayEvery(
     return null;
   }
 
-  // Try to compile callback as a closure
-  const cbArg = callExpr.arguments[0]!;
-  const cbResult = (ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg))
-    ? compileArrowAsClosure(ctx, fctx, cbArg)
-    : compileExpression(ctx, fctx, cbArg);
-  let closureInfo: ClosureInfo | undefined;
-  let closureTypeIdx2: number | undefined;
-  let closureTmp2: number | undefined;
+  const setup = setupArrayCallback(ctx, fctx, callExpr, "every", "evr");
+  if (!setup) return null;
 
-  if (cbResult && (cbResult.kind === "ref" || cbResult.kind === "ref_null")) {
-    closureTypeIdx2 = (cbResult as { typeIdx: number }).typeIdx;
-    closureInfo = ctx.closureInfoByTypeIdx.get(closureTypeIdx2);
-    if (closureInfo) {
-      closureTmp2 = allocLocal(fctx, `__arr_evr_clcb_${fctx.locals.length}`, cbResult);
-      fctx.body.push({ op: "local.set", index: closureTmp2 });
-    }
-  }
+  const loop = setupArrayLoop(ctx, fctx, propAccess, vecTypeIdx, arrTypeIdx, elemType, "evr");
 
-  let callBridgeIdx: number | undefined;
-  let cbTmp: number | undefined;
-  if (!closureInfo) {
-    callBridgeIdx = ctx.funcMap.get(ctx.fast ? "__call_1_i32" : "__call_1_f64");
-    if (callBridgeIdx === undefined) {
-      ctx.errors.push({ message: "Missing __call_1_f64 import for every", line: getLine(callExpr), column: getCol(callExpr) });
-      return null;
-    }
-    cbTmp = allocLocal(fctx, `__arr_evr_cb_${fctx.locals.length}`, { kind: "externref" });
-    fctx.body.push({ op: "local.set", index: cbTmp });
-  }
+  const callAndCheck = buildCallAndCheck(ctx, setup, elemType, vecTypeIdx, arrTypeIdx, loop, { kind: "inline" }, "falsy");
 
-  const vecTmp = allocLocal(fctx, `__arr_evr_vec_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecTypeIdx });
-  const dataTmp = allocLocal(fctx, `__arr_evr_data_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
-  const lenTmp = allocLocal(fctx, `__arr_evr_len_${fctx.locals.length}`, { kind: "i32" });
-  const iTmp = allocLocal(fctx, `__arr_evr_i_${fctx.locals.length}`, { kind: "i32" });
-
-  compileExpression(ctx, fctx, propAccess.expression);
-  fctx.body.push({ op: "local.tee", index: vecTmp });
-  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
-  fctx.body.push({ op: "local.set", index: lenTmp });
-  fctx.body.push({ op: "local.get", index: vecTmp });
-  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
-  fctx.body.push({ op: "local.set", index: dataTmp });
-
-  fctx.body.push({ op: "i32.const", value: 0 });
-  fctx.body.push({ op: "local.set", index: iTmp });
-
-  const getOp = elemType.kind === "i16" ? "array.get_s" : "array.get";
-
-  // Build callback invocation + falsiness check
-  let callAndCheckInstrs: Instr[];
-  if (closureInfo && closureTypeIdx2 !== undefined && closureTmp2 !== undefined) {
-    const numParams = closureInfo.paramTypes.length;
-    callAndCheckInstrs = [
-      { op: "local.get", index: closureTmp2 } as Instr,
-      { op: "local.get", index: dataTmp } as Instr,
-      { op: "local.get", index: iTmp } as Instr,
-      { op: getOp, typeIdx: arrTypeIdx } as Instr,
-      ...coercionInstrs(ctx, elemType, closureInfo.paramTypes[0] ?? elemType),
-      ...(numParams >= 2 ? [
-        { op: "local.get", index: iTmp } as Instr,
-        ...coercionInstrs(ctx, { kind: "i32" }, closureInfo.paramTypes[1] ?? { kind: "i32" }),
-      ] : []),
-      // Push array (3rd user param) if callback expects it
-      ...(numParams >= 3 ? [
-        { op: "local.get", index: vecTmp } as Instr,
-        ...coercionInstrs(ctx, { kind: "ref_null", typeIdx: vecTypeIdx }, closureInfo.paramTypes[2] ?? { kind: "ref_null", typeIdx: vecTypeIdx }),
-      ] : []),
-      { op: "local.get", index: closureTmp2 } as Instr,
-      { op: "struct.get", typeIdx: closureTypeIdx2, fieldIdx: 0 } as Instr,
-      { op: "ref.cast", typeIdx: closureInfo.funcTypeIdx } as Instr,
-      { op: "ref.as_non_null" } as Instr,
-      { op: "call_ref", typeIdx: closureInfo.funcTypeIdx } as Instr,
-      // Check if result is falsy
-      ...(closureInfo.returnType?.kind === "f64"
-        ? [{ op: "f64.const", value: 0 } as Instr, { op: "f64.eq" } as Instr]
-        : closureInfo.returnType?.kind === "i32"
-          ? [{ op: "i32.eqz" } as Instr]
-          : [{ op: "i32.eqz" } as Instr]),
-    ];
-  } else {
-    callAndCheckInstrs = [
-      { op: "local.get", index: cbTmp! } as Instr,
-      { op: "local.get", index: dataTmp } as Instr,
-      { op: "local.get", index: iTmp } as Instr,
-      { op: getOp, typeIdx: arrTypeIdx } as Instr,
-      ...(!ctx.fast && elemType.kind === "i32" ? [{ op: "f64.convert_i32_s" } as Instr] : []),
-      { op: "call", funcIdx: callBridgeIdx! } as Instr,
-      ...(ctx.fast ? [{ op: "i32.eqz" } as Instr] : [{ op: "f64.const", value: 0 } as Instr, { op: "f64.eq" } as Instr]),
-    ];
-  }
-
-  // Use a result local instead of `return` to avoid type mismatch with enclosing function
   const resTmp = allocLocal(fctx, `__arr_evr_res_${fctx.locals.length}`, { kind: "i32" });
-
-  // Default result: 1 (all pass)
   fctx.body.push({ op: "i32.const", value: 1 });
   fctx.body.push({ op: "local.set", index: resTmp });
 
   const loopBody: Instr[] = [
-    { op: "local.get", index: iTmp } as Instr,
-    { op: "local.get", index: lenTmp } as Instr,
-    { op: "i32.ge_s" } as Instr,
-    { op: "br_if", depth: 1 } as Instr,
+    ...loopExitCheck(loop),
 
-    ...callAndCheckInstrs,
+    ...callAndCheck,
     { op: "if", blockType: { kind: "empty" },
       then: [
         { op: "i32.const", value: 0 } as Instr,
         { op: "local.set", index: resTmp } as Instr,
-        { op: "br", depth: 2 } as Instr, // break out of block
+        { op: "br", depth: 2 } as Instr,
       ],
     } as Instr,
 
-    { op: "local.get", index: iTmp } as Instr,
-    { op: "i32.const", value: 1 } as Instr,
-    { op: "i32.add" } as Instr,
-    { op: "local.set", index: iTmp } as Instr,
-    { op: "br", depth: 0 } as Instr,
+    ...loopIncrement(loop),
   ];
 
-  fctx.body.push({
-    op: "block",
-    blockType: { kind: "empty" },
-    body: [
-      { op: "loop", blockType: { kind: "empty" }, body: loopBody } as Instr,
-    ],
-  });
+  emitArrayLoop(fctx, loopBody);
 
   fctx.body.push({ op: "local.get", index: resTmp });
   return { kind: "i32" };
