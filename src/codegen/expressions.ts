@@ -2159,6 +2159,7 @@ function compileArrowAsClosure(
     labelMap: new Map(),
     savedBodies: [],
     enclosingClassName: fctx.enclosingClassName ?? resolveEnclosingClassName(fctx),
+    isGenerator,
   };
 
   for (let i = 0; i < liftedFctx.params.length; i++) {
@@ -18651,6 +18652,7 @@ function compileObjectLiteralForStruct(
         continueStack: [],
         labelMap: new Map(),
         savedBodies: [],
+        isGenerator: isGeneratorMethod,
       };
       for (let i = 0; i < methodFctxParams.length; i++) {
         methodFctx.localMap.set(methodFctxParams[i]!.name, i);
@@ -23167,7 +23169,7 @@ function compileYieldExpression(
   expr: ts.YieldExpression,
 ): InnerResult {
   // Ensure we're inside a generator function
-  if (!ctx.generatorFunctions.has(fctx.name)) {
+  if (!fctx.isGenerator) {
     ctx.errors.push({
       message: "yield expression outside of generator function",
       line: getLine(expr),
