@@ -13656,6 +13656,45 @@ function emitNullGuardedStructGet(
   });
 }
 
+/**
+ * Emit a struct.get from an externref value. The externref on the stack is
+ * converted to anyref via any.convert_extern, then null-safely cast to the
+ * target struct type. If the value is null or not the expected type, a default
+ * value for the field type is produced instead of trapping.
+ *
+ * Stack: [externref] -> [fieldType]
+ */
+function emitExternrefToStructGet(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  fieldType: ValType,
+  structTypeIdx: number,
+  fieldIdx: number,
+): void {
+  // Convert externref -> anyref
+  fctx.body.push({ op: "any.convert_extern" } as Instr);
+  // Store in a temp anyref local for null/type check
+  const tmpLocal = allocTempLocal(fctx, { kind: "anyref" });
+  fctx.body.push({ op: "local.tee", index: tmpLocal });
+  // ref.test returns 0 for null and for type mismatch
+  fctx.body.push({ op: "ref.test", typeIdx: structTypeIdx } as unknown as Instr);
+  // For result type in the if block, normalize ref to ref_null so the null branch is valid
+  const resultType: ValType = fieldType.kind === "ref"
+    ? { kind: "ref_null", typeIdx: (fieldType as any).typeIdx }
+    : fieldType;
+  fctx.body.push({
+    op: "if",
+    blockType: { kind: "val" as const, type: resultType },
+    then: [
+      { op: "local.get", index: tmpLocal } as Instr,
+      { op: "ref.cast", typeIdx: structTypeIdx } as Instr,
+      { op: "struct.get", typeIdx: structTypeIdx, fieldIdx } as Instr,
+    ],
+    else: defaultValueInstrs(resultType),
+  });
+  releaseTempLocal(fctx, tmpLocal);
+}
+
 // ── Spread in function calls ─────────────────────────────────────────
 
 /**
@@ -15157,6 +15196,14 @@ function compilePropertyAccess(
             return { kind: "ref_null", typeIdx: (fieldType as any).typeIdx };
           }
           return fieldType;
+        } else if (objResult && objResult.kind === "externref") {
+          // The expression returned externref but we need a struct ref for struct.get.
+          // Cast externref → anyref → (ref null $StructType), with null guard.
+          emitExternrefToStructGet(ctx, fctx, fieldType, structTypeIdx, fieldIdx);
+          if (fieldType.kind === "ref") {
+            return { kind: "ref_null", typeIdx: (fieldType as any).typeIdx };
+          }
+          return fieldType;
         } else {
           fctx.body.push({
             op: "struct.get",
@@ -15200,6 +15247,8 @@ function compilePropertyAccess(
             const objResult = compileExpression(ctx, fctx, expr.expression);
             if (objResult && objResult.kind === "ref_null") {
               emitNullGuardedStructGet(fctx, objResult, propWasmType, structTypeIdx, fieldIdx);
+            } else if (objResult && objResult.kind === "externref") {
+              emitExternrefToStructGet(ctx, fctx, propWasmType, structTypeIdx, fieldIdx);
             } else {
               fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
             }
