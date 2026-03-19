@@ -119,7 +119,7 @@ type WorkerResult = { file: string; category: string; status: string; error?: st
 function runBatch(batch: TestJob[], onResult?: (r: WorkerResult) => void): Promise<WorkerResult[]> {
   return new Promise((resolve) => {
     const results: WorkerResult[] = [];
-    const proc = fork(workerPath, [], { stdio: "pipe", execArgv: ["--import", "tsx"] });
+    const proc = fork(workerPath, [], { stdio: "pipe", execArgv: ["--max-old-space-size=2048", "--import", "tsx"] });
     proc.setMaxListeners(0);
     let lastActivity = Date.now();
     let done = false;
