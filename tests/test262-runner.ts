@@ -2091,7 +2091,7 @@ export async function runTest262File(filePath: string, category: string, timeout
       }
       return {
         file: relPath, category, status: "compile_error",
-        error: (errMsgs.join("; ") || result.errors.map(e => e.message).join("; ")),
+        error: (result.errors.filter(e => e.severity === "error").map(e => `L${e.line}:${e.column} ${e.message}`).join("; ") || result.errors.map(e => `L${e.line}:${e.column} ${e.message}`).join("; ")),
         timing,
       };
     }
@@ -2099,7 +2099,7 @@ export async function runTest262File(filePath: string, category: string, timeout
       file: relPath,
       category,
       status: "compile_error",
-      error: (result.errors.filter(e => e.severity === "error").map(e => e.message).join("; ") || result.errors.map(e => e.message).join("; ")),
+      error: (result.errors.filter(e => e.severity === "error").map(e => `L${e.line}:${e.column} ${e.message}`).join("; ") || result.errors.map(e => `L${e.line}:${e.column} ${e.message}`).join("; ")),
       timing,
     };
   }
@@ -2136,7 +2136,10 @@ export async function runTest262File(filePath: string, category: string, timeout
     if (ret === 1 || ret === 1.0) {
       return { file: relPath, category, status: "pass", timing };
     }
-    return { file: relPath, category, status: "fail", error: `returned ${ret}`, timing };
+    // Extract first assert line from source for context
+    const assertMatch = source.match(/^.*assert\w*\s*\(.*$/m);
+    const assertCtx = assertMatch ? ` | first assert: ${assertMatch[0].trim().slice(0, 120)}` : "";
+    return { file: relPath, category, status: "fail", error: `returned ${ret}${assertCtx}`, timing };
   } catch (err: any) {
     const totalMs = performance.now() - totalStart;
     const timing: TestTiming = { totalMs: round2(totalMs), compileMs: round2(compileMs), instantiateMs: round2(instantiateMs), executeMs: round2(executeMs) };
