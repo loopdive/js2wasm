@@ -142,6 +142,9 @@ interface String {
   startsWith(searchString: string, position?: number): boolean;
   endsWith(searchString: string, endPosition?: number): boolean;
   at(index: number): string;
+  codePointAt(pos: number): number;
+  normalize(form?: string): string;
+  matchAll(regexp: RegExp): IterableIterator<RegExpMatchArray>;
 }
 
 // ── Array ES2022 methods ────────────────────────────────────────
