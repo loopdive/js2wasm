@@ -597,6 +597,7 @@ const DOWNGRADE_DIAG_CODES = new Set([
   2345, // "Argument of type 'X' is not assignable to parameter of type 'Y'"
   2322, // "Type 'X' is not assignable to type 'Y'"
   2339, // "Property 'X' does not exist on type 'Y'" — dynamic property access
+  2551, // "Property 'X' does not exist on type 'Y'. Did you mean 'Z'?" — variant of 2339 with suggestion (#613)
   2454, // "Variable 'X' is used before being assigned"
   2531, // "Object is possibly 'null'" — codegen has null guards (#406)
   2532, // "Object is possibly 'undefined'" — codegen has null guards (#406)
