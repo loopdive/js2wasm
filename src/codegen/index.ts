@@ -1,6 +1,7 @@
 import ts from "typescript";
 import type { MultiTypedAST, TypedAST } from "../checker/index.js";
 import { eliminateDeadImports } from "./dead-elimination.js";
+import { peepholeOptimize } from "./peephole.js";
 import {
   isBigIntType,
   isBooleanType,
@@ -579,6 +580,9 @@ export function generateModule(
   // Dead import and type elimination pass
   eliminateDeadImports(mod);
 
+  // Peephole optimization: remove redundant ref.as_non_null after ref.cast, etc.
+  peepholeOptimize(mod);
+
   return { module: mod, errors: ctx.errors };
 }
 
@@ -777,6 +781,9 @@ export function generateMultiModule(
 
   // Dead import and type elimination pass
   eliminateDeadImports(mod);
+
+  // Peephole optimization: remove redundant ref.as_non_null after ref.cast, etc.
+  peepholeOptimize(mod);
 
   return { module: mod, errors: ctx.errors };
 }
