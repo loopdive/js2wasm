@@ -10638,6 +10638,28 @@ function compileCallExpression(
       return compileConsoleCall(ctx, fctx, expr, propAccess.name.text);
     }
 
+    // WASI mode: process.exit(code) -> proc_exit(code)
+    if (
+      ctx.wasi &&
+      ts.isIdentifier(propAccess.expression) &&
+      propAccess.expression.text === "process" &&
+      propAccess.name.text === "exit" &&
+      ctx.wasiProcExitIdx >= 0
+    ) {
+      if (expr.arguments.length >= 1) {
+        compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "i32" });
+        // The expression might produce f64 — truncate to i32
+        const argType = ctx.checker.getTypeAtLocation(expr.arguments[0]!);
+        if (isNumberType(argType)) {
+          fctx.body.push({ op: "i32.trunc_sat_f64_s" } as Instr);
+        }
+      } else {
+        fctx.body.push({ op: "i32.const", value: 0 } as Instr);
+      }
+      fctx.body.push({ op: "call", funcIdx: ctx.wasiProcExitIdx });
+      return VOID_RESULT;
+    }
+
     if (
       ts.isIdentifier(propAccess.expression) &&
       propAccess.expression.text === "Math"
@@ -15380,6 +15402,11 @@ function compileConsoleCall(
   expr: ts.CallExpression,
   method: string,
 ): InnerResult {
+  // WASI mode: emit fd_write to stdout instead of JS host imports
+  if (ctx.wasi) {
+    return compileConsoleCallWasi(ctx, fctx, expr, method);
+  }
+
   for (const arg of expr.arguments) {
     const argType = ctx.checker.getTypeAtLocation(arg);
     compileExpression(ctx, fctx, arg);
@@ -15419,6 +15446,359 @@ function compileConsoleCall(
     }
   }
   return VOID_RESULT;
+}
+
+/** WASI mode: compile console.log/warn/error by writing UTF-8 to stdout via fd_write */
+function compileConsoleCallWasi(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.CallExpression,
+  _method: string,
+): InnerResult {
+  const writeStringIdx = ctx.funcMap.get("__wasi_write_string");
+  if (writeStringIdx === undefined) return VOID_RESULT;
+
+  let first = true;
+  for (const arg of expr.arguments) {
+    // Add space separator between arguments (like console.log does)
+    if (!first) {
+      const spaceData = wasiAllocStringData(ctx, " ");
+      fctx.body.push({ op: "i32.const", value: spaceData.offset } as Instr);
+      fctx.body.push({ op: "i32.const", value: spaceData.length } as Instr);
+      fctx.body.push({ op: "call", funcIdx: writeStringIdx });
+    }
+    first = false;
+
+    // Check if this is a string literal we can embed directly
+    if (ts.isStringLiteral(arg) || ts.isNoSubstitutionTemplateLiteral(arg)) {
+      const strValue = arg.text;
+      const data = wasiAllocStringData(ctx, strValue);
+      fctx.body.push({ op: "i32.const", value: data.offset } as Instr);
+      fctx.body.push({ op: "i32.const", value: data.length } as Instr);
+      fctx.body.push({ op: "call", funcIdx: writeStringIdx });
+    } else if (ts.isTemplateExpression(arg)) {
+      // Template literal: handle head + spans
+      if (arg.head.text) {
+        const headData = wasiAllocStringData(ctx, arg.head.text);
+        fctx.body.push({ op: "i32.const", value: headData.offset } as Instr);
+        fctx.body.push({ op: "i32.const", value: headData.length } as Instr);
+        fctx.body.push({ op: "call", funcIdx: writeStringIdx });
+      }
+      for (const span of arg.templateSpans) {
+        // Compile the expression and convert to string output
+        const exprType = compileExpression(ctx, fctx, span.expression);
+        emitWasiValueToStdout(ctx, fctx, exprType, span.expression);
+        if (span.literal.text) {
+          const litData = wasiAllocStringData(ctx, span.literal.text);
+          fctx.body.push({ op: "i32.const", value: litData.offset } as Instr);
+          fctx.body.push({ op: "i32.const", value: litData.length } as Instr);
+          fctx.body.push({ op: "call", funcIdx: writeStringIdx });
+        }
+      }
+    } else {
+      // For non-literal arguments, compile the expression and handle by type
+      const argType = ctx.checker.getTypeAtLocation(arg);
+      const exprType = compileExpression(ctx, fctx, arg);
+      emitWasiValueToStdout(ctx, fctx, exprType, arg);
+    }
+  }
+
+  // Emit newline at the end
+  const newlineData = wasiAllocStringData(ctx, "\n");
+  fctx.body.push({ op: "i32.const", value: newlineData.offset } as Instr);
+  fctx.body.push({ op: "i32.const", value: newlineData.length } as Instr);
+  fctx.body.push({ op: "call", funcIdx: writeStringIdx });
+
+  return VOID_RESULT;
+}
+
+/** Allocate a UTF-8 string in a data segment and return its offset/length */
+function wasiAllocStringData(
+  ctx: CodegenContext,
+  str: string,
+): { offset: number; length: number } {
+  const encoder = new TextEncoder();
+  const bytes = encoder.encode(str);
+
+  // Find the next available offset in data segments
+  // Data segments start after the scratch area (offset 1024)
+  let offset = 1024;
+  for (const seg of ctx.mod.dataSegments) {
+    const segEnd = seg.offset + seg.bytes.length;
+    if (segEnd > offset) offset = segEnd;
+  }
+
+  ctx.mod.dataSegments.push({ offset, bytes });
+  return { offset, length: bytes.length };
+}
+
+/** Emit code to write a compiled value to stdout in WASI mode */
+function emitWasiValueToStdout(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  exprType: InnerResult,
+  _node: ts.Node,
+): void {
+  const writeStringIdx = ctx.funcMap.get("__wasi_write_string");
+  if (writeStringIdx === undefined) return;
+
+  if (exprType === VOID_RESULT || exprType === null) {
+    // void expression, nothing to write — drop already handled
+    return;
+  }
+
+  if (exprType.kind === "f64") {
+    // Number: use __wasi_write_f64 helper (emit inline if not yet registered)
+    const writeF64Idx = ensureWasiWriteF64Helper(ctx);
+    if (writeF64Idx >= 0) {
+      fctx.body.push({ op: "call", funcIdx: writeF64Idx });
+    } else {
+      fctx.body.push({ op: "drop" } as Instr);
+    }
+  } else if (exprType.kind === "i32") {
+    // Boolean or i32: write "true"/"false" or the integer
+    const writeI32Idx = ensureWasiWriteI32Helper(ctx);
+    if (writeI32Idx >= 0) {
+      fctx.body.push({ op: "call", funcIdx: writeI32Idx });
+    } else {
+      fctx.body.push({ op: "drop" } as Instr);
+    }
+  } else {
+    // For other types (externref, ref, etc.), just drop and write a placeholder
+    fctx.body.push({ op: "drop" } as Instr);
+    const placeholder = wasiAllocStringData(ctx, "[object]");
+    fctx.body.push({ op: "i32.const", value: placeholder.offset } as Instr);
+    fctx.body.push({ op: "i32.const", value: placeholder.length } as Instr);
+    fctx.body.push({ op: "call", funcIdx: writeStringIdx });
+  }
+}
+
+/** Ensure the __wasi_write_i32 helper exists and return its function index */
+function ensureWasiWriteI32Helper(ctx: CodegenContext): number {
+  const existing = ctx.funcMap.get("__wasi_write_i32");
+  if (existing !== undefined) return existing;
+
+  const writeStringIdx = ctx.funcMap.get("__wasi_write_string");
+  if (writeStringIdx === undefined) return -1;
+
+  // Simple i32 to decimal string conversion
+  // Uses bump allocator to write digits to linear memory
+  const funcTypeIdx = addFuncType(ctx, [{ kind: "i32" }], []);
+  const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+  ctx.funcMap.set("__wasi_write_i32", funcIdx);
+
+  // Algorithm: handle negative, then extract digits in reverse, then write forward
+  // Locals: 0=value, 1=buf_start, 2=buf_pos, 3=is_neg, 4=digit
+  const body: Instr[] = [];
+
+  // For simplicity, handle 0 specially, negatives, and positive integers
+  // We allocate a 12-byte buffer on the bump allocator for the digit string
+  const bufStartLocal = 1; // local index
+  const bufPosLocal = 2;
+  const isNegLocal = 3;
+  const absValLocal = 4;
+  const tmpLocal = 5;
+
+  body.push(
+    // buf_start = bump_ptr
+    { op: "global.get", index: ctx.wasiBumpPtrGlobalIdx } as Instr,
+    { op: "local.set", index: bufStartLocal } as Instr,
+    // buf_pos = buf_start + 11 (write digits right-to-left, max 11 digits + sign)
+    { op: "local.get", index: bufStartLocal } as Instr,
+    { op: "i32.const", value: 11 } as Instr,
+    { op: "i32.add" } as Instr,
+    { op: "local.set", index: bufPosLocal } as Instr,
+
+    // Check if value == 0
+    { op: "local.get", index: 0 } as Instr,
+    { op: "i32.eqz" } as Instr,
+    { op: "if", blockType: { kind: "empty" },
+      then: [
+        // Write "0" directly
+        { op: "local.get", index: bufPosLocal } as Instr,
+        { op: "i32.const", value: 48 } as Instr, // '0'
+        { op: "i32.store8", align: 0, offset: 0 } as Instr,
+        { op: "local.get", index: bufPosLocal } as Instr,
+        { op: "i32.const", value: 1 } as Instr,
+        { op: "call", funcIdx: writeStringIdx } as Instr,
+        { op: "return" } as Instr,
+      ],
+    } as unknown as Instr,
+
+    // Check if negative
+    { op: "local.get", index: 0 } as Instr,
+    { op: "i32.const", value: 0 } as Instr,
+    { op: "i32.lt_s" } as Instr,
+    { op: "local.set", index: isNegLocal } as Instr,
+
+    // absVal = is_neg ? -value : value
+    { op: "local.get", index: isNegLocal } as Instr,
+    { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
+      then: [
+        { op: "i32.const", value: 0 } as Instr,
+        { op: "local.get", index: 0 } as Instr,
+        { op: "i32.sub" } as Instr,
+      ],
+      else: [
+        { op: "local.get", index: 0 } as Instr,
+      ],
+    } as unknown as Instr,
+    { op: "local.set", index: absValLocal } as Instr,
+
+    // Loop: extract digits right to left
+    { op: "block", blockType: { kind: "empty" }, body: [
+      { op: "loop", blockType: { kind: "empty" }, body: [
+        // if absVal == 0, break
+        { op: "local.get", index: absValLocal } as Instr,
+        { op: "i32.eqz" } as Instr,
+        { op: "br_if", depth: 1 } as Instr,
+
+        // digit = absVal % 10
+        { op: "local.get", index: absValLocal } as Instr,
+        { op: "i32.const", value: 10 } as Instr,
+        { op: "i32.rem_u" } as Instr,
+        { op: "local.set", index: tmpLocal } as Instr,
+
+        // absVal = absVal / 10
+        { op: "local.get", index: absValLocal } as Instr,
+        { op: "i32.const", value: 10 } as Instr,
+        { op: "i32.div_u" } as Instr,
+        { op: "local.set", index: absValLocal } as Instr,
+
+        // buf_pos--
+        { op: "local.get", index: bufPosLocal } as Instr,
+        { op: "i32.const", value: 1 } as Instr,
+        { op: "i32.sub" } as Instr,
+        { op: "local.set", index: bufPosLocal } as Instr,
+
+        // memory[buf_pos] = digit + '0'
+        { op: "local.get", index: bufPosLocal } as Instr,
+        { op: "local.get", index: tmpLocal } as Instr,
+        { op: "i32.const", value: 48 } as Instr,
+        { op: "i32.add" } as Instr,
+        { op: "i32.store8", align: 0, offset: 0 } as Instr,
+
+        // continue loop
+        { op: "br", depth: 0 } as Instr,
+      ] } as unknown as Instr,
+    ] } as unknown as Instr,
+
+    // If negative, prepend '-'
+    { op: "local.get", index: isNegLocal } as Instr,
+    { op: "if", blockType: { kind: "empty" },
+      then: [
+        { op: "local.get", index: bufPosLocal } as Instr,
+        { op: "i32.const", value: 1 } as Instr,
+        { op: "i32.sub" } as Instr,
+        { op: "local.set", index: bufPosLocal } as Instr,
+        { op: "local.get", index: bufPosLocal } as Instr,
+        { op: "i32.const", value: 45 } as Instr, // '-'
+        { op: "i32.store8", align: 0, offset: 0 } as Instr,
+      ],
+    } as unknown as Instr,
+
+    // Call __wasi_write_string(buf_pos, buf_start + 12 - buf_pos)
+    { op: "local.get", index: bufPosLocal } as Instr,
+    { op: "local.get", index: bufStartLocal } as Instr,
+    { op: "i32.const", value: 12 } as Instr,
+    { op: "i32.add" } as Instr,
+    { op: "local.get", index: bufPosLocal } as Instr,
+    { op: "i32.sub" } as Instr,
+    { op: "call", funcIdx: writeStringIdx } as Instr,
+  );
+
+  ctx.mod.functions.push({
+    name: "__wasi_write_i32",
+    typeIdx: funcTypeIdx,
+    locals: [
+      { name: "buf_start", type: { kind: "i32" } },
+      { name: "buf_pos", type: { kind: "i32" } },
+      { name: "is_neg", type: { kind: "i32" } },
+      { name: "abs_val", type: { kind: "i32" } },
+      { name: "tmp", type: { kind: "i32" } },
+    ],
+    body,
+    exported: false,
+  });
+
+  return funcIdx;
+}
+
+/** Ensure the __wasi_write_f64 helper exists and return its function index */
+function ensureWasiWriteF64Helper(ctx: CodegenContext): number {
+  const existing = ctx.funcMap.get("__wasi_write_f64");
+  if (existing !== undefined) return existing;
+
+  const writeI32Idx = ensureWasiWriteI32Helper(ctx);
+  const writeStringIdx = ctx.funcMap.get("__wasi_write_string");
+  if (writeStringIdx === undefined || writeI32Idx < 0) return -1;
+
+  // Simple f64 output: truncate to i32 and print as integer
+  // For NaN, Infinity, -Infinity, handle specially
+  const funcTypeIdx = addFuncType(ctx, [{ kind: "f64" }], []);
+  const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+  ctx.funcMap.set("__wasi_write_f64", funcIdx);
+
+  // Allocate data segments for special values
+  const nanData = wasiAllocStringData(ctx, "NaN");
+  const infData = wasiAllocStringData(ctx, "Infinity");
+  const negInfData = wasiAllocStringData(ctx, "-Infinity");
+
+  const body: Instr[] = [
+    // Check NaN: value != value
+    { op: "local.get", index: 0 } as Instr,
+    { op: "local.get", index: 0 } as Instr,
+    { op: "f64.ne" } as Instr,
+    { op: "if", blockType: { kind: "empty" },
+      then: [
+        { op: "i32.const", value: nanData.offset } as Instr,
+        { op: "i32.const", value: nanData.length } as Instr,
+        { op: "call", funcIdx: writeStringIdx } as Instr,
+        { op: "return" } as Instr,
+      ],
+    } as unknown as Instr,
+
+    // Check positive infinity
+    { op: "local.get", index: 0 } as Instr,
+    { op: "f64.const", value: Infinity } as Instr,
+    { op: "f64.eq" } as Instr,
+    { op: "if", blockType: { kind: "empty" },
+      then: [
+        { op: "i32.const", value: infData.offset } as Instr,
+        { op: "i32.const", value: infData.length } as Instr,
+        { op: "call", funcIdx: writeStringIdx } as Instr,
+        { op: "return" } as Instr,
+      ],
+    } as unknown as Instr,
+
+    // Check negative infinity
+    { op: "local.get", index: 0 } as Instr,
+    { op: "f64.const", value: -Infinity } as Instr,
+    { op: "f64.eq" } as Instr,
+    { op: "if", blockType: { kind: "empty" },
+      then: [
+        { op: "i32.const", value: negInfData.offset } as Instr,
+        { op: "i32.const", value: negInfData.length } as Instr,
+        { op: "call", funcIdx: writeStringIdx } as Instr,
+        { op: "return" } as Instr,
+      ],
+    } as unknown as Instr,
+
+    // Normal number: truncate to i32 and print
+    { op: "local.get", index: 0 } as Instr,
+    { op: "i32.trunc_sat_f64_s" } as Instr,
+    { op: "call", funcIdx: writeI32Idx } as Instr,
+  ];
+
+  ctx.mod.functions.push({
+    name: "__wasi_write_f64",
+    typeIdx: funcTypeIdx,
+    locals: [],
+    body,
+    exported: false,
+  });
+
+  return funcIdx;
 }
 
 function compileMathCall(

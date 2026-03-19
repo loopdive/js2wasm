@@ -891,7 +891,7 @@ export function compileSource(
     if (useLinear) {
       mod = generateLinearModule(ast);
     } else {
-      const result = generateModule(ast, { sourceMap: emitSourceMap, fast: options.fast });
+      const result = generateModule(ast, { sourceMap: emitSourceMap, fast: options.fast, wasi: options.target === "wasi" });
       mod = result.module;
       // Propagate codegen errors with source locations
       for (const err of result.errors) {

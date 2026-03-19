@@ -12,6 +12,7 @@ Compile a TypeScript file to WebAssembly (GC proposal).
 
 Options:
   -o, --out <dir>   Output directory (default: same as input)
+  --target <t>      Compilation target: gc (default), linear, wasi
   --wat             Emit only WAT (no binary)
   --no-wat          Skip WAT output
   --no-dts          Skip .d.ts output
@@ -34,11 +35,20 @@ let emitWat = true;
 let emitDts = true;
 let watOnly = false;
 let optimize: boolean | 1 | 2 | 3 | 4 = false;
+let target: "gc" | "linear" | "wasi" | undefined;
 
 for (let i = 0; i < args.length; i++) {
   const arg = args[i]!;
   if (arg === "-o" || arg === "--out") {
     outDir = args[++i];
+  } else if (arg === "--target") {
+    const t = args[++i];
+    if (t === "gc" || t === "linear" || t === "wasi") {
+      target = t;
+    } else {
+      console.error(`Unknown target: ${t} (expected gc, linear, or wasi)`);
+      process.exit(1);
+    }
   } else if (arg === "--wat") {
     watOnly = true;
   } else if (arg === "--no-wat") {
@@ -67,7 +77,7 @@ const source = readFileSync(absInput, "utf-8");
 const name = basename(absInput, ".ts");
 const dir = outDir ? resolve(outDir) : dirname(absInput);
 
-const result = compile(source, optimize ? { optimize } : undefined);
+const result = compile(source, { ...(optimize ? { optimize } : {}), ...(target ? { target } : {}) });
 
 if (!result.success) {
   for (const e of result.errors) {

@@ -71,8 +71,8 @@ export interface CompileOptions {
   sourceMap?: boolean;
   /** Source map URL to embed in the wasm binary (default: "module.wasm.map") */
   sourceMapUrl?: string;
-  /** Compilation target: "gc" (WasmGC, default) or "linear" (linear memory) */
-  target?: "gc" | "linear";
+  /** Compilation target: "gc" (WasmGC, default), "linear" (linear memory), or "wasi" (WASI-compatible GC) */
+  target?: "gc" | "linear" | "wasi";
   /** Enable fast mode — i32 default numbers, performance optimizations */
   fast?: boolean;
   /** Enable SIMD-accelerated string/array helpers (requires engine SIMD support) */
