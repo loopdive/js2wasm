@@ -239,6 +239,8 @@ export interface CodegenContext {
   pendingMathMethods: Set<string>;
   /** Map from class name → class AST declaration node (for inherited field initializers) */
   classDeclarationMap: Map<string, ts.ClassDeclaration | ts.ClassExpression>;
+  /** Cache for function type deduplication: signature key → type index */
+  funcTypeCache: Map<string, number>;
   /** Type index for $WrapperNumber struct (-1 if not registered) */
   wrapperNumberTypeIdx: number;
   /** Type index for $WrapperString struct (-1 if not registered) */
@@ -452,6 +454,7 @@ export function generateModule(
     pendingInitBody: null,
     inlinableFunctions: new Map(),
     symbolCounterGlobalIdx: -1,
+    funcTypeCache: new Map(),
   };
 
   // Register native string types if fast mode
@@ -676,6 +679,7 @@ export function generateMultiModule(
     pendingInitBody: null,
     inlinableFunctions: new Map(),
     symbolCounterGlobalIdx: -1,
+    funcTypeCache: new Map(),
   };
 
   // Register native string types if fast mode
@@ -6331,19 +6335,34 @@ export function ensureExnTag(ctx: CodegenContext): number {
   return ctx.exnTagIdx;
 }
 
+/** Build a cache key for a function type signature (params + results). */
+function funcTypeKey(params: ValType[], results: ValType[]): string {
+  let key = "";
+  for (let i = 0; i < params.length; i++) {
+    const p = params[i]!;
+    if (i > 0) key += ",";
+    key += p.kind;
+    if (p.kind === "ref" || p.kind === "ref_null") key += ":" + (p as { typeIdx: number }).typeIdx;
+  }
+  key += "|";
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i]!;
+    if (i > 0) key += ",";
+    key += r.kind;
+    if (r.kind === "ref" || r.kind === "ref_null") key += ":" + (r as { typeIdx: number }).typeIdx;
+  }
+  return key;
+}
+
 export function addFuncType(
   ctx: CodegenContext,
   params: ValType[],
   results: ValType[],
   name?: string,
 ): number {
-  // Check if an equivalent type already exists
-  for (let i = 0; i < ctx.mod.types.length; i++) {
-    const t = ctx.mod.types[i]!;
-    if (t.kind === "func" && funcTypeEq(t, params, results)) {
-      return i;
-    }
-  }
+  const key = funcTypeKey(params, results);
+  const cached = ctx.funcTypeCache.get(key);
+  if (cached !== undefined) return cached;
   const idx = ctx.mod.types.length;
   ctx.mod.types.push({
     kind: "func",
@@ -6351,6 +6370,7 @@ export function addFuncType(
     params,
     results,
   });
+  ctx.funcTypeCache.set(key, idx);
   return idx;
 }
 
