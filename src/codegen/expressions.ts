@@ -5313,7 +5313,26 @@ function compileLogicalAnd(
   const rightType = compileExpression(ctx, fctx, expr.right);
   let thenInstrs = fctx.body;
   fctx.body = savedBody;
-  const rType: ValType = rightType ?? { kind: "externref" };
+
+  // If the RHS is void, push a default value so the if-block has a consistent result.
+  // JS coerces undefined to NaN for numbers, null for externref, etc.
+  if (!rightType) {
+    // RHS produced no value — use the left type as the result and push a default
+    // for the then-branch (RHS path). The else-branch returns the LHS value.
+    const resultType = leftType;
+    thenInstrs.push(...defaultValueInstrs(resultType));
+    const elseInstrs: Instr[] = [{ op: "local.get", index: tmp } as Instr];
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "val", type: resultType },
+      then: thenInstrs,
+      else: elseInstrs,
+    });
+    releaseTempLocal(fctx, tmp);
+    return resultType;
+  }
+
+  const rType: ValType = rightType;
 
   // Determine common result type (like conditional expression)
   let resultType: ValType = leftType;
@@ -5375,7 +5394,23 @@ function compileLogicalOr(
   const rightType = compileExpression(ctx, fctx, expr.right);
   let elseInstrs = fctx.body;
   fctx.body = savedBody;
-  const rType: ValType = rightType ?? { kind: "externref" };
+
+  // If the RHS is void, push a default value so the if-block has a consistent result.
+  if (!rightType) {
+    const resultType = leftType;
+    elseInstrs.push(...defaultValueInstrs(resultType));
+    const thenInstrs: Instr[] = [{ op: "local.get", index: tmp } as Instr];
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "val", type: resultType },
+      then: thenInstrs,
+      else: elseInstrs,
+    });
+    releaseTempLocal(fctx, tmp);
+    return resultType;
+  }
+
+  const rType: ValType = rightType;
 
   // Determine common result type (like conditional expression)
   let resultType: ValType = leftType;
@@ -5446,7 +5481,20 @@ function compileNullishCoalescing(
   let thenInstrs = fctx.body;
   fctx.body = savedBody;
 
-  const rType = rhsType ?? { kind: "externref" as const };
+  // If the RHS is void, push a default value so the if-block has a consistent result.
+  if (!rhsType) {
+    thenInstrs.push(...defaultValueInstrs(resultKind));
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "val", type: resultKind },
+      then: thenInstrs,
+      else: [{ op: "local.get", index: tmp } as Instr],
+    });
+    releaseTempLocal(fctx, tmp);
+    return resultKind;
+  }
+
+  const rType = rhsType;
 
   // Unify types: if LHS and RHS have different wasm types, pick a common type
   if (valTypesMatch(resultKind, rType)) {
@@ -10775,8 +10823,8 @@ function compileCallExpression(
       // If the wasm type is a ref to a vec struct (array), return true; otherwise false
       const isArr = (argWasmType.kind === "ref" || argWasmType.kind === "ref_null");
       // Still compile the argument for side effects, then drop it
-      compileExpression(ctx, fctx, expr.arguments[0]!);
-      fctx.body.push({ op: "drop" });
+      const argSideType = compileExpression(ctx, fctx, expr.arguments[0]!);
+      if (argSideType) fctx.body.push({ op: "drop" });
       fctx.body.push({ op: "i32.const", value: isArr ? 1 : 0 });
       return { kind: "i32" };
     }
