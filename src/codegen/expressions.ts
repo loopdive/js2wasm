@@ -1,6 +1,6 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext, ClosureInfo, RestParamInfo } from "./index.js";
-import { allocLocal, allocTempLocal, releaseTempLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers, addStringImports, cacheStringLiterals, addStringConstantGlobal, nextModuleGlobalIdx, getOrRegisterTemplateVecType, pushBody, popBody } from "./index.js";
+import { allocLocal, allocTempLocal, releaseTempLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers, addStringImports, cacheStringLiterals, addStringConstantGlobal, nextModuleGlobalIdx, getOrRegisterTemplateVecType, pushBody, popBody, destructureParamArray, destructureParamObject } from "./index.js";
 import {
   mapTsTypeToWasm,
   isNumberType,
@@ -17176,6 +17176,17 @@ function compileObjectLiteralForStruct(
 
       // Emit default-value initialization for parameters with initializers
       emitMethodParamDefaults(ctx, methodFctx, prop.parameters, 1); // 1 to skip 'this'
+
+      // Destructure parameters with binding patterns (e.g. method([...x]) or method({a, b}))
+      for (let pi = 0; pi < prop.parameters.length; pi++) {
+        const param = prop.parameters[pi]!;
+        const paramLocalIdx = pi + 1; // +1 to skip 'this'
+        if (ts.isObjectBindingPattern(param.name)) {
+          destructureParamObject(ctx, methodFctx, paramLocalIdx, param.name, methodFctxParams[paramLocalIdx]!.type);
+        } else if (ts.isArrayBindingPattern(param.name)) {
+          destructureParamArray(ctx, methodFctx, paramLocalIdx, param.name, methodFctxParams[paramLocalIdx]!.type);
+        }
+      }
 
       if (isGeneratorMethod && prop.body) {
         // Generator method: eagerly evaluate body, collect yields into a buffer,
