@@ -1604,8 +1604,7 @@ export function compileToObjectSource(
     }
   }
 
-  const TOLERATED_SYNTAX_CODES_2 = new Set([
-  const TOLERATED_SYNTAX_CODES_OBJ = new Set([
+  const TOLERATED_SYNTAX_CODES = new Set([
     1156, // "'let' declarations can only be declared inside a block"
     1313, // "The body of an 'if' statement cannot be the empty statement"
     1344, // "A label is not allowed here"
@@ -1614,6 +1613,7 @@ export function compileToObjectSource(
     1163, // "A 'yield' expression is only allowed in a generator body"
     1206, // "Decorators are not valid here"
     1207, // "Decorators cannot be applied to multiple get/set accessors"
+    1435, // "Unknown keyword or identifier. Did you mean 'X'?" — yield in nested generator contexts (#521)
     1436, // "Decorators must precede the name and all keywords of property declarations"
     1486, // "Decorator used before 'export' here"
     1497, // "Expression must be enclosed in parentheses to be used as a decorator"
@@ -1625,11 +1625,7 @@ export function compileToObjectSource(
     1262, // "Identifier expected. 'X' is a reserved word at the top-level of a module" (#537)
   ]);
   const hasSyntaxErrors = ast.syntacticDiagnostics.some(
-    (d) => d.category === 1 && d.file === ast.sourceFile && !TOLERATED_SYNTAX_CODES_2.has(d.code),
-    1435, // "Unknown keyword or identifier. Did you mean 'X'?" — yield in nested generator contexts (#521)
-  ]);
-  const hasSyntaxErrors = ast.syntacticDiagnostics.some(
-    (d) => d.category === 1 && d.file === ast.sourceFile && !TOLERATED_SYNTAX_CODES_OBJ.has(d.code),
+    (d) => d.category === 1 && d.file === ast.sourceFile && !TOLERATED_SYNTAX_CODES.has(d.code),
   );
 
   if (hasSyntaxErrors && errors.length > 0) {
