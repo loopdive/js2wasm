@@ -18177,8 +18177,58 @@ function compileObjectDefineProperty(
 
   // Check if obj is a struct type with the given field
   const objTsType = ctx.checker.getTypeAtLocation(objArg);
-  const structName = resolveStructName(ctx, objTsType)
+  let structName = resolveStructName(ctx, objTsType)
     || (ts.isIdentifier(objArg) ? ctx.widenedVarStructMap.get(objArg.text) : undefined);
+
+  // Fallback 1: resolve struct name from the local variable's Wasm type.
+  // This handles cases where the TS type is `any` but the local holds a struct ref.
+  if (!structName && ts.isIdentifier(objArg)) {
+    const localIdx = fctx.localMap.get(objArg.text);
+    if (localIdx !== undefined) {
+      const localType = localIdx < fctx.params.length
+        ? fctx.params[localIdx]!.type
+        : fctx.locals[localIdx - fctx.params.length]?.type;
+      if (localType && (localType.kind === "ref" || localType.kind === "ref_null")) {
+        for (const [name, idx] of ctx.structMap) {
+          if (idx === localType.typeIdx) {
+            structName = name;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  // Fallback 2: resolve struct name from the variable's declaration initializer.
+  // For `const obj: any = { x: 0 }`, the TS type is `any` and the local is
+  // externref, but the initializer is an object literal whose fields match a struct.
+  if (!structName && ts.isIdentifier(objArg)) {
+    const sym = ctx.checker.getSymbolAtLocation(objArg);
+    const decl = sym?.valueDeclaration;
+    if (decl && ts.isVariableDeclaration(decl) && decl.initializer) {
+      const initType = ctx.checker.getTypeAtLocation(decl.initializer);
+      structName = resolveStructName(ctx, initType);
+      // If resolveStructName failed (ts.Type identity mismatch), try to match
+      // by struct field names against the object literal properties.
+      if (!structName && ts.isObjectLiteralExpression(decl.initializer)) {
+        const litProps = decl.initializer.properties
+          .filter(p => ts.isPropertyAssignment(p) && ts.isIdentifier(p.name))
+          .map(p => (p.name as ts.Identifier).text)
+          .sort();
+        if (litProps.length > 0) {
+          for (const [sName, sFields] of ctx.structFields) {
+            const fieldNames = sFields.map(f => f.name).sort();
+            if (fieldNames.length === litProps.length &&
+                fieldNames.every((n, i) => n === litProps[i])) {
+              structName = sName;
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+
   const structTypeIdx = structName ? ctx.structMap.get(structName) : undefined;
   const fields = structName ? ctx.structFields.get(structName) : undefined;
   const fieldIdx = (fields && propName) ? fields.findIndex(f => f.name === propName) : -1;
@@ -18216,7 +18266,8 @@ function compileObjectDefineProperty(
     if (getNode) {
       const getterName = `${structName}_get_${propName}`;
       if (!ctx.funcMap.has(getterName)) {
-        const getterParams: ValType[] = [{ kind: "ref", typeIdx: structTypeIdx }];
+        // Use ref_null so callers with nullable locals don't need ref.as_non_null
+        const getterParams: ValType[] = [{ kind: "ref_null", typeIdx: structTypeIdx }];
 
         // Determine return type from the getter function signature
         const sig = ctx.checker.getSignatureFromDeclaration(getNode);
@@ -18244,7 +18295,7 @@ function compileObjectDefineProperty(
         // Compile getter body
         const getterFctx: FunctionContext = {
           name: getterName,
-          params: [{ name: "this", type: { kind: "ref", typeIdx: structTypeIdx } }],
+          params: [{ name: "this", type: { kind: "ref_null", typeIdx: structTypeIdx } }],
           locals: [],
           localMap: new Map(),
           returnType: getterResults.length > 0 ? getterResults[0]! : null,
@@ -18301,7 +18352,8 @@ function compileObjectDefineProperty(
     if (setNode) {
       const setterName = `${structName}_set_${propName}`;
       if (!ctx.funcMap.has(setterName)) {
-        const setterParams: ValType[] = [{ kind: "ref", typeIdx: structTypeIdx }];
+        // Use ref_null so callers with nullable locals don't need ref.as_non_null
+        const setterParams: ValType[] = [{ kind: "ref_null", typeIdx: structTypeIdx }];
         const allNodeParams = getParams(setNode);
         // Filter out the TS `this` parameter (explicit this type annotation)
         const nodeParams = allNodeParams.filter(p => !(ts.isIdentifier(p.name) && p.name.text === "this"));
@@ -18325,7 +18377,7 @@ function compileObjectDefineProperty(
 
         // Compile setter body
         const setterFctxParams: { name: string; type: ValType }[] = [
-          { name: "this", type: { kind: "ref", typeIdx: structTypeIdx } },
+          { name: "this", type: { kind: "ref_null", typeIdx: structTypeIdx } },
         ];
         for (let pi = 0; pi < nodeParams.length; pi++) {
           const param = nodeParams[pi]!;
@@ -18383,8 +18435,17 @@ function compileObjectDefineProperty(
     // Struct path: Object.defineProperty(obj, "prop", { value: v }) → struct.set
 
     // Compile obj and save to local
-    const objType = compileExpression(ctx, fctx, objArg);
+    let objType = compileExpression(ctx, fctx, objArg);
     if (!objType) return null;
+
+    // If obj is externref but we know it's a struct (e.g. `const obj: any = { x: 0 }`),
+    // cast from externref to the struct ref type via any.convert_extern + ref.cast.
+    if (objType.kind === "externref" && structTypeIdx !== undefined) {
+      fctx.body.push({ op: "any.convert_extern" } as Instr);
+      fctx.body.push({ op: "ref.cast", typeIdx: structTypeIdx } as unknown as Instr);
+      objType = { kind: "ref", typeIdx: structTypeIdx };
+    }
+
     const objLocal = allocLocal(fctx, `__defprop_obj_${fctx.locals.length}`, objType);
     fctx.body.push({ op: "local.set", index: objLocal });
 
