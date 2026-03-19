@@ -5741,15 +5741,34 @@ function emitAssignToTarget(
     // Handle vec struct
     if (tDef?.kind === "struct" && tDef.fields.length === 2 && tDef.fields[0]?.name === "length" && tDef.fields[1]?.name === "data") {
       const aIdx = getArrTypeIdxFromVec(ctx, tIdx);
-      // Push: data array, index, value
-      fctx.body.push({ op: "struct.get", typeIdx: tIdx, fieldIdx: 1 });
+      // Save vec ref, compile index, then bounds-guard the write
+      const vecTmp = allocLocal(fctx, `__dstr_vec_${fctx.locals.length}`, arrType);
+      fctx.body.push({ op: "local.set", index: vecTmp });
       const idxResult = compileExpression(ctx, fctx, target.argumentExpression);
       if (!idxResult) return;
       if (idxResult.kind === "f64") {
         fctx.body.push({ op: "i32.trunc_f64_s" } as Instr);
       }
-      fctx.body.push({ op: "local.get", index: valueLocal });
-      fctx.body.push({ op: "array.set", typeIdx: aIdx });
+      const idxTmp = allocLocal(fctx, `__dstr_idx_${fctx.locals.length}`, { kind: "i32" });
+      fctx.body.push({ op: "local.set", index: idxTmp });
+      // Bounds guard: only write if idx < array.len
+      fctx.body.push({ op: "local.get", index: idxTmp });
+      fctx.body.push({ op: "local.get", index: vecTmp });
+      fctx.body.push({ op: "struct.get", typeIdx: tIdx, fieldIdx: 1 });
+      fctx.body.push({ op: "array.len" });
+      fctx.body.push({ op: "i32.lt_u" } as Instr);
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" as const },
+        then: [
+          { op: "local.get", index: vecTmp } as Instr,
+          { op: "struct.get", typeIdx: tIdx, fieldIdx: 1 } as Instr,
+          { op: "local.get", index: idxTmp } as Instr,
+          { op: "local.get", index: valueLocal } as Instr,
+          { op: "array.set", typeIdx: aIdx } as Instr,
+        ],
+        else: [],
+      } as Instr);
     }
   }
 }
@@ -7002,16 +7021,29 @@ function compileElementLogicalAssignment(
         fctx.body.push({ op: "local.get", index: arrLocal });
         fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 });
         fctx.body.push({ op: "local.get", index: idxLocal });
-        fctx.body.push({ op: "array.get", typeIdx: dataTypeIdx });
+        emitBoundsCheckedArrayGet(fctx, dataTypeIdx, elemType);
       };
       const emitElemSet = () => {
         const tmpVal = allocLocal(fctx, `__logelem_aval_${fctx.locals.length}`, elemType);
         fctx.body.push({ op: "local.set", index: tmpVal });
+        // Bounds-guarded write: only set if idx < array.len
+        fctx.body.push({ op: "local.get", index: idxLocal });
         fctx.body.push({ op: "local.get", index: arrLocal });
         fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 });
-        fctx.body.push({ op: "local.get", index: idxLocal });
-        fctx.body.push({ op: "local.get", index: tmpVal });
-        fctx.body.push({ op: "array.set", typeIdx: dataTypeIdx });
+        fctx.body.push({ op: "array.len" });
+        fctx.body.push({ op: "i32.lt_u" } as Instr);
+        fctx.body.push({
+          op: "if",
+          blockType: { kind: "empty" as const },
+          then: [
+            { op: "local.get", index: arrLocal } as Instr,
+            { op: "struct.get", typeIdx, fieldIdx: 1 } as Instr,
+            { op: "local.get", index: idxLocal } as Instr,
+            { op: "local.get", index: tmpVal } as Instr,
+            { op: "array.set", typeIdx: dataTypeIdx } as Instr,
+          ],
+          else: [],
+        } as Instr);
         fctx.body.push({ op: "local.get", index: tmpVal });
       };
 
@@ -8116,15 +8148,15 @@ function compileElementCompoundAssignment(
       const dataFieldType = typeDef.fields[1]!.type;
       const arrayTypeIdx = (dataFieldType as { typeIdx: number }).typeIdx;
       const arrayDef = ctx.mod.types[arrayTypeIdx];
-      const elemType = arrayDef && "elemType" in arrayDef
-        ? (arrayDef as { elemType: ValType }).elemType
+      const elemType = arrayDef && arrayDef.kind === "array"
+        ? arrayDef.element
         : { kind: "f64" as const };
 
-      // Read current value: arr.data[idx]
+      // Read current value: arr.data[idx] (bounds-checked)
       fctx.body.push({ op: "local.get", index: objTmp });
       fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 });
       fctx.body.push({ op: "local.get", index: idxTmp });
-      fctx.body.push({ op: "array.get", typeIdx: arrayTypeIdx } as Instr);
+      emitBoundsCheckedArrayGet(fctx, arrayTypeIdx, elemType);
 
       // Coerce to f64 for arithmetic
       if (elemType.kind !== "f64") {
@@ -8142,15 +8174,33 @@ function compileElementCompoundAssignment(
       const resultTmp = allocLocal(fctx, `__cmpd_res_${fctx.locals.length}`, { kind: "f64" });
       fctx.body.push({ op: "local.set", index: resultTmp });
 
-      // Store back: arr.data[idx] = result
+      // Store back: arr.data[idx] = result (bounds-guarded)
+      fctx.body.push({ op: "local.get", index: idxTmp });
       fctx.body.push({ op: "local.get", index: objTmp });
       fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 });
-      fctx.body.push({ op: "local.get", index: idxTmp });
-      fctx.body.push({ op: "local.get", index: resultTmp });
-      if (elemType.kind !== "f64") {
-        coerceType(ctx, fctx, { kind: "f64" }, elemType);
+      fctx.body.push({ op: "array.len" });
+      fctx.body.push({ op: "i32.lt_u" } as Instr);
+      {
+        const setInstrs: Instr[] = [
+          { op: "local.get", index: objTmp } as Instr,
+          { op: "struct.get", typeIdx, fieldIdx: 1 } as Instr,
+          { op: "local.get", index: idxTmp } as Instr,
+          { op: "local.get", index: resultTmp } as Instr,
+        ];
+        if (elemType.kind !== "f64") {
+          const savedBody = fctx.body;
+          fctx.body = setInstrs as any;
+          coerceType(ctx, fctx, { kind: "f64" }, elemType);
+          fctx.body = savedBody;
+        }
+        setInstrs.push({ op: "array.set", typeIdx: arrayTypeIdx } as Instr);
+        fctx.body.push({
+          op: "if",
+          blockType: { kind: "empty" as const },
+          then: setInstrs,
+          else: [],
+        } as Instr);
       }
-      fctx.body.push({ op: "array.set", typeIdx: arrayTypeIdx } as Instr);
 
       fctx.body.push({ op: "local.get", index: resultTmp });
       return { kind: "f64" };
@@ -8458,13 +8508,13 @@ function compileMemberIncDec(
         const dataFieldType = typeDef.fields[1]!.type;
         const arrayTypeIdx = (dataFieldType as { typeIdx: number }).typeIdx;
         const arrayDef = ctx.mod.types[arrayTypeIdx];
-        const elemType = arrayDef && "elemType" in arrayDef ? (arrayDef as { elemType: ValType }).elemType : { kind: "f64" as const };
+        const elemType = arrayDef && arrayDef.kind === "array" ? arrayDef.element : { kind: "f64" as const };
 
-        // Read current value: arr.data[idx]
+        // Read current value: arr.data[idx] (bounds-checked)
         fctx.body.push({ op: "local.get", index: objTmp });
         fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 });
         fctx.body.push({ op: "local.get", index: idxTmp });
-        fctx.body.push({ op: "array.get", typeIdx: arrayTypeIdx } as Instr);
+        emitBoundsCheckedArrayGet(fctx, arrayTypeIdx, elemType);
 
         // Coerce to f64 for arithmetic if needed
         if (elemType.kind !== "f64" && elemType.kind !== "i32") {
@@ -8485,12 +8535,8 @@ function compileMemberIncDec(
           fctx.body.push({ op });
           const newTmp = allocLocal(fctx, `__incdec_new_${fctx.locals.length}`, { kind: numType });
           fctx.body.push({ op: "local.set", index: newTmp });
-          // Store: arr.data[idx] = new
-          fctx.body.push({ op: "local.get", index: objTmp });
-          fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 });
-          fctx.body.push({ op: "local.get", index: idxTmp });
-          fctx.body.push({ op: "local.get", index: newTmp });
-          fctx.body.push({ op: "array.set", typeIdx: arrayTypeIdx } as Instr);
+          // Store: arr.data[idx] = new (bounds-guarded)
+          emitBoundsGuardedArraySet(fctx, objTmp, typeIdx, idxTmp, newTmp, arrayTypeIdx);
           fctx.body.push({ op: "local.get", index: oldTmp });
           return { kind: numType };
         } else {
@@ -8502,12 +8548,8 @@ function compileMemberIncDec(
           fctx.body.push({ op });
           const newTmp = allocLocal(fctx, `__incdec_new_${fctx.locals.length}`, { kind: numType });
           fctx.body.push({ op: "local.set", index: newTmp });
-          // Store: arr.data[idx] = new
-          fctx.body.push({ op: "local.get", index: objTmp });
-          fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 });
-          fctx.body.push({ op: "local.get", index: idxTmp });
-          fctx.body.push({ op: "local.get", index: newTmp });
-          fctx.body.push({ op: "array.set", typeIdx: arrayTypeIdx } as Instr);
+          // Store: arr.data[idx] = new (bounds-guarded)
+          emitBoundsGuardedArraySet(fctx, objTmp, typeIdx, idxTmp, newTmp, arrayTypeIdx);
           fctx.body.push({ op: "local.get", index: newTmp });
           return { kind: numType };
         }
@@ -9110,27 +9152,54 @@ function compilePrefixIncrementElement(
     const idxLocal = allocLocal(fctx, `__inc_idx_${fctx.locals.length}`, { kind: "i32" });
     fctx.body.push({ op: "local.set", index: idxLocal });
 
-    // Get current value: vec.data[idx]
+    const elemType = arrDef.element;
+
+    // Bounds check: if idx < array.len, do read-modify-write; else produce NaN
+    fctx.body.push({ op: "local.get", index: idxLocal });
     fctx.body.push({ op: "local.get", index: vecLocal });
     fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 }); // data field
-    fctx.body.push({ op: "local.get", index: idxLocal });
-    fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx } as unknown as Instr);
-    const elemType = arrDef.element;
-    if (elemType.kind !== "f64") coerceType(ctx, fctx, elemType, { kind: "f64" });
-    fctx.body.push({ op: "f64.const", value: 1 });
-    fctx.body.push({ op: isIncrement ? "f64.add" : "f64.sub" });
+    fctx.body.push({ op: "array.len" });
+    fctx.body.push({ op: "i32.lt_u" } as Instr);
+
+    // Build the in-bounds branch: read, modify, write, return new value
+    const thenInstrs: Instr[] = [];
+    thenInstrs.push({ op: "local.get", index: vecLocal } as Instr);
+    thenInstrs.push({ op: "struct.get", typeIdx, fieldIdx: 1 } as Instr);
+    thenInstrs.push({ op: "local.get", index: idxLocal } as Instr);
+    thenInstrs.push({ op: "array.get", typeIdx: arrTypeIdx } as Instr);
+    if (elemType.kind !== "f64") {
+      const savedBody = fctx.body;
+      fctx.body = thenInstrs as any;
+      coerceType(ctx, fctx, elemType, { kind: "f64" });
+      fctx.body = savedBody;
+    }
+    thenInstrs.push({ op: "f64.const", value: 1 } as Instr);
+    thenInstrs.push({ op: isIncrement ? "f64.add" : "f64.sub" } as Instr);
     const newVal = allocLocal(fctx, `__inc_new_${fctx.locals.length}`, { kind: "f64" });
-    fctx.body.push({ op: "local.set", index: newVal });
+    thenInstrs.push({ op: "local.tee", index: newVal } as Instr);
+    // Coerce back for array.set if needed
+    if (elemType.kind !== "f64") {
+      const savedBody = fctx.body;
+      fctx.body = thenInstrs as any;
+      coerceType(ctx, fctx, { kind: "f64" }, elemType);
+      fctx.body = savedBody;
+    }
+    const coercedNewVal = allocLocal(fctx, `__inc_cval_${fctx.locals.length}`, elemType);
+    thenInstrs.push({ op: "local.set", index: coercedNewVal } as Instr);
+    thenInstrs.push({ op: "local.get", index: vecLocal } as Instr);
+    thenInstrs.push({ op: "struct.get", typeIdx, fieldIdx: 1 } as Instr);
+    thenInstrs.push({ op: "local.get", index: idxLocal } as Instr);
+    thenInstrs.push({ op: "local.get", index: coercedNewVal } as Instr);
+    thenInstrs.push({ op: "array.set", typeIdx: arrTypeIdx } as Instr);
+    thenInstrs.push({ op: "local.get", index: newVal } as Instr);
 
-    // Set: vec.data[idx] = newVal
-    fctx.body.push({ op: "local.get", index: vecLocal });
-    fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 });
-    fctx.body.push({ op: "local.get", index: idxLocal });
-    fctx.body.push({ op: "local.get", index: newVal });
-    if (elemType.kind !== "f64") coerceType(ctx, fctx, { kind: "f64" }, elemType);
-    fctx.body.push({ op: "array.set", typeIdx: arrTypeIdx } as unknown as Instr);
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "val" as const, type: { kind: "f64" as const } },
+      then: thenInstrs,
+      else: [{ op: "f64.const", value: NaN } as Instr],
+    } as Instr);
 
-    fctx.body.push({ op: "local.get", index: newVal });
     return { kind: "f64" };
   }
 
@@ -9274,32 +9343,57 @@ function compilePostfixIncrementElement(
     const idxLocal = allocLocal(fctx, `__postinc_idx_${fctx.locals.length}`, { kind: "i32" });
     fctx.body.push({ op: "local.set", index: idxLocal });
 
-    // Get current value: vec.data[idx]
-    fctx.body.push({ op: "local.get", index: vecLocal });
-    fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 });
-    fctx.body.push({ op: "local.get", index: idxLocal });
-    fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx } as unknown as Instr);
     const elemType = arrDef.element;
-    if (elemType.kind !== "f64") coerceType(ctx, fctx, elemType, { kind: "f64" });
-    const oldVal = allocLocal(fctx, `__postinc_old_${fctx.locals.length}`, { kind: "f64" });
-    fctx.body.push({ op: "local.set", index: oldVal });
 
-    // Compute new value
-    fctx.body.push({ op: "local.get", index: oldVal });
-    fctx.body.push({ op: "f64.const", value: 1 });
-    fctx.body.push({ op: isIncrement ? "f64.add" : "f64.sub" });
-
-    // Set: vec.data[idx] = newVal
-    const newVal = allocLocal(fctx, `__postinc_new_${fctx.locals.length}`, { kind: "f64" });
-    fctx.body.push({ op: "local.set", index: newVal });
+    // Bounds check: if idx < array.len, do read-modify-write; else produce NaN
+    fctx.body.push({ op: "local.get", index: idxLocal });
     fctx.body.push({ op: "local.get", index: vecLocal });
     fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 });
-    fctx.body.push({ op: "local.get", index: idxLocal });
-    fctx.body.push({ op: "local.get", index: newVal });
-    if (elemType.kind !== "f64") coerceType(ctx, fctx, { kind: "f64" }, elemType);
-    fctx.body.push({ op: "array.set", typeIdx: arrTypeIdx } as unknown as Instr);
+    fctx.body.push({ op: "array.len" });
+    fctx.body.push({ op: "i32.lt_u" } as Instr);
 
-    fctx.body.push({ op: "local.get", index: oldVal });
+    // Build the in-bounds branch: read old, compute new, write, return old
+    const thenInstrs: Instr[] = [];
+    thenInstrs.push({ op: "local.get", index: vecLocal } as Instr);
+    thenInstrs.push({ op: "struct.get", typeIdx, fieldIdx: 1 } as Instr);
+    thenInstrs.push({ op: "local.get", index: idxLocal } as Instr);
+    thenInstrs.push({ op: "array.get", typeIdx: arrTypeIdx } as Instr);
+    if (elemType.kind !== "f64") {
+      const savedBody = fctx.body;
+      fctx.body = thenInstrs as any;
+      coerceType(ctx, fctx, elemType, { kind: "f64" });
+      fctx.body = savedBody;
+    }
+    const oldVal = allocLocal(fctx, `__postinc_old_${fctx.locals.length}`, { kind: "f64" });
+    thenInstrs.push({ op: "local.set", index: oldVal } as Instr);
+    // Compute new value
+    thenInstrs.push({ op: "local.get", index: oldVal } as Instr);
+    thenInstrs.push({ op: "f64.const", value: 1 } as Instr);
+    thenInstrs.push({ op: isIncrement ? "f64.add" : "f64.sub" } as Instr);
+    // Coerce and write back
+    const newVal = allocLocal(fctx, `__postinc_new_${fctx.locals.length}`, { kind: "f64" });
+    thenInstrs.push({ op: "local.set", index: newVal } as Instr);
+    thenInstrs.push({ op: "local.get", index: vecLocal } as Instr);
+    thenInstrs.push({ op: "struct.get", typeIdx, fieldIdx: 1 } as Instr);
+    thenInstrs.push({ op: "local.get", index: idxLocal } as Instr);
+    thenInstrs.push({ op: "local.get", index: newVal } as Instr);
+    if (elemType.kind !== "f64") {
+      const savedBody = fctx.body;
+      fctx.body = thenInstrs as any;
+      coerceType(ctx, fctx, { kind: "f64" }, elemType);
+      fctx.body = savedBody;
+    }
+    thenInstrs.push({ op: "array.set", typeIdx: arrTypeIdx } as Instr);
+    // Return old value
+    thenInstrs.push({ op: "local.get", index: oldVal } as Instr);
+
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "val" as const, type: { kind: "f64" as const } },
+      then: thenInstrs,
+      else: [{ op: "f64.const", value: NaN } as Instr],
+    } as Instr);
+
     return { kind: "f64" };
   }
 
@@ -13731,11 +13825,13 @@ function compileSpreadCallArgs(
       fctx.body.push({ op: "local.set", index: dataLocal });
 
       // Extract elements up to the remaining parameter count
+      const arrDefSpread = ctx.mod.types[arrTypeIdx];
+      const spreadElemType = arrDefSpread && arrDefSpread.kind === "array" ? arrDefSpread.element : { kind: "f64" as const };
       const remainingParams = paramTypes.length - paramIdx;
       for (let i = 0; i < remainingParams; i++) {
         fctx.body.push({ op: "local.get", index: dataLocal });
         fctx.body.push({ op: "i32.const", value: i });
-        fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
+        emitBoundsCheckedArrayGet(fctx, arrTypeIdx, spreadElemType);
         paramIdx++;
       }
     } else {
@@ -15318,6 +15414,41 @@ export function emitBoundsCheckedArrayGet(
   if (needsNullableBlock) {
     fctx.body.push({ op: "ref.as_non_null" } as unknown as Instr);
   }
+}
+
+/**
+ * Emit a bounds-guarded array.set on a vec struct.  Only writes if the index
+ * is in bounds; otherwise the write is silently skipped (JS semantics for
+ * out-of-bounds numeric index assignment on a non-extensible array).
+ *
+ * Expects: vecLocal holds the vec struct ref, idxLocal holds the i32 index,
+ * valLocal holds the value to write.
+ */
+function emitBoundsGuardedArraySet(
+  fctx: FunctionContext,
+  vecLocal: number,
+  vecTypeIdx: number,
+  idxLocal: number,
+  valLocal: number,
+  arrTypeIdx: number,
+): void {
+  fctx.body.push({ op: "local.get", index: idxLocal });
+  fctx.body.push({ op: "local.get", index: vecLocal });
+  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
+  fctx.body.push({ op: "array.len" });
+  fctx.body.push({ op: "i32.lt_u" } as Instr);
+  fctx.body.push({
+    op: "if",
+    blockType: { kind: "empty" as const },
+    then: [
+      { op: "local.get", index: vecLocal } as Instr,
+      { op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 } as Instr,
+      { op: "local.get", index: idxLocal } as Instr,
+      { op: "local.get", index: valLocal } as Instr,
+      { op: "array.set", typeIdx: arrTypeIdx } as Instr,
+    ],
+    else: [],
+  } as Instr);
 }
 
 /** Produce instructions that leave a default value on the stack for a given type. */
