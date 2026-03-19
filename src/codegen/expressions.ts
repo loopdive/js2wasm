@@ -1871,6 +1871,7 @@ function compileArrowAsClosure(
   }
 
   const savedFunc = ctx.currentFunc;
+  if (savedFunc) ctx.funcStack.push(savedFunc);
   ctx.currentFunc = liftedFctx;
 
   // Temporarily register closure info for named function expressions so
@@ -2093,6 +2094,7 @@ function compileArrowAsClosure(
     }
   }
 
+  if (savedFunc) ctx.funcStack.pop();
   ctx.currentFunc = savedFunc;
 
   // 6. Register the lifted function
@@ -2289,6 +2291,7 @@ function compileArrowAsCallback(
 
   // 5. Compile the callback body
   const savedFunc = ctx.currentFunc;
+  if (savedFunc) ctx.funcStack.push(savedFunc);
   ctx.currentFunc = cbFctx;
 
   // Emit default-value initialization for simple params with defaults
@@ -2330,6 +2333,7 @@ function compileArrowAsCallback(
     }
   }
 
+  if (savedFunc) ctx.funcStack.pop();
   ctx.currentFunc = savedFunc;
 
   // 6. Register and export the callback function
@@ -12209,6 +12213,7 @@ function compileIIFE(
   }
 
   const savedFunc = ctx.currentFunc;
+  if (savedFunc) ctx.funcStack.push(savedFunc);
   ctx.currentFunc = liftedFctx;
 
   if (ts.isBlock(body)) {
@@ -12236,6 +12241,7 @@ function compileIIFE(
     }
   }
 
+  if (savedFunc) ctx.funcStack.pop();
   ctx.currentFunc = savedFunc;
 
   // Register the lifted function
@@ -12996,10 +13002,12 @@ function compileNewFunctionExpression(
 
   // 6. Compile the function body
   const savedFunc = ctx.currentFunc;
+  if (savedFunc) ctx.funcStack.push(savedFunc);
   ctx.currentFunc = liftedFctx;
   for (const stmt of body.statements) {
     compileStatement(ctx, liftedFctx, stmt);
   }
+  if (savedFunc) ctx.funcStack.pop();
   ctx.currentFunc = savedFunc;
 
   // 7. Register the lifted function
@@ -16349,6 +16357,7 @@ function compileObjectLiteralForStruct(
       getterFctx.localMap.set("this", 0);
 
       const savedFunc = ctx.currentFunc;
+      if (savedFunc) ctx.funcStack.push(savedFunc);
       ctx.currentFunc = getterFctx;
       if (prop.body) {
         for (const stmt of prop.body.statements) {
@@ -16373,6 +16382,7 @@ function compileObjectLiteralForStruct(
       cacheStringLiterals(ctx, getterFctx);
       getterFunc.locals = getterFctx.locals;
       getterFunc.body = getterFctx.body;
+      if (savedFunc) ctx.funcStack.pop();
       ctx.currentFunc = savedFunc;
     }
 
@@ -16435,6 +16445,7 @@ function compileObjectLiteralForStruct(
       }
 
       const savedFunc = ctx.currentFunc;
+      if (savedFunc) ctx.funcStack.push(savedFunc);
       ctx.currentFunc = setterFctx;
 
       // Emit default-value initialization for setter parameters with initializers (#377)
@@ -16481,6 +16492,7 @@ function compileObjectLiteralForStruct(
       cacheStringLiterals(ctx, setterFctx);
       setterFunc.locals = setterFctx.locals;
       setterFunc.body = setterFctx.body;
+      if (savedFunc) ctx.funcStack.pop();
       ctx.currentFunc = savedFunc;
     }
 
@@ -16572,6 +16584,7 @@ function compileObjectLiteralForStruct(
       }
 
       const savedFunc = ctx.currentFunc;
+      if (savedFunc) ctx.funcStack.push(savedFunc);
       ctx.currentFunc = methodFctx;
 
       // Emit default-value initialization for parameters with initializers
@@ -16637,6 +16650,7 @@ function compileObjectLiteralForStruct(
       cacheStringLiterals(ctx, methodFctx);
       methodFunc.locals = methodFctx.locals;
       methodFunc.body = methodFctx.body;
+      if (savedFunc) ctx.funcStack.pop();
       ctx.currentFunc = savedFunc;
     }
 
@@ -17102,6 +17116,7 @@ function compileObjectDefineProperty(
         getterFctx.localMap.set("this", 0);
 
         const savedFunc = ctx.currentFunc;
+        if (savedFunc) ctx.funcStack.push(savedFunc);
         ctx.currentFunc = getterFctx;
 
         if (ts.isArrowFunction(getNode) && !ts.isBlock(getNode.body)) {
@@ -17135,6 +17150,7 @@ function compileObjectDefineProperty(
         cacheStringLiterals(ctx, getterFctx);
         getterFunc.locals = getterFctx.locals;
         getterFunc.body = getterFctx.body;
+        if (savedFunc) ctx.funcStack.pop();
         ctx.currentFunc = savedFunc;
       }
     }
@@ -17194,6 +17210,7 @@ function compileObjectDefineProperty(
         }
 
         const savedFunc = ctx.currentFunc;
+        if (savedFunc) ctx.funcStack.push(savedFunc);
         ctx.currentFunc = setterFctx;
 
         if (ts.isArrowFunction(setNode) && !ts.isBlock(setNode.body)) {
@@ -17210,6 +17227,7 @@ function compileObjectDefineProperty(
         cacheStringLiterals(ctx, setterFctx);
         setterFunc.locals = setterFctx.locals;
         setterFunc.body = setterFctx.body;
+        if (savedFunc) ctx.funcStack.pop();
         ctx.currentFunc = savedFunc;
       }
     }
