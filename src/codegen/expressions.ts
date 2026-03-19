@@ -22672,8 +22672,8 @@ function tryStaticToNumber(ctx: CodegenContext, expr: ts.Expression): number | u
         case ts.SyntaxKind.PlusToken: return left + right;
         case ts.SyntaxKind.MinusToken: return left - right;
         case ts.SyntaxKind.AsteriskToken: return left * right;
-        case ts.SyntaxKind.SlashToken: return left / right;
-        case ts.SyntaxKind.PercentToken: return left % right;
+        case ts.SyntaxKind.SlashToken: return right !== 0 ? left / right : undefined;
+        case ts.SyntaxKind.PercentToken: return right !== 0 ? left % right : undefined;
         case ts.SyntaxKind.AsteriskAsteriskToken: return left ** right;
         case ts.SyntaxKind.AmpersandToken: return left & right;
         case ts.SyntaxKind.BarToken: return left | right;
