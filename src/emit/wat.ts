@@ -118,6 +118,25 @@ function walkBlockTypes(instrs: Instr[], visitor: (bt: BlockType) => void): void
  *  Backslashes and double-quotes must be escaped to prevent injection. */
 function escapeWatString(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+/** Escape a string for WAT text format (inside double quotes).
+ *  Handles backslash, double-quote, and control characters. */
+function escapeWatString(s: string): string {
+  let out = "";
+  for (let i = 0; i < s.length; i++) {
+    const ch = s.charCodeAt(i);
+    if (ch === 0x5c) out += "\\\\";        // backslash
+    else if (ch === 0x22) out += '\\"';     // double-quote
+    else if (ch === 0x0a) out += "\\n";     // newline
+    else if (ch === 0x0d) out += "\\r";     // carriage return
+    else if (ch === 0x09) out += "\\t";     // tab
+    else if (ch < 0x20 || ch === 0x7f) {
+      // Other control characters — emit as \xx hex escape
+      out += "\\" + ch.toString(16).padStart(2, "0");
+    } else {
+      out += s[i];
+    }
+  }
+  return out;
 }
 
 /** Emit a WAT text representation of the IR module */
