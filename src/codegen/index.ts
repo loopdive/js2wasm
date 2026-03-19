@@ -10712,7 +10712,7 @@ function compileFunctionBody(
  * The parameter value (a struct ref) is at param index `paramIdx`.
  * We extract each bound field into a new local.
  */
-function destructureParamObject(
+export function destructureParamObject(
   ctx: CodegenContext,
   fctx: FunctionContext,
   paramIdx: number,
@@ -10800,7 +10800,7 @@ function destructureParamObject(
  * The parameter value (a vec struct ref) is at param index `paramIdx`.
  * We extract each element into a new local.
  */
-function destructureParamArray(
+export function destructureParamArray(
   ctx: CodegenContext,
   fctx: FunctionContext,
   paramIdx: number,
