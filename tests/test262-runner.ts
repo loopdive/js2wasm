@@ -1623,33 +1623,7 @@ export function test(): number {
 
 /** Categories of test262 tests to scan */
 export const TEST_CATEGORIES = [
-  // ── built-ins/Math ──
-  "built-ins/Math",
-  // ── language/expressions ──
-  "language/expressions",
-  // ── language/statements ──
-  "language/statements",
-  // ── built-ins/Array ──
-  "built-ins/Array",
-  // ── built-ins/Number ──
-  "built-ins/Number",
-  // ── built-ins/Boolean ──
-  "built-ins/Boolean",
-  // ── built-ins/parseInt + parseFloat ──
-  "built-ins/parseInt",
-  "built-ins/parseFloat",
-  // ── built-ins/isNaN + isFinite ──
-  "built-ins/isNaN",
-  "built-ins/isFinite",
-  // ── language/types ──
-  "language/types",
-  // ── built-ins/Object ──
-  "built-ins/Object",
-  // ── built-ins/JSON ──
-  "built-ins/JSON",
-  // ── built-ins/String ──
-  "built-ins/String",
-  // ── language (top-level) ──
+  // ── language ──
   "language/arguments-object",
   "language/asi",
   "language/block-scope",
@@ -1659,6 +1633,7 @@ export const TEST_CATEGORIES = [
   "language/directive-prologue",
   "language/eval-code",
   "language/export",
+  "language/expressions",
   "language/function-code",
   "language/future-reserved-words",
   "language/global-code",
@@ -1674,16 +1649,13 @@ export const TEST_CATEGORIES = [
   "language/rest-parameters",
   "language/source-text",
   "language/statementList",
+  "language/statements",
+  "language/types",
   "language/white-space",
-  // ── built-ins/Map ──
-  "built-ins/Map",
-  // ── built-ins/Set ──
-  "built-ins/Set",
-  // ── built-ins/Promise ──
-  "built-ins/Promise",
-  // ── built-ins (remaining) ──
+  // ── built-ins (consolidated — each entry covers all subdirectories) ──
   "built-ins/AbstractModuleSource",
   "built-ins/AggregateError",
+  "built-ins/Array",
   "built-ins/ArrayBuffer",
   "built-ins/ArrayIteratorPrototype",
   "built-ins/AsyncDisposableStack",
@@ -1694,6 +1666,7 @@ export const TEST_CATEGORIES = [
   "built-ins/AsyncIteratorPrototype",
   "built-ins/Atomics",
   "built-ins/BigInt",
+  "built-ins/Boolean",
   "built-ins/DataView",
   "built-ins/Date",
   "built-ins/DisposableStack",
@@ -1704,16 +1677,24 @@ export const TEST_CATEGORIES = [
   "built-ins/GeneratorPrototype",
   "built-ins/Infinity",
   "built-ins/Iterator",
+  "built-ins/JSON",
+  "built-ins/Map",
   "built-ins/MapIteratorPrototype",
+  "built-ins/Math",
   "built-ins/NaN",
   "built-ins/NativeErrors",
+  "built-ins/Number",
+  "built-ins/Object",
+  "built-ins/Promise",
   "built-ins/Proxy",
   "built-ins/Reflect",
   "built-ins/RegExp",
   "built-ins/RegExpStringIteratorPrototype",
+  "built-ins/Set",
   "built-ins/SetIteratorPrototype",
   "built-ins/ShadowRealm",
   "built-ins/SharedArrayBuffer",
+  "built-ins/String",
   "built-ins/StringIteratorPrototype",
   "built-ins/SuppressedError",
   "built-ins/Symbol",
@@ -1731,13 +1712,16 @@ export const TEST_CATEGORIES = [
   "built-ins/encodeURIComponent",
   "built-ins/eval",
   "built-ins/global",
+  "built-ins/isFinite",
+  "built-ins/isNaN",
+  "built-ins/parseFloat",
+  "built-ins/parseInt",
   "built-ins/undefined",
-  // ── annexB + harness + intl402 + staging ──
-  "annexB",
-  "harness",
-  "intl402",
-  "staging",
+  // ── annexB (legacy browser behaviors, standard test262 format) ──
+  "annexB/built-ins",
+  "annexB/language",
 ];
+
 
 const TEST262_ROOT = join(import.meta.dirname ?? ".", "..", "test262");
 
