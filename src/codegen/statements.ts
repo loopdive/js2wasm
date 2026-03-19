@@ -701,7 +701,12 @@ function compileObjectDestructuring(
         ensureBindingLocals(ctx, fctx, element.name);
         continue;
       }
-      const nFieldType = fields[nFieldIdx]!.type;
+      const nField = fields[nFieldIdx];
+      if (!nField) {
+        ensureBindingLocals(ctx, fctx, element.name);
+        continue;
+      }
+      const nFieldType = nField.type;
       const nestedTmp = allocLocal(fctx, `__destruct_nested_${fctx.locals.length}`, nFieldType);
       fctx.body.push({ op: "local.get", index: tmpLocal });
       fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx: nFieldIdx });
@@ -730,7 +735,9 @@ function compileObjectDestructuring(
             const neLocalName = ne.name.text;
             const neFieldIdx = nestedFields.findIndex((f) => f.name === nePropText);
             if (neFieldIdx === -1) continue;
-            const neFieldType = nestedFields[neFieldIdx]!.type;
+            const neField = nestedFields[neFieldIdx];
+            if (!neField) continue;
+            const neFieldType = neField.type;
             const neLocalIdx = allocLocal(fctx, neLocalName, neFieldType);
             fctx.body.push({ op: "local.get", index: nestedTmp });
             fctx.body.push({ op: "struct.get", typeIdx: nestedTypeIdx, fieldIdx: neFieldIdx });
@@ -811,7 +818,9 @@ function compileObjectDestructuring(
       continue;
     }
 
-    const fieldType = fields[fieldIdx]!.type;
+    const field = fields[fieldIdx];
+    if (!field) continue;
+    const fieldType = field.type;
     const localIdx = allocLocal(fctx, localName, fieldType);
 
     fctx.body.push({ op: "local.get", index: tmpLocal });
@@ -1155,7 +1164,9 @@ function compileArrayDestructuring(
               const nLocalName = nestedElem.name.text;
               const nFieldIdx = nestedFields.findIndex((f) => f.name === propNText);
               if (nFieldIdx === -1) continue;
-              const nFieldType = nestedFields[nFieldIdx]!.type;
+              const nFieldEntry = nestedFields[nFieldIdx];
+              if (!nFieldEntry) continue;
+              const nFieldType = nFieldEntry.type;
               const nLocalIdx = fctx.localMap.get(nLocalName);
               if (nLocalIdx === undefined) continue;
               fctx.body.push({ op: "local.get", index: nestedLocal });
@@ -2208,7 +2219,9 @@ function compileForOfDestructuring(
         continue;
       }
 
-      const fieldType = fields[fieldIdx]!.type;
+      const fieldEntry = fields[fieldIdx];
+      if (!fieldEntry) continue;
+      const fieldType = fieldEntry.type;
       const localIdx = allocLocal(fctx, localName, fieldType);
 
       fctx.body.push({ op: "local.get", index: elemLocal });
@@ -2621,7 +2634,9 @@ function compileForOfAssignDestructuring(
       const targetLocal = fctx.localMap.get(targetName);
       if (targetLocal === undefined) continue;
 
-      const fieldType = fields[fieldIdx]!.type;
+      const fieldEntry2 = fields[fieldIdx];
+      if (!fieldEntry2) continue;
+      const fieldType = fieldEntry2.type;
       const targetType = getLocalType(fctx, targetLocal);
       fctx.body.push({ op: "local.get", index: elemLocal });
       fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });

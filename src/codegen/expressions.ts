@@ -562,6 +562,10 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
       fctx.body.push({ op: "call", funcIdx });
       return;
     }
+    // Fallback: drop f64 and push null externref
+    fctx.body.push({ op: "drop" });
+    fctx.body.push({ op: "ref.null.extern" });
+    return;
   }
   // i32 → externref (box as number to preserve value)
   if (from.kind === "i32" && to.kind === "externref") {
@@ -572,6 +576,10 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
       fctx.body.push({ op: "call", funcIdx });
       return;
     }
+    // Fallback: drop i32 and push null externref
+    fctx.body.push({ op: "drop" });
+    fctx.body.push({ op: "ref.null.extern" });
+    return;
   }
   // i64 → externref (box as number: convert i64 → f64, then box)
   if (from.kind === "i64" && to.kind === "externref") {
@@ -582,6 +590,10 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
       fctx.body.push({ op: "call", funcIdx });
       return;
     }
+    // Fallback: drop i64 and push null externref
+    fctx.body.push({ op: "drop" });
+    fctx.body.push({ op: "ref.null.extern" });
+    return;
   }
   // ref/ref_null → externref: check @@toPrimitive("string") first, then toString(), else extern.convert_any
   if ((from.kind === "ref" || from.kind === "ref_null") && to.kind === "externref") {
@@ -596,8 +608,10 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
           compileStringLiteral(ctx, fctx, "string");
           fctx.body.push({ op: "call", funcIdx: toPrimFuncIdx });
           // Coerce result to externref if needed
-          const funcDef = ctx.mod.functions[toPrimFuncIdx - ctx.numImportFuncs];
+          const funcDefIdx = toPrimFuncIdx - ctx.numImportFuncs;
+          const funcDef = funcDefIdx >= 0 ? ctx.mod.functions[funcDefIdx] : undefined;
           const funcType = funcDef ? ctx.mod.types[funcDef.typeIdx] : undefined;
+          // Default to "externref" for imports (funcDefIdx < 0) which typically return externref
           const retKind = (funcType?.kind === "func" && funcType.results?.[0]?.kind) || "externref";
           if (retKind === "f64") {
             const boxIdx = ctx.funcMap.get("__box_number");
@@ -744,7 +758,9 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
             // Call ClassName_valueOf(self) — self is already on stack
             fctx.body.push({ op: "call", funcIdx: valueOfFuncIdx });
             // Check return type — if not f64, convert to f64
-            const funcType = ctx.mod.types[ctx.mod.functions[valueOfFuncIdx - ctx.numImportFuncs]?.typeIdx ?? -1];
+            const voFuncDefIdx = valueOfFuncIdx - ctx.numImportFuncs;
+            const voFuncDef = voFuncDefIdx >= 0 ? ctx.mod.functions[voFuncDefIdx] : undefined;
+            const funcType = voFuncDef ? ctx.mod.types[voFuncDef.typeIdx] : undefined;
             if (funcType?.kind === "func" && funcType.results?.[0]?.kind === "i32") {
               fctx.body.push({ op: "f64.convert_i32_s" });
             } else if (funcType?.kind === "func" && funcType.results?.[0]?.kind === "externref") {
@@ -772,7 +788,13 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
           fctx.body.push({ op: "f64.const", value: NaN });
           return;
         }
-        const valueOfField = fields[fieldIdx]!;
+        const valueOfField = fields[fieldIdx];
+        if (!valueOfField) {
+          // Field index valid from findIndex but entry missing — treat as NaN
+          fctx.body.push({ op: "drop" });
+          fctx.body.push({ op: "f64.const", value: NaN });
+          return;
+        }
         if (valueOfField.type.kind === "ref" || valueOfField.type.kind === "ref_null") {
           // valueOf is a closure ref — call it via call_ref
           const closureTypeIdx = (valueOfField.type as { typeIdx: number }).typeIdx;
