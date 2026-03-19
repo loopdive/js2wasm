@@ -10,12 +10,146 @@
  * Output:
  *   benchmarks/results/test262-results.jsonl  — one JSON line per test result
  *   benchmarks/results/test262-report.json    — summary with error frequency
+ *
+ * The runner automatically creates a temporary git worktree so that the
+ * compiler source is frozen for the duration of the run, even if the user
+ * edits src/ in the main tree.
  */
 import { TEST_CATEGORIES, findTestFiles, runTest262File, shouldSkip, parseMeta, wrapTest, type TestResult, type TestTiming } from "../tests/test262-runner.js";
 import { join } from "path";
 import { writeFileSync, readFileSync, existsSync, openSync, closeSync, writeSync, unlinkSync, mkdirSync, copyFileSync, readdirSync, statSync } from "fs";
 import { execSync, fork } from "child_process";
+import { join, resolve } from "path";
+import { writeFileSync, appendFileSync, readFileSync, existsSync, openSync, closeSync, writeSync, unlinkSync, mkdirSync, copyFileSync, symlinkSync, readdirSync, rmdirSync } from "fs";
+import { execSync, fork, spawnSync } from "child_process";
 import { createHash } from "crypto";
+import { tmpdir } from "os";
+
+// ── Worktree isolation ────────────────────────────────────────────────
+// When invoked normally, we create a detached worktree at HEAD, symlink
+// node_modules + test262 into it, then re-exec ourselves from there with
+// --in-worktree <original-results-dir>.  This ensures src/ is frozen.
+
+const inWorktreeIdx = process.argv.indexOf("--in-worktree");
+const noWorktreeFlag = process.argv.includes("--no-worktree");
+if (inWorktreeIdx === -1 && !noWorktreeFlag) {
+  // Normal invocation — set up a worktree and re-exec
+  const projectRoot = resolve(import.meta.dirname ?? ".", "..");
+  const worktreeDir = join(tmpdir(), `ts2wasm-test262-${Date.now()}`);
+  const resultsDir = join(projectRoot, "benchmarks", "results");
+  mkdirSync(resultsDir, { recursive: true });
+
+  // Pass through all original args plus --in-worktree <resultsDir>
+  const passArgs = process.argv.slice(2);
+
+  function cleanupWorktree() {
+    try { execSync(`git worktree remove --force "${worktreeDir}"`, { cwd: projectRoot, stdio: "ignore" }); } catch {}
+    try { unlinkSync(worktreeDir); } catch {} // in case remove left a dangling symlink
+  }
+
+  try {
+    console.log(`Creating temporary worktree at ${worktreeDir} ...`);
+    execSync(`git worktree add "${worktreeDir}" HEAD --detach`, { cwd: projectRoot, stdio: "inherit" });
+
+    // Symlink heavy directories that don't need to be copied.
+    // For each directory, resolve through possible symlinks and verify
+    // the target has actual content (e.g., test262 might be an empty dir
+    // in a git worktree but present at the repo root).
+    let mainRepoRoot: string;
+    try {
+      mainRepoRoot = resolve(execSync("git rev-parse --git-common-dir", { cwd: projectRoot, encoding: "utf-8" }).trim(), "..");
+    } catch { mainRepoRoot = projectRoot; }
+    const symlinkTargets: Record<string, string[]> = {
+      "node_modules": [join(projectRoot, "node_modules"), join(mainRepoRoot, "node_modules")],
+      "test262": [join(projectRoot, "test262"), join(mainRepoRoot, "test262")],
+    };
+    for (const [name, candidates] of Object.entries(symlinkTargets)) {
+      const link = join(worktreeDir, name);
+      if (existsSync(link)) {
+        // Remove empty directory left by git worktree (e.g., empty test262/)
+        try {
+          const entries = readdirSync(link);
+          if (entries.length === 0) rmdirSync(link);
+          else continue;
+        } catch { continue; }
+      }
+      for (const target of candidates) {
+        try {
+          // Check the candidate directory actually has content
+          const entries = readdirSync(target);
+          if (entries.length > 0) {
+            symlinkSync(target, link);
+            break;
+          }
+        } catch {}
+      }
+    }
+
+    // Also symlink benchmarks/results so cache + previous JSONL are visible
+    const bmDir = join(worktreeDir, "benchmarks");
+    mkdirSync(bmDir, { recursive: true });
+    const bmResultsLink = join(bmDir, "results");
+    if (!existsSync(bmResultsLink)) {
+      symlinkSync(resultsDir, bmResultsLink);
+    }
+
+    // Ensure worktree cleanup on signals
+    process.on("SIGINT", () => { cleanupWorktree(); process.exit(130); });
+    process.on("SIGTERM", () => { cleanupWorktree(); process.exit(143); });
+
+    // Resolve the tsx CLI binary from the original project's node_modules.
+    // We cannot use `node --import tsx` because ESM bare-specifier resolution
+    // does not follow symlinked node_modules from a /tmp cwd.
+    let tsxBin = join(projectRoot, "node_modules", ".bin", "tsx");
+    if (!existsSync(tsxBin)) tsxBin = join(mainRepoRoot, "node_modules", ".bin", "tsx");
+
+    // Copy the current version of the runner scripts into the worktree
+    // so that any uncommitted changes to the runner itself are picked up.
+    const scriptDir = import.meta.dirname ?? join(projectRoot, "scripts");
+    for (const script of ["run-test262.ts", "test262-worker.ts"]) {
+      const src = join(scriptDir, script);
+      const dst = join(worktreeDir, "scripts", script);
+      if (existsSync(src)) copyFileSync(src, dst);
+    }
+    // Also copy the test runner module
+    const runnerSrc = join(projectRoot, "tests", "test262-runner.ts");
+    const runnerDst = join(worktreeDir, "tests", "test262-runner.ts");
+    if (existsSync(runnerSrc)) copyFileSync(runnerSrc, runnerDst);
+
+    console.log("Worktree ready. Re-launching runner from frozen snapshot...\n");
+    const result = spawnSync(
+      tsxBin,
+      [join(worktreeDir, "scripts", "run-test262.ts"), "--in-worktree", resultsDir, ...passArgs],
+      { cwd: worktreeDir, stdio: "inherit", env: { ...process.env, NODE_OPTIONS: "--max-old-space-size=8192" } },
+    );
+
+    cleanupWorktree();
+    process.exit(result.status ?? 1);
+  } catch (e: any) {
+    console.error("Worktree setup failed, falling back to in-place run:", e.message);
+    cleanupWorktree();
+    // Fall through to normal execution below
+  }
+}
+
+// If we reach here, we're either:
+//   (a) running inside the worktree (--in-worktree was provided), or
+//   (b) worktree setup failed and we fell through
+// Strip --in-worktree and its argument from argv so downstream arg parsing is clean.
+const OVERRIDE_RESULTS_DIR: string | undefined = inWorktreeIdx !== -1 ? process.argv[inWorktreeIdx + 1] : undefined;
+if (inWorktreeIdx !== -1) {
+  process.argv.splice(inWorktreeIdx, 2);
+}
+// Also strip --no-worktree if present
+const noWorktreeArgIdx = process.argv.indexOf("--no-worktree");
+if (noWorktreeArgIdx !== -1) {
+  process.argv.splice(noWorktreeArgIdx, 1);
+}
+
+// Now import the rest (deferred so the worktree re-exec path doesn't load the compiler)
+const { TEST_CATEGORIES, findTestFiles, runTest262File, shouldSkip, parseMeta, wrapTest } = await import("../tests/test262-runner.js");
+type TestResult = Awaited<ReturnType<typeof runTest262File>>;
+type TestTiming = NonNullable<TestResult["timing"]>;
 
 /** Known tests that cause infinite loops in compiled Wasm — skip these */
 const KNOWN_HANGING_TESTS = new Set([
@@ -207,7 +341,8 @@ function runBatch(batch: TestJob[], onResult?: (r: WorkerResult) => void): Promi
   });
 }
 
-const RESULTS_DIR = join(import.meta.dirname ?? ".", "..", "benchmarks", "results");
+const RESULTS_DIR = OVERRIDE_RESULTS_DIR ?? join(import.meta.dirname ?? ".", "..", "benchmarks", "results");
+if (OVERRIDE_RESULTS_DIR) console.log(`Results will be written to: ${RESULTS_DIR}`);
 const JSONL_PATH = join(RESULTS_DIR, "test262-results.jsonl");
 const REPORT_PATH = join(RESULTS_DIR, "test262-report.json");
 const META_PATH = join(RESULTS_DIR, "test262-run.meta.json");
