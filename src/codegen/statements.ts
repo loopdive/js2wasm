@@ -1529,7 +1529,10 @@ function compileReturnStatement(
     // Bare `return;` in a value-returning function — push default value
     if (fctx.returnType.kind === "f64") fctx.body.push({ op: "f64.const", value: 0 });
     else if (fctx.returnType.kind === "i32") fctx.body.push({ op: "i32.const", value: 0 });
-    else if (fctx.returnType.kind === "externref") fctx.body.push({ op: "ref.null", refType: "extern" } as any);
+    else if (fctx.returnType.kind === "i64") fctx.body.push({ op: "i64.const", value: 0n });
+    else if (fctx.returnType.kind === "externref") fctx.body.push({ op: "ref.null.extern" });
+    else if (fctx.returnType.kind === "ref_null") fctx.body.push({ op: "ref.null", typeIdx: fctx.returnType.typeIdx } as unknown as Instr);
+    else if (fctx.returnType.kind === "ref") fctx.body.push({ op: "ref.null", typeIdx: fctx.returnType.typeIdx } as unknown as Instr);
   }
   fctx.body.push({ op: "return" });
 }

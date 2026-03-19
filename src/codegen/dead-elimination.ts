@@ -65,6 +65,7 @@ function collectRefsFromBody(
         }
         break;
       case "ref.cast":
+      case "ref.cast_null":
       case "ref.test":
         usedTypes.add(instr.typeIdx);
         break;

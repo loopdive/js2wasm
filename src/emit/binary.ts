@@ -880,6 +880,11 @@ export function encodeInstr(instr: Instr, enc: WasmEncoder): void {
       enc.byte(GC.ref_cast);
       enc.i32(instr.typeIdx);
       break;
+    case "ref.cast_null":
+      enc.byte(GC.prefix);
+      enc.byte(GC.ref_cast_null);
+      enc.i32(instr.typeIdx);
+      break;
     case "any.convert_extern":
       enc.byte(GC.prefix);
       enc.byte(GC.any_convert_extern);
