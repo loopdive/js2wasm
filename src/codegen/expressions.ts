@@ -28,7 +28,7 @@ type InnerResult = ValType | null | typeof VOID_RESULT;
  * already-compiled function bodies, the current function body, any saved bodies
  * from the savedBody swap pattern, and export descriptors.
  */
-function shiftLateImportIndices(
+export function shiftLateImportIndices(
   ctx: CodegenContext,
   fctx: FunctionContext,
   importsBefore: number,
@@ -5449,24 +5449,18 @@ function compileArrayDestructuringAssignment(
   if (!resultType) return null;
 
   if (resultType.kind !== "ref" && resultType.kind !== "ref_null") {
-    ctx.errors.push({
-      message: "Cannot destructure: not an array type",
-      line: getLine(target),
-      column: getCol(target),
-    });
-    return null;
+    // Fallback: RHS is externref (iterator result, generator yield, unknown type, etc.)
+    // Use __extern_get with numeric indices to access elements.
+    return compileArrayDestructuringAssignmentExternref(ctx, fctx, target, resultType);
   }
 
   const typeIdx = (resultType as { typeIdx: number }).typeIdx;
   const typeDef = ctx.mod.types[typeIdx];
 
   if (!typeDef || typeDef.kind !== "struct") {
-    ctx.errors.push({
-      message: "Cannot destructure: not an array struct type",
-      line: getLine(target),
-      column: getCol(target),
-    });
-    return null;
+    // Not a struct — convert to externref and use __extern_get fallback
+    fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+    return compileArrayDestructuringAssignmentExternref(ctx, fctx, target, { kind: "externref" });
   }
 
   // Detect whether RHS is a tuple struct (fields $_0, $_1, ...) or vec struct ({length, data})
@@ -5699,6 +5693,157 @@ function compileArrayDestructuringAssignment(
   // The result of a destructuring assignment is the RHS value
   fctx.body.push({ op: "local.get", index: tmpLocal });
   return resultType;
+}
+
+/**
+ * Fallback array destructuring assignment when the RHS is externref.
+ * Uses __extern_get(obj, index) to access elements by numeric index.
+ */
+function compileArrayDestructuringAssignmentExternref(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  target: ts.ArrayLiteralExpression,
+  rhsType: ValType,
+): InnerResult {
+  // Convert RHS to externref if needed
+  if (rhsType.kind === "f64") {
+    const boxIdx = ctx.funcMap.get("__box_number");
+    if (boxIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: boxIdx });
+    } else {
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "ref.null.extern" });
+    }
+  } else if (rhsType.kind === "i32") {
+    fctx.body.push({ op: "f64.convert_i32_s" });
+    const boxIdx = ctx.funcMap.get("__box_number");
+    if (boxIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: boxIdx });
+    } else {
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "ref.null.extern" });
+    }
+  }
+  // externref stays as-is
+
+  const tmpLocal = allocLocal(fctx, `__arr_dstr_ext_${fctx.locals.length}`, { kind: "externref" });
+  fctx.body.push({ op: "local.set", index: tmpLocal });
+
+  // Ensure __extern_get is available
+  let getIdx = ctx.funcMap.get("__extern_get");
+  if (getIdx === undefined) {
+    const importsBefore = ctx.numImportFuncs;
+    const getType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", "__extern_get", { kind: "func", typeIdx: getType });
+    shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+    getIdx = ctx.funcMap.get("__extern_get");
+  }
+  if (getIdx === undefined) return null;
+
+  // Ensure __box_number is available for index boxing
+  let boxIdx = ctx.funcMap.get("__box_number");
+  if (boxIdx === undefined) {
+    const importsBefore = ctx.numImportFuncs;
+    const boxType = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", "__box_number", { kind: "func", typeIdx: boxType });
+    shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+    boxIdx = ctx.funcMap.get("__box_number");
+  }
+
+  // Helper: emit __extern_get(obj, boxed_index)
+  const emitExternGet = (i: number) => {
+    fctx.body.push({ op: "local.get", index: tmpLocal });
+    fctx.body.push({ op: "f64.const", value: i });
+    if (boxIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: boxIdx });
+    }
+    fctx.body.push({ op: "call", funcIdx: getIdx! });
+  };
+
+  for (let i = 0; i < target.elements.length; i++) {
+    const element = target.elements[i]!;
+
+    if (ts.isOmittedExpression(element)) continue;
+    if (ts.isSpreadElement(element)) continue; // rest not yet supported for externref
+
+    if (ts.isIdentifier(element)) {
+      const localName = element.text;
+      let localIdx = fctx.localMap.get(localName);
+      if (localIdx === undefined) {
+        localIdx = allocLocal(fctx, localName, { kind: "externref" });
+      }
+      emitExternGet(i);
+      const localType = getLocalType(fctx, localIdx);
+      if (localType && !valTypesMatch({ kind: "externref" }, localType)) {
+        coerceType(ctx, fctx, { kind: "externref" }, localType);
+      }
+      fctx.body.push({ op: "local.set", index: localIdx });
+    } else if (ts.isPropertyAccessExpression(element) || ts.isElementAccessExpression(element)) {
+      emitExternGet(i);
+      const tmpElem = allocLocal(fctx, `__arr_elem_ext_${fctx.locals.length}`, { kind: "externref" });
+      fctx.body.push({ op: "local.set", index: tmpElem });
+      emitAssignToTarget(ctx, fctx, element, tmpElem, { kind: "externref" });
+    } else if (ts.isObjectLiteralExpression(element)) {
+      emitExternGet(i);
+      const tmpElem = allocLocal(fctx, `__arr_elem_ext_${fctx.locals.length}`, { kind: "externref" });
+      fctx.body.push({ op: "local.set", index: tmpElem });
+      emitObjectDestructureFromLocal(ctx, fctx, element, tmpElem, { kind: "externref" });
+    } else if (ts.isArrayLiteralExpression(element)) {
+      emitExternGet(i);
+      const tmpElem = allocLocal(fctx, `__arr_elem_ext_${fctx.locals.length}`, { kind: "externref" });
+      fctx.body.push({ op: "local.set", index: tmpElem });
+      emitArrayDestructureFromLocal(ctx, fctx, element, tmpElem, { kind: "externref" });
+    } else if (ts.isBinaryExpression(element) && element.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+      const assignTarget = element.left;
+      const defaultExpr = element.right;
+      if (ts.isIdentifier(assignTarget)) {
+        const localName = assignTarget.text;
+        let localIdx = fctx.localMap.get(localName);
+        if (localIdx === undefined) {
+          localIdx = allocLocal(fctx, localName, { kind: "externref" });
+        }
+        emitExternGet(i);
+        const tmpElem = allocLocal(fctx, `__dflt_ext_${fctx.locals.length}`, { kind: "externref" });
+        fctx.body.push({ op: "local.tee", index: tmpElem });
+        fctx.body.push({ op: "ref.is_null" } as Instr);
+        const localType = getLocalType(fctx, localIdx);
+        fctx.body.push({
+          op: "if",
+          blockType: { kind: "empty" },
+          then: [
+            ...(() => {
+              const saved = fctx.body;
+              fctx.body = [];
+              compileExpression(ctx, fctx, defaultExpr, localType ?? { kind: "externref" });
+              fctx.body.push({ op: "local.set", index: localIdx! } as Instr);
+              const instrs = fctx.body;
+              fctx.body = saved;
+              return instrs;
+            })(),
+          ],
+          else: [
+            { op: "local.get", index: tmpElem } as Instr,
+            ...(() => {
+              if (localType && !valTypesMatch({ kind: "externref" }, localType)) {
+                const saved = fctx.body;
+                fctx.body = [];
+                coerceType(ctx, fctx, { kind: "externref" }, localType);
+                const instrs = fctx.body;
+                fctx.body = saved;
+                return instrs;
+              }
+              return [];
+            })(),
+            { op: "local.set", index: localIdx! } as Instr,
+          ],
+        });
+      }
+    }
+  }
+
+  // Return the RHS value
+  fctx.body.push({ op: "local.get", index: tmpLocal });
+  return { kind: "externref" };
 }
 
 /** Assign value from a local to a property access or element access target */

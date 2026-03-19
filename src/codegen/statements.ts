@@ -8,11 +8,13 @@ import {
   compileExpression,
   emitBoundsCheckedArrayGet,
   emitCoercedLocalSet,
+  shiftLateImportIndices,
   valTypesMatch,
 } from "./expressions.js";
 import type { CodegenContext, FunctionContext } from "./index.js";
 import {
   addFuncType,
+  addImport,
   addStringImports,
   addUnionImports,
   allocLocal,
@@ -873,13 +875,8 @@ function compileArrayDestructuring(
   if (!resultType) return;
 
   if (resultType.kind !== "ref" && resultType.kind !== "ref_null") {
-    fctx.body.length = bodyLenBefore;
-    ensureBindingLocals(ctx, fctx, pattern);
-    ctx.errors.push({
-      message: "Cannot destructure: not an array type",
-      line: getLine(decl),
-      column: getCol(decl),
-    });
+    // Fallback: RHS is externref — use __extern_get with numeric indices
+    compileArrayDestructuringExternref(ctx, fctx, pattern, resultType);
     return;
   }
 
@@ -888,13 +885,9 @@ function compileArrayDestructuring(
 
   // Handle vec struct (array wrapped in {length, data})
   if (!typeDef || typeDef.kind !== "struct") {
-    fctx.body.length = bodyLenBefore;
-    ensureBindingLocals(ctx, fctx, pattern);
-    ctx.errors.push({
-      message: "Cannot destructure: not an array type",
-      line: getLine(decl),
-      column: getCol(decl),
-    });
+    // Not a struct — convert to externref and use __extern_get fallback
+    fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+    compileArrayDestructuringExternref(ctx, fctx, pattern, { kind: "externref" });
     return;
   }
 
@@ -1235,6 +1228,146 @@ function compileArrayDestructuring(
     fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: arrDestructInstrs });
   } else {
     fctx.body.push(...arrDestructInstrs);
+  }
+}
+
+/**
+ * Fallback array destructuring when the RHS is externref (or coerced to externref).
+ * Uses __extern_get(obj, index) to access elements by numeric index.
+ */
+function compileArrayDestructuringExternref(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  pattern: ts.ArrayBindingPattern,
+  rhsType: ValType,
+): void {
+  // Convert RHS to externref if needed
+  if (rhsType.kind === "f64") {
+    const boxIdx = ctx.funcMap.get("__box_number");
+    if (boxIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: boxIdx });
+    } else {
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "ref.null.extern" });
+    }
+  } else if (rhsType.kind === "i32") {
+    fctx.body.push({ op: "f64.convert_i32_s" });
+    const boxIdx = ctx.funcMap.get("__box_number");
+    if (boxIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: boxIdx });
+    } else {
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "ref.null.extern" });
+    }
+  }
+  // externref stays as-is
+
+  // Ensure all binding locals exist
+  ensureBindingLocals(ctx, fctx, pattern);
+
+  const tmpLocal = allocLocal(fctx, `__arr_dstr_ext_${fctx.locals.length}`, { kind: "externref" });
+  fctx.body.push({ op: "local.set", index: tmpLocal });
+
+  // Ensure __extern_get is available
+  let getIdx = ctx.funcMap.get("__extern_get");
+  if (getIdx === undefined) {
+    const importsBefore = ctx.numImportFuncs;
+    const getType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", "__extern_get", { kind: "func", typeIdx: getType });
+    shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+    getIdx = ctx.funcMap.get("__extern_get");
+  }
+  if (getIdx === undefined) return;
+
+  // Ensure __box_number is available for index boxing
+  let boxIdx = ctx.funcMap.get("__box_number");
+  if (boxIdx === undefined) {
+    const importsBefore = ctx.numImportFuncs;
+    const boxType = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", "__box_number", { kind: "func", typeIdx: boxType });
+    shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+    boxIdx = ctx.funcMap.get("__box_number");
+  }
+
+  // Helper: emit __extern_get(obj, boxed_index)
+  const emitExternGet = (i: number) => {
+    fctx.body.push({ op: "local.get", index: tmpLocal });
+    fctx.body.push({ op: "f64.const", value: i });
+    if (boxIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: boxIdx });
+    }
+    fctx.body.push({ op: "call", funcIdx: getIdx! });
+  };
+
+  for (let i = 0; i < pattern.elements.length; i++) {
+    const element = pattern.elements[i]!;
+    if (ts.isOmittedExpression(element)) continue;
+
+    // Rest element not yet supported for externref
+    if (ts.isBindingElement(element) && element.dotDotDotToken) {
+      continue;
+    }
+
+    if (!ts.isBindingElement(element)) continue;
+
+    if (ts.isIdentifier(element.name)) {
+      const localName = element.name.text;
+      let localIdx = fctx.localMap.get(localName);
+      if (localIdx === undefined) {
+        localIdx = allocLocal(fctx, localName, { kind: "externref" });
+      }
+      emitExternGet(i);
+
+      // Handle default value: const [x = defaultVal] = arr
+      if (element.initializer) {
+        const tmpElem = allocLocal(fctx, `__dflt_ext_${fctx.locals.length}`, { kind: "externref" });
+        fctx.body.push({ op: "local.tee", index: tmpElem });
+        fctx.body.push({ op: "ref.is_null" } as Instr);
+        const localType = getLocalType(fctx, localIdx);
+        fctx.body.push({
+          op: "if",
+          blockType: { kind: "empty" },
+          then: [
+            ...(() => {
+              const saved = fctx.body;
+              fctx.body = [];
+              compileExpression(ctx, fctx, element.initializer!, localType ?? { kind: "externref" });
+              fctx.body.push({ op: "local.set", index: localIdx! } as Instr);
+              const instrs = fctx.body;
+              fctx.body = saved;
+              return instrs;
+            })(),
+          ],
+          else: [
+            { op: "local.get", index: tmpElem } as Instr,
+            ...(() => {
+              const localType2 = getLocalType(fctx, localIdx!);
+              if (localType2 && !valTypesMatch({ kind: "externref" }, localType2)) {
+                const saved = fctx.body;
+                fctx.body = [];
+                coerceType(ctx, fctx, { kind: "externref" }, localType2);
+                const instrs = fctx.body;
+                fctx.body = saved;
+                return instrs;
+              }
+              return [];
+            })(),
+            { op: "local.set", index: localIdx! } as Instr,
+          ],
+        });
+      } else {
+        const localType = getLocalType(fctx, localIdx);
+        if (localType && !valTypesMatch({ kind: "externref" }, localType)) {
+          coerceType(ctx, fctx, { kind: "externref" }, localType);
+        }
+        fctx.body.push({ op: "local.set", index: localIdx });
+      }
+    } else if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
+      emitExternGet(i);
+      const nestedLocal = allocLocal(fctx, `__destruct_nested_ext_${fctx.locals.length}`, { kind: "externref" });
+      fctx.body.push({ op: "local.set", index: nestedLocal });
+      ensureBindingLocals(ctx, fctx, element.name);
+    }
   }
 }
 
@@ -3431,6 +3564,22 @@ function compileTryStatement(
 ): void {
   const tagIdx = ensureExnTag(ctx);
 
+  // Pre-compile the finally block once if present.  The resulting instructions
+  // are cloned (structuredClone) into each control-flow path that needs them
+  // (normal exit, catch-normal exit, catch-exception exit, catch_all paths).
+  // This avoids recompiling the same TS statements 3-5 times which would
+  // duplicate locals/imports and inflate the binary.
+  let finallyInstrs: Instr[] | null = null;
+  if (stmt.finallyBlock) {
+    const prevBody = fctx.body;
+    fctx.body = [];
+    for (const s of stmt.finallyBlock.statements) {
+      compileStatement(ctx, fctx, s);
+    }
+    finallyInstrs = fctx.body;
+    fctx.body = prevBody;
+  }
+
   // Compile the try block body
   const savedBody = pushBody(fctx);
 
@@ -3444,10 +3593,8 @@ function compileTryStatement(
   }
 
   // If there's a finally block, inline it at the end of the try body (normal path)
-  if (stmt.finallyBlock) {
-    for (const s of stmt.finallyBlock.statements) {
-      compileStatement(ctx, fctx, s);
-    }
+  if (finallyInstrs) {
+    fctx.body.push(...structuredClone(finallyInstrs));
   }
 
   const tryBody = fctx.body;
@@ -3458,11 +3605,9 @@ function compileTryStatement(
 
   // If there's a finally block but no catch clause, we need a catch_all
   // that runs the finally block and then rethrows the exception.
-  if (stmt.finallyBlock && !stmt.catchClause) {
+  if (finallyInstrs && !stmt.catchClause) {
     fctx.body = [];
-    for (const s of stmt.finallyBlock.statements) {
-      compileStatement(ctx, fctx, s);
-    }
+    fctx.body.push(...structuredClone(finallyInstrs));
     fctx.body.push({ op: "rethrow", depth: 0 } as any);
     catchAllBody = fctx.body;
   }
@@ -3489,6 +3634,29 @@ function compileTryStatement(
       exnLocalIdx = allocLocal(fctx, `__catch_destruct_${fctx.locals.length}`, { kind: "externref" });
     }
 
+    // Compile catch clause body once; clone for catch_all reuse.
+    // When a finally block exists, the catch body will be wrapped in an inner
+    // try/catch_all, so we need to compile it at +1 break/continue depth.
+    let catchBodyInstrs: Instr[] | null = null;
+    {
+      const prevBody = fctx.body;
+      fctx.body = [];
+      if (finallyInstrs) {
+        // The inner try wrapper adds one label level for break/continue
+        for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!++;
+        for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!++;
+      }
+      for (const s of stmt.catchClause.block.statements) {
+        compileStatement(ctx, fctx, s);
+      }
+      if (finallyInstrs) {
+        for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!--;
+        for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!--;
+      }
+      catchBodyInstrs = fctx.body;
+      fctx.body = prevBody;
+    }
+
     // Build "catch $exn" body: receives the externref value on the stack
     {
       fctx.body = [];
@@ -3498,32 +3666,20 @@ function compileTryStatement(
         fctx.body.push({ op: "drop" });
       }
 
-      if (stmt.finallyBlock) {
+      if (finallyInstrs) {
         // Wrap catch body in inner try/catch_all so that if the catch body
         // throws, the finally block still executes before the exception
         // propagates.
         const catchSavedBody = fctx.body;
-        fctx.body = [];
-        // The inner try adds one label level for break/continue
-        for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!++;
-        for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!++;
 
-        for (const s of stmt.catchClause.block.statements) {
-          compileStatement(ctx, fctx, s);
-        }
-        const innerTryBody = fctx.body;
+        // The inner try body is the catch clause body
+        const innerTryBody = structuredClone(catchBodyInstrs!);
 
         // Build inner catch_all: run finally then rethrow
-        fctx.body = [];
-        for (const s of stmt.finallyBlock.statements) {
-          compileStatement(ctx, fctx, s);
-        }
-        // rethrow depth 0 = rethrow exception from this catch_all's try
-        fctx.body.push({ op: "rethrow", depth: 0 } as any);
-        const innerCatchAllBody = fctx.body;
-
-        for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!--;
-        for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!--;
+        const innerCatchAllBody: Instr[] = [
+          ...structuredClone(finallyInstrs),
+          { op: "rethrow", depth: 0 } as any,
+        ];
 
         fctx.body = catchSavedBody;
         fctx.body.push({
@@ -3535,13 +3691,9 @@ function compileTryStatement(
         } as any);
 
         // Finally on normal exit path (no exception in catch body)
-        for (const s of stmt.finallyBlock.statements) {
-          compileStatement(ctx, fctx, s);
-        }
+        fctx.body.push(...structuredClone(finallyInstrs));
       } else {
-        for (const s of stmt.catchClause.block.statements) {
-          compileStatement(ctx, fctx, s);
-        }
+        fctx.body.push(...catchBodyInstrs!);
       }
       catches = [{ tagIdx, body: fctx.body }];
     }
@@ -3554,27 +3706,16 @@ function compileTryStatement(
         fctx.body.push({ op: "local.set", index: exnLocalIdx });
       }
 
-      if (stmt.finallyBlock) {
+      if (finallyInstrs) {
         // Same wrapping as catch $exn body above
         const catchAllSavedBody = fctx.body;
-        fctx.body = [];
-        for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!++;
-        for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!++;
 
-        for (const s of stmt.catchClause.block.statements) {
-          compileStatement(ctx, fctx, s);
-        }
-        const innerTryBody = fctx.body;
+        const innerTryBody = structuredClone(catchBodyInstrs!);
 
-        fctx.body = [];
-        for (const s of stmt.finallyBlock.statements) {
-          compileStatement(ctx, fctx, s);
-        }
-        fctx.body.push({ op: "rethrow", depth: 0 } as any);
-        const innerCatchAllBody = fctx.body;
-
-        for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!--;
-        for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!--;
+        const innerCatchAllBody: Instr[] = [
+          ...structuredClone(finallyInstrs),
+          { op: "rethrow", depth: 0 } as any,
+        ];
 
         fctx.body = catchAllSavedBody;
         fctx.body.push({
@@ -3585,13 +3726,9 @@ function compileTryStatement(
           catchAll: innerCatchAllBody,
         } as any);
 
-        for (const s of stmt.finallyBlock.statements) {
-          compileStatement(ctx, fctx, s);
-        }
+        fctx.body.push(...structuredClone(finallyInstrs));
       } else {
-        for (const s of stmt.catchClause.block.statements) {
-          compileStatement(ctx, fctx, s);
-        }
+        fctx.body.push(...structuredClone(catchBodyInstrs!));
       }
       catchAllBody = fctx.body;
     }
