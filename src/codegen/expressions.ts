@@ -1093,6 +1093,15 @@ function compileExpressionInner(
     return compileClassExpression(ctx, fctx, expr);
   }
 
+  // PrivateIdentifier (e.g., `#x`) — when used as a standalone expression it
+  // typically appears as the LHS of `#x in obj`.  As an expression it has no
+  // runtime value; emit `i32.const 1` (truthy) so the surrounding `in`
+  // operator can proceed.
+  if (ts.isPrivateIdentifier(expr)) {
+    fctx.body.push({ op: "i32.const", value: 1 });
+    return { kind: "i32" };
+  }
+
   // `super` as standalone expression — in remaining contexts, treat as `this` reference.
   // Primary super uses (super.prop, super[expr], super.method(), super()) are handled
   // earlier in their respective access/call compilers.
@@ -3553,9 +3562,17 @@ function compileBinaryExpression(
 
     // Resolve the key to a compile-time string if possible.
     // For comma expressions like (x = y, "key"), extract the last element.
+    // Handle `#x in obj` — PrivateIdentifier on the LHS checks if the
+    // private field exists on the object (always true for our structs).
     let staticKey: string | null = null;
     let leftExpr: ts.Expression = expr.left;
-    if (ts.isStringLiteral(leftExpr)) {
+    if (ts.isPrivateIdentifier(leftExpr)) {
+      // `#field in obj` — private field brand check.  Our struct-based
+      // classes always have all declared fields, so if the field exists
+      // in the struct definition return true, otherwise false.
+      const privName = leftExpr.text.startsWith("#") ? leftExpr.text.slice(1) : leftExpr.text;
+      staticKey = privName;
+    } else if (ts.isStringLiteral(leftExpr)) {
       staticKey = leftExpr.text;
     } else if (ts.isNumericLiteral(leftExpr)) {
       staticKey = leftExpr.text;

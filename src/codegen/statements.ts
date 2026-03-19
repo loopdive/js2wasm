@@ -284,6 +284,29 @@ function compileStatementInner(
     return;
   }
 
+  // Class member nodes that can leak into compileStatement when iterating
+  // class body or constructor body — treat as no-ops since field initializers
+  // are handled separately in compileClassBodies (index.ts).
+  if (stmt.kind === ts.SyntaxKind.PropertyDeclaration) {
+    // Field declarations (e.g., `x = 5`, `#y: string`) — initializers are
+    // compiled in compileClassBodies via struct.set; skip here.
+    return;
+  }
+  if (stmt.kind === ts.SyntaxKind.SemicolonClassElement) {
+    // Stray `;` inside class body — no-op.
+    return;
+  }
+  if (stmt.kind === ts.SyntaxKind.ClassStaticBlockDeclaration) {
+    // `static { ... }` block — compile the statements inside.
+    const staticBlock = stmt as unknown as ts.ClassStaticBlockDeclaration;
+    if (staticBlock.body) {
+      for (const s of staticBlock.body.statements) {
+        compileStatement(ctx, fctx, s);
+      }
+    }
+    return;
+  }
+
   ctx.errors.push({
     message: `Unsupported statement: ${ts.SyntaxKind[stmt.kind]}`,
     line: getLine(stmt),
