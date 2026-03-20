@@ -487,6 +487,8 @@ function formatInstr(instr: Instr, _depth: number): string {
       return "ref.null extern";
     case "ref.null.eq":
       return "ref.null eq";
+    case "ref.null.func":
+      return "ref.null func";
     case "ref.cast":
       return `ref.cast (ref ${instr.typeIdx})`;
     case "ref.cast_null":

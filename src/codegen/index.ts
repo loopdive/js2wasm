@@ -2490,6 +2490,7 @@ function emitWrapperValueOfFunctions(ctx: CodegenContext): void {
         { op: "local.get", index: 0 },
         { op: "struct.get", typeIdx: ctx.wrapperNumberTypeIdx, fieldIdx: 0 },
       ] as Instr[],
+      exported: false,
     });
     ctx.funcMap.set("WrapperNumber_valueOf", funcIdx);
   }
@@ -2511,6 +2512,7 @@ function emitWrapperValueOfFunctions(ctx: CodegenContext): void {
         { op: "local.get", index: 0 },
         { op: "struct.get", typeIdx: ctx.wrapperStringTypeIdx, fieldIdx: 0 },
       ] as Instr[],
+      exported: false,
     });
     ctx.funcMap.set("WrapperString_valueOf", funcIdx);
   }
@@ -2532,6 +2534,7 @@ function emitWrapperValueOfFunctions(ctx: CodegenContext): void {
         { op: "local.get", index: 0 },
         { op: "struct.get", typeIdx: ctx.wrapperBooleanTypeIdx, fieldIdx: 0 },
       ] as Instr[],
+      exported: false,
     });
     ctx.funcMap.set("WrapperBoolean_valueOf", funcIdx);
   }
@@ -2588,7 +2591,7 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
     { op: "i32.const", value: 0 },
     { op: "i32.const", value: 0 },
     { op: "f64.const", value: 0 },
-    { op: "ref.null", typeIdx: EQ_HEAP_TYPE } as unknown as Instr,
+    { op: "ref.null", typeIdx: EQ_HEAP_TYPE },
     { op: "ref.null.extern" },
     { op: "struct.new", typeIdx: anyTypeIdx },
   ]);
@@ -2599,7 +2602,7 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
     { op: "i32.const", value: 1 },
     { op: "i32.const", value: 0 },
     { op: "f64.const", value: 0 },
-    { op: "ref.null", typeIdx: EQ_HEAP_TYPE } as unknown as Instr,
+    { op: "ref.null", typeIdx: EQ_HEAP_TYPE },
     { op: "ref.null.extern" },
     { op: "struct.new", typeIdx: anyTypeIdx },
   ]);
@@ -2610,7 +2613,7 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
     { op: "i32.const", value: 2 },
     { op: "local.get", index: 0 },
     { op: "f64.const", value: 0 },
-    { op: "ref.null", typeIdx: EQ_HEAP_TYPE } as unknown as Instr,
+    { op: "ref.null", typeIdx: EQ_HEAP_TYPE },
     { op: "ref.null.extern" },
     { op: "struct.new", typeIdx: anyTypeIdx },
   ]);
@@ -2621,7 +2624,7 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
     { op: "i32.const", value: 3 },
     { op: "i32.const", value: 0 },
     { op: "local.get", index: 0 },
-    { op: "ref.null", typeIdx: EQ_HEAP_TYPE } as unknown as Instr,
+    { op: "ref.null", typeIdx: EQ_HEAP_TYPE },
     { op: "ref.null.extern" },
     { op: "struct.new", typeIdx: anyTypeIdx },
   ]);
@@ -2632,7 +2635,7 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
     { op: "i32.const", value: 4 },
     { op: "local.get", index: 0 },
     { op: "f64.const", value: 0 },
-    { op: "ref.null", typeIdx: EQ_HEAP_TYPE } as unknown as Instr,
+    { op: "ref.null", typeIdx: EQ_HEAP_TYPE },
     { op: "ref.null.extern" },
     { op: "struct.new", typeIdx: anyTypeIdx },
   ]);
@@ -2643,7 +2646,7 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
     { op: "i32.const", value: 5 },
     { op: "i32.const", value: 0 },
     { op: "f64.const", value: 0 },
-    { op: "ref.null", typeIdx: EQ_HEAP_TYPE } as unknown as Instr,
+    { op: "ref.null", typeIdx: EQ_HEAP_TYPE },
     { op: "local.get", index: 0 },
     { op: "struct.new", typeIdx: anyTypeIdx },
   ]);
@@ -2677,7 +2680,7 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
         { op: "local.get", index: 0 },
         { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
       ],
-    } as unknown as Instr,
+    },
   ]);
 
   // __any_unbox_f64(val: ref $AnyValue) -> f64
@@ -2698,7 +2701,7 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
         { op: "local.get", index: 0 },
         { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 },
       ],
-    } as unknown as Instr,
+    },
   ]);
 
   // __any_unbox_bool(val: ref $AnyValue) -> i32
@@ -2744,11 +2747,11 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
                 { op: "i32.const", value: 5 },
                 { op: "i32.ge_s" },
               ],
-            } as unknown as Instr,
+            },
           ],
-        } as unknown as Instr,
+        },
       ],
-    } as unknown as Instr,
+    },
   ]);
 
   // __any_unbox_extern(val: ref $AnyValue) -> externref
@@ -2799,9 +2802,9 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
             { op: "local.get", index: 0 },
             { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 },
           ],
-        } as unknown as Instr,
+        },
       ],
-    } as unknown as Instr,
+    },
   ], [
     { name: "tag", type: { kind: "i32" } },
   ]);
@@ -2850,7 +2853,7 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
         { op: "f64.add" },
         { op: "call", funcIdx: boxF64Idx },
       ],
-    } as unknown as Instr,
+    },
   ], [
     { name: "tagA", type: { kind: "i32" } },
     { name: "tagB", type: { kind: "i32" } },
@@ -2885,7 +2888,7 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
           { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
           { op: "local.get", index: 1 },
           { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
-          { op: i32op } as unknown as Instr,
+          { op: i32op },
           { op: "call", funcIdx: boxI32Idx },
         ],
         else: [
@@ -2894,10 +2897,10 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
           { op: "call", funcIdx: toF64Idx },
           { op: "local.get", index: 1 },
           { op: "call", funcIdx: toF64Idx },
-          { op: f64op } as unknown as Instr,
+          { op: f64op },
           { op: "call", funcIdx: boxF64Idx },
         ],
-      } as unknown as Instr,
+      },
     ], [
       { name: "tagA", type: { kind: "i32" } },
       { name: "tagB", type: { kind: "i32" } },
@@ -2963,7 +2966,7 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
         { op: "f64.sub" },
         { op: "call", funcIdx: boxF64Idx },
       ],
-    } as unknown as Instr,
+    },
   ], [
     { name: "tagA", type: { kind: "i32" } },
     { name: "tagB", type: { kind: "i32" } },
@@ -2977,7 +2980,7 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
     // Fast path: if both refs point to the same AnyValue struct, they are equal.
     { op: "local.get", index: 0 },
     { op: "local.get", index: 1 },
-    { op: "ref.eq" } as unknown as Instr,
+    { op: "ref.eq" },
     { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
       then: [
         { op: "i32.const", value: 1 },
@@ -3014,7 +3017,7 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
               else: [
                 { op: "i32.const", value: 0 },
               ],
-            } as unknown as Instr,
+            },
           ],
           else: [
             // Same tag — compare by tag type
@@ -3067,7 +3070,7 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
                             { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 3 },
                             { op: "local.get", index: 1 },
                             { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 3 },
-                            { op: "ref.eq" } as unknown as Instr,
+                            { op: "ref.eq" },
                           ],
                           else: [
                             // null/undefined (tag < 2): both same tag → equal
@@ -3075,17 +3078,17 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
                             { op: "i32.const", value: 2 },
                             { op: "i32.lt_s" },
                           ],
-                        } as unknown as Instr,
+                        },
                       ],
-                    } as unknown as Instr,
+                    },
                   ],
-                } as unknown as Instr,
+                },
               ],
-            } as unknown as Instr,
+            },
           ],
-        } as unknown as Instr,
+        },
       ],
-    } as unknown as Instr,
+    },
   ], [
     { name: "tagA", type: { kind: "i32" } },
     { name: "tagB", type: { kind: "i32" } },
@@ -3098,7 +3101,7 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
     // This handles object identity (var b = a) for all tag types.
     { op: "local.get", index: 0 },
     { op: "local.get", index: 1 },
-    { op: "ref.eq" } as unknown as Instr,
+    { op: "ref.eq" },
     { op: "if", blockType: { kind: "val", type: { kind: "i32" } },
       then: [
         { op: "i32.const", value: 1 },
@@ -3171,7 +3174,7 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
                             { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 3 },
                             { op: "local.get", index: 1 },
                             { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 3 },
-                            { op: "ref.eq" } as unknown as Instr,
+                            { op: "ref.eq" },
                           ],
                           else: [
                             // null/undefined (tag < 2): both same tag → equal
@@ -3181,17 +3184,17 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
                             { op: "i32.const", value: 2 },
                             { op: "i32.lt_s" },
                           ],
-                        } as unknown as Instr,
+                        },
                       ],
-                    } as unknown as Instr,
+                    },
                   ],
-                } as unknown as Instr,
+                },
               ],
-            } as unknown as Instr,
+            },
           ],
-        } as unknown as Instr,
+        },
       ],
-    } as unknown as Instr,
+    },
   ], [
     { name: "tagA", type: { kind: "i32" } },
     { name: "tagB", type: { kind: "i32" } },
@@ -3205,7 +3208,7 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
       { op: "call", funcIdx: toF64Idx },
       { op: "local.get", index: 1 },
       { op: "call", funcIdx: toF64Idx },
-      { op: f64op } as unknown as Instr,
+      { op: f64op },
     ]);
   }
 
@@ -3235,7 +3238,7 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
         { op: "f64.neg" },
         { op: "call", funcIdx: boxF64Idx },
       ],
-    } as unknown as Instr,
+    },
   ]);
 
   // __any_typeof(a) -> ref $AnyString (native string in fast mode)
@@ -3305,13 +3308,13 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
                       // (In practice tag 5 would be "string" but we don't use it in fast mode)
                       ...nativeStrConstInstrs("object"),
                     ],
-                  } as unknown as Instr,
+                  },
                 ],
-              } as unknown as Instr,
+              },
             ],
-          } as unknown as Instr,
+          },
         ],
-      } as unknown as Instr,
+      },
     ], [
       { name: "tag", type: { kind: "i32" } },
     ]);
@@ -5446,7 +5449,7 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
             { op: "local.get", index: 5 },
             { op: "i32.const", value: -1 },
             { op: "i32.eq" },
-            { op: "br_if", labelIdx: 1 },
+            { op: "br_if", depth: 1 },
 
             // prefix = s.substring(pos, idx)
             { op: "local.get", index: 0 },
@@ -5474,7 +5477,7 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
             { op: "local.set", index: 4 },
 
             // continue loop
-            { op: "br", labelIdx: 0 },
+            { op: "br", depth: 0 },
           ]},
         ]},
 
@@ -7770,7 +7773,7 @@ function boxToExternref(ctx: CodegenContext, elemKey: string): Instr[] {
       return [{ op: "call", funcIdx: boxIdx } as Instr];
     }
     // Fallback: drop and push null
-    return [{ op: "drop" } as Instr, { op: "ref.null.extern" } as unknown as Instr];
+    return [{ op: "drop" } as Instr, { op: "ref.null.extern" }];
   }
   if (elemKey === "i32") {
     addUnionImports(ctx);
@@ -7781,7 +7784,7 @@ function boxToExternref(ctx: CodegenContext, elemKey: string): Instr[] {
         { op: "call", funcIdx: boxIdx } as Instr,
       ];
     }
-    return [{ op: "drop" } as Instr, { op: "ref.null.extern" } as unknown as Instr];
+    return [{ op: "drop" } as Instr, { op: "ref.null.extern" }];
   }
   // For ref types: extern.convert_any
   return [{ op: "extern.convert_any" } as Instr];
@@ -9404,7 +9407,7 @@ export function collectClassDeclaration(
           : wasmType.kind === "i32"
             ? [{ op: "i32.const", value: 0 }]
             : wasmType.kind === "i64"
-              ? [{ op: "i64.const", value: 0n } as unknown as Instr]
+              ? [{ op: "i64.const", value: 0n }]
               : wasmType.kind === "ref_null" || wasmType.kind === "ref"
                 ? [
                     {
@@ -10171,7 +10174,7 @@ function collectDeclarations(
         : wasmType.kind === "i32"
           ? [{ op: "i32.const", value: 0 }]
           : wasmType.kind === "i64"
-            ? [{ op: "i64.const", value: 0n } as unknown as Instr]
+            ? [{ op: "i64.const", value: 0n }]
             : wasmType.kind === "ref_null" || wasmType.kind === "ref"
               ? [
                   {
@@ -10823,10 +10826,10 @@ function fixupStructNewArgCounts(ctx: CodegenContext): void {
         return [{ op: "ref.null", typeIdx: (type as { typeIdx: number }).typeIdx }];
       default:
         if ((type as any).kind === "i64") {
-          return [{ op: "i64.const", value: 0n } as unknown as Instr];
+          return [{ op: "i64.const", value: 0n }];
         }
         if ((type as any).kind === "eqref") {
-          return [{ op: "ref.null.eq" } as unknown as Instr];
+          return [{ op: "ref.null.eq" }];
         }
         return [{ op: "i32.const", value: 0 }];
     }
@@ -11049,9 +11052,9 @@ export function compileClassBodies(
       } else if (field.type.kind === "ref" || field.type.kind === "ref_null") {
         fctx.body.push({ op: "ref.null", typeIdx: field.type.typeIdx });
       } else if ((field.type as any).kind === "i64") {
-        fctx.body.push({ op: "i64.const", value: 0n } as unknown as Instr);
+        fctx.body.push({ op: "i64.const", value: 0n });
       } else if ((field.type as any).kind === "eqref") {
-        fctx.body.push({ op: "ref.null.eq" } as unknown as Instr);
+        fctx.body.push({ op: "ref.null.eq" });
       } else {
         // Fallback for any unhandled type — push i32 0
         fctx.body.push({ op: "i32.const", value: 0 });
@@ -12286,7 +12289,7 @@ export function destructureParamObject(
           // Convert externref -> anyref -> (ref null $struct)
           fctx.body.push({ op: "local.get", index: paramIdx });
           fctx.body.push({ op: "any.convert_extern" } as Instr);
-          fctx.body.push({ op: "ref.cast_null", typeIdx: structTypeIdx } as unknown as Instr);
+          fctx.body.push({ op: "ref.cast_null", typeIdx: structTypeIdx });
           fctx.body.push({ op: "local.set", index: tmpLocal });
           // Recurse with the converted ref_null type
           destructureParamObject(ctx, fctx, tmpLocal, pattern, convertedType);
@@ -12422,11 +12425,11 @@ export function destructureParamArray(
 
       // Try direct cast to __vec_externref first (cheapest path)
       fctx.body.push({ op: "local.get", index: anyTmp });
-      fctx.body.push({ op: "ref.test", typeIdx: extVecIdx } as unknown as Instr);
+      fctx.body.push({ op: "ref.test", typeIdx: extVecIdx });
 
       const directCastInstrs: Instr[] = [
         { op: "local.get", index: anyTmp } as Instr,
-        { op: "ref.cast", typeIdx: extVecIdx } as unknown as Instr,
+        { op: "ref.cast", typeIdx: extVecIdx },
         { op: "local.set", index: resultLocal } as Instr,
       ];
 
@@ -12448,14 +12451,14 @@ export function destructureParamArray(
         const thenInstrs: Instr[] = [
           // Cast and get length
           { op: "local.get", index: anyTmp } as Instr,
-          { op: "ref.cast", typeIdx: vecIdx } as unknown as Instr,
+          { op: "ref.cast", typeIdx: vecIdx },
           { op: "local.set", index: cvtTmp } as Instr,
           { op: "local.get", index: cvtTmp } as Instr,
           { op: "struct.get", typeIdx: vecIdx, fieldIdx: 0 } as Instr, // length
           { op: "local.set", index: lenTmp } as Instr,
           // Create new externref array
           { op: "local.get", index: lenTmp } as Instr,
-          { op: "array.new_default", typeIdx: extArrTypeIdx } as unknown as Instr,
+          { op: "array.new_default", typeIdx: extArrTypeIdx },
           { op: "local.set", index: dstArrTmp } as Instr,
           // Loop: copy elements with boxing
           { op: "i32.const", value: 0 } as Instr,
@@ -12492,12 +12495,12 @@ export function destructureParamArray(
           // Create __vec_externref: struct.new(len, dstArr)
           { op: "local.get", index: lenTmp } as Instr,
           { op: "local.get", index: dstArrTmp } as Instr,
-          { op: "struct.new", typeIdx: extVecIdx } as unknown as Instr,
+          { op: "struct.new", typeIdx: extVecIdx },
           { op: "local.set", index: resultLocal } as Instr,
         ];
 
         convertInstrs.push({ op: "local.get", index: anyTmp } as Instr);
-        convertInstrs.push({ op: "ref.test", typeIdx: vecIdx } as unknown as Instr);
+        convertInstrs.push({ op: "ref.test", typeIdx: vecIdx });
         convertInstrs.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs, else: [] } as Instr);
       }
 
@@ -13025,7 +13028,7 @@ export function ensureI32Condition(
   }
   else if (condType.kind === "i64") {
     // i64 truthiness: nonzero → true
-    fctx.body.push({ op: "i64.eqz" } as unknown as Instr);
+    fctx.body.push({ op: "i64.eqz" });
     fctx.body.push({ op: "i32.eqz" });
   }
   // i32 is already valid as-is

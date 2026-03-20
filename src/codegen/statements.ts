@@ -1592,8 +1592,8 @@ function compileReturnStatement(
     else if (fctx.returnType.kind === "i32") fctx.body.push({ op: "i32.const", value: 0 });
     else if (fctx.returnType.kind === "i64") fctx.body.push({ op: "i64.const", value: 0n });
     else if (fctx.returnType.kind === "externref") fctx.body.push({ op: "ref.null.extern" });
-    else if (fctx.returnType.kind === "ref_null") fctx.body.push({ op: "ref.null", typeIdx: fctx.returnType.typeIdx } as unknown as Instr);
-    else if (fctx.returnType.kind === "ref") fctx.body.push({ op: "ref.null", typeIdx: fctx.returnType.typeIdx } as unknown as Instr);
+    else if (fctx.returnType.kind === "ref_null") fctx.body.push({ op: "ref.null", typeIdx: fctx.returnType.typeIdx });
+    else if (fctx.returnType.kind === "ref") fctx.body.push({ op: "ref.null", typeIdx: fctx.returnType.typeIdx });
   }
 
   // Tail call optimization: if the last instruction is a call or call_ref,
@@ -2447,9 +2447,9 @@ function compileForOfDestructuring(
             fctx.body.push({ op: "i32.const", value: 0 });
           } else if (bindingType.kind === "ref_null" || bindingType.kind === "ref") {
             const refTypeIdx = (bindingType as { typeIdx: number }).typeIdx;
-            fctx.body.push({ op: "ref.null", typeIdx: refTypeIdx } as unknown as Instr);
+            fctx.body.push({ op: "ref.null", typeIdx: refTypeIdx });
           } else {
-            fctx.body.push({ op: "ref.null", typeIdx: "extern" } as unknown as Instr);
+            fctx.body.push({ op: "ref.null.extern" });
           }
           fctx.body.push({ op: "local.set", index: localIdx });
         }
@@ -2519,9 +2519,9 @@ function compileForOfDestructuring(
             fctx.body.push({ op: "i32.const", value: 0 });
           } else if (bindingType.kind === "ref_null" || bindingType.kind === "ref") {
             const refTypeIdx = (bindingType as { typeIdx: number }).typeIdx;
-            fctx.body.push({ op: "ref.null", typeIdx: refTypeIdx } as unknown as Instr);
+            fctx.body.push({ op: "ref.null", typeIdx: refTypeIdx });
           } else {
-            fctx.body.push({ op: "ref.null", typeIdx: "extern" } as unknown as Instr);
+            fctx.body.push({ op: "ref.null.extern" });
           }
           fctx.body.push({ op: "local.set", index: localIdx });
         }
@@ -2573,9 +2573,9 @@ function compileForOfDestructuring(
             fctx.body.push({ op: "i32.const", value: 0 });
           } else if (bindingType.kind === "ref_null" || bindingType.kind === "ref") {
             const refTypeIdx = (bindingType as { typeIdx: number }).typeIdx;
-            fctx.body.push({ op: "ref.null", typeIdx: refTypeIdx } as unknown as Instr);
+            fctx.body.push({ op: "ref.null", typeIdx: refTypeIdx });
           } else {
-            fctx.body.push({ op: "ref.null", typeIdx: "extern" } as unknown as Instr);
+            fctx.body.push({ op: "ref.null.extern" });
           }
           fctx.body.push({ op: "local.set", index: localIdx });
         }
