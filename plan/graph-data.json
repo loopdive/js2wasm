@@ -4,7 +4,7 @@
       "id": 70,
       "title": "Fast mode — optimize for performance with restricted TypeScript",
       "priority": "low",
-      "status": "backlog",
+      "status": "done",
       "depends_on": [],
       "files": [],
       "cluster": "Unclustered"
@@ -21,15 +21,6 @@
       "cluster": "Unclustered"
     },
     {
-      "id": 81,
-      "title": "npm package resolution and tree-shaking",
-      "priority": "low",
-      "status": "backlog",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Unclustered"
-    },
-    {
       "id": 82,
       "title": "Research Findings: Implementation Strategies",
       "priority": "medium",
@@ -40,11 +31,31 @@
     },
     {
       "id": 123,
+      "title": "Wrapper object constructors: new Number/String/Boolean (648 tests)",
+      "priority": "medium",
+      "status": "backlog",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 648,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 123,
       "title": "Wrapper object constructors (new Number/String/Boolean)",
       "priority": "medium",
       "status": "wont-fix",
       "depends_on": [],
       "files": [],
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 124,
+      "title": "delete operator via undefined sentinel (232 tests)",
+      "priority": "medium",
+      "status": "backlog",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 232,
       "cluster": "Unclustered"
     },
     {
@@ -63,6 +74,18 @@
       "status": "wont-fix",
       "depends_on": [],
       "files": [],
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 129,
+      "title": "propertyHelper.js test262 harness (341 tests)",
+      "priority": "medium",
+      "status": "backlog",
+      "depends_on": [
+        125
+      ],
+      "files": [],
+      "test262_skip": 341,
       "cluster": "Unclustered"
     },
     {
@@ -93,169 +116,398 @@
       "cluster": "Unclustered"
     },
     {
-      "id": 455,
-      "title": "Compile React to Wasm",
-      "priority": "high",
-      "status": "backlog",
-      "depends_on": [],
-      "files": [],
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 512,
-      "title": "RuntimeError: illegal cast (~683 FAIL)",
-      "priority": "critical",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_fail": 683,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 513,
-      "title": "returned 0: wrong return value (~3,436 FAIL)",
-      "priority": "critical",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_fail": 3436,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 515,
-      "title": "Wasm validation: uninitialized non-defaultable local + struct.get/set type errors (~470 CE)",
+      "id": 578,
+      "title": "npm/Node.js compatibility for WASI targets",
       "priority": "high",
       "status": "ready",
       "depends_on": [],
       "files": [],
-      "compiler_errors": 470,
-      "test262_ce": 470,
       "cluster": "Unclustered"
     },
     {
-      "id": 516,
-      "title": "struct.new argument count mismatch in class constructors (1,781 CE)",
+      "id": 581,
+      "title": "struct.get on ref.null in Wasm:test function (177 CE)",
       "priority": "high",
       "status": "ready",
       "depends_on": [],
       "files": [],
-      "compiler_errors": 1781,
-      "test262_ce": 1781,
+      "compiler_errors": 177,
+      "test262_ce": 831,
       "cluster": "Unclustered"
     },
     {
-      "id": 517,
-      "title": "Unsupported call expression: class/generator/built-in method calls (2,164+ CE)",
+      "id": 582,
+      "title": "local.set type mismatch in C_method (84 CE)",
       "priority": "high",
       "status": "ready",
       "depends_on": [],
       "files": [],
-      "test262_ce": 2164,
+      "compiler_errors": 84,
+      "test262_ce": 594,
       "cluster": "Unclustered"
     },
     {
-      "id": 518,
-      "title": "Cannot destructure: not an array type (74 CE)",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 74,
-      "test262_ce": 74,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 519,
-      "title": "Internal error: targetLocal is not defined (66 CE)",
+      "id": 583,
+      "title": "Stack not empty at fallthrough in Wasm:test (82 CE) + stack-related fails",
       "priority": "high",
       "status": "ready",
       "depends_on": [],
       "files": [],
-      "compiler_errors": 66,
-      "test262_ce": 66,
+      "compiler_errors": 82,
+      "test262_fail": 82,
+      "test262_ce": 763,
       "cluster": "Unclustered"
     },
     {
-      "id": 520,
-      "title": "Delete operator: operand must be optional (80 CE)",
+      "id": 585,
+      "title": "RuntimeError: illegal cast (70 FAIL)",
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
       "files": [],
-      "compiler_errors": 80,
-      "test262_ce": 80,
+      "test262_fail": 70,
       "cluster": "Unclustered"
     },
     {
-      "id": 521,
-      "title": "Yield keyword not recognized in nested contexts (53 CE)",
+      "id": 586,
+      "title": "Deduplicate array method callbacks (~1,500 lines)",
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
       "files": [],
-      "compiler_errors": 53,
-      "test262_ce": 53,
       "cluster": "Unclustered"
     },
     {
-      "id": 522,
-      "title": "Object.keys() requires struct type argument (43 CE)",
+      "id": 587,
+      "title": "Deduplicate destructuring code (~1,300 lines)",
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
       "files": [],
-      "compiler_errors": 43,
-      "test262_ce": 43,
       "cluster": "Unclustered"
     },
     {
-      "id": 523,
-      "title": "Internal compiler errors: undefined property access (59 CE)",
+      "id": 588,
+      "title": "Finally block executes 2-3 times instead of once",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 590,
+      "title": "Generator for-of-string missing return depth update",
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
       "files": [],
-      "compiler_errors": 59,
-      "test262_ce": 59,
       "cluster": "Unclustered"
     },
     {
-      "id": 524,
-      "title": "Type '{}' missing Function properties (40 CE)",
+      "id": 591,
+      "title": "Split expressions.ts (24,427 lines) into focused modules",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [
+        586,
+        587
+      ],
+      "files": [],
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 592,
+      "title": "Consolidate 35 AST collection passes into single visitor",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 593,
+      "title": "Minor security/correctness fixes across emit + runtime",
       "priority": "low",
       "status": "ready",
       "depends_on": [],
       "files": [],
-      "compiler_errors": 40,
-      "test262_ce": 40,
       "cluster": "Unclustered"
     },
     {
-      "id": 525,
-      "title": "RuntimeError: illegal cast (683 FAIL)",
+      "id": 594,
+      "title": "Mark WasmGC struct types as `final` for V8 devirtualization",
       "priority": "high",
       "status": "ready",
       "depends_on": [],
       "files": [],
-      "test262_fail": 683,
       "cluster": "Unclustered"
     },
     {
-      "id": 526,
-      "title": "RuntimeError: dereferencing a null pointer (129 FAIL)",
+      "id": 595,
+      "title": "Integer loop inference: emit i32 loop counters in default mode",
       "priority": "high",
       "status": "ready",
       "depends_on": [],
       "files": [],
-      "test262_fail": 129,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 596,
+      "title": "Eliminate unnecessary ref.cast when type is statically known",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 597,
+      "title": "Type-specialized arithmetic: skip AnyValue for known types",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 598,
+      "title": "Typed export signatures: avoid externref at module boundary",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 599,
+      "title": "Self-contained WasmGC strings: eliminate wasm:js-string dependency",
+      "priority": "critical",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 600,
+      "title": "Component Model output: WIT interfaces from TypeScript types",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [
+        598,
+        599
+      ],
+      "files": [],
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 601,
+      "title": "Binaryen wasm-opt post-processing pass",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 602,
+      "title": "Tail call optimization: emit return_call for recursive functions",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 603,
+      "title": "Remove ~5,100 stale skip filters blocking already-implemented features",
+      "priority": "critical",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 5100,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 604,
+      "title": "Narrow async flag skip filter (1,311 tests)",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 1311,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 605,
+      "title": "Narrow negative test skip filter",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 606,
+      "title": "Test harness gaps: propertyHelper.js, assert.throws, String() indexer (1,105 tests)",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [
+        125
+      ],
+      "files": [],
+      "test262_skip": 1105,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 607,
+      "title": "Remaining small skip patterns (302 tests)",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_skip": 302,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 608,
+      "title": "TypedArray support (108 tests)",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 609,
+      "title": "Test262 runner doesn't complete all 53,010 tests (13,323 missing)",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 610,
+      "title": "Worker timeouts: 1,034 tests killed after 30s",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_fail": 1034,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 611,
+      "title": "Compiler crash: Cannot read 'kind' of undefined (2,995 CE)",
+      "priority": "critical",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "compiler_errors": 2995,
+      "test262_ce": 2995,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 612,
+      "title": "Symbol.asyncIterator required but not implemented (367+ CE)",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_ce": 367,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 613,
+      "title": "Property 'index' does not exist on string[] (206 CE)",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "compiler_errors": 206,
+      "test262_ce": 206,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 614,
+      "title": "Unsupported new expression for ArrayBuffer/DataView (203+ CE)",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [
+        608
+      ],
+      "files": [],
+      "test262_ce": 203,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 615,
+      "title": "Assignment to non-array (181 CE)",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "compiler_errors": 181,
+      "test262_ce": 181,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 616,
+      "title": "Cannot extend interface 'Iterator' (137 CE)",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "compiler_errors": 137,
+      "test262_ce": 137,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 617,
+      "title": "Wasm validation: not enough arguments for drop (109 CE)",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "compiler_errors": 109,
+      "test262_ce": 109,
       "cluster": "Unclustered"
     }
   ],
   "links": [
     {
+      "source": 586,
+      "target": 591
+    },
+    {
+      "source": 587,
+      "target": 591
+    },
+    {
+      "source": 598,
+      "target": 600
+    },
+    {
+      "source": 599,
+      "target": 600
+    },
+    {
+      "source": 125,
+      "target": 606
+    },
+    {
+      "source": 608,
+      "target": 614
+    },
+    {
+      "source": 125,
+      "target": 129
+    },
+    {
       "source": 70,
       "target": 74
     }
   ],
-  "generated": "2026-03-18T22:31:30.582Z"
+  "generated": "2026-03-19T14:39:07.380Z"
 }
