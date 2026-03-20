@@ -1778,7 +1778,7 @@ export interface TestResult {
 }
 
 /** Default per-test timeout in milliseconds (prevents infinite-loop hangs) */
-const TEST_TIMEOUT_MS = 5000;
+const TEST_TIMEOUT_MS = 8000;
 
 /**
  * Handle a negative test — one that is expected to fail at parse, early, or

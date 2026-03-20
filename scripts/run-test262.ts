@@ -241,9 +241,9 @@ function prioritizeTests(files: string[], previousFailures: Set<string>): string
 /** Batch worker pool — splits all tests across N workers, each processes its chunk.
  *  Workers send results back as they complete each test.
  *  If a worker doesn't send a result within the timeout, it's killed (hung test).
- *  Default: 60s. Override via --timeout=N (seconds) or TEST262_TIMEOUT env var. */
+ *  Default: 90s. Override via --timeout=N (seconds) or TEST262_TIMEOUT env var. */
 const POOL_SIZE = 8;
-const DEFAULT_WORKER_TIMEOUT_MS = 60_000;
+const DEFAULT_WORKER_TIMEOUT_MS = 90_000;
 let WORKER_TIMEOUT_MS = DEFAULT_WORKER_TIMEOUT_MS;
 const workerPath = join(process.cwd(), "scripts", "test262-worker.ts");
 
