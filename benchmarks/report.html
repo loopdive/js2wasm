@@ -311,36 +311,38 @@ function escapeHtml(str) {
 const _srcCache = new Map();
 const _srcQueue = [];
 let _srcFetching = 0;
-const MAX_CONCURRENT_FETCHES = 4;
+const MAX_CONCURRENT_FETCHES = 6;
 
-function fetchSourceLines(filePath, errText, afterEl) {
+// Returns a placeholder div that will be filled with source context when ready
+function fetchSourceLines(filePath, errText) {
+  const placeholder = el("div", { className: "src-placeholder" });
   const lineMatch = errText.match(/L(\d+):(\d+)\s/);
-  if (!lineMatch) return;
+  if (!lineMatch) return placeholder;
   const lineNo = parseInt(lineMatch[1], 10);
   const normalized = filePath.startsWith("test/") ? filePath : "test/" + filePath;
-  const base = window.location.pathname.replace(/\/benchmarks\/.*$/, "");
-  const url = base + "/test262/" + normalized;
 
   const cached = _srcCache.get(normalized);
-  if (cached !== undefined) { if (cached) renderSrcContext(cached, lineNo, afterEl); return; }
-  // Queue the fetch to avoid overwhelming the server
-  _srcQueue.push({ normalized, url, lineNo, afterEl });
+  if (cached !== undefined) { if (cached) renderSrcContext(cached, lineNo, placeholder); return placeholder; }
+
+  const base = window.location.pathname.replace(/\/benchmarks\/.*$/, "");
+  const url = base + "/test262/" + normalized;
+  _srcQueue.push({ normalized, url, lineNo, placeholder });
   _drainSrcQueue();
+  return placeholder;
 }
 
 function _drainSrcQueue() {
   while (_srcFetching < MAX_CONCURRENT_FETCHES && _srcQueue.length > 0) {
     const job = _srcQueue.shift();
-    // Check cache again (may have been fetched by another job)
     const cached = _srcCache.get(job.normalized);
-    if (cached !== undefined) { if (cached) renderSrcContext(cached, job.lineNo, job.afterEl); continue; }
+    if (cached !== undefined) { if (cached) renderSrcContext(cached, job.lineNo, job.placeholder); continue; }
     _srcFetching++;
     fetch(job.url).then(r => {
       if (!r.ok) throw new Error(r.status);
       return r.text();
     }).then(t => {
       _srcCache.set(job.normalized, t);
-      renderSrcContext(t, job.lineNo, job.afterEl);
+      renderSrcContext(t, job.lineNo, job.placeholder);
     }).catch(() => {
       _srcCache.set(job.normalized, null);
     }).finally(() => {
@@ -349,24 +351,21 @@ function _drainSrcQueue() {
     });
   }
 }
-function renderSrcContext(src, lineNo, afterEl) {
+function renderSrcContext(src, lineNo, container) {
   if (!src || lineNo < 1) return;
   const lines = src.split("\n");
   if (lineNo > lines.length) return;
-  // Show the target line + a few surrounding lines for multi-line statements
   const start = Math.max(0, lineNo - 2);
   const end = Math.min(lines.length, lineNo + 3);
-  const sd = el("div", { style: { fontFamily: "'SF Mono', SFMono-Regular, Consolas, monospace", fontSize: "0.625rem", paddingLeft: "1.25rem", marginTop: "2px", background: "rgba(0,0,0,0.2)", padding: "4px 8px 4px 1.25rem", borderRadius: "3px", whiteSpace: "pre", overflowX: "auto", maxWidth: "100%", lineHeight: "1.4" } });
+  container.style.cssText = "font-family: 'SF Mono', SFMono-Regular, Consolas, monospace; font-size: 0.625rem; padding: 4px 8px 4px 1.25rem; margin-top: 2px; background: rgba(0,0,0,0.2); border-radius: 3px; white-space: pre; overflow-x: auto; max-width: 100%; line-height: 1.4;";
+  container.textContent = "";
   for (let i = start; i < end; i++) {
     const isTarget = i === lineNo - 1;
-    const numSpan = el("span", { style: { color: isTarget ? "var(--error)" : "var(--text-muted)", marginRight: "0.75rem", userSelect: "none", display: "inline-block", width: "3ch", textAlign: "right" } }, String(i + 1));
-    const lineSpan = el("span", { style: { color: isTarget ? "var(--text)" : "var(--text-muted)" } }, lines[i]);
     const row = el("div", { style: { background: isTarget ? "rgba(248,81,73,0.08)" : "none" } });
-    row.appendChild(numSpan);
-    row.appendChild(lineSpan);
-    sd.appendChild(row);
+    row.appendChild(el("span", { style: { color: isTarget ? "var(--error)" : "var(--text-muted)", marginRight: "0.75rem", userSelect: "none", display: "inline-block", width: "3ch", textAlign: "right" } }, String(i + 1)));
+    row.appendChild(el("span", { style: { color: isTarget ? "var(--text)" : "var(--text-muted)" } }, lines[i]));
+    container.appendChild(row);
   }
-  afterEl.after(sd);
 }
 
 function pct(n, d) { return d > 0 ? Math.round(n / d * 100) : 0; }
@@ -458,7 +457,7 @@ function toggleDetail(row, catName, statusFilter) {
       if (f.error) {
         const errDiv = el("div", { className: "detail-err" }, f.error);
         fileEl.appendChild(errDiv);
-        fetchSourceLines(f.file, f.error, errDiv);
+        fileEl.appendChild(fetchSourceLines(f.file, f.error));
       }
       content.appendChild(fileEl);
     }
@@ -582,7 +581,7 @@ function renderConformance(data, container) {
         if (err) {
           const errDiv = el("div", { className: "detail-err" }, err);
           fileEl.appendChild(errDiv);
-          fetchSourceLines(f.file || fname, err, errDiv);
+          fileEl.appendChild(fetchSourceLines(f.file || ("test/" + fname), err));
         }
         content.appendChild(fileEl);
         shown++;
