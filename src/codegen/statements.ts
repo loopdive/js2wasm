@@ -654,6 +654,124 @@ function syncDestructuredLocalsToGlobals(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Destructuring helpers — shared across object, array, and for-of paths
+// ---------------------------------------------------------------------------
+
+/**
+ * Collect instructions emitted by `emitFn` into a separate array without
+ * appending them to the current `fctx.body`.  This replaces the pervasive
+ * "save body / swap / restore" pattern that was duplicated dozens of times.
+ */
+function collectInstrs(
+  fctx: FunctionContext,
+  emitFn: () => void,
+): Instr[] {
+  const saved = fctx.body;
+  fctx.body = [];
+  emitFn();
+  const instrs = fctx.body;
+  fctx.body = saved;
+  return instrs;
+}
+
+/**
+ * Wrap a set of destructuring instructions in a null guard.
+ *
+ * For `ref_null` source types the instructions are only executed when the
+ * reference is non-null:
+ *
+ *   local.get $srcLocal
+ *   ref.is_null
+ *   if (then: [] else: <instrs>)
+ *
+ * For non-nullable refs the instructions are emitted directly.
+ *
+ * `emitFn` should populate `fctx.body` with the instructions to guard.
+ * The helper temporarily swaps `fctx.body` so the caller's body is not
+ * modified by `emitFn`.
+ */
+function emitNullGuard(
+  fctx: FunctionContext,
+  srcLocal: number,
+  isNullable: boolean,
+  emitFn: () => void,
+): void {
+  const guardInstrs = collectInstrs(fctx, emitFn);
+  if (isNullable && guardInstrs.length > 0) {
+    fctx.body.push({ op: "local.get", index: srcLocal });
+    fctx.body.push({ op: "ref.is_null" } as Instr);
+    fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: guardInstrs });
+  } else {
+    fctx.body.push(...guardInstrs);
+  }
+}
+
+/**
+ * Emit a default-value check for a destructured binding.
+ *
+ * The stack must contain the extracted field/element value.  For externref
+ * types we check `ref.is_null` — if null we evaluate the initializer,
+ * otherwise keep the extracted value.  For f64 we check for NaN (the
+ * "undefined" sentinel).  For i32 there is no reliable sentinel so we just
+ * assign directly.
+ *
+ * @param fieldType - the Wasm type of the value currently on the stack
+ * @param localIdx  - destination local for the bound variable
+ * @param initializer - the TS default-value expression
+ * @param targetType  - optional override for the type hint passed to compileExpression
+ */
+function emitDefaultValueCheck(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  fieldType: ValType,
+  localIdx: number,
+  initializer: ts.Expression,
+  targetType?: ValType,
+): void {
+  const hintType = targetType ?? fieldType;
+
+  if (fieldType.kind === "externref") {
+    const tmpField = allocLocal(fctx, `__dflt_${fctx.locals.length}`, fieldType);
+    fctx.body.push({ op: "local.tee", index: tmpField });
+    fctx.body.push({ op: "ref.is_null" } as Instr);
+    const thenInstrs = collectInstrs(fctx, () => {
+      compileExpression(ctx, fctx, initializer, hintType);
+      fctx.body.push({ op: "local.set", index: localIdx } as Instr);
+    });
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: thenInstrs,
+      else: [
+        { op: "local.get", index: tmpField } as Instr,
+        { op: "local.set", index: localIdx } as Instr,
+      ],
+    });
+  } else if (fieldType.kind === "f64") {
+    const tmpField = allocLocal(fctx, `__dflt_${fctx.locals.length}`, fieldType);
+    fctx.body.push({ op: "local.tee", index: tmpField });
+    fctx.body.push({ op: "local.get", index: tmpField });
+    fctx.body.push({ op: "f64.ne" });
+    const thenInstrs = collectInstrs(fctx, () => {
+      compileExpression(ctx, fctx, initializer, hintType);
+      fctx.body.push({ op: "local.set", index: localIdx } as Instr);
+    });
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: thenInstrs,
+      else: [
+        { op: "local.get", index: tmpField } as Instr,
+        { op: "local.set", index: localIdx } as Instr,
+      ],
+    });
+  } else {
+    // i32 and other types — no reliable undefined sentinel, just assign
+    fctx.body.push({ op: "local.set", index: localIdx });
+  }
+}
+
 function compileObjectDestructuring(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -747,10 +865,7 @@ function compileObjectDestructuring(
   fctx.body.push({ op: "local.set", index: tmpLocal });
 
   // Null guard: if the source is nullable (ref_null), skip destructuring when null
-  const isNullableRef = resultType.kind === "ref_null";
-  const savedBodyForGuard = fctx.body;
-  const destructInstrs: Instr[] = [];
-  fctx.body = destructInstrs;
+  emitNullGuard(fctx, tmpLocal, resultType.kind === "ref_null", () => {
 
   // For each binding element, create a local and extract the field
   for (const element of pattern.elements) {
@@ -793,36 +908,27 @@ function compileObjectDestructuring(
         }
         const nestedFields = nestedStructName ? ctx.structFields.get(nestedStructName) : undefined;
         if (nestedFields) {
-          const nestedInstrs: Instr[] = [];
-          const savedNestedBody = fctx.body;
-          fctx.body = nestedInstrs;
-          for (const ne of element.name.elements) {
-            if (!ts.isBindingElement(ne)) continue;
-            if (!ts.isIdentifier(ne.name)) continue;
-            const nePropNode = ne.propertyName ?? ne.name;
-            const nePropText = ts.isIdentifier(nePropNode) ? nePropNode.text
-              : ts.isStringLiteral(nePropNode) ? nePropNode.text
-              : undefined;
-            if (!nePropText) continue;
-            const neLocalName = ne.name.text;
-            const neFieldIdx = nestedFields.findIndex((f) => f.name === nePropText);
-            if (neFieldIdx === -1) continue;
-            const neField = nestedFields[neFieldIdx];
-            if (!neField) continue;
-            const neFieldType = neField.type;
-            const neLocalIdx = allocLocal(fctx, neLocalName, neFieldType);
-            fctx.body.push({ op: "local.get", index: nestedTmp });
-            fctx.body.push({ op: "struct.get", typeIdx: nestedTypeIdx, fieldIdx: neFieldIdx });
-            fctx.body.push({ op: "local.set", index: neLocalIdx });
-          }
-          fctx.body = savedNestedBody;
-          if (nFieldType.kind === "ref_null" && nestedInstrs.length > 0) {
-            fctx.body.push({ op: "local.get", index: nestedTmp });
-            fctx.body.push({ op: "ref.is_null" } as Instr);
-            fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: nestedInstrs });
-          } else {
-            fctx.body.push(...nestedInstrs);
-          }
+          emitNullGuard(fctx, nestedTmp, nFieldType.kind === "ref_null", () => {
+            for (const ne of (element.name as ts.ObjectBindingPattern).elements) {
+              if (!ts.isBindingElement(ne)) continue;
+              if (!ts.isIdentifier(ne.name)) continue;
+              const nePropNode = ne.propertyName ?? ne.name;
+              const nePropText = ts.isIdentifier(nePropNode) ? nePropNode.text
+                : ts.isStringLiteral(nePropNode) ? nePropNode.text
+                : undefined;
+              if (!nePropText) continue;
+              const neLocalName = ne.name.text;
+              const neFieldIdx = nestedFields.findIndex((f) => f.name === nePropText);
+              if (neFieldIdx === -1) continue;
+              const neField = nestedFields[neFieldIdx];
+              if (!neField) continue;
+              const neFieldType = neField.type;
+              const neLocalIdx = allocLocal(fctx, neLocalName, neFieldType);
+              fctx.body.push({ op: "local.get", index: nestedTmp });
+              fctx.body.push({ op: "struct.get", typeIdx: nestedTypeIdx, fieldIdx: neFieldIdx });
+              fctx.body.push({ op: "local.set", index: neLocalIdx });
+            }
+          });
         } else {
           ensureBindingLocals(ctx, fctx, element.name);
         }
@@ -832,29 +938,20 @@ function compileObjectDestructuring(
         const nestedArrDef = ctx.mod.types[nestedArrTypeIdx];
         if (nestedArrDef && nestedArrDef.kind === "array") {
           const nestedElemType = nestedArrDef.element;
-          const nestedArrInstrs: Instr[] = [];
-          const savedNestedArrBody = fctx.body;
-          fctx.body = nestedArrInstrs;
-          for (let j = 0; j < element.name.elements.length; j++) {
-            const ne = element.name.elements[j]!;
-            if (ts.isOmittedExpression(ne)) continue;
-            if (!ts.isIdentifier((ne as ts.BindingElement).name)) continue;
-            const neName = ((ne as ts.BindingElement).name as ts.Identifier).text;
-            const neLocalIdx = allocLocal(fctx, neName, nestedElemType);
-            fctx.body.push({ op: "local.get", index: nestedTmp });
-            fctx.body.push({ op: "struct.get", typeIdx: nestedVecTypeIdx, fieldIdx: 1 });
-            fctx.body.push({ op: "i32.const", value: j });
-            fctx.body.push({ op: "array.get", typeIdx: nestedArrTypeIdx });
-            fctx.body.push({ op: "local.set", index: neLocalIdx });
-          }
-          fctx.body = savedNestedArrBody;
-          if (nFieldType.kind === "ref_null" && nestedArrInstrs.length > 0) {
-            fctx.body.push({ op: "local.get", index: nestedTmp });
-            fctx.body.push({ op: "ref.is_null" } as Instr);
-            fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: nestedArrInstrs });
-          } else {
-            fctx.body.push(...nestedArrInstrs);
-          }
+          emitNullGuard(fctx, nestedTmp, nFieldType.kind === "ref_null", () => {
+            for (let j = 0; j < (element.name as ts.ArrayBindingPattern).elements.length; j++) {
+              const ne = (element.name as ts.ArrayBindingPattern).elements[j]!;
+              if (ts.isOmittedExpression(ne)) continue;
+              if (!ts.isIdentifier((ne as ts.BindingElement).name)) continue;
+              const neName = ((ne as ts.BindingElement).name as ts.Identifier).text;
+              const neLocalIdx = allocLocal(fctx, neName, nestedElemType);
+              fctx.body.push({ op: "local.get", index: nestedTmp });
+              fctx.body.push({ op: "struct.get", typeIdx: nestedVecTypeIdx, fieldIdx: 1 });
+              fctx.body.push({ op: "i32.const", value: j });
+              fctx.body.push({ op: "array.get", typeIdx: nestedArrTypeIdx });
+              fctx.body.push({ op: "local.set", index: neLocalIdx });
+            }
+          });
         } else {
           ensureBindingLocals(ctx, fctx, element.name);
         }
@@ -899,45 +996,14 @@ function compileObjectDestructuring(
     fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
 
     // Handle default value: `const { x = defaultVal } = obj`
-    if (element.initializer && fieldType.kind === "externref") {
-      const tmpField = allocLocal(fctx, `__dflt_${fctx.locals.length}`, fieldType);
-      fctx.body.push({ op: "local.tee", index: tmpField });
-      fctx.body.push({ op: "ref.is_null" } as Instr);
-      fctx.body.push({
-        op: "if",
-        blockType: { kind: "empty" },
-        then: [
-          ...(() => {
-            const saved = fctx.body;
-            fctx.body = [];
-            compileExpression(ctx, fctx, element.initializer!, fieldType);
-            fctx.body.push({ op: "local.set", index: localIdx } as Instr);
-            const instrs = fctx.body;
-            fctx.body = saved;
-            return instrs;
-          })(),
-        ],
-        else: [
-          { op: "local.get", index: tmpField } as Instr,
-          { op: "local.set", index: localIdx } as Instr,
-        ],
-      });
-    } else if (element.initializer && (fieldType.kind === "f64" || fieldType.kind === "i32")) {
-      fctx.body.push({ op: "local.set", index: localIdx });
+    if (element.initializer) {
+      emitDefaultValueCheck(ctx, fctx, fieldType, localIdx, element.initializer);
     } else {
       fctx.body.push({ op: "local.set", index: localIdx });
     }
   }
 
-  // Close null guard
-  fctx.body = savedBodyForGuard;
-  if (isNullableRef && destructInstrs.length > 0) {
-    fctx.body.push({ op: "local.get", index: tmpLocal });
-    fctx.body.push({ op: "ref.is_null" } as Instr);
-    fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: destructInstrs });
-  } else {
-    fctx.body.push(...destructInstrs);
-  }
+  }); // end null guard
 
   // Sync destructured locals to module globals
   syncDestructuredLocalsToGlobals(ctx, fctx, pattern);
@@ -1019,33 +1085,20 @@ function compileExternrefArrayDestructuringDecl(
         const tmpElem = allocLocal(fctx, `__ext_dflt_${fctx.locals.length}`, elemType);
         fctx.body.push({ op: "local.tee", index: tmpElem });
         fctx.body.push({ op: "ref.is_null" } as Instr);
+        const thenInstrs = collectInstrs(fctx, () => {
+          compileExpression(ctx, fctx, element.initializer!, localType ?? elemType);
+          fctx.body.push({ op: "local.set", index: localIdx! } as Instr);
+        });
+        const elseCoerce = (localType && !valTypesMatch(elemType, localType))
+          ? collectInstrs(fctx, () => { coerceType(ctx, fctx, elemType, localType!); })
+          : [];
         fctx.body.push({
           op: "if",
           blockType: { kind: "empty" },
-          then: [
-            ...(() => {
-              const saved = fctx.body;
-              fctx.body = [];
-              compileExpression(ctx, fctx, element.initializer!, localType ?? elemType);
-              fctx.body.push({ op: "local.set", index: localIdx! } as Instr);
-              const instrs = fctx.body;
-              fctx.body = saved;
-              return instrs;
-            })(),
-          ],
+          then: thenInstrs,
           else: [
             { op: "local.get", index: tmpElem } as Instr,
-            ...(() => {
-              if (localType && !valTypesMatch(elemType, localType)) {
-                const saved = fctx.body;
-                fctx.body = [];
-                coerceType(ctx, fctx, elemType, localType);
-                const instrs = fctx.body;
-                fctx.body = saved;
-                return instrs;
-              }
-              return [];
-            })(),
+            ...elseCoerce,
             { op: "local.set", index: localIdx! } as Instr,
           ],
         });
@@ -1149,11 +1202,7 @@ function compileArrayDestructuring(
   );
   fctx.body.push({ op: "local.set", index: tmpLocal });
 
-  // Null guard: collect destructuring instrs and wrap for ref_null types
   const isNullableArr = resultType.kind === "ref_null";
-  const savedBodyForArrGuard = fctx.body;
-  const arrDestructInstrs: Instr[] = [];
-  fctx.body = arrDestructInstrs;
 
   if (isTupleStruct) {
     // Tuple destructuring: extract fields directly from the struct by index
@@ -1163,58 +1212,51 @@ function compileArrayDestructuring(
     // shorter than the pattern (e.g. `var [x] = []`) (#379)
     ensureBindingLocals(ctx, fctx, pattern);
 
-    for (let i = 0; i < pattern.elements.length; i++) {
-      const element = pattern.elements[i]!;
-      if (ts.isOmittedExpression(element)) continue;
+    emitNullGuard(fctx, tmpLocal, isNullableArr, () => {
+      for (let i = 0; i < pattern.elements.length; i++) {
+        const element = pattern.elements[i]!;
+        if (ts.isOmittedExpression(element)) continue;
 
-      if (i >= tupleFields.length) break; // more bindings than tuple fields
+        if (i >= tupleFields.length) break; // more bindings than tuple fields
 
-      const fieldType = tupleFields[i]!.type;
+        const fieldType = tupleFields[i]!.type;
 
-      // Handle rest element — skip for tuples (not meaningful)
-      if (ts.isBindingElement(element) && element.dotDotDotToken) {
-        const restName = ts.isIdentifier(element.name)
-          ? element.name.text
-          : `__rest_${fctx.locals.length}`;
-        allocLocal(fctx, restName, { kind: "externref" });
-        continue;
-      }
+        // Handle rest element — skip for tuples (not meaningful)
+        if (ts.isBindingElement(element) && element.dotDotDotToken) {
+          const restName = ts.isIdentifier(element.name)
+            ? element.name.text
+            : `__rest_${fctx.locals.length}`;
+          allocLocal(fctx, restName, { kind: "externref" });
+          continue;
+        }
 
-      // Handle nested binding patterns
-      if (ts.isBindingElement(element) &&
-          (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name))) {
-        const nestedLocal = allocLocal(fctx, `__destruct_nested_${fctx.locals.length}`, fieldType);
+        // Handle nested binding patterns
+        if (ts.isBindingElement(element) &&
+            (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name))) {
+          const nestedLocal = allocLocal(fctx, `__destruct_nested_${fctx.locals.length}`, fieldType);
+          fctx.body.push({ op: "local.get", index: tmpLocal });
+          fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: i });
+          fctx.body.push({ op: "local.set", index: nestedLocal });
+          ensureBindingLocals(ctx, fctx, element.name);
+          continue;
+        }
+
+        if (!ts.isIdentifier(element.name)) continue; // skip non-identifier binding names
+        const localName = element.name.text;
+        const localIdx = allocLocal(fctx, localName, fieldType);
+
         fctx.body.push({ op: "local.get", index: tmpLocal });
         fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: i });
-        fctx.body.push({ op: "local.set", index: nestedLocal });
-        ensureBindingLocals(ctx, fctx, element.name);
-        continue;
+        fctx.body.push({ op: "local.set", index: localIdx });
       }
-
-      if (!ts.isIdentifier(element.name)) continue; // skip non-identifier binding names
-      const localName = element.name.text;
-      const localIdx = allocLocal(fctx, localName, fieldType);
-
-      fctx.body.push({ op: "local.get", index: tmpLocal });
-      fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: i });
-      fctx.body.push({ op: "local.set", index: localIdx });
-    }
-
-    // Close null guard for tuple path
-    fctx.body = savedBodyForArrGuard;
-    if (isNullableArr && arrDestructInstrs.length > 0) {
-      fctx.body.push({ op: "local.get", index: tmpLocal });
-      fctx.body.push({ op: "ref.is_null" } as Instr);
-      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: arrDestructInstrs });
-    } else {
-      fctx.body.push(...arrDestructInstrs);
-    }
+    }); // end null guard for tuple path
     return;
   }
 
   // Vec array destructuring (original path)
   const elemType = arrDef!.element;
 
+  emitNullGuard(fctx, tmpLocal, isNullableArr, () => {
   for (let i = 0; i < pattern.elements.length; i++) {
     const element = pattern.elements[i]!;
     if (ts.isOmittedExpression(element)) continue; // skip holes: [a, , c]
@@ -1414,43 +1456,13 @@ function compileArrayDestructuring(
     emitBoundsCheckedArrayGet(fctx, arrTypeIdx, elemType);
 
     // Handle default value: `const [a = defaultVal] = arr`
-    if (element.initializer && elemType.kind === "externref") {
-      const tmpElem = allocLocal(fctx, `__dflt_${fctx.locals.length}`, elemType);
-      fctx.body.push({ op: "local.tee", index: tmpElem });
-      fctx.body.push({ op: "ref.is_null" } as Instr);
-      fctx.body.push({
-        op: "if",
-        blockType: { kind: "empty" },
-        then: [
-          ...(() => {
-            const saved = fctx.body;
-            fctx.body = [];
-            compileExpression(ctx, fctx, element.initializer!, elemType);
-            fctx.body.push({ op: "local.set", index: localIdx } as Instr);
-            const instrs = fctx.body;
-            fctx.body = saved;
-            return instrs;
-          })(),
-        ],
-        else: [
-          { op: "local.get", index: tmpElem } as Instr,
-          { op: "local.set", index: localIdx } as Instr,
-        ],
-      });
+    if (element.initializer) {
+      emitDefaultValueCheck(ctx, fctx, elemType, localIdx, element.initializer);
     } else {
       fctx.body.push({ op: "local.set", index: localIdx });
     }
   }
-
-  // Close null guard for vec array path
-  fctx.body = savedBodyForArrGuard;
-  if (isNullableArr && arrDestructInstrs.length > 0) {
-    fctx.body.push({ op: "local.get", index: tmpLocal });
-    fctx.body.push({ op: "ref.is_null" } as Instr);
-    fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: arrDestructInstrs });
-  } else {
-    fctx.body.push(...arrDestructInstrs);
-  }
+  }); // end null guard for vec array path
 
   // Sync destructured locals to module globals
   syncDestructuredLocalsToGlobals(ctx, fctx, pattern);
@@ -2421,12 +2433,10 @@ function compileForOfDestructuring(
         const bindingType = resolveWasmType(ctx, bindingTsType);
         const localIdx = allocLocal(fctx, localName, bindingType);
         if (element.initializer) {
-          const saved = fctx.body;
-          fctx.body = [];
-          compileExpression(ctx, fctx, element.initializer, bindingType);
-          fctx.body.push({ op: "local.set", index: localIdx } as Instr);
-          const instrs = fctx.body;
-          fctx.body = saved;
+          const instrs = collectInstrs(fctx, () => {
+            compileExpression(ctx, fctx, element.initializer!, bindingType);
+            fctx.body.push({ op: "local.set", index: localIdx } as Instr);
+          });
           fctx.body.push(...instrs);
         } else {
           // No default — use "undefined" sentinel matching the local's type
@@ -2473,9 +2483,7 @@ function compileForOfDestructuring(
     }
 
     // Null guard: collect field extractions for ref_null types
-    const savedBodyFOD = fctx.body;
-    const fodInstrs: Instr[] = [];
-    fctx.body = fodInstrs;
+    emitNullGuard(fctx, elemLocal, elemType.kind === "ref_null", () => {
 
     for (const element of pattern.elements) {
       if (!ts.isBindingElement(element)) continue;
@@ -2497,12 +2505,10 @@ function compileForOfDestructuring(
         const bindingType = resolveWasmType(ctx, bindingTsType);
         const localIdx = allocLocal(fctx, localName, bindingType);
         if (element.initializer) {
-          const saved = fctx.body;
-          fctx.body = [];
-          compileExpression(ctx, fctx, element.initializer, bindingType);
-          fctx.body.push({ op: "local.set", index: localIdx } as Instr);
-          const instrs = fctx.body;
-          fctx.body = saved;
+          const instrs = collectInstrs(fctx, () => {
+            compileExpression(ctx, fctx, element.initializer!, bindingType);
+            fctx.body.push({ op: "local.set", index: localIdx } as Instr);
+          });
           fctx.body.push(...instrs);
         } else {
           // No default — use "undefined" sentinel matching the local's type
@@ -2530,75 +2536,14 @@ function compileForOfDestructuring(
       fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
 
       // Handle default value
-      if (element.initializer && fieldType.kind === "externref") {
-        const tmpField = allocLocal(fctx, `__dflt_${fctx.locals.length}`, fieldType);
-        fctx.body.push({ op: "local.tee", index: tmpField });
-        fctx.body.push({ op: "ref.is_null" } as Instr);
-        fctx.body.push({
-          op: "if",
-          blockType: { kind: "empty" },
-          then: [
-            ...(() => {
-              const saved = fctx.body;
-              fctx.body = [];
-              compileExpression(ctx, fctx, element.initializer!, fieldType);
-              fctx.body.push({ op: "local.set", index: localIdx } as Instr);
-              const instrs = fctx.body;
-              fctx.body = saved;
-              return instrs;
-            })(),
-          ],
-          else: [
-            { op: "local.get", index: tmpField } as Instr,
-            { op: "local.set", index: localIdx } as Instr,
-          ],
-        });
-      } else if (element.initializer && (fieldType.kind === "f64" || fieldType.kind === "i32")) {
-        // For f64/i32 fields, check if value equals the "undefined" sentinel
-        // undefined fields in structs are initialized to NaN for f64, 0 for i32
-        if (fieldType.kind === "f64") {
-          // Check if field value is NaN (undefined marker) — use default if so
-          const tmpField = allocLocal(fctx, `__dflt_${fctx.locals.length}`, fieldType);
-          fctx.body.push({ op: "local.tee", index: tmpField });
-          // NaN !== NaN, so f64.ne with itself detects NaN
-          fctx.body.push({ op: "local.get", index: tmpField });
-          fctx.body.push({ op: "f64.ne" });
-          fctx.body.push({
-            op: "if",
-            blockType: { kind: "empty" },
-            then: [
-              ...(() => {
-                const saved = fctx.body;
-                fctx.body = [];
-                compileExpression(ctx, fctx, element.initializer!, fieldType);
-                fctx.body.push({ op: "local.set", index: localIdx } as Instr);
-                const instrs = fctx.body;
-                fctx.body = saved;
-                return instrs;
-              })(),
-            ],
-            else: [
-              { op: "local.get", index: tmpField } as Instr,
-              { op: "local.set", index: localIdx } as Instr,
-            ],
-          });
-        } else {
-          fctx.body.push({ op: "local.set", index: localIdx });
-        }
+      if (element.initializer) {
+        emitDefaultValueCheck(ctx, fctx, fieldType, localIdx, element.initializer);
       } else {
         fctx.body.push({ op: "local.set", index: localIdx });
       }
     }
 
-    // Close null guard for for-of object destructuring
-    fctx.body = savedBodyFOD;
-    if (elemType.kind === "ref_null" && fodInstrs.length > 0) {
-      fctx.body.push({ op: "local.get", index: elemLocal });
-      fctx.body.push({ op: "ref.is_null" } as Instr);
-      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: fodInstrs });
-    } else {
-      fctx.body.push(...fodInstrs);
-    }
+    }); // end null guard for for-of object destructuring
   } else if (ts.isArrayBindingPattern(pattern)) {
     // Array destructuring in for-of: for (var [a, b] of arr)
     // Element may be a vec struct (array wrapper) OR a tuple struct.
@@ -2615,12 +2560,10 @@ function compileForOfDestructuring(
         const bindingType = resolveWasmType(ctx, bindingTsType);
         const localIdx = allocLocal(fctx, localName, bindingType);
         if (element.initializer) {
-          const saved = fctx.body;
-          fctx.body = [];
-          compileExpression(ctx, fctx, element.initializer, bindingType);
-          fctx.body.push({ op: "local.set", index: localIdx } as Instr);
-          const instrs = fctx.body;
-          fctx.body = saved;
+          const instrs = collectInstrs(fctx, () => {
+            compileExpression(ctx, fctx, element.initializer!, bindingType);
+            fctx.body.push({ op: "local.set", index: localIdx } as Instr);
+          });
           fctx.body.push(...instrs);
         } else {
           if (bindingType.kind === "f64") {
@@ -2651,117 +2594,55 @@ function compileForOfDestructuring(
       // Tuple destructuring: extract fields directly from the struct by index
       const tupleFields = (structDef as { fields: { name?: string; type: ValType }[] }).fields;
 
-      // Null guard for for-of tuple destructuring
-      const savedBodyFOTD = fctx.body;
-      const fotdInstrs: Instr[] = [];
-      fctx.body = fotdInstrs;
+      emitNullGuard(fctx, elemLocal, elemType.kind === "ref_null", () => {
+        for (let i = 0; i < pattern.elements.length; i++) {
+          const element = pattern.elements[i]!;
+          if (ts.isOmittedExpression(element)) continue;
 
-      for (let i = 0; i < pattern.elements.length; i++) {
-        const element = pattern.elements[i]!;
-        if (ts.isOmittedExpression(element)) continue;
+          if (i >= tupleFields.length) break; // more bindings than tuple fields
 
-        if (i >= tupleFields.length) break; // more bindings than tuple fields
+          const fieldType = tupleFields[i]!.type;
 
-        const fieldType = tupleFields[i]!.type;
+          // Handle rest element — skip for tuples
+          if (ts.isBindingElement(element) && element.dotDotDotToken) {
+            const restName = ts.isIdentifier(element.name)
+              ? element.name.text
+              : `__rest_${fctx.locals.length}`;
+            allocLocal(fctx, restName, { kind: "externref" });
+            continue;
+          }
 
-        // Handle rest element — skip for tuples
-        if (ts.isBindingElement(element) && element.dotDotDotToken) {
-          const restName = ts.isIdentifier(element.name)
-            ? element.name.text
-            : `__rest_${fctx.locals.length}`;
-          allocLocal(fctx, restName, { kind: "externref" });
-          continue;
-        }
+          // Handle nested binding patterns: for (const [{ a, b }] of arr)
+          if (ts.isBindingElement(element) &&
+              (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name))) {
+            const nestedLocal = allocLocal(fctx, `__forof_nested_${fctx.locals.length}`, fieldType);
+            fctx.body.push({ op: "local.get", index: elemLocal });
+            fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx: i });
+            fctx.body.push({ op: "local.set", index: nestedLocal });
+            compileForOfDestructuring(ctx, fctx, element.name, nestedLocal, fieldType, stmt);
+            continue;
+          }
 
-        // Handle nested binding patterns: for (const [{ a, b }] of arr)
-        if (ts.isBindingElement(element) &&
-            (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name))) {
-          const nestedLocal = allocLocal(fctx, `__forof_nested_${fctx.locals.length}`, fieldType);
+          if (!ts.isIdentifier(element.name)) continue;
+          const localName = element.name.text;
+          const bindingTsType = ctx.checker.getTypeAtLocation(element);
+          const bindingWasmType = resolveWasmType(ctx, bindingTsType);
+          const localIdx = allocLocal(fctx, localName, bindingWasmType);
+
           fctx.body.push({ op: "local.get", index: elemLocal });
           fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx: i });
-          fctx.body.push({ op: "local.set", index: nestedLocal });
-          compileForOfDestructuring(ctx, fctx, element.name, nestedLocal, fieldType, stmt);
-          continue;
-        }
 
-        if (!ts.isIdentifier(element.name)) continue;
-        const localName = element.name.text;
-        const bindingTsType = ctx.checker.getTypeAtLocation(element);
-        const bindingWasmType = resolveWasmType(ctx, bindingTsType);
-        const localIdx = allocLocal(fctx, localName, bindingWasmType);
+          if (!valTypesMatch(fieldType, bindingWasmType)) {
+            coerceType(ctx, fctx, fieldType, bindingWasmType);
+          }
 
-        fctx.body.push({ op: "local.get", index: elemLocal });
-        fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx: i });
-
-        if (!valTypesMatch(fieldType, bindingWasmType)) {
-          coerceType(ctx, fctx, fieldType, bindingWasmType);
-        }
-
-        if (element.initializer && bindingWasmType.kind === "externref") {
-          const tmpElem = allocLocal(fctx, `__dflt_${fctx.locals.length}`, bindingWasmType);
-          fctx.body.push({ op: "local.tee", index: tmpElem });
-          fctx.body.push({ op: "ref.is_null" } as Instr);
-          fctx.body.push({
-            op: "if",
-            blockType: { kind: "empty" },
-            then: [
-              ...(() => {
-                const saved = fctx.body;
-                fctx.body = [];
-                compileExpression(ctx, fctx, element.initializer!, bindingWasmType);
-                fctx.body.push({ op: "local.set", index: localIdx } as Instr);
-                const instrs = fctx.body;
-                fctx.body = saved;
-                return instrs;
-              })(),
-            ],
-            else: [
-              { op: "local.get", index: tmpElem } as Instr,
-              { op: "local.set", index: localIdx } as Instr,
-            ],
-          });
-        } else if (element.initializer && (bindingWasmType.kind === "f64" || bindingWasmType.kind === "i32")) {
-          if (bindingWasmType.kind === "f64") {
-            const tmpField = allocLocal(fctx, `__dflt_${fctx.locals.length}`, bindingWasmType);
-            fctx.body.push({ op: "local.tee", index: tmpField });
-            fctx.body.push({ op: "local.get", index: tmpField });
-            fctx.body.push({ op: "f64.ne" });
-            fctx.body.push({
-              op: "if",
-              blockType: { kind: "empty" },
-              then: [
-                ...(() => {
-                  const saved = fctx.body;
-                  fctx.body = [];
-                  compileExpression(ctx, fctx, element.initializer!, bindingWasmType);
-                  fctx.body.push({ op: "local.set", index: localIdx } as Instr);
-                  const instrs = fctx.body;
-                  fctx.body = saved;
-                  return instrs;
-                })(),
-              ],
-              else: [
-                { op: "local.get", index: tmpField } as Instr,
-                { op: "local.set", index: localIdx } as Instr,
-              ],
-            });
+          if (element.initializer) {
+            emitDefaultValueCheck(ctx, fctx, bindingWasmType, localIdx, element.initializer);
           } else {
             fctx.body.push({ op: "local.set", index: localIdx });
           }
-        } else {
-          fctx.body.push({ op: "local.set", index: localIdx });
         }
-      }
-
-      // Close null guard for for-of tuple destructuring
-      fctx.body = savedBodyFOTD;
-      if (elemType.kind === "ref_null" && fotdInstrs.length > 0) {
-        fctx.body.push({ op: "local.get", index: elemLocal });
-        fctx.body.push({ op: "ref.is_null" } as Instr);
-        fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: fotdInstrs });
-      } else {
-        fctx.body.push(...fotdInstrs);
-      }
+      }); // end null guard for for-of tuple destructuring
       return;
     }
 
@@ -2779,80 +2660,46 @@ function compileForOfDestructuring(
 
     const innerElemType = arrDef.element;
 
-    // Null guard for for-of array destructuring
-    const savedBodyFOAD = fctx.body;
-    const foadInstrs: Instr[] = [];
-    fctx.body = foadInstrs;
+    emitNullGuard(fctx, elemLocal, elemType.kind === "ref_null", () => {
+      for (let i = 0; i < pattern.elements.length; i++) {
+        const element = pattern.elements[i]!;
+        if (ts.isOmittedExpression(element)) continue;
 
-    for (let i = 0; i < pattern.elements.length; i++) {
-      const element = pattern.elements[i]!;
-      if (ts.isOmittedExpression(element)) continue;
+        // Handle nested binding patterns: for (const [{ a, b }] of arr)
+        if (ts.isBindingElement(element) &&
+            (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name))) {
+          const nestedLocal = allocLocal(fctx, `__forof_nested_${fctx.locals.length}`, innerElemType);
+          fctx.body.push({ op: "local.get", index: elemLocal });
+          fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx: 1 });
+          fctx.body.push({ op: "i32.const", value: i });
+          emitBoundsCheckedArrayGet(fctx, innerArrTypeIdx, innerElemType);
+          fctx.body.push({ op: "local.set", index: nestedLocal });
+          compileForOfDestructuring(ctx, fctx, element.name, nestedLocal, innerElemType, stmt);
+          continue;
+        }
 
-      // Handle nested binding patterns: for (const [{ a, b }] of arr)
-      if (ts.isBindingElement(element) &&
-          (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name))) {
-        const nestedLocal = allocLocal(fctx, `__forof_nested_${fctx.locals.length}`, innerElemType);
+        if (!ts.isIdentifier(element.name)) continue;
+        const localName = element.name.text;
+        const bindingTsType = ctx.checker.getTypeAtLocation(element);
+        const bindingWasmType = resolveWasmType(ctx, bindingTsType);
+        const localIdx = allocLocal(fctx, localName, bindingWasmType);
+
         fctx.body.push({ op: "local.get", index: elemLocal });
         fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx: 1 });
         fctx.body.push({ op: "i32.const", value: i });
         emitBoundsCheckedArrayGet(fctx, innerArrTypeIdx, innerElemType);
-        fctx.body.push({ op: "local.set", index: nestedLocal });
-        compileForOfDestructuring(ctx, fctx, element.name, nestedLocal, innerElemType, stmt);
-        continue;
+
+        if (!valTypesMatch(innerElemType, bindingWasmType)) {
+          coerceType(ctx, fctx, innerElemType, bindingWasmType);
+        }
+
+        if (element.initializer) {
+          emitDefaultValueCheck(ctx, fctx, bindingWasmType, localIdx, element.initializer);
+        } else {
+          fctx.body.push({ op: "local.set", index: localIdx });
+        }
       }
-
-      if (!ts.isIdentifier(element.name)) continue;
-      const localName = element.name.text;
-      const bindingTsType = ctx.checker.getTypeAtLocation(element);
-      const bindingWasmType = resolveWasmType(ctx, bindingTsType);
-      const localIdx = allocLocal(fctx, localName, bindingWasmType);
-
-      fctx.body.push({ op: "local.get", index: elemLocal });
-      fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx: 1 });
-      fctx.body.push({ op: "i32.const", value: i });
-      emitBoundsCheckedArrayGet(fctx, innerArrTypeIdx, innerElemType);
-
-      if (!valTypesMatch(innerElemType, bindingWasmType)) {
-        coerceType(ctx, fctx, innerElemType, bindingWasmType);
-      }
-
-      if (element.initializer && bindingWasmType.kind === "externref") {
-        const tmpElem = allocLocal(fctx, `__dflt_${fctx.locals.length}`, bindingWasmType);
-        fctx.body.push({ op: "local.tee", index: tmpElem });
-        fctx.body.push({ op: "ref.is_null" } as Instr);
-        fctx.body.push({
-          op: "if",
-          blockType: { kind: "empty" },
-          then: [
-            ...(() => {
-              const saved = fctx.body;
-              fctx.body = [];
-              compileExpression(ctx, fctx, element.initializer!, bindingWasmType);
-              fctx.body.push({ op: "local.set", index: localIdx } as Instr);
-              const instrs = fctx.body;
-              fctx.body = saved;
-              return instrs;
-            })(),
-          ],
-          else: [
-            { op: "local.get", index: tmpElem } as Instr,
-            { op: "local.set", index: localIdx } as Instr,
-          ],
-        });
-      } else {
-        fctx.body.push({ op: "local.set", index: localIdx });
-      }
-    }
-
-    // Close null guard for for-of array destructuring
-    fctx.body = savedBodyFOAD;
-    if (elemType.kind === "ref_null" && foadInstrs.length > 0) {
-      fctx.body.push({ op: "local.get", index: elemLocal });
-      fctx.body.push({ op: "ref.is_null" } as Instr);
-      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: foadInstrs });
-    } else {
-      fctx.body.push(...foadInstrs);
-    }
+    }); // end null guard for for-of array destructuring
   }
 }
 
@@ -2895,12 +2742,10 @@ function compileForOfAssignDestructuring(
             ? undefined : undefined;
         if (init) {
           const targetType = getLocalType(fctx, targetLocal);
-          const saved = fctx.body;
-          fctx.body = [];
-          compileExpression(ctx, fctx, init, targetType ?? { kind: "externref" });
-          fctx.body.push({ op: "local.set", index: targetLocal } as Instr);
-          const instrs = fctx.body;
-          fctx.body = saved;
+          const instrs = collectInstrs(fctx, () => {
+            compileExpression(ctx, fctx, init, targetType ?? { kind: "externref" });
+            fctx.body.push({ op: "local.set", index: targetLocal } as Instr);
+          });
           fctx.body.push(...instrs);
         }
       }
