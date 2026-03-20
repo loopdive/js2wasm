@@ -10825,26 +10825,13 @@ function compileCallExpression(
       const argTsType = ctx.checker.getTypeAtLocation(arg0);
       const className = resolveStructName(ctx, argTsType);
 
-      // For known class instances, read the __proto__ field from the struct.
-      // This provides dynamic prototype chain traversal at runtime.
+      // For known class instances, return the class prototype singleton
       if (className && ctx.classSet.has(className)) {
-        const sTypeIdx = ctx.structMap.get(className);
-        const sFields = ctx.structFields.get(className);
-        const protoFieldIdx = sFields?.findIndex((f) => f.name === "__proto__");
-        if (sTypeIdx !== undefined && protoFieldIdx !== undefined && protoFieldIdx >= 0) {
-          // Compile the argument, cast to struct ref, read __proto__ field
-          const argType = compileExpression(ctx, fctx, arg0);
-          if (argType && (argType.kind === "ref" || argType.kind === "ref_null")) {
-            fctx.body.push({ op: "ref.cast", typeIdx: sTypeIdx } as unknown as Instr);
-            fctx.body.push({ op: "struct.get", typeIdx: sTypeIdx, fieldIdx: protoFieldIdx });
-            return { kind: "externref" };
-          }
-          // If the arg compiled to something else (externref), fall through to static approach
-          if (argType) {
-            fctx.body.push({ op: "drop" });
-          }
+        // Compile and drop the argument (for side effects)
+        const argType = compileExpression(ctx, fctx, arg0);
+        if (argType) {
+          fctx.body.push({ op: "drop" });
         }
-        // Fallback: static approach using prototype singleton
         if (emitLazyProtoGet(ctx, fctx, className)) {
           return { kind: "externref" };
         }
@@ -15681,15 +15668,6 @@ function emitLazyProtoGet(
     if (field.name === "__tag") {
       const tag = ctx.classTagMap.get(className) ?? 0;
       initBody.push({ op: "i32.const", value: tag });
-    } else if (field.name === "__proto__") {
-      // Prototype's __proto__ points to parent's prototype singleton
-      const parentName = ctx.classParentMap.get(className);
-      const parentProtoIdx = parentName ? ctx.protoGlobals?.get(parentName) : undefined;
-      if (parentProtoIdx !== undefined) {
-        initBody.push({ op: "global.get", index: parentProtoIdx });
-      } else {
-        initBody.push({ op: "ref.null.extern" });
-      }
     } else {
       // Push default value for each field type
       switch (field.type.kind) {
