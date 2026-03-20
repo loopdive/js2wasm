@@ -46,13 +46,13 @@
 
 | # | Priority | Feature | Impact |
 |---|----------|---------|--------|
+| [687](../ready/687.md) | High | Live-streaming report with run selector | Developer UX |
 | [694](../done/694.md) | ✅ Done | Vitest with per-test disk cache | 5x re-run speedup |
 | [693](../done/693.md) | ✅ Done | skipWat + preamble cache | ~45% compile speedup |
-| [689](../ready/689.md) | High | Dynamic memory-aware worker pool | Reliability |
-| [690](../ready/690.md) | High | Streaming results, incremental reports | Visibility |
-| [691](../ready/691.md) | High | Pipeline architecture, memory minimization | 2GB→300MB/worker |
-| [692](../ready/692.md) | Medium | Async pipeline with stage overlap | 48K in 6 min |
-| [687](../ready/687.md) | High | Live-streaming report with run selector | Developer UX |
+| [689](../done/689.md) | ✅ Superseded | Memory-aware worker pool → vitest handles | — |
+| [690](../done/690.md) | ✅ Superseded | Streaming results → vitest streams natively | — |
+| [691](../done/691.md) | ✅ Superseded | Pipeline architecture → vitest per-test | — |
+| [692](../done/692.md) | ✅ Superseded | Async pipeline → vitest parallelism | — |
 
 ## 5. Platform support
 
