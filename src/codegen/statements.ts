@@ -949,7 +949,7 @@ function compileObjectDestructuring(
               fctx.body.push({ op: "local.get", index: nestedTmp });
               fctx.body.push({ op: "struct.get", typeIdx: nestedVecTypeIdx, fieldIdx: 1 });
               fctx.body.push({ op: "i32.const", value: j });
-              fctx.body.push({ op: "array.get", typeIdx: nestedArrTypeIdx });
+              emitBoundsCheckedArrayGet(fctx, nestedArrTypeIdx, nestedElemType);
               fctx.body.push({ op: "local.set", index: neLocalIdx });
             }
           });
