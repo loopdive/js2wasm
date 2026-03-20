@@ -9725,9 +9725,18 @@ function compileClosureCall(
   // Push closure ref as first arg (self param of the lifted function)
   pushClosureRef();
 
-  // Push call arguments
-  for (let i = 0; i < expr.arguments.length; i++) {
+  // Push call arguments (only up to the closure's declared parameter count)
+  const paramCount = info.paramTypes.length;
+  for (let i = 0; i < Math.min(expr.arguments.length, paramCount); i++) {
     compileExpression(ctx, fctx, expr.arguments[i]!, info.paramTypes[i]);
+  }
+
+  // Drop excess arguments beyond the closure's parameter count (evaluate for side effects)
+  for (let i = paramCount; i < expr.arguments.length; i++) {
+    const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+    if (extraType !== null && extraType !== VOID_RESULT) {
+      fctx.body.push({ op: "drop" });
+    }
   }
 
   // Pad missing arguments with defaults (arity mismatch)
@@ -9806,9 +9815,19 @@ function compileCallablePropertyCall(
         fctx.body.push({ op: "ref.as_non_null" } as Instr);
       }
 
-      // Push call arguments
-      for (let i = 0; i < expr.arguments.length; i++) {
-        compileExpression(ctx, fctx, expr.arguments[i]!, closureInfo.paramTypes[i]);
+      // Push call arguments (only up to declared param count)
+      {
+        const cpParamCount = closureInfo.paramTypes.length;
+        for (let i = 0; i < Math.min(expr.arguments.length, cpParamCount); i++) {
+          compileExpression(ctx, fctx, expr.arguments[i]!, closureInfo.paramTypes[i]);
+        }
+        // Drop excess arguments beyond param count (side effects only)
+        for (let i = cpParamCount; i < expr.arguments.length; i++) {
+          const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+          if (extraType !== null && extraType !== VOID_RESULT) {
+            fctx.body.push({ op: "drop" });
+          }
+        }
       }
       // Pad missing arguments
       for (let i = expr.arguments.length; i < closureInfo.paramTypes.length; i++) {
@@ -9852,9 +9871,18 @@ function compileCallablePropertyCall(
       fctx.body.push({ op: "local.get", index: closureLocal });
       fctx.body.push({ op: "ref.as_non_null" } as Instr);
 
-      // Push call arguments
-      for (let i = 0; i < expr.arguments.length; i++) {
-        compileExpression(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
+      // Push call arguments (only up to declared param count)
+      {
+        const wpParamCount = matchedClosureInfo.paramTypes.length;
+        for (let i = 0; i < Math.min(expr.arguments.length, wpParamCount); i++) {
+          compileExpression(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
+        }
+        for (let i = wpParamCount; i < expr.arguments.length; i++) {
+          const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+          if (extraType !== null && extraType !== VOID_RESULT) {
+            fctx.body.push({ op: "drop" });
+          }
+        }
       }
       // Pad missing arguments
       for (let i = expr.arguments.length; i < matchedClosureInfo.paramTypes.length; i++) {
@@ -9916,9 +9944,18 @@ function compileCallablePropertyCall(
         fctx.body.push({ op: "ref.cast", typeIdx: matchedStructTypeIdx });
       }
 
-      // Push call arguments
-      for (let i = 0; i < expr.arguments.length; i++) {
-        compileExpression(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
+      // Push call arguments (only up to declared param count)
+      {
+        const cpRefParamCount = matchedClosureInfo.paramTypes.length;
+        for (let i = 0; i < Math.min(expr.arguments.length, cpRefParamCount); i++) {
+          compileExpression(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
+        }
+        for (let i = cpRefParamCount; i < expr.arguments.length; i++) {
+          const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+          if (extraType !== null && extraType !== VOID_RESULT) {
+            fctx.body.push({ op: "drop" });
+          }
+        }
       }
       for (let i = expr.arguments.length; i < matchedClosureInfo.paramTypes.length; i++) {
         pushDefaultValue(fctx, matchedClosureInfo.paramTypes[i]!);
@@ -11891,9 +11928,18 @@ function compileCallExpression(
           fctx.body.push({ op: "local.get", index: closureLocal });
           fctx.body.push({ op: "ref.as_non_null" } as Instr);
 
-          // Push call arguments with type coercion
-          for (let i = 0; i < expr.arguments.length; i++) {
-            compileExpression(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
+          // Push call arguments with type coercion (only up to declared param count)
+          {
+            const cpParamCnt = matchedClosureInfo.paramTypes.length;
+            for (let i = 0; i < Math.min(expr.arguments.length, cpParamCnt); i++) {
+              compileExpression(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
+            }
+            for (let i = cpParamCnt; i < expr.arguments.length; i++) {
+              const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+              if (extraType !== null && extraType !== VOID_RESULT) {
+                fctx.body.push({ op: "drop" });
+              }
+            }
           }
 
           // Pad missing arguments with defaults
@@ -12697,9 +12743,18 @@ function compileCallExpression(
         fctx.body.push({ op: "local.get", index: closureLocal });
         fctx.body.push({ op: "ref.as_non_null" } as Instr);
 
-        // Push call arguments
-        for (let i = 0; i < expr.arguments.length; i++) {
-          compileExpression(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
+        // Push call arguments (only up to declared param count)
+        {
+          const crParamCnt = matchedClosureInfo.paramTypes.length;
+          for (let i = 0; i < Math.min(expr.arguments.length, crParamCnt); i++) {
+            compileExpression(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
+          }
+          for (let i = crParamCnt; i < expr.arguments.length; i++) {
+            const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+            if (extraType !== null && extraType !== VOID_RESULT) {
+              fctx.body.push({ op: "drop" });
+            }
+          }
         }
 
         // Pad missing arguments with defaults
@@ -12794,9 +12849,18 @@ function compileCallExpression(
         fctx.body.push({ op: "local.get", index: closureLocal });
         fctx.body.push({ op: "ref.as_non_null" } as Instr);
 
-        // Push call arguments
-        for (let i = 0; i < expr.arguments.length; i++) {
-          compileExpression(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
+        // Push call arguments (only up to declared param count)
+        {
+          const ccParamCnt = matchedClosureInfo.paramTypes.length;
+          for (let i = 0; i < Math.min(expr.arguments.length, ccParamCnt); i++) {
+            compileExpression(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
+          }
+          for (let i = ccParamCnt; i < expr.arguments.length; i++) {
+            const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+            if (extraType !== null && extraType !== VOID_RESULT) {
+              fctx.body.push({ op: "drop" });
+            }
+          }
         }
 
         // Pad missing arguments
@@ -13150,9 +13214,18 @@ function compileExpressionCallee(
       fctx.body.push({ op: "local.get", index: closureLocal });
       fctx.body.push({ op: "ref.as_non_null" } as Instr);
 
-      // Push call arguments
-      for (let i = 0; i < expr.arguments.length; i++) {
-        compileExpression(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
+      // Push call arguments (only up to declared param count)
+      {
+        const ecParamCnt = matchedClosureInfo.paramTypes.length;
+        for (let i = 0; i < Math.min(expr.arguments.length, ecParamCnt); i++) {
+          compileExpression(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
+        }
+        for (let i = ecParamCnt; i < expr.arguments.length; i++) {
+          const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+          if (extraType !== null && extraType !== VOID_RESULT) {
+            fctx.body.push({ op: "drop" });
+          }
+        }
       }
 
       // Pad missing arguments
@@ -16597,9 +16670,17 @@ function compileOptionalDirectCall(
     // Push closure ref as first arg (self param of the lifted function)
     fctx.body.push({ op: "local.get", index: closureTmp });
 
-    // Push call arguments with type coercion
-    for (let i = 0; i < expr.arguments.length; i++) {
+    // Push call arguments with type coercion (only up to declared param count)
+    const closureParamCount = closureInfo.paramTypes.length;
+    for (let i = 0; i < Math.min(expr.arguments.length, closureParamCount); i++) {
       compileExpression(ctx, fctx, expr.arguments[i]!, closureInfo.paramTypes[i]);
+    }
+    // Drop excess arguments beyond the closure's parameter count (side effects only)
+    for (let i = closureParamCount; i < expr.arguments.length; i++) {
+      const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+      if (extraType !== null && extraType !== VOID_RESULT) {
+        fctx.body.push({ op: "drop" });
+      }
     }
 
     // Pad missing arguments with defaults (arity mismatch)
@@ -23248,10 +23329,18 @@ function buildBridgeCallInstrs(
 /** Build instructions to check truthiness of a callback result (-> i32). */
 function buildTruthyCheck(ctx: CodegenContext, setup: ArrayCallbackSetup): Instr[] {
   if (setup.closureInfo) {
-    if (setup.closureInfo.returnType?.kind === "f64") {
+    const retKind = setup.closureInfo.returnType?.kind;
+    if (retKind === "f64") {
       return [{ op: "f64.const", value: 0 } as Instr, { op: "f64.ne" } as Instr];
     }
-    return []; // i32 is already truthy/falsy
+    if (retKind === "i32") {
+      return []; // i32 is already truthy/falsy
+    }
+    // externref / ref / ref_null: non-null is truthy
+    if (retKind === "externref" || retKind === "ref" || retKind === "ref_null") {
+      return [{ op: "ref.is_null" } as Instr, { op: "i32.eqz" } as Instr];
+    }
+    return []; // default: assume i32
   }
   return ctx.fast ? [] : [{ op: "f64.const", value: 0 } as Instr, { op: "f64.ne" } as Instr];
 }
@@ -23259,11 +23348,16 @@ function buildTruthyCheck(ctx: CodegenContext, setup: ArrayCallbackSetup): Instr
 /** Build instructions to check falsiness of a callback result (-> i32). */
 function buildFalsyCheck(ctx: CodegenContext, setup: ArrayCallbackSetup): Instr[] {
   if (setup.closureInfo) {
-    if (setup.closureInfo.returnType?.kind === "f64") {
+    const retKind = setup.closureInfo.returnType?.kind;
+    if (retKind === "f64") {
       return [{ op: "f64.const", value: 0 } as Instr, { op: "f64.eq" } as Instr];
     }
-    if (setup.closureInfo.returnType?.kind === "i32") {
+    if (retKind === "i32") {
       return [{ op: "i32.eqz" } as Instr];
+    }
+    // externref / ref / ref_null: null is falsy
+    if (retKind === "externref" || retKind === "ref" || retKind === "ref_null") {
+      return [{ op: "ref.is_null" } as Instr];
     }
     return [{ op: "i32.eqz" } as Instr];
   }
