@@ -36,8 +36,9 @@ cd "$WT_DIR"
 npx esbuild src/index.ts --bundle --platform=node --format=esm \
   --outfile=scripts/compiler-bundle.mjs --external:typescript 2>&1 | tail -1
 
-# Ensure results dir exists in worktree
-mkdir -p "$WT_DIR/benchmarks/results/runs"
+# Symlink results dir so writes go directly to main workspace
+rm -rf "$WT_DIR/benchmarks/results"
+ln -s "$MAIN_DIR/benchmarks/results" "$WT_DIR/benchmarks/results"
 
 echo "Worktree ready at $(git -C "$WT_DIR" rev-parse --short HEAD)"
 echo "Running vitest..."
@@ -50,16 +51,9 @@ npx vitest run tests/test262-vitest.test.ts \
   --reporter=verbose \
   "$@" 2>&1 | tee /tmp/test262-vitest-run.log
 
-# Copy results back to main workspace
+# Results already written directly to main workspace via symlink
 echo ""
-echo "Copying results to main workspace..."
-cp -f "$WT_DIR/benchmarks/results/test262-results.jsonl" "$RESULTS_DIR/test262-results.jsonl" 2>/dev/null || true
-cp -f "$WT_DIR/benchmarks/results/test262-report.json" "$RESULTS_DIR/test262-report.json" 2>/dev/null || true
-
-# Copy run file if it exists
-for f in "$WT_DIR"/benchmarks/results/runs/*.jsonl; do
-  [ -f "$f" ] && cp -f "$f" "$RESULTS_DIR/runs/" 2>/dev/null
-done
+echo "Results written to $RESULTS_DIR"
 
 # Cleanup worktree
 echo "Cleaning up worktree..."
