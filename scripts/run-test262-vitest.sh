@@ -30,6 +30,12 @@ echo "test262 symlink OK ($(ls "$WT_DIR/test262/test/" | wc -l) dirs)"
 mkdir -p "$MAIN_DIR/.test262-cache"
 ln -sf "$MAIN_DIR/.test262-cache" "$WT_DIR/.test262-cache"
 
+# Build compiler bundle in worktree (needed by compiler workers)
+echo "Building compiler bundle..."
+cd "$WT_DIR"
+npx esbuild src/index.ts --bundle --platform=node --format=esm \
+  --outfile=scripts/compiler-bundle.mjs --external:typescript 2>&1 | tail -1
+
 # Ensure results dir exists in worktree
 mkdir -p "$WT_DIR/benchmarks/results/runs"
 
