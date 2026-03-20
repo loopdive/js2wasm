@@ -199,12 +199,29 @@ export function isBooleanType(type: ts.Type): boolean {
   );
 }
 
-/** Check if a ts.Type represents string */
+/** Check if a ts.Type represents string (including String wrapper object) */
 export function isStringType(type: ts.Type): boolean {
-  return (
+  if (
     (type.flags & ts.TypeFlags.String) !== 0 ||
     (type.flags & ts.TypeFlags.StringLiteral) !== 0
-  );
+  ) {
+    return true;
+  }
+  // Also recognize the String wrapper object type (e.g. from `new String("x")`)
+  if ((type.flags & ts.TypeFlags.Object) !== 0) {
+    const sym = type.getSymbol();
+    if (sym && sym.name === "String") return true;
+  }
+  return false;
+}
+
+/** Check if a ts.Type represents the Number wrapper object (e.g. `new Number(1)`) */
+export function isNumberWrapperType(type: ts.Type): boolean {
+  if ((type.flags & ts.TypeFlags.Object) !== 0) {
+    const sym = type.getSymbol();
+    if (sym && sym.name === "Number") return true;
+  }
+  return false;
 }
 
 /**
