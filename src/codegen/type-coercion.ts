@@ -664,48 +664,46 @@ export function coerceType(
   // ref/ref_null → externref: check @@toPrimitive("string") first, then toString(), else extern.convert_any
   if ((from.kind === "ref" || from.kind === "ref_null") && to.kind === "externref") {
     const typeIdx = (from as { typeIdx: number }).typeIdx;
-    for (const [name, idx] of ctx.structMap) {
-      if (idx === typeIdx) {
-        // Check for [Symbol.toPrimitive] method first
-        const toPrimFuncIdx = ctx.funcMap.get(`${name}_@@toPrimitive`);
-        if (toPrimFuncIdx !== undefined) {
-          // Call ClassName_@@toPrimitive(self, "string")
-          addStringConstantGlobal(ctx, "string");
-          if (compileStringLiteralFn) {
-            compileStringLiteralFn(ctx, fctx, "string");
-          }
-          fctx.body.push({ op: "call", funcIdx: toPrimFuncIdx });
-          // Coerce result to externref if needed
-          const funcDefIdx = toPrimFuncIdx - ctx.numImportFuncs;
-          const funcDef = funcDefIdx >= 0 ? ctx.mod.functions[funcDefIdx] : undefined;
-          const funcType = funcDef ? ctx.mod.types[funcDef.typeIdx] : undefined;
-          // Default to "externref" for imports (funcDefIdx < 0) which typically return externref
-          const retKind = (funcType?.kind === "func" && funcType.results?.[0]?.kind) || "externref";
-          if (retKind === "f64") {
-            // Ensure __box_number is available via union imports
-            addUnionImports(ctx);
-            const boxIdx = ctx.funcMap.get("__box_number")!;
-            fctx.body.push({ op: "call", funcIdx: boxIdx });
-          } else if (retKind === "i32") {
-            fctx.body.push({ op: "f64.convert_i32_s" });
-            // Ensure __box_number is available via union imports
-            addUnionImports(ctx);
-            const boxIdx = ctx.funcMap.get("__box_number")!;
-            fctx.body.push({ op: "call", funcIdx: boxIdx });
-          }
-          // externref/ref return → use extern.convert_any for ref types
-          if (retKind === "ref" || retKind === "ref_null") {
-            fctx.body.push({ op: "extern.convert_any" });
-          }
-          return;
+    const name = ctx.typeIdxToStructName.get(typeIdx);
+    if (name !== undefined) {
+      // Check for [Symbol.toPrimitive] method first
+      const toPrimFuncIdx = ctx.funcMap.get(`${name}_@@toPrimitive`);
+      if (toPrimFuncIdx !== undefined) {
+        // Call ClassName_@@toPrimitive(self, "string")
+        addStringConstantGlobal(ctx, "string");
+        if (compileStringLiteralFn) {
+          compileStringLiteralFn(ctx, fctx, "string");
         }
-        const toStringFuncIdx = ctx.funcMap.get(`${name}_toString`);
-        if (toStringFuncIdx !== undefined) {
-          // Call ClassName_toString(self) — self is already on stack
-          fctx.body.push({ op: "call", funcIdx: toStringFuncIdx });
-          return;
+        fctx.body.push({ op: "call", funcIdx: toPrimFuncIdx });
+        // Coerce result to externref if needed
+        const funcDefIdx = toPrimFuncIdx - ctx.numImportFuncs;
+        const funcDef = funcDefIdx >= 0 ? ctx.mod.functions[funcDefIdx] : undefined;
+        const funcType = funcDef ? ctx.mod.types[funcDef.typeIdx] : undefined;
+        // Default to "externref" for imports (funcDefIdx < 0) which typically return externref
+        const retKind = (funcType?.kind === "func" && funcType.results?.[0]?.kind) || "externref";
+        if (retKind === "f64") {
+          // Ensure __box_number is available via union imports
+          addUnionImports(ctx);
+          const boxIdx = ctx.funcMap.get("__box_number")!;
+          fctx.body.push({ op: "call", funcIdx: boxIdx });
+        } else if (retKind === "i32") {
+          fctx.body.push({ op: "f64.convert_i32_s" });
+          // Ensure __box_number is available via union imports
+          addUnionImports(ctx);
+          const boxIdx = ctx.funcMap.get("__box_number")!;
+          fctx.body.push({ op: "call", funcIdx: boxIdx });
         }
-        break;
+        // externref/ref return → use extern.convert_any for ref types
+        if (retKind === "ref" || retKind === "ref_null") {
+          fctx.body.push({ op: "extern.convert_any" });
+        }
+        return;
+      }
+      const toStringFuncIdx = ctx.funcMap.get(`${name}_toString`);
+      if (toStringFuncIdx !== undefined) {
+        // Call ClassName_toString(self) — self is already on stack
+        fctx.body.push({ op: "call", funcIdx: toStringFuncIdx });
+        return;
       }
     }
     fctx.body.push({ op: "extern.convert_any" });
@@ -782,38 +780,38 @@ export function coerceType(
   // ref (struct) → f64: JS ToNumber semantics — check @@toPrimitive("number") first, then valueOf
   if ((from.kind === "ref" || from.kind === "ref_null") && to.kind === "f64") {
     const typeIdx = (from as { typeIdx: number }).typeIdx;
-    for (const [name, idx] of ctx.structMap) {
-      if (idx === typeIdx) {
-        // Check for [Symbol.toPrimitive] method first — takes precedence over valueOf
-        const toPrimFuncIdx = ctx.funcMap.get(`${name}_@@toPrimitive`);
-        if (toPrimFuncIdx !== undefined) {
-          // Call ClassName_@@toPrimitive(self, "number")
-          addStringConstantGlobal(ctx, "number");
-          if (compileStringLiteralFn) {
-            compileStringLiteralFn(ctx, fctx, "number");
-          }
-          fctx.body.push({ op: "call", funcIdx: toPrimFuncIdx });
-          // Coerce result to f64 if needed
-          const funcDef = ctx.mod.functions[toPrimFuncIdx - ctx.numImportFuncs];
-          const funcType = funcDef ? ctx.mod.types[funcDef.typeIdx] : undefined;
-          const retKind = (funcType?.kind === "func" && funcType.results?.[0]?.kind) || "f64";
-          if (retKind === "i32") {
-            fctx.body.push({ op: "f64.convert_i32_s" });
-          } else if (retKind === "externref") {
-            addUnionImports(ctx);
-            const unboxIdx = ctx.funcMap.get("__unbox_number");
-            if (unboxIdx !== undefined) {
-              fctx.body.push({ op: "call", funcIdx: unboxIdx });
-            } else {
-              fctx.body.push({ op: "drop" });
-              fctx.body.push({ op: "f64.const", value: NaN });
-            }
-          }
-          // f64 return → already correct type
-          return;
+    const name = ctx.typeIdxToStructName.get(typeIdx);
+    if (name !== undefined) {
+      // Check for [Symbol.toPrimitive] method first — takes precedence over valueOf
+      const toPrimFuncIdx = ctx.funcMap.get(`${name}_@@toPrimitive`);
+      if (toPrimFuncIdx !== undefined) {
+        // Call ClassName_@@toPrimitive(self, "number")
+        addStringConstantGlobal(ctx, "number");
+        if (compileStringLiteralFn) {
+          compileStringLiteralFn(ctx, fctx, "number");
         }
-        const fields = ctx.structFields.get(name);
-        if (!fields) { break; }
+        fctx.body.push({ op: "call", funcIdx: toPrimFuncIdx });
+        // Coerce result to f64 if needed
+        const funcDef = ctx.mod.functions[toPrimFuncIdx - ctx.numImportFuncs];
+        const funcType = funcDef ? ctx.mod.types[funcDef.typeIdx] : undefined;
+        const retKind = (funcType?.kind === "func" && funcType.results?.[0]?.kind) || "f64";
+        if (retKind === "i32") {
+          fctx.body.push({ op: "f64.convert_i32_s" });
+        } else if (retKind === "externref") {
+          addUnionImports(ctx);
+          const unboxIdx = ctx.funcMap.get("__unbox_number");
+          if (unboxIdx !== undefined) {
+            fctx.body.push({ op: "call", funcIdx: unboxIdx });
+          } else {
+            fctx.body.push({ op: "drop" });
+            fctx.body.push({ op: "f64.const", value: NaN });
+          }
+        }
+        // f64 return → already correct type
+        return;
+      }
+      const fields = ctx.structFields.get(name);
+      if (fields) {
         const fieldIdx = fields.findIndex(f => f.name === "valueOf");
         if (fieldIdx < 0) {
           // No valueOf field — check for a class method valueOf (ClassName_valueOf)
@@ -970,7 +968,6 @@ export function coerceType(
           fctx.body.push({ op: "f64.const", value: NaN });
           return;
         }
-        break;
       }
     }
   }

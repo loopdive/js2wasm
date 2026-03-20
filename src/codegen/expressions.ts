@@ -6136,10 +6136,7 @@ function emitObjectDestructureFromLocal(
   const srcTypeIdx = (srcType as { typeIdx: number }).typeIdx;
 
   // Find struct name from type index
-  let structName: string | undefined;
-  for (const [name, idx] of ctx.structMap) {
-    if (idx === srcTypeIdx) { structName = name; break; }
-  }
+  const structName = ctx.typeIdxToStructName.get(srcTypeIdx);
   if (!structName) return;
 
   const fields = ctx.structFields.get(structName);
@@ -7131,10 +7128,7 @@ function compilePropertyLogicalAssignmentExternref(
   // --- Path A: The object compiled to a struct ref ---
   if (objResult.kind === "ref" || objResult.kind === "ref_null") {
     const typeIdx = (objResult as { typeIdx: number }).typeIdx;
-    let resolvedTypeName: string | undefined;
-    for (const [name, idx] of ctx.structMap.entries()) {
-      if (idx === typeIdx) { resolvedTypeName = name; break; }
-    }
+    const resolvedTypeName = ctx.typeIdxToStructName.get(typeIdx);
     if (resolvedTypeName) {
       const fields = ctx.structFields.get(resolvedTypeName);
       if (fields) {
@@ -8019,10 +8013,7 @@ function compilePropertyCompoundAssignmentExternref(
   if (objResult.kind === "ref" || objResult.kind === "ref_null") {
     const typeIdx = (objResult as { typeIdx: number }).typeIdx;
     // Find the struct fields by looking up which typeName maps to this typeIdx
-    let resolvedTypeName: string | undefined;
-    for (const [name, idx] of ctx.structMap.entries()) {
-      if (idx === typeIdx) { resolvedTypeName = name; break; }
-    }
+    const resolvedTypeName = ctx.typeIdxToStructName.get(typeIdx);
     if (resolvedTypeName) {
       const fields = ctx.structFields.get(resolvedTypeName);
       if (fields) {
@@ -18063,6 +18054,7 @@ function compileWidenedEmptyObject(
         fields,
       } as StructTypeDef);
       ctx.structMap.set(typeName, typeIdx);
+      ctx.typeIdxToStructName.set(typeIdx, typeName);
       ctx.structFields.set(typeName, fields);
       ctx.anonTypeMap.set(type, typeName);
       const varType = ctx.checker.getTypeAtLocation(expr.parent.name);
@@ -18970,12 +18962,7 @@ function compileObjectDefineProperty(
         ? fctx.params[localIdx]!.type
         : fctx.locals[localIdx - fctx.params.length]?.type;
       if (localType && (localType.kind === "ref" || localType.kind === "ref_null")) {
-        for (const [name, idx] of ctx.structMap) {
-          if (idx === localType.typeIdx) {
-            structName = name;
-            break;
-          }
-        }
+        structName = ctx.typeIdxToStructName.get(localType.typeIdx);
       }
     }
   }
