@@ -71,7 +71,7 @@ const UNSUPPORTED_FEATURES = new Set([
   // spec uses the iterator protocol internally, but the test code itself does not
   // reference Symbol at all and can run fine without Symbol support).
   "Proxy",
-  "WeakRef", "FinalizationRegistry",
+  "FinalizationRegistry",
   "SharedArrayBuffer", "Atomics",
   // dynamic-import: checked separately in shouldSkip (only skip when source uses import())
   // import.meta: implemented (#371), no longer needs skipping
@@ -187,19 +187,6 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
     const body = source.replace(/\/\*---[\s\S]*?---\*\//, "");
     if (/\bReflect\b/.test(body)) {
       return { skip: true, reason: "uses Reflect in source" };
-    }
-  }
-
-  // WeakMap/WeakSet feature tags: only skip if the source actually uses them.
-  // Many tests are tagged with WeakMap/WeakSet in metadata but don't actually
-  // reference them in the test code.
-  if (meta.features?.some(f => f === "WeakMap" || f === "WeakSet")) {
-    const body = source.replace(/\/\*---[\s\S]*?---\*\//, "");
-    if (/\bWeakMap\b/.test(body)) {
-      return { skip: true, reason: "uses WeakMap in source" };
-    }
-    if (/\bWeakSet\b/.test(body)) {
-      return { skip: true, reason: "uses WeakSet in source" };
     }
   }
 
