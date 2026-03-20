@@ -15,8 +15,16 @@ echo "Creating worktree at $WT_DIR ..."
 git -C "$MAIN_DIR" worktree add "$WT_DIR" HEAD --detach --quiet 2>/dev/null
 
 # Symlink heavy directories to avoid duplication
-ln -sf "$MAIN_DIR/node_modules" "$WT_DIR/node_modules"
-ln -sf "$MAIN_DIR/test262" "$WT_DIR/test262"
+rm -rf "$WT_DIR/node_modules" "$WT_DIR/test262"
+ln -s "$MAIN_DIR/node_modules" "$WT_DIR/node_modules"
+ln -s "$MAIN_DIR/test262" "$WT_DIR/test262"
+
+# Verify symlinks
+if [ ! -d "$WT_DIR/test262/test" ]; then
+  echo "ERROR: test262 symlink failed"
+  exit 1
+fi
+echo "test262 symlink OK ($(ls "$WT_DIR/test262/test/" | wc -l) dirs)"
 
 # Share the disk cache (both directions benefit)
 mkdir -p "$MAIN_DIR/.test262-cache"
