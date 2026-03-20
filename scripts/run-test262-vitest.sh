@@ -47,7 +47,7 @@ echo "Running vitest..."
 cd "$WT_DIR"
 npx vitest run tests/test262-vitest.test.ts \
   --pool=threads \
-  --poolOptions.threads.maxThreads=${TEST262_WORKERS:-4} \
+  --poolOptions.threads.maxThreads=${TEST262_WORKERS:-8} \
   --reporter=verbose \
   "$@" 2>&1 | tee /tmp/test262-vitest-run.log
 
