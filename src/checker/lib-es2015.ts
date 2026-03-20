@@ -247,4 +247,22 @@ interface ProxyConstructor {
   revocable<T extends object>(target: T, handler: ProxyHandler<T>): { proxy: T; revoke: () => void };
 }
 declare var Proxy: ProxyConstructor;
+
+// ── Reflect ──────────────────────────────────────────────────────
+
+declare namespace Reflect {
+  function apply(target: Function, thisArgument: any, argumentsList: ArrayLike<any>): any;
+  function construct(target: Function, argumentsList: ArrayLike<any>, newTarget?: Function): any;
+  function defineProperty(target: object, propertyKey: string | symbol, attributes: PropertyDescriptor): boolean;
+  function deleteProperty(target: object, propertyKey: string | symbol): boolean;
+  function get(target: object, propertyKey: string | symbol, receiver?: any): any;
+  function getOwnPropertyDescriptor(target: object, propertyKey: string | symbol): PropertyDescriptor | undefined;
+  function getPrototypeOf(target: object): object | null;
+  function has(target: object, propertyKey: string | symbol): boolean;
+  function isExtensible(target: object): boolean;
+  function ownKeys(target: object): (string | symbol)[];
+  function preventExtensions(target: object): boolean;
+  function set(target: object, propertyKey: string | symbol, value: any, receiver?: any): boolean;
+  function setPrototypeOf(target: object, proto: object | null): boolean;
+}
 `;
