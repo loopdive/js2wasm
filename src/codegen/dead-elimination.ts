@@ -18,6 +18,7 @@ import type {
   SubTypeDef,
   ArrayTypeDef,
 } from "../ir/types.js";
+import { walkInstructions } from "./walk-instructions.js";
 
 // --- Reference collection ---
 
@@ -158,30 +159,19 @@ function remapFuncIdxInBody(
   body: Instr[],
   remap: Map<number, number>,
 ): void {
-  for (const instr of body) {
+  walkInstructions(body, (instr) => {
     const a = instr as any;
     if (typeof a.funcIdx === "number" && remap.has(a.funcIdx)) {
       a.funcIdx = remap.get(a.funcIdx)!;
     }
-    if (a.body && Array.isArray(a.body)) remapFuncIdxInBody(a.body, remap);
-    if (a.then && Array.isArray(a.then)) remapFuncIdxInBody(a.then, remap);
-    if (a.else && Array.isArray(a.else)) remapFuncIdxInBody(a.else, remap);
-    if (a.catches && Array.isArray(a.catches)) {
-      for (const c of a.catches) {
-        if (c.body) remapFuncIdxInBody(c.body, remap);
-      }
-    }
-    if (a.catchAll && Array.isArray(a.catchAll)) {
-      remapFuncIdxInBody(a.catchAll, remap);
-    }
-  }
+  });
 }
 
 function remapTypeIdxInBody(
   body: Instr[],
   remap: Map<number, number>,
 ): void {
-  for (const instr of body) {
+  walkInstructions(body, (instr) => {
     const a = instr as any;
     if (typeof a.typeIdx === "number" && remap.has(a.typeIdx)) {
       a.typeIdx = remap.get(a.typeIdx)!;
@@ -201,18 +191,7 @@ function remapTypeIdxInBody(
         a.blockType.type = remapVT(a.blockType.type, remap);
       }
     }
-    if (a.body && Array.isArray(a.body)) remapTypeIdxInBody(a.body, remap);
-    if (a.then && Array.isArray(a.then)) remapTypeIdxInBody(a.then, remap);
-    if (a.else && Array.isArray(a.else)) remapTypeIdxInBody(a.else, remap);
-    if (a.catches && Array.isArray(a.catches)) {
-      for (const c of a.catches) {
-        if (c.body) remapTypeIdxInBody(c.body, remap);
-      }
-    }
-    if (a.catchAll && Array.isArray(a.catchAll)) {
-      remapTypeIdxInBody(a.catchAll, remap);
-    }
-  }
+  });
 }
 
 function remapVT(
