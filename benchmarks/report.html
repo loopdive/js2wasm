@@ -350,19 +350,8 @@ function findBestLine(src, rawLineNo, errText, searchText) {
       if (lines[i].includes(searchText)) return i + 1;
     }
   }
-  // Strategy 2: try offsets from the raw line number (preamble is ~25-35 lines)
-  // Find the first non-comment, non-metadata code line near the adjusted position
-  for (const offset of [30, 28, 32, 25, 35, 20, 0]) {
-    const adjusted = rawLineNo - offset;
-    if (adjusted > 0 && adjusted <= lines.length) {
-      const line = lines[adjusted - 1].trim();
-      // Skip metadata, comments, empty lines
-      if (line && !line.startsWith("//") && !line.startsWith("*") && !line.startsWith("/*") && line !== "---*/") {
-        return adjusted;
-      }
-    }
-  }
-  // Strategy 3: if raw line is within file range, use it (better than nothing)
+  // Line numbers are now adjusted at the runner level (bodyLineOffset subtracted).
+  // Use them directly.
   if (rawLineNo > 0 && rawLineNo <= lines.length) return rawLineNo;
   return 0;
 }
