@@ -10983,14 +10983,53 @@ function compileCallExpression(
       return objType;
     }
 
-    // Handle Object.getPrototypeOf(obj) — stub: compile and drop arg, return null
+    // Handle Object.getPrototypeOf(obj) — return prototype as externref
+    // For class instances, creates a struct representing the prototype and returns
+    // it as externref via extern.convert_any. For plain objects, returns null.
     if (
       ts.isIdentifier(propAccess.expression) &&
       propAccess.expression.text === "Object" &&
       propAccess.name.text === "getPrototypeOf" &&
       expr.arguments.length >= 1
     ) {
-      const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
+      const arg0 = expr.arguments[0]!;
+
+      // For Object.getPrototypeOf(Child.prototype), return Parent's prototype singleton
+      // Must check BEFORE the general class instance check, because TS types
+      // Child.prototype as Child (the instance type).
+      if (
+        ts.isPropertyAccessExpression(arg0) &&
+        ts.isIdentifier(arg0.expression) &&
+        arg0.name.text === "prototype" &&
+        ctx.classSet.has(arg0.expression.text)
+      ) {
+        const childClassName = arg0.expression.text;
+        const parentClassName = ctx.classParentMap.get(childClassName);
+        if (parentClassName && emitLazyProtoGet(ctx, fctx, parentClassName)) {
+          return { kind: "externref" };
+        }
+        // Base class with no parent: return null (Object.prototype not modeled)
+        fctx.body.push({ op: "ref.null.extern" });
+        return { kind: "externref" };
+      }
+
+      const argTsType = ctx.checker.getTypeAtLocation(arg0);
+      const className = resolveStructName(ctx, argTsType);
+
+      // For known class instances, return the class prototype singleton
+      if (className && ctx.classSet.has(className)) {
+        // Compile and drop the argument (for side effects)
+        const argType = compileExpression(ctx, fctx, arg0);
+        if (argType) {
+          fctx.body.push({ op: "drop" });
+        }
+        if (emitLazyProtoGet(ctx, fctx, className)) {
+          return { kind: "externref" };
+        }
+      }
+
+      // Fallback: compile and drop arg, return null
+      const argType = compileExpression(ctx, fctx, arg0);
       if (argType) {
         fctx.body.push({ op: "drop" });
       }
@@ -15198,6 +15237,74 @@ function pushDefaultValue(fctx: FunctionContext, type: ValType): void {
 }
 
 /**
+ * Emit a lazy-initialized prototype global access.
+ * On first access, creates a struct instance with default values and stores it
+ * as externref in the global. Subsequent accesses return the same instance.
+ * This gives reference identity for ClassName.prototype === Object.getPrototypeOf(instance).
+ */
+function emitLazyProtoGet(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  className: string,
+): boolean {
+  const protoGlobalIdx = ctx.protoGlobals?.get(className);
+  if (protoGlobalIdx === undefined) return false;
+
+  const structTypeIdx = ctx.structMap.get(className);
+  const fields = ctx.structFields.get(className);
+  if (structTypeIdx === undefined || !fields) return false;
+
+  // Build the init body: push default values for all fields, struct.new, extern.convert_any, global.set
+  const initBody: Instr[] = [];
+  for (const field of fields) {
+    if (field.name === "__tag") {
+      const tag = ctx.classTagMap.get(className) ?? 0;
+      initBody.push({ op: "i32.const", value: tag });
+    } else {
+      // Push default value for each field type
+      switch (field.type.kind) {
+        case "f64":
+          initBody.push({ op: "f64.const", value: 0 });
+          break;
+        case "i32":
+          initBody.push({ op: "i32.const", value: 0 });
+          break;
+        case "i64":
+          initBody.push({ op: "i64.const", value: 0n });
+          break;
+        case "externref":
+          initBody.push({ op: "ref.null.extern" });
+          break;
+        case "ref_null":
+          initBody.push({ op: "ref.null", typeIdx: field.type.typeIdx });
+          break;
+        case "ref":
+          initBody.push({ op: "ref.null", typeIdx: field.type.typeIdx });
+          break;
+        default:
+          initBody.push({ op: "i32.const", value: 0 });
+          break;
+      }
+    }
+  }
+  initBody.push({ op: "struct.new", typeIdx: structTypeIdx });
+  initBody.push({ op: "extern.convert_any" });
+  initBody.push({ op: "global.set", index: protoGlobalIdx });
+
+  // Emit: if global is null, init it; then get it
+  fctx.body.push({ op: "global.get", index: protoGlobalIdx });
+  fctx.body.push({ op: "ref.is_null" });
+  fctx.body.push({
+    op: "if",
+    blockType: { kind: "empty" },
+    then: initBody,
+    else: [],
+  } as unknown as Instr);
+  fctx.body.push({ op: "global.get", index: protoGlobalIdx });
+  return true;
+}
+
+/**
  * After dynamically adding a field to a struct type, patch all existing
  * struct.new instructions in compiled function bodies so they push a default
  * value for the new field. Without this, struct.new expects N values on the
@@ -16898,10 +17005,26 @@ function compilePropertyAccess(
         const globalDef = ctx.mod.globals[localGlobalIdx(ctx, globalIdx)];
         return globalDef?.type ?? { kind: "f64" };
       }
-      // ClassName.prototype, ClassName.constructor — these are JS-level
-      // meta-properties that don't map to struct fields. Return a default
-      // value to avoid breaking struct definitions with phantom fields.
-      if (propName === "prototype" || propName === "constructor") {
+      // ClassName.prototype — return a singleton prototype global (externref)
+      // so that Object.getPrototypeOf(instance) === ClassName.prototype holds.
+      if (propName === "prototype") {
+        if (emitLazyProtoGet(ctx, fctx, objName)) {
+          return { kind: "externref" };
+        }
+        // Fallback: return null externref
+        fctx.body.push({ op: "ref.null.extern" } as unknown as Instr);
+        return { kind: "externref" };
+      }
+      // ClassName.constructor — return the constructor function reference
+      if (propName === "constructor") {
+        const ctorName = `${objName}_constructor`;
+        const funcIdx = ctx.funcMap.get(ctorName);
+        if (funcIdx !== undefined) {
+          fctx.body.push({ op: "ref.func", funcIdx } as unknown as Instr);
+          fctx.body.push({ op: "extern.convert_any" });
+          return { kind: "externref" };
+        }
+        // Fallback: return null externref
         fctx.body.push({ op: "ref.null.extern" } as unknown as Instr);
         return { kind: "externref" };
       }
@@ -17213,6 +17336,39 @@ function compilePropertyAccess(
         const propType = ctx.checker.getTypeAtLocation(expr);
         return resolveWasmType(ctx, propType);
       }
+    }
+
+    // Handle .constructor on class instances — return constructor function ref
+    if (propName === "constructor" && ctx.classSet.has(typeName)) {
+      // Compile and drop the object expression (for side effects)
+      const objResult = compileExpression(ctx, fctx, expr.expression);
+      if (objResult) {
+        fctx.body.push({ op: "drop" });
+      }
+      const ctorName = `${typeName}_constructor`;
+      const funcIdx = ctx.funcMap.get(ctorName);
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "ref.func", funcIdx } as unknown as Instr);
+        fctx.body.push({ op: "extern.convert_any" });
+        return { kind: "externref" };
+      }
+      // No named constructor found — return null externref
+      fctx.body.push({ op: "ref.null.extern" } as unknown as Instr);
+      return { kind: "externref" };
+    }
+
+    // Handle .prototype on class instances — return prototype singleton
+    if (propName === "prototype" && ctx.classSet.has(typeName)) {
+      // Compile and drop the object expression
+      const objResult = compileExpression(ctx, fctx, expr.expression);
+      if (objResult) {
+        fctx.body.push({ op: "drop" });
+      }
+      if (emitLazyProtoGet(ctx, fctx, typeName)) {
+        return { kind: "externref" };
+      }
+      fctx.body.push({ op: "ref.null.extern" } as unknown as Instr);
+      return { kind: "externref" };
     }
 
     // Handle struct field access (named or anonymous)
