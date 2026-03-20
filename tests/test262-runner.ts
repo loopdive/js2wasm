@@ -1192,6 +1192,221 @@ export interface WrapResult {
   bodyLineOffset: number;
 }
 
+// Cache for preamble templates — keyed by a bitmask string encoding which
+// optional helpers are needed.  Most test262 tests share a tiny number of
+// distinct helper combinations so this avoids rebuilding the same large
+// string thousands of times.
+const preambleCache = new Map<string, string>();
+
+/** Build the preamble string from boolean flags.  Called once per unique
+ *  combination and then cached in preambleCache. */
+function buildPreamble(
+  needsAssertThrows: boolean, needsStrAssert: boolean, needsBoolAssert: boolean,
+  needsCompareArray: boolean, needsAssertCompareArray: boolean,
+  needsPropertyHelper: boolean, needsFnGlobalObject: boolean,
+  needsIsConstructor: boolean, needsDecimalToHex: boolean, needsNans: boolean,
+  needsIsNativeFunction: boolean, needsAssertNativeFunction: boolean,
+  needsTcoHelper: boolean, needsDone: boolean, needsAsyncTest: boolean,
+  needsDoneForAsyncTest: boolean, needsTestTypedArray: boolean,
+): string {
+  let p = `let __fail: number = 0;
+let __assert_count: number = 1;
+
+function isSameValue(a: number, b: number): number {
+  if (a === b) { return 1; }
+  if (a !== a && b !== b) { return 1; }
+  return 0;
+}
+
+function assert_sameValue(actual: number, expected: number): void {
+  __assert_count = __assert_count + 1;
+  if (!isSameValue(actual, expected)) {
+    if (!__fail) __fail = __assert_count;
+  }
+}
+
+function assert_notSameValue(actual: number, expected: number): void {
+  __assert_count = __assert_count + 1;
+  if (isSameValue(actual, expected)) {
+    if (!__fail) __fail = __assert_count;
+  }
+}
+
+function assert_true(value: number): void {
+  __assert_count = __assert_count + 1;
+  if (!value) {
+    if (!__fail) __fail = __assert_count;
+  }
+}`;
+
+  if (needsAssertThrows) {
+    p += `
+
+function assert_throws(fn: () => void): void {
+  __assert_count = __assert_count + 1;
+  try {
+    fn();
+  } catch (e) {
+    return;
+  }
+  if (!__fail) __fail = __assert_count;
+}`;
+  }
+
+  if (needsStrAssert) {
+    p += `
+
+function assert_sameValue_str(actual: string, expected: string): void {
+  __assert_count = __assert_count + 1;
+  if (actual !== expected) {
+    if (!__fail) __fail = __assert_count;
+  }
+}`;
+  }
+
+  if (needsBoolAssert) {
+    p += `
+
+function assert_sameValue_bool(actual: boolean, expected: boolean): void {
+  __assert_count = __assert_count + 1;
+  if (actual !== expected) {
+    if (!__fail) __fail = __assert_count;
+  }
+}
+
+function assert_notSameValue_bool(actual: boolean, expected: boolean): void {
+  __assert_count = __assert_count + 1;
+  if (actual === expected) {
+    if (!__fail) __fail = __assert_count;
+  }
+}`;
+  }
+
+  if (needsCompareArray) {
+    p += `
+
+function compareArray(a: number[], b: number[]): number {
+  if (a.length !== b.length) return 0;
+  for (let i: number = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return 0;
+  }
+  return 1;
+}`;
+  }
+
+  if (needsAssertCompareArray) {
+    p += `
+
+function assert_compareArray(actual: number[], expected: number[]): void {
+  __assert_count = __assert_count + 1;
+  if (actual.length !== expected.length) { if (!__fail) __fail = __assert_count; return; }
+  for (let i: number = 0; i < actual.length; i++) {
+    if (actual[i] !== expected[i]) { if (!__fail) __fail = __assert_count; return; }
+  }
+}`;
+  }
+
+  if (needsPropertyHelper) {
+    p += `
+function verifyEnumerable(obj: any, name: any): void {}
+function verifyNotEnumerable(obj: any, name: any): void {}
+function verifyWritable(obj: any, name: any, val?: any): void {}
+function verifyNotWritable(obj: any, name: any, val?: any): void {}
+function verifyConfigurable(obj: any, name: any): void {}
+function verifyNotConfigurable(obj: any, name: any): void {}
+function verifyEqualTo(obj: any, name: any, val?: any): void {}
+function verifyNotEqualTo(obj: any, name: any, val?: any): void {}
+function verifyCallableProperty(a: any, b: any, c?: any, d?: any, e?: any, f?: any): void {}
+function verifyPrimordialProperty(a: any, b: any, c?: any, d?: any): void {}
+function verifyPrimordialCallableProperty(a: any, b: any, c?: any, d?: any, e?: any, f?: any): void {}`;
+  }
+
+  if (needsFnGlobalObject) {
+    p += `
+
+function fnGlobalObject(): number { return 0; }`;
+  }
+
+  if (needsIsConstructor) {
+    p += `
+
+function isConstructor(f: number): number { return 0; }`;
+  }
+
+  if (needsDecimalToHex) {
+    p += `
+
+function decimalToHexString(n: number): string { return "0"; }`;
+  }
+
+  if (needsNans) {
+    p += `
+
+let distinctNaNs: number[] = [NaN];`;
+  }
+
+  if (needsIsNativeFunction) {
+    p += `
+
+function isNativeFunction(f: number): number { return 1; }`;
+  }
+
+  if (needsAssertNativeFunction) {
+    p += `
+
+function assertNativeFunction(f: number): void {}`;
+  }
+
+  if (needsTcoHelper) {
+    p += `
+
+let $MAX_ITERATIONS: number = 100000;`;
+  }
+
+  if (needsDone) {
+    p += `
+
+function $DONE(err?: any): void {
+  __assert_count = __assert_count + 1;
+  if (err) { if (!__fail) __fail = __assert_count; }
+}`;
+  }
+
+  if (needsAsyncTest) {
+    p += `
+
+function asyncTest(fn: () => void): void {
+  try {
+    fn();
+    $DONE();
+  } catch (e) {
+    $DONE(e);
+  }
+}`;
+    if (needsDoneForAsyncTest) {
+      p += `
+
+function $DONE(err?: any): void {
+  __assert_count = __assert_count + 1;
+  if (err) { if (!__fail) __fail = __assert_count; }
+}`;
+    }
+  }
+
+  if (needsTestTypedArray) {
+    p += `
+
+function testWithTypedArrayConstructors(fn: any): void {
+  const constructors = [Int8Array, Uint8Array, Int16Array, Uint16Array, Int32Array, Uint32Array, Float32Array, Float64Array];
+  for (let i = 0; i < constructors.length; i++) {
+    fn(constructors[i]);
+  }
+}`;
+  }
+
+  return p;
+}
+
 export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
   // Strip metadata block
   let body = source.replace(/\/\*---[\s\S]*?---\*\//, "");
@@ -1333,103 +1548,6 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
   const needsAssertCompareArray = /\bassert_compareArray\b/.test(body);
   const needsAssertThrows = /\bassert_throws\b/.test(body);
 
-  let preamble = `let __fail: number = 0;
-let __assert_count: number = 1;
-
-function isSameValue(a: number, b: number): number {
-  if (a === b) { return 1; }
-  if (a !== a && b !== b) { return 1; }
-  return 0;
-}
-
-function assert_sameValue(actual: number, expected: number): void {
-  __assert_count = __assert_count + 1;
-  if (!isSameValue(actual, expected)) {
-    if (!__fail) __fail = __assert_count;
-  }
-}
-
-function assert_notSameValue(actual: number, expected: number): void {
-  __assert_count = __assert_count + 1;
-  if (isSameValue(actual, expected)) {
-    if (!__fail) __fail = __assert_count;
-  }
-}
-
-function assert_true(value: number): void {
-  __assert_count = __assert_count + 1;
-  if (!value) {
-    if (!__fail) __fail = __assert_count;
-  }
-}`;
-
-  if (needsAssertThrows) {
-    preamble += `
-
-function assert_throws(fn: () => void): void {
-  __assert_count = __assert_count + 1;
-  try {
-    fn();
-  } catch (e) {
-    return;
-  }
-  if (!__fail) __fail = __assert_count;
-}`;
-  }
-
-  if (needsStrAssert) {
-    preamble += `
-
-function assert_sameValue_str(actual: string, expected: string): void {
-  __assert_count = __assert_count + 1;
-  if (actual !== expected) {
-    if (!__fail) __fail = __assert_count;
-  }
-}`;
-  }
-
-  if (needsBoolAssert) {
-    preamble += `
-
-function assert_sameValue_bool(actual: boolean, expected: boolean): void {
-  __assert_count = __assert_count + 1;
-  if (actual !== expected) {
-    if (!__fail) __fail = __assert_count;
-  }
-}
-
-function assert_notSameValue_bool(actual: boolean, expected: boolean): void {
-  __assert_count = __assert_count + 1;
-  if (actual === expected) {
-    if (!__fail) __fail = __assert_count;
-  }
-}`;
-  }
-
-  if (needsCompareArray) {
-    preamble += `
-
-function compareArray(a: number[], b: number[]): number {
-  if (a.length !== b.length) return 0;
-  for (let i: number = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) return 0;
-  }
-  return 1;
-}`;
-  }
-
-  if (needsAssertCompareArray) {
-    preamble += `
-
-function assert_compareArray(actual: number[], expected: number[]): void {
-  __assert_count = __assert_count + 1;
-  if (actual.length !== expected.length) { if (!__fail) __fail = __assert_count; return; }
-  for (let i: number = 0; i < actual.length; i++) {
-    if (actual[i] !== expected[i]) { if (!__fail) __fail = __assert_count; return; }
-  }
-}`;
-  }
-
   // ── Harness include shims ───────────────────────────────────────────
   // These are stubs for test262 harness helpers. They are conditionally
   // included only when the test body references the function, to avoid
@@ -1438,136 +1556,51 @@ function assert_compareArray(actual: number[], expected: number[]): void {
   const resolvedMeta = meta ?? parseMeta(source);
   const includes = resolvedMeta.includes ?? [];
 
-  // propertyHelper.js — verifyProperty and friends.
-  // Provide no-op stubs so the test's actual logic can run.
-  // The verify* calls become no-ops — we don't yet have property descriptor
-  // bitfields to check against, but the tests still exercise the surrounding
-  // code (assignments, coercions, etc.). See issue #129.
+  // Body-modifying passes that don't affect preamble content
+  // (must happen before preamble cache lookup so the body is consistent)
   if (includes.includes("propertyHelper.js")) {
-    // Strip calls that pass object-literal descriptors — these crash the
-    // compiler (no struct shape inference for anonymous objects, #580).
-    // All other verify helpers get no-op stubs.
     if (new RegExp(`\\bverifyProperty\\b`).test(body)) {
       body = stripBalancedCall(body, "verifyProperty");
     }
-
-    preamble += `
-function verifyEnumerable(obj: any, name: any): void {}
-function verifyNotEnumerable(obj: any, name: any): void {}
-function verifyWritable(obj: any, name: any, val?: any): void {}
-function verifyNotWritable(obj: any, name: any, val?: any): void {}
-function verifyConfigurable(obj: any, name: any): void {}
-function verifyNotConfigurable(obj: any, name: any): void {}
-function verifyEqualTo(obj: any, name: any, val?: any): void {}
-function verifyNotEqualTo(obj: any, name: any, val?: any): void {}
-function verifyCallableProperty(a: any, b: any, c?: any, d?: any, e?: any, f?: any): void {}
-function verifyPrimordialProperty(a: any, b: any, c?: any, d?: any): void {}
-function verifyPrimordialCallableProperty(a: any, b: any, c?: any, d?: any, e?: any, f?: any): void {}`;
   }
 
-  // fnGlobalObject.js — returns a reference to the global object.
-  // In Wasm there is no real global object; return 0 as a dummy value.
-  if (includes.includes("fnGlobalObject.js") && /\bfnGlobalObject\b/.test(body)) {
-    preamble += `
+  // Compute all boolean flags that control preamble content, then build a
+  // cache key.  Most test262 tests share a tiny number of distinct helper
+  // combinations, so this avoids rebuilding the same large string thousands
+  // of times.
+  const needsPropertyHelper = includes.includes("propertyHelper.js");
+  const needsFnGlobalObject = includes.includes("fnGlobalObject.js") && /\bfnGlobalObject\b/.test(body);
+  const needsIsConstructor = includes.includes("isConstructor.js") && /\bisConstructor\b/.test(body);
+  const needsDecimalToHex = includes.includes("decimalToHexString.js") && /\bdecimalToHexString\b/.test(body);
+  const needsNans = includes.includes("nans.js") && /\bdistinctNaNs\b/.test(body);
+  const needsIsNativeFunction = includes.includes("nativeFunctionMatcher.js") && /\bisNativeFunction\b/.test(body);
+  const needsAssertNativeFunction = includes.includes("nativeFunctionMatcher.js") && /\bassertNativeFunction\b/.test(body);
+  const needsTcoHelper = includes.includes("tcoHelper.js") && /\$MAX_ITERATIONS\b/.test(body);
+  const needsDone = /\$DONE\b/.test(body);
+  const needsAsyncTest = includes.includes("asyncHelpers.js") && /\basyncTest\b/.test(body);
+  const needsDoneForAsyncTest = needsAsyncTest && !needsDone;
+  const needsTestTypedArray = includes.includes("testTypedArray.js") && /testWithTypedArrayConstructors/.test(body);
 
-function fnGlobalObject(): number { return 0; }`;
-  }
+  // Build cache key as a bitmask string
+  const cacheKey = [
+    needsAssertThrows, needsStrAssert, needsBoolAssert, needsCompareArray,
+    needsAssertCompareArray, needsPropertyHelper, needsFnGlobalObject,
+    needsIsConstructor, needsDecimalToHex, needsNans, needsIsNativeFunction,
+    needsAssertNativeFunction, needsTcoHelper, needsDone, needsAsyncTest,
+    needsDoneForAsyncTest, needsTestTypedArray,
+  ].map(b => b ? "1" : "0").join("");
 
-  // isConstructor.js — checks if a value can be used with `new`.
-  // We cannot reflectively test this in Wasm; always return 0 (false).
-  if (includes.includes("isConstructor.js") && /\bisConstructor\b/.test(body)) {
-    preamble += `
-
-function isConstructor(f: number): number { return 0; }`;
-  }
-
-  // decimalToHexString.js — converts a number to its hex string representation.
-  // This is used by numeric conversion tests. We provide a stub returning "0".
-  if (includes.includes("decimalToHexString.js") && /\bdecimalToHexString\b/.test(body)) {
-    preamble += `
-
-function decimalToHexString(n: number): string { return "0"; }`;
-  }
-
-  // nans.js — provides an array of distinct NaN representations.
-  // In Wasm there is only one NaN value (f64), so provide a single-element array.
-  if (includes.includes("nans.js") && /\bdistinctNaNs\b/.test(body)) {
-    preamble += `
-
-let distinctNaNs: number[] = [NaN];`;
-  }
-
-  // nativeFunctionMatcher.js — provides isNativeFunction / assertNativeFunction.
-  // In Wasm there is no Function.prototype.toString. Stub as no-op/pass.
-  if (includes.includes("nativeFunctionMatcher.js")) {
-    if (/\bisNativeFunction\b/.test(body)) {
-      preamble += `
-
-function isNativeFunction(f: number): number { return 1; }`;
-    }
-    if (/\bassertNativeFunction\b/.test(body)) {
-      preamble += `
-
-function assertNativeFunction(f: number): void {}`;
-    }
-  }
-
-  // tcoHelper.js — provides $MAX_ITERATIONS for tail call optimization tests.
-  if (includes.includes("tcoHelper.js") && /\$MAX_ITERATIONS\b/.test(body)) {
-    preamble += `
-
-let $MAX_ITERATIONS: number = 100000;`;
-  }
-
-  // $DONE — async test completion callback.
-  // In async-flagged test262 tests, $DONE() signals success and $DONE(err) signals
-  // failure. Since we compile async functions synchronously, $DONE is a no-op shim
-  // that sets __fail if an error argument is provided.
-  if (/\$DONE\b/.test(body)) {
-    preamble += `
-
-function $DONE(err?: any): void {
-  __assert_count = __assert_count + 1;
-  if (err) { if (!__fail) __fail = __assert_count; }
-}`;
-  }
-
-  // asyncHelpers.js — asyncTest wrapper for async tests.
-  // The real asyncTest calls fn().then($DONE, $DONE), but since we compile
-  // async functions synchronously, we just call fn() directly and catch errors.
-  if (includes.includes("asyncHelpers.js") && /\basyncTest\b/.test(body)) {
-    preamble += `
-
-function asyncTest(fn: () => void): void {
-  try {
-    fn();
-    $DONE();
-  } catch (e) {
-    $DONE(e);
-  }
-}`;
-    // Ensure $DONE is also available (asyncTest calls it)
-    if (!/\$DONE\b/.test(body)) {
-      preamble += `
-
-function $DONE(err?: any): void {
-  __assert_count = __assert_count + 1;
-  if (err) { if (!__fail) __fail = __assert_count; }
-}`;
-    }
-  }
-
-  // testTypedArray.js — provides testWithTypedArrayConstructors that iterates
-  // over all TypedArray constructors.
-  if (includes.includes("testTypedArray.js") && /testWithTypedArrayConstructors/.test(body)) {
-    preamble += `
-
-function testWithTypedArrayConstructors(fn: any): void {
-  const constructors = [Int8Array, Uint8Array, Int16Array, Uint16Array, Int32Array, Uint32Array, Float32Array, Float64Array];
-  for (let i = 0; i < constructors.length; i++) {
-    fn(constructors[i]);
-  }
-}`;
+  let preamble = preambleCache.get(cacheKey);
+  if (preamble === undefined) {
+    preamble = buildPreamble(
+      needsAssertThrows, needsStrAssert, needsBoolAssert, needsCompareArray,
+      needsAssertCompareArray, needsPropertyHelper, needsFnGlobalObject,
+      needsIsConstructor, needsDecimalToHex, needsNans, needsIsNativeFunction,
+      needsAssertNativeFunction, needsTcoHelper, needsDone, needsAsyncTest,
+      needsDoneForAsyncTest, needsTestTypedArray,
+    );
+    preambleCache.set(cacheKey, preamble);
+  }`;
   }
 
   // Auto-declare variables used as destructuring assignment targets but not
@@ -1838,7 +1871,7 @@ export async function handleNegativeTest(
     let compileMs = 0;
     const compileStart = performance.now();
     try {
-      const result = compile(minimalWrapped, { fileName: "test.ts" });
+      const result = compile(minimalWrapped, { fileName: "test.ts", emitWat: false });
       compileMs = performance.now() - compileStart;
       const totalMs = performance.now() - totalStart;
       const timing: TestTiming = { totalMs: round2(totalMs), compileMs: round2(compileMs), instantiateMs: 0, executeMs: 0 };
@@ -2107,7 +2140,7 @@ export async function runTest262File(filePath: string, category: string, timeout
   const compileStart = performance.now();
   let compileMs = 0;
   try {
-    result = compile(wrappedSource, { fileName: "test.ts", sourceMap: true });
+    result = compile(wrappedSource, { fileName: "test.ts", sourceMap: true, emitWat: false });
     compileMs = performance.now() - compileStart;
 
     // Guard: if compilation took >30s, report as CE and skip execution
