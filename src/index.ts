@@ -45,6 +45,8 @@ export interface CompileResult {
   imports: ImportDescriptor[];
   /** C header file content (only present when abi: "c") */
   cHeader?: string;
+  /** WIT interface definition (only present when wit option is enabled) */
+  wit?: string;
 }
 
 export interface CompileError {
@@ -109,6 +111,10 @@ export interface CompileOptions {
   hardened?: boolean;
   /** Skip semantic diagnostics for faster compilation (checker still available for type queries) */
   skipSemanticDiagnostics?: boolean;
+  /** Generate a WIT (WebAssembly Interface Types) file from exported functions.
+   *  When set, the result will include a `wit` field with the WIT interface definition.
+   *  Value can be true (use defaults) or an object with packageName/worldName options. */
+  wit?: boolean | { packageName?: string; worldName?: string };
   /** Run Binaryen wasm-opt post-processing on the output binary (default: false).
    *  Requires either the 'binaryen' npm package or wasm-opt on PATH.
    *  Set to true for -O3 defaults, or pass a number (1-4) for a specific level. */
@@ -210,6 +216,8 @@ export function compileProject(
   return compileMultiSource(files, entryKey, options);
 }
 
+export { generateWit } from "./wit-generator.js";
+export type { WitGeneratorOptions } from "./wit-generator.js";
 export { ModuleResolver, resolveAllImports, getBarePackageName } from "./resolve.js";
 export { treeshake, getEntryExportNames } from "./treeshake.js";
 

@@ -16,6 +16,7 @@ Options:
   --wat             Emit only WAT (no binary)
   --no-wat          Skip WAT output
   --no-dts          Skip .d.ts output
+  --wit             Generate WIT interface file for Component Model
   -O, --optimize    Run Binaryen wasm-opt optimizer (default: -O3)
   -O1..-O4          Set optimization level (1-4)
   -h, --help        Show this help
@@ -36,6 +37,7 @@ let emitDts = true;
 let watOnly = false;
 let optimize: boolean | 1 | 2 | 3 | 4 = false;
 let target: "gc" | "linear" | "wasi" | undefined;
+let emitWit = false;
 
 for (let i = 0; i < args.length; i++) {
   const arg = args[i]!;
@@ -55,6 +57,8 @@ for (let i = 0; i < args.length; i++) {
     emitWat = false;
   } else if (arg === "--no-dts") {
     emitDts = false;
+  } else if (arg === "--wit") {
+    emitWit = true;
   } else if (arg === "-O" || arg === "--optimize") {
     optimize = true;
   } else if (/^-O[1-4]$/.test(arg)) {
@@ -77,7 +81,7 @@ const source = readFileSync(absInput, "utf-8");
 const name = basename(absInput, ".ts");
 const dir = outDir ? resolve(outDir) : dirname(absInput);
 
-const result = compile(source, { ...(optimize ? { optimize } : {}), ...(target ? { target } : {}) });
+const result = compile(source, { ...(optimize ? { optimize } : {}), ...(target ? { target } : {}), ...(emitWit ? { wit: true } : {}) });
 
 if (!result.success) {
   for (const e of result.errors) {
@@ -121,4 +125,10 @@ if (emitDts) {
   const helperPath = resolve(dir, `${name}.imports.js`);
   writeFileSync(helperPath, result.importsHelper);
   console.log(`${helperPath}  (${result.importsHelper.length} chars)`);
+}
+
+if (emitWit && result.wit) {
+  const witPath = resolve(dir, `${name}.wit`);
+  writeFileSync(witPath, result.wit);
+  console.log(`${witPath}  (${result.wit.length} chars)`);
 }
