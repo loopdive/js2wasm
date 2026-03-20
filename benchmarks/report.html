@@ -438,23 +438,90 @@ function renderConformance(data, container) {
     }
   }
 
+  // Detail panel for showing all files matching a status filter
+  const detailPanel = el("div", { id: "status-detail-panel", style: { display: "none", marginBottom: "1.5rem" } });
+
   for (const [status, card] of Object.entries(statusCards)) {
     card.classList.add("filter-card");
     card.addEventListener("click", () => {
       if (activeStatusFilter === status) {
         activeStatusFilter = null;
         card.classList.remove("active");
+        detailPanel.style.display = "none";
       } else {
         for (const c of Object.values(statusCards)) c.classList.remove("active");
         activeStatusFilter = status;
         card.classList.add("active");
+        showStatusDetail(status);
       }
       applyFilters();
     });
     summary.appendChild(card);
   }
 
+  async function showStatusDetail(status) {
+    detailPanel.style.display = "block";
+    detailPanel.innerHTML = "";
+    const header = el("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" } });
+    const statusLabel = status === "compile_error" ? "Compile Errors" : status === "pass" ? "Passed" : status === "fail" ? "Failed" : "Skipped";
+    const statusColor = status === "pass" ? "var(--pass)" : status === "fail" ? "var(--fail)" : status === "compile_error" ? "var(--error)" : "var(--text-muted)";
+    header.appendChild(el("h3", { style: { color: statusColor, margin: "0" } }, statusLabel + " — All Files"));
+    const closeBtn = el("span", { className: "clickable", style: { color: "var(--text-muted)", fontSize: "0.875rem" } }, "[close]");
+    closeBtn.addEventListener("click", () => { activeStatusFilter = null; for (const c of Object.values(statusCards)) c.classList.remove("active"); detailPanel.style.display = "none"; applyFilters(); });
+    header.appendChild(closeBtn);
+    detailPanel.appendChild(header);
+
+    const searchRow = el("div", { style: { marginBottom: "0.5rem" } });
+    const detailSearch = el("input", { className: "search-box", type: "text", placeholder: "Filter files..." , style: { width: "100%" } });
+    searchRow.appendChild(detailSearch);
+    detailPanel.appendChild(searchRow);
+
+    const content = el("div", { className: "detail-content", style: { maxHeight: "500px" } });
+    content.textContent = "Loading file data...";
+    detailPanel.appendChild(content);
+
+    const map = await loadFileResults();
+    if (!map) { content.textContent = "No file-level data available."; return; }
+
+    const allFiles = [];
+    for (const [cat, files] of map) {
+      for (const f of files) {
+        if (f.status === status) allFiles.push(f);
+      }
+    }
+    allFiles.sort((a, b) => {
+      if (a.error && !b.error) return -1;
+      if (!a.error && b.error) return 1;
+      return (a.file || "").localeCompare(b.file || "");
+    });
+
+    function renderFiles(filter) {
+      content.textContent = "";
+      const q = (filter || "").toLowerCase();
+      let shown = 0;
+      for (const f of allFiles) {
+        const fname = (f.file || "").replace("test/", "");
+        const err = f.error || f.reason || "";
+        if (q && !fname.toLowerCase().includes(q) && !err.toLowerCase().includes(q)) continue;
+        const fileEl = el("div", { className: "detail-file" });
+        const statusCls = f.status === "pass" ? "detail-status-pass" : f.status === "fail" ? "detail-status-fail" : "detail-status-err";
+        const icon = f.status === "pass" ? "\u2713" : f.status === "fail" ? "\u2717" : f.status === "skip" ? "\u23ED" : "\u26A0";
+        fileEl.appendChild(el("span", { className: statusCls, style: { width: "18px", flexShrink: "0" } }, icon));
+        fileEl.appendChild(el("span", { className: "detail-fname", title: fname }, fname));
+        if (err) fileEl.appendChild(el("span", { className: "detail-err", title: escapeHtml(err) }, escapeHtml(err.split(";")[0])));
+        content.appendChild(fileEl);
+        shown++;
+        if (shown >= 2000) { content.appendChild(el("div", { style: { color: "var(--text-muted)", padding: "0.5rem 0" } }, "... " + (allFiles.length - shown) + " more files (refine search to see all)")); break; }
+      }
+      if (shown === 0) content.textContent = "No matching files.";
+    }
+
+    renderFiles("");
+    detailSearch.addEventListener("input", () => renderFiles(detailSearch.value));
+  }
+
   container.appendChild(summary);
+  container.appendChild(detailPanel);
 
   container.appendChild(makeBar(pct(s.pass, s.total), pct(s.fail, s.total), pct(s.compile_error, s.total), "overall-bar"));
 
