@@ -582,8 +582,15 @@ function compileVariableStatement(
         stackType = resultType ?? wasmType;
         // Coerce if the expression produced a type that doesn't match the local
         if (resultType && !valTypesMatch(resultType, wasmType)) {
+          const bodyLenBeforeCoerce = fctx.body.length;
           coerceType(ctx, fctx, resultType, wasmType);
-          stackType = wasmType; // after coercion, stack is wasmType
+          // Only update stackType if coercion actually emitted instructions.
+          // If coerceType was a no-op (e.g. unrelated struct types), keep
+          // the original resultType so emitCoercedLocalSet can detect the
+          // mismatch and update the local's declared type accordingly.
+          if (fctx.body.length > bodyLenBeforeCoerce) {
+            stackType = wasmType; // after coercion, stack is wasmType
+          }
         }
       }
       emitCoercedLocalSet(ctx, fctx, localIdx, stackType);
