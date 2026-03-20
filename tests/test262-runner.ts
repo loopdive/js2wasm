@@ -86,6 +86,7 @@ const UNSUPPORTED_FEATURES = new Set([
   "top-level-await",
   "json-superset", "well-formed-json-stringify",
   "Intl",
+  "Temporal", // Stage 3 TC39 proposal — full API not implemented (#630)
   // tail-call-optimization: removed (#546) — tests will fail at runtime
   // (stack overflow without return_call), but shouldn't be hidden as skips.
   // cross-realm: removed (#500) — single-module Wasm has no cross-realm issues;
