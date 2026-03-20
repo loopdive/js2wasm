@@ -122,14 +122,37 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
     return { skip: true, reason: "imports _FIXTURE helper module" };
   }
 
-  if (SKIP_DISABLED) return { skip: false };
-  // Skip known hanging tests by file path
+  // Skip known hanging tests by file path — prevents infinite compilation loops
   if (filePath) {
     const relPath = filePath.replace(/.*test262\//, "");
     if (HANGING_TESTS.has(relPath)) {
       return { skip: true, reason: "compiler hang (see HANGING_TESTS)" };
     }
   }
+
+  // Temporal API — entire TC39 proposal with thousands of tests; the API does
+  // not exist in Wasm and never will, so these always timeout (#630)
+  if (meta.features?.includes("Temporal")) {
+    return { skip: true, reason: "Temporal API not implemented" };
+  }
+
+  // eval() in source — dynamic code execution is impossible in Wasm and causes
+  // the compiler to hang on eval call expressions, producing timeouts
+  {
+    const bodyForEval = source.replace(/\/\*---[\s\S]*?---\*\//, "").replace(/\/\/.*$/gm, "");
+    if (/\beval\s*\(/.test(bodyForEval)) {
+      return { skip: true, reason: "uses eval() — dynamic code execution impossible in Wasm" };
+    }
+  }
+
+  // new Function() — dynamic code generation impossible in Wasm
+  if (/\bnew\s+Function\s*\(/.test(source)) {
+    return { skip: true, reason: "uses new Function() — dynamic code generation impossible in Wasm" };
+  }
+
+  // ── End safety filters (always active regardless of SKIP_DISABLED) ──
+
+  if (SKIP_DISABLED) return { skip: false };
 
   // Negative tests are now handled — don't skip them.
   // (They are processed specially in runTest262File.)
@@ -240,18 +263,7 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
     }
   }
 
-  // Skip tests that use eval() in their actual body — strip metadata/comments first
-  {
-    const bodyForEval = source.replace(/\/\*---[\s\S]*?---\*\//, "").replace(/\/\/.*$/gm, "");
-    if (/\beval\s*\(/.test(bodyForEval)) {
-      return { skip: true, reason: "uses dynamic code execution" };
-    }
-  }
-
-  // Skip tests that use new Function() — dynamic code generation impossible in wasm
-  if (/\bnew\s+Function\s*\(/.test(source)) {
-    return { skip: true, reason: "uses new Function() dynamic code generation" };
-  }
+  // (eval() and new Function() checks moved to safety filters above SKIP_DISABLED)
 
 
   // Skip tests that use with statement — strip metadata block and comments first
