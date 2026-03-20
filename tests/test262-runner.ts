@@ -1899,6 +1899,136 @@ export async function handleNegativeTest(
   };
 }
 
+/**
+ * Extract Wasm function name from a runtime error message.
+ * V8 (Node.js) error stacks include entries like:
+ *   - "at test (wasm://wasm/...)"
+ *   - "RuntimeError: null reference (wasm://wasm/...):function #6:"test""
+ * We try to extract the quoted function name from the stack trace.
+ */
+export function extractWasmFuncName(err: any): string | undefined {
+  const stack = err?.stack ?? String(err);
+  // V8 format: at funcName (wasm://...)
+  const atMatch = stack.match(/at\s+(\w[\w$]*)\s+\(wasm:\/\//);
+  if (atMatch) return atMatch[1];
+  // Alternate: "function #N:"name""
+  const fnMatch = stack.match(/function\s+#\d+:"([^"]+)"/);
+  if (fnMatch) return fnMatch[1];
+  return undefined;
+}
+
+/**
+ * Parse a source map JSON and find the original source line closest to a
+ * given wasm byte offset. Returns { line, column, source } or undefined.
+ */
+export function lookupSourceMapOffset(
+  sourceMapJson: string,
+  wasmOffset: number,
+): { line: number; column: number; source: string } | undefined {
+  try {
+    const sm = JSON.parse(sourceMapJson);
+    const mappings: string = sm.mappings;
+    if (!mappings) return undefined;
+
+    const sources: string[] = sm.sources ?? [];
+
+    // Decode VLQ mappings (single-group wasm format: segments separated by commas)
+    const segments = mappings.split(",");
+    let absWasmOffset = 0;
+    let absSourceIdx = 0;
+    let absLine = 0;
+    let absCol = 0;
+    let bestLine = -1;
+    let bestCol = -1;
+    let bestSource = "";
+    let bestOffset = -1;
+
+    for (const seg of segments) {
+      if (!seg) continue;
+      const values = decodeVLQSegment(seg);
+      if (values.length < 4) continue;
+      absWasmOffset += values[0];
+      absSourceIdx += values[1];
+      absLine += values[2];
+      absCol += values[3];
+
+      if (absWasmOffset <= wasmOffset) {
+        bestLine = absLine;
+        bestCol = absCol;
+        bestSource = sources[absSourceIdx] ?? "";
+        bestOffset = absWasmOffset;
+      } else {
+        break; // entries are sorted by offset
+      }
+    }
+
+    if (bestLine >= 0) {
+      return { line: bestLine, column: bestCol, source: bestSource };
+    }
+  } catch {
+    // Source map parsing failed — return undefined
+  }
+  return undefined;
+}
+
+/** Decode a single VLQ segment into an array of numbers */
+function decodeVLQSegment(segment: string): number[] {
+  const BASE64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  const values: number[] = [];
+  let i = 0;
+  while (i < segment.length) {
+    let vlq = 0;
+    let shift = 0;
+    let continuation = true;
+    while (continuation && i < segment.length) {
+      const digit = BASE64.indexOf(segment[i]!);
+      if (digit === -1) break;
+      vlq |= (digit & 0x1f) << shift;
+      continuation = (digit & 0x20) !== 0;
+      shift += 5;
+      i++;
+    }
+    const isNeg = (vlq & 1) === 1;
+    values.push(isNeg ? -(vlq >>> 1) : vlq >>> 1);
+  }
+  return values;
+}
+
+/**
+ * Enrich an error message with Wasm function name and source-mapped line info.
+ */
+export function enrichErrorMessage(
+  errMsg: string,
+  err: any,
+  sourceMapJson: string | undefined,
+  bodyLineOffset: number,
+): string {
+  const parts: string[] = [errMsg];
+
+  const funcName = extractWasmFuncName(err);
+  if (funcName) {
+    parts.push(`in ${funcName}()`);
+  }
+
+  // Try to extract byte offset from error stack for source map lookup
+  if (sourceMapJson) {
+    const stack = err?.stack ?? "";
+    // V8 format: wasm://wasm/hash:wasm-function[N]:0xOFFSET
+    const offsetMatch = stack.match(/:0x([0-9a-fA-F]+)/);
+    if (offsetMatch) {
+      const byteOffset = parseInt(offsetMatch[1], 16);
+      const mapped = lookupSourceMapOffset(sourceMapJson, byteOffset);
+      if (mapped && mapped.line > 0) {
+        const adjustedLine = mapped.line - bodyLineOffset;
+        const srcLine = adjustedLine > 0 ? adjustedLine : mapped.line;
+        parts.push(`at source L${srcLine}`);
+      }
+    }
+  }
+
+  return parts.join(" ");
+}
+
 export async function runTest262File(filePath: string, category: string, timeoutMs = TEST_TIMEOUT_MS): Promise<TestResult> {
   const totalStart = performance.now();
   const relPath = relative(TEST262_ROOT, filePath);
@@ -1954,7 +2084,7 @@ export async function runTest262File(filePath: string, category: string, timeout
   const compileStart = performance.now();
   let compileMs = 0;
   try {
-    result = compile(wrappedSource, { fileName: "test.ts" });
+    result = compile(wrappedSource, { fileName: "test.ts", sourceMap: true });
     compileMs = performance.now() - compileStart;
   } catch (compileErr: any) {
     compileMs = performance.now() - compileStart;
@@ -2051,13 +2181,13 @@ export async function runTest262File(filePath: string, category: string, timeout
 
     // WebAssembly.CompileError during instantiation is a compile error, not a test failure
     if (err instanceof WebAssembly.CompileError || err?.constructor?.name === "CompileError") {
-      return { file: relPath, category, status: "compile_error", error: err.message, timing };
+      return { file: relPath, category, status: "compile_error", error: enrichErrorMessage(err.message, err, result.sourceMap, bodyLineOffset), timing };
     }
     // Traps from unreachable() count as assertion failures
     if (err?.message?.includes("unreachable") || err?.message?.includes("wasm")) {
-      return { file: relPath, category, status: "fail", error: err.message, timing };
+      return { file: relPath, category, status: "fail", error: enrichErrorMessage(err.message, err, result.sourceMap, bodyLineOffset), timing };
     }
-    return { file: relPath, category, status: "fail", error: String(err), timing };
+    return { file: relPath, category, status: "fail", error: enrichErrorMessage(String(err), err, result.sourceMap, bodyLineOffset), timing };
   }
 }
 
