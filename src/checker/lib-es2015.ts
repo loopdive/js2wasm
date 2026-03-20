@@ -247,4 +247,33 @@ interface ProxyConstructor {
   revocable<T extends object>(target: T, handler: ProxyHandler<T>): { proxy: T; revoke: () => void };
 }
 declare var Proxy: ProxyConstructor;
+
+// ── WeakMap ──────────────────────────────────────────────────────
+
+interface WeakMap<K extends object, V> {
+  delete(key: K): boolean;
+  get(key: K): V | undefined;
+  has(key: K): boolean;
+  set(key: K, value: V): this;
+}
+
+interface WeakMapConstructor {
+  new(): WeakMap<any, any>;
+  new<K extends object, V>(entries?: readonly (readonly [K, V])[] | null): WeakMap<K, V>;
+}
+declare var WeakMap: WeakMapConstructor;
+
+// ── WeakSet ──────────────────────────────────────────────────────
+
+interface WeakSet<T extends object> {
+  add(value: T): this;
+  delete(value: T): boolean;
+  has(value: T): boolean;
+}
+
+interface WeakSetConstructor {
+  new(): WeakSet<any>;
+  new<T extends object>(values?: readonly T[] | null): WeakSet<T>;
+}
+declare var WeakSet: WeakSetConstructor;
 `;
