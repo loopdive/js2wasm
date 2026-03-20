@@ -9,7 +9,7 @@
       "ZSH_IN_DOCKER_VERSION": "1.2.0"
     }
   },
-  "runArgs": ["--cap-add=NET_ADMIN", "--cap-add=NET_RAW", "--memory=16g", "--memory-swap=16g"],
+  "runArgs": ["--cap-add=NET_ADMIN", "--cap-add=NET_RAW", "--memory=20g", "--memory-swap=20g"],
   "appPort": ["2222:2222", "7681:7681"],
   "customizations": {
     "vscode": {
