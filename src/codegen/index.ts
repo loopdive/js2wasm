@@ -10372,9 +10372,30 @@ function collectDeclarations(
       continue;
     }
 
-    // Collect assignment expressions that target module-level globals
+    // Collect prefix/postfix increment/decrement expressions (++x, x++, --x, x--)
+    if (ts.isPrefixUnaryExpression(expr) || ts.isPostfixUnaryExpression(expr)) {
+      ctx.moduleInitStatements.push(stmt);
+      continue;
+    }
+
+    // Collect binary expression statements that modify module-level globals
     if (!ts.isBinaryExpression(expr)) continue;
-    if (expr.operatorToken.kind !== ts.SyntaxKind.EqualsToken) continue;
+    // Accept all assignment operators (=, +=, -=, etc.) and any binary op that
+    // might have side effects on module globals
+    const opKind = expr.operatorToken.kind;
+    const isAssignOp = opKind === ts.SyntaxKind.EqualsToken
+      || opKind === ts.SyntaxKind.PlusEqualsToken
+      || opKind === ts.SyntaxKind.MinusEqualsToken
+      || opKind === ts.SyntaxKind.AsteriskEqualsToken
+      || opKind === ts.SyntaxKind.SlashEqualsToken
+      || opKind === ts.SyntaxKind.PercentEqualsToken
+      || opKind === ts.SyntaxKind.AmpersandEqualsToken
+      || opKind === ts.SyntaxKind.BarEqualsToken
+      || opKind === ts.SyntaxKind.CaretEqualsToken
+      || opKind === ts.SyntaxKind.LessThanLessThanEqualsToken
+      || opKind === ts.SyntaxKind.GreaterThanGreaterThanEqualsToken
+      || opKind === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken;
+    if (!isAssignOp) continue;
     // Check if the left side references a known module global
     let targetName: string | undefined;
     if (ts.isPropertyAccessExpression(expr.left) && ts.isIdentifier(expr.left.expression)) {
