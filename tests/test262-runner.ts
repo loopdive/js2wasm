@@ -1641,12 +1641,9 @@ ${preamble}
 ${hoistedDecls}
 export function test(): number {
   ${implicitDecls}
-  try {
+
     `;
   const postBody = `
-  } catch (e) {
-    if (!__fail) __fail = -1;
-  }
   if (__fail) { return __fail; }
   return 1;
 }
