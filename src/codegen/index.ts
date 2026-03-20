@@ -12169,6 +12169,17 @@ export function destructureParamObject(
     return;
   }
 
+  // Pre-allocate all binding locals so they exist even when param is null
+  ensureBindingLocals(ctx, fctx, pattern);
+
+  // Null guard: wrap destructuring in if-not-null for ref_null params
+  const isNullable = paramType.kind === "ref_null";
+  const savedBody = fctx.body;
+  const destructInstrs: Instr[] = [];
+  if (isNullable) {
+    fctx.body = destructInstrs;
+  }
+
   for (const element of pattern.elements) {
     if (!ts.isBindingElement(element)) continue;
     const propName = (element.propertyName ?? element.name) as ts.Identifier;
@@ -12193,17 +12204,28 @@ export function destructureParamObject(
     const localName = element.name.text;
     const fieldIdx = fields.findIndex((f) => f.name === propName.text);
     if (fieldIdx === -1) {
-      // Field not in struct — allocate local with default value
-      const elemType = ctx.checker.getTypeAtLocation(element);
-      const wasmType = resolveWasmType(ctx, elemType);
-      allocLocal(fctx, localName, wasmType);
+      // Field not in struct — already pre-allocated by ensureBindingLocals
       continue;
     }
     const fieldType = fields[fieldIdx]!.type;
-    const localIdx = allocLocal(fctx, localName, fieldType);
+    // Only allocate if not already pre-allocated by ensureBindingLocals
+    if (!fctx.localMap.has(localName)) {
+      allocLocal(fctx, localName, fieldType);
+    }
+    const localIdx = fctx.localMap.get(localName)!;
     fctx.body.push({ op: "local.get", index: paramIdx });
     fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
     fctx.body.push({ op: "local.set", index: localIdx });
+  }
+
+  // Close null guard
+  if (isNullable) {
+    fctx.body = savedBody;
+    if (destructInstrs.length > 0) {
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "ref.is_null" } as Instr);
+      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: destructInstrs });
+    }
   }
 }
 
