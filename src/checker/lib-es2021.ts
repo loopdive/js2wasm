@@ -35,4 +35,15 @@ interface ObjectConstructor {
    */
   hasOwn(o: object, v: PropertyKey): boolean;
 }
+
+// ── WeakRef ──────────────────────────────────────────────────────
+
+interface WeakRef<T extends object> {
+  deref(): T | undefined;
+}
+
+interface WeakRefConstructor {
+  new<T extends object>(target: T): WeakRef<T>;
+}
+declare var WeakRef: WeakRefConstructor;
 `;

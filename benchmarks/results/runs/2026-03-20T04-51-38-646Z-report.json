@@ -1,0 +1,1182 @@
+{
+  "timestamp": "2026-03-20T04:51:38.739Z",
+  "summary": {
+    "total": 10974,
+    "pass": 10974,
+    "fail": 0,
+    "skip": 0,
+    "compile_error": 0,
+    "compilable": 10974
+  },
+  "categories": [
+    {
+      "name": "annexB/built-ins",
+      "pass": 13,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 13
+    },
+    {
+      "name": "annexB/language",
+      "pass": 180,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 180
+    },
+    {
+      "name": "built-ins/AggregateError",
+      "pass": 8,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 8
+    },
+    {
+      "name": "built-ins/Array",
+      "pass": 392,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 392
+    },
+    {
+      "name": "built-ins/ArrayBuffer",
+      "pass": 35,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 35
+    },
+    {
+      "name": "built-ins/ArrayIteratorPrototype",
+      "pass": 5,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 5
+    },
+    {
+      "name": "built-ins/AsyncDisposableStack",
+      "pass": 17,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 17
+    },
+    {
+      "name": "built-ins/AsyncFunction",
+      "pass": 3,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 3
+    },
+    {
+      "name": "built-ins/AsyncGeneratorFunction",
+      "pass": 1,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 1
+    },
+    {
+      "name": "built-ins/AsyncGeneratorPrototype",
+      "pass": 1,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 1
+    },
+    {
+      "name": "built-ins/AsyncIteratorPrototype",
+      "pass": 6,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 6
+    },
+    {
+      "name": "built-ins/Atomics",
+      "pass": 3,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 3
+    },
+    {
+      "name": "built-ins/BigInt",
+      "pass": 5,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 5
+    },
+    {
+      "name": "built-ins/Boolean",
+      "pass": 14,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 14
+    },
+    {
+      "name": "built-ins/DataView",
+      "pass": 23,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 23
+    },
+    {
+      "name": "built-ins/Date",
+      "pass": 71,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 71
+    },
+    {
+      "name": "built-ins/DisposableStack",
+      "pass": 3,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 3
+    },
+    {
+      "name": "built-ins/Error",
+      "pass": 10,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 10
+    },
+    {
+      "name": "built-ins/Function",
+      "pass": 49,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 49
+    },
+    {
+      "name": "built-ins/GeneratorFunction",
+      "pass": 1,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 1
+    },
+    {
+      "name": "built-ins/GeneratorPrototype",
+      "pass": 1,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 1
+    },
+    {
+      "name": "built-ins/Infinity",
+      "pass": 3,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 3
+    },
+    {
+      "name": "built-ins/Iterator",
+      "pass": 33,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 33
+    },
+    {
+      "name": "built-ins/JSON",
+      "pass": 64,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 64
+    },
+    {
+      "name": "built-ins/Map",
+      "pass": 20,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 20
+    },
+    {
+      "name": "built-ins/MapIteratorPrototype",
+      "pass": 3,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 3
+    },
+    {
+      "name": "built-ins/Math",
+      "pass": 158,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 158
+    },
+    {
+      "name": "built-ins/NaN",
+      "pass": 2,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 2
+    },
+    {
+      "name": "built-ins/NativeErrors",
+      "pass": 12,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 12
+    },
+    {
+      "name": "built-ins/Number",
+      "pass": 114,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 114
+    },
+    {
+      "name": "built-ins/Object",
+      "pass": 647,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 647
+    },
+    {
+      "name": "built-ins/Promise",
+      "pass": 28,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 28
+    },
+    {
+      "name": "built-ins/RegExp",
+      "pass": 293,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 293
+    },
+    {
+      "name": "built-ins/Set",
+      "pass": 34,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 34
+    },
+    {
+      "name": "built-ins/SetIteratorPrototype",
+      "pass": 3,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 3
+    },
+    {
+      "name": "built-ins/ShadowRealm",
+      "pass": 1,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 1
+    },
+    {
+      "name": "built-ins/String",
+      "pass": 278,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 278
+    },
+    {
+      "name": "built-ins/StringIteratorPrototype",
+      "pass": 2,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 2
+    },
+    {
+      "name": "built-ins/SuppressedError",
+      "pass": 3,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 3
+    },
+    {
+      "name": "built-ins/Symbol",
+      "pass": 17,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 17
+    },
+    {
+      "name": "built-ins/TypedArrayConstructors",
+      "pass": 9,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 9
+    },
+    {
+      "name": "built-ins/Uint8Array",
+      "pass": 2,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 2
+    },
+    {
+      "name": "built-ins/WeakMap",
+      "pass": 3,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 3
+    },
+    {
+      "name": "built-ins/WeakSet",
+      "pass": 4,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 4
+    },
+    {
+      "name": "built-ins/decodeURI",
+      "pass": 6,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 6
+    },
+    {
+      "name": "built-ins/decodeURIComponent",
+      "pass": 6,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 6
+    },
+    {
+      "name": "built-ins/encodeURI",
+      "pass": 6,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 6
+    },
+    {
+      "name": "built-ins/encodeURIComponent",
+      "pass": 6,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 6
+    },
+    {
+      "name": "built-ins/eval",
+      "pass": 4,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 4
+    },
+    {
+      "name": "built-ins/global",
+      "pass": 8,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 8
+    },
+    {
+      "name": "built-ins/isFinite",
+      "pass": 5,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 5
+    },
+    {
+      "name": "built-ins/isNaN",
+      "pass": 5,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 5
+    },
+    {
+      "name": "built-ins/parseFloat",
+      "pass": 51,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 51
+    },
+    {
+      "name": "built-ins/parseInt",
+      "pass": 52,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 52
+    },
+    {
+      "name": "built-ins/undefined",
+      "pass": 2,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 2
+    },
+    {
+      "name": "language/arguments-object",
+      "pass": 33,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 33
+    },
+    {
+      "name": "language/asi",
+      "pass": 96,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 96
+    },
+    {
+      "name": "language/block-scope",
+      "pass": 122,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 122
+    },
+    {
+      "name": "language/comments",
+      "pass": 32,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 32
+    },
+    {
+      "name": "language/computed-property-names",
+      "pass": 13,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 13
+    },
+    {
+      "name": "language/destructuring",
+      "pass": 14,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 14
+    },
+    {
+      "name": "language/directive-prologue",
+      "pass": 32,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 32
+    },
+    {
+      "name": "language/eval-code",
+      "pass": 10,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 10
+    },
+    {
+      "name": "language/export",
+      "pass": 3,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 3
+    },
+    {
+      "name": "language/expressions",
+      "pass": 3886,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 3886
+    },
+    {
+      "name": "language/function-code",
+      "pass": 51,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 51
+    },
+    {
+      "name": "language/future-reserved-words",
+      "pass": 55,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 55
+    },
+    {
+      "name": "language/global-code",
+      "pass": 23,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 23
+    },
+    {
+      "name": "language/identifier-resolution",
+      "pass": 4,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 4
+    },
+    {
+      "name": "language/identifiers",
+      "pass": 252,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 252
+    },
+    {
+      "name": "language/import",
+      "pass": 13,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 13
+    },
+    {
+      "name": "language/keywords",
+      "pass": 25,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 25
+    },
+    {
+      "name": "language/line-terminators",
+      "pass": 24,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 24
+    },
+    {
+      "name": "language/literals",
+      "pass": 478,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 478
+    },
+    {
+      "name": "language/module-code",
+      "pass": 221,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 221
+    },
+    {
+      "name": "language/punctuators",
+      "pass": 10,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 10
+    },
+    {
+      "name": "language/reserved-words",
+      "pass": 19,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 19
+    },
+    {
+      "name": "language/rest-parameters",
+      "pass": 3,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 3
+    },
+    {
+      "name": "language/source-text",
+      "pass": 1,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 1
+    },
+    {
+      "name": "language/statementList",
+      "pass": 36,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 36
+    },
+    {
+      "name": "language/statements",
+      "pass": 2676,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 2676
+    },
+    {
+      "name": "language/types",
+      "pass": 71,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 71
+    },
+    {
+      "name": "language/white-space",
+      "pass": 46,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 46
+    }
+  ],
+  "compileErrors": [],
+  "timing": {
+    "totalWallMs": 9642380,
+    "totalCompileMs": 9576912,
+    "totalInstantiateMs": 41742,
+    "totalExecuteMs": 1458,
+    "timedTests": 10795,
+    "avgCompileMs": 887.16,
+    "slowestByCompile": [
+      {
+        "file": "test/language/block-scope/syntax/for-in/disallow-multiple-lexical-bindings.js",
+        "status": "pass",
+        "compileMs": 11196.52,
+        "totalMs": 11196.53
+      },
+      {
+        "file": "test/language/block-scope/syntax/redeclaration/class-name-redeclaration-attempt-with-async-function.js",
+        "status": "pass",
+        "compileMs": 10794.07,
+        "totalMs": 10794.1
+      },
+      {
+        "file": "test/language/block-scope/shadowing/dynamic-lookup-in-and-through-block-contexts.js",
+        "status": "pass",
+        "compileMs": 10415.81,
+        "totalMs": 10485.84
+      },
+      {
+        "file": "test/language/block-scope/syntax/redeclaration-global/allowed-to-declare-function-with-function-declaration.js",
+        "status": "pass",
+        "compileMs": 9783.4,
+        "totalMs": 10082.14
+      },
+      {
+        "file": "test/language/asi/S7.9_A6.1_T2.js",
+        "status": "pass",
+        "compileMs": 9571.88,
+        "totalMs": 9595.12
+      },
+      {
+        "file": "test/language/block-scope/syntax/redeclaration/var-redeclaration-attempt-after-function.js",
+        "status": "pass",
+        "compileMs": 9534.9,
+        "totalMs": 9534.98
+      },
+      {
+        "file": "test/language/asi/S7.9_A6.2_T4.js",
+        "status": "pass",
+        "compileMs": 9147.09,
+        "totalMs": 9147.12
+      },
+      {
+        "file": "test/language/block-scope/syntax/function-declarations/in-statement-position-if-expression-statement-else-statement.js",
+        "status": "pass",
+        "compileMs": 9107.2,
+        "totalMs": 9107.42
+      },
+      {
+        "file": "test/language/block-scope/syntax/redeclaration/var-name-redeclaration-attempt-with-const.js",
+        "status": "pass",
+        "compileMs": 8884.02,
+        "totalMs": 8884.04
+      },
+      {
+        "file": "test/language/block-scope/syntax/redeclaration/generator-name-redeclaration-attempt-with-generator.js",
+        "status": "pass",
+        "compileMs": 8804.62,
+        "totalMs": 8804.63
+      },
+      {
+        "file": "test/language/asi/S7.9_A6.4_T1.js",
+        "status": "pass",
+        "compileMs": 8713.98,
+        "totalMs": 8714.02
+      },
+      {
+        "file": "test/language/asi/S7.9_A8_T4.js",
+        "status": "pass",
+        "compileMs": 8658.48,
+        "totalMs": 8667.17
+      },
+      {
+        "file": "test/language/block-scope/syntax/redeclaration/fn-scope-var-name-redeclaration-attempt-with-const.js",
+        "status": "pass",
+        "compileMs": 8617.28,
+        "totalMs": 8617.31
+      },
+      {
+        "file": "test/language/block-scope/syntax/redeclaration/fn-scope-var-name-redeclaration-attempt-with-async-function.js",
+        "status": "pass",
+        "compileMs": 8496.25,
+        "totalMs": 8496.27
+      },
+      {
+        "file": "test/language/asi/S7.9_A10_T10.js",
+        "status": "pass",
+        "compileMs": 8480.92,
+        "totalMs": 8511.13
+      },
+      {
+        "file": "test/language/asi/S7.9_A10_T3.js",
+        "status": "pass",
+        "compileMs": 8474.14,
+        "totalMs": 8590.94
+      },
+      {
+        "file": "test/language/asi/S7.9_A5.3_T1.js",
+        "status": "pass",
+        "compileMs": 8470.5,
+        "totalMs": 8470.51
+      },
+      {
+        "file": "test/language/asi/S7.9_A8_T5.js",
+        "status": "pass",
+        "compileMs": 8384.84,
+        "totalMs": 8506.09
+      },
+      {
+        "file": "test/language/asi/S7.9_A11_T5.js",
+        "status": "pass",
+        "compileMs": 8356.62,
+        "totalMs": 8422.71
+      },
+      {
+        "file": "test/language/asi/S7.9_A10_T5.js",
+        "status": "pass",
+        "compileMs": 8186.98,
+        "totalMs": 8317.75
+      }
+    ],
+    "slowestByTotal": [
+      {
+        "file": "test/language/block-scope/syntax/for-in/disallow-multiple-lexical-bindings.js",
+        "status": "pass",
+        "compileMs": 11196.52,
+        "instantiateMs": 0,
+        "executeMs": 0,
+        "totalMs": 11196.53
+      },
+      {
+        "file": "test/language/block-scope/syntax/redeclaration/class-name-redeclaration-attempt-with-async-function.js",
+        "status": "pass",
+        "compileMs": 10794.07,
+        "instantiateMs": 0,
+        "executeMs": 0,
+        "totalMs": 10794.1
+      },
+      {
+        "file": "test/language/block-scope/shadowing/dynamic-lookup-in-and-through-block-contexts.js",
+        "status": "pass",
+        "compileMs": 10415.81,
+        "instantiateMs": 46.17,
+        "executeMs": 4.66,
+        "totalMs": 10485.84
+      },
+      {
+        "file": "test/language/block-scope/syntax/redeclaration-global/allowed-to-declare-function-with-function-declaration.js",
+        "status": "pass",
+        "compileMs": 9783.4,
+        "instantiateMs": 278.47,
+        "executeMs": 0.08,
+        "totalMs": 10082.14
+      },
+      {
+        "file": "test/language/asi/S7.9_A6.1_T2.js",
+        "status": "pass",
+        "compileMs": 9571.88,
+        "instantiateMs": 15.76,
+        "executeMs": 0.07,
+        "totalMs": 9595.12
+      },
+      {
+        "file": "test/language/block-scope/syntax/redeclaration/var-redeclaration-attempt-after-function.js",
+        "status": "pass",
+        "compileMs": 9534.9,
+        "instantiateMs": 0,
+        "executeMs": 0,
+        "totalMs": 9534.98
+      },
+      {
+        "file": "test/language/asi/S7.9_A6.2_T4.js",
+        "status": "pass",
+        "compileMs": 9147.09,
+        "instantiateMs": 0,
+        "executeMs": 0,
+        "totalMs": 9147.12
+      },
+      {
+        "file": "test/language/block-scope/syntax/function-declarations/in-statement-position-if-expression-statement-else-statement.js",
+        "status": "pass",
+        "compileMs": 9107.2,
+        "instantiateMs": 0,
+        "executeMs": 0,
+        "totalMs": 9107.42
+      },
+      {
+        "file": "test/language/block-scope/syntax/redeclaration/var-name-redeclaration-attempt-with-const.js",
+        "status": "pass",
+        "compileMs": 8884.02,
+        "instantiateMs": 0,
+        "executeMs": 0,
+        "totalMs": 8884.04
+      },
+      {
+        "file": "test/language/block-scope/syntax/redeclaration/generator-name-redeclaration-attempt-with-generator.js",
+        "status": "pass",
+        "compileMs": 8804.62,
+        "instantiateMs": 0,
+        "executeMs": 0,
+        "totalMs": 8804.63
+      },
+      {
+        "file": "test/language/asi/S7.9_A6.4_T1.js",
+        "status": "pass",
+        "compileMs": 8713.98,
+        "instantiateMs": 0,
+        "executeMs": 0,
+        "totalMs": 8714.02
+      },
+      {
+        "file": "test/language/asi/S7.9_A8_T4.js",
+        "status": "pass",
+        "compileMs": 8658.48,
+        "instantiateMs": 4.22,
+        "executeMs": 0.06,
+        "totalMs": 8667.17
+      },
+      {
+        "file": "test/language/block-scope/syntax/redeclaration/fn-scope-var-name-redeclaration-attempt-with-const.js",
+        "status": "pass",
+        "compileMs": 8617.28,
+        "instantiateMs": 0,
+        "executeMs": 0,
+        "totalMs": 8617.31
+      },
+      {
+        "file": "test/language/asi/S7.9_A10_T3.js",
+        "status": "pass",
+        "compileMs": 8474.14,
+        "instantiateMs": 45.48,
+        "executeMs": 0.88,
+        "totalMs": 8590.94
+      },
+      {
+        "file": "test/language/asi/S7.9_A10_T10.js",
+        "status": "pass",
+        "compileMs": 8480.92,
+        "instantiateMs": 17.38,
+        "executeMs": 0.17,
+        "totalMs": 8511.13
+      },
+      {
+        "file": "test/language/asi/S7.9_A8_T5.js",
+        "status": "pass",
+        "compileMs": 8384.84,
+        "instantiateMs": 112.21,
+        "executeMs": 0.1,
+        "totalMs": 8506.09
+      },
+      {
+        "file": "test/language/block-scope/syntax/redeclaration/fn-scope-var-name-redeclaration-attempt-with-async-function.js",
+        "status": "pass",
+        "compileMs": 8496.25,
+        "instantiateMs": 0,
+        "executeMs": 0,
+        "totalMs": 8496.27
+      },
+      {
+        "file": "test/language/asi/S7.9_A5.3_T1.js",
+        "status": "pass",
+        "compileMs": 8470.5,
+        "instantiateMs": 0,
+        "executeMs": 0,
+        "totalMs": 8470.51
+      },
+      {
+        "file": "test/language/asi/S7.9_A11_T5.js",
+        "status": "pass",
+        "compileMs": 8356.62,
+        "instantiateMs": 52.42,
+        "executeMs": 0.14,
+        "totalMs": 8422.71
+      },
+      {
+        "file": "test/language/asi/S7.9_A10_T5.js",
+        "status": "pass",
+        "compileMs": 8186.98,
+        "instantiateMs": 4.02,
+        "executeMs": 0.02,
+        "totalMs": 8317.75
+      }
+    ],
+    "byCategory": [
+      {
+        "category": "language/asi",
+        "count": 96,
+        "avgCompileMs": 5400.29,
+        "totalCompileMs": 518428,
+        "avgTotalMs": 5435.8
+      },
+      {
+        "category": "language/block-scope",
+        "count": 122,
+        "avgCompileMs": 4778.92,
+        "totalCompileMs": 583029,
+        "avgTotalMs": 4793.5
+      },
+      {
+        "category": "language/arguments-object",
+        "count": 33,
+        "avgCompileMs": 4764.18,
+        "totalCompileMs": 157218,
+        "avgTotalMs": 4816.83
+      },
+      {
+        "category": "language/comments",
+        "count": 32,
+        "avgCompileMs": 3583.07,
+        "totalCompileMs": 114658,
+        "avgTotalMs": 3587.95
+      },
+      {
+        "category": "built-ins/GeneratorFunction",
+        "count": 1,
+        "avgCompileMs": 2102.51,
+        "totalCompileMs": 2103,
+        "avgTotalMs": 2116.98
+      },
+      {
+        "category": "language/computed-property-names",
+        "count": 13,
+        "avgCompileMs": 2084.44,
+        "totalCompileMs": 27098,
+        "avgTotalMs": 2105.97
+      },
+      {
+        "category": "built-ins/StringIteratorPrototype",
+        "count": 2,
+        "avgCompileMs": 1938.03,
+        "totalCompileMs": 3876,
+        "avgTotalMs": 1951.47
+      },
+      {
+        "category": "built-ins/MapIteratorPrototype",
+        "count": 3,
+        "avgCompileMs": 1644.18,
+        "totalCompileMs": 4933,
+        "avgTotalMs": 1660.07
+      },
+      {
+        "category": "built-ins/Map",
+        "count": 20,
+        "avgCompileMs": 1483.69,
+        "totalCompileMs": 29674,
+        "avgTotalMs": 1498.96
+      },
+      {
+        "category": "built-ins/ArrayIteratorPrototype",
+        "count": 5,
+        "avgCompileMs": 1407.08,
+        "totalCompileMs": 7035,
+        "avgTotalMs": 1423.32
+      },
+      {
+        "category": "built-ins/SetIteratorPrototype",
+        "count": 3,
+        "avgCompileMs": 1344.5,
+        "totalCompileMs": 4033,
+        "avgTotalMs": 1353.46
+      },
+      {
+        "category": "built-ins/encodeURI",
+        "count": 5,
+        "avgCompileMs": 1340.03,
+        "totalCompileMs": 6700,
+        "avgTotalMs": 1356.38
+      },
+      {
+        "category": "built-ins/isFinite",
+        "count": 5,
+        "avgCompileMs": 1331.94,
+        "totalCompileMs": 6660,
+        "avgTotalMs": 1347.9
+      },
+      {
+        "category": "built-ins/DisposableStack",
+        "count": 3,
+        "avgCompileMs": 1249.65,
+        "totalCompileMs": 3749,
+        "avgTotalMs": 1259.28
+      },
+      {
+        "category": "built-ins/AsyncDisposableStack",
+        "count": 2,
+        "avgCompileMs": 1234.37,
+        "totalCompileMs": 2469,
+        "avgTotalMs": 1243.03
+      },
+      {
+        "category": "built-ins/AsyncIteratorPrototype",
+        "count": 6,
+        "avgCompileMs": 1212.39,
+        "totalCompileMs": 7274,
+        "avgTotalMs": 1223.33
+      },
+      {
+        "category": "built-ins/AsyncGeneratorFunction",
+        "count": 1,
+        "avgCompileMs": 1179.77,
+        "totalCompileMs": 1180,
+        "avgTotalMs": 1192.76
+      },
+      {
+        "category": "built-ins/GeneratorPrototype",
+        "count": 1,
+        "avgCompileMs": 1124.85,
+        "totalCompileMs": 1125,
+        "avgTotalMs": 1138.33
+      },
+      {
+        "category": "built-ins/JSON",
+        "count": 64,
+        "avgCompileMs": 1124.62,
+        "totalCompileMs": 71975,
+        "avgTotalMs": 1135.72
+      },
+      {
+        "category": "language/types",
+        "count": 69,
+        "avgCompileMs": 1121.46,
+        "totalCompileMs": 77381,
+        "avgTotalMs": 1134.12
+      },
+      {
+        "category": "language/directive-prologue",
+        "count": 32,
+        "avgCompileMs": 1111.97,
+        "totalCompileMs": 35583,
+        "avgTotalMs": 1117.59
+      },
+      {
+        "category": "language/punctuators",
+        "count": 10,
+        "avgCompileMs": 1089.74,
+        "totalCompileMs": 10897,
+        "avgTotalMs": 1089.76
+      },
+      {
+        "category": "built-ins/AggregateError",
+        "count": 3,
+        "avgCompileMs": 1075.69,
+        "totalCompileMs": 3227,
+        "avgTotalMs": 1088.46
+      },
+      {
+        "category": "built-ins/WeakMap",
+        "count": 3,
+        "avgCompileMs": 1064.42,
+        "totalCompileMs": 3193,
+        "avgTotalMs": 1080.33
+      },
+      {
+        "category": "built-ins/isNaN",
+        "count": 5,
+        "avgCompileMs": 1057.08,
+        "totalCompileMs": 5285,
+        "avgTotalMs": 1064.14
+      },
+      {
+        "category": "built-ins/AsyncGeneratorPrototype",
+        "count": 1,
+        "avgCompileMs": 1054.31,
+        "totalCompileMs": 1054,
+        "avgTotalMs": 1061
+      },
+      {
+        "category": "built-ins/Infinity",
+        "count": 3,
+        "avgCompileMs": 1045.06,
+        "totalCompileMs": 3135,
+        "avgTotalMs": 1055
+      },
+      {
+        "category": "built-ins/Number",
+        "count": 114,
+        "avgCompileMs": 1042.63,
+        "totalCompileMs": 118859,
+        "avgTotalMs": 1055.86
+      },
+      {
+        "category": "built-ins/NaN",
+        "count": 2,
+        "avgCompileMs": 1041.32,
+        "totalCompileMs": 2083,
+        "avgTotalMs": 1051.23
+      },
+      {
+        "category": "language/rest-parameters",
+        "count": 3,
+        "avgCompileMs": 1038.37,
+        "totalCompileMs": 3115,
+        "avgTotalMs": 1049.52
+      }
+    ]
+  }
+}

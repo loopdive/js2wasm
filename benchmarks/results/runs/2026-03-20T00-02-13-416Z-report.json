@@ -1,0 +1,24 @@
+{
+  "timestamp": "2026-03-20T00:02:13.503Z",
+  "summary": {
+    "total": 0,
+    "pass": 0,
+    "fail": 0,
+    "skip": 0,
+    "compile_error": 0,
+    "compilable": 0
+  },
+  "categories": [],
+  "compileErrors": [],
+  "timing": {
+    "totalWallMs": 0,
+    "totalCompileMs": 0,
+    "totalInstantiateMs": 0,
+    "totalExecuteMs": 0,
+    "timedTests": 0,
+    "avgCompileMs": 0,
+    "slowestByCompile": [],
+    "slowestByTotal": [],
+    "byCategory": []
+  }
+}

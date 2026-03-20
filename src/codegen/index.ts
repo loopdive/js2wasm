@@ -8781,6 +8781,7 @@ const LIB_GLOBALS = new Set([
   "Set",
   "WeakMap",
   "WeakSet",
+  "WeakRef",
   "RegExp",
   "Error",
   "HTMLElement",
