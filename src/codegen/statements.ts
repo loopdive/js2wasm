@@ -164,6 +164,20 @@ function compileStatementInner(
   // Skip import declarations — module imports not supported
   if (ts.isImportDeclaration(stmt)) return;
 
+  // Skip export declarations — `export { x }`, `export * from '...'`
+  // These are module-level metadata with no runtime effect in our compilation.
+  if (ts.isExportDeclaration(stmt)) return;
+
+  // Export assignment — `export default expr` or `export = expr`
+  // Evaluate the expression (for side effects) but discard the result.
+  if (ts.isExportAssignment(stmt)) {
+    const resultType = compileExpression(ctx, fctx, stmt.expression);
+    if (resultType !== null) {
+      fctx.body.push({ op: "drop" });
+    }
+    return;
+  }
+
   if (ts.isVariableStatement(stmt)) {
     markStatementPos(ctx, fctx, stmt, () =>
       compileVariableStatement(ctx, fctx, stmt),
