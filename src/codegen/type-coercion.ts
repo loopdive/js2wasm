@@ -22,8 +22,8 @@ export function emitGuardedRefCast(
   typeIdx: number,
 ): void {
   const tmpLocal = allocTempLocal(fctx, { kind: "anyref" } as ValType);
-  fctx.body.push({ op: "local.tee", index: tmpLocal } as unknown as Instr);
-  fctx.body.push({ op: "ref.test", typeIdx } as unknown as Instr);
+  fctx.body.push({ op: "local.tee", index: tmpLocal });
+  fctx.body.push({ op: "ref.test", typeIdx });
   fctx.body.push({
     op: "if",
     blockType: { kind: "val", type: { kind: "ref_null", typeIdx } as ValType },
@@ -34,7 +34,7 @@ export function emitGuardedRefCast(
     else: [
       { op: "ref.null", typeIdx },
     ],
-  } as unknown as Instr);
+  });
   releaseTempLocal(fctx, tmpLocal);
 }
 
@@ -195,7 +195,7 @@ function emitVecToTupleBody(
     fctx.body.push({ op: "struct.get", typeIdx: fromTypeIdx, fieldIdx: 1 });
     // Read element at index i
     fctx.body.push({ op: "i32.const", value: i });
-    fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx } as unknown as Instr);
+    fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
 
     // Coerce the vec element type to the tuple field type if needed
     if (elemType.kind !== fieldType.kind) {
@@ -237,10 +237,10 @@ function emitVecToVecBody(
 
   // Allocate a temp for the length
   const lenLocal = allocTempLocal(fctx, { kind: "i32" });
-  fctx.body.push({ op: "local.tee", index: lenLocal } as unknown as Instr);
+  fctx.body.push({ op: "local.tee", index: lenLocal });
 
   // Create the destination array: array.new_default $dstArr length
-  fctx.body.push({ op: "array.new_default", typeIdx: dstVec.arrTypeIdx } as unknown as Instr);
+  fctx.body.push({ op: "array.new_default", typeIdx: dstVec.arrTypeIdx });
 
   // Save the new array to a temp local
   const dstArrRefType: ValType = { kind: "ref_null", typeIdx: dstVec.arrTypeIdx };
@@ -260,7 +260,7 @@ function emitVecToVecBody(
   // if (i >= len) break out of block (depth 1 from loop body)
   fctx.body.push({ op: "local.get", index: iLocal });
   fctx.body.push({ op: "local.get", index: lenLocal });
-  fctx.body.push({ op: "i32.ge_u" } as unknown as Instr);
+  fctx.body.push({ op: "i32.ge_u" });
   fctx.body.push({ op: "br_if", depth: 1 });
 
   // dstArr[i] = coerce(srcArr[i])
@@ -270,13 +270,13 @@ function emitVecToVecBody(
   fctx.body.push({ op: "local.get", index: srcLocal });
   fctx.body.push({ op: "struct.get", typeIdx: fromTypeIdx, fieldIdx: 1 });
   fctx.body.push({ op: "local.get", index: iLocal });
-  fctx.body.push({ op: "array.get", typeIdx: srcVec.arrTypeIdx } as unknown as Instr);
+  fctx.body.push({ op: "array.get", typeIdx: srcVec.arrTypeIdx });
   // Coerce element type
   if (srcVec.elemType.kind !== dstVec.elemType.kind) {
     coerceType(ctx, fctx, srcVec.elemType, dstVec.elemType);
   }
   // Write to destination
-  fctx.body.push({ op: "array.set", typeIdx: dstVec.arrTypeIdx } as unknown as Instr);
+  fctx.body.push({ op: "array.set", typeIdx: dstVec.arrTypeIdx });
 
   // i++
   fctx.body.push({ op: "local.get", index: iLocal });
@@ -299,7 +299,7 @@ function emitVecToVecBody(
         body: loopBody,
       },
     ],
-  } as unknown as Instr);
+  });
 
   // Construct the destination vec struct: { length, dstArr }
   fctx.body.push({ op: "local.get", index: lenLocal });
@@ -586,8 +586,8 @@ export function coerceType(
     // Save the anyref to a local, test if it can be cast, and produce
     // null if the cast would fail (for ref_null targets) or trap gracefully.
     const tmpAnyLocal = allocTempLocal(fctx, { kind: "anyref" } as ValType);
-    fctx.body.push({ op: "local.tee", index: tmpAnyLocal } as unknown as Instr);
-    fctx.body.push({ op: "ref.test", typeIdx: toIdx } as unknown as Instr);
+    fctx.body.push({ op: "local.tee", index: tmpAnyLocal });
+    fctx.body.push({ op: "ref.test", typeIdx: toIdx });
     if (to.kind === "ref_null") {
       // If test passes: cast; otherwise: push null
       fctx.body.push({
@@ -600,7 +600,7 @@ export function coerceType(
         else: [
           { op: "ref.null", typeIdx: toIdx },
         ],
-      } as unknown as Instr);
+      });
     } else {
       // Non-null target: if test fails, produce a null and ref.as_non_null will trap
       // with a clearer error than illegal cast
@@ -614,7 +614,7 @@ export function coerceType(
         else: [
           { op: "ref.null", typeIdx: toIdx },
         ],
-      } as unknown as Instr);
+      });
       fctx.body.push({ op: "ref.as_non_null" } as Instr);
     }
     releaseTempLocal(fctx, tmpAnyLocal);
@@ -734,7 +734,7 @@ export function coerceType(
     const tmpLocal = allocTempLocal(fctx, { kind: "anyref" });
     fctx.body.push({ op: "local.tee", index: tmpLocal });
     // Use ref.test to check both null and type compatibility (ref.test returns 0 for null)
-    fctx.body.push({ op: "ref.test", typeIdx: toIdx } as unknown as Instr);
+    fctx.body.push({ op: "ref.test", typeIdx: toIdx });
     fctx.body.push({
       op: "if",
       blockType: { kind: "val", type: to },
@@ -742,7 +742,7 @@ export function coerceType(
         { op: "local.get", index: tmpLocal } as Instr,
         { op: "ref.cast", typeIdx: toIdx } as Instr,
       ],
-      else: [{ op: "ref.null", typeIdx: toIdx } as unknown as Instr],
+      else: [{ op: "ref.null", typeIdx: toIdx }],
     });
     releaseTempLocal(fctx, tmpLocal);
     return;
@@ -759,7 +759,7 @@ export function coerceType(
     const tmpLocal = allocTempLocal(fctx, from);
     fctx.body.push({ op: "local.tee", index: tmpLocal });
     // Use ref.test to check both null and type compatibility (ref.test returns 0 for null)
-    fctx.body.push({ op: "ref.test", typeIdx: toIdx } as unknown as Instr);
+    fctx.body.push({ op: "ref.test", typeIdx: toIdx });
     fctx.body.push({
       op: "if",
       blockType: { kind: "val", type: to },
@@ -767,7 +767,7 @@ export function coerceType(
         { op: "local.get", index: tmpLocal } as Instr,
         { op: "ref.cast", typeIdx: toIdx } as Instr,
       ],
-      else: [{ op: "ref.null", typeIdx: toIdx } as unknown as Instr],
+      else: [{ op: "ref.null", typeIdx: toIdx }],
     });
     releaseTempLocal(fctx, tmpLocal);
     return;
@@ -929,13 +929,13 @@ export function coerceType(
               const closureLocal = allocLocal(fctx, `__vo_cl_${fctx.locals.length}`, { kind: "ref", typeIdx: closureTypeIdx });
               const thenInstrs: Instr[] = [
                 { op: "local.get", index: eqLocal } as Instr,
-                { op: "ref.cast", typeIdx: closureTypeIdx } as unknown as Instr,
+                { op: "ref.cast", typeIdx: closureTypeIdx },
                 { op: "local.tee", index: closureLocal } as Instr,
                 { op: "local.get", index: closureLocal } as Instr,
                 { op: "struct.get", typeIdx: closureTypeIdx, fieldIdx: 0 } as Instr,
-                { op: "ref.cast", typeIdx: info.funcTypeIdx } as unknown as Instr,
+                { op: "ref.cast", typeIdx: info.funcTypeIdx },
                 { op: "ref.as_non_null" } as Instr,
-                { op: "call_ref", typeIdx: info.funcTypeIdx } as unknown as Instr,
+                { op: "call_ref", typeIdx: info.funcTypeIdx },
               ];
               if (info.returnType?.kind === "i32") {
                 thenInstrs.push({ op: "f64.convert_i32_s" } as Instr);
@@ -945,7 +945,7 @@ export function coerceType(
               }
               return [
                 { op: "local.get", index: eqLocal } as Instr,
-                { op: "ref.test", typeIdx: closureTypeIdx } as unknown as Instr,
+                { op: "ref.test", typeIdx: closureTypeIdx },
                 { op: "if", blockType: { kind: "val" as const, type: { kind: "f64" as const } }, then: thenInstrs, else: buildDispatch(idx + 1) } as Instr,
               ];
             };
@@ -1034,7 +1034,7 @@ export function pushDefaultValue(fctx: FunctionContext, type: ValType): void {
       fctx.body.push({ op: "ref.null.extern" });
       break;
     case "eqref":
-      fctx.body.push({ op: "ref.null.eq" } as unknown as Instr);
+      fctx.body.push({ op: "ref.null.eq" });
       break;
     case "ref_null":
       fctx.body.push({ op: "ref.null", typeIdx: type.typeIdx });
@@ -1068,13 +1068,13 @@ export function defaultValueInstrs(vt: ValType): Instr[] {
     case "ref_extern":
       return [{ op: "ref.null.extern" } as Instr];
     case "ref":
-      return [{ op: "ref.null", typeIdx: (vt as { typeIdx: number }).typeIdx } as unknown as Instr];
+      return [{ op: "ref.null", typeIdx: (vt as { typeIdx: number }).typeIdx }];
     case "ref_null":
-      return [{ op: "ref.null", typeIdx: (vt as { typeIdx: number }).typeIdx } as unknown as Instr];
+      return [{ op: "ref.null", typeIdx: (vt as { typeIdx: number }).typeIdx }];
     case "eqref":
-      return [{ op: "ref.null.eq" } as unknown as Instr];
+      return [{ op: "ref.null.eq" }];
     case "funcref":
-      return [{ op: "ref.null.func" } as unknown as Instr];
+      return [{ op: "ref.null.func" }];
     default:
       // Fallback: f64 NaN (most arrays are f64 in this compiler)
       return [{ op: "f64.const", value: NaN } as Instr];

@@ -35,7 +35,7 @@ const fgt: Instr = { op: "f64.gt" } as Instr;
 const fle: Instr = { op: "f64.le" } as Instr;
 const fge: Instr = { op: "f64.ge" } as Instr;
 const ret: Instr = { op: "return" } as Instr;
-const copysign: Instr = { op: "f64.copysign" } as unknown as Instr;
+const copysign: Instr = { op: "f64.copysign" } as Instr;
 const i32const = (v: number): Instr => ({ op: "i32.const", value: v }) as Instr;
 const i32eqz: Instr = { op: "i32.eqz" } as Instr;
 const truncSatI32: Instr = { op: "i32.trunc_sat_f64_s" } as Instr;

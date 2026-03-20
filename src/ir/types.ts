@@ -181,6 +181,9 @@ type InstrBase =
   | { op: "f64.ceil" }
   | { op: "f64.trunc" }
   | { op: "f64.nearest" }
+  | { op: "f64.copysign" }
+  | { op: "f64.min" }
+  | { op: "f64.max" }
   | { op: "i32.trunc_f64_s" }
   | { op: "f64.convert_i32_s" }
   | { op: "f64.convert_i32_u" }
@@ -212,9 +215,12 @@ type InstrBase =
   | { op: "array.fill"; typeIdx: number }
   | { op: "ref.null"; typeIdx: number }
   | { op: "ref.null.extern" }
+  | { op: "ref.null.eq" }
+  | { op: "ref.null.func" }
   | { op: "ref.is_null" }
   | { op: "ref.as_non_null" }
   | { op: "ref.cast"; typeIdx: number }
+  | { op: "ref.cast_null"; typeIdx: number }
   | { op: "ref.test"; typeIdx: number }
   | { op: "ref.eq" }
   | { op: "ref.func"; funcIdx: number }
