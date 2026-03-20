@@ -12,7 +12,7 @@ parentPort.on("message", (msg) => {
       fileName: "test.ts",
       sourceMap: false,
       emitWat: false,
-      skipSemanticDiagnostics: true,
+      
     });
     const compileMs = performance.now() - start;
 
