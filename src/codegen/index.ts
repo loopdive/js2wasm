@@ -9498,6 +9498,16 @@ function collectEmptyObjectWidening(
       if (ts.isFunctionDeclaration(stmt) && stmt.body) {
         scanStatements(stmt.body.statements);
       }
+      // Recurse into try/catch blocks (wrapTest wraps test bodies in try blocks)
+      if (ts.isTryStatement(stmt)) {
+        scanStatements(stmt.tryBlock.statements);
+        if (stmt.catchClause) {
+          scanStatements(stmt.catchClause.block.statements);
+        }
+        if (stmt.finallyBlock) {
+          scanStatements(stmt.finallyBlock.statements);
+        }
+      }
     }
   }
 
@@ -9617,7 +9627,7 @@ function collectPropsFromStatements(
         }
       }
     }
-    // Recurse into blocks (if/for/while bodies)
+    // Recurse into compound statement bodies to find property assignments
     if (ts.isBlock(s)) {
       collectPropsFromStatements(checker, ctx, s.statements, varName, extraProps, seenProps);
     }
@@ -9627,6 +9637,27 @@ function collectPropsFromStatements(
       }
       if (s.elseStatement && ts.isBlock(s.elseStatement)) {
         collectPropsFromStatements(checker, ctx, s.elseStatement.statements, varName, extraProps, seenProps);
+      }
+    }
+    // Recurse into try/catch/finally blocks (wrapTest wraps test bodies in try blocks)
+    if (ts.isTryStatement(s)) {
+      collectPropsFromStatements(checker, ctx, s.tryBlock.statements, varName, extraProps, seenProps);
+      if (s.catchClause) {
+        collectPropsFromStatements(checker, ctx, s.catchClause.block.statements, varName, extraProps, seenProps);
+      }
+      if (s.finallyBlock) {
+        collectPropsFromStatements(checker, ctx, s.finallyBlock.statements, varName, extraProps, seenProps);
+      }
+    }
+    // Recurse into for/while/do-while/switch bodies
+    if (ts.isForStatement(s) || ts.isForInStatement(s) || ts.isForOfStatement(s) || ts.isWhileStatement(s) || ts.isDoStatement(s)) {
+      if (ts.isBlock(s.statement)) {
+        collectPropsFromStatements(checker, ctx, s.statement.statements, varName, extraProps, seenProps);
+      }
+    }
+    if (ts.isSwitchStatement(s)) {
+      for (const clause of s.caseBlock.clauses) {
+        collectPropsFromStatements(checker, ctx, clause.statements, varName, extraProps, seenProps);
       }
     }
   }
