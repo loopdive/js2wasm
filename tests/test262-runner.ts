@@ -105,6 +105,11 @@ const HANGING_TESTS = new Set([
 ]);
 
 export function shouldSkip(source: string, meta: Test262Meta, filePath?: string): FilterResult {
+  // All skip filters disabled — let every test attempt compilation.
+  // Tests that can't compile will show as CE, not hidden as skip.
+  return { skip: false };
+
+  // --- Original filters preserved below (disabled) ---
   // Skip known hanging tests by file path
   if (filePath) {
     const relPath = filePath.replace(/.*test262\//, "");
