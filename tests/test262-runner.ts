@@ -95,10 +95,9 @@ const UNSUPPORTED_FEATURES = new Set([
   "eval",
 ]);
 
-export interface FilterResult {
-  skip: boolean;
-  reason?: string;
-}
+export type FilterResult =
+  | { skip: true; reason: string }
+  | { skip: false; reason?: undefined };
 
 // Tests that cause the compiler to hang (infinite loop during compilation)
 const HANGING_TESTS = new Set([
