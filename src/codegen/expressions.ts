@@ -9944,6 +9944,131 @@ function compileCallablePropertyCall(
   return undefined;
 }
 
+/**
+ * Static eval(): parse the eval string at compile time and compile the
+ * resulting statements inline.  The return value of eval() is the "completion
+ * value" — the value of the last expression-statement, or undefined for
+ * non-expression statements (var declarations, etc.).
+ *
+ * Also handles `new Function("a","b","return a+b")` when called from
+ * compileNewExpression.
+ */
+function compileStaticEval(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  code: string,
+  originNode: ts.Node,
+): InnerResult {
+  // Parse the code string as a TS source file
+  let sf: ts.SourceFile;
+  try {
+    sf = ts.createSourceFile("eval.ts", code, ts.ScriptTarget.ESNext, true, ts.ScriptKind.JS);
+  } catch {
+    ctx.errors.push({
+      message: `Failed to parse eval() string: ${code.slice(0, 80)}`,
+      line: getLine(originNode),
+      column: getCol(originNode),
+      severity: "warning",
+    });
+    fctx.body.push({ op: "ref.null.extern" });
+    return { kind: "externref" };
+  }
+
+  const stmts = sf.statements;
+  if (stmts.length === 0) {
+    // eval("") returns undefined
+    fctx.body.push({ op: "ref.null.extern" });
+    return { kind: "externref" };
+  }
+
+  // Pre-register string literals found in the eval'd code so that
+  // compileStringLiteral can look them up in stringGlobalMap.
+  collectEvalStringLiterals(ctx, sf);
+
+  // Compile all statements.  For the last one, if it is an ExpressionStatement,
+  // we compile the expression and keep the value (that becomes eval's result).
+  // For all other statements we compile normally (side-effects only).
+  for (let i = 0; i < stmts.length; i++) {
+    const stmt = stmts[i]!;
+    const isLast = i === stmts.length - 1;
+
+    if (isLast && ts.isExpressionStatement(stmt)) {
+      // The last expression statement — its value is the eval result.
+      const resultType = compileExpression(ctx, fctx, stmt.expression);
+      if (resultType === null || resultType === VOID_RESULT) {
+        // Expression produced nothing — eval returns undefined
+        fctx.body.push({ op: "ref.null.extern" });
+        return { kind: "externref" };
+      }
+      return resultType;
+    } else {
+      // Non-last statement, or non-expression last statement — compile for side effects
+      compileStatement(ctx, fctx, stmt);
+    }
+  }
+
+  // Last statement was not an ExpressionStatement — eval returns undefined
+  fctx.body.push({ op: "ref.null.extern" });
+  return { kind: "externref" };
+}
+
+/** Walk an eval'd AST and register any string literals with addStringConstantGlobal. */
+function collectEvalStringLiterals(ctx: CodegenContext, node: ts.Node): void {
+  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
+    addStringConstantGlobal(ctx, node.text);
+  }
+  ts.forEachChild(node, child => collectEvalStringLiterals(ctx, child));
+}
+
+/**
+ * Compile `new Function("p1","p2",...,"body")` by synthesizing a function
+ * expression source string, parsing it, and compiling through
+ * compileArrowAsClosure.
+ */
+function compileNewFunctionFromStrings(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  paramStr: string,
+  bodyStr: string,
+  originNode: ts.Node,
+): ValType | null {
+  // Synthesize a complete function expression source
+  const syntheticSource = `var __f = function(${paramStr}) { ${bodyStr} };`;
+  let sf: ts.SourceFile;
+  try {
+    sf = ts.createSourceFile("new-function.ts", syntheticSource, ts.ScriptTarget.ESNext, true, ts.ScriptKind.JS);
+  } catch {
+    ctx.errors.push({
+      message: `Failed to parse new Function() body: ${bodyStr.slice(0, 80)}`,
+      line: getLine(originNode),
+      column: getCol(originNode),
+      severity: "warning",
+    });
+    fctx.body.push({ op: "ref.null.extern" });
+    return { kind: "externref" };
+  }
+
+  // Extract the function expression from the parsed var declaration
+  const varStmt = sf.statements[0];
+  if (!varStmt || !ts.isVariableStatement(varStmt)) {
+    fctx.body.push({ op: "ref.null.extern" });
+    return { kind: "externref" };
+  }
+  const decl = varStmt.declarationList.declarations[0];
+  if (!decl || !decl.initializer || !ts.isFunctionExpression(decl.initializer)) {
+    fctx.body.push({ op: "ref.null.extern" });
+    return { kind: "externref" };
+  }
+
+  const funcExpr = decl.initializer;
+
+  // Pre-register string literals
+  collectEvalStringLiterals(ctx, funcExpr);
+
+  // Compile as a closure/function expression — this produces a ref to a closure struct
+  return compileArrowAsClosure(ctx, fctx, funcExpr);
+}
+
 function compileCallExpression(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -9970,6 +10095,23 @@ function compileCallExpression(
     });
     fctx.body.push({ kind: "unreachable" } as unknown as Instr);
     return null;
+  }
+
+  // Static eval() — when the callee is `eval` and the argument is a string literal,
+  // parse the string at compile time and compile the resulting statements inline.
+  // This covers patterns like: eval("var x = 5"), eval("1 + 2"), (0, eval)("code")
+  if (ts.isIdentifier(expr.expression) && expr.expression.text === "eval" &&
+      expr.arguments.length >= 1) {
+    const arg0 = expr.arguments[0]!;
+    let evalCode: string | undefined;
+    if (ts.isStringLiteral(arg0)) {
+      evalCode = arg0.text;
+    } else if (ts.isNoSubstitutionTemplateLiteral(arg0)) {
+      evalCode = arg0.text;
+    }
+    if (evalCode !== undefined) {
+      return compileStaticEval(ctx, fctx, evalCode, expr);
+    }
   }
 
   // Unwrap parenthesized callee: (fn)(...), ((obj.method))(...) etc.
@@ -14259,6 +14401,36 @@ function compileNewExpression(
   // Handle `new function() { ... }(args)` — constructor with function expression
   if (ts.isFunctionExpression(expr.expression)) {
     return compileNewFunctionExpression(ctx, fctx, expr, expr.expression);
+  }
+
+  // Handle `new Function(...)` — parse string body at compile time and compile
+  // as a function expression.  Pattern: new Function("p1","p2",...,"body")
+  // All arguments must be string literals for static compilation.
+  if (ts.isIdentifier(expr.expression) && expr.expression.text === "Function") {
+    const args = expr.arguments ?? [];
+    if (args.length >= 1) {
+      let allStringLiterals = true;
+      const stringArgs: string[] = [];
+      for (const arg of args) {
+        if (ts.isStringLiteral(arg)) {
+          stringArgs.push(arg.text);
+        } else if (ts.isNoSubstitutionTemplateLiteral(arg)) {
+          stringArgs.push(arg.text);
+        } else {
+          allStringLiterals = false;
+          break;
+        }
+      }
+      if (allStringLiterals && stringArgs.length > 0) {
+        const bodyStr = stringArgs[stringArgs.length - 1]!;
+        const paramStr = stringArgs.slice(0, -1).join(", ");
+        return compileNewFunctionFromStrings(ctx, fctx, paramStr, bodyStr, expr);
+      }
+    }
+    // new Function() with no args → empty function
+    if (args.length === 0) {
+      return compileNewFunctionFromStrings(ctx, fctx, "", "", expr);
+    }
   }
 
   // Handle `new (class { ... })()` — anonymous class expression in new
