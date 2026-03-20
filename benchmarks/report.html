@@ -317,32 +317,55 @@ const MAX_CONCURRENT_FETCHES = 6;
 function fetchSourceLines(filePath, errText) {
   const placeholder = el("div", { className: "src-placeholder" });
   const lineMatch = errText.match(/L(\d+):(\d+)\s/);
-  if (!lineMatch) return placeholder;
-  const lineNo = parseInt(lineMatch[1], 10);
+  // For "returned 0 | first assert: ..." errors, try to find the assert line in source
+  const assertMatch = !lineMatch && errText.match(/first assert:\s*(.+)/);
+  const searchText = assertMatch ? assertMatch[1].trim().substring(0, 60) : null;
+  const lineNo = lineMatch ? parseInt(lineMatch[1], 10) : 0;
   const normalized = filePath.startsWith("test/") ? filePath : "test/" + filePath;
 
+  if (!lineMatch && !searchText) return placeholder;
+
   const cached = _srcCache.get(normalized);
-  if (cached !== undefined) { if (cached) renderSrcContext(cached, lineNo, placeholder); return placeholder; }
+  if (cached !== undefined) {
+    if (cached) {
+      const ln = lineNo || findLineByText(cached, searchText);
+      if (ln) renderSrcContext(cached, ln, placeholder);
+    }
+    return placeholder;
+  }
 
   const base = window.location.pathname.replace(/\/benchmarks\/.*$/, "");
   const url = base + "/test262/" + normalized;
-  _srcQueue.push({ normalized, url, lineNo, placeholder });
+  _srcQueue.push({ normalized, url, lineNo, searchText, placeholder });
   _drainSrcQueue();
   return placeholder;
+}
+
+function findLineByText(src, searchText) {
+  if (!searchText) return 0;
+  const lines = src.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].includes(searchText)) return i + 1;
+  }
+  return 0;
 }
 
 function _drainSrcQueue() {
   while (_srcFetching < MAX_CONCURRENT_FETCHES && _srcQueue.length > 0) {
     const job = _srcQueue.shift();
     const cached = _srcCache.get(job.normalized);
-    if (cached !== undefined) { if (cached) renderSrcContext(cached, job.lineNo, job.placeholder); continue; }
+    if (cached !== undefined) {
+      if (cached) { const ln = job.lineNo || findLineByText(cached, job.searchText); if (ln) renderSrcContext(cached, ln, job.placeholder); }
+      continue;
+    }
     _srcFetching++;
     fetch(job.url).then(r => {
       if (!r.ok) throw new Error(r.status);
       return r.text();
     }).then(t => {
       _srcCache.set(job.normalized, t);
-      renderSrcContext(t, job.lineNo, job.placeholder);
+      const ln = job.lineNo || findLineByText(t, job.searchText);
+      if (ln) renderSrcContext(t, ln, job.placeholder);
     }).catch(() => {
       _srcCache.set(job.normalized, null);
     }).finally(() => {
@@ -611,6 +634,11 @@ function renderConformance(data, container) {
   filterBar.appendChild(searchInput);
   container.appendChild(filterBar);
 
+  // --- Error Patterns section (between filters and category table) ---
+  const errorPatternsContainer = el("div");
+  container.appendChild(errorPatternsContainer);
+  renderErrorPatterns(errorPatternsContainer);
+
   container.appendChild(el("h3", null, "By Category"));
 
   const table = el("table", { className: "cat-table" });
@@ -683,9 +711,6 @@ function renderConformance(data, container) {
 
   table.appendChild(tbody);
   container.appendChild(table);
-
-  // --- Error Patterns section ---
-  renderErrorPatterns(container);
 }
 
 async function renderErrorPatterns(container) {
