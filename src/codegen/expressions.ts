@@ -6777,7 +6777,9 @@ function compilePropertyLogicalAssignmentExternref(
         let fieldIdx = fields.findIndex((f) => f.name === propName);
 
         // If the field doesn't exist yet, try to add it dynamically from TS type info
-        if (fieldIdx === -1) {
+        // but NEVER for class struct types — their fields are fixed at collection time
+        // and struct.new in the constructor only pushes values for those original fields.
+        if (fieldIdx === -1 && !ctx.classSet.has(resolvedTypeName)) {
           const objTsType = ctx.checker.getTypeAtLocation(target.expression);
           const tsProps = objTsType.getProperties?.();
           if (tsProps) {
@@ -7660,7 +7662,9 @@ function compilePropertyCompoundAssignmentExternref(
         let fieldIdx = fields.findIndex((f) => f.name === propName);
 
         // If the field doesn't exist yet, try to add it dynamically from TS type info
-        if (fieldIdx === -1) {
+        // but NEVER for class struct types — their fields are fixed at collection time
+        // and struct.new in the constructor only pushes values for those original fields.
+        if (fieldIdx === -1 && !ctx.classSet.has(resolvedTypeName)) {
           const objTsType = ctx.checker.getTypeAtLocation(target.expression);
           const tsProps = objTsType.getProperties?.();
           if (tsProps) {
@@ -15177,7 +15181,9 @@ function compilePropertyAccess(
   const accessWasm = resolveWasmType(ctx, accessType);
 
   // For struct types with the property, try to compile the object and do struct.get
-  if (typeName) {
+  // but NEVER for class struct types — their fields are fixed at collection time
+  // and struct.new in the constructor only pushes values for those original fields.
+  if (typeName && !ctx.classSet.has(typeName)) {
     // typeName was already resolved above but field was not found;
     // try auto-registering the property from the TS type
     const props = objType.getProperties?.();
