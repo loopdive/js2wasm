@@ -27,7 +27,7 @@ import {
 import { beforeAll, afterAll } from "vitest";
 let pool: CompilerPool;
 beforeAll(async () => {
-  pool = new CompilerPool(4);
+  pool = new CompilerPool(2);
   await pool.ready();
 }, 30_000);
 afterAll(() => pool?.shutdown());
@@ -127,7 +127,7 @@ async function getOrCompile(
 
 // ── Result tracking (JSONL output for report.html) ──────────────────
 
-import { writeFileSync as writeSync, appendFileSync } from "fs";
+import { writeFileSync as writeSync, openSync, writeSync as fdWrite, closeSync } from "fs";
 import { afterAll } from "vitest";
 
 const RESULTS_DIR = join(import.meta.dirname ?? ".", "..", "benchmarks", "results");
@@ -135,23 +135,40 @@ mkdirSync(RESULTS_DIR, { recursive: true });
 const JSONL_PATH = join(RESULTS_DIR, "test262-results.jsonl");
 const REPORT_PATH = join(RESULTS_DIR, "test262-report.json");
 
-// Clear JSONL at start
+// Open JSONL with a raw file descriptor for reliable writes from threads
 writeSync(JSONL_PATH, "");
+const jsonlFd = openSync(JSONL_PATH, "a");
+let flushCount = 0;
+const REPORT_FLUSH_INTERVAL = 500; // update report.json every 500 tests
 
 const summary = { total: 0, pass: 0, fail: 0, compile_error: 0, skip: 0 };
 const catCounts: Record<string, { pass: number; fail: number; compile_error: number; skip: number; total: number }> = {};
 
 function recordResult(file: string, category: string, status: string, error?: string) {
   const entry = JSON.stringify({ file, category, status, error: error || undefined });
-  appendFileSync(JSONL_PATH, entry + "\n");
+  fdWrite(jsonlFd, entry + "\n");
   summary.total++;
   (summary as any)[status]++;
   if (!catCounts[category]) catCounts[category] = { pass: 0, fail: 0, compile_error: 0, skip: 0, total: 0 };
   (catCounts[category] as any)[status]++;
   catCounts[category].total++;
+
+  // Periodically update report.json for live viewing
+  flushCount++;
+  if (flushCount % REPORT_FLUSH_INTERVAL === 0) {
+    const report = {
+      timestamp: new Date().toISOString(),
+      summary: { ...summary, compilable: summary.pass + summary.fail, stale: 0 },
+      categories: Object.entries(catCounts)
+        .map(([name, c]) => ({ name, ...c }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    };
+    try { writeSync(REPORT_PATH, JSON.stringify(report, null, 2)); } catch {}
+  }
 }
 
 afterAll(() => {
+  try { closeSync(jsonlFd); } catch {}
   const report = {
     timestamp: new Date().toISOString(),
     summary: { ...summary, compilable: summary.pass + summary.fail, stale: 0 },
