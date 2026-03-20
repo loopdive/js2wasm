@@ -199,10 +199,11 @@
   .detail-content::-webkit-scrollbar { width: 6px; }
   .detail-content::-webkit-scrollbar-track { background: #161b22; }
   .detail-content::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
-  .detail-file { padding: 2px 0; border-bottom: 1px solid rgba(48,54,61,0.5); display: flex; gap: 0.75rem; }
+  .detail-file { padding: 4px 0; border-bottom: 1px solid rgba(48,54,61,0.5); }
   .detail-file:last-child { border-bottom: none; }
-  .detail-fname { color: var(--accent); min-width: 280px; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .detail-err { color: var(--error); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .detail-file-header { display: flex; align-items: baseline; gap: 0.375rem; }
+  .detail-fname { color: var(--accent); word-break: break-all; }
+  .detail-err { color: var(--error); word-break: break-word; white-space: pre-wrap; padding-left: 1.25rem; font-size: 0.625rem; margin-top: 2px; }
   .detail-status-pass { color: var(--pass); }
   .detail-status-fail { color: var(--fail); }
   .detail-status-err { color: var(--error); }
@@ -387,10 +388,12 @@ function toggleDetail(row, catName, statusFilter) {
       const fileEl = el("div", { className: "detail-file" });
       const statusCls = f.status === "pass" ? "detail-status-pass"
         : f.status === "fail" ? "detail-status-fail" : "detail-status-err";
-      fileEl.appendChild(el("span", { className: statusCls, style: { width: "18px", flexShrink: "0" } },
+      const hdr = el("div", { className: "detail-file-header" });
+      hdr.appendChild(el("span", { className: statusCls, style: { flexShrink: "0" } },
         f.status === "pass" ? "\u2713" : f.status === "fail" ? "\u2717" : "\u26A0"));
-      fileEl.appendChild(el("span", { className: "detail-fname", title: safeFname }, safeFname));
-      if (f.error) fileEl.appendChild(el("span", { className: "detail-err", title: safeError }, safeError.split(";")[0]));
+      hdr.appendChild(el("span", { className: "detail-fname" }, safeFname));
+      fileEl.appendChild(hdr);
+      if (f.error) fileEl.appendChild(el("div", { className: "detail-err" }, safeError));
       content.appendChild(fileEl);
     }
   });
@@ -506,9 +509,11 @@ function renderConformance(data, container) {
         const fileEl = el("div", { className: "detail-file" });
         const statusCls = f.status === "pass" ? "detail-status-pass" : f.status === "fail" ? "detail-status-fail" : "detail-status-err";
         const icon = f.status === "pass" ? "\u2713" : f.status === "fail" ? "\u2717" : f.status === "skip" ? "\u23ED" : "\u26A0";
-        fileEl.appendChild(el("span", { className: statusCls, style: { width: "18px", flexShrink: "0" } }, icon));
-        fileEl.appendChild(el("span", { className: "detail-fname", title: fname }, fname));
-        if (err) fileEl.appendChild(el("span", { className: "detail-err", title: escapeHtml(err) }, escapeHtml(err.split(";")[0])));
+        const headerRow = el("div", { className: "detail-file-header" });
+        headerRow.appendChild(el("span", { className: statusCls, style: { flexShrink: "0" } }, icon));
+        headerRow.appendChild(el("span", { className: "detail-fname" }, fname));
+        fileEl.appendChild(headerRow);
+        if (err) fileEl.appendChild(el("div", { className: "detail-err" }, escapeHtml(err)));
         content.appendChild(fileEl);
         shown++;
         if (shown >= 2000) { content.appendChild(el("div", { style: { color: "var(--text-muted)", padding: "0.5rem 0" } }, "... " + (allFiles.length - shown) + " more files (refine search to see all)")); break; }
