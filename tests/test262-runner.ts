@@ -1272,15 +1272,15 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
   body = stripThirdArg(body, "assert_compareArray");
 
   // Convert typeof assertions to direct comparisons (our assert shims only handle numbers)
-  // assert_sameValue(typeof X, "Y"); → if (typeof X !== "Y") { __fail = 1; }
+  // assert_sameValue(typeof X, "Y"); → increment counter, set __fail on mismatch
   body = body.replace(
     /assert_sameValue\s*\(\s*typeof\s+([^,]+?)\s*,\s*"([^"]+)"\s*\)\s*;/g,
-    'if (typeof $1 !== "$2") { __fail = 1; }',
+    '{ __assert_count = __assert_count + 1; if (typeof $1 !== "$2") { if (!__fail) __fail = __assert_count; } }',
   );
-  // assert_notSameValue(typeof X, "Y"); → if (typeof X === "Y") { __fail = 1; }
+  // assert_notSameValue(typeof X, "Y"); → increment counter, set __fail on match
   body = body.replace(
     /assert_notSameValue\s*\(\s*typeof\s+([^,]+?)\s*,\s*"([^"]+)"\s*\)\s*;/g,
-    'if (typeof $1 === "$2") { __fail = 1; }',
+    '{ __assert_count = __assert_count + 1; if (typeof $1 === "$2") { if (!__fail) __fail = __assert_count; } }',
   );
 
   // With proper Wasm exception handling, throw statements are now compiled
@@ -1345,6 +1345,7 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
   const needsAssertThrows = /\bassert_throws\b/.test(body);
 
   let preamble = `let __fail: number = 0;
+let __assert_count: number = 1;
 
 function isSameValue(a: number, b: number): number {
   if (a === b) { return 1; }
@@ -1353,20 +1354,23 @@ function isSameValue(a: number, b: number): number {
 }
 
 function assert_sameValue(actual: number, expected: number): void {
+  __assert_count = __assert_count + 1;
   if (!isSameValue(actual, expected)) {
-    __fail = 1;
+    if (!__fail) __fail = __assert_count;
   }
 }
 
 function assert_notSameValue(actual: number, expected: number): void {
+  __assert_count = __assert_count + 1;
   if (isSameValue(actual, expected)) {
-    __fail = 1;
+    if (!__fail) __fail = __assert_count;
   }
 }
 
 function assert_true(value: number): void {
+  __assert_count = __assert_count + 1;
   if (!value) {
-    __fail = 1;
+    if (!__fail) __fail = __assert_count;
   }
 }`;
 
@@ -1374,12 +1378,13 @@ function assert_true(value: number): void {
     preamble += `
 
 function assert_throws(fn: () => void): void {
+  __assert_count = __assert_count + 1;
   try {
     fn();
   } catch (e) {
     return;
   }
-  __fail = 1;
+  if (!__fail) __fail = __assert_count;
 }`;
   }
 
@@ -1387,8 +1392,9 @@ function assert_throws(fn: () => void): void {
     preamble += `
 
 function assert_sameValue_str(actual: string, expected: string): void {
+  __assert_count = __assert_count + 1;
   if (actual !== expected) {
-    __fail = 1;
+    if (!__fail) __fail = __assert_count;
   }
 }`;
   }
@@ -1397,14 +1403,16 @@ function assert_sameValue_str(actual: string, expected: string): void {
     preamble += `
 
 function assert_sameValue_bool(actual: boolean, expected: boolean): void {
+  __assert_count = __assert_count + 1;
   if (actual !== expected) {
-    __fail = 1;
+    if (!__fail) __fail = __assert_count;
   }
 }
 
 function assert_notSameValue_bool(actual: boolean, expected: boolean): void {
+  __assert_count = __assert_count + 1;
   if (actual === expected) {
-    __fail = 1;
+    if (!__fail) __fail = __assert_count;
   }
 }`;
   }
@@ -1425,9 +1433,10 @@ function compareArray(a: number[], b: number[]): number {
     preamble += `
 
 function assert_compareArray(actual: number[], expected: number[]): void {
-  if (actual.length !== expected.length) { __fail = 1; return; }
+  __assert_count = __assert_count + 1;
+  if (actual.length !== expected.length) { if (!__fail) __fail = __assert_count; return; }
   for (let i: number = 0; i < actual.length; i++) {
-    if (actual[i] !== expected[i]) { __fail = 1; return; }
+    if (actual[i] !== expected[i]) { if (!__fail) __fail = __assert_count; return; }
   }
 }`;
   }
@@ -1529,7 +1538,8 @@ let $MAX_ITERATIONS: number = 100000;`;
     preamble += `
 
 function $DONE(err?: any): void {
-  if (err) { __fail = 1; }
+  __assert_count = __assert_count + 1;
+  if (err) { if (!__fail) __fail = __assert_count; }
 }`;
   }
 
@@ -1552,7 +1562,8 @@ function asyncTest(fn: () => void): void {
       preamble += `
 
 function $DONE(err?: any): void {
-  if (err) { __fail = 1; }
+  __assert_count = __assert_count + 1;
+  if (err) { if (!__fail) __fail = __assert_count; }
 }`;
     }
   }
@@ -1645,9 +1656,9 @@ export function test(): number {
     `;
   const postBody = `
   } catch (e) {
-    __fail = 1;
+    if (!__fail) __fail = -1;
   }
-  if (__fail) { return 0; }
+  if (__fail) { return __fail; }
   return 1;
 }
 `;
@@ -2035,9 +2046,34 @@ export async function runTest262File(filePath: string, category: string, timeout
     if (ret === 1 || ret === 1.0) {
       return { file: relPath, category, status: "pass", timing };
     }
-    // Extract first assert line from source for context
-    const assertMatch = source.match(/^.*assert\w*\s*\(.*$/m);
-    const assertCtx = assertMatch ? ` | first assert: ${assertMatch[0].trim().slice(0, 120)}` : "";
+    // ret >= 2: the (ret-1)th assert (1-based) that failed
+    //   (__assert_count starts at 1, incremented before check, so first assert → 2)
+    // ret == -1: uncaught exception (not from an assert)
+    // ret == 0: legacy (should not happen with new shims)
+    let assertCtx = "";
+    if (typeof ret === "number" && ret >= 2) {
+      const assertIdx = ret - 1; // 1-based index into assert calls
+      // Find the Nth assert call in the original source to show context
+      const assertRegex = /\bassert\b[.\w]*\s*\(/g;
+      let nth = 0;
+      let m: RegExpExecArray | null;
+      while ((m = assertRegex.exec(source)) !== null) {
+        nth++;
+        if (nth === assertIdx) {
+          // Extract the line containing this assert
+          const lineStart = source.lastIndexOf("\n", m.index) + 1;
+          const lineEnd = source.indexOf("\n", m.index);
+          const line = source.slice(lineStart, lineEnd === -1 ? undefined : lineEnd).trim();
+          assertCtx = ` | assert #${assertIdx}: ${line.slice(0, 160)}`;
+          break;
+        }
+      }
+      if (!assertCtx) {
+        assertCtx = ` | assert #${assertIdx} of ${nth} total`;
+      }
+    } else if (ret === -1) {
+      assertCtx = " | uncaught exception";
+    }
     return { file: relPath, category, status: "fail", error: `returned ${ret}${assertCtx}`, timing };
   } catch (err: any) {
     const totalMs = performance.now() - totalStart;
