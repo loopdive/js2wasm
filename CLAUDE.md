@@ -63,6 +63,15 @@ TypeScript-to-WebAssembly compiler using WasmGC.
 - `--wit` — generate WIT interface file for Component Model
 - `--nativeStrings` — use WasmGC i16 arrays instead of wasm:js-string (auto for WASI)
 
+## Event channel
+
+An MCP channel server runs on port 7373. External processes (test harness, cron, gh CLI) POST events here; they arrive in this session as channel messages. When a channel message arrives, handle it immediately before continuing other work.
+
+- Start: `claude --dangerously-load-development-channels server:js2wasm-channel`
+- Send events: `.claude/channel/send.sh <event> [json-payload]`
+- Run tests with notification: `npm run test:channel`
+- Event types: `test-run-done`, `cron-tick`, `issue-opened`, `milestone-started`, `custom`
+
 ## Team & Workflow
 
 See [plan/team-setup.md](plan/team-setup.md) for full team config, roles, and merge lessons.
