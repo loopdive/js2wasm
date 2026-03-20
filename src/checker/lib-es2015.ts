@@ -222,6 +222,7 @@ declare var Promise: PromiseConstructor;
 interface ObjectConstructor {
   entries<T>(o: { [s: string]: T } | ArrayLike<T>): [string, T][];
   entries(o: {}): [string, any][];
+  setPrototypeOf(o: any, proto: object | null): any;
 }
 
 // ── Proxy ───────────────────────────────────────────────────────
