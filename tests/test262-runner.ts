@@ -104,12 +104,11 @@ const HANGING_TESTS = new Set([
   "test/built-ins/Promise/race/invoke-then.js", // #408: Promise.race compilation hang
 ]);
 
-export function shouldSkip(source: string, meta: Test262Meta, filePath?: string): FilterResult {
-  // All skip filters disabled — let every test attempt compilation.
-  // Tests that can't compile will show as CE, not hidden as skip.
-  return { skip: false };
+/** Set to true to disable all skip filters and attempt every test */
+const SKIP_DISABLED = true;
 
-  // --- Original filters preserved below (disabled) ---
+export function shouldSkip(source: string, meta: Test262Meta, filePath?: string): FilterResult {
+  if (SKIP_DISABLED) return { skip: false };
   // Skip known hanging tests by file path
   if (filePath) {
     const relPath = filePath.replace(/.*test262\//, "");
