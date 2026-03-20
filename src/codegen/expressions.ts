@@ -14549,6 +14549,13 @@ function compileNewExpression(
     const idName = expr.expression.text;
     if (ctx.classSet.has(idName)) {
       className = idName;
+    } else {
+      // Check classExprNameMap — for `let C: any; C = class { ... }; new C()`,
+      // the identifier C maps to the synthetic class name via classExprNameMap.
+      const mapped = ctx.classExprNameMap.get(idName);
+      if (mapped && ctx.classSet.has(mapped)) {
+        className = mapped;
+      }
     }
   }
 

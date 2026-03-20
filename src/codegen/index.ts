@@ -9892,6 +9892,13 @@ function collectDeclarations(
         // Use the LHS identifier as the name hint if available
         const nameHint = ts.isIdentifier(node.left) ? node.left.text : undefined;
         registerClassExpression(rhs, nameHint);
+        // Also map the LHS identifier to the synthetic name so `new C()` resolves
+        if (nameHint) {
+          const syntheticName = ctx.anonClassExprNames.get(rhs);
+          if (syntheticName) {
+            ctx.classExprNameMap.set(nameHint, syntheticName);
+          }
+        }
       }
     }
     // Standalone class expression in any other position
