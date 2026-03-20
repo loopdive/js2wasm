@@ -895,7 +895,7 @@ writeFileSync(META_PATH, JSON.stringify({ gitHead: getGitHead(), status: "comple
 // Each run only stores its own results. The merged report fills gaps from
 // previous runs (marked as stale with the timestamp they were run).
 {
-  const totalExpected = allJobs.length + processed; // processed = skipped-from-cache early exits
+  const totalExpected = finalResults.length; // total tests processed in this run
   const runTimestamp = RUN_TIMESTAMP.replace(/T/, " ").replace(/-/g, ":").slice(0, 19);
 
   // Collect current run results keyed by file
