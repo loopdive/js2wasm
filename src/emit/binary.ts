@@ -870,6 +870,10 @@ export function encodeInstr(instr: Instr, enc: WasmEncoder): void {
       enc.byte(OP.ref_null);
       enc.byte(TYPE.eq);
       break;
+    case "ref.null.func":
+      enc.byte(OP.ref_null);
+      enc.byte(TYPE.funcref);
+      break;
     case "ref.is_null":
       enc.byte(OP.ref_is_null);
       break;
