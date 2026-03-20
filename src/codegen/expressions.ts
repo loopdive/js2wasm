@@ -867,7 +867,7 @@ function compileExpressionInner(
   // SpreadElement encountered as a standalone expression (e.g. ...arr passed
   // through a code path that didn't filter spread).  Compile just the operand.
   if (ts.isSpreadElement(expr as any)) {
-    return compileExpressionInner(ctx, fctx, (expr as any as ts.SpreadElement).expression, hint);
+    return compileExpressionInner(ctx, fctx, (expr as any as ts.SpreadElement).expression);
   }
 
   ctx.errors.push({

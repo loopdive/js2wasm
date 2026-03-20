@@ -934,9 +934,9 @@ function unifiedVisitNode(
       state.stringLiterals.add(node.text);
     }
     if (ts.isTemplateExpression(node)) {
-      if (node.head.text) state.stringLiterals.add(node.head.text);
+      state.stringLiterals.add(node.head.text); // include empty strings
       for (const span of node.templateSpans) {
-        if (span.literal.text) state.stringLiterals.add(span.literal.text);
+        state.stringLiterals.add(span.literal.text); // include empty strings
       }
     }
     if (ts.isTaggedTemplateExpression(node)) {
@@ -1435,6 +1435,10 @@ function finalizeUnifiedCollector(
   }
 
   // ── collectStringLiterals finalize ──
+  // Always register the empty string — it's used implicitly by template
+  // expressions, default values, and many string operations (#668).
+  state.stringLiterals.add("");
+
   if (state.hasTypeofExprForStrings) {
     for (const s of ["number", "string", "boolean", "object", "undefined", "function", "symbol"]) {
       state.stringLiterals.add(s);
