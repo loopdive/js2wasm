@@ -980,6 +980,45 @@ export function coerceType(
   pushDefaultValue(fctx, to);
 }
 
+/**
+ * Emit a safe externref-to-f64 conversion that handles GC struct references.
+ *
+ * When an externref might hold a WasmGC struct (e.g., from `extern.convert_any`
+ * on an object literal), calling the JS host `Number(v)` throws
+ * "Cannot convert object to primitive value". This function emits inline Wasm
+ * that uses `__typeof_number` to check if the externref is a JS number before
+ * calling `__unbox_number`. For non-number externrefs (including GC structs),
+ * it returns NaN per JS ToNumber semantics for objects without valueOf.
+ *
+ * Expects one externref on the stack; leaves one f64.
+ */
+export function emitSafeExternrefToF64(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+): void {
+  addUnionImports(ctx);
+  const unboxIdx = ctx.funcMap.get("__unbox_number")!;
+  const typeofNumIdx = ctx.funcMap.get("__typeof_number")!;
+  const tmpLocal = allocTempLocal(fctx, { kind: "externref" });
+  fctx.body.push({ op: "local.tee", index: tmpLocal } as unknown as Instr);
+  // Check if it's a JS number (typeof === "number")
+  fctx.body.push({ op: "call", funcIdx: typeofNumIdx });
+  fctx.body.push({
+    op: "if",
+    blockType: { kind: "val", type: { kind: "f64" } },
+    then: [
+      // JS number: safe to unbox
+      { op: "local.get", index: tmpLocal } as Instr,
+      { op: "call", funcIdx: unboxIdx } as Instr,
+    ],
+    else: [
+      // Not a number (GC struct, string, null, etc.): return NaN
+      { op: "f64.const", value: NaN } as Instr,
+    ],
+  } as unknown as Instr);
+  releaseTempLocal(fctx, tmpLocal);
+}
+
 export function pushDefaultValue(fctx: FunctionContext, type: ValType): void {
   switch (type.kind) {
     case "f64":

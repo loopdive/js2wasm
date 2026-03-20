@@ -19,7 +19,7 @@ import type { Instr, ValType, WasmFunction, FieldDef, StructTypeDef } from "../i
 import { ensureI32Condition } from "./index.js";
 import { compileStatement } from "./statements.js";
 import { ensureTimsortHelper } from "./timsort.js";
-import { coerceType as coerceTypeImpl, pushDefaultValue, defaultValueInstrs, coercionInstrs, emitGuardedRefCast } from "./type-coercion.js";
+import { coerceType as coerceTypeImpl, pushDefaultValue, defaultValueInstrs, coercionInstrs, emitGuardedRefCast, emitSafeExternrefToF64 } from "./type-coercion.js";
 export { pushDefaultValue, defaultValueInstrs, coercionInstrs } from "./type-coercion.js";
 
 /** Sentinel: expression compiled successfully but produces no value (void) */
@@ -9026,18 +9026,21 @@ function compilePrefixUnary(
             return { kind: "i32" };
           }
           if (localType?.kind === "externref") {
-            addUnionImports(ctx);
             fctx.body.push({ op: "local.get", index: idx });
-            fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+            emitSafeExternrefToF64(ctx, fctx);
             fctx.body.push({ op: "f64.const", value: 1 });
             fctx.body.push({ op: "f64.add" });
+            addUnionImports(ctx);
             fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__box_number")! });
             fctx.body.push({ op: "local.tee", index: idx });
             return { kind: "externref" };
           }
-          // ref/ref_null: struct/array reference — ToNumber gives NaN, NaN + 1 = NaN
+          // ref/ref_null: struct/array reference — coerce via valueOf, then add 1
           if (localType?.kind === "ref" || localType?.kind === "ref_null") {
-            fctx.body.push({ op: "f64.const", value: NaN });
+            fctx.body.push({ op: "local.get", index: idx });
+            coerceType(ctx, fctx, localType!, { kind: "f64" });
+            fctx.body.push({ op: "f64.const", value: 1 });
+            fctx.body.push({ op: "f64.add" });
             return { kind: "f64" };
           }
           fctx.body.push({ op: "local.get", index: idx });
@@ -9049,6 +9052,27 @@ function compilePrefixUnary(
         // Check module globals for prefix ++
         const ppModIdx = ctx.moduleGlobals.get(ppOperand.text);
         if (ppModIdx !== undefined) {
+          const ppModGlobalDef = ctx.mod.globals[localGlobalIdx(ctx, ppModIdx)];
+          if (ppModGlobalDef?.type.kind === "externref") {
+            // externref global: safe unbox to f64, add 1, box back
+            fctx.body.push({ op: "global.get", index: ppModIdx });
+            emitSafeExternrefToF64(ctx, fctx);
+            fctx.body.push({ op: "f64.const", value: 1 });
+            fctx.body.push({ op: "f64.add" });
+            addUnionImports(ctx);
+            fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__box_number")! });
+            fctx.body.push({ op: "global.set", index: ppModIdx });
+            fctx.body.push({ op: "global.get", index: ppModIdx });
+            return { kind: "externref" };
+          }
+          if (ppModGlobalDef && (ppModGlobalDef.type.kind === "ref" || ppModGlobalDef.type.kind === "ref_null")) {
+            // ref global: coerce via valueOf, result is NaN+1 = NaN for plain objects
+            fctx.body.push({ op: "global.get", index: ppModIdx });
+            coerceType(ctx, fctx, ppModGlobalDef.type, { kind: "f64" });
+            fctx.body.push({ op: "f64.const", value: 1 });
+            fctx.body.push({ op: "f64.add" });
+            return { kind: "f64" };
+          }
           fctx.body.push({ op: "global.get", index: ppModIdx });
           fctx.body.push({ op: "f64.const", value: 1 });
           fctx.body.push({ op: "f64.add" });
@@ -9061,6 +9085,25 @@ function compilePrefixUnary(
         // Check captured globals for prefix ++
         const ppCapIdx = ctx.capturedGlobals.get(ppOperand.text);
         if (ppCapIdx !== undefined) {
+          const ppCapGlobalDef = ctx.mod.globals[localGlobalIdx(ctx, ppCapIdx)];
+          if (ppCapGlobalDef?.type.kind === "externref") {
+            fctx.body.push({ op: "global.get", index: ppCapIdx });
+            emitSafeExternrefToF64(ctx, fctx);
+            fctx.body.push({ op: "f64.const", value: 1 });
+            fctx.body.push({ op: "f64.add" });
+            addUnionImports(ctx);
+            fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__box_number")! });
+            fctx.body.push({ op: "global.set", index: ppCapIdx });
+            fctx.body.push({ op: "global.get", index: ppCapIdx });
+            return { kind: "externref" };
+          }
+          if (ppCapGlobalDef && (ppCapGlobalDef.type.kind === "ref" || ppCapGlobalDef.type.kind === "ref_null")) {
+            fctx.body.push({ op: "global.get", index: ppCapIdx });
+            coerceType(ctx, fctx, ppCapGlobalDef.type, { kind: "f64" });
+            fctx.body.push({ op: "f64.const", value: 1 });
+            fctx.body.push({ op: "f64.add" });
+            return { kind: "f64" };
+          }
           fctx.body.push({ op: "global.get", index: ppCapIdx });
           fctx.body.push({ op: "f64.const", value: 1 });
           fctx.body.push({ op: "f64.add" });
@@ -9108,18 +9151,21 @@ function compilePrefixUnary(
             return { kind: "i32" };
           }
           if (localType?.kind === "externref") {
-            addUnionImports(ctx);
             fctx.body.push({ op: "local.get", index: idx });
-            fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+            emitSafeExternrefToF64(ctx, fctx);
             fctx.body.push({ op: "f64.const", value: 1 });
             fctx.body.push({ op: arithOp });
+            addUnionImports(ctx);
             fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__box_number")! });
             fctx.body.push({ op: "local.tee", index: idx });
             return { kind: "externref" };
           }
-          // ref/ref_null: struct/array reference — ToNumber gives NaN, NaN - 1 = NaN
+          // ref/ref_null: struct/array reference — coerce via valueOf, then sub 1
           if (localType?.kind === "ref" || localType?.kind === "ref_null") {
-            fctx.body.push({ op: "f64.const", value: NaN });
+            fctx.body.push({ op: "local.get", index: idx });
+            coerceType(ctx, fctx, localType!, { kind: "f64" });
+            fctx.body.push({ op: "f64.const", value: 1 });
+            fctx.body.push({ op: arithOp });
             return { kind: "f64" };
           }
           fctx.body.push({ op: "local.get", index: idx });
@@ -9131,6 +9177,25 @@ function compilePrefixUnary(
         // Check module globals for prefix --
         const mmModIdx = ctx.moduleGlobals.get(mmOperand.text);
         if (mmModIdx !== undefined) {
+          const mmModGlobalDef = ctx.mod.globals[localGlobalIdx(ctx, mmModIdx)];
+          if (mmModGlobalDef?.type.kind === "externref") {
+            fctx.body.push({ op: "global.get", index: mmModIdx });
+            emitSafeExternrefToF64(ctx, fctx);
+            fctx.body.push({ op: "f64.const", value: 1 });
+            fctx.body.push({ op: arithOp });
+            addUnionImports(ctx);
+            fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__box_number")! });
+            fctx.body.push({ op: "global.set", index: mmModIdx });
+            fctx.body.push({ op: "global.get", index: mmModIdx });
+            return { kind: "externref" };
+          }
+          if (mmModGlobalDef && (mmModGlobalDef.type.kind === "ref" || mmModGlobalDef.type.kind === "ref_null")) {
+            fctx.body.push({ op: "global.get", index: mmModIdx });
+            coerceType(ctx, fctx, mmModGlobalDef.type, { kind: "f64" });
+            fctx.body.push({ op: "f64.const", value: 1 });
+            fctx.body.push({ op: arithOp });
+            return { kind: "f64" };
+          }
           fctx.body.push({ op: "global.get", index: mmModIdx });
           fctx.body.push({ op: "f64.const", value: 1 });
           fctx.body.push({ op: arithOp });
@@ -9143,6 +9208,25 @@ function compilePrefixUnary(
         // Check captured globals for prefix --
         const mmCapIdx = ctx.capturedGlobals.get(mmOperand.text);
         if (mmCapIdx !== undefined) {
+          const mmCapGlobalDef = ctx.mod.globals[localGlobalIdx(ctx, mmCapIdx)];
+          if (mmCapGlobalDef?.type.kind === "externref") {
+            fctx.body.push({ op: "global.get", index: mmCapIdx });
+            emitSafeExternrefToF64(ctx, fctx);
+            fctx.body.push({ op: "f64.const", value: 1 });
+            fctx.body.push({ op: arithOp });
+            addUnionImports(ctx);
+            fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__box_number")! });
+            fctx.body.push({ op: "global.set", index: mmCapIdx });
+            fctx.body.push({ op: "global.get", index: mmCapIdx });
+            return { kind: "externref" };
+          }
+          if (mmCapGlobalDef && (mmCapGlobalDef.type.kind === "ref" || mmCapGlobalDef.type.kind === "ref_null")) {
+            fctx.body.push({ op: "global.get", index: mmCapIdx });
+            coerceType(ctx, fctx, mmCapGlobalDef.type, { kind: "f64" });
+            fctx.body.push({ op: "f64.const", value: 1 });
+            fctx.body.push({ op: arithOp });
+            return { kind: "f64" };
+          }
           fctx.body.push({ op: "global.get", index: mmCapIdx });
           fctx.body.push({ op: "f64.const", value: 1 });
           fctx.body.push({ op: arithOp });
@@ -9190,6 +9274,27 @@ function compilePostfixUnary(
       // Check module globals for postfix ++/--
       const postModIdx = ctx.moduleGlobals.get(postOperand.text);
       if (postModIdx !== undefined) {
+        const postModGlobalDef = ctx.mod.globals[localGlobalIdx(ctx, postModIdx)];
+        if (postModGlobalDef?.type.kind === "externref") {
+          // externref global: safe unbox old value, compute new, box and store back
+          fctx.body.push({ op: "global.get", index: postModIdx });
+          emitSafeExternrefToF64(ctx, fctx);
+          const postOldTmp = allocLocal(fctx, `__post_old_${fctx.locals.length}`, { kind: "f64" });
+          fctx.body.push({ op: "local.tee", index: postOldTmp });
+          fctx.body.push({ op: "f64.const", value: 1 });
+          fctx.body.push({ op: arithOp });
+          addUnionImports(ctx);
+          fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__box_number")! });
+          fctx.body.push({ op: "global.set", index: postModIdx });
+          fctx.body.push({ op: "local.get", index: postOldTmp });
+          return { kind: "f64" };
+        }
+        if (postModGlobalDef && (postModGlobalDef.type.kind === "ref" || postModGlobalDef.type.kind === "ref_null")) {
+          // ref global: coerce via valueOf, postfix returns old numeric value
+          fctx.body.push({ op: "global.get", index: postModIdx });
+          coerceType(ctx, fctx, postModGlobalDef.type, { kind: "f64" });
+          return { kind: "f64" };
+        }
         // Postfix: return old value, store new value
         fctx.body.push({ op: "global.get", index: postModIdx });
         fctx.body.push({ op: "global.get", index: postModIdx });
@@ -9201,6 +9306,25 @@ function compilePostfixUnary(
       // Check captured globals for postfix ++/--
       const postCapIdx = ctx.capturedGlobals.get(postOperand.text);
       if (postCapIdx !== undefined) {
+        const postCapGlobalDef = ctx.mod.globals[localGlobalIdx(ctx, postCapIdx)];
+        if (postCapGlobalDef?.type.kind === "externref") {
+          fctx.body.push({ op: "global.get", index: postCapIdx });
+          emitSafeExternrefToF64(ctx, fctx);
+          const postCapOldTmp = allocLocal(fctx, `__post_cap_old_${fctx.locals.length}`, { kind: "f64" });
+          fctx.body.push({ op: "local.tee", index: postCapOldTmp });
+          fctx.body.push({ op: "f64.const", value: 1 });
+          fctx.body.push({ op: arithOp });
+          addUnionImports(ctx);
+          fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__box_number")! });
+          fctx.body.push({ op: "global.set", index: postCapIdx });
+          fctx.body.push({ op: "local.get", index: postCapOldTmp });
+          return { kind: "f64" };
+        }
+        if (postCapGlobalDef && (postCapGlobalDef.type.kind === "ref" || postCapGlobalDef.type.kind === "ref_null")) {
+          fctx.body.push({ op: "global.get", index: postCapIdx });
+          coerceType(ctx, fctx, postCapGlobalDef.type, { kind: "f64" });
+          return { kind: "f64" };
+        }
         fctx.body.push({ op: "global.get", index: postCapIdx });
         fctx.body.push({ op: "global.get", index: postCapIdx });
         fctx.body.push({ op: "f64.const", value: 1 });
@@ -9245,22 +9369,23 @@ function compilePostfixUnary(
 
     if (localType?.kind === "externref") {
       // Postfix on externref: return old value (unboxed), store incremented (boxed)
-      addUnionImports(ctx);
       fctx.body.push({ op: "local.get", index: idx });
-      fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+      emitSafeExternrefToF64(ctx, fctx);
       const tmpOld = allocLocal(fctx, `__postfix_old_${fctx.locals.length}`, { kind: "f64" });
       fctx.body.push({ op: "local.tee", index: tmpOld });
       fctx.body.push({ op: "f64.const", value: 1 });
       fctx.body.push({ op: arithOp });
+      addUnionImports(ctx);
       fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__box_number")! });
       fctx.body.push({ op: "local.set", index: idx });
       fctx.body.push({ op: "local.get", index: tmpOld });
       return { kind: "f64" };
     }
 
-    // ref/ref_null: struct/array reference — ToNumber gives NaN, postfix returns NaN (old value)
+    // ref/ref_null: struct/array reference — coerce via valueOf, postfix returns old numeric value
     if (localType?.kind === "ref" || localType?.kind === "ref_null") {
-      fctx.body.push({ op: "f64.const", value: NaN });
+      fctx.body.push({ op: "local.get", index: idx });
+      coerceType(ctx, fctx, localType!, { kind: "f64" });
       return { kind: "f64" };
     }
 
