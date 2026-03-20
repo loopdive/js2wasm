@@ -442,19 +442,18 @@ export interface CodegenOptions {
   wasi?: boolean;
 }
 
-/** Compile a typed AST into a WasmModule IR */
-export function generateModule(
-  ast: TypedAST,
+/**
+ * Create a fresh CodegenContext with all fields initialized.
+ * Shared by generateModule and generateMultiModule to avoid duplication (#636).
+ */
+export function createCodegenContext(
+  mod: WasmModule,
+  checker: ts.TypeChecker,
   options?: CodegenOptions,
-): {
-  module: WasmModule;
-  errors: { message: string; line: number; column: number; severity?: "error" | "warning" }[];
-} {
-  const mod = createEmptyModule();
-
+): CodegenContext {
   const ctx: CodegenContext = {
     mod,
-    checker: ast.checker,
+    checker,
     funcMap: new Map(),
     structMap: new Map(),
     structFields: new Map(),
@@ -554,6 +553,20 @@ export function generateModule(
   if (ctx.nativeStrings) {
     registerNativeStringTypes(ctx);
   }
+
+  return ctx;
+}
+
+/** Compile a typed AST into a WasmModule IR */
+export function generateModule(
+  ast: TypedAST,
+  options?: CodegenOptions,
+): {
+  module: WasmModule;
+  errors: { message: string; line: number; column: number; severity?: "error" | "warning" }[];
+} {
+  const mod = createEmptyModule();
+  const ctx = createCodegenContext(mod, ast.checker, options);
 
   // WASI target: register linear memory, bump pointer global, and WASI imports
   if (ctx.wasi) {
@@ -695,99 +708,11 @@ export function generateMultiModule(
   errors: { message: string; line: number; column: number; severity?: "error" | "warning" }[];
 } {
   const mod = createEmptyModule();
+  const ctx = createCodegenContext(mod, multiAst.checker, options);
 
-  const ctx: CodegenContext = {
-    mod,
-    checker: multiAst.checker,
-    funcMap: new Map(),
-    structMap: new Map(),
-    structFields: new Map(),
-    numImportFuncs: 0,
-    currentFunc: null,
-    funcStack: [],
-    errors: [],
-    externClasses: new Map(),
-    funcOptionalParams: new Map(),
-    anonTypeMap: new Map(),
-    anonTypeCounter: 0,
-    stringLiteralMap: new Map(),
-    stringLiteralValues: new Map(),
-    stringLiteralCounter: 0,
-    stringGlobalMap: new Map(),
-    numImportGlobals: 0,
-    hasStringImports: false,
-    enumValues: new Map(),
-    enumStringValues: new Map(),
-    arrayTypeMap: new Map(),
-    vecTypeMap: new Map(),
-    externClassParent: new Map(),
-    declaredGlobals: new Map(),
-    callbackCounter: 0,
-    capturedGlobals: new Map(),
-    capturedGlobalsWidened: new Set(),
-    classSet: new Set(),
-    classMethodSet: new Set(),
-    classAccessorSet: new Set(),
-    staticMethodSet: new Set(),
-    staticProps: new Map(),
-    staticInitExprs: [],
-    closureCounter: 0,
-    closureMap: new Map(),
-    closureInfoByTypeIdx: new Map(),
-    genericResolved: new Map(),
-    funcRestParams: new Map(),
-    valueOfClosureTypes: new Map(),
-    hasUnionImports: false,
-    asyncFunctions: new Set(),
-    generatorFunctions: new Set(),
-    generatorYieldType: new Map(),
-    exnTagIdx: -1,
-    moduleGlobals: new Map(),
-    moduleInitStatements: [],
-    nestedFuncCaptures: new Map(),
-    classParentMap: new Map(),
-    classTagCounter: 0,
-    classTagMap: new Map(),
-    classExprNameMap: new Map(),
-    anonClassExprNames: new Map(),
-    sourceMap: options?.sourceMap ?? false,
-    tupleTypeMap: new Map(),
-    fast: options?.fast ?? false,
-    nativeStrings: options?.nativeStrings ?? options?.fast ?? options?.wasi ?? false,
-    nativeStrDataTypeIdx: -1,
-    anyStrTypeIdx: -1,
-    nativeStrTypeIdx: -1,
-    consStrTypeIdx: -1,
-    nativeStrHelpersEmitted: false,
-    nativeStrHelpers: new Map(),
-    refCellTypeMap: new Map(),
-    anyValueTypeIdx: -1,
-    anyHelpers: new Map(),
-    anyHelpersEmitted: false,
-    shapeMap: new Map(),
-    templateCacheCounter: 0,
-    templateVecTypeIdx: -1,
-    widenedTypeProperties: new Map(),
-    widenedVarStructMap: new Map(),
-    pendingMathMethods: new Set(),
-    classDeclarationMap: new Map(),
-    wrapperNumberTypeIdx: -1,
-    wrapperStringTypeIdx: -1,
-    wrapperBooleanTypeIdx: -1,
-    funcRefWrapperCache: new Map(),
-    pendingInitBody: null,
-    inlinableFunctions: new Map(),
-    symbolCounterGlobalIdx: -1,
-    parentBodiesStack: [],
-    anonStructHash: new Map(),
-    funcTypeCache: new Map(),
-    pendingLateImportShift: null,
-    protoGlobals: new Map(),
-  };
-
-  // Register native string types if native strings enabled (fast mode, WASI, or explicit)
-  if (ctx.nativeStrings) {
-    registerNativeStringTypes(ctx);
+  // WASI target: register linear memory, bump pointer global, and WASI imports
+  if (ctx.wasi) {
+    registerWasiImports(ctx, multiAst.entryFile);
   }
 
   // $AnyValue struct type is now registered lazily via ensureAnyValueType()
@@ -811,6 +736,12 @@ export function generateMultiModule(
         }
       }
     }
+  }
+
+  // Pre-pass: detect empty object literals that get properties assigned later
+  // Must run before import collectors so that widened types are known
+  for (const sf of multiAst.sourceFiles) {
+    collectEmptyObjectWidening(ctx, multiAst.checker, sf);
   }
 
   // Single-pass collection of all source imports for each file (#592)
@@ -843,6 +774,9 @@ export function generateMultiModule(
     compileDeclarations(ctx, sf);
   }
 
+  // Fixup pass: reconcile struct.new argument counts with actual struct field counts.
+  fixupStructNewArgCounts(ctx);
+
   // Collect ref.func targets so the binary emitter can add a declarative element segment
   collectDeclaredFuncRefs(ctx);
 
@@ -864,6 +798,11 @@ export function generateMultiModule(
   }
   mod.stringLiteralValues = ctx.stringLiteralValues;
   mod.asyncFunctions = ctx.asyncFunctions;
+
+  // WASI: export _start entry point (before dead import elimination adjusts indices)
+  if (ctx.wasi) {
+    addWasiStartExport(ctx);
+  }
 
   // Mark leaf struct types as final for V8 devirtualization
   markLeafStructsFinal(mod);
