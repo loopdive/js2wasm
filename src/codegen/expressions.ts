@@ -12100,6 +12100,13 @@ function compileCallExpression(
       callee = callee.expression;
     }
     if (ts.isFunctionExpression(callee) || ts.isArrowFunction(callee)) {
+      // Generator function expressions (function*) must NOT be inlined as IIFEs
+      // because their body contains `yield` which requires a generator context.
+      // Let them fall through to the normal closure compilation path (#657).
+      const isGeneratorIIFE = ts.isFunctionExpression(callee) && callee.asteriskToken !== undefined;
+      if (isGeneratorIIFE) {
+        // Fall through to normal call compilation below
+      } else {
       const params = callee.parameters;
       const args = expr.arguments;
       // Support IIFEs with matching parameter/argument counts
@@ -12190,6 +12197,7 @@ function compileCallExpression(
           return VOID_RESULT;
         }
       }
+      } // end else (non-generator IIFE)
     }
   }
 
@@ -13233,6 +13241,11 @@ function compileIIFE(
   }
   if (!ts.isFunctionExpression(callee) && !ts.isArrowFunction(callee)) {
     return undefined; // not an IIFE
+  }
+  // Generator function expressions (function*) cannot be inlined as IIFEs
+  // because their body uses `yield` which requires a generator FunctionContext (#657).
+  if (ts.isFunctionExpression(callee) && callee.asteriskToken !== undefined) {
+    return undefined;
   }
   const funcExpr = callee as ts.FunctionExpression | ts.ArrowFunction;
 
