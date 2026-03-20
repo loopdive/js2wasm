@@ -130,27 +130,7 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
     }
   }
 
-  // Temporal API — entire TC39 proposal with thousands of tests; the API does
-  // not exist in Wasm and never will, so these always timeout (#630)
-  if (meta.features?.includes("Temporal")) {
-    return { skip: true, reason: "Temporal API not implemented" };
-  }
-
-  // eval() in source — dynamic code execution is impossible in Wasm and causes
-  // the compiler to hang on eval call expressions, producing timeouts
-  {
-    const bodyForEval = source.replace(/\/\*---[\s\S]*?---\*\//, "").replace(/\/\/.*$/gm, "");
-    if (/\beval\s*\(/.test(bodyForEval)) {
-      return { skip: true, reason: "uses eval() — dynamic code execution impossible in Wasm" };
-    }
-  }
-
-  // new Function() — dynamic code generation impossible in Wasm
-  if (/\bnew\s+Function\s*\(/.test(source)) {
-    return { skip: true, reason: "uses new Function() — dynamic code generation impossible in Wasm" };
-  }
-
-  // ── End safety filters (always active regardless of SKIP_DISABLED) ──
+  // ── End safety filters (only FIXTURE + HANGING_TESTS) ──
 
   if (SKIP_DISABLED) return { skip: false };
 
