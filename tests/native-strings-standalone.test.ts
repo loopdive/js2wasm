@@ -134,4 +134,74 @@ describe("nativeStrings flag (standalone, no fast mode)", () => {
     expect(result.wat).not.toContain("NativeString");
     expect(result.wat).toContain("string_constants");
   });
+
+  // Issue #679: string_compare and String_fromCharCode should not be host imports
+  // when nativeStrings is true — pure Wasm implementations are used instead.
+
+  it("string comparison (<) compiles without string_compare host import", () => {
+    const src = `
+      export function test(): boolean {
+        const a: string = "apple";
+        const b: string = "banana";
+        return a < b;
+      }
+    `;
+    const result = compile(src, { nativeStrings: true });
+    expect(result.success, result.errors.map(e => e.message).join("\n")).toBe(true);
+    // WAT should not contain a string_compare import
+    expect(result.wat).not.toContain('"string_compare"');
+    // But should contain the native __str_compare helper
+    expect(result.wat).toContain("__str_compare");
+  });
+
+  it("string comparison (<=, >=) compiles without string_compare host import", () => {
+    const src = `
+      export function test(): boolean {
+        const a: string = "abc";
+        const b: string = "abc";
+        return a <= b && a >= b;
+      }
+    `;
+    const result = compile(src, { nativeStrings: true });
+    expect(result.success, result.errors.map(e => e.message).join("\n")).toBe(true);
+    expect(result.wat).not.toContain('"string_compare"');
+  });
+
+  it("String.fromCharCode compiles without host import in native mode", () => {
+    const src = `
+      export function test(): string {
+        return String.fromCharCode(65);
+      }
+    `;
+    const result = compile(src, { nativeStrings: true });
+    expect(result.success, result.errors.map(e => e.message).join("\n")).toBe(true);
+    // WAT should not contain a String_fromCharCode import
+    expect(result.wat).not.toContain('"String_fromCharCode"');
+    // But should contain the native __str_fromCharCode helper
+    expect(result.wat).toContain("__str_fromCharCode");
+  });
+
+  it("host mode still registers string_compare import", () => {
+    const src = `
+      export function test(): boolean {
+        const a: string = "apple";
+        const b: string = "banana";
+        return a < b;
+      }
+    `;
+    const result = compile(src, { nativeStrings: false });
+    expect(result.success).toBe(true);
+    expect(result.wat).toContain('"string_compare"');
+  });
+
+  it("host mode still registers String_fromCharCode import", () => {
+    const src = `
+      export function test(): string {
+        return String.fromCharCode(65);
+      }
+    `;
+    const result = compile(src, { nativeStrings: false });
+    expect(result.success).toBe(true);
+    expect(result.wat).toContain('"String_fromCharCode"');
+  });
 });

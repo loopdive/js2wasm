@@ -10640,13 +10640,26 @@ function compileCallExpression(
       return { kind: "i32" };
     }
 
-    // Handle String.fromCharCode(code) — host import
+    // Handle String.fromCharCode(code)
     if (
       ts.isIdentifier(propAccess.expression) &&
       propAccess.expression.text === "String" &&
       propAccess.name.text === "fromCharCode" &&
       expr.arguments.length >= 1
     ) {
+      // Native mode: use __str_fromCharCode (pure Wasm, no host import)
+      if (ctx.nativeStrings && ctx.nativeStrTypeIdx >= 0) {
+        const nativeIdx = ctx.nativeStrHelpers.get("__str_fromCharCode");
+        if (nativeIdx !== undefined) {
+          const argType = compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "i32" });
+          if (argType && argType.kind === "f64") {
+            fctx.body.push({ op: "i32.trunc_f64_s" } as unknown as Instr);
+          }
+          fctx.body.push({ op: "call", funcIdx: nativeIdx });
+          return nativeStringType(ctx);
+        }
+      }
+      // Host mode: call String_fromCharCode import
       const funcIdx = ctx.funcMap.get("String_fromCharCode");
       if (funcIdx !== undefined) {
         const argType = compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "f64" });
@@ -10654,14 +10667,6 @@ function compileCallExpression(
           fctx.body.push({ op: "f64.convert_i32_s" });
         }
         fctx.body.push({ op: "call", funcIdx });
-        // In fast mode, marshal externref string to native string
-        if (ctx.nativeStrings && ctx.nativeStrTypeIdx >= 0) {
-          const fromExternIdx = ctx.nativeStrHelpers.get("__str_from_extern");
-          if (fromExternIdx !== undefined) {
-            fctx.body.push({ op: "call", funcIdx: fromExternIdx });
-          }
-          return nativeStringType(ctx);
-        }
         return { kind: "externref" };
       }
     }

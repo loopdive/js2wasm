@@ -1430,8 +1430,13 @@ function finalizeUnifiedCollector(
     addImport(ctx, "env", "number_toFixed", { kind: "func", typeIdx: t });
   }
   if (state.primitiveNeeded.has("string_compare")) {
-    const t = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "i32" }]);
-    addImport(ctx, "env", "string_compare", { kind: "func", typeIdx: t });
+    if (ctx.nativeStrings) {
+      // Native mode: use __str_compare helper (no host import needed)
+      ensureNativeStringHelpers(ctx);
+    } else {
+      const t = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "i32" }]);
+      addImport(ctx, "env", "string_compare", { kind: "func", typeIdx: t });
+    }
   }
 
   // ── collectStringLiterals finalize ──
@@ -1521,10 +1526,11 @@ function finalizeUnifiedCollector(
 
   // ── collectStringStaticImports finalize ──
   if (state.needsFromCharCode) {
-    const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "externref" }]);
-    addImport(ctx, "env", "String_fromCharCode", { kind: "func", typeIdx });
     if (ctx.nativeStrings) {
       ensureNativeStringHelpers(ctx);
+    } else {
+      const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "externref" }]);
+      addImport(ctx, "env", "String_fromCharCode", { kind: "func", typeIdx });
     }
   }
 
@@ -2004,8 +2010,12 @@ function collectPrimitiveMethodImports(
     addImport(ctx, "env", "number_toFixed", { kind: "func", typeIdx: t });
   }
   if (needed.has("string_compare")) {
-    const t = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "i32" }]);
-    addImport(ctx, "env", "string_compare", { kind: "func", typeIdx: t });
+    if (ctx.nativeStrings) {
+      ensureNativeStringHelpers(ctx);
+    } else {
+      const t = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "i32" }]);
+      addImport(ctx, "env", "string_compare", { kind: "func", typeIdx: t });
+    }
   }
 }
 
@@ -5859,6 +5869,41 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       exported: false,
     });
   }
+
+  // --- $__str_fromCharCode(code: i32) -> ref $NativeString ---
+  // Creates a 1-character native string from a char code (i32).
+  // Equivalent to String.fromCharCode(code) but pure Wasm, no host import.
+  {
+    const typeIdx = addFuncType(ctx, [{ kind: "i32" }], [flatStrRef]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_fromCharCode", funcIdx);
+
+    // param 0: code (i32)
+    // local 1: arr (ref $__str_data)
+    const body: Instr[] = [
+      // arr = array.new_fixed $__str_data 1 (code)
+      { op: "local.get", index: 0 },
+      { op: "array.new_fixed", typeIdx: strDataTypeIdx, length: 1 },
+
+      { op: "local.set", index: 1 },
+
+      // struct.new $NativeString(len=1, off=0, data=arr)
+      { op: "i32.const", value: 1 },  // len = 1
+      { op: "i32.const", value: 0 },  // off = 0
+      { op: "local.get", index: 1 },  // data = arr
+      { op: "struct.new", typeIdx: strTypeIdx },
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_fromCharCode",
+      typeIdx,
+      locals: [
+        { name: "arr", type: strDataRef },
+      ],
+      body,
+      exported: false,
+    });
+  }
 }
 
 /** Parse a RegExp literal text (e.g. "/\\d+/gi") into pattern and flags */
@@ -6466,11 +6511,12 @@ function collectStringStaticImports(
   }
 
   if (needsFromCharCode) {
-    // (f64) -> externref  (char code -> string)
-    const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "externref" }]);
-    addImport(ctx, "env", "String_fromCharCode", { kind: "func", typeIdx });
     if (ctx.nativeStrings) {
       ensureNativeStringHelpers(ctx);
+    } else {
+      // (f64) -> externref  (char code -> string)
+      const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "externref" }]);
+      addImport(ctx, "env", "String_fromCharCode", { kind: "func", typeIdx });
     }
   }
 }
