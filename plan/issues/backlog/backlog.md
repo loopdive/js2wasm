@@ -1,56 +1,44 @@
 # ts2wasm Backlog
 
-## 1. Compiler correctness (highest impact on test262)
-
-| # | Priority | Issue | Impact |
-|---|----------|-------|--------|
-| [646](../ready/646.md) | High | More AST node handlers (undefined .kind) | 5,329 CE |
-| [647](../ready/647.md) | High | Null pointer dereferences | 1,513 FAIL |
-| [648](../ready/648.md) | High | Illegal cast residual | 988 FAIL |
-| [649](../ready/649.md) | Medium | Stack underflow residual | 876 CE |
-| [650](../ready/650.md) | Medium | Stack fallthrough | 300 CE |
-| [662](../ready/662.md) | High | For/for-of/destructuring timeouts | 3,330 FAIL |
-| [645](../done/645.md) | ✅ Done | testTypedArray.js include | 1,731 unskipped |
-| [651](../done/651.md) | ✅ Done | FilterResult discriminated union | type safety |
-
-## 2. JS runtime features
-
-| # | Priority | Feature | Tests |
-|---|----------|---------|-------|
-| [123](../ready/123.md) | High | Wrapper constructors (new Number/String/Boolean) | 648 |
-| [498](../ready/498.md) | Medium | Proxy via compile-time trap inlining | 465 |
-| [125](../ready/125.md) | Medium | Object.defineProperty / property descriptors | 106 |
-| [341](../ready/341.md) | Medium | Property introspection (hasOwnProperty) | — |
-| [342](../ready/342.md) | Medium | Array.prototype.method.call/apply | — |
-| [345](../ready/345.md) | Medium | Symbol.iterator and iterable protocol | — |
-
-## 3. Architecture improvements
-
-| # | Priority | Improvement | Impact |
-|---|----------|-------------|--------|
-| [635](../ready/635.md) | High | Add missing Instr opcodes to IR types | Eliminates 158 unsafe casts |
-| [636](../ready/636.md) | High | Extract createCodegenContext() factory | Fixes WASI multi-module bug |
-| [637](../ready/637.md) | Medium | Create walkInstructions utility | Eliminates 5 duplicate walkers |
-| [638](../ready/638.md) | Medium | Add reverse typeIdxToStructName map | 8 O(N) → O(1) |
-
-## 4. Platform support
+## 1. Runtime features & JS compatibility
 
 | # | Priority | Feature | Impact |
 |---|----------|---------|--------|
-| [639](../ready/639.md) | Critical | Full Component Model adapter (canonical ABI) | Unlocks Fastly, Fermyon, Cosmonic |
+| [678](../ready/678.md) | High | Dynamic prototype chain traversal | 625 FAIL |
+| [669](../done/669.md) | ✅ Done | eval() / new Function() static compilation | 2,500 tests |
+| [670](../done/670.md) | ✅ Done | Proxy get trap execution | 465 tests |
+| [672](../done/672.md) | ✅ Done | WeakMap/WeakSet/WeakRef | 580 tests |
+| [673](../done/673.md) | ✅ Done | Reflect API compile-time rewrites | 391 tests |
+| [676](../done/676.md) | ✅ Done | RegExp exec result unpacking | 720 tests |
+| [677](../done/677.md) | ✅ Done | Property descriptor writable enforcement | 1,000 tests |
+| [671](../ready/671.md) | Low | with statement support | 272 tests |
+| [674](../ready/674.md) | Low | SharedArrayBuffer / Atomics | 493 tests |
+| [675](../ready/675.md) | Medium | Dynamic import() | 471 tests |
+| [661](../ready/661.md) | Medium | Temporal API via polyfill | 1,128 tests |
+
+## 2. Architecture — host import elimination
+
+| # | Priority | Feature | Impact |
+|---|----------|---------|--------|
+| [680](../ready/680.md) | High | Pure Wasm generators (state machines) | Eliminates 10 host imports |
+| [681](../ready/681.md) | High | Pure Wasm iterators (struct-based) | Eliminates 5 host imports |
+| [679](../done/679.md) | ✅ Done | Dual string backend (js-host vs standalone) | Architecture |
+| [682](../ready/682.md) | Medium | RegExp Wasm engine for standalone mode | No host in WASI |
+| [638](../ready/638.md) | Medium | Reverse typeIdxToStructName map | 12 O(N) → O(1) |
+| [652](../ready/652.md) | Low | Compile-time ARC / static lifetime analysis | Research |
+
+## 3. Platform support
+
+| # | Priority | Feature | Impact |
+|---|----------|---------|--------|
+| [639](../ready/639.md) | Critical | Full Component Model adapter (canonical ABI) | Unlocks Fastly, Fermyon |
 | [640](../ready/640.md) | High | WASI HTTP handler | Unlocks serverless edge |
+| [644](../ready/644.md) | Critical | Integrate report into playground | Developer experience |
 | [641](../ready/641.md) | Medium | Shopify Functions template | Best adoption opportunity |
 | [642](../ready/642.md) | Low | Deno/Cloudflare loader plugins | Developer experience |
-| [644](../ready/644.md) | Medium | Integrate report into playground | Developer experience |
 
-## 5. Test infrastructure
-
-| # | Priority | Issue | Impact |
-|---|----------|-------|--------|
-| [643](../ready/643.md) | Medium | Atomic report writes | Prevents data loss |
-
-## Completed (640+ issues)
+## Completed (94 issues this session, 690+ total)
 
 See `plan/issues/done/log.md` for the full completion log.
 
-Session 2026-03-19: 59 issues committed. Key: WASI target, native strings, WIT generator, tail calls, SIMD, peephole optimizer, type annotations, prototype chain, delete operator, TypedArray/ArrayBuffer, 8K+ CE eliminated.
+**Session 2026-03-19/20**: 94 issues in one session. Pass: 9,270 → 15,244 (+64%). CE: 14,950 → 5,666 (-62%). Key features: WASI target, native strings, WIT generator, tail calls, SIMD, peephole optimizer, type annotations, prototype chain, delete operator, TypedArray/ArrayBuffer, static eval, Proxy traps, Reflect, WeakMap/Ref, RegExp exec, property descriptors, stack balancing, native Date.
