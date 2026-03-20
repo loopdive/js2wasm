@@ -12365,6 +12365,11 @@ export function destructureParamObject(
     const localIdx = fctx.localMap.get(localName)!;
     fctx.body.push({ op: "local.get", index: paramIdx });
     fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+    // Coerce struct field type to local's declared type if they differ (#658)
+    const objLocalType = getLocalType(fctx, localIdx);
+    if (objLocalType && !valTypesMatch(fieldType, objLocalType)) {
+      coerceType(ctx, fctx, fieldType, objLocalType);
+    }
     fctx.body.push({ op: "local.set", index: localIdx });
   }
 
@@ -12564,6 +12569,11 @@ export function destructureParamArray(
         const localIdx = fctx.localMap.get(localName)!;
         fctx.body.push({ op: "local.get", index: paramIdx });
         fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: i });
+        // Coerce struct field type to local's declared type if they differ (#658)
+        const localType = getLocalType(fctx, localIdx);
+        if (localType && !valTypesMatch(fieldType, localType)) {
+          coerceType(ctx, fctx, fieldType, localType);
+        }
         fctx.body.push({ op: "local.set", index: localIdx });
       }
 
@@ -12697,6 +12707,11 @@ export function destructureParamArray(
     fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 }); // get data
     fctx.body.push({ op: "i32.const", value: i });
     emitBoundsCheckedArrayGet(fctx, arrTypeIdx, elemType);
+    // Coerce array element type to local's declared type if they differ (#658)
+    const vecLocalType = getLocalType(fctx, localIdx);
+    if (vecLocalType && !valTypesMatch(elemType, vecLocalType)) {
+      coerceType(ctx, fctx, elemType, vecLocalType);
+    }
     fctx.body.push({ op: "local.set", index: localIdx });
   }
 
