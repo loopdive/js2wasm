@@ -2005,7 +2005,7 @@ function compileArrowAsClosure(
               liftedFctx.body.push({ op: "local.get", index: srcParamIdx });
               liftedFctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 });
               liftedFctx.body.push({ op: "i32.const", value: ei });
-              liftedFctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
+              emitBoundsCheckedArrayGet(liftedFctx, arrTypeIdx, elemType);
               liftedFctx.body.push({ op: "local.set", index: localIdx });
             }
             liftedFctx.body = savedBodyFPAD;
