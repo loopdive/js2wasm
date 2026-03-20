@@ -13,8 +13,8 @@ import { describe, it, expect } from "vitest";
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from "fs";
 import { createHash } from "crypto";
 import { join, relative } from "path";
+import { compile } from "../src/index.js";
 import { buildImports } from "../src/runtime.js";
-import { CompilerPool, type PoolResult } from "../scripts/compiler-pool.js";
 import {
   findTestFiles,
   parseMeta,
@@ -23,14 +23,7 @@ import {
   TEST_CATEGORIES,
 } from "./test262-runner.js";
 
-// ── Compiler pool ───────────────────────────────────────────────────
-import { beforeAll, afterAll } from "vitest";
-let pool: CompilerPool;
-beforeAll(async () => {
-  pool = new CompilerPool(2);
-  await pool.ready();
-}, 30_000);
-afterAll(() => pool?.shutdown());
+
 
 // ── Cache setup ──────────────────────────────────────────────────────
 
@@ -104,7 +97,8 @@ async function getOrCompile(
 
   // Cache miss: compile via pool worker (async, doesn't block other tests)
   try {
-    const poolResult = await pool.compile(wrappedSource);
+    const result = compile(wrappedSource, { fileName: "test.ts", sourceMap: false, emitWat: false } as any);
+    const poolResult = result.success ? { ok: true as const, binary: result.binary, stringPool: result.stringPool, imports: result.imports, compileMs: 0 } : { ok: false as const, error: result.errors.map((e: any) => e.message).join("; "), compileMs: 0 };
     if (!poolResult.ok) {
       return { ok: false, error: poolResult.error };
     }
