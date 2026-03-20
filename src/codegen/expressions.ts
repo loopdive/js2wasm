@@ -10285,7 +10285,7 @@ function compileCallExpression(
           // property access call on the receiver: receiver.method(...args).
           // This handles String.prototype.slice.call("hello", 0, 2) → "hello".slice(0, 2)
           // and Array.prototype.push.call(arr, 1) → arr.push(1), etc.
-          if ((typeName === "String" || typeName === "Number" || typeName === "Array" || typeName === "Boolean") &&
+          if ((typeName === "String" || typeName === "Number" || typeName === "Array" || typeName === "Boolean" || typeName === "Object") &&
               expr.arguments.length >= 1) {
             const receiverArg = expr.arguments[0]!;
             const remainingArgs = Array.from(expr.arguments).slice(1);
