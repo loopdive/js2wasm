@@ -307,6 +307,51 @@ function escapeHtml(str) {
     .replace(/'/g, "&#39;");
 }
 
+// Source file cache and line fetcher
+const _srcCache = new Map();
+function fetchSourceLines(filePath, errText, afterEl) {
+  // Extract all L<line>:<col> references from the error
+  const lineMatch = errText.match(/^L(\d+):(\d+)\s/);
+  if (!lineMatch) return;
+  const lineNo = parseInt(lineMatch[1], 10);
+  // Try multiple path variants
+  const paths = [
+    "../test262/" + filePath,
+    "../test262/test/" + filePath,
+    "../../test262/" + filePath,
+  ];
+  const cached = _srcCache.get(filePath);
+  if (cached !== undefined) { renderSrcContext(cached, lineNo, afterEl); return; }
+  (async () => {
+    for (const p of paths) {
+      try {
+        const r = await fetch(p);
+        if (r.ok) { const t = await r.text(); _srcCache.set(filePath, t); renderSrcContext(t, lineNo, afterEl); return; }
+      } catch {}
+    }
+    _srcCache.set(filePath, null);
+  })();
+}
+function renderSrcContext(src, lineNo, afterEl) {
+  if (!src || lineNo < 1) return;
+  const lines = src.split("\n");
+  if (lineNo > lines.length) return;
+  // Show the target line + a few surrounding lines for multi-line statements
+  const start = Math.max(0, lineNo - 2);
+  const end = Math.min(lines.length, lineNo + 3);
+  const sd = el("div", { style: { fontFamily: "'SF Mono', SFMono-Regular, Consolas, monospace", fontSize: "0.625rem", paddingLeft: "1.25rem", marginTop: "2px", background: "rgba(0,0,0,0.2)", padding: "4px 8px 4px 1.25rem", borderRadius: "3px", whiteSpace: "pre", overflowX: "auto", maxWidth: "100%", lineHeight: "1.4" } });
+  for (let i = start; i < end; i++) {
+    const isTarget = i === lineNo - 1;
+    const numSpan = el("span", { style: { color: isTarget ? "var(--error)" : "var(--text-muted)", marginRight: "0.75rem", userSelect: "none", display: "inline-block", width: "3ch", textAlign: "right" } }, String(i + 1));
+    const lineSpan = el("span", { style: { color: isTarget ? "var(--text)" : "var(--text-muted)" } }, lines[i]);
+    const row = el("div", { style: { background: isTarget ? "rgba(248,81,73,0.08)" : "none" } });
+    row.appendChild(numSpan);
+    row.appendChild(lineSpan);
+    sd.appendChild(row);
+  }
+  afterEl.after(sd);
+}
+
 function pct(n, d) { return d > 0 ? Math.round(n / d * 100) : 0; }
 function fmt(ms) {
   if (ms < 0.001) return "<0.001ms";
@@ -396,20 +441,7 @@ function toggleDetail(row, catName, statusFilter) {
       if (f.error) {
         const errDiv = el("div", { className: "detail-err" }, f.error);
         fileEl.appendChild(errDiv);
-        const lm = f.error.match(/^L(\d+):(\d+)\s/);
-        if (lm) {
-          const ln = parseInt(lm[1], 10);
-          fetch("../test262/" + f.file).then(r => r.ok ? r.text() : null).then(src => {
-            if (!src) return;
-            const lines = src.split("\n");
-            if (ln > 0 && ln <= lines.length) {
-              const sd = el("div", { style: { color: "var(--text-muted)", fontFamily: "monospace", fontSize: "0.625rem", paddingLeft: "1.25rem", marginTop: "2px", background: "rgba(0,0,0,0.15)", padding: "2px 4px 2px 1.25rem", borderRadius: "3px" } });
-              sd.appendChild(el("span", { style: { color: "var(--text-muted)", marginRight: "0.5rem", userSelect: "none" } }, ln + " |"));
-              sd.appendChild(document.createTextNode(lines[ln - 1]));
-              errDiv.after(sd);
-            }
-          }).catch(() => {});
-        }
+        fetchSourceLines(f.file, f.error, errDiv);
       }
       content.appendChild(fileEl);
     }
@@ -533,23 +565,7 @@ function renderConformance(data, container) {
         if (err) {
           const errDiv = el("div", { className: "detail-err" }, err);
           fileEl.appendChild(errDiv);
-          // Try to fetch source line if error contains line number (e.g. "L45:1 ...")
-          const lineMatch = err.match(/^L(\d+):(\d+)\s/);
-          if (lineMatch) {
-            const lineNo = parseInt(lineMatch[1], 10);
-            const filePath = "../test262/" + (f.file || fname);
-            fetch(filePath).then(r => r.ok ? r.text() : null).then(src => {
-              if (!src) return;
-              const lines = src.split("\n");
-              if (lineNo > 0 && lineNo <= lines.length) {
-                const srcLine = lines[lineNo - 1];
-                const srcDiv = el("div", { style: { color: "var(--text-muted)", fontFamily: "monospace", fontSize: "0.625rem", paddingLeft: "1.25rem", marginTop: "2px", background: "rgba(0,0,0,0.15)", padding: "2px 4px 2px 1.25rem", borderRadius: "3px" } });
-                srcDiv.appendChild(el("span", { style: { color: "var(--text-muted)", marginRight: "0.5rem", userSelect: "none" } }, lineNo + " |"));
-                srcDiv.appendChild(document.createTextNode(srcLine));
-                errDiv.after(srcDiv);
-              }
-            }).catch(() => {});
-          }
+          fetchSourceLines(f.file || fname, err, errDiv);
         }
         content.appendChild(fileEl);
         shown++;
