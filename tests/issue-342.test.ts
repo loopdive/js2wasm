@@ -171,4 +171,130 @@ describe("Issue #342: Array.prototype.method.call/apply patterns", () => {
       expect(callResult).toBe(directResult);
     });
   });
+
+  describe("forEach via Array.prototype.forEach.call", () => {
+    it("iterates all elements and accumulates result", async () => {
+      const result = await run(`
+        export function test(): number {
+          const arr: number[] = [1, 2, 3, 4, 5];
+          let sum = 0;
+          Array.prototype.forEach.call(arr, (x: number): void => { sum = sum + x; });
+          return sum;
+        }
+      `);
+      expect(result).toBe(15);
+    });
+
+    it("forEach.call matches direct forEach", async () => {
+      const directResult = await run(`
+        export function test(): number {
+          const arr: number[] = [10, 20, 30];
+          let sum = 0;
+          arr.forEach((x: number): void => { sum = sum + x; });
+          return sum;
+        }
+      `);
+      const callResult = await run(`
+        export function test(): number {
+          const arr: number[] = [10, 20, 30];
+          let sum = 0;
+          Array.prototype.forEach.call(arr, (x: number): void => { sum = sum + x; });
+          return sum;
+        }
+      `);
+      expect(callResult).toBe(directResult);
+    });
+  });
+
+  describe("every via Array.prototype.every.call", () => {
+    it("returns 1 when all elements match", async () => {
+      const result = await run(`
+        export function test(): number {
+          const arr: number[] = [2, 4, 6];
+          return Array.prototype.every.call(arr, (x: number): number => x % 2 === 0 ? 1 : 0);
+        }
+      `);
+      expect(result).toBe(1);
+    });
+
+    it("returns 0 when some elements do not match", async () => {
+      const result = await run(`
+        export function test(): number {
+          const arr: number[] = [2, 3, 6];
+          return Array.prototype.every.call(arr, (x: number): number => x % 2 === 0 ? 1 : 0);
+        }
+      `);
+      expect(result).toBe(0);
+    });
+  });
+
+  describe("some via Array.prototype.some.call", () => {
+    it("returns 1 when at least one element matches", async () => {
+      const result = await run(`
+        export function test(): number {
+          const arr: number[] = [1, 3, 4];
+          return Array.prototype.some.call(arr, (x: number): number => x % 2 === 0 ? 1 : 0);
+        }
+      `);
+      expect(result).toBe(1);
+    });
+
+    it("returns 0 when no elements match", async () => {
+      const result = await run(`
+        export function test(): number {
+          const arr: number[] = [1, 3, 5];
+          return Array.prototype.some.call(arr, (x: number): number => x % 2 === 0 ? 1 : 0);
+        }
+      `);
+      expect(result).toBe(0);
+    });
+  });
+
+  describe("includes via Array.prototype.includes.call", () => {
+    it("returns 1 for present element", async () => {
+      const result = await run(`
+        export function test(): number {
+          const arr: number[] = [10, 20, 30];
+          return Array.prototype.includes.call(arr, 20) ? 1 : 0;
+        }
+      `);
+      expect(result).toBe(1);
+    });
+
+    it("returns 0 for absent element", async () => {
+      const result = await run(`
+        export function test(): number {
+          const arr: number[] = [10, 20, 30];
+          return Array.prototype.includes.call(arr, 99) ? 1 : 0;
+        }
+      `);
+      expect(result).toBe(0);
+    });
+  });
+
+  describe("push via Array.prototype.push.call", () => {
+    it("appends element and returns new length", async () => {
+      const result = await run(`
+        export function test(): number {
+          const arr: number[] = [1, 2, 3];
+          Array.prototype.push.call(arr, 4);
+          return arr.length;
+        }
+      `);
+      expect(result).toBe(4);
+    });
+  });
+
+  describe("slice via Array.prototype.slice.call", () => {
+    it("returns a sub-array of correct length", async () => {
+      const result = await run(`
+        export function test(): number {
+          const arr: number[] = [10, 20, 30, 40, 50];
+          const sliced: number[] = Array.prototype.slice.call(arr, 1, 4);
+          return sliced.length;
+        }
+      `);
+      expect(result).toBe(3);
+    });
+  });
 });
