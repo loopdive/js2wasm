@@ -327,6 +327,8 @@ export interface CodegenContext {
   wasiProcExitIdx: number;
   /** WASI: bump allocator pointer for linear memory string data */
   wasiBumpPtrGlobalIdx: number;
+  /** Pending proxy info: set by compileNewExpression, consumed by compileVariableStatement */
+  _pendingProxyInfo?: { targetLocalIdx: number; getTrapLocalIdx: number; closureInfo: ClosureInfo } | null;
 }
 
 /** Metadata for a function eligible for call-site inlining */
@@ -401,6 +403,12 @@ export interface FunctionContext {
    * Used by allocTempLocal/releaseTempLocal to reuse locals of the same type.
    */
   tempFreeList?: Map<string, number[]>;
+  /**
+   * Proxy get trap info: maps variable name → { targetLocalIdx, getTrapLocalIdx, closureInfo }
+   * When `const p = new Proxy(target, { get(t, prop) { ... } })` is compiled,
+   * property access on `p` is intercepted to call the get trap closure.
+   */
+  proxyGetTraps?: Map<string, { targetLocalIdx: number; getTrapLocalIdx: number; closureInfo: ClosureInfo }>;
 }
 
 /**

@@ -14404,18 +14404,77 @@ function compileNewExpression(
     return { kind: "externref" };
   }
 
-  // Handle `new Proxy(target, handler)` — compile as pass-through to target
-  // Tier 0: the proxy variable behaves exactly like the target object.
-  // This converts compile errors into working code for the 465+ test262 tests
-  // that use Proxy. Future tiers will inline get/set traps.
+  // Handle `new Proxy(target, handler)` — compile with get trap support (#670)
+  // Tier 0: pass-through to target (still used when handler has no get trap)
+  // Tier 1: when handler is an object literal with a `get` trap, compile the
+  //         trap as a closure and intercept property accesses on the proxy variable.
   if (ts.isIdentifier(expr.expression) && expr.expression.text === "Proxy") {
     const args = expr.arguments ?? [];
-    if (args.length >= 1) {
-      // Compile the target argument — the proxy IS the target for now
+    if (args.length >= 2) {
+      // Check if handler (args[1]) is an object literal with a `get` property
+      const handler = args[1]!;
+      let getTrapNode: ts.ArrowFunction | ts.FunctionExpression | ts.MethodDeclaration | null = null;
+      if (ts.isObjectLiteralExpression(handler)) {
+        for (const prop of handler.properties) {
+          if (ts.isPropertyAssignment(prop) &&
+              ts.isIdentifier(prop.name) && prop.name.text === "get") {
+            if (ts.isArrowFunction(prop.initializer) || ts.isFunctionExpression(prop.initializer)) {
+              getTrapNode = prop.initializer;
+            }
+            break;
+          }
+          if (ts.isMethodDeclaration(prop) &&
+              ts.isIdentifier(prop.name) && prop.name.text === "get" &&
+              prop.body) {
+            // Method shorthand: { get(t, p) { ... } }
+            getTrapNode = prop;
+            break;
+          }
+        }
+      }
+
+      if (getTrapNode) {
+        // Tier 1: compile target + get trap closure
+        // 1. Compile target, store in a hidden local
+        const targetResult = compileExpression(ctx, fctx, args[0]!);
+        const targetType = targetResult ?? { kind: "externref" as const };
+        const targetLocalIdx = allocLocal(fctx, `__proxy_target_${fctx.locals.length}`, targetType);
+        fctx.body.push({ op: "local.set", index: targetLocalIdx });
+
+        // 2. Compile the get trap as a closure
+        // For method declarations, cast to FunctionExpression since the
+        // shape is compatible (has .parameters, .body, .asteriskToken).
+        const trapFnNode = ts.isMethodDeclaration(getTrapNode)
+          ? getTrapNode as unknown as ts.FunctionExpression
+          : getTrapNode;
+        const trapResult = compileArrowAsClosure(ctx, fctx, trapFnNode);
+        const trapType = trapResult ?? { kind: "externref" as const };
+        const getTrapLocalIdx = allocLocal(fctx, `__proxy_get_${fctx.locals.length}`, trapType);
+        fctx.body.push({ op: "local.set", index: getTrapLocalIdx });
+
+        // 3. Look up the closure info for the get trap
+        let closureInfo: ClosureInfo | undefined;
+        if ((trapType.kind === "ref" || trapType.kind === "ref_null") &&
+            (trapType as { typeIdx: number }).typeIdx !== undefined) {
+          closureInfo = ctx.closureInfoByTypeIdx.get((trapType as { typeIdx: number }).typeIdx);
+        }
+
+        // 4. Store pending proxy info for the variable declaration to pick up
+        if (closureInfo) {
+          ctx._pendingProxyInfo = { targetLocalIdx, getTrapLocalIdx, closureInfo };
+        }
+
+        // Push target back on stack as the proxy value
+        fctx.body.push({ op: "local.get", index: targetLocalIdx });
+        return targetResult;
+      }
+
+      // No get trap — fall through to Tier 0 pass-through
       const targetResult = compileExpression(ctx, fctx, args[0]!);
-      // Drop the handler argument (don't even compile it to avoid side effects
-      // from unsupported handler patterns — but we do need to compile it if it
-      // has side effects... for now, just skip it)
+      return targetResult;
+    }
+    if (args.length === 1) {
+      const targetResult = compileExpression(ctx, fctx, args[0]!);
       return targetResult;
     }
     // No arguments — null proxy
@@ -16650,6 +16709,63 @@ function compileOptionalDirectCall(
   return resultType;
 }
 
+/**
+ * Compile a proxy get trap call: instead of `proxy.prop`, emit a call to the
+ * handler's `get` function with (target, "prop", receiver).
+ * The get trap closure has Wasm signature: (self, target, prop, receiver?) => result
+ */
+function compileProxyGetTrap(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  proxyInfo: { targetLocalIdx: number; getTrapLocalIdx: number; closureInfo: ClosureInfo },
+  propName: string,
+): ValType | null {
+  const { targetLocalIdx, getTrapLocalIdx, closureInfo } = proxyInfo;
+
+  // Ensure the property name string constant is registered
+  addStringConstantGlobal(ctx, propName);
+
+  // The closure calling convention: push closure struct (self), push user args, get funcref, call_ref
+  // Get trap params are: (target, property, receiver?) — all externref in untyped code
+
+  // 1. Push closure struct ref (self param for closure dispatch)
+  fctx.body.push({ op: "local.get", index: getTrapLocalIdx });
+
+  // 2. Push target as externref
+  fctx.body.push({ op: "local.get", index: targetLocalIdx });
+  // Coerce target to externref if it's a struct ref
+  const targetLocalType = getLocalType(fctx, targetLocalIdx);
+  if (targetLocalType && (targetLocalType.kind === "ref" || targetLocalType.kind === "ref_null")) {
+    fctx.body.push({ op: "extern.convert_any" });
+  }
+
+  // 3. Push property name string
+  compileStringLiteral(ctx, fctx, propName);
+
+  // 4. Push receiver (same as target since proxy = target in our compilation)
+  // Only push if the closure expects 3+ params (target, prop, receiver)
+  if (closureInfo.paramTypes.length >= 3) {
+    fctx.body.push({ op: "local.get", index: targetLocalIdx });
+    if (targetLocalType && (targetLocalType.kind === "ref" || targetLocalType.kind === "ref_null")) {
+      fctx.body.push({ op: "extern.convert_any" });
+    }
+  }
+
+  // Pad any remaining params with defaults
+  for (let i = Math.min(3, closureInfo.paramTypes.length); i < closureInfo.paramTypes.length; i++) {
+    pushDefaultValue(fctx, closureInfo.paramTypes[i]!);
+  }
+
+  // 5. Get funcref from closure struct field 0 and call_ref
+  fctx.body.push({ op: "local.get", index: getTrapLocalIdx });
+  fctx.body.push({ op: "struct.get", typeIdx: closureInfo.structTypeIdx, fieldIdx: 0 });
+  fctx.body.push({ op: "ref.cast", typeIdx: closureInfo.funcTypeIdx } as unknown as Instr);
+  fctx.body.push({ op: "ref.as_non_null" } as unknown as Instr);
+  fctx.body.push({ op: "call_ref", typeIdx: closureInfo.funcTypeIdx });
+
+  return closureInfo.returnType ?? VOID_RESULT;
+}
+
 // ── Property access ──────────────────────────────────────────────────
 
 function compilePropertyAccess(
@@ -16664,6 +16780,25 @@ function compilePropertyAccess(
 
   const objType = ctx.checker.getTypeAtLocation(expr.expression);
   const propName = ts.isPrivateIdentifier(expr.name) ? expr.name.text.slice(1) : expr.name.text;
+
+  // Proxy get trap interception (#670): if the object is a known proxy variable
+  // with a get trap, call the trap instead of doing a normal property access.
+  // Unwrap as/non-null expressions to find the underlying identifier.
+  if (fctx.proxyGetTraps) {
+    let innerExpr: ts.Expression = expr.expression;
+    while (ts.isAsExpression(innerExpr) || ts.isNonNullExpression(innerExpr) ||
+           ts.isParenthesizedExpression(innerExpr)) {
+      if (ts.isAsExpression(innerExpr)) innerExpr = innerExpr.expression;
+      else if (ts.isNonNullExpression(innerExpr)) innerExpr = innerExpr.expression;
+      else innerExpr = (innerExpr as ts.ParenthesizedExpression).expression;
+    }
+    if (ts.isIdentifier(innerExpr)) {
+      const proxyInfo = fctx.proxyGetTraps.get(innerExpr.text);
+      if (proxyInfo) {
+        return compileProxyGetTrap(ctx, fctx, proxyInfo, propName);
+      }
+    }
+  }
 
   // Handle super.prop — access parent class property/getter on current `this`
   if (expr.expression.kind === ts.SyntaxKind.SuperKeyword) {

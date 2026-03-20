@@ -597,6 +597,13 @@ function compileVariableStatement(
         }
       }
       emitCoercedLocalSet(ctx, fctx, localIdx, stackType);
+
+      // Check for pending proxy info from new Proxy(target, { get: ... }) (#670)
+      if (ctx._pendingProxyInfo) {
+        if (!fctx.proxyGetTraps) fctx.proxyGetTraps = new Map();
+        fctx.proxyGetTraps.set(name, ctx._pendingProxyInfo);
+        ctx._pendingProxyInfo = null;
+      }
     }
   }
 }
