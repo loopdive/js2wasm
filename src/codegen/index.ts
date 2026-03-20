@@ -1435,12 +1435,9 @@ function finalizeUnifiedCollector(
   }
 
   // ── collectStringLiterals finalize ──
-  // Register the empty string if any other strings are in the pool — it's used
-  // implicitly by template expressions, default values, and many string operations (#668).
-  // Don't add it unconditionally as that forces string_constants import on all modules.
-  if (state.stringLiterals.size > 0) {
-    state.stringLiterals.add("");
-  }
+  // Always register the empty string — it's used implicitly by template
+  // expressions, default values, and many string operations (#668).
+  state.stringLiterals.add("");
 
   if (state.hasTypeofExprForStrings) {
     for (const s of ["number", "string", "boolean", "object", "undefined", "function", "symbol"]) {
@@ -9058,6 +9055,9 @@ export function collectClassDeclaration(
   // Also treat as root when extending a built-in (parentClassName set but no
   // struct type registered), since built-ins have no Wasm struct fields to inherit.
   if (!parentClassName || parentStructTypeIdx === undefined) {
+    // __proto__ comes second (index 1) — stores externref to parent prototype singleton
+    fields.unshift({ name: "__proto__", type: { kind: "externref" }, mutable: true });
+    // __tag comes first (index 0) — i32 class tag for instanceof discrimination
     fields.unshift({ name: "__tag", type: { kind: "i32" }, mutable: false });
   }
 
@@ -10901,7 +10901,7 @@ function fixupStructNewArgCounts(ctx: CodegenContext): void {
         if (
           op === "f64.const" || op === "i32.const" || op === "i64.const" ||
           op === "ref.null" || op === "ref.null.extern" || op === "ref.null.eq" ||
-          op === "ref.as_non_null"
+          op === "ref.as_non_null" || op === "local.get" || op === "global.get"
         ) {
           // ref.as_non_null doesn't push a new value, it converts the top.
           // Don't count it as a separate pushed value.
@@ -11053,12 +11053,63 @@ export function compileClassBodies(
       typeIdx: structTypeIdx,
     });
 
+    // Pre-compute __proto__ value into a local before struct.new field pushes.
+    // Instance.__proto__ points to the class's own prototype singleton,
+    // matching JS semantics: Object.getPrototypeOf(instance) === ClassName.prototype.
+    const protoLocal = allocLocal(fctx, "__proto_val", { kind: "externref" });
+    {
+      const ownProtoIdx = ctx.protoGlobals?.get(className);
+      if (ownProtoIdx !== undefined) {
+        // Emit lazy-init for own prototype global, then store in local
+        const ownStructTypeIdx = structTypeIdx;
+        const initBody: Instr[] = [];
+        for (const pf of fields) {
+          if (pf.name === "__tag") {
+            const tag = ctx.classTagMap.get(className) ?? 0;
+            initBody.push({ op: "i32.const", value: tag });
+          } else if (pf.name === "__proto__") {
+            // Prototype's __proto__ points to parent's prototype singleton
+            const parentName = ctx.classParentMap.get(className);
+            const parentProtoIdx = parentName ? ctx.protoGlobals?.get(parentName) : undefined;
+            if (parentProtoIdx !== undefined) {
+              initBody.push({ op: "global.get", index: parentProtoIdx });
+            } else {
+              initBody.push({ op: "ref.null.extern" });
+            }
+          } else {
+            switch (pf.type.kind) {
+              case "f64": initBody.push({ op: "f64.const", value: 0 }); break;
+              case "i32": initBody.push({ op: "i32.const", value: 0 }); break;
+              case "i64": initBody.push({ op: "i64.const", value: 0n } as any); break;
+              case "externref": initBody.push({ op: "ref.null.extern" }); break;
+              case "ref": case "ref_null": initBody.push({ op: "ref.null", typeIdx: pf.type.typeIdx }); break;
+              default: initBody.push({ op: "i32.const", value: 0 }); break;
+            }
+          }
+        }
+        initBody.push({ op: "struct.new", typeIdx: ownStructTypeIdx });
+        initBody.push({ op: "extern.convert_any" } as unknown as Instr);
+        initBody.push({ op: "global.set", index: ownProtoIdx });
+        fctx.body.push({ op: "global.get", index: ownProtoIdx });
+        fctx.body.push({ op: "ref.is_null" });
+        fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: initBody, else: [] });
+        fctx.body.push({ op: "global.get", index: ownProtoIdx });
+        fctx.body.push({ op: "local.set", index: protoLocal });
+      } else {
+        fctx.body.push({ op: "ref.null.extern" });
+        fctx.body.push({ op: "local.set", index: protoLocal });
+      }
+    }
+
     // Push default values for all fields, then struct.new
     for (const field of fields) {
       if (field.name === "__tag") {
         // Push the class-specific tag value for instanceof discrimination
         const tagValue = ctx.classTagMap.get(className) ?? 0;
         fctx.body.push({ op: "i32.const", value: tagValue });
+      } else if (field.name === "__proto__") {
+        // Push the pre-computed prototype reference
+        fctx.body.push({ op: "local.get", index: protoLocal });
       } else if (field.type.kind === "f64") {
         fctx.body.push({ op: "f64.const", value: 0 });
       } else if (field.type.kind === "i32") {
@@ -11710,7 +11761,7 @@ function compileSuperCall(
   // the remaining parent fields in order.
   const assignableParentFields = parentFields
     .map((f, idx) => ({ field: f, fieldIdx: idx }))
-    .filter((e) => e.field.name !== "__tag");
+    .filter((e) => e.field.name !== "__tag" && e.field.name !== "__proto__");
 
   // Check if any argument uses spread syntax: super(...args) (#382)
   const hasSuperSpread = callExpr.arguments.some((a) => ts.isSpreadElement(a));
