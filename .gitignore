@@ -13,4 +13,5 @@ benchmarks/results/*.txt
 .pnpm-store/
 .claude/settings.local.json.claude/worktrees/
 .claude/agents/
+.test262-cache/
 .claude/worktrees/package-lock.json
