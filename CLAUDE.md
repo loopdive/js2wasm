@@ -13,7 +13,9 @@ TypeScript-to-WebAssembly compiler using WasmGC.
 - Existing host imports (Math methods, string ops) are legacy/temporary — don't add new ones.
 
 ## Project Structure
-- Codegen: `src/codegen/expressions.ts`, `src/codegen/index.ts`, `src/codegen/statements.ts`
+- Codegen: `src/codegen/expressions.ts`, `src/codegen/index.ts`, `src/codegen/statements.ts`, `src/codegen/type-coercion.ts`, `src/codegen/peephole.ts`
+- WIT generator: `src/wit-generator.ts` (TypeScript → WIT interface generation)
+- Optimizer: `src/optimize.ts` (Binaryen wasm-opt integration)
 - Tests: `tests/equivalence.test.ts` (main), `tests/test262.test.ts` (conformance dashboard, non-failing)
 - Test262 runner: `tests/test262-runner.ts` — TEST_CATEGORIES list
 - Standalone runner: `scripts/run-test262.ts` — writes JSONL + JSON report to `benchmarks/results/`. Run via `npx tsx scripts/run-test262.ts [category...]`. Supports `--resume` to continue an interrupted run (same git HEAD only — code changes force a fresh run).
@@ -29,12 +31,16 @@ TypeScript-to-WebAssembly compiler using WasmGC.
 ## Key Patterns
 - `VOID_RESULT` sentinel in expressions.ts — `InnerResult = ValType | null | typeof VOID_RESULT`
 - Ref cells for mutable closure captures — `struct (field $value (mut T))`
-- FunctionContext must include `labelMap: new Map()` in all object literals
-- `as unknown as Instr` for Wasm ops not yet in the Instr union (f64.copysign, f64.min/max)
+- FunctionContext must include `labelMap: new Map()` and `isGenerator?: boolean` in all object literals
+- `as unknown as Instr` for Wasm ops not yet in the Instr union (f64.copysign, f64.min/max) — 158 occurrences, tracked for cleanup
 - f64.promote_f32 IS now in the Instr union (added for Math.fround)
+- `return_call` / `return_call_ref` for tail call optimization in return position
+- Peephole pass removes redundant `ref.as_non_null` after `ref.cast`
+- Native type annotations: `type i32 = number` → emits i32 locals and i32 arithmetic
+- `nativeStrings` flag decouples WasmGC string arrays from fast mode (auto-enables for WASI)
 
-## Type Coercion
-- ref/ref_null → externref: use `extern.convert_any` (in coerceType at expressions.ts ~160)
+## Type Coercion (now in `src/codegen/type-coercion.ts`)
+- ref/ref_null → externref: use `extern.convert_any` (in coerceType)
 - f64 → externref: use `__box_number` import
 - i32 → externref: use `f64.convert_i32_s` + `__box_number`
 - null/undefined in f64 context: emit `f64.const 0` / `f64.const NaN` directly (avoids externref roundtrip)
@@ -46,9 +52,16 @@ TypeScript-to-WebAssembly compiler using WasmGC.
 
 ## Test262
 - test262.test.ts has no assertions — all vitest tests pass; conformance is tracked via report
-- Skip filters: eval, with, wrapper constructors, NaN/undefined loops, delete, Object.defineProperty/create/freeze/seal, Object.prototype.hasOwnProperty.call, propertyIsEnumerable, prototype chain, throw+try/catch, for-of+generators, object as loop condition
-- Issues #138-#256 cover all identified failure patterns
+- Skip filters: eval, with, Proxy, SharedArrayBuffer, Temporal, WeakRef, FinalizationRegistry, dynamic import(), top-level-await
+- Many previously-skipped features now supported: TypedArray, DataView, ArrayBuffer, delete, async, generators, for-of
+- Issues #618-#634 cover current failure patterns (from 2026-03-19 error analysis)
 - parseInt import: `(externref, f64) -> f64` with NaN sentinel for missing radix
+
+## CLI Flags
+- `--target wasi` — emit WASI imports (fd_write, proc_exit) instead of JS host
+- `--optimize` / `-O` — run Binaryen wasm-opt on compiled binary
+- `--wit` — generate WIT interface file for Component Model
+- `--nativeStrings` — use WasmGC i16 arrays instead of wasm:js-string (auto for WASI)
 
 ## Team & Workflow
 
@@ -74,3 +87,4 @@ Work is driven by `plan/dependency-graph.md`. Maintain a **rolling pool of 8 dev
 - **Sprint 2**: 12 branches, 18 issues (#207-#224). Key: destructuring hoisting (~1200 CE), string comparison, .call(), member increment/decrement, labeled break. Equivalence tests: 86 → 170.
 - **Sprint 3**: 32 issues (#225-#256). Target: 0 runtime failures, ~1,500 CE reduction.
 - **Sprint 4+**: Transitioned to dependency-driven execution. See `plan/dependency-graph.md`.
+- **2026-03-19 session**: 53 issues in one session. WASI target, native strings, WIT generator, tail calls, SIMD, peephole optimizer, type annotations, prototype chain, delete operator, TypedArray/ArrayBuffer support, and extensive test262 improvements.
