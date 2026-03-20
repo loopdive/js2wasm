@@ -5,7 +5,7 @@
  * cached to `.test262-cache/` keyed by a hash of (test source + compiler source).
  * Subsequent runs skip recompilation for unchanged tests.
  *
- * Proof of concept: runs the first 3 categories, 20 tests each.
+ * Runs all test262 categories with per-test disk cache.
  *
  * Run: npx vitest run tests/test262-vitest.test.ts
  */
@@ -122,19 +122,52 @@ function getOrCompile(
   }
 }
 
+// ── Result tracking (JSONL output for report.html) ──────────────────
+
+import { writeFileSync as writeSync, appendFileSync } from "fs";
+import { afterAll } from "vitest";
+
+const RESULTS_DIR = join(import.meta.dirname ?? ".", "..", "benchmarks", "results");
+mkdirSync(RESULTS_DIR, { recursive: true });
+const JSONL_PATH = join(RESULTS_DIR, "test262-results.jsonl");
+const REPORT_PATH = join(RESULTS_DIR, "test262-report.json");
+
+// Clear JSONL at start
+writeSync(JSONL_PATH, "");
+
+const summary = { total: 0, pass: 0, fail: 0, compile_error: 0, skip: 0 };
+const catCounts: Record<string, { pass: number; fail: number; compile_error: number; skip: number; total: number }> = {};
+
+function recordResult(file: string, category: string, status: string, error?: string) {
+  const entry = JSON.stringify({ file, category, status, error: error || undefined });
+  appendFileSync(JSONL_PATH, entry + "\n");
+  summary.total++;
+  (summary as any)[status]++;
+  if (!catCounts[category]) catCounts[category] = { pass: 0, fail: 0, compile_error: 0, skip: 0, total: 0 };
+  (catCounts[category] as any)[status]++;
+  catCounts[category].total++;
+}
+
+afterAll(() => {
+  const report = {
+    timestamp: new Date().toISOString(),
+    summary: { ...summary, compilable: summary.pass + summary.fail, stale: 0 },
+    categories: Object.entries(catCounts)
+      .map(([name, c]) => ({ name, ...c }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+  };
+  writeSync(REPORT_PATH, JSON.stringify(report, null, 2));
+  console.log(`\nTest262: ${summary.total} total — ${summary.pass} pass, ${summary.fail} fail, ${summary.compile_error} CE, ${summary.skip} skip`);
+});
+
 // ── Test generation ──────────────────────────────────────────────────
 
 const TEST262_ROOT = join(import.meta.dirname ?? ".", "..", "test262");
 
-// Proof of concept: first 3 categories, max 20 tests each
-const DEMO_CATEGORIES = TEST_CATEGORIES.slice(0, 3);
-const MAX_TESTS_PER_CATEGORY = 20;
-
-for (const category of DEMO_CATEGORIES) {
-  const allFiles = findTestFiles(category);
-  if (allFiles.length === 0) continue;
-
-  const files = allFiles.slice(0, MAX_TESTS_PER_CATEGORY);
+// Run all categories — disk cache makes re-runs instant
+for (const category of TEST_CATEGORIES) {
+  const files = findTestFiles(category);
+  if (files.length === 0) continue;
 
   describe(`test262: ${category}`, () => {
     for (const filePath of files) {
@@ -147,7 +180,7 @@ for (const category of DEMO_CATEGORIES) {
         // Skip unsupported tests
         const filter = shouldSkip(source, meta, filePath);
         if (filter.skip) {
-          // Mark as skipped but do not fail
+          recordResult(relPath, category, "skip", filter.reason);
           return;
         }
 
@@ -158,17 +191,14 @@ for (const category of DEMO_CATEGORIES) {
         ) {
           const { source: wrapped } = wrapTest(source, meta);
           const compileResult = getOrCompile(wrapped);
-          // For parse/early negative tests, compile failure = pass
-          if (!compileResult.ok) return; // expected failure
-          // If it compiled, try instantiating — it might fail there
+          if (!compileResult.ok) { recordResult(relPath, category, "pass"); return; }
           try {
             const imports = buildImports(compileResult.result.imports, undefined, compileResult.result.stringPool);
             await WebAssembly.instantiate(compileResult.binary, imports as any);
           } catch {
-            return; // instantiation failure counts as parse error — pass
+            recordResult(relPath, category, "pass"); return;
           }
-          // Compiled and instantiated — negative test should have failed
-          // This is a conformance issue, not a test failure
+          recordResult(relPath, category, "fail", `expected ${meta.negative!.phase} error but compiled`);
           return;
         }
 
@@ -177,8 +207,7 @@ for (const category of DEMO_CATEGORIES) {
         const compileResult = getOrCompile(wrapped);
 
         if (!compileResult.ok) {
-          // Compile error — record but do not fail the vitest test
-          // (conformance tracking, not a gate)
+          recordResult(relPath, category, "compile_error", compileResult.error);
           return;
         }
 
@@ -195,7 +224,7 @@ for (const category of DEMO_CATEGORIES) {
 
           const testFn = (instance.exports as any).test;
           if (typeof testFn !== "function") {
-            // No test export — compile error equivalent
+            recordResult(relPath, category, "compile_error", "no test export");
             return;
           }
 
@@ -205,20 +234,25 @@ for (const category of DEMO_CATEGORIES) {
             const ret = testFn();
 
             if (isRuntimeNegative) {
-              // Expected a runtime error but execution succeeded
+              recordResult(relPath, category, "fail", `expected runtime ${meta.negative!.type} but succeeded`);
               return;
             }
 
-            // ret === 1 means all asserts passed
-            // ret >= 2 means the (ret-1)th assert failed
-            // ret === -1 means uncaught exception
-            // All non-pass results are conformance issues, not vitest failures
+            if (ret === 1) {
+              recordResult(relPath, category, "pass");
+            } else {
+              recordResult(relPath, category, "fail", `returned ${ret}`);
+            }
           } catch (execErr: any) {
-            // Runtime error (trap, unreachable, etc.) — conformance issue
+            if (isRuntimeNegative) {
+              recordResult(relPath, category, "pass");
+            } else {
+              recordResult(relPath, category, "fail", execErr.message ?? String(execErr));
+            }
             return;
           }
         } catch (instantiateErr: any) {
-          // WebAssembly.CompileError during instantiation — conformance issue
+          recordResult(relPath, category, "compile_error", instantiateErr.message ?? String(instantiateErr));
           return;
         }
       }, 90_000);
