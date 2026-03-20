@@ -1435,9 +1435,12 @@ function finalizeUnifiedCollector(
   }
 
   // ── collectStringLiterals finalize ──
-  // Always register the empty string — it's used implicitly by template
-  // expressions, default values, and many string operations (#668).
-  state.stringLiterals.add("");
+  // Register the empty string if any other strings are in the pool — it's used
+  // implicitly by template expressions, default values, and many string operations (#668).
+  // Don't add it unconditionally as that forces string_constants import on all modules.
+  if (state.stringLiterals.size > 0) {
+    state.stringLiterals.add("");
+  }
 
   if (state.hasTypeofExprForStrings) {
     for (const s of ["number", "string", "boolean", "object", "undefined", "function", "symbol"]) {
