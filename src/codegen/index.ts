@@ -998,7 +998,9 @@ function unifiedVisitNode(
     if (node.kind === ts.SyntaxKind.RegularExpressionLiteral) {
       const { pattern, flags } = parseRegExpLiteral(node.getText());
       state.stringLiterals.add(pattern);
-      if (flags) state.stringLiterals.add(flags);
+      // Always add flags (empty string when no flags) so RegExp_new gets a
+      // valid string instead of null which causes "Invalid flags" at runtime.
+      state.stringLiterals.add(flags || "");
     }
     if (ts.isTypeOfExpression(node)) {
       state.hasTypeofExprForStrings = true;
@@ -5956,7 +5958,7 @@ function collectStringLiterals(
     if (node.kind === ts.SyntaxKind.RegularExpressionLiteral) {
       const { pattern, flags } = parseRegExpLiteral(node.getText());
       literals.add(pattern);
-      if (flags) literals.add(flags);
+      literals.add(flags || "");
     }
     // typeof expressions need type-name string constants
     if (ts.isTypeOfExpression(node)) {
