@@ -114,6 +114,50 @@ export function test(): number {
     expect(testFn()).toBe(1);
   });
 
+  it("renameYieldOutsideGenerators preserves yield in async generator methods", () => {
+    // async *method() { yield [...yield]; } should keep yield as keyword
+    const source = `
+/*---
+description: test
+features: [async-iteration]
+flags: [generated, async]
+---*/
+var gen = {
+  async *method() {
+    yield [...yield yield];
+  }
+}.method;
+`;
+    const { source: wrapped } = wrapTest(source);
+    // yield inside async *method() must stay as 'yield', not '_yield'
+    expect(wrapped).toContain("yield [...yield yield]");
+    expect(wrapped).not.toContain("_yield");
+  });
+
+  it("renameYieldOutsideGenerators renames yield outside async generator but preserves inside", () => {
+    // yield used as identifier outside generator should be renamed
+    // yield used as keyword inside async generator should be preserved
+    const source = `
+/*---
+description: test
+features: [async-iteration]
+---*/
+var yield = 42;
+var gen = {
+  async *method() {
+    yield {
+      ...yield,
+    };
+  }
+}.method;
+`;
+    const { source: wrapped } = wrapTest(source);
+    // yield outside async gen should be renamed to _yield
+    expect(wrapped).toContain("var _yield = 42");
+    // yield inside async gen should stay as yield
+    expect(wrapped).toMatch(/async \*method\(\)\s*\{[\s\S]*?yield \{[\s\S]*?\.\.\.yield,/);
+  });
+
   it("compiles wrapped test with multiple commas in array literal argument", () => {
     // Simulates assert_sameValue([a, b, c].indexOf(b, 2), -1)
     // which previously broke due to commas in the array literal
