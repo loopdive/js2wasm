@@ -8,6 +8,7 @@ import type {
   WasmFunction,
   FieldDef,
 } from "../ir/types.js";
+import { walkInstructions } from "../codegen/walk-instructions.js";
 
 /**
  * Compute the set of type indices that can be inlined into their sole
@@ -65,53 +66,15 @@ function computeInlineableTypes(mod: WasmModule): Set<number> {
 }
 
 /** Walk all instructions (recursively into blocks) and call visitor on each */
-function walkInstrs(instrs: Instr[], visitor: (instr: Instr) => void): void {
-  for (const instr of instrs) {
-    visitor(instr);
-    if ("body" in instr && Array.isArray((instr as any).body)) {
-      walkInstrs((instr as any).body, visitor);
-    }
-    if ("then" in instr && Array.isArray((instr as any).then)) {
-      walkInstrs((instr as any).then, visitor);
-    }
-    if ("else" in instr && Array.isArray((instr as any).else)) {
-      walkInstrs((instr as any).else, visitor);
-    }
-    if ("catches" in instr && Array.isArray((instr as any).catches)) {
-      for (const c of (instr as any).catches) {
-        if (Array.isArray(c.body)) walkInstrs(c.body, visitor);
-      }
-    }
-    if ("catchAll" in instr && Array.isArray((instr as any).catchAll)) {
-      walkInstrs((instr as any).catchAll, visitor);
-    }
-  }
-}
+const walkInstrs = walkInstructions;
 
 /** Walk all block types in instructions */
 function walkBlockTypes(instrs: Instr[], visitor: (bt: BlockType) => void): void {
-  for (const instr of instrs) {
+  walkInstructions(instrs, (instr) => {
     if ("blockType" in instr) {
       visitor((instr as any).blockType);
     }
-    if ("body" in instr && Array.isArray((instr as any).body)) {
-      walkBlockTypes((instr as any).body, visitor);
-    }
-    if ("then" in instr && Array.isArray((instr as any).then)) {
-      walkBlockTypes((instr as any).then, visitor);
-    }
-    if ("else" in instr && Array.isArray((instr as any).else)) {
-      walkBlockTypes((instr as any).else, visitor);
-    }
-    if ("catches" in instr && Array.isArray((instr as any).catches)) {
-      for (const c of (instr as any).catches) {
-        if (Array.isArray(c.body)) walkBlockTypes(c.body, visitor);
-      }
-    }
-    if ("catchAll" in instr && Array.isArray((instr as any).catchAll)) {
-      walkBlockTypes((instr as any).catchAll, visitor);
-    }
-  }
+  });
 }
 
 /** Escape a string for WAT text format (inside double quotes).
