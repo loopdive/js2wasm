@@ -1078,7 +1078,7 @@ function renameYieldOutsideGenerators(source: string): string {
   while ((methodMatch = methodRegex.exec(source)) !== null) {
     // Distinguish from multiply operator: check preceding context
     const before = source.substring(Math.max(0, methodMatch.index - 20), methodMatch.index).trimEnd();
-    if (!(before.endsWith(",") || before.endsWith("{") || before.endsWith(";") || before.endsWith(")") || before.length === 0)) {
+    if (!(before.endsWith(",") || before.endsWith("{") || before.endsWith(";") || before.endsWith(")") || before.endsWith("async") || before.length === 0)) {
       continue;
     }
     // Find the opening `(` position (it's at the end of the match minus 1)
