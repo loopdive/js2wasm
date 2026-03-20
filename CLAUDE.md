@@ -69,7 +69,7 @@ See [plan/team-setup.md](plan/team-setup.md) for full team config, roles, and me
 
 ### Continuous execution (rolling pool, dependency-driven)
 
-Work is driven by `plan/dependency-graph.md`. Maintain a **rolling pool of 8 developer agents** — whenever one finishes, cherry-pick its work and immediately launch a replacement on the next ready issue.
+Work is driven by `plan/dependency-graph.md`. **Memory limit: 15GB visible RAM.** Max 3-4 dev agents when test262 is running (4 workers × 1GB + agents × 2GB). Max 6 agents without test262. Always check `free -h` before launching agents. Restart test262 AFTER agents complete, not during.
 
 1. **Pick work**: choose by priority (critical > high > medium > low) from `plan/issues/ready/`
 2. **Function locking**: no two agents touch the same *function* concurrently. Same file is OK if different functions (Git 3-way merge handles separate hunks).
