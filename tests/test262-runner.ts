@@ -108,6 +108,20 @@ const HANGING_TESTS = new Set([
 const SKIP_DISABLED = true;
 
 export function shouldSkip(source: string, meta: Test262Meta, filePath?: string): FilterResult {
+  // Skip FIXTURE files unconditionally (even when SKIP_DISABLED) — these are
+  // auxiliary modules for dynamic-import tests that use export syntax TypeScript
+  // rejects ("Modifiers cannot appear here"). They are never standalone tests.
+  // findTestFiles already excludes them, but guard here for defense-in-depth.
+  if (filePath && /_FIXTURE\.js$/.test(filePath)) {
+    return { skip: true, reason: "FIXTURE helper file (not a standalone test)" };
+  }
+
+  // Skip tests that reference _FIXTURE files in their source — these require
+  // module resolution we don't support. Also unconditional (not affected by SKIP_DISABLED).
+  if (/_FIXTURE\.js/.test(source)) {
+    return { skip: true, reason: "imports _FIXTURE helper module" };
+  }
+
   if (SKIP_DISABLED) return { skip: false };
   // Skip known hanging tests by file path
   if (filePath) {
@@ -199,11 +213,7 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
     return { skip: true, reason: "import.source not supported" };
   }
 
-  // Skip tests that import _FIXTURE files — these are test262 infrastructure
-  // helper modules that we cannot resolve (e.g. empty_FIXTURE.js, sync_FIXTURE.js)
-  if (/_FIXTURE\.js/.test(source)) {
-    return { skip: true, reason: "imports _FIXTURE helper module" };
-  }
+  // _FIXTURE source/path checks are now above SKIP_DISABLED (unconditional)
 
   // Skip tests requiring harness includes we have not shimmed
   if (meta.includes) {
