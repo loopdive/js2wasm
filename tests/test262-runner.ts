@@ -1431,36 +1431,30 @@ function assert_compareArray(actual: number[], expected: number[]): void {
   const includes = resolvedMeta.includes ?? [];
 
   // propertyHelper.js — verifyProperty and friends.
-  // Most tests that include this use verifyProperty(obj, prop, {value, writable, ...}).
-  // We strip these calls entirely rather than providing a stub — the object literal
-  // descriptors crash the compiler when passed to `any`-typed parameters (no struct
-  // shape inference for anonymous objects). See issue #580.
+  // Provide no-op stubs so the test's actual logic can run.
+  // The verify* calls become no-ops — we don't yet have property descriptor
+  // bitfields to check against, but the tests still exercise the surrounding
+  // code (assignments, coercions, etc.). See issue #129.
   if (includes.includes("propertyHelper.js")) {
-    const helperNames = [
-      "verifyProperty", "verifyEnumerable", "verifyNotEnumerable",
-      "verifyWritable", "verifyNotWritable", "verifyConfigurable",
-      "verifyNotConfigurable", "verifyEqualTo", "verifyNotEqualTo",
-    ];
-    for (const name of helperNames) {
-      if (new RegExp(`\\b${name}\\b`).test(body)) {
-        body = stripBalancedCall(body, name);
-      }
+    // Strip calls that pass object-literal descriptors — these crash the
+    // compiler (no struct shape inference for anonymous objects, #580).
+    // All other verify helpers get no-op stubs.
+    if (new RegExp(`\\bverifyProperty\\b`).test(body)) {
+      body = stripBalancedCall(body, "verifyProperty");
     }
-    if (/\bverifyCallableProperty\b/.test(body)) {
-      preamble += `
 
-function verifyCallableProperty(a: number, b: number, c: number, d: number, e: number, f: number): void {}`;
-    }
-    if (/\bverifyPrimordialProperty\b/.test(body)) {
-      preamble += `
-
-function verifyPrimordialProperty(a: number, b: number, c: number, d: number): void {}`;
-    }
-    if (/\bverifyPrimordialCallableProperty\b/.test(body)) {
-      preamble += `
-
-function verifyPrimordialCallableProperty(a: number, b: number, c: number, d: number, e: number, f: number): void {}`;
-    }
+    preamble += `
+function verifyEnumerable(obj: any, name: any): void {}
+function verifyNotEnumerable(obj: any, name: any): void {}
+function verifyWritable(obj: any, name: any, val?: any): void {}
+function verifyNotWritable(obj: any, name: any, val?: any): void {}
+function verifyConfigurable(obj: any, name: any): void {}
+function verifyNotConfigurable(obj: any, name: any): void {}
+function verifyEqualTo(obj: any, name: any, val?: any): void {}
+function verifyNotEqualTo(obj: any, name: any, val?: any): void {}
+function verifyCallableProperty(a: any, b: any, c?: any, d?: any, e?: any, f?: any): void {}
+function verifyPrimordialProperty(a: any, b: any, c?: any, d?: any): void {}
+function verifyPrimordialCallableProperty(a: any, b: any, c?: any, d?: any, e?: any, f?: any): void {}`;
   }
 
   // fnGlobalObject.js — returns a reference to the global object.
