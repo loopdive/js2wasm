@@ -889,13 +889,42 @@ function compileExpressionInner(
 // ── Delete expression ─────────────────────────────────────────────────
 
 /**
+ * Emit the sentinel (undefined) value for a given Wasm field type.
+ * - ref/ref_null: ref.null of the struct's type index
+ * - externref: ref.null.extern
+ * - f64: NaN (chosen as sentinel since deleted numeric props return undefined → NaN in numeric context)
+ * - i32: 0
+ */
+function emitDeleteSentinel(fctx: FunctionContext, fieldType: ValType): void {
+  switch (fieldType.kind) {
+    case "ref":
+    case "ref_null":
+      fctx.body.push({ op: "ref.null", typeIdx: (fieldType as { typeIdx: number }).typeIdx } as unknown as Instr);
+      break;
+    case "externref":
+      fctx.body.push({ op: "ref.null.extern" } as unknown as Instr);
+      break;
+    case "f64":
+      fctx.body.push({ op: "f64.const", value: NaN });
+      break;
+    case "i32":
+      fctx.body.push({ op: "i32.const", value: 0 });
+      break;
+    default:
+      fctx.body.push({ op: "ref.null.extern" } as unknown as Instr);
+      break;
+  }
+}
+
+/**
  * Compile `delete expr`.
- * - `delete obj.prop` / `delete obj[key]`: compile object for side effects, drop, return true (i32 1)
+ * - `delete obj.prop` / `delete obj[key]`: set the field to a sentinel (undefined) value, return true
  * - `delete identifier`: return false (i32 0) — variables are not deletable
  * - `delete otherExpr`: compile for side effects, drop, return true (i32 1)
  *
- * True deletion from WasmGC structs is impossible (fields are fixed at compile time),
- * but returning the correct boolean unblocks the majority of test262 cases.
+ * WasmGC struct fields cannot be removed at runtime, so we simulate deletion
+ * by setting the field to a sentinel value (ref.null for ref types, NaN for f64).
+ * Property reads of ref.null / NaN naturally produce undefined-like behavior.
  */
 function compileDeleteExpression(
   ctx: CodegenContext,
@@ -918,6 +947,57 @@ function compileDeleteExpression(
     // Variables are not deletable — return false
     fctx.body.push({ op: "i32.const", value: 0 });
     return { kind: "i32" };
+  }
+
+  // Try to resolve struct type and field for property access: delete obj.prop
+  if (ts.isPropertyAccessExpression(inner)) {
+    const objType = ctx.checker.getTypeAtLocation(inner.expression);
+    let typeName = resolveStructName(ctx, objType);
+    if (!typeName && ts.isIdentifier(inner.expression)) {
+      typeName = ctx.widenedVarStructMap.get(inner.expression.text);
+    }
+    if (typeName) {
+      const structTypeIdx = ctx.structMap.get(typeName);
+      const fields = ctx.structFields.get(typeName);
+      const fieldName = ts.isPrivateIdentifier(inner.name) ? inner.name.text.slice(1) : inner.name.text;
+      if (structTypeIdx !== undefined && fields) {
+        const fieldIdx = fields.findIndex((f) => f.name === fieldName);
+        if (fieldIdx !== -1 && fields[fieldIdx]!.mutable) {
+          const fieldType = fields[fieldIdx]!.type;
+          // Compile the object expression, then set field to sentinel
+          compileExpression(ctx, fctx, inner.expression);
+          emitDeleteSentinel(fctx, fieldType);
+          fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx });
+          fctx.body.push({ op: "i32.const", value: 1 });
+          return { kind: "i32" };
+        }
+      }
+    }
+  }
+
+  // Try to resolve struct type and field for element access: delete obj["prop"]
+  if (ts.isElementAccessExpression(inner) && ts.isStringLiteral(inner.argumentExpression)) {
+    const objType = ctx.checker.getTypeAtLocation(inner.expression);
+    let typeName = resolveStructName(ctx, objType);
+    if (!typeName && ts.isIdentifier(inner.expression)) {
+      typeName = ctx.widenedVarStructMap.get(inner.expression.text);
+    }
+    if (typeName) {
+      const structTypeIdx = ctx.structMap.get(typeName);
+      const fields = ctx.structFields.get(typeName);
+      const fieldName = inner.argumentExpression.text;
+      if (structTypeIdx !== undefined && fields) {
+        const fieldIdx = fields.findIndex((f) => f.name === fieldName);
+        if (fieldIdx !== -1 && fields[fieldIdx]!.mutable) {
+          const fieldType = fields[fieldIdx]!.type;
+          compileExpression(ctx, fctx, inner.expression);
+          emitDeleteSentinel(fctx, fieldType);
+          fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx });
+          fctx.body.push({ op: "i32.const", value: 1 });
+          return { kind: "i32" };
+        }
+      }
+    }
   }
 
   // For property access / element access / other expressions:
