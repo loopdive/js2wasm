@@ -1197,7 +1197,13 @@ function stripBalancedCall(source: string, name: string): string {
  * Strategy: provide a shim for assert.sameValue that traps on mismatch.
  * The test body runs inside an exported function; returning 1 = success.
  */
-export function wrapTest(source: string, meta?: Test262Meta): string {
+export interface WrapResult {
+  source: string;
+  /** Number of lines added before the original test body (preamble + wrapper) */
+  bodyLineOffset: number;
+}
+
+export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
   // Strip metadata block
   let body = source.replace(/\/\*---[\s\S]*?---\*\//, "");
 
@@ -1630,13 +1636,14 @@ function testWithTypedArrayConstructors(fn: any): void {
     }
   }
 
-  return `
+  const preBody = `
 ${preamble}
 ${hoistedDecls}
 export function test(): number {
   ${implicitDecls}
   try {
-    ${bodyForFunc.trim()}
+    `;
+  const postBody = `
   } catch (e) {
     __fail = 1;
   }
@@ -1644,6 +1651,14 @@ export function test(): number {
   return 1;
 }
 `;
+  const bodyLineOffset = preBody.split("\n").length - 1;
+  // Also account for lines stripped from the original source (metadata block)
+  const metaBlock = source.match(/\/\*---[\s\S]*?---\*\//);
+  const metaLines = metaBlock ? metaBlock[0].split("\n").length : 0;
+  return {
+    source: preBody + bodyForFunc.trim() + postBody,
+    bodyLineOffset: bodyLineOffset - metaLines,
+  };
 }
 
 // ── Test discovery ──────────────────────────────────────────────────
@@ -1926,14 +1941,20 @@ export async function runTest262File(filePath: string, category: string, timeout
   }
 
   // Wrap the test
-  const wrapped = wrapTest(source, meta);
+  const { source: wrappedSource, bodyLineOffset } = wrapTest(source, meta);
+
+  /** Adjust error line numbers to refer to the original source file */
+  function adjustLine(line: number): number {
+    const adjusted = line - bodyLineOffset;
+    return adjusted > 0 ? adjusted : line;
+  }
 
   // Compile (with timeout)
   let result;
   const compileStart = performance.now();
   let compileMs = 0;
   try {
-    result = compile(wrapped, { fileName: "test.ts" });
+    result = compile(wrappedSource, { fileName: "test.ts" });
     compileMs = performance.now() - compileStart;
   } catch (compileErr: any) {
     compileMs = performance.now() - compileStart;
@@ -1969,7 +1990,7 @@ export async function runTest262File(filePath: string, category: string, timeout
       }
       return {
         file: relPath, category, status: "compile_error",
-        error: (result.errors.filter(e => e.severity === "error").map(e => `L${e.line}:${e.column} ${e.message}`).join("; ") || result.errors.map(e => `L${e.line}:${e.column} ${e.message}`).join("; ")),
+        error: (result.errors.filter(e => e.severity === "error").map(e => `L${adjustLine(e.line)}:${e.column} ${e.message}`).join("; ") || result.errors.map(e => `L${adjustLine(e.line)}:${e.column} ${e.message}`).join("; ")),
         timing,
       };
     }
@@ -1977,7 +1998,7 @@ export async function runTest262File(filePath: string, category: string, timeout
       file: relPath,
       category,
       status: "compile_error",
-      error: (result.errors.filter(e => e.severity === "error").map(e => `L${e.line}:${e.column} ${e.message}`).join("; ") || result.errors.map(e => `L${e.line}:${e.column} ${e.message}`).join("; ")),
+      error: (result.errors.filter(e => e.severity === "error").map(e => `L${adjustLine(e.line)}:${e.column} ${e.message}`).join("; ") || result.errors.map(e => `L${adjustLine(e.line)}:${e.column} ${e.message}`).join("; ")),
       timing,
     };
   }

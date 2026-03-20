@@ -53,7 +53,7 @@ description: yield as identifier
 var yield = 42;
 assert.sameValue(yield, 42);
 `;
-    const wrapped = wrapTest(source);
+    const { source: wrapped } = wrapTest(source);
     // yield should be renamed to _yield
     expect(wrapped).toContain("_yield");
     expect(wrapped).not.toMatch(/\bvar\s+yield\b/);
@@ -72,7 +72,7 @@ var iter = gen();
 var result = iter.next();
 assert.sameValue(result.value, 1);
 `;
-    const wrapped = wrapTest(source);
+    const { source: wrapped } = wrapTest(source);
     // yield inside generator should remain as-is
     expect(wrapped).toContain("yield 1");
     expect(wrapped).toContain("yield 2");
@@ -86,7 +86,7 @@ flags: [noStrict]
 var yield = 42;
 assert.sameValue(yield, 42);
 `;
-    const wrapped = wrapTest(source);
+    const { source: wrapped } = wrapTest(source);
     const result = compile(wrapped, { fileName: "test.ts" });
     expect(result.success).toBe(true);
     const errors = result.errors.filter((e) => e.severity === "error");

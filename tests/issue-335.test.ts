@@ -24,7 +24,7 @@ var targetObj = {};
 assert.sameValue([0, targetObj, 2].indexOf(targetObj, 2), -1, 'msg');
 assert.sameValue([0, 1, targetObj].indexOf(targetObj, 2), 2, 'msg2');
 `;
-    const wrapped = wrapTest(source);
+    const { source: wrapped } = wrapTest(source);
     // The array literals should be preserved intact
     expect(wrapped).toContain("[0, targetObj, 2].indexOf(targetObj, 2), -1)");
     expect(wrapped).toContain("[0, 1, targetObj].indexOf(targetObj, 2), 2)");
@@ -41,7 +41,7 @@ includes: [compareArray.js]
 assert.compareArray(fn(1, 2, 3, 4), [3, 4], 'msg');
 assert.compareArray(fn(1, 2, 3, 4, 5), [3, 4, 5], 'msg2');
 `;
-    const wrapped = wrapTest(source);
+    const { source: wrapped } = wrapTest(source);
     expect(wrapped).toContain("assert_compareArray(fn(1, 2, 3, 4), [3, 4])");
     expect(wrapped).toContain("assert_compareArray(fn(1, 2, 3, 4, 5), [3, 4, 5])");
   });
@@ -53,7 +53,7 @@ description: test
 ---*/
 assert.sameValue({a: 1, b: 2}.a, 1, 'msg');
 `;
-    const wrapped = wrapTest(source);
+    const { source: wrapped } = wrapTest(source);
     expect(wrapped).toContain("{a: 1, b: 2}.a, 1)");
     expect(wrapped).not.toContain("'msg'");
   });
@@ -65,7 +65,7 @@ description: test
 ---*/
 assert.sameValue([1, 2, 3].indexOf(2), 1);
 `;
-    const wrapped = wrapTest(source);
+    const { source: wrapped } = wrapTest(source);
     expect(wrapped).toContain("assert_sameValue([1, 2, 3].indexOf(2), 1)");
   });
 
@@ -80,7 +80,7 @@ assert.compareArray(
   ['1', '2', 'a', 'c']
 );
 `;
-    const wrapped = wrapTest(source);
+    const { source: wrapped } = wrapTest(source);
     expect(wrapped).toContain("['1', '2', 'a', 'c']");
   });
 

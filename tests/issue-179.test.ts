@@ -16,7 +16,7 @@ description: test
 ---*/
 var yield = 42;
 assert.sameValue(yield, 42);`;
-    const wrapped = wrapTest(source);
+    const { source: wrapped } = wrapTest(source);
     // yield should be renamed to _yield
     expect(wrapped).toContain("_yield");
     expect(wrapped).not.toMatch(/\bvar yield\b/);
@@ -30,7 +30,7 @@ function* g() {
   yield 1;
   yield 2;
 }`;
-    const wrapped = wrapTest(source);
+    const { source: wrapped } = wrapTest(source);
     // yield inside generator should be preserved
     expect(wrapped).toContain("yield 1");
     expect(wrapped).toContain("yield 2");
@@ -48,7 +48,7 @@ function* gen() {
   yield 2;
 }
 assert.sameValue(yield, 10);`;
-    const wrapped = wrapTest(source);
+    const { source: wrapped } = wrapTest(source);
     // yield as identifier (outside generator) should be renamed
     expect(wrapped).toContain("var _yield");
     expect(wrapped).toContain("_yield, 10");
@@ -65,7 +65,7 @@ function* myGen(x) {
   yield x;
   yield x + 1;
 }`;
-    const wrapped = wrapTest(source);
+    const { source: wrapped } = wrapTest(source);
     expect(wrapped).toContain("yield x");
     expect(wrapped).toContain("yield x + 1");
     expect(wrapped).not.toContain("_yield");
@@ -81,7 +81,7 @@ function* gen1() {
 function* gen2() {
   yield 2;
 }`;
-    const wrapped = wrapTest(source);
+    const { source: wrapped } = wrapTest(source);
     expect(wrapped).toContain("yield 1");
     expect(wrapped).toContain("yield 2");
     expect(wrapped).not.toContain("_yield");
@@ -99,7 +99,7 @@ function* gen() {
     yield i;
   }
 }`;
-    const wrapped = wrapTest(source);
+    const { source: wrapped } = wrapTest(source);
     expect(wrapped).toContain("yield 1");
     expect(wrapped).toContain("yield i");
     expect(wrapped).not.toContain("_yield");
@@ -113,7 +113,7 @@ function* gen() {
   yield 1;
 }
 var yield = 99;`;
-    const wrapped = wrapTest(source);
+    const { source: wrapped } = wrapTest(source);
     // yield inside generator preserved
     expect(wrapped).toContain("yield 1");
     // yield as identifier outside renamed
@@ -128,7 +128,7 @@ var yield = 5;
 function* gen() {
   yield 1;
 }`;
-    const wrapped = wrapTest(source);
+    const { source: wrapped } = wrapTest(source);
     expect(wrapped).toContain("var _yield = 5");
     expect(wrapped).toContain("yield 1");
   });
@@ -139,7 +139,7 @@ description: test
 ---*/
 var x = 1;
 assert.sameValue(x, 1);`;
-    const wrapped = wrapTest(source);
+    const { source: wrapped } = wrapTest(source);
     expect(wrapped).not.toContain("_yield");
     expect(wrapped).not.toContain("yield");
   });

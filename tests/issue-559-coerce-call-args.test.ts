@@ -22,7 +22,7 @@ async function compileAndValidate(source: string) {
 async function testFile(testPath: string) {
   if (!fs.existsSync(testPath)) return;
   const testSource = fs.readFileSync(testPath, "utf-8");
-  const wrapped = wrapTest(testSource);
+  const { source: wrapped } = wrapTest(testSource);
   const result = await compileAndValidate(wrapped);
   expect(result.instantiateSuccess, `Wasm validation failed: ${result.error}`).toBe(true);
 }
@@ -81,7 +81,7 @@ description: test
 if ("1" * new Number(1) !== 1) {
   throw new Test262Error('#5: Actual: ' + ("1" * new Number(1)));
 }
-`));
+`).source);
     expect(result.instantiateSuccess, `Wasm validation failed: ${result.error}`).toBe(true);
   });
 });
