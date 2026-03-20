@@ -895,27 +895,36 @@ writeFileSync(META_PATH, JSON.stringify({ gitHead: getGitHead(), status: "comple
 // Each run only stores its own results. The merged report fills gaps from
 // previous runs (marked as stale with the timestamp they were run).
 {
-  const totalExpected = finalResults.length; // total tests processed in this run
+  const totalExpected = finalResults.length;
   const runTimestamp = RUN_TIMESTAMP.replace(/T/, " ").replace(/-/g, ":").slice(0, 19);
 
   // Collect current run results keyed by file
-  const merged = new Map<string, any>(); // file -> result entry
-  const currentRunLines = readFileSync(RUN_JSONL, "utf-8").split("\n").filter(l => l.trim());
-  for (const line of currentRunLines) {
-    try {
-      const r = JSON.parse(line);
-      r.runTimestamp = runTimestamp;
-      r.stale = false;
-      merged.set(r.file, r);
-    } catch {}
+  const merged = new Map<string, any>();
+  try {
+    const currentRunLines = readFileSync(RUN_JSONL, "utf-8").split("\n").filter(l => l.trim());
+    for (const line of currentRunLines) {
+      try {
+        const r = JSON.parse(line);
+        r.runTimestamp = runTimestamp;
+        r.stale = false;
+        merged.set(r.file, r);
+      } catch {}
+    }
+  } catch (e) {
+    console.warn(`Warning: could not read run JSONL: ${e}`);
   }
   console.log(`Current run: ${merged.size} results`);
 
   // Backfill from previous runs (newest first) until we have all tests
-  const runFiles = readdirSync(RUNS_DIR)
-    .filter(f => f.endsWith("-results.jsonl") && f !== basename(RUN_JSONL))
-    .sort()
-    .reverse(); // newest first
+  let runFiles: string[] = [];
+  try {
+    runFiles = readdirSync(RUNS_DIR)
+      .filter(f => f.endsWith("-results.jsonl") && f !== basename(RUN_JSONL))
+      .sort()
+      .reverse();
+  } catch (e) {
+    console.warn(`Warning: could not read runs directory: ${e}`);
+  }
 
   let staleCount = 0;
   for (const runFile of runFiles) {
@@ -961,7 +970,11 @@ writeFileSync(META_PATH, JSON.stringify({ gitHead: getGitHead(), status: "comple
   }
   summary.compilable = summary.pass + summary.fail;
 
-  writeFileSync(JSONL_PATH, mergedLines.join("\n") + "\n");
+  try {
+    writeFileSync(JSONL_PATH, mergedLines.join("\n") + "\n");
+  } catch (e) {
+    console.warn(`Warning: could not write merged JSONL: ${e}`);
+  }
 
   // Write merged report
   const report = {
@@ -971,7 +984,11 @@ writeFileSync(META_PATH, JSON.stringify({ gitHead: getGitHead(), status: "comple
       .map(([name, c]) => ({ name, ...c }))
       .sort((a, b) => a.name.localeCompare(b.name)),
   };
-  writeFileSync(REPORT_PATH, JSON.stringify(report, null, 2));
+  try {
+    writeFileSync(REPORT_PATH, JSON.stringify(report, null, 2));
+  } catch (e) {
+    console.warn(`Warning: could not write report JSON: ${e}`);
+  }
 
   console.log(`\nResults: ${JSONL_PATH}`);
   console.log(`Report:  ${REPORT_PATH}`);
