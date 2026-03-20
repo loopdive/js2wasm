@@ -17227,6 +17227,16 @@ function compilePropertyAccess(
             return { kind: "ref_null", typeIdx: (fieldType as any).typeIdx };
           }
           return fieldType;
+        } else if (objResult && objResult.kind === "ref") {
+          // Even though the type says non-null ref, the value may be null at
+          // runtime (e.g. default-initialized locals, chained property access
+          // on optional fields).  Wrap in a null guard to avoid trapping.
+          const nullableObj: ValType = { kind: "ref_null", typeIdx: (objResult as any).typeIdx ?? structTypeIdx };
+          emitNullGuardedStructGet(fctx, nullableObj, fieldType, structTypeIdx, fieldIdx);
+          if (fieldType.kind === "ref") {
+            return { kind: "ref_null", typeIdx: (fieldType as any).typeIdx };
+          }
+          return fieldType;
         } else {
           fctx.body.push({
             op: "struct.get",
@@ -17283,6 +17293,13 @@ function compilePropertyAccess(
               return fieldType;
             } else if (objResult && objResult.kind === "externref") {
               emitExternrefToStructGet(ctx, fctx, fieldType, structTypeIdx, fieldIdx);
+            } else if (objResult && objResult.kind === "ref") {
+              // Null-guard ref-typed objects (may be null at runtime)
+              const nullableObj: ValType = { kind: "ref_null", typeIdx: (objResult as any).typeIdx ?? structTypeIdx };
+              emitNullGuardedStructGet(fctx, nullableObj, fieldType, structTypeIdx, fieldIdx);
+              if (fieldType.kind === "ref") {
+                return { kind: "ref_null", typeIdx: (fieldType as any).typeIdx };
+              }
             } else {
               fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
             }
