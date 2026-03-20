@@ -47,17 +47,10 @@ export class CompilerPool {
   private readyCount = 0;
 
   constructor(private size = 4) {
-    const workerPath = join(import.meta.dirname ?? __dirname, "compiler-worker.ts");
+    const workerPath = join(import.meta.dirname ?? __dirname, "compiler-worker.mjs");
 
     for (let i = 0; i < size; i++) {
-      // Bootstrap tsx loader then import the worker script
-      const bootstrapCode = `
-        const { register } = require("node:module");
-        const { pathToFileURL } = require("node:url");
-        register("tsx/esm", pathToFileURL("./"));
-        require(${JSON.stringify(workerPath)});
-      `;
-      const worker = new Worker(bootstrapCode, { eval: true });
+      const worker = new Worker(workerPath);
 
       const state: WorkerState = { worker, busy: false, ready: false };
       this.workers.push(state);
