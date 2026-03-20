@@ -257,6 +257,8 @@ export interface CodegenContext {
   tupleTypeMap: Map<string, number>;
   /** Fast mode: default number to i32, promote to f64 only when needed */
   fast: boolean;
+  /** Use WasmGC-native strings instead of wasm:js-string imports */
+  nativeStrings: boolean;
   /** Native string support (fast mode): type index for $__str_data (array (mut i16)) */
   nativeStrDataTypeIdx: number;
   /** Type index for $AnyString (struct { len: i32 }) — base type for rope subtyping */
@@ -432,6 +434,8 @@ export interface CodegenOptions {
   sourceMap?: boolean;
   /** Fast mode: i32 default numbers */
   fast?: boolean;
+  /** Use WasmGC-native strings instead of wasm:js-string imports */
+  nativeStrings?: boolean;
   /** WASI target: emit WASI imports (fd_write, proc_exit) instead of JS host imports */
   wasi?: boolean;
 }
@@ -503,6 +507,7 @@ export function generateModule(
     sourceMap: options?.sourceMap ?? false,
     tupleTypeMap: new Map(),
     fast: options?.fast ?? false,
+    nativeStrings: options?.nativeStrings ?? options?.fast ?? options?.wasi ?? false,
     nativeStrDataTypeIdx: -1,
     anyStrTypeIdx: -1,
     nativeStrTypeIdx: -1,
@@ -537,8 +542,8 @@ export function generateModule(
     wasiBumpPtrGlobalIdx: -1,
   };
 
-  // Register native string types if fast mode
-  if (ctx.fast) {
+  // Register native string types if native strings enabled (fast mode, WASI, or explicit)
+  if (ctx.nativeStrings) {
     registerNativeStringTypes(ctx);
   }
 
@@ -740,6 +745,7 @@ export function generateMultiModule(
     sourceMap: options?.sourceMap ?? false,
     tupleTypeMap: new Map(),
     fast: options?.fast ?? false,
+    nativeStrings: options?.nativeStrings ?? options?.fast ?? options?.wasi ?? false,
     nativeStrDataTypeIdx: -1,
     anyStrTypeIdx: -1,
     nativeStrTypeIdx: -1,
@@ -770,8 +776,8 @@ export function generateMultiModule(
     pendingLateImportShift: null,
   };
 
-  // Register native string types if fast mode
-  if (ctx.fast) {
+  // Register native string types if native strings enabled (fast mode, WASI, or explicit)
+  if (ctx.nativeStrings) {
     registerNativeStringTypes(ctx);
   }
 
@@ -1347,7 +1353,7 @@ function unifiedVisitNode(
     const sym =
       (exprType as ts.TypeReference).symbol ?? (exprType as ts.Type).symbol;
     if (sym?.name !== "Array") {
-      if (ctx.fast && ctx.anyStrTypeIdx >= 0 && isStringType(exprType)) {
+      if (ctx.nativeStrings && ctx.anyStrTypeIdx >= 0 && isStringType(exprType)) {
         // In fast mode, strings are iterated natively
       } else {
         state.iteratorFound = true;
@@ -1483,7 +1489,7 @@ function finalizeUnifiedCollector(
     getOrRegisterTemplateVecType(ctx);
   }
   if (state.stringLiterals.size > 0) {
-    if (ctx.fast) {
+    if (ctx.nativeStrings) {
       ensureNativeStringHelpers(ctx);
       for (const value of state.stringLiterals) {
         if (!ctx.stringGlobalMap.has(value)) {
@@ -1508,7 +1514,7 @@ function finalizeUnifiedCollector(
       "replace", "replaceAll", "split",
     ]);
     for (const method of state.stringMethodNeeded) {
-      if (ctx.fast && NATIVE_STR_METHODS.has(method)) {
+      if (ctx.nativeStrings && NATIVE_STR_METHODS.has(method)) {
         ensureNativeStringHelpers(ctx);
         continue;
       }
@@ -1517,7 +1523,7 @@ function finalizeUnifiedCollector(
       const t = addFuncType(ctx, params, [sig.result]);
       addImport(ctx, "env", `string_${method}`, { kind: "func", typeIdx: t });
     }
-    if (state.stringMethodNeeded.has("split") && !ctx.fast) {
+    if (state.stringMethodNeeded.has("split") && !ctx.nativeStrings) {
       if (!ctx.funcMap.has("__extern_get")) {
         const getType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
         addImport(ctx, "env", "__extern_get", { kind: "func", typeIdx: getType });
@@ -1558,7 +1564,7 @@ function finalizeUnifiedCollector(
   if (state.needsFromCharCode) {
     const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "String_fromCharCode", { kind: "func", typeIdx });
-    if (ctx.fast) {
+    if (ctx.nativeStrings) {
       ensureNativeStringHelpers(ctx);
     }
   }
@@ -1662,7 +1668,7 @@ function finalizeUnifiedCollector(
 
   // ── collectForInStringLiterals finalize ──
   if (state.forInLiterals.size > 0) {
-    if (ctx.fast) {
+    if (ctx.nativeStrings) {
       ensureNativeStringHelpers(ctx);
       for (const value of state.forInLiterals) {
         if (!ctx.stringGlobalMap.has(value)) ctx.stringGlobalMap.set(value, -1);
@@ -1677,7 +1683,7 @@ function finalizeUnifiedCollector(
 
   // ── collectInExprStringLiterals finalize ──
   if (state.inExprLiterals.size > 0) {
-    if (ctx.fast) {
+    if (ctx.nativeStrings) {
       ensureNativeStringHelpers(ctx);
       for (const value of state.inExprLiterals) {
         if (!ctx.stringGlobalMap.has(value)) ctx.stringGlobalMap.set(value, -1);
@@ -1695,7 +1701,7 @@ function finalizeUnifiedCollector(
     addUnionImports(ctx);
   }
   if (state.objectMethodLiterals.size > 0) {
-    if (ctx.fast) {
+    if (ctx.nativeStrings) {
       ensureNativeStringHelpers(ctx);
       for (const value of state.objectMethodLiterals) {
         if (!ctx.stringGlobalMap.has(value)) ctx.stringGlobalMap.set(value, -1);
@@ -2138,7 +2144,7 @@ function collectStringMethodImports(
     }
   }
 
-  // Native string methods handled in wasm (fast mode)
+  // Native string methods handled in wasm (native strings mode)
   const NATIVE_STR_METHODS = new Set([
     "charAt", "substring", "slice", "at",
     "indexOf", "lastIndexOf", "includes", "startsWith", "endsWith",
@@ -2149,7 +2155,7 @@ function collectStringMethodImports(
   ]);
 
   for (const method of needed) {
-    if (ctx.fast && NATIVE_STR_METHODS.has(method)) {
+    if (ctx.nativeStrings && NATIVE_STR_METHODS.has(method)) {
       // These are handled by native string helpers — no import needed
       ensureNativeStringHelpers(ctx);
       continue;
@@ -2162,8 +2168,8 @@ function collectStringMethodImports(
 
   // split() returns an externref JS array — register __extern_get and __extern_length
   // so that element access and .length work on the result.
-  // In fast mode, native split returns a native string array — no extern helpers needed.
-  if (needed.has("split") && !ctx.fast) {
+  // With native strings, split returns a native string array — no extern helpers needed.
+  if (needed.has("split") && !ctx.nativeStrings) {
     if (!ctx.funcMap.has("__extern_get")) {
       const getType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
       addImport(ctx, "env", "__extern_get", { kind: "func", typeIdx: getType });
@@ -2419,7 +2425,7 @@ export function ensureWrapperTypes(ctx: CodegenContext): void {
 
   // $WrapperString: struct { value: externref }
   ctx.wrapperStringTypeIdx = ctx.mod.types.length;
-  const strValType: ValType = ctx.fast ? nativeStringType(ctx) : { kind: "externref" };
+  const strValType: ValType = ctx.nativeStrings ? nativeStringType(ctx) : { kind: "externref" };
   ctx.mod.types.push({
     kind: "struct",
     name: "WrapperString",
@@ -2456,7 +2462,7 @@ function emitWrapperValueOfFunctions(ctx: CodegenContext): void {
   if (ctx.wrapperNumberTypeIdx < 0) return;
   if (ctx.funcMap.has("WrapperNumber_valueOf")) return; // already emitted
 
-  const strValType: ValType = ctx.fast ? nativeStringType(ctx) : { kind: "externref" };
+  const strValType: ValType = ctx.nativeStrings ? nativeStringType(ctx) : { kind: "externref" };
 
   // WrapperNumber_valueOf(self: ref $WrapperNumber) -> f64
   {
@@ -3226,7 +3232,7 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
   // __any_typeof(a) -> ref $AnyString (native string in fast mode)
   // Returns "number", "string", "boolean", "object", "undefined" as native strings
   // Uses the $AnyString type system (WasmGC native strings)
-  if (ctx.fast && ctx.nativeStrTypeIdx >= 0) {
+  if (ctx.nativeStrings && ctx.nativeStrTypeIdx >= 0) {
     const strDataTypeIdx = ctx.nativeStrDataTypeIdx;
     const strTypeIdx = ctx.nativeStrTypeIdx;
 
@@ -3306,7 +3312,7 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
 /**
  * Get the ValType for a string reference (ref $AnyString).
  * This is the abstract base type that represents any string (flat or cons).
- * Only valid when ctx.fast is true and native string types are registered.
+ * Only valid when ctx.nativeStrings is true and native string types are registered.
  */
 export function nativeStringType(ctx: CodegenContext): ValType {
   return { kind: "ref", typeIdx: ctx.anyStrTypeIdx };
@@ -5989,8 +5995,8 @@ function collectStringLiterals(
 
   if (literals.size === 0) return;
 
-  if (ctx.fast) {
-    // Fast mode: native strings — ensure helpers are emitted, track literals
+  if (ctx.nativeStrings) {
+    // Native strings mode — ensure helpers are emitted, track literals
     // No wasm:js-string or string_constants imports needed
     ensureNativeStringHelpers(ctx);
     for (const value of literals) {
@@ -6047,7 +6053,7 @@ function collectForInStringLiterals(
 
   if (literals.size === 0) return;
 
-  if (ctx.fast) {
+  if (ctx.nativeStrings) {
     ensureNativeStringHelpers(ctx);
     for (const value of literals) {
       if (!ctx.stringGlobalMap.has(value)) ctx.stringGlobalMap.set(value, -1);
@@ -6102,7 +6108,7 @@ function collectInExprStringLiterals(
 
   if (literals.size === 0) return;
 
-  if (ctx.fast) {
+  if (ctx.nativeStrings) {
     ensureNativeStringHelpers(ctx);
     for (const value of literals) {
       if (!ctx.stringGlobalMap.has(value)) ctx.stringGlobalMap.set(value, -1);
@@ -6168,7 +6174,7 @@ function collectObjectMethodStringLiterals(
 
   if (literals.size === 0) return;
 
-  if (ctx.fast) {
+  if (ctx.nativeStrings) {
     ensureNativeStringHelpers(ctx);
     for (const value of literals) {
       if (!ctx.stringGlobalMap.has(value)) ctx.stringGlobalMap.set(value, -1);
@@ -6501,7 +6507,7 @@ function collectStringStaticImports(
     // (f64) -> externref  (char code -> string)
     const typeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "String_fromCharCode", { kind: "func", typeIdx });
-    if (ctx.fast) {
+    if (ctx.nativeStrings) {
       ensureNativeStringHelpers(ctx);
     }
   }
@@ -7268,7 +7274,7 @@ function collectIteratorImports(
         (exprType as ts.TypeReference).symbol ?? (exprType as ts.Type).symbol;
       if (sym?.name !== "Array") {
         // In fast mode, strings are iterated natively — no iterator imports needed
-        if (ctx.fast && ctx.anyStrTypeIdx >= 0 && isStringType(exprType)) {
+        if (ctx.nativeStrings && ctx.anyStrTypeIdx >= 0 && isStringType(exprType)) {
           return;
         }
         found = true;
@@ -7819,7 +7825,7 @@ export function getOrRegisterTupleType(
  */
 export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type): ValType {
   // Fast mode: string → ref $AnyString (not externref)
-  if (ctx.fast && ctx.anyStrTypeIdx >= 0 && isStringType(tsType)) {
+  if (ctx.nativeStrings && ctx.anyStrTypeIdx >= 0 && isStringType(tsType)) {
     return { kind: "ref", typeIdx: ctx.anyStrTypeIdx };
   }
 
@@ -7857,7 +7863,7 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type): ValType {
       return { kind: "f64" };
     }
     if (sym?.name === "String" && (tsType.flags & ts.TypeFlags.Object)) {
-      return ctx.fast ? nativeStringType(ctx) : { kind: "externref" };
+      return ctx.nativeStrings ? nativeStringType(ctx) : { kind: "externref" };
     }
     if (sym?.name === "Boolean" && (tsType.flags & ts.TypeFlags.Object)) {
       return { kind: "i32" };
@@ -8796,7 +8802,7 @@ function collectEnumDeclarations(
 
   // Register string enum literals as string constant globals
   if (stringEnumLiterals.length > 0) {
-    if (ctx.fast) {
+    if (ctx.nativeStrings) {
       ensureNativeStringHelpers(ctx);
       for (const value of stringEnumLiterals) {
         if (!ctx.stringGlobalMap.has(value)) ctx.stringGlobalMap.set(value, -1);

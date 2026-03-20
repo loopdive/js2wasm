@@ -10884,7 +10884,7 @@ function compileCallExpression(
         }
         fctx.body.push({ op: "call", funcIdx });
         // In fast mode, marshal externref string to native string
-        if (ctx.fast && ctx.nativeStrTypeIdx >= 0) {
+        if (ctx.nativeStrings && ctx.nativeStrTypeIdx >= 0) {
           const fromExternIdx = ctx.nativeStrHelpers.get("__str_from_extern");
           if (fromExternIdx !== undefined) {
             fctx.body.push({ op: "call", funcIdx: fromExternIdx });
@@ -11282,7 +11282,7 @@ function compileCallExpression(
         return { kind: "f64" };
       }
       if (recvSymName === "String" && wrapperMethodName === "valueOf") {
-        const strType = ctx.fast ? nativeStringType(ctx) : { kind: "externref" } as ValType;
+        const strType = ctx.nativeStrings ? nativeStringType(ctx) : { kind: "externref" } as ValType;
         compileExpression(ctx, fctx, propAccess.expression, strType);
         return strType;
       }
@@ -11661,7 +11661,7 @@ function compileCallExpression(
       }
 
       // Fast mode: native string method dispatch
-      if (ctx.fast && ctx.nativeStrTypeIdx >= 0) {
+      if (ctx.nativeStrings && ctx.nativeStrTypeIdx >= 0) {
         return compileNativeStringMethodCall(ctx, fctx, expr, propAccess, method);
       }
 
@@ -12102,7 +12102,7 @@ function compileCallExpression(
       }
       // String: truthy if length > 0
       if ((argType?.kind === "ref" || argType?.kind === "ref_null") &&
-          ctx.fast && ctx.anyStrTypeIdx >= 0 &&
+          ctx.nativeStrings && ctx.anyStrTypeIdx >= 0 &&
           isStringType(ctx.checker.getTypeAtLocation(expr.arguments[0]!))) {
         // Get length (field 0 of $AnyString) and check != 0
         fctx.body.push({ op: "struct.get", typeIdx: ctx.anyStrTypeIdx, fieldIdx: 0 });
@@ -14673,11 +14673,11 @@ function compileNewExpression(
 
       if (ctorName === "String") {
         // new String(x) → just return x as string
-        const strType = ctx.fast ? nativeStringType(ctx) : { kind: "externref" } as ValType;
+        const strType = ctx.nativeStrings ? nativeStringType(ctx) : { kind: "externref" } as ValType;
         if (args.length >= 1) {
           compileExpression(ctx, fctx, args[0]!, strType);
         } else {
-          if (ctx.fast) {
+          if (ctx.nativeStrings) {
             ensureNativeStringHelpers(ctx);
             const emptyIdx = ctx.funcMap.get("__str_empty");
             if (emptyIdx !== undefined) {
@@ -15571,7 +15571,7 @@ function compileConsoleCall(
 
     if (isStringType(argType)) {
       // Fast mode: flatten + marshal native string to externref before passing to host
-      if (ctx.fast && ctx.nativeStrTypeIdx >= 0) {
+      if (ctx.nativeStrings && ctx.nativeStrTypeIdx >= 0) {
         const strFlattenIdx = ctx.nativeStrHelpers.get("__str_flatten");
         if (strFlattenIdx !== undefined) {
           fctx.body.push({ op: "call", funcIdx: strFlattenIdx });
@@ -16463,7 +16463,7 @@ function compileOptionalPropertyAccess(
     compileExternPropertyGetFromStack(ctx, fctx, tsObjType, propName);
     elseResultType = { kind: "externref" };
   } else if (isStringType(tsObjType) && propName === "length") {
-    if (ctx.fast && ctx.anyStrTypeIdx >= 0) {
+    if (ctx.nativeStrings && ctx.anyStrTypeIdx >= 0) {
       // len is field 0 of $AnyString — works for both FlatString and ConsString
       fctx.body.push({ op: "struct.get", typeIdx: ctx.anyStrTypeIdx, fieldIdx: 0 });
     } else {
@@ -16701,7 +16701,7 @@ function compileOptionalCallExpression(
 
   // 4. String method calls
   if (!methodResolved && isStringType(tsReceiverType)) {
-    if (ctx.fast && ctx.nativeStrTypeIdx >= 0) {
+    if (ctx.nativeStrings && ctx.nativeStrTypeIdx >= 0) {
       // Native string methods compile the receiver themselves from propAccess
       const nativeResult = compileNativeStringMethodCall(ctx, fctx, expr, propAccess, methodName);
       if (nativeResult !== null && nativeResult !== VOID_RESULT) {
@@ -17245,7 +17245,7 @@ function compilePropertyAccess(
   // Handle string.length
   if (isStringType(objType) && propName === "length") {
     compileExpression(ctx, fctx, expr.expression);
-    if (ctx.fast && ctx.anyStrTypeIdx >= 0) {
+    if (ctx.nativeStrings && ctx.anyStrTypeIdx >= 0) {
       // len is field 0 of $AnyString — works for both FlatString and ConsString
       fctx.body.push({ op: "struct.get", typeIdx: ctx.anyStrTypeIdx, fieldIdx: 0 });
       return { kind: "i32" };
@@ -19730,7 +19730,7 @@ function compileObjectKeysOrValues(
 
     // Push each field name string onto the stack
     for (const entry of userFields) {
-      if (ctx.fast && ctx.nativeStrTypeIdx >= 0) {
+      if (ctx.nativeStrings && ctx.nativeStrTypeIdx >= 0) {
         compileNativeStringLiteral(ctx, fctx, entry.field.name);
         // Object.keys returns externref strings, convert from native
         fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
@@ -19822,7 +19822,7 @@ function compileObjectKeysOrValues(
     // For each field, create a tuple struct [key, value]
     for (const entry of userFields) {
       // Push key string (field 0 of tuple)
-      if (ctx.fast && ctx.nativeStrTypeIdx >= 0) {
+      if (ctx.nativeStrings && ctx.nativeStrTypeIdx >= 0) {
         compileNativeStringLiteral(ctx, fctx, entry.field.name);
         // If tuple expects externref for the key, convert
         if (tupleFields && tupleFields[0]?.type?.kind === "externref") {
@@ -19948,7 +19948,7 @@ function compileStringLiteral(
   node?: ts.Node,
 ): ValType | null {
   // Fast mode: materialize as NativeString GC struct inline
-  if (ctx.fast && ctx.nativeStrTypeIdx >= 0) {
+  if (ctx.nativeStrings && ctx.nativeStrTypeIdx >= 0) {
     return compileNativeStringLiteral(ctx, fctx, value);
   }
 
@@ -20004,7 +20004,7 @@ function compileTemplateExpression(
   expr: ts.TemplateExpression,
 ): ValType | null {
   // Fast mode: use native string concat
-  if (ctx.fast && ctx.nativeStrTypeIdx >= 0) {
+  if (ctx.nativeStrings && ctx.nativeStrTypeIdx >= 0) {
     return compileNativeTemplateExpression(ctx, fctx, expr);
   }
 
@@ -20538,7 +20538,7 @@ function compileStringBinaryOp(
   op: ts.SyntaxKind,
 ): ValType | null {
   // Fast mode: native string operations
-  if (ctx.fast && ctx.nativeStrTypeIdx >= 0) {
+  if (ctx.nativeStrings && ctx.nativeStrTypeIdx >= 0) {
     const strFlattenIdx = ctx.nativeStrHelpers.get("__str_flatten")!;
 
     switch (op) {
@@ -21427,7 +21427,7 @@ function resolveArrayInfo(
   // In fast mode, strings are NativeString structs that look like arrays
   // (struct { len: i32, data: ref array }). Reject them here so string
   // methods are dispatched via compileNativeStringMethodCall instead.
-  if (ctx.fast && ctx.nativeStrTypeIdx >= 0 && isStringType(tsType)) return null;
+  if (ctx.nativeStrings && ctx.nativeStrTypeIdx >= 0 && isStringType(tsType)) return null;
   const wasmType = resolveWasmType(ctx, tsType);
   if (wasmType.kind !== "ref" && wasmType.kind !== "ref_null") return null;
   const vecTypeIdx = (wasmType as { typeIdx: number }).typeIdx;
