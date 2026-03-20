@@ -319,6 +319,8 @@ export interface CodegenContext {
   pendingLateImportShift: { importsBefore: number } | null;
   /** Map from class name → global index of the prototype externref singleton */
   protoGlobals: Map<string, number>;
+  /** Map from struct name → set of non-writable field names (from Object.defineProperty writable:false) */
+  nonWritableProps: Map<string, Set<string>>;
   /** Whether targeting WASI (use fd_write/proc_exit instead of JS host imports) */
   wasi: boolean;
   /** WASI fd_write function index (-1 if not registered) */
@@ -539,6 +541,7 @@ export function generateModule(
     funcTypeCache: new Map(),
     pendingLateImportShift: null,
     protoGlobals: new Map(),
+    nonWritableProps: new Map(),
     wasi: options?.wasi ?? false,
     wasiFdWriteIdx: -1,
     wasiProcExitIdx: -1,
@@ -783,6 +786,7 @@ export function generateMultiModule(
     funcTypeCache: new Map(),
     pendingLateImportShift: null,
     protoGlobals: new Map(),
+    nonWritableProps: new Map(),
   };
 
   // Register native string types if native strings enabled (fast mode, WASI, or explicit)

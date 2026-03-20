@@ -1,6 +1,6 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext, ClosureInfo, RestParamInfo } from "./index.js";
-import { allocLocal, allocTempLocal, releaseTempLocal, getLocalType, resolveWasmType, resolveNativeTypeAnnotation, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers, addStringImports, cacheStringLiterals, addStringConstantGlobal, nextModuleGlobalIdx, getOrRegisterTemplateVecType, pushBody, popBody, destructureParamArray, destructureParamObject } from "./index.js";
+import { allocLocal, allocTempLocal, releaseTempLocal, getLocalType, resolveWasmType, resolveNativeTypeAnnotation, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers, addStringImports, cacheStringLiterals, addStringConstantGlobal, nextModuleGlobalIdx, getOrRegisterTemplateVecType, pushBody, popBody, destructureParamArray, destructureParamObject, ensureExnTag } from "./index.js";
 import {
   mapTsTypeToWasm,
   isNumberType,
@@ -6076,6 +6076,15 @@ function emitAssignToTarget(
     const fieldIdx = fields.findIndex((f) => f.name === fieldName);
     if (fieldIdx === -1) return;
 
+    // Check if the property was marked non-writable via Object.defineProperty
+    const nonWritableSet = ctx.nonWritableProps.get(typeName);
+    if (nonWritableSet && nonWritableSet.has(fieldName)) {
+      const tagIdx = ensureExnTag(ctx);
+      fctx.body.push({ op: "ref.null.extern" });
+      fctx.body.push({ op: "throw", tagIdx });
+      return;
+    }
+
     const fieldType = fields[fieldIdx]!.type;
     // Push obj ref, then value
     compileExpression(ctx, fctx, target.expression);
@@ -6406,6 +6415,22 @@ function compilePropertyAssignment(
 
   const fieldIdx = fields.findIndex((f) => f.name === fieldName);
   if (fieldIdx === -1) return null;
+
+  // Check if the property was marked non-writable via Object.defineProperty
+  const nonWritableSet = ctx.nonWritableProps.get(typeName);
+  if (nonWritableSet && nonWritableSet.has(fieldName)) {
+    // Compile both sides for side effects, then throw TypeError
+    const objResult = compileExpression(ctx, fctx, target.expression);
+    if (objResult) fctx.body.push({ op: "drop" });
+    const valResult = compileExpression(ctx, fctx, value);
+    if (valResult) fctx.body.push({ op: "drop" });
+    // Throw: push null externref (error payload) and throw with exception tag
+    const tagIdx = ensureExnTag(ctx);
+    fctx.body.push({ op: "ref.null.extern" });
+    fctx.body.push({ op: "throw", tagIdx });
+    // Unreachable — but return a type for the expression result
+    return fields[fieldIdx]!.type;
+  }
 
   const structObjResult = compileExpression(ctx, fctx, target.expression);
   if (!structObjResult) { ctx.errors.push({ message: "Failed to compile struct field receiver", line: getLine(target), column: getCol(target) }); return null; }
@@ -18950,6 +18975,21 @@ function compileObjectDefineProperty(
     }
   }
 
+  // Detect writable: false in the descriptor
+  let writableFalse = false;
+  if (ts.isObjectLiteralExpression(descArg)) {
+    for (const prop of descArg.properties) {
+      if (
+        ts.isPropertyAssignment(prop) &&
+        ts.isIdentifier(prop.name) &&
+        prop.name.text === "writable" &&
+        prop.initializer.kind === ts.SyntaxKind.FalseKeyword
+      ) {
+        writableFalse = true;
+      }
+    }
+  }
+
   // Resolve the property name at compile time (string literal)
   let propName: string | undefined;
   if (ts.isStringLiteral(propArg)) {
@@ -19014,6 +19054,16 @@ function compileObjectDefineProperty(
   const fields = structName ? ctx.structFields.get(structName) : undefined;
   const fieldIdx = (fields && propName) ? fields.findIndex(f => f.name === propName) : -1;
   const useStruct = structTypeIdx !== undefined && fields && fieldIdx >= 0 && valueExpr;
+
+  // Record non-writable property in the context map
+  if (writableFalse && structName && propName) {
+    let propSet = ctx.nonWritableProps.get(structName);
+    if (!propSet) {
+      propSet = new Set();
+      ctx.nonWritableProps.set(structName, propSet);
+    }
+    propSet.add(propName);
+  }
 
   // ── Getter/setter path ──────────────────────────────────────────────
   // Object.defineProperty(obj, "prop", { get() {...}, set(v) {...} })
