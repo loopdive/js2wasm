@@ -683,6 +683,114 @@ function renderConformance(data, container) {
 
   table.appendChild(tbody);
   container.appendChild(table);
+
+  // --- Error Patterns section ---
+  renderErrorPatterns(container);
+}
+
+async function renderErrorPatterns(container) {
+  const map = await loadFileResults();
+  if (!map) return;
+
+  // Group errors by normalized message
+  const patterns = new Map(); // message -> { count, files: [{file, error, status}] }
+  for (const [cat, files] of map) {
+    for (const f of files) {
+      if (f.status !== "compile_error" && f.status !== "fail") continue;
+      const err = f.error || "";
+      if (!err) continue;
+      // Normalize: strip line numbers, file-specific details
+      let key = err
+        .replace(/L\d+:\d+/g, "L*:*")
+        .replace(/#\d+/g, "#*")
+        .replace(/"[^"]{20,}"/g, '"..."')
+        .replace(/\d{3,}/g, "*");
+      // Truncate to first error (before semicolon) for grouping
+      const semi = key.indexOf(";");
+      if (semi > 0) key = key.substring(0, semi).trim();
+      if (key.length > 120) key = key.substring(0, 120) + "...";
+
+      if (!patterns.has(key)) patterns.set(key, { count: 0, status: f.status, files: [] });
+      const p = patterns.get(key);
+      p.count++;
+      if (p.files.length < 50) p.files.push({ file: f.file, error: err });
+    }
+  }
+
+  // Sort by count descending
+  const sorted = [...patterns.entries()].sort((a, b) => b[1].count - a[1].count);
+  if (sorted.length === 0) return;
+
+  container.appendChild(el("h2", null, "Error Patterns"));
+  container.appendChild(el("div", { className: "subtitle" }, sorted.length + " distinct patterns across " + sorted.reduce((a, [, v]) => a + v.count, 0) + " errors"));
+
+  const patternList = el("div", { style: { display: "flex", flexDirection: "column", gap: "0.5rem" } });
+
+  // Show top 50 patterns
+  for (const [pattern, data] of sorted.slice(0, 50)) {
+    const card = el("div", { className: "card", style: { cursor: "pointer" } });
+    const headerRow = el("div", { style: { display: "flex", alignItems: "baseline", gap: "0.75rem" } });
+
+    const countBadge = el("span", {
+      style: {
+        background: data.status === "compile_error" ? "var(--error)" : "var(--fail)",
+        color: "var(--bg)", fontWeight: "700", fontSize: "0.75rem",
+        padding: "2px 8px", borderRadius: "10px", flexShrink: "0"
+      }
+    }, String(data.count));
+    headerRow.appendChild(countBadge);
+
+    const statusLabel = el("span", {
+      style: { color: "var(--text-muted)", fontSize: "0.625rem", flexShrink: "0" }
+    }, data.status === "compile_error" ? "CE" : "FAIL");
+    headerRow.appendChild(statusLabel);
+
+    const msgEl = el("span", {
+      style: { fontFamily: "'SF Mono', SFMono-Regular, Consolas, monospace", fontSize: "0.6875rem", wordBreak: "break-word" }
+    }, pattern);
+    headerRow.appendChild(msgEl);
+
+    card.appendChild(headerRow);
+
+    // Expandable file list (hidden by default)
+    const fileList = el("div", { style: { display: "none", marginTop: "0.5rem", borderTop: "1px solid var(--border)", paddingTop: "0.5rem" } });
+
+    for (const f of data.files) {
+      const fileEntry = el("div", { className: "detail-file" });
+      const fname = (f.file || "").replace("test/", "");
+
+      const fhdr = el("div", { className: "detail-file-header" });
+      const lineMatch = f.error.match(/L(\d+):(\d+)\s/);
+      const lineInfo = lineMatch ? ":" + lineMatch[1] : "";
+      fhdr.appendChild(el("span", { className: "detail-fname" }, fname + lineInfo));
+      fileEntry.appendChild(fhdr);
+
+      // Source context placeholder
+      fileEntry.appendChild(fetchSourceLines(f.file, f.error));
+      fileList.appendChild(fileEntry);
+    }
+    if (data.count > data.files.length) {
+      fileList.appendChild(el("div", { style: { color: "var(--text-muted)", fontSize: "0.625rem", padding: "4px 0" } },
+        "... and " + (data.count - data.files.length) + " more files"));
+    }
+
+    card.appendChild(fileList);
+
+    // Toggle expand on click
+    card.addEventListener("click", () => {
+      const isOpen = fileList.style.display !== "none";
+      fileList.style.display = isOpen ? "none" : "block";
+    });
+
+    patternList.appendChild(card);
+  }
+
+  if (sorted.length > 50) {
+    patternList.appendChild(el("div", { style: { color: "var(--text-muted)", textAlign: "center", padding: "0.5rem" } },
+      "... " + (sorted.length - 50) + " more patterns"));
+  }
+
+  container.appendChild(patternList);
 }
 
 function renderBenchmarks(data, container) {
