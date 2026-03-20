@@ -689,8 +689,12 @@ function renderConformance(data, container) {
 }
 
 async function renderErrorPatterns(container) {
+  const loadingEl = el("div", { style: { color: "var(--text-muted)", padding: "1rem" } }, "Loading error patterns...");
+  container.appendChild(loadingEl);
+  try {
   const map = await loadFileResults();
-  if (!map) return;
+  loadingEl.remove();
+  if (!map) { container.appendChild(el("div", { className: "no-data" }, "No file-level data for error patterns")); return; }
 
   // Group errors by normalized message
   const patterns = new Map(); // message -> { count, files: [{file, error, status}] }
@@ -791,6 +795,9 @@ async function renderErrorPatterns(container) {
   }
 
   container.appendChild(patternList);
+  } catch (e) {
+    loadingEl.textContent = "Error loading patterns: " + e.message;
+  }
 }
 
 function renderBenchmarks(data, container) {
