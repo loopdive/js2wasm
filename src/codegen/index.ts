@@ -327,6 +327,13 @@ export interface CodegenContext {
   wasiProcExitIdx: number;
   /** WASI: bump allocator pointer for linear memory string data */
   wasiBumpPtrGlobalIdx: number;
+  /** Map from struct name → field index of the hidden __descriptors i32 bitfield.
+   *  2 bits per user field: bit 2*i = writable, bit 2*i+1 = configurable.
+   *  Only present on structs that have user fields (not wrapper types). */
+  descriptorFieldIdx: Map<string, number>;
+  /** Type index for __PropDesc struct (-1 if not registered).
+   *  Fields: value (externref), writable (f64), enumerable (f64), configurable (f64) */
+  propDescTypeIdx: number;
 }
 
 /** Metadata for a function eligible for call-site inlining */
@@ -543,6 +550,8 @@ export function generateModule(
     wasiFdWriteIdx: -1,
     wasiProcExitIdx: -1,
     wasiBumpPtrGlobalIdx: -1,
+    descriptorFieldIdx: new Map(),
+    propDescTypeIdx: -1,
   };
 
   // Pre-register common vec types so they're available during early compilation (#647)
@@ -783,6 +792,8 @@ export function generateMultiModule(
     funcTypeCache: new Map(),
     pendingLateImportShift: null,
     protoGlobals: new Map(),
+    descriptorFieldIdx: new Map(),
+    propDescTypeIdx: -1,
   };
 
   // Register native string types if native strings enabled (fast mode, WASI, or explicit)
@@ -2407,6 +2418,31 @@ export function ensureAnyValueType(ctx: CodegenContext): void {
       { name: "externval", type: { kind: "externref" }, mutable: false },
     ],
   });
+}
+
+/**
+ * Lazily register the __PropDesc struct type for Object.getOwnPropertyDescriptor results.
+ * Fields: value (externref), writable (f64), enumerable (f64), configurable (f64).
+ * f64 is used for boolean fields so that `desc.writable === false` comparisons work
+ * (false = 0.0, true = 1.0).
+ */
+export function ensurePropDescType(ctx: CodegenContext): number {
+  if (ctx.propDescTypeIdx >= 0) return ctx.propDescTypeIdx;
+  const fields: FieldDef[] = [
+    { name: "value", type: { kind: "externref" }, mutable: false },
+    { name: "writable", type: { kind: "f64" }, mutable: false },
+    { name: "enumerable", type: { kind: "f64" }, mutable: false },
+    { name: "configurable", type: { kind: "f64" }, mutable: false },
+  ];
+  ctx.propDescTypeIdx = ctx.mod.types.length;
+  ctx.mod.types.push({
+    kind: "struct",
+    name: "__PropDesc",
+    fields,
+  } as StructTypeDef);
+  ctx.structMap.set("__PropDesc", ctx.propDescTypeIdx);
+  ctx.structFields.set("__PropDesc", fields);
+  return ctx.propDescTypeIdx;
 }
 
 /**
@@ -8136,6 +8172,12 @@ export function ensureStructForType(ctx: CodegenContext, tsType: ts.Type): void 
     }
   }
 
+  // Add hidden __descriptors i32 bitfield for property descriptor support.
+  // 2 bits per user field: bit 2*i = writable, bit 2*i+1 = configurable.
+  // Appended as the last field; default value of -1 (all bits set = all writable+configurable).
+  const descriptorFieldIdx = fields.length;
+  fields.push({ name: "__descriptors", type: { kind: "i32" }, mutable: true });
+
   const structName = `__anon_${ctx.anonTypeCounter++}`;
   const typeIdx = ctx.mod.types.length;
   ctx.mod.types.push({
@@ -8145,6 +8187,7 @@ export function ensureStructForType(ctx: CodegenContext, tsType: ts.Type): void 
   } as StructTypeDef);
   ctx.structMap.set(structName, typeIdx);
   ctx.structFields.set(structName, fields);
+  ctx.descriptorFieldIdx.set(structName, descriptorFieldIdx);
   ctx.anonStructHash.set(hashKey, structName);
   ctx.anonTypeMap.set(tsType, structName);
 
@@ -9068,6 +9111,15 @@ export function collectClassDeclaration(
   // struct type registered), since built-ins have no Wasm struct fields to inherit.
   if (!parentClassName || parentStructTypeIdx === undefined) {
     fields.unshift({ name: "__tag", type: { kind: "i32" }, mutable: false });
+    // Add __descriptors right after __tag for property descriptor support
+    fields.splice(1, 0, { name: "__descriptors", type: { kind: "i32" }, mutable: true });
+    ctx.descriptorFieldIdx.set(className, 1);
+  } else {
+    // Child class: inherit __descriptors from parent
+    const parentDescIdx = ctx.descriptorFieldIdx.get(parentClassName!);
+    if (parentDescIdx !== undefined) {
+      ctx.descriptorFieldIdx.set(className, parentDescIdx);
+    }
   }
 
   // Update the placeholder struct type with resolved fields
@@ -9577,6 +9629,9 @@ function collectEmptyObjectWidening(
               type: wp.type,
               mutable: true,
             }));
+            // Add hidden __descriptors field for property descriptor support
+            const descFieldIdx = fields.length;
+            fields.push({ name: "__descriptors", type: { kind: "i32" }, mutable: true });
             const structName = `__anon_${ctx.anonTypeCounter++}`;
             const typeIdx = ctx.mod.types.length;
             ctx.mod.types.push({
@@ -9586,6 +9641,7 @@ function collectEmptyObjectWidening(
             } as StructTypeDef);
             ctx.structMap.set(structName, typeIdx);
             ctx.structFields.set(structName, fields);
+            ctx.descriptorFieldIdx.set(structName, descFieldIdx);
             // Map variable name to struct name for later lookup
             ctx.widenedVarStructMap.set(varName, structName);
             // Also try to map TS types (may not match later due to type identity)
@@ -10401,6 +10457,10 @@ function collectInterface(
     }
   }
 
+  // Add hidden __descriptors field for property descriptor support
+  const descFieldIdx = fields.length;
+  fields.push({ name: "__descriptors", type: { kind: "i32" }, mutable: true });
+
   const typeIdx = ctx.mod.types.length;
   ctx.mod.types.push({
     kind: "struct",
@@ -10409,6 +10469,7 @@ function collectInterface(
   } as StructTypeDef);
   ctx.structMap.set(name, typeIdx);
   ctx.structFields.set(name, fields);
+  ctx.descriptorFieldIdx.set(name, descFieldIdx);
 }
 
 /**
@@ -10491,6 +10552,10 @@ function collectObjectType(
   }
 
   if (fields.length > 0) {
+    // Add hidden __descriptors field for property descriptor support
+    const descFieldIdx = fields.length;
+    fields.push({ name: "__descriptors", type: { kind: "i32" }, mutable: true });
+
     const typeIdx = ctx.mod.types.length;
     ctx.mod.types.push({
       kind: "struct",
@@ -10499,6 +10564,7 @@ function collectObjectType(
     } as StructTypeDef);
     ctx.structMap.set(name, typeIdx);
     ctx.structFields.set(name, fields);
+    ctx.descriptorFieldIdx.set(name, descFieldIdx);
   }
 }
 
@@ -10904,6 +10970,8 @@ function fixupStructNewArgCounts(ctx: CodegenContext): void {
           if (field.name === "__tag") {
             const tagValue = ctx.classTagMap.get(className) ?? 0;
             newInstrs.push({ op: "i32.const", value: tagValue });
+          } else if (field.name === "__descriptors") {
+            newInstrs.push({ op: "i32.const", value: -1 });
           } else {
             newInstrs.push(...defaultInstrForType(field.type));
           }
@@ -11040,6 +11108,9 @@ export function compileClassBodies(
         // Push the class-specific tag value for instanceof discrimination
         const tagValue = ctx.classTagMap.get(className) ?? 0;
         fctx.body.push({ op: "i32.const", value: tagValue });
+      } else if (field.name === "__descriptors") {
+        // All bits set = all fields writable + configurable by default
+        fctx.body.push({ op: "i32.const", value: -1 });
       } else if (field.type.kind === "f64") {
         fctx.body.push({ op: "f64.const", value: 0 });
       } else if (field.type.kind === "i32") {
@@ -11691,7 +11762,7 @@ function compileSuperCall(
   // the remaining parent fields in order.
   const assignableParentFields = parentFields
     .map((f, idx) => ({ field: f, fieldIdx: idx }))
-    .filter((e) => e.field.name !== "__tag");
+    .filter((e) => e.field.name !== "__tag" && e.field.name !== "__descriptors");
 
   // Check if any argument uses spread syntax: super(...args) (#382)
   const hasSuperSpread = callExpr.arguments.some((a) => ts.isSpreadElement(a));

@@ -16,7 +16,7 @@ import {
   unwrapPromiseType,
 } from "../checker/type-mapper.js";
 import type { Instr, ValType, WasmFunction, FieldDef, StructTypeDef } from "../ir/types.js";
-import { ensureI32Condition } from "./index.js";
+import { ensureI32Condition, ensurePropDescType } from "./index.js";
 import { compileStatement } from "./statements.js";
 import { ensureTimsortHelper } from "./timsort.js";
 import { coerceType as coerceTypeImpl, pushDefaultValue, defaultValueInstrs, coercionInstrs, emitGuardedRefCast } from "./type-coercion.js";
@@ -6409,14 +6409,46 @@ function compilePropertyAssignment(
 
   const structObjResult = compileExpression(ctx, fctx, target.expression);
   if (!structObjResult) { ctx.errors.push({ message: "Failed to compile struct field receiver", line: getLine(target), column: getCol(target) }); return null; }
+
+  // Save obj ref for descriptor check
+  const objTmpLocal = allocLocal(fctx, `__prop_assign_obj_${fctx.locals.length}`, structObjResult);
+  fctx.body.push({ op: "local.set", index: objTmpLocal });
+
   const valType = compileExpression(ctx, fctx, value, fields[fieldIdx]!.type);
   if (!valType) return null;
   // Save value so assignment expression returns the RHS
   const tmpVal = allocLocal(fctx, `__prop_assign_${fctx.locals.length}`, valType);
-  fctx.body.push({ op: "local.tee", index: tmpVal });
-  fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx });
-  fctx.body.push({ op: "local.get", index: tmpVal });
+  fctx.body.push({ op: "local.set", index: tmpVal });
 
+  // Check writable bit in __descriptors before performing struct.set.
+  // Bit 2*fieldIdx = writable. If set, perform the write; otherwise silently skip.
+  const descFldIdx = ctx.descriptorFieldIdx.get(typeName!);
+  if (descFldIdx !== undefined) {
+    // Read __descriptors, check writable bit
+    fctx.body.push({ op: "local.get", index: objTmpLocal });
+    fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx: descFldIdx });
+    fctx.body.push({ op: "i32.const", value: 1 << (2 * fieldIdx) });
+    fctx.body.push({ op: "i32.and" });
+    // if (writable bit is set) { struct.set } else { /* skip */ }
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" as const },
+      then: [
+        { op: "local.get", index: objTmpLocal } as Instr,
+        { op: "local.get", index: tmpVal } as Instr,
+        { op: "struct.set", typeIdx: structTypeIdx, fieldIdx } as Instr,
+      ],
+      else: [],
+    });
+  } else {
+    // No descriptor tracking — always write
+    fctx.body.push({ op: "local.get", index: objTmpLocal });
+    fctx.body.push({ op: "local.get", index: tmpVal });
+    fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx });
+  }
+
+  // Return the assigned value
+  fctx.body.push({ op: "local.get", index: tmpVal });
   return valType;
 }
 
@@ -7979,13 +8011,40 @@ function compilePropertyCompoundAssignment(
   const resultTmp = allocLocal(fctx, `__cmpd_res_${fctx.locals.length}`, { kind: "f64" });
   fctx.body.push({ op: "local.set", index: resultTmp });
 
-  // Store back: obj.prop = result (coerced to field type)
-  fctx.body.push({ op: "local.get", index: objTmp });
-  fctx.body.push({ op: "local.get", index: resultTmp });
-  if (fieldType.kind !== "f64") {
-    coerceType(ctx, fctx, { kind: "f64" }, fieldType);
+  // Store back: obj.prop = result (coerced to field type), respecting writable bit
+  const descFldIdx2 = ctx.descriptorFieldIdx.get(typeName!);
+  if (descFldIdx2 !== undefined) {
+    // Check writable bit before storing
+    fctx.body.push({ op: "local.get", index: objTmp });
+    fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx: descFldIdx2 });
+    fctx.body.push({ op: "i32.const", value: 1 << (2 * fieldIdx) });
+    fctx.body.push({ op: "i32.and" });
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" as const },
+      then: (() => {
+        const saved = fctx.body;
+        fctx.body = [];
+        fctx.body.push({ op: "local.get", index: objTmp });
+        fctx.body.push({ op: "local.get", index: resultTmp });
+        if (fieldType.kind !== "f64") {
+          coerceType(ctx, fctx, { kind: "f64" }, fieldType);
+        }
+        fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx });
+        const instrs = fctx.body;
+        fctx.body = saved;
+        return instrs;
+      })(),
+      else: [],
+    });
+  } else {
+    fctx.body.push({ op: "local.get", index: objTmp });
+    fctx.body.push({ op: "local.get", index: resultTmp });
+    if (fieldType.kind !== "f64") {
+      coerceType(ctx, fctx, { kind: "f64" }, fieldType);
+    }
+    fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx });
   }
-  fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx });
 
   // Return the result (as f64)
   fctx.body.push({ op: "local.get", index: resultTmp });
@@ -10729,7 +10788,11 @@ function compileCallExpression(
           if (structTypeIdx !== undefined && fields) {
             // Push default values for all fields, then struct.new
             for (const field of fields) {
-              pushDefaultValue(fctx, field.type);
+              if (field.name === "__descriptors") {
+                fctx.body.push({ op: "i32.const", value: -1 });
+              } else {
+                pushDefaultValue(fctx, field.type);
+              }
             }
             fctx.body.push({ op: "struct.new", typeIdx: structTypeIdx });
             return { kind: "ref", typeIdx: structTypeIdx };
@@ -10773,19 +10836,14 @@ function compileCallExpression(
       return objType;
     }
 
-    // Handle Object.getOwnPropertyDescriptor(obj, prop) — stub: return undefined (ref.null extern)
+    // Handle Object.getOwnPropertyDescriptor(obj, prop) — returns descriptor struct
     if (
       ts.isIdentifier(propAccess.expression) &&
       propAccess.expression.text === "Object" &&
       propAccess.name.text === "getOwnPropertyDescriptor" &&
       expr.arguments.length >= 2
     ) {
-      const objType = compileExpression(ctx, fctx, expr.arguments[0]!);
-      if (objType) fctx.body.push({ op: "drop" });
-      const propType = compileExpression(ctx, fctx, expr.arguments[1]!);
-      if (propType) fctx.body.push({ op: "drop" });
-      fctx.body.push({ op: "ref.null.extern" });
-      return { kind: "externref" };
+      return compileGetOwnPropertyDescriptor(ctx, fctx, expr);
     }
 
     // Handle Promise.all / Promise.race / Promise.resolve / Promise.reject — host-delegated static calls
@@ -18055,6 +18113,9 @@ function compileWidenedEmptyObject(
           : wp.type,
         mutable: true,
       }));
+      // Add hidden __descriptors field for property descriptor support
+      const descFieldIdx = fields.length;
+      fields.push({ name: "__descriptors", type: { kind: "i32" }, mutable: true });
       typeName = `__anon_${ctx.anonTypeCounter++}`;
       const typeIdx = ctx.mod.types.length;
       ctx.mod.types.push({
@@ -18064,6 +18125,7 @@ function compileWidenedEmptyObject(
       } as StructTypeDef);
       ctx.structMap.set(typeName, typeIdx);
       ctx.structFields.set(typeName, fields);
+      ctx.descriptorFieldIdx.set(typeName, descFieldIdx);
       ctx.anonTypeMap.set(type, typeName);
       const varType = ctx.checker.getTypeAtLocation(expr.parent.name);
       ctx.anonTypeMap.set(varType, typeName);
@@ -18077,6 +18139,11 @@ function compileWidenedEmptyObject(
 
   // Emit default values for each field
   for (const field of fields) {
+    if (field.name === "__descriptors") {
+      // All bits set = all fields writable + configurable by default
+      fctx.body.push({ op: "i32.const", value: -1 });
+      continue;
+    }
     switch (field.type.kind) {
       case "f64":
         fctx.body.push({ op: "f64.const", value: 0 });
@@ -18186,7 +18253,10 @@ function compileObjectLiteralForStruct(
       }
       if (!found) {
         // Default value
-        if (field.type.kind === "f64") {
+        if (field.name === "__descriptors") {
+          // All bits set = all fields writable + configurable by default
+          fctx.body.push({ op: "i32.const", value: -1 });
+        } else if (field.type.kind === "f64") {
           fctx.body.push({ op: "f64.const", value: 0 });
         } else if (field.type.kind === "externref") {
           fctx.body.push({ op: "ref.null.extern" });
@@ -18876,6 +18946,128 @@ function compileArrayConstructorCall(
   return { kind: "ref_null", typeIdx: vecTypeIdx };
 }
 
+// ── Object.getOwnPropertyDescriptor ───────────────────────────────────
+
+/**
+ * Compile Object.getOwnPropertyDescriptor(obj, prop).
+ *
+ * If the object is a known struct and the property name is a string literal,
+ * returns a __PropDesc struct { value, writable, enumerable, configurable }.
+ * Otherwise returns undefined (ref.null extern).
+ */
+function compileGetOwnPropertyDescriptor(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.CallExpression,
+): ValType | null {
+  const objArg = expr.arguments[0]!;
+  const propArg = expr.arguments[1]!;
+
+  // Resolve property name at compile time
+  let propName: string | undefined;
+  if (ts.isStringLiteral(propArg)) {
+    propName = propArg.text;
+  }
+
+  // Resolve struct type of the object
+  const objTsType = ctx.checker.getTypeAtLocation(objArg);
+  let structName = resolveStructName(ctx, objTsType)
+    || (ts.isIdentifier(objArg) ? ctx.widenedVarStructMap.get(objArg.text) : undefined);
+
+  // Fallback: resolve from local variable's Wasm type
+  if (!structName && ts.isIdentifier(objArg)) {
+    const localIdx = fctx.localMap.get(objArg.text);
+    if (localIdx !== undefined) {
+      const localType = localIdx < fctx.params.length
+        ? fctx.params[localIdx]!.type
+        : fctx.locals[localIdx - fctx.params.length]?.type;
+      if (localType && (localType.kind === "ref" || localType.kind === "ref_null")) {
+        for (const [name, idx] of ctx.structMap) {
+          if (idx === localType.typeIdx) {
+            structName = name;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  const structTypeIdx = structName ? ctx.structMap.get(structName) : undefined;
+  const fields = structName ? ctx.structFields.get(structName) : undefined;
+  const fieldIdx = (fields && propName) ? fields.findIndex(f => f.name === propName) : -1;
+  const descFieldIdxVal = structName ? ctx.descriptorFieldIdx.get(structName) : undefined;
+
+  // If we can resolve the struct and field, construct a __PropDesc struct
+  if (structTypeIdx !== undefined && fields && fieldIdx >= 0 && propName && descFieldIdxVal !== undefined) {
+    const propDescTypeIdx = ensurePropDescType(ctx);
+
+    // Compile obj and save to local
+    let objType = compileExpression(ctx, fctx, objArg);
+    if (!objType) return null;
+
+    // Cast externref to struct ref if needed
+    if (objType.kind === "externref") {
+      fctx.body.push({ op: "any.convert_extern" } as Instr);
+      fctx.body.push({ op: "ref.cast", typeIdx: structTypeIdx } as unknown as Instr);
+      objType = { kind: "ref", typeIdx: structTypeIdx };
+    }
+
+    const objLocal = allocLocal(fctx, `__gopd_obj_${fctx.locals.length}`, objType);
+    fctx.body.push({ op: "local.set", index: objLocal });
+
+    // Compile prop for side effects, then drop
+    const propType = compileExpression(ctx, fctx, propArg);
+    if (propType) fctx.body.push({ op: "drop" });
+
+    // Read the field value and box to externref
+    fctx.body.push({ op: "local.get", index: objLocal });
+    const fieldType = fields[fieldIdx]!.type;
+    fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+
+    // Coerce field value to externref for the descriptor's value field
+    if (fieldType.kind !== "externref") {
+      coerceType(ctx, fctx, fieldType, { kind: "externref" });
+    }
+
+    // Read __descriptors bitfield to determine writable and configurable
+    fctx.body.push({ op: "local.get", index: objLocal });
+    fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx: descFieldIdxVal });
+    const descLocal = allocLocal(fctx, `__gopd_desc_${fctx.locals.length}`, { kind: "i32" });
+    fctx.body.push({ op: "local.set", index: descLocal });
+
+    // writable = (descriptors >> (2*fieldIdx)) & 1 → convert to f64
+    fctx.body.push({ op: "local.get", index: descLocal });
+    fctx.body.push({ op: "i32.const", value: 2 * fieldIdx });
+    fctx.body.push({ op: "i32.shr_u" } as Instr);
+    fctx.body.push({ op: "i32.const", value: 1 });
+    fctx.body.push({ op: "i32.and" });
+    fctx.body.push({ op: "f64.convert_i32_u" } as Instr);
+
+    // enumerable = 1.0 (always enumerable for user-defined properties)
+    fctx.body.push({ op: "f64.const", value: 1 });
+
+    // configurable = (descriptors >> (2*fieldIdx + 1)) & 1 → convert to f64
+    fctx.body.push({ op: "local.get", index: descLocal });
+    fctx.body.push({ op: "i32.const", value: 2 * fieldIdx + 1 });
+    fctx.body.push({ op: "i32.shr_u" } as Instr);
+    fctx.body.push({ op: "i32.const", value: 1 });
+    fctx.body.push({ op: "i32.and" });
+    fctx.body.push({ op: "f64.convert_i32_u" } as Instr);
+
+    // struct.new $__PropDesc(value, writable, enumerable, configurable)
+    fctx.body.push({ op: "struct.new", typeIdx: propDescTypeIdx });
+    return { kind: "ref", typeIdx: propDescTypeIdx };
+  }
+
+  // Fallback: compile args for side effects, return undefined
+  const objType = compileExpression(ctx, fctx, objArg);
+  if (objType) fctx.body.push({ op: "drop" });
+  const propType = compileExpression(ctx, fctx, propArg);
+  if (propType) fctx.body.push({ op: "drop" });
+  fctx.body.push({ op: "ref.null.extern" });
+  return { kind: "externref" };
+}
+
 // ── Object.defineProperty ─────────────────────────────────────────────
 
 /**
@@ -18902,6 +19094,10 @@ function compileObjectDefineProperty(
   let valueExpr: ts.Expression | undefined;
   let getNode: ts.MethodDeclaration | ts.GetAccessorDeclaration | ts.FunctionExpression | ts.ArrowFunction | undefined;
   let setNode: ts.MethodDeclaration | ts.SetAccessorDeclaration | ts.FunctionExpression | ts.ArrowFunction | undefined;
+  // Property descriptor flags: undefined means "not specified" (preserve existing)
+  let writableLiteral: boolean | undefined;
+  let configurableLiteral: boolean | undefined;
+  let enumerableLiteral: boolean | undefined;
   if (ts.isObjectLiteralExpression(descArg)) {
     for (const prop of descArg.properties) {
       if (
@@ -18910,6 +19106,31 @@ function compileObjectDefineProperty(
         prop.name.text === "value"
       ) {
         valueExpr = prop.initializer;
+      }
+      // Parse writable, configurable, enumerable boolean literals
+      if (
+        ts.isPropertyAssignment(prop) &&
+        ts.isIdentifier(prop.name) &&
+        prop.name.text === "writable"
+      ) {
+        if (prop.initializer.kind === ts.SyntaxKind.TrueKeyword) writableLiteral = true;
+        else if (prop.initializer.kind === ts.SyntaxKind.FalseKeyword) writableLiteral = false;
+      }
+      if (
+        ts.isPropertyAssignment(prop) &&
+        ts.isIdentifier(prop.name) &&
+        prop.name.text === "configurable"
+      ) {
+        if (prop.initializer.kind === ts.SyntaxKind.TrueKeyword) configurableLiteral = true;
+        else if (prop.initializer.kind === ts.SyntaxKind.FalseKeyword) configurableLiteral = false;
+      }
+      if (
+        ts.isPropertyAssignment(prop) &&
+        ts.isIdentifier(prop.name) &&
+        prop.name.text === "enumerable"
+      ) {
+        if (prop.initializer.kind === ts.SyntaxKind.TrueKeyword) enumerableLiteral = true;
+        else if (prop.initializer.kind === ts.SyntaxKind.FalseKeyword) enumerableLiteral = false;
       }
       // get: function() { ... } or get: () => ...
       if (
@@ -19258,6 +19479,40 @@ function compileObjectDefineProperty(
     }
     fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx!, fieldIdx });
 
+    // Update __descriptors bitfield if writable or configurable was specified.
+    // Bit layout: for field at struct index i, bit 2*i = writable, bit 2*i+1 = configurable.
+    // Default is all-1s. When writable:false, clear bit 2*fieldIdx. When configurable:false, clear bit 2*fieldIdx+1.
+    const descFieldIdxVal = ctx.descriptorFieldIdx.get(structName!);
+    if (descFieldIdxVal !== undefined && (writableLiteral !== undefined || configurableLiteral !== undefined)) {
+      // Compute the bit mask to AND with __descriptors
+      let clearMask = 0xFFFFFFFF;
+      if (writableLiteral === false) {
+        clearMask &= ~(1 << (2 * fieldIdx));
+      }
+      if (configurableLiteral === false) {
+        clearMask &= ~(1 << (2 * fieldIdx + 1));
+      }
+      // Also set bits if explicitly true (no-op with default -1, but needed after reconfiguration)
+      let setBits = 0;
+      if (writableLiteral === true) {
+        setBits |= (1 << (2 * fieldIdx));
+      }
+      if (configurableLiteral === true) {
+        setBits |= (1 << (2 * fieldIdx + 1));
+      }
+      // Emit: obj.__descriptors = (obj.__descriptors & clearMask) | setBits
+      fctx.body.push({ op: "local.get", index: objLocal });
+      fctx.body.push({ op: "local.get", index: objLocal });
+      fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx!, fieldIdx: descFieldIdxVal });
+      fctx.body.push({ op: "i32.const", value: clearMask });
+      fctx.body.push({ op: "i32.and" });
+      if (setBits !== 0) {
+        fctx.body.push({ op: "i32.const", value: setBits });
+        fctx.body.push({ op: "i32.or" });
+      }
+      fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx!, fieldIdx: descFieldIdxVal });
+    }
+
     // Return obj
     fctx.body.push({ op: "local.get", index: objLocal });
     return objType;
@@ -19336,6 +19591,44 @@ function compileObjectDefineProperty(
 
     const descType = compileExpression(ctx, fctx, descArg);
     if (descType) fctx.body.push({ op: "drop" });
+
+    // Even without a value, update descriptor bits if writable/configurable was specified
+    // and we know the struct and field at compile time.
+    if (structName && structTypeIdx !== undefined && propName && fields && fieldIdx >= 0 &&
+        (writableLiteral !== undefined || configurableLiteral !== undefined)) {
+      const descFldIdx = ctx.descriptorFieldIdx.get(structName);
+      if (descFldIdx !== undefined) {
+        // Need the obj as struct ref for struct.get/set
+        let objRefLocal = objLocal;
+        let sTypeIdx = structTypeIdx;
+        // If obj is externref, cast to struct ref
+        if (objType.kind === "externref") {
+          fctx.body.push({ op: "local.get", index: objLocal });
+          fctx.body.push({ op: "any.convert_extern" } as Instr);
+          fctx.body.push({ op: "ref.cast", typeIdx: structTypeIdx } as unknown as Instr);
+          const castLocal = allocLocal(fctx, `__defprop_cast_${fctx.locals.length}`, { kind: "ref", typeIdx: structTypeIdx });
+          fctx.body.push({ op: "local.set", index: castLocal });
+          objRefLocal = castLocal;
+          sTypeIdx = structTypeIdx;
+        }
+        let clearMask = 0xFFFFFFFF;
+        if (writableLiteral === false) clearMask &= ~(1 << (2 * fieldIdx));
+        if (configurableLiteral === false) clearMask &= ~(1 << (2 * fieldIdx + 1));
+        let setBits = 0;
+        if (writableLiteral === true) setBits |= (1 << (2 * fieldIdx));
+        if (configurableLiteral === true) setBits |= (1 << (2 * fieldIdx + 1));
+        fctx.body.push({ op: "local.get", index: objRefLocal });
+        fctx.body.push({ op: "local.get", index: objRefLocal });
+        fctx.body.push({ op: "struct.get", typeIdx: sTypeIdx, fieldIdx: descFldIdx });
+        fctx.body.push({ op: "i32.const", value: clearMask });
+        fctx.body.push({ op: "i32.and" });
+        if (setBits !== 0) {
+          fctx.body.push({ op: "i32.const", value: setBits });
+          fctx.body.push({ op: "i32.or" });
+        }
+        fctx.body.push({ op: "struct.set", typeIdx: sTypeIdx, fieldIdx: descFldIdx });
+      }
+    }
 
     fctx.body.push({ op: "local.get", index: objLocal });
     return objType;
