@@ -14320,58 +14320,54 @@ function compileNewExpression(
   }
 
   // Handle `new Number(x)`, `new String(x)`, `new Boolean(x)` — wrapper constructors
-  // Return primitive values directly (not spec-compliant object wrappers, but unblocks most tests)
+  // Return externref so typeof returns "object" (wrapper semantics).
+  // Number/Boolean: box to externref via __box_number. String: already externref.
   if (ts.isIdentifier(expr.expression)) {
     const ctorName = expr.expression.text;
     if (ctorName === "Number" || ctorName === "String" || ctorName === "Boolean") {
       const args = expr.arguments ?? [];
 
       if (ctorName === "Number") {
-        // new Number(x) → just return x as f64
+        // new Number(x) → compile x as f64, box to externref
         if (args.length >= 1) {
           compileExpression(ctx, fctx, args[0]!, { kind: "f64" });
         } else {
           fctx.body.push({ op: "f64.const", value: 0 });
         }
-        return { kind: "f64" };
+        addUnionImports(ctx);
+        const boxIdx = ctx.funcMap.get("__box_number");
+        if (boxIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx: boxIdx });
+        }
+        return { kind: "externref" };
       }
 
       if (ctorName === "String") {
-        // new String(x) → just return x as string
-        const strType = ctx.nativeStrings ? nativeStringType(ctx) : { kind: "externref" } as ValType;
+        // new String(x) → compile x as externref string, return as externref
         if (args.length >= 1) {
-          compileExpression(ctx, fctx, args[0]!, strType);
+          compileExpression(ctx, fctx, args[0]!, { kind: "externref" });
         } else {
-          if (ctx.nativeStrings) {
-            ensureNativeStringHelpers(ctx);
-            const emptyIdx = ctx.funcMap.get("__str_empty");
-            if (emptyIdx !== undefined) {
-              fctx.body.push({ op: "call", funcIdx: emptyIdx });
-            } else {
-              fctx.body.push({ op: "i32.const", value: 0 });
-              fctx.body.push({ op: "i32.const", value: 0 });
-              fctx.body.push({ op: "i32.const", value: 0 } as unknown as Instr);
-              fctx.body.push({ op: "array.new_default", typeIdx: ctx.nativeStrDataTypeIdx } as unknown as Instr);
-              fctx.body.push({ op: "struct.new", typeIdx: ctx.nativeStrTypeIdx });
-            }
-          } else {
-            const emptyStrResult = compileStringLiteral(ctx, fctx, "");
-            if (!emptyStrResult) {
-              fctx.body.push({ op: "ref.null.extern" });
-            }
+          const emptyStrResult = compileStringLiteral(ctx, fctx, "");
+          if (!emptyStrResult) {
+            fctx.body.push({ op: "ref.null.extern" });
           }
         }
-        return strType;
+        return { kind: "externref" };
       }
 
       if (ctorName === "Boolean") {
-        // new Boolean(x) → just return x as i32 boolean
+        // new Boolean(x) → compile x as f64, box to externref
         if (args.length >= 1) {
-          compileExpression(ctx, fctx, args[0]!, { kind: "i32" });
+          compileExpression(ctx, fctx, args[0]!, { kind: "f64" });
         } else {
-          fctx.body.push({ op: "i32.const", value: 0 });
+          fctx.body.push({ op: "f64.const", value: 0 });
         }
-        return { kind: "i32" };
+        addUnionImports(ctx);
+        const boxIdx = ctx.funcMap.get("__box_number");
+        if (boxIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx: boxIdx });
+        }
+        return { kind: "externref" };
       }
     }
   }
