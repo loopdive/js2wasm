@@ -309,28 +309,45 @@ function escapeHtml(str) {
 
 // Source file cache and line fetcher
 const _srcCache = new Map();
+const _srcQueue = [];
+let _srcFetching = 0;
+const MAX_CONCURRENT_FETCHES = 4;
+
 function fetchSourceLines(filePath, errText, afterEl) {
-  // Extract L<line>:<col> from error
   const lineMatch = errText.match(/L(\d+):(\d+)\s/);
   if (!lineMatch) return;
   const lineNo = parseInt(lineMatch[1], 10);
-  // Normalize path: ensure it starts with test/
   const normalized = filePath.startsWith("test/") ? filePath : "test/" + filePath;
-  // Build absolute URL from window.location
   const base = window.location.pathname.replace(/\/benchmarks\/.*$/, "");
   const url = base + "/test262/" + normalized;
 
   const cached = _srcCache.get(normalized);
   if (cached !== undefined) { if (cached) renderSrcContext(cached, lineNo, afterEl); return; }
-  fetch(url).then(r => {
-    if (!r.ok) throw new Error(r.status);
-    return r.text();
-  }).then(t => {
-    _srcCache.set(normalized, t);
-    renderSrcContext(t, lineNo, afterEl);
-  }).catch(() => {
-    _srcCache.set(normalized, null);
-  });
+  // Queue the fetch to avoid overwhelming the server
+  _srcQueue.push({ normalized, url, lineNo, afterEl });
+  _drainSrcQueue();
+}
+
+function _drainSrcQueue() {
+  while (_srcFetching < MAX_CONCURRENT_FETCHES && _srcQueue.length > 0) {
+    const job = _srcQueue.shift();
+    // Check cache again (may have been fetched by another job)
+    const cached = _srcCache.get(job.normalized);
+    if (cached !== undefined) { if (cached) renderSrcContext(cached, job.lineNo, job.afterEl); continue; }
+    _srcFetching++;
+    fetch(job.url).then(r => {
+      if (!r.ok) throw new Error(r.status);
+      return r.text();
+    }).then(t => {
+      _srcCache.set(job.normalized, t);
+      renderSrcContext(t, job.lineNo, job.afterEl);
+    }).catch(() => {
+      _srcCache.set(job.normalized, null);
+    }).finally(() => {
+      _srcFetching--;
+      _drainSrcQueue();
+    });
+  }
 }
 function renderSrcContext(src, lineNo, afterEl) {
   if (!src || lineNo < 1) return;
