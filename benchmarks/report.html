@@ -310,26 +310,33 @@ function escapeHtml(str) {
 // Source file cache and line fetcher
 const _srcCache = new Map();
 function fetchSourceLines(filePath, errText, afterEl) {
-  // Extract all L<line>:<col> references from the error
-  const lineMatch = errText.match(/^L(\d+):(\d+)\s/);
+  // Extract L<line>:<col> from error (may appear after semicolons too)
+  const lineMatch = errText.match(/L(\d+):(\d+)\s/);
   if (!lineMatch) return;
   const lineNo = parseInt(lineMatch[1], 10);
-  // Try multiple path variants
+  // Normalize: filePath may be "test/language/..." or "language/..."
+  const normalized = filePath.startsWith("test/") ? filePath : "test/" + filePath;
+  const withoutTest = normalized.replace(/^test\//, "");
+  // Try multiple path variants for different server roots
   const paths = [
-    "../test262/" + filePath,
-    "../test262/test/" + filePath,
-    "../../test262/" + filePath,
+    "../test262/" + normalized,
+    "../test262/test/" + withoutTest,
+    "/test262/" + normalized,
+    "../../test262/" + normalized,
   ];
-  const cached = _srcCache.get(filePath);
-  if (cached !== undefined) { renderSrcContext(cached, lineNo, afterEl); return; }
+  const cached = _srcCache.get(normalized);
+  if (cached !== undefined) { if (cached) renderSrcContext(cached, lineNo, afterEl); return; }
   (async () => {
     for (const p of paths) {
       try {
         const r = await fetch(p);
-        if (r.ok) { const t = await r.text(); _srcCache.set(filePath, t); renderSrcContext(t, lineNo, afterEl); return; }
+        if (r.ok) { const t = await r.text(); _srcCache.set(normalized, t); renderSrcContext(t, lineNo, afterEl); return; }
       } catch {}
     }
-    _srcCache.set(filePath, null);
+    _srcCache.set(normalized, null);
+    // Show a small hint that source couldn't be loaded
+    const hint = el("div", { style: { color: "var(--text-muted)", fontSize: "0.5625rem", paddingLeft: "1.25rem", fontStyle: "italic" } }, "(source not available — serve from workspace root)");
+    afterEl.after(hint);
   })();
 }
 function renderSrcContext(src, lineNo, afterEl) {
