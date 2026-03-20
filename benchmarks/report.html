@@ -506,6 +506,15 @@ function renderConformance(data, container) {
     skip: makeCard("Skipped", s.skip.toLocaleString(), "var(--text-muted)", "unsupported features")
   };
 
+  // Stale results indicator
+  if (s.stale > 0) {
+    const staleCard = makeCard("Stale", s.stale.toLocaleString(), "var(--text-muted)",
+      "from previous runs");
+    staleCard.style.borderColor = "var(--error)";
+    staleCard.style.borderStyle = "dashed";
+    summary.appendChild(staleCard);
+  }
+
   let activeStatusFilter = null;
 
   function applyFilters() {
