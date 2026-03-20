@@ -884,10 +884,6 @@ if (failures.length > 0) {
   }
 }
 
-// Run completed successfully — promote run files to main paths (atomic for same-device)
-try { copyFileSync(RUN_JSONL, JSONL_PATH); } catch {}
-try { copyFileSync(RUN_REPORT, REPORT_PATH); } catch {}
-
 // Save result cache for future runs
 saveCache();
 console.log(`Saved ${resultCache.size} entries to result cache`);
@@ -895,6 +891,92 @@ console.log(`Saved ${resultCache.size} entries to result cache`);
 // Mark run as complete
 writeFileSync(META_PATH, JSON.stringify({ gitHead: getGitHead(), status: "complete", finishedAt: new Date().toISOString() }));
 
-console.log(`\nResults: ${JSONL_PATH}`);
-console.log(`Report:  ${REPORT_PATH}`);
-console.log(`Run:     ${RUN_JSONL}`);
+// --- Build merged report: current run + backfill from previous runs ---
+// Each run only stores its own results. The merged report fills gaps from
+// previous runs (marked as stale with the timestamp they were run).
+{
+  const totalExpected = allJobs.length + processed; // processed = skipped-from-cache early exits
+  const runTimestamp = RUN_TIMESTAMP.replace(/T/, " ").replace(/-/g, ":").slice(0, 19);
+
+  // Collect current run results keyed by file
+  const merged = new Map<string, any>(); // file -> result entry
+  const currentRunLines = readFileSync(RUN_JSONL, "utf-8").split("\n").filter(l => l.trim());
+  for (const line of currentRunLines) {
+    try {
+      const r = JSON.parse(line);
+      r.runTimestamp = runTimestamp;
+      r.stale = false;
+      merged.set(r.file, r);
+    } catch {}
+  }
+  console.log(`Current run: ${merged.size} results`);
+
+  // Backfill from previous runs (newest first) until we have all tests
+  const runFiles = readdirSync(RUNS_DIR)
+    .filter(f => f.endsWith("-results.jsonl") && f !== basename(RUN_JSONL))
+    .sort()
+    .reverse(); // newest first
+
+  let staleCount = 0;
+  for (const runFile of runFiles) {
+    if (merged.size >= totalExpected) break;
+    const runPath = join(RUNS_DIR, runFile);
+    const runTs = runFile.replace(/-results\.jsonl$/, "").replace(/T/, " ").replace(/-/g, ":").slice(0, 19);
+    try {
+      const lines = readFileSync(runPath, "utf-8").split("\n");
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const r = JSON.parse(line);
+        if (!merged.has(r.file)) {
+          r.runTimestamp = runTs;
+          r.stale = true;
+          merged.set(r.file, r);
+          staleCount++;
+        }
+      }
+    } catch {}
+  }
+  console.log(`Backfilled ${staleCount} stale results from ${runFiles.length} previous runs`);
+  console.log(`Total: ${merged.size} results (${merged.size - staleCount} fresh, ${staleCount} stale)`);
+
+  // Write merged JSONL
+  const mergedLines: string[] = [];
+  const catCounts: Record<string, { pass: number; fail: number; compile_error: number; skip: number; total: number; stale: number }> = {};
+  let totalStale = 0;
+  const summary = { total: 0, pass: 0, fail: 0, compile_error: 0, skip: 0, compilable: 0, stale: 0 };
+
+  for (const [, r] of merged) {
+    mergedLines.push(JSON.stringify(r));
+    const s = r.status as string;
+    if (s === "pass" || s === "fail" || s === "compile_error" || s === "skip") {
+      summary[s as keyof typeof summary]++;
+      summary.total++;
+      if (r.stale) { totalStale++; summary.stale++; }
+      const cat = r.category || "unknown";
+      if (!catCounts[cat]) catCounts[cat] = { pass: 0, fail: 0, compile_error: 0, skip: 0, total: 0, stale: 0 };
+      catCounts[cat][s as "pass" | "fail" | "compile_error" | "skip"]++;
+      catCounts[cat].total++;
+      if (r.stale) catCounts[cat].stale++;
+    }
+  }
+  summary.compilable = summary.pass + summary.fail;
+
+  writeFileSync(JSONL_PATH, mergedLines.join("\n") + "\n");
+
+  // Write merged report
+  const report = {
+    timestamp: runTimestamp,
+    summary,
+    categories: Object.entries(catCounts)
+      .map(([name, c]) => ({ name, ...c }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+  };
+  writeFileSync(REPORT_PATH, JSON.stringify(report, null, 2));
+
+  console.log(`\nResults: ${JSONL_PATH}`);
+  console.log(`Report:  ${REPORT_PATH}`);
+  console.log(`Run:     ${RUN_JSONL}`);
+  if (totalStale > 0) {
+    console.log(`\n⚠ ${totalStale} results are stale (from previous runs)`);
+  }
+}
