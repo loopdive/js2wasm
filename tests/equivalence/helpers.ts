@@ -116,6 +116,21 @@ export function buildImports(result: CompileResult): WebAssembly.Imports {
     string_padStart: (s: string, targetLength: number, padString?: any) => s.padStart(targetLength, padString),
     string_padEnd: (s: string, targetLength: number, padString?: any) => s.padEnd(targetLength, padString),
     string_split: (s: string, separator: any) => s.split(separator),
+    // RegExp extern class imports
+    RegExp_new: (pattern: any, flags: any) => new RegExp(pattern, flags ?? undefined),
+    RegExp_exec: (re: RegExp, str: string) => re.exec(str),
+    RegExp_test: (re: RegExp, str: string) => re.test(str) ? 1 : 0,
+    RegExp_get_lastIndex: (re: RegExp) => re.lastIndex,
+    RegExp_set_lastIndex: (re: RegExp, v: number) => { re.lastIndex = v; },
+    RegExp_get_source: (re: RegExp) => re.source,
+    RegExp_get_flags: (re: RegExp) => re.flags,
+    RegExp_get_global: (re: RegExp) => re.global ? 1 : 0,
+    RegExp_get_ignoreCase: (re: RegExp) => re.ignoreCase ? 1 : 0,
+    RegExp_get_multiline: (re: RegExp) => re.multiline ? 1 : 0,
+    RegExp_get_dotAll: (re: RegExp) => re.dotAll ? 1 : 0,
+    RegExp_get_sticky: (re: RegExp) => re.sticky ? 1 : 0,
+    RegExp_get_unicode: (re: RegExp) => re.unicode ? 1 : 0,
+    RegExp_toString: (re: RegExp) => re.toString(),
   };
   return {
     env,

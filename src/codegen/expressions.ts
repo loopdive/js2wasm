@@ -17166,16 +17166,56 @@ function compilePropertyAccess(
   }
   } // close if (typeName && !ctx.classSet.has(typeName))
 
-  // For externref objects (any, Object, unknown), try compiling the object
-  // and return a default value based on the inferred property type.
+  // For externref objects (e.g. results of host calls like RegExp.exec()),
+  // use __extern_get(obj, key) to dynamically read the property at runtime.
+  {
+    const objWasmType = resolveWasmType(ctx, objType);
+    const isExternObj = objWasmType.kind === "externref" || (
+      ts.isIdentifier(expr.expression) && (() => {
+        const localIdx = fctx.localMap.get(expr.expression.text);
+        if (localIdx === undefined) return false;
+        const localType = localIdx < fctx.params.length
+          ? fctx.params[localIdx]!.type
+          : fctx.locals[localIdx - fctx.params.length]?.type;
+        return localType?.kind === "externref";
+      })()
+    );
+    if (isExternObj) {
+      const getIdx = ensureLateImport(ctx, "__extern_get", [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+      let unboxIdx: number | undefined;
+      if (accessWasm.kind === "f64" || accessWasm.kind === "i32") {
+        unboxIdx = ensureLateImport(ctx, "__unbox_number", [{ kind: "externref" }], [{ kind: "f64" }]);
+      }
+      flushLateImportShifts(ctx, fctx);
+      if (getIdx !== undefined) {
+        compileExpression(ctx, fctx, expr.expression);
+        addStringConstantGlobal(ctx, propName);
+        compileStringLiteral(ctx, fctx, propName);
+        fctx.body.push({ op: "call", funcIdx: getIdx });
+        if (accessWasm.kind === "f64") {
+          if (unboxIdx !== undefined) {
+            fctx.body.push({ op: "call", funcIdx: unboxIdx });
+          }
+          return { kind: "f64" };
+        }
+        if (accessWasm.kind === "i32") {
+          if (unboxIdx !== undefined) {
+            fctx.body.push({ op: "call", funcIdx: unboxIdx });
+          }
+          fctx.body.push({ op: "i32.trunc_sat_f64_s" } as unknown as Instr);
+          return { kind: "i32" };
+        }
+        return { kind: "externref" };
+      }
+    }
+  }
+
+  // Fallback: emit default values for unresolvable property accesses.
   if (accessWasm.kind === "f64" || accessWasm.kind === "i32") {
-    // Property expected to be numeric — emit 0 as default
-    // (The object expression is not needed on the stack for a constant)
     fctx.body.push({ op: accessWasm.kind === "f64" ? "f64.const" : "i32.const", value: 0 });
     return accessWasm;
   }
   if (accessWasm.kind === "externref") {
-    // Emit ref.null extern as a safe default for unresolvable externref properties
     fctx.body.push({ op: "ref.null.extern" } as unknown as Instr);
     return { kind: "externref" };
   }
