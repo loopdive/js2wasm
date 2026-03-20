@@ -2,6 +2,7 @@ import ts from "typescript";
 import type { MultiTypedAST, TypedAST } from "../checker/index.js";
 import { eliminateDeadImports } from "./dead-elimination.js";
 import { peepholeOptimize } from "./peephole.js";
+import { stackBalance } from "./stack-balance.js";
 import {
   isBigIntType,
   isBooleanType,
@@ -645,6 +646,9 @@ export function generateModule(
   // Peephole optimization: remove redundant ref.as_non_null after ref.cast, etc.
   peepholeOptimize(mod);
 
+  // Stack-balancing fixup: ensure all branches in if/try/block have matching stack states
+  stackBalance(mod);
+
   return { module: mod, errors: ctx.errors };
 }
 
@@ -873,6 +877,9 @@ export function generateMultiModule(
 
   // Peephole optimization: remove redundant ref.as_non_null after ref.cast, etc.
   peepholeOptimize(mod);
+
+  // Stack-balancing fixup: ensure all branches in if/try/block have matching stack states
+  stackBalance(mod);
 
   return { module: mod, errors: ctx.errors };
 }
