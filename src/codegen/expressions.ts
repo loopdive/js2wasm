@@ -520,13 +520,12 @@ export function compileExpression(
       coerceType(ctx, fctx, result, expectedType);
       return expectedType;
     }
-    // Also coerce when kinds match but ref typeIdx differs and involves AnyValue boxing/unboxing
+    // Also coerce when kinds match but ref typeIdx differs
     if (expectedType && (result.kind === "ref" || result.kind === "ref_null") &&
         (expectedType.kind === "ref" || expectedType.kind === "ref_null")) {
       const resultIdx = (result as { typeIdx: number }).typeIdx;
       const expectedIdx = (expectedType as { typeIdx: number }).typeIdx;
-      if (resultIdx !== expectedIdx &&
-          (isAnyValue(result, ctx) || isAnyValue(expectedType, ctx))) {
+      if (resultIdx !== expectedIdx) {
         coerceType(ctx, fctx, result, expectedType);
         return expectedType;
       }
@@ -666,9 +665,10 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
         fctx.body.push({ op: "ref.cast", typeIdx: toIdx });
         return;
       }
-      // Different struct types, neither is AnyValue — cannot safely cast
-      // between unrelated Wasm GC struct types. The caller should ensure
-      // the local type matches, or handle this via extern.convert_any boxing.
+      // Different struct types, neither is AnyValue — try ref.cast.
+      // This handles cases where one struct is a subtype of the other
+      // (e.g. closure struct vs its wrapper type) and prevents Wasm validation errors.
+      fctx.body.push({ op: "ref.cast", typeIdx: toIdx });
       return;
     }
     return;
@@ -685,7 +685,12 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
       }
     }
     // ref $X is a subtype of ref_null $X for same typeIdx — no coercion needed.
-    // For different typeIdx, cannot safely cast between unrelated struct types.
+    // For different typeIdx, cast to target type (handles subtypes/related structs).
+    const fromRefIdx = (from as { typeIdx: number }).typeIdx;
+    const toRefNullIdx = (to as { typeIdx: number }).typeIdx;
+    if (fromRefIdx !== toRefNullIdx) {
+      fctx.body.push({ op: "ref.cast", typeIdx: toRefNullIdx });
+    }
     return;
   }
   if (from.kind === "ref_null" && to.kind === "ref") {
@@ -697,7 +702,12 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
       fctx.body.push({ op: "ref.cast", typeIdx: toIdx });
       return;
     }
-    // ref_null $X → ref $X: assert non-null at runtime (traps if null)
+    // ref_null $X → ref $Y: cast and assert non-null at runtime
+    const fromNullIdx = (from as { typeIdx: number }).typeIdx;
+    const toNonNullIdx = (to as { typeIdx: number }).typeIdx;
+    if (fromNullIdx !== toNonNullIdx) {
+      fctx.body.push({ op: "ref.cast", typeIdx: toNonNullIdx });
+    }
     fctx.body.push({ op: "ref.as_non_null" } as Instr);
     return;
   }
