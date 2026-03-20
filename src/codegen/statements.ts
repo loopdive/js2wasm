@@ -544,12 +544,8 @@ function compileVariableStatement(
       } else {
         const resultType = compileExpression(ctx, fctx, decl.initializer, wasmType);
         stackType = resultType ?? wasmType;
-        // Coerce if the expression produced a type that doesn't match the local
-        if (resultType && !valTypesMatch(resultType, wasmType)) {
-          coerceType(ctx, fctx, resultType, wasmType);
-          stackType = wasmType; // after coercion, stack is wasmType
-        }
       }
+      // Let emitCoercedLocalSet handle all type coercion/widening
       emitCoercedLocalSet(ctx, fctx, localIdx, stackType);
     }
   }
@@ -1629,9 +1625,6 @@ function compileForStatement(
         }
         if (decl.initializer) {
           const forInitType = compileExpression(ctx, fctx, decl.initializer, wasmType);
-          if (forInitType && !valTypesMatch(forInitType, wasmType)) {
-            coerceType(ctx, fctx, forInitType, wasmType);
-          }
           emitCoercedLocalSet(ctx, fctx, localIdx, forInitType ?? wasmType);
         }
       }

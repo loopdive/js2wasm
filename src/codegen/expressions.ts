@@ -326,23 +326,70 @@ export function emitCoercedLocalSet(
   localIdx: number,
   stackType: ValType,
 ): void {
-  const localType = getLocalType(fctx, localIdx);
-  if (localType && !valTypesMatch(stackType, localType)) {
-    const sameRefTypeIdx =
-      (stackType.kind === "ref" || stackType.kind === "ref_null") &&
-      (localType.kind === "ref" || localType.kind === "ref_null") &&
-      (stackType as { typeIdx: number }).typeIdx === (localType as { typeIdx: number }).typeIdx;
-    if (sameRefTypeIdx && stackType.kind === "ref_null" && localType.kind === "ref") {
-      // ref_null -> ref: widen the local to ref_null instead of asserting non-null
-      // This avoids trapping on null values while fixing Wasm validation
-      widenLocalToNullable(fctx, localIdx);
-    } else if (sameRefTypeIdx) {
-      // ref -> ref_null: subtype, no coercion needed
-    } else {
-      coerceType(ctx, fctx, stackType, localType);
-    }
-  }
+  coerceForLocal(ctx, fctx, localIdx, stackType);
   fctx.body.push({ op: "local.set", index: localIdx });
+}
+
+/**
+ * Emit a local.tee with automatic type coercion.
+ * Returns the effective type left on the stack after the tee.
+ */
+export function emitCoercedLocalTee(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  localIdx: number,
+  stackType: ValType,
+): ValType {
+  coerceForLocal(ctx, fctx, localIdx, stackType);
+  fctx.body.push({ op: "local.tee", index: localIdx });
+  return getLocalType(fctx, localIdx) ?? stackType;
+}
+
+/**
+ * Coerce value on stack to match the local's declared type.
+ * If coerceType cannot handle the conversion (e.g. incompatible ref types),
+ * widens the local to externref and emits extern.convert_any.
+ */
+function coerceForLocal(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  localIdx: number,
+  stackType: ValType,
+): void {
+  const localType = getLocalType(fctx, localIdx);
+  if (!localType || valTypesMatch(stackType, localType)) return;
+
+  const stackIsRef = stackType.kind === "ref" || stackType.kind === "ref_null";
+  const localIsRef = localType.kind === "ref" || localType.kind === "ref_null";
+
+  if (stackIsRef && localIsRef) {
+    const stackIdx = (stackType as { typeIdx: number }).typeIdx;
+    const localIdx2 = (localType as { typeIdx: number }).typeIdx;
+    const sameTypeIdx = stackIdx === localIdx2;
+
+    if (sameTypeIdx && stackType.kind === "ref_null" && localType.kind === "ref") {
+      // ref_null -> ref (same typeIdx): widen the local to ref_null
+      widenLocalToNullable(fctx, localIdx);
+      return;
+    }
+    if (sameTypeIdx) {
+      // ref -> ref_null (same typeIdx): subtype, no coercion needed
+      return;
+    }
+    // Different typeIdx: check if either is AnyValue (coerceType handles those)
+    if (isAnyValue(stackType, ctx) || isAnyValue(localType, ctx)) {
+      coerceType(ctx, fctx, stackType, localType);
+      return;
+    }
+    // Different typeIdx, neither AnyValue — widen local to externref
+    widenLocalToExternref(fctx, localIdx);
+    fctx.body.push({ op: "extern.convert_any" });
+    return;
+  }
+
+  // For ref -> externref, externref -> ref, primitive mismatches, etc:
+  // coerceType handles these cases
+  coerceType(ctx, fctx, stackType, localType);
 }
 
 /**
@@ -361,6 +408,22 @@ function widenLocalToNullable(fctx: FunctionContext, localIdx: number): void {
     if (local && local.type.kind === "ref") {
       local.type = { kind: "ref_null", typeIdx: (local.type as { typeIdx: number }).typeIdx };
     }
+  }
+}
+
+/**
+ * Widen a local's declared type to externref.
+ * Used when incompatible ref types are assigned to the same local —
+ * the local must be wide enough to hold any GC ref value.
+ */
+function widenLocalToExternref(fctx: FunctionContext, localIdx: number): void {
+  const externrefType: ValType = { kind: "externref" };
+  if (localIdx < fctx.params.length) {
+    const param = fctx.params[localIdx];
+    if (param) param.type = externrefType;
+  } else {
+    const local = fctx.locals[localIdx - fctx.params.length];
+    if (local) local.type = externrefType;
   }
 }
 
@@ -390,9 +453,17 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
         fctx.body.push({ op: "ref.cast", typeIdx: toIdx });
         return;
       }
-      // Different struct types, neither is AnyValue — cannot safely cast
-      // between unrelated Wasm GC struct types. The caller should ensure
-      // the local type matches, or handle this via extern.convert_any boxing.
+      // Different struct types, neither is AnyValue — round-trip through
+      // externref to allow Wasm validation. At runtime this uses ref.cast
+      // which will trap if the types are truly incompatible.
+      fctx.body.push({ op: "extern.convert_any" });
+      fctx.body.push({ op: "any.convert_extern" });
+      if (to.kind === "ref") {
+        fctx.body.push({ op: "ref.cast", typeIdx: toIdx });
+      } else {
+        // ref_null target: use nullable cast
+        fctx.body.push({ op: "ref.cast_null", typeIdx: toIdx });
+      }
       return;
     }
     return;
@@ -409,7 +480,14 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
       }
     }
     // ref $X is a subtype of ref_null $X for same typeIdx — no coercion needed.
-    // For different typeIdx, cannot safely cast between unrelated struct types.
+    const fromIdx = (from as { typeIdx: number }).typeIdx;
+    const toIdx = (to as { typeIdx: number }).typeIdx;
+    if (fromIdx !== toIdx) {
+      // Different typeIdx: round-trip through externref + nullable cast
+      fctx.body.push({ op: "extern.convert_any" });
+      fctx.body.push({ op: "any.convert_extern" });
+      fctx.body.push({ op: "ref.cast_null", typeIdx: toIdx });
+    }
     return;
   }
   if (from.kind === "ref_null" && to.kind === "ref") {
@@ -421,8 +499,16 @@ export function coerceType(ctx: CodegenContext, fctx: FunctionContext, from: Val
       fctx.body.push({ op: "ref.cast", typeIdx: toIdx });
       return;
     }
-    // ref_null $X → ref $X: assert non-null at runtime (traps if null)
-    fctx.body.push({ op: "ref.as_non_null" } as Instr);
+    // ref_null $X → ref $Y: round-trip if different typeIdx, then assert non-null
+    const fromIdx = (from as { typeIdx: number }).typeIdx;
+    const toIdx = (to as { typeIdx: number }).typeIdx;
+    if (fromIdx !== toIdx) {
+      fctx.body.push({ op: "extern.convert_any" });
+      fctx.body.push({ op: "any.convert_extern" });
+      fctx.body.push({ op: "ref.cast", typeIdx: toIdx });
+    } else {
+      fctx.body.push({ op: "ref.as_non_null" } as Instr);
+    }
     return;
   }
 
@@ -5084,15 +5170,9 @@ function compileAssignment(
         : fctx.locals[localIdx - fctx.params.length]?.type;
 
       // Safety coercion: if the expression produced a type that doesn't match
-      // the local's declared type (e.g. compileExpression didn't have expectedType
-      // or coercion was incomplete), coerce before local.tee
-      if (effectiveLocalType && !valTypesMatch(resultType, effectiveLocalType)) {
-        coerceType(ctx, fctx, resultType, effectiveLocalType);
-        fctx.body.push({ op: "local.tee", index: localIdx });
-        return effectiveLocalType;
-      }
-      fctx.body.push({ op: "local.tee", index: localIdx });
-      return resultType;
+      // the local's declared type, use emitCoercedLocalTee to coerce + widen as needed
+      const teeType = emitCoercedLocalTee(ctx, fctx, localIdx, resultType);
+      return teeType;
     }
     // Check captured globals
     const capturedIdx = ctx.capturedGlobals.get(name);
@@ -9309,6 +9389,51 @@ function compilePostfixIncrementElement(
 
 // ── Call expressions ─────────────────────────────────────────────────
 
+/**
+ * Compile a call argument expression and coerce the result to the expected
+ * parameter type if there is a mismatch. This prevents Wasm validation errors
+ * like "call[N] expected type X, found Y".
+ *
+ * compileExpression already coerces when expectedType is provided and kinds
+ * differ (its epilogue at ~line 506). This helper catches the cases that
+ * slip through: ref types with different typeIdx (same kind), and situations
+ * where compileExpression returns a result that differs from expectedType
+ * despite the hint.
+ */
+function compileCallArg(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  argExpr: ts.Expression,
+  expectedType: ValType | undefined,
+): ValType | null {
+  const result = compileExpression(ctx, fctx, argExpr, expectedType);
+  if (!expectedType) return result;
+  if (!result || result === VOID_RESULT) {
+    // Expression produced no value -- push a default for the expected type
+    pushDefaultValue(fctx, expectedType);
+    return expectedType;
+  }
+  // If compileExpression already returned the exact expected type, no further coercion needed
+  if (result.kind === expectedType.kind) {
+    // For ref types, check typeIdx mismatch (e.g., different struct types)
+    if ((result.kind === "ref" || result.kind === "ref_null") &&
+        (expectedType.kind === "ref" || expectedType.kind === "ref_null")) {
+      const fromIdx = (result as { typeIdx: number }).typeIdx;
+      const toIdx = (expectedType as { typeIdx: number }).typeIdx;
+      if (fromIdx !== toIdx) {
+        coerceType(ctx, fctx, result, expectedType);
+        return expectedType;
+      }
+    }
+    return result;
+  }
+  // Different kinds -- compileExpression's epilogue should have handled this,
+  // but in some edge cases it may not (e.g., inner expression returns early
+  // before the epilogue coercion). Apply coercion as a safety net.
+  coerceType(ctx, fctx, result, expectedType);
+  return expectedType;
+}
+
 /** Look up parameter types for a function by its index */
 function getFuncParamTypes(ctx: CodegenContext, funcIdx: number): ValType[] | undefined {
   if (funcIdx < ctx.numImportFuncs) {
@@ -9365,7 +9490,7 @@ function compileClosureCall(
 
   // Push call arguments
   for (let i = 0; i < expr.arguments.length; i++) {
-    compileExpression(ctx, fctx, expr.arguments[i]!, info.paramTypes[i]);
+    compileCallArg(ctx, fctx, expr.arguments[i]!, info.paramTypes[i]);
   }
 
   // Pad missing arguments with defaults (arity mismatch)
@@ -9524,7 +9649,7 @@ function compileCallExpression(
               // Compile non-rest arguments
               for (let i = 0; i < callRestInfo.restIndex; i++) {
                 if (i < remainingArgs.length) {
-                  compileExpression(ctx, fctx, remainingArgs[i]!, paramTypes?.[i]);
+                  compileCallArg(ctx, fctx, remainingArgs[i]!, paramTypes?.[i]);
                 } else {
                   pushDefaultValue(fctx, paramTypes?.[i] ?? { kind: "f64" });
                 }
@@ -9533,7 +9658,7 @@ function compileCallExpression(
               const restArgCount = Math.max(0, remainingArgs.length - callRestInfo.restIndex);
               fctx.body.push({ op: "i32.const", value: restArgCount });
               for (let i = callRestInfo.restIndex; i < remainingArgs.length; i++) {
-                compileExpression(ctx, fctx, remainingArgs[i]!, callRestInfo.elemType);
+                compileCallArg(ctx, fctx, remainingArgs[i]!, callRestInfo.elemType);
               }
               fctx.body.push({ op: "array.new_fixed", typeIdx: callRestInfo.arrayTypeIdx, length: restArgCount });
               fctx.body.push({ op: "struct.new", typeIdx: callRestInfo.vecTypeIdx });
@@ -9541,7 +9666,7 @@ function compileCallExpression(
               // Regular function call
               const paramTypes = getFuncParamTypes(ctx, funcIdx!);
               for (let i = 0; i < remainingArgs.length; i++) {
-                compileExpression(ctx, fctx, remainingArgs[i]!, paramTypes?.[i]);
+                compileCallArg(ctx, fctx, remainingArgs[i]!, paramTypes?.[i]);
               }
 
               // Supply defaults for missing optional params
@@ -9598,7 +9723,7 @@ function compileCallExpression(
                 const paramTypes = getFuncParamTypes(ctx, funcIdx!);
                 for (let i = 0; i < applyRestInfo.restIndex; i++) {
                   if (i < elements.length) {
-                    compileExpression(ctx, fctx, elements[i]!, paramTypes?.[i]);
+                    compileCallArg(ctx, fctx, elements[i]!, paramTypes?.[i]);
                   } else {
                     pushDefaultValue(fctx, paramTypes?.[i] ?? { kind: "f64" });
                   }
@@ -9606,14 +9731,14 @@ function compileCallExpression(
                 const restArgCount = Math.max(0, elements.length - applyRestInfo.restIndex);
                 fctx.body.push({ op: "i32.const", value: restArgCount });
                 for (let i = applyRestInfo.restIndex; i < elements.length; i++) {
-                  compileExpression(ctx, fctx, elements[i]!, applyRestInfo.elemType);
+                  compileCallArg(ctx, fctx, elements[i]!, applyRestInfo.elemType);
                 }
                 fctx.body.push({ op: "array.new_fixed", typeIdx: applyRestInfo.arrayTypeIdx, length: restArgCount });
                 fctx.body.push({ op: "struct.new", typeIdx: applyRestInfo.vecTypeIdx });
               } else {
                 const paramTypes = getFuncParamTypes(ctx, funcIdx!);
                 for (let i = 0; i < elements.length; i++) {
-                  compileExpression(ctx, fctx, elements[i]!, paramTypes?.[i]);
+                  compileCallArg(ctx, fctx, elements[i]!, paramTypes?.[i]);
                 }
                 const optInfo = ctx.funcOptionalParams.get(funcName);
                 if (optInfo) {
@@ -9718,14 +9843,14 @@ function compileCallExpression(
               // .call(thisArg, arg1, arg2, ...) — remaining args are positional
               const paramTypes = getFuncParamTypes(ctx, funcIdx);
               for (let i = 1; i < expr.arguments.length; i++) {
-                compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+                compileCallArg(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
               }
             } else if (expr.arguments.length >= 2 && ts.isArrayLiteralExpression(expr.arguments[1]!)) {
               // .apply(thisArg, [arg1, arg2, ...]) — spread array literal
               const elements = (expr.arguments[1] as ts.ArrayLiteralExpression).elements;
               const paramTypes = getFuncParamTypes(ctx, funcIdx);
               for (let i = 0; i < elements.length; i++) {
-                compileExpression(ctx, fctx, elements[i]!, paramTypes?.[i + 1]); // param 0 = self
+                compileCallArg(ctx, fctx, elements[i]!, paramTypes?.[i + 1]); // param 0 = self
               }
             }
 
@@ -10172,7 +10297,7 @@ function compileCallExpression(
           // No self parameter for static methods
           const paramTypes = getFuncParamTypes(ctx, funcIdx);
           for (let i = 0; i < expr.arguments.length; i++) {
-            compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+            compileCallArg(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
           }
           // Pad missing arguments with defaults
           if (paramTypes) {
@@ -10306,7 +10431,7 @@ function compileCallExpression(
           fctx.body.push({ op: "ref.as_non_null" } as Instr);
           const paramTypes = getFuncParamTypes(ctx, funcIdx);
           for (let i = 0; i < expr.arguments.length; i++) {
-            compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
+            compileCallArg(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
           }
           if (paramTypes) {
             for (let i = expr.arguments.length + 1; i < paramTypes.length; i++) {
@@ -10343,7 +10468,7 @@ function compileCallExpression(
         // Non-nullable receiver: emit call directly
         const paramTypes = getFuncParamTypes(ctx, funcIdx);
         for (let i = 0; i < expr.arguments.length; i++) {
-          compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
+          compileCallArg(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
         }
         // Pad missing arguments with defaults (skip self param at index 0)
         if (paramTypes) {
@@ -10393,7 +10518,7 @@ function compileCallExpression(
             fctx.body.push({ op: "ref.as_non_null" } as Instr);
             const paramTypes = getFuncParamTypes(ctx, funcIdx);
             for (let i = 0; i < expr.arguments.length; i++) {
-              compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
+              compileCallArg(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
             }
             if (paramTypes) {
               for (let i = expr.arguments.length + 1; i < paramTypes.length; i++) {
@@ -10429,7 +10554,7 @@ function compileCallExpression(
           // Non-nullable receiver
           const paramTypes = getFuncParamTypes(ctx, funcIdx);
           for (let i = 0; i < expr.arguments.length; i++) {
-            compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
+            compileCallArg(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
           }
           // Pad missing arguments with defaults (skip self param at index 0)
           if (paramTypes) {
@@ -10989,7 +11114,7 @@ function compileCallExpression(
 
           // Push call arguments with type coercion
           for (let i = 0; i < expr.arguments.length; i++) {
-            compileExpression(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
+            compileCallArg(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
           }
 
           // Pad missing arguments with defaults
@@ -11029,7 +11154,7 @@ function compileCallExpression(
       const argLocals: number[] = [];
       for (let i = 0; i < inlineInfo.paramCount; i++) {
         if (i < expr.arguments.length) {
-          compileExpression(ctx, fctx, expr.arguments[i]!, inlineInfo.paramTypes[i]);
+          compileCallArg(ctx, fctx, expr.arguments[i]!, inlineInfo.paramTypes[i]);
         } else {
           pushDefaultValue(fctx, inlineInfo.paramTypes[i]!);
         }
@@ -11103,7 +11228,7 @@ function compileCallExpression(
       // Compile non-rest arguments
       for (let i = 0; i < restInfo.restIndex; i++) {
         if (i < expr.arguments.length) {
-          compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+          compileCallArg(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
         } else {
           pushDefaultValue(fctx, paramTypes?.[i] ?? { kind: "f64" });
         }
@@ -11114,7 +11239,7 @@ function compileCallExpression(
       fctx.body.push({ op: "i32.const", value: restArgCount });
       // Push elements, then array.new_fixed
       for (let i = restInfo.restIndex; i < expr.arguments.length; i++) {
-        compileExpression(ctx, fctx, expr.arguments[i]!, restInfo.elemType);
+        compileCallArg(ctx, fctx, expr.arguments[i]!, restInfo.elemType);
       }
       fctx.body.push({ op: "array.new_fixed", typeIdx: restInfo.arrayTypeIdx, length: restArgCount });
       // Wrap in vec struct: { length, data }
@@ -11131,7 +11256,7 @@ function compileCallExpression(
       for (let i = 0; i < expr.arguments.length; i++) {
         if (i < paramCount) {
           // Offset into paramTypes by captureCount since captures are the leading params
-          compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + captureCount]);
+          compileCallArg(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + captureCount]);
         } else {
           // Extra argument beyond function's parameter count — evaluate for
           // side effects (JS semantics) and discard the result
@@ -11366,7 +11491,7 @@ function compileCallExpression(
           // Push remaining arguments with type hints
           const paramTypes = getFuncParamTypes(ctx, funcIdx);
           for (let i = 0; i < expr.arguments.length; i++) {
-            compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
+            compileCallArg(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
           }
           // Pad missing arguments with defaults (skip self param at index 0)
           if (paramTypes) {
@@ -11410,7 +11535,7 @@ function compileCallExpression(
             fctx.body.push({ op: "ref.as_non_null" } as Instr);
             const paramTypes = getFuncParamTypes(ctx, funcIdx);
             for (let i = 0; i < expr.arguments.length; i++) {
-              compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
+              compileCallArg(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
             }
             if (paramTypes) {
               for (let i = expr.arguments.length + 1; i < paramTypes.length; i++) {
@@ -11445,7 +11570,7 @@ function compileCallExpression(
           // Non-nullable receiver
           const paramTypes = getFuncParamTypes(ctx, funcIdx);
           for (let i = 0; i < expr.arguments.length; i++) {
-            compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
+            compileCallArg(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
           }
           if (paramTypes) {
             for (let i = expr.arguments.length + 1; i < paramTypes.length; i++) {
@@ -11473,7 +11598,7 @@ function compileCallExpression(
           if (funcIdx !== undefined) {
             const paramTypes = getFuncParamTypes(ctx, funcIdx);
             for (let i = 0; i < expr.arguments.length; i++) {
-              compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+              compileCallArg(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
             }
             if (paramTypes) {
               for (let i = expr.arguments.length; i < paramTypes.length; i++) {
@@ -11590,7 +11715,7 @@ function compileCallExpression(
           // Regular function call
           const paramTypes = getFuncParamTypes(ctx, funcIdx!);
           for (let i = 0; i < allArgs.length; i++) {
-            compileExpression(ctx, fctx, allArgs[i]!, paramTypes?.[i]);
+            compileCallArg(ctx, fctx, allArgs[i]!, paramTypes?.[i]);
           }
 
           // Supply defaults for missing optional params
@@ -11656,7 +11781,7 @@ function compileCallExpression(
 
             const paramTypes = getFuncParamTypes(ctx, funcIdx);
             for (let i = 0; i < allArgs.length; i++) {
-              compileExpression(ctx, fctx, allArgs[i]!, paramTypes?.[i + 1]);
+              compileCallArg(ctx, fctx, allArgs[i]!, paramTypes?.[i + 1]);
             }
 
             const finalCallIdx = ctx.funcMap.get(fullName) ?? funcIdx;
@@ -11747,7 +11872,7 @@ function compileCallExpression(
 
         // Push call arguments
         for (let i = 0; i < expr.arguments.length; i++) {
-          compileExpression(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
+          compileCallArg(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
         }
 
         // Pad missing arguments with defaults
@@ -11844,7 +11969,7 @@ function compileCallExpression(
 
         // Push call arguments
         for (let i = 0; i < expr.arguments.length; i++) {
-          compileExpression(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
+          compileCallArg(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
         }
 
         // Pad missing arguments
@@ -11939,7 +12064,7 @@ function compileConditionalCallee(
       if (funcIdx !== undefined) {
         const paramTypes = getFuncParamTypes(ctx, funcIdx);
         for (let i = 0; i < expr.arguments.length; i++) {
-          compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+          compileCallArg(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
         }
         // Pad missing arguments with defaults
         if (paramTypes) {
@@ -12279,7 +12404,7 @@ function compileIIFE(
   const paramCount = paramTypes.length;
   for (let i = 0; i < expr.arguments.length; i++) {
     if (i < paramCount) {
-      compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes[i]);
+      compileCallArg(ctx, fctx, expr.arguments[i]!, paramTypes[i]);
     } else {
       // Extra argument — evaluate for side effects, drop result
       const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
@@ -12368,7 +12493,7 @@ function compileSuperMethodCall(
   // Push remaining arguments with type hints
   const paramTypes = getFuncParamTypes(ctx, funcIdx);
   for (let i = 0; i < expr.arguments.length; i++) {
-    compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
+    compileCallArg(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
   }
   // Re-lookup funcIdx: argument compilation may trigger addUnionImports
   const resolvedName = `${ancestor}_${methodName}`;
@@ -12437,7 +12562,7 @@ function compileSuperElementMethodCall(
   // Push remaining arguments with type hints
   const paramTypes = getFuncParamTypes(ctx, funcIdx);
   for (let i = 0; i < expr.arguments.length; i++) {
-    compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
+    compileCallArg(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
   }
   // Re-lookup funcIdx: argument compilation may trigger addUnionImports
   const resolvedName = `${ancestor}_${methodName}`;
@@ -13131,7 +13256,7 @@ function compileNewExpression(
         const paramTypes = getFuncParamTypes(ctx, funcIdx);
         const args = expr.arguments ?? [];
         for (let i = 0; i < args.length; i++) {
-          compileExpression(ctx, fctx, args[i]!, paramTypes?.[i]);
+          compileCallArg(ctx, fctx, args[i]!, paramTypes?.[i]);
         }
         if (paramTypes) {
           for (let i = args.length; i < paramTypes.length; i++) {
@@ -13325,7 +13450,7 @@ function compileNewExpression(
       const flatCtorArgs = flattenCallArgs(args);
       if (flatCtorArgs) {
         for (let i = 0; i < flatCtorArgs.length && i < paramTypes.length; i++) {
-          compileExpression(ctx, fctx, flatCtorArgs[i]!, paramTypes[i]);
+          compileCallArg(ctx, fctx, flatCtorArgs[i]!, paramTypes[i]);
         }
         // Pad missing args
         for (let i = flatCtorArgs.length; i < paramTypes.length; i++) {
@@ -13339,7 +13464,7 @@ function compileNewExpression(
       // Calling a rest-param constructor: pack trailing args into a GC array
       for (let i = 0; i < ctorRestInfo.restIndex; i++) {
         if (i < args.length) {
-          compileExpression(ctx, fctx, args[i]!, paramTypes?.[i]);
+          compileCallArg(ctx, fctx, args[i]!, paramTypes?.[i]);
         } else {
           pushDefaultValue(fctx, paramTypes?.[i] ?? { kind: "f64" });
         }
@@ -13348,13 +13473,13 @@ function compileNewExpression(
       const restArgCount = Math.max(0, args.length - ctorRestInfo.restIndex);
       fctx.body.push({ op: "i32.const", value: restArgCount });
       for (let i = ctorRestInfo.restIndex; i < args.length; i++) {
-        compileExpression(ctx, fctx, args[i]!, ctorRestInfo.elemType);
+        compileCallArg(ctx, fctx, args[i]!, ctorRestInfo.elemType);
       }
       fctx.body.push({ op: "array.new_fixed", typeIdx: ctorRestInfo.arrayTypeIdx, length: restArgCount });
       fctx.body.push({ op: "struct.new", typeIdx: ctorRestInfo.vecTypeIdx });
     } else {
       for (let i = 0; i < args.length; i++) {
-        compileExpression(ctx, fctx, args[i]!, paramTypes?.[i]);
+        compileCallArg(ctx, fctx, args[i]!, paramTypes?.[i]);
       }
       // Pad missing constructor arguments with defaults (arity mismatch)
       if (paramTypes) {
@@ -13678,7 +13803,7 @@ function compileSpreadCallArgs(
     let argIdx = 0;
     for (let i = 0; i < restInfo.restIndex; i++) {
       if (argIdx < expr.arguments.length) {
-        compileExpression(ctx, fctx, expr.arguments[argIdx]!, paramTypes?.[i]);
+        compileCallArg(ctx, fctx, expr.arguments[argIdx]!, paramTypes?.[i]);
         argIdx++;
       }
     }
@@ -13691,7 +13816,7 @@ function compileSpreadCallArgs(
       } else {
         // Single non-spread arg as rest — wrap in vec struct { 1, [val] }
         fctx.body.push({ op: "i32.const", value: 1 });
-        compileExpression(ctx, fctx, restArg, restInfo.elemType);
+        compileCallArg(ctx, fctx, restArg, restInfo.elemType);
         fctx.body.push({ op: "array.new_fixed", typeIdx: restInfo.arrayTypeIdx, length: 1 });
         fctx.body.push({ op: "struct.new", typeIdx: restInfo.vecTypeIdx });
       }
@@ -13739,7 +13864,7 @@ function compileSpreadCallArgs(
         paramIdx++;
       }
     } else {
-      compileExpression(ctx, fctx, arg, paramTypes[paramIdx]);
+      compileCallArg(ctx, fctx, arg, paramTypes[paramIdx]);
       paramIdx++;
     }
   }
@@ -14493,7 +14618,7 @@ function compileOptionalCallExpression(
         }
         const paramTypes = getFuncParamTypes(ctx, funcIdx);
         for (let i = 0; i < expr.arguments.length; i++) {
-          compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
+          compileCallArg(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
         }
         if (paramTypes) {
           for (let i = expr.arguments.length + 1; i < paramTypes.length; i++) {
@@ -14520,7 +14645,7 @@ function compileOptionalCallExpression(
         }
         const paramTypes = getFuncParamTypes(ctx, funcIdx);
         for (let i = 0; i < expr.arguments.length; i++) {
-          compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
+          compileCallArg(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
         }
         if (paramTypes) {
           for (let i = expr.arguments.length + 1; i < paramTypes.length; i++) {
@@ -14721,7 +14846,7 @@ function compileOptionalDirectCall(
 
     // Push call arguments with type coercion
     for (let i = 0; i < expr.arguments.length; i++) {
-      compileExpression(ctx, fctx, expr.arguments[i]!, closureInfo.paramTypes[i]);
+      compileCallArg(ctx, fctx, expr.arguments[i]!, closureInfo.paramTypes[i]);
     }
 
     // Pad missing arguments with defaults (arity mismatch)
@@ -14742,7 +14867,7 @@ function compileOptionalDirectCall(
     // Direct function call
     const paramTypes = getFuncParamTypes(ctx, funcIdx);
     for (let i = 0; i < expr.arguments.length; i++) {
-      compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+      compileCallArg(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
     }
     if (paramTypes) {
       for (let i = expr.arguments.length; i < paramTypes.length; i++) {
@@ -17984,7 +18109,7 @@ function compileTaggedTemplateExpression(
         const restIdx = restInfo.restIndex - captureCount; // restIndex in user params (0-based after captures)
         // Push positional substitutions before the rest param
         for (let i = 0; i < Math.min(substitutions.length, restIdx - 1); i++) {
-          compileExpression(ctx, fctx, substitutions[i]!, paramTypes?.[i + 1 + captureCount]);
+          compileCallArg(ctx, fctx, substitutions[i]!, paramTypes?.[i + 1 + captureCount]);
         }
         // Pack remaining substitutions into a vec for the rest param
         const restStart = Math.max(0, restIdx - 1);
@@ -17992,7 +18117,7 @@ function compileTaggedTemplateExpression(
         const restArgCount = restSubs.length;
         fctx.body.push({ op: "i32.const", value: restArgCount });
         for (const sub of restSubs) {
-          compileExpression(ctx, fctx, sub, restInfo.elemType);
+          compileCallArg(ctx, fctx, sub, restInfo.elemType);
         }
         fctx.body.push({ op: "array.new_fixed", typeIdx: restInfo.arrayTypeIdx, length: restArgCount });
         fctx.body.push({ op: "struct.new", typeIdx: restInfo.vecTypeIdx });
@@ -18002,7 +18127,7 @@ function compileTaggedTemplateExpression(
         const captureCount = nestedCaptures ? nestedCaptures.length : 0;
         const maxSubs = paramTypes ? Math.min(substitutions.length, paramTypes.length - 1 - captureCount) : substitutions.length;
         for (let i = 0; i < maxSubs; i++) {
-          compileExpression(ctx, fctx, substitutions[i]!, paramTypes?.[i + 1 + captureCount]);
+          compileCallArg(ctx, fctx, substitutions[i]!, paramTypes?.[i + 1 + captureCount]);
         }
 
         // Supply defaults for missing optional params

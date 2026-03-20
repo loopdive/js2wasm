@@ -718,6 +718,17 @@ function encodeInstrWithReloc(
       enc.i32(instr.typeIdx);
       break;
     }
+    case "ref.cast_null": {
+      enc.byte(GC.prefix);
+      enc.byte(GC.ref_cast_null);
+      relocs.push({
+        type: RELOC.R_WASM_TYPE_INDEX_LEB,
+        offset: enc.position,
+        symbolIndex: instr.typeIdx,
+      });
+      enc.i32(instr.typeIdx);
+      break;
+    }
     case "any.convert_extern":
       enc.byte(GC.prefix);
       enc.byte(GC.any_convert_extern);

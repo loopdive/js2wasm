@@ -212,6 +212,7 @@ type InstrBase =
   | { op: "ref.is_null" }
   | { op: "ref.as_non_null" }
   | { op: "ref.cast"; typeIdx: number }
+  | { op: "ref.cast_null"; typeIdx: number }
   | { op: "ref.test"; typeIdx: number }
   | { op: "ref.eq" }
   | { op: "ref.func"; funcIdx: number }
