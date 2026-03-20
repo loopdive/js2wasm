@@ -1,6 +1,7 @@
 import ts from "typescript";
 import { isStringType, isVoidType } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";
+import { emitGuardedRefCast } from "./type-coercion.js";
 import {
   coerceType,
   collectReferencedIdentifiers,
@@ -564,10 +565,10 @@ function compileVariableStatement(
           }
 
           if (matchedClosureInfo) {
-            // Convert externref back to closure struct ref
+            // Convert externref back to closure struct ref (guarded to avoid illegal cast)
             fctx.body.push({ op: "any.convert_extern" } as Instr);
-            fctx.body.push({ op: "ref.cast", typeIdx: matchedClosureInfo.structTypeIdx } as Instr);
-            const castType: ValType = { kind: "ref", typeIdx: matchedClosureInfo.structTypeIdx };
+            emitGuardedRefCast(fctx, matchedClosureInfo.structTypeIdx);
+            const castType: ValType = { kind: "ref_null", typeIdx: matchedClosureInfo.structTypeIdx };
             if (localIdx >= fctx.params.length) {
               const localSlot = fctx.locals[localIdx - fctx.params.length];
               if (localSlot) localSlot.type = castType;

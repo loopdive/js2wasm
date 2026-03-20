@@ -7,7 +7,36 @@
 
 import type { CodegenContext, FunctionContext, ClosureInfo } from "./index.js";
 import { allocLocal, allocTempLocal, releaseTempLocal, addUnionImports, addStringConstantGlobal, isAnyValue, ensureAnyHelpers } from "./index.js";
-import type { Instr, ValType } from "../ir/types.js";
+import type { Instr, ValType, StructTypeDef, ArrayTypeDef } from "../ir/types.js";
+
+/**
+ * Emit a guarded ref.cast: use ref.test to check if the cast will succeed.
+ * If it fails, push ref.null instead of trapping with "illegal cast".
+ * The value on the stack should be an anyref (from any.convert_extern).
+ * The result is always ref_null $typeIdx (nullable) to accommodate the null fallback.
+ *
+ * Usage: push externref, call any.convert_extern, then call this function.
+ */
+export function emitGuardedRefCast(
+  fctx: FunctionContext,
+  typeIdx: number,
+): void {
+  const tmpLocal = allocTempLocal(fctx, { kind: "anyref" } as ValType);
+  fctx.body.push({ op: "local.tee", index: tmpLocal } as unknown as Instr);
+  fctx.body.push({ op: "ref.test", typeIdx } as unknown as Instr);
+  fctx.body.push({
+    op: "if",
+    blockType: { kind: "val", type: { kind: "ref_null", typeIdx } as ValType },
+    then: [
+      { op: "local.get", index: tmpLocal },
+      { op: "ref.cast_null", typeIdx },
+    ],
+    else: [
+      { op: "ref.null", typeIdx },
+    ],
+  } as unknown as Instr);
+  releaseTempLocal(fctx, tmpLocal);
+}
 
 /**
  * Callback type for compiling a string literal onto the Wasm stack.
@@ -19,6 +48,311 @@ export type CompileStringLiteralFn = (
   fctx: FunctionContext,
   value: string,
 ) => void;
+
+/**
+ * Check if a type index corresponds to a vec struct (__vec_*) and return its
+ * array type index and element type if so.
+ */
+function getVecInfo(
+  ctx: CodegenContext,
+  typeIdx: number,
+): { arrTypeIdx: number; elemType: ValType } | null {
+  const typeDef = ctx.mod.types[typeIdx];
+  if (!typeDef || typeDef.kind !== "struct") return null;
+  const sd = typeDef as StructTypeDef;
+  if (!sd.name?.startsWith("__vec_")) return null;
+  // Vec struct: field 0 = $length (i32), field 1 = $data (ref $arr)
+  if (sd.fields.length < 2) return null;
+  const dataField = sd.fields[1]!;
+  if (dataField.type.kind !== "ref" && dataField.type.kind !== "ref_null") return null;
+  const arrTypeIdx = (dataField.type as { typeIdx: number }).typeIdx;
+  const arrDef = ctx.mod.types[arrTypeIdx];
+  if (!arrDef || arrDef.kind !== "array") return null;
+  return { arrTypeIdx, elemType: (arrDef as ArrayTypeDef).element };
+}
+
+/**
+ * Check if a type index corresponds to a tuple struct (__tuple_*) and return
+ * its field types if so.
+ */
+function getTupleFields(
+  ctx: CodegenContext,
+  typeIdx: number,
+): ValType[] | null {
+  const typeDef = ctx.mod.types[typeIdx];
+  if (!typeDef || typeDef.kind !== "struct") return null;
+  const sd = typeDef as StructTypeDef;
+  if (!sd.name?.startsWith("__tuple_")) return null;
+  return sd.fields.map(f => f.type);
+}
+
+/**
+ * Emit instructions to convert a vec struct on the stack to a tuple struct,
+ * or between two different vec types (e.g. vec_externref -> vec_f64).
+ * Returns true if conversion was emitted, false if the types don't match.
+ *
+ * Vec layout:  struct { $length: i32, $data: ref $arr }
+ * Tuple layout: struct { $_0: T0, $_1: T1, ... }
+ */
+/**
+ * Check if the source and destination are both named struct types (__anon_*)
+ * where the destination fields are a subset of the source fields. If so, emit
+ * field-by-field extraction to construct the narrower struct.
+ */
+function getStructNarrowInfo(
+  ctx: CodegenContext,
+  fromTypeIdx: number,
+  toTypeIdx: number,
+): { srcFields: { name: string; type: ValType; fieldIdx: number }[]; dstFields: { name: string; type: ValType }[] } | null {
+  const fromDef = ctx.mod.types[fromTypeIdx];
+  const toDef = ctx.mod.types[toTypeIdx];
+  if (!fromDef || fromDef.kind !== "struct") return null;
+  if (!toDef || toDef.kind !== "struct") return null;
+  const srcStruct = fromDef as StructTypeDef;
+  const dstStruct = toDef as StructTypeDef;
+
+  // Build field name -> index map for source struct
+  const srcFieldMap = new Map<string, { type: ValType; fieldIdx: number }>();
+  for (let i = 0; i < srcStruct.fields.length; i++) {
+    srcFieldMap.set(srcStruct.fields[i]!.name, { type: srcStruct.fields[i]!.type, fieldIdx: i });
+  }
+
+  // Check if all destination fields exist in the source
+  const srcFields: { name: string; type: ValType; fieldIdx: number }[] = [];
+  for (const field of dstStruct.fields) {
+    const srcField = srcFieldMap.get(field.name);
+    if (!srcField) return null; // field not found in source
+    srcFields.push({ name: field.name, type: srcField.type, fieldIdx: srcField.fieldIdx });
+  }
+
+  return {
+    srcFields,
+    dstFields: dstStruct.fields.map(f => ({ name: f.name, type: f.type })),
+  };
+}
+
+function emitSafeStructConversion(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  fromTypeIdx: number,
+  toTypeIdx: number,
+): boolean {
+  // Case 1: vec -> tuple
+  const srcVec = getVecInfo(ctx, fromTypeIdx);
+  if (srcVec) {
+    const tupleFields = getTupleFields(ctx, toTypeIdx);
+    if (tupleFields) {
+      return emitVecToTupleBody(ctx, fctx, fromTypeIdx, toTypeIdx, srcVec, tupleFields);
+    }
+
+    // Case 2: vec -> vec (different element types)
+    const dstVec = getVecInfo(ctx, toTypeIdx);
+    if (dstVec && srcVec.elemType.kind !== dstVec.elemType.kind) {
+      return emitVecToVecBody(ctx, fctx, fromTypeIdx, toTypeIdx, srcVec, dstVec);
+    }
+    // Also handle vec -> vec where both are ref but different typeIdx
+    if (dstVec && (srcVec.elemType.kind === "ref" || srcVec.elemType.kind === "ref_null") &&
+        (dstVec.elemType.kind === "ref" || dstVec.elemType.kind === "ref_null")) {
+      const srcRefIdx = (srcVec.elemType as { typeIdx: number }).typeIdx;
+      const dstRefIdx = (dstVec.elemType as { typeIdx: number }).typeIdx;
+      if (srcRefIdx !== dstRefIdx) {
+        return emitVecToVecBody(ctx, fctx, fromTypeIdx, toTypeIdx, srcVec, dstVec);
+      }
+    }
+  }
+
+  // Case 3: struct narrowing — destination fields are a subset of source fields
+  const narrowInfo = getStructNarrowInfo(ctx, fromTypeIdx, toTypeIdx);
+  if (narrowInfo) {
+    return emitStructNarrowBody(ctx, fctx, fromTypeIdx, toTypeIdx, narrowInfo);
+  }
+
+  return false;
+}
+
+/** Emit vec -> tuple conversion body */
+function emitVecToTupleBody(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  fromTypeIdx: number,
+  toTypeIdx: number,
+  srcVec: { arrTypeIdx: number; elemType: ValType },
+  tupleFields: ValType[],
+): boolean {
+  const { arrTypeIdx, elemType } = srcVec;
+
+  // Save the vec ref to a temp local (must be ref_null since locals need a default value)
+  const vecRefType: ValType = { kind: "ref_null", typeIdx: fromTypeIdx };
+  const tmpLocal = allocTempLocal(fctx, vecRefType);
+  fctx.body.push({ op: "local.set", index: tmpLocal });
+
+  // For each tuple field, read from the vec's data array and coerce
+  for (let i = 0; i < tupleFields.length; i++) {
+    const fieldType = tupleFields[i]!;
+
+    // Get the data array from the vec
+    fctx.body.push({ op: "local.get", index: tmpLocal });
+    fctx.body.push({ op: "struct.get", typeIdx: fromTypeIdx, fieldIdx: 1 });
+    // Read element at index i
+    fctx.body.push({ op: "i32.const", value: i });
+    fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx } as unknown as Instr);
+
+    // Coerce the vec element type to the tuple field type if needed
+    if (elemType.kind !== fieldType.kind) {
+      coerceType(ctx, fctx, elemType, fieldType);
+    } else if ((elemType.kind === "ref" || elemType.kind === "ref_null") &&
+               (fieldType.kind === "ref" || fieldType.kind === "ref_null")) {
+      const fromRefIdx = (elemType as { typeIdx: number }).typeIdx;
+      const toRefIdx = (fieldType as { typeIdx: number }).typeIdx;
+      if (fromRefIdx !== toRefIdx) {
+        coerceType(ctx, fctx, elemType, fieldType);
+      }
+    }
+  }
+
+  // Construct the tuple struct
+  fctx.body.push({ op: "struct.new", typeIdx: toTypeIdx });
+
+  releaseTempLocal(fctx, tmpLocal);
+  return true;
+}
+
+/** Emit vec -> vec conversion body (element-by-element with coercion) */
+function emitVecToVecBody(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  fromTypeIdx: number,
+  toTypeIdx: number,
+  srcVec: { arrTypeIdx: number; elemType: ValType },
+  dstVec: { arrTypeIdx: number; elemType: ValType },
+): boolean {
+  // Save the source vec ref to a temp local
+  const srcRefType: ValType = { kind: "ref_null", typeIdx: fromTypeIdx };
+  const srcLocal = allocTempLocal(fctx, srcRefType);
+  fctx.body.push({ op: "local.set", index: srcLocal });
+
+  // Get the length from the source vec
+  fctx.body.push({ op: "local.get", index: srcLocal });
+  fctx.body.push({ op: "struct.get", typeIdx: fromTypeIdx, fieldIdx: 0 }); // length (i32)
+
+  // Allocate a temp for the length
+  const lenLocal = allocTempLocal(fctx, { kind: "i32" });
+  fctx.body.push({ op: "local.tee", index: lenLocal } as unknown as Instr);
+
+  // Create the destination array: array.new_default $dstArr length
+  fctx.body.push({ op: "array.new_default", typeIdx: dstVec.arrTypeIdx } as unknown as Instr);
+
+  // Save the new array to a temp local
+  const dstArrRefType: ValType = { kind: "ref_null", typeIdx: dstVec.arrTypeIdx };
+  const dstArrLocal = allocTempLocal(fctx, dstArrRefType);
+  fctx.body.push({ op: "local.set", index: dstArrLocal });
+
+  // Loop: copy elements with coercion using nested block/loop structure.
+  // We capture the loop body by recording the fctx.body position before and after
+  // emitting, then splicing the instructions into a nested block/loop. This avoids
+  // swapping fctx.body which would break addUnionImports index shifting.
+  const iLocal = allocTempLocal(fctx, { kind: "i32" });
+  fctx.body.push({ op: "i32.const", value: 0 });
+  fctx.body.push({ op: "local.set", index: iLocal });
+
+  const loopBodyStart = fctx.body.length;
+
+  // if (i >= len) break out of block (depth 1 from loop body)
+  fctx.body.push({ op: "local.get", index: iLocal });
+  fctx.body.push({ op: "local.get", index: lenLocal });
+  fctx.body.push({ op: "i32.ge_u" } as unknown as Instr);
+  fctx.body.push({ op: "br_if", depth: 1 });
+
+  // dstArr[i] = coerce(srcArr[i])
+  fctx.body.push({ op: "local.get", index: dstArrLocal });
+  fctx.body.push({ op: "local.get", index: iLocal });
+  // Read source element
+  fctx.body.push({ op: "local.get", index: srcLocal });
+  fctx.body.push({ op: "struct.get", typeIdx: fromTypeIdx, fieldIdx: 1 });
+  fctx.body.push({ op: "local.get", index: iLocal });
+  fctx.body.push({ op: "array.get", typeIdx: srcVec.arrTypeIdx } as unknown as Instr);
+  // Coerce element type
+  if (srcVec.elemType.kind !== dstVec.elemType.kind) {
+    coerceType(ctx, fctx, srcVec.elemType, dstVec.elemType);
+  }
+  // Write to destination
+  fctx.body.push({ op: "array.set", typeIdx: dstVec.arrTypeIdx } as unknown as Instr);
+
+  // i++
+  fctx.body.push({ op: "local.get", index: iLocal });
+  fctx.body.push({ op: "i32.const", value: 1 });
+  fctx.body.push({ op: "i32.add" });
+  fctx.body.push({ op: "local.set", index: iLocal });
+
+  // continue loop (depth 0 = innermost = loop)
+  fctx.body.push({ op: "br", depth: 0 });
+
+  // Splice the emitted loop body into a nested block/loop structure
+  const loopBody = fctx.body.splice(loopBodyStart);
+  fctx.body.push({
+    op: "block",
+    blockType: { kind: "empty" },
+    body: [
+      {
+        op: "loop",
+        blockType: { kind: "empty" },
+        body: loopBody,
+      },
+    ],
+  } as unknown as Instr);
+
+  // Construct the destination vec struct: { length, dstArr }
+  fctx.body.push({ op: "local.get", index: lenLocal });
+  fctx.body.push({ op: "local.get", index: dstArrLocal });
+  fctx.body.push({ op: "struct.new", typeIdx: toTypeIdx });
+
+  releaseTempLocal(fctx, iLocal);
+  releaseTempLocal(fctx, dstArrLocal);
+  releaseTempLocal(fctx, lenLocal);
+  releaseTempLocal(fctx, srcLocal);
+  return true;
+}
+
+/** Emit struct narrowing: extract a subset of fields from a larger struct */
+function emitStructNarrowBody(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  fromTypeIdx: number,
+  toTypeIdx: number,
+  info: { srcFields: { name: string; type: ValType; fieldIdx: number }[]; dstFields: { name: string; type: ValType }[] },
+): boolean {
+  // Save the source struct ref to a temp local
+  const srcRefType: ValType = { kind: "ref_null", typeIdx: fromTypeIdx };
+  const tmpLocal = allocTempLocal(fctx, srcRefType);
+  fctx.body.push({ op: "local.set", index: tmpLocal });
+
+  // For each destination field, get the corresponding source field
+  for (let i = 0; i < info.dstFields.length; i++) {
+    const srcField = info.srcFields[i]!;
+    const dstField = info.dstFields[i]!;
+
+    fctx.body.push({ op: "local.get", index: tmpLocal });
+    fctx.body.push({ op: "struct.get", typeIdx: fromTypeIdx, fieldIdx: srcField.fieldIdx });
+
+    // Coerce if types differ
+    if (srcField.type.kind !== dstField.type.kind) {
+      coerceType(ctx, fctx, srcField.type, dstField.type);
+    } else if ((srcField.type.kind === "ref" || srcField.type.kind === "ref_null") &&
+               (dstField.type.kind === "ref" || dstField.type.kind === "ref_null")) {
+      const fromRefIdx = (srcField.type as { typeIdx: number }).typeIdx;
+      const toRefIdx = (dstField.type as { typeIdx: number }).typeIdx;
+      if (fromRefIdx !== toRefIdx) {
+        coerceType(ctx, fctx, srcField.type, dstField.type);
+      }
+    }
+  }
+
+  // Construct the destination struct
+  fctx.body.push({ op: "struct.new", typeIdx: toTypeIdx });
+
+  releaseTempLocal(fctx, tmpLocal);
+  return true;
+}
 
 /**
  * Coerce a Wasm value on the stack from one type to another.
@@ -58,9 +392,15 @@ export function coerceType(
         fctx.body.push({ op: "ref.cast", typeIdx: toIdx });
         return;
       }
-      // Different struct types, neither is AnyValue — try ref.cast.
-      // This handles cases where one struct is a subtype of the other
-      // (e.g. closure struct vs its wrapper type) and prevents Wasm validation errors.
+      // Different struct types, neither is AnyValue.
+      // Check if this is a vec-to-tuple conversion (array passed to destructuring param).
+      // Vec structs have layout: { $length: i32, $data: ref $arr }
+      // Tuple structs have layout: { $_0: T0, $_1: T1, ... }
+      // A blind ref.cast would trap since they are unrelated types.
+      if (emitSafeStructConversion(ctx, fctx, fromIdx, toIdx)) {
+        return;
+      }
+      // For related struct types (subtypes), ref.cast works directly.
       fctx.body.push({ op: "ref.cast", typeIdx: toIdx });
       return;
     }
@@ -82,7 +422,9 @@ export function coerceType(
     const fromRefIdx = (from as { typeIdx: number }).typeIdx;
     const toRefNullIdx = (to as { typeIdx: number }).typeIdx;
     if (fromRefIdx !== toRefNullIdx) {
-      fctx.body.push({ op: "ref.cast", typeIdx: toRefNullIdx });
+      if (!emitSafeStructConversion(ctx, fctx, fromRefIdx, toRefNullIdx)) {
+        fctx.body.push({ op: "ref.cast", typeIdx: toRefNullIdx });
+      }
     }
     return;
   }
@@ -99,7 +441,9 @@ export function coerceType(
     const fromNullIdx = (from as { typeIdx: number }).typeIdx;
     const toNonNullIdx = (to as { typeIdx: number }).typeIdx;
     if (fromNullIdx !== toNonNullIdx) {
-      fctx.body.push({ op: "ref.cast", typeIdx: toNonNullIdx });
+      if (!emitSafeStructConversion(ctx, fctx, fromNullIdx, toNonNullIdx)) {
+        fctx.body.push({ op: "ref.cast", typeIdx: toNonNullIdx });
+      }
     }
     fctx.body.push({ op: "ref.as_non_null" } as Instr);
     return;
@@ -238,11 +582,42 @@ export function coerceType(
   if (from.kind === "externref" && (to.kind === "ref" || to.kind === "ref_null")) {
     const toIdx = (to as { typeIdx: number }).typeIdx;
     fctx.body.push({ op: "any.convert_extern" } as Instr);
+    // Guard with ref.test to avoid illegal cast traps.
+    // Save the anyref to a local, test if it can be cast, and produce
+    // null if the cast would fail (for ref_null targets) or trap gracefully.
+    const tmpAnyLocal = allocTempLocal(fctx, { kind: "anyref" } as ValType);
+    fctx.body.push({ op: "local.tee", index: tmpAnyLocal } as unknown as Instr);
+    fctx.body.push({ op: "ref.test", typeIdx: toIdx } as unknown as Instr);
     if (to.kind === "ref_null") {
-      fctx.body.push({ op: "ref.cast_null", typeIdx: toIdx } as unknown as Instr);
+      // If test passes: cast; otherwise: push null
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "val", type: to },
+        then: [
+          { op: "local.get", index: tmpAnyLocal },
+          { op: "ref.cast_null", typeIdx: toIdx },
+        ],
+        else: [
+          { op: "ref.null", typeIdx: toIdx },
+        ],
+      } as unknown as Instr);
     } else {
-      fctx.body.push({ op: "ref.cast", typeIdx: toIdx } as unknown as Instr);
+      // Non-null target: if test fails, produce a null and ref.as_non_null will trap
+      // with a clearer error than illegal cast
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "val", type: { kind: "ref_null", typeIdx: toIdx } as ValType },
+        then: [
+          { op: "local.get", index: tmpAnyLocal },
+          { op: "ref.cast_null", typeIdx: toIdx },
+        ],
+        else: [
+          { op: "ref.null", typeIdx: toIdx },
+        ],
+      } as unknown as Instr);
+      fctx.body.push({ op: "ref.as_non_null" } as Instr);
     }
+    releaseTempLocal(fctx, tmpAnyLocal);
     return;
   }
   // f64 → externref (box number)
