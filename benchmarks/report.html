@@ -352,7 +352,7 @@ const MAX_CONCURRENT_FETCHES = 6;
 function fetchSourceLines(filePath, errText) {
   const placeholder = el("div", { className: "src-placeholder" });
   const lineMatch = errText.match(/L(\d+):(\d+)\s/);
-  const assertMatch = !lineMatch && errText.match(/first assert:\s*(.+)/);
+  const assertMatch = !lineMatch && (errText.match(/first assert:\s*(.+)/) || errText.match(/assert #\d+:\s*(.+)/));
   const searchText = assertMatch ? assertMatch[1].trim().substring(0, 60) : null;
   // Line numbers from errors refer to the WRAPPED source (preamble + test body).
   // The preamble is ~25-35 lines, so subtract an estimate to get the original line.
