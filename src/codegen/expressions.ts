@@ -1,6 +1,6 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext, ClosureInfo, RestParamInfo } from "./index.js";
-import { allocLocal, allocTempLocal, releaseTempLocal, getLocalType, resolveWasmType, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers, addStringImports, cacheStringLiterals, addStringConstantGlobal, nextModuleGlobalIdx, getOrRegisterTemplateVecType, pushBody, popBody, destructureParamArray, destructureParamObject } from "./index.js";
+import { allocLocal, allocTempLocal, releaseTempLocal, getLocalType, resolveWasmType, resolveNativeTypeAnnotation, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers, addStringImports, cacheStringLiterals, addStringConstantGlobal, nextModuleGlobalIdx, getOrRegisterTemplateVecType, pushBody, popBody, destructureParamArray, destructureParamObject } from "./index.js";
 import {
   mapTsTypeToWasm,
   isNumberType,
@@ -3786,9 +3786,17 @@ function tryFlattenBinaryChain(
     if ((tsType.flags & ts.TypeFlags.Any) !== 0) return null;
   }
 
-  // Determine numeric hint
+  // Determine numeric hint — also check if all operands use native i32 type annotations
   const isDivOrPow = op === ts.SyntaxKind.SlashToken || op === ts.SyntaxKind.AsteriskAsteriskToken;
-  const numericHint: ValType = { kind: (ctx.fast && !isDivOrPow) ? "i32" : "f64" };
+  let allNativeI32 = !isDivOrPow;
+  if (allNativeI32 && !ctx.fast) {
+    for (const operand of operands) {
+      const tsType = ctx.checker.getTypeAtLocation(operand);
+      const native = resolveNativeTypeAnnotation(tsType);
+      if (native?.kind !== "i32") { allNativeI32 = false; break; }
+    }
+  }
+  const numericHint: ValType = { kind: ((ctx.fast || allNativeI32) && !isDivOrPow) ? "i32" : "f64" };
 
   // Compile first operand
   let resultType = compileExpression(ctx, fctx, operands[0], numericHint);
@@ -3813,8 +3821,8 @@ function tryFlattenBinaryChain(
       rightType = { kind: "f64" };
     }
 
-    // Fast mode i32 path
-    if (ctx.fast && resultType.kind === "i32" && rightType.kind === "i32") {
+    // i32 path: fast mode or native type annotations
+    if ((ctx.fast || allNativeI32) && resultType.kind === "i32" && rightType.kind === "i32") {
       resultType = compileI32BinaryOp(ctx, fctx, op, expr);
     } else {
       resultType = compileNumericBinaryOp(ctx, fctx, op, expr);
@@ -4447,10 +4455,14 @@ function compileBinaryExpression(
     op === ts.SyntaxKind.LessThanLessThanToken ||
     op === ts.SyntaxKind.GreaterThanGreaterThanToken ||
     op === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken;
-  // In fast mode, numeric hint is i32 (unless division/power which promotes to f64)
+  // In fast mode, numeric hint is i32 (unless division/power which promotes to f64).
+  // Also use i32 hint when operands have native i32 type annotations (type i32 = number).
   const isDivOrPow = op === ts.SyntaxKind.SlashToken || op === ts.SyntaxKind.AsteriskAsteriskToken;
+  const leftNativeType = resolveNativeTypeAnnotation(leftTsType);
+  const rightNativeType = resolveNativeTypeAnnotation(rightTsType);
+  const bothNativeI32 = leftNativeType?.kind === "i32" && rightNativeType?.kind === "i32";
   const numericHint: ValType | undefined = isNumericOp
-    ? { kind: (ctx.fast && !isDivOrPow) ? "i32" : "f64" }
+    ? { kind: ((ctx.fast || bothNativeI32) && !isDivOrPow) ? "i32" : "f64" }
     : undefined;
 
   let leftType = compileExpression(ctx, fctx, expr.left, numericHint);
@@ -4530,8 +4542,9 @@ function compileBinaryExpression(
     }
   }
 
-  // Fast mode: i32 numeric operations
-  if (ctx.fast && isNumberType(leftTsType) && leftType.kind === "i32" && rightType.kind === "i32") {
+  // i32 numeric operations: fast mode or native type annotations (type i32 = number)
+  if (leftType.kind === "i32" && rightType.kind === "i32" &&
+      (ctx.fast && isNumberType(leftTsType) || bothNativeI32)) {
     return compileI32BinaryOp(ctx, fctx, op, expr);
   }
 
