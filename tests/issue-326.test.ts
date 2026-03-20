@@ -115,4 +115,30 @@ describe("Issue #326: Array element access out of bounds", () => {
     `);
     expect(result).toBe(42);
   });
+
+  test("function parameter array destructuring with short array", () => {
+    const result = run(`
+      function take([a, b, c]: number[]): number {
+        // If arr has fewer than 3 elements, out-of-bounds should not trap
+        return a;
+      }
+      export function main(): number {
+        return take([99]);
+      }
+    `);
+    expect(result).toBe(99);
+  });
+
+  test("function parameter array destructuring with empty array", () => {
+    const result = run(`
+      function take([a, b]: number[]): number {
+        // Both a and b are out-of-bounds for an empty array
+        return 77;
+      }
+      export function main(): number {
+        return take([]);
+      }
+    `);
+    expect(result).toBe(77);
+  });
 });
