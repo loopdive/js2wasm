@@ -18,6 +18,7 @@ import {
 import type { Instr, ValType, WasmFunction, FieldDef, StructTypeDef } from "../ir/types.js";
 import { ensureI32Condition } from "./index.js";
 import { compileStatement } from "./statements.js";
+import { walkInstructions } from "./walk-instructions.js";
 import { ensureTimsortHelper } from "./timsort.js";
 import { coerceType as coerceTypeImpl, pushDefaultValue, defaultValueInstrs, coercionInstrs, emitGuardedRefCast } from "./type-coercion.js";
 export { pushDefaultValue, defaultValueInstrs, coercionInstrs } from "./type-coercion.js";
@@ -90,31 +91,13 @@ export function shiftLateImportIndices(
 ): void {
   if (added <= 0) return;
   function shiftInstrs(instrs: Instr[]): void {
-    for (const instr of instrs) {
+    walkInstructions(instrs, (instr) => {
       if ("funcIdx" in instr && typeof (instr as any).funcIdx === "number") {
         if ((instr as any).funcIdx >= importsBefore) {
           (instr as any).funcIdx += added;
         }
       }
-      // Recurse into nested blocks
-      if ("body" in instr && Array.isArray((instr as any).body)) {
-        shiftInstrs((instr as any).body);
-      }
-      if ("then" in instr && Array.isArray((instr as any).then)) {
-        shiftInstrs((instr as any).then);
-      }
-      if ("else" in instr && Array.isArray((instr as any).else)) {
-        shiftInstrs((instr as any).else);
-      }
-      if ("catches" in instr && Array.isArray((instr as any).catches)) {
-        for (const c of (instr as any).catches) {
-          if (Array.isArray(c.body)) shiftInstrs(c.body);
-        }
-      }
-      if ("catchAll" in instr && Array.isArray((instr as any).catchAll)) {
-        shiftInstrs((instr as any).catchAll);
-      }
-    }
+    });
   }
   // Track which body arrays have been shifted to prevent double-shifting.
   // Using a Set avoids reliance on reference equality between bodies that
