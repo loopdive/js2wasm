@@ -114,6 +114,7 @@ function resolveImport(
       if (name === "__iterator_next") return (iter: any) => iter.next();
       if (name === "__iterator_done") return (result: any) => result.done ? 1 : 0;
       if (name === "__iterator_value") return (result: any) => result.value;
+      if (name === "__iterator_return") return (iter: any) => { if (iter && typeof iter.return === "function") iter.return(); };
       // Callback bridges for functional array methods
       if (name === "__call_1_f64") return (fn: Function, a: number) => fn(a);
       if (name === "__call_2_f64") return (fn: Function, a: number, b: number) => fn(a, b);

@@ -9,6 +9,7 @@
 | [648](../ready/648.md) | High | Illegal cast residual | 988 FAIL |
 | [649](../ready/649.md) | Medium | Stack underflow residual | 876 CE |
 | [650](../ready/650.md) | Medium | Stack fallthrough | 300 CE |
+| [662](../ready/662.md) | High | For/for-of/destructuring timeouts | 3,330 FAIL |
 | [645](../done/645.md) | ✅ Done | testTypedArray.js include | 1,731 unskipped |
 | [651](../done/651.md) | ✅ Done | FilterResult discriminated union | type safety |
 

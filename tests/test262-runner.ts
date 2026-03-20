@@ -1956,6 +1956,17 @@ export async function runTest262File(filePath: string, category: string, timeout
   try {
     result = compile(wrappedSource, { fileName: "test.ts" });
     compileMs = performance.now() - compileStart;
+
+    // Guard: if compilation took >30s, report as CE and skip execution
+    if (compileMs > 30_000) {
+      const totalMs = performance.now() - totalStart;
+      const timing: TestTiming = { totalMs: round2(totalMs), compileMs: round2(compileMs), instantiateMs: 0, executeMs: 0 };
+      return {
+        file: relPath, category, status: "compile_error",
+        error: `compilation timeout (${round2(compileMs)}ms)`,
+        timing,
+      };
+    }
   } catch (compileErr: any) {
     compileMs = performance.now() - compileStart;
     const totalMs = performance.now() - totalStart;

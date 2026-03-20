@@ -93,6 +93,7 @@ export function buildImports(result: CompileResult): WebAssembly.Imports {
     __iterator_next: (iter: any) => iter.next(),
     __iterator_done: (result: any) => result.done ? 1 : 0,
     __iterator_value: (result: any) => result.value,
+    __iterator_return: (iter: any) => { if (iter && typeof iter.return === "function") iter.return(); },
     // String method host imports (non-fast mode)
     string_trim: (s: string) => s.trim(),
     string_trimStart: (s: string) => s.trimStart(),
