@@ -24,6 +24,20 @@ const LIB_FILES: Record<string, string> = {
   "lib.decorators.legacy.d.ts": libDecoratorsLegacy,
 };
 
+/** Pre-parsed lib SourceFiles — cached to avoid re-parsing on every compile */
+const LIB_SOURCE_FILES = new Map<string, ts.SourceFile>();
+function getLibSourceFile(name: string, languageVersion: ts.ScriptTarget): ts.SourceFile | undefined {
+  const content = LIB_FILES[name];
+  if (content === undefined) return undefined;
+  const key = `${name}:${languageVersion}`;
+  let sf = LIB_SOURCE_FILES.get(key);
+  if (!sf) {
+    sf = ts.createSourceFile(name, content, languageVersion);
+    LIB_SOURCE_FILES.set(key, sf);
+  }
+  return sf;
+}
+
 export interface AnalyzeOptions {
   /** Allow JavaScript source files (enables allowJs + checkJs in TS compiler) */
   allowJs?: boolean;
@@ -55,10 +69,8 @@ export function analyzeSource(
           scriptKind,
         );
       }
-      const libContent = LIB_FILES[name];
-      if (libContent !== undefined) {
-        return ts.createSourceFile(name, libContent, languageVersion);
-      }
+      const libSf = getLibSourceFile(name, languageVersion);
+      if (libSf) return libSf;
       return undefined;
     },
     getDefaultLibFileName: () => "lib.d.ts",
@@ -208,10 +220,8 @@ export function analyzeMultiSource(
           ts.ScriptKind.TS,
         );
       }
-      const libContent = LIB_FILES[name];
-      if (libContent !== undefined) {
-        return ts.createSourceFile(name, libContent, languageVersion);
-      }
+      const libSf = getLibSourceFile(name, languageVersion);
+      if (libSf) return libSf;
       return undefined;
     },
     getDefaultLibFileName: () => "lib.d.ts",
