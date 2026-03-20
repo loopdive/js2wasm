@@ -1976,8 +1976,31 @@ export async function runTest262File(filePath: string, category: string, timeout
   // Wrap the test
   const { source: wrappedSource, bodyLineOffset } = wrapTest(source, meta);
 
-  /** Adjust error line numbers to refer to the original source file */
+  /** Adjust error line numbers to refer to the original source file.
+   *  The wrapped source has a variable preamble and stripped comments,
+   *  so a fixed offset doesn't work. Instead, find the code text at
+   *  the error line in the wrapped source and search for it in the
+   *  original source. */
+  const wrappedLines = wrappedSource.split("\n");
+  const originalLines = source.split("\n");
   function adjustLine(line: number): number {
+    // Get the code text at the error line in the wrapped source
+    if (line < 1 || line > wrappedLines.length) return line;
+    const errorText = wrappedLines[line - 1].trim();
+    if (!errorText || errorText === "{" || errorText === "}" || errorText === "try {" || errorText === "} catch (e) {") {
+      // Generic structural line — fall back to offset
+      const adjusted = line - bodyLineOffset;
+      return adjusted > 0 ? adjusted : line;
+    }
+    // Search for this exact text in the original source
+    for (let i = 0; i < originalLines.length; i++) {
+      if (originalLines[i].trim() === errorText) return i + 1;
+    }
+    // Partial match — search for substring
+    for (let i = 0; i < originalLines.length; i++) {
+      if (originalLines[i].includes(errorText)) return i + 1;
+    }
+    // Fall back to offset
     const adjusted = line - bodyLineOffset;
     return adjusted > 0 ? adjusted : line;
   }
