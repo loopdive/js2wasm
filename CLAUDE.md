@@ -70,7 +70,8 @@ An MCP channel server runs on port 7373. External processes (test harness, cron,
 - Start: `claude --dangerously-load-development-channels server:js2wasm-channel`
 - Send events: `.claude/channel/send.sh <event> [json-payload]`
 - Run tests with notification: `npm run test:channel`
-- Event types: `test-run-done`, `cron-tick`, `issue-opened`, `milestone-started`, `custom`
+- Event types: `test-run-done`, `cron-tick`, `issue-opened`, `milestone-started`, `issues-changed`, `custom`
+- File watcher: automatically watches `plan/issues/` for changes and emits `issues-changed` events
 
 ## Team & Workflow
 

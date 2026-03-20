@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { appendFileSync } from "node:fs";
-import { join } from "node:path";
+import { appendFileSync, watch } from "node:fs";
+import { join, relative, basename } from "node:path";
 
 const LOG_FILE = join(import.meta.dir, "events.log");
 const MAX_QUEUE = 50;
@@ -56,7 +56,7 @@ const mcp = new Server(
       'Events from the js2wasm-channel arrive as <channel source="js2wasm-channel" event="...">.',
       "They are one-way alerts from the build/test infrastructure.",
       "When a channel message arrives, handle it immediately before continuing other work.",
-      "Event types: test-run-done (analyse failures), cron-tick (review test262 gaps), issue-opened (triage), milestone-started (plan), custom (verbatim).",
+      "Event types: test-run-done (analyse failures), cron-tick (review test262 gaps), issue-opened (triage), milestone-started (plan), issues-changed (plan/issues file watcher), custom (verbatim).",
     ].join(" "),
   }
 );
@@ -131,3 +131,53 @@ Bun.serve({
 console.error(
   `[js2wasm-channel] HTTP server listening on http://127.0.0.1:7373/event`
 );
+
+// --- Watch plan/issues/ for file changes ---
+const ISSUES_DIR = join(import.meta.dir, "../../plan/issues");
+const watchDebounce = new Map<string, number>();
+const DEBOUNCE_MS = 500;
+
+function watchIssuesDir(dir: string) {
+  try {
+    watch(dir, { recursive: true }, async (eventType, filename) => {
+      if (!filename) return;
+
+      const now = Date.now();
+      const key = `${eventType}:${filename}`;
+      const last = watchDebounce.get(key) ?? 0;
+      if (now - last < DEBOUNCE_MS) return;
+      watchDebounce.set(key, now);
+
+      // Determine which subfolder changed (ready, blocked, done, etc.)
+      const parts = filename.split("/");
+      const subfolder = parts.length > 1 ? parts[0] : "root";
+      const file = basename(filename);
+
+      const payload: Record<string, unknown> = {
+        type: eventType,
+        subfolder,
+        file: filename,
+      };
+
+      logEvent("issues-changed", payload);
+
+      const content = `Issue file ${eventType}: plan/issues/${filename} (${subfolder}/ folder). Check if this affects the dependency graph or unblocks other issues.`;
+      const meta: Record<string, string> = { event: "issues-changed" };
+
+      if (connected) {
+        await mcp.notification({
+          method: "notifications/claude/channel",
+          params: { content, meta },
+        });
+      } else {
+        queue.push({ content, meta });
+        if (queue.length > MAX_QUEUE) queue.shift();
+      }
+    });
+    console.error(`[js2wasm-channel] Watching ${dir} for changes`);
+  } catch (err) {
+    console.error(`[js2wasm-channel] Could not watch ${dir}: ${err}`);
+  }
+}
+
+watchIssuesDir(ISSUES_DIR);
