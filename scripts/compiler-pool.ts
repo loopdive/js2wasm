@@ -91,11 +91,22 @@ export class CompilerPool {
     });
   }
 
-  /** Compile source — queues if all workers busy */
-  compile(source: string): Promise<PoolResult> {
+  /** Compile source — queues if all workers busy. Times out after 30s. */
+  compile(source: string, timeoutMs = 30_000): Promise<PoolResult> {
     return new Promise((resolve) => {
       const id = this.nextId++;
-      this.queue.push({ id, source, resolve });
+      const timer = setTimeout(() => {
+        // Compilation hung — resolve with error, kill and respawn the worker
+        this.pending.delete(id);
+        resolve({ ok: false, error: "compilation timeout (30s)", compileMs: timeoutMs });
+        // Find and restart the stuck worker
+        const stuck = this.workers.find(w => w.busy);
+        if (stuck) {
+          stuck.worker.terminate();
+          this.respawnWorker(stuck);
+        }
+      }, timeoutMs);
+      this.queue.push({ id, source, resolve: (r: PoolResult) => { clearTimeout(timer); resolve(r); } });
       this.dispatch();
     });
   }
@@ -110,6 +121,33 @@ export class CompilerPool {
       this.pending.set(job.id, { id: job.id, resolve: job.resolve });
       freeWorker.worker.postMessage({ id: job.id, source: job.source });
     }
+  }
+
+  /** Respawn a dead/stuck worker */
+  private respawnWorker(state: WorkerState) {
+    const workerPath = join(import.meta.dirname ?? __dirname, "compiler-worker.mjs");
+    state.busy = false;
+    state.ready = false;
+    state.worker = new Worker(workerPath);
+    state.worker.on("message", (msg: any) => {
+      if (msg.type === "ready") {
+        state.ready = true;
+        this.dispatch();
+        return;
+      }
+      const job = this.pending.get(msg.id);
+      if (job) {
+        this.pending.delete(msg.id);
+        state.busy = false;
+        job.resolve(msg as PoolResult);
+        this.dispatch();
+      }
+    });
+    state.worker.on("error", (err) => {
+      console.error(`Compiler worker respawned after error:`, err.message);
+      state.busy = false;
+      state.ready = false;
+    });
   }
 
   /** Shut down all workers */
