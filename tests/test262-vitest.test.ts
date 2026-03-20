@@ -9,12 +9,12 @@
  *
  * Run: npx vitest run tests/test262-vitest.test.ts
  */
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect } from "vitest";
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from "fs";
 import { createHash } from "crypto";
 import { join, relative } from "path";
+import { compile } from "../src/index.js";
 import { buildImports } from "../src/runtime.js";
-import { CompilerPool } from "../scripts/compiler-pool.js";
 import {
   findTestFiles,
   parseMeta,
@@ -22,15 +22,6 @@ import {
   shouldSkip,
   TEST_CATEGORIES,
 } from "./test262-runner.js";
-
-// ── Compiler pool (shared across all tests) ─────────────────────────
-
-let pool: CompilerPool;
-beforeAll(async () => {
-  pool = new CompilerPool(4);
-  await pool.ready();
-});
-afterAll(() => pool?.shutdown());
 
 // ── Cache setup ──────────────────────────────────────────────────────
 
@@ -81,9 +72,9 @@ interface CachedCompileResult {
  * Compile wrapped test source via pool, with disk cache.
  * Cache hit: <1ms (read from disk). Cache miss: ~100ms (pool worker compiles).
  */
-async function getOrCompile(
+function getOrCompile(
   wrappedSource: string,
-): Promise<{ ok: true; binary: Uint8Array; result: any } | { ok: false; error: string }> {
+): { ok: true; binary: Uint8Array; result: any } | { ok: false; error: string } {
   const hash = createHash("md5")
     .update(wrappedSource)
     .update(compilerHash)
@@ -102,24 +93,28 @@ async function getOrCompile(
     }
   }
 
-  // Cache miss: compile via pool worker (async, non-blocking)
-  const poolResult = await pool.compile(wrappedSource);
-  if (!poolResult.ok) {
-    return { ok: false, error: poolResult.error };
-  }
-
-  // Write to cache
+  // Cache miss: compile with skipWat for speed
   try {
-    writeFileSync(cachePath, poolResult.binary);
+    const result = compile(wrappedSource, { fileName: "test.ts", sourceMap: false, emitWat: false } as any);
+    if (!result.success || result.errors.some((e: any) => e.severity === "error")) {
+      const errMsg = result.errors
+        .filter((e: any) => e.severity === "error")
+        .map((e: any) => `L${e.line}:${e.column} ${e.message}`)
+        .join("; ");
+      return { ok: false, error: errMsg || "unknown compile error" };
+    }
+
+    // Write to cache
+    writeFileSync(cachePath, result.binary);
     writeFileSync(
       metaPath,
       JSON.stringify({
-        stringPool: poolResult.stringPool,
-        imports: poolResult.imports,
+        stringPool: result.stringPool,
+        imports: result.imports,
       }),
     );
 
-    return { ok: true, binary: poolResult.binary, result: { stringPool: poolResult.stringPool, imports: poolResult.imports } };
+    return { ok: true, binary: result.binary, result: { stringPool: result.stringPool, imports: result.imports } };
   } catch (err: any) {
     return { ok: false, error: err.message ?? String(err) };
   }
@@ -193,7 +188,7 @@ for (const category of TEST_CATEGORIES) {
           (meta.negative.phase === "parse" || meta.negative.phase === "early" || meta.negative.phase === "resolution")
         ) {
           const { source: wrapped } = wrapTest(source, meta);
-          const compileResult = await getOrCompile(wrapped);
+          const compileResult = getOrCompile(wrapped);
           if (!compileResult.ok) { recordResult(relPath, category, "pass"); return; }
           try {
             const imports = buildImports(compileResult.result.imports, undefined, compileResult.result.stringPool);
@@ -207,7 +202,7 @@ for (const category of TEST_CATEGORIES) {
 
         // Wrap and compile
         const { source: wrapped } = wrapTest(source, meta);
-        const compileResult = await getOrCompile(wrapped);
+        const compileResult = getOrCompile(wrapped);
 
         if (!compileResult.ok) {
           recordResult(relPath, category, "compile_error", compileResult.error);
