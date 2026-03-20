@@ -75,6 +75,10 @@ export interface CompileOptions {
   target?: "gc" | "linear" | "wasi";
   /** Enable fast mode — i32 default numbers, performance optimizations */
   fast?: boolean;
+  /** Use WasmGC-native strings (array i16) instead of wasm:js-string imports.
+   *  Enabled automatically when fast: true or target: "wasi".
+   *  Required for non-browser runtimes (wasmtime, wasmer, etc.) */
+  nativeStrings?: boolean;
   /** Enable SIMD-accelerated string/array helpers (requires engine SIMD support) */
   simd?: boolean;
   /** Enable safe mode — reject unsafe TypeScript patterns at compile time */

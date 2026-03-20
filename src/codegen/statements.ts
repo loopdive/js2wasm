@@ -334,8 +334,8 @@ const HOST_ARRAY_STRING_METHODS = new Set(["split"]);
 
 /** Check if an expression is a string method call that returns a host array (externref). */
 function isStringMethodReturningHostArray(ctx: CodegenContext, expr: ts.Expression): boolean {
-  // In fast mode with native strings, split returns a native string array, not externref
-  if (ctx.fast && ctx.nativeStrTypeIdx >= 0) return false;
+  // With native strings, split returns a native string array, not externref
+  if (ctx.nativeStrings && ctx.nativeStrTypeIdx >= 0) return false;
   if (!ts.isCallExpression(expr)) return false;
   if (!ts.isPropertyAccessExpression(expr.expression)) return false;
   const method = expr.expression.name.text;
@@ -1116,7 +1116,7 @@ function compileArrayDestructuring(
     typeDef.fields.every((f: { name?: string }, idx: number) => f.name === `_${idx}`);
 
   // Check if this is a string type (AnyString, NativeString, ConsString)
-  const isStringStruct = ctx.fast && ctx.anyStrTypeIdx >= 0 &&
+  const isStringStruct = ctx.nativeStrings && ctx.anyStrTypeIdx >= 0 &&
     (typeIdx === ctx.anyStrTypeIdx || typeIdx === ctx.nativeStrTypeIdx || typeIdx === ctx.consStrTypeIdx);
 
   if (!isVecArray && !isTupleStruct && !isStringStruct) {
@@ -2180,7 +2180,7 @@ function compileSwitchStatement(
   // For string switch: use the appropriate string type and comparison
   let strEqFuncIdx: number | undefined;
   if (switchIsString) {
-    if (ctx.fast && ctx.nativeStrTypeIdx >= 0) {
+    if (ctx.nativeStrings && ctx.nativeStrTypeIdx >= 0) {
       // Fast mode: native string comparison
       ensureNativeStringHelpers(ctx);
       const flattenIdx = ctx.nativeStrHelpers.get("__str_flatten");
@@ -2237,12 +2237,12 @@ function compileSwitchStatement(
     fctx.body = checkBody;
 
     fctx.body.push({ op: "local.get", index: tmpLocalIdx });
-    if (switchIsString && ctx.fast && ctx.nativeStrTypeIdx >= 0) {
+    if (switchIsString && ctx.nativeStrings && ctx.nativeStrTypeIdx >= 0) {
       const flattenIdx = ctx.nativeStrHelpers.get("__str_flatten")!;
       fctx.body.push({ op: "call", funcIdx: flattenIdx });
     }
     compileExpression(ctx, fctx, caseClause.expression, wasmType);
-    if (switchIsString && ctx.fast && ctx.nativeStrTypeIdx >= 0) {
+    if (switchIsString && ctx.nativeStrings && ctx.nativeStrTypeIdx >= 0) {
       const flattenIdx = ctx.nativeStrHelpers.get("__str_flatten")!;
       fctx.body.push({ op: "call", funcIdx: flattenIdx });
     }
@@ -3013,7 +3013,7 @@ function compileForOfStatement(
 
   // String iteration: for (const c of "hello") iterates characters
   // In fast mode, use native string struct iteration (pure Wasm)
-  if (isStringType(exprTsType) && ctx.fast && ctx.anyStrTypeIdx >= 0) {
+  if (isStringType(exprTsType) && ctx.nativeStrings && ctx.anyStrTypeIdx >= 0) {
     compileForOfString(ctx, fctx, stmt);
     return;
   }
