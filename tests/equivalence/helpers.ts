@@ -116,6 +116,7 @@ export function buildImports(result: CompileResult): WebAssembly.Imports {
     string_padStart: (s: string, targetLength: number, padString?: any) => s.padStart(targetLength, padString),
     string_padEnd: (s: string, targetLength: number, padString?: any) => s.padEnd(targetLength, padString),
     string_split: (s: string, separator: any) => s.split(separator),
+    __date_now: () => Date.now(),
   };
   return {
     env,

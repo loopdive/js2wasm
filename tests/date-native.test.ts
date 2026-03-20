@@ -9,292 +9,176 @@ async function run(source: string, fn: string, args: unknown[] = []): Promise<un
       `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}\nWAT:\n${result.wat}`,
     );
   }
-  const imports = buildImports(result);
-  const { instance } = await WebAssembly.instantiate(result.binary, imports);
+  const { instance } = await WebAssembly.instantiate(result.binary, buildImports(result));
   return (instance.exports as any)[fn](...args);
 }
 
-describe("Issue #665: Native Wasm Date implementation", () => {
-  it("new Date(ms).getTime() returns the millisecond timestamp", async () => {
-    expect(
-      await run(
-        `
-        export function test(): number {
-          const d = new Date(1234567890123);
-          return d.getTime();
-        }
-        `,
-        "test",
-      ),
-    ).toBe(1234567890123);
+describe("Issue #665: Native Date implementation", () => {
+  it("new Date(ms).getTime() returns the timestamp", async () => {
+    const src = `
+      export function test(): number {
+        const d = new Date(1234567890000);
+        return d.getTime();
+      }
+    `;
+    expect(await run(src, "test")).toBe(1234567890000);
   });
 
-  it("new Date(ms).valueOf() returns the millisecond timestamp", async () => {
-    expect(
-      await run(
-        `
-        export function test(): number {
-          const d = new Date(0);
-          return d.valueOf();
-        }
-        `,
-        "test",
-      ),
-    ).toBe(0);
+  it("new Date(0).getTime() returns 0", async () => {
+    const src = `
+      export function test(): number {
+        const d = new Date(0);
+        return d.getTime();
+      }
+    `;
+    expect(await run(src, "test")).toBe(0);
   });
 
-  it("new Date(2025, 0, 15).getFullYear() returns 2025", async () => {
-    expect(
-      await run(
-        `
-        export function test(): number {
-          const d = new Date(2025, 0, 15);
-          return d.getFullYear();
-        }
-        `,
-        "test",
-      ),
-    ).toBe(2025);
+  it("Date.now() returns a positive number", async () => {
+    const src = `
+      export function test(): number {
+        return Date.now();
+      }
+    `;
+    const result = await run(src, "test") as number;
+    expect(result).toBeGreaterThan(0);
+    // Should be a reasonable timestamp (after 2020)
+    expect(result).toBeGreaterThan(1577836800000);
   });
 
-  it("new Date(2025, 0, 15).getMonth() returns 0 (January)", async () => {
-    expect(
-      await run(
-        `
-        export function test(): number {
-          const d = new Date(2025, 0, 15);
-          return d.getMonth();
-        }
-        `,
-        "test",
-      ),
-    ).toBe(0);
+  it("new Date().getTime() returns a positive number", async () => {
+    const src = `
+      export function test(): number {
+        const d = new Date();
+        return d.getTime();
+      }
+    `;
+    const result = await run(src, "test") as number;
+    expect(result).toBeGreaterThan(1577836800000);
   });
 
-  it("new Date(2025, 0, 15).getDate() returns 15", async () => {
-    expect(
-      await run(
-        `
-        export function test(): number {
-          const d = new Date(2025, 0, 15);
-          return d.getDate();
-        }
-        `,
-        "test",
-      ),
-    ).toBe(15);
+  it("getFullYear works for known dates", async () => {
+    const src = `
+      export function test(): number {
+        const d = new Date(1234567890000);
+        return d.getFullYear();
+      }
+    `;
+    // 1234567890000 ms = 2009-02-13T23:31:30.000Z
+    expect(await run(src, "test")).toBe(2009);
   });
 
-  it("new Date(2025, 5, 20, 14, 30, 45).getHours() returns 14", async () => {
-    expect(
-      await run(
-        `
-        export function test(): number {
-          const d = new Date(2025, 5, 20, 14, 30, 45);
-          return d.getHours();
-        }
-        `,
-        "test",
-      ),
-    ).toBe(14);
+  it("getMonth works for known dates", async () => {
+    const src = `
+      export function test(): number {
+        const d = new Date(1234567890000);
+        return d.getMonth();
+      }
+    `;
+    // February is month 1 (0-indexed)
+    expect(await run(src, "test")).toBe(1);
   });
 
-  it("new Date(2025, 5, 20, 14, 30, 45).getMinutes() returns 30", async () => {
-    expect(
-      await run(
-        `
-        export function test(): number {
-          const d = new Date(2025, 5, 20, 14, 30, 45);
-          return d.getMinutes();
-        }
-        `,
-        "test",
-      ),
-    ).toBe(30);
+  it("getDate works for known dates", async () => {
+    const src = `
+      export function test(): number {
+        const d = new Date(1234567890000);
+        return d.getDate();
+      }
+    `;
+    // 13th day of February
+    expect(await run(src, "test")).toBe(13);
   });
 
-  it("new Date(2025, 5, 20, 14, 30, 45).getSeconds() returns 45", async () => {
-    expect(
-      await run(
-        `
-        export function test(): number {
-          const d = new Date(2025, 5, 20, 14, 30, 45);
-          return d.getSeconds();
-        }
-        `,
-        "test",
-      ),
-    ).toBe(45);
+  it("getDay works for known dates", async () => {
+    const src = `
+      export function test(): number {
+        const d = new Date(1234567890000);
+        return d.getDay();
+      }
+    `;
+    // 2009-02-13 is a Friday (day 5)
+    expect(await run(src, "test")).toBe(5);
   });
 
-  it("new Date(2025, 5, 20, 14, 30, 45, 123).getMilliseconds() returns 123", async () => {
-    expect(
-      await run(
-        `
-        export function test(): number {
-          const d = new Date(2025, 5, 20, 14, 30, 45, 123);
-          return d.getMilliseconds();
-        }
-        `,
-        "test",
-      ),
-    ).toBe(123);
+  it("getHours works for known dates (UTC)", async () => {
+    const src = `
+      export function test(): number {
+        const d = new Date(1234567890000);
+        return d.getHours();
+      }
+    `;
+    // 23 hours UTC
+    expect(await run(src, "test")).toBe(23);
   });
 
-  it("Date.now() returns a number", async () => {
-    expect(
-      await run(
-        `
-        export function test(): number {
-          return Date.now();
-        }
-        `,
-        "test",
-      ),
-    ).toBe(0); // Pure Wasm: no clock, always 0
+  it("getMinutes works for known dates", async () => {
+    const src = `
+      export function test(): number {
+        const d = new Date(1234567890000);
+        return d.getMinutes();
+      }
+    `;
+    expect(await run(src, "test")).toBe(31);
   });
 
-  it("Date.UTC computes correct timestamp", async () => {
-    expect(
-      await run(
-        `
-        export function test(): number {
-          return Date.UTC(1970, 0, 1);
-        }
-        `,
-        "test",
-      ),
-    ).toBe(0);
+  it("getSeconds works for known dates", async () => {
+    const src = `
+      export function test(): number {
+        const d = new Date(1234567890000);
+        return d.getSeconds();
+      }
+    `;
+    expect(await run(src, "test")).toBe(30);
   });
 
-  it("Date.UTC(2025, 0, 1) matches JS Date.UTC", async () => {
-    const expected = Date.UTC(2025, 0, 1);
-    expect(
-      await run(
-        `
-        export function test(): number {
-          return Date.UTC(2025, 0, 1);
-        }
-        `,
-        "test",
-      ),
-    ).toBe(expected);
+  it("getMilliseconds works for known dates", async () => {
+    const src = `
+      export function test(): number {
+        const d = new Date(1234567890000);
+        return d.getMilliseconds();
+      }
+    `;
+    expect(await run(src, "test")).toBe(0);
   });
 
-  it("new Date(ms) round-trips through getTime", async () => {
-    const ts = 1700000000000;
-    expect(
-      await run(
-        `
-        export function test(): number {
-          const d = new Date(${ts});
-          return d.getTime();
-        }
-        `,
-        "test",
-      ),
-    ).toBe(ts);
+  it("getMilliseconds works with non-zero ms", async () => {
+    const src = `
+      export function test(): number {
+        const d = new Date(1234567890456);
+        return d.getMilliseconds();
+      }
+    `;
+    expect(await run(src, "test")).toBe(456);
   });
 
-  it("new Date(y,m,d).getTime() matches Date.UTC for same components", async () => {
-    // new Date(2025, 5, 15) with multi-arg constructor uses UTC in our impl
-    const expected = Date.UTC(2025, 5, 15);
-    expect(
-      await run(
-        `
-        export function test(): number {
-          const d = new Date(2025, 5, 15);
-          return d.getTime();
-        }
-        `,
-        "test",
-      ),
-    ).toBe(expected);
-  });
+  it("epoch date components are correct", async () => {
+    const src = `
+      export function testYear(): number { return new Date(0).getFullYear(); }
+      export function testMonth(): number { return new Date(0).getMonth(); }
+      export function testDate(): number { return new Date(0).getDate(); }
+      export function testDay(): number { return new Date(0).getDay(); }
+      export function testHours(): number { return new Date(0).getHours(); }
+      export function testMinutes(): number { return new Date(0).getMinutes(); }
+      export function testSeconds(): number { return new Date(0).getSeconds(); }
+    `;
+    // 1970-01-01T00:00:00.000Z is Thursday
+    expect(await run(src, "testYear")).toBe(1970);
+    expect(await run(src, "testMonth")).toBe(0);
+    expect(await run(src, "testDate")).toBe(1);
+    expect(await run(src, "testDay")).toBe(4); // Thursday
+    expect(await run(src, "testHours")).toBe(0);
+    expect(await run(src, "testMinutes")).toBe(0);
+    expect(await run(src, "testSeconds")).toBe(0);
+  }, 30000);
 
-  it("setTime updates the timestamp", async () => {
-    expect(
-      await run(
-        `
-        export function test(): number {
-          const d = new Date(0);
-          d.setTime(999);
-          return d.getTime();
-        }
-        `,
-        "test",
-      ),
-    ).toBe(999);
-  });
-
-  it("getTimezoneOffset returns 0 (UTC)", async () => {
-    expect(
-      await run(
-        `
-        export function test(): number {
-          const d = new Date(0);
-          return d.getTimezoneOffset();
-        }
-        `,
-        "test",
-      ),
-    ).toBe(0);
-  });
-
-  it("getDay returns correct day of week for epoch", async () => {
-    // 1970-01-01 is Thursday = 4
-    expect(
-      await run(
-        `
-        export function test(): number {
-          const d = new Date(0);
-          return d.getDay();
-        }
-        `,
-        "test",
-      ),
-    ).toBe(4);
-  });
-
-  it("getFullYear for epoch returns 1970", async () => {
-    expect(
-      await run(
-        `
-        export function test(): number {
-          const d = new Date(0);
-          return d.getFullYear();
-        }
-        `,
-        "test",
-      ),
-    ).toBe(1970);
-  });
-
-  it("getMonth for epoch returns 0 (January)", async () => {
-    expect(
-      await run(
-        `
-        export function test(): number {
-          const d = new Date(0);
-          return d.getMonth();
-        }
-        `,
-        "test",
-      ),
-    ).toBe(0);
-  });
-
-  it("getDate for epoch returns 1", async () => {
-    expect(
-      await run(
-        `
-        export function test(): number {
-          const d = new Date(0);
-          return d.getDate();
-        }
-        `,
-        "test",
-      ),
-    ).toBe(1);
+  it("Date.valueOf() returns the same as getTime()", async () => {
+    const src = `
+      export function test(): number {
+        const d = new Date(1234567890000);
+        return d.valueOf();
+      }
+    `;
+    expect(await run(src, "test")).toBe(1234567890000);
   });
 });

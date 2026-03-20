@@ -327,6 +327,8 @@ export interface CodegenContext {
   wasiProcExitIdx: number;
   /** WASI: bump allocator pointer for linear memory string data */
   wasiBumpPtrGlobalIdx: number;
+  /** Type index for $Date struct (-1 if not registered) */
+  dateTypeIdx: number;
 }
 
 /** Metadata for a function eligible for call-site inlining */
@@ -543,6 +545,7 @@ export function generateModule(
     wasiFdWriteIdx: -1,
     wasiProcExitIdx: -1,
     wasiBumpPtrGlobalIdx: -1,
+    dateTypeIdx: -1,
   };
 
   // Pre-register common vec types so they're available during early compilation (#647)
@@ -783,6 +786,7 @@ export function generateMultiModule(
     funcTypeCache: new Map(),
     pendingLateImportShift: null,
     protoGlobals: new Map(),
+    dateTypeIdx: -1,
   };
 
   // Register native string types if native strings enabled (fast mode, WASI, or explicit)
@@ -932,6 +936,9 @@ interface UnifiedCollectorState {
   objectMethodHasValues: boolean;
   // -- collectWrapperConstructors --
   wrapperFound: boolean;
+  // -- collectDateUsage --
+  dateFound: boolean;
+  dateNeedNow: boolean;
   // -- collectUnknownConstructorImports --
   unknownCtorNeeded: Map<string, number>;
   // context
@@ -968,6 +975,8 @@ function createUnifiedCollectorState(sourceFile: ts.SourceFile): UnifiedCollecto
     objectMethodLiterals: new Set(),
     objectMethodHasValues: false,
     wrapperFound: false,
+    dateFound: false,
+    dateNeedNow: false,
     unknownCtorNeeded: new Map(),
     sourceFile,
   };
@@ -1415,6 +1424,24 @@ function unifiedVisitNode(
     }
   }
 
+  // ── collectDateUsage ──
+  if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "Date") {
+    state.dateFound = true;
+    if (!node.arguments || node.arguments.length === 0) {
+      state.dateNeedNow = true;
+    }
+  }
+  if (
+    ts.isCallExpression(node) &&
+    ts.isPropertyAccessExpression(node.expression) &&
+    ts.isIdentifier(node.expression.expression) &&
+    node.expression.expression.text === "Date" &&
+    node.expression.name.text === "now"
+  ) {
+    state.dateFound = true;
+    state.dateNeedNow = true;
+  }
+
   // ── collectUnknownConstructorImports ──
   if (ts.isNewExpression(node) && ts.isIdentifier(node.expression)) {
     const name = node.expression.text;
@@ -1731,6 +1758,14 @@ function finalizeUnifiedCollector(
   // ── collectWrapperConstructors finalize ──
   if (state.wrapperFound) {
     ensureWrapperTypes(ctx);
+  }
+
+  // ── collectDateUsage finalize ──
+  if (state.dateFound) {
+    ensureDateType(ctx);
+  }
+  if (state.dateNeedNow) {
+    ensureDateNowImport(ctx);
   }
 
   // ── collectUnknownConstructorImports finalize ──
@@ -2460,6 +2495,36 @@ export function ensureWrapperTypes(ctx: CodegenContext): void {
   ctx.structFields.set("WrapperBoolean", [
     { name: "value", type: { kind: "i32" }, mutable: false },
   ]);
+}
+
+/**
+ * Register the $Date struct type: struct { timestamp: f64 }
+ * Called lazily when Date usage is detected.
+ */
+export function ensureDateType(ctx: CodegenContext): void {
+  if (ctx.dateTypeIdx >= 0) return; // already registered
+  ctx.dateTypeIdx = ctx.mod.types.length;
+  ctx.mod.types.push({
+    kind: "struct",
+    name: "Date",
+    fields: [
+      { name: "timestamp", type: { kind: "f64" }, mutable: false },
+    ],
+  } as StructTypeDef);
+  ctx.structMap.set("Date", ctx.dateTypeIdx);
+  ctx.structFields.set("Date", [
+    { name: "timestamp", type: { kind: "f64" }, mutable: false },
+  ]);
+}
+
+/**
+ * Register the __date_now host import: () -> f64
+ * Returns the current time in ms since epoch.
+ */
+export function ensureDateNowImport(ctx: CodegenContext): void {
+  if (ctx.funcMap.has("__date_now")) return; // already registered
+  const typeIdx = addFuncType(ctx, [], [{ kind: "f64" }]);
+  addImport(ctx, "env", "__date_now", { kind: "func", typeIdx });
 }
 
 /**
@@ -7958,6 +8023,11 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type): ValType {
       return { kind: "externref" };
     }
 
+    // Date → ref $Date struct (#665)
+    if (sym?.name === "Date" && ctx.dateTypeIdx >= 0) {
+      return { kind: "ref", typeIdx: ctx.dateTypeIdx };
+    }
+
     // Promise<T> → unwrap to T.
     // Async functions are compiled synchronously, so Promise<T> is just T at the Wasm level.
     if (sym?.name === "Promise") {
@@ -7983,12 +8053,6 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type): ValType {
       const elemWasm: ValType = { kind: "f64" };
       const vecIdx = getOrRegisterVecType(ctx, "f64", elemWasm);
       return { kind: "ref_null", typeIdx: vecIdx };
-    }
-
-    // Date → WasmGC struct with i64 timestamp field
-    if (sym?.name === "Date") {
-      const dateTypeIdx = ensureDateStructForCtx(ctx);
-      return { kind: "ref", typeIdx: dateTypeIdx };
     }
 
     // Check externref AFTER Array check — Array is declared in lib but should use wasm GC arrays
@@ -8073,22 +8137,6 @@ function fieldsHashKey(fields: FieldDef[]): string {
     }
   }
   return parts.join("|");
-}
-
-/** Ensure the $__Date struct type exists in the module, return its type index. */
-function ensureDateStructForCtx(ctx: CodegenContext): number {
-  const existing = ctx.structMap.get("__Date");
-  if (existing !== undefined) return existing;
-
-  const typeIdx = ctx.mod.types.length;
-  ctx.mod.types.push({
-    kind: "struct" as const,
-    name: "__Date",
-    fields: [{ name: "timestamp", type: { kind: "i64" as const }, mutable: true }],
-  });
-  ctx.structMap.set("__Date", typeIdx);
-  ctx.structFields.set("__Date", [{ name: "timestamp", type: { kind: "i64" as const }, mutable: true }]);
-  return typeIdx;
 }
 
 /**
@@ -8398,11 +8446,10 @@ function collectExternClass(
   ctx.externClasses.set(fullName, info);
 }
 
-/** Types handled natively — skip extern class registration */
+/** Error types handled natively — skip extern class registration */
 const ERROR_TYPES_SKIP = new Set([
   "Error", "TypeError", "RangeError", "SyntaxError",
   "URIError", "EvalError", "ReferenceError",
-  "Date",
 ]);
 
 /** Collect extern class info from a `declare var X: { prototype: X; new(): X }` (lib.dom.d.ts pattern) */
