@@ -615,6 +615,8 @@ const DOWNGRADE_DIAG_CODES = new Set([
   2356, // "An arithmetic operand must be of type 'any', 'number', 'bigint' or an enum type" — prefix/postfix inc/dec on non-number
   2362, // "The left-hand side of an arithmetic operation must be..."
   2365, // "Operator 'X' cannot be applied to types 'Y' and 'Z'"
+  1503, // "This regular expression flag is only available when targeting 'es2024'" (#654)
+  1232, // "An import declaration can only be used at the top level of a namespace or module" (#654)
   18050, // "The value 'null'/'undefined' cannot be used here"
   2698, // "Spread types may only be created from object types" — codegen handles spread generically (#536)
   2872, // "This kind of expression is always truthy"
@@ -819,6 +821,8 @@ export function compileSource(
     1135, // "Argument expression expected" — valid JS patterns in test262 (#537)
     1262, // "Identifier expected. 'X' is a reserved word at the top-level of a module" — await as identifier (#537)
     1435, // "Unknown keyword or identifier. Did you mean 'X'?" — yield in nested generator contexts (#521)
+    1503, // "This regular expression flag is only available when targeting 'es2024'" (#654)
+    1232, // "An import declaration can only be used at the top level of a namespace or module" (#654)
   ]);
   const hasSyntaxErrors = ast.syntacticDiagnostics.some(
     (d) => d.category === 1 && d.file === ast.sourceFile && !TOLERATED_SYNTAX_CODES.has(d.code),
@@ -1674,6 +1678,8 @@ export function compileToObjectSource(
     1109, // "Expression expected" (#537)
     1135, // "Argument expression expected" (#537)
     1262, // "Identifier expected. 'X' is a reserved word at the top-level of a module" (#537)
+    1503, // "This regular expression flag is only available when targeting 'es2024'" (#654)
+    1232, // "An import declaration can only be used at the top level of a namespace or module" (#654)
   ]);
   const hasSyntaxErrors = ast.syntacticDiagnostics.some(
     (d) => d.category === 1 && d.file === ast.sourceFile && !TOLERATED_SYNTAX_CODES.has(d.code),
