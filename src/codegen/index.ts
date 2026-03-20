@@ -152,6 +152,8 @@ export interface CodegenContext {
   funcMap: Map<string, number>;
   /** Map from struct/interface name to type index */
   structMap: Map<string, number>;
+  /** Reverse map from type index to struct/interface name (O(1) lookup) */
+  typeIdxToStructName: Map<number, string>;
   /** Map from struct name to field info */
   structFields: Map<string, FieldDef[]>;
   /** Number of imported functions */
@@ -457,6 +459,7 @@ export function generateModule(
     checker: ast.checker,
     funcMap: new Map(),
     structMap: new Map(),
+    typeIdxToStructName: new Map(),
     structFields: new Map(),
     numImportFuncs: 0,
     currentFunc: null,
@@ -701,6 +704,7 @@ export function generateMultiModule(
     checker: multiAst.checker,
     funcMap: new Map(),
     structMap: new Map(),
+    typeIdxToStructName: new Map(),
     structFields: new Map(),
     numImportFuncs: 0,
     currentFunc: null,
@@ -2428,6 +2432,7 @@ export function ensureWrapperTypes(ctx: CodegenContext): void {
     ],
   } as StructTypeDef);
   ctx.structMap.set("WrapperNumber", ctx.wrapperNumberTypeIdx);
+  ctx.typeIdxToStructName.set(ctx.wrapperNumberTypeIdx, "WrapperNumber");
   ctx.structFields.set("WrapperNumber", [
     { name: "value", type: { kind: "f64" }, mutable: false },
   ]);
@@ -2443,6 +2448,7 @@ export function ensureWrapperTypes(ctx: CodegenContext): void {
     ],
   } as StructTypeDef);
   ctx.structMap.set("WrapperString", ctx.wrapperStringTypeIdx);
+  ctx.typeIdxToStructName.set(ctx.wrapperStringTypeIdx, "WrapperString");
   ctx.structFields.set("WrapperString", [
     { name: "value", type: strValType, mutable: false },
   ]);
@@ -2457,6 +2463,7 @@ export function ensureWrapperTypes(ctx: CodegenContext): void {
     ],
   } as StructTypeDef);
   ctx.structMap.set("WrapperBoolean", ctx.wrapperBooleanTypeIdx);
+  ctx.typeIdxToStructName.set(ctx.wrapperBooleanTypeIdx, "WrapperBoolean");
   ctx.structFields.set("WrapperBoolean", [
     { name: "value", type: { kind: "i32" }, mutable: false },
   ]);
@@ -8144,6 +8151,7 @@ export function ensureStructForType(ctx: CodegenContext, tsType: ts.Type): void 
     fields,
   } as StructTypeDef);
   ctx.structMap.set(structName, typeIdx);
+  ctx.typeIdxToStructName.set(typeIdx, structName);
   ctx.structFields.set(structName, fields);
   ctx.anonStructHash.set(hashKey, structName);
   ctx.anonTypeMap.set(tsType, structName);
@@ -8987,6 +8995,7 @@ export function collectClassDeclaration(
   const placeholderDef: StructTypeDef = { kind: "struct", name: className, fields: [] };
   ctx.mod.types.push(placeholderDef);
   ctx.structMap.set(className, structTypeIdx);
+  ctx.typeIdxToStructName.set(structTypeIdx, className);
 
   // Find the constructor to determine struct fields from `this.x = ...` assignments
   const ctor = decl.members.find(ts.isConstructorDeclaration) as
@@ -9585,6 +9594,7 @@ function collectEmptyObjectWidening(
               fields,
             } as StructTypeDef);
             ctx.structMap.set(structName, typeIdx);
+            ctx.typeIdxToStructName.set(typeIdx, structName);
             ctx.structFields.set(structName, fields);
             // Map variable name to struct name for later lookup
             ctx.widenedVarStructMap.set(varName, structName);
@@ -10408,6 +10418,7 @@ function collectInterface(
     fields,
   } as StructTypeDef);
   ctx.structMap.set(name, typeIdx);
+  ctx.typeIdxToStructName.set(typeIdx, name);
   ctx.structFields.set(name, fields);
 }
 
@@ -10498,6 +10509,7 @@ function collectObjectType(
       fields,
     } as StructTypeDef);
     ctx.structMap.set(name, typeIdx);
+    ctx.typeIdxToStructName.set(typeIdx, name);
     ctx.structFields.set(name, fields);
   }
 }
@@ -12311,10 +12323,7 @@ export function destructureParamObject(
   const structTypeIdx = (paramType as { typeIdx: number }).typeIdx;
 
   // Find struct name and fields
-  let structName: string | undefined;
-  for (const [name, idx] of ctx.structMap) {
-    if (idx === structTypeIdx) { structName = name; break; }
-  }
+  const structName = ctx.typeIdxToStructName.get(structTypeIdx);
   const fields = structName ? ctx.structFields.get(structName) : undefined;
   if (!fields) {
     // Cannot find struct info — register locals with defaults
