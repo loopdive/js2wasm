@@ -545,6 +545,11 @@ export function generateModule(
     wasiBumpPtrGlobalIdx: -1,
   };
 
+  // Pre-register common vec types so they're available during early compilation (#647)
+  // Without this, methods compiled before array literals wouldn't know about __vec_f64.
+  getOrRegisterVecType(ctx, "externref", { kind: "externref" });
+  getOrRegisterVecType(ctx, "f64", { kind: "f64" });
+
   // Register native string types if native strings enabled (fast mode, WASI, or explicit)
   if (ctx.nativeStrings) {
     registerNativeStringTypes(ctx);
@@ -7748,6 +7753,41 @@ export function getArrTypeIdxFromVec(
 }
 
 /**
+ * Generate instructions to convert a value from a vec element type to externref.
+ * For externref elements: extern.convert_any (GC ref -> externref)
+ * For f64 elements: call __box_number (f64 -> externref)
+ * For i32 elements: f64.convert_i32_s + call __box_number
+ */
+function boxToExternref(ctx: CodegenContext, elemKey: string): Instr[] {
+  if (elemKey === "externref") {
+    // Already externref, just pass through
+    return [];
+  }
+  if (elemKey === "f64") {
+    addUnionImports(ctx);
+    const boxIdx = ctx.funcMap.get("__box_number");
+    if (boxIdx !== undefined) {
+      return [{ op: "call", funcIdx: boxIdx } as Instr];
+    }
+    // Fallback: drop and push null
+    return [{ op: "drop" } as Instr, { op: "ref.null.extern" } as unknown as Instr];
+  }
+  if (elemKey === "i32") {
+    addUnionImports(ctx);
+    const boxIdx = ctx.funcMap.get("__box_number");
+    if (boxIdx !== undefined) {
+      return [
+        { op: "f64.convert_i32_s" } as Instr,
+        { op: "call", funcIdx: boxIdx } as Instr,
+      ];
+    }
+    return [{ op: "drop" } as Instr, { op: "ref.null.extern" } as unknown as Instr];
+  }
+  // For ref types: extern.convert_any
+  return [{ op: "extern.convert_any" } as Instr];
+}
+
+/**
  * Check if a ts.Type is a TypeScript tuple type (e.g. [number, string]).
  * Tuples are TypeReference types whose target has the Tuple object flag.
  * The Tuple flag is on the target, not the reference itself.
@@ -12231,6 +12271,29 @@ export function destructureParamObject(
   paramType: ValType,
 ): void {
   if (paramType.kind !== "ref" && paramType.kind !== "ref_null") {
+    // externref parameters: convert to struct ref before destructuring (#647)
+    if (paramType.kind === "externref") {
+      const tsType = ctx.checker.getTypeAtLocation(pattern);
+      if (tsType) {
+        ensureStructForType(ctx, tsType);
+        const typeName = ctx.anonTypeMap.get(tsType)
+          ?? tsType.getSymbol()?.name
+          ?? tsType.aliasSymbol?.name;
+        const structTypeIdx = typeName ? ctx.structMap.get(typeName) : undefined;
+        if (structTypeIdx !== undefined) {
+          const convertedType: ValType = { kind: "ref_null", typeIdx: structTypeIdx };
+          const tmpLocal = allocLocal(fctx, `__dparam_cvt_${fctx.locals.length}`, convertedType);
+          // Convert externref -> anyref -> (ref null $struct)
+          fctx.body.push({ op: "local.get", index: paramIdx });
+          fctx.body.push({ op: "any.convert_extern" } as Instr);
+          fctx.body.push({ op: "ref.cast_null", typeIdx: structTypeIdx } as unknown as Instr);
+          fctx.body.push({ op: "local.set", index: tmpLocal });
+          // Recurse with the converted ref_null type
+          destructureParamObject(ctx, fctx, tmpLocal, pattern, convertedType);
+          return;
+        }
+      }
+    }
     // Cannot destructure a non-ref type — register locals with defaults
     for (const element of pattern.elements) {
       if (ts.isOmittedExpression(element)) continue;
@@ -12341,6 +12404,114 @@ export function destructureParamArray(
   paramType: ValType,
 ): void {
   if (paramType.kind !== "ref" && paramType.kind !== "ref_null") {
+    // externref parameters: convert to vec struct before destructuring (#647)
+    // The externref may wrap any vec type at runtime (e.g. __vec_f64 from [1,2,3]
+    // or __vec_externref from untyped arrays). We convert to __vec_externref
+    // since that's what the rest of the code expects for untyped patterns.
+    if (paramType.kind === "externref") {
+      const extVecIdx = getOrRegisterVecType(ctx, "externref", { kind: "externref" });
+      const extArrTypeIdx = getArrTypeIdxFromVec(ctx, extVecIdx);
+      const convertedType: ValType = { kind: "ref_null", typeIdx: extVecIdx };
+      const resultLocal = allocLocal(fctx, `__dparam_cvt_${fctx.locals.length}`, convertedType);
+
+      // Convert externref -> anyref
+      const anyTmp = allocLocal(fctx, `__dparam_any_${fctx.locals.length}`, { kind: "anyref" } as ValType);
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "any.convert_extern" } as Instr);
+      fctx.body.push({ op: "local.set", index: anyTmp });
+
+      // Try direct cast to __vec_externref first (cheapest path)
+      fctx.body.push({ op: "local.get", index: anyTmp });
+      fctx.body.push({ op: "ref.test", typeIdx: extVecIdx } as unknown as Instr);
+
+      const directCastInstrs: Instr[] = [
+        { op: "local.get", index: anyTmp } as Instr,
+        { op: "ref.cast", typeIdx: extVecIdx } as unknown as Instr,
+        { op: "local.set", index: resultLocal } as Instr,
+      ];
+
+      // Else: try each other known vec type and convert element-by-element
+      const convertInstrs: Instr[] = [];
+      for (const [key, vecIdx] of ctx.vecTypeMap) {
+        if (vecIdx === extVecIdx) continue; // already handled
+        const vecDef = ctx.mod.types[vecIdx];
+        if (!vecDef || vecDef.kind !== "struct") continue;
+        const dataField = vecDef.fields[1];
+        if (!dataField || dataField.name !== "data") continue;
+        const srcArrTypeIdx = (dataField.type as { typeIdx: number }).typeIdx;
+
+        const cvtTmp = allocLocal(fctx, `__dparam_src_${key}_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecIdx });
+        const lenTmp = allocLocal(fctx, `__dparam_len_${key}_${fctx.locals.length}`, { kind: "i32" });
+        const dstArrTmp = allocLocal(fctx, `__dparam_darr_${key}_${fctx.locals.length}`, { kind: "ref", typeIdx: extArrTypeIdx });
+        const idxTmp = allocLocal(fctx, `__dparam_idx_${key}_${fctx.locals.length}`, { kind: "i32" });
+
+        const thenInstrs: Instr[] = [
+          // Cast and get length
+          { op: "local.get", index: anyTmp } as Instr,
+          { op: "ref.cast", typeIdx: vecIdx } as unknown as Instr,
+          { op: "local.set", index: cvtTmp } as Instr,
+          { op: "local.get", index: cvtTmp } as Instr,
+          { op: "struct.get", typeIdx: vecIdx, fieldIdx: 0 } as Instr, // length
+          { op: "local.set", index: lenTmp } as Instr,
+          // Create new externref array
+          { op: "local.get", index: lenTmp } as Instr,
+          { op: "array.new_default", typeIdx: extArrTypeIdx } as unknown as Instr,
+          { op: "local.set", index: dstArrTmp } as Instr,
+          // Loop: copy elements with boxing
+          { op: "i32.const", value: 0 } as Instr,
+          { op: "local.set", index: idxTmp } as Instr,
+          {
+            op: "block", blockType: { kind: "empty" },
+            body: [{
+              op: "loop", blockType: { kind: "empty" },
+              body: [
+                // if idx >= len, break
+                { op: "local.get", index: idxTmp } as Instr,
+                { op: "local.get", index: lenTmp } as Instr,
+                { op: "i32.ge_s" } as Instr,
+                { op: "br_if", depth: 1 } as Instr,
+                // dstArr[idx] = extern.convert_any(srcArr[idx])
+                { op: "local.get", index: dstArrTmp } as Instr,
+                { op: "local.get", index: idxTmp } as Instr,
+                { op: "local.get", index: cvtTmp } as Instr,
+                { op: "struct.get", typeIdx: vecIdx, fieldIdx: 1 } as Instr, // src data
+                { op: "local.get", index: idxTmp } as Instr,
+                { op: "array.get", typeIdx: srcArrTypeIdx } as Instr,
+                // Box primitive types before storing as externref
+                ...boxToExternref(ctx, key),
+                { op: "array.set", typeIdx: extArrTypeIdx } as Instr,
+                // idx++
+                { op: "local.get", index: idxTmp } as Instr,
+                { op: "i32.const", value: 1 } as Instr,
+                { op: "i32.add" } as Instr,
+                { op: "local.set", index: idxTmp } as Instr,
+                { op: "br", depth: 0 } as Instr,
+              ],
+            } as Instr],
+          } as Instr,
+          // Create __vec_externref: struct.new(len, dstArr)
+          { op: "local.get", index: lenTmp } as Instr,
+          { op: "local.get", index: dstArrTmp } as Instr,
+          { op: "struct.new", typeIdx: extVecIdx } as unknown as Instr,
+          { op: "local.set", index: resultLocal } as Instr,
+        ];
+
+        convertInstrs.push({ op: "local.get", index: anyTmp } as Instr);
+        convertInstrs.push({ op: "ref.test", typeIdx: vecIdx } as unknown as Instr);
+        convertInstrs.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs, else: [] } as Instr);
+      }
+
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" },
+        then: directCastInstrs,
+        else: convertInstrs,
+      });
+
+      // Now destructure from the converted vec_externref
+      destructureParamArray(ctx, fctx, resultLocal, pattern, convertedType);
+      return;
+    }
     // Cannot destructure a non-ref type — register locals with defaults
     for (const element of pattern.elements) {
       if (ts.isOmittedExpression(element)) continue;
