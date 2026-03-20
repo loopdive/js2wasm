@@ -7946,16 +7946,16 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type): ValType {
       return { kind: "ref_null", typeIdx: vecIdx };
     }
 
-    // Wrapper types (Number, String, Boolean) — map to primitives directly.
-    // new Number(x), new String(x), new Boolean(x) return primitives, not object wrappers.
+    // Wrapper types (Number, String, Boolean) — map to externref.
+    // new Number(x), new String(x), new Boolean(x) are wrapper objects (typeof "object").
     if (sym?.name === "Number" && (tsType.flags & ts.TypeFlags.Object)) {
-      return { kind: "f64" };
+      return { kind: "externref" };
     }
     if (sym?.name === "String" && (tsType.flags & ts.TypeFlags.Object)) {
-      return ctx.nativeStrings ? nativeStringType(ctx) : { kind: "externref" };
+      return { kind: "externref" };
     }
     if (sym?.name === "Boolean" && (tsType.flags & ts.TypeFlags.Object)) {
-      return { kind: "i32" };
+      return { kind: "externref" };
     }
 
     // Promise<T> → unwrap to T.
