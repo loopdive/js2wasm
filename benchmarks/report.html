@@ -247,6 +247,41 @@ const BENCH_JSON = "results/latest.json";
 const HISTORY_JSON = "results/history.json";
 const RESULTS_JSONL = "results/test262-results.jsonl";
 
+// If the report.json is empty/corrupt, rebuild it from the JSONL on the fly
+async function loadReportWithFallback() {
+  const report = await loadJSON(REPORT_JSON);
+  if (report && report.summary && report.summary.total > 0) return report;
+  // Fallback: build report from JSONL
+  console.warn("Report JSON empty/corrupt, rebuilding from JSONL...");
+  try {
+    const resp = await fetch(RESULTS_JSONL);
+    if (!resp.ok) return null;
+    const text = await resp.text();
+    const counts = { pass: 0, fail: 0, compile_error: 0, skip: 0 };
+    const cats = {};
+    for (const line of text.split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        const r = JSON.parse(line);
+        const s = r.status;
+        if (s in counts) {
+          counts[s]++;
+          const cat = r.category || "unknown";
+          if (!cats[cat]) cats[cat] = { name: cat, pass: 0, fail: 0, compile_error: 0, skip: 0, total: 0 };
+          cats[cat][s]++;
+          cats[cat].total++;
+        }
+      } catch {}
+    }
+    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+    if (total === 0) return null;
+    return {
+      summary: { total, ...counts, compilable: counts.pass + counts.fail, stale: 0 },
+      categories: Object.values(cats).sort((a, b) => a.name.localeCompare(b.name)),
+    };
+  } catch { return null; }
+}
+
 // Per-file results indexed by category
 let filesByCategory = null;
 async function loadFileResults() {
@@ -1059,7 +1094,7 @@ function renderTrends(history, container) {
 
 async function main() {
   const [conformance, benchmarks, history] = await Promise.all([
-    loadJSON(REPORT_JSON), loadJSON(BENCH_JSON), loadJSON(HISTORY_JSON)
+    loadReportWithFallback(), loadJSON(BENCH_JSON), loadJSON(HISTORY_JSON)
   ]);
   const app = document.getElementById("app");
   app.textContent = "";
