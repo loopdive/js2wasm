@@ -503,6 +503,15 @@ export function compileExpression(
       }
     }
   }
+  // Guard: if compileExpressionInner returned an unexpected non-null value
+  // without a valid .kind property (e.g., undefined from a missing return path),
+  // treat it as null to prevent crashes.
+  if (result !== null && result !== VOID_RESULT &&
+      (typeof result !== "object" || result === null || !("kind" in result))) {
+    const fallbackType = expectedType ?? { kind: "f64" as const };
+    pushDefaultValue(fctx, fallbackType);
+    return fallbackType;
+  }
   if (result !== null) {
     // Coerce to expected type if there's a mismatch
     if (expectedType && result.kind !== expectedType.kind) {
@@ -17140,6 +17149,7 @@ function compilePropertyAccess(
       }
     }
   }
+  } // close if (typeName && !ctx.classSet.has(typeName))
 
   // For externref objects (any, Object, unknown), try compiling the object
   // and return a default value based on the inferred property type.
@@ -17162,7 +17172,6 @@ function compilePropertyAccess(
   // Last resort: emit unreachable (this branch should rarely be hit)
   fctx.body.push({ op: "unreachable" });
   return null;
-}
 }
 
 function compileExternPropertyGet(
