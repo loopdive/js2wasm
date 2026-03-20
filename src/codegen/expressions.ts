@@ -10017,6 +10017,41 @@ function compilePostfixIncrementElement(
 
 // ── Call expressions ─────────────────────────────────────────────────
 
+/**
+ * Compile a call argument expression and coerce the result to the expected
+ * parameter type if there is a mismatch. This prevents Wasm validation errors
+ * like "call[N] expected type X, found Y".
+ */
+function compileCallArg(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  argExpr: ts.Expression,
+  expectedType: ValType | undefined,
+): ValType | null {
+  const result = compileExpression(ctx, fctx, argExpr, expectedType);
+  if (!expectedType) return result;
+  if (!result || result === VOID_RESULT) {
+    // Expression produced no value -- push a default for the expected type
+    pushDefaultValue(fctx, expectedType);
+    return expectedType;
+  }
+  // Check if coercion is needed (different kinds)
+  if (result.kind !== expectedType.kind) {
+    coerceType(ctx, fctx, result, expectedType);
+    return expectedType;
+  }
+  // Same kind but for ref types, check typeIdx mismatch
+  if ((result.kind === "ref" || result.kind === "ref_null") &&
+      (expectedType.kind === "ref" || expectedType.kind === "ref_null")) {
+    const fromIdx = (result as { typeIdx: number }).typeIdx;
+    const toIdx = (expectedType as { typeIdx: number }).typeIdx;
+    if (fromIdx !== toIdx) {
+      coerceType(ctx, fctx, result, expectedType);
+    }
+  }
+  return result;
+}
+
 /** Look up parameter types for a function by its index */
 function getFuncParamTypes(ctx: CodegenContext, funcIdx: number): ValType[] | undefined {
   if (funcIdx < ctx.numImportFuncs) {
@@ -10073,7 +10108,7 @@ function compileClosureCall(
 
   // Push call arguments
   for (let i = 0; i < expr.arguments.length; i++) {
-    compileExpression(ctx, fctx, expr.arguments[i]!, info.paramTypes[i]);
+    compileCallArg(ctx, fctx, expr.arguments[i]!, info.paramTypes[i]);
   }
 
   // Pad missing arguments with defaults (arity mismatch)
@@ -10154,7 +10189,7 @@ function compileCallablePropertyCall(
 
       // Push call arguments
       for (let i = 0; i < expr.arguments.length; i++) {
-        compileExpression(ctx, fctx, expr.arguments[i]!, closureInfo.paramTypes[i]);
+        compileCallArg(ctx, fctx, expr.arguments[i]!, closureInfo.paramTypes[i]);
       }
       // Pad missing arguments
       for (let i = expr.arguments.length; i < closureInfo.paramTypes.length; i++) {
@@ -10200,7 +10235,7 @@ function compileCallablePropertyCall(
 
       // Push call arguments
       for (let i = 0; i < expr.arguments.length; i++) {
-        compileExpression(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
+        compileCallArg(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
       }
       // Pad missing arguments
       for (let i = expr.arguments.length; i < matchedClosureInfo.paramTypes.length; i++) {
@@ -10264,7 +10299,7 @@ function compileCallablePropertyCall(
 
       // Push call arguments
       for (let i = 0; i < expr.arguments.length; i++) {
-        compileExpression(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
+        compileCallArg(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
       }
       for (let i = expr.arguments.length; i < matchedClosureInfo.paramTypes.length; i++) {
         pushDefaultValue(fctx, matchedClosureInfo.paramTypes[i]!);
@@ -10442,7 +10477,7 @@ function compileCallExpression(
               // Compile non-rest arguments
               for (let i = 0; i < callRestInfo.restIndex; i++) {
                 if (i < remainingArgs.length) {
-                  compileExpression(ctx, fctx, remainingArgs[i]!, paramTypes?.[i]);
+                  compileCallArg(ctx, fctx, remainingArgs[i]!, paramTypes?.[i]);
                 } else {
                   pushDefaultValue(fctx, paramTypes?.[i] ?? { kind: "f64" });
                 }
@@ -10451,7 +10486,7 @@ function compileCallExpression(
               const restArgCount = Math.max(0, remainingArgs.length - callRestInfo.restIndex);
               fctx.body.push({ op: "i32.const", value: restArgCount });
               for (let i = callRestInfo.restIndex; i < remainingArgs.length; i++) {
-                compileExpression(ctx, fctx, remainingArgs[i]!, callRestInfo.elemType);
+                compileCallArg(ctx, fctx, remainingArgs[i]!, callRestInfo.elemType);
               }
               fctx.body.push({ op: "array.new_fixed", typeIdx: callRestInfo.arrayTypeIdx, length: restArgCount });
               fctx.body.push({ op: "struct.new", typeIdx: callRestInfo.vecTypeIdx });
@@ -10459,7 +10494,7 @@ function compileCallExpression(
               // Regular function call
               const paramTypes = getFuncParamTypes(ctx, funcIdx!);
               for (let i = 0; i < remainingArgs.length; i++) {
-                compileExpression(ctx, fctx, remainingArgs[i]!, paramTypes?.[i]);
+                compileCallArg(ctx, fctx, remainingArgs[i]!, paramTypes?.[i]);
               }
 
               // Supply defaults for missing optional params
@@ -10517,7 +10552,7 @@ function compileCallExpression(
                 const paramTypes = getFuncParamTypes(ctx, funcIdx!);
                 for (let i = 0; i < applyRestInfo.restIndex; i++) {
                   if (i < elements.length) {
-                    compileExpression(ctx, fctx, elements[i]!, paramTypes?.[i]);
+                    compileCallArg(ctx, fctx, elements[i]!, paramTypes?.[i]);
                   } else {
                     pushDefaultValue(fctx, paramTypes?.[i] ?? { kind: "f64" });
                   }
@@ -10525,14 +10560,14 @@ function compileCallExpression(
                 const restArgCount = Math.max(0, elements.length - applyRestInfo.restIndex);
                 fctx.body.push({ op: "i32.const", value: restArgCount });
                 for (let i = applyRestInfo.restIndex; i < elements.length; i++) {
-                  compileExpression(ctx, fctx, elements[i]!, applyRestInfo.elemType);
+                  compileCallArg(ctx, fctx, elements[i]!, applyRestInfo.elemType);
                 }
                 fctx.body.push({ op: "array.new_fixed", typeIdx: applyRestInfo.arrayTypeIdx, length: restArgCount });
                 fctx.body.push({ op: "struct.new", typeIdx: applyRestInfo.vecTypeIdx });
               } else {
                 const paramTypes = getFuncParamTypes(ctx, funcIdx!);
                 for (let i = 0; i < elements.length; i++) {
-                  compileExpression(ctx, fctx, elements[i]!, paramTypes?.[i]);
+                  compileCallArg(ctx, fctx, elements[i]!, paramTypes?.[i]);
                 }
                 const optInfo = ctx.funcOptionalParams.get(funcName);
                 if (optInfo) {
@@ -10672,14 +10707,14 @@ function compileCallExpression(
               // .call(thisArg, arg1, arg2, ...) — remaining args are positional
               const paramTypes = getFuncParamTypes(ctx, funcIdx);
               for (let i = 1; i < expr.arguments.length; i++) {
-                compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+                compileCallArg(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
               }
             } else if (expr.arguments.length >= 2 && ts.isArrayLiteralExpression(expr.arguments[1]!)) {
               // .apply(thisArg, [arg1, arg2, ...]) — spread array literal
               const elements = (expr.arguments[1] as ts.ArrayLiteralExpression).elements;
               const paramTypes = getFuncParamTypes(ctx, funcIdx);
               for (let i = 0; i < elements.length; i++) {
-                compileExpression(ctx, fctx, elements[i]!, paramTypes?.[i + 1]); // param 0 = self
+                compileCallArg(ctx, fctx, elements[i]!, paramTypes?.[i + 1]); // param 0 = self
               }
             }
 
@@ -11149,7 +11184,7 @@ function compileCallExpression(
           // No self parameter for static methods
           const paramTypes = getFuncParamTypes(ctx, funcIdx);
           for (let i = 0; i < expr.arguments.length; i++) {
-            compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+            compileCallArg(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
           }
           // Pad missing arguments with defaults
           if (paramTypes) {
@@ -11433,7 +11468,7 @@ function compileCallExpression(
           fctx.body.push({ op: "ref.as_non_null" } as Instr);
           const paramTypes = getFuncParamTypes(ctx, funcIdx);
           for (let i = 0; i < expr.arguments.length; i++) {
-            compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
+            compileCallArg(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
           }
           if (paramTypes) {
             for (let i = expr.arguments.length + 1; i < paramTypes.length; i++) {
@@ -11470,7 +11505,7 @@ function compileCallExpression(
         // Non-nullable receiver: emit call directly
         const paramTypes = getFuncParamTypes(ctx, funcIdx);
         for (let i = 0; i < expr.arguments.length; i++) {
-          compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
+          compileCallArg(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
         }
         // Pad missing arguments with defaults (skip self param at index 0)
         if (paramTypes) {
@@ -11526,7 +11561,7 @@ function compileCallExpression(
             fctx.body.push({ op: "ref.as_non_null" } as Instr);
             const paramTypes = getFuncParamTypes(ctx, funcIdx);
             for (let i = 0; i < expr.arguments.length; i++) {
-              compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
+              compileCallArg(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
             }
             if (paramTypes) {
               for (let i = expr.arguments.length + 1; i < paramTypes.length; i++) {
@@ -11562,7 +11597,7 @@ function compileCallExpression(
           // Non-nullable receiver
           const paramTypes = getFuncParamTypes(ctx, funcIdx);
           for (let i = 0; i < expr.arguments.length; i++) {
-            compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
+            compileCallArg(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
           }
           // Pad missing arguments with defaults (skip self param at index 0)
           if (paramTypes) {
@@ -12200,7 +12235,7 @@ function compileCallExpression(
 
           // Push call arguments with type coercion
           for (let i = 0; i < expr.arguments.length; i++) {
-            compileExpression(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
+            compileCallArg(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
           }
 
           // Pad missing arguments with defaults
@@ -12240,7 +12275,7 @@ function compileCallExpression(
       const argLocals: number[] = [];
       for (let i = 0; i < inlineInfo.paramCount; i++) {
         if (i < expr.arguments.length) {
-          compileExpression(ctx, fctx, expr.arguments[i]!, inlineInfo.paramTypes[i]);
+          compileCallArg(ctx, fctx, expr.arguments[i]!, inlineInfo.paramTypes[i]);
         } else {
           pushDefaultValue(fctx, inlineInfo.paramTypes[i]!);
         }
@@ -12314,7 +12349,7 @@ function compileCallExpression(
       // Compile non-rest arguments
       for (let i = 0; i < restInfo.restIndex; i++) {
         if (i < expr.arguments.length) {
-          compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+          compileCallArg(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
         } else {
           pushDefaultValue(fctx, paramTypes?.[i] ?? { kind: "f64" });
         }
@@ -12342,7 +12377,7 @@ function compileCallExpression(
       for (let i = 0; i < expr.arguments.length; i++) {
         if (i < paramCount) {
           // Offset into paramTypes by captureCount since captures are the leading params
-          compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + captureCount]);
+          compileCallArg(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + captureCount]);
         } else {
           // Extra argument beyond function's parameter count — evaluate for
           // side effects (JS semantics) and discard the result
@@ -12580,7 +12615,7 @@ function compileCallExpression(
           // Push remaining arguments with type hints
           const paramTypes = getFuncParamTypes(ctx, funcIdx);
           for (let i = 0; i < expr.arguments.length; i++) {
-            compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
+            compileCallArg(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
           }
           // Pad missing arguments with defaults (skip self param at index 0)
           if (paramTypes) {
@@ -12625,7 +12660,7 @@ function compileCallExpression(
             fctx.body.push({ op: "ref.as_non_null" } as Instr);
             const paramTypes = getFuncParamTypes(ctx, funcIdx);
             for (let i = 0; i < expr.arguments.length; i++) {
-              compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
+              compileCallArg(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
             }
             if (paramTypes) {
               for (let i = expr.arguments.length + 1; i < paramTypes.length; i++) {
@@ -12660,7 +12695,7 @@ function compileCallExpression(
           // Non-nullable receiver
           const paramTypes = getFuncParamTypes(ctx, funcIdx);
           for (let i = 0; i < expr.arguments.length; i++) {
-            compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
+            compileCallArg(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
           }
           if (paramTypes) {
             for (let i = expr.arguments.length + 1; i < paramTypes.length; i++) {
@@ -12689,7 +12724,7 @@ function compileCallExpression(
           if (funcIdx !== undefined) {
             const paramTypes = getFuncParamTypes(ctx, funcIdx);
             for (let i = 0; i < expr.arguments.length; i++) {
-              compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+              compileCallArg(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
             }
             if (paramTypes) {
               for (let i = expr.arguments.length; i < paramTypes.length; i++) {
@@ -12847,7 +12882,7 @@ function compileCallExpression(
           // Regular function call
           const paramTypes = getFuncParamTypes(ctx, funcIdx!);
           for (let i = 0; i < allArgs.length; i++) {
-            compileExpression(ctx, fctx, allArgs[i]!, paramTypes?.[i]);
+            compileCallArg(ctx, fctx, allArgs[i]!, paramTypes?.[i]);
           }
 
           // Supply defaults for missing optional params
@@ -12914,7 +12949,7 @@ function compileCallExpression(
 
             const paramTypes = getFuncParamTypes(ctx, funcIdx);
             for (let i = 0; i < allArgs.length; i++) {
-              compileExpression(ctx, fctx, allArgs[i]!, paramTypes?.[i + 1]);
+              compileCallArg(ctx, fctx, allArgs[i]!, paramTypes?.[i + 1]);
             }
 
             const finalCallIdx = ctx.funcMap.get(fullName) ?? funcIdx;
@@ -13006,7 +13041,7 @@ function compileCallExpression(
 
         // Push call arguments
         for (let i = 0; i < expr.arguments.length; i++) {
-          compileExpression(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
+          compileCallArg(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
         }
 
         // Pad missing arguments with defaults
@@ -13103,7 +13138,7 @@ function compileCallExpression(
 
         // Push call arguments
         for (let i = 0; i < expr.arguments.length; i++) {
-          compileExpression(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
+          compileCallArg(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
         }
 
         // Pad missing arguments
@@ -13209,7 +13244,7 @@ function compileConditionalCallee(
       if (funcIdx !== undefined) {
         const paramTypes = getFuncParamTypes(ctx, funcIdx);
         for (let i = 0; i < expr.arguments.length; i++) {
-          compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+          compileCallArg(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
         }
         // Pad missing arguments with defaults
         if (paramTypes) {
@@ -13459,7 +13494,7 @@ function compileExpressionCallee(
 
       // Push call arguments
       for (let i = 0; i < expr.arguments.length; i++) {
-        compileExpression(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
+        compileCallArg(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
       }
 
       // Pad missing arguments
@@ -13824,7 +13859,7 @@ function compileSuperMethodCall(
   // Push remaining arguments with type hints
   const paramTypes = getFuncParamTypes(ctx, funcIdx);
   for (let i = 0; i < expr.arguments.length; i++) {
-    compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
+    compileCallArg(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
   }
   // Re-lookup funcIdx: argument compilation may trigger addUnionImports
   const resolvedName = `${ancestor}_${methodName}`;
@@ -13894,7 +13929,7 @@ function compileSuperElementMethodCall(
   // Push remaining arguments with type hints
   const paramTypes = getFuncParamTypes(ctx, funcIdx);
   for (let i = 0; i < expr.arguments.length; i++) {
-    compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
+    compileCallArg(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
   }
   // Re-lookup funcIdx: argument compilation may trigger addUnionImports
   const resolvedName = `${ancestor}_${methodName}`;
@@ -16630,7 +16665,7 @@ function compileOptionalCallExpression(
         }
         const paramTypes = getFuncParamTypes(ctx, funcIdx);
         for (let i = 0; i < expr.arguments.length; i++) {
-          compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
+          compileCallArg(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
         }
         if (paramTypes) {
           for (let i = expr.arguments.length + 1; i < paramTypes.length; i++) {
@@ -16657,7 +16692,7 @@ function compileOptionalCallExpression(
         }
         const paramTypes = getFuncParamTypes(ctx, funcIdx);
         for (let i = 0; i < expr.arguments.length; i++) {
-          compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
+          compileCallArg(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
         }
         if (paramTypes) {
           for (let i = expr.arguments.length + 1; i < paramTypes.length; i++) {
@@ -16858,7 +16893,7 @@ function compileOptionalDirectCall(
 
     // Push call arguments with type coercion
     for (let i = 0; i < expr.arguments.length; i++) {
-      compileExpression(ctx, fctx, expr.arguments[i]!, closureInfo.paramTypes[i]);
+      compileCallArg(ctx, fctx, expr.arguments[i]!, closureInfo.paramTypes[i]);
     }
 
     // Pad missing arguments with defaults (arity mismatch)
@@ -16879,7 +16914,7 @@ function compileOptionalDirectCall(
     // Direct function call
     const paramTypes = getFuncParamTypes(ctx, funcIdx);
     for (let i = 0; i < expr.arguments.length; i++) {
-      compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+      compileCallArg(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
     }
     if (paramTypes) {
       for (let i = expr.arguments.length; i < paramTypes.length; i++) {
