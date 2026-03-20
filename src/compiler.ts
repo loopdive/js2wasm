@@ -22,6 +22,7 @@ import type { WasmModule, FuncTypeDef, ValType } from "./ir/types.js";
 import { generateCHeader, extractCHeaderExports } from "./emit/c-header.js";
 import type { CabiExportInfo, CabiParam, ParamDef } from "./codegen-linear/c-abi.js";
 import { mapParamsToCabi, mapResultToCabi, emitCabiWrappers, inferSemantic } from "./codegen-linear/c-abi.js";
+import { generateWit } from "./wit-generator.js";
 
 // Default blocked members on extern classes in safe mode
 const DEFAULT_BLOCKED_MEMBERS = new Set([
@@ -1023,6 +1024,13 @@ export function compileSource(
   // Step 6: Generate imports helper
   const importsHelper = generateImportsHelper(mod);
 
+  // Step 7: Generate WIT interface (optional)
+  let witOutput: string | undefined;
+  if (options.wit) {
+    const witOpts = typeof options.wit === "object" ? options.wit : undefined;
+    witOutput = generateWit(ast, witOpts);
+  }
+
   return {
     binary,
     wat,
@@ -1034,6 +1042,7 @@ export function compileSource(
     sourceMap: sourceMapJson,
     imports: buildImportManifest(mod),
     cHeader,
+    wit: witOutput,
   };
 }
 
