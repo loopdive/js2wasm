@@ -2828,13 +2828,25 @@ function compileForOfAssignDestructuring(
       for (let i = 0; i < expr.elements.length; i++) {
         const el = expr.elements[i]!;
         if (ts.isOmittedExpression(el)) continue;
-        if (!ts.isIdentifier(el)) continue;
         if (i >= tupleFields.length) break;
+
+        const fieldType = tupleFields[i]!.type;
+
+        // Handle nested destructuring: for ([{ a, b }] of arr) or for ([[x, y]] of arr)
+        if (ts.isObjectLiteralExpression(el) || ts.isArrayLiteralExpression(el)) {
+          const nestedLocal = allocLocal(fctx, `__forof_nested_${fctx.locals.length}`, fieldType);
+          fctx.body.push({ op: "local.get", index: elemLocal });
+          fctx.body.push({ op: "struct.get", typeIdx: innerVecTypeIdx, fieldIdx: i });
+          fctx.body.push({ op: "local.set", index: nestedLocal });
+          compileForOfAssignDestructuring(ctx, fctx, el, nestedLocal, fieldType, vecTypeIdx, arrTypeIdx, stmt);
+          continue;
+        }
+
+        if (!ts.isIdentifier(el)) continue;
 
         const targetLocal = fctx.localMap.get(el.text);
         if (targetLocal === undefined) continue;
 
-        const fieldType = tupleFields[i]!.type;
         const targetType = getLocalType(fctx, targetLocal);
         fctx.body.push({ op: "local.get", index: elemLocal });
         fctx.body.push({ op: "struct.get", typeIdx: innerVecTypeIdx, fieldIdx: i });
@@ -2853,6 +2865,19 @@ function compileForOfAssignDestructuring(
       for (let i = 0; i < expr.elements.length; i++) {
         const el = expr.elements[i]!;
         if (ts.isOmittedExpression(el)) continue;
+
+        // Handle nested destructuring: for ([{ a, b }] of arr) or for ([[x, y]] of arr)
+        if (ts.isObjectLiteralExpression(el) || ts.isArrayLiteralExpression(el)) {
+          const nestedLocal = allocLocal(fctx, `__forof_nested_${fctx.locals.length}`, innerElemType);
+          fctx.body.push({ op: "local.get", index: elemLocal });
+          fctx.body.push({ op: "struct.get", typeIdx: innerVecTypeIdx, fieldIdx: 1 });
+          fctx.body.push({ op: "i32.const", value: i });
+          emitBoundsCheckedArrayGet(fctx, innerArrTypeIdx, innerElemType);
+          fctx.body.push({ op: "local.set", index: nestedLocal });
+          compileForOfAssignDestructuring(ctx, fctx, el, nestedLocal, innerElemType, vecTypeIdx, arrTypeIdx, stmt);
+          continue;
+        }
+
         if (!ts.isIdentifier(el)) continue;
 
         const targetLocal = fctx.localMap.get(el.text);
