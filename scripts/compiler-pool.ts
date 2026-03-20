@@ -51,7 +51,7 @@ export class CompilerPool {
 
     for (let i = 0; i < size; i++) {
       const worker = new Worker(workerPath, {
-        execArgv: ["--import", "tsx"],
+        execArgv: ["--import", "tsx/esm"],
       });
 
       const state: WorkerState = { worker, busy: false, ready: false };

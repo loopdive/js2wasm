@@ -4,7 +4,7 @@
  * Receives source strings, returns compiled binaries via zero-copy transfer.
  */
 import { parentPort } from "worker_threads";
-import { compile } from "../src/index.js";
+import { compile } from "../src/index.ts";
 
 if (!parentPort) throw new Error("Must run as worker_thread");
 
