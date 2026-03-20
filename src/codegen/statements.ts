@@ -23,8 +23,10 @@ import {
   collectClassDeclaration,
   compileClassBodies,
   ensureExnTag,
+  ensureAnyHelpers,
   ensureI32Condition,
   ensureNativeStringHelpers,
+  isAnyValue,
   ensureStructForType,
   nativeStringType,
   destructureParamArray,
@@ -1664,6 +1666,100 @@ function detectNullNarrowing(
   };
 }
 
+/**
+ * Detect `typeof x === "string"` / `typeof x === "number"` patterns in if conditions.
+ * Returns the variable name, the type literal, and which branch is narrowed.
+ */
+function detectTypeofNarrowing(
+  expr: ts.Expression,
+): { varName: string; typeLiteral: string; narrowedBranch: "then" | "else" } | null {
+  if (!ts.isBinaryExpression(expr)) return null;
+  const op = expr.operatorToken.kind;
+  const isEq =
+    op === ts.SyntaxKind.EqualsEqualsEqualsToken ||
+    op === ts.SyntaxKind.EqualsEqualsToken;
+  const isNeq =
+    op === ts.SyntaxKind.ExclamationEqualsEqualsToken ||
+    op === ts.SyntaxKind.ExclamationEqualsToken;
+  if (!isEq && !isNeq) return null;
+
+  let typeofExpr: ts.TypeOfExpression | null = null;
+  let stringLiteral: string | null = null;
+
+  if (ts.isTypeOfExpression(expr.left) && ts.isStringLiteral(expr.right)) {
+    typeofExpr = expr.left;
+    stringLiteral = expr.right.text;
+  } else if (ts.isTypeOfExpression(expr.right) && ts.isStringLiteral(expr.left)) {
+    typeofExpr = expr.right;
+    stringLiteral = expr.left.text;
+  }
+
+  if (!typeofExpr || !stringLiteral) return null;
+
+  // Only narrow for simple identifier operands
+  const operand = typeofExpr.expression;
+  if (!ts.isIdentifier(operand)) return null;
+
+  // Only narrow for "string" and "number" for now
+  if (stringLiteral !== "string" && stringLiteral !== "number") return null;
+
+  return {
+    varName: operand.text,
+    typeLiteral: stringLiteral,
+    narrowedBranch: isEq ? "then" : "else",
+  };
+}
+
+/**
+ * Apply typeof narrowing for a branch: allocate a new local of the narrowed type,
+ * emit unboxing from the AnyValue local, and remap localMap.
+ * Returns the original local index so we can restore it later.
+ */
+function applyTypeofNarrowing(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  varName: string,
+  typeLiteral: string,
+): { originalLocalIdx: number; narrowedLocalIdx: number } | null {
+  const originalLocalIdx = fctx.localMap.get(varName);
+  if (originalLocalIdx === undefined) return null;
+
+  // Check that the variable is currently AnyValue typed
+  const localType = getLocalType(fctx, originalLocalIdx);
+  if (!localType || !isAnyValue(localType, ctx)) return null;
+
+  ensureAnyHelpers(ctx);
+
+  let narrowedType: ValType;
+  let unboxHelper: string;
+
+  if (typeLiteral === "number") {
+    narrowedType = { kind: "f64" };
+    unboxHelper = "__any_unbox_f64";
+  } else if (typeLiteral === "string") {
+    narrowedType = { kind: "externref" };
+    unboxHelper = "__any_unbox_extern";
+  } else {
+    return null;
+  }
+
+  const funcIdx = ctx.funcMap.get(unboxHelper);
+  if (funcIdx === undefined) return null;
+
+  // Allocate a new local for the narrowed value
+  const narrowedLocalIdx = allocLocal(fctx, `__typeof_${varName}`, narrowedType);
+
+  // Emit unboxing: load original AnyValue, call unbox, store in narrowed local
+  fctx.body.push({ op: "local.get", index: originalLocalIdx });
+  fctx.body.push({ op: "call", funcIdx });
+  fctx.body.push({ op: "local.set", index: narrowedLocalIdx });
+
+  // Remap the variable to use the narrowed local
+  fctx.localMap.set(varName, narrowedLocalIdx);
+
+  return { originalLocalIdx, narrowedLocalIdx };
+}
+
 function compileIfStatement(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -1671,6 +1767,9 @@ function compileIfStatement(
 ): void {
   // Detect null-narrowing pattern before compiling the condition
   const narrowing = detectNullNarrowing(stmt.expression);
+
+  // Detect typeof narrowing pattern (typeof x === "string" / "number")
+  const typeofNarrowing = detectTypeofNarrowing(stmt.expression);
 
   // Compile condition
   const condType = compileExpression(ctx, fctx, stmt.expression);
@@ -1695,6 +1794,13 @@ function compileIfStatement(
 
   // Compile then branch
   const savedBody = pushBody(fctx);
+
+  // Apply typeof narrowing at start of the appropriate branch
+  let typeofNarrowResult: { originalLocalIdx: number; narrowedLocalIdx: number } | null = null;
+  if (typeofNarrowing && typeofNarrowing.narrowedBranch === "then") {
+    typeofNarrowResult = applyTypeofNarrowing(ctx, fctx, typeofNarrowing.varName, typeofNarrowing.typeLiteral);
+  }
+
   if (ts.isBlock(stmt.thenStatement)) {
     for (const s of stmt.thenStatement.statements) {
       compileStatement(ctx, fctx, s);
@@ -1703,6 +1809,11 @@ function compileIfStatement(
     compileStatement(ctx, fctx, stmt.thenStatement);
   }
   const thenInstrs = fctx.body;
+
+  // Restore typeof narrowing after then branch
+  if (typeofNarrowResult) {
+    fctx.localMap.set(typeofNarrowing!.varName, typeofNarrowResult.originalLocalIdx);
+  }
 
   // Restore narrowing before compiling else branch
   fctx.narrowedNonNull = savedNarrowedNonNull
@@ -1717,8 +1828,15 @@ function compileIfStatement(
 
   // Compile else branch
   let elseInstrs: Instr[] | undefined;
+  let typeofNarrowResultElse: { originalLocalIdx: number; narrowedLocalIdx: number } | null = null;
   if (stmt.elseStatement) {
     fctx.body = [];
+
+    // Apply typeof narrowing for else branch
+    if (typeofNarrowing && typeofNarrowing.narrowedBranch === "else") {
+      typeofNarrowResultElse = applyTypeofNarrowing(ctx, fctx, typeofNarrowing.varName, typeofNarrowing.typeLiteral);
+    }
+
     if (ts.isBlock(stmt.elseStatement)) {
       for (const s of stmt.elseStatement.statements) {
         compileStatement(ctx, fctx, s);
@@ -1727,6 +1845,11 @@ function compileIfStatement(
       compileStatement(ctx, fctx, stmt.elseStatement);
     }
     elseInstrs = fctx.body;
+
+    // Restore typeof narrowing after else branch
+    if (typeofNarrowResultElse) {
+      fctx.localMap.set(typeofNarrowing!.varName, typeofNarrowResultElse.originalLocalIdx);
+    }
   }
 
   popBody(fctx, savedBody);
