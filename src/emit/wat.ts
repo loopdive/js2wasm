@@ -317,6 +317,8 @@ function formatValType(t: ValType): string {
       return `(ref ${t.typeIdx})`;
     case "ref_null":
       return `(ref null ${t.typeIdx})`;
+    case "v128":
+      return "v128";
     case "i16":
       return "i16";
   }
@@ -513,7 +515,43 @@ function formatInstr(instr: Instr, _depth: number): string {
     case "i32.store":
     case "i32.store8":
     case "i32.store16":
+    case "f32.load":
+    case "f32.store":
+    case "f64.load":
+    case "f64.store":
       return `${instr.op} offset=${instr.offset} align=${1 << instr.align}`;
+    // SIMD v128 instructions
+    case "v128.const": {
+      const hexParts = Array.from(instr.bytes).map(b => `0x${b.toString(16).padStart(2, "0")}`);
+      return `v128.const i8x16 ${hexParts.join(" ")}`;
+    }
+    case "v128.load":
+    case "v128.store":
+    case "v128.load8_splat":
+    case "v128.load16_splat":
+    case "v128.load32_splat":
+    case "v128.load64_splat":
+    case "v128.load32_zero":
+    case "v128.load64_zero":
+      return `${instr.op} offset=${instr.offset} align=${1 << instr.align}`;
+    // SIMD lane operations
+    case "i8x16.extract_lane_s":
+    case "i8x16.extract_lane_u":
+    case "i8x16.replace_lane":
+    case "i16x8.extract_lane_s":
+    case "i16x8.extract_lane_u":
+    case "i16x8.replace_lane":
+    case "i32x4.extract_lane":
+    case "i32x4.replace_lane":
+    case "i64x2.extract_lane":
+    case "i64x2.replace_lane":
+    case "f32x4.extract_lane":
+    case "f32x4.replace_lane":
+    case "f64x2.extract_lane":
+    case "f64x2.replace_lane":
+      return `${instr.op} ${instr.lane}`;
+    case "i8x16.shuffle":
+      return `i8x16.shuffle ${instr.lanes.join(" ")}`;
     default:
       return instr.op;
   }
