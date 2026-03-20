@@ -1577,6 +1577,92 @@ export function collectWrittenIdentifiers(node: ts.Node, names: Set<string>): vo
   ts.forEachChild(node, (child) => collectWrittenIdentifiers(child, names));
 }
 
+/**
+ * Promote captured locals to globals for getter/setter accessor functions.
+ *
+ * When an object literal getter/setter references variables from the enclosing
+ * function scope, those variables need to be accessible as Wasm globals (since
+ * the getter/setter is compiled as a separate Wasm function).
+ *
+ * This function:
+ * 1. Scans the accessor body for referenced identifiers
+ * 2. For each that maps to a local in the enclosing fctx, creates a Wasm global
+ * 3. Copies the local's current value into the global
+ * 4. Removes the name from localMap so subsequent code uses the global
+ * 5. Registers in ctx.capturedGlobals for resolution in the accessor body
+ */
+function promoteAccessorCapturesToGlobals(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  accessorBody: ts.Block | undefined,
+): void {
+  if (!accessorBody) return;
+
+  const referencedNames = new Set<string>();
+  for (const stmt of accessorBody.statements) {
+    collectReferencedIdentifiers(stmt, referencedNames);
+  }
+
+  for (const name of referencedNames) {
+    // Skip if already a captured global or module global
+    if (ctx.capturedGlobals.has(name)) continue;
+    if (ctx.moduleGlobals.has(name)) continue;
+
+    const localIdx = fctx.localMap.get(name);
+    if (localIdx === undefined) continue;
+
+    // Skip 'this' — it's passed as param 0 to the accessor
+    if (name === "this") continue;
+
+    // Skip if it's a known function name (not a variable capture)
+    if (ctx.funcMap.has(name)) continue;
+
+    // Get the local's type
+    const localType = localIdx < fctx.params.length
+      ? fctx.params[localIdx]!.type
+      : fctx.locals[localIdx - fctx.params.length]?.type ?? { kind: "f64" as const };
+
+    // Widen non-nullable ref to ref_null for global init
+    const globalType: ValType = localType.kind === "ref"
+      ? { kind: "ref_null", typeIdx: (localType as { typeIdx: number }).typeIdx }
+      : localType;
+
+    // Create default init for the global
+    const init: Instr[] =
+      globalType.kind === "f64"
+        ? [{ op: "f64.const", value: 0 }]
+        : globalType.kind === "i32"
+          ? [{ op: "i32.const", value: 0 }]
+          : globalType.kind === "externref"
+            ? [{ op: "ref.null.extern" }]
+            : globalType.kind === "ref_null"
+              ? [{ op: "ref.null", typeIdx: (globalType as { typeIdx: number }).typeIdx }]
+              : [{ op: "i32.const", value: 0 }];
+
+    const globalIdx = nextModuleGlobalIdx(ctx);
+    ctx.mod.globals.push({
+      name: `__captured_${name}`,
+      type: globalType,
+      mutable: true,
+      init,
+    });
+
+    // Copy current local value into the new global
+    fctx.body.push({ op: "local.get", index: localIdx });
+    fctx.body.push({ op: "global.set", index: globalIdx });
+
+    // Register as captured global so accessor body resolves via global.get
+    ctx.capturedGlobals.set(name, globalIdx);
+    if (localType.kind === "ref") {
+      ctx.capturedGlobalsWidened.add(name);
+    }
+
+    // Remove from localMap so subsequent code in the enclosing function
+    // also uses the global (maintaining shared state with the accessor)
+    fctx.localMap.delete(name);
+  }
+}
+
 /** Collect all identifier names from a binding pattern (destructuring parameter) */
 function collectBindingPatternNames(pattern: ts.BindingPattern, names: Set<string>): void {
   for (const element of pattern.elements) {
@@ -18461,6 +18547,9 @@ function compileObjectLiteralForStruct(
       };
       ctx.mod.functions.push(getterFunc);
 
+      // Promote captured locals to globals so the getter body can access them
+      promoteAccessorCapturesToGlobals(ctx, fctx, prop.body);
+
       // Compile getter body
       const getterFctx: FunctionContext = {
         name: getterName,
@@ -18538,6 +18627,9 @@ function compileObjectLiteralForStruct(
         exported: false,
       };
       ctx.mod.functions.push(setterFunc);
+
+      // Promote captured locals to globals so the setter body can access them
+      promoteAccessorCapturesToGlobals(ctx, fctx, prop.body);
 
       // Compile setter body
       const setterFctxParams: { name: string; type: ValType }[] = [
