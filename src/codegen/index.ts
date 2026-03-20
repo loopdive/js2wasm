@@ -7226,18 +7226,13 @@ export function addUnionImports(ctx: CodegenContext): void {
     // Shift parent function bodies still being compiled. When a closure
     // triggers addUnionImports, the enclosing function's body is neither
     // in mod.functions nor ctx.currentFunc.
-    {
-      const done = new Set<Instr[]>();
-      for (const func of ctx.mod.functions) done.add(func.body);
-      if (ctx.currentFunc) {
-        done.add(ctx.currentFunc.body);
-        for (const sb of ctx.currentFunc.savedBodies) done.add(sb);
-      }
-      for (const pb of ctx.parentBodiesStack) {
-        if (!done.has(pb)) {
-          shiftFuncIndices(pb);
-          done.add(pb);
-        }
+    // Use the same `shifted` set as above to prevent double-shifting —
+    // parentBodiesStack entries overlap with funcStack[i].body references
+    // (both are pushed from the same savedFunc during closure compilation).
+    for (const pb of ctx.parentBodiesStack) {
+      if (!shifted.has(pb)) {
+        shiftFuncIndices(pb);
+        shifted.add(pb);
       }
     }
     // Update table elements
