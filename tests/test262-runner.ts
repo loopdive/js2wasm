@@ -218,6 +218,7 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
       "tcoHelper.js",
       "deepEqual.js",
       "compareIterator.js",
+      "testTypedArray.js",
     ]);
     for (const inc of meta.includes) {
       if (!allowed.has(inc)) {
@@ -1545,6 +1546,19 @@ function $DONE(err?: any): void {
   if (err) { __fail = 1; }
 }`;
     }
+  }
+
+  // testTypedArray.js — provides testWithTypedArrayConstructors that iterates
+  // over all TypedArray constructors.
+  if (includes.includes("testTypedArray.js") && /testWithTypedArrayConstructors/.test(body)) {
+    preamble += `
+
+function testWithTypedArrayConstructors(fn: any): void {
+  const constructors = [Int8Array, Uint8Array, Int16Array, Uint16Array, Int32Array, Uint32Array, Float32Array, Float64Array];
+  for (let i = 0; i < constructors.length; i++) {
+    fn(constructors[i]);
+  }
+}`;
   }
 
   // Auto-declare variables used as destructuring assignment targets but not
