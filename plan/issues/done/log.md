@@ -367,3 +367,60 @@
 | 556 | 2026-03-19 | O(n²) → O(1) struct dedup via hash map (perf) | Dep-driven |
 | 557 | 2026-03-19 | Batch late import index shifts O(I*B) → O(B) (perf) | Dep-driven |
 | 558 | 2026-03-19 | O(n) → O(1) funcType dedup via hash cache (perf) | Dep-driven |
+| 74 | 2026-03-19 | WASM SIMD WAT emission + memcmp proof-of-concept | Session |
+| 124 | 2026-03-19 | Delete operator via undefined sentinel (232 tests) | Session |
+| 129 | 2026-03-19 | propertyHelper.js no-op stubs (341 tests) | Session |
+| 323 | 2026-03-19 | Native type annotations (type i32 = number) | Session |
+| 452 | 2026-03-19 | TypeScript compiler pattern compatibility (95%) | Session |
+| 578 | 2026-03-19 | WASI target (console.log → fd_write, process.exit → proc_exit) | Session |
+| 581 | 2026-03-19 | Cast externref to struct in property access (177 CE) | Session |
+| 582 | 2026-03-19 | Re-resolve class method types at body compilation (594 CE) | Session |
+| 583 | 2026-03-19 | Parent body index shifting for closures (763 CE) | Session |
+| 585 | 2026-03-19 | Closure return type mismatch → illegal cast (44/51 fixed) | Session |
+| 586 | 2026-03-19 | Deduplicate array method callbacks (-484 lines) | Session |
+| 587 | 2026-03-19 | Deduplicate destructuring code (-155 lines) | Session |
+| 588 | 2026-03-19 | Compile catch body once (finally duplication fix) | Session |
+| 590 | 2026-03-19 | Generator return depth in for-of-string | Session |
+| 591 | 2026-03-19 | Extract type-coercion.ts (680 lines) | Session |
+| 592 | 2026-03-19 | Consolidate 19 AST passes into single visitor | Session |
+| 593 | 2026-03-19 | WAT escaping, DOM containment, constructor arity | Session |
+| 594 | 2026-03-19 | Leaf struct types marked final (V8 devirtualization) | Session |
+| 595 | 2026-03-19 | i32 loop counters for integer for-loops | Session |
+| 596 | 2026-03-19 | Peephole: remove redundant ref.as_non_null after ref.cast | Session |
+| 597 | 2026-03-19 | Type-specialized arithmetic skips AnyValue | Session |
+| 598 | 2026-03-19 | Typed export signatures (regression tests) | Session |
+| 599 | 2026-03-19 | Native WasmGC strings decoupled from fast mode | Session |
+| 600 | 2026-03-19 | WIT generator for Component Model | Session |
+| 601 | 2026-03-19 | Binaryen wasm-opt post-processing pass | Session |
+| 602 | 2026-03-19 | Tail call optimization (return_call/return_call_ref) | Session |
+| 603 | 2026-03-19 | Remove 15 stale skip filters (~2,500 tests) | Session |
+| 604 | 2026-03-19 | asyncHelpers.js shim (264 tests unblocked) | Session |
+| 605 | 2026-03-19 | Narrow negative test skip filter | Session |
+| 606 | 2026-03-19 | Test harness: tcoHelper, throwsAsync, deepEqual | Session |
+| 607 | 2026-03-19 | Remove stale skip filters (already done on main) | Session |
+| 608 | 2026-03-19 | TypedArray constructor support (9 types) | Session |
+| 609 | 2026-03-19 | Expand test262 categories (+8,416 tests) | Session |
+| 610 | 2026-03-19 | Worker timeout 30s→60s with retry | Session |
+| 611 | 2026-03-19 | Null guards for undefined AST nodes (2,995 CE) | Session |
+| 612 | 2026-03-19 | Symbol.asyncIterator diagnostics (367 CE) | Session |
+| 613 | 2026-03-19 | Suppress TS2551 diagnostic (206 CE) | Session |
+| 614 | 2026-03-19 | ArrayBuffer/DataView constructors (203 CE) | Session |
+| 616 | 2026-03-19 | Iterator interface diagnostic (137 CE) | Session |
+| 617 | 2026-03-19 | Async void drop prevention (109 CE) | Session |
+| 618 | 2026-03-19 | Wrong return value umbrella — triaged into #629-#634 | Session |
+| 619 | 2026-03-19 | Class element AST handlers (4,230 CE) | Session |
+| 620 | 2026-03-19 | Fix ENOENT double test/ path in retry (559 CE) | Session |
+| 621 | 2026-03-19 | Unsupported call expression fallback (1,692 CE) | Session |
+| 622 | 2026-03-19 | Null guard for destructureParamObject (707 FAIL) | Session |
+| 623 | 2026-03-19 | Worker timeout 60s→90s, per-test 5s→8s | Session |
+| 624 | 2026-03-19 | Prevent class struct corruption (953 CE) | Session |
+| 625 | 2026-03-19 | local.set type mismatch detection (552 CE) | Session |
+| 626 | 2026-03-19 | Call argument coercion (378 CE) | Session |
+| 627 | 2026-03-19 | Void RHS in logical operators (354 CE) | Session |
+| 628 | 2026-03-19 | Yield outside generator — isGenerator flag (283 CE) | Session |
+| 629 | 2026-03-19 | Tuple struct destructuring in generators (2,444 FAIL) | Session |
+| 630 | 2026-03-19 | Skip Temporal API tests (888 FAIL → skip) | Session |
+| 631 | 2026-03-19 | Prototype chain patterns (625 FAIL) | Session |
+| 632 | 2026-03-19 | RegExp literal flags crash | Session |
+| 633 | 2026-03-19 | Shape inference in try/catch/loop/switch (297 FAIL) | Session |
+| 634 | 2026-03-19 | Getter/setter accessor side effects (118 FAIL) | Session |
