@@ -1600,7 +1600,6 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
       needsDoneForAsyncTest, needsTestTypedArray,
     );
     preambleCache.set(cacheKey, preamble);
-  }`;
   }
 
   // Auto-declare variables used as destructuring assignment targets but not
