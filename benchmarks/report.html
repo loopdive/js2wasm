@@ -317,18 +317,19 @@ const MAX_CONCURRENT_FETCHES = 6;
 function fetchSourceLines(filePath, errText) {
   const placeholder = el("div", { className: "src-placeholder" });
   const lineMatch = errText.match(/L(\d+):(\d+)\s/);
-  // For "returned 0 | first assert: ..." errors, try to find the assert line in source
   const assertMatch = !lineMatch && errText.match(/first assert:\s*(.+)/);
   const searchText = assertMatch ? assertMatch[1].trim().substring(0, 60) : null;
-  const lineNo = lineMatch ? parseInt(lineMatch[1], 10) : 0;
+  // Line numbers from errors refer to the WRAPPED source (preamble + test body).
+  // The preamble is ~25-35 lines, so subtract an estimate to get the original line.
+  const rawLineNo = lineMatch ? parseInt(lineMatch[1], 10) : 0;
   const normalized = filePath.startsWith("test/") ? filePath : "test/" + filePath;
 
-  if (!lineMatch && !searchText) return placeholder;
+  if (!rawLineNo && !searchText) return placeholder;
 
   const cached = _srcCache.get(normalized);
   if (cached !== undefined) {
     if (cached) {
-      const ln = lineNo || findLineByText(cached, searchText);
+      const ln = findBestLine(cached, rawLineNo, errText, searchText);
       if (ln) renderSrcContext(cached, ln, placeholder);
     }
     return placeholder;
@@ -336,17 +337,33 @@ function fetchSourceLines(filePath, errText) {
 
   const base = window.location.pathname.replace(/\/benchmarks\/.*$/, "");
   const url = base + "/test262/" + normalized;
-  _srcQueue.push({ normalized, url, lineNo, searchText, placeholder });
+  _srcQueue.push({ normalized, url, rawLineNo, errText, searchText, placeholder });
   _drainSrcQueue();
   return placeholder;
 }
 
-function findLineByText(src, searchText) {
-  if (!searchText) return 0;
+function findBestLine(src, rawLineNo, errText, searchText) {
   const lines = src.split("\n");
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].includes(searchText)) return i + 1;
+  // Strategy 1: search for assert text from error message
+  if (searchText) {
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].includes(searchText)) return i + 1;
+    }
   }
+  // Strategy 2: try offsets from the raw line number (preamble is ~25-35 lines)
+  // Find the first non-comment, non-metadata code line near the adjusted position
+  for (const offset of [30, 28, 32, 25, 35, 20, 0]) {
+    const adjusted = rawLineNo - offset;
+    if (adjusted > 0 && adjusted <= lines.length) {
+      const line = lines[adjusted - 1].trim();
+      // Skip metadata, comments, empty lines
+      if (line && !line.startsWith("//") && !line.startsWith("*") && !line.startsWith("/*") && line !== "---*/") {
+        return adjusted;
+      }
+    }
+  }
+  // Strategy 3: if raw line is within file range, use it (better than nothing)
+  if (rawLineNo > 0 && rawLineNo <= lines.length) return rawLineNo;
   return 0;
 }
 
@@ -355,7 +372,7 @@ function _drainSrcQueue() {
     const job = _srcQueue.shift();
     const cached = _srcCache.get(job.normalized);
     if (cached !== undefined) {
-      if (cached) { const ln = job.lineNo || findLineByText(cached, job.searchText); if (ln) renderSrcContext(cached, ln, job.placeholder); }
+      if (cached) { const ln = findBestLine(cached, job.rawLineNo, job.errText, job.searchText); if (ln) renderSrcContext(cached, ln, job.placeholder); }
       continue;
     }
     _srcFetching++;
@@ -364,7 +381,7 @@ function _drainSrcQueue() {
       return r.text();
     }).then(t => {
       _srcCache.set(job.normalized, t);
-      const ln = job.lineNo || findLineByText(t, job.searchText);
+      const ln = findBestLine(t, job.rawLineNo, job.errText, job.searchText);
       if (ln) renderSrcContext(t, ln, job.placeholder);
     }).catch(() => {
       _srcCache.set(job.normalized, null);
