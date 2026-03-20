@@ -317,6 +317,8 @@ export interface CodegenContext {
   anonStructHash: Map<string, string>;
   /** Pending late import shift: importsBefore value captured when first deferred import was added. */
   pendingLateImportShift: { importsBefore: number } | null;
+  /** Map from class name → global index of the prototype externref singleton */
+  protoGlobals: Map<string, number>;
   /** Whether targeting WASI (use fd_write/proc_exit instead of JS host imports) */
   wasi: boolean;
   /** WASI fd_write function index (-1 if not registered) */
@@ -536,6 +538,7 @@ export function generateModule(
     anonStructHash: new Map(),
     funcTypeCache: new Map(),
     pendingLateImportShift: null,
+    protoGlobals: new Map(),
     wasi: options?.wasi ?? false,
     wasiFdWriteIdx: -1,
     wasiProcExitIdx: -1,
@@ -774,6 +777,7 @@ export function generateMultiModule(
     anonStructHash: new Map(),
     funcTypeCache: new Map(),
     pendingLateImportShift: null,
+    protoGlobals: new Map(),
   };
 
   // Register native string types if native strings enabled (fast mode, WASI, or explicit)
@@ -8988,6 +8992,19 @@ export function collectClassDeclaration(
   }
   ctx.mod.types[structTypeIdx] = structDef;
   ctx.structFields.set(className, fields);
+
+  // Register a prototype singleton global (externref, lazily initialized)
+  // Used by ClassName.prototype and Object.getPrototypeOf(instance).
+  {
+    const protoGlobalIdx = nextModuleGlobalIdx(ctx);
+    ctx.mod.globals.push({
+      name: `__proto_${className}`,
+      type: { kind: "externref" },
+      mutable: true,
+      init: [{ op: "ref.null.extern" }],
+    });
+    ctx.protoGlobals.set(className, protoGlobalIdx);
+  }
 
   // Register constructor function: takes ctor params, returns (ref $structTypeIdx)
   const ctorParams: ValType[] = [];
