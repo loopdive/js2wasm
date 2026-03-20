@@ -7985,6 +7985,12 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type): ValType {
       return { kind: "ref_null", typeIdx: vecIdx };
     }
 
+    // Date → WasmGC struct with i64 timestamp field
+    if (sym?.name === "Date") {
+      const dateTypeIdx = ensureDateStructForCtx(ctx);
+      return { kind: "ref", typeIdx: dateTypeIdx };
+    }
+
     // Check externref AFTER Array check — Array is declared in lib but should use wasm GC arrays
     if (isExternalDeclaredClass(tsType, ctx.checker))
       return { kind: "externref" };
@@ -8067,6 +8073,22 @@ function fieldsHashKey(fields: FieldDef[]): string {
     }
   }
   return parts.join("|");
+}
+
+/** Ensure the $__Date struct type exists in the module, return its type index. */
+function ensureDateStructForCtx(ctx: CodegenContext): number {
+  const existing = ctx.structMap.get("__Date");
+  if (existing !== undefined) return existing;
+
+  const typeIdx = ctx.mod.types.length;
+  ctx.mod.types.push({
+    kind: "struct" as const,
+    name: "__Date",
+    fields: [{ name: "timestamp", type: { kind: "i64" as const }, mutable: true }],
+  });
+  ctx.structMap.set("__Date", typeIdx);
+  ctx.structFields.set("__Date", [{ name: "timestamp", type: { kind: "i64" as const }, mutable: true }]);
+  return typeIdx;
 }
 
 /**
@@ -8376,10 +8398,11 @@ function collectExternClass(
   ctx.externClasses.set(fullName, info);
 }
 
-/** Error types handled natively — skip extern class registration */
+/** Types handled natively — skip extern class registration */
 const ERROR_TYPES_SKIP = new Set([
   "Error", "TypeError", "RangeError", "SyntaxError",
   "URIError", "EvalError", "ReferenceError",
+  "Date",
 ]);
 
 /** Collect extern class info from a `declare var X: { prototype: X; new(): X }` (lib.dom.d.ts pattern) */
