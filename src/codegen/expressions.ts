@@ -19,7 +19,7 @@ import type { Instr, ValType, WasmFunction, FieldDef, StructTypeDef } from "../i
 import { ensureI32Condition } from "./index.js";
 import { compileStatement } from "./statements.js";
 import { ensureTimsortHelper } from "./timsort.js";
-import { coerceType as coerceTypeImpl, pushDefaultValue, defaultValueInstrs, coercionInstrs } from "./type-coercion.js";
+import { coerceType as coerceTypeImpl, pushDefaultValue, defaultValueInstrs, coercionInstrs, emitGuardedRefCast } from "./type-coercion.js";
 export { pushDefaultValue, defaultValueInstrs, coercionInstrs } from "./type-coercion.js";
 
 /** Sentinel: expression compiled successfully but produces no value (void) */
@@ -9832,11 +9832,11 @@ function compileCallablePropertyCall(
       compileExpression(ctx, fctx, propAccess.expression);
       fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
 
-      // Convert externref -> closure struct ref
+      // Convert externref -> closure struct ref (guarded to avoid illegal cast)
       const closureRefType: ValType = { kind: "ref_null", typeIdx: wrapperStructIdx };
       const closureLocal = allocLocal(fctx, `__cprop_ext_${fctx.locals.length}`, closureRefType);
       fctx.body.push({ op: "any.convert_extern" });
-      fctx.body.push({ op: "ref.cast", typeIdx: wrapperStructIdx });
+      emitGuardedRefCast(fctx, wrapperStructIdx);
       fctx.body.push({ op: "local.set", index: closureLocal });
 
       // Push closure ref as first arg (self param)
@@ -11094,8 +11094,8 @@ function compileCallExpression(
           const structTypeIdx = ctx.structMap.get(receiverClassName);
           if (structTypeIdx !== undefined) {
             fctx.body.push({ op: "any.convert_extern" } as Instr);
-            fctx.body.push({ op: "ref.cast", typeIdx: structTypeIdx } as Instr);
-            recvType = { kind: "ref", typeIdx: structTypeIdx };
+            emitGuardedRefCast(fctx, structTypeIdx);
+            recvType = { kind: "ref_null", typeIdx: structTypeIdx };
           }
         }
         // Null-guard: if receiver is ref_null, check for null before calling method
@@ -11870,7 +11870,7 @@ function compileCallExpression(
             const closureRefType: ValType = { kind: "ref_null", typeIdx: matchedStructTypeIdx };
             closureLocal = allocLocal(fctx, `__callable_param_${fctx.locals.length}`, closureRefType);
             fctx.body.push({ op: "any.convert_extern" });
-            fctx.body.push({ op: "ref.cast", typeIdx: matchedStructTypeIdx });
+            emitGuardedRefCast(fctx, matchedStructTypeIdx);
             fctx.body.push({ op: "local.set", index: closureLocal });
           } else {
             const closureRefType: ValType = innerResultType ?? { kind: "ref", typeIdx: matchedStructTypeIdx };
@@ -12671,11 +12671,11 @@ function compileCallExpression(
         // Save closure ref to a local so we can extract both args and funcref
         let closureLocal: number;
         if (innerResultType?.kind === "externref") {
-          // Need to convert externref back to the closure struct ref
+          // Need to convert externref back to the closure struct ref (guarded)
           const closureRefType: ValType = { kind: "ref_null", typeIdx: matchedStructTypeIdx };
           closureLocal = allocLocal(fctx, `__call_ret_${fctx.locals.length}`, closureRefType);
           fctx.body.push({ op: "any.convert_extern" });
-          fctx.body.push({ op: "ref.cast", typeIdx: matchedStructTypeIdx });
+          emitGuardedRefCast(fctx, matchedStructTypeIdx);
           fctx.body.push({ op: "local.set", index: closureLocal });
         } else {
           const closureRefType: ValType = innerResultType ?? { kind: "ref", typeIdx: matchedStructTypeIdx };
@@ -12773,7 +12773,7 @@ function compileCallExpression(
           const closureRefType: ValType = { kind: "ref_null", typeIdx: matchedStructTypeIdx };
           closureLocal = allocLocal(fctx, `__cond_call_${fctx.locals.length}`, closureRefType);
           fctx.body.push({ op: "any.convert_extern" });
-          fctx.body.push({ op: "ref.cast", typeIdx: matchedStructTypeIdx });
+          emitGuardedRefCast(fctx, matchedStructTypeIdx);
           fctx.body.push({ op: "local.set", index: closureLocal });
         } else {
           const closureRefType: ValType = innerResultType ?? { kind: "ref", typeIdx: matchedStructTypeIdx };
@@ -13129,7 +13129,7 @@ function compileExpressionCallee(
         const closureRefType: ValType = { kind: "ref_null", typeIdx: matchedStructTypeIdx };
         closureLocal = allocLocal(fctx, `__expr_call_${fctx.locals.length}`, closureRefType);
         fctx.body.push({ op: "any.convert_extern" });
-        fctx.body.push({ op: "ref.cast", typeIdx: matchedStructTypeIdx });
+        emitGuardedRefCast(fctx, matchedStructTypeIdx);
         fctx.body.push({ op: "local.set", index: closureLocal });
       } else {
         const closureRefType: ValType = innerResultType ?? { kind: "ref", typeIdx: matchedStructTypeIdx };
@@ -20072,11 +20072,11 @@ function compileTaggedTemplateExpression(
       // Save closure ref to a local
       let closureLocal: number;
       if (tagResult?.kind === "externref") {
-        // Need to convert externref back to the closure struct ref
+        // Need to convert externref back to the closure struct ref (guarded)
         const closureRefType: ValType = { kind: "ref_null", typeIdx: matchedStructTypeIdx };
         closureLocal = allocLocal(fctx, `__tt_tag_${fctx.locals.length}`, closureRefType);
         fctx.body.push({ op: "any.convert_extern" });
-        fctx.body.push({ op: "ref.cast", typeIdx: matchedStructTypeIdx });
+        emitGuardedRefCast(fctx, matchedStructTypeIdx);
         fctx.body.push({ op: "local.set", index: closureLocal });
       } else {
         const closureRefType: ValType = tagResult ?? { kind: "ref", typeIdx: matchedStructTypeIdx };
