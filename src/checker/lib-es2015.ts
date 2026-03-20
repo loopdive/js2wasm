@@ -223,4 +223,28 @@ interface ObjectConstructor {
   entries<T>(o: { [s: string]: T } | ArrayLike<T>): [string, T][];
   entries(o: {}): [string, any][];
 }
+
+// ── Proxy ───────────────────────────────────────────────────────
+
+interface ProxyHandler<T extends object> {
+  get?(target: T, p: string | symbol, receiver: any): any;
+  set?(target: T, p: string | symbol, value: any, receiver: any): boolean;
+  has?(target: T, p: string | symbol): boolean;
+  deleteProperty?(target: T, p: string | symbol): boolean;
+  apply?(target: T, thisArg: any, argArray: any[]): any;
+  construct?(target: T, argArray: any[], newTarget: Function): object;
+  getPrototypeOf?(target: T): object | null;
+  setPrototypeOf?(target: T, v: object | null): boolean;
+  isExtensible?(target: T): boolean;
+  preventExtensions?(target: T): boolean;
+  getOwnPropertyDescriptor?(target: T, p: string | symbol): PropertyDescriptor | undefined;
+  defineProperty?(target: T, property: string | symbol, attributes: PropertyDescriptor): boolean;
+  ownKeys?(target: T): ArrayLike<string | symbol>;
+}
+
+interface ProxyConstructor {
+  new <T extends object>(target: T, handler: ProxyHandler<T>): T;
+  revocable<T extends object>(target: T, handler: ProxyHandler<T>): { proxy: T; revoke: () => void };
+}
+declare var Proxy: ProxyConstructor;
 `;
