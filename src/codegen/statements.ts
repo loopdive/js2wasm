@@ -3275,6 +3275,7 @@ function compileForOfIterator(
   const nextIdx = ctx.funcMap.get("__iterator_next");
   const doneIdx = ctx.funcMap.get("__iterator_done");
   const valueIdx = ctx.funcMap.get("__iterator_value");
+  const returnIdx = ctx.funcMap.get("__iterator_return");
   if (
     iteratorIdx === undefined ||
     nextIdx === undefined ||
@@ -3343,6 +3344,16 @@ function compileForOfIterator(
   fctx.breakStack.push(1); // break = depth 1 (exit block)
   fctx.continueStack.push(0); // continue = depth 0 (restart loop)
 
+  // Safety guard: max iteration counter to prevent infinite loops from collection mutation
+  const iterCountLocal = allocLocal(fctx, `__forof_guard_${fctx.locals.length}`, { kind: "i32" });
+  fctx.body.push({ op: "local.get", index: iterCountLocal });
+  fctx.body.push({ op: "i32.const", value: 1 });
+  fctx.body.push({ op: "i32.add" });
+  fctx.body.push({ op: "local.tee", index: iterCountLocal });
+  fctx.body.push({ op: "i32.const", value: 1_000_000 });
+  fctx.body.push({ op: "i32.gt_s" });
+  fctx.body.push({ op: "br_if", depth: 1 }); // break if >1M iterations
+
   // Call __iterator_next(iter) → result
   fctx.body.push({ op: "local.get", index: iterLocal });
   fctx.body.push({ op: "call", funcIdx: nextIdx });
@@ -3409,6 +3420,12 @@ function compileForOfIterator(
       },
     ],
   });
+
+  // Call iterator.return() to signal early termination / cleanup
+  if (returnIdx !== undefined) {
+    fctx.body.push({ op: "local.get", index: iterLocal });
+    fctx.body.push({ op: "call", funcIdx: returnIdx });
+  }
 }
 
 function compileForInStatement(

@@ -7300,6 +7300,17 @@ export function addIteratorImports(ctx: CodegenContext): void {
     kind: "func",
     typeIdx: extToExt,
   });
+
+  // __iterator_return: (externref) → void — calls iter.return() if it exists
+  const extToVoid = addFuncType(
+    ctx,
+    [{ kind: "externref" }],
+    [],
+  );
+  addImport(ctx, "env", "__iterator_return", {
+    kind: "func",
+    typeIdx: extToVoid,
+  });
 }
 
 export function addImport(
