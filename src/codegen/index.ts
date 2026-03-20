@@ -12238,7 +12238,68 @@ export function destructureParamArray(
   const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
   const arrDef = ctx.mod.types[arrTypeIdx];
   if (!arrDef || arrDef.kind !== "array") {
-    // Not an array — register locals with defaults
+    // Not a vec array — check if it's a tuple struct (fields named _0, _1, ...)
+    const tupleDef = ctx.mod.types[vecTypeIdx];
+    if (tupleDef && tupleDef.kind === "struct" && tupleDef.fields.length > 0 &&
+        tupleDef.fields[0]!.name === "_0") {
+      // Tuple struct destructuring: extract positional fields via struct.get
+      const isNullable = paramType.kind === "ref_null";
+
+      // Pre-allocate all binding locals
+      ensureBindingLocals(ctx, fctx, pattern);
+
+      const savedBody = fctx.body;
+      const destructInstrs: Instr[] = [];
+      if (isNullable) {
+        fctx.body = destructInstrs;
+      }
+
+      for (let i = 0; i < pattern.elements.length; i++) {
+        const element = pattern.elements[i]!;
+        if (ts.isOmittedExpression(element)) continue;
+        if (i >= tupleDef.fields.length) break; // more bindings than tuple fields
+
+        const fieldType = tupleDef.fields[i]!.type;
+
+        // Handle nested binding patterns
+        if (ts.isBindingElement(element) &&
+            (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name))) {
+          const tmpLocal = allocLocal(fctx, `__dparam_${fctx.locals.length}`, fieldType);
+          fctx.body.push({ op: "local.get", index: paramIdx });
+          fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: i });
+          fctx.body.push({ op: "local.set", index: tmpLocal });
+          if (ts.isObjectBindingPattern(element.name)) {
+            destructureParamObject(ctx, fctx, tmpLocal, element.name, fieldType);
+          } else {
+            destructureParamArray(ctx, fctx, tmpLocal, element.name, fieldType);
+          }
+          continue;
+        }
+
+        if (!ts.isIdentifier(element.name)) continue;
+        const localName = element.name.text;
+        if (!fctx.localMap.has(localName)) {
+          allocLocal(fctx, localName, fieldType);
+        }
+        const localIdx = fctx.localMap.get(localName)!;
+        fctx.body.push({ op: "local.get", index: paramIdx });
+        fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: i });
+        fctx.body.push({ op: "local.set", index: localIdx });
+      }
+
+      // Close null guard
+      if (isNullable) {
+        fctx.body = savedBody;
+        if (destructInstrs.length > 0) {
+          fctx.body.push({ op: "local.get", index: paramIdx });
+          fctx.body.push({ op: "ref.is_null" } as Instr);
+          fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: destructInstrs });
+        }
+      }
+      return;
+    }
+
+    // Not an array and not a tuple — register locals with defaults
     for (const element of pattern.elements) {
       if (ts.isOmittedExpression(element)) continue;
       if (ts.isIdentifier((element as ts.BindingElement).name)) {

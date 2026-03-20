@@ -26,6 +26,8 @@ import {
   ensureNativeStringHelpers,
   ensureStructForType,
   nativeStringType,
+  destructureParamArray,
+  destructureParamObject,
   getArrTypeIdxFromVec,
   getLocalType,
   getOrRegisterRefCellType,
@@ -4079,6 +4081,16 @@ function compileNestedFunctionDeclaration(
     // Emit default-value initialization for parameters with initializers
     emitDefaultParamInit(ctx, liftedFctx, stmt, paramTypes, 0);
 
+    // Destructure parameters with binding patterns
+    for (let pi = 0; pi < stmt.parameters.length; pi++) {
+      const param = stmt.parameters[pi]!;
+      if (ts.isObjectBindingPattern(param.name)) {
+        destructureParamObject(ctx, liftedFctx, pi, param.name, paramTypes[pi]!);
+      } else if (ts.isArrayBindingPattern(param.name)) {
+        destructureParamArray(ctx, liftedFctx, pi, param.name, paramTypes[pi]!);
+      }
+    }
+
     // Set up `arguments` object if the function body references it
     if (stmt.body && bodyUsesArguments(stmt.body)) {
       emitArgumentsObject(ctx, liftedFctx, paramTypes, 0);
@@ -4198,6 +4210,17 @@ function compileNestedFunctionDeclaration(
     // Emit default-value initialization for parameters with initializers
     // (offset by number of captures since they are prepended as leading params)
     emitDefaultParamInit(ctx, liftedFctx, stmt, paramTypes, captures.length);
+
+    // Destructure parameters with binding patterns (offset by captures)
+    for (let pi = 0; pi < stmt.parameters.length; pi++) {
+      const param = stmt.parameters[pi]!;
+      const paramIdx = captures.length + pi;
+      if (ts.isObjectBindingPattern(param.name)) {
+        destructureParamObject(ctx, liftedFctx, paramIdx, param.name, paramTypes[pi]!);
+      } else if (ts.isArrayBindingPattern(param.name)) {
+        destructureParamArray(ctx, liftedFctx, paramIdx, param.name, paramTypes[pi]!);
+      }
+    }
 
     // Set up `arguments` object if the function body references it
     if (stmt.body && bodyUsesArguments(stmt.body)) {

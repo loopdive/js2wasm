@@ -2394,6 +2394,34 @@ function compileArrowAsClosure(
               liftedFctx.body.push(...fpadInstrs);
             }
             handled = true;
+          } else if (typeDef.fields.length > 0 && typeDef.fields[0]!.name === "_0") {
+            // Tuple struct destructuring: extract positional fields via struct.get
+            const savedBodyFPAD = liftedFctx.body;
+            const fpadInstrs: Instr[] = [];
+            liftedFctx.body = fpadInstrs;
+            for (let ei = 0; ei < param.name.elements.length; ei++) {
+              const element = param.name.elements[ei]!;
+              if (ts.isOmittedExpression(element)) continue;
+              if (!ts.isBindingElement(element)) continue;
+              if (ei >= typeDef.fields.length) break;
+
+              const fieldType = typeDef.fields[ei]!.type;
+              if (!ts.isIdentifier(element.name)) continue;
+              const localName = element.name.text;
+              const localIdx = allocLocal(liftedFctx, localName, fieldType);
+              liftedFctx.body.push({ op: "local.get", index: srcParamIdx });
+              liftedFctx.body.push({ op: "struct.get", typeIdx, fieldIdx: ei });
+              liftedFctx.body.push({ op: "local.set", index: localIdx });
+            }
+            liftedFctx.body = savedBodyFPAD;
+            if ((resolvedParamType.kind === "ref_null") && fpadInstrs.length > 0) {
+              liftedFctx.body.push({ op: "local.get", index: srcParamIdx });
+              liftedFctx.body.push({ op: "ref.is_null" } as Instr);
+              liftedFctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: fpadInstrs });
+            } else {
+              liftedFctx.body.push(...fpadInstrs);
+            }
+            handled = true;
           }
         }
       }
