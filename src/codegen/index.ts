@@ -7824,10 +7824,55 @@ export function getOrRegisterTupleType(
 }
 
 /**
+ * Native type annotation map: type alias names that map to Wasm types.
+ * When a user writes `type i32 = number; let x: i32 = 42;`, the compiler
+ * will use Wasm i32 instead of f64 for the local variable.
+ */
+const NATIVE_TYPE_MAP: Record<string, ValType> = {
+  i32: { kind: "i32" },
+  u8: { kind: "i32" },   // unsigned 8-bit — stored as i32 (masked at boundaries)
+  u16: { kind: "i32" },  // unsigned 16-bit — stored as i32 (masked at boundaries)
+  u32: { kind: "i32" },  // unsigned 32-bit — stored as i32
+  i8: { kind: "i32" },   // signed 8-bit — stored as i32
+  i16: { kind: "i32" },  // signed 16-bit — stored as i32
+  f32: { kind: "f32" },
+  f64: { kind: "f64" },
+  // i64 intentionally omitted — requires BigInt integration, not yet supported
+};
+
+/**
+ * Detect native type annotations (e.g., `type i32 = number`) from a TS type's
+ * alias symbol. Returns the corresponding Wasm ValType, or null if not a native
+ * type annotation.
+ *
+ * TypeScript preserves the alias symbol on types at the usage site, so
+ * `let x: i32` where `type i32 = number` will have aliasSymbol.name === "i32"
+ * even though the resolved type is `number`.
+ */
+export function resolveNativeTypeAnnotation(tsType: ts.Type): ValType | null {
+  const aliasName = tsType.aliasSymbol?.name;
+  if (aliasName && aliasName in NATIVE_TYPE_MAP) {
+    // Verify the alias resolves to number (not some unrelated type named "i32")
+    // by checking that the underlying type is a number type.
+    // aliasSymbol is set → the resolved type should be NumberLike.
+    const flags = tsType.flags;
+    if (flags & ts.TypeFlags.Number || flags & ts.TypeFlags.NumberLiteral) {
+      return NATIVE_TYPE_MAP[aliasName]!;
+    }
+  }
+  return null;
+}
+
+/**
  * Resolve a ts.Type to a ValType, using the struct registry and anonymous type map.
  * Use this instead of mapTsTypeToWasm in the codegen to get real type indices.
  */
 export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type): ValType {
+  // Native type annotations: type i32 = number; let x: i32 → Wasm i32
+  // Check aliasSymbol first — TypeScript preserves the alias name on the type.
+  const nativeType = resolveNativeTypeAnnotation(tsType);
+  if (nativeType) return nativeType;
+
   // Fast mode: string → ref $AnyString (not externref)
   if (ctx.nativeStrings && ctx.anyStrTypeIdx >= 0 && isStringType(tsType)) {
     return { kind: "ref", typeIdx: ctx.anyStrTypeIdx };
