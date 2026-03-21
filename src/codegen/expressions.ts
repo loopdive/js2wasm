@@ -583,25 +583,6 @@ export function valTypesMatch(a: ValType, b: ValType): boolean {
 }
 
 /**
- * After compiling/pushing a call argument onto the stack, coerce it to match
- * the callee's expected parameter type if they differ. This prevents Wasm
- * validation errors like "call[N] expected type X, found local.get of type Y".
- *
- * Returns the coerced type (expectedType if coercion happened, actualType otherwise).
- */
-function coerceArgIfNeeded(
-  ctx: CodegenContext,
-  fctx: FunctionContext,
-  actualType: ValType | null,
-  expectedType: ValType | undefined,
-): ValType | null {
-  if (!actualType || !expectedType) return actualType;
-  if (valTypesMatch(actualType, expectedType)) return actualType;
-  coerceType(ctx, fctx, actualType, expectedType);
-  return expectedType;
-}
-
-/**
  * Emit a local.set with automatic type coercion.
  * If the value on the stack (stackType) doesn't match the local's declared type,
  * inserts coercion instructions before the local.set to prevent Wasm validation errors.
@@ -10585,24 +10566,19 @@ function compileCallExpression(
           const fullName = `${className}_${methodName}`;
           const funcIdx = ctx.funcMap.get(fullName);
           if (funcIdx !== undefined && expr.arguments.length > 0) {
-            // First argument is the thisArg (receiver) — coerce to match callee's self param
-            const callMethodParamTypes = getFuncParamTypes(ctx, funcIdx);
-            const thisArgType = compileExpression(ctx, fctx, expr.arguments[0]!, callMethodParamTypes?.[0]);
-            // Coerce thisArg if still mismatched with callee's self parameter
-            if (thisArgType && callMethodParamTypes?.[0] && !valTypesMatch(thisArgType, callMethodParamTypes[0])) {
-              coerceType(ctx, fctx, thisArgType, callMethodParamTypes[0]);
-            }
+            // First argument is the thisArg (receiver)
+            compileExpression(ctx, fctx, expr.arguments[0]!);
 
             if (isCall) {
               // .call(thisArg, arg1, arg2, ...) — remaining args are positional
-              const paramTypes = callMethodParamTypes;
+              const paramTypes = getFuncParamTypes(ctx, funcIdx);
               for (let i = 1; i < expr.arguments.length; i++) {
                 compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
               }
             } else if (expr.arguments.length >= 2 && ts.isArrayLiteralExpression(expr.arguments[1]!)) {
               // .apply(thisArg, [arg1, arg2, ...]) — spread array literal
               const elements = (expr.arguments[1] as ts.ArrayLiteralExpression).elements;
-              const paramTypes = callMethodParamTypes;
+              const paramTypes = getFuncParamTypes(ctx, funcIdx);
               for (let i = 0; i < elements.length; i++) {
                 compileExpression(ctx, fctx, elements[i]!, paramTypes?.[i + 1]); // param 0 = self
               }
@@ -11719,32 +11695,15 @@ function compileCallExpression(
         if (callablePropResult !== undefined) return callablePropResult;
       }
       if (funcIdx !== undefined) {
-        // Get param types early so we can coerce the receiver to match param[0]
-        const earlyParamTypes = getFuncParamTypes(ctx, funcIdx);
         // Push self (the receiver) as first argument
         let recvType = compileExpression(ctx, fctx, propAccess.expression);
         // If receiver is externref but the method expects a struct ref, coerce
         if (recvType && recvType.kind === "externref") {
           const structTypeIdx = ctx.structMap.get(receiverClassName);
           if (structTypeIdx !== undefined) {
-            // Only do manual extern→struct coercion if compileExpression didn't already handle it
-            const expectedSelf = earlyParamTypes?.[0];
-            if (!expectedSelf || expectedSelf.kind === "externref") {
-              fctx.body.push({ op: "any.convert_extern" } as Instr);
-              emitGuardedRefCast(fctx, structTypeIdx);
-              recvType = { kind: "ref_null", typeIdx: structTypeIdx };
-            }
-          }
-        }
-        // Coerce receiver to match the callee's self parameter type if still mismatched
-        // But skip ref_null → ref coercion here — the null-guard below handles that
-        // by inserting ref.as_non_null in the non-null branch only.
-        if (recvType && earlyParamTypes?.[0] && !valTypesMatch(recvType, earlyParamTypes[0])) {
-          const isNullableToNonNull = recvType.kind === "ref_null" && earlyParamTypes[0].kind === "ref" &&
-            (recvType as { typeIdx: number }).typeIdx === (earlyParamTypes[0] as { typeIdx: number }).typeIdx;
-          if (!isNullableToNonNull) {
-            coerceType(ctx, fctx, recvType, earlyParamTypes[0]);
-            recvType = earlyParamTypes[0];
+            fctx.body.push({ op: "any.convert_extern" } as Instr);
+            emitGuardedRefCast(fctx, structTypeIdx);
+            recvType = { kind: "ref_null", typeIdx: structTypeIdx };
           }
         }
         // Null-guard: if receiver is ref_null, check for null before calling method
@@ -11840,20 +11799,8 @@ function compileCallExpression(
           if (callablePropResult !== undefined) return callablePropResult;
         }
         if (funcIdx !== undefined) {
-          // Get param types early so we can coerce receiver to match param[0]
-          const structParamTypes = getFuncParamTypes(ctx, funcIdx);
-          // Push self (the receiver) as first argument, with coercion hint
-          let recvType = compileExpression(ctx, fctx, propAccess.expression, structParamTypes?.[0]);
-          // Coerce receiver to match callee's self parameter if still mismatched
-          // But skip ref_null → ref coercion — the null-guard below handles that.
-          if (recvType && structParamTypes?.[0] && !valTypesMatch(recvType, structParamTypes[0])) {
-            const isNullableToNonNull = recvType.kind === "ref_null" && structParamTypes[0].kind === "ref" &&
-              (recvType as { typeIdx: number }).typeIdx === (structParamTypes[0] as { typeIdx: number }).typeIdx;
-            if (!isNullableToNonNull) {
-              coerceType(ctx, fctx, recvType, structParamTypes[0]);
-              recvType = structParamTypes[0];
-            }
-          }
+          // Push self (the receiver) as first argument
+          const recvType = compileExpression(ctx, fctx, propAccess.expression);
           // Module globals produce ref_null but method params expect ref — null-guard
           if (recvType && recvType.kind === "ref_null") {
             const sig = ctx.checker.getResolvedSignature(expr);
@@ -12937,14 +12884,10 @@ function compileCallExpression(
         const fullName = `${receiverClassName}_${methodName}`;
         const funcIdx = ctx.funcMap.get(fullName);
         if (funcIdx !== undefined) {
-          // Push self (the receiver) as first argument, with coercion to match param[0]
-          const paramTypes = getFuncParamTypes(ctx, funcIdx);
-          const elemRecvType = compileExpression(ctx, fctx, elemAccess.expression, paramTypes?.[0]);
-          // Coerce receiver if still mismatched with callee's self parameter
-          if (elemRecvType && paramTypes?.[0] && !valTypesMatch(elemRecvType, paramTypes[0])) {
-            coerceType(ctx, fctx, elemRecvType, paramTypes[0]);
-          }
+          // Push self (the receiver) as first argument
+          compileExpression(ctx, fctx, elemAccess.expression);
           // Push remaining arguments with type hints
+          const paramTypes = getFuncParamTypes(ctx, funcIdx);
           for (let i = 0; i < expr.arguments.length; i++) {
             compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
           }
@@ -12954,9 +12897,7 @@ function compileCallExpression(
               pushDefaultValue(fctx, paramTypes[i]!);
             }
           }
-          // Re-lookup funcIdx: argument compilation may trigger addUnionImports
-          const finalElemIdx = ctx.funcMap.get(fullName) ?? funcIdx;
-          fctx.body.push({ op: "call", funcIdx: finalElemIdx });
+          fctx.body.push({ op: "call", funcIdx });
 
           const sig = ctx.checker.getResolvedSignature(expr);
           if (sig) {
@@ -14215,22 +14156,14 @@ function compileSuperMethodCall(
     return null;
   }
 
-  // Push this as first argument, coercing to match the parent method's self parameter
-  const paramTypes = getFuncParamTypes(ctx, funcIdx);
+  // Push this as first argument
   const selfIdx = fctx.localMap.get("this");
   if (selfIdx !== undefined) {
     fctx.body.push({ op: "local.get", index: selfIdx });
-    // Coerce this to the parent method's self parameter type if mismatched
-    // (e.g. child struct ref → parent struct ref)
-    if (paramTypes?.[0]) {
-      const selfType = getLocalType(fctx, selfIdx);
-      if (selfType && !valTypesMatch(selfType, paramTypes[0])) {
-        coerceType(ctx, fctx, selfType, paramTypes[0]);
-      }
-    }
   }
 
   // Push remaining arguments with type hints
+  const paramTypes = getFuncParamTypes(ctx, funcIdx);
   for (let i = 0; i < expr.arguments.length; i++) {
     compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
   }
@@ -14293,21 +14226,14 @@ function compileSuperElementMethodCall(
     return null;
   }
 
-  // Push this as first argument, coercing to match the parent method's self parameter
-  const paramTypes = getFuncParamTypes(ctx, funcIdx);
+  // Push this as first argument
   const selfIdx = fctx.localMap.get("this");
   if (selfIdx !== undefined) {
     fctx.body.push({ op: "local.get", index: selfIdx });
-    // Coerce this to the parent method's self parameter type if mismatched
-    if (paramTypes?.[0]) {
-      const selfType = getLocalType(fctx, selfIdx);
-      if (selfType && !valTypesMatch(selfType, paramTypes[0])) {
-        coerceType(ctx, fctx, selfType, paramTypes[0]);
-      }
-    }
   }
 
   // Push remaining arguments with type hints
+  const paramTypes = getFuncParamTypes(ctx, funcIdx);
   for (let i = 0; i < expr.arguments.length; i++) {
     compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
   }
@@ -14368,17 +14294,10 @@ function compileSuperPropertyAccess(
       const getterName = `${ancestor}_get_${propName}`;
       const funcIdx = ctx.funcMap.get(getterName);
       if (funcIdx !== undefined) {
-        // Push this as argument to the getter, coercing to match the getter's self param
+        // Push this as argument to the getter
         const selfIdx = fctx.localMap.get("this");
         if (selfIdx !== undefined) {
           fctx.body.push({ op: "local.get", index: selfIdx });
-          const getterParamTypes = getFuncParamTypes(ctx, funcIdx);
-          if (getterParamTypes?.[0]) {
-            const selfType = getLocalType(fctx, selfIdx);
-            if (selfType && !valTypesMatch(selfType, getterParamTypes[0])) {
-              coerceType(ctx, fctx, selfType, getterParamTypes[0]);
-            }
-          }
         }
         fctx.body.push({ op: "call", funcIdx });
         const propType = ctx.checker.getTypeAtLocation(expr);
