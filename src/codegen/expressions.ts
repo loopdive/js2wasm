@@ -15917,7 +15917,11 @@ function defaultValueInstrForType(type: ValType): Instr[] {
 }
 
 /**
- * Emit a null-guarded struct.get: if the object ref on the stack is null,
+ * Emit a null-guarded struct.get: if the object ref on the stack is null (e.g.
+ * from a failed ref.cast that returned ref.null), produce a default value
+ * instead of trapping. This handles wrong-type-but-not-truly-null cases. If the
+ * source value is truly null/undefined, the TypeError is thrown on the
+ * externref __extern_get path instead.
  * push a default value instead of trapping.
  *
  * Expects the object ref to be on the Wasm stack. Emits:
@@ -15967,10 +15971,7 @@ function emitNullGuardedStructGet(
   fctx.body.push({
     op: "if",
     blockType: { kind: "val" as const, type: resultType },
-    then: [
-      // Throw TypeError: Cannot read properties of null/undefined
-      ...typeErrorThrowInstrs(ctx),
-    ],
+    then: defaultValueInstrs(resultType),
     else: [
       { op: "local.get", index: tmp } as Instr,
       { op: "struct.get", typeIdx, fieldIdx } as Instr,
@@ -15998,34 +15999,21 @@ function emitExternrefToStructGet(
   // Store in a temp anyref local for null/type check
   const tmpLocal = allocTempLocal(fctx, { kind: "anyref" });
   fctx.body.push({ op: "local.tee", index: tmpLocal });
-  // First check: null → throw TypeError
-  fctx.body.push({ op: "ref.is_null" });
   // For result type in the if block, normalize ref to ref_null so the null branch is valid
   const resultType: ValType = fieldType.kind === "ref"
     ? { kind: "ref_null", typeIdx: (fieldType as any).typeIdx }
     : fieldType;
+  // ref.test returns 0 for null and for type mismatch
+  fctx.body.push({ op: "ref.test", typeIdx: structTypeIdx });
   fctx.body.push({
     op: "if",
     blockType: { kind: "val" as const, type: resultType },
     then: [
-      // Null → throw TypeError
-      ...typeErrorThrowInstrs(ctx),
-    ],
-    else: [
-      // Non-null: check if it's the right struct type
       { op: "local.get", index: tmpLocal } as Instr,
-      { op: "ref.test", typeIdx: structTypeIdx } as Instr,
-      {
-        op: "if",
-        blockType: { kind: "val" as const, type: resultType },
-        then: [
-          { op: "local.get", index: tmpLocal } as Instr,
-          { op: "ref.cast", typeIdx: structTypeIdx } as Instr,
-          { op: "struct.get", typeIdx: structTypeIdx, fieldIdx } as Instr,
-        ],
-        else: defaultValueInstrs(resultType),
-      } as Instr,
+      { op: "ref.cast", typeIdx: structTypeIdx } as Instr,
+      { op: "struct.get", typeIdx: structTypeIdx, fieldIdx } as Instr,
     ],
+    else: defaultValueInstrs(resultType),
   });
   releaseTempLocal(fctx, tmpLocal);
 }
