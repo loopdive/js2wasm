@@ -10,14 +10,15 @@ if (!parentPort) throw new Error("Must run as worker_thread");
 
 let compilationCount = 0;
 
-parentPort.on("message", (msg: { id: number; source: string }) => {
+parentPort.on("message", (msg: { id: number; source: string; sourceMapUrl?: string }) => {
   compilationCount++;
   const start = performance.now();
 
   try {
     const result = compile(msg.source, {
       fileName: "test.ts",
-      sourceMap: false,
+      sourceMap: true,
+      sourceMapUrl: msg.sourceMapUrl || "test.wasm.map",
       emitWat: false,
     } as any);
 
@@ -49,6 +50,7 @@ parentPort.on("message", (msg: { id: number; source: string }) => {
         binary: new Uint8Array(binaryBuffer),
         stringPool: result.stringPool,
         imports: result.imports,
+        sourceMap: result.sourceMap || null,
         compileMs,
       },
       [binaryBuffer]

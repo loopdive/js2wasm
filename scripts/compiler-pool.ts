@@ -16,6 +16,7 @@ export interface PoolCompileResult {
   binary: Uint8Array;
   stringPool: string[];
   imports: any[];
+  sourceMap: string | null;
   compileMs: number;
 }
 
@@ -41,7 +42,7 @@ interface WorkerState {
 export class CompilerPool {
   private workers: WorkerState[] = [];
   private pending = new Map<number, PendingJob>();
-  private queue: Array<{ id: number; source: string; resolve: (r: PoolResult) => void }> = [];
+  private queue: Array<{ id: number; source: string; sourceMapUrl?: string; resolve: (r: PoolResult) => void }> = [];
   private nextId = 0;
   private readyResolve: (() => void) | null = null;
   private readyCount = 0;
@@ -92,7 +93,7 @@ export class CompilerPool {
   }
 
   /** Compile source — queues if all workers busy. Times out after 30s. */
-  compile(source: string, timeoutMs = 30_000): Promise<PoolResult> {
+  compile(source: string, timeoutMs = 30_000, _fullDiag?: boolean, sourceMapUrl?: string): Promise<PoolResult> {
     return new Promise((resolve) => {
       const id = this.nextId++;
       const timer = setTimeout(() => {
@@ -106,7 +107,7 @@ export class CompilerPool {
           this.respawnWorker(stuck);
         }
       }, timeoutMs);
-      this.queue.push({ id, source, resolve: (r: PoolResult) => { clearTimeout(timer); resolve(r); } });
+      this.queue.push({ id, source, sourceMapUrl, resolve: (r: PoolResult) => { clearTimeout(timer); resolve(r); } });
       this.dispatch();
     });
   }
@@ -119,7 +120,7 @@ export class CompilerPool {
       const job = this.queue.shift()!;
       freeWorker.busy = true;
       this.pending.set(job.id, { id: job.id, resolve: job.resolve });
-      freeWorker.worker.postMessage({ id: job.id, source: job.source });
+      freeWorker.worker.postMessage({ id: job.id, source: job.source, sourceMapUrl: job.sourceMapUrl });
     }
   }
 
