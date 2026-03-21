@@ -434,5 +434,6 @@
 | 712 | 2026-03-21 | Unsupported expression: MetaProperty import.source/import.defer (70 CE)                           | Session    |
 | 713 | 2026-03-21 | Cannot destructure: unknown type (69 CE)                                                          | Session    |
 | 715 | 2026-03-21 | Fix 3,622 test262 crashes: emitNullGuardedStructGet missing ctx parameter                         | Session    |
+| 717 | 2026-03-21 | Regression: import.source/defer stub breaks 117 negative parse tests                              | Session    |
 
 
