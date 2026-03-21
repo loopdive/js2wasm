@@ -18659,6 +18659,73 @@ export function emitBoundsCheckedArrayGet(
 }
 
 /**
+ * Clamp an index for JS array methods: if idx < 0, idx = max(0, len + idx);
+ * also clamp to max len.  idxLocal is updated in-place.
+ */
+function emitClampIndex(
+  fctx: FunctionContext,
+  idxLocal: number,
+  lenLocal: number,
+): void {
+  // if (idx < 0) idx = max(0, len + idx)
+  fctx.body.push({ op: "local.get", index: idxLocal });
+  fctx.body.push({ op: "i32.const", value: 0 });
+  fctx.body.push({ op: "i32.lt_s" });
+  fctx.body.push({
+    op: "if",
+    blockType: { kind: "empty" },
+    then: [
+      { op: "local.get", index: lenLocal } as Instr,
+      { op: "local.get", index: idxLocal } as Instr,
+      { op: "i32.add" } as Instr,
+      { op: "local.set", index: idxLocal } as Instr,
+      // if still < 0, clamp to 0
+      { op: "local.get", index: idxLocal } as Instr,
+      { op: "i32.const", value: 0 } as Instr,
+      { op: "i32.lt_s" } as Instr,
+      { op: "if", blockType: { kind: "empty" },
+        then: [
+          { op: "i32.const", value: 0 } as Instr,
+          { op: "local.set", index: idxLocal } as Instr,
+        ],
+      } as Instr,
+    ],
+  } as Instr);
+  // Clamp to len: if (idx > len) idx = len
+  fctx.body.push({ op: "local.get", index: idxLocal });
+  fctx.body.push({ op: "local.get", index: lenLocal });
+  fctx.body.push({ op: "i32.gt_s" });
+  fctx.body.push({
+    op: "if",
+    blockType: { kind: "empty" },
+    then: [
+      { op: "local.get", index: lenLocal } as Instr,
+      { op: "local.set", index: idxLocal } as Instr,
+    ],
+  } as Instr);
+}
+
+/**
+ * Clamp a value to be >= 0.  local is updated in-place.
+ */
+function emitClampNonNeg(
+  fctx: FunctionContext,
+  local: number,
+): void {
+  fctx.body.push({ op: "local.get", index: local });
+  fctx.body.push({ op: "i32.const", value: 0 });
+  fctx.body.push({ op: "i32.lt_s" });
+  fctx.body.push({
+    op: "if",
+    blockType: { kind: "empty" },
+    then: [
+      { op: "i32.const", value: 0 } as Instr,
+      { op: "local.set", index: local } as Instr,
+    ],
+  } as Instr);
+}
+
+/**
  * Emit a bounds-guarded array.set on a vec struct.  Only writes if the index
  * is in bounds; otherwise the write is silently skipped (JS semantics for
  * out-of-bounds numeric index assignment on a non-extensible array).
@@ -23336,17 +23403,11 @@ function compileArrayAt(
     ],
   } as Instr);
 
-  // Access element: data[idx]
+  // Access element: data[idx] with bounds check
   fctx.body.push({ op: "local.get", index: vecTmp });
   fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
   fctx.body.push({ op: "local.get", index: idxTmp });
-  const getOp = elemType.kind === "i16" ? "array.get_s" : "array.get";
-  fctx.body.push({ op: getOp, typeIdx: arrTypeIdx } as Instr);
-
-  // In non-fast mode, numbers are f64
-  if (!ctx.fast && elemType.kind === "i32") {
-    // Convert to f64 for non-fast mode — actually numbers are already f64 in non-fast
-  }
+  emitBoundsCheckedArrayGet(fctx, arrTypeIdx, elemType);
 
   return elemType;
 }
@@ -23868,30 +23929,42 @@ function compileArrayPop(
   const resultTmp = allocLocal(fctx, `__arr_pop_res_${fctx.locals.length}`, elemType);
 
   const getOp = elemType.kind === "i16" ? "array.get_s" : "array.get";
+  const lenTmp = allocLocal(fctx, `__arr_pop_len_${fctx.locals.length}`, { kind: "i32" });
 
   // Compile receiver → vec ref
   compileExpression(ctx, fctx, propAccess.expression);
   fctx.body.push({ op: "local.tee", index: vecTmp });
 
-  // newLen = length - 1
+  // Get length
   fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
-  fctx.body.push({ op: "i32.const", value: 1 });
-  fctx.body.push({ op: "i32.sub" });
-  fctx.body.push({ op: "local.set", index: newLenTmp });
+  fctx.body.push({ op: "local.set", index: lenTmp });
 
-  // result = data[newLen]
-  fctx.body.push({ op: "local.get", index: vecTmp });
-  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
-  fctx.body.push({ op: "local.get", index: newLenTmp });
-  fctx.body.push({ op: getOp, typeIdx: arrTypeIdx } as Instr);
-  fctx.body.push({ op: "local.set", index: resultTmp });
+  // Guard: if length > 0, do pop; else result stays default (0/NaN/null)
+  fctx.body.push({ op: "local.get", index: lenTmp });
+  fctx.body.push({ op: "i32.const", value: 0 });
+  fctx.body.push({ op: "i32.gt_s" });
 
-  // Decrement length: vec.length = newLen
-  fctx.body.push({ op: "local.get", index: vecTmp });
-  fctx.body.push({ op: "local.get", index: newLenTmp });
-  fctx.body.push({ op: "struct.set", typeIdx: vecTypeIdx, fieldIdx: 0 });
+  const thenInstrs: Instr[] = [
+    // newLen = length - 1
+    { op: "local.get", index: lenTmp } as Instr,
+    { op: "i32.const", value: 1 } as Instr,
+    { op: "i32.sub" } as Instr,
+    { op: "local.set", index: newLenTmp } as Instr,
+    // result = data[newLen]
+    { op: "local.get", index: vecTmp } as Instr,
+    { op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 } as Instr,
+    { op: "local.get", index: newLenTmp } as Instr,
+    { op: getOp, typeIdx: arrTypeIdx } as Instr,
+    { op: "local.set", index: resultTmp } as Instr,
+    // Decrement length: vec.length = newLen
+    { op: "local.get", index: vecTmp } as Instr,
+    { op: "local.get", index: newLenTmp } as Instr,
+    { op: "struct.set", typeIdx: vecTypeIdx, fieldIdx: 0 } as Instr,
+  ];
 
-  // Return result
+  fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs } as Instr);
+
+  // Return result (default value if empty, popped value if non-empty)
   fctx.body.push({ op: "local.get", index: resultTmp });
   return elemType;
 }
@@ -23929,32 +24002,38 @@ function compileArrayShift(
   fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
   fctx.body.push({ op: "local.set", index: dataTmp });
 
-  // result = data[0]
-  fctx.body.push({ op: "local.get", index: dataTmp });
-  fctx.body.push({ op: "i32.const", value: 0 });
-  fctx.body.push({ op: getOp, typeIdx: arrTypeIdx } as Instr);
-  fctx.body.push({ op: "local.set", index: resultTmp });
-
-  // newLen = len - 1
+  // Guard: if length > 0, do shift; else result stays default (0/NaN/null)
   fctx.body.push({ op: "local.get", index: lenTmp });
-  fctx.body.push({ op: "i32.const", value: 1 });
-  fctx.body.push({ op: "i32.sub" });
-  fctx.body.push({ op: "local.set", index: newLenTmp });
-
-  // Shift left: array.copy data[0..newLen] = data[1..len]
-  fctx.body.push({ op: "local.get", index: dataTmp });
   fctx.body.push({ op: "i32.const", value: 0 });
-  fctx.body.push({ op: "local.get", index: dataTmp });
-  fctx.body.push({ op: "i32.const", value: 1 });
-  fctx.body.push({ op: "local.get", index: newLenTmp });
-  fctx.body.push({ op: "array.copy", dstTypeIdx: arrTypeIdx, srcTypeIdx: arrTypeIdx } as Instr);
+  fctx.body.push({ op: "i32.gt_s" });
 
-  // Decrement length: vec.length = newLen
-  fctx.body.push({ op: "local.get", index: vecTmp });
-  fctx.body.push({ op: "local.get", index: newLenTmp });
-  fctx.body.push({ op: "struct.set", typeIdx: vecTypeIdx, fieldIdx: 0 });
+  const thenInstrs: Instr[] = [
+    // result = data[0]
+    { op: "local.get", index: dataTmp } as Instr,
+    { op: "i32.const", value: 0 } as Instr,
+    { op: getOp, typeIdx: arrTypeIdx } as Instr,
+    { op: "local.set", index: resultTmp } as Instr,
+    // newLen = len - 1
+    { op: "local.get", index: lenTmp } as Instr,
+    { op: "i32.const", value: 1 } as Instr,
+    { op: "i32.sub" } as Instr,
+    { op: "local.set", index: newLenTmp } as Instr,
+    // Shift left: array.copy data[0..newLen] = data[1..len]
+    { op: "local.get", index: dataTmp } as Instr,
+    { op: "i32.const", value: 0 } as Instr,
+    { op: "local.get", index: dataTmp } as Instr,
+    { op: "i32.const", value: 1 } as Instr,
+    { op: "local.get", index: newLenTmp } as Instr,
+    { op: "array.copy", dstTypeIdx: arrTypeIdx, srcTypeIdx: arrTypeIdx } as Instr,
+    // Decrement length: vec.length = newLen
+    { op: "local.get", index: vecTmp } as Instr,
+    { op: "local.get", index: newLenTmp } as Instr,
+    { op: "struct.set", typeIdx: vecTypeIdx, fieldIdx: 0 } as Instr,
+  ];
 
-  // Return result
+  fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs } as Instr);
+
+  // Return result (default value if empty, shifted value if non-empty)
   fctx.body.push({ op: "local.get", index: resultTmp });
   return elemType;
 }
@@ -23992,7 +24071,7 @@ function compileArraySlice(
   fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
   fctx.body.push({ op: "local.set", index: dataTmp });
 
-  // start arg
+  // start arg — clamp negative: if start < 0, start = max(0, len + start)
   if (callExpr.arguments.length >= 1) {
     compileExpression(ctx, fctx, callExpr.arguments[0]!, { kind: "f64" });
     fctx.body.push({ op: "i32.trunc_sat_f64_s" });
@@ -24000,8 +24079,9 @@ function compileArraySlice(
     fctx.body.push({ op: "i32.const", value: 0 });
   }
   fctx.body.push({ op: "local.set", index: startTmp });
+  emitClampIndex(fctx, startTmp, lenTmp);
 
-  // end arg
+  // end arg — clamp negative: if end < 0, end = max(0, len + end); clamp to len
   if (callExpr.arguments.length >= 2) {
     compileExpression(ctx, fctx, callExpr.arguments[1]!, { kind: "f64" });
     fctx.body.push({ op: "i32.trunc_sat_f64_s" });
@@ -24009,12 +24089,14 @@ function compileArraySlice(
     fctx.body.push({ op: "local.get", index: lenTmp });
   }
   fctx.body.push({ op: "local.set", index: endTmp });
+  emitClampIndex(fctx, endTmp, lenTmp);
 
-  // sliceLen = end - start
+  // sliceLen = max(0, end - start)
   fctx.body.push({ op: "local.get", index: endTmp });
   fctx.body.push({ op: "local.get", index: startTmp });
   fctx.body.push({ op: "i32.sub" });
   fctx.body.push({ op: "local.set", index: sliceLenTmp });
+  emitClampNonNeg(fctx, sliceLenTmp);
 
   // newData = array.new_default(sliceLen)
   fctx.body.push({ op: "local.get", index: sliceLenTmp });
@@ -24262,12 +24344,13 @@ function compileArraySplice(
   fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
   fctx.body.push({ op: "local.set", index: dataTmp });
 
-  // start arg
+  // start arg — clamp negative indices
   compileExpression(ctx, fctx, callExpr.arguments[0]!, { kind: "f64" });
   fctx.body.push({ op: "i32.trunc_sat_f64_s" });
   fctx.body.push({ op: "local.set", index: startTmp });
+  emitClampIndex(fctx, startTmp, lenTmp);
 
-  // deleteCount (default: len - start)
+  // deleteCount (default: len - start) — clamp >= 0 and to remaining len
   if (callExpr.arguments.length >= 2) {
     compileExpression(ctx, fctx, callExpr.arguments[1]!, { kind: "f64" });
     fctx.body.push({ op: "i32.trunc_sat_f64_s" });
@@ -24277,6 +24360,24 @@ function compileArraySplice(
     fctx.body.push({ op: "i32.sub" });
   }
   fctx.body.push({ op: "local.set", index: delCountTmp });
+  emitClampNonNeg(fctx, delCountTmp);
+  // Clamp delCount to not exceed remaining elements: min(delCount, len - start)
+  fctx.body.push({ op: "local.get", index: lenTmp });
+  fctx.body.push({ op: "local.get", index: startTmp });
+  fctx.body.push({ op: "i32.sub" });
+  fctx.body.push({ op: "local.set", index: tailCountTmp }); // reuse as temp
+  fctx.body.push({ op: "local.get", index: delCountTmp });
+  fctx.body.push({ op: "local.get", index: tailCountTmp });
+  fctx.body.push({ op: "i32.gt_s" });
+  fctx.body.push({
+    op: "if",
+    blockType: { kind: "empty" },
+    then: [
+      { op: "local.get", index: tailCountTmp } as Instr,
+      { op: "local.set", index: delCountTmp } as Instr,
+    ],
+  } as Instr);
+  emitClampNonNeg(fctx, delCountTmp);
 
   // Create deleted elements backing array and copy
   fctx.body.push({ op: "local.get", index: delCountTmp });
@@ -24292,11 +24393,12 @@ function compileArraySplice(
   fctx.body.push({ op: "i32.add" });
   fctx.body.push({ op: "local.set", index: tailStartTmp });
 
-  // tailCount = len - tailStart
+  // tailCount = max(0, len - tailStart)
   fctx.body.push({ op: "local.get", index: lenTmp });
   fctx.body.push({ op: "local.get", index: tailStartTmp });
   fctx.body.push({ op: "i32.sub" });
   fctx.body.push({ op: "local.set", index: tailCountTmp });
+  emitClampNonNeg(fctx, tailCountTmp);
 
   // Shift tail left in-place: array.copy data[start..start+tailCount] = data[tailStart..tailStart+tailCount]
   emitArrayCopy(fctx, arrTypeIdx, dataTmp, startTmp, dataTmp, tailStartTmp, tailCountTmp);
@@ -25327,7 +25429,7 @@ function compileArrayFill(
   compileExpression(ctx, fctx, callExpr.arguments[0]!, elemType);
   fctx.body.push({ op: "local.set", index: valTmp });
 
-  // start (default: 0)
+  // start (default: 0) — clamp negative
   if (callExpr.arguments.length >= 2) {
     if (ctx.fast) {
       compileExpression(ctx, fctx, callExpr.arguments[1]!, { kind: "i32" });
@@ -25339,8 +25441,9 @@ function compileArrayFill(
     fctx.body.push({ op: "i32.const", value: 0 });
   }
   fctx.body.push({ op: "local.set", index: startTmp });
+  emitClampIndex(fctx, startTmp, lenTmp);
 
-  // end (default: length)
+  // end (default: length) — clamp negative
   if (callExpr.arguments.length >= 3) {
     if (ctx.fast) {
       compileExpression(ctx, fctx, callExpr.arguments[2]!, { kind: "i32" });
@@ -25352,6 +25455,7 @@ function compileArrayFill(
     fctx.body.push({ op: "local.get", index: lenTmp });
   }
   fctx.body.push({ op: "local.set", index: endTmp });
+  emitClampIndex(fctx, endTmp, lenTmp);
 
   // i = start
   fctx.body.push({ op: "local.get", index: startTmp });
@@ -25430,7 +25534,7 @@ function compileArrayCopyWithin(
   fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
   fctx.body.push({ op: "local.set", index: dataTmp });
 
-  // target arg
+  // target arg — clamp negative
   if (ctx.fast) {
     compileExpression(ctx, fctx, callExpr.arguments[0]!, { kind: "i32" });
   } else {
@@ -25438,8 +25542,9 @@ function compileArrayCopyWithin(
     fctx.body.push({ op: "i32.trunc_sat_f64_s" });
   }
   fctx.body.push({ op: "local.set", index: targetTmp });
+  emitClampIndex(fctx, targetTmp, lenTmp);
 
-  // start arg
+  // start arg — clamp negative
   if (ctx.fast) {
     compileExpression(ctx, fctx, callExpr.arguments[1]!, { kind: "i32" });
   } else {
@@ -25447,8 +25552,9 @@ function compileArrayCopyWithin(
     fctx.body.push({ op: "i32.trunc_sat_f64_s" });
   }
   fctx.body.push({ op: "local.set", index: startTmp });
+  emitClampIndex(fctx, startTmp, lenTmp);
 
-  // end arg (default: length)
+  // end arg (default: length) — clamp negative
   if (callExpr.arguments.length >= 3) {
     if (ctx.fast) {
       compileExpression(ctx, fctx, callExpr.arguments[2]!, { kind: "i32" });
@@ -25460,8 +25566,9 @@ function compileArrayCopyWithin(
     fctx.body.push({ op: "local.get", index: lenTmp });
   }
   fctx.body.push({ op: "local.set", index: endTmp });
+  emitClampIndex(fctx, endTmp, lenTmp);
 
-  // count = min(end - start, len - target)
+  // count = max(0, min(end - start, len - target))
   fctx.body.push({ op: "local.get", index: endTmp });
   fctx.body.push({ op: "local.get", index: startTmp });
   fctx.body.push({ op: "i32.sub" });
@@ -25478,6 +25585,7 @@ function compileArrayCopyWithin(
   fctx.body.push({ op: "i32.lt_s" });
   fctx.body.push({ op: "select" });
   fctx.body.push({ op: "local.set", index: countTmp });
+  emitClampNonNeg(fctx, countTmp);
 
   // array.copy data[target..target+count] = data[start..start+count]
   emitArrayCopy(fctx, arrTypeIdx, dataTmp, targetTmp, dataTmp, startTmp, countTmp);
@@ -25513,24 +25621,57 @@ function compileArrayLastIndexOf(
   compileExpression(ctx, fctx, propAccess.expression);
   fctx.body.push({ op: "local.tee", index: vecTmp });
 
-  // Extract length, then i = length - 1 (or fromIndex if provided)
+  // Extract length
   fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
+  const lenTmp = allocLocal(fctx, `__arr_liof_len_${fctx.locals.length}`, { kind: "i32" });
+  fctx.body.push({ op: "local.set", index: lenTmp });
 
   if (callExpr.arguments.length >= 2) {
-    // fromIndex provided
-    fctx.body.push({ op: "drop" });
+    // fromIndex provided — clamp negative and clamp to length - 1
     if (ctx.fast) {
       compileExpression(ctx, fctx, callExpr.arguments[1]!, { kind: "i32" });
     } else {
       compileExpression(ctx, fctx, callExpr.arguments[1]!, { kind: "f64" });
       fctx.body.push({ op: "i32.trunc_sat_f64_s" });
     }
-  } else {
-    // Default: length - 1
+    fctx.body.push({ op: "local.set", index: iTmp });
+    // If negative, add length: if (i < 0) i = len + i
+    fctx.body.push({ op: "local.get", index: iTmp });
+    fctx.body.push({ op: "i32.const", value: 0 });
+    fctx.body.push({ op: "i32.lt_s" });
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: [
+        { op: "local.get", index: lenTmp } as Instr,
+        { op: "local.get", index: iTmp } as Instr,
+        { op: "i32.add" } as Instr,
+        { op: "local.set", index: iTmp } as Instr,
+      ],
+    } as Instr);
+    // Clamp to len - 1
+    fctx.body.push({ op: "local.get", index: iTmp });
+    fctx.body.push({ op: "local.get", index: lenTmp });
     fctx.body.push({ op: "i32.const", value: 1 });
     fctx.body.push({ op: "i32.sub" });
+    fctx.body.push({ op: "i32.gt_s" });
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: [
+        { op: "local.get", index: lenTmp } as Instr,
+        { op: "i32.const", value: 1 } as Instr,
+        { op: "i32.sub" } as Instr,
+        { op: "local.set", index: iTmp } as Instr,
+      ],
+    } as Instr);
+  } else {
+    // Default: length - 1
+    fctx.body.push({ op: "local.get", index: lenTmp });
+    fctx.body.push({ op: "i32.const", value: 1 });
+    fctx.body.push({ op: "i32.sub" });
+    fctx.body.push({ op: "local.set", index: iTmp });
   }
-  fctx.body.push({ op: "local.set", index: iTmp });
 
   // Extract data
   fctx.body.push({ op: "local.get", index: vecTmp });
