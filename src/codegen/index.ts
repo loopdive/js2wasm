@@ -11045,7 +11045,13 @@ export function compileClassBodies(
         const param = ctor.parameters[pi]!;
         const paramName = ts.isIdentifier(param.name) ? param.name.text : `__param${pi}`;
         const paramType = ctx.checker.getTypeAtLocation(param);
-        params.push({ name: paramName, type: resolveWasmType(ctx, paramType) });
+        let wasmType = resolveWasmType(ctx, paramType);
+        // Widen ref to ref_null for params with defaults or optional params
+        // (caller passes ref.null as sentinel). Must match collection phase (#702)
+        if ((param.initializer || param.questionToken) && wasmType.kind === "ref") {
+          wasmType = { kind: "ref_null", typeIdx: (wasmType as { kind: "ref"; typeIdx: number }).typeIdx };
+        }
+        params.push({ name: paramName, type: wasmType });
       }
     }
 
@@ -11330,7 +11336,13 @@ export function compileClassBodies(
         const param = member.parameters[pi]!;
         const paramName = ts.isIdentifier(param.name) ? param.name.text : `__param${pi}`;
         const paramType = ctx.checker.getTypeAtLocation(param);
-        params.push({ name: paramName, type: resolveWasmType(ctx, paramType) });
+        let wasmType = resolveWasmType(ctx, paramType);
+        // Widen ref to ref_null for params with defaults or optional params
+        // (caller passes ref.null as sentinel). Must match collection phase (#702)
+        if ((param.initializer || param.questionToken) && wasmType.kind === "ref") {
+          wasmType = { kind: "ref_null", typeIdx: (wasmType as { kind: "ref"; typeIdx: number }).typeIdx };
+        }
+        params.push({ name: paramName, type: wasmType });
       }
 
       const isGeneratorMethod = member.asteriskToken !== undefined;
@@ -11632,7 +11644,12 @@ export function compileClassBodies(
         const param = member.parameters[pi]!;
         const paramName = ts.isIdentifier(param.name) ? param.name.text : `__param${pi}`;
         const paramType = ctx.checker.getTypeAtLocation(param);
-        params.push({ name: paramName, type: resolveWasmType(ctx, paramType) });
+        let wasmType = resolveWasmType(ctx, paramType);
+        // Widen ref to ref_null for params with defaults or optional params (#702)
+        if ((param.initializer || param.questionToken) && wasmType.kind === "ref") {
+          wasmType = { kind: "ref_null", typeIdx: (wasmType as { kind: "ref"; typeIdx: number }).typeIdx };
+        }
+        params.push({ name: paramName, type: wasmType });
       }
 
       const fctx: FunctionContext = {
