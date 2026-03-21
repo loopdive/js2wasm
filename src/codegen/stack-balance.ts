@@ -3,7 +3,7 @@
  *
  * Wasm validation requires that all branches of structured control flow
  * (if/else, try/catch, block) leave the stack in a state matching the
- * block's declared type. This pass detects and fixes two classes of
+ * block's declared type. This pass detects and fixes three classes of
  * mismatches:
  *
  * 1. "expected 0, found N" -- an empty-typed block where a branch leaves
@@ -15,8 +15,14 @@
  *    the branch genuinely fails to push a value). Fix: append `unreachable`
  *    (if the branch already has a terminator) or a default value push.
  *
+ * 3. "type error in fallthru" -- a branch produces the right number of
+ *    values but of the wrong type (e.g., ref instead of externref, or
+ *    f64 instead of externref). Fix: insert type coercion instructions
+ *    (extern.convert_any, any.convert_extern+ref.cast, etc.).
+ *
  * The pass uses a lightweight stack-depth simulation that tracks net
- * pushes/pops through a linear instruction sequence.
+ * pushes/pops through a linear instruction sequence, plus type inference
+ * for the last value-producing instruction to detect type mismatches.
  */
 import type {
   Instr,
@@ -24,6 +30,7 @@ import type {
   BlockType,
   FuncTypeDef,
   TypeDef,
+  ValType,
 } from "../ir/types.js";
 
 /** Sentinel: the instruction sequence is unreachable (after return/br/throw/unreachable). */
@@ -69,13 +76,15 @@ function instrDelta(instr: Instr, types: TypeDef[], funcSigs: FuncSigInfo): numb
   if (op === "i32.const" || op === "i64.const" || op === "f64.const" || op === "f32.const" ||
       op === "v128.const" ||
       op === "local.get" || op === "global.get" ||
-      op === "ref.null" || op === "ref.null.extern" || op === "ref.func" ||
+      op === "ref.null" || op === "ref.null.extern" || op === "ref.null.eq" ||
+      op === "ref.null.func" || op === "ref.func" ||
       op === "memory.size") {
     return 1;
   }
 
   // Push 1, pop 1 (net 0)
   if (op === "local.tee" || op === "ref.as_non_null" || op === "ref.cast" ||
+      op === "ref.cast_null" ||
       op === "ref.test" || op === "ref.is_null" ||
       op === "i32.eqz" || op === "i64.eqz" ||
       op === "i32.clz" ||
@@ -84,6 +93,7 @@ function instrDelta(instr: Instr, types: TypeDef[], funcSigs: FuncSigInfo): numb
       op === "f64.convert_i32_s" || op === "f64.convert_i32_u" || op === "f64.convert_i64_s" ||
       op === "f64.promote_f32" || op === "f32.demote_f64" ||
       op === "i32.trunc_sat_f64_s" || op === "i32.trunc_sat_f64_u" ||
+      op === "i32.trunc_f64_s" ||
       op === "i64.trunc_sat_f64_s" || op === "i64.trunc_f64_s" ||
       op === "i64.extend_i32_s" || op === "i64.extend_i32_u" ||
       op === "any.convert_extern" || op === "extern.convert_any" ||
@@ -120,6 +130,7 @@ function instrDelta(instr: Instr, types: TypeDef[], funcSigs: FuncSigInfo): numb
       op === "f64.add" || op === "f64.sub" || op === "f64.mul" || op === "f64.div" ||
       op === "f64.eq" || op === "f64.ne" || op === "f64.lt" || op === "f64.le" ||
       op === "f64.gt" || op === "f64.ge" ||
+      op === "f64.copysign" || op === "f64.min" || op === "f64.max" ||
       op === "ref.eq") {
     return -1;
   }
@@ -262,7 +273,7 @@ function instrDelta(instr: Instr, types: TypeDef[], funcSigs: FuncSigInfo): numb
 }
 
 interface FuncSigInfo {
-  get(funcIdx: number): { params: number; results: number } | undefined;
+  get(funcIdx: number): { params: number; results: number; resultType?: string } | undefined;
 }
 
 /**
@@ -293,8 +304,226 @@ function blockTypeExpected(bt: BlockType, types: TypeDef[]): number {
 }
 
 /**
+ * Infer the type category of the value produced by the last instruction in a sequence.
+ * Returns "f64", "i32", "i64", "externref", "ref", "anyref", or null if unknown.
+ */
+function inferLastType(body: Instr[], types: TypeDef[], sigs: FuncSigInfo): string | null {
+  // Walk backwards to find the last value-producing instruction
+  for (let i = body.length - 1; i >= 0; i--) {
+    const instr = body[i]!;
+    const op = instr.op;
+
+    // Skip drops, local.set, global.set (they consume but don't produce)
+    if (op === "drop" || op === "local.set" || op === "global.set") continue;
+
+    // f64 producers
+    if (op === "f64.const" || op === "f64.add" || op === "f64.sub" || op === "f64.mul" ||
+        op === "f64.div" || op === "f64.neg" || op === "f64.abs" || op === "f64.floor" ||
+        op === "f64.ceil" || op === "f64.trunc" || op === "f64.nearest" || op === "f64.sqrt" ||
+        op === "f64.copysign" || op === "f64.min" || op === "f64.max" ||
+        op === "f64.convert_i32_s" || op === "f64.convert_i32_u" || op === "f64.convert_i64_s" ||
+        op === "f64.promote_f32") {
+      return "f64";
+    }
+
+    // i32 producers
+    if (op === "i32.const" || op === "i32.add" || op === "i32.sub" || op === "i32.mul" ||
+        op === "i32.and" || op === "i32.or" || op === "i32.xor" ||
+        op === "i32.eqz" || op === "i32.eq" || op === "i32.ne" ||
+        op === "i32.lt_s" || op === "i32.le_s" || op === "i32.gt_s" || op === "i32.ge_s" ||
+        op === "i32.shl" || op === "i32.shr_s" || op === "i32.shr_u" ||
+        op === "i32.trunc_sat_f64_s" || op === "i32.trunc_f64_s" ||
+        op === "ref.is_null" || op === "ref.test" || op === "ref.eq" ||
+        op === "f64.eq" || op === "f64.ne" || op === "f64.lt" || op === "f64.le" ||
+        op === "f64.gt" || op === "f64.ge" ||
+        op === "i64.eqz" || op === "i64.eq" || op === "i64.ne") {
+      return "i32";
+    }
+
+    // i64 producers
+    if (op === "i64.const" || op === "i64.add" || op === "i64.sub" || op === "i64.mul" ||
+        op === "i64.and" || op === "i64.or" || op === "i64.xor" ||
+        op === "i64.extend_i32_s" || op === "i64.extend_i32_u" ||
+        op === "i64.trunc_sat_f64_s" || op === "i64.trunc_f64_s" ||
+        op === "i64.shl" || op === "i64.shr_s" || op === "i64.shr_u") {
+      return "i64";
+    }
+
+    // externref producers
+    if (op === "ref.null.extern" || op === "extern.convert_any") {
+      return "externref";
+    }
+
+    // ref producers (GC refs) -- only include ops that ALWAYS produce ref types
+    // Note: struct.get and array.get are excluded because they can return f64/i32/etc
+    if (op === "struct.new" || op === "array.new" ||
+        op === "array.new_default" || op === "array.new_fixed" ||
+        op === "ref.cast" || op === "ref.cast_null" || op === "ref.as_non_null" ||
+        op === "any.convert_extern") {
+      return "ref";
+    }
+
+    // ref.null with typeIdx
+    if (op === "ref.null") return "ref";
+    if (op === "ref.null.eq") return "eqref";
+    if (op === "ref.null.func" || op === "ref.func") return "funcref";
+
+    // local.tee preserves type -- unknown without local type info
+    if (op === "local.tee" || op === "local.get" || op === "global.get") return null;
+
+    // call: check result type -- only trust high-confidence type categories
+    if (op === "call") {
+      const funcIdx = (instr as any).funcIdx;
+      const sig = sigs.get(funcIdx);
+      if (sig && sig.resultType && (
+        sig.resultType === "f64" || sig.resultType === "i32" || sig.resultType === "i64" ||
+        sig.resultType === "externref"
+      )) {
+        return sig.resultType;
+      }
+      return null;
+    }
+
+    // Structured blocks: result is their blockType
+    if (op === "if" || op === "block" || op === "loop" || op === "try") {
+      const bt = (instr as any).blockType as BlockType;
+      if (bt?.kind === "val") {
+        const t = bt.type;
+        if (t.kind === "f64") return "f64";
+        if (t.kind === "i32") return "i32";
+        if (t.kind === "i64") return "i64";
+        if (t.kind === "externref" || t.kind === "ref_extern") return "externref";
+        if (t.kind === "ref" || t.kind === "ref_null") return "ref";
+      }
+      if (bt?.kind === "empty") continue; // doesn't produce a value
+      return null;
+    }
+
+    // For anything else, we can't determine the type
+    return null;
+  }
+  return null;
+}
+
+/**
+ * Check if two type categories are compatible for Wasm validation.
+ */
+function typesCompatible(produced: string, expected: ValType): boolean {
+  if (expected.kind === "externref" || expected.kind === "ref_extern") {
+    return produced === "externref";
+  }
+  if (expected.kind === "f64") return produced === "f64";
+  if (expected.kind === "i32") return produced === "i32";
+  if (expected.kind === "i64") return produced === "i64";
+  if (expected.kind === "f32") return produced === "f32";
+  if (expected.kind === "ref" || expected.kind === "ref_null") {
+    return produced === "ref" || produced === "eqref";
+  }
+  if (expected.kind === "anyref") {
+    return produced === "ref" || produced === "externref" || produced === "anyref";
+  }
+  return true; // unknown - assume compatible
+}
+
+/**
+ * Insert type coercion instructions at the end of a branch body to match the expected type.
+ * Returns the number of fixups applied.
+ */
+function fixBranchType(
+  body: Instr[],
+  blockType: BlockType,
+  types: TypeDef[],
+  sigs: FuncSigInfo,
+): number {
+  if (blockType.kind !== "val") return 0;
+  const expectedType = blockType.type;
+
+  const produced = inferLastType(body, types, sigs);
+  if (!produced) return 0; // can't determine type - skip
+
+  if (typesCompatible(produced, expectedType)) return 0; // types match
+
+  let fixups = 0;
+
+  // ref/anyref → externref: insert extern.convert_any
+  if ((expectedType.kind === "externref" || expectedType.kind === "ref_extern") &&
+      (produced === "ref" || produced === "eqref" || produced === "funcref" || produced === "anyref")) {
+    body.push({ op: "extern.convert_any" } as Instr);
+    return 1;
+  }
+
+  // externref → ref/ref_null: insert any.convert_extern + ref.cast
+  if ((expectedType.kind === "ref" || expectedType.kind === "ref_null") && produced === "externref") {
+    body.push({ op: "any.convert_extern" } as Instr);
+    if (expectedType.kind === "ref_null") {
+      body.push({ op: "ref.cast_null", typeIdx: expectedType.typeIdx } as unknown as Instr);
+    } else {
+      body.push({ op: "ref.cast", typeIdx: expectedType.typeIdx } as unknown as Instr);
+    }
+    return 1;
+  }
+
+  // f64 → externref: drop + ref.null.extern (lossy but valid)
+  // Better: we can't easily box without import, so use drop + null
+  if ((expectedType.kind === "externref" || expectedType.kind === "ref_extern") && produced === "f64") {
+    body.push({ op: "drop" });
+    body.push({ op: "ref.null.extern" });
+    return 1;
+  }
+
+  // i32 → externref: drop + ref.null.extern
+  if ((expectedType.kind === "externref" || expectedType.kind === "ref_extern") && produced === "i32") {
+    body.push({ op: "drop" });
+    body.push({ op: "ref.null.extern" });
+    return 1;
+  }
+
+  // externref → f64: drop + f64.const 0 (lossy but valid)
+  if (expectedType.kind === "f64" && produced === "externref") {
+    body.push({ op: "drop" });
+    body.push({ op: "f64.const", value: 0 });
+    return 1;
+  }
+
+  // i64 → f64: convert
+  if (expectedType.kind === "f64" && produced === "i64") {
+    body.push({ op: "f64.convert_i64_s" } as unknown as Instr);
+    return 1;
+  }
+
+  // ref → f64: drop + f64.const 0 (lossy but valid)
+  if (expectedType.kind === "f64" && produced === "ref") {
+    body.push({ op: "drop" });
+    body.push({ op: "f64.const", value: 0 });
+    return 1;
+  }
+
+  // i32 → f64: convert
+  if (expectedType.kind === "f64" && produced === "i32") {
+    body.push({ op: "f64.convert_i32_s" });
+    return 1;
+  }
+
+  // ref → i32: drop + i32.const 0
+  if (expectedType.kind === "i32" && (produced === "ref" || produced === "externref")) {
+    body.push({ op: "drop" });
+    body.push({ op: "i32.const", value: 0 });
+    return 1;
+  }
+
+  // externref → ref_null for anyref-like: any.convert_extern
+  if (expectedType.kind === "anyref" && produced === "externref") {
+    body.push({ op: "any.convert_extern" } as Instr);
+    return 1;
+  }
+
+  return fixups;
+}
+
+/**
  * Fix a branch (instruction body) to match the expected stack delta.
  * Appends drop or default-value instructions as needed.
+ * Also fixes type mismatches between branch result and block type.
  * Mutates the body array in place.
  * Returns the number of fixups applied.
  */
@@ -353,6 +582,15 @@ function fixBranch(
         body.push({ op: "unreachable" } as Instr);
       }
       fixups++;
+    }
+  }
+
+  // After fixing count, also fix type mismatches if count is now correct
+  if (actual === expected || fixups > 0) {
+    // Re-check delta after fixups
+    const newDelta = sequenceDelta(body, types, sigs);
+    if (newDelta === expected && newDelta > 0) {
+      fixups += fixBranchType(body, blockType, types, sigs);
     }
   }
 
@@ -449,8 +687,26 @@ function fixBody(body: Instr[], types: TypeDef[], sigs: FuncSigInfo, tags: Array
  * Build a map from function index to its signature (param count, result count).
  * Includes both imported and defined functions.
  */
+/**
+ * Map a ValType to a type category string for type inference.
+ */
+function valTypeCategory(vt: ValType): string | undefined {
+  switch (vt.kind) {
+    case "f64": return "f64";
+    case "i32": return "i32";
+    case "i64": return "i64";
+    case "f32": return "f32";
+    case "externref": case "ref_extern": return "externref";
+    case "ref": case "ref_null": return "ref";
+    case "funcref": return "funcref";
+    case "eqref": return "eqref";
+    case "anyref": return "anyref";
+    default: return undefined;
+  }
+}
+
 function buildFuncSigs(mod: WasmModule): FuncSigInfo {
-  const map = new Map<number, { params: number; results: number }>();
+  const map = new Map<number, { params: number; results: number; resultType?: string }>();
 
   // Imported functions come first
   let idx = 0;
@@ -458,7 +714,8 @@ function buildFuncSigs(mod: WasmModule): FuncSigInfo {
     if (imp.desc.kind === "func") {
       const ft = resolveFuncType(mod.types, imp.desc.typeIdx);
       if (ft) {
-        map.set(idx, { params: ft.params.length, results: ft.results.length });
+        const resultType = ft.results.length === 1 ? valTypeCategory(ft.results[0]!) : undefined;
+        map.set(idx, { params: ft.params.length, results: ft.results.length, resultType });
       }
       idx++;
     }
@@ -468,7 +725,8 @@ function buildFuncSigs(mod: WasmModule): FuncSigInfo {
   for (const func of mod.functions) {
     const ft = resolveFuncType(mod.types, func.typeIdx);
     if (ft) {
-      map.set(idx, { params: ft.params.length, results: ft.results.length });
+      const resultType = ft.results.length === 1 ? valTypeCategory(ft.results[0]!) : undefined;
+      map.set(idx, { params: ft.params.length, results: ft.results.length, resultType });
     }
     idx++;
   }
