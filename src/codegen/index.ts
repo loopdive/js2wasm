@@ -7482,6 +7482,15 @@ function fixupModuleGlobalIndices(
   shiftMap(ctx.moduleGlobals);
   shiftMap(ctx.capturedGlobals);
   shiftMap(ctx.staticProps);
+  shiftMap(ctx.protoGlobals);
+
+  // Shift scalar global indices stored on ctx
+  if (ctx.symbolCounterGlobalIdx >= threshold) {
+    ctx.symbolCounterGlobalIdx += delta;
+  }
+  if (ctx.wasiBumpPtrGlobalIdx >= threshold) {
+    ctx.wasiBumpPtrGlobalIdx += delta;
+  }
 }
 
 /**
