@@ -16,6 +16,7 @@ import type { CodegenContext, FunctionContext } from "./index.js";
 import {
   addFuncType,
   addImport,
+  addStringConstantGlobal,
   addStringImports,
   addUnionImports,
   allocLocal,
@@ -805,6 +806,25 @@ function compileObjectDestructuring(
   const resultType = compileExpression(ctx, fctx, decl.initializer);
   if (!resultType) return;
 
+  // If the result is already externref (or a scalar), use the externref fallback directly
+  if (resultType.kind === "externref") {
+    compileExternrefObjectDestructuringDecl(ctx, fctx, pattern, resultType);
+    return;
+  }
+  if (resultType.kind === "f64" || resultType.kind === "i32") {
+    // Box scalar to externref and use externref fallback
+    if (resultType.kind === "i32") {
+      fctx.body.push({ op: "f64.convert_i32_s" });
+    }
+    const boxIdx = ctx.funcMap.get("__box_number");
+    if (boxIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: boxIdx });
+      compileExternrefObjectDestructuringDecl(ctx, fctx, pattern, { kind: "externref" });
+      return;
+    }
+    // No __box_number available — fall through to error
+  }
+
   // Determine struct type — prefer the actual Wasm type from compileExpression
   // over the TS checker, because anonymous object literals may register different
   // ts.Type objects for the initializer vs the destructuring pattern, leading to
@@ -849,6 +869,12 @@ function compileObjectDestructuring(
     }
 
     if (!typeName) {
+      // Type is unknown — fall back to externref property access
+      if (resultType.kind === "ref" || resultType.kind === "ref_null") {
+        fctx.body.push({ op: "extern.convert_any" } as Instr);
+        compileExternrefObjectDestructuringDecl(ctx, fctx, pattern, { kind: "externref" });
+        return;
+      }
       fctx.body.length = bodyLenBefore; // rollback — value would leak on stack
       ensureBindingLocals(ctx, fctx, pattern);
       ctx.errors.push({
@@ -862,6 +888,12 @@ function compileObjectDestructuring(
     structTypeIdx = ctx.structMap.get(typeName);
     fields = ctx.structFields.get(typeName);
     if (structTypeIdx === undefined || !fields) {
+      // Known type name but no struct — fall back to externref
+      if (resultType.kind === "ref" || resultType.kind === "ref_null") {
+        fctx.body.push({ op: "extern.convert_any" } as Instr);
+        compileExternrefObjectDestructuringDecl(ctx, fctx, pattern, { kind: "externref" });
+        return;
+      }
       fctx.body.length = bodyLenBefore; // rollback — value would leak on stack
       ensureBindingLocals(ctx, fctx, pattern);
       ctx.errors.push({
@@ -1017,6 +1049,122 @@ function compileObjectDestructuring(
       emitDefaultValueCheck(ctx, fctx, fieldType, localIdx, element.initializer);
     } else {
       fctx.body.push({ op: "local.set", index: localIdx });
+    }
+  }
+
+  }); // end null guard
+
+  // Sync destructured locals to module globals
+  syncDestructuredLocalsToGlobals(ctx, fctx, pattern);
+}
+
+/**
+ * Destructure an externref value using __extern_get(obj, key_string) for each property.
+ * Fallback for when the source type is unknown/any/externref (no struct info available).
+ */
+function compileExternrefObjectDestructuringDecl(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  pattern: ts.ObjectBindingPattern,
+  resultType: ValType,
+): void {
+  // Store externref in temp local
+  const tmpLocal = allocLocal(fctx, `__ext_obj_destruct_${fctx.locals.length}`, resultType);
+  fctx.body.push({ op: "local.set", index: tmpLocal });
+
+  // Ensure __extern_get is available
+  let getIdx = ctx.funcMap.get("__extern_get");
+  if (getIdx === undefined) {
+    const importsBefore = ctx.numImportFuncs;
+    const getType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", "__extern_get", { kind: "func", typeIdx: getType });
+    shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+    getIdx = ctx.funcMap.get("__extern_get");
+  }
+  if (getIdx === undefined) {
+    ensureBindingLocals(ctx, fctx, pattern);
+    return;
+  }
+
+  // Pre-allocate all binding locals
+  ensureBindingLocals(ctx, fctx, pattern);
+
+  // Null guard: skip destructuring if source is null
+  const isNullable = resultType.kind === "externref" || resultType.kind === "ref_null";
+  emitNullGuard(fctx, tmpLocal, isNullable, () => {
+
+  for (const element of pattern.elements) {
+    if (!ts.isBindingElement(element)) continue;
+
+    // Determine the property name to look up
+    const propNameNode = element.propertyName ?? element.name;
+    let propNameText: string | undefined;
+    if (ts.isIdentifier(propNameNode)) {
+      propNameText = propNameNode.text;
+    } else if (ts.isStringLiteral(propNameNode)) {
+      propNameText = propNameNode.text;
+    } else if (ts.isNumericLiteral(propNameNode)) {
+      propNameText = propNameNode.text;
+    }
+
+    if (!propNameText) continue;
+
+    // Emit: __extern_get(tmpLocal, "propName") -> externref
+    // Register the property name as a string constant global
+    addStringConstantGlobal(ctx, propNameText);
+    const strGlobalIdx = ctx.stringGlobalMap.get(propNameText);
+    if (strGlobalIdx === undefined) continue;
+
+    // Refresh getIdx in case addStringConstantGlobal shifted indices
+    getIdx = ctx.funcMap.get("__extern_get");
+    if (getIdx === undefined) continue;
+
+    fctx.body.push({ op: "local.get", index: tmpLocal });
+    fctx.body.push({ op: "global.get", index: strGlobalIdx });
+    fctx.body.push({ op: "call", funcIdx: getIdx });
+
+    const elemType: ValType = { kind: "externref" };
+
+    if (ts.isIdentifier(element.name)) {
+      const localName = element.name.text;
+      let localIdx = fctx.localMap.get(localName);
+      if (localIdx === undefined) {
+        localIdx = allocLocal(fctx, localName, elemType);
+      }
+      const localType = getLocalType(fctx, localIdx);
+
+      // Handle default value
+      if (element.initializer) {
+        const tmpElem = allocLocal(fctx, `__ext_obj_dflt_${fctx.locals.length}`, elemType);
+        fctx.body.push({ op: "local.tee", index: tmpElem });
+        fctx.body.push({ op: "ref.is_null" } as Instr);
+        const thenInstrs = collectInstrs(fctx, () => {
+          compileExpression(ctx, fctx, element.initializer!, localType ?? elemType);
+          fctx.body.push({ op: "local.set", index: localIdx! } as Instr);
+        });
+        const elseCoerce = (localType && !valTypesMatch(elemType, localType))
+          ? collectInstrs(fctx, () => { coerceType(ctx, fctx, elemType, localType!); })
+          : [];
+        fctx.body.push({
+          op: "if",
+          blockType: { kind: "empty" },
+          then: thenInstrs,
+          else: [
+            { op: "local.get", index: tmpElem } as Instr,
+            ...elseCoerce,
+            { op: "local.set", index: localIdx! } as Instr,
+          ],
+        });
+      } else {
+        if (localType && !valTypesMatch(elemType, localType)) {
+          coerceType(ctx, fctx, elemType, localType);
+        }
+        fctx.body.push({ op: "local.set", index: localIdx });
+      }
+    } else if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
+      // Nested destructuring on externref — drop for now
+      fctx.body.push({ op: "drop" });
+      ensureBindingLocals(ctx, fctx, element.name);
     }
   }
 
