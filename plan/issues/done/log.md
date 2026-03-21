@@ -425,7 +425,6 @@
 | 632 | 2026-03-19 | RegExp literal flags crash                                                                        | Session    |
 | 633 | 2026-03-19 | Shape inference in try/catch/loop/switch (297 FAIL)                                               | Session    |
 | 634 | 2026-03-19 | Getter/setter accessor side effects (118 FAIL)                                                    | Session    |
-<<<<<<< HEAD
 | 695 | 2026-03-21 | Emit proper TypeError on null/undefined property access (4,738 FAIL)                              | Session    |
 | 702 | 2026-03-21 | Residual null pointer dereferences: param widening + ref cell guards (2,767 FAIL)                  | Session    |
 | 703 | 2026-03-21 | Negative tests: strict-mode validation for ES-spec parse errors                                   | Session    |
@@ -439,5 +438,6 @@
 | 717 | 2026-03-21 | Regression: import.source/defer stub breaks 117 negative parse tests                              | Session    |
 | 718 | 2026-03-21 | Duplicate of #716                                                                                 | Session    |
 | 721 | 2026-03-21 | Residual negative test false-pass (2,564 FAIL) — with, octal, delete, for-in init, labeled fn     | Session    |
+| 720 | 2026-03-21 | IIFE return type mismatch causes local.set type error (39 CE)                                     | Session    |
 
 
