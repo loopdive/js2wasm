@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { compile } from "../../src/index.js";
+import { compile } from "../src/index.js";
 
 describe("Temporal Dead Zone (TDZ) detection (#428)", () => {
   test("let: use before declaration in prior statement", () => {

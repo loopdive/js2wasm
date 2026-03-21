@@ -45,6 +45,63 @@ import {
 } from "./index.js";
 
 /**
+ * Emit instructions to set a TDZ flag global to 1 (initialized) for a module-level
+ * let/const variable. No-op if the variable doesn't have a TDZ flag.
+ */
+function emitTdzInit(ctx: CodegenContext, fctx: FunctionContext, name: string): void {
+  const flagIdx = ctx.tdzGlobals.get(name);
+  if (flagIdx === undefined) return;
+  fctx.body.push({ op: "i32.const", value: 1 });
+  fctx.body.push({ op: "global.set", index: flagIdx });
+}
+
+/**
+ * Emit a TDZ check for a module-level let/const variable read.
+ * If the TDZ flag is 0 (uninitialized), throw a ReferenceError.
+ * No-op if the variable doesn't have a TDZ flag.
+ */
+export function emitTdzCheck(ctx: CodegenContext, fctx: FunctionContext, name: string): void {
+  const flagIdx = ctx.tdzGlobals.get(name);
+  if (flagIdx === undefined) return;
+  const tagIdx = ensureExnTag(ctx);
+  // if (flag == 0) throw ReferenceError
+  fctx.body.push({ op: "global.get", index: flagIdx });
+  fctx.body.push({ op: "i32.eqz" });
+  // if (uninitialized) { throw }
+  fctx.body.push({
+    op: "if",
+    blockType: { kind: "empty" },
+    then: [
+      // Push error message as externref string, then throw
+      emitTdzErrorString(ctx, name),
+      { op: "throw", tagIdx },
+    ],
+    else: [],
+  } as unknown as Instr);
+}
+
+/**
+ * Build an instruction that pushes a ReferenceError message as externref onto the stack.
+ * Uses string constants import if available, otherwise ref.null.extern as fallback.
+ */
+function emitTdzErrorString(ctx: CodegenContext, name: string): Instr {
+  // We need to produce a string on the stack. The simplest approach is
+  // to use the string constants mechanism if available.
+  const msg = `Cannot access '${name}' before initialization`;
+  if (ctx.stringGlobalMap.has(msg)) {
+    return { op: "global.get", index: ctx.stringGlobalMap.get(msg)! };
+  }
+  // If we have string support, register the string constant
+  if (ctx.hasStringImports || ctx.nativeStrings) {
+    // For native strings, we can't easily emit a string constant here.
+    // Fall back to ref.null.extern as the error payload.
+    return { op: "ref.null.extern" } as Instr;
+  }
+  // Fallback: null externref (the error handler will still catch it as ReferenceError)
+  return { op: "ref.null.extern" } as Instr;
+}
+
+/**
  * Infer the element type of an `Array<any>` variable by scanning how it is used.
  * Walks the enclosing function for `arr[i] = value` and `arr.push(value)` patterns,
  * returns a concrete wasm vec type if a non-any element type is found.
@@ -427,6 +484,8 @@ function compileVariableStatement(
         const localIdx = allocLocal(fctx, name, closureType);
         fctx.body.push({ op: "local.tee", index: localIdx });
         fctx.body.push({ op: "global.set", index: modGlobalIdx });
+        // Set TDZ flag to 1 (initialized)
+        emitTdzInit(ctx, fctx, name);
       } else {
         const localIdx = allocLocal(fctx, name, closureType);
         emitCoercedLocalSet(ctx, fctx, localIdx, closureType);
@@ -470,6 +529,8 @@ function compileVariableStatement(
         fctx.body.push({ op: "array.new_default", typeIdx: shapeInfo.arrTypeIdx } as Instr);
         fctx.body.push({ op: "struct.new", typeIdx: shapeInfo.vecTypeIdx });
         fctx.body.push({ op: "global.set", index: moduleGlobalIdx });
+        // Set TDZ flag to 1 (initialized)
+        emitTdzInit(ctx, fctx, name);
         continue;
       }
       // Module global: compile initializer and set global
@@ -481,6 +542,8 @@ function compileVariableStatement(
         compileExpression(ctx, fctx, decl.initializer, wasmType);
         fctx.body.push({ op: "global.set", index: moduleGlobalIdx });
       }
+      // Set TDZ flag to 1 (initialized) — even for `let x;` without initializer
+      emitTdzInit(ctx, fctx, name);
       continue;
     }
 
@@ -509,10 +572,11 @@ function compileVariableStatement(
           ? { kind: "externref" as const }
           : resolveWasmType(ctx, varType));
 
-    // If this var was already pre-hoisted at function entry, reuse that slot.
+    // If this var/let/const was already pre-hoisted at function entry, reuse that slot.
     const existingIdx = fctx.localMap.get(name);
     const isVar = !(decl.parent.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const));
-    const localIdx = (isVar && existingIdx !== undefined && existingIdx >= fctx.params.length)
+    const isHoistedLetConst = !isVar && existingIdx !== undefined && existingIdx >= fctx.params.length && fctx.tdzFlagLocals?.has(name);
+    const localIdx = ((isVar || isHoistedLetConst) && existingIdx !== undefined && existingIdx >= fctx.params.length)
       ? existingIdx
       : allocLocal(fctx, name, wasmType);
 
@@ -615,7 +679,20 @@ function compileVariableStatement(
       }
       emitCoercedLocalSet(ctx, fctx, localIdx, stackType);
     }
+    // Set local TDZ flag to 1 (initialized) if this is a hoisted let/const
+    emitLocalTdzInit(fctx, name);
   }
+}
+
+/**
+ * Emit instructions to set a local TDZ flag to 1 (initialized) for a function-level
+ * let/const variable. No-op if the variable doesn't have a local TDZ flag.
+ */
+function emitLocalTdzInit(fctx: FunctionContext, name: string): void {
+  const flagIdx = fctx.tdzFlagLocals?.get(name);
+  if (flagIdx === undefined) return;
+  fctx.body.push({ op: "i32.const", value: 1 });
+  fctx.body.push({ op: "local.set", index: flagIdx });
 }
 
 /**

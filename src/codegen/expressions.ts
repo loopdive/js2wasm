@@ -17,7 +17,7 @@ import {
 } from "../checker/type-mapper.js";
 import type { Instr, ValType, WasmFunction, FieldDef, StructTypeDef } from "../ir/types.js";
 import { ensureI32Condition, ensureExnTag } from "./index.js";
-import { compileStatement } from "./statements.js";
+import { compileStatement, emitTdzCheck } from "./statements.js";
 import { walkInstructions } from "./walk-instructions.js";
 import { ensureTimsortHelper } from "./timsort.js";
 import { coerceType as coerceTypeImpl, pushDefaultValue, defaultValueInstrs, coercionInstrs, emitGuardedRefCast, emitSafeExternrefToF64 } from "./type-coercion.js";
@@ -1210,6 +1210,22 @@ function promoteAccessorCapturesToGlobals(
     ctx.capturedGlobals.set(name, globalIdx);
     if (localType.kind === "ref") {
       ctx.capturedGlobalsWidened.add(name);
+    }
+
+    // If this variable has a local TDZ flag, also promote it to a global TDZ flag
+    const tdzFlagLocalIdx = fctx.tdzFlagLocals?.get(name);
+    if (tdzFlagLocalIdx !== undefined) {
+      const tdzGlobalIdx = nextModuleGlobalIdx(ctx);
+      ctx.mod.globals.push({
+        name: `__tdz_${name}`,
+        type: { kind: "i32" },
+        mutable: true,
+        init: [{ op: "i32.const", value: 0 }],
+      });
+      // Copy current TDZ flag value to the global
+      fctx.body.push({ op: "local.get", index: tdzFlagLocalIdx });
+      fctx.body.push({ op: "global.set", index: tdzGlobalIdx });
+      ctx.tdzGlobals.set(name, tdzGlobalIdx);
     }
 
     // Remove from localMap so subsequent code in the enclosing function
@@ -2627,6 +2643,30 @@ function emitFuncRefAsClosure(
   return { kind: "ref", typeIdx: structTypeIdx };
 }
 
+/**
+ * Emit a TDZ check for a function-local let/const variable.
+ * If the TDZ flag local is 0 (uninitialized), throw a ReferenceError.
+ */
+function emitLocalTdzCheck(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  name: string,
+  flagIdx: number,
+): void {
+  const tagIdx = ensureExnTag(ctx);
+  fctx.body.push({ op: "local.get", index: flagIdx });
+  fctx.body.push({ op: "i32.eqz" });
+  fctx.body.push({
+    op: "if",
+    blockType: { kind: "empty" },
+    then: [
+      { op: "ref.null.extern" } as Instr,
+      { op: "throw", tagIdx },
+    ],
+    else: [],
+  } as unknown as Instr);
+}
+
 function compileIdentifier(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -2635,6 +2675,12 @@ function compileIdentifier(
   const name = id.text;
   const localIdx = fctx.localMap.get(name);
   if (localIdx !== undefined) {
+    // TDZ check for function-local let/const variables
+    const tdzFlagIdx = fctx.tdzFlagLocals?.get(name);
+    if (tdzFlagIdx !== undefined) {
+      emitLocalTdzCheck(ctx, fctx, name, tdzFlagIdx);
+    }
+
     // Check if this is a boxed (ref cell) mutable capture
     const boxed = fctx.boxedCaptures?.get(name);
     if (boxed) {
@@ -2684,6 +2730,8 @@ function compileIdentifier(
   // Check captured globals (variables promoted from enclosing scope for callbacks)
   const capturedIdx = ctx.capturedGlobals.get(name);
   if (capturedIdx !== undefined) {
+    // TDZ check: throw ReferenceError if let/const variable accessed before initialization
+    emitTdzCheck(ctx, fctx, name);
     fctx.body.push({ op: "global.get", index: capturedIdx });
     const globalDef = ctx.mod.globals[localGlobalIdx(ctx, capturedIdx)];
     const gType = globalDef?.type ?? { kind: "f64" };
@@ -2698,6 +2746,8 @@ function compileIdentifier(
   // Check module-level globals (top-level let/const declarations)
   const moduleIdx = ctx.moduleGlobals.get(name);
   if (moduleIdx !== undefined) {
+    // TDZ check: throw ReferenceError if let/const variable accessed before initialization
+    emitTdzCheck(ctx, fctx, name);
     fctx.body.push({ op: "global.get", index: moduleIdx });
     const globalDef = ctx.mod.globals[localGlobalIdx(ctx, moduleIdx)];
     const mType = globalDef?.type ?? { kind: "f64" };
@@ -12597,6 +12647,11 @@ function compileCallExpression(
             fctx.boxedCaptures.set(cap.name, { refCellTypeIdx, valType: cap.valType });
           }
         } else {
+          // TDZ check for captured let/const variables
+          const capTdzIdx = fctx.tdzFlagLocals?.get(cap.name);
+          if (capTdzIdx !== undefined) {
+            emitLocalTdzCheck(ctx, fctx, cap.name, capTdzIdx);
+          }
           fctx.body.push({ op: "local.get", index: cap.outerLocalIdx });
         }
       }
