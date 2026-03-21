@@ -16402,6 +16402,9 @@ function compileDateMethodCall(
     "getUTCFullYear", "getUTCMonth", "getUTCDate",
     "getUTCHours", "getUTCMinutes", "getUTCSeconds", "getUTCMilliseconds",
     "getUTCDay", "toISOString", "toJSON",
+    "toString", "toDateString", "toTimeString",
+    "toLocaleDateString", "toLocaleTimeString", "toLocaleString",
+    "toUTCString", "toGMTString",
   ]);
   if (!DATE_METHODS.has(methodName)) return undefined;
 
@@ -16628,6 +16631,19 @@ function compileDateMethodCall(
     // but that requires string building which is complex. Return the timestamp as a string.
     fctx.body.push({ op: "drop" } as Instr);
     return compileStringLiteral(ctx, fctx, "1970-01-01T00:00:00.000Z");
+  }
+
+  // toString / toDateString / toTimeString / toLocale* / toUTCString / toGMTString:
+  // Stub implementations — return a placeholder string representation.
+  // Full formatting would require complex string building; for now return a fixed string.
+  const STRING_DATE_METHODS = new Set([
+    "toString", "toDateString", "toTimeString",
+    "toLocaleDateString", "toLocaleTimeString", "toLocaleString",
+    "toUTCString", "toGMTString",
+  ]);
+  if (STRING_DATE_METHODS.has(methodName)) {
+    fctx.body.push({ op: "drop" } as Instr);
+    return compileStringLiteral(ctx, fctx, "Thu Jan 01 1970 00:00:00 GMT+0000");
   }
 
   // Shouldn't reach here

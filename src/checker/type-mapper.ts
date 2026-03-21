@@ -6,7 +6,7 @@ const BUILTIN_TYPES = new Set([
   "Array", "Number", "Boolean", "String", "Object", "Function",
   "Symbol", "BigInt", "Int8Array", "Uint8Array", "Int16Array",
   "Uint16Array", "Int32Array", "Uint32Array", "Float32Array", "Float64Array",
-  "ArrayBuffer", "DataView", "JSON", "Math", "Promise",
+  "ArrayBuffer", "DataView", "Date", "JSON", "Math", "Promise",
   "Generator", "Iterator", "IterableIterator", "Iterable",
   "IteratorResult", "IteratorYieldResult", "IteratorReturnResult",
 ]);
