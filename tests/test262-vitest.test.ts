@@ -24,10 +24,12 @@ import {
   TEST_CATEGORIES,
 } from "./test262-runner.js";
 
+
 // ── Compiler pool (async worker threads) ─────────────────────────────
 
 const POOL_SIZE = parseInt(process.env.TEST262_WORKERS ?? "8", 10);
 const pool = new CompilerPool(POOL_SIZE);
+// Pool workers load compiler-bundle.mjs — already has skipSemanticDiagnostics
 
 // ── Cache setup ──────────────────────────────────────────────────────
 
@@ -65,25 +67,22 @@ function buildCompilerHash(): string {
 
 const compilerHash = buildCompilerHash();
 
-// ── Cache-aware compilation ──────────────────────────────────────────
-
-interface CachedCompileResult {
-  binary: Uint8Array;
-  success: true;
-  stringPool: string[];
-  imports: any[];
-}
+// ── Cache-aware async compilation via pool ───────────────────────────
 
 /**
- * Compile wrapped test source via pool, with disk cache.
- * Cache hit: <1ms (read from disk). Cache miss: ~100ms (pool worker compiles).
+ * Compile wrapped test source via worker pool, with disk cache.
+ * Cache hit: <1ms (read from disk). Cache miss: async dispatch to pool worker.
+ * Multiple tests can await compilation concurrently — pool dispatches to
+ * free workers and queues the rest.
  */
 async function getOrCompile(
   wrappedSource: string,
+  fullDiagnostics = false,
 ): Promise<{ ok: true; binary: Uint8Array; result: any } | { ok: false; error: string }> {
   const hash = createHash("md5")
     .update(wrappedSource)
     .update(compilerHash)
+    .update(fullDiagnostics ? "diag" : "")
     .digest("hex");
   const cachePath = join(CACHE_DIR, `${hash}.wasm`);
   const metaPath = join(CACHE_DIR, `${hash}.json`);
@@ -100,7 +99,7 @@ async function getOrCompile(
   }
 
   // Cache miss: async compile via pool worker (doesn't block other tests)
-  const poolResult = await pool.compile(wrappedSource);
+  const poolResult = await pool.compile(wrappedSource, 30_000, fullDiagnostics);
   if (!poolResult.ok) {
     return { ok: false, error: poolResult.error };
   }
@@ -125,7 +124,7 @@ async function getOrCompile(
 
 // ── Result tracking (JSONL output for report.html) ──────────────────
 
-import { writeFileSync as writeSync, openSync, writeSync as fdWrite, closeSync } from "fs";
+import { writeFileSync as writeSync, openSync, writeSync as fdWrite, closeSync, fsyncSync } from "fs";
 import { afterAll } from "vitest";
 
 const RESULTS_DIR = join(import.meta.dirname ?? ".", "..", "benchmarks", "results");
@@ -151,8 +150,11 @@ function recordResult(file: string, category: string, status: string, error?: st
   (catCounts[category] as any)[status]++;
   catCounts[category].total++;
 
-  // Periodically update report.json for live viewing
+  // Periodically flush JSONL and update report.json for live viewing
   flushCount++;
+  if (flushCount % 50 === 0) {
+    try { fsyncSync(jsonlFd); } catch {}
+  }
   if (flushCount % REPORT_FLUSH_INTERVAL === 0) {
     const report = {
       timestamp: new Date().toISOString(),
@@ -179,6 +181,96 @@ afterAll(() => {
   console.log(`\nTest262: ${summary.total} total — ${summary.pass} pass, ${summary.fail} fail, ${summary.compile_error} CE, ${summary.skip} skip`);
 });
 
+// ── Assertion lookup (maps returned N to the Nth assert in the source) ──
+
+/**
+ * Adjust line numbers in error messages from wrapped-source coordinates
+ * back to original test file coordinates.
+ */
+function adjustErrorLines(msg: string, offset: number): string {
+  if (offset === 0) return msg;
+  return msg.replace(/\bL(\d+)(:\d+)?/g, (_m, line, col) => {
+    const adjusted = parseInt(line, 10) - offset;
+    return `L${adjusted > 0 ? adjusted : 1}${col ?? ""}`;
+  });
+}
+
+/**
+ * Use source map to resolve a wasm error to a source line.
+ * Extracts byte offset from V8 wasm stack trace, looks it up in the source map,
+ * and appends the original source line.
+ */
+function resolveWasmErrorLine(
+  err: any, sourceMap: string | null, source: string, bodyLineOffset: number,
+): string {
+  const msg = err.message ?? String(err);
+  const stack = typeof err?.stack === "string" ? err.stack : "";
+
+  // Try to extract wasm byte offset from stack trace
+  // V8 formats: "at func (wasm://wasm/hash:wasm-function[N]:0xOFFSET)"
+  //             "at wasm://wasm/hash:wasm-function[N]:0xOFFSET"
+  const offsetMatch = stack.match(/:0x([0-9a-fA-F]+)/) ?? msg.match(/@\+(\d+)/);
+
+  // Also extract function name from wasm stack
+  const funcMatch = stack.match(/at (\w+) \(wasm:\/\//);
+  const funcName = funcMatch?.[1];
+
+  // Try source map lookup
+  if (sourceMap && offsetMatch) {
+    try {
+      const byteOffset = parseInt(offsetMatch[1], 16);
+      const mapped = lookupSourceMapOffset(sourceMap, byteOffset);
+      if (mapped && mapped.line > 0) {
+        const adjLine = mapped.line - bodyLineOffset;
+        const srcLine = adjLine > 0 ? adjLine : mapped.line;
+        const lines = source.split("\n");
+        const ctx = lines[srcLine - 1]?.trim().substring(0, 80) ?? "";
+        return `${msg} [at L${srcLine}: ${ctx}]`;
+      }
+    } catch {}
+  }
+
+  // Fallback: try to find function name in source
+  if (funcName && funcName !== "test") {
+    const lines = source.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].includes(`function ${funcName}`) || lines[i].includes(`${funcName}(`)) {
+        return `${msg} [in ${funcName}() at L${i + 1}]`;
+      }
+    }
+    return `${msg} [in ${funcName}()]`;
+  }
+
+  return msg;
+}
+
+function findNthAssert(source: string, retVal: number): string {
+  // __assert_count starts at 1 and increments before check, so returned N
+  // means the (N-1)th assertion failed. -1 means a catch block fired.
+  if (retVal === -1) return "exception caught in test body";
+  const idx = retVal - 1; // 0-based assertion index (returned 2 → 1st assert)
+  if (idx < 1) return `early return (${retVal})`;
+
+  // Find all assert-like calls in the original source
+  // Match multi-line assert calls by finding the opening and counting parens
+  const lines = source.split("\n");
+  const assertStarts: { line: number; text: string }[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (/\bassert\b/.test(lines[i])) {
+      // Collect up to 3 lines for multi-line asserts
+      const text = lines.slice(i, Math.min(i + 3, lines.length)).join(" ").trim();
+      assertStarts.push({ line: i + 1, text: text.substring(0, 120) });
+    }
+  }
+
+  const target = idx - 1; // convert to 0-based index into assertStarts
+  if (target >= 0 && target < assertStarts.length) {
+    const a = assertStarts[target];
+    return `assert #${idx} at L${a.line}: ${a.text}`;
+  }
+  return `assert #${idx} (found ${assertStarts.length} asserts in source)`;
+}
+
 // ── Test generation ──────────────────────────────────────────────────
 
 const TEST262_ROOT = join(import.meta.dirname ?? ".", "..", "test262");
@@ -204,11 +296,12 @@ for (const category of TEST_CATEGORIES) {
         }
 
         // Handle negative parse/early tests: compilation should fail
+        // Use skipSemanticDiagnostics:false for negative tests so TS catches more errors
         if (
           meta.negative &&
           (meta.negative.phase === "parse" || meta.negative.phase === "early" || meta.negative.phase === "resolution")
         ) {
-          const { source: wrapped } = wrapTest(source, meta);
+          const { source: wrapped, bodyLineOffset } = wrapTest(source, meta);
           const compileResult = await getOrCompile(wrapped);
           if (!compileResult.ok) { recordResult(relPath, category, "pass"); return; }
           try {
@@ -222,11 +315,11 @@ for (const category of TEST_CATEGORIES) {
         }
 
         // Wrap and compile
-        const { source: wrapped } = wrapTest(source, meta);
+        const { source: wrapped, bodyLineOffset } = wrapTest(source, meta);
         const compileResult = await getOrCompile(wrapped);
 
         if (!compileResult.ok) {
-          recordResult(relPath, category, "compile_error", compileResult.error);
+          recordResult(relPath, category, "compile_error", adjustErrorLines(compileResult.error, bodyLineOffset));
           return;
         }
 
@@ -260,18 +353,19 @@ for (const category of TEST_CATEGORIES) {
             if (ret === 1) {
               recordResult(relPath, category, "pass");
             } else {
-              recordResult(relPath, category, "fail", `returned ${ret}`);
+              const assertInfo = findNthAssert(source, ret);
+              recordResult(relPath, category, "fail", `returned ${ret} — ${assertInfo}`);
             }
           } catch (execErr: any) {
             if (isRuntimeNegative) {
               recordResult(relPath, category, "pass");
             } else {
-              recordResult(relPath, category, "fail", execErr.message ?? String(execErr));
+              recordResult(relPath, category, "fail", resolveWasmErrorLine(execErr, compileResult.result.sourceMap, source, bodyLineOffset));
             }
             return;
           }
         } catch (instantiateErr: any) {
-          recordResult(relPath, category, "compile_error", instantiateErr.message ?? String(instantiateErr));
+          recordResult(relPath, category, "compile_error", resolveWasmErrorLine(instantiateErr, compileResult.result.sourceMap, source, bodyLineOffset));
           return;
         }
       }, 90_000);
