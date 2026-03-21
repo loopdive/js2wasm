@@ -328,6 +328,10 @@ export interface CodegenContext {
   wasiProcExitIdx: number;
   /** WASI: bump allocator pointer for linear memory string data */
   wasiBumpPtrGlobalIdx: number;
+  /** Map from let/const module global variable name → global index of its i32 TDZ flag (0 = uninitialized) */
+  tdzGlobals: Map<string, number>;
+  /** Set of let/const module global variable names (for TDZ tracking) */
+  tdzLetConstNames: Set<string>;
 }
 
 /** Metadata for a function eligible for call-site inlining */
@@ -402,6 +406,8 @@ export interface FunctionContext {
    * Used by allocTempLocal/releaseTempLocal to reuse locals of the same type.
    */
   tempFreeList?: Map<string, number[]>;
+  /** Map from let/const local variable name → local index of its i32 TDZ flag (0 = uninitialized) */
+  tdzFlagLocals?: Map<string, number>;
 }
 
 /**
@@ -543,6 +549,8 @@ export function createCodegenContext(
     wasiFdWriteIdx: -1,
     wasiProcExitIdx: -1,
     wasiBumpPtrGlobalIdx: -1,
+    tdzGlobals: new Map(),
+    tdzLetConstNames: new Set(),
   };
 
   // Pre-register common vec types so they're available during early compilation (#647)
@@ -7507,6 +7515,7 @@ function fixupModuleGlobalIndices(
   shiftMap(ctx.capturedGlobals);
   shiftMap(ctx.staticProps);
   shiftMap(ctx.protoGlobals);
+  shiftMap(ctx.tdzGlobals);
 
   // Shift scalar global indices stored on ctx
   if (ctx.symbolCounterGlobalIdx >= threshold) {
@@ -10323,11 +10332,16 @@ function collectDeclarations(
   for (const stmt of sourceFile.statements) {
     if (ts.isVariableStatement(stmt)) {
       if (hasDeclareModifier(stmt)) continue;
+      // Track let/const for TDZ enforcement
+      const isLetOrConst = (stmt.declarationList.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const)) !== 0;
       for (const decl of stmt.declarationList.declarations) {
         if (ts.isIdentifier(decl.name)) {
           const varType = ctx.checker.getTypeAtLocation(decl);
           const wasmType = resolveWasmType(ctx, varType);
           registerModuleGlobal(decl.name.text, wasmType);
+          if (isLetOrConst) {
+            ctx.tdzLetConstNames.add(decl.name.text);
+          }
         } else if (ts.isObjectBindingPattern(decl.name) || ts.isArrayBindingPattern(decl.name)) {
           registerBindingNames(decl.name);
         }
@@ -10682,6 +10696,22 @@ function compileDeclarations(
   }
 
   compileClassesFromStatements(sourceFile.statements);
+
+  // Create TDZ flag globals for let/const module globals.
+  // Each TDZ flag is an i32 global initialized to 0 (uninitialized).
+  // When the variable's initializer runs, the flag is set to 1.
+  // Reads of the variable check the flag and throw ReferenceError if 0.
+  for (const name of ctx.tdzLetConstNames) {
+    if (!ctx.moduleGlobals.has(name)) continue; // safety check
+    const flagGlobalIdx = nextModuleGlobalIdx(ctx);
+    ctx.mod.globals.push({
+      name: `__tdz_${name}`,
+      type: { kind: "i32" },
+      mutable: true,
+      init: [{ op: "i32.const", value: 0 }],
+    });
+    ctx.tdzGlobals.set(name, flagGlobalIdx);
+  }
 
   // Compile module-level init statements BEFORE function bodies so that
   // closureMap is populated for module-level arrow function variables.
@@ -11951,6 +11981,95 @@ function walkStmtForVars(
 }
 
 /**
+ * Pre-pass: hoist all `let`/`const` declarations in a function body with TDZ flags.
+ * Unlike var-hoisting (which makes variables immediately accessible), let/const
+ * hoisting only pre-allocates the local + a TDZ flag so nested functions can
+ * capture the variable. The variable is still in TDZ until the declaration runs.
+ */
+export function hoistLetConstWithTdz(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  stmts: ts.NodeArray<ts.Statement> | ts.Statement[],
+): void {
+  for (const stmt of stmts) {
+    walkStmtForLetConst(ctx, fctx, stmt);
+  }
+}
+
+function walkStmtForLetConst(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  stmt: ts.Statement,
+): void {
+  if (ts.isVariableStatement(stmt)) {
+    const list = stmt.declarationList;
+    // Only hoist `let`/`const` (not var — var is already hoisted)
+    if (!(list.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const))) return;
+    for (const decl of list.declarations) {
+      if (ts.isIdentifier(decl.name)) {
+        const name = decl.name.text;
+        if (fctx.localMap.has(name)) continue;
+        if (ctx.moduleGlobals.has(name)) continue;
+        const varType = ctx.checker.getTypeAtLocation(decl);
+        const wasmType = resolveWasmType(ctx, varType);
+        allocLocal(fctx, name, wasmType);
+        // Add a TDZ flag local (i32, init 0 = uninitialized)
+        if (!fctx.tdzFlagLocals) fctx.tdzFlagLocals = new Map();
+        const flagIdx = allocLocal(fctx, `__tdz_${name}`, { kind: "i32" });
+        fctx.tdzFlagLocals.set(name, flagIdx);
+      }
+    }
+    return;
+  }
+  // Recurse into block-like structures (but NOT into nested functions)
+  if (ts.isBlock(stmt)) {
+    for (const s of stmt.statements) walkStmtForLetConst(ctx, fctx, s);
+    return;
+  }
+  if (ts.isIfStatement(stmt)) {
+    walkStmtForLetConst(ctx, fctx, stmt.thenStatement);
+    if (stmt.elseStatement) walkStmtForLetConst(ctx, fctx, stmt.elseStatement);
+    return;
+  }
+  if (ts.isForStatement(stmt)) {
+    if (stmt.initializer && ts.isVariableDeclarationList(stmt.initializer)) {
+      const list = stmt.initializer;
+      if (list.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const)) {
+        for (const decl of list.declarations) {
+          if (ts.isIdentifier(decl.name)) {
+            const name = decl.name.text;
+            if (fctx.localMap.has(name) || ctx.moduleGlobals.has(name)) continue;
+            const varType = ctx.checker.getTypeAtLocation(decl);
+            const wasmType = resolveWasmType(ctx, varType);
+            allocLocal(fctx, name, wasmType);
+            if (!fctx.tdzFlagLocals) fctx.tdzFlagLocals = new Map();
+            const flagIdx = allocLocal(fctx, `__tdz_${name}`, { kind: "i32" });
+            fctx.tdzFlagLocals.set(name, flagIdx);
+          }
+        }
+      }
+    }
+    walkStmtForLetConst(ctx, fctx, stmt.statement);
+    return;
+  }
+  if (ts.isTryStatement(stmt)) {
+    for (const s of stmt.tryBlock.statements) walkStmtForLetConst(ctx, fctx, s);
+    if (stmt.catchClause) {
+      for (const s of stmt.catchClause.block.statements) walkStmtForLetConst(ctx, fctx, s);
+    }
+    if (stmt.finallyBlock) {
+      for (const s of stmt.finallyBlock.statements) walkStmtForLetConst(ctx, fctx, s);
+    }
+    return;
+  }
+  if (ts.isSwitchStatement(stmt)) {
+    for (const clause of stmt.caseBlock.clauses) {
+      for (const s of clause.statements) walkStmtForLetConst(ctx, fctx, s);
+    }
+  }
+}
+
+/**
  * Check if a function body references the `arguments` identifier.
  * Only checks direct children (not nested functions/arrows which have their own `arguments`).
  */
@@ -12260,6 +12379,7 @@ function compileFunctionBody(
 
     if (decl.body) {
       hoistVarDeclarations(ctx, fctx, decl.body.statements);
+      hoistLetConstWithTdz(ctx, fctx, decl.body.statements);
       hoistFunctionDeclarations(ctx, fctx, decl.body.statements);
       for (const stmt of decl.body.statements) {
         compileStatement(ctx, fctx, stmt);
@@ -12290,6 +12410,9 @@ function compileFunctionBody(
       // Hoist `var` declarations: pre-allocate locals so variables are accessible
       // even before their declaration site (JS var hoisting semantics).
       hoistVarDeclarations(ctx, fctx, decl.body.statements);
+      // Hoist `let`/`const` declarations with TDZ flags so nested functions can
+      // capture them. The TDZ flag ensures ReferenceError if accessed before init.
+      hoistLetConstWithTdz(ctx, fctx, decl.body.statements);
       // Hoist function declarations: JS semantics require function declarations
       // to be available before their textual position in the enclosing scope.
       hoistFunctionDeclarations(ctx, fctx, decl.body.statements);
