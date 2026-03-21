@@ -13,6 +13,7 @@
 | [685](../ready/685.md) | Medium | Interprocedural return type flow | Perf + correctness |
 | [686](../ready/686.md) | Medium | Closure capture type preservation | Perf |
 | [683](../done/683.md) | ✅ Done | Runtime type narrowing (typeof/instanceof) | Many FAIL |
+| [703](../done/703.md) | ✅ Done | Negative tests: strict-mode validation for ES-spec parse errors | 99 tests improved |
 
 ## 2. Runtime features & JS compatibility
 

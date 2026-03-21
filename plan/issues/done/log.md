@@ -426,6 +426,7 @@
 | 633 | 2026-03-19 | Shape inference in try/catch/loop/switch (297 FAIL)                                               | Session    |
 | 634 | 2026-03-19 | Getter/setter accessor side effects (118 FAIL)                                                    | Session    |
 | 695 | 2026-03-21 | Emit proper TypeError on null/undefined property access (4,738 FAIL)                              | Session    |
+| 703 | 2026-03-21 | Negative tests: strict-mode validation for ES-spec parse errors                                   | Session    |
 | 704 | 2026-03-21 | Wasm validation: immutable global set (284 CE) -- protoGlobals not shifted                        | Session    |
 
 
