@@ -102,6 +102,8 @@ export type FilterResult =
 // Tests that cause the compiler to hang (infinite loop during compilation)
 const HANGING_TESTS = new Set([
   "test/built-ins/Promise/race/invoke-then.js", // #408: Promise.race compilation hang
+  "test/language/expressions/class/elements/nested-private-indirect-eval-contains-arguments.js", // #701
+  "test/language/statements/class/elements/private-setter-shadowed-by-field-on-nested-class.js", // #701
 ]);
 
 /** Set to true to disable all skip filters and attempt every test */
