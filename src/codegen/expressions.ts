@@ -4560,9 +4560,12 @@ function compileAnyBinaryDispatch(
   const funcIdx = ctx.funcMap.get(helperName);
   if (funcIdx === undefined) return null;
 
-  // Compile both operands without numeric hint so they produce ref $AnyValue
-  const leftType = compileExpression(ctx, fctx, expr.left);
-  const rightType = compileExpression(ctx, fctx, expr.right);
+  // Compile both operands as ref_null $AnyValue so they match the helper signature.
+  // Without the expected type, `any`-typed variables produce externref which
+  // causes a type mismatch at the call site.
+  const anyRefNull: ValType = { kind: "ref_null", typeIdx: ctx.anyValueTypeIdx };
+  const leftType = compileExpression(ctx, fctx, expr.left, anyRefNull);
+  const rightType = compileExpression(ctx, fctx, expr.right, anyRefNull);
   if (!leftType || !rightType) return null;
 
   fctx.body.push({ op: "call", funcIdx });
@@ -4576,7 +4579,7 @@ function compileAnyBinaryDispatch(
   if (resultIsI32) {
     return { kind: "i32" };
   }
-  return { kind: "ref", typeIdx: ctx.anyValueTypeIdx };
+  return { kind: "ref_null", typeIdx: ctx.anyValueTypeIdx };
 }
 
 function compileNumericBinaryOp(
@@ -8979,7 +8982,7 @@ function compilePrefixUnary(
         const negIdx = ctx.funcMap.get("__any_neg");
         if (negIdx !== undefined) {
           fctx.body.push({ op: "call", funcIdx: negIdx });
-          return { kind: "ref", typeIdx: ctx.anyValueTypeIdx };
+          return { kind: "ref_null", typeIdx: ctx.anyValueTypeIdx };
         }
       }
       if (ctx.fast && operandType?.kind === "i32") {
