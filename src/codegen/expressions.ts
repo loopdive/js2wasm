@@ -26138,24 +26138,51 @@ function compilePropertyIntrospection(
   const receiverType = ctx.checker.getTypeAtLocation(propAccess.expression);
   const receiverWasm = resolveWasmType(ctx, receiverType);
 
-  // Collect struct field names from the Wasm struct definition
+  // Build a set of private member names (without '#') from the TS type.
+  // Private fields (#x) are stored in the struct with the '#' stripped, but
+  // should never be reported as own properties via hasOwnProperty("x").
+  const privateNames = new Set<string>();
+  for (const prop of receiverType.getProperties()) {
+    if (prop.name.startsWith("#")) {
+      privateNames.add(prop.name.slice(1));
+    }
+  }
+
+  // Collect struct field names from the Wasm struct definition, excluding:
+  // - Internal fields (e.g. __tag) that are compiler-generated
+  // - Fields that correspond to private members (#-prefixed in TS source)
   let structFieldNames: string[] | null = null;
   if (receiverWasm.kind === "ref" || receiverWasm.kind === "ref_null") {
     const structDef = ctx.mod.types[(receiverWasm as { typeIdx: number }).typeIdx];
     if (structDef?.kind === "struct") {
-      structFieldNames = structDef.fields.map(f => f.name).filter((n): n is string => n !== undefined);
+      structFieldNames = structDef.fields
+        .map(f => f.name)
+        .filter((n): n is string =>
+          n !== undefined &&
+          !n.startsWith("__") &&
+          !privateNames.has(n)
+        );
     }
   }
 
-  // Also check the TypeScript type system for properties (prototype methods etc.)
+  // Collect own data properties from the TypeScript type system.
+  // In ES spec, hasOwnProperty returns true only for own properties — class
+  // methods live on the prototype and private members (starting with #) are
+  // never accessible via string property names.  Filter both out.
   const tsProps = new Set<string>();
   for (const prop of receiverType.getProperties()) {
+    // Skip private identifiers — they start with '#' and can't be matched by string keys
+    if (prop.name.startsWith("#")) continue;
+
+    // Skip methods — they live on the prototype, not on the instance.
+    // A TS symbol whose declaration is a MethodDeclaration is a prototype method.
+    const decls = prop.getDeclarations();
+    if (decls && decls.length > 0 && decls.every(d => ts.isMethodDeclaration(d) || ts.isMethodSignature(d))) {
+      continue;
+    }
+
     tsProps.add(prop.name);
   }
-  // Include apparent type properties (valueOf, toString, etc.) for hasOwnProperty
-  // Note: hasOwnProperty should NOT include prototype properties, but in our
-  // struct model there is no prototype chain so we only check own + struct fields.
-  // propertyIsEnumerable likewise only applies to own properties.
 
   // Get the first argument (the property name to check)
   const arg = expr.arguments[0];
