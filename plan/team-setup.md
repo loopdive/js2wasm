@@ -10,7 +10,8 @@ type: project
 - **Product Owner**: opus model. **Only touches `plan/` directory.** Creates/updates issues, writes progress reports, manages backlog, analyzes test results, regenerates graph. Does NOT edit `src/`, `tests/`, `scripts/`, or any other code — that's the Tech Lead's domain. Reads results and code for analysis but never writes outside `plan/`.
 - **Developer**: opus model, worktree isolation, implements fixes in src/ and tests/
 - **Tester**: sonnet model, runs test262 suite, monitors for hangs, analyzes results, creates/updates issues. Responsibilities:
-  - Run `npx tsx scripts/run-test262.ts` (full or `--recheck`)
+  - **Always run test262 in a worktree** — never on main working copy. Use `scripts/run-test262-vitest.sh` or `git worktree add /tmp/ts2wasm-test262 HEAD`. This prevents stash conflicts when cherry-picking agent work to main.
+  - Run via vitest with compiler pool: `TEST262_WORKERS=4 npx vitest run tests/test262-vitest.test.ts --pool=threads --poolOptions.threads.maxThreads=1`
   - Monitor `benchmarks/results/test262-current.txt` for hanging tests
   - When a test hangs: kill the runner, add a skip filter to `tests/test262-runner.ts` with comment referencing the issue, create/update an issue in `plan/issues/ready/`, resume with `--resume`
   - After run completes: analyze error patterns, update issue metrics (test262_ce, test262_fail, test262_skip), create new issues for unmatched patterns
