@@ -1,6 +1,6 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext, ClosureInfo, RestParamInfo } from "./index.js";
-import { allocLocal, allocTempLocal, releaseTempLocal, getLocalType, resolveWasmType, resolveNativeTypeAnnotation, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers, addStringImports, cacheStringLiterals, addStringConstantGlobal, nextModuleGlobalIdx, getOrRegisterTemplateVecType, pushBody, popBody, destructureParamArray, destructureParamObject } from "./index.js";
+import { allocLocal, allocTempLocal, releaseTempLocal, getLocalType, resolveWasmType, resolveNativeTypeAnnotation, getOrRegisterArrayType, getOrRegisterVecType, getArrTypeIdxFromVec, addFuncType, addImport, addUnionImports, parseRegExpLiteral, ensureStructForType, isTupleType, getTupleElementTypes, getOrRegisterTupleType, localGlobalIdx, nativeStringType, flatStringType, ensureNativeStringHelpers, getOrRegisterRefCellType, isAnyValue, ensureAnyHelpers, addStringImports, cacheStringLiterals, addStringConstantGlobal, nextModuleGlobalIdx, getOrRegisterTemplateVecType, pushBody, popBody, destructureParamArray, destructureParamObject, ensureExnTag } from "./index.js";
 import {
   mapTsTypeToWasm,
   isNumberType,
@@ -26,6 +26,23 @@ export { pushDefaultValue, defaultValueInstrs, coercionInstrs } from "./type-coe
 /** Sentinel: expression compiled successfully but produces no value (void) */
 const VOID_RESULT = Symbol("void");
 type InnerResult = ValType | null | typeof VOID_RESULT;
+
+/**
+ * Emit a Wasm throw instruction with a string error message.
+ * This replaces `unreachable` traps so that JS try/catch (and assert.throws)
+ * can catch the error instead of getting an uncatchable RuntimeError.
+ */
+function emitThrowString(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  message: string,
+): void {
+  addStringConstantGlobal(ctx, message);
+  const strIdx = ctx.stringGlobalMap.get(message)!;
+  fctx.body.push({ op: "global.get", globalIdx: strIdx });
+  const tagIdx = ensureExnTag(ctx);
+  fctx.body.push({ op: "throw", tagIdx });
+}
 
 /**
  * Check if a TS return type is effectively void for Wasm purposes.
@@ -4064,12 +4081,12 @@ function compileBinaryExpression(
       }
 
       // Mixed BigInt + Number arithmetic (e.g. 1n + 1): always a TypeError in JS.
-      // Compile both sides for side effects, drop their values, and trap.
+      // Compile both sides for side effects, drop their values, then throw.
       const lt = compileExpression(ctx, fctx, expr.left);
       if (lt) fctx.body.push({ op: "drop" });
       const rt = compileExpression(ctx, fctx, expr.right);
       if (rt) fctx.body.push({ op: "drop" });
-      fctx.body.push({ op: "unreachable" });
+      emitThrowString(ctx, fctx, "Cannot mix BigInt and other types, use explicit conversions");
       return { kind: "i32" };
     }
 
@@ -18636,9 +18653,9 @@ function compilePropertyAccess(
     return { kind: "externref" };
   }
 
-  // Last resort: emit unreachable (this branch should rarely be hit)
-  fctx.body.push({ op: "unreachable" });
-  return null;
+  // Last resort: emit null externref as safe default instead of trapping.
+  fctx.body.push({ op: "ref.null.extern" });
+  return { kind: "externref" };
 }
 
 function compileExternPropertyGet(
