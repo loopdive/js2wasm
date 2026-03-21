@@ -1,42 +1,49 @@
 ---
-name: Next session state
-description: 100 issues committed, vitest migration done, 140x compile speedup
+name: project_next_session
+description: 2026-03-21 session state — 19 issues done, pass regression to fix, HTTP server for source maps next
 type: project
 ---
 
-## Session 2026-03-19/20 Summary
+## Current state (end of 2026-03-21 session)
 
-**100 issues committed in one session.**
+**Test262**: 14,731 pass / 48,097 total (30.6%), 4,712 CE, 27,655 fail, 999 skip
+**Baseline was**: 15,232 pass — net -501 pass regression from #695/#706 interaction
+**CE improved**: 5,496 → 4,712 (-784)
 
-### Test262 Results (last complete run)
-- Pass: 13,226 (31.7%) — up from 9,270 (23.4%)
-- CE: 6,894 (16.5%) — down from 14,950 (37.7%)
-- Total: 41,694
+**Git**: main branch, ~30 commits ahead of origin. All changes committed.
 
-### Major achievements
-- Vitest migration (#694): test262 runs via vitest with per-test disk cache
-- Compiler pool (#699): 4 esbuild-bundled worker threads
-- skipSemanticDiagnostics: 140ms → 1ms per compile (100x speedup)
-- Lib SourceFile caching (#700): additional 35% speedup
-- 48K tests cold cache: ~5 min (was 80 min)
-- Re-runs with cache: ~2 min
+## Session accomplishments (19 issues)
+#695 (TypeError throws), #702 (null derefs), #703 (negative test validation),
+#704 (immutable global), #705 (stack underflow), #706 (illegal cast guards),
+#707 (Date class), #708 (func index OOB), #709 (array OOB), #710 (unreachable),
+#711 (new Function), #712 (import.meta), #713 (destructuring), #715 (crash fix),
+#716/#718 (null-guard regression), #717 (import stub regression),
+#719 (stack-balance), #720 (IIFE returnType), #721 (early errors),
+#722 (hasOwnProperty), #723 (TDZ)
 
-### Build status: WORKING
-- abstract-classes.test.ts: 6/6 pass
-- #678 (dynamic prototype) reverted — __proto__ field breaks struct layout when string_constants import needed
-- #699 compiler pool working via esbuild bundle (no tsx in workers)
+#697 and #698 were reverted — caused regressions, need rework.
 
-### Key files
-- `tests/test262-vitest.test.ts` — vitest runner with pool + cache
-- `scripts/compiler-pool.ts` — async compiler worker pool
-- `scripts/compiler-worker.mjs` — bundled worker (loads compiler-bundle.mjs)
-- `scripts/compiler-bundle.mjs` — esbuild bundle of compiler (rebuild: `npx esbuild src/index.ts --bundle --platform=node --format=esm --outfile=scripts/compiler-bundle.mjs --external:typescript`)
-- `.test262-cache/` — disk cache for compiled .wasm binaries
+## Priority for next session
 
-### Known issue
-- vitest `--pool=forks` buffers appendFileSync writes — JSONL doesn't update until fork exits
-- Fix: use afterAll to write batch results, or switch to shared file descriptor
+### 1. Fix pass regression (-501)
+#695/#706 interaction: ref.cast guard returns ref.null → property access gets default instead of real value. Trace specific failing tests.
 
-### Open issues (20)
-See plan/issues/backlog/backlog.md for full list.
-Top priority: #695 (TypeError exceptions), #696 (classify runtime errors), #687 (live report), #688 (refactor into modules)
+### 2. Implement #725 — Local HTTP server for wasm source maps
+Key to line numbers in ALL runtime errors (13k tests). Serve wasm from `test262-out/` mirroring input structure. V8 resolves source maps from URL. Integrates with playground (#644).
+
+### 3. Rework #697/#698
+Struct type widening and call type mismatch — caused regressions, need careful approach.
+
+### 4. Continue issue work
+- #721 (partially done) — more negative test early errors
+- #724 — Object.defineProperty TypeError
+- #714 — conformance progress graph
+
+## Key architecture
+- Test runner: `tests/test262-vitest.test.ts` — pool + source maps + error reporting
+- Pool: `scripts/compiler-pool.ts` (4 async workers, skipSemanticDiagnostics, sourceMap)
+- Worker: `scripts/compiler-worker.mjs` (loads compiler-bundle.mjs)
+- Bundle rebuild: `npx esbuild src/index.ts --bundle --platform=node --format=esm --outfile=scripts/compiler-bundle.mjs --external:typescript`
+- ALWAYS run test262 in a worktree, not main wc
+- ALWAYS commit runner changes before launching agents
+- ALWAYS check worktree diffs before cleanup
