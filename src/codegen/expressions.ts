@@ -14996,6 +14996,24 @@ function compileNewExpression(
     return { kind: "externref" };
   }
 
+  // Handle `new Function(...)` — dynamic code generation is not possible in Wasm.
+  // Emit a no-op function that returns undefined (ref.null extern) to prevent
+  // compile errors. Tests that rely on dynamic behavior will fail at runtime
+  // instead of at compile time, which is more informative.
+  if (ts.isIdentifier(expr.expression) && expr.expression.text === "Function") {
+    // Compile and discard all arguments (they may have side effects)
+    const args = expr.arguments ?? [];
+    for (const arg of args) {
+      const argResult = compileExpression(ctx, fctx, arg);
+      if (argResult) {
+        fctx.body.push({ op: "drop" });
+      }
+    }
+    // Return ref.null extern — represents a function that returns undefined
+    fctx.body.push({ op: "ref.null.extern" });
+    return { kind: "externref" };
+  }
+
   // Handle `new Date()`, `new Date(ms)`, `new Date(y, m, d, ...)` — native Date struct
   if (ts.isIdentifier(expr.expression) && expr.expression.text === "Date") {
     const dateTypeIdx = ensureDateStruct(ctx);
