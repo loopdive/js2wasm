@@ -332,6 +332,54 @@ function detectEarlyErrors(
       checkTDZInStatements(stmts);
     }
 
+    // Check 'with' statement — SyntaxError in strict mode (all modules are strict)
+    if (ts.isWithStatement(node) && isStrictMode(node)) {
+      addError(node, "Strict mode code may not include a with statement");
+    }
+
+    // Check legacy octal literals (e.g. 077) — SyntaxError in strict mode
+    // ES2015+ octal (0o77) is fine; only legacy form 0[0-7]+ is illegal
+    if (ts.isNumericLiteral(node) && isStrictMode(node)) {
+      const text = node.getText(sourceFile);
+      // Legacy octal: starts with 0, followed by digits 0-7, no 'o'/'O'/'x'/'X'/'b'/'B'/'.'/'e'/'E'
+      if (/^0[0-7]+$/.test(text) && text.length > 1) {
+        addError(node, "Octal literals are not allowed in strict mode");
+      }
+    }
+
+    // Check 'delete' of an unqualified identifier — SyntaxError in strict mode
+    if (ts.isDeleteExpression(node) && isStrictMode(node)) {
+      let operand = node.expression;
+      while (ts.isParenthesizedExpression(operand)) {
+        operand = operand.expression;
+      }
+      if (ts.isIdentifier(operand)) {
+        addError(node, `Delete of an unqualified identifier in strict mode`);
+      }
+    }
+
+    // Check for-in loop with initializer — SyntaxError in strict mode
+    // e.g. for (var x = 0 in obj) {}
+    if (ts.isForInStatement(node) && isStrictMode(node)) {
+      const init = node.initializer;
+      if (ts.isVariableDeclarationList(init)) {
+        for (const decl of init.declarations) {
+          if (decl.initializer) {
+            addError(node, "for-in loop head declarations may not have initializers in strict mode");
+            break;
+          }
+        }
+      }
+    }
+
+    // Check labeled function declarations in strict mode
+    // e.g. label: function f() {} is a SyntaxError in strict mode
+    if (ts.isLabeledStatement(node) && isStrictMode(node)) {
+      if (ts.isFunctionDeclaration(node.statement)) {
+        addError(node, "In strict mode code, functions can only be declared at top level or inside a block");
+      }
+    }
+
     ts.forEachChild(node, visit);
   }
 
