@@ -4,7 +4,7 @@
 
 | # | Priority | Issue | Impact |
 |---|----------|-------|--------|
-| [695](../ready/695.md) | High | Emit proper TypeError/ReferenceError exceptions | 4,738 FAIL |
+| [695](../done/695.md) | ✅ Done | Emit proper TypeError/ReferenceError exceptions | 4,738 FAIL |
 | [696](../ready/696.md) | High | Classify "other fail" runtime errors | 4,649 FAIL |
 | [698](../ready/698.md) | Medium | Call type mismatch residual | 1,044 CE |
 | [697](../ready/697.md) | Medium | Struct type errors for non-class structs | 813 CE |

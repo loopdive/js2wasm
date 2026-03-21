@@ -16,7 +16,7 @@ import {
   unwrapPromiseType,
 } from "../checker/type-mapper.js";
 import type { Instr, ValType, WasmFunction, FieldDef, StructTypeDef } from "../ir/types.js";
-import { ensureI32Condition } from "./index.js";
+import { ensureI32Condition, ensureExnTag } from "./index.js";
 import { compileStatement } from "./statements.js";
 import { walkInstructions } from "./walk-instructions.js";
 import { ensureTimsortHelper } from "./timsort.js";
@@ -15813,7 +15813,24 @@ function defaultValueInstrForType(type: ValType): Instr[] {
  *
  * Returns the field's ValType.
  */
+
+/**
+ * Emit instructions that throw a TypeError via the Wasm exception tag.
+ * Pushes a null externref as the exception payload and then emits `throw`.
+ * This is used for null/undefined property access, calling non-functions, etc.
+ *
+ * Returns an array of instructions (for use inside if-then blocks).
+ */
+function typeErrorThrowInstrs(ctx: CodegenContext): Instr[] {
+  const tagIdx = ensureExnTag(ctx);
+  return [
+    { op: "ref.null.extern" } as Instr,
+    { op: "throw", tagIdx } as Instr,
+  ];
+}
+
 function emitNullGuardedStructGet(
+  ctx: CodegenContext,
   fctx: FunctionContext,
   objType: ValType,
   fieldType: ValType,
@@ -15831,7 +15848,10 @@ function emitNullGuardedStructGet(
   fctx.body.push({
     op: "if",
     blockType: { kind: "val" as const, type: resultType },
-    then: defaultValueInstrs(resultType),
+    then: [
+      // Throw TypeError: Cannot read properties of null/undefined
+      ...typeErrorThrowInstrs(ctx),
+    ],
     else: [
       { op: "local.get", index: tmp } as Instr,
       { op: "struct.get", typeIdx, fieldIdx } as Instr,
@@ -15859,8 +15879,8 @@ function emitExternrefToStructGet(
   // Store in a temp anyref local for null/type check
   const tmpLocal = allocTempLocal(fctx, { kind: "anyref" });
   fctx.body.push({ op: "local.tee", index: tmpLocal });
-  // ref.test returns 0 for null and for type mismatch
-  fctx.body.push({ op: "ref.test", typeIdx: structTypeIdx });
+  // First check: null → throw TypeError
+  fctx.body.push({ op: "ref.is_null" });
   // For result type in the if block, normalize ref to ref_null so the null branch is valid
   const resultType: ValType = fieldType.kind === "ref"
     ? { kind: "ref_null", typeIdx: (fieldType as any).typeIdx }
@@ -15869,11 +15889,24 @@ function emitExternrefToStructGet(
     op: "if",
     blockType: { kind: "val" as const, type: resultType },
     then: [
-      { op: "local.get", index: tmpLocal } as Instr,
-      { op: "ref.cast", typeIdx: structTypeIdx } as Instr,
-      { op: "struct.get", typeIdx: structTypeIdx, fieldIdx } as Instr,
+      // Null → throw TypeError
+      ...typeErrorThrowInstrs(ctx),
     ],
-    else: defaultValueInstrs(resultType),
+    else: [
+      // Non-null: check if it's the right struct type
+      { op: "local.get", index: tmpLocal } as Instr,
+      { op: "ref.test", typeIdx: structTypeIdx } as Instr,
+      {
+        op: "if",
+        blockType: { kind: "val" as const, type: resultType },
+        then: [
+          { op: "local.get", index: tmpLocal } as Instr,
+          { op: "ref.cast", typeIdx: structTypeIdx } as Instr,
+          { op: "struct.get", typeIdx: structTypeIdx, fieldIdx } as Instr,
+        ],
+        else: defaultValueInstrs(resultType),
+      } as Instr,
+    ],
   });
   releaseTempLocal(fctx, tmpLocal);
 }
@@ -18410,7 +18443,7 @@ function compilePropertyAccess(
         const fieldType = fields[fieldIdx]!.type;
         // Null-guard: if the object ref could be null (ref_null), prevent trap
         if (objResult && objResult.kind === "ref_null") {
-          emitNullGuardedStructGet(fctx, objResult, fieldType, structTypeIdx, fieldIdx);
+          emitNullGuardedStructGet(ctx, fctx, objResult, fieldType, structTypeIdx, fieldIdx);
           // The null guard if-block returns ref_null for ref fields
           if (fieldType.kind === "ref") {
             return { kind: "ref_null", typeIdx: (fieldType as any).typeIdx };
@@ -18429,7 +18462,7 @@ function compilePropertyAccess(
           // runtime (e.g. default-initialized locals, chained property access
           // on optional fields).  Wrap in a null guard to avoid trapping.
           const nullableObj: ValType = { kind: "ref_null", typeIdx: (objResult as any).typeIdx ?? structTypeIdx };
-          emitNullGuardedStructGet(fctx, nullableObj, fieldType, structTypeIdx, fieldIdx);
+          emitNullGuardedStructGet(ctx, fctx, nullableObj, fieldType, structTypeIdx, fieldIdx);
           if (fieldType.kind === "ref") {
             return { kind: "ref_null", typeIdx: (fieldType as any).typeIdx };
           }
@@ -18483,7 +18516,7 @@ function compilePropertyAccess(
             const fieldType = fields[fieldIdx]!.type;
             const objResult = compileExpression(ctx, fctx, expr.expression);
             if (objResult && objResult.kind === "ref_null") {
-              emitNullGuardedStructGet(fctx, objResult, fieldType, structTypeIdx, fieldIdx);
+              emitNullGuardedStructGet(ctx, fctx, objResult, fieldType, structTypeIdx, fieldIdx);
               if (fieldType.kind === "ref") {
                 return { kind: "ref_null", typeIdx: (fieldType as any).typeIdx };
               }
@@ -18493,7 +18526,7 @@ function compilePropertyAccess(
             } else if (objResult && objResult.kind === "ref") {
               // Null-guard ref-typed objects (may be null at runtime)
               const nullableObj: ValType = { kind: "ref_null", typeIdx: (objResult as any).typeIdx ?? structTypeIdx };
-              emitNullGuardedStructGet(fctx, nullableObj, fieldType, structTypeIdx, fieldIdx);
+              emitNullGuardedStructGet(ctx, fctx, nullableObj, fieldType, structTypeIdx, fieldIdx);
               if (fieldType.kind === "ref") {
                 return { kind: "ref_null", typeIdx: (fieldType as any).typeIdx };
               }
@@ -18531,6 +18564,17 @@ function compilePropertyAccess(
       flushLateImportShifts(ctx, fctx);
       if (getIdx !== undefined) {
         compileExpression(ctx, fctx, expr.expression);
+        // Null check: throw TypeError for property access on null/undefined
+        const objTmp = allocLocal(fctx, `__nullchk_${fctx.locals.length}`, { kind: "externref" });
+        fctx.body.push({ op: "local.tee", index: objTmp });
+        fctx.body.push({ op: "ref.is_null" });
+        fctx.body.push({
+          op: "if",
+          blockType: { kind: "empty" },
+          then: typeErrorThrowInstrs(ctx),
+          else: [],
+        });
+        fctx.body.push({ op: "local.get", index: objTmp });
         addStringConstantGlobal(ctx, propName);
         compileStringLiteral(ctx, fctx, propName);
         fctx.body.push({ op: "call", funcIdx: getIdx });
