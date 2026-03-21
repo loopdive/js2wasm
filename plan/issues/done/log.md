@@ -431,6 +431,7 @@
 | 704 | 2026-03-21 | Wasm validation: immutable global set (284 CE) -- protoGlobals not shifted                        | Session    |
 | 710 | 2026-03-21 | RuntimeError: unreachable executed (173 FAIL) — replace traps with throws/defaults                 | Session    |
 | 711 | 2026-03-21 | new Function() no-op stub (106 CE)                                                                | Session    |
+| 712 | 2026-03-21 | Unsupported expression: MetaProperty import.source/import.defer (70 CE)                           | Session    |
 | 713 | 2026-03-21 | Cannot destructure: unknown type (69 CE)                                                          | Session    |
 
 
