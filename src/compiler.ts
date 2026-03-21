@@ -1818,10 +1818,29 @@ function widenNonDefaultableTypes(mod: WasmModule): void {
     widenTypeDef(typeDef);
   }
 
-  // Widen function locals
+  // Widen function locals and block types in function bodies
   for (const func of mod.functions) {
     for (const local of func.locals) {
       local.type = widenValType(local.type);
+    }
+    // Widen block types inside function bodies (if/block/loop/try)
+    widenBlockTypesInBody(func.body);
+  }
+
+  function widenBlockTypesInBody(body: any[]): void {
+    for (const instr of body) {
+      if (instr.blockType && instr.blockType.kind === "val" && instr.blockType.type) {
+        instr.blockType.type = widenValType(instr.blockType.type);
+      }
+      if (instr.then) widenBlockTypesInBody(instr.then);
+      if (instr.else) widenBlockTypesInBody(instr.else);
+      if (instr.body) widenBlockTypesInBody(instr.body);
+      if (instr.catches) {
+        for (const c of instr.catches) {
+          if (c.body) widenBlockTypesInBody(c.body);
+        }
+      }
+      if (instr.catchAll) widenBlockTypesInBody(instr.catchAll);
     }
   }
 

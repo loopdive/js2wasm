@@ -2771,7 +2771,7 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
   // If both are numeric (tag 2 or 3): convert to f64, f64.add, box as f64
   // Otherwise: trap (string concat via any not supported yet for simplicity)
   // params: a(0), b(1)  locals: tagA(2), tagB(3)
-  addHelper("__any_add", [anyRefNull, anyRefNull], [anyRef], [
+  addHelper("__any_add", [anyRefNull, anyRefNull], [anyRefNull], [
     // tagA = a.tag
     { op: "local.get", index: 0 },
     { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
@@ -2788,7 +2788,7 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
     { op: "i32.const", value: 2 },
     { op: "i32.eq" },
     { op: "i32.and" },
-    { op: "if", blockType: { kind: "val", type: anyRef },
+    { op: "if", blockType: { kind: "val", type: anyRefNull },
       then: [
         { op: "local.get", index: 0 },
         { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
@@ -2818,7 +2818,7 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
     i32op: string,
     f64op: string,
   ): void {
-    addHelper(name, [anyRefNull, anyRefNull], [anyRef], [
+    addHelper(name, [anyRefNull, anyRefNull], [anyRefNull], [
       // tagA = a.tag
       { op: "local.get", index: 0 },
       { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
@@ -2835,7 +2835,7 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
       { op: "i32.const", value: 2 },
       { op: "i32.eq" },
       { op: "i32.and" },
-      { op: "if", blockType: { kind: "val", type: anyRef },
+      { op: "if", blockType: { kind: "val", type: anyRefNull },
         then: [
           { op: "local.get", index: 0 },
           { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
@@ -2864,7 +2864,7 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
   addNumericBinaryHelper("__any_mul", "i32.mul", "f64.mul");
 
   // __any_div: always use f64 (division can produce fractions)
-  addHelper("__any_div", [anyRefNull, anyRefNull], [anyRef], [
+  addHelper("__any_div", [anyRefNull, anyRefNull], [anyRefNull], [
     { op: "local.get", index: 0 },
     { op: "call", funcIdx: toF64Idx },
     { op: "local.get", index: 1 },
@@ -2874,7 +2874,7 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
   ]);
 
   // __any_mod: i32.rem_s for i32, otherwise f64 approximation via floor division
-  addHelper("__any_mod", [anyRefNull, anyRefNull], [anyRef], [
+  addHelper("__any_mod", [anyRefNull, anyRefNull], [anyRefNull], [
     // tagA = a.tag
     { op: "local.get", index: 0 },
     { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
@@ -2891,7 +2891,7 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
     { op: "i32.const", value: 2 },
     { op: "i32.eq" },
     { op: "i32.and" },
-    { op: "if", blockType: { kind: "val", type: anyRef },
+    { op: "if", blockType: { kind: "val", type: anyRefNull },
       then: [
         { op: "local.get", index: 0 },
         { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
@@ -3172,12 +3172,12 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
 
   // __any_neg(a) -> ref $AnyValue
   // Negate numeric value: tag 2 → negate i32, tag 3 → negate f64
-  addHelper("__any_neg", [anyRefNull], [anyRef], [
+  addHelper("__any_neg", [anyRefNull], [anyRefNull], [
     { op: "local.get", index: 0 },
     { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 },
     { op: "i32.const", value: 2 },
     { op: "i32.eq" },
-    { op: "if", blockType: { kind: "val", type: anyRef },
+    { op: "if", blockType: { kind: "val", type: anyRefNull },
       then: [
         { op: "i32.const", value: 0 },
         { op: "local.get", index: 0 },
