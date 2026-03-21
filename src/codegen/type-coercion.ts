@@ -186,16 +186,38 @@ function emitVecToTupleBody(
   const tmpLocal = allocTempLocal(fctx, vecRefType);
   fctx.body.push({ op: "local.set", index: tmpLocal });
 
-  // For each tuple field, read from the vec's data array and coerce
+  // Save the data array and length for bounds checking
+  const dataLocal = allocTempLocal(fctx, { kind: "ref_null", typeIdx: arrTypeIdx } as ValType);
+  const lenLocal = allocTempLocal(fctx, { kind: "i32" });
+  fctx.body.push({ op: "local.get", index: tmpLocal });
+  fctx.body.push({ op: "struct.get", typeIdx: fromTypeIdx, fieldIdx: 1 });
+  fctx.body.push({ op: "local.set", index: dataLocal });
+  fctx.body.push({ op: "local.get", index: tmpLocal });
+  fctx.body.push({ op: "struct.get", typeIdx: fromTypeIdx, fieldIdx: 0 });
+  fctx.body.push({ op: "local.set", index: lenLocal });
+
+  // For each tuple field, read from the vec's data array with bounds check and coerce
   for (let i = 0; i < tupleFields.length; i++) {
     const fieldType = tupleFields[i]!;
 
-    // Get the data array from the vec
-    fctx.body.push({ op: "local.get", index: tmpLocal });
-    fctx.body.push({ op: "struct.get", typeIdx: fromTypeIdx, fieldIdx: 1 });
-    // Read element at index i
+    // Bounds-checked read: if i < len, read data[i]; else push default
     fctx.body.push({ op: "i32.const", value: i });
-    fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx });
+    fctx.body.push({ op: "local.get", index: lenLocal });
+    fctx.body.push({ op: "i32.lt_u" } as Instr);
+
+    const thenInstrs: Instr[] = [
+      { op: "local.get", index: dataLocal } as Instr,
+      { op: "i32.const", value: i } as Instr,
+      { op: "array.get", typeIdx: arrTypeIdx } as Instr,
+    ];
+    const elseInstrs: Instr[] = defaultValueInstrs(elemType);
+
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "val" as const, type: elemType },
+      then: thenInstrs,
+      else: elseInstrs,
+    } as Instr);
 
     // Coerce the vec element type to the tuple field type if needed
     if (elemType.kind !== fieldType.kind) {
@@ -209,6 +231,9 @@ function emitVecToTupleBody(
       }
     }
   }
+
+  releaseTempLocal(fctx, lenLocal);
+  releaseTempLocal(fctx, dataLocal);
 
   // Construct the tuple struct
   fctx.body.push({ op: "struct.new", typeIdx: toTypeIdx });
