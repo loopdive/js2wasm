@@ -1,5 +1,5 @@
 import { describe, it } from "vitest";
-import { assertEquivalent } from "./helpers.js";
+import { assertEquivalent } from "./equivalence/helpers.js";
 
 describe("Object.prototype.hasOwnProperty.call", () => {
   it("returns true for existing property (static key)", async () => {
@@ -54,6 +54,49 @@ describe("Object.prototype.hasOwnProperty.call", () => {
         if (Object.prototype.hasOwnProperty.call(p, "y")) count = count + 1;
         if (Object.prototype.hasOwnProperty.call(p, "z")) count = count + 1;
         return count;
+      }`,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("returns false for class methods (they live on prototype)", async () => {
+    await assertEquivalent(
+      `class C {
+        x: number;
+        constructor(x: number) { this.x = x; }
+        getX(): number { return this.x; }
+      }
+      export function test(): number {
+        const c = new C(42);
+        let result = 0;
+        // x is an own data property — hasOwnProperty should return true
+        if (Object.prototype.hasOwnProperty.call(c, "x")) result = result + 1;
+        // getX is a method on the prototype — hasOwnProperty should return false
+        if (Object.prototype.hasOwnProperty.call(c, "getX")) result = result + 10;
+        return result;
+      }`,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("returns false for private methods", async () => {
+    await assertEquivalent(
+      `class C {
+        x: number;
+        constructor(x: number) { this.x = x; }
+        #secret(): number { return this.x * 2; }
+        getSecret(): number { return this.#secret(); }
+      }
+      export function test(): number {
+        const c = new C(21);
+        let result = 0;
+        // x is an own data property — true
+        if (Object.prototype.hasOwnProperty.call(c, "x")) result = result + 1;
+        // "secret" (without #) should NOT be an own property
+        if (Object.prototype.hasOwnProperty.call(c, "secret")) result = result + 10;
+        // "getSecret" is a prototype method — should be false
+        if (Object.prototype.hasOwnProperty.call(c, "getSecret")) result = result + 100;
+        return result;
       }`,
       [{ fn: "test", args: [] }],
     );
