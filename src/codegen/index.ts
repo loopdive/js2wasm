@@ -2251,14 +2251,44 @@ export function addStringImports(ctx: CodegenContext): void {
         }
       }
     }
+    // Use a single Set to track shifted bodies and prevent double-shifting
+    const shifted = new Set<Instr[]>();
     for (const func of ctx.mod.functions) {
-      shiftFuncIndices(func.body);
+      if (!shifted.has(func.body)) {
+        shiftFuncIndices(func.body);
+        shifted.add(func.body);
+      }
     }
     if (ctx.currentFunc) {
-      const curBody = ctx.currentFunc.body;
-      const alreadyShifted = ctx.mod.functions.some(f => f.body === curBody);
-      if (!alreadyShifted) {
-        shiftFuncIndices(curBody);
+      if (!shifted.has(ctx.currentFunc.body)) {
+        shiftFuncIndices(ctx.currentFunc.body);
+        shifted.add(ctx.currentFunc.body);
+      }
+      for (const sb of ctx.currentFunc.savedBodies) {
+        if (!shifted.has(sb)) {
+          shiftFuncIndices(sb);
+          shifted.add(sb);
+        }
+      }
+    }
+    // Shift parent function contexts on the funcStack (nested closure compilation)
+    for (const parentFctx of ctx.funcStack) {
+      if (!shifted.has(parentFctx.body)) {
+        shiftFuncIndices(parentFctx.body);
+        shifted.add(parentFctx.body);
+      }
+      for (const sb of parentFctx.savedBodies) {
+        if (!shifted.has(sb)) {
+          shiftFuncIndices(sb);
+          shifted.add(sb);
+        }
+      }
+    }
+    // Shift parent function bodies on parentBodiesStack (same shifted set)
+    for (const pb of ctx.parentBodiesStack) {
+      if (!shifted.has(pb)) {
+        shiftFuncIndices(pb);
+        shifted.add(pb);
       }
     }
     for (const elem of ctx.mod.elements) {
@@ -7187,18 +7217,12 @@ export function addUnionImports(ctx: CodegenContext): void {
     // Shift parent function bodies still being compiled. When a closure
     // triggers addUnionImports, the enclosing function's body is neither
     // in mod.functions nor ctx.currentFunc.
-    {
-      const done = new Set<Instr[]>();
-      for (const func of ctx.mod.functions) done.add(func.body);
-      if (ctx.currentFunc) {
-        done.add(ctx.currentFunc.body);
-        for (const sb of ctx.currentFunc.savedBodies) done.add(sb);
-      }
-      for (const pb of ctx.parentBodiesStack) {
-        if (!done.has(pb)) {
-          shiftFuncIndices(pb);
-          done.add(pb);
-        }
+    // Use the same `shifted` set to avoid double-shifting bodies already
+    // handled by the mod.functions, currentFunc, or funcStack loops above.
+    for (const pb of ctx.parentBodiesStack) {
+      if (!shifted.has(pb)) {
+        shiftFuncIndices(pb);
+        shifted.add(pb);
       }
     }
     // Update table elements

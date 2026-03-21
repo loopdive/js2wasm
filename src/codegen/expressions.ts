@@ -121,17 +121,27 @@ export function shiftLateImportIndices(
     shiftInstrs(sb);
     shifted.add(sb);
   }
-  // Shift parent function bodies (enclosing functions still being compiled)
-  {
-    const done = new Set<Instr[]>();
-    for (const func of ctx.mod.functions) done.add(func.body);
-    done.add(curBody);
-    for (const sb of fctx.savedBodies) done.add(sb);
-    for (const pb of ctx.parentBodiesStack) {
-      if (!done.has(pb)) {
-        shiftInstrs(pb);
-        done.add(pb);
+  // Shift parent function contexts on the funcStack (nested closure compilation)
+  for (const parentFctx of ctx.funcStack) {
+    if (!shifted.has(parentFctx.body)) {
+      shiftInstrs(parentFctx.body);
+      shifted.add(parentFctx.body);
+    }
+    for (const sb of parentFctx.savedBodies) {
+      if (!shifted.has(sb)) {
+        shiftInstrs(sb);
+        shifted.add(sb);
       }
+    }
+  }
+  // Shift parent function bodies on parentBodiesStack.
+  // Use the same `shifted` set to avoid double-shifting bodies already
+  // handled by the funcStack loop above (funcStack.body and
+  // parentBodiesStack entries can be the same array).
+  for (const pb of ctx.parentBodiesStack) {
+    if (!shifted.has(pb)) {
+      shiftInstrs(pb);
+      shifted.add(pb);
     }
   }
   // Shift funcMap entries for defined functions (not import entries).
