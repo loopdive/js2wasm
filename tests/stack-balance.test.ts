@@ -152,4 +152,24 @@ describe("Stack balance fixup (#655)", () => {
     `);
     expect(val).toBe(5);
   });
+
+  it("f64.copysign in math functions does not cause spurious drops", async () => {
+    // Math.atan uses f64.copysign which was missing from instrDelta,
+    // causing the stack balance pass to miscalculate and add wrong fixups
+    const val = await compileAndRun(`
+      export function test(): number {
+        return Math.atan(1) > 0 ? 1 : 0;
+      }
+    `);
+    expect(val).toBe(1);
+  });
+
+  it("f64.min and f64.max are correctly tracked in stack balance", async () => {
+    const val = await compileAndRun(`
+      export function test(): number {
+        return Math.min(3, 7);
+      }
+    `);
+    expect(val).toBe(3);
+  });
 });
