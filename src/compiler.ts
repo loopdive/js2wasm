@@ -324,6 +324,36 @@ function detectEarlyErrors(
       }
     }
 
+    // Check generator/async function declarations in statement position (not allowed in strict mode)
+    // ES spec: GeneratorDeclaration and AsyncFunctionDeclaration are not valid in
+    // SingleStatement position (if body, while body, do-while body, for body, etc.)
+    if (ts.isFunctionDeclaration(node) && node.asteriskToken) {
+      const parent = node.parent;
+      if (parent && isStatementPosition(parent, node)) {
+        addError(node, "Generator declarations are not allowed in statement position");
+      }
+    }
+    if (ts.isFunctionDeclaration(node) && hasAsyncModifier(node)) {
+      const parent = node.parent;
+      if (parent && isStatementPosition(parent, node)) {
+        addError(node, "Async function declarations are not allowed in statement position");
+      }
+    }
+
+    // Check private name (#x) used outside its declaring class
+    if (ts.isPrivateIdentifier(node)) {
+      if (!isInsideClassWithPrivateName(node, node.escapedText as string)) {
+        addError(node, `Private field '${node.text}' must be declared in an enclosing class`);
+      }
+    }
+
+    // Check var redeclaration conflicts with lexical declarations in block scope
+    // ES spec: It is a Syntax Error if any element of VarDeclaredNames also occurs
+    // in LexicallyDeclaredNames of the StatementList.
+    if (ts.isBlock(node)) {
+      checkVarLexicalConflicts(node);
+    }
+
     // Check TDZ violations for let/const in block-like scopes
     if (ts.isSourceFile(node) || ts.isBlock(node) || ts.isCaseClause(node) || ts.isDefaultClause(node)) {
       const stmts = ts.isSourceFile(node) ? node.statements :
@@ -333,6 +363,90 @@ function detectEarlyErrors(
     }
 
     ts.forEachChild(node, visit);
+  }
+
+  /** Check if a function declaration is in a single-statement position (not a block). */
+  function isStatementPosition(parent: ts.Node, child: ts.Node): boolean {
+    // If the parent is a block/source file, this is a normal declaration — allowed
+    if (ts.isBlock(parent) || ts.isSourceFile(parent)) return false;
+    // If/else, while, do-while, for, for-in, for-of bodies that are not blocks
+    if (ts.isIfStatement(parent)) {
+      return parent.thenStatement === child || parent.elseStatement === child;
+    }
+    if (ts.isWhileStatement(parent)) return parent.statement === child;
+    if (ts.isDoStatement(parent)) return parent.statement === child;
+    if (ts.isForStatement(parent)) return parent.statement === child;
+    if (ts.isForInStatement(parent)) return parent.statement === child;
+    if (ts.isForOfStatement(parent)) return parent.statement === child;
+    if (ts.isLabeledStatement(parent)) return parent.statement === child;
+    if (ts.isWithStatement(parent)) return parent.statement === child;
+    return false;
+  }
+
+  /** Check if a node has the 'async' modifier. */
+  function hasAsyncModifier(node: ts.FunctionDeclaration): boolean {
+    return node.modifiers?.some(m => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
+  }
+
+  /** Check if a private identifier is inside a class that declares it. */
+  function isInsideClassWithPrivateName(node: ts.Node, privateName: string): boolean {
+    let current: ts.Node | undefined = node.parent;
+    while (current) {
+      if (ts.isClassDeclaration(current) || ts.isClassExpression(current)) {
+        // Check if this class declares the private name
+        for (const member of current.members) {
+          if (member.name && ts.isPrivateIdentifier(member.name)) {
+            if ((member.name.escapedText as string) === privateName) {
+              return true;
+            }
+          }
+        }
+        // Also check parent classes (super), but we can't easily resolve inheritance
+        // at the AST level. For now, just check the immediate class.
+        // Continue searching outer classes.
+      }
+      current = current.parent;
+    }
+    return false;
+  }
+
+  /** Check for var/lexical declaration conflicts in a block. */
+  function checkVarLexicalConflicts(block: ts.Block): void {
+    // Collect lexically-declared names (let, const, function, class)
+    const lexicalNames = new Set<string>();
+    for (const stmt of block.statements) {
+      if (ts.isVariableStatement(stmt)) {
+        const flags = stmt.declarationList.flags;
+        if ((flags & ts.NodeFlags.Let) !== 0 || (flags & ts.NodeFlags.Const) !== 0) {
+          for (const decl of stmt.declarationList.declarations) {
+            if (ts.isIdentifier(decl.name)) {
+              lexicalNames.add(decl.name.text);
+            }
+          }
+        }
+      } else if (ts.isFunctionDeclaration(stmt) && stmt.name) {
+        lexicalNames.add(stmt.name.text);
+      } else if (ts.isClassDeclaration(stmt) && stmt.name) {
+        lexicalNames.add(stmt.name.text);
+      }
+    }
+
+    if (lexicalNames.size === 0) return;
+
+    // Check var declarations against lexical names
+    for (const stmt of block.statements) {
+      if (ts.isVariableStatement(stmt)) {
+        const flags = stmt.declarationList.flags;
+        if ((flags & ts.NodeFlags.Let) === 0 && (flags & ts.NodeFlags.Const) === 0) {
+          // This is a var declaration
+          for (const decl of stmt.declarationList.declarations) {
+            if (ts.isIdentifier(decl.name) && lexicalNames.has(decl.name.text)) {
+              addError(decl.name, `Cannot redeclare block-scoped variable '${decl.name.text}'`);
+            }
+          }
+        }
+      }
+    }
   }
 
   /**
