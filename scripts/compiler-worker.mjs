@@ -10,10 +10,11 @@ parentPort.on("message", (msg) => {
   try {
     const result = compile(msg.source, {
       fileName: "test.ts",
-      sourceMap: false,
+      sourceMap: true,
+      sourceMapUrl: msg.sourceMapUrl || "test.wasm.map",
       emitWat: false,
       skipSemanticDiagnostics: true,
-      
+
     });
     const compileMs = performance.now() - start;
 
@@ -32,6 +33,7 @@ parentPort.on("message", (msg) => {
       binary: result.binary,
       stringPool: result.stringPool,
       imports: result.imports,
+      sourceMap: result.sourceMap || null,
       compileMs,
     });
   } catch (err) {

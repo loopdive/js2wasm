@@ -14,5 +14,6 @@ benchmarks/results/*.txt
 .claude/settings.local.json.claude/worktrees/
 .claude/agents/
 .test262-cache/
+test262-out/
 .claude/worktrees/package-lock.json
 scripts/compiler-bundle.mjs
