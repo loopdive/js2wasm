@@ -343,14 +343,14 @@ function fixBranch(
             body.push({ op: "ref.null", typeIdx: t.typeIdx });
             break;
           default:
-            // Unknown type -- push unreachable to make the validator happy
-            body.push({ op: "unreachable" } as Instr);
+            // Unknown type -- push ref.null.extern as safe default
+            body.push({ op: "ref.null.extern" } as Instr);
             break;
         }
       } else {
         // For type-indexed block types, we can't easily determine individual value types.
-        // Push unreachable as a last resort.
-        body.push({ op: "unreachable" } as Instr);
+        // Push ref.null.extern as a safe default (avoids runtime trap).
+        body.push({ op: "ref.null.extern" } as Instr);
       }
       fixups++;
     }
