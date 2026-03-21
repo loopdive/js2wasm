@@ -2630,9 +2630,17 @@ function compileIdentifier(
     // Check if this is a boxed (ref cell) mutable capture
     const boxed = fctx.boxedCaptures?.get(name);
     if (boxed) {
-      // Read through ref cell: local.get → struct.get $ref_cell 0
+      // Read through ref cell: local.get → null guard → struct.get $ref_cell 0
+      // The ref cell local is ref_null — if the closure capture is uninitialized,
+      // the local is null and struct.get would trap (#702).
       fctx.body.push({ op: "local.get", index: localIdx });
-      fctx.body.push({ op: "struct.get", typeIdx: boxed.refCellTypeIdx, fieldIdx: 0 });
+      emitNullGuardedStructGet(
+        fctx,
+        { kind: "ref_null", typeIdx: boxed.refCellTypeIdx },
+        boxed.valType,
+        boxed.refCellTypeIdx,
+        0,
+      );
       return boxed.valType;
     }
 
@@ -5256,13 +5264,23 @@ function compileAssignment(
       const boxed = fctx.boxedCaptures?.get(name);
       if (boxed) {
         // Write through ref cell: local.get ref_cell → value → struct.set $ref_cell 0
+        // Null-guard: if ref cell local is null, skip struct.set (#702)
         const resultType = compileExpression(ctx, fctx, expr.right, boxed.valType);
         if (!resultType) { ctx.errors.push({ message: "Failed to compile assignment value", line: getLine(expr), column: getCol(expr) }); return null; }
         const tmpVal = allocLocal(fctx, `__box_tmp_${fctx.locals.length}`, boxed.valType);
         fctx.body.push({ op: "local.set", index: tmpVal });
         fctx.body.push({ op: "local.get", index: localIdx });
-        fctx.body.push({ op: "local.get", index: tmpVal });
-        fctx.body.push({ op: "struct.set", typeIdx: boxed.refCellTypeIdx, fieldIdx: 0 });
+        fctx.body.push({ op: "ref.is_null" });
+        fctx.body.push({
+          op: "if",
+          blockType: { kind: "empty" },
+          then: [] as Instr[],
+          else: [
+            { op: "local.get", index: localIdx } as Instr,
+            { op: "local.get", index: tmpVal } as Instr,
+            { op: "struct.set", typeIdx: boxed.refCellTypeIdx, fieldIdx: 0 } as Instr,
+          ],
+        });
         // Return the assigned value (expression result)
         fctx.body.push({ op: "local.get", index: tmpVal });
         return resultType;
@@ -7753,9 +7771,16 @@ function compileCompoundAssignment(
   // Handle boxed (ref cell) mutable captures
   const boxed = fctx.boxedCaptures?.get(name);
   if (boxed) {
-    // Read current value from ref cell
+    // Read current value from ref cell (null-guarded: if ref cell is null,
+    // use default value for the compound op instead of trapping #702)
     fctx.body.push({ op: "local.get", index: localIdx });
-    fctx.body.push({ op: "struct.get", typeIdx: boxed.refCellTypeIdx, fieldIdx: 0 });
+    emitNullGuardedStructGet(
+      fctx,
+      { kind: "ref_null", typeIdx: boxed.refCellTypeIdx },
+      boxed.valType,
+      boxed.refCellTypeIdx,
+      0,
+    );
     const compoundRhsBoxed = compileExpression(ctx, fctx, expr.right, boxed.valType);
     if (!compoundRhsBoxed) { ctx.errors.push({ message: "Failed to compile compound assignment RHS", line: getLine(expr), column: getCol(expr) }); return null; }
     switch (op) {
@@ -7778,12 +7803,21 @@ function compileCompoundAssignment(
         emitBitwiseCompoundOp(fctx, op);
         break;
     }
-    // Write back to ref cell
+    // Write back to ref cell (skip if ref cell is null #702)
     const tmpResult = allocLocal(fctx, `__box_cmp_${fctx.locals.length}`, boxed.valType);
     fctx.body.push({ op: "local.set", index: tmpResult });
     fctx.body.push({ op: "local.get", index: localIdx });
-    fctx.body.push({ op: "local.get", index: tmpResult });
-    fctx.body.push({ op: "struct.set", typeIdx: boxed.refCellTypeIdx, fieldIdx: 0 });
+    fctx.body.push({ op: "ref.is_null" });
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: [] as Instr[],
+      else: [
+        { op: "local.get", index: localIdx } as Instr,
+        { op: "local.get", index: tmpResult } as Instr,
+        { op: "struct.set", typeIdx: boxed.refCellTypeIdx, fieldIdx: 0 } as Instr,
+      ],
+    });
     fctx.body.push({ op: "local.get", index: tmpResult });
     return boxed.valType;
   }
@@ -9014,16 +9048,25 @@ function compilePrefixUnary(
         if (idx !== undefined) {
           const boxedPP = fctx.boxedCaptures?.get(ppOperand.text);
           if (boxedPP) {
-            // ++x through ref cell
-            fctx.body.push({ op: "local.get", index: idx });
-            fctx.body.push({ op: "local.get", index: idx });
-            fctx.body.push({ op: "struct.get", typeIdx: boxedPP.refCellTypeIdx, fieldIdx: 0 });
-            fctx.body.push({ op: "f64.const", value: 1 });
-            fctx.body.push({ op: "f64.add" });
+            // ++x through ref cell (null-guarded #702)
             const ppTmp = allocLocal(fctx, `__pp_${fctx.locals.length}`, boxedPP.valType);
-            fctx.body.push({ op: "local.tee", index: ppTmp });
-            fctx.body.push({ op: "struct.set", typeIdx: boxedPP.refCellTypeIdx, fieldIdx: 0 });
-            fctx.body.push({ op: "local.get", index: ppTmp });
+            fctx.body.push({ op: "local.get", index: idx });
+            fctx.body.push({ op: "ref.is_null" });
+            fctx.body.push({
+              op: "if",
+              blockType: { kind: "val" as const, type: boxedPP.valType },
+              then: defaultValueInstrs(boxedPP.valType),
+              else: [
+                { op: "local.get", index: idx } as Instr,
+                { op: "local.get", index: idx } as Instr,
+                { op: "struct.get", typeIdx: boxedPP.refCellTypeIdx, fieldIdx: 0 } as Instr,
+                { op: "f64.const", value: 1 } as Instr,
+                { op: "f64.add" } as Instr,
+                { op: "local.tee", index: ppTmp } as Instr,
+                { op: "struct.set", typeIdx: boxedPP.refCellTypeIdx, fieldIdx: 0 } as Instr,
+                { op: "local.get", index: ppTmp } as Instr,
+              ],
+            });
             return boxedPP.valType;
           }
           const localType = getLocalType(fctx, idx);
@@ -9139,16 +9182,25 @@ function compilePrefixUnary(
         if (idx !== undefined) {
           const boxed = fctx.boxedCaptures?.get(mmOperand.text);
           if (boxed) {
-            // ++x / --x through ref cell
-            fctx.body.push({ op: "local.get", index: idx });
-            fctx.body.push({ op: "local.get", index: idx });
-            fctx.body.push({ op: "struct.get", typeIdx: boxed.refCellTypeIdx, fieldIdx: 0 });
-            fctx.body.push({ op: "f64.const", value: 1 });
-            fctx.body.push({ op: arithOp });
+            // ++x / --x through ref cell (null-guarded #702)
             const tmp = allocLocal(fctx, `__pp_${fctx.locals.length}`, boxed.valType);
-            fctx.body.push({ op: "local.tee", index: tmp });
-            fctx.body.push({ op: "struct.set", typeIdx: boxed.refCellTypeIdx, fieldIdx: 0 });
-            fctx.body.push({ op: "local.get", index: tmp });
+            fctx.body.push({ op: "local.get", index: idx });
+            fctx.body.push({ op: "ref.is_null" });
+            fctx.body.push({
+              op: "if",
+              blockType: { kind: "val" as const, type: boxed.valType },
+              then: defaultValueInstrs(boxed.valType),
+              else: [
+                { op: "local.get", index: idx } as Instr,
+                { op: "local.get", index: idx } as Instr,
+                { op: "struct.get", typeIdx: boxed.refCellTypeIdx, fieldIdx: 0 } as Instr,
+                { op: "f64.const", value: 1 } as Instr,
+                { op: arithOp } as Instr,
+                { op: "local.tee", index: tmp } as Instr,
+                { op: "struct.set", typeIdx: boxed.refCellTypeIdx, fieldIdx: 0 } as Instr,
+                { op: "local.get", index: tmp } as Instr,
+              ],
+            });
             return boxed.valType;
           }
           const localType = getLocalType(fctx, idx);
@@ -9347,22 +9399,34 @@ function compilePostfixUnary(
       return { kind: "f64" };
     }
 
-    // Handle boxed (ref cell) mutable captures for postfix
+    // Handle boxed (ref cell) mutable captures for postfix (null-guarded #702)
     const boxedPost = fctx.boxedCaptures?.get(postOperand.text);
     if (boxedPost) {
-      // Return old value, store incremented/decremented
-      fctx.body.push({ op: "local.get", index: idx });
-      fctx.body.push({ op: "struct.get", typeIdx: boxedPost.refCellTypeIdx, fieldIdx: 0 });
       const oldTmp = allocLocal(fctx, `__postbox_${fctx.locals.length}`, boxedPost.valType);
-      fctx.body.push({ op: "local.tee", index: oldTmp });
-      fctx.body.push({ op: "f64.const", value: 1 });
-      fctx.body.push({ op: arithOp });
-      const newTmp = allocLocal(fctx, `__postnew_${fctx.locals.length}`, boxedPost.valType);
-      fctx.body.push({ op: "local.set", index: newTmp });
       fctx.body.push({ op: "local.get", index: idx });
-      fctx.body.push({ op: "local.get", index: newTmp });
-      fctx.body.push({ op: "struct.set", typeIdx: boxedPost.refCellTypeIdx, fieldIdx: 0 });
-      fctx.body.push({ op: "local.get", index: oldTmp });
+      fctx.body.push({ op: "ref.is_null" });
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "val" as const, type: boxedPost.valType },
+        then: defaultValueInstrs(boxedPost.valType),
+        else: [
+          { op: "local.get", index: idx } as Instr,
+          { op: "struct.get", typeIdx: boxedPost.refCellTypeIdx, fieldIdx: 0 } as Instr,
+          { op: "local.tee", index: oldTmp } as Instr,
+          { op: "f64.const", value: 1 } as Instr,
+          { op: arithOp } as Instr,
+          ...(() => {
+            const newTmp = allocLocal(fctx, `__postnew_${fctx.locals.length}`, boxedPost.valType);
+            return [
+              { op: "local.set", index: newTmp } as Instr,
+              { op: "local.get", index: idx } as Instr,
+              { op: "local.get", index: newTmp } as Instr,
+              { op: "struct.set", typeIdx: boxedPost.refCellTypeIdx, fieldIdx: 0 } as Instr,
+              { op: "local.get", index: oldTmp } as Instr,
+            ];
+          })(),
+        ],
+      });
       return boxedPost.valType;
     }
 
