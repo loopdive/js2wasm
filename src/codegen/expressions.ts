@@ -2643,6 +2643,7 @@ function compileIdentifier(
       // the local is null and struct.get would trap (#702).
       fctx.body.push({ op: "local.get", index: localIdx });
       emitNullGuardedStructGet(
+        ctx,
         fctx,
         { kind: "ref_null", typeIdx: boxed.refCellTypeIdx },
         boxed.valType,
@@ -7783,6 +7784,7 @@ function compileCompoundAssignment(
     // use default value for the compound op instead of trapping #702)
     fctx.body.push({ op: "local.get", index: localIdx });
     emitNullGuardedStructGet(
+      ctx,
       fctx,
       { kind: "ref_null", typeIdx: boxed.refCellTypeIdx },
       boxed.valType,
