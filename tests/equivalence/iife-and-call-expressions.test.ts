@@ -1238,4 +1238,34 @@ export function test(): number {
       [{ fn: "test", args: [] }],
     );
   });
+
+  it("IIFE returning boolean inside f64-returning function (#720)", async () => {
+    // The IIFE returns boolean (i32), but the outer function returns number (f64).
+    // Previously the compiler coerced the IIFE return value to f64 (for the outer
+    // function's return type) before storing it in the i32 IIFE result local,
+    // causing a Wasm validation error: local.set expected i32, found f64.
+    await assertEquivalent(
+      `
+      export function test(): number {
+        var x: number = (function(): boolean {
+          return 5 > 3;
+        })() ? 1 : 0;
+        return x;
+      }
+      `,
+      [{ fn: "test", args: [] }],
+    );
+  });
+
+  it("IIFE returning boolean used as condition (#720)", async () => {
+    const exports = await compileToWasm(`
+      export function test(): number {
+        if ((function(): boolean { return 10 !== 0; })()) {
+          return 1;
+        }
+        return 0;
+      }
+    `);
+    expect(exports.test()).toBe(1);
+  });
 });

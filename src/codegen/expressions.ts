@@ -12760,24 +12760,47 @@ function compileCallExpression(
           const blockBody: Instr[] = [];
           fctx.body = blockBody;
 
+          // Save and override returnType so that return statements inside the
+          // IIFE coerce to the IIFE's own return type, not the outer function's.
+          // Without this, a boolean-returning IIFE inside an f64-returning
+          // function would coerce i32→f64 before local.set into an i32 local.
+          const savedReturnType = fctx.returnType;
+          fctx.returnType = iifeWasmRetType;
+
           // Increase block depth so return→br targets the right level
           fctx.blockDepth++;
           for (const stmt of bodyStmts) {
             compileStatement(ctx, fctx, stmt);
           }
           fctx.blockDepth--;
+
+          // Restore outer function's return type
+          fctx.returnType = savedReturnType;
           fctx.savedBodies.pop();
           fctx.body = savedBody;
 
-          // Post-process: replace `return` ops with `local.set retLocal + br <depth>`
+          // Post-process: replace `return` / `return_call` / `return_call_ref` ops
+          // with `local.set retLocal + br <depth>`.  Tail-call optimization in
+          // compileReturnStatement may have merged call+return into return_call;
+          // inside an IIFE we must undo that since we need local.set + br instead.
           function patchReturns(instrs: Instr[], depth: number): void {
             for (let i = 0; i < instrs.length; i++) {
-              if (instrs[i]!.op === "return") {
+              const op = instrs[i]!.op;
+              if (op === "return") {
                 // The instruction before `return` is the return value expression.
                 // Replace `return` with `local.set + br`
                 instrs[i] = { op: "local.set", index: retLocal } as Instr;
                 instrs.splice(i + 1, 0, { op: "br", depth } as Instr);
                 i++; // skip the inserted br
+              } else if (op === "return_call" || op === "return_call_ref") {
+                // Undo tail-call: return_call funcIdx → call funcIdx + local.set + br
+                const instr = instrs[i] as any;
+                instr.op = op === "return_call" ? "call" : "call_ref";
+                instrs.splice(i + 1, 0,
+                  { op: "local.set", index: retLocal } as Instr,
+                  { op: "br", depth } as Instr,
+                );
+                i += 2; // skip inserted instructions
               }
               // Recurse into sub-blocks (if/then/else/block/loop)
               const instr = instrs[i] as any;
