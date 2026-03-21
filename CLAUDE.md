@@ -71,6 +71,8 @@ See [plan/team-setup.md](plan/team-setup.md) for full team config, roles, and me
 
 Work is driven by `plan/dependency-graph.md`. **Memory limit: 15GB visible RAM.** Max 3-4 dev agents when test262 is running (4 workers × 1GB + agents × 2GB). Max 6 agents without test262. Always check `free -h` before launching agents. Restart test262 AFTER agents complete, not during.
 
+**Test262 runs must be in a worktree** — never on the main working copy. Use `scripts/run-test262-vitest.sh` or `git worktree add /tmp/ts2wasm-test262 HEAD`. This keeps main clean for cherry-picks and prevents stash conflicts with test runner changes (pool config, skip filters, error reporting).
+
 1. **Pick work**: choose by priority (critical > high > medium > low) from `plan/issues/ready/`
 2. **Function locking**: no two agents touch the same *function* concurrently. Same file is OK if different functions (Git 3-way merge handles separate hunks).
 3. **Complete work**: cherry-pick to main, then follow the issue completion procedure:
