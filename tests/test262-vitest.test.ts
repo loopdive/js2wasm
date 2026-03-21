@@ -12,7 +12,8 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from "fs";
 import { createHash } from "crypto";
-import { join, relative } from "path";
+import { join, relative, dirname, basename } from "path";
+import { createServer, type Server } from "http";
 import { buildImports } from "../src/runtime.js";
 import { CompilerPool, type PoolResult } from "../scripts/compiler-pool.js";
 import {
@@ -24,6 +25,43 @@ import {
   TEST_CATEGORIES,
 } from "./test262-runner.js";
 
+
+// ── Local HTTP server for wasm source map stack traces ───────────────
+// V8 only resolves wasm source maps when loading from a URL (not in-memory buffer).
+// We serve compiled .wasm + .wasm.map from test262-out/ so that error stacks include
+// mapped source locations.
+
+const PROJECT_ROOT = join(import.meta.dirname ?? ".", "..");
+const WASM_OUT_DIR = join(PROJECT_ROOT, "test262-out");
+mkdirSync(WASM_OUT_DIR, { recursive: true });
+
+let wasmServer: Server;
+let WASM_PORT = 0;
+
+const serverReady = new Promise<void>((resolve) => {
+  wasmServer = createServer((req, res) => {
+    const url = decodeURIComponent(req.url ?? "/");
+    const filePath = join(WASM_OUT_DIR, url);
+    try {
+      const data = readFileSync(filePath);
+      const ct = url.endsWith(".wasm")
+        ? "application/wasm"
+        : url.endsWith(".map")
+          ? "application/json"
+          : "application/octet-stream";
+      res.writeHead(200, { "Content-Type": ct });
+      res.end(data);
+    } catch {
+      res.writeHead(404);
+      res.end("Not found");
+    }
+  });
+  wasmServer.listen(0, "127.0.0.1", () => {
+    const addr = wasmServer.address();
+    WASM_PORT = typeof addr === "object" && addr ? addr.port : 0;
+    resolve();
+  });
+});
 
 // ── Compiler pool (async worker threads) ─────────────────────────────
 
@@ -78,7 +116,12 @@ const compilerHash = buildCompilerHash();
 async function getOrCompile(
   wrappedSource: string,
   fullDiagnostics = false,
+  relPath?: string,
 ): Promise<{ ok: true; binary: Uint8Array; result: any } | { ok: false; error: string }> {
+  // Compute the source map URL filename from relPath (e.g. "test/.../S11.js" -> "S11.wasm.map")
+  const wasmRelPath = relPath ? relPath.replace(/\.js$/, ".wasm") : undefined;
+  const sourceMapFilename = wasmRelPath ? basename(wasmRelPath) + ".map" : "test.wasm.map";
+
   const hash = createHash("md5")
     .update(wrappedSource)
     .update(compilerHash)
@@ -87,39 +130,63 @@ async function getOrCompile(
   const cachePath = join(CACHE_DIR, `${hash}.wasm`);
   const metaPath = join(CACHE_DIR, `${hash}.json`);
 
+  let binary: Uint8Array;
+  let result: any;
+
   // Cache hit: read binary + metadata
   if (existsSync(cachePath) && existsSync(metaPath)) {
     try {
-      const binary = readFileSync(cachePath);
+      const cachedBinary = readFileSync(cachePath);
       const meta = JSON.parse(readFileSync(metaPath, "utf-8"));
-      return { ok: true, binary, result: meta };
+      binary = cachedBinary;
+      result = meta;
     } catch {
       // Corrupted cache entry — fall through to recompile
+      binary = undefined as any;
+      result = undefined;
     }
   }
 
-  // Cache miss: async compile via pool worker (doesn't block other tests)
-  const poolResult = await pool.compile(wrappedSource, 30_000, fullDiagnostics);
-  if (!poolResult.ok) {
-    return { ok: false, error: poolResult.error };
+  if (!binary) {
+    // Cache miss: async compile via pool worker (doesn't block other tests)
+    const poolResult = await pool.compile(wrappedSource, 30_000, fullDiagnostics, sourceMapFilename);
+    if (!poolResult.ok) {
+      return { ok: false, error: poolResult.error };
+    }
+    binary = poolResult.binary;
+    result = { stringPool: poolResult.stringPool, imports: poolResult.imports, sourceMap: poolResult.sourceMap };
+
+    // Write to cache
+    try {
+      writeFileSync(cachePath, binary);
+      writeFileSync(
+        metaPath,
+        JSON.stringify({
+          stringPool: poolResult.stringPool,
+          imports: poolResult.imports,
+          sourceMap: poolResult.sourceMap,
+        }),
+      );
+    } catch {
+      // Cache write failure is non-fatal
+    }
   }
 
-  // Write to cache
-  try {
-    writeFileSync(cachePath, poolResult.binary);
-    writeFileSync(
-      metaPath,
-      JSON.stringify({
-        stringPool: poolResult.stringPool,
-        imports: poolResult.imports,
-        sourceMap: poolResult.sourceMap,
-      }),
-    );
-  } catch {
-    // Cache write failure is non-fatal
+  // Write .wasm and .wasm.map to test262-out/ for HTTP serving
+  if (wasmRelPath) {
+    try {
+      const outWasm = join(WASM_OUT_DIR, wasmRelPath);
+      mkdirSync(dirname(outWasm), { recursive: true });
+      writeFileSync(outWasm, binary);
+      if (result.sourceMap) {
+        writeFileSync(outWasm + ".map", result.sourceMap);
+      }
+    } catch {
+      // Non-fatal — falls back to in-memory instantiation
+    }
   }
 
-  return { ok: true, binary: poolResult.binary, result: { stringPool: poolResult.stringPool, imports: poolResult.imports, sourceMap: poolResult.sourceMap } };
+  return { ok: true, binary, result };
 }
 
 // ── Result tracking (JSONL output for report.html) ──────────────────
@@ -169,6 +236,7 @@ function recordResult(file: string, category: string, status: string, error?: st
 
 afterAll(() => {
   try { pool.shutdown(); } catch {}
+  try { wasmServer?.close(); } catch {}
   try { closeSync(jsonlFd); } catch {}
   const report = {
     timestamp: new Date().toISOString(),
@@ -205,6 +273,18 @@ function resolveWasmErrorLine(
 ): string {
   const msg = err.message ?? String(err);
   const stack = typeof err?.stack === "string" ? err.stack : "";
+
+  // V8 source-mapped format: "at funcName (test.ts:LINE:COL)" or "at test.ts:LINE:COL"
+  // When wasm is loaded via URL with a source map, V8 resolves locations automatically.
+  const mappedMatch = stack.match(/at\s+(?:\w+\s+)?\(?(?:.*?\.ts):(\d+):(\d+)\)?/);
+  if (mappedMatch) {
+    const rawLine = parseInt(mappedMatch[1], 10);
+    const adjLine = rawLine - bodyLineOffset;
+    const srcLine = adjLine > 0 ? adjLine : rawLine;
+    const lines = source.split("\n");
+    const ctx = lines[srcLine - 1]?.trim().substring(0, 80) ?? "";
+    return `${msg} [at L${srcLine}: ${ctx}]`;
+  }
 
   // Try to extract wasm byte offset from stack trace
   // V8 formats: "at func (wasm://wasm/hash:wasm-function[N]:0xOFFSET)"
@@ -295,6 +375,9 @@ for (const category of TEST_CATEGORIES) {
           return;
         }
 
+        // Wait for HTTP server to be ready
+        await serverReady;
+
         // Handle negative parse/early tests: compilation should fail
         // Use skipSemanticDiagnostics:false for negative tests so TS catches more errors
         if (
@@ -302,7 +385,7 @@ for (const category of TEST_CATEGORIES) {
           (meta.negative.phase === "parse" || meta.negative.phase === "early" || meta.negative.phase === "resolution")
         ) {
           const { source: wrapped, bodyLineOffset } = wrapTest(source, meta);
-          const compileResult = await getOrCompile(wrapped);
+          const compileResult = await getOrCompile(wrapped, false, relPath);
           if (!compileResult.ok) { recordResult(relPath, category, "pass"); return; }
           try {
             const imports = buildImports(compileResult.result.imports, undefined, compileResult.result.stringPool);
@@ -316,7 +399,7 @@ for (const category of TEST_CATEGORIES) {
 
         // Wrap and compile
         const { source: wrapped, bodyLineOffset } = wrapTest(source, meta);
-        const compileResult = await getOrCompile(wrapped);
+        const compileResult = await getOrCompile(wrapped, false, relPath);
 
         if (!compileResult.ok) {
           recordResult(relPath, category, "compile_error", adjustErrorLines(compileResult.error, bodyLineOffset));
@@ -327,7 +410,20 @@ for (const category of TEST_CATEGORIES) {
         try {
           const imports = buildImports(compileResult.result.imports, undefined, compileResult.result.stringPool);
           const importObj = imports as any;
-          const { instance } = await WebAssembly.instantiate(compileResult.binary, importObj);
+
+          // Use instantiateStreaming from local HTTP server for source map support
+          const wasmRelUrl = relPath.replace(/\.js$/, ".wasm");
+          let instance: WebAssembly.Instance;
+          try {
+            const url = `http://127.0.0.1:${WASM_PORT}/${wasmRelUrl}`;
+            const response = await fetch(url);
+            const result = await WebAssembly.instantiateStreaming(response, importObj);
+            instance = result.instance;
+          } catch {
+            // Fallback to in-memory instantiation if HTTP fetch fails
+            const result = await WebAssembly.instantiate(compileResult.binary, importObj);
+            instance = result.instance;
+          }
 
           // Wire up setExports for callback support
           if (typeof importObj.setExports === "function") {
