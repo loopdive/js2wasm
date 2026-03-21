@@ -130,7 +130,23 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
     }
   }
 
-  // ── End safety filters (only FIXTURE + HANGING_TESTS) ──
+  // Skip features that are TC39 Stage 2/3 proposals we don't support.
+  // These must be unconditional (before SKIP_DISABLED) because the catch-all
+  // MetaProperty handler (#712) makes import.source/import.defer compile
+  // successfully, causing 117 negative parse tests to regress.
+  const UNCONDITIONAL_SKIP_FEATURES = new Set([
+    "source-phase-imports",
+    "import-defer",
+  ]);
+  if (meta.features) {
+    for (const feat of meta.features) {
+      if (UNCONDITIONAL_SKIP_FEATURES.has(feat)) {
+        return { skip: true, reason: `unsupported feature: ${feat}` };
+      }
+    }
+  }
+
+  // ── End safety filters ──
 
   if (SKIP_DISABLED) return { skip: false };
 
