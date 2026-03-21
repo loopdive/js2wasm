@@ -22871,6 +22871,7 @@ function compileArrayPrototypeEvery(
   fctx.body.push({ op: "local.set", index: iTmp });
 
   const getOp = elemType.kind === "i16" ? "array.get_s" : "array.get";
+  const numParams = closureInfo.paramTypes.length;
 
   // Use a result local instead of `return` to avoid returning from the
   // enclosing function when every is inlined.
@@ -22885,12 +22886,22 @@ function compileArrayPrototypeEvery(
     { op: "i32.ge_s" },
     { op: "br_if", depth: 1 }, // break out of block
 
-    // Call closure(element): push closure ref, then element
+    // Call closure(element, index, array): push closure ref, then args
     { op: "local.get", index: closureTmp },
     { op: "local.get", index: dataTmp },
     { op: "local.get", index: iTmp },
     { op: getOp, typeIdx: arrTypeIdx } as Instr,
     ...coercionInstrs(ctx, elemType, closureInfo.paramTypes[0] ?? elemType),
+    // Push index (2nd user param) if callback expects it
+    ...(numParams >= 2 ? [
+      { op: "local.get", index: iTmp } as Instr,
+      ...coercionInstrs(ctx, { kind: "i32" }, closureInfo.paramTypes[1] ?? { kind: "i32" }),
+    ] : []),
+    // Push array (3rd user param) if callback expects it
+    ...(numParams >= 3 ? [
+      { op: "local.get", index: vecTmp } as Instr,
+      ...coercionInstrs(ctx, { kind: "ref_null", typeIdx: vecTypeIdx }, closureInfo.paramTypes[2] ?? { kind: "ref_null", typeIdx: vecTypeIdx }),
+    ] : []),
     // Get function ref from closure struct field 0 and call_ref
     { op: "local.get", index: closureTmp },
     { op: "struct.get", typeIdx: closureTypeIdx, fieldIdx: 0 } as Instr,
@@ -22979,6 +22990,7 @@ function compileArrayPrototypeSome(
   fctx.body.push({ op: "local.set", index: iTmp });
 
   const getOp = elemType.kind === "i16" ? "array.get_s" : "array.get";
+  const numParams = closureInfo.paramTypes.length;
 
   // Use a result local instead of `return` to avoid returning from the
   // enclosing function when some is inlined.
@@ -22996,6 +23008,16 @@ function compileArrayPrototypeSome(
     { op: "local.get", index: iTmp },
     { op: getOp, typeIdx: arrTypeIdx } as Instr,
     ...coercionInstrs(ctx, elemType, closureInfo.paramTypes[0] ?? elemType),
+    // Push index (2nd user param) if callback expects it
+    ...(numParams >= 2 ? [
+      { op: "local.get", index: iTmp } as Instr,
+      ...coercionInstrs(ctx, { kind: "i32" }, closureInfo.paramTypes[1] ?? { kind: "i32" }),
+    ] : []),
+    // Push array (3rd user param) if callback expects it
+    ...(numParams >= 3 ? [
+      { op: "local.get", index: vecTmp } as Instr,
+      ...coercionInstrs(ctx, { kind: "ref_null", typeIdx: vecTypeIdx }, closureInfo.paramTypes[2] ?? { kind: "ref_null", typeIdx: vecTypeIdx }),
+    ] : []),
     { op: "local.get", index: closureTmp },
     { op: "struct.get", typeIdx: closureTypeIdx, fieldIdx: 0 } as Instr,
     { op: "ref.cast", typeIdx: closureInfo.funcTypeIdx } as Instr,
