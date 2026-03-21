@@ -13,17 +13,21 @@ import { describe, it, expect } from "vitest";
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from "fs";
 import { createHash } from "crypto";
 import { join, relative } from "path";
-import { compile } from "../src/index.js";
 import { buildImports } from "../src/runtime.js";
+import { CompilerPool, type PoolResult } from "../scripts/compiler-pool.js";
 import {
   findTestFiles,
   parseMeta,
   wrapTest,
   shouldSkip,
+  lookupSourceMapOffset,
   TEST_CATEGORIES,
 } from "./test262-runner.js";
 
+// ── Compiler pool (async worker threads) ─────────────────────────────
 
+const POOL_SIZE = parseInt(process.env.TEST262_WORKERS ?? "8", 10);
+const pool = new CompilerPool(POOL_SIZE);
 
 // ── Cache setup ──────────────────────────────────────────────────────
 
@@ -95,28 +99,28 @@ async function getOrCompile(
     }
   }
 
-  // Cache miss: compile via pool worker (async, doesn't block other tests)
-  try {
-    const result = compile(wrappedSource, { fileName: "test.ts", sourceMap: false, emitWat: false } as any);
-    const poolResult = result.success ? { ok: true as const, binary: result.binary, stringPool: result.stringPool, imports: result.imports, compileMs: 0 } : { ok: false as const, error: result.errors.map((e: any) => e.message).join("; "), compileMs: 0 };
-    if (!poolResult.ok) {
-      return { ok: false, error: poolResult.error };
-    }
+  // Cache miss: async compile via pool worker (doesn't block other tests)
+  const poolResult = await pool.compile(wrappedSource);
+  if (!poolResult.ok) {
+    return { ok: false, error: poolResult.error };
+  }
 
-    // Write to cache
+  // Write to cache
+  try {
     writeFileSync(cachePath, poolResult.binary);
     writeFileSync(
       metaPath,
       JSON.stringify({
         stringPool: poolResult.stringPool,
         imports: poolResult.imports,
+        sourceMap: poolResult.sourceMap,
       }),
     );
-
-    return { ok: true, binary: poolResult.binary, result: { stringPool: poolResult.stringPool, imports: poolResult.imports } };
-  } catch (err: any) {
-    return { ok: false, error: err.message ?? String(err) };
+  } catch {
+    // Cache write failure is non-fatal
   }
+
+  return { ok: true, binary: poolResult.binary, result: { stringPool: poolResult.stringPool, imports: poolResult.imports, sourceMap: poolResult.sourceMap } };
 }
 
 // ── Result tracking (JSONL output for report.html) ──────────────────
@@ -162,6 +166,7 @@ function recordResult(file: string, category: string, status: string, error?: st
 }
 
 afterAll(() => {
+  try { pool.shutdown(); } catch {}
   try { closeSync(jsonlFd); } catch {}
   const report = {
     timestamp: new Date().toISOString(),
