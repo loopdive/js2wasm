@@ -825,6 +825,14 @@ function compileExpressionInner(
     return compileStringLiteral(ctx, fctx, "[object Object]");
   }
 
+  // MetaProperty catch-all: import.source, import.defer, and any future
+  // import.* meta-properties that the TS parser recognizes but we don't
+  // implement.  Emit null externref so compilation doesn't crash.
+  if (ts.isMetaProperty(expr) && expr.keywordToken === ts.SyntaxKind.ImportKeyword) {
+    fctx.body.push({ op: "ref.null.extern" });
+    return { kind: "externref" };
+  }
+
   // RegExp literal (/pattern/flags) → desugar to new RegExp(pattern, flags)
   if (expr.kind === ts.SyntaxKind.RegularExpressionLiteral) {
     return compileRegExpLiteral(ctx, fctx, expr);
