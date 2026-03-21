@@ -51,7 +51,7 @@ export class CompilerPool {
     const workerPath = join(import.meta.dirname ?? __dirname, "compiler-worker.mjs");
 
     for (let i = 0; i < size; i++) {
-      const worker = new Worker(workerPath);
+      const worker = new Worker(workerPath, { execArgv: ["--expose-gc"] });
 
       const state: WorkerState = { worker, busy: false, ready: false };
       this.workers.push(state);
@@ -129,7 +129,7 @@ export class CompilerPool {
     const workerPath = join(import.meta.dirname ?? __dirname, "compiler-worker.mjs");
     state.busy = false;
     state.ready = false;
-    state.worker = new Worker(workerPath);
+    state.worker = new Worker(workerPath, { execArgv: ["--expose-gc"] });
     state.worker.on("message", (msg: any) => {
       if (msg.type === "ready") {
         state.ready = true;
