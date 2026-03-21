@@ -387,9 +387,40 @@ export function coerceType(
       // Unboxing: any ref → non-any ref (extract refval and cast)
       if (isAnyValue(from, ctx) && !isAnyValue(to, ctx)) {
         ensureAnyHelpers(ctx);
-        // Get the refval field (eqref), then ref.cast to target type
+        // Get the refval field (eqref), then guarded ref.cast to target type
         fctx.body.push({ op: "struct.get", typeIdx: ctx.anyValueTypeIdx, fieldIdx: 3 });
-        fctx.body.push({ op: "ref.cast", typeIdx: toIdx });
+        // Guard: ref.test before ref.cast to avoid illegal cast traps
+        const tmpEq = allocTempLocal(fctx, { kind: "eqref" } as ValType);
+        fctx.body.push({ op: "local.tee", index: tmpEq });
+        fctx.body.push({ op: "ref.test", typeIdx: toIdx });
+        if (to.kind === "ref_null") {
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "val", type: to },
+            then: [
+              { op: "local.get", index: tmpEq },
+              { op: "ref.cast_null", typeIdx: toIdx },
+            ],
+            else: [
+              { op: "ref.null", typeIdx: toIdx },
+            ],
+          });
+        } else {
+          // Non-null target: cast if test passes, otherwise unreachable (type error)
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "val", type: { kind: "ref_null", typeIdx: toIdx } as ValType },
+            then: [
+              { op: "local.get", index: tmpEq },
+              { op: "ref.cast_null", typeIdx: toIdx },
+            ],
+            else: [
+              { op: "ref.null", typeIdx: toIdx },
+            ],
+          });
+          fctx.body.push({ op: "ref.as_non_null" } as Instr);
+        }
+        releaseTempLocal(fctx, tmpEq);
         return;
       }
       // Different struct types, neither is AnyValue.
@@ -400,8 +431,41 @@ export function coerceType(
       if (emitSafeStructConversion(ctx, fctx, fromIdx, toIdx)) {
         return;
       }
-      // For related struct types (subtypes), ref.cast works directly.
-      fctx.body.push({ op: "ref.cast", typeIdx: toIdx });
+      // For related struct types (subtypes), use guarded ref.cast to avoid
+      // illegal cast traps when runtime type differs from static type.
+      {
+        const guardFrom = from.kind === "ref_null" ? { kind: "anyref" } as ValType : { kind: "anyref" } as ValType;
+        const tmpGuard = allocTempLocal(fctx, guardFrom);
+        fctx.body.push({ op: "local.tee", index: tmpGuard });
+        fctx.body.push({ op: "ref.test", typeIdx: toIdx });
+        if (to.kind === "ref_null") {
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "val", type: to },
+            then: [
+              { op: "local.get", index: tmpGuard },
+              { op: "ref.cast_null", typeIdx: toIdx },
+            ],
+            else: [
+              { op: "ref.null", typeIdx: toIdx },
+            ],
+          });
+        } else {
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "val", type: { kind: "ref_null", typeIdx: toIdx } as ValType },
+            then: [
+              { op: "local.get", index: tmpGuard },
+              { op: "ref.cast_null", typeIdx: toIdx },
+            ],
+            else: [
+              { op: "ref.null", typeIdx: toIdx },
+            ],
+          });
+          fctx.body.push({ op: "ref.as_non_null" } as Instr);
+        }
+        releaseTempLocal(fctx, tmpGuard);
+      }
       return;
     }
     return;
@@ -423,7 +487,22 @@ export function coerceType(
     const toRefNullIdx = (to as { typeIdx: number }).typeIdx;
     if (fromRefIdx !== toRefNullIdx) {
       if (!emitSafeStructConversion(ctx, fctx, fromRefIdx, toRefNullIdx)) {
-        fctx.body.push({ op: "ref.cast", typeIdx: toRefNullIdx });
+        // Guarded cast: ref $X → ref_null $Y — avoid illegal cast trap
+        const tmpRefNull = allocTempLocal(fctx, { kind: "anyref" } as ValType);
+        fctx.body.push({ op: "local.tee", index: tmpRefNull });
+        fctx.body.push({ op: "ref.test", typeIdx: toRefNullIdx });
+        fctx.body.push({
+          op: "if",
+          blockType: { kind: "val", type: to },
+          then: [
+            { op: "local.get", index: tmpRefNull },
+            { op: "ref.cast_null", typeIdx: toRefNullIdx },
+          ],
+          else: [
+            { op: "ref.null", typeIdx: toRefNullIdx },
+          ],
+        });
+        releaseTempLocal(fctx, tmpRefNull);
       }
     }
     return;
@@ -434,7 +513,23 @@ export function coerceType(
       ensureAnyHelpers(ctx);
       const toIdx = (to as { typeIdx: number }).typeIdx;
       fctx.body.push({ op: "struct.get", typeIdx: ctx.anyValueTypeIdx, fieldIdx: 3 });
-      fctx.body.push({ op: "ref.cast", typeIdx: toIdx });
+      // Guarded cast: eqref → ref $X
+      const tmpUnbox = allocTempLocal(fctx, { kind: "eqref" } as ValType);
+      fctx.body.push({ op: "local.tee", index: tmpUnbox });
+      fctx.body.push({ op: "ref.test", typeIdx: toIdx });
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "val", type: { kind: "ref_null", typeIdx: toIdx } as ValType },
+        then: [
+          { op: "local.get", index: tmpUnbox },
+          { op: "ref.cast_null", typeIdx: toIdx },
+        ],
+        else: [
+          { op: "ref.null", typeIdx: toIdx },
+        ],
+      });
+      fctx.body.push({ op: "ref.as_non_null" } as Instr);
+      releaseTempLocal(fctx, tmpUnbox);
       return;
     }
     // ref_null $X → ref $Y: cast and assert non-null at runtime
@@ -442,7 +537,22 @@ export function coerceType(
     const toNonNullIdx = (to as { typeIdx: number }).typeIdx;
     if (fromNullIdx !== toNonNullIdx) {
       if (!emitSafeStructConversion(ctx, fctx, fromNullIdx, toNonNullIdx)) {
-        fctx.body.push({ op: "ref.cast", typeIdx: toNonNullIdx });
+        // Guarded cast: ref_null $X → ref $Y
+        const tmpCast = allocTempLocal(fctx, { kind: "anyref" } as ValType);
+        fctx.body.push({ op: "local.tee", index: tmpCast });
+        fctx.body.push({ op: "ref.test", typeIdx: toNonNullIdx });
+        fctx.body.push({
+          op: "if",
+          blockType: { kind: "val", type: { kind: "ref_null", typeIdx: toNonNullIdx } as ValType },
+          then: [
+            { op: "local.get", index: tmpCast },
+            { op: "ref.cast_null", typeIdx: toNonNullIdx },
+          ],
+          else: [
+            { op: "ref.null", typeIdx: toNonNullIdx },
+          ],
+        });
+        releaseTempLocal(fctx, tmpCast);
       }
     }
     fctx.body.push({ op: "ref.as_non_null" } as Instr);
@@ -719,11 +829,27 @@ export function coerceType(
   if ((from.kind === "ref" || from.kind === "ref_null") && to.kind === "anyref") {
     return;
   }
-  // externref → ref (non-nullable): convert to anyref then cast
+  // externref → ref (non-nullable): convert to anyref then guarded cast
   if (from.kind === "externref" && to.kind === "ref") {
     const toIdx = (to as { typeIdx: number }).typeIdx;
     fctx.body.push({ op: "any.convert_extern" } as Instr);
-    fctx.body.push({ op: "ref.cast", typeIdx: toIdx } as Instr);
+    // Guarded: ref.test before ref.cast to avoid illegal cast traps
+    const tmpExtRef = allocTempLocal(fctx, { kind: "anyref" } as ValType);
+    fctx.body.push({ op: "local.tee", index: tmpExtRef });
+    fctx.body.push({ op: "ref.test", typeIdx: toIdx });
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "val", type: { kind: "ref_null", typeIdx: toIdx } as ValType },
+      then: [
+        { op: "local.get", index: tmpExtRef },
+        { op: "ref.cast_null", typeIdx: toIdx },
+      ],
+      else: [
+        { op: "ref.null", typeIdx: toIdx },
+      ],
+    });
+    fctx.body.push({ op: "ref.as_non_null" } as Instr);
+    releaseTempLocal(fctx, tmpExtRef);
     return;
   }
   // externref → ref_null: convert to anyref, then use if/else to handle null and type mismatch
@@ -747,10 +873,26 @@ export function coerceType(
     releaseTempLocal(fctx, tmpLocal);
     return;
   }
-  // eqref/anyref → ref: cast to target struct type (traps on null)
+  // eqref/anyref → ref: guarded cast to target struct type
   if ((from.kind === "eqref" || from.kind === "anyref") && to.kind === "ref") {
     const toIdx = (to as { typeIdx: number }).typeIdx;
-    fctx.body.push({ op: "ref.cast", typeIdx: toIdx } as Instr);
+    // Guarded: ref.test before ref.cast to avoid illegal cast traps
+    const tmpEqAny = allocTempLocal(fctx, from);
+    fctx.body.push({ op: "local.tee", index: tmpEqAny });
+    fctx.body.push({ op: "ref.test", typeIdx: toIdx });
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "val", type: { kind: "ref_null", typeIdx: toIdx } as ValType },
+      then: [
+        { op: "local.get", index: tmpEqAny },
+        { op: "ref.cast_null", typeIdx: toIdx },
+      ],
+      else: [
+        { op: "ref.null", typeIdx: toIdx },
+      ],
+    });
+    fctx.body.push({ op: "ref.as_non_null" } as Instr);
+    releaseTempLocal(fctx, tmpEqAny);
     return;
   }
   // eqref/anyref → ref_null: null-safe and type-safe cast
