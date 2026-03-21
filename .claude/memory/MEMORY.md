@@ -23,6 +23,7 @@
 - [feedback_always_cd_workspace.md](feedback_always_cd_workspace.md) — Always cd /workspace before git commands on main
 - [feedback_never_delete_test_data.md](feedback_never_delete_test_data.md) — Always ask before deleting/clearing test262 cache, results, or any test data
 - [feedback_test262_worktree.md](feedback_test262_worktree.md) — Run test262 in a worktree, not main wc — avoids stash conflicts with cherry-picks
+- [feedback_check_before_cleanup.md](feedback_check_before_cleanup.md) — Always check worktree diffs before removing — uncommitted work can be lost
 
 - [project_next_session.md](project_next_session.md) — Next session: resume test262 run, handle hanging tests, current state
 
