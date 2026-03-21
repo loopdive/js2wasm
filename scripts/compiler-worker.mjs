@@ -5,8 +5,6 @@
 import { parentPort } from "node:worker_threads";
 import { compile } from "./compiler-bundle.mjs";
 
-// Enable manual GC if available (worker spawned with --expose-gc)
-const gc = globalThis.gc;
 let compileCount = 0;
 
 parentPort.on("message", (msg) => {
@@ -49,8 +47,7 @@ parentPort.on("message", (msg) => {
     });
   }
 
-  // Periodic GC to prevent TS program object accumulation
-  if (gc && ++compileCount % 100 === 0) gc();
+  compileCount++;
 });
 
 parentPort.postMessage({ type: "ready", pid: process.pid });

@@ -51,7 +51,9 @@ export class CompilerPool {
     const workerPath = join(import.meta.dirname ?? __dirname, "compiler-worker.mjs");
 
     for (let i = 0; i < size; i++) {
-      const worker = new Worker(workerPath, { execArgv: ["--expose-gc"] });
+      const worker = new Worker(workerPath, {
+        resourceLimits: { maxOldGenerationSizeMb: 512 },
+      });
 
       const state: WorkerState = { worker, busy: false, ready: false };
       this.workers.push(state);
