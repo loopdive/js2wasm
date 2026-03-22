@@ -1276,8 +1276,7 @@ export function compileElementAccess(
       fctx.body.push({
         op: "if",
         blockType: { kind: "val" as const, type: blockValType },
-        // Throw TypeError for element access on null (#728)
-        then: typeErrorThrowInstrs(ctx),
+        then: defaultValueInstrs(blockValType),
         else: elseInstrs,
       });
       return blockValType;
@@ -1290,8 +1289,7 @@ export function compileElementAccess(
     fctx.body.push({
       op: "if",
       blockType: { kind: "val" as const, type: fallbackType },
-      // Throw TypeError for element access on null (#728)
-      then: typeErrorThrowInstrs(ctx),
+      then: defaultValueInstrs(fallbackType),
       else: elseInstrs.length > 0 ? elseInstrs : defaultValueInstrs(fallbackType),
     });
     return fallbackType;
