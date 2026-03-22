@@ -117,6 +117,21 @@ export function buildImports(result: CompileResult): WebAssembly.Imports {
     string_padStart: (s: string, targetLength: number, padString?: any) => s.padStart(targetLength, padString),
     string_padEnd: (s: string, targetLength: number, padString?: any) => s.padEnd(targetLength, padString),
     string_split: (s: string, separator: any) => s.split(separator),
+    // Object.defineProperty / getOwnPropertyDescriptor host imports
+    __defineProperty_value: (obj: any, prop: any, value: any, flags: number) => {
+      if (obj == null) return obj;
+      const desc: PropertyDescriptor = {};
+      if (flags & (1 << 7)) desc.value = value;
+      if (flags & (1 << 3)) desc.writable = !!(flags & 1);
+      if (flags & (1 << 4)) desc.enumerable = !!(flags & (1 << 1));
+      if (flags & (1 << 5)) desc.configurable = !!(flags & (1 << 2));
+      try { Object.defineProperty(obj, prop, desc); } catch (_) { /* swallow for frozen/sealed */ }
+      return obj;
+    },
+    __getOwnPropertyDescriptor: (obj: any, prop: any) => {
+      if (obj == null) return undefined;
+      return Object.getOwnPropertyDescriptor(obj, prop);
+    },
   };
   return {
     env,
