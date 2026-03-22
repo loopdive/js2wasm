@@ -283,10 +283,9 @@ function resolveWasmErrorLine(
     const srcLine = adjLine > 0 ? adjLine : rawLine;
     const lines = source.split("\n");
     if (srcLine >= 1 && srcLine <= lines.length) {
-      const ctx = lines[srcLine - 1]?.trim().substring(0, 80) ?? "";
+      const ctx = lines[srcLine - 1]?.trim().substring(0, 80) || "(empty line)";
       return `${msg} [at L${srcLine}: ${ctx}]`;
     }
-    // Line out of range — in preamble/postamble, just show the raw line
     return `${msg} [at wrapped L${rawLine}]`;
   }
 
@@ -308,7 +307,7 @@ function resolveWasmErrorLine(
         const adjLine = mapped.line - bodyLineOffset;
         const srcLine = adjLine > 0 ? adjLine : mapped.line;
         const lines = source.split("\n");
-        const ctx = lines[srcLine - 1]?.trim().substring(0, 80) ?? "";
+        const ctx = lines[srcLine - 1]?.trim().substring(0, 80) || "(empty line)";
         return `${msg} [at L${srcLine}: ${ctx}]`;
       }
     } catch {}
