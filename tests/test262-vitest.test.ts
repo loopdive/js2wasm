@@ -10,7 +10,7 @@
  * Run: npx vitest run tests/test262-vitest.test.ts
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync, existsSync, writeFileSync, mkdirSync } from "fs";
+import { readFileSync, existsSync, writeFileSync, mkdirSync, readdirSync } from "fs";
 import { createHash } from "crypto";
 import { join, relative, dirname, basename } from "path";
 import { createServer, type Server } from "http";
@@ -77,26 +77,41 @@ mkdirSync(CACHE_DIR, { recursive: true });
 /**
  * Build a short hash of all compiler source files. When any codegen file
  * changes, the entire cache is effectively invalidated (new hashes).
+ *
+ * Hashes ALL .ts files in src/codegen/ (not a fixed list) plus the checker
+ * and runtime — so new extracted files are automatically included.
  */
 function buildCompilerHash(): string {
   const h = createHash("md5");
   const srcDir = join(import.meta.dirname ?? ".", "..", "src");
   const codegenDir = join(srcDir, "codegen");
-  const files = [
-    join(codegenDir, "expressions.ts"),
-    join(codegenDir, "index.ts"),
-    join(codegenDir, "statements.ts"),
-    join(codegenDir, "type-coercion.ts"),
-    join(codegenDir, "peephole.ts"),
-    join(codegenDir, "structs.ts"),
-    join(codegenDir, "functions.ts"),
+
+  // Hash all .ts files in codegen/ — auto-includes newly extracted files
+  try {
+    const codegenFiles = readdirSync(codegenDir)
+      .filter((f: string) => f.endsWith(".ts"))
+      .sort(); // deterministic order
+    for (const f of codegenFiles) {
+      try {
+        h.update(readFileSync(join(codegenDir, f)));
+      } catch {
+        h.update(f);
+      }
+    }
+  } catch {
+    h.update("codegen-dir-missing");
+  }
+
+  // Also hash checker (lib file changes affect type resolution and codegen)
+  // and runtime (affects import signatures)
+  const extraFiles = [
+    join(srcDir, "checker", "index.ts"),
     join(srcDir, "runtime.ts"),
   ];
-  for (const f of files) {
+  for (const f of extraFiles) {
     try {
       h.update(readFileSync(f));
     } catch {
-      // File missing — hash will differ from any cached value
       h.update(f);
     }
   }

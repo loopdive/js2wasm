@@ -3,9 +3,9 @@ import { dirname, join } from "path";
 import { createRequire } from "module";
 import { readFileSync } from "fs";
 // Custom type declarations not found in TS lib files
-import libGenerators from "./lib-generators";
-import libEs2015 from "./lib-es2015";
-import libEs2021 from "./lib-es2021";
+// All lib types now loaded from the typescript package at runtime.
+// No custom lib imports needed — lib: ["es2021", "dom"] in compilerOptions
+// handles everything including Generator, Iterator, Map, Set, etc.
 
 export interface TypedAST {
   sourceFile: ts.SourceFile;
@@ -49,13 +49,27 @@ function readLibFile(name: string): string {
 /** Lazily-populated cache of lib file contents */
 const LIB_FILES: Record<string, string> = {};
 
-/** Names of lib files that TS ships and we delegate to at runtime */
-const TS_LIB_NAMES = [
+/** Names of lib files that TS ships and we serve at runtime */
+const TS_LIB_NAMES = new Set([
   "lib.es5.d.ts",
   "lib.dom.d.ts",
   "lib.decorators.d.ts",
   "lib.decorators.legacy.d.ts",
-];
+  "lib.es2015.d.ts",
+  "lib.es2015.core.d.ts",
+  "lib.es2015.collection.d.ts",
+  "lib.es2015.generator.d.ts",
+  "lib.es2015.iterable.d.ts",
+  "lib.es2015.promise.d.ts",
+  "lib.es2015.proxy.d.ts",
+  "lib.es2015.reflect.d.ts",
+  "lib.es2015.symbol.d.ts",
+  "lib.es2015.symbol.wellknown.d.ts",
+  "lib.es2021.d.ts",
+  "lib.es2021.promise.d.ts",
+  "lib.es2021.string.d.ts",
+  "lib.es2021.weakref.d.ts",
+]);
 
 /**
  * Get the contents of a lib file by name. Reads from the typescript package
@@ -65,17 +79,21 @@ const TS_LIB_NAMES = [
 function getLibSource(name: string): string | undefined {
   if (name in LIB_FILES) return LIB_FILES[name];
 
-  // Composite lib.d.ts: concatenate es5 + custom es2015/es2021 + dom + generators
+  // Composite lib.d.ts: concatenate all libs + generators
   if (name === "lib.d.ts") {
-    const es5 = getLibSource("lib.es5.d.ts") ?? "";
-    const dom = getLibSource("lib.dom.d.ts") ?? "";
-    const content = es5 + "\n" + libEs2015 + "\n" + libEs2021 + "\n" + dom + "\n" + libGenerators;
+    const parts = [
+      getLibSource("lib.es5.d.ts") ?? "",
+      getLibSource("lib.es2015.d.ts") ?? "",
+      getLibSource("lib.es2021.d.ts") ?? "",
+      getLibSource("lib.dom.d.ts") ?? "",
+    ];
+    const content = parts.join("\n");
     LIB_FILES[name] = content;
     return content;
   }
 
-  // Standard TS lib files — read from typescript package
-  if (TS_LIB_NAMES.includes(name)) {
+  // Any lib.*.d.ts file — read from typescript package
+  if (name.startsWith("lib.") && name.endsWith(".d.ts")) {
     const content = readLibFile(name);
     if (content) {
       LIB_FILES[name] = content;
@@ -87,8 +105,10 @@ function getLibSource(name: string): string | undefined {
   return undefined;
 }
 
-/** Set of lib file names we know about (for fileExists checks) */
-const KNOWN_LIB_NAMES = new Set(["lib.d.ts", ...TS_LIB_NAMES]);
+/** Check if a file name is a known lib file */
+function isKnownLibName(name: string): boolean {
+  return name === "lib.d.ts" || TS_LIB_NAMES.has(name) || (name.startsWith("lib.") && name.endsWith(".d.ts"));
+}
 
 /** Pre-parsed lib SourceFiles — cached to avoid re-parsing on every compile */
 const LIB_SOURCE_FILES = new Map<string, ts.SourceFile>();
@@ -146,7 +166,7 @@ export function analyzeSource(
     useCaseSensitiveFileNames: () => true,
     getNewLine: () => "\n",
     fileExists: (name) =>
-      name === fileName || KNOWN_LIB_NAMES.has(name),
+      name === fileName || isKnownLibName(name),
     readFile: () => undefined,
     getDirectories: () => [],
     directoryExists: () => true,
@@ -155,6 +175,7 @@ export function analyzeSource(
   const compilerOptions: ts.CompilerOptions = {
     target: ts.ScriptTarget.ES2022,
     module: ts.ModuleKind.ESNext,
+    lib: ["lib.es2021.d.ts", "lib.dom.d.ts"],
     strict: !isJs,
     noImplicitAny: false,
     noEmit: true,
