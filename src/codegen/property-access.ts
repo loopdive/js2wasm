@@ -290,7 +290,7 @@ export function emitExternrefToStructGet(
 
 // ── Optional property access ─────────────────────────────────────────
 
-function compileOptionalPropertyAccess(
+export function compileOptionalPropertyAccess(
   ctx: CodegenContext,
   fctx: FunctionContext,
   expr: ts.PropertyAccessExpression,
