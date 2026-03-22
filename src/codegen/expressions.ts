@@ -13819,7 +13819,7 @@ function compileConditionalExpression(
  * Compiles obj, checks if null → returns null, else accesses property normally.
  */
 // ── Property access (extracted to ./property-access.ts) ──────────────
-import { compilePropertyAccess, compileElementAccess, compileOptionalPropertyAccess, compileExternPropertyGetFromStack, emitNullCheckThrow, typeErrorThrowInstrs, findAlternateStructsForField, emitNullGuardedStructGet, emitExternrefToStructGet } from "./property-access.js";
+import { compilePropertyAccess, compileElementAccess, compileOptionalPropertyAccess, compileExternPropertyGetFromStack, emitNullCheckThrow, typeErrorThrowInstrs, findAlternateStructsForField, emitNullGuardedStructGet, emitExternrefToStructGet, emitBoundsGuardedArraySet } from "./property-access.js";
 export { emitNullCheckThrow, compilePropertyAccess, compileElementAccess, compileOptionalPropertyAccess } from "./property-access.js";
 export function resolveStructName(ctx: CodegenContext, tsType: ts.Type): string | undefined {
   const name = tsType.symbol?.name;
