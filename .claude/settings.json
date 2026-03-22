@@ -14,7 +14,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "curl -d 'Claude Code needs your attention' http://host.docker.internal:8090/loopdive-claude"
+            "command": "jq -r '.message' | head -c 140 | xargs -0 -I{} curl -H 'Title: ts2wasm' -d '{}' http://host.docker.internal:8090/loopdive-claude"
           }
         ]
       }
