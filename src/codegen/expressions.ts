@@ -6479,7 +6479,10 @@ function compilePropertyAssignment(
     if (funcIdx !== undefined) {
       const setterObjResult = compileExpression(ctx, fctx, target.expression);
       if (!setterObjResult) { ctx.errors.push({ message: "Failed to compile setter receiver", line: getLine(target), column: getCol(target) }); return null; }
-      const setterValResult = compileExpression(ctx, fctx, value);
+      // Get setter's parameter types to provide type hint for value argument
+      const setterParamTypes = getFuncParamTypes(ctx, funcIdx);
+      const setterValExpectedType = setterParamTypes?.[1]; // param 0 = self, param 1 = value
+      const setterValResult = compileExpression(ctx, fctx, value, setterValExpectedType);
       if (!setterValResult) { ctx.errors.push({ message: "Failed to compile setter value", line: getLine(target), column: getCol(target) }); return null; }
       // Save value for assignment expression result
       const setterTmpVal = allocLocal(fctx, `__setter_assign_${fctx.locals.length}`, setterValResult);
@@ -6487,7 +6490,8 @@ function compilePropertyAssignment(
       // Re-order stack: we need [obj, val] but tee left val on stack after obj
       // Actually obj is already on stack before val; tee saved val. Pop val, call, re-push val.
       // Stack is: [obj, val] after tee. But we need obj then val for call. That's correct.
-      fctx.body.push({ op: "call", funcIdx });
+      const finalSetterIdx = ctx.funcMap.get(setterName) ?? funcIdx;
+      fctx.body.push({ op: "call", funcIdx: finalSetterIdx });
       fctx.body.push({ op: "local.get", index: setterTmpVal });
       return setterValResult;
     }
@@ -6615,11 +6619,15 @@ function compileElementAssignment(
             const setterName = `${sName}_set_${fieldName}`;
             const funcIdx = ctx.funcMap.get(setterName);
             if (funcIdx !== undefined) {
-              const setValResult = compileExpression(ctx, fctx, value);
+              // Get setter's parameter types to provide type hint for value argument
+              const eaSetterParamTypes = getFuncParamTypes(ctx, funcIdx);
+              const eaSetterValType = eaSetterParamTypes?.[1]; // param 0 = self, param 1 = value
+              const setValResult = compileExpression(ctx, fctx, value, eaSetterValType);
               if (!setValResult) return null;
               const setValLocal = allocLocal(fctx, `__setter_assign_${fctx.locals.length}`, setValResult);
               fctx.body.push({ op: "local.tee", index: setValLocal });
-              fctx.body.push({ op: "call", funcIdx });
+              const finalEaSetterIdx = ctx.funcMap.get(setterName) ?? funcIdx;
+              fctx.body.push({ op: "call", funcIdx: finalEaSetterIdx });
               fctx.body.push({ op: "local.get", index: setValLocal });
               return setValResult;
             }
@@ -8040,7 +8048,19 @@ function compilePropertyCompoundAssignment(
       // Store back via setter: obj.set_prop(result)
       fctx.body.push({ op: "local.get", index: objTmp });
       fctx.body.push({ op: "local.get", index: resultTmp });
-      fctx.body.push({ op: "call", funcIdx: setterIdx });
+      // Coerce f64 result to setter's expected value param type
+      const cmpSetterParamTypes = getFuncParamTypes(ctx, setterIdx);
+      const cmpSetterValType = cmpSetterParamTypes?.[1]; // param 0 = self, param 1 = value
+      if (cmpSetterValType && cmpSetterValType.kind === "externref") {
+        // f64 → externref: box the number
+        addUnionImports(ctx);
+        const boxIdx = ctx.funcMap.get("__box_number");
+        if (boxIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx: boxIdx });
+        }
+      }
+      const finalCmpSetterIdx = ctx.funcMap.get(setterName) ?? setterIdx;
+      fctx.body.push({ op: "call", funcIdx: finalCmpSetterIdx });
 
       // Return the result
       fctx.body.push({ op: "local.get", index: resultTmp });
@@ -8705,7 +8725,17 @@ function compileMemberIncDec(
           fctx.body.push({ op: "local.set", index: newTmp });
           fctx.body.push({ op: "local.get", index: objTmp });
           fctx.body.push({ op: "local.get", index: newTmp });
-          fctx.body.push({ op: "call", funcIdx: setterIdx });
+          // Coerce f64 to setter's expected value param type
+          {
+            const idParamTypes = getFuncParamTypes(ctx, setterIdx);
+            const idValType = idParamTypes?.[1];
+            if (idValType && idValType.kind === "externref") {
+              addUnionImports(ctx);
+              const bIdx = ctx.funcMap.get("__box_number");
+              if (bIdx !== undefined) fctx.body.push({ op: "call", funcIdx: bIdx });
+            }
+          }
+          { const fs = ctx.funcMap.get(setterName) ?? setterIdx; fctx.body.push({ op: "call", funcIdx: fs }); }
           fctx.body.push({ op: "local.get", index: oldTmp });
         } else {
           // Compute new, store via setter, return new
@@ -8718,7 +8748,17 @@ function compileMemberIncDec(
           fctx.body.push({ op: "local.set", index: valTmp });
           fctx.body.push({ op: "local.get", index: objTmp });
           fctx.body.push({ op: "local.get", index: valTmp });
-          fctx.body.push({ op: "call", funcIdx: setterIdx });
+          // Coerce f64 to setter's expected value param type
+          {
+            const idParamTypes = getFuncParamTypes(ctx, setterIdx);
+            const idValType = idParamTypes?.[1];
+            if (idValType && idValType.kind === "externref") {
+              addUnionImports(ctx);
+              const bIdx = ctx.funcMap.get("__box_number");
+              if (bIdx !== undefined) fctx.body.push({ op: "call", funcIdx: bIdx });
+            }
+          }
+          { const fs = ctx.funcMap.get(setterName) ?? setterIdx; fctx.body.push({ op: "call", funcIdx: fs }); }
           fctx.body.push({ op: "local.get", index: newTmp });
         }
         return { kind: "f64" };
@@ -18915,7 +18955,29 @@ function compilePropertyAccess(
       }
       flushLateImportShifts(ctx, fctx);
       if (getIdx !== undefined) {
-        compileExpression(ctx, fctx, expr.expression);
+        const objExprType = compileExpression(ctx, fctx, expr.expression);
+        // If the expression produced a ref/ref_null (struct), convert to externref
+        // so that __extern_get (which expects externref) can be used.
+        if (objExprType && (objExprType.kind === "ref" || objExprType.kind === "ref_null")) {
+          fctx.body.push({ op: "extern.convert_any" });
+        }
+        // If the expression produced f64, box it to externref
+        if (objExprType && objExprType.kind === "f64") {
+          addUnionImports(ctx);
+          const boxIdx = ctx.funcMap.get("__box_number");
+          if (boxIdx !== undefined) {
+            fctx.body.push({ op: "call", funcIdx: boxIdx });
+          }
+        }
+        // If the expression produced i32, convert to externref via f64 + box
+        if (objExprType && objExprType.kind === "i32") {
+          fctx.body.push({ op: "f64.convert_i32_s" });
+          addUnionImports(ctx);
+          const boxIdx = ctx.funcMap.get("__box_number");
+          if (boxIdx !== undefined) {
+            fctx.body.push({ op: "call", funcIdx: boxIdx });
+          }
+        }
         // Null check: throw TypeError for property access on null/undefined
         const objTmp = allocLocal(fctx, `__nullchk_${fctx.locals.length}`, { kind: "externref" });
         fctx.body.push({ op: "local.tee", index: objTmp });
