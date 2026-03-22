@@ -149,7 +149,7 @@ export function emitClampNonNeg(
 // ── Array method calls (pure Wasm, no host imports) ─────────────────
 
 /** Resolve array type info from a TS type. Returns null if not a Wasm GC vec struct. */
-function resolveArrayInfo(
+export function resolveArrayInfo(
   ctx: CodegenContext,
   tsType: ts.Type,
 ): { vecTypeIdx: number; arrTypeIdx: number; elemType: ValType } | null {

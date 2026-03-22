@@ -24,7 +24,7 @@ export { pushDefaultValue, defaultValueInstrs, coercionInstrs } from "./type-coe
 import { registerCompileExpression, registerCompileArrowAsClosure, VOID_RESULT, valTypesMatch, getLine, getCol } from "./shared.js";
 export { VOID_RESULT, valTypesMatch, getLine, getCol } from "./shared.js";
 import type { InnerResult } from "./shared.js";
-import { compileArrayPrototypeCall, compileArrayMethodCall, emitBoundsCheckedArrayGet, emitClampIndex, emitClampNonNeg } from "./array-methods.js";
+import { compileArrayPrototypeCall, compileArrayMethodCall, emitBoundsCheckedArrayGet, emitClampIndex, emitClampNonNeg, resolveArrayInfo } from "./array-methods.js";
 export { compileArrayPrototypeCall, compileArrayMethodCall, emitBoundsCheckedArrayGet, emitClampIndex, emitClampNonNeg } from "./array-methods.js";
 
 /**
