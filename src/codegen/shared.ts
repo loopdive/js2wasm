@@ -1,12 +1,13 @@
 /**
- * Shared utilities for codegen modules.
+ * Shared types, values, and late-bound function registrations for the codegen
+ * modules.  This module exists solely to break circular dependencies between
+ * expressions.ts and the feature-specific modules (closures.ts, etc.).
  *
- * This module exists to break circular dependencies between expressions.ts
- * and extracted modules (array-methods.ts, etc.). Functions that are needed
- * by both expressions.ts and extracted modules live here. The key trick is
- * the `compileExpression` delegate: expressions.ts registers its real
- * implementation at module load time, and extracted modules call the delegate.
+ * Convention: the *real* implementation lives in the feature module and calls
+ * `registerXxx(impl)` at module scope.  Consumers import the delegate wrapper
+ * from this file.
  */
+
 import ts from "typescript";
 import type { CodegenContext, FunctionContext } from "./index.js";
 import type { ValType } from "../ir/types.js";
@@ -14,77 +15,18 @@ import type { ValType } from "../ir/types.js";
 // ── VOID_RESULT sentinel ──────────────────────────────────────────────
 
 /** Sentinel: expression compiled successfully but produces no value (void) */
-export const VOID_RESULT: unique symbol = Symbol("void");
+export const VOID_RESULT = Symbol("void");
 export type InnerResult = ValType | null | typeof VOID_RESULT;
-
-// ── compileExpression delegate ────────────────────────────────────────
-
-type CompileExpressionFn = (
-  ctx: CodegenContext,
-  fctx: FunctionContext,
-  expr: ts.Expression,
-  expectedType?: ValType,
-) => ValType | null;
-
-let _compileExpression: CompileExpressionFn | null = null;
-
-/**
- * Register the real compileExpression implementation.
- * Called once by expressions.ts at module load time.
- */
-export function registerCompileExpression(fn: CompileExpressionFn): void {
-  _compileExpression = fn;
-}
-
-/**
- * Compile an expression. Delegates to the real implementation registered
- * by expressions.ts. Throws if called before registration (should never
- * happen in practice since expressions.ts is always loaded first).
- */
-export function compileExpression(
-  ctx: CodegenContext,
-  fctx: FunctionContext,
-  expr: ts.Expression,
-  expectedType?: ValType,
-): ValType | null {
-  if (!_compileExpression) {
-    throw new Error("compileExpression not yet registered (circular dep issue)");
-  }
-  return _compileExpression(ctx, fctx, expr, expectedType);
-}
-
-// ── compileArrowAsClosure delegate ────────────────────────────────────
-
-type CompileArrowAsClosureFn = (
-  ctx: CodegenContext,
-  fctx: FunctionContext,
-  arrow: ts.ArrowFunction | ts.FunctionExpression,
-) => ValType | null;
-
-let _compileArrowAsClosure: CompileArrowAsClosureFn | null = null;
-
-export function registerCompileArrowAsClosure(fn: CompileArrowAsClosureFn): void {
-  _compileArrowAsClosure = fn;
-}
-
-export function compileArrowAsClosure(
-  ctx: CodegenContext,
-  fctx: FunctionContext,
-  arrow: ts.ArrowFunction | ts.FunctionExpression,
-): ValType | null {
-  if (!_compileArrowAsClosure) {
-    throw new Error("compileArrowAsClosure not yet registered (circular dep issue)");
-  }
-  return _compileArrowAsClosure(ctx, fctx, arrow);
-}
 
 // ── valTypesMatch ─────────────────────────────────────────────────────
 
 /** Check if two ValTypes are structurally equal */
 export function valTypesMatch(a: ValType, b: ValType): boolean {
   if (a.kind !== b.kind) return false;
-  if ((a.kind === "ref" || a.kind === "ref_null") &&
-      (b.kind === "ref" || b.kind === "ref_null")) {
+  if (
+    (a.kind === "ref" || a.kind === "ref_null") &&
+    (b.kind === "ref" || b.kind === "ref_null")
+  ) {
     return (a as { typeIdx: number }).typeIdx === (b as { typeIdx: number }).typeIdx;
   }
   return true;
@@ -112,4 +54,120 @@ export function getCol(node: ts.Node): number {
   } catch {
     return 0;
   }
+}
+
+// ── Late-bound delegates ──────────────────────────────────────────────
+// Each delegate starts as a throwing stub and is replaced by the real
+// implementation when the owning module is loaded.
+
+type CompileExpressionFn = (
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.Expression,
+  expectedType?: ValType,
+) => ValType | null;
+
+let _compileExpression: CompileExpressionFn = () => {
+  throw new Error("compileExpression not yet registered");
+};
+
+export function registerCompileExpression(fn: CompileExpressionFn): void {
+  _compileExpression = fn;
+}
+
+export function compileExpression(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.Expression,
+  expectedType?: ValType,
+): ValType | null {
+  return _compileExpression(ctx, fctx, expr, expectedType);
+}
+
+// ── compileArrowAsClosure ─────────────────────────────────────────────
+
+type CompileArrowAsClosureFn = (
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  arrow: ts.ArrowFunction | ts.FunctionExpression,
+) => ValType | null;
+
+let _compileArrowAsClosure: CompileArrowAsClosureFn = () => {
+  throw new Error("compileArrowAsClosure not yet registered");
+};
+
+export function registerCompileArrowAsClosure(fn: CompileArrowAsClosureFn): void {
+  _compileArrowAsClosure = fn;
+}
+
+export function compileArrowAsClosure(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  arrow: ts.ArrowFunction | ts.FunctionExpression,
+): ValType | null {
+  return _compileArrowAsClosure(ctx, fctx, arrow);
+}
+
+// ── emitBoundsCheckedArrayGet ─────────────────────────────────────────
+
+type EmitBoundsCheckedArrayGetFn = (
+  fctx: FunctionContext,
+  arrTypeIdx: number,
+  elementType: ValType,
+) => void;
+
+let _emitBoundsCheckedArrayGet: EmitBoundsCheckedArrayGetFn = () => {
+  throw new Error("emitBoundsCheckedArrayGet not yet registered");
+};
+
+export function registerEmitBoundsCheckedArrayGet(fn: EmitBoundsCheckedArrayGetFn): void {
+  _emitBoundsCheckedArrayGet = fn;
+}
+
+export function emitBoundsCheckedArrayGet(
+  fctx: FunctionContext,
+  arrTypeIdx: number,
+  elementType: ValType,
+): void {
+  _emitBoundsCheckedArrayGet(fctx, arrTypeIdx, elementType);
+}
+
+// ── resolveEnclosingClassName ─────────────────────────────────────────
+
+type ResolveEnclosingClassNameFn = (fctx: FunctionContext) => string | undefined;
+
+let _resolveEnclosingClassName: ResolveEnclosingClassNameFn = () => undefined;
+
+export function registerResolveEnclosingClassName(fn: ResolveEnclosingClassNameFn): void {
+  _resolveEnclosingClassName = fn;
+}
+
+export function resolveEnclosingClassName(fctx: FunctionContext): string | undefined {
+  return _resolveEnclosingClassName(fctx);
+}
+
+// ── coerceType ────────────────────────────────────────────────────────
+
+type CoerceTypeFn = (
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  from: ValType,
+  to: ValType,
+) => void;
+
+let _coerceType: CoerceTypeFn = () => {
+  throw new Error("coerceType not yet registered");
+};
+
+export function registerCoerceType(fn: CoerceTypeFn): void {
+  _coerceType = fn;
+}
+
+export function coerceType(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  from: ValType,
+  to: ValType,
+): void {
+  _coerceType(ctx, fctx, from, to);
 }
