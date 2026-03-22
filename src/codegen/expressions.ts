@@ -16113,6 +16113,31 @@ function typeErrorThrowInstrs(ctx: CodegenContext): Instr[] {
   ];
 }
 
+/**
+ * Find all struct types (other than excludeTypeIdx) that have a field named
+ * propName.  Returns an array of {structTypeIdx, fieldIdx, fieldType} for
+ * each matching struct type.  Used for multi-struct dispatch when the primary
+ * ref.test fails (the object may be a valid GC struct of a different type).
+ * When excludeTypeIdx is -1, no type is excluded (useful for the externref path
+ * where there is no primary struct type).
+ */
+function findAlternateStructsForField(
+  ctx: CodegenContext,
+  propName: string,
+  excludeTypeIdx: number,
+): { structTypeIdx: number; fieldIdx: number; fieldType: ValType }[] {
+  const result: { structTypeIdx: number; fieldIdx: number; fieldType: ValType }[] = [];
+  for (const [typeName, fields] of ctx.structFields) {
+    const sIdx = ctx.structMap.get(typeName);
+    if (sIdx === undefined || sIdx === excludeTypeIdx) continue;
+    const fIdx = fields.findIndex((f) => f.name === propName);
+    if (fIdx !== -1) {
+      result.push({ structTypeIdx: sIdx, fieldIdx: fIdx, fieldType: fields[fIdx]!.type });
+    }
+  }
+  return result;
+}
+
 function emitNullGuardedStructGet(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -16127,15 +16152,67 @@ function emitNullGuardedStructGet(
     ? { kind: "ref_null", typeIdx: (fieldType as any).typeIdx }
     : fieldType;
 
-  // If propName provided and field type supports externref coercion, convert to
-  // externref and use emitExternrefToStructGet which has __extern_get fallback.
-  // This handles the case where emitGuardedRefCast returned ref.null for a
-  // valid-but-wrong-type object (the ref.null is indistinguishable from truly
-  // null at this point, but extern.convert_any will produce null externref for
-  // the truly null case, and emitExternrefToStructGet handles that).
-  if (propName && resultType.kind !== "ref" && resultType.kind !== "ref_null") {
-    fctx.body.push({ op: "extern.convert_any" } as Instr);
-    emitExternrefToStructGet(ctx, fctx, fieldType, typeIdx, fieldIdx, propName);
+  // When propName is provided, the object may be a valid GC struct of a
+  // DIFFERENT type (after emitGuardedRefCast returned ref.null for a type
+  // mismatch).  We need multi-struct dispatch: try the primary struct type
+  // first, then try alternative struct types that have the same field name.
+  // We operate on anyref so we can re-test the same value against multiple
+  // struct types without losing it.
+  if (propName) {
+    // Widen the ref_null $T to anyref so we can multi-dispatch
+    const tmpAny = allocLocal(fctx, `__ng_any_${fctx.locals.length}`, { kind: "anyref" });
+    fctx.body.push({ op: "local.set", index: tmpAny });
+    const resultLocal = allocLocal(fctx, `__ng_res_${fctx.locals.length}`, resultType);
+
+    // Try primary struct type
+    fctx.body.push({ op: "local.get", index: tmpAny });
+    fctx.body.push({ op: "ref.test", typeIdx });
+
+    // Find alternative struct types with the same field name
+    const alternates = findAlternateStructsForField(ctx, propName, typeIdx);
+
+    // Build the fallback chain: try alternates, then __extern_get, then default
+    const buildFallback = (altIdx: number): Instr[] => {
+      if (altIdx < alternates.length) {
+        const alt = alternates[altIdx]!;
+        // Coerce the alternate field type to the expected result type
+        const altCoerce = coercionInstrs(ctx, alt.fieldType, resultType);
+        return [
+          { op: "local.get", index: tmpAny } as Instr,
+          { op: "ref.test", typeIdx: alt.structTypeIdx } as Instr,
+          {
+            op: "if",
+            blockType: { kind: "empty" },
+            then: [
+              { op: "local.get", index: tmpAny } as Instr,
+              { op: "ref.cast", typeIdx: alt.structTypeIdx } as Instr,
+              { op: "struct.get", typeIdx: alt.structTypeIdx, fieldIdx: alt.fieldIdx } as Instr,
+              ...altCoerce,
+              { op: "local.set", index: resultLocal } as Instr,
+            ],
+            else: buildFallback(altIdx + 1),
+          } as Instr,
+        ];
+      }
+      // No more alternates — return default value
+      return [
+        ...defaultValueInstrs(resultType),
+        { op: "local.set", index: resultLocal } as Instr,
+      ];
+    };
+
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: [
+        { op: "local.get", index: tmpAny } as Instr,
+        { op: "ref.cast", typeIdx } as Instr,
+        { op: "struct.get", typeIdx, fieldIdx } as Instr,
+        { op: "local.set", index: resultLocal } as Instr,
+      ],
+      else: buildFallback(0),
+    });
+    fctx.body.push({ op: "local.get", index: resultLocal });
     return;
   }
 
@@ -16176,113 +16253,66 @@ function emitExternrefToStructGet(
     ? { kind: "ref_null", typeIdx: (fieldType as any).typeIdx }
     : fieldType;
 
-  // If no propName or field is a ref/ref_null type (can't coerce from externref),
-  // use the simple path with default fallback
-  if (!propName || resultType.kind === "ref" || resultType.kind === "ref_null") {
-    // Convert externref -> anyref
-    fctx.body.push({ op: "any.convert_extern" } as Instr);
-    // Store in a temp anyref local for null/type check
-    const tmpLocal = allocTempLocal(fctx, { kind: "anyref" });
-    fctx.body.push({ op: "local.tee", index: tmpLocal });
-    // ref.test returns 0 for null and for type mismatch
-    fctx.body.push({ op: "ref.test", typeIdx: structTypeIdx });
-    fctx.body.push({
-      op: "if",
-      blockType: { kind: "val" as const, type: resultType },
-      then: [
-        { op: "local.get", index: tmpLocal } as Instr,
-        { op: "ref.cast", typeIdx: structTypeIdx } as Instr,
-        { op: "struct.get", typeIdx: structTypeIdx, fieldIdx } as Instr,
-      ],
-      else: defaultValueInstrs(resultType),
-    });
-    releaseTempLocal(fctx, tmpLocal);
-    return;
-  }
-
-  // Save externref for __extern_get fallback before converting to anyref
-  const tmpExtern = allocTempLocal(fctx, { kind: "externref" });
-  fctx.body.push({ op: "local.tee", index: tmpExtern });
-
-  // Convert externref -> anyref
+  // Convert externref -> anyref for struct type testing
   fctx.body.push({ op: "any.convert_extern" } as Instr);
+
+  // Use multi-struct dispatch: try the primary struct type, then any
+  // alternative struct types that have the same field name.  This handles
+  // the case where the runtime object is a valid GC struct but of a
+  // different type than expected (e.g., {x:1,y:2} compiled as $__anon_0
+  // but accessed as $Point).  WasmGC structs are opaque to JS, so
+  // __extern_get cannot read their fields — we must use struct.get.
   const tmpAny = allocTempLocal(fctx, { kind: "anyref" });
   fctx.body.push({ op: "local.tee", index: tmpAny });
-
-  // Allocate result local to hold the field value from either path
   const resultLocal = allocTempLocal(fctx, resultType);
 
-  // ref.test returns 0 for null AND for type mismatch
   fctx.body.push({ op: "ref.test", typeIdx: structTypeIdx });
-  // Ensure all needed imports exist BEFORE building instruction arrays.
-  // addUnionImports has its own internal shift mechanism, so call it FIRST
-  // (before ensureLateImport, which uses the deferred-shift batch mechanism).
-  if (resultType.kind === "f64" || resultType.kind === "i32") {
-    addUnionImports(ctx);
-  }
-  // __extern_get for dynamic property access (uses deferred shift batch):
-  ensureLateImport(ctx, "__extern_get", [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
-  // Register property name as string constant (adds global import, not function import):
-  addStringConstantGlobal(ctx, propName);
-  // Now flush all pending function import shifts at once:
-  flushLateImportShifts(ctx, fctx);
 
-  // Resolve final indices AFTER all imports and shifts are done:
-  const strGlobalIdx = ctx.stringGlobalMap.get(propName);
-  const getIdxFinal = ctx.funcMap.get("__extern_get");
+  // Find alternative struct types with the same field name
+  const alternates = propName ? findAlternateStructsForField(ctx, propName, structTypeIdx) : [];
 
-  // Build the else branch: fall back to __extern_get or default for null
-  const elseBranch: Instr[] = [];
-
-  // Check if the original externref was null (truly null/undefined)
-  elseBranch.push({ op: "local.get", index: tmpExtern } as Instr);
-  elseBranch.push({ op: "ref.is_null" } as Instr);
-
-  // Prepare __extern_get fallback instructions
-  const externGetFallback: Instr[] = [];
-
-  if (getIdxFinal !== undefined && strGlobalIdx !== undefined) {
-    externGetFallback.push({ op: "local.get", index: tmpExtern } as Instr);
-    externGetFallback.push({ op: "global.get", index: strGlobalIdx } as Instr);
-    externGetFallback.push({ op: "call", funcIdx: getIdxFinal } as Instr);
-    // Coerce externref -> resultType (all imports already resolved above)
-    const coerce = coercionInstrs(ctx, { kind: "externref" }, resultType);
-    externGetFallback.push(...coerce);
-    externGetFallback.push({ op: "local.set", index: resultLocal } as Instr);
-  } else {
-    // Fallback: use default value if we can't set up __extern_get
-    externGetFallback.push(...defaultValueInstrs(resultType));
-    externGetFallback.push({ op: "local.set", index: resultLocal } as Instr);
-  }
-
-  elseBranch.push({
-    op: "if",
-    blockType: { kind: "empty" },
-    then: [
-      // Null externref - return default value
+  // Build the fallback chain: try alternates, then default
+  const buildFallbackChain = (altIdx: number): Instr[] => {
+    if (altIdx < alternates.length) {
+      const alt = alternates[altIdx]!;
+      const altCoerce = coercionInstrs(ctx, alt.fieldType, resultType);
+      return [
+        { op: "local.get", index: tmpAny } as Instr,
+        { op: "ref.test", typeIdx: alt.structTypeIdx } as Instr,
+        {
+          op: "if",
+          blockType: { kind: "empty" },
+          then: [
+            { op: "local.get", index: tmpAny } as Instr,
+            { op: "ref.cast", typeIdx: alt.structTypeIdx } as Instr,
+            { op: "struct.get", typeIdx: alt.structTypeIdx, fieldIdx: alt.fieldIdx } as Instr,
+            ...altCoerce,
+            { op: "local.set", index: resultLocal } as Instr,
+          ],
+          else: buildFallbackChain(altIdx + 1),
+        } as Instr,
+      ];
+    }
+    // No more alternates — return default value
+    return [
       ...defaultValueInstrs(resultType),
       { op: "local.set", index: resultLocal } as Instr,
-    ],
-    else: externGetFallback,
-  } as Instr);
+    ];
+  };
 
   fctx.body.push({
     op: "if",
     blockType: { kind: "empty" },
     then: [
-      // Cast succeeds - use struct.get
       { op: "local.get", index: tmpAny } as Instr,
       { op: "ref.cast", typeIdx: structTypeIdx } as Instr,
       { op: "struct.get", typeIdx: structTypeIdx, fieldIdx } as Instr,
       { op: "local.set", index: resultLocal } as Instr,
     ],
-    else: elseBranch,
+    else: buildFallbackChain(0),
   });
 
-  // Push result
   fctx.body.push({ op: "local.get", index: resultLocal });
-
-  releaseTempLocal(fctx, tmpExtern);
   releaseTempLocal(fctx, tmpAny);
   releaseTempLocal(fctx, resultLocal);
 }
@@ -18988,6 +19018,86 @@ function compilePropertyAccess(
           then: typeErrorThrowInstrs(ctx),
           else: [],
         });
+        // Multi-struct dispatch: the externref may actually be a WasmGC struct
+        // (converted via extern.convert_any).  JS __extern_get cannot read GC
+        // struct fields, so try struct.get first for all struct types that
+        // have a field matching propName.  Only fall back to __extern_get for
+        // genuine host-provided externref objects.
+        const structCandidates = findAlternateStructsForField(ctx, propName, -1);
+        if (structCandidates.length > 0) {
+          // Convert externref -> anyref for struct type testing
+          const tmpAnyExt = allocLocal(fctx, `__sd_any_${fctx.locals.length}`, { kind: "anyref" });
+          fctx.body.push({ op: "local.get", index: objTmp });
+          fctx.body.push({ op: "any.convert_extern" } as Instr);
+          fctx.body.push({ op: "local.set", index: tmpAnyExt });
+
+          const resultWasm = accessWasm.kind === "f64" || accessWasm.kind === "i32" ? accessWasm : { kind: "externref" as const };
+          const resultLocal = allocLocal(fctx, `__sd_res_${fctx.locals.length}`, resultWasm);
+          let matched = false;
+
+          // Build the __extern_get fallback instructions
+          const externGetFallback: Instr[] = [
+            { op: "local.get", index: objTmp } as Instr,
+          ];
+          addStringConstantGlobal(ctx, propName);
+          // We need to push the string constant for the __extern_get call
+          // Use global.get for the string constant
+          const strGlobalIdxExt = ctx.stringGlobalMap.get(propName);
+          if (strGlobalIdxExt !== undefined) {
+            externGetFallback.push({ op: "global.get", index: strGlobalIdxExt } as Instr);
+          } else {
+            externGetFallback.push({ op: "ref.null.extern" } as Instr);
+          }
+          externGetFallback.push({ op: "call", funcIdx: getIdx } as Instr);
+          if (resultWasm.kind === "f64" && unboxIdx !== undefined) {
+            externGetFallback.push({ op: "call", funcIdx: unboxIdx } as Instr);
+          } else if (resultWasm.kind === "i32" && unboxIdx !== undefined) {
+            externGetFallback.push({ op: "call", funcIdx: unboxIdx } as Instr);
+            externGetFallback.push({ op: "i32.trunc_sat_f64_s" } as unknown as Instr);
+          }
+          externGetFallback.push({ op: "local.set", index: resultLocal } as Instr);
+
+          // Build nested if/else chain for struct candidates
+          const buildStructDispatch = (idx: number): Instr[] => {
+            if (idx >= structCandidates.length) {
+              return externGetFallback;
+            }
+            const cand = structCandidates[idx]!;
+            // Build instructions to get the field value and coerce to result type
+            const getFieldInstrs: Instr[] = [
+              { op: "local.get", index: tmpAnyExt } as Instr,
+              { op: "ref.cast", typeIdx: cand.structTypeIdx } as Instr,
+              { op: "struct.get", typeIdx: cand.structTypeIdx, fieldIdx: cand.fieldIdx } as Instr,
+            ];
+            // Coerce field type to result type
+            const coerce = coercionInstrs(ctx, cand.fieldType, resultWasm);
+            getFieldInstrs.push(...coerce);
+            getFieldInstrs.push({ op: "local.set", index: resultLocal } as Instr);
+
+            return [
+              { op: "local.get", index: tmpAnyExt } as Instr,
+              { op: "ref.test", typeIdx: cand.structTypeIdx } as Instr,
+              {
+                op: "if",
+                blockType: { kind: "empty" },
+                then: getFieldInstrs,
+                else: buildStructDispatch(idx + 1),
+              } as Instr,
+            ];
+          };
+
+          fctx.body.push(...buildStructDispatch(0));
+          fctx.body.push({ op: "local.get", index: resultLocal });
+          if (accessWasm.kind === "f64") {
+            return { kind: "f64" };
+          }
+          if (accessWasm.kind === "i32") {
+            return { kind: "i32" };
+          }
+          return { kind: "externref" };
+        }
+
+        // No struct candidates — use __extern_get directly
         fctx.body.push({ op: "local.get", index: objTmp });
         addStringConstantGlobal(ctx, propName);
         compileStringLiteral(ctx, fctx, propName);
