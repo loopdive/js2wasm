@@ -215,6 +215,27 @@ export function test262Plugin(): Plugin {
       server.middlewares.use((req, res, next) => {
         const url = new URL(req.url!, `http://${req.headers.host}`);
 
+        // Serve static files from project root (benchmarks/, test262/)
+        if (url.pathname.startsWith("/benchmarks/") || url.pathname.startsWith("/test262/")) {
+          const filePath = normalize(join(projectRoot, url.pathname));
+          if (!filePath.startsWith(projectRoot)) {
+            res.statusCode = 403;
+            res.end("Forbidden");
+            return;
+          }
+          if (existsSync(filePath) && statSync(filePath).isFile()) {
+            const ext = filePath.split(".").pop() ?? "";
+            const mimeTypes: Record<string, string> = {
+              html: "text/html", json: "application/json", jsonl: "application/x-ndjson",
+              js: "text/javascript", css: "text/css", wasm: "application/wasm",
+              map: "application/json", ts: "text/plain", md: "text/plain",
+            };
+            res.setHeader("Content-Type", mimeTypes[ext] ?? "application/octet-stream");
+            res.end(readFileSync(filePath));
+            return;
+          }
+        }
+
         if (url.pathname === "/api/test262-index") {
           const index = getIndex();
           res.setHeader("Content-Type", "application/json");
