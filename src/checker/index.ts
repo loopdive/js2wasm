@@ -1,7 +1,4 @@
 import ts from "typescript";
-import { dirname, join } from "path";
-import { createRequire } from "module";
-import { readFileSync } from "fs";
 // Custom type declarations not found in TS lib files
 // All lib types now loaded from the typescript package at runtime.
 // No custom lib imports needed — lib: ["es2021", "dom"] in compilerOptions
@@ -21,13 +18,22 @@ export interface TypedAST {
 let _tsLibDir: string | undefined;
 function getTsLibDir(): string {
   if (_tsLibDir === undefined) {
-    // Works in both CJS and ESM contexts
     try {
-      const req = typeof require !== "undefined" ? require : createRequire(import.meta.url);
+      // Lazy require — avoid top-level import of Node.js modules for browser compat
+      const { createRequire } = require("module");
+      const { dirname } = require("path");
+      const req =
+        typeof require !== "undefined"
+          ? require
+          : createRequire(import.meta.url);
       _tsLibDir = dirname(req.resolve("typescript/lib/lib.d.ts"));
     } catch {
-      // Fallback: use dirname of the main typescript entry point
-      _tsLibDir = dirname(require.resolve("typescript"));
+      try {
+        const { dirname } = require("path");
+        _tsLibDir = dirname(require.resolve("typescript"));
+      } catch {
+        _tsLibDir = "";
+      }
     }
   }
   return _tsLibDir;
@@ -39,9 +45,10 @@ function getTsLibDir(): string {
  */
 function readLibFile(name: string): string {
   try {
+    const { readFileSync } = require("fs");
+    const { join } = require("path");
     return readFileSync(join(getTsLibDir(), name), "utf-8");
   } catch {
-    // TODO: For browser playground, fetch from server or use vite ?raw imports
     return "";
   }
 }
@@ -107,12 +114,19 @@ function getLibSource(name: string): string | undefined {
 
 /** Check if a file name is a known lib file */
 function isKnownLibName(name: string): boolean {
-  return name === "lib.d.ts" || TS_LIB_NAMES.has(name) || (name.startsWith("lib.") && name.endsWith(".d.ts"));
+  return (
+    name === "lib.d.ts" ||
+    TS_LIB_NAMES.has(name) ||
+    (name.startsWith("lib.") && name.endsWith(".d.ts"))
+  );
 }
 
 /** Pre-parsed lib SourceFiles — cached to avoid re-parsing on every compile */
 const LIB_SOURCE_FILES = new Map<string, ts.SourceFile>();
-function getLibSourceFile(name: string, languageVersion: ts.ScriptTarget): ts.SourceFile | undefined {
+function getLibSourceFile(
+  name: string,
+  languageVersion: ts.ScriptTarget,
+): ts.SourceFile | undefined {
   const content = getLibSource(name);
   if (content === undefined) return undefined;
   const key = `${name}:${languageVersion}`;
@@ -165,8 +179,7 @@ export function analyzeSource(
     getCanonicalFileName: (f) => f,
     useCaseSensitiveFileNames: () => true,
     getNewLine: () => "\n",
-    fileExists: (name) =>
-      name === fileName || isKnownLibName(name),
+    fileExists: (name) => name === fileName || isKnownLibName(name),
     readFile: () => undefined,
     getDirectories: () => [],
     directoryExists: () => true,
@@ -186,14 +199,12 @@ export function analyzeSource(
     compilerOptions.checkJs = true;
   }
 
-  const program = ts.createProgram(
-    [fileName],
-    compilerOptions,
-    compilerHost,
-  );
+  const program = ts.createProgram([fileName], compilerOptions, compilerHost);
 
   const syntacticDiagnostics = program.getSyntacticDiagnostics();
-  const semanticDiagnostics = analyzeOptions?.skipSemanticDiagnostics ? [] as ts.Diagnostic[] : program.getSemanticDiagnostics();
+  const semanticDiagnostics = analyzeOptions?.skipSemanticDiagnostics
+    ? ([] as ts.Diagnostic[])
+    : program.getSemanticDiagnostics();
   const diagnostics = [...syntacticDiagnostics, ...semanticDiagnostics];
 
   return {
@@ -332,7 +343,9 @@ export function analyzeMultiSource(
           resolved = normalizeFileName(containingDir + moduleName);
         } else {
           // Bare specifier: check the lookup map first, then fall back to normalizeFileName
-          resolved = bareSpecifierLookup.get(moduleName) ?? normalizeFileName(moduleName);
+          resolved =
+            bareSpecifierLookup.get(moduleName) ??
+            normalizeFileName(moduleName);
         }
         if (normalizedFiles.has(resolved)) {
           return {
