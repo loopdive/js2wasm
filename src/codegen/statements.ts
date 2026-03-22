@@ -787,6 +787,7 @@ function collectInstrs(
  * modified by `emitFn`.
  */
 function emitNullGuard(
+  ctx: CodegenContext,
   fctx: FunctionContext,
   srcLocal: number,
   isNullable: boolean,
@@ -796,7 +797,12 @@ function emitNullGuard(
   if (isNullable && guardInstrs.length > 0) {
     fctx.body.push({ op: "local.get", index: srcLocal });
     fctx.body.push({ op: "ref.is_null" } as Instr);
-    fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: guardInstrs });
+    // Throw TypeError on null (#728) instead of silently skipping
+    const nullBranch: Instr[] = [
+      { op: "ref.null.extern" } as Instr,
+      { op: "throw", tagIdx: ensureExnTag(ctx) } as Instr,
+    ];
+    fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: nullBranch, else: guardInstrs });
   } else {
     fctx.body.push(...guardInstrs);
   }
@@ -990,8 +996,8 @@ function compileObjectDestructuring(
   );
   fctx.body.push({ op: "local.set", index: tmpLocal });
 
-  // Null guard: if the source is nullable (ref_null), skip destructuring when null
-  emitNullGuard(fctx, tmpLocal, resultType.kind === "ref_null", () => {
+  // Null guard: throw TypeError if source is null (#728)
+  emitNullGuard(ctx, fctx, tmpLocal, resultType.kind === "ref_null", () => {
 
   // For each binding element, create a local and extract the field
   for (const element of pattern.elements) {
@@ -1034,7 +1040,7 @@ function compileObjectDestructuring(
         }
         const nestedFields = nestedStructName ? ctx.structFields.get(nestedStructName) : undefined;
         if (nestedFields) {
-          emitNullGuard(fctx, nestedTmp, nFieldType.kind === "ref_null", () => {
+          emitNullGuard(ctx, fctx, nestedTmp, nFieldType.kind === "ref_null", () => {
             for (const ne of (element.name as ts.ObjectBindingPattern).elements) {
               if (!ts.isBindingElement(ne)) continue;
               if (!ts.isIdentifier(ne.name)) continue;
@@ -1064,7 +1070,7 @@ function compileObjectDestructuring(
         const nestedArrDef = ctx.mod.types[nestedArrTypeIdx];
         if (nestedArrDef && nestedArrDef.kind === "array") {
           const nestedElemType = nestedArrDef.element;
-          emitNullGuard(fctx, nestedTmp, nFieldType.kind === "ref_null", () => {
+          emitNullGuard(ctx, fctx, nestedTmp, nFieldType.kind === "ref_null", () => {
             for (let j = 0; j < (element.name as ts.ArrayBindingPattern).elements.length; j++) {
               const ne = (element.name as ts.ArrayBindingPattern).elements[j]!;
               if (ts.isOmittedExpression(ne)) continue;
@@ -1168,7 +1174,7 @@ function compileExternrefObjectDestructuringDecl(
 
   // Null guard: skip destructuring if source is null
   const isNullable = resultType.kind === "externref" || resultType.kind === "ref_null";
-  emitNullGuard(fctx, tmpLocal, isNullable, () => {
+  emitNullGuard(ctx, fctx, tmpLocal, isNullable, () => {
 
   for (const element of pattern.elements) {
     if (!ts.isBindingElement(element)) continue;
@@ -1454,7 +1460,7 @@ function compileArrayDestructuring(
     // shorter than the pattern (e.g. `var [x] = []`) (#379)
     ensureBindingLocals(ctx, fctx, pattern);
 
-    emitNullGuard(fctx, tmpLocal, isNullableArr, () => {
+    emitNullGuard(ctx, fctx, tmpLocal, isNullableArr, () => {
       for (let i = 0; i < pattern.elements.length; i++) {
         const element = pattern.elements[i]!;
         if (ts.isOmittedExpression(element)) continue;
@@ -1498,7 +1504,7 @@ function compileArrayDestructuring(
   // Vec array destructuring (original path)
   const elemType = arrDef!.element;
 
-  emitNullGuard(fctx, tmpLocal, isNullableArr, () => {
+  emitNullGuard(ctx, fctx, tmpLocal, isNullableArr, () => {
   for (let i = 0; i < pattern.elements.length; i++) {
     const element = pattern.elements[i]!;
     if (ts.isOmittedExpression(element)) continue; // skip holes: [a, , c]
@@ -2846,7 +2852,7 @@ function compileForOfDestructuring(
     }
 
     // Null guard: collect field extractions for ref_null types
-    emitNullGuard(fctx, elemLocal, elemType.kind === "ref_null", () => {
+    emitNullGuard(ctx, fctx, elemLocal, elemType.kind === "ref_null", () => {
 
     for (const element of pattern.elements) {
       if (!ts.isBindingElement(element)) continue;
@@ -2957,7 +2963,7 @@ function compileForOfDestructuring(
       // Tuple destructuring: extract fields directly from the struct by index
       const tupleFields = (structDef as { fields: { name?: string; type: ValType }[] }).fields;
 
-      emitNullGuard(fctx, elemLocal, elemType.kind === "ref_null", () => {
+      emitNullGuard(ctx, fctx, elemLocal, elemType.kind === "ref_null", () => {
         for (let i = 0; i < pattern.elements.length; i++) {
           const element = pattern.elements[i]!;
           if (ts.isOmittedExpression(element)) continue;
@@ -3023,7 +3029,7 @@ function compileForOfDestructuring(
 
     const innerElemType = arrDef.element;
 
-    emitNullGuard(fctx, elemLocal, elemType.kind === "ref_null", () => {
+    emitNullGuard(ctx, fctx, elemLocal, elemType.kind === "ref_null", () => {
       for (let i = 0; i < pattern.elements.length; i++) {
         const element = pattern.elements[i]!;
         if (ts.isOmittedExpression(element)) continue;
