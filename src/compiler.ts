@@ -18,7 +18,7 @@ import { emitWat } from "./emit/wat.js";
 import { preprocessImports } from "./import-resolver.js";
 import type { CompileError, CompileOptions, CompileResult, ImportDescriptor, ImportIntent } from "./index.js";
 import { optimizeBinary } from "./optimize.js";
-import type { WasmModule, FuncTypeDef, ValType } from "./ir/types.js";
+import type { WasmModule, FuncTypeDef, ValType, Instr } from "./ir/types.js";
 import { generateCHeader, extractCHeaderExports } from "./emit/c-header.js";
 import type { CabiExportInfo, CabiParam, ParamDef } from "./codegen-linear/c-abi.js";
 import { mapParamsToCabi, mapResultToCabi, emitCabiWrappers, inferSemantic } from "./codegen-linear/c-abi.js";
@@ -1980,11 +1980,13 @@ function widenNonDefaultableTypes(mod: WasmModule): void {
     widenTypeDef(typeDef);
   }
 
-  // Widen function locals
+  // Widen function locals and block types in bodies
   for (const func of mod.functions) {
     for (const local of func.locals) {
       local.type = widenValType(local.type);
     }
+    // Widen block types (if/block/loop/try) in instruction bodies
+    widenBlockTypesInBody(func.body, widenValType);
   }
 
   // Widen global types
@@ -1997,5 +1999,32 @@ function widenNonDefaultableTypes(mod: WasmModule): void {
     if (imp.desc.kind === "global") {
       imp.desc.type = widenValType(imp.desc.type);
     }
+  }
+}
+
+/**
+ * Recursively walk an instruction body and widen block types (if/block/loop/try)
+ * from `ref` to `ref_null`, matching the widened function type signatures.
+ */
+function widenBlockTypesInBody(
+  body: Instr[],
+  widenValType: (t: ValType) => ValType,
+): void {
+  for (const instr of body) {
+    const a = instr as any;
+    // Widen block type if it's a val type with ref kind
+    if (a.blockType && a.blockType.kind === "val") {
+      a.blockType.type = widenValType(a.blockType.type);
+    }
+    // Recurse into nested instruction arrays
+    if (a.then) widenBlockTypesInBody(a.then, widenValType);
+    if (a.else) widenBlockTypesInBody(a.else, widenValType);
+    if (a.body && Array.isArray(a.body)) widenBlockTypesInBody(a.body, widenValType);
+    if (a.catches) {
+      for (const c of a.catches) {
+        if (c.body) widenBlockTypesInBody(c.body, widenValType);
+      }
+    }
+    if (a.catchAll) widenBlockTypesInBody(a.catchAll, widenValType);
   }
 }
