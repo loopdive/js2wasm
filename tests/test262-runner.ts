@@ -1735,7 +1735,7 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
   // (must happen before preamble cache lookup so the body is consistent)
   if (includes.includes("propertyHelper.js")) {
     if (new RegExp(`\\bverifyProperty\\b`).test(body)) {
-      body = transformVerifyPropertyCalls(body);
+      body = stripBalancedCall(body, "verifyProperty");
     }
     // Strip verifyCallableProperty, verifyPrimordialProperty, verifyPrimordialCallableProperty
     // — we cannot compile their full semantics (function name/length checks, descriptor introspection)
