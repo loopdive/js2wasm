@@ -19,12 +19,8 @@
  * compiler source is frozen for the duration of the run, even if the user
  * edits src/ in the main tree.
  */
-import { TEST_CATEGORIES, findTestFiles, runTest262File, shouldSkip, parseMeta, wrapTest, type TestResult, type TestTiming } from "../tests/test262-runner.js";
-import { join } from "path";
-import { writeFileSync, readFileSync, existsSync, openSync, closeSync, writeSync, unlinkSync, mkdirSync, copyFileSync, readdirSync, statSync } from "fs";
-import { execSync, fork } from "child_process";
-import { join, resolve } from "path";
-import { writeFileSync, appendFileSync, readFileSync, existsSync, openSync, closeSync, writeSync, unlinkSync, mkdirSync, copyFileSync, symlinkSync, readdirSync, rmdirSync } from "fs";
+import { join, resolve, basename } from "path";
+import { writeFileSync, appendFileSync, readFileSync, existsSync, openSync, closeSync, writeSync, unlinkSync, mkdirSync, copyFileSync, symlinkSync, readdirSync, rmdirSync, statSync } from "fs";
 import { execSync, fork, spawnSync } from "child_process";
 import { createHash } from "crypto";
 import { tmpdir } from "os";
@@ -316,8 +312,7 @@ function runBatch(batch: TestJob[], onResult?: (r: WorkerResult) => void): Promi
         const completed = new Set(results.map(r => r.file));
         for (const job of batch) {
           if (!completed.has(job.relPath)) {
-            emitResult({ file: job.relPath, category: job.category, status: "compile_error", error: "worker crashed" });
-            results.push({ file: job.relPath, category: job.category, status: "compile_error", error: `worker error: ${err.message}`.substring(0, 300) });
+            emitResult({ file: job.relPath, category: job.category, status: "compile_error", error: `worker error: ${err.message}`.substring(0, 300) });
           }
         }
         resolve(results);
@@ -338,7 +333,7 @@ function runBatch(batch: TestJob[], onResult?: (r: WorkerResult) => void): Promi
         const completed = new Set(results.map(r => r.file));
         for (const job of batch) {
           if (!completed.has(job.relPath)) {
-            results.push({ file: job.relPath, category: job.category, status: "compile_error", error: errorMsg });
+            emitResult({ file: job.relPath, category: job.category, status: "compile_error", error: errorMsg });
           }
         }
         resolve(results);
@@ -636,7 +631,7 @@ for (const [batchName, batchCats] of batches) {
 
         // Check persistent cache: (compiler + source) hash
         const wrapped = wrapTest(source, meta);
-        const srcHash = shortHash(wrapped);
+        const srcHash = shortHash(typeof wrapped === "string" ? wrapped : wrapped.source);
         const cacheKey = srcHash; // compiler hash already validated on load
         const cached = resultCache.get(cacheKey) || sourceHashCache.get(cacheKey);
         if (cached) {
@@ -666,7 +661,7 @@ for (const [batchName, batchCats] of batches) {
           const src = readFileSync(job.filePath, "utf-8");
           const meta = parseMeta(src);
           const wrapped = wrapTest(src, meta);
-          const hash = shortHash(wrapped);
+          const hash = shortHash(typeof wrapped === "string" ? wrapped : wrapped.source);
           const entry: CacheEntry = { status: r.status, error: r.error };
           sourceHashCache.set(hash, entry);
           resultCache.set(hash, entry);
