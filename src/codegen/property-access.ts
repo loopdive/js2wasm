@@ -110,7 +110,7 @@ export function emitNullGuardedStructGet(
   typeIdx: number,
   fieldIdx: number,
   propName?: string,
-  throwOnNull: boolean = true,
+  throwOnNull: boolean = false,
 ): void {
   // For result type in the if block, normalize ref to ref_null so the null branch is valid
   const resultType: ValType = fieldType.kind === "ref"
@@ -217,7 +217,7 @@ export function emitExternrefToStructGet(
   structTypeIdx: number,
   fieldIdx: number,
   propName?: string,
-  throwOnNull: boolean = true,
+  throwOnNull: boolean = false,
 ): void {
   // For result type, normalize ref to ref_null so the null branch is valid
   const resultType: ValType = fieldType.kind === "ref"
