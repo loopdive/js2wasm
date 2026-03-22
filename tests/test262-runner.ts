@@ -1229,7 +1229,6 @@ function buildPreamble(
 ): string {
   let p = `let __fail: number = 0;
 let __assert_count: number = 1;
-export let __caught_exception: any = null;
 
 function isSameValue(a: number, b: number): number {
   if (a === b) { return 1; }
@@ -1697,7 +1696,7 @@ export function test(): number {
   const postBody = `
   } catch (e) {
     if (!__fail) __fail = -1;
-    __caught_exception = e;
+    throw e;
   }
   if (__fail) { return __fail; }
   return 1;

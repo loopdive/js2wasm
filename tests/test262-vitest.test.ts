@@ -311,17 +311,31 @@ function resolveWasmErrorLine(
 
   // V8 source-mapped format: "at funcName (test.ts:LINE:COL)" or "at test.ts:LINE:COL"
   // When wasm is loaded via URL with a source map, V8 resolves locations automatically.
-  const mappedMatch = stack.match(/at\s+(?:\w+\s+)?\(?(?:.*?\.ts):(\d+):(\d+)\)?/);
-  if (mappedMatch) {
-    const rawLine = parseInt(mappedMatch[1], 10);
+  // V8 source-mapped stacks may have multiple frames — find the first one in the test body
+  const frameRegex = /at\s+(?:(\w+)\s+)?\(?(?:.*?\.ts):(\d+):(\d+)\)?/g;
+  let bestMatch: { funcName: string; rawLine: number; adjLine: number } | null = null;
+  let match: RegExpExecArray | null;
+  while ((match = frameRegex.exec(stack)) !== null) {
+    const funcName = match[1] ?? "";
+    const rawLine = parseInt(match[2], 10);
     const adjLine = rawLine - bodyLineOffset;
-    const srcLine = adjLine > 0 ? adjLine : rawLine;
-    const lines = source.split("\n");
-    if (srcLine >= 1 && srcLine <= lines.length) {
-      const ctx = lines[srcLine - 1]?.trim().substring(0, 80) || "(empty line)";
-      return `${msg} [at L${srcLine}: ${ctx}]`;
+    // Prefer the first frame that maps to the test body (adjLine > 0 and within source)
+    if (adjLine > 0 && adjLine <= source.split("\n").length) {
+      bestMatch = { funcName, rawLine, adjLine };
+      break;
     }
-    return `${msg} [at wrapped L${rawLine}]`;
+    // Keep the first frame as fallback
+    if (!bestMatch) bestMatch = { funcName, rawLine, adjLine };
+  }
+  if (bestMatch) {
+    const lines = source.split("\n");
+    if (bestMatch.adjLine > 0 && bestMatch.adjLine <= lines.length) {
+      const ctx = lines[bestMatch.adjLine - 1]?.trim().substring(0, 80) || "(empty line)";
+      return `${msg} [at L${bestMatch.adjLine}: ${ctx}]`;
+    }
+    // Line is in preamble — show function name if available
+    const where = bestMatch.funcName ? `in ${bestMatch.funcName}()` : "in test wrapper";
+    return `${msg} [${where}]`;
   }
 
   // Try to extract wasm byte offset from stack trace
@@ -503,22 +517,9 @@ for (const category of TEST_CATEGORIES) {
             if (ret === 1) {
               recordResult(relPath, category, "pass");
             } else if (ret === -1) {
-              // Exception caught in test body — try to read __caught_exception export
-              let exInfo = "unknown exception";
-              try {
-                const caughtGlobal = (instance.exports as any).__caught_exception;
-                // WebAssembly.Global wraps externref — .value gives the JS object
-                const ex = caughtGlobal instanceof WebAssembly.Global ? caughtGlobal.value : caughtGlobal;
-                if (ex != null) {
-                  const exErr = ex instanceof Error ? ex : (typeof ex === "object" && ex.message) ? ex : null;
-                  if (exErr) {
-                    exInfo = resolveWasmErrorLine(exErr, compileResult.result.sourceMap, source, bodyLineOffset);
-                  } else {
-                    exInfo = String(ex);
-                  }
-                }
-              } catch { /* export doesn't exist or can't be read */ }
-              recordResult(relPath, category, "fail", `returned -1 — ${exInfo}`);
+              // Exception was thrown and re-thrown by wrapper — should be caught
+              // by execErr below. If we get here, the throw didn't propagate.
+              recordResult(relPath, category, "fail", `returned -1 — exception in test body`);
             } else {
               const assertInfo = findNthAssert(source, ret);
               recordResult(relPath, category, "fail", `returned ${ret} — ${assertInfo}`);
