@@ -1698,6 +1698,7 @@ export function test(): number {
   const postBody = `
   } catch (e) {
     if (!__fail) __fail = -1;
+    throw e;
   }
   if (__fail) { return __fail; }
   return 1;
