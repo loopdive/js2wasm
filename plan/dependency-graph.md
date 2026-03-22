@@ -449,7 +449,7 @@ Updated 2026-03-22: 48,102 tests -- 14,720 pass, 27,938 fail, 4,443 CE, 1,001 sk
 | 433 | Equality operators mixed type i32/f64 mismatch | 10 CE | **Ready** (medium) |
 | 434 | BigInt remaining failures across operators | 27 fail | **Ready** (low) |
 | 435 | Logical/conditional must preserve object identity | 16 fail | **Ready** (medium) |
-| **726** | **TypeError regression: ref.cast guard returns ref.null for valid objects** | **1,948 regress** | **Ready** (CRITICAL, depends #695+#706) |
+| **726** | **TypeError regression: ref.cast guard returns ref.null for valid objects** | **1,948 regress** | **Done** (multi-struct dispatch) |
 | **727** | **Sub-classify assertion failures (wrong values)** | **11,480 fail** | **Ready** (high, analysis only) |
 | **728** | **Null pointer dereference should throw TypeError, not trap** | **1,604 fail** | **Ready** (high, depends #695) |
 

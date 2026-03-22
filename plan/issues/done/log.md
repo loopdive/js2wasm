@@ -441,5 +441,6 @@
 | 720 | 2026-03-21 | IIFE return type mismatch causes local.set type error (39 CE)                                     | Session    |
 | 698 | 2026-03-21 | Call type mismatch residual (1,044 CE) -- property access fallback, setter coercion                | Session    |
 | 727 | 2026-03-22 | Sub-classify assertion failures (11,480 tests) -- created 11 new issues #729-#739                  | Session    |
+| 726 | 2026-03-22 | TypeError regression: ref.cast guard returns ref.null for valid objects -- multi-struct dispatch    | Session    |
 
 
