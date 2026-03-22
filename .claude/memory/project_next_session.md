@@ -1,49 +1,49 @@
 ---
 name: project_next_session
-description: 2026-03-21 session state — 19 issues done, pass regression to fix, HTTP server for source maps next
+description: 2026-03-22 session state — expressions.ts refactored, 4 regressions to fix
 type: project
 ---
 
-## Current state (end of 2026-03-21 session)
+## Current state (end of 2026-03-22 session)
 
-**Test262**: 14,731 pass / 48,097 total (30.6%), 4,712 CE, 27,655 fail, 999 skip
-**Baseline was**: 15,232 pass — net -501 pass regression from #695/#706 interaction
-**CE improved**: 5,496 → 4,712 (-784)
+**Test262**: 14,720 pass / 48,102 total, 4,443 CE (from earlier run — needs rerun after refactoring)
+**Equivalence tests**: 1,055/1,097 (4 regressions from property-access extraction)
 
-**Git**: main branch, ~30 commits ahead of origin. All changes committed.
+**Git**: main branch, pushed to origin.
 
-## Session accomplishments (19 issues)
-#695 (TypeError throws), #702 (null derefs), #703 (negative test validation),
-#704 (immutable global), #705 (stack underflow), #706 (illegal cast guards),
-#707 (Date class), #708 (func index OOB), #709 (array OOB), #710 (unreachable),
-#711 (new Function), #712 (import.meta), #713 (destructuring), #715 (crash fix),
-#716/#718 (null-guard regression), #717 (import stub regression),
-#719 (stack-balance), #720 (IIFE returnType), #721 (early errors),
-#722 (hasOwnProperty), #723 (TDZ)
+## Session accomplishments
 
-#697 and #698 were reverted — caused regressions, need rework.
+### Refactoring (#688) — expressions.ts split into 8 modules
+- shared.ts (173 lines) — registration pattern for compileExpression
+- array-methods.ts (3,247) — all array prototype methods
+- string-ops.ts (1,494) — string compilation + native string methods
+- binary-ops.ts (1,617) — binary expression compilation
+- closures.ts (1,621) — arrow functions, captures, funcref
+- typeof-delete.ts (773) — typeof, delete, instanceof, regexp
+- object-ops.ts (1,374) — Object.defineProperty, keys/values, hasOwnProperty
+- literals.ts (1,293) — object/array/tuple/symbol literals
+- property-access.ts (1,636) — property/element access, null guards
+
+**expressions.ts: 27,190 → ~14,150 lines (48% reduction)**
+
+### Issues filed
+- #740 — Remove 2.1MB lib copies (read from typescript package)
+- #741 — Split index.ts (13,282 lines)
+- #742 — Extract calls.ts (retry with table-driven dispatch)
+
+### Key learnings
+- esbuild silently treats undefined imports as no-ops — always verify call sites
+- Circular deps: use shared.ts registration pattern
+- Always clean worktrees BEFORE running vitest (they intercept module resolution)
+- Always `cd /workspace` after worktree removal (shell CWD breaks)
+- Never do parallel extractions on the same file
+
+## 4 regressions to fix
+Array element prefix/postfix increment: `emitBoundsCheckedArrayGet` duplicate in property-access.ts vs array-methods.ts. The property-access.ts `compileElementAccessBody` may reference a different bounds check path.
 
 ## Priority for next session
-
-### 1. Fix pass regression (-501)
-#695/#706 interaction: ref.cast guard returns ref.null → property access gets default instead of real value. Trace specific failing tests.
-
-### 2. Implement #725 — Local HTTP server for wasm source maps
-Key to line numbers in ALL runtime errors (13k tests). Serve wasm from `test262-out/` mirroring input structure. V8 resolves source maps from URL. Integrates with playground (#644).
-
-### 3. Rework #697/#698
-Struct type widening and call type mismatch — caused regressions, need careful approach.
-
-### 4. Continue issue work
-- #721 (partially done) — more negative test early errors
-- #724 — Object.defineProperty TypeError
-- #714 — conformance progress graph
-
-## Key architecture
-- Test runner: `tests/test262-vitest.test.ts` — pool + source maps + error reporting
-- Pool: `scripts/compiler-pool.ts` (4 async workers, skipSemanticDiagnostics, sourceMap)
-- Worker: `scripts/compiler-worker.mjs` (loads compiler-bundle.mjs)
-- Bundle rebuild: `npx esbuild src/index.ts --bundle --platform=node --format=esm --outfile=scripts/compiler-bundle.mjs --external:typescript`
-- ALWAYS run test262 in a worktree, not main wc
-- ALWAYS commit runner changes before launching agents
-- ALWAYS check worktree diffs before cleanup
+1. Fix 4 array increment regressions
+2. #740 — Remove lib copies (agent completed, needs cherry-pick)
+3. #741 — Split index.ts (ensureNativeStringHelpers = 2,559 lines)
+4. #742 — Extract calls.ts (~6,000 lines remaining in expressions.ts)
+5. Run full test262 with refactored code
