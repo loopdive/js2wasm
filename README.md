@@ -208,6 +208,29 @@ Returns only the WAT text (debug).
 _No benchmark data available. Run benchmarks to populate this section._
 <!-- AUTO:BENCHMARKS:END -->
 
+## JS Host Dependencies
+
+Compiled modules currently require a JS host to provide certain imports. The goal is pure Wasm with no JS dependency (see [#682](plan/issues/ready/682.md)), but these host imports remain:
+
+| Category | Imports | Status | Tracking |
+|----------|---------|--------|----------|
+| **String ops** | `wasm:js-string` (concat, length, equals, substring, charCodeAt) | Legacy — migrate to native i16 arrays | `--nativeStrings` flag |
+| **Property access** | `__extern_get`, `__extern_set`, `__extern_length` | Fallback for untyped objects | — |
+| **Math** | `Math.*` methods (sin, cos, sqrt, etc.) | Wasm has no math stdlib | — |
+| **Console** | `console.log`, `console.warn`, `console.error` | I/O requires host | WASI `fd_write` alt |
+| **RegExp** | `RegExp_new`, `.test()`, `.exec()` | Needs Wasm regex engine | [#682](plan/issues/ready/682.md) |
+| **Generators** | `__create_generator`, `__gen_next`, etc. | Host-delegated iterator protocol | [#681](plan/issues/ready/681.md) |
+| **Iterators** | `__iterator`, `__iterator_next`, `__iterator_done`, `__iterator_value` | Host-delegated iteration | [#681](plan/issues/ready/681.md) |
+| **Promises** | `Promise_all`, `Promise_race`, `Promise_new`, `Promise_then`, etc. | Async requires host event loop | — |
+| **JSON** | `JSON_stringify`, `JSON_parse` | Needs Wasm JSON parser | — |
+| **typeof** | `__typeof` | Runtime type tag for externref | — |
+| **parseInt/parseFloat** | `parseInt`, `parseFloat` | String→number parsing | — |
+| **Extern classes** | `Map_new`, `Set_new`, `RegExp_new`, `Date_new`, etc. | Constructor delegation | Per-class |
+| **Boxing** | `__box_number` | f64→externref conversion | — |
+
+Use `--target wasi` to emit WASI imports (`fd_write`, `proc_exit`) instead of JS host for I/O.
+Use `--nativeStrings` to use WasmGC i16 arrays instead of `wasm:js-string`.
+
 ## Architecture
 
 ```
