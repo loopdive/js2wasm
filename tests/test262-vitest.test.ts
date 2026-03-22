@@ -431,7 +431,23 @@ for (const category of TEST_CATEGORIES) {
           } catch {
             recordResult(relPath, category, "pass"); return;
           }
-          recordResult(relPath, category, "fail", `expected ${meta.negative!.phase} error but compiled`);
+          // Find the likely offending line — strip metadata, find first non-comment code
+          const body = source.replace(/\/\*---[\s\S]*?---\*\//, "").replace(/\/\/.*$/gm, "");
+          const srcLines = source.split("\n");
+          let offendingLine = 0;
+          let offendingCtx = "";
+          for (let i = 0; i < srcLines.length; i++) {
+            const trimmed = srcLines[i].trim();
+            if (trimmed && !trimmed.startsWith("//") && !trimmed.startsWith("/*") && !trimmed.startsWith("*")) {
+              offendingLine = i + 1;
+              offendingCtx = trimmed.substring(0, 80);
+              break;
+            }
+          }
+          const info = offendingLine
+            ? `expected ${meta.negative!.phase} ${meta.negative!.type} but compiled [at L${offendingLine}: ${offendingCtx}]`
+            : `expected ${meta.negative!.phase} ${meta.negative!.type} but compiled`;
+          recordResult(relPath, category, "fail", info);
           return;
         }
 
@@ -516,23 +532,53 @@ for (const category of TEST_CATEGORIES) {
             return;
           }
         } catch (instantiateErr: any) {
-          // Wasm validation errors — source map lookup doesn't work here
-          // (byte offset is validation position, not execution position).
-          // Extract function name and find it in source instead.
+          // Wasm validation errors — extract function name + byte offset
           const msg = instantiateErr.message ?? String(instantiateErr);
           const funcMatch = msg.match(/Compiling function #\d+:"(\w+)" failed/);
+          const offsetMatch = msg.match(/@\+(\d+)/);
           let enriched = msg;
-          if (funcMatch && funcMatch[1] !== "test") {
+
+          if (funcMatch) {
             const fname = funcMatch[1];
             const lines = source.split("\n");
-            for (let i = 0; i < lines.length; i++) {
-              if (lines[i].includes(`function ${fname}`) || lines[i].includes(`${fname}(`)) {
-                const ctx = lines[i].trim().substring(0, 80);
-                enriched = `${msg} [in ${fname}() at L${i + 1}: ${ctx}]`;
-                break;
+            let found = false;
+
+            // Try exact function name match in source
+            if (fname !== "test") {
+              for (let i = 0; i < lines.length; i++) {
+                if (lines[i].includes(`function ${fname}`) || lines[i].includes(`${fname}(`)) {
+                  const ctx = lines[i].trim().substring(0, 80);
+                  enriched = `${msg} [in ${fname}() at L${i + 1}: ${ctx}]`;
+                  found = true;
+                  break;
+                }
               }
             }
-            if (enriched === msg) enriched = `${msg} [in ${fname}()]`;
+
+            // For compiler-generated names (__closure_N, __cb_N, __iife_N),
+            // find the Nth arrow function / closure in source
+            if (!found && /^__(?:closure|cb|iife|anon)_\d+$/.test(fname)) {
+              const idx = parseInt(fname.split("_").pop()!, 10);
+              let closureCount = 0;
+              for (let i = 0; i < lines.length; i++) {
+                if (/=>|function\s*\(/.test(lines[i])) {
+                  if (closureCount === idx) {
+                    const ctx = lines[i].trim().substring(0, 80);
+                    enriched = `${msg} [closure #${idx} at L${i + 1}: ${ctx}]`;
+                    found = true;
+                    break;
+                  }
+                  closureCount++;
+                }
+              }
+            }
+
+            // Include wasm byte offset if available
+            if (!found && offsetMatch) {
+              enriched = `${msg} [in ${fname}() @+${offsetMatch[1]}]`;
+            } else if (!found) {
+              enriched = `${msg} [in ${fname}()]`;
+            }
           }
           recordResult(relPath, category, "compile_error", enriched);
           return;
