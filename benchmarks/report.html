@@ -534,14 +534,17 @@
       // Returns a placeholder div that will be filled with source context when ready
       function fetchSourceLines(filePath, errText) {
         const placeholder = el("div", { className: "src-placeholder" });
-        const lineMatch = errText.match(/L(\d+):(\d+)\s/) ||
-          errText.match(/\[at L(\d+):/) ||
-          errText.match(/at L(\d+):/);
+        // Extract line number from various error formats
+        const lineMatch = errText.match(/L(\d+):(\d+)\s/) ||       // L27:22 (compiler errors)
+          errText.match(/at L(\d+):/) ||                            // [in fn() at L10: code] or [at L10: code]
+          errText.match(/at L(\d+)[^:]/) ||                         // [at wrapped L430]
+          errText.match(/assert #\d+ at L(\d+):/);                  // assert #1 at L10: code
+        // Extract assert text for source search (fallback when no line number)
         const assertMatch =
           !lineMatch &&
-          (errText.match(/first assert:\s*(.+)/) ||
-            errText.match(/assert #\d+ at L\d+:\s*(.+)/) ||
-            errText.match(/assert #\d+:\s*(.+)/));
+          (errText.match(/assert #\d+ at L\d+:\s*(.+)/) ||
+            errText.match(/assert #\d+:\s*(.+)/) ||
+            errText.match(/first assert:\s*(.+)/));
         const searchText = assertMatch
           ? assertMatch[1].trim().substring(0, 60)
           : null;
