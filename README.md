@@ -214,7 +214,7 @@ Compiled modules currently require a JS host to provide certain imports. The goa
 
 | Category | Imports | Status | Tracking |
 |----------|---------|--------|----------|
-| **String ops** | `wasm:js-string` or native i16 arrays | Two modes: JS host strings or standalone WasmGC arrays | `--nativeStrings` flag |
+| **String ops** | `wasm:js-string`, native i16 arrays, or UTF-8 | Three modes: JS host strings, WasmGC i16 arrays (standalone), or UTF-8 i8 arrays (Component Model) | `--nativeStrings` flag |
 | **Property access** | `__extern_get`, `__extern_set`, `__extern_length` | Fallback for untyped objects | — |
 | **Math** | `Math.*` methods (sin, cos, sqrt, etc.) | Wasm has no math stdlib | — |
 | **Console** | `console.log`, `console.warn`, `console.error` | I/O requires host | WASI `fd_write` alt |
