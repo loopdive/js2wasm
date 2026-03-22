@@ -535,7 +535,8 @@
       function fetchSourceLines(filePath, errText) {
         const placeholder = el("div", { className: "src-placeholder" });
         const lineMatch = errText.match(/L(\d+):(\d+)\s/) ||
-          errText.match(/\[at L(\d+):/);
+          errText.match(/\[at L(\d+):/) ||
+          errText.match(/at L(\d+):/);
         const assertMatch =
           !lineMatch &&
           (errText.match(/first assert:\s*(.+)/) ||
