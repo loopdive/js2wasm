@@ -1201,6 +1201,146 @@ function stripBalancedCall(source: string, name: string): string {
 }
 
 /**
+ * Transform `verifyProperty(obj, name, { value: X, ... })` calls into
+ * `assert_sameValue(obj[name], X)` when a `value:` key is present in the
+ * descriptor literal.  Calls without a `value:` are stripped entirely
+ * (we cannot check writable/enumerable/configurable in Wasm).
+ *
+ * Also strips `verifyCallableProperty(...)` and
+ * `verifyPrimordialProperty(...)` / `verifyPrimordialCallableProperty(...)`
+ * calls since we cannot compile their full semantics.
+ */
+function transformVerifyPropertyCalls(source: string): string {
+  const pattern = /\bverifyProperty\s*\(/g;
+  let result = source;
+  // Collect replacements (from end to start so indices stay valid)
+  const replacements: { start: number; end: number; replacement: string }[] = [];
+  let match;
+  while ((match = pattern.exec(result)) !== null) {
+    const callStart = match.index;
+    const argsStart = match.index + match[0].length; // right after '('
+    // Find balanced closing paren
+    let depth = 1;
+    let i = argsStart;
+    for (; i < result.length; i++) {
+      if (result[i] === "(") depth++;
+      else if (result[i] === ")") {
+        depth--;
+        if (depth === 0) break;
+      }
+    }
+    if (depth !== 0) continue; // unbalanced — skip
+    const argsStr = result.slice(argsStart, i);
+    // Include trailing semicolon, whitespace, newline
+    let end = i + 1;
+    while (end < result.length && (result[end] === ";" || result[end] === " " || result[end] === "\t")) end++;
+    if (end < result.length && result[end] === "\n") end++;
+
+    // Try to extract obj, name, and value from the descriptor literal.
+    // We split the args on a top-level comma to get the first two args,
+    // then look for `value:` in the descriptor object.
+    const topLevelCommas = findTopLevelCommas(argsStr);
+    if (topLevelCommas.length < 2) {
+      // Not enough arguments — just strip
+      replacements.push({ start: callStart, end, replacement: "" });
+      continue;
+    }
+    const objExpr = argsStr.slice(0, topLevelCommas[0]).trim();
+    const nameExpr = argsStr.slice(topLevelCommas[0] + 1, topLevelCommas[1]).trim();
+    // The rest is the descriptor (and optional options arg)
+    const descPart = topLevelCommas.length > 2
+      ? argsStr.slice(topLevelCommas[1] + 1, topLevelCommas[2]).trim()
+      : argsStr.slice(topLevelCommas[1] + 1).trim();
+
+    // Extract `value: <expr>` from the descriptor object literal
+    const valueExpr = extractDescriptorValue(descPart);
+    if (valueExpr !== null) {
+      // Emit an assertion: assert_sameValue(obj[name], value)
+      // We need to handle both string literal keys and computed keys
+      let accessExpr: string;
+      if (/^"[^"]*"$/.test(nameExpr) || /^'[^']*'$/.test(nameExpr)) {
+        const key = nameExpr.slice(1, -1);
+        // Use bracket notation for numeric keys or keys with special chars
+        if (/^\d+$/.test(key) || /[^a-zA-Z0-9_$]/.test(key)) {
+          accessExpr = `${objExpr}[${nameExpr}]`;
+        } else {
+          accessExpr = `${objExpr}.${key}`;
+        }
+      } else {
+        accessExpr = `${objExpr}[${nameExpr}]`;
+      }
+      // Determine assertion type based on value expression
+      const replacement = `assert_sameValue(${accessExpr}, ${valueExpr});\n`;
+      replacements.push({ start: callStart, end, replacement });
+    } else {
+      // No value to check — strip the call
+      replacements.push({ start: callStart, end, replacement: "" });
+    }
+  }
+  // Apply replacements from end to start
+  for (let j = replacements.length - 1; j >= 0; j--) {
+    const r = replacements[j];
+    result = result.slice(0, r.start) + r.replacement + result.slice(r.end);
+  }
+  return result;
+}
+
+/** Find indices of top-level commas in an args string (respecting parens, braces, brackets). */
+function findTopLevelCommas(s: string): number[] {
+  const commas: number[] = [];
+  let depth = 0;
+  let inString: string | null = null;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (inString) {
+      if (ch === "\\" && i + 1 < s.length) { i++; continue; }
+      if (ch === inString) inString = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") { inString = ch; continue; }
+    if (ch === "(" || ch === "{" || ch === "[") { depth++; continue; }
+    if (ch === ")" || ch === "}" || ch === "]") { depth--; continue; }
+    if (ch === "," && depth === 0) commas.push(i);
+  }
+  return commas;
+}
+
+/**
+ * Extract the expression for `value:` from a descriptor object literal string
+ * like `{ value: 1, writable: true, ... }`.
+ * Returns null if no `value:` key is found.
+ */
+function extractDescriptorValue(descStr: string): string | null {
+  // Match `value:` (possibly preceded by `{` or `,` and whitespace)
+  const valueMatch = descStr.match(/\bvalue\s*:\s*/);
+  if (!valueMatch) return null;
+  const exprStart = valueMatch.index! + valueMatch[0].length;
+  // Read the expression until we hit a top-level comma or closing brace
+  let depth = 0;
+  let inString: string | null = null;
+  let i = exprStart;
+  for (; i < descStr.length; i++) {
+    const ch = descStr[i];
+    if (inString) {
+      if (ch === "\\" && i + 1 < descStr.length) { i++; continue; }
+      if (ch === inString) inString = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") { inString = ch; continue; }
+    if (ch === "(" || ch === "{" || ch === "[") { depth++; continue; }
+    if (ch === ")" || ch === "]") { depth--; continue; }
+    if (ch === "}") {
+      if (depth === 0) break;
+      depth--;
+      continue;
+    }
+    if (ch === "," && depth === 0) break;
+  }
+  const expr = descStr.slice(exprStart, i).trim();
+  return expr.length > 0 ? expr : null;
+}
+
+/**
  * Wrap a test262 test into a compilable TS module.
  *
  * Strategy: provide a shim for assert.sameValue that traps on mismatch.
@@ -1327,6 +1467,10 @@ function assert_compareArray(actual: number[], expected: number[]): void {
   }
 
   if (needsPropertyHelper) {
+    // verifyProperty calls are transformed into assert_sameValue at the source
+    // level (see transformVerifyPropertyCalls), so no stub is needed for it.
+    // The deprecated helpers below are stubs — we cannot check
+    // writable/enumerable/configurable in our Wasm runtime.
     p += `
 function verifyEnumerable(obj: any, name: any): void {}
 function verifyNotEnumerable(obj: any, name: any): void {}
@@ -1334,7 +1478,9 @@ function verifyWritable(obj: any, name: any, val?: any): void {}
 function verifyNotWritable(obj: any, name: any, val?: any): void {}
 function verifyConfigurable(obj: any, name: any): void {}
 function verifyNotConfigurable(obj: any, name: any): void {}
-function verifyEqualTo(obj: any, name: any, val?: any): void {}
+function verifyEqualTo(obj: any, name: any, val: any): void {
+  assert_sameValue(obj[name], val);
+}
 function verifyNotEqualTo(obj: any, name: any, val?: any): void {}
 function verifyCallableProperty(a: any, b: any, c?: any, d?: any, e?: any, f?: any): void {}
 function verifyPrimordialProperty(a: any, b: any, c?: any, d?: any): void {}
@@ -1580,7 +1726,14 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
   // (must happen before preamble cache lookup so the body is consistent)
   if (includes.includes("propertyHelper.js")) {
     if (new RegExp(`\\bverifyProperty\\b`).test(body)) {
-      body = stripBalancedCall(body, "verifyProperty");
+      body = transformVerifyPropertyCalls(body);
+    }
+    // Strip verifyCallableProperty, verifyPrimordialProperty, verifyPrimordialCallableProperty
+    // — we cannot compile their full semantics (function name/length checks, descriptor introspection)
+    for (const fn of ["verifyCallableProperty", "verifyPrimordialProperty", "verifyPrimordialCallableProperty"]) {
+      if (new RegExp(`\\b${fn}\\b`).test(body)) {
+        body = stripBalancedCall(body, fn);
+      }
     }
   }
 
