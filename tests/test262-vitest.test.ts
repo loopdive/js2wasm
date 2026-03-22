@@ -523,7 +523,29 @@ for (const category of TEST_CATEGORIES) {
             if (isRuntimeNegative) {
               recordResult(relPath, category, "pass");
             } else {
-              recordResult(relPath, category, "fail", resolveWasmErrorLine(execErr, compileResult.result.sourceMap, source, bodyLineOffset));
+              // WebAssembly.Exception from our throw $tag — extract payload
+              let errInfo: string;
+              if (execErr instanceof WebAssembly.Exception) {
+                // Our exception tag carries one externref payload
+                // Try to get it via getArg if the tag is available
+                let payload: any = null;
+                try {
+                  const tag = (instance.exports as any).__exn_tag ?? (instance.exports as any).__tag;
+                  if (tag) payload = execErr.getArg(tag, 0);
+                } catch {}
+                if (payload instanceof Error) {
+                  errInfo = resolveWasmErrorLine(payload, compileResult.result.sourceMap, source, bodyLineOffset);
+                } else {
+                  // Payload is null (from typeErrorThrowInstrs) — it's a TypeError on null access
+                  const desc = meta.description?.substring(0, 100) ?? "";
+                  errInfo = `TypeError (null/undefined access)${desc ? `: ${desc}` : ""}`;
+                }
+              } else if (execErr instanceof Error) {
+                errInfo = resolveWasmErrorLine(execErr, compileResult.result.sourceMap, source, bodyLineOffset);
+              } else {
+                errInfo = String(execErr);
+              }
+              recordResult(relPath, category, "fail", errInfo);
             }
             return;
           }
