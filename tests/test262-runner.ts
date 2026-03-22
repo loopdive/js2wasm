@@ -36,7 +36,16 @@ export function parseMeta(source: string): Test262Meta {
 
   // Simple YAML-ish parser — enough for test262 metadata
   const descMatch = yaml.match(/^description:\s*(.+)$/m);
-  if (descMatch) meta.description = descMatch[1]!.trim();
+  if (descMatch) {
+    const raw = descMatch[1]!.trim();
+    if (raw === ">" || raw === "|") {
+      // YAML block scalar — grab indented lines that follow
+      const blockMatch = yaml.match(/^description:\s*[>|]\s*\n((?:[ \t]+.+\n?)+)/m);
+      meta.description = blockMatch ? blockMatch[1]!.replace(/\n\s*/g, " ").trim() : "";
+    } else {
+      meta.description = raw;
+    }
+  }
 
   const infoMatch = yaml.match(/^info:\s*\|?\s*\n([\s\S]*?)(?=^\w|\Z)/m);
   if (infoMatch) meta.info = infoMatch[1]!.trim();
