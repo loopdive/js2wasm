@@ -23,9 +23,9 @@ import { ensureTimsortHelper } from "./timsort.js";
 import { coerceType as coerceTypeImpl, pushDefaultValue, defaultValueInstrs, coercionInstrs, emitGuardedRefCast, emitSafeExternrefToF64 } from "./type-coercion.js";
 export { pushDefaultValue, defaultValueInstrs, coercionInstrs } from "./type-coercion.js";
 
-/** Sentinel: expression compiled successfully but produces no value (void) */
-const VOID_RESULT = Symbol("void");
-type InnerResult = ValType | null | typeof VOID_RESULT;
+// Shared utilities — imported from shared.ts to avoid circular deps
+import { VOID_RESULT, type InnerResult, registerCompileExpression, valTypesMatch as _valTypesMatch, getLine, getCol } from "./shared.js";
+export { VOID_RESULT, type InnerResult, getLine, getCol } from "./shared.js";
 
 /**
  * Emit a Wasm throw instruction with a string error message.
@@ -578,15 +578,11 @@ export function compileExpression(
   return wasmType;
 }
 
-/** Check if two ValTypes are structurally equal */
-export function valTypesMatch(a: ValType, b: ValType): boolean {
-  if (a.kind !== b.kind) return false;
-  if ((a.kind === "ref" || a.kind === "ref_null") &&
-      (b.kind === "ref" || b.kind === "ref_null")) {
-    return (a as { typeIdx: number }).typeIdx === (b as { typeIdx: number }).typeIdx;
-  }
-  return true;
-}
+// Register compileExpression so extracted modules can use it via shared.ts
+registerCompileExpression(compileExpression);
+
+// valTypesMatch: re-exported from shared.ts
+export const valTypesMatch = _valTypesMatch;
 
 /**
  * Emit a local.set with automatic type coercion.
@@ -27167,24 +27163,4 @@ function compilePropertyIntrospection(
   return { kind: "i32" };
 }
 
-function getLine(node: ts.Node): number {
-  try {
-    const sf = node.getSourceFile();
-    if (!sf) return 0;
-    const { line } = sf.getLineAndCharacterOfPosition(node.getStart());
-    return line + 1;
-  } catch {
-    return 0;
-  }
-}
-
-function getCol(node: ts.Node): number {
-  try {
-    const sf = node.getSourceFile();
-    if (!sf) return 0;
-    const { character } = sf.getLineAndCharacterOfPosition(node.getStart());
-    return character + 1;
-  } catch {
-    return 0;
-  }
-}
+// getLine, getCol: imported from shared.ts (see top of file)
