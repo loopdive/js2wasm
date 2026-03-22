@@ -30,6 +30,7 @@
     "build:compiler-bundle": "npx esbuild src/index.ts --bundle --platform=node --format=esm --outfile=scripts/compiler-bundle.mjs --external:typescript",
     "lint": "biome check src/",
     "typecheck": "tsc --noEmit",
+    "report": "npx tsx scripts/serve-report.ts",
     "build:playground": "vite build playground",
     "upload": "pnpm run build:playground && node ../file-registry-cli/dist/bin/main.js commit && node ../file-registry-cli/dist/bin/main.js push"
   },
