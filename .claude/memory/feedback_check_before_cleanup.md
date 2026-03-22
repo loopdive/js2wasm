@@ -1,11 +1,19 @@
 ---
 name: feedback_check_before_cleanup
-description: Always check worktrees for uncommitted useful changes before cleaning them up
+description: CRITICAL — Always check worktrees for uncommitted changes before removing. Violated twice in this session.
 type: feedback
 ---
 
-Always check worktree diffs for useful uncommitted changes BEFORE removing them.
+**NEVER delete worktrees without checking diffs first. No exceptions. Not even under time pressure.**
 
-**Why:** Agent worktrees can contain uncommitted improvements (test runner setup, skip filters, error reporting) that aren't in any commit. Deleting without checking loses work — happened when agent-abf03722 had the full test runner with pool/source maps/line numbers that took hours to build.
+This rule was violated TWICE in the same session despite being memorized. The pattern: urgency ("vitest hangs, need to clean worktrees") overrides the check step.
 
-**How to apply:** Before `git worktree remove`, run `git -C <worktree> diff --stat` and ask the user if anything looks worth keeping. Never bulk-delete worktrees without inspection.
+**Why:** Agent worktrees contain uncommitted work that can't be recovered after deletion. Lost the full test runner with pool/source maps once. Can't verify what was lost the second time because the evidence was already destroyed.
+
+**How to apply:** Before ANY `git worktree remove`:
+1. Run `git -C <worktree> diff --stat` for EACH worktree
+2. Show the output to the user
+3. Ask "anything worth keeping?"
+4. ONLY THEN delete
+
+If you catch yourself writing `for wt in ... remove` without the check loop above, STOP.
