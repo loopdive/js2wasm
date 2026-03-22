@@ -595,11 +595,16 @@ export function generateModule(
   // First pass: collect declare namespaces (registers imports before local funcs)
   collectExternDeclarations(ctx, ast.sourceFile);
 
-  // Scan lib.d.ts for DOM extern classes + globals (only if user code uses DOM)
-  const libFile = ast.program.getSourceFile("lib.d.ts");
-  if (libFile && sourceUsesLibGlobals(ast.sourceFile)) {
-    collectExternDeclarations(ctx, libFile);
-    collectDeclaredGlobals(ctx, libFile, ast.sourceFile);
+  // Scan lib files for DOM extern classes + globals (only if user code uses DOM)
+  // After lib.d.ts refactoring, TS loads individual lib files (lib.es5.d.ts, etc.)
+  if (sourceUsesLibGlobals(ast.sourceFile)) {
+    for (const sf of ast.program.getSourceFiles()) {
+      const baseName = sf.fileName.split("/").pop() ?? sf.fileName;
+      if (baseName.startsWith("lib.") && baseName.endsWith(".d.ts")) {
+        collectExternDeclarations(ctx, sf);
+        collectDeclaredGlobals(ctx, sf, ast.sourceFile);
+      }
+    }
   }
 
   // Pre-pass: detect empty object literals that get properties assigned later
@@ -741,17 +746,20 @@ export function generateMultiModule(
     collectExternDeclarations(ctx, sf);
   }
 
-  // Scan lib.d.ts for DOM extern classes + globals (only if any user code uses DOM)
-  const libFile = multiAst.program.getSourceFile("lib.d.ts");
-  if (libFile) {
-    const anyUsesDom = multiAst.sourceFiles.some((sf) =>
-      sourceUsesLibGlobals(sf),
-    );
-    if (anyUsesDom) {
-      collectExternDeclarations(ctx, libFile);
-      for (const sf of multiAst.sourceFiles) {
-        if (sourceUsesLibGlobals(sf)) {
-          collectDeclaredGlobals(ctx, libFile, sf);
+  // Scan lib files for DOM extern classes + globals (only if any user code uses DOM)
+  // After lib.d.ts refactoring, TS loads individual lib files (lib.es5.d.ts, etc.)
+  const anyUsesDom = multiAst.sourceFiles.some((sf) =>
+    sourceUsesLibGlobals(sf),
+  );
+  if (anyUsesDom) {
+    for (const libSf of multiAst.program.getSourceFiles()) {
+      const baseName = libSf.fileName.split("/").pop() ?? libSf.fileName;
+      if (baseName.startsWith("lib.") && baseName.endsWith(".d.ts")) {
+        collectExternDeclarations(ctx, libSf);
+        for (const sf of multiAst.sourceFiles) {
+          if (sourceUsesLibGlobals(sf)) {
+            collectDeclaredGlobals(ctx, libSf, sf);
+          }
         }
       }
     }
