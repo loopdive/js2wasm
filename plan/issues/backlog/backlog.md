@@ -15,6 +15,25 @@
 | [683](../done/683.md) | ✅ Done | Runtime type narrowing (typeof/instanceof) | Many FAIL |
 | [703](../done/703.md) | ✅ Done | Negative tests: strict-mode validation for ES-spec parse errors | 99 tests improved |
 
+## 1b. Assertion failure sub-categories (from #727 analysis, 2026-03-22)
+
+| # | Priority | Issue | Impact |
+|---|----------|-------|--------|
+| [726](../ready/726.md) | Critical | TypeError regression: ref.cast guard returns ref.null | 1,948 FAIL |
+| [728](../ready/728.md) | High | Null pointer dereference should throw TypeError | 1,604 FAIL |
+| [729](../ready/729.md) | High | Class feature codegen gaps | 1,161 FAIL |
+| [723](../ready/723.md) | High | TDZ violations: throw ReferenceError before let/const init | 230 FAIL (subset of 846) |
+| [730](../ready/730.md) | High | Missing exception paths (Test262Error throws) | 708 FAIL |
+| [731](../ready/731.md) | Medium | Function/class .name property | 558 FAIL |
+| [732](../ready/732.md) | Medium | hasOwnProperty correctness | 520 FAIL |
+| [733](../ready/733.md) | Medium | RangeError validation in built-ins | 442 FAIL |
+| [734](../ready/734.md) | Medium | Array method correctness | 343 FAIL |
+| [735](../ready/735.md) | Medium | Async iteration correctness | 329 FAIL |
+| [736](../ready/736.md) | Medium | SyntaxError detection at compile time | 316 FAIL |
+| [737](../ready/737.md) | Medium | Undefined-handling edge cases | 276 FAIL |
+| [738](../ready/738.md) | Medium | instanceof correctness | 276 FAIL |
+| [739](../ready/739.md) | Medium | Object.defineProperty correctness | 262 FAIL |
+
 ## 2. Runtime features & JS compatibility
 
 | # | Priority | Feature | Impact |
