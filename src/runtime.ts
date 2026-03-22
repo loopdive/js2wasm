@@ -44,7 +44,14 @@ function resolveImport(
         const builtinCtors: Record<string, Function> = { Map, Set, WeakMap, WeakSet, WeakRef, RegExp };
         const Ctor = deps?.[intent.className] ?? builtinCtors[intent.className];
         if (!Ctor) return (...args: any[]) => { throw new Error(`No dependency provided for extern class "${intent.className}"`); };
-        return (...args: any[]) => new Ctor(...args);
+        // Strip trailing null/undefined args — the compiler pads missing
+        // optional args with ref.null.extern, but constructors like RegExp
+        // reject explicit null (e.g. new RegExp("x", null) throws).
+        return (...args: any[]) => {
+          let len = args.length;
+          while (len > 0 && args[len - 1] == null) len--;
+          return new Ctor(...args.slice(0, len));
+        };
       }
       if (intent.action === "get") {
         const member = intent.member!;

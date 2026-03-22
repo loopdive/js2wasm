@@ -158,13 +158,11 @@ export function compileRegExpLiteral(
   const patternResult = compileStringLiteral(ctx, fctx, pattern, expr);
   if (!patternResult) return null;
 
-  // Load flags string (or ref.null.extern if no flags)
-  if (flags) {
-    const flagsResult = compileStringLiteral(ctx, fctx, flags, expr);
-    if (!flagsResult) return null;
-  } else {
-    fctx.body.push({ op: "ref.null.extern" });
-  }
+  // Load flags string (empty string "" if no flags — ref.null.extern would
+  // become null in JS, causing "Invalid flags 'null'" at runtime)
+  const flagsStr = flags ?? "";
+  const flagsResult = compileStringLiteral(ctx, fctx, flagsStr, expr);
+  if (!flagsResult) return null;
 
   // Call RegExp_new(pattern, flags) -> externref
   const funcIdx = ctx.funcMap.get("RegExp_new");
