@@ -208,6 +208,14 @@ const REPORT_FLUSH_INTERVAL = 500; // update report.json every 500 tests
 const summary = { total: 0, pass: 0, fail: 0, compile_error: 0, skip: 0 };
 const catCounts: Record<string, { pass: number; fail: number; compile_error: number; skip: number; total: number }> = {};
 
+/** Thrown by recordResult for non-passing tests so vitest reports real failures */
+class ConformanceError extends Error {
+  constructor(status: string, detail?: string) {
+    super(`[${status}] ${detail || "unknown"}`);
+    this.name = "ConformanceError";
+  }
+}
+
 function recordResult(file: string, category: string, status: string, error?: string) {
   const entry = JSON.stringify({ file, category, status, error: error || undefined });
   fdWrite(jsonlFd, entry + "\n");
@@ -231,6 +239,11 @@ function recordResult(file: string, category: string, status: string, error?: st
         .sort((a, b) => a.name.localeCompare(b.name)),
     };
     try { writeSync(REPORT_PATH, JSON.stringify(report, null, 2)); } catch {}
+  }
+
+  // Fail the vitest test for non-passing results
+  if (status !== "pass" && status !== "skip") {
+    throw new ConformanceError(status, error);
   }
 }
 
@@ -520,6 +533,7 @@ for (const category of TEST_CATEGORIES) {
               recordResult(relPath, category, "fail", `returned ${ret} — ${assertInfo}`);
             }
           } catch (execErr: any) {
+            if (execErr instanceof ConformanceError) throw execErr;
             if (isRuntimeNegative) {
               recordResult(relPath, category, "pass");
             } else {
@@ -550,6 +564,7 @@ for (const category of TEST_CATEGORIES) {
             return;
           }
         } catch (instantiateErr: any) {
+          if (instantiateErr instanceof ConformanceError) throw instantiateErr;
           // Wasm validation errors — extract function name + byte offset
           const msg = instantiateErr.message ?? String(instantiateErr);
           const funcMatch = msg.match(/Compiling function #\d+:"(\w+)" failed/);
