@@ -473,7 +473,25 @@ for (const category of TEST_CATEGORIES) {
             return;
           }
         } catch (instantiateErr: any) {
-          recordResult(relPath, category, "compile_error", resolveWasmErrorLine(instantiateErr, compileResult.result.sourceMap, source, bodyLineOffset));
+          // Wasm validation errors — source map lookup doesn't work here
+          // (byte offset is validation position, not execution position).
+          // Extract function name and find it in source instead.
+          const msg = instantiateErr.message ?? String(instantiateErr);
+          const funcMatch = msg.match(/Compiling function #\d+:"(\w+)" failed/);
+          let enriched = msg;
+          if (funcMatch && funcMatch[1] !== "test") {
+            const fname = funcMatch[1];
+            const lines = source.split("\n");
+            for (let i = 0; i < lines.length; i++) {
+              if (lines[i].includes(`function ${fname}`) || lines[i].includes(`${fname}(`)) {
+                const ctx = lines[i].trim().substring(0, 80);
+                enriched = `${msg} [in ${fname}() at L${i + 1}: ${ctx}]`;
+                break;
+              }
+            }
+            if (enriched === msg) enriched = `${msg} [in ${fname}()]`;
+          }
+          recordResult(relPath, category, "compile_error", enriched);
           return;
         }
       }, 90_000);
