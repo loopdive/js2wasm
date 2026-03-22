@@ -332,6 +332,11 @@ export interface CodegenContext {
   tdzGlobals: Map<string, number>;
   /** Set of let/const module global variable names (for TDZ tracking) */
   tdzLetConstNames: Set<string>;
+  /** Compile-time property descriptor flags for Object.defineProperty validation.
+   *  Key: "varName:propName", Value: flags bitmask (see PROP_FLAG_* in expressions.ts) */
+  definedPropertyFlags: Map<string, number>;
+  /** Set of variable names marked as non-extensible via Object.preventExtensions/freeze/seal */
+  nonExtensibleVars: Set<string>;
 }
 
 /** Metadata for a function eligible for call-site inlining */
@@ -551,6 +556,8 @@ export function createCodegenContext(
     wasiBumpPtrGlobalIdx: -1,
     tdzGlobals: new Map(),
     tdzLetConstNames: new Set(),
+    definedPropertyFlags: new Map(),
+    nonExtensibleVars: new Set(),
   };
 
   // Pre-register common vec types so they're available during early compilation (#647)
