@@ -445,24 +445,8 @@ for (const category of TEST_CATEGORIES) {
           } catch {
             recordResult(relPath, category, "pass"); return;
           }
-          // Find the likely offending line — skip metadata block + comments
-          const srcLines = source.split("\n");
-          let offendingLine = 0;
-          let offendingCtx = "";
-          let inMetaBlock = false;
-          for (let i = 0; i < srcLines.length; i++) {
-            const trimmed = srcLines[i].trim();
-            if (trimmed === "/*---") { inMetaBlock = true; continue; }
-            if (trimmed === "---*/") { inMetaBlock = false; continue; }
-            if (inMetaBlock) continue;
-            if (!trimmed || trimmed.startsWith("//") || trimmed.startsWith("/*") || trimmed.startsWith("*")) continue;
-            offendingLine = i + 1;
-            offendingCtx = trimmed.substring(0, 80);
-            break;
-          }
-          const info = offendingLine
-            ? `expected ${meta.negative!.phase} ${meta.negative!.type} but compiled [at L${offendingLine}: ${offendingCtx}]`
-            : `expected ${meta.negative!.phase} ${meta.negative!.type} but compiled`;
+          const desc = meta.description?.substring(0, 100) ?? "";
+          const info = `expected ${meta.negative!.phase} ${meta.negative!.type} but compiled${desc ? `: ${desc}` : ""}`;
           recordResult(relPath, category, "fail", info);
           return;
         }
