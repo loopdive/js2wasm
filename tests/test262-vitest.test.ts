@@ -503,9 +503,18 @@ for (const category of TEST_CATEGORIES) {
             if (ret === 1) {
               recordResult(relPath, category, "pass");
             } else if (ret === -1) {
-              // Exception was thrown and re-thrown by wrapper — should be caught
-              // by execErr below. If we get here, the throw didn't propagate.
-              recordResult(relPath, category, "fail", `returned -1 — exception in test body`);
+              // Exception caught by wrapper — analyze test to provide context
+              const desc = meta.description?.substring(0, 100) ?? "";
+              // Look for assert.throws pattern in source — tells us what error was expected
+              const throwsMatch = source.match(/assert\.throws\s*\(\s*(\w+Error)/);
+              const expectedErr = throwsMatch ? throwsMatch[1] : null;
+              // Look for common patterns that cause exceptions
+              const hasPropertyAccess = /\.\w+\s*[=;,)]/.test(source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, ""));
+              const hasDelete = /\bdelete\b/.test(source);
+              const hasEval = /\beval\s*\(/.test(source);
+              let context = desc || "exception in test body";
+              if (expectedErr) context = `expected ${expectedErr} — ${context}`;
+              recordResult(relPath, category, "fail", `returned -1 — ${context}`);
             } else {
               const assertInfo = findNthAssert(source, ret);
               recordResult(relPath, category, "fail", `returned ${ret} — ${assertInfo}`);
