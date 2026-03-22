@@ -1,8 +1,8 @@
 import ts from "typescript";
-import libEs5 from "./lib-es5";
-import libDom from "./lib-dom";
-import libDecorators from "./lib-decorators";
-import libDecoratorsLegacy from "./lib-decorators-legacy";
+import { dirname, join } from "path";
+import { createRequire } from "module";
+import { readFileSync } from "fs";
+// Custom type declarations not found in TS lib files
 import libGenerators from "./lib-generators";
 import libEs2015 from "./lib-es2015";
 import libEs2021 from "./lib-es2021";
@@ -15,19 +15,85 @@ export interface TypedAST {
   syntacticDiagnostics: readonly ts.Diagnostic[];
 }
 
-/** Map of lib filenames to their contents */
-const LIB_FILES: Record<string, string> = {
-  "lib.d.ts": libEs5 + "\n" + libEs2015 + "\n" + libEs2021 + "\n" + libDom + "\n" + libGenerators,
-  "lib.es5.d.ts": libEs5,
-  "lib.dom.d.ts": libDom,
-  "lib.decorators.d.ts": libDecorators,
-  "lib.decorators.legacy.d.ts": libDecoratorsLegacy,
-};
+// ── Lazy lib file resolution ────────────────────────────────────────────────
+
+/** Resolved directory containing TypeScript lib .d.ts files (cached) */
+let _tsLibDir: string | undefined;
+function getTsLibDir(): string {
+  if (_tsLibDir === undefined) {
+    // Works in both CJS and ESM contexts
+    try {
+      const req = typeof require !== "undefined" ? require : createRequire(import.meta.url);
+      _tsLibDir = dirname(req.resolve("typescript/lib/lib.d.ts"));
+    } catch {
+      // Fallback: use dirname of the main typescript entry point
+      _tsLibDir = dirname(require.resolve("typescript"));
+    }
+  }
+  return _tsLibDir;
+}
+
+/**
+ * Read a lib .d.ts file from the installed typescript package at runtime.
+ * Returns empty string if the file cannot be found (e.g. browser environment).
+ */
+function readLibFile(name: string): string {
+  try {
+    return readFileSync(join(getTsLibDir(), name), "utf-8");
+  } catch {
+    // TODO: For browser playground, fetch from server or use vite ?raw imports
+    return "";
+  }
+}
+
+/** Lazily-populated cache of lib file contents */
+const LIB_FILES: Record<string, string> = {};
+
+/** Names of lib files that TS ships and we delegate to at runtime */
+const TS_LIB_NAMES = [
+  "lib.es5.d.ts",
+  "lib.dom.d.ts",
+  "lib.decorators.d.ts",
+  "lib.decorators.legacy.d.ts",
+];
+
+/**
+ * Get the contents of a lib file by name. Reads from the typescript package
+ * on first access, then caches. Custom declarations (generators, es2015,
+ * es2021) are always available; standard TS libs are loaded from disk.
+ */
+function getLibSource(name: string): string | undefined {
+  if (name in LIB_FILES) return LIB_FILES[name];
+
+  // Composite lib.d.ts: concatenate es5 + custom es2015/es2021 + dom + generators
+  if (name === "lib.d.ts") {
+    const es5 = getLibSource("lib.es5.d.ts") ?? "";
+    const dom = getLibSource("lib.dom.d.ts") ?? "";
+    const content = es5 + "\n" + libEs2015 + "\n" + libEs2021 + "\n" + dom + "\n" + libGenerators;
+    LIB_FILES[name] = content;
+    return content;
+  }
+
+  // Standard TS lib files — read from typescript package
+  if (TS_LIB_NAMES.includes(name)) {
+    const content = readLibFile(name);
+    if (content) {
+      LIB_FILES[name] = content;
+      return content;
+    }
+    return undefined;
+  }
+
+  return undefined;
+}
+
+/** Set of lib file names we know about (for fileExists checks) */
+const KNOWN_LIB_NAMES = new Set(["lib.d.ts", ...TS_LIB_NAMES]);
 
 /** Pre-parsed lib SourceFiles — cached to avoid re-parsing on every compile */
 const LIB_SOURCE_FILES = new Map<string, ts.SourceFile>();
 function getLibSourceFile(name: string, languageVersion: ts.ScriptTarget): ts.SourceFile | undefined {
-  const content = LIB_FILES[name];
+  const content = getLibSource(name);
   if (content === undefined) return undefined;
   const key = `${name}:${languageVersion}`;
   let sf = LIB_SOURCE_FILES.get(key);
@@ -80,7 +146,7 @@ export function analyzeSource(
     useCaseSensitiveFileNames: () => true,
     getNewLine: () => "\n",
     fileExists: (name) =>
-      name === fileName || name in LIB_FILES,
+      name === fileName || KNOWN_LIB_NAMES.has(name),
     readFile: () => undefined,
     getDirectories: () => [],
     directoryExists: () => true,
@@ -231,7 +297,7 @@ export function analyzeMultiSource(
     useCaseSensitiveFileNames: () => true,
     getNewLine: () => "\n",
     fileExists: (name) =>
-      normalizedFiles.has(name) || name in LIB_FILES,
+      normalizedFiles.has(name) || KNOWN_LIB_NAMES.has(name),
     readFile: (name) => normalizedFiles.get(name),
     getDirectories: () => [],
     directoryExists: () => true,
