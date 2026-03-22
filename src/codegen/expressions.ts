@@ -2701,6 +2701,8 @@ function compileIdentifier(
         boxed.valType,
         boxed.refCellTypeIdx,
         0,
+        undefined, /* propName */
+        false, /* throwOnNull — ref cells use default for uninitialized captures */
       );
       return boxed.valType;
     }
@@ -6479,7 +6481,10 @@ function compilePropertyAssignment(
     if (funcIdx !== undefined) {
       const setterObjResult = compileExpression(ctx, fctx, target.expression);
       if (!setterObjResult) { ctx.errors.push({ message: "Failed to compile setter receiver", line: getLine(target), column: getCol(target) }); return null; }
-      const setterValResult = compileExpression(ctx, fctx, value);
+      // Get setter's parameter types to provide type hint for value argument
+      const setterParamTypes = getFuncParamTypes(ctx, funcIdx);
+      const setterValExpectedType = setterParamTypes?.[1]; // param 0 = self, param 1 = value
+      const setterValResult = compileExpression(ctx, fctx, value, setterValExpectedType);
       if (!setterValResult) { ctx.errors.push({ message: "Failed to compile setter value", line: getLine(target), column: getCol(target) }); return null; }
       // Save value for assignment expression result
       const setterTmpVal = allocLocal(fctx, `__setter_assign_${fctx.locals.length}`, setterValResult);
@@ -6487,7 +6492,8 @@ function compilePropertyAssignment(
       // Re-order stack: we need [obj, val] but tee left val on stack after obj
       // Actually obj is already on stack before val; tee saved val. Pop val, call, re-push val.
       // Stack is: [obj, val] after tee. But we need obj then val for call. That's correct.
-      fctx.body.push({ op: "call", funcIdx });
+      const finalSetterIdx = ctx.funcMap.get(setterName) ?? funcIdx;
+      fctx.body.push({ op: "call", funcIdx: finalSetterIdx });
       fctx.body.push({ op: "local.get", index: setterTmpVal });
       return setterValResult;
     }
@@ -6615,11 +6621,15 @@ function compileElementAssignment(
             const setterName = `${sName}_set_${fieldName}`;
             const funcIdx = ctx.funcMap.get(setterName);
             if (funcIdx !== undefined) {
-              const setValResult = compileExpression(ctx, fctx, value);
+              // Get setter's parameter types to provide type hint for value argument
+              const eaSetterParamTypes = getFuncParamTypes(ctx, funcIdx);
+              const eaSetterValType = eaSetterParamTypes?.[1]; // param 0 = self, param 1 = value
+              const setValResult = compileExpression(ctx, fctx, value, eaSetterValType);
               if (!setValResult) return null;
               const setValLocal = allocLocal(fctx, `__setter_assign_${fctx.locals.length}`, setValResult);
               fctx.body.push({ op: "local.tee", index: setValLocal });
-              fctx.body.push({ op: "call", funcIdx });
+              const finalEaSetterIdx = ctx.funcMap.get(setterName) ?? funcIdx;
+              fctx.body.push({ op: "call", funcIdx: finalEaSetterIdx });
               fctx.body.push({ op: "local.get", index: setValLocal });
               return setValResult;
             }
@@ -7846,6 +7856,8 @@ function compileCompoundAssignment(
       boxed.valType,
       boxed.refCellTypeIdx,
       0,
+      undefined, /* propName */
+      false, /* throwOnNull — ref cells use default for uninitialized captures */
     );
     const compoundRhsBoxed = compileExpression(ctx, fctx, expr.right, boxed.valType);
     if (!compoundRhsBoxed) { ctx.errors.push({ message: "Failed to compile compound assignment RHS", line: getLine(expr), column: getCol(expr) }); return null; }
@@ -8040,7 +8052,19 @@ function compilePropertyCompoundAssignment(
       // Store back via setter: obj.set_prop(result)
       fctx.body.push({ op: "local.get", index: objTmp });
       fctx.body.push({ op: "local.get", index: resultTmp });
-      fctx.body.push({ op: "call", funcIdx: setterIdx });
+      // Coerce f64 result to setter's expected value param type
+      const cmpSetterParamTypes = getFuncParamTypes(ctx, setterIdx);
+      const cmpSetterValType = cmpSetterParamTypes?.[1]; // param 0 = self, param 1 = value
+      if (cmpSetterValType && cmpSetterValType.kind === "externref") {
+        // f64 → externref: box the number
+        addUnionImports(ctx);
+        const boxIdx = ctx.funcMap.get("__box_number");
+        if (boxIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx: boxIdx });
+        }
+      }
+      const finalCmpSetterIdx = ctx.funcMap.get(setterName) ?? setterIdx;
+      fctx.body.push({ op: "call", funcIdx: finalCmpSetterIdx });
 
       // Return the result
       fctx.body.push({ op: "local.get", index: resultTmp });
@@ -8705,7 +8729,17 @@ function compileMemberIncDec(
           fctx.body.push({ op: "local.set", index: newTmp });
           fctx.body.push({ op: "local.get", index: objTmp });
           fctx.body.push({ op: "local.get", index: newTmp });
-          fctx.body.push({ op: "call", funcIdx: setterIdx });
+          // Coerce f64 to setter's expected value param type
+          {
+            const idParamTypes = getFuncParamTypes(ctx, setterIdx);
+            const idValType = idParamTypes?.[1];
+            if (idValType && idValType.kind === "externref") {
+              addUnionImports(ctx);
+              const bIdx = ctx.funcMap.get("__box_number");
+              if (bIdx !== undefined) fctx.body.push({ op: "call", funcIdx: bIdx });
+            }
+          }
+          { const fs = ctx.funcMap.get(setterName) ?? setterIdx; fctx.body.push({ op: "call", funcIdx: fs }); }
           fctx.body.push({ op: "local.get", index: oldTmp });
         } else {
           // Compute new, store via setter, return new
@@ -8718,7 +8752,17 @@ function compileMemberIncDec(
           fctx.body.push({ op: "local.set", index: valTmp });
           fctx.body.push({ op: "local.get", index: objTmp });
           fctx.body.push({ op: "local.get", index: valTmp });
-          fctx.body.push({ op: "call", funcIdx: setterIdx });
+          // Coerce f64 to setter's expected value param type
+          {
+            const idParamTypes = getFuncParamTypes(ctx, setterIdx);
+            const idValType = idParamTypes?.[1];
+            if (idValType && idValType.kind === "externref") {
+              addUnionImports(ctx);
+              const bIdx = ctx.funcMap.get("__box_number");
+              if (bIdx !== undefined) fctx.body.push({ op: "call", funcIdx: bIdx });
+            }
+          }
+          { const fs = ctx.funcMap.get(setterName) ?? setterIdx; fctx.body.push({ op: "call", funcIdx: fs }); }
           fctx.body.push({ op: "local.get", index: newTmp });
         }
         return { kind: "f64" };
@@ -10011,6 +10055,8 @@ function compileClosureCall(
 
   // Push the funcref from the closure struct (field 0) and cast to typed ref
   pushClosureRef();
+  // Null check: throw TypeError if closure ref is null (#728)
+  emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: info.structTypeIdx });
   fctx.body.push({ op: "struct.get", typeIdx: info.structTypeIdx, fieldIdx: 0 });
   fctx.body.push({ op: "ref.cast", typeIdx: info.funcTypeIdx });
   fctx.body.push({ op: "ref.as_non_null" });
@@ -10101,6 +10147,8 @@ function compileCallablePropertyCall(
 
       // Get funcref from closure struct field 0 and call_ref
       fctx.body.push({ op: "local.get", index: closureLocal });
+      // Null check: throw TypeError if closure ref is null (#728)
+      emitNullCheckThrow(ctx, fctx, fieldType);
       if (fieldType.kind === "ref_null") {
         fctx.body.push({ op: "ref.as_non_null" } as Instr);
       }
@@ -10156,6 +10204,8 @@ function compileCallablePropertyCall(
 
       // Get funcref from closure struct and call_ref
       fctx.body.push({ op: "local.get", index: closureLocal });
+      // Null check: throw TypeError if closure ref is null (#728)
+      emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: wrapperStructIdx });
       fctx.body.push({ op: "ref.as_non_null" } as Instr);
       fctx.body.push({ op: "struct.get", typeIdx: wrapperStructIdx, fieldIdx: 0 });
       fctx.body.push({ op: "ref.cast", typeIdx: matchedClosureInfo.funcTypeIdx });
@@ -10228,6 +10278,8 @@ function compileCallablePropertyCall(
 
       // Get funcref and call_ref
       fctx.body.push({ op: "local.get", index: closureLocal });
+      // Null check: throw TypeError if closure ref is null (#728)
+      emitNullCheckThrow(ctx, fctx, fieldType);
       if (fieldType.kind === "ref_null") {
         fctx.body.push({ op: "ref.as_non_null" } as Instr);
       }
@@ -12603,6 +12655,8 @@ function compileCallExpression(
 
           // Push the funcref from the closure struct (field 0) and call_ref
           fctx.body.push({ op: "local.get", index: closureLocal });
+          // Null check: throw TypeError if closure ref is null (#728)
+          emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedStructTypeIdx });
           fctx.body.push({ op: "ref.as_non_null" } as Instr);
           fctx.body.push({ op: "struct.get", typeIdx: matchedStructTypeIdx, fieldIdx: 0 });
           fctx.body.push({ op: "ref.cast", typeIdx: matchedClosureInfo.funcTypeIdx });
@@ -13454,6 +13508,8 @@ function compileCallExpression(
 
         // Push the funcref from the closure struct (field 0) and cast to typed ref
         fctx.body.push({ op: "local.get", index: closureLocal });
+        // Null check: throw TypeError if closure ref is null (#728)
+        emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedStructTypeIdx });
         fctx.body.push({ op: "ref.as_non_null" } as Instr);
         fctx.body.push({ op: "struct.get", typeIdx: matchedStructTypeIdx, fieldIdx: 0 });
         fctx.body.push({ op: "ref.cast", typeIdx: matchedClosureInfo.funcTypeIdx });
@@ -13560,6 +13616,8 @@ function compileCallExpression(
 
         // Push the funcref from closure struct and call_ref
         fctx.body.push({ op: "local.get", index: closureLocal });
+        // Null check: throw TypeError if closure ref is null (#728)
+        emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedStructTypeIdx });
         fctx.body.push({ op: "ref.as_non_null" } as Instr);
         fctx.body.push({ op: "struct.get", typeIdx: matchedStructTypeIdx, fieldIdx: 0 });
         fctx.body.push({ op: "ref.cast", typeIdx: matchedClosureInfo.funcTypeIdx });
@@ -13925,6 +13983,8 @@ function compileExpressionCallee(
 
       // Push the funcref from closure struct and call_ref
       fctx.body.push({ op: "local.get", index: closureLocal });
+      // Null check: throw TypeError if closure ref is null (#728)
+      emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedStructTypeIdx });
       fctx.body.push({ op: "ref.as_non_null" } as Instr);
       fctx.body.push({ op: "struct.get", typeIdx: matchedStructTypeIdx, fieldIdx: 0 });
       fctx.body.push({ op: "ref.cast", typeIdx: matchedClosureInfo.funcTypeIdx });
@@ -16074,6 +16134,31 @@ function typeErrorThrowInstrs(ctx: CodegenContext): Instr[] {
 }
 
 /**
+ * Emit a null check on the ref currently on the stack. If null, throws
+ * TypeError via the exception tag. If non-null, the ref remains on the stack.
+ * The `refType` should be the nullable ref type of the value on the stack.
+ *
+ * Stack: [ref_null T] -> [ref_null T]  (non-null at runtime after this point)
+ */
+function emitNullCheckThrow(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  refType: ValType,
+): void {
+  const tmp = allocTempLocal(fctx, refType);
+  fctx.body.push({ op: "local.tee", index: tmp });
+  fctx.body.push({ op: "ref.is_null" });
+  fctx.body.push({
+    op: "if",
+    blockType: { kind: "empty" },
+    then: typeErrorThrowInstrs(ctx),
+    else: [],
+  });
+  fctx.body.push({ op: "local.get", index: tmp });
+  releaseTempLocal(fctx, tmp);
+}
+
+/**
  * Find all struct types (other than excludeTypeIdx) that have a field named
  * propName.  Returns an array of {structTypeIdx, fieldIdx, fieldType} for
  * each matching struct type.  Used for multi-struct dispatch when the primary
@@ -16106,6 +16191,7 @@ function emitNullGuardedStructGet(
   typeIdx: number,
   fieldIdx: number,
   propName?: string,
+  throwOnNull: boolean = true,
 ): void {
   // For result type in the if block, normalize ref to ref_null so the null branch is valid
   const resultType: ValType = fieldType.kind === "ref"
@@ -16179,10 +16265,15 @@ function emitNullGuardedStructGet(
   const tmp = allocLocal(fctx, `__ng_${fctx.locals.length}`, objType);
   fctx.body.push({ op: "local.tee", index: tmp });
   fctx.body.push({ op: "ref.is_null" });
+  // When throwOnNull is true, throw TypeError for null/undefined property access (#728).
+  // When false (ref cells), return a default value for uninitialized captures.
+  const nullBranch = throwOnNull
+    ? typeErrorThrowInstrs(ctx)
+    : defaultValueInstrs(resultType);
   fctx.body.push({
     op: "if",
     blockType: { kind: "val" as const, type: resultType },
-    then: defaultValueInstrs(resultType),
+    then: nullBranch,
     else: [
       { op: "local.get", index: tmp } as Instr,
       { op: "struct.get", typeIdx, fieldIdx } as Instr,
@@ -16207,6 +16298,7 @@ function emitExternrefToStructGet(
   structTypeIdx: number,
   fieldIdx: number,
   propName?: string,
+  throwOnNull: boolean = true,
 ): void {
   // For result type, normalize ref to ref_null so the null branch is valid
   const resultType: ValType = fieldType.kind === "ref"
@@ -18349,6 +18441,8 @@ function compileOptionalDirectCall(
 
     // Push the funcref from the closure struct (field 0) and cast to typed ref
     fctx.body.push({ op: "local.get", index: closureTmp });
+    // Null check: throw TypeError if closure ref is null (#728)
+    emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: closureStructTypeIdx });
     fctx.body.push({ op: "struct.get", typeIdx: closureStructTypeIdx, fieldIdx: 0 });
     fctx.body.push({ op: "ref.cast", typeIdx: closureInfo.funcTypeIdx });
     fctx.body.push({ op: "ref.as_non_null" });
@@ -18945,7 +19039,29 @@ function compilePropertyAccess(
       }
       flushLateImportShifts(ctx, fctx);
       if (getIdx !== undefined) {
-        compileExpression(ctx, fctx, expr.expression);
+        const objExprType = compileExpression(ctx, fctx, expr.expression);
+        // If the expression produced a ref/ref_null (struct), convert to externref
+        // so that __extern_get (which expects externref) can be used.
+        if (objExprType && (objExprType.kind === "ref" || objExprType.kind === "ref_null")) {
+          fctx.body.push({ op: "extern.convert_any" });
+        }
+        // If the expression produced f64, box it to externref
+        if (objExprType && objExprType.kind === "f64") {
+          addUnionImports(ctx);
+          const boxIdx = ctx.funcMap.get("__box_number");
+          if (boxIdx !== undefined) {
+            fctx.body.push({ op: "call", funcIdx: boxIdx });
+          }
+        }
+        // If the expression produced i32, convert to externref via f64 + box
+        if (objExprType && objExprType.kind === "i32") {
+          fctx.body.push({ op: "f64.convert_i32_s" });
+          addUnionImports(ctx);
+          const boxIdx = ctx.funcMap.get("__box_number");
+          if (boxIdx !== undefined) {
+            fctx.body.push({ op: "call", funcIdx: boxIdx });
+          }
+        }
         // Null check: throw TypeError for property access on null/undefined
         const objTmp = allocLocal(fctx, `__nullchk_${fctx.locals.length}`, { kind: "externref" });
         fctx.body.push({ op: "local.tee", index: objTmp });
@@ -19327,7 +19443,8 @@ function compileElementAccess(
       fctx.body.push({
         op: "if",
         blockType: { kind: "val" as const, type: blockValType },
-        then: defaultValueInstrs(blockValType),
+        // Throw TypeError for element access on null (#728)
+        then: typeErrorThrowInstrs(ctx),
         else: elseInstrs,
       });
       return blockValType;
@@ -19340,7 +19457,8 @@ function compileElementAccess(
     fctx.body.push({
       op: "if",
       blockType: { kind: "val" as const, type: fallbackType },
-      then: defaultValueInstrs(fallbackType),
+      // Throw TypeError for element access on null (#728)
+      then: typeErrorThrowInstrs(ctx),
       else: elseInstrs.length > 0 ? elseInstrs : defaultValueInstrs(fallbackType),
     });
     return fallbackType;
@@ -22342,6 +22460,8 @@ function compileTaggedTemplateExpression(
 
       // Push funcref from closure struct field 0 and call_ref
       fctx.body.push({ op: "local.get", index: localIdx });
+      // Null check: throw TypeError if closure ref is null (#728)
+      emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: closureInfo.structTypeIdx });
       fctx.body.push({ op: "struct.get", typeIdx: closureInfo.structTypeIdx, fieldIdx: 0 });
       fctx.body.push({ op: "ref.cast", typeIdx: closureInfo.funcTypeIdx });
       fctx.body.push({ op: "ref.as_non_null" });
