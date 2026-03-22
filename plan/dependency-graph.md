@@ -383,6 +383,7 @@ Module system and import/export patterns.
 ## Cluster 17: March 2026 Error Analysis `[E][S][I]`
 
 Updated with fresh run (2026-03-18): 23,021 tests -- 6,366 pass, 4,367 fail, 9,062 CE, 3,226 skip.
+Updated 2026-03-22: 48,102 tests -- 14,720 pass, 27,938 fail, 4,443 CE, 1,001 skip.
 
 ### Compile errors -- top patterns (9,062 total)
 
@@ -448,6 +449,9 @@ Updated with fresh run (2026-03-18): 23,021 tests -- 6,366 pass, 4,367 fail, 9,0
 | 433 | Equality operators mixed type i32/f64 mismatch | 10 CE | **Ready** (medium) |
 | 434 | BigInt remaining failures across operators | 27 fail | **Ready** (low) |
 | 435 | Logical/conditional must preserve object identity | 16 fail | **Ready** (medium) |
+| **726** | **TypeError regression: ref.cast guard returns ref.null for valid objects** | **1,948 regress** | **Ready** (CRITICAL, depends #695+#706) |
+| **727** | **Sub-classify assertion failures (wrong values)** | **11,480 fail** | **Ready** (high, analysis only) |
+| **728** | **Null pointer dereference should throw TypeError, not trap** | **1,604 fail** | **Ready** (high, depends #695) |
 
 ---
 
@@ -627,8 +631,8 @@ function in the same file. Key contention points:
 | logical/conditional codegen | 435 |
 | block/stack balance | 411, 410, 412, 447 |
 | AST null safety | 405, 418, 438 |
-| null guard emission | 441 |
-| ref.cast / type narrowing | 442 |
+| null guard emission | 441, 726, 728 |
+| ref.cast / type narrowing | 442, 726 |
 | local.set coercion | 444 |
 | call args / call_ref | 445, 446, 449 |
 | test262 runner / harness | 437 |
