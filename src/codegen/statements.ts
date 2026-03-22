@@ -797,12 +797,7 @@ function emitNullGuard(
   if (isNullable && guardInstrs.length > 0) {
     fctx.body.push({ op: "local.get", index: srcLocal });
     fctx.body.push({ op: "ref.is_null" } as Instr);
-    // Throw TypeError on null (#728) instead of silently skipping
-    const nullBranch: Instr[] = [
-      { op: "ref.null.extern" } as Instr,
-      { op: "throw", tagIdx: ensureExnTag(ctx) } as Instr,
-    ];
-    fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: nullBranch, else: guardInstrs });
+    fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: guardInstrs });
   } else {
     fctx.body.push(...guardInstrs);
   }

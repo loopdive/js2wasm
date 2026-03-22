@@ -350,8 +350,6 @@ export function compileTaggedTemplateExpression(
 
       // Push funcref from closure struct field 0 and call_ref
       fctx.body.push({ op: "local.get", index: localIdx });
-      // Null check: throw TypeError if closure ref is null (#728)
-      emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: closureInfo.structTypeIdx });
       fctx.body.push({ op: "struct.get", typeIdx: closureInfo.structTypeIdx, fieldIdx: 0 });
       fctx.body.push({ op: "ref.cast", typeIdx: closureInfo.funcTypeIdx });
       fctx.body.push({ op: "ref.as_non_null" });
