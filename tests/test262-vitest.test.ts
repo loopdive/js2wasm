@@ -247,6 +247,41 @@ afterAll(() => {
   };
   writeSync(REPORT_PATH, JSON.stringify(report, null, 2));
   console.log(`\nTest262: ${summary.total} total — ${summary.pass} pass, ${summary.fail} fail, ${summary.compile_error} CE, ${summary.skip} skip`);
+
+  // Append to historical index (runs/index.json) for trend tracking
+  try {
+    const RUNS_DIR = join(RESULTS_DIR, "runs");
+    mkdirSync(RUNS_DIR, { recursive: true });
+    const INDEX_PATH = join(RUNS_DIR, "index.json");
+
+    // Get git hash
+    let gitHash = "unknown";
+    try {
+      const { execSync } = require("child_process");
+      gitHash = execSync("git rev-parse --short HEAD", { encoding: "utf-8" }).trim();
+    } catch {}
+
+    // Read existing index
+    let index: any[] = [];
+    try {
+      index = JSON.parse(readFileSync(INDEX_PATH, "utf-8"));
+    } catch {}
+
+    // Append new entry
+    index.push({
+      timestamp: report.timestamp,
+      pass: summary.pass,
+      fail: summary.fail,
+      ce: summary.compile_error,
+      skip: summary.skip,
+      total: summary.total,
+      gitHash,
+    });
+
+    writeSync(INDEX_PATH, JSON.stringify(index, null, 2) + "\n");
+  } catch {
+    // Non-fatal — index update failure should not break the test run
+  }
 });
 
 // ── Assertion lookup (maps returned N to the Nth assert in the source) ──
