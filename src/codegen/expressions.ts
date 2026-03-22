@@ -7278,18 +7278,40 @@ function compileCallExpression(
       return objType;
     }
 
-    // Handle Object.getOwnPropertyDescriptor(obj, prop) — stub: return undefined (ref.null extern)
+    // Handle Object.getOwnPropertyDescriptor(obj, prop) → __getOwnPropertyDescriptor host import
     if (
       ts.isIdentifier(propAccess.expression) &&
       propAccess.expression.text === "Object" &&
       propAccess.name.text === "getOwnPropertyDescriptor" &&
       expr.arguments.length >= 2
     ) {
-      const objType = compileExpression(ctx, fctx, expr.arguments[0]!);
-      if (objType) fctx.body.push({ op: "drop" });
-      const propType = compileExpression(ctx, fctx, expr.arguments[1]!);
-      if (propType) fctx.body.push({ op: "drop" });
-      fctx.body.push({ op: "ref.null.extern" });
+      // Compile obj as externref
+      const objType = compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "externref" });
+      if (!objType) {
+        fctx.body.push({ op: "ref.null.extern" });
+        return { kind: "externref" };
+      }
+      if (objType.kind !== "externref") {
+        coerceType(ctx, fctx, objType, { kind: "externref" });
+      }
+      // Compile prop as externref
+      const propType = compileExpression(ctx, fctx, expr.arguments[1]!, { kind: "externref" });
+      if (!propType) {
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "ref.null.extern" });
+        return { kind: "externref" };
+      }
+      if (propType.kind !== "externref") {
+        coerceType(ctx, fctx, propType, { kind: "externref" });
+      }
+      // Call __getOwnPropertyDescriptor(obj, prop) → externref
+      let funcIdx = ensureLateImport(ctx, "__getOwnPropertyDescriptor",
+        [{ kind: "externref" }, { kind: "externref" }],
+        [{ kind: "externref" }]);
+      flushLateImportShifts(ctx, fctx);
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+      }
       return { kind: "externref" };
     }
 
@@ -7487,14 +7509,20 @@ function compileCallExpression(
         return { kind: "i32" };
       }
 
-      // Reflect.getOwnPropertyDescriptor(obj, prop) → stub: return undefined
+      // Reflect.getOwnPropertyDescriptor(obj, prop) → rewrite to Object.getOwnPropertyDescriptor
       if (reflectMethod === "getOwnPropertyDescriptor" && expr.arguments.length >= 2) {
-        const objType = compileExpression(ctx, fctx, expr.arguments[0]!);
-        if (objType) fctx.body.push({ op: "drop" });
-        const propType = compileExpression(ctx, fctx, expr.arguments[1]!);
-        if (propType) fctx.body.push({ op: "drop" });
-        fctx.body.push({ op: "ref.null.extern" });
-        return { kind: "externref" };
+        const syntheticPropAccess = ts.factory.createPropertyAccessExpression(
+          ts.factory.createIdentifier("Object"),
+          "getOwnPropertyDescriptor",
+        );
+        const syntheticCall = ts.factory.createCallExpression(
+          syntheticPropAccess,
+          undefined,
+          [expr.arguments[0] as ts.Expression, expr.arguments[1] as ts.Expression],
+        );
+        ts.setTextRange(syntheticCall, expr);
+        (syntheticCall as any).parent = expr.parent;
+        return compileCallExpression(ctx, fctx, syntheticCall as ts.CallExpression);
       }
     }
 

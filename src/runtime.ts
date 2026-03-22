@@ -66,6 +66,24 @@ function resolveImport(
       if (name === "__extern_get") return (obj: any, key: any) => (obj == null ? undefined : obj[key]);
       if (name === "__extern_set") return (obj: any, key: any, val: any) => { if (obj != null) obj[key] = val; };
       if (name === "__extern_length") return (obj: any) => (obj == null ? 0 : obj.length);
+      // Object.defineProperty host import — flags is a bitmask:
+      //   bit 0: writable, bit 1: enumerable, bit 2: configurable
+      //   bit 3: writable specified, bit 4: enumerable specified, bit 5: configurable specified
+      //   bit 6: is accessor (get/set), bit 7: has value
+      if (name === "__defineProperty_value") return (obj: any, prop: any, value: any, flags: number) => {
+        if (obj == null) return obj;
+        const desc: PropertyDescriptor = {};
+        if (flags & (1 << 7)) desc.value = value;
+        if (flags & (1 << 3)) desc.writable = !!(flags & 1);
+        if (flags & (1 << 4)) desc.enumerable = !!(flags & (1 << 1));
+        if (flags & (1 << 5)) desc.configurable = !!(flags & (1 << 2));
+        try { Object.defineProperty(obj, prop, desc); } catch (_) { /* swallow for frozen/sealed */ }
+        return obj;
+      };
+      if (name === "__getOwnPropertyDescriptor") return (obj: any, prop: any) => {
+        if (obj == null) return undefined;
+        return Object.getOwnPropertyDescriptor(obj, prop);
+      };
       // Tagged template support: JS array builder and tagged template caller
       if (name === "__js_array_new") return () => [];
       if (name === "__js_array_push") return (arr: any[], val: any) => { arr.push(val); };
