@@ -439,5 +439,6 @@
 | 718 | 2026-03-21 | Duplicate of #716                                                                                 | Session    |
 | 721 | 2026-03-21 | Residual negative test false-pass (2,564 FAIL) — with, octal, delete, for-in init, labeled fn     | Session    |
 | 720 | 2026-03-21 | IIFE return type mismatch causes local.set type error (39 CE)                                     | Session    |
+| 698 | 2026-03-21 | Call type mismatch residual (1,044 CE) -- property access fallback, setter coercion                | Session    |
 
 
