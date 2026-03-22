@@ -8,10 +8,61 @@
  * If neither is available, returns the original binary unchanged and emits a warning.
  */
 
-import { execFileSync } from "node:child_process";
-import { writeFileSync, readFileSync, unlinkSync, mkdtempSync } from "node:fs";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
+// Dynamic imports to avoid vite bundling node-only modules for the browser.
+// These are only used by optimizeWithSystemBinary which only runs in Node.js.
+let _nodeImports: {
+  execFileSync: typeof import("node:child_process").execFileSync;
+  writeFileSync: typeof import("node:fs").writeFileSync;
+  readFileSync: typeof import("node:fs").readFileSync;
+  unlinkSync: typeof import("node:fs").unlinkSync;
+  mkdtempSync: typeof import("node:fs").mkdtempSync;
+  join: typeof import("node:path").join;
+  tmpdir: typeof import("node:os").tmpdir;
+} | null = null;
+
+async function getNodeImports() {
+  if (_nodeImports) return _nodeImports;
+  const [cp, fs, path, os] = await Promise.all([
+    import("node:child_process"),
+    import("node:fs"),
+    import("node:path"),
+    import("node:os"),
+  ]);
+  _nodeImports = {
+    execFileSync: cp.execFileSync,
+    writeFileSync: fs.writeFileSync,
+    readFileSync: fs.readFileSync,
+    unlinkSync: fs.unlinkSync,
+    mkdtempSync: fs.mkdtempSync,
+    join: path.join,
+    tmpdir: os.tmpdir,
+  };
+  return _nodeImports;
+}
+
+// Sync fallback for Node.js environments (avoids changing the public API)
+function getNodeImportsSync() {
+  if (_nodeImports) return _nodeImports;
+  try {
+    /* eslint-disable @typescript-eslint/no-require-imports */
+    const cp = require("node:child_process");
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const os = require("node:os");
+    _nodeImports = {
+      execFileSync: cp.execFileSync,
+      writeFileSync: fs.writeFileSync,
+      readFileSync: fs.readFileSync,
+      unlinkSync: fs.unlinkSync,
+      mkdtempSync: fs.mkdtempSync,
+      join: path.join,
+      tmpdir: os.tmpdir,
+    };
+    return _nodeImports;
+  } catch {
+    return null;
+  }
+}
 
 export interface OptimizeOptions {
   /** Optimization level: 1 (-O1), 2 (-O2), 3 (-O3), 4 (-O4). Default: 3 */
@@ -128,10 +179,13 @@ function optimizeWithSystemBinary(
   referenceTypes: boolean,
   exceptionHandling: boolean,
 ): OptimizeResult | null {
+  const n = getNodeImportsSync();
+  if (!n) return null; // Not in Node.js environment (browser)
+
   // Check if wasm-opt is on PATH
   let wasmOptPath: string;
   try {
-    wasmOptPath = execFileSync("which", ["wasm-opt"], { encoding: "utf-8" }).trim();
+    wasmOptPath = n.execFileSync("which", ["wasm-opt"], { encoding: "utf-8" }).trim();
   } catch {
     return null;
   }
@@ -139,12 +193,12 @@ function optimizeWithSystemBinary(
   if (!wasmOptPath) return null;
 
   // Write to temp file, run wasm-opt, read result
-  const tmpDir = mkdtempSync(join(tmpdir(), "ts2wasm-opt-"));
-  const inputPath = join(tmpDir, "input.wasm");
-  const outputPath = join(tmpDir, "output.wasm");
+  const tmpDir = n.mkdtempSync(n.join(n.tmpdir(), "ts2wasm-opt-"));
+  const inputPath = n.join(tmpDir, "input.wasm");
+  const outputPath = n.join(tmpDir, "output.wasm");
 
   try {
-    writeFileSync(inputPath, binary);
+    n.writeFileSync(inputPath, binary);
 
     const args: string[] = [
       inputPath,
@@ -162,22 +216,21 @@ function optimizeWithSystemBinary(
       args.push("--enable-exception-handling");
     }
 
-    execFileSync(wasmOptPath, args, {
+    n.execFileSync(wasmOptPath, args, {
       timeout: 60_000, // 60 second timeout
       stdio: "pipe",
     });
 
-    const optimizedBinary = readFileSync(outputPath);
+    const optimizedBinary = n.readFileSync(outputPath);
     return { binary: new Uint8Array(optimizedBinary), optimized: true };
   } finally {
     // Cleanup temp files
-    try { unlinkSync(inputPath); } catch { /* ignore */ }
-    try { unlinkSync(outputPath); } catch { /* ignore */ }
-    try { unlinkSync(tmpDir); } catch {
-      // rmdir for the directory
+    try { n.unlinkSync(inputPath); } catch { /* ignore */ }
+    try { n.unlinkSync(outputPath); } catch { /* ignore */ }
+    try { n.unlinkSync(tmpDir); } catch {
       try {
-        const { rmdirSync } = require("node:fs");
-        rmdirSync(tmpDir);
+        const fs = require("node:fs");
+        fs.rmdirSync(tmpDir);
       } catch { /* ignore */ }
     }
   }
