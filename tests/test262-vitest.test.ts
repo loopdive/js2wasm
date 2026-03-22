@@ -452,13 +452,21 @@ for (const category of TEST_CATEGORIES) {
             if (ret === 1) {
               recordResult(relPath, category, "pass");
             } else if (ret === -1) {
-              // Exception caught in test body — read __caught_exception export
-              const caughtEx = (instance.exports as any).__caught_exception;
-              const exInfo = caughtEx?.value
-                ? resolveWasmErrorLine(caughtEx.value, compileResult.result.sourceMap, source, bodyLineOffset)
-                : (typeof caughtEx === "object" && caughtEx?.message)
-                  ? resolveWasmErrorLine(caughtEx, compileResult.result.sourceMap, source, bodyLineOffset)
-                  : "unknown exception";
+              // Exception caught in test body — try to read __caught_exception export
+              let exInfo = "unknown exception";
+              try {
+                const caughtGlobal = (instance.exports as any).__caught_exception;
+                // WebAssembly.Global wraps externref — .value gives the JS object
+                const ex = caughtGlobal instanceof WebAssembly.Global ? caughtGlobal.value : caughtGlobal;
+                if (ex != null) {
+                  const exErr = ex instanceof Error ? ex : (typeof ex === "object" && ex.message) ? ex : null;
+                  if (exErr) {
+                    exInfo = resolveWasmErrorLine(exErr, compileResult.result.sourceMap, source, bodyLineOffset);
+                  } else {
+                    exInfo = String(ex);
+                  }
+                }
+              } catch { /* export doesn't exist or can't be read */ }
               recordResult(relPath, category, "fail", `returned -1 — ${exInfo}`);
             } else {
               const assertInfo = findNthAssert(source, ret);
