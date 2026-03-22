@@ -282,8 +282,12 @@ function resolveWasmErrorLine(
     const adjLine = rawLine - bodyLineOffset;
     const srcLine = adjLine > 0 ? adjLine : rawLine;
     const lines = source.split("\n");
-    const ctx = lines[srcLine - 1]?.trim().substring(0, 80) ?? "";
-    return `${msg} [at L${srcLine}: ${ctx}]`;
+    if (srcLine >= 1 && srcLine <= lines.length) {
+      const ctx = lines[srcLine - 1]?.trim().substring(0, 80) ?? "";
+      return `${msg} [at L${srcLine}: ${ctx}]`;
+    }
+    // Line out of range — in preamble/postamble, just show the raw line
+    return `${msg} [at wrapped L${rawLine}]`;
   }
 
   // Try to extract wasm byte offset from stack trace
