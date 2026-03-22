@@ -1,5 +1,10 @@
 # ts2wasm Project Memory
 
+## CRITICAL RULES (check every time)
+- **NEVER delete worktrees without checking diffs first.** Run `git -C <wt> diff --stat` for EACH one, show to user, ask before deleting. Violated twice — no more.
+- **NEVER work on agent branches/worktrees.** Always verify `pwd` is `/workspace` and branch is `main` before edits/commits.
+- **NEVER kill running tests without asking.**
+
 ## Memory Index
 - [user_role.md](user_role.md) — User profile: project lead, challenges assumptions, thinks in compilation strategies
 - [project_team_setup.md](project_team_setup.md) — Agent team config, roles, sprint workflow, merge lessons

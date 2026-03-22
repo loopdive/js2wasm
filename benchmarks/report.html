@@ -2,7 +2,6 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    /
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>ts2wasm — Conformance &amp; Performance Report</title>
     <style>
@@ -535,10 +534,11 @@
       function fetchSourceLines(filePath, errText) {
         const placeholder = el("div", { className: "src-placeholder" });
         // Extract line number from various error formats
-        const lineMatch = errText.match(/L(\d+):(\d+)\s/) ||       // L27:22 (compiler errors)
-          errText.match(/at L(\d+):/) ||                            // [in fn() at L10: code] or [at L10: code]
-          errText.match(/at L(\d+)[^:]/) ||                         // [at wrapped L430]
-          errText.match(/assert #\d+ at L(\d+):/);                  // assert #1 at L10: code
+        const lineMatch =
+          errText.match(/L(\d+):(\d+)\s/) || // L27:22 (compiler errors)
+          errText.match(/at L(\d+):/) || // [in fn() at L10: code] or [at L10: code]
+          errText.match(/at L(\d+)[^:]/) || // [at wrapped L430]
+          errText.match(/assert #\d+ at L(\d+):/); // assert #1 at L10: code
         // Extract assert text for source search (fallback when no line number)
         const assertMatch =
           !lineMatch &&
