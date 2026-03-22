@@ -1705,7 +1705,7 @@ export function test(): number {
   const bodyLineOffset = preBody.split("\n").length - 1;
   // Also account for lines stripped from the original source (metadata block)
   const metaBlock = source.match(/\/\*---[\s\S]*?---\*\//);
-  const metaLines = metaBlock ? metaBlock[0].split("\n").length : 0;
+  const metaLines = metaBlock ? metaBlock[0].split("\n").length - 1 : 0;
   return {
     source: preBody + bodyForFunc.trim() + postBody,
     bodyLineOffset: bodyLineOffset - metaLines,
