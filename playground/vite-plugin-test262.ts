@@ -216,6 +216,7 @@ export function test262Plugin(): Plugin {
         const url = new URL(req.url!, `http://${req.headers.host}`);
 
         // Serve static files from project root (benchmarks/, test262/)
+        // MUST return 404 for missing files to prevent vite SPA fallback returning HTML
         if (url.pathname.startsWith("/benchmarks/") || url.pathname.startsWith("/test262/")) {
           const filePath = normalize(join(projectRoot, url.pathname));
           if (!filePath.startsWith(projectRoot)) {
@@ -234,6 +235,10 @@ export function test262Plugin(): Plugin {
             res.end(readFileSync(filePath));
             return;
           }
+          // File not found — return 404, don't fall through to SPA
+          res.statusCode = 404;
+          res.end("Not found");
+          return;
         }
 
         if (url.pathname === "/api/test262-index") {
