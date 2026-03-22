@@ -7233,6 +7233,12 @@ export function addUnionImports(ctx: CodegenContext): void {
         shifted.add(pb);
       }
     }
+    // Shift the pending init body (module-level init function compiled before
+    // top-level functions, but not yet added to ctx.mod.functions).
+    if (ctx.pendingInitBody && !shifted.has(ctx.pendingInitBody)) {
+      shiftFuncIndices(ctx.pendingInitBody);
+      shifted.add(ctx.pendingInitBody);
+    }
     // Update table elements
     for (const elem of ctx.mod.elements) {
       if (elem.funcIndices) {
