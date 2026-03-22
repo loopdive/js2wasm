@@ -1,0 +1,1836 @@
+import ts from "typescript";
+import {
+  isBigIntType,
+  isBooleanType,
+  isNumberType,
+  isStringType,
+} from "../checker/type-mapper.js";
+import type { Instr, ValType } from "../ir/types.js";
+import type { InnerResult } from "./expressions.js";
+import {
+  coerceType,
+  compileAssignment,
+  compileCompoundAssignment,
+  compileExpression,
+  compileInstanceOf,
+  compileLogicalAnd,
+  compileLogicalAssignment,
+  compileLogicalOr,
+  compileNullishCoalescing,
+  compileTypeofComparison,
+  emitThrowString,
+  getCol,
+  getLine,
+  isCompoundAssignment,
+  tryStaticToNumber,
+  VOID_RESULT,
+} from "./expressions.js";
+import type { CodegenContext, FunctionContext } from "./index.js";
+import {
+  addStringImports,
+  addUnionImports,
+  allocLocal,
+  allocTempLocal,
+  ensureAnyHelpers,
+  releaseTempLocal,
+  resolveNativeTypeAnnotation,
+  resolveWasmType,
+} from "./index.js";
+import { compileStringBinaryOp } from "./string-ops.js";
+
+// ── Binary operations ─────────────────────────────────────────────────
+
+/**
+ * Operators eligible for chain flattening — arithmetic and bitwise ops that
+ * take two numeric operands and produce a numeric result of the same type.
+ * We exclude ** (exponentiation) because it calls Math_pow and comparison
+ * operators because they produce i32 (boolean), not f64.
+ */
+const FLATTENABLE_OPS = new Set<ts.SyntaxKind>([
+  ts.SyntaxKind.PlusToken,
+  ts.SyntaxKind.MinusToken,
+  ts.SyntaxKind.AsteriskToken,
+  ts.SyntaxKind.SlashToken,
+  ts.SyntaxKind.PercentToken,
+  ts.SyntaxKind.AmpersandToken,
+  ts.SyntaxKind.BarToken,
+  ts.SyntaxKind.CaretToken,
+  ts.SyntaxKind.LessThanLessThanToken,
+  ts.SyntaxKind.GreaterThanGreaterThanToken,
+  ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken,
+]);
+
+/**
+ * Try to flatten a left-recursive chain of the same binary operator into an
+ * iterative compilation. For expressions like `a + b + c + d` (AST:
+ * `((a + b) + c) + d`), this avoids O(n) JS call-stack depth and improves
+ * compilation speed for long chains.
+ *
+ * Returns null if flattening is not applicable (not the same operator
+ * throughout, non-numeric operands, chain too short, etc.).
+ */
+function tryFlattenBinaryChain(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.BinaryExpression,
+  op: ts.SyntaxKind,
+): InnerResult | null {
+  // Only flatten operators that produce the same type as their inputs
+  if (!FLATTENABLE_OPS.has(op)) return null;
+
+  // Must have at least 3 operands (i.e., left is also a binary expr with same op)
+  if (
+    !ts.isBinaryExpression(expr.left) ||
+    expr.left.operatorToken.kind !== op
+  ) {
+    return null;
+  }
+
+  // Collect all leaf operands by walking the left-recursive spine
+  const operands: ts.Expression[] = [];
+  let node: ts.Expression = expr;
+  while (ts.isBinaryExpression(node) && node.operatorToken.kind === op) {
+    operands.push(node.right);
+    node = node.left;
+  }
+  operands.push(node); // leftmost operand
+  operands.reverse(); // now in left-to-right order
+
+  // Verify all operands are numeric (not string, not any, not bigint)
+  // If plus and any operand is a string type, bail out — it's string concat
+  for (const operand of operands) {
+    const tsType = ctx.checker.getTypeAtLocation(operand);
+    if (isStringType(tsType)) return null;
+    if (isBigIntType(tsType)) return null;
+    if ((tsType.flags & ts.TypeFlags.Any) !== 0) return null;
+  }
+
+  // Determine numeric hint — also check if all operands use native i32 type annotations
+  const isDivOrPow =
+    op === ts.SyntaxKind.SlashToken ||
+    op === ts.SyntaxKind.AsteriskAsteriskToken;
+  let allNativeI32 = !isDivOrPow;
+  if (allNativeI32 && !ctx.fast) {
+    for (const operand of operands) {
+      const tsType = ctx.checker.getTypeAtLocation(operand);
+      const native = resolveNativeTypeAnnotation(tsType);
+      if (native?.kind !== "i32") {
+        allNativeI32 = false;
+        break;
+      }
+    }
+  }
+  const numericHint: ValType = {
+    kind: (ctx.fast || allNativeI32) && !isDivOrPow ? "i32" : "f64",
+  };
+
+  // Compile first operand
+  let resultType = compileExpression(ctx, fctx, operands[0], numericHint);
+  if (!resultType) return null;
+
+  // Compile subsequent operands, emitting the operator after each pair
+  for (let i = 1; i < operands.length; i++) {
+    let rightType = compileExpression(ctx, fctx, operands[i], numericHint);
+    if (!rightType) return null;
+
+    // Promote i32/f64 mismatch
+    if (resultType.kind === "i32" && rightType.kind === "f64") {
+      const tmpR = allocTempLocal(fctx, { kind: "f64" });
+      fctx.body.push({ op: "local.set", index: tmpR });
+      fctx.body.push({ op: "f64.convert_i32_s" });
+      fctx.body.push({ op: "local.get", index: tmpR });
+      releaseTempLocal(fctx, tmpR);
+      resultType = { kind: "f64" };
+      rightType = { kind: "f64" };
+    } else if (resultType.kind === "f64" && rightType.kind === "i32") {
+      fctx.body.push({ op: "f64.convert_i32_s" });
+      rightType = { kind: "f64" };
+    }
+
+    // i32 path: fast mode or native type annotations
+    if (
+      (ctx.fast || allNativeI32) &&
+      resultType.kind === "i32" &&
+      rightType.kind === "i32"
+    ) {
+      resultType = compileI32BinaryOp(ctx, fctx, op, expr);
+    } else {
+      resultType = compileNumericBinaryOp(ctx, fctx, op, expr);
+    }
+  }
+
+  return resultType;
+}
+
+export function compileBinaryExpression(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.BinaryExpression,
+): InnerResult {
+  const op = expr.operatorToken.kind;
+
+  // Handle assignment
+  if (op === ts.SyntaxKind.EqualsToken) {
+    return compileAssignment(ctx, fctx, expr);
+  }
+
+  // Handle logical assignment operators (??=, ||=, &&=)
+  if (
+    op === ts.SyntaxKind.QuestionQuestionEqualsToken ||
+    op === ts.SyntaxKind.BarBarEqualsToken ||
+    op === ts.SyntaxKind.AmpersandAmpersandEqualsToken
+  ) {
+    return compileLogicalAssignment(ctx, fctx, expr, op);
+  }
+
+  // Handle compound assignments
+  if (isCompoundAssignment(op)) {
+    return compileCompoundAssignment(ctx, fctx, expr, op);
+  }
+
+  // Handle logical && and ||
+  if (op === ts.SyntaxKind.AmpersandAmpersandToken) {
+    return compileLogicalAnd(ctx, fctx, expr);
+  }
+  if (op === ts.SyntaxKind.BarBarToken) {
+    return compileLogicalOr(ctx, fctx, expr);
+  }
+
+  // Nullish coalescing: a ?? b
+  if (op === ts.SyntaxKind.QuestionQuestionToken) {
+    return compileNullishCoalescing(ctx, fctx, expr);
+  }
+
+  // Comma operator: (a, b) — evaluate a, drop its value, evaluate b
+  if (op === ts.SyntaxKind.CommaToken) {
+    const leftType = compileExpression(ctx, fctx, expr.left);
+    if (leftType) {
+      fctx.body.push({ op: "drop" });
+    }
+    return compileExpression(ctx, fctx, expr.right);
+  }
+
+  // instanceof: compile left value, resolve right to struct type, emit ref.test
+  if (op === ts.SyntaxKind.InstanceOfKeyword) {
+    return compileInstanceOf(ctx, fctx, expr);
+  }
+
+  // typeof x === "type" / typeof x !== "type"
+  if (
+    op === ts.SyntaxKind.EqualsEqualsEqualsToken ||
+    op === ts.SyntaxKind.EqualsEqualsToken ||
+    op === ts.SyntaxKind.ExclamationEqualsEqualsToken ||
+    op === ts.SyntaxKind.ExclamationEqualsToken
+  ) {
+    const typeofResult = compileTypeofComparison(ctx, fctx, expr);
+    if (typeofResult !== null) return typeofResult;
+  }
+
+  // Null comparison shortcut: x === null, x !== null, null === x, null !== x
+  // Must be detected before compiling both sides to avoid pushing unnecessary null
+  const isEqOp =
+    op === ts.SyntaxKind.EqualsEqualsEqualsToken ||
+    op === ts.SyntaxKind.EqualsEqualsToken;
+  const isNeqOp =
+    op === ts.SyntaxKind.ExclamationEqualsEqualsToken ||
+    op === ts.SyntaxKind.ExclamationEqualsToken;
+  const isStrictEqOp = op === ts.SyntaxKind.EqualsEqualsEqualsToken;
+  const isStrictNeqOp = op === ts.SyntaxKind.ExclamationEqualsEqualsToken;
+  const isLooseEqOp = op === ts.SyntaxKind.EqualsEqualsToken;
+  const isLooseNeqOp = op === ts.SyntaxKind.ExclamationEqualsToken;
+  if (isEqOp || isNeqOp) {
+    const rightIsNullKeyword = expr.right.kind === ts.SyntaxKind.NullKeyword;
+    const rightIsUndefinedId =
+      ts.isIdentifier(expr.right) && expr.right.text === "undefined";
+    const rightIsNullish = rightIsNullKeyword || rightIsUndefinedId;
+    const leftIsNullKeyword = expr.left.kind === ts.SyntaxKind.NullKeyword;
+    const leftIsUndefinedId =
+      ts.isIdentifier(expr.left) && expr.left.text === "undefined";
+    const leftIsNullish = leftIsNullKeyword || leftIsUndefinedId;
+    if (rightIsNullish || leftIsNullish) {
+      // Determine which side is the literal null/undefined and which is the expression
+      const nonNullExpr = rightIsNullish ? expr.left : expr.right;
+
+      // Check if the non-null side is also a null/undefined literal
+      const nonNullIsNullKeyword = rightIsNullish
+        ? leftIsNullKeyword
+        : rightIsNullKeyword;
+      const nonNullIsUndefinedId = rightIsNullish
+        ? leftIsUndefinedId
+        : rightIsUndefinedId;
+      const nullSideIsNullKeyword = rightIsNullish
+        ? rightIsNullKeyword
+        : leftIsNullKeyword;
+      const nullSideIsUndefinedId = rightIsNullish
+        ? rightIsUndefinedId
+        : leftIsUndefinedId;
+
+      // Both sides are null/undefined literals
+      if (nonNullIsNullKeyword || nonNullIsUndefinedId) {
+        // For strict equality: null === null or undefined === undefined → true;
+        //                      null === undefined → false
+        if (isStrictEqOp || isStrictNeqOp) {
+          const sameKind =
+            (nonNullIsNullKeyword && nullSideIsNullKeyword) ||
+            (nonNullIsUndefinedId && nullSideIsUndefinedId);
+          fctx.body.push({
+            op: "i32.const",
+            value: isStrictEqOp ? (sameKind ? 1 : 0) : sameKind ? 0 : 1,
+          });
+          return { kind: "i32" };
+        }
+        // For loose equality: null == undefined → true
+        fctx.body.push({ op: "i32.const", value: isLooseEqOp ? 1 : 0 });
+        return { kind: "i32" };
+      }
+
+      // Check the TS type of the non-null side to detect undefined/null-typed variables
+      const nonNullTsType = ctx.checker.getTypeAtLocation(nonNullExpr);
+      const nonNullIsUndefinedType =
+        (nonNullTsType.flags & ts.TypeFlags.Undefined) !== 0 ||
+        (nonNullTsType.flags & ts.TypeFlags.Void) !== 0;
+      const nonNullIsNullType = (nonNullTsType.flags & ts.TypeFlags.Null) !== 0;
+
+      // Compile the non-null side
+      const valType = compileExpression(ctx, fctx, nonNullExpr);
+      if (valType === null) {
+        // Void expression (e.g. void function call) compared to null/undefined:
+        // void returns undefined, so undefined == undefined/null is true (loose)
+        // undefined === undefined is true, undefined === null is false (strict)
+        if (isStrictEqOp || isStrictNeqOp) {
+          const sameKind = nullSideIsUndefinedId; // void = undefined
+          fctx.body.push({
+            op: "i32.const",
+            value: isStrictEqOp ? (sameKind ? 1 : 0) : sameKind ? 0 : 1,
+          });
+        } else {
+          fctx.body.push({ op: "i32.const", value: isEqOp ? 1 : 0 });
+        }
+        return { kind: "i32" };
+      }
+      if (valType.kind === "externref") {
+        // For strict equality: if non-null side is externref (could be null-typed variable)
+        // and the literal side is undefined, null === undefined is false
+        if (
+          (isStrictEqOp || isStrictNeqOp) &&
+          nonNullIsNullType &&
+          nullSideIsUndefinedId
+        ) {
+          fctx.body.push({ op: "drop" });
+          fctx.body.push({ op: "i32.const", value: isStrictNeqOp ? 1 : 0 });
+          return { kind: "i32" };
+        }
+        fctx.body.push({ op: "ref.is_null" });
+        if (isNeqOp) fctx.body.push({ op: "i32.eqz" });
+        return { kind: "i32" };
+      }
+      // Non-externref type compared with null/undefined:
+      // If the TS type is undefined or null, it's a nullish value stored as i32
+      if (nonNullIsUndefinedType || nonNullIsNullType) {
+        fctx.body.push({ op: "drop" });
+        // Loose equality: undefined/null == null/undefined → true
+        if (isLooseEqOp || isLooseNeqOp) {
+          fctx.body.push({ op: "i32.const", value: isLooseEqOp ? 1 : 0 });
+          return { kind: "i32" };
+        }
+        // Strict equality: only true if same kind
+        const sameKind =
+          (nonNullIsUndefinedType && nullSideIsUndefinedId) ||
+          (nonNullIsNullType && nullSideIsNullKeyword);
+        fctx.body.push({
+          op: "i32.const",
+          value: isStrictEqOp ? (sameKind ? 1 : 0) : sameKind ? 0 : 1,
+        });
+        return { kind: "i32" };
+      }
+      // For ref/ref_null struct types, use ref.is_null to check nullability
+      if (valType.kind === "ref" || valType.kind === "ref_null") {
+        fctx.body.push({ op: "ref.is_null" });
+        if (isNeqOp) fctx.body.push({ op: "i32.eqz" });
+        return { kind: "i32" };
+      }
+      // For other non-externref types (number, boolean), always not-equal to null/undefined
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "i32.const", value: isNeqOp ? 1 : 0 });
+      return { kind: "i32" };
+    }
+  }
+
+  // `key in obj` — compile-time property existence check
+  if (op === ts.SyntaxKind.InKeyword) {
+    const rightType = ctx.checker.getTypeAtLocation(expr.right);
+    const rightWasm = resolveWasmType(ctx, rightType);
+
+    // Get struct field names if available; detect vec (array) types
+    let structFieldNames: string[] | null = null;
+    let isVecType = false;
+    let vecTypeIdx = -1;
+    if (rightWasm.kind === "ref" || rightWasm.kind === "ref_null") {
+      const typeIdx = (rightWasm as { typeIdx: number }).typeIdx;
+      const structDef = ctx.mod.types[typeIdx];
+      if (structDef?.kind === "struct") {
+        if (structDef.name?.startsWith("__vec_")) {
+          isVecType = true;
+          vecTypeIdx = typeIdx;
+        } else {
+          structFieldNames = structDef.fields
+            .map((f) => f.name)
+            .filter((n): n is string => n !== undefined);
+        }
+      }
+    }
+
+    // Resolve the key to a compile-time string if possible.
+    // For comma expressions like (x = y, "key"), extract the last element.
+    // For PrivateIdentifier (#field in obj), extract the field name without '#'.
+    let staticKey: string | null = null;
+    let leftExpr: ts.Expression = expr.left;
+    if (ts.isPrivateIdentifier(leftExpr)) {
+      staticKey = leftExpr.text.startsWith("#")
+        ? leftExpr.text.slice(1)
+        : leftExpr.text;
+    } else if (ts.isStringLiteral(leftExpr)) {
+      staticKey = leftExpr.text;
+    } else if (ts.isNumericLiteral(leftExpr)) {
+      staticKey = leftExpr.text;
+    } else if (
+      ts.isBinaryExpression(leftExpr) &&
+      leftExpr.operatorToken.kind === ts.SyntaxKind.CommaToken
+    ) {
+      // Comma expression: extract the last element for the static key
+      let last: ts.Expression = leftExpr.right;
+      while (
+        ts.isBinaryExpression(last) &&
+        last.operatorToken.kind === ts.SyntaxKind.CommaToken
+      ) {
+        last = last.right;
+      }
+      if (ts.isStringLiteral(last)) {
+        staticKey = last.text;
+      } else if (ts.isNumericLiteral(last)) {
+        staticKey = last.text;
+      }
+    } else if (ts.isParenthesizedExpression(leftExpr)) {
+      // Parenthesized expression: unwrap and check for comma or literal
+      let inner = leftExpr.expression;
+      if (
+        ts.isBinaryExpression(inner) &&
+        inner.operatorToken.kind === ts.SyntaxKind.CommaToken
+      ) {
+        let last: ts.Expression = inner.right;
+        while (
+          ts.isBinaryExpression(last) &&
+          last.operatorToken.kind === ts.SyntaxKind.CommaToken
+        ) {
+          last = last.right;
+        }
+        if (ts.isStringLiteral(last)) {
+          staticKey = last.text;
+        } else if (ts.isNumericLiteral(last)) {
+          staticKey = last.text;
+        }
+      } else if (ts.isStringLiteral(inner)) {
+        staticKey = inner.text;
+      } else if (ts.isNumericLiteral(inner)) {
+        staticKey = inner.text;
+      }
+    }
+
+    // Also check the TypeScript type system for property existence.
+    // This handles built-in constructors (Number.MAX_VALUE), prototype methods
+    // (valueOf, toString), and dynamically assigned properties.
+    let tsTypeHasProperty = false;
+    if (staticKey !== null) {
+      // Check direct properties on the TypeScript type
+      const prop = rightType.getProperty(staticKey);
+      if (prop) {
+        tsTypeHasProperty = true;
+      }
+      // Check the right side's type for comma expressions too
+      if (
+        !tsTypeHasProperty &&
+        ts.isBinaryExpression(expr.right) &&
+        expr.right.operatorToken.kind === ts.SyntaxKind.CommaToken
+      ) {
+        let lastRight: ts.Expression = expr.right.right;
+        while (
+          ts.isBinaryExpression(lastRight) &&
+          lastRight.operatorToken.kind === ts.SyntaxKind.CommaToken
+        ) {
+          lastRight = lastRight.right;
+        }
+        const lastRightType = ctx.checker.getTypeAtLocation(lastRight);
+        const prop2 = lastRightType.getProperty(staticKey);
+        if (prop2) tsTypeHasProperty = true;
+      }
+      // Also check apparent type (includes prototype methods like valueOf, toString)
+      if (!tsTypeHasProperty) {
+        const apparentType = ctx.checker.getApparentType(rightType);
+        const apparentProp = apparentType.getProperty(staticKey);
+        if (apparentProp) tsTypeHasProperty = true;
+      }
+    }
+
+    // Array (vec) index bounds check: `index in arr` → 0 <= index < arr.length
+    if (isVecType && staticKey !== null) {
+      const numIdx = Number(staticKey);
+      if (Number.isFinite(numIdx) && numIdx >= 0 && Number.isInteger(numIdx)) {
+        // Evaluate left for side effects, drop result
+        const leftResult = compileExpression(ctx, fctx, expr.left);
+        if (leftResult && leftResult !== VOID_RESULT) {
+          fctx.body.push({ op: "drop" });
+        }
+        // Compile the array expression to get the vec struct
+        const rightResult = compileExpression(ctx, fctx, expr.right);
+        if (rightResult && rightResult !== VOID_RESULT) {
+          // Read length field (field 0 of vec struct)
+          fctx.body.push({
+            op: "struct.get",
+            typeIdx: vecTypeIdx,
+            fieldIdx: 0,
+          });
+          // Compare: numIdx < length
+          fctx.body.push({ op: "i32.const", value: numIdx });
+          fctx.body.push({ op: "i32.gt_s" }); // length > index  <==>  index < length
+        } else {
+          fctx.body.push({ op: "i32.const", value: 0 });
+        }
+        return { kind: "i32" };
+      }
+      // Non-numeric key like "length" on array — check TS type
+      if (staticKey === "length") {
+        const leftResult = compileExpression(ctx, fctx, expr.left);
+        if (leftResult && leftResult !== VOID_RESULT) {
+          fctx.body.push({ op: "drop" });
+        }
+        const rightResult = compileExpression(ctx, fctx, expr.right);
+        if (rightResult && rightResult !== VOID_RESULT) {
+          fctx.body.push({ op: "drop" });
+        }
+        fctx.body.push({ op: "i32.const", value: 1 });
+        return { kind: "i32" };
+      }
+    }
+
+    // Static resolution: key is known at compile time
+    if (staticKey !== null) {
+      const hasInStruct =
+        structFieldNames !== null && structFieldNames.includes(staticKey);
+      const has = hasInStruct || tsTypeHasProperty;
+      // Evaluate both operands for side effects (needed for comma expressions like
+      // (NUMBER = Number, "MAX_VALUE") in NUMBER). Drop the produced values.
+      const leftResult = compileExpression(ctx, fctx, expr.left);
+      if (leftResult && leftResult !== VOID_RESULT) {
+        fctx.body.push({ op: "drop" });
+      }
+      const rightResult = compileExpression(ctx, fctx, expr.right);
+      if (rightResult && rightResult !== VOID_RESULT) {
+        fctx.body.push({ op: "drop" });
+      }
+      fctx.body.push({ op: "i32.const", value: has ? 1 : 0 });
+      return { kind: "i32" };
+    }
+
+    // Dynamic key with known struct fields: runtime string comparison
+    if (structFieldNames !== null && structFieldNames.length > 0) {
+      // Compile the key expression (should produce a string/externref)
+      const keyType = compileExpression(ctx, fctx, expr.left);
+      if (keyType) {
+        // Compare key against each field name using wasm:js-string equals
+        const equalsIdx =
+          ctx.funcMap.get("__str_eq") ?? ctx.funcMap.get("string_equals");
+        const jsStrEquals = ctx.mod.imports.findIndex(
+          (imp) => imp.module === "wasm:js-string" && imp.name === "equals",
+        );
+        const eqFunc = jsStrEquals >= 0 ? jsStrEquals : equalsIdx;
+        if (eqFunc !== undefined && eqFunc >= 0) {
+          const keyLocal = allocLocal(
+            fctx,
+            `__in_key_${fctx.locals.length}`,
+            keyType,
+          );
+          fctx.body.push({ op: "local.set", index: keyLocal });
+          // Start with false (0)
+          fctx.body.push({ op: "i32.const", value: 0 });
+          for (const fieldName of structFieldNames) {
+            // Load the key and the field name string, compare
+            fctx.body.push({ op: "local.get", index: keyLocal });
+            const strGlobal = ctx.stringGlobalMap.get(fieldName);
+            if (strGlobal !== undefined) {
+              fctx.body.push({ op: "global.get", index: strGlobal });
+              fctx.body.push({ op: "call", funcIdx: eqFunc });
+              fctx.body.push({ op: "i32.or" }); // OR with accumulated result
+            }
+          }
+          return { kind: "i32" };
+        }
+      }
+    }
+
+    // Dynamic key with no struct fields — try TS type system for known properties
+    // Compile both sides for side effects, then use TS type system if the key
+    // can be resolved from its type (e.g., a string variable with a known literal type).
+    {
+      const leftResult = compileExpression(ctx, fctx, expr.left);
+      if (leftResult && leftResult !== VOID_RESULT) {
+        fctx.body.push({ op: "drop" });
+      }
+      const rightResult = compileExpression(ctx, fctx, expr.right);
+      if (rightResult && rightResult !== VOID_RESULT) {
+        fctx.body.push({ op: "drop" });
+      }
+
+      // Try to resolve key from the TS type of the left expression
+      const leftType = ctx.checker.getTypeAtLocation(expr.left);
+      if (leftType.isStringLiteral()) {
+        const key = leftType.value;
+        const prop = rightType.getProperty(key);
+        const apparentType = ctx.checker.getApparentType(rightType);
+        const apparentProp = apparentType.getProperty(key);
+        const has = !!(
+          prop ||
+          apparentProp ||
+          (structFieldNames && structFieldNames.includes(key))
+        );
+        fctx.body.push({ op: "i32.const", value: has ? 1 : 0 });
+        return { kind: "i32" };
+      }
+
+      // Fully dynamic — emit false as safe fallback
+      fctx.body.push({ op: "i32.const", value: 0 });
+      return { kind: "i32" };
+    }
+  }
+
+  // ── Flatten long chains of same numeric operator ──
+  // For expressions like a + b + c + d (left-recursive AST), flatten into an
+  // iterative loop to avoid deep JS recursion and improve compilation speed.
+  {
+    const flatResult = tryFlattenBinaryChain(ctx, fctx, expr, op);
+    if (flatResult !== null) return flatResult;
+  }
+
+  // ── Constant folding: emit a single constant when both operands are compile-time known ──
+  {
+    const folded = tryStaticToNumber(ctx, expr);
+    if (folded !== undefined) {
+      fctx.body.push({ op: "f64.const", value: folded });
+      return { kind: "f64" };
+    }
+  }
+
+  // Regular binary ops: evaluate both sides
+  const leftTsType = ctx.checker.getTypeAtLocation(expr.left);
+  const rightTsType = ctx.checker.getTypeAtLocation(expr.right);
+
+  // ── Loose equality (== / !=) with mixed types ──
+  // JS loose equality coerces types before comparing. Handle common cases:
+  //   number == boolean / boolean == number → coerce boolean to number
+  //   string == number / number == string → coerce string to number (parseFloat)
+  //   string == boolean / boolean == string → coerce both to number
+  const isLooseEq = op === ts.SyntaxKind.EqualsEqualsToken;
+  const isLooseNeq = op === ts.SyntaxKind.ExclamationEqualsToken;
+  if (isLooseEq || isLooseNeq) {
+    const leftIsNum = isNumberType(leftTsType);
+    const leftIsBool = isBooleanType(leftTsType);
+    const leftIsStr = isStringType(leftTsType);
+    const rightIsNum = isNumberType(rightTsType);
+    const rightIsBool = isBooleanType(rightTsType);
+    const rightIsStr = isStringType(rightTsType);
+
+    // number == boolean: coerce boolean (i32) → f64, then f64.eq
+    if (leftIsNum && rightIsBool) {
+      compileExpression(ctx, fctx, expr.left, { kind: "f64" });
+      compileExpression(ctx, fctx, expr.right);
+      fctx.body.push({ op: "f64.convert_i32_s" });
+      fctx.body.push({ op: isLooseEq ? "f64.eq" : "f64.ne" });
+      return { kind: "i32" };
+    }
+    // boolean == number: coerce boolean (i32) → f64, then f64.eq
+    if (leftIsBool && rightIsNum) {
+      compileExpression(ctx, fctx, expr.left);
+      fctx.body.push({ op: "f64.convert_i32_s" });
+      compileExpression(ctx, fctx, expr.right, { kind: "f64" });
+      fctx.body.push({ op: isLooseEq ? "f64.eq" : "f64.ne" });
+      return { kind: "i32" };
+    }
+    // string == number / number == string: coerce string to number via parseFloat
+    if ((leftIsStr && rightIsNum) || (leftIsNum && rightIsStr)) {
+      const pfIdx = ctx.funcMap.get("parseFloat");
+      if (pfIdx !== undefined) {
+        if (leftIsStr) {
+          // left is string, right is number
+          compileExpression(ctx, fctx, expr.left);
+          fctx.body.push({ op: "call", funcIdx: pfIdx });
+          compileExpression(ctx, fctx, expr.right, { kind: "f64" });
+        } else {
+          // left is number, right is string
+          compileExpression(ctx, fctx, expr.left, { kind: "f64" });
+          compileExpression(ctx, fctx, expr.right);
+          fctx.body.push({ op: "call", funcIdx: pfIdx });
+        }
+        fctx.body.push({ op: isLooseEq ? "f64.eq" : "f64.ne" });
+        return { kind: "i32" };
+      }
+    }
+    // string == boolean / boolean == string: coerce both to number
+    if ((leftIsStr && rightIsBool) || (leftIsBool && rightIsStr)) {
+      const pfIdx = ctx.funcMap.get("parseFloat");
+      if (pfIdx !== undefined) {
+        if (leftIsStr) {
+          compileExpression(ctx, fctx, expr.left);
+          fctx.body.push({ op: "call", funcIdx: pfIdx });
+          compileExpression(ctx, fctx, expr.right);
+          fctx.body.push({ op: "f64.convert_i32_s" });
+        } else {
+          compileExpression(ctx, fctx, expr.left);
+          fctx.body.push({ op: "f64.convert_i32_s" });
+          compileExpression(ctx, fctx, expr.right);
+          fctx.body.push({ op: "call", funcIdx: pfIdx });
+        }
+        fctx.body.push({ op: isLooseEq ? "f64.eq" : "f64.ne" });
+        return { kind: "i32" };
+      }
+    }
+  }
+
+  // ── Any-typed operand dispatch ──
+  // When both operands are `any`, use AnyValue dispatch ONLY for operators that
+  // may have non-numeric semantics (+ can do string concat, equality needs type
+  // awareness). For strictly numeric ops (-, *, /, %, **, comparisons, bitwise),
+  // skip AnyValue and compile with a numeric hint so operands unbox to f64
+  // directly, avoiding the overhead of AnyValue tag dispatch.
+  if (ctx.anyValueTypeIdx >= 0) {
+    const leftIsAny = (leftTsType.flags & ts.TypeFlags.Any) !== 0;
+    const rightIsAny = (rightTsType.flags & ts.TypeFlags.Any) !== 0;
+    if (leftIsAny && rightIsAny) {
+      const isPlusOp = op === ts.SyntaxKind.PlusToken;
+      const isEqualityOp =
+        op === ts.SyntaxKind.EqualsEqualsToken ||
+        op === ts.SyntaxKind.ExclamationEqualsToken ||
+        op === ts.SyntaxKind.EqualsEqualsEqualsToken ||
+        op === ts.SyntaxKind.ExclamationEqualsEqualsToken;
+      // Only dispatch through AnyValue for + (string concat possible) and equality
+      if (isPlusOp || isEqualityOp) {
+        const anyDispatch = compileAnyBinaryDispatch(ctx, fctx, expr, op);
+        if (anyDispatch !== null) return anyDispatch;
+      }
+      // For strictly numeric ops, fall through to compile with numeric hint
+    }
+  }
+
+  // String operations — string triggers string concat for +, or string comparison when both strings
+  const isRelational =
+    op === ts.SyntaxKind.LessThanToken ||
+    op === ts.SyntaxKind.LessThanEqualsToken ||
+    op === ts.SyntaxKind.GreaterThanToken ||
+    op === ts.SyntaxKind.GreaterThanEqualsToken;
+  if (
+    isStringType(leftTsType) &&
+    (isStringType(rightTsType) ||
+      op === ts.SyntaxKind.PlusToken ||
+      (!isRelational &&
+        !isNumberType(rightTsType) &&
+        !isBooleanType(rightTsType) &&
+        !isBigIntType(rightTsType)))
+  ) {
+    return compileStringBinaryOp(ctx, fctx, expr, op);
+  }
+  if (
+    op === ts.SyntaxKind.PlusToken &&
+    isStringType(rightTsType) &&
+    !isBigIntType(leftTsType)
+  ) {
+    return compileStringBinaryOp(ctx, fctx, expr, op);
+  }
+
+  // BigInt operations — handle both pure bigint and mixed bigint/number cases
+  if (isBigIntType(leftTsType) || isBigIntType(rightTsType)) {
+    const leftIsBigInt = isBigIntType(leftTsType);
+    const rightIsBigInt = isBigIntType(rightTsType);
+
+    // Mixed BigInt + Number/String: comparison and equality operators (#227, #228, #295)
+    if (leftIsBigInt !== rightIsBigInt) {
+      const isStrictEq = op === ts.SyntaxKind.EqualsEqualsEqualsToken;
+      const isStrictNeq = op === ts.SyntaxKind.ExclamationEqualsEqualsToken;
+
+      // Strict equality: BigInt and Number/String are different types → always false/true
+      if (isStrictEq || isStrictNeq) {
+        // Compile both sides for side effects, then drop them
+        const lt = compileExpression(ctx, fctx, expr.left);
+        if (lt) fctx.body.push({ op: "drop" });
+        const rt = compileExpression(ctx, fctx, expr.right);
+        if (rt) fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "i32.const", value: isStrictNeq ? 1 : 0 });
+        return { kind: "i32" };
+      }
+
+      // Loose equality and comparisons: convert both operands to f64, then compare
+      // For BigInt vs Number: i64 → f64 via f64.convert_i64_s
+      // For BigInt vs String: string → f64 via parseFloat, i64 → f64 (#295)
+      //   Incomparable strings (parseFloat returns NaN) make all comparisons false,
+      //   which matches the JS spec for BigInt vs non-numeric-string.
+      const isLooseEq = op === ts.SyntaxKind.EqualsEqualsToken;
+      const isLooseNeq = op === ts.SyntaxKind.ExclamationEqualsToken;
+      const isComparison =
+        op === ts.SyntaxKind.LessThanToken ||
+        op === ts.SyntaxKind.LessThanEqualsToken ||
+        op === ts.SyntaxKind.GreaterThanToken ||
+        op === ts.SyntaxKind.GreaterThanEqualsToken;
+
+      if (isLooseEq || isLooseNeq || isComparison) {
+        const leftIsStr = isStringType(leftTsType);
+        const rightIsStr = isStringType(rightTsType);
+
+        // Compile left operand
+        const leftType = compileExpression(
+          ctx,
+          fctx,
+          expr.left,
+          leftIsBigInt ? { kind: "i64" } : undefined,
+        );
+        if (!leftType) return null;
+        // Convert left to f64
+        if (leftType.kind === "i64") {
+          fctx.body.push({ op: "f64.convert_i64_s" });
+        } else if (leftType.kind === "externref") {
+          // String/externref → f64 via parseFloat (NaN for incomparable strings)
+          const pfIdx = ctx.funcMap.get("parseFloat");
+          if (pfIdx !== undefined) {
+            fctx.body.push({ op: "call", funcIdx: pfIdx });
+          } else {
+            addUnionImports(ctx);
+            const unboxIdx = ctx.funcMap.get("__unbox_number")!;
+            fctx.body.push({ op: "call", funcIdx: unboxIdx });
+          }
+        } else if (leftType.kind === "i32") {
+          fctx.body.push({ op: "f64.convert_i32_s" });
+        }
+
+        // Compile right operand
+        const rightType = compileExpression(
+          ctx,
+          fctx,
+          expr.right,
+          rightIsBigInt ? { kind: "i64" } : undefined,
+        );
+        if (!rightType) return null;
+        // Convert right to f64
+        if (rightType.kind === "i64") {
+          fctx.body.push({ op: "f64.convert_i64_s" });
+        } else if (rightType.kind === "externref") {
+          // String/externref → f64 via parseFloat (NaN for incomparable strings)
+          const pfIdx = ctx.funcMap.get("parseFloat");
+          if (pfIdx !== undefined) {
+            fctx.body.push({ op: "call", funcIdx: pfIdx });
+          } else {
+            addUnionImports(ctx);
+            const unboxIdx = ctx.funcMap.get("__unbox_number")!;
+            fctx.body.push({ op: "call", funcIdx: unboxIdx });
+          }
+        } else if (rightType.kind === "i32") {
+          fctx.body.push({ op: "f64.convert_i32_s" });
+        }
+
+        // Emit f64 comparison
+        if (isLooseEq) {
+          fctx.body.push({ op: "f64.eq" });
+        } else if (isLooseNeq) {
+          fctx.body.push({ op: "f64.ne" });
+        } else {
+          return compileNumericBinaryOp(ctx, fctx, op, expr);
+        }
+        return { kind: "i32" };
+      }
+
+      // Mixed BigInt + Number arithmetic (e.g. 1n + 1): always a TypeError in JS.
+      // Compile both sides for side effects, drop their values, then throw.
+      const lt = compileExpression(ctx, fctx, expr.left);
+      if (lt) fctx.body.push({ op: "drop" });
+      const rt = compileExpression(ctx, fctx, expr.right);
+      if (rt) fctx.body.push({ op: "drop" });
+      emitThrowString(
+        ctx,
+        fctx,
+        "Cannot mix BigInt and other types, use explicit conversions",
+      );
+      return { kind: "i32" };
+    }
+
+    // Both operands are BigInt — compile as i64
+    const i64Hint: ValType = { kind: "i64" };
+    const leftType = compileExpression(ctx, fctx, expr.left, i64Hint);
+    const rightType = compileExpression(ctx, fctx, expr.right, i64Hint);
+    if (!leftType || !rightType) return null;
+    return compileI64BinaryOp(ctx, fctx, op, expr);
+  }
+
+  // Determine expected operand type from operator and context
+  const isNumericOp =
+    op === ts.SyntaxKind.PlusToken ||
+    op === ts.SyntaxKind.MinusToken ||
+    op === ts.SyntaxKind.AsteriskToken ||
+    op === ts.SyntaxKind.AsteriskAsteriskToken ||
+    op === ts.SyntaxKind.SlashToken ||
+    op === ts.SyntaxKind.PercentToken ||
+    op === ts.SyntaxKind.LessThanToken ||
+    op === ts.SyntaxKind.LessThanEqualsToken ||
+    op === ts.SyntaxKind.GreaterThanToken ||
+    op === ts.SyntaxKind.GreaterThanEqualsToken ||
+    op === ts.SyntaxKind.AmpersandToken ||
+    op === ts.SyntaxKind.BarToken ||
+    op === ts.SyntaxKind.CaretToken ||
+    op === ts.SyntaxKind.LessThanLessThanToken ||
+    op === ts.SyntaxKind.GreaterThanGreaterThanToken ||
+    op === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken;
+  // In fast mode, numeric hint is i32 (unless division/power which promotes to f64).
+  // Also use i32 hint when operands have native i32 type annotations (type i32 = number).
+  const isDivOrPow =
+    op === ts.SyntaxKind.SlashToken ||
+    op === ts.SyntaxKind.AsteriskAsteriskToken;
+  const leftNativeType = resolveNativeTypeAnnotation(leftTsType);
+  const rightNativeType = resolveNativeTypeAnnotation(rightTsType);
+  const bothNativeI32 =
+    leftNativeType?.kind === "i32" && rightNativeType?.kind === "i32";
+  const numericHint: ValType | undefined = isNumericOp
+    ? { kind: (ctx.fast || bothNativeI32) && !isDivOrPow ? "i32" : "f64" }
+    : undefined;
+
+  let leftType = compileExpression(ctx, fctx, expr.left, numericHint);
+  let rightType = compileExpression(ctx, fctx, expr.right, numericHint);
+
+  if (!leftType || !rightType) return null;
+
+  // Promote i32↔f64 mismatch (e.g. string.length:i32 !== 8:f64)
+  if (leftType.kind === "i32" && rightType.kind === "f64") {
+    const tmpR = allocTempLocal(fctx, { kind: "f64" });
+    fctx.body.push({ op: "local.set", index: tmpR });
+    fctx.body.push({ op: "f64.convert_i32_s" });
+    fctx.body.push({ op: "local.get", index: tmpR });
+    releaseTempLocal(fctx, tmpR);
+    leftType = { kind: "f64" };
+  } else if (leftType.kind === "f64" && rightType.kind === "i32") {
+    fctx.body.push({ op: "f64.convert_i32_s" });
+    rightType = { kind: "f64" };
+  }
+
+  // ── Struct ref valueOf coercion (#138/#139) ──
+  // When operands are struct refs (objects with valueOf), coerce them to f64
+  // before performing numeric/comparison/equality operations.
+  // For strict equality (===, !==): compare struct refs by reference identity.
+  {
+    const leftIsRef = leftType.kind === "ref" || leftType.kind === "ref_null";
+    const rightIsRef =
+      rightType.kind === "ref" || rightType.kind === "ref_null";
+    if (leftIsRef || rightIsRef) {
+      // Strict equality: reference identity comparison (no valueOf coercion)
+      const isStrictEq = op === ts.SyntaxKind.EqualsEqualsEqualsToken;
+      const isStrictNeq = op === ts.SyntaxKind.ExclamationEqualsEqualsToken;
+      if (isStrictEq || isStrictNeq) {
+        if (leftIsRef && rightIsRef) {
+          fctx.body.push({ op: "ref.eq" });
+          if (isStrictNeq) fctx.body.push({ op: "i32.eqz" });
+          return { kind: "i32" };
+        }
+        // Strict equality with one ref and one primitive → always false (===) or true (!==)
+        // since objects and primitives are different types in JS strict equality
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "i32.const", value: isStrictNeq ? 1 : 0 });
+        return { kind: "i32" };
+      }
+
+      // For numeric, comparison, and loose equality ops: coerce struct refs → f64 via valueOf
+      if (isNumericOp || isEqOp || isNeqOp) {
+        // Coerce right operand (top of stack) first
+        if (rightIsRef) {
+          coerceType(ctx, fctx, rightType, { kind: "f64" });
+          rightType = { kind: "f64" };
+        }
+        // Coerce left operand (below right on stack) — save right to local
+        if (leftIsRef) {
+          const tmpR = allocTempLocal(fctx, rightType);
+          fctx.body.push({ op: "local.set", index: tmpR });
+          coerceType(ctx, fctx, leftType, { kind: "f64" });
+          fctx.body.push({ op: "local.get", index: tmpR });
+          releaseTempLocal(fctx, tmpR);
+          leftType = { kind: "f64" };
+        }
+        // After valueOf coercion, one side may be f64 (from ref) and the other
+        // may still be i32 (boolean/integer). Promote i32 → f64 to avoid type mismatch. (#433)
+        if (leftType.kind === "i32" && rightType.kind === "f64") {
+          const tmpR = allocTempLocal(fctx, { kind: "f64" });
+          fctx.body.push({ op: "local.set", index: tmpR });
+          fctx.body.push({ op: "f64.convert_i32_s" });
+          fctx.body.push({ op: "local.get", index: tmpR });
+          releaseTempLocal(fctx, tmpR);
+          leftType = { kind: "f64" };
+        } else if (leftType.kind === "f64" && rightType.kind === "i32") {
+          fctx.body.push({ op: "f64.convert_i32_s" });
+          rightType = { kind: "f64" };
+        }
+        // Now both operands are f64 — fall through to numeric dispatch below
+      }
+    }
+  }
+
+  // i32 numeric operations: fast mode or native type annotations (type i32 = number)
+  if (
+    leftType.kind === "i32" &&
+    rightType.kind === "i32" &&
+    ((ctx.fast && isNumberType(leftTsType)) || bothNativeI32)
+  ) {
+    return compileI32BinaryOp(ctx, fctx, op, expr);
+  }
+
+  // i64 operations (bigint detected by compiled type, e.g. from variables)
+  if (leftType.kind === "i64" && rightType.kind === "i64") {
+    return compileI64BinaryOp(ctx, fctx, op, expr);
+  }
+
+  // Mixed i64/f64 (BigInt vs Number detected by compiled type) — convert i64 to f64 (#227, #228)
+  if (
+    (leftType.kind === "i64" && rightType.kind === "f64") ||
+    (leftType.kind === "f64" && rightType.kind === "i64")
+  ) {
+    const isStrictEq = op === ts.SyntaxKind.EqualsEqualsEqualsToken;
+    const isStrictNeq = op === ts.SyntaxKind.ExclamationEqualsEqualsToken;
+    if (isStrictEq || isStrictNeq) {
+      // Different types → always false (===) or true (!==)
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "i32.const", value: isStrictNeq ? 1 : 0 });
+      return { kind: "i32" };
+    }
+    // Convert i64 operand to f64 — right is on top of stack
+    if (rightType.kind === "i64") {
+      fctx.body.push({ op: "f64.convert_i64_s" });
+    } else {
+      // left is i64, need to swap: save right, convert left, restore right
+      const tmpR = allocTempLocal(fctx, { kind: "f64" });
+      fctx.body.push({ op: "local.set", index: tmpR });
+      fctx.body.push({ op: "f64.convert_i64_s" });
+      fctx.body.push({ op: "local.get", index: tmpR });
+      releaseTempLocal(fctx, tmpR);
+    }
+    // Now both are f64 — use numeric comparison
+    const isLooseEq = op === ts.SyntaxKind.EqualsEqualsToken;
+    const isLooseNeq = op === ts.SyntaxKind.ExclamationEqualsToken;
+    if (isLooseEq) {
+      fctx.body.push({ op: "f64.eq" });
+      return { kind: "i32" };
+    }
+    if (isLooseNeq) {
+      fctx.body.push({ op: "f64.ne" });
+      return { kind: "i32" };
+    }
+    return compileNumericBinaryOp(ctx, fctx, op, expr);
+  }
+
+  if (
+    (isNumberType(leftTsType) || leftType.kind === "f64") &&
+    leftType.kind !== "externref" &&
+    rightType.kind !== "externref"
+  ) {
+    // Ensure right operand is also f64 (may be i32 from boolean context)
+    if (rightType.kind === "i32") {
+      fctx.body.push({ op: "f64.convert_i32_s" });
+    }
+    return compileNumericBinaryOp(ctx, fctx, op, expr);
+  }
+  if (
+    (isBooleanType(leftTsType) || leftType.kind === "i32") &&
+    leftType.kind !== "externref" &&
+    rightType.kind !== "externref"
+  ) {
+    // Ensure both operands are i32; if right is f64, promote left to f64 and use numeric path
+    if (rightType.kind === "f64") {
+      const tmpR = allocTempLocal(fctx, { kind: "f64" });
+      fctx.body.push({ op: "local.set", index: tmpR });
+      fctx.body.push({ op: "f64.convert_i32_s" });
+      fctx.body.push({ op: "local.get", index: tmpR });
+      releaseTempLocal(fctx, tmpR);
+      return compileNumericBinaryOp(ctx, fctx, op, expr);
+    }
+    return compileBooleanBinaryOp(ctx, fctx, op);
+  }
+
+  // Externref in numeric context: unbox externref operands to f64
+  if (
+    (leftType.kind === "externref" || rightType.kind === "externref") &&
+    isNumericOp
+  ) {
+    addUnionImports(ctx);
+    const unboxIdx = ctx.funcMap.get("__unbox_number")!;
+    if (rightType.kind === "externref") {
+      fctx.body.push({ op: "call", funcIdx: unboxIdx });
+    }
+    if (leftType.kind === "externref") {
+      const tmpR = allocTempLocal(fctx, { kind: "f64" });
+      fctx.body.push({ op: "local.set", index: tmpR });
+      fctx.body.push({ op: "call", funcIdx: unboxIdx });
+      fctx.body.push({ op: "local.get", index: tmpR });
+      releaseTempLocal(fctx, tmpR);
+    }
+    return compileNumericBinaryOp(ctx, fctx, op, expr);
+  }
+
+  // Externref equality: when either operand is a known string type, use
+  // string content comparison instead of numeric unboxing (#225).
+  // For strict equality (===, !==), cross-type comparisons always return false/true (#296).
+  if (
+    (leftType.kind === "externref" || rightType.kind === "externref") &&
+    (isEqOp || isNeqOp)
+  ) {
+    const isStrict =
+      op === ts.SyntaxKind.EqualsEqualsEqualsToken ||
+      op === ts.SyntaxKind.ExclamationEqualsEqualsToken;
+    const isStrictNeq = op === ts.SyntaxKind.ExclamationEqualsEqualsToken;
+    const leftIsString = isStringType(leftTsType);
+    const rightIsString = isStringType(rightTsType);
+    const leftIsNumber = isNumberType(leftTsType);
+    const rightIsNumber = isNumberType(rightTsType);
+    const leftIsBool = isBooleanType(leftTsType);
+    const rightIsBool = isBooleanType(rightTsType);
+
+    // Strict equality: different JS types → always false (===) or true (!==)
+    if (isStrict) {
+      const leftJsKind = leftIsString
+        ? "string"
+        : leftIsNumber
+          ? "number"
+          : leftIsBool
+            ? "boolean"
+            : "other";
+      const rightJsKind = rightIsString
+        ? "string"
+        : rightIsNumber
+          ? "number"
+          : rightIsBool
+            ? "boolean"
+            : "other";
+      if (
+        leftJsKind !== "other" &&
+        rightJsKind !== "other" &&
+        leftJsKind !== rightJsKind
+      ) {
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "i32.const", value: isStrictNeq ? 1 : 0 });
+        return { kind: "i32" };
+      }
+    }
+
+    const eitherIsString = leftIsString || rightIsString;
+    if (eitherIsString) {
+      // Ensure both operands are externref before calling equals.
+      // One side might be f64 (e.g. from a mistyped addition like new String("1") + new String("1"))
+      // or i32 (from boolean). Coerce non-externref operands to externref first.
+      if (rightType.kind !== "externref") {
+        coerceType(ctx, fctx, rightType, { kind: "externref" });
+      }
+      if (leftType.kind !== "externref") {
+        const tmpR = allocTempLocal(fctx, { kind: "externref" });
+        fctx.body.push({ op: "local.set", index: tmpR });
+        coerceType(ctx, fctx, leftType, { kind: "externref" });
+        fctx.body.push({ op: "local.get", index: tmpR });
+        releaseTempLocal(fctx, tmpR);
+      }
+      addStringImports(ctx);
+      const equalsIdx = ctx.funcMap.get("equals");
+      if (equalsIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: equalsIdx });
+        if (isNeqOp) fctx.body.push({ op: "i32.eqz" });
+        return { kind: "i32" };
+      }
+    }
+
+    // Reference identity fast-path for externref equality.
+    // When both operands are externref (e.g. objects stored as any), check if they
+    // are the same GC reference before falling back to numeric unboxing.
+    // This fixes `var a = {}; var b = a; a === b` which was incorrectly returning false
+    // because numeric unboxing of objects produces NaN, and NaN !== NaN.
+    // Uses any.convert_extern to get anyref, then ref.test/ref.cast to eqref for ref.eq.
+    // The eq abstract heap type is encoded as -19 in signed LEB128 (= 0x6d).
+    const EQ_HEAP_TYPE = -19;
+    if (
+      leftType.kind === "externref" &&
+      rightType.kind === "externref" &&
+      !leftIsString &&
+      !rightIsString &&
+      !leftIsNumber &&
+      !rightIsNumber &&
+      !leftIsBool &&
+      !rightIsBool
+    ) {
+      // Save both externrefs to temp locals for potential reuse in numeric fallback
+      const tmpRight = allocTempLocal(fctx, { kind: "externref" });
+      const tmpLeft = allocTempLocal(fctx, { kind: "externref" });
+      fctx.body.push({ op: "local.set", index: tmpRight });
+      fctx.body.push({ op: "local.set", index: tmpLeft });
+
+      // Convert left to anyref and test if it's an eqref (GC ref)
+      fctx.body.push({ op: "local.get", index: tmpLeft });
+      fctx.body.push({ op: "any.convert_extern" });
+      const tmpAnyLeft = allocTempLocal(fctx, { kind: "anyref" });
+      fctx.body.push({ op: "local.tee", index: tmpAnyLeft });
+      fctx.body.push({ op: "ref.test", typeIdx: EQ_HEAP_TYPE });
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "val", type: { kind: "i32" } },
+        then: [
+          // Left is eqref-compatible — check right too
+          { op: "local.get", index: tmpRight },
+          { op: "any.convert_extern" },
+          ...(() => {
+            const tmpAnyRight = allocTempLocal(fctx, { kind: "anyref" });
+            const instrs: Instr[] = [
+              { op: "local.tee", index: tmpAnyRight },
+              { op: "ref.test", typeIdx: EQ_HEAP_TYPE },
+              {
+                op: "if",
+                blockType: { kind: "val", type: { kind: "i32" } },
+                then: [
+                  // Both are eqref — cast and compare with ref.eq
+                  { op: "local.get", index: tmpAnyLeft },
+                  { op: "ref.cast", typeIdx: EQ_HEAP_TYPE },
+                  { op: "local.get", index: tmpAnyRight },
+                  { op: "ref.cast", typeIdx: EQ_HEAP_TYPE },
+                  { op: "ref.eq" },
+                ],
+                else: [
+                  // Right is not eqref — cannot be equal to a GC ref
+                  { op: "i32.const", value: 0 },
+                ],
+              },
+            ];
+            releaseTempLocal(fctx, tmpAnyRight);
+            return instrs;
+          })(),
+        ],
+        else: [
+          // Left is not eqref — fall through to numeric comparison
+          // by pushing -1 as sentinel to indicate "not handled"
+          { op: "i32.const", value: -1 },
+        ],
+      });
+      releaseTempLocal(fctx, tmpAnyLeft);
+
+      // Check if the identity comparison produced a definitive result (0 or 1)
+      // vs the sentinel -1 (meaning we need numeric fallback)
+      const identityResult = allocTempLocal(fctx, { kind: "i32" });
+      fctx.body.push({ op: "local.tee", index: identityResult });
+      fctx.body.push({ op: "i32.const", value: -1 });
+      fctx.body.push({ op: "i32.ne" });
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "val", type: { kind: "i32" } },
+        then: [
+          // Identity check produced 0 or 1 — use it directly
+          // For != / !==, negate
+          { op: "local.get", index: identityResult },
+          ...(isNeqOp ? [{ op: "i32.eqz" } as Instr] : []),
+        ],
+        else: (() => {
+          // Numeric fallback: unbox both externrefs to f64 and compare
+          addUnionImports(ctx);
+          const unboxIdx = ctx.funcMap.get("__unbox_number")!;
+          return [
+            { op: "local.get", index: tmpLeft },
+            { op: "call", funcIdx: unboxIdx },
+            { op: "local.get", index: tmpRight },
+            { op: "call", funcIdx: unboxIdx },
+            { op: isEqOp ? "f64.eq" : "f64.ne" } as Instr,
+          ] as Instr[];
+        })(),
+      });
+      releaseTempLocal(fctx, identityResult);
+      releaseTempLocal(fctx, tmpRight);
+      releaseTempLocal(fctx, tmpLeft);
+      return { kind: "i32" };
+    }
+
+    addUnionImports(ctx);
+    const unboxIdx = ctx.funcMap.get("__unbox_number")!;
+    // Coerce/unbox right side (top of stack) to f64
+    if (rightType.kind === "externref") {
+      fctx.body.push({ op: "call", funcIdx: unboxIdx });
+    } else if (rightType.kind === "i32") {
+      fctx.body.push({ op: "f64.convert_i32_s" });
+    }
+    // Coerce/unbox left side (below right on stack) to f64
+    if (leftType.kind === "externref") {
+      const tmpR = allocTempLocal(fctx, { kind: "f64" });
+      fctx.body.push({ op: "local.set", index: tmpR });
+      fctx.body.push({ op: "call", funcIdx: unboxIdx });
+      fctx.body.push({ op: "local.get", index: tmpR });
+      releaseTempLocal(fctx, tmpR);
+    } else if (leftType.kind === "i32") {
+      const tmpR = allocTempLocal(fctx, { kind: "f64" });
+      fctx.body.push({ op: "local.set", index: tmpR });
+      fctx.body.push({ op: "f64.convert_i32_s" });
+      fctx.body.push({ op: "local.get", index: tmpR });
+      releaseTempLocal(fctx, tmpR);
+    }
+    fctx.body.push({ op: isEqOp ? "f64.eq" : "f64.ne" });
+    return { kind: "i32" };
+  }
+
+  // ── Fallback: coerce remaining type mismatches to f64 for numeric ops ──
+  // When operand types don't match any specific path above (e.g. ref + externref,
+  // i64 + externref, or other ambiguous combos), try to coerce both to f64.
+  if (isNumericOp) {
+    // Coerce right operand (top of stack) to f64
+    if (rightType.kind === "externref") {
+      addUnionImports(ctx);
+      const unboxIdx = ctx.funcMap.get("__unbox_number")!;
+      fctx.body.push({ op: "call", funcIdx: unboxIdx });
+    } else if (rightType.kind === "i32") {
+      fctx.body.push({ op: "f64.convert_i32_s" });
+    } else if (rightType.kind === "i64") {
+      fctx.body.push({ op: "f64.convert_i64_s" });
+    } else if (rightType.kind === "ref" || rightType.kind === "ref_null") {
+      coerceType(ctx, fctx, rightType, { kind: "f64" });
+    }
+    // Coerce left operand (below right on stack) — save right to local
+    if (
+      leftType.kind === "externref" ||
+      leftType.kind === "i32" ||
+      leftType.kind === "i64" ||
+      leftType.kind === "ref" ||
+      leftType.kind === "ref_null"
+    ) {
+      const tmpR = allocTempLocal(fctx, { kind: "f64" });
+      fctx.body.push({ op: "local.set", index: tmpR });
+      if (leftType.kind === "externref") {
+        addUnionImports(ctx);
+        const unboxIdx = ctx.funcMap.get("__unbox_number")!;
+        fctx.body.push({ op: "call", funcIdx: unboxIdx });
+      } else if (leftType.kind === "i32") {
+        fctx.body.push({ op: "f64.convert_i32_s" });
+      } else if (leftType.kind === "i64") {
+        fctx.body.push({ op: "f64.convert_i64_s" });
+      } else if (leftType.kind === "ref" || leftType.kind === "ref_null") {
+        coerceType(ctx, fctx, leftType, { kind: "f64" });
+      }
+      fctx.body.push({ op: "local.get", index: tmpR });
+      releaseTempLocal(fctx, tmpR);
+    }
+    return compileNumericBinaryOp(ctx, fctx, op, expr);
+  }
+
+  ctx.errors.push({
+    message: `Unsupported binary operator for type`,
+    line: getLine(expr),
+    column: getCol(expr),
+  });
+  return null;
+}
+
+/**
+ * Compile a binary expression where both operands are `any`-typed.
+ * Emits both operands as ref $AnyValue and calls the appropriate __any_* helper.
+ */
+function compileAnyBinaryDispatch(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.BinaryExpression,
+  op: ts.SyntaxKind,
+): InnerResult {
+  // Map operator to helper name and result type
+  let helperName: string | null = null;
+  let resultIsI32 = false; // true for comparison/equality operators
+
+  switch (op) {
+    case ts.SyntaxKind.PlusToken:
+      helperName = "__any_add";
+      break;
+    case ts.SyntaxKind.MinusToken:
+      helperName = "__any_sub";
+      break;
+    case ts.SyntaxKind.AsteriskToken:
+      helperName = "__any_mul";
+      break;
+    case ts.SyntaxKind.SlashToken:
+      helperName = "__any_div";
+      break;
+    case ts.SyntaxKind.PercentToken:
+      helperName = "__any_mod";
+      break;
+    case ts.SyntaxKind.EqualsEqualsToken:
+      helperName = "__any_eq";
+      resultIsI32 = true;
+      break;
+    case ts.SyntaxKind.EqualsEqualsEqualsToken:
+      helperName = "__any_strict_eq";
+      resultIsI32 = true;
+      break;
+    case ts.SyntaxKind.ExclamationEqualsToken:
+      helperName = "__any_eq";
+      resultIsI32 = true;
+      break;
+    case ts.SyntaxKind.ExclamationEqualsEqualsToken:
+      helperName = "__any_strict_eq";
+      resultIsI32 = true;
+      break;
+    case ts.SyntaxKind.LessThanToken:
+      helperName = "__any_lt";
+      resultIsI32 = true;
+      break;
+    case ts.SyntaxKind.GreaterThanToken:
+      helperName = "__any_gt";
+      resultIsI32 = true;
+      break;
+    case ts.SyntaxKind.LessThanEqualsToken:
+      helperName = "__any_le";
+      resultIsI32 = true;
+      break;
+    case ts.SyntaxKind.GreaterThanEqualsToken:
+      helperName = "__any_ge";
+      resultIsI32 = true;
+      break;
+    default:
+      return null; // Not a supported operator for any dispatch
+  }
+
+  ensureAnyHelpers(ctx);
+  const funcIdx = ctx.funcMap.get(helperName);
+  if (funcIdx === undefined) return null;
+
+  // Compile both operands without numeric hint so they produce ref $AnyValue
+  const leftType = compileExpression(ctx, fctx, expr.left);
+  const rightType = compileExpression(ctx, fctx, expr.right);
+  if (!leftType || !rightType) return null;
+
+  fctx.body.push({ op: "call", funcIdx });
+
+  // For != / !==, negate the __any_eq result
+  if (
+    op === ts.SyntaxKind.ExclamationEqualsToken ||
+    op === ts.SyntaxKind.ExclamationEqualsEqualsToken
+  ) {
+    fctx.body.push({ op: "i32.eqz" });
+  }
+
+  if (resultIsI32) {
+    return { kind: "i32" };
+  }
+  return { kind: "ref", typeIdx: ctx.anyValueTypeIdx };
+}
+
+export function compileNumericBinaryOp(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  op: ts.SyntaxKind,
+  expr: ts.BinaryExpression,
+): ValType {
+  switch (op) {
+    case ts.SyntaxKind.PlusToken:
+      fctx.body.push({ op: "f64.add" });
+      return { kind: "f64" };
+    case ts.SyntaxKind.MinusToken:
+      fctx.body.push({ op: "f64.sub" });
+      return { kind: "f64" };
+    case ts.SyntaxKind.AsteriskToken:
+      fctx.body.push({ op: "f64.mul" });
+      return { kind: "f64" };
+    case ts.SyntaxKind.AsteriskAsteriskToken: {
+      const funcIdx = ctx.funcMap.get("Math_pow");
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+        return { kind: "f64" };
+      }
+      ctx.errors.push({
+        message: "Math_pow import not found for ** operator",
+        line: getLine(expr),
+        column: getCol(expr),
+      });
+      return { kind: "f64" };
+    }
+    case ts.SyntaxKind.SlashToken:
+      fctx.body.push({ op: "f64.div" });
+      return { kind: "f64" };
+    case ts.SyntaxKind.PercentToken:
+      return compileModulo(ctx, fctx, expr);
+    case ts.SyntaxKind.EqualsEqualsEqualsToken:
+      fctx.body.push({ op: "f64.eq" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.ExclamationEqualsEqualsToken:
+      fctx.body.push({ op: "f64.ne" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.EqualsEqualsToken:
+      fctx.body.push({ op: "f64.eq" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.ExclamationEqualsToken:
+      fctx.body.push({ op: "f64.ne" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.LessThanToken:
+      fctx.body.push({ op: "f64.lt" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.LessThanEqualsToken:
+      fctx.body.push({ op: "f64.le" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.GreaterThanToken:
+      fctx.body.push({ op: "f64.gt" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.GreaterThanEqualsToken:
+      fctx.body.push({ op: "f64.ge" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.AmpersandToken:
+      return compileBitwiseBinaryOp(fctx, "i32.and", false);
+    case ts.SyntaxKind.BarToken:
+      return compileBitwiseBinaryOp(fctx, "i32.or", false);
+    case ts.SyntaxKind.CaretToken:
+      return compileBitwiseBinaryOp(fctx, "i32.xor", false);
+    case ts.SyntaxKind.LessThanLessThanToken:
+      return compileBitwiseBinaryOp(fctx, "i32.shl", false);
+    case ts.SyntaxKind.GreaterThanGreaterThanToken:
+      return compileBitwiseBinaryOp(fctx, "i32.shr_s", false);
+    case ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken:
+      return compileBitwiseBinaryOp(fctx, "i32.shr_u", true);
+    default:
+      ctx.errors.push({
+        message: `Unsupported numeric binary operator: ${ts.SyntaxKind[op]}`,
+        line: getLine(expr),
+        column: getCol(expr),
+      });
+      return { kind: "f64" };
+  }
+}
+
+/** Fast mode: i32 arithmetic/comparison on two i32 operands */
+function compileI32BinaryOp(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  op: ts.SyntaxKind,
+  expr: ts.BinaryExpression,
+): ValType {
+  switch (op) {
+    case ts.SyntaxKind.PlusToken:
+      fctx.body.push({ op: "i32.add" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.MinusToken:
+      fctx.body.push({ op: "i32.sub" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.AsteriskToken:
+      fctx.body.push({ op: "i32.mul" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.PercentToken:
+      fctx.body.push({ op: "i32.rem_s" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.EqualsEqualsEqualsToken:
+    case ts.SyntaxKind.EqualsEqualsToken:
+      fctx.body.push({ op: "i32.eq" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.ExclamationEqualsEqualsToken:
+    case ts.SyntaxKind.ExclamationEqualsToken:
+      fctx.body.push({ op: "i32.ne" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.LessThanToken:
+      fctx.body.push({ op: "i32.lt_s" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.LessThanEqualsToken:
+      fctx.body.push({ op: "i32.le_s" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.GreaterThanToken:
+      fctx.body.push({ op: "i32.gt_s" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.GreaterThanEqualsToken:
+      fctx.body.push({ op: "i32.ge_s" });
+      return { kind: "i32" };
+    // Bitwise — direct i32 ops (no conversion needed!)
+    case ts.SyntaxKind.AmpersandToken:
+      fctx.body.push({ op: "i32.and" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.BarToken:
+      fctx.body.push({ op: "i32.or" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.CaretToken:
+      fctx.body.push({ op: "i32.xor" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.LessThanLessThanToken:
+      fctx.body.push({ op: "i32.shl" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.GreaterThanGreaterThanToken:
+      fctx.body.push({ op: "i32.shr_s" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken:
+      fctx.body.push({ op: "i32.shr_u" });
+      return { kind: "i32" };
+    default:
+      // Fall back to f64 path for division, power, etc.
+      return compileNumericBinaryOp(ctx, fctx, op, expr);
+  }
+}
+
+/** BigInt: i64 arithmetic/comparison on two i64 operands */
+function compileI64BinaryOp(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  op: ts.SyntaxKind,
+  expr: ts.BinaryExpression,
+): ValType {
+  switch (op) {
+    case ts.SyntaxKind.PlusToken:
+      fctx.body.push({ op: "i64.add" });
+      return { kind: "i64" };
+    case ts.SyntaxKind.MinusToken:
+      fctx.body.push({ op: "i64.sub" });
+      return { kind: "i64" };
+    case ts.SyntaxKind.AsteriskToken:
+      fctx.body.push({ op: "i64.mul" });
+      return { kind: "i64" };
+    case ts.SyntaxKind.SlashToken:
+      fctx.body.push({ op: "i64.div_s" });
+      return { kind: "i64" };
+    case ts.SyntaxKind.PercentToken:
+      fctx.body.push({ op: "i64.rem_s" });
+      return { kind: "i64" };
+    case ts.SyntaxKind.AsteriskAsteriskToken: {
+      // BigInt exponentiation: base ** exp implemented as a loop
+      // Stack: [base: i64, exp: i64] → [result: i64]
+      const expLocal = allocTempLocal(fctx, { kind: "i64" });
+      const baseLocal = allocTempLocal(fctx, { kind: "i64" });
+      const resultLocal = allocTempLocal(fctx, { kind: "i64" });
+      // Save exponent (top of stack), then base
+      fctx.body.push({ op: "local.set", index: expLocal });
+      fctx.body.push({ op: "local.set", index: baseLocal });
+      // result = 1
+      fctx.body.push({ op: "i64.const", value: 1n });
+      fctx.body.push({ op: "local.set", index: resultLocal });
+      // block $break { loop $continue {
+      fctx.body.push({
+        op: "block",
+        blockType: { kind: "empty" },
+        body: [
+          {
+            op: "loop",
+            blockType: { kind: "empty" },
+            body: [
+              // if exp <= 0 then break
+              { op: "local.get", index: expLocal },
+              { op: "i64.const", value: 0n },
+              { op: "i64.le_s" },
+              { op: "br_if", depth: 1 }, // break out of block
+              // result = result * base
+              { op: "local.get", index: resultLocal },
+              { op: "local.get", index: baseLocal },
+              { op: "i64.mul" },
+              { op: "local.set", index: resultLocal },
+              // exp = exp - 1
+              { op: "local.get", index: expLocal },
+              { op: "i64.const", value: 1n },
+              { op: "i64.sub" },
+              { op: "local.set", index: expLocal },
+              // continue loop
+              { op: "br", depth: 0 },
+            ],
+          },
+        ],
+      });
+      // Push result
+      fctx.body.push({ op: "local.get", index: resultLocal });
+      releaseTempLocal(fctx, expLocal);
+      releaseTempLocal(fctx, baseLocal);
+      releaseTempLocal(fctx, resultLocal);
+      return { kind: "i64" };
+    }
+    case ts.SyntaxKind.EqualsEqualsEqualsToken:
+    case ts.SyntaxKind.EqualsEqualsToken:
+      fctx.body.push({ op: "i64.eq" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.ExclamationEqualsEqualsToken:
+    case ts.SyntaxKind.ExclamationEqualsToken:
+      fctx.body.push({ op: "i64.ne" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.LessThanToken:
+      fctx.body.push({ op: "i64.lt_s" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.LessThanEqualsToken:
+      fctx.body.push({ op: "i64.le_s" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.GreaterThanToken:
+      fctx.body.push({ op: "i64.gt_s" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.GreaterThanEqualsToken:
+      fctx.body.push({ op: "i64.ge_s" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.AmpersandToken:
+      fctx.body.push({ op: "i64.and" });
+      return { kind: "i64" };
+    case ts.SyntaxKind.BarToken:
+      fctx.body.push({ op: "i64.or" });
+      return { kind: "i64" };
+    case ts.SyntaxKind.CaretToken:
+      fctx.body.push({ op: "i64.xor" });
+      return { kind: "i64" };
+    case ts.SyntaxKind.LessThanLessThanToken:
+      fctx.body.push({ op: "i64.shl" });
+      return { kind: "i64" };
+    case ts.SyntaxKind.GreaterThanGreaterThanToken:
+      fctx.body.push({ op: "i64.shr_s" });
+      return { kind: "i64" };
+    case ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken:
+      fctx.body.push({ op: "i64.shr_u" });
+      return { kind: "i64" };
+    default:
+      ctx.errors.push({
+        message: `Unsupported BigInt binary operator: ${ts.SyntaxKind[op]}`,
+        line: getLine(expr),
+        column: getCol(expr),
+      });
+      return { kind: "i64" };
+  }
+}
+
+/**
+ * Emit JS ToInt32: reduce f64 modulo 2^32 then truncate to i32.
+ * Handles NaN→0, Infinity→0, and large values that wrap.
+ * Stack: [f64] → [i32]
+ */
+export function emitToInt32(fctx: FunctionContext): void {
+  // JS ToInt32 algorithm:
+  //   if NaN/Infinity/0 → 0
+  //   n = sign(x) * floor(abs(x))
+  //   int32bit = n mod 2^32
+  //   if int32bit >= 2^31 → int32bit - 2^32
+  //
+  // In wasm: x - floor(x / 2^32) * 2^32, then trunc_sat
+  // For values in i32 range, trunc_sat alone works. We only need the
+  // modulo reduction for out-of-range values.
+  // Step 1: truncate fractional part toward zero (JS ToInt32 does this first)
+  // Step 2: x - floor(x / 2^32) * 2^32 → maps to [0, 2^32)
+  // Step 3: trunc_sat_f64_u gives correct bit pattern
+  // NaN/Infinity: trunc(NaN)=NaN, Inf-Inf=NaN, trunc_sat_u(NaN)=0. Correct.
+  fctx.body.push({ op: "f64.trunc" });
+  const tmp = allocTempLocal(fctx, { kind: "f64" });
+  fctx.body.push({ op: "local.tee", index: tmp });
+  fctx.body.push({ op: "local.get", index: tmp });
+  fctx.body.push({ op: "f64.const", value: 4294967296 });
+  fctx.body.push({ op: "f64.div" });
+  fctx.body.push({ op: "f64.floor" });
+  fctx.body.push({ op: "f64.const", value: 4294967296 });
+  fctx.body.push({ op: "f64.mul" });
+  fctx.body.push({ op: "f64.sub" });
+  fctx.body.push({ op: "i32.trunc_sat_f64_u" });
+  releaseTempLocal(fctx, tmp);
+}
+
+/** Truncate two f64 operands to i32 via ToInt32, apply an i32 bitwise op, convert back to f64 */
+function compileBitwiseBinaryOp(
+  fctx: FunctionContext,
+  i32op:
+    | "i32.and"
+    | "i32.or"
+    | "i32.xor"
+    | "i32.shl"
+    | "i32.shr_s"
+    | "i32.shr_u",
+  unsigned: boolean,
+): ValType {
+  // Stack: [left_f64, right_f64]
+  const tmpR = allocTempLocal(fctx, { kind: "f64" });
+  fctx.body.push({ op: "local.set", index: tmpR });
+  emitToInt32(fctx);
+  fctx.body.push({ op: "local.get", index: tmpR });
+  releaseTempLocal(fctx, tmpR);
+  emitToInt32(fctx);
+  fctx.body.push({ op: i32op });
+  fctx.body.push({ op: unsigned ? "f64.convert_i32_u" : "f64.convert_i32_s" });
+  return { kind: "f64" };
+}
+
+function compileModulo(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.BinaryExpression,
+): ValType {
+  emitModulo(fctx);
+  return { kind: "f64" };
+}
+
+/**
+ * Emit JS remainder (a % b) with correct IEEE 754 edge cases.
+ * Stack: [a_f64, b_f64] -> [result_f64]
+ *
+ * Edge cases handled:
+ * - x % Infinity = x (when x is finite)
+ * - -0 % x = -0 (sign of zero preserved via f64.copysign)
+ * - Infinity % x = NaN, x % 0 = NaN, NaN % x = NaN (handled naturally by formula)
+ */
+export function emitModulo(fctx: FunctionContext): void {
+  const tmpB = allocTempLocal(fctx, { kind: "f64" });
+  const tmpA = allocTempLocal(fctx, { kind: "f64" });
+
+  fctx.body.push({ op: "local.set", index: tmpB });
+  fctx.body.push({ op: "local.set", index: tmpA });
+
+  // Build the "then" branch: b is infinite and a is finite → result is a
+  const thenInstrs: Instr[] = [{ op: "local.get", index: tmpA }];
+
+  // Build the "else" branch: standard formula a - trunc(a/b) * b with copysign
+  const elseInstrs: Instr[] = [
+    { op: "local.get", index: tmpA },
+    { op: "local.get", index: tmpA },
+    { op: "local.get", index: tmpB },
+    { op: "f64.div" },
+    { op: "f64.trunc" }, // JS % uses truncation toward zero, not floor
+    { op: "local.get", index: tmpB },
+    { op: "f64.mul" },
+    { op: "f64.sub" },
+    // Preserve sign of dividend for zero results (-0 % x should be -0)
+    { op: "local.get", index: tmpA },
+    { op: "f64.copysign" },
+  ];
+
+  // Check: if |b| == Infinity and a is finite, result is a; else standard formula
+  fctx.body.push({ op: "local.get", index: tmpB });
+  fctx.body.push({ op: "f64.abs" });
+  fctx.body.push({ op: "f64.const", value: Infinity });
+  fctx.body.push({ op: "f64.eq" });
+  fctx.body.push({ op: "local.get", index: tmpA });
+  fctx.body.push({ op: "f64.abs" });
+  fctx.body.push({ op: "f64.const", value: Infinity });
+  fctx.body.push({ op: "f64.ne" });
+  fctx.body.push({ op: "i32.and" });
+  // Use if/then/else to select between Infinity shortcut and standard formula
+  fctx.body.push({
+    op: "if",
+    blockType: { kind: "val", type: { kind: "f64" } },
+    then: thenInstrs,
+    else: elseInstrs,
+  });
+  releaseTempLocal(fctx, tmpA);
+  releaseTempLocal(fctx, tmpB);
+}
+
+function compileBooleanBinaryOp(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  op: ts.SyntaxKind,
+): ValType {
+  switch (op) {
+    case ts.SyntaxKind.EqualsEqualsEqualsToken:
+    case ts.SyntaxKind.EqualsEqualsToken:
+      fctx.body.push({ op: "i32.eq" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.ExclamationEqualsEqualsToken:
+    case ts.SyntaxKind.ExclamationEqualsToken:
+      fctx.body.push({ op: "i32.ne" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.LessThanToken:
+      fctx.body.push({ op: "i32.lt_s" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.LessThanEqualsToken:
+      fctx.body.push({ op: "i32.le_s" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.GreaterThanToken:
+      fctx.body.push({ op: "i32.gt_s" });
+      return { kind: "i32" };
+    case ts.SyntaxKind.GreaterThanEqualsToken:
+      fctx.body.push({ op: "i32.ge_s" });
+      return { kind: "i32" };
+    default:
+      return { kind: "i32" };
+  }
+}
