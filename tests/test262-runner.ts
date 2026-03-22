@@ -1430,9 +1430,9 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
   // Strip metadata block
   let body = source.replace(/\/\*---[\s\S]*?---\*\//, "");
 
-  // Strip all comments to avoid false matches
-  body = body.replace(/\/\/.*$/gm, "");
-  body = body.replace(/\/\*[\s\S]*?\*\//g, "");
+  // Note: we no longer strip comments — doing so shifts line numbers,
+  // making error line citations inaccurate. Comments don't affect compilation
+  // and our regex transforms handle them correctly.
 
   // Resolve Unicode escape sequences in identifiers (e.g. bre\u0061k → break).
   // test262 uses these to test that keywords are valid property names when escaped.
@@ -1697,7 +1697,6 @@ export function test(): number {
   const postBody = `
   } catch (e) {
     if (!__fail) __fail = -1;
-    throw e;
   }
   if (__fail) { return __fail; }
   return 1;
