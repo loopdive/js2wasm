@@ -38,8 +38,10 @@ interface GraphData {
   nodes: IssueNode[];
   links: { source: number; target: number }[];
   goals: GoalNode[];
-  goalLinks: { source: string; target: string }[];
+  /** issue → goal: member issues are dependencies of their goal */
   goalIssueLinks: { goal: string; issue: number }[];
+  /** goal → issue: prerequisite goal connects to issues of dependent goals */
+  goalDepLinks: { goal: string; issue: number }[];
   generated: string;
 }
 
@@ -287,18 +289,7 @@ for (const n of nodes) {
   }
 }
 
-// Build goal-to-goal links
-const goalLinks: GraphData["goalLinks"] = [];
-const goalIds = new Set(goals.map((g) => g.id));
-for (const g of goals) {
-  for (const dep of g.depends_on) {
-    if (goalIds.has(dep)) {
-      goalLinks.push({ source: dep, target: g.id });
-    }
-  }
-}
-
-// Build goal-issue membership links
+// Build goal-issue membership links (issue → goal: issues are dependencies of their goal)
 const goalIssueLinks: GraphData["goalIssueLinks"] = [];
 for (const g of goals) {
   for (const issueId of g.issues) {
@@ -308,17 +299,34 @@ for (const g of goals) {
   }
 }
 
+// Build goal-dep links: when goal A depends on goal B,
+// goal B connects to each issue in goal A (prerequisite → dependent issues)
+const goalDepLinks: GraphData["goalDepLinks"] = [];
+const goalIds = new Set(goals.map((g) => g.id));
+for (const g of goals) {
+  for (const dep of g.depends_on) {
+    if (goalIds.has(dep)) {
+      // Each issue in goal g depends on the prerequisite goal dep
+      for (const issueId of g.issues) {
+        if (nodeIds.has(issueId)) {
+          goalDepLinks.push({ goal: dep, issue: issueId });
+        }
+      }
+    }
+  }
+}
+
 const data: GraphData = {
   nodes: nodes.sort((a, b) => a.id - b.id),
   links,
   goals: goals.sort((a, b) => a.id.localeCompare(b.id)),
-  goalLinks,
   goalIssueLinks,
+  goalDepLinks,
   generated: new Date().toISOString(),
 };
 
 const outPath = path.join(import.meta.dirname!, "graph-data.json");
 fs.writeFileSync(outPath, JSON.stringify(data, null, 2));
 console.log(
-  `Generated ${outPath}: ${data.nodes.length} issues, ${data.goals.length} goals, ${data.links.length} issue links, ${data.goalLinks.length} goal links, ${data.goalIssueLinks.length} goal-issue links`
+  `Generated ${outPath}: ${data.nodes.length} issues, ${data.goals.length} goals, ${data.links.length} issue links, ${data.goalIssueLinks.length} member links, ${data.goalDepLinks.length} goal-dep links`
 );
