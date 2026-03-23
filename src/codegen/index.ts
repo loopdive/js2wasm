@@ -189,18 +189,6 @@ function repairBody(
         i += 4; // skip past local.get + any.convert_extern + ref.cast_null + struct.get
         continue;
       }
-      // Pattern 2c: local.get of wrong ref type → insert ref.cast to correct struct type
-      if (localType && (localType.kind === "ref" || localType.kind === "ref_null")) {
-        const localTypeIdx = (localType as { typeIdx: number }).typeIdx;
-        if (localTypeIdx !== structTypeIdx) {
-          body.splice(i + 1, 0,
-            { op: "ref.cast_null", typeIdx: structTypeIdx } as unknown as Instr,
-          );
-          fixed++;
-          i += 3; // skip past local.get + ref.cast_null + struct.get
-          continue;
-        }
-      }
     }
 
     // Pattern 2b: local.tee of externref → insert any.convert_extern + ref.cast
@@ -215,18 +203,6 @@ function repairBody(
         fixed++;
         i += 4;
         continue;
-      }
-      // Pattern 2d: local.tee of wrong ref type → insert ref.cast
-      if (localType && (localType.kind === "ref" || localType.kind === "ref_null")) {
-        const localTypeIdx = (localType as { typeIdx: number }).typeIdx;
-        if (localTypeIdx !== structTypeIdx) {
-          body.splice(i + 1, 0,
-            { op: "ref.cast_null", typeIdx: structTypeIdx } as unknown as Instr,
-          );
-          fixed++;
-          i += 3;
-          continue;
-        }
       }
     }
 
@@ -695,18 +671,6 @@ function inferInstrResultType(
 
     case "select":
       return null; // Type depends on operands
-
-    case "if":
-    case "block":
-    case "loop":
-    case "try": {
-      // Extract type from blockType
-      const bt = (instr as any).blockType;
-      if (bt && bt.kind === "val" && bt.type) {
-        return bt.type as ValType;
-      }
-      return null;
-    }
 
     default:
       return null;
@@ -11821,21 +11785,8 @@ function fixupStructNewResultCoercion(ctx: CodegenContext): void {
           if (producerIdx < 0) continue;
 
           const field = fields[fi]!;
-
-          // Find insert position first — we need it to determine the actual field value type.
-          const insertPos = fi < numFields - 1
-            ? (fieldProducerPos[fi + 1] !== -1 ? fieldProducerPos[fi + 1]! : i)
-            : i;
-
-          // Use the last instruction before the insert boundary to determine the type,
-          // since intermediate instructions (e.g. struct.new + local.tee for ref cell
-          // creation in closure captures) can transform the type between the initial
-          // producer and the struct.new consuming the value.
-          const typeCheckIdx = (insertPos > 0 && insertPos - 1 > producerIdx)
-            ? insertPos - 1
-            : producerIdx;
-          const typeCheckInstr = instrs[typeCheckIdx]!;
-          const producerType = inferInstrResultType(typeCheckInstr, ctx.mod, localTypeMap);
+          const producerInstr = instrs[producerIdx]!;
+          const producerType = inferInstrResultType(producerInstr, ctx.mod, localTypeMap);
           if (!producerType) continue;
 
           const expectedKind = field.type.kind;
@@ -11843,6 +11794,13 @@ function fixupStructNewResultCoercion(ctx: CodegenContext): void {
 
           // Already matching — skip
           if (expectedKind === gotKind) continue;
+
+          // Find insert position: right after the last instruction of this field's
+          // expression. That's the position of the next field's producer (or i for
+          // the last field).
+          const insertPos = fi < numFields - 1
+            ? (fieldProducerPos[fi + 1] !== -1 ? fieldProducerPos[fi + 1]! : i)
+            : i;
 
           // --- Coercion: field expects externref, got ref/ref_null ---
           if (expectedKind === "externref" && (gotKind === "ref" || gotKind === "ref_null" || gotKind === "eqref" || gotKind === "anyref")) {
