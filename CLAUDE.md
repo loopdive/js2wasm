@@ -27,6 +27,10 @@ TypeScript-to-WebAssembly compiler using WasmGC.
   - `backlog/` — large scope / future
   - `wont-fix/` — decided against implementing
 - Dependency graph: `plan/dependency-graph.md`
+- Goals (DAG): `plan/goals/goal-graph.md` — high-level goals with dependencies; issues belong to goals
+  - Goals are not sequential milestones — they form a DAG and multiple can be active in parallel
+  - Only work on issues from goals whose dependencies are met (active/activatable)
+  - Legacy milestones in `plan/milestones/` are superseded by goals
 
 ## Key Patterns
 - `VOID_RESULT` sentinel in expressions.ts — `InnerResult = ValType | null | typeof VOID_RESULT`
@@ -73,7 +77,7 @@ Work is driven by `plan/dependency-graph.md`. **Memory limit: 15GB visible RAM.*
 
 **Test262 runs must be in a worktree** — never on the main working copy. Use `scripts/run-test262-vitest.sh` or `git worktree add /tmp/ts2wasm-test262 HEAD`. This keeps main clean for cherry-picks and prevents stash conflicts with test runner changes (pool config, skip filters, error reporting).
 
-1. **Pick work**: choose by priority (critical > high > medium > low) from `plan/issues/ready/`
+1. **Pick work**: choose from active/activatable goals in `plan/goals/goal-graph.md`, then by priority (critical > high > medium > low) within that goal's issues from `plan/issues/ready/`
 2. **Function locking**: no two agents touch the same *function* concurrently. Same file is OK if different functions (Git 3-way merge handles separate hunks).
 3. **Complete work**: cherry-pick to main, then follow the issue completion procedure:
    - Move issue from `ready/` to `done/`
