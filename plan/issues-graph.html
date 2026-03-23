@@ -3,35 +3,50 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ts2wasm Issue Dependency Graph</title>
+<title>ts2wasm Issue &amp; Goal Dependency Graph</title>
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0d1117; color: #c9d1d9; overflow: hidden; }
-#controls { position: fixed; top: 12px; left: 12px; z-index: 10; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-#controls label { font-size: 12px; cursor: pointer; padding: 4px 10px; border-radius: 12px; border: 1px solid #30363d; background: #161b22; transition: all 0.15s; }
+#controls { position: fixed; top: 12px; left: 12px; z-index: 10; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; max-width: 70vw; }
+#controls label { font-size: 12px; cursor: pointer; padding: 4px 10px; border-radius: 12px; border: 1px solid #30363d; background: #161b22; transition: all 0.15s; white-space: nowrap; }
 #controls label:hover { border-color: #58a6ff; }
 #controls label.active { background: #1f6feb; border-color: #1f6feb; color: #fff; }
 #controls input[type=checkbox] { display: none; }
-#info { position: fixed; top: 12px; right: 12px; z-index: 10; background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 12px 16px; max-width: 320px; font-size: 13px; display: none; }
+#controls .sep { color: #8b949e; font-size: 12px; margin: 0 2px; }
+#info { position: fixed; top: 12px; right: 12px; z-index: 10; background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 12px 16px; max-width: 360px; font-size: 13px; display: none; max-height: 80vh; overflow-y: auto; }
 #info h3 { margin-bottom: 6px; color: #58a6ff; }
+#info .goal-title { color: #f0883e; }
 #info .meta { color: #8b949e; margin-bottom: 4px; }
 #info .deps { margin-top: 6px; }
 #info .dep-link { color: #58a6ff; cursor: pointer; text-decoration: underline; }
+#info .goal-link { color: #f0883e; cursor: pointer; text-decoration: underline; }
 #legend { position: fixed; bottom: 12px; left: 12px; z-index: 10; font-size: 11px; display: flex; gap: 12px; background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 8px 12px; flex-wrap: wrap; max-width: 80vw; }
 #legend span { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
 #legend .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+#legend .hex { width: 16px; height: 14px; display: inline-block; clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%); }
 #stats { position: fixed; bottom: 12px; right: 12px; z-index: 10; font-size: 11px; color: #8b949e; background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 8px 12px; }
 svg { width: 100vw; height: 100vh; }
-.link { stroke-opacity: 0.4; fill: none; }
+.link { stroke-opacity: 0.3; fill: none; }
 .link.highlighted { stroke-opacity: 1; stroke-width: 2.5; }
+.link.dimmed { stroke-opacity: 0.04; }
+.goal-link-line { stroke: rgba(240, 136, 62, 0.5); stroke-width: 3; stroke-opacity: 0.6; fill: none; }
+.goal-link-line.highlighted { stroke-opacity: 1; stroke-width: 4; }
+.goal-link-line.dimmed { stroke-opacity: 0.04; }
+.goal-issue-link { stroke: rgba(255, 255, 255, 0.08); stroke-width: 1; stroke-dasharray: 3,3; fill: none; }
+.goal-issue-link.highlighted { stroke: rgba(240, 136, 62, 0.4); stroke-opacity: 1; stroke-dasharray: none; stroke-width: 1.5; }
+.goal-issue-link.dimmed { stroke-opacity: 0.01; }
 .node text { font-size: 10px; fill: #c9d1d9; pointer-events: none; }
 .node rect { stroke-width: 1.5; cursor: pointer; }
 .node rect:hover { filter: brightness(1.3); }
-.node.dimmed rect { opacity: 0.15; }
-.node.dimmed text { opacity: 0.15; }
-.link.dimmed { stroke-opacity: 0.05; }
-.cluster-label { font-size: 11px; fill-opacity: 0.7; pointer-events: none; }
+.node.dimmed rect { opacity: 0.1; }
+.node.dimmed text { opacity: 0.1; }
+.goal-node { cursor: pointer; }
+.goal-node text { font-size: 13px; font-weight: 600; fill: #fff; pointer-events: none; }
+.goal-node .sublabel { font-size: 10px; font-weight: 400; fill: #8b949e; }
+.goal-node:hover polygon { filter: brightness(1.2); }
+.goal-node.dimmed polygon { opacity: 0.1; }
+.goal-node.dimmed text { opacity: 0.1; }
 </style>
 </head>
 <body>
@@ -40,12 +55,14 @@ svg { width: 100vw; height: 100vh; }
   <label class="active"><input type="checkbox" value="blocked" checked> Blocked</label>
   <label><input type="checkbox" value="done"> Done</label>
   <label><input type="checkbox" value="backlog"> Backlog</label>
-  <label><input type="checkbox" value="wont-fix"> Won't Fix</label>
-  <span style="color:#8b949e;font-size:12px;margin-left:8px">|</span>
+  <span class="sep">|</span>
   <label class="active"><input type="checkbox" value="p-critical" checked> Critical</label>
   <label class="active"><input type="checkbox" value="p-high" checked> High</label>
   <label class="active"><input type="checkbox" value="p-medium" checked> Medium</label>
   <label class="active"><input type="checkbox" value="p-low" checked> Low</label>
+  <span class="sep">|</span>
+  <label class="active"><input type="checkbox" value="show-goals" checked> Goals</label>
+  <label><input type="checkbox" value="show-membership"> Membership lines</label>
 </div>
 <div id="info">
   <h3 id="info-title"></h3>
@@ -53,14 +70,13 @@ svg { width: 100vw; height: 100vh; }
   <div class="deps" id="info-deps"></div>
 </div>
 <div id="legend">
-  <span><span class="dot" style="width:30px;height:10px;border-radius:2px"></span> Critical</span>
-  <span><span class="dot" style="width:24px;height:10px;border-radius:2px"></span> High</span>
-  <span><span class="dot" style="width:16px;height:10px;border-radius:2px"></span> Medium</span>
-  <span><span class="dot" style="width:10px;height:10px;border-radius:2px"></span> Low</span>
+  <span><span class="hex" style="background:#f0883e"></span> Goal (active)</span>
+  <span><span class="hex" style="background:#1f6feb"></span> Goal (activatable)</span>
+  <span><span class="hex" style="background:#484f58"></span> Goal (blocked)</span>
   <span>|</span>
-  <span>Impact:</span>
+  <span>Issue impact:</span>
   <span><span class="dot" style="background:rgba(255,255,0,0.9)"></span> High</span>
-  <span><span class="dot" style="background:rgba(157,159,34,0.65)"></span> Medium</span>
+  <span><span class="dot" style="background:rgba(157,159,34,0.65)"></span> Med</span>
   <span><span class="dot" style="background:rgba(60,63,68,0.5)"></span> None</span>
   <span>|</span>
   <span style="border-bottom:1px dashed rgba(255,0,0,0.4);padding-bottom:1px">Blocked</span>
@@ -68,35 +84,33 @@ svg { width: 100vw; height: 100vh; }
 <div id="stats"></div>
 <svg></svg>
 <script>
-const RADIUS = { critical: 40, high: 30, medium: 20, low: 10 }; // kept for collision
-const BAR_W = { critical: 180, high: 140, medium: 100, low: 60 };
+const BAR_W = { critical: 160, high: 130, medium: 100, low: 60 };
 const BAR_H = 18;
 
-const CLUSTER_COLORS = {
-  'Diagnostics': '#58a6ff',
-  'Dead code / Scanning': '#bc8cff',
-  'Type coercion': '#f0883e',
-  'Class / New': '#3fb950',
-  'Property / Element': '#f778ba',
-  'Assignment / Destructuring': '#79c0ff',
-  'Generators / Yield': '#d2a8ff',
-  'Loops / Iteration': '#ffd33d',
-  'Scope / Identifiers': '#ff7b72',
-  'Wasm validation': '#7ee787',
-  'Test infrastructure': '#8b949e',
-  'Standalone': '#6e7681',
-  'Unclustered': '#484f58',
+const GOAL_STATUS_COLOR = {
+  active: '#f0883e',
+  activatable: '#1f6feb',
+  blocked: '#484f58',
+  done: '#3fb950',
 };
+
+const GOAL_W = 180, GOAL_H = 70;
 
 function ceColor(d) {
   const impact = (d.compiler_errors || 0) + (d.test262_skip || 0) + (d.test262_fail || 0) + (d.test262_ce || 0);
   if (!impact) return 'rgba(60,63,68,0.5)';
   const t = Math.min(1, Math.log(impact + 1) / Math.log(4000));
-  // Interpolate from dark gray (60,63,68) to yellow (255,255,0)
   const r = Math.round(60 + t * (255 - 60));
   const g = Math.round(63 + t * (255 - 63));
   const b = Math.round(68 + t * (0 - 68));
   return `rgba(${r},${g},${b},${0.4 + t * 0.5})`;
+}
+
+/** Hexagon path centered at (0,0) with given width and height */
+function hexPath(w, h) {
+  const hw = w / 2, hh = h / 2;
+  const inset = h * 0.3;
+  return `${-hw + inset},${-hh} ${hw - inset},${-hh} ${hw},0 ${hw - inset},${hh} ${-hw + inset},${hh} ${-hw},0`;
 }
 
 async function init() {
@@ -109,206 +123,307 @@ async function init() {
     return;
   }
 
-  const { nodes, links } = data;
+  const { nodes, links, goals, goalLinks, goalIssueLinks } = data;
   const nodeMap = new Map(nodes.map(n => [n.id, n]));
+  const goalMap = new Map(goals.map(g => [g.id, g]));
+
+  // Assign issue-to-goal for quick lookup
+  const issueGoalMap = new Map();
+  goalIssueLinks.forEach(l => issueGoalMap.set(l.issue, l.goal));
 
   // Stats
   const ready = nodes.filter(n => n.status === 'ready').length;
   const blocked = nodes.filter(n => n.status === 'blocked').length;
-  document.getElementById('stats').textContent = `${nodes.length} issues | ${ready} ready | ${blocked} blocked | ${links.length} dependencies | Generated: ${new Date(data.generated).toLocaleDateString()}`;
+  const activeGoals = goals.filter(g => g.status === 'active' || g.status === 'activatable').length;
+  document.getElementById('stats').innerHTML =
+    `${nodes.length} issues | ${ready} ready | ${blocked} blocked | ${goals.length} goals (${activeGoals} active) | Generated: ${new Date(data.generated).toLocaleDateString()}`;
 
   const width = window.innerWidth, height = window.innerHeight;
   const svg = d3.select('svg').attr('viewBox', [0, 0, width, height]);
   const g = svg.append('g');
-  svg.call(d3.zoom().scaleExtent([0.2, 5]).on('zoom', e => g.attr('transform', e.transform)));
+  svg.call(d3.zoom().scaleExtent([0.15, 5]).on('zoom', e => g.attr('transform', e.transform)));
 
-  // Arrow marker
-  svg.append('defs').append('marker')
+  // Arrow markers
+  const defs = svg.append('defs');
+  defs.append('marker')
     .attr('id', 'arrow').attr('viewBox', '0 -5 10 10').attr('refX', 20).attr('refY', 0)
     .attr('markerWidth', 6).attr('markerHeight', 6).attr('orient', 'auto')
     .append('path').attr('d', 'M0,-5L10,0L0,5').attr('fill', '#8b949e');
+  defs.append('marker')
+    .attr('id', 'goal-arrow').attr('viewBox', '0 -5 10 10').attr('refX', 14).attr('refY', 0)
+    .attr('markerWidth', 8).attr('markerHeight', 8).attr('orient', 'auto')
+    .append('path').attr('d', 'M0,-5L10,0L0,5').attr('fill', '#f0883e');
 
-  // ── Compute dependency depth (BFS from roots) ──
-  const dependents = new Map();
-  nodes.forEach(n => dependents.set(n.id, []));
-  links.forEach(l => {
-    const s = typeof l.source === 'object' ? l.source.id : l.source;
-    const t = typeof l.target === 'object' ? l.target.id : l.target;
-    if (dependents.has(s)) dependents.get(s).push(t);
+  // ── Layout goals in a DAG using BFS depth ──
+  const goalDepth = new Map();
+  const goalQueue = [];
+  goals.forEach(gg => {
+    const deps = gg.depends_on.filter(id => goalMap.has(id));
+    if (deps.length === 0) { goalDepth.set(gg.id, 0); goalQueue.push(gg.id); }
   });
-
-  const depth = new Map();
-  const queue = [];
-  nodes.forEach(n => {
-    const deps = (n.depends_on || []).filter(id => nodeMap.has(id));
-    if (deps.length === 0) { depth.set(n.id, 0); queue.push(n.id); }
-  });
-  let qi = 0;
-  while (qi < queue.length) {
-    const id = queue[qi++];
-    const d = depth.get(id);
-    for (const child of (dependents.get(id) || [])) {
-      const nd = d + 1;
-      if (!depth.has(child) || depth.get(child) < nd) {
-        depth.set(child, nd);
-        queue.push(child);
+  let gqi = 0;
+  while (gqi < goalQueue.length) {
+    const id = goalQueue[gqi++];
+    const d = goalDepth.get(id);
+    goals.forEach(gg => {
+      if (gg.depends_on.includes(id)) {
+        const nd = d + 1;
+        if (!goalDepth.has(gg.id) || goalDepth.get(gg.id) < nd) {
+          goalDepth.set(gg.id, nd);
+          goalQueue.push(gg.id);
+        }
       }
-    }
+    });
   }
-  nodes.forEach(n => { if (!depth.has(n.id)) depth.set(n.id, 0); });
-  nodes.forEach(n => { n.depth = depth.get(n.id); });
+  goals.forEach(gg => { if (!goalDepth.has(gg.id)) goalDepth.set(gg.id, 0); });
 
-  const maxDepth = d3.max(nodes, n => n.depth) || 0;
+  const maxGoalDepth = d3.max(goals, gg => goalDepth.get(gg.id)) || 0;
 
-  // Group by depth, then sort by cluster then priority then CE
+  // Separate conformance goals from parallel tracks
+  const conformanceGoals = goals.filter(gg => !gg.track);
+  const parallelGoals = goals.filter(gg => gg.track);
+
+  // Position goals: conformance goals in a vertical DAG at the right side
+  const goalMargin = { top: 80, right: 60 };
+  const goalColSpacing = 250;
+  const goalRowSpacing = 100;
+
+  // Build columns by depth for conformance goals
+  const goalColumns = [];
+  for (let i = 0; i <= maxGoalDepth; i++) {
+    goalColumns.push(conformanceGoals.filter(gg => goalDepth.get(gg.id) === i));
+  }
+
+  // X position: goals spread from right to left (deepest at right)
+  // Y position: centered within each column
+  const goalAreaLeft = 100;
+  const goalAreaTop = goalMargin.top;
+
+  goalColumns.forEach((col, ci) => {
+    const x = goalAreaLeft + ci * goalColSpacing;
+    const totalH = col.length * (GOAL_H + goalRowSpacing) - goalRowSpacing;
+    const startY = goalAreaTop + Math.max(0, (height * 0.4 - totalH) / 2);
+    col.forEach((gg, ri) => {
+      gg.x = x;
+      gg.y = startY + ri * (GOAL_H + goalRowSpacing);
+    });
+  });
+
+  // Parallel track goals: placed below the conformance DAG
+  const parallelY = height * 0.5 + 60;
+  parallelGoals.forEach((gg, i) => {
+    const depth = goalDepth.get(gg.id) || 0;
+    gg.x = goalAreaLeft + depth * goalColSpacing;
+    gg.y = parallelY + i * (GOAL_H + 30);
+  });
+
+  // ── Position issues relative to their goal ──
+  // Issues without a goal get placed to the far right
   const PRIO_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
-  const clusterNames = [...new Set(nodes.map(n => n.cluster || 'Unclustered'))];
-  const columns = [];
-  for (let i = 0; i <= maxDepth; i++) {
-    const col = nodes.filter(n => n.depth === i);
-    col.sort((a, b) => {
-      const ca = clusterNames.indexOf(a.cluster || 'Unclustered');
-      const cb = clusterNames.indexOf(b.cluster || 'Unclustered');
-      if (ca !== cb) return ca - cb;
-      const pa = PRIO_ORDER[a.priority] || 3, pb = PRIO_ORDER[b.priority] || 3;
-      if (pa !== pb) return pa - pb;
-      return (b.compiler_errors || 0) - (a.compiler_errors || 0);
-    });
-    columns.push(col);
-  }
 
-  // ── Layout: fixed x per column, stack y with cluster group labels ──
-  const margin = { top: 60, bottom: 60, left: 120, right: 80 };
-  const colSpacing = 250;
-  const availHeight = height - margin.top - margin.bottom;
-
-  // Initial y positions: spread evenly, with extra gap between clusters
-  const clusterGap = 20;
-  const nodeGap = 6;
-  columns.forEach((col, ci) => {
-    const x = margin.left + ci * colSpacing;
-    // Count cluster transitions for extra gaps
-    let clusterBreaks = 0;
-    for (let j = 1; j < col.length; j++) {
-      if ((col[j].cluster || 'Unclustered') !== (col[j-1].cluster || 'Unclustered')) clusterBreaks++;
-    }
-    const totalH = col.length * BAR_H;
-    const totalNeeded = totalH + (col.length - 1) * nodeGap + clusterBreaks * clusterGap;
-    const startY = margin.top + Math.max(0, (availHeight - totalNeeded) / 2);
-    let curY = startY;
-    let prevCluster = null;
-    col.forEach(n => {
-      const cl = n.cluster || 'Unclustered';
-      if (prevCluster !== null && cl !== prevCluster) curY += clusterGap;
-      prevCluster = cl;
-      n.x = x;
-      n.fx = x;
-      n.y = curY + BAR_H / 2;
-      curY += BAR_H + nodeGap;
-    });
+  // Group issues by goal
+  const issuesByGoal = new Map();
+  goals.forEach(gg => issuesByGoal.set(gg.id, []));
+  issuesByGoal.set('__none__', []);
+  nodes.forEach(n => {
+    const gid = issueGoalMap.get(n.id) || '__none__';
+    if (issuesByGoal.has(gid)) issuesByGoal.get(gid).push(n);
+    else issuesByGoal.get('__none__').push(n);
   });
 
-  // Build cross-column dependency map: for each node at depth>0,
-  // find the y targets from its dependencies in earlier columns
-  const depYTargets = new Map(); // nodeId -> [y values of deps in earlier columns]
+  // Position issues fanning out to the right of their goal
+  const issueFanOffset = GOAL_W / 2 + 40;
+  for (const [goalId, issues] of issuesByGoal) {
+    if (goalId === '__none__') continue;
+    const gg = goalMap.get(goalId);
+    if (!gg) continue;
+    issues.sort((a, b) => (PRIO_ORDER[a.priority] || 3) - (PRIO_ORDER[b.priority] || 3));
+    const startY = gg.y - (issues.length - 1) * (BAR_H + 4) / 2;
+    issues.forEach((n, i) => {
+      n.x = gg.x + issueFanOffset;
+      n.fx = n.x;
+      n.y = startY + i * (BAR_H + 4);
+    });
+  }
+
+  // Unassigned issues: stack on the far right
+  const unassigned = issuesByGoal.get('__none__') || [];
+  unassigned.sort((a, b) => (PRIO_ORDER[a.priority] || 3) - (PRIO_ORDER[b.priority] || 3));
+  const unassignedX = goalAreaLeft + (maxGoalDepth + 1) * goalColSpacing + 120;
+  unassigned.forEach((n, i) => {
+    n.x = unassignedX;
+    n.fx = n.x;
+    n.y = goalMargin.top + i * (BAR_H + 4);
+  });
+
+  // ── Render layers (back to front) ──
+
+  // Layer 1: Goal-issue membership lines
+  const goalIssueLinkEl = g.append('g').selectAll('line')
+    .data(goalIssueLinks.filter(l => nodeMap.has(l.issue) && goalMap.has(l.goal)))
+    .join('line')
+    .attr('class', 'goal-issue-link');
+
+  // Layer 2: Goal-to-goal dependency curves
+  // Resolve links to goal objects
+  const resolvedGoalLinks = goalLinks.map(l => ({
+    source: goalMap.get(l.source),
+    target: goalMap.get(l.target),
+    sourceId: l.source,
+    targetId: l.target,
+  })).filter(l => l.source && l.target);
+
+  const goalLinkEl = g.append('g').selectAll('path')
+    .data(resolvedGoalLinks)
+    .join('path')
+    .attr('class', 'goal-link-line')
+    .attr('marker-end', 'url(#goal-arrow)');
+
+  // Layer 3: Issue-to-issue dependency curves
+  // Resolve links
   links.forEach(l => {
-    const sid = typeof l.source === 'object' ? l.source.id : l.source;
-    const tid = typeof l.target === 'object' ? l.target.id : l.target;
-    const s = nodeMap.get(sid), t = nodeMap.get(tid);
-    if (s && t && s.depth < t.depth) {
-      if (!depYTargets.has(tid)) depYTargets.set(tid, []);
-      depYTargets.get(tid).push(s);
-    }
+    if (typeof l.source !== 'object') l.source = nodeMap.get(l.source);
+    if (typeof l.target !== 'object') l.target = nodeMap.get(l.target);
   });
 
-  // Custom force: attract nodes toward the average y of their dependencies in earlier columns
-  function crossColumnAttract(alpha) {
-    const strength = alpha * 0.6;
-    for (const [nodeId, depNodes] of depYTargets) {
-      const n = nodeMap.get(nodeId);
-      if (!n) continue;
-      const avgY = depNodes.reduce((sum, d) => sum + d.y, 0) / depNodes.length;
-      n.vy += (avgY - n.y) * strength;
-    }
-  }
-
-  // Priority y targets: critical at top, low at bottom
-  const PRIO_Y = { critical: height * 0.15, high: height * 0.35, medium: height * 0.55, low: height * 0.75 };
-
-  // Simulation: fix x, custom y attraction + collision + priority stratification
-  const simulation = d3.forceSimulation(nodes)
-    .force('crossCol', crossColumnAttract)
-    .force('collideY', d3.forceCollide().radius(BAR_H / 2 + 2).strength(1).iterations(5))
-    .force('priorityY', d3.forceY(d => PRIO_Y[d.priority] || height / 2).strength(0.03))
-    .alphaDecay(0.02);
-
-  // ── Column headers ──
-  const headerGroup = g.append('g');
-  columns.forEach((col, ci) => {
-    if (!col.length) return;
-    const x = margin.left + ci * colSpacing;
-    const label = ci === 0 ? 'Ready' : `Depth ${ci}`;
-    headerGroup.append('text')
-      .attr('class', 'cluster-label')
-      .attr('x', x).attr('y', margin.top - 20)
-      .attr('text-anchor', 'middle')
-      .attr('fill', '#8b949e')
-      .attr('font-size', '12px')
-      .attr('font-weight', '600')
-      .text(`${label} (${col.length})`);
-    // Vertical guide
-    headerGroup.append('line')
-      .attr('x1', x).attr('y1', margin.top - 10)
-      .attr('x2', x).attr('y2', height - margin.bottom)
-      .attr('stroke', 'rgba(255,255,255,0.04)').attr('stroke-width', 1);
-  });
-
-  // ── Cluster group labels (updated on tick) ──
-  const clusterLabels = g.append('g');
-
-  // Dependency links — cubic bezier curves
   const linkEl = g.append('g').selectAll('path')
-    .data(links).join('path')
+    .data(links.filter(l => l.source && l.target))
+    .join('path')
     .attr('class', 'link')
     .attr('stroke', l => {
-      const t = nodeMap.get(typeof l.target === 'object' ? l.target.id : l.target);
+      const t = typeof l.target === 'object' ? l.target : nodeMap.get(l.target);
       return t ? ceColor(t) : '#30363d';
     })
     .attr('stroke-width', 1.5)
     .attr('marker-end', 'url(#arrow)');
 
-  // Nodes
+  // Layer 4: Goal nodes
+  const goalEl = g.append('g').selectAll('g')
+    .data(goals)
+    .join('g')
+    .attr('class', 'goal-node')
+    .attr('transform', d => `translate(${d.x},${d.y})`)
+    .call(d3.drag()
+      .on('start', (e, d) => { d._dragging = true; })
+      .on('drag', (e, d) => {
+        d.x = e.x; d.y = e.y;
+        d3.select(e.sourceEvent.target.closest('.goal-node')).attr('transform', `translate(${d.x},${d.y})`);
+        updatePositions();
+      })
+      .on('end', (e, d) => { d._dragging = false; })
+    );
+
+  goalEl.append('polygon')
+    .attr('points', hexPath(GOAL_W, GOAL_H))
+    .attr('fill', d => GOAL_STATUS_COLOR[d.status] || '#484f58')
+    .attr('fill-opacity', 0.85)
+    .attr('stroke', d => GOAL_STATUS_COLOR[d.status] || '#484f58')
+    .attr('stroke-width', 2)
+    .attr('stroke-opacity', 0.6);
+
+  goalEl.append('text')
+    .attr('text-anchor', 'middle')
+    .attr('dy', -4)
+    .text(d => d.id);
+
+  goalEl.append('text')
+    .attr('class', 'sublabel')
+    .attr('text-anchor', 'middle')
+    .attr('dy', 14)
+    .text(d => {
+      const count = d.issues.length;
+      const target = d.target.match(/~?\d+%/)?.[0] || '';
+      return `${count} issues${target ? ' | ' + target : ''}`;
+    });
+
+  goalEl.on('mouseover', (e, d) => highlightGoal(d))
+    .on('mouseout', () => unhighlight())
+    .on('click', (e, d) => showGoalInfo(d));
+
+  // Layer 5: Issue nodes
   const nodeEl = g.append('g').selectAll('g')
-    .data(nodes).join('g')
+    .data(nodes)
+    .join('g')
     .attr('class', 'node')
     .call(d3.drag()
-      .on('start', (e, d) => { if (!e.active) simulation.alphaTarget(0.3).restart(); d.fy = d.y; })
-      .on('drag', (e, d) => { d.fy = e.y; })
-      .on('end', (e, d) => { if (!e.active) simulation.alphaTarget(0); d.fy = null; })
+      .on('start', (e, d) => { d._dragging = true; })
+      .on('drag', (e, d) => {
+        d.x = e.x; d.fx = e.x; d.y = e.y;
+        d3.select(e.sourceEvent.target.closest('.node')).attr('transform', `translate(${d.x},${d.y})`);
+        updatePositions();
+      })
+      .on('end', (e, d) => { d._dragging = false; })
     );
 
   nodeEl.append('rect')
-    .attr('x', 0)
-    .attr('y', -BAR_H / 2)
+    .attr('x', 0).attr('y', -BAR_H / 2)
     .attr('width', d => BAR_W[d.priority] || 60)
     .attr('height', BAR_H)
     .attr('rx', 3).attr('ry', 3)
     .attr('fill', d => ceColor(d))
-    .attr('stroke', d => d.status === 'blocked' ? 'rgba(255,0,0,0.3)' : 'none')
+    .attr('stroke', d => d.status === 'blocked' ? 'rgba(255,0,0,0.3)' : (d.goal ? 'rgba(240,136,62,0.2)' : 'none'))
     .attr('stroke-dasharray', d => d.status === 'blocked' ? '3,2' : 'none');
 
   nodeEl.append('text')
-    .attr('dx', 4)
-    .attr('dy', 4)
+    .attr('dx', 4).attr('dy', 4)
     .attr('text-anchor', 'start')
     .text(d => `#${d.id}`);
 
-  // Hover / click
-  nodeEl.on('mouseover', (e, d) => highlight(d))
+  nodeEl.on('mouseover', (e, d) => highlightIssue(d))
     .on('mouseout', () => unhighlight())
-    .on('click', (e, d) => showInfo(d));
+    .on('click', (e, d) => showIssueInfo(d));
 
-  function highlight(d) {
+  // ── Position update (called on drag and init) ──
+  function updatePositions() {
+    nodeEl.attr('transform', d => `translate(${d.x},${d.y})`);
+    goalEl.attr('transform', d => `translate(${d.x},${d.y})`);
+
+    linkEl.attr('d', l => {
+      const s = l.source, t = l.target;
+      if (!s || !t) return '';
+      const sx = s.x + (BAR_W[s.priority] || 60), tx = t.x;
+      const dx = tx - sx;
+      return `M${sx},${s.y}C${sx + dx * 0.4},${s.y},${tx - dx * 0.4},${t.y},${tx},${t.y}`;
+    });
+
+    goalLinkEl.attr('d', l => {
+      const s = l.source, t = l.target;
+      if (!s || !t) return '';
+      const sx = s.x + GOAL_W / 2, tx = t.x - GOAL_W / 2;
+      const dx = tx - sx;
+      return `M${sx},${s.y}C${sx + dx * 0.4},${s.y},${tx - dx * 0.4},${t.y},${tx},${t.y}`;
+    });
+
+    goalIssueLinkEl
+      .attr('x1', l => { const gg = goalMap.get(l.goal); return gg ? gg.x + GOAL_W / 2 : 0; })
+      .attr('y1', l => { const gg = goalMap.get(l.goal); return gg ? gg.y : 0; })
+      .attr('x2', l => { const n = nodeMap.get(l.issue); return n ? n.x : 0; })
+      .attr('y2', l => { const n = nodeMap.get(l.issue); return n ? n.y : 0; });
+  }
+
+  updatePositions();
+
+  // ── Highlight functions ──
+
+  function highlightGoal(d) {
+    // Connected = this goal + its dep/depender goals + its member issues
+    const connGoals = new Set([d.id]);
+    const connIssues = new Set(d.issues);
+    goalLinks.forEach(l => {
+      if (l.source === d.id) connGoals.add(l.target);
+      if (l.target === d.id) connGoals.add(l.source);
+    });
+
+    goalEl.classed('dimmed', gg => !connGoals.has(gg.id));
+    nodeEl.classed('dimmed', n => !connIssues.has(n.id));
+    linkEl.classed('dimmed', true);
+    goalLinkEl.classed('dimmed', l => !connGoals.has(l.sourceId) || !connGoals.has(l.targetId));
+    goalLinkEl.classed('highlighted', l => connGoals.has(l.sourceId) && connGoals.has(l.targetId) && (l.sourceId === d.id || l.targetId === d.id));
+    goalIssueLinkEl.classed('dimmed', l => l.goal !== d.id);
+    goalIssueLinkEl.classed('highlighted', l => l.goal === d.id);
+  }
+
+  function highlightIssue(d) {
     const connected = new Set([d.id]);
     links.forEach(l => {
       const s = typeof l.source === 'object' ? l.source.id : l.source;
@@ -316,6 +431,8 @@ async function init() {
       if (s === d.id) connected.add(t);
       if (t === d.id) connected.add(s);
     });
+    const myGoal = issueGoalMap.get(d.id);
+
     nodeEl.classed('dimmed', n => !connected.has(n.id));
     linkEl.classed('dimmed', l => {
       const s = typeof l.source === 'object' ? l.source.id : l.source;
@@ -327,23 +444,69 @@ async function init() {
       const t = typeof l.target === 'object' ? l.target.id : l.target;
       return s === d.id || t === d.id;
     });
+    goalEl.classed('dimmed', gg => gg.id !== myGoal);
+    goalLinkEl.classed('dimmed', true);
+    goalIssueLinkEl.classed('dimmed', l => l.issue !== d.id);
+    goalIssueLinkEl.classed('highlighted', l => l.issue === d.id);
   }
 
   function unhighlight() {
     nodeEl.classed('dimmed', false);
     linkEl.classed('dimmed', false).classed('highlighted', false);
+    goalEl.classed('dimmed', false);
+    goalLinkEl.classed('dimmed', false).classed('highlighted', false);
+    goalIssueLinkEl.classed('dimmed', false).classed('highlighted', false);
   }
 
-  function showInfo(d) {
+  // ── Info panels ──
+
+  function showGoalInfo(d) {
+    const info = document.getElementById('info');
+    info.style.display = 'block';
+    document.getElementById('info-title').innerHTML = `<span class="goal-title">${d.id}</span>: ${d.title}`;
+    let meta = `<b>Status:</b> ${d.status} | <b>Issues:</b> ${d.issues.length}`;
+    if (d.target) meta += `<br><b>Target:</b> ${d.target}`;
+    document.getElementById('info-meta').innerHTML = meta;
+
+    let html = '';
+    if (d.depends_on.length) {
+      html += `<div><b>Depends on:</b> ${d.depends_on.map(id => `<span class="goal-link" onclick="focusGoal('${id}')">${id}</span>`).join(', ')}</div>`;
+    }
+    const dependers = goals.filter(gg => gg.depends_on.includes(d.id));
+    if (dependers.length) {
+      html += `<div><b>Unblocks:</b> ${dependers.map(gg => `<span class="goal-link" onclick="focusGoal('${gg.id}')">${gg.id}</span>`).join(', ')}</div>`;
+    }
+    if (d.issues.length) {
+      html += '<div style="margin-top:8px"><b>Issues:</b><br>';
+      const sorted = d.issues.slice().sort((a, b) => {
+        const na = nodeMap.get(a), nb = nodeMap.get(b);
+        if (!na || !nb) return 0;
+        return (PRIO_ORDER[na.priority] || 3) - (PRIO_ORDER[nb.priority] || 3);
+      });
+      for (const id of sorted) {
+        const n = nodeMap.get(id);
+        if (n) {
+          const pColor = { critical: '#f85149', high: '#f0883e', medium: '#8b949e', low: '#484f58' }[n.priority] || '#8b949e';
+          html += `<span class="dep-link" onclick="focusNode(${id})" style="display:inline-block;margin:2px 4px 2px 0;padding:1px 6px;border-radius:3px;background:rgba(255,255,255,0.05);border-left:3px solid ${pColor};font-size:11px">#${id}</span>`;
+        }
+      }
+      html += '</div>';
+    }
+    document.getElementById('info-deps').innerHTML = html;
+  }
+
+  function showIssueInfo(d) {
     const info = document.getElementById('info');
     info.style.display = 'block';
     document.getElementById('info-title').textContent = `#${d.id}: ${d.title}`;
-    let meta = `<b>Priority:</b> ${d.priority} | <b>Status:</b> ${d.status} | <b>Cluster:</b> ${d.cluster || 'Unclustered'}`;
+    let meta = `<b>Priority:</b> ${d.priority} | <b>Status:</b> ${d.status}`;
+    if (d.cluster && d.cluster !== 'Unclustered') meta += ` | <b>Cluster:</b> ${d.cluster}`;
+    if (d.goal) meta += ` | <b>Goal:</b> <span class="goal-link" onclick="focusGoal('${d.goal}')">${d.goal}</span>`;
     if (d.compiler_errors) meta += ` | <b>CE:</b> ${d.compiler_errors}`;
     if (d.test262_skip) meta += ` | <b>Skip:</b> ${d.test262_skip}`;
     if (d.test262_fail) meta += ` | <b>Fail:</b> ${d.test262_fail}`;
-    if (d.test262_ce) meta += ` | <b>T262 CE:</b> ${d.test262_ce}`;
     document.getElementById('info-meta').innerHTML = meta;
+
     const deps = d.depends_on || [];
     const dependers = nodes.filter(n => n.depends_on && n.depends_on.includes(d.id));
     let html = '';
@@ -353,7 +516,6 @@ async function init() {
     if (dependers.length) {
       html += `<div><b>Unblocks:</b> ${dependers.map(n => `<span class="dep-link" onclick="focusNode(${n.id})">#${n.id}</span>`).join(', ')}</div>`;
     }
-    if (!deps.length && !dependers.length) html += '<div style="color:#8b949e">No dependencies</div>';
     const files = d.files;
     if (files && (Array.isArray(files) ? files.length : Object.keys(files).length)) {
       html += '<div style="margin-top:6px"><b>Files:</b>';
@@ -374,10 +536,15 @@ async function init() {
 
   window.focusNode = function(id) {
     const n = nodes.find(n => n.id === id);
-    if (n) { highlight(n); showInfo(n); }
+    if (n) { highlightIssue(n); showIssueInfo(n); }
   };
 
-  // Filter controls
+  window.focusGoal = function(id) {
+    const gg = goals.find(g => g.id === id);
+    if (gg) { highlightGoal(gg); showGoalInfo(gg); }
+  };
+
+  // ── Filter controls ──
   document.querySelectorAll('#controls input').forEach(cb => {
     cb.addEventListener('change', () => {
       cb.parentElement.classList.toggle('active', cb.checked);
@@ -388,92 +555,24 @@ async function init() {
   function applyFilters() {
     const statuses = new Set();
     const priorities = new Set();
+    let showGoals = false, showMembership = false;
     document.querySelectorAll('#controls input:checked').forEach(cb => {
       const v = cb.value;
-      if (v.startsWith('p-')) priorities.add(v.slice(2));
+      if (v === 'show-goals') showGoals = true;
+      else if (v === 'show-membership') showMembership = true;
+      else if (v.startsWith('p-')) priorities.add(v.slice(2));
       else statuses.add(v);
     });
     nodeEl.style('display', d => (statuses.has(d.status) && priorities.has(d.priority)) ? null : 'none');
     linkEl.style('display', l => {
-      const s = typeof l.source === 'object' ? l.source : nodeMap.get(l.source);
-      const t = typeof l.target === 'object' ? l.target : nodeMap.get(l.target);
-      return (statuses.has(s.status) && priorities.has(s.priority) && statuses.has(t.status) && priorities.has(t.priority)) ? null : 'none';
+      const s = l.source, t = l.target;
+      return (s && t && statuses.has(s.status) && priorities.has(s.priority) && statuses.has(t.status) && priorities.has(t.priority)) ? null : 'none';
     });
+    goalEl.style('display', showGoals ? null : 'none');
+    goalLinkEl.style('display', showGoals ? null : 'none');
+    goalIssueLinkEl.style('display', (showGoals && showMembership) ? null : 'none');
   }
   applyFilters();
-
-  // Resolve link source/target to node objects (since we don't use forceLink)
-  links.forEach(l => {
-    if (typeof l.source !== 'object') l.source = nodeMap.get(l.source);
-    if (typeof l.target !== 'object') l.target = nodeMap.get(l.target);
-  });
-
-  // Tick: update node positions and link paths
-  function bezierLink(l) {
-    const s = l.source, t = l.target;
-    if (!s || !t) return '';
-    const sx = s.x + (BAR_W[s.priority] || 60);  // right edge of source bar
-    const tx = t.x;                                // left edge of target bar
-    const dx = tx - sx;
-    return `M${sx},${s.y}C${sx + dx * 0.4},${s.y},${tx - dx * 0.4},${t.y},${tx},${t.y}`;
-  }
-
-  simulation.on('tick', () => {
-    // Enforce fixed x and clamp y to stay below column headers
-    nodes.forEach(n => {
-      n.x = n.fx;
-      if (n.y < margin.top + BAR_H / 2) n.y = margin.top + BAR_H / 2;
-    });
-    // Prevent vertical overlap within each column
-    columns.forEach(col => {
-      col.sort((a, b) => a.y - b.y);
-      for (let i = 1; i < col.length; i++) {
-        const minY = col[i - 1].y + BAR_H + 2;
-        if (col[i].y < minY) col[i].y = minY;
-      }
-    });
-    nodeEl.attr('transform', d => `translate(${d.x},${d.y})`);
-    linkEl.attr('d', bezierLink);
-
-    // Update cluster labels + bracket lines based on current y positions
-    clusterLabels.selectAll('*').remove();
-    if (columns[0]) {
-      // Group nodes by cluster
-      const groups = [];
-      let cur = null;
-      columns[0].forEach(n => {
-        const cl = n.cluster || 'Unclustered';
-        if (!cur || cur.name !== cl) {
-          cur = { name: cl, nodes: [] };
-          groups.push(cur);
-        }
-        cur.nodes.push(n);
-      });
-      groups.forEach(grp => {
-        const first = grp.nodes[0], last = grp.nodes[grp.nodes.length - 1];
-        const topY = first.y - BAR_H / 2;
-        const botY = last.y + BAR_H / 2;
-        const midY = (topY + botY) / 2;
-        const color = CLUSTER_COLORS[grp.name] || '#6e7681';
-        const bx = margin.left - 20;
-        // Bracket line
-        clusterLabels.append('line')
-          .attr('x1', bx).attr('y1', topY)
-          .attr('x2', bx).attr('y2', botY)
-          .attr('stroke', color).attr('stroke-opacity', 0.4).attr('stroke-width', 2);
-        // Label
-        clusterLabels.append('text')
-          .attr('class', 'cluster-label')
-          .attr('x', bx - 6).attr('y', midY)
-          .attr('text-anchor', 'end')
-          .attr('dominant-baseline', 'middle')
-          .attr('fill', color)
-          .attr('font-size', '9px')
-          .text(grp.name);
-      });
-    }
-  });
-
 }
 
 init();
