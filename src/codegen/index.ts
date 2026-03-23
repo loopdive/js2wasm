@@ -11588,37 +11588,86 @@ function fixupStructNewResultCoercion(ctx: CodegenContext): void {
             pos--;
           }
 
-          if (field.type.kind === "externref") {
-            const prevInstr = instrs[pos]!;
-            // Safety: only insert coercion if the instruction at pos is a direct
-            // value producer for this struct.new field — NOT consumed by a following
-            // instruction like struct.get, array.get, call, etc.
-            const nextInstr = instrs[pos + 1];
-            const isConsumedByNext = nextInstr && (
-              nextInstr.op === "struct.get" || nextInstr.op === "struct.set" ||
-              nextInstr.op === "array.get" || nextInstr.op === "array.set" ||
-              nextInstr.op === "array.len" ||
-              nextInstr.op === "call" || nextInstr.op === "call_indirect" ||
-              nextInstr.op === "call_ref" || nextInstr.op === "return_call" ||
-              nextInstr.op === "ref.cast" || nextInstr.op === "ref.cast_null" ||
-              nextInstr.op === "ref.test" ||
-              nextInstr.op === "any.convert_extern" ||
-              nextInstr.op === "f64.convert_i32_s" || nextInstr.op === "f64.convert_i32_u" ||
-              nextInstr.op === "i32.trunc_sat_f64_s" || nextInstr.op === "i32.trunc_sat_f64_u"
-            );
-            if (!isConsumedByNext) {
-              if (prevInstr.op === "local.get") {
-                const lt = getLocalType(func, (prevInstr as { index: number }).index);
-                if (lt && (lt.kind === "ref" || lt.kind === "ref_null")) {
-                  insertions.push({ pos: pos + 1, op: { op: "extern.convert_any" } as Instr });
-                }
-              } else if (prevInstr.op === "global.get") {
-                // Check global type
-                const gIdx = (prevInstr as { index: number }).index;
-                const gDef = ctx.mod.globals[gIdx];
-                if (gDef && (gDef.type.kind === "ref" || gDef.type.kind === "ref_null")) {
-                  insertions.push({ pos: pos + 1, op: { op: "extern.convert_any" } as Instr });
-                }
+          const prevInstr = instrs[pos]!;
+          // Safety: only insert coercion if the instruction at pos is a direct
+          // value producer for this struct.new field — NOT consumed by a following
+          // instruction like struct.get, array.get, call, etc.
+          const nextInstr = instrs[pos + 1];
+          const isConsumedByNext = nextInstr && (
+            nextInstr.op === "struct.get" || nextInstr.op === "struct.set" ||
+            nextInstr.op === "array.get" || nextInstr.op === "array.set" ||
+            nextInstr.op === "array.len" ||
+            nextInstr.op === "call" || nextInstr.op === "call_indirect" ||
+            nextInstr.op === "call_ref" || nextInstr.op === "return_call" ||
+            nextInstr.op === "ref.cast" || nextInstr.op === "ref.cast_null" ||
+            nextInstr.op === "ref.test" ||
+            nextInstr.op === "any.convert_extern" ||
+            nextInstr.op === "f64.convert_i32_s" || nextInstr.op === "f64.convert_i32_u" ||
+            nextInstr.op === "i32.trunc_sat_f64_s" || nextInstr.op === "i32.trunc_sat_f64_u"
+          );
+
+          if (field.type.kind === "externref" && !isConsumedByNext) {
+            if (prevInstr.op === "local.get") {
+              const lt = getLocalType(func, (prevInstr as { index: number }).index);
+              if (lt && (lt.kind === "ref" || lt.kind === "ref_null")) {
+                insertions.push({ pos: pos + 1, op: { op: "extern.convert_any" } as Instr });
+              }
+            } else if (prevInstr.op === "global.get") {
+              const gIdx = (prevInstr as { index: number }).index;
+              const gDef = ctx.mod.globals[gIdx];
+              if (gDef && (gDef.type.kind === "ref" || gDef.type.kind === "ref_null")) {
+                insertions.push({ pos: pos + 1, op: { op: "extern.convert_any" } as Instr });
+              }
+            }
+          }
+
+          // Fix struct.new fields expecting f64 but getting externref
+          if (field.type.kind === "f64" && !isConsumedByNext) {
+            let isExternref = false;
+            if (prevInstr.op === "local.get") {
+              const lt = getLocalType(func, (prevInstr as { index: number }).index);
+              if (lt && lt.kind === "externref") isExternref = true;
+            } else if (prevInstr.op === "global.get") {
+              const gIdx = (prevInstr as { index: number }).index;
+              const gDef = ctx.mod.globals[gIdx];
+              if (gDef && gDef.type.kind === "externref") isExternref = true;
+            } else if (prevInstr.op === "ref.null.extern" || prevInstr.op === "ref.null extern") {
+              // null in f64 context → NaN
+              instrs[pos] = { op: "f64.const", value: NaN } as Instr;
+              isExternref = false; // already handled
+            }
+            if (isExternref) {
+              const unboxIdx = ctx.funcMap.get("__unbox_number");
+              if (unboxIdx !== undefined) {
+                insertions.push({ pos: pos + 1, op: { op: "call", funcIdx: unboxIdx } as Instr });
+              } else {
+                // Fallback: replace with f64.const NaN
+                instrs[pos] = { op: "f64.const", value: NaN } as Instr;
+              }
+            }
+          }
+
+          // Fix struct.new fields expecting i32 but getting externref
+          if (field.type.kind === "i32" && !isConsumedByNext) {
+            let isExternref = false;
+            if (prevInstr.op === "local.get") {
+              const lt = getLocalType(func, (prevInstr as { index: number }).index);
+              if (lt && lt.kind === "externref") isExternref = true;
+            } else if (prevInstr.op === "global.get") {
+              const gIdx = (prevInstr as { index: number }).index;
+              const gDef = ctx.mod.globals[gIdx];
+              if (gDef && gDef.type.kind === "externref") isExternref = true;
+            } else if (prevInstr.op === "ref.null.extern" || prevInstr.op === "ref.null extern") {
+              instrs[pos] = { op: "i32.const", value: 0 } as Instr;
+              isExternref = false;
+            }
+            if (isExternref) {
+              const unboxIdx = ctx.funcMap.get("__unbox_number");
+              if (unboxIdx !== undefined) {
+                insertions.push({ pos: pos + 1, op: { op: "call", funcIdx: unboxIdx } as Instr });
+                insertions.push({ pos: pos + 2, op: { op: "i32.trunc_sat_f64_s" } as Instr });
+              } else {
+                instrs[pos] = { op: "i32.const", value: 0 } as Instr;
               }
             }
           }
