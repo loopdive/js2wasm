@@ -24,6 +24,7 @@ makes the error paths spec-compliant.
 | **402** | Negative tests: expected SyntaxError not raised | 434 FAIL | High |
 | **443** | Expected ReferenceError but succeeded | 6 FAIL | Low |
 | **774** | Early error checks — tests expect SyntaxError but compile | 2,657 FAIL | High |
+| **721** | Residual negative test false-pass | 2,564 FAIL | High |
 
 ## Success criteria
 

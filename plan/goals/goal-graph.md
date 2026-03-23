@@ -103,7 +103,7 @@ and a goal being "ready" doesn't mean it should be worked on immediately.
 | **spec-completeness** | Blocked | ~90% | async-model, symbol-protocol, builtin-methods, property-model | #696, #661, #674, #671, #498 |
 | **full-conformance** | Blocked | 100% | spec-completeness | All remaining |
 | **standalone-mode** | Activatable | WASI works | iterator-protocol, generator-model | #680, #681, #682 |
-| **performance** | Activatable | faster output | core-semantics | #743, #760, #744 |
+| **performance** | Activatable | faster output | core-semantics | #743, #773, #744 |
 | **platform** | Blocked | edge deploy | standalone-mode | #639, #640, #641, #644 |
 
 ## How to use this

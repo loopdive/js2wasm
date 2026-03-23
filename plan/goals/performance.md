@@ -24,6 +24,11 @@ eliminating the externref roundtrip.
 | **744** | Function monomorphization for polymorphic sites | Specialized copies | High (Hard) |
 | **685** | Interprocedural return type flow | Perf + correctness | Medium |
 | **686** | Closure capture type preservation | Perf | Medium |
+| **638** | Reverse typeIdx map (O(N)→O(1)) | — | Medium |
+| **693** | Safe compilation speed optimizations | — | Medium |
+| **700** | Reuse CompilerHost (~25% speedup) | — | High |
+| **745** | Tagged union representation | — | High |
+| **747** | Escape analysis for stack allocation | — | Medium |
 
 ## Success criteria
 

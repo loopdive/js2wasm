@@ -28,6 +28,7 @@ missing return values, incorrect type coercion, wrong control flow, broken scope
 | **380** | Unknown variable/function in test scope | — | Medium |
 | **684** | Any-typed variable inference from usage | Many CE | High |
 | **771** | Arguments object incomplete | 617 FAIL | High |
+| **701** | resolveWasmType infinite recursion | CE | High |
 
 ## Success criteria
 

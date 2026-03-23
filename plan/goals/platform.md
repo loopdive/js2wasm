@@ -23,6 +23,14 @@ WASI HTTP enables serverless edge functions.
 | **641** | Shopify Functions template | Best adoption opportunity | Medium |
 | **644** | Integrate report into playground | Developer experience | Medium |
 | **642** | Deno/Cloudflare loader plugins | Developer experience | Low |
+| **644** | Conformance report as playground panel | — | Critical |
+| **687** | Live-streaming report with run selector | — | High |
+| **688** | Refactor into smaller modules | — | Medium |
+| **694** | Migrate test262 runner to vitest cache | — | Low |
+| **699** | Shared compiler pool | — | High |
+| **725** | Serve wasm for source map traces | — | High |
+| **741** | Split index.ts (13k lines) | — | Medium |
+| **742** | Extract compileCallExpression (3k lines) | — | Medium |
 
 ## Success criteria
 

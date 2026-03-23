@@ -69,6 +69,11 @@ type mismatches) and can be fixed in bulk.
 | **413** | Parameter default self-reference | 59 CE | Medium | Open |
 | **404** | Compound assignment on unresolvable property type | 88 CE | Medium | Open |
 | **433** | Equality operators mixed type i32/f64 mismatch | 10 CE | Low | Open |
+| **684** | Any-typed variable inference from usage | Many CE | High | Open |
+| **685** | Interprocedural type flow | Many CE | Medium | Open |
+| **686** | Closure capture type preservation | Many CE | Medium | Open |
+| **720** | i32.add expects i32, got f64 | 96 CE | Medium | Open |
+| **764** | Immutable global assignment | 240 CE | Medium | Open |
 | **769** | lib.d.ts RegExp extern class registration | 600 CE | Critical | ✅ Done |
 | **772** | extern.convert_any at call sites | 1,299 CE | Critical | ✅ Partially done (-463) |
 | **776** | yield in expression position — not enough args | ~100 CE | Medium | ✅ Done |

@@ -30,6 +30,9 @@ pass rate goes from "good" to "excellent."
 | **491** | Remove stale null/undefined filter | — | Medium |
 | **494** | Remove stale skip filters | — | Medium |
 | **500** | Remove cross-realm filter | — | Low |
+| **671** | with statement support | — | Low |
+| **674** | SharedArrayBuffer and Atomics | — | Low |
+| **696** | Classify "other fail" runtime errors | 4,649 FAIL | High |
 
 ## Success criteria
 

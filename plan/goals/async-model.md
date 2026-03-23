@@ -21,6 +21,8 @@ promise infrastructure.
 | **764** | Promise chain methods (.then, .catch, .finally) | ~300 FAIL | Critical |
 | **735** | Async iteration correctness | 329 FAIL | High |
 | **675** | Dynamic import() | 471 tests | Medium |
+| **675** | Dynamic import() support | — | Medium |
+| **735** | Async iteration correctness | 329 FAIL | Medium |
 
 ## Dual-mode approach
 
