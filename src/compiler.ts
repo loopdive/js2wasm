@@ -363,6 +363,8 @@ function detectEarlyErrors(
     }
 
     // Check TDZ violations for let/const in block-like scopes
+    // These are also caught by TS checker (2448/2474) as downgraded warnings.
+    // We emit them as warnings here so compilation continues — tests expect runtime ReferenceError.
     if (ts.isSourceFile(node) || ts.isBlock(node) || ts.isCaseClause(node) || ts.isDefaultClause(node)) {
       const stmts = ts.isSourceFile(node) ? node.statements :
                     ts.isBlock(node) ? node.statements :
@@ -587,7 +589,9 @@ function detectEarlyErrors(
       if (parent && ts.isPropertyAssignment(parent) && parent.name === node) {
         return; // It's a property name in an object literal
       }
-      addError(node, `Cannot access '${name}' before initialization`);
+      // Emit as warning — test262 expects runtime ReferenceError, not compile error
+      const p = pos(node);
+      errors.push({ message: `Cannot access '${name}' before initialization`, line: p.line, column: p.column, severity: "warning" });
       return;
     }
     // Don't descend into nested function scopes -- they create their own TDZ
@@ -1025,8 +1029,9 @@ export function compileSource(
 
   // Step 1a: Early error detection — catch ES-spec syntax errors that TypeScript misses
   const earlyErrors = detectEarlyErrors(ast.sourceFile);
-  if (earlyErrors.length > 0) {
-    errors.push(...earlyErrors);
+  errors.push(...earlyErrors);
+  const hasHardEarlyErrors = earlyErrors.some(e => e.severity !== "warning");
+  if (hasHardEarlyErrors) {
     return {
       binary: new Uint8Array(0),
       wat: "",
