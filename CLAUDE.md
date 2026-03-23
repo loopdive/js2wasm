@@ -9,8 +9,8 @@ TypeScript-to-WebAssembly compiler using WasmGC.
 - Test262 standalone: `npx tsx scripts/run-test262.ts [category...]` — writes JSONL + JSON report to `benchmarks/results/`, supports filtering by category
 
 ## Architecture Principles
-- **Never delegate to JS host** — the goal is pure Wasm, no JS runtime dependency. Inline Wasm implementations are always preferred over host imports.
-- Existing host imports (Math methods, string ops) are legacy/temporary — don't add new ones.
+- **Dual-mode: JS host optional** — the compiler supports two modes: JS host mode (uses host imports for performance/completeness) and standalone mode (pure Wasm, no JS runtime). New features should have Wasm-native implementations for standalone mode; JS host imports are acceptable as a fast path when a JS runtime is available. Don't add new host imports without a standalone fallback.
+- This follows the pattern of #679 (dual string backend) and #682 (dual RegExp backend).
 
 ## Project Structure
 - Codegen: `src/codegen/expressions.ts`, `src/codegen/index.ts`, `src/codegen/statements.ts`, `src/codegen/type-coercion.ts`, `src/codegen/peephole.ts`
