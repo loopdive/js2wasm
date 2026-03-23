@@ -308,7 +308,7 @@ function blockTypeExpected(bt: BlockType, types: TypeDef[]): number {
  * Infer the type category of the value produced by the last instruction in a sequence.
  * Returns "f64", "i32", "i64", "externref", "ref", "anyref", or null if unknown.
  */
-function inferLastType(body: Instr[], types: TypeDef[], sigs: FuncSigInfo): string | null {
+function inferLastType(body: Instr[], types: TypeDef[], sigs: FuncSigInfo, localTypes?: ValType[], globalTypes?: ValType[]): string | null {
   // Walk backwards to find the last value-producing instruction
   for (let i = body.length - 1; i >= 0; i--) {
     const instr = body[i]!;
@@ -369,8 +369,39 @@ function inferLastType(body: Instr[], types: TypeDef[], sigs: FuncSigInfo): stri
     if (op === "ref.null.eq") return "eqref";
     if (op === "ref.null.func" || op === "ref.func") return "funcref";
 
-    // local.tee preserves type -- unknown without local type info
-    if (op === "local.tee" || op === "local.get" || op === "global.get") return null;
+    // local.tee/local.get: resolve type from local type info
+    if (op === "local.tee" || op === "local.get") {
+      if (localTypes) {
+        const idx = (instr as any).index;
+        const lt = localTypes[idx];
+        if (lt) {
+          if (lt.kind === "f64") return "f64";
+          if (lt.kind === "i32") return "i32";
+          if (lt.kind === "i64") return "i64";
+          if (lt.kind === "externref") return "externref";
+          if (lt.kind === "ref" || lt.kind === "ref_null") return "ref";
+          if (lt.kind === "anyref") return "anyref";
+          if (lt.kind === "eqref") return "eqref";
+          if (lt.kind === "funcref") return "funcref";
+        }
+      }
+      return null;
+    }
+    if (op === "global.get") {
+      if (globalTypes) {
+        const idx = (instr as any).index;
+        const gt = globalTypes[idx];
+        if (gt) {
+          if (gt.kind === "f64") return "f64";
+          if (gt.kind === "i32") return "i32";
+          if (gt.kind === "i64") return "i64";
+          if (gt.kind === "externref") return "externref";
+          if (gt.kind === "ref" || gt.kind === "ref_null") return "ref";
+          if (gt.kind === "anyref") return "anyref";
+        }
+      }
+      return null;
+    }
 
     // call: check result type -- only trust high-confidence type categories
     if (op === "call") {
@@ -435,11 +466,13 @@ function fixBranchType(
   blockType: BlockType,
   types: TypeDef[],
   sigs: FuncSigInfo,
+  localTypes?: ValType[],
+  globalTypes?: ValType[],
 ): number {
   if (blockType.kind !== "val") return 0;
   const expectedType = blockType.type;
 
-  const produced = inferLastType(body, types, sigs);
+  const produced = inferLastType(body, types, sigs, localTypes, globalTypes);
   if (!produced) return 0; // can't determine type - skip
 
   if (typesCompatible(produced, expectedType)) return 0; // types match
@@ -534,6 +567,8 @@ function fixBranch(
   types: TypeDef[],
   sigs: FuncSigInfo,
   blockType: BlockType,
+  localTypes?: ValType[],
+  globalTypes?: ValType[],
 ): number {
   const actual = sequenceDelta(body, types, sigs);
   if (actual === UNREACHABLE) return 0; // unreachable branch -- validator accepts anything
@@ -591,7 +626,7 @@ function fixBranch(
     // Re-check delta after fixups
     const newDelta = sequenceDelta(body, types, sigs);
     if (newDelta === expected && newDelta > 0) {
-      fixups += fixBranchType(body, blockType, types, sigs);
+      fixups += fixBranchType(body, blockType, types, sigs, localTypes, globalTypes);
     }
   }
 
@@ -614,7 +649,7 @@ function getTagArity(tagIdx: number, tags: Array<{ typeIdx: number }>, types: Ty
  * Recursively fix stack mismatches in a body of instructions.
  * Returns the total number of fixups applied.
  */
-function fixBody(body: Instr[], types: TypeDef[], sigs: FuncSigInfo, tags: Array<{ typeIdx: number }>): number {
+function fixBody(body: Instr[], types: TypeDef[], sigs: FuncSigInfo, tags: Array<{ typeIdx: number }>, localTypes?: ValType[], globalTypes?: ValType[]): number {
   let fixups = 0;
 
   for (const instr of body) {
@@ -623,28 +658,28 @@ function fixBody(body: Instr[], types: TypeDef[], sigs: FuncSigInfo, tags: Array
       const expected = blockTypeExpected(ifInstr.blockType, types);
 
       // Recurse into branches first
-      fixups += fixBody(ifInstr.then, types, sigs, tags);
+      fixups += fixBody(ifInstr.then, types, sigs, tags, localTypes, globalTypes);
       if (ifInstr.else) {
-        fixups += fixBody(ifInstr.else, types, sigs, tags);
+        fixups += fixBody(ifInstr.else, types, sigs, tags, localTypes, globalTypes);
       }
 
       // Fix then branch
-      fixups += fixBranch(ifInstr.then, expected, types, sigs, ifInstr.blockType);
+      fixups += fixBranch(ifInstr.then, expected, types, sigs, ifInstr.blockType, localTypes, globalTypes);
 
       // Fix else branch (or create one if needed for valued blocks)
       if (ifInstr.else) {
-        fixups += fixBranch(ifInstr.else, expected, types, sigs, ifInstr.blockType);
+        fixups += fixBranch(ifInstr.else, expected, types, sigs, ifInstr.blockType, localTypes, globalTypes);
       } else if (expected > 0) {
         // Valued block with no else -- need to add an else branch with default values
         ifInstr.else = [];
-        fixups += fixBranch(ifInstr.else, expected, types, sigs, ifInstr.blockType);
+        fixups += fixBranch(ifInstr.else, expected, types, sigs, ifInstr.blockType, localTypes, globalTypes);
       }
     } else if (instr.op === "block" || instr.op === "loop") {
       const blockInstr = instr as { op: string; blockType: BlockType; body: Instr[] };
-      fixups += fixBody(blockInstr.body, types, sigs, tags);
+      fixups += fixBody(blockInstr.body, types, sigs, tags, localTypes, globalTypes);
 
       const expected = blockTypeExpected(blockInstr.blockType, types);
-      fixups += fixBranch(blockInstr.body, expected, types, sigs, blockInstr.blockType);
+      fixups += fixBranch(blockInstr.body, expected, types, sigs, blockInstr.blockType, localTypes, globalTypes);
     } else if (instr.op === "try") {
       const tryInstr = instr as {
         op: "try";
@@ -656,27 +691,27 @@ function fixBody(body: Instr[], types: TypeDef[], sigs: FuncSigInfo, tags: Array
       const expected = blockTypeExpected(tryInstr.blockType, types);
 
       // Recurse into all branches
-      fixups += fixBody(tryInstr.body, types, sigs, tags);
+      fixups += fixBody(tryInstr.body, types, sigs, tags, localTypes, globalTypes);
       for (const c of tryInstr.catches || []) {
-        fixups += fixBody(c.body, types, sigs, tags);
+        fixups += fixBody(c.body, types, sigs, tags, localTypes, globalTypes);
       }
       if (tryInstr.catchAll) {
-        fixups += fixBody(tryInstr.catchAll, types, sigs, tags);
+        fixups += fixBody(tryInstr.catchAll, types, sigs, tags, localTypes, globalTypes);
       }
 
       // Fix the do body
-      fixups += fixBranch(tryInstr.body, expected, types, sigs, tryInstr.blockType);
+      fixups += fixBranch(tryInstr.body, expected, types, sigs, tryInstr.blockType, localTypes, globalTypes);
 
       // Fix catch bodies. Each catch clause pushes the tag's parameter values
       // onto the stack before the body executes.
       for (const c of tryInstr.catches || []) {
         const tagArity = getTagArity(c.tagIdx, tags, types);
-        fixups += fixBranch(c.body, expected - tagArity, types, sigs, tryInstr.blockType);
+        fixups += fixBranch(c.body, expected - tagArity, types, sigs, tryInstr.blockType, localTypes, globalTypes);
       }
 
       // Fix catch_all body (no values pushed by catch_all)
       if (tryInstr.catchAll) {
-        fixups += fixBranch(tryInstr.catchAll, expected, types, sigs, tryInstr.blockType);
+        fixups += fixBranch(tryInstr.catchAll, expected, types, sigs, tryInstr.blockType, localTypes, globalTypes);
       }
     }
   }
@@ -1139,7 +1174,7 @@ export function stackBalance(mod: WasmModule): number {
     totalFixups += fixCallArgTypesInBody(func.body, localTypes, globalTypes, mod.types, mod, numImports, sigs, boxIdx, unboxIdx);
 
     // Fix nested structured blocks
-    totalFixups += fixBody(func.body, mod.types, sigs, tags);
+    totalFixups += fixBody(func.body, mod.types, sigs, tags, localTypes, globalTypes);
 
     // Fix function-level body: the body must produce exactly as many values
     // as the function's result type declares.
@@ -1151,8 +1186,110 @@ export function stackBalance(mod: WasmModule): number {
         : expectedResults === 1
           ? { kind: "val", type: ft.results[0]! }
           : { kind: "type", typeIdx: func.typeIdx };
-      totalFixups += fixBranch(func.body, expectedResults, mod.types, sigs, funcBlockType);
+      totalFixups += fixBranch(func.body, expectedResults, mod.types, sigs, funcBlockType, localTypes, globalTypes);
     }
+
+    // Fix arithmetic operand type mismatches (e.g., f64.add getting externref)
+    totalFixups += fixArithmeticOperandTypes(func.body, localTypes, globalTypes, mod.types, numImports, mod, unboxIdx);
   }
   return totalFixups;
+}
+
+/**
+ * Set of f64 binary/unary ops that expect f64 operands.
+ */
+const F64_OPS = new Set([
+  "f64.add", "f64.sub", "f64.mul", "f64.div", "f64.neg", "f64.abs",
+  "f64.floor", "f64.ceil", "f64.trunc", "f64.nearest", "f64.sqrt",
+  "f64.copysign", "f64.min", "f64.max",
+  "f64.eq", "f64.ne", "f64.lt", "f64.le", "f64.gt", "f64.ge",
+]);
+
+const I32_OPS = new Set([
+  "i32.add", "i32.sub", "i32.mul", "i32.and", "i32.or", "i32.xor",
+  "i32.shl", "i32.shr_s", "i32.shr_u", "i32.eqz",
+  "i32.eq", "i32.ne", "i32.lt_s", "i32.le_s", "i32.gt_s", "i32.ge_s",
+]);
+
+/**
+ * Fix operand type mismatches for arithmetic operations.
+ * When an f64 op gets an externref operand (from an if block or local.get),
+ * insert __unbox_number to convert externref → f64.
+ */
+function fixArithmeticOperandTypes(
+  body: Instr[],
+  localTypes: ValType[],
+  globalTypes: ValType[],
+  types: TypeDef[],
+  numImports: number,
+  mod: WasmModule,
+  unboxIdx: number,
+): number {
+  let fixups = 0;
+
+  // Recurse into nested blocks first
+  for (const instr of body) {
+    if (instr.op === "if") {
+      const ii = instr as any;
+      if (ii.then) fixups += fixArithmeticOperandTypes(ii.then, localTypes, globalTypes, types, numImports, mod, unboxIdx);
+      if (ii.else) fixups += fixArithmeticOperandTypes(ii.else, localTypes, globalTypes, types, numImports, mod, unboxIdx);
+    } else if (instr.op === "block" || instr.op === "loop") {
+      if ((instr as any).body) fixups += fixArithmeticOperandTypes((instr as any).body, localTypes, globalTypes, types, numImports, mod, unboxIdx);
+    } else if (instr.op === "try") {
+      const ti = instr as any;
+      if (ti.body) fixups += fixArithmeticOperandTypes(ti.body, localTypes, globalTypes, types, numImports, mod, unboxIdx);
+      if (ti.catches) for (const c of ti.catches) { if (c.body) fixups += fixArithmeticOperandTypes(c.body, localTypes, globalTypes, types, numImports, mod, unboxIdx); }
+      if (ti.catchAll) fixups += fixArithmeticOperandTypes(ti.catchAll, localTypes, globalTypes, types, numImports, mod, unboxIdx);
+    }
+  }
+
+  // For each f64/i32 op, check the immediately preceding instruction.
+  // If it produces the wrong type, insert coercion.
+  for (let i = 1; i < body.length; i++) {
+    const op = body[i]!.op;
+    let expectedKind: "f64" | "i32" | null = null;
+    if (F64_OPS.has(op)) expectedKind = "f64";
+    else if (I32_OPS.has(op)) expectedKind = "i32";
+    if (!expectedKind) continue;
+
+    const prev = body[i - 1]!;
+    const prevType = inferInstrType(prev, localTypes, globalTypes, types, mod, numImports);
+    if (!prevType) continue;
+
+    if (expectedKind === "f64" && prevType.kind === "externref") {
+      if (unboxIdx >= 0) {
+        body.splice(i, 0, { op: "call", funcIdx: unboxIdx } as unknown as Instr);
+        fixups++;
+        i++;
+      }
+    } else if (expectedKind === "f64" && (prevType.kind === "ref" || prevType.kind === "ref_null")) {
+      if (unboxIdx >= 0) {
+        body.splice(i, 0,
+          { op: "extern.convert_any" } as Instr,
+          { op: "call", funcIdx: unboxIdx } as unknown as Instr,
+        );
+        fixups++;
+        i += 2;
+      }
+    } else if (expectedKind === "f64" && prevType.kind === "i32") {
+      body.splice(i, 0, { op: "f64.convert_i32_s" } as Instr);
+      fixups++;
+      i++;
+    } else if (expectedKind === "i32" && prevType.kind === "externref") {
+      if (unboxIdx >= 0) {
+        body.splice(i, 0,
+          { op: "call", funcIdx: unboxIdx } as unknown as Instr,
+          { op: "i32.trunc_sat_f64_s" } as Instr,
+        );
+        fixups++;
+        i += 2;
+      }
+    } else if (expectedKind === "i32" && prevType.kind === "f64") {
+      body.splice(i, 0, { op: "i32.trunc_sat_f64_s" } as Instr);
+      fixups++;
+      i++;
+    }
+  }
+
+  return fixups;
 }
