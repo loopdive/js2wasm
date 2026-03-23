@@ -3,6 +3,7 @@
 **100% test262 pass rate.**
 
 - **Status**: Blocked
+- **Phase**: 6 (final — after spec-completeness)
 - **Target**: 48,102 / 48,102 pass.
 - **Dependencies**: `spec-completeness`
 

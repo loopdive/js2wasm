@@ -3,7 +3,8 @@
 **Symbol.iterator protocol works for all iterables: arrays, maps, sets, generators, custom objects.**
 
 - **Status**: Blocked
-- **Target**: ~65% pass rate.
+- **Phase**: 3 (after class-system)
+- **Target**: Symbol.iterator protocol works for custom iterables. Estimated +800 tests.
 - **Dependencies**: `class-system` (Symbol support requires proper class/prototype chain)
 
 ## Why

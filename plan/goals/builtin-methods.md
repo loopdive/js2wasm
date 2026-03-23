@@ -3,7 +3,8 @@
 **All built-in methods on Array, String, Number, Math, RegExp, Date produce correct results.**
 
 - **Status**: Blocked
-- **Target**: ~60% pass rate.
+- **Phase**: 3 (after core-semantics + error-model)
+- **Target**: Built-in method edge cases fixed. Estimated +1,000 tests.
 - **Dependencies**: `core-semantics`, `error-model`
 
 ## Why
@@ -24,6 +25,7 @@ these methods. Getting them right requires both correct return values
 | **385** | Array method argument count errors | — | Medium |
 | **421** | Array.reduce requires callback and initial value | 23 CE | Medium |
 | **312** | Test262 category expansion — Number methods | — | Low |
+| **767** | Equivalence test coverage gaps (RegExp, Promise, async) | — | Medium |
 
 ## Success criteria
 

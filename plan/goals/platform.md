@@ -3,6 +3,7 @@
 **Deploy to edge platforms: Component Model, WASI HTTP, Shopify, Fastly, Fermyon.**
 
 - **Status**: Blocked
+- **Phase**: Parallel track (after standalone-mode)
 - **Target**: Real deployments on at least 2 platforms.
 - **Dependencies**: `standalone-mode`
 - **Track**: Parallel — does not block conformance goals.

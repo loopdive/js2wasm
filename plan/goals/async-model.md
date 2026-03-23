@@ -3,7 +3,8 @@
 **Promises, async/await, async generators, and for-await-of all work correctly.**
 
 - **Status**: Blocked
-- **Target**: ~75% pass rate.
+- **Phase**: 4 (after generator-model)
+- **Target**: Async/await edge cases, Promise integration. Estimated +500 tests.
 - **Dependencies**: `generator-model` (async functions desugar to generators internally)
 
 ## Why

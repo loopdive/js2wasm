@@ -3,7 +3,8 @@
 **The long tail: metaprogramming, Temporal, SharedArrayBuffer, Proxy, eval, and all remaining edge cases.**
 
 - **Status**: Blocked
-- **Target**: ~90% pass rate.
+- **Phase**: 5 (long tail after all other conformance goals)
+- **Target**: 90%+ pass rate. Fix remaining edge cases across all categories.
 - **Dependencies**: `async-model`, `symbol-protocol`, `builtin-methods`, `property-model`
 
 ## Why

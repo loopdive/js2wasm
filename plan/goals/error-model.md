@@ -3,7 +3,8 @@
 **All spec-required errors are thrown: TypeError, RangeError, SyntaxError, ReferenceError.**
 
 - **Status**: Activatable
-- **Target**: ~45% pass rate (many tests only check that errors are thrown).
+- **Phase**: 1-2 (partially parallel with compilable, ramps up after)
+- **Target**: ~2,600 negative tests pass. Estimated +2,000 tests.
 - **Dependencies**: `compilable`
 
 ## Why

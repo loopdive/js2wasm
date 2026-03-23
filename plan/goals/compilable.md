@@ -3,7 +3,8 @@
 **All test262 tests compile without errors.**
 
 - **Status**: Active
-- **Target**: CE 5,982 → 0
+- **Phase**: 1 (first priority — unblocks all other goals)
+- **Target**: CE 5,982 → < 500. Estimated +2,000 tests.
 - **Current**: 14,239 pass / 5,982 CE / 26,880 fail / 1,001 skip (as of 2026-03-22)
 - **Dependencies**: None — this is a root goal.
 

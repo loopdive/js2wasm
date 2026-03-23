@@ -3,7 +3,8 @@
 **No Wasm traps at runtime. Null dereferences and illegal casts produce proper JS exceptions.**
 
 - **Status**: Active
-- **Target**: Traps → 0. Pass rate ~45%.
+- **Phase**: 1 (parallel with compilable)
+- **Target**: Traps → 0. Convert ~2,600 traps/TypeError to proper exceptions. Estimated +1,500 tests.
 - **Dependencies**: `compilable` (partial — tests must compile to crash)
 
 ## Why
