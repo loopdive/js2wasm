@@ -443,5 +443,7 @@
 | 727 | 2026-03-22 | Sub-classify assertion failures (11,480 tests) -- created 11 new issues #729-#739                  | Session    |
 | 726 | 2026-03-22 | TypeError regression: ref.cast guard returns ref.null for valid objects -- multi-struct dispatch    | Session    |
 | 740 | 2026-03-22 | Remove duplicated lib.d.ts copies, read from typescript package at runtime                         | Session    |
+| 772 | 2026-03-23 | Insert missing extern.convert_any at call sites (1,299 CE)                                        | Session    |
+| 765 | 2026-03-23 | Compile error triage: 4,443 remaining CEs -- superseded, all patterns fixed                       | Session    |
 
 
