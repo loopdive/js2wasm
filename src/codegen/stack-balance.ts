@@ -27,6 +27,7 @@
 import type {
   Instr,
   WasmModule,
+  WasmFunction,
   BlockType,
   FuncTypeDef,
   TypeDef,
@@ -738,17 +739,345 @@ function buildFuncSigs(mod: WasmModule): FuncSigInfo {
  * Run stack-balancing fixups on all function bodies in a WasmModule.
  * Returns the total number of fixups applied.
  */
+/**
+ * Resolve full param types for a function by index.
+ */
+function getFullParamTypes(mod: WasmModule, funcIdx: number, numImports: number): ValType[] | null {
+  if (funcIdx < numImports) {
+    let importFuncCount = 0;
+    for (const imp of mod.imports) {
+      if (imp.desc.kind === "func") {
+        if (importFuncCount === funcIdx) {
+          const ft = resolveFuncType(mod.types, imp.desc.typeIdx);
+          return ft ? ft.params : null;
+        }
+        importFuncCount++;
+      }
+    }
+    return null;
+  }
+  const localIdx = funcIdx - numImports;
+  const func = mod.functions[localIdx];
+  if (!func) return null;
+  const ft = resolveFuncType(mod.types, func.typeIdx);
+  return ft ? ft.params : null;
+}
+
+/**
+ * Infer the Wasm type produced by a single instruction, given local/param type info.
+ * Returns the ValType or null if unknown.
+ */
+function inferInstrType(
+  instr: Instr,
+  localTypes: ValType[],
+  globalTypes: ValType[],
+  types: TypeDef[],
+  mod: WasmModule,
+  numImports: number,
+): ValType | null {
+  const op = instr.op;
+  if (op === "local.get" || op === "local.tee") {
+    const idx = (instr as any).index as number;
+    return localTypes[idx] ?? null;
+  }
+  if (op === "global.get") {
+    const idx = (instr as any).index as number;
+    return globalTypes[idx] ?? null;
+  }
+  if (op === "f64.const" || op === "f64.add" || op === "f64.sub" || op === "f64.mul" ||
+      op === "f64.div" || op === "f64.neg" || op === "f64.abs" || op === "f64.floor" ||
+      op === "f64.ceil" || op === "f64.trunc" || op === "f64.nearest" || op === "f64.sqrt" ||
+      op === "f64.copysign" || op === "f64.min" || op === "f64.max" ||
+      op === "f64.convert_i32_s" || op === "f64.convert_i32_u" || op === "f64.convert_i64_s" ||
+      op === "f64.promote_f32") {
+    return { kind: "f64" };
+  }
+  if (op === "i32.const" || op === "i32.add" || op === "i32.sub" || op === "i32.mul" ||
+      op === "i32.and" || op === "i32.or" || op === "i32.xor" ||
+      op === "i32.eqz" || op === "i32.eq" || op === "i32.ne" ||
+      op === "i32.lt_s" || op === "i32.le_s" || op === "i32.gt_s" || op === "i32.ge_s" ||
+      op === "i32.shl" || op === "i32.shr_s" || op === "i32.shr_u" ||
+      op === "i32.trunc_sat_f64_s" || op === "i32.trunc_f64_s" ||
+      op === "ref.is_null" || op === "ref.test" || op === "ref.eq" ||
+      op === "f64.eq" || op === "f64.ne" || op === "f64.lt" || op === "f64.le" ||
+      op === "f64.gt" || op === "f64.ge" ||
+      op === "i64.eqz" || op === "i64.eq" || op === "i64.ne" ||
+      op === "array.len") {
+    return { kind: "i32" };
+  }
+  if (op === "i64.const" || op === "i64.extend_i32_s" || op === "i64.trunc_sat_f64_s") {
+    return { kind: "i64" };
+  }
+  if (op === "ref.null.extern" || op === "extern.convert_any") {
+    return { kind: "externref" };
+  }
+  if (op === "struct.new") {
+    const typeIdx = (instr as any).typeIdx as number;
+    return { kind: "ref", typeIdx };
+  }
+  if (op === "struct.get") {
+    const typeIdx = (instr as any).typeIdx as number;
+    const fieldIdx = (instr as any).fieldIdx as number;
+    const td = types[typeIdx];
+    if (td?.kind === "struct" && td.fields[fieldIdx]) {
+      return td.fields[fieldIdx]!.type;
+    }
+    return null;
+  }
+  if (op === "array.get") {
+    const typeIdx = (instr as any).typeIdx as number;
+    const td = types[typeIdx];
+    if (td?.kind === "array") return td.element;
+    return null;
+  }
+  if (op === "ref.null") {
+    const typeIdx = (instr as any).typeIdx as number;
+    return { kind: "ref_null", typeIdx };
+  }
+  if (op === "ref.cast" || op === "ref.as_non_null") {
+    const typeIdx = (instr as any).typeIdx as number;
+    if (typeIdx !== undefined) return { kind: "ref", typeIdx };
+    return null;
+  }
+  if (op === "ref.cast_null") {
+    const typeIdx = (instr as any).typeIdx as number;
+    return { kind: "ref_null", typeIdx };
+  }
+  if (op === "any.convert_extern") {
+    return { kind: "anyref" } as ValType;
+  }
+  if (op === "call") {
+    const funcIdx = (instr as any).funcIdx as number;
+    const pt = getFullParamTypes(mod, funcIdx, numImports);
+    // Need result types, not params
+    if (funcIdx < numImports) {
+      let importFuncCount = 0;
+      for (const imp of mod.imports) {
+        if (imp.desc.kind === "func") {
+          if (importFuncCount === funcIdx) {
+            const ft = resolveFuncType(types, imp.desc.typeIdx);
+            return ft && ft.results.length === 1 ? ft.results[0]! : null;
+          }
+          importFuncCount++;
+        }
+      }
+    } else {
+      const localFuncIdx = funcIdx - numImports;
+      const func = mod.functions[localFuncIdx];
+      if (func) {
+        const ft = resolveFuncType(types, func.typeIdx);
+        return ft && ft.results.length === 1 ? ft.results[0]! : null;
+      }
+    }
+    return null;
+  }
+  return null;
+}
+
+/**
+ * Check if a coercion is needed and generate the coercion instruction(s).
+ * Returns an array of instructions to insert, or empty if no coercion needed.
+ */
+function callArgCoercionInstrs(actual: ValType, expected: ValType): Instr[] {
+  // Same type — no coercion
+  if (actual.kind === expected.kind) {
+    if ((actual.kind === "ref" || actual.kind === "ref_null") &&
+        (expected.kind === "ref" || expected.kind === "ref_null")) {
+      const actualIdx = (actual as any).typeIdx;
+      const expectedIdx = (expected as any).typeIdx;
+      if (actualIdx === expectedIdx) return [];
+    } else {
+      return [];
+    }
+  }
+  // Only apply the safest lossless coercion in this post-pass:
+  // ref/ref_null → externref via extern.convert_any.
+  // Other coercions are left to the codegen (compileExpression already handles
+  // them when expectedType is provided).
+
+  // ref/ref_null → externref: extern.convert_any (lossless, always safe)
+  if ((actual.kind === "ref" || actual.kind === "ref_null") && expected.kind === "externref") {
+    return [{ op: "extern.convert_any" } as Instr];
+  }
+  return [];
+}
+
+/**
+ * Fix call argument type mismatches in a function body.
+ * Walks through the instruction stream and for each call/return_call,
+ * checks argument types against expected parameter types and inserts
+ * coercion instructions where needed.
+ *
+ * Only handles the common case where the argument-producing instruction
+ * is directly before the call (single-value, no interleaving control flow).
+ * For the last argument (top of stack before call), this is always the case
+ * in linear instruction streams.
+ */
+function fixCallArgTypesInBody(
+  body: Instr[],
+  localTypes: ValType[],
+  globalTypes: ValType[],
+  types: TypeDef[],
+  mod: WasmModule,
+  numImports: number,
+  sigs: FuncSigInfo,
+): number {
+  let fixups = 0;
+
+  // Process nested blocks recursively first
+  for (const instr of body) {
+    if (instr.op === "if") {
+      const ifInstr = instr as any;
+      if (ifInstr.then) fixups += fixCallArgTypesInBody(ifInstr.then, localTypes, globalTypes, types, mod, numImports, sigs);
+      if (ifInstr.else) fixups += fixCallArgTypesInBody(ifInstr.else, localTypes, globalTypes, types, mod, numImports, sigs);
+    } else if (instr.op === "block" || instr.op === "loop") {
+      const blockInstr = instr as any;
+      if (blockInstr.body) fixups += fixCallArgTypesInBody(blockInstr.body, localTypes, globalTypes, types, mod, numImports, sigs);
+    } else if (instr.op === "try") {
+      const tryInstr = instr as any;
+      if (tryInstr.body) fixups += fixCallArgTypesInBody(tryInstr.body, localTypes, globalTypes, types, mod, numImports, sigs);
+      if (tryInstr.catches) {
+        for (const c of tryInstr.catches) {
+          if (c.body) fixups += fixCallArgTypesInBody(c.body, localTypes, globalTypes, types, mod, numImports, sigs);
+        }
+      }
+      if (tryInstr.catchAll) fixups += fixCallArgTypesInBody(tryInstr.catchAll, localTypes, globalTypes, types, mod, numImports, sigs);
+    }
+  }
+
+  // Fix call argument type mismatches.
+  // Conservative approach: only fix SIMPLE patterns where a value-producing
+  // instruction directly precedes the call instruction and produces a type
+  // that doesn't match. We walk backward through instructions, tracking
+  // stack depth, and only insert coercions for simple value producers
+  // (local.get, global.get, struct.new, ref.null, local.tee, call).
+  // Complex cases (nested blocks, if expressions) are skipped to avoid
+  // breaking stack balance.
+  const SIMPLE_PRODUCERS = new Set([
+    "local.get", "global.get", "local.tee",
+    "struct.new", "ref.null", "struct.get", "array.get",
+    "call", "ref.cast", "ref.cast_null", "ref.as_non_null",
+    "array.new_default", "array.new", "array.new_fixed",
+  ]);
+
+  for (let ci = 0; ci < body.length; ci++) {
+    const callInstr = body[ci]!;
+    if (callInstr.op !== "call" && callInstr.op !== "return_call") continue;
+
+    const funcIdx = (callInstr as any).funcIdx as number;
+    const expectedParams = getFullParamTypes(mod, funcIdx, numImports);
+    if (!expectedParams || expectedParams.length === 0) continue;
+
+    const paramCount = expectedParams.length;
+    let argOffset = 0; // 0 = last param, 1 = second-to-last, etc.
+    let pos = ci - 1;
+    const insertions: Array<{ afterPos: number; instrs: Instr[] }> = [];
+
+    while (pos >= 0 && argOffset < paramCount) {
+      const instr = body[pos]!;
+      const op = instr.op;
+
+      // Stop at control flow boundaries — don't try to trace through
+      // blocks, ifs, loops, or try statements
+      if (op === "if" || op === "block" || op === "loop" || op === "try" ||
+          op === "end" || op === "br" || op === "br_if" || op === "br_table" ||
+          op === "return" || op === "throw" || op === "unreachable" ||
+          op === "return_call" || op === "return_call_ref") {
+        break;
+      }
+
+      const delta = instrDelta(instr, types, sigs);
+      if (delta === UNREACHABLE) break;
+
+      if (delta >= 1 && SIMPLE_PRODUCERS.has(op)) {
+        // Check if there are pass-through transformers between this
+        // instruction and the call/next producer.
+        let effectiveType = inferInstrType(instr, localTypes, globalTypes, types, mod, numImports);
+        let insertPos = pos;
+
+        for (let t = pos + 1; t < ci; t++) {
+          const tInstr = body[t]!;
+          const tDelta = instrDelta(tInstr, types, sigs);
+          if (tDelta !== 0) break;
+          const tType = inferInstrType(tInstr, localTypes, globalTypes, types, mod, numImports);
+          if (tType) effectiveType = tType;
+          insertPos = t;
+        }
+
+        const paramIdx = paramCount - 1 - argOffset;
+        const expectedType = expectedParams[paramIdx]!;
+
+        if (effectiveType) {
+          const coercion = callArgCoercionInstrs(effectiveType, expectedType);
+          if (coercion.length > 0) {
+            insertions.push({ afterPos: insertPos, instrs: coercion });
+          }
+        }
+        argOffset += delta;
+      } else if (delta >= 1) {
+        // Non-simple producer (if, block result, etc.) — skip but count
+        argOffset += delta;
+      } else if (delta < 0) {
+        argOffset += delta;
+        if (argOffset < 0) break;
+      }
+      // delta === 0: pass-through (ref.as_non_null, extern.convert_any, etc.)
+      pos--;
+    }
+
+    // Apply insertions in reverse order (so positions don't shift)
+    if (insertions.length > 0) {
+      for (let k = insertions.length - 1; k >= 0; k--) {
+        const { afterPos, instrs } = insertions[k]!;
+        body.splice(afterPos + 1, 0, ...instrs);
+        ci += instrs.length;
+        fixups += instrs.length;
+      }
+    }
+  }
+
+  return fixups;
+}
+
 export function stackBalance(mod: WasmModule): number {
   const sigs = buildFuncSigs(mod);
   const tags = mod.tags || [];
   let totalFixups = 0;
+
+  // Count import functions for index calculations
+  let numImports = 0;
+  for (const imp of mod.imports) {
+    if (imp.desc.kind === "func") numImports++;
+  }
+
+  // Build global types array
+  const globalTypes: ValType[] = [];
+  for (const imp of mod.imports) {
+    if (imp.desc.kind === "global") {
+      globalTypes.push(imp.desc.type);
+    }
+  }
+  for (const g of mod.globals) {
+    globalTypes.push(g.type);
+  }
+
   for (const func of mod.functions) {
-    // Fix nested structured blocks first
+    // Build local types array (params + locals)
+    const ft = resolveFuncType(mod.types, func.typeIdx);
+    const localTypes: ValType[] = [];
+    if (ft) {
+      for (const p of ft.params) localTypes.push(p);
+    }
+    for (const l of func.locals) localTypes.push(l.type);
+
+    // Fix call argument type mismatches before other fixups
+    totalFixups += fixCallArgTypesInBody(func.body, localTypes, globalTypes, mod.types, mod, numImports, sigs);
+
+    // Fix nested structured blocks
     totalFixups += fixBody(func.body, mod.types, sigs, tags);
 
     // Fix function-level body: the body must produce exactly as many values
     // as the function's result type declares.
-    const ft = resolveFuncType(mod.types, func.typeIdx);
     if (ft) {
       const expectedResults = ft.results.length;
       // Build a synthetic block type for the function body
