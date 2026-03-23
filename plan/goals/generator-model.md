@@ -22,6 +22,7 @@ enables standalone mode.
 | **762** | Generator .next(value) arguments | ~50 FAIL | Medium |
 | **287** | Generator function CEs — yield in loops/try | 119 CE | Medium |
 | **288** | Try/catch/finally in generators | 40 CE | Medium |
+| **762** | Generator .next(value) arguments silently ignored | ~50 FAIL | Medium |
 
 ## Phased approach (from #680)
 

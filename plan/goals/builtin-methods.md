@@ -26,6 +26,7 @@ these methods. Getting them right requires both correct return values
 | **421** | Array.reduce requires callback and initial value | 23 CE | Medium |
 | **312** | Test262 category expansion — Number methods | — | Low |
 | **767** | Equivalence test coverage gaps (RegExp, Promise, async) | — | Medium |
+| **661** | Temporal API | — | Medium |
 
 ## Success criteria
 

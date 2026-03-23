@@ -28,6 +28,8 @@ Fixing this unblocks Symbol.toPrimitive, Symbol.species, and all user-defined it
 | **353** | For-of with generators and custom iterators | — | Medium |
 | **456** | Well-known Symbol support (Symbol.iterator, toPrimitive) | ~1,767 skip | Critical |
 | **495** | Array-like objects | — | Medium (blocked by #488) |
+| **681** | Pure Wasm iterator protocol (eliminate 5 host imports) | — | High |
+| **766** | Symbol.iterator for custom iterables | ~500 FAIL | High |
 
 ## Success criteria
 

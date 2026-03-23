@@ -28,6 +28,8 @@ builtin-methods and iterator-protocol.
 | **274** | Property access on function type (.name, .length) | — | Medium |
 | **770** | propertyHelper verifyProperty in test262 preamble | 1,219 FAIL | High |
 | **678** | Dynamic prototype chain traversal | 625 FAIL | High |
+| **731** | Function/class .name property | 558 FAIL | Medium |
+| **746** | Inline property tables (struct-based access) | Many FAIL | Medium |
 
 ## Success criteria
 

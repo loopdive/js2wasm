@@ -22,6 +22,11 @@ and any environment without a JS runtime. This follows the pattern of
 | **681** | Wasm-native iterators (struct-based) | Standalone iterators | High |
 | **682** | RegExp: Wasm engine for standalone, host for JS mode | Standalone regex | Medium (Hard) |
 | **638** | Reverse typeIdxToStructName map | O(N) → O(1) | Low |
+| **639** | Full Component Model adapter | — | Critical |
+| **640** | WASI HTTP handler | — | High |
+| **641** | Shopify Functions template | — | Medium |
+| **642** | Deno/Cloudflare loader plugins | — | Low |
+| **652** | Compile-time ARC | — | Low |
 
 ## Success criteria
 
