@@ -1326,10 +1326,22 @@ export function compileArrowAsCallback(
   }
 
   // 3. Build the __cb_N function — first param is externref captures
+  //    Callback params that are ref/ref_null must be declared as externref
+  //    because the JS host will pass them as externref. We convert them back
+  //    to the expected struct ref type at the start of the body.
+  const cbResolvedParams: ValType[] = []; // original resolved types for coercion
   const cbParams: ValType[] = [{ kind: "externref" }]; // captures param
   for (const p of arrow.parameters) {
     const paramType = ctx.checker.getTypeAtLocation(p);
-    cbParams.push(resolveWasmType(ctx, paramType));
+    const resolved = resolveWasmType(ctx, paramType);
+    cbResolvedParams.push(resolved);
+    // JS host passes all values as externref for GC ref types — they cannot
+    // be passed as (ref N) or (ref null N) directly from JS
+    if (resolved.kind === "ref" || resolved.kind === "ref_null") {
+      cbParams.push({ kind: "externref" });
+    } else {
+      cbParams.push(resolved);
+    }
   }
 
   const sig = ctx.checker.getSignatureFromDeclaration(arrow);
@@ -1388,6 +1400,25 @@ export function compileArrowAsCallback(
     }
   }
 
+  // 4b. Convert ref/ref_null params from externref to their resolved types.
+  //     The JS host passes all GC ref types as externref, so we need to convert
+  //     them back at the start of the body.
+  for (let i = 0; i < cbResolvedParams.length; i++) {
+    const resolved = cbResolvedParams[i]!;
+    if (resolved.kind === "ref" || resolved.kind === "ref_null") {
+      const paramIdx = i + 1; // +1 for __captures
+      const paramName = cbFctx.params[paramIdx]!.name;
+      // Allocate a new local with the resolved (struct ref) type
+      const convertedIdx = allocLocal(cbFctx, `__converted_${paramName}`, resolved);
+      // Load the externref param, convert to struct ref, store in new local
+      cbFctx.body.push({ op: "local.get", index: paramIdx });
+      coerceType(ctx, cbFctx, { kind: "externref" }, resolved);
+      cbFctx.body.push({ op: "local.set", index: convertedIdx });
+      // Update the localMap so the body code uses the converted local
+      cbFctx.localMap.set(paramName, convertedIdx);
+    }
+  }
+
   // 5. Compile the callback body
   const savedFunc = ctx.currentFunc;
   if (savedFunc) ctx.parentBodiesStack.push(savedFunc.body);
@@ -1401,7 +1432,10 @@ export function compileArrowAsCallback(
   for (let i = 0; i < arrow.parameters.length; i++) {
     const param = arrow.parameters[i]!;
     if (ts.isObjectBindingPattern(param.name) || ts.isArrayBindingPattern(param.name)) {
-      emitArrowParamDestructuring(ctx, cbFctx, param, 1 + i, cbParams[i + 1] ?? { kind: "f64" });
+      const resolved = cbResolvedParams[i] ?? { kind: "f64" as const };
+      const paramName = cbFctx.params[1 + i]?.name ?? `__param${i}`;
+      const effectiveIdx = cbFctx.localMap.get(paramName) ?? (1 + i);
+      emitArrowParamDestructuring(ctx, cbFctx, param, effectiveIdx, resolved);
     }
   }
 
