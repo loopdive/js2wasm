@@ -91,6 +91,410 @@ function markLeafStructsFinal(mod: WasmModule): void {
 }
 
 /**
+ * Post-processing pass: repair struct.get/struct.set type mismatches.
+ *
+ * When code generation emits ref.null.extern or local.get of an externref local
+ * immediately before a struct.get/struct.set, Wasm validation fails because
+ * struct.get/struct.set require a reference to the specific struct type.
+ *
+ * This pass fixes two patterns:
+ *
+ * 1. ref.null.extern + struct.get/struct.set → ref.null $typeIdx
+ *    (null externref replaced with typed null for the expected struct type)
+ *
+ * 2. local.get $externref + struct.get/struct.set → local.get + any.convert_extern + ref.cast $typeIdx
+ *    (externref converted to the expected struct reference type)
+ *
+ * 3. call returning externref + struct.get/struct.set → call + any.convert_extern + ref.cast $typeIdx
+ *
+ * Recurses into nested blocks, loops, if/then/else, and try/catch bodies.
+ */
+function repairStructTypeMismatches(mod: WasmModule): number {
+  let totalFixed = 0;
+
+  for (const func of mod.functions) {
+    // Build local type map: params from func type, then locals
+    const funcType = mod.types[func.typeIdx];
+    const paramTypes: ValType[] =
+      funcType && funcType.kind === "func" ? funcType.params : [];
+    const localTypes: ValType[] = [
+      ...paramTypes,
+      ...func.locals.map((l) => l.type),
+    ];
+
+    totalFixed += repairBody(func.body, localTypes, mod);
+  }
+
+  return totalFixed;
+}
+
+function repairBody(
+  body: Instr[],
+  localTypes: ValType[],
+  mod: WasmModule,
+): number {
+  let fixed = 0;
+
+  // Recurse into nested blocks first
+  for (const instr of body) {
+    switch (instr.op) {
+      case "block":
+      case "loop":
+        if (instr.body) fixed += repairBody(instr.body, localTypes, mod);
+        break;
+      case "if":
+        if (instr.then) fixed += repairBody(instr.then, localTypes, mod);
+        if (instr.else) fixed += repairBody(instr.else, localTypes, mod);
+        break;
+      case "try":
+        if (instr.body) fixed += repairBody(instr.body as Instr[], localTypes, mod);
+        if ((instr as any).catches) {
+          for (const c of (instr as any).catches) {
+            if (c.body) fixed += repairBody(c.body, localTypes, mod);
+          }
+        }
+        break;
+    }
+  }
+
+  // Scan for struct.get preceded by externref-producing instructions
+  let i = 0;
+  while (i < body.length - 1) {
+    const next = body[i + 1]!;
+    if (next.op !== "struct.get") {
+      i++;
+      continue;
+    }
+    const structTypeIdx = (next as { typeIdx: number }).typeIdx;
+    const curr = body[i]!;
+
+    // Pattern 1: ref.null.extern → ref.null $typeIdx
+    if (curr.op === "ref.null.extern") {
+      body[i] = { op: "ref.null", typeIdx: structTypeIdx } as Instr;
+      fixed++;
+      i += 2;
+      continue;
+    }
+
+    // Pattern 2: local.get of externref → insert any.convert_extern + ref.cast
+    if (curr.op === "local.get") {
+      const idx = (curr as { index: number }).index;
+      const localType = localTypes[idx];
+      if (localType && localType.kind === "externref") {
+        body.splice(i + 1, 0,
+          { op: "any.convert_extern" } as unknown as Instr,
+          { op: "ref.cast_null", typeIdx: structTypeIdx } as unknown as Instr,
+        );
+        fixed++;
+        i += 4; // skip past local.get + any.convert_extern + ref.cast_null + struct.get
+        continue;
+      }
+    }
+
+    // Pattern 2b: local.tee of externref → insert any.convert_extern + ref.cast
+    if (curr.op === "local.tee") {
+      const idx = (curr as { index: number }).index;
+      const localType = localTypes[idx];
+      if (localType && localType.kind === "externref") {
+        body.splice(i + 1, 0,
+          { op: "any.convert_extern" } as unknown as Instr,
+          { op: "ref.cast_null", typeIdx: structTypeIdx } as unknown as Instr,
+        );
+        fixed++;
+        i += 4;
+        continue;
+      }
+    }
+
+    // Pattern 3: call returning externref → insert any.convert_extern + ref.cast
+    // Check the function's return type; if it's externref but struct.get needs
+    // a struct ref, insert a conversion.
+    if (curr.op === "call") {
+      const funcIdx = (curr as { funcIdx: number }).funcIdx;
+      const numImports = mod.imports.filter((imp) => imp.desc.kind === "func").length;
+      let retType: ValType | undefined;
+      if (funcIdx < numImports) {
+        const imp = mod.imports.filter((imp) => imp.desc.kind === "func")[funcIdx];
+        const ft = imp ? mod.types[(imp.desc as { typeIdx: number }).typeIdx] : undefined;
+        if (ft?.kind === "func" && ft.results.length > 0) retType = ft.results[0];
+      } else {
+        const fn = mod.functions[funcIdx - numImports];
+        const ft = fn ? mod.types[fn.typeIdx] : undefined;
+        if (ft?.kind === "func" && ft.results.length > 0) retType = ft.results[0];
+      }
+      if (retType && retType.kind === "externref") {
+        body.splice(i + 1, 0,
+          { op: "any.convert_extern" } as unknown as Instr,
+          { op: "ref.cast_null", typeIdx: structTypeIdx } as unknown as Instr,
+        );
+        fixed++;
+        i += 4;
+        continue;
+      }
+    }
+
+    i++;
+  }
+
+  // Scan for struct.set preceded by externref-producing instructions.
+  // struct.set pops [struct_ref, value] — we need to find the instruction that
+  // produces the struct ref by tracking stack depth backwards from the struct.set.
+  i = 0;
+  while (i < body.length) {
+    const instr = body[i]!;
+    if (instr.op !== "struct.set") {
+      i++;
+      continue;
+    }
+    const structTypeIdx = (instr as { typeIdx: number }).typeIdx;
+
+    // Walk backwards to find the struct ref producer.
+    // struct.set consumes 2 values: the struct ref (deeper) and the field value (top).
+    // Track net stack contribution going backwards: when cumulative reaches +2,
+    // that instruction produced the struct ref.
+    let depth = 0;
+    let refIdx = -1;
+    for (let j = i - 1; j >= 0; j--) {
+      depth += instrStackDelta(body[j]!, mod);
+      if (depth >= 2) {
+        refIdx = j;
+        break;
+      }
+    }
+
+    if (refIdx >= 0) {
+      const refProducer = body[refIdx]!;
+
+      // Pattern: ref.null.extern → ref.null $typeIdx
+      if (refProducer.op === "ref.null.extern") {
+        body[refIdx] = { op: "ref.null", typeIdx: structTypeIdx } as Instr;
+        fixed++;
+        i++;
+        continue;
+      }
+
+      // Pattern: local.get $externref → insert any.convert_extern + ref.cast_null
+      if (refProducer.op === "local.get" || refProducer.op === "local.tee") {
+        const idx = (refProducer as { index: number }).index;
+        const localType = localTypes[idx];
+        if (localType && localType.kind === "externref") {
+          body.splice(refIdx + 1, 0,
+            { op: "any.convert_extern" } as unknown as Instr,
+            { op: "ref.cast_null", typeIdx: structTypeIdx } as unknown as Instr,
+          );
+          fixed++;
+          i += 3; // shifted by 2 insertions + advance past struct.set
+          continue;
+        }
+      }
+    }
+
+    i++;
+  }
+
+  return fixed;
+}
+
+/**
+ * Compute the net stack delta for a single instruction.
+ * Returns (values_pushed - values_consumed). Used by repairStructTypeMismatches
+ * to walk backwards and find the instruction that produces a specific stack value.
+ *
+ * This is a conservative approximation — block/loop/if/try are treated as opaque
+ * (delta 0), which is safe because struct.get/struct.set operands are almost never
+ * produced by branching constructs.
+ */
+function instrStackDelta(instr: Instr, mod: WasmModule): number {
+  switch (instr.op) {
+    // Push 1 value, consume 0
+    case "local.get":
+    case "global.get":
+    case "i32.const":
+    case "i64.const":
+    case "f64.const":
+    case "f32.const":
+    case "ref.null":
+    case "ref.null.extern":
+    case "ref.null.eq":
+    case "ref.null.func":
+    case "ref.func":
+    case "memory.size":
+      return 1;
+
+    // Push 1, consume 1 (net 0)
+    case "local.tee":
+    case "ref.as_non_null":
+    case "ref.cast":
+    case "ref.cast_null":
+    case "ref.test":
+    case "ref.is_null":
+    case "any.convert_extern":
+    case "extern.convert_any":
+    case "i32.eqz":
+    case "i64.eqz":
+    case "i32.clz":
+    case "f64.abs":
+    case "f64.neg":
+    case "f64.floor":
+    case "f64.ceil":
+    case "f64.trunc":
+    case "f64.nearest":
+    case "f64.sqrt":
+    case "f64.convert_i32_s":
+    case "f64.convert_i32_u":
+    case "f64.convert_i64_s":
+    case "i32.trunc_f64_s":
+    case "i32.trunc_f64_u":
+    case "i32.trunc_sat_f64_s":
+    case "i32.trunc_sat_f64_u":
+    case "i64.trunc_sat_f64_s":
+    case "i64.extend_i32_s":
+    case "i64.extend_i32_u":
+    case "i64.trunc_f64_s":
+    case "array.len":
+    case "f64.promote_f32":
+      return 0;
+
+    // Push 0, consume 1
+    case "drop":
+    case "local.set":
+    case "global.set":
+    case "br_if":
+      return -1;
+
+    // Push 1, consume 2 (net -1)
+    case "i32.add":
+    case "i32.sub":
+    case "i32.mul":
+    case "i32.eq":
+    case "i32.ne":
+    case "i32.lt_s":
+    case "i32.le_s":
+    case "i32.gt_s":
+    case "i32.ge_s":
+    case "i32.ge_u":
+    case "i32.and":
+    case "i32.or":
+    case "i32.xor":
+    case "i32.shl":
+    case "i32.shr_s":
+    case "i32.shr_u":
+    case "i64.add":
+    case "i64.sub":
+    case "i64.mul":
+    case "i64.div_s":
+    case "i64.rem_s":
+    case "i64.eq":
+    case "i64.ne":
+    case "i64.lt_s":
+    case "i64.le_s":
+    case "i64.gt_s":
+    case "i64.ge_s":
+    case "i64.and":
+    case "i64.or":
+    case "i64.xor":
+    case "i64.shl":
+    case "i64.shr_s":
+    case "i64.shr_u":
+    case "f64.add":
+    case "f64.sub":
+    case "f64.mul":
+    case "f64.div":
+    case "f64.eq":
+    case "f64.ne":
+    case "f64.lt":
+    case "f64.le":
+    case "f64.gt":
+    case "f64.ge":
+    case "f64.copysign":
+    case "f64.min":
+    case "f64.max":
+    case "ref.eq":
+      return -1;
+
+    // Push 1, consume 3 (net -2)
+    case "select":
+      return -2;
+
+    // struct.new: consumes N fields, pushes 1 struct ref
+    case "struct.new": {
+      const typeIdx = (instr as { typeIdx: number }).typeIdx;
+      const typeDef = mod.types[typeIdx];
+      const fieldCount = typeDef?.kind === "struct" ? typeDef.fields.length : 0;
+      return 1 - fieldCount;
+    }
+
+    // struct.get: consume 1 (struct ref), push 1 (field value) — net 0
+    case "struct.get":
+      return 0;
+
+    // struct.set: consume 2 (struct ref + value), push 0 — net -2
+    case "struct.set":
+      return -2;
+
+    // array operations
+    case "array.get":
+    case "array.get_s":
+    case "array.get_u":
+      return -1; // consume arr + idx, push value
+    case "array.set":
+      return -3; // consume arr + idx + value
+    case "array.new":
+    case "array.new_default":
+      return 0; // consume length, push array (net 0)
+    case "array.new_fixed": {
+      const len = (instr as { length: number }).length;
+      return 1 - len;
+    }
+
+    // call: consumes params, pushes results
+    case "call": {
+      const funcIdx = (instr as { funcIdx: number }).funcIdx;
+      // Look up function type
+      const numImports = mod.imports.filter((imp) => imp.desc.kind === "func").length;
+      let typeIdx: number;
+      if (funcIdx < numImports) {
+        const imp = mod.imports.filter((imp) => imp.desc.kind === "func")[funcIdx];
+        typeIdx = imp ? (imp.desc as { typeIdx: number }).typeIdx : -1;
+      } else {
+        const fn = mod.functions[funcIdx - numImports];
+        typeIdx = fn?.typeIdx ?? -1;
+      }
+      const ft = typeIdx >= 0 ? mod.types[typeIdx] : undefined;
+      if (ft?.kind === "func") {
+        return ft.results.length - ft.params.length;
+      }
+      return 0;
+    }
+    case "call_ref":
+    case "return_call":
+    case "return_call_ref":
+    case "call_indirect":
+      return 0; // conservative: unknown effect
+
+    // Control flow — opaque
+    case "block":
+    case "loop":
+    case "if":
+    case "try":
+      return 0;
+
+    // Terminal
+    case "return":
+    case "br":
+    case "unreachable":
+    case "throw":
+      return 0;
+
+    case "nop":
+      return 0;
+
+    default:
+      return 0; // conservative default
+  }
+}
+
+/**
  * Report a codegen error with source location extracted from an AST node.
  * Pushes the error into ctx.errors so it can be propagated to the caller.
  */
@@ -680,6 +1084,9 @@ export function generateModule(
   // Dead import and type elimination pass
   eliminateDeadImports(mod);
 
+  // Repair struct.get/struct.set type mismatches (externref → struct ref conversion)
+  repairStructTypeMismatches(mod);
+
   // Peephole optimization: remove redundant ref.as_non_null after ref.cast, etc.
   peepholeOptimize(mod);
 
@@ -844,6 +1251,9 @@ export function generateMultiModule(
 
   // Dead import and type elimination pass
   eliminateDeadImports(mod);
+
+  // Repair struct.get/struct.set type mismatches (externref → struct ref conversion)
+  repairStructTypeMismatches(mod);
 
   // Peephole optimization: remove redundant ref.as_non_null after ref.cast, etc.
   peepholeOptimize(mod);
@@ -11140,17 +11550,35 @@ function fixupStructNewResultCoercion(ctx: CodegenContext): void {
 
           if (field.type.kind === "externref") {
             const prevInstr = instrs[pos]!;
-            if (prevInstr.op === "local.get") {
-              const lt = getLocalType(func, (prevInstr as { index: number }).index);
-              if (lt && (lt.kind === "ref" || lt.kind === "ref_null")) {
-                insertions.push({ pos: pos + 1, op: { op: "extern.convert_any" } as Instr });
-              }
-            } else if (prevInstr.op === "global.get") {
-              // Check global type
-              const gIdx = (prevInstr as { globalIdx: number }).globalIdx;
-              const gDef = ctx.mod.globals[gIdx];
-              if (gDef && (gDef.type.kind === "ref" || gDef.type.kind === "ref_null")) {
-                insertions.push({ pos: pos + 1, op: { op: "extern.convert_any" } as Instr });
+            // Safety: only insert coercion if the instruction at pos is a direct
+            // value producer for this struct.new field — NOT consumed by a following
+            // instruction like struct.get, array.get, call, etc.
+            const nextInstr = instrs[pos + 1];
+            const isConsumedByNext = nextInstr && (
+              nextInstr.op === "struct.get" || nextInstr.op === "struct.set" ||
+              nextInstr.op === "array.get" || nextInstr.op === "array.set" ||
+              nextInstr.op === "array.len" ||
+              nextInstr.op === "call" || nextInstr.op === "call_indirect" ||
+              nextInstr.op === "call_ref" || nextInstr.op === "return_call" ||
+              nextInstr.op === "ref.cast" || nextInstr.op === "ref.cast_null" ||
+              nextInstr.op === "ref.test" ||
+              nextInstr.op === "any.convert_extern" ||
+              nextInstr.op === "f64.convert_i32_s" || nextInstr.op === "f64.convert_i32_u" ||
+              nextInstr.op === "i32.trunc_sat_f64_s" || nextInstr.op === "i32.trunc_sat_f64_u"
+            );
+            if (!isConsumedByNext) {
+              if (prevInstr.op === "local.get") {
+                const lt = getLocalType(func, (prevInstr as { index: number }).index);
+                if (lt && (lt.kind === "ref" || lt.kind === "ref_null")) {
+                  insertions.push({ pos: pos + 1, op: { op: "extern.convert_any" } as Instr });
+                }
+              } else if (prevInstr.op === "global.get") {
+                // Check global type
+                const gIdx = (prevInstr as { globalIdx: number }).globalIdx;
+                const gDef = ctx.mod.globals[gIdx];
+                if (gDef && (gDef.type.kind === "ref" || gDef.type.kind === "ref_null")) {
+                  insertions.push({ pos: pos + 1, op: { op: "extern.convert_any" } as Instr });
+                }
               }
             }
           }
