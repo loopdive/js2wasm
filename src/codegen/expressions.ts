@@ -7765,10 +7765,30 @@ function compileClosureCall(
     localIdx === undefined ? ctx.moduleGlobals.get(varName) : undefined;
   if (localIdx === undefined && moduleIdx === undefined) return null;
 
-  // Determine how to push the closure ref (local vs module global)
-  const pushClosureRef = () => {
-    if (localIdx !== undefined) {
+  // Determine how to push the closure ref (local vs module global).
+  // If the local is externref (e.g. captured in a __cb_N callback), we need to
+  // convert to the expected struct ref type before struct.get can be used.
+  let effectiveLocalIdx = localIdx;
+  if (localIdx !== undefined) {
+    const localType =
+      localIdx < fctx.params.length
+        ? fctx.params[localIdx]?.type
+        : fctx.locals[localIdx - fctx.params.length]?.type;
+    if (localType?.kind === "externref") {
+      // Convert externref → anyref → ref $closure_struct, store in a new local
+      const castType: ValType = { kind: "ref_null", typeIdx: info.structTypeIdx };
+      const castLocal = allocLocal(fctx, `__closure_cast_${fctx.locals.length}`, castType);
       fctx.body.push({ op: "local.get", index: localIdx });
+      fctx.body.push({ op: "any.convert_extern" });
+      fctx.body.push({ op: "ref.cast_null", typeIdx: info.structTypeIdx } as Instr);
+      fctx.body.push({ op: "local.set", index: castLocal });
+      effectiveLocalIdx = castLocal;
+    }
+  }
+
+  const pushClosureRef = () => {
+    if (effectiveLocalIdx !== undefined) {
+      fctx.body.push({ op: "local.get", index: effectiveLocalIdx });
     } else {
       fctx.body.push({ op: "global.get", index: moduleIdx! });
       // Module globals use ref_null type; cast to non-null ref
