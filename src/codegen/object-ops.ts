@@ -1438,9 +1438,9 @@ export function compilePropertyIntrospection(
         // Start with false (0)
         fctx.body.push({ op: "i32.const", value: 0 });
         for (const fieldName of allFieldNames) {
-          fctx.body.push({ op: "local.get", index: keyLocal });
           const strGlobal = ctx.stringGlobalMap.get(fieldName);
           if (strGlobal !== undefined) {
+            fctx.body.push({ op: "local.get", index: keyLocal });
             fctx.body.push({ op: "global.get", index: strGlobal });
             fctx.body.push({ op: "call", funcIdx: eqFunc });
             fctx.body.push({ op: "i32.or" });
