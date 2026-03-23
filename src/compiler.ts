@@ -176,13 +176,21 @@ function detectEarlyErrors(
    * - The source is a module (has import/export — but we add "export {}" so all are modules)
    */
   function isStrictMode(node: ts.Node): boolean {
-    // Module scope is always strict
     // Check for "use strict" directives and class context
     let current: ts.Node | undefined = node;
     while (current) {
       if (ts.isSourceFile(current)) {
-        // Module files are always strict (they have export {})
-        return true;
+        // Check for "use strict" directive at file level
+        for (const stmt of current.statements) {
+          if (ts.isExpressionStatement(stmt) && ts.isStringLiteral(stmt.expression)) {
+            if (stmt.expression.text === "use strict") return true;
+          } else {
+            break; // Directives must be at the top
+          }
+        }
+        // Don't assume module = strict. We add `export {}` synthetically for TS,
+        // but the source may be a sloppy-mode script (test262 noStrict tests).
+        return false;
       }
       if (ts.isClassDeclaration(current) || ts.isClassExpression(current)) {
         return true;
