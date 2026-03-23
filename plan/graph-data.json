@@ -1153,88 +1153,6 @@
       ]
     }
   ],
-  "goalLinks": [
-    {
-      "source": "generator-model",
-      "target": "async-model"
-    },
-    {
-      "source": "core-semantics",
-      "target": "builtin-methods"
-    },
-    {
-      "source": "error-model",
-      "target": "builtin-methods"
-    },
-    {
-      "source": "core-semantics",
-      "target": "class-system"
-    },
-    {
-      "source": "compilable",
-      "target": "core-semantics"
-    },
-    {
-      "source": "compilable",
-      "target": "crash-free"
-    },
-    {
-      "source": "compilable",
-      "target": "error-model"
-    },
-    {
-      "source": "spec-completeness",
-      "target": "full-conformance"
-    },
-    {
-      "source": "iterator-protocol",
-      "target": "generator-model"
-    },
-    {
-      "source": "class-system",
-      "target": "iterator-protocol"
-    },
-    {
-      "source": "core-semantics",
-      "target": "performance"
-    },
-    {
-      "source": "standalone-mode",
-      "target": "platform"
-    },
-    {
-      "source": "core-semantics",
-      "target": "property-model"
-    },
-    {
-      "source": "async-model",
-      "target": "spec-completeness"
-    },
-    {
-      "source": "symbol-protocol",
-      "target": "spec-completeness"
-    },
-    {
-      "source": "builtin-methods",
-      "target": "spec-completeness"
-    },
-    {
-      "source": "property-model",
-      "target": "spec-completeness"
-    },
-    {
-      "source": "iterator-protocol",
-      "target": "standalone-mode"
-    },
-    {
-      "source": "generator-model",
-      "target": "standalone-mode"
-    },
-    {
-      "source": "iterator-protocol",
-      "target": "symbol-protocol"
-    }
-  ],
   "goalIssueLinks": [
     {
       "goal": "async-model",
@@ -1409,5 +1327,247 @@
       "issue": 638
     }
   ],
-  "generated": "2026-03-23T01:46:25.894Z"
+  "goalDepLinks": [
+    {
+      "goal": "generator-model",
+      "issue": 764
+    },
+    {
+      "goal": "generator-model",
+      "issue": 735
+    },
+    {
+      "goal": "generator-model",
+      "issue": 675
+    },
+    {
+      "goal": "core-semantics",
+      "issue": 734
+    },
+    {
+      "goal": "core-semantics",
+      "issue": 763
+    },
+    {
+      "goal": "core-semantics",
+      "issue": 731
+    },
+    {
+      "goal": "core-semantics",
+      "issue": 738
+    },
+    {
+      "goal": "error-model",
+      "issue": 734
+    },
+    {
+      "goal": "error-model",
+      "issue": 763
+    },
+    {
+      "goal": "error-model",
+      "issue": 731
+    },
+    {
+      "goal": "error-model",
+      "issue": 738
+    },
+    {
+      "goal": "core-semantics",
+      "issue": 729
+    },
+    {
+      "goal": "core-semantics",
+      "issue": 678
+    },
+    {
+      "goal": "compilable",
+      "issue": 737
+    },
+    {
+      "goal": "compilable",
+      "issue": 684
+    },
+    {
+      "goal": "compilable",
+      "issue": 728
+    },
+    {
+      "goal": "compilable",
+      "issue": 730
+    },
+    {
+      "goal": "compilable",
+      "issue": 736
+    },
+    {
+      "goal": "compilable",
+      "issue": 733
+    },
+    {
+      "goal": "compilable",
+      "issue": 723
+    },
+    {
+      "goal": "iterator-protocol",
+      "issue": 680
+    },
+    {
+      "goal": "iterator-protocol",
+      "issue": 762
+    },
+    {
+      "goal": "class-system",
+      "issue": 766
+    },
+    {
+      "goal": "class-system",
+      "issue": 761
+    },
+    {
+      "goal": "core-semantics",
+      "issue": 743
+    },
+    {
+      "goal": "core-semantics",
+      "issue": 760
+    },
+    {
+      "goal": "core-semantics",
+      "issue": 744
+    },
+    {
+      "goal": "core-semantics",
+      "issue": 685
+    },
+    {
+      "goal": "core-semantics",
+      "issue": 686
+    },
+    {
+      "goal": "standalone-mode",
+      "issue": 639
+    },
+    {
+      "goal": "standalone-mode",
+      "issue": 640
+    },
+    {
+      "goal": "standalone-mode",
+      "issue": 641
+    },
+    {
+      "goal": "standalone-mode",
+      "issue": 644
+    },
+    {
+      "goal": "standalone-mode",
+      "issue": 642
+    },
+    {
+      "goal": "core-semantics",
+      "issue": 732
+    },
+    {
+      "goal": "core-semantics",
+      "issue": 739
+    },
+    {
+      "goal": "async-model",
+      "issue": 696
+    },
+    {
+      "goal": "async-model",
+      "issue": 661
+    },
+    {
+      "goal": "async-model",
+      "issue": 674
+    },
+    {
+      "goal": "async-model",
+      "issue": 671
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": 696
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": 661
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": 674
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": 671
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": 696
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": 661
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": 674
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": 671
+    },
+    {
+      "goal": "property-model",
+      "issue": 696
+    },
+    {
+      "goal": "property-model",
+      "issue": 661
+    },
+    {
+      "goal": "property-model",
+      "issue": 674
+    },
+    {
+      "goal": "property-model",
+      "issue": 671
+    },
+    {
+      "goal": "iterator-protocol",
+      "issue": 680
+    },
+    {
+      "goal": "iterator-protocol",
+      "issue": 681
+    },
+    {
+      "goal": "iterator-protocol",
+      "issue": 682
+    },
+    {
+      "goal": "iterator-protocol",
+      "issue": 638
+    },
+    {
+      "goal": "generator-model",
+      "issue": 680
+    },
+    {
+      "goal": "generator-model",
+      "issue": 681
+    },
+    {
+      "goal": "generator-model",
+      "issue": 682
+    },
+    {
+      "goal": "generator-model",
+      "issue": 638
+    }
+  ],
+  "generated": "2026-03-23T02:16:06.815Z"
 }

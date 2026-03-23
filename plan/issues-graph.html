@@ -123,7 +123,8 @@ async function init() {
     return;
   }
 
-  const { nodes, links, goals, goalLinks, goalIssueLinks } = data;
+  const { nodes, links, goals, goalIssueLinks, goalDepLinks } = data;
+  const goalDepLinksArr = goalDepLinks || [];
   const nodeMap = new Map(nodes.map(n => [n.id, n]));
   const goalMap = new Map(goals.map(g => [g.id, g]));
 
@@ -258,23 +259,15 @@ async function init() {
 
   // ── Render layers (back to front) ──
 
-  // Layer 1: Goal-issue membership lines
+  // Layer 1: Goal-issue membership lines (issue → goal: issues are dependencies of goal)
   const goalIssueLinkEl = g.append('g').selectAll('line')
     .data(goalIssueLinks.filter(l => nodeMap.has(l.issue) && goalMap.has(l.goal)))
     .join('line')
     .attr('class', 'goal-issue-link');
 
-  // Layer 2: Goal-to-goal dependency curves
-  // Resolve links to goal objects
-  const resolvedGoalLinks = goalLinks.map(l => ({
-    source: goalMap.get(l.source),
-    target: goalMap.get(l.target),
-    sourceId: l.source,
-    targetId: l.target,
-  })).filter(l => l.source && l.target);
-
-  const goalLinkEl = g.append('g').selectAll('path')
-    .data(resolvedGoalLinks)
+  // Layer 2: Goal-dep lines (prerequisite goal → issues of dependent goals)
+  const goalDepLinkEl = g.append('g').selectAll('path')
+    .data(goalDepLinksArr.filter(l => goalMap.has(l.goal) && nodeMap.has(l.issue)))
     .join('path')
     .attr('class', 'goal-link-line')
     .attr('marker-end', 'url(#goal-arrow)');
@@ -386,19 +379,23 @@ async function init() {
       return `M${sx},${s.y}C${sx + dx * 0.4},${s.y},${tx - dx * 0.4},${t.y},${tx},${t.y}`;
     });
 
-    goalLinkEl.attr('d', l => {
-      const s = l.source, t = l.target;
-      if (!s || !t) return '';
-      const sx = s.x + GOAL_W / 2, tx = t.x - GOAL_W / 2;
+    // Goal-dep links: prerequisite goal → dependent issue (curved)
+    goalDepLinkEl.attr('d', l => {
+      const gg = goalMap.get(l.goal);
+      const n = nodeMap.get(l.issue);
+      if (!gg || !n) return '';
+      const sx = gg.x + GOAL_W / 2, sy = gg.y;
+      const tx = n.x, ty = n.y;
       const dx = tx - sx;
-      return `M${sx},${s.y}C${sx + dx * 0.4},${s.y},${tx - dx * 0.4},${t.y},${tx},${t.y}`;
+      return `M${sx},${sy}C${sx + dx * 0.4},${sy},${tx - dx * 0.4},${ty},${tx},${ty}`;
     });
 
+    // Member issue → goal links (straight lines)
     goalIssueLinkEl
-      .attr('x1', l => { const gg = goalMap.get(l.goal); return gg ? gg.x + GOAL_W / 2 : 0; })
-      .attr('y1', l => { const gg = goalMap.get(l.goal); return gg ? gg.y : 0; })
-      .attr('x2', l => { const n = nodeMap.get(l.issue); return n ? n.x : 0; })
-      .attr('y2', l => { const n = nodeMap.get(l.issue); return n ? n.y : 0; });
+      .attr('x1', l => { const n = nodeMap.get(l.issue); return n ? n.x + (BAR_W[n.priority] || 60) : 0; })
+      .attr('y1', l => { const n = nodeMap.get(l.issue); return n ? n.y : 0; })
+      .attr('x2', l => { const gg = goalMap.get(l.goal); return gg ? gg.x - GOAL_W / 2 : 0; })
+      .attr('y2', l => { const gg = goalMap.get(l.goal); return gg ? gg.y : 0; });
   }
 
   updatePositions();
@@ -406,19 +403,27 @@ async function init() {
   // ── Highlight functions ──
 
   function highlightGoal(d) {
-    // Connected = this goal + its dep/depender goals + its member issues
+    // Connected = this goal's member issues + issues that depend on this goal + prerequisite goals
     const connGoals = new Set([d.id]);
     const connIssues = new Set(d.issues);
-    goalLinks.forEach(l => {
-      if (l.source === d.id) connGoals.add(l.target);
-      if (l.target === d.id) connGoals.add(l.source);
+    // Issues from dependent goals that this goal feeds into
+    goalDepLinksArr.forEach(l => {
+      if (l.goal === d.id) connIssues.add(l.issue);
+    });
+    // Prerequisite goals that feed into this goal's issues
+    goalDepLinksArr.forEach(l => {
+      if (d.issues.includes(l.issue)) connGoals.add(l.goal);
+    });
+    // Goals that this goal feeds into (via dep links)
+    goals.forEach(gg => {
+      if (gg.depends_on.includes(d.id)) connGoals.add(gg.id);
     });
 
     goalEl.classed('dimmed', gg => !connGoals.has(gg.id));
     nodeEl.classed('dimmed', n => !connIssues.has(n.id));
     linkEl.classed('dimmed', true);
-    goalLinkEl.classed('dimmed', l => !connGoals.has(l.sourceId) || !connGoals.has(l.targetId));
-    goalLinkEl.classed('highlighted', l => connGoals.has(l.sourceId) && connGoals.has(l.targetId) && (l.sourceId === d.id || l.targetId === d.id));
+    goalDepLinkEl.classed('dimmed', l => l.goal !== d.id && !d.issues.includes(l.issue));
+    goalDepLinkEl.classed('highlighted', l => l.goal === d.id || d.issues.includes(l.issue));
     goalIssueLinkEl.classed('dimmed', l => l.goal !== d.id);
     goalIssueLinkEl.classed('highlighted', l => l.goal === d.id);
   }
@@ -444,8 +449,15 @@ async function init() {
       const t = typeof l.target === 'object' ? l.target.id : l.target;
       return s === d.id || t === d.id;
     });
-    goalEl.classed('dimmed', gg => gg.id !== myGoal);
-    goalLinkEl.classed('dimmed', true);
+    // Also show goals connected via dep links
+    const connGoals = new Set();
+    if (myGoal) connGoals.add(myGoal);
+    goalDepLinksArr.forEach(l => {
+      if (l.issue === d.id) connGoals.add(l.goal);
+    });
+    goalEl.classed('dimmed', gg => !connGoals.has(gg.id));
+    goalDepLinkEl.classed('dimmed', l => l.issue !== d.id);
+    goalDepLinkEl.classed('highlighted', l => l.issue === d.id);
     goalIssueLinkEl.classed('dimmed', l => l.issue !== d.id);
     goalIssueLinkEl.classed('highlighted', l => l.issue === d.id);
   }
@@ -454,7 +466,7 @@ async function init() {
     nodeEl.classed('dimmed', false);
     linkEl.classed('dimmed', false).classed('highlighted', false);
     goalEl.classed('dimmed', false);
-    goalLinkEl.classed('dimmed', false).classed('highlighted', false);
+    goalDepLinkEl.classed('dimmed', false).classed('highlighted', false);
     goalIssueLinkEl.classed('dimmed', false).classed('highlighted', false);
   }
 
@@ -569,7 +581,7 @@ async function init() {
       return (s && t && statuses.has(s.status) && priorities.has(s.priority) && statuses.has(t.status) && priorities.has(t.priority)) ? null : 'none';
     });
     goalEl.style('display', showGoals ? null : 'none');
-    goalLinkEl.style('display', showGoals ? null : 'none');
+    goalDepLinkEl.style('display', showGoals ? null : 'none');
     goalIssueLinkEl.style('display', (showGoals && showMembership) ? null : 'none');
   }
   applyFilters();
