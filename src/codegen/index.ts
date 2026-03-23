@@ -11790,6 +11790,53 @@ function fixupExternConvertAny(ctx: CodegenContext): void {
         instrs.splice(j, 1);
       }
     }
+
+    // Fix return_call/call: ref.null extern where (ref null N) is expected
+    for (let j = 0; j < instrs.length; j++) {
+      const instr = instrs[j]!;
+      if (instr.op !== "return_call" && instr.op !== "call") continue;
+      const funcIdx = (instr as any).funcIdx;
+      if (funcIdx === undefined) continue;
+
+      // Get the target function's param types
+      const totalImports = ctx.mod.imports.filter((imp: any) => imp.desc?.kind === "func").length;
+      let targetTypeIdx: number | undefined;
+      if (funcIdx < totalImports) {
+        // It's an import
+        let importIdx = 0;
+        for (const imp of ctx.mod.imports) {
+          if ((imp as any).desc?.kind === "func") {
+            if (importIdx === funcIdx) {
+              targetTypeIdx = (imp as any).desc.typeIdx;
+              break;
+            }
+            importIdx++;
+          }
+        }
+      } else {
+        const localFuncIdx = funcIdx - totalImports;
+        const targetFunc = ctx.mod.functions[localFuncIdx];
+        if (targetFunc) targetTypeIdx = targetFunc.typeIdx;
+      }
+      if (targetTypeIdx === undefined) continue;
+      const targetType = ctx.mod.types[targetTypeIdx];
+      if (!targetType || targetType.kind !== "func") continue;
+      const params = (targetType as FuncTypeDef).params;
+
+      // Walk backwards to find ref.null extern args that should be ref.null for (ref null N)
+      let pos = j;
+      for (let pi = params.length - 1; pi >= 0; pi--) {
+        pos--;
+        if (pos < 0) break;
+        const argInstr = instrs[pos]!;
+        const paramType = params[pi]!;
+        if ((argInstr.op === "ref.null.extern" || argInstr.op === "ref.null extern") &&
+            (paramType.kind === "ref" || paramType.kind === "ref_null")) {
+          // Replace ref.null extern with ref.null of the correct type
+          instrs[pos] = { op: "ref.null", typeIdx: (paramType as any).typeIdx } as unknown as Instr;
+        }
+      }
+    }
   }
 
   for (const func of ctx.mod.functions) {
