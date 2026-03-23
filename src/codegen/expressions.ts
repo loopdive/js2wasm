@@ -8630,6 +8630,12 @@ function compileCallExpression(
                   paramTypes?.[i],
                 );
               }
+              // Pad missing arguments with defaults (skip self at index 0)
+              if (paramTypes) {
+                for (let i = expr.arguments.length; i < paramTypes.length; i++) {
+                  pushDefaultValue(fctx, paramTypes[i]!);
+                }
+              }
             } else if (
               expr.arguments.length >= 2 &&
               ts.isArrayLiteralExpression(expr.arguments[1]!)
@@ -8640,6 +8646,12 @@ function compileCallExpression(
               const paramTypes = getFuncParamTypes(ctx, funcIdx);
               for (let i = 0; i < elements.length; i++) {
                 compileExpression(ctx, fctx, elements[i]!, paramTypes?.[i + 1]); // param 0 = self
+              }
+              // Pad missing arguments with defaults (skip self at index 0)
+              if (paramTypes) {
+                for (let i = elements.length + 1; i < paramTypes.length; i++) {
+                  pushDefaultValue(fctx, paramTypes[i]!);
+                }
               }
             }
 
@@ -9757,7 +9769,7 @@ function compileCallExpression(
       }
     }
 
-    // Handle Promise instance methods: .then(cb), .catch(cb)
+    // Handle Promise instance methods: .then(cb1, cb2?), .catch(cb)
     // Promise values are externref; delegate to host imports
     {
       const method = propAccess.name.text;
@@ -9772,14 +9784,29 @@ function compileCallExpression(
           compileExpression(ctx, fctx, propAccess.expression, {
             kind: "externref",
           });
-          // Compile the callback argument, coercing to externref
+          // Compile the first callback argument, coercing to externref
           const cbType = compileExpression(ctx, fctx, expr.arguments[0]!, {
             kind: "externref",
           });
           if (cbType && cbType.kind !== "externref") {
             coerceType(ctx, fctx, cbType, { kind: "externref" });
           }
-          fctx.body.push({ op: "call", funcIdx });
+          // For .then(): push second callback (onRejected) or null
+          if (method === "then") {
+            if (expr.arguments.length >= 2) {
+              const cb2Type = compileExpression(ctx, fctx, expr.arguments[1]!, {
+                kind: "externref",
+              });
+              if (cb2Type && cb2Type.kind !== "externref") {
+                coerceType(ctx, fctx, cb2Type, { kind: "externref" });
+              }
+            } else {
+              fctx.body.push({ op: "ref.null.extern" });
+            }
+          }
+          // Re-lookup funcIdx after compiling args (addUnionImports may shift)
+          const finalIdx = ctx.funcMap.get(importName) ?? funcIdx;
+          fctx.body.push({ op: "call", funcIdx: finalIdx });
           return { kind: "externref" };
         }
       }
@@ -14360,6 +14387,15 @@ function compileNewExpression(
           fctx.body.push({ op: "ref.null.extern" });
         }
       }
+      // Pad missing arguments with ref.null extern (the import may have
+      // more params than this particular call site provides, since the
+      // import is registered with the *max* arg count across all sites).
+      const importParamTypes = getFuncParamTypes(ctx, funcIdx);
+      if (importParamTypes) {
+        for (let i = args.length; i < importParamTypes.length; i++) {
+          pushDefaultValue(fctx, importParamTypes[i]!);
+        }
+      }
       // Re-lookup funcIdx: argument compilation may trigger addUnionImports
       const finalNewIdx = ctx.funcMap.get(importName) ?? funcIdx;
       fctx.body.push({ op: "call", funcIdx: finalNewIdx });
@@ -16825,13 +16861,19 @@ function compileYieldExpression(
       fctx.body.push({ op: "ref.null.extern" });
       fctx.body.push({ op: "call", funcIdx: pushRefIdx });
     }
-    return VOID_RESULT;
+    // In the eager generator model, yield always "receives" undefined from .next().
+    // Push ref.null extern so callers that use yield as an expression get a value.
+    fctx.body.push({ op: "ref.null.extern" });
+    return { kind: "externref" } as ValType;
   }
 
   // Compile the yielded expression
   const yieldedType = compileExpressionInner(ctx, fctx, expr.expression);
   if (yieldedType === null || yieldedType === VOID_RESULT) {
-    return VOID_RESULT;
+    // Even if the yielded expression produced nothing, yield itself is an
+    // expression that returns the value from .next() — push undefined.
+    fctx.body.push({ op: "ref.null.extern" });
+    return { kind: "externref" } as ValType;
   }
 
   // Store the yielded value in a temp local, then push to buffer
@@ -16864,7 +16906,10 @@ function compileYieldExpression(
     }
   }
 
-  return VOID_RESULT;
+  // In the eager generator model, yield always "receives" undefined from .next().
+  // Push ref.null extern so callers that use yield as an expression get a value.
+  fctx.body.push({ op: "ref.null.extern" });
+  return { kind: "externref" } as ValType;
 }
 
 /** Check if an expression is statically known to be NaN at compile time */
