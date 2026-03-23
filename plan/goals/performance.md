@@ -2,7 +2,8 @@
 
 **Generated Wasm is fast: type flow analysis eliminates externref overhead, monomorphization specializes hot paths.**
 
-- **Status**: Activatable (independent of conformance)
+- **Status**: Activatable
+- **Phase**: Parallel track (independent of conformance) (independent of conformance)
 - **Target**: Competitive with JIT-compiled JavaScript for typed code.
 - **Dependencies**: `core-semantics` (need correct output to optimize)
 - **Track**: Parallel — does not block conformance goals.

@@ -3,7 +3,8 @@
 **All well-known symbols work: toPrimitive, species, toStringTag, hasInstance, match/replace/search/split.**
 
 - **Status**: Blocked
-- **Target**: ~70% pass rate.
+- **Phase**: 3-4 (after iterator-protocol)
+- **Target**: Well-known symbols implemented. Estimated +400 tests.
 - **Dependencies**: `iterator-protocol` (Symbol.iterator is the first well-known symbol)
 
 ## Why

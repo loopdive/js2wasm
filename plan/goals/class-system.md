@@ -3,7 +3,8 @@
 **Classes, inheritance, private fields, static blocks, accessors all work correctly.**
 
 - **Status**: Blocked
-- **Target**: ~55% pass rate.
+- **Phase**: 2-3 (after core-semantics)
+- **Target**: Class feature codegen complete. Estimated +1,200 tests.
 - **Dependencies**: `core-semantics`
 
 ## Why

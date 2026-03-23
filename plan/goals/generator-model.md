@@ -3,7 +3,8 @@
 **Generators work as lazy state machines with full protocol support (.next, .return, .throw, yield*).**
 
 - **Status**: Blocked
-- **Target**: ~70% pass rate.
+- **Phase**: 3-4 (after iterator-protocol)
+- **Target**: State-machine generators, yield delegation. Estimated +500 tests.
 - **Dependencies**: `iterator-protocol` (generators produce iterators)
 
 ## Why

@@ -3,7 +3,8 @@
 **Object property semantics match the spec: descriptors, enumeration, freezing, hasOwn.**
 
 - **Status**: Blocked
-- **Target**: ~55% pass rate.
+- **Phase**: 2-3 (after core-semantics)
+- **Target**: Property descriptor semantics correct. Estimated +1,500 tests.
 - **Dependencies**: `core-semantics`
 
 ## Why
@@ -26,6 +27,7 @@ builtin-methods and iterator-protocol.
 | **239** | Element access on struct types (bracket notation) | — | Medium |
 | **274** | Property access on function type (.name, .length) | — | Medium |
 | **770** | propertyHelper verifyProperty in test262 preamble | 1,219 FAIL | High |
+| **678** | Dynamic prototype chain traversal | 625 FAIL | High |
 
 ## Success criteria
 
