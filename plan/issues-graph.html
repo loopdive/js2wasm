@@ -24,28 +24,28 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 #legend { position: fixed; bottom: 12px; left: 12px; z-index: 10; font-size: 11px; display: flex; gap: 12px; background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 8px 12px; flex-wrap: wrap; max-width: 80vw; }
 #legend span { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
 #legend .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
-#legend .hex { width: 16px; height: 14px; display: inline-block; clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%); }
+#legend .pill { width: 20px; height: 12px; display: inline-block; border-radius: 6px; background: transparent !important; }
 #stats { position: fixed; bottom: 12px; right: 12px; z-index: 10; font-size: 11px; color: #8b949e; background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 8px 12px; }
 svg { width: 100vw; height: 100vh; }
 .link { stroke-opacity: 0.3; fill: none; }
 .link.highlighted { stroke-opacity: 1; stroke-width: 2.5; }
 .link.dimmed { stroke-opacity: 0.04; }
-.goal-link-line { stroke: rgba(240, 136, 62, 0.5); stroke-width: 3; stroke-opacity: 0.6; fill: none; }
-.goal-link-line.highlighted { stroke-opacity: 1; stroke-width: 4; }
+.goal-link-line { stroke: rgba(240, 136, 62, 0.4); stroke-width: 1.5; stroke-opacity: 0.6; fill: none; }
+.goal-link-line.highlighted { stroke-opacity: 1; stroke-width: 2; }
 .goal-link-line.dimmed { stroke-opacity: 0.04; }
-.goal-issue-link { stroke: rgba(255, 255, 255, 0.08); stroke-width: 1; stroke-dasharray: 3,3; fill: none; }
-.goal-issue-link.highlighted { stroke: rgba(240, 136, 62, 0.4); stroke-opacity: 1; stroke-dasharray: none; stroke-width: 1.5; }
-.goal-issue-link.dimmed { stroke-opacity: 0.01; }
+.goal-issue-link { stroke: rgba(200, 200, 210, 0.25); stroke-width: 1; fill: none; }
+.goal-issue-link.highlighted { stroke: rgba(240, 136, 62, 0.6); stroke-opacity: 1; stroke-width: 1.5; }
+.goal-issue-link.dimmed { stroke-opacity: 0.03; }
 .node text { font-size: 10px; fill: #c9d1d9; pointer-events: none; }
 .node rect { stroke-width: 1.5; cursor: pointer; }
 .node rect:hover { filter: brightness(1.3); }
 .node.dimmed rect { opacity: 0.1; }
 .node.dimmed text { opacity: 0.1; }
 .goal-node { cursor: pointer; }
-.goal-node text { font-size: 13px; font-weight: 600; fill: #fff; pointer-events: none; }
+.goal-node text { font-size: 12px; font-weight: 600; fill: #c9d1d9; pointer-events: none; }
 .goal-node .sublabel { font-size: 10px; font-weight: 400; fill: #8b949e; }
-.goal-node:hover polygon { filter: brightness(1.2); }
-.goal-node.dimmed polygon { opacity: 0.1; }
+.goal-node:hover rect { filter: brightness(1.3); }
+.goal-node.dimmed rect { opacity: 0.1; }
 .goal-node.dimmed text { opacity: 0.1; }
 </style>
 </head>
@@ -62,7 +62,6 @@ svg { width: 100vw; height: 100vh; }
   <label class="active"><input type="checkbox" value="p-low" checked> Low</label>
   <span class="sep">|</span>
   <label class="active"><input type="checkbox" value="show-goals" checked> Goals</label>
-  <label><input type="checkbox" value="show-membership"> Membership lines</label>
 </div>
 <div id="info">
   <h3 id="info-title"></h3>
@@ -70,9 +69,9 @@ svg { width: 100vw; height: 100vh; }
   <div class="deps" id="info-deps"></div>
 </div>
 <div id="legend">
-  <span><span class="hex" style="background:#f0883e"></span> Goal (active)</span>
-  <span><span class="hex" style="background:#1f6feb"></span> Goal (activatable)</span>
-  <span><span class="hex" style="background:#484f58"></span> Goal (blocked)</span>
+  <span><span class="pill" style="border:1.5px solid #f0883e"></span> Goal (active)</span>
+  <span><span class="pill" style="border:1.5px solid #1f6feb"></span> Goal (activatable)</span>
+  <span><span class="pill" style="border:1.5px solid #484f58"></span> Goal (blocked)</span>
   <span>|</span>
   <span>Issue impact:</span>
   <span><span class="dot" style="background:rgba(255,255,0,0.9)"></span> High</span>
@@ -94,7 +93,7 @@ const GOAL_STATUS_COLOR = {
   done: '#3fb950',
 };
 
-const GOAL_W = 180, GOAL_H = 70;
+const GOAL_W = 160, GOAL_H = 36;
 
 function ceColor(d) {
   const impact = (d.compiler_errors || 0) + (d.test262_skip || 0) + (d.test262_fail || 0) + (d.test262_ce || 0);
@@ -104,13 +103,6 @@ function ceColor(d) {
   const g = Math.round(63 + t * (255 - 63));
   const b = Math.round(68 + t * (0 - 68));
   return `rgba(${r},${g},${b},${0.4 + t * 0.5})`;
-}
-
-/** Hexagon path centered at (0,0) with given width and height */
-function hexPath(w, h) {
-  const hw = w / 2, hh = h / 2;
-  const inset = h * 0.3;
-  return `${-hw + inset},${-hh} ${hw - inset},${-hh} ${hw},0 ${hw - inset},${hh} ${-hw + inset},${hh} ${-hw},0`;
 }
 
 async function init() {
@@ -144,16 +136,20 @@ async function init() {
   const g = svg.append('g');
   svg.call(d3.zoom().scaleExtent([0.15, 5]).on('zoom', e => g.attr('transform', e.transform)));
 
-  // Arrow markers
+  // Arrow markers — small triangles flush at line endpoint
   const defs = svg.append('defs');
   defs.append('marker')
-    .attr('id', 'arrow').attr('viewBox', '0 -5 10 10').attr('refX', 20).attr('refY', 0)
-    .attr('markerWidth', 6).attr('markerHeight', 6).attr('orient', 'auto')
-    .append('path').attr('d', 'M0,-5L10,0L0,5').attr('fill', '#8b949e');
+    .attr('id', 'arrow').attr('viewBox', '0 -3 6 6').attr('refX', 6).attr('refY', 0)
+    .attr('markerWidth', 4).attr('markerHeight', 4).attr('orient', 'auto')
+    .append('path').attr('d', 'M0,-3L6,0L0,3').attr('fill', '#8b949e');
   defs.append('marker')
-    .attr('id', 'goal-arrow').attr('viewBox', '0 -5 10 10').attr('refX', 14).attr('refY', 0)
-    .attr('markerWidth', 8).attr('markerHeight', 8).attr('orient', 'auto')
-    .append('path').attr('d', 'M0,-5L10,0L0,5').attr('fill', '#f0883e');
+    .attr('id', 'goal-arrow').attr('viewBox', '0 -3 6 6').attr('refX', 6).attr('refY', 0)
+    .attr('markerWidth', 4).attr('markerHeight', 4).attr('orient', 'auto')
+    .append('path').attr('d', 'M0,-3L6,0L0,3').attr('fill', '#f0883e');
+  defs.append('marker')
+    .attr('id', 'member-arrow').attr('viewBox', '0 -3 6 6').attr('refX', 6).attr('refY', 0)
+    .attr('markerWidth', 4).attr('markerHeight', 4).attr('orient', 'auto')
+    .append('path').attr('d', 'M0,-3L6,0L0,3').attr('fill', 'rgba(200,200,210,0.5)');
 
   // ── Layout goals in a DAG using BFS depth ──
   const goalDepth = new Map();
@@ -184,10 +180,13 @@ async function init() {
   const conformanceGoals = goals.filter(gg => !gg.track);
   const parallelGoals = goals.filter(gg => gg.track);
 
-  // Position goals: conformance goals in a vertical DAG at the right side
+  // Position goals: conformance goals in a vertical DAG
   const goalMargin = { top: 80, right: 60 };
-  const goalColSpacing = 350;
-  const goalRowSpacing = 100;
+  // Spacing: issue bar (max ~160) + gap + goal pill (160) + gap
+  const maxBarWidth = Math.max(...Object.values(BAR_W));
+  const issueGoalGap = 30; // gap between issue right edge and goal left edge
+  const goalColSpacing = maxBarWidth + issueGoalGap + GOAL_W + issueGoalGap;
+  const goalRowSpacing = 120;
 
   // Build columns by depth for conformance goals
   const goalColumns = [];
@@ -197,7 +196,7 @@ async function init() {
 
   // X position: goals spread from right to left (deepest at right)
   // Y position: centered within each column
-  const goalAreaLeft = 300;
+  const goalAreaLeft = maxBarWidth + issueGoalGap + GOAL_W / 2 + 40;
   const goalAreaTop = goalMargin.top;
 
   goalColumns.forEach((col, ci) => {
@@ -233,38 +232,40 @@ async function init() {
   });
 
   // Position issues fanning out to the LEFT of their goal (they feed into it)
-  const issueFanOffset = GOAL_W / 2 + 40;
   for (const [goalId, issues] of issuesByGoal) {
     if (goalId === '__none__') continue;
     const gg = goalMap.get(goalId);
     if (!gg) continue;
     issues.sort((a, b) => (PRIO_ORDER[a.priority] || 3) - (PRIO_ORDER[b.priority] || 3));
-    const maxBarW = Math.max(...issues.map(n => BAR_W[n.priority] || 60));
-    const startY = gg.y - (issues.length - 1) * (BAR_H + 4) / 2;
+    const groupMaxBarW = Math.max(...issues.map(n => BAR_W[n.priority] || 60));
+    const startY = gg.y - (issues.length - 1) * (BAR_H + 6) / 2;
     issues.forEach((n, i) => {
-      n.x = gg.x - issueFanOffset - maxBarW;
+      const barW = BAR_W[n.priority] || 60;
+      // Right-align issues so their right edges line up, with gap to goal left edge
+      n.x = gg.x - GOAL_W / 2 - issueGoalGap - barW;
       n.fx = n.x;
-      n.y = startY + i * (BAR_H + 4);
+      n.y = startY + i * (BAR_H + 6);
     });
   }
 
-  // Unassigned issues: stack on the far left
+  // Unassigned issues: stack on the far right (after all goal columns)
   const unassigned = issuesByGoal.get('__none__') || [];
   unassigned.sort((a, b) => (PRIO_ORDER[a.priority] || 3) - (PRIO_ORDER[b.priority] || 3));
-  const unassignedX = goalAreaLeft - 200;
+  const unassignedX = goalAreaLeft + (maxGoalDepth + 1) * goalColSpacing + 60;
   unassigned.forEach((n, i) => {
     n.x = unassignedX;
     n.fx = n.x;
-    n.y = goalMargin.top + i * (BAR_H + 4);
+    n.y = goalMargin.top + i * (BAR_H + 6);
   });
 
   // ── Render layers (back to front) ──
 
-  // Layer 1: Goal-issue membership lines (issue → goal: issues are dependencies of goal)
-  const goalIssueLinkEl = g.append('g').selectAll('line')
+  // Layer 1: Member links (issue → goal: issues are dependencies of goal)
+  const goalIssueLinkEl = g.append('g').selectAll('path')
     .data(goalIssueLinks.filter(l => nodeMap.has(l.issue) && goalMap.has(l.goal)))
-    .join('line')
-    .attr('class', 'goal-issue-link');
+    .join('path')
+    .attr('class', 'goal-issue-link')
+    .attr('marker-end', 'url(#member-arrow)');
 
   // Layer 2: Goal-dep lines (prerequisite goal → issues of dependent goals)
   const goalDepLinkEl = g.append('g').selectAll('path')
@@ -307,27 +308,27 @@ async function init() {
       .on('end', (e, d) => { d._dragging = false; })
     );
 
-  goalEl.append('polygon')
-    .attr('points', hexPath(GOAL_W, GOAL_H))
-    .attr('fill', d => GOAL_STATUS_COLOR[d.status] || '#484f58')
-    .attr('fill-opacity', 0.85)
+  goalEl.append('rect')
+    .attr('x', -GOAL_W / 2).attr('y', -GOAL_H / 2)
+    .attr('width', GOAL_W).attr('height', GOAL_H)
+    .attr('rx', GOAL_H / 2).attr('ry', GOAL_H / 2)
+    .attr('fill', 'transparent')
     .attr('stroke', d => GOAL_STATUS_COLOR[d.status] || '#484f58')
-    .attr('stroke-width', 2)
-    .attr('stroke-opacity', 0.6);
+    .attr('stroke-width', 1.5)
+    .attr('stroke-opacity', 0.7);
 
   goalEl.append('text')
     .attr('text-anchor', 'middle')
-    .attr('dy', -4)
+    .attr('dy', -2)
     .text(d => d.id);
 
   goalEl.append('text')
     .attr('class', 'sublabel')
     .attr('text-anchor', 'middle')
-    .attr('dy', 14)
+    .attr('dy', 12)
     .text(d => {
-      const count = d.issues.length;
       const target = d.target.match(/~?\d+%/)?.[0] || '';
-      return `${count} issues${target ? ' | ' + target : ''}`;
+      return target || d.status;
     });
 
   goalEl.on('mouseover', (e, d) => highlightGoal(d))
@@ -381,11 +382,15 @@ async function init() {
     });
 
     // Member issue → goal links: issue (right edge) → goal (left edge)
-    goalIssueLinkEl
-      .attr('x1', l => { const n = nodeMap.get(l.issue); return n ? n.x + (BAR_W[n.priority] || 60) : 0; })
-      .attr('y1', l => { const n = nodeMap.get(l.issue); return n ? n.y : 0; })
-      .attr('x2', l => { const gg = goalMap.get(l.goal); return gg ? gg.x - GOAL_W / 2 : 0; })
-      .attr('y2', l => { const gg = goalMap.get(l.goal); return gg ? gg.y : 0; });
+    goalIssueLinkEl.attr('d', l => {
+      const n = nodeMap.get(l.issue);
+      const gg = goalMap.get(l.goal);
+      if (!n || !gg) return '';
+      const sx = n.x + (BAR_W[n.priority] || 60), sy = n.y;
+      const tx = gg.x - GOAL_W / 2, ty = gg.y;
+      const dx = tx - sx;
+      return `M${sx},${sy}C${sx + dx * 0.4},${sy},${tx - dx * 0.4},${ty},${tx},${ty}`;
+    });
 
     // Goal-dep links: prerequisite goal (right edge) → dependent issue (left edge)
     goalDepLinkEl.attr('d', l => {
@@ -568,11 +573,10 @@ async function init() {
   function applyFilters() {
     const statuses = new Set();
     const priorities = new Set();
-    let showGoals = false, showMembership = false;
+    let showGoals = false;
     document.querySelectorAll('#controls input:checked').forEach(cb => {
       const v = cb.value;
       if (v === 'show-goals') showGoals = true;
-      else if (v === 'show-membership') showMembership = true;
       else if (v.startsWith('p-')) priorities.add(v.slice(2));
       else statuses.add(v);
     });
@@ -583,7 +587,7 @@ async function init() {
     });
     goalEl.style('display', showGoals ? null : 'none');
     goalDepLinkEl.style('display', showGoals ? null : 'none');
-    goalIssueLinkEl.style('display', (showGoals && showMembership) ? null : 'none');
+    goalIssueLinkEl.style('display', showGoals ? null : 'none');
   }
   applyFilters();
 }
