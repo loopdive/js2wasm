@@ -280,6 +280,18 @@ export function emitArrowParamDestructuring(
     const apdInstrs: Instr[] = [];
     fctx.body = apdInstrs;
 
+    // If the parameter is externref but we need a struct, convert it first.
+    // This happens in __cb_N callbacks where parameters come from JS host as externref.
+    let structParamIdx = paramIdx;
+    if (paramType.kind === "externref") {
+      const castLocal = allocLocal(fctx, `__destr_cast_${fctx.locals.length}`, { kind: "ref_null", typeIdx: structTypeIdx });
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "any.convert_extern" } as Instr);
+      fctx.body.push({ op: "ref.cast_null", typeIdx: structTypeIdx } as unknown as Instr);
+      fctx.body.push({ op: "local.set", index: castLocal });
+      structParamIdx = castLocal;
+    }
+
     for (const element of pattern.elements) {
       if (!ts.isBindingElement(element)) continue;
       if (ts.isOmittedExpression(element as any)) continue;
@@ -300,7 +312,7 @@ export function emitArrowParamDestructuring(
       const fieldType = fields[fieldIdx]!.type;
       const localIdx = allocLocal(fctx, localName, fieldType);
 
-      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "local.get", index: structParamIdx });
       fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
 
       if (element.initializer) {
