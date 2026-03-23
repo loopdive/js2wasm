@@ -903,6 +903,7 @@ const DOWNGRADE_DIAG_CODES = new Set([
   2448, // "Block-scoped variable 'X' used before its declaration" — valid JS TDZ pattern, runtime ReferenceError (#723)
   2474, // "Cannot access 'X' before initialization" — valid JS TDZ pattern, runtime ReferenceError (#723)
   1489, // "Decimals with leading zeros are not allowed" — valid sloppy-mode JS octal literals
+  1121, // "Octal literals are not allowed in strict mode" — valid sloppy-mode JS
 ]);
 
 /**
@@ -992,6 +993,10 @@ export function compileSource(
     1435, // "Unknown keyword or identifier. Did you mean 'X'?" — yield in nested generator contexts (#521)
     1503, // "This regular expression flag is only available when targeting 'es2024'" (#654)
     1232, // "An import declaration can only be used at the top level of a namespace or module" (#654)
+    1102, // "'delete' cannot be called on an identifier in strict mode" — valid sloppy-mode JS (#535)
+    1100, // "Invalid use of 'X' in strict mode" — sloppy-mode JS allows eval/arguments (#331)
+    1121, // "Octal literals are not allowed in strict mode" — valid sloppy-mode JS
+    1489, // "Decimals with leading zeros are not allowed" — valid sloppy-mode JS octal literals
   ]);
   const hasSyntaxErrors = ast.syntacticDiagnostics.some(
     (d) => d.category === 1 && d.file === ast.sourceFile && !TOLERATED_SYNTAX_CODES.has(d.code),
