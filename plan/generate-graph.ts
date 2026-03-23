@@ -1,6 +1,7 @@
 #!/usr/bin/env npx tsx
 /**
- * Scans plan/issues/ folders and generates a JSON graph for the HTML visualizer.
+ * Scans plan/issues/ and plan/goals/ folders and generates a JSON graph
+ * for the HTML visualizer.
  * Run: npx tsx plan/generate-graph.ts
  * Output: plan/graph-data.json
  */
@@ -16,19 +17,34 @@ interface IssueNode {
   depends_on: number[];
   files: Record<string, { new?: string[]; breaking?: string[] }> | string[];
   cluster?: string;
+  goal?: string;
   compiler_errors?: number;
   test262_skip?: number;
   test262_fail?: number;
   test262_ce?: number;
 }
 
+interface GoalNode {
+  id: string;
+  title: string;
+  status: "active" | "activatable" | "blocked" | "done";
+  target: string;
+  depends_on: string[];
+  issues: number[];
+  track?: string; // "parallel" for standalone/performance/platform
+}
+
 interface GraphData {
   nodes: IssueNode[];
   links: { source: number; target: number }[];
+  goals: GoalNode[];
+  goalLinks: { source: string; target: string }[];
+  goalIssueLinks: { goal: string; issue: number }[];
   generated: string;
 }
 
 const PLAN_DIR = path.join(import.meta.dirname!, "issues");
+const GOALS_DIR = path.join(import.meta.dirname!, "goals");
 
 function parseFrontmatter(content: string): Record<string, any> {
   const match = content.match(/^---\n([\s\S]*?)\n---/);
@@ -75,7 +91,6 @@ function getTitle(content: string): string {
 
 /** Extract the largest compile-error count mentioned in the issue body */
 function extractCompilerErrors(content: string): number | undefined {
-  // Match patterns like "~681 compile errors", "At least 50 compile errors", "20 CE", "300 compiler errors"
   const patterns = [
     /~?(\d[\d,]*)\s+compil(?:e|er)\s+errors/gi,
     /at\s+least\s+(\d[\d,]*)\s+compil(?:e|er)\s+errors/gi,
@@ -126,18 +141,75 @@ function scanFolder(
 /** Accept both old flat list and new nested map format */
 function normalizeFiles(raw: any): Record<string, { new?: string[]; breaking?: string[] }> | string[] {
   if (!raw) return [];
-  if (Array.isArray(raw)) return raw; // old format: ["src/codegen/expressions.ts"]
-  if (typeof raw === "object") return raw; // new format: { "src/...": { new: [], breaking: [] } }
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === "object") return raw;
   return [];
 }
 
-// Scan all folders
+// ── Scan goals ──
+
+function scanGoals(): GoalNode[] {
+  if (!fs.existsSync(GOALS_DIR)) return [];
+  const goals: GoalNode[] = [];
+  for (const file of fs.readdirSync(GOALS_DIR)) {
+    if (!file.endsWith(".md") || file === "goal-graph.md") continue;
+    const id = file.replace(".md", "");
+    const content = fs.readFileSync(path.join(GOALS_DIR, file), "utf-8");
+
+    // Extract title from first heading
+    const titleMatch = content.match(/^#\s+Goal:\s*(.+)$/m);
+    const title = titleMatch ? titleMatch[1].trim() : id;
+
+    // Extract status
+    let status: GoalNode["status"] = "blocked";
+    const statusMatch = content.match(/\*\*Status\*\*:\s*(\w+)/i);
+    if (statusMatch) {
+      const s = statusMatch[1].toLowerCase();
+      if (s === "active") status = "active";
+      else if (s === "activatable" || s === "partially") status = "activatable";
+      else if (s === "done") status = "done";
+      else status = "blocked";
+    }
+
+    // Extract target
+    const targetMatch = content.match(/\*\*Target\*\*:\s*(.+?)\.?\s*$/m);
+    const target = targetMatch ? targetMatch[1].trim() : "";
+
+    // Extract dependencies (goal names)
+    const depends_on: string[] = [];
+    const depsMatch = content.match(/\*\*Dependencies\*\*:\s*(.+?)$/m);
+    if (depsMatch) {
+      const depsStr = depsMatch[1];
+      // Match backtick-quoted goal names
+      const goalRefs = depsStr.matchAll(/`([a-z][\w-]*)`/g);
+      for (const m of goalRefs) {
+        depends_on.push(m[1]);
+      }
+    }
+
+    // Extract track (parallel vs conformance)
+    const trackMatch = content.match(/\*\*Track\*\*:\s*(\w+)/i);
+    const track = trackMatch ? trackMatch[1].toLowerCase() : undefined;
+
+    // Extract issue numbers from markdown tables: | **NNN** | or | NNN |
+    const issues: number[] = [];
+    const issueMatches = content.matchAll(/\|\s*\*?\*?(\d+)\*?\*?\s*\|/g);
+    for (const m of issueMatches) {
+      const num = parseInt(m[1]);
+      if (num > 0 && !issues.includes(num)) issues.push(num);
+    }
+
+    goals.push({ id, title, status, target, depends_on, issues, ...(track === "parallel" ? { track } : {}) });
+  }
+  return goals;
+}
+
+// Scan all issue folders
 const nodes: IssueNode[] = [
   ...scanFolder("ready", "ready"),
   ...scanFolder("blocked", "blocked"),
   ...scanFolder("backlog", "backlog"),
   ...scanFolder("wont-fix", "wont-fix"),
-  // Only include done issues that are dependencies of open issues
 ];
 
 // Find done issues referenced by open issues
@@ -188,11 +260,23 @@ const clusterMap: [string, number[]][] = [
 for (const [name, ids] of clusterMap) {
   for (const id of ids) CLUSTERS[id] = name;
 }
-for (const n of nodes) {
-  n.cluster = CLUSTERS[n.id] || "Unclustered";
+
+// Scan goals and assign issues to goals
+const goals = scanGoals();
+const issueToGoal = new Map<number, string>();
+for (const g of goals) {
+  for (const issueId of g.issues) {
+    issueToGoal.set(issueId, g.id);
+  }
 }
 
-// Build links from depends_on
+for (const n of nodes) {
+  n.cluster = CLUSTERS[n.id] || "Unclustered";
+  const g = issueToGoal.get(n.id);
+  if (g) n.goal = g;
+}
+
+// Build issue-to-issue links from depends_on
 const links: GraphData["links"] = [];
 const nodeIds = new Set(nodes.map((n) => n.id));
 for (const n of nodes) {
@@ -203,14 +287,38 @@ for (const n of nodes) {
   }
 }
 
+// Build goal-to-goal links
+const goalLinks: GraphData["goalLinks"] = [];
+const goalIds = new Set(goals.map((g) => g.id));
+for (const g of goals) {
+  for (const dep of g.depends_on) {
+    if (goalIds.has(dep)) {
+      goalLinks.push({ source: dep, target: g.id });
+    }
+  }
+}
+
+// Build goal-issue membership links
+const goalIssueLinks: GraphData["goalIssueLinks"] = [];
+for (const g of goals) {
+  for (const issueId of g.issues) {
+    if (nodeIds.has(issueId)) {
+      goalIssueLinks.push({ goal: g.id, issue: issueId });
+    }
+  }
+}
+
 const data: GraphData = {
   nodes: nodes.sort((a, b) => a.id - b.id),
   links,
+  goals: goals.sort((a, b) => a.id.localeCompare(b.id)),
+  goalLinks,
+  goalIssueLinks,
   generated: new Date().toISOString(),
 };
 
 const outPath = path.join(import.meta.dirname!, "graph-data.json");
 fs.writeFileSync(outPath, JSON.stringify(data, null, 2));
 console.log(
-  `Generated ${outPath}: ${data.nodes.length} nodes, ${data.links.length} links`
+  `Generated ${outPath}: ${data.nodes.length} issues, ${data.goals.length} goals, ${data.links.length} issue links, ${data.goalLinks.length} goal links, ${data.goalIssueLinks.length} goal-issue links`
 );
