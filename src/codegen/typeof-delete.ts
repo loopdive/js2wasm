@@ -591,13 +591,15 @@ export function compileTypeofExpression(
   const operandType = compileExpression(ctx, fctx, operand);
   if (operandType === null) return null;
 
-  // Coerce to externref if needed (e.g. f64 -> boxed number)
+  // Coerce to externref if needed (e.g. f64 -> boxed number, ref -> extern.convert_any)
   if (operandType.kind === "f64") {
     const boxIdx = ctx.funcMap.get("__box_number");
     if (boxIdx !== undefined) fctx.body.push({ op: "call", funcIdx: boxIdx });
   } else if (operandType.kind === "i32") {
     const boxIdx = ctx.funcMap.get("__box_boolean");
     if (boxIdx !== undefined) fctx.body.push({ op: "call", funcIdx: boxIdx });
+  } else if (operandType.kind === "ref" || operandType.kind === "ref_null") {
+    fctx.body.push({ op: "extern.convert_any" } as Instr);
   }
 
   fctx.body.push({ op: "call", funcIdx });
