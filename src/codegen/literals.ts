@@ -36,7 +36,7 @@ import {
 } from "../checker/type-mapper.js";
 import type { Instr, ValType, WasmFunction, FieldDef, StructTypeDef } from "../ir/types.js";
 import { compileStatement } from "./statements.js";
-import { compileExpression, getLine, getCol } from "./shared.js";
+import { compileExpression, getLine, getCol, VOID_RESULT } from "./shared.js";
 import { promoteAccessorCapturesToGlobals, emitMethodParamDefaults } from "./closures.js";
 import { resolveStructName, patchStructNewForAddedField } from "./expressions.js";
 
@@ -1134,7 +1134,14 @@ export function compileArrayLiteral(
     const el = expr.elements[i]!;
     if (ts.isSpreadElement(el)) {
       const srcType = compileExpression(ctx, fctx, el.expression);
-      if (!srcType || (srcType.kind !== "ref" && srcType.kind !== "ref_null")) continue;
+      if (!srcType || (srcType.kind !== "ref" && srcType.kind !== "ref_null")) {
+        // The compiled expression left a value on the stack — drop it so we
+        // don't corrupt the running total (i32) that sits underneath.
+        if (srcType && srcType !== VOID_RESULT) {
+          fctx.body.push({ op: "drop" });
+        }
+        continue;
+      }
       const srcVecTypeIdx = (srcType as { typeIdx: number }).typeIdx;
       const srcLocal = allocLocal(fctx, `__spread_src_${fctx.locals.length}`, srcType);
       fctx.body.push({ op: "local.tee", index: srcLocal });
