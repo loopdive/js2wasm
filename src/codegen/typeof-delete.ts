@@ -4,7 +4,7 @@
  */
 import ts from "typescript";
 import type { CodegenContext, FunctionContext } from "./index.js";
-import { allocLocal, allocTempLocal, releaseTempLocal, resolveWasmType, addUnionImports, parseRegExpLiteral, isAnyValue, ensureAnyHelpers } from "./index.js";
+import { allocLocal, allocTempLocal, releaseTempLocal, resolveWasmType, addUnionImports, parseRegExpLiteral, isAnyValue, ensureAnyHelpers, addImport, addFuncType } from "./index.js";
 import {
   isNumberType,
   isBooleanType,
@@ -15,7 +15,7 @@ import type { Instr, ValType } from "../ir/types.js";
 import { compileExpression, getLine, getCol } from "./shared.js";
 import type { InnerResult } from "./shared.js";
 import { compileStringLiteral } from "./string-ops.js";
-import { resolveStructName } from "./expressions.js";
+import { resolveStructName, shiftLateImportIndices } from "./expressions.js";
 
 // ── Delete expression ─────────────────────────────────────────────────
 
@@ -165,7 +165,15 @@ export function compileRegExpLiteral(
   if (!flagsResult) return null;
 
   // Call RegExp_new(pattern, flags) -> externref
-  const funcIdx = ctx.funcMap.get("RegExp_new");
+  let funcIdx = ctx.funcMap.get("RegExp_new");
+  if (funcIdx === undefined) {
+    // Register RegExp_new import on demand: (externref, externref) -> externref
+    const importsBefore = ctx.numImportFuncs;
+    const regexpNewType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", "RegExp_new", { kind: "func", typeIdx: regexpNewType });
+    shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+    funcIdx = ctx.funcMap.get("RegExp_new");
+  }
   if (funcIdx === undefined) {
     ctx.errors.push({
       message: "Missing RegExp_new import for regex literal",
