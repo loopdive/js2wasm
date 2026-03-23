@@ -120,7 +120,7 @@
       ],
       "files": [],
       "cluster": "Unclustered",
-      "goal": "platform"
+      "goal": "standalone-mode"
     },
     {
       "id": 640,
@@ -132,7 +132,7 @@
       ],
       "files": [],
       "cluster": "Unclustered",
-      "goal": "platform"
+      "goal": "standalone-mode"
     },
     {
       "id": 641,
@@ -145,7 +145,7 @@
       ],
       "files": [],
       "cluster": "Unclustered",
-      "goal": "platform"
+      "goal": "standalone-mode"
     },
     {
       "id": 642,
@@ -157,7 +157,7 @@
       ],
       "files": [],
       "cluster": "Unclustered",
-      "goal": "platform"
+      "goal": "standalone-mode"
     },
     {
       "id": 644,
@@ -176,7 +176,8 @@
       "status": "ready",
       "depends_on": [],
       "files": [],
-      "cluster": "Unclustered"
+      "cluster": "Unclustered",
+      "goal": "standalone-mode"
     },
     {
       "id": 661,
@@ -234,7 +235,7 @@
       "files": [],
       "test262_fail": 625,
       "cluster": "Unclustered",
-      "goal": "class-system"
+      "goal": "property-model"
     },
     {
       "id": 680,
@@ -305,7 +306,8 @@
       "status": "ready",
       "depends_on": [],
       "files": [],
-      "cluster": "Unclustered"
+      "cluster": "Unclustered",
+      "goal": "platform"
     },
     {
       "id": 688,
@@ -314,7 +316,8 @@
       "status": "ready",
       "depends_on": [],
       "files": [],
-      "cluster": "Unclustered"
+      "cluster": "Unclustered",
+      "goal": "platform"
     },
     {
       "id": 691,
@@ -334,7 +337,8 @@
         691
       ],
       "files": [],
-      "cluster": "Unclustered"
+      "cluster": "Unclustered",
+      "goal": "performance"
     },
     {
       "id": 694,
@@ -345,7 +349,8 @@
         693
       ],
       "files": [],
-      "cluster": "Unclustered"
+      "cluster": "Unclustered",
+      "goal": "platform"
     },
     {
       "id": 695,
@@ -388,7 +393,8 @@
         694
       ],
       "files": [],
-      "cluster": "Unclustered"
+      "cluster": "Unclustered",
+      "goal": "platform"
     },
     {
       "id": 700,
@@ -399,7 +405,8 @@
         699
       ],
       "files": [],
-      "cluster": "Unclustered"
+      "cluster": "Unclustered",
+      "goal": "performance"
     },
     {
       "id": 701,
@@ -408,7 +415,8 @@
       "status": "ready",
       "depends_on": [],
       "files": [],
-      "cluster": "Unclustered"
+      "cluster": "Unclustered",
+      "goal": "core-semantics"
     },
     {
       "id": 720,
@@ -419,7 +427,8 @@
       "files": [],
       "compiler_errors": 96,
       "test262_ce": 96,
-      "cluster": "Unclustered"
+      "cluster": "Unclustered",
+      "goal": "compilable"
     },
     {
       "id": 721,
@@ -428,7 +437,8 @@
       "status": "ready",
       "depends_on": [],
       "files": [],
-      "cluster": "Unclustered"
+      "cluster": "Unclustered",
+      "goal": "error-model"
     },
     {
       "id": 723,
@@ -448,7 +458,8 @@
       "status": "ready",
       "depends_on": [],
       "files": [],
-      "cluster": "Unclustered"
+      "cluster": "Unclustered",
+      "goal": "platform"
     },
     {
       "id": 728,
@@ -496,7 +507,7 @@
       "files": [],
       "test262_fail": 558,
       "cluster": "Unclustered",
-      "goal": "builtin-methods"
+      "goal": "property-model"
     },
     {
       "id": 732,
@@ -580,7 +591,7 @@
       "files": [],
       "test262_fail": 276,
       "cluster": "Unclustered",
-      "goal": "builtin-methods"
+      "goal": "class-system"
     },
     {
       "id": 739,
@@ -600,7 +611,8 @@
       "status": "ready",
       "depends_on": [],
       "files": [],
-      "cluster": "Unclustered"
+      "cluster": "Unclustered",
+      "goal": "platform"
     },
     {
       "id": 742,
@@ -611,7 +623,8 @@
         688
       ],
       "files": [],
-      "cluster": "Unclustered"
+      "cluster": "Unclustered",
+      "goal": "platform"
     },
     {
       "id": 743,
@@ -642,7 +655,8 @@
       "status": "ready",
       "depends_on": [],
       "files": [],
-      "cluster": "Unclustered"
+      "cluster": "Unclustered",
+      "goal": "performance"
     },
     {
       "id": 746,
@@ -653,7 +667,8 @@
         "743"
       ],
       "files": [],
-      "cluster": "Unclustered"
+      "cluster": "Unclustered",
+      "goal": "property-model"
     },
     {
       "id": 747,
@@ -665,49 +680,20 @@
         "746"
       ],
       "files": [],
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 757,
-      "title": "propertyHelper.js verifyProperty not implemented (~1,219 tests)",
-      "priority": "critical",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_fail": 1219,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 758,
-      "title": "Arguments object incomplete (~617 tests)",
-      "priority": "high",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_fail": 617,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 759,
-      "title": "Insert missing extern.convert_any at call sites (1,299 CE)",
-      "priority": "critical",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 1299,
-      "test262_ce": 1299,
-      "cluster": "Unclustered",
-      "goal": "compilable"
-    },
-    {
-      "id": 760,
-      "title": "Monomorphize functions: compile with call-site types, not generic externref",
-      "priority": "critical",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
       "cluster": "Unclustered",
       "goal": "performance"
+    },
+    {
+      "id": 754,
+      "title": "RegExp_new import not registered from real TypeScript lib files (1,468 CE)",
+      "priority": "critical",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "compiler_errors": 1468,
+      "test262_ce": 1468,
+      "cluster": "Unclustered",
+      "goal": "compilable"
     },
     {
       "id": 761,
@@ -743,13 +729,15 @@
     },
     {
       "id": 764,
-      "title": "Promise chain methods (.then, .catch, .finally)",
+      "title": "\"immutable global\" assignment error (240 CE)",
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
       "files": [],
+      "compiler_errors": 240,
+      "test262_ce": 240,
       "cluster": "Unclustered",
-      "goal": "async-model"
+      "goal": "compilable"
     },
     {
       "id": 765,
@@ -779,7 +767,98 @@
       "status": "ready",
       "depends_on": [],
       "files": [],
-      "cluster": "Unclustered"
+      "cluster": "Unclustered",
+      "goal": "builtin-methods"
+    },
+    {
+      "id": 770,
+      "title": "propertyHelper.js verifyProperty not implemented (~1,219 tests)",
+      "priority": "critical",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_fail": 1219,
+      "cluster": "Unclustered",
+      "goal": "property-model"
+    },
+    {
+      "id": 771,
+      "title": "Arguments object incomplete (~617 tests)",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_fail": 617,
+      "cluster": "Unclustered",
+      "goal": "core-semantics"
+    },
+    {
+      "id": 772,
+      "title": "Insert missing extern.convert_any at call sites (1,299 CE)",
+      "priority": "critical",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "compiler_errors": 1299,
+      "test262_ce": 1299,
+      "cluster": "Unclustered",
+      "goal": "compilable"
+    },
+    {
+      "id": 773,
+      "title": "Monomorphize functions: compile with call-site types, not generic externref",
+      "priority": "critical",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "cluster": "Unclustered",
+      "goal": "compilable"
+    },
+    {
+      "id": 774,
+      "title": "Missing early error checks: tests expect SyntaxError but compile successfully",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_fail": 2657,
+      "cluster": "Unclustered",
+      "goal": "error-model"
+    },
+    {
+      "id": 775,
+      "title": "Null pointer traps should be catchable TypeError (1,604 tests)",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_fail": 1604,
+      "cluster": "Unclustered",
+      "goal": "crash-free"
+    },
+    {
+      "id": 776,
+      "title": "\"not enough arguments on the stack for call\" (362 CE)",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "compiler_errors": 362,
+      "test262_ce": 362,
+      "cluster": "Unclustered",
+      "goal": "compilable"
+    },
+    {
+      "id": 777,
+      "title": "\"immutable global\" assignment error (240 CE)",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "compiler_errors": 240,
+      "test262_ce": 240,
+      "cluster": "Unclustered",
+      "goal": "compilable"
     }
   ],
   "links": [
@@ -865,7 +944,7 @@
       "id": "async-model",
       "title": "async-model",
       "status": "blocked",
-      "target": "~75% pass rate",
+      "target": "Async/await edge cases, Promise integration. Estimated +500 tests",
       "depends_on": [
         "generator-model"
       ],
@@ -879,7 +958,7 @@
       "id": "builtin-methods",
       "title": "builtin-methods",
       "status": "blocked",
-      "target": "~60% pass rate",
+      "target": "Built-in method edge cases fixed. Estimated +1,000 tests",
       "depends_on": [
         "core-semantics",
         "error-model"
@@ -891,14 +970,16 @@
         738,
         385,
         421,
-        312
+        312,
+        767,
+        661
       ]
     },
     {
       "id": "class-system",
       "title": "class-system",
       "status": "blocked",
-      "target": "~55% pass rate",
+      "target": "Class feature codegen complete. Estimated +1,200 tests",
       "depends_on": [
         "core-semantics"
       ],
@@ -907,17 +988,24 @@
         334,
         377,
         329,
-        678
+        678,
+        738
       ]
     },
     {
       "id": "compilable",
       "title": "compilable",
       "status": "active",
-      "target": "CE 4,443 → 0. Pass rate ~40%",
+      "target": "CE 5,982 → < 500. Estimated +2,000 tests",
       "depends_on": [],
       "issues": [
-        759,
+        717,
+        501,
+        448,
+        201,
+        754,
+        772,
+        773,
         411,
         511,
         444,
@@ -928,6 +1016,7 @@
         510,
         698,
         697,
+        761,
         405,
         406,
         287,
@@ -936,19 +1025,26 @@
         431,
         446,
         447,
-        448,
         445,
         420,
         413,
         404,
-        433
+        433,
+        684,
+        685,
+        686,
+        720,
+        764,
+        769,
+        776,
+        777
       ]
     },
     {
       "id": "core-semantics",
       "title": "core-semantics",
       "status": "activatable",
-      "target": "~50% pass rate",
+      "target": "Fix ~3,400 wrong-value failures. Estimated +2,500 tests",
       "depends_on": [
         "compilable"
       ],
@@ -962,29 +1058,33 @@
         146,
         266,
         380,
-        684
+        684,
+        771,
+        701
       ]
     },
     {
       "id": "crash-free",
       "title": "crash-free",
       "status": "active",
-      "target": "Traps → 0. Pass rate ~45%",
+      "target": "Traps → 0. Convert ~2,600 traps/TypeError to proper exceptions. Estimated +1,500 tests",
       "depends_on": [
         "compilable"
       ],
       "issues": [
+        775,
         728,
         512,
         441,
-        315
+        315,
+        768
       ]
     },
     {
       "id": "error-model",
       "title": "error-model",
       "status": "activatable",
-      "target": "~45% pass rate (many tests only check that errors are thrown)",
+      "target": "~2,600 negative tests pass. Estimated +2,000 tests",
       "depends_on": [
         "compilable"
       ],
@@ -994,7 +1094,9 @@
         733,
         723,
         402,
-        443
+        443,
+        774,
+        721
       ]
     },
     {
@@ -1011,7 +1113,7 @@
       "id": "generator-model",
       "title": "generator-model",
       "status": "blocked",
-      "target": "~70% pass rate",
+      "target": "State-machine generators, yield delegation. Estimated +500 tests",
       "depends_on": [
         "iterator-protocol"
       ],
@@ -1026,7 +1128,7 @@
       "id": "iterator-protocol",
       "title": "iterator-protocol",
       "status": "blocked",
-      "target": "~65% pass rate",
+      "target": "Symbol.iterator protocol works for custom iterables. Estimated +800 tests",
       "depends_on": [
         "class-system"
       ],
@@ -1036,7 +1138,8 @@
         761,
         353,
         456,
-        495
+        495,
+        681
       ]
     },
     {
@@ -1052,7 +1155,12 @@
         760,
         744,
         685,
-        686
+        686,
+        638,
+        693,
+        700,
+        745,
+        747
       ],
       "track": "parallel"
     },
@@ -1069,7 +1177,14 @@
         640,
         641,
         644,
-        642
+        642,
+        687,
+        688,
+        694,
+        699,
+        725,
+        741,
+        742
       ],
       "track": "parallel"
     },
@@ -1077,7 +1192,7 @@
       "id": "property-model",
       "title": "property-model",
       "status": "blocked",
-      "target": "~55% pass rate",
+      "target": "Property descriptor semantics correct. Estimated +1,500 tests",
       "depends_on": [
         "core-semantics"
       ],
@@ -1089,14 +1204,18 @@
         459,
         460,
         239,
-        274
+        274,
+        770,
+        678,
+        731,
+        746
       ]
     },
     {
       "id": "spec-completeness",
       "title": "spec-completeness",
       "status": "blocked",
-      "target": "~90% pass rate",
+      "target": "90%+ pass rate. Fix remaining edge cases across all categories",
       "depends_on": [
         "async-model",
         "symbol-protocol",
@@ -1131,7 +1250,12 @@
         680,
         681,
         682,
-        638
+        638,
+        639,
+        640,
+        641,
+        642,
+        652
       ],
       "track": "parallel"
     },
@@ -1139,7 +1263,7 @@
       "id": "symbol-protocol",
       "title": "symbol-protocol",
       "status": "blocked",
-      "target": "~70% pass rate",
+      "target": "Well-known symbols implemented. Estimated +400 tests",
       "depends_on": [
         "iterator-protocol"
       ],
@@ -1183,6 +1307,14 @@
       "issue": 738
     },
     {
+      "goal": "builtin-methods",
+      "issue": 767
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": 661
+    },
+    {
       "goal": "class-system",
       "issue": 729
     },
@@ -1191,8 +1323,20 @@
       "issue": 678
     },
     {
+      "goal": "class-system",
+      "issue": 738
+    },
+    {
       "goal": "compilable",
-      "issue": 759
+      "issue": 754
+    },
+    {
+      "goal": "compilable",
+      "issue": 772
+    },
+    {
+      "goal": "compilable",
+      "issue": 773
     },
     {
       "goal": "compilable",
@@ -1203,12 +1347,56 @@
       "issue": 697
     },
     {
+      "goal": "compilable",
+      "issue": 761
+    },
+    {
+      "goal": "compilable",
+      "issue": 684
+    },
+    {
+      "goal": "compilable",
+      "issue": 685
+    },
+    {
+      "goal": "compilable",
+      "issue": 686
+    },
+    {
+      "goal": "compilable",
+      "issue": 720
+    },
+    {
+      "goal": "compilable",
+      "issue": 764
+    },
+    {
+      "goal": "compilable",
+      "issue": 776
+    },
+    {
+      "goal": "compilable",
+      "issue": 777
+    },
+    {
       "goal": "core-semantics",
       "issue": 737
     },
     {
       "goal": "core-semantics",
       "issue": 684
+    },
+    {
+      "goal": "core-semantics",
+      "issue": 771
+    },
+    {
+      "goal": "core-semantics",
+      "issue": 701
+    },
+    {
+      "goal": "crash-free",
+      "issue": 775
     },
     {
       "goal": "crash-free",
@@ -1231,6 +1419,14 @@
       "issue": 723
     },
     {
+      "goal": "error-model",
+      "issue": 774
+    },
+    {
+      "goal": "error-model",
+      "issue": 721
+    },
+    {
       "goal": "generator-model",
       "issue": 680
     },
@@ -1247,12 +1443,12 @@
       "issue": 761
     },
     {
-      "goal": "performance",
-      "issue": 743
+      "goal": "iterator-protocol",
+      "issue": 681
     },
     {
       "goal": "performance",
-      "issue": 760
+      "issue": 743
     },
     {
       "goal": "performance",
@@ -1265,6 +1461,26 @@
     {
       "goal": "performance",
       "issue": 686
+    },
+    {
+      "goal": "performance",
+      "issue": 638
+    },
+    {
+      "goal": "performance",
+      "issue": 693
+    },
+    {
+      "goal": "performance",
+      "issue": 700
+    },
+    {
+      "goal": "performance",
+      "issue": 745
+    },
+    {
+      "goal": "performance",
+      "issue": 747
     },
     {
       "goal": "platform",
@@ -1287,12 +1503,56 @@
       "issue": 642
     },
     {
+      "goal": "platform",
+      "issue": 687
+    },
+    {
+      "goal": "platform",
+      "issue": 688
+    },
+    {
+      "goal": "platform",
+      "issue": 694
+    },
+    {
+      "goal": "platform",
+      "issue": 699
+    },
+    {
+      "goal": "platform",
+      "issue": 725
+    },
+    {
+      "goal": "platform",
+      "issue": 741
+    },
+    {
+      "goal": "platform",
+      "issue": 742
+    },
+    {
       "goal": "property-model",
       "issue": 732
     },
     {
       "goal": "property-model",
       "issue": 739
+    },
+    {
+      "goal": "property-model",
+      "issue": 770
+    },
+    {
+      "goal": "property-model",
+      "issue": 678
+    },
+    {
+      "goal": "property-model",
+      "issue": 731
+    },
+    {
+      "goal": "property-model",
+      "issue": 746
     },
     {
       "goal": "spec-completeness",
@@ -1325,6 +1585,26 @@
     {
       "goal": "standalone-mode",
       "issue": 638
+    },
+    {
+      "goal": "standalone-mode",
+      "issue": 639
+    },
+    {
+      "goal": "standalone-mode",
+      "issue": 640
+    },
+    {
+      "goal": "standalone-mode",
+      "issue": 641
+    },
+    {
+      "goal": "standalone-mode",
+      "issue": 642
+    },
+    {
+      "goal": "standalone-mode",
+      "issue": 652
     }
   ],
   "goalDepLinks": [
@@ -1357,6 +1637,14 @@
       "issue": 738
     },
     {
+      "goal": "core-semantics",
+      "issue": 767
+    },
+    {
+      "goal": "core-semantics",
+      "issue": 661
+    },
+    {
       "goal": "error-model",
       "issue": 734
     },
@@ -1373,6 +1661,14 @@
       "issue": 738
     },
     {
+      "goal": "error-model",
+      "issue": 767
+    },
+    {
+      "goal": "error-model",
+      "issue": 661
+    },
+    {
       "goal": "core-semantics",
       "issue": 729
     },
@@ -1381,12 +1677,28 @@
       "issue": 678
     },
     {
+      "goal": "core-semantics",
+      "issue": 738
+    },
+    {
       "goal": "compilable",
       "issue": 737
     },
     {
       "goal": "compilable",
       "issue": 684
+    },
+    {
+      "goal": "compilable",
+      "issue": 771
+    },
+    {
+      "goal": "compilable",
+      "issue": 701
+    },
+    {
+      "goal": "compilable",
+      "issue": 775
     },
     {
       "goal": "compilable",
@@ -1409,6 +1721,14 @@
       "issue": 723
     },
     {
+      "goal": "compilable",
+      "issue": 774
+    },
+    {
+      "goal": "compilable",
+      "issue": 721
+    },
+    {
       "goal": "iterator-protocol",
       "issue": 680
     },
@@ -1425,12 +1745,12 @@
       "issue": 761
     },
     {
-      "goal": "core-semantics",
-      "issue": 743
+      "goal": "class-system",
+      "issue": 681
     },
     {
       "goal": "core-semantics",
-      "issue": 760
+      "issue": 743
     },
     {
       "goal": "core-semantics",
@@ -1443,6 +1763,26 @@
     {
       "goal": "core-semantics",
       "issue": 686
+    },
+    {
+      "goal": "core-semantics",
+      "issue": 638
+    },
+    {
+      "goal": "core-semantics",
+      "issue": 693
+    },
+    {
+      "goal": "core-semantics",
+      "issue": 700
+    },
+    {
+      "goal": "core-semantics",
+      "issue": 745
+    },
+    {
+      "goal": "core-semantics",
+      "issue": 747
     },
     {
       "goal": "standalone-mode",
@@ -1465,6 +1805,34 @@
       "issue": 642
     },
     {
+      "goal": "standalone-mode",
+      "issue": 687
+    },
+    {
+      "goal": "standalone-mode",
+      "issue": 688
+    },
+    {
+      "goal": "standalone-mode",
+      "issue": 694
+    },
+    {
+      "goal": "standalone-mode",
+      "issue": 699
+    },
+    {
+      "goal": "standalone-mode",
+      "issue": 725
+    },
+    {
+      "goal": "standalone-mode",
+      "issue": 741
+    },
+    {
+      "goal": "standalone-mode",
+      "issue": 742
+    },
+    {
       "goal": "core-semantics",
       "issue": 732
     },
@@ -1473,6 +1841,22 @@
       "issue": 739
     },
     {
+      "goal": "core-semantics",
+      "issue": 770
+    },
+    {
+      "goal": "core-semantics",
+      "issue": 678
+    },
+    {
+      "goal": "core-semantics",
+      "issue": 731
+    },
+    {
+      "goal": "core-semantics",
+      "issue": 746
+    },
+    {
       "goal": "async-model",
       "issue": 696
     },
@@ -1553,6 +1937,26 @@
       "issue": 638
     },
     {
+      "goal": "iterator-protocol",
+      "issue": 639
+    },
+    {
+      "goal": "iterator-protocol",
+      "issue": 640
+    },
+    {
+      "goal": "iterator-protocol",
+      "issue": 641
+    },
+    {
+      "goal": "iterator-protocol",
+      "issue": 642
+    },
+    {
+      "goal": "iterator-protocol",
+      "issue": 652
+    },
+    {
       "goal": "generator-model",
       "issue": 680
     },
@@ -1567,7 +1971,27 @@
     {
       "goal": "generator-model",
       "issue": 638
+    },
+    {
+      "goal": "generator-model",
+      "issue": 639
+    },
+    {
+      "goal": "generator-model",
+      "issue": 640
+    },
+    {
+      "goal": "generator-model",
+      "issue": 641
+    },
+    {
+      "goal": "generator-model",
+      "issue": 642
+    },
+    {
+      "goal": "generator-model",
+      "issue": 652
     }
   ],
-  "generated": "2026-03-23T02:16:06.815Z"
+  "generated": "2026-03-23T03:33:18.266Z"
 }
