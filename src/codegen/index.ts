@@ -11523,6 +11523,36 @@ function fixupStructNewResultCoercion(ctx: CodegenContext): void {
         fixupInstrs(func, (instr as any).catchAll);
       }
 
+      // Fix array.new_default: length must be i32, not externref
+      if (instr.op === "array.new_default" && i > 0) {
+        const prev = instrs[i - 1]!;
+        if (prev.op === "ref.null.extern" || prev.op === "ref.null extern") {
+          instrs[i - 1] = { op: "i32.const", value: 0 } as Instr;
+        } else {
+          let isExternref = false;
+          if (prev.op === "local.get") {
+            const lt = getLocalType(func, (prev as { index: number }).index);
+            if (lt && lt.kind === "externref") isExternref = true;
+          } else if (prev.op === "global.get") {
+            const gIdx = (prev as { index: number }).index;
+            const gDef = ctx.mod.globals[gIdx];
+            if (gDef && gDef.type.kind === "externref") isExternref = true;
+          }
+          if (isExternref) {
+            const unboxIdx = ctx.funcMap.get("__unbox_number");
+            if (unboxIdx !== undefined) {
+              instrs.splice(i, 0,
+                { op: "call", funcIdx: unboxIdx } as Instr,
+                { op: "i32.trunc_sat_f64_s" } as Instr,
+              );
+              i += 2;
+            } else {
+              instrs[i - 1] = { op: "i32.const", value: 0 } as Instr;
+            }
+          }
+        }
+      }
+
       if (instr.op !== "struct.new") continue;
       const typeIdx = (instr as { typeIdx: number }).typeIdx;
       const typeDef = ctx.mod.types[typeIdx];
@@ -11574,7 +11604,7 @@ function fixupStructNewResultCoercion(ctx: CodegenContext): void {
                 }
               } else if (prevInstr.op === "global.get") {
                 // Check global type
-                const gIdx = (prevInstr as { globalIdx: number }).globalIdx;
+                const gIdx = (prevInstr as { index: number }).index;
                 const gDef = ctx.mod.globals[gIdx];
                 if (gDef && (gDef.type.kind === "ref" || gDef.type.kind === "ref_null")) {
                   insertions.push({ pos: pos + 1, op: { op: "extern.convert_any" } as Instr });
@@ -11604,7 +11634,7 @@ function fixupStructNewResultCoercion(ctx: CodegenContext): void {
         }
       } else if (next.op === "global.set") {
         // Check global type
-        const globalIdx = (next as { globalIdx: number }).globalIdx;
+        const globalIdx = (next as { index: number }).index;
         const globalDef = ctx.mod.globals[globalIdx];
         if (globalDef && globalDef.type.kind === "externref") {
           instrs.splice(i + 1, 0, { op: "extern.convert_any" } as Instr);

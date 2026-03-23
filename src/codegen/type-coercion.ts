@@ -1369,11 +1369,12 @@ export function coercionInstrs(ctx: CodegenContext, from: ValType, to: ValType):
       { op: "i32.const", value: 0 } as Instr,
     ];
   }
-  // funcref → externref: extern.convert_any
+  // funcref → externref: funcref is NOT a subtype of anyref in WasmGC,
+  // so extern.convert_any cannot be used. Drop and push null as fallback.
   if (from.kind === "funcref" && to.kind === "externref") {
-    return [{ op: "extern.convert_any" } as Instr];
+    return [{ op: "drop" } as Instr, { op: "ref.null.extern" } as Instr];
   }
-  // funcref → anyref: no-op (funcref is a subtype of anyref in WasmGC)
+  // funcref → anyref: separate hierarchies in WasmGC, keep as no-op fallback
   if (from.kind === "funcref" && to.kind === "anyref") {
     return [];
   }
