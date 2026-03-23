@@ -495,189 +495,6 @@ function instrStackDelta(instr: Instr, mod: WasmModule): number {
 }
 
 /**
- * Infer the result type of a single instruction (what it pushes onto the stack).
- * Returns null if unknown or the instruction doesn't push a value.
- * Used by struct.new field fixup to detect type mismatches.
- */
-function inferInstrResultType(
-  instr: Instr,
-  mod: WasmModule,
-  localTypes: ValType[],
-): ValType | null {
-  switch (instr.op) {
-    case "local.get":
-    case "local.tee":
-      return localTypes[(instr as { index: number }).index] ?? null;
-
-    case "global.get": {
-      const gIdx = (instr as { index: number }).index;
-      const gDef = mod.globals[gIdx];
-      return gDef ? gDef.type : null;
-    }
-
-    case "i32.const":
-    case "i32.eqz":
-    case "i32.add":
-    case "i32.sub":
-    case "i32.mul":
-    case "i32.eq":
-    case "i32.ne":
-    case "i32.lt_s":
-    case "i32.le_s":
-    case "i32.gt_s":
-    case "i32.ge_s":
-    case "i32.ge_u":
-    case "i32.and":
-    case "i32.or":
-    case "i32.xor":
-    case "i32.shl":
-    case "i32.shr_s":
-    case "i32.shr_u":
-    case "i32.clz":
-    case "i32.trunc_f64_s":
-    case "i32.trunc_f64_u":
-    case "i32.trunc_sat_f64_s":
-    case "i32.trunc_sat_f64_u":
-    case "i32.wrap_i64":
-    case "ref.is_null":
-    case "ref.test":
-    case "ref.eq":
-    case "array.len":
-    case "memory.size":
-      return { kind: "i32" };
-
-    case "i64.const":
-    case "i64.add":
-    case "i64.sub":
-    case "i64.mul":
-    case "i64.div_s":
-    case "i64.rem_s":
-    case "i64.eq":
-    case "i64.ne":
-    case "i64.lt_s":
-    case "i64.le_s":
-    case "i64.gt_s":
-    case "i64.ge_s":
-    case "i64.and":
-    case "i64.or":
-    case "i64.xor":
-    case "i64.shl":
-    case "i64.shr_s":
-    case "i64.shr_u":
-    case "i64.extend_i32_s":
-    case "i64.extend_i32_u":
-    case "i64.trunc_f64_s":
-    case "i64.trunc_sat_f64_s":
-      return { kind: "i64" };
-
-    case "f64.const":
-    case "f64.add":
-    case "f64.sub":
-    case "f64.mul":
-    case "f64.div":
-    case "f64.abs":
-    case "f64.neg":
-    case "f64.floor":
-    case "f64.ceil":
-    case "f64.trunc":
-    case "f64.nearest":
-    case "f64.sqrt":
-    case "f64.copysign":
-    case "f64.min":
-    case "f64.max":
-    case "f64.convert_i32_s":
-    case "f64.convert_i32_u":
-    case "f64.convert_i64_s":
-    case "f64.promote_f32":
-      return { kind: "f64" };
-
-    case "f32.const":
-    case "f32.demote_f64":
-      return { kind: "f32" };
-
-    case "ref.null.extern":
-    case "extern.convert_any":
-      return { kind: "externref" };
-
-    case "ref.null.eq":
-      return { kind: "eqref" };
-
-    case "any.convert_extern":
-      return { kind: "anyref" };
-
-    case "ref.func":
-    case "ref.null.func":
-      return { kind: "funcref" };
-
-    case "ref.null":
-      return { kind: "ref_null", typeIdx: (instr as { typeIdx: number }).typeIdx };
-
-    case "ref.cast":
-      return { kind: "ref", typeIdx: (instr as { typeIdx: number }).typeIdx };
-
-    case "ref.cast_null":
-      return { kind: "ref_null", typeIdx: (instr as { typeIdx: number }).typeIdx };
-
-    case "ref.as_non_null":
-      // Preserves the type but makes it non-null; without context we can't tell
-      return null;
-
-    case "struct.new":
-    case "array.new":
-    case "array.new_fixed":
-    case "array.new_default":
-      return { kind: "ref", typeIdx: (instr as { typeIdx: number }).typeIdx };
-
-    case "struct.get": {
-      const sTypeIdx = (instr as any).typeIdx;
-      const sFieldIdx = (instr as any).fieldIdx;
-      const sDef = mod.types[sTypeIdx];
-      if (sDef && sDef.kind === "struct") {
-        const sField = (sDef as any).fields[sFieldIdx];
-        if (sField) return sField.type;
-      }
-      return null;
-    }
-
-    case "array.get":
-    case "array.get_s":
-    case "array.get_u": {
-      const aTypeIdx = (instr as any).typeIdx;
-      const aDef = mod.types[aTypeIdx];
-      if (aDef && aDef.kind === "array") {
-        return (aDef as any).elementType ?? null;
-      }
-      return null;
-    }
-
-    case "call":
-    case "return_call": {
-      const funcIdx = (instr as { funcIdx: number }).funcIdx;
-      const numImports = mod.imports.filter((imp) => imp.desc.kind === "func").length;
-      let typeIdx: number;
-      if (funcIdx < numImports) {
-        const imp = mod.imports.filter((imp) => imp.desc.kind === "func")[funcIdx];
-        typeIdx = imp ? (imp.desc as { typeIdx: number }).typeIdx : -1;
-      } else {
-        const fn = mod.functions[funcIdx - numImports];
-        typeIdx = fn?.typeIdx ?? -1;
-      }
-      const ft = typeIdx >= 0 ? mod.types[typeIdx] : undefined;
-      if (ft?.kind === "func" && ft.results.length > 0) {
-        return ft.results[0]!;
-      }
-      return null;
-    }
-
-    case "select":
-      return null; // Type depends on operands
-
-    default:
-      return null;
-  }
-}
-
-/**
  * Report a codegen error with source location extracted from an AST node.
  * Pushes the error into ctx.errors so it can be propagated to the caller.
  */
@@ -11744,169 +11561,121 @@ function fixupStructNewResultCoercion(ctx: CodegenContext): void {
       const typeIdx = (instr as { typeIdx: number }).typeIdx;
       const typeDef = ctx.mod.types[typeIdx];
 
-      // Fix struct.new arguments: use stack-delta backward walk to find the
-      // instruction producing each field's value, then insert type coercions.
+      // Fix struct.new arguments: if a field expects externref but the
+      // preceding instruction produces a ref/ref_null, insert extern.convert_any
       if (typeDef && typeDef.kind === "struct") {
         const fields = typeDef.fields;
-        const numFields = fields.length;
-        if (numFields === 0) continue;
-
-        // Build local type map for inferInstrResultType
-        const funcType = ctx.mod.types[func.typeIdx];
-        const paramTypes: ValType[] =
-          funcType && funcType.kind === "func" ? funcType.params : [];
-        const localTypeMap: ValType[] = [
-          ...paramTypes,
-          ...func.locals.map((l) => l.type),
-        ];
-
-        // Walk backward from struct.new using stack deltas to find each field's
-        // value producer. fieldProducerPos[fi] = position of the instruction that
-        // produces the final value for field fi.
-        const fieldProducerPos: number[] = new Array(numFields).fill(-1);
-        let depth = 0;
-        let fieldTarget = numFields; // counting down: numFields→1
-        let j = i - 1;
-        while (j >= 0 && fieldTarget > 0) {
-          depth += instrStackDelta(instrs[j]!, ctx.mod);
-          if (depth >= (numFields - fieldTarget + 1)) {
-            // This instruction's output corresponds to field (fieldTarget - 1)
-            fieldProducerPos[fieldTarget - 1] = j;
-            fieldTarget--;
-          }
-          j--;
-        }
-
-        // Collect insertions: { pos, ops[] } — insert ops at pos
-        let insertions: { pos: number; ops: Instr[] }[] = [];
-
-        for (let fi = 0; fi < numFields; fi++) {
-          const producerIdx = fieldProducerPos[fi];
-          if (producerIdx < 0) continue;
-
+        // Walk backwards through preceding instructions to find value-producing
+        // instructions for each field. We only fix the simple case where the
+        // preceding instruction is local.get/global.get producing a ref type
+        // and the field expects externref.
+        let insertions: { pos: number; op: Instr }[] = [];
+        let pos = i; // position just before struct.new
+        for (let fi = fields.length - 1; fi >= 0; fi--) {
+          pos--;
+          if (pos < 0) break;
+          const prev = instrs[pos]!;
           const field = fields[fi]!;
-          const producerInstr = instrs[producerIdx]!;
-          const producerType = inferInstrResultType(producerInstr, ctx.mod, localTypeMap);
-          if (!producerType) continue;
 
-          const expectedKind = field.type.kind;
-          const gotKind = producerType.kind;
+          // Skip ref.as_non_null — it doesn't produce a new stack value
+          if (prev.op === "ref.as_non_null" && pos > 0) {
+            pos--;
+          }
+          // Skip extern.convert_any — already-inserted coercion for a later field;
+          // without this skip the backward walk gets out of sync and attributes
+          // the wrong value-producer instruction to the current field.
+          if (instrs[pos]!.op === "extern.convert_any" && pos > 0) {
+            pos--;
+          }
 
-          // Already matching — skip
-          if (expectedKind === gotKind) continue;
+          const prevInstr = instrs[pos]!;
+          // Safety: only insert coercion if the instruction at pos is a direct
+          // value producer for this struct.new field — NOT consumed by a following
+          // instruction like struct.get, array.get, call, etc.
+          const nextInstr = instrs[pos + 1];
+          const isConsumedByNext = nextInstr && (
+            nextInstr.op === "struct.get" || nextInstr.op === "struct.set" ||
+            nextInstr.op === "array.get" || nextInstr.op === "array.set" ||
+            nextInstr.op === "array.len" ||
+            nextInstr.op === "call" || nextInstr.op === "call_indirect" ||
+            nextInstr.op === "call_ref" || nextInstr.op === "return_call" ||
+            nextInstr.op === "ref.cast" || nextInstr.op === "ref.cast_null" ||
+            nextInstr.op === "ref.test" ||
+            nextInstr.op === "any.convert_extern" ||
+            nextInstr.op === "f64.convert_i32_s" || nextInstr.op === "f64.convert_i32_u" ||
+            nextInstr.op === "i32.trunc_sat_f64_s" || nextInstr.op === "i32.trunc_sat_f64_u"
+          );
 
-          // Find insert position: right after the last instruction of this field's
-          // expression. That's the position of the next field's producer (or i for
-          // the last field).
-          const insertPos = fi < numFields - 1
-            ? (fieldProducerPos[fi + 1] !== -1 ? fieldProducerPos[fi + 1]! : i)
-            : i;
+          if (field.type.kind === "externref" && !isConsumedByNext) {
+            if (prevInstr.op === "local.get") {
+              const lt = getLocalType(func, (prevInstr as { index: number }).index);
+              if (lt && (lt.kind === "ref" || lt.kind === "ref_null")) {
+                insertions.push({ pos: pos + 1, op: { op: "extern.convert_any" } as Instr });
+              }
+            } else if (prevInstr.op === "global.get") {
+              const gIdx = (prevInstr as { index: number }).index;
+              const gDef = ctx.mod.globals[gIdx];
+              if (gDef && (gDef.type.kind === "ref" || gDef.type.kind === "ref_null")) {
+                insertions.push({ pos: pos + 1, op: { op: "extern.convert_any" } as Instr });
+              }
+            }
+          }
 
-          // --- Coercion: field expects externref, got ref/ref_null ---
-          if (expectedKind === "externref" && (gotKind === "ref" || gotKind === "ref_null" || gotKind === "eqref" || gotKind === "anyref")) {
-            insertions.push({ pos: insertPos, ops: [{ op: "extern.convert_any" } as Instr] });
-          }
-          // --- Coercion: field expects externref, got f64 ---
-          else if (expectedKind === "externref" && gotKind === "f64") {
-            const boxIdx = ctx.funcMap.get("__box_number");
-            if (boxIdx !== undefined) {
-              insertions.push({ pos: insertPos, ops: [{ op: "call", funcIdx: boxIdx } as Instr] });
+          // Fix struct.new fields expecting f64 but getting externref
+          if (field.type.kind === "f64" && !isConsumedByNext) {
+            let isExternref = false;
+            if (prevInstr.op === "local.get") {
+              const lt = getLocalType(func, (prevInstr as { index: number }).index);
+              if (lt && lt.kind === "externref") isExternref = true;
+            } else if (prevInstr.op === "global.get") {
+              const gIdx = (prevInstr as { index: number }).index;
+              const gDef = ctx.mod.globals[gIdx];
+              if (gDef && gDef.type.kind === "externref") isExternref = true;
+            } else if (prevInstr.op === "ref.null.extern" || prevInstr.op === "ref.null extern") {
+              // null in f64 context → NaN
+              instrs[pos] = { op: "f64.const", value: NaN } as Instr;
+              isExternref = false; // already handled
+            }
+            if (isExternref) {
+              const unboxIdx = ctx.funcMap.get("__unbox_number");
+              if (unboxIdx !== undefined) {
+                insertions.push({ pos: pos + 1, op: { op: "call", funcIdx: unboxIdx } as Instr });
+              } else {
+                // Fallback: replace with f64.const NaN
+                instrs[pos] = { op: "f64.const", value: NaN } as Instr;
+              }
             }
           }
-          // --- Coercion: field expects externref, got i32 ---
-          else if (expectedKind === "externref" && gotKind === "i32") {
-            const boxIdx = ctx.funcMap.get("__box_number");
-            if (boxIdx !== undefined) {
-              insertions.push({ pos: insertPos, ops: [
-                { op: "f64.convert_i32_s" } as Instr,
-                { op: "call", funcIdx: boxIdx } as Instr,
-              ] });
+
+          // Fix struct.new fields expecting i32 but getting externref
+          if (field.type.kind === "i32" && !isConsumedByNext) {
+            let isExternref = false;
+            if (prevInstr.op === "local.get") {
+              const lt = getLocalType(func, (prevInstr as { index: number }).index);
+              if (lt && lt.kind === "externref") isExternref = true;
+            } else if (prevInstr.op === "global.get") {
+              const gIdx = (prevInstr as { index: number }).index;
+              const gDef = ctx.mod.globals[gIdx];
+              if (gDef && gDef.type.kind === "externref") isExternref = true;
+            } else if (prevInstr.op === "ref.null.extern" || prevInstr.op === "ref.null extern") {
+              instrs[pos] = { op: "i32.const", value: 0 } as Instr;
+              isExternref = false;
             }
-          }
-          // --- Coercion: field expects externref, got i64 ---
-          else if (expectedKind === "externref" && gotKind === "i64") {
-            const boxIdx = ctx.funcMap.get("__box_number");
-            if (boxIdx !== undefined) {
-              insertions.push({ pos: insertPos, ops: [
-                { op: "f64.convert_i64_s" } as unknown as Instr,
-                { op: "call", funcIdx: boxIdx } as Instr,
-              ] });
+            if (isExternref) {
+              const unboxIdx = ctx.funcMap.get("__unbox_number");
+              if (unboxIdx !== undefined) {
+                insertions.push({ pos: pos + 1, op: { op: "call", funcIdx: unboxIdx } as Instr });
+                insertions.push({ pos: pos + 2, op: { op: "i32.trunc_sat_f64_s" } as Instr });
+              } else {
+                instrs[pos] = { op: "i32.const", value: 0 } as Instr;
+              }
             }
-          }
-          // --- Coercion: field expects (ref/ref_null N), got externref ---
-          else if ((expectedKind === "ref" || expectedKind === "ref_null") && gotKind === "externref") {
-            const targetTypeIdx = (field.type as { typeIdx: number }).typeIdx;
-            insertions.push({ pos: insertPos, ops: [
-              { op: "any.convert_extern" } as unknown as Instr,
-              { op: "ref.cast_null", typeIdx: targetTypeIdx } as unknown as Instr,
-            ] });
-          }
-          // --- Coercion: field expects f64, got externref ---
-          else if (expectedKind === "f64" && gotKind === "externref") {
-            const unboxIdx = ctx.funcMap.get("__unbox_number");
-            if (unboxIdx !== undefined) {
-              insertions.push({ pos: insertPos, ops: [{ op: "call", funcIdx: unboxIdx } as Instr] });
-            } else {
-              // Replace producer with f64.const NaN as fallback
-              instrs[producerIdx] = { op: "f64.const", value: NaN } as Instr;
-            }
-          }
-          // --- Coercion: field expects f64, got ref/ref_null ---
-          else if (expectedKind === "f64" && (gotKind === "ref" || gotKind === "ref_null")) {
-            const unboxIdx = ctx.funcMap.get("__unbox_number");
-            if (unboxIdx !== undefined) {
-              insertions.push({ pos: insertPos, ops: [
-                { op: "extern.convert_any" } as Instr,
-                { op: "call", funcIdx: unboxIdx } as Instr,
-              ] });
-            } else {
-              instrs[producerIdx] = { op: "f64.const", value: NaN } as Instr;
-            }
-          }
-          // --- Coercion: field expects i32, got externref ---
-          else if (expectedKind === "i32" && gotKind === "externref") {
-            const unboxIdx = ctx.funcMap.get("__unbox_number");
-            if (unboxIdx !== undefined) {
-              insertions.push({ pos: insertPos, ops: [
-                { op: "call", funcIdx: unboxIdx } as Instr,
-                { op: "i32.trunc_sat_f64_s" } as Instr,
-              ] });
-            } else {
-              instrs[producerIdx] = { op: "i32.const", value: 0 } as Instr;
-            }
-          }
-          // --- Coercion: field expects i32, got ref/ref_null ---
-          else if (expectedKind === "i32" && (gotKind === "ref" || gotKind === "ref_null")) {
-            const unboxIdx = ctx.funcMap.get("__unbox_number");
-            if (unboxIdx !== undefined) {
-              insertions.push({ pos: insertPos, ops: [
-                { op: "extern.convert_any" } as Instr,
-                { op: "call", funcIdx: unboxIdx } as Instr,
-                { op: "i32.trunc_sat_f64_s" } as Instr,
-              ] });
-            } else {
-              instrs[producerIdx] = { op: "i32.const", value: 0 } as Instr;
-            }
-          }
-          // --- Coercion: field expects i32, got f64 ---
-          else if (expectedKind === "i32" && gotKind === "f64") {
-            insertions.push({ pos: insertPos, ops: [{ op: "i32.trunc_sat_f64_s" } as Instr] });
-          }
-          // --- Coercion: field expects f64, got i32 ---
-          else if (expectedKind === "f64" && gotKind === "i32") {
-            insertions.push({ pos: insertPos, ops: [{ op: "f64.convert_i32_s" } as Instr] });
           }
         }
-
-        // Also handle special case: ref.null.extern where field expects f64/i32/ref_null
-        // (direct replacement, no insertion needed — but we should check these too)
-        // These are already covered by the type inference above since ref.null.extern → externref
-
-        // Apply insertions in reverse position order to preserve indices
-        insertions.sort((a, b) => b.pos - a.pos);
-        for (const ins of insertions) {
-          instrs.splice(ins.pos, 0, ...ins.ops);
-          i += ins.ops.length; // adjust loop index for inserted instructions
+        // Apply insertions in reverse order to preserve positions
+        for (let ii = insertions.length - 1; ii >= 0; ii--) {
+          instrs.splice(insertions[ii]!.pos, 0, insertions[ii]!.op);
+          i++; // adjust loop index for inserted instructions
         }
       }
 
