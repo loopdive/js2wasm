@@ -210,6 +210,40 @@ function wasmFuncReturnsVoid(ctx: CodegenContext, funcIdx: number): boolean {
 }
 
 /**
+ * Get the actual Wasm return type of a function by inspecting its type definition.
+ * Returns undefined if the function has void return or is not found.
+ * Use this instead of resolveWasmType(retType) at call sites to avoid mismatches
+ * when TS type says 'any' (→ externref) but the Wasm function returns f64/i32.
+ */
+function getWasmFuncReturnType(ctx: CodegenContext, funcIdx: number): ValType | undefined {
+  if (funcIdx < ctx.numImportFuncs) {
+    let importFuncCount = 0;
+    for (const imp of ctx.mod.imports) {
+      if (imp.desc.kind === "func") {
+        if (importFuncCount === funcIdx) {
+          const typeDef = ctx.mod.types[imp.desc.typeIdx];
+          if (typeDef?.kind === "func" && typeDef.results.length > 0) {
+            return typeDef.results[0]!;
+          }
+          return undefined;
+        }
+        importFuncCount++;
+      }
+    }
+    return undefined;
+  }
+  const localIdx = funcIdx - ctx.numImportFuncs;
+  const func = ctx.mod.functions[localIdx];
+  if (func) {
+    const typeDef = ctx.mod.types[func.typeIdx];
+    if (typeDef?.kind === "func" && typeDef.results.length > 0) {
+      return typeDef.results[0]!;
+    }
+  }
+  return undefined;
+}
+
+/**
  * Shift function indices after a late import addition. This must update all
  * already-compiled function bodies, the current function body, any saved bodies
  * from the savedBody swap pattern, and export descriptors.
@@ -8414,15 +8448,10 @@ function compileCallExpression(
             const finalFuncIdx = ctx.funcMap.get(funcName) ?? funcIdx!;
             fctx.body.push({ op: "call", funcIdx: finalFuncIdx });
 
-            const sig = ctx.checker.getResolvedSignature(expr);
-            if (sig) {
-              const retType = ctx.checker.getReturnTypeOfSignature(sig);
-              if (isEffectivelyVoidReturn(ctx, retType, funcName))
-                return VOID_RESULT;
-              if (wasmFuncReturnsVoid(ctx, finalFuncIdx)) return VOID_RESULT;
-              return resolveWasmType(ctx, retType);
-            }
-            return { kind: "f64" };
+            // Use actual Wasm return type — TS checker reports `any` for .call()/.apply()
+            // which resolves to externref, but the actual function may return f64/i32/ref.
+            if (wasmFuncReturnsVoid(ctx, finalFuncIdx)) return VOID_RESULT;
+            return getWasmFuncReturnType(ctx, finalFuncIdx) ?? VOID_RESULT;
           }
           // .apply(thisArg, argsArray) — spread array literal elements as positional args
           if (!isCall && expr.arguments.length >= 2) {
@@ -8512,15 +8541,9 @@ function compileCallExpression(
               }
               const finalFuncIdx = ctx.funcMap.get(funcName) ?? funcIdx!;
               fctx.body.push({ op: "call", funcIdx: finalFuncIdx });
-              const sig = ctx.checker.getResolvedSignature(expr);
-              if (sig) {
-                const retType = ctx.checker.getReturnTypeOfSignature(sig);
-                if (isEffectivelyVoidReturn(ctx, retType, funcName))
-                  return VOID_RESULT;
-                if (wasmFuncReturnsVoid(ctx, finalFuncIdx)) return VOID_RESULT;
-                return resolveWasmType(ctx, retType);
-              }
-              return { kind: "f64" };
+              // Use actual Wasm return type for .apply()
+              if (wasmFuncReturnsVoid(ctx, finalFuncIdx)) return VOID_RESULT;
+              return getWasmFuncReturnType(ctx, finalFuncIdx) ?? VOID_RESULT;
             }
           }
           // .apply() with no args array — call with no args
@@ -8575,15 +8598,9 @@ function compileCallExpression(
             }
             const finalFuncIdx = ctx.funcMap.get(funcName) ?? funcIdx!;
             fctx.body.push({ op: "call", funcIdx: finalFuncIdx });
-            const sig = ctx.checker.getResolvedSignature(expr);
-            if (sig) {
-              const retType = ctx.checker.getReturnTypeOfSignature(sig);
-              if (isEffectivelyVoidReturn(ctx, retType, funcName))
-                return VOID_RESULT;
-              if (wasmFuncReturnsVoid(ctx, finalFuncIdx)) return VOID_RESULT;
-              return resolveWasmType(ctx, retType);
-            }
-            return { kind: "f64" };
+            // Use actual Wasm return type for .apply() with no args
+            if (wasmFuncReturnsVoid(ctx, finalFuncIdx)) return VOID_RESULT;
+            return getWasmFuncReturnType(ctx, finalFuncIdx) ?? VOID_RESULT;
           }
         }
       }
@@ -8727,15 +8744,9 @@ function compileCallExpression(
             const finalCallIdx = ctx.funcMap.get(fullName) ?? funcIdx;
             fctx.body.push({ op: "call", funcIdx: finalCallIdx });
 
-            const sig = ctx.checker.getResolvedSignature(expr);
-            if (sig) {
-              const retType = ctx.checker.getReturnTypeOfSignature(sig);
-              if (isEffectivelyVoidReturn(ctx, retType, fullName))
-                return VOID_RESULT;
-              if (wasmFuncReturnsVoid(ctx, finalCallIdx)) return VOID_RESULT;
-              return resolveWasmType(ctx, retType);
-            }
-            return VOID_RESULT;
+            // Use actual Wasm return type for .call()/.apply() on class methods
+            if (wasmFuncReturnsVoid(ctx, finalCallIdx)) return VOID_RESULT;
+            return getWasmFuncReturnType(ctx, finalCallIdx) ?? VOID_RESULT;
           }
         }
       }
@@ -9766,7 +9777,7 @@ function compileCallExpression(
             if (isEffectivelyVoidReturn(ctx, retType, fullName))
               return VOID_RESULT;
             if (wasmFuncReturnsVoid(ctx, finalStaticIdx)) return VOID_RESULT;
-            return resolveWasmType(ctx, retType);
+            return getWasmFuncReturnType(ctx, finalStaticIdx) ?? resolveWasmType(ctx, retType);
           }
           return VOID_RESULT;
         }
@@ -10098,7 +10109,7 @@ function compileCallExpression(
           if (sig) {
             const retType = ctx.checker.getReturnTypeOfSignature(sig);
             if (!isEffectivelyVoidReturn(ctx, retType, fullName))
-              callReturnType = resolveWasmType(ctx, retType);
+              callReturnType = getWasmFuncReturnType(ctx, funcIdx) ?? resolveWasmType(ctx, retType);
           }
           const tmp = allocLocal(
             fctx,
@@ -10206,7 +10217,7 @@ function compileCallExpression(
           if (isEffectivelyVoidReturn(ctx, retType, fullName))
             return VOID_RESULT;
           if (wasmFuncReturnsVoid(ctx, finalMethodIdx)) return VOID_RESULT;
-          return resolveWasmType(ctx, retType);
+          return getWasmFuncReturnType(ctx, finalMethodIdx) ?? resolveWasmType(ctx, retType);
         }
         return VOID_RESULT;
       }
@@ -10240,7 +10251,7 @@ function compileCallExpression(
             if (sig) {
               const retType = ctx.checker.getReturnTypeOfSignature(sig);
               if (!isEffectivelyVoidReturn(ctx, retType, fullName))
-                callReturnType = resolveWasmType(ctx, retType);
+                callReturnType = getWasmFuncReturnType(ctx, funcIdx) ?? resolveWasmType(ctx, retType);
             }
             const tmp = allocLocal(
               fctx,
@@ -10348,7 +10359,7 @@ function compileCallExpression(
               return VOID_RESULT;
             if (wasmFuncReturnsVoid(ctx, finalStructMethodIdx))
               return VOID_RESULT;
-            return resolveWasmType(ctx, retType);
+            return getWasmFuncReturnType(ctx, finalStructMethodIdx) ?? resolveWasmType(ctx, retType);
           }
           return VOID_RESULT;
         }
@@ -11239,6 +11250,14 @@ function compileCallExpression(
               valType: cap.valType,
             });
           }
+          // Coerce mutable capture (ref cell) to expected param type if they differ
+          const expectedMutCapType = captureParamTypes?.[capIdx];
+          if (expectedMutCapType) {
+            const refCellType: ValType = { kind: "ref", typeIdx: refCellTypeIdx };
+            if (!valTypesMatch(refCellType, expectedMutCapType)) {
+              coerceType(ctx, fctx, refCellType, expectedMutCapType);
+            }
+          }
         } else {
           // TDZ check for captured let/const variables
           const capTdzIdx = fctx.tdzFlagLocals?.get(cap.name);
@@ -11365,9 +11384,10 @@ function compileCallExpression(
       // Safety check: if the Wasm function actually has void return (e.g. async
       // functions with Promise<void>), the TS type may be misleading
       if (wasmFuncReturnsVoid(ctx, finalFuncIdx)) return VOID_RESULT;
-      return resolveWasmType(ctx, retType);
+      // Use actual Wasm return type to avoid TS 'any' → externref mismatch
+      return getWasmFuncReturnType(ctx, finalFuncIdx) ?? resolveWasmType(ctx, retType);
     }
-    return { kind: "f64" };
+    return getWasmFuncReturnType(ctx, finalFuncIdx) ?? { kind: "f64" };
   }
 
   // Handle IIFE: (function() { ... })() or (() => expr)() — inline the function body
@@ -11640,7 +11660,7 @@ function compileCallExpression(
             if (isEffectivelyVoidReturn(ctx, retType, fullName))
               return VOID_RESULT;
             if (wasmFuncReturnsVoid(ctx, funcIdx)) return VOID_RESULT;
-            return resolveWasmType(ctx, retType);
+            return getWasmFuncReturnType(ctx, funcIdx) ?? resolveWasmType(ctx, retType);
           }
           return VOID_RESULT;
         }
@@ -11660,7 +11680,7 @@ function compileCallExpression(
             if (sig) {
               const retType = ctx.checker.getReturnTypeOfSignature(sig);
               if (!isEffectivelyVoidReturn(ctx, retType, fullName))
-                callReturnType = resolveWasmType(ctx, retType);
+                callReturnType = getWasmFuncReturnType(ctx, funcIdx) ?? resolveWasmType(ctx, retType);
             }
             const tmp = allocLocal(
               fctx,
@@ -11763,7 +11783,7 @@ function compileCallExpression(
             if (isEffectivelyVoidReturn(ctx, retType, fullName))
               return VOID_RESULT;
             if (wasmFuncReturnsVoid(ctx, funcIdx)) return VOID_RESULT;
-            return resolveWasmType(ctx, retType);
+            return getWasmFuncReturnType(ctx, funcIdx) ?? resolveWasmType(ctx, retType);
           }
           return VOID_RESULT;
         }
@@ -11804,7 +11824,7 @@ function compileCallExpression(
               if (isEffectivelyVoidReturn(ctx, retType, fullName))
                 return VOID_RESULT;
               if (wasmFuncReturnsVoid(ctx, funcIdx)) return VOID_RESULT;
-              return resolveWasmType(ctx, retType);
+              return getWasmFuncReturnType(ctx, funcIdx) ?? resolveWasmType(ctx, retType);
             }
             return VOID_RESULT;
           }
@@ -12020,9 +12040,9 @@ function compileCallExpression(
             if (isEffectivelyVoidReturn(ctx, retType, funcName))
               return VOID_RESULT;
             if (wasmFuncReturnsVoid(ctx, finalFuncIdx)) return VOID_RESULT;
-            return resolveWasmType(ctx, retType);
+            return getWasmFuncReturnType(ctx, finalFuncIdx) ?? resolveWasmType(ctx, retType);
           }
-          return { kind: "f64" };
+          return getWasmFuncReturnType(ctx, finalFuncIdx) ?? { kind: "f64" };
         }
       }
 
@@ -12091,7 +12111,7 @@ function compileCallExpression(
               if (isEffectivelyVoidReturn(ctx, retType, fullName))
                 return VOID_RESULT;
               if (wasmFuncReturnsVoid(ctx, finalCallIdx)) return VOID_RESULT;
-              return resolveWasmType(ctx, retType);
+              return getWasmFuncReturnType(ctx, finalCallIdx) ?? resolveWasmType(ctx, retType);
             }
             return VOID_RESULT;
           }
@@ -12517,9 +12537,9 @@ function compileConditionalCallee(
           if (isEffectivelyVoidReturn(ctx, retType, funcName))
             return VOID_RESULT;
           if (wasmFuncReturnsVoid(ctx, finalFuncIdx)) return VOID_RESULT;
-          return resolveWasmType(ctx, retType);
+          return getWasmFuncReturnType(ctx, finalFuncIdx) ?? resolveWasmType(ctx, retType);
         }
-        return callRetType ?? { kind: "f64" };
+        return callRetType ?? getWasmFuncReturnType(ctx, finalFuncIdx) ?? { kind: "f64" };
       }
     }
 
@@ -13257,7 +13277,7 @@ function compileSuperMethodCall(
     const retType = ctx.checker.getReturnTypeOfSignature(sig);
     if (isEffectivelyVoidReturn(ctx, retType, resolvedName)) return null;
     if (wasmFuncReturnsVoid(ctx, finalSuperIdx)) return null;
-    return resolveWasmType(ctx, retType);
+    return getWasmFuncReturnType(ctx, finalSuperIdx) ?? resolveWasmType(ctx, retType);
   }
   return null;
 }
@@ -13346,7 +13366,7 @@ function compileSuperElementMethodCall(
     const retType = ctx.checker.getReturnTypeOfSignature(sig);
     if (isEffectivelyVoidReturn(ctx, retType, resolvedName)) return VOID_RESULT;
     if (wasmFuncReturnsVoid(ctx, finalSuperIdx)) return VOID_RESULT;
-    return resolveWasmType(ctx, retType);
+    return getWasmFuncReturnType(ctx, finalSuperIdx) ?? resolveWasmType(ctx, retType);
   }
   return VOID_RESULT;
 }
