@@ -3206,9 +3206,11 @@ function compilePropertyAssignment(
         setterValResult,
       );
       fctx.body.push({ op: "local.tee", index: setterTmpVal });
-      // Re-order stack: we need [obj, val] but tee left val on stack after obj
-      // Actually obj is already on stack before val; tee saved val. Pop val, call, re-push val.
-      // Stack is: [obj, val] after tee. But we need obj then val for call. That's correct.
+      // If setter has no value parameter (only self), drop the value before calling
+      const setterHasValueParam = setterParamTypes && setterParamTypes.length > 1;
+      if (!setterHasValueParam) {
+        fctx.body.push({ op: "drop" });
+      }
       const finalSetterIdx = ctx.funcMap.get(setterName) ?? funcIdx;
       fctx.body.push({ op: "call", funcIdx: finalSetterIdx });
       fctx.body.push({ op: "local.get", index: setterTmpVal });
@@ -3399,6 +3401,10 @@ function compileElementAssignment(
                 setValResult,
               );
               fctx.body.push({ op: "local.tee", index: setValLocal });
+              // If setter has no value parameter (only self), drop the value before calling
+              if (!eaSetterParamTypes || eaSetterParamTypes.length <= 1) {
+                fctx.body.push({ op: "drop" });
+              }
               const finalEaSetterIdx = ctx.funcMap.get(setterName) ?? funcIdx;
               fctx.body.push({ op: "call", funcIdx: finalEaSetterIdx });
               fctx.body.push({ op: "local.get", index: setValLocal });
@@ -3667,7 +3673,11 @@ function compileElementAssignment(
             );
             fctx.body.push({ op: "local.set", index: valLocal });
             fctx.body.push({ op: "local.get", index: objLocal });
-            fctx.body.push({ op: "local.get", index: valLocal });
+            // If setter has a value parameter (2+ params), push the value
+            const eaSetterPTypes = getFuncParamTypes(ctx, funcIdx);
+            if (eaSetterPTypes && eaSetterPTypes.length > 1) {
+              fctx.body.push({ op: "local.get", index: valLocal });
+            }
             fctx.body.push({ op: "call", funcIdx });
             // Return the assigned value (assignment expression result)
             fctx.body.push({ op: "local.get", index: valLocal });
@@ -4104,7 +4114,11 @@ function compilePropertyLogicalAssignment(
         );
         fctx.body.push({ op: "local.set", index: tmpVal });
         fctx.body.push({ op: "local.get", index: objLocal });
-        fctx.body.push({ op: "local.get", index: tmpVal });
+        // If setter has a value parameter (2+ params), push the value
+        const logSetterPTypes = getFuncParamTypes(ctx, setterIdx);
+        if (logSetterPTypes && logSetterPTypes.length > 1) {
+          fctx.body.push({ op: "local.get", index: tmpVal });
+        }
         fctx.body.push({ op: "call", funcIdx: setterIdx });
         fctx.body.push({ op: "local.get", index: tmpVal });
       };
@@ -5276,18 +5290,21 @@ function compilePropertyCompoundAssignment(
 
       // Store back via setter: obj.set_prop(result)
       fctx.body.push({ op: "local.get", index: objTmp });
-      fctx.body.push({ op: "local.get", index: resultTmp });
       // Coerce f64 result to setter's expected value param type
       const cmpSetterParamTypes = getFuncParamTypes(ctx, setterIdx);
       const cmpSetterValType = cmpSetterParamTypes?.[1]; // param 0 = self, param 1 = value
-      if (cmpSetterValType && cmpSetterValType.kind === "externref") {
-        // f64 → externref: box the number
-        addUnionImports(ctx);
-        const boxIdx = ctx.funcMap.get("__box_number");
-        if (boxIdx !== undefined) {
-          fctx.body.push({ op: "call", funcIdx: boxIdx });
+      if (cmpSetterValType) {
+        fctx.body.push({ op: "local.get", index: resultTmp });
+        if (cmpSetterValType.kind === "externref") {
+          // f64 → externref: box the number
+          addUnionImports(ctx);
+          const boxIdx = ctx.funcMap.get("__box_number");
+          if (boxIdx !== undefined) {
+            fctx.body.push({ op: "call", funcIdx: boxIdx });
+          }
         }
       }
+      // If setter has no value parameter (only self), don't push value
       const finalCmpSetterIdx = ctx.funcMap.get(setterName) ?? setterIdx;
       fctx.body.push({ op: "call", funcIdx: finalCmpSetterIdx });
 
@@ -6119,16 +6136,18 @@ function compileMemberIncDec(
           );
           fctx.body.push({ op: "local.set", index: newTmp });
           fctx.body.push({ op: "local.get", index: objTmp });
-          fctx.body.push({ op: "local.get", index: newTmp });
-          // Coerce f64 to setter's expected value param type
+          // Coerce f64 to setter's expected value param type (if setter has value param)
           {
             const idParamTypes = getFuncParamTypes(ctx, setterIdx);
             const idValType = idParamTypes?.[1];
-            if (idValType && idValType.kind === "externref") {
-              addUnionImports(ctx);
-              const bIdx = ctx.funcMap.get("__box_number");
-              if (bIdx !== undefined)
-                fctx.body.push({ op: "call", funcIdx: bIdx });
+            if (idValType) {
+              fctx.body.push({ op: "local.get", index: newTmp });
+              if (idValType.kind === "externref") {
+                addUnionImports(ctx);
+                const bIdx = ctx.funcMap.get("__box_number");
+                if (bIdx !== undefined)
+                  fctx.body.push({ op: "call", funcIdx: bIdx });
+              }
             }
           }
           {
@@ -6146,7 +6165,7 @@ function compileMemberIncDec(
             { kind: "f64" },
           );
           fctx.body.push({ op: "local.tee", index: newTmp });
-          // Store: setter expects [obj, val]
+          // Store: setter expects [obj, val] (or just [obj] if setter ignores value)
           const valTmp = allocLocal(
             fctx,
             `__incdec_acc_val_${fctx.locals.length}`,
@@ -6154,16 +6173,18 @@ function compileMemberIncDec(
           );
           fctx.body.push({ op: "local.set", index: valTmp });
           fctx.body.push({ op: "local.get", index: objTmp });
-          fctx.body.push({ op: "local.get", index: valTmp });
-          // Coerce f64 to setter's expected value param type
+          // Coerce f64 to setter's expected value param type (if setter has value param)
           {
             const idParamTypes = getFuncParamTypes(ctx, setterIdx);
             const idValType = idParamTypes?.[1];
-            if (idValType && idValType.kind === "externref") {
-              addUnionImports(ctx);
-              const bIdx = ctx.funcMap.get("__box_number");
-              if (bIdx !== undefined)
-                fctx.body.push({ op: "call", funcIdx: bIdx });
+            if (idValType) {
+              fctx.body.push({ op: "local.get", index: valTmp });
+              if (idValType.kind === "externref") {
+                addUnionImports(ctx);
+                const bIdx = ctx.funcMap.get("__box_number");
+                if (bIdx !== undefined)
+                  fctx.body.push({ op: "call", funcIdx: bIdx });
+              }
             }
           }
           {
@@ -8622,13 +8643,27 @@ function compileCallExpression(
             if (isCall) {
               // .call(thisArg, arg1, arg2, ...) — remaining args are positional
               const paramTypes = getFuncParamTypes(ctx, funcIdx);
+              // User-visible param count excludes self (param 0);
+              // .call() args start at index 1 (index 0 is thisArg)
+              const callParamCount = paramTypes
+                ? paramTypes.length - 1
+                : expr.arguments.length - 1;
               for (let i = 1; i < expr.arguments.length; i++) {
-                compileExpression(
-                  ctx,
-                  fctx,
-                  expr.arguments[i]!,
-                  paramTypes?.[i],
-                );
+                if (i - 1 < callParamCount) {
+                  compileExpression(
+                    ctx,
+                    fctx,
+                    expr.arguments[i]!,
+                    paramTypes?.[i],
+                  );
+                } else {
+                  // Extra argument beyond method's parameter count — evaluate for
+                  // side effects (JS semantics) and discard the result
+                  const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+                  if (extraType !== null && extraType !== VOID_RESULT) {
+                    fctx.body.push({ op: "drop" });
+                  }
+                }
               }
               // Pad missing arguments with defaults (skip self at index 0)
               if (paramTypes) {
@@ -8644,8 +8679,21 @@ function compileCallExpression(
               const elements = (expr.arguments[1] as ts.ArrayLiteralExpression)
                 .elements;
               const paramTypes = getFuncParamTypes(ctx, funcIdx);
+              // User-visible param count excludes self (param 0)
+              const applyParamCount = paramTypes
+                ? paramTypes.length - 1
+                : elements.length;
               for (let i = 0; i < elements.length; i++) {
-                compileExpression(ctx, fctx, elements[i]!, paramTypes?.[i + 1]); // param 0 = self
+                if (i < applyParamCount) {
+                  compileExpression(ctx, fctx, elements[i]!, paramTypes?.[i + 1]); // param 0 = self
+                } else {
+                  // Extra argument beyond method's parameter count — evaluate for
+                  // side effects (JS semantics) and discard the result
+                  const extraType = compileExpression(ctx, fctx, elements[i]!);
+                  if (extraType !== null && extraType !== VOID_RESULT) {
+                    fctx.body.push({ op: "drop" });
+                  }
+                }
               }
               // Pad missing arguments with defaults (skip self at index 0)
               if (paramTypes) {
@@ -10037,13 +10085,26 @@ function compileCallExpression(
           fctx.body.push({ op: "local.get", index: tmp });
           fctx.body.push({ op: "ref.as_non_null" } as Instr);
           const paramTypes = getFuncParamTypes(ctx, funcIdx);
+          // User-visible param count excludes self (param 0)
+          const ngParamCount = paramTypes
+            ? paramTypes.length - 1
+            : expr.arguments.length;
           for (let i = 0; i < expr.arguments.length; i++) {
-            compileExpression(
-              ctx,
-              fctx,
-              expr.arguments[i]!,
-              paramTypes?.[i + 1],
-            );
+            if (i < ngParamCount) {
+              compileExpression(
+                ctx,
+                fctx,
+                expr.arguments[i]!,
+                paramTypes?.[i + 1],
+              );
+            } else {
+              // Extra argument beyond method's parameter count — evaluate for
+              // side effects (JS semantics) and discard the result
+              const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+              if (extraType !== null && extraType !== VOID_RESULT) {
+                fctx.body.push({ op: "drop" });
+              }
+            }
           }
           if (paramTypes) {
             for (
@@ -10084,8 +10145,21 @@ function compileCallExpression(
         }
         // Non-nullable receiver: emit call directly
         const paramTypes = getFuncParamTypes(ctx, funcIdx);
+        // User-visible param count excludes self (param 0)
+        const methodParamCount = paramTypes
+          ? paramTypes.length - 1
+          : expr.arguments.length;
         for (let i = 0; i < expr.arguments.length; i++) {
-          compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
+          if (i < methodParamCount) {
+            compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
+          } else {
+            // Extra argument beyond method's parameter count — evaluate for
+            // side effects (JS semantics) and discard the result
+            const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+            if (extraType !== null && extraType !== VOID_RESULT) {
+              fctx.body.push({ op: "drop" });
+            }
+          }
         }
         // Pad missing arguments with defaults (skip self param at index 0)
         if (paramTypes) {
@@ -11887,8 +11961,27 @@ function compileCallExpression(
             const allArgs = [...partialArgs, ...Array.from(expr.arguments)];
 
             const paramTypes = getFuncParamTypes(ctx, funcIdx);
+            // User-visible param count excludes self (param 0)
+            const bindParamCount = paramTypes
+              ? paramTypes.length - 1
+              : allArgs.length;
             for (let i = 0; i < allArgs.length; i++) {
-              compileExpression(ctx, fctx, allArgs[i]!, paramTypes?.[i + 1]);
+              if (i < bindParamCount) {
+                compileExpression(ctx, fctx, allArgs[i]!, paramTypes?.[i + 1]);
+              } else {
+                // Extra argument beyond method's parameter count — evaluate for
+                // side effects (JS semantics) and discard the result
+                const extraType = compileExpression(ctx, fctx, allArgs[i]!);
+                if (extraType !== null && extraType !== VOID_RESULT) {
+                  fctx.body.push({ op: "drop" });
+                }
+              }
+            }
+            // Pad missing arguments with defaults (skip self at index 0)
+            if (paramTypes) {
+              for (let i = allArgs.length + 1; i < paramTypes.length; i++) {
+                pushDefaultValue(fctx, paramTypes[i]!);
+              }
             }
 
             const finalCallIdx = ctx.funcMap.get(fullName) ?? funcIdx;
@@ -13025,8 +13118,27 @@ function compileSuperMethodCall(
 
   // Push remaining arguments with type hints
   const paramTypes = getFuncParamTypes(ctx, funcIdx);
+  // User-visible param count excludes self (param 0)
+  const superParamCount = paramTypes
+    ? paramTypes.length - 1
+    : expr.arguments.length;
   for (let i = 0; i < expr.arguments.length; i++) {
-    compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
+    if (i < superParamCount) {
+      compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
+    } else {
+      // Extra argument beyond method's parameter count — evaluate for
+      // side effects (JS semantics) and discard the result
+      const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+      if (extraType !== null && extraType !== VOID_RESULT) {
+        fctx.body.push({ op: "drop" });
+      }
+    }
+  }
+  // Pad missing arguments with defaults (skip self param at index 0)
+  if (paramTypes) {
+    for (let i = expr.arguments.length + 1; i < paramTypes.length; i++) {
+      pushDefaultValue(fctx, paramTypes[i]!);
+    }
   }
   // Re-lookup funcIdx: argument compilation may trigger addUnionImports
   const resolvedName = `${ancestor}_${methodName}`;
@@ -13095,8 +13207,27 @@ function compileSuperElementMethodCall(
 
   // Push remaining arguments with type hints
   const paramTypes = getFuncParamTypes(ctx, funcIdx);
+  // User-visible param count excludes self (param 0)
+  const superElemParamCount = paramTypes
+    ? paramTypes.length - 1
+    : expr.arguments.length;
   for (let i = 0; i < expr.arguments.length; i++) {
-    compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
+    if (i < superElemParamCount) {
+      compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
+    } else {
+      // Extra argument beyond method's parameter count — evaluate for
+      // side effects (JS semantics) and discard the result
+      const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+      if (extraType !== null && extraType !== VOID_RESULT) {
+        fctx.body.push({ op: "drop" });
+      }
+    }
+  }
+  // Pad missing arguments with defaults (skip self param at index 0)
+  if (paramTypes) {
+    for (let i = expr.arguments.length + 1; i < paramTypes.length; i++) {
+      pushDefaultValue(fctx, paramTypes[i]!);
+    }
   }
   // Re-lookup funcIdx: argument compilation may trigger addUnionImports
   const resolvedName = `${ancestor}_${methodName}`;
