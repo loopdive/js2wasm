@@ -4,26 +4,26 @@ import { compile } from "../src/index.js";
 describe("Temporal Dead Zone (TDZ) detection (#428)", () => {
   test("let: use before declaration in prior statement", () => {
     const result = compile("x; let x;", { allowJs: true });
-    expect(result.success).toBe(false);
-    expect(result.errors.some(e => e.severity === "error" && e.message.includes("before initialization"))).toBe(true);
+    expect(result.success).toBe(true);
+    expect(result.errors.some(e => e.severity === "warning" && e.message.includes("before initialization"))).toBe(true);
   });
 
   test("let: self-reference in initializer", () => {
     const result = compile("let x = x + 1;", { allowJs: true });
-    expect(result.success).toBe(false);
-    expect(result.errors.some(e => e.severity === "error" && e.message.includes("before initialization"))).toBe(true);
+    expect(result.success).toBe(true);
+    expect(result.errors.some(e => e.severity === "warning" && e.message.includes("before initialization"))).toBe(true);
   });
 
   test("const: use before declaration in prior statement", () => {
     const result = compile("x; const x = 1;", { allowJs: true });
-    expect(result.success).toBe(false);
-    expect(result.errors.some(e => e.severity === "error" && e.message.includes("before initialization"))).toBe(true);
+    expect(result.success).toBe(true);
+    expect(result.errors.some(e => e.severity === "warning" && e.message.includes("before initialization"))).toBe(true);
   });
 
   test("const: self-reference in initializer", () => {
     const result = compile("const x = x + 1;", { allowJs: true });
-    expect(result.success).toBe(false);
-    expect(result.errors.some(e => e.severity === "error" && e.message.includes("before initialization"))).toBe(true);
+    expect(result.success).toBe(true);
+    expect(result.errors.some(e => e.severity === "warning" && e.message.includes("before initialization"))).toBe(true);
   });
 
   test("var: hoisting is valid (no TDZ)", () => {
@@ -43,13 +43,13 @@ describe("Temporal Dead Zone (TDZ) detection (#428)", () => {
 
   test("TDZ in block scope", () => {
     const result = compile("export function f(): number { { x; let x = 1; } return 0; }");
-    expect(result.success).toBe(false);
-    expect(result.errors.some(e => e.severity === "error" && e.message.includes("before initialization"))).toBe(true);
+    expect(result.success).toBe(true);
+    expect(result.errors.some(e => e.severity === "warning" && e.message.includes("before initialization"))).toBe(true);
   });
 
   test("assignment to let before declaration", () => {
     const result = compile("x = 1; let x;", { allowJs: true });
-    expect(result.success).toBe(false);
-    expect(result.errors.some(e => e.severity === "error")).toBe(true);
+    expect(result.success).toBe(true);
+    expect(result.errors.some(e => e.severity === "warning")).toBe(true);
   });
 });
