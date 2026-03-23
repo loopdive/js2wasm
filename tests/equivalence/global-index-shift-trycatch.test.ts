@@ -76,4 +76,53 @@ describe("Global index shifting with string constants in try/catch (#429)", () =
     const testFn = (instance.exports as any).test;
     expect(testFn()).toBe(1);
   });
+
+  it("multiple module globals with class and string constants do not produce immutable global error (#764)", async () => {
+    // Regression test for #764: test262-style code with multiple module-scope
+    // globals (like __fail, __assert_count, callCount) and class definitions
+    // that trigger string constant additions during compilation.
+    // Previously, 240+ tests failed with "immutable global cannot be assigned"
+    // when addStringConstantGlobal shifted indices during function body compilation.
+    const result = compile(`
+      let __fail: number = 0;
+      let __assert_count: number = 1;
+      var callCount: number = 0;
+
+      function assert_sameValue(actual: number, expected: number): void {
+        __assert_count = __assert_count + 1;
+        if (actual !== expected) {
+          if (!__fail) __fail = __assert_count;
+        }
+      }
+
+      export function test(): number {
+        try {
+          // String concatenation with boolean triggers addStringConstantGlobal
+          const msg1 = "check:" + (1 > 0);
+          callCount = callCount + 1;
+          assert_sameValue(callCount, 1);
+          // More string constants to increase import count
+          const msg2 = "result:" + (2 > 1);
+          callCount = callCount + 1;
+          assert_sameValue(callCount, 2);
+        } catch (e) {
+          // This global.set must target the correct module global,
+          // not an immutable string constant import
+          if (!__fail) __fail = -1;
+          throw e;
+        }
+        if (__fail) { return __fail; }
+        return 1;
+      }
+    `);
+    expect(result.success).toBe(true);
+    expect(result.errors.filter(e => e.severity === "error")).toHaveLength(0);
+
+    const { buildImports: rtBuildImports } = await import("../../src/runtime.js");
+    const imports = rtBuildImports(result.imports, undefined, result.stringPool);
+    // This instantiate call would throw CompileError if global indices are wrong
+    const { instance } = await WebAssembly.instantiate(result.binary, imports);
+    const testFn = (instance.exports as any).test;
+    expect(testFn()).toBe(1);
+  });
 });

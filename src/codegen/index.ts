@@ -7512,9 +7512,35 @@ function fixupModuleGlobalIndices(
     }
   }
 
+  // Shift parent function contexts saved on the funcStack during nested
+  // closure/method compilation. These are in-flight function bodies that are
+  // NOT in ctx.mod.functions and NOT ctx.currentFunc, so they would otherwise
+  // be missed by the global index shift.
+  for (const parentFctx of ctx.funcStack) {
+    if (!shifted.has(parentFctx.body)) {
+      shiftGlobalIndices(parentFctx.body);
+      shifted.add(parentFctx.body);
+    }
+    for (const sb of parentFctx.savedBodies) {
+      if (!shifted.has(sb)) {
+        shiftGlobalIndices(sb);
+        shifted.add(sb);
+      }
+    }
+  }
+
+  // Shift parent function bodies still being compiled (parentBodiesStack).
+  for (const pb of ctx.parentBodiesStack) {
+    if (!shifted.has(pb)) {
+      shiftGlobalIndices(pb);
+      shifted.add(pb);
+    }
+  }
+
   // Also fix up the pending module-init body (compiled but not yet in ctx.mod.functions)
-  if (ctx.pendingInitBody) {
+  if (ctx.pendingInitBody && !shifted.has(ctx.pendingInitBody)) {
     shiftGlobalIndices(ctx.pendingInitBody);
+    shifted.add(ctx.pendingInitBody);
   }
 
   // Also fix up global init expressions (e.g. globals that reference other globals)
@@ -7537,6 +7563,13 @@ function fixupModuleGlobalIndices(
   shiftMap(ctx.staticProps);
   shiftMap(ctx.protoGlobals);
   shiftMap(ctx.tdzGlobals);
+
+  // Shift global indices stored in staticInitExprs (deferred static property initializers)
+  for (const entry of ctx.staticInitExprs) {
+    if (entry.globalIdx >= threshold) {
+      entry.globalIdx += delta;
+    }
+  }
 
   // Shift scalar global indices stored on ctx
   if (ctx.symbolCounterGlobalIdx >= threshold) {
