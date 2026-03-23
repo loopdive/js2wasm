@@ -186,7 +186,7 @@ async function init() {
 
   // Position goals: conformance goals in a vertical DAG at the right side
   const goalMargin = { top: 80, right: 60 };
-  const goalColSpacing = 250;
+  const goalColSpacing = 350;
   const goalRowSpacing = 100;
 
   // Build columns by depth for conformance goals
@@ -197,7 +197,7 @@ async function init() {
 
   // X position: goals spread from right to left (deepest at right)
   // Y position: centered within each column
-  const goalAreaLeft = 100;
+  const goalAreaLeft = 300;
   const goalAreaTop = goalMargin.top;
 
   goalColumns.forEach((col, ci) => {
@@ -232,25 +232,26 @@ async function init() {
     else issuesByGoal.get('__none__').push(n);
   });
 
-  // Position issues fanning out to the right of their goal
+  // Position issues fanning out to the LEFT of their goal (they feed into it)
   const issueFanOffset = GOAL_W / 2 + 40;
   for (const [goalId, issues] of issuesByGoal) {
     if (goalId === '__none__') continue;
     const gg = goalMap.get(goalId);
     if (!gg) continue;
     issues.sort((a, b) => (PRIO_ORDER[a.priority] || 3) - (PRIO_ORDER[b.priority] || 3));
+    const maxBarW = Math.max(...issues.map(n => BAR_W[n.priority] || 60));
     const startY = gg.y - (issues.length - 1) * (BAR_H + 4) / 2;
     issues.forEach((n, i) => {
-      n.x = gg.x + issueFanOffset;
+      n.x = gg.x - issueFanOffset - maxBarW;
       n.fx = n.x;
       n.y = startY + i * (BAR_H + 4);
     });
   }
 
-  // Unassigned issues: stack on the far right
+  // Unassigned issues: stack on the far left
   const unassigned = issuesByGoal.get('__none__') || [];
   unassigned.sort((a, b) => (PRIO_ORDER[a.priority] || 3) - (PRIO_ORDER[b.priority] || 3));
-  const unassignedX = goalAreaLeft + (maxGoalDepth + 1) * goalColSpacing + 120;
+  const unassignedX = goalAreaLeft - 200;
   unassigned.forEach((n, i) => {
     n.x = unassignedX;
     n.fx = n.x;
@@ -379,7 +380,14 @@ async function init() {
       return `M${sx},${s.y}C${sx + dx * 0.4},${s.y},${tx - dx * 0.4},${t.y},${tx},${t.y}`;
     });
 
-    // Goal-dep links: prerequisite goal → dependent issue (curved)
+    // Member issue → goal links: issue (right edge) → goal (left edge)
+    goalIssueLinkEl
+      .attr('x1', l => { const n = nodeMap.get(l.issue); return n ? n.x + (BAR_W[n.priority] || 60) : 0; })
+      .attr('y1', l => { const n = nodeMap.get(l.issue); return n ? n.y : 0; })
+      .attr('x2', l => { const gg = goalMap.get(l.goal); return gg ? gg.x - GOAL_W / 2 : 0; })
+      .attr('y2', l => { const gg = goalMap.get(l.goal); return gg ? gg.y : 0; });
+
+    // Goal-dep links: prerequisite goal (right edge) → dependent issue (left edge)
     goalDepLinkEl.attr('d', l => {
       const gg = goalMap.get(l.goal);
       const n = nodeMap.get(l.issue);
@@ -389,13 +397,6 @@ async function init() {
       const dx = tx - sx;
       return `M${sx},${sy}C${sx + dx * 0.4},${sy},${tx - dx * 0.4},${ty},${tx},${ty}`;
     });
-
-    // Member issue → goal links (straight lines)
-    goalIssueLinkEl
-      .attr('x1', l => { const n = nodeMap.get(l.issue); return n ? n.x + (BAR_W[n.priority] || 60) : 0; })
-      .attr('y1', l => { const n = nodeMap.get(l.issue); return n ? n.y : 0; })
-      .attr('x2', l => { const gg = goalMap.get(l.goal); return gg ? gg.x - GOAL_W / 2 : 0; })
-      .attr('y2', l => { const gg = goalMap.get(l.goal); return gg ? gg.y : 0; });
   }
 
   updatePositions();
