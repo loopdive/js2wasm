@@ -897,6 +897,12 @@ const DOWNGRADE_DIAG_CODES = new Set([
   2508, // "No base constructor has the specified number of type arguments" — valid JS patterns in test262 (#537)
   1262, // "Identifier expected. 'X' is a reserved word at the top-level of a module" — await as identifier (#537)
   2393, // "Duplicate function implementation" — valid JS function re-declarations (#537)
+  2721, // "Cannot invoke an object which is possibly 'null' or 'undefined'" — codegen has null guards (#406)
+  2722, // "Cannot invoke an object which is possibly 'null'" — codegen has null guards (#406)
+  2723, // "Cannot invoke an object which is possibly 'undefined'" — codegen has null guards (#406)
+  2448, // "Block-scoped variable 'X' used before its declaration" — valid JS TDZ pattern, runtime ReferenceError (#723)
+  2474, // "Cannot access 'X' before initialization" — valid JS TDZ pattern, runtime ReferenceError (#723)
+  1489, // "Decimals with leading zeros are not allowed" — valid sloppy-mode JS octal literals
 ]);
 
 /**
