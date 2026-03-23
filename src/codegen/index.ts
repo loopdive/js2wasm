@@ -1093,6 +1093,10 @@ export function generateModule(
   // Stack-balancing fixup: ensure all branches in if/try/block have matching stack states
   stackBalance(mod);
 
+  // Late fixup: repair extern.convert_any applied to non-anyref values.
+  // Must run after all other passes since they can introduce invalid coercions.
+  fixupExternConvertAny(ctx);
+
   return { module: mod, errors: ctx.errors };
 }
 
@@ -11577,6 +11581,12 @@ function fixupStructNewResultCoercion(ctx: CodegenContext): void {
           if (prev.op === "ref.as_non_null" && pos > 0) {
             pos--;
           }
+          // Skip extern.convert_any — already-inserted coercion for a later field;
+          // without this skip the backward walk gets out of sync and attributes
+          // the wrong value-producer instruction to the current field.
+          if (instrs[pos]!.op === "extern.convert_any" && pos > 0) {
+            pos--;
+          }
 
           if (field.type.kind === "externref") {
             const prevInstr = instrs[pos]!;
@@ -11640,6 +11650,144 @@ function fixupStructNewResultCoercion(ctx: CodegenContext): void {
           instrs.splice(i + 1, 0, { op: "extern.convert_any" } as Instr);
           i++;
         }
+      }
+    }
+
+    // Peephole: fix extern.convert_any applied to non-anyref values.
+    // extern.convert_any expects anyref input. Remove if input is already externref,
+    // or replace with drop+ref.null.extern if input is funcref (separate hierarchy).
+    for (let j = instrs.length - 1; j > 0; j--) {
+      if (instrs[j]!.op === "extern.convert_any") {
+        const prev = instrs[j - 1]!;
+        let isAlreadyExternref = false;
+        let isFuncref = false;
+        if (prev.op === "extern.convert_any") {
+          isAlreadyExternref = true;
+        } else if (prev.op === "ref.null.extern" || prev.op === "ref.null extern") {
+          isAlreadyExternref = true;
+        } else if (prev.op === "ref.func") {
+          isFuncref = true;
+        } else if (prev.op === "local.get") {
+          const lt = getLocalType(func, (prev as { index: number }).index);
+          if (lt && lt.kind === "externref") isAlreadyExternref = true;
+          if (lt && lt.kind === "funcref") isFuncref = true;
+        } else if (prev.op === "global.get") {
+          const gIdx = (prev as { index: number }).index;
+          const gDef = ctx.mod.globals[gIdx];
+          if (gDef && gDef.type.kind === "externref") isAlreadyExternref = true;
+          if (gDef && gDef.type.kind === "funcref") isFuncref = true;
+        } else if (prev.op === "struct.get") {
+          // struct.get can produce funcref fields — check the struct type
+          const sTypeIdx = (prev as any).typeIdx;
+          const sFieldIdx = (prev as any).fieldIdx;
+          const sDef = ctx.mod.types[sTypeIdx];
+          if (sDef && sDef.kind === "struct") {
+            const sField = (sDef as any).fields[sFieldIdx];
+            if (sField) {
+              const ft = sField.type;
+              if (ft.kind === "funcref") isFuncref = true;
+            }
+          }
+        } else if (prev.op === "ref.cast" || prev.op === "ref.cast_null") {
+          // ref.cast to a func type produces funcref, not anyref
+          const castTypeIdx = (prev as any).typeIdx;
+          const castDef = ctx.mod.types[castTypeIdx];
+          if (castDef && castDef.kind === "func") isFuncref = true;
+        }
+        if (isAlreadyExternref || isFuncref) {
+          // Remove invalid extern.convert_any (already externref, or funcref which is not anyref)
+          instrs.splice(j, 1);
+        }
+      }
+    }
+  }
+
+  for (const func of ctx.mod.functions) {
+    if (func.body.length > 0) {
+      fixupInstrs(func, func.body);
+    }
+  }
+}
+
+/**
+ * Late-stage fixup: repair extern.convert_any applied to non-anyref values.
+ * extern.convert_any expects anyref input, but various passes can produce
+ * extern.convert_any on externref (redundant) or funcref (invalid — separate hierarchy).
+ * Must run after ALL other codegen/fixup passes.
+ */
+function fixupExternConvertAny(ctx: CodegenContext): void {
+  function getLocalType(func: WasmFunction, localIdx: number): ValType | null {
+    const funcType = ctx.mod.types[func.typeIdx];
+    if (!funcType || funcType.kind !== "func") return null;
+    const ft = funcType as FuncTypeDef;
+    if (localIdx < ft.params.length) return ft.params[localIdx]!;
+    const bodyLocalIdx = localIdx - ft.params.length;
+    if (bodyLocalIdx < func.locals.length) return func.locals[bodyLocalIdx]!.type;
+    return null;
+  }
+
+  function fixupInstrs(func: WasmFunction, instrs: Instr[]): void {
+    // Recurse into nested blocks first
+    for (const instr of instrs) {
+      if ("body" in instr && Array.isArray((instr as any).body)) {
+        fixupInstrs(func, (instr as any).body);
+      }
+      if ("then" in instr && Array.isArray((instr as any).then)) {
+        fixupInstrs(func, (instr as any).then);
+      }
+      if ("else" in instr && Array.isArray((instr as any).else)) {
+        fixupInstrs(func, (instr as any).else);
+      }
+      if ("catches" in instr && Array.isArray((instr as any).catches)) {
+        for (const c of (instr as any).catches) {
+          if (Array.isArray(c.body)) fixupInstrs(func, c.body);
+        }
+      }
+      if ("catchAll" in instr && Array.isArray((instr as any).catchAll)) {
+        fixupInstrs(func, (instr as any).catchAll);
+      }
+    }
+
+    // Scan for extern.convert_any with non-anyref inputs
+    for (let j = instrs.length - 1; j > 0; j--) {
+      if (instrs[j]!.op !== "extern.convert_any") continue;
+      const prev = instrs[j - 1]!;
+      let isAlreadyExternref = false;
+      let isFuncref = false;
+
+      if (prev.op === "extern.convert_any") {
+        isAlreadyExternref = true;
+      } else if (prev.op === "ref.null.extern" || prev.op === "ref.null extern") {
+        isAlreadyExternref = true;
+      } else if (prev.op === "ref.func") {
+        isFuncref = true;
+      } else if (prev.op === "local.get") {
+        const lt = getLocalType(func, (prev as { index: number }).index);
+        if (lt && lt.kind === "externref") isAlreadyExternref = true;
+        if (lt && lt.kind === "funcref") isFuncref = true;
+      } else if (prev.op === "global.get") {
+        const gIdx = (prev as { index: number }).index;
+        const gDef = ctx.mod.globals[gIdx];
+        if (gDef && gDef.type.kind === "externref") isAlreadyExternref = true;
+        if (gDef && gDef.type.kind === "funcref") isFuncref = true;
+      } else if (prev.op === "struct.get") {
+        const sTypeIdx = (prev as any).typeIdx;
+        const sFieldIdx = (prev as any).fieldIdx;
+        const sDef = ctx.mod.types[sTypeIdx];
+        if (sDef && sDef.kind === "struct") {
+          const sField = (sDef as any).fields[sFieldIdx];
+          if (sField && sField.type.kind === "funcref") isFuncref = true;
+        }
+      } else if (prev.op === "ref.cast" || prev.op === "ref.cast_null") {
+        const castTypeIdx = (prev as any).typeIdx;
+        const castDef = ctx.mod.types[castTypeIdx];
+        if (castDef && castDef.kind === "func") isFuncref = true;
+      }
+
+      if (isAlreadyExternref || isFuncref) {
+        // For externref: remove redundant extern.convert_any (already externref)
+        // For funcref: remove invalid extern.convert_any (funcref is not subtype of anyref)
+        instrs.splice(j, 1);
       }
     }
   }
