@@ -941,7 +941,12 @@ export function coerceType(
     return;
   }
 
-  // i32/f64 → externref (fallback)
+  // anyref/eqref → externref: extern.convert_any
+  if ((from.kind === "anyref" || from.kind === "eqref") && to.kind === "externref") {
+    fctx.body.push({ op: "extern.convert_any" });
+    return;
+  }
+  // Remaining → externref fallback (funcref, etc.): drop and push null
   if (to.kind === "externref") {
     fctx.body.push({ op: "drop" });
     fctx.body.push({ op: "ref.null.extern" });
@@ -1299,6 +1304,85 @@ export function coercionInstrs(ctx: CodegenContext, from: ValType, to: ValType):
   }
   // ref/ref_null → externref: extern.convert_any
   if ((from.kind === "ref" || from.kind === "ref_null") && to.kind === "externref") {
+    return [{ op: "extern.convert_any" } as Instr];
+  }
+  // externref → i32: unbox number then truncate
+  if (from.kind === "externref" && to.kind === "i32") {
+    addUnionImports(ctx);
+    const funcIdx = ctx.funcMap.get("__unbox_number");
+    if (funcIdx !== undefined) {
+      return [
+        { op: "call", funcIdx } as Instr,
+        { op: "i32.trunc_sat_f64_s" } as Instr,
+      ];
+    }
+  }
+  // i64 → f64
+  if (from.kind === "i64" && to.kind === "f64") {
+    return [{ op: "f64.convert_i64_s" } as Instr];
+  }
+  // f64 → i64
+  if (from.kind === "f64" && to.kind === "i64") {
+    return [{ op: "i64.trunc_sat_f64_s" } as Instr];
+  }
+  // i32 → i64
+  if (from.kind === "i32" && to.kind === "i64") {
+    return [{ op: "i64.extend_i32_s" } as Instr];
+  }
+  // i64 → i32
+  if (from.kind === "i64" && to.kind === "i32") {
+    return [{ op: "i32.wrap_i64" } as Instr];
+  }
+  // i64 → externref: convert to f64 then box
+  if (from.kind === "i64" && to.kind === "externref") {
+    addUnionImports(ctx);
+    const funcIdx = ctx.funcMap.get("__box_number");
+    if (funcIdx !== undefined) {
+      return [
+        { op: "f64.convert_i64_s" } as Instr,
+        { op: "call", funcIdx } as Instr,
+      ];
+    }
+  }
+  // externref → i64: unbox number then truncate
+  if (from.kind === "externref" && to.kind === "i64") {
+    addUnionImports(ctx);
+    const funcIdx = ctx.funcMap.get("__unbox_number");
+    if (funcIdx !== undefined) {
+      return [
+        { op: "call", funcIdx } as Instr,
+        { op: "i64.trunc_sat_f64_s" } as Instr,
+      ];
+    }
+  }
+  // ref/ref_null → f64: drop and push NaN (ToNumber on object without valueOf)
+  if ((from.kind === "ref" || from.kind === "ref_null") && to.kind === "f64") {
+    return [
+      { op: "drop" } as Instr,
+      { op: "f64.const", value: NaN } as Instr,
+    ];
+  }
+  // ref/ref_null → i32: drop and push 0
+  if ((from.kind === "ref" || from.kind === "ref_null") && to.kind === "i32") {
+    return [
+      { op: "drop" } as Instr,
+      { op: "i32.const", value: 0 } as Instr,
+    ];
+  }
+  // funcref → externref: extern.convert_any
+  if (from.kind === "funcref" && to.kind === "externref") {
+    return [{ op: "extern.convert_any" } as Instr];
+  }
+  // funcref → anyref: no-op (funcref is a subtype of anyref in WasmGC)
+  if (from.kind === "funcref" && to.kind === "anyref") {
+    return [];
+  }
+  // eqref → externref: extern.convert_any
+  if (from.kind === "eqref" && to.kind === "externref") {
+    return [{ op: "extern.convert_any" } as Instr];
+  }
+  // anyref → externref: extern.convert_any
+  if (from.kind === "anyref" && to.kind === "externref") {
     return [{ op: "extern.convert_any" } as Instr];
   }
   return [];
