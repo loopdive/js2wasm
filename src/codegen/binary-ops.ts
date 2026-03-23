@@ -116,6 +116,30 @@ function tryFlattenBinaryChain(
     let rightType = compileExpression(ctx, fctx, operands[i], numericHint);
     if (!rightType) return null;
 
+    // Coerce ref/externref operands to f64 for numeric operations
+    const leftIsRef = resultType.kind === "externref" || resultType.kind === "ref" || resultType.kind === "ref_null";
+    const rightIsRef = rightType.kind === "externref" || rightType.kind === "ref" || rightType.kind === "ref_null";
+    if (leftIsRef || rightIsRef) {
+      if (rightIsRef) {
+        const tmpR = allocTempLocal(fctx, rightType);
+        fctx.body.push({ op: "local.set", index: tmpR });
+        if (leftIsRef) {
+          coerceType(ctx, fctx, resultType, { kind: "f64" });
+        }
+        fctx.body.push({ op: "local.get", index: tmpR });
+        coerceType(ctx, fctx, rightType, { kind: "f64" });
+        releaseTempLocal(fctx, tmpR);
+      } else {
+        const tmpR = allocTempLocal(fctx, rightType);
+        fctx.body.push({ op: "local.set", index: tmpR });
+        coerceType(ctx, fctx, resultType, { kind: "f64" });
+        fctx.body.push({ op: "local.get", index: tmpR });
+        releaseTempLocal(fctx, tmpR);
+      }
+      resultType = { kind: "f64" };
+      rightType = { kind: "f64" };
+    }
+
     // Promote i32/f64 mismatch
     if (resultType.kind === "i32" && rightType.kind === "f64") {
       const tmpR = allocTempLocal(fctx, { kind: "f64" });
