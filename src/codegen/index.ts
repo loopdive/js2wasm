@@ -643,6 +643,10 @@ export function generateModule(
   // after the constructor's struct.new was already emitted (#516).
   fixupStructNewArgCounts(ctx);
 
+  // Fixup pass: insert extern.convert_any after struct.new when the result
+  // is stored into an externref local/global.
+  fixupStructNewResultCoercion(ctx);
+
   // Collect ref.func targets so the binary emitter can add a declarative element segment
   collectDeclaredFuncRefs(ctx);
 
@@ -803,6 +807,10 @@ export function generateMultiModule(
 
   // Fixup pass: reconcile struct.new argument counts with actual struct field counts.
   fixupStructNewArgCounts(ctx);
+
+  // Fixup pass: insert extern.convert_any after struct.new when the result
+  // is stored into an externref local/global.
+  fixupStructNewResultCoercion(ctx);
 
   // Collect ref.func targets so the binary emitter can add a declarative element segment
   collectDeclaredFuncRefs(ctx);
@@ -11056,6 +11064,131 @@ function fixupStructNewArgCounts(ctx: CodegenContext): void {
   for (const func of ctx.mod.functions) {
     if (func.body.length > 0) {
       fixupInstrs(func.body);
+    }
+  }
+}
+
+/**
+ * Post-compilation fixup: insert extern.convert_any after struct.new when
+ * the result is stored into an externref local (local.set / local.tee).
+ *
+ * This happens when a vec/class struct is created but the target variable
+ * was typed as externref by the compiler.
+ */
+function fixupStructNewResultCoercion(ctx: CodegenContext): void {
+  function getLocalType(func: WasmFunction, localIdx: number): ValType | null {
+    const funcType = ctx.mod.types[func.typeIdx];
+    if (!funcType || funcType.kind !== "func") return null;
+    const ft = funcType as FuncTypeDef;
+    if (localIdx < ft.params.length) {
+      return ft.params[localIdx]!;
+    }
+    const bodyLocalIdx = localIdx - ft.params.length;
+    if (bodyLocalIdx < func.locals.length) {
+      return func.locals[bodyLocalIdx]!.type;
+    }
+    return null;
+  }
+
+  function fixupInstrs(func: WasmFunction, instrs: Instr[]): void {
+    for (let i = 0; i < instrs.length; i++) {
+      const instr = instrs[i]!;
+
+      // Recurse into nested instruction arrays
+      if ("body" in instr && Array.isArray((instr as any).body)) {
+        fixupInstrs(func, (instr as any).body);
+      }
+      if ("then" in instr && Array.isArray((instr as any).then)) {
+        fixupInstrs(func, (instr as any).then);
+      }
+      if ("else" in instr && Array.isArray((instr as any).else)) {
+        fixupInstrs(func, (instr as any).else);
+      }
+      if ("catches" in instr && Array.isArray((instr as any).catches)) {
+        for (const c of (instr as any).catches) {
+          if (Array.isArray(c.body)) fixupInstrs(func, c.body);
+        }
+      }
+      if ("catchAll" in instr && Array.isArray((instr as any).catchAll)) {
+        fixupInstrs(func, (instr as any).catchAll);
+      }
+
+      if (instr.op !== "struct.new") continue;
+      const typeIdx = (instr as { typeIdx: number }).typeIdx;
+      const typeDef = ctx.mod.types[typeIdx];
+
+      // Fix struct.new arguments: if a field expects externref but the
+      // preceding instruction produces a ref/ref_null, insert extern.convert_any
+      if (typeDef && typeDef.kind === "struct") {
+        const fields = typeDef.fields;
+        // Walk backwards through preceding instructions to find value-producing
+        // instructions for each field. We only fix the simple case where the
+        // preceding instruction is local.get/global.get producing a ref type
+        // and the field expects externref.
+        let insertions: { pos: number; op: Instr }[] = [];
+        let pos = i; // position just before struct.new
+        for (let fi = fields.length - 1; fi >= 0; fi--) {
+          pos--;
+          if (pos < 0) break;
+          const prev = instrs[pos]!;
+          const field = fields[fi]!;
+
+          // Skip ref.as_non_null — it doesn't produce a new stack value
+          if (prev.op === "ref.as_non_null" && pos > 0) {
+            pos--;
+          }
+
+          if (field.type.kind === "externref") {
+            const prevInstr = instrs[pos]!;
+            if (prevInstr.op === "local.get") {
+              const lt = getLocalType(func, (prevInstr as { index: number }).index);
+              if (lt && (lt.kind === "ref" || lt.kind === "ref_null")) {
+                insertions.push({ pos: pos + 1, op: { op: "extern.convert_any" } as Instr });
+              }
+            } else if (prevInstr.op === "global.get") {
+              // Check global type
+              const gIdx = (prevInstr as { globalIdx: number }).globalIdx;
+              const gDef = ctx.mod.globals[gIdx];
+              if (gDef && (gDef.type.kind === "ref" || gDef.type.kind === "ref_null")) {
+                insertions.push({ pos: pos + 1, op: { op: "extern.convert_any" } as Instr });
+              }
+            }
+          }
+        }
+        // Apply insertions in reverse order to preserve positions
+        for (let ii = insertions.length - 1; ii >= 0; ii--) {
+          instrs.splice(insertions[ii]!.pos, 0, insertions[ii]!.op);
+          i++; // adjust loop index for inserted instructions
+        }
+      }
+
+      // Check what consumes the struct.new result
+      const next = instrs[i + 1];
+      if (!next) continue;
+
+      if (next.op === "local.set" || next.op === "local.tee") {
+        const localIdx = (next as { index: number }).index;
+        const localType = getLocalType(func, localIdx);
+        if (localType && localType.kind === "externref") {
+          // Insert extern.convert_any between struct.new and local.set/tee
+          instrs.splice(i + 1, 0, { op: "extern.convert_any" } as Instr);
+          i++; // skip the inserted instruction
+        }
+      } else if (next.op === "global.set") {
+        // Check global type
+        const globalIdx = (next as { globalIdx: number }).globalIdx;
+        const globalDef = ctx.mod.globals[globalIdx];
+        if (globalDef && globalDef.type.kind === "externref") {
+          instrs.splice(i + 1, 0, { op: "extern.convert_any" } as Instr);
+          i++;
+        }
+      }
+    }
+  }
+
+  for (const func of ctx.mod.functions) {
+    if (func.body.length > 0) {
+      fixupInstrs(func, func.body);
     }
   }
 }
