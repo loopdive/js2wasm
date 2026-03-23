@@ -22,6 +22,7 @@ makes the error paths spec-compliant.
 | **723** | TDZ violations: throw ReferenceError before let/const init | 230 FAIL | High |
 | **402** | Negative tests: expected SyntaxError not raised | 434 FAIL | High |
 | **443** | Expected ReferenceError but succeeded | 6 FAIL | Low |
+| **774** | Early error checks — tests expect SyntaxError but compile | 2,657 FAIL | High |
 
 ## Success criteria
 

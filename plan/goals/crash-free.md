@@ -16,10 +16,12 @@ catchable errors, which many test262 tests expect.
 
 | # | Title | Impact | Priority |
 |---|-------|--------|----------|
-| **728** | Null pointer dereference → TypeError, not trap | 1,604 FAIL | Critical |
+| **775** | Null pointer traps → catchable TypeError (targeted fix) | 1,604 FAIL | Critical |
+| **728** | Null pointer dereference → TypeError, not trap (reverted — too broad) | 1,604 FAIL | Critical |
 | **512** | RuntimeError: illegal cast | 683 FAIL | Critical |
 | **441** | Null pointer dereference (residual) | 129 FAIL | High |
 | **315** | Wasm validation error audit | 93 CE | Medium |
+| **768** | throwOnNull regression fix | 6,478 FAIL | Critical | ✅ Done |
 
 ## Success criteria
 

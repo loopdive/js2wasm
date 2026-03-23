@@ -68,6 +68,8 @@ type mismatches) and can be fixed in bulk.
 | **413** | Parameter default self-reference | 59 CE | Medium | Open |
 | **404** | Compound assignment on unresolvable property type | 88 CE | Medium | Open |
 | **433** | Equality operators mixed type i32/f64 mismatch | 10 CE | Low | Open |
+| **769** | lib.d.ts RegExp extern class registration | 600 CE | Critical | ✅ Done |
+| **772** | extern.convert_any at call sites | 1,299 CE | Critical | ✅ Partially done (-463) |
 | **776** | yield in expression position — not enough args | ~100 CE | Medium | ✅ Done |
 | **777** | immutable global — fixupModuleGlobalIndices | 240 CE | Medium | ✅ Done |
 

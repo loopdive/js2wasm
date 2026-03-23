@@ -25,6 +25,7 @@ builtin-methods and iterator-protocol.
 | **460** | Object.create for known prototypes | — | Medium |
 | **239** | Element access on struct types (bracket notation) | — | Medium |
 | **274** | Property access on function type (.name, .length) | — | Medium |
+| **770** | propertyHelper verifyProperty in test262 preamble | 1,219 FAIL | High |
 
 ## Success criteria
 
