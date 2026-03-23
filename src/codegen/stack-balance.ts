@@ -878,7 +878,7 @@ function inferInstrType(
  * Check if a coercion is needed and generate the coercion instruction(s).
  * Returns an array of instructions to insert, or empty if no coercion needed.
  */
-function callArgCoercionInstrs(actual: ValType, expected: ValType): Instr[] {
+function callArgCoercionInstrs(actual: ValType, expected: ValType, boxIdx: number, unboxIdx: number): Instr[] {
   // Same type — no coercion
   if (actual.kind === expected.kind) {
     if ((actual.kind === "ref" || actual.kind === "ref_null") &&
@@ -890,15 +890,71 @@ function callArgCoercionInstrs(actual: ValType, expected: ValType): Instr[] {
       return [];
     }
   }
-  // Only apply the safest lossless coercion in this post-pass:
-  // ref/ref_null → externref via extern.convert_any.
-  // Other coercions are left to the codegen (compileExpression already handles
-  // them when expectedType is provided).
 
   // ref/ref_null → externref: extern.convert_any (lossless, always safe)
   if ((actual.kind === "ref" || actual.kind === "ref_null") && expected.kind === "externref") {
     return [{ op: "extern.convert_any" } as Instr];
   }
+
+  // f64 → externref: box via __box_number
+  if (actual.kind === "f64" && expected.kind === "externref" && boxIdx >= 0) {
+    return [{ op: "call", funcIdx: boxIdx } as unknown as Instr];
+  }
+
+  // i32 → externref: convert to f64, then box
+  if (actual.kind === "i32" && expected.kind === "externref" && boxIdx >= 0) {
+    return [
+      { op: "f64.convert_i32_s" } as unknown as Instr,
+      { op: "call", funcIdx: boxIdx } as unknown as Instr,
+    ];
+  }
+
+  // i64 → externref: convert to f64, then box
+  if (actual.kind === "i64" && expected.kind === "externref" && boxIdx >= 0) {
+    return [
+      { op: "f64.convert_i64_s" } as unknown as Instr,
+      { op: "call", funcIdx: boxIdx } as unknown as Instr,
+    ];
+  }
+
+  // i32 → i64: extend
+  if (actual.kind === "i32" && expected.kind === "i64") {
+    return [{ op: "i64.extend_i32_s" } as unknown as Instr];
+  }
+
+  // i64 → i32: wrap
+  if (actual.kind === "i64" && expected.kind === "i32") {
+    return [{ op: "i32.wrap_i64" } as unknown as Instr];
+  }
+
+  // externref → f64: unbox via __unbox_number
+  if (actual.kind === "externref" && expected.kind === "f64" && unboxIdx >= 0) {
+    return [{ op: "call", funcIdx: unboxIdx } as unknown as Instr];
+  }
+
+  // ref/ref_null → f64: extern.convert_any then unbox
+  if ((actual.kind === "ref" || actual.kind === "ref_null") && expected.kind === "f64" && unboxIdx >= 0) {
+    return [
+      { op: "extern.convert_any" } as Instr,
+      { op: "call", funcIdx: unboxIdx } as unknown as Instr,
+    ];
+  }
+
+  // i32 → f64: convert
+  if (actual.kind === "i32" && expected.kind === "f64") {
+    return [{ op: "f64.convert_i32_s" } as unknown as Instr];
+  }
+
+  // i64 → f64: convert
+  if (actual.kind === "i64" && expected.kind === "f64") {
+    return [{ op: "f64.convert_i64_s" } as unknown as Instr];
+  }
+
+  // f64 → i32: truncate
+  if (actual.kind === "f64" && expected.kind === "i32") {
+    return [{ op: "i32.trunc_sat_f64_s" } as unknown as Instr];
+  }
+
   return [];
 }
 
@@ -921,6 +977,8 @@ function fixCallArgTypesInBody(
   mod: WasmModule,
   numImports: number,
   sigs: FuncSigInfo,
+  boxIdx: number,
+  unboxIdx: number,
 ): number {
   let fixups = 0;
 
@@ -928,20 +986,20 @@ function fixCallArgTypesInBody(
   for (const instr of body) {
     if (instr.op === "if") {
       const ifInstr = instr as any;
-      if (ifInstr.then) fixups += fixCallArgTypesInBody(ifInstr.then, localTypes, globalTypes, types, mod, numImports, sigs);
-      if (ifInstr.else) fixups += fixCallArgTypesInBody(ifInstr.else, localTypes, globalTypes, types, mod, numImports, sigs);
+      if (ifInstr.then) fixups += fixCallArgTypesInBody(ifInstr.then, localTypes, globalTypes, types, mod, numImports, sigs, boxIdx, unboxIdx);
+      if (ifInstr.else) fixups += fixCallArgTypesInBody(ifInstr.else, localTypes, globalTypes, types, mod, numImports, sigs, boxIdx, unboxIdx);
     } else if (instr.op === "block" || instr.op === "loop") {
       const blockInstr = instr as any;
-      if (blockInstr.body) fixups += fixCallArgTypesInBody(blockInstr.body, localTypes, globalTypes, types, mod, numImports, sigs);
+      if (blockInstr.body) fixups += fixCallArgTypesInBody(blockInstr.body, localTypes, globalTypes, types, mod, numImports, sigs, boxIdx, unboxIdx);
     } else if (instr.op === "try") {
       const tryInstr = instr as any;
-      if (tryInstr.body) fixups += fixCallArgTypesInBody(tryInstr.body, localTypes, globalTypes, types, mod, numImports, sigs);
+      if (tryInstr.body) fixups += fixCallArgTypesInBody(tryInstr.body, localTypes, globalTypes, types, mod, numImports, sigs, boxIdx, unboxIdx);
       if (tryInstr.catches) {
         for (const c of tryInstr.catches) {
-          if (c.body) fixups += fixCallArgTypesInBody(c.body, localTypes, globalTypes, types, mod, numImports, sigs);
+          if (c.body) fixups += fixCallArgTypesInBody(c.body, localTypes, globalTypes, types, mod, numImports, sigs, boxIdx, unboxIdx);
         }
       }
-      if (tryInstr.catchAll) fixups += fixCallArgTypesInBody(tryInstr.catchAll, localTypes, globalTypes, types, mod, numImports, sigs);
+      if (tryInstr.catchAll) fixups += fixCallArgTypesInBody(tryInstr.catchAll, localTypes, globalTypes, types, mod, numImports, sigs, boxIdx, unboxIdx);
     }
   }
 
@@ -958,6 +1016,7 @@ function fixCallArgTypesInBody(
     "struct.new", "ref.null", "struct.get", "array.get",
     "call", "ref.cast", "ref.cast_null", "ref.as_non_null",
     "array.new_default", "array.new", "array.new_fixed",
+    "f64.const", "i32.const", "i64.const", "ref.null.extern",
   ]);
 
   for (let ci = 0; ci < body.length; ci++) {
@@ -1008,7 +1067,7 @@ function fixCallArgTypesInBody(
         const expectedType = expectedParams[paramIdx]!;
 
         if (effectiveType) {
-          const coercion = callArgCoercionInstrs(effectiveType, expectedType);
+          const coercion = callArgCoercionInstrs(effectiveType, expectedType, boxIdx, unboxIdx);
           if (coercion.length > 0) {
             insertions.push({ afterPos: insertPos, instrs: coercion });
           }
@@ -1044,10 +1103,16 @@ export function stackBalance(mod: WasmModule): number {
   const tags = mod.tags || [];
   let totalFixups = 0;
 
-  // Count import functions for index calculations
+  // Count import functions and find box/unbox indices
   let numImports = 0;
+  let boxIdx = -1;
+  let unboxIdx = -1;
   for (const imp of mod.imports) {
-    if (imp.desc.kind === "func") numImports++;
+    if (imp.desc.kind === "func") {
+      if (imp.name === "__box_number") boxIdx = numImports;
+      else if (imp.name === "__unbox_number") unboxIdx = numImports;
+      numImports++;
+    }
   }
 
   // Build global types array
@@ -1071,7 +1136,7 @@ export function stackBalance(mod: WasmModule): number {
     for (const l of func.locals) localTypes.push(l.type);
 
     // Fix call argument type mismatches before other fixups
-    totalFixups += fixCallArgTypesInBody(func.body, localTypes, globalTypes, mod.types, mod, numImports, sigs);
+    totalFixups += fixCallArgTypesInBody(func.body, localTypes, globalTypes, mod.types, mod, numImports, sigs, boxIdx, unboxIdx);
 
     // Fix nested structured blocks
     totalFixups += fixBody(func.body, mod.types, sigs, tags);
