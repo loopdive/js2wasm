@@ -9739,8 +9739,16 @@ function compileCallExpression(
         if (funcIdx !== undefined) {
           // No self parameter for static methods
           const paramTypes = getFuncParamTypes(ctx, funcIdx);
+          const staticParamCount = paramTypes ? paramTypes.length : expr.arguments.length;
           for (let i = 0; i < expr.arguments.length; i++) {
-            compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+            if (i < staticParamCount) {
+              compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+            } else {
+              const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+              if (extraType !== null && extraType !== VOID_RESULT) {
+                fctx.body.push({ op: "drop" });
+              }
+            }
           }
           // Pad missing arguments with defaults
           if (paramTypes) {
@@ -10246,17 +10254,25 @@ function compileCallExpression(
             fctx.body.push({ op: "local.get", index: tmp });
             fctx.body.push({ op: "ref.as_non_null" } as Instr);
             const paramTypes = getFuncParamTypes(ctx, funcIdx);
+            const smMethodParamCount = paramTypes ? paramTypes.length - 1 : expr.arguments.length;
             for (let i = 0; i < expr.arguments.length; i++) {
-              compileExpression(
-                ctx,
-                fctx,
-                expr.arguments[i]!,
-                paramTypes?.[i + 1],
-              );
+              if (i < smMethodParamCount) {
+                compileExpression(
+                  ctx,
+                  fctx,
+                  expr.arguments[i]!,
+                  paramTypes?.[i + 1],
+                );
+              } else {
+                const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+                if (extraType !== null && extraType !== VOID_RESULT) {
+                  fctx.body.push({ op: "drop" });
+                }
+              }
             }
             if (paramTypes) {
               for (
-                let i = expr.arguments.length + 1;
+                let i = Math.min(expr.arguments.length, smMethodParamCount) + 1;
                 i < paramTypes.length;
                 i++
               ) {
@@ -10295,18 +10311,26 @@ function compileCallExpression(
           }
           // Non-nullable receiver
           const paramTypes = getFuncParamTypes(ctx, funcIdx);
+          const nnMethodParamCount = paramTypes ? paramTypes.length - 1 : expr.arguments.length;
           for (let i = 0; i < expr.arguments.length; i++) {
-            compileExpression(
-              ctx,
-              fctx,
-              expr.arguments[i]!,
-              paramTypes?.[i + 1],
-            ); // +1 to skip self
+            if (i < nnMethodParamCount) {
+              compileExpression(
+                ctx,
+                fctx,
+                expr.arguments[i]!,
+                paramTypes?.[i + 1],
+              ); // +1 to skip self
+            } else {
+              const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+              if (extraType !== null && extraType !== VOID_RESULT) {
+                fctx.body.push({ op: "drop" });
+              }
+            }
           }
           // Pad missing arguments with defaults (skip self param at index 0)
           if (paramTypes) {
             for (
-              let i = expr.arguments.length + 1;
+              let i = Math.min(expr.arguments.length, nnMethodParamCount) + 1;
               i < paramTypes.length;
               i++
             ) {
@@ -10422,22 +10446,33 @@ function compileCallExpression(
         compileExpression(ctx, fctx, propAccess.expression);
         const paramTypes = getFuncParamTypes(ctx, funcIdx);
         const args = expr.arguments;
+        // Cap at declared param count (excluding self) to avoid pushing extra values
+        const userParamCount = paramTypes ? paramTypes.length - 1 : args.length;
         for (let ai = 0; ai < args.length; ai++) {
-          const expectedArgType = paramTypes?.[ai + 1]; // +1 for self param
-          const argResult = compileExpression(
-            ctx,
-            fctx,
-            args[ai]!,
-            expectedArgType,
-          );
-          if (!argResult || argResult === VOID_RESULT) {
-            // void/null result — push a default value for the expected type
-            pushDefaultValue(fctx, expectedArgType ?? { kind: "f64" });
-          } else if (
-            expectedArgType &&
-            argResult.kind !== expectedArgType.kind
-          ) {
-            coerceType(ctx, fctx, argResult, expectedArgType);
+          if (ai < userParamCount) {
+            const expectedArgType = paramTypes?.[ai + 1]; // +1 for self param
+            const argResult = compileExpression(
+              ctx,
+              fctx,
+              args[ai]!,
+              expectedArgType,
+            );
+            if (!argResult || argResult === VOID_RESULT) {
+              // void/null result — push a default value for the expected type
+              pushDefaultValue(fctx, expectedArgType ?? { kind: "f64" });
+            } else if (
+              expectedArgType &&
+              argResult.kind !== expectedArgType.kind
+            ) {
+              coerceType(ctx, fctx, argResult, expectedArgType);
+            }
+          } else {
+            // Extra argument beyond function's parameter count — evaluate for
+            // side effects and drop the result
+            const extraType = compileExpression(ctx, fctx, args[ai]!);
+            if (extraType !== null && extraType !== VOID_RESULT) {
+              fctx.body.push({ op: "drop" });
+            }
           }
         }
         // Pad missing optional args with defaults (e.g. indexOf 2nd arg)
@@ -11571,18 +11606,26 @@ function compileCallExpression(
           compileExpression(ctx, fctx, elemAccess.expression);
           // Push remaining arguments with type hints
           const paramTypes = getFuncParamTypes(ctx, funcIdx);
+          const eaMethodParamCount = paramTypes ? paramTypes.length - 1 : expr.arguments.length;
           for (let i = 0; i < expr.arguments.length; i++) {
-            compileExpression(
-              ctx,
-              fctx,
-              expr.arguments[i]!,
-              paramTypes?.[i + 1],
-            ); // +1 to skip self
+            if (i < eaMethodParamCount) {
+              compileExpression(
+                ctx,
+                fctx,
+                expr.arguments[i]!,
+                paramTypes?.[i + 1],
+              ); // +1 to skip self
+            } else {
+              const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+              if (extraType !== null && extraType !== VOID_RESULT) {
+                fctx.body.push({ op: "drop" });
+              }
+            }
           }
           // Pad missing arguments with defaults (skip self param at index 0)
           if (paramTypes) {
             for (
-              let i = expr.arguments.length + 1;
+              let i = Math.min(expr.arguments.length, eaMethodParamCount) + 1;
               i < paramTypes.length;
               i++
             ) {
@@ -11631,17 +11674,25 @@ function compileCallExpression(
             fctx.body.push({ op: "local.get", index: tmp });
             fctx.body.push({ op: "ref.as_non_null" } as Instr);
             const paramTypes = getFuncParamTypes(ctx, funcIdx);
+            const eaNgParamCount = paramTypes ? paramTypes.length - 1 : expr.arguments.length;
             for (let i = 0; i < expr.arguments.length; i++) {
-              compileExpression(
-                ctx,
-                fctx,
-                expr.arguments[i]!,
-                paramTypes?.[i + 1],
-              );
+              if (i < eaNgParamCount) {
+                compileExpression(
+                  ctx,
+                  fctx,
+                  expr.arguments[i]!,
+                  paramTypes?.[i + 1],
+                );
+              } else {
+                const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+                if (extraType !== null && extraType !== VOID_RESULT) {
+                  fctx.body.push({ op: "drop" });
+                }
+              }
             }
             if (paramTypes) {
               for (
-                let i = expr.arguments.length + 1;
+                let i = Math.min(expr.arguments.length, eaNgParamCount) + 1;
                 i < paramTypes.length;
                 i++
               ) {
@@ -11679,17 +11730,25 @@ function compileCallExpression(
           }
           // Non-nullable receiver
           const paramTypes = getFuncParamTypes(ctx, funcIdx);
+          const eaNnParamCount = paramTypes ? paramTypes.length - 1 : expr.arguments.length;
           for (let i = 0; i < expr.arguments.length; i++) {
-            compileExpression(
-              ctx,
-              fctx,
-              expr.arguments[i]!,
-              paramTypes?.[i + 1],
-            );
+            if (i < eaNnParamCount) {
+              compileExpression(
+                ctx,
+                fctx,
+                expr.arguments[i]!,
+                paramTypes?.[i + 1],
+              );
+            } else {
+              const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+              if (extraType !== null && extraType !== VOID_RESULT) {
+                fctx.body.push({ op: "drop" });
+              }
+            }
           }
           if (paramTypes) {
             for (
-              let i = expr.arguments.length + 1;
+              let i = Math.min(expr.arguments.length, eaNnParamCount) + 1;
               i < paramTypes.length;
               i++
             ) {
@@ -11721,8 +11780,16 @@ function compileCallExpression(
           const funcIdx = ctx.funcMap.get(fullName);
           if (funcIdx !== undefined) {
             const paramTypes = getFuncParamTypes(ctx, funcIdx);
+            const eaStaticParamCount = paramTypes ? paramTypes.length : expr.arguments.length;
             for (let i = 0; i < expr.arguments.length; i++) {
-              compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+              if (i < eaStaticParamCount) {
+                compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+              } else {
+                const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+                if (extraType !== null && extraType !== VOID_RESULT) {
+                  fctx.body.push({ op: "drop" });
+                }
+              }
             }
             if (paramTypes) {
               for (let i = expr.arguments.length; i < paramTypes.length; i++) {
@@ -12422,8 +12489,16 @@ function compileConditionalCallee(
       const funcIdx = ctx.funcMap.get(funcName);
       if (funcIdx !== undefined) {
         const paramTypes = getFuncParamTypes(ctx, funcIdx);
+        const ccParamCount = paramTypes ? paramTypes.length : expr.arguments.length;
         for (let i = 0; i < expr.arguments.length; i++) {
-          compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+          if (i < ccParamCount) {
+            compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+          } else {
+            const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+            if (extraType !== null && extraType !== VOID_RESULT) {
+              fctx.body.push({ op: "drop" });
+            }
+          }
         }
         // Pad missing arguments with defaults
         if (paramTypes) {
@@ -14944,14 +15019,22 @@ function compileExternMethodCall(
   // Push arguments with type hints (params[0] is 'this', args start at [1])
   const methodOwner = resolvedInfo ?? externInfo;
   const methodInfo = methodOwner.methods.get(methodName);
+  const extMethodParamCount = methodInfo ? methodInfo.params.length - 1 : callExpr.arguments.length;
   for (let i = 0; i < callExpr.arguments.length; i++) {
-    const hint = methodInfo?.params[i + 1]; // +1 to skip 'this'
-    compileExpression(ctx, fctx, callExpr.arguments[i]!, hint);
+    if (i < extMethodParamCount) {
+      const hint = methodInfo?.params[i + 1]; // +1 to skip 'this'
+      compileExpression(ctx, fctx, callExpr.arguments[i]!, hint);
+    } else {
+      const extraType = compileExpression(ctx, fctx, callExpr.arguments[i]!);
+      if (extraType !== null && extraType !== VOID_RESULT) {
+        fctx.body.push({ op: "drop" });
+      }
+    }
   }
 
   // Pad missing optional args with default values
   if (methodInfo) {
-    const actualArgs = callExpr.arguments.length + 1; // +1 for 'this'
+    const actualArgs = Math.min(callExpr.arguments.length, extMethodParamCount) + 1; // +1 for 'this'
     for (let i = actualArgs; i < methodInfo.params.length; i++) {
       pushDefaultValue(fctx, methodInfo.params[i]!);
     }
