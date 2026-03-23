@@ -7,6 +7,7 @@
 
 import type { CodegenContext, FunctionContext, ClosureInfo } from "./index.js";
 import { allocLocal, allocTempLocal, releaseTempLocal, addUnionImports, addStringConstantGlobal, isAnyValue, ensureAnyHelpers } from "./index.js";
+import { registerCoerceType } from "./shared.js";
 import type { Instr, ValType, StructTypeDef, ArrayTypeDef } from "../ir/types.js";
 
 /**
@@ -1302,3 +1303,6 @@ export function coercionInstrs(ctx: CodegenContext, from: ValType, to: ValType):
   }
   return [];
 }
+
+// Register coerceType so shared.ts callers (closures, statements) can use it
+registerCoerceType(coerceType);
