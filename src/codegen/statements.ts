@@ -3600,6 +3600,102 @@ function compileForOfArray(
 }
 
 /**
+ * Handle assignment destructuring for the iterator protocol path.
+ * Element is externref — use __extern_get(elem, key) to extract properties/indices.
+ */
+function compileForOfIteratorAssignDestructuring(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.ObjectLiteralExpression | ts.ArrayLiteralExpression,
+  elemLocal: number,
+  stmt: ts.ForOfStatement,
+): void {
+  // Ensure __extern_get is available
+  let getIdx = ctx.funcMap.get("__extern_get");
+  if (getIdx === undefined) {
+    const importsBefore = ctx.numImportFuncs;
+    const getType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", "__extern_get", { kind: "func", typeIdx: getType });
+    shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+    getIdx = ctx.funcMap.get("__extern_get");
+  }
+  if (getIdx === undefined) return;
+
+  if (ts.isObjectLiteralExpression(expr)) {
+    // for ({a, b} of iterable) — use __extern_get(elem, "propName") for each property
+    for (const prop of expr.properties) {
+      if (ts.isSpreadAssignment(prop)) continue;
+      if (!ts.isShorthandPropertyAssignment(prop) && !ts.isPropertyAssignment(prop)) continue;
+
+      const propName = ts.isShorthandPropertyAssignment(prop)
+        ? prop.name.text
+        : ts.isIdentifier(prop.name) ? prop.name.text
+        : ts.isStringLiteral(prop.name) ? prop.name.text
+        : undefined;
+      if (!propName) continue;
+
+      const targetName = ts.isShorthandPropertyAssignment(prop)
+        ? prop.name.text
+        : ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.initializer) ? prop.initializer.text : propName;
+
+      const targetLocal = fctx.localMap.get(targetName);
+      if (targetLocal === undefined) continue;
+
+      // Register string constant for property name
+      addStringConstantGlobal(ctx, propName);
+      const strGlobalIdx = ctx.stringGlobalMap.get(propName);
+      if (strGlobalIdx === undefined) continue;
+
+      // Refresh getIdx in case addStringConstantGlobal shifted indices
+      getIdx = ctx.funcMap.get("__extern_get");
+      if (getIdx === undefined) continue;
+
+      // Emit: __extern_get(elem, "propName") -> externref
+      fctx.body.push({ op: "local.get", index: elemLocal });
+      fctx.body.push({ op: "global.get", index: strGlobalIdx });
+      fctx.body.push({ op: "call", funcIdx: getIdx });
+
+      // Coerce externref to target local's type and set
+      emitCoercedLocalSet(ctx, fctx, targetLocal, { kind: "externref" });
+    }
+  } else if (ts.isArrayLiteralExpression(expr)) {
+    // for ([x, y] of iterable) — use __extern_get(elem, box(i)) for each element
+
+    // Ensure __box_number is available
+    let boxIdx = ctx.funcMap.get("__box_number");
+    if (boxIdx === undefined) {
+      const importsBefore = ctx.numImportFuncs;
+      const boxType = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "externref" }]);
+      addImport(ctx, "env", "__box_number", { kind: "func", typeIdx: boxType });
+      shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+      boxIdx = ctx.funcMap.get("__box_number");
+      // Refresh getIdx since it may have shifted
+      getIdx = ctx.funcMap.get("__extern_get");
+    }
+    if (boxIdx === undefined || getIdx === undefined) return;
+
+    for (let i = 0; i < expr.elements.length; i++) {
+      const el = expr.elements[i]!;
+      if (ts.isOmittedExpression(el)) continue;
+      if (ts.isSpreadElement(el)) continue;
+      if (!ts.isIdentifier(el)) continue;
+
+      const targetLocal = fctx.localMap.get(el.text);
+      if (targetLocal === undefined) continue;
+
+      // Emit: __extern_get(elem, box(i)) -> externref
+      fctx.body.push({ op: "local.get", index: elemLocal });
+      fctx.body.push({ op: "f64.const", value: i });
+      fctx.body.push({ op: "call", funcIdx: boxIdx });
+      fctx.body.push({ op: "call", funcIdx: getIdx! });
+
+      // Coerce externref to target local's type and set
+      emitCoercedLocalSet(ctx, fctx, targetLocal, { kind: "externref" });
+    }
+  }
+}
+
+/**
  * Compile for...of over a non-array iterable using the host-delegated
  * iterator protocol. Works with strings, Maps, Sets, and any object
  * implementing [Symbol.iterator]().
@@ -3738,17 +3834,10 @@ function compileForOfIterator(
   if (destructPatternIter) {
     compileForOfDestructuring(ctx, fctx, destructPatternIter, elemLocal, elemType, stmt);
   }
-  // If assignment destructuring expression, assign to existing locals
-  // Note: for iterator path, elemType is externref, so no vecTypeIdx/arrTypeIdx available;
-  // assignment destructuring for non-array iterables is not yet supported.
+  // If assignment destructuring expression, assign to existing locals.
+  // For iterator path, elemType is externref — use __extern_get to extract properties/indices.
   if (assignDestructExprIter) {
-    // For non-array iterables, elem is externref — assignment destructuring
-    // would need host unboxing which is not supported. Emit error.
-    ctx.errors.push({
-      message: "for-of assignment destructuring on non-array iterable is not supported",
-      line: getLine(stmt),
-      column: getCol(stmt),
-    });
+    compileForOfIteratorAssignDestructuring(ctx, fctx, assignDestructExprIter, elemLocal, stmt);
   }
 
   // Compile body
