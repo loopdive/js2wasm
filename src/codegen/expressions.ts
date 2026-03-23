@@ -11153,7 +11153,10 @@ function compileCallExpression(
     // Prepend captured values for nested functions with captures
     const nestedCaptures = ctx.nestedFuncCaptures.get(funcName);
     if (nestedCaptures) {
-      for (const cap of nestedCaptures) {
+      // Get param types early so we can coerce captures to expected types
+      const captureParamTypes = getFuncParamTypes(ctx, funcIdx);
+      for (let capIdx = 0; capIdx < nestedCaptures.length; capIdx++) {
+        const cap = nestedCaptures[capIdx]!;
         if (cap.mutable && cap.valType) {
           // Mutable capture: wrap in a ref cell so writes propagate back
           const refCellTypeIdx = getOrRegisterRefCellType(ctx, cap.valType);
@@ -11188,6 +11191,14 @@ function compileCallExpression(
             emitLocalTdzCheck(ctx, fctx, cap.name, capTdzIdx);
           }
           fctx.body.push({ op: "local.get", index: cap.outerLocalIdx });
+          // Coerce capture value to expected param type if they differ
+          const expectedCapType = captureParamTypes?.[capIdx];
+          if (expectedCapType) {
+            const actualType = getLocalType(fctx, cap.outerLocalIdx);
+            if (actualType && !valTypesMatch(actualType, expectedCapType)) {
+              coerceType(ctx, fctx, actualType, expectedCapType);
+            }
+          }
         }
       }
     }
@@ -15239,6 +15250,11 @@ function compileSpreadCallArgs(
         fctx.body.push({ op: "local.get", index: dataLocal });
         fctx.body.push({ op: "i32.const", value: i });
         emitBoundsCheckedArrayGet(fctx, arrTypeIdx, spreadElemType);
+        // Coerce spread element to expected param type if they differ
+        const expectedParamType = paramTypes[paramIdx];
+        if (expectedParamType && !valTypesMatch(spreadElemType, expectedParamType)) {
+          coerceType(ctx, fctx, spreadElemType, expectedParamType);
+        }
         paramIdx++;
       }
     } else {
