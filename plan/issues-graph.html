@@ -421,7 +421,10 @@ async function init() {
   issueEl.append('text')
     .attr('x', d => d.x + 4)
     .attr('y', d => d.y + (d.h || 8) / 2)
-    .attr('fill', '#c9d1d9')
+    .attr('fill', d => {
+      const impact = (d.compiler_errors || 0) + (d.test262_skip || 0) + (d.test262_fail || 0) + (d.test262_ce || 0);
+      return impact > 0 ? '#000' : '#c9d1d9';
+    })
     .attr('font-size', d => (d.h || 8) >= 14 ? '9px' : '7px')
     .attr('dominant-baseline', 'central')
     .attr('pointer-events', 'none')
