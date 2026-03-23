@@ -583,12 +583,22 @@ function compileVariableStatement(
     // If we reused a pre-hoisted slot but inference found a more precise type
     // (e.g. Array<any> hoisted as vec_externref, but inferred as vec_f64),
     // update the local's type so it matches what the initializer will produce.
+    // IMPORTANT: Do NOT downgrade a ref/ref_null local to a primitive type (f64,
+    // i32, externref) — earlier instructions (e.g. emitArgumentsObject) may have
+    // already emitted struct.new + local.set targeting this local with its original
+    // ref type. Changing the type retroactively would cause Wasm validation errors.
+    // Instead, keep the existing ref type and let emitCoercedLocalSet handle coercion.
     if (isVar && existingIdx !== undefined && existingIdx >= fctx.params.length) {
       const localSlot = fctx.locals[existingIdx - fctx.params.length];
       if (localSlot
           && (wasmType.kind !== localSlot.type.kind
               || (wasmType as any).typeIdx !== (localSlot.type as any).typeIdx)) {
-        localSlot.type = wasmType;
+        const existingIsRef = localSlot.type.kind === "ref" || localSlot.type.kind === "ref_null";
+        const newIsPrimitive = wasmType.kind === "f64" || wasmType.kind === "i32"
+          || wasmType.kind === "i64" || wasmType.kind === "externref";
+        if (!(existingIsRef && newIsPrimitive)) {
+          localSlot.type = wasmType;
+        }
       }
     }
 
@@ -3617,6 +3627,12 @@ function compileForOfIterator(
       column: getCol(stmt),
     });
     return;
+  }
+
+  // Coerce to externref if the iterable is a struct ref (GC type).
+  // The __iterator host import expects externref.
+  if (iterableType.kind !== "externref") {
+    coerceType(ctx, fctx, iterableType, { kind: "externref" });
   }
 
   // Look up the iterator host import function indices
