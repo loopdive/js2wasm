@@ -275,6 +275,19 @@ export function emitArrowParamDestructuring(
     const fields = ctx.structFields.get(typeName);
     if (structTypeIdx === undefined || !fields) return;
 
+    // If the param is externref (e.g. callback from JS host), convert it to
+    // the expected struct ref type once, so that struct.get works on it.
+    if (paramType.kind === "externref") {
+      const structRefType: ValType = { kind: "ref_null", typeIdx: structTypeIdx };
+      const convertedIdx = allocLocal(fctx, `__destr_ref_${fctx.locals.length}`, structRefType);
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "any.convert_extern" } as Instr);
+      fctx.body.push({ op: "ref.cast_null", typeIdx: structTypeIdx } as unknown as Instr);
+      fctx.body.push({ op: "local.set", index: convertedIdx });
+      paramIdx = convertedIdx;
+      paramType = structRefType;
+    }
+
     // Null guard for ref_null param types
     const savedBodyAPD = fctx.body;
     const apdInstrs: Instr[] = [];
