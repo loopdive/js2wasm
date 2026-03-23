@@ -826,7 +826,17 @@ export function compilePropertyAccess(
       if (funcIdx !== undefined) {
         compileExpression(ctx, fctx, expr.expression);
         fctx.body.push({ op: "call", funcIdx });
-        // Use the property type from the checker to determine the return type
+        // Use actual Wasm return type of the getter function — TS checker
+        // may report 'any' (externref) for Object.defineProperty accessors
+        // while the getter actually returns f64/i32/ref.
+        const getterLocalIdx = funcIdx - ctx.numImportFuncs;
+        const getterDef = getterLocalIdx >= 0 ? ctx.mod.functions[getterLocalIdx] : undefined;
+        if (getterDef) {
+          const getterType = ctx.mod.types[getterDef.typeIdx];
+          if (getterType?.kind === "func" && getterType.results.length > 0) {
+            return getterType.results[0]!;
+          }
+        }
         const propType = ctx.checker.getTypeAtLocation(expr);
         return resolveWasmType(ctx, propType);
       }
@@ -1429,6 +1439,15 @@ export function compileElementAccessBody(
             const funcIdx = ctx.funcMap.get(getterName);
             if (funcIdx !== undefined) {
               fctx.body.push({ op: "call", funcIdx });
+              // Use actual Wasm return type of the getter
+              const elGetterLocalIdx = funcIdx - ctx.numImportFuncs;
+              const elGetterDef = elGetterLocalIdx >= 0 ? ctx.mod.functions[elGetterLocalIdx] : undefined;
+              if (elGetterDef) {
+                const elGetterType = ctx.mod.types[elGetterDef.typeIdx];
+                if (elGetterType?.kind === "func" && elGetterType.results.length > 0) {
+                  return elGetterType.results[0]!;
+                }
+              }
               const propType = ctx.checker.getTypeAtLocation(expr);
               return resolveWasmType(ctx, propType);
             }
