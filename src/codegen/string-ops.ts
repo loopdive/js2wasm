@@ -32,7 +32,16 @@ export function compileStringLiteral(
     return { kind: "externref" };
   }
 
-  // Fallback for legacy stringLiteralMap (should not be reached)
+  // Late registration: string was not collected in first pass — register on demand
+  addStringImports(ctx);
+  addStringConstantGlobal(ctx, value);
+  const lateGlobalIdx = ctx.stringGlobalMap.get(value);
+  if (lateGlobalIdx !== undefined) {
+    fctx.body.push({ op: "global.get", index: lateGlobalIdx });
+    return { kind: "externref" } as ValType;
+  }
+
+  // Truly unreachable — all paths above should succeed
   ctx.errors.push({
     message: `String literal not registered: "${value}"`,
     line: node ? getLine(node) : 0,
