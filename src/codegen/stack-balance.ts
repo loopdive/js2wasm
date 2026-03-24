@@ -97,6 +97,7 @@ function instrDelta(instr: Instr, types: TypeDef[], funcSigs: FuncSigInfo): numb
       op === "i32.trunc_f64_s" ||
       op === "i64.trunc_sat_f64_s" || op === "i64.trunc_f64_s" ||
       op === "i64.extend_i32_s" || op === "i64.extend_i32_u" ||
+      op === "i32.wrap_i64" ||
       op === "any.convert_extern" || op === "extern.convert_any" ||
       op === "array.len" || op === "memory.grow" ||
       op === "v128.not" || op === "v128.any_true" ||
@@ -798,6 +799,7 @@ function inferInstrType(
       op === "i32.lt_s" || op === "i32.le_s" || op === "i32.gt_s" || op === "i32.ge_s" ||
       op === "i32.shl" || op === "i32.shr_s" || op === "i32.shr_u" ||
       op === "i32.trunc_sat_f64_s" || op === "i32.trunc_f64_s" ||
+      op === "i32.wrap_i64" ||
       op === "ref.is_null" || op === "ref.test" || op === "ref.eq" ||
       op === "f64.eq" || op === "f64.ne" || op === "f64.lt" || op === "f64.le" ||
       op === "f64.gt" || op === "f64.ge" ||
@@ -824,7 +826,7 @@ function inferInstrType(
     }
     return null;
   }
-  if (op === "array.get") {
+  if (op === "array.get" || op === "array.get_s" || op === "array.get_u") {
     const typeIdx = (instr as any).typeIdx as number;
     const td = types[typeIdx];
     if (td?.kind === "array") return td.element;
@@ -878,7 +880,12 @@ function inferInstrType(
  * Check if a coercion is needed and generate the coercion instruction(s).
  * Returns an array of instructions to insert, or empty if no coercion needed.
  */
-function callArgCoercionInstrs(actual: ValType, expected: ValType): Instr[] {
+function callArgCoercionInstrs(
+  actual: ValType,
+  expected: ValType,
+  boxNumberIdx: number | null,
+  unboxNumberIdx: number | null,
+): Instr[] {
   // Same type — no coercion
   if (actual.kind === expected.kind) {
     if ((actual.kind === "ref" || actual.kind === "ref_null") &&
@@ -890,15 +897,66 @@ function callArgCoercionInstrs(actual: ValType, expected: ValType): Instr[] {
       return [];
     }
   }
-  // Only apply the safest lossless coercion in this post-pass:
-  // ref/ref_null → externref via extern.convert_any.
-  // Other coercions are left to the codegen (compileExpression already handles
-  // them when expectedType is provided).
 
   // ref/ref_null → externref: extern.convert_any (lossless, always safe)
-  if ((actual.kind === "ref" || actual.kind === "ref_null") && expected.kind === "externref") {
+  if ((actual.kind === "ref" || actual.kind === "ref_null" || actual.kind === "anyref" || actual.kind === "eqref") && expected.kind === "externref") {
     return [{ op: "extern.convert_any" } as Instr];
   }
+
+  // f64 → externref: __box_number
+  if (actual.kind === "f64" && expected.kind === "externref" && boxNumberIdx !== null) {
+    return [{ op: "call", funcIdx: boxNumberIdx } as unknown as Instr];
+  }
+
+  // i32 → externref: f64.convert_i32_s + __box_number
+  if (actual.kind === "i32" && expected.kind === "externref" && boxNumberIdx !== null) {
+    return [
+      { op: "f64.convert_i32_s" } as Instr,
+      { op: "call", funcIdx: boxNumberIdx } as unknown as Instr,
+    ];
+  }
+
+  // i64 → externref: f64.convert_i64_s + __box_number
+  if (actual.kind === "i64" && expected.kind === "externref" && boxNumberIdx !== null) {
+    return [
+      { op: "f64.convert_i64_s" } as unknown as Instr,
+      { op: "call", funcIdx: boxNumberIdx } as unknown as Instr,
+    ];
+  }
+
+  // externref → f64: __unbox_number
+  if (actual.kind === "externref" && expected.kind === "f64" && unboxNumberIdx !== null) {
+    return [{ op: "call", funcIdx: unboxNumberIdx } as unknown as Instr];
+  }
+
+  // ref/ref_null → f64: extern.convert_any + __unbox_number
+  if ((actual.kind === "ref" || actual.kind === "ref_null") && expected.kind === "f64" && unboxNumberIdx !== null) {
+    return [
+      { op: "extern.convert_any" } as Instr,
+      { op: "call", funcIdx: unboxNumberIdx } as unknown as Instr,
+    ];
+  }
+
+  // i64 → i32: i32.wrap_i64
+  if (actual.kind === "i64" && expected.kind === "i32") {
+    return [{ op: "i32.wrap_i64" } as unknown as Instr];
+  }
+
+  // i32 → f64: f64.convert_i32_s
+  if (actual.kind === "i32" && expected.kind === "f64") {
+    return [{ op: "f64.convert_i32_s" } as Instr];
+  }
+
+  // i64 → f64: f64.convert_i64_s
+  if (actual.kind === "i64" && expected.kind === "f64") {
+    return [{ op: "f64.convert_i64_s" } as unknown as Instr];
+  }
+
+  // i32 → i64: i64.extend_i32_s
+  if (actual.kind === "i32" && expected.kind === "i64") {
+    return [{ op: "i64.extend_i32_s" } as unknown as Instr];
+  }
+
   return [];
 }
 
@@ -921,6 +979,8 @@ function fixCallArgTypesInBody(
   mod: WasmModule,
   numImports: number,
   sigs: FuncSigInfo,
+  boxNumberIdx: number | null,
+  unboxNumberIdx: number | null,
 ): number {
   let fixups = 0;
 
@@ -928,20 +988,20 @@ function fixCallArgTypesInBody(
   for (const instr of body) {
     if (instr.op === "if") {
       const ifInstr = instr as any;
-      if (ifInstr.then) fixups += fixCallArgTypesInBody(ifInstr.then, localTypes, globalTypes, types, mod, numImports, sigs);
-      if (ifInstr.else) fixups += fixCallArgTypesInBody(ifInstr.else, localTypes, globalTypes, types, mod, numImports, sigs);
+      if (ifInstr.then) fixups += fixCallArgTypesInBody(ifInstr.then, localTypes, globalTypes, types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
+      if (ifInstr.else) fixups += fixCallArgTypesInBody(ifInstr.else, localTypes, globalTypes, types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
     } else if (instr.op === "block" || instr.op === "loop") {
       const blockInstr = instr as any;
-      if (blockInstr.body) fixups += fixCallArgTypesInBody(blockInstr.body, localTypes, globalTypes, types, mod, numImports, sigs);
+      if (blockInstr.body) fixups += fixCallArgTypesInBody(blockInstr.body, localTypes, globalTypes, types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
     } else if (instr.op === "try") {
       const tryInstr = instr as any;
-      if (tryInstr.body) fixups += fixCallArgTypesInBody(tryInstr.body, localTypes, globalTypes, types, mod, numImports, sigs);
+      if (tryInstr.body) fixups += fixCallArgTypesInBody(tryInstr.body, localTypes, globalTypes, types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
       if (tryInstr.catches) {
         for (const c of tryInstr.catches) {
-          if (c.body) fixups += fixCallArgTypesInBody(c.body, localTypes, globalTypes, types, mod, numImports, sigs);
+          if (c.body) fixups += fixCallArgTypesInBody(c.body, localTypes, globalTypes, types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
         }
       }
-      if (tryInstr.catchAll) fixups += fixCallArgTypesInBody(tryInstr.catchAll, localTypes, globalTypes, types, mod, numImports, sigs);
+      if (tryInstr.catchAll) fixups += fixCallArgTypesInBody(tryInstr.catchAll, localTypes, globalTypes, types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
     }
   }
 
@@ -956,22 +1016,45 @@ function fixCallArgTypesInBody(
   const SIMPLE_PRODUCERS = new Set([
     "local.get", "global.get", "local.tee",
     "struct.new", "ref.null", "struct.get", "array.get",
+    "array.get_s", "array.get_u",
     "call", "ref.cast", "ref.cast_null", "ref.as_non_null",
     "array.new_default", "array.new", "array.new_fixed",
+    // f64/f32 constants — safe, never used as array/struct indices
+    "f64.const", "f32.const",
+    // Ref producers — safe, rarely used as sub-expression inputs
+    "ref.null.extern", "ref.null.eq", "ref.null.func", "ref.func",
+    // NOTE: i32.const/i64.const excluded — commonly used as array/struct
+    // indices in sub-expressions, would be incorrectly coerced
   ]);
 
   for (let ci = 0; ci < body.length; ci++) {
     const callInstr = body[ci]!;
-    if (callInstr.op !== "call" && callInstr.op !== "return_call") continue;
+    const isCall = callInstr.op === "call" || callInstr.op === "return_call";
+    const isCallRef = callInstr.op === "call_ref";
+    if (!isCall && !isCallRef) continue;
 
-    const funcIdx = (callInstr as any).funcIdx as number;
-    const expectedParams = getFullParamTypes(mod, funcIdx, numImports);
+    let expectedParams: ValType[] | null;
+    if (isCallRef) {
+      // call_ref uses a type index to determine the signature
+      const typeIdx = (callInstr as any).typeIdx as number;
+      const ft = resolveFuncType(types, typeIdx);
+      expectedParams = ft ? ft.params : null;
+    } else {
+      const funcIdx = (callInstr as any).funcIdx as number;
+      expectedParams = getFullParamTypes(mod, funcIdx, numImports);
+    }
     if (!expectedParams || expectedParams.length === 0) continue;
 
     const paramCount = expectedParams.length;
-    let argOffset = 0; // 0 = last param, 1 = second-to-last, etc.
+    // For call_ref, the funcref is on top of the params stack — skip it
+    let argOffset = isCallRef ? -1 : 0;
     let pos = ci - 1;
     const insertions: Array<{ afterPos: number; instrs: Instr[] }> = [];
+    // Track whether we've traversed through a sub-expression consumer.
+    // When this is true, the backward walk's argOffset may conflate
+    // sub-expression inputs with call arguments, so we restrict coercions
+    // to only the proven-safe ref→externref pattern.
+    let inSubExpr = false;
 
     while (pos >= 0 && argOffset < paramCount) {
       const instr = body[pos]!;
@@ -990,27 +1073,39 @@ function fixCallArgTypesInBody(
       if (delta === UNREACHABLE) break;
 
       if (delta >= 1 && SIMPLE_PRODUCERS.has(op)) {
-        // Check if there are pass-through transformers between this
-        // instruction and the call/next producer.
-        let effectiveType = inferInstrType(instr, localTypes, globalTypes, types, mod, numImports);
-        let insertPos = pos;
+        // For call_ref, argOffset < 0 means we're still in the funcref slot — skip coercion
+        if (argOffset >= 0) {
+          // Check if there are pass-through transformers between this
+          // instruction and the call/next producer.
+          let effectiveType = inferInstrType(instr, localTypes, globalTypes, types, mod, numImports);
+          let insertPos = pos;
 
-        for (let t = pos + 1; t < ci; t++) {
-          const tInstr = body[t]!;
-          const tDelta = instrDelta(tInstr, types, sigs);
-          if (tDelta !== 0) break;
-          const tType = inferInstrType(tInstr, localTypes, globalTypes, types, mod, numImports);
-          if (tType) effectiveType = tType;
-          insertPos = t;
-        }
+          for (let t = pos + 1; t < ci; t++) {
+            const tInstr = body[t]!;
+            const tDelta = instrDelta(tInstr, types, sigs);
+            if (tDelta !== 0) break;
+            const tType = inferInstrType(tInstr, localTypes, globalTypes, types, mod, numImports);
+            if (tType) effectiveType = tType;
+            insertPos = t;
+          }
 
-        const paramIdx = paramCount - 1 - argOffset;
-        const expectedType = expectedParams[paramIdx]!;
+          const paramIdx = paramCount - 1 - argOffset;
+          const expectedType = expectedParams[paramIdx]!;
 
-        if (effectiveType) {
-          const coercion = callArgCoercionInstrs(effectiveType, expectedType);
-          if (coercion.length > 0) {
-            insertions.push({ afterPos: insertPos, instrs: coercion });
+          if (effectiveType && expectedType) {
+            const coercion = callArgCoercionInstrs(effectiveType, expectedType, boxNumberIdx, unboxNumberIdx);
+            if (coercion.length > 0) {
+              // After traversing sub-expressions, the backward walk may confuse
+              // sub-expression inputs with call arguments. Only apply the
+              // proven-safe ref→externref coercion (extern.convert_any) in
+              // that case; other coercions are restricted to positions before
+              // any consumer has been traversed.
+              const isSafeRefToExtern = coercion.length === 1 &&
+                (coercion[0] as any).op === "extern.convert_any";
+              if (!inSubExpr || isSafeRefToExtern) {
+                insertions.push({ afterPos: insertPos, instrs: coercion });
+              }
+            }
           }
         }
         argOffset += delta;
@@ -1019,7 +1114,8 @@ function fixCallArgTypesInBody(
         argOffset += delta;
       } else if (delta < 0) {
         argOffset += delta;
-        if (argOffset < 0) break;
+        inSubExpr = true;
+        if (argOffset < (isCallRef ? -1 : 0)) break;
       }
       // delta === 0: pass-through (ref.as_non_null, extern.convert_any, etc.)
       pos--;
@@ -1044,10 +1140,16 @@ export function stackBalance(mod: WasmModule): number {
   const tags = mod.tags || [];
   let totalFixups = 0;
 
-  // Count import functions for index calculations
+  // Count import functions and find __box_number/__unbox_number indices
   let numImports = 0;
+  let boxNumberIdx: number | null = null;
+  let unboxNumberIdx: number | null = null;
   for (const imp of mod.imports) {
-    if (imp.desc.kind === "func") numImports++;
+    if (imp.desc.kind === "func") {
+      if (imp.name === "__box_number") boxNumberIdx = numImports;
+      if (imp.name === "__unbox_number") unboxNumberIdx = numImports;
+      numImports++;
+    }
   }
 
   // Build global types array
@@ -1071,7 +1173,7 @@ export function stackBalance(mod: WasmModule): number {
     for (const l of func.locals) localTypes.push(l.type);
 
     // Fix call argument type mismatches before other fixups
-    totalFixups += fixCallArgTypesInBody(func.body, localTypes, globalTypes, mod.types, mod, numImports, sigs);
+    totalFixups += fixCallArgTypesInBody(func.body, localTypes, globalTypes, mod.types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
 
     // Fix nested structured blocks
     totalFixups += fixBody(func.body, mod.types, sigs, tags);
