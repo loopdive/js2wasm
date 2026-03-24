@@ -1112,22 +1112,8 @@ export function coerceType(
               ];
               if (info.returnType?.kind === "i32") {
                 thenInstrs.push({ op: "f64.convert_i32_s" } as Instr);
-              } else if (info.returnType?.kind === "externref") {
-                // valueOf returned externref — unbox to f64
-                addUnionImports(ctx);
-                const unboxIdx = ctx.funcMap.get("__unbox_number");
-                if (unboxIdx !== undefined) {
-                  thenInstrs.push({ op: "call", funcIdx: unboxIdx } as Instr);
-                } else {
-                  thenInstrs.push({ op: "drop" } as Instr);
-                  thenInstrs.push({ op: "f64.const", value: NaN } as Instr);
-                }
-              } else if (!info.returnType) {
+              } else if (!info.returnType || info.returnType.kind !== "f64") {
                 // void/null return — call was for side effects; push NaN (ToNumber(undefined) = NaN)
-                thenInstrs.push({ op: "f64.const", value: NaN } as Instr);
-              } else if (info.returnType.kind !== "f64") {
-                // Non-f64 return (ref, ref_null, etc.) — drop return value, push NaN
-                thenInstrs.push({ op: "drop" } as Instr);
                 thenInstrs.push({ op: "f64.const", value: NaN } as Instr);
               }
               return [
