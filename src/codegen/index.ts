@@ -1087,9 +1087,6 @@ export function generateModule(
   // Repair struct.get/struct.set type mismatches (externref → struct ref conversion)
   repairStructTypeMismatches(mod);
 
-  // Remove extern.convert_any incorrectly inserted for struct.new fields expecting ref types
-  cleanupStructNewOverCoercion(mod);
-
   // Peephole optimization: remove redundant ref.as_non_null after ref.cast, etc.
   peepholeOptimize(mod);
 
@@ -1261,9 +1258,6 @@ export function generateMultiModule(
 
   // Repair struct.get/struct.set type mismatches (externref → struct ref conversion)
   repairStructTypeMismatches(mod);
-
-  // Remove extern.convert_any incorrectly inserted for struct.new fields expecting ref types
-  cleanupStructNewOverCoercion(mod);
 
   // Peephole optimization: remove redundant ref.as_non_null after ref.cast, etc.
   peepholeOptimize(mod);
@@ -11624,49 +11618,6 @@ function fixupStructNewResultCoercion(ctx: CodegenContext): void {
               if (gDef && (gDef.type.kind === "ref" || gDef.type.kind === "ref_null")) {
                 insertions.push({ pos: pos + 1, op: { op: "extern.convert_any" } as Instr });
               }
-            } else if (prevInstr.op === "ref.null" && "typeIdx" in prevInstr) {
-              // Typed ref.null produces (ref null $typeIdx); field expects externref
-              // Replace with ref.null.extern which directly produces externref
-              instrs[pos] = { op: "ref.null.extern" } as Instr;
-            } else if (prevInstr.op === "struct.new") {
-              // struct.new produces a ref type; field expects externref
-              insertions.push({ pos: pos + 1, op: { op: "extern.convert_any" } as Instr });
-            } else if (prevInstr.op === "f64.const") {
-              // f64 value where externref expected — box it
-              const boxIdx = ctx.funcMap.get("__box_number");
-              if (boxIdx !== undefined) {
-                insertions.push({ pos: pos + 1, op: { op: "call", funcIdx: boxIdx } as Instr });
-              }
-            } else if (prevInstr.op === "call") {
-              // Check if call returns f64 where externref expected
-              const funcIdx = (prevInstr as { funcIdx: number }).funcIdx;
-              const numImports = ctx.mod.imports.filter((imp) => imp.desc.kind === "func").length;
-              let retType: ValType | undefined;
-              if (funcIdx < numImports) {
-                const imp = ctx.mod.imports.filter((imp) => imp.desc.kind === "func")[funcIdx];
-                const ft = imp ? ctx.mod.types[(imp.desc as { typeIdx: number }).typeIdx] : undefined;
-                if (ft?.kind === "func" && ft.results.length > 0) retType = ft.results[0];
-              } else {
-                const fn = ctx.mod.functions[funcIdx - numImports];
-                const ft = fn ? ctx.mod.types[fn.typeIdx] : undefined;
-                if (ft?.kind === "func" && ft.results.length > 0) retType = ft.results[0];
-              }
-              if (retType && retType.kind === "f64") {
-                const boxIdx = ctx.funcMap.get("__box_number");
-                if (boxIdx !== undefined) {
-                  insertions.push({ pos: pos + 1, op: { op: "call", funcIdx: boxIdx } as Instr });
-                }
-              } else if (retType && (retType.kind === "ref" || retType.kind === "ref_null")) {
-                insertions.push({ pos: pos + 1, op: { op: "extern.convert_any" } as Instr });
-              }
-            } else if (prevInstr.op === "i64.ne" || prevInstr.op === "i64.eq" ||
-                       prevInstr.op === "i32.const") {
-              // i32 value where externref expected — convert to f64 and box
-              const boxIdx = ctx.funcMap.get("__box_number");
-              if (boxIdx !== undefined) {
-                insertions.push({ pos: pos + 1, op: { op: "f64.convert_i32_s" } as Instr });
-                insertions.push({ pos: pos + 2, op: { op: "call", funcIdx: boxIdx } as Instr });
-              }
             }
           }
 
@@ -11803,87 +11754,6 @@ function fixupStructNewResultCoercion(ctx: CodegenContext): void {
   for (const func of ctx.mod.functions) {
     if (func.body.length > 0) {
       fixupInstrs(func, func.body);
-    }
-  }
-}
-
-/**
- * Cleanup pass: remove extern.convert_any that was incorrectly inserted
- * for struct.new fields expecting ref types (not externref).
- * The backward walk in fixupStructNewResultCoercion can misattribute
- * instructions to wrong fields when multi-instruction value sequences exist.
- *
- * Uses instrStackDelta to accurately find each field's value producer.
- * When cumulative depth first reaches threshold N-fieldIdx, that instruction
- * is the final value producer for fieldIdx.
- */
-function cleanupStructNewOverCoercion(mod: WasmModule): void {
-  function cleanupBody(body: Instr[]): number {
-    let fixed = 0;
-    // Recurse into nested blocks
-    for (const instr of body) {
-      if ("body" in instr && Array.isArray((instr as any).body))
-        fixed += cleanupBody((instr as any).body);
-      if ("then" in instr && Array.isArray((instr as any).then))
-        fixed += cleanupBody((instr as any).then);
-      if ("else" in instr && Array.isArray((instr as any).else))
-        fixed += cleanupBody((instr as any).else);
-      if ("catches" in instr && Array.isArray((instr as any).catches))
-        for (const c of (instr as any).catches)
-          if (Array.isArray(c.body)) fixed += cleanupBody(c.body);
-      if ("catchAll" in instr && Array.isArray((instr as any).catchAll))
-        fixed += cleanupBody((instr as any).catchAll);
-    }
-
-    let i = 0;
-    while (i < body.length) {
-      const instr = body[i]!;
-      if (instr.op !== "struct.new") { i++; continue; }
-      const typeIdx = (instr as { typeIdx: number }).typeIdx;
-      const typeDef = mod.types[typeIdx];
-      if (!typeDef || typeDef.kind !== "struct") { i++; continue; }
-      const fields = (typeDef as any).fields as { type: ValType }[];
-      const N = fields.length;
-      if (N === 0) { i++; continue; }
-
-      // Walk backward with instrStackDelta to find each field's value producer.
-      // When cumulative depth first reaches threshold (N - fieldIdx), the
-      // instruction at that point is the value producer for fieldIdx.
-      let depth = 0;
-      let nextThreshold = 1; // looking for producer of field N-1 first
-      let changed = false;
-
-      for (let j = i - 1; j >= 0 && nextThreshold <= N; j--) {
-        depth += instrStackDelta(body[j]!, mod);
-        if (depth >= nextThreshold) {
-          // body[j] is the value producer for field (N - nextThreshold)
-          const fieldIdx = N - nextThreshold;
-          const field = fields[fieldIdx];
-
-          if (body[j]!.op === "extern.convert_any" && field &&
-              (field.type.kind === "ref" || field.type.kind === "ref_null")) {
-            // Over-coercion: extern.convert_any produces externref
-            // but field expects a ref type. Remove it.
-            body.splice(j, 1);
-            i--; // struct.new shifted
-            fixed++;
-            changed = true;
-            break; // restart analysis for this struct.new
-          }
-
-          nextThreshold++;
-        }
-      }
-
-      if (!changed) i++;
-      // If changed, re-process from same position (i was adjusted)
-    }
-    return fixed;
-  }
-
-  for (const func of mod.functions) {
-    if (func.body.length > 0) {
-      cleanupBody(func.body);
     }
   }
 }
