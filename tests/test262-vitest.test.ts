@@ -102,11 +102,13 @@ function buildCompilerHash(): string {
     h.update("codegen-dir-missing");
   }
 
-  // Also hash checker (lib file changes affect type resolution and codegen)
-  // and runtime (affects import signatures)
+  // Also hash checker, compiler, runtime, and test runner
+  // (all affect compilation output or test wrapping)
   const extraFiles = [
     join(srcDir, "checker", "index.ts"),
+    join(srcDir, "compiler.ts"),
     join(srcDir, "runtime.ts"),
+    join(import.meta.dirname ?? ".", "test262-runner.ts"),
   ];
   for (const f of extraFiles) {
     try {
