@@ -7828,8 +7828,8 @@ function compileClosureCall(
       fctx.body.push({ op: "local.get", index: effectiveLocalIdx });
     } else {
       fctx.body.push({ op: "global.get", index: moduleIdx! });
-      // Module globals use ref_null type; cast to non-null ref
-      fctx.body.push({ op: "ref.as_non_null" });
+      // Module globals use ref_null type; null-check → TypeError instead of trap (#728)
+      emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: info.structTypeIdx });
     }
   };
 
@@ -7866,7 +7866,7 @@ function compileClosureCall(
     fieldIdx: 0,
   });
   fctx.body.push({ op: "ref.cast", typeIdx: info.funcTypeIdx });
-  fctx.body.push({ op: "ref.as_non_null" });
+  emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: info.funcTypeIdx });
 
   // call_ref with the lifted function's type index
   fctx.body.push({ op: "call_ref", typeIdx: info.funcTypeIdx });
@@ -7937,10 +7937,10 @@ function compileCallablePropertyCall(
       );
       fctx.body.push({ op: "local.set", index: closureLocal });
 
-      // Push closure ref as first arg (self param)
+      // Push closure ref as first arg (self param) — null-check → TypeError (#728)
       fctx.body.push({ op: "local.get", index: closureLocal });
       if (fieldType.kind === "ref_null") {
-        fctx.body.push({ op: "ref.as_non_null" } as Instr);
+        emitNullCheckThrow(ctx, fctx, fieldType);
       }
 
       // Push call arguments (only up to declared param count)
@@ -7975,10 +7975,10 @@ function compileCallablePropertyCall(
         pushDefaultValue(fctx, closureInfo.paramTypes[i]!);
       }
 
-      // Get funcref from closure struct field 0 and call_ref
+      // Get funcref from closure struct field 0 and call_ref — null-check → TypeError (#728)
       fctx.body.push({ op: "local.get", index: closureLocal });
       if (fieldType.kind === "ref_null") {
-        fctx.body.push({ op: "ref.as_non_null" } as Instr);
+        emitNullCheckThrow(ctx, fctx, fieldType);
       }
       fctx.body.push({
         op: "struct.get",
@@ -7986,7 +7986,7 @@ function compileCallablePropertyCall(
         fieldIdx: 0,
       });
       fctx.body.push({ op: "ref.cast", typeIdx: closureInfo.funcTypeIdx });
-      fctx.body.push({ op: "ref.as_non_null" });
+      emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: closureInfo.funcTypeIdx });
       fctx.body.push({ op: "call_ref", typeIdx: closureInfo.funcTypeIdx });
 
       return closureInfo.returnType ?? VOID_RESULT;
@@ -8026,9 +8026,9 @@ function compileCallablePropertyCall(
       emitGuardedRefCast(fctx, wrapperStructIdx);
       fctx.body.push({ op: "local.set", index: closureLocal });
 
-      // Push closure ref as first arg (self param)
+      // Push closure ref as first arg (self param) — null-check → TypeError (#728)
       fctx.body.push({ op: "local.get", index: closureLocal });
-      fctx.body.push({ op: "ref.as_non_null" } as Instr);
+      emitNullCheckThrow(ctx, fctx, closureRefType);
 
       // Push call arguments (only up to declared param count)
       {
@@ -8061,9 +8061,9 @@ function compileCallablePropertyCall(
         pushDefaultValue(fctx, matchedClosureInfo.paramTypes[i]!);
       }
 
-      // Get funcref from closure struct and call_ref
+      // Get funcref from closure struct and call_ref — null-check → TypeError (#728)
       fctx.body.push({ op: "local.get", index: closureLocal });
-      fctx.body.push({ op: "ref.as_non_null" } as Instr);
+      emitNullCheckThrow(ctx, fctx, closureRefType);
       fctx.body.push({
         op: "struct.get",
         typeIdx: wrapperStructIdx,
@@ -8073,7 +8073,7 @@ function compileCallablePropertyCall(
         op: "ref.cast",
         typeIdx: matchedClosureInfo.funcTypeIdx,
       });
-      fctx.body.push({ op: "ref.as_non_null" });
+      emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedClosureInfo.funcTypeIdx });
       fctx.body.push({
         op: "call_ref",
         typeIdx: matchedClosureInfo.funcTypeIdx,
@@ -8125,10 +8125,10 @@ function compileCallablePropertyCall(
       );
       fctx.body.push({ op: "local.set", index: closureLocal });
 
-      // Push closure ref as self
+      // Push closure ref as self — null-check → TypeError (#728)
       fctx.body.push({ op: "local.get", index: closureLocal });
       if (fieldType.kind === "ref_null") {
-        fctx.body.push({ op: "ref.as_non_null" } as Instr);
+        emitNullCheckThrow(ctx, fctx, fieldType);
       }
       // May need to cast to matching struct type
       if ((fieldType as { typeIdx: number }).typeIdx !== matchedStructTypeIdx) {
@@ -8165,10 +8165,10 @@ function compileCallablePropertyCall(
         pushDefaultValue(fctx, matchedClosureInfo.paramTypes[i]!);
       }
 
-      // Get funcref and call_ref
+      // Get funcref and call_ref — null-check → TypeError (#728)
       fctx.body.push({ op: "local.get", index: closureLocal });
       if (fieldType.kind === "ref_null") {
-        fctx.body.push({ op: "ref.as_non_null" } as Instr);
+        emitNullCheckThrow(ctx, fctx, fieldType);
       }
       if ((fieldType as { typeIdx: number }).typeIdx !== matchedStructTypeIdx) {
         fctx.body.push({ op: "ref.cast", typeIdx: matchedStructTypeIdx });
@@ -8182,7 +8182,7 @@ function compileCallablePropertyCall(
         op: "ref.cast",
         typeIdx: matchedClosureInfo.funcTypeIdx,
       });
-      fctx.body.push({ op: "ref.as_non_null" });
+      emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedClosureInfo.funcTypeIdx });
       fctx.body.push({
         op: "call_ref",
         typeIdx: matchedClosureInfo.funcTypeIdx,
@@ -11098,9 +11098,9 @@ function compileCallExpression(
             fctx.body.push({ op: "local.set", index: closureLocal });
           }
 
-          // Push closure ref as first arg (self param of the lifted function)
+          // Push closure ref as first arg (self param) — null-check → TypeError (#728)
           fctx.body.push({ op: "local.get", index: closureLocal });
-          fctx.body.push({ op: "ref.as_non_null" } as Instr);
+          emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedStructTypeIdx });
 
           // Push call arguments with type coercion (only up to declared param count)
           {
@@ -11138,9 +11138,9 @@ function compileCallExpression(
             pushDefaultValue(fctx, matchedClosureInfo.paramTypes[i]!);
           }
 
-          // Push the funcref from the closure struct (field 0) and call_ref
+          // Push the funcref from the closure struct (field 0) and call_ref — null-check → TypeError (#728)
           fctx.body.push({ op: "local.get", index: closureLocal });
-          fctx.body.push({ op: "ref.as_non_null" } as Instr);
+          emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedStructTypeIdx });
           fctx.body.push({
             op: "struct.get",
             typeIdx: matchedStructTypeIdx,
@@ -11150,7 +11150,7 @@ function compileCallExpression(
             op: "ref.cast",
             typeIdx: matchedClosureInfo.funcTypeIdx,
           });
-          fctx.body.push({ op: "ref.as_non_null" });
+          emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedClosureInfo.funcTypeIdx });
           fctx.body.push({
             op: "call_ref",
             typeIdx: matchedClosureInfo.funcTypeIdx,
@@ -12209,10 +12209,9 @@ function compileCallExpression(
           fctx.body.push({ op: "local.set", index: closureLocal });
         }
 
-        // Push closure ref as first arg (self param of the lifted function)
-        // The local is ref_null but the function expects non-null ref, so cast
+        // Push closure ref as first arg (self param) — null-check → TypeError (#728)
         fctx.body.push({ op: "local.get", index: closureLocal });
-        fctx.body.push({ op: "ref.as_non_null" } as Instr);
+        emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedStructTypeIdx });
 
         // Push call arguments (only up to declared param count)
         {
@@ -12246,9 +12245,9 @@ function compileCallExpression(
           pushDefaultValue(fctx, matchedClosureInfo.paramTypes[i]!);
         }
 
-        // Push the funcref from the closure struct (field 0) and cast to typed ref
+        // Push the funcref from the closure struct (field 0) — null-check → TypeError (#728)
         fctx.body.push({ op: "local.get", index: closureLocal });
-        fctx.body.push({ op: "ref.as_non_null" } as Instr);
+        emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedStructTypeIdx });
         fctx.body.push({
           op: "struct.get",
           typeIdx: matchedStructTypeIdx,
@@ -12258,7 +12257,7 @@ function compileCallExpression(
           op: "ref.cast",
           typeIdx: matchedClosureInfo.funcTypeIdx,
         });
-        fctx.body.push({ op: "ref.as_non_null" });
+        emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedClosureInfo.funcTypeIdx });
 
         // call_ref with the lifted function's type index
         fctx.body.push({
@@ -12360,9 +12359,9 @@ function compileCallExpression(
           fctx.body.push({ op: "local.set", index: closureLocal });
         }
 
-        // Push closure ref as first arg (self param)
+        // Push closure ref as first arg (self param) — null-check → TypeError (#728)
         fctx.body.push({ op: "local.get", index: closureLocal });
-        fctx.body.push({ op: "ref.as_non_null" } as Instr);
+        emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedStructTypeIdx });
 
         // Push call arguments (only up to declared param count)
         {
@@ -12396,9 +12395,9 @@ function compileCallExpression(
           pushDefaultValue(fctx, matchedClosureInfo.paramTypes[i]!);
         }
 
-        // Push the funcref from closure struct and call_ref
+        // Push the funcref from closure struct and call_ref — null-check → TypeError (#728)
         fctx.body.push({ op: "local.get", index: closureLocal });
-        fctx.body.push({ op: "ref.as_non_null" } as Instr);
+        emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedStructTypeIdx });
         fctx.body.push({
           op: "struct.get",
           typeIdx: matchedStructTypeIdx,
@@ -12408,7 +12407,7 @@ function compileCallExpression(
           op: "ref.cast",
           typeIdx: matchedClosureInfo.funcTypeIdx,
         });
-        fctx.body.push({ op: "ref.as_non_null" });
+        emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedClosureInfo.funcTypeIdx });
         fctx.body.push({
           op: "call_ref",
           typeIdx: matchedClosureInfo.funcTypeIdx,
@@ -12809,9 +12808,9 @@ function compileExpressionCallee(
         fctx.body.push({ op: "local.set", index: closureLocal });
       }
 
-      // Push closure ref as first arg (self param)
+      // Push closure ref as first arg (self param) — null-check → TypeError (#728)
       fctx.body.push({ op: "local.get", index: closureLocal });
-      fctx.body.push({ op: "ref.as_non_null" } as Instr);
+      emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedStructTypeIdx });
 
       // Push call arguments (only up to declared param count)
       {
@@ -12841,9 +12840,9 @@ function compileExpressionCallee(
         pushDefaultValue(fctx, matchedClosureInfo.paramTypes[i]!);
       }
 
-      // Push the funcref from closure struct and call_ref
+      // Push the funcref from closure struct and call_ref — null-check → TypeError (#728)
       fctx.body.push({ op: "local.get", index: closureLocal });
-      fctx.body.push({ op: "ref.as_non_null" } as Instr);
+      emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedStructTypeIdx });
       fctx.body.push({
         op: "struct.get",
         typeIdx: matchedStructTypeIdx,
@@ -12853,7 +12852,7 @@ function compileExpressionCallee(
         op: "ref.cast",
         typeIdx: matchedClosureInfo.funcTypeIdx,
       });
-      fctx.body.push({ op: "ref.as_non_null" });
+      emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedClosureInfo.funcTypeIdx });
       fctx.body.push({
         op: "call_ref",
         typeIdx: matchedClosureInfo.funcTypeIdx,

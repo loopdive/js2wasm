@@ -129,6 +129,17 @@ export function emitNullGuardedStructGet(
     fctx.body.push({ op: "local.set", index: tmpAny });
     const resultLocal = allocLocal(fctx, `__ng_res_${fctx.locals.length}`, resultType);
 
+    // Null check FIRST: if the value is genuinely null, throw TypeError (#728)
+    // If not null but wrong struct type, fall through to alternates/default.
+    fctx.body.push({ op: "local.get", index: tmpAny });
+    fctx.body.push({ op: "ref.is_null" });
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: typeErrorThrowInstrs(ctx),
+      else: [],
+    });
+
     // Try primary struct type
     fctx.body.push({ op: "local.get", index: tmpAny });
     fctx.body.push({ op: "ref.test", typeIdx });
@@ -159,7 +170,7 @@ export function emitNullGuardedStructGet(
           } as Instr,
         ];
       }
-      // No more alternates — return default value
+      // No more alternates — return default value (value is non-null but wrong type)
       return [
         ...defaultValueInstrs(resultType),
         { op: "local.set", index: resultLocal } as Instr,
@@ -236,6 +247,19 @@ export function emitExternrefToStructGet(
   const tmpAny = allocTempLocal(fctx, { kind: "anyref" });
   fctx.body.push({ op: "local.tee", index: tmpAny });
   const resultLocal = allocTempLocal(fctx, resultType);
+
+  // Null check FIRST: if the externref-converted-to-anyref is null, throw TypeError (#728)
+  // This catches property access on null/undefined before attempting struct dispatch.
+  if (throwOnNull) {
+    fctx.body.push({ op: "local.get", index: tmpAny });
+    fctx.body.push({ op: "ref.is_null" });
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: typeErrorThrowInstrs(ctx),
+      else: [],
+    });
+  }
 
   fctx.body.push({ op: "ref.test", typeIdx: structTypeIdx });
 
@@ -894,7 +918,7 @@ export function compilePropertyAccess(
         } else if (objResult && objResult.kind === "externref") {
           // The expression returned externref but we need a struct ref for struct.get.
           // Cast externref → anyref → (ref null $StructType), with __extern_get fallback.
-          emitExternrefToStructGet(ctx, fctx, fieldType, structTypeIdx, fieldIdx, propName);
+          emitExternrefToStructGet(ctx, fctx, fieldType, structTypeIdx, fieldIdx, propName, true /* throwOnNull */);
           if (fieldType.kind === "ref") {
             return { kind: "ref_null", typeIdx: (fieldType as any).typeIdx };
           }
@@ -964,7 +988,7 @@ export function compilePropertyAccess(
               }
               return fieldType;
             } else if (objResult && objResult.kind === "externref") {
-              emitExternrefToStructGet(ctx, fctx, fieldType, structTypeIdx, fieldIdx, propName);
+              emitExternrefToStructGet(ctx, fctx, fieldType, structTypeIdx, fieldIdx, propName, true /* throwOnNull */);
             } else if (objResult && objResult.kind === "ref") {
               // Null-guard ref-typed objects (may be null at runtime)
               const nullableObj: ValType = { kind: "ref_null", typeIdx: (objResult as any).typeIdx ?? structTypeIdx };
