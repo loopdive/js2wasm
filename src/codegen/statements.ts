@@ -9,6 +9,8 @@ import {
   compileExpression,
   emitBoundsCheckedArrayGet,
   emitCoercedLocalSet,
+  ensureLateImport,
+  flushLateImportShifts,
   shiftLateImportIndices,
   valTypesMatch,
 } from "./expressions.js";
@@ -4759,6 +4761,10 @@ function bodyUsesArguments(node: ts.Node): boolean {
 /**
  * Emit code to create an `arguments` vec struct from function parameters.
  * paramOffset is the number of leading params to skip (e.g. captures).
+ *
+ * Uses an externref-backed vec so that all parameter types (f64, i32,
+ * externref, ref) are preserved as externref values.  This matches JS
+ * semantics where `arguments[n]` returns the original value.
  */
 function emitArgumentsObject(
   ctx: CodegenContext,
@@ -4767,23 +4773,51 @@ function emitArgumentsObject(
   paramOffset: number,
 ): void {
   const numArgs = paramTypes.length;
-  const elemType: ValType = { kind: "f64" };
-  const vti = getOrRegisterVecType(ctx, "f64", elemType);
+  const elemType: ValType = { kind: "externref" };
+  const vti = getOrRegisterVecType(ctx, "externref", elemType);
   const ati = getArrTypeIdxFromVec(ctx, vti);
   const vecRef: ValType = { kind: "ref", typeIdx: vti };
   const argsLocal = allocLocal(fctx, "arguments", vecRef);
   const arrTmp = allocLocal(fctx, "__args_arr_tmp", { kind: "ref", typeIdx: ati });
 
-  // Push each param coerced to f64
+  // Ensure __box_number is available if we have any f64/i32 params to box
+  const hasNumericParams = paramTypes.some(
+    (pt) => pt.kind === "f64" || pt.kind === "i32",
+  );
+  if (hasNumericParams) {
+    ensureLateImport(ctx, "__box_number", [{ kind: "f64" }], [{ kind: "externref" }]);
+    flushLateImportShifts(ctx, fctx);
+  }
+
+  // Push each param coerced to externref
   for (let i = 0; i < numArgs; i++) {
     fctx.body.push({ op: "local.get", index: i + paramOffset });
     const pt = paramTypes[i]!;
-    if (pt.kind === "i32") {
+    if (pt.kind === "f64") {
+      // Box f64 → externref via __box_number
+      const boxIdx = ctx.funcMap.get("__box_number");
+      if (boxIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: boxIdx });
+      } else {
+        // Fallback: drop and push null
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "ref.null.extern" });
+      }
+    } else if (pt.kind === "i32") {
+      // i32 → f64 → externref via __box_number
       fctx.body.push({ op: "f64.convert_i32_s" });
-    } else if (pt.kind === "externref" || pt.kind === "ref" || pt.kind === "ref_null") {
-      fctx.body.push({ op: "drop" });
-      fctx.body.push({ op: "f64.const", value: 0 });
+      const boxIdx = ctx.funcMap.get("__box_number");
+      if (boxIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: boxIdx });
+      } else {
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "ref.null.extern" });
+      }
+    } else if (pt.kind === "ref" || pt.kind === "ref_null") {
+      // GC ref → externref via extern.convert_any
+      fctx.body.push({ op: "extern.convert_any" });
     }
+    // externref params are already externref — no conversion needed
   }
   fctx.body.push({ op: "array.new_fixed", typeIdx: ati, length: numArgs });
   fctx.body.push({ op: "local.set", index: arrTmp });
