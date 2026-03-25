@@ -171,3 +171,49 @@ export function coerceType(
 ): void {
   _coerceType(ctx, fctx, from, to);
 }
+
+// ── ensureLateImport / flushLateImportShifts delegates ───────────────
+
+type EnsureLateImportFn = (
+  ctx: CodegenContext,
+  name: string,
+  paramTypes: ValType[],
+  resultTypes: ValType[],
+) => number | undefined;
+
+type FlushLateImportShiftsFn = (
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+) => void;
+
+let _ensureLateImport: EnsureLateImportFn = () => {
+  throw new Error("ensureLateImport not yet registered");
+};
+
+let _flushLateImportShifts: FlushLateImportShiftsFn = () => {
+  throw new Error("flushLateImportShifts not yet registered");
+};
+
+export function registerEnsureLateImport(fn: EnsureLateImportFn): void {
+  _ensureLateImport = fn;
+}
+
+export function registerFlushLateImportShifts(fn: FlushLateImportShiftsFn): void {
+  _flushLateImportShifts = fn;
+}
+
+export function ensureLateImport(
+  ctx: CodegenContext,
+  name: string,
+  paramTypes: ValType[],
+  resultTypes: ValType[],
+): number | undefined {
+  return _ensureLateImport(ctx, name, paramTypes, resultTypes);
+}
+
+export function flushLateImportShifts(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+): void {
+  _flushLateImportShifts(ctx, fctx);
+}

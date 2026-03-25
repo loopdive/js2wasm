@@ -46,6 +46,8 @@ import {
   emitBoundsCheckedArrayGet,
   resolveEnclosingClassName,
   coerceType,
+  ensureLateImport as ensureLateImportShared,
+  flushLateImportShifts as flushLateImportShiftsShared,
 } from "./shared.js";
 
 // ── Arrow function callbacks ──────────────────────────────────────────
@@ -1125,6 +1127,60 @@ export function compileArrowAsClosure(
     }
   }
 
+  // Set up `arguments` object for function expressions (not arrow functions).
+  // Arrow functions don't have their own `arguments` binding in JS.
+  if (ts.isFunctionExpression(arrow) && ts.isBlock(body) && closureBodyUsesArguments(body)) {
+    // Ensure __box_number is available for boxing numeric params
+    const hasNumericParam = arrowParams.some(
+      (pt) => pt.kind === "f64" || pt.kind === "i32",
+    );
+    if (hasNumericParam) {
+      ensureLateImportShared(ctx, "__box_number", [{ kind: "f64" }], [{ kind: "externref" }]);
+      flushLateImportShiftsShared(ctx, liftedFctx);
+    }
+
+    const numArgs = arrowParams.length;
+    const elemType: ValType = { kind: "externref" };
+    const vti = getOrRegisterVecType(ctx, "externref", elemType);
+    const ati = getArrTypeIdxFromVec(ctx, vti);
+    const vecRef: ValType = { kind: "ref", typeIdx: vti };
+    const argsLocal = allocLocal(liftedFctx, "arguments", vecRef);
+    const arrTmp = allocLocal(liftedFctx, "__args_arr_tmp", { kind: "ref", typeIdx: ati });
+
+    // Push each param coerced to externref (skip __self at index 0)
+    for (let i = 0; i < numArgs; i++) {
+      liftedFctx.body.push({ op: "local.get", index: i + 1 }); // +1 for __self
+      const pt = arrowParams[i]!;
+      if (pt.kind === "f64") {
+        const boxIdx = ctx.funcMap.get("__box_number");
+        if (boxIdx !== undefined) {
+          liftedFctx.body.push({ op: "call", funcIdx: boxIdx });
+        } else {
+          liftedFctx.body.push({ op: "drop" });
+          liftedFctx.body.push({ op: "ref.null.extern" });
+        }
+      } else if (pt.kind === "i32") {
+        liftedFctx.body.push({ op: "f64.convert_i32_s" });
+        const boxIdx = ctx.funcMap.get("__box_number");
+        if (boxIdx !== undefined) {
+          liftedFctx.body.push({ op: "call", funcIdx: boxIdx });
+        } else {
+          liftedFctx.body.push({ op: "drop" });
+          liftedFctx.body.push({ op: "ref.null.extern" });
+        }
+      } else if (pt.kind === "ref" || pt.kind === "ref_null") {
+        liftedFctx.body.push({ op: "extern.convert_any" });
+      }
+      // externref params are already externref — no conversion needed
+    }
+    liftedFctx.body.push({ op: "array.new_fixed", typeIdx: ati, length: numArgs });
+    liftedFctx.body.push({ op: "local.set", index: arrTmp });
+    liftedFctx.body.push({ op: "i32.const", value: numArgs });
+    liftedFctx.body.push({ op: "local.get", index: arrTmp });
+    liftedFctx.body.push({ op: "struct.new", typeIdx: vti });
+    liftedFctx.body.push({ op: "local.set", index: argsLocal });
+  }
+
   let conciseBodyHasValue = false;
 
   if (isGenerator && ts.isBlock(body)) {
@@ -1672,6 +1728,24 @@ export function emitFuncRefAsClosure(
   fctx.body.push({ op: "struct.new", typeIdx: structTypeIdx });
 
   return { kind: "ref", typeIdx: structTypeIdx };
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────
+
+/**
+ * Check if a function body references the `arguments` identifier.
+ * Skips nested functions/arrows which have their own `arguments` scope.
+ */
+function closureBodyUsesArguments(node: ts.Node): boolean {
+  if (ts.isIdentifier(node) && node.text === "arguments") return true;
+  if (
+    ts.isFunctionDeclaration(node) ||
+    ts.isFunctionExpression(node) ||
+    ts.isArrowFunction(node)
+  ) {
+    return false;
+  }
+  return ts.forEachChild(node, closureBodyUsesArguments) ?? false;
 }
 
 // ── Registration ──────────────────────────────────────────────────────
