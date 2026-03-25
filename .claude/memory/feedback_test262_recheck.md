@@ -1,13 +1,15 @@
 ---
-name: test262-recheck-default
-description: Default to --recheck when running test262, don't edit runner script on main
+name: test262-runner-usage
+description: Always use vitest runner (pnpm run test:262), 2 workers default, 4 OK without agents
 type: feedback
 ---
 
-Default to `npx tsx scripts/run-test262.ts` (recheck mode). Use `--full` only for new baselines after major changes. Use `npm test` for vitest.
+Always use `pnpm run test:262` (vitest-based runner) — not the legacy `npx tsx scripts/run-test262.ts`.
 
-**Why:** Full runs take ~30 min. Recheck re-runs only fail/CE (~10 min). The runner writes to runs/{timestamp} and promotes on success, so interrupted runs don't corrupt the stable report.
+**Why:** The vitest runner uses esbuild-bundled compiler (lighter per-fork memory), proper disk cache, and auto-worktree. The legacy standalone runner had worker OOM issues (workers got 25K tests in one batch, no recycling). Fixed with 500-test sub-batches and 4GB workers, but vitest runner is the maintained path.
 
 **How to apply:**
-- Don't edit `scripts/run-test262.ts` directly on main — use a worktree to avoid conflicts with the tech lead agent
-- The PO/tester role monitors runs and creates issues, doesn't modify src/ or scripts/ on main
+- Default: `TEST262_WORKERS=2 pnpm run test:262` (safe at 15GB with dev agents)
+- Solo: `TEST262_WORKERS=4 pnpm run test:262` (OK when no dev agents running)
+- Never use 8 workers (the old default) — OOMs at 15GB
+- Legacy runner: only for `--recheck` or category filtering if vitest runner lacks those features
