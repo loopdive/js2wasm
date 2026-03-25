@@ -6,7 +6,8 @@ TypeScript-to-WebAssembly compiler using WasmGC.
 - Run all tests: `npm test` (vitest — may OOM on full suite in constrained envs)
 - Run a specific test file: `npm test -- tests/issue-277.test.ts`
 - Run equivalence tests only: `npm test -- tests/equivalence.test.ts`
-- Test262 standalone: `npx tsx scripts/run-test262.ts [category...]` — writes JSONL + JSON report to `benchmarks/results/`, supports filtering by category
+- Test262: `TEST262_WORKERS=2 pnpm run test:262` — vitest-based runner, creates its own worktree, writes to `benchmarks/results/`. Default 2 workers to avoid OOM at 15GB.
+- Test262 (legacy): `npx tsx scripts/run-test262.ts [category...]` — standalone runner, also creates worktree. Supports `--recheck`, `--full`, `--resume`, category filtering.
 
 ## Architecture Principles
 - **Dual-mode: JS host optional** — the compiler supports two modes: JS host mode (uses host imports for performance/completeness) and standalone mode (pure Wasm, no JS runtime). New features should have Wasm-native implementations for standalone mode; JS host imports are acceptable as a fast path when a JS runtime is available. Don't add new host imports without a standalone fallback.
@@ -18,7 +19,8 @@ TypeScript-to-WebAssembly compiler using WasmGC.
 - Optimizer: `src/optimize.ts` (Binaryen wasm-opt integration)
 - Tests: `tests/equivalence.test.ts` (main), `tests/test262.test.ts` (conformance dashboard, non-failing)
 - Test262 runner: `tests/test262-runner.ts` — TEST_CATEGORIES list
-- Standalone runner: `scripts/run-test262.ts` — writes JSONL + JSON report to `benchmarks/results/`. Run via `npx tsx scripts/run-test262.ts [category...]`. Supports `--resume` to continue an interrupted run (same git HEAD only — code changes force a fresh run).
+- Test262 runner (preferred): `pnpm run test:262` — vitest-based, auto-worktree, disk cache, default 2 forks. `TEST262_WORKERS=4` is OK when no dev agents are running (vitest uses esbuild bundle, lighter than standalone). Use 2 when agents are active.
+- Test262 runner (legacy): `scripts/run-test262.ts` — standalone JSONL runner. Supports `--resume`, `--recheck`, `--full`, category filtering. Also auto-worktree.
 - Backlog: `plan/issues/backlog/backlog.md`
 - Issues: `plan/issues/` — organized by state:
   - `ready/` — no blockers, pick any to start (priority in `dependency-graph.md`)
@@ -75,7 +77,9 @@ See [plan/team-setup.md](plan/team-setup.md) for full team config, roles, and me
 
 Work is driven by `plan/dependency-graph.md`. **Memory limit: 15GB visible RAM.** Max 3-4 dev agents when test262 is running (4 workers × 1GB + agents × 2GB). Max 6 agents without test262. Always check `free -h` before launching agents. Restart test262 AFTER agents complete, not during.
 
-**Test262 runs must be in a worktree** — never on the main working copy. Use `scripts/run-test262-vitest.sh` or `git worktree add /tmp/ts2wasm-test262 HEAD`. This keeps main clean for cherry-picks and prevents stash conflicts with test runner changes (pool config, skip filters, error reporting).
+**Test262 runs must be in a worktree** — never on the main working copy. Use `scripts/run-test262-vitest.sh` or `git worktree add /tmp/ts2wasm-test262 HEAD`. This keeps main clean for cherry-picks and prevents stash conflicts with test runner changes (pool config, skip filters, error reporting). Note: `run-test262.ts` creates its own worktree internally — just run it from `/workspace`, don't create a manual worktree first.
+
+**Only one test262 run at a time.** Before launching a test262 run, check `ps aux | grep test262` for an existing run. Concurrent runs corrupt the shared results files in `benchmarks/results/` and fight over worker memory.
 
 1. **Pick work**: choose from active/activatable goals in `plan/goals/goal-graph.md`, then by priority (critical > high > medium > low) within that goal's issues from `plan/issues/ready/`
 2. **Function locking**: no two agents touch the same *function* concurrently. Same file is OK if different functions (Git 3-way merge handles separate hunks).

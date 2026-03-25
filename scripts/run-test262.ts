@@ -120,7 +120,7 @@ if (inWorktreeIdx === -1 && !noWorktreeFlag) {
     const result = spawnSync(
       tsxBin,
       [join(worktreeDir, "scripts", "run-test262.ts"), "--in-worktree", resultsDir, ...passArgs],
-      { cwd: worktreeDir, stdio: "inherit", env: { ...process.env, NODE_OPTIONS: "--max-old-space-size=8192" } },
+      { cwd: worktreeDir, stdio: "inherit", env: { ...process.env, NODE_OPTIONS: "--max-old-space-size=4096" } },
     );
 
     cleanupWorktree();
@@ -255,7 +255,7 @@ type WorkerResult = { file: string; category: string; status: string; error?: st
 function runBatch(batch: TestJob[], onResult?: (r: WorkerResult) => void): Promise<WorkerResult[]> {
   return new Promise((resolve) => {
     const results: WorkerResult[] = [];
-    const proc = fork(workerPath, [], { stdio: "pipe", execArgv: ["--max-old-space-size=2048", "--import", "tsx"] });
+    const proc = fork(workerPath, [], { stdio: "pipe", execArgv: ["--max-old-space-size=4096", "--import", "tsx"] });
     proc.setMaxListeners(0);
     let lastActivity = Date.now();
     let done = false;
@@ -643,33 +643,39 @@ for (const [batchName, batchCats] of batches) {
     }
   }
   if (jobs.length > 0) {
-    // Split across workers globally for better load balancing
-    const chunkSize = Math.max(1, Math.ceil(jobs.length / POOL_SIZE));
-    const chunks: TestJob[][] = [];
-    for (let i = 0; i < jobs.length; i += chunkSize) {
-      chunks.push(jobs.slice(i, i + chunkSize));
+    // Split into small sub-batches so workers get recycled and don't OOM.
+    // Each worker processes at most MAX_TESTS_PER_WORKER before being replaced.
+    const MAX_TESTS_PER_WORKER = 500;
+    const subBatches: TestJob[][] = [];
+    for (let i = 0; i < jobs.length; i += MAX_TESTS_PER_WORKER) {
+      subBatches.push(jobs.slice(i, i + MAX_TESTS_PER_WORKER));
     }
-    // Each worker calls onResult on the main thread as results arrive —
-    // writeResultLine uses writeSync which is atomic per call, so even with
-    // multiple workers sending results concurrently, lines never interleave.
-    const batchResults = await Promise.all(chunks.map(chunk => runBatch(chunk, (r) => {
-      recordResult(r, batchStats);
-      // Populate both caches for dedup
-      try {
-        const job = jobs.find(j => j.relPath === r.file);
-        if (job) {
-          const src = readFileSync(job.filePath, "utf-8");
-          const meta = parseMeta(src);
-          const wrapped = wrapTest(src, meta);
-          const hash = shortHash(typeof wrapped === "string" ? wrapped : wrapped.source);
-          const entry: CacheEntry = { status: r.status, error: r.error };
-          sourceHashCache.set(hash, entry);
-          resultCache.set(hash, entry);
-        }
-      } catch {}
-    })));
-    // Results already recorded via onResult callback — no post-processing needed
-    void batchResults;
+    // Run sub-batches through a pool of POOL_SIZE concurrent workers.
+    // As each worker finishes its sub-batch, the next sub-batch is dispatched.
+    let nextBatch = 0;
+    async function runNext(): Promise<void> {
+      while (nextBatch < subBatches.length) {
+        const idx = nextBatch++;
+        await runBatch(subBatches[idx], (r) => {
+          recordResult(r, batchStats);
+          // Populate both caches for dedup
+          try {
+            const job = jobs.find(j => j.relPath === r.file);
+            if (job) {
+              const src = readFileSync(job.filePath, "utf-8");
+              const meta = parseMeta(src);
+              const wrapped = wrapTest(src, meta);
+              const hash = shortHash(typeof wrapped === "string" ? wrapped : wrapped.source);
+              const entry: CacheEntry = { status: r.status, error: r.error };
+              sourceHashCache.set(hash, entry);
+              resultCache.set(hash, entry);
+            }
+          } catch {}
+        });
+      }
+    }
+    // Run POOL_SIZE workers concurrently, each pulling sub-batches from the queue
+    await Promise.all(Array.from({ length: POOL_SIZE }, () => runNext()));
   }
 
   const elapsed = ((Date.now() - batchStart) / 1000).toFixed(1);
