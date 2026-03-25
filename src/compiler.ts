@@ -254,6 +254,70 @@ function detectEarlyErrors(
     }
   }
 
+  /**
+   * Check if an identifier is in a keyword-sensitive position (binding, reference, or label).
+   * Returns false only for property names and positions where reserved words are always allowed.
+   */
+  function isKeywordSensitivePosition(node: ts.Identifier): boolean {
+    const parent = node.parent;
+    if (!parent) return true;
+    if (ts.isPropertyAccessExpression(parent) && parent.name === node) return false;
+    if (ts.isPropertyAssignment(parent) && parent.name === node) return false;
+    if (ts.isMethodDeclaration(parent) && parent.name === node) return false;
+    if (ts.isPropertyDeclaration(parent) && parent.name === node) return false;
+    if (ts.isGetAccessorDeclaration(parent) && parent.name === node) return false;
+    if (ts.isSetAccessorDeclaration(parent) && parent.name === node) return false;
+    if (ts.isTypeReferenceNode(parent)) return false;
+    if (ts.isImportSpecifier(parent)) return false;
+    if (ts.isExportSpecifier(parent)) return false;
+    if (ts.isEnumMember(parent) && parent.name === node) return false;
+    return true;
+  }
+
+  function isInsideAsyncFunction(node: ts.Node): boolean {
+    let current: ts.Node | undefined = node.parent;
+    while (current) {
+      if (ts.isArrowFunction(current) || ts.isFunctionDeclaration(current) ||
+          ts.isFunctionExpression(current) || ts.isMethodDeclaration(current)) {
+        return ts.canHaveModifiers(current) ?
+          (ts.getModifiers(current)?.some(m => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false) : false;
+      }
+      if (ts.isSourceFile(current)) return false;
+      current = current.parent;
+    }
+    return false;
+  }
+
+  function isInsideGeneratorFunction(node: ts.Node): boolean {
+    let current: ts.Node | undefined = node.parent;
+    while (current) {
+      if (ts.isFunctionDeclaration(current) || ts.isFunctionExpression(current)) {
+        return !!current.asteriskToken;
+      }
+      if (ts.isMethodDeclaration(current)) return !!current.asteriskToken;
+      if (ts.isArrowFunction(current)) return false;
+      if (ts.isSourceFile(current)) return false;
+      current = current.parent;
+    }
+    return false;
+  }
+
+  function hasUseStrictDirective(body: ts.Block): boolean {
+    for (const stmt of body.statements) {
+      if (ts.isExpressionStatement(stmt) && ts.isStringLiteral(stmt.expression)) {
+        if (stmt.expression.text === "use strict") return true;
+      } else break;
+    }
+    return false;
+  }
+
+  function isSimpleParameterList(params: ts.NodeArray<ts.ParameterDeclaration>): boolean {
+    for (const param of params) {
+      if (param.dotDotDotToken || param.initializer || !ts.isIdentifier(param.name)) return false;
+    }
+    return true;
+  }
+
   function visit(node: ts.Node): void {
     // Check prefix/postfix increment/decrement on arguments/eval in strict mode
     if (ts.isPrefixUnaryExpression(node) &&
@@ -314,21 +378,86 @@ function detectEarlyErrors(
       checkDuplicateParams(node.parameters, node);
     }
 
-    // Check yield used as identifier in generator functions
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === "yield") {
-      // Check if inside a generator function
-      let parent: ts.Node | undefined = node.parent;
-      while (parent) {
-        if ((ts.isFunctionDeclaration(parent) || ts.isFunctionExpression(parent)) &&
-            parent.asteriskToken) {
-          addError(node.name, "'yield' is a reserved word and cannot be used as an identifier in generator functions");
-          break;
+    // Check 'await' used as identifier in async function context
+    if (ts.isIdentifier(node) && node.text === "await" && isKeywordSensitivePosition(node)) {
+      if (isInsideAsyncFunction(node)) {
+        addError(node, "'await' is a reserved keyword within async function bodies and may not be used as an identifier");
+      }
+    }
+
+    // Check 'yield' used as identifier in generator function context
+    if (ts.isIdentifier(node) && node.text === "yield" && isKeywordSensitivePosition(node)) {
+      if (isInsideGeneratorFunction(node)) {
+        addError(node, "'yield' is a reserved keyword within generator function bodies and may not be used as an identifier");
+      }
+    }
+
+    // Check rest element with initializer: [...a = b] is a SyntaxError
+    if (ts.isParameter(node) && node.dotDotDotToken && node.initializer) {
+      addError(node, "Rest element does not support initializer");
+    }
+    if (ts.isBindingElement(node) && node.dotDotDotToken && node.initializer) {
+      addError(node, "Rest element does not support initializer");
+    }
+
+    // Check rest element not final in array binding pattern
+    if (ts.isArrayBindingPattern(node)) {
+      for (let i = 0; i < node.elements.length; i++) {
+        const elem = node.elements[i]!;
+        if (ts.isBindingElement(elem) && elem.dotDotDotToken && i < node.elements.length - 1) {
+          addError(elem, "Rest element must be last element");
         }
-        if (ts.isFunctionDeclaration(parent) || ts.isFunctionExpression(parent) ||
-            ts.isArrowFunction(parent) || ts.isMethodDeclaration(parent)) {
-          break; // Found enclosing non-generator function, stop
+      }
+    }
+
+    // Check rest parameter not final
+    if ((ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) ||
+         ts.isArrowFunction(node) || ts.isMethodDeclaration(node) ||
+         ts.isConstructorDeclaration(node) || ts.isGetAccessorDeclaration(node) ||
+         ts.isSetAccessorDeclaration(node)) && node.parameters) {
+      for (let i = 0; i < node.parameters.length; i++) {
+        const param = node.parameters[i]!;
+        if (param.dotDotDotToken && i < node.parameters.length - 1) {
+          addError(param, "Rest parameter must be last formal parameter");
         }
-        parent = parent.parent;
+      }
+      // Trailing comma after rest parameter
+      if (node.parameters.length > 0 && node.parameters.hasTrailingComma) {
+        const last = node.parameters[node.parameters.length - 1]!;
+        if (last.dotDotDotToken) {
+          addError(last, "Rest parameter may not have a trailing comma");
+        }
+      }
+    }
+
+    // Check 'use strict' with non-simple parameters
+    if (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isMethodDeclaration(node)) {
+      if (node.body && ts.isBlock(node.body) && hasUseStrictDirective(node.body)) {
+        if (!isSimpleParameterList(node.parameters)) {
+          addError(node, "'use strict' directive not allowed in function with non-simple parameter list");
+        }
+      }
+    }
+
+    // Check export/import in non-module statement position
+    if ((ts.isExportDeclaration(node) || ts.isExportAssignment(node) ||
+         ts.isImportDeclaration(node)) && node.parent && !ts.isSourceFile(node.parent)) {
+      addError(node, "Statement cannot contain an export/import declaration");
+    }
+    // export modifier on statements inside blocks
+    if (node.parent && !ts.isSourceFile(node.parent) && ts.canHaveModifiers(node)) {
+      const mods = ts.getModifiers(node);
+      if (mods?.some(m => m.kind === ts.SyntaxKind.ExportKeyword)) {
+        addError(node, "Statement cannot contain an export declaration");
+      }
+    }
+
+    // Check delete of private field
+    if (ts.isDeleteExpression(node)) {
+      let operand: ts.Expression = node.expression;
+      while (ts.isParenthesizedExpression(operand)) operand = operand.expression;
+      if (ts.isPropertyAccessExpression(operand) && ts.isPrivateIdentifier(operand.name)) {
+        addError(node, "Private fields cannot be deleted");
       }
     }
 
@@ -389,11 +518,9 @@ function detectEarlyErrors(
 
     // Check 'delete' of an unqualified identifier — SyntaxError in strict mode
     if (ts.isDeleteExpression(node) && isStrictMode(node)) {
-      let operand = node.expression;
-      while (ts.isParenthesizedExpression(operand)) {
-        operand = operand.expression;
-      }
-      if (ts.isIdentifier(operand)) {
+      let delOperand: ts.Expression = node.expression;
+      while (ts.isParenthesizedExpression(delOperand)) delOperand = delOperand.expression;
+      if (ts.isIdentifier(delOperand)) {
         addError(node, `Delete of an unqualified identifier in strict mode`);
       }
     }
