@@ -4,7 +4,7 @@ Goals form a DAG — a goal is **activatable** when all its dependencies are met
 Unlike a linear roadmap, multiple independent goals can be worked on in parallel,
 and a goal being "ready" doesn't mean it should be worked on immediately.
 
-**Current state**: 15,465 / 49,665 = 31.1% pass | 1,777 real CE (8,799 incl. worker crashes) | 24,731 FAIL | 670 skip (2026-03-25, full clean run at 19cedca9)
+**Current state**: 17,188 / 49,665 = 34.6% pass | 32,477 FAIL+CE | 277 errors (2026-03-25, vitest runner at 3680d4cf)
 
 ## DAG
 
