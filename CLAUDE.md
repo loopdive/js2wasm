@@ -19,7 +19,7 @@ TypeScript-to-WebAssembly compiler using WasmGC.
 - Optimizer: `src/optimize.ts` (Binaryen wasm-opt integration)
 - Tests: `tests/equivalence.test.ts` (main), `tests/test262.test.ts` (conformance dashboard, non-failing)
 - Test262 runner: `tests/test262-runner.ts` — TEST_CATEGORIES list
-- Test262 runner (preferred): `pnpm run test:262` — vitest-based, auto-worktree, disk cache, default 6 forks (~4.5 min full run). **Do NOT dispatch dev agents while running at 6 workers.** With dev agents active, use `TEST262_WORKERS=4 pnpm run test:262`.
+- Test262 runner (preferred): `pnpm run test:262` — vitest-based, auto-worktree, disk cache, default 4 forks. Use `TEST262_WORKERS=6` for faster solo runs (no dev agents). With dev agents active, use `TEST262_WORKERS=2`.
 - Test262 runner (legacy): `scripts/run-test262.ts` — standalone JSONL runner. Supports `--resume`, `--recheck`, `--full`, category filtering. Also auto-worktree.
 - Backlog: `plan/issues/backlog/backlog.md`
 - Issues: `plan/issues/` — organized by state:
