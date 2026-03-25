@@ -1430,6 +1430,13 @@ function assert_sameValue_str(actual: string, expected: string): void {
   if (actual !== expected) {
     if (!__fail) __fail = __assert_count;
   }
+}
+
+function assert_notSameValue_str(actual: string, expected: string): void {
+  __assert_count = __assert_count + 1;
+  if (actual === expected) {
+    if (!__fail) __fail = __assert_count;
+  }
 }`;
   }
 
@@ -1652,14 +1659,32 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
 
   // Convert typeof assertions to direct comparisons (our assert shims only handle numbers)
   // assert_sameValue(typeof X, "Y"); → increment counter, set __fail on mismatch
+  // Also handle single-quoted strings and calls without trailing semicolons
   body = body.replace(
-    /assert_sameValue\s*\(\s*typeof\s+([^,]+?)\s*,\s*"([^"]+)"\s*\)\s*;/g,
+    /assert_sameValue\s*\(\s*typeof\s+([^,]+?)\s*,\s*"([^"]+)"\s*\)\s*;?/g,
+    '{ __assert_count = __assert_count + 1; if (typeof $1 !== "$2") { if (!__fail) __fail = __assert_count; } }',
+  );
+  body = body.replace(
+    /assert_sameValue\s*\(\s*typeof\s+([^,]+?)\s*,\s*'([^']+)'\s*\)\s*;?/g,
     '{ __assert_count = __assert_count + 1; if (typeof $1 !== "$2") { if (!__fail) __fail = __assert_count; } }',
   );
   // assert_notSameValue(typeof X, "Y"); → increment counter, set __fail on match
   body = body.replace(
-    /assert_notSameValue\s*\(\s*typeof\s+([^,]+?)\s*,\s*"([^"]+)"\s*\)\s*;/g,
+    /assert_notSameValue\s*\(\s*typeof\s+([^,]+?)\s*,\s*"([^"]+)"\s*\)\s*;?/g,
     '{ __assert_count = __assert_count + 1; if (typeof $1 === "$2") { if (!__fail) __fail = __assert_count; } }',
+  );
+  body = body.replace(
+    /assert_notSameValue\s*\(\s*typeof\s+([^,]+?)\s*,\s*'([^']+)'\s*\)\s*;?/g,
+    '{ __assert_count = __assert_count + 1; if (typeof $1 === "$2") { if (!__fail) __fail = __assert_count; } }',
+  );
+  // Also handle reverse: assert_sameValue("Y", typeof X)
+  body = body.replace(
+    /assert_sameValue\s*\(\s*"([^"]+)"\s*,\s*typeof\s+([^)]+?)\s*\)\s*;?/g,
+    '{ __assert_count = __assert_count + 1; if (typeof $2 !== "$1") { if (!__fail) __fail = __assert_count; } }',
+  );
+  body = body.replace(
+    /assert_sameValue\s*\(\s*'([^']+)'\s*,\s*typeof\s+([^)]+?)\s*\)\s*;?/g,
+    '{ __assert_count = __assert_count + 1; if (typeof $2 !== "$1") { if (!__fail) __fail = __assert_count; } }',
   );
 
   // With proper Wasm exception handling, throw statements are now compiled
@@ -1668,12 +1693,11 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
   // We no longer rewrite them to `return 0;`.
 
   // Route string comparisons to string-aware assert
-  // Only route when the non-string argument is a simple expression (identifier,
-  // member access, array index) — NOT a function call like String(expr).
-  // assert_sameValue(simpleExpr, "literal") → assert_sameValue_str(simpleExpr, "literal")
-  // simpleExpr includes identifiers, member access, array/object bracket access
-  // e.g. obj['prop'], arr[0], foo.bar, simple identifiers
-  const simpleExprPat = "[\\w.]+(?:\\['[^']*'\\]|\\[\"[^\"]*\"\\]|\\[\\d+\\])*";
+  // assert_sameValue(expr, "literal") → assert_sameValue_str(expr, "literal")
+  // The expr pattern covers: identifiers, member access chains, bracket access
+  // with identifiers/numbers/strings, and method calls (no-arg and single-arg).
+  // e.g. obj['prop'], arr[0], foo.bar, log[0].name, fn(), obj.method(), ident[sym]
+  const simpleExprPat = "[\\w.]+(?:\\[[^\\]]*\\])*(?:\\.\\w+(?:\\[[^\\]]*\\])*)*(?:\\([^)]*\\))?";
   body = body.replace(
     new RegExp(`assert_sameValue\\s*\\(\\s*(${simpleExprPat})\\s*,\\s*("[^"]*")\\s*\\)`, 'g'),
     'assert_sameValue_str($1, $2)'
@@ -1689,6 +1713,23 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
   body = body.replace(
     new RegExp(`assert_sameValue\\s*\\(\\s*('[^']*')\\s*,\\s*(${simpleExprPat})\\s*\\)`, 'g'),
     'assert_sameValue_str($1, $2)'
+  );
+  // Also route assert_notSameValue with string literals to assert_notSameValue_str
+  body = body.replace(
+    new RegExp(`assert_notSameValue\\s*\\(\\s*(${simpleExprPat})\\s*,\\s*("[^"]*")\\s*\\)`, 'g'),
+    'assert_notSameValue_str($1, $2)'
+  );
+  body = body.replace(
+    new RegExp(`assert_notSameValue\\s*\\(\\s*("[^"]*")\\s*,\\s*(${simpleExprPat})\\s*\\)`, 'g'),
+    'assert_notSameValue_str($1, $2)'
+  );
+  body = body.replace(
+    new RegExp(`assert_notSameValue\\s*\\(\\s*(${simpleExprPat})\\s*,\\s*('[^']*')\\s*\\)`, 'g'),
+    'assert_notSameValue_str($1, $2)'
+  );
+  body = body.replace(
+    new RegExp(`assert_notSameValue\\s*\\(\\s*('[^']*')\\s*,\\s*(${simpleExprPat})\\s*\\)`, 'g'),
+    'assert_notSameValue_str($1, $2)'
   );
 
   // Strip assert_sameValue(result, vals) where both args are bare identifiers
@@ -1717,7 +1758,7 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
 
   // Conditionally include harness helpers only when used (avoids compile errors
   // from unused string/array functions that confuse the type system)
-  const needsStrAssert = /\bassert_sameValue_str\b/.test(body);
+  const needsStrAssert = /\bassert_(sameValue|notSameValue)_str\b/.test(body);
   const needsBoolAssert = /\bassert_(sameValue|notSameValue)_bool\b/.test(body);
   const needsCompareArray = /\bcompareArray\b/.test(body);
   const needsAssertCompareArray = /\bassert_compareArray\b/.test(body);
