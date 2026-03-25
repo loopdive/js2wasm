@@ -261,12 +261,78 @@ export function emitExternrefToStructGet(
     });
   }
 
+  // Build the __extern_get fallback: convert anyref back to externref and call
+  // __extern_get(obj, key) for genuine JS objects that aren't GC structs.
+  // This prevents silent wrong results (default 0/null) when a valid externref
+  // object doesn't match any known struct type.
+  let externGetFallback: Instr[] | undefined;
+  if (propName) {
+    const getIdx = ensureLateImport(ctx, "__extern_get", [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+    flushLateImportShifts(ctx, fctx);
+    if (getIdx !== undefined) {
+      externGetFallback = [];
+      // Convert anyref back to externref for __extern_get
+      externGetFallback.push({ op: "local.get", index: tmpAny } as Instr);
+      externGetFallback.push({ op: "extern.convert_any" } as Instr);
+      // Push property name string
+      addStringConstantGlobal(ctx, propName);
+      const strGlobalIdx = ctx.stringGlobalMap.get(propName);
+      if (strGlobalIdx !== undefined) {
+        externGetFallback.push({ op: "global.get", index: strGlobalIdx } as Instr);
+      } else {
+        externGetFallback.push({ op: "ref.null.extern" } as Instr);
+      }
+      externGetFallback.push({ op: "call", funcIdx: getIdx } as Instr);
+      // Coerce externref result to the expected result type
+      if (resultType.kind === "f64") {
+        const unboxIdx = ensureLateImport(ctx, "__unbox_number", [{ kind: "externref" }], [{ kind: "f64" }]);
+        flushLateImportShifts(ctx, fctx);
+        if (unboxIdx !== undefined) {
+          externGetFallback.push({ op: "call", funcIdx: unboxIdx } as Instr);
+        }
+      } else if (resultType.kind === "i32") {
+        const unboxIdx = ensureLateImport(ctx, "__unbox_number", [{ kind: "externref" }], [{ kind: "f64" }]);
+        flushLateImportShifts(ctx, fctx);
+        if (unboxIdx !== undefined) {
+          externGetFallback.push({ op: "call", funcIdx: unboxIdx } as Instr);
+          externGetFallback.push({ op: "i32.trunc_sat_f64_s" } as unknown as Instr);
+        }
+      }
+      // For ref/ref_null result types, the externref from __extern_get needs
+      // to be converted to anyref and then cast to the expected struct type.
+      // If the cast fails (wrong type from JS), fall back to a default value.
+      if (resultType.kind === "ref_null" || resultType.kind === "ref") {
+        // The __extern_get returns externref; convert to anyref, try ref.cast_null
+        const tmpExtResult = allocTempLocal(fctx, { kind: "anyref" });
+        externGetFallback.push({ op: "any.convert_extern" } as Instr);
+        externGetFallback.push({ op: "local.tee", index: tmpExtResult } as Instr);
+        externGetFallback.push({ op: "ref.test", typeIdx: (resultType as any).typeIdx } as Instr);
+        externGetFallback.push({
+          op: "if",
+          blockType: { kind: "empty" },
+          then: [
+            { op: "local.get", index: tmpExtResult } as Instr,
+            { op: "ref.cast", typeIdx: (resultType as any).typeIdx } as Instr,
+            { op: "local.set", index: resultLocal } as Instr,
+          ],
+          else: [
+            ...defaultValueInstrs(resultType),
+            { op: "local.set", index: resultLocal } as Instr,
+          ],
+        } as Instr);
+        releaseTempLocal(fctx, tmpExtResult);
+      } else {
+        externGetFallback.push({ op: "local.set", index: resultLocal } as Instr);
+      }
+    }
+  }
+
   fctx.body.push({ op: "ref.test", typeIdx: structTypeIdx });
 
   // Find alternative struct types with the same field name
   const alternates = propName ? findAlternateStructsForField(ctx, propName, structTypeIdx) : [];
 
-  // Build the fallback chain: try alternates, then default
+  // Build the fallback chain: try alternates, then __extern_get or default
   const buildFallbackChain = (altIdx: number): Instr[] => {
     if (altIdx < alternates.length) {
       const alt = alternates[altIdx]!;
@@ -288,7 +354,10 @@ export function emitExternrefToStructGet(
         } as Instr,
       ];
     }
-    // No more alternates — return default value
+    // No more struct alternates — use __extern_get for JS objects, or default value
+    if (externGetFallback) {
+      return externGetFallback;
+    }
     return [
       ...defaultValueInstrs(resultType),
       { op: "local.set", index: resultLocal } as Instr,
