@@ -498,6 +498,101 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
 // ── Test wrapping ───────────────────────────────────────────────────
 
 /**
+ * Route `fnName(arg1, arg2)` to a typed variant based on the argument values.
+ *
+ * Uses paren-counting to correctly parse arguments regardless of expression
+ * complexity (nested calls, arithmetic, ternary, template literals, etc.).
+ *
+ * If either argument is a string literal → route to `strVariant`.
+ * If either argument is a boolean literal (true/false) → route to `boolVariant`.
+ * Otherwise leave unchanged.
+ */
+function routeTypedAsserts(
+  code: string, fnName: string, strVariant: string, boolVariant: string,
+): string {
+  const search = fnName + "(";
+  let result = "";
+  let i = 0;
+
+  while (i < code.length) {
+    const idx = code.indexOf(search, i);
+    if (idx === -1) {
+      result += code.slice(i);
+      break;
+    }
+    // Check word boundary: char before fnName (if any) must not be \w
+    if (idx > 0 && /\w/.test(code[idx - 1]!)) {
+      result += code.slice(i, idx + search.length);
+      i = idx + search.length;
+      continue;
+    }
+
+    result += code.slice(i, idx); // everything before this call
+
+    let pos = idx + search.length;
+    let parenDepth = 1;
+    let braceDepth = 0;
+    let bracketDepth = 0;
+    const args: string[] = [];
+    let argStart = pos;
+
+    while (pos < code.length && parenDepth > 0) {
+      const ch = code[pos]!;
+      if (ch === "(") parenDepth++;
+      else if (ch === ")") {
+        parenDepth--;
+        if (parenDepth === 0) {
+          args.push(code.slice(argStart, pos).trim());
+          break;
+        }
+      }
+      else if (ch === "{") braceDepth++;
+      else if (ch === "}") braceDepth--;
+      else if (ch === "[") bracketDepth++;
+      else if (ch === "]") bracketDepth--;
+      else if (ch === "," && parenDepth === 1 && braceDepth === 0 && bracketDepth === 0) {
+        args.push(code.slice(argStart, pos).trim());
+        argStart = pos + 1;
+      }
+      else if (ch === "'" || ch === '"' || ch === "`") {
+        // Skip string/template literal
+        const quote = ch;
+        pos++;
+        while (pos < code.length && code[pos] !== quote) {
+          if (code[pos] === "\\") pos++;
+          pos++;
+        }
+      }
+      pos++;
+    }
+
+    // Only route 2-arg calls (3rd arg should already be stripped)
+    if (args.length === 2) {
+      const a = args[0]!;
+      const b = args[1]!;
+      const isStrLiteral = (s: string) =>
+        (s.startsWith('"') && s.endsWith('"')) ||
+        (s.startsWith("'") && s.endsWith("'"));
+      const isBoolLiteral = (s: string) => s === "true" || s === "false";
+
+      if (isStrLiteral(a) || isStrLiteral(b)) {
+        result += `${strVariant}(${a}, ${b})`;
+      } else if (isBoolLiteral(a) || isBoolLiteral(b)) {
+        result += `${boolVariant}(${a}, ${b})`;
+      } else {
+        result += `${fnName}(${a}, ${b})`;
+      }
+    } else {
+      // Unexpected arg count — emit unchanged
+      result += fnName + "(" + args.join(", ") + ")";
+    }
+    i = pos; // pos is at or past closing paren
+  }
+
+  return result;
+}
+
+/**
  * Strip the 3rd argument from function calls like fn(a, b, msg).
  * Handles nested parentheses correctly.
  */
@@ -1692,66 +1787,13 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
   // try/catch wrapper in the test function (see wrapTest output below).
   // We no longer rewrite them to `return 0;`.
 
-  // Route string comparisons to string-aware assert
-  // assert_sameValue(expr, "literal") → assert_sameValue_str(expr, "literal")
-  // The expr pattern covers: identifiers, member access chains, bracket access
-  // with identifiers/numbers/strings, and method calls (no-arg and single-arg).
-  // e.g. obj['prop'], arr[0], foo.bar, log[0].name, fn(), obj.method(), ident[sym]
-  const simpleExprPat = "[\\w.]+(?:\\[[^\\]]*\\])*(?:\\.\\w+(?:\\[[^\\]]*\\])*)*(?:\\([^)]*\\))?";
-  body = body.replace(
-    new RegExp(`assert_sameValue\\s*\\(\\s*(${simpleExprPat})\\s*,\\s*("[^"]*")\\s*\\)`, 'g'),
-    'assert_sameValue_str($1, $2)'
-  );
-  body = body.replace(
-    new RegExp(`assert_sameValue\\s*\\(\\s*("[^"]*")\\s*,\\s*(${simpleExprPat})\\s*\\)`, 'g'),
-    'assert_sameValue_str($1, $2)'
-  );
-  body = body.replace(
-    new RegExp(`assert_sameValue\\s*\\(\\s*(${simpleExprPat})\\s*,\\s*('[^']*')\\s*\\)`, 'g'),
-    'assert_sameValue_str($1, $2)'
-  );
-  body = body.replace(
-    new RegExp(`assert_sameValue\\s*\\(\\s*('[^']*')\\s*,\\s*(${simpleExprPat})\\s*\\)`, 'g'),
-    'assert_sameValue_str($1, $2)'
-  );
-  // Also route assert_notSameValue with string literals to assert_notSameValue_str
-  body = body.replace(
-    new RegExp(`assert_notSameValue\\s*\\(\\s*(${simpleExprPat})\\s*,\\s*("[^"]*")\\s*\\)`, 'g'),
-    'assert_notSameValue_str($1, $2)'
-  );
-  body = body.replace(
-    new RegExp(`assert_notSameValue\\s*\\(\\s*("[^"]*")\\s*,\\s*(${simpleExprPat})\\s*\\)`, 'g'),
-    'assert_notSameValue_str($1, $2)'
-  );
-  body = body.replace(
-    new RegExp(`assert_notSameValue\\s*\\(\\s*(${simpleExprPat})\\s*,\\s*('[^']*')\\s*\\)`, 'g'),
-    'assert_notSameValue_str($1, $2)'
-  );
-  body = body.replace(
-    new RegExp(`assert_notSameValue\\s*\\(\\s*('[^']*')\\s*,\\s*(${simpleExprPat})\\s*\\)`, 'g'),
-    'assert_notSameValue_str($1, $2)'
-  );
+  // Route assert_sameValue / assert_notSameValue to typed variants (_str, _bool)
+  // using paren-counting to handle arbitrarily complex expressions.
+  body = routeTypedAsserts(body, "assert_sameValue", "assert_sameValue_str", "assert_sameValue_bool");
+  body = routeTypedAsserts(body, "assert_notSameValue", "assert_notSameValue_str", "assert_notSameValue_bool");
 
   // Strip assert_sameValue(result, vals) where both args are bare identifiers
   body = body.replace(/\bassert_sameValue\s*\(\s*result\s*,\s*vals\s*\)\s*;?/g, '/* stripped object identity assert */');
-
-  // Route boolean comparisons to boolean-aware assert
-  body = body.replace(
-    /assert_sameValue\s*\(\s*([^,]+?)\s*,\s*(true|false)\s*\)/g,
-    'assert_sameValue_bool($1, $2)'
-  );
-  body = body.replace(
-    /assert_sameValue\s*\(\s*(true|false)\s*,\s*([^)]+?)\s*\)/g,
-    'assert_sameValue_bool($1, $2)'
-  );
-  body = body.replace(
-    /assert_notSameValue\s*\(\s*([^,]+?)\s*,\s*(true|false)\s*\)/g,
-    'assert_notSameValue_bool($1, $2)'
-  );
-  body = body.replace(
-    /assert_notSameValue\s*\(\s*(true|false)\s*,\s*([^)]+?)\s*\)/g,
-    'assert_notSameValue_bool($1, $2)'
-  );
 
   // Route compareArray assertions through assert_true
   body = body.replace(/\bassert_true\s*\(\s*compareArray\b/g, 'assert_true(compareArray');
