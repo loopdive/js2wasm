@@ -1209,6 +1209,9 @@ export function generateModule(
   // Mark leaf struct types as final for V8 devirtualization
   markLeafStructsFinal(mod);
 
+  // Ensure exn tag exists before dead elimination so its type gets tracked/remapped
+  ensureExnTag(ctx);
+
   // Dead import and type elimination pass
   eliminateDeadImports(mod);
 
@@ -1386,6 +1389,9 @@ export function generateMultiModule(
 
   // Mark leaf struct types as final for V8 devirtualization
   markLeafStructsFinal(mod);
+
+  // Ensure exn tag exists before dead elimination so its type gets tracked/remapped
+  ensureExnTag(ctx);
 
   // Dead import and type elimination pass
   eliminateDeadImports(mod);
