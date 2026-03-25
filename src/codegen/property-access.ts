@@ -42,118 +42,6 @@ import {
 } from "./expressions.js";
 import { emitBoundsCheckedArrayGet, emitClampIndex, emitClampNonNeg } from "./array-methods.js";
 
-// ── Guarded cast helpers ─────────────────────────────────────────────
-
-/**
- * Emit a guarded ref.cast on an anyref value: ref.test first, then ref.cast
- * in the success branch, ref.null in the failure branch.  Avoids "illegal cast"
- * traps when the runtime type doesn't match the expected struct type.
- *
- * Stack: [anyref] -> [ref_null $typeIdx]
- */
-export function emitGuardedRefCast(
-  fctx: FunctionContext,
-  typeIdx: number,
-): void {
-  const tmp = allocTempLocal(fctx, { kind: "anyref" } as ValType);
-  fctx.body.push({ op: "local.tee", index: tmp });
-  fctx.body.push({ op: "ref.test", typeIdx });
-  const resultType: ValType = { kind: "ref_null", typeIdx };
-  fctx.body.push({
-    op: "if",
-    blockType: { kind: "val", type: resultType },
-    then: [
-      { op: "local.get", index: tmp } as Instr,
-      { op: "ref.cast_null", typeIdx } as unknown as Instr,
-    ],
-    else: [
-      { op: "ref.null", typeIdx } as unknown as Instr,
-    ],
-  } as Instr);
-  releaseTempLocal(fctx, tmp);
-}
-
-/**
- * Emit a guarded extern→struct conversion with multi-struct dispatch.
- * Converts an externref to anyref, then tries the primary struct type and
- * alternates that share at least one field with the pattern.  Used for
- * destructured parameters and similar paths where the runtime struct type
- * may differ from the compile-time expectation.
- *
- * Stack: [externref] -> [ref_null $primaryStructTypeIdx]
- *
- * If the runtime value doesn't match any known struct type, produces ref.null.
- */
-export function emitGuardedExternToStructCast(
-  ctx: CodegenContext,
-  fctx: FunctionContext,
-  primaryStructTypeIdx: number,
-  fieldNames?: string[],
-): void {
-  // Convert externref → anyref
-  fctx.body.push({ op: "any.convert_extern" } as Instr);
-
-  const resultType: ValType = { kind: "ref_null", typeIdx: primaryStructTypeIdx };
-  const anyTmp = allocTempLocal(fctx, { kind: "anyref" } as ValType);
-  fctx.body.push({ op: "local.tee", index: anyTmp });
-
-  // Test primary struct type
-  fctx.body.push({ op: "ref.test", typeIdx: primaryStructTypeIdx });
-
-  // Collect alternate struct types that have any of the field names
-  const alternates: number[] = [];
-  if (fieldNames && fieldNames.length > 0) {
-    const seen = new Set<number>();
-    seen.add(primaryStructTypeIdx);
-    for (const fn of fieldNames) {
-      for (const alt of findAlternateStructsForField(ctx, fn, primaryStructTypeIdx)) {
-        if (!seen.has(alt.structTypeIdx)) {
-          seen.add(alt.structTypeIdx);
-          alternates.push(alt.structTypeIdx);
-        }
-      }
-    }
-  }
-
-  // Build fallback chain for alternates
-  const buildAltChain = (idx: number): Instr[] => {
-    if (idx >= alternates.length) {
-      // No match — return null ref
-      return [{ op: "ref.null", typeIdx: primaryStructTypeIdx } as unknown as Instr];
-    }
-    const altIdx = alternates[idx]!;
-    return [
-      { op: "local.get", index: anyTmp } as Instr,
-      { op: "ref.test", typeIdx: altIdx } as Instr,
-      {
-        op: "if",
-        blockType: { kind: "val", type: resultType },
-        then: [
-          // Matched alternate — cast to primary via anyref round-trip
-          // The caller will use struct.get with the primary type, so we
-          // still need a ref.null (graceful degradation) since the struct
-          // layouts may differ.  Return null to let the caller's null guard
-          // handle it gracefully rather than trapping.
-          { op: "ref.null", typeIdx: primaryStructTypeIdx } as unknown as Instr,
-        ],
-        else: buildAltChain(idx + 1),
-      } as Instr,
-    ];
-  };
-
-  fctx.body.push({
-    op: "if",
-    blockType: { kind: "val", type: resultType },
-    then: [
-      { op: "local.get", index: anyTmp } as Instr,
-      { op: "ref.cast_null", typeIdx: primaryStructTypeIdx } as unknown as Instr,
-    ],
-    else: buildAltChain(0),
-  } as Instr);
-
-  releaseTempLocal(fctx, anyTmp);
-}
-
 // ── Null guard helpers ───────────────────────────────────────────────
 
 export function typeErrorThrowInstrs(ctx: CodegenContext): Instr[] {
@@ -903,29 +791,12 @@ export function compilePropertyAccess(
       }
     }
     if (isVecLike) {
-      // Compile the object expression, cast to template vec, and get raw field.
-      // Use ref.test guard to avoid "illegal cast" when the vec is a base vec
-      // without the extra raw field (not a template vec subtype).
+      // Compile the object expression, cast to template vec, and get raw field
       compileExpression(ctx, fctx, expr.expression);
-      const rawTmp = allocLocal(fctx, `__raw_tmp_${fctx.locals.length}`, { kind: "anyref" } as ValType);
-      fctx.body.push({ op: "local.tee", index: rawTmp });
-      fctx.body.push({ op: "ref.test", typeIdx: templateVecTypeIdx });
+      fctx.body.push({ op: "ref.cast", typeIdx: templateVecTypeIdx });
+      fctx.body.push({ op: "struct.get", typeIdx: templateVecTypeIdx, fieldIdx: 2 });
       const baseVecTypeIdx = getOrRegisterVecType(ctx, "externref", { kind: "externref" });
-      const rawResultType: ValType = { kind: "ref_null", typeIdx: baseVecTypeIdx };
-      fctx.body.push({
-        op: "if",
-        blockType: { kind: "val", type: rawResultType },
-        then: [
-          { op: "local.get", index: rawTmp } as Instr,
-          { op: "ref.cast", typeIdx: templateVecTypeIdx } as Instr,
-          { op: "struct.get", typeIdx: templateVecTypeIdx, fieldIdx: 2 } as Instr,
-        ],
-        else: [
-          // Not a template vec — return null (no .raw field)
-          { op: "ref.null", typeIdx: baseVecTypeIdx } as unknown as Instr,
-        ],
-      } as Instr);
-      return rawResultType;
+      return { kind: "ref_null", typeIdx: baseVecTypeIdx };
     }
   }
 
@@ -1131,24 +1002,6 @@ export function compilePropertyAccess(
             return { kind: "ref_null", typeIdx: (fieldType as any).typeIdx };
           }
           return fieldType;
-        } else if (objResult && (objResult.kind === "anyref" || objResult.kind === "eqref")) {
-          // anyref/eqref: the value might be a different struct type at runtime.
-          // Use ref.test + multi-dispatch to avoid illegal cast traps.
-          const nullableObj: ValType = { kind: "ref_null", typeIdx: structTypeIdx };
-          emitNullGuardedStructGet(ctx, fctx, nullableObj, fieldType, structTypeIdx, fieldIdx, propName);
-          if (fieldType.kind === "ref") {
-            return { kind: "ref_null", typeIdx: (fieldType as any).typeIdx };
-          }
-          return fieldType;
-        } else if (objResult) {
-          // Other types (f64, i32, funcref, etc.) — struct.get not applicable,
-          // emit default value instead of bare struct.get that would trap.
-          fctx.body.push({ op: "drop" });
-          const resultType: ValType = fieldType.kind === "ref"
-            ? { kind: "ref_null", typeIdx: (fieldType as any).typeIdx }
-            : fieldType;
-          fctx.body.push(...defaultValueInstrs(resultType));
-          return resultType;
         } else {
           fctx.body.push({
             op: "struct.get",
@@ -1212,21 +1065,6 @@ export function compilePropertyAccess(
               if (fieldType.kind === "ref") {
                 return { kind: "ref_null", typeIdx: (fieldType as any).typeIdx };
               }
-            } else if (objResult && (objResult.kind === "anyref" || objResult.kind === "eqref")) {
-              // anyref/eqref: use multi-dispatch to avoid illegal cast traps
-              const nullableObj: ValType = { kind: "ref_null", typeIdx: structTypeIdx };
-              emitNullGuardedStructGet(ctx, fctx, nullableObj, fieldType, structTypeIdx, fieldIdx, propName);
-              if (fieldType.kind === "ref") {
-                return { kind: "ref_null", typeIdx: (fieldType as any).typeIdx };
-              }
-            } else if (objResult) {
-              // Other types (f64, i32, funcref) — drop and emit default
-              fctx.body.push({ op: "drop" });
-              const dResultType: ValType = fieldType.kind === "ref"
-                ? { kind: "ref_null", typeIdx: (fieldType as any).typeIdx }
-                : fieldType;
-              fctx.body.push(...defaultValueInstrs(dResultType));
-              return dResultType;
             } else {
               fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
             }
