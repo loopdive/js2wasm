@@ -47,7 +47,7 @@ echo "Running vitest..."
 cd "$WT_DIR"
 npx vitest run tests/test262-vitest.test.ts \
   --pool=forks \
-  --poolOptions.forks.maxForks=${TEST262_WORKERS:-6} \
+  --poolOptions.forks.maxForks=${TEST262_WORKERS:-4} \
   --reporter=verbose \
   "$@" 2>&1 | tee /tmp/test262-vitest-run.log
 
