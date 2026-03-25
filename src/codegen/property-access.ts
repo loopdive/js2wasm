@@ -194,8 +194,20 @@ export function emitNullGuardedStructGet(
     blockType: { kind: "val" as const, type: resultType },
     then: nullBranch,
     else: [
+      // Guard against illegal cast: verify the runtime struct type matches
+      // before doing struct.get (which traps on type mismatch).
       { op: "local.get", index: tmp } as Instr,
-      { op: "struct.get", typeIdx, fieldIdx } as Instr,
+      { op: "ref.test", typeIdx } as Instr,
+      {
+        op: "if",
+        blockType: { kind: "val" as const, type: resultType },
+        then: [
+          { op: "local.get", index: tmp } as Instr,
+          { op: "ref.cast", typeIdx } as Instr,
+          { op: "struct.get", typeIdx, fieldIdx } as Instr,
+        ],
+        else: defaultValueInstrs(resultType),
+      } as Instr,
     ],
   });
 }
@@ -699,11 +711,26 @@ export function compilePropertyAccess(
     }
     if (isVecLike) {
       // Compile the object expression, cast to template vec, and get raw field
+      // Guard with ref.test to avoid illegal cast if runtime type is base vec
       compileExpression(ctx, fctx, expr.expression);
-      fctx.body.push({ op: "ref.cast", typeIdx: templateVecTypeIdx });
-      fctx.body.push({ op: "struct.get", typeIdx: templateVecTypeIdx, fieldIdx: 2 });
       const baseVecTypeIdx = getOrRegisterVecType(ctx, "externref", { kind: "externref" });
-      return { kind: "ref_null", typeIdx: baseVecTypeIdx };
+      const rawResultType: ValType = { kind: "ref_null", typeIdx: baseVecTypeIdx };
+      const rawTmp = allocLocal(fctx, `__raw_tmp_${fctx.locals.length}`, { kind: "anyref" });
+      fctx.body.push({ op: "local.tee", index: rawTmp });
+      fctx.body.push({ op: "ref.test", typeIdx: templateVecTypeIdx } as Instr);
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "val" as const, type: rawResultType },
+        then: [
+          { op: "local.get", index: rawTmp } as Instr,
+          { op: "ref.cast", typeIdx: templateVecTypeIdx } as Instr,
+          { op: "struct.get", typeIdx: templateVecTypeIdx, fieldIdx: 2 } as Instr,
+        ],
+        else: [
+          { op: "ref.null", typeIdx: baseVecTypeIdx } as unknown as Instr,
+        ],
+      });
+      return rawResultType;
     }
   }
 
@@ -900,10 +927,25 @@ export function compilePropertyAccess(
           }
           return fieldType;
         } else {
+          // Guard against illegal cast: the runtime value may not be the
+          // expected struct type (e.g. when objResult is anyref/i31ref).
+          // Use ref.test to check before struct.get to avoid trapping.
+          const guardTmp = allocLocal(fctx, `__sg_tmp_${fctx.locals.length}`, objResult ?? { kind: "anyref" });
+          fctx.body.push({ op: "local.tee", index: guardTmp });
+          fctx.body.push({ op: "ref.test", typeIdx: structTypeIdx } as Instr);
+          // Normalize result type for the if block
+          const sgResultType: ValType = fieldType.kind === "ref"
+            ? { kind: "ref_null", typeIdx: (fieldType as any).typeIdx }
+            : fieldType;
           fctx.body.push({
-            op: "struct.get",
-            typeIdx: structTypeIdx,
-            fieldIdx,
+            op: "if",
+            blockType: { kind: "val" as const, type: sgResultType },
+            then: [
+              { op: "local.get", index: guardTmp } as Instr,
+              { op: "ref.cast", typeIdx: structTypeIdx } as Instr,
+              { op: "struct.get", typeIdx: structTypeIdx, fieldIdx } as Instr,
+            ],
+            else: defaultValueInstrs(sgResultType),
           });
         }
         return fieldType;
@@ -963,7 +1005,23 @@ export function compilePropertyAccess(
                 return { kind: "ref_null", typeIdx: (fieldType as any).typeIdx };
               }
             } else {
-              fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+              // Guard against illegal cast on the dynamic-field path
+              const guardTmp2 = allocLocal(fctx, `__sg2_tmp_${fctx.locals.length}`, objResult ?? { kind: "anyref" });
+              fctx.body.push({ op: "local.tee", index: guardTmp2 });
+              fctx.body.push({ op: "ref.test", typeIdx: structTypeIdx } as Instr);
+              const sg2ResultType: ValType = fieldType.kind === "ref"
+                ? { kind: "ref_null", typeIdx: (fieldType as any).typeIdx }
+                : fieldType;
+              fctx.body.push({
+                op: "if",
+                blockType: { kind: "val" as const, type: sg2ResultType },
+                then: [
+                  { op: "local.get", index: guardTmp2 } as Instr,
+                  { op: "ref.cast", typeIdx: structTypeIdx } as Instr,
+                  { op: "struct.get", typeIdx: structTypeIdx, fieldIdx } as Instr,
+                ],
+                else: defaultValueInstrs(sg2ResultType),
+              });
             }
             return fieldType;
           }
