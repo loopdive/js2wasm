@@ -136,7 +136,7 @@ export class CompilerPool {
     const workerPath = join(import.meta.dirname ?? __dirname, "compiler-worker.mjs");
     state.busy = false;
     state.ready = false;
-    state.worker = new Worker(workerPath, { execArgv: ["--expose-gc"] });
+    state.worker = new Worker(workerPath, { resourceLimits: { maxOldGenerationSizeMb: 1024 } });
     state.worker.on("message", (msg: any) => {
       if (msg.type === "ready") {
         state.ready = true;
