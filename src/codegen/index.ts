@@ -29,7 +29,7 @@ import type {
   WasmModule,
 } from "../ir/types.js";
 import { createEmptyModule } from "../ir/types.js";
-import { compileExpression, resolveComputedKeyExpression, coerceType, valTypesMatch, emitBoundsCheckedArrayGet } from "./expressions.js";
+import { compileExpression, resolveComputedKeyExpression, coerceType, valTypesMatch, emitBoundsCheckedArrayGet, guardAllRefAsNonNull } from "./expressions.js";
 import { collectShapes } from "../shape-inference.js";
 import { compileStatement, ensureBindingLocals, hoistFunctionDeclarations } from "./statements.js";
 import { emitInlineMathFunctions } from "./math-helpers.js";
@@ -492,6 +492,134 @@ function instrStackDelta(instr: Instr, mod: WasmModule): number {
     default:
       return 0; // conservative default
   }
+}
+
+/**
+ * Post-processing pass: guard bare ref.cast instructions with ref.test.
+ *
+ * A bare `ref.cast $T` traps with "illegal cast" when the operand is null or
+ * the wrong type.  This pass wraps each unguarded ref.cast / ref.cast_null
+ * with a ref.test+if so the module falls back to ref.null instead of trapping.
+ *
+ * Pattern (for ref.cast $T):
+ *   local.tee $tmp
+ *   ref.test $T
+ *   if (result (ref null $T))
+ *     local.get $tmp
+ *     ref.cast $T              ;; safe — ref.test already passed
+ *   else
+ *     ref.null $T              ;; fallback
+ *   end
+ *
+ * A per-function eqref temporary local is lazily allocated.
+ */
+function guardBareRefCasts(mod: WasmModule): number {
+  let total = 0;
+
+  for (const func of mod.functions) {
+    let tmpLocal = -1; // lazily allocated eqref temp
+
+    const ensureTmp = (): number => {
+      if (tmpLocal < 0) {
+        // Count params from the function's type signature
+        const ft = mod.types[func.typeIdx];
+        const paramCount = ft?.kind === "func" ? ft.params.length : 0;
+        tmpLocal = paramCount + func.locals.length;
+        func.locals.push({ name: "$__ref_cast_tmp", type: { kind: "eqref" } });
+      }
+      return tmpLocal;
+    };
+
+    total += guardRefCastsInBody(func.body, ensureTmp);
+  }
+
+  return total;
+}
+
+function guardRefCastsInBody(
+  body: Instr[],
+  ensureTmp: () => number,
+): number {
+  let fixed = 0;
+
+  // Recurse into nested blocks first
+  for (const instr of body) {
+    switch (instr.op) {
+      case "block":
+      case "loop":
+        if (instr.body) fixed += guardRefCastsInBody(instr.body, ensureTmp);
+        break;
+      case "if":
+        if (instr.then) fixed += guardRefCastsInBody(instr.then, ensureTmp);
+        if (instr.else) fixed += guardRefCastsInBody(instr.else, ensureTmp);
+        break;
+      case "try":
+        if (instr.body) fixed += guardRefCastsInBody(instr.body as Instr[], ensureTmp);
+        if ((instr as any).catches) {
+          for (const c of (instr as any).catches) {
+            if (c.body) fixed += guardRefCastsInBody(c.body, ensureTmp);
+          }
+        }
+        break;
+    }
+  }
+
+  // Scan for bare ref.cast / ref.cast_null
+  let i = 0;
+  while (i < body.length) {
+    const instr = body[i]!;
+    if (instr.op !== "ref.cast" && instr.op !== "ref.cast_null") {
+      i++;
+      continue;
+    }
+
+    // Check if already guarded: previous instruction is ref.test with same typeIdx
+    if (i > 0) {
+      const prev = body[i - 1]!;
+      if (
+        prev.op === "ref.test" &&
+        (prev as { typeIdx: number }).typeIdx === (instr as { typeIdx: number }).typeIdx
+      ) {
+        // Already guarded by ref.test — inside a then-branch presumably
+        i++;
+        continue;
+      }
+    }
+
+    // Also skip if the previous instruction is ref.test for any type (already in a guard pattern)
+    // And skip if we're inside a sequence that was just created by this pass
+    // (previous is local.tee of our temp)
+
+    const typeIdx = (instr as { typeIdx: number }).typeIdx;
+    const tmpIdx = ensureTmp();
+    const isNullable = instr.op === "ref.cast_null";
+
+    // Build the guarded replacement:
+    // local.tee $tmp, ref.test $T, if (...) local.get $tmp; ref.cast $T else ref.null $T end
+    const thenBody: Instr[] = [
+      { op: "local.get", index: tmpIdx } as unknown as Instr,
+      { op: instr.op, typeIdx } as unknown as Instr,
+    ];
+    const elseBody: Instr[] = [
+      { op: "ref.null", typeIdx } as unknown as Instr,
+    ];
+    const blockType: any = {
+      kind: "val",
+      type: { kind: "ref_null", typeIdx },
+    };
+
+    const replacement: Instr[] = [
+      { op: "local.tee", index: tmpIdx } as unknown as Instr,
+      { op: "ref.test", typeIdx } as unknown as Instr,
+      { op: "if", blockType, then: thenBody, else: elseBody } as unknown as Instr,
+    ];
+
+    body.splice(i, 1, ...replacement);
+    fixed++;
+    i += replacement.length; // skip past the inserted instructions
+  }
+
+  return fixed;
 }
 
 /**
@@ -1087,8 +1215,14 @@ export function generateModule(
   // Repair struct.get/struct.set type mismatches (externref → struct ref conversion)
   repairStructTypeMismatches(mod);
 
+  // Guard bare ref.cast instructions with ref.test to prevent "illegal cast" traps
+  guardBareRefCasts(mod);
+
   // Peephole optimization: remove redundant ref.as_non_null after ref.cast, etc.
   peepholeOptimize(mod);
+
+  // Guard remaining ref.as_non_null with null-check-throw (TypeError instead of trap)
+  guardAllRefAsNonNull(mod, ctx);
 
   // Stack-balancing fixup: ensure all branches in if/try/block have matching stack states
   stackBalance(mod);
@@ -1259,8 +1393,14 @@ export function generateMultiModule(
   // Repair struct.get/struct.set type mismatches (externref → struct ref conversion)
   repairStructTypeMismatches(mod);
 
+  // Guard bare ref.cast instructions with ref.test to prevent "illegal cast" traps
+  guardBareRefCasts(mod);
+
   // Peephole optimization: remove redundant ref.as_non_null after ref.cast, etc.
   peepholeOptimize(mod);
+
+  // Guard remaining ref.as_non_null with null-check-throw (TypeError instead of trap)
+  guardAllRefAsNonNull(mod, ctx);
 
   // Stack-balancing fixup: ensure all branches in if/try/block have matching stack states
   stackBalance(mod);
