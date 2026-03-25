@@ -69,6 +69,8 @@ import {
   getCol,
   getLine,
   registerCompileExpression,
+  registerEnsureLateImport,
+  registerFlushLateImportShifts,
   valTypesMatch,
   VOID_RESULT,
 } from "./shared.js";
@@ -11248,10 +11250,15 @@ function compileCallExpression(
       } else {
         const params = callee.parameters;
         const args = expr.arguments;
+        // Check if the IIFE body references `arguments` (only for function expressions, not arrows)
+        const iifeNeedsArguments = ts.isFunctionExpression(callee)
+          && callee.body
+          && usesArguments(callee.body);
         // Support IIFEs with matching parameter/argument counts
         if (params.length <= args.length) {
           // Allocate locals for parameters and compile arguments
           const paramLocals: number[] = [];
+          const allArgLocals: { idx: number; type: ValType }[] = [];
           for (let i = 0; i < params.length; i++) {
             const paramName = ts.isIdentifier(params[i]!.name)
               ? params[i]!.name.text
@@ -11261,14 +11268,96 @@ function compileCallExpression(
             const idx = allocLocal(fctx, paramName, localType);
             fctx.body.push({ op: "local.set", index: idx });
             paramLocals.push(idx);
-          }
-          // Drop extra arguments
-          for (let i = params.length; i < args.length; i++) {
-            const t = compileExpression(ctx, fctx, args[i]!);
-            if (t && t !== VOID_RESULT) {
-              fctx.body.push({ op: "drop" });
+            if (iifeNeedsArguments) {
+              allArgLocals.push({ idx, type: localType });
             }
           }
+          // Extra arguments beyond declared params
+          if (iifeNeedsArguments) {
+            // Store extra args in locals for the arguments object
+            for (let i = params.length; i < args.length; i++) {
+              const t = compileExpression(ctx, fctx, args[i]!);
+              const localType = t && t !== VOID_RESULT ? t : { kind: "f64" as const };
+              if (t === null || t === VOID_RESULT) {
+                // No value produced — push a default
+                fctx.body.push({ op: "f64.const", value: 0 });
+              }
+              const idx = allocLocal(fctx, `__iife_extra_${i}`, localType as ValType);
+              fctx.body.push({ op: "local.set", index: idx });
+              allArgLocals.push({ idx, type: localType as ValType });
+            }
+          } else {
+            // Drop extra arguments (evaluate for side effects)
+            for (let i = params.length; i < args.length; i++) {
+              const t = compileExpression(ctx, fctx, args[i]!);
+              if (t && t !== VOID_RESULT) {
+                fctx.body.push({ op: "drop" });
+              }
+            }
+          }
+
+          // Set up `arguments` vec for the IIFE if needed
+          if (iifeNeedsArguments && allArgLocals.length > 0) {
+            // Ensure __box_number is available for boxing numeric args
+            const hasNumeric = allArgLocals.some(
+              (a) => a.type.kind === "f64" || a.type.kind === "i32",
+            );
+            if (hasNumeric) {
+              ensureLateImport(ctx, "__box_number", [{ kind: "f64" }], [{ kind: "externref" }]);
+              flushLateImportShifts(ctx, fctx);
+            }
+
+            const vti = getOrRegisterVecType(ctx, "externref", { kind: "externref" });
+            const ati = getArrTypeIdxFromVec(ctx, vti);
+            const vecRef: ValType = { kind: "ref", typeIdx: vti };
+            const argsLocal = allocLocal(fctx, "arguments", vecRef);
+            const arrTmp = allocLocal(fctx, "__iife_args_arr", { kind: "ref", typeIdx: ati });
+
+            for (const { idx, type } of allArgLocals) {
+              fctx.body.push({ op: "local.get", index: idx });
+              if (type.kind === "f64") {
+                const boxIdx = ctx.funcMap.get("__box_number");
+                if (boxIdx !== undefined) {
+                  fctx.body.push({ op: "call", funcIdx: boxIdx });
+                } else {
+                  fctx.body.push({ op: "drop" });
+                  fctx.body.push({ op: "ref.null.extern" });
+                }
+              } else if (type.kind === "i32") {
+                fctx.body.push({ op: "f64.convert_i32_s" });
+                const boxIdx = ctx.funcMap.get("__box_number");
+                if (boxIdx !== undefined) {
+                  fctx.body.push({ op: "call", funcIdx: boxIdx });
+                } else {
+                  fctx.body.push({ op: "drop" });
+                  fctx.body.push({ op: "ref.null.extern" });
+                }
+              } else if (type.kind === "ref" || type.kind === "ref_null") {
+                fctx.body.push({ op: "extern.convert_any" });
+              }
+              // externref: already correct
+            }
+            fctx.body.push({ op: "array.new_fixed", typeIdx: ati, length: allArgLocals.length });
+            fctx.body.push({ op: "local.set", index: arrTmp });
+            fctx.body.push({ op: "i32.const", value: allArgLocals.length });
+            fctx.body.push({ op: "local.get", index: arrTmp });
+            fctx.body.push({ op: "struct.new", typeIdx: vti });
+            fctx.body.push({ op: "local.set", index: argsLocal });
+          } else if (iifeNeedsArguments) {
+            // No arguments at all — create empty arguments vec
+            const vti = getOrRegisterVecType(ctx, "externref", { kind: "externref" });
+            const ati = getArrTypeIdxFromVec(ctx, vti);
+            const vecRef: ValType = { kind: "ref", typeIdx: vti };
+            const argsLocal = allocLocal(fctx, "arguments", vecRef);
+            const arrTmp = allocLocal(fctx, "__iife_args_arr", { kind: "ref", typeIdx: ati });
+            fctx.body.push({ op: "array.new_fixed", typeIdx: ati, length: 0 });
+            fctx.body.push({ op: "local.set", index: arrTmp });
+            fctx.body.push({ op: "i32.const", value: 0 });
+            fctx.body.push({ op: "local.get", index: arrTmp });
+            fctx.body.push({ op: "struct.new", typeIdx: vti });
+            fctx.body.push({ op: "local.set", index: argsLocal });
+          }
+
           // Compile body
           if (ts.isArrowFunction(callee) && !ts.isBlock(callee.body)) {
             // Concise body: expression — no return issue
@@ -13677,9 +13766,18 @@ function compileNewFunctionExpression(
 
   // Set up `arguments` if the body references it
   if (needsArguments) {
+    // Ensure __box_number is available for boxing numeric params
+    const hasNumericFormal = formalParams.some(
+      (pt) => pt.kind === "f64" || pt.kind === "i32",
+    );
+    if (hasNumericFormal) {
+      ensureLateImport(ctx, "__box_number", [{ kind: "f64" }], [{ kind: "externref" }]);
+      flushLateImportShifts(ctx, fctx);
+    }
+
     const numArgs = formalParams.length;
-    const elemType: ValType = { kind: "f64" };
-    const vti = getOrRegisterVecType(ctx, "f64", elemType);
+    const elemType: ValType = { kind: "externref" };
+    const vti = getOrRegisterVecType(ctx, "externref", elemType);
     const ati = getArrTypeIdxFromVec(ctx, vti);
     const vecRef: ValType = { kind: "ref", typeIdx: vti };
     const argsLocal = allocLocal(liftedFctx, "arguments", vecRef);
@@ -13688,20 +13786,31 @@ function compileNewFunctionExpression(
       typeIdx: ati,
     });
 
-    // Push each param coerced to f64
+    // Push each param coerced to externref
     for (let i = 0; i < numArgs; i++) {
       liftedFctx.body.push({ op: "local.get", index: i + 1 }); // skip __self
       const pt = formalParams[i]!;
-      if (pt.kind === "i32") {
+      if (pt.kind === "f64") {
+        const boxIdx = ctx.funcMap.get("__box_number");
+        if (boxIdx !== undefined) {
+          liftedFctx.body.push({ op: "call", funcIdx: boxIdx });
+        } else {
+          liftedFctx.body.push({ op: "drop" });
+          liftedFctx.body.push({ op: "ref.null.extern" });
+        }
+      } else if (pt.kind === "i32") {
         liftedFctx.body.push({ op: "f64.convert_i32_s" });
-      } else if (
-        pt.kind === "externref" ||
-        pt.kind === "ref" ||
-        pt.kind === "ref_null"
-      ) {
-        liftedFctx.body.push({ op: "drop" });
-        liftedFctx.body.push({ op: "f64.const", value: 0 });
+        const boxIdx = ctx.funcMap.get("__box_number");
+        if (boxIdx !== undefined) {
+          liftedFctx.body.push({ op: "call", funcIdx: boxIdx });
+        } else {
+          liftedFctx.body.push({ op: "drop" });
+          liftedFctx.body.push({ op: "ref.null.extern" });
+        }
+      } else if (pt.kind === "ref" || pt.kind === "ref_null") {
+        liftedFctx.body.push({ op: "extern.convert_any" });
       }
+      // externref params are already externref — no conversion needed
     }
     liftedFctx.body.push({
       op: "array.new_fixed",
@@ -17128,3 +17237,5 @@ function isStaticNaN(ctx: CodegenContext, expr: ts.Expression): boolean {
 
 // Register delegates for shared.ts so that array-methods.ts (and other extracted
 registerCompileExpression(compileExpression);
+registerEnsureLateImport(ensureLateImport);
+registerFlushLateImportShifts(flushLateImportShifts);
