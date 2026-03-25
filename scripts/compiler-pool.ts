@@ -83,6 +83,11 @@ export class CompilerPool {
         state.busy = false;
         state.ready = false;
       });
+      // Respawn worker when it exits (e.g. after MAX_COMPILATIONS)
+      worker.on("exit", () => {
+        if (!state.ready && !state.busy) return; // already handled
+        this.respawnWorker(state);
+      });
     }
   }
 
@@ -150,6 +155,10 @@ export class CompilerPool {
       console.error(`Compiler worker respawned after error:`, err.message);
       state.busy = false;
       state.ready = false;
+    });
+    state.worker.on("exit", () => {
+      if (!state.ready && !state.busy) return;
+      this.respawnWorker(state);
     });
   }
 
