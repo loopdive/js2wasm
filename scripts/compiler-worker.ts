@@ -15,9 +15,12 @@ parentPort.on("message", (msg: { id: number; source: string; sourceMapUrl?: stri
   compilationCount++;
   const start = performance.now();
 
-  // Restart worker after N compilations to release accumulated TS caches
+  // Periodically GC to release accumulated TS internal caches
+  if (compilationCount % 50 === 0 && typeof globalThis.gc === "function") {
+    globalThis.gc();
+  }
+  // Restart worker after N compilations if GC isn't enough
   if (compilationCount >= MAX_COMPILATIONS) {
-    // Finish this compilation, then exit — pool will respawn us
     process.once("beforeExit", () => process.exit(0));
   }
 

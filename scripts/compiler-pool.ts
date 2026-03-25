@@ -53,6 +53,7 @@ export class CompilerPool {
     for (let i = 0; i < size; i++) {
       const worker = new Worker(workerPath, {
         resourceLimits: { maxOldGenerationSizeMb: 512 },
+        execArgv: ["--expose-gc"],
       });
 
       const state: WorkerState = { worker, busy: false, ready: false };
