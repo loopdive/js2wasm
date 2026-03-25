@@ -11,7 +11,7 @@ import {
   mapTsTypeToWasm,
   unwrapPromiseType,
 } from "../checker/type-mapper.js";
-import type { FieldDef, Instr, ValType, WasmModule } from "../ir/types.js";
+import type { FieldDef, Instr, ValType } from "../ir/types.js";
 import {
   compileArrayMethodCall,
   compileArrayPrototypeCall,
@@ -120,7 +120,6 @@ export {
   compileOptionalPropertyAccess,
   compilePropertyAccess,
   emitNullCheckThrow,
-  typeErrorThrowInstrs,
 } from "./property-access.js";
 export { getCol, getLine, valTypesMatch, VOID_RESULT } from "./shared.js";
 export {
@@ -1231,10 +1230,10 @@ function compileIdentifier(
     }
 
     // Null narrowing: if this variable is known non-null (e.g. inside `if (x !== null)`),
-    // emit null-check+throw TypeError instead of ref.as_non_null to avoid trapping.
+    // emit ref.as_non_null and return ref instead of ref_null to skip downstream null guards.
     if (declaredType.kind === "ref_null" && fctx.narrowedNonNull?.has(name)) {
-      emitNullCheckThrow(ctx, fctx, declaredType);
-      return declaredType;
+      fctx.body.push({ op: "ref.as_non_null" });
+      return { kind: "ref", typeIdx: (declaredType as any).typeIdx };
     }
 
     return declaredType;
@@ -1248,13 +1247,13 @@ function compileIdentifier(
     fctx.body.push({ op: "global.get", index: capturedIdx });
     const globalDef = ctx.mod.globals[localGlobalIdx(ctx, capturedIdx)];
     const gType = globalDef?.type ?? { kind: "f64" };
-    // Globals widened from ref to ref_null for null init — null-check+throw instead of trap
+    // Globals widened from ref to ref_null for null init — narrow back
     if (
       gType.kind === "ref_null" &&
       (ctx.capturedGlobalsWidened.has(name) || fctx.narrowedNonNull?.has(name))
     ) {
-      emitNullCheckThrow(ctx, fctx, gType);
-      return gType;
+      fctx.body.push({ op: "ref.as_non_null" });
+      return { kind: "ref", typeIdx: gType.typeIdx };
     }
     return gType;
   }
@@ -1267,10 +1266,10 @@ function compileIdentifier(
     fctx.body.push({ op: "global.get", index: moduleIdx });
     const globalDef = ctx.mod.globals[localGlobalIdx(ctx, moduleIdx)];
     const mType = globalDef?.type ?? { kind: "f64" };
-    // Null narrowing for module globals — null-check+throw instead of trap
+    // Null narrowing for module globals
     if (mType.kind === "ref_null" && fctx.narrowedNonNull?.has(name)) {
-      emitNullCheckThrow(ctx, fctx, mType);
-      return mType;
+      fctx.body.push({ op: "ref.as_non_null" });
+      return { kind: "ref", typeIdx: (mType as any).typeIdx };
     }
     return mType;
   }
@@ -3612,12 +3611,8 @@ function compileElementAssignment(
           srcTypeIdx: arrTypeIdx,
         } as Instr,
 
-        // Update vec.data = newData (null-check+throw instead of trapping)
+        // Update vec.data = newData
         { op: "local.get", index: vecLocal } as Instr,
-        { op: "local.get", index: newDataLocal } as Instr,
-        { op: "local.tee", index: newDataLocal } as Instr,
-        { op: "ref.is_null" } as Instr,
-        { op: "if", blockType: { kind: "empty" }, then: typeErrorThrowInstrs(ctx), else: [] } as Instr,
         { op: "local.get", index: newDataLocal } as Instr,
         { op: "ref.as_non_null" } as Instr,
         { op: "struct.set", typeIdx, fieldIdx: 1 } as Instr,
@@ -9023,10 +9018,9 @@ function compileCallExpression(
             dstTypeIdx: arrTypeIdx,
             srcTypeIdx: arrTypeIdx,
           } as Instr);
-          // Create new vec struct with copied data (null-check+throw instead of trapping)
+          // Create new vec struct with copied data
           fctx.body.push({ op: "local.get", index: lenTmp });
           fctx.body.push({ op: "local.get", index: dstData });
-          emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: arrTypeIdx });
           fctx.body.push({ op: "ref.as_non_null" } as Instr);
           fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
           return { kind: "ref", typeIdx: vecTypeIdx };
@@ -10131,7 +10125,6 @@ function compileCallExpression(
           // Build the else branch (non-null path) with the full call
           const savedBody = pushBody(fctx);
           fctx.body.push({ op: "local.get", index: tmp });
-          emitNullCheckThrow(ctx, fctx, recvType);
           fctx.body.push({ op: "ref.as_non_null" } as Instr);
           const paramTypes = getFuncParamTypes(ctx, funcIdx);
           // User-visible param count excludes self (param 0)
@@ -10273,7 +10266,6 @@ function compileCallExpression(
 
             const savedBody = pushBody(fctx);
             fctx.body.push({ op: "local.get", index: tmp });
-            emitNullCheckThrow(ctx, fctx, recvType);
             fctx.body.push({ op: "ref.as_non_null" } as Instr);
             const paramTypes = getFuncParamTypes(ctx, funcIdx);
             const smMethodParamCount = paramTypes ? paramTypes.length - 1 : expr.arguments.length;
@@ -11703,7 +11695,6 @@ function compileCallExpression(
 
             const savedBody = pushBody(fctx);
             fctx.body.push({ op: "local.get", index: tmp });
-            emitNullCheckThrow(ctx, fctx, recvType);
             fctx.body.push({ op: "ref.as_non_null" } as Instr);
             const paramTypes = getFuncParamTypes(ctx, funcIdx);
             const eaNgParamCount = paramTypes ? paramTypes.length - 1 : expr.arguments.length;
@@ -15172,15 +15163,15 @@ function patchStructNewForDynamicField(
   // Walk all compiled function bodies and patch struct.new instructions
   for (const func of ctx.mod.functions) {
     if (!func.body || func.body.length === 0) continue;
-    patchStructNewInBody(func.body, structTypeIdx, newFieldType, ctx);
+    patchStructNewInBody(func.body, structTypeIdx, newFieldType);
   }
   // Also patch the current function being compiled (if any)
   if (ctx.currentFunc) {
-    patchStructNewInBody(ctx.currentFunc.body, structTypeIdx, newFieldType, ctx);
+    patchStructNewInBody(ctx.currentFunc.body, structTypeIdx, newFieldType);
     // Also patch saved bodies (from pushBody/popBody pattern)
     if (ctx.currentFunc.savedBodies) {
       for (const savedBody of ctx.currentFunc.savedBodies) {
-        patchStructNewInBody(savedBody, structTypeIdx, newFieldType, ctx);
+        patchStructNewInBody(savedBody, structTypeIdx, newFieldType);
       }
     }
   }
@@ -15191,37 +15182,36 @@ function patchStructNewInBody(
   body: Instr[],
   structTypeIdx: number,
   newFieldType: ValType,
-  ctx?: CodegenContext,
 ): void {
   for (let i = 0; i < body.length; i++) {
     const instr = body[i]!;
     if (instr.op === "struct.new" && (instr as any).typeIdx === structTypeIdx) {
       // Insert default value instruction before this struct.new
-      const defaultInstr = defaultValueInstrForType(newFieldType, ctx);
+      const defaultInstr = defaultValueInstrForType(newFieldType);
       body.splice(i, 0, ...defaultInstr);
       i += defaultInstr.length; // skip past inserted instructions
     }
     // Recurse into nested blocks
     if ((instr as any).then)
-      patchStructNewInBody((instr as any).then, structTypeIdx, newFieldType, ctx);
+      patchStructNewInBody((instr as any).then, structTypeIdx, newFieldType);
     if ((instr as any).else)
-      patchStructNewInBody((instr as any).else, structTypeIdx, newFieldType, ctx);
+      patchStructNewInBody((instr as any).else, structTypeIdx, newFieldType);
     if ((instr as any).body) {
       // block, loop, try instructions
       const nestedBody = (instr as any).body;
       if (Array.isArray(nestedBody))
-        patchStructNewInBody(nestedBody, structTypeIdx, newFieldType, ctx);
+        patchStructNewInBody(nestedBody, structTypeIdx, newFieldType);
     }
     if ((instr as any).instrs) {
       const nestedInstrs = (instr as any).instrs;
       if (Array.isArray(nestedInstrs))
-        patchStructNewInBody(nestedInstrs, structTypeIdx, newFieldType, ctx);
+        patchStructNewInBody(nestedInstrs, structTypeIdx, newFieldType);
     }
     // try/catch blocks
     if ((instr as any).catches) {
       for (const c of (instr as any).catches) {
         if (Array.isArray(c.body))
-          patchStructNewInBody(c.body, structTypeIdx, newFieldType, ctx);
+          patchStructNewInBody(c.body, structTypeIdx, newFieldType);
       }
     }
     if ((instr as any).catchAll) {
@@ -15230,14 +15220,13 @@ function patchStructNewInBody(
           (instr as any).catchAll,
           structTypeIdx,
           newFieldType,
-          ctx,
         );
     }
   }
 }
 
 /** Return instructions that produce a default value for a given type. */
-function defaultValueInstrForType(type: ValType, ctx?: CodegenContext): Instr[] {
+function defaultValueInstrForType(type: ValType): Instr[] {
   switch (type.kind) {
     case "f64":
       return [{ op: "f64.const", value: 0 } as Instr];
@@ -15248,10 +15237,6 @@ function defaultValueInstrForType(type: ValType, ctx?: CodegenContext): Instr[] 
     case "ref_null":
       return [{ op: "ref.null", typeIdx: type.typeIdx } as Instr];
     case "ref":
-      // throw TypeError instead of unconditional ref.as_non_null trap
-      if (ctx) {
-        return typeErrorThrowInstrs(ctx);
-      }
       return [
         { op: "ref.null", typeIdx: type.typeIdx } as Instr,
         { op: "ref.as_non_null" } as Instr,
@@ -17024,7 +17009,6 @@ import {
   emitBoundsGuardedArraySet,
   emitNullCheckThrow,
   emitNullGuardedStructGet,
-  typeErrorThrowInstrs,
 } from "./property-access.js";
 export function resolveStructName(
   ctx: CodegenContext,
@@ -17413,266 +17397,6 @@ function isStaticNaN(ctx: CodegenContext, expr: ts.Expression): boolean {
 }
 
 // getLine and getCol are now imported from ./shared.js
-
-// ── Late-stage pass: convert ref.as_non_null traps to TypeError throws ──────
-/**
- * Walk an instruction array and insert null-check-throw guards before every
- * `ref.as_non_null` instruction.  After the guard, the `ref.as_non_null` is
- * kept for Wasm type narrowing but is guaranteed not to trap because we've
- * already verified the value is non-null.
- *
- * The guard uses an `anyref` temp local (allocated once per call) for the
- * null check:
- *   local.tee $tmp   ;; save value (widens to anyref)
- *   ref.is_null
- *   if then [throw TypeError]
- *   local.get $tmp   ;; restore value (as anyref)
- *   any.convert_extern is NOT needed — value is already an anyref-compatible ref
- *
- * Because local.get returns anyref (not the original ref_null $T), we drop
- * that copy and re-push from the original via a second temp of anyref.
- * The kept `ref.as_non_null` then narrows `anyref` → `(ref any)`, which may
- * differ from the original `(ref $T)`. For downstream struct.get/call_ref this
- * is fine in practice because the Wasm engine performs structural type checks.
- *
- * Call this on each compiled function body before final emission.
- */
-export function guardRefAsNonNull(
-  instrs: Instr[],
-  ctx: CodegenContext,
-  fctx: FunctionContext,
-): void {
-  // Allocate a single anyref temp for all guards in this body
-  const tmp = allocTempLocal(fctx, { kind: "anyref" } as ValType);
-  const throwInstrs = typeErrorThrowInstrs(ctx);
-
-  function walk(body: Instr[]): void {
-    for (let i = 0; i < body.length; i++) {
-      const instr = body[i]!;
-      // Recurse into nested blocks first
-      const a = instr as any;
-      if (a.then && Array.isArray(a.then)) walk(a.then);
-      if (a.else && Array.isArray(a.else)) walk(a.else);
-      if (a.body && Array.isArray(a.body)) walk(a.body);
-      if (a.catches && Array.isArray(a.catches)) {
-        for (const c of a.catches) {
-          if (Array.isArray(c.body)) walk(c.body);
-        }
-      }
-      if (a.catchAll && Array.isArray(a.catchAll)) walk(a.catchAll);
-
-      if (instr.op === "ref.as_non_null") {
-        // Insert null-check-throw before this instruction
-        const guard: Instr[] = [
-          { op: "local.tee", index: tmp } as Instr,
-          { op: "ref.is_null" } as Instr,
-          {
-            op: "if",
-            blockType: { kind: "empty" },
-            then: [...throwInstrs],
-            else: [],
-          } as Instr,
-          { op: "local.get", index: tmp } as Instr,
-        ];
-        body.splice(i, 0, ...guard);
-        i += guard.length; // skip past guard + the ref.as_non_null
-      }
-    }
-  }
-
-  walk(instrs);
-  releaseTempLocal(fctx, tmp);
-}
-
-/**
- * Module-level pass: guard every remaining `ref.as_non_null` with a
- * null-check-throw so it throws a catchable TypeError instead of trapping.
- *
- * Must run AFTER peepholeOptimize (removes redundant ref.as_non_null after
- * ref.cast) and BEFORE stackBalance.
- */
-export function guardAllRefAsNonNull(
-  mod: WasmModule,
-  ctx: CodegenContext,
-): void {
-  const throwInstrs = typeErrorThrowInstrs(ctx);
-
-  for (const func of mod.functions) {
-    if (!bodyHasRefAsNonNull(func.body)) continue;
-    walkAndGuard(func.body, func, ctx, throwInstrs);
-  }
-}
-
-/** Look up the type of a local by its overall index (params + body locals) */
-function lookupLocalType(
-  func: WasmModule["functions"][0],
-  ctx: CodegenContext,
-  localIdx: number,
-): ValType | null {
-  const funcType = ctx.mod.types[func.typeIdx];
-  const paramCount = funcType && (funcType as any).params ? (funcType as any).params.length : 0;
-  if (localIdx < paramCount) {
-    return (funcType as any).params[localIdx] ?? null;
-  }
-  const bodyIdx = localIdx - paramCount;
-  return func.locals[bodyIdx]?.type ?? null;
-}
-
-/** Get the overall local index for a new body local */
-function overallLocalIdx(
-  func: WasmModule["functions"][0],
-  ctx: CodegenContext,
-  bodyIdx: number,
-): number {
-  const funcType = ctx.mod.types[func.typeIdx];
-  const paramCount = funcType && (funcType as any).params ? (funcType as any).params.length : 0;
-  return paramCount + bodyIdx;
-}
-
-function walkAndGuard(
-  body: Instr[],
-  func: WasmModule["functions"][0],
-  ctx: CodegenContext,
-  throwInstrs: Instr[],
-): void {
-  for (let i = 0; i < body.length; i++) {
-    const instr = body[i]!;
-    const a = instr as any;
-    if (a.then && Array.isArray(a.then)) walkAndGuard(a.then, func, ctx, throwInstrs);
-    if (a.else && Array.isArray(a.else)) walkAndGuard(a.else, func, ctx, throwInstrs);
-    if (a.body && Array.isArray(a.body)) walkAndGuard(a.body, func, ctx, throwInstrs);
-    if (a.catches && Array.isArray(a.catches)) {
-      for (const c of a.catches) {
-        if (Array.isArray(c.body)) walkAndGuard(c.body, func, ctx, throwInstrs);
-      }
-    }
-    if (a.catchAll && Array.isArray(a.catchAll)) walkAndGuard(a.catchAll, func, ctx, throwInstrs);
-
-    if (instr.op !== "ref.as_non_null") continue;
-
-    // Pattern 1: ref.null N → ref.as_non_null  (guaranteed trap → replace with throw)
-    const prev = i > 0 ? body[i - 1] : undefined;
-    if (prev && (prev.op === "ref.null" || prev.op === "ref.null.extern")) {
-      body.splice(i - 1, 2, ...throwInstrs, { op: "unreachable" } as Instr);
-      i = i - 1 + throwInstrs.length;
-      continue;
-    }
-
-    // Determine the type for the null-guard temp local.
-    // Check PREV instruction for source type, then NEXT for target type.
-    let guardType: ValType | null = null;
-
-    if (prev) {
-      if (prev.op === "local.get" && typeof (prev as any).index === "number") {
-        guardType = lookupLocalType(func, ctx, (prev as any).index);
-      } else if (prev.op === "global.get" && typeof (prev as any).index === "number") {
-        guardType = ctx.mod.globals[(prev as any).index]?.type ?? null;
-      } else if (prev.op === "struct.get") {
-        const typeIdx = (prev as any).typeIdx as number | undefined;
-        const fieldIdx = (prev as any).fieldIdx as number | undefined;
-        if (typeIdx !== undefined && fieldIdx !== undefined) {
-          const typeDef = ctx.mod.types[typeIdx];
-          const field = typeDef && (typeDef as any).fields?.[fieldIdx];
-          guardType = field?.type ?? null;
-        }
-      } else if (prev.op === "local.tee" && typeof (prev as any).index === "number") {
-        guardType = lookupLocalType(func, ctx, (prev as any).index);
-      }
-    }
-
-    // From next: local.set/tee, struct.get/set, call_ref/return_call_ref, array ops
-    if (!guardType) {
-      const next = body[i + 1];
-      if (next) {
-        const na = next as any;
-        if ((next.op === "local.set" || next.op === "local.tee") && typeof na.index === "number") {
-          guardType = lookupLocalType(func, ctx, na.index);
-        } else if ((next.op === "struct.get" || next.op === "struct.set") && typeof na.typeIdx === "number") {
-          guardType = { kind: "ref_null", typeIdx: na.typeIdx } as unknown as ValType;
-        } else if ((next.op === "call_ref" || next.op === "return_call_ref") && typeof na.typeIdx === "number") {
-          guardType = { kind: "ref_null", typeIdx: na.typeIdx } as unknown as ValType;
-        } else if ((next.op === "array.get" || next.op === "array.set" || next.op === "array.len") && typeof na.typeIdx === "number") {
-          guardType = { kind: "ref_null", typeIdx: na.typeIdx } as unknown as ValType;
-        } else if (next.op === "extern.convert_any") {
-          // extern.convert_any accepts anyref — use anyref (already default)
-          guardType = { kind: "anyref" } as ValType;
-        }
-      }
-    }
-
-    // If we couldn't determine the type, skip the guard rather than
-    // using anyref which loses type information and causes downstream mismatches
-    if (!guardType) continue;
-
-    const tmpIdx = getOrAddTempLocal(func, ctx, guardType);
-    const guard: Instr[] = [
-      { op: "local.tee", index: tmpIdx } as Instr,
-      { op: "ref.is_null" } as Instr,
-      {
-        op: "if",
-        blockType: { kind: "empty" },
-        then: [...throwInstrs],
-        else: [],
-      } as Instr,
-      { op: "local.get", index: tmpIdx } as Instr,
-    ];
-    body.splice(i, 0, ...guard);
-    i += guard.length;
-  }
-}
-
-/** Cache of temp locals by type key → overall local index, per function */
-const funcTempLocals = new WeakMap<object, Map<string, number>>();
-
-function valTypeKeyForGuard(t: ValType): string {
-  if (!t) return "anyref";
-  if (typeof t === "string") return t;
-  if (t.kind === "ref" || t.kind === "ref_null") return `ref_null:${(t as any).typeIdx ?? "any"}`;
-  return t.kind;
-}
-
-function getOrAddTempLocal(
-  func: WasmModule["functions"][0],
-  ctx: CodegenContext,
-  type: ValType,
-): number {
-  let cache = funcTempLocals.get(func);
-  if (!cache) {
-    cache = new Map();
-    funcTempLocals.set(func, cache);
-  }
-  // Use ref_null variant if the type is ref (to accept nullable values)
-  let localType = type;
-  if (type && typeof type === "object" && type.kind === "ref") {
-    localType = { ...type, kind: "ref_null" } as ValType;
-  }
-  const key = valTypeKeyForGuard(localType);
-  const existing = cache.get(key);
-  if (existing !== undefined) return existing;
-  const bodyIdx = func.locals.length;
-  func.locals.push({ name: `__null_guard_${key}`, type: localType });
-  const idx = overallLocalIdx(func, ctx, bodyIdx);
-  cache.set(key, idx);
-  return idx;
-}
-
-/** Quick check whether a body (recursively) contains ref.as_non_null */
-function bodyHasRefAsNonNull(body: Instr[]): boolean {
-  for (const instr of body) {
-    if (instr.op === "ref.as_non_null") return true;
-    const a = instr as any;
-    if (a.then && Array.isArray(a.then) && bodyHasRefAsNonNull(a.then)) return true;
-    if (a.else && Array.isArray(a.else) && bodyHasRefAsNonNull(a.else)) return true;
-    if (a.body && Array.isArray(a.body) && bodyHasRefAsNonNull(a.body)) return true;
-    if (a.catches && Array.isArray(a.catches)) {
-      for (const c of a.catches) {
-        if (Array.isArray(c.body) && bodyHasRefAsNonNull(c.body)) return true;
-      }
-    }
-    if (a.catchAll && Array.isArray(a.catchAll) && bodyHasRefAsNonNull(a.catchAll)) return true;
-  }
-  return false;
-}
 
 // Register delegates for shared.ts so that array-methods.ts (and other extracted
 registerCompileExpression(compileExpression);
