@@ -4,7 +4,7 @@ Goals form a DAG — a goal is **activatable** when all its dependencies are met
 Unlike a linear roadmap, multiple independent goals can be worked on in parallel,
 and a goal being "ready" doesn't mean it should be worked on immediately.
 
-**Current state**: 14,239 / 48,102 = 29.6% pass | 5,982 CE | 26,880 FAIL | 1,001 skip (2026-03-22, clean cache)
+**Current state**: 15,465 / 49,665 = 31.1% pass | 1,777 real CE (8,799 incl. worker crashes) | 24,731 FAIL | 670 skip (2026-03-25, full clean run at 19cedca9)
 
 ## DAG
 
@@ -90,7 +90,7 @@ and a goal being "ready" doesn't mean it should be worked on immediately.
 | Goal | Status | Target | Dependencies | Key Issues |
 |------|--------|--------|-------------|------------|
 | **compilable** | Active | CE → 0, ~40% | — | #759, #411, #511, #444, #515, #409, #401 |
-| **crash-free** | Active | traps → 0, ~45% | compilable (partial) | #728, #441, #512 |
+| **crash-free** | Active | traps → 0, ~45% | compilable (partial) | #775, #441, #512 |
 | **core-semantics** | Activatable | ~50% | compilable | #513, #729, #737 |
 | **error-model** | Activatable | spec errors, ~45% | compilable | #730, #736, #733, #402, #723 |
 | **property-model** | Blocked | ~55% | core-semantics | #732, #739, #359, #488 |

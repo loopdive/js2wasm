@@ -445,5 +445,7 @@
 | 740 | 2026-03-22 | Remove duplicated lib.d.ts copies, read from typescript package at runtime                         | Session    |
 | 772 | 2026-03-23 | Insert missing extern.convert_any at call sites (1,299 CE)                                        | Session    |
 | 765 | 2026-03-23 | Compile error triage: 4,443 remaining CEs -- superseded, all patterns fixed                       | Session    |
+| 723 | 2026-03-21 | TDZ violations: throw ReferenceError before let/const init (230 FAIL)                             | Session    |
+| 728 | 2026-03-25 | Null pointer dereference should throw TypeError -- superseded by #775                             | Session    |
 
 

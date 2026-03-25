@@ -451,7 +451,7 @@ Updated 2026-03-22: 48,102 tests -- 14,720 pass, 27,938 fail, 4,443 CE, 1,001 sk
 | 435 | Logical/conditional must preserve object identity | 16 fail | **Ready** (medium) |
 | **726** | **TypeError regression: ref.cast guard returns ref.null for valid objects** | **1,948 regress** | **Done** (multi-struct dispatch) |
 | **727** | **Sub-classify assertion failures (wrong values)** | **11,480 fail** | **Ready** (high, analysis only) |
-| **728** | **Null pointer dereference should throw TypeError, not trap** | **1,604 fail** | **Ready** (high, depends #695) |
+| ~~728~~ | ~~Null pointer dereference should throw TypeError, not trap~~ | ~~1,604 fail~~ | **Done** (superseded by #775) |
 
 ---
 
@@ -631,7 +631,7 @@ function in the same file. Key contention points:
 | logical/conditional codegen | 435 |
 | block/stack balance | 411, 410, 412, 447 |
 | AST null safety | 405, 418, 438 |
-| null guard emission | 441, 726, 728 |
+| null guard emission | 441, 726, ~~728~~→775 |
 | ref.cast / type narrowing | 442, 726 |
 | local.set coercion | 444 |
 | call args / call_ref | 445, 446, 449 |
