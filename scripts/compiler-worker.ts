@@ -9,10 +9,17 @@ import { compile } from "../src/index.ts";
 if (!parentPort) throw new Error("Must run as worker_thread");
 
 let compilationCount = 0;
+const MAX_COMPILATIONS = parseInt(process.env.WORKER_MAX_COMPILATIONS ?? "500", 10);
 
 parentPort.on("message", (msg: { id: number; source: string; sourceMapUrl?: string }) => {
   compilationCount++;
   const start = performance.now();
+
+  // Restart worker after N compilations to release accumulated TS caches
+  if (compilationCount >= MAX_COMPILATIONS) {
+    // Finish this compilation, then exit — pool will respawn us
+    process.once("beforeExit", () => process.exit(0));
+  }
 
   try {
     const result = compile(msg.source, {
