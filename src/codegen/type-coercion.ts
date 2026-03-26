@@ -7,7 +7,7 @@
 
 import type { CodegenContext, FunctionContext, ClosureInfo } from "./index.js";
 import { allocLocal, allocTempLocal, releaseTempLocal, addUnionImports, addStringConstantGlobal, isAnyValue, ensureAnyHelpers } from "./index.js";
-import { registerCoerceType } from "./shared.js";
+import { registerCoerceType, ensureLateImport, flushLateImportShifts } from "./shared.js";
 import type { Instr, ValType, StructTypeDef, ArrayTypeDef } from "../ir/types.js";
 
 /**
@@ -36,7 +36,9 @@ export function emitGuardedRefCast(
       { op: "ref.null", typeIdx },
     ],
   });
-  releaseTempLocal(fctx, tmpLocal);
+  // Save the pre-cast anyref so downstream multi-struct dispatch can use it
+  // when the cast produced null (wrong struct type, not genuinely null). (#792)
+  (fctx as any).__lastGuardedCastBackup = tmpLocal;
 }
 
 /**
@@ -70,6 +72,105 @@ function getVecInfo(
   const arrDef = ctx.mod.types[arrTypeIdx];
   if (!arrDef || arrDef.kind !== "array") return null;
   return { arrTypeIdx, elemType: (arrDef as ArrayTypeDef).element };
+}
+
+/**
+ * Build instructions to construct a vec struct from a JS array (externref).
+ * Uses __extern_length + __extern_get to read elements and build the WasmGC array.
+ * Returns instruction array producing ref_null $vecType on the stack. (#792)
+ */
+function buildVecFromExternref(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  externLocal: number,
+  vecTypeIdx: number,
+  vecInfo: { arrTypeIdx: number; elemType: ValType },
+): Instr[] {
+  const lenIdx = ensureLateImport(ctx, "__extern_length", [{ kind: "externref" }], [{ kind: "f64" }]);
+  flushLateImportShifts(ctx, fctx);
+  const getIdx = ensureLateImport(ctx, "__extern_get", [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+  flushLateImportShifts(ctx, fctx);
+  const unboxIdx = ensureLateImport(ctx, "__unbox_number", [{ kind: "externref" }], [{ kind: "f64" }]);
+  flushLateImportShifts(ctx, fctx);
+  const boxIdx = ensureLateImport(ctx, "__box_number", [{ kind: "f64" }], [{ kind: "externref" }]);
+  flushLateImportShifts(ctx, fctx);
+
+  if (lenIdx === undefined || getIdx === undefined) {
+    return [{ op: "ref.null", typeIdx: vecTypeIdx } as Instr];
+  }
+
+  const lenLocal = allocLocal(fctx, `__vec_len_${fctx.locals.length}`, { kind: "i32" });
+  const arrLocal = allocLocal(fctx, `__vec_arr_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecInfo.arrTypeIdx });
+  const idxLocal = allocLocal(fctx, `__vec_idx_${fctx.locals.length}`, { kind: "i32" });
+
+  const buildElemCoerce = (): Instr[] => {
+    const et = vecInfo.elemType;
+    if (et.kind === "f64" && unboxIdx !== undefined) {
+      return [{ op: "call", funcIdx: unboxIdx } as Instr];
+    }
+    if (et.kind === "i32" && unboxIdx !== undefined) {
+      return [
+        { op: "call", funcIdx: unboxIdx } as Instr,
+        { op: "i32.trunc_sat_f64_s" } as unknown as Instr,
+      ];
+    }
+    if (et.kind === "externref") return [];
+    if (et.kind === "ref" || et.kind === "ref_null") {
+      const elemTypeIdx = (et as { typeIdx: number }).typeIdx;
+      return [
+        { op: "any.convert_extern" } as Instr,
+        { op: "ref.cast_null", typeIdx: elemTypeIdx } as Instr,
+      ];
+    }
+    return [];
+  };
+
+  return [
+    { op: "local.get", index: externLocal } as Instr,
+    { op: "call", funcIdx: lenIdx } as Instr,
+    { op: "i32.trunc_sat_f64_s" } as unknown as Instr,
+    { op: "local.set", index: lenLocal } as Instr,
+    { op: "local.get", index: lenLocal } as Instr,
+    { op: "array.new_default", typeIdx: vecInfo.arrTypeIdx } as Instr,
+    { op: "local.set", index: arrLocal } as Instr,
+    { op: "i32.const", value: 0 } as Instr,
+    { op: "local.set", index: idxLocal } as Instr,
+    {
+      op: "block",
+      blockType: { kind: "empty" },
+      body: [{
+        op: "loop",
+        blockType: { kind: "empty" },
+        body: [
+          { op: "local.get", index: idxLocal } as Instr,
+          { op: "local.get", index: lenLocal } as Instr,
+          { op: "i32.ge_u" } as Instr,
+          { op: "br_if", depth: 1 } as Instr,
+          { op: "local.get", index: arrLocal } as Instr,
+          { op: "local.get", index: idxLocal } as Instr,
+          { op: "local.get", index: externLocal } as Instr,
+          ...(boxIdx !== undefined
+            ? [
+                { op: "local.get", index: idxLocal } as Instr,
+                { op: "f64.convert_i32_s" } as Instr,
+                { op: "call", funcIdx: boxIdx } as Instr,
+              ]
+            : [{ op: "ref.null.extern" } as Instr]),
+          { op: "call", funcIdx: getIdx } as Instr,
+          ...buildElemCoerce(),
+          { op: "array.set", typeIdx: vecInfo.arrTypeIdx } as Instr,
+          { op: "local.get", index: idxLocal } as Instr,
+          { op: "i32.const", value: 1 } as Instr,
+          { op: "i32.add" } as Instr,
+          { op: "local.set", index: idxLocal } as Instr,
+          { op: "br", depth: 0 } as Instr,
+        ],
+      } as Instr],
+    } as Instr,
+    { op: "local.get", index: lenLocal } as Instr,
+    { op: "local.get", index: arrLocal } as Instr,
+    { op: "struct.new", typeIdx: vecTypeIdx } as Instr,
+  ];
 }
 
 /**
@@ -767,46 +868,42 @@ export function coerceType(
     return;
   }
   // externref → ref/ref_null: convert externref back to anyref, then cast to target struct type.
-  // Uses any.convert_extern + ref.cast (non-nullable) or ref.cast_null (nullable).
+  // When the cast fails (e.g., JS array passed where vec struct expected),
+  // try to construct the target from the JS object via __extern_get (#792).
   if (from.kind === "externref" && (to.kind === "ref" || to.kind === "ref_null")) {
     const toIdx = (to as { typeIdx: number }).typeIdx;
+    const vecInfo = getVecInfo(ctx, toIdx);
+
+    // Save externref BEFORE converting to anyref — needed for __extern_get fallback
+    const tmpExternLocal = allocTempLocal(fctx, { kind: "externref" });
+    fctx.body.push({ op: "local.tee", index: tmpExternLocal });
+
     fctx.body.push({ op: "any.convert_extern" } as Instr);
-    // Guard with ref.test to avoid illegal cast traps.
-    // Save the anyref to a local, test if it can be cast, and produce
-    // null if the cast would fail (for ref_null targets) or trap gracefully.
     const tmpAnyLocal = allocTempLocal(fctx, { kind: "anyref" } as ValType);
     fctx.body.push({ op: "local.tee", index: tmpAnyLocal });
     fctx.body.push({ op: "ref.test", typeIdx: toIdx });
-    if (to.kind === "ref_null") {
-      // If test passes: cast; otherwise: push null
-      fctx.body.push({
-        op: "if",
-        blockType: { kind: "val", type: to },
-        then: [
-          { op: "local.get", index: tmpAnyLocal },
-          { op: "ref.cast_null", typeIdx: toIdx },
-        ],
-        else: [
-          { op: "ref.null", typeIdx: toIdx },
-        ],
-      });
-    } else {
-      // Non-null target: if test fails, produce a null and ref.as_non_null will trap
-      // with a clearer error than illegal cast
-      fctx.body.push({
-        op: "if",
-        blockType: { kind: "val", type: { kind: "ref_null", typeIdx: toIdx } as ValType },
-        then: [
-          { op: "local.get", index: tmpAnyLocal },
-          { op: "ref.cast_null", typeIdx: toIdx },
-        ],
-        else: [
-          { op: "ref.null", typeIdx: toIdx },
-        ],
-      });
-      fctx.body.push({ op: "ref.as_non_null" } as Instr);
-    }
-    releaseTempLocal(fctx, tmpAnyLocal);
+
+    // Build else-branch: when cast fails, construct from JS object if possible
+    const elseBranch: Instr[] = vecInfo
+      ? buildVecFromExternref(ctx, fctx, tmpExternLocal, toIdx, vecInfo)
+      : [{ op: "ref.null", typeIdx: toIdx } as Instr];
+
+    const resultType: ValType = { kind: "ref_null", typeIdx: toIdx };
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "val", type: resultType },
+      then: [
+        { op: "local.get", index: tmpAnyLocal },
+        { op: "ref.cast_null", typeIdx: toIdx },
+      ],
+      else: elseBranch,
+    });
+    // Don't ref.as_non_null for non-null targets — let downstream handle null
+    // via multi-struct dispatch (#792)
+
+    // Save pre-cast anyref backup for multi-struct dispatch
+    (fctx as any).__lastGuardedCastBackup = tmpAnyLocal;
+    releaseTempLocal(fctx, tmpExternLocal);
     return;
   }
   // f64 → externref (box number)

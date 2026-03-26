@@ -129,53 +129,87 @@ export function emitNullGuardedStructGet(
     fctx.body.push({ op: "local.set", index: tmpAny });
     const resultLocal = allocLocal(fctx, `__ng_res_${fctx.locals.length}`, resultType);
 
-    // Null check FIRST: if the value is genuinely null, throw TypeError (#728)
-    // If not null but wrong struct type, fall through to alternates/default.
-    fctx.body.push({ op: "local.get", index: tmpAny });
-    fctx.body.push({ op: "ref.is_null" });
-    fctx.body.push({
-      op: "if",
-      blockType: { kind: "empty" },
-      then: typeErrorThrowInstrs(ctx),
-      else: [],
-    });
-
-    // Try primary struct type
-    fctx.body.push({ op: "local.get", index: tmpAny });
-    fctx.body.push({ op: "ref.test", typeIdx });
-
     // Find alternative struct types with the same field name
     const alternates = findAlternateStructsForField(ctx, propName, typeIdx);
 
-    // Build the fallback chain: try alternates, then default
-    const buildFallback = (altIdx: number): Instr[] => {
+    // Build the fallback chain: try alternates on a given anyref, then default
+    const buildFallback = (srcLocal: number, altIdx: number): Instr[] => {
       if (altIdx < alternates.length) {
         const alt = alternates[altIdx]!;
-        // Coerce the alternate field type to the expected result type
         const altCoerce = coercionInstrs(ctx, alt.fieldType, resultType);
         return [
-          { op: "local.get", index: tmpAny } as Instr,
+          { op: "local.get", index: srcLocal } as Instr,
           { op: "ref.test", typeIdx: alt.structTypeIdx } as Instr,
           {
             op: "if",
             blockType: { kind: "empty" },
             then: [
-              { op: "local.get", index: tmpAny } as Instr,
+              { op: "local.get", index: srcLocal } as Instr,
               { op: "ref.cast", typeIdx: alt.structTypeIdx } as Instr,
               { op: "struct.get", typeIdx: alt.structTypeIdx, fieldIdx: alt.fieldIdx } as Instr,
               ...altCoerce,
               { op: "local.set", index: resultLocal } as Instr,
             ],
-            else: buildFallback(altIdx + 1),
+            else: buildFallback(srcLocal, altIdx + 1),
           } as Instr,
         ];
       }
-      // No more alternates — return default value (value is non-null but wrong type)
+      // No more alternates — return default value
       return [
         ...defaultValueInstrs(resultType),
         { op: "local.set", index: resultLocal } as Instr,
       ];
     };
+
+    // Check if emitGuardedRefCast saved a pre-cast backup (#792).
+    // When the guarded cast failed (wrong struct type), the value on
+    // the stack is ref.null but the backup anyref still holds the
+    // original value which may match an alternate struct type.
+    const backupLocal: number | undefined = (fctx as any).__lastGuardedCastBackup;
+
+    // Null check: if the value is genuinely null, throw TypeError (#728)
+    // But if the backup is available and non-null, use it for multi-struct dispatch
+    fctx.body.push({ op: "local.get", index: tmpAny });
+    fctx.body.push({ op: "ref.is_null" });
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: backupLocal !== undefined
+        ? [
+            // Value is null — could be wrong struct type or genuinely null.
+            // Check the backup anyref to distinguish.
+            { op: "local.get", index: backupLocal } as Instr,
+            { op: "ref.is_null" } as Instr,
+            {
+              op: "if",
+              blockType: { kind: "empty" },
+              // Backup is also null → genuinely null, throw TypeError
+              then: typeErrorThrowInstrs(ctx),
+              // Backup is non-null → wrong struct type, try primary + alternates on backup
+              else: [
+                { op: "local.get", index: backupLocal } as Instr,
+                { op: "ref.test", typeIdx } as Instr,
+                {
+                  op: "if",
+                  blockType: { kind: "empty" },
+                  then: [
+                    { op: "local.get", index: backupLocal } as Instr,
+                    { op: "ref.cast", typeIdx } as Instr,
+                    { op: "struct.get", typeIdx, fieldIdx } as Instr,
+                    { op: "local.set", index: resultLocal } as Instr,
+                  ],
+                  else: buildFallback(backupLocal, 0),
+                } as Instr,
+              ],
+            } as Instr,
+          ]
+        : typeErrorThrowInstrs(ctx),
+      else: [],
+    });
+
+    // Non-null path: try primary struct type on the original value
+    fctx.body.push({ op: "local.get", index: tmpAny });
+    fctx.body.push({ op: "ref.test", typeIdx });
 
     fctx.body.push({
       op: "if",
@@ -186,7 +220,7 @@ export function emitNullGuardedStructGet(
         { op: "struct.get", typeIdx, fieldIdx } as Instr,
         { op: "local.set", index: resultLocal } as Instr,
       ],
-      else: buildFallback(0),
+      else: buildFallback(tmpAny, 0),
     });
     fctx.body.push({ op: "local.get", index: resultLocal });
     return;
