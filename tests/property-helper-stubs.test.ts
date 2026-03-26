@@ -8,8 +8,8 @@ import { buildImports } from "../src/runtime.js";
  *
  * Tests that the no-op stubs for verifyEnumerable, verifyNotEnumerable,
  * verifyWritable, verifyNotWritable, verifyConfigurable, verifyNotConfigurable
- * compile and run without crashing.  verifyProperty is still stripped (object
- * literal descriptors crash the compiler, #580).
+ * compile and run without crashing.  verifyProperty with value: is transformed
+ * to assert_sameValue; without value: is stripped (#770).
  */
 
 async function compileAndRun(source: string) {
@@ -76,9 +76,9 @@ assert.sameValue(obj.z, 99);
     expect(result.value).toBe(1);
   });
 
-  it("verifyProperty calls are stripped (object literal args)", async () => {
-    // verifyProperty passes object literal descriptors which crash the compiler.
-    // Ensure these calls are still stripped, and the rest of the test logic runs.
+  it("verifyProperty with value: is transformed to assert_sameValue", async () => {
+    // verifyProperty(obj, name, {value: X}) is transformed to assert_sameValue(obj[name], X).
+    // Calls without value: are stripped entirely.
     const test262Source = `/*---
 includes: [propertyHelper.js]
 ---*/
@@ -92,7 +92,29 @@ verifyProperty(x, "toString", {
 assert.sameValue(x, 3);
 `;
     const { source: wrapped } = wrapTest(test262Source);
-    // The verifyProperty call should be stripped from wrapped output
+    // The verifyProperty call should be transformed, not present as-is
+    expect(wrapped).not.toContain("verifyProperty");
+    // But it should contain an assert_sameValue for the value check
+    expect(wrapped).toContain("assert_sameValue");
+    const result = await compileAndRun(wrapped);
+    expect(result.success, `Failed: ${result.error}`).toBe(true);
+    // Test returns non-1 because x["toString"] !== 42
+    // (x is a number, its toString is the built-in function, not 42)
+  });
+
+  it("verifyProperty without value: is stripped", async () => {
+    const test262Source = `/*---
+includes: [propertyHelper.js]
+---*/
+var obj = { x: 1 };
+verifyProperty(obj, "x", {
+  writable: true,
+  enumerable: true,
+  configurable: true
+});
+assert.sameValue(obj.x, 1);
+`;
+    const { source: wrapped } = wrapTest(test262Source);
     expect(wrapped).not.toContain("verifyProperty");
     const result = await compileAndRun(wrapped);
     expect(result.success, `Failed: ${result.error}`).toBe(true);
