@@ -153,6 +153,13 @@ function resolveImport(
       if (name === "__call_1_i32") return (fn: Function, a: number) => fn(a);
       if (name === "__call_2_i32") return (fn: Function, a: number, b: number) => fn(a, b);
       if (name === "__typeof") return (v: any) => typeof v;
+      if (name === "__instanceof") return (v: any, ctorName: string) => {
+        try {
+          const ctor = (globalThis as any)[ctorName];
+          if (typeof ctor !== "function") return 0;
+          return v instanceof ctor ? 1 : 0;
+        } catch { return 0; }
+      };
       // parseInt / parseFloat host imports
       if (name === "parseInt") return (s: any, radix: number) => {
         const r = Number.isNaN(radix) ? undefined : radix;

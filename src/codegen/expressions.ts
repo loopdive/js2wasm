@@ -968,6 +968,15 @@ function compileExpressionInner(
   }
 
   if (ts.isBinaryExpression(expr)) {
+    // Intercept instanceof for unresolvable right-hand classes (#738)
+    // When the RHS class is not in our struct system (e.g., TypeError, Array,
+    // Function, Promise), delegate to a __instanceof host import.
+    if (expr.operatorToken.kind === ts.SyntaxKind.InstanceOfKeyword) {
+      const rhsResult = resolveInstanceOfRHS(ctx, expr.right);
+      if (!rhsResult) {
+        return compileHostInstanceOf(ctx, fctx, expr);
+      }
+    }
     return compileBinaryExpression(ctx, fctx, expr);
   }
 
@@ -1396,6 +1405,106 @@ function narrowTypeToUnbox(
 }
 
 // ── instanceof (extracted to ./typeof-delete.ts) ──
+
+/**
+ * Try to resolve the right-hand side of an instanceof expression to a known
+ * class in our struct system. Returns the class name if found, undefined otherwise.
+ * This mirrors resolveInstanceOfClassName in typeof-delete.ts but is used to
+ * decide whether to use the host fallback.
+ */
+function resolveInstanceOfRHS(
+  ctx: CodegenContext,
+  rightExpr: ts.Expression,
+): string | undefined {
+  if (ts.isIdentifier(rightExpr)) {
+    const name = rightExpr.text;
+    if (ctx.classTagMap.has(name)) return name;
+    const mapped = ctx.classExprNameMap.get(name);
+    if (mapped && ctx.classTagMap.has(mapped)) return mapped;
+  }
+  const tsType = ctx.checker.getTypeAtLocation(rightExpr);
+  const constructSigs = tsType.getConstructSignatures?.();
+  if (constructSigs && constructSigs.length > 0) {
+    const instanceType = constructSigs[0]!.getReturnType();
+    const symbolName = instanceType.getSymbol()?.name;
+    if (symbolName) {
+      if (ctx.classTagMap.has(symbolName)) return symbolName;
+      const mapped = ctx.classExprNameMap.get(symbolName);
+      if (mapped && ctx.classTagMap.has(mapped)) return mapped;
+    }
+  }
+  const symbolName = tsType.getSymbol()?.name;
+  if (symbolName) {
+    if (ctx.classTagMap.has(symbolName)) return symbolName;
+    const mapped = ctx.classExprNameMap.get(symbolName);
+    if (mapped && ctx.classTagMap.has(mapped)) return mapped;
+  }
+  return undefined;
+}
+
+/**
+ * Compile `expr instanceof RHS` using a host import when the RHS class is not
+ * in our struct system (e.g., TypeError, Array, Function, Promise). (#738)
+ * Passes the value as externref and the constructor name as a string constant,
+ * delegating to `__instanceof(value, ctorName) -> i32` host import which
+ * looks up the constructor on the global object.
+ */
+function compileHostInstanceOf(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.BinaryExpression,
+): ValType {
+  // Resolve constructor name from the RHS expression (simple identifiers only)
+  let ctorName: string | undefined;
+  if (ts.isIdentifier(expr.right)) {
+    ctorName = expr.right.text;
+  }
+
+  if (!ctorName) {
+    // Cannot resolve constructor name — compile both sides, emit false
+    const leftType = compileExpression(ctx, fctx, expr.left);
+    if (leftType) fctx.body.push({ op: "drop" });
+    fctx.body.push({ op: "i32.const", value: 0 });
+    return { kind: "i32" };
+  }
+
+  // Ensure the __instanceof host import exists
+  const instanceofIdx = ensureLateImport(
+    ctx,
+    "__instanceof",
+    [{ kind: "externref" }, { kind: "externref" }],
+    [{ kind: "i32" }],
+  );
+  flushLateImportShifts(ctx, fctx);
+
+  if (instanceofIdx === undefined) {
+    const leftType = compileExpression(ctx, fctx, expr.left);
+    if (leftType) fctx.body.push({ op: "drop" });
+    fctx.body.push({ op: "i32.const", value: 0 });
+    return { kind: "i32" };
+  }
+
+  // Compile left operand (the value to test)
+  const leftType = compileExpression(ctx, fctx, expr.left);
+  if (!leftType) {
+    fctx.body.push({ op: "ref.null.extern" });
+  } else if (leftType.kind !== "externref") {
+    coerceType(ctx, fctx, leftType, { kind: "externref" });
+  }
+
+  // Push constructor name as a string constant
+  addStringConstantGlobal(ctx, ctorName);
+  const strGlobalIdx = ctx.stringGlobalMap.get(ctorName);
+  if (strGlobalIdx !== undefined) {
+    fctx.body.push({ op: "global.get", index: strGlobalIdx });
+  } else {
+    fctx.body.push({ op: "ref.null.extern" });
+  }
+
+  // Call __instanceof(value, ctorName) -> i32
+  fctx.body.push({ op: "call", funcIdx: instanceofIdx });
+  return { kind: "i32" };
+}
 
 // ── typeof (extracted to ./typeof-delete.ts) ──
 
@@ -10502,6 +10611,36 @@ function compileCallExpression(
 
     // Primitive method calls: number.toString(), number.toFixed()
     if (isNumberType(receiverType) && propAccess.name.text === "toString") {
+      // RangeError: if radix argument is provided, must be 2-36
+      if (expr.arguments.length > 0) {
+        compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "f64" });
+        const radixLocal = allocLocal(fctx, `__radix_${fctx.locals.length}`, { kind: "f64" });
+        fctx.body.push({ op: "local.tee", index: radixLocal });
+        // Check radix < 2
+        fctx.body.push({ op: "f64.const", value: 2 });
+        fctx.body.push({ op: "f64.lt" });
+        // Check radix > 36
+        fctx.body.push({ op: "local.get", index: radixLocal });
+        fctx.body.push({ op: "f64.const", value: 36 });
+        fctx.body.push({ op: "f64.gt" });
+        fctx.body.push({ op: "i32.or" });
+        {
+          const rangeErrMsg = "RangeError: toString() radix must be between 2 and 36";
+          addStringConstantGlobal(ctx, rangeErrMsg);
+          const strIdx = ctx.stringGlobalMap.get(rangeErrMsg)!;
+          const tagIdx = ensureExnTag(ctx);
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: [
+              { op: "global.get", index: strIdx } as Instr,
+              { op: "throw", tagIdx } as Instr,
+            ],
+            else: [],
+          });
+        }
+        fctx.body.push({ op: "drop" }); // drop radix, toString still uses base-10
+      }
       const exprType = compileExpression(ctx, fctx, propAccess.expression);
       // number_toString expects f64 but source may be i32 (e.g. string.length)
       if (exprType && exprType.kind === "i32") {
@@ -10521,6 +10660,33 @@ function compileCallExpression(
       // Compile the digits argument (default 0)
       if (expr.arguments.length > 0) {
         compileExpression(ctx, fctx, expr.arguments[0]!);
+        // RangeError: fractionDigits must be 0-100
+        const digitsLocal = allocLocal(fctx, `__toFixed_digits_${fctx.locals.length}`, { kind: "f64" });
+        fctx.body.push({ op: "local.tee", index: digitsLocal });
+        // Check digits < 0
+        fctx.body.push({ op: "f64.const", value: 0 });
+        fctx.body.push({ op: "f64.lt" });
+        // Check digits > 100
+        fctx.body.push({ op: "local.get", index: digitsLocal });
+        fctx.body.push({ op: "f64.const", value: 100 });
+        fctx.body.push({ op: "f64.gt" });
+        fctx.body.push({ op: "i32.or" });
+        {
+          const rangeErrMsg = "RangeError: toFixed() digits argument must be between 0 and 100";
+          addStringConstantGlobal(ctx, rangeErrMsg);
+          const strIdx = ctx.stringGlobalMap.get(rangeErrMsg)!;
+          const tagIdx = ensureExnTag(ctx);
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: [
+              { op: "global.get", index: strIdx } as Instr,
+              { op: "throw", tagIdx } as Instr,
+            ],
+            else: [],
+          });
+        }
+        fctx.body.push({ op: "local.get", index: digitsLocal });
       } else {
         fctx.body.push({ op: "f64.const", value: 0 });
       }
@@ -12088,12 +12254,65 @@ function compileCallExpression(
         isNumberType(receiverType) &&
         (methodName === "toString" || methodName === "toFixed")
       ) {
+        // RangeError validation for toString(radix) — radix must be 2-36
+        if (methodName === "toString" && expr.arguments.length > 0) {
+          compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "f64" });
+          const radixLocal = allocLocal(fctx, `__radix_${fctx.locals.length}`, { kind: "f64" });
+          fctx.body.push({ op: "local.tee", index: radixLocal });
+          fctx.body.push({ op: "f64.const", value: 2 });
+          fctx.body.push({ op: "f64.lt" });
+          fctx.body.push({ op: "local.get", index: radixLocal });
+          fctx.body.push({ op: "f64.const", value: 36 });
+          fctx.body.push({ op: "f64.gt" });
+          fctx.body.push({ op: "i32.or" });
+          {
+            const rangeErrMsg = "RangeError: toString() radix must be between 2 and 36";
+            addStringConstantGlobal(ctx, rangeErrMsg);
+            const strIdx = ctx.stringGlobalMap.get(rangeErrMsg)!;
+            const tagIdx = ensureExnTag(ctx);
+            fctx.body.push({
+              op: "if",
+              blockType: { kind: "empty" },
+              then: [
+                { op: "global.get", index: strIdx } as Instr,
+                { op: "throw", tagIdx } as Instr,
+              ],
+              else: [],
+            });
+          }
+          fctx.body.push({ op: "drop" }); // drop radix, toString still uses base-10
+        }
         const exprType = compileExpression(ctx, fctx, elemAccess.expression);
         if (exprType && exprType.kind === "i32") {
           fctx.body.push({ op: "f64.convert_i32_s" });
         }
         if (methodName === "toFixed" && expr.arguments.length > 0) {
           compileExpression(ctx, fctx, expr.arguments[0]!);
+          // RangeError: fractionDigits must be 0-100
+          const digitsLocal = allocLocal(fctx, `__toFixed_digits_${fctx.locals.length}`, { kind: "f64" });
+          fctx.body.push({ op: "local.tee", index: digitsLocal });
+          fctx.body.push({ op: "f64.const", value: 0 });
+          fctx.body.push({ op: "f64.lt" });
+          fctx.body.push({ op: "local.get", index: digitsLocal });
+          fctx.body.push({ op: "f64.const", value: 100 });
+          fctx.body.push({ op: "f64.gt" });
+          fctx.body.push({ op: "i32.or" });
+          {
+            const rangeErrMsg = "RangeError: toFixed() digits argument must be between 0 and 100";
+            addStringConstantGlobal(ctx, rangeErrMsg);
+            const strIdx = ctx.stringGlobalMap.get(rangeErrMsg)!;
+            const tagIdx = ensureExnTag(ctx);
+            fctx.body.push({
+              op: "if",
+              blockType: { kind: "empty" },
+              then: [
+                { op: "global.get", index: strIdx } as Instr,
+                { op: "throw", tagIdx } as Instr,
+              ],
+              else: [],
+            });
+          }
+          fctx.body.push({ op: "local.get", index: digitsLocal });
         } else if (methodName === "toFixed") {
           fctx.body.push({ op: "f64.const", value: 0 });
         }
@@ -15181,6 +15400,43 @@ function compileNewExpression(
       // we create an array of size n with default values and set length to n
       // (JS semantics: sparse array with length n, all slots undefined)
       compileExpression(ctx, fctx, args[0]!, { kind: "f64" });
+
+      // RangeError validation: n must be a non-negative integer < 2^32
+      // Check: n != floor(n) || n < 0 || n >= 2^32 → throw RangeError
+      const nF64Local = allocLocal(fctx, `__arr_n_f64_${fctx.locals.length}`, { kind: "f64" });
+      fctx.body.push({ op: "local.tee", index: nF64Local });
+      // Check n != floor(n) (non-integer or NaN)
+      fctx.body.push({ op: "local.get", index: nF64Local });
+      fctx.body.push({ op: "f64.floor" } as unknown as Instr);
+      fctx.body.push({ op: "f64.ne" });
+      // Check n < 0
+      fctx.body.push({ op: "local.get", index: nF64Local });
+      fctx.body.push({ op: "f64.const", value: 0 });
+      fctx.body.push({ op: "f64.lt" });
+      fctx.body.push({ op: "i32.or" });
+      // Check n >= 2^32
+      fctx.body.push({ op: "local.get", index: nF64Local });
+      fctx.body.push({ op: "f64.const", value: 4294967296 });
+      fctx.body.push({ op: "f64.ge" });
+      fctx.body.push({ op: "i32.or" });
+      // If any check true, throw RangeError
+      {
+        const rangeErrMsg = "RangeError: Invalid array length";
+        addStringConstantGlobal(ctx, rangeErrMsg);
+        const strIdx = ctx.stringGlobalMap.get(rangeErrMsg)!;
+        const tagIdx = ensureExnTag(ctx);
+        fctx.body.push({
+          op: "if",
+          blockType: { kind: "empty" },
+          then: [
+            { op: "global.get", index: strIdx } as Instr,
+            { op: "throw", tagIdx } as Instr,
+          ],
+          else: [],
+        });
+      }
+
+      fctx.body.push({ op: "local.get", index: nF64Local });
       fctx.body.push({ op: "i32.trunc_sat_f64_s" });
       const sizeLocal = allocLocal(fctx, `__arr_size_${fctx.locals.length}`, {
         kind: "i32",
