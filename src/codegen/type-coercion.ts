@@ -1606,7 +1606,7 @@ export function defaultValueInstrs(vt: ValType): Instr[] {
  * where we can't call coerceType() which pushes to fctx.body.
  * Returns an empty array if no coercion is needed.
  */
-export function coercionInstrs(ctx: CodegenContext, from: ValType, to: ValType): Instr[] {
+export function coercionInstrs(ctx: CodegenContext, from: ValType, to: ValType, fctx?: FunctionContext): Instr[] {
   if (from.kind === to.kind) return [];
   // f64 → externref: box number
   if (from.kind === "f64" && to.kind === "externref") {
@@ -1739,30 +1739,112 @@ export function coercionInstrs(ctx: CodegenContext, from: ValType, to: ValType):
   if (from.kind === "externref" && to.kind === "eqref") {
     return [{ op: "any.convert_extern" } as Instr];
   }
-  // externref → ref_null: any.convert_extern + ref.cast_null
+  // externref → ref_null: any.convert_extern + guarded ref.cast_null
   if (from.kind === "externref" && to.kind === "ref_null") {
     const toIdx = (to as { typeIdx: number }).typeIdx;
+    if (fctx) {
+      const tmp = allocTempLocal(fctx, { kind: "anyref" } as ValType);
+      const result: Instr[] = [
+        { op: "any.convert_extern" } as Instr,
+        { op: "local.tee", index: tmp },
+        { op: "ref.test", typeIdx: toIdx },
+        {
+          op: "if",
+          blockType: { kind: "val", type: { kind: "ref_null", typeIdx: toIdx } as ValType },
+          then: [
+            { op: "local.get", index: tmp } as Instr,
+            { op: "ref.cast_null", typeIdx: toIdx } as Instr,
+          ],
+          else: [
+            { op: "ref.null", typeIdx: toIdx },
+          ],
+        } as Instr,
+      ];
+      releaseTempLocal(fctx, tmp);
+      return result;
+    }
     return [
       { op: "any.convert_extern" } as Instr,
       { op: "ref.cast_null", typeIdx: toIdx } as Instr,
     ];
   }
-  // externref → ref: any.convert_extern + ref.cast
+  // externref → ref: any.convert_extern + guarded ref.cast
   if (from.kind === "externref" && to.kind === "ref") {
     const toIdx = (to as { typeIdx: number }).typeIdx;
+    if (fctx) {
+      const tmp = allocTempLocal(fctx, { kind: "anyref" } as ValType);
+      const result: Instr[] = [
+        { op: "any.convert_extern" } as Instr,
+        { op: "local.tee", index: tmp },
+        { op: "ref.test", typeIdx: toIdx },
+        {
+          op: "if",
+          blockType: { kind: "val", type: { kind: "ref_null", typeIdx: toIdx } as ValType },
+          then: [
+            { op: "local.get", index: tmp } as Instr,
+            { op: "ref.cast_null", typeIdx: toIdx } as Instr,
+          ],
+          else: [
+            { op: "ref.null", typeIdx: toIdx },
+          ],
+        } as Instr,
+      ];
+      releaseTempLocal(fctx, tmp);
+      return result;
+    }
     return [
       { op: "any.convert_extern" } as Instr,
       { op: "ref.cast", typeIdx: toIdx } as Instr,
     ];
   }
-  // eqref/anyref → ref_null: ref.cast_null
+  // eqref/anyref → ref_null: guarded ref.cast_null
   if ((from.kind === "eqref" || from.kind === "anyref") && to.kind === "ref_null") {
     const toIdx = (to as { typeIdx: number }).typeIdx;
+    if (fctx) {
+      const tmp = allocTempLocal(fctx, from);
+      const result: Instr[] = [
+        { op: "local.tee", index: tmp },
+        { op: "ref.test", typeIdx: toIdx },
+        {
+          op: "if",
+          blockType: { kind: "val", type: { kind: "ref_null", typeIdx: toIdx } as ValType },
+          then: [
+            { op: "local.get", index: tmp } as Instr,
+            { op: "ref.cast_null", typeIdx: toIdx } as Instr,
+          ],
+          else: [
+            { op: "ref.null", typeIdx: toIdx },
+          ],
+        } as Instr,
+      ];
+      releaseTempLocal(fctx, tmp);
+      return result;
+    }
     return [{ op: "ref.cast_null", typeIdx: toIdx } as Instr];
   }
-  // eqref/anyref → ref: ref.cast
+  // eqref/anyref → ref: guarded ref.cast
   if ((from.kind === "eqref" || from.kind === "anyref") && to.kind === "ref") {
     const toIdx = (to as { typeIdx: number }).typeIdx;
+    if (fctx) {
+      const tmp = allocTempLocal(fctx, from);
+      const result: Instr[] = [
+        { op: "local.tee", index: tmp },
+        { op: "ref.test", typeIdx: toIdx },
+        {
+          op: "if",
+          blockType: { kind: "val", type: { kind: "ref_null", typeIdx: toIdx } as ValType },
+          then: [
+            { op: "local.get", index: tmp } as Instr,
+            { op: "ref.cast_null", typeIdx: toIdx } as Instr,
+          ],
+          else: [
+            { op: "ref.null", typeIdx: toIdx },
+          ],
+        } as Instr,
+      ];
+      releaseTempLocal(fctx, tmp);
+      return result;
+    }
     return [{ op: "ref.cast", typeIdx: toIdx } as Instr];
   }
   return [];

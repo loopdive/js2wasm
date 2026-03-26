@@ -8,6 +8,8 @@ import ts from "typescript";
 import type { CodegenContext, FunctionContext } from "./index.js";
 import {
   allocLocal,
+  allocTempLocal,
+  releaseTempLocal,
   resolveWasmType,
   getOrRegisterVecType,
   getArrTypeIdxFromVec,
@@ -657,11 +659,26 @@ export function compileObjectDefineProperty(
     if (!objType) return null;
 
     // If obj is externref but we know it's a struct (e.g. `const obj: any = { x: 0 }`),
-    // cast from externref to the struct ref type via any.convert_extern + ref.cast.
+    // cast from externref to the struct ref type via any.convert_extern + guarded ref.cast.
     if (objType.kind === "externref" && structTypeIdx !== undefined) {
       fctx.body.push({ op: "any.convert_extern" } as Instr);
-      fctx.body.push({ op: "ref.cast", typeIdx: structTypeIdx });
-      objType = { kind: "ref", typeIdx: structTypeIdx };
+      // Guard: ref.test before ref.cast to avoid illegal cast traps
+      const tmpAny = allocTempLocal(fctx, { kind: "anyref" } as ValType);
+      fctx.body.push({ op: "local.tee", index: tmpAny });
+      fctx.body.push({ op: "ref.test", typeIdx: structTypeIdx });
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "val", type: { kind: "ref_null", typeIdx: structTypeIdx } as ValType },
+        then: [
+          { op: "local.get", index: tmpAny } as Instr,
+          { op: "ref.cast_null", typeIdx: structTypeIdx } as Instr,
+        ],
+        else: [
+          { op: "ref.null", typeIdx: structTypeIdx },
+        ],
+      } as Instr);
+      releaseTempLocal(fctx, tmpAny);
+      objType = { kind: "ref_null", typeIdx: structTypeIdx };
     }
 
     const objLocal = allocLocal(fctx, `__defprop_obj_${fctx.locals.length}`, objType);
