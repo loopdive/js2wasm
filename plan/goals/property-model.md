@@ -18,7 +18,7 @@ builtin-methods and iterator-protocol.
 
 | # | Title | Impact | Priority |
 |---|-------|--------|----------|
-| **732** | hasOwnProperty correctness | 520 FAIL | High |
+| ~~732~~ | ~~hasOwnProperty correctness~~ | ~~520 FAIL~~ | ~~Done~~ |
 | **739** | Object.defineProperty correctness | 262 FAIL | High |
 | **488** | Property introspection hasOwnProperty | — | Critical |
 | **359** | Object.freeze/seal/preventExtensions | — | Medium |
