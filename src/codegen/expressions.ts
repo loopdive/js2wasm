@@ -3550,6 +3550,21 @@ function compileElementAssignment(
     // Save vec ref and index in locals for reuse
     const vecLocal = allocLocal(fctx, `__vec_${fctx.locals.length}`, arrType);
     fctx.body.push({ op: "local.set", index: vecLocal });
+    // Null guard: throw TypeError if vec is null (#441)
+    if (arrType.kind === "ref_null") {
+      const tagIdx = ensureExnTag(ctx);
+      fctx.body.push({ op: "local.get", index: vecLocal });
+      fctx.body.push({ op: "ref.is_null" } as Instr);
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" },
+        then: [
+          { op: "ref.null.extern" } as Instr,
+          { op: "throw", tagIdx } as Instr,
+        ],
+        else: [],
+      });
+    }
     const idxResult = compileExpression(ctx, fctx, target.argumentExpression, {
       kind: "f64",
     });
@@ -7886,9 +7901,9 @@ function compileClosureCall(
       fctx.body.push({ op: "local.get", index: effectiveLocalIdx });
     } else {
       fctx.body.push({ op: "global.get", index: moduleIdx! });
-      // Module globals use ref_null type; null-check → TypeError instead of trap (#728)
-      emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: info.structTypeIdx });
     }
+    // Null-check → TypeError instead of trap on struct.get (#728, #441)
+    emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: info.structTypeIdx });
   };
 
   // Stack for call_ref needs: [closure_ref, ...args, funcref]
