@@ -72,38 +72,6 @@ export function parseMeta(source: string): Test262Meta {
 
 // ── Filtering ───────────────────────────────────────────────────────
 
-/** Features we definitely cannot support in wasm */
-const UNSUPPORTED_FEATURES = new Set([
-  // --- genuinely unsupported ---
-  // Symbol features are checked separately in shouldSkip — only skip when source
-  // actually uses Symbol (many tests are tagged with Symbol.iterator because the
-  // spec uses the iterator protocol internally, but the test code itself does not
-  // reference Symbol at all and can run fine without Symbol support).
-  "Proxy",
-  "FinalizationRegistry",
-  "SharedArrayBuffer", "Atomics",
-  // dynamic-import: checked separately in shouldSkip (only skip when source uses import())
-  // import.meta: implemented (#371), no longer needs skipping
-  "import-defer", // import.defer() — not supported
-  "source-phase-imports", // import.source — Stage 3 TC39 proposal, not supported
-  "promise-all-settled", "Promise.any", "Promise.allSettled",
-  // TypedArray, DataView, ArrayBuffer: removed (#608, #614) — now supported
-  "RegExp", "regexp-dotall", "regexp-lookbehind", "regexp-named-groups",
-  "regexp-unicode-property-escapes",
-  // globalThis: removed (#502) — compiles as ref.null extern; tests that use it
-  // will fail at runtime rather than being hidden as skips.
-  "top-level-await",
-  "json-superset", "well-formed-json-stringify",
-  "Intl",
-  "Temporal", // Stage 3 TC39 proposal — full API not implemented (#630)
-  // tail-call-optimization: removed (#546) — tests will fail at runtime
-  // (stack overflow without return_call), but shouldn't be hidden as skips.
-  // cross-realm: removed (#500) — single-module Wasm has no cross-realm issues;
-  // tests fail for unrelated reasons ($262.createRealm API not available)
-  "caller",
-  "eval",
-]);
-
 export type FilterResult =
   | { skip: true; reason: string }
   | { skip: false; reason?: undefined };
@@ -117,20 +85,16 @@ const HANGING_TESTS = new Set([
   "test/built-ins/Temporal/Duration/from/argument-non-string.js", // hangs: Temporal runtime loop
 ]);
 
-/** Set to true to disable all skip filters and attempt every test */
-const SKIP_DISABLED = true;
-
 export function shouldSkip(source: string, meta: Test262Meta, filePath?: string): FilterResult {
-  // Skip FIXTURE files unconditionally (even when SKIP_DISABLED) — these are
-  // auxiliary modules for dynamic-import tests that use export syntax TypeScript
-  // rejects ("Modifiers cannot appear here"). They are never standalone tests.
+  // Skip FIXTURE files — auxiliary modules for dynamic-import tests that use
+  // export syntax TypeScript rejects. They are never standalone tests.
   // findTestFiles already excludes them, but guard here for defense-in-depth.
   if (filePath && /_FIXTURE\.js$/.test(filePath)) {
     return { skip: true, reason: "FIXTURE helper file (not a standalone test)" };
   }
 
   // Skip tests that reference _FIXTURE files in their source — these require
-  // module resolution we don't support. Also unconditional (not affected by SKIP_DISABLED).
+  // module resolution we don't support.
   if (/_FIXTURE\.js/.test(source)) {
     return { skip: true, reason: "imports _FIXTURE helper module" };
   }
@@ -143,10 +107,9 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
     }
   }
 
-  // Skip features that are TC39 Stage 2/3 proposals we don't support.
-  // These must be unconditional (before SKIP_DISABLED) because the catch-all
-  // MetaProperty handler (#712) makes import.source/import.defer compile
-  // successfully, causing 117 negative parse tests to regress.
+  // Skip TC39 Stage 2/3 proposals we don't support. The catch-all MetaProperty
+  // handler (#712) makes import.source/import.defer compile, causing 117
+  // negative parse tests to regress without this filter.
   const UNCONDITIONAL_SKIP_FEATURES = new Set([
     "source-phase-imports",
     "import-defer",
@@ -159,338 +122,9 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
     }
   }
 
-  // ── End safety filters ──
-
-  if (SKIP_DISABLED) return { skip: false };
-
-  // Negative tests are now handled — don't skip them.
-  // (They are processed specially in runTest262File.)
-
-  // async tests are now compiled synchronously (async function → regular function,
-  // await → identity). Many will fail at compile/runtime due to .then() chains,
-  // but some simpler tests pass.
-
-  // Skip tests requiring onlyStrict or noStrict flags we can't handle
-  if (meta.flags?.includes("raw")) {
-    return { skip: true, reason: "raw flag" };
-  }
-
-  // Skip tests with unsupported features
-  if (meta.features) {
-    for (const feat of meta.features) {
-      if (UNSUPPORTED_FEATURES.has(feat)) {
-        return { skip: true, reason: `unsupported feature: ${feat}` };
-      }
-    }
-  }
-
-  // Symbol feature tags: only skip if the source uses Symbol features we don't support.
-  // We support: Symbol() constructor (returns unique i32), typeof === "symbol",
-  // identity comparison (===, !==), and well-known symbol access (Symbol.iterator, etc.).
-  // We do NOT support: Symbol.for/keyFor (registry), .description, Symbol as an object,
-  // Symbol.prototype, Object(Symbol()), String(symbol), or symbol coercion.
-  if (meta.features?.some(f => f === "Symbol" || f.startsWith("Symbol."))) {
-    const body = source.replace(/\/\*---[\s\S]*?---\*\//, "");
-    if (/\bSymbol\b/.test(body)) {
-      // Check for unsupported Symbol patterns that would crash or hang the compiler.
-      // Tests that just fail at runtime are fine — they show up as test failures.
-      const unsupportedSymbol =
-        // Symbol.for / Symbol.keyFor — registry not implemented
-        /\bSymbol\s*\.\s*(?:for|keyFor)\b/.test(body) ||
-        // Symbol.prototype — prototype chain not available
-        /\bSymbol\s*\.\s*prototype\b/.test(body) ||
-        // Using Symbol as an object (property access beyond well-known symbols)
-        // e.g. Symbol.length, Symbol.name — Symbol is a function, not an object
-        /\bSymbol\s*\.\s*(?:length|name)\b/.test(body) ||
-        // Object(Symbol()) — wrapper objects not supported
-        /\bObject\s*\(\s*Symbol/.test(body);
-      if (unsupportedSymbol) {
-        return { skip: true, reason: "uses unsupported Symbol feature" };
-      }
-      // Allow tests that just use Symbol() constructor, typeof, comparison
-    }
-  }
-
-  // Reflect feature tags: only skip if the source actually uses Reflect.
-  if (meta.features?.some(f => f === "Reflect" || f.startsWith("Reflect."))) {
-    const body = source.replace(/\/\*---[\s\S]*?---\*\//, "");
-    if (/\bReflect\b/.test(body)) {
-      return { skip: true, reason: "uses Reflect in source" };
-    }
-  }
-
-  // dynamic-import feature tag: only skip if the source actually uses import().
-  if (meta.features?.includes("dynamic-import")) {
-    const body = source.replace(/\/\*---[\s\S]*?---\*\//, "");
-    if (/\bimport\s*\(/.test(body)) {
-      return { skip: true, reason: "uses dynamic import() in source" };
-    }
-  }
-
-  // import.source — Stage 3 TC39 proposal, not supported by ts2wasm
-  if (/\bimport\.source\b/.test(source)) {
-    return { skip: true, reason: "import.source not supported" };
-  }
-
-  // _FIXTURE source/path checks are now above SKIP_DISABLED (unconditional)
-
-  // Skip tests requiring harness includes we have not shimmed
-  if (meta.includes) {
-    const allowed = new Set([
-      "assert.js",
-      "sta.js",
-      "compareArray.js",
-      "propertyHelper.js",
-      "fnGlobalObject.js",
-      "isConstructor.js",
-      "decimalToHexString.js",
-      "nans.js",
-      "nativeFunctionMatcher.js",
-      "asyncHelpers.js",
-      "tcoHelper.js",
-      "deepEqual.js",
-      "compareIterator.js",
-      "testTypedArray.js",
-    ]);
-    for (const inc of meta.includes) {
-      if (!allowed.has(inc)) {
-        return { skip: true, reason: `unsupported include: ${inc}` };
-      }
-    }
-  }
-
-  // (eval() and new Function() checks moved to safety filters above SKIP_DISABLED)
-
-
-  // Skip tests that use with statement — strip metadata block and comments first
-  // so we don't false-positive on "with" appearing in descriptions or comments.
-  {
-    const bodyForWith = source
-      .replace(/\/\*---[\s\S]*?---\*\//, "")  // strip YAML metadata
-      .replace(/\/\*[\s\S]*?\*\//g, "")        // strip block comments
-      .replace(/\/\/.*$/gm, "")               // strip line comments
-      .replace(/"(?:[^"\\]|\\.)*"/g, '""')    // strip double-quoted strings
-      .replace(/'(?:[^'\\]|\\.)*'/g, "''");   // strip single-quoted strings
-    if (/\bwith\s*\(/.test(bodyForWith)) {
-      return { skip: true, reason: "uses with statement" };
-    }
-  }
-
-  // Wrapper constructors (new Number, new String, new Boolean) now compile to primitives.
-  // No longer skipped.
-
-  // NaN/undefined/null loop conditions and object/function loop conditions
-  // are now handled correctly by ensureI32Condition in codegen:
-  //   - f64 (NaN): f64.abs + f64.gt(0) correctly treats NaN as falsy
-  //   - externref (undefined/null): ref.is_null correctly treats null refs as falsy
-  //   - ref types (objects/functions): non-null refs are correctly truthy
-
-  // for-of with generators and custom iterators now works via the iterator protocol
-  // host imports (__iterator, __iterator_next, __iterator_done, __iterator_value).
-  // No longer skipped — see issue #353.
-
-  // (Removed: collection mutation during for-of skip — filter was overly broad,
-  // matching any .push/.pop etc anywhere in source even outside the for-of body.
-  // Most tests with arrays in for-of don't actually cause infinite loops.)
-
-  // throw+try/catch is now supported natively via Wasm exception handling.
-  // No longer need to skip these tests.
-
-  // assert.throws tests are now handled by transforming them into assert_throws(fn)
-  // calls with a try/catch shim, so we no longer skip them.
-
-  // (Removed: delete operator skip — now handled in codegen as no-op returning true/false)
-
-  // (Removed: string concatenation skip — now handled in codegen via number_toString coercion)
-
-
-
-  // (Removed: typeof string comparison skip — compileTypeofComparison now handles
-  //  typeof x === "type" / typeof x !== "type" statically at compile time,
-  //  and the wrapTest transform converts assert.sameValue(typeof X, "Y") to
-  //  if (typeof X !== "Y") { __fail = 1; } which the compiler resolves.)
-
-  // (Removed: return undefined into arithmetic skip — tests should CE/fail rather than hide)
-
-  // (Removed: void assignment side effects skip — compiler now handles void(x = expr) correctly)
-
-  // (Removed: null/undefined arithmetic skip — compiler now handles null/undefined in arithmetic)
-
-  // (Removed: function expression in catch scope skip — 30s worker timeout
-  // prevents hangs; tests will timeout and report as such. See #545.)
-  // (Removed: function expression in catch scope skip — try/catch + function expressions now work)
-  // (Removed: function expression in catch scope skip — tests should CE/fail rather than hide)
-
-  // (Removed: labeled block break skip — now handled in codegen)
-
-  // (Removed: value-to-string coercion via + "" — now handled in codegen)
-
-  // (Removed: Math.round large-number precision edge case skip — tests now pass correctly)
-
-  // (Removed: null/undefined arithmetic/comparison skip — most tests now pass correctly)
-
-  // (Removed: compound assignment with null/undefined skip — compiler now handles this)
-
-  // (Removed: object-as-loop-condition skip — ensureI32Condition now handles ref/externref conditions)
-
-  // (Removed: function expression in while condition — duplicate of object/function loop condition filter above)
-
-  // (Removed: for-in on this skip — most tests now pass correctly)
-
-  // (Removed: loose inequality skip — only matched 3 tests, and loose != between
-  //  number and string now compiles (the string side gets coerced to number).
-  //  Tests that still fail will show as compile_error, not hangs.)
-
-  // (Removed: assert() with message skip — extra arguments are now properly handled)
-
-  // (Removed: named function expression reassignment skip — readOnlyBindings now makes name binding immutable)
-
-  // (Removed: string comparison with supplementary unicode skip — tests now pass or fail naturally)
-  // (Removed: string comparison with supplementary unicode skip — tests should CE/fail rather than hide)
-
-  // (Removed: object property access (dot + bracket) skip — overly broad, tests should CE/fail)
-
-  // (Removed: new Object() skip — compiles as empty struct via shape inference)
-
-  // (Removed: dynamic property assignment on empty object skip — shape inference #130 handles this)
-
-  // (Removed: this.property at global scope skip — tests now compile and fail/pass naturally)
-
-  // (Removed: loose equality between array references skip — tests now compile and fail naturally)
-
-  // (Removed: object property assignment on empty object skip — most tests now compile and pass)
-
-  // (Removed: arithmetic on objects skip — tests now compile and fail/pass naturally)
-  // (Removed: this.property at global scope skip — tests should CE/fail rather than hide)
-
-  // (Removed: loose equality between array references skip — tests should CE/fail rather than hide)
-
-  // (Removed: object property assignment on empty object skip — most tests now compile and pass)
-
-  // (Removed: arithmetic on objects skip — tests should CE/fail rather than hide)
-
-  // (Removed: modulo -0 sign preservation skip — tests now pass correctly)
-
-  // (Removed: modulo with infinity divisor skip — tests now pass correctly)
-
-  // (Removed: string strict comparison skip — compiler now handles string === / !== via equals import)
-
-  // (Removed: Array.prototype.method.call/apply skip — tests should CE/fail rather than hide)
-
-  // (Removed: array-like object with .length skip — overly broad, tests should CE/fail)
-
-
-  // Object.freeze/seal/preventExtensions are now stubbed (no-op, return object)
-  // Object.isFrozen/isSealed return false, Object.isExtensible returns true
-
-  // propertyIsEnumerable is now rewritten to hasOwnProperty in wrapTest (#488).
-  // All own struct fields are enumerable in our Wasm model.
-
-  // Object.prototype.hasOwnProperty.call(obj, key) is now compiled inline
-  // as property introspection on the receiver (#476).
-
-  // (Removed: prototype chain skip — tests should CE/fail rather than hide.
-  // Prototype chain manipulation is not supported in WasmGC structs, but hiding
-  // these tests as skips prevents visibility into what patterns actually fail.)
-
-  // (Removed: rest-destructuring with numeric-key object pattern skip — tests should CE/fail)
-
-  // (Removed: array index with string concat in loop skip — tests now pass or fail naturally)
-  // (Removed: array index with string concat in loop skip — tests should CE/fail)
-
-  // (Removed: unary +/- on null/undefined skip — tryStaticToNumber resolves these at compile time)
-
-  // (Removed: unary +/- on empty string skip — tryStaticToNumber now resolves +""/−"" at compile time)
-
-  // (Removed: collection mutation during for-of iteration skip — duplicate of the
-  // earlier filter, both overly broad. Tests are now attempted.)
-
-  // (Removed: member expression as for-of LHS skip — 30s worker timeout
-  // prevents hangs; tests will timeout and report as such. See #545.)
-
-  // (Removed: parenthesized LHS in for-of skip — 30s worker timeout
-  // prevents hangs; tests will timeout and report as such. See #545.)
-  // (Removed: member expression as for-of LHS skip — tests should CE/fail)
-
-  // (Removed: parenthesized LHS in for-of skip — tests should CE/fail)
-
-  // (Removed: string variable concatenation skip — string += now works correctly, and the
-  // original filter was overly broad, matching tests where a string var exists alongside
-  // unrelated numeric +=. Genuine string += tests are caught by other skip filters.)
-
-  // (Removed: unicode escape line terminator skip — compiler now handles these correctly)
-
-  // (Removed: Object.keys/values/entries skip — implemented in issue #355.
-  // Compile-time struct field expansion handles known object types.
-  // Edge cases like non-enumerable properties are caught by other skip filters.)
-
-  // Skip JSON.stringify tests with replacer/space args (we only pass one argument).
-  // Only match executable code — strip metadata/comments/strings first so tests
-  // whose only "replacer"/"space" mention is in the description are not falsely skipped.
-  {
-    const execCodeJson = source
-      .replace(/\/\*---[\s\S]*?---\*\//, "")  // strip YAML metadata
-      .replace(/\/\/.*$/gm, "")                // strip line comments
-      .replace(/\/\*[\s\S]*?\*\//g, "")         // strip block comments
-      .replace(/"(?:[^"\\]|\\.)*"/g, '""')      // strip double-quoted strings
-      .replace(/'(?:[^'\\]|\\.)*'/g, "''");     // strip single-quoted strings
-    if (/JSON\.stringify\s*\(/.test(execCodeJson) && /\breplacer\b|\bspace\b/.test(execCodeJson)) {
-      return { skip: true, reason: "JSON.stringify replacer/space args not supported" };
-    }
-  }
-
-  // (Removed: closure-as-value skip — most tests pass now; regex was overly broad,
-  //  matching array indexing and function calls in assert, not just closure references)
-
-  // (Removed: mixed-type nullish coalescing skip — most tests now pass correctly)
-
-  // (Removed: runtime in operator skip — now handled in codegen)
-
-  // (Removed: Boolean(x = 0) and Boolean("") — now handled in codegen)
-
-  // (Removed: global/arrow this reference skip — #546. Tests may fail at runtime
-  //  but shouldn't crash the compiler.)
-  // (Removed: global/arrow this reference skip — tests now compile and fail/pass naturally)
-  // (Removed: global/arrow this reference skip — tests should CE/fail rather than hide)
-
-  // (Removed: arrow returning undefined skip — tests should CE/fail rather than hide)
-
-  // (Removed: arrow returning undefined skip — compiler now handles empty arrow body correctly)
-
-  // (Removed: nested function/catch scope with type mismatch skip — 30s worker timeout
-  // prevents hangs; tests will timeout and report as such. See #545.)
-  // (Removed: nested function/catch scope with type mismatch skip — exception handling now works correctly)
-  // (Removed: nested function/catch scope with type mismatch skip — tests should CE/fail)
-
-  // (Removed: typeof class expression skip — compiler now resolves typeof on class expressions)
-
-  // (Removed: tagged template .raw access skip — #546. Tests may fail at runtime
-  //  but shouldn't crash the compiler.)
-
-  // (Removed: tagged template object identity check skip — #546)
-
-  // (Removed: IIFE or call expression as tagged template tag skip — #546)
-
-  // (Removed: chained tagged templates skip — #546)
-
-  // (Removed: typeof member expression skip — compiler now resolves typeof on member
-  //  expressions via ctx.checker.getTypeAtLocation(), which works on property accesses)
-
-  // (Removed: typeof undefined/void 0 skip — compiler now resolves typeof undefined)
-
-  // (Removed: function .name descriptor/bind/constructor.name skip — tests should CE/fail)
-
-  // (Removed: String() indexer skip — compiler now handles String() coercion)
-
-  // (Removed: parseInt with string concatenation skip — compiler now handles these correctly)
-
-  // (Removed: for-of object destructuring from array skip — codegen handles this pattern now)
-
-  // (Removed: for-of destructuring over string array skip — compiler now handles this)
-
-  // (Removed: IIFE skip — compiler now handles immediately invoked function expressions)
-
-  // (Removed: indirect eval skip — these tests don't actually call eval, just assign it)
+  // All other skip filters have been removed (#494). Tests that fail will
+  // show as compile_error or fail in the conformance report rather than
+  // being hidden as skips.
 
   return { skip: false };
 }
