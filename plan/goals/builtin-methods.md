@@ -21,7 +21,7 @@ these methods. Getting them right requires both correct return values
 | ~~734~~ | ~~Array method correctness (edge cases)~~ | ~~343 FAIL~~ | ~~Done~~ |
 | **763** | RegExp runtime methods (exec, match, replace, split) | ~400 FAIL | High |
 | **731** | Function/class .name property | 558 FAIL | Medium |
-| **738** | instanceof correctness | 276 FAIL | Medium |
+| ~~738~~ | ~~instanceof correctness~~ | ~~276 FAIL~~ | ~~Done~~ |
 | **385** | Array method argument count errors | — | Medium |
 | **421** | Array.reduce requires callback and initial value | 23 CE | Medium |
 | **312** | Test262 category expansion — Number methods | — | Low |
