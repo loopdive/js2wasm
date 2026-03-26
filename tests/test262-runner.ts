@@ -2089,7 +2089,11 @@ export async function handleNegativeTest(
     // shims that would mask parse errors). If compilation fails, the test passes.
     //
     // We wrap minimally — just enough for the compiler to accept it as a module.
-    const minimalWrapped = source.replace(/\/\*---[\s\S]*?---\*\//, "") + "\nexport {};\n";
+    // For onlyStrict tests, add a "use strict" directive so the compiler's
+    // strict-mode checks (eval/arguments binding, octal literals, etc.) apply.
+    const strippedSource = source.replace(/\/\*---[\s\S]*?---\*\//, "");
+    const strictPrefix = meta.flags?.includes("onlyStrict") ? '"use strict";\n' : "";
+    const minimalWrapped = strictPrefix + strippedSource + "\nexport {};\n";
 
     let compileMs = 0;
     const compileStart = performance.now();
