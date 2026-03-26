@@ -418,10 +418,20 @@ export function buildImports(
   let wasmExports: Record<string, Function> | undefined;
   const callbackState = { getExports: () => wasmExports };
   let hasCallbacks = false;
+  let lastCaughtException: any = undefined;
 
   for (const imp of manifest) {
     if (imp.module !== "env") continue;
-    let fn = resolveImport(imp.intent, deps, callbackState);
+    let fn: Function;
+
+    // __get_caught_exception needs closure access to lastCaughtException
+    if (imp.name === "__get_caught_exception") {
+      fn = () => lastCaughtException;
+      env[imp.name] = fn;
+      continue;
+    }
+
+    fn = resolveImport(imp.intent, deps, callbackState);
 
     // DOM containment wrapping
     if (options?.domRoot) {
@@ -431,6 +441,19 @@ export function buildImports(
       if (imp.intent.type === "declared_global" && imp.intent.name === "document") {
         fn = () => options.domRoot;
       }
+    }
+
+    // Wrap host imports to capture foreign JS exceptions for catch_all
+    {
+      const original = fn;
+      fn = function (this: any, ...args: any[]) {
+        try {
+          return original.apply(this, args);
+        } catch (e) {
+          lastCaughtException = e;
+          throw e;
+        }
+      };
     }
 
     env[imp.name] = fn;
