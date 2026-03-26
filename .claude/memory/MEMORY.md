@@ -15,12 +15,12 @@
 ### User & project
 - [user_role.md](user_role.md) — Project lead: challenges assumptions, thinks in compilation strategies
 - [project_team_setup.md](project_team_setup.md) — All agents as teammates via TeamCreate; details in plan/team-setup.md
-- [project_next_session.md](project_next_session.md) — Session state: 20+ commits landed, test262 run needed
+- [project_next_session.md](project_next_session.md) — Session state: 18,437 pass, dev agents active on #775/#771
 
 ### Team & agents (rules not in plan/team-setup.md)
-- [feedback_dev_limit.md](feedback_dev_limit.md) — Dev-specific rules: test file naming, diagnostic batching, cherry-pick method
+- [feedback_dev_limit.md](feedback_dev_limit.md) — Dev-specific rules: test file naming, diagnostic batching, merge method
 - [feedback_dev_agents_worktree.md](feedback_dev_agents_worktree.md) — ALL writing agents must use worktree isolation
-- [feedback_serialize_cherry_picks.md](feedback_serialize_cherry_picks.md) — Wait for wave to finish, then batch cherry-pick
+- [feedback_serialize_cherry_picks.md](feedback_serialize_cherry_picks.md) — Wait for wave to finish, then batch merge (not cherry-pick)
 - [feedback_always_cd_workspace.md](feedback_always_cd_workspace.md) — Git safety: cd /workspace, verify main, never work from agent worktrees
 - [feedback_usage_limit.md](feedback_usage_limit.md) — Stop dispatching above 90% context usage
 - [feedback_dont_ask_continue.md](feedback_dont_ask_continue.md) — Keep dispatching automatically, don't pause to ask

@@ -1,61 +1,37 @@
 ---
 name: project_next_session
-description: 2026-03-26 session state — 20+ fixes landed, run test262 to measure, continue crash-free + core-semantics
+description: 2026-03-26 session state — 18,437 pass, dev agents active on #775 and #771
 type: project
 ---
 
 ## Current state (2026-03-26)
 
-**Git:** main branch, many commits since last verified test262 run
-**Last verified test262:** 16,187 pass / 1,761 CE (before this wave)
-**This wave:** 20+ commits landed, NOT yet measured with test262
+**Git:** main branch, #775 null TypeError fix just merged
+**Latest test262:** 18,437 pass / 31,398 fail (49,835 total) — +2,972 pass vs previous
+**Previous:** 15,465 pass / 24,731 fail / 8,799 CE
 
-## Commits landed this wave (need test262 verification)
+## Key findings from latest run
+- 7,022 of 8,799 CEs were "worker exited" (crashes, not real CEs) — real CE ~1,777
+- 14,148 fails are "WebAssembly.Exception" — Wasm traps not caught by try/catch
+- 1,116 missing TypeError throws, 569 missing ReferenceError
+- 501 null pointer dereferences remaining
 
-### Crash-free goal
-- c34744ef — TypeError for destructuring null/undefined (#783)
-- ba053f40 — detect JS undefined in destructuring defaults (#782)
-- dc8dd4a8 — __async_iterator for for-await-of (#781)
-- 3ab9b8b7 — null guards for array/object method dispatch (#780)
-- e4941684 — null guards for for-of array/string struct.get (#785)
-- 4e034a13 — ref.test guards before ref.cast (#512)
-- bcca88b8 — null deref residual — closure + vec (#441)
-- 36653e19 — TypeError for nested destructuring null (#730)
+## Active agents
+- dev-775: DONE — merged to main (294fb1e2)
+- dev-771: arguments object — in progress
+- po-analysis: updating issues/plan from test262 results
 
-### Core-semantics goal
-- 826e9719 — NaN sentinel for f64 default params (#787)
-- 9f646920 — generator return value buffering (#729) ⚠️ 1 regression
-- 929d121d — param destructuring defaults in closures
-- c1c013d0 — AnyValue unboxing fix (boolean/undefined) (#786)
-
-### Error-model goal
-- 610e1fe5 — early error checks: rest, await, yield, strict words (#784)
-- RangeError validation for Array/toString/toFixed (#733)
-
-### Property-model / builtin-methods
-- 832b2ca7 — hasOwnProperty correctness (#732)
-- 8d17e2d8 — function.name property (#731)
-- 4c32461d — Array method improvements (#734)
-- 99709f88 — instanceof host fallback (#738)
-- 2690afc8 — type coercion paths (#315)
-
-## Known regressions
-- 9f646920 (generator return) introduced +1 net regression in equivalence tests
-- e4941684 through 4e034a13 introduced +3 net regressions (not bisected)
-
-## Goal status (updated by PO)
-- **compilable:** substantially complete (94.4%)
-- **crash-free:** near complete — only #775 remains
-- **core-semantics:** active — #771, #786 remaining
-- **error-model:** active — #736, #733, #402, #721 remaining
+## Goal status
+- **crash-free:** #775 just landed, null deref count should drop
+- **core-semantics:** #771 (arguments) in progress
+- **error-model:** #721 (negative tests), #736, #733 remaining
 - **property-model:** activatable
 - **class-system:** activatable
-- **builtin-methods:** activatable (~70%)
+- **builtin-methods:** activatable
 
-## Next steps
-1. `pnpm run test:262` — measure all 20+ commits (default 3 workers)
-2. Bisect the 4 regressions (9f646920 + e4941684-4e034a13)
-3. Continue on core-semantics (#771 arguments, #513 wrong values)
-4. Start property-model and class-system (now unblocked)
-5. All agents as teammates (TeamCreate), file locks via plan/file-locks.md
-6. See plan/team-setup.md for memory budget and agent limits
+## Next priorities (by test impact)
+1. #770 — propertyHelper.js harness (1,219 fail, test infra quick win)
+2. #766 — Symbol.iterator protocol (~500 fail)
+3. #761 — rest/spread in destructuring (~200 fail)
+4. #696 — classify runtime errors (4,649 fail, analysis)
+5. Worker crash investigation (7,022 CE → test infra)

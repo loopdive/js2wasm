@@ -384,46 +384,53 @@ Module system and import/export patterns.
 
 Updated with fresh run (2026-03-18): 23,021 tests -- 6,366 pass, 4,367 fail, 9,062 CE, 3,226 skip.
 Updated 2026-03-22: 48,102 tests -- 14,720 pass, 27,938 fail, 4,443 CE, 1,001 skip.
+Updated 2026-03-25 (55ab7d1d): 49,835 tests -- 18,437 pass, 29,739 fail, 1,657 CE, 1,001 skip (+3,717 pass, -2,786 CE vs 03-22).
 
-### Compile errors -- top patterns (9,062 total)
-
-```
-#409 (unsupported call expression -- 3,931 CE) -- independent [E], review
-#514 (options is not defined -- 684 CE) -- DONE (fixed in 4446cb86)
-#411 (struct.new stack mismatch -- 975 CE) -- independent [E][I]
-#511 (call/call_ref type mismatch -- 514 CE) -- independent [E], updated from #509
-#444 (local.set type mismatch -- 483 CE) -- independent [E][S]
-#515 (uninitialized local + struct.get/set -- 470 CE) -- independent [E][I], NEW from #509
-#510 (TS parse errors -- 175 CE) -- test infra [T], updated from #509
-#420 (destructure non-array -- 83 CE) -- independent [E]
-#405 (targetLocal not defined -- 61 CE) -- independent [E]
-#492 (delete operator -- 88 CE) -- independent [E]
-```
-
-### Runtime failures (4,367 total)
+### Compile errors -- top patterns (1,657 total, down from 4,443)
 
 ```
-#513 (wrong return value 0 -- 3,436 fail) -- umbrella, triage-first [E][S], updated from #509
-#512 (illegal cast -- 683 fail) -- independent [E], updated from #509
-#441 (null pointer dereference -- 129 fail) -- independent [E]
-#418 (expected SyntaxError -- skipped) -- in-progress [T]
+#411 (struct.new type mismatch -- 424 CE, was 975) -- independent [E][I]
+#671 (WithStatement -- 272 CE) -- backlog
+#511 (call/call_ref args mismatch -- 229 CE, was 514) -- independent [E]
+#448/#431/#430 (f64 type mismatch -- 152 CE) -- independent [E]
+#444 (extern.convert_any mismatch -- 103 CE, was 483) -- independent [E][S]
+#447 (fallthru type error -- 69 CE, was 48) -- independent [E]
+#401 (other Wasm validation -- 73 CE) -- independent [E][I]
+Various (TS parse, destructure, internal -- 335 CE) -- scattered
+```
+
+### Runtime failures (29,739 total, up from 27,938 -- many former CEs now run)
+
+```
+#789 (TypeError null/undef guard over-triggering -- 15,630 fail) -- CRITICAL NEW [E]
+#779/#786 (assert.sameValue wrong value -- 5,733 fail) -- umbrella [E][S]
+#791 (SyntaxError not raised -- 2,167 fail) -- [I][E]
+#783 residual (assert.throws(TypeError) -- 1,461 fail) -- [E]
+#779/#786 (assert() failed -- 1,363 fail) -- umbrella [E][S]
+#790 (assert.throws(ReferenceError) -- 788 fail) -- [E][S], NEW
+#785 residual (null pointer trap -- 784 fail) -- [E]
+#783 residual (assert.throws(other) -- 766 fail) -- [E]
+#778 (illegal cast -- 134 fail, was 135) -- independent [E]
 ```
 
 | #   | Title | Tests | Ready? |
 |-----|-------|-------|--------|
+| **789** | **TypeError null/undef guard over-triggering** | **15,630 fail** | **Ready** (CRITICAL, NEW) |
+| **791** | **SyntaxError detection gaps residual** | **2,167 fail** | **Ready** (high, NEW) |
+| **790** | **assert.throws(ReferenceError) not implemented** | **788 fail** | **Ready** (high, NEW) |
 | 409 | Unsupported call expression patterns | 3,931 CE | **Review** (critical) |
 | 514 | Generator/async-gen "options is not defined" | 684 CE | **Done** (fixed in 4446cb86) |
 | 515 | Uninitialized local + struct.get/set type errors | 470 CE | **Ready** (high, NEW) |
-| 511 | Wasm validation: call/call_ref type mismatch | 514 CE | **Ready** (critical, updated) |
-| 444 | Wasm validation: local.set type mismatch | 483 CE | **Ready** (high) |
-| 411 | struct.new stack mismatch | 975 CE | **Ready** (critical) |
+| 511 | Wasm validation: call/call_ref type mismatch | 229 CE (was 514) | **Ready** (high, improved) |
+| 444 | Wasm validation: extern.convert_any mismatch | 103 CE (was 483) | **Ready** (high, improved) |
+| 411 | struct.new stack mismatch | 424 CE (was 975) | **Ready** (critical, improved) |
 | 510 | TS parse errors from test wrapping | 175 CE | **Ready** (high, updated) |
 | 412 | Yield outside generator | 166 CE | **Ready** (medium) |
+| 448 | Wasm validation: f64 type mismatch | 152 CE (was 47) | **Ready** (high, grew) |
 | 445 | Wasm validation: call args missing | 72 CE | **Ready** (medium) |
+| 447 | Wasm validation: stack fallthru (residual) | 69 CE (was 48) | **Ready** (medium, grew) |
 | 413 | Parameter default self-reference | 59 CE | **Ready** (medium) |
 | 446 | Wasm validation: call_ref type mismatch | 56 CE | **Ready** (medium) |
-| 447 | Wasm validation: stack fallthru (residual) | 48 CE | **Ready** (medium) |
-| 448 | Wasm validation: type mismatch i32 | 47 CE | **Ready** (medium) |
 | 436 | for-of array destructuring ref type | 42 CE | **Ready** (medium) |
 | 437 | Cannot find module empty_FIXTURE.js | 38 CE | **Done** |
 | 420 | Cannot destructure non-array types | 83 CE | **Ready** (medium, updated) |
@@ -449,8 +456,8 @@ Updated 2026-03-22: 48,102 tests -- 14,720 pass, 27,938 fail, 4,443 CE, 1,001 sk
 | 433 | Equality operators mixed type i32/f64 mismatch | 10 CE | **Ready** (medium) |
 | 434 | BigInt remaining failures across operators | 27 fail | **Ready** (low) |
 | 435 | Logical/conditional must preserve object identity | 16 fail | **Ready** (medium) |
-| **726** | **TypeError regression: ref.cast guard returns ref.null for valid objects** | **1,948 regress** | **Done** (multi-struct dispatch) |
-| **727** | **Sub-classify assertion failures (wrong values)** | **11,480 fail** | **Ready** (high, analysis only) |
+| ~~726~~ | ~~TypeError regression: ref.cast guard returns ref.null for valid objects~~ | ~~1,948 regress~~ | **Done** (multi-struct dispatch) |
+| ~~727~~ | ~~Sub-classify assertion failures (wrong values)~~ | ~~11,480 fail~~ | **Done** (analysis, sub-issues created) |
 | ~~728~~ | ~~Null pointer dereference should throw TypeError, not trap~~ | ~~1,604 fail~~ | **Done** (superseded by #775) |
 
 ---
@@ -654,7 +661,7 @@ function in the same file. Key contention points:
 | logical/conditional codegen | 435 |
 | block/stack balance | 411, 410, 412, 447 |
 | AST null safety | 405, 418, 438 |
-| null guard emission | 441, 726, ~~728~~→775 |
+| null guard emission | 441, 726, ~~728~~→775, **789** |
 | ref.cast / type narrowing | 442, 726 |
 | local.set coercion | 444 |
 | call args / call_ref | 445, 446, 449 |
