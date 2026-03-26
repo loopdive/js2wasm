@@ -83,40 +83,32 @@ mkdirSync(CACHE_DIR, { recursive: true });
  */
 function buildCompilerHash(): string {
   const h = createHash("md5");
-  const srcDir = join(import.meta.dirname ?? ".", "..", "src");
-  const codegenDir = join(srcDir, "codegen");
+  const root = join(import.meta.dirname ?? ".", "..");
 
-  // Hash all .ts files in codegen/ — auto-includes newly extracted files
+  // Hash the compiler bundle — this is what actually runs.
+  // If the bundle is stale, the hash won't match and we recompile.
+  const bundlePath = join(root, "scripts", "compiler-bundle.mjs");
   try {
-    const codegenFiles = readdirSync(codegenDir)
-      .filter((f: string) => f.endsWith(".ts"))
-      .sort(); // deterministic order
-    for (const f of codegenFiles) {
-      try {
-        h.update(readFileSync(join(codegenDir, f)));
-      } catch {
-        h.update(f);
-      }
-    }
+    h.update(readFileSync(bundlePath));
   } catch {
-    h.update("codegen-dir-missing");
+    // No bundle — hash all source files as fallback
+    h.update("no-bundle");
   }
 
-  // Also hash checker, compiler, runtime, and test runner
-  // (all affect compilation output or test wrapping)
-  const extraFiles = [
-    join(srcDir, "checker", "index.ts"),
-    join(srcDir, "compiler.ts"),
-    join(srcDir, "runtime.ts"),
-    join(import.meta.dirname ?? ".", "test262-runner.ts"),
-  ];
-  for (const f of extraFiles) {
-    try {
-      h.update(readFileSync(f));
-    } catch {
-      h.update(f);
-    }
+  // Also hash the test runner (affects test wrapping/harness)
+  try {
+    h.update(readFileSync(join(import.meta.dirname ?? ".", "test262-runner.ts")));
+  } catch {
+    h.update("no-runner");
   }
+
+  // And runtime.ts (affects host imports)
+  try {
+    h.update(readFileSync(join(root, "src", "runtime.ts")));
+  } catch {
+    h.update("no-runtime");
+  }
+
   return h.digest("hex").slice(0, 12);
 }
 
