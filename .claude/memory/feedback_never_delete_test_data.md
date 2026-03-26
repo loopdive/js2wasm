@@ -1,11 +1,15 @@
 ---
-name: Never delete test data without asking
-description: Always ask before deleting or clearing test262 cache, results, or any test data files
+name: Never delete test data or run history
+description: Never delete test262 cache, results, run data, or benchmarks without asking first
 type: feedback
 ---
 
-Never delete test262 cache files, result files, or any test data without explicitly asking the user first.
+Never delete or clear any of:
+- `benchmarks/results/runs/` — test262 run history (used for trend graphs)
+- `.test262-cache/` — disk cache for compiled tests
+- `benchmarks/results/test262-results.jsonl` — current results
+- Any test data files
 
-**Why:** Test data is valuable and hard to reproduce. The user was upset when I attempted to clear the test262 results cache without asking.
+**Why:** Run history is irreplaceable and feeds the trend graph. Cache saves hours of recompilation. Deleted twice by accident.
 
-**How to apply:** Before any operation that would delete, clear, or overwrite files in `benchmarks/results/`, always ask the user for permission first. This includes cache files like `test262-results.jsonl` and report files.
+**How to apply:** Always ask user before removing any test-related data. This includes "cleanup" operations.

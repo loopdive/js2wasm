@@ -6,7 +6,7 @@ TypeScript-to-WebAssembly compiler using WasmGC.
 - Run all tests: `npm test` (vitest — may OOM on full suite in constrained envs)
 - Run a specific test file: `npm test -- tests/issue-277.test.ts`
 - Run equivalence tests only: `npm test -- tests/equivalence.test.ts`
-- Test262: `TEST262_WORKERS=2 pnpm run test:262` — vitest-based runner, creates its own worktree, writes to `benchmarks/results/`. Default 2 workers to avoid OOM at 15GB.
+- Test262: `pnpm run test:262` — vitest-based runner, creates its own worktree, writes to `benchmarks/results/`. Default 3 workers.
 
 ## Architecture Principles
 - **Dual-mode: JS host optional** — the compiler supports two modes: JS host mode (uses host imports for performance/completeness) and standalone mode (pure Wasm, no JS runtime). New features should have Wasm-native implementations for standalone mode; JS host imports are acceptable as a fast path when a JS runtime is available. Don't add new host imports without a standalone fallback.
@@ -18,7 +18,7 @@ TypeScript-to-WebAssembly compiler using WasmGC.
 - Optimizer: `src/optimize.ts` (Binaryen wasm-opt integration)
 - Tests: `tests/equivalence.test.ts` (main), `tests/test262.test.ts` (conformance dashboard, non-failing)
 - Test262 runner: `tests/test262-runner.ts` — TEST_CATEGORIES list
-- Test262 runner (preferred): `pnpm run test:262` — vitest-based, auto-worktree, disk cache, default 4 forks. Use `TEST262_WORKERS=6` for faster solo runs (no dev agents). With dev agents active, use `TEST262_WORKERS=2`.
+- Test262 runner (preferred): `pnpm run test:262` — vitest-based, auto-worktree, disk cache, default 3 forks. Use `TEST262_WORKERS=5` for solo runs (no dev agents).
 - Test262 runner history: `runs/index.json` is appended by the vitest runner after each run. `benchmarks/results/report.html` reads this for the trend graph.
 - Backlog: `plan/issues/backlog/backlog.md`
 - Issues: `plan/issues/` — organized by state:
@@ -70,26 +70,9 @@ TypeScript-to-WebAssembly compiler using WasmGC.
 
 ## Team & Workflow
 
-See [plan/team-setup.md](plan/team-setup.md) for full team config, roles, and merge lessons.
+See [plan/team-setup.md](plan/team-setup.md) for full team config, roles, memory budget, communication protocol, and merge lessons.
 
-### Continuous execution (rolling pool, dependency-driven)
-
-Work is driven by `plan/dependency-graph.md`. **Memory limit: 15GB visible RAM.** Max 3-4 dev agents when test262 is running (4 workers × 1GB + agents × 2GB). Max 6 agents without test262. Always check `free -h` before launching agents. Restart test262 AFTER agents complete, not during.
-
-**Test262 runs must be in a worktree** — never on the main working copy. Use `scripts/run-test262-vitest.sh` or `git worktree add /tmp/ts2wasm-test262 HEAD`. This keeps main clean for cherry-picks and prevents stash conflicts with test runner changes (pool config, skip filters, error reporting). Note: `run-test262.ts` creates its own worktree internally — just run it from `/workspace`, don't create a manual worktree first.
-
-**Only one test262 run at a time.** Before launching a test262 run, check `ps aux | grep test262` for an existing run. Concurrent runs corrupt the shared results files in `benchmarks/results/` and fight over worker memory.
-
-1. **Pick work**: choose from active/activatable goals in `plan/goals/goal-graph.md`, then by priority (critical > high > medium > low) within that goal's issues from `plan/issues/ready/`
-2. **Function locking**: no two agents touch the same *function* concurrently. Same file is OK if different functions (Git 3-way merge handles separate hunks).
-3. **Complete work**: cherry-pick to main, then follow the issue completion procedure:
-   - Move issue from `ready/` to `done/`
-   - Add `completed: YYYY-MM-DD` frontmatter
-   - Append `## Implementation Summary` with: what was done, what worked, what didn't, files changed, tests now passing
-   - Add entry to `plan/issues/done/log.md`
-   - Check `plan/issues/blocked/` for issues unblocked by this completion — move newly unblocked to `ready/`
-   - Update `plan/dependency-graph.md`
-4. **Immediately launch replacement**: pick next ready issue, launch new agent — keep 8 slots filled until no ready issues remain
+**Key numbers**: 18GB RAM + 16GB swap. Max 4 devs (3 with test262). Default 3 test262 workers. All agents as teammates (not subagents) for inter-agent messaging. Work driven by `plan/dependency-graph.md`.
 
 ### Sprint History
 - **Sprint 1**: 550 → 1,509 pass (+174%), 167 fail, 5,700 CE. Issues #138-#173.

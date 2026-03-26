@@ -9,7 +9,7 @@
       "ZSH_IN_DOCKER_VERSION": "1.2.0"
     }
   },
-  "runArgs": ["--cap-add=NET_ADMIN", "--cap-add=NET_RAW", "--memory=20g", "--memory-swap=20g"],
+  "runArgs": ["--cap-add=NET_ADMIN", "--cap-add=NET_RAW", "--memory=18g", "--memory-swap=34g"],
   "appPort": ["2222:2222", "7681:7681"],
   "customizations": {
     "vscode": {
@@ -52,7 +52,7 @@
     "source=claude-code-config-${devcontainerId},target=/home/node/.claude,type=volume"
   ],
   "containerEnv": {
-    "NODE_OPTIONS": "--max-old-space-size=4096",
+    "NODE_OPTIONS": "--max-old-space-size=3072",
     "CLAUDE_CONFIG_DIR": "/home/node/.claude",
     "POWERLEVEL9K_DISABLE_GITSTATUS": "true"
   },
