@@ -11946,11 +11946,39 @@ function fixupExternConvertAny(ctx: CodegenContext): void {
       const params = (targetType as FuncTypeDef).params;
 
       // Walk backwards to find ref.null extern args that should be ref.null for (ref null N)
+      // Must properly handle struct.new (which consumes N fields and produces 1 value)
+      // and pass-through instructions (local.tee, ref.cast, etc.) that forward a value.
       let pos = j;
       for (let pi = params.length - 1; pi >= 0; pi--) {
         pos--;
         if (pos < 0) break;
         const argInstr = instrs[pos]!;
+
+        // struct.new produces 1 value (the struct ref) from N field operands.
+        // It IS the arg producer — skip back over its consumed fields.
+        if (argInstr.op === "struct.new") {
+          const sTypeIdx = (argInstr as { typeIdx: number }).typeIdx;
+          const sDef = ctx.mod.types[sTypeIdx];
+          const fieldCount = sDef?.kind === "struct" ? sDef.fields.length : 0;
+          for (let f = 0; f < fieldCount; f++) {
+            let depth = 1;
+            while (depth > 0 && pos > 0) {
+              pos--;
+              depth -= instrStackDelta(instrs[pos]!, ctx.mod);
+            }
+          }
+          continue; // struct.new is the producer, not ref.null — skip replacement
+        }
+
+        // Pass-through instructions (delta=0, one-in one-out) forward a value
+        // from an earlier instruction. Look further back for the actual producer.
+        if (argInstr.op === "local.tee" || argInstr.op === "ref.as_non_null" ||
+            argInstr.op === "ref.cast" || argInstr.op === "ref.cast_null" ||
+            argInstr.op === "any.convert_extern" || argInstr.op === "extern.convert_any") {
+          pi++; // re-examine this param slot with the next instruction back
+          continue;
+        }
+
         const paramType = params[pi]!;
         if ((argInstr.op === "ref.null.extern" || argInstr.op === "ref.null extern") &&
             (paramType.kind === "ref" || paramType.kind === "ref_null")) {

@@ -1,0 +1,387 @@
+{
+  "timestamp": "2026-03-23T15:53:00.996Z",
+  "summary": {
+    "total": 2216,
+    "pass": 2216,
+    "fail": 0,
+    "skip": 0,
+    "compile_error": 0,
+    "compilable": 2216
+  },
+  "categories": [
+    {
+      "name": "language/arguments-object",
+      "pass": 96,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 96
+    },
+    {
+      "name": "language/asi",
+      "pass": 84,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 84
+    },
+    {
+      "name": "language/block-scope",
+      "pass": 53,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 53
+    },
+    {
+      "name": "language/comments",
+      "pass": 41,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 41
+    },
+    {
+      "name": "language/computed-property-names",
+      "pass": 15,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 15
+    },
+    {
+      "name": "language/destructuring",
+      "pass": 13,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 13
+    },
+    {
+      "name": "language/directive-prologue",
+      "pass": 37,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 37
+    },
+    {
+      "name": "language/eval-code",
+      "pass": 42,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 42
+    },
+    {
+      "name": "language/expressions",
+      "pass": 1835,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 1835
+    }
+  ],
+  "compileErrors": [],
+  "timing": {
+    "totalWallMs": 14280,
+    "totalCompileMs": 11850,
+    "totalInstantiateMs": 944,
+    "totalExecuteMs": 162,
+    "timedTests": 1813,
+    "avgCompileMs": 6.54,
+    "slowestByCompile": [
+      {
+        "file": "test/language/expressions/left-shift/S11.7.1_A4_T1.js",
+        "status": "pass",
+        "compileMs": 124.03,
+        "totalMs": 133.98
+      },
+      {
+        "file": "test/language/expressions/left-shift/S11.7.1_A4_T2.js",
+        "status": "pass",
+        "compileMs": 119.37,
+        "totalMs": 127.21
+      },
+      {
+        "file": "test/language/expressions/left-shift/S11.7.1_A4_T4.js",
+        "status": "pass",
+        "compileMs": 110.26,
+        "totalMs": 130.77
+      },
+      {
+        "file": "test/language/expressions/left-shift/S11.7.1_A4_T3.js",
+        "status": "pass",
+        "compileMs": 98.12,
+        "totalMs": 102.92
+      },
+      {
+        "file": "test/language/expressions/class/dstr/async-gen-meth-ary-ptrn-elem-obj-id.js",
+        "status": "pass",
+        "compileMs": 57.21,
+        "totalMs": 71.85
+      },
+      {
+        "file": "test/language/expressions/class/elements/regular-definitions-rs-private-setter.js",
+        "status": "pass",
+        "compileMs": 53.23,
+        "totalMs": 60.29
+      },
+      {
+        "file": "test/language/expressions/addition/bigint-errors.js",
+        "status": "pass",
+        "compileMs": 50.56,
+        "totalMs": 53.99
+      },
+      {
+        "file": "test/language/expressions/class/dstr/async-private-gen-meth-static-dflt-ary-ptrn-elem-id-init-fn-name-arrow.js",
+        "status": "pass",
+        "compileMs": 48.85,
+        "totalMs": 53.94
+      },
+      {
+        "file": "test/language/expressions/object/dstr/async-gen-meth-ary-ptrn-elem-obj-id.js",
+        "status": "pass",
+        "compileMs": 42.2,
+        "totalMs": 43.86
+      },
+      {
+        "file": "test/language/expressions/assignment/dstr/array-rest-nested-array-undefined-hole.js",
+        "status": "pass",
+        "compileMs": 40.39,
+        "totalMs": 42.38
+      },
+      {
+        "file": "test/language/expressions/assignment/member-expr-ident-name-default.js",
+        "status": "pass",
+        "compileMs": 40.3,
+        "totalMs": 43.84
+      },
+      {
+        "file": "test/language/expressions/class/dstr/async-gen-meth-dflt-ary-ptrn-elem-ary-elem-iter.js",
+        "status": "pass",
+        "compileMs": 39.25,
+        "totalMs": 46.64
+      },
+      {
+        "file": "test/language/expressions/object/dstr/async-gen-meth-ary-ptrn-elem-ary-empty-iter.js",
+        "status": "pass",
+        "compileMs": 37.51,
+        "totalMs": 40.94
+      },
+      {
+        "file": "test/language/expressions/assignment/fn-name-cover.js",
+        "status": "pass",
+        "compileMs": 37.4,
+        "totalMs": 42.43
+      },
+      {
+        "file": "test/language/expressions/left-shift/S11.7.1_A3_T2.1.js",
+        "status": "pass",
+        "compileMs": 37.21,
+        "totalMs": 39.69
+      },
+      {
+        "file": "test/language/expressions/left-shift/S11.7.1_A5.1_T1.js",
+        "status": "pass",
+        "compileMs": 36.19,
+        "totalMs": 42.18
+      },
+      {
+        "file": "test/language/expressions/greater-than/S11.8.2_A3.2_T1.2.js",
+        "status": "pass",
+        "compileMs": 35.93,
+        "totalMs": 37.96
+      },
+      {
+        "file": "test/language/expressions/assignment/dstr/obj-id-identifier-yield-ident-valid.js",
+        "status": "pass",
+        "compileMs": 35.47,
+        "totalMs": 37.32
+      },
+      {
+        "file": "test/language/expressions/class/dstr/async-gen-meth-static-ary-ptrn-elem-id-iter-complete.js",
+        "status": "pass",
+        "compileMs": 34.6,
+        "totalMs": 36.87
+      },
+      {
+        "file": "test/language/expressions/assignment/dstr/obj-prop-elem-init-assignment-truthy.js",
+        "status": "pass",
+        "compileMs": 34.14,
+        "totalMs": 35.64
+      }
+    ],
+    "slowestByTotal": [
+      {
+        "file": "test/language/expressions/left-shift/S11.7.1_A4_T1.js",
+        "status": "pass",
+        "compileMs": 124.03,
+        "instantiateMs": 0.67,
+        "executeMs": 1.89,
+        "totalMs": 133.98
+      },
+      {
+        "file": "test/language/expressions/left-shift/S11.7.1_A4_T4.js",
+        "status": "pass",
+        "compileMs": 110.26,
+        "instantiateMs": 6.38,
+        "executeMs": 4.12,
+        "totalMs": 130.77
+      },
+      {
+        "file": "test/language/expressions/left-shift/S11.7.1_A4_T2.js",
+        "status": "pass",
+        "compileMs": 119.37,
+        "instantiateMs": 1.48,
+        "executeMs": 2.42,
+        "totalMs": 127.21
+      },
+      {
+        "file": "test/language/expressions/left-shift/S11.7.1_A4_T3.js",
+        "status": "pass",
+        "compileMs": 98.12,
+        "instantiateMs": 0.43,
+        "executeMs": 1.14,
+        "totalMs": 102.92
+      },
+      {
+        "file": "test/language/expressions/class/dstr/async-gen-meth-ary-ptrn-elem-obj-id.js",
+        "status": "pass",
+        "compileMs": 57.21,
+        "instantiateMs": 12.36,
+        "executeMs": 0.09,
+        "totalMs": 71.85
+      },
+      {
+        "file": "test/language/expressions/class/elements/regular-definitions-rs-private-setter.js",
+        "status": "pass",
+        "compileMs": 53.23,
+        "instantiateMs": 3.32,
+        "executeMs": 0.01,
+        "totalMs": 60.29
+      },
+      {
+        "file": "test/language/expressions/addition/bigint-errors.js",
+        "status": "pass",
+        "compileMs": 50.56,
+        "instantiateMs": 0.6,
+        "executeMs": 0.26,
+        "totalMs": 53.99
+      },
+      {
+        "file": "test/language/expressions/class/dstr/async-private-gen-meth-static-dflt-ary-ptrn-elem-id-init-fn-name-arrow.js",
+        "status": "pass",
+        "compileMs": 48.85,
+        "instantiateMs": 0.37,
+        "executeMs": 0.09,
+        "totalMs": 53.94
+      },
+      {
+        "file": "test/language/expressions/class/dstr/async-gen-meth-dflt-ary-ptrn-elem-ary-elem-iter.js",
+        "status": "pass",
+        "compileMs": 39.25,
+        "instantiateMs": 5.6,
+        "executeMs": 0.15,
+        "totalMs": 46.64
+      },
+      {
+        "file": "test/language/expressions/object/dstr/async-gen-meth-ary-ptrn-elem-obj-id.js",
+        "status": "pass",
+        "compileMs": 42.2,
+        "instantiateMs": 0.54,
+        "executeMs": 0.28,
+        "totalMs": 43.86
+      },
+      {
+        "file": "test/language/expressions/assignment/member-expr-ident-name-default.js",
+        "status": "pass",
+        "compileMs": 40.3,
+        "instantiateMs": 0.61,
+        "executeMs": 0.01,
+        "totalMs": 43.84
+      },
+      {
+        "file": "test/language/expressions/generators/dflt-params-ref-prior.js",
+        "status": "pass",
+        "compileMs": 25.92,
+        "instantiateMs": 14.44,
+        "executeMs": 0.33,
+        "totalMs": 42.75
+      },
+      {
+        "file": "test/language/expressions/assignment/fn-name-cover.js",
+        "status": "pass",
+        "compileMs": 37.4,
+        "instantiateMs": 0.56,
+        "executeMs": 0.16,
+        "totalMs": 42.43
+      },
+      {
+        "file": "test/language/expressions/assignment/dstr/array-rest-nested-array-undefined-hole.js",
+        "status": "pass",
+        "compileMs": 40.39,
+        "instantiateMs": 0.25,
+        "executeMs": 0.04,
+        "totalMs": 42.38
+      },
+      {
+        "file": "test/language/expressions/left-shift/S11.7.1_A5.1_T1.js",
+        "status": "pass",
+        "compileMs": 36.19,
+        "instantiateMs": 4.99,
+        "executeMs": 0.07,
+        "totalMs": 42.18
+      },
+      {
+        "file": "test/language/expressions/object/dstr/async-gen-meth-ary-ptrn-elem-ary-empty-iter.js",
+        "status": "pass",
+        "compileMs": 37.51,
+        "instantiateMs": 0.82,
+        "executeMs": 0.11,
+        "totalMs": 40.94
+      },
+      {
+        "file": "test/language/expressions/left-shift/S11.7.1_A3_T2.1.js",
+        "status": "pass",
+        "compileMs": 37.21,
+        "instantiateMs": 0.29,
+        "executeMs": 0.11,
+        "totalMs": 39.69
+      },
+      {
+        "file": "test/language/expressions/class/elements/regular-definitions-private-names.js",
+        "status": "pass",
+        "compileMs": 29.83,
+        "instantiateMs": 6.4,
+        "executeMs": 0.53,
+        "totalMs": 38.4
+      },
+      {
+        "file": "test/language/expressions/greater-than/S11.8.2_A3.2_T1.2.js",
+        "status": "pass",
+        "compileMs": 35.93,
+        "instantiateMs": 0.21,
+        "executeMs": 0.08,
+        "totalMs": 37.96
+      },
+      {
+        "file": "test/language/expressions/class/dstr/meth-dflt-ary-ptrn-elem-id-iter-done.js",
+        "status": "pass",
+        "compileMs": 10.59,
+        "instantiateMs": 26.02,
+        "executeMs": 0.61,
+        "totalMs": 37.95
+      }
+    ],
+    "byCategory": [
+      {
+        "category": "language/expressions",
+        "count": 1813,
+        "avgCompileMs": 6.54,
+        "totalCompileMs": 11850,
+        "avgTotalMs": 7.88
+      }
+    ]
+  }
+}

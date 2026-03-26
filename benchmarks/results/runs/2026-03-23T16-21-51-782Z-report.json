@@ -1,0 +1,97 @@
+{
+  "timestamp": "2026-03-23T16:21:51.878Z",
+  "summary": {
+    "total": 784,
+    "pass": 784,
+    "fail": 0,
+    "skip": 0,
+    "compile_error": 0,
+    "compilable": 784
+  },
+  "categories": [
+    {
+      "name": "language/arguments-object",
+      "pass": 97,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 97
+    },
+    {
+      "name": "language/asi",
+      "pass": 84,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 84
+    },
+    {
+      "name": "language/block-scope",
+      "pass": 54,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 54
+    },
+    {
+      "name": "language/comments",
+      "pass": 42,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 42
+    },
+    {
+      "name": "language/computed-property-names",
+      "pass": 15,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 15
+    },
+    {
+      "name": "language/destructuring",
+      "pass": 13,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 13
+    },
+    {
+      "name": "language/directive-prologue",
+      "pass": 38,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 38
+    },
+    {
+      "name": "language/eval-code",
+      "pass": 43,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 43
+    },
+    {
+      "name": "language/expressions",
+      "pass": 398,
+      "fail": 0,
+      "skip": 0,
+      "compile_error": 0,
+      "compilable": 398
+    }
+  ],
+  "compileErrors": [],
+  "timing": {
+    "totalWallMs": 0,
+    "totalCompileMs": 0,
+    "totalInstantiateMs": 0,
+    "totalExecuteMs": 0,
+    "timedTests": 0,
+    "avgCompileMs": 0,
+    "slowestByCompile": [],
+    "slowestByTotal": [],
+    "byCategory": []
+  }
+}
