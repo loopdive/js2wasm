@@ -463,19 +463,6 @@
       "goal": "core-semantics"
     },
     {
-      "id": 738,
-      "title": "instanceof correctness (276 tests)",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [
-        678
-      ],
-      "files": [],
-      "test262_fail": 276,
-      "cluster": "Unclustered",
-      "goal": "class-system"
-    },
-    {
       "id": 739,
       "title": "Object.defineProperty correctness (262 tests)",
       "priority": "medium",
@@ -754,10 +741,6 @@
       "target": 735
     },
     {
-      "source": 678,
-      "target": 738
-    },
-    {
       "source": 688,
       "target": 742
     },
@@ -793,7 +776,6 @@
       "issues": [
         763,
         731,
-        738,
         385,
         421,
         312,
@@ -814,8 +796,7 @@
         334,
         377,
         329,
-        678,
-        738
+        678
       ]
     },
     {
@@ -1127,10 +1108,6 @@
     },
     {
       "goal": "builtin-methods",
-      "issue": 738
-    },
-    {
-      "goal": "builtin-methods",
       "issue": 767
     },
     {
@@ -1140,10 +1117,6 @@
     {
       "goal": "class-system",
       "issue": 678
-    },
-    {
-      "goal": "class-system",
-      "issue": 738
     },
     {
       "goal": "compilable",
@@ -1389,10 +1362,6 @@
     },
     {
       "goal": "core-semantics",
-      "issue": 738
-    },
-    {
-      "goal": "core-semantics",
       "issue": 767
     },
     {
@@ -1405,10 +1374,6 @@
     },
     {
       "goal": "error-model",
-      "issue": 738
-    },
-    {
-      "goal": "error-model",
       "issue": 767
     },
     {
@@ -1418,10 +1383,6 @@
     {
       "goal": "core-semantics",
       "issue": 678
-    },
-    {
-      "goal": "core-semantics",
-      "issue": 738
     },
     {
       "goal": "compilable",
@@ -1712,5 +1673,5 @@
       "issue": 652
     }
   ],
-  "generated": "2026-03-26T01:45:27.063Z"
+  "generated": "2026-03-26T01:48:36.390Z"
 }

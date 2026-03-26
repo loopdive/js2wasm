@@ -463,5 +463,6 @@
 | 315 | 2026-03-25 | Wasm validation error audit -- type mismatches                                                    | Wave       |
 | 732 | 2026-03-25 | hasOwnProperty correctness (520 tests)                                                            | Wave       |
 | 734 | 2026-03-25 | Array method correctness (343 tests)                                                              | Wave       |
+| 738 | 2026-03-25 | instanceof correctness (276 tests)                                                                 | Wave       |
 
 

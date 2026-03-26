@@ -22,7 +22,7 @@ fields — all features used heavily in modern JS.
 | **377** | Getter/setter accessor edge cases | — | Medium |
 | **329** | Object.setPrototypeOf support | — | Medium |
 | **678** | Dynamic prototype chain (reverted — breaks struct layout) | 625 FAIL | High |
-| **738** | instanceof correctness | 276 FAIL | Medium |
+| ~~738~~ | ~~instanceof correctness~~ | ~~276 FAIL~~ | ~~Done~~ |
 
 ## Success criteria
 
