@@ -13457,6 +13457,17 @@ function compileFunctionBody(
  * The parameter value (a struct ref) is at param index `paramIdx`.
  * We extract each bound field into a new local.
  */
+/**
+ * Check if two ref types differ only in nullability (ref vs ref_null with same typeIdx).
+ * Post-processing widens all ref to ref_null, so coercion is unnecessary in these cases.
+ */
+function refTypesCompatibleNullability(a: ValType, b: ValType): boolean {
+  if ((a.kind === "ref" || a.kind === "ref_null") && (b.kind === "ref" || b.kind === "ref_null")) {
+    return (a as { typeIdx: number }).typeIdx === (b as { typeIdx: number }).typeIdx;
+  }
+  return false;
+}
+
 export function destructureParamObject(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -13528,13 +13539,12 @@ export function destructureParamObject(
   // Pre-allocate all binding locals so they exist even when param is null
   ensureBindingLocals(ctx, fctx, pattern);
 
-  // Null guard: wrap destructuring in if-not-null for ref_null params
-  const isNullable = paramType.kind === "ref_null";
+  // Always null-guard: post-processing widens ref → ref_null, so values
+  // can be null at runtime even when the codegen type says ref.
+  const isNullable = true;
   const savedBody = fctx.body;
   const destructInstrs: Instr[] = [];
-  if (isNullable) {
-    fctx.body = destructInstrs;
-  }
+  fctx.body = destructInstrs;
 
   for (const element of pattern.elements) {
     if (!ts.isBindingElement(element)) continue;
@@ -13571,9 +13581,9 @@ export function destructureParamObject(
     const localIdx = fctx.localMap.get(localName)!;
     fctx.body.push({ op: "local.get", index: paramIdx });
     fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
-    // Coerce struct field type to local's declared type if they differ (#658)
+    // Skip coercion when only nullability differs — post-processing widens to ref_null
     const objLocalType = getLocalType(fctx, localIdx);
-    if (objLocalType && !valTypesMatch(fieldType, objLocalType)) {
+    if (objLocalType && !valTypesMatch(fieldType, objLocalType) && !refTypesCompatibleNullability(fieldType, objLocalType)) {
       coerceType(ctx, fctx, fieldType, objLocalType);
     }
     fctx.body.push({ op: "local.set", index: localIdx });
@@ -13734,16 +13744,16 @@ export function destructureParamArray(
     if (tupleDef && tupleDef.kind === "struct" && tupleDef.fields.length > 0 &&
         tupleDef.fields[0]!.name === "_0") {
       // Tuple struct destructuring: extract positional fields via struct.get
-      const isNullable = paramType.kind === "ref_null";
+      // Always null-guard: post-processing widens ref → ref_null, so values
+      // can be null at runtime even when the codegen type says ref.
+      const isNullable = true;
 
       // Pre-allocate all binding locals
       ensureBindingLocals(ctx, fctx, pattern);
 
       const savedBody = fctx.body;
       const destructInstrs: Instr[] = [];
-      if (isNullable) {
-        fctx.body = destructInstrs;
-      }
+      fctx.body = destructInstrs;
 
       for (let i = 0; i < pattern.elements.length; i++) {
         const element = pattern.elements[i]!;
@@ -13784,14 +13794,36 @@ export function destructureParamArray(
           allocLocal(fctx, localName, fieldType);
         }
         const localIdx = fctx.localMap.get(localName)!;
-        fctx.body.push({ op: "local.get", index: paramIdx });
-        fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: i });
-        // Coerce struct field type to local's declared type if they differ (#658)
-        const localType = getLocalType(fctx, localIdx);
-        if (localType && !valTypesMatch(fieldType, localType)) {
-          coerceType(ctx, fctx, fieldType, localType);
+
+        // Handle default initializer for simple bindings (e.g. [x = 1])
+        if (element.initializer && (fieldType.kind === "ref" || fieldType.kind === "ref_null" || fieldType.kind === "externref")) {
+          const tmpLocal = allocLocal(fctx, `__dparam_dflt_${fctx.locals.length}`, fieldType);
+          fctx.body.push({ op: "local.get", index: paramIdx });
+          fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: i });
+          fctx.body.push({ op: "local.set", index: tmpLocal });
+          (ctx as any)._arrayLiteralForceVec = true;
+          try {
+            emitNestedBindingDefault(ctx, fctx, tmpLocal, fieldType, element.initializer);
+          } finally {
+            (ctx as any)._arrayLiteralForceVec = false;
+          }
+          fctx.body.push({ op: "local.get", index: tmpLocal });
+          // Skip coercion when only nullability differs — post-processing widens to ref_null
+          const localType = getLocalType(fctx, localIdx);
+          if (localType && !valTypesMatch(fieldType, localType) && !refTypesCompatibleNullability(fieldType, localType)) {
+            coerceType(ctx, fctx, fieldType, localType);
+          }
+          fctx.body.push({ op: "local.set", index: localIdx });
+        } else {
+          fctx.body.push({ op: "local.get", index: paramIdx });
+          fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: i });
+          // Skip coercion when only nullability differs — post-processing widens to ref_null
+          const localType = getLocalType(fctx, localIdx);
+          if (localType && !valTypesMatch(fieldType, localType) && !refTypesCompatibleNullability(fieldType, localType)) {
+            coerceType(ctx, fctx, fieldType, localType);
+          }
+          fctx.body.push({ op: "local.set", index: localIdx });
         }
-        fctx.body.push({ op: "local.set", index: localIdx });
       }
 
       // Close null guard
@@ -13825,13 +13857,12 @@ export function destructureParamArray(
   // Pre-allocate all binding locals so they exist even when param is null
   ensureBindingLocals(ctx, fctx, pattern);
 
-  // Null guard: wrap destructuring in if-not-null for ref_null params
-  const isNullable = paramType.kind === "ref_null";
+  // Always null-guard: post-processing widens ref → ref_null, so values
+  // can be null at runtime even when the codegen type says ref.
+  const isNullable = true;
   const savedBody = fctx.body;
   const destructInstrs: Instr[] = [];
-  if (isNullable) {
-    fctx.body = destructInstrs;
-  }
+  fctx.body = destructInstrs;
 
   for (let i = 0; i < pattern.elements.length; i++) {
     const element = pattern.elements[i]!;
@@ -13938,16 +13969,43 @@ export function destructureParamArray(
       allocLocal(fctx, localName, elemType);
     }
     const localIdx = fctx.localMap.get(localName)!;
-    fctx.body.push({ op: "local.get", index: paramIdx });
-    fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 }); // get data
-    fctx.body.push({ op: "i32.const", value: i });
-    emitBoundsCheckedArrayGet(fctx, arrTypeIdx, elemType);
-    // Coerce array element type to local's declared type if they differ (#658)
-    const vecLocalType = getLocalType(fctx, localIdx);
-    if (vecLocalType && !valTypesMatch(elemType, vecLocalType)) {
-      coerceType(ctx, fctx, elemType, vecLocalType);
+
+    // Handle default initializer for simple bindings (e.g. [x = 1])
+    if (element.initializer && (elemType.kind === "ref" || elemType.kind === "ref_null" || elemType.kind === "externref")) {
+      // Use nullable type for bounds check so out-of-bounds returns null
+      const getElemType: ValType = (elemType.kind === "ref")
+        ? { kind: "ref_null", typeIdx: (elemType as { typeIdx: number }).typeIdx }
+        : elemType;
+      const tmpLocal = allocLocal(fctx, `__dparam_dflt_${fctx.locals.length}`, getElemType);
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 }); // get data
+      fctx.body.push({ op: "i32.const", value: i });
+      emitBoundsCheckedArrayGet(fctx, arrTypeIdx, getElemType);
+      fctx.body.push({ op: "local.set", index: tmpLocal });
+      (ctx as any)._arrayLiteralForceVec = true;
+      try {
+        emitNestedBindingDefault(ctx, fctx, tmpLocal, getElemType, element.initializer);
+      } finally {
+        (ctx as any)._arrayLiteralForceVec = false;
+      }
+      fctx.body.push({ op: "local.get", index: tmpLocal });
+      const vecLocalType = getLocalType(fctx, localIdx);
+      if (vecLocalType && !valTypesMatch(getElemType, vecLocalType) && !refTypesCompatibleNullability(getElemType, vecLocalType)) {
+        coerceType(ctx, fctx, getElemType, vecLocalType);
+      }
+      fctx.body.push({ op: "local.set", index: localIdx });
+    } else {
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 }); // get data
+      fctx.body.push({ op: "i32.const", value: i });
+      emitBoundsCheckedArrayGet(fctx, arrTypeIdx, elemType);
+      // Skip coercion when only nullability differs — post-processing widens to ref_null
+      const vecLocalType = getLocalType(fctx, localIdx);
+      if (vecLocalType && !valTypesMatch(elemType, vecLocalType) && !refTypesCompatibleNullability(elemType, vecLocalType)) {
+        coerceType(ctx, fctx, elemType, vecLocalType);
+      }
+      fctx.body.push({ op: "local.set", index: localIdx });
     }
-    fctx.body.push({ op: "local.set", index: localIdx });
   }
 
   // Close null guard
