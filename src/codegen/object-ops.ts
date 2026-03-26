@@ -32,6 +32,31 @@ import {
   flushLateImportShifts,
 } from "./expressions.js";
 
+// ── Null guard for object method arguments ────────────────────────────
+
+/**
+ * Emit a null check on the ref stored in `localIdx`.
+ * If null, throws TypeError via the exception tag.
+ */
+function emitObjectArgNullGuard(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  localIdx: number,
+): void {
+  const tagIdx = ensureExnTag(ctx);
+  fctx.body.push({ op: "local.get", index: localIdx });
+  fctx.body.push({ op: "ref.is_null" });
+  fctx.body.push({
+    op: "if",
+    blockType: { kind: "empty" },
+    then: [
+      { op: "ref.null.extern" } as Instr,
+      { op: "throw", tagIdx } as Instr,
+    ],
+    else: [],
+  });
+}
+
 // ── Object.defineProperty flag helpers ────────────────────────────────
 
 /**
@@ -431,6 +456,7 @@ export function compileObjectDefineProperty(
     if (!objType) return null;
     const objLocal = allocLocal(fctx, `__defprop_obj_${fctx.locals.length}`, objType);
     fctx.body.push({ op: "local.set", index: objLocal });
+    emitObjectArgNullGuard(ctx, fctx, objLocal);
 
     const accessorKey = `${structName}_${propName}`;
     ctx.classAccessorSet.add(accessorKey);
@@ -640,6 +666,7 @@ export function compileObjectDefineProperty(
 
     const objLocal = allocLocal(fctx, `__defprop_obj_${fctx.locals.length}`, objType);
     fctx.body.push({ op: "local.set", index: objLocal });
+    emitObjectArgNullGuard(ctx, fctx, objLocal);
 
     // ── Compile-time flag checking for struct path ──
     // Save existing flags BEFORE updating (needed for value comparison below)
@@ -1130,6 +1157,7 @@ export function compileObjectKeysOrValues(
     if (!argResult) return null;
     const objLocal = allocLocal(fctx, `__obj_entries_src_${fctx.locals.length}`, { kind: "ref", typeIdx: structTypeIdx });
     fctx.body.push({ op: "local.set", index: objLocal });
+    emitObjectArgNullGuard(ctx, fctx, objLocal);
 
     // Resolve the return type from the TS signature to get proper tuple/vec types
     const sig = ctx.checker.getResolvedSignature(expr);
@@ -1250,6 +1278,7 @@ export function compileObjectKeysOrValues(
   if (!argResult) return null;
   const objLocal = allocLocal(fctx, `__obj_vals_src_${fctx.locals.length}`, { kind: "ref", typeIdx: structTypeIdx });
   fctx.body.push({ op: "local.set", index: objLocal });
+  emitObjectArgNullGuard(ctx, fctx, objLocal);
 
   // Always use externref elements for Object.values() since the TS return type is any[]
   const elemKind = "externref";
