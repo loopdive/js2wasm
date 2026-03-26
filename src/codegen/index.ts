@@ -31,7 +31,7 @@ import type {
 import { createEmptyModule } from "../ir/types.js";
 import { compileExpression, resolveComputedKeyExpression, coerceType, valTypesMatch, emitBoundsCheckedArrayGet, ensureLateImport, flushLateImportShifts } from "./expressions.js";
 import { collectShapes } from "../shape-inference.js";
-import { compileStatement, ensureBindingLocals, hoistFunctionDeclarations } from "./statements.js";
+import { compileStatement, ensureBindingLocals, hoistFunctionDeclarations, emitNestedBindingDefault } from "./statements.js";
 import { emitInlineMathFunctions } from "./math-helpers.js";
 
 /** Result returned by generateModule / generateMultiModule */
@@ -13759,6 +13759,17 @@ export function destructureParamArray(
           fctx.body.push({ op: "local.get", index: paramIdx });
           fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: i });
           fctx.body.push({ op: "local.set", index: tmpLocal });
+
+          // Handle default initializer: if value is null/undefined, use the default
+          if (element.initializer) {
+            (ctx as any)._arrayLiteralForceVec = true;
+            try {
+              emitNestedBindingDefault(ctx, fctx, tmpLocal, fieldType, element.initializer);
+            } finally {
+              (ctx as any)._arrayLiteralForceVec = false;
+            }
+          }
+
           if (ts.isObjectBindingPattern(element.name)) {
             destructureParamObject(ctx, fctx, tmpLocal, element.name, fieldType);
           } else {
@@ -13829,16 +13840,34 @@ export function destructureParamArray(
     // Handle nested binding patterns
     if (ts.isBindingElement(element) &&
         (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name))) {
-      const tmpLocal = allocLocal(fctx, `__dparam_${fctx.locals.length}`, elemType);
+      // When there's a default initializer and elemType is non-nullable ref,
+      // use nullable for bounds check so out-of-bounds returns null instead of trapping
+      const hasDefault = !!element.initializer;
+      const getElemType: ValType = (hasDefault && elemType.kind === "ref")
+        ? { kind: "ref_null", typeIdx: (elemType as { typeIdx: number }).typeIdx }
+        : elemType;
+
+      const tmpLocal = allocLocal(fctx, `__dparam_${fctx.locals.length}`, getElemType);
       fctx.body.push({ op: "local.get", index: paramIdx });
       fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 }); // get data
       fctx.body.push({ op: "i32.const", value: i });
-      emitBoundsCheckedArrayGet(fctx, arrTypeIdx, elemType);
+      emitBoundsCheckedArrayGet(fctx, arrTypeIdx, getElemType);
       fctx.body.push({ op: "local.set", index: tmpLocal });
+
+      // Handle default initializer: if value is null/undefined, use the default
+      if (hasDefault) {
+        (ctx as any)._arrayLiteralForceVec = true;
+        try {
+          emitNestedBindingDefault(ctx, fctx, tmpLocal, getElemType, element.initializer!);
+        } finally {
+          (ctx as any)._arrayLiteralForceVec = false;
+        }
+      }
+
       if (ts.isObjectBindingPattern(element.name)) {
-        destructureParamObject(ctx, fctx, tmpLocal, element.name, elemType);
+        destructureParamObject(ctx, fctx, tmpLocal, element.name, getElemType);
       } else {
-        destructureParamArray(ctx, fctx, tmpLocal, element.name, elemType);
+        destructureParamArray(ctx, fctx, tmpLocal, element.name, getElemType);
       }
       continue;
     }
