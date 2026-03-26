@@ -1393,6 +1393,25 @@ export function compilePropertyIntrospection(
     tsProps.add(prop.name);
   }
 
+  // Add synthetic own properties for callable types (functions/constructors).
+  // ES spec: all functions have own "length" and "name" properties.
+  // Non-arrow functions also have "prototype" as an own property.
+  const callSigs = receiverType.getCallSignatures();
+  const constructSigs = receiverType.getConstructSignatures();
+  if (callSigs.length > 0 || constructSigs.length > 0) {
+    tsProps.add("length");
+    tsProps.add("name");
+    // Constructors and non-arrow functions have "prototype"
+    if (constructSigs.length > 0) {
+      tsProps.add("prototype");
+    }
+    // Check if receiver is a class — classes always have "prototype"
+    const symbol = receiverType.getSymbol();
+    if (symbol && (symbol.flags & ts.SymbolFlags.Class)) {
+      tsProps.add("prototype");
+    }
+  }
+
   // Get the first argument (the property name to check)
   const arg = expr.arguments[0];
   if (!arg) {
@@ -1426,6 +1445,11 @@ export function compilePropertyIntrospection(
     const hasInTs = tsProps.has(staticKey);
     const has = hasInStruct || hasInTs;
 
+    // For propertyIsEnumerable, all struct/TS-visible own properties are enumerable
+    // (non-enumerable properties are only created via Object.defineProperty with
+    // enumerable:false, which uses the __pf_ side-table — we can't check that
+    // statically, so for static keys known to be own, return true for both methods)
+
     // Compile receiver and argument for side effects, then drop
     const recvType = compileExpression(ctx, fctx, propAccess.expression);
     if (recvType && recvType !== VOID_RESULT) {
@@ -1447,6 +1471,13 @@ export function compilePropertyIntrospection(
   for (const p of tsProps) allFieldNames.add(p);
 
   if (allFieldNames.size > 0) {
+    // Ensure all field name strings are registered as globals
+    for (const fieldName of allFieldNames) {
+      if (!ctx.stringGlobalMap.has(fieldName)) {
+        addStringConstantGlobal(ctx, fieldName);
+      }
+    }
+
     // Compile receiver for side effects, drop it
     const recvType = compileExpression(ctx, fctx, propAccess.expression);
     if (recvType && recvType !== VOID_RESULT) {
@@ -1467,9 +1498,9 @@ export function compilePropertyIntrospection(
         // Start with false (0)
         fctx.body.push({ op: "i32.const", value: 0 });
         for (const fieldName of allFieldNames) {
-          fctx.body.push({ op: "local.get", index: keyLocal });
           const strGlobal = ctx.stringGlobalMap.get(fieldName);
           if (strGlobal !== undefined) {
+            fctx.body.push({ op: "local.get", index: keyLocal });
             fctx.body.push({ op: "global.get", index: strGlobal });
             fctx.body.push({ op: "call", funcIdx: eqFunc });
             fctx.body.push({ op: "i32.or" });
