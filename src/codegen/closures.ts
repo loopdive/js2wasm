@@ -29,6 +29,7 @@ import {
   destructureParamObject,
   ensureExnTag,
   addStringConstantGlobal,
+  hoistLetConstWithTdz,
 } from "./index.js";
 import {
   isVoidType,
@@ -1247,6 +1248,12 @@ export function compileArrowAsClosure(
 
   let conciseBodyHasValue = false;
 
+  // Pre-hoist let/const with TDZ flags for the closure body so that
+  // accesses before the declaration site throw ReferenceError (#790).
+  if (ts.isBlock(body)) {
+    hoistLetConstWithTdz(ctx, liftedFctx, body.statements);
+  }
+
   if (isGenerator && ts.isBlock(body)) {
     // Generator function expression: eagerly evaluate body, collect yields
     // into a buffer, then wrap with __create_generator.
@@ -1596,6 +1603,11 @@ export function compileArrowAsCallback(
       const effectiveIdx = cbFctx.localMap.get(paramName) ?? (1 + i);
       emitArrowParamDestructuring(ctx, cbFctx, param, effectiveIdx, resolved);
     }
+  }
+
+  // Pre-hoist let/const with TDZ flags for the callback body (#790)
+  if (ts.isBlock(body)) {
+    hoistLetConstWithTdz(ctx, cbFctx, body.statements);
   }
 
   let exprBodyHasReturnValue = false;

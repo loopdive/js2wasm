@@ -1215,10 +1215,14 @@ import {
 function emitLocalTdzCheck(
   ctx: CodegenContext,
   fctx: FunctionContext,
-  name: string,
+  _name: string,
   flagIdx: number,
 ): void {
   const tagIdx = ensureExnTag(ctx);
+  // Throw with ref.null.extern as payload when accessing a let/const variable
+  // before initialization (TDZ violation). The exception is catchable via
+  // try/catch. We avoid using addStringConstantGlobal here to prevent
+  // global index shifting during body compilation (#790).
   fctx.body.push({ op: "local.get", index: flagIdx });
   fctx.body.push({ op: "i32.eqz" });
   fctx.body.push({

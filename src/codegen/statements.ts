@@ -85,22 +85,11 @@ export function emitTdzCheck(ctx: CodegenContext, fctx: FunctionContext, name: s
 
 /**
  * Build an instruction that pushes a ReferenceError message as externref onto the stack.
- * Uses string constants import if available, otherwise ref.null.extern as fallback.
+ * Uses ref.null.extern as the payload to avoid adding string constant imports that
+ * would require the string_constants module at instantiation time (#790).
+ * The exception is still catchable via try/catch.
  */
-function emitTdzErrorString(ctx: CodegenContext, name: string): Instr {
-  // We need to produce a string on the stack. The simplest approach is
-  // to use the string constants mechanism if available.
-  const msg = `Cannot access '${name}' before initialization`;
-  if (ctx.stringGlobalMap.has(msg)) {
-    return { op: "global.get", index: ctx.stringGlobalMap.get(msg)! };
-  }
-  // If we have string support, register the string constant
-  if (ctx.hasStringImports || ctx.nativeStrings) {
-    // For native strings, we can't easily emit a string constant here.
-    // Fall back to ref.null.extern as the error payload.
-    return { op: "ref.null.extern" } as Instr;
-  }
-  // Fallback: null externref (the error handler will still catch it as ReferenceError)
+function emitTdzErrorString(_ctx: CodegenContext, _name: string): Instr {
   return { op: "ref.null.extern" } as Instr;
 }
 
@@ -2501,6 +2490,14 @@ function compileForStatement(
               coerceType(ctx, fctx, forInitType, wasmType);
             }
             emitCoercedLocalSet(ctx, fctx, localIdx, forInitType ?? wasmType);
+          }
+        }
+        // Set TDZ flag for let/const loop vars so they are no longer in TDZ (#790)
+        if (!isVar) {
+          const tdzFlagIdx = fctx.tdzFlagLocals?.get(name);
+          if (tdzFlagIdx !== undefined) {
+            fctx.body.push({ op: "i32.const", value: 1 });
+            fctx.body.push({ op: "local.set", index: tdzFlagIdx });
           }
         }
       }
