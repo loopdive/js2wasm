@@ -332,7 +332,32 @@ export function emitArrowParamDestructuring(
       fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
 
       if (element.initializer) {
-        if (fieldType.kind === "externref" || fieldType.kind === "ref_null" || fieldType.kind === "ref") {
+        if (fieldType.kind === "externref") {
+          // Per JS spec: only undefined triggers defaults, NOT null (#796)
+          const tmpField = allocLocal(fctx, `__dflt_${fctx.locals.length}`, fieldType);
+          fctx.body.push({ op: "local.tee", index: tmpField });
+          const isUndefIdx = ensureLateImportShared(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+          flushLateImportShiftsShared(ctx, fctx);
+          if (isUndefIdx !== undefined) {
+            fctx.body.push({ op: "call", funcIdx: isUndefIdx });
+          } else {
+            fctx.body.push({ op: "ref.is_null" } as Instr);
+          }
+          const savedBody = pushBody(fctx);
+          compileExpression(ctx, fctx, element.initializer, fieldType);
+          fctx.body.push({ op: "local.set", index: localIdx } as Instr);
+          const thenInstrs = fctx.body;
+          fctx.body = savedBody;
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: thenInstrs,
+            else: [
+              { op: "local.get", index: tmpField } as Instr,
+              { op: "local.set", index: localIdx } as Instr,
+            ],
+          });
+        } else if (fieldType.kind === "ref_null" || fieldType.kind === "ref") {
           const tmpField = allocLocal(fctx, `__dflt_${fctx.locals.length}`, fieldType);
           fctx.body.push({ op: "local.tee", index: tmpField });
           fctx.body.push({ op: "ref.is_null" } as Instr);
@@ -426,8 +451,33 @@ export function emitArrowParamDestructuring(
 
       // Handle default initializer: [x = 23] — apply default when value is undefined
       if (bindingElem.initializer) {
-        if (bindingWasmType.kind === "externref" || bindingWasmType.kind === "ref_null" || bindingWasmType.kind === "ref") {
-          // ref types: undefined is null, check ref.is_null
+        if (bindingWasmType.kind === "externref") {
+          // Per JS spec: only undefined triggers defaults, NOT null (#796)
+          const tmpElem = allocLocal(fctx, `__ary_dflt_${fctx.locals.length}`, bindingWasmType);
+          fctx.body.push({ op: "local.tee", index: tmpElem });
+          const isUndefIdx = ensureLateImportShared(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+          flushLateImportShiftsShared(ctx, fctx);
+          if (isUndefIdx !== undefined) {
+            fctx.body.push({ op: "call", funcIdx: isUndefIdx });
+          } else {
+            fctx.body.push({ op: "ref.is_null" } as Instr);
+          }
+          const savedBody = pushBody(fctx);
+          compileExpression(ctx, fctx, bindingElem.initializer, bindingWasmType);
+          fctx.body.push({ op: "local.set", index: localIdx } as Instr);
+          const thenInstrs = fctx.body;
+          fctx.body = savedBody;
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: thenInstrs,
+            else: [
+              { op: "local.get", index: tmpElem } as Instr,
+              { op: "local.set", index: localIdx } as Instr,
+            ],
+          });
+        } else if (bindingWasmType.kind === "ref_null" || bindingWasmType.kind === "ref") {
+          // Internal struct refs: use ref.is_null for missing values
           const tmpElem = allocLocal(fctx, `__ary_dflt_${fctx.locals.length}`, bindingWasmType);
           fctx.body.push({ op: "local.tee", index: tmpElem });
           fctx.body.push({ op: "ref.is_null" } as Instr);

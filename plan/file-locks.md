@@ -15,9 +15,9 @@ Active file/function claims by agents. **Check before editing. Update when start
 |------|--------------|-------|-------|-------|
 | src/codegen/expressions.ts | compileIdentifier / TDZ checks | dev-790 | #790 | 2026-03-25 |
 | src/codegen/index.ts | scope/binding setup | dev-790 | #790 | 2026-03-25 |
-| src/codegen/index.ts | compileFunctionBody / param defaults + TDZ | dev-413 | #413 | 2026-03-26 |
-| src/codegen/type-coercion.ts | coerceType / emitGuardedRefCast | dev-792 | #792 | 2026-03-26 |
-| src/codegen/property-access.ts | emitNullGuardedStructGet | dev-792 | #792 | 2026-03-26 |
+| src/codegen/index.ts | destructureParamObject / destructureParamArray | dev-796 | #796 | 2026-03-26 |
+| src/codegen/closures.ts | destructuring defaults | dev-796 | #796 | 2026-03-26 |
+
 <!--
 Example entries:
 | src/codegen/expressions.ts | compileCallExpression | dev-1 | #512 | 2026-03-25 |

@@ -13453,6 +13453,93 @@ function compileFunctionBody(
 }
 
 /**
+ * Emit a default-value check for a destructured binding in parameter destructuring.
+ * The stack must contain the extracted field/element value.
+ * Per JS spec, destructuring defaults apply ONLY when the value is `undefined`.
+ * For externref: use __extern_is_undefined (NOT ref.is_null — JS null is NOT undefined).
+ * For f64: check NaN (the undefined sentinel).
+ * For ref/ref_null: check ref.is_null (internal struct refs use null for missing).
+ * For i32: no reliable sentinel, just assign directly.
+ */
+function emitDestructuringDefault(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  valType: ValType,
+  localIdx: number,
+  initializer: ts.Expression,
+): void {
+  if (valType.kind === "externref") {
+    const tmpLocal = allocLocal(fctx, `__dflt_${fctx.locals.length}`, valType);
+    fctx.body.push({ op: "local.tee", index: tmpLocal });
+    // Per JS spec: only undefined triggers defaults, NOT null.
+    // JS null → ref.null extern in Wasm, but ref.is_null would incorrectly trigger.
+    // Use __extern_is_undefined which correctly distinguishes null vs undefined.
+    const isUndefIdx = ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+    flushLateImportShifts(ctx, fctx);
+    if (isUndefIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: isUndefIdx });
+    } else {
+      // Fallback if import not available: ref.is_null (less correct but functional)
+      fctx.body.push({ op: "ref.is_null" } as Instr);
+    }
+    const savedBody = pushBody(fctx);
+    compileExpression(ctx, fctx, initializer, valType);
+    fctx.body.push({ op: "local.set", index: localIdx } as Instr);
+    const thenInstrs = fctx.body;
+    fctx.body = savedBody;
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: thenInstrs,
+      else: [
+        { op: "local.get", index: tmpLocal } as Instr,
+        { op: "local.set", index: localIdx } as Instr,
+      ],
+    });
+  } else if (valType.kind === "f64") {
+    const tmpLocal = allocLocal(fctx, `__dflt_${fctx.locals.length}`, valType);
+    fctx.body.push({ op: "local.tee", index: tmpLocal });
+    fctx.body.push({ op: "local.get", index: tmpLocal });
+    fctx.body.push({ op: "f64.ne" });
+    const savedBody = pushBody(fctx);
+    compileExpression(ctx, fctx, initializer, valType);
+    fctx.body.push({ op: "local.set", index: localIdx } as Instr);
+    const thenInstrs = fctx.body;
+    fctx.body = savedBody;
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: thenInstrs,
+      else: [
+        { op: "local.get", index: tmpLocal } as Instr,
+        { op: "local.set", index: localIdx } as Instr,
+      ],
+    });
+  } else if (valType.kind === "ref_null" || valType.kind === "ref") {
+    const tmpLocal = allocLocal(fctx, `__dflt_${fctx.locals.length}`, valType);
+    fctx.body.push({ op: "local.tee", index: tmpLocal });
+    fctx.body.push({ op: "ref.is_null" } as Instr);
+    const savedBody = pushBody(fctx);
+    compileExpression(ctx, fctx, initializer, valType);
+    fctx.body.push({ op: "local.set", index: localIdx } as Instr);
+    const thenInstrs = fctx.body;
+    fctx.body = savedBody;
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: thenInstrs,
+      else: [
+        { op: "local.get", index: tmpLocal } as Instr,
+        { op: "local.set", index: localIdx } as Instr,
+      ],
+    });
+  } else {
+    // i32 and other types — no reliable undefined sentinel, just assign
+    fctx.body.push({ op: "local.set", index: localIdx });
+  }
+}
+
+/**
  * Destructure a function parameter that is an ObjectBindingPattern.
  * The parameter value (a struct ref) is at param index `paramIdx`.
  * We extract each bound field into a new local.
@@ -13586,7 +13673,14 @@ export function destructureParamObject(
     if (objLocalType && !valTypesMatch(fieldType, objLocalType) && !refTypesCompatibleNullability(fieldType, objLocalType)) {
       coerceType(ctx, fctx, fieldType, objLocalType);
     }
-    fctx.body.push({ op: "local.set", index: localIdx });
+
+    // Handle default initializer: {x = expr} — apply default when value is undefined (#796)
+    if (element.initializer) {
+      const effType = objLocalType ?? fieldType;
+      emitDestructuringDefault(ctx, fctx, effType, localIdx, element.initializer);
+    } else {
+      fctx.body.push({ op: "local.set", index: localIdx });
+    }
   }
 
   // Close null guard
@@ -13824,6 +13918,12 @@ export function destructureParamArray(
           }
           fctx.body.push({ op: "local.set", index: localIdx });
         }
+
+        // Handle default initializer: [x = expr] — apply default when value is undefined (#796)
+        if (ts.isBindingElement(element) && element.initializer) {
+          const effType = localType ?? fieldType;
+          emitDestructuringDefault(ctx, fctx, effType, localIdx, element.initializer);
+        }
       }
 
       // Close null guard
@@ -14005,6 +14105,13 @@ export function destructureParamArray(
         coerceType(ctx, fctx, elemType, vecLocalType);
       }
       fctx.body.push({ op: "local.set", index: localIdx });
+    }
+
+    // Handle default initializer: [x = expr] — apply default when value is undefined (#796)
+    const bindingElem = element as ts.BindingElement;
+    if (bindingElem.initializer) {
+      const effType = vecLocalType ?? elemType;
+      emitDestructuringDefault(ctx, fctx, effType, localIdx, bindingElem.initializer);
     }
   }
 
