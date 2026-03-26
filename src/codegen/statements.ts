@@ -13,6 +13,7 @@ import {
   flushLateImportShifts,
   shiftLateImportIndices,
   valTypesMatch,
+  VOID_RESULT,
 } from "./expressions.js";
 import type { CodegenContext, FunctionContext } from "./index.js";
 import {
@@ -1942,13 +1943,31 @@ function compileReturnStatement(
   fctx: FunctionContext,
   stmt: ts.ReturnStatement,
 ): void {
-  // Inside a generator function, `return` should break out of the body block
-  // (not use the wasm `return` opcode, which would skip __create_generator).
+  // Inside a generator function, `return expr` should push the return value
+  // into the generator buffer (so .next().value sees it), then break out of
+  // the body block (not use the wasm `return` opcode, which would skip __create_generator).
   if (fctx.isGenerator) {
-    // If there's a return expression, evaluate it for side effects but discard the value
     if (stmt.expression) {
+      const bufferIdx = fctx.localMap.get("__gen_buffer");
       const resultType = compileExpression(ctx, fctx, stmt.expression);
-      if (resultType !== null) {
+      if (resultType !== null && resultType !== VOID_RESULT && bufferIdx !== undefined) {
+        // Push the return value into the gen buffer so it appears as the
+        // final next() value (#729)
+        const tmpLocal = allocLocal(fctx, `__gen_ret_${fctx.locals.length}`, resultType);
+        fctx.body.push({ op: "local.set", index: tmpLocal });
+        fctx.body.push({ op: "local.get", index: bufferIdx });
+        fctx.body.push({ op: "local.get", index: tmpLocal });
+        if (resultType.kind === "f64") {
+          const pushIdx = ctx.funcMap.get("__gen_push_f64");
+          if (pushIdx !== undefined) fctx.body.push({ op: "call", funcIdx: pushIdx });
+        } else if (resultType.kind === "i32") {
+          const pushIdx = ctx.funcMap.get("__gen_push_i32");
+          if (pushIdx !== undefined) fctx.body.push({ op: "call", funcIdx: pushIdx });
+        } else {
+          const pushIdx = ctx.funcMap.get("__gen_push_ref");
+          if (pushIdx !== undefined) fctx.body.push({ op: "call", funcIdx: pushIdx });
+        }
+      } else if (resultType !== null && resultType !== VOID_RESULT) {
         fctx.body.push({ op: "drop" });
       }
     }
