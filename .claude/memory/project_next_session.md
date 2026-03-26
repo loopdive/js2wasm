@@ -53,9 +53,9 @@ type: project
 - **builtin-methods:** activatable (~70%)
 
 ## Next steps
-1. `TEST262_WORKERS=2 pnpm run test:262` — measure all 20+ commits
+1. `pnpm run test:262` — measure all 20+ commits (default 3 workers)
 2. Bisect the 4 regressions (9f646920 + e4941684-4e034a13)
 3. Continue on core-semantics (#771 arguments, #513 wrong values)
 4. Start property-model and class-system (now unblocked)
-5. Max 2 devs + 1 tester + 1 PO = 4 agents (memory limit)
-6. Devs CAN run single test files, NOT full suite or test262
+5. All agents as teammates (TeamCreate), file locks via plan/file-locks.md
+6. See plan/team-setup.md for memory budget and agent limits
