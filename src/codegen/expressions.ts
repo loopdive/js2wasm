@@ -5173,6 +5173,56 @@ function hasStringAssignment(name: string, fromExpr: ts.Node): boolean {
   return found;
 }
 
+/**
+ * Like hasStringAssignment but searches from the source file root, not just
+ * the immediate function. This catches the pattern where a closure captures
+ * a variable that was assigned a string in a parent scope (#795).
+ */
+function hasStringAssignmentInParentScopes(name: string, fromExpr: ts.Node): boolean {
+  // Walk up to the source file root
+  let root: ts.Node = fromExpr;
+  while (root.parent) root = root.parent;
+  if (!ts.isSourceFile(root)) return false;
+  // Search the entire source file for string assignments to this name
+  let found = false;
+  function visit(node: ts.Node) {
+    if (found) return;
+    if (
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ts.isIdentifier(node.left) &&
+      node.left.text === name
+    ) {
+      if (
+        ts.isStringLiteral(node.right) ||
+        ts.isNoSubstitutionTemplateLiteral(node.right) ||
+        ts.isTemplateExpression(node.right)
+      ) {
+        found = true;
+        return;
+      }
+    }
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === name &&
+      node.initializer
+    ) {
+      if (
+        ts.isStringLiteral(node.initializer) ||
+        ts.isNoSubstitutionTemplateLiteral(node.initializer) ||
+        ts.isTemplateExpression(node.initializer)
+      ) {
+        found = true;
+        return;
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+  ts.forEachChild(root, visit);
+  return found;
+}
+
 export function compileCompoundAssignment(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -5318,11 +5368,69 @@ export function compileCompoundAssignment(
       undefined /* propName */,
       false /* throwOnNull — ref cells use default for uninitialized captures */,
     );
+
+    // For externref boxed captures, check if += should be string concat (#795)
+    if (boxed.valType.kind === "externref" && op === ts.SyntaxKind.PlusEqualsToken) {
+      const rightTsType = ctx.checker.getTypeAtLocation(expr.right);
+      const rhsIsString = isStringType(rightTsType);
+      // Also check if the variable was assigned a string in any enclosing scope
+      const varHasStringAssign = hasStringAssignment(name, expr) ||
+        hasStringAssignmentInParentScopes(name, expr);
+      if (rhsIsString || varHasStringAssign) {
+        // String concat path: current value (externref) is on stack
+        addStringImports(ctx);
+        const concatIdx = ctx.funcMap.get("concat");
+        if (concatIdx !== undefined) {
+          const compoundRhsStr = compileExpression(ctx, fctx, expr.right);
+          if (!compoundRhsStr) {
+            ctx.errors.push({
+              message: "Failed to compile compound assignment RHS",
+              line: getLine(expr),
+              column: getCol(expr),
+            });
+            return null;
+          }
+          // Coerce RHS to externref if needed (e.g. number → string)
+          if (compoundRhsStr.kind === "f64" || compoundRhsStr.kind === "i32") {
+            if (compoundRhsStr.kind === "i32") fctx.body.push({ op: "f64.convert_i32_s" });
+            const toStr = ctx.funcMap.get("number_toString");
+            if (toStr !== undefined) fctx.body.push({ op: "call", funcIdx: toStr });
+          }
+          fctx.body.push({ op: "call", funcIdx: concatIdx });
+          // Write back to ref cell
+          const tmpStrResult = allocLocal(fctx, `__box_cmp_${fctx.locals.length}`, boxed.valType);
+          fctx.body.push({ op: "local.set", index: tmpStrResult });
+          fctx.body.push({ op: "local.get", index: localIdx });
+          fctx.body.push({ op: "ref.is_null" });
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: [] as Instr[],
+            else: [
+              { op: "local.get", index: localIdx } as Instr,
+              { op: "local.get", index: tmpStrResult } as Instr,
+              { op: "struct.set", typeIdx: boxed.refCellTypeIdx, fieldIdx: 0 } as Instr,
+            ],
+          });
+          fctx.body.push({ op: "local.get", index: tmpStrResult });
+          return boxed.valType;
+        }
+      }
+    }
+
+    // For externref boxed captures with arithmetic ops, unbox to f64 first (#795)
+    const boxedNeedsUnbox = boxed.valType.kind === "externref";
+    if (boxedNeedsUnbox) {
+      addUnionImports(ctx);
+      const unboxIdx = ctx.funcMap.get("__unbox_number")!;
+      fctx.body.push({ op: "call", funcIdx: unboxIdx });
+    }
+
     const compoundRhsBoxed = compileExpression(
       ctx,
       fctx,
       expr.right,
-      boxed.valType,
+      boxedNeedsUnbox ? { kind: "f64" } : boxed.valType,
     );
     if (!compoundRhsBoxed) {
       ctx.errors.push({
@@ -5332,6 +5440,13 @@ export function compileCompoundAssignment(
       });
       return null;
     }
+    // Coerce RHS to f64 if externref (#795)
+    if (boxedNeedsUnbox && compoundRhsBoxed.kind === "externref") {
+      fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
+    } else if (boxedNeedsUnbox && compoundRhsBoxed.kind === "i32") {
+      fctx.body.push({ op: "f64.convert_i32_s" });
+    }
+
     switch (op) {
       case ts.SyntaxKind.PlusEqualsToken:
         fctx.body.push({ op: "f64.add" });
@@ -5362,6 +5477,14 @@ export function compileCompoundAssignment(
         emitBitwiseCompoundOp(fctx, op);
         break;
     }
+
+    // Box result back to externref if the ref cell stores externref (#795)
+    if (boxedNeedsUnbox) {
+      addUnionImports(ctx);
+      const boxIdx = ctx.funcMap.get("__box_number")!;
+      fctx.body.push({ op: "call", funcIdx: boxIdx });
+    }
+
     // Write back to ref cell (skip if ref cell is null #702)
     const tmpResult = allocLocal(
       fctx,
