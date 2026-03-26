@@ -5,7 +5,7 @@ export default defineConfig({
     include: ['tests/**/*.test.ts'],
     pool: 'forks',
     poolOptions: {
-      forks: { maxForks: parseInt(process.env.TEST262_WORKERS || '3', 10) },
+      forks: { maxForks: parseInt(process.env.TEST262_WORKERS || '2', 10) },
     },
     testTimeout: 10000, // 10s per test — prevents infinite compilation loops from blocking the run
   },

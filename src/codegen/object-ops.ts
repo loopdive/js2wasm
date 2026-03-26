@@ -1391,20 +1391,53 @@ export function compilePropertyIntrospection(
     }
   }
 
-  // Collect own data properties from the TypeScript type system.
-  // In ES spec, hasOwnProperty returns true only for own properties — class
-  // methods live on the prototype and private members (starting with #) are
-  // never accessible via string property names.  Filter both out.
+  // Detect if receiver is a prototype object (e.g. C.prototype) vs an instance
+  // vs a class constructor.  Each has different "own" property semantics:
+  //   - Prototype:   methods + accessors are own; instance fields are NOT
+  //   - Instance:    instance fields are own; methods are NOT (they're on prototype)
+  //   - Constructor: static members are own; instance members are NOT
+  const isPrototypeReceiver = ts.isPropertyAccessExpression(propAccess.expression) &&
+    propAccess.expression.name.text === "prototype";
+
+  // A constructor type (typeof C) has construct signatures; an instance does not.
+  const isConstructorReceiver = !isPrototypeReceiver &&
+    receiverType.getConstructSignatures().length > 0;
+
+  // For prototype/constructor receivers, the struct definition represents the
+  // instance layout — its fields are NOT own properties of the prototype or
+  // constructor object.  Clear structFieldNames so only tsProps drives the result.
+  if (isPrototypeReceiver || isConstructorReceiver) {
+    structFieldNames = null;
+  }
+
+  // Collect own properties from the TypeScript type system.
+  // Filtering depends on what kind of object the receiver is.
   const tsProps = new Set<string>();
   for (const prop of receiverType.getProperties()) {
     // Skip private identifiers — they start with '#' and can't be matched by string keys
     if (prop.name.startsWith("#")) continue;
 
-    // Skip methods — they live on the prototype, not on the instance.
-    // A TS symbol whose declaration is a MethodDeclaration is a prototype method.
     const decls = prop.getDeclarations();
-    if (decls && decls.length > 0 && decls.every(d => ts.isMethodDeclaration(d) || ts.isMethodSignature(d))) {
-      continue;
+    const isMethod = decls && decls.length > 0 && decls.every(d =>
+      ts.isMethodDeclaration(d) || ts.isMethodSignature(d));
+    const isAccessor = decls && decls.length > 0 && decls.every(d =>
+      ts.isGetAccessorDeclaration(d) || ts.isSetAccessorDeclaration(d));
+
+    if (isPrototypeReceiver) {
+      // On C.prototype: only methods and accessors are own properties.
+      // Instance data fields are NOT on the prototype (set in constructor).
+      if (!isMethod && !isAccessor) continue;
+    } else if (isConstructorReceiver) {
+      // On the constructor (typeof C): only static members are own.
+      if (decls && decls.length > 0) {
+        const hasStatic = decls.some(d =>
+          ts.canHaveModifiers(d) &&
+          d.modifiers?.some((m: ts.Modifier) => m.kind === ts.SyntaxKind.StaticKeyword));
+        if (!hasStatic) continue;
+      }
+    } else {
+      // On an instance: skip methods — they live on the prototype, not on the instance.
+      if (isMethod) continue;
     }
 
     tsProps.add(prop.name);

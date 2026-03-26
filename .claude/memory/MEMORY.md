@@ -15,15 +15,20 @@
 ### User & project
 - [user_role.md](user_role.md) — Project lead: challenges assumptions, thinks in compilation strategies
 - [project_team_setup.md](project_team_setup.md) — All agents as teammates via TeamCreate; details in plan/team-setup.md
-- [project_next_session.md](project_next_session.md) — Session state: 18,437 pass, dev agents active on #775/#771
+- [project_next_session.md](project_next_session.md) — Session state: 16,013 pass, honest baseline after exception tag fix
 
 ### Team & agents (rules not in plan/team-setup.md)
-- [feedback_dev_limit.md](feedback_dev_limit.md) — Dev-specific rules: test file naming, diagnostic batching, merge method
+- [feedback_dev_limit.md](feedback_dev_limit.md) — Max 2 devs, test file naming, merge method
 - [feedback_dev_agents_worktree.md](feedback_dev_agents_worktree.md) — ALL writing agents must use worktree isolation
 - [feedback_serialize_cherry_picks.md](feedback_serialize_cherry_picks.md) — Wait for wave to finish, then batch merge (not cherry-pick)
 - [feedback_always_cd_workspace.md](feedback_always_cd_workspace.md) — Git safety: cd /workspace, verify main, never work from agent worktrees
 - [feedback_usage_limit.md](feedback_usage_limit.md) — Stop dispatching above 90% context usage
 - [feedback_dont_ask_continue.md](feedback_dont_ask_continue.md) — Keep dispatching automatically, don't pause to ask
+- [feedback_reduce_notification_noise.md](feedback_reduce_notification_noise.md) — Only msg team-lead for merges/blockers/decisions, use TaskUpdate otherwise
+- [feedback_always_use_teammates.md](feedback_always_use_teammates.md) — Team: 2 devs + PO on demand, no tester (TTL runs tests)
+- [feedback_work_planning.md](feedback_work_planning.md) — Pre-build task queue, any dev on any task, time-box, batch merges
+- [feedback_ttl_runs_tests.md](feedback_ttl_runs_tests.md) — TTL runs tests serially in background, no tester teammate
+- [feedback_bypass_permissions.md](feedback_bypass_permissions.md) — Always use bypassPermissions mode when spawning agents
 
 ### Issue management
 - [feedback_issue_completion.md](feedback_issue_completion.md) — Completion procedure: move, frontmatter, summary, log, unblock
@@ -41,6 +46,7 @@
 
 ### General behavior
 - [feedback_ask_role.md](feedback_ask_role.md) — Ask at conversation start: Tech Lead or Product Owner
+- [feedback_ask_ralph_loop.md](feedback_ask_ralph_loop.md) — Ask if Ralph loop should be started for current goals
 - [feedback_no_adhoc_scripts.md](feedback_no_adhoc_scripts.md) — Use existing scripts, never ad-hoc Python
 - [feedback_nothing_impossible.md](feedback_nothing_impossible.md) — Don't label features impossible — find the compilation strategy
 - [feedback_no_nuclear_option.md](feedback_no_nuclear_option.md) — Never take destructive shortcuts without consent

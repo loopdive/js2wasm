@@ -611,7 +611,7 @@ delete operator and prototype filter improvements.
 | 123 | Wrapper constructors | Won't implement |
 | 124 | delete operator | Won't implement |
 | 125 | Object.defineProperty | Won't implement |
-| 129 | propertyHelper.js harness | Blocked by #125 |
+| ~~129~~ | ~~propertyHelper.js harness~~ | Superseded by **#770** (**Done**) |
 | 323 | Native type annotations (:i32, :f32, :u8) | Blocked by #70 |
 | ~~322~~ | ~~Inline trig Math methods~~ | **Done** |
 | 339 | Async function and await support | — (large scope) |

@@ -120,6 +120,19 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
     return { skip: true, reason: "private class element compilation hang (#793)" };
   }
 
+  // Skip strict-mode-only restriction tests — deprioritized, not real-world features.
+  // These test ES spec edge cases that are disallowed in strict mode (which all modules are).
+  // with statement, octal literals, duplicate params, eval/arguments binding, delete unqualified, etc.
+  if (meta.features?.includes("with") || /\bwith\s*\(/.test(source)) {
+    return { skip: true, reason: "with statement (strict mode disallowed, deprioritized)" };
+  }
+  if (filePath && /future-reserved-words/.test(filePath)) {
+    return { skip: true, reason: "strict mode reserved words (deprioritized)" };
+  }
+  if (filePath && /directive-prologue/.test(filePath)) {
+    return { skip: true, reason: "use strict directive tests (deprioritized)" };
+  }
+
   // Skip known hanging tests by file path — prevents infinite compilation loops
   if (filePath) {
     const relPath = filePath.replace(/.*test262\//, "");

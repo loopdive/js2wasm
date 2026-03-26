@@ -43,9 +43,13 @@ ln -s "$MAIN_DIR/benchmarks/results" "$WT_DIR/benchmarks/results"
 echo "Worktree ready at $(git -C "$WT_DIR" rev-parse --short HEAD)"
 echo "Running vitest..."
 
-# Run vitest from main workspace (vitest 4.x needs real node_modules, not symlinks)
+# Always rebuild main workspace bundle from current source to avoid stale-bundle bugs
+echo "Rebuilding main bundle..."
 cd "$MAIN_DIR"
-COMPILER_BUNDLE="$WT_DIR/scripts/compiler-bundle.mjs" \
+npx esbuild src/index.ts --bundle --platform=node --format=esm \
+  --outfile=scripts/compiler-bundle.mjs --external:typescript 2>&1 | tail -1
+
+# Run vitest from main workspace (vitest 4.x needs real node_modules, not symlinks)
 npx vitest run tests/test262-vitest.test.ts \
   --reporter=verbose \
   "$@" 2>&1 | tee /tmp/test262-vitest-run.log
