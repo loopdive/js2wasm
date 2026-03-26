@@ -732,7 +732,32 @@ export function compilePropertyAccess(
       const vecTypeIdx = (objWasmType as { typeIdx: number }).typeIdx;
       const typeDef = ctx.mod.types[vecTypeIdx];
       if (typeDef?.kind === "struct" && typeDef.fields[1]?.name === "data") {
-        compileExpression(ctx, fctx, expr.expression);
+        const exprResult = compileExpression(ctx, fctx, expr.expression);
+        // Guard: the TS type might not match the runtime struct type.
+        // If the compiled expression returned a different ref type, use ref.test
+        // to verify before struct.get, falling back to __extern_length or 0.
+        if (exprResult && (exprResult.kind === "ref" || exprResult.kind === "ref_null") &&
+            (exprResult as any).typeIdx !== vecTypeIdx) {
+          const lenTmp = allocLocal(fctx, `__len_tmp_${fctx.locals.length}`, { kind: "anyref" });
+          fctx.body.push({ op: "local.set", index: lenTmp });
+          fctx.body.push({ op: "local.get", index: lenTmp });
+          fctx.body.push({ op: "ref.test", typeIdx: vecTypeIdx });
+          const lenResult = ctx.fast ? { kind: "i32" as const } : { kind: "f64" as const };
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "val" as const, type: lenResult },
+            then: [
+              { op: "local.get", index: lenTmp } as Instr,
+              { op: "ref.cast", typeIdx: vecTypeIdx } as Instr,
+              { op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 } as Instr,
+              ...(ctx.fast ? [] : [{ op: "f64.convert_i32_s" } as Instr]),
+            ],
+            else: [
+              { op: ctx.fast ? "i32.const" : "f64.const", value: 0 } as Instr,
+            ],
+          });
+          return lenResult;
+        }
         fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 }); // get length from vec
         if (!ctx.fast) fctx.body.push({ op: "f64.convert_i32_s" });
         return ctx.fast ? { kind: "i32" } : { kind: "f64" };
@@ -792,10 +817,31 @@ export function compilePropertyAccess(
     }
     if (isVecLike) {
       // Compile the object expression, cast to template vec, and get raw field
+      // Guard with ref.test to avoid illegal cast trap if the runtime type
+      // is a base vec (not a template vec with the extra raw field).
       compileExpression(ctx, fctx, expr.expression);
-      fctx.body.push({ op: "ref.cast", typeIdx: templateVecTypeIdx });
-      fctx.body.push({ op: "struct.get", typeIdx: templateVecTypeIdx, fieldIdx: 2 });
       const baseVecTypeIdx = getOrRegisterVecType(ctx, "externref", { kind: "externref" });
+      const rawTmp = allocLocal(fctx, `__raw_tmp_${fctx.locals.length}`, { kind: "ref_null", typeIdx: baseVecTypeIdx });
+      const rawObj = allocLocal(fctx, `__raw_obj_${fctx.locals.length}`, { kind: "anyref" });
+      fctx.body.push({ op: "local.set", index: rawObj });
+      fctx.body.push({ op: "local.get", index: rawObj });
+      fctx.body.push({ op: "ref.test", typeIdx: templateVecTypeIdx });
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" },
+        then: [
+          { op: "local.get", index: rawObj } as Instr,
+          { op: "ref.cast", typeIdx: templateVecTypeIdx } as Instr,
+          { op: "struct.get", typeIdx: templateVecTypeIdx, fieldIdx: 2 } as Instr,
+          { op: "local.set", index: rawTmp } as Instr,
+        ],
+        else: [
+          // Not a template vec — return null (no raw field available)
+          { op: "ref.null", typeIdx: baseVecTypeIdx } as Instr,
+          { op: "local.set", index: rawTmp } as Instr,
+        ],
+      });
+      fctx.body.push({ op: "local.get", index: rawTmp });
       return { kind: "ref_null", typeIdx: baseVecTypeIdx };
     }
   }
