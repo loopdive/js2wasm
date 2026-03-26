@@ -36,7 +36,7 @@ import {
 } from "../checker/type-mapper.js";
 import type { Instr, ValType, FieldDef, StructTypeDef } from "../ir/types.js";
 import { compileStatement } from "./statements.js";
-import { defaultValueInstrs } from "./type-coercion.js";
+import { defaultValueInstrs, coercionInstrs } from "./type-coercion.js";
 import {
   compileExpression,
   registerCompileArrowAsClosure,
@@ -909,6 +909,20 @@ export function compileArrowAsClosure(
       // Register as boxed so identifier read/write uses struct.get/set
       if (!liftedFctx.boxedCaptures) liftedFctx.boxedCaptures = new Map();
       liftedFctx.boxedCaptures.set(cap.name, { refCellTypeIdx, valType });
+    } else if (cap.alreadyBoxed && (cap.type.kind === "ref" || cap.type.kind === "ref_null")) {
+      // Non-mutable capture of an already-boxed variable: the struct field holds
+      // the ref cell.  Register it in boxedCaptures so the body code dereferences
+      // through struct.get on the ref cell instead of using the raw ref value.
+      const refCellTypeIdx = (cap.type as { typeIdx: number }).typeIdx;
+      const outerBoxed = fctx.boxedCaptures?.get(cap.name);
+      const valType = outerBoxed?.valType ?? { kind: "f64" as const };
+      const refCellType: ValType = { kind: "ref_null", typeIdx: refCellTypeIdx };
+      const localIdx = allocLocal(liftedFctx, cap.name, refCellType);
+      liftedFctx.body.push({ op: "local.get", index: selfLocalForCaptures });
+      liftedFctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx: i + 1 });
+      liftedFctx.body.push({ op: "local.set", index: localIdx });
+      if (!liftedFctx.boxedCaptures) liftedFctx.boxedCaptures = new Map();
+      liftedFctx.boxedCaptures.set(cap.name, { refCellTypeIdx, valType });
     } else {
       const localIdx = allocLocal(liftedFctx, cap.name, cap.type);
       liftedFctx.body.push({ op: "local.get", index: selfLocalForCaptures });
@@ -1286,11 +1300,11 @@ export function compileArrowAsClosure(
       // (e.g. TS infers `any`->externref but codegen produces f64 for arithmetic).
       // Coerce the expression result to match the declared return type.
       if (exprType.kind !== closureReturnType.kind) {
-        if (closureReturnType.kind === "externref" && (exprType.kind === "ref" || exprType.kind === "ref_null")) {
-          // Upcast struct ref to externref via extern.convert_any
-          liftedFctx.body.push({ op: "extern.convert_any" });
+        const instrs = coercionInstrs(ctx, exprType, closureReturnType);
+        if (instrs.length > 0) {
+          liftedFctx.body.push(...instrs);
         } else if (closureReturnType.kind === "externref" && exprType.kind === "f64") {
-          // f64 cannot be converted to externref; fix the return type instead
+          // coercionInstrs may not have __box_number; fix the return type instead
           closureReturnType = exprType;
           liftedFctx.returnType = exprType;
           closureResults[0] = exprType;
@@ -1524,10 +1538,24 @@ export function compileArrowAsCallback(
 
     for (let i = 0; i < captures.length; i++) {
       const cap = captures[i]!;
-      const localIdx = allocLocal(cbFctx, cap.name, cap.type);
-      cbFctx.body.push({ op: "local.get", index: capLocal });
-      cbFctx.body.push({ op: "struct.get", typeIdx: capStructTypeIdx, fieldIdx: i });
-      cbFctx.body.push({ op: "local.set", index: localIdx });
+      // Check if this capture is an already-boxed ref cell from the outer scope
+      const outerBoxed = fctx.boxedCaptures?.get(cap.name);
+      if (outerBoxed && (cap.type.kind === "ref" || cap.type.kind === "ref_null")) {
+        // Already-boxed capture: store the ref cell and register as boxed
+        // so body code dereferences through struct.get on the ref cell.
+        const refCellType: ValType = { kind: "ref_null", typeIdx: outerBoxed.refCellTypeIdx };
+        const localIdx = allocLocal(cbFctx, cap.name, refCellType);
+        cbFctx.body.push({ op: "local.get", index: capLocal });
+        cbFctx.body.push({ op: "struct.get", typeIdx: capStructTypeIdx, fieldIdx: i });
+        cbFctx.body.push({ op: "local.set", index: localIdx });
+        if (!cbFctx.boxedCaptures) cbFctx.boxedCaptures = new Map();
+        cbFctx.boxedCaptures.set(cap.name, { refCellTypeIdx: outerBoxed.refCellTypeIdx, valType: outerBoxed.valType });
+      } else {
+        const localIdx = allocLocal(cbFctx, cap.name, cap.type);
+        cbFctx.body.push({ op: "local.get", index: capLocal });
+        cbFctx.body.push({ op: "struct.get", typeIdx: capStructTypeIdx, fieldIdx: i });
+        cbFctx.body.push({ op: "local.set", index: localIdx });
+      }
     }
   }
 
@@ -1580,6 +1608,13 @@ export function compileArrowAsCallback(
     if (exprType !== null && cbReturnType) {
       // Expression result is the return value — already on stack
       exprBodyHasReturnValue = true;
+      // Coerce expression type to declared return type if needed
+      if (exprType.kind !== cbReturnType.kind) {
+        const instrs = coercionInstrs(ctx, exprType, cbReturnType);
+        if (instrs.length > 0) {
+          cbFctx.body.push(...instrs);
+        }
+      }
     } else if (exprType !== null) {
       cbFctx.body.push({ op: "drop" });
     }
