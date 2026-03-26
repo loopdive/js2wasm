@@ -469,5 +469,6 @@
 | —   | 2026-03-25 | extern.convert_any guard (~85 CE)                                                                  | Wave       |
 | —   | 2026-03-25 | Closure boxed capture propagation — closures.ts, statements.ts, expressions.ts (~100 CE)           | Wave       |
 | —   | 2026-03-25 | Drop stack guard — void-returning call drop fix (~37 CE)                                           | Wave       |
+| —   | 2026-03-25 | Array reduce/reduceRight empty TypeError + callback return coercion (~710 FAIL)                     | Wave       |
 
 
