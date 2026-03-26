@@ -623,6 +623,59 @@ export function coerceType(
       if (funcIdx !== undefined) { fctx.body.push({ op: "call", funcIdx }); return; }
     }
     if (to.kind === "f64") {
+      // Inline AnyValue → f64 unboxing with correct handling for all tags.
+      // The __any_unbox_f64 helper only handles tag 2 (i32) and falls back to
+      // reading f64val for everything else, which is wrong for:
+      //   tag 1 (undefined) → should be NaN, not 0.0
+      //   tag 4 (boolean)   → should be f64(i32val), not 0.0
+      const anyTypeIdx = ctx.anyValueTypeIdx;
+      if (anyTypeIdx >= 0) {
+        const tmpAny = allocTempLocal(fctx, from);
+        const tmpTag = allocTempLocal(fctx, { kind: "i32" });
+        fctx.body.push({ op: "local.tee", index: tmpAny });
+        fctx.body.push({ op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 0 }); // tag
+        fctx.body.push({ op: "local.set", index: tmpTag });
+
+        // tag == 2 (i32 number) || tag == 4 (boolean) → f64.convert_i32_s(i32val)
+        fctx.body.push({ op: "local.get", index: tmpTag });
+        fctx.body.push({ op: "i32.const", value: 2 });
+        fctx.body.push({ op: "i32.eq" });
+        fctx.body.push({ op: "local.get", index: tmpTag });
+        fctx.body.push({ op: "i32.const", value: 4 });
+        fctx.body.push({ op: "i32.eq" });
+        fctx.body.push({ op: "i32.or" });
+        fctx.body.push({
+          op: "if",
+          blockType: { kind: "val", type: { kind: "f64" } },
+          then: [
+            { op: "local.get", index: tmpAny },
+            { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 }, // i32val
+            { op: "f64.convert_i32_s" },
+          ],
+          else: [
+            // tag == 1 (undefined) → NaN
+            { op: "local.get", index: tmpTag },
+            { op: "i32.const", value: 1 },
+            { op: "i32.eq" },
+            {
+              op: "if",
+              blockType: { kind: "val", type: { kind: "f64" } },
+              then: [
+                { op: "f64.const", value: NaN },
+              ],
+              else: [
+                // default: f64val (covers tag 0/null=0, tag 3/f64, tag 5/string, tag 6/object)
+                { op: "local.get", index: tmpAny },
+                { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 2 }, // f64val
+              ],
+            } as unknown as Instr,
+          ],
+        });
+        releaseTempLocal(fctx, tmpTag);
+        releaseTempLocal(fctx, tmpAny);
+        return;
+      }
+      // Fallback to helper if anyTypeIdx not available
       const funcIdx = ctx.funcMap.get("__any_unbox_f64");
       if (funcIdx !== undefined) { fctx.body.push({ op: "call", funcIdx }); return; }
     }
