@@ -4802,11 +4802,16 @@ function compileTryStatement(
       catches = [{ tagIdx, body: fctx.body }];
     }
 
-    // Build "catch_all" body: no value on stack; set catch var to null extern
+    // Build "catch_all" body: no value on stack from catch_all itself.
+    // Call __get_caught_exception host import to retrieve the foreign JS exception.
     {
       fctx.body = [];
       if (exnLocalIdx !== null) {
-        fctx.body.push({ op: "ref.null.extern" });
+        const getCaughtIdx = ensureLateImport(
+          ctx, "__get_caught_exception", [], [{ kind: "externref" }],
+        );
+        flushLateImportShifts(ctx, fctx);
+        fctx.body.push({ op: "call", funcIdx: getCaughtIdx });
         fctx.body.push({ op: "local.set", index: exnLocalIdx });
       }
 
