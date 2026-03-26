@@ -12092,9 +12092,10 @@ export function compileClassBodies(
             then: thenInstrs,
           });
         } else if (paramType.kind === "f64") {
+          // NaN sentinel check: x != x is true iff x is NaN (#787)
           fctx.body.push({ op: "local.get", index: paramIdx });
-          fctx.body.push({ op: "f64.const", value: 0 });
-          fctx.body.push({ op: "f64.eq" });
+          fctx.body.push({ op: "local.get", index: paramIdx });
+          fctx.body.push({ op: "f64.ne" });
           fctx.body.push({
             op: "if",
             blockType: { kind: "empty" },
@@ -12352,9 +12353,10 @@ export function compileClassBodies(
             then: thenInstrs,
           });
         } else if (paramType.kind === "f64") {
+          // NaN sentinel check: x != x is true iff x is NaN (#787)
           fctx.body.push({ op: "local.get", index: paramLocalIdx });
-          fctx.body.push({ op: "f64.const", value: 0 });
-          fctx.body.push({ op: "f64.eq" });
+          fctx.body.push({ op: "local.get", index: paramLocalIdx });
+          fctx.body.push({ op: "f64.ne" });
           fctx.body.push({
             op: "if",
             blockType: { kind: "empty" },
@@ -12633,9 +12635,10 @@ export function compileClassBodies(
           fctx.body.push({ op: "i32.eqz" });
           fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
         } else if (paramType.kind === "f64") {
+          // NaN sentinel check: x != x is true iff x is NaN (#787)
           fctx.body.push({ op: "local.get", index: paramLocalIdx });
-          fctx.body.push({ op: "f64.const", value: 0 });
-          fctx.body.push({ op: "f64.eq" });
+          fctx.body.push({ op: "local.get", index: paramLocalIdx });
+          fctx.body.push({ op: "f64.ne" });
           fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
         }
       }
@@ -13125,7 +13128,7 @@ function compileFunctionBody(
 
   // Emit default-value initialization for parameters with initializers.
   // For each param with a default value, check if the caller omitted it
-  // (externref → ref.is_null, i32 → i32.eqz, f64 → f64.eq 0.0) and if so
+  // (externref → ref.is_null, i32 → i32.eqz, f64 → NaN self-test) and if so
   // compile the initializer expression and assign it to the param local.
   for (let i = 0; i < decl.parameters.length; i++) {
     const param = decl.parameters[i]!;
@@ -13174,9 +13177,10 @@ function compileFunctionBody(
         then: thenInstrs,
       });
     } else if (paramType.kind === "f64") {
+      // NaN sentinel check: x != x is true iff x is NaN (#787)
       fctx.body.push({ op: "local.get", index: paramIdx });
-      fctx.body.push({ op: "f64.const", value: 0 });
-      fctx.body.push({ op: "f64.eq" });
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "f64.ne" });
       fctx.body.push({
         op: "if",
         blockType: { kind: "empty" },

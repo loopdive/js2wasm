@@ -13312,10 +13312,10 @@ function compileIIFE(
     }
   }
 
-  // Supply defaults for missing params
+  // Supply defaults for missing params (use NaN sentinel for f64, #787)
   for (let i = flatIIFEArgs.length; i < paramCount; i++) {
     const pt = paramTypes[i] ?? { kind: "f64" as const };
-    if (pt.kind === "f64") fctx.body.push({ op: "f64.const", value: 0 });
+    if (pt.kind === "f64") fctx.body.push({ op: "f64.const", value: NaN });
     else if (pt.kind === "i32") fctx.body.push({ op: "i32.const", value: 0 });
     else if (pt.kind === "externref") fctx.body.push({ op: "ref.null.extern" });
     else if (pt.kind === "ref" || pt.kind === "ref_null")

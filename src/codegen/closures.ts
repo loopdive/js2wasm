@@ -478,9 +478,10 @@ export function emitArrowParamDefaults(
       fctx.body.push({ op: "i32.eqz" });
       fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
     } else if (paramType.kind === "f64") {
+      // NaN sentinel check: x != x is true iff x is NaN (#787)
       fctx.body.push({ op: "local.get", index: paramIdx });
-      fctx.body.push({ op: "f64.const", value: 0 });
-      fctx.body.push({ op: "f64.eq" });
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "f64.ne" });
       fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
     }
   }
@@ -528,9 +529,10 @@ export function emitMethodParamDefaults(
       fctx.body.push({ op: "i32.eqz" });
       fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
     } else if (paramType.kind === "f64") {
+      // NaN sentinel check: x != x is true iff x is NaN (#787)
       fctx.body.push({ op: "local.get", index: paramIdx });
-      fctx.body.push({ op: "f64.const", value: 0 });
-      fctx.body.push({ op: "f64.eq" });
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "f64.ne" });
       fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
     }
   }

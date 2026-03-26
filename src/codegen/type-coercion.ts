@@ -1195,7 +1195,12 @@ export function emitSafeExternrefToF64(
 export function pushDefaultValue(fctx: FunctionContext, type: ValType): void {
   switch (type.kind) {
     case "f64":
-      fctx.body.push({ op: "f64.const", value: 0 });
+      // Use NaN as sentinel for "undefined/missing argument" (#787).
+      // NaN is correct because: (1) it matches what explicit `undefined` compiles to
+      // in f64 context (f64.const NaN), and (2) NaN is not a valid intended argument
+      // in most cases (unlike 0, which IS a valid number).
+      // Callee checks: local.get x; local.get x; f64.ne (NaN self-test).
+      fctx.body.push({ op: "f64.const", value: NaN });
       break;
     case "i32":
       fctx.body.push({ op: "i32.const", value: 0 });
