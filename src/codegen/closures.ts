@@ -331,7 +331,7 @@ export function emitArrowParamDestructuring(
       fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
 
       if (element.initializer) {
-        if (fieldType.kind === "externref") {
+        if (fieldType.kind === "externref" || fieldType.kind === "ref_null" || fieldType.kind === "ref") {
           const tmpField = allocLocal(fctx, `__dflt_${fctx.locals.length}`, fieldType);
           fctx.body.push({ op: "local.tee", index: tmpField });
           fctx.body.push({ op: "ref.is_null" } as Instr);
@@ -406,9 +406,10 @@ export function emitArrowParamDestructuring(
     for (let i = 0; i < pattern.elements.length; i++) {
       const element = pattern.elements[i]!;
       if (ts.isOmittedExpression(element)) continue;
-      if (!ts.isIdentifier((element as ts.BindingElement).name)) continue;
+      const bindingElem = element as ts.BindingElement;
+      if (!ts.isIdentifier(bindingElem.name)) continue;
 
-      const localName = ((element as ts.BindingElement).name as ts.Identifier).text;
+      const localName = (bindingElem.name as ts.Identifier).text;
       const bindingTsType = ctx.checker.getTypeAtLocation(element);
       const bindingWasmType = resolveWasmType(ctx, bindingTsType);
       const localIdx = allocLocal(fctx, localName, bindingWasmType);
@@ -422,7 +423,54 @@ export function emitArrowParamDestructuring(
         coerceType(ctx, fctx, innerElemType, bindingWasmType);
       }
 
-      fctx.body.push({ op: "local.set", index: localIdx });
+      // Handle default initializer: [x = 23] — apply default when value is undefined
+      if (bindingElem.initializer) {
+        if (bindingWasmType.kind === "externref" || bindingWasmType.kind === "ref_null" || bindingWasmType.kind === "ref") {
+          // ref types: undefined is null, check ref.is_null
+          const tmpElem = allocLocal(fctx, `__ary_dflt_${fctx.locals.length}`, bindingWasmType);
+          fctx.body.push({ op: "local.tee", index: tmpElem });
+          fctx.body.push({ op: "ref.is_null" } as Instr);
+          const savedBody = pushBody(fctx);
+          compileExpression(ctx, fctx, bindingElem.initializer, bindingWasmType);
+          fctx.body.push({ op: "local.set", index: localIdx } as Instr);
+          const thenInstrs = fctx.body;
+          fctx.body = savedBody;
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: thenInstrs,
+            else: [
+              { op: "local.get", index: tmpElem } as Instr,
+              { op: "local.set", index: localIdx } as Instr,
+            ],
+          });
+        } else if (bindingWasmType.kind === "f64") {
+          // f64: undefined is NaN, check NaN self-test
+          const tmpElem = allocLocal(fctx, `__ary_dflt_${fctx.locals.length}`, bindingWasmType);
+          fctx.body.push({ op: "local.tee", index: tmpElem });
+          fctx.body.push({ op: "local.get", index: tmpElem });
+          fctx.body.push({ op: "f64.ne" });
+          const savedBody = pushBody(fctx);
+          compileExpression(ctx, fctx, bindingElem.initializer, bindingWasmType);
+          fctx.body.push({ op: "local.set", index: localIdx } as Instr);
+          const thenInstrs = fctx.body;
+          fctx.body = savedBody;
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: thenInstrs,
+            else: [
+              { op: "local.get", index: tmpElem } as Instr,
+              { op: "local.set", index: localIdx } as Instr,
+            ],
+          });
+        } else {
+          // i32/other: no reliable sentinel, just set directly
+          fctx.body.push({ op: "local.set", index: localIdx });
+        }
+      } else {
+        fctx.body.push({ op: "local.set", index: localIdx });
+      }
     }
 
     // Close null guard
