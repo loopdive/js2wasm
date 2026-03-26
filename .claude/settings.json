@@ -1,11 +1,10 @@
 {
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
   "permissions": {
-    "allow": [
-      "Bash(pnpm test)",
-      "Bash(npm install -g pnpm)",
-      "Bash(node --version)",
-      "Bash(node node_modules/vitest/dist/cli.js run)"
-    ]
+    "default": "bypassPermissions",
+    "allow": ["Bash(*)"]
   },
   "hooks": {
     "Notification": [
