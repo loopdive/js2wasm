@@ -404,29 +404,42 @@ export function compileInstanceOf(
       { op: "i32.const", value: 0 },
     ];
 
-    // Build the "else" branch (non-null case -> read tag and compare)
-    const elseBody: Instr[] = [
+    // Build the "else" branch (non-null case -> guard with ref.test then read tag)
+    // Use ref.test to avoid trapping on wrong struct type (illegal cast)
+    const tagCheckBody: Instr[] = [
       { op: "local.get", index: refLocalIdx },
       { op: "ref.cast", typeIdx: leftStructTypeIdx },
       { op: "struct.get", typeIdx: leftStructTypeIdx, fieldIdx: 0 },
     ];
 
     if (compatibleTags.length === 1) {
-      elseBody.push({ op: "i32.const", value: compatibleTags[0]! });
-      elseBody.push({ op: "i32.eq" });
+      tagCheckBody.push({ op: "i32.const", value: compatibleTags[0]! });
+      tagCheckBody.push({ op: "i32.eq" });
     } else {
       const tagLocalIdx = allocLocal(fctx, `__instanceof_tag_${fctx.locals.length}`, { kind: "i32" });
-      elseBody.push({ op: "local.set", index: tagLocalIdx });
-      elseBody.push({ op: "local.get", index: tagLocalIdx });
-      elseBody.push({ op: "i32.const", value: compatibleTags[0]! });
-      elseBody.push({ op: "i32.eq" });
+      tagCheckBody.push({ op: "local.set", index: tagLocalIdx });
+      tagCheckBody.push({ op: "local.get", index: tagLocalIdx });
+      tagCheckBody.push({ op: "i32.const", value: compatibleTags[0]! });
+      tagCheckBody.push({ op: "i32.eq" });
       for (let i = 1; i < compatibleTags.length; i++) {
-        elseBody.push({ op: "local.get", index: tagLocalIdx });
-        elseBody.push({ op: "i32.const", value: compatibleTags[i]! });
-        elseBody.push({ op: "i32.eq" });
-        elseBody.push({ op: "i32.or" });
+        tagCheckBody.push({ op: "local.get", index: tagLocalIdx });
+        tagCheckBody.push({ op: "i32.const", value: compatibleTags[i]! });
+        tagCheckBody.push({ op: "i32.eq" });
+        tagCheckBody.push({ op: "i32.or" });
       }
     }
+
+    // Guarded: ref.test before ref.cast to avoid illegal cast traps
+    const elseBody: Instr[] = [
+      { op: "local.get", index: refLocalIdx },
+      { op: "ref.test", typeIdx: leftStructTypeIdx },
+      {
+        op: "if",
+        blockType: { kind: "val", type: { kind: "i32" } },
+        then: tagCheckBody,
+        else: [{ op: "i32.const", value: 0 }],  // wrong struct type → false
+      } as Instr,
+    ];
 
     // Emit: (local.get $ref) (ref.is_null) (if (result i32) (then ...) (else ...))
     fctx.body.push({ op: "local.get", index: refLocalIdx });

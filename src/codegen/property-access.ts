@@ -136,7 +136,7 @@ export function emitNullGuardedStructGet(
     const buildFallback = (srcLocal: number, altIdx: number): Instr[] => {
       if (altIdx < alternates.length) {
         const alt = alternates[altIdx]!;
-        const altCoerce = coercionInstrs(ctx, alt.fieldType, resultType);
+        const altCoerce = coercionInstrs(ctx, alt.fieldType, resultType, fctx);
         return [
           { op: "local.get", index: srcLocal } as Instr,
           { op: "ref.test", typeIdx: alt.structTypeIdx } as Instr,
@@ -370,7 +370,7 @@ export function emitExternrefToStructGet(
   const buildFallbackChain = (altIdx: number): Instr[] => {
     if (altIdx < alternates.length) {
       const alt = alternates[altIdx]!;
-      const altCoerce = coercionInstrs(ctx, alt.fieldType, resultType);
+      const altCoerce = coercionInstrs(ctx, alt.fieldType, resultType, fctx);
       return [
         { op: "local.get", index: tmpAny } as Instr,
         { op: "ref.test", typeIdx: alt.structTypeIdx } as Instr,
@@ -1258,7 +1258,7 @@ export function compilePropertyAccess(
               { op: "ref.cast", typeIdx: cand.structTypeIdx } as Instr,
               { op: "struct.get", typeIdx: cand.structTypeIdx, fieldIdx: cand.fieldIdx } as Instr,
             ];
-            const coerce = coercionInstrs(ctx, cand.fieldType, resultWasm);
+            const coerce = coercionInstrs(ctx, cand.fieldType, resultWasm, fctx);
             getFieldInstrs.push(...coerce);
             getFieldInstrs.push({ op: "local.set", index: resultLocal } as Instr);
 
