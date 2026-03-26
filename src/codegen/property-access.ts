@@ -1418,14 +1418,15 @@ export function compileElementAccess(
       // the TS-inferred resultType (e.g., TS says `any` → externref, but the
       // actual array element type is f64). This prevents fallthru type mismatches.
       let blockValType = !valTypesMatch(innerResult, resultType) ? innerResult : resultType;
-      // Widen ref to ref_null since defaultValueInstrs produces ref.null (nullable)
+      // Widen ref to ref_null since throw branch is divergent but else may produce ref_null
       if (blockValType.kind === "ref") {
         blockValType = { kind: "ref_null", typeIdx: (blockValType as any).typeIdx };
       }
+      // Null element access throws TypeError (throw is divergent — valid without producing a value)
       fctx.body.push({
         op: "if",
         blockType: { kind: "val" as const, type: blockValType },
-        then: defaultValueInstrs(blockValType),
+        then: typeErrorThrowInstrs(ctx),
         else: elseInstrs,
       });
       return blockValType;
@@ -1438,7 +1439,7 @@ export function compileElementAccess(
     fctx.body.push({
       op: "if",
       blockType: { kind: "val" as const, type: fallbackType },
-      then: defaultValueInstrs(fallbackType),
+      then: typeErrorThrowInstrs(ctx),
       else: elseInstrs.length > 0 ? elseInstrs : defaultValueInstrs(fallbackType),
     });
     return fallbackType;
