@@ -8723,9 +8723,6 @@ export function ensureStructForType(ctx: CodegenContext, tsType: ts.Type): void 
     }
   }
 
-  // Add __proto__ field as LAST field for prototype chain support (#799a).
-  // Object literals default to null (Object.prototype can be set later).
-  fields.push({ name: "__proto__", type: { kind: "externref" }, mutable: true });
 
   const structName = `__anon_${ctx.anonTypeCounter++}`;
   const typeIdx = ctx.mod.types.length;
@@ -9667,13 +9664,6 @@ export function collectClassDeclaration(
   // struct type registered), since built-ins have no Wasm struct fields to inherit.
   if (!parentClassName || parentStructTypeIdx === undefined) {
     fields.unshift({ name: "__tag", type: { kind: "i32" }, mutable: false });
-  }
-
-  // Add __proto__ field as the LAST field for prototype chain support (#799a).
-  // Only for root classes — child classes inherit __proto__ via parentFields.
-  // Using externref avoids circular type issues (any prototype shape).
-  if (!parentFields.some(f => f.name === "__proto__")) {
-    fields.push({ name: "__proto__", type: { kind: "externref" }, mutable: true });
   }
 
   // Update the placeholder struct type with resolved fields
@@ -11047,8 +11037,6 @@ function collectInterface(
     }
   }
 
-  // Add __proto__ field as LAST field for prototype chain support (#799a).
-  fields.push({ name: "__proto__", type: { kind: "externref" }, mutable: true });
 
   const typeIdx = ctx.mod.types.length;
   ctx.mod.types.push({
@@ -11140,8 +11128,6 @@ function collectObjectType(
   }
 
   if (fields.length > 0) {
-    // Add __proto__ field as LAST field for prototype chain support (#799a).
-    fields.push({ name: "__proto__", type: { kind: "externref" }, mutable: true });
 
     const typeIdx = ctx.mod.types.length;
     ctx.mod.types.push({
@@ -12147,15 +12133,7 @@ export function compileClassBodies(
     fctx.body.push({ op: "struct.new", typeIdx: structTypeIdx });
     fctx.body.push({ op: "local.set", index: selfLocal });
 
-    // Set __proto__ field to the class's prototype global (#799a).
-    // The proto global is an externref registered during collectClassDeclaration.
-    const protoFieldIdx = fields.findIndex(f => f.name === "__proto__");
-    const protoGlobalIdx = ctx.protoGlobals.get(className);
-    if (protoFieldIdx >= 0 && protoGlobalIdx !== undefined) {
-      fctx.body.push({ op: "local.get", index: selfLocal });
-      fctx.body.push({ op: "global.get", index: protoGlobalIdx } as unknown as Instr);
-      fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx: protoFieldIdx });
-    }
+    // __proto__ initialization: deferred to #802 (dynamic prototype support)
 
     // Compile constructor body — `this` maps to __self local
     fctx.localMap.set("this", selfLocal);
