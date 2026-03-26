@@ -13,8 +13,10 @@ Active file/function claims by agents. **Check before editing. Update when start
 
 | File | Function/Area | Agent | Issue | Since |
 |------|--------------|-------|-------|-------|
-| src/codegen/expressions.ts | compileIdentifier / TDZ checks | dev-790 | #790 | 2026-03-25 |
-| src/codegen/index.ts | scope/binding setup | dev-790 | #790 | 2026-03-25 |
+| src/codegen/index.ts | repairStructTypeMismatches / repairBody | dev-1 | closure CE fix | 2026-03-25 |
+| src/codegen/stack-balance.ts | fixCallArgTypesInBody | dev-2 | call-type-mismatch | 2026-03-25 |
+| src/codegen/expressions.ts | compilePropertyAccess, compileElementAccess, compileCallExpression | dev-3 | #775 | 2026-03-25 |
+| tests/test262-runner.ts | wrapTest, assert_throws, transformAssertThrows | dev-b | assert.throws fix | 2026-03-25 |
 
 <!--
 Example entries:

@@ -10,6 +10,6 @@ Key rules not in team-setup:
 - Each dev writes tests to `tests/issue-{N}.test.ts`, NOT `equivalence.test.ts`
 - Diagnostic-only issues (DOWNGRADE_DIAG_CODES) — batch in one commit, no dev agent needed
 - Devs update their own issue file but NOT `plan/backlog.md`
-- Cherry-pick individual commits, never merge worktree branches
+- Merge worktree branches to main (not cherry-pick)
 
 **Why:** Numbers change as hardware/config evolves. Single source of truth in team-setup.md prevents contradictions.

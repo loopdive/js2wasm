@@ -1,16 +1,16 @@
 ---
-name: Serialize cherry-picks, let agents test
-description: Don't cherry-pick while agents are running — wait for all agents in a wave to finish, then batch cherry-pick. Agents should still run their own tests.
+name: Merge agent branches, don't cherry-pick
+description: Merge agent worktree branches to main instead of cherry-picking. Wait for wave to finish, then batch merge.
 type: feedback
 ---
 
-Agents should keep testing their changes in their worktrees. But cherry-picking to main must be serialized — wait for all agents in a wave to complete, then batch cherry-pick one at a time. Don't cherry-pick while other agents are still running, as it causes git lock contention, stale branch issues, and merge conflicts.
+Merge agent worktree branches to main -- do NOT cherry-pick. Wait for all agents in a wave to complete, then merge one at a time.
 
-**Why:** Concurrent git operations on main (cherry-pick, stash, checkout) while agents are committing to worktree branches causes index.lock conflicts, wrong-branch commits, and messy state.
+**Why:** User corrected cherry-pick workflow (2026-03-26). Merge preserves branch history and is the standard git workflow.
 
 **How to apply:**
-1. Dispatch wave of 4 agents
+1. Dispatch wave of agents in worktrees
 2. Wait for ALL to complete
-3. Then cherry-pick each one sequentially to main
+3. Merge each branch to main sequentially
 4. Push once at the end
 5. Dispatch next wave
