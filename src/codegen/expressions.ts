@@ -3465,7 +3465,9 @@ function compilePropertyAssignment(
     const setterName = `${typeName}_set_${fieldName}`;
     const funcIdx = ctx.funcMap.get(setterName);
     if (funcIdx !== undefined) {
-      const setterObjResult = compileExpression(ctx, fctx, target.expression);
+      // Get setter's parameter types to provide type hints
+      const setterParamTypes = getFuncParamTypes(ctx, funcIdx);
+      const setterObjResult = compileExpression(ctx, fctx, target.expression, setterParamTypes?.[0]);
       if (!setterObjResult) {
         ctx.errors.push({
           message: "Failed to compile setter receiver",
@@ -3474,8 +3476,6 @@ function compilePropertyAssignment(
         });
         return null;
       }
-      // Get setter's parameter types to provide type hint for value argument
-      const setterParamTypes = getFuncParamTypes(ctx, funcIdx);
       const setterValExpectedType = setterParamTypes?.[1]; // param 0 = self, param 1 = value
       const setterValResult = compileExpression(
         ctx,
@@ -3517,7 +3517,8 @@ function compilePropertyAssignment(
   const fieldIdx = fields.findIndex((f) => f.name === fieldName);
   if (fieldIdx === -1) return null;
 
-  const structObjResult = compileExpression(ctx, fctx, target.expression);
+  const structSelfType: ValType = { kind: "ref_null", typeIdx: structTypeIdx };
+  const structObjResult = compileExpression(ctx, fctx, target.expression, structSelfType);
   if (!structObjResult) {
     ctx.errors.push({
       message: "Failed to compile struct field receiver",
@@ -4396,8 +4397,9 @@ function compilePropertyLogicalAssignment(
     const getterIdx = ctx.funcMap.get(getterName);
     const setterIdx = ctx.funcMap.get(setterName);
     if (getterIdx !== undefined && setterIdx !== undefined) {
-      // Compile obj and save to a local for reuse
-      const objResult = compileExpression(ctx, fctx, target.expression);
+      // Compile obj and save to a local for reuse, coercing to getter's self type
+      const getterPTypes = getFuncParamTypes(ctx, getterIdx);
+      const objResult = compileExpression(ctx, fctx, target.expression, getterPTypes?.[0]);
       if (!objResult) return null;
       const objLocal = allocLocal(
         fctx,
@@ -5566,8 +5568,9 @@ function compilePropertyCompoundAssignment(
     const getterIdx = ctx.funcMap.get(getterName);
     const setterIdx = ctx.funcMap.get(setterName);
     if (getterIdx !== undefined && setterIdx !== undefined) {
-      // Compile the object expression and save to a temp local
-      const objResult = compileExpression(ctx, fctx, target.expression);
+      // Compile the object expression and save to a temp local, coercing to getter's self type
+      const cmpGetterPTypes = getFuncParamTypes(ctx, getterIdx);
+      const objResult = compileExpression(ctx, fctx, target.expression, cmpGetterPTypes?.[0]);
       if (!objResult) return null;
       const objTmp = allocLocal(
         fctx,
@@ -6412,8 +6415,9 @@ function compileMemberIncDec(
       const getterIdx = ctx.funcMap.get(getterName);
       const setterIdx = ctx.funcMap.get(setterName);
       if (getterIdx !== undefined && setterIdx !== undefined) {
-        // Compile the object expression and save to a temp local
-        const objResult = compileExpression(ctx, fctx, operand.expression);
+        // Compile the object expression and save to a temp local, coercing to getter's self type
+        const incGetterPTypes = getFuncParamTypes(ctx, getterIdx);
+        const objResult = compileExpression(ctx, fctx, operand.expression, incGetterPTypes?.[0]);
         if (!objResult) return null;
         const objTmp = allocLocal(
           fctx,
@@ -10366,8 +10370,9 @@ function compileCallExpression(
         if (callablePropResult !== undefined) return callablePropResult;
       }
       if (funcIdx !== undefined) {
-        // Push self (the receiver) as first argument
-        let recvType = compileExpression(ctx, fctx, propAccess.expression);
+        // Push self (the receiver) as first argument, with type hint from method's first param
+        const methodParamTypes0 = getFuncParamTypes(ctx, funcIdx);
+        let recvType = compileExpression(ctx, fctx, propAccess.expression, methodParamTypes0?.[0]);
         // Track whether receiver went through emitGuardedRefCast — if so, null
         // means "wrong struct type" (not genuinely null), so we should NOT throw
         // TypeError on null after cast.
@@ -10526,8 +10531,9 @@ function compileCallExpression(
           if (callablePropResult !== undefined) return callablePropResult;
         }
         if (funcIdx !== undefined) {
-          // Push self (the receiver) as first argument
-          const recvType = compileExpression(ctx, fctx, propAccess.expression);
+          // Push self (the receiver) as first argument, with type hint from method's first param
+          const structMethodPTypes = getFuncParamTypes(ctx, funcIdx);
+          const recvType = compileExpression(ctx, fctx, propAccess.expression, structMethodPTypes?.[0]);
           // Module globals produce ref_null but method params expect ref — null-guard
           if (recvType && recvType.kind === "ref_null") {
             const sig = ctx.checker.getResolvedSignature(expr);
