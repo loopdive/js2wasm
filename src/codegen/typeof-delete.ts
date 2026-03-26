@@ -488,6 +488,55 @@ export function compileInstanceOf(
 // ── typeof ────────────────────────────────────────────────────────────
 
 /**
+ * Determine the typeof result string for a TS type at compile time.
+ * Returns null if the type cannot be statically resolved (e.g., any/unknown).
+ */
+function staticTypeofForType(ctx: CodegenContext, tsType: ts.Type): string | null {
+  if (tsType.flags & ts.TypeFlags.Null) return "object";
+  if (tsType.flags & ts.TypeFlags.Undefined || tsType.flags & ts.TypeFlags.Void) return "undefined";
+  if (tsType.flags & ts.TypeFlags.BigInt || tsType.flags & ts.TypeFlags.BigIntLiteral) return "bigint";
+
+  // Check string before wasm type mapping (native strings map to ref)
+  if (isStringType(tsType)) return "string";
+
+  const wasmType = resolveWasmType(ctx, tsType);
+  if (wasmType.kind === "f64") return "number";
+  if (wasmType.kind === "i32") {
+    if (isSymbolType(tsType)) return "symbol";
+    if (isBooleanType(tsType)) return "boolean";
+    return "number";
+  }
+  if (wasmType.kind === "ref" || wasmType.kind === "ref_null") {
+    if (isAnyValue(wasmType, ctx)) return null; // truly dynamic
+    const callSigs = tsType.getCallSignatures?.();
+    if (callSigs && callSigs.length > 0) return "function";
+    const ctorSigs = tsType.getConstructSignatures?.();
+    if (ctorSigs && ctorSigs.length > 0) return "function";
+    return "object";
+  }
+  if (wasmType.kind === "externref") {
+    const callSigs = tsType.getCallSignatures?.();
+    if (callSigs && callSigs.length > 0) return "function";
+    const ctorSigs = tsType.getConstructSignatures?.();
+    if (ctorSigs && ctorSigs.length > 0) return "function";
+    if (tsType.flags & ts.TypeFlags.Object) return "object";
+  }
+
+  // For union types, check if all members resolve to the same result
+  if (tsType.isUnion?.()) {
+    const results = new Set<string>();
+    for (const member of (tsType as ts.UnionType).types) {
+      const r = staticTypeofForType(ctx, member);
+      if (r === null) return null;
+      results.add(r);
+    }
+    if (results.size === 1) return [...results][0]!;
+  }
+
+  return null;
+}
+
+/**
  * Compile `typeof x` as a standalone expression that returns a type string (externref).
  * For statically known types, emits the string constant directly.
  * For externref/union types, calls the __typeof host helper.
@@ -530,76 +579,22 @@ export function compileTypeofExpression(
 
   const tsType = ctx.checker.getTypeAtLocation(operand);
 
-  // Handle null and undefined before wasm type mapping, since they map
-  // to externref/i32 which would give wrong typeof results.
-  if (tsType.flags & ts.TypeFlags.Null) {
-    return compileStringLiteral(ctx, fctx, "object");
-  }
-  if (tsType.flags & ts.TypeFlags.Undefined || tsType.flags & ts.TypeFlags.Void) {
-    return compileStringLiteral(ctx, fctx, "undefined");
+  // Try static resolution first via the shared helper
+  const staticResult = staticTypeofForType(ctx, tsType);
+  if (staticResult !== null) {
+    return compileStringLiteral(ctx, fctx, staticResult);
   }
 
+  // Fast mode: any-typed operand -> runtime typeof via __any_typeof
   const wasmType = resolveWasmType(ctx, tsType);
-
-  // For statically known types, emit the constant string directly.
-  // The type-name strings are pre-registered by collectStringLiterals.
-  if (wasmType.kind === "f64") {
-    return compileStringLiteral(ctx, fctx, "number");
-  }
-  if (wasmType.kind === "i32") {
-    // Determine if this is boolean, symbol, or number (i32 is used for all three)
-    if (isSymbolType(tsType)) {
-      return compileStringLiteral(ctx, fctx, "symbol");
-    }
-    if (isBooleanType(tsType)) {
-      return compileStringLiteral(ctx, fctx, "boolean");
-    }
-    // i32 used as number (e.g. void, but unlikely in typeof)
-    return compileStringLiteral(ctx, fctx, "number");
-  }
-  if (wasmType.kind === "ref" || wasmType.kind === "ref_null") {
-    // Fast mode: any-typed operand -> runtime typeof via __any_typeof
-    if (ctx.fast && isAnyValue(wasmType, ctx)) {
-      ensureAnyHelpers(ctx);
-      const typeofIdx = ctx.funcMap.get("__any_typeof");
-      if (typeofIdx !== undefined) {
-        const operandType = compileExpression(ctx, fctx, operand);
-        if (operandType === null) return null;
-        fctx.body.push({ op: "call", funcIdx: typeofIdx });
-        return { kind: "ref", typeIdx: ctx.anyStrTypeIdx };
-      }
-    }
-    // Check if the TS type is callable (function/arrow/class) — typeof should return "function"
-    const callSigs = tsType.getCallSignatures?.();
-    if (callSigs && callSigs.length > 0) {
-      return compileStringLiteral(ctx, fctx, "function");
-    }
-    // Also check construct signatures — classes have typeof "function"
-    const ctorSigs = tsType.getConstructSignatures?.();
-    if (ctorSigs && ctorSigs.length > 0) {
-      return compileStringLiteral(ctx, fctx, "function");
-    }
-    return compileStringLiteral(ctx, fctx, "object");
-  }
-
-  // For externref: check if the TS type is statically known as string
-  if (isStringType(tsType)) {
-    return compileStringLiteral(ctx, fctx, "string");
-  }
-
-  // For externref types: check call/construct signatures for function types
-  if (wasmType.kind === "externref") {
-    const callSigs = tsType.getCallSignatures?.();
-    if (callSigs && callSigs.length > 0) {
-      return compileStringLiteral(ctx, fctx, "function");
-    }
-    const ctorSigs = tsType.getConstructSignatures?.();
-    if (ctorSigs && ctorSigs.length > 0) {
-      return compileStringLiteral(ctx, fctx, "function");
-    }
-    // If the TS type is a known object type (not any/unknown), resolve statically
-    if (tsType.flags & ts.TypeFlags.Object) {
-      return compileStringLiteral(ctx, fctx, "object");
+  if (ctx.fast && (wasmType.kind === "ref" || wasmType.kind === "ref_null") && isAnyValue(wasmType, ctx)) {
+    ensureAnyHelpers(ctx);
+    const typeofIdx = ctx.funcMap.get("__any_typeof");
+    if (typeofIdx !== undefined) {
+      const operandType = compileExpression(ctx, fctx, operand);
+      if (operandType === null) return null;
+      fctx.body.push({ op: "call", funcIdx: typeofIdx });
+      return { kind: "ref", typeIdx: ctx.anyStrTypeIdx };
     }
   }
 
@@ -670,29 +665,8 @@ export function compileTypeofComparison(
       operand.expression.text === "Math") {
     const mathConstants = new Set(["PI", "E", "LN2", "LN10", "SQRT2", "SQRT1_2", "LOG2E", "LOG10E"]);
     staticTypeof = mathConstants.has(operand.name.text) ? "number" : "function";
-  } else if (tsType.flags & ts.TypeFlags.Null) {
-    staticTypeof = "object";
-  } else if (tsType.flags & ts.TypeFlags.Undefined || tsType.flags & ts.TypeFlags.Void) {
-    staticTypeof = "undefined";
   } else {
-    const wasmType = resolveWasmType(ctx, tsType);
-    if (wasmType.kind === "f64") staticTypeof = "number";
-    else if (wasmType.kind === "i32") staticTypeof = isSymbolType(tsType) ? "symbol" : isBooleanType(tsType) ? "boolean" : "number";
-    else if ((wasmType.kind === "ref" || wasmType.kind === "ref_null") && !isAnyValue(wasmType, ctx)) {
-      const callSigs = tsType.getCallSignatures?.();
-      const ctorSigs2 = tsType.getConstructSignatures?.();
-      staticTypeof = (callSigs && callSigs.length > 0) || (ctorSigs2 && ctorSigs2.length > 0) ? "function" : "object";
-    }
-    else if (isStringType(tsType)) staticTypeof = "string";
-    else if (wasmType.kind === "externref") {
-      const callSigs = tsType.getCallSignatures?.();
-      const ctorSigs2 = tsType.getConstructSignatures?.();
-      if ((callSigs && callSigs.length > 0) || (ctorSigs2 && ctorSigs2.length > 0)) {
-        staticTypeof = "function";
-      } else if (tsType.flags & ts.TypeFlags.Object) {
-        staticTypeof = "object";
-      }
-    }
+    staticTypeof = staticTypeofForType(ctx, tsType);
   }
   if (staticTypeof !== null) {
     const matches = staticTypeof === stringLiteral;
