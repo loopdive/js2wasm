@@ -11,9 +11,9 @@ benchmarks/results/*.json
 benchmarks/results/*.md
 benchmarks/results/*.txt
 .pnpm-store/
-.claude/settings.local.json.claude/worktrees/
+.claude/settings.local.json
+.claude/worktrees/
 .claude/agents/
 .test262-cache/
 test262-out/
-.claude/worktrees/package-lock.json
 scripts/compiler-bundle.mjs
