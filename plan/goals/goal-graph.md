@@ -4,7 +4,7 @@ Goals form a DAG — a goal is **activatable** when all its dependencies are met
 Unlike a linear roadmap, multiple independent goals can be worked on in parallel,
 and a goal being "ready" doesn't mean it should be worked on immediately.
 
-**Current state**: ~17,000+ / 49,663 pass (estimated post-wave) | ~1,500 CE | ~1,000 skip (2026-03-25, wave landed)
+**Current state**: ~17,000+ / 49,663 pass (estimated post-wave) | ~1,150 CE (est. −357 from latest fixes) | ~1,000 skip (2026-03-25, wave landed, needs test262 run to verify)
 
 ## DAG
 
@@ -12,7 +12,7 @@ and a goal being "ready" doesn't mean it should be worked on immediately.
                            ┌──────────────┐
                       ┌────┤  compilable   ├────┐
                       │    │  ✓ 94.4%      │    │
-                      │    │  1,761 CE left │    │
+                      │    │ ~1,150 CE left │    │
                       │    └──────┬────────┘    │
                       │           │             │
                       ▼           ▼             ▼
@@ -89,7 +89,7 @@ and a goal being "ready" doesn't mean it should be worked on immediately.
 
 | Goal | Status | Target | Dependencies | Key Issues |
 |------|--------|--------|-------------|------------|
-| **compilable** | Substantially complete | CE → 0 (~1,500 remaining) | — | #779, #761, #684 |
+| **compilable** | Substantially complete | CE → 0 (~1,150 est. remaining) | — | #779, #761, #684. Latest wave: closure captures −100 CE, drop guard −37 CE, valueOf −135 CE, extern.convert_any −85 CE |
 | **crash-free** | Active (near complete) | traps → 0, ~40% | compilable (met) | #775 (remaining); ~~#785~~, ~~#441~~, ~~#512~~, ~~#780~~, ~~#781~~ done |
 | **core-semantics** | Active | ~45% | compilable (met) | #771, #786 (remaining); ~~#782~~, ~~#787~~ done |
 | **error-model** | Active (near complete) | spec errors, ~40% | compilable (met) | ~~#783~~, ~~#730~~, ~~#784~~ done; #736, #733, #402, #721 remaining |

@@ -464,5 +464,10 @@
 | 732 | 2026-03-25 | hasOwnProperty correctness (520 tests)                                                            | Wave       |
 | 734 | 2026-03-25 | Array method correctness (343 tests)                                                              | Wave       |
 | 738 | 2026-03-25 | instanceof correctness (276 tests)                                                                 | Wave       |
+| —   | 2026-03-25 | valueOf fallthru coercion fix (~135 CE)                                                            | Wave       |
+| —   | 2026-03-25 | String.match/search dispatch                                                                       | Wave       |
+| —   | 2026-03-25 | extern.convert_any guard (~85 CE)                                                                  | Wave       |
+| —   | 2026-03-25 | Closure boxed capture propagation — closures.ts, statements.ts, expressions.ts (~100 CE)           | Wave       |
+| —   | 2026-03-25 | Drop stack guard — void-returning call drop fix (~37 CE)                                           | Wave       |
 
 
