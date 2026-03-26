@@ -1023,8 +1023,37 @@ function fixCallArgTypesInBody(
     "f64.const", "f32.const",
     // Ref producers — safe, rarely used as sub-expression inputs
     "ref.null.extern", "ref.null.eq", "ref.null.func", "ref.func",
-    // NOTE: i32.const/i64.const excluded — commonly used as array/struct
-    // indices in sub-expressions, would be incorrectly coerced
+    // i32/i64 constants — safe when directly before call
+    "i32.const", "i64.const",
+    // i32 arithmetic/comparison — these produce i32 results
+    "i32.add", "i32.sub", "i32.mul", "i32.div_s", "i32.div_u",
+    "i32.rem_s", "i32.rem_u",
+    "i32.and", "i32.or", "i32.xor",
+    "i32.shl", "i32.shr_s", "i32.shr_u",
+    "i32.eq", "i32.ne",
+    "i32.lt_s", "i32.le_s", "i32.gt_s", "i32.ge_s",
+    "i32.lt_u", "i32.le_u", "i32.gt_u", "i32.ge_u",
+    "i32.eqz", "i32.clz", "i32.wrap_i64",
+    "i32.trunc_sat_f64_s", "i32.trunc_sat_f64_u", "i32.trunc_f64_s",
+    // i64 arithmetic — these produce i64 results
+    "i64.add", "i64.sub", "i64.mul", "i64.div_s", "i64.rem_s",
+    "i64.and", "i64.or", "i64.xor",
+    "i64.shl", "i64.shr_s", "i64.shr_u",
+    "i64.eq", "i64.ne",
+    "i64.lt_s", "i64.le_s", "i64.gt_s", "i64.ge_s",
+    "i64.eqz", "i64.extend_i32_s", "i64.extend_i32_u",
+    "i64.trunc_sat_f64_s", "i64.trunc_f64_s",
+    // f64 arithmetic — these produce f64 results
+    "f64.add", "f64.sub", "f64.mul", "f64.div",
+    "f64.neg", "f64.abs", "f64.floor", "f64.ceil", "f64.trunc",
+    "f64.nearest", "f64.sqrt", "f64.copysign", "f64.min", "f64.max",
+    "f64.convert_i32_s", "f64.convert_i32_u", "f64.convert_i64_s",
+    "f64.promote_f32",
+    "f64.eq", "f64.ne", "f64.lt", "f64.le", "f64.gt", "f64.ge",
+    // Other type-producing ops
+    "ref.is_null", "ref.test", "ref.eq",
+    "array.len",
+    "any.convert_extern", "extern.convert_any",
   ]);
 
   for (let ci = 0; ci < body.length; ci++) {
@@ -1072,48 +1101,82 @@ function fixCallArgTypesInBody(
       const delta = instrDelta(instr, types, sigs);
       if (delta === UNREACHABLE) break;
 
-      if (delta >= 1 && SIMPLE_PRODUCERS.has(op)) {
-        // For call_ref, argOffset < 0 means we're still in the funcref slot — skip coercion
-        if (argOffset >= 0) {
-          // Check if there are pass-through transformers between this
-          // instruction and the call/next producer.
-          let effectiveType = inferInstrType(instr, localTypes, globalTypes, types, mod, numImports);
-          let insertPos = pos;
+      // Determine if this instruction produces a value we can coerce.
+      // "simple producers" with delta >= 1 are the straightforward case.
+      // But ops like i32.xor (pop 2, push 1, net -1) also produce a value
+      // that becomes a call argument — we handle those too.
+      const producesValue = SIMPLE_PRODUCERS.has(op) && inferInstrType(instr, localTypes, globalTypes, types, mod, numImports) !== null;
 
-          for (let t = pos + 1; t < ci; t++) {
-            const tInstr = body[t]!;
-            const tDelta = instrDelta(tInstr, types, sigs);
-            if (tDelta !== 0) break;
-            const tType = inferInstrType(tInstr, localTypes, globalTypes, types, mod, numImports);
-            if (tType) effectiveType = tType;
-            insertPos = t;
-          }
+      if (producesValue && argOffset >= 0) {
+        // Check if there are pass-through transformers between this
+        // instruction and the call/next producer.
+        let effectiveType = inferInstrType(instr, localTypes, globalTypes, types, mod, numImports);
+        let insertPos = pos;
 
-          const paramIdx = paramCount - 1 - argOffset;
-          const expectedType = expectedParams[paramIdx]!;
+        for (let t = pos + 1; t < ci; t++) {
+          const tInstr = body[t]!;
+          const tDelta = instrDelta(tInstr, types, sigs);
+          if (tDelta !== 0) break;
+          const tType = inferInstrType(tInstr, localTypes, globalTypes, types, mod, numImports);
+          if (tType) effectiveType = tType;
+          insertPos = t;
+        }
 
-          if (effectiveType && expectedType) {
-            const coercion = callArgCoercionInstrs(effectiveType, expectedType, boxNumberIdx, unboxNumberIdx);
-            if (coercion.length > 0) {
-              // After traversing sub-expressions, the backward walk may confuse
-              // sub-expression inputs with call arguments. Only apply the
-              // proven-safe ref→externref coercion (extern.convert_any) in
-              // that case; other coercions are restricted to positions before
-              // any consumer has been traversed.
-              const isSafeRefToExtern = coercion.length === 1 &&
-                (coercion[0] as any).op === "extern.convert_any";
-              if (!inSubExpr || isSafeRefToExtern) {
-                insertions.push({ afterPos: insertPos, instrs: coercion });
-              }
+        const paramIdx = paramCount - 1 - argOffset;
+        const expectedType = expectedParams[paramIdx]!;
+
+        if (effectiveType && expectedType) {
+          const coercion = callArgCoercionInstrs(effectiveType, expectedType, boxNumberIdx, unboxNumberIdx);
+          if (coercion.length > 0) {
+            // After traversing sub-expressions, the backward walk may confuse
+            // sub-expression inputs with call arguments. Only apply the
+            // proven-safe ref→externref coercion (extern.convert_any) in
+            // that case; other coercions are restricted to positions before
+            // any consumer has been traversed.
+            const isSafeRefToExtern = coercion.length === 1 &&
+              (coercion[0] as any).op === "extern.convert_any";
+            if (!inSubExpr || isSafeRefToExtern) {
+              insertions.push({ afterPos: insertPos, instrs: coercion });
             }
           }
         }
-        argOffset += delta;
-      } else if (delta >= 1) {
-        // Non-simple producer (if, block result, etc.) — skip but count
+      }
+
+      // Update argOffset and sub-expression tracking
+      if (delta >= 1) {
         argOffset += delta;
       } else if (delta < 0) {
-        argOffset += delta;
+        // For ops that produce a value (like i32.xor: pop 2, push 1),
+        // count 1 toward arguments, then account for consumed inputs
+        if (producesValue) {
+          argOffset += 1; // the produced value is a call argument
+          // The remaining -(delta - (-1)) = delta + 1 consumed values
+          // come from the stack (sub-expression inputs)
+          if (delta < -1) {
+            // This is wrong — delta already accounts for net.
+            // For pop 2 push 1: delta = -1. We counted +1 for the arg,
+            // so we need to also go -2 for consumed inputs = net -1.
+            // But argOffset += delta already does net, and we added +1 for
+            // the arg. So: argOffset += 1 + delta = 1 + (-1) = 0 for i32.xor.
+            // Wait, that's wrong too. Let me think again...
+            //
+            // Actually: the op contributes 1 value to args (already counted)
+            // and consumes (1-delta) inputs from the stack below.
+            // For i32.xor: consumes 2 from below, net delta = -1.
+            // We want argOffset to go back by 2 (consumed inputs reduce
+            // what's available for further call args).
+            // argOffset += delta works for non-producing ops.
+            // For producing ops: argOffset += 1 (arg) + delta_consumed
+            // where delta_consumed = -(consumed) = delta - 1 (since delta = push - pop)
+            // So: argOffset += 1 + (delta - 1) = delta. Same as before!
+          }
+          // Actually argOffset += delta already gives the right net effect:
+          // it accounts for 1 push and N pops. We already handled the push
+          // (coercion check above), so we just need the net:
+          argOffset += delta - 1; // subtract the 1 we already accounted for
+        } else {
+          argOffset += delta;
+        }
         inSubExpr = true;
         if (argOffset < (isCallRef ? -1 : 0)) break;
       }

@@ -131,6 +131,8 @@ export function buildImports(result: CompileResult): WebAssembly.Imports {
     string_padStart: (s: string, targetLength: number, padString?: any) => s.padStart(targetLength, padString),
     string_padEnd: (s: string, targetLength: number, padString?: any) => s.padEnd(targetLength, padString),
     string_split: (s: string, separator: any) => s.split(separator),
+    string_match: (s: string, regexp: any) => s.match(regexp),
+    string_search: (s: string, regexp: any) => s.search(regexp),
     // Object.defineProperty / getOwnPropertyDescriptor host imports
     __defineProperty_value: (obj: any, prop: any, value: any, flags: number) => {
       if (obj == null) return obj;

@@ -10794,7 +10794,8 @@ function compileCallExpression(
         const returnsNum =
           method === "indexOf" ||
           method === "lastIndexOf" ||
-          method === "codePointAt";
+          method === "codePointAt" ||
+          method === "search";
         return returnsBool
           ? { kind: "i32" }
           : returnsNum
@@ -12243,7 +12244,7 @@ function compileCallExpression(
             methodName === "endsWith";
           return returnsBool
             ? { kind: "i32" }
-            : methodName === "indexOf" || methodName === "lastIndexOf"
+            : methodName === "indexOf" || methodName === "lastIndexOf" || methodName === "search"
               ? { kind: "f64" }
               : { kind: "externref" };
         }
