@@ -8065,6 +8065,15 @@ export function ensureExnTag(ctx: CodegenContext): number {
   const tagDef: TagDef = { name: "__exn", typeIdx };
   ctx.exnTagIdx = ctx.mod.tags.length;
   ctx.mod.tags.push(tagDef);
+  // Export the tag so that the JS host can extract exception payloads
+  // via WebAssembly.Exception.getArg(tag, 0).  Without this export,
+  // ALL WebAssembly.Exceptions are reported as "TypeError (null/undefined
+  // access)" because the runner cannot distinguish tagged exceptions from
+  // typeErrorThrowInstrs.  (#792)
+  ctx.mod.exports.push({
+    name: "__exn_tag",
+    desc: { kind: "tag", index: ctx.exnTagIdx },
+  });
   return ctx.exnTagIdx;
 }
 
