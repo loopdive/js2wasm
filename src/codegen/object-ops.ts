@@ -1436,8 +1436,8 @@ export function compilePropertyIntrospection(
         if (!hasStatic) continue;
       }
     } else {
-      // On an instance: skip methods — they live on the prototype, not on the instance.
-      if (isMethod) continue;
+      // On an instance: skip methods and accessors — they live on the prototype.
+      if (isMethod || isAccessor) continue;
     }
 
     tsProps.add(prop.name);
