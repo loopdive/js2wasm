@@ -18,9 +18,8 @@ Active file/function claims by agents. **Check before editing. Update when start
 | src/codegen/statements.ts | compileTryStatement | dev-a | #798a | 2026-03-26 |
 | src/emit/binary.ts | catch_all encoding | dev-a | #798a | 2026-03-26 |
 | src/ir/types.ts | catch_all instruction | dev-a | #798a | 2026-03-26 |
-| src/codegen/expressions.ts | Object.getOwnPropertyDescriptor handler | dev-2 | #797b | 2026-03-26 |
-| src/codegen/object-ops.ts | compileGetOwnPropertyDescriptor | dev-2 | #797b | 2026-03-26 |
-| src/runtime.ts | __create_descriptor import | dev-2 | #797b | 2026-03-26 |
+| src/codegen/statements.ts | compileThrowStatement | dev-4 | #798c | 2026-03-26 |
+| src/codegen/index.ts | FunctionContext (catchRethrowStack) | dev-4 | #798c | 2026-03-26 |
 
 <!--
 Example entries:
