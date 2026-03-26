@@ -373,6 +373,32 @@ function inferLastType(body: Instr[], types: TypeDef[], sigs: FuncSigInfo): stri
     // local.tee preserves type -- unknown without local type info
     if (op === "local.tee" || op === "local.get" || op === "global.get") return null;
 
+    // call_ref: try to determine result from func type
+    if (op === "call_ref") {
+      const typeIdx = (instr as any).typeIdx;
+      if (typeIdx !== undefined) {
+        const ft = resolveFuncType(types, typeIdx);
+        if (ft && ft.results.length === 1) {
+          const rk = ft.results[0]!.kind;
+          if (rk === "f64") return "f64";
+          if (rk === "i32") return "i32";
+          if (rk === "i64") return "i64";
+          if (rk === "externref" || rk === "ref_extern") return "externref";
+          if (rk === "ref" || rk === "ref_null") return "ref";
+        }
+      }
+      return null;
+    }
+
+    // f32 producers
+    if (op === "f32.const") return "f32";
+
+    // any.convert_extern produces anyref (a GC ref)
+    if (op === "any.convert_extern") return "ref";
+
+    // select preserves operand type -- unknown without further analysis
+    if (op === "select") return null;
+
     // call: check result type -- only trust high-confidence type categories
     if (op === "call") {
       const funcIdx = (instr as any).funcIdx;
