@@ -25,8 +25,6 @@
     "test": "node node_modules/vitest/dist/cli.js run",
     "test:watch": "node node_modules/vitest/dist/cli.js",
     "test:262": "bash scripts/run-test262-vitest.sh",
-    "test:262:old": "npx tsx scripts/run-test262.ts --full",
-    "test:262:recheck": "npx tsx scripts/run-test262.ts --recheck",
     "build:compiler-bundle": "npx esbuild src/index.ts --bundle --platform=node --format=esm --outfile=scripts/compiler-bundle.mjs --external:typescript",
     "lint": "biome check src/",
     "typecheck": "tsc --noEmit",

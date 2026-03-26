@@ -16,7 +16,7 @@ type: project
   - When a test hangs: kill the runner, add a skip filter to `tests/test262-runner.ts` with comment referencing the issue, create/update an issue in `plan/issues/ready/`, resume with `--resume`
   - After run completes: analyze error patterns, update issue metrics (test262_ce, test262_fail, test262_skip), create new issues for unmatched patterns
   - Every skip filter MUST have a corresponding issue — skips are workarounds, not fixes
-  - Update `benchmarks/results/conformance-history.json` (auto-appended by runner)
+  - History is tracked automatically via `benchmarks/results/runs/index.json` (appended by vitest runner)
   - Regenerate graph: `npx tsx plan/generate-graph.ts`
 
 ## Conventions

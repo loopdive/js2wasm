@@ -447,5 +447,6 @@
 | 765 | 2026-03-23 | Compile error triage: 4,443 remaining CEs -- superseded, all patterns fixed                       | Session    |
 | 723 | 2026-03-21 | TDZ violations: throw ReferenceError before let/const init (230 FAIL)                             | Session    |
 | 728 | 2026-03-25 | Null pointer dereference should throw TypeError -- superseded by #775                             | Session    |
+| 694 | 2026-03-25 | Migrate test262 runner to vitest -- standalone runner removed, vitest is sole runner               | Session    |
 
 
