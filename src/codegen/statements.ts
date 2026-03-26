@@ -4635,6 +4635,104 @@ function compileContinueStatement(
   }
 }
 
+/**
+ * Destructure an externref catch variable into binding pattern locals.
+ * The externref value is already on the stack when called.
+ * For ObjectBindingPattern: uses __extern_get(obj, "propName") for each property.
+ * For ArrayBindingPattern: uses __extern_get(obj, box(index)) for each element.
+ */
+function compileExternrefCatchDestructure(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  pattern: ts.BindingPattern,
+  exnLocalIdx: number,
+): void {
+  // Drop the externref we pushed — we'll use local.get for each property
+  fctx.body.push({ op: "drop" });
+
+  if (ts.isObjectBindingPattern(pattern)) {
+    // Ensure __extern_get is available
+    let getIdx = ensureLateImport(
+      ctx, "__extern_get",
+      [{ kind: "externref" }, { kind: "externref" }],
+      [{ kind: "externref" }],
+    );
+    flushLateImportShifts(ctx, fctx);
+
+    for (const element of pattern.elements) {
+      if (!ts.isBindingElement(element)) continue;
+      const propNameNode = element.propertyName ?? element.name;
+      let propNameText: string | undefined;
+      if (ts.isIdentifier(propNameNode)) propNameText = propNameNode.text;
+      else if (ts.isStringLiteral(propNameNode)) propNameText = propNameNode.text;
+      if (!propNameText) continue;
+
+      // Get the local for this binding
+      const localName = ts.isIdentifier(element.name) ? element.name.text : undefined;
+      if (!localName) continue;
+      const localIdx = fctx.localMap.get(localName);
+      if (localIdx === undefined) continue;
+
+      addStringConstantGlobal(ctx, propNameText);
+      const strGlobalIdx = ctx.stringGlobalMap.get(propNameText);
+      if (strGlobalIdx === undefined) continue;
+
+      // Refresh getIdx after potential import shifts
+      getIdx = ctx.funcMap.get("__extern_get")!;
+
+      // __extern_get(exnLocal, "propName") -> externref, store to binding local
+      fctx.body.push({ op: "local.get", index: exnLocalIdx });
+      fctx.body.push({ op: "global.get", index: strGlobalIdx });
+      fctx.body.push({ op: "call", funcIdx: getIdx });
+
+      // Coerce externref to the local's declared type if needed
+      const localType = getLocalType(fctx, localIdx);
+      if (localType && localType.kind !== "externref") {
+        coerceType(ctx, fctx, { kind: "externref" }, localType);
+      }
+      fctx.body.push({ op: "local.set", index: localIdx });
+    }
+  } else if (ts.isArrayBindingPattern(pattern)) {
+    // Array destructuring: use __extern_get(obj, box(index))
+    addUnionImports(ctx);
+    let getIdx = ensureLateImport(
+      ctx, "__extern_get",
+      [{ kind: "externref" }, { kind: "externref" }],
+      [{ kind: "externref" }],
+    );
+    flushLateImportShifts(ctx, fctx);
+    const boxIdx = ctx.funcMap.get("__box_number");
+
+    let idx = 0;
+    for (const element of pattern.elements) {
+      if (ts.isOmittedExpression(element)) { idx++; continue; }
+      if (!ts.isBindingElement(element)) { idx++; continue; }
+
+      const localName = ts.isIdentifier(element.name) ? element.name.text : undefined;
+      if (!localName) { idx++; continue; }
+      const localIdx = fctx.localMap.get(localName);
+      if (localIdx === undefined) { idx++; continue; }
+
+      getIdx = ctx.funcMap.get("__extern_get")!;
+
+      // __extern_get(exnLocal, box(index)) -> externref
+      fctx.body.push({ op: "local.get", index: exnLocalIdx });
+      fctx.body.push({ op: "f64.const", value: idx });
+      if (boxIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: boxIdx });
+      }
+      fctx.body.push({ op: "call", funcIdx: getIdx });
+
+      const localType = getLocalType(fctx, localIdx);
+      if (localType && localType.kind !== "externref") {
+        coerceType(ctx, fctx, { kind: "externref" }, localType);
+      }
+      fctx.body.push({ op: "local.set", index: localIdx });
+      idx++;
+    }
+  }
+}
+
 function compileThrowStatement(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -4643,14 +4741,15 @@ function compileThrowStatement(
   const tagIdx = ensureExnTag(ctx);
 
   if (stmt.expression) {
-    // Compile the thrown expression — coerce to externref
+    // Compile the thrown expression — coerce to externref for the exception tag
     const resultType = compileExpression(ctx, fctx, stmt.expression, {
       kind: "externref",
     });
-    // If the expression didn't produce externref, we need to ensure it's externref
+    // If the expression didn't produce externref, coerce it properly
     if (resultType && resultType.kind !== "externref") {
-      // Drop whatever was produced, push null extern as fallback
-      fctx.body.push({ op: "drop" });
+      coerceType(ctx, fctx, resultType, { kind: "externref" });
+    } else if (!resultType) {
+      // Expression produced no value (void) — push null externref
       fctx.body.push({ op: "ref.null.extern" });
     }
   } else {
@@ -4752,6 +4851,19 @@ function compileTryStatement(
         for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!++;
         for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!++;
       }
+
+      // Emit catch binding destructuring if the catch variable is a binding pattern
+      if (
+        exnLocalIdx !== null &&
+        stmt.catchClause.variableDeclaration &&
+        (ts.isObjectBindingPattern(stmt.catchClause.variableDeclaration.name) ||
+         ts.isArrayBindingPattern(stmt.catchClause.variableDeclaration.name))
+      ) {
+        // Push the caught exception externref, then destructure into binding locals
+        fctx.body.push({ op: "local.get", index: exnLocalIdx });
+        compileExternrefCatchDestructure(ctx, fctx, stmt.catchClause.variableDeclaration.name, exnLocalIdx);
+      }
+
       for (const s of stmt.catchClause.block.statements) {
         compileStatement(ctx, fctx, s);
       }
