@@ -1525,7 +1525,11 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
     }
   }
 
-  const preBody = `
+  // For onlyStrict tests, add "use strict" so the compiler's strict-mode
+  // checks apply (e.g. assignments to arguments/eval, duplicate params).
+  const strictDirective = resolvedMeta.flags?.includes("onlyStrict") ? '"use strict";\n' : "";
+
+  const preBody = `${strictDirective}
 ${preamble}
 ${hoistedDecls}
 export function test(): number {
