@@ -10511,7 +10511,8 @@ function compileCallExpression(
         const returnsNum =
           method === "indexOf" ||
           method === "lastIndexOf" ||
-          method === "codePointAt";
+          method === "codePointAt" ||
+          method === "search";
         return returnsBool
           ? { kind: "i32" }
           : returnsNum
