@@ -44,6 +44,36 @@ import { emitBoundsCheckedArrayGet, emitClampIndex, emitClampNonNeg } from "./ar
 
 // ── Null guard helpers ───────────────────────────────────────────────
 
+/**
+ * Returns true when the expression is guaranteed to produce a non-null value,
+ * allowing the caller to skip runtime null guards.
+ *
+ * Provably non-null cases:
+ *  - `new Foo()`          — constructor always returns an object
+ *  - `{ x: 1 }`          — object literals are never null
+ *  - `[1, 2]`            — array literals are never null
+ *  - `"str"` / template  — string literals are never null
+ *  - Parenthesized wrapper around any of the above
+ */
+export function isProvablyNonNull(expr: ts.Expression): boolean {
+  // Unwrap parentheses: (new Foo()).bar
+  let inner: ts.Expression = expr;
+  while (ts.isParenthesizedExpression(inner)) {
+    inner = inner.expression;
+  }
+  switch (inner.kind) {
+    case ts.SyntaxKind.NewExpression:
+    case ts.SyntaxKind.ObjectLiteralExpression:
+    case ts.SyntaxKind.ArrayLiteralExpression:
+    case ts.SyntaxKind.StringLiteral:
+    case ts.SyntaxKind.NoSubstitutionTemplateLiteral:
+    case ts.SyntaxKind.TemplateExpression:
+      return true;
+    default:
+      return false;
+  }
+}
+
 export function typeErrorThrowInstrs(ctx: CodegenContext): Instr[] {
   const tagIdx = ensureExnTag(ctx);
   return [
@@ -1057,9 +1087,16 @@ export function compilePropertyAccess(
         const objResult = compileExpression(ctx, fctx, expr.expression);
         const fieldType = fields[fieldIdx]!.type;
         // Null-guard: if the object ref could be null (ref_null), prevent trap
+        // Skip null guard when expression is provably non-null (#800)
+        const exprNonNull = isProvablyNonNull(expr.expression);
         if (objResult && objResult.kind === "ref_null") {
-          emitNullGuardedStructGet(ctx, fctx, objResult, fieldType, structTypeIdx, fieldIdx, propName);
-          // The null guard if-block returns ref_null for ref fields
+          if (exprNonNull) {
+            // Provably non-null — cast directly, no null guard needed
+            fctx.body.push({ op: "ref.cast", typeIdx: structTypeIdx } as unknown as Instr);
+            fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+          } else {
+            emitNullGuardedStructGet(ctx, fctx, objResult, fieldType, structTypeIdx, fieldIdx, propName);
+          }
           if (fieldType.kind === "ref") {
             return { kind: "ref_null", typeIdx: (fieldType as any).typeIdx };
           }
@@ -1073,11 +1110,15 @@ export function compilePropertyAccess(
           }
           return fieldType;
         } else if (objResult && objResult.kind === "ref") {
-          // Even though the type says non-null ref, the value may be null at
-          // runtime (e.g. default-initialized locals, chained property access
-          // on optional fields).  Wrap in a null guard to avoid trapping.
-          const nullableObj: ValType = { kind: "ref_null", typeIdx: (objResult as any).typeIdx ?? structTypeIdx };
-          emitNullGuardedStructGet(ctx, fctx, nullableObj, fieldType, structTypeIdx, fieldIdx, propName);
+          if (exprNonNull) {
+            // Provably non-null — direct struct.get, no guard needed
+            fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+          } else {
+            // May be null at runtime (e.g. default-initialized locals, chained
+            // property access on optional fields). Wrap in a null guard.
+            const nullableObj: ValType = { kind: "ref_null", typeIdx: (objResult as any).typeIdx ?? structTypeIdx };
+            emitNullGuardedStructGet(ctx, fctx, nullableObj, fieldType, structTypeIdx, fieldIdx, propName);
+          }
           if (fieldType.kind === "ref") {
             return { kind: "ref_null", typeIdx: (fieldType as any).typeIdx };
           }
@@ -1130,8 +1171,14 @@ export function compilePropertyAccess(
           if (fieldIdx !== -1) {
             const fieldType = fields[fieldIdx]!.type;
             const objResult = compileExpression(ctx, fctx, expr.expression);
+            const exprNonNull2 = isProvablyNonNull(expr.expression);
             if (objResult && objResult.kind === "ref_null") {
-              emitNullGuardedStructGet(ctx, fctx, objResult, fieldType, structTypeIdx, fieldIdx, propName);
+              if (exprNonNull2) {
+                fctx.body.push({ op: "ref.cast", typeIdx: structTypeIdx } as unknown as Instr);
+                fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+              } else {
+                emitNullGuardedStructGet(ctx, fctx, objResult, fieldType, structTypeIdx, fieldIdx, propName);
+              }
               if (fieldType.kind === "ref") {
                 return { kind: "ref_null", typeIdx: (fieldType as any).typeIdx };
               }
@@ -1139,9 +1186,13 @@ export function compilePropertyAccess(
             } else if (objResult && objResult.kind === "externref") {
               emitExternrefToStructGet(ctx, fctx, fieldType, structTypeIdx, fieldIdx, propName, true /* throwOnNull */);
             } else if (objResult && objResult.kind === "ref") {
-              // Null-guard ref-typed objects (may be null at runtime)
-              const nullableObj: ValType = { kind: "ref_null", typeIdx: (objResult as any).typeIdx ?? structTypeIdx };
-              emitNullGuardedStructGet(ctx, fctx, nullableObj, fieldType, structTypeIdx, fieldIdx, propName);
+              if (exprNonNull2) {
+                fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+              } else {
+                // Null-guard ref-typed objects (may be null at runtime)
+                const nullableObj: ValType = { kind: "ref_null", typeIdx: (objResult as any).typeIdx ?? structTypeIdx };
+                emitNullGuardedStructGet(ctx, fctx, nullableObj, fieldType, structTypeIdx, fieldIdx, propName);
+              }
               if (fieldType.kind === "ref") {
                 return { kind: "ref_null", typeIdx: (fieldType as any).typeIdx };
               }
@@ -1426,16 +1477,20 @@ export function compileElementAccess(
   // Null-guard for ref_null: throw TypeError on null, narrow to ref after check
   // In JS, null[x] and undefined[x] throw TypeError
   if (objType.kind === "ref_null") {
-    // Emit null check that throws TypeError (#775)
-    emitNullCheckThrow(ctx, fctx, objType);
-    // After the null check, the value is guaranteed non-null at runtime
+    if (!isProvablyNonNull(expr.expression)) {
+      // Emit null check that throws TypeError (#775)
+      emitNullCheckThrow(ctx, fctx, objType);
+    }
+    // After the null check (or provably non-null), the value is guaranteed non-null
     const nonNullObjType: ValType = { kind: "ref", typeIdx: (objType as any).typeIdx };
     return compileElementAccessBody(ctx, fctx, expr, nonNullObjType);
   }
 
   // Null-guard for externref: null[x] and undefined[x] throw TypeError (#775)
   if (objType.kind === "externref") {
-    emitNullCheckThrow(ctx, fctx, objType);
+    if (!isProvablyNonNull(expr.expression)) {
+      emitNullCheckThrow(ctx, fctx, objType);
+    }
   }
 
   return compileElementAccessBody(ctx, fctx, expr, objType);
