@@ -656,6 +656,8 @@ export interface CodegenContext {
   classExprNameMap: Map<string, string>;
   /** Map from ClassExpression AST node → synthetic class name for anonymous class in new expressions */
   anonClassExprNames: Map<ts.ClassExpression, string>;
+  /** Map from function/class identifier → its ES-spec .name string value */
+  functionNameMap: Map<string, string>;
   /** Whether to attach source positions for source map generation */
   sourceMap: boolean;
   /** Map from tuple type signature key → type index of the tuple struct */
@@ -921,6 +923,7 @@ export function createCodegenContext(
     classTagMap: new Map(),
     classExprNameMap: new Map(),
     anonClassExprNames: new Map(),
+    functionNameMap: new Map(),
     sourceMap: options?.sourceMap ?? false,
     tupleTypeMap: new Map(),
     fast: options?.fast ?? false,
@@ -1824,6 +1827,52 @@ function unifiedVisitNode(
         state.unknownCtorNeeded.set(name, Math.max(prev, argCount));
       }
     }
+  }
+
+  // ── collectFunctionClassNames: pre-register .name values as string literals ──
+  // Function declarations: function foo() {} → name = "foo"
+  if (ts.isFunctionDeclaration(node) && node.name) {
+    state.stringLiterals.add(node.name.text);
+  }
+  // Named function expressions: const x = function foo() {} → name = "foo"
+  if (ts.isFunctionExpression(node) && node.name) {
+    state.stringLiterals.add(node.name.text);
+  }
+  // Class declarations: class Foo {} → name = "Foo"
+  if (ts.isClassDeclaration(node) && node.name) {
+    state.stringLiterals.add(node.name.text);
+  }
+  // Named class expressions: const x = class Foo {} → name = "Foo"
+  if (ts.isClassExpression(node) && node.name) {
+    state.stringLiterals.add(node.name.text);
+  }
+  // Variable declarations with anonymous function/class initializers:
+  // const foo = function() {} → name = "foo"
+  // const Bar = class {} → name = "Bar"
+  if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+    if (ts.isFunctionExpression(node.initializer) && !node.initializer.name) {
+      state.stringLiterals.add(node.name.text);
+    }
+    if (ts.isArrowFunction(node.initializer)) {
+      state.stringLiterals.add(node.name.text);
+    }
+    if (ts.isClassExpression(node.initializer) && !node.initializer.name) {
+      state.stringLiterals.add(node.name.text);
+    }
+  }
+  // Method declarations: { method() {} } → name = "method"
+  if (ts.isMethodDeclaration(node) && node.name && ts.isIdentifier(node.name)) {
+    const prefix = node.modifiers?.some(m => m.kind === ts.SyntaxKind.GetKeyword) ? "get "
+      : node.modifiers?.some(m => m.kind === ts.SyntaxKind.SetKeyword) ? "set "
+      : "";
+    state.stringLiterals.add(prefix + node.name.text);
+  }
+  // Getter/setter declarations
+  if (ts.isGetAccessorDeclaration(node) && node.name && ts.isIdentifier(node.name)) {
+    state.stringLiterals.add("get " + node.name.text);
+  }
+  if (ts.isSetAccessorDeclaration(node) && node.name && ts.isIdentifier(node.name)) {
+    state.stringLiterals.add("set " + node.name.text);
   }
 
   // ── Recurse into children ──
@@ -9441,6 +9490,12 @@ export function collectClassDeclaration(
   ctx.classSet.add(className);
   ctx.classDeclarationMap.set(className, decl);
 
+  // Register the class .name value for ES-spec compliance
+  // Named class expressions keep their declared name (class X {} → name = "X")
+  // Anonymous class expressions get the variable name (const C = class {} → name = "C")
+  const esName = decl.name ? decl.name.text : syntheticName ?? "";
+  ctx.functionNameMap.set(className, esName);
+
   // For class expressions, map the TS symbol name to the synthetic class name
   // so that resolveStructName and compileNewExpression can find the struct
   if (syntheticName) {
@@ -10421,6 +10476,8 @@ function collectDeclarations(
     for (const stmt of stmts) {
       if (ts.isClassDeclaration(stmt) && stmt.name && !hasDeclareModifier(stmt)) {
         collectClassDeclaration(ctx, stmt);
+        // Register class declaration .name
+        ctx.functionNameMap.set(stmt.name.text, stmt.name.text);
       } else if (ts.isVariableStatement(stmt) && !hasDeclareModifier(stmt)) {
         for (const decl of stmt.declarationList.declarations) {
           if (
@@ -10429,6 +10486,9 @@ function collectDeclarations(
             ts.isClassExpression(decl.initializer)
           ) {
             collectClassDeclaration(ctx, decl.initializer, decl.name.text);
+            // Register class expression .name: named class keeps its own name, anonymous gets variable name
+            const esName = decl.initializer.name ? decl.initializer.name.text : decl.name.text;
+            ctx.functionNameMap.set(decl.name.text, esName);
           }
           // Recurse into arrow functions and function expressions
           if (decl.initializer) {
@@ -10499,6 +10559,8 @@ function collectDeclarations(
       if (hasDeclareModifier(stmt)) continue;
 
       const name = stmt.name.text;
+      // Register the function's .name value for ES-spec compliance
+      ctx.functionNameMap.set(name, name);
       const sig = ctx.checker.getSignatureFromDeclaration(stmt);
       if (!sig) continue;
 
