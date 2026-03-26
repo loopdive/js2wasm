@@ -292,6 +292,51 @@ function repairBody(
     i++;
   }
 
+  // Scan for local.set to externref locals preceded by struct-ref-producing instructions.
+  // In closures, captured variables are stored as externref but codegen may produce a struct ref.
+  // Insert extern.convert_any to convert struct ref → externref before the store.
+  // Note: local.tee is NOT handled here because tee passes the value through — converting
+  // before tee would change the type for downstream consumers. The later fixupStructNewExternref
+  // pass handles struct.new → local.tee specifically.
+  i = 0;
+  while (i < body.length) {
+    const instr = body[i]!;
+    if (instr.op !== "local.set") {
+      i++;
+      continue;
+    }
+
+    const idx = (instr as { index: number }).index;
+    const localType = localTypes[idx];
+    if (!localType || localType.kind !== "externref") {
+      i++;
+      continue;
+    }
+
+    // Check if the preceding instruction produces a struct/array ref (not externref).
+    // Only include opcodes that ALWAYS produce GC-internal refs.
+    // struct.get/array.get are excluded because their result type depends on field/element type.
+    if (i > 0) {
+      const prev = body[i - 1]!;
+      const producesStructRef =
+        prev.op === "struct.new" ||
+        prev.op === "array.new_fixed" ||
+        prev.op === "array.new_default" ||
+        prev.op === "array.new" ||
+        prev.op === "ref.cast" ||
+        prev.op === "ref.cast_null";
+
+      if (producesStructRef) {
+        body.splice(i, 0, { op: "extern.convert_any" } as unknown as Instr);
+        fixed++;
+        i += 2; // skip past inserted extern.convert_any + the local.set
+        continue;
+      }
+    }
+
+    i++;
+  }
+
   return fixed;
 }
 
@@ -11790,7 +11835,7 @@ function fixupStructNewResultCoercion(ctx: CodegenContext): void {
           if (gDef && gDef.type.kind === "externref") isAlreadyExternref = true;
           if (gDef && gDef.type.kind === "funcref") isFuncref = true;
         } else if (prev.op === "struct.get") {
-          // struct.get can produce funcref fields — check the struct type
+          // struct.get can produce funcref or externref fields — check the struct type
           const sTypeIdx = (prev as any).typeIdx;
           const sFieldIdx = (prev as any).fieldIdx;
           const sDef = ctx.mod.types[sTypeIdx];
@@ -11799,6 +11844,7 @@ function fixupStructNewResultCoercion(ctx: CodegenContext): void {
             if (sField) {
               const ft = sField.type;
               if (ft.kind === "funcref") isFuncref = true;
+              if (ft.kind === "externref") isAlreadyExternref = true;
             }
           }
         } else if (prev.op === "ref.cast" || prev.op === "ref.cast_null") {
@@ -11889,7 +11935,10 @@ function fixupExternConvertAny(ctx: CodegenContext): void {
         const sDef = ctx.mod.types[sTypeIdx];
         if (sDef && sDef.kind === "struct") {
           const sField = (sDef as any).fields[sFieldIdx];
-          if (sField && sField.type.kind === "funcref") isFuncref = true;
+          if (sField) {
+            if (sField.type.kind === "funcref") isFuncref = true;
+            if (sField.type.kind === "externref") isAlreadyExternref = true;
+          }
         }
       } else if (prev.op === "ref.cast" || prev.op === "ref.cast_null") {
         const castTypeIdx = (prev as any).typeIdx;

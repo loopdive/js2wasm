@@ -875,6 +875,16 @@ function inferInstrType(
     }
     return null;
   }
+  // Structured control flow: infer result type from blockType
+  if (op === "if" || op === "block" || op === "loop" || op === "try") {
+    const bt = (instr as any).blockType as BlockType;
+    if (bt?.kind === "val") return bt.type;
+    if (bt?.kind === "type") {
+      const ft = resolveFuncType(types, bt.typeIdx);
+      if (ft && ft.results.length === 1) return ft.results[0]!;
+    }
+    return null;
+  }
   return null;
 }
 
@@ -1099,13 +1109,61 @@ function fixCallArgTypesInBody(
       const instr = body[pos]!;
       const op = instr.op;
 
-      // Stop at control flow boundaries — don't try to trace through
-      // blocks, ifs, loops, or try statements
-      if (op === "if" || op === "block" || op === "loop" || op === "try" ||
-          op === "end" || op === "br" || op === "br_if" || op === "br_table" ||
+      // Stop at non-structured terminators
+      if (op === "end" || op === "br" || op === "br_if" || op === "br_table" ||
           op === "return" || op === "throw" || op === "unreachable" ||
           op === "return_call" || op === "return_call_ref") {
         break;
+      }
+
+      // Structured control flow: treat as opaque value producer.
+      // An if/block/loop/try with a valued blockType produces a result value
+      // that may need coercion when used as a call argument.
+      if (op === "if" || op === "block" || op === "loop" || op === "try") {
+        const delta = instrDelta(instr, types, sigs);
+        if (delta === UNREACHABLE) break;
+        const producedType = inferInstrType(instr, localTypes, globalTypes, types, mod, numImports);
+        // producedType is non-null when the block has a valued blockType
+        // (i.e., it produces a result value). For `if`, delta=0 with val
+        // blockType because it consumes the condition (-1) and produces
+        // a result (+1). For block/loop, delta=1 with val blockType.
+        const producesVal = producedType !== null;
+        if (producesVal && argOffset >= 0) {
+          const paramIdx = paramCount - 1 - argOffset;
+          const expectedType = expectedParams[paramIdx]!;
+          if (expectedType) {
+            const coercion = callArgCoercionInstrs(producedType, expectedType, boxNumberIdx, unboxNumberIdx);
+            if (coercion.length > 0) {
+              const isSafeRefToExtern = coercion.length === 1 &&
+                (coercion[0] as any).op === "extern.convert_any";
+              if (!inSubExpr || isSafeRefToExtern) {
+                insertions.push({ afterPos: pos, instrs: coercion });
+              }
+            }
+          }
+        }
+        // Account for stack delta.
+        // For valued block/loop: delta=1, just like a simple producer.
+        // For valued if: delta=0 (pops condition, pushes result).
+        // For empty if: delta=-1 (pops condition only).
+        if (producesVal) {
+          // The produced value accounts for 1 arg; remaining delta is
+          // from consumed inputs (e.g., if's condition).
+          argOffset += 1;
+          const consumed = 1 - delta; // how many inputs from stack below
+          if (consumed > 0) {
+            argOffset -= consumed;
+            inSubExpr = true;
+          }
+        } else if (delta < 0) {
+          // Non-valued block that consumes stack (e.g., empty if: delta=-1)
+          argOffset += delta;
+          inSubExpr = true;
+        }
+        // else delta === 0 and no value: empty block/loop, skip
+        if (argOffset < (isCallRef ? -1 : 0)) break;
+        pos--;
+        continue;
       }
 
       const delta = instrDelta(instr, types, sigs);
