@@ -743,6 +743,10 @@ export interface CodegenContext {
   definedPropertyFlags: Map<string, number>;
   /** Set of variable names marked as non-extensible via Object.preventExtensions/freeze/seal */
   nonExtensibleVars: Set<string>;
+  /** Set of variable names marked as frozen via Object.freeze (no property writes allowed) */
+  frozenVars: Set<string>;
+  /** Set of variable names marked as sealed via Object.seal (writes OK, but no add/delete/reconfigure) */
+  sealedVars: Set<string>;
   /**
    * Per-shape default property flags table.
    * Maps struct type index → Uint8Array of per-field default descriptor flags.
@@ -975,6 +979,8 @@ export function createCodegenContext(
     tdzLetConstNames: new Set(),
     definedPropertyFlags: new Map(),
     nonExtensibleVars: new Set(),
+    frozenVars: new Set(),
+    sealedVars: new Set(),
     shapePropFlags: new Map(),
   };
 
