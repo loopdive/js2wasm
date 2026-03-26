@@ -17,3 +17,10 @@ benchmarks/results/*.txt
 .test262-cache/
 test262-out/
 scripts/compiler-bundle.mjs
+tmp_*.ts
+tmp_*.mts
+isolate-*.log
+tests/fixtures/*.wasm
+tests/fixtures/*.wat
+tests/fixtures/*.d.ts
+tests/fixtures/*.imports.js
