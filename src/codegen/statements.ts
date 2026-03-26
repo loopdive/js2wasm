@@ -3588,18 +3588,21 @@ function compileForOfString(
     ],
   });
 
-  // Null guard: if string ref is nullable, wrap struct.get + loop in a guard block
+  // Null guard: if string ref is nullable, throw TypeError on null (#775)
+  // In JS, `for (const c of null)` throws TypeError
   if (strType.kind === "ref_null") {
     const guardedInstrs = fctx.body.splice(strNullGuardStart);
+    const tagIdx = ensureExnTag(ctx);
+    fctx.body.push({ op: "local.get", index: strLocal });
+    fctx.body.push({ op: "ref.is_null" } as Instr);
     fctx.body.push({
-      op: "block",
+      op: "if",
       blockType: { kind: "empty" },
-      body: [
-        { op: "local.get", index: strLocal },
-        { op: "ref.is_null" } as Instr,
-        { op: "br_if", depth: 0 },
-        ...guardedInstrs,
+      then: [
+        { op: "ref.null.extern" } as Instr,
+        { op: "throw", tagIdx } as Instr,
       ],
+      else: guardedInstrs,
     });
   }
 }
@@ -3790,19 +3793,21 @@ function compileForOfArray(
     ],
   });
 
-  // Null guard: if vec ref is nullable, wrap struct.gets + loop in a guard block
-  // to prevent Wasm trap on struct.get of null reference
+  // Null guard: if vec ref is nullable, throw TypeError on null (#775)
+  // In JS, `for (const x of null)` throws TypeError
   if (vecType.kind === "ref_null") {
     const guardedInstrs = fctx.body.splice(nullGuardStart);
+    const tagIdx = ensureExnTag(ctx);
+    fctx.body.push({ op: "local.get", index: vecLocal });
+    fctx.body.push({ op: "ref.is_null" } as Instr);
     fctx.body.push({
-      op: "block",
+      op: "if",
       blockType: { kind: "empty" },
-      body: [
-        { op: "local.get", index: vecLocal },
-        { op: "ref.is_null" } as Instr,
-        { op: "br_if", depth: 0 },
-        ...guardedInstrs,
+      then: [
+        { op: "ref.null.extern" } as Instr,
+        { op: "throw", tagIdx } as Instr,
       ],
+      else: guardedInstrs,
     });
   }
 }
@@ -3937,6 +3942,24 @@ function compileForOfIterator(
   // The __iterator host import expects externref.
   if (iterableType.kind !== "externref") {
     coerceType(ctx, fctx, iterableType, { kind: "externref" });
+  }
+
+  // Null check: throw TypeError for `for (const x of null)` (#775)
+  {
+    const tagIdx = ensureExnTag(ctx);
+    const iterTmp = allocLocal(fctx, `__forit_null_${fctx.locals.length}`, { kind: "externref" });
+    fctx.body.push({ op: "local.tee", index: iterTmp });
+    fctx.body.push({ op: "ref.is_null" });
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: [
+        { op: "ref.null.extern" } as Instr,
+        { op: "throw", tagIdx } as Instr,
+      ],
+      else: [],
+    });
+    fctx.body.push({ op: "local.get", index: iterTmp });
   }
 
   // Look up the iterator host import function indices

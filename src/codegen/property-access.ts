@@ -1389,59 +1389,19 @@ export function compileElementAccess(
   const objType = compileExpression(ctx, fctx, expr.expression);
   if (!objType) return null;
 
-  // Null-guard for ref_null: narrow to ref after null check
-  // This prevents traps on null array/struct references
+  // Null-guard for ref_null: throw TypeError on null, narrow to ref after check
+  // In JS, null[x] and undefined[x] throw TypeError
   if (objType.kind === "ref_null") {
-    const tmp = allocLocal(fctx, `__ng_ea_${fctx.locals.length}`, objType);
-    fctx.body.push({ op: "local.tee", index: tmp });
-    fctx.body.push({ op: "ref.is_null" });
-
-    // Determine the element result type
-    const accessTsType = ctx.checker.getTypeAtLocation(expr);
-    const accessResultType = resolveWasmType(ctx, accessTsType);
-    const resultType: ValType = accessResultType.kind === "ref"
-      ? { kind: "ref_null", typeIdx: (accessResultType as any).typeIdx }
-      : accessResultType;
-
-    // Build else branch (non-null): local.get tmp, ref.as_non_null, then compile inner
-    const savedBody = pushBody(fctx);
-    fctx.body.push({ op: "local.get", index: tmp });
-    fctx.body.push({ op: "ref.as_non_null" } as Instr);
-    // Continue with the rest of element access logic using the non-null ref
+    // Emit null check that throws TypeError (#775)
+    emitNullCheckThrow(ctx, fctx, objType);
+    // After the null check, the value is guaranteed non-null at runtime
     const nonNullObjType: ValType = { kind: "ref", typeIdx: (objType as any).typeIdx };
-    const innerResult = compileElementAccessBody(ctx, fctx, expr, nonNullObjType);
-    const elseInstrs = fctx.body;
-    fctx.body = savedBody;
+    return compileElementAccessBody(ctx, fctx, expr, nonNullObjType);
+  }
 
-    if (innerResult !== null) {
-      // Use the actual inner result type for the if block when it differs from
-      // the TS-inferred resultType (e.g., TS says `any` → externref, but the
-      // actual array element type is f64). This prevents fallthru type mismatches.
-      let blockValType = !valTypesMatch(innerResult, resultType) ? innerResult : resultType;
-      // Widen ref to ref_null since defaultValueInstrs produces ref.null (nullable)
-      if (blockValType.kind === "ref") {
-        blockValType = { kind: "ref_null", typeIdx: (blockValType as any).typeIdx };
-      }
-      fctx.body.push({
-        op: "if",
-        blockType: { kind: "val" as const, type: blockValType },
-        then: defaultValueInstrs(blockValType),
-        else: elseInstrs,
-      });
-      return blockValType;
-    }
-    // If inner compilation returned null (error), just fall through with default
-    let fallbackType = resultType;
-    if (fallbackType.kind === "ref") {
-      fallbackType = { kind: "ref_null", typeIdx: (fallbackType as any).typeIdx };
-    }
-    fctx.body.push({
-      op: "if",
-      blockType: { kind: "val" as const, type: fallbackType },
-      then: defaultValueInstrs(fallbackType),
-      else: elseInstrs.length > 0 ? elseInstrs : defaultValueInstrs(fallbackType),
-    });
-    return fallbackType;
+  // Null-guard for externref: null[x] and undefined[x] throw TypeError (#775)
+  if (objType.kind === "externref") {
+    emitNullCheckThrow(ctx, fctx, objType);
   }
 
   return compileElementAccessBody(ctx, fctx, expr, objType);
