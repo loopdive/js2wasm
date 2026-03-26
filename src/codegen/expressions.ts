@@ -51,6 +51,8 @@ import {
   pushBody,
   releaseTempLocal,
   resolveWasmType,
+  hoistLetConstWithTdz,
+  hoistVarDeclarations,
 } from "./index.js";
 import {
   compileArrayConstructorCall,
@@ -74,7 +76,7 @@ import {
   valTypesMatch,
   VOID_RESULT,
 } from "./shared.js";
-import { compileStatement, emitTdzCheck } from "./statements.js";
+import { compileStatement, emitTdzCheck, hoistFunctionDeclarations } from "./statements.js";
 import {
   compileNativeStringMethodCall,
   compileStringLiteral,
@@ -1385,15 +1387,21 @@ function compileIdentifier(
     if (refType) return refType;
   }
 
-  // Graceful fallback for unknown identifiers — emit a type-appropriate default
-  // instead of a hard compile error. This allows the compiler to continue past
-  // references to unimplemented globals (Symbol, Object, Reflect, etc.) and
-  // test harness variables.
-  // Use the TypeScript type to determine the correct Wasm default value:
-  //   number → f64.const 0 (matches JS `undefined` coerced to number = NaN,
-  //            but 0 is a safe default for hoisted vars)
-  //   boolean → i32.const 0
-  //   otherwise → ref.null extern
+  // Check if this is a truly undeclared variable (no TS symbol).
+  // Accessing an undeclared variable should throw ReferenceError per JS strict mode.
+  // However, known globals (Symbol, Object, Reflect, etc.) have TS symbols from
+  // lib.d.ts and should use the fallback default instead.
+  const sym = ctx.checker.getSymbolAtLocation(id);
+  if (!sym) {
+    // Truly undeclared variable — throw ReferenceError at runtime
+    const tagIdx = ensureExnTag(ctx);
+    fctx.body.push({ op: "ref.null.extern" } as Instr);
+    fctx.body.push({ op: "throw", tagIdx } as unknown as Instr);
+    return { kind: "externref" };
+  }
+
+  // Graceful fallback for known but unimplemented globals (Symbol, Object,
+  // Reflect, etc.) — emit a type-appropriate default so compilation continues.
   const tsType = ctx.checker.getTypeAtLocation(id);
   const wasmType = resolveWasmType(ctx, tsType);
   if (wasmType.kind === "f64") {
@@ -12034,6 +12042,11 @@ function compileCallExpression(
             const savedReturnType = fctx.returnType;
             fctx.returnType = iifeWasmRetType;
 
+            // Hoist let/const with TDZ flags so accesses before init throw (#790)
+            hoistLetConstWithTdz(ctx, fctx, bodyStmts as unknown as ts.Statement[]);
+            // Hoist function declarations so they're available before textual position
+            hoistFunctionDeclarations(ctx, fctx, bodyStmts as unknown as ts.Statement[]);
+
             // Increase block depth so return→br targets the right level
             fctx.blockDepth++;
             for (const stmt of bodyStmts) {
@@ -12091,6 +12104,10 @@ function compileCallExpression(
             return iifeWasmRetType;
           } else {
             // Void IIFE — just compile inline
+            // Hoist let/const with TDZ flags so accesses before init throw (#790)
+            hoistLetConstWithTdz(ctx, fctx, bodyStmts as unknown as ts.Statement[]);
+            // Hoist function declarations so they're available before textual position
+            hoistFunctionDeclarations(ctx, fctx, bodyStmts as unknown as ts.Statement[]);
             for (const stmt of bodyStmts) {
               compileStatement(ctx, fctx, stmt);
             }
@@ -13696,6 +13713,10 @@ function compileIIFE(
   ctx.currentFunc = liftedFctx;
 
   if (ts.isBlock(body)) {
+    // Hoist var declarations and let/const with TDZ flags (#790)
+    hoistVarDeclarations(ctx, liftedFctx, body.statements);
+    hoistLetConstWithTdz(ctx, liftedFctx, body.statements);
+    hoistFunctionDeclarations(ctx, liftedFctx, body.statements);
     for (const stmt of body.statements) {
       compileStatement(ctx, liftedFctx, stmt);
     }
