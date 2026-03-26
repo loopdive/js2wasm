@@ -2,10 +2,10 @@
 
 **All spec-required errors are thrown: TypeError, RangeError, SyntaxError, ReferenceError.**
 
-- **Status**: Activatable
+- **Status**: Active
 - **Phase**: 1-2 (partially parallel with compilable, ramps up after)
 - **Target**: ~2,600 negative tests pass. Estimated +2,000 tests.
-- **Dependencies**: `compilable`
+- **Dependencies**: `compilable` (met — 94.4% compilable)
 
 ## Why
 
@@ -17,6 +17,8 @@ makes the error paths spec-compliant.
 
 | # | Title | Impact | Priority |
 |---|-------|--------|----------|
+| **783** | assert.throws failures: missing exception throwing | 3,293 FAIL | High |
+| **784** | Expected SyntaxError but compiled successfully | 2,657 FAIL | Medium |
 | **730** | Missing exception paths (Test262Error throws) | 708 FAIL | High |
 | **736** | SyntaxError detection at compile time | 316 FAIL | Medium |
 | **733** | RangeError validation in built-ins | 442 FAIL | Medium |

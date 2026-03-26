@@ -2,11 +2,12 @@
 
 **All test262 tests compile without errors.**
 
-- **Status**: Active
+- **Status**: Substantially complete
 - **Phase**: 1 (first priority — unblocks all other goals)
 - **Target**: CE 4,910 → < 500. Estimated +2,000 tests.
-- **Current**: 14,010 pass / 4,910 CE (as of 2026-03-23, clean cache)
+- **Current**: 16,187 pass / 1,761 CE (as of 2026-03-25). Compilable: 46,901/49,663 = 94.4%.
 - **Dependencies**: None — this is a root goal.
+- **Note**: CE reduced from 4,910 to 1,761 (-64%). Remaining CEs are harder patterns (type inference, complex destructuring, generator edge cases). Dependents (core-semantics, error-model, crash-free) are now unblocked.
 
 ## Why
 

@@ -344,22 +344,11 @@
       "id": 694,
       "title": "Migrate test262 runner to vitest with per-test disk cache",
       "priority": "low",
-      "status": "ready",
-      "depends_on": [
-        693
-      ],
-      "files": [],
-      "cluster": "Unclustered",
-      "goal": "platform"
-    },
-    {
-      "id": 695,
-      "title": "Emit proper exceptions for TypeError/ReferenceError/etc (4,738 FAIL)",
-      "priority": "low",
       "status": "done",
       "depends_on": [],
       "files": [],
-      "cluster": "Unclustered"
+      "cluster": "Unclustered",
+      "goal": "platform"
     },
     {
       "id": 696,
@@ -371,18 +360,6 @@
       "test262_fail": 4649,
       "cluster": "Unclustered",
       "goal": "spec-completeness"
-    },
-    {
-      "id": 697,
-      "title": "Struct type errors for non-class structs (944 CE residual)",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 944,
-      "test262_ce": 944,
-      "cluster": "Unclustered",
-      "goal": "compilable"
     },
     {
       "id": 699,
@@ -419,35 +396,12 @@
       "goal": "core-semantics"
     },
     {
-      "id": 720,
-      "title": "Wasm validation: i32.add expects i32, got f64 (96 CE)",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 96,
-      "test262_ce": 96,
-      "cluster": "Unclustered",
-      "goal": "compilable"
-    },
-    {
       "id": 721,
       "title": "Residual negative test false-pass (2,564 FAIL)",
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
       "files": [],
-      "cluster": "Unclustered",
-      "goal": "error-model"
-    },
-    {
-      "id": 723,
-      "title": "TDZ violations: throw ReferenceError before let/const init (230 FAIL)",
-      "priority": "high",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_fail": 230,
       "cluster": "Unclustered",
       "goal": "error-model"
     },
@@ -460,19 +414,6 @@
       "files": [],
       "cluster": "Unclustered",
       "goal": "platform"
-    },
-    {
-      "id": 728,
-      "title": "Null pointer dereference should throw TypeError, not trap (1,604 tests)",
-      "priority": "high",
-      "status": "ready",
-      "depends_on": [
-        695
-      ],
-      "files": [],
-      "test262_fail": 1604,
-      "cluster": "Unclustered",
-      "goal": "crash-free"
     },
     {
       "id": 729,
@@ -684,18 +625,6 @@
       "goal": "performance"
     },
     {
-      "id": 754,
-      "title": "RegExp_new import not registered from real TypeScript lib files (1,468 CE)",
-      "priority": "critical",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 1468,
-      "test262_ce": 1468,
-      "cluster": "Unclustered",
-      "goal": "compilable"
-    },
-    {
       "id": 761,
       "title": "Rest/spread elements silently dropped in destructuring (5 codegen paths)",
       "priority": "high",
@@ -737,18 +666,7 @@
       "compiler_errors": 240,
       "test262_ce": 240,
       "cluster": "Unclustered",
-      "goal": "compilable"
-    },
-    {
-      "id": 765,
-      "title": "Compile error triage: 4,443 remaining CEs by pattern",
-      "priority": "critical",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_ce": 4443,
-      "cluster": "Unclustered",
-      "goal": "compilable"
+      "goal": "async-model"
     },
     {
       "id": 766,
@@ -793,18 +711,6 @@
       "goal": "core-semantics"
     },
     {
-      "id": 772,
-      "title": "Insert missing extern.convert_any at call sites (1,299 CE)",
-      "priority": "critical",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "compiler_errors": 1299,
-      "test262_ce": 1299,
-      "cluster": "Unclustered",
-      "goal": "compilable"
-    },
-    {
       "id": 773,
       "title": "Monomorphize functions: compile with call-site types, not generic externref",
       "priority": "critical",
@@ -815,9 +721,84 @@
       "goal": "compilable"
     },
     {
-      "id": 774,
-      "title": "Missing early error checks: tests expect SyntaxError but compile successfully",
+      "id": 775,
+      "title": "Null pointer traps should be catchable TypeError (1,604 tests)",
       "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "compiler_errors": 7000,
+      "test262_fail": 1604,
+      "cluster": "Unclustered",
+      "goal": "crash-free"
+    },
+    {
+      "id": 778,
+      "title": "RuntimeError: illegal cast (135 tests)",
+      "priority": "medium",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_fail": 135,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 779,
+      "title": "Assert failures: tests compile and run but produce wrong values (8,700 tests)",
+      "priority": "critical",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_fail": 8700,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 780,
+      "title": "TypeError (null/undefined access) in built-in method dispatch (~9,128 tests)",
+      "priority": "critical",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_fail": 9128,
+      "cluster": "Unclustered",
+      "goal": "crash-free"
+    },
+    {
+      "id": 781,
+      "title": "TypeError (null/undefined access) in language constructs (~2,841 tests)",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_fail": 2841,
+      "cluster": "Unclustered",
+      "goal": "crash-free"
+    },
+    {
+      "id": 782,
+      "title": "Destructuring binding patterns produce wrong values (~3,487 tests)",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_fail": 3487,
+      "cluster": "Unclustered"
+    },
+    {
+      "id": 783,
+      "title": "assert.throws failures: missing exception throwing (~3,293 tests)",
+      "priority": "high",
+      "status": "ready",
+      "depends_on": [],
+      "files": [],
+      "test262_fail": 3293,
+      "cluster": "Unclustered",
+      "goal": "error-model"
+    },
+    {
+      "id": 784,
+      "title": "Expected SyntaxError but compiled successfully (~2,657 tests)",
+      "priority": "medium",
       "status": "ready",
       "depends_on": [],
       "files": [],
@@ -826,8 +807,8 @@
       "goal": "error-model"
     },
     {
-      "id": 775,
-      "title": "Null pointer traps should be catchable TypeError (1,604 tests)",
+      "id": 785,
+      "title": "Null pointer traps in compiled Wasm code (~1,604 tests)",
       "priority": "high",
       "status": "ready",
       "depends_on": [],
@@ -837,28 +818,24 @@
       "goal": "crash-free"
     },
     {
-      "id": 776,
-      "title": "\"not enough arguments on the stack for call\" (362 CE)",
+      "id": 786,
+      "title": "Multi-assertion failures: returned N > 2 (~1,183 tests)",
       "priority": "medium",
       "status": "ready",
       "depends_on": [],
       "files": [],
-      "compiler_errors": 362,
-      "test262_ce": 362,
-      "cluster": "Unclustered",
-      "goal": "compilable"
+      "test262_fail": 1183,
+      "cluster": "Unclustered"
     },
     {
-      "id": 777,
-      "title": "\"immutable global\" assignment error (240 CE)",
-      "priority": "medium",
+      "id": 787,
+      "title": "Wrong values in assert.sameValue and other first-assertion failures (~3,517 tests)",
+      "priority": "high",
       "status": "ready",
       "depends_on": [],
       "files": [],
-      "compiler_errors": 240,
-      "test262_ce": 240,
-      "cluster": "Unclustered",
-      "goal": "compilable"
+      "test262_fail": 3517,
+      "cluster": "Unclustered"
     }
   ],
   "links": [
@@ -895,20 +872,12 @@
       "target": 693
     },
     {
-      "source": 693,
-      "target": 694
-    },
-    {
       "source": 694,
       "target": 699
     },
     {
       "source": 699,
       "target": 700
-    },
-    {
-      "source": 695,
-      "target": 728
     },
     {
       "source": 678,
@@ -995,28 +964,26 @@
     {
       "id": "compilable",
       "title": "compilable",
-      "status": "active",
-      "target": "CE 5,982 → < 500. Estimated +2,000 tests",
+      "status": "blocked",
+      "target": "CE 4,910 → < 500. Estimated +2,000 tests",
       "depends_on": [],
       "issues": [
-        717,
+        854,
         501,
-        448,
-        201,
-        754,
-        772,
+        461,
+        380,
+        85,
         773,
-        411,
-        511,
-        444,
-        515,
         409,
         401,
         765,
+        515,
+        761,
         510,
         698,
-        697,
-        761,
+        684,
+        685,
+        686,
         405,
         406,
         287,
@@ -1025,16 +992,19 @@
         431,
         446,
         447,
+        448,
         445,
         420,
         413,
         404,
         433,
-        684,
-        685,
-        686,
+        754,
+        772,
+        511,
+        444,
+        411,
+        697,
         720,
-        764,
         769,
         776,
         777
@@ -1043,7 +1013,7 @@
     {
       "id": "core-semantics",
       "title": "core-semantics",
-      "status": "activatable",
+      "status": "active",
       "target": "Fix ~3,400 wrong-value failures. Estimated +2,500 tests",
       "depends_on": [
         "compilable"
@@ -1072,6 +1042,9 @@
         "compilable"
       ],
       "issues": [
+        780,
+        781,
+        785,
         775,
         728,
         512,
@@ -1083,12 +1056,14 @@
     {
       "id": "error-model",
       "title": "error-model",
-      "status": "activatable",
+      "status": "active",
       "target": "~2,600 negative tests pass. Estimated +2,000 tests",
       "depends_on": [
         "compilable"
       ],
       "issues": [
+        783,
+        784,
         730,
         736,
         733,
@@ -1328,23 +1303,7 @@
     },
     {
       "goal": "compilable",
-      "issue": 754
-    },
-    {
-      "goal": "compilable",
-      "issue": 772
-    },
-    {
-      "goal": "compilable",
       "issue": 773
-    },
-    {
-      "goal": "compilable",
-      "issue": 765
-    },
-    {
-      "goal": "compilable",
-      "issue": 697
     },
     {
       "goal": "compilable",
@@ -1361,22 +1320,6 @@
     {
       "goal": "compilable",
       "issue": 686
-    },
-    {
-      "goal": "compilable",
-      "issue": 720
-    },
-    {
-      "goal": "compilable",
-      "issue": 764
-    },
-    {
-      "goal": "compilable",
-      "issue": 776
-    },
-    {
-      "goal": "compilable",
-      "issue": 777
     },
     {
       "goal": "core-semantics",
@@ -1396,11 +1339,27 @@
     },
     {
       "goal": "crash-free",
-      "issue": 775
+      "issue": 780
     },
     {
       "goal": "crash-free",
-      "issue": 728
+      "issue": 781
+    },
+    {
+      "goal": "crash-free",
+      "issue": 785
+    },
+    {
+      "goal": "crash-free",
+      "issue": 775
+    },
+    {
+      "goal": "error-model",
+      "issue": 783
+    },
+    {
+      "goal": "error-model",
+      "issue": 784
     },
     {
       "goal": "error-model",
@@ -1413,14 +1372,6 @@
     {
       "goal": "error-model",
       "issue": 733
-    },
-    {
-      "goal": "error-model",
-      "issue": 723
-    },
-    {
-      "goal": "error-model",
-      "issue": 774
     },
     {
       "goal": "error-model",
@@ -1698,11 +1649,27 @@
     },
     {
       "goal": "compilable",
+      "issue": 780
+    },
+    {
+      "goal": "compilable",
+      "issue": 781
+    },
+    {
+      "goal": "compilable",
+      "issue": 785
+    },
+    {
+      "goal": "compilable",
       "issue": 775
     },
     {
       "goal": "compilable",
-      "issue": 728
+      "issue": 783
+    },
+    {
+      "goal": "compilable",
+      "issue": 784
     },
     {
       "goal": "compilable",
@@ -1715,14 +1682,6 @@
     {
       "goal": "compilable",
       "issue": 733
-    },
-    {
-      "goal": "compilable",
-      "issue": 723
-    },
-    {
-      "goal": "compilable",
-      "issue": 774
     },
     {
       "goal": "compilable",
@@ -1993,5 +1952,5 @@
       "issue": 652
     }
   ],
-  "generated": "2026-03-23T03:33:18.266Z"
+  "generated": "2026-03-26T00:33:05.781Z"
 }
