@@ -10432,11 +10432,11 @@ function compileCallExpression(
           fctx.body = savedBody;
 
           if (callReturnType === VOID_RESULT) {
-            // Void method: if null, throw TypeError; else call
+            // Void method: if null, skip; else call
             fctx.body.push({
               op: "if",
               blockType: { kind: "empty" },
-              then: typeErrorThrowInstrs(ctx),
+              then: [] as Instr[],
               else: elseInstrs,
             });
             return VOID_RESULT;
@@ -10445,11 +10445,10 @@ function compileCallExpression(
               callReturnType.kind === "ref"
                 ? { kind: "ref_null", typeIdx: (callReturnType as any).typeIdx }
                 : callReturnType;
-            // throw is divergent, so the then branch is valid without producing a value
             fctx.body.push({
               op: "if",
               blockType: { kind: "val" as const, type: resultType },
-              then: typeErrorThrowInstrs(ctx),
+              then: defaultValueInstrs(resultType),
               else: elseInstrs,
             });
             return resultType;
@@ -10572,7 +10571,7 @@ function compileCallExpression(
               fctx.body.push({
                 op: "if",
                 blockType: { kind: "empty" },
-                then: typeErrorThrowInstrs(ctx),
+                then: [] as Instr[],
                 else: elseInstrs,
               });
               return VOID_RESULT;
@@ -10587,7 +10586,7 @@ function compileCallExpression(
               fctx.body.push({
                 op: "if",
                 blockType: { kind: "val" as const, type: resultType },
-                then: typeErrorThrowInstrs(ctx),
+                then: defaultValueInstrs(resultType),
                 else: elseInstrs,
               });
               return resultType;
@@ -10973,9 +10972,8 @@ function compileCallExpression(
         }
 
         // General fallback for any method call on any/externref receiver:
-        // compile the receiver and all arguments for side effects, then throw
-        // TypeError (calling a non-function). This matches JS semantics where
-        // accessing an unknown property returns undefined and calling it throws.
+        // compile the receiver and all arguments for side effects, return externref.
+        // This avoids "Unsupported call expression" errors for unresolvable methods.
         {
           const recvType = compileExpression(ctx, fctx, propAccess.expression);
           if (recvType && recvType !== VOID_RESULT) {
@@ -10987,12 +10985,8 @@ function compileCallExpression(
               fctx.body.push({ op: "drop" });
             }
           }
-          // Throw TypeError: o.foo is not a function
-          fctx.body.push(...typeErrorThrowInstrs(ctx));
-          fctx.body.push({ op: "unreachable" });
-          // Return VOID_RESULT (not null!) to prevent compileExpression from
-          // rolling back the throw instructions. throw+unreachable is divergent.
-          return VOID_RESULT;
+          fctx.body.push({ op: "ref.null.extern" });
+          return { kind: "externref" };
         }
       }
     }
@@ -12150,7 +12144,7 @@ function compileCallExpression(
               fctx.body.push({
                 op: "if",
                 blockType: { kind: "empty" },
-                then: typeErrorThrowInstrs(ctx),
+                then: [] as Instr[],
                 else: elseInstrs,
               });
               return VOID_RESULT;
@@ -12165,7 +12159,7 @@ function compileCallExpression(
               fctx.body.push({
                 op: "if",
                 blockType: { kind: "val" as const, type: resultType },
-                then: typeErrorThrowInstrs(ctx),
+                then: defaultValueInstrs(resultType),
                 else: elseInstrs,
               });
               return resultType;
@@ -17575,7 +17569,6 @@ import {
   emitBoundsGuardedArraySet,
   emitNullCheckThrow,
   emitNullGuardedStructGet,
-  typeErrorThrowInstrs,
 } from "./property-access.js";
 export function resolveStructName(
   ctx: CodegenContext,
