@@ -416,19 +416,6 @@
       "goal": "platform"
     },
     {
-      "id": 732,
-      "title": "hasOwnProperty correctness (520 tests)",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [
-        678
-      ],
-      "files": [],
-      "test262_fail": 520,
-      "cluster": "Unclustered",
-      "goal": "property-model"
-    },
-    {
       "id": 733,
       "title": "RangeError validation in built-ins (442 tests)",
       "priority": "medium",
@@ -438,17 +425,6 @@
       "test262_fail": 442,
       "cluster": "Unclustered",
       "goal": "error-model"
-    },
-    {
-      "id": 734,
-      "title": "Array method correctness (343 tests)",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_fail": 343,
-      "cluster": "Unclustered",
-      "goal": "builtin-methods"
     },
     {
       "id": 735,
@@ -770,10 +746,6 @@
       "target": 700
     },
     {
-      "source": 678,
-      "target": 732
-    },
-    {
       "source": 680,
       "target": 735
     },
@@ -819,7 +791,6 @@
         "error-model"
       ],
       "issues": [
-        734,
         763,
         731,
         738,
@@ -1058,7 +1029,6 @@
         "core-semantics"
       ],
       "issues": [
-        732,
         739,
         488,
         359,
@@ -1150,10 +1120,6 @@
     {
       "goal": "async-model",
       "issue": 675
-    },
-    {
-      "goal": "builtin-methods",
-      "issue": 734
     },
     {
       "goal": "builtin-methods",
@@ -1337,10 +1303,6 @@
     },
     {
       "goal": "property-model",
-      "issue": 732
-    },
-    {
-      "goal": "property-model",
       "issue": 739
     },
     {
@@ -1423,10 +1385,6 @@
     },
     {
       "goal": "core-semantics",
-      "issue": 734
-    },
-    {
-      "goal": "core-semantics",
       "issue": 763
     },
     {
@@ -1440,10 +1398,6 @@
     {
       "goal": "core-semantics",
       "issue": 661
-    },
-    {
-      "goal": "error-model",
-      "issue": 734
     },
     {
       "goal": "error-model",
@@ -1607,10 +1561,6 @@
     },
     {
       "goal": "core-semantics",
-      "issue": 732
-    },
-    {
-      "goal": "core-semantics",
       "issue": 739
     },
     {
@@ -1762,5 +1712,5 @@
       "issue": 652
     }
   ],
-  "generated": "2026-03-26T01:37:34.057Z"
+  "generated": "2026-03-26T01:45:27.063Z"
 }

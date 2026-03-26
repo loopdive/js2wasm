@@ -461,5 +461,7 @@
 | 512 | 2026-03-25 | RuntimeError: illegal cast (~683 FAIL)                                                            | Wave       |
 | 441 | 2026-03-25 | RuntimeError: dereferencing a null pointer residual (88 FAIL)                                     | Wave       |
 | 315 | 2026-03-25 | Wasm validation error audit -- type mismatches                                                    | Wave       |
+| 732 | 2026-03-25 | hasOwnProperty correctness (520 tests)                                                            | Wave       |
+| 734 | 2026-03-25 | Array method correctness (343 tests)                                                              | Wave       |
 
 

@@ -18,7 +18,7 @@ these methods. Getting them right requires both correct return values
 
 | # | Title | Impact | Priority |
 |---|-------|--------|----------|
-| **734** | Array method correctness (edge cases) | 343 FAIL | High |
+| ~~734~~ | ~~Array method correctness (edge cases)~~ | ~~343 FAIL~~ | ~~Done~~ |
 | **763** | RegExp runtime methods (exec, match, replace, split) | ~400 FAIL | High |
 | **731** | Function/class .name property | 558 FAIL | Medium |
 | **738** | instanceof correctness | 276 FAIL | Medium |
