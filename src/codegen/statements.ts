@@ -816,13 +816,58 @@ function emitNullGuard(
 }
 
 /**
+ * Ensure __extern_is_undefined import is available.
+ * Returns the function index, or undefined if registration failed.
+ * JS impl: (v: unknown) => v === undefined ? 1 : 0
+ */
+function ensureExternIsUndefined(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+): number | undefined {
+  let idx = ctx.funcMap.get("__extern_is_undefined");
+  if (idx !== undefined) return idx;
+  const importsBefore = ctx.numImportFuncs;
+  const fnType = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "i32" }]);
+  addImport(ctx, "env", "__extern_is_undefined", { kind: "func", typeIdx: fnType });
+  shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+  return ctx.funcMap.get("__extern_is_undefined");
+}
+
+/**
+ * Emit a check for whether an externref value should trigger a default value.
+ * Per JS spec, destructuring defaults apply when the value is `undefined`.
+ * We check both ref.is_null (wasm null, e.g. uninitialized array slots) and
+ * JS undefined (non-null externref wrapping the JS undefined value).
+ *
+ * Precondition: externref value on the stack and saved in tmpLocal.
+ * Postcondition: i32 on the stack (1 = use default, 0 = has value).
+ */
+function emitExternrefDefaultCheck(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  tmpLocal: number,
+): void {
+  const isUndefIdx = ensureExternIsUndefined(ctx, fctx);
+  if (isUndefIdx !== undefined) {
+    // Check: ref.is_null(val) || __extern_is_undefined(val)
+    fctx.body.push({ op: "ref.is_null" } as Instr);
+    fctx.body.push({ op: "local.get", index: tmpLocal });
+    fctx.body.push({ op: "call", funcIdx: isUndefIdx });
+    fctx.body.push({ op: "i32.or" } as Instr);
+  } else {
+    // Fallback: just ref.is_null
+    fctx.body.push({ op: "ref.is_null" } as Instr);
+  }
+}
+
+/**
  * Emit a default-value check for a destructured binding.
  *
  * The stack must contain the extracted field/element value.  For externref
- * types we check `ref.is_null` — if null we evaluate the initializer,
- * otherwise keep the extracted value.  For f64 we check for NaN (the
- * "undefined" sentinel).  For i32 there is no reliable sentinel so we just
- * assign directly.
+ * types we check `ref.is_null || __extern_is_undefined` — JS destructuring
+ * defaults apply when the value is `undefined`.  For f64 we check for NaN
+ * (the "undefined" sentinel).  For i32 there is no reliable sentinel so we
+ * just assign directly.
  *
  * @param fieldType - the Wasm type of the value currently on the stack
  * @param localIdx  - destination local for the bound variable
@@ -842,7 +887,7 @@ function emitDefaultValueCheck(
   if (fieldType.kind === "externref") {
     const tmpField = allocLocal(fctx, `__dflt_${fctx.locals.length}`, fieldType);
     fctx.body.push({ op: "local.tee", index: tmpField });
-    fctx.body.push({ op: "ref.is_null" } as Instr);
+    emitExternrefDefaultCheck(ctx, fctx, tmpField);
     const thenInstrs = collectInstrs(fctx, () => {
       compileExpression(ctx, fctx, initializer, hintType);
       fctx.body.push({ op: "local.set", index: localIdx } as Instr);
@@ -861,6 +906,24 @@ function emitDefaultValueCheck(
     fctx.body.push({ op: "local.tee", index: tmpField });
     fctx.body.push({ op: "local.get", index: tmpField });
     fctx.body.push({ op: "f64.ne" });
+    const thenInstrs = collectInstrs(fctx, () => {
+      compileExpression(ctx, fctx, initializer, hintType);
+      fctx.body.push({ op: "local.set", index: localIdx } as Instr);
+    });
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: thenInstrs,
+      else: [
+        { op: "local.get", index: tmpField } as Instr,
+        { op: "local.set", index: localIdx } as Instr,
+      ],
+    });
+  } else if (fieldType.kind === "ref_null" || fieldType.kind === "ref") {
+    // Nullable ref types: check ref.is_null for default value
+    const tmpField = allocLocal(fctx, `__dflt_${fctx.locals.length}`, fieldType);
+    fctx.body.push({ op: "local.tee", index: tmpField });
+    fctx.body.push({ op: "ref.is_null" } as Instr);
     const thenInstrs = collectInstrs(fctx, () => {
       compileExpression(ctx, fctx, initializer, hintType);
       fctx.body.push({ op: "local.set", index: localIdx } as Instr);
@@ -1223,11 +1286,11 @@ function compileExternrefObjectDestructuringDecl(
       }
       const localType = getLocalType(fctx, localIdx);
 
-      // Handle default value
+      // Handle default value: check ref.is_null || __extern_is_undefined
       if (element.initializer) {
         const tmpElem = allocLocal(fctx, `__ext_obj_dflt_${fctx.locals.length}`, elemType);
         fctx.body.push({ op: "local.tee", index: tmpElem });
-        fctx.body.push({ op: "ref.is_null" } as Instr);
+        emitExternrefDefaultCheck(ctx, fctx, tmpElem);
         const thenInstrs = collectInstrs(fctx, () => {
           compileExpression(ctx, fctx, element.initializer!, localType ?? elemType);
           fctx.body.push({ op: "local.set", index: localIdx! } as Instr);
@@ -1252,9 +1315,17 @@ function compileExternrefObjectDestructuringDecl(
         fctx.body.push({ op: "local.set", index: localIdx });
       }
     } else if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
-      // Nested destructuring on externref — drop for now
-      fctx.body.push({ op: "drop" });
+      // Nested destructuring on externref — recursively destructure
+      const nestedLocal = allocLocal(fctx, `__ext_nested_${fctx.locals.length}`, elemType);
+      fctx.body.push({ op: "local.set", index: nestedLocal });
       ensureBindingLocals(ctx, fctx, element.name);
+      if (ts.isObjectBindingPattern(element.name)) {
+        fctx.body.push({ op: "local.get", index: nestedLocal });
+        compileExternrefObjectDestructuringDecl(ctx, fctx, element.name, elemType);
+      } else {
+        fctx.body.push({ op: "local.get", index: nestedLocal });
+        compileExternrefArrayDestructuringDecl(ctx, fctx, element.name, elemType);
+      }
     }
   }
 
@@ -1316,8 +1387,42 @@ function compileExternrefArrayDestructuringDecl(
     if (ts.isOmittedExpression(element)) continue;
     if (!ts.isBindingElement(element)) continue;
 
-    // Handle rest element — skip for externref (not supported yet)
-    if (element.dotDotDotToken) continue;
+    // Handle rest element: const [...rest] = arr
+    // Use __extern_get to build a JS array slice from index i onwards
+    if (element.dotDotDotToken) {
+      if (ts.isIdentifier(element.name)) {
+        const restName = element.name.text;
+        let restIdx = fctx.localMap.get(restName);
+        if (restIdx === undefined) {
+          restIdx = allocLocal(fctx, restName, { kind: "externref" });
+        }
+        // Use Array.prototype.slice via __extern_call_slice if available,
+        // or build rest via __extern_get in a loop
+        // For now, use __extern_get to collect: rest = arr.slice(i)
+        // We need a host helper for slicing — just store the original array for now
+        // and let the JS side handle .slice() via externref
+        let sliceIdx = ctx.funcMap.get("__extern_slice");
+        if (sliceIdx === undefined) {
+          const importsBefore = ctx.numImportFuncs;
+          const sliceType = addFuncType(ctx,
+            [{ kind: "externref" }, { kind: "f64" }],
+            [{ kind: "externref" }]);
+          addImport(ctx, "env", "__extern_slice", { kind: "func", typeIdx: sliceType });
+          shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+          sliceIdx = ctx.funcMap.get("__extern_slice");
+          // Refresh other indices
+          boxIdx = ctx.funcMap.get("__box_number");
+          getIdx = ctx.funcMap.get("__extern_get");
+        }
+        if (sliceIdx !== undefined) {
+          fctx.body.push({ op: "local.get", index: tmpLocal });
+          fctx.body.push({ op: "f64.const", value: i });
+          fctx.body.push({ op: "call", funcIdx: sliceIdx });
+          fctx.body.push({ op: "local.set", index: restIdx });
+        }
+      }
+      continue;
+    }
 
     // Emit: __extern_get(tmpLocal, box(i)) -> externref
     fctx.body.push({ op: "local.get", index: tmpLocal });
@@ -1336,10 +1441,11 @@ function compileExternrefArrayDestructuringDecl(
       const localType = getLocalType(fctx, localIdx);
 
       // Handle default value: const [a = defaultVal] = arr
+      // Check ref.is_null || __extern_is_undefined (JS undefined != wasm null)
       if (element.initializer) {
         const tmpElem = allocLocal(fctx, `__ext_dflt_${fctx.locals.length}`, elemType);
         fctx.body.push({ op: "local.tee", index: tmpElem });
-        fctx.body.push({ op: "ref.is_null" } as Instr);
+        emitExternrefDefaultCheck(ctx, fctx, tmpElem);
         const thenInstrs = collectInstrs(fctx, () => {
           compileExpression(ctx, fctx, element.initializer!, localType ?? elemType);
           fctx.body.push({ op: "local.set", index: localIdx! } as Instr);
@@ -1364,10 +1470,17 @@ function compileExternrefArrayDestructuringDecl(
         fctx.body.push({ op: "local.set", index: localIdx });
       }
     } else if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
-      // Nested destructuring — store element, then let the caller re-enter destructuring
-      // For now, just drop the element since nested destructuring on externref is complex
-      fctx.body.push({ op: "drop" });
+      // Nested destructuring on externref — recursively destructure
+      const nestedLocal = allocLocal(fctx, `__ext_arr_nested_${fctx.locals.length}`, elemType);
+      fctx.body.push({ op: "local.set", index: nestedLocal });
       ensureBindingLocals(ctx, fctx, element.name);
+      if (ts.isObjectBindingPattern(element.name)) {
+        fctx.body.push({ op: "local.get", index: nestedLocal });
+        compileExternrefObjectDestructuringDecl(ctx, fctx, element.name, elemType);
+      } else {
+        fctx.body.push({ op: "local.get", index: nestedLocal });
+        compileExternrefArrayDestructuringDecl(ctx, fctx, element.name, elemType);
+      }
     }
   }
 }

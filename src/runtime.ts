@@ -73,6 +73,8 @@ function resolveImport(
       if (name === "__extern_get") return (obj: any, key: any) => (obj == null ? undefined : obj[key]);
       if (name === "__extern_set") return (obj: any, key: any, val: any) => { if (obj != null) obj[key] = val; };
       if (name === "__extern_length") return (obj: any) => (obj == null ? 0 : obj.length);
+      if (name === "__extern_is_undefined") return (v: any) => v === undefined ? 1 : 0;
+      if (name === "__extern_slice") return (arr: any, start: number) => Array.isArray(arr) ? arr.slice(start) : [];
       // Object.defineProperty host import — flags is a bitmask:
       //   bit 0: writable, bit 1: enumerable, bit 2: configurable
       //   bit 3: writable specified, bit 4: enumerable specified, bit 5: configurable specified

@@ -59,6 +59,8 @@ export function buildImports(result: CompileResult): WebAssembly.Imports {
     __extern_get: (obj: any, key: any) => (obj == null ? undefined : obj[key]),
     __extern_set: (obj: any, key: any, val: any) => { if (obj != null) obj[key] = val; },
     __extern_length: (obj: any) => (obj == null ? 0 : obj.length),
+    __extern_is_undefined: (v: any) => v === undefined ? 1 : 0,
+    __extern_slice: (arr: any, start: number) => Array.isArray(arr) ? arr.slice(start) : [],
     JSON_stringify: (v: any) => JSON.stringify(v),
     JSON_parse: (s: any) => JSON.parse(s),
     // Generator support: buffer management and generator creation
