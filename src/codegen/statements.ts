@@ -4753,12 +4753,20 @@ function compileNestedFunctionDeclaration(
       liftedFctx.localMap.set(liftedFctx.params[i]!.name, i);
     }
 
-    // Register mutable captures as boxed so reads/writes use struct.get/set
+    // Register mutable captures as boxed so reads/writes use struct.get/set.
+    // Also register non-mutable captures that are already boxed in the outer
+    // scope, so the body code dereferences through the ref cell.
     for (const cap of captures) {
       if (cap.mutable) {
         const refCellTypeIdx = getOrRegisterRefCellType(ctx, cap.type);
         if (!liftedFctx.boxedCaptures) liftedFctx.boxedCaptures = new Map();
         liftedFctx.boxedCaptures.set(cap.name, { refCellTypeIdx, valType: cap.type });
+      } else {
+        const outerBoxed = fctx.boxedCaptures?.get(cap.name);
+        if (outerBoxed && (cap.type.kind === "ref" || cap.type.kind === "ref_null")) {
+          if (!liftedFctx.boxedCaptures) liftedFctx.boxedCaptures = new Map();
+          liftedFctx.boxedCaptures.set(cap.name, { refCellTypeIdx: outerBoxed.refCellTypeIdx, valType: outerBoxed.valType });
+        }
       }
     }
 
