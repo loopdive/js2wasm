@@ -1132,6 +1132,101 @@ export function compilePropertyAccess(
         }
         return fieldType;
       }
+
+      // ── Prototype chain walk (#799b) ──────────────────────────────
+      // Field not found on this struct at compile time. Walk the __proto__
+      // chain: get the __proto__ externref field, and if non-null, use
+      // __extern_get(proto, propName) to look up the property dynamically.
+      const protoFieldIdx = fields.findIndex(f => f.name === "__proto__");
+      if (protoFieldIdx !== -1) {
+        const protoAccessType = ctx.checker.getTypeAtLocation(expr);
+        const protoResultWasm = resolveWasmType(ctx, protoAccessType);
+        const effectiveResult: ValType = (protoResultWasm.kind === "f64" || protoResultWasm.kind === "i32")
+          ? protoResultWasm : { kind: "externref" };
+
+        const getIdx = ensureLateImport(ctx, "__extern_get",
+          [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+        let unboxIdx: number | undefined;
+        if (effectiveResult.kind === "f64" || effectiveResult.kind === "i32") {
+          unboxIdx = ensureLateImport(ctx, "__unbox_number",
+            [{ kind: "externref" }], [{ kind: "f64" }]);
+        }
+        flushLateImportShifts(ctx, fctx);
+
+        if (getIdx !== undefined) {
+          const objResult = compileExpression(ctx, fctx, expr.expression);
+
+          // Store in anyref for null-check + struct type dispatch
+          const objLocal = allocLocal(fctx, `__pobj_${fctx.locals.length}`, { kind: "anyref" });
+          // If the expression returned externref, convert to anyref first
+          if (objResult && objResult.kind === "externref") {
+            fctx.body.push({ op: "any.convert_extern" } as Instr);
+          }
+          fctx.body.push({ op: "local.set", index: objLocal });
+
+          const protoLocal = allocLocal(fctx, `__proto_${fctx.locals.length}`, { kind: "externref" });
+
+          // Null check the object
+          fctx.body.push({ op: "local.get", index: objLocal });
+          fctx.body.push({ op: "ref.is_null" });
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: [
+              // Null object → null proto
+              { op: "ref.null.extern" } as Instr,
+              { op: "local.set", index: protoLocal } as Instr,
+            ],
+            else: [
+              // Try to cast to expected struct type and get __proto__
+              { op: "local.get", index: objLocal } as Instr,
+              { op: "ref.test", typeIdx: structTypeIdx } as Instr,
+              {
+                op: "if",
+                blockType: { kind: "empty" },
+                then: [
+                  { op: "local.get", index: objLocal } as Instr,
+                  { op: "ref.cast", typeIdx: structTypeIdx } as Instr,
+                  { op: "struct.get", typeIdx: structTypeIdx, fieldIdx: protoFieldIdx } as Instr,
+                  { op: "local.set", index: protoLocal } as Instr,
+                ],
+                else: [
+                  // Wrong struct type — try alternate structs that have __proto__
+                  { op: "ref.null.extern" } as Instr,
+                  { op: "local.set", index: protoLocal } as Instr,
+                ],
+              } as Instr,
+            ],
+          });
+
+          // If proto is non-null, call __extern_get(proto, propName)
+          addStringConstantGlobal(ctx, propName);
+          const strGlobalIdx = ctx.stringGlobalMap.get(propName);
+
+          fctx.body.push({ op: "local.get", index: protoLocal });
+          fctx.body.push({ op: "ref.is_null" });
+          const protoDefaultInstrs = defaultValueInstrs(effectiveResult);
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "val" as const, type: effectiveResult },
+            then: protoDefaultInstrs,
+            else: [
+              { op: "local.get", index: protoLocal } as Instr,
+              ...(strGlobalIdx !== undefined
+                ? [{ op: "global.get", index: strGlobalIdx } as Instr]
+                : [{ op: "ref.null.extern" } as Instr]),
+              { op: "call", funcIdx: getIdx } as Instr,
+              ...(effectiveResult.kind === "f64" && unboxIdx !== undefined
+                ? [{ op: "call", funcIdx: unboxIdx } as Instr]
+                : effectiveResult.kind === "i32" && unboxIdx !== undefined
+                  ? [{ op: "call", funcIdx: unboxIdx } as Instr, { op: "i32.trunc_sat_f64_s" } as unknown as Instr]
+                  : []),
+            ],
+          });
+
+          return effectiveResult;
+        }
+      }
     }
   }
 
