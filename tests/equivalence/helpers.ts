@@ -48,6 +48,13 @@ export function buildImports(result: CompileResult): WebAssembly.Imports {
     __typeof_string: (v: unknown) => (typeof v === "string" ? 1 : 0),
     __typeof_boolean: (v: unknown) => (typeof v === "boolean" ? 1 : 0),
     __typeof: (v: unknown) => typeof v,
+    __instanceof: (v: any, ctorName: string) => {
+      try {
+        const ctor = (globalThis as any)[ctorName];
+        if (typeof ctor !== "function") return 0;
+        return v instanceof ctor ? 1 : 0;
+      } catch { return 0; }
+    },
     __is_truthy: (v: unknown) => (v ? 1 : 0),
     parseFloat: (s: any) => parseFloat(String(s)),
     string_compare: (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0),
