@@ -12771,7 +12771,7 @@ function compileSuperCall(
  * variable not yet in localMap, so identifiers are valid before their
  * declaration site (JavaScript var-hoisting semantics).
  */
-function hoistVarDeclarations(
+export function hoistVarDeclarations(
   ctx: CodegenContext,
   fctx: FunctionContext,
   stmts: ts.NodeArray<ts.Statement> | ts.Statement[],
