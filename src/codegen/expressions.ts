@@ -10364,13 +10364,20 @@ function compileCallExpression(
       if (funcIdx !== undefined) {
         // Push self (the receiver) as first argument
         let recvType = compileExpression(ctx, fctx, propAccess.expression);
+        // Track whether receiver went through emitGuardedRefCast — if so, null
+        // means "wrong struct type" (not genuinely null), so we should NOT throw
+        // TypeError on null after cast.
+        let receiverWasCast = false;
         // If receiver is externref but the method expects a struct ref, coerce
         if (recvType && recvType.kind === "externref") {
           const structTypeIdx = ctx.structMap.get(receiverClassName);
           if (structTypeIdx !== undefined) {
+            // Check for null BEFORE the guarded cast — only genuine null should throw TypeError
+            emitNullCheckThrow(ctx, fctx, { kind: "externref" });
             fctx.body.push({ op: "any.convert_extern" } as Instr);
             emitGuardedRefCast(fctx, structTypeIdx);
             recvType = { kind: "ref_null", typeIdx: structTypeIdx };
+            receiverWasCast = true;
           }
         }
         // Null-guard: if receiver is ref_null, check for null before calling method
@@ -10432,11 +10439,11 @@ function compileCallExpression(
           fctx.body = savedBody;
 
           if (callReturnType === VOID_RESULT) {
-            // Void method: if null, skip; else call
+            // Void method: if null after cast, skip (wrong type); if genuinely null, throw TypeError
             fctx.body.push({
               op: "if",
               blockType: { kind: "empty" },
-              then: [] as Instr[],
+              then: receiverWasCast ? ([] as Instr[]) : typeErrorThrowInstrs(ctx),
               else: elseInstrs,
             });
             return VOID_RESULT;
@@ -10445,10 +10452,11 @@ function compileCallExpression(
               callReturnType.kind === "ref"
                 ? { kind: "ref_null", typeIdx: (callReturnType as any).typeIdx }
                 : callReturnType;
+            // throw is divergent, so the then branch is valid without producing a value
             fctx.body.push({
               op: "if",
               blockType: { kind: "val" as const, type: resultType },
-              then: defaultValueInstrs(resultType),
+              then: receiverWasCast ? defaultValueInstrs(resultType) : typeErrorThrowInstrs(ctx),
               else: elseInstrs,
             });
             return resultType;
@@ -10568,10 +10576,11 @@ function compileCallExpression(
             fctx.body = savedBody;
 
             if (callReturnType === VOID_RESULT) {
+              // Void method: if genuinely null, throw TypeError (#789)
               fctx.body.push({
                 op: "if",
                 blockType: { kind: "empty" },
-                then: [] as Instr[],
+                then: typeErrorThrowInstrs(ctx),
                 else: elseInstrs,
               });
               return VOID_RESULT;
@@ -10583,10 +10592,11 @@ function compileCallExpression(
                       typeIdx: (callReturnType as any).typeIdx,
                     }
                   : callReturnType;
+              // throw is divergent, valid without producing a value (#789)
               fctx.body.push({
                 op: "if",
                 blockType: { kind: "val" as const, type: resultType },
-                then: defaultValueInstrs(resultType),
+                then: typeErrorThrowInstrs(ctx),
                 else: elseInstrs,
               });
               return resultType;
@@ -10972,8 +10982,9 @@ function compileCallExpression(
         }
 
         // General fallback for any method call on any/externref receiver:
-        // compile the receiver and all arguments for side effects, return externref.
-        // This avoids "Unsupported call expression" errors for unresolvable methods.
+        // compile the receiver and all arguments for side effects, then throw
+        // TypeError (calling a non-function). This matches JS semantics where
+        // accessing an unknown property returns undefined and calling it throws.
         {
           const recvType = compileExpression(ctx, fctx, propAccess.expression);
           if (recvType && recvType !== VOID_RESULT) {
@@ -10985,8 +10996,12 @@ function compileCallExpression(
               fctx.body.push({ op: "drop" });
             }
           }
-          fctx.body.push({ op: "ref.null.extern" });
-          return { kind: "externref" };
+          // Throw TypeError: o.foo is not a function
+          fctx.body.push(...typeErrorThrowInstrs(ctx));
+          fctx.body.push({ op: "unreachable" });
+          // Return VOID_RESULT (not null!) to prevent compileExpression from
+          // rolling back the throw instructions. throw+unreachable is divergent.
+          return VOID_RESULT;
         }
       }
     }
@@ -12141,10 +12156,11 @@ function compileCallExpression(
             fctx.body = savedBody;
 
             if (callReturnType === VOID_RESULT) {
+              // Genuinely null receiver: throw TypeError (#789)
               fctx.body.push({
                 op: "if",
                 blockType: { kind: "empty" },
-                then: [] as Instr[],
+                then: typeErrorThrowInstrs(ctx),
                 else: elseInstrs,
               });
               return VOID_RESULT;
@@ -12156,10 +12172,11 @@ function compileCallExpression(
                       typeIdx: (callReturnType as any).typeIdx,
                     }
                   : callReturnType;
+              // throw is divergent, valid without producing a value (#789)
               fctx.body.push({
                 op: "if",
                 blockType: { kind: "val" as const, type: resultType },
-                then: defaultValueInstrs(resultType),
+                then: typeErrorThrowInstrs(ctx),
                 else: elseInstrs,
               });
               return resultType;
@@ -17569,6 +17586,7 @@ import {
   emitBoundsGuardedArraySet,
   emitNullCheckThrow,
   emitNullGuardedStructGet,
+  typeErrorThrowInstrs,
 } from "./property-access.js";
 export function resolveStructName(
   ctx: CodegenContext,
