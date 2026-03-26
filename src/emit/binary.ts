@@ -371,6 +371,10 @@ export function encodeFieldDef(f: FieldDef, enc: WasmEncoder): void {
 
 export function encodeStorageType(t: ValType, enc: WasmEncoder): void {
   // Packed storage types (i8, i16) are only valid in struct fields and array elements
+  if (t.kind === "i8") {
+    enc.byte(TYPE.i8);
+    return;
+  }
   if (t.kind === "i16") {
     enc.byte(TYPE.i16);
     return;
@@ -420,6 +424,10 @@ export function encodeValType(t: ValType, enc: WasmEncoder): void {
     case "anyref":
       enc.byte(TYPE.ref_null);
       enc.byte(TYPE.any);
+      break;
+    case "i8":
+      // i8 is only valid as a packed storage type — encode as i32 fallback
+      enc.byte(TYPE.i32);
       break;
     case "i16":
       // i16 is only valid as a packed storage type in struct fields/array elements,

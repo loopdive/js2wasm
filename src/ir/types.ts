@@ -82,6 +82,7 @@ export type ValType =
   | { kind: "f32" }
   | { kind: "f64" }
   | { kind: "v128" }
+  | { kind: "i8" }
   | { kind: "i16" }
   | { kind: "ref"; typeIdx: number }
   | { kind: "ref_null"; typeIdx: number }

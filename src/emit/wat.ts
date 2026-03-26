@@ -247,6 +247,7 @@ function formatTypeDef(t: TypeDef, idx: number): string {
 }
 
 function formatStorageType(t: ValType): string {
+  if (t.kind === "i8") return "i8";
   if (t.kind === "i16") return "i16";
   return formatValType(t);
 }
@@ -282,6 +283,8 @@ function formatValType(t: ValType): string {
       return `(ref null ${t.typeIdx})`;
     case "v128":
       return "v128";
+    case "i8":
+      return "i8";
     case "i16":
       return "i16";
   }
