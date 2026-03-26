@@ -10,14 +10,14 @@ type: project
 
 All agents run as **teammates** in a single team (not subagents). This enables direct messaging between developers, tester, and PO for coordination — especially file conflict avoidance and test requests.
 
-## Memory Budget (24GB Mac host)
+## Memory Budget
 
-- **Container**: `--memory=18g --memory-swap=34g` (18GB RAM + 16GB swap)
+- **Container**: `--memory=14g --memory-swap=28g` (14GB RAM + 14GB swap)
 - **NODE_OPTIONS**: `--max-old-space-size=3072`
-- **Test262**: default 3 workers (~9GB total), up to 5 solo (`TEST262_WORKERS=5`)
+- **Test262**: default 2 workers (~5.5GB total), must stay under 6GB. Pool workers capped at 1GB each.
 - **Dev agents**: ~2.5GB each
-- **Max agents**: 4 devs without test262, 3 devs with test262 running
-- **Stop dispatching** above 90% context/token usage — focus on cherry-picks only
+- **Max agents**: 4 devs (devs don't run tests, ~500MB each), 0 devs during test262 run
+- **Stop dispatching** above 90% context/token usage — focus on merges only
 - Always check `free -h` before launching agents
 
 ## Roles
@@ -34,21 +34,21 @@ Opus model. **Only touches `plan/` directory.** Creates/updates issues, manages 
 ### Developer (teammate, worktree)
 Opus model, worktree isolation. Implements fixes in `src/` and `tests/`. Communicates with other devs and tester via messages.
 
-### Tester (teammate)
-Sonnet model. Runs test suites, evaluates results, creates issues in `plan/`. Serializes test runs — only ONE test suite at a time.
+### Tester (NO dedicated teammate)
+The **Tech Lead runs all tests directly** in background — no tester teammate. This prevents OOM from test262 workers + agent processes competing for memory. Test262 uses 3 workers (~9GB), so only 1 dev can run alongside it.
 
 ## Team Spawn
 
-Use `TeamCreate` to create the team, then spawn all roles as teammates:
+Use `TeamCreate` to create the team, then spawn roles:
 
 ```
 TeamCreate: "ts2wasm"
-  - product-owner (agent def: .claude/agents/product-owner.md)
-  - tester (agent def: .claude/agents/tester.md)
-  - developer × N (agent def: .claude/agents/developer.md, isolation: worktree)
+  - developer × 2 max (agent def: .claude/agents/developer.md, isolation: worktree)
+  - product-owner on demand (agent def: .claude/agents/product-owner.md)
+  - NO tester — TTL runs tests directly
 ```
 
-All teammates can `SendMessage` to each other by name. Devs broadcast file claims, request tests from tester, and report completion to tech lead.
+All teammates can `SendMessage` to each other by name. Devs broadcast file claims and report completion to tech lead. TTL runs tests after merges.
 
 ## Communication Protocol
 
@@ -61,32 +61,28 @@ When starting work:
 When discovering a dependency: `"My fix for #512 requires coerceType change — anyone in type-coercion.ts?"`
 On completion: remove claim from `plan/file-locks.md`
 
-### Developer → tester
-When ready for testing: `"Worktree at /tmp/..., run equivalence tests for issue #512"`
-
-### Tester → developer
-Test results: `"2 failures in issue-512.test.ts: [details]"` or `"All green, ready for cherry-pick"`
-
-### Tester → tech lead
-After validation: `"Dev-A clean, cherry-pick ready"` or `"Test262 run complete: 16,500 pass / 1,400 CE"`
-
 ### Developer → tech lead
 When done: `"Issue #512 complete, worktree branch: issue-512-call-expressions, commit: abc1234"`
+TTL runs tests after merge — devs do NOT run full test262.
 
 ## Worktree Isolation (MANDATORY)
 
 - **ALL agents that write files MUST use `isolation: "worktree"`.** Only read-only agents (Explore, Plan) may skip it.
-- **No agent edits main directly.** Cherry-pick completed work from worktree branches.
+- **No agent edits main directly.** TTL merges completed work from worktree branches.
 - **Tech lead works only at `/workspace` on `main`.** Always verify with `cd /workspace && git branch --show-current` before git ops. Never `cd` into agent worktrees — use `git -C <path>` to inspect.
 
 ## Developer Constraints
 
-- **Max 4 devs (3 with test262 running).** Each in an isolated git worktree.
+- **Max 4 devs.** Each in an isolated git worktree. Devs don't run tests (~500MB each).
 - **Same-file is OK if different functions.** Git 3-way merge handles separate hunks. Avoid parallel work on the *same function*.
-- **Cherry-pick, don't merge.** Each worktree is based on an older main. Cherry-pick individual commits to avoid stale state.
+- **Merge to main (not cherry-pick).** TTL merges worktree branches.
 - **Batch diagnostic-only issues.** Issues that only add a code to `DOWNGRADE_DIAG_CODES` don't need a developer — do them in one commit.
 - **Each dev writes tests to `tests/issue-{N}.test.ts`.** Never append to `equivalence.test.ts` (top conflict source).
-- **Devs do NOT run vitest or full test suite.** Compile+run specific target tests inline (see developer agent def for the snippet). Message tester when ready for full validation.
+- **Devs validate inline, not full suite.** Compile and run specific test262 files to verify the fix:
+  ```bash
+  timeout 8 npx tsx src/cli.ts test262/test/language/expressions/class/dstr/some-test.js
+  ```
+  Then `npm test` for equivalence regressions. Do NOT run full test262 — TTL does that after merge.
 - **Document findings.** Always write root cause analysis and implementation notes in the issue file before completion.
 
 ## Cherry-Pick Workflow
