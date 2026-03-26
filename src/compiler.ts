@@ -420,7 +420,166 @@ function detectEarlyErrors(
       }
     }
 
+    // ── Rest element early errors ──────────────────────────────────────
+    // ES spec: Rest element cannot have an initializer (default value).
+    // e.g. function f(...a = []) {}, const [...a = []] = arr;
+    if (ts.isParameter(node) && node.dotDotDotToken && node.initializer) {
+      addError(node, "Rest parameter may not have a default initializer");
+    }
+    if (ts.isBindingElement(node) && node.dotDotDotToken && node.initializer) {
+      addError(node, "Rest element may not have a default initializer");
+    }
+
+    // ES spec: Rest element must be last — no trailing elements after rest.
+    // e.g. const [...a, b] = arr;  function f(...a, b) {}
+    if (ts.isArrayBindingPattern(node)) {
+      let foundRest = false;
+      for (const element of node.elements) {
+        if (foundRest) {
+          addError(element, "A rest element must be last in a destructuring pattern");
+          break;
+        }
+        if (ts.isBindingElement(element) && element.dotDotDotToken) {
+          foundRest = true;
+        }
+      }
+    }
+
+    // ES spec: Trailing comma after rest parameter is a SyntaxError.
+    // e.g. function f(...a,) {}
+    // TypeScript's parser accepts this, but ES spec forbids it.
+    if ((ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) ||
+         ts.isArrowFunction(node) || ts.isMethodDeclaration(node) ||
+         ts.isConstructorDeclaration(node) || ts.isGetAccessorDeclaration(node) ||
+         ts.isSetAccessorDeclaration(node)) && node.parameters.length > 0) {
+      const lastParam = node.parameters[node.parameters.length - 1]!;
+      if (lastParam.dotDotDotToken) {
+        // Check if there's a trailing comma after the rest parameter.
+        // The trailing comma is indicated by a comma after the last parameter
+        // in the source text.
+        const paramEnd = lastParam.end;
+        const parenClose = node.parameters.end; // end of the parameter list
+        const textBetween = sourceFile.text.substring(paramEnd, parenClose);
+        if (textBetween.includes(",")) {
+          addError(lastParam, "A rest parameter or binding pattern may not have a trailing comma");
+        }
+      }
+    }
+
+    // ── await/yield as identifier in async/generator contexts ──────────
+    // ES spec: 'await' is a reserved word inside async functions/generators.
+    // 'yield' is a reserved word inside generator functions.
+    if (ts.isIdentifier(node) && (node.text === "await" || node.text === "yield")) {
+      // Skip if this is the yield/await *expression* (keyword usage, not identifier)
+      const parent = node.parent;
+      if (parent && !ts.isYieldExpression(parent) && !ts.isAwaitExpression(parent)) {
+        // Skip if this is a property name in a member expression or declaration
+        const isPropertyName = parent && (
+          (ts.isPropertyAccessExpression(parent) && parent.name === node) ||
+          (ts.isPropertyAssignment(parent) && parent.name === node) ||
+          (ts.isMethodDeclaration(parent) && parent.name === node) ||
+          (ts.isPropertyDeclaration(parent) && parent.name === node) ||
+          (ts.isGetAccessorDeclaration(parent) && parent.name === node) ||
+          (ts.isSetAccessorDeclaration(parent) && parent.name === node) ||
+          (ts.isEnumMember(parent) && parent.name === node) ||
+          (ts.isPropertySignature(parent) && parent.name === node) ||
+          (ts.isMethodSignature(parent) && parent.name === node)
+        );
+        if (!isPropertyName) {
+          if (node.text === "await" && isInsideAsyncFunction(node)) {
+            addError(node, "'await' is not allowed as an identifier in an async function");
+          }
+          if (node.text === "yield" && isInsideGeneratorFunction(node)) {
+            addError(node, "'yield' is not allowed as an identifier in a generator function");
+          }
+        }
+      }
+    }
+
+    // ── Strict mode reserved words as identifiers ──────────────────────
+    // ES spec: implements, interface, let, package, private, protected,
+    // public, static, yield are reserved in strict mode.
+    if (ts.isIdentifier(node) && isStrictMode(node)) {
+      const strictReserved = new Set([
+        "implements", "interface", "package", "private", "protected", "public", "static",
+      ]);
+      if (strictReserved.has(node.text)) {
+        // Skip property names — they're fine in strict mode
+        const parent = node.parent;
+        const isPropertyName = parent && (
+          (ts.isPropertyAccessExpression(parent) && parent.name === node) ||
+          (ts.isPropertyAssignment(parent) && parent.name === node) ||
+          (ts.isMethodDeclaration(parent) && parent.name === node) ||
+          (ts.isPropertyDeclaration(parent) && parent.name === node) ||
+          (ts.isGetAccessorDeclaration(parent) && parent.name === node) ||
+          (ts.isSetAccessorDeclaration(parent) && parent.name === node) ||
+          (ts.isPropertySignature(parent) && parent.name === node) ||
+          (ts.isMethodSignature(parent) && parent.name === node)
+        );
+        // Also skip if used as a label name (label: statement)
+        const isLabel = parent && ts.isLabeledStatement(parent) && parent.label === node;
+        // Skip break/continue target labels
+        const isBreakContinueTarget = parent && (
+          (ts.isBreakStatement(parent) && parent.label === node) ||
+          (ts.isContinueStatement(parent) && parent.label === node)
+        );
+        if (!isPropertyName && !isLabel && !isBreakContinueTarget) {
+          // Only flag when used as a binding name (variable, parameter, function name)
+          const isBinding = parent && (
+            (ts.isVariableDeclaration(parent) && parent.name === node) ||
+            (ts.isParameter(parent) && parent.name === node) ||
+            (ts.isFunctionDeclaration(parent) && parent.name === node) ||
+            (ts.isFunctionExpression(parent) && parent.name === node) ||
+            (ts.isClassDeclaration(parent) && parent.name === node) ||
+            (ts.isClassExpression(parent) && parent.name === node) ||
+            (ts.isBindingElement(parent) && parent.name === node)
+          );
+          if (isBinding) {
+            addError(node, `'${node.text}' is a reserved word in strict mode and cannot be used as an identifier`);
+          }
+        }
+      }
+    }
+
     ts.forEachChild(node, visit);
+  }
+
+  /** Check if a node is inside an async function (including async generators). */
+  function isInsideAsyncFunction(node: ts.Node): boolean {
+    let current: ts.Node | undefined = node.parent;
+    while (current) {
+      if (ts.isFunctionDeclaration(current) || ts.isFunctionExpression(current) ||
+          ts.isMethodDeclaration(current)) {
+        return current.modifiers?.some(m => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
+      }
+      if (ts.isArrowFunction(current)) {
+        return current.modifiers?.some(m => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
+      }
+      current = current.parent;
+    }
+    return false;
+  }
+
+  /** Check if a node is inside a generator function (including async generators). */
+  function isInsideGeneratorFunction(node: ts.Node): boolean {
+    let current: ts.Node | undefined = node.parent;
+    while (current) {
+      if ((ts.isFunctionDeclaration(current) || ts.isFunctionExpression(current)) &&
+          current.asteriskToken) {
+        return true;
+      }
+      if (ts.isMethodDeclaration(current) && current.asteriskToken) {
+        return true;
+      }
+      // Arrow functions are never generators, but they don't create a new yield scope
+      // If we hit an arrow, keep going up — arrows inherit the generator context
+      if (ts.isFunctionDeclaration(current) || ts.isFunctionExpression(current) ||
+          ts.isMethodDeclaration(current)) {
+        return false; // Found a non-generator function boundary
+      }
+      current = current.parent;
+    }
+    return false;
   }
 
   /** Check if a function declaration is in a single-statement position (not a block). */
