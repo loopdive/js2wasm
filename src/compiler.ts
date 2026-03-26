@@ -541,7 +541,198 @@ function detectEarlyErrors(
       }
     }
 
+    // ── "use strict" + non-simple parameters ─────────────────────────
+    // ES spec: It is a SyntaxError if ContainsUseStrict of FunctionBody is true
+    // and IsSimpleParameterList of FormalParameters is false.
+    // Non-simple: default values, destructuring patterns, or rest parameters.
+    if ((ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) ||
+         ts.isArrowFunction(node) || ts.isMethodDeclaration(node) ||
+         ts.isConstructorDeclaration(node) || ts.isGetAccessorDeclaration(node) ||
+         ts.isSetAccessorDeclaration(node)) && node.body && ts.isBlock(node.body)) {
+      const hasNonSimpleParams = node.parameters.some(p =>
+        p.initializer !== undefined ||
+        p.dotDotDotToken !== undefined ||
+        !ts.isIdentifier(p.name) // destructuring pattern
+      );
+      if (hasNonSimpleParams) {
+        // Check if body starts with "use strict" directive
+        for (const stmt of node.body.statements) {
+          if (ts.isExpressionStatement(stmt) && ts.isStringLiteral(stmt.expression)) {
+            if (stmt.expression.text === "use strict") {
+              addError(stmt, "Illegal 'use strict' directive in function with non-simple parameter list");
+              break;
+            }
+          } else {
+            break; // Directives must be at the top
+          }
+        }
+      }
+    }
+
+    // ── Labeled declarations (not function declarations) ──────────────
+    // ES spec: LabelledItem only allows Statement or FunctionDeclaration.
+    // LexicalDeclarations (let, const), class declarations, async generators,
+    // and async functions in labeled position are SyntaxErrors.
+    if (ts.isLabeledStatement(node)) {
+      const stmt = node.statement;
+      // label: let x; or label: const x;
+      if (ts.isVariableStatement(stmt)) {
+        const flags = stmt.declarationList.flags;
+        if ((flags & ts.NodeFlags.Let) !== 0 || (flags & ts.NodeFlags.Const) !== 0) {
+          addError(node, "Lexical declaration (let/const) cannot appear in a labeled statement");
+        }
+      }
+      // label: class C {} — always a SyntaxError
+      if (ts.isClassDeclaration(stmt)) {
+        addError(node, "Class declaration cannot appear in a labeled statement");
+      }
+    }
+
+    // ── let/const in single-statement positions ──────────────────────
+    // ES spec: LetOrConst is not allowed in the Statement position of
+    // if, else, while, do-while, for bodies.
+    if (ts.isVariableStatement(node)) {
+      const flags = node.declarationList.flags;
+      if ((flags & ts.NodeFlags.Let) !== 0 || (flags & ts.NodeFlags.Const) !== 0) {
+        const parent = node.parent;
+        if (parent && isStatementPosition(parent, node)) {
+          addError(node, "Lexical declaration cannot appear in a single-statement context");
+        }
+      }
+    }
+
+    // ── eval/arguments as binding names in strict mode ────────────────
+    // ES spec: It is a SyntaxError to use eval or arguments as a binding
+    // identifier in strict mode code (variable declarations, function names, etc.)
+    if (ts.isIdentifier(node) && (node.text === "eval" || node.text === "arguments") && isStrictMode(node)) {
+      const parent = node.parent;
+      // Check if used as a binding name (variable, parameter, function name, catch binding)
+      const isBinding = parent && (
+        (ts.isVariableDeclaration(parent) && parent.name === node) ||
+        (ts.isFunctionDeclaration(parent) && parent.name === node) ||
+        (ts.isFunctionExpression(parent) && parent.name === node) ||
+        (ts.isClassDeclaration(parent) && parent.name === node) ||
+        (ts.isClassExpression(parent) && parent.name === node) ||
+        (ts.isBindingElement(parent) && parent.name === node) ||
+        (ts.isCatchClause(parent) && parent.variableDeclaration &&
+         ts.isIdentifier(parent.variableDeclaration.name) &&
+         parent.variableDeclaration.name === node)
+      );
+      if (isBinding) {
+        addError(node, `Binding '${node.text}' in strict mode is not allowed`);
+      }
+    }
+
+    // ── Switch case duplicate lexical declarations ────────────────────
+    // ES spec: It is a Syntax Error if the LexicallyDeclaredNames of CaseBlock
+    // contains any duplicate entries.
+    if (ts.isCaseBlock(node)) {
+      checkSwitchCaseLexicalDuplicates(node);
+    }
+
+    // ── Class body: static prototype method/field ─────────────────────
+    // ES spec: It is a SyntaxError if the PropName of a static method or
+    // field is "prototype".
+    if ((ts.isClassDeclaration(node) || ts.isClassExpression(node))) {
+      for (const member of node.members) {
+        if (member.name && !ts.isPrivateIdentifier(member.name)) {
+          const isStatic = member.modifiers?.some(
+            m => m.kind === ts.SyntaxKind.StaticKeyword
+          );
+          if (isStatic) {
+            const memberName = ts.isIdentifier(member.name) ? member.name.text :
+                              ts.isStringLiteral(member.name) ? member.name.text : null;
+            if (memberName === "prototype") {
+              addError(member, "Classes may not have a static property named 'prototype'");
+            }
+          }
+        }
+      }
+    }
+
+    // ── Duplicate private names in class body ─────────────────────────
+    // ES spec: It is a Syntax Error if PrivateBoundNames of ClassBody contains
+    // any duplicate entries, unless the name is used once for a getter and once
+    // for a setter and in no other entries.
+    if ((ts.isClassDeclaration(node) || ts.isClassExpression(node))) {
+      checkDuplicatePrivateNames(node);
+    }
+
     ts.forEachChild(node, visit);
+  }
+
+  /** Check duplicate lexical declarations across switch case clauses. */
+  function checkSwitchCaseLexicalDuplicates(caseBlock: ts.CaseBlock): void {
+    const lexNames = new Map<string, ts.Node>(); // name -> first declaration
+    for (const clause of caseBlock.clauses) {
+      for (const stmt of clause.statements) {
+        if (ts.isVariableStatement(stmt)) {
+          const flags = stmt.declarationList.flags;
+          if ((flags & ts.NodeFlags.Let) !== 0 || (flags & ts.NodeFlags.Const) !== 0) {
+            for (const decl of stmt.declarationList.declarations) {
+              if (ts.isIdentifier(decl.name)) {
+                const name = decl.name.text;
+                if (lexNames.has(name)) {
+                  addError(decl.name, `Cannot redeclare block-scoped variable '${name}'`);
+                } else {
+                  lexNames.set(name, decl.name);
+                }
+              }
+            }
+          }
+        } else if (ts.isFunctionDeclaration(stmt) && stmt.name) {
+          const name = stmt.name.text;
+          if (lexNames.has(name)) {
+            addError(stmt.name, `Cannot redeclare block-scoped variable '${name}'`);
+          } else {
+            lexNames.set(name, stmt.name);
+          }
+        } else if (ts.isClassDeclaration(stmt) && stmt.name) {
+          const name = stmt.name.text;
+          if (lexNames.has(name)) {
+            addError(stmt.name, `Cannot redeclare block-scoped variable '${name}'`);
+          } else {
+            lexNames.set(name, stmt.name);
+          }
+        }
+      }
+    }
+  }
+
+  /** Check for duplicate private names in a class body. */
+  function checkDuplicatePrivateNames(classNode: ts.ClassDeclaration | ts.ClassExpression): void {
+    const privateNames = new Map<string, { kinds: Set<string> }>();
+    for (const member of classNode.members) {
+      if (member.name && ts.isPrivateIdentifier(member.name)) {
+        const name = member.name.text;
+        let kind: string;
+        if (ts.isGetAccessorDeclaration(member)) {
+          kind = "get";
+        } else if (ts.isSetAccessorDeclaration(member)) {
+          kind = "set";
+        } else if (ts.isMethodDeclaration(member)) {
+          kind = "method";
+        } else if (ts.isPropertyDeclaration(member)) {
+          kind = "field";
+        } else {
+          kind = "other";
+        }
+
+        const existing = privateNames.get(name);
+        if (!existing) {
+          privateNames.set(name, { kinds: new Set([kind]) });
+        } else {
+          // get+set pair is allowed; anything else is a duplicate
+          const combined = new Set([...existing.kinds, kind]);
+          if (combined.size === 2 && combined.has("get") && combined.has("set")) {
+            // This is fine — getter+setter pair
+            existing.kinds.add(kind);
+          } else {
+            addError(member.name, `Duplicate private name '${name}'`);
+          }
+        }
+      }
+    }
   }
 
   /** Check if a node is inside an async function (including async generators). */
