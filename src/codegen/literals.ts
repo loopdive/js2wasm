@@ -1048,9 +1048,11 @@ export function compileArrayLiteral(
   fctx: FunctionContext,
   expr: ts.ArrayLiteralExpression,
 ): ValType | null {
-  // Check if the target type is a tuple — compile as struct.new instead of array
+  // Check if the target type is a tuple — compile as struct.new instead of array.
+  // Skip if _arrayLiteralForceVec is set (e.g. destructuring default where the target
+  // is a vec type, but TS contextual type resolution sees a tuple pattern).
   const ctxTupleType = ctx.checker.getContextualType(expr) ?? ctx.checker.getTypeAtLocation(expr);
-  if (ctxTupleType && isTupleType(ctxTupleType)) {
+  if (ctxTupleType && isTupleType(ctxTupleType) && !(ctx as any)._arrayLiteralForceVec) {
     return compileTupleLiteral(ctx, fctx, expr, ctxTupleType);
   }
 
