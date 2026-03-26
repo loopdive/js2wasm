@@ -1604,7 +1604,19 @@ function compileArrayDestructuring(
         const element = pattern.elements[i]!;
         if (ts.isOmittedExpression(element)) continue;
 
-        if (i >= tupleFields.length) break; // more bindings than tuple fields
+        // When tuple is shorter than pattern, apply defaults if present
+        if (i >= tupleFields.length) {
+          if (ts.isBindingElement(element) && element.initializer && ts.isIdentifier(element.name)) {
+            const localName = element.name.text;
+            const localIdx = fctx.localMap.get(localName);
+            if (localIdx !== undefined) {
+              const localType = fctx.locals[localIdx]!.type;
+              compileExpression(ctx, fctx, element.initializer, localType);
+              fctx.body.push({ op: "local.set", index: localIdx });
+            }
+          }
+          continue;
+        }
 
         const fieldType = tupleFields[i]!.type;
 
@@ -1634,7 +1646,13 @@ function compileArrayDestructuring(
 
         fctx.body.push({ op: "local.get", index: tmpLocal });
         fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: i });
-        fctx.body.push({ op: "local.set", index: localIdx });
+
+        // Handle default value: `const [a = defaultVal] = tuple`
+        if (element.initializer) {
+          emitDefaultValueCheck(ctx, fctx, fieldType, localIdx, element.initializer);
+        } else {
+          fctx.body.push({ op: "local.set", index: localIdx });
+        }
       }
     }); // end null guard for tuple path
     return;
