@@ -416,41 +416,6 @@
       "goal": "platform"
     },
     {
-      "id": 729,
-      "title": "Class feature codegen gaps (1,161 tests)",
-      "priority": "high",
-      "status": "ready",
-      "depends_on": [
-        678
-      ],
-      "files": [],
-      "test262_fail": 1161,
-      "cluster": "Unclustered",
-      "goal": "class-system"
-    },
-    {
-      "id": 730,
-      "title": "Missing exception paths: 708 tests expect throws but code runs to completion",
-      "priority": "high",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_fail": 708,
-      "cluster": "Unclustered",
-      "goal": "error-model"
-    },
-    {
-      "id": 731,
-      "title": "Function/class .name property (558 tests)",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_fail": 558,
-      "cluster": "Unclustered",
-      "goal": "property-model"
-    },
-    {
       "id": 732,
       "title": "hasOwnProperty correctness (520 tests)",
       "priority": "medium",
@@ -753,71 +718,6 @@
       "cluster": "Unclustered"
     },
     {
-      "id": 780,
-      "title": "TypeError (null/undefined access) in built-in method dispatch (~9,128 tests)",
-      "priority": "critical",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_fail": 9128,
-      "cluster": "Unclustered",
-      "goal": "crash-free"
-    },
-    {
-      "id": 781,
-      "title": "TypeError (null/undefined access) in language constructs (~2,841 tests)",
-      "priority": "high",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_fail": 2841,
-      "cluster": "Unclustered",
-      "goal": "crash-free"
-    },
-    {
-      "id": 782,
-      "title": "Destructuring binding patterns produce wrong values (~3,487 tests)",
-      "priority": "high",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_fail": 3487,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 783,
-      "title": "assert.throws failures: missing exception throwing (~3,293 tests)",
-      "priority": "high",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_fail": 3293,
-      "cluster": "Unclustered",
-      "goal": "error-model"
-    },
-    {
-      "id": 784,
-      "title": "Expected SyntaxError but compiled successfully (~2,657 tests)",
-      "priority": "medium",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_fail": 2657,
-      "cluster": "Unclustered",
-      "goal": "error-model"
-    },
-    {
-      "id": 785,
-      "title": "Null pointer traps in compiled Wasm code (~1,604 tests)",
-      "priority": "high",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_fail": 1604,
-      "cluster": "Unclustered",
-      "goal": "crash-free"
-    },
-    {
       "id": 786,
       "title": "Multi-assertion failures: returned N > 2 (~1,183 tests)",
       "priority": "medium",
@@ -825,16 +725,6 @@
       "depends_on": [],
       "files": [],
       "test262_fail": 1183,
-      "cluster": "Unclustered"
-    },
-    {
-      "id": 787,
-      "title": "Wrong values in assert.sameValue and other first-assertion failures (~3,517 tests)",
-      "priority": "high",
-      "status": "ready",
-      "depends_on": [],
-      "files": [],
-      "test262_fail": 3517,
       "cluster": "Unclustered"
     }
   ],
@@ -878,10 +768,6 @@
     {
       "source": 699,
       "target": 700
-    },
-    {
-      "source": 678,
-      "target": 729
     },
     {
       "source": 678,
@@ -1275,10 +1161,6 @@
     },
     {
       "goal": "builtin-methods",
-      "issue": 731
-    },
-    {
-      "goal": "builtin-methods",
       "issue": 738
     },
     {
@@ -1288,10 +1170,6 @@
     {
       "goal": "builtin-methods",
       "issue": 661
-    },
-    {
-      "goal": "class-system",
-      "issue": 729
     },
     {
       "goal": "class-system",
@@ -1339,31 +1217,7 @@
     },
     {
       "goal": "crash-free",
-      "issue": 780
-    },
-    {
-      "goal": "crash-free",
-      "issue": 781
-    },
-    {
-      "goal": "crash-free",
-      "issue": 785
-    },
-    {
-      "goal": "crash-free",
       "issue": 775
-    },
-    {
-      "goal": "error-model",
-      "issue": 783
-    },
-    {
-      "goal": "error-model",
-      "issue": 784
-    },
-    {
-      "goal": "error-model",
-      "issue": 730
     },
     {
       "goal": "error-model",
@@ -1496,10 +1350,6 @@
     {
       "goal": "property-model",
       "issue": 678
-    },
-    {
-      "goal": "property-model",
-      "issue": 731
     },
     {
       "goal": "property-model",
@@ -1581,10 +1431,6 @@
     },
     {
       "goal": "core-semantics",
-      "issue": 731
-    },
-    {
-      "goal": "core-semantics",
       "issue": 738
     },
     {
@@ -1605,10 +1451,6 @@
     },
     {
       "goal": "error-model",
-      "issue": 731
-    },
-    {
-      "goal": "error-model",
       "issue": 738
     },
     {
@@ -1618,10 +1460,6 @@
     {
       "goal": "error-model",
       "issue": 661
-    },
-    {
-      "goal": "core-semantics",
-      "issue": 729
     },
     {
       "goal": "core-semantics",
@@ -1649,31 +1487,7 @@
     },
     {
       "goal": "compilable",
-      "issue": 780
-    },
-    {
-      "goal": "compilable",
-      "issue": 781
-    },
-    {
-      "goal": "compilable",
-      "issue": 785
-    },
-    {
-      "goal": "compilable",
       "issue": 775
-    },
-    {
-      "goal": "compilable",
-      "issue": 783
-    },
-    {
-      "goal": "compilable",
-      "issue": 784
-    },
-    {
-      "goal": "compilable",
-      "issue": 730
     },
     {
       "goal": "compilable",
@@ -1806,10 +1620,6 @@
     {
       "goal": "core-semantics",
       "issue": 678
-    },
-    {
-      "goal": "core-semantics",
-      "issue": 731
     },
     {
       "goal": "core-semantics",
@@ -1952,5 +1762,5 @@
       "issue": 652
     }
   ],
-  "generated": "2026-03-26T00:33:05.781Z"
+  "generated": "2026-03-26T01:37:34.057Z"
 }

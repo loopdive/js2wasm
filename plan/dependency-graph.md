@@ -437,8 +437,8 @@ Updated 2026-03-22: 48,102 tests -- 14,720 pass, 27,938 fail, 4,443 CE, 1,001 sk
 | 426 | Compound assignment on non-ref element | 11 CE | **Ready** (low, coordinates #424) |
 | 427 | SuperKeyword unsupported in remaining contexts | 11 CE | **Ready** (low) |
 | 513 | Wrong return value (returned 0) | 3,436 fail | **Ready** (critical, updated) |
-| 512 | RuntimeError: illegal cast | 683 fail | **Ready** (critical, updated) |
-| 441 | Null pointer dereference (residual) | 129 fail | **Ready** (high) |
+| ~~512~~ | ~~RuntimeError: illegal cast~~ | ~~683 fail~~ | **Done** (ref.test guards) |
+| ~~441~~ | ~~Null pointer dereference (residual)~~ | ~~129 fail~~ | **Done** (null guards) |
 | 418 | Missing SyntaxError validation | 0 fail | **In-progress** (skipped now) |
 | 442 | RuntimeError: illegal cast (original) | 6 fail | Subsumed by #512 |
 | 443 | Expected ReferenceError but succeeded | 6 fail | **Ready** (low) |
@@ -452,6 +452,29 @@ Updated 2026-03-22: 48,102 tests -- 14,720 pass, 27,938 fail, 4,443 CE, 1,001 sk
 | **726** | **TypeError regression: ref.cast guard returns ref.null for valid objects** | **1,948 regress** | **Done** (multi-struct dispatch) |
 | **727** | **Sub-classify assertion failures (wrong values)** | **11,480 fail** | **Ready** (high, analysis only) |
 | ~~728~~ | ~~Null pointer dereference should throw TypeError, not trap~~ | ~~1,604 fail~~ | **Done** (superseded by #775) |
+
+---
+
+## Cluster 19: Wave — Assert failure triage (#779 sub-issues) `[E][S]`
+
+Sub-issues from #779 error analysis. Most landed 2026-03-25.
+
+| #   | Title | Tests | Ready? |
+|-----|-------|-------|--------|
+| ~~783~~ | ~~assert.throws: missing exception throwing~~ | ~~3,293 fail~~ | **Done** (error-model) |
+| ~~782~~ | ~~Destructuring binding patterns wrong values~~ | ~~3,487 fail~~ | **Done** (core-semantics) |
+| ~~781~~ | ~~TypeError null/undefined in language constructs~~ | ~~2,841 fail~~ | **Done** (crash-free) |
+| ~~780~~ | ~~TypeError null/undefined in built-in method dispatch~~ | ~~9,128 fail~~ | **Done** (crash-free) |
+| ~~785~~ | ~~Null pointer traps in compiled Wasm~~ | ~~1,604 fail~~ | **Done** (crash-free) |
+| ~~787~~ | ~~Wrong values in assert.sameValue~~ | ~~3,517 fail~~ | **Done** (core-semantics) |
+| ~~784~~ | ~~Expected SyntaxError but compiled successfully~~ | ~~2,657 fail~~ | **Done** (error-model) |
+| 786 | Multi-assertion failures (later asserts fail) | 1,183 fail | **Ready** (core-semantics) |
+| ~~729~~ | ~~Class feature codegen gaps~~ | ~~1,161 fail~~ | **Done** (class-system) |
+| ~~730~~ | ~~TypeError violations: strict mode, readonly~~ | ~~708 fail~~ | **Done** (error-model) |
+| ~~731~~ | ~~Function/class .name property~~ | ~~558 fail~~ | **Done** (builtin-methods) |
+| ~~315~~ | ~~Wasm validation error audit~~ | — | **Done** |
+| ~~512~~ | ~~RuntimeError: illegal cast~~ | ~~683 fail~~ | **Done** (crash-free) |
+| ~~441~~ | ~~Null pointer dereference residual~~ | ~~88 fail~~ | **Done** (crash-free) |
 
 ---
 

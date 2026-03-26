@@ -4,7 +4,7 @@ Goals form a DAG — a goal is **activatable** when all its dependencies are met
 Unlike a linear roadmap, multiple independent goals can be worked on in parallel,
 and a goal being "ready" doesn't mean it should be worked on immediately.
 
-**Current state**: 16,187 / 49,663 = 32.6% pass | 32,475 FAIL+CE | 1,761 CE | 1,001 skip (2026-03-25, vitest runner)
+**Current state**: ~17,000+ / 49,663 pass (estimated post-wave) | ~1,500 CE | ~1,000 skip (2026-03-25, wave landed)
 
 ## DAG
 
@@ -19,7 +19,7 @@ and a goal being "ready" doesn't mean it should be worked on immediately.
               ┌──────────┐ ┌───────────┐ ┌───────────────┐
               │crash-free│ │   core    │ │  error-model  │
               │traps → 0 │ │ semantics │ │ spec errors   │
-              │  ~40%    │ │  ~45%     │ │   ~40%        │
+              │  ~40% ▲  │ │  ~45%     │ │   ~40%  ▲     │
               └────┬─────┘ └──┬────┬───┘ └───────┬───────┘
                    │          │    │             │
           ┌────────┘    ┌─────┘    └─────┐      │
@@ -27,7 +27,7 @@ and a goal being "ready" doesn't mean it should be worked on immediately.
    ┌────────────┐ ┌──────────┐   ┌───────────┐ │
    │  property  │ │  class   │   │  builtin  │◄┘
    │   model    │ │  system  │   │ methods   │
-   │   ~55%     │ │  ~55%    │   │  ~60%     │
+   │  READY ~55%│ │ READY~55%│   │ READY ~60%│
    └──┬─────┬───┘ └────┬─────┘   └─────┬─────┘
       │     │          │               │
       │     │    ┌─────┘               │
@@ -89,13 +89,13 @@ and a goal being "ready" doesn't mean it should be worked on immediately.
 
 | Goal | Status | Target | Dependencies | Key Issues |
 |------|--------|--------|-------------|------------|
-| **compilable** | Substantially complete | CE → 0 (1,761 remaining) | — | #779, #780, #761, #684, #515 |
-| **crash-free** | Active | traps → 0, ~40% | compilable (met) | #775, #785, #441, #512 |
-| **core-semantics** | Active | ~45% | compilable (met) | #513, #782, #787, #737 |
-| **error-model** | Active | spec errors, ~40% | compilable (met) | #783, #730, #736, #733, #402, #721 |
-| **property-model** | Blocked | ~55% | core-semantics | #732, #739, #678, #770, #746 |
-| **class-system** | Blocked | ~55% | core-semantics | #729, #334, #377, #329 |
-| **builtin-methods** | Blocked | ~60% | core-semantics, error-model | #734, #763, #731, #738, #385 |
+| **compilable** | Substantially complete | CE → 0 (~1,500 remaining) | — | #779, #761, #684 |
+| **crash-free** | Active (near complete) | traps → 0, ~40% | compilable (met) | #775 (remaining); ~~#785~~, ~~#441~~, ~~#512~~, ~~#780~~, ~~#781~~ done |
+| **core-semantics** | Active | ~45% | compilable (met) | #771, #786 (remaining); ~~#782~~, ~~#787~~ done |
+| **error-model** | Active (near complete) | spec errors, ~40% | compilable (met) | ~~#783~~, ~~#730~~, ~~#784~~ done; #736, #733, #402, #721 remaining |
+| **property-model** | Activatable | ~55% | core-semantics (partial) | #732, #739, #678, #770, #746 |
+| **class-system** | Activatable | ~55% | core-semantics (partial) | ~~#729~~ done; #334, #377, #329 remaining |
+| **builtin-methods** | Activatable | ~60% | core-semantics (partial), error-model (partial) | ~~#731~~ done; #734, #763, #738, #385 remaining |
 | **iterator-protocol** | Blocked | ~65% | class-system | #766, #481, #761, #353 |
 | **generator-model** | Blocked | ~70% | iterator-protocol | #680, #762, #287, #288 |
 | **symbol-protocol** | Blocked | ~70% | iterator-protocol | #482, #484, #485, #486, #487 |

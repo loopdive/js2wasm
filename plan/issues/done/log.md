@@ -448,5 +448,18 @@
 | 723 | 2026-03-21 | TDZ violations: throw ReferenceError before let/const init (230 FAIL)                             | Session    |
 | 728 | 2026-03-25 | Null pointer dereference should throw TypeError -- superseded by #775                             | Session    |
 | 694 | 2026-03-25 | Migrate test262 runner to vitest -- standalone runner removed, vitest is sole runner               | Session    |
+| 783 | 2026-03-25 | assert.throws failures: missing exception throwing (~3,293 tests)                                 | Wave       |
+| 782 | 2026-03-25 | Destructuring binding patterns produce wrong values (~3,487 tests)                                | Wave       |
+| 781 | 2026-03-25 | TypeError (null/undefined access) in language constructs (~2,841 tests)                           | Wave       |
+| 780 | 2026-03-25 | TypeError (null/undefined access) in built-in method dispatch (~9,128 tests)                      | Wave       |
+| 785 | 2026-03-25 | Null pointer traps in compiled Wasm code (~1,604 tests)                                           | Wave       |
+| 787 | 2026-03-25 | Wrong values in assert.sameValue and other first-assertion failures (~3,517 tests)                 | Wave       |
+| 784 | 2026-03-25 | Expected SyntaxError but compiled successfully (~2,657 tests)                                     | Wave       |
+| 730 | 2026-03-25 | TypeError violations -- strict mode, readonly, non-configurable (~708 tests)                      | Wave       |
+| 729 | 2026-03-25 | Class feature codegen gaps (1,161 tests)                                                          | Wave       |
+| 731 | 2026-03-25 | Function/class .name property (558 tests)                                                         | Wave       |
+| 512 | 2026-03-25 | RuntimeError: illegal cast (~683 FAIL)                                                            | Wave       |
+| 441 | 2026-03-25 | RuntimeError: dereferencing a null pointer residual (88 FAIL)                                     | Wave       |
+| 315 | 2026-03-25 | Wasm validation error audit -- type mismatches                                                    | Wave       |
 
 
