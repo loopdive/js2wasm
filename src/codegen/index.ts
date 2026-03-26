@@ -29,7 +29,7 @@ import type {
   WasmModule,
 } from "../ir/types.js";
 import { createEmptyModule } from "../ir/types.js";
-import { compileExpression, resolveComputedKeyExpression, coerceType, valTypesMatch, emitBoundsCheckedArrayGet } from "./expressions.js";
+import { compileExpression, resolveComputedKeyExpression, coerceType, valTypesMatch, emitBoundsCheckedArrayGet, ensureLateImport, flushLateImportShifts } from "./expressions.js";
 import { collectShapes } from "../shape-inference.js";
 import { compileStatement, ensureBindingLocals, hoistFunctionDeclarations } from "./statements.js";
 import { emitInlineMathFunctions } from "./math-helpers.js";
@@ -13268,36 +13268,51 @@ function compileFunctionBody(
 
   // Set up `arguments` object if the function body references it.
   // We create a vec struct (same as Array) populated from all function parameters.
+  // Use externref elements so that all parameter types (numbers, strings, objects)
+  // are preserved — matching the closure version in closures.ts (#771).
   if (decl.body && bodyUsesArguments(decl.body)) {
-    const elemKey = ctx.fast ? "i32" : "f64";
-    const elemType: ValType = ctx.fast ? { kind: "i32" } : { kind: "f64" };
-    const vecTypeIdx = getOrRegisterVecType(ctx, elemKey, elemType);
+    // Ensure __box_number is available for boxing numeric params to externref
+    const hasNumericParam = params.some(
+      (p) => p.type.kind === "f64" || p.type.kind === "i32",
+    );
+    if (hasNumericParam) {
+      ensureLateImport(ctx, "__box_number", [{ kind: "f64" }], [{ kind: "externref" }]);
+      flushLateImportShifts(ctx, fctx);
+    }
+
+    const elemType: ValType = { kind: "externref" };
+    const vecTypeIdx = getOrRegisterVecType(ctx, "externref", elemType);
     const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
     const vecRef: ValType = { kind: "ref", typeIdx: vecTypeIdx };
 
     const argsLocal = allocLocal(fctx, "arguments", vecRef);
     const arrTmp = allocLocal(fctx, "__args_arr_tmp", { kind: "ref", typeIdx: arrTypeIdx });
 
-    // Create backing array from parameters: push each param coerced to f64/i32
+    // Create backing array from parameters: push each param coerced to externref
     for (let i = 0; i < params.length; i++) {
       const paramType = params[i]!.type;
       fctx.body.push({ op: "local.get", index: i });
-      // Coerce parameter to the element type (f64 or i32 in fast mode)
-      if (ctx.fast) {
-        if (paramType.kind === "f64") {
-          fctx.body.push({ op: "i32.trunc_sat_f64_s" });
-        } else if (paramType.kind === "externref" || paramType.kind === "ref" || paramType.kind === "ref_null") {
+      if (paramType.kind === "f64") {
+        const boxIdx = ctx.funcMap.get("__box_number");
+        if (boxIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx: boxIdx });
+        } else {
           fctx.body.push({ op: "drop" });
-          fctx.body.push({ op: "i32.const", value: 0 });
+          fctx.body.push({ op: "ref.null.extern" });
         }
-      } else {
-        if (paramType.kind === "i32") {
-          fctx.body.push({ op: "f64.convert_i32_s" });
-        } else if (paramType.kind === "externref" || paramType.kind === "ref" || paramType.kind === "ref_null") {
+      } else if (paramType.kind === "i32") {
+        fctx.body.push({ op: "f64.convert_i32_s" });
+        const boxIdx = ctx.funcMap.get("__box_number");
+        if (boxIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx: boxIdx });
+        } else {
           fctx.body.push({ op: "drop" });
-          fctx.body.push({ op: "f64.const", value: 0 });
+          fctx.body.push({ op: "ref.null.extern" });
         }
+      } else if (paramType.kind === "ref" || paramType.kind === "ref_null") {
+        fctx.body.push({ op: "extern.convert_any" });
       }
+      // externref params are already externref — no conversion needed
     }
     // array.new_fixed creates the backing array
     fctx.body.push({ op: "array.new_fixed", typeIdx: arrTypeIdx, length: params.length });
