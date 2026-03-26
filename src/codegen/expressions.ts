@@ -1969,6 +1969,29 @@ function compileDestructuringAssignment(
     !ctx.structMap.has(typeName) ||
     !ctx.structFields.get(typeName)
   ) {
+    // Null/undefined check — throw TypeError (#783)
+    // In JS, `{...} = null` and `{...} = undefined` always throw TypeError
+    if (resultType.kind === "externref" || resultType.kind === "ref_null") {
+      const typeErrMsg = "TypeError: Cannot destructure 'null' or 'undefined'";
+      addStringConstantGlobal(ctx, typeErrMsg);
+      const strIdx = ctx.stringGlobalMap.get(typeErrMsg)!;
+      const tagIdx = ensureExnTag(ctx);
+      const tmpNullChk = allocLocal(fctx, `__destruct_null_chk_${fctx.locals.length}`, resultType);
+      fctx.body.push({ op: "local.tee", index: tmpNullChk });
+      fctx.body.push({ op: "ref.is_null" } as Instr);
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" },
+        then: [
+          { op: "global.get", index: strIdx } as Instr,
+          { op: "throw", tagIdx },
+        ],
+        else: [],
+      });
+      // Restore value on stack
+      fctx.body.push({ op: "local.get", index: tmpNullChk });
+    }
+
     // Ensure any target identifiers are allocated as locals
     for (const prop of target.properties) {
       if (ts.isShorthandPropertyAssignment(prop)) {
@@ -2266,15 +2289,22 @@ function compileDestructuringAssignment(
     }
   }
 
-  // Close null guard
+  // Close null guard — throw TypeError if null/undefined (#783)
   fctx.body = savedBodyDA;
   if (isNullableDA && destructInstrsDA.length > 0) {
+    const typeErrMsg = "TypeError: Cannot destructure 'null' or 'undefined'";
+    addStringConstantGlobal(ctx, typeErrMsg);
+    const strIdx = ctx.stringGlobalMap.get(typeErrMsg)!;
+    const tagIdx = ensureExnTag(ctx);
     fctx.body.push({ op: "local.get", index: tmpLocal });
     fctx.body.push({ op: "ref.is_null" } as Instr);
     fctx.body.push({
       op: "if",
       blockType: { kind: "empty" },
-      then: [],
+      then: [
+        { op: "global.get", index: strIdx } as Instr,
+        { op: "throw", tagIdx },
+      ],
       else: destructInstrsDA,
     });
   } else {
@@ -2605,15 +2635,22 @@ function compileArrayDestructuringAssignment(
     // else: unsupported element target — skip
   }
 
-  // Close null guard
+  // Close null guard — throw TypeError if null/undefined (#783)
   fctx.body = savedBodyADA;
   if (isNullableADA && arrDestructInstrsADA.length > 0) {
+    const typeErrMsg = "TypeError: Cannot destructure 'null' or 'undefined'";
+    addStringConstantGlobal(ctx, typeErrMsg);
+    const strIdx = ctx.stringGlobalMap.get(typeErrMsg)!;
+    const tagIdx = ensureExnTag(ctx);
     fctx.body.push({ op: "local.get", index: tmpLocal });
     fctx.body.push({ op: "ref.is_null" } as Instr);
     fctx.body.push({
       op: "if",
       blockType: { kind: "empty" },
-      then: [],
+      then: [
+        { op: "global.get", index: strIdx } as Instr,
+        { op: "throw", tagIdx },
+      ],
       else: arrDestructInstrsADA,
     });
   } else {
@@ -2642,6 +2679,25 @@ function compileExternrefArrayDestructuringAssignment(
     resultType,
   );
   fctx.body.push({ op: "local.set", index: tmpLocal });
+
+  // Null check — throw TypeError for null/undefined (#783)
+  if (resultType.kind === "externref") {
+    const typeErrMsg = "TypeError: Cannot destructure 'null' or 'undefined'";
+    addStringConstantGlobal(ctx, typeErrMsg);
+    const strIdx = ctx.stringGlobalMap.get(typeErrMsg)!;
+    const tagIdx = ensureExnTag(ctx);
+    fctx.body.push({ op: "local.get", index: tmpLocal });
+    fctx.body.push({ op: "ref.is_null" } as Instr);
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: [
+        { op: "global.get", index: strIdx } as Instr,
+        { op: "throw", tagIdx },
+      ],
+      else: [],
+    });
+  }
 
   // Ensure __extern_get is available
   let getIdx = ctx.funcMap.get("__extern_get");
