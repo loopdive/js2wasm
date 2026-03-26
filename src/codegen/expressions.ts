@@ -9716,15 +9716,117 @@ function compileCallExpression(
       return objType;
     }
 
-    // Handle Object.getOwnPropertyDescriptor(obj, prop) → __getOwnPropertyDescriptor host import
+    // Handle Object.getOwnPropertyDescriptor(obj, prop)
+    // Fast path: known struct type + string literal prop → inline struct.get + __create_descriptor
+    // Fallback: __getOwnPropertyDescriptor host import for dynamic cases
     if (
       ts.isIdentifier(propAccess.expression) &&
       propAccess.expression.text === "Object" &&
       propAccess.name.text === "getOwnPropertyDescriptor" &&
       expr.arguments.length >= 2
     ) {
-      // Compile obj as externref
-      const objType = compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "externref" });
+      const arg0 = expr.arguments[0]!;
+      const arg1 = expr.arguments[1]!;
+
+      // Try compile-time fast path: known struct + literal property name
+      const arg0TsType = ctx.checker.getTypeAtLocation(arg0);
+      const structName = resolveStructName(ctx, arg0TsType);
+      const propLiteral = ts.isStringLiteral(arg1) ? arg1.text : undefined;
+
+      if (structName && propLiteral !== undefined) {
+        const structTypeIdx = ctx.structMap.get(structName);
+        const fields = ctx.structFields.get(structName);
+
+        if (structTypeIdx !== undefined && fields) {
+          // Find the field index for the property name
+          const userFields = fields
+            .map((f, idx) => ({ field: f, fieldIdx: idx }))
+            .filter((e) => !e.field.name.startsWith("__"));
+          const entry = userFields.find((e) => e.field.name === propLiteral);
+
+          if (entry) {
+            // Look up flags from shapePropFlags
+            const flagsArr = ctx.shapePropFlags.get(structTypeIdx);
+            const userFieldIdx = userFields.indexOf(entry);
+            const flags = flagsArr && userFieldIdx >= 0 ? flagsArr[userFieldIdx]! : 0x07; // default WEC
+
+            // Compile the object expression
+            const objType = compileExpression(ctx, fctx, arg0);
+            if (!objType) {
+              fctx.body.push({ op: "ref.null.extern" });
+              return { kind: "externref" };
+            }
+
+            // Cast to struct type if needed
+            if (objType.kind === "externref") {
+              fctx.body.push({ op: "any.convert_extern" } as unknown as Instr);
+              fctx.body.push({ op: "ref.cast", typeIdx: structTypeIdx } as unknown as Instr);
+            } else if (objType.kind === "ref_null" && objType.typeIdx !== structTypeIdx) {
+              fctx.body.push({ op: "ref.cast", typeIdx: structTypeIdx } as unknown as Instr);
+            }
+
+            // Save obj ref for struct.get
+            const objLocal = allocLocal(fctx, `__gopd_obj_${fctx.locals.length}`,
+              { kind: "ref", typeIdx: structTypeIdx });
+            fctx.body.push({ op: "local.set", index: objLocal });
+
+            // Get field value: struct.get → coerce to externref
+            fctx.body.push({ op: "local.get", index: objLocal });
+            fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx: entry.fieldIdx });
+
+            // Coerce field value to externref for __create_descriptor
+            const fieldType = entry.field.type;
+            if (fieldType.kind === "f64") {
+              const boxIdx = ensureLateImport(ctx, "__box_number", [{ kind: "f64" }], [{ kind: "externref" }]);
+              flushLateImportShifts(ctx, fctx);
+              if (boxIdx !== undefined) {
+                fctx.body.push({ op: "call", funcIdx: boxIdx });
+              }
+            } else if (fieldType.kind === "i32") {
+              fctx.body.push({ op: "f64.convert_i32_s" });
+              const boxIdx = ensureLateImport(ctx, "__box_number", [{ kind: "f64" }], [{ kind: "externref" }]);
+              flushLateImportShifts(ctx, fctx);
+              if (boxIdx !== undefined) {
+                fctx.body.push({ op: "call", funcIdx: boxIdx });
+              }
+            } else if (fieldType.kind === "i64") {
+              fctx.body.push({ op: "f64.convert_i64_s" } as unknown as Instr);
+              const boxIdx = ensureLateImport(ctx, "__box_number", [{ kind: "f64" }], [{ kind: "externref" }]);
+              flushLateImportShifts(ctx, fctx);
+              if (boxIdx !== undefined) {
+                fctx.body.push({ op: "call", funcIdx: boxIdx });
+              }
+            } else if (fieldType.kind === "ref" || fieldType.kind === "ref_null") {
+              fctx.body.push({ op: "extern.convert_any" });
+            } else if (fieldType.kind !== "externref") {
+              // Other types: try extern.convert_any
+              fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+            }
+
+            // Push flags as i32 constant
+            fctx.body.push({ op: "i32.const", value: flags });
+
+            // Call __create_descriptor(value, flags) → externref
+            const createIdx = ensureLateImport(ctx, "__create_descriptor",
+              [{ kind: "externref" }, { kind: "i32" }],
+              [{ kind: "externref" }]);
+            flushLateImportShifts(ctx, fctx);
+            if (createIdx !== undefined) {
+              fctx.body.push({ op: "call", funcIdx: createIdx });
+            }
+            return { kind: "externref" };
+          }
+          // Property not found in struct — return undefined
+          // (own property doesn't exist on this shape)
+          const argResult = compileExpression(ctx, fctx, arg0);
+          if (argResult) fctx.body.push({ op: "drop" });
+          fctx.body.push({ op: "ref.null.extern" });
+          return { kind: "externref" };
+        }
+      }
+
+      // Fallback: dynamic case — delegate to __getOwnPropertyDescriptor host import
+      const objType = compileExpression(ctx, fctx, arg0, { kind: "externref" });
       if (!objType) {
         fctx.body.push({ op: "ref.null.extern" });
         return { kind: "externref" };
@@ -9732,8 +9834,7 @@ function compileCallExpression(
       if (objType.kind !== "externref") {
         coerceType(ctx, fctx, objType, { kind: "externref" });
       }
-      // Compile prop as externref
-      const propType = compileExpression(ctx, fctx, expr.arguments[1]!, { kind: "externref" });
+      const propType = compileExpression(ctx, fctx, arg1, { kind: "externref" });
       if (!propType) {
         fctx.body.push({ op: "drop" });
         fctx.body.push({ op: "ref.null.extern" });
@@ -9742,7 +9843,6 @@ function compileCallExpression(
       if (propType.kind !== "externref") {
         coerceType(ctx, fctx, propType, { kind: "externref" });
       }
-      // Call __getOwnPropertyDescriptor(obj, prop) → externref
       let funcIdx = ensureLateImport(ctx, "__getOwnPropertyDescriptor",
         [{ kind: "externref" }, { kind: "externref" }],
         [{ kind: "externref" }]);
