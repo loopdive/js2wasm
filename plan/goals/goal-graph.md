@@ -95,7 +95,7 @@ and a goal being "ready" doesn't mean it should be worked on immediately.
 | **error-model** | Active (near complete) | spec errors, ~40% | compilable (met) | ~~#783~~, ~~#730~~, ~~#784~~ done; #736, #733, #402, #721 remaining |
 | **property-model** | Activatable | ~60% | core-semantics (partial) | ~~#732~~ done; #739, #678, #770, #746 remaining |
 | **class-system** | Activatable | ~60% | core-semantics (partial) | ~~#729~~, ~~#738~~ done; #334, #377, #329 remaining |
-| **builtin-methods** | Activatable | ~70% | core-semantics (partial), error-model (partial) | ~~#731~~, ~~#734~~, ~~#738~~ done; #763, #385 remaining |
+| **builtin-methods** | Activatable | ~70% | core-semantics (partial), error-model (partial) | ~~#731~~, ~~#734~~, ~~#738~~ done; #763, #385 remaining. Latest: Array reduce/reduceRight edge cases (fe7d5503, ~710 FAIL) |
 | **iterator-protocol** | Blocked | ~65% | class-system | #766, #481, #761, #353 |
 | **generator-model** | Blocked | ~70% | iterator-protocol | #680, #762, #287, #288 |
 | **symbol-protocol** | Blocked | ~70% | iterator-protocol | #482, #484, #485, #486, #487 |
