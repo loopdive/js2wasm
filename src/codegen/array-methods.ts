@@ -924,34 +924,37 @@ export function compileArrayMethodCall(
     case "sort":
       result = (elemType.kind === "f64" || elemType.kind === "i32")
         ? compileArraySort(ctx, fctx, propAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType) : undefined; break;
-    // Functional array methods -- currently only supported for numeric element types (f64, i32)
+    // Functional array methods -- supported for numeric (f64, i32) and externref element types
     case "filter":
-      result = (elemType.kind === "f64" || elemType.kind === "i32")
+      result = (elemType.kind === "f64" || elemType.kind === "i32" || elemType.kind === "externref")
         ? compileArrayFilter(ctx, fctx, propAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType) : undefined; break;
     case "map":
-      result = (elemType.kind === "f64" || elemType.kind === "i32")
+      result = (elemType.kind === "f64" || elemType.kind === "i32" || elemType.kind === "externref")
         ? compileArrayMap(ctx, fctx, propAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType) : undefined; break;
     case "reduce":
-      result = (elemType.kind === "f64" || elemType.kind === "i32")
+      result = (elemType.kind === "f64" || elemType.kind === "i32" || elemType.kind === "externref")
         ? compileArrayReduce(ctx, fctx, propAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType) : undefined; break;
+    case "reduceRight":
+      result = (elemType.kind === "f64" || elemType.kind === "i32" || elemType.kind === "externref")
+        ? compileArrayReduceRight(ctx, fctx, propAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType) : undefined; break;
     case "forEach": {
-      const feResult = (elemType.kind === "f64" || elemType.kind === "i32")
+      const feResult = (elemType.kind === "f64" || elemType.kind === "i32" || elemType.kind === "externref")
         ? compileArrayForEach(ctx, fctx, propAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType) : undefined;
       // forEach returns void; use VOID_RESULT so compileExpression doesn't rollback
       result = feResult === null ? VOID_RESULT as any : feResult;
       break;
     }
     case "find":
-      result = (elemType.kind === "f64" || elemType.kind === "i32")
+      result = (elemType.kind === "f64" || elemType.kind === "i32" || elemType.kind === "externref")
         ? compileArrayFind(ctx, fctx, propAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType) : undefined; break;
     case "findIndex":
-      result = (elemType.kind === "f64" || elemType.kind === "i32")
+      result = (elemType.kind === "f64" || elemType.kind === "i32" || elemType.kind === "externref")
         ? compileArrayFindIndex(ctx, fctx, propAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType) : undefined; break;
     case "some":
-      result = (elemType.kind === "f64" || elemType.kind === "i32")
+      result = (elemType.kind === "f64" || elemType.kind === "i32" || elemType.kind === "externref")
         ? compileArraySome(ctx, fctx, propAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType) : undefined; break;
     case "every":
-      result = (elemType.kind === "f64" || elemType.kind === "i32")
+      result = (elemType.kind === "f64" || elemType.kind === "i32" || elemType.kind === "externref")
         ? compileArrayEvery(ctx, fctx, propAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType) : undefined; break;
     default:
       result = undefined;
@@ -1299,18 +1302,19 @@ function compileArrayIncludes(
 
   const getOp = elemType.kind === "i16" ? "array.get_s" : "array.get";
 
-  // For externref elements, use the `equals` string import (JS ===) for comparison
-  // For ref/ref_null elements, use ref.eq for reference identity comparison
-  let incEqInstrs: Instr[];
-  if (elemType.kind === "externref") {
-    addStringImports(ctx);
-    const equalsIdx = ctx.funcMap.get("equals")!;
-    incEqInstrs = [{ op: "call", funcIdx: equalsIdx } as Instr];
-  } else if (elemType.kind === "ref" || elemType.kind === "ref_null") {
-    incEqInstrs = [{ op: "ref.eq" }];
-  } else {
-    const eqOp = elemType.kind === "f64" ? "f64.eq" : "i32.eq";
-    incEqInstrs = [{ op: eqOp } as Instr];
+  // SameValueZero comparison for includes:
+  // - For f64: a === b OR (isNaN(a) AND isNaN(b))
+  // - For externref: use JS === via equals import
+  // - For ref/ref_null: ref.eq
+  // - For i32: i32.eq
+  //
+  // We build a comparison that leaves i32 (0/1) on the stack.
+  // For f64, we need a temp local to hold the element for the NaN check.
+  let incNeedsElemTmp = false;
+  let incElemTmp: number | undefined;
+  if (elemType.kind === "f64") {
+    incNeedsElemTmp = true;
+    incElemTmp = allocLocal(fctx, `__arr_inc_el_${fctx.locals.length}`, { kind: "f64" });
   }
 
   // Use a result local instead of `return` to avoid type mismatch with enclosing function
@@ -1318,17 +1322,68 @@ function compileArrayIncludes(
   fctx.body.push({ op: "i32.const", value: 0 });
   fctx.body.push({ op: "local.set", index: resTmp });
 
+  // Build the comparison instructions for the loop body
+  let comparisonInstrs: Instr[];
+  if (elemType.kind === "f64") {
+    // SameValueZero for f64: (elem == val) | (isNaN(elem) & isNaN(val))
+    comparisonInstrs = [
+      // Load element and save to temp
+      { op: "local.get", index: dataTmp } as Instr,
+      { op: "local.get", index: iTmp } as Instr,
+      { op: getOp, typeIdx: arrTypeIdx } as Instr,
+      { op: "local.tee", index: incElemTmp! } as Instr,
+      // elem == val
+      { op: "local.get", index: valTmp } as Instr,
+      { op: "f64.eq" } as Instr,
+      // isNaN(elem) = elem != elem
+      { op: "local.get", index: incElemTmp! } as Instr,
+      { op: "local.get", index: incElemTmp! } as Instr,
+      { op: "f64.ne" } as Instr,
+      // isNaN(val) = val != val
+      { op: "local.get", index: valTmp } as Instr,
+      { op: "local.get", index: valTmp } as Instr,
+      { op: "f64.ne" } as Instr,
+      // isNaN(elem) & isNaN(val)
+      { op: "i32.and" } as Instr,
+      // (elem == val) | (both NaN)
+      { op: "i32.or" } as Instr,
+    ];
+  } else if (elemType.kind === "externref") {
+    addStringImports(ctx);
+    const equalsIdx = ctx.funcMap.get("equals")!;
+    comparisonInstrs = [
+      { op: "local.get", index: dataTmp } as Instr,
+      { op: "local.get", index: iTmp } as Instr,
+      { op: getOp, typeIdx: arrTypeIdx } as Instr,
+      { op: "local.get", index: valTmp } as Instr,
+      { op: "call", funcIdx: equalsIdx } as Instr,
+    ];
+  } else if (elemType.kind === "ref" || elemType.kind === "ref_null") {
+    comparisonInstrs = [
+      { op: "local.get", index: dataTmp } as Instr,
+      { op: "local.get", index: iTmp } as Instr,
+      { op: getOp, typeIdx: arrTypeIdx } as Instr,
+      { op: "local.get", index: valTmp } as Instr,
+      { op: "ref.eq" } as Instr,
+    ];
+  } else {
+    const eqOp = "i32.eq";
+    comparisonInstrs = [
+      { op: "local.get", index: dataTmp } as Instr,
+      { op: "local.get", index: iTmp } as Instr,
+      { op: getOp, typeIdx: arrTypeIdx } as Instr,
+      { op: "local.get", index: valTmp } as Instr,
+      { op: eqOp } as Instr,
+    ];
+  }
+
   const loopBody: Instr[] = [
     { op: "local.get", index: iTmp },
     { op: "local.get", index: lenTmp },
     { op: "i32.ge_s" },
     { op: "br_if", depth: 1 },
 
-    { op: "local.get", index: dataTmp },
-    { op: "local.get", index: iTmp },
-    { op: getOp, typeIdx: arrTypeIdx } as Instr,
-    { op: "local.get", index: valTmp },
-    ...incEqInstrs,
+    ...comparisonInstrs,
     { op: "if", blockType: { kind: "empty" },
       then: [
         { op: "i32.const", value: 1 } as Instr,
@@ -2611,6 +2666,138 @@ function compileArrayReduce(
     ...loopExitCheck(loop),
     ...callInstrs,
     ...loopIncrement(loop),
+  ];
+
+  emitArrayLoop(fctx, loopBody);
+
+  fctx.body.push({ op: "local.get", index: accTmp });
+  return { kind: numKind as any };
+}
+
+/**
+ * arr.reduceRight(cb, init?) -> iterate elements right-to-left, accumulate via callback.
+ */
+function compileArrayReduceRight(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  propAccess: ts.PropertyAccessExpression,
+  callExpr: ts.CallExpression,
+  vecTypeIdx: number,
+  arrTypeIdx: number,
+  elemType: ValType,
+): ValType | null {
+  if (callExpr.arguments.length < 1) {
+    ctx.errors.push({ message: "reduceRight requires at least a callback", line: getLine(callExpr), column: getCol(callExpr) });
+    return null;
+  }
+
+  const numKind = ctx.fast ? "i32" : "f64";
+  const bridgeName = ctx.fast ? "__call_2_i32" : "__call_2_f64";
+  const setup = setupArrayCallback(ctx, fctx, callExpr, "reduceRight", "rr", bridgeName);
+  if (!setup) return null;
+
+  // Set up receiver: vec/data/len
+  const vecTmp = allocLocal(fctx, `__arr_rr_vec_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecTypeIdx });
+  const dataTmp = allocLocal(fctx, `__arr_rr_data_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
+  const lenTmp = allocLocal(fctx, `__arr_rr_len_${fctx.locals.length}`, { kind: "i32" });
+  const iTmp = allocLocal(fctx, `__arr_rr_i_${fctx.locals.length}`, { kind: "i32" });
+
+  compileExpression(ctx, fctx, propAccess.expression);
+  fctx.body.push({ op: "local.tee", index: vecTmp });
+  emitReceiverNullGuard(ctx, fctx, vecTmp);
+  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
+  fctx.body.push({ op: "local.set", index: lenTmp });
+  fctx.body.push({ op: "local.get", index: vecTmp });
+  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
+  fctx.body.push({ op: "local.set", index: dataTmp });
+
+  const getOp = elemType.kind === "i16" ? "array.get_s" : "array.get";
+  const accTmp = allocLocal(fctx, `__arr_rr_acc_${fctx.locals.length}`, { kind: numKind as any });
+
+  // Compile initial value or use arr[length-1] as default
+  if (callExpr.arguments.length >= 2) {
+    compileExpression(ctx, fctx, callExpr.arguments[1]!, { kind: numKind as any });
+    fctx.body.push({ op: "local.set", index: accTmp });
+    // Start from length - 1
+    fctx.body.push({ op: "local.get", index: lenTmp });
+    fctx.body.push({ op: "i32.const", value: 1 });
+    fctx.body.push({ op: "i32.sub" });
+    fctx.body.push({ op: "local.set", index: iTmp });
+  } else {
+    // No initial value: acc = data[length-1], start from length - 2
+    fctx.body.push({ op: "local.get", index: dataTmp });
+    fctx.body.push({ op: "local.get", index: lenTmp });
+    fctx.body.push({ op: "i32.const", value: 1 });
+    fctx.body.push({ op: "i32.sub" });
+    fctx.body.push({ op: getOp, typeIdx: arrTypeIdx });
+    fctx.body.push({ op: "local.set", index: accTmp });
+    fctx.body.push({ op: "local.get", index: lenTmp });
+    fctx.body.push({ op: "i32.const", value: 2 });
+    fctx.body.push({ op: "i32.sub" });
+    fctx.body.push({ op: "local.set", index: iTmp });
+  }
+
+  // Build the loop locals struct for buildClosureCallInstrs compatibility
+  const loop: ArrayLoopLocals = { vecTmp, dataTmp, lenTmp, iTmp, getOp };
+
+  // Build reduce-specific callback invocation (2-arg: acc, elem)
+  let callInstrs: Instr[];
+  if (setup.closureInfo && setup.closureTypeIdx !== undefined && setup.closureTmp !== undefined) {
+    const ci = setup.closureInfo;
+    const numParams = ci.paramTypes.length;
+    const accCoerce = ci.paramTypes[0] ? coercionInstrs(ctx, { kind: numKind as any }, ci.paramTypes[0]) : [];
+    const elemCoerce = ci.paramTypes[1] ? coercionInstrs(ctx, elemType, ci.paramTypes[1]) : [];
+    callInstrs = [
+      { op: "local.get", index: setup.closureTmp } as Instr,
+      { op: "local.get", index: accTmp } as Instr,
+      ...accCoerce,
+      { op: "local.get", index: dataTmp } as Instr,
+      { op: "local.get", index: iTmp } as Instr,
+      { op: getOp, typeIdx: arrTypeIdx } as Instr,
+      ...elemCoerce,
+      ...(numParams >= 3 ? [
+        { op: "local.get", index: iTmp } as Instr,
+        ...coercionInstrs(ctx, { kind: "i32" }, ci.paramTypes[2] ?? { kind: "i32" }),
+      ] : []),
+      ...(numParams >= 4 ? [
+        { op: "local.get", index: vecTmp } as Instr,
+        ...coercionInstrs(ctx, { kind: "ref_null", typeIdx: vecTypeIdx }, ci.paramTypes[3] ?? { kind: "ref_null", typeIdx: vecTypeIdx }),
+      ] : []),
+      { op: "local.get", index: setup.closureTmp } as Instr,
+      { op: "struct.get", typeIdx: setup.closureTypeIdx, fieldIdx: 0 } as Instr,
+      { op: "ref.cast", typeIdx: ci.funcTypeIdx } as Instr,
+      { op: "ref.as_non_null" } as Instr,
+      { op: "call_ref", typeIdx: ci.funcTypeIdx } as Instr,
+      { op: "local.set", index: accTmp } as Instr,
+    ];
+  } else {
+    callInstrs = [
+      { op: "local.get", index: setup.cbTmp! } as Instr,
+      { op: "local.get", index: accTmp } as Instr,
+      { op: "local.get", index: dataTmp } as Instr,
+      { op: "local.get", index: iTmp } as Instr,
+      { op: getOp, typeIdx: arrTypeIdx } as Instr,
+      ...(!ctx.fast && elemType.kind === "i32" ? [{ op: "f64.convert_i32_s" } as Instr] : []),
+      { op: "call", funcIdx: setup.callBridgeIdx! } as Instr,
+      { op: "local.set", index: accTmp } as Instr,
+    ];
+  }
+
+  // Loop: while (i >= 0) { acc = cb(acc, data[i], i, arr); i--; }
+  const loopBody: Instr[] = [
+    // Exit check: if (i < 0) break
+    { op: "local.get", index: iTmp } as Instr,
+    { op: "i32.const", value: 0 } as Instr,
+    { op: "i32.lt_s" } as Instr,
+    { op: "br_if", depth: 1 } as Instr,
+    // Callback
+    ...callInstrs,
+    // i--
+    { op: "local.get", index: iTmp } as Instr,
+    { op: "i32.const", value: 1 } as Instr,
+    { op: "i32.sub" } as Instr,
+    { op: "local.set", index: iTmp } as Instr,
+    { op: "br", depth: 0 } as Instr,
   ];
 
   emitArrayLoop(fctx, loopBody);
