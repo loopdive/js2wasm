@@ -1478,11 +1478,15 @@ export function compileNativeStringMethodCall(
 
     // Determine return type and marshal back if needed
     const returnsBool = method === "includes" || method === "startsWith" || method === "endsWith";
-    const returnsNum = method === "indexOf" || method === "lastIndexOf";
+    const returnsNum = method === "indexOf" || method === "lastIndexOf" || method === "search";
+    const returnsExternRef = method === "match";
     if (returnsBool) {
       return { kind: "i32" };
     } else if (returnsNum) {
       return { kind: "f64" };
+    } else if (returnsExternRef) {
+      // Returns externref (e.g. match result array or null) — no marshal needed
+      return { kind: "externref" };
     } else {
       // Returns externref string → marshal to native
       const fromExternIdx = ctx.nativeStrHelpers.get("__str_from_extern")!;

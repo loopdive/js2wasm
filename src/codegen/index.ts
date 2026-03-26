@@ -1930,7 +1930,7 @@ function finalizeUnifiedCollector(
       const t = addFuncType(ctx, params, [sig.result]);
       addImport(ctx, "env", `string_${method}`, { kind: "func", typeIdx: t });
     }
-    if (state.stringMethodNeeded.has("split") && !ctx.nativeStrings) {
+    if ((state.stringMethodNeeded.has("split") || state.stringMethodNeeded.has("match")) && !ctx.nativeStrings) {
       if (!ctx.funcMap.has("__extern_get")) {
         const getType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
         addImport(ctx, "env", "__extern_get", { kind: "func", typeIdx: getType });
@@ -2496,6 +2496,8 @@ const STRING_METHODS: Record<string, { params: ValType[]; result: ValType }> = {
     result: { kind: "externref" },
   },
   split: { params: [{ kind: "externref" }], result: { kind: "externref" } },
+  match: { params: [{ kind: "externref" }], result: { kind: "externref" } },
+  search: { params: [{ kind: "externref" }], result: { kind: "f64" } },
   at: { params: [{ kind: "f64" }], result: { kind: "externref" } },
   codePointAt: { params: [{ kind: "f64" }], result: { kind: "f64" } },
   normalize: { params: [{ kind: "externref" }], result: { kind: "externref" } },
@@ -2573,10 +2575,10 @@ function collectStringMethodImports(
     addImport(ctx, "env", `string_${method}`, { kind: "func", typeIdx: t });
   }
 
-  // split() returns an externref JS array — register __extern_get and __extern_length
+  // split()/match() return externref JS arrays — register __extern_get and __extern_length
   // so that element access and .length work on the result.
   // With native strings, split returns a native string array — no extern helpers needed.
-  if (needed.has("split") && !ctx.nativeStrings) {
+  if ((needed.has("split") || needed.has("match")) && !ctx.nativeStrings) {
     if (!ctx.funcMap.has("__extern_get")) {
       const getType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
       addImport(ctx, "env", "__extern_get", { kind: "func", typeIdx: getType });
