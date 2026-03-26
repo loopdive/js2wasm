@@ -15,8 +15,6 @@ Active file/function claims by agents. **Check before editing. Update when start
 |------|--------------|-------|-------|-------|
 | src/codegen/expressions.ts | compileIdentifier / TDZ checks | dev-790 | #790 | 2026-03-25 |
 | src/codegen/index.ts | scope/binding setup | dev-790 | #790 | 2026-03-25 |
-| tests/test262-runner.ts | wrapTest propertyHelper section | dev-770 | #770 | 2026-03-26 |
-
 <!--
 Example entries:
 | src/codegen/expressions.ts | compileCallExpression | dev-1 | #512 | 2026-03-25 |
