@@ -69,6 +69,20 @@ const POOL_SIZE = parseInt(process.env.TEST262_WORKERS ?? "8", 10);
 const pool = new CompilerPool(POOL_SIZE);
 // Pool workers load compiler-bundle.mjs — already has skipSemanticDiagnostics
 
+// ── Ensure compiler bundle is up to date ─────────────────────────────
+// Always rebuild before running tests — prevents stale bundle regardless
+// of how vitest is invoked (script, direct, agent, etc.)
+import { execSync } from "child_process";
+try {
+  const root = join(import.meta.dirname ?? ".", "..");
+  execSync(
+    "npx esbuild src/index.ts --bundle --platform=node --format=esm --outfile=scripts/compiler-bundle.mjs --external:typescript",
+    { cwd: root, stdio: "pipe", timeout: 30000 },
+  );
+} catch {
+  // Bundle build failed — tests will use whatever bundle exists
+}
+
 // ── Cache setup ──────────────────────────────────────────────────────
 
 const CACHE_DIR = join(import.meta.dirname ?? ".", "..", ".test262-cache");
