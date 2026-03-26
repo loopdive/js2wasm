@@ -20,6 +20,7 @@ Active file/function claims by agents. **Check before editing. Update when start
 | src/ir/types.ts | catch_all instruction | dev-a | #798a | 2026-03-26 |
 | src/codegen/statements.ts | compileThrowStatement | dev-4 | #798c | 2026-03-26 |
 | src/codegen/index.ts | FunctionContext (catchRethrowStack) | dev-4 | #798c | 2026-03-26 |
+| src/codegen/typeof-delete.ts | compileTypeofExpression, compileTypeofComparison | dev-8 | #800 | 2026-03-26 |
 
 <!--
 Example entries:
