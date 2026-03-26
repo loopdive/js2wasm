@@ -31,7 +31,7 @@ import type {
 import { createEmptyModule } from "../ir/types.js";
 import { compileExpression, resolveComputedKeyExpression, coerceType, valTypesMatch, emitBoundsCheckedArrayGet, ensureLateImport, flushLateImportShifts } from "./expressions.js";
 import { collectShapes } from "../shape-inference.js";
-import { compileStatement, ensureBindingLocals, hoistFunctionDeclarations, emitNestedBindingDefault } from "./statements.js";
+import { compileStatement, ensureBindingLocals, hoistFunctionDeclarations } from "./statements.js";
 import { emitInlineMathFunctions } from "./math-helpers.js";
 
 /** Result returned by generateModule / generateMultiModule */
@@ -8065,15 +8065,6 @@ export function ensureExnTag(ctx: CodegenContext): number {
   const tagDef: TagDef = { name: "__exn", typeIdx };
   ctx.exnTagIdx = ctx.mod.tags.length;
   ctx.mod.tags.push(tagDef);
-  // Export the tag so that the JS host can extract exception payloads
-  // via WebAssembly.Exception.getArg(tag, 0).  Without this export,
-  // ALL WebAssembly.Exceptions are reported as "TypeError (null/undefined
-  // access)" because the runner cannot distinguish tagged exceptions from
-  // typeErrorThrowInstrs.  (#792)
-  ctx.mod.exports.push({
-    name: "__exn_tag",
-    desc: { kind: "tag", index: ctx.exnTagIdx },
-  });
   return ctx.exnTagIdx;
 }
 
@@ -11636,121 +11627,8 @@ function fixupStructNewResultCoercion(ctx: CodegenContext): void {
 
       // Fix struct.new arguments: if a field expects externref but the
       // preceding instruction produces a ref/ref_null, insert extern.convert_any
-      if (typeDef && typeDef.kind === "struct") {
-        const fields = typeDef.fields;
-        // Walk backwards through preceding instructions to find value-producing
-        // instructions for each field. We only fix the simple case where the
-        // preceding instruction is local.get/global.get producing a ref type
-        // and the field expects externref.
-        let insertions: { pos: number; op: Instr }[] = [];
-        let pos = i; // position just before struct.new
-        for (let fi = fields.length - 1; fi >= 0; fi--) {
-          pos--;
-          if (pos < 0) break;
-          const prev = instrs[pos]!;
-          const field = fields[fi]!;
-
-          // Skip ref.as_non_null — it doesn't produce a new stack value
-          if (prev.op === "ref.as_non_null" && pos > 0) {
-            pos--;
-          }
-          // Skip extern.convert_any — already-inserted coercion for a later field;
-          // without this skip the backward walk gets out of sync and attributes
-          // the wrong value-producer instruction to the current field.
-          if (instrs[pos]!.op === "extern.convert_any" && pos > 0) {
-            pos--;
-          }
-
-          const prevInstr = instrs[pos]!;
-          // Safety: only insert coercion if the instruction at pos is a direct
-          // value producer for this struct.new field — NOT consumed by a following
-          // instruction like struct.get, array.get, call, etc.
-          const nextInstr = instrs[pos + 1];
-          const isConsumedByNext = nextInstr && (
-            nextInstr.op === "struct.get" || nextInstr.op === "struct.set" ||
-            nextInstr.op === "array.get" || nextInstr.op === "array.set" ||
-            nextInstr.op === "array.len" ||
-            nextInstr.op === "call" || nextInstr.op === "call_indirect" ||
-            nextInstr.op === "call_ref" || nextInstr.op === "return_call" ||
-            nextInstr.op === "ref.cast" || nextInstr.op === "ref.cast_null" ||
-            nextInstr.op === "ref.test" ||
-            nextInstr.op === "any.convert_extern" ||
-            nextInstr.op === "f64.convert_i32_s" || nextInstr.op === "f64.convert_i32_u" ||
-            nextInstr.op === "i32.trunc_sat_f64_s" || nextInstr.op === "i32.trunc_sat_f64_u"
-          );
-
-          if (field.type.kind === "externref" && !isConsumedByNext) {
-            if (prevInstr.op === "local.get") {
-              const lt = getLocalType(func, (prevInstr as { index: number }).index);
-              if (lt && (lt.kind === "ref" || lt.kind === "ref_null")) {
-                insertions.push({ pos: pos + 1, op: { op: "extern.convert_any" } as Instr });
-              }
-            } else if (prevInstr.op === "global.get") {
-              const gIdx = (prevInstr as { index: number }).index;
-              const gDef = ctx.mod.globals[gIdx];
-              if (gDef && (gDef.type.kind === "ref" || gDef.type.kind === "ref_null")) {
-                insertions.push({ pos: pos + 1, op: { op: "extern.convert_any" } as Instr });
-              }
-            }
-          }
-
-          // Fix struct.new fields expecting f64 but getting externref
-          if (field.type.kind === "f64" && !isConsumedByNext) {
-            let isExternref = false;
-            if (prevInstr.op === "local.get") {
-              const lt = getLocalType(func, (prevInstr as { index: number }).index);
-              if (lt && lt.kind === "externref") isExternref = true;
-            } else if (prevInstr.op === "global.get") {
-              const gIdx = (prevInstr as { index: number }).index;
-              const gDef = ctx.mod.globals[gIdx];
-              if (gDef && gDef.type.kind === "externref") isExternref = true;
-            } else if (prevInstr.op === "ref.null.extern" || prevInstr.op === "ref.null extern") {
-              // null in f64 context → NaN
-              instrs[pos] = { op: "f64.const", value: NaN } as Instr;
-              isExternref = false; // already handled
-            }
-            if (isExternref) {
-              const unboxIdx = ctx.funcMap.get("__unbox_number");
-              if (unboxIdx !== undefined) {
-                insertions.push({ pos: pos + 1, op: { op: "call", funcIdx: unboxIdx } as Instr });
-              } else {
-                // Fallback: replace with f64.const NaN
-                instrs[pos] = { op: "f64.const", value: NaN } as Instr;
-              }
-            }
-          }
-
-          // Fix struct.new fields expecting i32 but getting externref
-          if (field.type.kind === "i32" && !isConsumedByNext) {
-            let isExternref = false;
-            if (prevInstr.op === "local.get") {
-              const lt = getLocalType(func, (prevInstr as { index: number }).index);
-              if (lt && lt.kind === "externref") isExternref = true;
-            } else if (prevInstr.op === "global.get") {
-              const gIdx = (prevInstr as { index: number }).index;
-              const gDef = ctx.mod.globals[gIdx];
-              if (gDef && gDef.type.kind === "externref") isExternref = true;
-            } else if (prevInstr.op === "ref.null.extern" || prevInstr.op === "ref.null extern") {
-              instrs[pos] = { op: "i32.const", value: 0 } as Instr;
-              isExternref = false;
-            }
-            if (isExternref) {
-              const unboxIdx = ctx.funcMap.get("__unbox_number");
-              if (unboxIdx !== undefined) {
-                insertions.push({ pos: pos + 1, op: { op: "call", funcIdx: unboxIdx } as Instr });
-                insertions.push({ pos: pos + 2, op: { op: "i32.trunc_sat_f64_s" } as Instr });
-              } else {
-                instrs[pos] = { op: "i32.const", value: 0 } as Instr;
-              }
-            }
-          }
-        }
-        // Apply insertions in reverse order to preserve positions
-        for (let ii = insertions.length - 1; ii >= 0; ii--) {
-          instrs.splice(insertions[ii]!.pos, 0, insertions[ii]!.op);
-          i++; // adjust loop index for inserted instructions
-        }
-      }
+      // struct.new field argument coercion is now handled by
+      // stack-balance.ts fixCallArgTypesInBody (struct.new loop).
 
       // Check what consumes the struct.new result
       const next = instrs[i + 1];
@@ -11913,6 +11791,32 @@ function fixupExternConvertAny(ctx: CodegenContext): void {
       }
     }
 
+    // Fix extern.convert_any consumed by struct.new for non-externref fields.
+    // If extern.convert_any + struct.new where the field at that position expects
+    // a ref/ref_null type, replace extern.convert_any with the correct coercion.
+    for (let j = 0; j < instrs.length - 1; j++) {
+      if (instrs[j]!.op !== "extern.convert_any") continue;
+      const next = instrs[j + 1]!;
+      if (next.op !== "struct.new") continue;
+
+      const snTypeIdx = (next as any).typeIdx as number;
+      const snTypeDef = ctx.mod.types[snTypeIdx];
+      if (!snTypeDef || snTypeDef.kind !== "struct") continue;
+
+      const fields = (snTypeDef as any).fields as Array<{ type: ValType }>;
+      // The extern.convert_any is the last argument to struct.new, so it's for the last field
+      const lastField = fields[fields.length - 1];
+      if (!lastField) continue;
+
+      if (lastField.type.kind === "ref" || lastField.type.kind === "ref_null") {
+        // extern.convert_any produces externref but field expects (ref null N).
+        // Replace with nothing (remove extern.convert_any) — the ref type from before
+        // is already correct for the struct field.
+        instrs.splice(j, 1);
+        j--; // re-check this position
+      }
+    }
+
     // Fix return_call/call: ref.null extern where (ref null N) is expected
     for (let j = 0; j < instrs.length; j++) {
       const instr = instrs[j]!;
@@ -11945,37 +11849,59 @@ function fixupExternConvertAny(ctx: CodegenContext): void {
       if (!targetType || targetType.kind !== "func") continue;
       const params = (targetType as FuncTypeDef).params;
 
-      // Walk backwards to find ref.null extern args that should be ref.null for (ref null N)
-      // Must properly handle struct.new (which consumes N fields and produces 1 value)
-      // and pass-through instructions (local.tee, ref.cast, etc.) that forward a value.
+      // Walk backwards to find ref.null extern args that should be ref.null for (ref null N).
+      // Must account for multi-consuming instructions like struct.new that eat
+      // their own arguments from the stack — their consumed args are NOT call args.
       let pos = j;
       for (let pi = params.length - 1; pi >= 0; pi--) {
         pos--;
         if (pos < 0) break;
         const argInstr = instrs[pos]!;
 
-        // struct.new produces 1 value (the struct ref) from N field operands.
-        // It IS the arg producer — skip back over its consumed fields.
+        // struct.new consumes N fields and produces 1 value.
+        // The current pos IS a call arg (the struct.new result), but the N
+        // instructions before it are struct field args, NOT call args.
+        // Skip over them so the next iteration's pos-- lands correctly.
         if (argInstr.op === "struct.new") {
-          const sTypeIdx = (argInstr as { typeIdx: number }).typeIdx;
-          const sDef = ctx.mod.types[sTypeIdx];
-          const fieldCount = sDef?.kind === "struct" ? sDef.fields.length : 0;
-          for (let f = 0; f < fieldCount; f++) {
-            let depth = 1;
-            while (depth > 0 && pos > 0) {
-              pos--;
-              depth -= instrStackDelta(instrs[pos]!, ctx.mod);
+          const snTypeIdx = (argInstr as any).typeIdx as number;
+          const snTypeDef = ctx.mod.types[snTypeIdx];
+          if (snTypeDef && snTypeDef.kind === "struct") {
+            const numFields = (snTypeDef as any).fields.length;
+            pos -= numFields; // skip past the field-producing instructions
+          }
+          continue; // struct.new itself doesn't need ref.null fixup
+        }
+        // array.new_fixed similarly consumes N elements
+        if (argInstr.op === "array.new_fixed") {
+          const size = (argInstr as any).size ?? 0;
+          pos -= size;
+          continue;
+        }
+        // call consumes M args and produces 1 value — skip its args
+        if (argInstr.op === "call" || argInstr.op === "return_call") {
+          const callFuncIdx = (argInstr as any).funcIdx;
+          if (callFuncIdx !== undefined) {
+            const callTotalImports = ctx.mod.imports.filter((imp: any) => imp.desc?.kind === "func").length;
+            let callTargetTypeIdx: number | undefined;
+            if (callFuncIdx < callTotalImports) {
+              let ci = 0;
+              for (const imp of ctx.mod.imports) {
+                if ((imp as any).desc?.kind === "func") {
+                  if (ci === callFuncIdx) { callTargetTypeIdx = (imp as any).desc.typeIdx; break; }
+                  ci++;
+                }
+              }
+            } else {
+              const f = ctx.mod.functions[callFuncIdx - callTotalImports];
+              if (f) callTargetTypeIdx = f.typeIdx;
+            }
+            if (callTargetTypeIdx !== undefined) {
+              const callFt = ctx.mod.types[callTargetTypeIdx];
+              if (callFt && callFt.kind === "func") {
+                pos -= (callFt as FuncTypeDef).params.length;
+              }
             }
           }
-          continue; // struct.new is the producer, not ref.null — skip replacement
-        }
-
-        // Pass-through instructions (delta=0, one-in one-out) forward a value
-        // from an earlier instruction. Look further back for the actual producer.
-        if (argInstr.op === "local.tee" || argInstr.op === "ref.as_non_null" ||
-            argInstr.op === "ref.cast" || argInstr.op === "ref.cast_null" ||
-            argInstr.op === "any.convert_extern" || argInstr.op === "extern.convert_any") {
-          pi++; // re-examine this param slot with the next instruction back
           continue;
         }
 
@@ -12146,15 +12072,10 @@ export function compileClassBodies(
     // For each param with a default value, check if the caller passed the zero/null
     // sentinel (meaning the argument was omitted) and if so, compile the initializer
     // expression and assign it to the param local.
-    // TDZ enforcement for parameter defaults (#413).
     if (ctor) {
-      const ctorTdzFlags = setupParamTDZ(ctx, fctx, ctor.parameters);
       for (let i = 0; i < ctor.parameters.length; i++) {
         const param = ctor.parameters[i]!;
-        if (!param.initializer) {
-          if (ctorTdzFlags) markParamInitialized(fctx, ctorTdzFlags[i]!);
-          continue;
-        }
+        if (!param.initializer) continue;
 
         const paramIdx = i;
         const paramType = params[i]!.type;
@@ -12169,10 +12090,46 @@ export function compileClassBodies(
         const thenInstrs = fctx.body;
         popBody(fctx, savedBody);
 
-        emitParamDefaultCheck(fctx, paramIdx, paramType, thenInstrs);
-        if (ctorTdzFlags) markParamInitialized(fctx, ctorTdzFlags[i]!);
+        // Emit the null/zero check + conditional assignment
+        if (paramType.kind === "externref") {
+          fctx.body.push({ op: "local.get", index: paramIdx });
+          fctx.body.push({ op: "ref.is_null" });
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: thenInstrs,
+          });
+        } else if (
+          paramType.kind === "ref_null" ||
+          paramType.kind === "ref"
+        ) {
+          fctx.body.push({ op: "local.get", index: paramIdx });
+          fctx.body.push({ op: "ref.is_null" });
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: thenInstrs,
+          });
+        } else if (paramType.kind === "i32") {
+          fctx.body.push({ op: "local.get", index: paramIdx });
+          fctx.body.push({ op: "i32.eqz" });
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: thenInstrs,
+          });
+        } else if (paramType.kind === "f64") {
+          // NaN sentinel check: x != x is true iff x is NaN (#787)
+          fctx.body.push({ op: "local.get", index: paramIdx });
+          fctx.body.push({ op: "local.get", index: paramIdx });
+          fctx.body.push({ op: "f64.ne" });
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: thenInstrs,
+          });
+        }
       }
-      if (ctorTdzFlags) cleanupParamTDZ(fctx, ctor.parameters);
     }
 
     // When a child class has no explicit constructor, run inherited field
@@ -12377,14 +12334,9 @@ export function compileClassBodies(
       ctx.currentFunc = fctx;
 
       // Emit default-value initialization for method parameters with initializers.
-      // TDZ enforcement for parameter defaults (#413).
-      const methTdzFlags = setupParamTDZ(ctx, fctx, member.parameters);
       for (let pi = 0; pi < member.parameters.length; pi++) {
         const param = member.parameters[pi]!;
-        if (!param.initializer) {
-          if (methTdzFlags) markParamInitialized(fctx, methTdzFlags[pi]!);
-          continue;
-        }
+        if (!param.initializer) continue;
 
         const paramLocalIdx = isStatic ? pi : pi + 1; // account for 'this' param
         const paramType = params[paramLocalIdx]!.type;
@@ -12399,10 +12351,46 @@ export function compileClassBodies(
         const thenInstrs = fctx.body;
         popBody(fctx, savedBody);
 
-        emitParamDefaultCheck(fctx, paramLocalIdx, paramType, thenInstrs);
-        if (methTdzFlags) markParamInitialized(fctx, methTdzFlags[pi]!);
+        // Emit the null/zero check + conditional assignment
+        if (paramType.kind === "externref") {
+          fctx.body.push({ op: "local.get", index: paramLocalIdx });
+          fctx.body.push({ op: "ref.is_null" });
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: thenInstrs,
+          });
+        } else if (
+          paramType.kind === "ref_null" ||
+          paramType.kind === "ref"
+        ) {
+          fctx.body.push({ op: "local.get", index: paramLocalIdx });
+          fctx.body.push({ op: "ref.is_null" });
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: thenInstrs,
+          });
+        } else if (paramType.kind === "i32") {
+          fctx.body.push({ op: "local.get", index: paramLocalIdx });
+          fctx.body.push({ op: "i32.eqz" });
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: thenInstrs,
+          });
+        } else if (paramType.kind === "f64") {
+          // NaN sentinel check: x != x is true iff x is NaN (#787)
+          fctx.body.push({ op: "local.get", index: paramLocalIdx });
+          fctx.body.push({ op: "local.get", index: paramLocalIdx });
+          fctx.body.push({ op: "f64.ne" });
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: thenInstrs,
+          });
+        }
       }
-      if (methTdzFlags) cleanupParamTDZ(fctx, member.parameters);
 
       // Destructure parameters with binding patterns
       for (let pi = 0; pi < member.parameters.length; pi++) {
@@ -12643,14 +12631,9 @@ export function compileClassBodies(
       ctx.currentFunc = fctx;
 
       // Emit default-value initialization for setter parameters with initializers (#377)
-      // TDZ enforcement for parameter defaults (#413).
-      const setTdzFlags = setupParamTDZ(ctx, fctx, member.parameters);
       for (let pi = 0; pi < member.parameters.length; pi++) {
         const param = member.parameters[pi]!;
-        if (!param.initializer) {
-          if (setTdzFlags) markParamInitialized(fctx, setTdzFlags[pi]!);
-          continue;
-        }
+        if (!param.initializer) continue;
 
         const paramLocalIdx = pi + 1; // account for 'this' param
         const paramType = params[paramLocalIdx]!.type;
@@ -12665,10 +12648,27 @@ export function compileClassBodies(
         const thenInstrs = fctx.body;
         popBody(fctx, savedBody);
 
-        emitParamDefaultCheck(fctx, paramLocalIdx, paramType, thenInstrs);
-        if (setTdzFlags) markParamInitialized(fctx, setTdzFlags[pi]!);
+        // Emit the null/zero check + conditional assignment
+        if (paramType.kind === "externref") {
+          fctx.body.push({ op: "local.get", index: paramLocalIdx });
+          fctx.body.push({ op: "ref.is_null" });
+          fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
+        } else if (paramType.kind === "ref_null" || paramType.kind === "ref") {
+          fctx.body.push({ op: "local.get", index: paramLocalIdx });
+          fctx.body.push({ op: "ref.is_null" });
+          fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
+        } else if (paramType.kind === "i32") {
+          fctx.body.push({ op: "local.get", index: paramLocalIdx });
+          fctx.body.push({ op: "i32.eqz" });
+          fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
+        } else if (paramType.kind === "f64") {
+          // NaN sentinel check: x != x is true iff x is NaN (#787)
+          fctx.body.push({ op: "local.get", index: paramLocalIdx });
+          fctx.body.push({ op: "local.get", index: paramLocalIdx });
+          fctx.body.push({ op: "f64.ne" });
+          fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
+        }
       }
-      if (setTdzFlags) cleanupParamTDZ(fctx, member.parameters);
 
       if (member.body) {
         for (const stmt of member.body.statements) {
@@ -12771,7 +12771,7 @@ function compileSuperCall(
  * variable not yet in localMap, so identifiers are valid before their
  * declaration site (JavaScript var-hoisting semantics).
  */
-export function hoistVarDeclarations(
+function hoistVarDeclarations(
   ctx: CodegenContext,
   fctx: FunctionContext,
   stmts: ts.NodeArray<ts.Statement> | ts.Statement[],
@@ -13066,125 +13066,6 @@ function registerInlinableFunction(
     returnType,
   });
 }
-/**
- * Set up TDZ (Temporal Dead Zone) flags for parameters with default values.
- * In JavaScript, `function(x = x)` is a TDZ violation (ReferenceError) because
- * `x` references itself before initialization. Similarly, `function(a, b = a)`
- * is valid because `a` is initialized before `b`'s default runs.
- *
- * This function allocates i32 flag locals for each parameter and marks
- * parameters without defaults as immediately initialized (flag = 1).
- * Parameters with defaults get their flag set to 1 after the default is applied.
- *
- * Returns the TDZ flag indices, or undefined if no defaults exist (#413).
- */
-function setupParamTDZ(
-  ctx: CodegenContext,
-  fctx: FunctionContext,
-  declParams: ts.NodeArray<ts.ParameterDeclaration>,
-): number[] | undefined {
-  // Only needed when at least one parameter has a default initializer
-  const hasDefaults = declParams.some((p) => !!p.initializer);
-  if (!hasDefaults) return undefined;
-
-  if (!fctx.tdzFlagLocals) fctx.tdzFlagLocals = new Map();
-
-  const flagIndices: number[] = [];
-  for (let i = 0; i < declParams.length; i++) {
-    const param = declParams[i]!;
-    const paramName = ts.isIdentifier(param.name) ? param.name.text : `__param${i}`;
-    const flagIdx = allocLocal(fctx, `__tdz_param_${paramName}`, { kind: "i32" });
-    flagIndices.push(flagIdx);
-    fctx.tdzFlagLocals.set(paramName, flagIdx);
-    // All flags start at 0 (uninitialized). They are set to 1 in the
-    // main loop as each parameter's position is reached, ensuring forward
-    // references like `function(x = y, y)` correctly trigger TDZ.
-  }
-
-  return flagIndices;
-}
-
-/**
- * Mark a parameter as initialized (set its TDZ flag to 1).
- * Called after a parameter's default value has been applied (or skipped because
- * the caller provided the argument).
- */
-function markParamInitialized(
-  fctx: FunctionContext,
-  flagIdx: number,
-): void {
-  fctx.body.push({ op: "i32.const", value: 1 });
-  fctx.body.push({ op: "local.set", index: flagIdx });
-}
-
-/**
- * Remove TDZ flags for parameters after all defaults have been processed.
- * This prevents the TDZ checks from firing during the function body.
- */
-function cleanupParamTDZ(
-  fctx: FunctionContext,
-  declParams: ts.NodeArray<ts.ParameterDeclaration>,
-): void {
-  if (!fctx.tdzFlagLocals) return;
-  for (let i = 0; i < declParams.length; i++) {
-    const param = declParams[i]!;
-    const paramName = ts.isIdentifier(param.name) ? param.name.text : `__param${i}`;
-    fctx.tdzFlagLocals.delete(paramName);
-  }
-  if (fctx.tdzFlagLocals.size === 0) fctx.tdzFlagLocals = undefined;
-}
-
-/**
- * Emit the sentinel check + conditional default assignment for a parameter.
- * Checks if the parameter holds the "missing argument" sentinel and if so
- * executes the thenInstrs (which compile & assign the default value).
- */
-function emitParamDefaultCheck(
-  fctx: FunctionContext,
-  paramIdx: number,
-  paramType: ValType,
-  thenInstrs: Instr[],
-): void {
-  if (paramType.kind === "externref") {
-    fctx.body.push({ op: "local.get", index: paramIdx });
-    fctx.body.push({ op: "ref.is_null" });
-    fctx.body.push({
-      op: "if",
-      blockType: { kind: "empty" },
-      then: thenInstrs,
-    });
-  } else if (
-    paramType.kind === "ref_null" ||
-    paramType.kind === "ref"
-  ) {
-    fctx.body.push({ op: "local.get", index: paramIdx });
-    fctx.body.push({ op: "ref.is_null" });
-    fctx.body.push({
-      op: "if",
-      blockType: { kind: "empty" },
-      then: thenInstrs,
-    });
-  } else if (paramType.kind === "i32") {
-    fctx.body.push({ op: "local.get", index: paramIdx });
-    fctx.body.push({ op: "i32.eqz" });
-    fctx.body.push({
-      op: "if",
-      blockType: { kind: "empty" },
-      then: thenInstrs,
-    });
-  } else if (paramType.kind === "f64") {
-    // NaN sentinel check: x != x is true iff x is NaN (#787)
-    fctx.body.push({ op: "local.get", index: paramIdx });
-    fctx.body.push({ op: "local.get", index: paramIdx });
-    fctx.body.push({ op: "f64.ne" });
-    fctx.body.push({
-      op: "if",
-      blockType: { kind: "empty" },
-      then: thenInstrs,
-    });
-  }
-}
-
 function compileFunctionBody(
   ctx: CodegenContext,
   decl: ts.FunctionDeclaration,
@@ -13276,18 +13157,9 @@ function compileFunctionBody(
   // For each param with a default value, check if the caller omitted it
   // (externref → ref.is_null, i32 → i32.eqz, f64 → NaN self-test) and if so
   // compile the initializer expression and assign it to the param local.
-  //
-  // TDZ enforcement (#413): parameters are in TDZ until their default is
-  // evaluated.  `function(x = x)` throws ReferenceError (self-ref TDZ),
-  // while `function(a, b = a)` works (a is initialized before b's default).
-  const tdzFlags = setupParamTDZ(ctx, fctx, decl.parameters);
   for (let i = 0; i < decl.parameters.length; i++) {
     const param = decl.parameters[i]!;
-    if (!param.initializer) {
-      // No default — param is initialized from caller arg; mark TDZ flag
-      if (tdzFlags) markParamInitialized(fctx, tdzFlags[i]!);
-      continue;
-    }
+    if (!param.initializer) continue;
 
     const paramIdx = i;
     const paramType = params[i]!.type;
@@ -13304,12 +13176,45 @@ function compileFunctionBody(
     popBody(fctx, savedBody);
 
     // Emit the null/zero check + conditional assignment
-    emitParamDefaultCheck(fctx, paramIdx, paramType, thenInstrs);
-    // Mark param initialized after the if (covers both paths: arg provided or default used)
-    if (tdzFlags) markParamInitialized(fctx, tdzFlags[i]!);
+    if (paramType.kind === "externref") {
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "ref.is_null" });
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" },
+        then: thenInstrs,
+      });
+    } else if (
+      paramType.kind === "ref_null" ||
+      paramType.kind === "ref"
+    ) {
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "ref.is_null" });
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" },
+        then: thenInstrs,
+      });
+    } else if (paramType.kind === "i32") {
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "i32.eqz" });
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" },
+        then: thenInstrs,
+      });
+    } else if (paramType.kind === "f64") {
+      // NaN sentinel check: x != x is true iff x is NaN (#787)
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      fctx.body.push({ op: "f64.ne" });
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" },
+        then: thenInstrs,
+      });
+    }
   }
-  // Clean up param TDZ flags so they don't interfere with the function body
-  if (tdzFlags) cleanupParamTDZ(fctx, decl.parameters);
 
   // Destructure parameters with binding patterns.
   // When a parameter is declared as e.g. function([x, y, z]) or function({a, b}),
@@ -13481,108 +13386,10 @@ function compileFunctionBody(
 }
 
 /**
- * Emit a default-value check for a destructured binding in parameter destructuring.
- * The stack must contain the extracted field/element value.
- * Per JS spec, destructuring defaults apply ONLY when the value is `undefined`.
- * For externref: use __extern_is_undefined (NOT ref.is_null — JS null is NOT undefined).
- * For f64: check NaN (the undefined sentinel).
- * For ref/ref_null: check ref.is_null (internal struct refs use null for missing).
- * For i32: no reliable sentinel, just assign directly.
- */
-function emitDestructuringDefault(
-  ctx: CodegenContext,
-  fctx: FunctionContext,
-  valType: ValType,
-  localIdx: number,
-  initializer: ts.Expression,
-): void {
-  if (valType.kind === "externref") {
-    const tmpLocal = allocLocal(fctx, `__dflt_${fctx.locals.length}`, valType);
-    fctx.body.push({ op: "local.tee", index: tmpLocal });
-    // Per JS spec: only undefined triggers defaults, NOT null.
-    // JS null → ref.null extern in Wasm, but ref.is_null would incorrectly trigger.
-    // Use __extern_is_undefined which correctly distinguishes null vs undefined.
-    const isUndefIdx = ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
-    flushLateImportShifts(ctx, fctx);
-    if (isUndefIdx !== undefined) {
-      fctx.body.push({ op: "call", funcIdx: isUndefIdx });
-    } else {
-      // Fallback if import not available: ref.is_null (less correct but functional)
-      fctx.body.push({ op: "ref.is_null" } as Instr);
-    }
-    const savedBody = pushBody(fctx);
-    compileExpression(ctx, fctx, initializer, valType);
-    fctx.body.push({ op: "local.set", index: localIdx } as Instr);
-    const thenInstrs = fctx.body;
-    fctx.body = savedBody;
-    fctx.body.push({
-      op: "if",
-      blockType: { kind: "empty" },
-      then: thenInstrs,
-      else: [
-        { op: "local.get", index: tmpLocal } as Instr,
-        { op: "local.set", index: localIdx } as Instr,
-      ],
-    });
-  } else if (valType.kind === "f64") {
-    const tmpLocal = allocLocal(fctx, `__dflt_${fctx.locals.length}`, valType);
-    fctx.body.push({ op: "local.tee", index: tmpLocal });
-    fctx.body.push({ op: "local.get", index: tmpLocal });
-    fctx.body.push({ op: "f64.ne" });
-    const savedBody = pushBody(fctx);
-    compileExpression(ctx, fctx, initializer, valType);
-    fctx.body.push({ op: "local.set", index: localIdx } as Instr);
-    const thenInstrs = fctx.body;
-    fctx.body = savedBody;
-    fctx.body.push({
-      op: "if",
-      blockType: { kind: "empty" },
-      then: thenInstrs,
-      else: [
-        { op: "local.get", index: tmpLocal } as Instr,
-        { op: "local.set", index: localIdx } as Instr,
-      ],
-    });
-  } else if (valType.kind === "ref_null" || valType.kind === "ref") {
-    const tmpLocal = allocLocal(fctx, `__dflt_${fctx.locals.length}`, valType);
-    fctx.body.push({ op: "local.tee", index: tmpLocal });
-    fctx.body.push({ op: "ref.is_null" } as Instr);
-    const savedBody = pushBody(fctx);
-    compileExpression(ctx, fctx, initializer, valType);
-    fctx.body.push({ op: "local.set", index: localIdx } as Instr);
-    const thenInstrs = fctx.body;
-    fctx.body = savedBody;
-    fctx.body.push({
-      op: "if",
-      blockType: { kind: "empty" },
-      then: thenInstrs,
-      else: [
-        { op: "local.get", index: tmpLocal } as Instr,
-        { op: "local.set", index: localIdx } as Instr,
-      ],
-    });
-  } else {
-    // i32 and other types — no reliable undefined sentinel, just assign
-    fctx.body.push({ op: "local.set", index: localIdx });
-  }
-}
-
-/**
  * Destructure a function parameter that is an ObjectBindingPattern.
  * The parameter value (a struct ref) is at param index `paramIdx`.
  * We extract each bound field into a new local.
  */
-/**
- * Check if two ref types differ only in nullability (ref vs ref_null with same typeIdx).
- * Post-processing widens all ref to ref_null, so coercion is unnecessary in these cases.
- */
-function refTypesCompatibleNullability(a: ValType, b: ValType): boolean {
-  if ((a.kind === "ref" || a.kind === "ref_null") && (b.kind === "ref" || b.kind === "ref_null")) {
-    return (a as { typeIdx: number }).typeIdx === (b as { typeIdx: number }).typeIdx;
-  }
-  return false;
-}
-
 export function destructureParamObject(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -13654,12 +13461,13 @@ export function destructureParamObject(
   // Pre-allocate all binding locals so they exist even when param is null
   ensureBindingLocals(ctx, fctx, pattern);
 
-  // Always null-guard: post-processing widens ref → ref_null, so values
-  // can be null at runtime even when the codegen type says ref.
-  const isNullable = true;
+  // Null guard: wrap destructuring in if-not-null for ref_null params
+  const isNullable = paramType.kind === "ref_null";
   const savedBody = fctx.body;
   const destructInstrs: Instr[] = [];
-  fctx.body = destructInstrs;
+  if (isNullable) {
+    fctx.body = destructInstrs;
+  }
 
   for (const element of pattern.elements) {
     if (!ts.isBindingElement(element)) continue;
@@ -13696,19 +13504,12 @@ export function destructureParamObject(
     const localIdx = fctx.localMap.get(localName)!;
     fctx.body.push({ op: "local.get", index: paramIdx });
     fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
-    // Skip coercion when only nullability differs — post-processing widens to ref_null
+    // Coerce struct field type to local's declared type if they differ (#658)
     const objLocalType = getLocalType(fctx, localIdx);
-    if (objLocalType && !valTypesMatch(fieldType, objLocalType) && !refTypesCompatibleNullability(fieldType, objLocalType)) {
+    if (objLocalType && !valTypesMatch(fieldType, objLocalType)) {
       coerceType(ctx, fctx, fieldType, objLocalType);
     }
-
-    // Handle default initializer: {x = expr} — apply default when value is undefined (#796)
-    if (element.initializer) {
-      const effType = objLocalType ?? fieldType;
-      emitDestructuringDefault(ctx, fctx, effType, localIdx, element.initializer);
-    } else {
-      fctx.body.push({ op: "local.set", index: localIdx });
-    }
+    fctx.body.push({ op: "local.set", index: localIdx });
   }
 
   // Close null guard
@@ -13866,16 +13667,16 @@ export function destructureParamArray(
     if (tupleDef && tupleDef.kind === "struct" && tupleDef.fields.length > 0 &&
         tupleDef.fields[0]!.name === "_0") {
       // Tuple struct destructuring: extract positional fields via struct.get
-      // Always null-guard: post-processing widens ref → ref_null, so values
-      // can be null at runtime even when the codegen type says ref.
-      const isNullable = true;
+      const isNullable = paramType.kind === "ref_null";
 
       // Pre-allocate all binding locals
       ensureBindingLocals(ctx, fctx, pattern);
 
       const savedBody = fctx.body;
       const destructInstrs: Instr[] = [];
-      fctx.body = destructInstrs;
+      if (isNullable) {
+        fctx.body = destructInstrs;
+      }
 
       for (let i = 0; i < pattern.elements.length; i++) {
         const element = pattern.elements[i]!;
@@ -13891,17 +13692,6 @@ export function destructureParamArray(
           fctx.body.push({ op: "local.get", index: paramIdx });
           fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: i });
           fctx.body.push({ op: "local.set", index: tmpLocal });
-
-          // Handle default initializer: if value is null/undefined, use the default
-          if (element.initializer) {
-            (ctx as any)._arrayLiteralForceVec = true;
-            try {
-              emitNestedBindingDefault(ctx, fctx, tmpLocal, fieldType, element.initializer);
-            } finally {
-              (ctx as any)._arrayLiteralForceVec = false;
-            }
-          }
-
           if (ts.isObjectBindingPattern(element.name)) {
             destructureParamObject(ctx, fctx, tmpLocal, element.name, fieldType);
           } else {
@@ -13916,42 +13706,14 @@ export function destructureParamArray(
           allocLocal(fctx, localName, fieldType);
         }
         const localIdx = fctx.localMap.get(localName)!;
-
-        // Handle default initializer for simple bindings (e.g. [x = 1])
-        if (element.initializer && (fieldType.kind === "ref" || fieldType.kind === "ref_null" || fieldType.kind === "externref")) {
-          const tmpLocal = allocLocal(fctx, `__dparam_dflt_${fctx.locals.length}`, fieldType);
-          fctx.body.push({ op: "local.get", index: paramIdx });
-          fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: i });
-          fctx.body.push({ op: "local.set", index: tmpLocal });
-          (ctx as any)._arrayLiteralForceVec = true;
-          try {
-            emitNestedBindingDefault(ctx, fctx, tmpLocal, fieldType, element.initializer);
-          } finally {
-            (ctx as any)._arrayLiteralForceVec = false;
-          }
-          fctx.body.push({ op: "local.get", index: tmpLocal });
-          // Skip coercion when only nullability differs — post-processing widens to ref_null
-          const localType = getLocalType(fctx, localIdx);
-          if (localType && !valTypesMatch(fieldType, localType) && !refTypesCompatibleNullability(fieldType, localType)) {
-            coerceType(ctx, fctx, fieldType, localType);
-          }
-          fctx.body.push({ op: "local.set", index: localIdx });
-        } else {
-          fctx.body.push({ op: "local.get", index: paramIdx });
-          fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: i });
-          // Skip coercion when only nullability differs — post-processing widens to ref_null
-          const localType = getLocalType(fctx, localIdx);
-          if (localType && !valTypesMatch(fieldType, localType) && !refTypesCompatibleNullability(fieldType, localType)) {
-            coerceType(ctx, fctx, fieldType, localType);
-          }
-          fctx.body.push({ op: "local.set", index: localIdx });
+        fctx.body.push({ op: "local.get", index: paramIdx });
+        fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: i });
+        // Coerce struct field type to local's declared type if they differ (#658)
+        const localType = getLocalType(fctx, localIdx);
+        if (localType && !valTypesMatch(fieldType, localType)) {
+          coerceType(ctx, fctx, fieldType, localType);
         }
-
-        // Handle default initializer: [x = expr] — apply default when value is undefined (#796)
-        if (ts.isBindingElement(element) && element.initializer) {
-          const effType = localType ?? fieldType;
-          emitDestructuringDefault(ctx, fctx, effType, localIdx, element.initializer);
-        }
+        fctx.body.push({ op: "local.set", index: localIdx });
       }
 
       // Close null guard
@@ -13985,12 +13747,13 @@ export function destructureParamArray(
   // Pre-allocate all binding locals so they exist even when param is null
   ensureBindingLocals(ctx, fctx, pattern);
 
-  // Always null-guard: post-processing widens ref → ref_null, so values
-  // can be null at runtime even when the codegen type says ref.
-  const isNullable = true;
+  // Null guard: wrap destructuring in if-not-null for ref_null params
+  const isNullable = paramType.kind === "ref_null";
   const savedBody = fctx.body;
   const destructInstrs: Instr[] = [];
-  fctx.body = destructInstrs;
+  if (isNullable) {
+    fctx.body = destructInstrs;
+  }
 
   for (let i = 0; i < pattern.elements.length; i++) {
     const element = pattern.elements[i]!;
@@ -13999,34 +13762,16 @@ export function destructureParamArray(
     // Handle nested binding patterns
     if (ts.isBindingElement(element) &&
         (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name))) {
-      // When there's a default initializer and elemType is non-nullable ref,
-      // use nullable for bounds check so out-of-bounds returns null instead of trapping
-      const hasDefault = !!element.initializer;
-      const getElemType: ValType = (hasDefault && elemType.kind === "ref")
-        ? { kind: "ref_null", typeIdx: (elemType as { typeIdx: number }).typeIdx }
-        : elemType;
-
-      const tmpLocal = allocLocal(fctx, `__dparam_${fctx.locals.length}`, getElemType);
+      const tmpLocal = allocLocal(fctx, `__dparam_${fctx.locals.length}`, elemType);
       fctx.body.push({ op: "local.get", index: paramIdx });
       fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 }); // get data
       fctx.body.push({ op: "i32.const", value: i });
-      emitBoundsCheckedArrayGet(fctx, arrTypeIdx, getElemType);
+      emitBoundsCheckedArrayGet(fctx, arrTypeIdx, elemType);
       fctx.body.push({ op: "local.set", index: tmpLocal });
-
-      // Handle default initializer: if value is null/undefined, use the default
-      if (hasDefault) {
-        (ctx as any)._arrayLiteralForceVec = true;
-        try {
-          emitNestedBindingDefault(ctx, fctx, tmpLocal, getElemType, element.initializer!);
-        } finally {
-          (ctx as any)._arrayLiteralForceVec = false;
-        }
-      }
-
       if (ts.isObjectBindingPattern(element.name)) {
-        destructureParamObject(ctx, fctx, tmpLocal, element.name, getElemType);
+        destructureParamObject(ctx, fctx, tmpLocal, element.name, elemType);
       } else {
-        destructureParamArray(ctx, fctx, tmpLocal, element.name, getElemType);
+        destructureParamArray(ctx, fctx, tmpLocal, element.name, elemType);
       }
       continue;
     }
@@ -14097,50 +13842,16 @@ export function destructureParamArray(
       allocLocal(fctx, localName, elemType);
     }
     const localIdx = fctx.localMap.get(localName)!;
-
-    // Handle default initializer for simple bindings (e.g. [x = 1])
-    if (element.initializer && (elemType.kind === "ref" || elemType.kind === "ref_null" || elemType.kind === "externref")) {
-      // Use nullable type for bounds check so out-of-bounds returns null
-      const getElemType: ValType = (elemType.kind === "ref")
-        ? { kind: "ref_null", typeIdx: (elemType as { typeIdx: number }).typeIdx }
-        : elemType;
-      const tmpLocal = allocLocal(fctx, `__dparam_dflt_${fctx.locals.length}`, getElemType);
-      fctx.body.push({ op: "local.get", index: paramIdx });
-      fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 }); // get data
-      fctx.body.push({ op: "i32.const", value: i });
-      emitBoundsCheckedArrayGet(fctx, arrTypeIdx, getElemType);
-      fctx.body.push({ op: "local.set", index: tmpLocal });
-      (ctx as any)._arrayLiteralForceVec = true;
-      try {
-        emitNestedBindingDefault(ctx, fctx, tmpLocal, getElemType, element.initializer);
-      } finally {
-        (ctx as any)._arrayLiteralForceVec = false;
-      }
-      fctx.body.push({ op: "local.get", index: tmpLocal });
-      const vecLocalType = getLocalType(fctx, localIdx);
-      if (vecLocalType && !valTypesMatch(getElemType, vecLocalType) && !refTypesCompatibleNullability(getElemType, vecLocalType)) {
-        coerceType(ctx, fctx, getElemType, vecLocalType);
-      }
-      fctx.body.push({ op: "local.set", index: localIdx });
-    } else {
-      fctx.body.push({ op: "local.get", index: paramIdx });
-      fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 }); // get data
-      fctx.body.push({ op: "i32.const", value: i });
-      emitBoundsCheckedArrayGet(fctx, arrTypeIdx, elemType);
-      // Skip coercion when only nullability differs — post-processing widens to ref_null
-      const vecLocalType = getLocalType(fctx, localIdx);
-      if (vecLocalType && !valTypesMatch(elemType, vecLocalType) && !refTypesCompatibleNullability(elemType, vecLocalType)) {
-        coerceType(ctx, fctx, elemType, vecLocalType);
-      }
-      fctx.body.push({ op: "local.set", index: localIdx });
+    fctx.body.push({ op: "local.get", index: paramIdx });
+    fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 }); // get data
+    fctx.body.push({ op: "i32.const", value: i });
+    emitBoundsCheckedArrayGet(fctx, arrTypeIdx, elemType);
+    // Coerce array element type to local's declared type if they differ (#658)
+    const vecLocalType = getLocalType(fctx, localIdx);
+    if (vecLocalType && !valTypesMatch(elemType, vecLocalType)) {
+      coerceType(ctx, fctx, elemType, vecLocalType);
     }
-
-    // Handle default initializer: [x = expr] — apply default when value is undefined (#796)
-    const bindingElem = element as ts.BindingElement;
-    if (bindingElem.initializer) {
-      const effType = vecLocalType ?? elemType;
-      emitDestructuringDefault(ctx, fctx, effType, localIdx, bindingElem.initializer);
-    }
+    fctx.body.push({ op: "local.set", index: localIdx });
   }
 
   // Close null guard

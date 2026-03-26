@@ -876,6 +876,17 @@ function inferInstrType(
   if (op === "any.convert_extern") {
     return { kind: "anyref" } as ValType;
   }
+  // Compound instructions (if/block/loop/try) produce a value based on blockType
+  if (op === "if" || op === "block" || op === "loop" || op === "try") {
+    const bt = (instr as any).blockType as BlockType | undefined;
+    if (bt && bt.kind === "val") return bt.type;
+    if (bt && bt.kind === "type") {
+      const ft = resolveFuncType(types, bt.typeIdx);
+      if (ft && ft.results.length === 1) return ft.results[0]!;
+    }
+    return null;
+  }
+
   if (op === "call") {
     const funcIdx = (instr as any).funcIdx as number;
     const pt = getFullParamTypes(mod, funcIdx, numImports);
@@ -991,6 +1002,34 @@ function callArgCoercionInstrs(
   // i32 → i64: i64.extend_i32_s
   if (actual.kind === "i32" && expected.kind === "i64") {
     return [{ op: "i64.extend_i32_s" } as unknown as Instr];
+  }
+
+  // externref → ref/ref_null: any.convert_extern + ref.cast_null
+  if (actualIsExternref && (expected.kind === "ref" || expected.kind === "ref_null")) {
+    const typeIdx = (expected as any).typeIdx;
+    if (typeIdx !== undefined) {
+      return [
+        { op: "any.convert_extern" } as Instr,
+        { op: "ref.cast_null", typeIdx } as Instr,
+      ];
+    }
+  }
+
+  // ref/ref_null → i32: extern.convert_any + __unbox_number + i32.trunc_sat_f64_s
+  if ((actual.kind === "ref" || actual.kind === "ref_null") && expected.kind === "i32" && unboxNumberIdx !== null) {
+    return [
+      { op: "extern.convert_any" } as Instr,
+      { op: "call", funcIdx: unboxNumberIdx } as unknown as Instr,
+      { op: "i32.trunc_sat_f64_s" } as Instr,
+    ];
+  }
+
+  // externref → i32: __unbox_number + i32.trunc_sat_f64_s
+  if (actualIsExternref && expected.kind === "i32" && unboxNumberIdx !== null) {
+    return [
+      { op: "call", funcIdx: unboxNumberIdx } as unknown as Instr,
+      { op: "i32.trunc_sat_f64_s" } as Instr,
+    ];
   }
 
   return [];
@@ -1231,6 +1270,113 @@ function fixCallArgTypesInBody(
     }
   }
 
+  // Fix struct.new argument type mismatches.
+  // Uses the same delta-based backward walk as call fixups above.
+  for (let ci = 0; ci < body.length; ci++) {
+    if (body[ci]!.op !== "struct.new") continue;
+
+    const typeIdx = (body[ci] as any).typeIdx as number;
+    const typeDef = types[typeIdx];
+    if (!typeDef || typeDef.kind !== "struct") continue;
+
+    const fields = (typeDef as any).fields as Array<{ type: ValType }>;
+    const numFields = fields.length;
+    if (numFields === 0) continue;
+
+    let pos = ci - 1;
+    let argOffset = 0; // 0 = last field, numFields-1 = first field
+    const structInsertions: Array<{ afterPos: number; instrs: Instr[] }> = [];
+    let inSubExpr = false;
+
+    while (pos >= 0 && argOffset < numFields) {
+      const instr = body[pos]!;
+      const op = instr.op;
+
+      // Stop at terminators
+      if (op === "end" || op === "br" || op === "br_table" ||
+          op === "return" || op === "throw" || op === "unreachable" ||
+          op === "return_call" || op === "return_call_ref") {
+        break;
+      }
+
+      const delta = instrDelta(instr, types, sigs);
+      if (delta === UNREACHABLE) break;
+
+      // Check if this instruction produces a value
+      const producedType = inferInstrType(instr, localTypes, globalTypes, types, mod, numImports);
+      const producesValue = producedType !== null;
+
+      if (producesValue && argOffset >= 0) {
+        // Check for pass-through transformers between this instruction and struct.new
+        let effectiveType = producedType;
+        let insertPos = pos;
+
+        for (let t = pos + 1; t < ci; t++) {
+          const tInstr = body[t]!;
+          const tDelta = instrDelta(tInstr, types, sigs);
+          if (tDelta !== 0) break;
+          const tType = inferInstrType(tInstr, localTypes, globalTypes, types, mod, numImports);
+          if (tType) effectiveType = tType;
+          insertPos = t;
+        }
+
+        const fieldIdx = numFields - 1 - argOffset;
+        if (fieldIdx >= 0 && fieldIdx < numFields) {
+          const expectedType = fields[fieldIdx]!.type;
+
+          if (effectiveType && expectedType) {
+            const coercion = callArgCoercionInstrs(effectiveType, expectedType, boxNumberIdx, unboxNumberIdx);
+            if (coercion.length > 0) {
+              // All struct.new coercions from callArgCoercionInstrs only
+              // transform the top-of-stack value (net stack delta 0), so they
+              // are safe to apply even in sub-expression context.
+              structInsertions.push({ afterPos: insertPos, instrs: coercion });
+            }
+          }
+        }
+      }
+
+      // Update argOffset tracking
+      // Compound instructions (if/block/loop/try) with a value result
+      // are special: they produce a value AND consume inputs (e.g., if
+      // consumes its condition), but their delta=0 makes them look like
+      // pass-throughs. Handle them explicitly.
+      const isCompound = op === "if" || op === "block" || op === "loop" || op === "try";
+      if (isCompound && producesValue) {
+        // Compound instruction produces a value for struct.new
+        argOffset += 1;
+        // if also consumes a condition from below (already in delta=0)
+        // The condition is NOT a struct.new argument
+        if (op === "if") {
+          inSubExpr = true;
+        }
+      } else if (delta >= 1) {
+        argOffset += delta;
+      } else if (delta < 0) {
+        if (producesValue) {
+          argOffset += 1;
+          argOffset += delta - 1;
+        } else {
+          argOffset += delta;
+        }
+        inSubExpr = true;
+        if (argOffset < 0) break;
+      }
+      // delta === 0 for non-compound: pass-through (ref.as_non_null, etc.)
+      pos--;
+    }
+
+    // Apply insertions in reverse order
+    if (structInsertions.length > 0) {
+      for (let k = structInsertions.length - 1; k >= 0; k--) {
+        const { afterPos, instrs } = structInsertions[k]!;
+        body.splice(afterPos + 1, 0, ...instrs);
+        ci += instrs.length;
+        fixups += instrs.length;
+      }
+    }
+  }
+
   return fixups;
 }
 
@@ -1262,7 +1408,8 @@ export function stackBalance(mod: WasmModule): number {
     globalTypes.push(g.type);
   }
 
-  for (const func of mod.functions) {
+  for (let fi = 0; fi < mod.functions.length; fi++) {
+    const func = mod.functions[fi]!;
     // Build local types array (params + locals)
     const ft = resolveFuncType(mod.types, func.typeIdx);
     const localTypes: ValType[] = [];
