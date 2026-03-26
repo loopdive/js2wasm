@@ -211,6 +211,35 @@ function wasmFuncReturnsVoid(ctx: CodegenContext, funcIdx: number): boolean {
   return true; // not found — assume void to be safe
 }
 
+/** Check whether a function *type* (by type index) has zero results. */
+function wasmFuncTypeReturnsVoid(ctx: CodegenContext, typeIdx: number): boolean {
+  const typeDef = ctx.mod.types[typeIdx];
+  return !typeDef || typeDef.kind !== "func" || typeDef.results.length === 0;
+}
+
+/**
+ * Check whether the last instruction emitted since bodyLenBefore is a
+ * void-returning call (call or call_ref). Used as a guard before emitting
+ * `drop` to prevent stack underflows.
+ */
+function _isLastInstrVoidCall(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  bodyLenBefore: number,
+): boolean {
+  if (fctx.body.length <= bodyLenBefore) return true; // nothing emitted — treat as void
+  const lastInstr = fctx.body[fctx.body.length - 1];
+  if (!lastInstr) return false;
+  const op = (lastInstr as any).op;
+  if (op === "call" && (lastInstr as any).funcIdx !== undefined) {
+    return wasmFuncReturnsVoid(ctx, (lastInstr as any).funcIdx);
+  }
+  if (op === "call_ref" && (lastInstr as any).typeIdx !== undefined) {
+    return wasmFuncTypeReturnsVoid(ctx, (lastInstr as any).typeIdx);
+  }
+  return false;
+}
+
 /**
  * Get the actual Wasm return type of a function by inspecting its type definition.
  * Returns undefined if the function has void return or is not found.
@@ -548,9 +577,12 @@ export function compileExpression(
     // This avoids the externref roundtrip where null and undefined are
     // indistinguishable.
     if (ts.isVoidExpression(inner)) {
+      const bodyLenBefore = fctx.body.length;
       const operandType = compileExpressionInner(ctx, fctx, inner.expression);
       if (operandType !== null && operandType !== VOID_RESULT) {
-        fctx.body.push({ op: "drop" });
+        if (!_isLastInstrVoidCall(ctx, fctx, bodyLenBefore)) {
+          fctx.body.push({ op: "drop" });
+        }
       }
       if (expectedType.kind === "f64") {
         fctx.body.push({ op: "f64.const", value: NaN });
@@ -630,9 +662,12 @@ export function compileExpression(
     // void expr in AnyValue context: evaluate operand for side effects, then
     // produce __any_box_undefined() to preserve the undefined tag.
     if (ts.isVoidExpression(inner)) {
+      const bodyLenBefore2 = fctx.body.length;
       const operandType = compileExpressionInner(ctx, fctx, inner.expression);
       if (operandType !== null && operandType !== VOID_RESULT) {
-        fctx.body.push({ op: "drop" });
+        if (!_isLastInstrVoidCall(ctx, fctx, bodyLenBefore2)) {
+          fctx.body.push({ op: "drop" });
+        }
       }
       ensureAnyHelpers(ctx);
       const funcIdx = ctx.funcMap.get("__any_box_undefined");
@@ -695,12 +730,15 @@ export function compileExpression(
   // the result to avoid emitting `drop` on an empty stack.
   if (result !== null && fctx.body.length > bodyLenBefore) {
     const lastInstr = fctx.body[fctx.body.length - 1];
-    if (
-      lastInstr &&
-      (lastInstr as any).op === "call" &&
-      (lastInstr as any).funcIdx !== undefined
-    ) {
-      if (wasmFuncReturnsVoid(ctx, (lastInstr as any).funcIdx)) {
+    if (lastInstr) {
+      const op = (lastInstr as any).op;
+      let isVoidCall = false;
+      if (op === "call" && (lastInstr as any).funcIdx !== undefined) {
+        isVoidCall = wasmFuncReturnsVoid(ctx, (lastInstr as any).funcIdx);
+      } else if (op === "call_ref" && (lastInstr as any).typeIdx !== undefined) {
+        isVoidCall = wasmFuncTypeReturnsVoid(ctx, (lastInstr as any).typeIdx);
+      }
+      if (isVoidCall) {
         if (expectedType) {
           pushDefaultValue(fctx, expectedType);
           return expectedType;
@@ -1044,9 +1082,12 @@ function compileExpressionInner(
 
   // void expr — evaluate operand for side effects, then produce undefined
   if (ts.isVoidExpression(expr)) {
+    const voidBodyLen = fctx.body.length;
     const operandType = compileExpressionInner(ctx, fctx, expr.expression);
     if (operandType !== null && operandType !== VOID_RESULT) {
-      fctx.body.push({ op: "drop" });
+      if (!_isLastInstrVoidCall(ctx, fctx, voidBodyLen)) {
+        fctx.body.push({ op: "drop" });
+      }
     }
     fctx.body.push({ op: "ref.null.extern" });
     return { kind: "externref" };
