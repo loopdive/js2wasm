@@ -833,6 +833,12 @@ export interface FunctionContext {
   tempFreeList?: Map<string, number[]>;
   /** Map from let/const local variable name → local index of its i32 TDZ flag (0 = uninitialized) */
   tdzFlagLocals?: Map<string, number>;
+  /**
+   * Stack of catch rethrow info. Each entry tracks a catch variable name and the
+   * current depth (number of block-like structures) from the catch boundary.
+   * Used to emit `rethrow` instead of `throw $tag` when re-throwing the caught exception.
+   */
+  catchRethrowStack?: { varName: string; depth: number }[];
 }
 
 /**
