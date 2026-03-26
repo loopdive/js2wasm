@@ -946,6 +946,16 @@ export function coerceType(
     fctx.body.push({ op: "extern.convert_any" });
     return;
   }
+  // externref → anyref: any.convert_extern
+  if (from.kind === "externref" && to.kind === "anyref") {
+    fctx.body.push({ op: "any.convert_extern" } as Instr);
+    return;
+  }
+  // externref → eqref: any.convert_extern (eqref is subtype of anyref)
+  if (from.kind === "externref" && to.kind === "eqref") {
+    fctx.body.push({ op: "any.convert_extern" } as Instr);
+    return;
+  }
   // Remaining → externref fallback (funcref, etc.): drop and push null
   if (to.kind === "externref") {
     fctx.body.push({ op: "drop" });
@@ -1214,6 +1224,9 @@ export function pushDefaultValue(fctx: FunctionContext, type: ValType): void {
     case "eqref":
       fctx.body.push({ op: "ref.null.eq" });
       break;
+    case "anyref":
+      fctx.body.push({ op: "ref.null.eq" } as Instr);
+      break;
     case "ref_null":
       fctx.body.push({ op: "ref.null", typeIdx: type.typeIdx });
       break;
@@ -1251,6 +1264,8 @@ export function defaultValueInstrs(vt: ValType): Instr[] {
       return [{ op: "ref.null", typeIdx: (vt as { typeIdx: number }).typeIdx }];
     case "eqref":
       return [{ op: "ref.null.eq" }];
+    case "anyref":
+      return [{ op: "ref.null.eq" } as Instr];
     case "funcref":
       return [{ op: "ref.null.func" }];
     default:
@@ -1390,6 +1405,40 @@ export function coercionInstrs(ctx: CodegenContext, from: ValType, to: ValType):
   // anyref → externref: extern.convert_any
   if (from.kind === "anyref" && to.kind === "externref") {
     return [{ op: "extern.convert_any" } as Instr];
+  }
+  // externref → anyref: any.convert_extern
+  if (from.kind === "externref" && to.kind === "anyref") {
+    return [{ op: "any.convert_extern" } as Instr];
+  }
+  // externref → eqref: any.convert_extern (anyref is supertype of eqref, but close enough for validation)
+  if (from.kind === "externref" && to.kind === "eqref") {
+    return [{ op: "any.convert_extern" } as Instr];
+  }
+  // externref → ref_null: any.convert_extern + ref.cast_null
+  if (from.kind === "externref" && to.kind === "ref_null") {
+    const toIdx = (to as { typeIdx: number }).typeIdx;
+    return [
+      { op: "any.convert_extern" } as Instr,
+      { op: "ref.cast_null", typeIdx: toIdx } as Instr,
+    ];
+  }
+  // externref → ref: any.convert_extern + ref.cast
+  if (from.kind === "externref" && to.kind === "ref") {
+    const toIdx = (to as { typeIdx: number }).typeIdx;
+    return [
+      { op: "any.convert_extern" } as Instr,
+      { op: "ref.cast", typeIdx: toIdx } as Instr,
+    ];
+  }
+  // eqref/anyref → ref_null: ref.cast_null
+  if ((from.kind === "eqref" || from.kind === "anyref") && to.kind === "ref_null") {
+    const toIdx = (to as { typeIdx: number }).typeIdx;
+    return [{ op: "ref.cast_null", typeIdx: toIdx } as Instr];
+  }
+  // eqref/anyref → ref: ref.cast
+  if ((from.kind === "eqref" || from.kind === "anyref") && to.kind === "ref") {
+    const toIdx = (to as { typeIdx: number }).typeIdx;
+    return [{ op: "ref.cast", typeIdx: toIdx } as Instr];
   }
   return [];
 }
