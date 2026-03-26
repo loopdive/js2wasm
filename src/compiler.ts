@@ -658,6 +658,25 @@ function detectEarlyErrors(
       checkDuplicatePrivateNames(node);
     }
 
+    // ── Regex literal validation ────────────────────────────────────
+    // Validate regex literals using the native RegExp constructor.
+    // This catches invalid flags, duplicate flags, invalid Unicode property
+    // escapes, invalid modifiers, etc. that TS's semantic checker would
+    // catch but we skip with skipSemanticDiagnostics in the worker pool.
+    if (node.kind === ts.SyntaxKind.RegularExpressionLiteral) {
+      const text = (node as ts.RegularExpressionLiteral).text;
+      const lastSlash = text.lastIndexOf("/");
+      if (lastSlash > 0) {
+        const pattern = text.slice(1, lastSlash);
+        const flags = text.slice(lastSlash + 1);
+        try {
+          new RegExp(pattern, flags);
+        } catch {
+          addError(node, `Invalid regular expression: ${text}`);
+        }
+      }
+    }
+
     ts.forEachChild(node, visit);
   }
 
