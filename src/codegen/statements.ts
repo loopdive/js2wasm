@@ -3455,6 +3455,9 @@ function compileForOfString(
   const strLocal = allocLocal(fctx, `__forof_str_${fctx.locals.length}`, strType);
   fctx.body.push({ op: "local.set", index: strLocal });
 
+  // Mark position for null guard wrapping
+  const strNullGuardStart = fctx.body.length;
+
   // Extract length from string (field 0 of AnyString struct)
   const lenLocal = allocLocal(fctx, `__forof_len_${fctx.locals.length}`, { kind: "i32" });
   fctx.body.push({ op: "local.get", index: strLocal });
@@ -3547,6 +3550,21 @@ function compileForOfString(
       },
     ],
   });
+
+  // Null guard: if string ref is nullable, wrap struct.get + loop in a guard block
+  if (strType.kind === "ref_null") {
+    const guardedInstrs = fctx.body.splice(strNullGuardStart);
+    fctx.body.push({
+      op: "block",
+      blockType: { kind: "empty" },
+      body: [
+        { op: "local.get", index: strLocal },
+        { op: "ref.is_null" } as Instr,
+        { op: "br_if", depth: 0 },
+        ...guardedInstrs,
+      ],
+    });
+  }
 }
 
 /** Compile for...of over an array using index-based loop (existing behavior) */
@@ -3600,13 +3618,17 @@ function compileForOfArray(
     `__forof_vec_${fctx.locals.length}`,
     vecType,
   );
-  fctx.body.push({ op: "local.tee", index: vecLocal });
+  fctx.body.push({ op: "local.set", index: vecLocal });
+
+  // Mark position for null guard wrapping (struct.get on null ref traps)
+  const nullGuardStart = fctx.body.length;
 
   // Extract data array from vec into a local
   const dataLocal = allocLocal(fctx, `__forof_data_${fctx.locals.length}`, {
     kind: "ref_null",
     typeIdx: arrTypeIdx,
   });
+  fctx.body.push({ op: "local.get", index: vecLocal });
   fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
   fctx.body.push({ op: "local.set", index: dataLocal });
 
@@ -3730,6 +3752,22 @@ function compileForOfArray(
       },
     ],
   });
+
+  // Null guard: if vec ref is nullable, wrap struct.gets + loop in a guard block
+  // to prevent Wasm trap on struct.get of null reference
+  if (vecType.kind === "ref_null") {
+    const guardedInstrs = fctx.body.splice(nullGuardStart);
+    fctx.body.push({
+      op: "block",
+      blockType: { kind: "empty" },
+      body: [
+        { op: "local.get", index: vecLocal },
+        { op: "ref.is_null" } as Instr,
+        { op: "br_if", depth: 0 },
+        ...guardedInstrs,
+      ],
+    });
+  }
 }
 
 /**
