@@ -381,7 +381,7 @@ export type ImportDesc =
 
 export interface WasmExport {
   name: string;
-  desc: { kind: "func" | "table" | "memory" | "global"; index: number };
+  desc: { kind: "func" | "table" | "memory" | "global" | "tag"; index: number };
 }
 export interface Table {
   elementType: string;

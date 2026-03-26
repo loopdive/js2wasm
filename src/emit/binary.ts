@@ -484,7 +484,9 @@ export function encodeExport(
         ? 0x01
         : exp.desc.kind === "memory"
           ? 0x02
-          : 0x03;
+          : exp.desc.kind === "tag"
+            ? 0x04
+            : 0x03;
   enc.byte(kindByte);
   enc.u32(exp.desc.index);
 }
