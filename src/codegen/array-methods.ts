@@ -2548,7 +2548,14 @@ function compileArrayMap(
   // Build callback invocation (result stays on stack)
   let callInstrs: Instr[];
   if (setup.closureInfo) {
-    callInstrs = buildClosureCallInstrs(ctx, setup, elemType, vecTypeIdx, arrTypeIdx, loop, { kind: "inline" });
+    const retType = setup.closureInfo.returnType;
+    callInstrs = [
+      ...buildClosureCallInstrs(ctx, setup, elemType, vecTypeIdx, arrTypeIdx, loop, { kind: "inline" }),
+      // Coerce closure return type to map result element type if needed
+      ...(retType && retType.kind !== mapResultElemType.kind
+        ? coercionInstrs(ctx, retType, mapResultElemType)
+        : []),
+    ];
   } else {
     callInstrs = [
       ...buildBridgeCallInstrs(ctx, setup, elemType, arrTypeIdx, loop, { kind: "inline" }),
@@ -2610,7 +2617,18 @@ function compileArrayReduce(
     fctx.body.push({ op: "local.set", index: accTmp });
     // i already = 0 from setupArrayLoop
   } else {
-    // No initial value: acc = data[0], start from i = 1
+    // No initial value: throw TypeError on empty array, else acc = data[0], start from i = 1
+    const tagIdx = ensureExnTag(ctx);
+    fctx.body.push({ op: "local.get", index: loop.lenTmp });
+    fctx.body.push({ op: "i32.eqz" });
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: [
+        { op: "ref.null.extern" } as Instr,
+        { op: "throw", tagIdx } as Instr,
+      ],
+    } as Instr);
     fctx.body.push({ op: "local.get", index: loop.dataTmp });
     fctx.body.push({ op: "i32.const", value: 0 });
     fctx.body.push({ op: elemType.kind === "i16" ? "array.get_s" : "array.get", typeIdx: arrTypeIdx });
@@ -2647,6 +2665,10 @@ function compileArrayReduce(
       { op: "ref.cast", typeIdx: ci.funcTypeIdx } as Instr,
       { op: "ref.as_non_null" } as Instr,
       { op: "call_ref", typeIdx: ci.funcTypeIdx } as Instr,
+      // Coerce closure return type to accumulator type if needed
+      ...(ci.returnType && ci.returnType.kind !== numKind
+        ? coercionInstrs(ctx, ci.returnType, { kind: numKind as any })
+        : []),
       { op: "local.set", index: accTmp } as Instr,
     ];
   } else {
@@ -2724,7 +2746,18 @@ function compileArrayReduceRight(
     fctx.body.push({ op: "i32.sub" });
     fctx.body.push({ op: "local.set", index: iTmp });
   } else {
-    // No initial value: acc = data[length-1], start from length - 2
+    // No initial value: throw TypeError on empty array, else acc = data[length-1], start from length - 2
+    const tagIdx = ensureExnTag(ctx);
+    fctx.body.push({ op: "local.get", index: lenTmp });
+    fctx.body.push({ op: "i32.eqz" });
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: [
+        { op: "ref.null.extern" } as Instr,
+        { op: "throw", tagIdx } as Instr,
+      ],
+    } as Instr);
     fctx.body.push({ op: "local.get", index: dataTmp });
     fctx.body.push({ op: "local.get", index: lenTmp });
     fctx.body.push({ op: "i32.const", value: 1 });
@@ -2768,6 +2801,10 @@ function compileArrayReduceRight(
       { op: "ref.cast", typeIdx: ci.funcTypeIdx } as Instr,
       { op: "ref.as_non_null" } as Instr,
       { op: "call_ref", typeIdx: ci.funcTypeIdx } as Instr,
+      // Coerce closure return type to accumulator type if needed
+      ...(ci.returnType && ci.returnType.kind !== numKind
+        ? coercionInstrs(ctx, ci.returnType, { kind: numKind as any })
+        : []),
       { op: "local.set", index: accTmp } as Instr,
     ];
   } else {
