@@ -1080,6 +1080,11 @@ export function coerceType(
                   fctx.body.push({ op: "f64.const", value: NaN });
                 }
               }
+            } else if (funcType?.kind === "func" &&
+                       (funcType.results?.[0]?.kind === "ref" || funcType.results?.[0]?.kind === "ref_null")) {
+              // valueOf returned an object ref — drop and push NaN
+              fctx.body.push({ op: "drop" });
+              fctx.body.push({ op: "f64.const", value: NaN });
             }
             return;
           }
@@ -1116,14 +1121,26 @@ export function coerceType(
             fctx.body.push({ op: "ref.cast", typeIdx: closureInfo.funcTypeIdx });
             fctx.body.push({ op: "ref.as_non_null" });
             fctx.body.push({ op: "call_ref", typeIdx: closureInfo.funcTypeIdx });
-            // If valueOf returns void/null, result is NaN; if f64, keep it
-            if (!closureInfo.returnType || closureInfo.returnType.kind === "i32") {
-              // void → push NaN (the call produced nothing or an i32)
-              if (closureInfo.returnType?.kind === "i32") {
-                fctx.body.push({ op: "f64.convert_i32_s" });
+            // Convert valueOf result to f64
+            if (!closureInfo.returnType) {
+              // void return — push NaN
+              fctx.body.push({ op: "f64.const", value: NaN });
+            } else if (closureInfo.returnType.kind === "i32") {
+              fctx.body.push({ op: "f64.convert_i32_s" });
+            } else if (closureInfo.returnType.kind === "externref" || closureInfo.returnType.kind === "ref_extern") {
+              // valueOf returned a string (externref) — convert to f64
+              addUnionImports(ctx);
+              const unboxIdx = ctx.funcMap.get("__unbox_number");
+              if (unboxIdx !== undefined) {
+                fctx.body.push({ op: "call", funcIdx: unboxIdx });
               } else {
+                fctx.body.push({ op: "drop" });
                 fctx.body.push({ op: "f64.const", value: NaN });
               }
+            } else if (closureInfo.returnType.kind === "ref" || closureInfo.returnType.kind === "ref_null") {
+              // valueOf returned an object ref — drop and push NaN
+              fctx.body.push({ op: "drop" });
+              fctx.body.push({ op: "f64.const", value: NaN });
             }
             // f64 return → value is already on stack
             return;
@@ -1175,8 +1192,22 @@ export function coerceType(
               ];
               if (info.returnType?.kind === "i32") {
                 thenInstrs.push({ op: "f64.convert_i32_s" } as Instr);
-              } else if (!info.returnType || info.returnType.kind !== "f64") {
-                // void/null return — call was for side effects; push NaN (ToNumber(undefined) = NaN)
+              } else if (info.returnType?.kind === "externref" || info.returnType?.kind === "ref_extern") {
+                // valueOf returned a string (externref) — convert to f64 via __unbox_number
+                addUnionImports(ctx);
+                const unboxIdx = ctx.funcMap.get("__unbox_number");
+                if (unboxIdx !== undefined) {
+                  thenInstrs.push({ op: "call", funcIdx: unboxIdx } as Instr);
+                } else {
+                  thenInstrs.push({ op: "drop" } as Instr);
+                  thenInstrs.push({ op: "f64.const", value: NaN } as Instr);
+                }
+              } else if (!info.returnType) {
+                // void return — call was for side effects; push NaN
+                thenInstrs.push({ op: "f64.const", value: NaN } as Instr);
+              } else if (info.returnType.kind !== "f64") {
+                // non-f64 return (ref, etc.) — drop and push NaN
+                thenInstrs.push({ op: "drop" } as Instr);
                 thenInstrs.push({ op: "f64.const", value: NaN } as Instr);
               }
               return [
@@ -1197,8 +1228,23 @@ export function coerceType(
           if (standaloneValueOf !== undefined) {
             fctx.body.push({ op: "call", funcIdx: standaloneValueOf });
             const funcType = ctx.mod.types[ctx.mod.functions[standaloneValueOf - ctx.numImportFuncs]?.typeIdx ?? -1];
-            if (funcType?.kind === "func" && funcType.results?.[0]?.kind === "i32") {
+            const retKind = funcType?.kind === "func" ? funcType.results?.[0]?.kind : undefined;
+            if (retKind === "i32") {
               fctx.body.push({ op: "f64.convert_i32_s" });
+            } else if (retKind === "externref" || retKind === "ref_extern") {
+              // valueOf returned a string (externref) — convert to f64
+              addUnionImports(ctx);
+              const unboxIdx = ctx.funcMap.get("__unbox_number");
+              if (unboxIdx !== undefined) {
+                fctx.body.push({ op: "call", funcIdx: unboxIdx });
+              } else {
+                fctx.body.push({ op: "drop" });
+                fctx.body.push({ op: "f64.const", value: NaN });
+              }
+            } else if (retKind === "ref" || retKind === "ref_null") {
+              // valueOf returned an object ref — drop and push NaN
+              fctx.body.push({ op: "drop" });
+              fctx.body.push({ op: "f64.const", value: NaN });
             }
             return;
           }
