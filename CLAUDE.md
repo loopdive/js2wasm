@@ -7,7 +7,6 @@ TypeScript-to-WebAssembly compiler using WasmGC.
 - Run a specific test file: `npm test -- tests/issue-277.test.ts`
 - Run equivalence tests only: `npm test -- tests/equivalence.test.ts`
 - Test262: `TEST262_WORKERS=2 pnpm run test:262` — vitest-based runner, creates its own worktree, writes to `benchmarks/results/`. Default 2 workers to avoid OOM at 15GB.
-- Test262 (legacy): `npx tsx scripts/run-test262.ts [category...]` — standalone runner, also creates worktree. Supports `--recheck`, `--full`, `--resume`, category filtering.
 
 ## Architecture Principles
 - **Dual-mode: JS host optional** — the compiler supports two modes: JS host mode (uses host imports for performance/completeness) and standalone mode (pure Wasm, no JS runtime). New features should have Wasm-native implementations for standalone mode; JS host imports are acceptable as a fast path when a JS runtime is available. Don't add new host imports without a standalone fallback.
@@ -20,7 +19,7 @@ TypeScript-to-WebAssembly compiler using WasmGC.
 - Tests: `tests/equivalence.test.ts` (main), `tests/test262.test.ts` (conformance dashboard, non-failing)
 - Test262 runner: `tests/test262-runner.ts` — TEST_CATEGORIES list
 - Test262 runner (preferred): `pnpm run test:262` — vitest-based, auto-worktree, disk cache, default 4 forks. Use `TEST262_WORKERS=6` for faster solo runs (no dev agents). With dev agents active, use `TEST262_WORKERS=2`.
-- Test262 runner (legacy): `scripts/run-test262.ts` — standalone JSONL runner. Supports `--resume`, `--recheck`, `--full`, category filtering. Also auto-worktree.
+- Test262 runner history: `runs/index.json` is appended by the vitest runner after each run. `benchmarks/results/report.html` reads this for the trend graph.
 - Backlog: `plan/issues/backlog/backlog.md`
 - Issues: `plan/issues/` — organized by state:
   - `ready/` — no blockers, pick any to start (priority in `dependency-graph.md`)
