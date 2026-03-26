@@ -96,6 +96,16 @@ function resolveImport(
         if (obj == null) return undefined;
         return Object.getOwnPropertyDescriptor(obj, prop);
       };
+      // __create_descriptor(value, flags) → {value, writable, enumerable, configurable}
+      // flags: bit 0 = writable, bit 1 = enumerable, bit 2 = configurable
+      if (name === "__create_descriptor") return (value: any, flags: number) => {
+        return {
+          value,
+          writable: !!(flags & 1),
+          enumerable: !!(flags & 2),
+          configurable: !!(flags & 4),
+        };
+      };
       // Tagged template support: JS array builder and tagged template caller
       if (name === "__js_array_new") return () => [];
       if (name === "__js_array_push") return (arr: any[], val: any) => { arr.push(val); };
