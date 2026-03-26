@@ -549,8 +549,6 @@ export function emitArrowParamDefaults(
       }
       continue;
     }
-    // Only for simple identifier params (destructuring defaults handled separately)
-    if (!ts.isIdentifier(param.name)) continue;
 
     const paramIdx = paramOffset + i;
     const paramType = fctx.params[paramIdx]?.type;
@@ -619,7 +617,6 @@ export function emitMethodParamDefaults(
       }
       continue;
     }
-    if (!ts.isIdentifier(param.name)) continue;
 
     const paramIdx = paramOffset + i;
     const paramType = fctx.params[paramIdx]?.type;
