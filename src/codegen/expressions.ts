@@ -10543,6 +10543,13 @@ function compileCallExpression(
           fctx.body.push({ op: "local.get", index: tmp });
           fctx.body.push({ op: "ref.as_non_null" } as Instr);
           const paramTypes = getFuncParamTypes(ctx, funcIdx);
+          // Coerce receiver (self param) if ref type doesn't match function's first param
+          if (paramTypes?.[0]) {
+            const recvRefType: ValType = { kind: "ref", typeIdx: (recvType as any).typeIdx };
+            if (!valTypesMatch(recvRefType, paramTypes[0])) {
+              coerceType(ctx, fctx, recvRefType, paramTypes[0]);
+            }
+          }
           // User-visible param count excludes self (param 0)
           const ngParamCount = paramTypes
             ? paramTypes.length - 1
@@ -10686,6 +10693,13 @@ function compileCallExpression(
             fctx.body.push({ op: "local.get", index: tmp });
             fctx.body.push({ op: "ref.as_non_null" } as Instr);
             const paramTypes = getFuncParamTypes(ctx, funcIdx);
+            // Coerce receiver (self param) if ref type doesn't match function's first param
+            if (paramTypes?.[0]) {
+              const recvRefType: ValType = { kind: "ref", typeIdx: (recvType as any).typeIdx };
+              if (!valTypesMatch(recvRefType, paramTypes[0])) {
+                coerceType(ctx, fctx, recvRefType, paramTypes[0]);
+              }
+            }
             const smMethodParamCount = paramTypes ? paramTypes.length - 1 : expr.arguments.length;
             for (let i = 0; i < expr.arguments.length; i++) {
               if (i < smMethodParamCount) {
