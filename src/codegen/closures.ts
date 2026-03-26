@@ -487,6 +487,35 @@ export function emitArrowParamDestructuring(
 }
 
 /**
+ * Emit the sentinel check + conditional default assignment for a parameter.
+ */
+function emitParamDefaultCheckInline(
+  fctx: FunctionContext,
+  paramIdx: number,
+  paramType: ValType,
+  thenInstrs: Instr[],
+): void {
+  if (paramType.kind === "externref") {
+    fctx.body.push({ op: "local.get", index: paramIdx });
+    fctx.body.push({ op: "ref.is_null" });
+    fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
+  } else if (paramType.kind === "ref_null" || paramType.kind === "ref") {
+    fctx.body.push({ op: "local.get", index: paramIdx });
+    fctx.body.push({ op: "ref.is_null" });
+    fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
+  } else if (paramType.kind === "i32") {
+    fctx.body.push({ op: "local.get", index: paramIdx });
+    fctx.body.push({ op: "i32.eqz" });
+    fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
+  } else if (paramType.kind === "f64") {
+    fctx.body.push({ op: "local.get", index: paramIdx });
+    fctx.body.push({ op: "local.get", index: paramIdx });
+    fctx.body.push({ op: "f64.ne" });
+    fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
+  }
+}
+
+/**
  * Emit default-value initialization for arrow/closure function parameters.
  * Similar to the logic in compileFunctionBody but operates on the lifted fctx.
  */
@@ -496,9 +525,30 @@ export function emitArrowParamDefaults(
   arrow: ts.ArrowFunction | ts.FunctionExpression,
   paramOffset: number, // offset in liftedFctx.params (usually 1 for __self)
 ): void {
+  // TDZ enforcement (#413): set up TDZ flags for parameters with defaults
+  const hasDefaults = arrow.parameters.some((p) => !!p.initializer);
+  let tdzFlags: number[] | undefined;
+  if (hasDefaults) {
+    if (!fctx.tdzFlagLocals) fctx.tdzFlagLocals = new Map();
+    tdzFlags = [];
+    for (let i = 0; i < arrow.parameters.length; i++) {
+      const param = arrow.parameters[i]!;
+      const paramName = ts.isIdentifier(param.name) ? param.name.text : `__param${i}`;
+      const flagIdx = allocLocal(fctx, `__tdz_param_${paramName}`, { kind: "i32" });
+      tdzFlags.push(flagIdx);
+      fctx.tdzFlagLocals.set(paramName, flagIdx);
+    }
+  }
+
   for (let i = 0; i < arrow.parameters.length; i++) {
     const param = arrow.parameters[i]!;
-    if (!param.initializer) continue;
+    if (!param.initializer) {
+      if (tdzFlags) {
+        fctx.body.push({ op: "i32.const", value: 1 });
+        fctx.body.push({ op: "local.set", index: tdzFlags[i]! });
+      }
+      continue;
+    }
     // Only for simple identifier params (destructuring defaults handled separately)
     if (!ts.isIdentifier(param.name)) continue;
 
@@ -514,25 +564,22 @@ export function emitArrowParamDefaults(
     fctx.body = savedBody;
 
     // Emit the null/zero check + conditional assignment
-    if (paramType.kind === "externref") {
-      fctx.body.push({ op: "local.get", index: paramIdx });
-      fctx.body.push({ op: "ref.is_null" });
-      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
-    } else if (paramType.kind === "ref_null" || paramType.kind === "ref") {
-      fctx.body.push({ op: "local.get", index: paramIdx });
-      fctx.body.push({ op: "ref.is_null" });
-      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
-    } else if (paramType.kind === "i32") {
-      fctx.body.push({ op: "local.get", index: paramIdx });
-      fctx.body.push({ op: "i32.eqz" });
-      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
-    } else if (paramType.kind === "f64") {
-      // NaN sentinel check: x != x is true iff x is NaN (#787)
-      fctx.body.push({ op: "local.get", index: paramIdx });
-      fctx.body.push({ op: "local.get", index: paramIdx });
-      fctx.body.push({ op: "f64.ne" });
-      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
+    emitParamDefaultCheckInline(fctx, paramIdx, paramType, thenInstrs);
+    // Mark param as initialized after the if
+    if (tdzFlags) {
+      fctx.body.push({ op: "i32.const", value: 1 });
+      fctx.body.push({ op: "local.set", index: tdzFlags[i]! });
     }
+  }
+
+  // Clean up param TDZ flags
+  if (tdzFlags) {
+    for (let i = 0; i < arrow.parameters.length; i++) {
+      const param = arrow.parameters[i]!;
+      const paramName = ts.isIdentifier(param.name) ? param.name.text : `__param${i}`;
+      fctx.tdzFlagLocals?.delete(paramName);
+    }
+    if (fctx.tdzFlagLocals?.size === 0) fctx.tdzFlagLocals = undefined;
   }
 }
 
@@ -548,9 +595,30 @@ export function emitMethodParamDefaults(
   params: ts.NodeArray<ts.ParameterDeclaration>,
   paramOffset: number, // offset in fctx.params (usually 1 for 'this')
 ): void {
+  // TDZ enforcement (#413)
+  const hasDefaults = params.some((p) => !!p.initializer);
+  let tdzFlags: number[] | undefined;
+  if (hasDefaults) {
+    if (!fctx.tdzFlagLocals) fctx.tdzFlagLocals = new Map();
+    tdzFlags = [];
+    for (let i = 0; i < params.length; i++) {
+      const param = params[i]!;
+      const paramName = ts.isIdentifier(param.name) ? param.name.text : `__param${i}`;
+      const flagIdx = allocLocal(fctx, `__tdz_param_${paramName}`, { kind: "i32" });
+      tdzFlags.push(flagIdx);
+      fctx.tdzFlagLocals.set(paramName, flagIdx);
+    }
+  }
+
   for (let i = 0; i < params.length; i++) {
     const param = params[i]!;
-    if (!param.initializer) continue;
+    if (!param.initializer) {
+      if (tdzFlags) {
+        fctx.body.push({ op: "i32.const", value: 1 });
+        fctx.body.push({ op: "local.set", index: tdzFlags[i]! });
+      }
+      continue;
+    }
     if (!ts.isIdentifier(param.name)) continue;
 
     const paramIdx = paramOffset + i;
@@ -564,26 +632,21 @@ export function emitMethodParamDefaults(
     const thenInstrs = fctx.body;
     fctx.body = savedBody;
 
-    // Emit the null/zero check + conditional assignment
-    if (paramType.kind === "externref") {
-      fctx.body.push({ op: "local.get", index: paramIdx });
-      fctx.body.push({ op: "ref.is_null" });
-      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
-    } else if (paramType.kind === "ref_null" || paramType.kind === "ref") {
-      fctx.body.push({ op: "local.get", index: paramIdx });
-      fctx.body.push({ op: "ref.is_null" });
-      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
-    } else if (paramType.kind === "i32") {
-      fctx.body.push({ op: "local.get", index: paramIdx });
-      fctx.body.push({ op: "i32.eqz" });
-      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
-    } else if (paramType.kind === "f64") {
-      // NaN sentinel check: x != x is true iff x is NaN (#787)
-      fctx.body.push({ op: "local.get", index: paramIdx });
-      fctx.body.push({ op: "local.get", index: paramIdx });
-      fctx.body.push({ op: "f64.ne" });
-      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
+    emitParamDefaultCheckInline(fctx, paramIdx, paramType, thenInstrs);
+    if (tdzFlags) {
+      fctx.body.push({ op: "i32.const", value: 1 });
+      fctx.body.push({ op: "local.set", index: tdzFlags[i]! });
     }
+  }
+
+  // Clean up param TDZ flags
+  if (tdzFlags) {
+    for (let i = 0; i < params.length; i++) {
+      const param = params[i]!;
+      const paramName = ts.isIdentifier(param.name) ? param.name.text : `__param${i}`;
+      fctx.tdzFlagLocals?.delete(paramName);
+    }
+    if (fctx.tdzFlagLocals?.size === 0) fctx.tdzFlagLocals = undefined;
   }
 }
 

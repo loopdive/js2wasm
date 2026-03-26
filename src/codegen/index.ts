@@ -12118,10 +12118,15 @@ export function compileClassBodies(
     // For each param with a default value, check if the caller passed the zero/null
     // sentinel (meaning the argument was omitted) and if so, compile the initializer
     // expression and assign it to the param local.
+    // TDZ enforcement for parameter defaults (#413).
     if (ctor) {
+      const ctorTdzFlags = setupParamTDZ(ctx, fctx, ctor.parameters);
       for (let i = 0; i < ctor.parameters.length; i++) {
         const param = ctor.parameters[i]!;
-        if (!param.initializer) continue;
+        if (!param.initializer) {
+          if (ctorTdzFlags) markParamInitialized(fctx, ctorTdzFlags[i]!);
+          continue;
+        }
 
         const paramIdx = i;
         const paramType = params[i]!.type;
@@ -12136,46 +12141,10 @@ export function compileClassBodies(
         const thenInstrs = fctx.body;
         popBody(fctx, savedBody);
 
-        // Emit the null/zero check + conditional assignment
-        if (paramType.kind === "externref") {
-          fctx.body.push({ op: "local.get", index: paramIdx });
-          fctx.body.push({ op: "ref.is_null" });
-          fctx.body.push({
-            op: "if",
-            blockType: { kind: "empty" },
-            then: thenInstrs,
-          });
-        } else if (
-          paramType.kind === "ref_null" ||
-          paramType.kind === "ref"
-        ) {
-          fctx.body.push({ op: "local.get", index: paramIdx });
-          fctx.body.push({ op: "ref.is_null" });
-          fctx.body.push({
-            op: "if",
-            blockType: { kind: "empty" },
-            then: thenInstrs,
-          });
-        } else if (paramType.kind === "i32") {
-          fctx.body.push({ op: "local.get", index: paramIdx });
-          fctx.body.push({ op: "i32.eqz" });
-          fctx.body.push({
-            op: "if",
-            blockType: { kind: "empty" },
-            then: thenInstrs,
-          });
-        } else if (paramType.kind === "f64") {
-          // NaN sentinel check: x != x is true iff x is NaN (#787)
-          fctx.body.push({ op: "local.get", index: paramIdx });
-          fctx.body.push({ op: "local.get", index: paramIdx });
-          fctx.body.push({ op: "f64.ne" });
-          fctx.body.push({
-            op: "if",
-            blockType: { kind: "empty" },
-            then: thenInstrs,
-          });
-        }
+        emitParamDefaultCheck(fctx, paramIdx, paramType, thenInstrs);
+        if (ctorTdzFlags) markParamInitialized(fctx, ctorTdzFlags[i]!);
       }
+      if (ctorTdzFlags) cleanupParamTDZ(fctx, ctor.parameters);
     }
 
     // When a child class has no explicit constructor, run inherited field
@@ -12380,9 +12349,14 @@ export function compileClassBodies(
       ctx.currentFunc = fctx;
 
       // Emit default-value initialization for method parameters with initializers.
+      // TDZ enforcement for parameter defaults (#413).
+      const methTdzFlags = setupParamTDZ(ctx, fctx, member.parameters);
       for (let pi = 0; pi < member.parameters.length; pi++) {
         const param = member.parameters[pi]!;
-        if (!param.initializer) continue;
+        if (!param.initializer) {
+          if (methTdzFlags) markParamInitialized(fctx, methTdzFlags[pi]!);
+          continue;
+        }
 
         const paramLocalIdx = isStatic ? pi : pi + 1; // account for 'this' param
         const paramType = params[paramLocalIdx]!.type;
@@ -12397,46 +12371,10 @@ export function compileClassBodies(
         const thenInstrs = fctx.body;
         popBody(fctx, savedBody);
 
-        // Emit the null/zero check + conditional assignment
-        if (paramType.kind === "externref") {
-          fctx.body.push({ op: "local.get", index: paramLocalIdx });
-          fctx.body.push({ op: "ref.is_null" });
-          fctx.body.push({
-            op: "if",
-            blockType: { kind: "empty" },
-            then: thenInstrs,
-          });
-        } else if (
-          paramType.kind === "ref_null" ||
-          paramType.kind === "ref"
-        ) {
-          fctx.body.push({ op: "local.get", index: paramLocalIdx });
-          fctx.body.push({ op: "ref.is_null" });
-          fctx.body.push({
-            op: "if",
-            blockType: { kind: "empty" },
-            then: thenInstrs,
-          });
-        } else if (paramType.kind === "i32") {
-          fctx.body.push({ op: "local.get", index: paramLocalIdx });
-          fctx.body.push({ op: "i32.eqz" });
-          fctx.body.push({
-            op: "if",
-            blockType: { kind: "empty" },
-            then: thenInstrs,
-          });
-        } else if (paramType.kind === "f64") {
-          // NaN sentinel check: x != x is true iff x is NaN (#787)
-          fctx.body.push({ op: "local.get", index: paramLocalIdx });
-          fctx.body.push({ op: "local.get", index: paramLocalIdx });
-          fctx.body.push({ op: "f64.ne" });
-          fctx.body.push({
-            op: "if",
-            blockType: { kind: "empty" },
-            then: thenInstrs,
-          });
-        }
+        emitParamDefaultCheck(fctx, paramLocalIdx, paramType, thenInstrs);
+        if (methTdzFlags) markParamInitialized(fctx, methTdzFlags[pi]!);
       }
+      if (methTdzFlags) cleanupParamTDZ(fctx, member.parameters);
 
       // Destructure parameters with binding patterns
       for (let pi = 0; pi < member.parameters.length; pi++) {
@@ -12677,9 +12615,14 @@ export function compileClassBodies(
       ctx.currentFunc = fctx;
 
       // Emit default-value initialization for setter parameters with initializers (#377)
+      // TDZ enforcement for parameter defaults (#413).
+      const setTdzFlags = setupParamTDZ(ctx, fctx, member.parameters);
       for (let pi = 0; pi < member.parameters.length; pi++) {
         const param = member.parameters[pi]!;
-        if (!param.initializer) continue;
+        if (!param.initializer) {
+          if (setTdzFlags) markParamInitialized(fctx, setTdzFlags[pi]!);
+          continue;
+        }
 
         const paramLocalIdx = pi + 1; // account for 'this' param
         const paramType = params[paramLocalIdx]!.type;
@@ -12694,27 +12637,10 @@ export function compileClassBodies(
         const thenInstrs = fctx.body;
         popBody(fctx, savedBody);
 
-        // Emit the null/zero check + conditional assignment
-        if (paramType.kind === "externref") {
-          fctx.body.push({ op: "local.get", index: paramLocalIdx });
-          fctx.body.push({ op: "ref.is_null" });
-          fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
-        } else if (paramType.kind === "ref_null" || paramType.kind === "ref") {
-          fctx.body.push({ op: "local.get", index: paramLocalIdx });
-          fctx.body.push({ op: "ref.is_null" });
-          fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
-        } else if (paramType.kind === "i32") {
-          fctx.body.push({ op: "local.get", index: paramLocalIdx });
-          fctx.body.push({ op: "i32.eqz" });
-          fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
-        } else if (paramType.kind === "f64") {
-          // NaN sentinel check: x != x is true iff x is NaN (#787)
-          fctx.body.push({ op: "local.get", index: paramLocalIdx });
-          fctx.body.push({ op: "local.get", index: paramLocalIdx });
-          fctx.body.push({ op: "f64.ne" });
-          fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs });
-        }
+        emitParamDefaultCheck(fctx, paramLocalIdx, paramType, thenInstrs);
+        if (setTdzFlags) markParamInitialized(fctx, setTdzFlags[pi]!);
       }
+      if (setTdzFlags) cleanupParamTDZ(fctx, member.parameters);
 
       if (member.body) {
         for (const stmt of member.body.statements) {
@@ -13112,6 +13038,125 @@ function registerInlinableFunction(
     returnType,
   });
 }
+/**
+ * Set up TDZ (Temporal Dead Zone) flags for parameters with default values.
+ * In JavaScript, `function(x = x)` is a TDZ violation (ReferenceError) because
+ * `x` references itself before initialization. Similarly, `function(a, b = a)`
+ * is valid because `a` is initialized before `b`'s default runs.
+ *
+ * This function allocates i32 flag locals for each parameter and marks
+ * parameters without defaults as immediately initialized (flag = 1).
+ * Parameters with defaults get their flag set to 1 after the default is applied.
+ *
+ * Returns the TDZ flag indices, or undefined if no defaults exist (#413).
+ */
+function setupParamTDZ(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  declParams: ts.NodeArray<ts.ParameterDeclaration>,
+): number[] | undefined {
+  // Only needed when at least one parameter has a default initializer
+  const hasDefaults = declParams.some((p) => !!p.initializer);
+  if (!hasDefaults) return undefined;
+
+  if (!fctx.tdzFlagLocals) fctx.tdzFlagLocals = new Map();
+
+  const flagIndices: number[] = [];
+  for (let i = 0; i < declParams.length; i++) {
+    const param = declParams[i]!;
+    const paramName = ts.isIdentifier(param.name) ? param.name.text : `__param${i}`;
+    const flagIdx = allocLocal(fctx, `__tdz_param_${paramName}`, { kind: "i32" });
+    flagIndices.push(flagIdx);
+    fctx.tdzFlagLocals.set(paramName, flagIdx);
+    // All flags start at 0 (uninitialized). They are set to 1 in the
+    // main loop as each parameter's position is reached, ensuring forward
+    // references like `function(x = y, y)` correctly trigger TDZ.
+  }
+
+  return flagIndices;
+}
+
+/**
+ * Mark a parameter as initialized (set its TDZ flag to 1).
+ * Called after a parameter's default value has been applied (or skipped because
+ * the caller provided the argument).
+ */
+function markParamInitialized(
+  fctx: FunctionContext,
+  flagIdx: number,
+): void {
+  fctx.body.push({ op: "i32.const", value: 1 });
+  fctx.body.push({ op: "local.set", index: flagIdx });
+}
+
+/**
+ * Remove TDZ flags for parameters after all defaults have been processed.
+ * This prevents the TDZ checks from firing during the function body.
+ */
+function cleanupParamTDZ(
+  fctx: FunctionContext,
+  declParams: ts.NodeArray<ts.ParameterDeclaration>,
+): void {
+  if (!fctx.tdzFlagLocals) return;
+  for (let i = 0; i < declParams.length; i++) {
+    const param = declParams[i]!;
+    const paramName = ts.isIdentifier(param.name) ? param.name.text : `__param${i}`;
+    fctx.tdzFlagLocals.delete(paramName);
+  }
+  if (fctx.tdzFlagLocals.size === 0) fctx.tdzFlagLocals = undefined;
+}
+
+/**
+ * Emit the sentinel check + conditional default assignment for a parameter.
+ * Checks if the parameter holds the "missing argument" sentinel and if so
+ * executes the thenInstrs (which compile & assign the default value).
+ */
+function emitParamDefaultCheck(
+  fctx: FunctionContext,
+  paramIdx: number,
+  paramType: ValType,
+  thenInstrs: Instr[],
+): void {
+  if (paramType.kind === "externref") {
+    fctx.body.push({ op: "local.get", index: paramIdx });
+    fctx.body.push({ op: "ref.is_null" });
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: thenInstrs,
+    });
+  } else if (
+    paramType.kind === "ref_null" ||
+    paramType.kind === "ref"
+  ) {
+    fctx.body.push({ op: "local.get", index: paramIdx });
+    fctx.body.push({ op: "ref.is_null" });
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: thenInstrs,
+    });
+  } else if (paramType.kind === "i32") {
+    fctx.body.push({ op: "local.get", index: paramIdx });
+    fctx.body.push({ op: "i32.eqz" });
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: thenInstrs,
+    });
+  } else if (paramType.kind === "f64") {
+    // NaN sentinel check: x != x is true iff x is NaN (#787)
+    fctx.body.push({ op: "local.get", index: paramIdx });
+    fctx.body.push({ op: "local.get", index: paramIdx });
+    fctx.body.push({ op: "f64.ne" });
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: thenInstrs,
+    });
+  }
+}
+
 function compileFunctionBody(
   ctx: CodegenContext,
   decl: ts.FunctionDeclaration,
@@ -13203,9 +13248,18 @@ function compileFunctionBody(
   // For each param with a default value, check if the caller omitted it
   // (externref → ref.is_null, i32 → i32.eqz, f64 → NaN self-test) and if so
   // compile the initializer expression and assign it to the param local.
+  //
+  // TDZ enforcement (#413): parameters are in TDZ until their default is
+  // evaluated.  `function(x = x)` throws ReferenceError (self-ref TDZ),
+  // while `function(a, b = a)` works (a is initialized before b's default).
+  const tdzFlags = setupParamTDZ(ctx, fctx, decl.parameters);
   for (let i = 0; i < decl.parameters.length; i++) {
     const param = decl.parameters[i]!;
-    if (!param.initializer) continue;
+    if (!param.initializer) {
+      // No default — param is initialized from caller arg; mark TDZ flag
+      if (tdzFlags) markParamInitialized(fctx, tdzFlags[i]!);
+      continue;
+    }
 
     const paramIdx = i;
     const paramType = params[i]!.type;
@@ -13222,45 +13276,12 @@ function compileFunctionBody(
     popBody(fctx, savedBody);
 
     // Emit the null/zero check + conditional assignment
-    if (paramType.kind === "externref") {
-      fctx.body.push({ op: "local.get", index: paramIdx });
-      fctx.body.push({ op: "ref.is_null" });
-      fctx.body.push({
-        op: "if",
-        blockType: { kind: "empty" },
-        then: thenInstrs,
-      });
-    } else if (
-      paramType.kind === "ref_null" ||
-      paramType.kind === "ref"
-    ) {
-      fctx.body.push({ op: "local.get", index: paramIdx });
-      fctx.body.push({ op: "ref.is_null" });
-      fctx.body.push({
-        op: "if",
-        blockType: { kind: "empty" },
-        then: thenInstrs,
-      });
-    } else if (paramType.kind === "i32") {
-      fctx.body.push({ op: "local.get", index: paramIdx });
-      fctx.body.push({ op: "i32.eqz" });
-      fctx.body.push({
-        op: "if",
-        blockType: { kind: "empty" },
-        then: thenInstrs,
-      });
-    } else if (paramType.kind === "f64") {
-      // NaN sentinel check: x != x is true iff x is NaN (#787)
-      fctx.body.push({ op: "local.get", index: paramIdx });
-      fctx.body.push({ op: "local.get", index: paramIdx });
-      fctx.body.push({ op: "f64.ne" });
-      fctx.body.push({
-        op: "if",
-        blockType: { kind: "empty" },
-        then: thenInstrs,
-      });
-    }
+    emitParamDefaultCheck(fctx, paramIdx, paramType, thenInstrs);
+    // Mark param initialized after the if (covers both paths: arg provided or default used)
+    if (tdzFlags) markParamInitialized(fctx, tdzFlags[i]!);
   }
+  // Clean up param TDZ flags so they don't interfere with the function body
+  if (tdzFlags) cleanupParamTDZ(fctx, decl.parameters);
 
   // Destructure parameters with binding patterns.
   // When a parameter is declared as e.g. function([x, y, z]) or function({a, b}),
