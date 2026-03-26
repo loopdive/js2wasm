@@ -3039,6 +3039,12 @@ function emitAssignToTarget(
   valueType: ValType,
 ): void {
   if (ts.isPropertyAccessExpression(target)) {
+    // Compile-away: frozen object property writes throw TypeError
+    if (ts.isIdentifier(target.expression) && ctx.frozenVars.has(target.expression.text)) {
+      emitThrowString(ctx, fctx, "TypeError: Cannot assign to read only property of frozen object");
+      return;
+    }
+
     const objType = ctx.checker.getTypeAtLocation(target.expression);
     let typeName = resolveStructName(ctx, objType);
     if (!typeName && ts.isIdentifier(target.expression)) {
@@ -3338,6 +3344,17 @@ function compilePropertyAssignment(
   value: ts.Expression,
 ): InnerResult {
   const objType = ctx.checker.getTypeAtLocation(target.expression);
+
+  // Compile-away: if the target object is frozen, emit TypeError throw
+  if (ts.isIdentifier(target.expression) && ctx.frozenVars.has(target.expression.text)) {
+    // Evaluate RHS for side effects, then throw
+    const rhsType = compileExpression(ctx, fctx, value);
+    if (rhsType) {
+      fctx.body.push({ op: "drop" });
+    }
+    emitThrowString(ctx, fctx, "TypeError: Cannot assign to read only property of frozen object");
+    return { kind: "f64" }; // unreachable, but need a type
+  }
 
   // Handle static property assignment: ClassName.staticProp = value
   if (
@@ -9448,7 +9465,7 @@ function compileCallExpression(
       return compileObjectKeysOrValues(ctx, fctx, propAccess.name.text, expr);
     }
 
-    // Handle Object.freeze/seal/preventExtensions — mark object as non-extensible
+    // Handle Object.freeze/seal/preventExtensions — compile-away strategy
     if (
       ts.isIdentifier(propAccess.expression) &&
       propAccess.expression.text === "Object" &&
@@ -9457,19 +9474,25 @@ function compileCallExpression(
         propAccess.name.text === "preventExtensions") &&
       expr.arguments.length >= 1
     ) {
-      // Compile-time tracking: mark variable as non-extensible
+      const method = propAccess.name.text;
       const arg0 = expr.arguments[0]!;
+
+      // Compile-time tracking: mark variable by freeze/seal/preventExtensions state
       if (ts.isIdentifier(arg0)) {
         ctx.nonExtensibleVars.add(arg0.text);
+        if (method === "freeze") {
+          ctx.frozenVars.add(arg0.text);
+          ctx.sealedVars.add(arg0.text); // frozen implies sealed
+        } else if (method === "seal") {
+          ctx.sealedVars.add(arg0.text);
+        }
       }
 
-      // Compile the argument
+      // Compile the argument — returns the object itself (freeze/seal return their arg)
       let argType = compileExpression(ctx, fctx, expr.arguments[0]!);
       if (!argType) return null;
 
-      // For externref objects, set the __ne (non-extensible) flag at runtime.
-      // For struct-based objects (ref/ref_null), compile-time tracking is sufficient
-      // — do NOT use __extern_set since Wasm GC structs are opaque to JS.
+      // For externref objects, delegate to host import for runtime enforcement
       if (argType.kind === "externref") {
         const objLocal = allocLocal(
           fctx,
@@ -9478,42 +9501,34 @@ function compileCallExpression(
         );
         fctx.body.push({ op: "local.set", index: objLocal });
 
-        // __extern_set(obj, "__ne", box(1))
-        const neKey = "__ne";
-        addStringConstantGlobal(ctx, neKey);
-        const neKeyGlobal = ctx.stringGlobalMap.get(neKey)!;
-
-        const setIdx = ensureLateImport(
+        // Use the actual JS Object.freeze/seal/preventExtensions via host import
+        const importName = method === "freeze" ? "__object_freeze"
+          : method === "seal" ? "__object_seal"
+          : "__object_preventExtensions";
+        const hostIdx = ensureLateImport(
           ctx,
-          "__extern_set",
-          [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }],
-          [],
-        );
-        const boxIdx = ensureLateImport(
-          ctx,
-          "__box_number",
-          [{ kind: "f64" }],
+          importName,
+          [{ kind: "externref" }],
           [{ kind: "externref" }],
         );
         flushLateImportShifts(ctx, fctx);
 
-        if (setIdx !== undefined && boxIdx !== undefined) {
+        if (hostIdx !== undefined) {
           fctx.body.push({ op: "local.get", index: objLocal });
-          fctx.body.push({ op: "global.get", index: neKeyGlobal } as Instr);
-          fctx.body.push({ op: "f64.const", value: 1 });
-          fctx.body.push({ op: "call", funcIdx: boxIdx });
-          fctx.body.push({ op: "call", funcIdx: setIdx });
+          fctx.body.push({ op: "call", funcIdx: hostIdx });
+          return { kind: "externref" };
         }
 
+        // Fallback: just return the object as-is
         fctx.body.push({ op: "local.get", index: objLocal });
         return { kind: "externref" };
       }
 
-      // For struct/ref types, just return as-is (compile-time tracking already set)
+      // For struct/ref types, compile-time tracking is sufficient — return as-is
       return argType;
     }
 
-    // Handle Object.isFrozen/isSealed — stub: return false
+    // Handle Object.isFrozen/isSealed — check compile-time state
     if (
       ts.isIdentifier(propAccess.expression) &&
       propAccess.expression.text === "Object" &&
@@ -9521,28 +9536,42 @@ function compileCallExpression(
         propAccess.name.text === "isSealed") &&
       expr.arguments.length >= 1
     ) {
-      // Compile and drop the argument, then return false (i32 0)
-      const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
+      const arg0 = expr.arguments[0]!;
+      const argType = compileExpression(ctx, fctx, arg0);
       if (argType) {
         fctx.body.push({ op: "drop" });
       }
-      fctx.body.push({ op: "i32.const", value: 0 });
+      // Check compile-time tracking
+      let result = 0;
+      if (ts.isIdentifier(arg0)) {
+        if (propAccess.name.text === "isFrozen" && ctx.frozenVars.has(arg0.text)) {
+          result = 1;
+        } else if (propAccess.name.text === "isSealed" && ctx.sealedVars.has(arg0.text)) {
+          result = 1;
+        }
+      }
+      fctx.body.push({ op: "i32.const", value: result });
       return { kind: "i32" };
     }
 
-    // Handle Object.isExtensible — stub: return true
+    // Handle Object.isExtensible — check compile-time state
     if (
       ts.isIdentifier(propAccess.expression) &&
       propAccess.expression.text === "Object" &&
       propAccess.name.text === "isExtensible" &&
       expr.arguments.length >= 1
     ) {
-      // Compile and drop the argument, then return true (i32 1)
-      const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
+      const arg0 = expr.arguments[0]!;
+      const argType = compileExpression(ctx, fctx, arg0);
       if (argType) {
         fctx.body.push({ op: "drop" });
       }
-      fctx.body.push({ op: "i32.const", value: 1 });
+      // Non-extensible vars return false
+      let result = 1;
+      if (ts.isIdentifier(arg0) && ctx.nonExtensibleVars.has(arg0.text)) {
+        result = 0;
+      }
+      fctx.body.push({ op: "i32.const", value: result });
       return { kind: "i32" };
     }
 
@@ -9929,17 +9958,26 @@ function compileCallExpression(
         return compileExpression(ctx, fctx, syntheticDelete);
       }
 
-      // Reflect.isExtensible(obj) → Object.isExtensible(obj) (stub: true)
+      // Reflect.isExtensible(obj) → check compile-time non-extensible state
       if (reflectMethod === "isExtensible" && expr.arguments.length >= 1) {
-        const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
+        const arg0 = expr.arguments[0]!;
+        const argType = compileExpression(ctx, fctx, arg0);
         if (argType) fctx.body.push({ op: "drop" });
-        fctx.body.push({ op: "i32.const", value: 1 });
+        let result = 1;
+        if (ts.isIdentifier(arg0) && ctx.nonExtensibleVars.has(arg0.text)) {
+          result = 0;
+        }
+        fctx.body.push({ op: "i32.const", value: result });
         return { kind: "i32" };
       }
 
-      // Reflect.preventExtensions(obj) → stub: compile arg, return true
+      // Reflect.preventExtensions(obj) → mark non-extensible, return true
       if (reflectMethod === "preventExtensions" && expr.arguments.length >= 1) {
-        const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
+        const arg0 = expr.arguments[0]!;
+        if (ts.isIdentifier(arg0)) {
+          ctx.nonExtensibleVars.add(arg0.text);
+        }
+        const argType = compileExpression(ctx, fctx, arg0);
         if (argType) fctx.body.push({ op: "drop" });
         fctx.body.push({ op: "i32.const", value: 1 });
         return { kind: "i32" };
