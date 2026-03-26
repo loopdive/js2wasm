@@ -14,9 +14,9 @@ All agents run as **teammates** in a single team (not subagents). This enables d
 
 - **Container**: `--memory=14g --memory-swap=28g` (14GB RAM + 14GB swap)
 - **NODE_OPTIONS**: `--max-old-space-size=3072`
-- **Test262**: default 2 workers (~5.5GB total), must stay under 6GB. Pool workers capped at 1GB each.
+- **Test262**: default 2 workers during dev (~5.5GB). After dev batch completes, use 3 workers (`TEST262_WORKERS=3`) for faster measurement (~9GB, no devs running). Pool workers capped at 1GB each.
 - **Dev agents**: ~2.5GB each
-- **Max agents**: 4 devs (devs don't run tests, ~500MB each), 0 devs during test262 run
+- **Max agents**: up to 8 devs when not running test262 (~500MB each). 0 devs during test262 run.
 - **Stop dispatching** above 90% context/token usage — focus on merges only
 - Always check `free -h` before launching agents
 
@@ -73,16 +73,21 @@ TTL runs tests after merge — devs do NOT run full test262.
 
 ## Developer Constraints
 
-- **Max 4 devs.** Each in an isolated git worktree. Devs don't run tests (~500MB each).
+- **Up to 8 devs when not running test262.** Each in an isolated git worktree (~500MB each). Shut down all devs before running test262.
 - **Same-file is OK if different functions.** Git 3-way merge handles separate hunks. Avoid parallel work on the *same function*.
 - **Merge to main (not cherry-pick).** TTL merges worktree branches.
 - **Batch diagnostic-only issues.** Issues that only add a code to `DOWNGRADE_DIAG_CODES` don't need a developer — do them in one commit.
 - **Each dev writes tests to `tests/issue-{N}.test.ts`.** Never append to `equivalence.test.ts` (top conflict source).
-- **Devs validate inline, not full suite.** Compile and run specific test262 files to verify the fix:
+- **Devs validate by compiling AND running specific failing tests.** Do NOT run `npm test` or `vitest`.
   ```bash
+  # 1. Compile a specific test262 file:
   timeout 8 npx tsx src/cli.ts test262/test/language/expressions/class/dstr/some-test.js
+  # 2. Run the compiled wasm to verify it actually works:
+  node -e "const fs=require('fs'); const w=fs.readFileSync('test262/test/language/expressions/class/dstr/some-test.js.wasm'); const i=require('./test262/test/language/expressions/class/dstr/some-test.js.imports.js'); WebAssembly.instantiate(w,i).then(m=>{const r=m.instance.exports.test?.();console.log('result:',r)})"
+  # result: 1 means pass. Test 3-5 files before committing.
   ```
-  Then `npm test` for equivalence regressions. Do NOT run full test262 — TTL does that after merge.
+  When ready for full validation, message the TTL: "Ready for testing, please run tests".
+  The TTL runs `npm test` and `pnpm run test:262` after merging — devs never run these.
 - **Document findings.** Always write root cause analysis and implementation notes in the issue file before completion.
 
 ## Cherry-Pick Workflow

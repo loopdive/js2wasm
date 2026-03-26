@@ -10,6 +10,8 @@ type: feedback
 - Dev agents commit and report to TTL when done
 - TTL merges, rebuilds bundle, runs tests serially in background
 - Never run test262 concurrently with dev agents (OOM risk)
+- After a batch of devs completes: use `TEST262_WORKERS=3` for faster measurement (no devs competing for memory)
+- During dev work: default 2 workers
 
 **Why:** OOMs happen from test workers + dev agents competing for memory. Dev agents running `npm test` in worktrees use ~4GB each (vitest + workers). At 14GB container limit, one dev running tests can crash everything.
 

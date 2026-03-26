@@ -1,6 +1,6 @@
 ---
 name: Developer agent limits
-description: Max 4 devs (0 during test262). Details in plan/team-setup.md — don't duplicate numbers here.
+description: Up to 8 devs when not running test262 (0 during test262). Details in plan/team-setup.md.
 type: feedback
 ---
 
