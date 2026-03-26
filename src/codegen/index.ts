@@ -743,6 +743,16 @@ export interface CodegenContext {
   definedPropertyFlags: Map<string, number>;
   /** Set of variable names marked as non-extensible via Object.preventExtensions/freeze/seal */
   nonExtensibleVars: Set<string>;
+  /**
+   * Per-shape default property flags table.
+   * Maps struct type index → Uint8Array of per-field default descriptor flags.
+   * One byte per user-visible field (excludes internal fields like __tag).
+   * Flag encoding per byte: bit 0 = writable, bit 1 = enumerable, bit 2 = configurable, bit 3 = accessor.
+   * Default 0x07 = writable + enumerable + configurable (data property).
+   * Populated after struct types are finalized; consumed by Object.defineProperty (#797c) and
+   * Object.keys/getOwnPropertyDescriptor (#797d) at runtime.
+   */
+  shapePropFlags: Map<number, Uint8Array>;
 }
 
 /** Metadata for a function eligible for call-site inlining */
@@ -965,6 +975,7 @@ export function createCodegenContext(
     tdzLetConstNames: new Set(),
     definedPropertyFlags: new Map(),
     nonExtensibleVars: new Set(),
+    shapePropFlags: new Map(),
   };
 
   // Pre-register common vec types so they're available during early compilation (#647)
@@ -1053,6 +1064,9 @@ export function generateModule(
   // Fixup pass: insert extern.convert_any after struct.new when the result
   // is stored into an externref local/global.
   fixupStructNewResultCoercion(ctx);
+
+  // Build per-shape default property flags table for all user-visible structs
+  buildShapePropFlagsTable(ctx);
 
   // Collect ref.func targets so the binary emitter can add a declarative element segment
   collectDeclaredFuncRefs(ctx);
@@ -1225,6 +1239,9 @@ export function generateMultiModule(
   // Fixup pass: insert extern.convert_any after struct.new when the result
   // is stored into an externref local/global.
   fixupStructNewResultCoercion(ctx);
+
+  // Build per-shape default property flags table for all user-visible structs
+  buildShapePropFlagsTable(ctx);
 
   // Collect ref.func targets so the binary emitter can add a declarative element segment
   collectDeclaredFuncRefs(ctx);
@@ -11553,6 +11570,43 @@ function fixupStructNewArgCounts(ctx: CodegenContext): void {
  * This happens when a vec/class struct is created but the target variable
  * was typed as externref by the compiler.
  */
+
+/** Internal field names that are not user-visible properties */
+const INTERNAL_FIELD_NAMES = new Set(["__tag"]);
+
+/**
+ * Default property flags: writable (bit 0) + enumerable (bit 1) + configurable (bit 2).
+ * Matches PROP_FLAG_WRITABLE | PROP_FLAG_ENUMERABLE | PROP_FLAG_CONFIGURABLE from object-ops.ts.
+ */
+const PROP_FLAGS_DEFAULT = 0x07;
+
+/**
+ * Build the per-shape default property flags table.
+ * Iterates all struct types registered via structMap (classes, anonymous objects,
+ * interfaces, type aliases) and creates a Uint8Array of default flags for each.
+ * One byte per user-visible field; internal fields (__tag) are excluded.
+ *
+ * This table is purely compile-time metadata with zero runtime overhead.
+ * Future subtasks (#797c Object.defineProperty, #797d Object.keys) will
+ * emit code that reads from this table at runtime.
+ */
+function buildShapePropFlagsTable(ctx: CodegenContext): void {
+  for (const [name, typeIdx] of ctx.structMap) {
+    const fields = ctx.structFields.get(name);
+    if (!fields || fields.length === 0) continue;
+
+    // Count user-visible fields (exclude internal fields)
+    const userFields = fields.filter(f => !INTERNAL_FIELD_NAMES.has(f.name));
+    if (userFields.length === 0) continue;
+
+    // All user-visible properties get default flags (writable + enumerable + configurable)
+    const flags = new Uint8Array(userFields.length);
+    flags.fill(PROP_FLAGS_DEFAULT);
+
+    ctx.shapePropFlags.set(typeIdx, flags);
+  }
+}
+
 function fixupStructNewResultCoercion(ctx: CodegenContext): void {
   function getLocalType(func: WasmFunction, localIdx: number): ValType | null {
     const funcType = ctx.mod.types[func.typeIdx];
