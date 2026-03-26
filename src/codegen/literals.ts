@@ -888,7 +888,13 @@ export function compileObjectLiteralForStruct(
         const param = prop.parameters[pi]!;
         const paramName = ts.isIdentifier(param.name) ? param.name.text : `__param${pi}`;
         const paramType = ctx.checker.getTypeAtLocation(param);
-        methodFctxParams.push({ name: paramName, type: resolveWasmType(ctx, paramType) });
+        let wasmType = resolveWasmType(ctx, paramType);
+        // Widen ref to ref_null for params with defaults or optional params
+        // to match the function signature (which uses ref_null so callers can pass ref.null)
+        if ((param.initializer || param.questionToken) && wasmType.kind === "ref") {
+          wasmType = { kind: "ref_null", typeIdx: (wasmType as { kind: "ref"; typeIdx: number }).typeIdx };
+        }
+        methodFctxParams.push({ name: paramName, type: wasmType });
       }
 
       const methodFctx: FunctionContext = {

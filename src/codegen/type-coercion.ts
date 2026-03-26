@@ -174,6 +174,126 @@ function buildVecFromExternref(
 }
 
 /**
+ * Build instructions to construct a tuple struct from an externref value at runtime.
+ * Tries each known vec type via ref.test; if one matches, extracts elements and
+ * constructs the tuple. Falls back to ref.null if no vec type matches.
+ *
+ * This handles the case where an externref wraps a vec (e.g. __vec_f64 from [1,2,3])
+ * but the target parameter type is a tuple struct (__tuple_*).
+ */
+function buildTupleFromExternref(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  anyLocal: number,
+  tupleTypeIdx: number,
+  tupleFields: ValType[],
+): Instr[] {
+  const resultType: ValType = { kind: "ref_null", typeIdx: tupleTypeIdx };
+
+  // Try each known vec type
+  let instrs: Instr[] = [{ op: "ref.null", typeIdx: tupleTypeIdx } as Instr];
+
+  for (const [_key, vecIdx] of ctx.vecTypeMap) {
+    const vecInfo = getVecInfo(ctx, vecIdx);
+    if (!vecInfo) continue;
+
+    const { arrTypeIdx, elemType } = vecInfo;
+
+    // Build the then-branch: cast to this vec, extract elements, build tuple
+    const vecLocal = allocLocal(fctx, `__tup_vec_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecIdx });
+    const dataLocal = allocLocal(fctx, `__tup_data_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx } as ValType);
+    const lenLocal = allocLocal(fctx, `__tup_len_${fctx.locals.length}`, { kind: "i32" });
+
+    const thenInstrs: Instr[] = [
+      { op: "local.get", index: anyLocal } as Instr,
+      { op: "ref.cast", typeIdx: vecIdx } as Instr,
+      { op: "local.set", index: vecLocal } as Instr,
+      // Get data array and length
+      { op: "local.get", index: vecLocal } as Instr,
+      { op: "struct.get", typeIdx: vecIdx, fieldIdx: 1 } as Instr,
+      { op: "local.set", index: dataLocal } as Instr,
+      { op: "local.get", index: vecLocal } as Instr,
+      { op: "struct.get", typeIdx: vecIdx, fieldIdx: 0 } as Instr,
+      { op: "local.set", index: lenLocal } as Instr,
+    ];
+
+    // For each tuple field, bounds-checked read from the vec
+    for (let i = 0; i < tupleFields.length; i++) {
+      const fieldType = tupleFields[i]!;
+
+      // Bounds check: if i < len, read data[i]; else default
+      const readInstrs: Instr[] = [
+        { op: "local.get", index: dataLocal } as Instr,
+        { op: "i32.const", value: i } as Instr,
+        { op: "array.get", typeIdx: arrTypeIdx } as Instr,
+      ];
+
+      const defaultInstrs: Instr[] = defaultValueInstrs(elemType);
+
+      thenInstrs.push(
+        { op: "i32.const", value: i } as Instr,
+        { op: "local.get", index: lenLocal } as Instr,
+        { op: "i32.lt_u" } as Instr,
+        {
+          op: "if",
+          blockType: { kind: "val" as const, type: elemType },
+          then: readInstrs,
+          else: defaultInstrs,
+        } as Instr,
+      );
+
+      // Coerce element type to tuple field type if needed
+      if (elemType.kind !== fieldType.kind ||
+          ((elemType.kind === "ref" || elemType.kind === "ref_null") &&
+           (fieldType.kind === "ref" || fieldType.kind === "ref_null") &&
+           (elemType as { typeIdx: number }).typeIdx !== (fieldType as { typeIdx: number }).typeIdx)) {
+        // Inline coercion: most common case is f64 → externref (box) or externref → f64 (unbox)
+        if (elemType.kind === "f64" && fieldType.kind === "externref") {
+          const boxIdx = ctx.funcMap.get("__box_number");
+          if (boxIdx !== undefined) {
+            thenInstrs.push({ op: "call", funcIdx: boxIdx } as Instr);
+          }
+        } else if (elemType.kind === "externref" && fieldType.kind === "f64") {
+          const unboxIdx = ctx.funcMap.get("__unbox_number");
+          if (unboxIdx !== undefined) {
+            thenInstrs.push({ op: "call", funcIdx: unboxIdx } as Instr);
+          }
+        } else if (elemType.kind === "f64" && fieldType.kind === "f64") {
+          // same type, no coercion needed
+        } else if (elemType.kind === "externref" && fieldType.kind === "externref") {
+          // same type, no coercion needed
+        } else if ((elemType.kind === "ref" || elemType.kind === "ref_null") && fieldType.kind === "externref") {
+          thenInstrs.push({ op: "extern.convert_any" } as Instr);
+        } else if (elemType.kind === "externref" && (fieldType.kind === "ref" || fieldType.kind === "ref_null")) {
+          const toRefIdx = (fieldType as { typeIdx: number }).typeIdx;
+          thenInstrs.push(
+            { op: "any.convert_extern" } as Instr,
+            { op: "ref.cast_null", typeIdx: toRefIdx } as Instr,
+          );
+        }
+      }
+    }
+
+    // Construct the tuple
+    thenInstrs.push({ op: "struct.new", typeIdx: tupleTypeIdx } as Instr);
+
+    // Wrap in: ref.test(vecIdx) → if then: build tuple, else: previous chain
+    instrs = [
+      { op: "local.get", index: anyLocal } as Instr,
+      { op: "ref.test", typeIdx: vecIdx } as Instr,
+      {
+        op: "if",
+        blockType: { kind: "val", type: resultType },
+        then: thenInstrs,
+        else: instrs,
+      } as Instr,
+    ];
+  }
+
+  return instrs;
+}
+
+/**
  * Check if a type index corresponds to a tuple struct (__tuple_*) and return
  * its field types if so.
  */
@@ -884,9 +1004,18 @@ export function coerceType(
     fctx.body.push({ op: "ref.test", typeIdx: toIdx });
 
     // Build else-branch: when cast fails, construct from JS object if possible
-    const elseBranch: Instr[] = vecInfo
-      ? buildVecFromExternref(ctx, fctx, tmpExternLocal, toIdx, vecInfo)
-      : [{ op: "ref.null", typeIdx: toIdx } as Instr];
+    let elseBranch: Instr[];
+    if (vecInfo) {
+      elseBranch = buildVecFromExternref(ctx, fctx, tmpExternLocal, toIdx, vecInfo);
+    } else {
+      // Check if the target is a tuple struct — if so, try converting from any known vec type
+      const tupleFields = getTupleFields(ctx, toIdx);
+      if (tupleFields) {
+        elseBranch = buildTupleFromExternref(ctx, fctx, tmpAnyLocal, toIdx, tupleFields);
+      } else {
+        elseBranch = [{ op: "ref.null", typeIdx: toIdx } as Instr];
+      }
+    }
 
     const resultType: ValType = { kind: "ref_null", typeIdx: toIdx };
     fctx.body.push({
