@@ -31,7 +31,7 @@ import type {
 import { createEmptyModule } from "../ir/types.js";
 import { compileExpression, resolveComputedKeyExpression, coerceType, valTypesMatch, emitBoundsCheckedArrayGet, ensureLateImport, flushLateImportShifts } from "./expressions.js";
 import { collectShapes } from "../shape-inference.js";
-import { compileStatement, ensureBindingLocals, hoistFunctionDeclarations } from "./statements.js";
+import { compileStatement, ensureBindingLocals, hoistFunctionDeclarations, emitNestedBindingDefault } from "./statements.js";
 import { emitInlineMathFunctions } from "./math-helpers.js";
 
 /** Result returned by generateModule / generateMultiModule */
@@ -13575,6 +13575,12 @@ export function destructureParamObject(
         fctx.body.push({ op: "local.get", index: paramIdx });
         fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
         fctx.body.push({ op: "local.set", index: tmpLocal });
+        // Handle default initializer for nested object destructuring (#794)
+        if (element.initializer) {
+          (ctx as any)._arrayLiteralForceVec = true;
+          try { emitNestedBindingDefault(ctx, fctx, tmpLocal, fieldType, element.initializer); }
+          finally { (ctx as any)._arrayLiteralForceVec = false; }
+        }
         if (ts.isObjectBindingPattern(element.name)) {
           destructureParamObject(ctx, fctx, tmpLocal, element.name, fieldType);
         } else {
@@ -13785,6 +13791,12 @@ export function destructureParamArray(
           fctx.body.push({ op: "local.get", index: paramIdx });
           fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: i });
           fctx.body.push({ op: "local.set", index: tmpLocal });
+          // Handle default initializer for tuple destructuring (#794)
+          if (element.initializer) {
+            (ctx as any)._arrayLiteralForceVec = true;
+            try { emitNestedBindingDefault(ctx, fctx, tmpLocal, fieldType, element.initializer); }
+            finally { (ctx as any)._arrayLiteralForceVec = false; }
+          }
           if (ts.isObjectBindingPattern(element.name)) {
             destructureParamObject(ctx, fctx, tmpLocal, element.name, fieldType);
           } else {
@@ -13861,6 +13873,12 @@ export function destructureParamArray(
       fctx.body.push({ op: "i32.const", value: i });
       emitBoundsCheckedArrayGet(fctx, arrTypeIdx, elemType);
       fctx.body.push({ op: "local.set", index: tmpLocal });
+      // Handle default initializer: [[x, y] = [4, 5]] — use default when element is null/undefined (#794)
+      if (element.initializer) {
+        (ctx as any)._arrayLiteralForceVec = true;
+        try { emitNestedBindingDefault(ctx, fctx, tmpLocal, elemType, element.initializer); }
+        finally { (ctx as any)._arrayLiteralForceVec = false; }
+      }
       if (ts.isObjectBindingPattern(element.name)) {
         destructureParamObject(ctx, fctx, tmpLocal, element.name, elemType);
       } else {
