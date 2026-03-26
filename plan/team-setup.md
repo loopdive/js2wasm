@@ -86,7 +86,7 @@ When done: `"Issue #512 complete, worktree branch: issue-512-call-expressions, c
 - **Cherry-pick, don't merge.** Each worktree is based on an older main. Cherry-pick individual commits to avoid stale state.
 - **Batch diagnostic-only issues.** Issues that only add a code to `DOWNGRADE_DIAG_CODES` don't need a developer — do them in one commit.
 - **Each dev writes tests to `tests/issue-{N}.test.ts`.** Never append to `equivalence.test.ts` (top conflict source).
-- **Devs do NOT run test262 or full vitest.** Message tester when ready. Single test files are OK.
+- **Devs do NOT run vitest or full test suite.** Compile+run specific target tests inline (see developer agent def for the snippet). Message tester when ready for full validation.
 - **Document findings.** Always write root cause analysis and implementation notes in the issue file before completion.
 
 ## Cherry-Pick Workflow
