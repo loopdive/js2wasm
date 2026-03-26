@@ -15,10 +15,11 @@ Active file/function claims by agents. **Check before editing. Update when start
 |------|--------------|-------|-------|-------|
 | src/codegen/index.ts | fixupStructNewResultCoercion | dev-d | struct.new | 2026-03-26 |
 | src/codegen/stack-balance.ts | fixCallArgTypesInBody | dev-d | struct.new | 2026-03-26 |
-| src/codegen/index.ts | collectClassDeclaration, compileClassBodies, fixupStructNewArgCounts | dev-3 | #799a | 2026-03-26 |
-| src/codegen/statements.ts | compileTryStatement | dev-a | #798a | 2026-03-26 |
-| src/emit/binary.ts | catch_all encoding | dev-a | #798a | 2026-03-26 |
-| src/ir/types.ts | catch_all instruction | dev-a | #798a | 2026-03-26 |
+| src/codegen/statements.ts | compileTryStatement, compileThrowStatement | dev-1 | #798b | 2026-03-26 |
+| src/codegen/expressions.ts | Object.freeze/seal/preventExtensions | dev-797d | #797d | 2026-03-26 |
+| src/codegen/property-access.ts | emitNullGuardedStructGet, emitNullCheckThrow | dev-7 | #800 | 2026-03-26 |
+| src/codegen/object-ops.ts | compileObjectFreeze/Seal | dev-797d | #797d | 2026-03-26 |
+| src/codegen/typeof-delete.ts | compileTypeofExpression, compileTypeofComparison | dev-8 | #800 | 2026-03-26 |
 
 <!--
 Example entries:
