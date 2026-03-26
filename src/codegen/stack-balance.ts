@@ -448,7 +448,9 @@ function fixBranchType(
   let fixups = 0;
 
   // ref/anyref → externref: insert extern.convert_any
+  // Guard: extern.convert_any takes anyref, NOT externref — skip if already externref
   if ((expectedType.kind === "externref" || expectedType.kind === "ref_extern") &&
+      produced !== "externref" &&
       (produced === "ref" || produced === "eqref" || produced === "funcref" || produced === "anyref")) {
     body.push({ op: "extern.convert_any" } as Instr);
     return 1;
@@ -898,8 +900,16 @@ function callArgCoercionInstrs(
     }
   }
 
+  // Both externref (possibly different kind strings: "externref" vs "ref_extern") — no coercion
+  const actualIsExternref = actual.kind === "externref" || actual.kind === "ref_extern";
+  const expectedIsExternref = expected.kind === "externref" || expected.kind === "ref_extern";
+  if (actualIsExternref && expectedIsExternref) return [];
+
   // ref/ref_null → externref: extern.convert_any (lossless, always safe)
-  if ((actual.kind === "ref" || actual.kind === "ref_null" || actual.kind === "anyref" || actual.kind === "eqref") && expected.kind === "externref") {
+  // Note: actual is already guarded to be ref/ref_null/anyref/eqref (never externref)
+  // by the actualIsExternref early-return above.
+  if ((actual.kind === "ref" || actual.kind === "ref_null" || actual.kind === "anyref" || actual.kind === "eqref") &&
+      (expected.kind === "externref" || expected.kind === "ref_extern")) {
     return [{ op: "extern.convert_any" } as Instr];
   }
 
