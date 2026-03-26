@@ -92,6 +92,11 @@ export function buildImports(result: CompileResult): WebAssembly.Imports {
     __gen_result_done: (result: any) => result.done ? 1 : 0,
     // Iterator protocol: host-delegated iteration for non-array types
     __iterator: (obj: any) => obj[Symbol.iterator](),
+    __async_iterator: (obj: any) => {
+      const asyncIter = obj[Symbol.asyncIterator];
+      if (asyncIter) return asyncIter.call(obj);
+      return obj[Symbol.iterator]();
+    },
     __iterator_next: (iter: any) => iter.next(),
     __iterator_done: (result: any) => result.done ? 1 : 0,
     __iterator_value: (result: any) => result.value,

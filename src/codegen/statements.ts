@@ -816,6 +816,24 @@ function emitNullGuard(
 }
 
 /**
+ * Ensure __async_iterator import is available.
+ * Returns the function index, or undefined if registration failed.
+ * JS impl: (obj) => obj[Symbol.asyncIterator]?.() ?? obj[Symbol.iterator]()
+ */
+function ensureAsyncIterator(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+): number | undefined {
+  let idx = ctx.funcMap.get("__async_iterator");
+  if (idx !== undefined) return idx;
+  const importsBefore = ctx.numImportFuncs;
+  const fnType = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
+  addImport(ctx, "env", "__async_iterator", { kind: "func", typeIdx: fnType });
+  shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+  return ctx.funcMap.get("__async_iterator");
+}
+
+/**
  * Ensure __extern_is_undefined import is available.
  * Returns the function index, or undefined if registration failed.
  * JS impl: (v: unknown) => v === undefined ? 1 : 0
@@ -3847,7 +3865,14 @@ function compileForOfIterator(
   }
 
   // Look up the iterator host import function indices
-  const iteratorIdx = ctx.funcMap.get("__iterator");
+  // For for-await-of, use __async_iterator which tries Symbol.asyncIterator first
+  let iteratorIdx: number | undefined;
+  if (stmt.awaitModifier) {
+    iteratorIdx = ensureAsyncIterator(ctx, fctx);
+  }
+  if (iteratorIdx === undefined) {
+    iteratorIdx = ctx.funcMap.get("__iterator");
+  }
   const nextIdx = ctx.funcMap.get("__iterator_next");
   const doneIdx = ctx.funcMap.get("__iterator_done");
   const valueIdx = ctx.funcMap.get("__iterator_value");
@@ -3866,7 +3891,7 @@ function compileForOfIterator(
     return;
   }
 
-  // Call __iterator(obj) → externref (the iterator)
+  // Call __iterator/__async_iterator(obj) → externref (the iterator)
   fctx.body.push({ op: "call", funcIdx: iteratorIdx });
   const iterLocal = allocLocal(
     fctx,

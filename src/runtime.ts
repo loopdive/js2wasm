@@ -138,6 +138,11 @@ function resolveImport(
       if (name === "__gen_result_done") return (result: any) => result.done ? 1 : 0;
       // Iterator protocol: host-delegated iteration for non-array types
       if (name === "__iterator") return (obj: any) => obj[Symbol.iterator]();
+      if (name === "__async_iterator") return (obj: any) => {
+        const asyncIter = obj[Symbol.asyncIterator];
+        if (asyncIter) return asyncIter.call(obj);
+        return obj[Symbol.iterator]();
+      };
       if (name === "__iterator_next") return (iter: any) => iter.next();
       if (name === "__iterator_done") return (result: any) => result.done ? 1 : 0;
       if (name === "__iterator_value") return (result: any) => result.value;
