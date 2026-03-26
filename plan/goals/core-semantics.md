@@ -2,10 +2,10 @@
 
 **Basic operations produce correct values: arithmetic, comparison, assignment, control flow, function calls.**
 
-- **Status**: Activatable
+- **Status**: Active
 - **Phase**: 2 (after compilable reduces CEs)
 - **Target**: Fix ~3,400 wrong-value failures. Estimated +2,500 tests.
-- **Dependencies**: `compilable` (tests must compile to produce values)
+- **Dependencies**: `compilable` (met — 94.4% compilable, 1,761 CE remaining)
 
 ## Why
 
