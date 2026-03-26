@@ -2291,7 +2291,7 @@ function compileDestructuringAssignment(
 
   // Close null guard — throw TypeError if null/undefined (#783)
   fctx.body = savedBodyDA;
-  if (isNullableDA && destructInstrsDA.length > 0) {
+  if (isNullableDA) {
     const typeErrMsg = "TypeError: Cannot destructure 'null' or 'undefined'";
     addStringConstantGlobal(ctx, typeErrMsg);
     const strIdx = ctx.stringGlobalMap.get(typeErrMsg)!;
@@ -2637,7 +2637,7 @@ function compileArrayDestructuringAssignment(
 
   // Close null guard — throw TypeError if null/undefined (#783)
   fctx.body = savedBodyADA;
-  if (isNullableADA && arrDestructInstrsADA.length > 0) {
+  if (isNullableADA) {
     const typeErrMsg = "TypeError: Cannot destructure 'null' or 'undefined'";
     addStringConstantGlobal(ctx, typeErrMsg);
     const strIdx = ctx.stringGlobalMap.get(typeErrMsg)!;
@@ -2828,6 +2828,38 @@ function compileExternrefArrayDestructuringAssignment(
           ],
         });
       }
+    } else if (ts.isArrayLiteralExpression(element) || ts.isObjectLiteralExpression(element)) {
+      // Nested destructuring: [[x]] = arr or [{x}] = arr
+      // Element value is on the stack (externref). If null/undefined, throw TypeError (#730).
+      const tmpNested = allocLocal(
+        fctx,
+        `__ext_nested_${fctx.locals.length}`,
+        elemType,
+      );
+      fctx.body.push({ op: "local.tee", index: tmpNested });
+      fctx.body.push({ op: "ref.is_null" } as Instr);
+      const typeErrMsg = "TypeError: Cannot destructure 'null' or 'undefined'";
+      addStringConstantGlobal(ctx, typeErrMsg);
+      const strIdx = ctx.stringGlobalMap.get(typeErrMsg)!;
+      const tagIdx = ensureExnTag(ctx);
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" },
+        then: [
+          { op: "global.get", index: strIdx } as Instr,
+          { op: "throw", tagIdx },
+        ],
+        else: [],
+      });
+      // Proceed with nested destructuring via externref path
+      if (ts.isArrayLiteralExpression(element)) {
+        fctx.body.push({ op: "local.get", index: tmpNested });
+        const nestedResult = compileExternrefArrayDestructuringAssignment(ctx, fctx, element, elemType);
+        if (nestedResult) {
+          fctx.body.push({ op: "drop" });
+        }
+      }
+      // Object nested destructuring via externref is not yet supported — skip for now
     }
   }
 
@@ -3046,15 +3078,22 @@ function emitObjectDestructureFromLocal(
     }
   }
 
-  // Close null guard
+  // Close null guard — throw TypeError if null/undefined (#730)
   fctx.body = savedBodyODFL;
-  if (srcType.kind === "ref_null" && odflInstrs.length > 0) {
+  if (srcType.kind === "ref_null") {
+    const typeErrMsg = "TypeError: Cannot destructure 'null' or 'undefined'";
+    addStringConstantGlobal(ctx, typeErrMsg);
+    const strIdx = ctx.stringGlobalMap.get(typeErrMsg)!;
+    const tagIdx = ensureExnTag(ctx);
     fctx.body.push({ op: "local.get", index: srcLocal });
     fctx.body.push({ op: "ref.is_null" } as Instr);
     fctx.body.push({
       op: "if",
       blockType: { kind: "empty" },
-      then: [],
+      then: [
+        { op: "global.get", index: strIdx } as Instr,
+        { op: "throw", tagIdx },
+      ],
       else: odflInstrs,
     });
   } else {
@@ -3107,15 +3146,22 @@ function emitArrayDestructureFromLocal(
     }
   }
 
-  // Close null guard
+  // Close null guard — throw TypeError if null/undefined (#730)
   fctx.body = savedBodyADFL;
-  if (srcType.kind === "ref_null" && adflInstrs.length > 0) {
+  if (srcType.kind === "ref_null") {
+    const typeErrMsg = "TypeError: Cannot destructure 'null' or 'undefined'";
+    addStringConstantGlobal(ctx, typeErrMsg);
+    const strIdx = ctx.stringGlobalMap.get(typeErrMsg)!;
+    const tagIdx = ensureExnTag(ctx);
     fctx.body.push({ op: "local.get", index: srcLocal });
     fctx.body.push({ op: "ref.is_null" } as Instr);
     fctx.body.push({
       op: "if",
       blockType: { kind: "empty" },
-      then: [],
+      then: [
+        { op: "global.get", index: strIdx } as Instr,
+        { op: "throw", tagIdx },
+      ],
       else: adflInstrs,
     });
   } else {
@@ -14274,6 +14320,19 @@ function compileNewExpression(
   // Handle `new function() { ... }(args)` — constructor with function expression
   if (ts.isFunctionExpression(expr.expression)) {
     return compileNewFunctionExpression(ctx, fctx, expr, expr.expression);
+  }
+
+  // Arrow functions are NOT constructors — `new (() => {})` throws TypeError (#730)
+  {
+    let unwrappedNew: ts.Expression = expr.expression;
+    while (ts.isParenthesizedExpression(unwrappedNew)) {
+      unwrappedNew = unwrappedNew.expression;
+    }
+    if (ts.isArrowFunction(unwrappedNew)) {
+      emitThrowString(ctx, fctx, "TypeError: is not a constructor");
+      fctx.body.push({ op: "ref.null.extern" });
+      return { kind: "externref" };
+    }
   }
 
   // Handle `new (class { ... })()` — anonymous class expression in new
