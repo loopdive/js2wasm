@@ -13479,7 +13479,8 @@ function compileIIFE(
     liftedFctx.localMap.set(liftedFctx.params[i]!.name, i);
   }
 
-  // For mutable captures, register them as boxed so read/write uses struct.get/set
+  // For mutable captures, register them as boxed so read/write uses struct.get/set.
+  // Also register non-mutable captures that are already boxed in the outer scope.
   for (let i = 0; i < captures.length; i++) {
     const cap = captures[i]!;
     if (cap.mutable) {
@@ -13489,6 +13490,12 @@ function compileIIFE(
         refCellTypeIdx,
         valType: cap.type,
       });
+    } else {
+      const outerBoxed = fctx.boxedCaptures?.get(cap.name);
+      if (outerBoxed && (cap.type.kind === "ref" || cap.type.kind === "ref_null")) {
+        if (!liftedFctx.boxedCaptures) liftedFctx.boxedCaptures = new Map();
+        liftedFctx.boxedCaptures.set(cap.name, { refCellTypeIdx: outerBoxed.refCellTypeIdx, valType: outerBoxed.valType });
+      }
     }
   }
 
@@ -14349,14 +14356,30 @@ function compileNewFunctionExpression(
         valType: cap.type,
       });
     } else {
-      const localIdx = allocLocal(liftedFctx, cap.name, cap.type);
-      liftedFctx.body.push({ op: "local.get", index: 0 });
-      liftedFctx.body.push({
-        op: "struct.get",
-        typeIdx: structTypeIdx,
-        fieldIdx: i + 1,
-      });
-      liftedFctx.body.push({ op: "local.set", index: localIdx });
+      // Check if this capture is an already-boxed ref cell from the outer scope
+      const outerBoxed = fctx.boxedCaptures?.get(cap.name);
+      if (outerBoxed && (cap.type.kind === "ref" || cap.type.kind === "ref_null")) {
+        const refCellType: ValType = { kind: "ref_null", typeIdx: outerBoxed.refCellTypeIdx };
+        const localIdx = allocLocal(liftedFctx, cap.name, refCellType);
+        liftedFctx.body.push({ op: "local.get", index: 0 });
+        liftedFctx.body.push({
+          op: "struct.get",
+          typeIdx: structTypeIdx,
+          fieldIdx: i + 1,
+        });
+        liftedFctx.body.push({ op: "local.set", index: localIdx });
+        if (!liftedFctx.boxedCaptures) liftedFctx.boxedCaptures = new Map();
+        liftedFctx.boxedCaptures.set(cap.name, { refCellTypeIdx: outerBoxed.refCellTypeIdx, valType: outerBoxed.valType });
+      } else {
+        const localIdx = allocLocal(liftedFctx, cap.name, cap.type);
+        liftedFctx.body.push({ op: "local.get", index: 0 });
+        liftedFctx.body.push({
+          op: "struct.get",
+          typeIdx: structTypeIdx,
+          fieldIdx: i + 1,
+        });
+        liftedFctx.body.push({ op: "local.set", index: localIdx });
+      }
     }
   }
 
