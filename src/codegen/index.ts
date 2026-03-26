@@ -2545,6 +2545,8 @@ const STRING_METHODS: Record<string, { params: ValType[]; result: ValType }> = {
     result: { kind: "externref" },
   },
   split: { params: [{ kind: "externref" }], result: { kind: "externref" } },
+  match: { params: [{ kind: "externref" }], result: { kind: "externref" } },
+  search: { params: [{ kind: "externref" }], result: { kind: "f64" } },
   at: { params: [{ kind: "f64" }], result: { kind: "externref" } },
   codePointAt: { params: [{ kind: "f64" }], result: { kind: "f64" } },
   normalize: { params: [{ kind: "externref" }], result: { kind: "externref" } },
