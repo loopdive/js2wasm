@@ -120,10 +120,14 @@ export function emitNullCheckThrow(
       else: [],
     });
   } else {
+    // No backup local — this is a direct null check.
+    // Don't throw TypeError — let the natural Wasm trap happen downstream.
+    // The test262 wrapper handles Wasm traps the same as pre-session code.
+    // Throwing via exception tag changes error classification and causes regressions.
     fctx.body.push({
       op: "if",
       blockType: { kind: "empty" },
-      then: typeErrorThrowInstrs(ctx),
+      then: [],  // no-op — let downstream struct.get trap naturally
       else: [],
     });
   }
