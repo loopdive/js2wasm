@@ -351,7 +351,29 @@ function resolveImport(
         }
         return Object.entries(obj);
       };
-      if (name === "__extern_slice") return (arr: any, start: number) => Array.isArray(arr) ? arr.slice(start) : [];
+      if (name === "__extern_slice") return (arr: any, start: number) => {
+        if (Array.isArray(arr)) return arr.slice(start);
+        if (typeof arr === "string") return Array.from(arr).slice(start);
+        // Handle WasmGC structs (tuples) — extract fields from index onwards
+        if (_isWasmStruct(arr)) {
+          const exports = callbackState?.getExports();
+          const fieldNames = _getStructFieldNames(arr, exports);
+          if (fieldNames && exports) {
+            const result: any[] = [];
+            for (let i = Math.max(0, start); i < fieldNames.length; i++) {
+              const getter = exports[`__sget_${fieldNames[i]}`];
+              if (typeof getter === "function") {
+                let val = getter(arr);
+                if (_isWasmStruct(val)) val = _structToPlainObject(val, exports) ?? val;
+                result.push(val);
+              }
+            }
+            return result;
+          }
+        }
+        if (arr != null && typeof arr[Symbol.iterator] === "function") return Array.from(arr).slice(start);
+        return [];
+      };
       if (name === "__extern_rest_object") return (obj: any, excludedKeysStr: string) => {
         if (obj == null) return {};
         const excluded = new Set(excludedKeysStr ? String(excludedKeysStr).split(",") : []);

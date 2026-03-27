@@ -2673,12 +2673,47 @@ function compileDestructuringAssignment(
       // else: unsupported target expression in property assignment — skip
     } else if (ts.isSpreadAssignment(prop)) {
       // { ...rest } = obj — rest element in object destructuring
-      // Allocate the rest local but skip actual collection (would require
-      // runtime object creation).  The variable just stays at its default. (#379)
+      // Convert struct to externref and use __extern_rest_object to collect remaining props
       if (ts.isIdentifier(prop.expression)) {
         const restName = prop.expression.text;
-        if (!fctx.localMap.has(restName) && !ctx.moduleGlobals.has(restName)) {
-          allocLocal(fctx, restName, { kind: "externref" });
+        let restIdx = fctx.localMap.get(restName);
+        if (restIdx === undefined) {
+          restIdx = allocLocal(fctx, restName, { kind: "externref" });
+        }
+        // Collect excluded property names
+        const excludedKeys: string[] = [];
+        for (const p of target.properties) {
+          if (ts.isSpreadAssignment(p)) continue;
+          if (ts.isPropertyAssignment(p) || ts.isShorthandPropertyAssignment(p)) {
+            const pn = ts.isPropertyAssignment(p) ? p.name : p.name;
+            if (ts.isIdentifier(pn)) excludedKeys.push(pn.text);
+            else if (ts.isStringLiteral(pn)) excludedKeys.push(pn.text);
+            else if (ts.isNumericLiteral(pn)) excludedKeys.push(pn.text);
+          }
+        }
+        // Use __extern_rest_object(externObj, excludedKeysStr)
+        let restObjIdx = ctx.funcMap.get("__extern_rest_object");
+        if (restObjIdx === undefined) {
+          const importsBefore = ctx.numImportFuncs;
+          const restObjType = addFuncType(ctx,
+            [{ kind: "externref" }, { kind: "externref" }],
+            [{ kind: "externref" }]);
+          addImport(ctx, "env", "__extern_rest_object", { kind: "func", typeIdx: restObjType });
+          shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+          restObjIdx = ctx.funcMap.get("__extern_rest_object");
+        }
+        if (restObjIdx !== undefined) {
+          const excludedStr = excludedKeys.join(",");
+          addStringConstantGlobal(ctx, excludedStr);
+          const excludedStrIdx = ctx.stringGlobalMap.get(excludedStr);
+          if (excludedStrIdx !== undefined) {
+            // Convert struct ref to externref
+            fctx.body.push({ op: "local.get", index: tmpLocal });
+            fctx.body.push({ op: "extern.convert_any" } as Instr);
+            fctx.body.push({ op: "global.get", index: excludedStrIdx });
+            fctx.body.push({ op: "call", funcIdx: restObjIdx });
+            fctx.body.push({ op: "local.set", index: restIdx });
+          }
         }
       }
     }

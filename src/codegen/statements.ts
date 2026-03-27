@@ -1381,11 +1381,46 @@ function compileObjectDestructuring(
     }
 
     // Handle rest element: const { a, ...rest } = obj
+    // Convert struct to externref and use __extern_rest_object to collect remaining props
     if (element.dotDotDotToken) {
       if (ts.isIdentifier(element.name)) {
         const restName = element.name.text;
-        if (!fctx.localMap.has(restName) && !ctx.moduleGlobals.has(restName)) {
-          allocLocal(fctx, restName, { kind: "externref" });
+        let restIdx = fctx.localMap.get(restName);
+        if (restIdx === undefined) {
+          restIdx = allocLocal(fctx, restName, { kind: "externref" });
+        }
+        // Collect already-destructured property names to exclude
+        const excludedKeys: string[] = [];
+        for (const el of pattern.elements) {
+          if (!ts.isBindingElement(el) || el.dotDotDotToken) continue;
+          const pn = el.propertyName ?? el.name;
+          if (ts.isIdentifier(pn)) excludedKeys.push(pn.text);
+          else if (ts.isStringLiteral(pn)) excludedKeys.push(pn.text);
+          else if (ts.isNumericLiteral(pn)) excludedKeys.push(pn.text);
+        }
+        // Use __extern_rest_object(externObj, excludedKeysStr)
+        let restObjIdx = ctx.funcMap.get("__extern_rest_object");
+        if (restObjIdx === undefined) {
+          const importsBefore = ctx.numImportFuncs;
+          const restObjType = addFuncType(ctx,
+            [{ kind: "externref" }, { kind: "externref" }],
+            [{ kind: "externref" }]);
+          addImport(ctx, "env", "__extern_rest_object", { kind: "func", typeIdx: restObjType });
+          shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+          restObjIdx = ctx.funcMap.get("__extern_rest_object");
+        }
+        if (restObjIdx !== undefined) {
+          const excludedStr = excludedKeys.join(",");
+          addStringConstantGlobal(ctx, excludedStr);
+          const excludedStrIdx = ctx.stringGlobalMap.get(excludedStr);
+          if (excludedStrIdx !== undefined) {
+            // Convert struct ref to externref
+            fctx.body.push({ op: "local.get", index: tmpLocal });
+            fctx.body.push({ op: "extern.convert_any" } as Instr);
+            fctx.body.push({ op: "global.get", index: excludedStrIdx });
+            fctx.body.push({ op: "call", funcIdx: restObjIdx });
+            fctx.body.push({ op: "local.set", index: restIdx });
+          }
         }
       }
       continue;
@@ -2698,11 +2733,33 @@ function compileStringDestructuring(
     const element = pattern.elements[i]!;
     if (ts.isOmittedExpression(element)) continue;
 
-    // Rest element: const [a, ...rest] = "hello" — rest is not supported for strings yet
+    // Rest element: const [a, ...rest] = "hello" — convert to externref and use __extern_slice
     if (ts.isBindingElement(element) && element.dotDotDotToken) {
-      // Allocate a local but leave it default-initialized
       if (ts.isIdentifier(element.name)) {
-        allocLocal(fctx, element.name.text, { kind: "externref" });
+        const restName = element.name.text;
+        let restIdx = fctx.localMap.get(restName);
+        if (restIdx === undefined) {
+          restIdx = allocLocal(fctx, restName, { kind: "externref" });
+        }
+        // Use __extern_slice(str_as_externref, i)
+        let sliceIdx = ctx.funcMap.get("__extern_slice");
+        if (sliceIdx === undefined) {
+          const importsBefore = ctx.numImportFuncs;
+          const sliceType = addFuncType(ctx,
+            [{ kind: "externref" }, { kind: "f64" }],
+            [{ kind: "externref" }]);
+          addImport(ctx, "env", "__extern_slice", { kind: "func", typeIdx: sliceType });
+          shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+          sliceIdx = ctx.funcMap.get("__extern_slice");
+        }
+        if (sliceIdx !== undefined) {
+          // Convert string to externref
+          fctx.body.push({ op: "local.get", index: tmpLocal });
+          fctx.body.push({ op: "extern.convert_any" } as Instr);
+          fctx.body.push({ op: "f64.const", value: i });
+          fctx.body.push({ op: "call", funcIdx: sliceIdx });
+          fctx.body.push({ op: "local.set", index: restIdx });
+        }
       }
       continue;
     }
@@ -3892,6 +3949,50 @@ function compileForOfDestructuring(
 
     for (const element of pattern.elements) {
       if (!ts.isBindingElement(element)) continue;
+
+      // Handle rest element: for (const { a, ...rest } of arr)
+      if (element.dotDotDotToken) {
+        if (ts.isIdentifier(element.name)) {
+          const restName = element.name.text;
+          let restIdx = fctx.localMap.get(restName);
+          if (restIdx === undefined) {
+            restIdx = allocLocal(fctx, restName, { kind: "externref" });
+          }
+          // Collect excluded keys
+          const excludedKeys: string[] = [];
+          for (const el of pattern.elements) {
+            if (!ts.isBindingElement(el) || el.dotDotDotToken) continue;
+            const pn = el.propertyName ?? el.name;
+            if (ts.isIdentifier(pn)) excludedKeys.push(pn.text);
+            else if (ts.isStringLiteral(pn)) excludedKeys.push(pn.text);
+            else if (ts.isNumericLiteral(pn)) excludedKeys.push(pn.text);
+          }
+          let restObjIdx = ctx.funcMap.get("__extern_rest_object");
+          if (restObjIdx === undefined) {
+            const importsBefore = ctx.numImportFuncs;
+            const restObjType = addFuncType(ctx,
+              [{ kind: "externref" }, { kind: "externref" }],
+              [{ kind: "externref" }]);
+            addImport(ctx, "env", "__extern_rest_object", { kind: "func", typeIdx: restObjType });
+            shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+            restObjIdx = ctx.funcMap.get("__extern_rest_object");
+          }
+          if (restObjIdx !== undefined) {
+            const excludedStr = excludedKeys.join(",");
+            addStringConstantGlobal(ctx, excludedStr);
+            const excludedStrIdx = ctx.stringGlobalMap.get(excludedStr);
+            if (excludedStrIdx !== undefined) {
+              fctx.body.push({ op: "local.get", index: elemLocal });
+              fctx.body.push({ op: "extern.convert_any" } as Instr);
+              fctx.body.push({ op: "global.get", index: excludedStrIdx });
+              fctx.body.push({ op: "call", funcIdx: restObjIdx });
+              fctx.body.push({ op: "local.set", index: restIdx });
+            }
+          }
+        }
+        continue;
+      }
+
       const propNameNode = element.propertyName ?? element.name;
       const propNameText = ts.isIdentifier(propNameNode) ? propNameNode.text
         : ts.isStringLiteral(propNameNode) ? propNameNode.text
@@ -4008,12 +4109,32 @@ function compileForOfDestructuring(
 
           const fieldType = tupleFields[i]!.type;
 
-          // Handle rest element — skip for tuples
+          // Handle rest element — convert tuple to externref and slice
           if (ts.isBindingElement(element) && element.dotDotDotToken) {
             const restName = ts.isIdentifier(element.name)
               ? element.name.text
               : `__rest_${fctx.locals.length}`;
-            allocLocal(fctx, restName, { kind: "externref" });
+            let restIdx = fctx.localMap.get(restName);
+            if (restIdx === undefined) {
+              restIdx = allocLocal(fctx, restName, { kind: "externref" });
+            }
+            let sliceIdx = ctx.funcMap.get("__extern_slice");
+            if (sliceIdx === undefined) {
+              const importsBefore = ctx.numImportFuncs;
+              const sliceType = addFuncType(ctx,
+                [{ kind: "externref" }, { kind: "f64" }],
+                [{ kind: "externref" }]);
+              addImport(ctx, "env", "__extern_slice", { kind: "func", typeIdx: sliceType });
+              shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+              sliceIdx = ctx.funcMap.get("__extern_slice");
+            }
+            if (sliceIdx !== undefined) {
+              fctx.body.push({ op: "local.get", index: elemLocal });
+              fctx.body.push({ op: "extern.convert_any" } as Instr);
+              fctx.body.push({ op: "f64.const", value: i });
+              fctx.body.push({ op: "call", funcIdx: sliceIdx });
+              fctx.body.push({ op: "local.set", index: restIdx });
+            }
             continue;
           }
 
