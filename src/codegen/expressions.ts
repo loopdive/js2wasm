@@ -559,7 +559,7 @@ export function patchStructNewForAddedField(
  */
 // Recursion depth counter — prevents infinite compilation loops from valueOf/toString chains
 let __compileDepth = 0;
-const MAX_COMPILE_DEPTH = 500;
+const MAX_COMPILE_DEPTH = 5000;
 export function resetCompileDepth(): void { __compileDepth = 0; }
 
 export function compileExpression(
