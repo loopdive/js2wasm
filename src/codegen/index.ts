@@ -1104,6 +1104,11 @@ export function generateModule(
   mod.stringLiteralValues = ctx.stringLiteralValues;
   mod.asyncFunctions = ctx.asyncFunctions;
 
+  // Emit exported struct field getter helpers for the runtime.
+  // These allow JS host imports to read WasmGC struct fields that are
+  // otherwise opaque to JS (V8 returns undefined for direct property access).
+  emitStructFieldGetters(ctx);
+
   // WASI: export _start entry point (before dead import elimination adjusts indices)
   if (ctx.wasi) {
     addWasiStartExport(ctx);
@@ -1163,6 +1168,230 @@ function addWasiStartExport(ctx: CodegenContext): void {
       desc: { kind: "func", index: startFuncIdx },
     });
   }
+}
+
+/**
+ * Emit exported getter/setter helper functions so the JS runtime can read
+ * WasmGC struct fields that are otherwise opaque to JavaScript.
+ *
+ * For each unique field name across all struct types, we emit:
+ *   __sget_<name>(externref) -> externref
+ * The function converts the externref to anyref, tries ref.test for each
+ * struct type that has that field, extracts the field via struct.get,
+ * and converts the result to externref.
+ *
+ * Numeric fields (f64, i32) are boxed via __box_number import.
+ * Ref/ref_null fields are converted via extern.convert_any.
+ * The runtime discovers these exports and uses them as fallback when
+ * direct JS property access on a WasmGC struct returns undefined.
+ */
+function emitStructFieldGetters(ctx: CodegenContext): void {
+  try {
+    _emitStructFieldGettersInner(ctx);
+  } catch (e: any) {
+    // Non-fatal: if getter emission fails, the module still works
+    // (the runtime just can't read struct fields from JS)
+  }
+}
+
+function _emitStructFieldGettersInner(ctx: CodegenContext): void {
+  const mod = ctx.mod;
+
+  // Collect all (fieldName → [{structTypeIdx, fieldIdx, fieldType}]) mappings
+  const fieldMap = new Map<string, { typeIdx: number; fieldIdx: number; fieldType: ValType }[]>();
+
+  for (const [structName, fields] of ctx.structFields) {
+    const typeIdx = ctx.structMap.get(structName);
+    if (typeIdx === undefined) continue;
+
+    // Skip internal/wrapper types
+    if (structName.startsWith("Wrapper") || structName === "$AnyValue") continue;
+
+    for (let i = 0; i < fields.length; i++) {
+      const field = fields[i];
+      if (!field || !field.type) continue;
+      // Skip fields with names that would create invalid export names
+      if (!field.name || field.name.startsWith("$")) continue;
+
+      let entries = fieldMap.get(field.name);
+      if (!entries) { entries = []; fieldMap.set(field.name, entries); }
+      entries.push({ typeIdx, fieldIdx: i, fieldType: field.type });
+    }
+  }
+
+  if (fieldMap.size === 0) return;
+
+  // Find __box_number import for numeric boxing (may be undefined)
+  const boxNumIdx = ctx.funcMap.get("__box_number");
+
+  // Two getter types: one for externref result, one for f64 result
+  const getterExternTypeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }], "$sget_extern_type");
+  const getterF64TypeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "f64" }], "$sget_f64_type");
+  const getterI32TypeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "i32" }], "$sget_i32_type");
+
+  for (const [fieldName, entries] of fieldMap) {
+    // Determine the "best" return type — if all entries for this field are
+    // the same kind we can use a specific return type; if mixed, use externref.
+    const hasF64 = entries.some(e => e.fieldType.kind === "f64");
+    const hasI32 = entries.some(e => e.fieldType.kind === "i32");
+    const hasRef = entries.some(e => e.fieldType.kind !== "f64" && e.fieldType.kind !== "i32");
+    const allF64 = hasF64 && !hasI32 && !hasRef;
+    const allI32 = hasI32 && !hasF64 && !hasRef;
+
+    let getterTypeIdx: number;
+    let returnMode: "extern" | "f64" | "i32";
+    if (allF64) {
+      getterTypeIdx = getterF64TypeIdx;
+      returnMode = "f64";
+    } else if (allI32) {
+      getterTypeIdx = getterI32TypeIdx;
+      returnMode = "i32";
+    } else {
+      getterTypeIdx = getterExternTypeIdx;
+      returnMode = "extern";
+    }
+
+    const funcName = `__sget_${fieldName}`;
+    const funcIdx = ctx.numImportFuncs + mod.functions.length;
+    const anyLocal = 1; // first local after params (local 0 = externref param)
+
+    const funcBody = buildNestedIfElse(entries, anyLocal, boxNumIdx, returnMode);
+
+    mod.functions.push({
+      name: funcName,
+      typeIdx: getterTypeIdx,
+      locals: [{ name: "__any", type: { kind: "anyref" } }],
+      body: funcBody,
+      exported: true,
+    } as WasmFunction);
+
+    mod.exports.push({
+      name: funcName,
+      desc: { kind: "func", index: funcIdx },
+    });
+  }
+}
+
+/** Build nested if/else for struct field getter dispatch. */
+function buildNestedIfElse(
+  entries: { typeIdx: number; fieldIdx: number; fieldType: ValType }[],
+  anyLocal: number,
+  boxNumIdx: number | undefined,
+  returnMode: "extern" | "f64" | "i32" = "extern",
+): Instr[] {
+  const body: Instr[] = [];
+
+  // Convert externref to anyref and store
+  body.push({ op: "local.get", index: 0 } as Instr);
+  body.push({ op: "any.convert_extern" } as Instr);
+  body.push({ op: "local.set", index: anyLocal } as Instr);
+
+  // Default return value for the final else
+  let defaultVal: Instr;
+  let blockRetType: ValType;
+  if (returnMode === "f64") {
+    defaultVal = { op: "f64.const", value: 0 } as Instr;
+    blockRetType = { kind: "f64" };
+  } else if (returnMode === "i32") {
+    defaultVal = { op: "i32.const", value: 0 } as Instr;
+    blockRetType = { kind: "i32" };
+  } else {
+    defaultVal = { op: "ref.null.extern" } as Instr;
+    blockRetType = { kind: "externref" };
+  }
+
+  // Build a chain: if (ref.test T1) { get from T1 } else if (ref.test T2) { ... } else { default }
+  let current: Instr[] = [defaultVal];
+
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const entry = entries[i]!;
+    const thenBranch = buildGetterExtract(entry, anyLocal, boxNumIdx, returnMode);
+
+    const ifInstr: Instr = {
+      op: "if",
+      blockType: { kind: "val", type: blockRetType },
+      then: thenBranch,
+      else: current,
+    } as unknown as Instr;
+
+    current = [
+      { op: "local.get", index: anyLocal } as Instr,
+      { op: "ref.test", typeIdx: entry.typeIdx } as Instr,
+      ifInstr,
+    ];
+  }
+
+  body.push(...current);
+  return body;
+}
+
+/** Build the "then" branch that extracts a field from a cast struct. */
+function buildGetterExtract(
+  entry: { typeIdx: number; fieldIdx: number; fieldType: ValType },
+  anyLocal: number,
+  boxNumIdx: number | undefined,
+  returnMode: "extern" | "f64" | "i32" = "extern",
+): Instr[] {
+  const then: Instr[] = [];
+
+  // Cast anyref to the struct type
+  then.push({ op: "local.get", index: anyLocal } as Instr);
+  then.push({ op: "ref.cast", typeIdx: entry.typeIdx } as Instr);
+  then.push({ op: "struct.get", typeIdx: entry.typeIdx, fieldIdx: entry.fieldIdx } as Instr);
+
+  const ft = entry.fieldType;
+
+  if (returnMode === "f64") {
+    // Return f64 directly
+    if (ft.kind === "f64") {
+      // Already f64 — nothing to do
+    } else if (ft.kind === "i32") {
+      then.push({ op: "f64.convert_i32_s" } as Instr);
+    } else {
+      then.push({ op: "drop" } as Instr);
+      then.push({ op: "f64.const", value: 0 } as Instr);
+    }
+  } else if (returnMode === "i32") {
+    // Return i32 directly
+    if (ft.kind === "i32") {
+      // Already i32
+    } else if (ft.kind === "f64") {
+      then.push({ op: "i32.trunc_sat_f64_s" } as unknown as Instr);
+    } else {
+      then.push({ op: "drop" } as Instr);
+      then.push({ op: "i32.const", value: 0 } as Instr);
+    }
+  } else {
+    // Return externref
+    if (ft.kind === "f64") {
+      if (boxNumIdx !== undefined) {
+        then.push({ op: "call", funcIdx: boxNumIdx } as Instr);
+      } else {
+        then.push({ op: "drop" } as Instr);
+        then.push({ op: "ref.null.extern" } as Instr);
+      }
+    } else if (ft.kind === "i32") {
+      then.push({ op: "f64.convert_i32_s" } as Instr);
+      if (boxNumIdx !== undefined) {
+        then.push({ op: "call", funcIdx: boxNumIdx } as Instr);
+      } else {
+        then.push({ op: "drop" } as Instr);
+        then.push({ op: "ref.null.extern" } as Instr);
+      }
+    } else if (ft.kind === "i64") {
+      then.push({ op: "drop" } as Instr);
+      then.push({ op: "ref.null.extern" } as Instr);
+    } else if (ft.kind === "externref" || ft.kind === "ref_extern") {
+      // Already externref
+    } else if (ft.kind === "ref" || ft.kind === "ref_null" || ft.kind === "anyref" || ft.kind === "eqref") {
+      then.push({ op: "extern.convert_any" } as Instr);
+    } else {
+      then.push({ op: "drop" } as Instr);
+      then.push({ op: "ref.null.extern" } as Instr);
+    }
+  }
+
+  return then;
 }
 
 /**
