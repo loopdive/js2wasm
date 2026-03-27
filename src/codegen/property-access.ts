@@ -610,7 +610,7 @@ export function compilePropertyAccess(
   }
 
   const objType = ctx.checker.getTypeAtLocation(expr.expression);
-  const propName = ts.isPrivateIdentifier(expr.name) ? expr.name.text.slice(1) : expr.name.text;
+  const propName = ts.isPrivateIdentifier(expr.name) ? "__priv_" + expr.name.text.slice(1) : expr.name.text;
 
   // Handle super.prop — access parent class property/getter on current `this`
   if (expr.expression.kind === ts.SyntaxKind.SuperKeyword) {

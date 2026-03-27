@@ -90,7 +90,7 @@ export function compileDeleteExpression(
     if (typeName) {
       const structTypeIdx = ctx.structMap.get(typeName);
       const fields = ctx.structFields.get(typeName);
-      const fieldName = ts.isPrivateIdentifier(inner.name) ? inner.name.text.slice(1) : inner.name.text;
+      const fieldName = ts.isPrivateIdentifier(inner.name) ? "__priv_" + inner.name.text.slice(1) : inner.name.text;
       if (structTypeIdx !== undefined && fields) {
         const fieldIdx = fields.findIndex((f) => f.name === fieldName);
         if (fieldIdx !== -1 && fields[fieldIdx]!.mutable) {

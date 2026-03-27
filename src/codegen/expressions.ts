@@ -3622,7 +3622,7 @@ function compilePropertyAssignment(
 
   // Check for setter accessor on user-defined classes
   const fieldName = ts.isPrivateIdentifier(target.name)
-    ? target.name.text.slice(1)
+    ? "__priv_" + target.name.text.slice(1)
     : target.name.text;
   const accessorKey = `${typeName}_${fieldName}`;
   if (ctx.classAccessorSet.has(accessorKey)) {
@@ -4533,7 +4533,7 @@ function compilePropertyLogicalAssignment(
 ): ValType | null {
   const objType = ctx.checker.getTypeAtLocation(target.expression);
   const propName = ts.isPrivateIdentifier(target.name)
-    ? target.name.text.slice(1)
+    ? "__priv_" + target.name.text.slice(1)
     : target.name.text;
 
   // Resolve struct type
@@ -5804,7 +5804,7 @@ function compilePropertyCompoundAssignment(
 ): ValType | null {
   const objType = ctx.checker.getTypeAtLocation(target.expression);
   const propName = ts.isPrivateIdentifier(target.name)
-    ? target.name.text.slice(1)
+    ? "__priv_" + target.name.text.slice(1)
     : target.name.text;
 
   // Handle static property compound assignment: ClassName.staticProp += value
@@ -6678,7 +6678,7 @@ function compileMemberIncDec(
   if (ts.isPropertyAccessExpression(operand)) {
     const objType = ctx.checker.getTypeAtLocation(operand.expression);
     const propName = ts.isPrivateIdentifier(operand.name)
-      ? operand.name.text.slice(1)
+      ? "__priv_" + operand.name.text.slice(1)
       : operand.name.text;
     // Ensure anonymous types are registered as structs before resolving
     ensureStructForType(ctx, objType);
@@ -7843,7 +7843,7 @@ function compilePrefixIncrementProperty(
 ): ValType | null {
   const objType = ctx.checker.getTypeAtLocation(target.expression);
   const propName = ts.isPrivateIdentifier(target.name)
-    ? target.name.text.slice(1)
+    ? "__priv_" + target.name.text.slice(1)
     : target.name.text;
   const typeName = resolveStructName(ctx, objType);
   if (!typeName) {
@@ -8082,7 +8082,7 @@ function compilePostfixIncrementProperty(
 ): ValType | null {
   const objType = ctx.checker.getTypeAtLocation(target.expression);
   const propName = ts.isPrivateIdentifier(target.name)
-    ? target.name.text.slice(1)
+    ? "__priv_" + target.name.text.slice(1)
     : target.name.text;
   const typeName = resolveStructName(ctx, objType);
   if (!typeName) {
@@ -8454,7 +8454,7 @@ function compileCallablePropertyCall(
   className: string,
 ): InnerResult | undefined {
   const methodName = ts.isPrivateIdentifier(propAccess.name)
-    ? propAccess.name.text.slice(1)
+    ? "__priv_" + propAccess.name.text.slice(1)
     : propAccess.name.text;
 
   // Check if this property name is a struct field
@@ -10621,7 +10621,7 @@ function compileCallExpression(
     // union members, apparent type, or base types.
     if (!receiverClassName || !ctx.classSet.has(receiverClassName)) {
       const methodName = ts.isPrivateIdentifier(propAccess.name)
-        ? propAccess.name.text.slice(1)
+        ? "__priv_" + propAccess.name.text.slice(1)
         : propAccess.name.text;
       // Try union type members: for `A | B`, check each member for a known class
       if (receiverType.isUnion()) {
@@ -10735,7 +10735,7 @@ function compileCallExpression(
     }
     if (receiverClassName && ctx.classSet.has(receiverClassName)) {
       const methodName = ts.isPrivateIdentifier(propAccess.name)
-        ? propAccess.name.text.slice(1)
+        ? "__priv_" + propAccess.name.text.slice(1)
         : propAccess.name.text;
       let fullName = `${receiverClassName}_${methodName}`;
       let funcIdx = ctx.funcMap.get(fullName);
