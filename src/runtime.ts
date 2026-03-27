@@ -304,6 +304,7 @@ function resolveImport(
       };
       if (name === "__extern_is_undefined") return (v: any) => v === undefined ? 1 : 0;
       if (name === "__get_undefined") return () => undefined;
+      if (name === "__object_create") return (proto: any) => Object.create(proto);
       if (name === "__object_freeze") return (obj: any) => { try { return Object.freeze(obj); } catch { return obj; } };
       if (name === "__object_seal") return (obj: any) => { try { return Object.seal(obj); } catch { return obj; } };
       if (name === "__object_preventExtensions") return (obj: any) => { try { return Object.preventExtensions(obj); } catch { return obj; } };

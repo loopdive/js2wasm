@@ -10197,13 +10197,7 @@ function compileCallExpression(
     ) {
       const arg0 = expr.arguments[0]!;
 
-      // Object.create(null) → empty object (externref null)
-      if (arg0.kind === ts.SyntaxKind.NullKeyword) {
-        fctx.body.push({ op: "ref.null.extern" });
-        return { kind: "externref" };
-      }
-
-      // Object.create(Foo.prototype) → struct.new with default fields
+      // Object.create(Foo.prototype) → struct.new with default fields (Wasm-native fast path)
       if (
         ts.isPropertyAccessExpression(arg0) &&
         ts.isIdentifier(arg0.expression) &&
@@ -10224,12 +10218,45 @@ function compileCallExpression(
         }
       }
 
-      // Fallback: compile and drop arg, return null externref
-      const argType = compileExpression(ctx, fctx, arg0);
-      if (argType) {
-        fctx.body.push({ op: "drop" });
+      // Host import path: Object.create(null) and Object.create(proto) for dynamic protos
+      // Object.create(null) → empty object with null prototype
+      // Object.create(proto) → new object with __proto__ set to proto
+      const hostIdx = ensureLateImport(
+        ctx,
+        "__object_create",
+        [{ kind: "externref" }],
+        [{ kind: "externref" }],
+      );
+      flushLateImportShifts(ctx, fctx);
+
+      if (hostIdx !== undefined) {
+        // Compile the proto argument
+        if (arg0.kind === ts.SyntaxKind.NullKeyword) {
+          fctx.body.push({ op: "ref.null.extern" });
+        } else {
+          const argType = compileExpression(ctx, fctx, arg0);
+          if (!argType) {
+            // Expression produced no value — push null as fallback
+            fctx.body.push({ op: "ref.null.extern" });
+          } else if (argType.kind !== "externref") {
+            // Coerce to externref for the host import
+            fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+          }
+        }
+        fctx.body.push({ op: "call", funcIdx: hostIdx });
+        return { kind: "externref" };
       }
-      fctx.body.push({ op: "ref.null.extern" });
+
+      // Standalone fallback (no host): compile arg for side effects, return null externref
+      if (arg0.kind === ts.SyntaxKind.NullKeyword) {
+        fctx.body.push({ op: "ref.null.extern" });
+      } else {
+        const argType = compileExpression(ctx, fctx, arg0);
+        if (argType) {
+          fctx.body.push({ op: "drop" });
+        }
+        fctx.body.push({ op: "ref.null.extern" });
+      }
       return { kind: "externref" };
     }
 
