@@ -3803,14 +3803,8 @@ function compileForOfStatement(
   if (isArray) {
     compileForOfArray(ctx, fctx, stmt);
   } else {
-    // When the TS type doesn't identify as Array (e.g. type is '{}' or 'any'
-    // due to missing lib type definitions), the expression may still compile
-    // to a native Wasm vec struct. Try the native array path first; if the
-    // compiled expression type isn't a vec struct, fall back to the host
-    // iterator protocol.
-    if (!compileForOfArrayTentative(ctx, fctx, stmt)) {
-      compileForOfIterator(ctx, fctx, stmt);
-    }
+    // Non-array type — use the host iterator protocol.
+    compileForOfIterator(ctx, fctx, stmt);
   }
 }
 
