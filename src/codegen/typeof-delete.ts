@@ -728,6 +728,9 @@ export function compileTypeofComparison(
   if (stringLiteral === "number") helperName = "__typeof_number";
   else if (stringLiteral === "string") helperName = "__typeof_string";
   else if (stringLiteral === "boolean") helperName = "__typeof_boolean";
+  else if (stringLiteral === "undefined") helperName = "__typeof_undefined";
+  else if (stringLiteral === "object") helperName = "__typeof_object";
+  else if (stringLiteral === "function") helperName = "__typeof_function";
 
   if (!helperName) return null;
 

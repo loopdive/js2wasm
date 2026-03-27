@@ -1407,6 +1407,9 @@ function classifyImport(name: string, mod: WasmModule): ImportIntent {
   if (name === "__typeof_number") return { type: "typeof_check", targetType: "number" };
   if (name === "__typeof_string") return { type: "typeof_check", targetType: "string" };
   if (name === "__typeof_boolean") return { type: "typeof_check", targetType: "boolean" };
+  if (name === "__typeof_undefined") return { type: "typeof_check", targetType: "undefined" };
+  if (name === "__typeof_object") return { type: "typeof_check", targetType: "object" };
+  if (name === "__typeof_function") return { type: "typeof_check", targetType: "function" };
   if (name === "__unbox_number") return { type: "unbox", targetType: "number" };
   if (name === "__unbox_boolean") return { type: "unbox", targetType: "boolean" };
   if (name === "__box_number") return { type: "box", targetType: "number" };
@@ -2495,6 +2498,12 @@ function generateEnvImportLine(name: string, mod: WasmModule): string {
     return `${name}: (v) => typeof v === "string" ? 1 : 0`;
   if (name === "__typeof_boolean")
     return `${name}: (v) => typeof v === "boolean" ? 1 : 0`;
+  if (name === "__typeof_undefined")
+    return `${name}: (v) => typeof v === "undefined" ? 1 : 0`;
+  if (name === "__typeof_object")
+    return `${name}: (v) => typeof v === "object" ? 1 : 0`;
+  if (name === "__typeof_function")
+    return `${name}: (v) => typeof v === "function" ? 1 : 0`;
   if (name === "__unbox_number") return `${name}: (v) => Number(v)`;
   if (name === "__unbox_boolean") return `${name}: (v) => v ? 1 : 0`;
   if (name === "__box_number") return `${name}: (v) => v`;

@@ -7637,6 +7637,18 @@ export function addUnionImports(ctx: CodegenContext): void {
     kind: "func",
     typeIdx: typeofType,
   });
+  addImport(ctx, "env", "__typeof_undefined", {
+    kind: "func",
+    typeIdx: typeofType,
+  });
+  addImport(ctx, "env", "__typeof_object", {
+    kind: "func",
+    typeIdx: typeofType,
+  });
+  addImport(ctx, "env", "__typeof_function", {
+    kind: "func",
+    typeIdx: typeofType,
+  });
 
   // __is_truthy: (externref) → i32
   addImport(ctx, "env", "__is_truthy", { kind: "func", typeIdx: typeofType });
@@ -7698,6 +7710,7 @@ export function addUnionImports(ctx: CodegenContext): void {
     // Build a set of the new import names to skip them during funcMap update
     const newImportNames = new Set([
       "__typeof_number", "__typeof_string", "__typeof_boolean",
+      "__typeof_undefined", "__typeof_object", "__typeof_function",
       "__is_truthy", "__unbox_number", "__unbox_boolean",
       "__box_number", "__box_boolean", "__typeof",
     ]);
