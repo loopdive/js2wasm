@@ -172,7 +172,7 @@ async function getOrCompile(
 
   if (!binary) {
     // Cache miss: async compile via pool worker (doesn't block other tests)
-    const poolResult = await pool.compile(wrappedSource, 30_000, fullDiagnostics, sourceMapFilename);
+    const poolResult = await pool.compile(wrappedSource, 10_000, fullDiagnostics, sourceMapFilename);
     if (!poolResult.ok) {
       return { ok: false, error: poolResult.error };
     }
