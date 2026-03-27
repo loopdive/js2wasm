@@ -122,4 +122,102 @@ describe("RangeError validation (#733)", () => {
     `);
     expect(ret).toBe(1);
   });
+
+  it("toFixed(-1) throws RangeError", async () => {
+    const ret = await compileAndRun(`
+      export function test(): number {
+        try {
+          (1.5).toFixed(-1);
+        } catch (e) {
+          return 1;
+        }
+        return 0;
+      }
+    `);
+    expect(ret).toBe(1);
+  });
+
+  it("toFixed(101) throws RangeError", async () => {
+    const ret = await compileAndRun(`
+      export function test(): number {
+        try {
+          (1.5).toFixed(101);
+        } catch (e) {
+          return 1;
+        }
+        return 0;
+      }
+    `);
+    expect(ret).toBe(1);
+  });
+
+  it("toExponential(-1) throws RangeError", async () => {
+    const ret = await compileAndRun(`
+      export function test(): number {
+        try {
+          (1.5).toExponential(-1);
+        } catch (e) {
+          return 1;
+        }
+        return 0;
+      }
+    `);
+    expect(ret).toBe(1);
+  });
+
+  it("toString(1) throws RangeError for radix < 2", async () => {
+    const ret = await compileAndRun(`
+      export function test(): number {
+        try {
+          (10).toString(1);
+        } catch (e) {
+          return 1;
+        }
+        return 0;
+      }
+    `);
+    expect(ret).toBe(1);
+  });
+
+  it("toString(37) throws RangeError for radix > 36", async () => {
+    const ret = await compileAndRun(`
+      export function test(): number {
+        try {
+          (10).toString(37);
+        } catch (e) {
+          return 1;
+        }
+        return 0;
+      }
+    `);
+    expect(ret).toBe(1);
+  });
+
+  it("repeat(-1) throws RangeError", async () => {
+    const ret = await compileAndRun(`
+      export function test(): number {
+        try {
+          "abc".repeat(-1);
+        } catch (e) {
+          return 1;
+        }
+        return 0;
+      }
+    `);
+    expect(ret).toBe(1);
+  });
+
+  it("repeat(Infinity) throws RangeError", async () => {
+    const ret = await compileAndRun(`
+      export function test(): number {
+        try {
+          "abc".repeat(Infinity);
+        } catch (e) {
+          return 1;
+        }
+        return 0;
+      }
+    `);
+    expect(ret).toBe(1);
+  });
 });
