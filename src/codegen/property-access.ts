@@ -18,7 +18,6 @@ import {
   isStringType,
   isExternalDeclaredClass,
   isIteratorResultType,
-  mapTsTypeToWasm,
 } from "../checker/type-mapper.js";
 import type { Instr, ValType, FieldDef } from "../ir/types.js";
 import { coercionInstrs, defaultValueInstrs } from "./type-coercion.js";
@@ -1043,27 +1042,6 @@ export function compilePropertyAccess(
     const externResult = compileExternPropertyGet(ctx, fctx, expr, objType, propName);
     if (externResult !== null) return externResult;
     // Fall through to dynamic fallback if import is missing
-  }
-
-  // Fallback: when lib files are not loaded, the type checker resolves
-  // built-in types (RegExp, Map, Set) as `{}`. Check if the property name
-  // matches a registered extern class property and the receiver maps to externref.
-  {
-    const wasmObjType = mapTsTypeToWasm(objType, ctx.checker);
-    if (wasmObjType.kind === "externref" && !objType.getSymbol()?.name) {
-      for (const [, ecInfo] of ctx.externClasses) {
-        if (ecInfo.properties.has(propName)) {
-          const propInfo = ecInfo.properties.get(propName)!;
-          const importName = `${ecInfo.importPrefix}_get_${propName}`;
-          const funcIdx = ctx.funcMap.get(importName);
-          if (funcIdx !== undefined) {
-            compileExpression(ctx, fctx, expr.expression, { kind: "externref" });
-            fctx.body.push({ op: "call", funcIdx });
-            return propInfo.type;
-          }
-        }
-      }
-    }
   }
 
   // Handle getter accessor on user-defined classes

@@ -1043,10 +1043,6 @@ export function generateModule(
     }
   }
 
-  // Register built-in extern classes (RegExp, Map, Set) as fallback when
-  // lib files are not loaded into the program (in-memory compiler host).
-  registerBuiltinExternClasses(ctx);
-
   // Pre-pass: detect empty object literals that get properties assigned later
   // Must run before import collectors so that widened types are known
   collectEmptyObjectWidening(ctx, ast.checker, ast.sourceFile);
@@ -1703,10 +1699,6 @@ export function generateMultiModule(
       }
     }
   }
-
-  // Register built-in extern classes (RegExp, Map, Set) as fallback when
-  // lib files are not loaded into the program (in-memory compiler host).
-  registerBuiltinExternClasses(ctx);
 
   // Pre-pass: detect empty object literals that get properties assigned later
   // Must run before import collectors so that widened types are known
@@ -9365,135 +9357,6 @@ export function ensureStructForType(ctx: CodegenContext, tsType: ts.Type): void 
   }
 }
 
-// ── Built-in extern class registration (fallback for missing lib files) ──
-
-/**
- * Register built-in extern classes (RegExp, Map, Set) with hardcoded
- * method/property signatures.  The in-memory compiler host doesn't always
- * load lib.d.ts files, so the type checker resolves these types as `{}`.
- * This function provides a fallback so that method calls on RegExp, Map,
- * Set, etc. produce the correct host imports.
- *
- * Only registers when the class is not already in ctx.externClasses
- * (i.e. lib files were not loaded or didn't provide the info).
- */
-function registerBuiltinExternClasses(ctx: CodegenContext): void {
-  const ext = { kind: "externref" } as ValType;
-  const f64 = { kind: "f64" } as ValType;
-  const i32 = { kind: "i32" } as ValType;
-
-  // ── RegExp ──
-  if (!ctx.externClasses.has("RegExp")) {
-    const info: ExternClassInfo = {
-      importPrefix: "RegExp",
-      namespacePath: [],
-      className: "RegExp",
-      constructorParams: [ext, ext], // (pattern: string, flags?: string)
-      methods: new Map([
-        ["test", { params: [ext, ext], results: [i32], requiredParams: 2 }],
-        ["exec", { params: [ext, ext], results: [ext], requiredParams: 2 }],
-        ["toString", { params: [ext], results: [ext], requiredParams: 1 }],
-      ]),
-      properties: new Map([
-        ["source", { type: ext, readonly: true }],
-        ["flags", { type: ext, readonly: true }],
-        ["global", { type: i32, readonly: true }],
-        ["ignoreCase", { type: i32, readonly: true }],
-        ["multiline", { type: i32, readonly: true }],
-        ["sticky", { type: i32, readonly: true }],
-        ["unicode", { type: i32, readonly: true }],
-        ["dotAll", { type: i32, readonly: true }],
-        ["lastIndex", { type: f64, readonly: false }],
-      ]),
-    };
-    ctx.externClasses.set("RegExp", info);
-  }
-
-  // ── Map ──
-  if (!ctx.externClasses.has("Map")) {
-    const info: ExternClassInfo = {
-      importPrefix: "Map",
-      namespacePath: [],
-      className: "Map",
-      constructorParams: [], // new Map() or new Map(iterable)
-      methods: new Map([
-        ["get", { params: [ext, ext], results: [ext], requiredParams: 2 }],
-        ["set", { params: [ext, ext, ext], results: [ext], requiredParams: 3 }],
-        ["has", { params: [ext, ext], results: [i32], requiredParams: 2 }],
-        ["delete", { params: [ext, ext], results: [i32], requiredParams: 2 }],
-        ["clear", { params: [ext], results: [], requiredParams: 1 }],
-        ["forEach", { params: [ext, ext], results: [], requiredParams: 2 }],
-        ["keys", { params: [ext], results: [ext], requiredParams: 1 }],
-        ["values", { params: [ext], results: [ext], requiredParams: 1 }],
-        ["entries", { params: [ext], results: [ext], requiredParams: 1 }],
-      ]),
-      properties: new Map([
-        ["size", { type: f64, readonly: true }],
-      ]),
-    };
-    ctx.externClasses.set("Map", info);
-  }
-
-  // ── Set ──
-  if (!ctx.externClasses.has("Set")) {
-    const info: ExternClassInfo = {
-      importPrefix: "Set",
-      namespacePath: [],
-      className: "Set",
-      constructorParams: [],
-      methods: new Map([
-        ["add", { params: [ext, ext], results: [ext], requiredParams: 2 }],
-        ["has", { params: [ext, ext], results: [i32], requiredParams: 2 }],
-        ["delete", { params: [ext, ext], results: [i32], requiredParams: 2 }],
-        ["clear", { params: [ext], results: [], requiredParams: 1 }],
-        ["forEach", { params: [ext, ext], results: [], requiredParams: 2 }],
-        ["keys", { params: [ext], results: [ext], requiredParams: 1 }],
-        ["values", { params: [ext], results: [ext], requiredParams: 1 }],
-        ["entries", { params: [ext], results: [ext], requiredParams: 1 }],
-      ]),
-      properties: new Map([
-        ["size", { type: f64, readonly: true }],
-      ]),
-    };
-    ctx.externClasses.set("Set", info);
-  }
-
-  // ── WeakMap ──
-  if (!ctx.externClasses.has("WeakMap")) {
-    const info: ExternClassInfo = {
-      importPrefix: "WeakMap",
-      namespacePath: [],
-      className: "WeakMap",
-      constructorParams: [],
-      methods: new Map([
-        ["get", { params: [ext, ext], results: [ext], requiredParams: 2 }],
-        ["set", { params: [ext, ext, ext], results: [ext], requiredParams: 3 }],
-        ["has", { params: [ext, ext], results: [i32], requiredParams: 2 }],
-        ["delete", { params: [ext, ext], results: [i32], requiredParams: 2 }],
-      ]),
-      properties: new Map(),
-    };
-    ctx.externClasses.set("WeakMap", info);
-  }
-
-  // ── WeakSet ──
-  if (!ctx.externClasses.has("WeakSet")) {
-    const info: ExternClassInfo = {
-      importPrefix: "WeakSet",
-      namespacePath: [],
-      className: "WeakSet",
-      constructorParams: [],
-      methods: new Map([
-        ["add", { params: [ext, ext], results: [ext], requiredParams: 2 }],
-        ["has", { params: [ext, ext], results: [i32], requiredParams: 2 }],
-        ["delete", { params: [ext, ext], results: [i32], requiredParams: 2 }],
-      ]),
-      properties: new Map(),
-    };
-    ctx.externClasses.set("WeakSet", info);
-  }
-}
-
 // ── Extern class collection ──────────────────────────────────────────
 
 function collectExternDeclarations(
@@ -9937,13 +9800,7 @@ function collectUsedExternImports(
     // new ClassName()
     if (ts.isNewExpression(node)) {
       const type = ctx.checker.getTypeAtLocation(node);
-      let className = type.getSymbol()?.name;
-      // Fallback: when lib files are not loaded, the type is `{}` with no symbol.
-      // Use the identifier text to look up the extern class directly.
-      if (!className && ts.isIdentifier(node.expression)) {
-        const idName = node.expression.text;
-        if (ctx.externClasses.has(idName)) className = idName;
-      }
+      const className = type.getSymbol()?.name;
       if (className) {
         const info = ctx.externClasses.get(className);
         if (info)
@@ -9974,24 +9831,8 @@ function collectUsedExternImports(
 
       if (!isAssignTarget) {
         const objType = ctx.checker.getTypeAtLocation(node.expression);
-        let className = objType.getSymbol()?.name;
+        const className = objType.getSymbol()?.name;
         const memberName = node.name.text;
-
-        // Fallback: when lib files are not loaded, the type checker resolves
-        // built-in types (RegExp, Map, Set) as `{}` with no symbol name.
-        // Scan registered extern classes for a matching method/property.
-        if (!className) {
-          const wasmObjType = mapTsTypeToWasm(objType, ctx.checker);
-          if (wasmObjType.kind === "externref") {
-            for (const [ecName, ecInfo] of ctx.externClasses) {
-              if (ecInfo.methods.has(memberName) || ecInfo.properties.has(memberName)) {
-                className = ecName;
-                break;
-              }
-            }
-          }
-        }
-
         if (className) {
           const isCall =
             node.parent &&
@@ -10070,17 +9911,8 @@ function collectUsedExternImports(
   }
 
   for (const stmt of sourceFile.statements) {
-    // Visit function bodies for method call / property access detection
     if (ts.isFunctionDeclaration(stmt) && stmt.body) {
       visit(stmt.body);
-    }
-    // Also visit top-level variable declarations and expression statements,
-    // which may contain extern class method calls (e.g. `re.test(...)`)
-    if (ts.isVariableStatement(stmt)) {
-      visit(stmt);
-    }
-    if (ts.isExpressionStatement(stmt)) {
-      visit(stmt);
     }
   }
 }
