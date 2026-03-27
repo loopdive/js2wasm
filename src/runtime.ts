@@ -913,6 +913,13 @@ export function buildImports(
   let hasCallbacks = false;
   let lastCaughtException: any = undefined;
 
+  // Recursion depth guard: host imports can call back into Wasm exports
+  // (e.g. callback_maker, valueOf/toString coercion, iterator protocol),
+  // which can call back into host imports, creating infinite recursion.
+  // Track depth across ALL host imports sharing a single counter.
+  const MAX_HOST_RECURSION_DEPTH = 100;
+  let hostCallDepth = 0;
+
   for (const imp of manifest) {
     if (imp.module !== "env") continue;
     let fn: Function;
@@ -936,15 +943,23 @@ export function buildImports(
       }
     }
 
-    // Wrap host imports to capture foreign JS exceptions for catch_all
+    // Wrap host imports with recursion depth guard + exception capture for catch_all
     {
       const original = fn;
       fn = function (this: any, ...args: any[]) {
+        if (hostCallDepth >= MAX_HOST_RECURSION_DEPTH) {
+          const err = new RangeError("Maximum call stack size exceeded");
+          lastCaughtException = err;
+          throw err;
+        }
+        hostCallDepth++;
         try {
           return original.apply(this, args);
         } catch (e) {
           lastCaughtException = e;
           throw e;
+        } finally {
+          hostCallDepth--;
         }
       };
     }
