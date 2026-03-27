@@ -13,6 +13,8 @@ Active file/function claims by agents. **Check before editing. Update when start
 
 | File | Function/Area | Agent | Issue | Since |
 |------|--------------|-------|-------|-------|
+| src/codegen/property-access.ts | multi-struct dispatch | dev-778 | #778 | 2026-03-27 |
+| src/codegen/expressions.ts | ref.cast sites | dev-778 | #778 | 2026-03-27 |
 
 <!--
 Example entries:

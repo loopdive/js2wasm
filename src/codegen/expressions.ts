@@ -90,6 +90,7 @@ import {
   coerceType as coerceTypeImpl,
   defaultValueInstrs,
   emitGuardedRefCast,
+  emitGuardedFuncRefCast,
   emitSafeExternrefToF64,
   pushDefaultValue,
 } from "./type-coercion.js";
@@ -8693,7 +8694,8 @@ function compileClosureCall(
       const castLocal = allocLocal(fctx, `__closure_cast_${fctx.locals.length}`, castType);
       fctx.body.push({ op: "local.get", index: localIdx });
       fctx.body.push({ op: "any.convert_extern" });
-      fctx.body.push({ op: "ref.cast_null", typeIdx: info.structTypeIdx } as Instr);
+      // Guard cast to avoid illegal cast traps (#778)
+      emitGuardedRefCast(fctx, info.structTypeIdx);
       fctx.body.push({ op: "local.set", index: castLocal });
       effectiveLocalIdx = castLocal;
     }
@@ -8741,7 +8743,8 @@ function compileClosureCall(
     typeIdx: info.structTypeIdx,
     fieldIdx: 0,
   });
-  fctx.body.push({ op: "ref.cast", typeIdx: info.funcTypeIdx });
+  // Guard funcref cast to avoid illegal cast (#778)
+  emitGuardedFuncRefCast(fctx, info.funcTypeIdx);
   emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: info.funcTypeIdx });
 
   // call_ref with the lifted function's type index
@@ -8969,7 +8972,8 @@ function compileCallablePropertyCall(
         typeIdx: (fieldType as { typeIdx: number }).typeIdx,
         fieldIdx: 0,
       });
-      fctx.body.push({ op: "ref.cast", typeIdx: closureInfo.funcTypeIdx });
+      // Guard funcref cast to avoid illegal cast (#778)
+      emitGuardedFuncRefCast(fctx, closureInfo.funcTypeIdx);
       emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: closureInfo.funcTypeIdx });
       fctx.body.push({ op: "call_ref", typeIdx: closureInfo.funcTypeIdx });
 
@@ -9053,10 +9057,8 @@ function compileCallablePropertyCall(
         typeIdx: wrapperStructIdx,
         fieldIdx: 0,
       });
-      fctx.body.push({
-        op: "ref.cast",
-        typeIdx: matchedClosureInfo.funcTypeIdx,
-      });
+      // Guard funcref cast to avoid illegal cast (#778)
+      emitGuardedFuncRefCast(fctx, matchedClosureInfo.funcTypeIdx);
       emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedClosureInfo.funcTypeIdx });
       fctx.body.push({
         op: "call_ref",
@@ -9114,9 +9116,9 @@ function compileCallablePropertyCall(
       if (fieldType.kind === "ref_null") {
         emitNullCheckThrow(ctx, fctx, fieldType);
       }
-      // May need to cast to matching struct type
+      // May need to cast to matching struct type — guard with ref.test (#778)
       if ((fieldType as { typeIdx: number }).typeIdx !== matchedStructTypeIdx) {
-        fctx.body.push({ op: "ref.cast", typeIdx: matchedStructTypeIdx });
+        emitGuardedRefCast(fctx, matchedStructTypeIdx!);
       }
 
       // Push call arguments (only up to declared param count)
@@ -9155,17 +9157,15 @@ function compileCallablePropertyCall(
         emitNullCheckThrow(ctx, fctx, fieldType);
       }
       if ((fieldType as { typeIdx: number }).typeIdx !== matchedStructTypeIdx) {
-        fctx.body.push({ op: "ref.cast", typeIdx: matchedStructTypeIdx });
+        emitGuardedRefCast(fctx, matchedStructTypeIdx!);
       }
       fctx.body.push({
         op: "struct.get",
         typeIdx: matchedStructTypeIdx,
         fieldIdx: 0,
       });
-      fctx.body.push({
-        op: "ref.cast",
-        typeIdx: matchedClosureInfo.funcTypeIdx,
-      });
+      // Guard funcref cast to avoid illegal cast (#778)
+      emitGuardedFuncRefCast(fctx, matchedClosureInfo.funcTypeIdx);
       emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedClosureInfo.funcTypeIdx });
       fctx.body.push({
         op: "call_ref",
@@ -10362,15 +10362,65 @@ function compileCallExpression(
               return { kind: "externref" };
             }
 
-            // Cast to struct type if needed
-            if (objType.kind === "externref") {
-              fctx.body.push({ op: "any.convert_extern" } as unknown as Instr);
-              fctx.body.push({ op: "ref.cast", typeIdx: structTypeIdx } as unknown as Instr);
-            } else if (objType.kind === "ref_null" && objType.typeIdx !== structTypeIdx) {
-              fctx.body.push({ op: "ref.cast", typeIdx: structTypeIdx } as unknown as Instr);
+            // Guard cast with ref.test to avoid illegal cast traps (#778).
+            // If the runtime type doesn't match, convert to anyref for testing.
+            {
+              let needsCast = false;
+              if (objType.kind === "externref") {
+                fctx.body.push({ op: "any.convert_extern" } as unknown as Instr);
+                needsCast = true;
+              } else if (objType.kind === "ref_null" && objType.typeIdx !== structTypeIdx) {
+                needsCast = true;
+              }
+              if (needsCast) {
+                const gopdTmp = allocLocal(fctx, `__gopd_tmp_${fctx.locals.length}`, { kind: "anyref" });
+                fctx.body.push({ op: "local.set", index: gopdTmp });
+                fctx.body.push({ op: "local.get", index: gopdTmp });
+                fctx.body.push({ op: "ref.test", typeIdx: structTypeIdx } as Instr);
+                fctx.body.push({
+                  op: "if",
+                  blockType: { kind: "val", type: { kind: "externref" } as ValType },
+                  then: (() => {
+                    // Cast succeeds — proceed with struct.get + descriptor
+                    const thenInstrs: Instr[] = [
+                      { op: "local.get", index: gopdTmp } as Instr,
+                      { op: "ref.cast", typeIdx: structTypeIdx } as Instr,
+                      { op: "struct.get", typeIdx: structTypeIdx, fieldIdx: entry.fieldIdx } as Instr,
+                    ];
+                    // Coerce field value to externref
+                    const ft = entry.field.type;
+                    if (ft.kind === "f64") {
+                      const boxIdx2 = ensureLateImport(ctx, "__box_number", [{ kind: "f64" }], [{ kind: "externref" }]);
+                      flushLateImportShifts(ctx, fctx);
+                      if (boxIdx2 !== undefined) thenInstrs.push({ op: "call", funcIdx: boxIdx2 } as Instr);
+                    } else if (ft.kind === "i32") {
+                      thenInstrs.push({ op: "f64.convert_i32_s" } as Instr);
+                      const boxIdx2 = ensureLateImport(ctx, "__box_number", [{ kind: "f64" }], [{ kind: "externref" }]);
+                      flushLateImportShifts(ctx, fctx);
+                      if (boxIdx2 !== undefined) thenInstrs.push({ op: "call", funcIdx: boxIdx2 } as Instr);
+                    } else if (ft.kind === "ref" || ft.kind === "ref_null") {
+                      thenInstrs.push({ op: "extern.convert_any" } as Instr);
+                    } else if (ft.kind !== "externref") {
+                      thenInstrs.push({ op: "extern.convert_any" } as Instr);
+                    }
+                    // Push flags + call __create_descriptor
+                    thenInstrs.push({ op: "i32.const", value: flags } as Instr);
+                    const createIdx2 = ensureLateImport(ctx, "__create_descriptor",
+                      [{ kind: "externref" }, { kind: "i32" }], [{ kind: "externref" }]);
+                    flushLateImportShifts(ctx, fctx);
+                    if (createIdx2 !== undefined) thenInstrs.push({ op: "call", funcIdx: createIdx2 } as Instr);
+                    return thenInstrs;
+                  })(),
+                  else: [
+                    // Cast would fail — return undefined (property not own)
+                    { op: "ref.null.extern" } as Instr,
+                  ],
+                } as Instr);
+                return { kind: "externref" };
+              }
             }
 
-            // Save obj ref for struct.get
+            // Save obj ref for struct.get (direct path — type already matches)
             const objLocal = allocLocal(fctx, `__gopd_obj_${fctx.locals.length}`,
               { kind: "ref", typeIdx: structTypeIdx });
             fctx.body.push({ op: "local.set", index: objLocal });
@@ -12557,10 +12607,8 @@ function compileCallExpression(
             typeIdx: matchedStructTypeIdx,
             fieldIdx: 0,
           });
-          fctx.body.push({
-            op: "ref.cast",
-            typeIdx: matchedClosureInfo.funcTypeIdx,
-          });
+          // Guard funcref cast to avoid illegal cast (#778)
+          emitGuardedFuncRefCast(fctx, matchedClosureInfo.funcTypeIdx);
           emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedClosureInfo.funcTypeIdx });
           fctx.body.push({
             op: "call_ref",
@@ -13918,10 +13966,8 @@ function compileCallExpression(
           typeIdx: matchedStructTypeIdx,
           fieldIdx: 0,
         });
-        fctx.body.push({
-          op: "ref.cast",
-          typeIdx: matchedClosureInfo.funcTypeIdx,
-        });
+        // Guard funcref cast to avoid illegal cast (#778)
+        emitGuardedFuncRefCast(fctx, matchedClosureInfo.funcTypeIdx);
         emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedClosureInfo.funcTypeIdx });
 
         // call_ref with the lifted function's type index
@@ -14068,10 +14114,8 @@ function compileCallExpression(
           typeIdx: matchedStructTypeIdx,
           fieldIdx: 0,
         });
-        fctx.body.push({
-          op: "ref.cast",
-          typeIdx: matchedClosureInfo.funcTypeIdx,
-        });
+        // Guard funcref cast to avoid illegal cast (#778)
+        emitGuardedFuncRefCast(fctx, matchedClosureInfo.funcTypeIdx);
         emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedClosureInfo.funcTypeIdx });
         fctx.body.push({
           op: "call_ref",
@@ -14513,10 +14557,8 @@ function compileExpressionCallee(
         typeIdx: matchedStructTypeIdx,
         fieldIdx: 0,
       });
-      fctx.body.push({
-        op: "ref.cast",
-        typeIdx: matchedClosureInfo.funcTypeIdx,
-      });
+      // Guard funcref cast to avoid illegal cast (#778)
+      emitGuardedFuncRefCast(fctx, matchedClosureInfo.funcTypeIdx);
       emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedClosureInfo.funcTypeIdx });
       fctx.body.push({
         op: "call_ref",

@@ -42,6 +42,35 @@ export function emitGuardedRefCast(
 }
 
 /**
+ * Emit a guarded funcref cast: use ref.test to check if the cast will succeed.
+ * If it fails, push ref.null instead of trapping with "illegal cast".
+ * The value on the stack should be a funcref (from struct.get of a closure field).
+ * The result is always ref_null $funcTypeIdx (nullable).
+ *
+ * Unlike emitGuardedRefCast, this uses funcref locals (not anyref) since
+ * funcref is NOT a subtype of anyref in the WasmGC type hierarchy.
+ */
+export function emitGuardedFuncRefCast(
+  fctx: FunctionContext,
+  funcTypeIdx: number,
+): void {
+  const tmpFunc = allocLocal(fctx, `__gfc_${fctx.locals.length}`, { kind: "funcref" } as ValType);
+  fctx.body.push({ op: "local.tee", index: tmpFunc } as unknown as Instr);
+  fctx.body.push({ op: "ref.test", typeIdx: funcTypeIdx } as unknown as Instr);
+  fctx.body.push({
+    op: "if",
+    blockType: { kind: "val", type: { kind: "ref_null", typeIdx: funcTypeIdx } as ValType },
+    then: [
+      { op: "local.get", index: tmpFunc } as unknown as Instr,
+      { op: "ref.cast_null", typeIdx: funcTypeIdx } as unknown as Instr,
+    ],
+    else: [
+      { op: "ref.null", typeIdx: funcTypeIdx } as unknown as Instr,
+    ],
+  } as Instr);
+}
+
+/**
  * Callback type for compiling a string literal onto the Wasm stack.
  * Used by coerceType when it needs to push a @@toPrimitive hint string.
  * The caller (expressions.ts) passes its local compileStringLiteral function.

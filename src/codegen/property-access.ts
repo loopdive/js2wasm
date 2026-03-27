@@ -1123,13 +1123,9 @@ export function compilePropertyAccess(
         // Skip null guard when expression is provably non-null (#800)
         const exprNonNull = isProvablyNonNull(expr.expression);
         if (objResult && objResult.kind === "ref_null") {
-          if (exprNonNull) {
-            // Provably non-null — cast directly, no null guard needed
-            fctx.body.push({ op: "ref.cast", typeIdx: structTypeIdx } as unknown as Instr);
-            fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
-          } else {
-            emitNullGuardedStructGet(ctx, fctx, objResult, fieldType, structTypeIdx, fieldIdx, propName);
-          }
+          // Always use multi-struct dispatch (even when provably non-null) to avoid
+          // illegal cast traps when runtime struct type differs from compile-time type (#778).
+          emitNullGuardedStructGet(ctx, fctx, objResult, fieldType, structTypeIdx, fieldIdx, propName);
           if (fieldType.kind === "ref") {
             return { kind: "ref_null", typeIdx: (fieldType as any).typeIdx };
           }
@@ -1143,15 +1139,10 @@ export function compilePropertyAccess(
           }
           return fieldType;
         } else if (objResult && objResult.kind === "ref") {
-          if (exprNonNull) {
-            // Provably non-null — direct struct.get, no guard needed
-            fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
-          } else {
-            // May be null at runtime (e.g. default-initialized locals, chained
-            // property access on optional fields). Wrap in a null guard.
-            const nullableObj: ValType = { kind: "ref_null", typeIdx: (objResult as any).typeIdx ?? structTypeIdx };
-            emitNullGuardedStructGet(ctx, fctx, nullableObj, fieldType, structTypeIdx, fieldIdx, propName);
-          }
+          // Always use multi-struct dispatch to avoid illegal cast traps (#778).
+          // Even for provably-non-null, runtime struct type may differ from compile-time type.
+          const nullableObj: ValType = { kind: "ref_null", typeIdx: (objResult as any).typeIdx ?? structTypeIdx };
+          emitNullGuardedStructGet(ctx, fctx, nullableObj, fieldType, structTypeIdx, fieldIdx, propName);
           if (fieldType.kind === "ref") {
             return { kind: "ref_null", typeIdx: (fieldType as any).typeIdx };
           }
@@ -1301,12 +1292,8 @@ export function compilePropertyAccess(
             const objResult = compileExpression(ctx, fctx, expr.expression);
             const exprNonNull2 = isProvablyNonNull(expr.expression);
             if (objResult && objResult.kind === "ref_null") {
-              if (exprNonNull2) {
-                fctx.body.push({ op: "ref.cast", typeIdx: structTypeIdx } as unknown as Instr);
-                fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
-              } else {
-                emitNullGuardedStructGet(ctx, fctx, objResult, fieldType, structTypeIdx, fieldIdx, propName);
-              }
+              // Always use multi-struct dispatch to avoid illegal cast traps (#778)
+              emitNullGuardedStructGet(ctx, fctx, objResult, fieldType, structTypeIdx, fieldIdx, propName);
               if (fieldType.kind === "ref") {
                 return { kind: "ref_null", typeIdx: (fieldType as any).typeIdx };
               }
@@ -1314,13 +1301,9 @@ export function compilePropertyAccess(
             } else if (objResult && objResult.kind === "externref") {
               emitExternrefToStructGet(ctx, fctx, fieldType, structTypeIdx, fieldIdx, propName, true /* throwOnNull */);
             } else if (objResult && objResult.kind === "ref") {
-              if (exprNonNull2) {
-                fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
-              } else {
-                // Null-guard ref-typed objects (may be null at runtime)
-                const nullableObj: ValType = { kind: "ref_null", typeIdx: (objResult as any).typeIdx ?? structTypeIdx };
-                emitNullGuardedStructGet(ctx, fctx, nullableObj, fieldType, structTypeIdx, fieldIdx, propName);
-              }
+              // Always use multi-struct dispatch to avoid illegal cast traps (#778)
+              const nullableObj: ValType = { kind: "ref_null", typeIdx: (objResult as any).typeIdx ?? structTypeIdx };
+              emitNullGuardedStructGet(ctx, fctx, nullableObj, fieldType, structTypeIdx, fieldIdx, propName);
               if (fieldType.kind === "ref") {
                 return { kind: "ref_null", typeIdx: (fieldType as any).typeIdx };
               }

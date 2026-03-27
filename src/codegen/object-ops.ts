@@ -33,6 +33,7 @@ import {
   ensureLateImport,
   flushLateImportShifts,
 } from "./expressions.js";
+import { emitGuardedRefCast } from "./type-coercion.js";
 
 // ── Null guard for object method arguments ────────────────────────────
 
@@ -1172,24 +1173,56 @@ export function compileObjectDefineProperties(
         const fieldType = fields[fieldIdx]!.type;
         fctx.body.push({ op: "local.get", index: objLocal });
 
-        // Cast if needed
+        // Cast if needed — guard with ref.test to avoid illegal cast traps (#778)
+        let needsGuard = false;
         if (objType.kind === "externref") {
           fctx.body.push({ op: "any.convert_extern" } as Instr);
-          fctx.body.push({ op: "ref.cast", typeIdx: structTypeIdx } as unknown as Instr);
+          needsGuard = true;
         } else if ((objType.kind === "ref_null" || objType.kind === "ref") &&
                    "typeIdx" in objType && objType.typeIdx !== structTypeIdx) {
-          fctx.body.push({ op: "ref.cast", typeIdx: structTypeIdx } as unknown as Instr);
+          needsGuard = true;
         }
 
-        const valType = compileExpression(ctx, fctx, valueExpr, fieldType);
-        if (valType) {
-          if (valType.kind !== fieldType.kind) {
-            coerceType(ctx, fctx, valType, fieldType);
+        if (needsGuard) {
+          // Save obj as anyref, compile value, then guard the struct.set
+          const defpTmp = allocLocal(fctx, `__defp_tmp_${fctx.locals.length}`, { kind: "anyref" });
+          fctx.body.push({ op: "local.set", index: defpTmp } as Instr);
+
+          // Compile the value expression first (outside the guard)
+          const valType = compileExpression(ctx, fctx, valueExpr, fieldType);
+          if (valType) {
+            const valLocal = allocLocal(fctx, `__defp_val_${fctx.locals.length}`, fieldType);
+            if (valType.kind !== fieldType.kind) {
+              coerceType(ctx, fctx, valType, fieldType);
+            }
+            fctx.body.push({ op: "local.set", index: valLocal } as Instr);
+
+            // Now guard the struct.set with ref.test
+            fctx.body.push({ op: "local.get", index: defpTmp } as Instr);
+            fctx.body.push({ op: "ref.test", typeIdx: structTypeIdx } as Instr);
+            fctx.body.push({
+              op: "if",
+              blockType: { kind: "empty" },
+              then: [
+                { op: "local.get", index: defpTmp } as Instr,
+                { op: "ref.cast", typeIdx: structTypeIdx } as Instr,
+                { op: "local.get", index: valLocal } as Instr,
+                { op: "struct.set", typeIdx: structTypeIdx, fieldIdx } as Instr,
+              ],
+              else: [],
+            } as Instr);
           }
-          fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx });
         } else {
-          // No value produced — drop the obj ref
-          fctx.body.push({ op: "drop" });
+          const valType = compileExpression(ctx, fctx, valueExpr, fieldType);
+          if (valType) {
+            if (valType.kind !== fieldType.kind) {
+              coerceType(ctx, fctx, valType, fieldType);
+            }
+            fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx });
+          } else {
+            // No value produced — drop the obj ref
+            fctx.body.push({ op: "drop" });
+          }
         }
 
         // Update compile-time flags
