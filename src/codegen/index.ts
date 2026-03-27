@@ -29,7 +29,7 @@ import type {
   WasmModule,
 } from "../ir/types.js";
 import { createEmptyModule } from "../ir/types.js";
-import { compileExpression, resolveComputedKeyExpression, coerceType, valTypesMatch, emitBoundsCheckedArrayGet, ensureLateImport, flushLateImportShifts } from "./expressions.js";
+import { compileExpression, resolveComputedKeyExpression, coerceType, valTypesMatch, emitBoundsCheckedArrayGet, ensureLateImport, flushLateImportShifts, emitUndefined } from "./expressions.js";
 import { collectShapes } from "../shape-inference.js";
 import { compileStatement, ensureBindingLocals, hoistFunctionDeclarations, emitNestedBindingDefault } from "./statements.js";
 import { emitInlineMathFunctions } from "./math-helpers.js";
@@ -13496,7 +13496,12 @@ function hoistBindingPattern(
       if (ctx.moduleGlobals.has(name)) continue;
       const elemType = ctx.checker.getTypeAtLocation(element);
       const wasmType = resolveWasmType(ctx, elemType);
-      allocLocal(fctx, name, wasmType);
+      const localIdx = allocLocal(fctx, name, wasmType);
+      // Hoisted vars should be `undefined`, not `null` (#737)
+      if (wasmType.kind === "externref") {
+        emitUndefined(ctx, fctx);
+        fctx.body.push({ op: "local.set", index: localIdx });
+      }
     } else if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
       hoistBindingPattern(ctx, fctx, element.name);
     }
@@ -13515,7 +13520,13 @@ function hoistVarDecl(
     if (ctx.moduleGlobals.has(name)) return;
     const varType = ctx.checker.getTypeAtLocation(decl);
     const wasmType = resolveWasmType(ctx, varType);
-    allocLocal(fctx, name, wasmType);
+    const localIdx = allocLocal(fctx, name, wasmType);
+    // In JS, hoisted `var` variables are `undefined` before their declaration,
+    // not `null`. For externref locals, emit __get_undefined() + local.set (#737).
+    if (wasmType.kind === "externref") {
+      emitUndefined(ctx, fctx);
+      fctx.body.push({ op: "local.set", index: localIdx });
+    }
     return;
   }
   // Handle destructuring patterns: var { x, y } = obj; var [a, b] = arr;

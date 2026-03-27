@@ -1580,7 +1580,7 @@ export function coerceType(
 
   // Fallback: drop + push default
   fctx.body.push({ op: "drop" });
-  pushDefaultValue(fctx, to);
+  pushDefaultValue(fctx, to, ctx);
 }
 
 /**
@@ -1622,7 +1622,26 @@ export function emitSafeExternrefToF64(
   releaseTempLocal(fctx, tmpLocal);
 }
 
-export function pushDefaultValue(fctx: FunctionContext, type: ValType): void {
+/**
+ * Emit instructions that push the JS `undefined` value onto the stack (#737).
+ * Uses the __get_undefined host import when available; falls back to
+ * ref.null.extern (indistinguishable from null) in standalone mode.
+ * This is a local version to avoid circular deps with expressions.ts.
+ */
+function emitUndefinedValue(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+): void {
+  const funcIdx = ensureLateImport(ctx, "__get_undefined", [], [{ kind: "externref" }]);
+  if (funcIdx !== undefined) {
+    flushLateImportShifts(ctx, fctx);
+    fctx.body.push({ op: "call", funcIdx });
+  } else {
+    fctx.body.push({ op: "ref.null.extern" });
+  }
+}
+
+export function pushDefaultValue(fctx: FunctionContext, type: ValType, ctx?: CodegenContext): void {
   switch (type.kind) {
     case "f64":
       // Use NaN as sentinel for "undefined/missing argument" (#787).
@@ -1639,7 +1658,14 @@ export function pushDefaultValue(fctx: FunctionContext, type: ValType): void {
       fctx.body.push({ op: "i64.const", value: 0n });
       break;
     case "externref":
-      fctx.body.push({ op: "ref.null.extern" });
+      // When ctx is available, emit the actual JS `undefined` value (#737).
+      // Missing function arguments should be `undefined`, not `null`.
+      // In standalone mode (no host imports), falls back to ref.null.extern.
+      if (ctx) {
+        emitUndefinedValue(ctx, fctx);
+      } else {
+        fctx.body.push({ op: "ref.null.extern" });
+      }
       break;
     case "eqref":
       fctx.body.push({ op: "ref.null.eq" });
