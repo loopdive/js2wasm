@@ -2485,10 +2485,15 @@ export async function runTest262File(
   let instantiateMs = 0;
   let executeMs = 0;
   try {
-    const imports = buildImports(result.imports, undefined, result.stringPool);
+    const importResult = buildImports(result.imports, undefined, result.stringPool);
+    const imports = importResult as any;
     const instantiateStart = performance.now();
     const { instance } = await WebAssembly.instantiate(result.binary, imports);
     instantiateMs = performance.now() - instantiateStart;
+    // Provide exports back to the runtime so __sget_* getters are discoverable
+    if (typeof importResult.setExports === "function") {
+      importResult.setExports(instance.exports as any);
+    }
     const testFn = (instance.exports as any).test;
     if (typeof testFn !== "function") {
       const totalMs = performance.now() - totalStart;

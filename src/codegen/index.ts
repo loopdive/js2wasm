@@ -1113,6 +1113,9 @@ export function generateModule(
   // otherwise opaque to JS (V8 returns undefined for direct property access).
   emitStructFieldGetters(ctx);
 
+  // Emit __vec_get / __vec_len exports for runtime iterator fallback on WasmGC arrays
+  emitVecAccessExports(ctx);
+
   // WASI: export _start entry point (before dead import elimination adjusts indices)
   if (ctx.wasi) {
     addWasiStartExport(ctx);
@@ -1372,6 +1375,161 @@ function emitStructFieldNamesExport(
     name: "__struct_field_names",
     desc: { kind: "func", index: funcIdx },
   });
+}
+
+/**
+ * Emit __vec_get(externref, i32) -> externref and __vec_len(externref) -> i32
+ * exports so the runtime can iterate WasmGC vec structs that were coerced to
+ * externref (e.g. arrays stored in `any`-typed variables).
+ *
+ * For each registered vec type, emits ref.test/ref.cast dispatch to extract
+ * the length or the indexed element, boxing the result to externref.
+ */
+function emitVecAccessExports(ctx: CodegenContext): void {
+  // Only emit vec access exports if iterator imports are used (for-of on non-array types).
+  // This avoids adding unnecessary __box_number imports to simple modules.
+  if (!ctx.funcMap.has("__iterator")) return;
+  try {
+    _emitVecAccessExportsInner(ctx);
+  } catch {
+    // Non-fatal: if emission fails, the iterator fallback just won't work
+  }
+}
+
+function _emitVecAccessExportsInner(ctx: CodegenContext): void {
+  const mod = ctx.mod;
+  const vecEntries = Array.from(ctx.vecTypeMap.entries());
+  if (vecEntries.length === 0) return;
+
+  // __vec_len(externref) -> i32
+  const lenTypeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "i32" }], "$__vec_len_type");
+  const lenFuncIdx = ctx.numImportFuncs + mod.functions.length;
+  {
+    // local 0 = externref param, local 1 = anyref converted
+    const body: Instr[] = [];
+    body.push({ op: "local.get", index: 0 });
+    body.push({ op: "any.convert_extern" } as Instr);
+    body.push({ op: "local.set", index: 1 } as Instr);
+
+    // Chain of ref.test / ref.cast for each vec type
+    let current: Instr[] = [
+      // Default: return 0 if no vec type matches
+      { op: "i32.const", value: 0 } as Instr,
+      { op: "return" } as Instr,
+    ];
+    for (let i = vecEntries.length - 1; i >= 0; i--) {
+      const [, vecTypeIdx] = vecEntries[i]!;
+      const thenBranch: Instr[] = [
+        { op: "local.get", index: 1 } as Instr,
+        { op: "ref.cast", typeIdx: vecTypeIdx } as Instr,
+        { op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 } as Instr,
+        { op: "return" } as Instr,
+      ];
+      current = [
+        { op: "local.get", index: 1 } as Instr,
+        { op: "ref.test", typeIdx: vecTypeIdx } as Instr,
+        {
+          op: "if",
+          blockType: { kind: "empty" },
+          then: thenBranch,
+          else: current,
+        } as Instr,
+      ];
+    }
+    body.push(...current);
+
+    mod.functions.push({
+      name: "__vec_len",
+      typeIdx: lenTypeIdx,
+      locals: [{ name: "__any", type: { kind: "anyref" } }],
+      body,
+      exported: true,
+    } as any);
+    mod.exports.push({
+      name: "__vec_len",
+      desc: { kind: "func", index: lenFuncIdx },
+    });
+  }
+
+  // __vec_get(externref, i32) -> externref
+  const getTypeIdx = addFuncType(
+    ctx,
+    [{ kind: "externref" }, { kind: "i32" }],
+    [{ kind: "externref" }],
+    "$__vec_get_type",
+  );
+  const getFuncIdx = ctx.numImportFuncs + mod.functions.length;
+  {
+    // local 0 = externref param (vec), local 1 = i32 param (index), local 2 = anyref
+    const body: Instr[] = [];
+    body.push({ op: "local.get", index: 0 });
+    body.push({ op: "any.convert_extern" } as Instr);
+    body.push({ op: "local.set", index: 2 } as Instr);
+
+    // Chain of ref.test / ref.cast for each vec type
+    let current: Instr[] = [
+      // Default: return null if no vec type matches
+      { op: "ref.null.extern" } as Instr,
+      { op: "return" } as Instr,
+    ];
+    // Pre-check if __box_number is available (don't add late imports)
+    const boxNumIdx = ctx.funcMap.get("__box_number");
+    for (let i = vecEntries.length - 1; i >= 0; i--) {
+      const [elemKey, vecTypeIdx] = vecEntries[i]!;
+      const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
+      if (arrTypeIdx < 0) continue;
+      // Skip numeric element types if __box_number is not available
+      if ((elemKey === "f64" || elemKey === "i32") && boxNumIdx === undefined) continue;
+
+      // Inline boxing: avoid calling addUnionImports late
+      let boxInstrs: Instr[];
+      if (elemKey === "externref") {
+        boxInstrs = [];
+      } else if (elemKey === "f64" && boxNumIdx !== undefined) {
+        boxInstrs = [{ op: "call", funcIdx: boxNumIdx } as Instr];
+      } else if (elemKey === "i32" && boxNumIdx !== undefined) {
+        boxInstrs = [
+          { op: "f64.convert_i32_s" } as Instr,
+          { op: "call", funcIdx: boxNumIdx } as Instr,
+        ];
+      } else {
+        boxInstrs = [{ op: "extern.convert_any" } as Instr];
+      }
+      const thenBranch: Instr[] = [
+        // ref.cast to vec type, struct.get data array, then array.get with index
+        { op: "local.get", index: 2 } as Instr,
+        { op: "ref.cast", typeIdx: vecTypeIdx } as Instr,
+        { op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 } as Instr,
+        { op: "local.get", index: 1 } as Instr,  // index
+        { op: "array.get", typeIdx: arrTypeIdx } as Instr,
+        ...boxInstrs,
+        { op: "return" } as Instr,
+      ];
+      current = [
+        { op: "local.get", index: 2 } as Instr,
+        { op: "ref.test", typeIdx: vecTypeIdx } as Instr,
+        {
+          op: "if",
+          blockType: { kind: "empty" },
+          then: thenBranch,
+          else: current,
+        } as Instr,
+      ];
+    }
+    body.push(...current);
+
+    mod.functions.push({
+      name: "__vec_get",
+      typeIdx: getTypeIdx,
+      locals: [{ name: "__any", type: { kind: "anyref" } }],
+      body,
+      exported: true,
+    } as any);
+    mod.exports.push({
+      name: "__vec_get",
+      desc: { kind: "func", index: getFuncIdx },
+    });
+  }
 }
 
 /** Build nested if/else for struct field getter dispatch. */
@@ -8616,6 +8774,16 @@ export function getOrRegisterVecType(
     ],
   });
   ctx.vecTypeMap.set(elemKind, vecIdx);
+
+  // Register vec struct fields so emitStructFieldGetters can export __sget_length.
+  // This allows the runtime __iterator fallback to detect WasmGC array structs.
+  const vecStructName = `__vec_${elemKind}`;
+  ctx.structMap.set(vecStructName, vecIdx);
+  ctx.structFields.set(vecStructName, [
+    { name: "length", type: { kind: "i32" as const }, mutable: true },
+    { name: "data", type: { kind: "ref" as const, typeIdx: arrTypeIdx }, mutable: true },
+  ]);
+
   return vecIdx;
 }
 

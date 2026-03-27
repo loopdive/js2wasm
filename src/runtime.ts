@@ -418,6 +418,28 @@ function resolveImport(
           ?? _sidecarGet(obj, Symbol.iterator)
           ?? _sidecarGet(obj, "@@iterator");
         if (typeof fn === "function") return fn.call(obj);
+        // WasmGC struct fallback: synthesize an array iterator if the struct
+        // is a vec (array wrapper) using exported __vec_len / __vec_get helpers.
+        if (_isWasmStruct(obj)) {
+          const exports = callbackState?.getExports();
+          const vecLen = exports?.__vec_len;
+          const vecGet = exports?.__vec_get;
+          if (typeof vecLen === "function" && typeof vecGet === "function") {
+            const len = vecLen(obj);
+            if (typeof len === "number" && len >= 0) {
+              let i = 0;
+              return {
+                next() {
+                  if (i >= len) return { value: undefined, done: true };
+                  const val = vecGet(obj, i);
+                  i++;
+                  return { value: val, done: false };
+                },
+                [Symbol.iterator]() { return this; },
+              };
+            }
+          }
+        }
         throw new TypeError((typeof obj === "object" ? Object.prototype.toString.call(obj) : String(obj)) + " is not iterable");
       };
       if (name === "__async_iterator") return (obj: any) => {
@@ -429,6 +451,27 @@ function resolveImport(
           ?? _sidecarGet(obj, Symbol.iterator)
           ?? _sidecarGet(obj, "@@iterator");
         if (typeof syncIter === "function") return syncIter.call(obj);
+        // WasmGC struct fallback (same as __iterator)
+        if (_isWasmStruct(obj)) {
+          const exports = callbackState?.getExports();
+          const vecLen = exports?.__vec_len;
+          const vecGet = exports?.__vec_get;
+          if (typeof vecLen === "function" && typeof vecGet === "function") {
+            const len = vecLen(obj);
+            if (typeof len === "number" && len >= 0) {
+              let i = 0;
+              return {
+                next() {
+                  if (i >= len) return { value: undefined, done: true };
+                  const val = vecGet(obj, i);
+                  i++;
+                  return { value: val, done: false };
+                },
+                [Symbol.iterator]() { return this; },
+              };
+            }
+          }
+        }
         throw new TypeError("object is not iterable");
       };
       if (name === "__iterator_next") return (iter: any) => {
