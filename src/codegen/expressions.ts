@@ -3433,13 +3433,7 @@ function emitObjectDestructureFromLocal(
   const srcTypeIdx = (srcType as { typeIdx: number }).typeIdx;
 
   // Find struct name from type index
-  let structName: string | undefined;
-  for (const [name, idx] of ctx.structMap) {
-    if (idx === srcTypeIdx) {
-      structName = name;
-      break;
-    }
-  }
+  const structName = ctx.typeIdxToStructName.get(srcTypeIdx);
   if (!structName) return;
 
   const fields = ctx.structFields.get(structName);
@@ -4873,13 +4867,7 @@ function compilePropertyLogicalAssignmentExternref(
   // --- Path A: The object compiled to a struct ref ---
   if (objResult.kind === "ref" || objResult.kind === "ref_null") {
     const typeIdx = (objResult as { typeIdx: number }).typeIdx;
-    let resolvedTypeName: string | undefined;
-    for (const [name, idx] of ctx.structMap.entries()) {
-      if (idx === typeIdx) {
-        resolvedTypeName = name;
-        break;
-      }
-    }
+    const resolvedTypeName = ctx.typeIdxToStructName.get(typeIdx);
     if (resolvedTypeName) {
       const fields = ctx.structFields.get(resolvedTypeName);
       if (fields) {
@@ -6193,13 +6181,7 @@ function compilePropertyCompoundAssignmentExternref(
   if (objResult.kind === "ref" || objResult.kind === "ref_null") {
     const typeIdx = (objResult as { typeIdx: number }).typeIdx;
     // Find the struct fields by looking up which typeName maps to this typeIdx
-    let resolvedTypeName: string | undefined;
-    for (const [name, idx] of ctx.structMap.entries()) {
-      if (idx === typeIdx) {
-        resolvedTypeName = name;
-        break;
-      }
-    }
+    const resolvedTypeName = ctx.typeIdxToStructName.get(typeIdx);
     if (resolvedTypeName) {
       const fields = ctx.structFields.get(resolvedTypeName);
       if (fields) {
@@ -15520,6 +15502,7 @@ function compileNewFunctionDeclaration(
     fields,
   });
   ctx.structMap.set(structName, structTypeIdx);
+  ctx.typeIdxToStructName.set(structTypeIdx, structName);
   ctx.structFields.set(structName, fields);
 
   // 3. Build the constructor function
@@ -17806,6 +17789,7 @@ function ensureDateStruct(ctx: CodegenContext): number {
     fields: [{ name: "timestamp", type: { kind: "i64" }, mutable: true }],
   });
   ctx.structMap.set("__Date", typeIdx);
+  ctx.typeIdxToStructName.set(typeIdx, "__Date");
   ctx.structFields.set("__Date", [
     { name: "timestamp", type: { kind: "i64" }, mutable: true },
   ]);

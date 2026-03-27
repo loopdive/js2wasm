@@ -36,10 +36,7 @@ export function resolveThisStructName(
     : fctx.locals[selfIdx - fctx.params.length]?.type;
   if (!selfType || (selfType.kind !== "ref" && selfType.kind !== "ref_null")) return undefined;
   const typeIdx = (selfType as { typeIdx: number }).typeIdx;
-  for (const [name, idx] of ctx.structMap) {
-    if (idx === typeIdx) return name;
-  }
-  return undefined;
+  return ctx.typeIdxToStructName.get(typeIdx);
 }
 
 // ── valTypesMatch ─────────────────────────────────────────────────────

@@ -1222,13 +1222,10 @@ function compileObjectDestructuring(
   if (resultType.kind === "ref" || resultType.kind === "ref_null") {
     const actualTypeIdx = (resultType as { typeIdx: number }).typeIdx;
     // Look up the struct name by its type index
-    for (const [sName, sIdx] of ctx.structMap) {
-      if (sIdx === actualTypeIdx) {
-        typeName = sName;
-        structTypeIdx = sIdx;
-        fields = ctx.structFields.get(sName);
-        break;
-      }
+    typeName = ctx.typeIdxToStructName.get(actualTypeIdx);
+    if (typeName !== undefined) {
+      structTypeIdx = actualTypeIdx;
+      fields = ctx.structFields.get(typeName);
     }
   }
 
@@ -1338,9 +1335,7 @@ function compileObjectDestructuring(
       if (ts.isObjectBindingPattern(element.name) && (nFieldType.kind === "ref" || nFieldType.kind === "ref_null")) {
         const nestedTypeIdx = (nFieldType as { typeIdx: number }).typeIdx;
         let nestedStructName: string | undefined;
-        for (const [sName, sIdx] of ctx.structMap) {
-          if (sIdx === nestedTypeIdx) { nestedStructName = sName; break; }
-        }
+        nestedStructName = ctx.typeIdxToStructName.get(nestedTypeIdx);
         const nestedFields = nestedStructName ? ctx.structFields.get(nestedStructName) : undefined;
         if (nestedFields) {
           emitNullGuard(ctx, fctx, nestedTmp, nFieldType.kind === "ref_null", () => {
@@ -1980,10 +1975,7 @@ function compileArrayDestructuring(
                   const initTypeIdx = (initType as { typeIdx: number }).typeIdx;
                   const tmpObjLocal = allocLocal(fctx, `__dflt_obj_${fctx.locals.length}`, initType);
                   fctx.body.push({ op: "local.set", index: tmpObjLocal });
-                  let nestedStructName: string | undefined;
-                  for (const [name, idx] of ctx.structMap) {
-                    if (idx === initTypeIdx) { nestedStructName = name; break; }
-                  }
+                  const nestedStructName = ctx.typeIdxToStructName.get(initTypeIdx);
                   const nestedFields = nestedStructName ? ctx.structFields.get(nestedStructName) : undefined;
                   if (nestedFields) {
                     for (const nestedElem of element.name.elements) {
@@ -2129,10 +2121,7 @@ function compileArrayDestructuring(
 
             if (ts.isObjectBindingPattern(element.name)) {
               // Object binding pattern: extract fields by name from the struct
-              let nestedStructName: string | undefined;
-              for (const [sName, sIdx] of ctx.structMap) {
-                if (sIdx === nestedTypeIdx) { nestedStructName = sName; break; }
-              }
+              const nestedStructName = ctx.typeIdxToStructName.get(nestedTypeIdx);
               const nestedFields = nestedStructName ? ctx.structFields.get(nestedStructName) : undefined;
               if (nestedFields) {
                 for (const nestedElem of element.name.elements) {
@@ -2461,10 +2450,7 @@ function compileArrayDestructuring(
                 // Store in temp local and extract struct fields
                 const tmpObjLocal = allocLocal(fctx, `__dflt_obj_${fctx.locals.length}`, initType);
                 fctx.body.push({ op: "local.set", index: tmpObjLocal });
-                let nestedStructName: string | undefined;
-                for (const [name, idx] of ctx.structMap) {
-                  if (idx === initTypeIdx) { nestedStructName = name; break; }
-                }
+                const nestedStructName = ctx.typeIdxToStructName.get(initTypeIdx);
                 const nestedFields = nestedStructName ? ctx.structFields.get(nestedStructName) : undefined;
                 if (nestedFields) {
                   for (const nestedElem of element.name.elements) {
@@ -2558,10 +2544,7 @@ function compileArrayDestructuring(
         if (elemType.kind === "ref" || elemType.kind === "ref_null") {
           if (ts.isObjectBindingPattern(element.name)) {
             const nestedTypeIdx = (elemType as { typeIdx: number }).typeIdx;
-            let nestedStructName: string | undefined;
-            for (const [name, idx] of ctx.structMap) {
-              if (idx === nestedTypeIdx) { nestedStructName = name; break; }
-            }
+            const nestedStructName = ctx.typeIdxToStructName.get(nestedTypeIdx);
             const nestedFields = nestedStructName ? ctx.structFields.get(nestedStructName) : undefined;
             if (nestedFields) {
               for (const nestedElem of element.name.elements) {
@@ -2620,10 +2603,7 @@ function compileArrayDestructuring(
         if (elemType.kind === "ref" || elemType.kind === "ref_null") {
           if (ts.isObjectBindingPattern(element.name)) {
             const nestedTypeIdx = (elemType as { typeIdx: number }).typeIdx;
-            let nestedStructName: string | undefined;
-            for (const [name, idx] of ctx.structMap) {
-              if (idx === nestedTypeIdx) { nestedStructName = name; break; }
-            }
+            const nestedStructName = ctx.typeIdxToStructName.get(nestedTypeIdx);
             const nestedFields = nestedStructName ? ctx.structFields.get(nestedStructName) : undefined;
             if (nestedFields) {
               for (const nestedElem of element.name.elements) {
@@ -3945,11 +3925,8 @@ function compileForOfDestructuring(
       return;
     }
 
-    // Find the struct fields by looking up the struct name from structMap
-    let structName: string | undefined;
-    for (const [name, idx] of ctx.structMap) {
-      if (idx === structTypeIdx) { structName = name; break; }
-    }
+    // Find the struct fields by looking up the struct name from reverse map
+    const structName = ctx.typeIdxToStructName.get(structTypeIdx);
     const fields = structName ? ctx.structFields.get(structName) : undefined;
     if (!fields) {
       ctx.errors.push({
@@ -4298,10 +4275,7 @@ function compileForOfAssignDestructuring(
     const typeDef = ctx.mod.types[structTypeIdx];
     if (!typeDef || typeDef.kind !== "struct") return;
 
-    let structName: string | undefined;
-    for (const [name, idx] of ctx.structMap) {
-      if (idx === structTypeIdx) { structName = name; break; }
-    }
+    const structName = ctx.typeIdxToStructName.get(structTypeIdx);
     const fields = structName ? ctx.structFields.get(structName) : undefined;
     if (!fields) return;
 

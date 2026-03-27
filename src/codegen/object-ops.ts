@@ -404,12 +404,7 @@ export function compileObjectDefineProperty(
         ? fctx.params[localIdx]!.type
         : fctx.locals[localIdx - fctx.params.length]?.type;
       if (localType && (localType.kind === "ref" || localType.kind === "ref_null")) {
-        for (const [name, idx] of ctx.structMap) {
-          if (idx === localType.typeIdx) {
-            structName = name;
-            break;
-          }
-        }
+        structName = ctx.typeIdxToStructName.get(localType.typeIdx);
       }
     }
   }
