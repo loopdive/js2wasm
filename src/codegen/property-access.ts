@@ -1091,8 +1091,24 @@ export function compilePropertyAccess(
         const exprNonNull = isProvablyNonNull(expr.expression);
         if (objResult && objResult.kind === "ref_null") {
           if (exprNonNull) {
-            // Provably non-null — cast directly, no null guard needed
-            fctx.body.push({ op: "ref.cast", typeIdx: structTypeIdx } as unknown as Instr);
+            // Provably non-null — guarded cast to avoid illegal cast traps
+            {
+              const tmpAny = allocTempLocal(fctx, { kind: "anyref" } as ValType);
+              fctx.body.push({ op: "local.tee", index: tmpAny } as unknown as Instr);
+              fctx.body.push({ op: "ref.test", typeIdx: structTypeIdx } as unknown as Instr);
+              fctx.body.push({
+                op: "if",
+                blockType: { kind: "val", type: { kind: "ref_null", typeIdx: structTypeIdx } as ValType },
+                then: [
+                  { op: "local.get", index: tmpAny } as unknown as Instr,
+                  { op: "ref.cast_null", typeIdx: structTypeIdx } as unknown as Instr,
+                ],
+                else: [
+                  { op: "ref.null", typeIdx: structTypeIdx } as unknown as Instr,
+                ],
+              } as Instr);
+              releaseTempLocal(fctx, tmpAny);
+            }
             fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
           } else {
             emitNullGuardedStructGet(ctx, fctx, objResult, fieldType, structTypeIdx, fieldIdx, propName);
@@ -1269,7 +1285,24 @@ export function compilePropertyAccess(
             const exprNonNull2 = isProvablyNonNull(expr.expression);
             if (objResult && objResult.kind === "ref_null") {
               if (exprNonNull2) {
-                fctx.body.push({ op: "ref.cast", typeIdx: structTypeIdx } as unknown as Instr);
+                // Guarded cast to avoid illegal cast traps
+                {
+                  const tmpAny = allocTempLocal(fctx, { kind: "anyref" } as ValType);
+                  fctx.body.push({ op: "local.tee", index: tmpAny } as unknown as Instr);
+                  fctx.body.push({ op: "ref.test", typeIdx: structTypeIdx } as unknown as Instr);
+                  fctx.body.push({
+                    op: "if",
+                    blockType: { kind: "val", type: { kind: "ref_null", typeIdx: structTypeIdx } as ValType },
+                    then: [
+                      { op: "local.get", index: tmpAny } as unknown as Instr,
+                      { op: "ref.cast_null", typeIdx: structTypeIdx } as unknown as Instr,
+                    ],
+                    else: [
+                      { op: "ref.null", typeIdx: structTypeIdx } as unknown as Instr,
+                    ],
+                  } as Instr);
+                  releaseTempLocal(fctx, tmpAny);
+                }
                 fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
               } else {
                 emitNullGuardedStructGet(ctx, fctx, objResult, fieldType, structTypeIdx, fieldIdx, propName);

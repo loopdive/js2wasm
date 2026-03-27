@@ -11841,11 +11841,18 @@ function fixupExternConvertAny(ctx: CodegenContext): void {
         const lt = getLocalType(func, (prev as { index: number }).index);
         if (lt && lt.kind === "externref") isAlreadyExternref = true;
         if (lt && lt.kind === "funcref") isFuncref = true;
+        // Check if the local's type references a func type (e.g., (ref null $func_type))
+        if (lt && (lt.kind === "ref" || lt.kind === "ref_null") && (lt as any).typeIdx !== undefined) {
+          const refDef = ctx.mod.types[(lt as any).typeIdx];
+          if (refDef && refDef.kind === "func") isFuncref = true;
+        }
       } else if (prev.op === "global.get") {
         const gIdx = (prev as { index: number }).index;
         const gDef = ctx.mod.globals[gIdx];
         if (gDef && gDef.type.kind === "externref") isAlreadyExternref = true;
         if (gDef && gDef.type.kind === "funcref") isFuncref = true;
+        // Also check globals with externref type
+        if (gDef && (gDef.type.kind === "externref" || gDef.type.kind === "ref_extern")) isAlreadyExternref = true;
       } else if (prev.op === "struct.get") {
         const sTypeIdx = (prev as any).typeIdx;
         const sFieldIdx = (prev as any).fieldIdx;

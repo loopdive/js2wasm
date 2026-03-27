@@ -17,6 +17,8 @@ import ts from "typescript";
 import type { CodegenContext, FunctionContext, ClosureInfo } from "./index.js";
 import {
   allocLocal,
+  allocTempLocal,
+  releaseTempLocal,
   resolveWasmType,
   getArrTypeIdxFromVec,
   getOrRegisterVecType,
@@ -990,7 +992,24 @@ export function compileArrowAsClosure(
   if (usesWrapperFuncType && captures.length > 0) {
     const castLocal = allocLocal(liftedFctx, "__self_cast", { kind: "ref", typeIdx: structTypeIdx });
     liftedFctx.body.push({ op: "local.get", index: 0 }); // __self (wrapper base type)
-    liftedFctx.body.push({ op: "ref.cast", typeIdx: structTypeIdx } as Instr);
+    // Guard: ref.test before ref.cast to avoid illegal cast traps
+    {
+      const tmpAny = allocTempLocal(liftedFctx, { kind: "anyref" } as ValType);
+      liftedFctx.body.push({ op: "local.tee", index: tmpAny } as unknown as Instr);
+      liftedFctx.body.push({ op: "ref.test", typeIdx: structTypeIdx } as unknown as Instr);
+      liftedFctx.body.push({
+        op: "if",
+        blockType: { kind: "val", type: { kind: "ref_null", typeIdx: structTypeIdx } as ValType },
+        then: [
+          { op: "local.get", index: tmpAny } as unknown as Instr,
+          { op: "ref.cast_null", typeIdx: structTypeIdx } as unknown as Instr,
+        ],
+        else: [
+          { op: "ref.null", typeIdx: structTypeIdx } as unknown as Instr,
+        ],
+      } as Instr);
+      releaseTempLocal(liftedFctx, tmpAny);
+    }
     liftedFctx.body.push({ op: "local.set", index: castLocal });
     selfLocalForCaptures = castLocal;
   }
@@ -1650,7 +1669,24 @@ export function compileArrowAsCallback(
     const capLocal = allocLocal(cbFctx, `__cap_ref`, { kind: "ref", typeIdx: capStructTypeIdx });
     cbFctx.body.push({ op: "local.get", index: 0 }); // __captures externref
     cbFctx.body.push({ op: "any.convert_extern" });
-    cbFctx.body.push({ op: "ref.cast", typeIdx: capStructTypeIdx });
+    // Guard: ref.test before ref.cast to avoid illegal cast traps
+    {
+      const tmpAny = allocTempLocal(cbFctx, { kind: "anyref" } as ValType);
+      cbFctx.body.push({ op: "local.tee", index: tmpAny } as unknown as Instr);
+      cbFctx.body.push({ op: "ref.test", typeIdx: capStructTypeIdx } as unknown as Instr);
+      cbFctx.body.push({
+        op: "if",
+        blockType: { kind: "val", type: { kind: "ref_null", typeIdx: capStructTypeIdx } as ValType },
+        then: [
+          { op: "local.get", index: tmpAny } as unknown as Instr,
+          { op: "ref.cast_null", typeIdx: capStructTypeIdx } as unknown as Instr,
+        ],
+        else: [
+          { op: "ref.null", typeIdx: capStructTypeIdx } as unknown as Instr,
+        ],
+      } as Instr);
+      releaseTempLocal(cbFctx, tmpAny);
+    }
     cbFctx.body.push({ op: "local.set", index: capLocal });
 
     for (let i = 0; i < captures.length; i++) {

@@ -3964,6 +3964,41 @@ function compileForOfString(
   }
 }
 
+/**
+ * Tentatively try to compile for...of as an array iteration.
+ * Compiles the iterable expression, checks if the result is a vec struct,
+ * and if so delegates to compileForOfArray (which re-compiles the expression).
+ * Returns true if the array path was used, false if caller should fall back.
+ */
+function compileForOfArrayTentative(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  stmt: ts.ForOfStatement,
+): boolean {
+  // Tentatively compile just the expression to discover its Wasm type
+  const bodyLenBefore = fctx.body.length;
+  const localsLenBefore = fctx.locals.length;
+  const exprType = compileExpression(ctx, fctx, stmt.expression);
+
+  // Check if it compiled to a ref to a vec struct
+  if (exprType && (exprType.kind === "ref" || exprType.kind === "ref_null")) {
+    const typeDef = ctx.mod.types[exprType.typeIdx];
+    if (typeDef && typeDef.kind === "struct") {
+      // Looks like a vec struct — undo the tentative compilation and use the
+      // full array path (which compiles the expression again with proper setup)
+      fctx.body.length = bodyLenBefore;
+      fctx.locals.length = localsLenBefore;
+      compileForOfArray(ctx, fctx, stmt);
+      return true;
+    }
+  }
+
+  // Not a vec struct — undo tentative compilation, let caller use iterator path
+  fctx.body.length = bodyLenBefore;
+  fctx.locals.length = localsLenBefore;
+  return false;
+}
+
 /** Compile for...of over an array using index-based loop (existing behavior) */
 function compileForOfArray(
   ctx: CodegenContext,
