@@ -15,7 +15,8 @@ export type ImportIntent =
   | { type: "truthy_check" }
   | { type: "date_new" }
   | { type: "date_method"; method: string }
-  | { type: "declared_global"; name: string };
+  | { type: "declared_global"; name: string }
+  | { type: "dynamic_import" };
 
 export interface ImportDescriptor {
   module: "env" | "wasm:js-string" | "string_constants";
