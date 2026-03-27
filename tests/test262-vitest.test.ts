@@ -66,8 +66,9 @@ const serverReady = new Promise<void>((resolve) => {
 
 // ── Compiler pool (async worker threads) ─────────────────────────────
 
-const POOL_SIZE = parseInt(process.env.TEST262_WORKERS ?? "8", 10);
-const pool = new CompilerPool(POOL_SIZE);
+// Each vitest fork gets 1 compiler worker — forks process tests sequentially
+// so more workers per fork just waste memory. Total workers = maxForks × 1.
+const pool = new CompilerPool(1);
 // Pool workers load compiler-bundle.mjs — already has skipSemanticDiagnostics
 
 // ── Ensure compiler bundle is up to date ─────────────────────────────
