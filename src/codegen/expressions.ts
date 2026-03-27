@@ -16093,9 +16093,9 @@ function compileNewExpression(
     }
   }
 
-  // Handle `new Error(msg)`, `new TypeError(msg)`, `new RangeError(msg)` — inline as externref
-  // Instead of importing a host constructor, we represent the error as its message string
-  // boxed to externref. This keeps the compilation pure-Wasm.
+  // Handle `new Error(msg)`, `new TypeError(msg)`, `new RangeError(msg)` — create real Error objects
+  // via host import so .name, .message, .stack are correct and instanceof works.
+  // Standalone fallback: the thrown value is just the message string (as before).
   if (ts.isIdentifier(expr.expression)) {
     const ctorName = expr.expression.text;
     if (
@@ -16118,9 +16118,22 @@ function compileNewExpression(
           coerceType(ctx, fctx, resultType, { kind: "externref" });
         }
       } else {
-        // No message — push null externref
+        // No message — push null externref (undefined message)
         fctx.body.push({ op: "ref.null.extern" });
       }
+      // Use host import to create a real Error object with correct .name/.message/.stack
+      const importName = `__new_${ctorName}`;
+      const funcIdx = ensureLateImport(
+        ctx,
+        importName,
+        [{ kind: "externref" }],  // message param
+        [{ kind: "externref" }],  // returns Error object
+      );
+      flushLateImportShifts(ctx, fctx);
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+      }
+      // If import not available (standalone), value is already on stack as externref message
       return { kind: "externref" };
     }
   }
