@@ -470,5 +470,23 @@
 | —   | 2026-03-25 | Closure boxed capture propagation — closures.ts, statements.ts, expressions.ts (~100 CE)           | Wave       |
 | —   | 2026-03-25 | Drop stack guard — void-returning call drop fix (~37 CE)                                           | Wave       |
 | —   | 2026-03-25 | Array reduce/reduceRight empty TypeError + callback return coercion (~710 FAIL)                     | Wave       |
-
+| 790 | 2026-03-26 | assert.throws(ReferenceError) — TDZ + undeclared var ReferenceError (788 tests)                    | Session    |
+| 791 | 2026-03-26 | SyntaxError detection gaps — code compiles when it should not                                      | Session    |
+| 794 | 2026-03-26 | BindingElement null guard over-triggering in destructuring (537 fail)                               | Session    |
+| 795 | 2026-03-26 | f64.add on externref — missing unbox coercion (57 CE)                                              | Session    |
+| 796 | 2026-03-26 | Destructuring initializer not evaluated when value is not undefined (121 fail)                      | Session    |
+| 797a | 2026-03-26 | Per-shape property flags table (subtask of #797)                                                   | Session    |
+| 797b | 2026-03-26 | Object.getOwnPropertyDescriptor for known struct types (subtask of #797)                           | Session    |
+| 797d | 2026-03-26 | Object.freeze/seal/preventExtensions compile-away (subtask of #797)                                | Session    |
+| 798a | 2026-03-26 | catch_all with __get_caught_exception for foreign JS exceptions (subtask of #798)                  | Session    |
+| 798b | 2026-03-26 | try/catch JS exception interop subtask (subtask of #798)                                           | Session    |
+| 798c | 2026-03-26 | Rethrow instruction for throw-of-catch-variable (subtask of #798)                                  | Session    |
+| 799a | 2026-03-26 | __proto__ field for prototype chain (subtask of #799, caused regression, revised)                   | Session    |
+| 799b | 2026-03-26 | Prototype chain walk for property access (subtask of #799)                                         | Session    |
+| 800 | 2026-03-26 | Compile-away: TDZ checks, typeof, null guard skip for provably non-null                            | Session    |
+| 801 | 2026-03-26 | Array literal type mismatch in nested destructuring defaults (537 fail)                             | Session    |
+| 771 | 2026-03-26 | Arguments object — externref-backed arguments vec (#771)                                            | Session    |
+| 775 | 2026-03-26 | Null guard system for property/element/method access (1,604 tests)                                 | Session    |
+| 792 | 2026-03-26 | emitGuardedRefCast multi-struct dispatch fix                                                        | Session    |
+| 798 | 2026-03-26 | try/catch JS exception interop — all subtasks done (798a/b/c)                                      | Session    |
 

@@ -4,7 +4,7 @@ Goals form a DAG — a goal is **activatable** when all its dependencies are met
 Unlike a linear roadmap, multiple independent goals can be worked on in parallel,
 and a goal being "ready" doesn't mean it should be worked on immediately.
 
-**Current state**: ~17,000+ / 49,663 pass (estimated post-wave) | ~1,150 CE (est. −357 from latest fixes) | ~1,000 skip (2026-03-25, wave landed, needs test262 run to verify)
+**Current state**: 20,162 / 49,663 pass (40.6%) | CE reduced | ~1,000 skip (2026-03-26, confirmed via test262 run)
 
 ## DAG
 
@@ -90,10 +90,10 @@ and a goal being "ready" doesn't mean it should be worked on immediately.
 | Goal | Status | Target | Dependencies | Key Issues |
 |------|--------|--------|-------------|------------|
 | **compilable** | Substantially complete | CE → 0 (~1,150 est. remaining) | — | #779, #761, #684. Latest wave: closure captures −100 CE, drop guard −37 CE, valueOf −135 CE, extern.convert_any −85 CE |
-| **crash-free** | Active (near complete) | traps → 0, ~40% | compilable (met) | #775 (remaining); ~~#785~~, ~~#441~~, ~~#512~~, ~~#780~~, ~~#781~~ done |
-| **core-semantics** | Active | ~45% | compilable (met) | #771, #786 (remaining); ~~#782~~, ~~#787~~ done |
-| **error-model** | Active (near complete) | spec errors, ~40% | compilable (met) | ~~#783~~, ~~#730~~, ~~#784~~ done; #736, #733, #402, #721 remaining |
-| **property-model** | Activatable | ~60% | core-semantics (partial) | ~~#732~~ done; #739, #678, #770, #746 remaining |
+| **crash-free** | Active (near complete) | traps → 0, ~55% | compilable (met) | #789 (remaining); ~~#775~~, ~~#785~~, ~~#441~~, ~~#512~~, ~~#780~~, ~~#781~~, ~~#792~~, ~~#798a~~, ~~#798b~~, ~~#798c~~ done |
+| **core-semantics** | Active | ~60% | compilable (met) | #786 (remaining); ~~#771~~, ~~#782~~, ~~#787~~, ~~#794~~, ~~#795~~, ~~#796~~, ~~#800~~, ~~#801~~ done |
+| **error-model** | Active (near complete) | spec errors, ~50% | compilable (met) | ~~#783~~, ~~#730~~, ~~#784~~, ~~#790~~, ~~#791~~ done; #736, #733, #402, #721 remaining |
+| **property-model** | Active | ~65% | core-semantics (partial) | ~~#732~~, ~~#797a~~, ~~#797b~~, ~~#797d~~, ~~#799a~~, ~~#799b~~ done; #739, #678, #797 (remaining subtasks), #799 (remaining subtasks) |
 | **class-system** | Activatable | ~60% | core-semantics (partial) | ~~#729~~, ~~#738~~ done; #334, #377, #329 remaining |
 | **builtin-methods** | Activatable | ~70% | core-semantics (partial), error-model (partial) | ~~#731~~, ~~#734~~, ~~#738~~ done; #763, #385 remaining. Latest: Array reduce/reduceRight edge cases (fe7d5503, ~710 FAIL) |
 | **iterator-protocol** | Blocked | ~65% | class-system | #766, #481, #761, #353 |
