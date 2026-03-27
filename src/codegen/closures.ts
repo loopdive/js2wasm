@@ -402,9 +402,9 @@ export function emitArrowParamDestructuring(
       }
     }
 
-    // Close null guard — always guard for ref types too (#816)
+    // Close null guard
     fctx.body = savedBodyAPD;
-    if ((paramType.kind === "ref_null" || paramType.kind === "ref") && apdInstrs.length > 0) {
+    if (paramType.kind === "ref_null" && apdInstrs.length > 0) {
       fctx.body.push({ op: "local.get", index: paramIdx });
       fctx.body.push({ op: "ref.is_null" } as Instr);
       fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: apdInstrs });
@@ -524,9 +524,9 @@ export function emitArrowParamDestructuring(
       }
     }
 
-    // Close null guard — always guard for ref types too (#816)
+    // Close null guard
     fctx.body = savedBodyAPDA;
-    if ((paramType.kind === "ref_null" || paramType.kind === "ref") && apdaInstrs.length > 0) {
+    if (paramType.kind === "ref_null" && apdaInstrs.length > 0) {
       fctx.body.push({ op: "local.get", index: paramIdx });
       fctx.body.push({ op: "ref.is_null" } as Instr);
       fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: apdaInstrs });
@@ -759,11 +759,6 @@ export function compileArrowAsClosure(
     // If the parameter has a default value and is a non-null ref type,
     // widen to ref_null so callers can pass ref.null as a sentinel for "use default"
     if (p.initializer && wasmType.kind === "ref") {
-      wasmType = { kind: "ref_null", typeIdx: (wasmType as { kind: "ref"; typeIdx: number }).typeIdx };
-    }
-    // Widen binding-pattern params (destructuring) to ref_null (#816)
-    if ((ts.isArrayBindingPattern(p.name) || ts.isObjectBindingPattern(p.name)) &&
-        wasmType.kind === "ref") {
       wasmType = { kind: "ref_null", typeIdx: (wasmType as { kind: "ref"; typeIdx: number }).typeIdx };
     }
     arrowParams.push(wasmType);

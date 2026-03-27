@@ -10275,11 +10275,6 @@ export function collectClassDeclaration(
         if (param.initializer && wasmType.kind === "ref") {
           wasmType = { kind: "ref_null", typeIdx: (wasmType as any).typeIdx };
         }
-        // Widen binding-pattern params (destructuring) to ref_null (#816)
-        if ((ts.isArrayBindingPattern(param.name) || ts.isObjectBindingPattern(param.name)) &&
-            wasmType.kind === "ref") {
-          wasmType = { kind: "ref_null", typeIdx: (wasmType as any).typeIdx };
-        }
         ctorParams.push(wasmType);
       }
     }
@@ -10346,11 +10341,6 @@ export function collectClassDeclaration(
         let wasmType = resolveWasmType(ctx, paramType);
         // Widen ref to ref_null for params with defaults (caller passes ref.null as sentinel)
         if (param.initializer && wasmType.kind === "ref") {
-          wasmType = { kind: "ref_null", typeIdx: (wasmType as any).typeIdx };
-        }
-        // Widen binding-pattern params (destructuring) to ref_null (#816)
-        if ((ts.isArrayBindingPattern(param.name) || ts.isObjectBindingPattern(param.name)) &&
-            wasmType.kind === "ref") {
           wasmType = { kind: "ref_null", typeIdx: (wasmType as any).typeIdx };
         }
         methodParams.push(wasmType);
@@ -11216,11 +11206,6 @@ function collectDeclarations(
           if (param.initializer && wasmType.kind === "ref") {
             wasmType = { kind: "ref_null", typeIdx: (wasmType as { kind: "ref"; typeIdx: number }).typeIdx };
           }
-          // Widen binding-pattern params (destructuring) to ref_null (#816)
-          if ((ts.isArrayBindingPattern(param.name) || ts.isObjectBindingPattern(param.name)) &&
-              wasmType.kind === "ref") {
-            wasmType = { kind: "ref_null", typeIdx: (wasmType as { kind: "ref"; typeIdx: number }).typeIdx };
-          }
           // Infer untyped any params from call sites (same as non-generator path)
           if (
             !param.type &&
@@ -11275,14 +11260,6 @@ function collectDeclarations(
             // If the parameter has a default value and is a non-null ref type,
             // widen to ref_null so callers can pass ref.null as a sentinel for "use default"
             if (param.initializer && wasmType.kind === "ref") {
-              wasmType = { kind: "ref_null", typeIdx: (wasmType as { kind: "ref"; typeIdx: number }).typeIdx };
-            }
-            // Widen binding-pattern params (destructuring) to ref_null (#816).
-            // Callers may pass incompatible types that fail guarded ref.cast,
-            // producing ref.null at runtime. Without nullable params, the
-            // ref.as_non_null in coercion traps with "dereferencing a null pointer".
-            if ((ts.isArrayBindingPattern(param.name) || ts.isObjectBindingPattern(param.name)) &&
-                wasmType.kind === "ref") {
               wasmType = { kind: "ref_null", typeIdx: (wasmType as { kind: "ref"; typeIdx: number }).typeIdx };
             }
             // If the parameter has no explicit type annotation and resolved to
@@ -14129,12 +14106,8 @@ export function destructureParamObject(
   // Pre-allocate all binding locals so they exist even when param is null
   ensureBindingLocals(ctx, fctx, pattern);
 
-  // Null guard: wrap destructuring in if-not-null.
-  // Always guard even for non-nullable ref params — the caller's coercion
-  // may produce ref.null when a guarded ref.cast fails (e.g. passing {} to
-  // a vec-typed destructuring param). Without this guard we get
-  // "dereferencing a null pointer" traps at struct.get. (#816)
-  const isNullable = paramType.kind === "ref_null" || paramType.kind === "ref";
+  // Null guard: wrap destructuring in if-not-null for ref_null params
+  const isNullable = paramType.kind === "ref_null";
   const savedBody = fctx.body;
   const destructInstrs: Instr[] = [];
   if (isNullable) {
@@ -14345,8 +14318,7 @@ export function destructureParamArray(
     if (tupleDef && tupleDef.kind === "struct" && tupleDef.fields.length > 0 &&
         tupleDef.fields[0]!.name === "_0") {
       // Tuple struct destructuring: extract positional fields via struct.get
-      // Always guard — caller coercion may produce null even for ref params (#816)
-      const isNullable = paramType.kind === "ref_null" || paramType.kind === "ref";
+      const isNullable = paramType.kind === "ref_null";
 
       // Pre-allocate all binding locals
       ensureBindingLocals(ctx, fctx, pattern);
@@ -14432,10 +14404,8 @@ export function destructureParamArray(
   // Pre-allocate all binding locals so they exist even when param is null
   ensureBindingLocals(ctx, fctx, pattern);
 
-  // Null guard: wrap destructuring in if-not-null.
-  // Always guard even for non-nullable ref params — caller coercion may
-  // produce ref.null when a guarded ref.cast fails (#816).
-  const isNullable = paramType.kind === "ref_null" || paramType.kind === "ref";
+  // Null guard: wrap destructuring in if-not-null for ref_null params
+  const isNullable = paramType.kind === "ref_null";
   const savedBody = fctx.body;
   const destructInstrs: Instr[] = [];
   if (isNullable) {
