@@ -11465,6 +11465,9 @@ function compileCallExpression(
           // Push self (the receiver) as first argument, with type hint from method's first param
           const structMethodPTypes = getFuncParamTypes(ctx, funcIdx);
           const recvType = compileExpression(ctx, fctx, propAccess.expression, structMethodPTypes?.[0]);
+          // Check if receiver went through emitGuardedRefCast — null may mean
+          // "wrong struct type" rather than genuinely null (#789)
+          const smReceiverWasCast = (fctx as any).__lastGuardedCastBackup !== undefined;
           // Module globals produce ref_null but method params expect ref — null-guard
           if (recvType && recvType.kind === "ref_null") {
             const sig = ctx.checker.getResolvedSignature(expr);
@@ -11524,11 +11527,11 @@ function compileCallExpression(
             fctx.body = savedBody;
 
             if (callReturnType === VOID_RESULT) {
-              // Void method: if genuinely null, throw TypeError (#789)
+              // Void method: if null after cast, skip (wrong type); if genuinely null, throw TypeError (#789)
               fctx.body.push({
                 op: "if",
                 blockType: { kind: "empty" },
-                then: typeErrorThrowInstrs(ctx),
+                then: smReceiverWasCast ? ([] as Instr[]) : typeErrorThrowInstrs(ctx),
                 else: elseInstrs,
               });
               return VOID_RESULT;
@@ -11544,7 +11547,7 @@ function compileCallExpression(
               fctx.body.push({
                 op: "if",
                 blockType: { kind: "val" as const, type: resultType },
-                then: typeErrorThrowInstrs(ctx),
+                then: smReceiverWasCast ? defaultValueInstrs(resultType) : typeErrorThrowInstrs(ctx),
                 else: elseInstrs,
               });
               return resultType;
@@ -13181,6 +13184,9 @@ function compileCallExpression(
         const funcIdx = ctx.funcMap.get(fullName);
         if (funcIdx !== undefined) {
           const recvType = compileExpression(ctx, fctx, elemAccess.expression);
+          // Check if receiver went through emitGuardedRefCast — null may mean
+          // "wrong struct type" rather than genuinely null (#789)
+          const eaReceiverWasCast = (fctx as any).__lastGuardedCastBackup !== undefined;
           // Null-guard: if receiver is ref_null, check for null before calling method
           if (recvType && recvType.kind === "ref_null") {
             const sig = ctx.checker.getResolvedSignature(expr);
@@ -13232,11 +13238,11 @@ function compileCallExpression(
             fctx.body = savedBody;
 
             if (callReturnType === VOID_RESULT) {
-              // Genuinely null receiver: throw TypeError (#789)
+              // If null after cast, skip (wrong type); if genuinely null, throw TypeError (#789)
               fctx.body.push({
                 op: "if",
                 blockType: { kind: "empty" },
-                then: typeErrorThrowInstrs(ctx),
+                then: eaReceiverWasCast ? ([] as Instr[]) : typeErrorThrowInstrs(ctx),
                 else: elseInstrs,
               });
               return VOID_RESULT;
@@ -13248,11 +13254,11 @@ function compileCallExpression(
                       typeIdx: (callReturnType as any).typeIdx,
                     }
                   : callReturnType;
-              // throw is divergent, valid without producing a value (#789)
+              // If null after cast, default (wrong type); if genuinely null, throw TypeError (#789)
               fctx.body.push({
                 op: "if",
                 blockType: { kind: "val" as const, type: resultType },
-                then: typeErrorThrowInstrs(ctx),
+                then: eaReceiverWasCast ? defaultValueInstrs(resultType) : typeErrorThrowInstrs(ctx),
                 else: elseInstrs,
               });
               return resultType;
