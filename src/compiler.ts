@@ -1404,6 +1404,9 @@ function classifyImport(name: string, mod: WasmModule): ImportIntent {
   // Async/await
   if (name === "__await") return { type: "await" };
 
+  // Dynamic import()
+  if (name === "__dynamic_import") return { type: "dynamic_import" };
+
   // Union type helpers
   if (name === "__typeof_number") return { type: "typeof_check", targetType: "number" };
   if (name === "__typeof_string") return { type: "typeof_check", targetType: "string" };

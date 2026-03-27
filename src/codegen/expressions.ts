@@ -9136,17 +9136,41 @@ function compileCallExpression(
     return compileOptionalDirectCall(ctx, fctx, expr);
   }
 
-  // Dynamic import() — not supported in AOT Wasm compilation.
-  // Emit unreachable so compilation succeeds; the call will trap at runtime.
+  // Dynamic import() — delegate to __dynamic_import host import.
+  // Takes a specifier (externref string) and returns an externref (Promise).
+  // In standalone (no JS host) mode, this will trap since there is no host.
   if (expr.expression.kind === ts.SyntaxKind.ImportKeyword) {
-    ctx.errors.push({
-      message: "Dynamic import() is not supported in AOT Wasm compilation",
-      line: getLine(expr),
-      column: getCol(expr),
-      severity: "warning",
-    });
-    fctx.body.push({ op: "unreachable" });
-    return null;
+    // Ensure __dynamic_import is registered
+    let dynIdx = ctx.funcMap.get("__dynamic_import");
+    if (dynIdx === undefined) {
+      const importsBefore = ctx.numImportFuncs;
+      const dynType = addFuncType(
+        ctx,
+        [{ kind: "externref" }],
+        [{ kind: "externref" }],
+      );
+      addImport(ctx, "env", "__dynamic_import", { kind: "func", typeIdx: dynType });
+      shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+      dynIdx = ctx.funcMap.get("__dynamic_import");
+    }
+    if (dynIdx === undefined) {
+      fctx.body.push({ op: "unreachable" });
+      return null;
+    }
+    // Compile the specifier argument
+    const specArg = expr.arguments[0];
+    if (specArg) {
+      const specResult = compileExpression(ctx, fctx, specArg);
+      // Coerce to externref if needed
+      if (specResult && specResult !== VOID_RESULT && specResult.kind !== "externref") {
+        coerceType(ctx, fctx, specResult, { kind: "externref" });
+      }
+    } else {
+      // No argument — pass undefined (null externref)
+      fctx.body.push({ op: "ref.null", refType: "extern" } as unknown as Instr);
+    }
+    fctx.body.push({ op: "call", funcIdx: dynIdx });
+    return { kind: "externref" };
   }
 
   // Unwrap parenthesized callee: (fn)(...), ((obj.method))(...) etc.
