@@ -14,6 +14,11 @@
 import { parentPort } from "node:worker_threads";
 import { buildImports } from "./runtime-bundle.mjs";
 
+// Suppress unhandled Promise rejections — Promise tests create async
+// operations that reject after the test function returns. Without this,
+// the rejection propagates and crashes the parent's IPC channel.
+process.on("unhandledRejection", () => {});
+
 parentPort.on("message", async (msg) => {
   const { id, binary, imports, stringPool, isRuntimeNegative } = msg;
   const reply = (data) => parentPort.postMessage({ id, ...data });
