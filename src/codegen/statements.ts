@@ -4915,6 +4915,10 @@ function compileTryStatement(
     let catchBodyInstrs: Instr[];
     {
       const prevBody = fctx.body;
+      // Track tryBody in savedBodies so late imports during catch body
+      // compilation can shift function indices inside it. Without this,
+      // tryBody is orphaned and its call instructions get stale indices.
+      fctx.savedBodies.push(tryBody);
       fctx.body = [];
 
       // Push rethrow info: depth starts at 0 (directly inside catch)
@@ -4957,6 +4961,9 @@ function compileTryStatement(
 
       catchBodyInstrs = fctx.body;
       fctx.body = prevBody;
+      // Remove tryBody from savedBodies (added above for shift tracking)
+      const tbIdx = fctx.savedBodies.lastIndexOf(tryBody);
+      if (tbIdx >= 0) fctx.savedBodies.splice(tbIdx, 1);
     }
 
     /** Deep-clone the catch body instructions for reuse in catch_all. */
@@ -5001,6 +5008,10 @@ function compileTryStatement(
     // Build "catch_all" body: no value on stack from catch_all itself.
     // Call __get_caught_exception host import to retrieve the foreign JS exception.
     {
+      // Track tryBody and catch bodies in savedBodies so late imports
+      // (e.g. __get_caught_exception) shift their function indices too.
+      fctx.savedBodies.push(tryBody);
+      for (const c of catches) fctx.savedBodies.push(c.body);
       fctx.body = [];
       if (exnLocalIdx !== null) {
         const getCaughtIdx = ensureLateImport(
@@ -5031,6 +5042,13 @@ function compileTryStatement(
         fctx.body.push(...cloneCatchBody());
       }
       catchAllBody = fctx.body;
+      // Remove tryBody and catch bodies from savedBodies (added above)
+      for (const c of catches) {
+        const ci = fctx.savedBodies.lastIndexOf(c.body);
+        if (ci >= 0) fctx.savedBodies.splice(ci, 1);
+      }
+      const tbIdx2 = fctx.savedBodies.lastIndexOf(tryBody);
+      if (tbIdx2 >= 0) fctx.savedBodies.splice(tbIdx2, 1);
     }
   }
 

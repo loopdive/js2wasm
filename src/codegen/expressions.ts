@@ -10778,6 +10778,41 @@ function compileCallExpression(
         if (callablePropResult !== undefined) return callablePropResult;
       }
       if (funcIdx !== undefined) {
+        const isStaticMethod = ctx.staticMethodSet.has(fullName);
+        // Static methods: evaluate receiver for side effects, drop, call directly
+        if (isStaticMethod) {
+          const recvType = compileExpression(ctx, fctx, propAccess.expression);
+          if (recvType !== null && recvType !== VOID_RESULT) {
+            fctx.body.push({ op: "drop" });
+          }
+          const paramTypes = getFuncParamTypes(ctx, funcIdx);
+          const paramCount = paramTypes ? paramTypes.length : expr.arguments.length;
+          for (let i = 0; i < expr.arguments.length; i++) {
+            if (i < paramCount) {
+              compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+            } else {
+              const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+              if (extraType !== null && extraType !== VOID_RESULT) {
+                fctx.body.push({ op: "drop" });
+              }
+            }
+          }
+          if (paramTypes) {
+            for (let i = expr.arguments.length; i < paramTypes.length; i++) {
+              pushDefaultValue(fctx, paramTypes[i]!);
+            }
+          }
+          const finalMethodIdx = ctx.funcMap.get(fullName) ?? funcIdx;
+          fctx.body.push({ op: "call", funcIdx: finalMethodIdx });
+          const sig = ctx.checker.getResolvedSignature(expr);
+          if (sig) {
+            const retType = ctx.checker.getReturnTypeOfSignature(sig);
+            if (isEffectivelyVoidReturn(ctx, retType, fullName)) return VOID_RESULT;
+            if (wasmFuncReturnsVoid(ctx, finalMethodIdx)) return VOID_RESULT;
+            return getWasmFuncReturnType(ctx, finalMethodIdx) ?? resolveWasmType(ctx, retType);
+          }
+          return VOID_RESULT;
+        }
         // Push self (the receiver) as first argument, with type hint from method's first param
         const methodParamTypes0 = getFuncParamTypes(ctx, funcIdx);
         let recvType = compileExpression(ctx, fctx, propAccess.expression, methodParamTypes0?.[0]);
