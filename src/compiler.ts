@@ -241,13 +241,30 @@ function detectEarlyErrors(
   }
 
   function checkDuplicateParams(params: ts.NodeArray<ts.ParameterDeclaration>, node: ts.Node) {
-    if (!isStrictMode(node)) return;
+    // ES spec: Duplicate params are always forbidden in:
+    // - strict mode functions
+    // - arrow functions
+    // - async functions
+    // - generator functions
+    // - methods
+    // - functions with non-simple parameter lists (default, rest, destructuring)
+    const alwaysForbid =
+      ts.isArrowFunction(node) ||
+      ts.isMethodDeclaration(node) ||
+      ts.isConstructorDeclaration(node) ||
+      ts.isGetAccessorDeclaration(node) ||
+      ts.isSetAccessorDeclaration(node) ||
+      ((ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node)) &&
+        (node.asteriskToken !== undefined ||
+         node.modifiers?.some(m => m.kind === ts.SyntaxKind.AsyncKeyword))) ||
+      params.some(p => p.initializer !== undefined || p.dotDotDotToken !== undefined || !ts.isIdentifier(p.name));
+    if (!alwaysForbid && !isStrictMode(node)) return;
     const seen = new Set<string>();
     for (const param of params) {
       if (ts.isIdentifier(param.name)) {
         const name = param.name.text;
         if (seen.has(name)) {
-          addError(param.name, `Duplicate parameter name '${name}' not allowed in strict mode`);
+          addError(param.name, `Duplicate parameter name '${name}' not allowed`);
         }
         seen.add(name);
       }
@@ -332,19 +349,19 @@ function detectEarlyErrors(
       }
     }
 
-    // Check generator/async function declarations in statement position (not allowed in strict mode)
-    // ES spec: GeneratorDeclaration and AsyncFunctionDeclaration are not valid in
-    // SingleStatement position (if body, while body, do-while body, for body, etc.)
-    if (ts.isFunctionDeclaration(node) && node.asteriskToken) {
+    // Check function declarations in statement position
+    // ES spec: GeneratorDeclaration and AsyncFunctionDeclaration are never valid in
+    // SingleStatement position. Regular FunctionDeclaration is SyntaxError in strict mode.
+    if (ts.isFunctionDeclaration(node)) {
       const parent = node.parent;
       if (parent && isStatementPosition(parent, node)) {
-        addError(node, "Generator declarations are not allowed in statement position");
-      }
-    }
-    if (ts.isFunctionDeclaration(node) && hasAsyncModifier(node)) {
-      const parent = node.parent;
-      if (parent && isStatementPosition(parent, node)) {
-        addError(node, "Async function declarations are not allowed in statement position");
+        if (node.asteriskToken) {
+          addError(node, "Generator declarations are not allowed in statement position");
+        } else if (hasAsyncModifier(node)) {
+          addError(node, "Async function declarations are not allowed in statement position");
+        } else if (isStrictMode(node)) {
+          addError(node, "In strict mode code, functions can only be declared at top level or inside a block");
+        }
       }
     }
 
@@ -398,15 +415,39 @@ function detectEarlyErrors(
       }
     }
 
-    // Check for-in loop with initializer — SyntaxError in strict mode
-    // e.g. for (var x = 0 in obj) {}
-    if (ts.isForInStatement(node) && isStrictMode(node)) {
+    // Check for-in loop with initializer — SyntaxError in strict mode for var,
+    // always a SyntaxError for let/const (ES2015+)
+    if (ts.isForInStatement(node)) {
       const init = node.initializer;
       if (ts.isVariableDeclarationList(init)) {
+        const isLexical = (init.flags & ts.NodeFlags.Let) !== 0 || (init.flags & ts.NodeFlags.Const) !== 0;
         for (const decl of init.declarations) {
-          if (decl.initializer) {
-            addError(node, "for-in loop head declarations may not have initializers in strict mode");
+          if (decl.initializer && (isLexical || isStrictMode(node))) {
+            addError(node, "for-in loop head declarations may not have initializers");
             break;
+          }
+        }
+        // for-in/for-of with multiple lexical bindings is always a SyntaxError
+        if (isLexical && init.declarations.length > 1) {
+          addError(node, "Only a single declaration is allowed in a for-in statement");
+        }
+      }
+    }
+
+    // Check for-of loop: lexical declarations may not have initializers or multiple bindings
+    if (ts.isForOfStatement(node)) {
+      const init = node.initializer;
+      if (ts.isVariableDeclarationList(init)) {
+        const isLexical = (init.flags & ts.NodeFlags.Let) !== 0 || (init.flags & ts.NodeFlags.Const) !== 0;
+        if (isLexical) {
+          for (const decl of init.declarations) {
+            if (decl.initializer) {
+              addError(node, "for-of loop head declarations may not have initializers");
+              break;
+            }
+          }
+          if (init.declarations.length > 1) {
+            addError(node, "Only a single declaration is allowed in a for-of statement");
           }
         }
       }
@@ -677,7 +718,159 @@ function detectEarlyErrors(
       }
     }
 
+    // ── Class method named "constructor" restrictions ─────────────────
+    // ES spec: It is a SyntaxError if PropName of a MethodDefinition is "constructor" and
+    // the method is a generator, async, getter, or setter.
+    if ((ts.isClassDeclaration(node) || ts.isClassExpression(node))) {
+      for (const member of node.members) {
+        const memberName = getMemberName(member);
+        if (memberName === "constructor") {
+          const isStaticMember = (member as any).modifiers?.some((m: any) => m.kind === ts.SyntaxKind.StaticKeyword);
+          if (isStaticMember) continue; // static "constructor" is fine
+          if (ts.isMethodDeclaration(member) && member.asteriskToken) {
+            addError(member, "Class constructor may not be a generator");
+          }
+          if (ts.isMethodDeclaration(member) && member.modifiers?.some((m: any) => m.kind === ts.SyntaxKind.AsyncKeyword)) {
+            addError(member, "Class constructor may not be an async method");
+          }
+          if (ts.isGetAccessorDeclaration(member)) {
+            addError(member, "Class constructor may not be a getter");
+          }
+          if (ts.isSetAccessorDeclaration(member)) {
+            addError(member, "Class constructor may not be a setter");
+          }
+        }
+      }
+    }
+
+    // ── Direct super() call outside constructor ──────────────────────
+    // ES spec: super() is only valid inside a class constructor.
+    if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.SuperKeyword) {
+      if (!isInsideClassConstructor(node)) {
+        addError(node, "super() is only valid inside a class constructor");
+      }
+    }
+
+    // ── Direct super property outside method ──────────────────────────
+    // super.x and super[x] are only valid in methods (including constructors)
+    if ((ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) &&
+        node.expression.kind === ts.SyntaxKind.SuperKeyword) {
+      if (!isInsideMethod(node)) {
+        addError(node, "'super' keyword unexpected here");
+      }
+    }
+
+    // ── Duplicate __proto__ in object literal ────────────────────────
+    if (ts.isObjectLiteralExpression(node)) {
+      let protoCount = 0;
+      for (const prop of node.properties) {
+        if (ts.isPropertyAssignment(prop)) {
+          const propName = ts.isIdentifier(prop.name) ? prop.name.text :
+                          ts.isStringLiteral(prop.name) ? prop.name.text : null;
+          if (propName === "__proto__") {
+            protoCount++;
+            if (protoCount > 1) {
+              addError(prop, "Duplicate __proto__ fields are not allowed in object literals");
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    // ── Duplicate lexical declarations in same block ─────────────────
+    // Covers class+class, let+let, const+const, class+let, etc.
+    if (ts.isBlock(node) || ts.isSourceFile(node)) {
+      checkDuplicateLexicalDeclarations(node);
+    }
+
     ts.forEachChild(node, visit);
+  }
+
+  /** Get the computed name of a class member, if it's a simple string. */
+  function getMemberName(member: ts.ClassElement): string | null {
+    if (!member.name) return null;
+    if (ts.isIdentifier(member.name)) return member.name.text;
+    if (ts.isStringLiteral(member.name)) return member.name.text;
+    if (ts.isComputedPropertyName(member.name)) {
+      const expr = member.name.expression;
+      if (ts.isStringLiteral(expr)) return expr.text;
+    }
+    return null;
+  }
+
+  /** Check if a node is inside a class constructor. Arrow functions inherit super() context. */
+  function isInsideClassConstructor(node: ts.Node): boolean {
+    let current: ts.Node | undefined = node.parent;
+    while (current) {
+      if (ts.isConstructorDeclaration(current)) return true;
+      // Arrow functions inherit super context — don't stop
+      if (ts.isArrowFunction(current)) {
+        current = current.parent;
+        continue;
+      }
+      // Other function boundaries break super() context
+      if (ts.isFunctionDeclaration(current) || ts.isFunctionExpression(current) ||
+          ts.isMethodDeclaration(current) ||
+          ts.isGetAccessorDeclaration(current) || ts.isSetAccessorDeclaration(current)) {
+        return false;
+      }
+      current = current.parent;
+    }
+    return false;
+  }
+
+  /** Check if a node is inside a method (class or object). Arrow functions inherit super property context. */
+  function isInsideMethod(node: ts.Node): boolean {
+    let current: ts.Node | undefined = node.parent;
+    while (current) {
+      if (ts.isMethodDeclaration(current) || ts.isConstructorDeclaration(current) ||
+          ts.isGetAccessorDeclaration(current) || ts.isSetAccessorDeclaration(current)) {
+        return true;
+      }
+      // Arrow functions inherit super property context — don't stop
+      if (ts.isArrowFunction(current)) {
+        current = current.parent;
+        continue;
+      }
+      // Other function boundaries break super property context
+      if (ts.isFunctionDeclaration(current) || ts.isFunctionExpression(current)) {
+        return false;
+      }
+      current = current.parent;
+    }
+    return false;
+  }
+
+  /** Check for duplicate lexical declarations (let, const, class, function) in a block. */
+  function checkDuplicateLexicalDeclarations(block: ts.Block | ts.SourceFile): void {
+    const stmts = block.statements;
+    const lexNames = new Map<string, ts.Node>();
+    for (const stmt of stmts) {
+      if (ts.isClassDeclaration(stmt) && stmt.name) {
+        const name = stmt.name.text;
+        if (lexNames.has(name)) {
+          addError(stmt.name, `Duplicate identifier '${name}'`);
+        } else {
+          lexNames.set(name, stmt.name);
+        }
+      }
+      if (ts.isVariableStatement(stmt)) {
+        const flags = stmt.declarationList.flags;
+        if ((flags & ts.NodeFlags.Let) !== 0 || (flags & ts.NodeFlags.Const) !== 0) {
+          for (const decl of stmt.declarationList.declarations) {
+            if (ts.isIdentifier(decl.name)) {
+              const name = decl.name.text;
+              if (lexNames.has(name)) {
+                addError(decl.name, `Duplicate identifier '${name}'`);
+              } else {
+                lexNames.set(name, decl.name);
+              }
+            }
+          }
+        }
+      }
+    }
   }
 
   /** Check duplicate lexical declarations across switch case clauses. */

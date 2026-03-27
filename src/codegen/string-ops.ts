@@ -12,6 +12,24 @@ import { compileExpression, VOID_RESULT, getLine, getCol } from "./shared.js";
 import { compileNumericBinaryOp, getFuncParamTypes, emitNullCheckThrow } from "./expressions.js";
 import { pushDefaultValue, emitGuardedRefCast } from "./type-coercion.js";
 
+// ── Guarded funcref cast (ref.test before ref.cast to avoid illegal cast traps) ──
+function emitGuardedFuncRefCast(fctx: FunctionContext, funcTypeIdx: number): void {
+  const tmpFunc = allocLocal(fctx, `__gfc_${fctx.locals.length}`, { kind: "funcref" } as ValType);
+  fctx.body.push({ op: "local.tee", index: tmpFunc } as unknown as Instr);
+  fctx.body.push({ op: "ref.test", typeIdx: funcTypeIdx } as unknown as Instr);
+  fctx.body.push({
+    op: "if",
+    blockType: { kind: "val", type: { kind: "ref_null", typeIdx: funcTypeIdx } as ValType },
+    then: [
+      { op: "local.get", index: tmpFunc } as unknown as Instr,
+      { op: "ref.cast_null", typeIdx: funcTypeIdx } as unknown as Instr,
+    ],
+    else: [
+      { op: "ref.null", typeIdx: funcTypeIdx } as unknown as Instr,
+    ],
+  } as Instr);
+}
+
 // ── String operations ─────────────────────────────────────────────────
 
 export function compileStringLiteral(
@@ -360,7 +378,7 @@ export function compileTaggedTemplateExpression(
       // Push funcref from closure struct field 0 and call_ref
       fctx.body.push({ op: "local.get", index: localIdx });
       fctx.body.push({ op: "struct.get", typeIdx: closureInfo.structTypeIdx, fieldIdx: 0 });
-      fctx.body.push({ op: "ref.cast", typeIdx: closureInfo.funcTypeIdx });
+      emitGuardedFuncRefCast(fctx, closureInfo.funcTypeIdx);
       fctx.body.push({ op: "ref.as_non_null" });
       fctx.body.push({ op: "call_ref", typeIdx: closureInfo.funcTypeIdx });
 
@@ -531,7 +549,7 @@ export function compileTaggedTemplateExpression(
       fctx.body.push({ op: "local.get", index: closureLocal });
       fctx.body.push({ op: "ref.as_non_null" } as Instr);
       fctx.body.push({ op: "struct.get", typeIdx: matchedStructTypeIdx, fieldIdx: 0 });
-      fctx.body.push({ op: "ref.cast", typeIdx: matchedClosureInfo.funcTypeIdx });
+      emitGuardedFuncRefCast(fctx, matchedClosureInfo.funcTypeIdx);
       fctx.body.push({ op: "ref.as_non_null" });
       fctx.body.push({ op: "call_ref", typeIdx: matchedClosureInfo.funcTypeIdx });
 
@@ -568,7 +586,7 @@ export function compileTaggedTemplateExpression(
 
           fctx.body.push({ op: "local.get", index: closureLocal });
           fctx.body.push({ op: "struct.get", typeIdx: closureInfo.structTypeIdx, fieldIdx: 0 });
-          fctx.body.push({ op: "ref.cast", typeIdx: closureInfo.funcTypeIdx });
+          emitGuardedFuncRefCast(fctx, closureInfo.funcTypeIdx);
           fctx.body.push({ op: "ref.as_non_null" });
           fctx.body.push({ op: "call_ref", typeIdx: closureInfo.funcTypeIdx });
 

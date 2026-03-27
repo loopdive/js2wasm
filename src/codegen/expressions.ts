@@ -3086,7 +3086,36 @@ function compileExternrefArrayDestructuringAssignment(
   for (let i = 0; i < target.elements.length; i++) {
     const element = target.elements[i]!;
     if (ts.isOmittedExpression(element)) continue;
-    if (ts.isSpreadElement(element)) continue; // rest on externref not supported yet
+    // Handle rest element: [a, ...rest] = externArr — use __extern_slice
+    if (ts.isSpreadElement(element)) {
+      const restTarget = element.expression;
+      if (ts.isIdentifier(restTarget)) {
+        const restName = restTarget.text;
+        let restLocalIdx = fctx.localMap.get(restName);
+        if (restLocalIdx === undefined) {
+          restLocalIdx = allocLocal(fctx, restName, { kind: "externref" });
+        }
+        let sliceIdx = ctx.funcMap.get("__extern_slice");
+        if (sliceIdx === undefined) {
+          const importsBefore = ctx.numImportFuncs;
+          const sliceType = addFuncType(ctx,
+            [{ kind: "externref" }, { kind: "f64" }],
+            [{ kind: "externref" }]);
+          addImport(ctx, "env", "__extern_slice", { kind: "func", typeIdx: sliceType });
+          shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+          sliceIdx = ctx.funcMap.get("__extern_slice");
+          boxIdx = ctx.funcMap.get("__box_number");
+          getIdx = ctx.funcMap.get("__extern_get");
+        }
+        if (sliceIdx !== undefined) {
+          fctx.body.push({ op: "local.get", index: tmpLocal });
+          fctx.body.push({ op: "f64.const", value: i });
+          fctx.body.push({ op: "call", funcIdx: sliceIdx });
+          fctx.body.push({ op: "local.set", index: restLocalIdx });
+        }
+      }
+      continue;
+    }
 
     // Emit: __extern_get(tmpLocal, box(i)) -> externref
     fctx.body.push({ op: "local.get", index: tmpLocal });
