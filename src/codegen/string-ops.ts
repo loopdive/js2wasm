@@ -5,7 +5,7 @@
  */
 import ts from "typescript";
 import type { CodegenContext, FunctionContext, ClosureInfo } from "./index.js";
-import { allocLocal, resolveWasmType, getOrRegisterVecType, getArrTypeIdxFromVec, addUnionImports, nativeStringType, flatStringType, addStringImports, addStringConstantGlobal, nextModuleGlobalIdx, getOrRegisterTemplateVecType, pushBody } from "./index.js";
+import { allocLocal, resolveWasmType, getOrRegisterVecType, getArrTypeIdxFromVec, addUnionImports, nativeStringType, flatStringType, addStringImports, addStringConstantGlobal, nextModuleGlobalIdx, getOrRegisterTemplateVecType, pushBody, ensureExnTag } from "./index.js";
 import { isBooleanType, isVoidType } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";
 import { compileExpression, VOID_RESULT, getLine, getCol } from "./shared.js";
@@ -1244,13 +1244,41 @@ export function compileNativeStringMethodCall(
     return nativeStringType(ctx);
   }
 
-  // repeat: native helper
+  // repeat: native helper with RangeError validation
   if (method === "repeat") {
     compileExpression(ctx, fctx, propAccess.expression);
     emitFlatten();
     if (expr.arguments.length > 0) {
       const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
+      // RangeError: count must be non-negative, finite, and not too large
       if (argType && argType.kind === "f64") {
+        const countLocal = allocLocal(fctx, `__repeat_count_${fctx.locals.length}`, { kind: "f64" });
+        fctx.body.push({ op: "local.tee", index: countLocal });
+        // Check count < 0
+        fctx.body.push({ op: "f64.const", value: 0 });
+        fctx.body.push({ op: "f64.lt" });
+        // Check count is Infinity (count != count is NaN, but we also need +Inf)
+        // Use: count == +Infinity
+        fctx.body.push({ op: "local.get", index: countLocal });
+        fctx.body.push({ op: "f64.const", value: Infinity });
+        fctx.body.push({ op: "f64.eq" });
+        fctx.body.push({ op: "i32.or" });
+        {
+          const rangeErrMsg = "RangeError: Invalid count value";
+          addStringConstantGlobal(ctx, rangeErrMsg);
+          const strIdx = ctx.stringGlobalMap.get(rangeErrMsg)!;
+          const tagIdx = ensureExnTag(ctx);
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: [
+              { op: "global.get", index: strIdx } as Instr,
+              { op: "throw", tagIdx } as Instr,
+            ],
+            else: [],
+          });
+        }
+        fctx.body.push({ op: "local.get", index: countLocal });
         fctx.body.push({ op: "i32.trunc_sat_f64_s" });
       }
     } else {
@@ -1441,17 +1469,31 @@ export function compileNativeStringMethodCall(
   }
 
   // normalize: return string unchanged (identity — correct for already-normalized strings)
+  // RangeError: if form argument is provided, must be one of "NFC", "NFD", "NFKC", "NFKD"
   if (method === "normalize") {
-    const result = compileExpression(ctx, fctx, propAccess.expression);
-    // Consume the form argument if present (ignored)
     if (expr.arguments.length > 0) {
-      const bodyLen = fctx.body.length;
-      const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
+      // Check at compile time if the form argument is a string literal
+      const formArg = expr.arguments[0]!;
+      if (ts.isStringLiteral(formArg)) {
+        const form = formArg.text;
+        if (form !== "NFC" && form !== "NFD" && form !== "NFKC" && form !== "NFKD") {
+          // Static RangeError — emit unconditional throw
+          const rangeErrMsg = "RangeError: The normalization form should be one of NFC, NFD, NFKC, NFKD";
+          addStringConstantGlobal(ctx, rangeErrMsg);
+          const strIdx = ctx.stringGlobalMap.get(rangeErrMsg)!;
+          const tagIdx = ensureExnTag(ctx);
+          fctx.body.push({ op: "global.get", index: strIdx } as Instr);
+          fctx.body.push({ op: "throw", tagIdx } as Instr);
+          return null;
+        }
+      }
+      // For non-literal args, compile and drop (can't validate at compile time)
+      const argType = compileExpression(ctx, fctx, formArg);
       if (argType && argType !== VOID_RESULT) {
         fctx.body.push({ op: "drop" });
       }
     }
-    return result;
+    return compileExpression(ctx, fctx, propAccess.expression);
   }
 
   // Other methods: marshal native->extern, call host, marshal extern->native

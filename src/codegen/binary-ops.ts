@@ -28,6 +28,8 @@ import {
   compileTypeofComparison,
   tryStaticToNumber,
   emitThrowString,
+  ensureExternIsUndefinedImport,
+  flushLateImportShifts,
 } from "./expressions.js";
 import { compileStringBinaryOp } from "./string-ops.js";
 
@@ -290,11 +292,39 @@ export function compileBinaryExpression(
         return { kind: "i32" };
       }
       if (valType.kind === "externref") {
-        // For strict equality: if non-null side is externref (could be null-typed variable)
-        // and the literal side is undefined, null === undefined is false
-        if ((isStrictEqOp || isStrictNeqOp) && nonNullIsNullType && (nullSideIsUndefinedId)) {
-          fctx.body.push({ op: "drop" });
-          fctx.body.push({ op: "i32.const", value: isStrictNeqOp ? 1 : 0 });
+        // Strict equality: null and undefined are distinct types in JS
+        if (isStrictEqOp || isStrictNeqOp) {
+          if (nullSideIsNullKeyword) {
+            // x === null: only ref.null.extern is null
+            fctx.body.push({ op: "ref.is_null" });
+            if (isStrictNeqOp) fctx.body.push({ op: "i32.eqz" });
+            return { kind: "i32" };
+          }
+          // x === undefined: check via __extern_is_undefined host import
+          const isUndefIdx = ensureExternIsUndefinedImport(ctx);
+          if (isUndefIdx !== undefined) {
+            flushLateImportShifts(ctx, fctx);
+            fctx.body.push({ op: "call", funcIdx: isUndefIdx });
+            if (isStrictNeqOp) fctx.body.push({ op: "i32.eqz" });
+            return { kind: "i32" };
+          }
+          // Fallback (standalone): ref.is_null (can't distinguish null/undefined)
+          fctx.body.push({ op: "ref.is_null" });
+          if (isStrictNeqOp) fctx.body.push({ op: "i32.eqz" });
+          return { kind: "i32" };
+        }
+        // Loose equality: null == undefined is true in JS, so check both
+        const isUndefIdx = ensureExternIsUndefinedImport(ctx);
+        if (isUndefIdx !== undefined) {
+          flushLateImportShifts(ctx, fctx);
+          const tmpLocal = allocTempLocal(fctx, { kind: "externref" });
+          fctx.body.push({ op: "local.tee", index: tmpLocal });
+          fctx.body.push({ op: "ref.is_null" });
+          fctx.body.push({ op: "local.get", index: tmpLocal });
+          fctx.body.push({ op: "call", funcIdx: isUndefIdx });
+          fctx.body.push({ op: "i32.or" } as Instr);
+          releaseTempLocal(fctx, tmpLocal);
+          if (isNeqOp) fctx.body.push({ op: "i32.eqz" });
           return { kind: "i32" };
         }
         fctx.body.push({ op: "ref.is_null" });
@@ -316,8 +346,16 @@ export function compileBinaryExpression(
         fctx.body.push({ op: "i32.const", value: isStrictEqOp ? (sameKind ? 1 : 0) : (sameKind ? 0 : 1) });
         return { kind: "i32" };
       }
-      // For ref/ref_null struct types, use ref.is_null to check nullability
+      // For ref/ref_null struct types:
+      // Strict: refs can be null but never undefined
+      // Loose: null == undefined, so ref.is_null covers both
       if (valType.kind === "ref" || valType.kind === "ref_null") {
+        if ((isStrictEqOp || isStrictNeqOp) && nullSideIsUndefinedId) {
+          // struct === undefined → always false; struct !== undefined → always true
+          fctx.body.push({ op: "drop" });
+          fctx.body.push({ op: "i32.const", value: isStrictNeqOp ? 1 : 0 });
+          return { kind: "i32" };
+        }
         fctx.body.push({ op: "ref.is_null" });
         if (isNeqOp) fctx.body.push({ op: "i32.eqz" });
         return { kind: "i32" };

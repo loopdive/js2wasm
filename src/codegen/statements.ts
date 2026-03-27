@@ -3803,8 +3803,12 @@ function compileForOfStatement(
   if (isArray) {
     compileForOfArray(ctx, fctx, stmt);
   } else {
-    // Non-array type — use the host iterator protocol.
-    compileForOfIterator(ctx, fctx, stmt);
+    // Type checker didn't resolve as Array — tentatively compile the expression
+    // to check if it produces a vec struct (e.g. tuple types, union types, etc.).
+    // If so, use the efficient array path; otherwise fall back to host iterator.
+    if (!compileForOfArrayTentative(ctx, fctx, stmt)) {
+      compileForOfIterator(ctx, fctx, stmt);
+    }
   }
 }
 
@@ -4187,22 +4191,47 @@ function compileForOfArray(
     ],
   });
 
-  // Null guard: if vec ref is nullable, throw TypeError on null (#775)
-  // In JS, `for (const x of null)` throws TypeError
+  // Null guard: if vec ref is nullable, guard against null (#775, #789)
+  // If null from a failed guarded cast (wrong struct type), just skip the loop.
+  // Only throw TypeError for genuinely null values (e.g. `for (const x of null)`).
   if (vecType.kind === "ref_null") {
     const guardedInstrs = fctx.body.splice(nullGuardStart);
-    const tagIdx = ensureExnTag(ctx);
+    const backupLocal: number | undefined = (fctx as any).__lastGuardedCastBackup;
     fctx.body.push({ op: "local.get", index: vecLocal });
     fctx.body.push({ op: "ref.is_null" } as Instr);
-    fctx.body.push({
-      op: "if",
-      blockType: { kind: "empty" },
-      then: [
-        { op: "ref.null.extern" } as Instr,
-        { op: "throw", tagIdx } as Instr,
-      ],
-      else: guardedInstrs,
-    });
+    if (backupLocal !== undefined) {
+      // A guarded cast backup exists: distinguish "wrong type" from "genuinely null"
+      const tagIdx = ensureExnTag(ctx);
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" },
+        then: [
+          { op: "local.get", index: backupLocal } as Instr,
+          { op: "ref.is_null" } as Instr,
+          {
+            op: "if",
+            blockType: { kind: "empty" },
+            then: [
+              { op: "ref.null.extern" } as Instr,
+              { op: "throw", tagIdx } as Instr,
+            ],
+            else: [],  // wrong struct type → skip loop
+          } as Instr,
+        ],
+        else: guardedInstrs,
+      });
+    } else {
+      const tagIdx = ensureExnTag(ctx);
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" },
+        then: [
+          { op: "ref.null.extern" } as Instr,
+          { op: "throw", tagIdx } as Instr,
+        ],
+        else: guardedInstrs,
+      });
+    }
   }
 }
 
@@ -4338,21 +4367,45 @@ function compileForOfIterator(
     coerceType(ctx, fctx, iterableType, { kind: "externref" });
   }
 
-  // Null check: throw TypeError for `for (const x of null)` (#775)
+  // Null check: throw TypeError for `for (const x of null)` (#775, #789)
+  // If null from a failed guarded cast, skip instead of throw.
   {
+    const backupLocal: number | undefined = (fctx as any).__lastGuardedCastBackup;
     const tagIdx = ensureExnTag(ctx);
     const iterTmp = allocLocal(fctx, `__forit_null_${fctx.locals.length}`, { kind: "externref" });
     fctx.body.push({ op: "local.tee", index: iterTmp });
     fctx.body.push({ op: "ref.is_null" });
-    fctx.body.push({
-      op: "if",
-      blockType: { kind: "empty" },
-      then: [
-        { op: "ref.null.extern" } as Instr,
-        { op: "throw", tagIdx } as Instr,
-      ],
-      else: [],
-    });
+    if (backupLocal !== undefined) {
+      // Guarded cast backup exists: only throw for genuinely null, skip for wrong type
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" },
+        then: [
+          { op: "local.get", index: backupLocal } as Instr,
+          { op: "ref.is_null" } as Instr,
+          {
+            op: "if",
+            blockType: { kind: "empty" },
+            then: [
+              { op: "ref.null.extern" } as Instr,
+              { op: "throw", tagIdx } as Instr,
+            ],
+            else: [],  // wrong struct type → skip (return acts as no-op for-of)
+          } as Instr,
+        ],
+        else: [],
+      });
+    } else {
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" },
+        then: [
+          { op: "ref.null.extern" } as Instr,
+          { op: "throw", tagIdx } as Instr,
+        ],
+        else: [],
+      });
+    }
     fctx.body.push({ op: "local.get", index: iterTmp });
   }
 

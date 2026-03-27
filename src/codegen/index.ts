@@ -1491,6 +1491,12 @@ function unifiedVisitNode(
     if (isNumberType(receiverType) && methodName === "toFixed") {
       state.primitiveNeeded.add("number_toFixed");
     }
+    if (isNumberType(receiverType) && methodName === "toPrecision") {
+      state.primitiveNeeded.add("number_toPrecision");
+    }
+    if (isNumberType(receiverType) && methodName === "toExponential") {
+      state.primitiveNeeded.add("number_toExponential");
+    }
     // ── collectStringMethodImports (also uses call+propertyAccess) ──
     if (isStringType(receiverType) && Object.prototype.hasOwnProperty.call(STRING_METHODS, methodName)) {
       state.stringMethodNeeded.add(methodName);
@@ -1953,6 +1959,14 @@ function finalizeUnifiedCollector(
   if (state.primitiveNeeded.has("number_toFixed")) {
     const t = addFuncType(ctx, [{ kind: "f64" }, { kind: "f64" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "number_toFixed", { kind: "func", typeIdx: t });
+  }
+  if (state.primitiveNeeded.has("number_toPrecision")) {
+    const t = addFuncType(ctx, [{ kind: "f64" }, { kind: "f64" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", "number_toPrecision", { kind: "func", typeIdx: t });
+  }
+  if (state.primitiveNeeded.has("number_toExponential")) {
+    const t = addFuncType(ctx, [{ kind: "f64" }, { kind: "f64" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", "number_toExponential", { kind: "func", typeIdx: t });
   }
   if (state.primitiveNeeded.has("string_compare")) {
     const t = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "i32" }]);
@@ -2438,6 +2452,12 @@ function collectPrimitiveMethodImports(
       if (isNumberType(receiverType) && methodName === "toFixed") {
         needed.add("number_toFixed");
       }
+      if (isNumberType(receiverType) && methodName === "toPrecision") {
+        needed.add("number_toPrecision");
+      }
+      if (isNumberType(receiverType) && methodName === "toExponential") {
+        needed.add("number_toExponential");
+      }
       // Detect Number.prototype.method.call/apply patterns
       if ((methodName === "call" || methodName === "apply") &&
           ts.isPropertyAccessExpression(prop.expression)) {
@@ -2449,6 +2469,8 @@ function collectPrimitiveMethodImports(
             innerProp.expression.expression.text === "Number") {
           if (innerMethodName === "toString") needed.add("number_toString");
           if (innerMethodName === "toFixed") needed.add("number_toFixed");
+          if (innerMethodName === "toPrecision") needed.add("number_toPrecision");
+          if (innerMethodName === "toExponential") needed.add("number_toExponential");
         }
       }
     }
@@ -2530,6 +2552,22 @@ function collectPrimitiveMethodImports(
       [{ kind: "externref" }],
     );
     addImport(ctx, "env", "number_toFixed", { kind: "func", typeIdx: t });
+  }
+  if (needed.has("number_toPrecision")) {
+    const t = addFuncType(
+      ctx,
+      [{ kind: "f64" }, { kind: "f64" }],
+      [{ kind: "externref" }],
+    );
+    addImport(ctx, "env", "number_toPrecision", { kind: "func", typeIdx: t });
+  }
+  if (needed.has("number_toExponential")) {
+    const t = addFuncType(
+      ctx,
+      [{ kind: "f64" }, { kind: "f64" }],
+      [{ kind: "externref" }],
+    );
+    addImport(ctx, "env", "number_toExponential", { kind: "func", typeIdx: t });
   }
   if (needed.has("string_compare")) {
     const t = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "i32" }]);

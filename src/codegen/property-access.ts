@@ -94,15 +94,40 @@ export function emitNullCheckThrow(
   fctx: FunctionContext,
   refType: ValType,
 ): void {
+  const backupLocal: number | undefined = (fctx as any).__lastGuardedCastBackup;
+
   const tmp = allocTempLocal(fctx, refType);
   fctx.body.push({ op: "local.tee", index: tmp });
   fctx.body.push({ op: "ref.is_null" });
-  fctx.body.push({
-    op: "if",
-    blockType: { kind: "empty" },
-    then: typeErrorThrowInstrs(ctx),
-    else: [],
-  });
+
+  if (backupLocal !== undefined) {
+    // A guarded cast backup exists: the null might be from a failed ref.cast
+    // (wrong struct type), not from a genuinely null value.  Only throw
+    // TypeError when the ORIGINAL pre-cast value was also null (#789).
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: [
+        { op: "local.get", index: backupLocal } as Instr,
+        { op: "ref.is_null" } as Instr,
+        {
+          op: "if",
+          blockType: { kind: "empty" },
+          then: typeErrorThrowInstrs(ctx),
+          else: [],  // wrong struct type — don't throw
+        } as Instr,
+      ],
+      else: [],
+    });
+  } else {
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: typeErrorThrowInstrs(ctx),
+      else: [],
+    });
+  }
+
   fctx.body.push({ op: "local.get", index: tmp });
   releaseTempLocal(fctx, tmp);
 }
