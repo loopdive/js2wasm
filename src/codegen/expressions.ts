@@ -9227,6 +9227,20 @@ function compileCallExpression(
       // No argument — pass undefined (null externref)
       fctx.body.push({ op: "ref.null", refType: "extern" } as unknown as Instr);
     }
+
+    // Evaluate remaining arguments (e.g. import attributes/options) for side effects.
+    // Per spec, the second argument (optionsExpression) is evaluated before the
+    // host import is performed. If it throws, the throw propagates synchronously.
+    // We evaluate and drop the result since __dynamic_import only takes the specifier.
+    for (let ai = 1; ai < expr.arguments.length; ai++) {
+      const extraArg = expr.arguments[ai];
+      const extraResult = compileExpression(ctx, fctx, extraArg);
+      // Drop the value from the stack if the expression produced one
+      if (extraResult && extraResult !== VOID_RESULT) {
+        fctx.body.push({ op: "drop" });
+      }
+    }
+
     fctx.body.push({ op: "call", funcIdx: dynIdx });
     return { kind: "externref" };
   }
