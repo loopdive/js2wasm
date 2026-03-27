@@ -2515,14 +2515,18 @@ function compileDestructuringAssignment(
         fctx.body.push({ op: "local.set", index: localIdx });
       }
     } else if (ts.isPropertyAssignment(prop)) {
-      const propName = ts.isIdentifier(prop.name)
+      let propName = ts.isIdentifier(prop.name)
         ? prop.name.text
         : ts.isStringLiteral(prop.name)
           ? prop.name.text
           : ts.isNumericLiteral(prop.name)
             ? prop.name.text
             : undefined;
-      if (!propName) continue; // computed or unsupported property name — skip
+      // Try resolving computed property names at compile time
+      if (!propName && ts.isComputedPropertyName(prop.name)) {
+        propName = resolveComputedKeyExpression(ctx, prop.name.expression);
+      }
+      if (!propName) continue; // truly unresolvable property name — skip
       const fieldIdx = fields.findIndex((f) => f.name === propName);
       if (fieldIdx === -1) continue;
       const fieldType = fields[fieldIdx]!.type;
@@ -3465,14 +3469,18 @@ function emitObjectDestructureFromLocal(
       }
       fctx.body.push({ op: "local.set", index: localIdx });
     } else if (ts.isPropertyAssignment(prop)) {
-      const propName = ts.isIdentifier(prop.name)
+      let propName = ts.isIdentifier(prop.name)
         ? prop.name.text
         : ts.isStringLiteral(prop.name)
           ? prop.name.text
           : ts.isNumericLiteral(prop.name)
             ? prop.name.text
             : undefined;
-      if (!propName) continue; // computed or unsupported property name — skip
+      // Try resolving computed property names at compile time
+      if (!propName && ts.isComputedPropertyName(prop.name)) {
+        propName = resolveComputedKeyExpression(ctx, prop.name.expression);
+      }
+      if (!propName) continue; // truly unresolvable property name — skip
       const fieldIdx = fields.findIndex((f) => f.name === propName);
       if (fieldIdx === -1) continue;
       const fieldType = fields[fieldIdx]!.type;

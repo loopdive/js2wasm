@@ -48,6 +48,7 @@ import {
   popBody,
 } from "./index.js";
 import { promoteAccessorCapturesToGlobals } from "./closures.js";
+import { resolveComputedKeyExpression } from "./literals.js";
 
 /**
  * Adjust the depth of all entries in the catchRethrowStack by `delta`.
@@ -618,11 +619,28 @@ function compileVariableStatement(
       // (i.e. all properties are computed and non-resolvable)
       const hasUnresolvedComputed = tsProps.length < decl.initializer.properties.length;
       if (hasUnresolvedComputed) {
-        const actualType = compileExpression(ctx, fctx, decl.initializer);
-        const objType = actualType ?? { kind: "externref" as const };
-        const localIdx = allocLocal(fctx, name, objType);
-        fctx.body.push({ op: "local.set", index: localIdx });
-        continue;
+        // Check if ALL computed keys can be resolved at compile time.
+        // If so, skip this early-out and let ensureComputedPropertyFields + the
+        // normal module-global path handle it properly.
+        const allComputedResolvable = decl.initializer.properties.every((p) => {
+          if (!ts.isPropertyAssignment(p) || !p.name || !ts.isComputedPropertyName(p.name)) return true;
+          return resolveComputedKeyExpression(ctx, p.name.expression) !== undefined;
+        });
+        if (!allComputedResolvable) {
+          const actualType = compileExpression(ctx, fctx, decl.initializer);
+          const objType = actualType ?? { kind: "externref" as const };
+          // Store to module global if available, otherwise local
+          const modGlobal = ctx.moduleGlobals.get(name);
+          if (modGlobal !== undefined) {
+            fctx.body.push({ op: "global.set", index: modGlobal });
+            emitTdzInit(ctx, fctx, name);
+          } else {
+            const localIdx = allocLocal(fctx, name, objType);
+            fctx.body.push({ op: "local.set", index: localIdx });
+          }
+          continue;
+        }
+        // All computed keys resolvable — fall through to normal path
       }
     }
 
@@ -1307,15 +1325,25 @@ function compileObjectDestructuring(
       : ts.isStringLiteral(propNameNode) ? propNameNode
       : ts.isNumericLiteral(propNameNode) ? propNameNode
       : undefined;
+    // Try resolving computed property names at compile time
+    let propNameResolvedText: string | undefined;
+    if (!propName && ts.isComputedPropertyName(propNameNode)) {
+      propNameResolvedText = resolveComputedKeyExpression(ctx, propNameNode.expression);
+    }
 
     // Handle nested binding patterns: const { b: { c, d } } = obj
     if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
       const nestedPropName = element.propertyName && ts.isIdentifier(element.propertyName) ? element.propertyName : undefined;
-      if (!nestedPropName) {
+      // Also try computed key for nested patterns
+      let nestedPropText: string | undefined;
+      if (!nestedPropName && element.propertyName && ts.isComputedPropertyName(element.propertyName)) {
+        nestedPropText = resolveComputedKeyExpression(ctx, element.propertyName.expression);
+      }
+      if (!nestedPropName && !nestedPropText) {
         ensureBindingLocals(ctx, fctx, element.name);
         continue;
       }
-      const nFieldIdx = fields.findIndex((f) => f.name === nestedPropName.text);
+      const nFieldIdx = fields.findIndex((f) => f.name === (nestedPropName ? nestedPropName.text : nestedPropText));
       if (nFieldIdx === -1) {
         ensureBindingLocals(ctx, fctx, element.name);
         continue;
@@ -1440,8 +1468,8 @@ function compileObjectDestructuring(
     if (!ts.isIdentifier(element.name)) continue;
     const localName = element.name.text;
 
-    if (!propName) continue;
-    const propNameText = propName.text;
+    if (!propName && !propNameResolvedText) continue;
+    const propNameText = propName ? propName.text : propNameResolvedText!;
     const fieldIdx = fields.findIndex((f) => f.name === propNameText);
     if (fieldIdx === -1) {
       ctx.errors.push({
@@ -3987,13 +4015,17 @@ function compileForOfDestructuring(
       }
 
       const propNameNode = element.propertyName ?? element.name;
-      const propNameText = ts.isIdentifier(propNameNode) ? propNameNode.text
+      let propNameText = ts.isIdentifier(propNameNode) ? propNameNode.text
         : ts.isStringLiteral(propNameNode) ? propNameNode.text
         : ts.isNumericLiteral(propNameNode) ? propNameNode.text
         : undefined;
+      // Try resolving computed property names at compile time
+      if (!propNameText && ts.isComputedPropertyName(propNameNode)) {
+        propNameText = resolveComputedKeyExpression(ctx, propNameNode.expression);
+      }
       if (!ts.isIdentifier(element.name)) continue; // skip non-identifier binding names
       const localName = element.name.text;
-      if (!propNameText) continue; // skip computed property names
+      if (!propNameText) continue; // skip truly unresolvable computed property names
 
       const fieldIdx = fields.findIndex((f) => f.name === propNameText);
       if (fieldIdx === -1) {
@@ -4281,12 +4313,16 @@ function compileForOfAssignDestructuring(
 
     for (const prop of expr.properties) {
       if (!ts.isShorthandPropertyAssignment(prop) && !ts.isPropertyAssignment(prop)) continue;
-      const propName = ts.isShorthandPropertyAssignment(prop)
+      let propName = ts.isShorthandPropertyAssignment(prop)
         ? prop.name.text
         : ts.isIdentifier(prop.name) ? prop.name.text
         : ts.isStringLiteral(prop.name) ? prop.name.text
         : undefined;
-      if (!propName) continue; // skip computed property names
+      // Try resolving computed property names at compile time
+      if (!propName && ts.isPropertyAssignment(prop) && ts.isComputedPropertyName(prop.name)) {
+        propName = resolveComputedKeyExpression(ctx, prop.name.expression);
+      }
+      if (!propName) continue; // skip truly unresolvable computed property names
       const targetName = ts.isShorthandPropertyAssignment(prop)
         ? prop.name.text
         : ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.initializer) ? prop.initializer.text : propName;
