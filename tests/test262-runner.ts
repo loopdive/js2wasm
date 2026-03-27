@@ -114,6 +114,7 @@ const HANGING_TESTS = new Set([
   "test/language/statements/class/elements/private-methods/prod-private-generator.js", // hangs (#793)
   "test/language/statements/class/elements/private-methods/prod-private-method-initialize-order.js", // hangs (#793)
   "test/language/statements/class/elements/same-line-gen-rs-static-privatename-identifier-alt.js",
+  "test/built-ins/String/prototype/lastIndexOf/S15.5.4.8_A9.js", // hangs in wrapped context
 ]);
 
 export function shouldSkip(
