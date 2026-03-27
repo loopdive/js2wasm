@@ -11998,13 +11998,33 @@ function compileCallExpression(
     // Fallback .toString() for any type not already handled above
     // Handles: function.toString(), object.toString(), array.toString(), class instance.toString()
     if (propAccess.name.text === "toString" && expr.arguments.length === 0) {
-      const exprType = compileExpression(ctx, fctx, propAccess.expression);
-      if (exprType && exprType !== VOID_RESULT) {
-        fctx.body.push({ op: "drop" });
-      }
-      // For arrays, emit "[object Array]"; for everything else, "[object Object]"
       const tsType = ctx.checker.getTypeAtLocation(propAccess.expression);
       const wasm = resolveWasmType(ctx, tsType);
+
+      // For externref values (e.g. RegExp.exec result, host objects), delegate to JS toString
+      if (wasm.kind === "externref") {
+        const toStrIdx = ensureLateImport(ctx, "__extern_toString", [{ kind: "externref" }], [{ kind: "externref" }]);
+        flushLateImportShifts(ctx, fctx);
+        if (toStrIdx !== undefined) {
+          compileExpression(ctx, fctx, propAccess.expression);
+          fctx.body.push({ op: "call", funcIdx: toStrIdx });
+          return { kind: "externref" };
+        }
+      }
+
+      const exprType = compileExpression(ctx, fctx, propAccess.expression);
+      if (exprType && exprType !== VOID_RESULT) {
+        // If the compiled expression produced an externref, try JS toString
+        if (exprType.kind === "externref") {
+          const toStrIdx = ensureLateImport(ctx, "__extern_toString", [{ kind: "externref" }], [{ kind: "externref" }]);
+          flushLateImportShifts(ctx, fctx);
+          if (toStrIdx !== undefined) {
+            fctx.body.push({ op: "call", funcIdx: toStrIdx });
+            return { kind: "externref" };
+          }
+        }
+        fctx.body.push({ op: "drop" });
+      }
       // Check if it's an array type (ref to vec struct)
       let isArray = false;
       if (wasm.kind === "ref" || wasm.kind === "ref_null") {
