@@ -1212,7 +1212,8 @@ function _emitStructFieldGettersInner(ctx: CodegenContext): void {
     if (typeIdx === undefined) continue;
 
     // Skip internal/wrapper types
-    if (structName.startsWith("Wrapper") || structName === "$AnyValue") continue;
+    if (structName.startsWith("Wrapper") || structName === "$AnyValue" ||
+        structName.startsWith("__vec_") || structName.startsWith("__arr_")) continue;
 
     for (let i = 0; i < fields.length; i++) {
       const field = fields[i];
@@ -1300,7 +1301,8 @@ function emitStructFieldNamesExport(
   for (const [structName, fields] of ctx.structFields) {
     const typeIdx = ctx.structMap.get(structName);
     if (typeIdx === undefined) continue;
-    if (structName.startsWith("Wrapper") || structName === "$AnyValue") continue;
+    if (structName.startsWith("Wrapper") || structName === "$AnyValue" ||
+        structName.startsWith("__vec_") || structName.startsWith("__arr_")) continue;
 
     const names: string[] = [];
     for (const field of fields) {
@@ -1386,9 +1388,10 @@ function emitStructFieldNamesExport(
  * the length or the indexed element, boxing the result to externref.
  */
 function emitVecAccessExports(ctx: CodegenContext): void {
-  // Only emit vec access exports if iterator imports are used (for-of on non-array types).
-  // This avoids adding unnecessary __box_number imports to simple modules.
-  if (!ctx.funcMap.has("__iterator")) return;
+  // Emit vec access exports when the runtime may need to introspect WasmGC arrays:
+  // - for-of iteration on non-array types (__iterator)
+  // - JSON.stringify on arrays of structs (JSON_stringify)
+  if (!ctx.funcMap.has("__iterator") && !ctx.funcMap.has("JSON_stringify")) return;
   try {
     _emitVecAccessExportsInner(ctx);
   } catch {
@@ -2577,7 +2580,8 @@ function finalizeUnifiedCollector(
     addUnionImports(ctx);
   }
   if (state.jsonNeedStringify) {
-    const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
+    // (value: externref, replacer: externref, space: externref) -> externref
+    const typeIdx = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "JSON_stringify", { kind: "func", typeIdx });
   }
   if (state.jsonNeedParse) {
@@ -7731,7 +7735,8 @@ function collectJsonImports(
     addUnionImports(ctx);
   }
   if (needStringify) {
-    const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
+    // (value: externref, replacer: externref, space: externref) -> externref
+    const typeIdx = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "JSON_stringify", { kind: "func", typeIdx });
   }
   if (needParse) {

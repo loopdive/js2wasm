@@ -10669,10 +10669,29 @@ function compileCallExpression(
         const importName = `JSON_${method}`;
         const funcIdx = ctx.funcMap.get(importName);
         if (funcIdx !== undefined) {
-          // Compile argument and coerce to externref if needed
+          // Compile first argument and coerce to externref
           const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
           if (argType && argType.kind !== "externref") {
             coerceType(ctx, fctx, argType, { kind: "externref" });
+          }
+          if (method === "stringify") {
+            // Pass replacer (arg 2) and space (arg 3), or null sentinels
+            if (expr.arguments.length >= 2) {
+              const repType = compileExpression(ctx, fctx, expr.arguments[1]!);
+              if (repType && repType.kind !== "externref") {
+                coerceType(ctx, fctx, repType, { kind: "externref" });
+              }
+            } else {
+              fctx.body.push({ op: "ref.null.extern" } as unknown as Instr);
+            }
+            if (expr.arguments.length >= 3) {
+              const spType = compileExpression(ctx, fctx, expr.arguments[2]!);
+              if (spType && spType.kind !== "externref") {
+                coerceType(ctx, fctx, spType, { kind: "externref" });
+              }
+            } else {
+              fctx.body.push({ op: "ref.null.extern" } as unknown as Instr);
+            }
           }
           fctx.body.push({ op: "call", funcIdx });
           return { kind: "externref" };
