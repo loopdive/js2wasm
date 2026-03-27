@@ -1,39 +1,43 @@
 ---
 name: project_next_session
-description: 2026-03-27 session state — 20,162 pass after regression fixes, Temporal skipped
+description: 2026-03-27 session end — 20,162 pass (+2,560 from 17,602 baseline)
 type: project
 ---
 
-## Current state (2026-03-27 ~00:40 UTC)
+## Final state (2026-03-27 ~01:15 UTC)
 
 **Git:** main branch, pushed
-**Latest test262:** 20,162 pass / 29,696 fail (49,858 total)
-**Pre-session baseline:** 17,602 pass
+**Test262:** 20,162 pass / 29,696 fail (49,858 total, Temporal skipped)
+**Pre-session:** 17,602 pass
 **Session gain:** +2,560
 
-## Key fixes this session
-1. **Regression fix** — reverted unresolvable method call TypeError → externref fallback (+1,709)
-2. **Struct.new rewrite** — forward type-stack simulation replaces fragile backward walk
-3. **TDZ compile-away** — static analysis skips unnecessary runtime checks
-4. **__proto__ field removed** — was added to all structs unconditionally, broke struct.new args
-5. **Cache fix** — bundle-based hash + auto-rebuild at import time
-6. **Exception tag export** — JS host reads exception payloads correctly
-7. **catch_all + rethrow** — foreign JS exceptions caught properly
-8. **Property descriptors** — per-shape flags, getOwnPropertyDescriptor, freeze/seal compile-away
-9. **Skip filters** — Temporal, strict-mode-only, private class element hangs
-10. **Test infra** — flock, auto-rebuild, 10s timeout, devs run npm test in worktree
+## Fixes landed
+- Exception tag export, catch_all, rethrow (#798a/b/c)
+- Property descriptor table, getOwnPropertyDescriptor, freeze/seal (#797a/b/d)
+- Struct.new forward type-stack simulation (replaced fragile backward walk)
+- TDZ compile-away (static analysis)
+- Null guard skip for provably non-null, typeof compile-away (#800)
+- Method call fallback reverted from TypeError to externref (fixed -2,281 regression)
+- __proto__ field removed (fixed -3,419 regression)
+- Cache: bundle-based hash + auto-rebuild
+- Test infra: flock, Temporal skip, strict mode skip, private class skip
+- Tuple literal type fix for destructuring defaults (#801)
 
-## Active agents
-- dev-arr: #801 array literal type mismatch (537 fail)
-- po: plan updates
+## Top remaining CE patterns
+1. not enough arguments (3,492 CE) — struct.new/call arg count
+2. expected N elements on stack (2,901 CE) — stack balance
+3. call[] type mismatch (2,637 CE) — argument types
+4. local.set type mismatch (1,380 CE)
 
-## Remaining regression
-Still -1,099 below adjusted baseline from #775/#789 null guards. These guards throw TypeError on for-of null, element access null, etc. Mostly correct JS behavior but some overcatch.
+## Top remaining fail patterns
+1. gen.next not a function (1,164) — generator runtime
+2. illegal cast (1,026) — ref.cast wrong type
+3. stack overflow (958) — infinite recursion
 
-## Open issues (77 in ready/)
-Top priorities: #801 (537 fail), #794 residual, #800 remaining audit items
+## Principles
+- Compile away, don't emulate
+- No runtime fields on all structs (conditional only)
+- TTL runs test262, devs run npm test in worktree + flock
+- Bundle-based cache hash, auto-rebuild at import time
 
-## Principles established
-- **Compile away, don't emulate** — resolve at compile time, zero runtime overhead
-- **No host imports for features that can be static** — freeze/seal/typeof/TDZ all compile-time
-- **Dynamic proto only when needed** — #802, conditional field, not all structs
+## 77 open issues in ready/
