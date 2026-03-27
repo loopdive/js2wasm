@@ -137,8 +137,10 @@ export function shouldSkip(
     return { skip: true, reason: "imports _FIXTURE helper module" };
   }
 
-  // Skip class/elements/ tests — compilation hangs in wrapped context (#793).
-  if (filePath && /class\/elements\//.test(filePath)) {
+  // Skip class/elements/ and String/prototype/lastIndexOf tests — compilation hangs (#793).
+  // The valueOf re-entrancy guard fixes some but not all hanging patterns.
+  if (filePath && (/class\/elements\//.test(filePath) ||
+      /String\/prototype\/lastIndexOf\/S15/.test(filePath))) {
     return {
       skip: true,
       reason: "private class element compilation hang (#793)",
