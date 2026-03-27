@@ -104,10 +104,19 @@
 <body>
   <h1>ts2wasm Test262 Conformance</h1>
   <p class="subtitle">Historical trend of test262 pass/fail/compile-error counts</p>
+  <p class="subtitle" id="run-timestamp" style="display:none"></p>
 
   <div id="loading">Loading data...</div>
   <div id="content" style="display:none">
     <div class="stats-row" id="stats-row"></div>
+    <div id="skip-reasons-container" class="table-container" style="display:none;margin-bottom:24px">
+      <h2>Unsupported Features (Skipped Tests)</h2>
+      <table>
+        <thead><tr><th>Feature / Reason</th><th class="num">Tests Skipped</th></tr></thead>
+        <tbody id="skip-reasons-body"></tbody>
+      </table>
+    </div>
+
     <div class="chart-container">
       <h2>Conformance Trend</h2>
       <div id="chart"></div>
@@ -338,8 +347,42 @@
       }).join('');
     }
 
+    async function loadReport() {
+      try {
+        const res = await fetch('test262-report.json');
+        if (!res.ok) return null;
+        return await res.json();
+      } catch { return null; }
+    }
+
+    function renderTimestamp(report) {
+      if (!report?.timestamp) return;
+      const el = document.getElementById('run-timestamp');
+      const d = new Date(report.timestamp);
+      el.textContent = 'Last run: ' + d.toLocaleString();
+      el.style.display = 'block';
+    }
+
+    function renderSkipReasons(report) {
+      if (!report?.skip_reasons) return;
+      const entries = Object.entries(report.skip_reasons).sort((a, b) => b[1] - a[1]);
+      if (entries.length === 0) return;
+      const container = document.getElementById('skip-reasons-container');
+      const tbody = document.getElementById('skip-reasons-body');
+      tbody.innerHTML = entries.map(([reason, count]) =>
+        `<tr><td>${reason}</td><td class="num">${count.toLocaleString()}</td></tr>`
+      ).join('');
+      container.style.display = 'block';
+    }
+
     (async () => {
-      const data = await loadData();
+      const [data, report] = await Promise.all([loadData(), loadReport()]);
+
+      if (report) {
+        renderTimestamp(report);
+        renderSkipReasons(report);
+      }
+
       if (!data || data.length === 0) return;
 
       document.getElementById('loading').style.display = 'none';

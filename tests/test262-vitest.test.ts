@@ -331,6 +331,11 @@ const catCounts: Record<string, { pass: number; fail: number; compile_error: num
  */
 const errorCategoryCounts: Record<string, number> = {};
 
+/**
+ * Skip reason counts — tracks why tests were skipped (unsupported features).
+ */
+const skipReasonCounts: Record<string, number> = {};
+
 /** Thrown by recordResult for non-passing tests so vitest reports real failures */
 class ConformanceError extends Error {
   constructor(status: string, detail?: string) {
@@ -360,6 +365,11 @@ function recordResult(file: string, category: string, status: string, error?: st
     errorCategoryCounts[errorCategory] = (errorCategoryCounts[errorCategory] || 0) + 1;
   }
 
+  // Track skip reasons
+  if (status === "skip" && error) {
+    skipReasonCounts[error] = (skipReasonCounts[error] || 0) + 1;
+  }
+
   // Periodically flush JSONL and update report.json for live viewing
   flushCount++;
   if (flushCount % 50 === 0) {
@@ -373,6 +383,7 @@ function recordResult(file: string, category: string, status: string, error?: st
         .map(([name, c]) => ({ name, ...c }))
         .sort((a, b) => a.name.localeCompare(b.name)),
       error_categories: { ...errorCategoryCounts },
+      skip_reasons: { ...skipReasonCounts },
     };
     try { writeSync(REPORT_PATH, JSON.stringify(report, null, 2)); } catch {}
   }
@@ -394,6 +405,7 @@ afterAll(() => {
       .map(([name, c]) => ({ name, ...c }))
       .sort((a, b) => a.name.localeCompare(b.name)),
     error_categories: { ...errorCategoryCounts },
+    skip_reasons: { ...skipReasonCounts },
   };
   writeSync(REPORT_PATH, JSON.stringify(report, null, 2));
 
@@ -405,6 +417,16 @@ afterAll(() => {
       console.log(`  ${cat}: ${count}`);
     }
   }
+
+  // Print skip reason breakdown
+  const skipEntries = Object.entries(skipReasonCounts).sort((a, b) => b[1] - a[1]);
+  if (skipEntries.length > 0) {
+    console.log(`\nUnsupported features (skipped):`);
+    for (const [reason, count] of skipEntries) {
+      console.log(`  ${reason}: ${count}`);
+    }
+  }
+
   console.log(`\nTest262: ${summary.total} total — ${summary.pass} pass, ${summary.fail} fail, ${summary.compile_error} CE, ${summary.skip} skip`);
 
   // Append to historical index (runs/index.json) for trend tracking
