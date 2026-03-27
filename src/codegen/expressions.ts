@@ -11203,18 +11203,25 @@ function compileCallExpression(
 
     // Primitive method calls: number.toString(), number.toFixed()
     if (isNumberType(receiverType) && propAccess.name.text === "toString") {
-      // RangeError: if radix argument is provided, must be 2-36
+      // RangeError: if radix argument is provided, must be integer 2-36
       if (expr.arguments.length > 0) {
         compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "f64" });
+        // Floor the radix (ToInteger semantics: NaN→0, 2.5→2, etc.)
+        fctx.body.push({ op: "f64.floor" } as unknown as Instr);
         const radixLocal = allocLocal(fctx, `__radix_${fctx.locals.length}`, { kind: "f64" });
         fctx.body.push({ op: "local.tee", index: radixLocal });
-        // Check radix < 2
+        // Check radix < 2 (also catches NaN since NaN < 2 after floor(NaN)=NaN is still false)
         fctx.body.push({ op: "f64.const", value: 2 });
         fctx.body.push({ op: "f64.lt" });
         // Check radix > 36
         fctx.body.push({ op: "local.get", index: radixLocal });
         fctx.body.push({ op: "f64.const", value: 36 });
         fctx.body.push({ op: "f64.gt" });
+        fctx.body.push({ op: "i32.or" });
+        // Check radix is NaN (NaN != NaN)
+        fctx.body.push({ op: "local.get", index: radixLocal });
+        fctx.body.push({ op: "local.get", index: radixLocal });
+        fctx.body.push({ op: "f64.ne" });
         fctx.body.push({ op: "i32.or" });
         {
           const rangeErrMsg = "RangeError: toString() radix must be between 2 and 36";
@@ -11296,7 +11303,7 @@ function compileCallExpression(
       }
       if (expr.arguments.length > 0) {
         compileExpression(ctx, fctx, expr.arguments[0]!);
-        // RangeError: precision must be 1-100
+        // RangeError: precision must be 1-100 (NaN → 0 → invalid since 0 < 1)
         const precLocal = allocLocal(fctx, `__toPrecision_prec_${fctx.locals.length}`, { kind: "f64" });
         fctx.body.push({ op: "local.tee", index: precLocal });
         fctx.body.push({ op: "f64.const", value: 1 });
@@ -11304,6 +11311,11 @@ function compileCallExpression(
         fctx.body.push({ op: "local.get", index: precLocal });
         fctx.body.push({ op: "f64.const", value: 100 });
         fctx.body.push({ op: "f64.gt" });
+        fctx.body.push({ op: "i32.or" });
+        // NaN check: NaN != NaN
+        fctx.body.push({ op: "local.get", index: precLocal });
+        fctx.body.push({ op: "local.get", index: precLocal });
+        fctx.body.push({ op: "f64.ne" });
         fctx.body.push({ op: "i32.or" });
         {
           const rangeErrMsg = "RangeError: toPrecision() argument must be between 1 and 100";
@@ -12952,9 +12964,11 @@ function compileCallExpression(
         isNumberType(receiverType) &&
         (methodName === "toString" || methodName === "toFixed" || methodName === "toPrecision" || methodName === "toExponential")
       ) {
-        // RangeError validation for toString(radix) — radix must be 2-36
+        // RangeError validation for toString(radix) — radix must be integer 2-36
         if (methodName === "toString" && expr.arguments.length > 0) {
           compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "f64" });
+          // Floor the radix (ToInteger semantics)
+          fctx.body.push({ op: "f64.floor" } as unknown as Instr);
           const radixLocal = allocLocal(fctx, `__radix_${fctx.locals.length}`, { kind: "f64" });
           fctx.body.push({ op: "local.tee", index: radixLocal });
           fctx.body.push({ op: "f64.const", value: 2 });
@@ -12962,6 +12976,11 @@ function compileCallExpression(
           fctx.body.push({ op: "local.get", index: radixLocal });
           fctx.body.push({ op: "f64.const", value: 36 });
           fctx.body.push({ op: "f64.gt" });
+          fctx.body.push({ op: "i32.or" });
+          // Check radix is NaN (NaN != NaN)
+          fctx.body.push({ op: "local.get", index: radixLocal });
+          fctx.body.push({ op: "local.get", index: radixLocal });
+          fctx.body.push({ op: "f64.ne" });
           fctx.body.push({ op: "i32.or" });
           {
             const rangeErrMsg = "RangeError: toString() radix must be between 2 and 36";
@@ -13016,7 +13035,7 @@ function compileCallExpression(
         }
         if (methodName === "toPrecision" && expr.arguments.length > 0) {
           compileExpression(ctx, fctx, expr.arguments[0]!);
-          // RangeError: precision must be 1-100
+          // RangeError: precision must be 1-100 (NaN → 0 → invalid since 0 < 1)
           const precLocal = allocLocal(fctx, `__toPrecision_prec_${fctx.locals.length}`, { kind: "f64" });
           fctx.body.push({ op: "local.tee", index: precLocal });
           fctx.body.push({ op: "f64.const", value: 1 });
@@ -13024,6 +13043,11 @@ function compileCallExpression(
           fctx.body.push({ op: "local.get", index: precLocal });
           fctx.body.push({ op: "f64.const", value: 100 });
           fctx.body.push({ op: "f64.gt" });
+          fctx.body.push({ op: "i32.or" });
+          // NaN check: NaN != NaN
+          fctx.body.push({ op: "local.get", index: precLocal });
+          fctx.body.push({ op: "local.get", index: precLocal });
+          fctx.body.push({ op: "f64.ne" });
           fctx.body.push({ op: "i32.or" });
           {
             const rangeErrMsg = "RangeError: toPrecision() argument must be between 1 and 100";
@@ -15883,12 +15907,151 @@ function compileNewExpression(
     const ctorName = ts.isIdentifier(expr.expression)
       ? expr.expression.text
       : "__unknown";
+
+    // RangeError validation for built-in constructors (type resolves to any
+    // when lib declarations are not loaded, so className is undefined here)
+    const args = expr.arguments ?? [];
+
+    // new ArrayBuffer(byteLength) — validate non-negative integer length
+    if (ctorName === "ArrayBuffer" && args.length >= 1) {
+      compileExpression(ctx, fctx, args[0]!, { kind: "f64" });
+      const lenF64 = allocLocal(fctx, `__ab_len_f64_${fctx.locals.length}`, { kind: "f64" });
+      fctx.body.push({ op: "local.set", index: lenF64 });
+      // Check: len != floor(len) (non-integer or NaN)
+      fctx.body.push({ op: "local.get", index: lenF64 });
+      fctx.body.push({ op: "local.get", index: lenF64 });
+      fctx.body.push({ op: "f64.floor" } as unknown as Instr);
+      fctx.body.push({ op: "f64.ne" });
+      // Check: len < 0
+      fctx.body.push({ op: "local.get", index: lenF64 });
+      fctx.body.push({ op: "f64.const", value: 0 });
+      fctx.body.push({ op: "f64.lt" });
+      fctx.body.push({ op: "i32.or" });
+      {
+        const rangeErrMsg = "RangeError: Invalid array buffer length";
+        addStringConstantGlobal(ctx, rangeErrMsg);
+        const strIdx = ctx.stringGlobalMap.get(rangeErrMsg)!;
+        const tagIdx = ensureExnTag(ctx);
+        fctx.body.push({
+          op: "if",
+          blockType: { kind: "empty" },
+          then: [
+            { op: "global.get", index: strIdx } as Instr,
+            { op: "throw", tagIdx } as Instr,
+          ],
+          else: [],
+        });
+      }
+    }
+
+    // new DataView(buffer, byteOffset, byteLength) — validate offset and length
+    if (ctorName === "DataView") {
+      // Validate byteOffset (2nd arg) if provided
+      if (args.length >= 2) {
+        compileExpression(ctx, fctx, args[1]!, { kind: "f64" });
+        const offsetF64 = allocLocal(fctx, `__dv_offset_f64_${fctx.locals.length}`, { kind: "f64" });
+        fctx.body.push({ op: "local.set", index: offsetF64 });
+        // Check: offset < 0
+        fctx.body.push({ op: "local.get", index: offsetF64 });
+        fctx.body.push({ op: "f64.const", value: 0 });
+        fctx.body.push({ op: "f64.lt" });
+        // Check: offset != floor(offset) (NaN/non-integer)
+        fctx.body.push({ op: "local.get", index: offsetF64 });
+        fctx.body.push({ op: "local.get", index: offsetF64 });
+        fctx.body.push({ op: "f64.floor" } as unknown as Instr);
+        fctx.body.push({ op: "f64.ne" });
+        fctx.body.push({ op: "i32.or" });
+        {
+          const rangeErrMsg = "RangeError: Start offset is outside the bounds of the buffer";
+          addStringConstantGlobal(ctx, rangeErrMsg);
+          const strIdx = ctx.stringGlobalMap.get(rangeErrMsg)!;
+          const tagIdx = ensureExnTag(ctx);
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: [
+              { op: "global.get", index: strIdx } as Instr,
+              { op: "throw", tagIdx } as Instr,
+            ],
+            else: [],
+          });
+        }
+      }
+      // Validate byteLength (3rd arg) if provided
+      if (args.length >= 3) {
+        compileExpression(ctx, fctx, args[2]!, { kind: "f64" });
+        const lenF64 = allocLocal(fctx, `__dv_len_f64_${fctx.locals.length}`, { kind: "f64" });
+        fctx.body.push({ op: "local.set", index: lenF64 });
+        // Check: len < 0
+        fctx.body.push({ op: "local.get", index: lenF64 });
+        fctx.body.push({ op: "f64.const", value: 0 });
+        fctx.body.push({ op: "f64.lt" });
+        // Check: len != floor(len) (NaN/non-integer)
+        fctx.body.push({ op: "local.get", index: lenF64 });
+        fctx.body.push({ op: "local.get", index: lenF64 });
+        fctx.body.push({ op: "f64.floor" } as unknown as Instr);
+        fctx.body.push({ op: "f64.ne" });
+        fctx.body.push({ op: "i32.or" });
+        {
+          const rangeErrMsg = "RangeError: Invalid DataView length";
+          addStringConstantGlobal(ctx, rangeErrMsg);
+          const strIdx = ctx.stringGlobalMap.get(rangeErrMsg)!;
+          const tagIdx = ensureExnTag(ctx);
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: [
+              { op: "global.get", index: strIdx } as Instr,
+              { op: "throw", tagIdx } as Instr,
+            ],
+            else: [],
+          });
+        }
+      }
+    }
+
+    // new Array(n) — validate non-negative integer length < 2^32
+    if (ctorName === "Array" && args.length === 1) {
+      compileExpression(ctx, fctx, args[0]!, { kind: "f64" });
+      const nF64 = allocLocal(fctx, `__arr_n_f64_${fctx.locals.length}`, { kind: "f64" });
+      fctx.body.push({ op: "local.set", index: nF64 });
+      // Check: n != floor(n) (non-integer or NaN)
+      fctx.body.push({ op: "local.get", index: nF64 });
+      fctx.body.push({ op: "local.get", index: nF64 });
+      fctx.body.push({ op: "f64.floor" } as unknown as Instr);
+      fctx.body.push({ op: "f64.ne" });
+      // Check: n < 0
+      fctx.body.push({ op: "local.get", index: nF64 });
+      fctx.body.push({ op: "f64.const", value: 0 });
+      fctx.body.push({ op: "f64.lt" });
+      fctx.body.push({ op: "i32.or" });
+      // Check: n >= 2^32
+      fctx.body.push({ op: "local.get", index: nF64 });
+      fctx.body.push({ op: "f64.const", value: 4294967296 });
+      fctx.body.push({ op: "f64.ge" });
+      fctx.body.push({ op: "i32.or" });
+      {
+        const rangeErrMsg = "RangeError: Invalid array length";
+        addStringConstantGlobal(ctx, rangeErrMsg);
+        const strIdx = ctx.stringGlobalMap.get(rangeErrMsg)!;
+        const tagIdx = ensureExnTag(ctx);
+        fctx.body.push({
+          op: "if",
+          blockType: { kind: "empty" },
+          then: [
+            { op: "global.get", index: strIdx } as Instr,
+            { op: "throw", tagIdx } as Instr,
+          ],
+          else: [],
+        });
+      }
+    }
+
     const importName = `__new_${ctorName}`;
     const funcIdx = ctx.funcMap.get(importName);
 
     if (funcIdx !== undefined) {
       // Compile arguments as externref
-      const args = expr.arguments ?? [];
       for (const arg of args) {
         const resultType = compileExpression(ctx, fctx, arg, {
           kind: "externref",
@@ -16075,6 +16238,37 @@ function compileNewExpression(
     if (args.length >= 1) {
       // new ArrayBuffer(byteLength) → create vec with byteLength elements, all 0
       compileExpression(ctx, fctx, args[0]!, { kind: "f64" });
+
+      // RangeError validation: byteLength must be a non-negative integer < 2^31
+      // (We use i32 internally so cap at i32 max)
+      const lenF64Local = allocLocal(fctx, `__ab_len_f64_${fctx.locals.length}`, { kind: "f64" });
+      fctx.body.push({ op: "local.tee", index: lenF64Local });
+      // Check len != floor(len) (non-integer or NaN)
+      fctx.body.push({ op: "local.get", index: lenF64Local });
+      fctx.body.push({ op: "f64.floor" } as unknown as Instr);
+      fctx.body.push({ op: "f64.ne" });
+      // Check len < 0
+      fctx.body.push({ op: "local.get", index: lenF64Local });
+      fctx.body.push({ op: "f64.const", value: 0 });
+      fctx.body.push({ op: "f64.lt" });
+      fctx.body.push({ op: "i32.or" });
+      {
+        const rangeErrMsg = "RangeError: Invalid array buffer length";
+        addStringConstantGlobal(ctx, rangeErrMsg);
+        const strIdx = ctx.stringGlobalMap.get(rangeErrMsg)!;
+        const tagIdx = ensureExnTag(ctx);
+        fctx.body.push({
+          op: "if",
+          blockType: { kind: "empty" },
+          then: [
+            { op: "global.get", index: strIdx } as Instr,
+            { op: "throw", tagIdx } as Instr,
+          ],
+          else: [],
+        });
+      }
+
+      fctx.body.push({ op: "local.get", index: lenF64Local });
       fctx.body.push({ op: "i32.trunc_sat_f64_s" });
     } else {
       fctx.body.push({ op: "i32.const", value: 0 });
@@ -16090,22 +16284,123 @@ function compileNewExpression(
     return { kind: "ref_null", typeIdx: vecTypeIdx };
   }
 
-  // new DataView(buffer) → wrap the ArrayBuffer reference (same vec struct)
+  // new DataView(buffer) / new DataView(buffer, byteOffset) / new DataView(buffer, byteOffset, byteLength)
   if (className === "DataView") {
     const elemType: ValType = { kind: "i32" };
     const vecTypeIdx = getOrRegisterVecType(ctx, "i32_byte", elemType);
     const args = expr.arguments ?? [];
+
     if (args.length >= 1) {
-      // new DataView(buffer) → compile buffer arg, which should be an ArrayBuffer vec ref
+      // Compile buffer arg first
       const resultType = compileExpression(ctx, fctx, args[0]!);
-      // If the result is already the right vec type, return it directly
+
+      // Validate byteOffset (2nd arg) if provided
+      if (args.length >= 2) {
+        // Store buffer in local so we can access its length for validation
+        const bufLocal = allocLocal(fctx, `__dv_buf_${fctx.locals.length}`,
+          resultType && (resultType.kind === "ref" || resultType.kind === "ref_null")
+            ? resultType : { kind: "externref" });
+        fctx.body.push({ op: "local.set", index: bufLocal });
+
+        compileExpression(ctx, fctx, args[1]!, { kind: "f64" });
+        const offsetF64 = allocLocal(fctx, `__dv_offset_f64_${fctx.locals.length}`, { kind: "f64" });
+        fctx.body.push({ op: "local.tee", index: offsetF64 });
+        // Check: offset < 0
+        fctx.body.push({ op: "f64.const", value: 0 });
+        fctx.body.push({ op: "f64.lt" });
+        // Check: offset != floor(offset) (NaN/non-integer)
+        fctx.body.push({ op: "local.get", index: offsetF64 });
+        fctx.body.push({ op: "local.get", index: offsetF64 });
+        fctx.body.push({ op: "f64.floor" } as unknown as Instr);
+        fctx.body.push({ op: "f64.ne" });
+        fctx.body.push({ op: "i32.or" });
+
+        // If buffer is a vec struct, also check offset > bufferByteLength
+        if (resultType && (resultType.kind === "ref" || resultType.kind === "ref_null")) {
+          fctx.body.push({ op: "local.get", index: offsetF64 });
+          fctx.body.push({ op: "local.get", index: bufLocal });
+          fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 }); // buffer length
+          fctx.body.push({ op: "f64.convert_i32_s" });
+          fctx.body.push({ op: "f64.gt" });
+          fctx.body.push({ op: "i32.or" });
+        }
+
+        {
+          const rangeErrMsg = "RangeError: Start offset is outside the bounds of the buffer";
+          addStringConstantGlobal(ctx, rangeErrMsg);
+          const strIdx = ctx.stringGlobalMap.get(rangeErrMsg)!;
+          const tagIdx = ensureExnTag(ctx);
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: [
+              { op: "global.get", index: strIdx } as Instr,
+              { op: "throw", tagIdx } as Instr,
+            ],
+            else: [],
+          });
+        }
+
+        // Validate byteLength (3rd arg) if provided
+        if (args.length >= 3) {
+          compileExpression(ctx, fctx, args[2]!, { kind: "f64" });
+          const lenF64 = allocLocal(fctx, `__dv_len_f64_${fctx.locals.length}`, { kind: "f64" });
+          fctx.body.push({ op: "local.tee", index: lenF64 });
+          // Check: len < 0
+          fctx.body.push({ op: "f64.const", value: 0 });
+          fctx.body.push({ op: "f64.lt" });
+          // Check: len != floor(len) (NaN/non-integer)
+          fctx.body.push({ op: "local.get", index: lenF64 });
+          fctx.body.push({ op: "local.get", index: lenF64 });
+          fctx.body.push({ op: "f64.floor" } as unknown as Instr);
+          fctx.body.push({ op: "f64.ne" });
+          fctx.body.push({ op: "i32.or" });
+
+          // Check: offset + length > bufferByteLength
+          if (resultType && (resultType.kind === "ref" || resultType.kind === "ref_null")) {
+            fctx.body.push({ op: "local.get", index: offsetF64 });
+            fctx.body.push({ op: "local.get", index: lenF64 });
+            fctx.body.push({ op: "f64.add" });
+            fctx.body.push({ op: "local.get", index: bufLocal });
+            fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
+            fctx.body.push({ op: "f64.convert_i32_s" });
+            fctx.body.push({ op: "f64.gt" });
+            fctx.body.push({ op: "i32.or" });
+          }
+
+          {
+            const rangeErrMsg = "RangeError: Invalid DataView length";
+            addStringConstantGlobal(ctx, rangeErrMsg);
+            const strIdx = ctx.stringGlobalMap.get(rangeErrMsg)!;
+            const tagIdx = ensureExnTag(ctx);
+            fctx.body.push({
+              op: "if",
+              blockType: { kind: "empty" },
+              then: [
+                { op: "global.get", index: strIdx } as Instr,
+                { op: "throw", tagIdx } as Instr,
+              ],
+              else: [],
+            });
+          }
+        }
+
+        // Restore buffer on stack
+        fctx.body.push({ op: "local.get", index: bufLocal });
+        if (resultType && (resultType.kind === "ref" || resultType.kind === "ref_null")) {
+          return resultType;
+        }
+        if (resultType) return resultType;
+        return { kind: "ref_null", typeIdx: vecTypeIdx };
+      }
+
+      // No offset/length args — just return buffer as-is
       if (
         resultType &&
         (resultType.kind === "ref" || resultType.kind === "ref_null")
       ) {
         return resultType;
       }
-      // If we got a different type (e.g. externref), just return as-is
       if (resultType) return resultType;
       return { kind: "ref_null", typeIdx: vecTypeIdx };
     } else {
