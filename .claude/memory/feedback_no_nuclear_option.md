@@ -1,11 +1,22 @@
 ---
 name: feedback_no_nuclear_option
-description: Never take destructive shortcuts ("nuclear option") without explicit user consent
+description: Never take destructive/irreversible actions without waiting for explicit user confirmation in a separate turn
 type: feedback
 ---
 
-Never delete, drop, or overwrite work to resolve conflicts without asking first. Always take the careful path (renumber, rename, manual merge) even if it's slower.
+Never take irreversible actions without **waiting for explicit user confirmation in a separate turn**:
+- Sending shutdown requests to agents
+- Killing agent tmux panes
+- Deleting worktrees or files
+- Reverting commits
 
-**Why:** Deleted issue files that tracked real work from the session. User had to catch the mistake and ask for restoration.
+Pattern: ask → **end your response** → wait for user reply → then act.
 
-**How to apply:** When facing merge conflicts or numbering collisions, always renumber/rename to coexist. Never "accept theirs and drop ours" without explicit approval. If unsure, ask.
+**"No code changes" does NOT mean stuck.** Devs may be researching, reading .wat files, testing approaches. Don't assume agents are stuck just because they haven't written code in 15 minutes. Research is valid work.
+
+**Why:**
+- Killed dev-6 while user was actively talking to it
+- Killed 5 "stuck" devs that may have been doing deep research
+- Deleted issue files that tracked real work
+
+**How to apply:** Before killing any agent: ask the user "dev-X has no changes after N minutes — should I kill it?" and WAIT for "yes". Don't ask and kill in the same turn.
