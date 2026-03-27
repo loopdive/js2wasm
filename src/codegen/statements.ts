@@ -3091,11 +3091,14 @@ function compileWhileStatement(
   fctx.body.push({ op: "i32.eqz" });
   fctx.body.push({ op: "br_if", depth: 1 }); // break out of block
 
-  // Compile body
+  // Compile body — must save/restore block-scoped shadows so that let/const
+  // declarations inside the loop body do not leak into the outer scope (#817).
   if (ts.isBlock(stmt.statement)) {
+    const savedScope = saveBlockScopedShadows(fctx, stmt.statement);
     for (const s of stmt.statement.statements) {
       compileStatement(ctx, fctx, s);
     }
+    restoreBlockScopedShadows(fctx, savedScope);
   } else {
     compileStatement(ctx, fctx, stmt.statement);
   }
@@ -3392,11 +3395,14 @@ function compileForStatement(
     }
   }
 
-  // Body (inside $continue block)
+  // Body (inside $continue block) — save/restore block-scoped shadows so that
+  // let/const declarations inside the loop body do not leak into outer scope (#817).
   if (ts.isBlock(stmt.statement)) {
+    const savedScope = saveBlockScopedShadows(fctx, stmt.statement);
     for (const s of stmt.statement.statements) {
       compileStatement(ctx, fctx, s);
     }
+    restoreBlockScopedShadows(fctx, savedScope);
   } else {
     compileStatement(ctx, fctx, stmt.statement);
   }
@@ -3487,11 +3493,13 @@ function compileDoWhileStatement(
   fctx.breakStack.push(2);
   fctx.continueStack.push(0);
 
-  // Compile body
+  // Compile body — save/restore block-scoped shadows for let/const (#817).
   if (ts.isBlock(stmt.statement)) {
+    const savedScope = saveBlockScopedShadows(fctx, stmt.statement);
     for (const s of stmt.statement.statements) {
       compileStatement(ctx, fctx, s);
     }
+    restoreBlockScopedShadows(fctx, savedScope);
   } else {
     compileStatement(ctx, fctx, stmt.statement);
   }
@@ -4379,11 +4387,13 @@ function compileForOfString(
   fctx.body.push({ op: "call", funcIdx: charAtIdx });
   fctx.body.push({ op: "local.set", index: elemLocal });
 
-  // Compile body
+  // Compile body — save/restore block-scoped shadows for let/const (#817).
   if (ts.isBlock(stmt.statement)) {
+    const savedScope = saveBlockScopedShadows(fctx, stmt.statement);
     for (const s of stmt.statement.statements) {
       compileStatement(ctx, fctx, s);
     }
+    restoreBlockScopedShadows(fctx, savedScope);
   } else {
     compileStatement(ctx, fctx, stmt.statement);
   }
@@ -4621,11 +4631,13 @@ function compileForOfArray(
     compileForOfAssignDestructuring(ctx, fctx, assignDestructExpr, elemLocal, elemType, vecTypeIdx, arrTypeIdx, stmt);
   }
 
-  // Compile body
+  // Compile body — save/restore block-scoped shadows for let/const (#817).
   if (ts.isBlock(stmt.statement)) {
+    const savedScope = saveBlockScopedShadows(fctx, stmt.statement);
     for (const s of stmt.statement.statements) {
       compileStatement(ctx, fctx, s);
     }
+    restoreBlockScopedShadows(fctx, savedScope);
   } else {
     compileStatement(ctx, fctx, stmt.statement);
   }
@@ -4998,11 +5010,13 @@ function compileForOfIterator(
     compileForOfIteratorAssignDestructuring(ctx, fctx, assignDestructExprIter, elemLocal, stmt);
   }
 
-  // Compile body
+  // Compile body — save/restore block-scoped shadows for let/const (#817).
   if (ts.isBlock(stmt.statement)) {
+    const savedScope = saveBlockScopedShadows(fctx, stmt.statement);
     for (const s of stmt.statement.statements) {
       compileStatement(ctx, fctx, s);
     }
+    restoreBlockScopedShadows(fctx, savedScope);
   } else {
     compileStatement(ctx, fctx, stmt.statement);
   }
@@ -5154,11 +5168,13 @@ function compileForInStatement(
   fctx.breakStack.push(2);    // break = depth 2 (exit $break block)
   fctx.continueStack.push(0); // continue = depth 0 (exit $continue block -> falls to incr)
 
-  // Compile the user's loop body
+  // Compile the user's loop body — save/restore block-scoped shadows for let/const (#817).
   if (ts.isBlock(stmt.statement)) {
+    const savedScope = saveBlockScopedShadows(fctx, stmt.statement);
     for (const s of stmt.statement.statements) {
       compileStatement(ctx, fctx, s);
     }
+    restoreBlockScopedShadows(fctx, savedScope);
   } else {
     compileStatement(ctx, fctx, stmt.statement);
   }
@@ -5495,9 +5511,12 @@ function compileTryStatement(
   let finallyInstrs: Instr[] | null = null;
   if (stmt.finallyBlock) {
     const savedForFinally = pushBody(fctx);
+    // Save/restore block-scoped shadows for let/const in the finally block (#817).
+    const savedFinallyScope = saveBlockScopedShadows(fctx, stmt.finallyBlock);
     for (const s of stmt.finallyBlock.statements) {
       compileStatement(ctx, fctx, s);
     }
+    restoreBlockScopedShadows(fctx, savedFinallyScope);
     finallyInstrs = fctx.body;
     popBody(fctx, savedForFinally);
   }
@@ -5524,9 +5543,12 @@ function compileTryStatement(
   if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth++;
   adjustRethrowDepth(fctx, 1);
 
+  // Save/restore block-scoped shadows for let/const in the try block (#817).
+  const savedTryScope = saveBlockScopedShadows(fctx, stmt.tryBlock);
   for (const s of stmt.tryBlock.statements) {
     compileStatement(ctx, fctx, s);
   }
+  restoreBlockScopedShadows(fctx, savedTryScope);
 
   // If there's a finally block, inline it at the end of the try body (normal path)
   if (finallyInstrs) {
@@ -5620,9 +5642,12 @@ function compileTryStatement(
         compileExternrefCatchDestructure(ctx, fctx, stmt.catchClause.variableDeclaration.name, exnLocalIdx);
       }
 
+      // Save/restore block-scoped shadows for let/const in the catch block (#817).
+      const savedCatchScope = saveBlockScopedShadows(fctx, stmt.catchClause.block);
       for (const s of stmt.catchClause.block.statements) {
         compileStatement(ctx, fctx, s);
       }
+      restoreBlockScopedShadows(fctx, savedCatchScope);
       if (finallyInstrs) {
         for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!--;
         for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!--;
