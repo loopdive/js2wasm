@@ -114,8 +114,7 @@ export class CompilerPool {
           this.respawnWorker(stuck);
         }
       }, timeoutMs);
-      // Ensure timer fires even if event loop is draining
-      if (timer.unref) timer.unref();
+      // Keep timer ref'd so the process stays alive until it fires
       this.queue.push({ id, source, sourceMapUrl, resolve: (r: PoolResult) => { clearTimeout(timer); resolve(r); } });
       this.dispatch();
     });
