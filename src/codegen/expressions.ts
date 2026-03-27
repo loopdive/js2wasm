@@ -11428,12 +11428,11 @@ function compileCallExpression(
               fctx.body.push({ op: "drop" });
             }
           }
-          // Throw TypeError: o.foo is not a function
-          fctx.body.push(...typeErrorThrowInstrs(ctx));
-          fctx.body.push({ op: "unreachable" });
-          // Return VOID_RESULT (not null!) to prevent compileExpression from
-          // rolling back the throw instructions. throw+unreachable is divergent.
-          return VOID_RESULT;
+          // Unresolvable method call — return externref null as fallback.
+          // Don't throw TypeError: many built-in/prototype methods can't be
+          // resolved at compile time but work fine at runtime via host imports.
+          fctx.body.push({ op: "ref.null.extern" });
+          return { kind: "externref" };
         }
       }
     }
