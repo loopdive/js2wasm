@@ -105,12 +105,15 @@ export class CompilerPool {
       const id = this.nextId++;
       const timer = setTimeout(() => {
         // Compilation hung — resolve with error, kill and respawn the worker
+        console.error(`[compiler-pool] TIMEOUT: compilation exceeded ${timeoutMs/1000}s, killing worker`);
         this.pending.delete(id);
         resolve({ ok: false, error: `compilation timeout (${timeoutMs/1000}s)`, compileMs: timeoutMs });
         // Find and restart the stuck worker
         const stuck = this.workers.find(w => w.busy);
         if (stuck) {
-          stuck.worker.terminate();
+          stuck.busy = false;
+          stuck.ready = false;
+          stuck.worker.terminate().catch(() => {});
           this.respawnWorker(stuck);
         }
       }, timeoutMs);
