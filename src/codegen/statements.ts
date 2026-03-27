@@ -4843,6 +4843,14 @@ function compileTryStatement(
     return JSON.parse(JSON.stringify(finallyInstrs!));
   }
 
+  // Track finallyInstrs in savedBodies so late import shifts (addUnionImports /
+  // flushLateImportShifts) update its function indices during try/catch compilation.
+  // Without this, finallyInstrs retains stale pre-shift indices and cloneFinally()
+  // produces instructions with wrong call targets.
+  if (finallyInstrs) {
+    fctx.savedBodies.push(finallyInstrs);
+  }
+
   // Compile the try block body
   const savedBody = pushBody(fctx);
 
@@ -5050,6 +5058,12 @@ function compileTryStatement(
       const tbIdx2 = fctx.savedBodies.lastIndexOf(tryBody);
       if (tbIdx2 >= 0) fctx.savedBodies.splice(tbIdx2, 1);
     }
+  }
+
+  // Remove finallyInstrs from savedBodies now that all cloning is done
+  if (finallyInstrs) {
+    const fiIdx = fctx.savedBodies.lastIndexOf(finallyInstrs);
+    if (fiIdx >= 0) fctx.savedBodies.splice(fiIdx, 1);
   }
 
   popBody(fctx, savedBody);
