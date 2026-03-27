@@ -81,11 +81,8 @@ function _structToPlainObject(obj: any, exports: Record<string, Function> | unde
     const getter = exports?.[`__sget_${key}`];
     if (typeof getter === "function") {
       let val = getter(obj);
-      // Recursively convert nested WasmGC structs
-      if (val != null && typeof val === "object" && _isWasmStruct(val)) {
-        const nested = _structToPlainObject(val, exports);
-        if (nested !== undefined) val = nested;
-      }
+      // Recursively convert nested WasmGC structs and vecs
+      val = _wasmToPlain(val, exports);
       result[key] = val;
     }
   }
@@ -97,6 +94,57 @@ function _structToPlainObject(obj: any, exports: Record<string, Function> | unde
     }
   }
   return result;
+}
+
+/**
+ * Recursively convert a WasmGC value (struct, vec/array, or primitive) to a
+ * plain JS value suitable for JSON.stringify.  Handles:
+ *   - WasmGC structs  -> plain objects (via _structToPlainObject)
+ *   - WasmGC vecs     -> JS arrays (via __vec_len / __vec_get)
+ *   - primitives / normal JS objects -> returned as-is
+ */
+function _wasmToPlain(val: any, exports: Record<string, Function> | undefined): any {
+  if (val == null || typeof val !== "object") return val;
+  if (!_isWasmStruct(val)) return val;
+
+  // Check if this is a named struct (has field names from __struct_field_names).
+  // Named structs are user-defined types — convert to plain objects.
+  // Vec wrappers (arrays) don't have meaningful field names registered.
+  const fieldNames = _getStructFieldNames(val, exports);
+  if (fieldNames) {
+    // It's a named struct — convert to plain object with recursive conversion
+    return _structToPlainObject(val, exports);
+  }
+
+  // Try vec (array wrapper) conversion — vec structs have {length, data} fields
+  // but are NOT registered in __struct_field_names (they're internal types).
+  if (exports) {
+    const vecLen = exports.__vec_len;
+    const vecGet = exports.__vec_get;
+    if (typeof vecLen === "function" && typeof vecGet === "function") {
+      try {
+        const len = vecLen(val);
+        if (typeof len === "number" && len > 0) {
+          const arr: any[] = [];
+          for (let i = 0; i < len; i++) {
+            arr.push(_wasmToPlain(vecGet(val, i), exports));
+          }
+          return arr;
+        }
+        // len === 0 could be an empty array or a non-vec struct with 0 as first field.
+        // Since we already checked field names above (and it wasn't a named struct),
+        // treat len=0 as an empty array if __vec_get doesn't throw.
+        if (len === 0) {
+          return [];
+        }
+      } catch {
+        // Not a vec — fall through
+      }
+    }
+  }
+
+  // Unknown WasmGC struct — return as-is
+  return val;
 }
 
 /** Map from JS well-known Symbols to Wasm "@@name" keys (and vice-versa). */
@@ -226,14 +274,14 @@ function resolveImport(
       if (name === "number_toFixed") return (v: number, d: number) => v.toFixed(d);
       if (name === "number_toPrecision") return (v: number, p: number) => v.toPrecision(p);
       if (name === "number_toExponential") return (v: number, d: number) => isNaN(d) ? v.toExponential() : v.toExponential(d);
-      if (name === "JSON_stringify") return (v: any) => {
-        // If v is a WasmGC struct, build a plain object via exported getters first
-        if (_isWasmStruct(v)) {
-          const exports = callbackState?.getExports();
-          const plain = _structToPlainObject(v, exports);
-          if (plain !== undefined) return JSON.stringify(plain);
-        }
-        return JSON.stringify(v);
+      if (name === "JSON_stringify") return (v: any, replacer: any, space: any) => {
+        const exports = callbackState?.getExports();
+        // Deep-convert WasmGC structs and vecs to plain JS values
+        const plain = _wasmToPlain(v, exports);
+        // Normalize sentinel values: NaN means "not provided"
+        const rep = (replacer == null || (typeof replacer === "number" && isNaN(replacer))) ? undefined : replacer;
+        const sp = (space == null || (typeof space === "number" && isNaN(space))) ? undefined : space;
+        return JSON.stringify(plain, rep as any, sp);
       };
       if (name === "JSON_parse") return (s: any) => JSON.parse(s);
       if (name === "__extern_get") return (obj: any, key: any) => {
