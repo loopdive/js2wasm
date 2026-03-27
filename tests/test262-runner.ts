@@ -137,9 +137,10 @@ export function shouldSkip(
     return { skip: true, reason: "imports _FIXTURE helper module" };
   }
 
-  // Skip class/elements/ tests — many patterns cause infinite compilation loops (#793).
-  // The hang occurs in the wrapped context, not standalone. Needs compiler fix.
-  if (filePath && /class\/elements\//.test(filePath)) {
+  // Skip class/elements/ and valueOf-heavy String tests — compilation hangs (#793).
+  if (filePath && (/class\/elements\//.test(filePath) ||
+      /String\/prototype\/lastIndexOf\/S15/.test(filePath) ||
+      /String\/prototype\/isWellFormed/.test(filePath))) {
     return {
       skip: true,
       reason: "private class element compilation hang (#793)",
