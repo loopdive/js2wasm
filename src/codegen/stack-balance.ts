@@ -519,98 +519,11 @@ function fixBranchType(
   blockType: BlockType,
   types: TypeDef[],
   sigs: FuncSigInfo,
-  typeCtx?: { localTypes: ValType[]; globalTypes: ValType[]; mod: WasmModule; numImports: number },
 ): number {
   if (blockType.kind !== "val") return 0;
   const expectedType = blockType.type;
 
-  // Use forward type-stack simulation to determine the actual type on top of the stack.
-  // This correctly handles drops (which the backward walk in inferLastType does not).
-  let produced: string | null = null;
-
-  if (typeCtx) {
-    // Forward simulation: track a type stack
-    const typeStack: (string | null)[] = [];
-    for (const instr of body) {
-      const op = instr.op;
-      if (isTerminator(op)) break;
-
-      // Handle drops
-      if (op === "drop") {
-        typeStack.pop();
-        continue;
-      }
-
-      // Handle local.set/global.set (pop without push)
-      if (op === "local.set" || op === "global.set") {
-        typeStack.pop();
-        continue;
-      }
-
-      // Handle local.tee (peek + set — no net change)
-      if (op === "local.tee") continue;
-
-      // Infer type of this instruction
-      const vt = inferInstrType(instr, typeCtx.localTypes, typeCtx.globalTypes, types, typeCtx.mod, typeCtx.numImports);
-      const cat = vt ? valTypeCategory(vt) ?? null : null;
-
-      const delta = instrDelta(instr, types, sigs);
-      if (delta === UNREACHABLE) break;
-
-      // Pop consumed values
-      const pops = delta < 0 ? -delta : (delta === 0 ? (op === "nop" ? 0 : 1) : 0);
-      // For structured blocks (if/block/loop/try), treat as a single push of their result
-      if (op === "if" || op === "block" || op === "loop" || op === "try") {
-        // Structured block: pops condition (for if), pushes result
-        if (op === "if") typeStack.pop(); // condition
-        if (delta >= 0 || (op === "if" && delta >= -1)) {
-          const bt = (instr as any).blockType as BlockType | undefined;
-          if (bt?.kind === "val") {
-            typeStack.push(valTypeCategory(bt.type) ?? null);
-          } else if (bt?.kind === "empty") {
-            // no push
-          } else {
-            typeStack.push(null);
-          }
-        }
-        continue;
-      }
-
-      // For simple instructions: pop inputs, push output
-      if (delta > 0) {
-        // Pushes more than it pops (e.g., const: +1)
-        typeStack.push(cat);
-      } else if (delta === 0) {
-        // Pops 1, pushes 1 (e.g., ref.cast, f64.neg)
-        // If we can't infer the output type, preserve the input type from the stack
-        const prev = typeStack.length > 0 ? typeStack.pop()! : null;
-        typeStack.push(cat ?? prev);
-      } else {
-        // Pops more than it pushes (e.g., i32.add: pop 2 push 1 = -1)
-        // Pop |delta| + (1 if it produces a value)
-        const produces = (op.includes(".add") || op.includes(".sub") || op.includes(".mul") ||
-          op.includes(".div") || op.includes(".eq") || op.includes(".ne") ||
-          op.includes(".lt") || op.includes(".le") || op.includes(".gt") || op.includes(".ge") ||
-          op === "select" || op === "call" || op === "call_ref" || op === "call_indirect" ||
-          op === "struct.new" || op === "array.new" || op === "array.new_fixed" ||
-          op === "array.get" || op === "array.get_s" || op === "array.get_u" ||
-          op === "struct.get");
-        const totalPops = produces ? (-delta + 1) : -delta;
-        for (let i = 0; i < Math.min(totalPops, typeStack.length); i++) typeStack.pop();
-        if (produces) typeStack.push(cat);
-      }
-    }
-
-    if (typeStack.length > 0) {
-      produced = typeStack[typeStack.length - 1]!;
-    }
-  }
-
-  // Fallback to backward walk if forward simulation didn't work
-  if (!produced) {
-    produced = inferLastType(body, types, sigs);
-  }
-
+  const produced = inferLastType(body, types, sigs);
   if (!produced) return 0; // can't determine type - skip
 
   if (typesCompatible(produced, expectedType)) return 0; // types match
@@ -626,29 +539,13 @@ function fixBranchType(
     return 1;
   }
 
-  // externref → ref/ref_null: insert any.convert_extern + guarded ref.cast
+  // externref → ref/ref_null: insert any.convert_extern + ref.cast
   if ((expectedType.kind === "ref" || expectedType.kind === "ref_null") && produced === "externref") {
     body.push({ op: "any.convert_extern" } as Instr);
-    if (typeCtx) {
-      // Allocate a temp local for the anyref value so we can ref.test before ref.cast
-      const tmpIdx = typeCtx.localTypes.length;
-      typeCtx.localTypes.push({ kind: "anyref" } as ValType);
-      body.push({ op: "local.tee", index: tmpIdx } as unknown as Instr);
-      body.push({ op: "ref.test", typeIdx: expectedType.typeIdx } as unknown as Instr);
-      body.push({
-        op: "if",
-        blockType: { kind: "val", type: { kind: "ref_null", typeIdx: expectedType.typeIdx } as ValType },
-        then: [
-          { op: "local.get", index: tmpIdx } as unknown as Instr,
-          { op: "ref.cast_null", typeIdx: expectedType.typeIdx } as unknown as Instr,
-        ],
-        else: [
-          { op: "ref.null", typeIdx: expectedType.typeIdx },
-        ],
-      } as Instr);
-    } else {
-      // No type context — fall back to nullable cast (less safe but avoids non-null cast trap on null)
+    if (expectedType.kind === "ref_null") {
       body.push({ op: "ref.cast_null", typeIdx: expectedType.typeIdx } as unknown as Instr);
+    } else {
+      body.push({ op: "ref.cast", typeIdx: expectedType.typeIdx } as unknown as Instr);
     }
     return 1;
   }
@@ -723,7 +620,6 @@ function fixBranch(
   types: TypeDef[],
   sigs: FuncSigInfo,
   blockType: BlockType,
-  typeCtx?: { localTypes: ValType[]; globalTypes: ValType[]; mod: WasmModule; numImports: number },
 ): number {
   const actual = sequenceDelta(body, types, sigs);
   if (actual === UNREACHABLE) return 0; // unreachable branch -- validator accepts anything
@@ -781,7 +677,7 @@ function fixBranch(
     // Re-check delta after fixups
     const newDelta = sequenceDelta(body, types, sigs);
     if (newDelta === expected && newDelta > 0) {
-      fixups += fixBranchType(body, blockType, types, sigs, typeCtx);
+      fixups += fixBranchType(body, blockType, types, sigs);
     }
   }
 
@@ -804,7 +700,7 @@ function getTagArity(tagIdx: number, tags: Array<{ typeIdx: number }>, types: Ty
  * Recursively fix stack mismatches in a body of instructions.
  * Returns the total number of fixups applied.
  */
-function fixBody(body: Instr[], types: TypeDef[], sigs: FuncSigInfo, tags: Array<{ typeIdx: number }>, typeCtx?: { localTypes: ValType[]; globalTypes: ValType[]; mod: WasmModule; numImports: number }): number {
+function fixBody(body: Instr[], types: TypeDef[], sigs: FuncSigInfo, tags: Array<{ typeIdx: number }>): number {
   let fixups = 0;
 
   for (const instr of body) {
@@ -813,28 +709,28 @@ function fixBody(body: Instr[], types: TypeDef[], sigs: FuncSigInfo, tags: Array
       const expected = blockTypeExpected(ifInstr.blockType, types);
 
       // Recurse into branches first
-      fixups += fixBody(ifInstr.then, types, sigs, tags, typeCtx);
+      fixups += fixBody(ifInstr.then, types, sigs, tags);
       if (ifInstr.else) {
-        fixups += fixBody(ifInstr.else, types, sigs, tags, typeCtx);
+        fixups += fixBody(ifInstr.else, types, sigs, tags);
       }
 
       // Fix then branch
-      fixups += fixBranch(ifInstr.then, expected, types, sigs, ifInstr.blockType, typeCtx);
+      fixups += fixBranch(ifInstr.then, expected, types, sigs, ifInstr.blockType);
 
       // Fix else branch (or create one if needed for valued blocks)
       if (ifInstr.else) {
-        fixups += fixBranch(ifInstr.else, expected, types, sigs, ifInstr.blockType, typeCtx);
+        fixups += fixBranch(ifInstr.else, expected, types, sigs, ifInstr.blockType);
       } else if (expected > 0) {
         // Valued block with no else -- need to add an else branch with default values
         ifInstr.else = [];
-        fixups += fixBranch(ifInstr.else, expected, types, sigs, ifInstr.blockType, typeCtx);
+        fixups += fixBranch(ifInstr.else, expected, types, sigs, ifInstr.blockType);
       }
     } else if (instr.op === "block" || instr.op === "loop") {
       const blockInstr = instr as { op: string; blockType: BlockType; body: Instr[] };
-      fixups += fixBody(blockInstr.body, types, sigs, tags, typeCtx);
+      fixups += fixBody(blockInstr.body, types, sigs, tags);
 
       const expected = blockTypeExpected(blockInstr.blockType, types);
-      fixups += fixBranch(blockInstr.body, expected, types, sigs, blockInstr.blockType, typeCtx);
+      fixups += fixBranch(blockInstr.body, expected, types, sigs, blockInstr.blockType);
     } else if (instr.op === "try") {
       const tryInstr = instr as {
         op: "try";
@@ -846,27 +742,27 @@ function fixBody(body: Instr[], types: TypeDef[], sigs: FuncSigInfo, tags: Array
       const expected = blockTypeExpected(tryInstr.blockType, types);
 
       // Recurse into all branches
-      fixups += fixBody(tryInstr.body, types, sigs, tags, typeCtx);
+      fixups += fixBody(tryInstr.body, types, sigs, tags);
       for (const c of tryInstr.catches || []) {
-        fixups += fixBody(c.body, types, sigs, tags, typeCtx);
+        fixups += fixBody(c.body, types, sigs, tags);
       }
       if (tryInstr.catchAll) {
-        fixups += fixBody(tryInstr.catchAll, types, sigs, tags, typeCtx);
+        fixups += fixBody(tryInstr.catchAll, types, sigs, tags);
       }
 
       // Fix the do body
-      fixups += fixBranch(tryInstr.body, expected, types, sigs, tryInstr.blockType, typeCtx);
+      fixups += fixBranch(tryInstr.body, expected, types, sigs, tryInstr.blockType);
 
       // Fix catch bodies. Each catch clause pushes the tag's parameter values
       // onto the stack before the body executes.
       for (const c of tryInstr.catches || []) {
         const tagArity = getTagArity(c.tagIdx, tags, types);
-        fixups += fixBranch(c.body, expected - tagArity, types, sigs, tryInstr.blockType, typeCtx);
+        fixups += fixBranch(c.body, expected - tagArity, types, sigs, tryInstr.blockType);
       }
 
       // Fix catch_all body (no values pushed by catch_all)
       if (tryInstr.catchAll) {
-        fixups += fixBranch(tryInstr.catchAll, expected, types, sigs, tryInstr.blockType, typeCtx);
+        fixups += fixBranch(tryInstr.catchAll, expected, types, sigs, tryInstr.blockType);
       }
     }
   }
@@ -2044,8 +1940,7 @@ export function stackBalance(mod: WasmModule): number {
     totalFixups += fixStructNewFieldCoercion(func, mod.types, mod, numImports, sigs, localTypes, globalTypes, boxNumberIdx, unboxNumberIdx);
 
     // Fix nested structured blocks
-    const typeCtx = { localTypes, globalTypes, mod, numImports };
-    totalFixups += fixBody(func.body, mod.types, sigs, tags, typeCtx);
+    totalFixups += fixBody(func.body, mod.types, sigs, tags);
 
     // Fix function-level body: the body must produce exactly as many values
     // as the function's result type declares.
@@ -2057,7 +1952,7 @@ export function stackBalance(mod: WasmModule): number {
         : expectedResults === 1
           ? { kind: "val", type: ft.results[0]! }
           : { kind: "type", typeIdx: func.typeIdx };
-      totalFixups += fixBranch(func.body, expectedResults, mod.types, sigs, funcBlockType, typeCtx);
+      totalFixups += fixBranch(func.body, expectedResults, mod.types, sigs, funcBlockType);
     }
   }
   return totalFixups;
