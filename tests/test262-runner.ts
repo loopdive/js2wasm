@@ -129,6 +129,9 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
   if (filePath && /future-reserved-words/.test(filePath)) {
     return { skip: true, reason: "strict mode reserved words (deprioritized)" };
   }
+  if (filePath && /built-ins\/Temporal/.test(filePath)) {
+    return { skip: true, reason: "Temporal API not implemented (deprioritized)" };
+  }
   if (filePath && /directive-prologue/.test(filePath)) {
     return { skip: true, reason: "use strict directive tests (deprioritized)" };
   }
