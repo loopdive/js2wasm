@@ -846,6 +846,19 @@ export interface FunctionContext {
    * Used to emit `rethrow` instead of `throw $tag` when re-throwing the caught exception.
    */
   catchRethrowStack?: { varName: string; depth: number }[];
+  /**
+   * Stack of pending finally blocks. When a return/break/continue exits a try
+   * block that has a finally clause, the finally instructions must be inlined
+   * before the control-flow transfer. Each entry stores a clone function for
+   * the finally instructions and the breakStack/continueStack lengths at the
+   * time the try was entered, so break/continue can determine which finally
+   * blocks they need to run.
+   */
+  finallyStack?: {
+    cloneFinally: () => Instr[];
+    breakStackLen: number;
+    continueStackLen: number;
+  }[];
 }
 
 /**

@@ -2249,9 +2249,11 @@ export function compileAssignment(
         });
         return null;
       }
-      fctx.body.push({ op: "global.set", index: capturedIdx });
+      // Re-read index: RHS compilation may shift globals via addStringConstantGlobal
+      const capturedIdxPost = ctx.capturedGlobals.get(name)!;
+      fctx.body.push({ op: "global.set", index: capturedIdxPost });
       // global.set consumes the value; re-push it for expression result
-      fctx.body.push({ op: "global.get", index: capturedIdx });
+      fctx.body.push({ op: "global.get", index: capturedIdxPost });
       return resultType;
     }
     // Check module-level globals
@@ -2272,8 +2274,10 @@ export function compileAssignment(
         });
         return null;
       }
-      fctx.body.push({ op: "global.set", index: moduleIdx });
-      fctx.body.push({ op: "global.get", index: moduleIdx });
+      // Re-read index: RHS compilation may shift globals via addStringConstantGlobal
+      const moduleIdxPost = ctx.moduleGlobals.get(name)!;
+      fctx.body.push({ op: "global.set", index: moduleIdxPost });
+      fctx.body.push({ op: "global.get", index: moduleIdxPost });
       return resultType;
     }
     // Graceful fallback for unresolved identifiers: auto-allocate a local
@@ -4541,17 +4545,25 @@ export function compileLogicalAssignment(
   const varType = storage.type;
 
   // Emit: read current value
+  // Re-read global index from the map each time, because compiling expressions
+  // can trigger addStringConstantGlobal which shifts all global indices.
+  const getStorageIndex = () => {
+    if (storage!.kind === "local") return storage!.index;
+    if (storage!.kind === "captured") return ctx.capturedGlobals.get(name)!;
+    return ctx.moduleGlobals.get(name)!;
+  };
   const emitGet = () => {
     if (storage!.kind === "local")
-      fctx.body.push({ op: "local.get", index: storage!.index });
-    else fctx.body.push({ op: "global.get", index: storage!.index });
+      fctx.body.push({ op: "local.get", index: getStorageIndex() });
+    else fctx.body.push({ op: "global.get", index: getStorageIndex() });
   };
   const emitSet = () => {
     if (storage!.kind === "local")
-      fctx.body.push({ op: "local.tee", index: storage!.index });
+      fctx.body.push({ op: "local.tee", index: getStorageIndex() });
     else {
-      fctx.body.push({ op: "global.set", index: storage!.index });
-      fctx.body.push({ op: "global.get", index: storage!.index });
+      const idx = getStorageIndex();
+      fctx.body.push({ op: "global.set", index: idx });
+      fctx.body.push({ op: "global.get", index: idx });
     }
   };
 
@@ -5391,15 +5403,17 @@ function compileStringCompoundAssignment(
   // Call concat
   fctx.body.push({ op: "call", funcIdx: concatIdx });
 
-  // Store back
+  // Store back — re-read global indices since RHS compilation may have shifted them
   if (localIdx !== undefined) {
     fctx.body.push({ op: "local.tee", index: localIdx });
   } else if (capturedIdx !== undefined) {
-    fctx.body.push({ op: "global.set", index: capturedIdx });
-    fctx.body.push({ op: "global.get", index: capturedIdx });
+    const capturedIdxPost = ctx.capturedGlobals.get(name)!;
+    fctx.body.push({ op: "global.set", index: capturedIdxPost });
+    fctx.body.push({ op: "global.get", index: capturedIdxPost });
   } else if (moduleIdx !== undefined) {
-    fctx.body.push({ op: "global.set", index: moduleIdx });
-    fctx.body.push({ op: "global.get", index: moduleIdx });
+    const moduleIdxPost = ctx.moduleGlobals.get(name)!;
+    fctx.body.push({ op: "global.set", index: moduleIdxPost });
+    fctx.body.push({ op: "global.get", index: moduleIdxPost });
   }
 
   return { kind: "externref" };
@@ -5599,9 +5613,14 @@ export function compileCompoundAssignment(
 
     emitCompoundOp(ctx, fctx, op);
 
+    // Re-read the global index after RHS compilation: compiling the RHS may
+    // trigger addStringConstantGlobal which shifts all global indices via
+    // fixupModuleGlobalIndices. The already-emitted global.get was shifted
+    // in-place, but our local `capturedIdx` variable is now stale.
+    const capturedIdxPost = ctx.capturedGlobals.get(name)!;
     if (needsCoerce) coerceType(ctx, fctx, { kind: "f64" }, globalType);
-    fctx.body.push({ op: "global.set", index: capturedIdx });
-    fctx.body.push({ op: "global.get", index: capturedIdx });
+    fctx.body.push({ op: "global.set", index: capturedIdxPost });
+    fctx.body.push({ op: "global.get", index: capturedIdxPost });
     return globalType;
   }
 
@@ -5631,9 +5650,11 @@ export function compileCompoundAssignment(
 
     emitCompoundOp(ctx, fctx, op);
 
+    // Re-read the global index after RHS compilation (same reason as above)
+    const moduleIdxPost = ctx.moduleGlobals.get(name)!;
     if (needsCoerce) coerceType(ctx, fctx, { kind: "f64" }, globalType);
-    fctx.body.push({ op: "global.set", index: moduleIdx });
-    fctx.body.push({ op: "global.get", index: moduleIdx });
+    fctx.body.push({ op: "global.set", index: moduleIdxPost });
+    fctx.body.push({ op: "global.get", index: moduleIdxPost });
     return globalType;
   }
 
