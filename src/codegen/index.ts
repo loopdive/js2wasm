@@ -13488,12 +13488,23 @@ export function destructureParamObject(
         if (structTypeIdx !== undefined) {
           const convertedType: ValType = { kind: "ref_null", typeIdx: structTypeIdx };
           const tmpLocal = allocLocal(fctx, `__dparam_cvt_${fctx.locals.length}`, convertedType);
-          // Convert externref -> anyref -> (ref null $struct)
+          // Convert externref -> anyref, then guarded cast to (ref null $struct)
+          const anyTmp = allocLocal(fctx, `__dparam_any_${fctx.locals.length}`, { kind: "anyref" } as ValType);
           fctx.body.push({ op: "local.get", index: paramIdx });
           fctx.body.push({ op: "any.convert_extern" } as Instr);
-          fctx.body.push({ op: "ref.cast_null", typeIdx: structTypeIdx });
-          fctx.body.push({ op: "local.set", index: tmpLocal });
-          // Recurse with the converted ref_null type
+          fctx.body.push({ op: "local.tee", index: anyTmp });
+          fctx.body.push({ op: "ref.test", typeIdx: structTypeIdx });
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: [
+              { op: "local.get", index: anyTmp } as Instr,
+              { op: "ref.cast_null", typeIdx: structTypeIdx } as Instr,
+              { op: "local.set", index: tmpLocal } as Instr,
+            ],
+            else: [],
+          });
+          // Recurse with the converted ref_null type (tmpLocal stays default null if cast failed)
           destructureParamObject(ctx, fctx, tmpLocal, pattern, convertedType);
           return;
         }

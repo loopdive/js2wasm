@@ -4576,10 +4576,14 @@ function compilePropertyLogicalAssignment(
       const fieldType = resolveWasmType(ctx, propType);
 
       const emitFieldGet = () => {
+        // Re-lookup funcIdx at emission time — addUnionImports may have shifted indices
+        const gIdx = ctx.funcMap.get(getterName)!;
         fctx.body.push({ op: "local.get", index: objLocal });
-        fctx.body.push({ op: "call", funcIdx: getterIdx });
+        fctx.body.push({ op: "call", funcIdx: gIdx });
       };
       const emitFieldSet = () => {
+        // Re-lookup funcIdx at emission time — addUnionImports may have shifted indices
+        const sIdx = ctx.funcMap.get(setterName)!;
         const tmpVal = allocLocal(
           fctx,
           `__logprop_acc_val_${fctx.locals.length}`,
@@ -4588,11 +4592,11 @@ function compilePropertyLogicalAssignment(
         fctx.body.push({ op: "local.set", index: tmpVal });
         fctx.body.push({ op: "local.get", index: objLocal });
         // If setter has a value parameter (2+ params), push the value
-        const logSetterPTypes = getFuncParamTypes(ctx, setterIdx);
+        const logSetterPTypes = getFuncParamTypes(ctx, sIdx);
         if (logSetterPTypes && logSetterPTypes.length > 1) {
           fctx.body.push({ op: "local.get", index: tmpVal });
         }
-        fctx.body.push({ op: "call", funcIdx: setterIdx });
+        fctx.body.push({ op: "call", funcIdx: sIdx });
         fctx.body.push({ op: "local.get", index: tmpVal });
       };
 
@@ -9896,17 +9900,31 @@ function compileCallExpression(
               return { kind: "externref" };
             }
 
-            // Cast to struct type if needed
+            // Cast to struct type if needed (guarded to avoid illegal cast traps)
             if (objType.kind === "externref") {
               fctx.body.push({ op: "any.convert_extern" } as unknown as Instr);
-              fctx.body.push({ op: "ref.cast", typeIdx: structTypeIdx } as unknown as Instr);
+              emitGuardedRefCast(fctx, structTypeIdx);
             } else if (objType.kind === "ref_null" && objType.typeIdx !== structTypeIdx) {
-              fctx.body.push({ op: "ref.cast", typeIdx: structTypeIdx } as unknown as Instr);
+              const castTmp = allocTempLocal(fctx, objType);
+              fctx.body.push({ op: "local.tee", index: castTmp });
+              fctx.body.push({ op: "ref.test", typeIdx: structTypeIdx });
+              fctx.body.push({
+                op: "if",
+                blockType: { kind: "val", type: { kind: "ref_null", typeIdx: structTypeIdx } as ValType },
+                then: [
+                  { op: "local.get", index: castTmp } as Instr,
+                  { op: "ref.cast_null", typeIdx: structTypeIdx } as Instr,
+                ],
+                else: [
+                  { op: "ref.null", typeIdx: structTypeIdx },
+                ],
+              });
+              releaseTempLocal(fctx, castTmp);
             }
 
             // Save obj ref for struct.get
             const objLocal = allocLocal(fctx, `__gopd_obj_${fctx.locals.length}`,
-              { kind: "ref", typeIdx: structTypeIdx });
+              { kind: "ref_null", typeIdx: structTypeIdx });
             fctx.body.push({ op: "local.set", index: objLocal });
 
             // Get field value: struct.get → coerce to externref
@@ -11157,7 +11175,7 @@ function compileCallExpression(
             else: [],
           });
         }
-        fctx.body.push({ op: "drop" }); // drop radix, toString still uses base-10
+        // radix value was consumed by the range check; number_toString uses base-10
       }
       const exprType = compileExpression(ctx, fctx, propAccess.expression);
       // number_toString expects f64 but source may be i32 (e.g. string.length)
@@ -12814,7 +12832,7 @@ function compileCallExpression(
               else: [],
             });
           }
-          fctx.body.push({ op: "drop" }); // drop radix, toString still uses base-10
+          // radix value was consumed by the range check; number_toString uses base-10
         }
         const exprType = compileExpression(ctx, fctx, elemAccess.expression);
         if (exprType && exprType.kind === "i32") {
