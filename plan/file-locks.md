@@ -13,31 +13,6 @@ Active file/function claims by agents. **Check before editing. Update when start
 
 | File | Function/Area | Agent | Issue | Since |
 |------|--------------|-------|-------|-------|
-| src/codegen/statements.ts | object/string destructuring rest | dev-761 | #761 | 2026-03-27 |
-| src/codegen/expressions.ts | assignment destructuring rest | dev-761 | #761 | 2026-03-27 |
-| src/codegen/index.ts | emitStructFieldGetters | dev-opaque | opaque-fix | 2026-03-27 |
-| src/runtime.ts | _safeGet/_safeSet/sidecar | dev-opaque | opaque-fix | 2026-03-27 |
-| src/codegen/index.ts | fixupStructNewResultCoercion | dev-d | struct.new | 2026-03-26 |
-| src/codegen/stack-balance.ts | fixCallArgTypesInBody | dev-d | struct.new | 2026-03-26 |
-| src/codegen/statements.ts | compileTryStatement | dev-a | #798a | 2026-03-26 |
-| src/emit/binary.ts | catch_all encoding | dev-a | #798a | 2026-03-26 |
-| src/ir/types.ts | catch_all instruction | dev-a | #798a | 2026-03-26 |
-| src/codegen/statements.ts | compileThrowStatement | dev-4 | #798c | 2026-03-26 |
-| src/codegen/index.ts | FunctionContext (catchRethrowStack) | dev-4 | #798c | 2026-03-26 |
-| src/codegen/typeof-delete.ts | compileTypeofExpression, compileTypeofComparison | dev-8 | #800 | 2026-03-26 |
-| src/codegen/expressions.ts | compileIdentifier, emitLocalTdzCheck | dev-tdz | #800 | 2026-03-26 |
-| src/codegen/statements.ts | emitTdzCheck (lines 50-94) | dev-tdz | #800 | 2026-03-26 |
-| src/codegen/expressions.ts | compileNewExpression (Test262Error) | dev-812 | #812 | 2026-03-26 |
-| src/codegen/expressions.ts | RangeError validation (toFixed, repeat, Array ctor) | dev-733 | #733 | 2026-03-26 |
-| src/codegen/object-ops.ts | compileObjectDefineProperty, Object.defineProperties | dev-797c | #797c | 2026-03-27 |
-| src/codegen/expressions.ts | Object.defineProperties handler (lines 10060-10073) | dev-797c | #797c | 2026-03-27 |
-| src/runtime.ts | __defineProperties host import | dev-797c | #797c | 2026-03-27 |
-| src/codegen/index.ts | KNOWN_CONSTRUCTORS | dev-812, dev-814 | #812, #814 | 2026-03-26 |
-| src/runtime.ts | builtinCtors | dev-814 | #814 | 2026-03-26 |
-| src/codegen/expressions.ts | ImportKeyword handler | dev-675 | #675 | 2026-03-27 |
-| src/codegen/type-coercion.ts | coerceType (toPrimitive paths) | dev-482 | #482 | 2026-03-27 |
-| src/codegen/expressions.ts | struct method null guard, elem access null guard | dev-789 | #789 | 2026-03-27 |
-| src/runtime.ts | dynamic_import intent | dev-675 | #675 | 2026-03-27 |
 
 <!--
 Example entries:
