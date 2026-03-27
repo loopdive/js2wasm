@@ -880,6 +880,9 @@ export function compileObjectLiteralForStruct(
         ctx.mod.functions.push(methodFunc);
       }
 
+      // Promote captured locals to globals so the method body can access them
+      promoteAccessorCapturesToGlobals(ctx, fctx, prop.body);
+
       // Compile method body
       const methodFctxParams: { name: string; type: ValType }[] = [
         { name: "this", type: { kind: "ref", typeIdx: structTypeIdx } },
