@@ -9504,7 +9504,7 @@ function collectEnumDeclarations(
  */
 function resolveClassMemberName(ctx: CodegenContext, name: ts.PropertyName): string | undefined {
   if (ts.isIdentifier(name)) return name.text;
-  if (ts.isPrivateIdentifier(name)) return name.text.slice(1);
+  if (ts.isPrivateIdentifier(name)) return "__priv_" + name.text.slice(1);
   if (ts.isStringLiteral(name)) return name.text;
   if (ts.isNumericLiteral(name)) return String(Number(name.text));
   if (ts.isComputedPropertyName(name)) {
@@ -9610,7 +9610,7 @@ export function collectClassDeclaration(
         stmt.expression.left.expression.kind === ts.SyntaxKind.ThisKeyword
       ) {
         const rawName = stmt.expression.left.name.text;
-        const fieldName = ts.isPrivateIdentifier(stmt.expression.left.name) ? rawName.slice(1) : rawName;
+        const fieldName = ts.isPrivateIdentifier(stmt.expression.left.name) ? "__priv_" + rawName.slice(1) : rawName;
         // Skip if this field is already defined in parent
         if (parentFields.some((f) => f.name === fieldName)) continue;
         const fieldTsType = ctx.checker.getTypeAtLocation(stmt.expression.left);
@@ -12260,7 +12260,7 @@ export function compileClassBodies(
                 stmt.expression.left.expression.kind === ts.SyntaxKind.ThisKeyword
               ) {
                 const rawName = stmt.expression.left.name.text;
-                const fieldName = ts.isPrivateIdentifier(stmt.expression.left.name) ? rawName.slice(1) : rawName;
+                const fieldName = ts.isPrivateIdentifier(stmt.expression.left.name) ? "__priv_" + rawName.slice(1) : rawName;
                 const fieldIdx = fields.findIndex((f) => f.name === fieldName);
                 if (fieldIdx !== -1) {
                   fctx.body.push({ op: "local.get", index: selfLocal });
