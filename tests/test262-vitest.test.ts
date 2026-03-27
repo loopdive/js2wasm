@@ -12,6 +12,11 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, existsSync, writeFileSync, mkdirSync, readdirSync } from "fs";
 import { Worker } from "worker_threads";
+
+// Prevent unhandled Promise rejections from crashing the vitest fork.
+// Some test262 tests create Promises that reject in the wasm-exec worker;
+// if those rejections propagate to the main thread, they kill the IPC channel.
+process.on("unhandledRejection", () => {});
 import { createHash } from "crypto";
 import { join, relative, dirname, basename } from "path";
 import { createServer, type Server } from "http";
