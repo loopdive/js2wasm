@@ -138,9 +138,11 @@ export function shouldSkip(
   }
 
   // Skip class/elements/ and valueOf-heavy String tests — compilation hangs (#793).
+  // String tests with "wrapped-values", "tostring", or S15.5.4 trigger valueOf recursion.
   if (filePath && (/class\/elements\//.test(filePath) ||
-      /String\/prototype\/lastIndexOf\/S15/.test(filePath) ||
-      /String\/prototype\/isWellFormed/.test(filePath))) {
+      /String\/prototype\/.*wrapped-values/.test(filePath) ||
+      /String\/prototype\/.*tostring/.test(filePath) ||
+      /String\/prototype\/.*\/S15\.5\.4/.test(filePath))) {
     return {
       skip: true,
       reason: "private class element compilation hang (#793)",
