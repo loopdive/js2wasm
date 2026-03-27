@@ -5,6 +5,7 @@ import {
   type TypedAST,
 } from "./checker/index.js";
 import { generateModule, generateMultiModule } from "./codegen/index.js";
+import { resetCompileDepth } from "./codegen/expressions.js";
 import { generateLinearModule, generateLinearMultiModule } from "./codegen-linear/index.js";
 import {
   emitBinary,
@@ -1672,6 +1673,11 @@ export function compileSource(
   source: string,
   options: CompileOptions = {},
 ): CompileResult {
+  // Reset compile-expression recursion depth counter for this compilation unit.
+  // Without this, the depth accumulates across compilations in the same process
+  // (e.g., test262 worker pool), causing false "depth exceeded" errors.
+  resetCompileDepth();
+
   const errors: CompileError[] = [];
   const emitWatOutput = options.emitWat !== false;
 
