@@ -24,6 +24,9 @@ Active file/function claims by agents. **Check before editing. Update when start
 | src/codegen/expressions.ts | compileIdentifier, emitLocalTdzCheck | dev-tdz | #800 | 2026-03-26 |
 | src/codegen/statements.ts | emitTdzCheck (lines 50-94) | dev-tdz | #800 | 2026-03-26 |
 | src/codegen/expressions.ts | compileNewExpression (Test262Error) | dev-812 | #812 | 2026-03-26 |
+| src/codegen/typeof-delete.ts | compileTypeofComparison (typeof undefined) | dev-737 | #737 | 2026-03-27 |
+| src/codegen/index.ts | addUnionImports (__typeof_undefined) | dev-737 | #737 | 2026-03-27 |
+| src/compiler.ts | intentForImport/inlineImport (__typeof_undefined) | dev-737 | #737 | 2026-03-27 |
 | src/codegen/index.ts | KNOWN_CONSTRUCTORS | dev-812, dev-814 | #812, #814 | 2026-03-26 |
 | src/runtime.ts | builtinCtors | dev-814 | #814 | 2026-03-26 |
 
