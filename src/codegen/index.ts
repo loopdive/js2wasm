@@ -6905,8 +6905,9 @@ function collectParseImports(
 
 /** Known constructors handled natively (not needing __new_ imports) */
 const KNOWN_CONSTRUCTORS = new Set([
-  "Array", "Date", "Map", "Set", "RegExp", "Error", "TypeError", "RangeError", "Object", "Function",
-  "Promise", "WeakMap", "WeakSet", "WeakRef",
+  "Array", "Date", "Map", "Set", "RegExp", "Error", "TypeError", "RangeError",
+  "SyntaxError", "URIError", "EvalError", "ReferenceError", "Test262Error",
+  "Object", "Function", "Promise", "WeakMap", "WeakSet", "WeakRef",
   "Number", "String", "Boolean",
 ]);
 
