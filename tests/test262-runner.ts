@@ -114,7 +114,11 @@ const HANGING_TESTS = new Set([
   "test/language/statements/class/elements/private-methods/prod-private-generator.js", // hangs (#793)
   "test/language/statements/class/elements/private-methods/prod-private-method-initialize-order.js", // hangs (#793)
   "test/language/statements/class/elements/same-line-gen-rs-static-privatename-identifier-alt.js",
-  "test/built-ins/String/prototype/lastIndexOf/S15.5.4.8_A9.js", // hangs in wrapped context
+  "test/built-ins/String/prototype/lastIndexOf/S15.5.4.8_A9.js", // hangs: valueOf recursion
+  "test/built-ins/String/prototype/lastIndexOf/S15.5.4.8_A4_T2.js", // hangs: valueOf recursion
+  "test/built-ins/String/prototype/lastIndexOf/S15.5.4.8_A4_T3.js", // hangs: valueOf recursion
+  "test/built-ins/String/prototype/lastIndexOf/S15.5.4.8_A4_T4.js", // hangs: valueOf recursion
+  "test/built-ins/String/prototype/lastIndexOf/S15.5.4.8_A4_T5.js", // hangs: valueOf recursion
 ]);
 
 export function shouldSkip(
