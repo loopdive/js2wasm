@@ -1,12 +1,12 @@
 {
-  "timestamp": "2026-03-27T09:46:11.177Z",
+  "timestamp": "2026-03-27T10:25:55.616Z",
   "summary": {
     "total": 49880,
-    "pass": 14329,
-    "fail": 25475,
-    "compile_error": 808,
+    "pass": 14345,
+    "fail": 25432,
+    "compile_error": 835,
     "skip": 9268,
-    "compilable": 39804,
+    "compilable": 39777,
     "stale": 0
   },
   "categories": [
@@ -20,9 +20,9 @@
     },
     {
       "name": "annexB/language",
-      "pass": 327,
-      "fail": 509,
-      "compile_error": 24,
+      "pass": 328,
+      "fail": 486,
+      "compile_error": 46,
       "skip": 0,
       "total": 860
     },
@@ -52,9 +52,9 @@
     },
     {
       "name": "built-ins/ArrayBuffer",
-      "pass": 14,
-      "fail": 182,
-      "compile_error": 0,
+      "pass": 16,
+      "fail": 179,
+      "compile_error": 1,
       "skip": 0,
       "total": 196
     },
@@ -116,8 +116,8 @@
     },
     {
       "name": "built-ins/Atomics",
-      "pass": 68,
-      "fail": 318,
+      "pass": 61,
+      "fail": 325,
       "compile_error": 0,
       "skip": 0,
       "total": 386
@@ -140,8 +140,8 @@
     },
     {
       "name": "built-ins/DataView",
-      "pass": 34,
-      "fail": 533,
+      "pass": 42,
+      "fail": 525,
       "compile_error": 1,
       "skip": 0,
       "total": 568
@@ -308,9 +308,9 @@
     },
     {
       "name": "built-ins/Math",
-      "pass": 221,
+      "pass": 219,
       "fail": 100,
-      "compile_error": 10,
+      "compile_error": 12,
       "skip": 0,
       "total": 331
     },
@@ -341,8 +341,8 @@
     {
       "name": "built-ins/Object",
       "pass": 762,
-      "fail": 2655,
-      "compile_error": 11,
+      "fail": 2653,
+      "compile_error": 13,
       "skip": 0,
       "total": 3428
     },
@@ -556,8 +556,8 @@
     },
     {
       "name": "language/block-scope",
-      "pass": 110,
-      "fail": 37,
+      "pass": 121,
+      "fail": 26,
       "compile_error": 2,
       "skip": 0,
       "total": 149
@@ -740,17 +740,17 @@
     },
     {
       "name": "language/statements",
-      "pass": 3019,
-      "fail": 4703,
-      "compile_error": 235,
+      "pass": 3022,
+      "fail": 4701,
+      "compile_error": 234,
       "skip": 1879,
       "total": 9836
     },
     {
       "name": "language/types",
       "pass": 66,
-      "fail": 47,
-      "compile_error": 0,
+      "fail": 46,
+      "compile_error": 1,
       "skip": 0,
       "total": 113
     },
