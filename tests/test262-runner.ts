@@ -2644,3 +2644,56 @@ export async function runTest262File(
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
+
+/**
+ * Classify a runtime/compile error message into a category bucket.
+ * Used by test262-vitest.test.ts for aggregate error analysis in reports.
+ *
+ * Categories:
+ *   null_deref      — Wasm trap: dereferencing a null pointer
+ *   illegal_cast    — Wasm trap: illegal cast (ref.cast failure)
+ *   oob             — Wasm trap: out of bounds memory/table access
+ *   unreachable     — Wasm trap: unreachable instruction executed
+ *   type_error      — JS TypeError (from host imports or runtime)
+ *   range_error     — JS RangeError or stack overflow
+ *   syntax_error    — JS SyntaxError (unexpected in runtime, usually negative test)
+ *   promise_error   — Promise rejection or async failure
+ *   assertion_fail  — Test returned non-1 value (assert counter)
+ *   exception_in_test — Test returned -1 (exception caught by wrapper)
+ *   wasm_compile    — Wasm validation/instantiation error
+ *   negative_test_fail — Negative test that should have failed but passed
+ *   runtime_error   — Other Cannot/Invalid runtime errors
+ *   other           — Unclassified
+ */
+export function classifyError(errorMsg: string | undefined): string | undefined {
+  if (!errorMsg) return undefined;
+
+  // Wasm traps
+  if (/dereferencing a null/i.test(errorMsg)) return "null_deref";
+  if (/illegal cast/i.test(errorMsg)) return "illegal_cast";
+  if (/out of bounds/i.test(errorMsg)) return "oob";
+  if (/unreachable/i.test(errorMsg)) return "unreachable";
+
+  // JS errors propagated from host imports or the runtime
+  if (/^TypeError\b|TypeError \(null\/undefined/i.test(errorMsg)) return "type_error";
+  if (/^RangeError\b|Maximum call stack/i.test(errorMsg)) return "range_error";
+  if (/^SyntaxError\b/i.test(errorMsg)) return "syntax_error";
+
+  // Promise / async failures
+  if (/^Promise\b|promise/i.test(errorMsg)) return "promise_error";
+
+  // Assertion failures (returned N patterns)
+  if (/^returned -1\b/.test(errorMsg)) return "exception_in_test";
+  if (/^returned \d+/.test(errorMsg)) return "assertion_fail";
+
+  // Wasm compile/validation errors (from instantiation)
+  if (/Compiling function|No dependency provided|not a function/i.test(errorMsg)) return "wasm_compile";
+  if (/expected .+ but compiled/i.test(errorMsg)) return "negative_test_fail";
+  if (/expected runtime .+ but succeeded/i.test(errorMsg)) return "negative_test_fail";
+  if (/no test export/i.test(errorMsg)) return "wasm_compile";
+
+  // Catch-all for other errors
+  if (/Cannot |Invalid /i.test(errorMsg)) return "runtime_error";
+
+  return "other";
+}
