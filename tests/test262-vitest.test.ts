@@ -11,6 +11,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync, existsSync, writeFileSync, mkdirSync, readdirSync } from "fs";
+import { Worker } from "worker_threads";
 import { createHash } from "crypto";
 import { join, relative, dirname, basename } from "path";
 import { createServer, type Server } from "http";
@@ -83,6 +84,17 @@ try {
   );
 } catch {
   // Bundle build failed — tests will use whatever bundle exists
+}
+
+// Build runtime bundle for wasm-exec-worker (worker threads can't use vitest transforms)
+try {
+  const root = join(import.meta.dirname ?? ".", "..");
+  execSync(
+    "npx esbuild src/runtime.ts --bundle --platform=node --format=esm --outfile=scripts/runtime-bundle.mjs --external:typescript",
+    { cwd: root, stdio: "pipe", timeout: 30000 },
+  );
+} catch {
+  // Runtime bundle build failed — worker will fail to load
 }
 
 // ── Cache setup ──────────────────────────────────────────────────────
@@ -532,116 +544,65 @@ for (const category of TEST_CATEGORIES) {
           return;
         }
 
-        // Instantiate and run — all errors are conformance issues, not vitest failures
-        try {
-          const imports = buildImports(compileResult.result.imports, undefined, compileResult.result.stringPool);
-          const importObj = imports as any;
+        // Instantiate and run in a worker thread — if the Wasm hangs (infinite
+        // loop), worker.terminate() kills it cleanly without losing the fork.
+        const isRuntimeNegative = meta.negative?.phase === "runtime";
+        const EXEC_TIMEOUT_MS = 10_000;
 
-          // Use instantiateStreaming from local HTTP server for source map support
-          const wasmRelUrl = relPath.replace(/\.js$/, ".wasm");
-          let instance: WebAssembly.Instance;
-          try {
-            const url = `http://127.0.0.1:${WASM_PORT}/${wasmRelUrl}`;
-            const response = await fetch(url);
-            const result = await WebAssembly.instantiateStreaming(response, importObj);
-            instance = result.instance;
-          } catch {
-            // Fallback to in-memory instantiation if HTTP fetch fails
-            const result = await WebAssembly.instantiate(compileResult.binary, importObj);
-            instance = result.instance;
-          }
+        const workerResult = await new Promise<any>((resolve) => {
+          const workerPath = join(PROJECT_ROOT, "scripts", "wasm-exec-worker.mjs");
+          const worker = new Worker(workerPath, { execArgv: [] });
 
-          // Wire up setExports for callback support
-          if (typeof importObj.setExports === "function") {
-            importObj.setExports(instance.exports);
-          }
+          const timer = setTimeout(() => {
+            worker.terminate();
+            resolve({ ok: false, error: "runtime timeout (10s)", timeout: true });
+          }, EXEC_TIMEOUT_MS);
 
-          const testFn = (instance.exports as any).test;
-          if (typeof testFn !== "function") {
-            recordResult(relPath, category, "compile_error", "no test export");
-            return;
-          }
-
-          const isRuntimeNegative = meta.negative?.phase === "runtime";
-
-          // Watchdog: spawn a child process that kills us after 15s.
-          // setTimeout can't fire while synchronous Wasm blocks the event loop,
-          // so we need an external process to deliver SIGKILL.
-          const { spawn: spawnProc } = await import("child_process");
-          const WATCHDOG_MS = 30_000;
-          const watchdogProc = spawnProc("sh", ["-c", `sleep ${WATCHDOG_MS / 1000} && kill -9 ${process.pid}`], {
-            detached: true,
-            stdio: "ignore",
+          worker.on("message", (msg: any) => {
+            clearTimeout(timer);
+            worker.terminate();
+            resolve(msg);
           });
-          watchdogProc.unref();
 
-          try {
-            let ret: any;
-            try {
-              ret = testFn();
-            } finally {
-              watchdogProc.kill();
-            }
+          worker.on("error", (err: Error) => {
+            clearTimeout(timer);
+            worker.terminate();
+            resolve({ ok: false, error: err.message ?? String(err), workerError: true });
+          });
 
-            if (isRuntimeNegative) {
-              recordResult(relPath, category, "fail", `expected runtime ${meta.negative!.type} but succeeded`);
-              return;
+          worker.on("exit", (code: number) => {
+            clearTimeout(timer);
+            // If we already resolved via message, this is a no-op
+            if (code !== 0) {
+              resolve({ ok: false, error: `worker exited with code ${code}`, workerError: true });
             }
+          });
 
-            if (ret === 1) {
-              recordResult(relPath, category, "pass");
-            } else if (ret === -1) {
-              // Exception caught by wrapper — analyze test to provide context
-              const desc = meta.description?.substring(0, 100) ?? "";
-              // Look for assert.throws pattern in source — tells us what error was expected
-              const throwsMatch = source.match(/assert\.throws\s*\(\s*(\w+Error)/);
-              const expectedErr = throwsMatch ? throwsMatch[1] : null;
-              // Look for common patterns that cause exceptions
-              const hasPropertyAccess = /\.\w+\s*[=;,)]/.test(source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, ""));
-              const hasDelete = /\bdelete\b/.test(source);
-              const hasEval = /\beval\s*\(/.test(source);
-              let context = desc || "exception in test body";
-              if (expectedErr) context = `expected ${expectedErr} — ${context}`;
-              recordResult(relPath, category, "fail", `returned -1 — ${context}`);
-            } else {
-              const assertInfo = findNthAssert(source, ret);
-              recordResult(relPath, category, "fail", `returned ${ret} — ${assertInfo}`);
-            }
-          } catch (execErr: any) {
-            if (execErr instanceof ConformanceError) throw execErr;
-            if (isRuntimeNegative) {
-              recordResult(relPath, category, "pass");
-            } else {
-              // WebAssembly.Exception from our throw $tag — extract payload
-              let errInfo: string;
-              if (execErr instanceof WebAssembly.Exception) {
-                // Our exception tag carries one externref payload
-                // Try to get it via getArg if the tag is available
-                let payload: any = null;
-                try {
-                  const tag = (instance.exports as any).__exn_tag ?? (instance.exports as any).__tag;
-                  if (tag) payload = execErr.getArg(tag, 0);
-                } catch {}
-                if (payload instanceof Error) {
-                  errInfo = resolveWasmErrorLine(payload, compileResult.result.sourceMap, source, bodyLineOffset);
-                } else {
-                  // Payload is null (from typeErrorThrowInstrs) — it's a TypeError on null access
-                  const desc = meta.description?.substring(0, 100) ?? "";
-                  errInfo = `TypeError (null/undefined access)${desc ? `: ${desc}` : ""}`;
-                }
-              } else if (execErr instanceof Error) {
-                errInfo = resolveWasmErrorLine(execErr, compileResult.result.sourceMap, source, bodyLineOffset);
-              } else {
-                errInfo = String(execErr);
-              }
-              recordResult(relPath, category, "fail", errInfo);
-            }
-            return;
-          }
-        } catch (instantiateErr: any) {
-          if (instantiateErr instanceof ConformanceError) throw instantiateErr;
+          // Send binary + config to worker (transfer binary buffer for zero-copy)
+          const binaryBuf = compileResult.binary.buffer.slice(
+            compileResult.binary.byteOffset,
+            compileResult.binary.byteOffset + compileResult.binary.byteLength,
+          );
+          worker.postMessage(
+            {
+              binary: new Uint8Array(binaryBuf),
+              imports: compileResult.result.imports,
+              stringPool: compileResult.result.stringPool,
+              isRuntimeNegative,
+            },
+            [binaryBuf],
+          );
+        });
+
+        // Process worker result
+        if (workerResult.timeout) {
+          recordResult(relPath, category, "fail", "runtime timeout (10s)");
+          return;
+        }
+
+        if (workerResult.instantiateError) {
           // Wasm validation errors — extract function name + byte offset
-          const msg = instantiateErr.message ?? String(instantiateErr);
+          const msg = workerResult.error;
           const funcMatch = msg.match(/Compiling function #\d+:"(\w+)" failed/);
           const offsetMatch = msg.match(/@\+(\d+)/);
           let enriched = msg;
@@ -651,7 +612,6 @@ for (const category of TEST_CATEGORIES) {
             const lines = source.split("\n");
             let found = false;
 
-            // Try exact function name match in source
             if (fname !== "test") {
               for (let i = 0; i < lines.length; i++) {
                 if (lines[i].includes(`function ${fname}`) || lines[i].includes(`${fname}(`)) {
@@ -663,8 +623,6 @@ for (const category of TEST_CATEGORIES) {
               }
             }
 
-            // For compiler-generated names (__closure_N, __cb_N, __iife_N),
-            // find the Nth arrow function / closure in source
             if (!found && /^__(?:closure|cb|iife|anon)_\d+$/.test(fname)) {
               const idx = parseInt(fname.split("_").pop()!, 10);
               let closureCount = 0;
@@ -681,7 +639,6 @@ for (const category of TEST_CATEGORIES) {
               }
             }
 
-            // Include wasm byte offset if available
             if (!found && offsetMatch) {
               enriched = `${msg} [in ${fname}() @+${offsetMatch[1]}]`;
             } else if (!found) {
@@ -690,6 +647,59 @@ for (const category of TEST_CATEGORIES) {
           }
           recordResult(relPath, category, "compile_error", enriched);
           return;
+        }
+
+        if (workerResult.noTestExport) {
+          recordResult(relPath, category, "compile_error", "no test export");
+          return;
+        }
+
+        if (workerResult.workerError) {
+          recordResult(relPath, category, "fail", workerResult.error);
+          return;
+        }
+
+        if (!workerResult.ok) {
+          // Runtime exception
+          if (workerResult.isException) {
+            const errInfo = workerResult.error;
+            const desc = meta.description?.substring(0, 100) ?? "";
+            // If it looks like a TypeError on null access
+            if (errInfo === "TypeError (null/undefined access)") {
+              recordResult(relPath, category, "fail", `${errInfo}${desc ? `: ${desc}` : ""}`);
+            } else {
+              recordResult(relPath, category, "fail", errInfo);
+            }
+          } else {
+            recordResult(relPath, category, "fail", workerResult.error);
+          }
+          return;
+        }
+
+        // Success path
+        if (workerResult.runtimeNegativePass) {
+          recordResult(relPath, category, "pass");
+          return;
+        }
+
+        if (workerResult.runtimeNegativeNoThrow) {
+          recordResult(relPath, category, "fail", `expected runtime ${meta.negative!.type} but succeeded`);
+          return;
+        }
+
+        const ret = workerResult.ret;
+        if (ret === 1) {
+          recordResult(relPath, category, "pass");
+        } else if (ret === -1) {
+          const desc = meta.description?.substring(0, 100) ?? "";
+          const throwsMatch = source.match(/assert\.throws\s*\(\s*(\w+Error)/);
+          const expectedErr = throwsMatch ? throwsMatch[1] : null;
+          let context = desc || "exception in test body";
+          if (expectedErr) context = `expected ${expectedErr} — ${context}`;
+          recordResult(relPath, category, "fail", `returned -1 — ${context}`);
+        } else {
+          const assertInfo = findNthAssert(source, ret);
+          recordResult(relPath, category, "fail", `returned ${ret} — ${assertInfo}`);
         }
       }, 90_000);
     }

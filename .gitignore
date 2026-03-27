@@ -17,6 +17,7 @@ benchmarks/results/*.txt
 .test262-cache/
 test262-out/
 scripts/compiler-bundle.mjs
+scripts/runtime-bundle.mjs
 tmp_*.ts
 tmp_*.mts
 isolate-*.log
