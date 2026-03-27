@@ -5656,19 +5656,17 @@ export function compileCompoundAssignment(
       }
     }
 
-    // For externref boxed captures with arithmetic ops, unbox to f64 first (#795)
-    const boxedNeedsUnbox = boxed.valType.kind === "externref";
-    if (boxedNeedsUnbox) {
-      addUnionImports(ctx);
-      const unboxIdx = ctx.funcMap.get("__unbox_number")!;
-      fctx.body.push({ op: "call", funcIdx: unboxIdx });
+    // For non-f64/non-i32 boxed captures with arithmetic ops, coerce to f64 first (#795, #816)
+    const boxedNeedsCoerce = boxed.valType.kind !== "f64" && boxed.valType.kind !== "i32";
+    if (boxedNeedsCoerce) {
+      coerceType(ctx, fctx, boxed.valType, { kind: "f64" });
     }
 
     const compoundRhsBoxed = compileExpression(
       ctx,
       fctx,
       expr.right,
-      boxedNeedsUnbox ? { kind: "f64" } : boxed.valType,
+      boxedNeedsCoerce ? { kind: "f64" } : boxed.valType,
     );
     if (!compoundRhsBoxed) {
       ctx.errors.push({
@@ -5678,11 +5676,9 @@ export function compileCompoundAssignment(
       });
       return null;
     }
-    // Coerce RHS to f64 if externref (#795)
-    if (boxedNeedsUnbox && compoundRhsBoxed.kind === "externref") {
-      fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__unbox_number")! });
-    } else if (boxedNeedsUnbox && compoundRhsBoxed.kind === "i32") {
-      fctx.body.push({ op: "f64.convert_i32_s" });
+    // Coerce RHS to f64 if needed (#795, #816)
+    if (boxedNeedsCoerce && compoundRhsBoxed.kind !== "f64") {
+      coerceType(ctx, fctx, compoundRhsBoxed, { kind: "f64" });
     }
 
     switch (op) {
@@ -5716,11 +5712,9 @@ export function compileCompoundAssignment(
         break;
     }
 
-    // Box result back to externref if the ref cell stores externref (#795)
-    if (boxedNeedsUnbox) {
-      addUnionImports(ctx);
-      const boxIdx = ctx.funcMap.get("__box_number")!;
-      fctx.body.push({ op: "call", funcIdx: boxIdx });
+    // Coerce result back to original type if the ref cell stores non-f64 (#795, #816)
+    if (boxedNeedsCoerce) {
+      coerceType(ctx, fctx, { kind: "f64" }, boxed.valType);
     }
 
     // Write back to ref cell (skip if ref cell is null #702)
@@ -7348,6 +7342,47 @@ function compilePrefixUnary(
           const boxedPP = fctx.boxedCaptures?.get(ppOperand.text);
           if (boxedPP) {
             // ++x through ref cell (null-guarded #702)
+            // For non-numeric boxed types (externref, ref_null, i64), coerce to f64
+            // before arithmetic to avoid f64.add on non-f64 operand (#816)
+            const needsCoerce = boxedPP.valType.kind !== "f64" && boxedPP.valType.kind !== "i32";
+            if (needsCoerce) {
+              const ppF64Tmp = allocLocal(fctx, `__pp_f64_${fctx.locals.length}`, { kind: "f64" });
+              const ppNewTmp = allocLocal(fctx, `__pp_new_${fctx.locals.length}`, boxedPP.valType);
+              // Build else-branch using savedBody pattern so coerceType can push freely
+              const savedBody = fctx.body;
+              const elseBranch: Instr[] = [];
+              fctx.body = elseBranch;
+              fctx.body.push({ op: "local.get", index: idx });
+              fctx.body.push({
+                op: "struct.get",
+                typeIdx: boxedPP.refCellTypeIdx,
+                fieldIdx: 0,
+              });
+              coerceType(ctx, fctx, boxedPP.valType, { kind: "f64" });
+              fctx.body.push({ op: "f64.const", value: 1 });
+              fctx.body.push({ op: "f64.add" });
+              fctx.body.push({ op: "local.tee", index: ppF64Tmp });
+              coerceType(ctx, fctx, { kind: "f64" }, boxedPP.valType);
+              fctx.body.push({ op: "local.set", index: ppNewTmp });
+              fctx.body.push({ op: "local.get", index: idx });
+              fctx.body.push({ op: "local.get", index: ppNewTmp });
+              fctx.body.push({
+                op: "struct.set",
+                typeIdx: boxedPP.refCellTypeIdx,
+                fieldIdx: 0,
+              });
+              fctx.body.push({ op: "local.get", index: ppF64Tmp });
+              fctx.body = savedBody;
+              fctx.body.push({ op: "local.get", index: idx });
+              fctx.body.push({ op: "ref.is_null" });
+              fctx.body.push({
+                op: "if",
+                blockType: { kind: "val" as const, type: { kind: "f64" } },
+                then: [{ op: "f64.const", value: NaN } as Instr],
+                else: elseBranch,
+              });
+              return { kind: "f64" };
+            }
             const ppTmp = allocLocal(
               fctx,
               `__pp_${fctx.locals.length}`,
@@ -7410,6 +7445,14 @@ function compilePrefixUnary(
             fctx.body.push({ op: "f64.const", value: 1 });
             fctx.body.push({ op: "f64.add" });
             return { kind: "f64" };
+          }
+          // i64 (BigInt): use i64 arithmetic for prefix ++ (#816)
+          if (localType?.kind === "i64") {
+            fctx.body.push({ op: "local.get", index: idx });
+            fctx.body.push({ op: "i64.const", value: 1n });
+            fctx.body.push({ op: "i64.add" });
+            fctx.body.push({ op: "local.tee", index: idx });
+            return { kind: "i64" };
           }
           fctx.body.push({ op: "local.get", index: idx });
           fctx.body.push({ op: "f64.const", value: 1 });
@@ -7516,6 +7559,47 @@ function compilePrefixUnary(
           const boxed = fctx.boxedCaptures?.get(mmOperand.text);
           if (boxed) {
             // ++x / --x through ref cell (null-guarded #702)
+            // For non-numeric boxed types (externref, ref_null, i64), coerce to f64
+            // before arithmetic to avoid f64.sub on non-f64 operand (#816)
+            const needsCoerce = boxed.valType.kind !== "f64" && boxed.valType.kind !== "i32";
+            if (needsCoerce) {
+              const mmF64Tmp = allocLocal(fctx, `__mm_f64_${fctx.locals.length}`, { kind: "f64" });
+              const mmNewTmp = allocLocal(fctx, `__mm_new_${fctx.locals.length}`, boxed.valType);
+              // Build else-branch using savedBody pattern so coerceType can push freely
+              const savedBody = fctx.body;
+              const elseBranch: Instr[] = [];
+              fctx.body = elseBranch;
+              fctx.body.push({ op: "local.get", index: idx });
+              fctx.body.push({
+                op: "struct.get",
+                typeIdx: boxed.refCellTypeIdx,
+                fieldIdx: 0,
+              });
+              coerceType(ctx, fctx, boxed.valType, { kind: "f64" });
+              fctx.body.push({ op: "f64.const", value: 1 });
+              fctx.body.push({ op: arithOp } as unknown as Instr);
+              fctx.body.push({ op: "local.tee", index: mmF64Tmp });
+              coerceType(ctx, fctx, { kind: "f64" }, boxed.valType);
+              fctx.body.push({ op: "local.set", index: mmNewTmp });
+              fctx.body.push({ op: "local.get", index: idx });
+              fctx.body.push({ op: "local.get", index: mmNewTmp });
+              fctx.body.push({
+                op: "struct.set",
+                typeIdx: boxed.refCellTypeIdx,
+                fieldIdx: 0,
+              });
+              fctx.body.push({ op: "local.get", index: mmF64Tmp });
+              fctx.body = savedBody;
+              fctx.body.push({ op: "local.get", index: idx });
+              fctx.body.push({ op: "ref.is_null" });
+              fctx.body.push({
+                op: "if",
+                blockType: { kind: "val" as const, type: { kind: "f64" } },
+                then: [{ op: "f64.const", value: NaN } as Instr],
+                else: elseBranch,
+              });
+              return { kind: "f64" };
+            }
             const tmp = allocLocal(
               fctx,
               `__pp_${fctx.locals.length}`,
@@ -7578,6 +7662,14 @@ function compilePrefixUnary(
             fctx.body.push({ op: "f64.const", value: 1 });
             fctx.body.push({ op: arithOp });
             return { kind: "f64" };
+          }
+          // i64 (BigInt): use i64 arithmetic for prefix -- (#816)
+          if (localType?.kind === "i64") {
+            fctx.body.push({ op: "local.get", index: idx });
+            fctx.body.push({ op: "i64.const", value: 1n });
+            fctx.body.push({ op: isIncrement ? "i64.add" : "i64.sub" } as unknown as Instr);
+            fctx.body.push({ op: "local.tee", index: idx });
+            return { kind: "i64" };
           }
           fctx.body.push({ op: "local.get", index: idx });
           fctx.body.push({ op: "f64.const", value: 1 });
@@ -7793,6 +7885,47 @@ function compilePostfixUnary(
     // Handle boxed (ref cell) mutable captures for postfix (null-guarded #702)
     const boxedPost = fctx.boxedCaptures?.get(postOperand.text);
     if (boxedPost) {
+      // For non-numeric boxed types (externref, ref_null, i64), coerce to f64
+      // before arithmetic to avoid f64.add/sub on non-f64 operand (#816)
+      const needsCoerce = boxedPost.valType.kind !== "f64" && boxedPost.valType.kind !== "i32";
+      if (needsCoerce) {
+        const postOldF64 = allocLocal(fctx, `__postbox_f64_${fctx.locals.length}`, { kind: "f64" });
+        const postNewTmp = allocLocal(fctx, `__postnew_${fctx.locals.length}`, boxedPost.valType);
+        // Build else-branch using savedBody pattern so coerceType can push freely
+        const savedBody = fctx.body;
+        const elseBranch: Instr[] = [];
+        fctx.body = elseBranch;
+        fctx.body.push({ op: "local.get", index: idx });
+        fctx.body.push({
+          op: "struct.get",
+          typeIdx: boxedPost.refCellTypeIdx,
+          fieldIdx: 0,
+        });
+        coerceType(ctx, fctx, boxedPost.valType, { kind: "f64" });
+        fctx.body.push({ op: "local.tee", index: postOldF64 });
+        fctx.body.push({ op: "f64.const", value: 1 });
+        fctx.body.push({ op: arithOp } as unknown as Instr);
+        coerceType(ctx, fctx, { kind: "f64" }, boxedPost.valType);
+        fctx.body.push({ op: "local.set", index: postNewTmp });
+        fctx.body.push({ op: "local.get", index: idx });
+        fctx.body.push({ op: "local.get", index: postNewTmp });
+        fctx.body.push({
+          op: "struct.set",
+          typeIdx: boxedPost.refCellTypeIdx,
+          fieldIdx: 0,
+        });
+        fctx.body.push({ op: "local.get", index: postOldF64 });
+        fctx.body = savedBody;
+        fctx.body.push({ op: "local.get", index: idx });
+        fctx.body.push({ op: "ref.is_null" });
+        fctx.body.push({
+          op: "if",
+          blockType: { kind: "val" as const, type: { kind: "f64" } },
+          then: [{ op: "f64.const", value: NaN } as Instr],
+          else: elseBranch,
+        });
+        return { kind: "f64" };
+      }
       const oldTmp = allocLocal(
         fctx,
         `__postbox_${fctx.locals.length}`,
@@ -7871,6 +8004,16 @@ function compilePostfixUnary(
       fctx.body.push({ op: "local.get", index: idx });
       coerceType(ctx, fctx, localType!, { kind: "f64" });
       return { kind: "f64" };
+    }
+
+    // i64 (BigInt): use i64 arithmetic for postfix ++/-- (#816)
+    if (localType?.kind === "i64") {
+      fctx.body.push({ op: "local.get", index: idx });
+      fctx.body.push({ op: "local.get", index: idx });
+      fctx.body.push({ op: "i64.const", value: 1n });
+      fctx.body.push({ op: isIncrement ? "i64.add" : "i64.sub" } as unknown as Instr);
+      fctx.body.push({ op: "local.set", index: idx });
+      return { kind: "i64" };
     }
 
     fctx.body.push({ op: "local.get", index: idx });
