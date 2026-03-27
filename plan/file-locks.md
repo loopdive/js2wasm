@@ -27,6 +27,9 @@ Active file/function claims by agents. **Check before editing. Update when start
 | src/codegen/statements.ts | emitTdzCheck (lines 50-94) | dev-tdz | #800 | 2026-03-26 |
 | src/codegen/expressions.ts | compileNewExpression (Test262Error) | dev-812 | #812 | 2026-03-26 |
 | src/codegen/expressions.ts | RangeError validation (toFixed, repeat, Array ctor) | dev-733 | #733 | 2026-03-26 |
+| src/codegen/object-ops.ts | compileObjectDefineProperty, Object.defineProperties | dev-797c | #797c | 2026-03-27 |
+| src/codegen/expressions.ts | Object.defineProperties handler (lines 10060-10073) | dev-797c | #797c | 2026-03-27 |
+| src/runtime.ts | __defineProperties host import | dev-797c | #797c | 2026-03-27 |
 | src/codegen/index.ts | KNOWN_CONSTRUCTORS | dev-812, dev-814 | #812, #814 | 2026-03-26 |
 | src/runtime.ts | builtinCtors | dev-814 | #814 | 2026-03-26 |
 

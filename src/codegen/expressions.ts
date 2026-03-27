@@ -63,6 +63,7 @@ import {
 } from "./literals.js";
 import {
   compileObjectDefineProperty,
+  compileObjectDefineProperties,
   compileObjectKeysOrValues,
   compilePropertyIntrospection,
 } from "./object-ops.js";
@@ -116,6 +117,7 @@ export {
 } from "./literals.js";
 export {
   compileObjectDefineProperty,
+  compileObjectDefineProperties,
   compileObjectKeysOrValues,
   compilePropertyIntrospection,
 } from "./object-ops.js";
@@ -10057,19 +10059,14 @@ function compileCallExpression(
       return compileObjectDefineProperty(ctx, fctx, expr);
     }
 
-    // Handle Object.defineProperties(obj, props) — stub: compile both args, drop props, return obj
+    // Handle Object.defineProperties(obj, props) — expand to individual defineProperty calls
     if (
       ts.isIdentifier(propAccess.expression) &&
       propAccess.expression.text === "Object" &&
       propAccess.name.text === "defineProperties" &&
       expr.arguments.length >= 2
     ) {
-      const objType = compileExpression(ctx, fctx, expr.arguments[0]!);
-      const propsType = compileExpression(ctx, fctx, expr.arguments[1]!);
-      if (propsType) {
-        fctx.body.push({ op: "drop" });
-      }
-      return objType;
+      return compileObjectDefineProperties(ctx, fctx, expr);
     }
 
     // Handle Object.getOwnPropertyDescriptor(obj, prop)

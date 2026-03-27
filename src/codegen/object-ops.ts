@@ -736,6 +736,20 @@ export function compileObjectDefineProperty(
 
         // Record the new flags
         ctx.definedPropertyFlags.set(key, newFlags);
+
+        // Update shapePropFlags so getOwnPropertyDescriptor sees updated attributes
+        if (structTypeIdx !== undefined && fields) {
+          const userFieldsList = fields
+            .map((f, idx) => ({ field: f, fieldIdx: idx }))
+            .filter((e) => !e.field.name.startsWith("__"));
+          const userIdx = userFieldsList.findIndex(e => e.field.name === propName);
+          if (userIdx >= 0) {
+            let flagsArr = ctx.shapePropFlags.get(structTypeIdx);
+            if (flagsArr && userIdx < flagsArr.length) {
+              flagsArr[userIdx] = newFlags & 0x07; // Only store WEC bits
+            }
+          }
+        }
       }
     }
 
@@ -1060,6 +1074,230 @@ function emitExternDefinePropertyNoValue(
 
   fctx.body.push({ op: "local.get", index: objLocal });
   return objType;
+}
+
+// ── Object.defineProperties ───────────────────────────────────────────
+
+/**
+ * Compile Object.defineProperties(obj, descriptors).
+ *
+ * Static path: when descriptors is an object literal, iterate each property
+ * and synthesize individual Object.defineProperty calls at compile time.
+ *
+ * Dynamic fallback: delegate to __defineProperties host import.
+ */
+export function compileObjectDefineProperties(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.CallExpression,
+): ValType | null {
+  const objArg = expr.arguments[0]!;
+  const descsArg = expr.arguments[1]!;
+
+  // Static path: descriptors is an object literal — expand to individual defineProperty calls
+  if (ts.isObjectLiteralExpression(descsArg)) {
+    // Compile obj and save to local
+    const objType = compileExpression(ctx, fctx, objArg);
+    if (!objType) return null;
+    const objLocal = allocLocal(fctx, `__defprops_obj_${fctx.locals.length}`, objType);
+    fctx.body.push({ op: "local.set", index: objLocal });
+
+    for (const prop of descsArg.properties) {
+      if (!ts.isPropertyAssignment(prop)) continue;
+      const propName = ts.isIdentifier(prop.name)
+        ? prop.name.text
+        : ts.isStringLiteral(prop.name)
+          ? prop.name.text
+          : undefined;
+      if (propName === undefined) continue;
+
+      // Synthesize: Object.defineProperty(obj, propName, descriptor)
+      const syntheticPropAccess = ts.factory.createPropertyAccessExpression(
+        ts.factory.createIdentifier("Object"),
+        "defineProperty",
+      );
+      const syntheticCall = ts.factory.createCallExpression(
+        syntheticPropAccess,
+        undefined,
+        [
+          ts.factory.createIdentifier(`__defprops_obj_placeholder_${objLocal}`),
+          ts.factory.createStringLiteral(propName),
+          prop.initializer,
+        ],
+      );
+      ts.setTextRange(syntheticCall, expr);
+      (syntheticCall as any).parent = expr.parent;
+
+      // Instead of recursing through compileCallExpression (which would need
+      // the synthetic identifier to resolve), directly call compileObjectDefineProperty
+      // with the obj already on stack via local.get.
+
+      // Build a mini call that reuses our saved obj local:
+      // We need to compile the descriptor value per property.
+      // The simplest approach: push obj local, then delegate to the externref
+      // defineProperty path for each property.
+      const descExpr = prop.initializer;
+
+      // Parse the individual descriptor
+      let valueExpr: ts.Expression | undefined;
+      let descWritable: boolean | undefined;
+      let descEnumerable: boolean | undefined;
+      let descConfigurable: boolean | undefined;
+
+      if (ts.isObjectLiteralExpression(descExpr)) {
+        for (const dp of descExpr.properties) {
+          if (ts.isPropertyAssignment(dp) && ts.isIdentifier(dp.name)) {
+            if (dp.name.text === "value") valueExpr = dp.initializer;
+            if (dp.name.text === "writable") {
+              if (dp.initializer.kind === ts.SyntaxKind.TrueKeyword) descWritable = true;
+              else if (dp.initializer.kind === ts.SyntaxKind.FalseKeyword) descWritable = false;
+            }
+            if (dp.name.text === "enumerable") {
+              if (dp.initializer.kind === ts.SyntaxKind.TrueKeyword) descEnumerable = true;
+              else if (dp.initializer.kind === ts.SyntaxKind.FalseKeyword) descEnumerable = false;
+            }
+            if (dp.name.text === "configurable") {
+              if (dp.initializer.kind === ts.SyntaxKind.TrueKeyword) descConfigurable = true;
+              else if (dp.initializer.kind === ts.SyntaxKind.FalseKeyword) descConfigurable = false;
+            }
+          }
+        }
+      }
+
+      // Try struct path: if obj is a known struct and propName matches a field
+      const objTsType = ctx.checker.getTypeAtLocation(objArg);
+      const structName = resolveStructName(ctx, objTsType)
+        || (ts.isIdentifier(objArg) ? ctx.widenedVarStructMap.get(objArg.text) : undefined);
+      const structTypeIdx = structName ? ctx.structMap.get(structName) : undefined;
+      const fields = structName ? ctx.structFields.get(structName) : undefined;
+      const fieldIdx = (fields && propName) ? fields.findIndex(f => f.name === propName) : -1;
+
+      if (structTypeIdx !== undefined && fields && fieldIdx >= 0 && valueExpr) {
+        // Struct path: emit struct.set directly
+        const fieldType = fields[fieldIdx]!.type;
+        fctx.body.push({ op: "local.get", index: objLocal });
+
+        // Cast if needed
+        if (objType.kind === "externref") {
+          fctx.body.push({ op: "any.convert_extern" } as Instr);
+          fctx.body.push({ op: "ref.cast", typeIdx: structTypeIdx } as unknown as Instr);
+        } else if ((objType.kind === "ref_null" || objType.kind === "ref") &&
+                   "typeIdx" in objType && objType.typeIdx !== structTypeIdx) {
+          fctx.body.push({ op: "ref.cast", typeIdx: structTypeIdx } as unknown as Instr);
+        }
+
+        const valType = compileExpression(ctx, fctx, valueExpr, fieldType);
+        if (valType) {
+          if (valType.kind !== fieldType.kind) {
+            coerceType(ctx, fctx, valType, fieldType);
+          }
+          fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx });
+        } else {
+          // No value produced — drop the obj ref
+          fctx.body.push({ op: "drop" });
+        }
+
+        // Update compile-time flags
+        if (ts.isIdentifier(objArg)) {
+          const isAccessor = false;
+          const newFlags = computeDescriptorFlags(descWritable, descEnumerable, descConfigurable, isAccessor);
+          const key = `${objArg.text}:${propName}`;
+          ctx.definedPropertyFlags.set(key, newFlags);
+        }
+
+        // Update shapePropFlags
+        const userFields = fields
+          .map((f, idx) => ({ field: f, fieldIdx: idx }))
+          .filter((e) => !e.field.name.startsWith("__"));
+        const userFieldIdx = userFields.findIndex(e => e.fieldIdx === fieldIdx);
+        if (userFieldIdx >= 0) {
+          let flagsArr = ctx.shapePropFlags.get(structTypeIdx);
+          if (flagsArr && userFieldIdx < flagsArr.length) {
+            const isAccessor = false;
+            const newFlags = computeDescriptorFlags(descWritable, descEnumerable, descConfigurable, isAccessor);
+            flagsArr[userFieldIdx] = newFlags & 0x07; // Only store WEC bits
+          }
+        }
+
+        continue; // Next property
+      }
+
+      // Externref fallback: call __defineProperty_value for this property
+      if (objType.kind !== "externref") {
+        // Coerce obj to externref for the host call
+        fctx.body.push({ op: "local.get", index: objLocal });
+        coerceType(ctx, fctx, objType, { kind: "externref" });
+      } else {
+        fctx.body.push({ op: "local.get", index: objLocal });
+      }
+      const objExtLocal = allocLocal(fctx, `__defprops_ext_${fctx.locals.length}`, { kind: "externref" });
+      fctx.body.push({ op: "local.set", index: objExtLocal });
+
+      // Push prop name as string
+      fctx.body.push({ op: "local.get", index: objExtLocal });
+      compileExpression(ctx, fctx, ts.factory.createStringLiteral(propName), { kind: "externref" });
+
+      // Compile value or push null
+      if (valueExpr) {
+        const vt = compileExpression(ctx, fctx, valueExpr, { kind: "externref" });
+        if (vt && vt.kind !== "externref") {
+          coerceType(ctx, fctx, vt, { kind: "externref" });
+        } else if (!vt) {
+          fctx.body.push({ op: "ref.null.extern" });
+        }
+      } else {
+        fctx.body.push({ op: "ref.null.extern" });
+      }
+
+      // Runtime flags
+      const runtimeFlags = computeRuntimeFlags(descWritable, descEnumerable, descConfigurable, !!valueExpr);
+      fctx.body.push({ op: "f64.const", value: runtimeFlags });
+
+      const funcIdx = ensureLateImport(ctx, "__defineProperty_value",
+        [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }, { kind: "f64" }],
+        [{ kind: "externref" }]);
+      flushLateImportShifts(ctx, fctx);
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+        fctx.body.push({ op: "drop" }); // drop returned obj (we use our local)
+      }
+
+      // Update compile-time flags for externref path
+      if (ts.isIdentifier(objArg)) {
+        const isAccessor = false;
+        const newFlags = computeDescriptorFlags(descWritable, descEnumerable, descConfigurable, isAccessor);
+        const key = `${objArg.text}:${propName}`;
+        ctx.definedPropertyFlags.set(key, newFlags);
+      }
+    }
+
+    // Return obj
+    fctx.body.push({ op: "local.get", index: objLocal });
+    return objType;
+  }
+
+  // Dynamic fallback: delegate to __defineProperties host import
+  const objType = compileExpression(ctx, fctx, objArg, { kind: "externref" });
+  if (!objType) return null;
+  if (objType.kind !== "externref") {
+    coerceType(ctx, fctx, objType, { kind: "externref" });
+  }
+  const descsType = compileExpression(ctx, fctx, descsArg, { kind: "externref" });
+  if (!descsType) {
+    return { kind: "externref" };
+  }
+  if (descsType.kind !== "externref") {
+    coerceType(ctx, fctx, descsType, { kind: "externref" });
+  }
+
+  const funcIdx = ensureLateImport(ctx, "__defineProperties",
+    [{ kind: "externref" }, { kind: "externref" }],
+    [{ kind: "externref" }]);
+  flushLateImportShifts(ctx, fctx);
+  if (funcIdx !== undefined) {
+    fctx.body.push({ op: "call", funcIdx });
+  }
+  return { kind: "externref" };
 }
 
 // ── Object.keys / Object.values ───────────────────────────────────────
