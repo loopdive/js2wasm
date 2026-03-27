@@ -114,11 +114,6 @@ const HANGING_TESTS = new Set([
   "test/language/statements/class/elements/private-methods/prod-private-generator.js", // hangs (#793)
   "test/language/statements/class/elements/private-methods/prod-private-method-initialize-order.js", // hangs (#793)
   "test/language/statements/class/elements/same-line-gen-rs-static-privatename-identifier-alt.js",
-  "test/built-ins/String/prototype/lastIndexOf/S15.5.4.8_A9.js", // hangs: valueOf recursion
-  "test/built-ins/String/prototype/lastIndexOf/S15.5.4.8_A4_T2.js", // hangs: valueOf recursion
-  "test/built-ins/String/prototype/lastIndexOf/S15.5.4.8_A4_T3.js", // hangs: valueOf recursion
-  "test/built-ins/String/prototype/lastIndexOf/S15.5.4.8_A4_T4.js", // hangs: valueOf recursion
-  "test/built-ins/String/prototype/lastIndexOf/S15.5.4.8_A4_T5.js", // hangs: valueOf recursion
 ]);
 
 export function shouldSkip(
@@ -162,10 +157,6 @@ export function shouldSkip(
   }
   if (filePath && /future-reserved-words/.test(filePath)) {
     return { skip: true, reason: "strict mode reserved words (deprioritized)" };
-  }
-  // Skip valueOf/toString override tests that cause infinite recursion in compilation
-  if (filePath && /lastIndexOf\/S15\.5\.4\.8/.test(filePath)) {
-    return { skip: true, reason: "valueOf recursion hang in lastIndexOf tests" };
   }
   if (filePath && /built-ins\/Temporal/.test(filePath)) {
     return {
