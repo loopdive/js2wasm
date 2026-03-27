@@ -572,63 +572,6 @@ function resolveImport(
           }
         };
       }
-      // RegExp_new: create a RegExp from pattern and flags strings.
-      // This is used when the codegen emits RegExp_new for regex literals
-      // and the import is classified as "builtin" (fallback when extern class
-      // info isn't propagated to the import manifest).
-      if (name === "RegExp_new") return (pattern: any, flags: any) => {
-        const p = pattern != null ? String(pattern) : "";
-        const f = flags != null && flags !== "" ? String(flags) : undefined;
-        return new RegExp(p, f);
-      };
-      // RegExp method fallbacks (when classified as builtin instead of extern_class)
-      if (name === "RegExp_test") return (self: any, str: any) => self?.test?.(str) ? 1 : 0;
-      if (name === "RegExp_exec") return (self: any, str: any) => self?.exec?.(str);
-      if (name === "RegExp_toString") return (self: any) => self?.toString?.() ?? "";
-      // RegExp property getters
-      if (name === "RegExp_get_source") return (self: any) => self?.source ?? "";
-      if (name === "RegExp_get_flags") return (self: any) => self?.flags ?? "";
-      if (name === "RegExp_get_global") return (self: any) => self?.global ? 1 : 0;
-      if (name === "RegExp_get_ignoreCase") return (self: any) => self?.ignoreCase ? 1 : 0;
-      if (name === "RegExp_get_multiline") return (self: any) => self?.multiline ? 1 : 0;
-      if (name === "RegExp_get_sticky") return (self: any) => self?.sticky ? 1 : 0;
-      if (name === "RegExp_get_unicode") return (self: any) => self?.unicode ? 1 : 0;
-      if (name === "RegExp_get_dotAll") return (self: any) => self?.dotAll ? 1 : 0;
-      if (name === "RegExp_get_lastIndex") return (self: any) => self?.lastIndex ?? 0;
-      if (name === "RegExp_set_lastIndex") return (self: any, v: any) => { if (self) self.lastIndex = v; };
-      // Map method fallbacks
-      if (name === "Map_new") return () => new Map();
-      if (name === "Map_get") return (self: any, key: any) => self?.get?.(key);
-      if (name === "Map_set") return (self: any, key: any, val: any) => self?.set?.(key, val);
-      if (name === "Map_has") return (self: any, key: any) => self?.has?.(key) ? 1 : 0;
-      if (name === "Map_delete") return (self: any, key: any) => self?.delete?.(key) ? 1 : 0;
-      if (name === "Map_clear") return (self: any) => self?.clear?.();
-      if (name === "Map_get_size") return (self: any) => self?.size ?? 0;
-      if (name === "Map_forEach") return (self: any, cb: any) => self?.forEach?.(cb);
-      if (name === "Map_keys") return (self: any) => self?.keys?.();
-      if (name === "Map_values") return (self: any) => self?.values?.();
-      if (name === "Map_entries") return (self: any) => self?.entries?.();
-      // Set method fallbacks
-      if (name === "Set_new") return () => new Set();
-      if (name === "Set_add") return (self: any, val: any) => self?.add?.(val);
-      if (name === "Set_has") return (self: any, val: any) => self?.has?.(val) ? 1 : 0;
-      if (name === "Set_delete") return (self: any, val: any) => self?.delete?.(val) ? 1 : 0;
-      if (name === "Set_clear") return (self: any) => self?.clear?.();
-      if (name === "Set_get_size") return (self: any) => self?.size ?? 0;
-      if (name === "Set_forEach") return (self: any, cb: any) => self?.forEach?.(cb);
-      if (name === "Set_keys") return (self: any) => self?.keys?.();
-      if (name === "Set_values") return (self: any) => self?.values?.();
-      if (name === "Set_entries") return (self: any) => self?.entries?.();
-      // WeakMap/WeakSet method fallbacks
-      if (name === "WeakMap_new") return () => new WeakMap();
-      if (name === "WeakMap_get") return (self: any, key: any) => self?.get?.(key);
-      if (name === "WeakMap_set") return (self: any, key: any, val: any) => self?.set?.(key, val);
-      if (name === "WeakMap_has") return (self: any, key: any) => self?.has?.(key) ? 1 : 0;
-      if (name === "WeakMap_delete") return (self: any, key: any) => self?.delete?.(key) ? 1 : 0;
-      if (name === "WeakSet_new") return () => new WeakSet();
-      if (name === "WeakSet_add") return (self: any, val: any) => self?.add?.(val);
-      if (name === "WeakSet_has") return (self: any, val: any) => self?.has?.(val) ? 1 : 0;
-      if (name === "WeakSet_delete") return (self: any, val: any) => self?.delete?.(val) ? 1 : 0;
       return () => {};
     }
     case "callback_maker":
