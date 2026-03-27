@@ -15242,7 +15242,8 @@ function compileNewExpression(
       ctorName === "SyntaxError" ||
       ctorName === "URIError" ||
       ctorName === "EvalError" ||
-      ctorName === "ReferenceError"
+      ctorName === "ReferenceError" ||
+      ctorName === "Test262Error"
     ) {
       const args = expr.arguments ?? [];
       if (args.length >= 1) {
