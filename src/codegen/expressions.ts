@@ -8660,6 +8660,101 @@ function compileClosureCall(
 }
 
 /**
+ * Handle calls where the property is a getter that returns a callable:
+ * c.method(args) where `get method()` returns a function reference.
+ *
+ * Strategy: check if the getter returns a method of the same class
+ * (common pattern: `get method() { return this.#method; }`).
+ * If so, call the underlying method directly with the receiver.
+ * Otherwise, call the getter and invoke the result via host import.
+ */
+function compileGetterCallable(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.CallExpression,
+  propAccess: ts.PropertyAccessExpression,
+  receiverClassName: string,
+  getterIdx: number,
+): InnerResult | undefined {
+  // Get the getter's return type from the TS type system to find the call signature
+  const propTsType = ctx.checker.getTypeAtLocation(propAccess);
+  const callSigs = propTsType.getCallSignatures?.();
+  if (!callSigs || callSigs.length === 0) return undefined;
+
+  // The getter returns a callable. Check if we can resolve it to a known method
+  // on the same class. Look for common patterns:
+  // 1. get method() { return this.#privateMethod; } -> C___priv_privateMethod
+  // 2. get method() { return this.otherMethod; } -> C_otherMethod
+
+  // Try to find the underlying method by scanning known method names
+  // Pattern: getter for propName might return a private method __priv_propName
+  // or the same-named private method
+  const methodName = ts.isPrivateIdentifier(propAccess.name)
+    ? "__priv_" + propAccess.name.text.slice(1)
+    : propAccess.name.text;
+  const candidateNames = [
+    `${receiverClassName}___priv_${methodName}`,  // get method -> this.#method
+    `${receiverClassName}_${methodName}`,          // get method -> this.method (self-reference unlikely but check)
+  ];
+  // Also check all ancestor classes
+  let ancestor = ctx.classParentMap.get(receiverClassName);
+  while (ancestor) {
+    candidateNames.push(`${ancestor}___priv_${methodName}`);
+    candidateNames.push(`${ancestor}_${methodName}`);
+    ancestor = ctx.classParentMap.get(ancestor);
+  }
+
+  for (const candidateName of candidateNames) {
+    const candidateIdx = ctx.funcMap.get(candidateName);
+    if (candidateIdx === undefined) continue;
+
+    // Found the underlying method. Call it directly: C___priv_method(receiver, ...args)
+    const structTypeIdx = ctx.structMap.get(receiverClassName);
+    const paramTypes = getFuncParamTypes(ctx, candidateIdx);
+    const recvTypeHint = paramTypes?.[0];
+    const recvType = compileExpression(ctx, fctx, propAccess.expression, recvTypeHint);
+
+    // Coerce receiver if needed
+    if (recvType && recvType.kind === "externref" && structTypeIdx !== undefined) {
+      fctx.body.push({ op: "any.convert_extern" } as Instr);
+      emitGuardedRefCast(fctx, structTypeIdx);
+    }
+
+    // Push arguments (skip self at index 0)
+    const methodParamCount = paramTypes ? paramTypes.length - 1 : expr.arguments.length;
+    for (let i = 0; i < Math.min(expr.arguments.length, methodParamCount); i++) {
+      compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
+    }
+    for (let i = methodParamCount; i < expr.arguments.length; i++) {
+      const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+      if (extraType !== null && extraType !== VOID_RESULT) {
+        fctx.body.push({ op: "drop" });
+      }
+    }
+    // Pad missing arguments
+    if (paramTypes) {
+      for (let i = Math.min(expr.arguments.length, methodParamCount) + 1; i < paramTypes.length; i++) {
+        pushDefaultValue(fctx, paramTypes[i]!);
+      }
+    }
+
+    fctx.body.push({ op: "call", funcIdx: candidateIdx });
+
+    // Determine return type
+    const sig = ctx.checker.getResolvedSignature(expr);
+    if (sig) {
+      const retType = ctx.checker.getReturnTypeOfSignature(sig);
+      if (isEffectivelyVoidReturn(ctx, retType, candidateName)) return VOID_RESULT;
+      if (wasmFuncReturnsVoid(ctx, candidateIdx)) return VOID_RESULT;
+      return getWasmFuncReturnType(ctx, candidateIdx) ?? resolveWasmType(ctx, retType);
+    }
+    return getWasmFuncReturnType(ctx, candidateIdx) ?? VOID_RESULT;
+  }
+
+  return undefined;  // Couldn't resolve to a known method
+}
+
+/**
  * Handle calls to callable struct fields: obj.callback() where callback
  * is a function-typed property stored in a struct field (not a method).
  * Returns undefined if the property is not a callable struct field,
@@ -10991,6 +11086,19 @@ function compileCallExpression(
         );
         if (callablePropResult !== undefined) return callablePropResult;
       }
+      // If still no method, check if this is a getter that returns a callable.
+      // Pattern: c.method(args) where `method` is a getter returning a function ref.
+      // We call the getter first, then invoke the returned callable.
+      if (funcIdx === undefined) {
+        const getterName = `${receiverClassName}_get_${methodName}`;
+        const getterIdx = ctx.funcMap.get(getterName);
+        if (getterIdx !== undefined) {
+          const getterCallResult = compileGetterCallable(
+            ctx, fctx, expr, propAccess, receiverClassName, getterIdx,
+          );
+          if (getterCallResult !== undefined) return getterCallResult;
+        }
+      }
       if (funcIdx !== undefined) {
         const isStaticMethod = ctx.staticMethodSet.has(fullName);
         // Static methods: evaluate receiver for side effects, drop, call directly
@@ -12531,7 +12639,26 @@ function compileCallExpression(
       const isGeneratorIIFE =
         ts.isFunctionExpression(callee) && callee.asteriskToken !== undefined;
       if (isGeneratorIIFE) {
-        // Fall through to normal call compilation below
+        // Generator function expressions can't be inlined (yield requires generator context).
+        // Compile as closure, store in temp local, and invoke via call_ref.
+        const closureType = compileArrowFunction(ctx, fctx, callee as ts.FunctionExpression);
+        if (closureType && (closureType.kind === "ref" || closureType.kind === "ref_null")) {
+          const typeIdx = (closureType as { typeIdx: number }).typeIdx;
+          const closureInfo = ctx.closureInfoByTypeIdx.get(typeIdx);
+          if (closureInfo) {
+            // Store closure ref in a temp local
+            const tmpName = `__gen_iife_${fctx.locals.length}`;
+            const tmpLocal = allocLocal(fctx, tmpName, closureType);
+            fctx.body.push({ op: "local.set", index: tmpLocal });
+            // Register the temp local so compileClosureCall can find it
+            fctx.localMap.set(tmpName, tmpLocal);
+            return compileClosureCall(ctx, fctx, expr, tmpName, closureInfo);
+          }
+        }
+        // If closure compilation failed, drop any value on stack and fall through to fallback
+        if (closureType && closureType !== VOID_RESULT) {
+          fctx.body.push({ op: "drop" });
+        }
       } else {
         const params = callee.parameters;
         const args = expr.arguments;
