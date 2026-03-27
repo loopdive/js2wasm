@@ -177,6 +177,7 @@ type CoerceTypeFn = (
   fctx: FunctionContext,
   from: ValType,
   to: ValType,
+  toPrimitiveHint?: "number" | "string" | "default",
 ) => void;
 
 let _coerceType: CoerceTypeFn = () => {
@@ -192,8 +193,9 @@ export function coerceType(
   fctx: FunctionContext,
   from: ValType,
   to: ValType,
+  toPrimitiveHint?: "number" | "string" | "default",
 ): void {
-  _coerceType(ctx, fctx, from, to);
+  _coerceType(ctx, fctx, from, to, toPrimitiveHint);
 }
 
 // ── ensureLateImport / flushLateImportShifts delegates ───────────────

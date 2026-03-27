@@ -33,6 +33,7 @@ Active file/function claims by agents. **Check before editing. Update when start
 | src/codegen/index.ts | KNOWN_CONSTRUCTORS | dev-812, dev-814 | #812, #814 | 2026-03-26 |
 | src/runtime.ts | builtinCtors | dev-814 | #814 | 2026-03-26 |
 | src/codegen/expressions.ts | ImportKeyword handler | dev-675 | #675 | 2026-03-27 |
+| src/codegen/type-coercion.ts | coerceType (toPrimitive paths) | dev-482 | #482 | 2026-03-27 |
 | src/runtime.ts | dynamic_import intent | dev-675 | #675 | 2026-03-27 |
 
 <!--

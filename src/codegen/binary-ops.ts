@@ -881,16 +881,19 @@ export function compileBinaryExpression(
 
       // For numeric, comparison, and loose equality ops: coerce struct refs → f64 via valueOf
       if (isNumericOp || isEqOp || isNeqOp) {
+        // Per JS spec, binary + uses ToPrimitive with hint "default",
+        // while other numeric/comparison ops use hint "number".
+        const hint: "number" | "default" = op === ts.SyntaxKind.PlusToken ? "default" : "number";
         // Coerce right operand (top of stack) first
         if (rightIsRef) {
-          coerceType(ctx, fctx, rightType, { kind: "f64" });
+          coerceType(ctx, fctx, rightType, { kind: "f64" }, hint);
           rightType = { kind: "f64" };
         }
         // Coerce left operand (below right on stack) — save right to local
         if (leftIsRef) {
           const tmpR = allocTempLocal(fctx, rightType);
           fctx.body.push({ op: "local.set", index: tmpR });
-          coerceType(ctx, fctx, leftType, { kind: "f64" });
+          coerceType(ctx, fctx, leftType, { kind: "f64" }, hint);
           fctx.body.push({ op: "local.get", index: tmpR });
           releaseTempLocal(fctx, tmpR);
           leftType = { kind: "f64" };
