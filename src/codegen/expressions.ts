@@ -995,8 +995,9 @@ export function coerceType(
   fctx: FunctionContext,
   from: ValType,
   to: ValType,
+  toPrimitiveHint?: "number" | "string" | "default",
 ): void {
-  return coerceTypeImpl(ctx, fctx, from, to, compileStringLiteral);
+  return coerceTypeImpl(ctx, fctx, from, to, toPrimitiveHint);
 }
 
 function compileExpressionInner(
@@ -12118,6 +12119,11 @@ function compileCallExpression(
           return { kind: "f64" };
         }
       }
+      if (argType?.kind === "ref" || argType?.kind === "ref_null") {
+        // Object → number: coerce via @@toPrimitive("number") or valueOf
+        coerceType(ctx, fctx, argType, { kind: "f64" }, "number");
+        return { kind: "f64" };
+      }
       // Already numeric — no-op
       return argType;
     }
@@ -12250,21 +12256,15 @@ function compileCallExpression(
         return { kind: "externref" };
       }
 
-      if (
-        (argType?.kind === "ref" || argType?.kind === "ref_null") &&
-        ctx.fast
-      ) {
+      if (argType?.kind === "ref" || argType?.kind === "ref_null") {
         // Check if it's a native string type
         const argTsType = ctx.checker.getTypeAtLocation(strArg0);
         if (isStringType(argTsType)) {
           // Already a native string — return as-is
           return argType;
         }
-        // Object ref → "[object Object]"
-        fctx.body.push({ op: "drop" });
-        addStringConstantGlobal(ctx, "[object Object]");
-        const objGIdx = ctx.stringGlobalMap.get("[object Object]")!;
-        fctx.body.push({ op: "global.get", index: objGIdx });
+        // Object ref → coerce via @@toPrimitive("string") or toString(), else "[object Object]"
+        coerceType(ctx, fctx, argType, { kind: "externref" }, "string");
         return { kind: "externref" };
       }
 

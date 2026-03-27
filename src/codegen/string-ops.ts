@@ -10,7 +10,7 @@ import { isBooleanType, isVoidType } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";
 import { compileExpression, VOID_RESULT, getLine, getCol } from "./shared.js";
 import { compileNumericBinaryOp, getFuncParamTypes, emitNullCheckThrow } from "./expressions.js";
-import { pushDefaultValue, emitGuardedRefCast } from "./type-coercion.js";
+import { pushDefaultValue, emitGuardedRefCast, coerceType } from "./type-coercion.js";
 
 // ── Guarded funcref cast (ref.test before ref.cast to avoid illegal cast traps) ──
 function emitGuardedFuncRefCast(fctx: FunctionContext, funcTypeIdx: number): void {
@@ -137,8 +137,8 @@ export function compileTemplateExpression(
       fctx.body.push({ op: "f64.convert_i64_s" });
       fctx.body.push({ op: "call", funcIdx: toStrIdx });
     } else if (spanType && (spanType.kind === "ref" || spanType.kind === "ref_null")) {
-      // Struct ref → externref via extern.convert_any, then toString
-      fctx.body.push({ op: "extern.convert_any" });
+      // Struct ref → externref: use coerceType which checks @@toPrimitive("string") first
+      coerceType(ctx, fctx, spanType, { kind: "externref" }, "string");
     }
     // externref assumed to be string already
 
@@ -201,8 +201,8 @@ export function compileNativeTemplateExpression(
         fctx.body.push({ op: "call", funcIdx: fromExternIdx });
       }
     } else if (spanType && (spanType.kind === "ref" || spanType.kind === "ref_null") && toStrIdx !== undefined) {
-      // Struct ref → externref → string coercion
-      fctx.body.push({ op: "extern.convert_any" });
+      // Struct ref → externref: use coerceType which checks @@toPrimitive("string") first
+      coerceType(ctx, fctx, spanType, { kind: "externref" }, "string");
       if (fromExternIdx !== undefined) {
         fctx.body.push({ op: "call", funcIdx: fromExternIdx });
       }

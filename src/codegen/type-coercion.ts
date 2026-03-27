@@ -45,12 +45,29 @@ export function emitGuardedRefCast(
  * Callback type for compiling a string literal onto the Wasm stack.
  * Used by coerceType when it needs to push a @@toPrimitive hint string.
  * The caller (expressions.ts) passes its local compileStringLiteral function.
+ * @deprecated No longer needed — coerceType now emits hint strings directly via global.get.
  */
 export type CompileStringLiteralFn = (
   ctx: CodegenContext,
   fctx: FunctionContext,
   value: string,
 ) => void;
+
+/**
+ * Push a string constant onto the Wasm stack using the string_constants global import.
+ * Registers the string if not already registered, then emits global.get.
+ */
+function pushStringHint(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  hint: string,
+): void {
+  addStringConstantGlobal(ctx, hint);
+  const globalIdx = ctx.stringGlobalMap.get(hint);
+  if (globalIdx !== undefined) {
+    fctx.body.push({ op: "global.get", index: globalIdx });
+  }
+}
 
 /**
  * Check if a type index corresponds to a vec struct (__vec_*) and return its
@@ -604,15 +621,18 @@ function emitStructNarrowBody(
 /**
  * Coerce a Wasm value on the stack from one type to another.
  *
- * @param compileStringLiteralFn Optional callback for emitting string literals
- *   (needed for @@toPrimitive hint arguments). If not provided, toPrimitive
- *   paths that require a hint string will fall through to the default path.
+ * @param toPrimitiveHint Optional ToPrimitive hint ("number", "string", or "default").
+ *   When converting ref → f64 or ref → externref, the hint determines which string
+ *   is passed to [Symbol.toPrimitive]. If not specified, defaults to "number" for
+ *   f64 targets and "string" for externref targets.
+ * @param compileStringLiteralFn Deprecated — no longer used, kept for API compat.
  */
 export function coerceType(
   ctx: CodegenContext,
   fctx: FunctionContext,
   from: ValType,
   to: ValType,
+  toPrimitiveHint?: "number" | "string" | "default",
   compileStringLiteralFn?: CompileStringLiteralFn,
 ): void {
   if (from.kind === to.kind) {
@@ -1084,11 +1104,10 @@ export function coerceType(
         // Check for [Symbol.toPrimitive] method first
         const toPrimFuncIdx = ctx.funcMap.get(`${name}_@@toPrimitive`);
         if (toPrimFuncIdx !== undefined) {
-          // Call ClassName_@@toPrimitive(self, "string")
-          addStringConstantGlobal(ctx, "string");
-          if (compileStringLiteralFn) {
-            compileStringLiteralFn(ctx, fctx, "string");
-          }
+          // Call ClassName_@@toPrimitive(self, hint)
+          // Use provided hint, or default to "string" for externref target
+          const hint = toPrimitiveHint ?? "string";
+          pushStringHint(ctx, fctx, hint);
           fctx.body.push({ op: "call", funcIdx: toPrimFuncIdx });
           // Coerce result to externref if needed
           const funcDefIdx = toPrimFuncIdx - ctx.numImportFuncs;
@@ -1261,11 +1280,10 @@ export function coerceType(
         // Check for [Symbol.toPrimitive] method first — takes precedence over valueOf
         const toPrimFuncIdx = ctx.funcMap.get(`${name}_@@toPrimitive`);
         if (toPrimFuncIdx !== undefined) {
-          // Call ClassName_@@toPrimitive(self, "number")
-          addStringConstantGlobal(ctx, "number");
-          if (compileStringLiteralFn) {
-            compileStringLiteralFn(ctx, fctx, "number");
-          }
+          // Call ClassName_@@toPrimitive(self, hint)
+          // Use provided hint, or default to "number" for f64 target
+          const hint = toPrimitiveHint ?? "number";
+          pushStringHint(ctx, fctx, hint);
           fctx.body.push({ op: "call", funcIdx: toPrimFuncIdx });
           // Coerce result to f64 if needed
           const funcDef = ctx.mod.functions[toPrimFuncIdx - ctx.numImportFuncs];
