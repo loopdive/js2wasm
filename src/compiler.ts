@@ -240,6 +240,23 @@ function detectEarlyErrors(
     return false;
   }
 
+  /** Collect all identifier names from a binding pattern (identifier, array, object destructuring). */
+  function collectBindingNames(name: ts.BindingName, out: Set<string>): void {
+    if (ts.isIdentifier(name)) {
+      out.add(name.text);
+    } else if (ts.isObjectBindingPattern(name)) {
+      for (const el of name.elements) {
+        collectBindingNames(el.name, out);
+      }
+    } else if (ts.isArrayBindingPattern(name)) {
+      for (const el of name.elements) {
+        if (ts.isBindingElement(el)) {
+          collectBindingNames(el.name, out);
+        }
+      }
+    }
+  }
+
   function checkDuplicateParams(params: ts.NodeArray<ts.ParameterDeclaration>, node: ts.Node) {
     // ES spec: Duplicate params are always forbidden in:
     // - strict mode functions
@@ -271,13 +288,33 @@ function detectEarlyErrors(
     }
   }
 
+  /** Check if an expression involves optional chaining (?.) */
+  function hasOptionalChain(node: ts.Expression): boolean {
+    let expr: ts.Node = node;
+    while (ts.isParenthesizedExpression(expr)) expr = expr.expression;
+    // TS models optional chains with questionDotToken
+    if ((ts.isPropertyAccessExpression(expr) || ts.isElementAccessExpression(expr) ||
+         ts.isCallExpression(expr)) && (expr as any).questionDotToken) {
+      return true;
+    }
+    // Check parent chain for optional chaining context
+    if (ts.isPropertyAccessExpression(expr) || ts.isElementAccessExpression(expr)) {
+      return hasOptionalChain(expr.expression);
+    }
+    return false;
+  }
+
   function visit(node: ts.Node): void {
     // Check prefix/postfix increment/decrement on arguments/eval in strict mode
+    // Also check increment/decrement on optional chaining (always invalid)
     if (ts.isPrefixUnaryExpression(node) &&
         (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken)) {
       const name = isArgumentsOrEval(node.operand);
       if (name && isStrictMode(node)) {
         addError(node, `Invalid use of '${name}' in strict mode`);
+      }
+      if (hasOptionalChain(node.operand)) {
+        addError(node, "Optional chaining is not valid in the left-hand side of an update expression");
       }
     }
 
@@ -286,6 +323,9 @@ function detectEarlyErrors(
       const name = isArgumentsOrEval(node.operand);
       if (name && isStrictMode(node)) {
         addError(node, `Invalid use of '${name}' in strict mode`);
+      }
+      if (hasOptionalChain(node.operand)) {
+        addError(node, "Optional chaining is not valid in the left-hand side of an update expression");
       }
     }
 
@@ -361,6 +401,33 @@ function detectEarlyErrors(
           addError(node, "Async function declarations are not allowed in statement position");
         } else if (isStrictMode(node)) {
           addError(node, "In strict mode code, functions can only be declared at top level or inside a block");
+        }
+      }
+    }
+
+    // Check class declaration in statement position — always a SyntaxError
+    // ES spec: ClassDeclaration is not a Statement — only allowed in StatementList
+    if (ts.isClassDeclaration(node)) {
+      const parent = node.parent;
+      if (parent && isStatementPosition(parent, node)) {
+        addError(node, "Class declaration not allowed in statement position");
+      }
+    }
+
+    // Check labeled function declarations in iteration/if statement positions
+    // ES spec: IsLabelledFunction — a labeled function declaration (at any label depth)
+    // in the Statement position of for/while/do-while/if/with is always a SyntaxError.
+    if (ts.isLabeledStatement(node)) {
+      const parent = node.parent;
+      if (parent && isStatementPosition(parent, node)) {
+        // Check if the innermost statement (through label nesting) is a function/class declaration
+        let inner: ts.Statement = node.statement;
+        while (ts.isLabeledStatement(inner)) inner = inner.statement;
+        if (ts.isFunctionDeclaration(inner)) {
+          addError(node, "Function declaration in a labeled statement within iteration/if body is a SyntaxError");
+        }
+        if (ts.isClassDeclaration(inner)) {
+          addError(node, "Class declaration not allowed in statement position");
         }
       }
     }
@@ -565,7 +632,8 @@ function detectEarlyErrors(
           (ts.isContinueStatement(parent) && parent.label === node)
         );
         if (!isPropertyName && !isLabel && !isBreakContinueTarget) {
-          // Only flag when used as a binding name (variable, parameter, function name)
+          // Flag when used as a binding name (variable, parameter, function name)
+          // or as a shorthand property (IdentifierReference context)
           const isBinding = parent && (
             (ts.isVariableDeclaration(parent) && parent.name === node) ||
             (ts.isParameter(parent) && parent.name === node) ||
@@ -573,7 +641,9 @@ function detectEarlyErrors(
             (ts.isFunctionExpression(parent) && parent.name === node) ||
             (ts.isClassDeclaration(parent) && parent.name === node) ||
             (ts.isClassExpression(parent) && parent.name === node) ||
-            (ts.isBindingElement(parent) && parent.name === node)
+            (ts.isBindingElement(parent) && parent.name === node) ||
+            // Shorthand property in object literal: {implements} — IdentifierReference
+            (ts.isShorthandPropertyAssignment(parent) && parent.name === node)
           );
           if (isBinding) {
             addError(node, `'${node.text}' is a reserved word in strict mode and cannot be used as an identifier`);
@@ -605,6 +675,34 @@ function detectEarlyErrors(
             }
           } else {
             break; // Directives must be at the top
+          }
+        }
+      }
+    }
+
+    // ── Parameter names conflicting with lexical body declarations ─────
+    // ES spec: It is a SyntaxError if BoundNames of FormalParameters also
+    // occurs in the LexicallyDeclaredNames of FunctionBody (for arrow,
+    // async, generator, method, constructor, getter, setter).
+    if ((ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) ||
+         ts.isArrowFunction(node) || ts.isMethodDeclaration(node) ||
+         ts.isConstructorDeclaration(node) || ts.isGetAccessorDeclaration(node) ||
+         ts.isSetAccessorDeclaration(node)) && node.body && ts.isBlock(node.body)) {
+      const paramNames = new Set<string>();
+      for (const p of node.parameters) {
+        collectBindingNames(p.name, paramNames);
+      }
+      if (paramNames.size > 0) {
+        for (const stmt of node.body.statements) {
+          if (ts.isVariableStatement(stmt)) {
+            const flags = stmt.declarationList.flags;
+            if ((flags & ts.NodeFlags.Let) !== 0 || (flags & ts.NodeFlags.Const) !== 0) {
+              for (const decl of stmt.declarationList.declarations) {
+                if (ts.isIdentifier(decl.name) && paramNames.has(decl.name.text)) {
+                  addError(decl.name, `Duplicate identifier '${decl.name.text}' — parameter and lexical declaration`);
+                }
+              }
+            }
           }
         }
       }
@@ -650,6 +748,7 @@ function detectEarlyErrors(
       // Check if used as a binding name (variable, parameter, function name, catch binding)
       const isBinding = parent && (
         (ts.isVariableDeclaration(parent) && parent.name === node) ||
+        (ts.isParameter(parent) && parent.name === node) ||
         (ts.isFunctionDeclaration(parent) && parent.name === node) ||
         (ts.isFunctionExpression(parent) && parent.name === node) ||
         (ts.isClassDeclaration(parent) && parent.name === node) ||
@@ -784,6 +883,24 @@ function detectEarlyErrors(
       checkDuplicateLexicalDeclarations(node);
     }
 
+    // ── break/continue outside valid context ──────────────────────────
+    // TS catches these as semantic errors (1104, 1105) but we skip semantic
+    // diagnostics in the test262 worker, so detect them here.
+    if (ts.isContinueStatement(node)) {
+      if (!isInsideIteration(node, node.label?.text)) {
+        addError(node, node.label
+          ? `A 'continue' statement can only jump to a label of an enclosing iteration statement`
+          : `A 'continue' statement can only be used within an enclosing iteration statement`);
+      }
+    }
+    if (ts.isBreakStatement(node)) {
+      if (!isInsideBreakable(node, node.label?.text)) {
+        addError(node, node.label
+          ? `A 'break' statement can only jump to a label of an enclosing statement`
+          : `A 'break' statement can only be used within an enclosing iteration or switch statement`);
+      }
+    }
+
     ts.forEachChild(node, visit);
   }
 
@@ -842,30 +959,92 @@ function detectEarlyErrors(
     return false;
   }
 
+  /** Check if a node is an iteration statement. */
+  function isIterationStatement(node: ts.Node): boolean {
+    return ts.isForStatement(node) || ts.isForInStatement(node) ||
+           ts.isForOfStatement(node) || ts.isWhileStatement(node) ||
+           ts.isDoStatement(node);
+  }
+
+  /** Check if `continue` is inside a valid iteration statement. Respects labels and function boundaries. */
+  function isInsideIteration(node: ts.Node, label?: string): boolean {
+    let current: ts.Node | undefined = node.parent;
+    while (current) {
+      // Function boundaries stop the search
+      if (ts.isFunctionDeclaration(current) || ts.isFunctionExpression(current) ||
+          ts.isArrowFunction(current) || ts.isMethodDeclaration(current) ||
+          ts.isConstructorDeclaration(current) || ts.isGetAccessorDeclaration(current) ||
+          ts.isSetAccessorDeclaration(current)) {
+        return false;
+      }
+      if (label) {
+        // continue LABEL: the label must be on an iteration statement
+        if (ts.isLabeledStatement(current) && current.label.text === label) {
+          return isIterationStatement(current.statement);
+        }
+      } else {
+        // continue (no label): any enclosing iteration statement
+        if (isIterationStatement(current)) return true;
+      }
+      current = current.parent;
+    }
+    return false;
+  }
+
+  /** Check if `break` is inside a valid breakable statement. Respects labels and function boundaries. */
+  function isInsideBreakable(node: ts.Node, label?: string): boolean {
+    let current: ts.Node | undefined = node.parent;
+    while (current) {
+      // Function boundaries stop the search
+      if (ts.isFunctionDeclaration(current) || ts.isFunctionExpression(current) ||
+          ts.isArrowFunction(current) || ts.isMethodDeclaration(current) ||
+          ts.isConstructorDeclaration(current) || ts.isGetAccessorDeclaration(current) ||
+          ts.isSetAccessorDeclaration(current)) {
+        return false;
+      }
+      if (label) {
+        // break LABEL: any labeled statement (not just iteration/switch)
+        if (ts.isLabeledStatement(current) && current.label.text === label) {
+          return true;
+        }
+      } else {
+        // break (no label): iteration or switch
+        if (isIterationStatement(current) || ts.isSwitchStatement(current)) return true;
+      }
+      current = current.parent;
+    }
+    return false;
+  }
+
   /** Check for duplicate lexical declarations (let, const, class, function) in a block. */
   function checkDuplicateLexicalDeclarations(block: ts.Block | ts.SourceFile): void {
     const stmts = block.statements;
     const lexNames = new Map<string, ts.Node>();
+
+    function addLexName(name: string, errorNode: ts.Node) {
+      if (lexNames.has(name)) {
+        addError(errorNode, `Duplicate identifier '${name}'`);
+      } else {
+        lexNames.set(name, errorNode);
+      }
+    }
+
     for (const stmt of stmts) {
       if (ts.isClassDeclaration(stmt) && stmt.name) {
-        const name = stmt.name.text;
-        if (lexNames.has(name)) {
-          addError(stmt.name, `Duplicate identifier '${name}'`);
-        } else {
-          lexNames.set(name, stmt.name);
-        }
+        addLexName(stmt.name.text, stmt.name);
+      }
+      // FunctionDeclaration (including async, generator, async generator) in a block
+      // are lexically scoped — duplicates are SyntaxErrors per ES spec.
+      // Skip overload signatures (no body) — TypeScript allows multiple signatures.
+      if (ts.isFunctionDeclaration(stmt) && stmt.name && stmt.body) {
+        addLexName(stmt.name.text, stmt.name);
       }
       if (ts.isVariableStatement(stmt)) {
         const flags = stmt.declarationList.flags;
         if ((flags & ts.NodeFlags.Let) !== 0 || (flags & ts.NodeFlags.Const) !== 0) {
           for (const decl of stmt.declarationList.declarations) {
             if (ts.isIdentifier(decl.name)) {
-              const name = decl.name.text;
-              if (lexNames.has(name)) {
-                addError(decl.name, `Duplicate identifier '${name}'`);
-              } else {
-                lexNames.set(name, decl.name);
-              }
+              addLexName(decl.name.text, decl.name);
             }
           }
         }
