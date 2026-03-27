@@ -428,6 +428,35 @@ function resolveImport(
       if (name === "__js_array_new") return () => [];
       if (name === "__js_array_push") return (arr: any[], val: any) => { arr.push(val); };
       if (name === "__tagged_template") return (tag: Function, strings: any[], subs: any[]) => tag(strings, ...subs);
+      // for-in key enumeration: returns a JS array of enumerable string keys
+      if (name === "__for_in_keys") return (obj: any) => {
+        if (obj == null) return [];
+        // Plain JS object — use for-in (includes prototype chain)
+        if (!_isWasmStruct(obj)) {
+          const keys: string[] = [];
+          for (const k in obj) keys.push(k);
+          return keys;
+        }
+        // WasmGC struct — combine struct field names + sidecar properties
+        const exports = callbackState?.getExports();
+        const fieldNames = _getStructFieldNames(obj, exports) ?? [];
+        const sc = _wasmStructProps.get(obj);
+        if (sc) {
+          const sidecarKeys = Object.keys(sc);
+          for (const k of sidecarKeys) {
+            if (!fieldNames.includes(k)) fieldNames.push(k);
+          }
+        }
+        return fieldNames;
+      };
+      if (name === "__for_in_len") return (keys: any) => {
+        if (keys == null || !Array.isArray(keys)) return 0;
+        return keys.length;
+      };
+      if (name === "__for_in_get") return (keys: any, i: number) => {
+        if (keys == null || !Array.isArray(keys)) return undefined;
+        return keys[i];
+      };
       // Promise combinators and constructors
       if (name === "Promise_all") return (arr: any) => Promise.all(arr);
       if (name === "Promise_race") return (arr: any) => Promise.race(arr);

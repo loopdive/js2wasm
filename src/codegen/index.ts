@@ -1844,6 +1844,7 @@ interface UnifiedCollectorState {
   // -- collectIteratorImports --
   iteratorFound: boolean;
   // -- collectForInStringLiterals --
+  forInFound: boolean;
   forInLiterals: Set<string>;
   // -- collectInExprStringLiterals --
   inExprLiterals: Set<string>;
@@ -1883,6 +1884,7 @@ function createUnifiedCollectorState(sourceFile: ts.SourceFile): UnifiedCollecto
     unionFound: false,
     generatorFound: false,
     iteratorFound: false,
+    forInFound: false,
     forInLiterals: new Set(),
     inExprLiterals: new Set(),
     objectMethodLiterals: new Set(),
@@ -2298,6 +2300,7 @@ function unifiedVisitNode(
 
   // ── collectForInStringLiterals ──
   if (ts.isForInStatement(node)) {
+    state.forInFound = true;
     const exprType = ctx.checker.getTypeAtLocation(node.expression);
     const props = exprType.getProperties();
     for (const prop of props) {
@@ -2664,6 +2667,9 @@ function finalizeUnifiedCollector(
   }
 
   // ── collectForInStringLiterals finalize ──
+  if (state.forInFound) {
+    addForInImports(ctx);
+  }
   if (state.forInLiterals.size > 0) {
     if (ctx.nativeStrings) {
       ensureNativeStringHelpers(ctx);
@@ -8435,6 +8441,28 @@ export function addIteratorImports(ctx: CodegenContext): void {
     kind: "func",
     typeIdx: extToVoid,
   });
+}
+
+/** Register for-in key enumeration host imports if not already registered */
+export function addForInImports(ctx: CodegenContext): void {
+  // Guard: only register once
+  if (ctx.funcMap.has("__for_in_keys")) return;
+
+  // __for_in_keys: (externref) -> externref — returns JS array of enumerable string keys
+  const extToExt = addFuncType(
+    ctx,
+    [{ kind: "externref" }],
+    [{ kind: "externref" }],
+  );
+  addImport(ctx, "env", "__for_in_keys", { kind: "func", typeIdx: extToExt });
+
+  // __for_in_len: (externref) -> i32 — returns keys.length
+  const extToI32 = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "i32" }]);
+  addImport(ctx, "env", "__for_in_len", { kind: "func", typeIdx: extToI32 });
+
+  // __for_in_get: (externref, i32) -> externref — returns keys[i]
+  const extI32ToExt = addFuncType(ctx, [{ kind: "externref" }, { kind: "i32" }], [{ kind: "externref" }]);
+  addImport(ctx, "env", "__for_in_get", { kind: "func", typeIdx: extI32ToExt });
 }
 
 export function addImport(
