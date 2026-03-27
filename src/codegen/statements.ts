@@ -828,7 +828,10 @@ export function ensureBindingLocals(
     if (ts.isIdentifier(element.name)) {
       const name = element.name.text;
       if (fctx.localMap.has(name)) continue;
-      if (ctx.moduleGlobals.has(name)) continue;
+      // Always create a shadow local, even for module globals.
+      // syncDestructuredLocalsToGlobals will copy the local to the global afterwards.
+      // Without a local, nested binding pattern destructuring silently skips the
+      // assignment because fctx.localMap.get(name) returns undefined (#794).
       const elemType = ctx.checker.getTypeAtLocation(element);
       const wasmType = resolveWasmType(ctx, elemType);
       allocLocal(fctx, name, wasmType);
@@ -1834,9 +1837,11 @@ function compileArrayDestructuring(
   const isVecArray = arrDef && arrDef.kind === "array";
 
   // Check if this is a tuple struct (fields named _0, _1, etc.)
+  // Note: 0-field structs are treated as empty tuples so that defaults apply correctly
+  // when the pattern has more elements than the tuple (e.g. `var [{x}={x:1}] = []`)
   const isTupleStruct = !isVecArray && typeDef.kind === "struct" &&
-    typeDef.fields.length > 0 &&
-    typeDef.fields.every((f: { name?: string }, idx: number) => f.name === `_${idx}`);
+    (typeDef.fields.length === 0 ||
+     typeDef.fields.every((f: { name?: string }, idx: number) => f.name === `_${idx}`));
 
   // Check if this is a string type (AnyString, NativeString, ConsString)
   const isStringStruct = ctx.nativeStrings && ctx.anyStrTypeIdx >= 0 &&
@@ -1897,13 +1902,136 @@ function compileArrayDestructuring(
 
         // When tuple is shorter than pattern, apply defaults if present
         if (i >= tupleFields.length) {
-          if (ts.isBindingElement(element) && element.initializer && ts.isIdentifier(element.name)) {
-            const localName = element.name.text;
-            const localIdx = fctx.localMap.get(localName);
-            if (localIdx !== undefined) {
-              const localType = fctx.locals[localIdx]!.type;
-              compileExpression(ctx, fctx, element.initializer, localType);
-              fctx.body.push({ op: "local.set", index: localIdx });
+          if (ts.isBindingElement(element) && element.initializer) {
+            if (ts.isIdentifier(element.name)) {
+              const localName = element.name.text;
+              const localIdx = fctx.localMap.get(localName);
+              if (localIdx !== undefined) {
+                const localType = fctx.locals[localIdx]!.type;
+                compileExpression(ctx, fctx, element.initializer, localType);
+                fctx.body.push({ op: "local.set", index: localIdx });
+              }
+            } else if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
+              // Nested binding pattern with default: compile default and destructure it
+              ensureBindingLocals(ctx, fctx, element.name);
+              (ctx as any)._arrayLiteralForceVec = true;
+              let initType: ValType | null | typeof VOID_RESULT;
+              try {
+                initType = compileExpression(ctx, fctx, element.initializer);
+              } finally {
+                (ctx as any)._arrayLiteralForceVec = false;
+              }
+              if (initType && initType !== VOID_RESULT) {
+                if ((initType.kind === "ref" || initType.kind === "ref_null") && ts.isObjectBindingPattern(element.name)) {
+                  const initTypeIdx = (initType as { typeIdx: number }).typeIdx;
+                  const tmpObjLocal = allocLocal(fctx, `__dflt_obj_${fctx.locals.length}`, initType);
+                  fctx.body.push({ op: "local.set", index: tmpObjLocal });
+                  let nestedStructName: string | undefined;
+                  for (const [name, idx] of ctx.structMap) {
+                    if (idx === initTypeIdx) { nestedStructName = name; break; }
+                  }
+                  const nestedFields = nestedStructName ? ctx.structFields.get(nestedStructName) : undefined;
+                  if (nestedFields) {
+                    for (const nestedElem of element.name.elements) {
+                      if (!ts.isBindingElement(nestedElem)) continue;
+                      const propNNode = nestedElem.propertyName ?? nestedElem.name;
+                      const propNText = ts.isIdentifier(propNNode) ? propNNode.text
+                        : ts.isStringLiteral(propNNode) ? propNNode.text
+                        : ts.isNumericLiteral(propNNode) ? propNNode.text
+                        : undefined;
+                      if (!ts.isIdentifier(nestedElem.name)) continue;
+                      if (!propNText) continue;
+                      const nLocalName = nestedElem.name.text;
+                      const nFieldIdx = nestedFields.findIndex((f) => f.name === propNText);
+                      if (nFieldIdx === -1) continue;
+                      const nFieldEntry = nestedFields[nFieldIdx];
+                      if (!nFieldEntry) continue;
+                      const nLocalIdx = fctx.localMap.get(nLocalName);
+                      if (nLocalIdx === undefined) continue;
+                      fctx.body.push({ op: "local.get", index: tmpObjLocal });
+                      fctx.body.push({ op: "struct.get", typeIdx: initTypeIdx, fieldIdx: nFieldIdx });
+                      const localType = getLocalType(fctx, nLocalIdx);
+                      const fType = nFieldEntry.type;
+                      if (localType && !valTypesMatch(fType, localType)) {
+                        coerceType(ctx, fctx, fType, localType);
+                      }
+                      fctx.body.push({ op: "local.set", index: nLocalIdx });
+                    }
+                  }
+                } else if ((initType.kind === "ref" || initType.kind === "ref_null") && ts.isArrayBindingPattern(element.name)) {
+                  const initTypeIdx = (initType as { typeIdx: number }).typeIdx;
+                  const initTypeDef = ctx.mod.types[initTypeIdx];
+                  if (initTypeDef && initTypeDef.kind === "struct") {
+                    const initArrTypeIdx = getArrTypeIdxFromVec(ctx, initTypeIdx);
+                    const initArrDef = ctx.mod.types[initArrTypeIdx];
+                    if (initArrDef && initArrDef.kind === "array") {
+                      const tmpVecLocal = allocLocal(fctx, `__dflt_vec_${fctx.locals.length}`, initType);
+                      fctx.body.push({ op: "local.set", index: tmpVecLocal });
+                      const initElemType = initArrDef.element;
+                      for (let j = 0; j < element.name.elements.length; j++) {
+                        const ne = element.name.elements[j]!;
+                        if (ts.isOmittedExpression(ne)) continue;
+                        if (!ts.isBindingElement(ne) || !ts.isIdentifier(ne.name)) continue;
+                        const nName = ne.name.text;
+                        const nLocalIdx = fctx.localMap.get(nName);
+                        if (nLocalIdx === undefined) continue;
+                        fctx.body.push({ op: "local.get", index: tmpVecLocal });
+                        fctx.body.push({ op: "struct.get", typeIdx: initTypeIdx, fieldIdx: 1 });
+                        fctx.body.push({ op: "i32.const", value: j });
+                        emitBoundsCheckedArrayGet(fctx, initArrTypeIdx, initElemType);
+                        const localType = getLocalType(fctx, nLocalIdx);
+                        if (localType && !valTypesMatch(initElemType, localType)) {
+                          coerceType(ctx, fctx, initElemType, localType);
+                        }
+                        fctx.body.push({ op: "local.set", index: nLocalIdx });
+                      }
+                    } else {
+                      // Tuple struct default — extract fields by index
+                      const tupleDefFields = (initTypeDef as { fields: { name?: string; type: ValType }[] }).fields;
+                      const tmpTupleLocal = allocLocal(fctx, `__dflt_tuple_${fctx.locals.length}`, initType);
+                      fctx.body.push({ op: "local.set", index: tmpTupleLocal });
+                      for (let j = 0; j < element.name.elements.length; j++) {
+                        const ne = element.name.elements[j]!;
+                        if (ts.isOmittedExpression(ne)) continue;
+                        if (!ts.isBindingElement(ne) || !ts.isIdentifier(ne.name)) continue;
+                        if (j >= tupleDefFields.length) break;
+                        const nName = ne.name.text;
+                        const nLocalIdx = fctx.localMap.get(nName);
+                        if (nLocalIdx === undefined) continue;
+                        const tfType = tupleDefFields[j]!.type;
+                        fctx.body.push({ op: "local.get", index: tmpTupleLocal });
+                        fctx.body.push({ op: "struct.get", typeIdx: initTypeIdx, fieldIdx: j });
+                        const localType = getLocalType(fctx, nLocalIdx);
+                        if (localType && !valTypesMatch(tfType, localType)) {
+                          coerceType(ctx, fctx, tfType, localType);
+                        }
+                        fctx.body.push({ op: "local.set", index: nLocalIdx });
+                      }
+                    }
+                  } else {
+                    fctx.body.push({ op: "drop" } as Instr);
+                  }
+                } else {
+                  // Non-ref default value: convert to externref and use externref destructuring
+                  if (initType.kind === "f64") {
+                    const bIdx = ctx.funcMap.get("__box_number");
+                    if (bIdx !== undefined) fctx.body.push({ op: "call", funcIdx: bIdx });
+                  } else if (initType.kind === "i32") {
+                    fctx.body.push({ op: "f64.convert_i32_s" });
+                    const bIdx = ctx.funcMap.get("__box_number");
+                    if (bIdx !== undefined) fctx.body.push({ op: "call", funcIdx: bIdx });
+                  } else if (initType.kind !== "externref") {
+                    if (initType.kind === "ref" || initType.kind === "ref_null") {
+                      fctx.body.push({ op: "extern.convert_any" } as Instr);
+                    }
+                  }
+                  if (ts.isArrayBindingPattern(element.name)) {
+                    compileExternrefArrayDestructuringDecl(ctx, fctx, element.name, { kind: "externref" });
+                  } else {
+                    compileExternrefObjectDestructuringDecl(ctx, fctx, element.name, { kind: "externref" });
+                  }
+                }
+              }
             }
           }
           continue;
@@ -1940,39 +2068,100 @@ function compileArrayDestructuring(
 
           ensureBindingLocals(ctx, fctx, element.name);
 
-          // For ref types (nested tuples/vecs), try native struct field access
-          if ((fieldType.kind === "ref" || fieldType.kind === "ref_null") &&
-              ts.isArrayBindingPattern(element.name)) {
+          // For ref types, try native struct field access instead of externref fallback
+          if (fieldType.kind === "ref" || fieldType.kind === "ref_null") {
             const nestedTypeIdx = (fieldType as { typeIdx: number }).typeIdx;
             const nestedTypeDef = ctx.mod.types[nestedTypeIdx];
-            // Check if nested is a tuple struct
-            const isNestedTuple = nestedTypeDef && nestedTypeDef.kind === "struct" &&
-              nestedTypeDef.fields.length > 0 &&
-              nestedTypeDef.fields.every((f: { name?: string }, idx: number) => f.name === `_${idx}`);
-            if (isNestedTuple) {
-              // Extract fields directly from the nested tuple struct
-              const nestedFields = (nestedTypeDef as { fields: { name?: string; type: ValType }[] }).fields;
-              for (let j = 0; j < element.name.elements.length; j++) {
-                const ne = element.name.elements[j]!;
-                if (ts.isOmittedExpression(ne)) continue;
-                if (!ts.isBindingElement(ne) || !ts.isIdentifier(ne.name)) continue;
-                if (j >= nestedFields.length) continue;
-                const nName = ne.name.text;
-                let nLocalIdx = fctx.localMap.get(nName);
-                if (nLocalIdx === undefined) {
-                  const nTsType = ctx.checker.getTypeAtLocation(ne);
-                  nLocalIdx = allocLocal(fctx, nName, resolveWasmType(ctx, nTsType));
-                }
-                const nLocalType = getLocalType(fctx, nLocalIdx);
-                const nFieldType = nestedFields[j]!.type;
-                fctx.body.push({ op: "local.get", index: nestedLocal });
-                fctx.body.push({ op: "struct.get", typeIdx: nestedTypeIdx, fieldIdx: j });
-                if (nLocalType && !valTypesMatch(nFieldType, nLocalType)) {
-                  coerceType(ctx, fctx, nFieldType, nLocalType);
-                }
-                fctx.body.push({ op: "local.set", index: nLocalIdx });
+
+            if (ts.isObjectBindingPattern(element.name)) {
+              // Object binding pattern: extract fields by name from the struct
+              let nestedStructName: string | undefined;
+              for (const [sName, sIdx] of ctx.structMap) {
+                if (sIdx === nestedTypeIdx) { nestedStructName = sName; break; }
               }
-              continue;
+              const nestedFields = nestedStructName ? ctx.structFields.get(nestedStructName) : undefined;
+              if (nestedFields) {
+                for (const nestedElem of element.name.elements) {
+                  if (!ts.isBindingElement(nestedElem)) continue;
+                  const propNNode = nestedElem.propertyName ?? nestedElem.name;
+                  const propNText = ts.isIdentifier(propNNode) ? propNNode.text
+                    : ts.isStringLiteral(propNNode) ? propNNode.text
+                    : ts.isNumericLiteral(propNNode) ? propNNode.text
+                    : undefined;
+                  if (!ts.isIdentifier(nestedElem.name)) continue;
+                  if (!propNText) continue;
+                  const nLocalName = nestedElem.name.text;
+                  const nFieldIdx = nestedFields.findIndex((f) => f.name === propNText);
+                  if (nFieldIdx === -1) continue;
+                  const nFieldEntry = nestedFields[nFieldIdx];
+                  if (!nFieldEntry) continue;
+                  const nLocalIdx = fctx.localMap.get(nLocalName);
+                  if (nLocalIdx === undefined) continue;
+                  fctx.body.push({ op: "local.get", index: nestedLocal });
+                  fctx.body.push({ op: "struct.get", typeIdx: nestedTypeIdx, fieldIdx: nFieldIdx });
+                  const localType = getLocalType(fctx, nLocalIdx);
+                  const fType = nFieldEntry.type;
+                  if (localType && !valTypesMatch(fType, localType)) {
+                    coerceType(ctx, fctx, fType, localType);
+                  }
+                  fctx.body.push({ op: "local.set", index: nLocalIdx });
+                }
+                continue;
+              }
+            } else if (ts.isArrayBindingPattern(element.name)) {
+              // Check if nested is a tuple struct
+              const isNestedTuple = nestedTypeDef && nestedTypeDef.kind === "struct" &&
+                nestedTypeDef.fields.length > 0 &&
+                nestedTypeDef.fields.every((f: { name?: string }, idx: number) => f.name === `_${idx}`);
+              if (isNestedTuple) {
+                // Extract fields directly from the nested tuple struct
+                const nestedFields = (nestedTypeDef as { fields: { name?: string; type: ValType }[] }).fields;
+                for (let j = 0; j < element.name.elements.length; j++) {
+                  const ne = element.name.elements[j]!;
+                  if (ts.isOmittedExpression(ne)) continue;
+                  if (!ts.isBindingElement(ne) || !ts.isIdentifier(ne.name)) continue;
+                  if (j >= nestedFields.length) continue;
+                  const nName = ne.name.text;
+                  let nLocalIdx = fctx.localMap.get(nName);
+                  if (nLocalIdx === undefined) {
+                    const nTsType = ctx.checker.getTypeAtLocation(ne);
+                    nLocalIdx = allocLocal(fctx, nName, resolveWasmType(ctx, nTsType));
+                  }
+                  const nLocalType = getLocalType(fctx, nLocalIdx);
+                  const nFieldType = nestedFields[j]!.type;
+                  fctx.body.push({ op: "local.get", index: nestedLocal });
+                  fctx.body.push({ op: "struct.get", typeIdx: nestedTypeIdx, fieldIdx: j });
+                  if (nLocalType && !valTypesMatch(nFieldType, nLocalType)) {
+                    coerceType(ctx, fctx, nFieldType, nLocalType);
+                  }
+                  fctx.body.push({ op: "local.set", index: nLocalIdx });
+                }
+                continue;
+              }
+              // Vec array destructuring
+              const nestedArrTypeIdx = getArrTypeIdxFromVec(ctx, nestedTypeIdx);
+              const nestedArrDef = ctx.mod.types[nestedArrTypeIdx];
+              if (nestedArrDef && nestedArrDef.kind === "array") {
+                const nestedElemType = nestedArrDef.element;
+                for (let j = 0; j < element.name.elements.length; j++) {
+                  const ne = element.name.elements[j]!;
+                  if (ts.isOmittedExpression(ne)) continue;
+                  if (!ts.isBindingElement(ne) || !ts.isIdentifier(ne.name)) continue;
+                  const nName = ne.name.text;
+                  const nLocalIdx = fctx.localMap.get(nName);
+                  if (nLocalIdx === undefined) continue;
+                  fctx.body.push({ op: "local.get", index: nestedLocal });
+                  fctx.body.push({ op: "struct.get", typeIdx: nestedTypeIdx, fieldIdx: 1 });
+                  fctx.body.push({ op: "i32.const", value: j });
+                  emitBoundsCheckedArrayGet(fctx, nestedArrTypeIdx, nestedElemType);
+                  const localType = getLocalType(fctx, nLocalIdx);
+                  if (localType && !valTypesMatch(nestedElemType, localType)) {
+                    coerceType(ctx, fctx, nestedElemType, localType);
+                  }
+                  fctx.body.push({ op: "local.set", index: nLocalIdx });
+                }
+                continue;
+              }
             }
           }
 
@@ -2178,7 +2367,9 @@ function compileArrayDestructuring(
         // Default branch: compile default, get a WasmGC value, destructure it directly
         (ctx as any)._arrayLiteralForceVec = true;
         const defaultBranch = collectInstrs(fctx, () => {
-          const initType = compileExpression(ctx, fctx, element.initializer!, elemType);
+          // Don't pass elemType as hint -- it may be externref which would coerce
+          // the struct result to externref, preventing native struct field access.
+          const initType = compileExpression(ctx, fctx, element.initializer!);
           (ctx as any)._arrayLiteralForceVec = false;
           // The default value (e.g. [4,5,6]) produces a WasmGC vec struct.
           // Destructure it directly using typed access instead of externref path.

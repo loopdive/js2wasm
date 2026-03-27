@@ -13,6 +13,7 @@ Active file/function claims by agents. **Check before editing. Update when start
 
 | File | Function/Area | Agent | Issue | Since |
 |------|--------------|-------|-------|-------|
+| src/codegen/statements.ts | ensureBindingLocals, compileArrayDestructuring (nested binding) | dev-794 | #794 | 2026-03-27 |
 | src/codegen/index.ts | fixupStructNewResultCoercion | dev-d | struct.new | 2026-03-26 |
 | src/codegen/stack-balance.ts | fixCallArgTypesInBody | dev-d | struct.new | 2026-03-26 |
 | src/codegen/statements.ts | compileTryStatement | dev-a | #798a | 2026-03-26 |
