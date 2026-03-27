@@ -46,6 +46,7 @@ import {
   pushBody,
   popBody,
 } from "./index.js";
+import { promoteAccessorCapturesToGlobals } from "./closures.js";
 
 /**
  * Adjust the depth of all entries in the catchRethrowStack by `delta`.
@@ -472,7 +473,7 @@ function compileStatementInner(
   // ClassDeclaration in statement position (e.g., inside for loops, if blocks,
   // switch cases, labeled statements, try/catch/finally, etc.)
   if (ts.isClassDeclaration(stmt)) {
-    compileNestedClassDeclaration(ctx, stmt);
+    compileNestedClassDeclaration(ctx, fctx, stmt);
     return;
   }
 
@@ -5669,17 +5670,32 @@ function compileTryStatement(
  */
 function compileNestedClassDeclaration(
   ctx: CodegenContext,
+  fctx: FunctionContext,
   decl: ts.ClassDeclaration,
 ): void {
   if (!decl.name) return;
   const className = decl.name.text;
 
-  // Skip if already collected (e.g., hoisted or duplicate)
-  if (ctx.structMap.has(className)) return;
+  const isDeferred = ctx.deferredClassBodies.has(className);
+  // Skip if already collected AND not deferred (already fully compiled)
+  if (ctx.structMap.has(className) && !isDeferred) return;
 
   try {
-    // Collect struct type, constructor, and method stubs
-    collectClassDeclaration(ctx, decl);
+    // Collect struct type, constructor, and method stubs (if not already done)
+    if (!ctx.structMap.has(className)) {
+      collectClassDeclaration(ctx, decl);
+    }
+
+    // Promote captured locals to globals so method/constructor bodies can access
+    // variables from the enclosing function scope
+    for (const member of decl.members) {
+      if (ts.isMethodDeclaration(member) && member.body) {
+        promoteAccessorCapturesToGlobals(ctx, fctx, member.body);
+      }
+      if (ts.isConstructorDeclaration(member) && member.body) {
+        promoteAccessorCapturesToGlobals(ctx, fctx, member.body);
+      }
+    }
 
     // Build funcByName map for compileClassBodies
     const funcByName = new Map<string, number>();
@@ -5689,6 +5705,9 @@ function compileNestedClassDeclaration(
 
     // Compile constructor and method bodies
     compileClassBodies(ctx, decl, funcByName);
+
+    // Mark as no longer deferred
+    if (isDeferred) ctx.deferredClassBodies.delete(className);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     reportError(ctx, decl, `Internal error compiling nested class '${className}': ${msg}`);

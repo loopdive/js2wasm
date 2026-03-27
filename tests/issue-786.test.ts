@@ -97,3 +97,73 @@ describe("Issue #786: block-scoped let/const shadowing", () => {
     expect(result).toBe(1);
   });
 });
+
+describe("Issue #786: method closure captures", () => {
+  it("object method can read/write enclosing var", async () => {
+    const result = await run(`
+      export function test(): number {
+        var callCount: number = 0;
+        var obj = {
+          inc(): void { callCount = callCount + 1; }
+        };
+        obj.inc();
+        if (callCount === 1) return 1;
+        return 0;
+      }
+    `);
+    expect(result).toBe(1);
+  });
+
+  it("object method captures multiple variables", async () => {
+    const result = await run(`
+      export function test(): number {
+        var a: number = 10;
+        var b: number = 20;
+        var obj = {
+          swap(): void {
+            var t: number = a;
+            a = b;
+            b = t;
+          }
+        };
+        obj.swap();
+        if (a === 20 && b === 10) return 1;
+        return 0;
+      }
+    `);
+    expect(result).toBe(1);
+  });
+
+  it("nested class method can read/write enclosing var", async () => {
+    const result = await run(`
+      export function test(): number {
+        var callCount: number = 0;
+        class C {
+          inc(): void { callCount = callCount + 1; }
+        }
+        var c = new C();
+        c.inc();
+        if (callCount === 1) return 1;
+        return 0;
+      }
+    `);
+    expect(result).toBe(1);
+  });
+
+  it("method callCount pattern (test262 common case)", async () => {
+    const result = await run(`
+      export function test(): number {
+        var callCount: number = 0;
+        var obj = {
+          method(x: number, y: number, z: number): void {
+            callCount = callCount + 1;
+          }
+        };
+        obj.method(1, 2, 3);
+        if (callCount === 1) return 1;
+        return 0;
+      }
+    `);
+    expect(result).toBe(1);
+  });
+});

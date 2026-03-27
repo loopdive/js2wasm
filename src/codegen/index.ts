@@ -610,6 +610,9 @@ export interface CodegenContext {
   classSet: Set<string>;
   /** Map from "ClassName_methodName" → method info for local classes */
   classMethodSet: Set<string>;
+  /** Classes inside function bodies whose body compilation is deferred
+   *  until the enclosing function is compiled (so captured locals are available) */
+  deferredClassBodies: Set<string>;
   /** Set of "ClassName_propName" for getter/setter accessor properties */
   classAccessorSet: Set<string>;
   /** Set of "ClassName_methodName" for static methods (no self param) */
@@ -922,6 +925,7 @@ export function createCodegenContext(
     capturedGlobalsWidened: new Set(),
     classSet: new Set(),
     classMethodSet: new Set(),
+    deferredClassBodies: new Set(),
     classAccessorSet: new Set(),
     staticMethodSet: new Set(),
     staticProps: new Map(),
@@ -11539,14 +11543,20 @@ function compileDeclarations(
   // Compile class constructors and methods
   // Also compile class expressions in variable declarations
   // Scan recursively into function bodies for class expressions
-  function compileClassesFromStatements(stmts: ts.NodeArray<ts.Statement> | readonly ts.Statement[]): void {
+  function compileClassesFromStatements(stmts: ts.NodeArray<ts.Statement> | readonly ts.Statement[], insideFunction = false): void {
     for (const stmt of stmts) {
       if (ts.isClassDeclaration(stmt) && stmt.name && !hasDeclareModifier(stmt)) {
-        try {
-          compileClassBodies(ctx, stmt, funcByName);
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
-          reportError(ctx, stmt, `Internal error compiling class '${stmt.name.text}': ${msg}`);
+        if (insideFunction) {
+          // Defer body compilation — will be compiled in compileNestedClassDeclaration
+          // when the enclosing function is compiled (so captured locals are available)
+          ctx.deferredClassBodies.add(stmt.name.text);
+        } else {
+          try {
+            compileClassBodies(ctx, stmt, funcByName);
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            reportError(ctx, stmt, `Internal error compiling class '${stmt.name.text}': ${msg}`);
+          }
         }
       } else if (ts.isVariableStatement(stmt) && !hasDeclareModifier(stmt)) {
         for (const decl of stmt.declarationList.declarations) {
@@ -11555,11 +11565,15 @@ function compileDeclarations(
             decl.initializer &&
             ts.isClassExpression(decl.initializer)
           ) {
-            try {
-              compileClassBodies(ctx, decl.initializer, funcByName, decl.name.text);
-            } catch (e) {
-              const msg = e instanceof Error ? e.message : String(e);
-              reportError(ctx, decl, `Internal error compiling class expression: ${msg}`);
+            if (insideFunction) {
+              ctx.deferredClassBodies.add(decl.name.text);
+            } else {
+              try {
+                compileClassBodies(ctx, decl.initializer, funcByName, decl.name.text);
+              } catch (e) {
+                const msg = e instanceof Error ? e.message : String(e);
+                reportError(ctx, decl, `Internal error compiling class expression: ${msg}`);
+              }
             }
           }
           // Recurse into arrow functions and function expressions
@@ -11568,7 +11582,7 @@ function compileDeclarations(
           }
         }
       } else if (ts.isFunctionDeclaration(stmt) && stmt.body) {
-        compileClassesFromStatements(stmt.body.statements);
+        compileClassesFromStatements(stmt.body.statements, true);
       } else if (ts.isIfStatement(stmt)) {
         if (ts.isBlock(stmt.thenStatement)) {
           compileClassesFromStatements(stmt.thenStatement.statements);
@@ -11609,11 +11623,11 @@ function compileDeclarations(
   function compileClassesFromFunctionBody(expr: ts.Expression): void {
     if (ts.isArrowFunction(expr)) {
       if (ts.isBlock(expr.body)) {
-        compileClassesFromStatements(expr.body.statements);
+        compileClassesFromStatements(expr.body.statements, true);
       }
     } else if (ts.isFunctionExpression(expr)) {
       if (expr.body) {
-        compileClassesFromStatements(expr.body.statements);
+        compileClassesFromStatements(expr.body.statements, true);
       }
       // Compile bodies for anonymous class expressions in new expressions
       compileAnonymousClassBodiesInNode(expr);
