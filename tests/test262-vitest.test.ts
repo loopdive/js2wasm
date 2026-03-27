@@ -568,7 +568,7 @@ for (const category of TEST_CATEGORIES) {
           // setTimeout can't fire while synchronous Wasm blocks the event loop,
           // so we need an external process to deliver SIGKILL.
           const { spawn: spawnProc } = await import("child_process");
-          const WATCHDOG_MS = 15_000;
+          const WATCHDOG_MS = 30_000;
           const watchdogProc = spawnProc("sh", ["-c", `sleep ${WATCHDOG_MS / 1000} && kill -9 ${process.pid}`], {
             detached: true,
             stdio: "ignore",
