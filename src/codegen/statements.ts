@@ -648,7 +648,9 @@ function compileVariableStatement(
           globalDef?.type ??
           resolveWasmType(ctx, ctx.checker.getTypeAtLocation(decl));
         compileExpression(ctx, fctx, decl.initializer, wasmType);
-        fctx.body.push({ op: "global.set", index: moduleGlobalIdx });
+        // Re-read index: compileExpression may shift globals via addStringConstantGlobal
+        const moduleGlobalIdxPost = ctx.moduleGlobals.get(name)!;
+        fctx.body.push({ op: "global.set", index: moduleGlobalIdxPost });
       }
       // Set TDZ flag to 1 (initialized) — even for `let x;` without initializer
       emitTdzInit(ctx, fctx, name);
@@ -2775,6 +2777,8 @@ function compileReturnStatement(
     return;
   }
 
+  const hasPendingFinally = fctx.finallyStack && fctx.finallyStack.length > 0;
+
   if (stmt.expression) {
     const exprType = compileExpression(ctx, fctx, stmt.expression, fctx.returnType ?? undefined);
     // Coerce expression result to match function return type if they differ
@@ -2794,6 +2798,29 @@ function compileReturnStatement(
     else if (fctx.returnType.kind === "externref") fctx.body.push({ op: "ref.null.extern" });
     else if (fctx.returnType.kind === "ref_null") fctx.body.push({ op: "ref.null", typeIdx: fctx.returnType.typeIdx });
     else if (fctx.returnType.kind === "ref") fctx.body.push({ op: "ref.null", typeIdx: fctx.returnType.typeIdx });
+  }
+
+  // If inside a try block with a finally clause, save the return value to a
+  // temp local, inline the finally instructions, then restore and return.
+  // This ensures finally always runs, and if finally contains its own return,
+  // that return takes precedence (the subsequent return becomes unreachable).
+  if (hasPendingFinally) {
+    // Save return value to a temp local (if there is one)
+    let retTmpIdx: number | undefined;
+    if (fctx.returnType) {
+      retTmpIdx = allocLocal(fctx, `__finally_ret_${fctx.locals.length}`, fctx.returnType);
+      fctx.body.push({ op: "local.set", index: retTmpIdx });
+    }
+    // Inline ALL pending finally blocks from innermost to outermost
+    for (let i = fctx.finallyStack!.length - 1; i >= 0; i--) {
+      fctx.body.push(...fctx.finallyStack![i]!.cloneFinally());
+    }
+    // Restore return value and emit return
+    if (retTmpIdx !== undefined) {
+      fctx.body.push({ op: "local.get", index: retTmpIdx });
+    }
+    fctx.body.push({ op: "return" });
+    return;
   }
 
   // Tail call optimization: if the last instruction is a call or call_ref,
@@ -5309,23 +5336,31 @@ function compileBreakStatement(
   fctx: FunctionContext,
   stmt: ts.BreakStatement,
 ): void {
+  let breakIdx: number;
   if (stmt.label) {
-    // Labeled break: look up the label to find the correct depth
     const labelName = stmt.label.text;
     const labelInfo = fctx.labelMap.get(labelName);
-    if (labelInfo !== undefined) {
-      const depth = fctx.breakStack[labelInfo.breakIdx];
-      if (depth !== undefined) {
-        fctx.body.push({ op: "br", depth });
+    if (labelInfo === undefined) return;
+    breakIdx = labelInfo.breakIdx;
+  } else {
+    breakIdx = fctx.breakStack.length - 1;
+  }
+  const depth = fctx.breakStack[breakIdx];
+  if (depth === undefined) return;
+
+  // Inline finally blocks for any try-with-finally that we're breaking out of.
+  // A finallyStack entry applies if the break target is outside the try block,
+  // i.e. the breakStack index we're targeting is less than the entry's breakStackLen.
+  if (fctx.finallyStack) {
+    for (let i = fctx.finallyStack.length - 1; i >= 0; i--) {
+      const entry = fctx.finallyStack[i]!;
+      if (breakIdx < entry.breakStackLen) {
+        fctx.body.push(...entry.cloneFinally());
       }
     }
-  } else {
-    // Unlabeled break: use the innermost (top of stack)
-    const depth = fctx.breakStack[fctx.breakStack.length - 1];
-    if (depth !== undefined) {
-      fctx.body.push({ op: "br", depth });
-    }
   }
+
+  fctx.body.push({ op: "br", depth });
 }
 
 function compileContinueStatement(
@@ -5333,23 +5368,29 @@ function compileContinueStatement(
   fctx: FunctionContext,
   stmt: ts.ContinueStatement,
 ): void {
+  let contIdx: number;
   if (stmt.label) {
-    // Labeled continue: look up the label to find the correct depth
     const labelName = stmt.label.text;
     const labelInfo = fctx.labelMap.get(labelName);
-    if (labelInfo !== undefined) {
-      const depth = fctx.continueStack[labelInfo.continueIdx];
-      if (depth !== undefined) {
-        fctx.body.push({ op: "br", depth });
+    if (labelInfo === undefined) return;
+    contIdx = labelInfo.continueIdx;
+  } else {
+    contIdx = fctx.continueStack.length - 1;
+  }
+  const depth = fctx.continueStack[contIdx];
+  if (depth === undefined) return;
+
+  // Inline finally blocks for any try-with-finally that we're continuing out of.
+  if (fctx.finallyStack) {
+    for (let i = fctx.finallyStack.length - 1; i >= 0; i--) {
+      const entry = fctx.finallyStack[i]!;
+      if (contIdx < entry.continueStackLen) {
+        fctx.body.push(...entry.cloneFinally());
       }
     }
-  } else {
-    // Unlabeled continue: use the innermost (top of stack)
-    const depth = fctx.continueStack[fctx.continueStack.length - 1];
-    if (depth !== undefined) {
-      fctx.body.push({ op: "br", depth });
-    }
   }
+
+  fctx.body.push({ op: "br", depth });
 }
 
 /**
@@ -5543,12 +5584,28 @@ function compileTryStatement(
   if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth++;
   adjustRethrowDepth(fctx, 1);
 
+  // Push finallyStack entry so return/break/continue inside the try body
+  // know to inline the finally instructions before transferring control.
+  if (finallyInstrs) {
+    if (!fctx.finallyStack) fctx.finallyStack = [];
+    fctx.finallyStack.push({
+      cloneFinally,
+      breakStackLen: fctx.breakStack.length,
+      continueStackLen: fctx.continueStack.length,
+    });
+  }
+
   // Save/restore block-scoped shadows for let/const in the try block (#817).
   const savedTryScope = saveBlockScopedShadows(fctx, stmt.tryBlock);
   for (const s of stmt.tryBlock.statements) {
     compileStatement(ctx, fctx, s);
   }
   restoreBlockScopedShadows(fctx, savedTryScope);
+
+  // Pop finallyStack before inlining the normal-path finally (avoid double-inline)
+  if (finallyInstrs) {
+    fctx.finallyStack!.pop();
+  }
 
   // If there's a finally block, inline it at the end of the try body (normal path)
   if (finallyInstrs) {
@@ -5628,6 +5685,15 @@ function compileTryStatement(
         for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!++;
         for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!++;
         adjustRethrowDepth(fctx, 1);
+
+        // Push finallyStack so return/break/continue inside catch body also
+        // inline the finally instructions before transferring control.
+        if (!fctx.finallyStack) fctx.finallyStack = [];
+        fctx.finallyStack.push({
+          cloneFinally,
+          breakStackLen: fctx.breakStack.length,
+          continueStackLen: fctx.continueStack.length,
+        });
       }
 
       // Emit catch binding destructuring if the catch variable is a binding pattern
@@ -5649,6 +5715,9 @@ function compileTryStatement(
       }
       restoreBlockScopedShadows(fctx, savedCatchScope);
       if (finallyInstrs) {
+        // Pop the finallyStack entry we pushed for the catch body
+        fctx.finallyStack!.pop();
+
         for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]!--;
         for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!--;
         adjustRethrowDepth(fctx, -1);
