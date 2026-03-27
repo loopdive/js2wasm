@@ -1,12 +1,12 @@
 {
-  "timestamp": "2026-03-27T09:06:39.859Z",
+  "timestamp": "2026-03-27T09:46:11.177Z",
   "summary": {
     "total": 49880,
-    "pass": 14169,
-    "fail": 25643,
-    "compile_error": 800,
+    "pass": 14329,
+    "fail": 25475,
+    "compile_error": 808,
     "skip": 9268,
-    "compilable": 39812,
+    "compilable": 39804,
     "stale": 0
   },
   "categories": [
@@ -20,9 +20,9 @@
     },
     {
       "name": "annexB/language",
-      "pass": 329,
+      "pass": 327,
       "fail": 509,
-      "compile_error": 22,
+      "compile_error": 24,
       "skip": 0,
       "total": 860
     },
@@ -556,8 +556,8 @@
     },
     {
       "name": "language/block-scope",
-      "pass": 70,
-      "fail": 77,
+      "pass": 110,
+      "fail": 37,
       "compile_error": 2,
       "skip": 0,
       "total": 149
@@ -580,9 +580,9 @@
     },
     {
       "name": "language/destructuring",
-      "pass": 14,
+      "pass": 13,
       "fail": 4,
-      "compile_error": 0,
+      "compile_error": 1,
       "skip": 1,
       "total": 19
     },
@@ -612,8 +612,8 @@
     },
     {
       "name": "language/expressions",
-      "pass": 4146,
-      "fail": 4873,
+      "pass": 4177,
+      "fail": 4842,
       "compile_error": 275,
       "skip": 2398,
       "total": 11692
@@ -637,8 +637,8 @@
     {
       "name": "language/global-code",
       "pass": 20,
-      "fail": 24,
-      "compile_error": 0,
+      "fail": 23,
+      "compile_error": 1,
       "skip": 0,
       "total": 44
     },
@@ -692,8 +692,8 @@
     },
     {
       "name": "language/module-code",
-      "pass": 228,
-      "fail": 227,
+      "pass": 239,
+      "fail": 216,
       "compile_error": 45,
       "skip": 107,
       "total": 607
@@ -740,9 +740,9 @@
     },
     {
       "name": "language/statements",
-      "pass": 2938,
-      "fail": 4788,
-      "compile_error": 231,
+      "pass": 3019,
+      "fail": 4703,
+      "compile_error": 235,
       "skip": 1879,
       "total": 9836
     },
