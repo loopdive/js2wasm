@@ -777,10 +777,15 @@ export function collectInstrs(
   emitFn: () => void,
 ): Instr[] {
   const saved = fctx.body;
+  // Register saved body so late import shifts can find it (#801).
+  // Without this, ensureLateImport/shiftLateImportIndices during emitFn
+  // would miss the saved body when updating function indices.
+  fctx.savedBodies.push(saved);
   fctx.body = [];
   emitFn();
   const instrs = fctx.body;
   fctx.body = saved;
+  fctx.savedBodies.pop();
   return instrs;
 }
 
