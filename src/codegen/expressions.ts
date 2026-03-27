@@ -10884,6 +10884,22 @@ function compileCallExpression(
       return compileExternMethodCall(ctx, fctx, propAccess, expr);
     }
 
+    // Fallback: when lib files are not loaded, the TypeScript checker resolves
+    // types like RegExp, Map, Set to `{}`.  Check if the method name matches
+    // a registered built-in extern class and the receiver maps to externref.
+    {
+      const methodName = propAccess.name.text;
+      const wasmRecvType = mapTsTypeToWasm(receiverType, ctx.checker);
+      if (wasmRecvType.kind === "externref") {
+        for (const [className, info] of ctx.externClasses) {
+          if (info.methods.has(methodName)) {
+            // Use the extern class dispatch by synthesizing the call
+            return compileExternMethodCallForClass(ctx, fctx, propAccess, expr, info);
+          }
+        }
+      }
+    }
+
     // Property introspection: hasOwnProperty / propertyIsEnumerable
     if (
       propAccess.name.text === "hasOwnProperty" ||
@@ -16250,6 +16266,37 @@ function compileNewExpression(
     }
   }
 
+  // Fallback: when lib files are not loaded, the type resolves to `{}` and
+  // className is undefined. Check if the identifier name matches a registered
+  // extern class (RegExp, Map, Set, etc.) and use that path instead.
+  if (!className && ts.isIdentifier(expr.expression)) {
+    const idName = expr.expression.text;
+    const externInfo = ctx.externClasses.get(idName);
+    if (externInfo) {
+      const args = expr.arguments ?? [];
+      for (let i = 0; i < args.length; i++) {
+        compileExpression(ctx, fctx, args[i]!, externInfo.constructorParams[i]);
+      }
+      for (let i = args.length; i < externInfo.constructorParams.length; i++) {
+        pushDefaultValue(fctx, externInfo.constructorParams[i]!);
+      }
+      const importName = `${externInfo.importPrefix}_new`;
+      const funcIdx = ctx.funcMap.get(importName);
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+        return { kind: "externref" };
+      }
+      // Import not registered yet — register it now
+      const importsBefore = ctx.numImportFuncs;
+      const typeIdx = addFuncType(ctx, externInfo.constructorParams, [{ kind: "externref" }]);
+      addImport(ctx, "env", importName, { kind: "func", typeIdx });
+      shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+      const newFuncIdx = ctx.funcMap.get(importName)!;
+      fctx.body.push({ op: "call", funcIdx: newFuncIdx });
+      return { kind: "externref" };
+    }
+  }
+
   if (!className) {
     // Unknown constructor (e.g. Test262Error) — call an imported constructor
     // registered upfront by collectUnknownConstructorImports.
@@ -16968,11 +17015,27 @@ function compileExternMethodCall(
     return null;
   }
 
+  return compileExternMethodCallForClass(ctx, fctx, propAccess, callExpr, resolvedInfo ?? externInfo);
+}
+
+/**
+ * Compile an extern class method call given explicit ExternClassInfo.
+ * Used both by the normal extern class dispatch path and the fallback
+ * path when lib files are not loaded (type resolves to `{}`).
+ */
+function compileExternMethodCallForClass(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  propAccess: ts.PropertyAccessExpression,
+  callExpr: ts.CallExpression,
+  methodOwner: ExternClassInfo,
+): InnerResult {
+  const methodName = propAccess.name.text;
+
   // Push 'this' (the receiver object)
   compileExpression(ctx, fctx, propAccess.expression);
 
   // Push arguments with type hints (params[0] is 'this', args start at [1])
-  const methodOwner = resolvedInfo ?? externInfo;
   const methodInfo = methodOwner.methods.get(methodName);
   const extMethodParamCount = methodInfo ? methodInfo.params.length - 1 : callExpr.arguments.length;
   for (let i = 0; i < callExpr.arguments.length; i++) {
