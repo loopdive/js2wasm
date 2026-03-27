@@ -15456,15 +15456,16 @@ function inferArrayElementType(
 }
 
 /**
- * Check if a node tree references the `arguments` identifier
- * (skipping nested functions/arrows which have their own scope).
+ * Check if a node tree references the `arguments` identifier.
+ * Skips nested function declarations and function expressions (which have
+ * their own `arguments` binding), but traverses into arrow functions
+ * because arrows inherit the enclosing function's `arguments`.
  */
 function usesArguments(node: ts.Node): boolean {
   if (ts.isIdentifier(node) && node.text === "arguments") return true;
   if (
     ts.isFunctionDeclaration(node) ||
-    ts.isFunctionExpression(node) ||
-    ts.isArrowFunction(node)
+    ts.isFunctionExpression(node)
   ) {
     return false;
   }

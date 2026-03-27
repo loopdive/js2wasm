@@ -13850,14 +13850,18 @@ function walkStmtForLetConst(
 
 /**
  * Check if a function body references the `arguments` identifier.
- * Only checks direct children (not nested functions/arrows which have their own `arguments`).
+ * Skips nested function declarations and function expressions (which have
+ * their own `arguments` binding), but traverses into arrow functions
+ * because arrows inherit the enclosing function's `arguments`.
  */
 function bodyUsesArguments(node: ts.Node): boolean {
   if (ts.isIdentifier(node) && node.text === "arguments") return true;
-  // Don't recurse into nested functions/arrows — they have their own `arguments` scope
-  if (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node)) {
+  // Don't recurse into nested functions/function expressions — they have their own `arguments`
+  if (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node)) {
     return false;
   }
+  // Arrow functions do NOT have their own `arguments` — they inherit
+  // the enclosing function's, so we must traverse into them.
   return ts.forEachChild(node, bodyUsesArguments) ?? false;
 }
 
