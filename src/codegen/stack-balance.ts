@@ -38,6 +38,63 @@ import type {
 const UNREACHABLE = -999;
 
 /**
+ * Check if an instruction is a terminator (makes subsequent code unreachable).
+ */
+function isTerminator(op: string): boolean {
+  return op === "return" || op === "return_call" || op === "return_call_ref" ||
+         op === "br" || op === "throw" || op === "rethrow" || op === "unreachable";
+}
+
+/**
+ * Remove dead code after terminating instructions in a flat instruction body.
+ * Recurses into structured blocks (if/block/loop/try).
+ * Mutates the body array in place.
+ * Returns the number of instructions removed.
+ */
+function eliminateDeadCode(body: Instr[]): number {
+  let removed = 0;
+
+  // First, recurse into structured blocks
+  for (const instr of body) {
+    if (instr.op === "if") {
+      const ifInstr = instr as { op: "if"; then: Instr[]; else?: Instr[] };
+      removed += eliminateDeadCode(ifInstr.then);
+      if (ifInstr.else) removed += eliminateDeadCode(ifInstr.else);
+    } else if (instr.op === "block" || instr.op === "loop") {
+      const blockInstr = instr as { op: string; body: Instr[] };
+      removed += eliminateDeadCode(blockInstr.body);
+    } else if (instr.op === "try") {
+      const tryInstr = instr as {
+        op: "try"; body: Instr[];
+        catches: Array<{ body: Instr[] }>;
+        catchAll?: Instr[];
+      };
+      removed += eliminateDeadCode(tryInstr.body);
+      for (const c of tryInstr.catches || []) {
+        removed += eliminateDeadCode(c.body);
+      }
+      if (tryInstr.catchAll) removed += eliminateDeadCode(tryInstr.catchAll);
+    }
+  }
+
+  // Then, truncate after terminators at this level
+  for (let i = 0; i < body.length; i++) {
+    if (isTerminator(body[i]!.op)) {
+      const deadCount = body.length - (i + 1);
+      if (deadCount > 0) {
+        body.splice(i + 1, deadCount);
+        removed += deadCount;
+      }
+      break;
+    }
+    // Don't look inside structured blocks for terminators at this level
+    // (their internal terminators don't make the outer code unreachable)
+  }
+
+  return removed;
+}
+
+/**
  * Resolve a FuncTypeDef from the module's type table, handling sub/rec wrappers.
  */
 function resolveFuncType(types: TypeDef[], typeIdx: number): FuncTypeDef | null {
@@ -1773,6 +1830,11 @@ export function stackBalance(mod: WasmModule): number {
       for (const p of ft.params) localTypes.push(p);
     }
     for (const l of func.locals) localTypes.push(l.type);
+
+    // Eliminate dead code after terminators (throw/return/br/unreachable)
+    // V8 tracks stack values even in unreachable code, so dead code that pushes
+    // values causes "expected N elements on the stack for fallthru" errors.
+    eliminateDeadCode(func.body);
 
     // Fix call argument type mismatches before other fixups
     totalFixups += fixCallArgTypesInBody(func.body, localTypes, globalTypes, mod.types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
