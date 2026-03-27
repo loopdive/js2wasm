@@ -190,6 +190,104 @@ function markStatementPos(
   }
 }
 
+/**
+ * Collect the names of block-scoped (let/const) variable declarations that
+ * are direct children of a block (not nested blocks — those handle their own).
+ */
+function collectBlockScopedNames(stmt: ts.Block): string[] {
+  const names: string[] = [];
+  for (const s of stmt.statements) {
+    if (!ts.isVariableStatement(s)) continue;
+    const flags = s.declarationList.flags;
+    // Only let/const create block-scoped bindings (not var)
+    if (!(flags & ts.NodeFlags.Let) && !(flags & ts.NodeFlags.Const)) continue;
+    for (const decl of s.declarationList.declarations) {
+      if (ts.isIdentifier(decl.name)) {
+        names.push(decl.name.text);
+      }
+      // For destructuring patterns, collect all bound names
+      else if (ts.isObjectBindingPattern(decl.name) || ts.isArrayBindingPattern(decl.name)) {
+        collectBindingPatternNames(decl.name, names);
+      }
+    }
+  }
+  return names;
+}
+
+function collectBindingPatternNames(pattern: ts.BindingPattern, names: string[]): void {
+  for (const el of pattern.elements) {
+    if (ts.isOmittedExpression(el)) continue;
+    if (ts.isIdentifier(el.name)) {
+      names.push(el.name.text);
+    } else if (ts.isObjectBindingPattern(el.name) || ts.isArrayBindingPattern(el.name)) {
+      collectBindingPatternNames(el.name, names);
+    }
+  }
+}
+
+/** Saved state for a block scope: localMap + optional TDZ flags */
+interface BlockScopeSave {
+  locals: Map<string, number>;
+  tdzFlags: Map<string, number> | null;
+}
+
+/**
+ * Save localMap (and TDZ flag) entries for block-scoped names that shadow
+ * existing locals.  Also removes the shadow entries from localMap (and
+ * tdzFlagLocals) so that compileVariableStatement will allocate fresh locals.
+ * Returns the saved state to restore after the block.
+ */
+function saveBlockScopedShadows(
+  fctx: FunctionContext,
+  block: ts.Block,
+): BlockScopeSave | null {
+  const blockNames = collectBlockScopedNames(block);
+  if (blockNames.length === 0) return null;
+
+  let savedLocals: Map<string, number> | null = null;
+  let savedTdz: Map<string, number> | null = null;
+  for (const name of blockNames) {
+    const existing = fctx.localMap.get(name);
+    if (existing !== undefined) {
+      if (!savedLocals) savedLocals = new Map();
+      savedLocals.set(name, existing);
+      // Remove from localMap so the inner declaration allocates a fresh local
+      fctx.localMap.delete(name);
+      // Also save and remove any TDZ flag for this name
+      if (fctx.tdzFlagLocals) {
+        const tdzIdx = fctx.tdzFlagLocals.get(name);
+        if (tdzIdx !== undefined) {
+          if (!savedTdz) savedTdz = new Map();
+          savedTdz.set(name, tdzIdx);
+          fctx.tdzFlagLocals.delete(name);
+        }
+      }
+    }
+  }
+  if (!savedLocals) return null;
+  return { locals: savedLocals, tdzFlags: savedTdz };
+}
+
+/**
+ * Restore localMap (and TDZ flag) entries that were saved before entering
+ * a block scope.
+ */
+function restoreBlockScopedShadows(
+  fctx: FunctionContext,
+  saved: BlockScopeSave | null,
+): void {
+  if (!saved) return;
+  for (const [name, idx] of saved.locals) {
+    fctx.localMap.set(name, idx);
+  }
+  if (saved.tdzFlags) {
+    if (!fctx.tdzFlagLocals) fctx.tdzFlagLocals = new Map();
+    for (const [name, idx] of saved.tdzFlags) {
+      fctx.tdzFlagLocals.set(name, idx);
+    }
+  }
+}
+
 /** Compile a statement, appending instructions to the function body */
 export function compileStatement(
   ctx: CodegenContext,
@@ -278,9 +376,14 @@ function compileStatementInner(
   }
 
   if (ts.isBlock(stmt)) {
+    // Save localMap entries for any block-scoped (let/const) names that shadow
+    // existing variables.  Wasm locals are flat (no block scope), so we need to
+    // restore the outer mapping after the block ends.
+    const savedLocals = saveBlockScopedShadows(fctx, stmt);
     for (const s of stmt.statements) {
       compileStatement(ctx, fctx, s);
     }
+    restoreBlockScopedShadows(fctx, savedLocals);
     return;
   }
 
@@ -2896,6 +2999,27 @@ function compileForStatement(
   fctx: FunctionContext,
   stmt: ts.ForStatement,
 ): void {
+  // Save localMap entries for let/const initializers that shadow outer variables.
+  // `for (let x = ...; ...)` creates a block scope that ends after the loop.
+  let savedForScope: Map<string, number> | null = null;
+  if (
+    stmt.initializer &&
+    ts.isVariableDeclarationList(stmt.initializer) &&
+    (stmt.initializer.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const))
+  ) {
+    for (const decl of stmt.initializer.declarations) {
+      if (ts.isIdentifier(decl.name)) {
+        const name = decl.name.text;
+        const existing = fctx.localMap.get(name);
+        if (existing !== undefined) {
+          if (!savedForScope) savedForScope = new Map();
+          savedForScope.set(name, existing);
+          fctx.localMap.delete(name);
+        }
+      }
+    }
+  }
+
   // Compile initializer (outside the loop)
   if (stmt.initializer) {
     if (ts.isVariableDeclarationList(stmt.initializer)) {
@@ -3132,6 +3256,13 @@ function compileForStatement(
       },
     ],
   });
+
+  // Restore localMap entries for for-loop let/const initializers
+  if (savedForScope) {
+    for (const [name, idx] of savedForScope) {
+      fctx.localMap.set(name, idx);
+    }
+  }
 }
 
 function compileDoWhileStatement(
@@ -5125,12 +5256,15 @@ function compileTryStatement(
   if (stmt.catchClause) {
     // Allocate the catch variable local (if any) before compiling catch bodies
     // so it's available in both catch $tag and catch_all bodies.
+    // Save the previous localMap entry so we can restore it after the catch scope.
     let exnLocalIdx: number | null = null;
+    let savedCatchVarIdx: number | undefined;
     if (
       stmt.catchClause.variableDeclaration &&
       ts.isIdentifier(stmt.catchClause.variableDeclaration.name)
     ) {
       const varName = stmt.catchClause.variableDeclaration.name.text;
+      savedCatchVarIdx = fctx.localMap.get(varName);
       exnLocalIdx = allocLocal(fctx, varName, { kind: "externref" });
     } else if (
       stmt.catchClause.variableDeclaration &&
@@ -5295,6 +5429,19 @@ function compileTryStatement(
       }
       const tbIdx2 = fctx.savedBodies.lastIndexOf(tryBody);
       if (tbIdx2 >= 0) fctx.savedBodies.splice(tbIdx2, 1);
+    }
+
+    // Restore the previous localMap entry for the catch variable so that
+    // variables in outer scopes with the same name are accessible after the
+    // catch clause.  (The catch parameter is block-scoped to the catch body.)
+    if (
+      stmt.catchClause.variableDeclaration &&
+      ts.isIdentifier(stmt.catchClause.variableDeclaration.name)
+    ) {
+      const varName = stmt.catchClause.variableDeclaration.name.text;
+      if (savedCatchVarIdx !== undefined) {
+        fctx.localMap.set(varName, savedCatchVarIdx);
+      }
     }
   }
 
