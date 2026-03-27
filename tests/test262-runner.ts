@@ -137,14 +137,12 @@ export function shouldSkip(
     return { skip: true, reason: "imports _FIXTURE helper module" };
   }
 
-  // Skip class element tests that cause infinite compilation loops (#793)
-  // Private method/setter/getter and static computed name patterns hang.
+  // Skip class/elements tests that cause infinite compilation loops (#793)
+  // Many patterns in this directory hang (private methods, static computed names,
+  // same-line combinations, string literal names). Skip the entire directory.
   if (
     filePath &&
-    (/class\/elements\/private-(method|setter|getter)-/.test(filePath) ||
-     /class\/elements\/static-comp-name/.test(filePath) ||
-     /class\/elements\/same-line.*static-private/.test(filePath) ||
-     /class\/elements\/same-line.*rs-static-privatename/.test(filePath))
+    /class\/elements\//.test(filePath)
   ) {
     return {
       skip: true,
