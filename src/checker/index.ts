@@ -1,4 +1,8 @@
 import ts from "typescript";
+import { readFileSync } from "fs";
+import { dirname, join } from "path";
+import { createRequire } from "module";
+import { fileURLToPath } from "url";
 // Custom type declarations not found in TS lib files
 // All lib types now loaded from the typescript package at runtime.
 // No custom lib imports needed — lib: ["es2021", "dom"] in compilerOptions
@@ -19,18 +23,18 @@ let _tsLibDir: string | undefined;
 function getTsLibDir(): string {
   if (_tsLibDir === undefined) {
     try {
-      // Lazy require — avoid top-level import of Node.js modules for browser compat
-      const { createRequire } = require("module");
-      const { dirname } = require("path");
-      const req =
-        typeof require !== "undefined"
-          ? require
-          : createRequire(import.meta.url);
-      _tsLibDir = dirname(req.resolve("typescript/lib/lib.d.ts"));
+      // Use createRequire to resolve the typescript package location
+      // This works in both CJS and ESM contexts
+      const esmRequire = createRequire(
+        typeof __filename !== "undefined"
+          ? __filename
+          : fileURLToPath(import.meta.url),
+      );
+      _tsLibDir = dirname(esmRequire.resolve("typescript/lib/lib.d.ts"));
     } catch {
       try {
-        const { dirname } = require("path");
-        _tsLibDir = dirname(require.resolve("typescript"));
+        // Fallback: try CJS require
+        _tsLibDir = dirname(require.resolve("typescript/lib/lib.d.ts"));
       } catch {
         _tsLibDir = "";
       }
@@ -45,8 +49,6 @@ function getTsLibDir(): string {
  */
 function readLibFile(name: string): string {
   try {
-    const { readFileSync } = require("fs");
-    const { join } = require("path");
     return readFileSync(join(getTsLibDir(), name), "utf-8");
   } catch {
     return "";
@@ -86,14 +88,65 @@ const TS_LIB_NAMES = new Set([
 function getLibSource(name: string): string | undefined {
   if (name in LIB_FILES) return LIB_FILES[name];
 
-  // Composite lib.d.ts: concatenate all libs + generators
+  // Composite lib.d.ts: concatenate all needed lib files directly.
+  // We must include the sub-files (e.g. lib.es2015.collection.d.ts) rather than
+  // the umbrella files (lib.es2015.d.ts) because umbrella files only contain
+  // /// <reference lib="..."> directives which are NOT resolved when the content
+  // is concatenated into a single source file.
   if (name === "lib.d.ts") {
-    const parts = [
-      getLibSource("lib.es5.d.ts") ?? "",
-      getLibSource("lib.es2015.d.ts") ?? "",
-      getLibSource("lib.es2021.d.ts") ?? "",
-      getLibSource("lib.dom.d.ts") ?? "",
+    const libNames = [
+      // ES5 base
+      "lib.es5.d.ts",
+      // ES2015 sub-libs (from lib.es2015.d.ts references)
+      "lib.es2015.core.d.ts",
+      "lib.es2015.collection.d.ts",
+      "lib.es2015.generator.d.ts",
+      "lib.es2015.iterable.d.ts",
+      "lib.es2015.promise.d.ts",
+      "lib.es2015.proxy.d.ts",
+      "lib.es2015.reflect.d.ts",
+      "lib.es2015.symbol.d.ts",
+      "lib.es2015.symbol.wellknown.d.ts",
+      // ES2016
+      "lib.es2016.array.include.d.ts",
+      "lib.es2016.intl.d.ts",
+      // ES2017
+      "lib.es2017.object.d.ts",
+      "lib.es2017.string.d.ts",
+      "lib.es2017.intl.d.ts",
+      "lib.es2017.typedarrays.d.ts",
+      "lib.es2017.date.d.ts",
+      "lib.es2017.sharedmemory.d.ts",
+      // ES2018
+      "lib.es2018.asyncgenerator.d.ts",
+      "lib.es2018.asynciterable.d.ts",
+      "lib.es2018.intl.d.ts",
+      "lib.es2018.promise.d.ts",
+      "lib.es2018.regexp.d.ts",
+      // ES2019
+      "lib.es2019.array.d.ts",
+      "lib.es2019.intl.d.ts",
+      "lib.es2019.object.d.ts",
+      "lib.es2019.string.d.ts",
+      "lib.es2019.symbol.d.ts",
+      // ES2020
+      "lib.es2020.bigint.d.ts",
+      "lib.es2020.date.d.ts",
+      "lib.es2020.intl.d.ts",
+      "lib.es2020.number.d.ts",
+      "lib.es2020.promise.d.ts",
+      "lib.es2020.sharedmemory.d.ts",
+      "lib.es2020.string.d.ts",
+      "lib.es2020.symbol.wellknown.d.ts",
+      // ES2021
+      "lib.es2021.intl.d.ts",
+      "lib.es2021.promise.d.ts",
+      "lib.es2021.string.d.ts",
+      "lib.es2021.weakref.d.ts",
+      // DOM (decorators loaded via /// <reference> in lib.es5.d.ts)
+      "lib.dom.d.ts",
     ];
+    const parts = libNames.map(n => getLibSource(n) ?? "");
     const content = parts.join("\n");
     LIB_FILES[name] = content;
     return content;
@@ -158,6 +211,14 @@ export function analyzeSource(
   const scriptKind = isJs ? ts.ScriptKind.JS : ts.ScriptKind.TS;
   const useAllowJs = isJs || analyzeOptions?.allowJs === true;
 
+  const compilerOptions: ts.CompilerOptions = {
+    target: ts.ScriptTarget.ES2022,
+    module: ts.ModuleKind.ESNext,
+    strict: !isJs,
+    noImplicitAny: false,
+    noEmit: true,
+  };
+
   const compilerHost: ts.CompilerHost = {
     getSourceFile(name, languageVersion) {
       if (name === fileName) {
@@ -183,15 +244,6 @@ export function analyzeSource(
     readFile: () => undefined,
     getDirectories: () => [],
     directoryExists: () => true,
-  };
-
-  const compilerOptions: ts.CompilerOptions = {
-    target: ts.ScriptTarget.ES2022,
-    module: ts.ModuleKind.ESNext,
-    lib: ["lib.es2021.d.ts", "lib.dom.d.ts"],
-    strict: !isJs,
-    noImplicitAny: false,
-    noEmit: true,
   };
 
   if (useAllowJs) {

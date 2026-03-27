@@ -9916,9 +9916,7 @@ function collectUsedExternImports(
   }
 
   for (const stmt of sourceFile.statements) {
-    if (ts.isFunctionDeclaration(stmt) && stmt.body) {
-      visit(stmt.body);
-    }
+    ts.forEachChild(stmt, visit);
   }
 }
 
