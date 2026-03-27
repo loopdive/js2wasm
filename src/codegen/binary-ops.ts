@@ -357,7 +357,7 @@ export function compileBinaryExpression(
     let staticKey: string | null = null;
     let leftExpr: ts.Expression = expr.left;
     if (ts.isPrivateIdentifier(leftExpr)) {
-      staticKey = leftExpr.text.startsWith("#") ? leftExpr.text.slice(1) : leftExpr.text;
+      staticKey = leftExpr.text.startsWith("#") ? "__priv_" + leftExpr.text.slice(1) : leftExpr.text;
     } else if (ts.isStringLiteral(leftExpr)) {
       staticKey = leftExpr.text;
     } else if (ts.isNumericLiteral(leftExpr)) {
