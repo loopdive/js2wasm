@@ -9,6 +9,7 @@ import {
   compileExpression,
   emitBoundsCheckedArrayGet,
   emitCoercedLocalSet,
+  emitUndefined,
   ensureLateImport,
   flushLateImportShifts,
   shiftLateImportIndices,
@@ -651,6 +652,15 @@ function compileVariableStatement(
         // Re-read index: compileExpression may shift globals via addStringConstantGlobal
         const moduleGlobalIdxPost = ctx.moduleGlobals.get(name)!;
         fctx.body.push({ op: "global.set", index: moduleGlobalIdxPost });
+      } else {
+        // No initializer: `let x;` at module level — in JS, uninitialized
+        // variables are `undefined`. For externref globals, emit __get_undefined()
+        // so `x === undefined` works correctly (#737).
+        const globalDef = ctx.mod.globals[localGlobalIdx(ctx, moduleGlobalIdx)];
+        if (globalDef?.type.kind === "externref") {
+          emitUndefined(ctx, fctx);
+          fctx.body.push({ op: "global.set", index: moduleGlobalIdx });
+        }
       }
       // Set TDZ flag to 1 (initialized) — even for `let x;` without initializer
       emitTdzInit(ctx, fctx, name);
@@ -798,6 +808,12 @@ function compileVariableStatement(
         }
       }
       emitCoercedLocalSet(ctx, fctx, localIdx, stackType);
+    } else if (wasmType.kind === "externref") {
+      // No initializer: `let x;` / `var x;` — in JS, uninitialized variables
+      // are `undefined`, not `null`. Emit __get_undefined() so that
+      // `x === undefined` works correctly (#737).
+      emitUndefined(ctx, fctx);
+      fctx.body.push({ op: "local.set", index: localIdx });
     }
     // Set local TDZ flag to 1 (initialized) if this is a hoisted let/const
     emitLocalTdzInit(fctx, name);

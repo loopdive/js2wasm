@@ -96,4 +96,73 @@ describe("Issue #737: undefined handling edge cases", () => {
     `;
     expect(await run(src)).toBe(1);
   });
+
+  it("missing function parameters are undefined (#737)", async () => {
+    const src = `
+      function foo(a: any, b: any): number {
+        if (b === undefined) return 1;
+        return 0;
+      }
+      export function test(): number { return foo(42); }
+    `;
+    expect(await run(src)).toBe(1);
+  });
+
+  it("void expression returns undefined (#737)", async () => {
+    const src = `
+      export function test(): number {
+        const x: any = void 0;
+        if (x === undefined) return 1;
+        return 0;
+      }
+    `;
+    expect(await run(src)).toBe(1);
+  });
+
+  it("uninitialized let is undefined (#737)", async () => {
+    const src = `
+      export function test(): number {
+        let x: any;
+        if (x === undefined) return 1;
+        return 0;
+      }
+    `;
+    expect(await run(src)).toBe(1);
+  });
+
+  it("hoisted var before declaration is undefined (#737)", async () => {
+    const src = `
+      export function test(): number {
+        const before: any = x;
+        var x: any;
+        if (before === undefined) return 1;
+        return 0;
+      }
+    `;
+    expect(await run(src)).toBe(1);
+  });
+
+  it("multiple missing params are all undefined (#737)", async () => {
+    const src = `
+      function foo(a: any, b: any, c: any): number {
+        let count = 0;
+        if (b === undefined) count++;
+        if (c === undefined) count++;
+        return count;
+      }
+      export function test(): number { return foo(1); }
+    `;
+    expect(await run(src)).toBe(2);
+  });
+
+  it("null is still null, not undefined (#737)", async () => {
+    const src = `
+      export function test(): number {
+        const x: any = null;
+        if (x === null && x !== undefined) return 1;
+        return 0;
+      }
+    `;
+    expect(await run(src)).toBe(1);
+  });
 });

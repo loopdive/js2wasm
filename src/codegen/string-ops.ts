@@ -439,7 +439,7 @@ export function compileTaggedTemplateExpression(
           const numProvided = maxSubs + 1 + captureCount; // +1 for strings array + captures
           for (const opt of optInfo) {
             if (opt.index >= numProvided) {
-              pushDefaultValue(fctx, opt.type);
+              pushDefaultValue(fctx, opt.type, ctx);
             }
           }
         }
@@ -542,7 +542,7 @@ export function compileTaggedTemplateExpression(
 
       // Pad missing arguments with defaults
       for (let i = substitutions.length + 1; i < matchedClosureInfo.paramTypes.length; i++) {
-        pushDefaultValue(fctx, matchedClosureInfo.paramTypes[i]!);
+        pushDefaultValue(fctx, matchedClosureInfo.paramTypes[i]!, ctx);
       }
 
       // Push funcref from closure struct field 0 and call_ref
@@ -581,7 +581,7 @@ export function compileTaggedTemplateExpression(
           }
 
           for (let i = substitutions.length + 1; i < closureInfo.paramTypes.length; i++) {
-            pushDefaultValue(fctx, closureInfo.paramTypes[i]!);
+            pushDefaultValue(fctx, closureInfo.paramTypes[i]!, ctx);
           }
 
           fctx.body.push({ op: "local.get", index: closureLocal });
