@@ -566,10 +566,17 @@ function resolveImport(
           ?? _sidecarGet(obj, Symbol.iterator)
           ?? _sidecarGet(obj, "@@iterator");
         if (typeof fn === "function") return fn.call(obj);
-        // WasmGC struct fallback: synthesize an array iterator if the struct
-        // is a vec (array wrapper) using exported __vec_len / __vec_get helpers.
+        // WasmGC struct fallback: check for @@iterator struct field via exported getter,
+        // then try vec struct iteration.
         if (_isWasmStruct(obj)) {
           const exports = callbackState?.getExports();
+          // Try __call_@@iterator to invoke [Symbol.iterator]() on the struct
+          const callIter = (exports as any)?.["__call_@@iterator"];
+          if (typeof callIter === "function") {
+            const iter = callIter(obj);
+            if (iter != null) return iter;
+          }
+          // Fallback: synthesize an array iterator if the struct is a vec (array wrapper)
           const vecLen = exports?.__vec_len;
           const vecGet = exports?.__vec_get;
           if (typeof vecLen === "function" && typeof vecGet === "function") {
@@ -599,9 +606,15 @@ function resolveImport(
           ?? _sidecarGet(obj, Symbol.iterator)
           ?? _sidecarGet(obj, "@@iterator");
         if (typeof syncIter === "function") return syncIter.call(obj);
-        // WasmGC struct fallback (same as __iterator)
+        // WasmGC struct fallback: check @@iterator struct field, then vec iteration
         if (_isWasmStruct(obj)) {
           const exports = callbackState?.getExports();
+          // Try __call_@@iterator to invoke [Symbol.iterator]() on the struct
+          const callIter = (exports as any)?.["__call_@@iterator"];
+          if (typeof callIter === "function") {
+            const iter = callIter(obj);
+            if (iter != null) return iter;
+          }
           const vecLen = exports?.__vec_len;
           const vecGet = exports?.__vec_get;
           if (typeof vecLen === "function" && typeof vecGet === "function") {
@@ -630,6 +643,15 @@ function resolveImport(
           next = exports?.__sget_next?.(iter);
         }
         if (typeof next === "function") return next.call(iter);
+        // Try __call_next dispatch for WasmGC struct iterators
+        {
+          const exports = callbackState?.getExports();
+          const callNext = (exports as any)?.["__call_next"];
+          if (typeof callNext === "function") {
+            const result = callNext(iter);
+            if (result != null) return result;
+          }
+        }
         throw new TypeError("iterator.next is not a function");
       };
       if (name === "__iterator_done") return (result: any) => {

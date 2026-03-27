@@ -849,10 +849,18 @@ function detectEarlyErrors(
 
     // ── const without initializer ──────────────────────────────────
     // ES spec: LexicalBinding for `const` must have an Initializer.
+    // Exception: `for (const x of ...)` and `for (const x in ...)` — the
+    // variable gets its value from the iterable/object, not an initializer.
     if (ts.isVariableDeclaration(node) && !node.initializer) {
       const declList = node.parent;
       if (ts.isVariableDeclarationList(declList) && (declList.flags & ts.NodeFlags.Const) !== 0) {
-        addError(node, "Missing initializer in const declaration");
+        const declListParent = declList.parent;
+        const isForOfOrIn = declListParent && (
+          ts.isForOfStatement(declListParent) || ts.isForInStatement(declListParent)
+        );
+        if (!isForOfOrIn) {
+          addError(node, "Missing initializer in const declaration");
+        }
       }
     }
 

@@ -1135,6 +1135,9 @@ export function generateModule(
   // Emit __vec_get / __vec_len exports for runtime iterator fallback on WasmGC arrays
   emitVecAccessExports(ctx);
 
+  // Emit __call_@@iterator export for runtime Symbol.iterator dispatch on WasmGC structs
+  emitIteratorMethodExport(ctx);
+
   // WASI: export _start entry point (before dead import elimination adjusts indices)
   if (ctx.wasi) {
     addWasiStartExport(ctx);
@@ -1396,6 +1399,108 @@ function emitStructFieldNamesExport(
     name: "__struct_field_names",
     desc: { kind: "func", index: funcIdx },
   });
+}
+
+/**
+ * Emit exported method dispatch functions for the iterator protocol:
+ * - __call_@@iterator(externref) -> externref — calls [Symbol.iterator]() on structs
+ * - __call_next(externref) -> externref — calls .next() on iterator structs
+ *
+ * These allow the runtime to invoke WasmGC struct methods that are opaque to JS.
+ */
+function emitIteratorMethodExport(ctx: CodegenContext): void {
+  // Only emit if the iterator imports are registered (i.e., for-of on non-array types)
+  if (!ctx.funcMap.has("__iterator") && !ctx.funcMap.has("__iterator_next")) return;
+
+  const mod = ctx.mod;
+  const dispatchTypeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }], "$call_method_type");
+
+  // Helper to emit a method dispatch export
+  const emitMethodDispatch = (methodSuffix: string, exportName: string) => {
+    const entries: { structName: string; typeIdx: number; funcIdx: number; resultType: ValType }[] = [];
+
+    for (const [structName] of ctx.structFields) {
+      const typeIdx = ctx.structMap.get(structName);
+      if (typeIdx === undefined) continue;
+      if (structName.startsWith("Wrapper") || structName === "$AnyValue" ||
+          structName.startsWith("__vec_") || structName.startsWith("__arr_")) continue;
+
+      const methodFullName = `${structName}_${methodSuffix}`;
+      const funcIdx = ctx.funcMap.get(methodFullName);
+      if (funcIdx === undefined) continue;
+
+      const funcDef = mod.functions[funcIdx - ctx.numImportFuncs];
+      const funcType = funcDef ? mod.types[funcDef.typeIdx] : undefined;
+      const resultType: ValType = (funcType && funcType.kind === "func" && funcType.results.length > 0)
+        ? funcType.results[0]!
+        : { kind: "externref" };
+
+      entries.push({ structName, typeIdx, funcIdx, resultType });
+    }
+
+    if (entries.length === 0) return;
+
+    const funcIdx = ctx.numImportFuncs + mod.functions.length;
+    const body: Instr[] = [];
+    body.push({ op: "local.get", index: 0 });
+    body.push({ op: "any.convert_extern" } as Instr);
+    body.push({ op: "local.set", index: 1 } as Instr);
+
+    let current: Instr[] = [{ op: "ref.null.extern" } as Instr];
+
+    for (const entry of entries) {
+      const testAndCall: Instr[] = [
+        { op: "local.get", index: 1 } as Instr,
+        { op: "ref.cast", typeIdx: entry.typeIdx } as Instr,
+        { op: "call", funcIdx: entry.funcIdx } as Instr,
+      ];
+
+      if (entry.resultType.kind === "ref" || entry.resultType.kind === "ref_null") {
+        testAndCall.push({ op: "extern.convert_any" } as Instr);
+      } else if (entry.resultType.kind === "f64") {
+        const boxIdx = ctx.funcMap.get("__box_number");
+        if (boxIdx !== undefined) {
+          testAndCall.push({ op: "call", funcIdx: boxIdx } as Instr);
+        }
+      } else if (entry.resultType.kind === "i32") {
+        testAndCall.push({ op: "f64.convert_i32_s" } as Instr);
+        const boxIdx = ctx.funcMap.get("__box_number");
+        if (boxIdx !== undefined) {
+          testAndCall.push({ op: "call", funcIdx: boxIdx } as Instr);
+        }
+      }
+      // externref: no conversion needed
+
+      current = [
+        { op: "local.get", index: 1 } as Instr,
+        { op: "ref.test", typeIdx: entry.typeIdx } as Instr,
+        {
+          op: "if",
+          blockType: { kind: "val", type: { kind: "externref" } },
+          then: testAndCall,
+          else: current,
+        } as Instr,
+      ];
+    }
+
+    body.push(...current);
+
+    mod.functions.push({
+      name: exportName,
+      typeIdx: dispatchTypeIdx,
+      locals: [{ name: "__any", type: { kind: "anyref" } }],
+      body,
+      exported: true,
+    } as WasmFunction);
+
+    mod.exports.push({
+      name: exportName,
+      desc: { kind: "func", index: funcIdx },
+    });
+  };
+
+  emitMethodDispatch("@@iterator", "__call_@@iterator");
+  emitMethodDispatch("next", "__call_next");
 }
 
 /**
