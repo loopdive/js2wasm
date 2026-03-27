@@ -1319,26 +1319,50 @@ export function compileObjectKeysOrValues(
   // Resolve struct name from the argument type
   const structName = resolveStructName(ctx, argType);
   if (!structName) {
-    // Non-struct argument (any, externref, etc.) — compile and drop the arg,
-    // then return an empty array as a graceful fallback.
+    // Check if the type is an empty object literal (not any/unknown) — if so,
+    // compile away to an empty array since there's nothing to enumerate.
+    const isAnyOrUnknown = (argType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0;
+    const tsProps = argType.getProperties?.();
+    if (!isAnyOrUnknown && tsProps && tsProps.length === 0) {
+      const argResult = compileExpression(ctx, fctx, arg);
+      if (argResult) {
+        fctx.body.push({ op: "drop" });
+      }
+      const elemKind = "externref";
+      const vecTypeIdx = getOrRegisterVecType(ctx, elemKind);
+      const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
+      if (arrTypeIdx < 0) return null;
+      fctx.body.push({ op: "array.new_fixed", typeIdx: arrTypeIdx, length: 0 });
+      const tmpData = allocLocal(fctx, `__obj_${method}_empty_data_${fctx.locals.length}`, { kind: "ref", typeIdx: arrTypeIdx });
+      fctx.body.push({ op: "local.set", index: tmpData });
+      fctx.body.push({ op: "i32.const", value: 0 });
+      fctx.body.push({ op: "local.get", index: tmpData });
+      fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
+      return { kind: "ref_null", typeIdx: vecTypeIdx };
+    }
+
+    // Non-struct argument (any, externref, etc.) — delegate to host import
+    // which calls the real JS Object.keys/values/entries at runtime.
+    // The host import uses __struct_field_names + __sget_* for WasmGC structs.
+    // Returns externref (a JS array) which the coercion layer converts to a
+    // WasmGC vec when stored in a typed variable (e.g., const keys = ...).
     const argResult = compileExpression(ctx, fctx, arg);
-    if (argResult) {
-      fctx.body.push({ op: "drop" });
+    if (!argResult) return null;
+    // Coerce to externref if needed
+    if (argResult.kind !== "externref") {
+      coerceType(ctx, fctx, argResult, { kind: "externref" });
     }
-    const elemKind = "externref";
-    const vecTypeIdx = getOrRegisterVecType(ctx, elemKind);
-    const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
-    if (arrTypeIdx < 0) {
-      return null;
+    const importName = `__object_${method}`;
+    let funcIdx = ensureLateImport(ctx, importName, [{ kind: "externref" }], [{ kind: "externref" }]);
+    flushLateImportShifts(ctx, fctx);
+    if (funcIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx });
+      return { kind: "externref" };
     }
-    // Create empty backing array and wrap in vec struct (length=0)
-    fctx.body.push({ op: "array.new_fixed", typeIdx: arrTypeIdx, length: 0 });
-    const tmpData = allocLocal(fctx, `__obj_${method}_empty_data_${fctx.locals.length}`, { kind: "ref", typeIdx: arrTypeIdx });
-    fctx.body.push({ op: "local.set", index: tmpData });
-    fctx.body.push({ op: "i32.const", value: 0 });
-    fctx.body.push({ op: "local.get", index: tmpData });
-    fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
-    return { kind: "ref_null", typeIdx: vecTypeIdx };
+    // Fallback: drop arg, push null externref
+    fctx.body.push({ op: "drop" });
+    fctx.body.push({ op: "ref.null.extern" } as Instr);
+    return { kind: "externref" };
   }
 
   const structTypeIdx = ctx.structMap.get(structName);

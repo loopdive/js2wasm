@@ -134,6 +134,43 @@ function buildVecFromExternref(
     if (et.kind === "externref") return [];
     if (et.kind === "ref" || et.kind === "ref_null") {
       const elemTypeIdx = (et as { typeIdx: number }).typeIdx;
+      // Check if the target is a tuple struct — if so, build the tuple from
+      // the externref array element (e.g. [key, value] from Object.entries)
+      // instead of trying ref.cast which would fail for JS arrays.
+      const tupleFields = getTupleFields(ctx, elemTypeIdx);
+      if (tupleFields && getIdx !== undefined) {
+        // Stack has: externref (a JS array like [key, value])
+        // Save it to a temp local so we can extract each field
+        const tmpElem = allocLocal(fctx, `__tuple_src_${fctx.locals.length}`, { kind: "externref" });
+        const instrs: Instr[] = [
+          { op: "local.set", index: tmpElem } as Instr,
+        ];
+        // For each tuple field, extract from the JS array by index
+        for (let fi = 0; fi < tupleFields.length; fi++) {
+          const fieldType = tupleFields[fi]!;
+          // Push the JS array and the index
+          instrs.push({ op: "local.get", index: tmpElem } as Instr);
+          if (boxIdx !== undefined) {
+            instrs.push({ op: "f64.const", value: fi } as Instr);
+            instrs.push({ op: "call", funcIdx: boxIdx } as Instr);
+          } else {
+            instrs.push({ op: "ref.null.extern" } as Instr);
+          }
+          instrs.push({ op: "call", funcIdx: getIdx } as Instr);
+          // Coerce the externref element to the tuple field type
+          if (fieldType.kind === "f64" && unboxIdx !== undefined) {
+            instrs.push({ op: "call", funcIdx: unboxIdx } as Instr);
+          } else if (fieldType.kind === "i32" && unboxIdx !== undefined) {
+            instrs.push({ op: "call", funcIdx: unboxIdx } as Instr);
+            instrs.push({ op: "i32.trunc_sat_f64_s" } as unknown as Instr);
+          }
+          // externref fields don't need conversion
+        }
+        // Build the tuple struct from all fields on the stack
+        instrs.push({ op: "struct.new", typeIdx: elemTypeIdx } as Instr);
+        return instrs;
+      }
+      // Default: try anyref cast (works for WasmGC structs passed through externref)
       return [
         { op: "any.convert_extern" } as Instr,
         { op: "ref.cast_null", typeIdx: elemTypeIdx } as Instr,
