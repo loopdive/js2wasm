@@ -557,9 +557,11 @@ export function patchStructNewForAddedField(
  * Returns null only for void expressions that intentionally produce no value.
  * For failed expressions, pushes a typed fallback to keep the stack balanced.
  */
-// Recursion depth counter — prevents infinite compilation loops from valueOf/toString chains
+// Recursion depth counter — prevents infinite compilation loops from valueOf/toString chains.
+// Tracks actual call stack depth (increments on enter, decrements on exit) so it correctly
+// measures recursion depth, not total expression count. Reset at each compilation unit start.
 let __compileDepth = 0;
-const MAX_COMPILE_DEPTH = 5000;
+const MAX_COMPILE_DEPTH = 500;
 export function resetCompileDepth(): void { __compileDepth = 0; }
 
 export function compileExpression(
@@ -571,7 +573,7 @@ export function compileExpression(
   // Recursion guard — bail with compile error if depth exceeded
   __compileDepth++;
   if (__compileDepth > MAX_COMPILE_DEPTH) {
-    __compileDepth = 0; // reset for next compilation
+    __compileDepth--;
     ctx.errors.push({
       message: `compilation depth exceeded (${MAX_COMPILE_DEPTH}) — possible infinite recursion`,
       line: 0,
@@ -583,6 +585,19 @@ export function compileExpression(
     else fctx.body.push({ op: "ref.null.extern" } as any);
     return fallbackType;
   }
+  try {
+    return compileExpressionBody(ctx, fctx, expr, expectedType);
+  } finally {
+    __compileDepth--;
+  }
+}
+
+function compileExpressionBody(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.Expression,
+  expectedType?: ValType,
+): ValType | null {
   // Guard: if the AST node is undefined/null, report an error and produce a
   // typed default value instead of crashing with "Cannot read 'kind' of undefined".
   if (!expr) {
@@ -8734,8 +8749,21 @@ function compileGetterCallable(
     const recvTypeHint = paramTypes?.[0];
     const recvType = compileExpression(ctx, fctx, propAccess.expression, recvTypeHint);
 
-    // Coerce receiver if needed
-    if (recvType && recvType.kind === "externref" && structTypeIdx !== undefined) {
+    // Coerce receiver to match the function's first parameter type
+    if (recvType && recvTypeHint) {
+      if (recvType.kind === "externref" && (recvTypeHint.kind === "ref" || recvTypeHint.kind === "ref_null") && structTypeIdx !== undefined) {
+        // externref -> struct: convert via any.convert_extern + guarded cast
+        fctx.body.push({ op: "any.convert_extern" } as Instr);
+        emitGuardedRefCast(fctx, structTypeIdx);
+      } else if ((recvType.kind === "ref" || recvType.kind === "ref_null") && recvTypeHint.kind === "externref") {
+        // struct -> externref: convert via extern.convert_any
+        fctx.body.push({ op: "extern.convert_any" } as Instr);
+      } else if (recvType.kind !== recvTypeHint.kind) {
+        // General type mismatch: use coerceType
+        coerceType(ctx, fctx, recvType, recvTypeHint);
+      }
+    } else if (recvType && recvType.kind === "externref" && structTypeIdx !== undefined && recvTypeHint === undefined) {
+      // Fallback: no param type info but we know the struct — cast to struct
       fctx.body.push({ op: "any.convert_extern" } as Instr);
       emitGuardedRefCast(fctx, structTypeIdx);
     }
