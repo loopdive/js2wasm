@@ -1835,6 +1835,8 @@ interface UnifiedCollectorState {
   insideComputedPropertyName: number; // depth counter
   // -- collectStringMethodImports --
   stringMethodNeeded: Set<string>;
+  /** String methods called with RegExp args — need host import even in native strings mode */
+  stringRegexpMethodNeeded: Set<string>;
   // -- collectMathImports --
   mathNeeded: Set<string>;
   mathNeedsToUint32: boolean;
@@ -1886,6 +1888,7 @@ function createUnifiedCollectorState(sourceFile: ts.SourceFile): UnifiedCollecto
     hasTaggedTemplate: false,
     insideComputedPropertyName: 0,
     stringMethodNeeded: new Set(),
+    stringRegexpMethodNeeded: new Set(),
     mathNeeded: new Set(),
     mathNeedsToUint32: false,
     parseNeeded: new Set(),
@@ -2013,6 +2016,16 @@ function unifiedVisitNode(
     // ── collectStringMethodImports (also uses call+propertyAccess) ──
     if (isStringType(receiverType) && Object.prototype.hasOwnProperty.call(STRING_METHODS, methodName)) {
       state.stringMethodNeeded.add(methodName);
+      // Track if the method is called with a RegExp arg (replace, replaceAll, split, match, search)
+      if ((methodName === "replace" || methodName === "replaceAll" || methodName === "split" ||
+           methodName === "match" || methodName === "search") &&
+          ts.isCallExpression(node) && node.arguments.length > 0) {
+        const argType = ctx.checker.getTypeAtLocation(node.arguments[0]!);
+        const symName = argType.getSymbol()?.getName();
+        if (symName === "RegExp") {
+          state.stringRegexpMethodNeeded.add(methodName);
+        }
+      }
     }
   }
   // Template expressions with number/boolean/bigint substitutions need number_toString
@@ -2529,9 +2542,13 @@ function finalizeUnifiedCollector(
       "replace", "replaceAll", "split",
     ]);
     for (const method of state.stringMethodNeeded) {
-      if (ctx.nativeStrings && NATIVE_STR_METHODS.has(method)) {
+      if (ctx.nativeStrings && NATIVE_STR_METHODS.has(method) && !state.stringRegexpMethodNeeded.has(method)) {
         ensureNativeStringHelpers(ctx);
         continue;
+      }
+      if (ctx.nativeStrings && NATIVE_STR_METHODS.has(method) && state.stringRegexpMethodNeeded.has(method)) {
+        // Need BOTH native helpers AND host import for RegExp-arg calls
+        ensureNativeStringHelpers(ctx);
       }
       const sig = STRING_METHODS[method]!;
       const params: ValType[] = [{ kind: "externref" }, ...sig.params];
@@ -3145,6 +3162,8 @@ function collectStringMethodImports(
   sourceFile: ts.SourceFile,
 ): void {
   const needed = new Set<string>();
+  /** Methods called with RegExp args — need host import even in native strings mode */
+  const regexpArgMethods = new Set<string>();
 
   function visit(node: ts.Node) {
     if (
@@ -3156,6 +3175,16 @@ function collectStringMethodImports(
       const methodName = prop.name.text;
       if (isStringType(receiverType) && Object.prototype.hasOwnProperty.call(STRING_METHODS, methodName)) {
         needed.add(methodName);
+        // Track if the method has a RegExp arg (replace, replaceAll, split, match, search)
+        if ((methodName === "replace" || methodName === "replaceAll" || methodName === "split" ||
+             methodName === "match" || methodName === "search") &&
+            node.arguments.length > 0) {
+          const argType = ctx.checker.getTypeAtLocation(node.arguments[0]!);
+          const symName = argType.getSymbol()?.getName();
+          if (symName === "RegExp") {
+            regexpArgMethods.add(methodName);
+          }
+        }
       }
       // Detect String.prototype.method.call(str, ...) and String.prototype.method.apply(str, ...)
       // These patterns rewrite to str.method(...) at compile time, so we need the import
@@ -3200,10 +3229,14 @@ function collectStringMethodImports(
   ]);
 
   for (const method of needed) {
-    if (ctx.nativeStrings && NATIVE_STR_METHODS.has(method)) {
+    if (ctx.nativeStrings && NATIVE_STR_METHODS.has(method) && !regexpArgMethods.has(method)) {
       // These are handled by native string helpers — no import needed
       ensureNativeStringHelpers(ctx);
       continue;
+    }
+    if (ctx.nativeStrings && NATIVE_STR_METHODS.has(method) && regexpArgMethods.has(method)) {
+      // Need BOTH native helpers AND host import for RegExp-arg calls
+      ensureNativeStringHelpers(ctx);
     }
     const sig = STRING_METHODS[method]!;
     const params: ValType[] = [{ kind: "externref" }, ...sig.params]; // self + args

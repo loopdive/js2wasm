@@ -1376,8 +1376,17 @@ export function compileNativeStringMethodCall(
     return nativeStringType(ctx);
   }
 
+  // For replace/replaceAll/split with RegExp args, skip native handlers and
+  // fall through to the host import path which properly handles RegExp objects.
+  const firstArgIsRegExp = (method === "replace" || method === "replaceAll" || method === "split") &&
+    expr.arguments.length > 0 && (() => {
+      const argType = ctx.checker.getTypeAtLocation(expr.arguments[0]!);
+      const symName = argType.getSymbol()?.getName();
+      return symName === "RegExp";
+    })();
+
   // replace(search, replacement): native helper
-  if (method === "replace") {
+  if (method === "replace" && !firstArgIsRegExp) {
     compileExpression(ctx, fctx, propAccess.expression);
     emitFlatten();
     // search arg
@@ -1405,7 +1414,7 @@ export function compileNativeStringMethodCall(
   }
 
   // replaceAll(search, replacement): native helper
-  if (method === "replaceAll") {
+  if (method === "replaceAll" && !firstArgIsRegExp) {
     compileExpression(ctx, fctx, propAccess.expression);
     emitFlatten();
     // search arg
@@ -1433,7 +1442,7 @@ export function compileNativeStringMethodCall(
   }
 
   // split: native helper, returns native string array
-  if (method === "split") {
+  if (method === "split" && !firstArgIsRegExp) {
     compileExpression(ctx, fctx, propAccess.expression);
     emitFlatten();
     // separator arg

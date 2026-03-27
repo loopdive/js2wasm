@@ -1615,6 +1615,35 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
     "/* stripped object identity assert */",
   );
 
+  // RegExp exec test pattern: __expected.index = N; __expected.input = "S";
+  // Our Wasm arrays can't store extra properties, so extract these to separate variables.
+  // Transform: __expected.index = N; → var __expected_index: number = N;
+  // Transform: __expected.input = "S"; → var __expected_input: string = "S";
+  // Then replace __expected.index → __expected_index, __expected.input → __expected_input
+  body = body.replace(
+    /__expected\.index\s*=\s*(\d+)\s*;/g,
+    "var __expected_index: number = $1;",
+  );
+  body = body.replace(
+    /__expected\.input\s*=\s*("(?:[^"\\]|\\.)*")\s*;/g,
+    "var __expected_input: string = $1;",
+  );
+  // Replace property accesses with the extracted variables
+  body = body.replace(/__expected\.index\b(?!\s*=)/g, "__expected_index");
+  body = body.replace(/__expected\.input\b(?!\s*=)/g, "__expected_input");
+
+  // Route comparisons involving _input variables to string assert
+  body = body.replace(
+    /assert_sameValue\s*\(\s*(\w+(?:_input|\.input))\s*,\s*(\w+(?:_input|\.input))\s*\)/g,
+    "assert_sameValue_str($1, $2)",
+  );
+  // Route comparisons of bracket-access elements (common in RegExp exec result tests)
+  // e.g. assert_sameValue(__executed[index], __expected[index])
+  body = body.replace(
+    /assert_sameValue\s*\(\s*(\w+\[\w+\])\s*,\s*(\w+\[\w+\])\s*\)/g,
+    "assert_sameValue_str($1, $2)",
+  );
+
   // Route boolean comparisons to boolean-aware assert
   body = body.replace(
     /assert_sameValue\s*\(\s*([^,]+?)\s*,\s*(true|false)\s*\)/g,

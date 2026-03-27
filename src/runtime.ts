@@ -305,6 +305,11 @@ function resolveImport(
         if (len !== undefined) return len;
         return _sidecarGet(obj, "length") ?? 0;
       };
+      if (name === "__extern_toString") return (v: any) => {
+        if (v == null) return String(v);
+        if (typeof v.toString === "function") return v.toString();
+        return String(v);
+      };
       if (name === "__extern_is_undefined") return (v: any) => v === undefined ? 1 : 0;
       if (name === "__get_undefined") return () => undefined;
       if (name === "__object_create") return (proto: any) => Object.create(proto);
