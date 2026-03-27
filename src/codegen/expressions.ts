@@ -1235,6 +1235,126 @@ function emitLocalTdzCheck(
   } as unknown as Instr);
 }
 
+/**
+ * Static TDZ analysis: determine at compile time whether a let/const variable
+ * access is guaranteed to be after initialization (safe) or before (TDZ violation).
+ *
+ * Returns:
+ * - 'skip': access is after declaration in straight-line code — no check needed
+ * - 'throw': access is before declaration in straight-line code — guaranteed TDZ error
+ * - 'check': can't determine statically — keep runtime flag check
+ */
+function analyzeTdzAccess(
+  ctx: CodegenContext,
+  id: ts.Identifier,
+): "skip" | "throw" | "check" {
+  const symbol = ctx.checker.getSymbolAtLocation(id);
+  if (!symbol) return "check";
+  const decl = symbol.valueDeclaration;
+  if (!decl) return "check";
+
+  const accessPos = id.getStart();
+  const declEnd = decl.getEnd(); // use end of declaration (after initializer)
+
+  // Find the containing function of the access and the declaration.
+  // If they differ, the access is in a nested closure — keep runtime check.
+  const accessFunc = getContainingFunction(id);
+  const declFunc = getContainingFunction(decl);
+  if (accessFunc !== declFunc) return "check";
+
+  // Check if the access is inside a loop that contains the declaration
+  // (back-edge could reach access before re-initialization)
+  if (isInsideLoopContaining(id, decl)) return "check";
+
+  if (accessPos >= declEnd) {
+    // Access is after the full declaration (including initializer) — safe
+    return "skip";
+  } else {
+    // Access is before declaration — guaranteed TDZ violation
+    // But only if not in a loop that wraps both (already checked above)
+    return "throw";
+  }
+}
+
+/** Walk up to find the nearest containing function (or source file for top-level). */
+function getContainingFunction(node: ts.Node): ts.Node | undefined {
+  let current = node.parent;
+  while (current) {
+    if (
+      ts.isFunctionDeclaration(current) ||
+      ts.isFunctionExpression(current) ||
+      ts.isArrowFunction(current) ||
+      ts.isMethodDeclaration(current) ||
+      ts.isConstructorDeclaration(current) ||
+      ts.isGetAccessorDeclaration(current) ||
+      ts.isSetAccessorDeclaration(current) ||
+      ts.isSourceFile(current)
+    ) {
+      return current;
+    }
+    current = current.parent;
+  }
+  return undefined;
+}
+
+/**
+ * Check if the access node is inside a loop body that also contains (or is
+ * an ancestor of) the declaration. In that case the access could run on a
+ * subsequent iteration before the declaration re-initializes the variable.
+ */
+function isInsideLoopContaining(access: ts.Node, decl: ts.Node): boolean {
+  let current = access.parent;
+  while (current) {
+    if (
+      ts.isFunctionDeclaration(current) ||
+      ts.isFunctionExpression(current) ||
+      ts.isArrowFunction(current) ||
+      ts.isMethodDeclaration(current) ||
+      ts.isSourceFile(current)
+    ) {
+      // Reached function boundary without finding a loop
+      return false;
+    }
+    if (isLoopStatement(current)) {
+      // Check if the declaration is also inside this loop
+      if (isDescendantOf(decl, current)) {
+        return true;
+      }
+    }
+    current = current.parent;
+  }
+  return false;
+}
+
+function isLoopStatement(node: ts.Node): boolean {
+  return (
+    ts.isForStatement(node) ||
+    ts.isForInStatement(node) ||
+    ts.isForOfStatement(node) ||
+    ts.isWhileStatement(node) ||
+    ts.isDoStatement(node)
+  );
+}
+
+function isDescendantOf(node: ts.Node, ancestor: ts.Node): boolean {
+  let current: ts.Node | undefined = node;
+  while (current) {
+    if (current === ancestor) return true;
+    current = current.parent;
+  }
+  return false;
+}
+
+/** Emit a static TDZ throw (guaranteed violation — no flag check needed). */
+function emitStaticTdzThrow(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+): void {
+  const tagIdx = ensureExnTag(ctx);
+  fctx.body.push({ op: "ref.null.extern" } as Instr);
+  fctx.body.push({ op: "throw", tagIdx });
+}
+
 function compileIdentifier(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -1246,7 +1366,13 @@ function compileIdentifier(
     // TDZ check for function-local let/const variables
     const tdzFlagIdx = fctx.tdzFlagLocals?.get(name);
     if (tdzFlagIdx !== undefined) {
-      emitLocalTdzCheck(ctx, fctx, name, tdzFlagIdx);
+      const tdzResult = analyzeTdzAccess(ctx, id);
+      if (tdzResult === "check") {
+        emitLocalTdzCheck(ctx, fctx, name, tdzFlagIdx);
+      } else if (tdzResult === "throw") {
+        emitStaticTdzThrow(ctx, fctx);
+      }
+      // tdzResult === "skip" — no check needed, variable is guaranteed initialized
     }
 
     // Check if this is a boxed (ref cell) mutable capture
@@ -1301,7 +1427,14 @@ function compileIdentifier(
   const capturedIdx = ctx.capturedGlobals.get(name);
   if (capturedIdx !== undefined) {
     // TDZ check: throw ReferenceError if let/const variable accessed before initialization
-    emitTdzCheck(ctx, fctx, name);
+    // Apply static analysis — captured globals are often accessed from closures,
+    // but analyzeTdzAccess handles the cross-function case correctly (returns "check")
+    const tdzResult = ctx.tdzGlobals.has(name) ? analyzeTdzAccess(ctx, id) : "skip";
+    if (tdzResult === "check") {
+      emitTdzCheck(ctx, fctx, name);
+    } else if (tdzResult === "throw") {
+      emitStaticTdzThrow(ctx, fctx);
+    }
     fctx.body.push({ op: "global.get", index: capturedIdx });
     const globalDef = ctx.mod.globals[localGlobalIdx(ctx, capturedIdx)];
     const gType = globalDef?.type ?? { kind: "f64" };
@@ -1320,7 +1453,13 @@ function compileIdentifier(
   const moduleIdx = ctx.moduleGlobals.get(name);
   if (moduleIdx !== undefined) {
     // TDZ check: throw ReferenceError if let/const variable accessed before initialization
-    emitTdzCheck(ctx, fctx, name);
+    // Apply static analysis for module-level globals
+    const tdzResult = ctx.tdzGlobals.has(name) ? analyzeTdzAccess(ctx, id) : "skip";
+    if (tdzResult === "check") {
+      emitTdzCheck(ctx, fctx, name);
+    } else if (tdzResult === "throw") {
+      emitStaticTdzThrow(ctx, fctx);
+    }
     fctx.body.push({ op: "global.get", index: moduleIdx });
     const globalDef = ctx.mod.globals[localGlobalIdx(ctx, moduleIdx)];
     const mType = globalDef?.type ?? { kind: "f64" };
