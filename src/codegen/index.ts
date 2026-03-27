@@ -9078,7 +9078,13 @@ export function resolveNativeTypeAnnotation(tsType: ts.Type): ValType | null {
  * Resolve a ts.Type to a ValType, using the struct registry and anonymous type map.
  * Use this instead of mapTsTypeToWasm in the codegen to get real type indices.
  */
-export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type): ValType {
+export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type, _depth = 0, _visited?: Set<ts.Type>): ValType {
+  // Guard against infinite recursion (can happen with skipSemanticDiagnostics
+  // when getTypeArguments returns the container type itself)
+  if (_depth > 10) return { kind: "externref" };
+  if (_visited && _visited.has(tsType)) return { kind: "externref" };
+  if (!_visited) _visited = new Set<ts.Type>();
+  _visited.add(tsType);
   // Native type annotations: type i32 = number; let x: i32 → Wasm i32
   // Check aliasSymbol first — TypeScript preserves the alias name on the type.
   const nativeType = resolveNativeTypeAnnotation(tsType);
@@ -9106,7 +9112,7 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type): ValType {
       const typeArgs = ctx.checker.getTypeArguments(tsType as ts.TypeReference);
       const elemTsType = typeArgs[0];
       const elemWasm: ValType = elemTsType
-        ? resolveWasmType(ctx, elemTsType)
+        ? resolveWasmType(ctx, elemTsType, _depth + 1, _visited)
         : { kind: "externref" };
       const elemKey =
         elemWasm.kind === "ref" || elemWasm.kind === "ref_null"
@@ -9136,7 +9142,7 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type): ValType {
       if (typeArgs.length > 0) {
         const inner = typeArgs[0]!;
         if (isVoidType(inner)) return { kind: "externref" }; // Promise<void> → externref (no value)
-        return resolveWasmType(ctx, inner);
+        return resolveWasmType(ctx, inner, _depth + 1, _visited);
       }
       return { kind: "externref" }; // bare Promise without type arg
     }
@@ -9208,7 +9214,7 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type): ValType {
         !(t.flags & ts.TypeFlags.Null) && !(t.flags & ts.TypeFlags.Undefined),
     );
     if (nonNullish.length === 1 && tsType.types.length === 2) {
-      const inner = resolveWasmType(ctx, nonNullish[0]!);
+      const inner = resolveWasmType(ctx, nonNullish[0]!, _depth + 1, _visited);
       if (inner.kind === "ref")
         return { kind: "ref_null", typeIdx: inner.typeIdx };
       return inner;
