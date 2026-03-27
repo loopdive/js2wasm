@@ -241,6 +241,24 @@ function detectEarlyErrors(
     return false;
   }
 
+  /** Collect binding names and report duplicates. */
+  function collectBindingNamesWithDuplicateCheck(name: ts.BindingName, out: Set<string>, dupes: Set<string>): void {
+    if (ts.isIdentifier(name)) {
+      if (out.has(name.text)) dupes.add(name.text);
+      out.add(name.text);
+    } else if (ts.isObjectBindingPattern(name)) {
+      for (const el of name.elements) {
+        collectBindingNamesWithDuplicateCheck(el.name, out, dupes);
+      }
+    } else if (ts.isArrayBindingPattern(name)) {
+      for (const el of name.elements) {
+        if (ts.isBindingElement(el)) {
+          collectBindingNamesWithDuplicateCheck(el.name, out, dupes);
+        }
+      }
+    }
+  }
+
   /** Collect all identifier names from a binding pattern (identifier, array, object destructuring). */
   function collectBindingNames(name: ts.BindingName, out: Set<string>): void {
     if (ts.isIdentifier(name)) {
@@ -279,14 +297,48 @@ function detectEarlyErrors(
     if (!alwaysForbid && !isStrictMode(node)) return;
     const seen = new Set<string>();
     for (const param of params) {
-      if (ts.isIdentifier(param.name)) {
-        const name = param.name.text;
+      const names = new Set<string>();
+      collectBindingNames(param.name, names);
+      for (const name of names) {
         if (seen.has(name)) {
-          addError(param.name, `Duplicate parameter name '${name}' not allowed`);
+          addError(param, `Duplicate parameter name '${name}' not allowed`);
         }
         seen.add(name);
       }
     }
+  }
+
+  /**
+   * Check if an expression is an "invalid" assignment target per ES spec.
+   * Invalid targets include: `this`, `new.target`, literals, arrow functions,
+   * template literals, class expressions, etc.
+   */
+  function isInvalidAssignmentTarget(node: ts.Expression): boolean {
+    let expr: ts.Node = node;
+    while (ts.isParenthesizedExpression(expr)) expr = expr.expression;
+    // this
+    if (expr.kind === ts.SyntaxKind.ThisKeyword) return true;
+    // Literals (numbers, strings, booleans, null, regex, template)
+    if (ts.isNumericLiteral(expr) || ts.isStringLiteral(expr) ||
+        ts.isRegularExpressionLiteral(expr) || ts.isNoSubstitutionTemplateLiteral(expr) ||
+        ts.isTemplateExpression(expr) || ts.isTaggedTemplateExpression(expr) ||
+        expr.kind === ts.SyntaxKind.TrueKeyword || expr.kind === ts.SyntaxKind.FalseKeyword ||
+        expr.kind === ts.SyntaxKind.NullKeyword) return true;
+    // Arrow functions, function expressions, class expressions
+    if (ts.isArrowFunction(expr) || ts.isFunctionExpression(expr) || ts.isClassExpression(expr)) return true;
+    // new.target (MetaProperty)
+    if (ts.isMetaProperty(expr)) return true;
+    return false;
+  }
+
+  /**
+   * Check if an expression is a call expression (not a valid simple assignment target).
+   * CallExpression assignment targets are SyntaxErrors in strict mode per ES spec.
+   */
+  function isCallExpressionTarget(node: ts.Node): boolean {
+    let expr: ts.Node = node;
+    while (ts.isParenthesizedExpression(expr)) expr = (expr as ts.ParenthesizedExpression).expression;
+    return ts.isCallExpression(expr);
   }
 
   /** Check if an expression involves optional chaining (?.) */
@@ -308,6 +360,7 @@ function detectEarlyErrors(
   function visit(node: ts.Node): void {
     // Check prefix/postfix increment/decrement on arguments/eval in strict mode
     // Also check increment/decrement on optional chaining (always invalid)
+    // Also check increment/decrement on non-simple assignment targets
     if (ts.isPrefixUnaryExpression(node) &&
         (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken)) {
       const name = isArgumentsOrEval(node.operand);
@@ -316,6 +369,13 @@ function detectEarlyErrors(
       }
       if (hasOptionalChain(node.operand)) {
         addError(node, "Optional chaining is not valid in the left-hand side of an update expression");
+      }
+      if (isInvalidAssignmentTarget(node.operand)) {
+        addError(node, "Invalid left-hand side expression in prefix operation");
+      }
+      // In strict mode, call expressions as update targets are SyntaxErrors
+      if (isCallExpressionTarget(node.operand) && isStrictMode(node)) {
+        addError(node, "Invalid left-hand side expression in prefix operation");
       }
     }
 
@@ -328,17 +388,29 @@ function detectEarlyErrors(
       if (hasOptionalChain(node.operand)) {
         addError(node, "Optional chaining is not valid in the left-hand side of an update expression");
       }
+      if (isInvalidAssignmentTarget(node.operand)) {
+        addError(node, "Invalid left-hand side in postfix operation");
+      }
+      // In strict mode, call expressions as update targets are SyntaxErrors
+      if (isCallExpressionTarget(node.operand) && isStrictMode(node)) {
+        addError(node, "Invalid left-hand side in postfix operation");
+      }
     }
 
     // Check assignment to arguments/eval in strict mode
+    // Also check assignment to non-simple targets
     if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
       const name = isArgumentsOrEval(node.left);
       if (name && isStrictMode(node)) {
         addError(node.left, `Cannot assign to '${name}' in strict mode`);
       }
+      if (isInvalidAssignmentTarget(node.left)) {
+        addError(node, "Invalid left-hand side in assignment");
+      }
     }
 
     // Check compound assignment to arguments/eval in strict mode
+    // Also check logical assignment (&&=, ||=, ??=) to non-simple targets
     if (ts.isBinaryExpression(node)) {
       const op = node.operatorToken.kind;
       const compoundOps = [
@@ -349,12 +421,27 @@ function detectEarlyErrors(
         ts.SyntaxKind.LessThanLessThanEqualsToken, ts.SyntaxKind.GreaterThanGreaterThanEqualsToken,
         ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken,
         ts.SyntaxKind.AsteriskAsteriskEqualsToken,
+        ts.SyntaxKind.AmpersandAmpersandEqualsToken,
+        ts.SyntaxKind.BarBarEqualsToken,
+        ts.SyntaxKind.QuestionQuestionEqualsToken,
       ];
       if (compoundOps.includes(op)) {
         const name = isArgumentsOrEval(node.left);
         if (name && isStrictMode(node)) {
           addError(node.left, `Cannot assign to '${name}' in strict mode`);
         }
+        // Check logical/compound assignment to call expressions in strict mode
+        if (isCallExpressionTarget(node.left) && isStrictMode(node)) {
+          addError(node, "Invalid left-hand side in assignment");
+        }
+      }
+    }
+
+    // Check for-in/for-of with call expression as LHS in strict mode
+    if ((ts.isForInStatement(node) || ts.isForOfStatement(node)) &&
+        !ts.isVariableDeclarationList(node.initializer)) {
+      if (isCallExpressionTarget(node.initializer) && isStrictMode(node)) {
+        addError(node.initializer, "Invalid left-hand side in for-in/for-of");
       }
     }
 
@@ -393,6 +480,8 @@ function detectEarlyErrors(
     // Check function declarations in statement position
     // ES spec: GeneratorDeclaration and AsyncFunctionDeclaration are never valid in
     // SingleStatement position. Regular FunctionDeclaration is SyntaxError in strict mode.
+    // Annex B relaxes this ONLY for IfStatement in sloppy mode — iteration statements
+    // (for, while, do, for-in, for-of) and with statements always forbid it.
     if (ts.isFunctionDeclaration(node)) {
       const parent = node.parent;
       if (parent && isStatementPosition(parent, node)) {
@@ -402,6 +491,11 @@ function detectEarlyErrors(
           addError(node, "Async function declarations are not allowed in statement position");
         } else if (isStrictMode(node)) {
           addError(node, "In strict mode code, functions can only be declared at top level or inside a block");
+        } else if (!ts.isIfStatement(parent) && !ts.isLabeledStatement(parent)) {
+          // Sloppy mode: Annex B only allows FunctionDeclaration in IfStatement body.
+          // In iteration statements (for, while, do, for-in, for-of) and with statements
+          // it is always a SyntaxError.
+          addError(node, "Function declarations are not allowed in statement position");
         }
       }
     }
@@ -462,13 +556,21 @@ function detectEarlyErrors(
       addError(node, "Strict mode code may not include a with statement");
     }
 
-    // Check legacy octal literals (e.g. 077) — SyntaxError in strict mode
-    // ES2015+ octal (0o77) is fine; only legacy form 0[0-7]+ is illegal
+    // Check legacy octal literals (e.g. 077) and non-octal decimal integers (e.g. 08, 09)
+    // — SyntaxError in strict mode
+    // ES2015+ octal (0o77) is fine; only legacy forms are illegal
     if (ts.isNumericLiteral(node) && isStrictMode(node)) {
       const text = node.getText(sourceFile);
-      // Legacy octal: starts with 0, followed by digits 0-7, no 'o'/'O'/'x'/'X'/'b'/'B'/'.'/'e'/'E'
+      // Legacy octal: starts with 0, followed by digits 0-7
       if (/^0[0-7]+$/.test(text) && text.length > 1) {
         addError(node, "Octal literals are not allowed in strict mode");
+      }
+      // Non-octal decimal integer: starts with 0, followed by digits 0-9 (containing 8 or 9)
+      // e.g. 08, 09, 089 — these are "NonOctalDecimalIntegerLiteral" per ES spec
+      if (/^0\d+$/.test(text) && text.length > 1 && !/^0[oOxXbB]/.test(text)) {
+        if (/[89]/.test(text)) {
+          addError(node, "Decimals with leading zeros are not allowed in strict mode");
+        }
       }
     }
 
@@ -485,14 +587,18 @@ function detectEarlyErrors(
 
     // Check for-in loop with initializer — SyntaxError in strict mode for var,
     // always a SyntaxError for let/const (ES2015+)
+    // Also: var with destructuring pattern + initializer is always SyntaxError (Annex B)
     if (ts.isForInStatement(node)) {
       const init = node.initializer;
       if (ts.isVariableDeclarationList(init)) {
         const isLexical = (init.flags & ts.NodeFlags.Let) !== 0 || (init.flags & ts.NodeFlags.Const) !== 0;
         for (const decl of init.declarations) {
-          if (decl.initializer && (isLexical || isStrictMode(node))) {
-            addError(node, "for-in loop head declarations may not have initializers");
-            break;
+          if (decl.initializer) {
+            const hasDestructuring = !ts.isIdentifier(decl.name);
+            if (isLexical || isStrictMode(node) || hasDestructuring) {
+              addError(node, "for-in loop head declarations may not have initializers");
+              break;
+            }
           }
         }
         // for-in/for-of with multiple lexical bindings is always a SyntaxError
@@ -741,6 +847,48 @@ function detectEarlyErrors(
       }
     }
 
+    // ── const without initializer ──────────────────────────────────
+    // ES spec: LexicalBinding for `const` must have an Initializer.
+    if (ts.isVariableDeclaration(node) && !node.initializer) {
+      const declList = node.parent;
+      if (ts.isVariableDeclarationList(declList) && (declList.flags & ts.NodeFlags.Const) !== 0) {
+        addError(node, "Missing initializer in const declaration");
+      }
+    }
+
+    // ── 'let' as binding name in lexical declarations ──────────────
+    // ES spec: It is a SyntaxError if BoundNames of LetOrConst contains "let".
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === "let") {
+      const declList = node.parent;
+      if (ts.isVariableDeclarationList(declList)) {
+        if ((declList.flags & ts.NodeFlags.Let) !== 0 || (declList.flags & ts.NodeFlags.Const) !== 0) {
+          addError(node.name, "'let' is disallowed as a lexically bound name");
+        }
+      }
+    }
+
+    // ── for loop head lexical var conflict ─────────────────────────
+    // ES spec: for (let x; ...) { var x; } — var x conflicts with let x
+    if (ts.isForStatement(node) || ts.isForInStatement(node) || ts.isForOfStatement(node)) {
+      const init = ts.isForStatement(node) ? node.initializer : node.initializer;
+      if (init && ts.isVariableDeclarationList(init)) {
+        const isLexical = (init.flags & ts.NodeFlags.Let) !== 0 || (init.flags & ts.NodeFlags.Const) !== 0;
+        if (isLexical) {
+          const lexNames = new Set<string>();
+          for (const decl of init.declarations) {
+            collectBindingNames(decl.name, lexNames);
+          }
+          if (lexNames.size > 0) {
+            const body = ts.isForStatement(node) ? node.statement :
+                         ts.isForInStatement(node) ? node.statement : node.statement;
+            if (ts.isBlock(body)) {
+              collectVarDeclaredNamesInBlock(body, lexNames);
+            }
+          }
+        }
+      }
+    }
+
     // ── eval/arguments as binding names in strict mode ────────────────
     // ES spec: It is a SyntaxError to use eval or arguments as a binding
     // identifier in strict mode code (variable declarations, function names, etc.)
@@ -872,6 +1020,100 @@ function detectEarlyErrors(
             if (protoCount > 1) {
               addError(prop, "Duplicate __proto__ fields are not allowed in object literals");
               break;
+            }
+          }
+        }
+      }
+    }
+
+    // ── Getter with parameters ─────────────────────────────────────
+    // ES spec: A getter must have exactly zero parameters.
+    if (ts.isGetAccessorDeclaration(node) && node.parameters.length > 0) {
+      addError(node, "Getter must not have any formal parameters");
+    }
+
+    // ── Setter with wrong param count ──────────────────────────────
+    // ES spec: A setter must have exactly one parameter.
+    if (ts.isSetAccessorDeclaration(node) && node.parameters.length !== 1) {
+      addError(node, "Setter must have exactly one formal parameter");
+    }
+
+    // ── Setter param with destructuring + "use strict" body ────────
+    // ES spec: setter parameter is eval/arguments in strict mode
+    if (ts.isSetAccessorDeclaration(node) && node.parameters.length === 1) {
+      const param = node.parameters[0]!;
+      // Check for setter with "use strict" body — this triggers strict mode
+      // checks on the parameter (eval/arguments as binding names)
+      if (ts.isIdentifier(param.name) && (param.name.text === "eval" || param.name.text === "arguments")) {
+        // Check if the body has "use strict"
+        if (node.body) {
+          for (const stmt of node.body.statements) {
+            if (ts.isExpressionStatement(stmt) && ts.isStringLiteral(stmt.expression) &&
+                stmt.expression.text === "use strict") {
+              addError(param.name, `Binding '${param.name.text}' in strict mode is not allowed`);
+              break;
+            } else {
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    // ── Cover initialized name in object literal ───────────────────
+    // ES spec: PropertyDefinition : CoverInitializedName always throws SyntaxError.
+    // ({ x = 1 }) is a CoverInitializedName — only valid in destructuring context.
+    // ShorthandPropertyAssignment with an objectAssignmentInitializer is the TS
+    // representation of CoverInitializedName.
+    if (ts.isShorthandPropertyAssignment(node) && node.objectAssignmentInitializer) {
+      // Check if the parent object literal is NOT in an assignment pattern position
+      const objLit = node.parent;
+      if (ts.isObjectLiteralExpression(objLit)) {
+        if (!isAssignmentPatternContext(objLit)) {
+          addError(node, "Invalid shorthand property initializer");
+        }
+      }
+    }
+
+    // ── 'let' as shorthand property in strict mode ─────────────────
+    // ES spec: 'let' is not a reserved word but cannot be used as a binding
+    // identifier in strict mode, and shorthand property acts as IdentifierReference.
+    if (ts.isShorthandPropertyAssignment(node) && node.name.text === "let" && isStrictMode(node)) {
+      addError(node, "'let' is not allowed as a shorthand property in strict mode");
+    }
+
+    // ── Catch clause parameter early errors ─────────────────────────
+    if (ts.isCatchClause(node) && node.variableDeclaration) {
+      const catchParam = node.variableDeclaration;
+      // Check for duplicate names in catch parameter destructuring
+      const catchNames = new Set<string>();
+      const dupeNames = new Set<string>();
+      collectBindingNamesWithDuplicateCheck(catchParam.name, catchNames, dupeNames);
+      for (const name of dupeNames) {
+        addError(catchParam, `Duplicate binding '${name}' in catch parameter`);
+      }
+      // Check catch body for lexical/function declarations that shadow the catch parameter
+      if (node.block && catchNames.size > 0) {
+        for (const stmt of node.block.statements) {
+          if (ts.isVariableStatement(stmt)) {
+            const flags = stmt.declarationList.flags;
+            if ((flags & ts.NodeFlags.Let) !== 0 || (flags & ts.NodeFlags.Const) !== 0) {
+              for (const decl of stmt.declarationList.declarations) {
+                if (ts.isIdentifier(decl.name) && catchNames.has(decl.name.text)) {
+                  addError(decl.name, `Cannot redeclare catch variable '${decl.name.text}' with lexical declaration`);
+                }
+              }
+            }
+          }
+          // Function declaration with same name as catch parameter
+          if (ts.isFunctionDeclaration(stmt) && stmt.name && stmt.body) {
+            if (catchNames.has(stmt.name.text)) {
+              addError(stmt.name, `Cannot redeclare catch variable '${stmt.name.text}' with function declaration`);
+            }
+          }
+          if (ts.isClassDeclaration(stmt) && stmt.name) {
+            if (catchNames.has(stmt.name.text)) {
+              addError(stmt.name, `Cannot redeclare catch variable '${stmt.name.text}' with class declaration`);
             }
           }
         }
@@ -1056,6 +1298,7 @@ function detectEarlyErrors(
   /** Check duplicate lexical declarations across switch case clauses. */
   function checkSwitchCaseLexicalDuplicates(caseBlock: ts.CaseBlock): void {
     const lexNames = new Map<string, ts.Node>(); // name -> first declaration
+    const varNames = new Map<string, ts.Node>(); // name -> first var declaration
     for (const clause of caseBlock.clauses) {
       for (const stmt of clause.statements) {
         if (ts.isVariableStatement(stmt)) {
@@ -1069,6 +1312,22 @@ function detectEarlyErrors(
                 } else {
                   lexNames.set(name, decl.name);
                 }
+                // Check var/lex conflict
+                if (varNames.has(name)) {
+                  addError(decl.name, `Cannot redeclare block-scoped variable '${name}'`);
+                }
+              }
+            }
+          } else {
+            // var declaration
+            for (const decl of stmt.declarationList.declarations) {
+              if (ts.isIdentifier(decl.name)) {
+                const name = decl.name.text;
+                if (!varNames.has(name)) varNames.set(name, decl.name);
+                // Check lex/var conflict
+                if (lexNames.has(name)) {
+                  addError(decl.name, `Cannot redeclare block-scoped variable '${name}'`);
+                }
               }
             }
           }
@@ -1079,12 +1338,20 @@ function detectEarlyErrors(
           } else {
             lexNames.set(name, stmt.name);
           }
+          // Check var/lex conflict
+          if (varNames.has(name)) {
+            addError(stmt.name, `Cannot redeclare block-scoped variable '${name}'`);
+          }
         } else if (ts.isClassDeclaration(stmt) && stmt.name) {
           const name = stmt.name.text;
           if (lexNames.has(name)) {
             addError(stmt.name, `Cannot redeclare block-scoped variable '${name}'`);
           } else {
             lexNames.set(name, stmt.name);
+          }
+          // Check var/lex conflict
+          if (varNames.has(name)) {
+            addError(stmt.name, `Cannot redeclare block-scoped variable '${name}'`);
           }
         }
       }
@@ -1233,20 +1500,33 @@ function detectEarlyErrors(
 
     if (lexicalNames.size === 0) return;
 
-    // Check var declarations against lexical names
-    for (const stmt of block.statements) {
-      if (ts.isVariableStatement(stmt)) {
-        const flags = stmt.declarationList.flags;
-        if ((flags & ts.NodeFlags.Let) === 0 && (flags & ts.NodeFlags.Const) === 0) {
-          // This is a var declaration
-          for (const decl of stmt.declarationList.declarations) {
-            if (ts.isIdentifier(decl.name) && lexicalNames.has(decl.name.text)) {
-              addError(decl.name, `Cannot redeclare block-scoped variable '${decl.name.text}'`);
-            }
+    // Check var declarations against lexical names — including vars in nested blocks
+    // (var hoists to the enclosing function/module scope, so `{ let x; { var x; } }` is a conflict)
+    collectVarDeclaredNamesInBlock(block, lexicalNames);
+  }
+
+  /** Recursively collect var-declared names in a block and report conflicts with lexicalNames. */
+  function collectVarDeclaredNamesInBlock(node: ts.Node, lexicalNames: Set<string>): void {
+    if (ts.isVariableStatement(node)) {
+      const flags = node.declarationList.flags;
+      if ((flags & ts.NodeFlags.Let) === 0 && (flags & ts.NodeFlags.Const) === 0) {
+        for (const decl of node.declarationList.declarations) {
+          if (ts.isIdentifier(decl.name) && lexicalNames.has(decl.name.text)) {
+            addError(decl.name, `Cannot redeclare block-scoped variable '${decl.name.text}'`);
           }
         }
       }
+      return;
     }
+    // Don't cross function boundaries (var doesn't hoist past functions)
+    if (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) ||
+        ts.isArrowFunction(node) || ts.isMethodDeclaration(node) ||
+        ts.isConstructorDeclaration(node) || ts.isGetAccessorDeclaration(node) ||
+        ts.isSetAccessorDeclaration(node) || ts.isClassDeclaration(node) ||
+        ts.isClassExpression(node)) {
+      return;
+    }
+    ts.forEachChild(node, child => collectVarDeclaredNamesInBlock(child, lexicalNames));
   }
 
   /**
@@ -1342,6 +1622,49 @@ function detectEarlyErrors(
       return;
     }
     ts.forEachChild(node, (child: ts.Node) => checkForTDZRef(child, name));
+  }
+
+  /**
+   * Check if an object literal is in a destructuring assignment context.
+   * In that context, CoverInitializedName ({ x = 1 }) is valid.
+   */
+  function isAssignmentPatternContext(objLit: ts.ObjectLiteralExpression): boolean {
+    const parent = objLit.parent;
+    if (!parent) return false;
+    // Direct destructuring: ({ x = 1 } = source)
+    if (ts.isBinaryExpression(parent) && parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        parent.left === objLit) {
+      return true;
+    }
+    // In for-of/for-in LHS
+    if (ts.isForOfStatement(parent) || ts.isForInStatement(parent)) {
+      return parent.initializer === objLit;
+    }
+    // Nested in another destructuring pattern (array element, object property value)
+    if (ts.isArrayLiteralExpression(parent)) return isAssignmentPatternContext_expr(parent);
+    if (ts.isPropertyAssignment(parent)) {
+      const grandParent = parent.parent;
+      if (ts.isObjectLiteralExpression(grandParent)) return isAssignmentPatternContext(grandParent);
+    }
+    if (ts.isSpreadElement(parent)) {
+      const grandParent = parent.parent;
+      if (ts.isArrayLiteralExpression(grandParent)) return isAssignmentPatternContext_expr(grandParent);
+    }
+    return false;
+  }
+
+  function isAssignmentPatternContext_expr(arrLit: ts.ArrayLiteralExpression): boolean {
+    const parent = arrLit.parent;
+    if (!parent) return false;
+    if (ts.isBinaryExpression(parent) && parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        parent.left === arrLit) return true;
+    if (ts.isForOfStatement(parent) || ts.isForInStatement(parent)) return parent.initializer === arrLit;
+    if (ts.isArrayLiteralExpression(parent)) return isAssignmentPatternContext_expr(parent);
+    if (ts.isPropertyAssignment(parent)) {
+      const gp = parent.parent;
+      if (ts.isObjectLiteralExpression(gp)) return isAssignmentPatternContext(gp);
+    }
+    return false;
   }
 
   visit(sourceFile);
