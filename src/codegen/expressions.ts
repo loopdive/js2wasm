@@ -8468,31 +8468,13 @@ function compileClosureCall(
   }
 
   // Push the funcref from the closure struct (field 0) and cast to typed ref
-  // Guard: ref.test before ref.cast to avoid illegal cast traps when
-  // closures of different signatures are passed through `any` typed params.
   pushClosureRef();
   fctx.body.push({
     op: "struct.get",
     typeIdx: info.structTypeIdx,
     fieldIdx: 0,
   });
-  {
-    const tmpFunc = allocTempLocal(fctx, { kind: "funcref" } as ValType);
-    fctx.body.push({ op: "local.tee", index: tmpFunc } as unknown as Instr);
-    fctx.body.push({ op: "ref.test", typeIdx: info.funcTypeIdx } as unknown as Instr);
-    fctx.body.push({
-      op: "if",
-      blockType: { kind: "val", type: { kind: "ref_null", typeIdx: info.funcTypeIdx } as ValType },
-      then: [
-        { op: "local.get", index: tmpFunc } as unknown as Instr,
-        { op: "ref.cast_null", typeIdx: info.funcTypeIdx } as unknown as Instr,
-      ],
-      else: [
-        { op: "ref.null", typeIdx: info.funcTypeIdx } as unknown as Instr,
-      ],
-    } as Instr);
-    releaseTempLocal(fctx, tmpFunc);
-  }
+  fctx.body.push({ op: "ref.cast", typeIdx: info.funcTypeIdx });
   emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: info.funcTypeIdx });
 
   // call_ref with the lifted function's type index
@@ -8612,24 +8594,7 @@ function compileCallablePropertyCall(
         typeIdx: (fieldType as { typeIdx: number }).typeIdx,
         fieldIdx: 0,
       });
-      // Guard: ref.test before ref.cast to avoid illegal cast traps
-      {
-        const tmpFunc = allocTempLocal(fctx, { kind: "funcref" } as ValType);
-        fctx.body.push({ op: "local.tee", index: tmpFunc } as unknown as Instr);
-        fctx.body.push({ op: "ref.test", typeIdx: closureInfo.funcTypeIdx } as unknown as Instr);
-        fctx.body.push({
-          op: "if",
-          blockType: { kind: "val", type: { kind: "ref_null", typeIdx: closureInfo.funcTypeIdx } as ValType },
-          then: [
-            { op: "local.get", index: tmpFunc } as unknown as Instr,
-            { op: "ref.cast_null", typeIdx: closureInfo.funcTypeIdx } as unknown as Instr,
-          ],
-          else: [
-            { op: "ref.null", typeIdx: closureInfo.funcTypeIdx } as unknown as Instr,
-          ],
-        } as Instr);
-        releaseTempLocal(fctx, tmpFunc);
-      }
+      fctx.body.push({ op: "ref.cast", typeIdx: closureInfo.funcTypeIdx });
       emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: closureInfo.funcTypeIdx });
       fctx.body.push({ op: "call_ref", typeIdx: closureInfo.funcTypeIdx });
 
@@ -8713,24 +8678,10 @@ function compileCallablePropertyCall(
         typeIdx: wrapperStructIdx,
         fieldIdx: 0,
       });
-      // Guard: ref.test before ref.cast to avoid illegal cast traps
-      {
-        const tmpFunc = allocTempLocal(fctx, { kind: "funcref" } as ValType);
-        fctx.body.push({ op: "local.tee", index: tmpFunc } as unknown as Instr);
-        fctx.body.push({ op: "ref.test", typeIdx: matchedClosureInfo.funcTypeIdx } as unknown as Instr);
-        fctx.body.push({
-          op: "if",
-          blockType: { kind: "val", type: { kind: "ref_null", typeIdx: matchedClosureInfo.funcTypeIdx } as ValType },
-          then: [
-            { op: "local.get", index: tmpFunc } as unknown as Instr,
-            { op: "ref.cast_null", typeIdx: matchedClosureInfo.funcTypeIdx } as unknown as Instr,
-          ],
-          else: [
-            { op: "ref.null", typeIdx: matchedClosureInfo.funcTypeIdx } as unknown as Instr,
-          ],
-        } as Instr);
-        releaseTempLocal(fctx, tmpFunc);
-      }
+      fctx.body.push({
+        op: "ref.cast",
+        typeIdx: matchedClosureInfo.funcTypeIdx,
+      });
       emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedClosureInfo.funcTypeIdx });
       fctx.body.push({
         op: "call_ref",
@@ -8788,23 +8739,9 @@ function compileCallablePropertyCall(
       if (fieldType.kind === "ref_null") {
         emitNullCheckThrow(ctx, fctx, fieldType);
       }
-      // May need to cast to matching struct type (guarded)
+      // May need to cast to matching struct type
       if ((fieldType as { typeIdx: number }).typeIdx !== matchedStructTypeIdx) {
-        const tmpAny = allocTempLocal(fctx, { kind: "anyref" } as ValType);
-        fctx.body.push({ op: "local.tee", index: tmpAny } as unknown as Instr);
-        fctx.body.push({ op: "ref.test", typeIdx: matchedStructTypeIdx } as unknown as Instr);
-        fctx.body.push({
-          op: "if",
-          blockType: { kind: "val", type: { kind: "ref_null", typeIdx: matchedStructTypeIdx } as ValType },
-          then: [
-            { op: "local.get", index: tmpAny } as unknown as Instr,
-            { op: "ref.cast_null", typeIdx: matchedStructTypeIdx } as unknown as Instr,
-          ],
-          else: [
-            { op: "ref.null", typeIdx: matchedStructTypeIdx } as unknown as Instr,
-          ],
-        } as Instr);
-        releaseTempLocal(fctx, tmpAny);
+        fctx.body.push({ op: "ref.cast", typeIdx: matchedStructTypeIdx });
       }
 
       // Push call arguments (only up to declared param count)
@@ -8843,46 +8780,17 @@ function compileCallablePropertyCall(
         emitNullCheckThrow(ctx, fctx, fieldType);
       }
       if ((fieldType as { typeIdx: number }).typeIdx !== matchedStructTypeIdx) {
-        // Guard struct cast
-        const tmpAny2 = allocTempLocal(fctx, { kind: "anyref" } as ValType);
-        fctx.body.push({ op: "local.tee", index: tmpAny2 } as unknown as Instr);
-        fctx.body.push({ op: "ref.test", typeIdx: matchedStructTypeIdx } as unknown as Instr);
-        fctx.body.push({
-          op: "if",
-          blockType: { kind: "val", type: { kind: "ref_null", typeIdx: matchedStructTypeIdx } as ValType },
-          then: [
-            { op: "local.get", index: tmpAny2 } as unknown as Instr,
-            { op: "ref.cast_null", typeIdx: matchedStructTypeIdx } as unknown as Instr,
-          ],
-          else: [
-            { op: "ref.null", typeIdx: matchedStructTypeIdx } as unknown as Instr,
-          ],
-        } as Instr);
-        releaseTempLocal(fctx, tmpAny2);
+        fctx.body.push({ op: "ref.cast", typeIdx: matchedStructTypeIdx });
       }
       fctx.body.push({
         op: "struct.get",
         typeIdx: matchedStructTypeIdx,
         fieldIdx: 0,
       });
-      // Guard funcref cast
-      {
-        const tmpFunc = allocTempLocal(fctx, { kind: "funcref" } as ValType);
-        fctx.body.push({ op: "local.tee", index: tmpFunc } as unknown as Instr);
-        fctx.body.push({ op: "ref.test", typeIdx: matchedClosureInfo.funcTypeIdx } as unknown as Instr);
-        fctx.body.push({
-          op: "if",
-          blockType: { kind: "val", type: { kind: "ref_null", typeIdx: matchedClosureInfo.funcTypeIdx } as ValType },
-          then: [
-            { op: "local.get", index: tmpFunc } as unknown as Instr,
-            { op: "ref.cast_null", typeIdx: matchedClosureInfo.funcTypeIdx } as unknown as Instr,
-          ],
-          else: [
-            { op: "ref.null", typeIdx: matchedClosureInfo.funcTypeIdx } as unknown as Instr,
-          ],
-        } as Instr);
-        releaseTempLocal(fctx, tmpFunc);
-      }
+      fctx.body.push({
+        op: "ref.cast",
+        typeIdx: matchedClosureInfo.funcTypeIdx,
+      });
       emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedClosureInfo.funcTypeIdx });
       fctx.body.push({
         op: "call_ref",
@@ -10033,31 +9941,17 @@ function compileCallExpression(
               return { kind: "externref" };
             }
 
-            // Cast to struct type if needed (guarded to avoid illegal cast traps)
+            // Cast to struct type if needed
             if (objType.kind === "externref") {
               fctx.body.push({ op: "any.convert_extern" } as unknown as Instr);
-              emitGuardedRefCast(fctx, structTypeIdx);
+              fctx.body.push({ op: "ref.cast", typeIdx: structTypeIdx } as unknown as Instr);
             } else if (objType.kind === "ref_null" && objType.typeIdx !== structTypeIdx) {
-              const castTmp = allocTempLocal(fctx, objType);
-              fctx.body.push({ op: "local.tee", index: castTmp });
-              fctx.body.push({ op: "ref.test", typeIdx: structTypeIdx });
-              fctx.body.push({
-                op: "if",
-                blockType: { kind: "val", type: { kind: "ref_null", typeIdx: structTypeIdx } as ValType },
-                then: [
-                  { op: "local.get", index: castTmp } as Instr,
-                  { op: "ref.cast_null", typeIdx: structTypeIdx } as Instr,
-                ],
-                else: [
-                  { op: "ref.null", typeIdx: structTypeIdx },
-                ],
-              });
-              releaseTempLocal(fctx, castTmp);
+              fctx.body.push({ op: "ref.cast", typeIdx: structTypeIdx } as unknown as Instr);
             }
 
             // Save obj ref for struct.get
             const objLocal = allocLocal(fctx, `__gopd_obj_${fctx.locals.length}`,
-              { kind: "ref_null", typeIdx: structTypeIdx });
+              { kind: "ref", typeIdx: structTypeIdx });
             fctx.body.push({ op: "local.set", index: objLocal });
 
             // Get field value: struct.get → coerce to externref
@@ -11308,7 +11202,7 @@ function compileCallExpression(
             else: [],
           });
         }
-        // radix value was consumed by the range check; number_toString uses base-10
+        fctx.body.push({ op: "drop" }); // drop radix, toString still uses base-10
       }
       const exprType = compileExpression(ctx, fctx, propAccess.expression);
       // number_toString expects f64 but source may be i32 (e.g. string.length)
@@ -12195,24 +12089,10 @@ function compileCallExpression(
             typeIdx: matchedStructTypeIdx,
             fieldIdx: 0,
           });
-          // Guard: ref.test before ref.cast to avoid illegal cast traps
-          {
-            const tmpFunc = allocTempLocal(fctx, { kind: "funcref" } as ValType);
-            fctx.body.push({ op: "local.tee", index: tmpFunc } as unknown as Instr);
-            fctx.body.push({ op: "ref.test", typeIdx: matchedClosureInfo.funcTypeIdx } as unknown as Instr);
-            fctx.body.push({
-              op: "if",
-              blockType: { kind: "val", type: { kind: "ref_null", typeIdx: matchedClosureInfo.funcTypeIdx } as ValType },
-              then: [
-                { op: "local.get", index: tmpFunc } as unknown as Instr,
-                { op: "ref.cast_null", typeIdx: matchedClosureInfo.funcTypeIdx } as unknown as Instr,
-              ],
-              else: [
-                { op: "ref.null", typeIdx: matchedClosureInfo.funcTypeIdx } as unknown as Instr,
-              ],
-            } as Instr);
-            releaseTempLocal(fctx, tmpFunc);
-          }
+          fctx.body.push({
+            op: "ref.cast",
+            typeIdx: matchedClosureInfo.funcTypeIdx,
+          });
           emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedClosureInfo.funcTypeIdx });
           fctx.body.push({
             op: "call_ref",
@@ -13069,7 +12949,7 @@ function compileCallExpression(
               else: [],
             });
           }
-          // radix value was consumed by the range check; number_toString uses base-10
+          fctx.body.push({ op: "drop" }); // drop radix, toString still uses base-10
         }
         const exprType = compileExpression(ctx, fctx, elemAccess.expression);
         if (exprType && exprType.kind === "i32") {
@@ -13535,24 +13415,10 @@ function compileCallExpression(
           typeIdx: matchedStructTypeIdx,
           fieldIdx: 0,
         });
-        // Guard: ref.test before ref.cast to avoid illegal cast traps
-        {
-          const tmpFunc = allocTempLocal(fctx, { kind: "funcref" } as ValType);
-          fctx.body.push({ op: "local.tee", index: tmpFunc } as unknown as Instr);
-          fctx.body.push({ op: "ref.test", typeIdx: matchedClosureInfo.funcTypeIdx } as unknown as Instr);
-          fctx.body.push({
-            op: "if",
-            blockType: { kind: "val", type: { kind: "ref_null", typeIdx: matchedClosureInfo.funcTypeIdx } as ValType },
-            then: [
-              { op: "local.get", index: tmpFunc } as unknown as Instr,
-              { op: "ref.cast_null", typeIdx: matchedClosureInfo.funcTypeIdx } as unknown as Instr,
-            ],
-            else: [
-              { op: "ref.null", typeIdx: matchedClosureInfo.funcTypeIdx } as unknown as Instr,
-            ],
-          } as Instr);
-          releaseTempLocal(fctx, tmpFunc);
-        }
+        fctx.body.push({
+          op: "ref.cast",
+          typeIdx: matchedClosureInfo.funcTypeIdx,
+        });
         emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedClosureInfo.funcTypeIdx });
 
         // call_ref with the lifted function's type index
@@ -13699,24 +13565,10 @@ function compileCallExpression(
           typeIdx: matchedStructTypeIdx,
           fieldIdx: 0,
         });
-        // Guard: ref.test before ref.cast to avoid illegal cast traps
-        {
-          const tmpFunc = allocTempLocal(fctx, { kind: "funcref" } as ValType);
-          fctx.body.push({ op: "local.tee", index: tmpFunc } as unknown as Instr);
-          fctx.body.push({ op: "ref.test", typeIdx: matchedClosureInfo.funcTypeIdx } as unknown as Instr);
-          fctx.body.push({
-            op: "if",
-            blockType: { kind: "val", type: { kind: "ref_null", typeIdx: matchedClosureInfo.funcTypeIdx } as ValType },
-            then: [
-              { op: "local.get", index: tmpFunc } as unknown as Instr,
-              { op: "ref.cast_null", typeIdx: matchedClosureInfo.funcTypeIdx } as unknown as Instr,
-            ],
-            else: [
-              { op: "ref.null", typeIdx: matchedClosureInfo.funcTypeIdx } as unknown as Instr,
-            ],
-          } as Instr);
-          releaseTempLocal(fctx, tmpFunc);
-        }
+        fctx.body.push({
+          op: "ref.cast",
+          typeIdx: matchedClosureInfo.funcTypeIdx,
+        });
         emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedClosureInfo.funcTypeIdx });
         fctx.body.push({
           op: "call_ref",
@@ -14158,24 +14010,10 @@ function compileExpressionCallee(
         typeIdx: matchedStructTypeIdx,
         fieldIdx: 0,
       });
-      // Guard: ref.test before ref.cast to avoid illegal cast traps
-      {
-        const tmpFunc = allocTempLocal(fctx, { kind: "funcref" } as ValType);
-        fctx.body.push({ op: "local.tee", index: tmpFunc } as unknown as Instr);
-        fctx.body.push({ op: "ref.test", typeIdx: matchedClosureInfo.funcTypeIdx } as unknown as Instr);
-        fctx.body.push({
-          op: "if",
-          blockType: { kind: "val", type: { kind: "ref_null", typeIdx: matchedClosureInfo.funcTypeIdx } as ValType },
-          then: [
-            { op: "local.get", index: tmpFunc } as unknown as Instr,
-            { op: "ref.cast_null", typeIdx: matchedClosureInfo.funcTypeIdx } as unknown as Instr,
-          ],
-          else: [
-            { op: "ref.null", typeIdx: matchedClosureInfo.funcTypeIdx } as unknown as Instr,
-          ],
-        } as Instr);
-        releaseTempLocal(fctx, tmpFunc);
-      }
+      fctx.body.push({
+        op: "ref.cast",
+        typeIdx: matchedClosureInfo.funcTypeIdx,
+      });
       emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedClosureInfo.funcTypeIdx });
       fctx.body.push({
         op: "call_ref",
