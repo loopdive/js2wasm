@@ -479,6 +479,7 @@ export function compileWidenedEmptyObject(
         fields,
       } as StructTypeDef);
       ctx.structMap.set(typeName, typeIdx);
+      ctx.typeIdxToStructName.set(typeIdx, typeName);
       ctx.structFields.set(typeName, fields);
       ctx.anonTypeMap.set(type, typeName);
       const varType = ctx.checker.getTypeAtLocation(expr.parent.name);

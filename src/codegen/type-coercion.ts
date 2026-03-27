@@ -1136,47 +1136,45 @@ export function coerceType(
   // ref/ref_null → externref: check @@toPrimitive("string") first, then toString(), else extern.convert_any
   if ((from.kind === "ref" || from.kind === "ref_null") && to.kind === "externref") {
     const typeIdx = (from as { typeIdx: number }).typeIdx;
-    for (const [name, idx] of ctx.structMap) {
-      if (idx === typeIdx) {
-        // Check for [Symbol.toPrimitive] method first
-        const toPrimFuncIdx = ctx.funcMap.get(`${name}_@@toPrimitive`);
-        if (toPrimFuncIdx !== undefined) {
-          // Call ClassName_@@toPrimitive(self, hint)
-          // Use provided hint, or default to "string" for externref target
-          const hint = toPrimitiveHint ?? "string";
-          pushStringHint(ctx, fctx, hint);
-          fctx.body.push({ op: "call", funcIdx: toPrimFuncIdx });
-          // Coerce result to externref if needed
-          const funcDefIdx = toPrimFuncIdx - ctx.numImportFuncs;
-          const funcDef = funcDefIdx >= 0 ? ctx.mod.functions[funcDefIdx] : undefined;
-          const funcType = funcDef ? ctx.mod.types[funcDef.typeIdx] : undefined;
-          // Default to "externref" for imports (funcDefIdx < 0) which typically return externref
-          const retKind = (funcType?.kind === "func" && funcType.results?.[0]?.kind) || "externref";
-          if (retKind === "f64") {
-            // Ensure __box_number is available via union imports
-            addUnionImports(ctx);
-            const boxIdx = ctx.funcMap.get("__box_number")!;
-            fctx.body.push({ op: "call", funcIdx: boxIdx });
-          } else if (retKind === "i32") {
-            fctx.body.push({ op: "f64.convert_i32_s" });
-            // Ensure __box_number is available via union imports
-            addUnionImports(ctx);
-            const boxIdx = ctx.funcMap.get("__box_number")!;
-            fctx.body.push({ op: "call", funcIdx: boxIdx });
-          }
-          // externref/ref return → use extern.convert_any for ref types
-          if (retKind === "ref" || retKind === "ref_null") {
-            fctx.body.push({ op: "extern.convert_any" });
-          }
-          return;
+    const name = ctx.typeIdxToStructName.get(typeIdx);
+    if (name !== undefined) {
+      // Check for [Symbol.toPrimitive] method first
+      const toPrimFuncIdx = ctx.funcMap.get(`${name}_@@toPrimitive`);
+      if (toPrimFuncIdx !== undefined) {
+        // Call ClassName_@@toPrimitive(self, hint)
+        // Use provided hint, or default to "string" for externref target
+        const hint = toPrimitiveHint ?? "string";
+        pushStringHint(ctx, fctx, hint);
+        fctx.body.push({ op: "call", funcIdx: toPrimFuncIdx });
+        // Coerce result to externref if needed
+        const funcDefIdx = toPrimFuncIdx - ctx.numImportFuncs;
+        const funcDef = funcDefIdx >= 0 ? ctx.mod.functions[funcDefIdx] : undefined;
+        const funcType = funcDef ? ctx.mod.types[funcDef.typeIdx] : undefined;
+        // Default to "externref" for imports (funcDefIdx < 0) which typically return externref
+        const retKind = (funcType?.kind === "func" && funcType.results?.[0]?.kind) || "externref";
+        if (retKind === "f64") {
+          // Ensure __box_number is available via union imports
+          addUnionImports(ctx);
+          const boxIdx = ctx.funcMap.get("__box_number")!;
+          fctx.body.push({ op: "call", funcIdx: boxIdx });
+        } else if (retKind === "i32") {
+          fctx.body.push({ op: "f64.convert_i32_s" });
+          // Ensure __box_number is available via union imports
+          addUnionImports(ctx);
+          const boxIdx = ctx.funcMap.get("__box_number")!;
+          fctx.body.push({ op: "call", funcIdx: boxIdx });
         }
-        const toStringFuncIdx = ctx.funcMap.get(`${name}_toString`);
-        if (toStringFuncIdx !== undefined) {
-          // Call ClassName_toString(self) — self is already on stack
-          fctx.body.push({ op: "call", funcIdx: toStringFuncIdx });
-          return;
+        // externref/ref return → use extern.convert_any for ref types
+        if (retKind === "ref" || retKind === "ref_null") {
+          fctx.body.push({ op: "extern.convert_any" });
         }
-        break;
+        return;
+      }
+      const toStringFuncIdx = ctx.funcMap.get(`${name}_toString`);
+      if (toStringFuncIdx !== undefined) {
+        // Call ClassName_toString(self) — self is already on stack
+        fctx.body.push({ op: "call", funcIdx: toStringFuncIdx });
+        return;
       }
     }
     fctx.body.push({ op: "extern.convert_any" });
@@ -1312,10 +1310,10 @@ export function coerceType(
     // before every return. Using a wrapper to keep it clean:
     const cleanup = () => { (ctx as any).__insideValueOfCoercion = wasInsideValueOf; };
     const typeIdx = (from as { typeIdx: number }).typeIdx;
-    for (const [name, idx] of ctx.structMap) {
-      if (idx === typeIdx) {
-        // Check for [Symbol.toPrimitive] method first — takes precedence over valueOf
-        const toPrimFuncIdx = ctx.funcMap.get(`${name}_@@toPrimitive`);
+    const name = ctx.typeIdxToStructName.get(typeIdx);
+    if (name !== undefined) {
+      // Check for [Symbol.toPrimitive] method first — takes precedence over valueOf
+      const toPrimFuncIdx = ctx.funcMap.get(`${name}_@@toPrimitive`);
         if (toPrimFuncIdx !== undefined) {
           // Call ClassName_@@toPrimitive(self, hint)
           // Use provided hint, or default to "number" for f64 target
@@ -1342,241 +1340,240 @@ export function coerceType(
           cleanup(); return;
         }
         const fields = ctx.structFields.get(name);
-        if (!fields) { break; }
-        const fieldIdx = fields.findIndex(f => f.name === "valueOf");
-        if (fieldIdx < 0) {
-          // No valueOf field — check for a class method valueOf (ClassName_valueOf)
-          const valueOfFuncIdx = ctx.funcMap.get(`${name}_valueOf`);
-          if (valueOfFuncIdx !== undefined) {
-            // Call ClassName_valueOf(self) — self is already on stack
-            fctx.body.push({ op: "call", funcIdx: valueOfFuncIdx });
-            // Check return type — if not f64, convert to f64
-            const voFuncDefIdx = valueOfFuncIdx - ctx.numImportFuncs;
-            const voFuncDef = voFuncDefIdx >= 0 ? ctx.mod.functions[voFuncDefIdx] : undefined;
-            const funcType = voFuncDef ? ctx.mod.types[voFuncDef.typeIdx] : undefined;
-            if (funcType?.kind === "func" && funcType.results?.[0]?.kind === "i32") {
-              fctx.body.push({ op: "f64.convert_i32_s" });
-            } else if (funcType?.kind === "func" && funcType.results?.[0]?.kind === "externref") {
-              // valueOf returned externref (e.g. WrapperString_valueOf returns a string)
-              // Convert externref → f64 via __unbox_number or parseFloat
-              addUnionImports(ctx);
-              const unboxIdx = ctx.funcMap.get("__unbox_number");
-              if (unboxIdx !== undefined) {
-                fctx.body.push({ op: "call", funcIdx: unboxIdx });
-              } else {
-                const pfIdx = ctx.funcMap.get("parseFloat");
-                if (pfIdx !== undefined) {
-                  fctx.body.push({ op: "call", funcIdx: pfIdx });
-                } else {
-                  // Last resort: drop and push NaN
-                  fctx.body.push({ op: "drop" });
-                  fctx.body.push({ op: "f64.const", value: NaN });
-                }
-              }
-            } else if (funcType?.kind === "func" &&
-                       (funcType.results?.[0]?.kind === "ref" || funcType.results?.[0]?.kind === "ref_null")) {
-              // valueOf returned an object ref — drop and push NaN
-              fctx.body.push({ op: "drop" });
-              fctx.body.push({ op: "f64.const", value: NaN });
-            }
-            cleanup(); return;
-          }
-          // No valueOf — ToNumber({}) = NaN per spec
-          fctx.body.push({ op: "drop" });
-          fctx.body.push({ op: "f64.const", value: NaN });
-          cleanup(); return;
-        }
-        const valueOfField = fields[fieldIdx];
-        if (!valueOfField) {
-          // Field index valid from findIndex but entry missing — treat as NaN
-          fctx.body.push({ op: "drop" });
-          fctx.body.push({ op: "f64.const", value: NaN });
-          cleanup(); return;
-        }
-        if (valueOfField.type.kind === "ref" || valueOfField.type.kind === "ref_null") {
-          // valueOf is a closure ref — call it via call_ref
-          const closureTypeIdx = (valueOfField.type as { typeIdx: number }).typeIdx;
-          // Find closure info by struct type index
-          const closureInfo = ctx.closureInfoByTypeIdx.get(closureTypeIdx);
-          if (closureInfo) {
-            // Save struct ref to local, extract valueOf closure, call it
-            const structLocal = allocLocal(fctx, `__coerce_struct_${fctx.locals.length}`, from);
-            fctx.body.push({ op: "local.set", index: structLocal });
-            // Get closure ref from struct
-            fctx.body.push({ op: "local.get", index: structLocal });
-            fctx.body.push({ op: "struct.get", typeIdx, fieldIdx });
-            const closureLocal = allocLocal(fctx, `__coerce_closure_${fctx.locals.length}`, valueOfField.type);
-            fctx.body.push({ op: "local.tee", index: closureLocal });
-            // Push closure ref as self param, then funcref from field 0
-            // call_ref signature: [closure_ref, funcref] → results
-            fctx.body.push({ op: "local.get", index: closureLocal });
-            fctx.body.push({ op: "struct.get", typeIdx: closureTypeIdx, fieldIdx: 0 });
-            {
-              const tmpFunc = allocTempLocal(fctx, { kind: "funcref" } as ValType);
-              fctx.body.push({ op: "local.tee", index: tmpFunc } as unknown as Instr);
-              fctx.body.push({ op: "ref.test", typeIdx: closureInfo.funcTypeIdx } as unknown as Instr);
-              fctx.body.push({
-                op: "if",
-                blockType: { kind: "val", type: { kind: "ref_null", typeIdx: closureInfo.funcTypeIdx } as ValType },
-                then: [
-                  { op: "local.get", index: tmpFunc } as unknown as Instr,
-                  { op: "ref.cast_null", typeIdx: closureInfo.funcTypeIdx } as unknown as Instr,
-                ],
-                else: [
-                  { op: "ref.null", typeIdx: closureInfo.funcTypeIdx } as unknown as Instr,
-                ],
-              } as Instr);
-              releaseTempLocal(fctx, tmpFunc);
-            }
-            fctx.body.push({ op: "ref.as_non_null" });
-            fctx.body.push({ op: "call_ref", typeIdx: closureInfo.funcTypeIdx });
-            // Convert valueOf result to f64
-            if (!closureInfo.returnType) {
-              // void return — push NaN
-              fctx.body.push({ op: "f64.const", value: NaN });
-            } else if (closureInfo.returnType.kind === "i32") {
-              fctx.body.push({ op: "f64.convert_i32_s" });
-            } else if (closureInfo.returnType.kind === "externref" || closureInfo.returnType.kind === "ref_extern") {
-              // valueOf returned a string (externref) — convert to f64
-              addUnionImports(ctx);
-              const unboxIdx = ctx.funcMap.get("__unbox_number");
-              if (unboxIdx !== undefined) {
-                fctx.body.push({ op: "call", funcIdx: unboxIdx });
-              } else {
-                fctx.body.push({ op: "drop" });
-                fctx.body.push({ op: "f64.const", value: NaN });
-              }
-            } else if (closureInfo.returnType.kind === "ref" || closureInfo.returnType.kind === "ref_null") {
-              // valueOf returned an object ref — drop and push NaN
-              fctx.body.push({ op: "drop" });
-              fctx.body.push({ op: "f64.const", value: NaN });
-            }
-            // f64 return → value is already on stack
-            cleanup(); return;
-          }
-        }
-        if (valueOfField.type.kind === "externref") {
-          // valueOf is externref (can't call_ref) — push NaN
-          fctx.body.push({ op: "drop" });
-          fctx.body.push({ op: "f64.const", value: NaN });
-          cleanup(); return;
-        }
-        if (valueOfField.type.kind === "eqref") {
-          // valueOf field is eqref (a closure struct stored without externref wrapping).
-          // Recover the closure and call it by trying each known closure type
-          // that was tracked for this struct's valueOf field.
-          const trackedTypes = ctx.valueOfClosureTypes.get(name) ?? [];
-          const callableClosureTypes: { closureTypeIdx: number; info: ClosureInfo }[] = [];
-          for (const closureTypeIdx of trackedTypes) {
-            const info = ctx.closureInfoByTypeIdx.get(closureTypeIdx);
-            // Include all zero-param closures: f64/i32 return for value, void/null for side effects (returns NaN)
-            if (info && info.paramTypes.length === 0) {
-              callableClosureTypes.push({ closureTypeIdx, info });
-            }
-          }
-          if (callableClosureTypes.length > 0) {
-            // Save struct ref, extract valueOf eqref
-            const structLocal = allocLocal(fctx, `__vo_struct_${fctx.locals.length}`, from);
-            fctx.body.push({ op: "local.set", index: structLocal });
-            fctx.body.push({ op: "local.get", index: structLocal });
-            fctx.body.push({ op: "struct.get", typeIdx, fieldIdx });
-            const eqLocal = allocLocal(fctx, `__vo_eq_${fctx.locals.length}`, { kind: "eqref" });
-            fctx.body.push({ op: "local.set", index: eqLocal });
-            // Try each closure type with nested if/else
-            const buildDispatch = (idx: number): Instr[] => {
-              if (idx >= callableClosureTypes.length) {
-                return [{ op: "f64.const", value: NaN } as Instr];
-              }
-              const { closureTypeIdx, info } = callableClosureTypes[idx]!;
-              const closureLocal = allocLocal(fctx, `__vo_cl_${fctx.locals.length}`, { kind: "ref", typeIdx: closureTypeIdx });
-              const funcTmp = allocLocal(fctx, `__vo_fn_${fctx.locals.length}`, { kind: "funcref" } as ValType);
-              const thenInstrs: Instr[] = [
-                { op: "local.get", index: eqLocal } as Instr,
-                { op: "ref.cast", typeIdx: closureTypeIdx },
-                { op: "local.tee", index: closureLocal } as Instr,
-                { op: "local.get", index: closureLocal } as Instr,
-                { op: "struct.get", typeIdx: closureTypeIdx, fieldIdx: 0 } as Instr,
-                // Guarded funcref cast to avoid illegal cast traps
-                { op: "local.tee", index: funcTmp } as unknown as Instr,
-                { op: "ref.test", typeIdx: info.funcTypeIdx } as unknown as Instr,
-                { op: "if", blockType: { kind: "val", type: { kind: "ref_null", typeIdx: info.funcTypeIdx } as ValType },
-                  then: [
-                    { op: "local.get", index: funcTmp } as unknown as Instr,
-                    { op: "ref.cast_null", typeIdx: info.funcTypeIdx } as unknown as Instr,
-                  ],
-                  else: [
-                    { op: "ref.null", typeIdx: info.funcTypeIdx } as unknown as Instr,
-                  ],
-                } as Instr,
-                { op: "ref.as_non_null" } as Instr,
-                { op: "call_ref", typeIdx: info.funcTypeIdx },
-              ];
-              if (info.returnType?.kind === "i32") {
-                thenInstrs.push({ op: "f64.convert_i32_s" } as Instr);
-              } else if (info.returnType?.kind === "externref" || info.returnType?.kind === "ref_extern") {
-                // valueOf returned a string (externref) — convert to f64 via __unbox_number
+        if (fields) {
+          const fieldIdx = fields.findIndex(f => f.name === "valueOf");
+          if (fieldIdx < 0) {
+            // No valueOf field — check for a class method valueOf (ClassName_valueOf)
+            const valueOfFuncIdx = ctx.funcMap.get(`${name}_valueOf`);
+            if (valueOfFuncIdx !== undefined) {
+              // Call ClassName_valueOf(self) — self is already on stack
+              fctx.body.push({ op: "call", funcIdx: valueOfFuncIdx });
+              // Check return type — if not f64, convert to f64
+              const voFuncDefIdx = valueOfFuncIdx - ctx.numImportFuncs;
+              const voFuncDef = voFuncDefIdx >= 0 ? ctx.mod.functions[voFuncDefIdx] : undefined;
+              const funcType = voFuncDef ? ctx.mod.types[voFuncDef.typeIdx] : undefined;
+              if (funcType?.kind === "func" && funcType.results?.[0]?.kind === "i32") {
+                fctx.body.push({ op: "f64.convert_i32_s" });
+              } else if (funcType?.kind === "func" && funcType.results?.[0]?.kind === "externref") {
+                // valueOf returned externref (e.g. WrapperString_valueOf returns a string)
+                // Convert externref → f64 via __unbox_number or parseFloat
                 addUnionImports(ctx);
                 const unboxIdx = ctx.funcMap.get("__unbox_number");
                 if (unboxIdx !== undefined) {
-                  thenInstrs.push({ op: "call", funcIdx: unboxIdx } as Instr);
+                  fctx.body.push({ op: "call", funcIdx: unboxIdx });
                 } else {
-                  thenInstrs.push({ op: "drop" } as Instr);
-                  thenInstrs.push({ op: "f64.const", value: NaN } as Instr);
+                  const pfIdx = ctx.funcMap.get("parseFloat");
+                  if (pfIdx !== undefined) {
+                    fctx.body.push({ op: "call", funcIdx: pfIdx });
+                  } else {
+                    // Last resort: drop and push NaN
+                    fctx.body.push({ op: "drop" });
+                    fctx.body.push({ op: "f64.const", value: NaN });
+                  }
                 }
-              } else if (!info.returnType) {
-                // void return — call was for side effects; push NaN
-                thenInstrs.push({ op: "f64.const", value: NaN } as Instr);
-              } else if (info.returnType.kind !== "f64") {
-                // non-f64 return (ref, etc.) — drop and push NaN
-                thenInstrs.push({ op: "drop" } as Instr);
-                thenInstrs.push({ op: "f64.const", value: NaN } as Instr);
-              }
-              return [
-                { op: "local.get", index: eqLocal } as Instr,
-                { op: "ref.test", typeIdx: closureTypeIdx },
-                { op: "if", blockType: { kind: "val" as const, type: { kind: "f64" as const } }, then: thenInstrs, else: buildDispatch(idx + 1) } as Instr,
-              ];
-            };
-            for (const instr of buildDispatch(0)) {
-              fctx.body.push(instr);
-            }
-            return;
-          }
-          // No closure types found — check for a standalone ClassName_valueOf function (#433)
-          // Method shorthand syntax (e.g. { valueOf() { ... } }) compiles as a standalone
-          // function rather than a closure stored in the struct field.
-          const standaloneValueOf = ctx.funcMap.get(`${name}_valueOf`);
-          if (standaloneValueOf !== undefined) {
-            fctx.body.push({ op: "call", funcIdx: standaloneValueOf });
-            const funcType = ctx.mod.types[ctx.mod.functions[standaloneValueOf - ctx.numImportFuncs]?.typeIdx ?? -1];
-            const retKind = funcType?.kind === "func" ? funcType.results?.[0]?.kind : undefined;
-            if (retKind === "i32") {
-              fctx.body.push({ op: "f64.convert_i32_s" });
-            } else if (retKind === "externref" || retKind === "ref_extern") {
-              // valueOf returned a string (externref) — convert to f64
-              addUnionImports(ctx);
-              const unboxIdx = ctx.funcMap.get("__unbox_number");
-              if (unboxIdx !== undefined) {
-                fctx.body.push({ op: "call", funcIdx: unboxIdx });
-              } else {
+              } else if (funcType?.kind === "func" &&
+                         (funcType.results?.[0]?.kind === "ref" || funcType.results?.[0]?.kind === "ref_null")) {
+                // valueOf returned an object ref — drop and push NaN
                 fctx.body.push({ op: "drop" });
                 fctx.body.push({ op: "f64.const", value: NaN });
               }
-            } else if (retKind === "ref" || retKind === "ref_null") {
-              // valueOf returned an object ref — drop and push NaN
-              fctx.body.push({ op: "drop" });
-              fctx.body.push({ op: "f64.const", value: NaN });
+              cleanup(); return;
             }
+            // No valueOf — ToNumber({}) = NaN per spec
+            fctx.body.push({ op: "drop" });
+            fctx.body.push({ op: "f64.const", value: NaN });
+            cleanup(); return;
+          }
+          const valueOfField = fields[fieldIdx];
+          if (!valueOfField) {
+            // Field index valid from findIndex but entry missing — treat as NaN
+            fctx.body.push({ op: "drop" });
+            fctx.body.push({ op: "f64.const", value: NaN });
+            cleanup(); return;
+          }
+          if (valueOfField.type.kind === "ref" || valueOfField.type.kind === "ref_null") {
+            // valueOf is a closure ref — call it via call_ref
+            const closureTypeIdx = (valueOfField.type as { typeIdx: number }).typeIdx;
+            // Find closure info by struct type index
+            const closureInfo = ctx.closureInfoByTypeIdx.get(closureTypeIdx);
+            if (closureInfo) {
+              // Save struct ref to local, extract valueOf closure, call it
+              const structLocal = allocLocal(fctx, `__coerce_struct_${fctx.locals.length}`, from);
+              fctx.body.push({ op: "local.set", index: structLocal });
+              // Get closure ref from struct
+              fctx.body.push({ op: "local.get", index: structLocal });
+              fctx.body.push({ op: "struct.get", typeIdx, fieldIdx });
+              const closureLocal = allocLocal(fctx, `__coerce_closure_${fctx.locals.length}`, valueOfField.type);
+              fctx.body.push({ op: "local.tee", index: closureLocal });
+              // Push closure ref as self param, then funcref from field 0
+              // call_ref signature: [closure_ref, funcref] → results
+              fctx.body.push({ op: "local.get", index: closureLocal });
+              fctx.body.push({ op: "struct.get", typeIdx: closureTypeIdx, fieldIdx: 0 });
+              {
+                const tmpFunc = allocTempLocal(fctx, { kind: "funcref" } as ValType);
+                fctx.body.push({ op: "local.tee", index: tmpFunc } as unknown as Instr);
+                fctx.body.push({ op: "ref.test", typeIdx: closureInfo.funcTypeIdx } as unknown as Instr);
+                fctx.body.push({
+                  op: "if",
+                  blockType: { kind: "val", type: { kind: "ref_null", typeIdx: closureInfo.funcTypeIdx } as ValType },
+                  then: [
+                    { op: "local.get", index: tmpFunc } as unknown as Instr,
+                    { op: "ref.cast_null", typeIdx: closureInfo.funcTypeIdx } as unknown as Instr,
+                  ],
+                  else: [
+                    { op: "ref.null", typeIdx: closureInfo.funcTypeIdx } as unknown as Instr,
+                  ],
+                } as Instr);
+                releaseTempLocal(fctx, tmpFunc);
+              }
+              fctx.body.push({ op: "ref.as_non_null" });
+              fctx.body.push({ op: "call_ref", typeIdx: closureInfo.funcTypeIdx });
+              // Convert valueOf result to f64
+              if (!closureInfo.returnType) {
+                // void return — push NaN
+                fctx.body.push({ op: "f64.const", value: NaN });
+              } else if (closureInfo.returnType.kind === "i32") {
+                fctx.body.push({ op: "f64.convert_i32_s" });
+              } else if (closureInfo.returnType.kind === "externref" || closureInfo.returnType.kind === "ref_extern") {
+                // valueOf returned a string (externref) — convert to f64
+                addUnionImports(ctx);
+                const unboxIdx = ctx.funcMap.get("__unbox_number");
+                if (unboxIdx !== undefined) {
+                  fctx.body.push({ op: "call", funcIdx: unboxIdx });
+                } else {
+                  fctx.body.push({ op: "drop" });
+                  fctx.body.push({ op: "f64.const", value: NaN });
+                }
+              } else if (closureInfo.returnType.kind === "ref" || closureInfo.returnType.kind === "ref_null") {
+                // valueOf returned an object ref — drop and push NaN
+                fctx.body.push({ op: "drop" });
+                fctx.body.push({ op: "f64.const", value: NaN });
+              }
+              // f64 return → value is already on stack
+              cleanup(); return;
+            }
+          }
+          if (valueOfField.type.kind === "externref") {
+            // valueOf is externref (can't call_ref) — push NaN
+            fctx.body.push({ op: "drop" });
+            fctx.body.push({ op: "f64.const", value: NaN });
+            cleanup(); return;
+          }
+          if (valueOfField.type.kind === "eqref") {
+            // valueOf field is eqref (a closure struct stored without externref wrapping).
+            // Recover the closure and call it by trying each known closure type
+            // that was tracked for this struct's valueOf field.
+            const trackedTypes = ctx.valueOfClosureTypes.get(name) ?? [];
+            const callableClosureTypes: { closureTypeIdx: number; info: ClosureInfo }[] = [];
+            for (const closureTypeIdx of trackedTypes) {
+              const info = ctx.closureInfoByTypeIdx.get(closureTypeIdx);
+              // Include all zero-param closures: f64/i32 return for value, void/null for side effects (returns NaN)
+              if (info && info.paramTypes.length === 0) {
+                callableClosureTypes.push({ closureTypeIdx, info });
+              }
+            }
+            if (callableClosureTypes.length > 0) {
+              // Save struct ref, extract valueOf eqref
+              const structLocal = allocLocal(fctx, `__vo_struct_${fctx.locals.length}`, from);
+              fctx.body.push({ op: "local.set", index: structLocal });
+              fctx.body.push({ op: "local.get", index: structLocal });
+              fctx.body.push({ op: "struct.get", typeIdx, fieldIdx });
+              const eqLocal = allocLocal(fctx, `__vo_eq_${fctx.locals.length}`, { kind: "eqref" });
+              fctx.body.push({ op: "local.set", index: eqLocal });
+              // Try each closure type with nested if/else
+              const buildDispatch = (idx: number): Instr[] => {
+                if (idx >= callableClosureTypes.length) {
+                  return [{ op: "f64.const", value: NaN } as Instr];
+                }
+                const { closureTypeIdx, info } = callableClosureTypes[idx]!;
+                const closureLocal = allocLocal(fctx, `__vo_cl_${fctx.locals.length}`, { kind: "ref", typeIdx: closureTypeIdx });
+                const funcTmp = allocLocal(fctx, `__vo_fn_${fctx.locals.length}`, { kind: "funcref" } as ValType);
+                const thenInstrs: Instr[] = [
+                  { op: "local.get", index: eqLocal } as Instr,
+                  { op: "ref.cast", typeIdx: closureTypeIdx },
+                  { op: "local.tee", index: closureLocal } as Instr,
+                  { op: "local.get", index: closureLocal } as Instr,
+                  { op: "struct.get", typeIdx: closureTypeIdx, fieldIdx: 0 } as Instr,
+                  // Guarded funcref cast to avoid illegal cast traps
+                  { op: "local.tee", index: funcTmp } as unknown as Instr,
+                  { op: "ref.test", typeIdx: info.funcTypeIdx } as unknown as Instr,
+                  { op: "if", blockType: { kind: "val", type: { kind: "ref_null", typeIdx: info.funcTypeIdx } as ValType },
+                    then: [
+                      { op: "local.get", index: funcTmp } as unknown as Instr,
+                      { op: "ref.cast_null", typeIdx: info.funcTypeIdx } as unknown as Instr,
+                    ],
+                    else: [
+                      { op: "ref.null", typeIdx: info.funcTypeIdx } as unknown as Instr,
+                    ],
+                  } as Instr,
+                  { op: "ref.as_non_null" } as Instr,
+                  { op: "call_ref", typeIdx: info.funcTypeIdx },
+                ];
+                if (info.returnType?.kind === "i32") {
+                  thenInstrs.push({ op: "f64.convert_i32_s" } as Instr);
+                } else if (info.returnType?.kind === "externref" || info.returnType?.kind === "ref_extern") {
+                  // valueOf returned a string (externref) — convert to f64 via __unbox_number
+                  addUnionImports(ctx);
+                  const unboxIdx = ctx.funcMap.get("__unbox_number");
+                  if (unboxIdx !== undefined) {
+                    thenInstrs.push({ op: "call", funcIdx: unboxIdx } as Instr);
+                  } else {
+                    thenInstrs.push({ op: "drop" } as Instr);
+                    thenInstrs.push({ op: "f64.const", value: NaN } as Instr);
+                  }
+                } else if (!info.returnType) {
+                  // void return — call was for side effects; push NaN
+                  thenInstrs.push({ op: "f64.const", value: NaN } as Instr);
+                } else if (info.returnType.kind !== "f64") {
+                  // non-f64 return (ref, etc.) — drop and push NaN
+                  thenInstrs.push({ op: "drop" } as Instr);
+                  thenInstrs.push({ op: "f64.const", value: NaN } as Instr);
+                }
+                return [
+                  { op: "local.get", index: eqLocal } as Instr,
+                  { op: "ref.test", typeIdx: closureTypeIdx },
+                  { op: "if", blockType: { kind: "val" as const, type: { kind: "f64" as const } }, then: thenInstrs, else: buildDispatch(idx + 1) } as Instr,
+                ];
+              };
+              for (const instr of buildDispatch(0)) {
+                fctx.body.push(instr);
+              }
+              return;
+            }
+            // No closure types found — check for a standalone ClassName_valueOf function (#433)
+            // Method shorthand syntax (e.g. { valueOf() { ... } }) compiles as a standalone
+            // function rather than a closure stored in the struct field.
+            const standaloneValueOf = ctx.funcMap.get(`${name}_valueOf`);
+            if (standaloneValueOf !== undefined) {
+              fctx.body.push({ op: "call", funcIdx: standaloneValueOf });
+              const funcType = ctx.mod.types[ctx.mod.functions[standaloneValueOf - ctx.numImportFuncs]?.typeIdx ?? -1];
+              const retKind = funcType?.kind === "func" ? funcType.results?.[0]?.kind : undefined;
+              if (retKind === "i32") {
+                fctx.body.push({ op: "f64.convert_i32_s" });
+              } else if (retKind === "externref" || retKind === "ref_extern") {
+                // valueOf returned a string (externref) — convert to f64
+                addUnionImports(ctx);
+                const unboxIdx = ctx.funcMap.get("__unbox_number");
+                if (unboxIdx !== undefined) {
+                  fctx.body.push({ op: "call", funcIdx: unboxIdx });
+                } else {
+                  fctx.body.push({ op: "drop" });
+                  fctx.body.push({ op: "f64.const", value: NaN });
+                }
+              } else if (retKind === "ref" || retKind === "ref_null") {
+                // valueOf returned an object ref — drop and push NaN
+                fctx.body.push({ op: "drop" });
+                fctx.body.push({ op: "f64.const", value: NaN });
+              }
+              return;
+            }
+            fctx.body.push({ op: "drop" });
+            fctx.body.push({ op: "f64.const", value: NaN });
             return;
           }
-          fctx.body.push({ op: "drop" });
-          fctx.body.push({ op: "f64.const", value: NaN });
-          return;
         }
-        break;
       }
     }
-  }
 
   // Fallback: drop + push default
   fctx.body.push({ op: "drop" });
