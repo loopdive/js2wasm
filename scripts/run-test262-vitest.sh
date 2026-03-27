@@ -35,6 +35,8 @@ echo "Building compiler bundle..."
 cd "$WT_DIR"
 npx esbuild src/index.ts --bundle --platform=node --format=esm \
   --outfile=scripts/compiler-bundle.mjs --external:typescript 2>&1 | tail -1
+npx esbuild src/runtime.ts --bundle --platform=node --format=esm \
+  --outfile=scripts/runtime-bundle.mjs --external:typescript 2>&1 | tail -1
 
 # Symlink results dir so writes go directly to main workspace
 rm -rf "$WT_DIR/benchmarks/results"
@@ -48,6 +50,8 @@ echo "Rebuilding main bundle..."
 cd "$MAIN_DIR"
 npx esbuild src/index.ts --bundle --platform=node --format=esm \
   --outfile=scripts/compiler-bundle.mjs --external:typescript 2>&1 | tail -1
+npx esbuild src/runtime.ts --bundle --platform=node --format=esm \
+  --outfile=scripts/runtime-bundle.mjs --external:typescript 2>&1 | tail -1
 
 # Run vitest from main workspace (vitest 4.x needs real node_modules, not symlinks)
 npx vitest run tests/test262-vitest.test.ts \
