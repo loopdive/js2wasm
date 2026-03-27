@@ -95,25 +95,8 @@ export type FilterResult =
 // Tests that cause the compiler to hang (infinite loop during compilation)
 const HANGING_TESTS = new Set([
   "test/built-ins/Promise/race/invoke-then.js", // #408: Promise.race compilation hang
-  "test/language/expressions/class/elements/nested-private-indirect-eval-contains-arguments.js", // #701
-  "test/language/statements/class/elements/private-setter-shadowed-by-field-on-nested-class.js", // #701
   "test/built-ins/Map/prototype/forEach/iterates-values-deleted-then-readded.js", // hangs: Map mutation during iteration
   "test/built-ins/Temporal/Duration/from/argument-non-string.js", // hangs: Temporal runtime loop
-  "test/language/expressions/class/elements/private-methods/prod-private-method.js", // hangs (#793)
-  "test/language/expressions/class/elements/private-methods/prod-private-async-generator.js", // hangs (#793)
-  "test/language/expressions/class/elements/private-methods/prod-private-async-method.js", // hangs (#793)
-  "test/language/expressions/class/elements/private-methods/prod-private-generator.js", // hangs (#793)
-  "test/language/expressions/class/elements/private-methods/prod-private-method-initialize-order.js", // hangs (#793)
-  "test/language/expressions/class/elements/private-method-referenced-from-static-method.js", // hangs (#793)
-  "test/language/expressions/class/elements/private-setter-access-on-inner-function.js", // hangs (#793)
-  "test/language/statements/class/elements/private-method-referenced-from-static-method.js", // hangs (#793)
-  "test/language/statements/class/elements/private-setter-access-on-inner-function.js", // hangs (#793)
-  "test/language/statements/class/elements/private-methods/prod-private-method.js", // hangs (#793)
-  "test/language/statements/class/elements/private-methods/prod-private-async-generator.js", // hangs (#793)
-  "test/language/statements/class/elements/private-methods/prod-private-async-method.js", // hangs (#793)
-  "test/language/statements/class/elements/private-methods/prod-private-generator.js", // hangs (#793)
-  "test/language/statements/class/elements/private-methods/prod-private-method-initialize-order.js", // hangs (#793)
-  "test/language/statements/class/elements/same-line-gen-rs-static-privatename-identifier-alt.js",
 ]);
 
 export function shouldSkip(
@@ -135,15 +118,6 @@ export function shouldSkip(
   // module resolution we don't support.
   if (/_FIXTURE\.js/.test(source)) {
     return { skip: true, reason: "imports _FIXTURE helper module" };
-  }
-
-  // Skip class/elements/ tests — several private class element tests cause
-  // compilation hangs (#793). Individual tests also listed in HANGING_TESTS.
-  if (filePath && /class\/elements\//.test(filePath)) {
-    return {
-      skip: true,
-      reason: "private class element compilation hang (#793)",
-    };
   }
 
   // Skip strict-mode-only restriction tests — deprioritized, not real-world features.
