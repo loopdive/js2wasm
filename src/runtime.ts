@@ -307,6 +307,20 @@ function resolveImport(
         }
         return obj;
       };
+      if (name === "__defineProperties") return (obj: any, descs: any) => {
+        if (obj == null || descs == null) return obj;
+        try { Object.defineProperties(obj, descs); } catch (_) {
+          // WasmGC struct — apply each descriptor individually via sidecar
+          const keys = Object.keys(descs);
+          for (const key of keys) {
+            const desc = descs[key];
+            if (desc && typeof desc === "object" && "value" in desc) {
+              _sidecarSet(obj, key, desc.value);
+            }
+          }
+        }
+        return obj;
+      };
       if (name === "__getOwnPropertyDescriptor") return (obj: any, prop: any) => {
         if (obj == null) return undefined;
         return Object.getOwnPropertyDescriptor(obj, prop);
