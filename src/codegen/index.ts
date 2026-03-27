@@ -6908,6 +6908,10 @@ const KNOWN_CONSTRUCTORS = new Set([
   "Array", "Date", "Map", "Set", "RegExp", "Error", "TypeError", "RangeError", "Object", "Function",
   "Promise", "WeakMap", "WeakSet", "WeakRef",
   "Number", "String", "Boolean",
+  "ArrayBuffer", "DataView", "Proxy",
+  "Int8Array", "Uint8Array", "Uint8ClampedArray", "Int16Array", "Uint16Array",
+  "Int32Array", "Uint32Array", "Float32Array", "Float64Array",
+  "SyntaxError", "URIError", "EvalError", "ReferenceError",
 ]);
 
 /**

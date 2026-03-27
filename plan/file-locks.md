@@ -23,6 +23,8 @@ Active file/function claims by agents. **Check before editing. Update when start
 | src/codegen/typeof-delete.ts | compileTypeofExpression, compileTypeofComparison | dev-8 | #800 | 2026-03-26 |
 | src/codegen/expressions.ts | compileIdentifier, emitLocalTdzCheck | dev-tdz | #800 | 2026-03-26 |
 | src/codegen/statements.ts | emitTdzCheck (lines 50-94) | dev-tdz | #800 | 2026-03-26 |
+| src/codegen/index.ts | KNOWN_CONSTRUCTORS | dev-814 | #814 | 2026-03-26 |
+| src/runtime.ts | builtinCtors | dev-814 | #814 | 2026-03-26 |
 
 <!--
 Example entries:

@@ -41,7 +41,7 @@ function resolveImport(
     }
     case "extern_class": {
       if (intent.action === "new") {
-        const builtinCtors: Record<string, Function> = { Map, Set, WeakMap, WeakSet, WeakRef, RegExp };
+        const builtinCtors: Record<string, Function> = { Map, Set, WeakMap, WeakSet, WeakRef, RegExp, ArrayBuffer, DataView };
         const Ctor = deps?.[intent.className] ?? builtinCtors[intent.className];
         if (!Ctor) return (...args: any[]) => { throw new Error(`No dependency provided for extern class "${intent.className}"`); };
         // Strip trailing null/undefined args — the compiler pads missing
