@@ -564,8 +564,25 @@ for (const category of TEST_CATEGORIES) {
 
           const isRuntimeNegative = meta.negative?.phase === "runtime";
 
+          // Watchdog timer: if testFn() has an infinite loop, the synchronous
+          // Wasm execution blocks the entire thread and no JS timer/signal can
+          // interrupt it. Killing the fork lets vitest report remaining tests
+          // as failures and move on instead of hanging forever.
+          const WATCHDOG_MS = 15_000;
+          const watchdog = setTimeout(() => {
+            console.error(`[watchdog] test hung for ${WATCHDOG_MS}ms, killing fork: ${relPath}`);
+            process.exit(1);
+          }, WATCHDOG_MS);
+          // Prevent the watchdog from keeping the process alive when all tests finish
+          watchdog.unref();
+
           try {
-            const ret = testFn();
+            let ret: any;
+            try {
+              ret = testFn();
+            } finally {
+              clearTimeout(watchdog);
+            }
 
             if (isRuntimeNegative) {
               recordResult(relPath, category, "fail", `expected runtime ${meta.negative!.type} but succeeded`);
