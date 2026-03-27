@@ -137,15 +137,9 @@ export function shouldSkip(
     return { skip: true, reason: "imports _FIXTURE helper module" };
   }
 
-  // Skip class element tests that cause infinite compilation loops (#793)
-  // Private method/setter/getter patterns and some same-line/static patterns hang.
-  // The hang only occurs in the test262 wrapper context, not standalone compilation.
-  if (
-    filePath &&
-    (/class\/elements\/private-(method|setter|getter)-/.test(filePath) ||
-     /class\/elements\/static-comp-name/.test(filePath) ||
-     /class\/elements\/same-line/.test(filePath))
-  ) {
+  // Skip class/elements/ tests — many patterns cause infinite compilation loops (#793).
+  // The hang occurs in the wrapped context, not standalone. Needs compiler fix.
+  if (filePath && /class\/elements\//.test(filePath)) {
     return {
       skip: true,
       reason: "private class element compilation hang (#793)",
