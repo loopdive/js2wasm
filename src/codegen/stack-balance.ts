@@ -1270,114 +1270,470 @@ function fixCallArgTypesInBody(
     }
   }
 
-  // Fix struct.new argument type mismatches.
-  // Uses the same delta-based backward walk as call fixups above.
-  for (let ci = 0; ci < body.length; ci++) {
-    if (body[ci]!.op !== "struct.new") continue;
+  // struct.new field coercion is handled by fixStructNewFieldCoercion
+  // (forward type-stack simulation), called separately from stackBalance.
 
-    const typeIdx = (body[ci] as any).typeIdx as number;
-    const typeDef = types[typeIdx];
-    if (!typeDef || typeDef.kind !== "struct") continue;
+  return fixups;
+}
 
-    const fields = (typeDef as any).fields as Array<{ type: ValType }>;
-    const numFields = fields.length;
-    if (numFields === 0) continue;
+/**
+ * Forward type-stack simulation for struct.new field coercion.
+ *
+ * Walks the instruction stream forward, maintaining a type stack.
+ * When a struct.new is encountered, compares the actual types on the
+ * stack with the expected field types. If coercion is needed, saves
+ * all field values to temp locals, applies coercions, and re-pushes.
+ *
+ * This replaces the fragile backward walk which miscalculated positions
+ * for compound instructions (if/block/loop/try).
+ */
+function fixStructNewFieldCoercion(
+  func: WasmFunction,
+  types: TypeDef[],
+  mod: WasmModule,
+  numImports: number,
+  sigs: FuncSigInfo,
+  localTypes: ValType[],
+  globalTypes: ValType[],
+  boxNumberIdx: number | null,
+  unboxNumberIdx: number | null,
+): number {
+  let fixups = 0;
 
-    let pos = ci - 1;
-    let argOffset = 0; // 0 = last field, numFields-1 = first field
-    const structInsertions: Array<{ afterPos: number; instrs: Instr[] }> = [];
-    let inSubExpr = false;
-
-    while (pos >= 0 && argOffset < numFields) {
-      const instr = body[pos]!;
-      const op = instr.op;
-
-      // Stop at terminators
-      if (op === "end" || op === "br" || op === "br_table" ||
-          op === "return" || op === "throw" || op === "unreachable" ||
-          op === "return_call" || op === "return_call_ref") {
-        break;
-      }
-
-      const delta = instrDelta(instr, types, sigs);
-      if (delta === UNREACHABLE) break;
-
-      // Check if this instruction produces a value
-      const producedType = inferInstrType(instr, localTypes, globalTypes, types, mod, numImports);
-      const producesValue = producedType !== null;
-
-      if (producesValue && argOffset >= 0) {
-        // Check for pass-through transformers between this instruction and struct.new
-        let effectiveType = producedType;
-        let insertPos = pos;
-
-        for (let t = pos + 1; t < ci; t++) {
-          const tInstr = body[t]!;
-          const tDelta = instrDelta(tInstr, types, sigs);
-          if (tDelta !== 0) break;
-          const tType = inferInstrType(tInstr, localTypes, globalTypes, types, mod, numImports);
-          if (tType) effectiveType = tType;
-          insertPos = t;
-        }
-
-        const fieldIdx = numFields - 1 - argOffset;
-        if (fieldIdx >= 0 && fieldIdx < numFields) {
-          const expectedType = fields[fieldIdx]!.type;
-
-          if (effectiveType && expectedType) {
-            const coercion = callArgCoercionInstrs(effectiveType, expectedType, boxNumberIdx, unboxNumberIdx);
-            if (coercion.length > 0) {
-              // All struct.new coercions from callArgCoercionInstrs only
-              // transform the top-of-stack value (net stack delta 0), so they
-              // are safe to apply even in sub-expression context.
-              structInsertions.push({ afterPos: insertPos, instrs: coercion });
-            }
+  function processBody(body: Instr[]): void {
+    // First recurse into nested blocks
+    for (const instr of body) {
+      if (instr.op === "if") {
+        const ifInstr = instr as any;
+        if (ifInstr.then) processBody(ifInstr.then);
+        if (ifInstr.else) processBody(ifInstr.else);
+      } else if (instr.op === "block" || instr.op === "loop") {
+        const blockInstr = instr as any;
+        if (blockInstr.body) processBody(blockInstr.body);
+      } else if (instr.op === "try") {
+        const tryInstr = instr as any;
+        if (tryInstr.body) processBody(tryInstr.body);
+        if (tryInstr.catches) {
+          for (const c of tryInstr.catches) {
+            if (c.body) processBody(c.body);
           }
         }
+        if (tryInstr.catchAll) processBody(tryInstr.catchAll);
       }
-
-      // Update argOffset tracking
-      // Compound instructions (if/block/loop/try) with a value result
-      // are special: they produce a value AND consume inputs (e.g., if
-      // consumes its condition), but their delta=0 makes them look like
-      // pass-throughs. Handle them explicitly.
-      const isCompound = op === "if" || op === "block" || op === "loop" || op === "try";
-      if (isCompound && producesValue) {
-        // Compound instruction produces a value for struct.new
-        argOffset += 1;
-        // if also consumes a condition from below (already in delta=0)
-        // The condition is NOT a struct.new argument
-        if (op === "if") {
-          inSubExpr = true;
-        }
-      } else if (delta >= 1) {
-        argOffset += delta;
-      } else if (delta < 0) {
-        if (producesValue) {
-          argOffset += 1;
-          argOffset += delta - 1;
-        } else {
-          argOffset += delta;
-        }
-        inSubExpr = true;
-        if (argOffset < 0) break;
-      }
-      // delta === 0 for non-compound: pass-through (ref.as_non_null, etc.)
-      pos--;
     }
 
-    // Apply insertions in reverse order
-    if (structInsertions.length > 0) {
-      for (let k = structInsertions.length - 1; k >= 0; k--) {
-        const { afterPos, instrs } = structInsertions[k]!;
-        body.splice(afterPos + 1, 0, ...instrs);
-        ci += instrs.length;
-        fixups += instrs.length;
+    // Forward type-stack simulation
+    const typeStack: (ValType | null)[] = []; // null = unknown type
+
+    for (let ci = 0; ci < body.length; ci++) {
+      const instr = body[ci]!;
+      const op = instr.op;
+
+      if (op === "struct.new") {
+        const typeIdx = (instr as any).typeIdx as number;
+        const typeDef = types[typeIdx];
+        if (typeDef?.kind === "struct") {
+          const fields = typeDef.fields as Array<{ type: ValType }>;
+          const numFields = fields.length;
+
+          if (numFields > 0 && typeStack.length >= numFields) {
+            // Check if any field needs coercion
+            const fieldTypes: (ValType | null)[] = [];
+            for (let fi = 0; fi < numFields; fi++) {
+              fieldTypes.push(typeStack[typeStack.length - numFields + fi] ?? null);
+            }
+
+            let needsCoercion = false;
+            const coercions: Instr[][] = [];
+            for (let fi = 0; fi < numFields; fi++) {
+              const actual = fieldTypes[fi];
+              const expected = fields[fi]!.type;
+              if (actual) {
+                const c = callArgCoercionInstrs(actual, expected, boxNumberIdx, unboxNumberIdx);
+                coercions.push(c);
+                if (c.length > 0) needsCoercion = true;
+              } else {
+                coercions.push([]);
+              }
+            }
+
+            if (needsCoercion) {
+              // Save all N field values to temp locals, coerce, re-push.
+              // Allocate temp locals with actual types from the stack.
+              const tempLocals: number[] = [];
+              const paramCount = resolveFuncType(types, func.typeIdx)?.params.length ?? 0;
+              for (let fi = 0; fi < numFields; fi++) {
+                const actualType = fieldTypes[fi] ?? fields[fi]!.type;
+                const localIdx = paramCount + func.locals.length;
+                func.locals.push({ name: `$sn_tmp_${localIdx}`, type: actualType });
+                // Update localTypes for future inference
+                localTypes.push(actualType);
+                tempLocals.push(localIdx);
+              }
+
+              // Build the replacement instructions:
+              // 1. Save top N values to temps (reverse order: last field = top of stack saved first)
+              const saveInstrs: Instr[] = [];
+              for (let fi = numFields - 1; fi >= 0; fi--) {
+                saveInstrs.push({ op: "local.set", index: tempLocals[fi]! } as unknown as Instr);
+              }
+              // 2. Re-push each value with coercion
+              const restoreInstrs: Instr[] = [];
+              for (let fi = 0; fi < numFields; fi++) {
+                restoreInstrs.push({ op: "local.get", index: tempLocals[fi]! } as unknown as Instr);
+                for (const c of coercions[fi]!) {
+                  restoreInstrs.push(c);
+                }
+              }
+
+              // Insert save+restore before the struct.new
+              const insertedInstrs = [...saveInstrs, ...restoreInstrs];
+              body.splice(ci, 0, ...insertedInstrs);
+              ci += insertedInstrs.length; // skip past inserted + struct.new
+              fixups += insertedInstrs.length;
+            }
+          }
+
+          // Pop N values from type stack, push 1 ref
+          for (let i = 0; i < (typeDef.fields as any[]).length; i++) typeStack.pop();
+          typeStack.push({ kind: "ref", typeIdx } as ValType);
+        }
+        continue;
       }
+
+      // Update type stack for other instructions
+      updateTypeStack(typeStack, instr, types, sigs, localTypes, globalTypes, mod, numImports);
     }
   }
 
+  processBody(func.body);
   return fixups;
+}
+
+/**
+ * Update the type stack for a single instruction (forward simulation).
+ * Pushes/pops type entries based on the instruction's semantics.
+ * Pushes null for unknown types.
+ */
+function updateTypeStack(
+  stack: (ValType | null)[],
+  instr: Instr,
+  types: TypeDef[],
+  sigs: FuncSigInfo,
+  localTypes: ValType[],
+  globalTypes: ValType[],
+  mod: WasmModule,
+  numImports: number,
+): void {
+  const op = instr.op;
+
+  // Terminators: clear the stack (unreachable code follows)
+  if (op === "return" || op === "return_call" || op === "return_call_ref" ||
+      op === "br" || op === "throw" || op === "rethrow" || op === "unreachable") {
+    stack.length = 0;
+    return;
+  }
+
+  // Push-only: push 1 value, consume 0
+  if (op === "local.get") {
+    const idx = (instr as any).index as number;
+    stack.push(localTypes[idx] ?? null);
+    return;
+  }
+  if (op === "global.get") {
+    const idx = (instr as any).index as number;
+    stack.push(globalTypes[idx] ?? null);
+    return;
+  }
+  if (op === "f64.const") { stack.push({ kind: "f64" }); return; }
+  if (op === "f32.const") { stack.push({ kind: "f32" } as ValType); return; }
+  if (op === "i32.const") { stack.push({ kind: "i32" }); return; }
+  if (op === "i64.const") { stack.push({ kind: "i64" }); return; }
+  if (op === "ref.null") {
+    const typeIdx = (instr as any).typeIdx as number;
+    stack.push({ kind: "ref_null", typeIdx } as ValType);
+    return;
+  }
+  if (op === "ref.null.extern" || op === "ref.null extern") {
+    stack.push({ kind: "externref" } as ValType);
+    return;
+  }
+  if (op === "ref.null.eq") { stack.push({ kind: "eqref" } as ValType); return; }
+  if (op === "ref.null.func") { stack.push({ kind: "funcref" } as ValType); return; }
+  if (op === "ref.func") { stack.push({ kind: "funcref" } as ValType); return; }
+  if (op === "v128.const") { stack.push(null); return; } // v128 type, push unknown
+  if (op === "memory.size") { stack.push({ kind: "i32" }); return; }
+
+  // Pop 1, push 0
+  if (op === "drop" || op === "local.set" || op === "global.set") {
+    stack.pop();
+    return;
+  }
+
+  // Pop 1, push 1 (type-changing or type-preserving)
+  if (op === "local.tee") {
+    // Type doesn't change, just peek
+    return;
+  }
+  if (op === "extern.convert_any") {
+    stack.pop();
+    stack.push({ kind: "externref" } as ValType);
+    return;
+  }
+  if (op === "any.convert_extern") {
+    stack.pop();
+    stack.push({ kind: "anyref" } as ValType);
+    return;
+  }
+  if (op === "ref.cast" || op === "ref.as_non_null") {
+    stack.pop();
+    const typeIdx = (instr as any).typeIdx as number;
+    if (typeIdx !== undefined) {
+      stack.push({ kind: "ref", typeIdx } as ValType);
+    } else {
+      stack.push(null);
+    }
+    return;
+  }
+  if (op === "ref.cast_null") {
+    stack.pop();
+    const typeIdx = (instr as any).typeIdx as number;
+    stack.push({ kind: "ref_null", typeIdx } as ValType);
+    return;
+  }
+  if (op === "ref.is_null" || op === "ref.test" || op === "i32.eqz" || op === "i64.eqz" ||
+      op === "i32.clz" || op === "i32.wrap_i64" ||
+      op === "i32.trunc_sat_f64_s" || op === "i32.trunc_sat_f64_u" || op === "i32.trunc_f64_s" ||
+      op === "array.len") {
+    stack.pop();
+    stack.push({ kind: "i32" });
+    return;
+  }
+  if (op === "f64.neg" || op === "f64.abs" || op === "f64.floor" || op === "f64.ceil" ||
+      op === "f64.trunc" || op === "f64.nearest" || op === "f64.sqrt" ||
+      op === "f64.convert_i32_s" || op === "f64.convert_i32_u" || op === "f64.convert_i64_s" ||
+      op === "f64.promote_f32") {
+    stack.pop();
+    stack.push({ kind: "f64" });
+    return;
+  }
+  if (op === "f32.demote_f64") {
+    stack.pop();
+    stack.push({ kind: "f32" } as ValType);
+    return;
+  }
+  if (op === "i64.extend_i32_s" || op === "i64.extend_i32_u" ||
+      op === "i64.trunc_sat_f64_s" || op === "i64.trunc_f64_s") {
+    stack.pop();
+    stack.push({ kind: "i64" });
+    return;
+  }
+
+  // Pop 2, push 1
+  if (op === "i32.add" || op === "i32.sub" || op === "i32.mul" ||
+      op === "i32.div_s" || op === "i32.div_u" || op === "i32.rem_s" || op === "i32.rem_u" ||
+      op === "i32.and" || op === "i32.or" || op === "i32.xor" ||
+      op === "i32.shl" || op === "i32.shr_s" || op === "i32.shr_u" ||
+      op === "i32.eq" || op === "i32.ne" ||
+      op === "i32.lt_s" || op === "i32.le_s" || op === "i32.gt_s" || op === "i32.ge_s" ||
+      op === "i32.lt_u" || op === "i32.le_u" || op === "i32.gt_u" || op === "i32.ge_u" ||
+      op === "ref.eq" ||
+      op === "f64.eq" || op === "f64.ne" || op === "f64.lt" || op === "f64.le" ||
+      op === "f64.gt" || op === "f64.ge" ||
+      op === "i64.eqz" || op === "i64.eq" || op === "i64.ne") {
+    stack.pop(); stack.pop();
+    stack.push({ kind: "i32" });
+    return;
+  }
+  if (op === "i64.add" || op === "i64.sub" || op === "i64.mul" ||
+      op === "i64.div_s" || op === "i64.rem_s" ||
+      op === "i64.and" || op === "i64.or" || op === "i64.xor" ||
+      op === "i64.shl" || op === "i64.shr_s" || op === "i64.shr_u" ||
+      op === "i64.lt_s" || op === "i64.le_s" || op === "i64.gt_s" || op === "i64.ge_s") {
+    stack.pop(); stack.pop();
+    stack.push({ kind: "i64" });
+    return;
+  }
+  if (op === "f64.add" || op === "f64.sub" || op === "f64.mul" || op === "f64.div" ||
+      op === "f64.copysign" || op === "f64.min" || op === "f64.max") {
+    stack.pop(); stack.pop();
+    stack.push({ kind: "f64" });
+    return;
+  }
+
+  // select: pop 3, push 1 (type of first operand)
+  if (op === "select") {
+    stack.pop(); // condition
+    stack.pop(); // val2
+    const val1 = stack.pop() ?? null;
+    stack.push(val1);
+    return;
+  }
+
+  // struct.get: pop 1 (struct ref), push 1 (field type)
+  if (op === "struct.get") {
+    stack.pop();
+    const typeIdx = (instr as any).typeIdx as number;
+    const fieldIdx = (instr as any).fieldIdx as number;
+    const td = types[typeIdx];
+    if (td?.kind === "struct" && (td as any).fields[fieldIdx]) {
+      stack.push((td as any).fields[fieldIdx].type);
+    } else {
+      stack.push(null);
+    }
+    return;
+  }
+
+  // struct.set: pop 2 (struct ref + value), push 0
+  if (op === "struct.set") {
+    stack.pop(); stack.pop();
+    return;
+  }
+
+  // array.get/get_s/get_u: pop 2 (array + index), push 1 (element type)
+  if (op === "array.get" || op === "array.get_s" || op === "array.get_u") {
+    stack.pop(); stack.pop();
+    const typeIdx = (instr as any).typeIdx as number;
+    const td = types[typeIdx];
+    if (td?.kind === "array") {
+      stack.push(td.element);
+    } else {
+      stack.push(null);
+    }
+    return;
+  }
+
+  // array.set: pop 3
+  if (op === "array.set") {
+    stack.pop(); stack.pop(); stack.pop();
+    return;
+  }
+
+  // array.new: pop 2, push 1
+  if (op === "array.new") {
+    stack.pop(); stack.pop();
+    const typeIdx = (instr as any).typeIdx as number;
+    stack.push({ kind: "ref", typeIdx } as ValType);
+    return;
+  }
+
+  // array.new_default: pop 1, push 1
+  if (op === "array.new_default") {
+    stack.pop();
+    const typeIdx = (instr as any).typeIdx as number;
+    stack.push({ kind: "ref", typeIdx } as ValType);
+    return;
+  }
+
+  // array.new_fixed: pop N, push 1
+  if (op === "array.new_fixed") {
+    const len = (instr as any).length || 0;
+    for (let i = 0; i < len; i++) stack.pop();
+    const typeIdx = (instr as any).typeIdx as number;
+    stack.push({ kind: "ref", typeIdx } as ValType);
+    return;
+  }
+
+  // array.copy: pop 5, array.fill: pop 4
+  if (op === "array.copy") { for (let i = 0; i < 5; i++) stack.pop(); return; }
+  if (op === "array.fill") { for (let i = 0; i < 4; i++) stack.pop(); return; }
+
+  // call: pop params, push results
+  if (op === "call") {
+    const funcIdx = (instr as any).funcIdx as number;
+    const sig = sigs.get(funcIdx);
+    if (sig) {
+      for (let i = 0; i < sig.params; i++) stack.pop();
+      if (sig.results > 0) {
+        // Try to get actual result type from function signature
+        const fIdx = funcIdx - numImports;
+        const fn = fIdx >= 0 ? mod.functions[fIdx] : undefined;
+        const ft = fn ? resolveFuncType(types, fn.typeIdx) : null;
+        if (ft && ft.results.length > 0) {
+          for (const r of ft.results) stack.push(r);
+        } else {
+          // Check import function signatures
+          let importFuncIdx = 0;
+          let foundImport = false;
+          for (const imp of mod.imports) {
+            if (imp.desc.kind === "func") {
+              if (importFuncIdx === funcIdx) {
+                const impFt = resolveFuncType(types, imp.desc.typeIdx);
+                if (impFt && impFt.results.length > 0) {
+                  for (const r of impFt.results) stack.push(r);
+                  foundImport = true;
+                }
+                break;
+              }
+              importFuncIdx++;
+            }
+          }
+          if (!foundImport) {
+            for (let i = 0; i < sig.results; i++) stack.push(null);
+          }
+        }
+      }
+    } else {
+      stack.push(null); // unknown
+    }
+    return;
+  }
+
+  // call_ref: pop params + funcref, push results
+  if (op === "call_ref") {
+    const typeIdx = (instr as any).typeIdx as number;
+    const ft = resolveFuncType(types, typeIdx);
+    if (ft) {
+      stack.pop(); // funcref
+      for (let i = 0; i < ft.params.length; i++) stack.pop();
+      for (const r of ft.results) stack.push(r);
+    } else {
+      stack.push(null);
+    }
+    return;
+  }
+
+  // br_if: pop 1 (condition)
+  if (op === "br_if") {
+    stack.pop();
+    return;
+  }
+
+  // Structured blocks: external effect based on blockType
+  if (op === "if" || op === "block" || op === "loop" || op === "try") {
+    const bt = (instr as any).blockType as BlockType | undefined;
+    if (op === "if") stack.pop(); // condition
+
+    // Process nested bodies recursively (already done above in processBody)
+    // For the type stack, just account for the block's net result
+    if (!bt || bt.kind === "empty") {
+      // no result
+    } else if (bt.kind === "val") {
+      stack.push(bt.type);
+    } else if (bt.kind === "type") {
+      const ft = resolveFuncType(types, bt.typeIdx);
+      if (ft) {
+        for (let i = 0; i < ft.params.length; i++) stack.pop();
+        for (const r of ft.results) stack.push(r);
+      } else {
+        stack.push(null);
+      }
+    }
+    return;
+  }
+
+  // For all other instructions, use instrDelta and push null for unknown types
+  const delta = instrDelta(instr, types, sigs);
+  if (delta === UNREACHABLE) {
+    stack.length = 0;
+    return;
+  }
+  if (delta < 0) {
+    for (let i = 0; i < -delta; i++) stack.pop();
+  } else if (delta > 0) {
+    for (let i = 0; i < delta; i++) stack.push(null);
+  }
+  // delta === 0: pass-through, no stack change
 }
 
 export function stackBalance(mod: WasmModule): number {
@@ -1420,6 +1776,9 @@ export function stackBalance(mod: WasmModule): number {
 
     // Fix call argument type mismatches before other fixups
     totalFixups += fixCallArgTypesInBody(func.body, localTypes, globalTypes, mod.types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
+
+    // Fix struct.new field type mismatches (forward type-stack simulation)
+    totalFixups += fixStructNewFieldCoercion(func, mod.types, mod, numImports, sigs, localTypes, globalTypes, boxNumberIdx, unboxNumberIdx);
 
     // Fix nested structured blocks
     totalFixups += fixBody(func.body, mod.types, sigs, tags);
