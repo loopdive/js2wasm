@@ -1005,6 +1005,8 @@ function classifyImport(name: string, mod: WasmModule): ImportIntent {
   // Builtins
   if (name === "number_toString") return { type: "builtin", name };
   if (name === "number_toFixed") return { type: "builtin", name };
+  if (name === "number_toPrecision") return { type: "builtin", name };
+  if (name === "number_toExponential") return { type: "builtin", name };
 
   // Date
   if (name === "Date_new") return { type: "date_new" };

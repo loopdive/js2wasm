@@ -430,6 +430,45 @@ export function flushLateImportShifts(
 }
 
 /**
+ * Ensure the __get_undefined host import exists, returning its funcIdx.
+ * This import returns the actual JS `undefined` value as externref,
+ * allowing Wasm to distinguish null from undefined at runtime.
+ */
+export function ensureGetUndefined(
+  ctx: CodegenContext,
+): number | undefined {
+  return ensureLateImport(ctx, "__get_undefined", [], [{ kind: "externref" }]);
+}
+
+/**
+ * Emit instructions that push the JS `undefined` value onto the stack.
+ * Uses the __get_undefined host import when available; falls back to
+ * ref.null.extern (indistinguishable from null) in standalone mode.
+ */
+export function emitUndefined(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+): void {
+  const funcIdx = ensureGetUndefined(ctx);
+  if (funcIdx !== undefined) {
+    flushLateImportShifts(ctx, fctx);
+    fctx.body.push({ op: "call", funcIdx });
+  } else {
+    fctx.body.push({ op: "ref.null.extern" });
+  }
+}
+
+/**
+ * Ensure the __extern_is_undefined host import exists, returning its funcIdx.
+ * This import checks if an externref value is JS `undefined` (not null).
+ */
+export function ensureExternIsUndefinedImport(
+  ctx: CodegenContext,
+): number | undefined {
+  return ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+}
+
+/**
  * After dynamically adding a field to a struct type, patch all existing
  * struct.new instructions for that type by inserting a default value
  * instruction immediately before each struct.new.  This ensures the
@@ -969,22 +1008,24 @@ function compileExpressionInner(
     return { kind: "i32" };
   }
 
-  if (
-    expr.kind === ts.SyntaxKind.NullKeyword ||
-    expr.kind === ts.SyntaxKind.UndefinedKeyword
-  ) {
+  if (expr.kind === ts.SyntaxKind.NullKeyword) {
     fctx.body.push({ op: "ref.null.extern" });
     return { kind: "externref" };
   }
 
+  if (expr.kind === ts.SyntaxKind.UndefinedKeyword) {
+    emitUndefined(ctx, fctx);
+    return { kind: "externref" };
+  }
+
   if (ts.isIdentifier(expr) && expr.text === "undefined") {
-    fctx.body.push({ op: "ref.null.extern" });
+    emitUndefined(ctx, fctx);
     return { kind: "externref" };
   }
 
   // OmittedExpression — array hole/elision, equivalent to undefined
   if (ts.isOmittedExpression(expr)) {
-    fctx.body.push({ op: "ref.null.extern" });
+    emitUndefined(ctx, fctx);
     return { kind: "externref" };
   }
 
@@ -999,7 +1040,7 @@ function compileExpressionInner(
       return localDef?.type ?? { kind: "externref" };
     }
     // In module/global scope (strict mode), `this` is undefined.
-    fctx.body.push({ op: "ref.null.extern" });
+    emitUndefined(ctx, fctx);
     return { kind: "externref" };
   }
 
@@ -1091,7 +1132,7 @@ function compileExpressionInner(
         fctx.body.push({ op: "drop" });
       }
     }
-    fctx.body.push({ op: "ref.null.extern" });
+    emitUndefined(ctx, fctx);
     return { kind: "externref" };
   }
 
@@ -1118,7 +1159,7 @@ function compileExpressionInner(
       return { kind: "i32" };
     } else {
       // Outside a constructor, new.target is undefined.
-      fctx.body.push({ op: "ref.null.extern" });
+      emitUndefined(ctx, fctx);
       return { kind: "externref" };
     }
   }
@@ -11324,6 +11365,96 @@ function compileCallExpression(
         return { kind: "externref" };
       }
     }
+    // number.toPrecision(precision)
+    if (isNumberType(receiverType) && propAccess.name.text === "toPrecision") {
+      const exprType = compileExpression(ctx, fctx, propAccess.expression);
+      if (exprType && exprType.kind === "i32") {
+        fctx.body.push({ op: "f64.convert_i32_s" });
+      }
+      if (expr.arguments.length > 0) {
+        compileExpression(ctx, fctx, expr.arguments[0]!);
+        // RangeError: precision must be 1-100
+        const precLocal = allocLocal(fctx, `__toPrecision_prec_${fctx.locals.length}`, { kind: "f64" });
+        fctx.body.push({ op: "local.tee", index: precLocal });
+        fctx.body.push({ op: "f64.const", value: 1 });
+        fctx.body.push({ op: "f64.lt" });
+        fctx.body.push({ op: "local.get", index: precLocal });
+        fctx.body.push({ op: "f64.const", value: 100 });
+        fctx.body.push({ op: "f64.gt" });
+        fctx.body.push({ op: "i32.or" });
+        {
+          const rangeErrMsg = "RangeError: toPrecision() argument must be between 1 and 100";
+          addStringConstantGlobal(ctx, rangeErrMsg);
+          const strIdx = ctx.stringGlobalMap.get(rangeErrMsg)!;
+          const tagIdx = ensureExnTag(ctx);
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: [
+              { op: "global.get", index: strIdx } as Instr,
+              { op: "throw", tagIdx } as Instr,
+            ],
+            else: [],
+          });
+        }
+        fctx.body.push({ op: "local.get", index: precLocal });
+      } else {
+        // No argument → same as number.toString()
+        const funcIdx = ctx.funcMap.get("number_toString");
+        if (funcIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx });
+          return { kind: "externref" };
+        }
+      }
+      const funcIdx = ctx.funcMap.get("number_toPrecision");
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+        return { kind: "externref" };
+      }
+    }
+    // number.toExponential(fractionDigits)
+    if (isNumberType(receiverType) && propAccess.name.text === "toExponential") {
+      const exprType = compileExpression(ctx, fctx, propAccess.expression);
+      if (exprType && exprType.kind === "i32") {
+        fctx.body.push({ op: "f64.convert_i32_s" });
+      }
+      if (expr.arguments.length > 0) {
+        compileExpression(ctx, fctx, expr.arguments[0]!);
+        // RangeError: fractionDigits must be 0-100
+        const digitsLocal = allocLocal(fctx, `__toExponential_digits_${fctx.locals.length}`, { kind: "f64" });
+        fctx.body.push({ op: "local.tee", index: digitsLocal });
+        fctx.body.push({ op: "f64.const", value: 0 });
+        fctx.body.push({ op: "f64.lt" });
+        fctx.body.push({ op: "local.get", index: digitsLocal });
+        fctx.body.push({ op: "f64.const", value: 100 });
+        fctx.body.push({ op: "f64.gt" });
+        fctx.body.push({ op: "i32.or" });
+        {
+          const rangeErrMsg = "RangeError: toExponential() argument must be between 0 and 100";
+          addStringConstantGlobal(ctx, rangeErrMsg);
+          const strIdx = ctx.stringGlobalMap.get(rangeErrMsg)!;
+          const tagIdx = ensureExnTag(ctx);
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: [
+              { op: "global.get", index: strIdx } as Instr,
+              { op: "throw", tagIdx } as Instr,
+            ],
+            else: [],
+          });
+        }
+        fctx.body.push({ op: "local.get", index: digitsLocal });
+      } else {
+        // No argument → pass NaN as sentinel for "no argument provided"
+        fctx.body.push({ op: "f64.const", value: NaN });
+      }
+      const funcIdx = ctx.funcMap.get("number_toExponential");
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx });
+        return { kind: "externref" };
+      }
+    }
 
     // String method calls
     if (isStringType(receiverType)) {
@@ -12907,10 +13038,10 @@ function compileCallExpression(
         }
       }
 
-      // Try number method: number.toString(), number.toFixed()
+      // Try number method: number.toString(), number.toFixed(), toPrecision(), toExponential()
       if (
         isNumberType(receiverType) &&
-        (methodName === "toString" || methodName === "toFixed")
+        (methodName === "toString" || methodName === "toFixed" || methodName === "toPrecision" || methodName === "toExponential")
       ) {
         // RangeError validation for toString(radix) — radix must be 2-36
         if (methodName === "toString" && expr.arguments.length > 0) {
@@ -12974,9 +13105,77 @@ function compileCallExpression(
         } else if (methodName === "toFixed") {
           fctx.body.push({ op: "f64.const", value: 0 });
         }
-        const funcIdx = ctx.funcMap.get(
-          methodName === "toFixed" ? "number_toFixed" : "number_toString",
-        );
+        if (methodName === "toPrecision" && expr.arguments.length > 0) {
+          compileExpression(ctx, fctx, expr.arguments[0]!);
+          // RangeError: precision must be 1-100
+          const precLocal = allocLocal(fctx, `__toPrecision_prec_${fctx.locals.length}`, { kind: "f64" });
+          fctx.body.push({ op: "local.tee", index: precLocal });
+          fctx.body.push({ op: "f64.const", value: 1 });
+          fctx.body.push({ op: "f64.lt" });
+          fctx.body.push({ op: "local.get", index: precLocal });
+          fctx.body.push({ op: "f64.const", value: 100 });
+          fctx.body.push({ op: "f64.gt" });
+          fctx.body.push({ op: "i32.or" });
+          {
+            const rangeErrMsg = "RangeError: toPrecision() argument must be between 1 and 100";
+            addStringConstantGlobal(ctx, rangeErrMsg);
+            const strIdx = ctx.stringGlobalMap.get(rangeErrMsg)!;
+            const tagIdx = ensureExnTag(ctx);
+            fctx.body.push({
+              op: "if",
+              blockType: { kind: "empty" },
+              then: [
+                { op: "global.get", index: strIdx } as Instr,
+                { op: "throw", tagIdx } as Instr,
+              ],
+              else: [],
+            });
+          }
+          fctx.body.push({ op: "local.get", index: precLocal });
+        } else if (methodName === "toPrecision") {
+          // No argument → same as toString()
+          const funcIdx = ctx.funcMap.get("number_toString");
+          if (funcIdx !== undefined) {
+            fctx.body.push({ op: "call", funcIdx });
+            return { kind: "externref" };
+          }
+        }
+        if (methodName === "toExponential" && expr.arguments.length > 0) {
+          compileExpression(ctx, fctx, expr.arguments[0]!);
+          // RangeError: fractionDigits must be 0-100
+          const digitsLocal2 = allocLocal(fctx, `__toExponential_digits_${fctx.locals.length}`, { kind: "f64" });
+          fctx.body.push({ op: "local.tee", index: digitsLocal2 });
+          fctx.body.push({ op: "f64.const", value: 0 });
+          fctx.body.push({ op: "f64.lt" });
+          fctx.body.push({ op: "local.get", index: digitsLocal2 });
+          fctx.body.push({ op: "f64.const", value: 100 });
+          fctx.body.push({ op: "f64.gt" });
+          fctx.body.push({ op: "i32.or" });
+          {
+            const rangeErrMsg = "RangeError: toExponential() argument must be between 0 and 100";
+            addStringConstantGlobal(ctx, rangeErrMsg);
+            const strIdx = ctx.stringGlobalMap.get(rangeErrMsg)!;
+            const tagIdx = ensureExnTag(ctx);
+            fctx.body.push({
+              op: "if",
+              blockType: { kind: "empty" },
+              then: [
+                { op: "global.get", index: strIdx } as Instr,
+                { op: "throw", tagIdx } as Instr,
+              ],
+              else: [],
+            });
+          }
+          fctx.body.push({ op: "local.get", index: digitsLocal2 });
+        } else if (methodName === "toExponential") {
+          // No argument → pass NaN sentinel
+          fctx.body.push({ op: "f64.const", value: NaN });
+        }
+        const funcName = methodName === "toFixed" ? "number_toFixed"
+          : methodName === "toPrecision" ? "number_toPrecision"
+          : methodName === "toExponential" ? "number_toExponential"
+          : "number_toString";
+        const funcIdx = ctx.funcMap.get(funcName);
         if (funcIdx !== undefined) {
           fctx.body.push({ op: "call", funcIdx });
           return { kind: "externref" };

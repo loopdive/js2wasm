@@ -68,12 +68,15 @@ function resolveImport(
       const name = intent.name;
       if (name === "number_toString") return (v: number) => String(v);
       if (name === "number_toFixed") return (v: number, d: number) => v.toFixed(d);
+      if (name === "number_toPrecision") return (v: number, p: number) => v.toPrecision(p);
+      if (name === "number_toExponential") return (v: number, d: number) => isNaN(d) ? v.toExponential() : v.toExponential(d);
       if (name === "JSON_stringify") return (v: any) => JSON.stringify(v);
       if (name === "JSON_parse") return (s: any) => JSON.parse(s);
       if (name === "__extern_get") return (obj: any, key: any) => (obj == null ? undefined : obj[key]);
       if (name === "__extern_set") return (obj: any, key: any, val: any) => { if (obj != null) obj[key] = val; };
       if (name === "__extern_length") return (obj: any) => (obj == null ? 0 : obj.length);
       if (name === "__extern_is_undefined") return (v: any) => v === undefined ? 1 : 0;
+      if (name === "__get_undefined") return () => undefined;
       if (name === "__object_freeze") return (obj: any) => Object.freeze(obj);
       if (name === "__object_seal") return (obj: any) => Object.seal(obj);
       if (name === "__object_preventExtensions") return (obj: any) => Object.preventExtensions(obj);
@@ -150,7 +153,11 @@ function resolveImport(
       if (name === "__gen_result_value_f64") return (result: any) => Number(result.value);
       if (name === "__gen_result_done") return (result: any) => result.done ? 1 : 0;
       // Iterator protocol: host-delegated iteration for non-array types
-      if (name === "__iterator") return (obj: any) => obj[Symbol.iterator]();
+      if (name === "__iterator") return (obj: any) => {
+        const fn = obj[Symbol.iterator];
+        if (typeof fn === "function") return fn.call(obj);
+        throw new TypeError((typeof obj === "object" ? Object.prototype.toString.call(obj) : String(obj)) + " is not iterable");
+      };
       if (name === "__async_iterator") return (obj: any) => {
         const asyncIter = obj[Symbol.asyncIterator];
         if (asyncIter) return asyncIter.call(obj);
