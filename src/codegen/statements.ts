@@ -6833,14 +6833,18 @@ function getCol(node: ts.Node): number {
 }
 
 /**
- * Check if a node tree references the `arguments` identifier
- * (skipping nested functions/arrows which have their own scope).
+ * Check if a node tree references the `arguments` identifier.
+ * Skips nested function declarations and function expressions (which have
+ * their own `arguments` binding), but traverses into arrow functions
+ * because arrows inherit the enclosing function's `arguments`.
  */
 function bodyUsesArguments(node: ts.Node): boolean {
   if (ts.isIdentifier(node) && node.text === "arguments") return true;
-  if (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node)) {
+  if (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node)) {
     return false;
   }
+  // Arrow functions do NOT have their own `arguments` — they inherit
+  // the enclosing function's, so we must traverse into them.
   return ts.forEachChild(node, bodyUsesArguments) ?? false;
 }
 
