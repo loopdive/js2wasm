@@ -137,10 +137,8 @@ export function shouldSkip(
     return { skip: true, reason: "imports _FIXTURE helper module" };
   }
 
-  // Skip class/elements/ and String/prototype tests — valueOf recursion hangs.
-  // TODO: fix valueOf recursion root cause, then re-enable String tests.
-  if (filePath && (/class\/elements\//.test(filePath) ||
-      /String\/prototype\//.test(filePath))) {
+  // Skip class/elements/ tests — compilation hangs in wrapped context (#793).
+  if (filePath && /class\/elements\//.test(filePath)) {
     return {
       skip: true,
       reason: "private class element compilation hang (#793)",

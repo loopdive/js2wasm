@@ -1242,7 +1242,19 @@ export function coerceType(
     return;
   }
   // ref (struct) → f64: JS ToNumber semantics — check @@toPrimitive("number") first, then valueOf
+  // Re-entrancy guard: prevent infinite recursion when valueOf itself returns a struct.
   if ((from.kind === "ref" || from.kind === "ref_null") && to.kind === "f64") {
+    const wasInsideValueOf = (ctx as any).__insideValueOfCoercion ?? false;
+    if (wasInsideValueOf) {
+      // Already inside a valueOf coercion — don't recurse, return NaN
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "f64.const", value: NaN });
+      return;
+    }
+    (ctx as any).__insideValueOfCoercion = true;
+    // The flag is cleared in a finally-like pattern — we save/restore it
+    // before every return. Using a wrapper to keep it clean:
+    const cleanup = () => { (ctx as any).__insideValueOfCoercion = wasInsideValueOf; };
     const typeIdx = (from as { typeIdx: number }).typeIdx;
     for (const [name, idx] of ctx.structMap) {
       if (idx === typeIdx) {
@@ -1272,7 +1284,7 @@ export function coerceType(
             }
           }
           // f64 return → already correct type
-          return;
+          cleanup(); return;
         }
         const fields = ctx.structFields.get(name);
         if (!fields) { break; }
@@ -1312,19 +1324,19 @@ export function coerceType(
               fctx.body.push({ op: "drop" });
               fctx.body.push({ op: "f64.const", value: NaN });
             }
-            return;
+            cleanup(); return;
           }
           // No valueOf — ToNumber({}) = NaN per spec
           fctx.body.push({ op: "drop" });
           fctx.body.push({ op: "f64.const", value: NaN });
-          return;
+          cleanup(); return;
         }
         const valueOfField = fields[fieldIdx];
         if (!valueOfField) {
           // Field index valid from findIndex but entry missing — treat as NaN
           fctx.body.push({ op: "drop" });
           fctx.body.push({ op: "f64.const", value: NaN });
-          return;
+          cleanup(); return;
         }
         if (valueOfField.type.kind === "ref" || valueOfField.type.kind === "ref_null") {
           // valueOf is a closure ref — call it via call_ref
@@ -1385,14 +1397,14 @@ export function coerceType(
               fctx.body.push({ op: "f64.const", value: NaN });
             }
             // f64 return → value is already on stack
-            return;
+            cleanup(); return;
           }
         }
         if (valueOfField.type.kind === "externref") {
           // valueOf is externref (can't call_ref) — push NaN
           fctx.body.push({ op: "drop" });
           fctx.body.push({ op: "f64.const", value: NaN });
-          return;
+          cleanup(); return;
         }
         if (valueOfField.type.kind === "eqref") {
           // valueOf field is eqref (a closure struct stored without externref wrapping).
