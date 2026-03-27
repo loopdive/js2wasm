@@ -557,12 +557,32 @@ export function patchStructNewForAddedField(
  * Returns null only for void expressions that intentionally produce no value.
  * For failed expressions, pushes a typed fallback to keep the stack balanced.
  */
+// Recursion depth counter — prevents infinite compilation loops from valueOf/toString chains
+let __compileDepth = 0;
+const MAX_COMPILE_DEPTH = 200;
+export function resetCompileDepth(): void { __compileDepth = 0; }
+
 export function compileExpression(
   ctx: CodegenContext,
   fctx: FunctionContext,
   expr: ts.Expression,
   expectedType?: ValType,
 ): ValType | null {
+  // Recursion guard — bail with compile error if depth exceeded
+  __compileDepth++;
+  if (__compileDepth > MAX_COMPILE_DEPTH) {
+    __compileDepth = 0; // reset for next compilation
+    ctx.errors.push({
+      message: `compilation depth exceeded (${MAX_COMPILE_DEPTH}) — possible infinite recursion`,
+      line: 0,
+      column: 0,
+    });
+    const fallbackType = expectedType ?? { kind: "externref" as const };
+    if (fallbackType.kind === "f64") fctx.body.push({ op: "f64.const", value: 0 });
+    else if (fallbackType.kind === "i32") fctx.body.push({ op: "i32.const", value: 0 });
+    else fctx.body.push({ op: "ref.null.extern" } as any);
+    return fallbackType;
+  }
   // Guard: if the AST node is undefined/null, report an error and produce a
   // typed default value instead of crashing with "Cannot read 'kind' of undefined".
   if (!expr) {
