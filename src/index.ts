@@ -16,7 +16,8 @@ export type ImportIntent =
   | { type: "date_new" }
   | { type: "date_method"; method: string }
   | { type: "declared_global"; name: string }
-  | { type: "dynamic_import" };
+  | { type: "dynamic_import" }
+  | { type: "proxy_create" };
 
 export interface ImportDescriptor {
   module: "env" | "wasm:js-string" | "string_constants";
