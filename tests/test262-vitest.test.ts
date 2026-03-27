@@ -22,6 +22,7 @@ import {
   wrapTest,
   shouldSkip,
   lookupSourceMapOffset,
+  classifyError,
   TEST_CATEGORIES,
 } from "./test262-runner.js";
 
@@ -236,6 +237,12 @@ const REPORT_FLUSH_INTERVAL = 500; // update report.json every 500 tests
 const summary = { total: 0, pass: 0, fail: 0, compile_error: 0, skip: 0 };
 const catCounts: Record<string, { pass: number; fail: number; compile_error: number; skip: number; total: number }> = {};
 
+/**
+ * Error category counts — tracks how many failures fall into each bucket.
+ * See classifyError() in test262-runner.ts for category definitions.
+ */
+const errorCategoryCounts: Record<string, number> = {};
+
 /** Thrown by recordResult for non-passing tests so vitest reports real failures */
 class ConformanceError extends Error {
   constructor(status: string, detail?: string) {
@@ -245,13 +252,25 @@ class ConformanceError extends Error {
 }
 
 function recordResult(file: string, category: string, status: string, error?: string) {
-  const entry = JSON.stringify({ file, category, status, error: error || undefined });
+  const errorCategory = (status === "fail" || status === "compile_error") ? classifyError(error) : undefined;
+  const entry = JSON.stringify({
+    file,
+    category,
+    status,
+    error: error || undefined,
+    error_category: errorCategory,
+  });
   fdWrite(jsonlFd, entry + "\n");
   summary.total++;
   (summary as any)[status]++;
   if (!catCounts[category]) catCounts[category] = { pass: 0, fail: 0, compile_error: 0, skip: 0, total: 0 };
   (catCounts[category] as any)[status]++;
   catCounts[category].total++;
+
+  // Track error category counts
+  if (errorCategory) {
+    errorCategoryCounts[errorCategory] = (errorCategoryCounts[errorCategory] || 0) + 1;
+  }
 
   // Periodically flush JSONL and update report.json for live viewing
   flushCount++;
@@ -265,6 +284,7 @@ function recordResult(file: string, category: string, status: string, error?: st
       categories: Object.entries(catCounts)
         .map(([name, c]) => ({ name, ...c }))
         .sort((a, b) => a.name.localeCompare(b.name)),
+      error_categories: { ...errorCategoryCounts },
     };
     try { writeSync(REPORT_PATH, JSON.stringify(report, null, 2)); } catch {}
   }
@@ -285,8 +305,18 @@ afterAll(() => {
     categories: Object.entries(catCounts)
       .map(([name, c]) => ({ name, ...c }))
       .sort((a, b) => a.name.localeCompare(b.name)),
+    error_categories: { ...errorCategoryCounts },
   };
   writeSync(REPORT_PATH, JSON.stringify(report, null, 2));
+
+  // Print error category breakdown
+  const ecEntries = Object.entries(errorCategoryCounts).sort((a, b) => b[1] - a[1]);
+  if (ecEntries.length > 0) {
+    console.log(`\nError categories:`);
+    for (const [cat, count] of ecEntries) {
+      console.log(`  ${cat}: ${count}`);
+    }
+  }
   console.log(`\nTest262: ${summary.total} total — ${summary.pass} pass, ${summary.fail} fail, ${summary.compile_error} CE, ${summary.skip} skip`);
 
   // Append to historical index (runs/index.json) for trend tracking
