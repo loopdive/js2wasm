@@ -11665,7 +11665,8 @@ function compileCallExpression(
             else: [],
           });
         }
-        fctx.body.push({ op: "drop" }); // drop radix, toString still uses base-10
+        // radix was consumed by the validation comparisons above (via local.tee),
+        // no extra drop needed
       }
       const exprType = compileExpression(ctx, fctx, propAccess.expression);
       // number_toString expects f64 but source may be i32 (e.g. string.length)
@@ -13445,7 +13446,8 @@ function compileCallExpression(
               else: [],
             });
           }
-          fctx.body.push({ op: "drop" }); // drop radix, toString still uses base-10
+          // radix was consumed by the validation comparisons above (via local.tee),
+          // no extra drop needed
         }
         const exprType = compileExpression(ctx, fctx, elemAccess.expression);
         if (exprType && exprType.kind === "i32") {
