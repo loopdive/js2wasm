@@ -1,9 +1,9 @@
 {
-  "timestamp": "2026-03-27T08:59:16.446Z",
+  "timestamp": "2026-03-27T09:06:39.859Z",
   "summary": {
     "total": 49880,
-    "pass": 14151,
-    "fail": 25661,
+    "pass": 14169,
+    "fail": 25643,
     "compile_error": 800,
     "skip": 9268,
     "compilable": 39812,
@@ -12,8 +12,8 @@
   "categories": [
     {
       "name": "annexB/built-ins",
-      "pass": 45,
-      "fail": 204,
+      "pass": 44,
+      "fail": 205,
       "compile_error": 0,
       "skip": 0,
       "total": 249
@@ -44,8 +44,8 @@
     },
     {
       "name": "built-ins/Array",
-      "pass": 414,
-      "fail": 2717,
+      "pass": 420,
+      "fail": 2711,
       "compile_error": 21,
       "skip": 19,
       "total": 3171
@@ -92,24 +92,24 @@
     },
     {
       "name": "built-ins/AsyncGeneratorFunction",
-      "pass": 0,
-      "fail": 23,
+      "pass": 1,
+      "fail": 22,
       "compile_error": 0,
       "skip": 0,
       "total": 23
     },
     {
       "name": "built-ins/AsyncGeneratorPrototype",
-      "pass": 9,
-      "fail": 39,
+      "pass": 10,
+      "fail": 38,
       "compile_error": 0,
       "skip": 0,
       "total": 48
     },
     {
       "name": "built-ins/AsyncIteratorPrototype",
-      "pass": 7,
-      "fail": 11,
+      "pass": 8,
+      "fail": 10,
       "compile_error": 0,
       "skip": 0,
       "total": 18
@@ -276,8 +276,8 @@
     },
     {
       "name": "built-ins/Iterator",
-      "pass": 89,
-      "fail": 432,
+      "pass": 90,
+      "fail": 431,
       "compile_error": 13,
       "skip": 0,
       "total": 534
@@ -308,8 +308,8 @@
     },
     {
       "name": "built-ins/Math",
-      "pass": 211,
-      "fail": 110,
+      "pass": 221,
+      "fail": 100,
       "compile_error": 10,
       "skip": 0,
       "total": 331
@@ -380,16 +380,16 @@
     },
     {
       "name": "built-ins/Reflect",
-      "pass": 25,
-      "fail": 126,
+      "pass": 24,
+      "fail": 127,
       "compile_error": 2,
       "skip": 0,
       "total": 153
     },
     {
       "name": "built-ins/RegExp",
-      "pass": 912,
-      "fail": 968,
+      "pass": 913,
+      "fail": 967,
       "compile_error": 4,
       "skip": 0,
       "total": 1884
@@ -612,8 +612,8 @@
     },
     {
       "name": "language/expressions",
-      "pass": 4147,
-      "fail": 4872,
+      "pass": 4146,
+      "fail": 4873,
       "compile_error": 275,
       "skip": 2398,
       "total": 11692

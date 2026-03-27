@@ -1,43 +1,38 @@
 ---
 name: project_next_session
-description: 2026-03-27 session — real pass 15,833, regression from null guards, sprint plan ready
+description: 2026-03-27 — 15,380 real pass, 4 devs working, patches saved
 type: project
 ---
 
-## Current state (2026-03-27 ~02:05 UTC)
+## Current state (2026-03-27 ~03:00 UTC)
 
-**Git:** main branch, pushed
-**Test262 (real, excluding skips):** 15,833 pass / 26,978 fail / 6,177 skip / 870 CE
-**Pre-session:** 17,602 pass
-**Regression:** -1,769 from #775/#789 null guards
+**Git:** main at 25c23920, pushed
+**Test262 (real):** 15,380 pass / 49,861 total (6,177 skip, 693 CE)
+**Pre-session:** 17,602 — still regressed by -1,769 from null guards
+
+## Active devs (team ts2wasm-w6, may be orphaned)
+- dev-regress: fixing -617 regression (#815) — 44 ins / 254 del in stack-balance.ts + expressions.ts
+- dev-rest: rest/spread destructuring (#761) — 84 ins across 3 files
+- dev-syntax: SyntaxError gaps (#736) — 211 ins in compiler.ts
+- dev-cast2: illegal cast (#778) — 22 ins
+
+## Patches saved at /tmp/patch-final-*.diff (847 lines total)
+If agents get killed, apply: `git apply /tmp/patch-final-*.diff`
 
 ## CRITICAL: vitest "pass" includes skips
-The vitest runner reports 22,010 "pass" but 6,177 of those are skips (Temporal, strict-mode, private class). Real pass is 15,833. Always check the report JSON for true numbers.
+Always check report JSON for real numbers, not vitest summary.
 
-## Sprint plan (from PO, in plan/sprint-current.md)
-Wave 1: #812 (extern class 801 fail), #814 (ArrayBuffer 413 fail), #813 (gen.next 1164 fail), #789 (null guard 15,630 fail)
-Wave 2: #766 Symbol.iterator, #761 rest/spread, #737 undefined, #733 RangeError
-Wave 3-8: See plan/sprint-current.md
+## Sprint plan: plan/sprint-current.md
+Wave 1 done (#812, #813, #814). Wave 2 in progress (#789, #766, #761, #737, #733, #736, #778).
 
-## Active devs (team ts2wasm-w4)
-- dev-1: struct.new/call arg count (3,492 CE)
-- dev-2: gen.next not a function (1,164 fail)
-- dev-3: stack balance (2,901 CE) — has 18 lines in wt-fallthru
-- dev-4: illegal cast (1,026 fail) — has 35 lines across 3 files
-
-## Fixes landed this session
-- Dead code elimination after terminators
-- Local.set type coercion post-pass
-- Method call fallback reverted from TypeError to externref
-- __proto__ field removed (caused -3,419 regression)
+## What was accomplished this session
+- Exception tag export, catch_all, rethrow
+- Property descriptors, freeze/seal, getOwnPropertyDescriptor (compile-away)
 - Struct.new forward type-stack simulation
 - TDZ compile-away, typeof compile-away
-- Exception tag export, catch_all, rethrow
-- Property descriptors, freeze/seal, getOwnPropertyDescriptor
-- Cache fix: bundle-based hash + auto-rebuild
-
-## Key lessons
-- vitest "pass" includes skips — always check report JSON
-- Don't kill agents without user permission
-- "No code changes" doesn't mean stuck — research is valid
-- Post-processing fixup passes (stack-balance.ts) are effective for CE reduction
+- Dead code elimination
+- Local.set type coercion post-pass
+- Cache fix (bundle-based hash + auto-rebuild)
+- Method call fallback reverted (fixed -2,281 regression)
+- __proto__ field removed (fixed -3,419 regression)
+- Test infra: flock, Temporal skip, statusline fixes
