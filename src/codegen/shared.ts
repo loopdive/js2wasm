@@ -18,6 +18,30 @@ import type { ValType } from "../ir/types.js";
 export const VOID_RESULT = Symbol("void");
 export type InnerResult = ValType | null | typeof VOID_RESULT;
 
+// ── resolveThisStructName ─────────────────────────────────────────────
+
+/**
+ * When `this` is typed as `any` (e.g., in function constructors), resolve the
+ * struct name from the local's ref type index. Used as a fallback when
+ * resolveStructName returns undefined for `this`-property accesses/assignments.
+ */
+export function resolveThisStructName(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+): string | undefined {
+  const selfIdx = fctx.localMap.get("this");
+  if (selfIdx === undefined) return undefined;
+  const selfType = selfIdx < fctx.params.length
+    ? fctx.params[selfIdx]!.type
+    : fctx.locals[selfIdx - fctx.params.length]?.type;
+  if (!selfType || (selfType.kind !== "ref" && selfType.kind !== "ref_null")) return undefined;
+  const typeIdx = (selfType as { typeIdx: number }).typeIdx;
+  for (const [name, idx] of ctx.structMap) {
+    if (idx === typeIdx) return name;
+  }
+  return undefined;
+}
+
 // ── valTypesMatch ─────────────────────────────────────────────────────
 
 /** Check if two ValTypes are structurally equal */

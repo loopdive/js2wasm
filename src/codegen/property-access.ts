@@ -23,6 +23,7 @@ import type { Instr, ValType, FieldDef } from "../ir/types.js";
 import { coercionInstrs, defaultValueInstrs } from "./type-coercion.js";
 import {
   compileExpression, valTypesMatch, getLine, getCol,
+  resolveThisStructName,
 } from "./shared.js";
 import {
   coerceType,
@@ -1049,6 +1050,10 @@ export function compilePropertyAccess(
   // Fallback: check widened variable struct map for empty objects with later-assigned props
   if (!typeName && ts.isIdentifier(expr.expression)) {
     typeName = ctx.widenedVarStructMap.get(expr.expression.text);
+  }
+  // Fallback for `this.prop` in function constructors
+  if (!typeName && expr.expression.kind === ts.SyntaxKind.ThisKeyword) {
+    typeName = resolveThisStructName(ctx, fctx);
   }
   if (typeName) {
     const accessorKey = `${typeName}_${propName}`;

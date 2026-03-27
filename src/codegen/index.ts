@@ -760,6 +760,8 @@ export interface CodegenContext {
    * Object.keys/getOwnPropertyDescriptor (#797d) at runtime.
    */
   shapePropFlags: Map<number, Uint8Array>;
+  /** Cache for function-constructor struct types: funcName → { structTypeIdx, ctorFuncName } */
+  funcConstructorMap: Map<string, { structTypeIdx: number; ctorFuncName: string }>;
 }
 
 /** Metadata for a function eligible for call-site inlining */
@@ -994,6 +996,7 @@ export function createCodegenContext(
     frozenVars: new Set(),
     sealedVars: new Set(),
     shapePropFlags: new Map(),
+    funcConstructorMap: new Map(),
   };
 
   // Pre-register common vec types so they're available during early compilation (#647)

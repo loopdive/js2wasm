@@ -76,6 +76,7 @@ import {
   registerFlushLateImportShifts,
   valTypesMatch,
   VOID_RESULT,
+  resolveThisStructName,
 } from "./shared.js";
 import { compileStatement, emitTdzCheck, hoistFunctionDeclarations } from "./statements.js";
 import {
@@ -3306,6 +3307,10 @@ function emitAssignToTarget(
     if (!typeName && ts.isIdentifier(target.expression)) {
       typeName = ctx.widenedVarStructMap.get(target.expression.text);
     }
+    // Fallback for `this.prop` in function constructors
+    if (!typeName && target.expression.kind === ts.SyntaxKind.ThisKeyword) {
+      typeName = resolveThisStructName(ctx, fctx);
+    }
     if (!typeName) return;
 
     const structTypeIdx = ctx.structMap.get(typeName);
@@ -3734,6 +3739,10 @@ function compilePropertyAssignment(
   // Fallback: check widened variable struct map for empty objects that got properties added later
   if (!typeName && ts.isIdentifier(target.expression)) {
     typeName = ctx.widenedVarStructMap.get(target.expression.text);
+  }
+  // Fallback for `this.prop` in function constructors
+  if (!typeName && target.expression.kind === ts.SyntaxKind.ThisKeyword) {
+    typeName = resolveThisStructName(ctx, fctx);
   }
   if (!typeName) return null;
 
@@ -15341,6 +15350,209 @@ function flattenCallArgs(
 }
 
 /**
+ * Compile `new FuncDecl(args)` where FuncDecl is a function declaration used
+ * as a constructor (e.g. `function Foo() { this.x = 1; }; new Foo()`).
+ *
+ * Strategy:
+ * 1. Analyze the function body for `this.prop = value` assignments to determine struct fields.
+ * 2. Create a WasmGC struct type with those fields.
+ * 3. Create a constructor function that allocates the struct, binds `this`, runs the body, returns the struct.
+ * 4. Cache the struct type and constructor so subsequent `new Foo()` calls reuse them.
+ */
+function compileNewFunctionDeclaration(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.NewExpression,
+  funcName: string,
+  funcDecl: ts.FunctionDeclaration,
+): ValType | null {
+  const body = funcDecl.body;
+  if (!body) return null;
+
+  // 1. Analyze the function body for `this.prop = value` assignments
+  const fields: FieldDef[] = [];
+  function collectThisAssignments(stmts: ts.NodeArray<ts.Statement> | readonly ts.Statement[]): void {
+    for (const stmt of stmts) {
+      if (
+        ts.isExpressionStatement(stmt) &&
+        ts.isBinaryExpression(stmt.expression) &&
+        stmt.expression.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        ts.isPropertyAccessExpression(stmt.expression.left) &&
+        stmt.expression.left.expression.kind === ts.SyntaxKind.ThisKeyword
+      ) {
+        const fieldName = stmt.expression.left.name.text;
+        if (!fields.some((f) => f.name === fieldName)) {
+          // Prefer the RHS type — when `this` is `any`, the LHS type is also `any`
+          // (externref), but the RHS has concrete type info (e.g., number → f64).
+          const lhsType = ctx.checker.getTypeAtLocation(stmt.expression.left);
+          const rhsType = ctx.checker.getTypeAtLocation(stmt.expression.right);
+          const lhsWasm = resolveWasmType(ctx, lhsType);
+          const rhsWasm = resolveWasmType(ctx, rhsType);
+          // Use RHS type if LHS resolved to externref (i.e., `any`)
+          const fieldType = lhsWasm.kind === "externref" ? rhsWasm : lhsWasm;
+          fields.push({ name: fieldName, type: fieldType, mutable: true });
+        }
+      }
+      // Recurse into if/else blocks
+      if (ts.isIfStatement(stmt)) {
+        if (ts.isBlock(stmt.thenStatement)) {
+          collectThisAssignments(stmt.thenStatement.statements);
+        }
+        if (stmt.elseStatement && ts.isBlock(stmt.elseStatement)) {
+          collectThisAssignments(stmt.elseStatement.statements);
+        }
+      }
+      // Recurse into for/while/do blocks
+      if ((ts.isForStatement(stmt) || ts.isForInStatement(stmt) ||
+           ts.isForOfStatement(stmt) || ts.isWhileStatement(stmt) ||
+           ts.isDoStatement(stmt)) && ts.isBlock(stmt.statement)) {
+        collectThisAssignments(stmt.statement.statements);
+      }
+    }
+  }
+  collectThisAssignments(body.statements);
+
+  // If no this.prop assignments found, fall through to default handling
+  if (fields.length === 0) return null;
+
+  // Widen non-null ref fields to ref_null so struct.new can use ref.null defaults
+  for (const field of fields) {
+    if (field.type.kind === "ref") {
+      field.type = { kind: "ref_null", typeIdx: (field.type as { typeIdx: number }).typeIdx };
+    }
+  }
+
+  // 2. Create a struct type for the function constructor
+  const structName = `__fnctor_${funcName}`;
+  const structTypeIdx = ctx.mod.types.length;
+  ctx.mod.types.push({
+    kind: "struct",
+    name: structName,
+    fields,
+  });
+  ctx.structMap.set(structName, structTypeIdx);
+  ctx.structFields.set(structName, fields);
+
+  // 3. Build the constructor function
+  // Constructor params match the function declaration params
+  const ctorParams: ValType[] = [];
+  for (let i = 0; i < funcDecl.parameters.length; i++) {
+    const param = funcDecl.parameters[i]!;
+    const paramType = ctx.checker.getTypeAtLocation(param);
+    ctorParams.push(resolveWasmType(ctx, paramType));
+  }
+
+  const ctorName = `${structName}_new`;
+  const ctorResults: ValType[] = [{ kind: "ref", typeIdx: structTypeIdx }];
+  const ctorTypeIdx = addFuncType(ctx, ctorParams, ctorResults, `${ctorName}_type`);
+  const ctorFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+  ctx.funcMap.set(ctorName, ctorFuncIdx);
+
+  const ctorFunc = {
+    name: ctorName,
+    typeIdx: ctorTypeIdx,
+    locals: [] as { name: string; type: ValType }[],
+    body: [] as Instr[],
+    exported: false,
+  };
+  ctx.mod.functions.push(ctorFunc);
+
+  // Cache the mapping
+  ctx.funcConstructorMap.set(funcName, { structTypeIdx, ctorFuncName: ctorName });
+
+  // 4. Compile the constructor body
+  const paramDefs: { name: string; type: ValType }[] = [];
+  for (let i = 0; i < funcDecl.parameters.length; i++) {
+    const p = funcDecl.parameters[i]!;
+    paramDefs.push({
+      name: ts.isIdentifier(p.name) ? p.name.text : `__param${i}`,
+      type: ctorParams[i] ?? { kind: "f64" },
+    });
+  }
+
+  const ctorFctx: FunctionContext = {
+    name: ctorName,
+    params: paramDefs,
+    locals: [],
+    localMap: new Map(),
+    returnType: { kind: "ref", typeIdx: structTypeIdx },
+    body: [],
+    blockDepth: 0,
+    breakStack: [],
+    continueStack: [],
+    labelMap: new Map(),
+    savedBodies: [],
+  };
+
+  // Set up param locals
+  for (let i = 0; i < ctorFctx.params.length; i++) {
+    ctorFctx.localMap.set(ctorFctx.params[i]!.name, i);
+  }
+
+  // Allocate the struct instance with default values
+  for (const field of fields) {
+    if (field.type.kind === "f64") {
+      ctorFctx.body.push({ op: "f64.const", value: 0 });
+    } else if (field.type.kind === "i32") {
+      ctorFctx.body.push({ op: "i32.const", value: 0 });
+    } else if (field.type.kind === "i64") {
+      ctorFctx.body.push({ op: "i64.const", value: 0n } as unknown as Instr);
+    } else if (field.type.kind === "externref") {
+      ctorFctx.body.push({ op: "ref.null.extern" });
+    } else if (field.type.kind === "ref_null") {
+      ctorFctx.body.push({ op: "ref.null", typeIdx: (field.type as { typeIdx: number }).typeIdx } as Instr);
+    } else if (field.type.kind === "ref") {
+      ctorFctx.body.push({ op: "ref.null", typeIdx: (field.type as { typeIdx: number }).typeIdx } as Instr);
+    } else {
+      ctorFctx.body.push({ op: "i32.const", value: 0 });
+    }
+  }
+  ctorFctx.body.push({ op: "struct.new", typeIdx: structTypeIdx } as Instr);
+
+  // Store in __self local
+  const selfLocal = allocLocal(ctorFctx, "__self", { kind: "ref", typeIdx: structTypeIdx });
+  ctorFctx.body.push({ op: "local.set", index: selfLocal });
+
+  // Bind `this` to the struct
+  ctorFctx.localMap.set("this", selfLocal);
+
+  // Compile the function body
+  const savedFunc = ctx.currentFunc;
+  if (savedFunc) ctx.parentBodiesStack.push(savedFunc.body);
+  if (savedFunc) ctx.funcStack.push(savedFunc);
+  ctx.currentFunc = ctorFctx;
+  for (const stmt of body.statements) {
+    compileStatement(ctx, ctorFctx, stmt);
+  }
+  if (savedFunc) ctx.funcStack.pop();
+  if (savedFunc) ctx.parentBodiesStack.pop();
+  ctx.currentFunc = savedFunc;
+
+  // Return the struct instance
+  ctorFctx.body.push({ op: "local.get", index: selfLocal });
+
+  // Finalize the constructor function
+  ctorFunc.locals = ctorFctx.locals;
+  ctorFunc.body = ctorFctx.body;
+
+  // 5. Emit the call to the constructor at the call site
+  const args = expr.arguments ?? [];
+  const paramTypes = getFuncParamTypes(ctx, ctorFuncIdx);
+  for (let i = 0; i < args.length; i++) {
+    compileExpression(ctx, fctx, args[i]!, paramTypes?.[i]);
+  }
+  if (paramTypes) {
+    for (let i = args.length; i < paramTypes.length; i++) {
+      pushDefaultValue(fctx, paramTypes[i]!);
+    }
+  }
+  // Re-lookup funcIdx in case addUnionImports shifted indices
+  const finalCtorIdx = ctx.funcMap.get(ctorName) ?? ctorFuncIdx;
+  fctx.body.push({ op: "call", funcIdx: finalCtorIdx });
+  return { kind: "ref", typeIdx: structTypeIdx };
+}
+
+/**
  * Compile `new FunctionExpression(args)` — treats the function expression
  * as an immediately-invoked constructor. The function body is compiled
  * as a lifted closure function and called with the provided arguments.
@@ -16265,6 +16477,46 @@ function compileNewExpression(
       const mapped = ctx.classExprNameMap.get(idName);
       if (mapped && ctx.classSet.has(mapped)) {
         className = mapped;
+      }
+    }
+  }
+
+  // Check if the identifier resolves to a function declaration used as constructor
+  // (e.g. `function Foo() { this.x = 1; }; new Foo()`)
+  if ((!className || !ctx.classSet.has(className)) && ts.isIdentifier(expr.expression)) {
+    const fnName = expr.expression.text;
+    // Check cache first — if we already built a constructor for this function
+    const cachedFnCtor = ctx.funcConstructorMap.get(fnName);
+    if (cachedFnCtor) {
+      const ctorFuncIdx = ctx.funcMap.get(cachedFnCtor.ctorFuncName);
+      if (ctorFuncIdx !== undefined) {
+        const paramTypes = getFuncParamTypes(ctx, ctorFuncIdx);
+        const args = expr.arguments ?? [];
+        for (let i = 0; i < args.length; i++) {
+          compileExpression(ctx, fctx, args[i]!, paramTypes?.[i]);
+        }
+        if (paramTypes) {
+          for (let i = args.length; i < paramTypes.length; i++) {
+            pushDefaultValue(fctx, paramTypes[i]!);
+          }
+        }
+        const finalIdx = ctx.funcMap.get(cachedFnCtor.ctorFuncName) ?? ctorFuncIdx;
+        fctx.body.push({ op: "call", funcIdx: finalIdx });
+        return { kind: "ref", typeIdx: cachedFnCtor.structTypeIdx };
+      }
+    }
+    // Resolve via type checker to find the function declaration
+    if (!cachedFnCtor) {
+      const exprSymbol = ctx.checker.getSymbolAtLocation(expr.expression);
+      const decls = exprSymbol?.getDeclarations();
+      if (decls) {
+        for (const decl of decls) {
+          if (ts.isFunctionDeclaration(decl) && decl.body) {
+            const result = compileNewFunctionDeclaration(ctx, fctx, expr, fnName, decl);
+            if (result) return result;
+            break;
+          }
+        }
       }
     }
   }
