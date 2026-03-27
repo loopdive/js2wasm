@@ -1,43 +1,43 @@
 ---
 name: project_next_session
-description: 2026-03-27 session end — 20,162 pass (+2,560 from 17,602 baseline)
+description: 2026-03-27 session — real pass 15,833, regression from null guards, sprint plan ready
 type: project
 ---
 
-## Final state (2026-03-27 ~01:15 UTC)
+## Current state (2026-03-27 ~02:05 UTC)
 
 **Git:** main branch, pushed
-**Test262:** 20,162 pass / 29,696 fail (49,858 total, Temporal skipped)
+**Test262 (real, excluding skips):** 15,833 pass / 26,978 fail / 6,177 skip / 870 CE
 **Pre-session:** 17,602 pass
-**Session gain:** +2,560
+**Regression:** -1,769 from #775/#789 null guards
 
-## Fixes landed
-- Exception tag export, catch_all, rethrow (#798a/b/c)
-- Property descriptor table, getOwnPropertyDescriptor, freeze/seal (#797a/b/d)
-- Struct.new forward type-stack simulation (replaced fragile backward walk)
-- TDZ compile-away (static analysis)
-- Null guard skip for provably non-null, typeof compile-away (#800)
-- Method call fallback reverted from TypeError to externref (fixed -2,281 regression)
-- __proto__ field removed (fixed -3,419 regression)
-- Cache: bundle-based hash + auto-rebuild
-- Test infra: flock, Temporal skip, strict mode skip, private class skip
-- Tuple literal type fix for destructuring defaults (#801)
+## CRITICAL: vitest "pass" includes skips
+The vitest runner reports 22,010 "pass" but 6,177 of those are skips (Temporal, strict-mode, private class). Real pass is 15,833. Always check the report JSON for true numbers.
 
-## Top remaining CE patterns
-1. not enough arguments (3,492 CE) — struct.new/call arg count
-2. expected N elements on stack (2,901 CE) — stack balance
-3. call[] type mismatch (2,637 CE) — argument types
-4. local.set type mismatch (1,380 CE)
+## Sprint plan (from PO, in plan/sprint-current.md)
+Wave 1: #812 (extern class 801 fail), #814 (ArrayBuffer 413 fail), #813 (gen.next 1164 fail), #789 (null guard 15,630 fail)
+Wave 2: #766 Symbol.iterator, #761 rest/spread, #737 undefined, #733 RangeError
+Wave 3-8: See plan/sprint-current.md
 
-## Top remaining fail patterns
-1. gen.next not a function (1,164) — generator runtime
-2. illegal cast (1,026) — ref.cast wrong type
-3. stack overflow (958) — infinite recursion
+## Active devs (team ts2wasm-w4)
+- dev-1: struct.new/call arg count (3,492 CE)
+- dev-2: gen.next not a function (1,164 fail)
+- dev-3: stack balance (2,901 CE) — has 18 lines in wt-fallthru
+- dev-4: illegal cast (1,026 fail) — has 35 lines across 3 files
 
-## Principles
-- Compile away, don't emulate
-- No runtime fields on all structs (conditional only)
-- TTL runs test262, devs run npm test in worktree + flock
-- Bundle-based cache hash, auto-rebuild at import time
+## Fixes landed this session
+- Dead code elimination after terminators
+- Local.set type coercion post-pass
+- Method call fallback reverted from TypeError to externref
+- __proto__ field removed (caused -3,419 regression)
+- Struct.new forward type-stack simulation
+- TDZ compile-away, typeof compile-away
+- Exception tag export, catch_all, rethrow
+- Property descriptors, freeze/seal, getOwnPropertyDescriptor
+- Cache fix: bundle-based hash + auto-rebuild
 
-## 77 open issues in ready/
+## Key lessons
+- vitest "pass" includes skips — always check report JSON
+- Don't kill agents without user permission
+- "No code changes" doesn't mean stuck — research is valid
+- Post-processing fixup passes (stack-balance.ts) are effective for CE reduction
