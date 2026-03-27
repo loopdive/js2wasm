@@ -489,4 +489,7 @@
 | 775 | 2026-03-26 | Null guard system for property/element/method access (1,604 tests)                                 | Session    |
 | 792 | 2026-03-26 | emitGuardedRefCast multi-struct dispatch fix                                                        | Session    |
 | 798 | 2026-03-26 | try/catch JS exception interop — all subtasks done (798a/b/c)                                      | Session    |
+| 812 | 2026-03-26 | Test262Error extern class — 801 tests unblocked                                                    | W6-Wave1   |
+| 813 | 2026-03-26 | gen.next is not a function — 1,164 tests unblocked                                                 | W6-Wave1   |
+| 814 | 2026-03-26 | ArrayBuffer extern class — 413 tests unblocked                                                     | W6-Wave1   |
 

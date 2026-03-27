@@ -87,10 +87,17 @@
 | [641](../ready/641.md) | Medium | Shopify Functions template | Best adoption opportunity |
 | [642](../ready/642.md) | Low | Deno/Cloudflare loader plugins | Developer experience |
 
-## 6. New issues from 2026-03-26 session (not yet in sections above)
+## 6. New issues from 2026-03-26 session
 
 | # | Priority | Issue | Impact |
 |---|----------|-------|--------|
+| [815](../ready/815.md) | **CRITICAL** | Regression: -617 pass from patch-rescue commits | **617 PASS lost** |
+
+| # | Priority | Issue | Impact |
+|---|----------|-------|--------|
+| [812](../done/812.md) | ✅ Done | Test262Error extern class | 801 FAIL |
+| [813](../done/813.md) | ✅ Done | gen.next is not a function | 1,164 FAIL |
+| [814](../done/814.md) | ✅ Done | ArrayBuffer extern class | 413 FAIL |
 | [764](../ready/764.md) | Medium | Immutable global assignment error | 240 CE |
 | [766](../ready/766.md) | High | Symbol.iterator protocol for custom iterables | ~500 FAIL |
 | [778](../ready/778.md) | Medium | Illegal cast errors (ref.cast wrong type) | 135 FAIL |
