@@ -1053,7 +1053,27 @@ export function compileArrayLiteral(
   // is a vec type, but TS contextual type resolution sees a tuple pattern).
   const ctxTupleType = ctx.checker.getContextualType(expr) ?? ctx.checker.getTypeAtLocation(expr);
   if (ctxTupleType && isTupleType(ctxTupleType) && !(ctx as any)._arrayLiteralForceVec) {
-    return compileTupleLiteral(ctx, fctx, expr, ctxTupleType);
+    // When the contextual type gives degenerate tuple types (e.g. all void from
+    // destructuring defaults: `[w = counter()] = [null, 0, false, '']`),
+    // prefer getTypeAtLocation which reflects the actual literal element types (#801).
+    let tupleType = ctxTupleType;
+    if (expr.elements.length > 1) {
+      const ctxElemTypes = getTupleElementTypes(ctx, ctxTupleType);
+      const allSameKind = ctxElemTypes.length > 0 &&
+        ctxElemTypes.every((t) => t.kind === ctxElemTypes[0]!.kind);
+      if (allSameKind) {
+        const actualType = ctx.checker.getTypeAtLocation(expr);
+        if (actualType && isTupleType(actualType)) {
+          const actualElemTypes = getTupleElementTypes(ctx, actualType);
+          const actualHeterogeneous = actualElemTypes.length > 1 &&
+            !actualElemTypes.every((t) => t.kind === actualElemTypes[0]!.kind);
+          if (actualHeterogeneous) {
+            tupleType = actualType;
+          }
+        }
+      }
+    }
+    return compileTupleLiteral(ctx, fctx, expr, tupleType);
   }
 
   if (expr.elements.length === 0) {
