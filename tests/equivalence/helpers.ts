@@ -1,6 +1,6 @@
 import { expect } from "vitest";
 import { compile, type CompileResult } from "../../src/index.js";
-import { buildStringConstants } from "../../src/runtime.js";
+import { buildStringConstants, buildImports as buildRuntimeImports } from "../../src/runtime.js";
 import ts from "typescript";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -166,10 +166,29 @@ export async function compileToWasm(source: string) {
       `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}\nWAT:\n${result.wat}`,
     );
   }
+  // Use the runtime's buildImports for full host import support (iterator protocol, etc.)
+  // Merge with the manual buildImports for wasm:js-string polyfill and string_constants.
+  const manualImports = buildImports(result);
+  let setExportsFn: ((exports: Record<string, Function>) => void) | undefined;
+  if (result.imports && result.imports.length > 0) {
+    const runtimeResult = buildRuntimeImports(result.imports, undefined, result.stringPool);
+    setExportsFn = runtimeResult.setExports;
+    // Merge: runtime env overrides manual env, keep manual wasm:js-string and string_constants
+    const mergedEnv = { ...(manualImports.env as Record<string, Function>), ...runtimeResult.env };
+    manualImports.env = mergedEnv;
+    // Use runtime string_constants if available
+    if (runtimeResult.string_constants) {
+      manualImports.string_constants = runtimeResult.string_constants;
+    }
+  }
   const { instance } = await WebAssembly.instantiate(
     result.binary,
-    buildImports(result),
+    manualImports,
   );
+  // Set exports so runtime callbacks (iterator protocol, struct field getters) can access them
+  if (setExportsFn) {
+    setExportsFn(instance.exports as Record<string, Function>);
+  }
   return instance.exports as Record<string, Function>;
 }
 

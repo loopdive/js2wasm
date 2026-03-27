@@ -4604,11 +4604,13 @@ function compileForOfArrayTentative(
   const localsLenBefore = fctx.locals.length;
   const exprType = compileExpression(ctx, fctx, stmt.expression);
 
-  // Check if it compiled to a ref to a vec struct
+  // Check if it compiled to a ref to a vec struct (not just any struct —
+  // a class instance is also a struct but not iterable via array access).
+  // A vec struct has {length: i32, data: (ref $arr)} — verified by getArrTypeIdxFromVec.
   if (exprType && (exprType.kind === "ref" || exprType.kind === "ref_null")) {
     const typeDef = ctx.mod.types[exprType.typeIdx];
-    if (typeDef && typeDef.kind === "struct") {
-      // Looks like a vec struct — undo the tentative compilation and use the
+    if (typeDef && typeDef.kind === "struct" && getArrTypeIdxFromVec(ctx, exprType.typeIdx) >= 0) {
+      // Confirmed vec struct — undo the tentative compilation and use the
       // full array path (which compiles the expression again with proper setup)
       fctx.body.length = bodyLenBefore;
       fctx.locals.length = localsLenBefore;
@@ -4954,6 +4956,254 @@ function compileForOfIteratorAssignDestructuring(
 }
 
 /**
+ * Compile for...of using direct Wasm method dispatch when the iterable
+ * is a known struct with a @@iterator method.
+ *
+ * Calls @@iterator() directly in Wasm, then loops calling next() directly,
+ * extracting done/value from struct fields — no host imports needed.
+ *
+ * Returns true if successfully compiled, false if caller should fall back.
+ */
+function compileForOfDirectIterator(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  stmt: ts.ForOfStatement,
+  iterableType: ValType,
+  iterMethodIdx: number,
+): boolean {
+  // Get the return type of the @@iterator method to find the iterator struct
+  const iterMethodDef = ctx.mod.functions[iterMethodIdx - ctx.numImportFuncs];
+  if (!iterMethodDef) return false;
+  const iterMethodType = ctx.mod.types[iterMethodDef.typeIdx];
+  if (!iterMethodType || iterMethodType.kind !== "func" || iterMethodType.results.length === 0) return false;
+
+  const iterResultType = iterMethodType.results[0]!;
+  if (iterResultType.kind !== "ref" && iterResultType.kind !== "ref_null") return false;
+
+  const iterStructTypeIdx = iterResultType.typeIdx;
+  const iterStructDef = ctx.mod.types[iterStructTypeIdx];
+  if (!iterStructDef || iterStructDef.kind !== "struct") return false;
+
+  // Find the struct name for the iterator type to look up the next method
+  let iterStructName: string | undefined;
+  for (const [name, idx] of ctx.structMap) {
+    if (idx === iterStructTypeIdx) { iterStructName = name; break; }
+  }
+  if (!iterStructName) return false;
+
+  const nextMethodIdx = ctx.funcMap.get(`${iterStructName}_next`);
+  if (nextMethodIdx === undefined) return false;
+
+  // Get the return type of next() to find the result struct ({value, done})
+  const nextMethodDef = ctx.mod.functions[nextMethodIdx - ctx.numImportFuncs];
+  if (!nextMethodDef) return false;
+  const nextMethodType = ctx.mod.types[nextMethodDef.typeIdx];
+  if (!nextMethodType || nextMethodType.kind !== "func" || nextMethodType.results.length === 0) return false;
+
+  const nextResultType = nextMethodType.results[0]!;
+
+  // If next() returns externref, we can't extract done/value in Wasm — fall back
+  if (nextResultType.kind !== "ref" && nextResultType.kind !== "ref_null") return false;
+
+  const resultStructTypeIdx = nextResultType.typeIdx;
+  const resultStructDef = ctx.mod.types[resultStructTypeIdx];
+  if (!resultStructDef || resultStructDef.kind !== "struct") return false;
+
+  // Find "done" and "value" field indices in the result struct
+  const resultFields = ctx.structFields.get(iterStructName + "_next_result")
+    ?? findStructFieldsByTypeIdx(ctx, resultStructTypeIdx);
+  if (!resultFields) return false;
+
+  let doneFieldIdx = -1;
+  let valueFieldIdx = -1;
+  let doneFieldType: ValType | undefined;
+  let valueFieldType: ValType | undefined;
+
+  for (let i = 0; i < resultFields.length; i++) {
+    const f = resultFields[i]!;
+    if (f.name === "done") { doneFieldIdx = i; doneFieldType = f.type; }
+    if (f.name === "value") { valueFieldIdx = i; valueFieldType = f.type; }
+  }
+
+  if (doneFieldIdx < 0 || valueFieldIdx < 0 || !doneFieldType || !valueFieldType) return false;
+
+  // We have everything we need — compile the full iteration loop in Wasm!
+
+  // Null check on iterable
+  const nullTmp = allocLocal(fctx, `__forit_stmp_${fctx.locals.length}`, iterableType);
+  fctx.body.push({ op: "local.tee", index: nullTmp });
+  fctx.body.push({ op: "ref.is_null" });
+  const tagIdx = ensureExnTag(ctx);
+  fctx.body.push({
+    op: "if",
+    blockType: { kind: "empty" },
+    then: [
+      { op: "ref.null.extern" } as Instr,
+      { op: "throw", tagIdx } as Instr,
+    ],
+    else: [],
+  });
+
+  // Call @@iterator method: iter = obj[Symbol.iterator]()
+  fctx.body.push({ op: "local.get", index: nullTmp });
+  if (iterableType.kind === "ref_null") {
+    fctx.body.push({ op: "ref.as_non_null" } as Instr);
+  }
+  fctx.body.push({ op: "call", funcIdx: iterMethodIdx });
+
+  const iterLocal = allocLocal(fctx, `__forit_iter_${fctx.locals.length}`, iterResultType);
+  fctx.body.push({ op: "local.set", index: iterLocal });
+
+  // Allocate result local
+  const resultLocal = allocLocal(fctx, `__forit_res_${fctx.locals.length}`, nextResultType);
+
+  // Declare the loop variable
+  const elemType: ValType = valueFieldType;
+  let elemLocal: number;
+  let destructPatternIter: ts.ObjectBindingPattern | ts.ArrayBindingPattern | null = null;
+  let assignDestructExprIter: ts.ObjectLiteralExpression | ts.ArrayLiteralExpression | null = null;
+  if (ts.isVariableDeclarationList(stmt.initializer)) {
+    const decl = stmt.initializer.declarations[0]!;
+    if (ts.isObjectBindingPattern(decl.name) || ts.isArrayBindingPattern(decl.name)) {
+      destructPatternIter = decl.name;
+      elemLocal = allocLocal(fctx, `__forit_elem_${fctx.locals.length}`, elemType);
+    } else {
+      const varName = ts.isIdentifier(decl.name) ? decl.name.text : `__forit_elem_${fctx.locals.length}`;
+      elemLocal = allocLocal(fctx, varName, elemType);
+    }
+  } else if (ts.isObjectLiteralExpression(stmt.initializer) || ts.isArrayLiteralExpression(stmt.initializer)) {
+    assignDestructExprIter = stmt.initializer;
+    elemLocal = allocLocal(fctx, `__forit_elem_${fctx.locals.length}`, elemType);
+  } else if (ts.isIdentifier(stmt.initializer)) {
+    const varName = stmt.initializer.text;
+    elemLocal = fctx.localMap.get(varName) ?? allocLocal(fctx, varName, elemType);
+  } else {
+    elemLocal = allocLocal(fctx, `__forit_elem_${fctx.locals.length}`, elemType);
+  }
+
+  // Build loop body
+  const savedBody = pushBody(fctx);
+
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! += 2;
+  for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]! += 2;
+  if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth += 2;
+  adjustRethrowDepth(fctx, 2);
+
+  fctx.breakStack.push(1);
+  fctx.continueStack.push(0);
+
+  // Safety guard
+  const iterCountLocal = allocLocal(fctx, `__forit_guard_${fctx.locals.length}`, { kind: "i32" });
+  fctx.body.push({ op: "local.get", index: iterCountLocal });
+  fctx.body.push({ op: "i32.const", value: 1 });
+  fctx.body.push({ op: "i32.add" });
+  fctx.body.push({ op: "local.tee", index: iterCountLocal });
+  fctx.body.push({ op: "i32.const", value: 1_000_000 });
+  fctx.body.push({ op: "i32.gt_s" });
+  fctx.body.push({ op: "br_if", depth: 1 });
+
+  // Call next(): result = iter.next()
+  fctx.body.push({ op: "local.get", index: iterLocal });
+  if (iterResultType.kind === "ref_null") {
+    fctx.body.push({ op: "ref.as_non_null" } as Instr);
+  }
+  fctx.body.push({ op: "call", funcIdx: nextMethodIdx });
+  fctx.body.push({ op: "local.set", index: resultLocal });
+
+  // Check done: result.done -> break if truthy
+  fctx.body.push({ op: "local.get", index: resultLocal });
+  if (nextResultType.kind === "ref_null") {
+    fctx.body.push({ op: "ref.as_non_null" } as Instr);
+  }
+  fctx.body.push({ op: "struct.get", typeIdx: resultStructTypeIdx, fieldIdx: doneFieldIdx });
+  // done field might be i32 (boolean) or f64; convert to i32 for br_if
+  if (doneFieldType.kind === "f64") {
+    fctx.body.push({ op: "i32.trunc_f64_s" } as Instr);
+  }
+  fctx.body.push({ op: "br_if", depth: 1 });
+
+  // Get value: elem = result.value
+  fctx.body.push({ op: "local.get", index: resultLocal });
+  if (nextResultType.kind === "ref_null") {
+    fctx.body.push({ op: "ref.as_non_null" } as Instr);
+  }
+  fctx.body.push({ op: "struct.get", typeIdx: resultStructTypeIdx, fieldIdx: valueFieldIdx });
+
+  // Coerce value to element type if needed
+  const targetElemType = getLocalType(fctx, elemLocal) ?? elemType;
+  if (!valTypesMatch(valueFieldType, targetElemType)) {
+    coerceType(ctx, fctx, valueFieldType, targetElemType);
+  }
+  fctx.body.push({ op: "local.set", index: elemLocal });
+
+  // If destructuring, handle it
+  if (destructPatternIter) {
+    compileForOfDestructuring(ctx, fctx, destructPatternIter, elemLocal, elemType, stmt);
+  }
+  if (assignDestructExprIter) {
+    compileForOfIteratorAssignDestructuring(ctx, fctx, assignDestructExprIter, elemLocal, stmt);
+  }
+
+  // Compile body
+  if (ts.isBlock(stmt.statement)) {
+    const savedScope = saveBlockScopedShadows(fctx, stmt.statement);
+    for (const s of stmt.statement.statements) {
+      compileStatement(ctx, fctx, s);
+    }
+    restoreBlockScopedShadows(fctx, savedScope);
+  } else {
+    compileStatement(ctx, fctx, stmt.statement);
+  }
+
+  fctx.body.push({ op: "br", depth: 0 });
+
+  const loopBody = fctx.body;
+  fctx.breakStack.pop();
+  fctx.continueStack.pop();
+
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! -= 2;
+  for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]! -= 2;
+  if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth -= 2;
+  adjustRethrowDepth(fctx, -2);
+
+  popBody(fctx, savedBody);
+
+  fctx.body.push({
+    op: "block",
+    blockType: { kind: "empty" },
+    body: [
+      {
+        op: "loop",
+        blockType: { kind: "empty" },
+        body: loopBody,
+      },
+    ],
+  });
+
+  return true;
+}
+
+/** Helper to find struct fields by type index when the name isn't directly in structFields */
+function findStructFieldsByTypeIdx(
+  ctx: CodegenContext,
+  typeIdx: number,
+): { name: string; type: ValType }[] | undefined {
+  for (const [name, fields] of ctx.structFields) {
+    const idx = ctx.structMap.get(name);
+    if (idx === typeIdx) return fields;
+  }
+  // Fall back to the type definition if available
+  const typeDef = ctx.mod.types[typeIdx];
+  if (typeDef && typeDef.kind === "struct") {
+    return typeDef.fields.map((f, i) => ({
+      name: f.name ?? `field_${i}`,
+      type: f.type,
+    }));
+  }
+  return undefined;
+}
+
+/**
  * Compile for...of over a non-array iterable using the host-delegated
  * iterator protocol. Works with strings, Maps, Sets, and any object
  * implementing [Symbol.iterator]().
@@ -4972,7 +5222,7 @@ function compileForOfIterator(
   fctx: FunctionContext,
   stmt: ts.ForOfStatement,
 ): void {
-  // Compile the iterable expression — should produce an externref
+  // Compile the iterable expression
   const iterableType = compileExpression(ctx, fctx, stmt.expression);
   if (!iterableType) {
     ctx.errors.push({
@@ -4983,8 +5233,27 @@ function compileForOfIterator(
     return;
   }
 
+  // Check if the iterable is a known struct type with a @@iterator method.
+  // If so, compile the entire iteration loop in Wasm without host imports.
+  if (iterableType.kind === "ref" || iterableType.kind === "ref_null") {
+    let structName: string | undefined;
+    for (const [name, idx] of ctx.structMap) {
+      if (idx === iterableType.typeIdx) { structName = name; break; }
+    }
+    if (structName) {
+      const methodFullName = `${structName}_@@iterator`;
+      const iterMethodIdx = ctx.funcMap.get(methodFullName);
+      if (iterMethodIdx !== undefined) {
+        // Try to compile the full iteration loop in Wasm (no host imports)
+        if (compileForOfDirectIterator(ctx, fctx, stmt, iterableType, iterMethodIdx)) {
+          return;
+        }
+      }
+    }
+  }
+
+  // Fallback: host-delegated iterator protocol
   // Coerce to externref if the iterable is a struct ref (GC type).
-  // The __iterator host import expects externref.
   if (iterableType.kind !== "externref") {
     coerceType(ctx, fctx, iterableType, { kind: "externref" });
   }
@@ -4998,7 +5267,6 @@ function compileForOfIterator(
     fctx.body.push({ op: "local.tee", index: iterTmp });
     fctx.body.push({ op: "ref.is_null" });
     if (backupLocal !== undefined) {
-      // Guarded cast backup exists: only throw for genuinely null, skip for wrong type
       fctx.body.push({
         op: "if",
         blockType: { kind: "empty" },
@@ -5012,7 +5280,7 @@ function compileForOfIterator(
               { op: "ref.null.extern" } as Instr,
               { op: "throw", tagIdx } as Instr,
             ],
-            else: [],  // wrong struct type → skip (return acts as no-op for-of)
+            else: [],
           } as Instr,
         ],
         else: [],
@@ -5032,7 +5300,6 @@ function compileForOfIterator(
   }
 
   // Look up the iterator host import function indices
-  // For for-await-of, use __async_iterator which tries Symbol.asyncIterator first
   let iteratorIdx: number | undefined;
   if (stmt.awaitModifier) {
     iteratorIdx = ensureAsyncIterator(ctx, fctx);
@@ -5040,12 +5307,23 @@ function compileForOfIterator(
   if (iteratorIdx === undefined) {
     iteratorIdx = ctx.funcMap.get("__iterator");
   }
+  if (iteratorIdx === undefined) {
+    ctx.errors.push({
+      message: "for-of on non-array type requires iterator imports",
+      line: getLine(stmt),
+      column: getCol(stmt),
+    });
+    return;
+  }
+
+  // Call __iterator/__async_iterator(obj) -> externref (the iterator)
+  fctx.body.push({ op: "call", funcIdx: iteratorIdx });
+
   const nextIdx = ctx.funcMap.get("__iterator_next");
   const doneIdx = ctx.funcMap.get("__iterator_done");
   const valueIdx = ctx.funcMap.get("__iterator_value");
   const returnIdx = ctx.funcMap.get("__iterator_return");
   if (
-    iteratorIdx === undefined ||
     nextIdx === undefined ||
     doneIdx === undefined ||
     valueIdx === undefined
@@ -5057,9 +5335,6 @@ function compileForOfIterator(
     });
     return;
   }
-
-  // Call __iterator/__async_iterator(obj) → externref (the iterator)
-  fctx.body.push({ op: "call", funcIdx: iteratorIdx });
   const iterLocal = allocLocal(
     fctx,
     `__forof_iter_${fctx.locals.length}`,
