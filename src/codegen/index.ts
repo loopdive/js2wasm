@@ -1270,6 +1270,104 @@ function _emitStructFieldGettersInner(ctx: CodegenContext): void {
       desc: { kind: "func", index: funcIdx },
     });
   }
+
+  // Emit __struct_field_names(externref) -> externref
+  // Returns a comma-separated string of field names for the struct type of the argument.
+  // The runtime uses this for Object.keys(), JSON.stringify(), for-in, and spread on opaque structs.
+  emitStructFieldNamesExport(ctx, fieldMap);
+}
+
+/**
+ * Emit a __struct_field_names(externref) -> externref export.
+ * For each struct type, ref.test and return a string constant with comma-separated field names.
+ * Falls back to ref.null.extern for non-struct values.
+ */
+function emitStructFieldNamesExport(
+  ctx: CodegenContext,
+  fieldMap: Map<string, { typeIdx: number; fieldIdx: number; fieldType: ValType }[]>,
+): void {
+  const mod = ctx.mod;
+
+  // Build per-struct-type field name lists (excluding internal fields)
+  const structFieldNameMap = new Map<number, string[]>(); // typeIdx -> field names
+  for (const [structName, fields] of ctx.structFields) {
+    const typeIdx = ctx.structMap.get(structName);
+    if (typeIdx === undefined) continue;
+    if (structName.startsWith("Wrapper") || structName === "$AnyValue") continue;
+
+    const names: string[] = [];
+    for (const field of fields) {
+      if (!field || !field.type || !field.name) continue;
+      if (field.name.startsWith("$") || field.name.startsWith("__")) continue;
+      names.push(field.name);
+    }
+    if (names.length > 0) {
+      structFieldNameMap.set(typeIdx, names);
+    }
+  }
+
+  if (structFieldNameMap.size === 0) return;
+
+  // Register comma-separated field name strings as string constants
+  const typeIdxToGlobalIdx = new Map<number, number>();
+  for (const [typeIdx, names] of structFieldNameMap) {
+    const csv = names.join(",");
+    addStringConstantGlobal(ctx, csv);
+    const globalIdx = ctx.stringGlobalMap.get(csv);
+    if (globalIdx !== undefined) {
+      typeIdxToGlobalIdx.set(typeIdx, globalIdx);
+    }
+  }
+
+  // Build the function body: chain of ref.test / if-else returning the right string
+  const getterExternTypeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }], "$sfnames_type");
+  const anyLocal = 1; // local 0 = externref param, local 1 = anyref conversion
+
+  const body: Instr[] = [];
+  // Convert externref to anyref
+  body.push({ op: "local.get", index: 0 } as Instr);
+  body.push({ op: "any.convert_extern" } as Instr);
+  body.push({ op: "local.set", index: anyLocal } as Instr);
+
+  // Build nested if-else chain
+  let fallback: Instr[] = [{ op: "ref.null.extern" } as Instr];
+  const typeEntries = [...typeIdxToGlobalIdx.entries()];
+
+  for (let i = typeEntries.length - 1; i >= 0; i--) {
+    const [typeIdx, globalIdx] = typeEntries[i]!;
+    const thenBranch: Instr[] = [
+      { op: "global.get", index: globalIdx } as Instr,
+    ];
+
+    const ifInstr: Instr = {
+      op: "if",
+      blockType: { kind: "val", type: { kind: "externref" } },
+      then: thenBranch,
+      else: fallback,
+    } as unknown as Instr;
+
+    fallback = [
+      { op: "local.get", index: anyLocal } as Instr,
+      { op: "ref.test", typeIdx } as Instr,
+      ifInstr,
+    ];
+  }
+
+  body.push(...fallback);
+
+  const funcIdx = ctx.numImportFuncs + mod.functions.length;
+  mod.functions.push({
+    name: "__struct_field_names",
+    typeIdx: getterExternTypeIdx,
+    locals: [{ name: "__any", type: { kind: "anyref" } }],
+    body,
+    exported: true,
+  } as WasmFunction);
+
+  mod.exports.push({
+    name: "__struct_field_names",
+    desc: { kind: "func", index: funcIdx },
+  });
 }
 
 /** Build nested if/else for struct field getter dispatch. */

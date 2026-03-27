@@ -55,6 +55,50 @@ function _sidecarDelete(obj: any, key: any): boolean {
   return false;
 }
 
+/**
+ * Get the field names of a WasmGC struct by calling the __struct_field_names export.
+ * Returns an array of field name strings, or null if the export is not available
+ * or the value is not a recognized struct type.
+ */
+function _getStructFieldNames(obj: any, exports: Record<string, Function> | undefined): string[] | null {
+  if (!exports) return null;
+  const fn = exports.__struct_field_names;
+  if (typeof fn !== "function") return null;
+  const csv = fn(obj);
+  if (csv == null || typeof csv !== "string" || csv === "") return null;
+  return csv.split(",");
+}
+
+/**
+ * Convert a WasmGC struct to a plain JS object using exported getters.
+ * Returns undefined if the struct type is not recognized.
+ */
+function _structToPlainObject(obj: any, exports: Record<string, Function> | undefined): Record<string, any> | undefined {
+  const fieldNames = _getStructFieldNames(obj, exports);
+  if (!fieldNames) return undefined;
+  const result: Record<string, any> = {};
+  for (const key of fieldNames) {
+    const getter = exports?.[`__sget_${key}`];
+    if (typeof getter === "function") {
+      let val = getter(obj);
+      // Recursively convert nested WasmGC structs
+      if (val != null && typeof val === "object" && _isWasmStruct(val)) {
+        const nested = _structToPlainObject(val, exports);
+        if (nested !== undefined) val = nested;
+      }
+      result[key] = val;
+    }
+  }
+  // Also include sidecar properties
+  const sc = _wasmStructProps.get(obj);
+  if (sc) {
+    for (const key of Object.keys(sc)) {
+      if (!(key in result)) result[key] = sc[key];
+    }
+  }
+  return result;
+}
+
 /** Map from JS well-known Symbols to Wasm "@@name" keys (and vice-versa). */
 const _symbolToWasm: Map<symbol, string> = new Map([
   [Symbol.iterator, "@@iterator"],
@@ -182,7 +226,15 @@ function resolveImport(
       if (name === "number_toFixed") return (v: number, d: number) => v.toFixed(d);
       if (name === "number_toPrecision") return (v: number, p: number) => v.toPrecision(p);
       if (name === "number_toExponential") return (v: number, d: number) => isNaN(d) ? v.toExponential() : v.toExponential(d);
-      if (name === "JSON_stringify") return (v: any) => JSON.stringify(v);
+      if (name === "JSON_stringify") return (v: any) => {
+        // If v is a WasmGC struct, build a plain object via exported getters first
+        if (_isWasmStruct(v)) {
+          const exports = callbackState?.getExports();
+          const plain = _structToPlainObject(v, exports);
+          if (plain !== undefined) return JSON.stringify(plain);
+        }
+        return JSON.stringify(v);
+      };
       if (name === "JSON_parse") return (s: any) => JSON.parse(s);
       if (name === "__extern_get") return (obj: any, key: any) => {
         const val = _safeGet(obj, key);
@@ -212,8 +264,22 @@ function resolveImport(
         if (obj == null) return {};
         const excluded = new Set(excludedKeysStr ? String(excludedKeysStr).split(",") : []);
         const result: Record<string, any> = {};
-        for (const key of Object.keys(obj)) {
-          if (!excluded.has(key)) result[key] = obj[key];
+        // For WasmGC structs, use exported getters to read fields
+        if (_isWasmStruct(obj)) {
+          const exports = callbackState?.getExports();
+          const fieldNames = _getStructFieldNames(obj, exports);
+          if (fieldNames) {
+            for (const key of fieldNames) {
+              if (!excluded.has(key)) {
+                const getter = exports?.[`__sget_${key}`];
+                if (typeof getter === "function") result[key] = getter(obj);
+              }
+            }
+          }
+        } else {
+          for (const key of Object.keys(obj)) {
+            if (!excluded.has(key)) result[key] = obj[key];
+          }
         }
         // Also copy sidecar properties (for WasmGC structs with dynamic props)
         const sc = _wasmStructProps.get(obj);
