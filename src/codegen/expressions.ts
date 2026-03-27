@@ -16147,19 +16147,58 @@ function compileNewExpression(
     return { kind: "externref" };
   }
 
-  // Handle `new Proxy(target, handler)` — compile as pass-through to target
-  // Tier 0: the proxy variable behaves exactly like the target object.
-  // This converts compile errors into working code for the 465+ test262 tests
-  // that use Proxy. Future tiers will inline get/set traps.
+  // Handle `new Proxy(target, handler)` — delegate to __proxy_create host import.
+  // The host wraps the target in a real JS Proxy with the given handler object.
+  // In standalone (no-JS) mode, falls back to pass-through (target returned as-is).
   if (ts.isIdentifier(expr.expression) && expr.expression.text === "Proxy") {
     const args = expr.arguments ?? [];
     if (args.length >= 1) {
-      // Compile the target argument — the proxy IS the target for now
+      // Compile target argument and coerce to externref
+      const bodyBefore = fctx.body.length;
       const targetResult = compileExpression(ctx, fctx, args[0]!);
-      // Drop the handler argument (don't even compile it to avoid side effects
-      // from unsupported handler patterns — but we do need to compile it if it
-      // has side effects... for now, just skip it)
-      return targetResult;
+      console.error("[DEBUG-PROXY] targetResult=" + JSON.stringify(targetResult) + " bodyLen:" + bodyBefore + "->" + fctx.body.length);
+      if (targetResult && targetResult.kind !== "externref") {
+        if (targetResult.kind === "ref" || targetResult.kind === "ref_null") {
+          fctx.body.push({ op: "extern.convert_any" });
+        } else {
+          coerceTypeImpl(ctx, fctx, targetResult, { kind: "externref" });
+        }
+      }
+
+      // Compile handler argument and coerce to externref (or push null if missing)
+      if (args.length >= 2) {
+        const handlerResult = compileExpression(ctx, fctx, args[1]!);
+        if (handlerResult && handlerResult.kind !== "externref") {
+          if (handlerResult.kind === "ref" || handlerResult.kind === "ref_null") {
+            fctx.body.push({ op: "extern.convert_any" });
+          } else {
+            coerceTypeImpl(ctx, fctx, handlerResult, { kind: "externref" });
+          }
+        }
+      } else {
+        fctx.body.push({ op: "ref.null.extern" });
+      }
+
+      // Emit call to __proxy_create(target, handler) -> externref
+      const proxyIdx = ensureLateImport(
+        ctx,
+        "__proxy_create",
+        [{ kind: "externref" }, { kind: "externref" }],
+        [{ kind: "externref" }],
+      );
+      flushLateImportShifts(ctx, fctx);
+      if (proxyIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: proxyIdx });
+      }
+
+      // Debug: dump body instructions around the proxy call
+      const proxyCallIdx = fctx.body.length - 1;
+      console.error("[DEBUG-PROXY] final body around proxy call:");
+      for (let di = Math.max(0, proxyCallIdx - 5); di <= proxyCallIdx; di++) {
+        console.error("  [" + di + "] " + JSON.stringify((fctx.body[di] as any)?.op));
+      }
+
+      return { kind: "externref" };
     }
     // No arguments — null proxy
     fctx.body.push({ op: "ref.null.extern" });

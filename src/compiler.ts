@@ -1407,6 +1407,9 @@ function classifyImport(name: string, mod: WasmModule): ImportIntent {
   // Dynamic import()
   if (name === "__dynamic_import") return { type: "dynamic_import" };
 
+  // Proxy
+  if (name === "__proxy_create") return { type: "proxy_create" };
+
   // Union type helpers
   if (name === "__typeof_number") return { type: "typeof_check", targetType: "number" };
   if (name === "__typeof_string") return { type: "typeof_check", targetType: "string" };
@@ -1913,6 +1916,15 @@ export function compileSource(
       combined.set(urlSectionBytes, emitResult.binary.length);
       binary = combined;
     } else {
+      // DEBUG: dump __module_init body before emission
+      for (const f of mod.functions) {
+        if (f.name === "__module_init") {
+          console.error("[DEBUG-EMIT] __module_init body:");
+          for (let i = 0; i < f.body.length; i++) {
+            console.error("  [" + i + "] " + (f.body[i] as any)?.op);
+          }
+        }
+      }
       binary = emitBinary(mod);
     }
   } catch (e) {

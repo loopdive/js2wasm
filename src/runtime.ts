@@ -738,6 +738,21 @@ function resolveImport(
       const val = deps?.[intent.name];
       return val !== undefined ? () => val : (() => {});
     }
+    case "proxy_create":
+      return (target: any, handler: any) => {
+        // Wrap the Wasm struct target in a real JS Proxy with the given handler.
+        // If handler is null/undefined, use an empty handler (transparent proxy).
+        // If target is null/undefined, fall back to an empty object as target.
+        const t = target ?? {};
+        const h = handler ?? {};
+        try {
+          return new Proxy(t, h);
+        } catch {
+          // If Proxy construction fails (e.g. handler is not an object),
+          // return target as-is (standalone fallback behavior).
+          return t;
+        }
+      };
     default:
       return () => {};
   }
