@@ -6,6 +6,7 @@ import { parentPort } from "node:worker_threads";
 import { compile } from "./compiler-bundle.mjs";
 
 let compileCount = 0;
+const MAX_COMPILATIONS = 500; // Restart worker every N compilations to prevent state accumulation
 
 parentPort.on("message", (msg) => {
   const start = performance.now();
@@ -48,6 +49,10 @@ parentPort.on("message", (msg) => {
   }
 
   compileCount++;
+  // Restart worker periodically to prevent TS compiler state accumulation
+  if (compileCount >= MAX_COMPILATIONS) {
+    process.exit(0);
+  }
 });
 
 parentPort.postMessage({ type: "ready", pid: process.pid });
