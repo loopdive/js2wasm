@@ -13,6 +13,8 @@ Active file/function claims by agents. **Check before editing. Update when start
 
 | File | Function/Area | Agent | Issue | Since |
 |------|--------------|-------|-------|-------|
+| src/codegen/statements.ts | object/string destructuring rest | dev-761 | #761 | 2026-03-27 |
+| src/codegen/expressions.ts | assignment destructuring rest | dev-761 | #761 | 2026-03-27 |
 | src/codegen/index.ts | emitStructFieldGetters | dev-opaque | opaque-fix | 2026-03-27 |
 | src/runtime.ts | _safeGet/_safeSet/sidecar | dev-opaque | opaque-fix | 2026-03-27 |
 | src/codegen/index.ts | fixupStructNewResultCoercion | dev-d | struct.new | 2026-03-26 |
