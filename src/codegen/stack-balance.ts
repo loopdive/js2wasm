@@ -582,8 +582,9 @@ function fixBranchType(
         typeStack.push(cat);
       } else if (delta === 0) {
         // Pops 1, pushes 1 (e.g., ref.cast, f64.neg)
-        if (typeStack.length > 0) typeStack.pop();
-        typeStack.push(cat);
+        // If we can't infer the output type, preserve the input type from the stack
+        const prev = typeStack.length > 0 ? typeStack.pop()! : null;
+        typeStack.push(cat ?? prev);
       } else {
         // Pops more than it pushes (e.g., i32.add: pop 2 push 1 = -1)
         // Pop |delta| + (1 if it produces a value)
@@ -625,13 +626,29 @@ function fixBranchType(
     return 1;
   }
 
-  // externref → ref/ref_null: insert any.convert_extern + ref.cast
+  // externref → ref/ref_null: insert any.convert_extern + guarded ref.cast
   if ((expectedType.kind === "ref" || expectedType.kind === "ref_null") && produced === "externref") {
     body.push({ op: "any.convert_extern" } as Instr);
-    if (expectedType.kind === "ref_null") {
-      body.push({ op: "ref.cast_null", typeIdx: expectedType.typeIdx } as unknown as Instr);
+    if (typeCtx) {
+      // Allocate a temp local for the anyref value so we can ref.test before ref.cast
+      const tmpIdx = typeCtx.localTypes.length;
+      typeCtx.localTypes.push({ kind: "anyref" } as ValType);
+      body.push({ op: "local.tee", index: tmpIdx } as unknown as Instr);
+      body.push({ op: "ref.test", typeIdx: expectedType.typeIdx } as unknown as Instr);
+      body.push({
+        op: "if",
+        blockType: { kind: "val", type: { kind: "ref_null", typeIdx: expectedType.typeIdx } as ValType },
+        then: [
+          { op: "local.get", index: tmpIdx } as unknown as Instr,
+          { op: "ref.cast_null", typeIdx: expectedType.typeIdx } as unknown as Instr,
+        ],
+        else: [
+          { op: "ref.null", typeIdx: expectedType.typeIdx },
+        ],
+      } as Instr);
     } else {
-      body.push({ op: "ref.cast", typeIdx: expectedType.typeIdx } as unknown as Instr);
+      // No type context — fall back to nullable cast (less safe but avoids non-null cast trap on null)
+      body.push({ op: "ref.cast_null", typeIdx: expectedType.typeIdx } as unknown as Instr);
     }
     return 1;
   }
@@ -1555,6 +1572,97 @@ function fixStructNewFieldCoercion(
 }
 
 /**
+ * Fix struct.new stack underflows: when a struct.new needs N field values
+ * but only M < N are on the stack, insert default values for the missing
+ * leading fields. Uses a simple stack-depth counter (not full type simulation).
+ */
+function fixStructNewUnderflow(
+  func: WasmFunction,
+  types: TypeDef[],
+  sigs: FuncSigInfo,
+): number {
+  let fixups = 0;
+
+  function processBody(body: Instr[]): void {
+    // Recurse into nested blocks first
+    for (const instr of body) {
+      if (instr.op === "if") {
+        const ifInstr = instr as any;
+        if (ifInstr.then) processBody(ifInstr.then);
+        if (ifInstr.else) processBody(ifInstr.else);
+      } else if (instr.op === "block" || instr.op === "loop") {
+        const blockInstr = instr as any;
+        if (blockInstr.body) processBody(blockInstr.body);
+      } else if (instr.op === "try") {
+        const tryInstr = instr as any;
+        if (tryInstr.body) processBody(tryInstr.body);
+        if (tryInstr.catches) {
+          for (const c of tryInstr.catches) {
+            if (c.body) processBody(c.body);
+          }
+        }
+        if (tryInstr.catchAll) processBody(tryInstr.catchAll);
+      }
+    }
+
+    // Track stack depth to detect struct.new underflows
+    let depth = 0;
+    for (let ci = 0; ci < body.length; ci++) {
+      const instr = body[ci]!;
+      const op = instr.op;
+
+      if (op === "struct.new") {
+        const typeIdx = (instr as any).typeIdx as number;
+        const typeDef = types[typeIdx];
+        if (typeDef?.kind === "struct") {
+          const numFields = (typeDef.fields as any[]).length;
+          if (depth < numFields && numFields > 0 && !(instr as any).__sn_fixed) {
+            (instr as any).__sn_fixed = true;
+            const missing = numFields - depth;
+            const fields = typeDef.fields as Array<{ type: ValType }>;
+            // Pad the TRAILING missing fields (insert defaults right before struct.new)
+            const padInstrs: Instr[] = [];
+            for (let fi = numFields - missing; fi < numFields; fi++) {
+              const ft = fields[fi]!.type;
+              switch (ft.kind) {
+                case "f64": padInstrs.push({ op: "f64.const", value: 0 }); break;
+                case "i32": padInstrs.push({ op: "i32.const", value: 0 }); break;
+                case "i64": padInstrs.push({ op: "i64.const", value: 0n }); break;
+                case "f32": padInstrs.push({ op: "f32.const", value: 0 }); break;
+                case "externref": padInstrs.push({ op: "ref.null.extern" }); break;
+                case "eqref": padInstrs.push({ op: "ref.null.eq" }); break;
+                case "ref": case "ref_null":
+                  padInstrs.push({ op: "ref.null", typeIdx: (ft as any).typeIdx } as unknown as Instr);
+                  break;
+                default:
+                  padInstrs.push({ op: "ref.null.extern" });
+                  break;
+              }
+            }
+            body.splice(ci, 0, ...padInstrs);
+            ci += padInstrs.length;
+            fixups += padInstrs.length;
+            depth = numFields;
+          }
+          // struct.new: pop N, push 1
+          depth = depth - numFields + 1;
+          if (depth < 0) depth = 0;
+        }
+        continue;
+      }
+
+      const delta = instrDelta(instr, types, sigs);
+      if (delta === UNREACHABLE) { depth = 0; continue; }
+      depth += delta;
+      if (depth < 0) depth = 0;
+    }
+  }
+
+  processBody(func.body);
+  return fixups;
+}
+
+/**
  * Update the type stack for a single instruction (forward simulation).
  * Pushes/pops type entries based on the instruction's semantics.
  * Pushes null for unknown types.
@@ -1928,6 +2036,9 @@ export function stackBalance(mod: WasmModule): number {
 
     // Fix call argument type mismatches before other fixups
     totalFixups += fixCallArgTypesInBody(func.body, localTypes, globalTypes, mod.types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
+
+    // Fix struct.new stack underflows (missing field values)
+    totalFixups += fixStructNewUnderflow(func, mod.types, sigs);
 
     // Fix struct.new field type mismatches (forward type-stack simulation)
     totalFixups += fixStructNewFieldCoercion(func, mod.types, mod, numImports, sigs, localTypes, globalTypes, boxNumberIdx, unboxNumberIdx);
