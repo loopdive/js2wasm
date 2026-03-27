@@ -1198,6 +1198,13 @@ function buildPreamble(
   let p = `let __fail: number = 0;
 let __assert_count: number = 1;
 
+class Test262Error {
+  message: string;
+  constructor(msg: string) {
+    this.message = msg;
+  }
+}
+
 function isSameValue(a: number, b: number): number {
   if (a === b) { return 1; }
   if (a !== a && b !== b) { return 1; }

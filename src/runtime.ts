@@ -239,9 +239,12 @@ function resolveImport(
     }
     case "extern_class": {
       if (intent.action === "new") {
+        // Test262Error is a simple Error subclass used by the test262 harness
+        class Test262Error extends Error { constructor(msg?: string) { super(msg); this.name = "Test262Error"; } }
         const builtinCtors: Record<string, Function> = {
           Map, Set, WeakMap, WeakSet, WeakRef, RegExp, ArrayBuffer, DataView,
           Error, TypeError, RangeError, SyntaxError, URIError, EvalError, ReferenceError,
+          Test262Error,
         };
         const Ctor = deps?.[intent.className] ?? builtinCtors[intent.className];
         if (!Ctor) return (...args: any[]) => { throw new Error(`No dependency provided for extern class "${intent.className}"`); };
