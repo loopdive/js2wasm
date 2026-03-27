@@ -1836,6 +1836,9 @@ export function stackBalance(mod: WasmModule): number {
     // values causes "expected N elements on the stack for fallthru" errors.
     eliminateDeadCode(func.body);
 
+    // Fix local.set type mismatches (e.g., f64 → externref, ref → externref)
+    totalFixups += fixLocalSetCoercion(func.body, localTypes, globalTypes, mod.types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
+
     // Fix call argument type mismatches before other fixups
     totalFixups += fixCallArgTypesInBody(func.body, localTypes, globalTypes, mod.types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
 
@@ -1859,4 +1862,77 @@ export function stackBalance(mod: WasmModule): number {
     }
   }
   return totalFixups;
+}
+
+/**
+ * Fix local.set type mismatches in a function body.
+ *
+ * Walks the instruction stream looking for local.set/local.tee instructions.
+ * For each one, infers the type of the value on the stack (by looking at
+ * the preceding instruction) and compares it with the local's declared type.
+ * If they don't match, inserts coercion instructions.
+ *
+ * This catches cases where the codegen emits bare local.set without
+ * emitCoercedLocalSet (e.g., in destructuring, closures, for-of).
+ */
+function fixLocalSetCoercion(
+  body: Instr[],
+  localTypes: ValType[],
+  globalTypes: ValType[],
+  types: TypeDef[],
+  mod: WasmModule,
+  numImports: number,
+  sigs: FuncSigInfo,
+  boxNumberIdx: number | null,
+  unboxNumberIdx: number | null,
+): number {
+  let fixups = 0;
+
+  // Recurse into nested blocks first
+  for (const instr of body) {
+    if (instr.op === "if") {
+      const ifInstr = instr as any;
+      if (ifInstr.then) fixups += fixLocalSetCoercion(ifInstr.then, localTypes, globalTypes, types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
+      if (ifInstr.else) fixups += fixLocalSetCoercion(ifInstr.else, localTypes, globalTypes, types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
+    } else if (instr.op === "block" || instr.op === "loop") {
+      const blockInstr = instr as any;
+      if (blockInstr.body) fixups += fixLocalSetCoercion(blockInstr.body, localTypes, globalTypes, types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
+    } else if (instr.op === "try") {
+      const tryInstr = instr as any;
+      if (tryInstr.body) fixups += fixLocalSetCoercion(tryInstr.body, localTypes, globalTypes, types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
+      if (tryInstr.catches) {
+        for (const c of tryInstr.catches) {
+          if (c.body) fixups += fixLocalSetCoercion(c.body, localTypes, globalTypes, types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
+        }
+      }
+      if (tryInstr.catchAll) fixups += fixLocalSetCoercion(tryInstr.catchAll, localTypes, globalTypes, types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
+    }
+  }
+
+  // Now fix local.set/local.tee mismatches in this body
+  for (let i = 0; i < body.length; i++) {
+    const instr = body[i]!;
+    if (instr.op !== "local.set" && instr.op !== "local.tee") continue;
+
+    const localIdx = (instr as any).index as number;
+    const localType = localTypes[localIdx];
+    if (!localType) continue;
+
+    // Infer the type of the value on the stack by looking at the preceding instruction
+    if (i === 0) continue;
+    const prev = body[i - 1]!;
+    const stackType = inferInstrType(prev, localTypes, globalTypes, types, mod, numImports);
+    if (!stackType) continue;
+
+    // Check if coercion is needed
+    const coercion = callArgCoercionInstrs(stackType, localType, boxNumberIdx, unboxNumberIdx);
+    if (coercion.length > 0) {
+      // Insert coercion instructions before the local.set
+      body.splice(i, 0, ...coercion);
+      i += coercion.length;
+      fixups += coercion.length;
+    }
+  }
+
+  return fixups;
 }
