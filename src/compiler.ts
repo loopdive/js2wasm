@@ -1421,6 +1421,9 @@ function classifyImport(name: string, mod: WasmModule): ImportIntent {
   if (name === "__is_truthy") return { type: "truthy_check" };
   if (name === "__typeof") return { type: "builtin", name: "__typeof" };
 
+  // globalThis
+  if (name === "__get_globalThis") return { type: "declared_global", name: "globalThis" };
+
   // Extern get/set
   if (name === "__extern_get") return { type: "extern_get" };
   if (name === "__extern_set") return { type: "extern_set" };

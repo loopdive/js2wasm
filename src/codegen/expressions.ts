@@ -1566,8 +1566,18 @@ function compileIdentifier(
     return { kind: "f64" };
   }
 
-  // globalThis — no true global object in Wasm; emit undefined (ref.null extern)
+  // globalThis — in JS host mode, call __get_globalThis import to get the
+  // actual global object; in standalone/WASI mode, emit ref.null extern.
   if (name === "globalThis") {
+    if (!ctx.wasi) {
+      const funcIdx = ensureLateImport(ctx, "__get_globalThis", [], [{ kind: "externref" }]);
+      flushLateImportShifts(ctx, fctx);
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__get_globalThis")! });
+        return { kind: "externref" };
+      }
+    }
+    // Standalone fallback: no global object in Wasm
     fctx.body.push({ op: "ref.null.extern" });
     return { kind: "externref" };
   }

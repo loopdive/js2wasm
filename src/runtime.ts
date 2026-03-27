@@ -613,6 +613,7 @@ function resolveImport(
       return (d: any) => d[m]();
     }
     case "declared_global": {
+      if (intent.name === "globalThis") return () => globalThis;
       const val = deps?.[intent.name];
       return val !== undefined ? () => val : (() => {});
     }
