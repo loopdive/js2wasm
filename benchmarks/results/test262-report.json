@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-03-27T08:21:17.693Z",
+  "timestamp": "2026-03-27T08:59:16.446Z",
   "summary": {
-    "total": 49862,
+    "total": 49880,
     "pass": 14151,
     "fail": 25661,
     "compile_error": 800,
-    "skip": 9250,
+    "skip": 9268,
     "compilable": 39812,
     "stale": 0
   },
@@ -743,8 +743,8 @@
       "pass": 2938,
       "fail": 4788,
       "compile_error": 231,
-      "skip": 1861,
-      "total": 9818
+      "skip": 1879,
+      "total": 9836
     },
     {
       "name": "language/types",
