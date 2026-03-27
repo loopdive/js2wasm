@@ -2368,8 +2368,8 @@ function compileDestructuringAssignment(
   );
   fctx.body.push({ op: "local.set", index: tmpLocal });
 
-  // Null guard — also guard ref types; runtime may produce null from failed casts (#816)
-  const isNullableDA = resultType.kind === "ref_null" || resultType.kind === "ref";
+  // Null guard for ref_null types
+  const isNullableDA = resultType.kind === "ref_null";
   const savedBodyDA = fctx.body;
   const destructInstrsDA: Instr[] = [];
   fctx.body = destructInstrsDA;
@@ -2743,8 +2743,8 @@ function compileArrayDestructuringAssignment(
   );
   fctx.body.push({ op: "local.set", index: tmpLocal });
 
-  // Null guard — also guard ref types; runtime may produce null from failed casts (#816)
-  const isNullableADA = resultType.kind === "ref_null" || resultType.kind === "ref";
+  // Null guard for ref_null types
+  const isNullableADA = resultType.kind === "ref_null";
   const savedBodyADA = fctx.body;
   const arrDestructInstrsADA: Instr[] = [];
   fctx.body = arrDestructInstrsADA;
@@ -3457,10 +3457,9 @@ function emitObjectDestructureFromLocal(
     }
   }
 
-  // Close null guard — throw TypeError if null/undefined (#730, #816)
-  // Guard ref types too: runtime may produce null from failed casts.
+  // Close null guard — throw TypeError if null/undefined (#730)
   fctx.body = savedBodyODFL;
-  if (srcType.kind === "ref_null" || srcType.kind === "ref") {
+  if (srcType.kind === "ref_null") {
     const typeErrMsg = "TypeError: Cannot destructure 'null' or 'undefined'";
     addStringConstantGlobal(ctx, typeErrMsg);
     const strIdx = ctx.stringGlobalMap.get(typeErrMsg)!;
@@ -3526,10 +3525,9 @@ function emitArrayDestructureFromLocal(
     }
   }
 
-  // Close null guard — throw TypeError if null/undefined (#730, #816)
-  // Guard ref types too: runtime may produce null from failed casts.
+  // Close null guard — throw TypeError if null/undefined (#730)
   fctx.body = savedBodyADFL;
-  if (srcType.kind === "ref_null" || srcType.kind === "ref") {
+  if (srcType.kind === "ref_null") {
     const typeErrMsg = "TypeError: Cannot destructure 'null' or 'undefined'";
     addStringConstantGlobal(ctx, typeErrMsg);
     const strIdx = ctx.stringGlobalMap.get(typeErrMsg)!;
