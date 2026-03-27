@@ -15,7 +15,8 @@ import { parentPort } from "node:worker_threads";
 import { buildImports } from "./runtime-bundle.mjs";
 
 parentPort.on("message", async (msg) => {
-  const { binary, imports, stringPool, isRuntimeNegative } = msg;
+  const { id, binary, imports, stringPool, isRuntimeNegative } = msg;
+  const reply = (data) => parentPort.postMessage({ id, ...data });
 
   try {
     // Build the import object
@@ -27,7 +28,7 @@ parentPort.on("message", async (msg) => {
       const result = await WebAssembly.instantiate(binary, importObj);
       instance = result.instance;
     } catch (err) {
-      parentPort.postMessage({
+      reply({
         ok: false,
         error: err.message ?? String(err),
         instantiateError: true,
@@ -42,7 +43,7 @@ parentPort.on("message", async (msg) => {
 
     const testFn = instance.exports.test;
     if (typeof testFn !== "function") {
-      parentPort.postMessage({ ok: false, error: "no test export", noTestExport: true });
+      reply({ ok: false, error: "no test export", noTestExport: true });
       return;
     }
 
@@ -52,14 +53,14 @@ parentPort.on("message", async (msg) => {
 
       if (isRuntimeNegative) {
         // Expected a runtime error but test succeeded
-        parentPort.postMessage({ ok: true, ret, runtimeNegativeNoThrow: true });
+        reply({ ok: true, ret, runtimeNegativeNoThrow: true });
       } else {
-        parentPort.postMessage({ ok: true, ret });
+        reply({ ok: true, ret });
       }
     } catch (execErr) {
       if (isRuntimeNegative) {
         // Expected a runtime error and got one — pass
-        parentPort.postMessage({ ok: true, runtimeNegativePass: true });
+        reply({ ok: true, runtimeNegativePass: true });
         return;
       }
 
@@ -88,7 +89,7 @@ parentPort.on("message", async (msg) => {
         errInfo = String(execErr);
       }
 
-      parentPort.postMessage({
+      reply({
         ok: false,
         error: errInfo,
         isException: true,
@@ -96,7 +97,7 @@ parentPort.on("message", async (msg) => {
       });
     }
   } catch (outerErr) {
-    parentPort.postMessage({
+    reply({
       ok: false,
       error: outerErr.message ?? String(outerErr),
       instantiateError: true,

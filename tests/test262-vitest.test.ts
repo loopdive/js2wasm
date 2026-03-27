@@ -70,6 +70,76 @@ const serverReady = new Promise<void>((resolve) => {
 // Each vitest fork gets 1 compiler worker — forks process tests sequentially
 // so more workers per fork just waste memory. Total workers = maxForks × 1.
 const pool = new CompilerPool(1);
+
+// ── Wasm execution pool (persistent worker for running compiled tests) ────
+class WasmExecPool {
+  private worker: Worker | null = null;
+  private pending: Map<number, { resolve: (r: any) => void; timer: ReturnType<typeof setTimeout> }> = new Map();
+  private nextId = 0;
+  private workerPath: string;
+
+  constructor() {
+    this.workerPath = join(import.meta.dirname ?? ".", "..", "scripts", "wasm-exec-worker.mjs");
+    this.spawn();
+  }
+
+  private spawn() {
+    this.worker = new Worker(this.workerPath, { execArgv: [] });
+    this.worker.on("message", (msg: any) => {
+      const job = this.pending.get(msg.id);
+      if (job) {
+        clearTimeout(job.timer);
+        this.pending.delete(msg.id);
+        job.resolve(msg);
+      }
+    });
+    this.worker.on("error", (err: Error) => {
+      // Worker crashed — reject all pending
+      for (const [id, job] of this.pending) {
+        clearTimeout(job.timer);
+        job.resolve({ ok: false, error: err.message, workerError: true });
+      }
+      this.pending.clear();
+      this.spawn(); // respawn
+    });
+    this.worker.on("exit", () => {
+      for (const [id, job] of this.pending) {
+        clearTimeout(job.timer);
+        job.resolve({ ok: false, error: "worker exited", workerError: true });
+      }
+      this.pending.clear();
+      this.spawn(); // respawn
+    });
+  }
+
+  run(binary: Uint8Array, imports: any[], stringPool: string[], isRuntimeNegative: boolean, timeoutMs: number): Promise<any> {
+    return new Promise((resolve) => {
+      const id = this.nextId++;
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        resolve({ ok: false, error: "runtime timeout (10s)", timeout: true });
+        // Kill and respawn the stuck worker
+        this.worker?.terminate();
+        this.worker = null;
+        this.spawn();
+      }, timeoutMs);
+
+      this.pending.set(id, { resolve, timer });
+
+      const binaryBuf = binary.buffer.slice(binary.byteOffset, binary.byteOffset + binary.byteLength);
+      this.worker!.postMessage(
+        { id, binary: new Uint8Array(binaryBuf), imports, stringPool, isRuntimeNegative },
+        [binaryBuf],
+      );
+    });
+  }
+
+  shutdown() {
+    this.worker?.terminate();
+  }
+}
+
+const execPool = new WasmExecPool();
 // Pool workers load compiler-bundle.mjs — already has skipSemanticDiagnostics
 
 // ── Ensure compiler bundle is up to date ─────────────────────────────
@@ -544,55 +614,19 @@ for (const category of TEST_CATEGORIES) {
           return;
         }
 
-        // Instantiate and run in a worker thread — if the Wasm hangs (infinite
-        // loop), worker.terminate() kills it cleanly without losing the fork.
+        // Instantiate and run in a persistent worker thread. The worker stays
+        // alive across tests; if Wasm hangs, the pool timeout terminates and
+        // respawns it. Much faster than spawning a worker per test.
         const isRuntimeNegative = meta.negative?.phase === "runtime";
         const EXEC_TIMEOUT_MS = 10_000;
 
-        const workerResult = await new Promise<any>((resolve) => {
-          const workerPath = join(PROJECT_ROOT, "scripts", "wasm-exec-worker.mjs");
-          const worker = new Worker(workerPath, { execArgv: [] });
-
-          const timer = setTimeout(() => {
-            worker.terminate();
-            resolve({ ok: false, error: "runtime timeout (10s)", timeout: true });
-          }, EXEC_TIMEOUT_MS);
-
-          worker.on("message", (msg: any) => {
-            clearTimeout(timer);
-            worker.terminate();
-            resolve(msg);
-          });
-
-          worker.on("error", (err: Error) => {
-            clearTimeout(timer);
-            worker.terminate();
-            resolve({ ok: false, error: err.message ?? String(err), workerError: true });
-          });
-
-          worker.on("exit", (code: number) => {
-            clearTimeout(timer);
-            // If we already resolved via message, this is a no-op
-            if (code !== 0) {
-              resolve({ ok: false, error: `worker exited with code ${code}`, workerError: true });
-            }
-          });
-
-          // Send binary + config to worker (transfer binary buffer for zero-copy)
-          const binaryBuf = compileResult.binary.buffer.slice(
-            compileResult.binary.byteOffset,
-            compileResult.binary.byteOffset + compileResult.binary.byteLength,
-          );
-          worker.postMessage(
-            {
-              binary: new Uint8Array(binaryBuf),
-              imports: compileResult.result.imports,
-              stringPool: compileResult.result.stringPool,
-              isRuntimeNegative,
-            },
-            [binaryBuf],
-          );
-        });
+        const workerResult = await execPool.run(
+          compileResult.binary,
+          compileResult.result.imports,
+          compileResult.result.stringPool,
+          isRuntimeNegative,
+          EXEC_TIMEOUT_MS,
+        );
 
         // Process worker result
         if (workerResult.timeout) {
