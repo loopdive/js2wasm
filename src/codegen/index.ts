@@ -817,6 +817,8 @@ export interface FunctionContext {
   readOnlyBindings?: Set<string>;
   /** Stack of saved body arrays for addUnionImports index shifting */
   savedBodies: Instr[][];
+  /** Set of function names successfully hoisted during THIS function body's hoisting pass */
+  hoistedFuncs?: Set<string>;
   /** Enclosing class name — propagated to closures for super keyword resolution */
   enclosingClassName?: string;
   /** Set of variable names known to be non-null in the current scope (type narrowing) */
