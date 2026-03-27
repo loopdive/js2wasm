@@ -5046,11 +5046,6 @@ function compileForInStatement(
   fctx: FunctionContext,
   stmt: ts.ForInStatement,
 ): void {
-  // Get property names from the type checker
-  const exprType = ctx.checker.getTypeAtLocation(stmt.expression);
-  const props = exprType.getProperties();
-  if (props.length === 0) return;
-
   // Get the loop variable name
   const init = stmt.initializer;
   let varName: string;
@@ -5102,18 +5097,126 @@ function compileForInStatement(
     return;
   }
 
-  // Unroll: emit one copy of the loop body per property
-  for (const prop of props) {
-    const globalIdx = ctx.stringGlobalMap.get(prop.name);
-    if (globalIdx === undefined) continue;
+  // Look up for-in host imports
+  const keysIdx = ctx.funcMap.get("__for_in_keys");
+  const lenIdx = ctx.funcMap.get("__for_in_len");
+  const getIdx = ctx.funcMap.get("__for_in_get");
 
-    // Set the key variable to this property's name
-    fctx.body.push({ op: "global.get", index: globalIdx });
-    fctx.body.push({ op: "local.set", index: keyLocal });
+  if (keysIdx === undefined || lenIdx === undefined || getIdx === undefined) {
+    // Fallback: static unrolling when host imports are not available (standalone mode)
+    const exprType = ctx.checker.getTypeAtLocation(stmt.expression);
+    const props = exprType.getProperties();
+    if (props.length === 0) return;
+    for (const prop of props) {
+      const globalIdx = ctx.stringGlobalMap.get(prop.name);
+      if (globalIdx === undefined) continue;
+      fctx.body.push({ op: "global.get", index: globalIdx });
+      fctx.body.push({ op: "local.set", index: keyLocal });
+      compileStatement(ctx, fctx, stmt.statement);
+    }
+    return;
+  }
 
-    // Compile the loop body
+  // Compile the object expression and coerce to externref for the host import
+  const exprType = compileExpression(ctx, fctx, stmt.expression);
+  if (exprType && exprType.kind !== "externref") {
+    coerceType(ctx, fctx, exprType, { kind: "externref" });
+  }
+  fctx.body.push({ op: "call", funcIdx: keysIdx }); // __for_in_keys(obj) -> keys array
+
+  // Store keys array in a local
+  const keysLocal = allocLocal(fctx, `__forin_keys_${fctx.locals.length}`, { kind: "externref" });
+  fctx.body.push({ op: "local.set", index: keysLocal });
+
+  // Get length
+  const lenLocal = allocLocal(fctx, `__forin_len_${fctx.locals.length}`, { kind: "i32" });
+  fctx.body.push({ op: "local.get", index: keysLocal });
+  fctx.body.push({ op: "call", funcIdx: lenIdx }); // __for_in_len(keys) -> i32
+  fctx.body.push({ op: "local.set", index: lenLocal });
+
+  // Counter
+  const iLocal = allocLocal(fctx, `__forin_i_${fctx.locals.length}`, { kind: "i32" });
+  fctx.body.push({ op: "i32.const", value: 0 });
+  fctx.body.push({ op: "local.set", index: iLocal });
+
+  // Build the user's loop body in a new body segment.
+  // Structure: block $break { loop $loop { <cond> block $continue { <body> } <incr> br $loop } }
+  // This ensures `continue` (br 0 = exit $continue) falls through to the increment,
+  // while `break` (br 2 = exit $break) exits the entire loop.
+  const savedBody = pushBody(fctx);
+
+  // Adjust existing break/continue depths: block+loop+block adds 3 nesting levels
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! += 3;
+  for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]! += 3;
+  if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth += 3;
+  adjustRethrowDepth(fctx, 3);
+
+  fctx.breakStack.push(2);    // break = depth 2 (exit $break block)
+  fctx.continueStack.push(0); // continue = depth 0 (exit $continue block -> falls to incr)
+
+  // Compile the user's loop body
+  if (ts.isBlock(stmt.statement)) {
+    for (const s of stmt.statement.statements) {
+      compileStatement(ctx, fctx, s);
+    }
+  } else {
     compileStatement(ctx, fctx, stmt.statement);
   }
+
+  const userBody = fctx.body;
+  fctx.breakStack.pop();
+  fctx.continueStack.pop();
+
+  // Restore existing break/continue depths
+  for (let i = 0; i < fctx.breakStack.length; i++) fctx.breakStack[i]! -= 3;
+  for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]! -= 3;
+  if (fctx.generatorReturnDepth !== undefined) fctx.generatorReturnDepth -= 3;
+  adjustRethrowDepth(fctx, -3);
+
+  popBody(fctx, savedBody);
+
+  // Build the full loop body: condition + key fetch + block{userBody} + increment + br
+  const loopBody: Instr[] = [];
+
+  // Condition: i >= length -> break (depth 1 exits $break from inside $loop)
+  loopBody.push({ op: "local.get", index: iLocal });
+  loopBody.push({ op: "local.get", index: lenLocal });
+  loopBody.push({ op: "i32.ge_s" });
+  loopBody.push({ op: "br_if", depth: 1 }); // break out of $break block
+
+  // Get current key: key = keys[i]
+  loopBody.push({ op: "local.get", index: keysLocal });
+  loopBody.push({ op: "local.get", index: iLocal });
+  loopBody.push({ op: "call", funcIdx: getIdx }); // __for_in_get(keys, i) -> externref
+  loopBody.push({ op: "local.set", index: keyLocal });
+
+  // Wrap user body in block $continue so `continue` exits here
+  loopBody.push({
+    op: "block",
+    blockType: { kind: "empty" },
+    body: userBody,
+  });
+
+  // Increment counter (reached after user body OR after continue)
+  loopBody.push({ op: "local.get", index: iLocal });
+  loopBody.push({ op: "i32.const", value: 1 });
+  loopBody.push({ op: "i32.add" });
+  loopBody.push({ op: "local.set", index: iLocal });
+
+  loopBody.push({ op: "br", depth: 0 }); // restart $loop
+
+  // Emit block $break { loop $loop { ...loopBody } }
+  fctx.body.push({
+    op: "block",
+    blockType: { kind: "empty" },
+    body: [
+      {
+        op: "loop",
+        blockType: { kind: "empty" },
+        body: loopBody,
+      },
+    ],
+  });
 }
 
 function compileLabeledStatement(
