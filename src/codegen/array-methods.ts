@@ -22,6 +22,24 @@ import { compileExpression, compileArrowAsClosure, VOID_RESULT, getLine, getCol 
 import { coercionInstrs, defaultValueInstrs } from "./type-coercion.js";
 import { ensureTimsortHelper } from "./timsort.js";
 
+// ── Guarded funcref cast (ref.test before ref.cast to avoid illegal cast traps) ──
+function guardedFuncRefCastInstrs(fctx: FunctionContext, funcTypeIdx: number): Instr[] {
+  const tmpFunc = allocLocal(fctx, `__gfc_${fctx.locals.length}`, { kind: "funcref" } as ValType);
+  return [
+    { op: "local.tee", index: tmpFunc } as unknown as Instr,
+    { op: "ref.test", typeIdx: funcTypeIdx } as unknown as Instr,
+    { op: "if", blockType: { kind: "val", type: { kind: "ref_null", typeIdx: funcTypeIdx } as ValType },
+      then: [
+        { op: "local.get", index: tmpFunc } as unknown as Instr,
+        { op: "ref.cast_null", typeIdx: funcTypeIdx } as unknown as Instr,
+      ],
+      else: [
+        { op: "ref.null", typeIdx: funcTypeIdx } as unknown as Instr,
+      ],
+    } as Instr,
+  ];
+}
+
 // ── Null guard for array method receivers ─────────────────────────────
 
 /**
@@ -600,7 +618,7 @@ function compileArrayPrototypeEvery(
     // Get function ref from closure struct field 0 and call_ref
     { op: "local.get", index: closureTmp },
     { op: "struct.get", typeIdx: closureTypeIdx, fieldIdx: 0 } as Instr,
-    { op: "ref.cast", typeIdx: closureInfo.funcTypeIdx } as Instr,
+    ...guardedFuncRefCastInstrs(fctx, closureInfo.funcTypeIdx),
     { op: "ref.as_non_null" } as Instr,
     { op: "call_ref", typeIdx: closureInfo.funcTypeIdx } as Instr,
 
@@ -716,7 +734,7 @@ function compileArrayPrototypeSome(
     ] : []),
     { op: "local.get", index: closureTmp },
     { op: "struct.get", typeIdx: closureTypeIdx, fieldIdx: 0 } as Instr,
-    { op: "ref.cast", typeIdx: closureInfo.funcTypeIdx } as Instr,
+    ...guardedFuncRefCastInstrs(fctx, closureInfo.funcTypeIdx),
     { op: "ref.as_non_null" } as Instr,
     { op: "call_ref", typeIdx: closureInfo.funcTypeIdx } as Instr,
     ...(closureInfo.returnType?.kind === "f64"
@@ -819,7 +837,7 @@ function compileArrayPrototypeForEach(
     ] : []),
     { op: "local.get", index: closureTmp },
     { op: "struct.get", typeIdx: closureTypeIdx, fieldIdx: 0 } as Instr,
-    { op: "ref.cast", typeIdx: closureInfo.funcTypeIdx } as Instr,
+    ...guardedFuncRefCastInstrs(fctx, closureInfo.funcTypeIdx),
     { op: "ref.as_non_null" } as Instr,
     { op: "call_ref", typeIdx: closureInfo.funcTypeIdx } as Instr,
     // Drop the result if there is one
@@ -2281,7 +2299,7 @@ function buildClosureCallInstrs(
     ] : []),
     { op: "local.get", index: closureTmp } as Instr,
     { op: "struct.get", typeIdx: closureTypeIdx, fieldIdx: 0 } as Instr,
-    { op: "ref.cast", typeIdx: closureInfo.funcTypeIdx } as Instr,
+    ...guardedFuncRefCastInstrs(fctx, closureInfo.funcTypeIdx),
     { op: "ref.as_non_null" } as Instr,
     { op: "call_ref", typeIdx: closureInfo.funcTypeIdx } as Instr,
   ];
@@ -2662,7 +2680,7 @@ function compileArrayReduce(
       ] : []),
       { op: "local.get", index: setup.closureTmp } as Instr,
       { op: "struct.get", typeIdx: setup.closureTypeIdx, fieldIdx: 0 } as Instr,
-      { op: "ref.cast", typeIdx: ci.funcTypeIdx } as Instr,
+      ...guardedFuncRefCastInstrs(fctx, ci.funcTypeIdx),
       { op: "ref.as_non_null" } as Instr,
       { op: "call_ref", typeIdx: ci.funcTypeIdx } as Instr,
       // Coerce closure return type to accumulator type if needed
@@ -2798,7 +2816,7 @@ function compileArrayReduceRight(
       ] : []),
       { op: "local.get", index: setup.closureTmp } as Instr,
       { op: "struct.get", typeIdx: setup.closureTypeIdx, fieldIdx: 0 } as Instr,
-      { op: "ref.cast", typeIdx: ci.funcTypeIdx } as Instr,
+      ...guardedFuncRefCastInstrs(fctx, ci.funcTypeIdx),
       { op: "ref.as_non_null" } as Instr,
       { op: "call_ref", typeIdx: ci.funcTypeIdx } as Instr,
       // Coerce closure return type to accumulator type if needed

@@ -1344,7 +1344,23 @@ export function coerceType(
             // call_ref signature: [closure_ref, funcref] → results
             fctx.body.push({ op: "local.get", index: closureLocal });
             fctx.body.push({ op: "struct.get", typeIdx: closureTypeIdx, fieldIdx: 0 });
-            fctx.body.push({ op: "ref.cast", typeIdx: closureInfo.funcTypeIdx });
+            {
+              const tmpFunc = allocTempLocal(fctx, { kind: "funcref" } as ValType);
+              fctx.body.push({ op: "local.tee", index: tmpFunc } as unknown as Instr);
+              fctx.body.push({ op: "ref.test", typeIdx: closureInfo.funcTypeIdx } as unknown as Instr);
+              fctx.body.push({
+                op: "if",
+                blockType: { kind: "val", type: { kind: "ref_null", typeIdx: closureInfo.funcTypeIdx } as ValType },
+                then: [
+                  { op: "local.get", index: tmpFunc } as unknown as Instr,
+                  { op: "ref.cast_null", typeIdx: closureInfo.funcTypeIdx } as unknown as Instr,
+                ],
+                else: [
+                  { op: "ref.null", typeIdx: closureInfo.funcTypeIdx } as unknown as Instr,
+                ],
+              } as Instr);
+              releaseTempLocal(fctx, tmpFunc);
+            }
             fctx.body.push({ op: "ref.as_non_null" });
             fctx.body.push({ op: "call_ref", typeIdx: closureInfo.funcTypeIdx });
             // Convert valueOf result to f64
@@ -1406,13 +1422,25 @@ export function coerceType(
               }
               const { closureTypeIdx, info } = callableClosureTypes[idx]!;
               const closureLocal = allocLocal(fctx, `__vo_cl_${fctx.locals.length}`, { kind: "ref", typeIdx: closureTypeIdx });
+              const funcTmp = allocLocal(fctx, `__vo_fn_${fctx.locals.length}`, { kind: "funcref" } as ValType);
               const thenInstrs: Instr[] = [
                 { op: "local.get", index: eqLocal } as Instr,
                 { op: "ref.cast", typeIdx: closureTypeIdx },
                 { op: "local.tee", index: closureLocal } as Instr,
                 { op: "local.get", index: closureLocal } as Instr,
                 { op: "struct.get", typeIdx: closureTypeIdx, fieldIdx: 0 } as Instr,
-                { op: "ref.cast", typeIdx: info.funcTypeIdx },
+                // Guarded funcref cast to avoid illegal cast traps
+                { op: "local.tee", index: funcTmp } as unknown as Instr,
+                { op: "ref.test", typeIdx: info.funcTypeIdx } as unknown as Instr,
+                { op: "if", blockType: { kind: "val", type: { kind: "ref_null", typeIdx: info.funcTypeIdx } as ValType },
+                  then: [
+                    { op: "local.get", index: funcTmp } as unknown as Instr,
+                    { op: "ref.cast_null", typeIdx: info.funcTypeIdx } as unknown as Instr,
+                  ],
+                  else: [
+                    { op: "ref.null", typeIdx: info.funcTypeIdx } as unknown as Instr,
+                  ],
+                } as Instr,
                 { op: "ref.as_non_null" } as Instr,
                 { op: "call_ref", typeIdx: info.funcTypeIdx },
               ];

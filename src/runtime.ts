@@ -81,6 +81,15 @@ function resolveImport(
       if (name === "__object_seal") return (obj: any) => Object.seal(obj);
       if (name === "__object_preventExtensions") return (obj: any) => Object.preventExtensions(obj);
       if (name === "__extern_slice") return (arr: any, start: number) => Array.isArray(arr) ? arr.slice(start) : [];
+      if (name === "__extern_rest_object") return (obj: any, excludedKeysStr: string) => {
+        if (obj == null) return {};
+        const excluded = new Set(excludedKeysStr ? String(excludedKeysStr).split(",") : []);
+        const result: Record<string, any> = {};
+        for (const key of Object.keys(obj)) {
+          if (!excluded.has(key)) result[key] = obj[key];
+        }
+        return result;
+      };
       // Object.defineProperty host import — flags is a bitmask:
       //   bit 0: writable, bit 1: enumerable, bit 2: configurable
       //   bit 3: writable specified, bit 4: enumerable specified, bit 5: configurable specified
