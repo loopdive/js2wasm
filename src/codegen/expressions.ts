@@ -1980,14 +1980,30 @@ export function compileNullishCoalescing(
   const tmp = allocTempLocal(fctx, resultKind);
   fctx.body.push({ op: "local.tee", index: tmp });
 
-  // If the left side is a value type (i32/f64), it can never be null — short-circuit
+  // If the left side is a value type (i32/f64), it can never be null/undefined — short-circuit
   if (resultKind.kind === "i32" || resultKind.kind === "f64") {
     releaseTempLocal(fctx, tmp);
     return resultKind;
   }
 
-  // Check if null
+  // Check if null or undefined (JS `??` triggers for both null and undefined)
+  // ref.is_null checks for wasm null; __extern_is_undefined checks for JS undefined
   fctx.body.push({ op: "ref.is_null" });
+  const isUndefIdx = ensureLateImport(
+    ctx,
+    "__extern_is_undefined",
+    [{ kind: "externref" }],
+    [{ kind: "i32" }],
+  );
+  flushLateImportShifts(ctx, fctx);
+  if (isUndefIdx !== undefined) {
+    fctx.body.push({ op: "local.get", index: tmp });
+    if (resultKind.kind !== "externref") {
+      fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+    }
+    fctx.body.push({ op: "call", funcIdx: isUndefIdx });
+    fctx.body.push({ op: "i32.or" } as unknown as Instr);
+  }
 
   // Compile RHS in a side buffer to discover its natural type
   const savedBody = pushBody(fctx);
@@ -4614,7 +4630,26 @@ export function compileLogicalAssignment(
       return varType;
     }
     emitGet();
+    // Check null or undefined (JS ??= triggers for both)
+    const qqeTmp = allocTempLocal(fctx, varType);
+    fctx.body.push({ op: "local.tee", index: qqeTmp });
     fctx.body.push({ op: "ref.is_null" });
+    const qqeUndefIdx = ensureLateImport(
+      ctx,
+      "__extern_is_undefined",
+      [{ kind: "externref" }],
+      [{ kind: "i32" }],
+    );
+    flushLateImportShifts(ctx, fctx);
+    if (qqeUndefIdx !== undefined) {
+      fctx.body.push({ op: "local.get", index: qqeTmp });
+      if (varType.kind !== "externref") {
+        fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+      }
+      fctx.body.push({ op: "call", funcIdx: qqeUndefIdx });
+      fctx.body.push({ op: "i32.or" } as unknown as Instr);
+    }
+    releaseTempLocal(fctx, qqeTmp);
 
     // Compile the RHS in a separate body
     const savedBody = pushBody(fctx);
