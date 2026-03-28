@@ -164,10 +164,10 @@ export function shouldSkip(
       reason: "TypeScript 5.x: Unicode 16.0.0 identifiers not supported (#832)",
     };
   }
-  if (filePath && /built-ins\/SharedArrayBuffer/.test(filePath) || meta.features?.includes("SharedArrayBuffer")) {
+  if (filePath && /built-ins\/(SharedArrayBuffer|Atomics)/.test(filePath) || meta.features?.includes("SharedArrayBuffer") || meta.features?.includes("Atomics")) {
     return {
       skip: true,
-      reason: "ES2017: SharedArrayBuffer (requires shared Wasm memory) (#674)",
+      reason: "ES2017: SharedArrayBuffer/Atomics (requires shared Wasm memory) (#674)",
     };
   }
   if (meta.features?.some((f: string) => /^set-methods/.test(f))) {
