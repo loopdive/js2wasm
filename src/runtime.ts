@@ -56,6 +56,86 @@ function _sidecarDelete(obj: any, key: any): boolean {
 }
 
 /**
+ * ToPrimitive for WasmGC structs (#850).
+ *
+ * Implements the JS ToPrimitive abstract operation for opaque WasmGC struct
+ * externrefs. V8 cannot call valueOf/toString on opaque GC structs natively,
+ * so we check sidecar properties and Wasm-exported struct getters.
+ *
+ * For hint "string", toString is checked before valueOf (per spec).
+ * For hint "number"/"default", valueOf is checked before toString.
+ * Returns the primitive value, or undefined if no conversion found.
+ */
+function _toPrimitive(
+  obj: any,
+  hint: "number" | "string" | "default",
+  callbackState?: { getExports: () => Record<string, Function> | undefined },
+): any {
+  // 1. Check Symbol.toPrimitive (sidecar only)
+  const scToPrim = _sidecarGet(obj, Symbol.toPrimitive);
+  if (typeof scToPrim === "function") {
+    try {
+      const prim = scToPrim.call(obj, hint);
+      if (prim == null || typeof prim !== "object") return prim;
+    } catch { /* ignore */ }
+  }
+
+  const exports = callbackState?.getExports();
+
+  // Helper: try valueOf or toString from sidecar then Wasm exports
+  const tryMethod = (name: string): any => {
+    // Sidecar property (set via __extern_set)
+    const scFn = _sidecarGet(obj, name);
+    if (typeof scFn === "function") {
+      try {
+        const prim = scFn.call(obj);
+        if (prim == null || typeof prim !== "object") return prim;
+      } catch { /* ignore */ }
+    }
+    // Wasm-exported struct field getter (__sget_valueOf, __sget_toString)
+    if (exports) {
+      const sget = exports[`__sget_${name}`];
+      if (typeof sget === "function") {
+        try {
+          const field = sget(obj);
+          if (typeof field === "function") {
+            const prim = field.call(obj);
+            if (prim == null || typeof prim !== "object") return prim;
+          } else if (field != null && typeof field !== "object") {
+            return field;
+          }
+        } catch { /* struct field access failed */ }
+      }
+    }
+    return undefined;
+  };
+
+  // Per JS spec: "string" hint -> toString first; "number"/"default" -> valueOf first
+  if (hint === "string") {
+    const ts = tryMethod("toString");
+    if (ts !== undefined) return ts;
+    const vo = tryMethod("valueOf");
+    if (vo !== undefined) return vo;
+  } else {
+    const vo = tryMethod("valueOf");
+    if (vo !== undefined) return vo;
+    const ts = tryMethod("toString");
+    if (ts !== undefined) return ts;
+  }
+
+  return undefined;
+}
+
+/**
+ * Simplified ToPrimitive for contexts without callbackState (e.g. jsString.concat).
+ * Only checks sidecar properties, not Wasm exports.
+ */
+function _toPrimitiveSync(v: any, hint: "number" | "string" | "default"): any {
+  if (v == null || typeof v !== "object") return v;
+  return _toPrimitive(v, hint) ?? "[object Object]";
+}
+
+/**
  * Get the field names of a WasmGC struct by calling the __struct_field_names export.
  * Returns an array of field name strings, or null if the export is not available
  * or the value is not a recognized struct type.
@@ -201,7 +281,14 @@ function _safeSet(obj: any, key: any, val: any): void {
 
 /** wasm:js-string polyfill for engines without native support (https://developer.mozilla.org/de/docs/WebAssembly/Guides/JavaScript_builtins) */
 export const jsString = {
-  concat: (a: string, b: string): string => a + b,
+  concat: (a: string, b: string): string => {
+    try { return a + b; } catch {
+      // ToPrimitive failed on one operand (likely WasmGC struct) (#850)
+      const sa = typeof a === "string" ? a : _toPrimitiveSync(a, "default");
+      const sb = typeof b === "string" ? b : _toPrimitiveSync(b, "default");
+      return String(sa) + String(sb);
+    }
+  },
   length: (s: string): number => s.length,
   equals: (a: string, b: string): number => (a === b ? 1 : 0),
   substring: (s: string, start: number, end: number): string =>
@@ -311,7 +398,12 @@ function resolveImport(
       if (name === "__extern_toString") return (v: any) => {
         if (v == null) return String(v);
         if (typeof v.toString === "function") return v.toString();
-        return String(v);
+        // ToPrimitive for WasmGC structs (#850)
+        if (typeof v === "object") {
+          const prim = _toPrimitive(v, "string", callbackState);
+          if (prim !== undefined) return String(prim);
+        }
+        try { return String(v); } catch { return "[object Object]"; }
       };
       if (name === "__extern_is_undefined") return (v: any) => v === undefined ? 1 : 0;
       if (name === "__get_undefined") return () => undefined;
@@ -762,7 +854,16 @@ function resolveImport(
       return intent.targetType === "boolean" ? (v: number) => Boolean(v) : (v: number) => v;
     case "unbox":
       return intent.targetType === "boolean" ? (v: any) => (v ? 1 : 0) : (v: any) => {
-        try { return Number(v); } catch { return NaN; }
+        try { return Number(v); } catch {
+          // Number() failed -- likely a WasmGC struct without native ToPrimitive (#850).
+          if (v != null && typeof v === "object") {
+            const prim = _toPrimitive(v, "number", callbackState);
+            if (prim !== undefined) {
+              try { return Number(prim); } catch { /* */ }
+            }
+          }
+          return NaN;
+        }
       };
     case "truthy_check":
       return (v: any) => (v ? 1 : 0);
