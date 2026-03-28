@@ -135,6 +135,12 @@ export function shouldSkip(
       reason: "ES5 legacy: with statement (strict mode disallowed)",
     };
   }
+  if (filePath && /unicode-16\.0\.0/.test(filePath)) {
+    return {
+      skip: true,
+      reason: "TypeScript 5.x: Unicode 16.0.0 identifiers not supported (#832)",
+    };
+  }
   if (filePath && /built-ins\/Temporal/.test(filePath)) {
     return {
       skip: true,
