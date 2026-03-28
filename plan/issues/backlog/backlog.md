@@ -48,6 +48,8 @@ Issues where compiled Wasm runs but produces wrong values or wrong error types.
 | [850](../ready/850.md) | High | Object-to-primitive: valueOf/toString not called | **135 FAIL** | Ready |
 | [849](../ready/849.md) | Medium | Mapped arguments object sync with named params | **200 FAIL** | Ready |
 | [855](../ready/855.md) | Medium | Promise resolution and async error handling | **210 FAIL** | Ready |
+| [859](../ready/859.md) | High | Map.forEach callback captures are immutable snapshots (runtime hang) | **1 hang** | Ready |
+| [860](../ready/860.md) | Medium | Promise executor and property-assigned fns not compiled as host callbacks | **1 hang** | Ready |
 | [858](../ready/858.md) | Medium | Worker/timeout exits and eval-code null deref | **182 FAIL** | Ready |
 | [853](../ready/853.md) | Medium | WebAssembly objects are opaque (for-in/Object.create) | **58 FAIL** | Ready |
 | [778](../ready/778.md) | Medium | Illegal cast errors (ref.cast wrong type) | 135 FAIL | Ready |
