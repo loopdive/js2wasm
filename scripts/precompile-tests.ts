@@ -7,7 +7,8 @@
  * Uses all CPU cores for compilation. Vitest then runs pure execution
  * (cache hits only) with no compilation overhead.
  */
-import { readFileSync, existsSync, writeFileSync, mkdirSync } from "fs";
+import { readFile, writeFile, access, mkdir } from "fs/promises";
+import { readFileSync } from "fs";
 import { join, relative } from "path";
 import { createHash } from "crypto";
 import { availableParallelism } from "os";
@@ -22,7 +23,7 @@ import {
 
 const TEST262_ROOT = join(import.meta.dirname ?? ".", "..", "test262");
 const CACHE_DIR = join(import.meta.dirname ?? ".", "..", ".test262-cache");
-mkdirSync(CACHE_DIR, { recursive: true });
+await mkdir(CACHE_DIR, { recursive: true });
 
 // Build compiler hash (same logic as test262-vitest.test.ts)
 function buildCompilerHash(): string {
@@ -40,14 +41,13 @@ const pool = new CompilerPool(POOL_SIZE);
 
 console.log(`Pre-compiling test262 with ${POOL_SIZE} workers...`);
 
-// Collect all tests
-const allTests: { filePath: string; relPath: string; category: string }[] = [];
+// Collect all test file paths (fast — just readdir, no file reads)
+const allTests: { filePath: string; relPath: string }[] = [];
 for (const category of TEST_CATEGORIES) {
   for (const filePath of findTestFiles(category)) {
-    allTests.push({ filePath, relPath: relative(TEST262_ROOT, filePath), category });
+    allTests.push({ filePath, relPath: relative(TEST262_ROOT, filePath) });
   }
 }
-
 console.log(`${allTests.length} test files found`);
 
 let compiled = 0;
@@ -55,75 +55,92 @@ let cached = 0;
 let skipped = 0;
 let errors = 0;
 const startTime = Date.now();
-const CONCURRENCY = POOL_SIZE * 2;
-const pending: Promise<void>[] = [];
+
+function logProgress() {
+  const total = compiled + cached + errors + skipped;
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+  const rate = (total / parseFloat(elapsed)).toFixed(0);
+  console.log(`  ${total}/${allTests.length} (${rate}/s) — ${compiled} compiled, ${cached} cached, ${skipped} skipped, ${errors} errors [${elapsed}s]`);
+}
+
+// Process all tests fully async with controlled concurrency
+const CONCURRENCY = POOL_SIZE * 3;
+let inFlight = 0;
+let resolveSlot: (() => void) | null = null;
+
+function releaseSlot() {
+  inFlight--;
+  if (resolveSlot) { const r = resolveSlot; resolveSlot = null; r(); }
+}
+
+async function waitForSlot() {
+  if (inFlight < CONCURRENCY) { inFlight++; return; }
+  await new Promise<void>(r => { resolveSlot = r; });
+  inFlight++;
+}
+
+const jobs: Promise<void>[] = [];
 
 for (const { filePath, relPath } of allTests) {
-  const source = readFileSync(filePath, "utf-8");
-  const meta = parseMeta(source);
-  const filter = shouldSkip(source, meta, filePath);
-  if (filter.skip) { skipped++; continue; }
+  await waitForSlot();
 
-  let wrapped: string;
-  try {
-    wrapped = wrapTest(source, meta).source;
-  } catch {
-    errors++;
-    continue;
-  }
-  const hash = createHash("md5").update(wrapped).update(compilerHash).digest("hex");
-  const cachePath = join(CACHE_DIR, `${hash}.wasm`);
-  const metaPath = join(CACHE_DIR, `${hash}.json`);
+  const job = (async () => {
+    try {
+      const source = await readFile(filePath, "utf-8");
+      const meta = parseMeta(source);
+      const filter = shouldSkip(source, meta, filePath);
+      if (filter.skip) { skipped++; releaseSlot(); return; }
 
-  // Skip if already cached
-  if (existsSync(cachePath) && existsSync(metaPath)) { cached++; continue; }
-
-  // Dispatch to pool
-  const job = pool.compile(wrapped, 10_000).then((result: PoolResult) => {
-    if (result.ok) {
+      let wrapped: string;
       try {
-        writeFileSync(cachePath, result.binary);
-        writeFileSync(metaPath, JSON.stringify({
+        wrapped = wrapTest(source, meta).source;
+      } catch {
+        errors++; releaseSlot(); return;
+      }
+
+      const hash = createHash("md5").update(wrapped).update(compilerHash).digest("hex");
+      const cachePath = join(CACHE_DIR, `${hash}.wasm`);
+      const metaPath = join(CACHE_DIR, `${hash}.json`);
+
+      // Check cache async
+      try {
+        await access(cachePath);
+        await access(metaPath);
+        cached++;
+        releaseSlot();
+        return;
+      } catch {
+        // Cache miss — compile
+      }
+
+      const result = await pool.compile(wrapped, 10_000);
+      if (result.ok) {
+        await writeFile(cachePath, result.binary);
+        await writeFile(metaPath, JSON.stringify({
           ok: true,
           stringPool: result.stringPool,
           imports: result.imports,
           sourceMap: result.sourceMap,
         }));
-      } catch {}
-      compiled++;
-    } else {
-      // Store compile error in cache so vitest can report it without recompiling
-      try {
-        writeFileSync(cachePath, new Uint8Array(0));
-        writeFileSync(metaPath, JSON.stringify({
-          ok: false,
-          error: result.error,
-        }));
-      } catch {}
+        compiled++;
+      } else {
+        await writeFile(cachePath, new Uint8Array(0));
+        await writeFile(metaPath, JSON.stringify({ ok: false, error: result.error }));
+        errors++;
+      }
+
+      const total = compiled + cached + errors + skipped;
+      if (total % 1000 === 0) logProgress();
+    } catch {
       errors++;
     }
+    releaseSlot();
+  })();
 
-    const total = compiled + cached + errors;
-    if (total % 500 === 0) {
-      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-      const rate = (total / parseFloat(elapsed)).toFixed(0);
-      console.log(`  ${total}/${allTests.length - skipped} (${rate}/s) — ${compiled} compiled, ${cached} cached, ${errors} errors [${elapsed}s]`);
-    }
-  });
-
-  pending.push(job);
-
-  // Throttle concurrency
-  if (pending.length >= CONCURRENCY) {
-    await Promise.race(pending);
-    for (let i = pending.length - 1; i >= 0; i--) {
-      const settled = await Promise.race([pending[i], Promise.resolve("pending")]);
-      if (settled !== "pending") pending.splice(i, 1);
-    }
-  }
+  jobs.push(job);
 }
 
-await Promise.all(pending);
+await Promise.all(jobs);
 pool.shutdown();
 
 const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
