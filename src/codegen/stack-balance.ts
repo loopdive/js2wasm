@@ -539,14 +539,14 @@ function fixBranchType(
     return 1;
   }
 
-  // externref → ref/ref_null: drop the externref and use ref.null
-  // Using any.convert_extern + ref.cast would trap at runtime if the externref
-  // is not actually the expected struct type (e.g. undefined stored into a
-  // closure-typed local). Since this is a stack-balance fixup, the value is
-  // typically undefined/null rather than a legitimate struct.
+  // externref → ref/ref_null: any.convert_extern + ref.cast
   if ((expectedType.kind === "ref" || expectedType.kind === "ref_null") && produced === "externref") {
-    body.push({ op: "drop" } as Instr);
-    body.push({ op: "ref.null", typeIdx: expectedType.typeIdx } as unknown as Instr);
+    body.push({ op: "any.convert_extern" } as Instr);
+    if (expectedType.kind === "ref_null") {
+      body.push({ op: "ref.cast_null", typeIdx: expectedType.typeIdx } as unknown as Instr);
+    } else {
+      body.push({ op: "ref.cast", typeIdx: expectedType.typeIdx } as unknown as Instr);
+    }
     return 1;
   }
 
@@ -1061,16 +1061,13 @@ function callArgCoercionInstrs(
     return [{ op: "i64.extend_i32_s" } as unknown as Instr];
   }
 
-  // externref → ref/ref_null: drop + ref.null
-  // Using any.convert_extern + ref.cast_null would trap at runtime if the externref
-  // is not the expected struct type (e.g. undefined stored into a closure-typed local).
-  // Since this is a stack-balance coercion, use the safe drop + ref.null approach.
+  // externref → ref/ref_null: any.convert_extern + ref.cast_null
   if (actualIsExternref && (expected.kind === "ref" || expected.kind === "ref_null")) {
     const typeIdx = (expected as any).typeIdx;
     if (typeIdx !== undefined) {
       return [
-        { op: "drop" } as Instr,
-        { op: "ref.null", typeIdx } as Instr,
+        { op: "any.convert_extern" } as Instr,
+        { op: "ref.cast_null", typeIdx } as Instr,
       ];
     }
   }

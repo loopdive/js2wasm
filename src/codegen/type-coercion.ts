@@ -1910,11 +1910,11 @@ export function coercionInstrs(ctx: CodegenContext, from: ValType, to: ValType, 
       releaseTempLocal(fctx, tmp);
       return result;
     }
-    // No fctx available — can't allocate temp for guarded cast.
-    // Use drop + ref.null to avoid illegal cast traps.
+    // No fctx available — use original ref.cast (may trap as illegal_cast,
+    // but that's more informative than silently returning null).
     return [
-      { op: "drop" } as Instr,
-      { op: "ref.null", typeIdx: toIdx } as Instr,
+      { op: "any.convert_extern" } as Instr,
+      { op: "ref.cast_null", typeIdx: toIdx } as unknown as Instr,
     ];
   }
   // externref → ref: any.convert_extern + guarded ref.cast
@@ -1941,11 +1941,10 @@ export function coercionInstrs(ctx: CodegenContext, from: ValType, to: ValType, 
       releaseTempLocal(fctx, tmp);
       return result;
     }
-    // No fctx available — can't allocate temp for guarded cast.
-    // Use drop + ref.null to avoid illegal cast traps.
+    // No fctx available — use original ref.cast
     return [
-      { op: "drop" } as Instr,
-      { op: "ref.null", typeIdx: toIdx } as Instr,
+      { op: "any.convert_extern" } as Instr,
+      { op: "ref.cast", typeIdx: toIdx } as unknown as Instr,
     ];
   }
   // eqref/anyref → ref_null: guarded ref.cast_null
