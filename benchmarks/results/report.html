@@ -106,16 +106,17 @@
   <p class="subtitle">Historical trend of test262 pass/fail/compile-error counts</p>
   <p class="subtitle" id="run-timestamp" style="display:none"></p>
 
+  <div id="skip-reasons-container" class="table-container" style="display:none;margin-bottom:24px">
+    <h2>Unsupported Features (Skipped Tests)</h2>
+    <table>
+      <thead><tr><th>Feature / Reason</th><th class="num">Tests Skipped</th></tr></thead>
+      <tbody id="skip-reasons-body"></tbody>
+    </table>
+  </div>
+
   <div id="loading">Loading data...</div>
   <div id="content" style="display:none">
     <div class="stats-row" id="stats-row"></div>
-    <div id="skip-reasons-container" class="table-container" style="display:none;margin-bottom:24px">
-      <h2>Unsupported Features (Skipped Tests)</h2>
-      <table>
-        <thead><tr><th>Feature / Reason</th><th class="num">Tests Skipped</th></tr></thead>
-        <tbody id="skip-reasons-body"></tbody>
-      </table>
-    </div>
 
     <div class="chart-container">
       <h2>Conformance Trend</h2>
