@@ -32,8 +32,12 @@ await mkdir(RESULTS_DIR, { recursive: true });
 import { openSync, writeSync as fdWrite, closeSync, fsyncSync } from "fs";
 const jsonlFd = openSync(JSONL_PATH, "w"); // overwrite
 
-function recordCompileResult(relPath: string, category: string, status: string, error?: string) {
-  const entry = JSON.stringify({ file: relPath, category, status, error: error || undefined });
+function recordCompileResult(relPath: string, category: string, status: string, error?: string, compileMs?: number) {
+  const entry = JSON.stringify({
+    file: relPath, category, status,
+    error: error || undefined,
+    compile_ms: compileMs !== undefined ? Math.round(compileMs) : undefined,
+  });
   fdWrite(jsonlFd, entry + "\n");
 }
 
@@ -133,12 +137,13 @@ for (const { filePath, relPath } of allTests) {
           stringPool: result.stringPool,
           imports: result.imports,
           sourceMap: result.sourceMap,
+          compileMs: result.compileMs,
         }));
         compiled++;
       } else {
         await writeFile(cachePath, new Uint8Array(0));
-        await writeFile(metaPath, JSON.stringify({ ok: false, error: result.error }));
-        recordCompileResult(relPath, category, "compile_error", result.error);
+        await writeFile(metaPath, JSON.stringify({ ok: false, error: result.error, compileMs: result.compileMs }));
+        recordCompileResult(relPath, category, "compile_error", result.error, result.compileMs);
         errors++;
       }
 
