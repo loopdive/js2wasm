@@ -1143,6 +1143,16 @@ export function generateModule(
     addWasiStartExport(ctx);
   }
 
+  // Export the exception tag so the exec worker can extract thrown payloads
+  // via WebAssembly.Exception.getArg(tag, 0).
+  if (ctx.exnTagIdx >= 0) {
+    const numImportTags = mod.imports.filter((i) => i.desc.kind === "tag").length;
+    mod.exports.push({
+      name: "__exn_tag",
+      desc: { kind: "tag", index: numImportTags + ctx.exnTagIdx },
+    });
+  }
+
   // Mark leaf struct types as final for V8 devirtualization
   markLeafStructsFinal(mod);
 
@@ -1898,6 +1908,16 @@ export function generateMultiModule(
   // WASI: export _start entry point (before dead import elimination adjusts indices)
   if (ctx.wasi) {
     addWasiStartExport(ctx);
+  }
+
+  // Export the exception tag so the exec worker can extract thrown payloads
+  // via WebAssembly.Exception.getArg(tag, 0).
+  if (ctx.exnTagIdx >= 0) {
+    const numImportTags = mod.imports.filter((i) => i.desc.kind === "tag").length;
+    mod.exports.push({
+      name: "__exn_tag",
+      desc: { kind: "tag", index: numImportTags + ctx.exnTagIdx },
+    });
   }
 
   // Mark leaf struct types as final for V8 devirtualization
