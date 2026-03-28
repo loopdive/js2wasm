@@ -1465,10 +1465,13 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
   // Use paren-counting to correctly handle nested calls like assert.sameValue(parseInt("11", undefined), ...)
   body = stripUndefinedAssert(body, "assert.sameValue");
   body = stripUndefinedAssert(body, "assert.notSameValue");
-  // var x = undefined; → var x: number = 0;
+  // var x = undefined; → var x;
+  // Previously this was `var x: number = 0;` but that lost undefined identity
+  // for nullish operators (??, ??=). Now we just remove the initializer and
+  // let the compiler use the default for the inferred type.
   body = body.replace(
     /\bvar\s+(\w+)\s*=\s*undefined\s*;/g,
-    "var $1: number = 0;",
+    "var $1;",
   );
   // Strip `if (expr !== undefined) { throw ... }` guards
   body = stripUndefinedThrowGuards(body);
