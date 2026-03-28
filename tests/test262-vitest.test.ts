@@ -370,8 +370,21 @@ mkdirSync(RESULTS_DIR, { recursive: true });
 const JSONL_PATH = join(RESULTS_DIR, "test262-results.jsonl");
 const REPORT_PATH = join(RESULTS_DIR, "test262-report.json");
 
-// Open JSONL with a raw file descriptor for reliable writes from threads
-writeSync(JSONL_PATH, "");
+// Load existing JSONL entries from precompiler (skips + compile_errors)
+// so the test runner can append execution results without duplicating.
+const precompiledEntries = new Set<string>();
+try {
+  const existing = readFileSync(JSONL_PATH, "utf-8");
+  for (const line of existing.split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      const entry = JSON.parse(line);
+      precompiledEntries.add(entry.file);
+    } catch {}
+  }
+} catch {}
+
+// Open JSONL in append mode to preserve precompiler entries
 const jsonlFd = openSync(JSONL_PATH, "a");
 let flushCount = 0;
 const REPORT_FLUSH_INTERVAL = 500; // update report.json every 500 tests
@@ -402,6 +415,9 @@ class ConformanceError extends Error {
 const GC_INTERVAL = 200;
 
 function recordResult(file: string, category: string, status: string, error?: string) {
+  // Don't write to JSONL if already recorded by precompiler (skips + compile_errors)
+  const alreadyRecorded = precompiledEntries.has(file) && (status === "skip" || status === "compile_error");
+
   const errorCategory = (status === "fail" || status === "compile_error") ? classifyError(error) : undefined;
   const entry = JSON.stringify({
     file,
@@ -410,7 +426,9 @@ function recordResult(file: string, category: string, status: string, error?: st
     error: error || undefined,
     error_category: errorCategory,
   });
-  fdWrite(jsonlFd, entry + "\n");
+  if (!alreadyRecorded) {
+    fdWrite(jsonlFd, entry + "\n");
+  }
   summary.total++;
   (summary as any)[status]++;
   if (!catCounts[category]) catCounts[category] = { pass: 0, fail: 0, compile_error: 0, skip: 0, total: 0 };
