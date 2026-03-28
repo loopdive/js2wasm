@@ -126,13 +126,13 @@ export function shouldSkip(
   if (meta.features?.includes("with") || /\bwith\s*\(/.test(source)) {
     return {
       skip: true,
-      reason: "with statement (strict mode disallowed, deprioritized)",
+      reason: "ES5 legacy: with statement (strict mode disallowed)",
     };
   }
   if (filePath && /built-ins\/Temporal/.test(filePath)) {
     return {
       skip: true,
-      reason: "Temporal API not implemented (deprioritized)",
+      reason: "ES2025: Temporal API not implemented",
     };
   }
 
@@ -147,14 +147,15 @@ export function shouldSkip(
   // Skip TC39 Stage 2/3 proposals we don't support. The catch-all MetaProperty
   // handler (#712) makes import.source/import.defer compile, causing 117
   // negative parse tests to regress without this filter.
-  const UNCONDITIONAL_SKIP_FEATURES = new Set([
-    "source-phase-imports",
-    "import-defer",
+  const UNCONDITIONAL_SKIP_FEATURES = new Map([
+    ["source-phase-imports", "Stage 3: source phase imports"],
+    ["import-defer", "Stage 3: import defer"],
   ]);
   if (meta.features) {
     for (const feat of meta.features) {
-      if (UNCONDITIONAL_SKIP_FEATURES.has(feat)) {
-        return { skip: true, reason: `unsupported feature: ${feat}` };
+      const reason = UNCONDITIONAL_SKIP_FEATURES.get(feat);
+      if (reason) {
+        return { skip: true, reason };
       }
     }
   }
