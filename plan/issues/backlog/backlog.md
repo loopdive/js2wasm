@@ -1,163 +1,176 @@
 # ts2wasm Backlog
 
-## 1. Compiler correctness
+**Current state** (2026-03-28): 18,041 pass | 21,181 fail | 2,284 CE | 6,580 skip
 
-| # | Priority | Issue | Impact |
-|---|----------|-------|--------|
-| [789](../ready/789.md) | **CRITICAL** | TypeError null/undef guard over-triggering | **15,630 FAIL** |
-| [791](../done/791.md) | Done | SyntaxError detection gaps residual | 2,167 FAIL |
-| [790](../done/790.md) | Done | assert.throws(ReferenceError) not implemented | 788 FAIL |
-| [695](../done/695.md) | Done | Emit proper TypeError/ReferenceError exceptions | 4,738 FAIL |
-| [696](../ready/696.md) | High | Classify "other fail" runtime errors | 4,649 FAIL |
-| [698](../done/698.md) | Done | Call type mismatch residual | 1,044 CE |
-| [697](../done/697.md) | Done | Struct type errors for non-class structs | 813 CE |
-| [678](../ready/678.md) | High | Dynamic prototype chain (reverted -- breaks struct layout) | 625 FAIL |
-| [684](../ready/684.md) | High | Any-typed variable inference from usage | Many CE |
-| [685](../ready/685.md) | Medium | Interprocedural return type flow | Perf + correctness |
-| [686](../ready/686.md) | Medium | Closure capture type preservation | Perf |
-| [683](../done/683.md) | Done | Runtime type narrowing (typeof/instanceof) | Many FAIL |
-| [703](../done/703.md) | Done | Negative tests: strict-mode validation for ES-spec parse errors | 99 tests improved |
+---
 
-## 1b. Assertion failure sub-categories (from #727 analysis, updated 2026-03-25)
+## 1. Compiler Correctness -- Type Mismatches, AST Nodes, return_call
 
-| # | Priority | Issue | Impact |
-|---|----------|-------|--------|
-| [726](../done/726.md) | Done | TypeError regression: ref.cast guard returns ref.null | 1,948 FAIL |
-| [728](../done/728.md) | Done | Null pointer dereference should throw TypeError | 1,604 FAIL |
-| [729](../done/729.md) | Done | Class feature codegen gaps | 1,161 FAIL |
-| [723](../done/723.md) | Done | TDZ violations: throw ReferenceError before let/const init | 230 FAIL |
-| [730](../done/730.md) | Done | Missing exception paths (Test262Error throws) | 708 FAIL |
-| [731](../done/731.md) | Done | Function/class .name property | 558 FAIL |
-| [732](../done/732.md) | Done | hasOwnProperty correctness | 520 FAIL |
-| [733](../ready/733.md) | Medium | RangeError validation in built-ins | 442 FAIL |
-| [734](../done/734.md) | Done | Array method correctness | 343 FAIL |
-| [735](../ready/735.md) | Medium | Async iteration correctness | 329 FAIL |
-| [736](../ready/736.md) | Medium | SyntaxError detection at compile time | 316 FAIL |
-| [737](../ready/737.md) | Medium | Undefined-handling edge cases | 276 FAIL |
-| [738](../done/738.md) | Done | instanceof correctness | 276 FAIL |
-| [739](../ready/739.md) | Medium | Object.defineProperty correctness | 262 FAIL |
+Issues where the compiler emits invalid Wasm (type errors, missing args, bad casts) or fails to handle AST nodes.
 
-## 2. Runtime features & JS compatibility
+| # | Priority | Issue | Impact | Status |
+|---|----------|-------|--------|--------|
+| [822](../ready/822.md) | **HIGH** | Wasm type mismatch compile errors (all sub-patterns) | **907 CE** | Ready |
+| [839](../ready/839.md) | High | return_call stack args / type mismatch in constructors | **158 CE** | Ready |
+| [828](../ready/828.md) | Medium | Unexpected undefined AST node in compileExpression | **149 CE** | Ready |
+| [829](../ready/829.md) | Medium | Unsupported assignment target compile errors | **141 CE** | Ready |
+| [844](../ready/844.md) | Medium | Unsupported new expression for built-in classes | **85 CE** | Ready |
+| [845](../ready/845.md) | Medium | Misc CE: object literals, RegExp-on-X, for-in/of edges | **340 CE** | Ready |
+| [831](../ready/831.md) | Medium | Negative test gaps: expected SyntaxError but compiled | **242 FAIL** | Ready |
+| [840](../ready/840.md) | Medium | Array concat/push/splice 0-arg support | **31 CE** | Ready |
+| [836](../ready/836.md) | Low | Tagged templates with non-PropertyAccess tags | **20 CE** | Ready |
+| [843](../ready/843.md) | Low | super keyword in object literals and edge cases | **20 CE** | Ready |
+| [842](../ready/842.md) | Low | new Array() with non-literal/spread args | **14 CE** | Ready |
+| [835](../ready/835.md) | Low | Unknown extern class: Error types | **32 CE** | Ready |
+| [684](../ready/684.md) | High | Any-typed variable inference from usage | Many CE | Ready |
+| [685](../ready/685.md) | Medium | Interprocedural return type flow | Perf + correctness | Ready |
+| [686](../ready/686.md) | Medium | Closure capture type preservation | Perf | Ready |
+| [736](../ready/736.md) | Medium | SyntaxError detection at compile time | 316 FAIL | Ready |
 
-| # | Priority | Feature | Impact |
-|---|----------|---------|--------|
-| [675](../ready/675.md) | Medium | Dynamic import() | 471 tests |
-| [661](../ready/661.md) | Medium | Temporal API via polyfill | 1,128 tests |
-| [671](../backlog/671.md) | Low | with statement support | 272 tests |
-| [674](../ready/674.md) | Low | SharedArrayBuffer / Atomics | 493 tests |
-| [665](../done/665.md) | Done | Native Wasm Date (i64 timestamp) | 486 tests |
-| [669](../done/669.md) | Done | eval() / new Function() static compilation | 2,500 tests |
-| [670](../done/670.md) | Done | Proxy get trap execution | 465 tests |
-| [672](../done/672.md) | Done | WeakMap/WeakSet/WeakRef | 580 tests |
-| [673](../done/673.md) | Done | Reflect API compile-time rewrites | 391 tests |
-| [676](../done/676.md) | Done | RegExp exec result unpacking | 720 tests |
-| [677](../done/677.md) | Done | Property descriptor writable enforcement | 1,000 tests |
+## 2. Runtime Semantics -- Assertions, Type Errors, Destructuring, Iterators
 
-## 3. Architecture -- host import elimination
+Issues where compiled Wasm runs but produces wrong values or wrong error types.
 
-| # | Priority | Feature | Impact |
-|---|----------|---------|--------|
-| [680](../ready/680.md) | High | Pure Wasm generators (state machines) | Eliminates 10 host imports |
-| [681](../ready/681.md) | High | Pure Wasm iterators (struct-based) | Eliminates 5 host imports |
-| [682](../ready/682.md) | Medium | RegExp Wasm engine for standalone mode | No host in WASI |
-| [638](../ready/638.md) | Medium | Reverse typeIdxToStructName map | 12 O(N) -> O(1) |
-| [688](../ready/688.md) | Low | Refactor into smaller modules per feature | Maintainability |
-| [652](../ready/652.md) | Low | Compile-time ARC / static lifetime analysis | Research |
-| [679](../done/679.md) | Done | Dual string backend (js-host vs standalone) | Architecture |
+| # | Priority | Issue | Impact | Status |
+|---|----------|-------|--------|--------|
+| [846](../ready/846.md) | **CRITICAL** | assert.throws not thrown for invalid built-in args | **2,799 FAIL** | Ready |
+| [852](../ready/852.md) | **CRITICAL** | Destructuring params: null_deref + illegal_cast | **1,525 FAIL** | Ready |
+| [820](../ready/820.md) | **CRITICAL** | TypeError / null dereference failures (umbrella) | **6,077 FAIL** | Ready |
+| [779](../ready/779.md) | **CRITICAL** | Assert failures: wrong values (umbrella/analysis) | **10,099 FAIL** | Ready |
+| [825](../ready/825.md) | High | Null dereference failures (sub-issue of #820) | **1,081 FAIL** | Ready |
+| [826](../ready/826.md) | High | Illegal cast failures (sub-issue of #820) | **1,294 FAIL** | Ready |
+| [848](../ready/848.md) | High | Class computed property / accessor correctness | **1,015 FAIL** | Ready |
+| [847](../ready/847.md) | High | for-await-of / for-of destructuring wrong values | **660 FAIL** | Ready |
+| [786](../ready/786.md) | Medium | Multi-assertion failures (returned N > 2) | **2,142 FAIL** | In-progress |
+| [766](../ready/766.md) | High | Symbol.iterator protocol for custom iterables | ~500 FAIL | Ready |
+| [761](../ready/761.md) | High | Rest/spread silently dropped in destructuring | ~200 FAIL | Ready |
+| [856](../ready/856.md) | Medium | Expected TypeError but got wrong error type | **136 FAIL** | Ready |
+| [850](../ready/850.md) | High | Object-to-primitive: valueOf/toString not called | **135 FAIL** | Ready |
+| [849](../ready/849.md) | Medium | Mapped arguments object sync with named params | **200 FAIL** | Ready |
+| [855](../ready/855.md) | Medium | Promise resolution and async error handling | **210 FAIL** | Ready |
+| [858](../ready/858.md) | Medium | Worker/timeout exits and eval-code null deref | **182 FAIL** | Ready |
+| [853](../ready/853.md) | Medium | WebAssembly objects are opaque (for-in/Object.create) | **58 FAIL** | Ready |
+| [778](../ready/778.md) | Medium | Illegal cast errors (ref.cast wrong type) | 135 FAIL | Ready |
+| [737](../ready/737.md) | Medium | Undefined-handling edge cases | 276 FAIL | Ready |
+| [821](../ready/821.md) | High | BindingElement null guard over-triggering | 537 FAIL | Review |
+| [764](../ready/764.md) | Medium | Immutable global assignment error | 240 CE | Ready |
 
-## 4. Test runner optimization
+## 3. Built-in Methods -- Array, Set, Map, Math, Error, RegExp
 
-| # | Priority | Feature | Impact |
-|---|----------|---------|--------|
-| [687](../ready/687.md) | High | Live-streaming report with run selector | Developer UX |
-| [694](../done/694.md) | Done | Vitest with per-test disk cache | 5x re-run speedup |
-| [693](../done/693.md) | Done | skipWat + preamble cache | ~45% compile speedup |
-| [689](../done/689.md) | Superseded | Memory-aware worker pool -> vitest handles | -- |
-| [690](../done/690.md) | Superseded | Streaming results -> vitest streams natively | -- |
-| [691](../done/691.md) | Superseded | Pipeline architecture -> vitest per-test | -- |
-| [692](../done/692.md) | Superseded | Async pipeline -> vitest parallelism | -- |
+Issues where built-in method implementations are missing, incomplete, or incorrect.
 
-## 5. Platform support
+| # | Priority | Issue | Impact | Status |
+|---|----------|-------|--------|--------|
+| [827](../ready/827.md) | High | Array callback methods: "fn is not a function" | **243 CE** | Ready |
+| [857](../ready/857.md) | High | wasm_compile: "fn is not a function" Array callbacks | **247 CE** | Ready |
+| [733](../ready/733.md) | Medium | RangeError validation in built-ins | 442 FAIL | Ready |
+| [763](../ready/763.md) | Medium | RegExp runtime method gaps | ~400 FAIL | Ready |
+| [841](../ready/841.md) | Low | Unsupported Math methods (sumPrecise, cosh, sinh, tanh) | **19 CE** | Ready |
+| [739](../ready/739.md) | Medium | Object.defineProperty correctness | 262 FAIL | Ready |
 
-| # | Priority | Feature | Impact |
-|---|----------|---------|--------|
-| [639](../ready/639.md) | Critical | Full Component Model adapter (canonical ABI) | Unlocks Fastly, Fermyon |
-| [640](../ready/640.md) | High | WASI HTTP handler | Unlocks serverless edge |
-| [644](../ready/644.md) | Critical | Integrate report into playground | Developer experience |
-| [641](../ready/641.md) | Medium | Shopify Functions template | Best adoption opportunity |
-| [642](../ready/642.md) | Low | Deno/Cloudflare loader plugins | Developer experience |
+## 4. Class Features -- Computed Props, Super, Private Fields, Accessors
 
-## 6. New issues from 2026-03-26 session
+| # | Priority | Issue | Impact | Status |
+|---|----------|-------|--------|--------|
+| [848](../ready/848.md) | High | Class computed property / accessor correctness | **1,015 FAIL** | Ready (also in Runtime) |
+| [793](../ready/793.md) | Medium | Infinite compilation loop on private methods | 5 hang | Ready |
+| [843](../ready/843.md) | Low | super keyword in object literals and edge cases | **20 CE** | Ready (also in Compiler) |
 
-| # | Priority | Issue | Impact |
-|---|----------|-------|--------|
-| [815](../ready/815.md) | **CRITICAL** | Regression: -617 pass from patch-rescue commits | **617 PASS lost** |
-| [812](../done/812.md) | Done | Test262Error extern class | 801 FAIL |
-| [813](../done/813.md) | Done | gen.next is not a function | 1,164 FAIL |
-| [814](../done/814.md) | Done | ArrayBuffer extern class | 413 FAIL |
-| [764](../ready/764.md) | Medium | Immutable global assignment error | 240 CE |
-| [766](../ready/766.md) | High | Symbol.iterator protocol for custom iterables | ~500 FAIL |
-| [778](../ready/778.md) | Medium | Illegal cast errors (ref.cast wrong type) | 135 FAIL |
-| [786](../ready/786.md) | Medium | Multi-assertion failures (returned N > 2) | ~1,183 FAIL |
-| [793](../ready/793.md) | Medium | Infinite compilation loop on private methods | 5 hang |
-| [761](../ready/761.md) | High | Rest/spread silently dropped in destructuring | ~200 FAIL |
-| [763](../ready/763.md) | Medium | RegExp runtime method gaps | ~400 FAIL |
-| [802](../ready/802.md) | Low | Dynamic prototype support (conditional __proto__) | property-model |
-| [797](../ready/797.md) | Critical | Property descriptor subsystem (Phase 3 remaining) | ~5,000 FAIL |
-| [798](../done/798.md) | Done | try/catch JS exception interop (all subtasks done) | ~3,000 FAIL |
-| [799](../ready/799.md) | Critical | Prototype chain (799b done, #802 for dynamic) | ~2,500 FAIL |
-| [779](../ready/779.md) | Critical | Assert failures: wrong values (analysis) | 10,099 FAIL |
-| [820](../ready/820.md) | Critical | TypeError / null dereference failures | 6,077 FAIL |
+## 5. Iterator / Generator / Async Model
 
-## 7. Compile error issues from 2026-03-28
+| # | Priority | Issue | Impact | Status |
+|---|----------|-------|--------|--------|
+| [851](../ready/851.md) | High | Iterator close protocol not implemented | **147 FAIL** | Ready |
+| [854](../ready/854.md) | High | Iterator protocol: null next/return/throw methods | **126 FAIL** | Ready |
+| [735](../blocked/735.md) | Medium | Async iteration correctness | 329 FAIL | Blocked |
+| [680](../ready/680.md) | High | Pure Wasm generators (state machines) | Eliminates 10 host imports | Ready |
+| [681](../ready/681.md) | High | Pure Wasm iterators (struct-based) | Eliminates 5 host imports | Ready |
 
-| # | Priority | Issue | Impact |
-|---|----------|-------|--------|
-| [822](../ready/822.md) | **HIGH** | Wasm type mismatch compile errors (all sub-patterns) | **907 CE** |
-| [824](../ready/824.md) | High | Compilation timeouts (10s limit) | **548 CE** |
-| [839](../ready/839.md) | High | return_call stack args / type mismatch in constructors | **158 CE** |
-| [828](../ready/828.md) | Medium | Unexpected undefined AST node in compileExpression | **149 CE** |
-| [844](../ready/844.md) | Medium | Unsupported new expression for built-in classes | **85 CE** |
-| [840](../ready/840.md) | Medium | Array concat/push/splice 0-arg support | **31 CE** |
-| [835](../ready/835.md) | Low | Unknown extern class: Error types | **32 CE** |
-| [836](../ready/836.md) | Low | Tagged templates with non-PropertyAccess tags | **20 CE** |
-| [841](../ready/841.md) | Low | Unsupported Math methods (sumPrecise, cosh, sinh, tanh) | **19 CE** |
-| [843](../ready/843.md) | Low | super keyword in object literals and edge cases | **20 CE** |
-| [842](../ready/842.md) | Low | new Array() with non-literal/spread args: invalid vec type | **14 CE** |
-| [845](../ready/845.md) | Medium | Misc CE: object literals, RegExp-on-X, for-in/of edges | **340 CE** |
-| [827](../ready/827.md) | High | Array callback methods: "fn is not a function" | **243 CE** |
-| [829](../ready/829.md) | Medium | Unsupported assignment target compile errors | **141 CE** |
-| [830](../ready/830.md) | Low | DisposableStack extern class missing | **38 CE** |
-| [831](../ready/831.md) | Medium | Negative test gaps: expected SyntaxError but compiled | **242 FAIL** |
+## 6. Property Model / Prototype Chain
 
-## 8. Runtime failure issues from 2026-03-28 error analysis (NEW)
+| # | Priority | Issue | Impact | Status |
+|---|----------|-------|--------|--------|
+| [797](../ready/797.md) | Critical | Property descriptor subsystem (Phase 3 remaining) | ~5,000 FAIL | Ready |
+| [799](../ready/799.md) | Critical | Prototype chain (remaining: #802 for dynamic) | ~2,500 FAIL | Ready |
+| [802](../ready/802.md) | Low | Dynamic prototype support (conditional __proto__) | property-model | Ready |
+| [678](../ready/678.md) | High | Dynamic prototype chain (reverted -- breaks struct layout) | 625 FAIL | Ready |
 
-| # | Priority | Issue | Impact |
-|---|----------|-------|--------|
-| [852](../ready/852.md) | **CRITICAL** | Destructuring params: null_deref + illegal_cast | **1,525 FAIL** |
-| [848](../ready/848.md) | **HIGH** | Class computed property / accessor correctness | **1,015 FAIL** |
-| [846](../ready/846.md) | **CRITICAL** | assert.throws not thrown for invalid built-in args | **2,799 FAIL** |
-| [847](../ready/847.md) | High | for-await-of / for-of destructuring wrong values | **660 FAIL** |
-| [857](../ready/857.md) | High | wasm_compile: "fn is not a function" Array callbacks | **247 CE** |
-| [855](../ready/855.md) | Medium | Promise resolution and async error handling | **210 FAIL** |
-| [851](../ready/851.md) | High | Iterator close protocol not implemented | **147 FAIL** |
-| [856](../ready/856.md) | Medium | Expected TypeError but got wrong error type | **136 FAIL** |
-| [850](../ready/850.md) | High | Object-to-primitive: valueOf/toString not called | **135 FAIL** |
-| [854](../ready/854.md) | High | Iterator protocol: null next/return/throw methods | **126 FAIL** |
-| [858](../ready/858.md) | Medium | Worker/timeout exits and eval-code null deref | **182 FAIL** |
-| [853](../ready/853.md) | Medium | WebAssembly objects are opaque (for-in/Object.create) | **58 FAIL** |
-| [849](../ready/849.md) | Medium | Mapped arguments object sync with named params | **200 FAIL** |
-| [825](../ready/825.md) | High | Null deref failures (updated: 1,081 total) | **1,081 FAIL** |
-| [826](../ready/826.md) | High | Illegal cast failures (updated: 1,294 total) | **1,294 FAIL** |
+## 7. Test Infrastructure
+
+| # | Priority | Issue | Impact | Status |
+|---|----------|-------|--------|--------|
+| [824](../ready/824.md) | High | Compilation timeouts (10s limit) | **548 CE** | Ready |
+| [858](../ready/858.md) | Medium | Worker/timeout exits and eval-code null deref | **182 FAIL** | Ready (also in Runtime) |
+| [687](../ready/687.md) | High | Live-streaming report with run selector | Developer UX | Ready |
+| [696](../ready/696.md) | High | Classify "other fail" runtime errors | 4,649 FAIL | Ready |
+| [699](../ready/699.md) | High | Shared compiler pool for test262 | Perf | Ready |
+| [832](../ready/832.md) | Medium | Upgrade to TypeScript 6.x for Unicode 16.0 identifiers | 82 skip | Ready |
+| [833](../ready/833.md) | Low | Consider sloppy mode support for legacy octal escapes | 16 skip | Ready |
+
+## 8. Proposals and Standards -- Temporal, SharedArrayBuffer, BigInt Arrays, Set Methods, Disposable
+
+| # | Priority | Issue | Impact | Status |
+|---|----------|-------|--------|--------|
+| [661](../ready/661.md) | Medium | Temporal API via polyfill | 1,128 tests | Ready |
+| [674](../ready/674.md) | Low | SharedArrayBuffer / Atomics | 493 tests | Ready |
+| [834](../ready/834.md) | Low | ES2025 Set methods (union, intersection, etc.) | 216 skip | Ready |
+| [837](../ready/837.md) | Low | Map/WeakMap upsert (getOrInsert/getOrInsertComputed) | ~110 skip | Ready |
+| [838](../ready/838.md) | Low | BigInt64Array / BigUint64Array typed arrays | 19 skip | Ready |
+| [830](../ready/830.md) | Low | DisposableStack extern class missing | **38 CE** | Ready |
+| [844](../ready/844.md) | Medium | Unsupported new for built-in classes (SAB, AggregateError, etc.) | **85 CE** | Ready (also in Compiler) |
+| [675](../ready/675.md) | Medium | Dynamic import() | 471 tests | Ready |
+| [671](../backlog/671.md) | Low | with statement support | 272 tests | Backlog |
+
+## 9. Architecture / Refactoring
+
+| # | Priority | Issue | Impact | Status |
+|---|----------|-------|--------|--------|
+| [688](../ready/688.md) | Low | Refactor into smaller modules per feature | Maintainability | Ready |
+| [741](../ready/741.md) | Medium | Extract string/any helpers from index.ts | Maintainability | Ready |
+| [788](../ready/788.md) | Medium | Modularize src/ into focused subfolder structure | Maintainability | Ready |
+| [803](../ready/803.md) | Medium | Extract call dispatch -> calls.ts | Maintainability | Ready (sub of #688) |
+| [804](../ready/804.md) | Medium | Extract new expressions -> new-expression.ts | Maintainability | Ready (sub of #688) |
+| [805](../ready/805.md) | Medium | Extract assignment/destructuring -> assignments.ts | Maintainability | Ready (sub of #688) |
+| [806](../ready/806.md) | Medium | Extract increment/decrement -> unary-update.ts | Maintainability | Ready (sub of #688) |
+| [807](../ready/807.md) | Medium | Extract Date/Math/console -> builtins.ts | Maintainability | Ready (sub of #688) |
+| [808](../ready/808.md) | Medium | Extract string/import infra -> imports.ts | Maintainability | Ready (sub of #688) |
+| [809](../ready/809.md) | Medium | Extract native string helpers -> native-strings.ts | Maintainability | Ready (sub of #688) |
+| [810](../ready/810.md) | Medium | Extract class compilation -> class-codegen.ts | Maintainability | Ready (sub of #688) |
+| [811](../ready/811.md) | Medium | Extract fixup passes -> fixups.ts | Maintainability | Ready (sub of #688) |
+| [638](../ready/638.md) | Medium | Reverse typeIdxToStructName map | 12 O(N)->O(1) | Ready |
+| [652](../ready/652.md) | Low | Compile-time ARC / static lifetime analysis | Research | Ready |
+| [682](../ready/682.md) | Medium | RegExp Wasm engine for standalone mode | No host in WASI | Ready |
+
+## 10. Performance Optimization
+
+| # | Priority | Issue | Impact | Status |
+|---|----------|-------|--------|--------|
+| [743](../ready/743.md) | Critical | Whole-program type mapper | High pass impact | Ready |
+| [773](../ready/773.md) | Critical | Monomorphize functions with call-site types | High pass impact | Ready |
+| [745](../ready/745.md) | High | Tagged union types for WasmGC | Type precision | Ready |
+| [744](../blocked/744.md) | High | Monomorphize: specialized function copies | Perf | Blocked by #743 |
+| [746](../blocked/746.md) | Medium | Hidden class optimization | Perf | Blocked |
+| [747](../blocked/747.md) | Medium | Escape analysis / stack allocation | Perf | Blocked |
+| [699](../ready/699.md) | High | Shared compiler pool for test262 | Test perf | Ready |
+| [700](../blocked/700.md) | High | Reuse ts.CompilerHost across compilations | 25% speedup | Blocked by #699 |
+
+## 11. Platform Support
+
+| # | Priority | Issue | Impact | Status |
+|---|----------|-------|--------|--------|
+| [639](../ready/639.md) | Critical | Full Component Model adapter (canonical ABI) | Unlocks Fastly, Fermyon | Ready |
+| [640](../ready/640.md) | High | WASI HTTP handler | Unlocks serverless edge | Ready |
+| [644](../ready/644.md) | Critical | Integrate report into playground | Developer experience | Ready |
+| [641](../ready/641.md) | Medium | Shopify Functions template | Best adoption opportunity | Ready |
+| [642](../ready/642.md) | Low | Deno/Cloudflare loader plugins | Developer experience | Ready |
+
+---
 
 ## Completed (760+ total)
 
 See `plan/issues/done/log.md` for the full completion log.
 
-**Session 2026-03-19/20**: 97 issues. Pass: 9,270 -> 13,226 (+43%). CE: 14,950 -> 6,894 (-54%). Key: WASI, native strings, WIT, tail calls, SIMD, peephole, type annotations, prototype chain, delete, TypedArray, static eval, Proxy traps, Reflect, WeakMap/Ref, RegExp, property descriptors, stack balance, native Date, type narrowing, vitest cache, skipWat.
-
-**Session 2026-03-25**: Wave of crash-free and error-model work. Pass: 14,720 -> 18,437 (+25%). CE: 4,443 -> 1,657 (-63%). Key: null guard system (#775/#780/#781/#785), exception throwing (#783), SyntaxError detection (#784), destructuring fixes (#782), sameValue fixes (#787), class features (#729), TypeError strict mode (#730), .name property (#731). New critical issue: null guard over-triggering (#789, 15,630 fail).
-
-**Session 2026-03-26**: 15+ issues completed. Pass: 17,602 -> 20,162 (+14.5%). Key: ReferenceError/TDZ (#790), SyntaxError gaps (#791), destructuring fixes (#794/#796/#801), coercion (#795), property descriptors (#797a/b/d), try/catch interop (#798a/b/c), prototype chain (#799a/b), compile-away audit (#800), dead code elimination after terminators.
-
-**Session 2026-03-28 (current)**: 18,041 pass, 21,181 fail, 2,284 CE, 6,580 skip. Full error analysis completed -- 13 new runtime issues (#846-#858), 7 new CE issues (#839-#845). Test infrastructure: two-phase precompile+exec pipeline, 10-worker parallel compilation, batched async JSONL writes, disk-read exec worker optimization, separate compile/results JSONL files with timing.
+**Session 2026-03-19/20**: 97 issues. Pass: 9,270 -> 13,226 (+43%). CE: 14,950 -> 6,894 (-54%).
+**Session 2026-03-25**: Pass: 14,720 -> 18,437 (+25%). CE: 4,443 -> 1,657 (-63%).
+**Session 2026-03-26**: Pass: 17,602 -> 20,162 (+14.5%).
+**Session 2026-03-28 (current)**: 18,041 pass, 21,181 fail, 2,284 CE, 6,580 skip. Full error analysis: 13 new runtime issues (#846-#858), 7 new CE issues (#839-#845).
