@@ -403,6 +403,7 @@ function recordResult(file: string, category: string, status: string, error?: st
   const errorCategory = (status === "fail" || status === "compile_error") ? classifyError(error) : undefined;
 
   const entry = JSON.stringify({
+    timestamp: new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" }),
     file,
     category,
     status,

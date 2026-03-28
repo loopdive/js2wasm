@@ -36,6 +36,7 @@ let jsonlBuffer: string[] = [];
 
 function recordCompileResult(relPath: string, category: string, status: string, error?: string, compileMs?: number) {
   const entry = JSON.stringify({
+    timestamp: new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" }),
     file: relPath, category, status,
     error: error || undefined,
     compile_ms: compileMs !== undefined ? Math.round(compileMs) : undefined,
