@@ -135,6 +135,12 @@ export function shouldSkip(
       reason: "ES5 legacy: with statement (strict mode disallowed)",
     };
   }
+  if (filePath && /legacy-octal-escape|legacy-non-octal-escape|S7\.8\.4_A4\.3/.test(filePath)) {
+    return {
+      skip: true,
+      reason: "ES5 strict mode: octal escape sequences forbidden in modules (#833)",
+    };
+  }
   if (filePath && /unicode-16\.0\.0/.test(filePath)) {
     return {
       skip: true,
