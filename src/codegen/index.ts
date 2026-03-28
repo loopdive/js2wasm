@@ -863,6 +863,13 @@ export interface FunctionContext {
     breakStackLen: number;
     continueStackLen: number;
   }[];
+  /**
+   * Pending writeback instructions for mutable callback captures (#859).
+   * After a host call (e.g. map.forEach) that received a callback with mutable
+   * captures via ref cells, these instructions read the ref cell values back
+   * into the outer locals.
+   */
+  pendingCallbackWritebacks?: Instr[];
 }
 
 /**

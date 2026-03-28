@@ -1537,7 +1537,17 @@ export function compileArrowAsCallback(
     collectReferencedIdentifiers(body, referencedNames);
   }
 
-  const captures: { name: string; type: ValType; localIdx: number }[] = [];
+  // Detect which captured variables are written inside the callback body (#859)
+  const writtenInCallback = new Set<string>();
+  if (ts.isBlock(body)) {
+    for (const stmt of body.statements) {
+      collectWrittenIdentifiers(stmt, writtenInCallback);
+    }
+  } else {
+    collectWrittenIdentifiers(body, writtenInCallback);
+  }
+
+  const captures: { name: string; type: ValType; localIdx: number; mutable: boolean; alreadyBoxed: boolean }[] = [];
   for (const name of referencedNames) {
     const localIdx = fctx.localMap.get(name);
     if (localIdx === undefined) continue;
@@ -1547,18 +1557,40 @@ export function compileArrowAsCallback(
     const type = localIdx < fctx.params.length
       ? fctx.params[localIdx]!.type
       : fctx.locals[localIdx - fctx.params.length]?.type ?? { kind: "f64" };
-    captures.push({ name, type, localIdx });
+    const isMutable = writtenInCallback.has(name);
+    const alreadyBoxed = !!fctx.boxedCaptures?.has(name);
+    captures.push({ name, type, localIdx, mutable: isMutable, alreadyBoxed });
   }
 
   // 2. Create capture struct type (if captures exist)
+  //    For mutable captures, use ref cell types so mutations persist (#859)
   let capStructTypeIdx = -1;
   if (captures.length > 0) {
+    // Build fields first -- getOrRegisterRefCellType may add types to ctx.mod.types
+    const fields: FieldDef[] = captures.map((cap) => {
+      if (cap.mutable && !cap.alreadyBoxed) {
+        const refCellTypeIdx = getOrRegisterRefCellType(ctx, cap.type);
+        return {
+          name: cap.name,
+          type: { kind: "ref_null" as const, typeIdx: refCellTypeIdx },
+          mutable: false,
+        };
+      }
+      if (cap.mutable && cap.alreadyBoxed) {
+        return {
+          name: cap.name,
+          type: cap.type,
+          mutable: false,
+        };
+      }
+      return {
+        name: cap.name,
+        type: cap.type,
+        mutable: false,
+      };
+    });
+    // Set capStructTypeIdx AFTER building fields (which may register new ref cell types)
     capStructTypeIdx = ctx.mod.types.length;
-    const fields: FieldDef[] = captures.map((cap) => ({
-      name: cap.name,
-      type: cap.type,
-      mutable: false, // captures are immutable snapshots
-    }));
     ctx.mod.types.push({
       kind: "struct",
       name: `__cb_cap_${cbId}`,
@@ -1634,11 +1666,28 @@ export function compileArrowAsCallback(
 
     for (let i = 0; i < captures.length; i++) {
       const cap = captures[i]!;
-      // Check if this capture is an already-boxed ref cell from the outer scope
       const outerBoxed = fctx.boxedCaptures?.get(cap.name);
-      if (outerBoxed && (cap.type.kind === "ref" || cap.type.kind === "ref_null")) {
-        // Already-boxed capture: store the ref cell and register as boxed
-        // so body code dereferences through struct.get on the ref cell.
+      if (cap.mutable) {
+        // Mutable capture: the struct field holds a ref cell (#859).
+        let refCellTypeIdx: number;
+        let valType: ValType;
+        if (cap.alreadyBoxed && (cap.type.kind === "ref" || cap.type.kind === "ref_null")) {
+          refCellTypeIdx = (cap.type as { typeIdx: number }).typeIdx;
+          const outerInfo = fctx.boxedCaptures?.get(cap.name);
+          valType = outerInfo?.valType ?? { kind: "f64" };
+        } else {
+          refCellTypeIdx = getOrRegisterRefCellType(ctx, cap.type);
+          valType = cap.type;
+        }
+        const refCellType: ValType = { kind: "ref_null", typeIdx: refCellTypeIdx };
+        const localIdx = allocLocal(cbFctx, cap.name, refCellType);
+        cbFctx.body.push({ op: "local.get", index: capLocal });
+        cbFctx.body.push({ op: "struct.get", typeIdx: capStructTypeIdx, fieldIdx: i });
+        cbFctx.body.push({ op: "local.set", index: localIdx });
+        if (!cbFctx.boxedCaptures) cbFctx.boxedCaptures = new Map();
+        cbFctx.boxedCaptures.set(cap.name, { refCellTypeIdx, valType });
+      } else if (outerBoxed && (cap.type.kind === "ref" || cap.type.kind === "ref_null")) {
+        // Already-boxed capture (read-only in this callback): store the ref cell
         const refCellType: ValType = { kind: "ref_null", typeIdx: outerBoxed.refCellTypeIdx };
         const localIdx = allocLocal(cbFctx, cap.name, refCellType);
         cbFctx.body.push({ op: "local.get", index: capLocal });
@@ -1767,12 +1816,41 @@ export function compileArrowAsCallback(
   fctx.body.push({ op: "i32.const", value: cbId });
 
   if (captures.length > 0) {
-    // Push captured locals and create struct
+    // Push captured locals and create struct.
+    // For mutable captures, create ref cells and keep locals for writeback (#859).
+    const refCellLocals: { refCellLocal: number; outerLocalIdx: number; refCellTypeIdx: number; valType: ValType }[] = [];
     for (const cap of captures) {
-      fctx.body.push({ op: "local.get", index: cap.localIdx });
+      if (cap.mutable && !cap.alreadyBoxed) {
+        // Create a ref cell: struct.new $ref_cell_T (value)
+        const refCellTypeIdx = getOrRegisterRefCellType(ctx, cap.type);
+        fctx.body.push({ op: "local.get", index: cap.localIdx });
+        fctx.body.push({ op: "struct.new", typeIdx: refCellTypeIdx });
+        // Keep a local ref to the ref cell for writeback after the host call
+        const refCellLocal = allocLocal(fctx, `__cb_rc_${cap.name}_${cbId}`, { kind: "ref_null", typeIdx: refCellTypeIdx });
+        fctx.body.push({ op: "local.tee", index: refCellLocal });
+        // The struct.new result (ref cell) is on the stack for the capture struct
+        refCellLocals.push({ refCellLocal, outerLocalIdx: cap.localIdx, refCellTypeIdx, valType: cap.type });
+      } else {
+        // Immutable capture or already-boxed: push directly
+        fctx.body.push({ op: "local.get", index: cap.localIdx });
+      }
     }
     fctx.body.push({ op: "struct.new", typeIdx: capStructTypeIdx });
     fctx.body.push({ op: "extern.convert_any" });
+
+    // Register writeback instructions for mutable captures (#859).
+    // After the host call returns, read ref cell values back into outer locals.
+    if (refCellLocals.length > 0) {
+      const writebacks: Instr[] = [];
+      for (const rc of refCellLocals) {
+        writebacks.push({ op: "local.get", index: rc.refCellLocal } as Instr);
+        writebacks.push({ op: "ref.as_non_null" } as unknown as Instr);
+        writebacks.push({ op: "struct.get", typeIdx: rc.refCellTypeIdx, fieldIdx: 0 } as Instr);
+        writebacks.push({ op: "local.set", index: rc.outerLocalIdx } as Instr);
+      }
+      if (!fctx.pendingCallbackWritebacks) fctx.pendingCallbackWritebacks = [];
+      fctx.pendingCallbackWritebacks.push(...writebacks);
+    }
   } else {
     fctx.body.push({ op: "ref.null.extern" });
   }
