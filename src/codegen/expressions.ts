@@ -16324,7 +16324,6 @@ function compileNewExpression(
       // Compile target argument and coerce to externref
       const bodyBefore = fctx.body.length;
       const targetResult = compileExpression(ctx, fctx, args[0]!);
-      console.error("[DEBUG-PROXY] targetResult=" + JSON.stringify(targetResult) + " bodyLen:" + bodyBefore + "->" + fctx.body.length);
       if (targetResult && targetResult.kind !== "externref") {
         if (targetResult.kind === "ref" || targetResult.kind === "ref_null") {
           fctx.body.push({ op: "extern.convert_any" });
@@ -16357,13 +16356,6 @@ function compileNewExpression(
       flushLateImportShifts(ctx, fctx);
       if (proxyIdx !== undefined) {
         fctx.body.push({ op: "call", funcIdx: proxyIdx });
-      }
-
-      // Debug: dump body instructions around the proxy call
-      const proxyCallIdx = fctx.body.length - 1;
-      console.error("[DEBUG-PROXY] final body around proxy call:");
-      for (let di = Math.max(0, proxyCallIdx - 5); di <= proxyCallIdx; di++) {
-        console.error("  [" + di + "] " + JSON.stringify((fctx.body[di] as any)?.op));
       }
 
       return { kind: "externref" };

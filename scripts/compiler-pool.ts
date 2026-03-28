@@ -100,12 +100,12 @@ export class CompilerPool {
   }
 
   /** Compile source — queues if all workers busy. Times out after 30s. */
-  compile(source: string, timeoutMs = 10_000, _fullDiag?: boolean, sourceMapUrl?: string): Promise<PoolResult> {
+  compile(source: string, timeoutMs = 10_000, _fullDiag?: boolean, sourceMapUrl?: string, label?: string): Promise<PoolResult> {
     return new Promise((resolve) => {
       const id = this.nextId++;
       const timer = setTimeout(() => {
         // Compilation hung — resolve with error, kill and respawn the worker
-        console.error(`[compiler-pool] TIMEOUT: compilation exceeded ${timeoutMs/1000}s, killing worker`);
+        console.error(`[compiler-pool] TIMEOUT: compilation exceeded ${timeoutMs/1000}s${label ? ` [${label}]` : ""}, killing worker`);
         this.pending.delete(id);
         resolve({ ok: false, error: `compilation timeout (${timeoutMs/1000}s)`, compileMs: timeoutMs });
         // Find and restart the stuck worker
