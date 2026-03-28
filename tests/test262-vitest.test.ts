@@ -22,7 +22,16 @@ import { join, relative, dirname, basename } from "path";
 import { createServer, type Server } from "http";
 import { buildImports } from "../src/runtime.js";
 import { CompilerPool, type PoolResult } from "../scripts/compiler-pool.js";
-import { compile, compileMulti } from "../src/index.js";
+// Lazy-load compileMulti only when needed (FIXTURE tests) to avoid
+// loading the full compiler into the fork alongside the pool worker.
+let _compileMulti: typeof import("../src/index.js").compileMulti | null = null;
+async function getCompileMulti() {
+  if (!_compileMulti) {
+    const mod = await import("../src/index.js");
+    _compileMulti = mod.compileMulti;
+  }
+  return _compileMulti;
+}
 import {
   findTestFiles,
   parseMeta,
@@ -677,7 +686,8 @@ for (const category of TEST_CATEGORIES) {
               const fixName = "./" + relative(dirname(filePath), fixPath);
               files[fixName] = fixSource;
             }
-            const result = compileMulti(files, "./test.ts", { skipSemanticDiagnostics: true });
+            const multiCompile = await getCompileMulti();
+            const result = multiCompile(files, "./test.ts", { skipSemanticDiagnostics: true });
             if (result.success && result.binary.length > 0) {
               compileResult = {
                 ok: true,
