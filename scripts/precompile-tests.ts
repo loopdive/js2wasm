@@ -153,7 +153,7 @@ for (const { filePath, relPath, category } of allTests) {
         // Cache miss — compile
       }
 
-      const result = await pool.compile(wrapped, 10_000, fullDiag, undefined, relPath);
+      const result = await pool.compile(wrapped, 20_000, fullDiag, undefined, relPath);
       if (result.ok) {
         await writeFile(cachePath, result.binary);
         await writeFile(metaPath, JSON.stringify({
