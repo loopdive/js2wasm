@@ -12,10 +12,20 @@ import { compile, createIncrementalCompiler } from "./compiler-bundle.mjs";
 let compileCount = 0;
 const MAX_COMPILATIONS = 500; // Restart worker every 500 compilations to prevent state accumulation
 
-// Incremental compiler disabled pending regression investigation.
-// Language service produces different results than standard compile().
-// TODO: fix parity and re-enable (#861)
+// Incremental compiler — reuses parsed lib SourceFiles via oldProgram.
+// Fresh checker per compilation (no state leakage), cached lib parses (fast).
 let incrementalCompiler = null;
+try {
+  incrementalCompiler = createIncrementalCompiler({
+    fileName: "test.ts",
+    sourceMap: true,
+    sourceMapUrl: "test.wasm.map",
+    emitWat: false,
+    skipSemanticDiagnostics: true,
+  });
+} catch (e) {
+  // Fall back to non-incremental if creation fails
+}
 
 parentPort.on("message", (msg) => {
   const start = performance.now();
