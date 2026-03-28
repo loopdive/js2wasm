@@ -146,7 +146,7 @@ class WasmExecPool {
     });
   }
 
-  run(binary: Uint8Array, imports: any[], stringPool: string[], isRuntimeNegative: boolean, timeoutMs: number): Promise<any> {
+  run(binary: Uint8Array | undefined, imports: any[], stringPool: string[], isRuntimeNegative: boolean, timeoutMs: number, cachePath?: string): Promise<any> {
     // Periodically restart worker to free accumulated Wasm memory
     this.execCount++;
     if (this.execCount >= this.MAX_EXECS) {
@@ -169,11 +169,17 @@ class WasmExecPool {
 
       this.pending.set(id, { resolve, timer });
 
-      const binaryBuf = binary.buffer.slice(binary.byteOffset, binary.byteOffset + binary.byteLength);
-      this.worker!.postMessage(
-        { id, binary: new Uint8Array(binaryBuf), imports, stringPool, isRuntimeNegative },
-        [binaryBuf],
-      );
+      if (cachePath) {
+        // Cache hit: tell worker to read binary from disk (zero fork heap pressure)
+        this.worker!.postMessage({ id, cachePath, imports, stringPool, isRuntimeNegative });
+      } else {
+        // Cache miss: pass binary inline (transfer buffer for zero-copy)
+        const binaryBuf = binary!.buffer.slice(binary!.byteOffset, binary!.byteOffset + binary!.byteLength);
+        this.worker!.postMessage(
+          { id, binary: new Uint8Array(binaryBuf), imports, stringPool, isRuntimeNegative },
+          [binaryBuf],
+        );
+      }
     });
   }
 
@@ -267,7 +273,7 @@ async function getOrCompile(
   wrappedSource: string,
   fullDiagnostics = false,
   relPath?: string,
-): Promise<{ ok: true; binary: Uint8Array; result: any } | { ok: false; error: string }> {
+): Promise<{ ok: true; binary: Uint8Array; result: any; cachePath?: string } | { ok: false; error: string }> {
   // Compute the source map URL filename from relPath (e.g. "test/.../S11.js" -> "S11.wasm.map")
   const wasmRelPath = relPath ? relPath.replace(/\.js$/, ".wasm") : undefined;
   const sourceMapFilename = wasmRelPath ? basename(wasmRelPath) + ".map" : "test.wasm.map";
@@ -277,27 +283,26 @@ async function getOrCompile(
     .update(compilerHash)
     .update(fullDiagnostics ? "diag" : "")
     .digest("hex");
-  const cachePath = join(CACHE_DIR, `${hash}.wasm`);
+  const wasmCachePath = join(CACHE_DIR, `${hash}.wasm`);
   const metaPath = join(CACHE_DIR, `${hash}.json`);
 
-  let binary: Uint8Array;
+  let binary: Uint8Array | undefined;
   let result: any;
+  let hitCache = false;
 
-  // Cache hit: read binary + metadata
-  if (existsSync(cachePath) && existsSync(metaPath)) {
+  // Cache hit: read only metadata — binary will be read by exec worker from disk
+  if (existsSync(wasmCachePath) && existsSync(metaPath)) {
     try {
-      const cachedBinary = readFileSync(cachePath);
       const meta = JSON.parse(readFileSync(metaPath, "utf-8"));
-      binary = cachedBinary;
       result = meta;
+      hitCache = true;
     } catch {
       // Corrupted cache entry — fall through to recompile
-      binary = undefined as any;
       result = undefined;
     }
   }
 
-  if (!binary) {
+  if (!hitCache) {
     // Cache miss: async compile via pool worker with race timeout
     const poolResult = await Promise.race([
       pool.compile(wrappedSource, 10_000, fullDiagnostics, sourceMapFilename),
@@ -313,7 +318,7 @@ async function getOrCompile(
 
     // Write to cache
     try {
-      writeFileSync(cachePath, binary);
+      writeFileSync(wasmCachePath, binary);
       writeFileSync(
         metaPath,
         JSON.stringify({
@@ -328,7 +333,7 @@ async function getOrCompile(
   }
 
   // Write .wasm and .wasm.map to test262-out/ for HTTP serving
-  if (wasmRelPath) {
+  if (wasmRelPath && binary) {
     try {
       const outWasm = join(WASM_OUT_DIR, wasmRelPath);
       mkdirSync(dirname(outWasm), { recursive: true });
@@ -341,7 +346,12 @@ async function getOrCompile(
     }
   }
 
-  return { ok: true, binary, result };
+  // For cache hits, return cachePath so exec worker can read from disk
+  // instead of passing the binary through the fork's heap.
+  if (hitCache) {
+    return { ok: true, binary: undefined as any, result, cachePath: wasmCachePath };
+  }
+  return { ok: true, binary: binary!, result };
 }
 
 // ── Result tracking (JSONL output for report.html) ──────────────────
@@ -415,9 +425,6 @@ function recordResult(file: string, category: string, status: string, error?: st
   flushCount++;
   if (flushCount % 50 === 0) {
     try { fsyncSync(jsonlFd); } catch {}
-  }
-  if (flushCount % GC_INTERVAL === 0 && typeof globalThis.gc === "function") {
-    globalThis.gc();
   }
   if (flushCount % REPORT_FLUSH_INTERVAL === 0) {
     const report = {
@@ -730,6 +737,7 @@ for (const category of TEST_CATEGORIES) {
           compileResult.result.stringPool,
           isRuntimeNegative,
           EXEC_TIMEOUT_MS,
+          compileResult.cachePath,
         );
 
         // Process worker result
