@@ -132,7 +132,7 @@ export function shouldSkip(
   if (filePath && /built-ins\/Temporal/.test(filePath)) {
     return {
       skip: true,
-      reason: "ES2025: Temporal API not implemented",
+      reason: "ES2025: Temporal API",
     };
   }
 
