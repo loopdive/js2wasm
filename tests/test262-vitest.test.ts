@@ -311,7 +311,7 @@ async function getOrCompile(
   if (!hitCache) {
     // Cache miss: async compile via pool worker with race timeout
     const poolResult = await Promise.race([
-      pool.compile(wrappedSource, 10_000, fullDiagnostics, sourceMapFilename),
+      pool.compile(wrappedSource, 10_000, fullDiagnostics, sourceMapFilename, relPath),
       new Promise<PoolResult>((resolve) =>
         setTimeout(() => resolve({ ok: false, error: "compilation timeout (10s race)", compileMs: 10000 } as PoolResult), 10_000)
       ),
