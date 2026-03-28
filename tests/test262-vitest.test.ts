@@ -368,8 +368,8 @@ mkdirSync(RESULTS_DIR, { recursive: true });
 const JSONL_PATH = join(RESULTS_DIR, "test262-results.jsonl");
 const REPORT_PATH = join(RESULTS_DIR, "test262-report.json");
 
-// Open results JSONL (vitest-only execution results, separate from compile JSONL)
-writeSync(JSONL_PATH, "");
+// Open results JSONL in append mode — truncation handled by run-test262.sh
+// before vitest starts (avoids race condition with multiple forks)
 const jsonlFd = openSync(JSONL_PATH, "a");
 let flushCount = 0;
 const REPORT_FLUSH_INTERVAL = 500; // update report.json every 500 tests
