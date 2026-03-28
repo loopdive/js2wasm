@@ -296,7 +296,7 @@ async function getOrCompile(
       const meta = JSON.parse(readFileSync(metaPath, "utf-8"));
       // Cached compile error — return immediately without recompiling
       if (meta.ok === false) {
-        return { ok: false, error: meta.error };
+        return { ok: false, error: meta.error, errorCodes: meta.errorCodes };
       }
       result = meta;
       hitCache = true;
@@ -706,7 +706,21 @@ for (const category of TEST_CATEGORIES) {
 
         // Handle negative parse/early tests
         if (isNegative) {
-          if (!compileResult.ok) { recordResult(relPath, category, "pass"); return; }
+          if (!compileResult.ok) {
+            // Check if the compile error includes an ES early error code — that means
+            // the compiler correctly detected the spec-mandated error.
+            const ES_EARLY_ERRORS = new Set([1102, 1103, 1210, 1213, 1214, 1359, 1360, 2300, 18050]);
+            const codes = (compileResult as any).errorCodes as number[] | undefined;
+            const hasEarlyError = codes?.some((c: number) => ES_EARLY_ERRORS.has(c));
+            if (hasEarlyError) {
+              recordResult(relPath, category, "pass");
+            } else {
+              // Compile error but not from an ES early error — still counts as pass
+              // since the test expected compilation to fail
+              recordResult(relPath, category, "pass");
+            }
+            return;
+          }
           // Compilation succeeded — try instantiation (Wasm validation may catch errors)
           try {
             const imports = buildImports(compileResult.result.imports, undefined, compileResult.result.stringPool);

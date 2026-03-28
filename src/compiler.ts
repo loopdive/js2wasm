@@ -2071,6 +2071,7 @@ export function compileSource(
         line: pos.line + 1,
         column: pos.character + 1,
         severity: severity as "error" | "warning",
+        code: diag.code,
       });
     }
   }
@@ -3155,6 +3156,7 @@ export function compileToObjectSource(
         line: pos.line + 1,
         column: pos.character + 1,
         severity: severity as "error" | "warning",
+        code: diag.code,
       });
     }
   }

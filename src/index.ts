@@ -56,6 +56,8 @@ export interface CompileError {
   line: number;
   column: number;
   severity: "error" | "warning";
+  /** TS diagnostic code (if from TypeScript diagnostics) */
+  code?: number;
 }
 
 export interface DomContainmentOptions {
