@@ -129,9 +129,6 @@ export function shouldSkip(
       reason: "with statement (strict mode disallowed, deprioritized)",
     };
   }
-  if (filePath && /future-reserved-words/.test(filePath)) {
-    return { skip: true, reason: "strict mode reserved words (deprioritized)" };
-  }
   if (filePath && /built-ins\/Temporal/.test(filePath)) {
     return {
       skip: true,
