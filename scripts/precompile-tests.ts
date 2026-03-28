@@ -128,10 +128,9 @@ for (const { filePath, relPath, category } of allTests) {
         errors++; releaseSlot(); return;
       }
 
-      // Negative parse/early tests compile with full diagnostics to catch ES early errors
-      const isNegative = meta.negative && (meta.negative.phase === "parse" || meta.negative.phase === "early" || meta.negative.phase === "resolution");
-      const fullDiag = !!isNegative;
-      const hash = createHash("md5").update(wrapped).update(compilerHash).update(fullDiag ? "diag" : "").digest("hex");
+      // Always compile with skipSemanticDiagnostics=true (fast).
+      // Early error detection for negative tests happens separately in vitest.
+      const hash = createHash("md5").update(wrapped).update(compilerHash).digest("hex");
       const cachePath = join(CACHE_DIR, `${hash}.wasm`);
       const metaPath = join(CACHE_DIR, `${hash}.json`);
 
@@ -153,7 +152,7 @@ for (const { filePath, relPath, category } of allTests) {
         // Cache miss — compile
       }
 
-      const result = await pool.compile(wrapped, 20_000, fullDiag, undefined, relPath);
+      const result = await pool.compile(wrapped, 20_000, false, undefined, relPath);
       if (result.ok) {
         await writeFile(cachePath, result.binary);
         await writeFile(metaPath, JSON.stringify({

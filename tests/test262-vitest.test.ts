@@ -272,7 +272,7 @@ const compilerHash = buildCompilerHash();
  */
 async function getOrCompile(
   wrappedSource: string,
-  fullDiagnostics = false,
+  _fullDiagnostics = false, // unused — early errors checked separately for negative tests
   relPath?: string,
 ): Promise<{ ok: true; binary: Uint8Array; result: any; cachePath?: string } | { ok: false; error: string }> {
   // Compute the source map URL filename from relPath (e.g. "test/.../S11.js" -> "S11.wasm.map")
@@ -282,7 +282,6 @@ async function getOrCompile(
   const hash = createHash("md5")
     .update(wrappedSource)
     .update(compilerHash)
-    .update(fullDiagnostics ? "diag" : "")
     .digest("hex");
   const wasmCachePath = join(CACHE_DIR, `${hash}.wasm`);
   const metaPath = join(CACHE_DIR, `${hash}.json`);
@@ -701,12 +700,30 @@ for (const category of TEST_CATEGORIES) {
             compileResult = { ok: false, error: e.message ?? String(e) };
           }
         } else {
-          compileResult = await getOrCompile(wrapped, !!isNegative, relPath);
+          compileResult = await getOrCompile(wrapped, false, relPath);
         }
 
         // Handle negative parse/early tests
         if (isNegative) {
           if (!compileResult.ok) { recordResult(relPath, category, "pass"); return; }
+          // Compilation succeeded — but check for ES early errors via semantic diagnostics.
+          // This is the only path that runs getSemanticDiagnostics, filtered to spec-mandated codes.
+          try {
+            const ts = await import("typescript");
+            const sf = ts.default.createSourceFile("test.ts", wrapped, ts.default.ScriptTarget.ESNext, true);
+            const host = ts.default.createCompilerHost({ strict: true, target: ts.default.ScriptTarget.ESNext });
+            const origGetSource = host.getSourceFile;
+            host.getSourceFile = (name: string, ...args: any[]) =>
+              name === "test.ts" ? sf : (origGetSource as any)(name, ...args);
+            const program = ts.default.createProgram(["test.ts"], { strict: true, target: ts.default.ScriptTarget.ESNext, moduleResolution: ts.default.ModuleResolutionKind.NodeNext, module: ts.default.ModuleKind.ESNext }, host);
+            const ES_EARLY_ERRORS = new Set([1102, 1103, 1210, 1213, 1214, 1359, 1360, 2300, 18050]);
+            const earlyErrors = program.getSemanticDiagnostics().filter(d => ES_EARLY_ERRORS.has(d.code));
+            if (earlyErrors.length > 0) {
+              recordResult(relPath, category, "pass"); return;
+            }
+          } catch {
+            // Diagnostic check failed — fall through to normal handling
+          }
           try {
             const imports = buildImports(compileResult.result.imports, undefined, compileResult.result.stringPool);
             await WebAssembly.instantiate(compileResult.binary, imports as any);
