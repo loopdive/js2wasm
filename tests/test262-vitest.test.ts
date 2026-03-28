@@ -22,6 +22,7 @@ import { join, relative, dirname, basename } from "path";
 import { createServer, type Server } from "http";
 import { buildImports } from "../src/runtime.js";
 import { CompilerPool, type PoolResult } from "../scripts/compiler-pool.js";
+import { compile, compileMulti } from "../src/index.js";
 import {
   findTestFiles,
   parseMeta,
@@ -31,6 +32,23 @@ import {
   classifyError,
   TEST_CATEGORIES,
 } from "./test262-runner.js";
+
+/**
+ * Extract _FIXTURE.js file references from static import/export statements.
+ * Returns resolved absolute paths of fixture files.
+ */
+function resolveFixtures(source: string, testFilePath: string): string[] {
+  const fixtures: string[] = [];
+  const dir = dirname(testFilePath);
+  // Match: import ... from "..._FIXTURE.js"  or  export ... from "..._FIXTURE.js"
+  const importRe = /(?:import|export)\s+.*?from\s+['"]([^'"]*_FIXTURE\.js)['"]/g;
+  let m;
+  while ((m = importRe.exec(source)) !== null) {
+    const resolved = join(dir, m[1]!);
+    if (existsSync(resolved)) fixtures.push(resolved);
+  }
+  return [...new Set(fixtures)];
+}
 
 
 // ── Local HTTP server for wasm source map stack traces ───────────────
@@ -645,7 +663,39 @@ for (const category of TEST_CATEGORIES) {
 
         // Wrap and compile
         const { source: wrapped, bodyLineOffset } = wrapTest(source, meta);
-        const compileResult = await getOrCompile(wrapped, false, relPath);
+
+        // Multi-file compilation for tests with static _FIXTURE imports
+        const fixtures = resolveFixtures(source, filePath);
+        let compileResult: { ok: true; binary: Uint8Array; result: any } | { ok: false; error: string };
+
+        if (fixtures.length > 0) {
+          // Build virtual file map: entry file + fixture files
+          try {
+            const files: Record<string, string> = { "./test.ts": wrapped };
+            for (const fixPath of fixtures) {
+              const fixSource = readFileSync(fixPath, "utf-8");
+              const fixName = "./" + relative(dirname(filePath), fixPath);
+              files[fixName] = fixSource;
+            }
+            const result = compileMulti(files, "./test.ts", { skipSemanticDiagnostics: true });
+            if (result.success && result.binary.length > 0) {
+              compileResult = {
+                ok: true,
+                binary: result.binary,
+                result: { imports: result.imports, stringPool: result.stringPool, sourceMap: null },
+              };
+            } else {
+              compileResult = {
+                ok: false,
+                error: result.errors.map(e => `L${e.line}:${e.column} ${e.message}`).join("; "),
+              };
+            }
+          } catch (e: any) {
+            compileResult = { ok: false, error: e.message ?? String(e) };
+          }
+        } else {
+          compileResult = await getOrCompile(wrapped, false, relPath);
+        }
 
         if (!compileResult.ok) {
           recordResult(relPath, category, "compile_error", adjustErrorLines(compileResult.error, bodyLineOffset));

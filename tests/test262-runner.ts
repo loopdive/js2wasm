@@ -114,10 +114,16 @@ export function shouldSkip(
     };
   }
 
-  // Skip tests that reference _FIXTURE files in their source — these require
-  // module resolution we don't support.
+  // Skip tests that use dynamic import() with _FIXTURE files — these need
+  // a runtime module loader we don't have.
+  // Static import _FIXTURE tests are handled by compileMulti in the test runner.
   if (/_FIXTURE\.js/.test(source)) {
-    return { skip: true, reason: "ES2015: import" };
+    // Check if it's a dynamic import() — look for import( near the FIXTURE ref
+    const hasDynamicFixture = /import\s*\([^)]*_FIXTURE/.test(source);
+    if (hasDynamicFixture) {
+      return { skip: true, reason: "ES2020: dynamic import()" };
+    }
+    // Static imports are handled by the runner via compileMulti — don't skip
   }
 
   // Skip strict-mode-only restriction tests — deprioritized, not real-world features.
