@@ -78,6 +78,7 @@ for (const { filePath, relPath } of allTests) {
       try {
         writeFileSync(cachePath, result.binary);
         writeFileSync(metaPath, JSON.stringify({
+          ok: true,
           stringPool: result.stringPool,
           imports: result.imports,
           sourceMap: result.sourceMap,
@@ -85,6 +86,14 @@ for (const { filePath, relPath } of allTests) {
       } catch {}
       compiled++;
     } else {
+      // Store compile error in cache so vitest can report it without recompiling
+      try {
+        writeFileSync(cachePath, new Uint8Array(0));
+        writeFileSync(metaPath, JSON.stringify({
+          ok: false,
+          error: result.error,
+        }));
+      } catch {}
       errors++;
     }
 

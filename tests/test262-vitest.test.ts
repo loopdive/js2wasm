@@ -296,6 +296,10 @@ async function getOrCompile(
   if (existsSync(wasmCachePath) && existsSync(metaPath)) {
     try {
       const meta = JSON.parse(readFileSync(metaPath, "utf-8"));
+      // Cached compile error — return immediately without recompiling
+      if (meta.ok === false) {
+        return { ok: false, error: meta.error };
+      }
       result = meta;
       hitCache = true;
     } catch {
