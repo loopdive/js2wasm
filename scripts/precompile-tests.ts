@@ -52,7 +52,7 @@ function buildCompilerHash(): string {
 }
 
 const compilerHash = buildCompilerHash();
-const POOL_SIZE = parseInt(process.env.COMPILER_POOL_SIZE || String(Math.min(8, availableParallelism())), 10);
+const POOL_SIZE = parseInt(process.env.COMPILER_POOL_SIZE || String(availableParallelism()), 10);
 const pool = new CompilerPool(POOL_SIZE);
 
 console.log(`Pre-compiling test262 with ${POOL_SIZE} workers...`);
