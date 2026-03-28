@@ -135,6 +135,23 @@ export function shouldSkip(
       reason: "ES5 legacy: with statement (strict mode disallowed)",
     };
   }
+  // Sloppy-mode features that TS rejects in strict/module mode
+  const SLOPPY_MODE_TESTS = new Set([
+    "test/annexB/language/function-code/function-redeclaration-block.js",
+    "test/annexB/language/function-code/function-redeclaration-switch.js",
+    "test/annexB/language/statements/for-in/const-initializer.js",
+    "test/annexB/language/statements/for-in/strict-initializer.js",
+    "test/annexB/language/statements/for-in/var-arraybindingpattern-initializer.js",
+    "test/annexB/language/statements/for-in/let-initializer.js",
+    "test/annexB/language/statements/for-in/var-objectbindingpattern-initializer.js",
+    "test/annexB/language/statements/labeled/function-declaration.js",
+  ]);
+  if (filePath) {
+    const rel = filePath.replace(/.*test262\//, "");
+    if (SLOPPY_MODE_TESTS.has(rel)) {
+      return { skip: true, reason: "ES5 sloppy mode: not supported in strict/module mode (#833)" };
+    }
+  }
   if (filePath && /legacy-octal-escape|legacy-non-octal-escape|S7\.8\.4_A4\.3/.test(filePath)) {
     return {
       skip: true,
