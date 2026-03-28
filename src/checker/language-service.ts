@@ -3,23 +3,22 @@ import type { TypedAST, AnalyzeOptions } from "./index.js";
 
 /**
  * Incremental compiler that reuses parsed lib SourceFiles across compilations
- * via ts.createProgram's oldProgram parameter.
+ * via ts.createProgram's oldProgram parameter and a persistent CompilerHost.
  *
  * Each compilation creates a FRESH Program and TypeChecker (no state leakage),
- * but reuses cached lib SourceFile parses from the previous Program.
+ * but reuses cached lib SourceFile parses via:
+ * 1. Persistent CompilerHost (same host = same internal SourceFile cache)
+ * 2. oldProgram parameter (TS reuses unchanged SourceFiles from previous Program)
  *
  * This eliminates ~50ms of lib re-parsing per compilation while maintaining
  * identical output to standalone ts.createProgram.
- *
- * Usage:
- *   const service = new IncrementalLanguageService();
- *   service.updateSource("export function foo(): number { return 42; }");
- *   const ast = service.analyze();
  */
 export class IncrementalLanguageService {
   private currentSource = "";
+  private currentSourceFile: ts.SourceFile | undefined;
   private fileName: string;
   private compilerOptions: ts.CompilerOptions;
+  private host: ts.CompilerHost;
   private oldProgram: ts.Program | undefined;
 
   constructor(fileName = "input.ts") {
@@ -32,58 +31,57 @@ export class IncrementalLanguageService {
       noImplicitAny: false,
       noEmit: true,
     };
+
+    // Create host ONCE — its internal SourceFile cache persists across compilations
+    this.host = ts.createCompilerHost(this.compilerOptions);
+    const origGetSourceFile = this.host.getSourceFile;
+    this.host.getSourceFile = (name: string, languageVersion: ts.ScriptTarget, ...rest: any[]) => {
+      if (name === this.fileName) return this.currentSourceFile;
+      return (origGetSourceFile as any).call(this.host, name, languageVersion, ...rest);
+    };
+    const origFileExists = this.host.fileExists;
+    this.host.fileExists = (name: string) => {
+      if (name === this.fileName) return true;
+      return origFileExists.call(this.host, name);
+    };
+    const origReadFile = this.host.readFile;
+    this.host.readFile = (name: string) => {
+      if (name === this.fileName) return this.currentSource;
+      return origReadFile!.call(this.host, name);
+    };
   }
 
   /** Update the source for the next compilation */
   updateSource(source: string, fileName?: string): void {
     this.currentSource = source;
     if (fileName) this.fileName = fileName;
+    this.currentSourceFile = ts.createSourceFile(
+      this.fileName,
+      this.currentSource,
+      this.compilerOptions.target ?? ts.ScriptTarget.ES2022,
+      true,
+    );
   }
 
   /**
    * Analyze the current source — creates a fresh Program (fresh checker)
-   * but reuses parsed lib SourceFiles from the previous Program via oldProgram.
+   * but reuses parsed lib SourceFiles from the previous Program.
    */
   analyze(analyzeOptions?: AnalyzeOptions): TypedAST {
-    const useAllowJs = analyzeOptions?.allowJs;
     const options = { ...this.compilerOptions };
-    if (useAllowJs) {
+    if (analyzeOptions?.allowJs) {
       options.allowJs = true;
       options.checkJs = true;
     }
 
-    // Virtual file host — serves our source file + real lib files from disk
-    const sourceFile = ts.createSourceFile(
-      this.fileName,
-      this.currentSource,
-      options.target ?? ts.ScriptTarget.ES2022,
-      true,
-    );
-
-    const host = ts.createCompilerHost(options);
-    const origGetSourceFile = host.getSourceFile;
-    host.getSourceFile = (name: string, languageVersion: ts.ScriptTarget, ...rest: any[]) => {
-      if (name === this.fileName) return sourceFile;
-      return (origGetSourceFile as any).call(host, name, languageVersion, ...rest);
-    };
-    host.fileExists = (name: string) => {
-      if (name === this.fileName) return true;
-      return ts.sys.fileExists(name);
-    };
-    host.readFile = (name: string) => {
-      if (name === this.fileName) return this.currentSource;
-      return ts.sys.readFile(name);
-    };
-
-    // Create fresh Program with oldProgram for lib SourceFile reuse
+    // Fresh Program with oldProgram for lib reuse + persistent host cache
     const program = ts.createProgram(
       [this.fileName],
       options,
-      host,
-      this.oldProgram, // reuses parsed lib SourceFiles, creates fresh checker
+      this.host,
+      this.oldProgram,
     );
 
-    // Save for next compilation
     this.oldProgram = program;
 
     const checker = program.getTypeChecker();
