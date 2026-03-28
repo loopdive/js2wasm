@@ -1028,29 +1028,23 @@ export function compileTupleLiteral(
   expr: ts.ArrayLiteralExpression,
   tupleType: ts.Type,
 ): ValType | null {
-  const elemTypes = getTupleElementTypes(ctx, tupleType);
+  let elemTypes = getTupleElementTypes(ctx, tupleType);
+
+  // When the literal has fewer elements than the contextual tuple type expects
+  // (e.g. `let [x = 23] = []` where TS infers [] as [number]), truncate the
+  // tuple to match the actual literal length. This ensures destructuring
+  // correctly applies default values for missing positions instead of
+  // seeing zero-filled fields.
+  if (expr.elements.length < elemTypes.length) {
+    elemTypes = elemTypes.slice(0, expr.elements.length);
+  }
+
   const tupleIdx = getOrRegisterTupleType(ctx, elemTypes);
 
   // Compile each element with the expected field type.
-  // If the array literal has fewer elements than the tuple expects,
-  // push default values (0 for f64/i32, ref.null for ref types) for
-  // the missing fields so struct.new gets the right number of arguments.
   for (let i = 0; i < elemTypes.length; i++) {
     const expectedType = elemTypes[i] ?? { kind: "externref" as const };
-    if (i < expr.elements.length) {
-      compileExpression(ctx, fctx, expr.elements[i]!, expectedType);
-    } else {
-      // Push a default value for the missing tuple element
-      if (expectedType.kind === "f64") {
-        fctx.body.push({ op: "f64.const", value: 0 });
-      } else if (expectedType.kind === "i32") {
-        fctx.body.push({ op: "i32.const", value: 0 });
-      } else if (expectedType.kind === "externref") {
-        fctx.body.push({ op: "ref.null.extern" });
-      } else if (expectedType.kind === "ref" || expectedType.kind === "ref_null") {
-        fctx.body.push({ op: "ref.null", typeIdx: (expectedType as { typeIdx: number }).typeIdx } as any);
-      }
-    }
+    compileExpression(ctx, fctx, expr.elements[i]!, expectedType);
   }
 
   fctx.body.push({ op: "struct.new", typeIdx: tupleIdx });
