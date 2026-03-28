@@ -382,6 +382,9 @@ class ConformanceError extends Error {
   }
 }
 
+// Periodic GC to prevent fork OOM — cache reads accumulate heap pressure
+const GC_INTERVAL = 200;
+
 function recordResult(file: string, category: string, status: string, error?: string) {
   const errorCategory = (status === "fail" || status === "compile_error") ? classifyError(error) : undefined;
   const entry = JSON.stringify({
@@ -412,6 +415,9 @@ function recordResult(file: string, category: string, status: string, error?: st
   flushCount++;
   if (flushCount % 50 === 0) {
     try { fsyncSync(jsonlFd); } catch {}
+  }
+  if (flushCount % GC_INTERVAL === 0 && typeof globalThis.gc === "function") {
+    globalThis.gc();
   }
   if (flushCount % REPORT_FLUSH_INTERVAL === 0) {
     const report = {
