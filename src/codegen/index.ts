@@ -29,7 +29,7 @@ import type {
   WasmModule,
 } from "../ir/types.js";
 import { createEmptyModule } from "../ir/types.js";
-import { compileExpression, resolveComputedKeyExpression, coerceType, valTypesMatch, emitBoundsCheckedArrayGet, ensureLateImport, flushLateImportShifts, emitUndefined } from "./expressions.js";
+import { compileExpression, resolveComputedKeyExpression, coerceType, valTypesMatch, emitBoundsCheckedArrayGet, ensureLateImport, flushLateImportShifts, shiftLateImportIndices, emitUndefined } from "./expressions.js";
 import { collectShapes } from "../shape-inference.js";
 import { compileStatement, ensureBindingLocals, hoistFunctionDeclarations, emitNestedBindingDefault, emitDefaultValueCheck, emitArgumentsObject } from "./statements.js";
 import { emitInlineMathFunctions } from "./math-helpers.js";
@@ -14318,6 +14318,125 @@ function buildDestructureNullThrow(ctx: CodegenContext): Instr[] {
 }
 
 /**
+ * Destructure a function parameter (externref) using __extern_get for property access.
+ * This handles primitives, objects, and any externref value safely — no struct cast needed.
+ * Used as fallback when the value is not the expected struct type (#852).
+ */
+function destructureParamObjectExternref(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  paramIdx: number,
+  pattern: ts.ObjectBindingPattern,
+): void {
+  // Ensure __extern_get is available
+  let getIdx = ctx.funcMap.get("__extern_get");
+  if (getIdx === undefined) {
+    const importsBefore = ctx.numImportFuncs;
+    const getType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", "__extern_get", { kind: "func", typeIdx: getType });
+    shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+    getIdx = ctx.funcMap.get("__extern_get");
+  }
+  if (getIdx === undefined) return;
+
+  for (const element of pattern.elements) {
+    if (!ts.isBindingElement(element)) continue;
+
+    const propNameNode = element.propertyName ?? element.name;
+    let propNameText: string | undefined;
+    if (ts.isIdentifier(propNameNode)) {
+      propNameText = propNameNode.text;
+    } else if (ts.isStringLiteral(propNameNode)) {
+      propNameText = propNameNode.text;
+    } else if (ts.isNumericLiteral(propNameNode)) {
+      propNameText = propNameNode.text;
+    }
+    if (!propNameText) continue;
+
+    addStringConstantGlobal(ctx, propNameText);
+    const strGlobalIdx = ctx.stringGlobalMap.get(propNameText);
+    if (strGlobalIdx === undefined) continue;
+
+    getIdx = ctx.funcMap.get("__extern_get");
+    if (getIdx === undefined) continue;
+
+    fctx.body.push({ op: "local.get", index: paramIdx });
+    fctx.body.push({ op: "global.get", index: strGlobalIdx });
+    fctx.body.push({ op: "call", funcIdx: getIdx });
+
+    const elemType: ValType = { kind: "externref" };
+
+    if (ts.isIdentifier(element.name)) {
+      const localName = element.name.text;
+      let localIdx = fctx.localMap.get(localName);
+      if (localIdx === undefined) {
+        localIdx = allocLocal(fctx, localName, elemType);
+      }
+      const localType = getLocalType(fctx, localIdx);
+
+      if (element.initializer) {
+        const tmpElem = allocLocal(fctx, `__ext_dparam_dflt_${fctx.locals.length}`, elemType);
+        fctx.body.push({ op: "local.tee", index: tmpElem });
+
+        const undefIdx = ensureLateImport(ctx, "__extern_is_undefined",
+          [{ kind: "externref" }], [{ kind: "i32" }]);
+        if (undefIdx !== undefined) {
+          flushLateImportShifts(ctx, fctx);
+          getIdx = ctx.funcMap.get("__extern_get");
+        }
+
+        fctx.body.push({ op: "ref.is_null" } as Instr);
+        if (undefIdx !== undefined) {
+          fctx.body.push({ op: "local.get", index: tmpElem });
+          fctx.body.push({ op: "call", funcIdx: undefIdx });
+          fctx.body.push({ op: "i32.or" } as Instr);
+        }
+
+        const savedBody = fctx.body;
+        const thenInstrs: Instr[] = [];
+        fctx.body = thenInstrs;
+        compileExpression(ctx, fctx, element.initializer, localType ?? elemType);
+        fctx.body.push({ op: "local.set", index: localIdx! } as Instr);
+        fctx.body = savedBody;
+
+        const elseCoerce: Instr[] = [];
+        if (localType && !valTypesMatch(elemType, localType)) {
+          const savedBody2 = fctx.body;
+          fctx.body = elseCoerce;
+          coerceType(ctx, fctx, elemType, localType);
+          fctx.body = savedBody2;
+        }
+
+        fctx.body.push({
+          op: "if",
+          blockType: { kind: "empty" },
+          then: thenInstrs,
+          else: [
+            { op: "local.get", index: tmpElem } as Instr,
+            ...elseCoerce,
+            { op: "local.set", index: localIdx! } as Instr,
+          ],
+        });
+      } else {
+        if (localType && !valTypesMatch(elemType, localType)) {
+          coerceType(ctx, fctx, elemType, localType);
+        }
+        fctx.body.push({ op: "local.set", index: localIdx });
+      }
+    } else if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
+      const nestedLocal = allocLocal(fctx, `__ext_dparam_nested_${fctx.locals.length}`, elemType);
+      fctx.body.push({ op: "local.set", index: nestedLocal });
+      ensureBindingLocals(ctx, fctx, element.name);
+      if (ts.isObjectBindingPattern(element.name)) {
+        destructureParamObjectExternref(ctx, fctx, nestedLocal, element.name);
+      } else {
+        destructureParamArray(ctx, fctx, nestedLocal, element.name, elemType);
+      }
+    }
+  }
+}
+
+/**
  * Emit a null/undefined check for an externref destructuring parameter.
  * Checks both ref.is_null (Wasm null) and __extern_is_undefined (JS undefined).
  * Throws TypeError if either is true.
@@ -14361,26 +14480,56 @@ export function destructureParamObject(
       // Per JS spec: destructuring null/undefined must throw TypeError
       emitExternrefDestructureGuard(ctx, fctx, paramIdx);
 
+      // Pre-allocate all binding locals so they exist regardless of path taken
+      ensureBindingLocals(ctx, fctx, pattern);
+
+      // If empty pattern ({}) — nothing to destructure after null guard (#852)
+      if (pattern.elements.length === 0) return;
+
       const tsType = ctx.checker.getTypeAtLocation(pattern);
+      let structTypeIdx: number | undefined;
       if (tsType) {
         ensureStructForType(ctx, tsType);
         const typeName = ctx.anonTypeMap.get(tsType)
           ?? tsType.getSymbol()?.name
           ?? tsType.aliasSymbol?.name;
-        const structTypeIdx = typeName ? ctx.structMap.get(typeName) : undefined;
-        if (structTypeIdx !== undefined) {
-          const convertedType: ValType = { kind: "ref_null", typeIdx: structTypeIdx };
-          const tmpLocal = allocLocal(fctx, `__dparam_cvt_${fctx.locals.length}`, convertedType);
-          // Convert externref -> anyref -> (ref null $struct)
-          fctx.body.push({ op: "local.get", index: paramIdx });
-          fctx.body.push({ op: "any.convert_extern" } as Instr);
-          fctx.body.push({ op: "ref.cast_null", typeIdx: structTypeIdx });
-          fctx.body.push({ op: "local.set", index: tmpLocal });
-          // Recurse with the converted ref_null type
-          destructureParamObject(ctx, fctx, tmpLocal, pattern, convertedType);
-          return;
-        }
+        structTypeIdx = typeName ? ctx.structMap.get(typeName) : undefined;
       }
+
+      if (structTypeIdx !== undefined) {
+        // Use ref.test to check if the value is the expected struct (safe for primitives) (#852)
+        const anyTmp = allocLocal(fctx, `__dparam_any_${fctx.locals.length}`, { kind: "anyref" } as ValType);
+        fctx.body.push({ op: "local.get", index: paramIdx });
+        fctx.body.push({ op: "any.convert_extern" } as Instr);
+        fctx.body.push({ op: "local.set", index: anyTmp });
+
+        fctx.body.push({ op: "local.get", index: anyTmp });
+        fctx.body.push({ op: "ref.test", typeIdx: structTypeIdx });
+
+        // Then branch: cast succeeds — use struct-based destructuring (fast path)
+        const convertedType: ValType = { kind: "ref_null", typeIdx: structTypeIdx };
+        const tmpLocal = allocLocal(fctx, `__dparam_cvt_${fctx.locals.length}`, convertedType);
+        const thenInstrs: Instr[] = [];
+        const savedBody = fctx.body;
+        fctx.body = thenInstrs;
+        fctx.body.push({ op: "local.get", index: anyTmp });
+        fctx.body.push({ op: "ref.cast", typeIdx: structTypeIdx });
+        fctx.body.push({ op: "local.set", index: tmpLocal });
+        destructureParamObject(ctx, fctx, tmpLocal, pattern, convertedType);
+        fctx.body = savedBody;
+
+        // Else branch: cast would fail (primitive/different struct) — use __extern_get (#852)
+        const elseInstrs: Instr[] = [];
+        fctx.body = elseInstrs;
+        destructureParamObjectExternref(ctx, fctx, paramIdx, pattern);
+        fctx.body = savedBody;
+
+        fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: thenInstrs, else: elseInstrs });
+      } else {
+        // No struct type found — use __extern_get for all properties (#852)
+        destructureParamObjectExternref(ctx, fctx, paramIdx, pattern);
+      }
+      return;
     }
     // Cannot destructure a non-ref type — register locals with defaults
     for (const element of pattern.elements) {
