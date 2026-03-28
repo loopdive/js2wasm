@@ -414,7 +414,7 @@ class ConformanceError extends Error {
 // Periodic GC to prevent fork OOM — cache reads accumulate heap pressure
 const GC_INTERVAL = 200;
 
-function recordResult(file: string, category: string, status: string, error?: string) {
+function recordResult(file: string, category: string, status: string, error?: string, timing?: { compileMs?: number; execMs?: number }) {
   // Don't write to JSONL if already recorded by precompiler (skips + compile_errors)
   const alreadyRecorded = precompiledEntries.has(file) && (status === "skip" || status === "compile_error");
 
@@ -425,6 +425,8 @@ function recordResult(file: string, category: string, status: string, error?: st
     status,
     error: error || undefined,
     error_category: errorCategory,
+    compile_ms: timing?.compileMs !== undefined ? Math.round(timing.compileMs) : undefined,
+    exec_ms: timing?.execMs !== undefined ? Math.round(timing.execMs) : undefined,
   });
   if (!alreadyRecorded) {
     fdWrite(jsonlFd, entry + "\n");
@@ -813,7 +815,9 @@ for (const category of TEST_CATEGORIES) {
         // Execute
         const isRuntimeNegative = meta.negative?.phase === "runtime";
         const EXEC_TIMEOUT_MS = 10_000;
+        const compileMs = entry.result?.compileMs;
 
+        const execStart = performance.now();
         const workerResult = await execPool.run(
           entry.binary,
           entry.result.imports,
@@ -822,10 +826,12 @@ for (const category of TEST_CATEGORIES) {
           EXEC_TIMEOUT_MS,
           entry.cachePath,
         );
+        const execMs = performance.now() - execStart;
+        const timing = { compileMs, execMs };
 
         // Process worker result
         if (workerResult.timeout) {
-          recordResult(relPath, category, "fail", "runtime timeout (10s)");
+          recordResult(relPath, category, "fail", "runtime timeout (10s)", { compileMs, execMs: EXEC_TIMEOUT_MS });
           return;
         }
 
@@ -874,17 +880,17 @@ for (const category of TEST_CATEGORIES) {
               enriched = `${msg} [in ${fname}()]`;
             }
           }
-          recordResult(relPath, category, "compile_error", enriched);
+          recordResult(relPath, category, "compile_error", enriched, timing);
           return;
         }
 
         if (workerResult.noTestExport) {
-          recordResult(relPath, category, "compile_error", "no test export");
+          recordResult(relPath, category, "compile_error", "no test export", timing);
           return;
         }
 
         if (workerResult.workerError) {
-          recordResult(relPath, category, "fail", workerResult.error);
+          recordResult(relPath, category, "fail", workerResult.error, timing);
           return;
         }
 
@@ -895,40 +901,40 @@ for (const category of TEST_CATEGORIES) {
             const desc = meta.description?.substring(0, 100) ?? "";
             // If it looks like a TypeError on null access
             if (errInfo === "TypeError (null/undefined access)") {
-              recordResult(relPath, category, "fail", `${errInfo}${desc ? `: ${desc}` : ""}`);
+              recordResult(relPath, category, "fail", `${errInfo}${desc ? `: ${desc}` : ""}`, timing);
             } else {
-              recordResult(relPath, category, "fail", errInfo);
+              recordResult(relPath, category, "fail", errInfo, timing);
             }
           } else {
-            recordResult(relPath, category, "fail", workerResult.error);
+            recordResult(relPath, category, "fail", workerResult.error, timing);
           }
           return;
         }
 
         // Success path
         if (workerResult.runtimeNegativePass) {
-          recordResult(relPath, category, "pass");
+          recordResult(relPath, category, "pass", undefined, timing);
           return;
         }
 
         if (workerResult.runtimeNegativeNoThrow) {
-          recordResult(relPath, category, "fail", `expected runtime ${meta.negative!.type} but succeeded`);
+          recordResult(relPath, category, "fail", `expected runtime ${meta.negative!.type} but succeeded`, timing);
           return;
         }
 
         const ret = workerResult.ret;
         if (ret === 1) {
-          recordResult(relPath, category, "pass");
+          recordResult(relPath, category, "pass", undefined, timing);
         } else if (ret === -1) {
           const desc = meta.description?.substring(0, 100) ?? "";
           const throwsMatch = source.match(/assert\.throws\s*\(\s*(\w+Error)/);
           const expectedErr = throwsMatch ? throwsMatch[1] : null;
           let context = desc || "exception in test body";
           if (expectedErr) context = `expected ${expectedErr} — ${context}`;
-          recordResult(relPath, category, "fail", `returned -1 — ${context}`);
+          recordResult(relPath, category, "fail", `returned -1 — ${context}`, timing);
         } else {
           const assertInfo = findNthAssert(source, ret);
-          recordResult(relPath, category, "fail", `returned ${ret} — ${assertInfo}`);
+          recordResult(relPath, category, "fail", `returned ${ret} — ${assertInfo}`, timing);
         }
       }, 90_000);
     }
