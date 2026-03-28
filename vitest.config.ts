@@ -6,7 +6,7 @@ export default defineConfig({
     pool: 'forks',
     poolOptions: {
       forks: {
-        maxForks: parseInt(process.env.TEST262_WORKERS || '1', 10),
+        maxForks: parseInt(process.env.TEST262_WORKERS || '3', 10),
         execArgv: ['--max-old-space-size=4096'],
       },
     },
