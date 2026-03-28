@@ -1954,10 +1954,111 @@ export function emitFuncRefAsClosure(
   const sig = getFuncSignature(ctx, funcIdx);
   if (!sig) return null;
 
-  // Skip functions with nested-func captures (their first N params are capture values
-  // from the enclosing scope, which can't be threaded through a generic trampoline)
   const nestedCaptures = ctx.nestedFuncCaptures.get(funcName);
-  if (nestedCaptures && nestedCaptures.length > 0) return null;
+  if (nestedCaptures && nestedCaptures.length > 0) {
+    // Functions with captures: create a closure struct that stores the capture values.
+    // The trampoline extracts captures from the struct and passes them to the original function. (#857)
+    const numCaptures = nestedCaptures.length;
+    const userParams = sig.params.slice(numCaptures);
+    const results = sig.results;
+
+    const wrapperTypes = getOrCreateFuncRefWrapperTypes(ctx, userParams, results);
+    if (!wrapperTypes) return null;
+
+    // Create a custom struct with func + capture fields (subtype of the base wrapper)
+    const captureFields: FieldDef[] = nestedCaptures.map((_cap, i) => {
+      const capParamType = sig.params[i]!;
+      return { name: `cap${i}`, type: capParamType, mutable: false };
+    });
+    const closureName = `__fn_cap_${funcName}_${ctx.closureCounter++}`;
+    const structTypeIdx = ctx.mod.types.length;
+    ctx.mod.types.push({
+      kind: "struct",
+      name: `${closureName}_struct`,
+      fields: [
+        { name: "func", type: { kind: "funcref" as const }, mutable: false },
+        ...captureFields,
+      ],
+      superTypeIdx: wrapperTypes.structTypeIdx,
+    });
+
+    // Use the base wrapper's func type so call_ref works via subtype cast
+    const liftedFuncTypeIdx = wrapperTypes.liftedFuncTypeIdx;
+
+    const trampolineName = `__fn_tramp_${funcName}_${ctx.closureCounter++}`;
+    const trampolineBody: Instr[] = [];
+    const trampolineLocals: { name: string; type: ValType }[] = [];
+
+    if (numCaptures > 1) {
+      trampolineLocals.push({ name: "__casted_self", type: { kind: "ref", typeIdx: structTypeIdx } });
+    }
+    const castedSelfLocal = 1 + userParams.length;
+
+    // Cast self from base struct to custom struct to access capture fields
+    trampolineBody.push({ op: "local.get", index: 0 } as Instr);
+    trampolineBody.push({ op: "ref.cast", typeIdx: structTypeIdx } as unknown as Instr);
+
+    if (numCaptures === 1) {
+      trampolineBody.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx: 1 } as Instr);
+    } else {
+      trampolineBody.push({ op: "local.set", index: castedSelfLocal } as Instr);
+      for (let i = 0; i < numCaptures; i++) {
+        trampolineBody.push({ op: "local.get", index: castedSelfLocal } as Instr);
+        trampolineBody.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx: i + 1 } as Instr);
+      }
+    }
+    for (let i = 0; i < userParams.length; i++) {
+      trampolineBody.push({ op: "local.get", index: i + 1 } as Instr);
+    }
+    trampolineBody.push({ op: "call", funcIdx } as Instr);
+
+    const trampolineFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.mod.functions.push({
+      name: trampolineName,
+      typeIdx: liftedFuncTypeIdx,
+      locals: trampolineLocals,
+      body: trampolineBody,
+      exported: false,
+    });
+    ctx.funcMap.set(trampolineName, trampolineFuncIdx);
+
+    // Register closureInfo so array method callbacks can use call_ref
+    const closureInfo: ClosureInfo = {
+      structTypeIdx,
+      funcTypeIdx: wrapperTypes.closureInfo.funcTypeIdx,
+      returnType: results.length > 0 ? results[0]! : null,
+      paramTypes: userParams,
+    };
+    ctx.closureInfoByTypeIdx.set(structTypeIdx, closureInfo);
+
+    // Emit: struct.new with fields: func, cap0, cap1, ...
+    fctx.body.push({ op: "ref.func", funcIdx: trampolineFuncIdx });
+    for (const cap of nestedCaptures) {
+      if (cap.mutable && cap.valType) {
+        const refCellTypeIdx = getOrRegisterRefCellType(ctx, cap.valType);
+        if (fctx.boxedCaptures?.has(cap.name)) {
+          const currentLocalIdx = fctx.localMap.get(cap.name)!;
+          fctx.body.push({ op: "local.get", index: currentLocalIdx });
+        } else {
+          fctx.body.push({ op: "local.get", index: cap.outerLocalIdx });
+          fctx.body.push({ op: "struct.new", typeIdx: refCellTypeIdx });
+          const boxedLocalIdx = allocLocal(fctx, `__boxed_${cap.name}`, {
+            kind: "ref",
+            typeIdx: refCellTypeIdx,
+          });
+          fctx.body.push({ op: "local.tee", index: boxedLocalIdx });
+          fctx.localMap.set(cap.name, boxedLocalIdx);
+          if (!fctx.boxedCaptures) fctx.boxedCaptures = new Map();
+          fctx.boxedCaptures.set(cap.name, { refCellTypeIdx, valType: cap.valType });
+        }
+      } else {
+        fctx.body.push({ op: "local.get", index: cap.outerLocalIdx });
+      }
+    }
+    fctx.body.push({ op: "struct.new", typeIdx: structTypeIdx });
+
+    return { kind: "ref", typeIdx: structTypeIdx };
+  }
 
   const userParams = sig.params;
 
