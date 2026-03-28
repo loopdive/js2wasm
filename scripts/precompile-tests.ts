@@ -28,9 +28,11 @@ const COMPILE_JSONL_PATH = join(RESULTS_DIR, "test262-compile.jsonl");
 await mkdir(CACHE_DIR, { recursive: true });
 await mkdir(RESULTS_DIR, { recursive: true });
 
-// JSONL output — append compile results for reporting
+// JSONL output — batched async writes for performance
 import { openSync, writeSync as fdWrite, closeSync, fsyncSync } from "fs";
 const jsonlFd = openSync(COMPILE_JSONL_PATH, "w"); // overwrite
+const FLUSH_SIZE = 100; // flush every N entries
+let jsonlBuffer: string[] = [];
 
 function recordCompileResult(relPath: string, category: string, status: string, error?: string, compileMs?: number) {
   const entry = JSON.stringify({
@@ -38,7 +40,19 @@ function recordCompileResult(relPath: string, category: string, status: string, 
     error: error || undefined,
     compile_ms: compileMs !== undefined ? Math.round(compileMs) : undefined,
   });
-  fdWrite(jsonlFd, entry + "\n");
+  jsonlBuffer.push(entry);
+  if (jsonlBuffer.length >= FLUSH_SIZE) {
+    fdWrite(jsonlFd, jsonlBuffer.join("\n") + "\n");
+    jsonlBuffer = [];
+  }
+}
+
+function flushJsonl() {
+  if (jsonlBuffer.length > 0) {
+    fdWrite(jsonlFd, jsonlBuffer.join("\n") + "\n");
+    jsonlBuffer = [];
+  }
+  try { fsyncSync(jsonlFd); } catch {}
 }
 
 // Build compiler hash (same logic as test262-vitest.test.ts)
@@ -172,7 +186,7 @@ for (const { filePath, relPath, category } of allTests) {
 
 await Promise.all(jobs);
 pool.shutdown();
-try { fsyncSync(jsonlFd); } catch {}
+flushJsonl();
 closeSync(jsonlFd);
 
 const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);

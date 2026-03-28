@@ -160,4 +160,4 @@ See `plan/issues/done/log.md` for the full completion log.
 
 **Session 2026-03-26**: 15+ issues completed. Pass: 17,602 -> 20,162 (+14.5%). Key: ReferenceError/TDZ (#790), SyntaxError gaps (#791), destructuring fixes (#794/#796/#801), coercion (#795), property descriptors (#797a/b/d), try/catch interop (#798a/b/c), prototype chain (#799a/b), compile-away audit (#800), dead code elimination after terminators.
 
-**Session 2026-03-28 (current)**: 18,041 pass, 21,181 fail, 2,284 CE, 6,580 skip. Full error analysis completed -- 13 new issues (#846-#858) covering all major runtime failure patterns.
+**Session 2026-03-28 (current)**: 18,041 pass, 21,181 fail, 2,284 CE, 6,580 skip. Full error analysis completed -- 13 new runtime issues (#846-#858), 7 new CE issues (#839-#845). Test infrastructure: two-phase precompile+exec pipeline, 10-worker parallel compilation, batched async JSONL writes, disk-read exec worker optimization, separate compile/results JSONL files with timing.
