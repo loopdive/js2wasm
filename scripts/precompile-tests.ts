@@ -168,7 +168,7 @@ for (const { filePath, relPath, category } of allTests) {
         compiled++;
       } else {
         await writeFile(cachePath, new Uint8Array(0));
-        await writeFile(metaPath, JSON.stringify({ ok: false, error: result.error, compileMs: result.compileMs }));
+        await writeFile(metaPath, JSON.stringify({ ok: false, error: result.error, errorCodes: (result as any).errorCodes, compileMs: result.compileMs }));
         recordCompileResult(relPath, category, "compile_error", result.error, result.compileMs);
         errors++;
       }

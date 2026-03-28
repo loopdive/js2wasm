@@ -26,7 +26,11 @@ parentPort.on("message", (msg) => {
         .filter(e => e.severity === "error")
         .map(e => `L${e.line}:${e.column} ${e.message}`)
         .join("; ");
-      parentPort.postMessage({ id: msg.id, ok: false, error: errMsg || "unknown", compileMs });
+      // Include TS diagnostic codes for early error detection
+      const errorCodes = result.errors
+        .filter(e => e.severity === "error" && e.code)
+        .map(e => e.code);
+      parentPort.postMessage({ id: msg.id, ok: false, error: errMsg || "unknown", errorCodes, compileMs });
       return;
     }
 
