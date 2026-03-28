@@ -124,7 +124,7 @@ export interface CompileOptions {
 }
 
 import * as path from "path";
-import { compileSource, compileMultiSource, compileToObjectSource } from "./compiler.js";
+import { compileSource, compileMultiSource, compileFilesSource, compileToObjectSource } from "./compiler.js";
 import { ModuleResolver, resolveAllImports } from "./resolve.js";
 import { treeshake, getEntryExportNames } from "./treeshake.js";
 
@@ -161,6 +161,30 @@ export function compileMulti(
   options?: CompileOptions,
 ): CompileResult {
   return compileMultiSource(files, entryFile, options);
+}
+
+/**
+ * Compile a TypeScript project from an entry file on disk.
+ * Uses ts.createProgram with real filesystem access -- TypeScript resolves
+ * all imports (relative and package) automatically via standard module resolution.
+ * All resolved source files are compiled into a single Wasm module.
+ * Only the entry file's exports become Wasm exports.
+ *
+ * @param entryPath - Path to the entry .ts file (absolute or relative to cwd)
+ * @param options - Compile options
+ *
+ * @example
+ * ```ts
+ * // Given: src/main.ts imports from src/utils.ts
+ * const result = compileFiles("src/main.ts");
+ * // TypeScript resolves src/utils.ts automatically
+ * ```
+ */
+export function compileFiles(
+  entryPath: string,
+  options?: CompileOptions,
+): CompileResult {
+  return compileFilesSource(entryPath, options);
 }
 
 /** Only WAT text (debug) */

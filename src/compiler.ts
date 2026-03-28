@@ -1,5 +1,6 @@
 import ts from "typescript";
 import {
+  analyzeFiles,
   analyzeMultiSource,
   analyzeSource,
   type TypedAST,
@@ -2568,6 +2569,211 @@ export function compileMultiSource(
   }
 
   // Optimize binary with Binaryen (optional)
+  if (options.optimize) {
+    const level = typeof options.optimize === "number" ? options.optimize : 3;
+    const optResult = optimizeBinary(binary, { level });
+    if (optResult.optimized) {
+      binary = optResult.binary;
+    }
+    if (optResult.warning) {
+      errors.push({
+        message: optResult.warning,
+        line: 0,
+        column: 0,
+        severity: "warning",
+      });
+    }
+  }
+
+  let wat = "";
+  if (emitWatOutput) {
+    try {
+      wat = emitWat(mod);
+    } catch (e) {
+      errors.push({
+        message: `WAT emit warning: ${e instanceof Error ? e.message : String(e)}`,
+        line: 0,
+        column: 0,
+        severity: "warning",
+      });
+    }
+  }
+
+  const entryAst: TypedAST = {
+    sourceFile: multiAst.entryFile,
+    checker: multiAst.checker,
+    program: multiAst.program,
+    diagnostics: multiAst.diagnostics,
+    syntacticDiagnostics: multiAst.syntacticDiagnostics,
+  };
+  const dts = generateDts(entryAst, mod);
+  const importsHelper = generateImportsHelper(mod);
+
+  return {
+    binary,
+    wat,
+    dts,
+    importsHelper,
+    success: true,
+    errors,
+    stringPool: mod.stringPool,
+    sourceMap: sourceMapJson,
+    imports: buildImportManifest(mod),
+  };
+}
+
+/**
+ * Compile a TypeScript project from an entry file on disk.
+ * Uses ts.createProgram with real filesystem access -- TypeScript resolves
+ * all imports automatically via standard module resolution.
+ */
+export function compileFilesSource(
+  entryPath: string,
+  options: CompileOptions = {},
+): CompileResult {
+  const errors: CompileError[] = [];
+  const emitWatOutput = options.emitWat !== false;
+
+  const multiAst = analyzeFiles(entryPath, {
+    allowJs: options.allowJs,
+    skipSemanticDiagnostics: options.skipSemanticDiagnostics,
+  });
+
+  for (const diag of multiAst.diagnostics) {
+    if (diag.category === 1) {
+      const pos = diag.file
+        ? diag.file.getLineAndCharacterOfPosition(diag.start ?? 0)
+        : { line: 0, character: 0 };
+      errors.push({
+        message:
+          typeof diag.messageText === "string"
+            ? diag.messageText
+            : diag.messageText.messageText,
+        line: pos.line + 1,
+        column: pos.character + 1,
+        severity: "error",
+      });
+    }
+  }
+
+  const hasSyntaxErrors = multiAst.syntacticDiagnostics.some(
+    (d) => d.category === 1 && multiAst.sourceFiles.some((sf) => d.file === sf),
+  );
+
+  if (hasSyntaxErrors && errors.length > 0) {
+    return {
+      binary: new Uint8Array(0),
+      wat: "",
+      dts: "",
+      importsHelper: "",
+      success: false,
+      errors,
+      stringPool: [],
+      imports: [],
+    };
+  }
+
+  // Safe mode validation for all source files
+  if (options.safe) {
+    for (const sf of multiAst.sourceFiles) {
+      const safeErrors = validateSafeMode(sf, multiAst.checker, options);
+      errors.push(...safeErrors);
+    }
+    if (errors.some(e => e.severity === "error")) {
+      return {
+        binary: new Uint8Array(0),
+        wat: "",
+        dts: "",
+        importsHelper: "",
+        success: false,
+        errors,
+        stringPool: [],
+        imports: [],
+      };
+    }
+  }
+
+  const emitSourceMap = options.sourceMap === true;
+  const useLinear = options.target === "linear";
+
+  let mod;
+  try {
+    if (useLinear) {
+      mod = generateLinearMultiModule(multiAst);
+    } else {
+      const result = generateMultiModule(multiAst, { sourceMap: emitSourceMap, fast: options.fast, nativeStrings: options.nativeStrings, wasi: options.target === "wasi" });
+      mod = result.module;
+      for (const err of result.errors) {
+        errors.push({
+          message: err.message,
+          line: err.line,
+          column: err.column,
+          severity: err.severity ?? "error",
+        });
+      }
+    }
+  } catch (e) {
+    errors.push({
+      message: `Codegen error: ${e instanceof Error ? e.message : String(e)}`,
+      line: 0,
+      column: 0,
+      severity: "error",
+    });
+    return {
+      binary: new Uint8Array(0),
+      wat: "",
+      dts: "",
+      importsHelper: "",
+      success: false,
+      errors,
+      stringPool: [],
+      imports: [],
+    };
+  }
+
+  widenNonDefaultableTypes(mod);
+
+  let binary: Uint8Array;
+  let sourceMapJson: string | undefined;
+  try {
+    if (emitSourceMap) {
+      const emitResult = emitBinaryWithSourceMap(mod);
+      const sourcesContent = new Map<string, string>();
+      for (const sf of multiAst.sourceFiles) {
+        sourcesContent.set(sf.fileName, sf.getFullText());
+      }
+      const sourceMap = generateSourceMap(emitResult.sourceMapEntries, sourcesContent);
+      sourceMapJson = JSON.stringify(sourceMap);
+      const sourceMapUrl = options.sourceMapUrl ?? "module.wasm.map";
+      const urlSection = new WasmEncoder();
+      emitSourceMappingURLSection(urlSection, sourceMapUrl);
+      const urlSectionBytes = urlSection.finish();
+      const combined = new Uint8Array(emitResult.binary.length + urlSectionBytes.length);
+      combined.set(emitResult.binary);
+      combined.set(urlSectionBytes, emitResult.binary.length);
+      binary = combined;
+    } else {
+      binary = emitBinary(mod);
+    }
+  } catch (e) {
+    errors.push({
+      message: `Binary emit error: ${e instanceof Error ? e.stack ?? e.message : String(e)}`,
+      line: 0,
+      column: 0,
+      severity: "error",
+    });
+    return {
+      binary: new Uint8Array(0),
+      wat: "",
+      dts: "",
+      importsHelper: "",
+      success: false,
+      errors,
+      stringPool: [],
+      imports: [],
+    };
+  }
+
   if (options.optimize) {
     const level = typeof options.optimize === "number" ? options.optimize : 3;
     const optResult = optimizeBinary(binary, { level });

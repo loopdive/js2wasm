@@ -381,7 +381,7 @@ export function analyzeMultiSource(
     useCaseSensitiveFileNames: () => true,
     getNewLine: () => "\n",
     fileExists: (name) =>
-      normalizedFiles.has(name) || KNOWN_LIB_NAMES.has(name),
+      normalizedFiles.has(name) || isKnownLibName(name),
     readFile: (name) => normalizedFiles.get(name),
     getDirectories: () => [],
     directoryExists: () => true,
@@ -444,6 +444,70 @@ export function analyzeMultiSource(
     sourceFiles: userSourceFiles,
     entryFile: entrySourceFile,
     checker: program.getTypeChecker(),
+    program,
+    diagnostics,
+    syntacticDiagnostics: syntacticDiagnostics as readonly ts.Diagnostic[],
+  };
+}
+
+/**
+ * Analyze a TypeScript project from an entry file on disk.
+ * Uses ts.createProgram with real filesystem access -- TypeScript resolves
+ * all imports automatically via its standard module resolution.
+ *
+ * Returns a MultiTypedAST suitable for generateMultiModule().
+ */
+export function analyzeFiles(
+  entryPath: string,
+  analyzeOptions?: AnalyzeOptions,
+): MultiTypedAST {
+  const pathMod = require("path") as typeof import("path");
+  const resolvedEntry = pathMod.resolve(entryPath);
+
+  const compilerOptions: ts.CompilerOptions = {
+    target: ts.ScriptTarget.ES2022,
+    module: ts.ModuleKind.ESNext,
+    moduleResolution: ts.ModuleResolutionKind.Node10,
+    strict: true,
+    noImplicitAny: false,
+    noEmit: true,
+    rootDir: pathMod.dirname(resolvedEntry),
+  };
+
+  if (analyzeOptions?.allowJs) {
+    compilerOptions.allowJs = true;
+    compilerOptions.checkJs = true;
+  }
+
+  const program = ts.createProgram([resolvedEntry], compilerOptions);
+  const checker = program.getTypeChecker();
+
+  const syntacticDiagnostics = program.getSyntacticDiagnostics();
+  const semanticDiagnostics = analyzeOptions?.skipSemanticDiagnostics
+    ? ([] as ts.Diagnostic[])
+    : program.getSemanticDiagnostics();
+  const diagnostics = [...syntacticDiagnostics, ...semanticDiagnostics];
+
+  const entrySourceFile = program.getSourceFile(resolvedEntry);
+  if (!entrySourceFile) {
+    throw new Error(`Entry file not found: ${resolvedEntry}`);
+  }
+
+  // Collect user source files (skip lib files and node_modules)
+  const userSourceFiles: ts.SourceFile[] = [];
+  for (const sf of program.getSourceFiles()) {
+    if (sf.fileName === resolvedEntry) continue; // entry goes last
+    if (sf.isDeclarationFile) continue;
+    if (sf.fileName.includes("node_modules")) continue;
+    userSourceFiles.push(sf);
+  }
+  // Entry file goes last (dependency order: deps before entry)
+  userSourceFiles.push(entrySourceFile);
+
+  return {
+    sourceFiles: userSourceFiles,
+    entryFile: entrySourceFile,
+    checker,
     program,
     diagnostics,
     syntacticDiagnostics: syntacticDiagnostics as readonly ts.Diagnostic[],
