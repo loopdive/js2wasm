@@ -21,7 +21,7 @@ log "Precompile took $((END - START))s"
 log ""
 log "=== VITEST ==="
 START=$(date +%s)
-npx vitest run tests/test262-vitest.test.ts 2>&1 | tee -a "$LOGFILE"
+npx vitest run tests/test262-vitest.test.ts >> "$LOGFILE" 2>&1
 END=$(date +%s)
 log "Vitest took $((END - START))s"
 
