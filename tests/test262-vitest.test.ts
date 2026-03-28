@@ -99,9 +99,10 @@ const serverReady = new Promise<void>((resolve) => {
 
 // ── Compiler pool (async worker threads) ─────────────────────────────
 
-// Each vitest fork gets 1 compiler worker — forks process tests sequentially
-// so more workers per fork just waste memory. Total workers = maxForks × 1.
-const pool = new CompilerPool(1);
+// Each vitest fork gets multiple compiler workers for parallel compilation.
+// Cache misses dispatch to any free worker; cache hits skip the pool entirely.
+const POOL_SIZE = parseInt(process.env.COMPILER_POOL_SIZE || "3", 10);
+const pool = new CompilerPool(POOL_SIZE);
 
 // ── Wasm execution pool (persistent worker for running compiled tests) ────
 class WasmExecPool {
@@ -639,16 +640,42 @@ function findNthAssert(source: string, retVal: number): string {
 
 const TEST262_ROOT = join(import.meta.dirname ?? ".", "..", "test262");
 
+// ── Prefetch: pre-compile upcoming tests while the current one executes ───
+// This keeps the compiler pool busy instead of idle during test execution.
+const PREFETCH_AHEAD = POOL_SIZE * 2; // prefetch 2× pool size ahead
+const prefetchCache = new Map<string, Promise<{ ok: true; binary: Uint8Array; result: any; cachePath?: string } | { ok: false; error: string }>>();
+
+function prefetchCompile(filePath: string, relPath: string): void {
+  if (prefetchCache.has(relPath)) return;
+  try {
+    const source = readFileSync(filePath, "utf-8");
+    const meta = parseMeta(source);
+    const filter = shouldSkip(source, meta, filePath);
+    if (filter.skip) return;
+    if (meta.negative && (meta.negative.phase === "parse" || meta.negative.phase === "early" || meta.negative.phase === "resolution")) return;
+    const fixtures = resolveFixtures(source, filePath);
+    if (fixtures.length > 0) return; // compileMulti is sync, don't prefetch
+    const { source: wrapped } = wrapTest(source, meta);
+    prefetchCache.set(relPath, getOrCompile(wrapped, false, relPath));
+  } catch { /* prefetch failure is non-fatal */ }
+}
+
 // Run all categories — disk cache makes re-runs instant
 for (const category of TEST_CATEGORIES) {
   const files = findTestFiles(category);
   if (files.length === 0) continue;
 
   describe(`test262: ${category}`, () => {
-    for (const filePath of files) {
+    for (let fileIdx = 0; fileIdx < files.length; fileIdx++) {
+      const filePath = files[fileIdx]!;
       const relPath = relative(TEST262_ROOT, filePath);
 
       it(relPath, async () => {
+        // Prefetch upcoming tests to keep compiler pool busy
+        for (let ahead = 1; ahead <= PREFETCH_AHEAD && fileIdx + ahead < files.length; ahead++) {
+          prefetchCompile(files[fileIdx + ahead]!, relative(TEST262_ROOT, files[fileIdx + ahead]!));
+        }
+
         const source = readFileSync(filePath, "utf-8");
         const meta = parseMeta(source);
 
@@ -717,7 +744,14 @@ for (const category of TEST_CATEGORIES) {
             compileResult = { ok: false, error: e.message ?? String(e) };
           }
         } else {
-          compileResult = await getOrCompile(wrapped, false, relPath);
+          // Use prefetched result if available, otherwise compile now
+          const prefetched = prefetchCache.get(relPath);
+          if (prefetched) {
+            prefetchCache.delete(relPath);
+            compileResult = await prefetched;
+          } else {
+            compileResult = await getOrCompile(wrapped, false, relPath);
+          }
         }
 
         if (!compileResult.ok) {
