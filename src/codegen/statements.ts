@@ -3917,6 +3917,13 @@ function compileForOfDestructuring(
   if (ts.isObjectBindingPattern(pattern)) {
     // Resolve the struct type from the element type
     if (elemType.kind !== "ref" && elemType.kind !== "ref_null") {
+      if (elemType.kind === "externref") {
+        // Externref elements: use __extern_get to extract properties (e.g. iterator protocol)
+        fctx.body.push({ op: "local.get", index: elemLocal });
+        compileExternrefObjectDestructuringDecl(ctx, fctx, pattern, elemType);
+        syncDestructuredLocalsToGlobals(ctx, fctx, pattern);
+        return;
+      }
       // Primitives (bool, number, string) are object-coercible in JS.
       // Empty binding pattern `for (let {} of [val])` is a no-op — just iterate.
       // Non-empty patterns: properties don't exist on primitives, so use defaults
@@ -4089,9 +4096,16 @@ function compileForOfDestructuring(
     // Array destructuring in for-of: for (var [a, b] of arr)
     // Element may be a vec struct (array wrapper) OR a tuple struct.
 
-    // Handle externref elements: we cannot destructure opaque references at the
-    // Wasm level, so assign "undefined" sentinels or default values to each binding.
+    // Handle externref elements: use __extern_get to extract indexed properties
     if (elemType.kind !== "ref" && elemType.kind !== "ref_null") {
+      if (elemType.kind === "externref") {
+        // Externref elements: use __extern_get(elem, box(i)) for each binding (e.g. iterator protocol)
+        fctx.body.push({ op: "local.get", index: elemLocal });
+        compileExternrefArrayDestructuringDecl(ctx, fctx, pattern, elemType);
+        syncDestructuredLocalsToGlobals(ctx, fctx, pattern);
+        return;
+      }
+      // Non-ref, non-externref (f64, i32): assign defaults or undefined sentinels
       for (const element of pattern.elements) {
         if (ts.isOmittedExpression(element)) continue;
         if (!ts.isBindingElement(element)) continue;
@@ -5127,6 +5141,12 @@ function compileForOfDirectIterator(
     elemLocal = allocLocal(fctx, `__forit_elem_${fctx.locals.length}`, elemType);
   }
 
+  // Look up the return() method on the iterator struct for iterator close (#851)
+  const returnMethodIdx = ctx.funcMap.get(`${iterStructName}_return`);
+
+  // Done flag: tracks whether iterator completed normally (done=true) (#851)
+  const doneFlagDirect = allocLocal(fctx, `__forit_done_${fctx.locals.length}`, { kind: "i32" });
+
   // Build loop body
   const savedBody = pushBody(fctx);
 
@@ -5156,7 +5176,7 @@ function compileForOfDirectIterator(
   fctx.body.push({ op: "call", funcIdx: nextMethodIdx });
   fctx.body.push({ op: "local.set", index: resultLocal });
 
-  // Check done: result.done -> break if truthy
+  // Check done: result.done -> set done flag and break if truthy
   fctx.body.push({ op: "local.get", index: resultLocal });
   if (nextResultType.kind === "ref_null") {
     fctx.body.push({ op: "ref.as_non_null" } as Instr);
@@ -5166,7 +5186,17 @@ function compileForOfDirectIterator(
   if (doneFieldType.kind === "f64") {
     fctx.body.push({ op: "i32.trunc_f64_s" } as Instr);
   }
-  fctx.body.push({ op: "br_if", depth: 1 });
+  // If done, set the done flag to 1 before breaking (#851)
+  fctx.body.push({
+    op: "if",
+    blockType: { kind: "empty" },
+    then: [
+      { op: "i32.const", value: 1 } as Instr,
+      { op: "local.set", index: doneFlagDirect } as Instr,
+      { op: "br", depth: 2 } as Instr, // break out of block (if + loop = depth 2)
+    ],
+    else: [],
+  } as unknown as Instr);
 
   // Get value: elem = result.value
   fctx.body.push({ op: "local.get", index: resultLocal });
@@ -5225,6 +5255,25 @@ function compileForOfDirectIterator(
       },
     ],
   });
+
+  // Iterator close protocol (#851): call iterator.return() only on abrupt
+  // completion (break/return), NOT on normal completion (done=true).
+  if (returnMethodIdx !== undefined) {
+    fctx.body.push({ op: "local.get", index: doneFlagDirect });
+    fctx.body.push({ op: "i32.eqz" }); // if NOT done (abrupt exit)
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: [
+        { op: "local.get", index: iterLocal } as Instr,
+        ...(iterResultType.kind === "ref_null" ? [{ op: "ref.as_non_null" } as Instr] : []),
+        { op: "call", funcIdx: returnMethodIdx } as Instr,
+        // Drop the return value (return() returns {value, done})
+        { op: "drop" } as Instr,
+      ],
+      else: [],
+    } as unknown as Instr);
+  }
 
   return true;
 }
@@ -5434,6 +5483,10 @@ function compileForOfIterator(
   fctx.breakStack.push(1); // break = depth 1 (exit block)
   fctx.continueStack.push(0); // continue = depth 0 (restart loop)
 
+  // Done flag: tracks whether iterator completed normally (done=true).
+  // Used after the loop to decide whether to call iterator.return() (#851).
+  const doneFlag = allocLocal(fctx, `__forof_done_${fctx.locals.length}`, { kind: "i32" });
+
   // Safety guard: max iteration counter to prevent infinite loops from collection mutation
   const iterCountLocal = allocLocal(fctx, `__forof_guard_${fctx.locals.length}`, { kind: "i32" });
   fctx.body.push({ op: "local.get", index: iterCountLocal });
@@ -5452,7 +5505,17 @@ function compileForOfIterator(
   // Check done: __iterator_done(result) → i32, break if truthy
   fctx.body.push({ op: "local.get", index: resultLocal });
   fctx.body.push({ op: "call", funcIdx: doneIdx });
-  fctx.body.push({ op: "br_if", depth: 1 }); // break out of block
+  // If done, set the done flag to 1 before breaking
+  fctx.body.push({
+    op: "if",
+    blockType: { kind: "empty" },
+    then: [
+      { op: "i32.const", value: 1 } as Instr,
+      { op: "local.set", index: doneFlag } as Instr,
+      { op: "br", depth: 2 } as Instr, // break out of block (if + loop = depth 2)
+    ],
+    else: [],
+  } as unknown as Instr);
 
   // Get value: elem = __iterator_value(result)
   fctx.body.push({ op: "local.get", index: resultLocal });
@@ -5507,10 +5570,20 @@ function compileForOfIterator(
     ],
   });
 
-  // Call iterator.return() to signal early termination / cleanup
+  // Iterator close protocol (#851): call iterator.return() only on abrupt
+  // completion (break/return/throw), NOT on normal completion (done=true).
   if (returnIdx !== undefined) {
-    fctx.body.push({ op: "local.get", index: iterLocal });
-    fctx.body.push({ op: "call", funcIdx: returnIdx });
+    fctx.body.push({ op: "local.get", index: doneFlag });
+    fctx.body.push({ op: "i32.eqz" }); // if NOT done (abrupt exit)
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "empty" },
+      then: [
+        { op: "local.get", index: iterLocal } as Instr,
+        { op: "call", funcIdx: returnIdx } as Instr,
+      ],
+      else: [],
+    } as unknown as Instr);
   }
 }
 
