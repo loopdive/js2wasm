@@ -417,6 +417,7 @@
           const text = await resp.text();
           const counts = { pass: 0, fail: 0, compile_error: 0, skip: 0 };
           const cats = {};
+          const skipReasons = {};
           for (const line of text.split("\n")) {
             if (!line.trim()) continue;
             try {
@@ -436,12 +437,16 @@
                   };
                 cats[cat][s]++;
                 cats[cat].total++;
+                if (s === "skip" && r.error) {
+                  skipReasons[r.error] = (skipReasons[r.error] || 0) + 1;
+                }
               }
             } catch {}
           }
           const total = Object.values(counts).reduce((a, b) => a + b, 0);
           if (total === 0) return null;
           return {
+            timestamp: new Date().toISOString(),
             summary: {
               total,
               ...counts,
@@ -451,6 +456,7 @@
             categories: Object.values(cats).sort((a, b) =>
               a.name.localeCompare(b.name),
             ),
+            skip_reasons: skipReasons,
           };
         } catch {
           return null;
@@ -502,16 +508,29 @@
       }
 
       function groupName(cat) {
-        if (cat.startsWith("built-ins/Math/")) return "Math";
-        if (cat.startsWith("built-ins/Array/")) return "Array";
-        if (cat.startsWith("built-ins/Number/")) return "Number";
-        if (cat.startsWith("built-ins/Object/")) return "Object";
-        if (cat.startsWith("built-ins/JSON/")) return "JSON";
-        if (cat.startsWith("built-ins/is")) return "Global Functions";
-        if (cat.startsWith("language/expressions/")) return "Expressions";
-        if (cat.startsWith("language/statements/")) return "Statements";
-        if (cat.startsWith("language/types/")) return "Types";
-        return "Other";
+        // Language categories
+        if (cat.startsWith("language/expressions")) return "Expressions";
+        if (cat.startsWith("language/statements")) return "Statements";
+        if (cat.startsWith("language/types")) return "Types";
+        if (cat.startsWith("language/literals")) return "Literals";
+        if (cat.startsWith("language/arguments-object")) return "Arguments";
+        if (cat.startsWith("language/destructuring")) return "Destructuring";
+        if (cat.startsWith("language/block-scope")) return "Block Scope";
+        if (cat.startsWith("language/rest-parameters")) return "Rest Params";
+        if (cat.startsWith("language/computed-property")) return "Computed Props";
+        if (cat.startsWith("language/module-code")) return "Modules";
+        if (cat.startsWith("language/eval-code")) return "Eval";
+        if (cat.startsWith("language/function-code")) return "Functions";
+        if (cat.startsWith("language/global-code")) return "Global Code";
+        if (cat.startsWith("language/identifier")) return "Identifiers";
+        if (cat.startsWith("language/")) return "Language (other)";
+        // Built-in categories — use the top-level name
+        if (cat.startsWith("built-ins/")) {
+          const name = cat.replace("built-ins/", "").split("/")[0];
+          return name;
+        }
+        if (cat.startsWith("annexB/")) return "Annex B";
+        return cat;
       }
 
       function escapeHtml(str) {
@@ -840,6 +859,14 @@
 
         container.appendChild(el("h2", null, "Test262 Conformance"));
 
+        // --- Timestamp ---
+        if (data.timestamp) {
+          container.appendChild(
+            el("div", { className: "timestamp", style: "margin-bottom:16px" },
+              "Last run: " + new Date(data.timestamp).toLocaleString()),
+          );
+        }
+
         // --- Summary cards (clickable as status filters) ---
         const summary = el("div", { className: "summary" });
 
@@ -1114,6 +1141,33 @@
             ["Skip", "var(--bar-bg)"],
           ]),
         );
+
+        // --- Unsupported features (skip reasons) ---
+        if (data.skip_reasons) {
+          const skipEntries = Object.entries(data.skip_reasons).sort((a, b) => b[1] - a[1]);
+          if (skipEntries.length > 0) {
+            const skipSection = el("div", { className: "section" });
+            skipSection.appendChild(el("h3", null, "Unsupported Features (Skipped Tests)"));
+            const skipTable = el("table");
+            const skipHead = el("thead");
+            const skipHR = el("tr");
+            skipHR.appendChild(el("th", null, "Feature / Reason"));
+            skipHR.appendChild(el("th", { style: "text-align:right" }, "Tests Skipped"));
+            skipHead.appendChild(skipHR);
+            skipTable.appendChild(skipHead);
+            const skipBody = el("tbody");
+            for (const [reason, count] of skipEntries) {
+              const row = el("tr");
+              row.appendChild(el("td", null, reason));
+              row.appendChild(el("td", { style: "text-align:right; font-variant-numeric:tabular-nums" }, count.toLocaleString()));
+              skipBody.appendChild(row);
+            }
+            skipTable.appendChild(skipBody);
+            skipSection.appendChild(skipTable);
+            skipSection.style.marginBottom = "24px";
+            container.appendChild(skipSection);
+          }
+        }
 
         // --- Search / filter bar ---
         const filterBar = el("div", { className: "filter-bar" });
@@ -1804,15 +1858,7 @@
           renderTrends(history, app);
         }
 
-        if (conformance) {
-          app.appendChild(
-            el(
-              "div",
-              { className: "timestamp" },
-              "Generated " + new Date(conformance.timestamp).toLocaleString(),
-            ),
-          );
-        }
+        // Timestamp is now rendered inside renderConformance
       }
 
       main();
