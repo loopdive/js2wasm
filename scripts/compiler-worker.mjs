@@ -6,7 +6,7 @@ import { parentPort } from "node:worker_threads";
 import { compile } from "./compiler-bundle.mjs";
 
 let compileCount = 0;
-const MAX_COMPILATIONS = 500; // Restart worker every N compilations to prevent state accumulation
+const MAX_COMPILATIONS = 200; // Restart worker every 200 compilations to limit memory accumulation
 
 parentPort.on("message", (msg) => {
   const start = performance.now();
