@@ -2264,6 +2264,7 @@ function setupArrayLoop(
  */
 function buildClosureCallInstrs(
   ctx: CodegenContext,
+  fctx: FunctionContext,
   setup: ArrayCallbackSetup,
   elemType: ValType,
   vecTypeIdx: number,
@@ -2416,6 +2417,7 @@ function loopIncrement(loop: ArrayLoopLocals): Instr[] {
  */
 function buildCallAndCheck(
   ctx: CodegenContext,
+  fctx: FunctionContext,
   setup: ArrayCallbackSetup,
   elemType: ValType,
   vecTypeIdx: number,
@@ -2425,7 +2427,7 @@ function buildCallAndCheck(
   check: "truthy" | "falsy" | "none",
 ): Instr[] {
   const callInstrs = setup.closureInfo
-    ? buildClosureCallInstrs(ctx, setup, elemType, vecTypeIdx, arrTypeIdx, loop, elemSource)
+    ? buildClosureCallInstrs(ctx, fctx, setup, elemType, vecTypeIdx, arrTypeIdx, loop, elemSource)
     : buildBridgeCallInstrs(ctx, setup, elemType, arrTypeIdx, loop, elemSource);
   const checkInstrs = check === "truthy" ? buildTruthyCheck(ctx, setup)
     : check === "falsy" ? buildFalsyCheck(ctx, setup)
@@ -2469,7 +2471,7 @@ function compileArrayFilter(
   fctx.body.push({ op: "i32.const", value: 0 });
   fctx.body.push({ op: "local.set", index: resLen });
 
-  const callAndCheck = buildCallAndCheck(ctx, setup, elemType, vecTypeIdx, arrTypeIdx, loop, { kind: "local", index: elemTmp }, "truthy");
+  const callAndCheck = buildCallAndCheck(ctx, fctx, setup, elemType, vecTypeIdx, arrTypeIdx, loop, { kind: "local", index: elemTmp }, "truthy");
 
   const loopBody: Instr[] = [
     ...loopExitCheck(loop),
@@ -2568,7 +2570,7 @@ function compileArrayMap(
   if (setup.closureInfo) {
     const retType = setup.closureInfo.returnType;
     callInstrs = [
-      ...buildClosureCallInstrs(ctx, setup, elemType, vecTypeIdx, arrTypeIdx, loop, { kind: "inline" }),
+      ...buildClosureCallInstrs(ctx, fctx, setup, elemType, vecTypeIdx, arrTypeIdx, loop, { kind: "inline" }),
       // Coerce closure return type to map result element type if needed
       ...(retType && retType.kind !== mapResultElemType.kind
         ? coercionInstrs(ctx, retType, mapResultElemType, fctx)
@@ -2884,7 +2886,7 @@ function compileArrayForEach(
   const loop = setupArrayLoop(ctx, fctx, propAccess, vecTypeIdx, arrTypeIdx, elemType, "fe");
 
   if (setup.closureInfo) {
-    const callInstrs = buildClosureCallInstrs(ctx, setup, elemType, vecTypeIdx, arrTypeIdx, loop, { kind: "inline" });
+    const callInstrs = buildClosureCallInstrs(ctx, fctx, setup, elemType, vecTypeIdx, arrTypeIdx, loop, { kind: "inline" });
     const dropInstrs: Instr[] = setup.closureInfo.returnType ? [{ op: "drop" } as Instr] : [];
 
     const loopBody: Instr[] = [
@@ -2935,7 +2937,7 @@ function compileArrayFind(
 
   const loop = setupArrayLoop(ctx, fctx, propAccess, vecTypeIdx, arrTypeIdx, elemType, "find");
 
-  const callAndCheck = buildCallAndCheck(ctx, setup, elemType, vecTypeIdx, arrTypeIdx, loop, { kind: "local", index: elemTmpLocal }, "truthy");
+  const callAndCheck = buildCallAndCheck(ctx, fctx, setup, elemType, vecTypeIdx, arrTypeIdx, loop, { kind: "local", index: elemTmpLocal }, "truthy");
 
   // Result local -- NaN (not found) or element value
   const findResType: ValType = ctx.fast ? elemType : { kind: "f64" };
@@ -2998,7 +3000,7 @@ function compileArrayFindIndex(
 
   const loop = setupArrayLoop(ctx, fctx, propAccess, vecTypeIdx, arrTypeIdx, elemType, "fi");
 
-  const callAndCheck = buildCallAndCheck(ctx, setup, elemType, vecTypeIdx, arrTypeIdx, loop, { kind: "inline" }, "truthy");
+  const callAndCheck = buildCallAndCheck(ctx, fctx, setup, elemType, vecTypeIdx, arrTypeIdx, loop, { kind: "inline" }, "truthy");
 
   const fiResType: ValType = ctx.fast ? { kind: "i32" } : { kind: "f64" };
   const fiResTmp = allocLocal(fctx, `__arr_fi_res_${fctx.locals.length}`, fiResType);
@@ -3053,7 +3055,7 @@ function compileArraySome(
 
   const loop = setupArrayLoop(ctx, fctx, propAccess, vecTypeIdx, arrTypeIdx, elemType, "some");
 
-  const callAndCheck = buildCallAndCheck(ctx, setup, elemType, vecTypeIdx, arrTypeIdx, loop, { kind: "inline" }, "truthy");
+  const callAndCheck = buildCallAndCheck(ctx, fctx, setup, elemType, vecTypeIdx, arrTypeIdx, loop, { kind: "inline" }, "truthy");
 
   const resTmp = allocLocal(fctx, `__arr_some_res_${fctx.locals.length}`, { kind: "i32" });
   fctx.body.push({ op: "i32.const", value: 0 });
@@ -3102,7 +3104,7 @@ function compileArrayEvery(
 
   const loop = setupArrayLoop(ctx, fctx, propAccess, vecTypeIdx, arrTypeIdx, elemType, "evr");
 
-  const callAndCheck = buildCallAndCheck(ctx, setup, elemType, vecTypeIdx, arrTypeIdx, loop, { kind: "inline" }, "falsy");
+  const callAndCheck = buildCallAndCheck(ctx, fctx, setup, elemType, vecTypeIdx, arrTypeIdx, loop, { kind: "inline" }, "falsy");
 
   const resTmp = allocLocal(fctx, `__arr_evr_res_${fctx.locals.length}`, { kind: "i32" });
   fctx.body.push({ op: "i32.const", value: 1 });
