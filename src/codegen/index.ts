@@ -14671,15 +14671,39 @@ export function destructureParamArray(
           coerceType(ctx, fctx, fieldType, localType);
         }
         fctx.body.push({ op: "local.set", index: localIdx });
+
+        // Handle element-level default initializer (e.g. [x = 23] in destructuring)
+        if (ts.isBindingElement(element) && element.initializer) {
+          const effType = localType || fieldType;
+          emitNestedBindingDefault(ctx, fctx, localIdx, effType, element.initializer);
+        }
       }
 
       // Close null guard — throw TypeError when null (JS spec)
       if (isNullable) {
         fctx.body = savedBody;
         if (destructInstrs.length > 0) {
+          // When param is null (e.g. empty array cast failed), apply element defaults
+          const nullDefaultInstrs: Instr[] = [];
+          for (const element of pattern.elements) {
+            if (ts.isOmittedExpression(element)) continue;
+            if (!ts.isBindingElement(element) || !element.initializer) continue;
+            if (!ts.isIdentifier(element.name)) continue;
+            const localName = element.name.text;
+            const localIdx = fctx.localMap.get(localName);
+            if (localIdx === undefined) continue;
+            const localType = getLocalType(fctx, localIdx);
+            if (!localType) continue;
+            // Compile the default value into the null-path
+            const prevBody = fctx.body;
+            fctx.body = nullDefaultInstrs;
+            compileExpression(ctx, fctx, element.initializer, localType);
+            fctx.body.push({ op: "local.set", index: localIdx });
+            fctx.body = prevBody;
+          }
           fctx.body.push({ op: "local.get", index: paramIdx });
           fctx.body.push({ op: "ref.is_null" } as Instr);
-          fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: buildDestructureNullThrow(ctx), else: destructInstrs });
+          fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: nullDefaultInstrs.length > 0 ? nullDefaultInstrs : buildDestructureNullThrow(ctx), else: destructInstrs });
         }
       }
       return;
