@@ -202,6 +202,12 @@ export function resolveConstantExpression(
     return undefined;
   }
 
+  // Assignment expression: x = value → resolve to the RHS value
+  // This handles computed property names like [_ = 'str' + 'ing']
+  if (ts.isBinaryExpression(expr) && expr.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+    return resolveConstantExpression(ctx, expr.right);
+  }
+
   // Binary expression: a + b, a - b, a * b, a / b
   if (ts.isBinaryExpression(expr)) {
     const left = resolveConstantExpression(ctx, expr.left);

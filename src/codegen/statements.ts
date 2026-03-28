@@ -9,6 +9,7 @@ import {
   compileExpression,
   emitBoundsCheckedArrayGet,
   emitCoercedLocalSet,
+  emitThrowString,
   emitUndefined,
   ensureLateImport,
   flushLateImportShifts,
@@ -6306,12 +6307,26 @@ function compileNestedClassDeclaration(
 
   const isDeferred = ctx.deferredClassBodies.has(className);
   // Skip if already collected AND not deferred (already fully compiled)
-  if (ctx.structMap.has(className) && !isDeferred) return;
+  if (ctx.structMap.has(className) && !isDeferred) {
+    // ES2015 14.5.14 step 21: class with static 'prototype' member must throw TypeError
+    if (ctx.classThrowsOnEval.has(className)) {
+      emitThrowString(ctx, fctx, "TypeError: Classes may not have a static property named 'prototype'");
+      return;
+    }
+    return;
+  }
 
   try {
     // Collect struct type, constructor, and method stubs (if not already done)
     if (!ctx.structMap.has(className)) {
       collectClassDeclaration(ctx, decl);
+    }
+
+    // ES2015 14.5.14 step 21: class with static 'prototype' member must throw TypeError
+    // Check after collection since collectClassDeclaration sets the flag.
+    if (ctx.classThrowsOnEval.has(className)) {
+      emitThrowString(ctx, fctx, "TypeError: Classes may not have a static property named 'prototype'");
+      return;
     }
 
     // Promote captured locals to globals so method/constructor bodies can access

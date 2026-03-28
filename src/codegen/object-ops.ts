@@ -35,6 +35,56 @@ import {
 } from "./expressions.js";
 import { emitGuardedRefCast } from "./type-coercion.js";
 
+// ── Compile-time primitive type check for Object methods ─────────────
+
+/**
+ * Check if the first argument to Object.defineProperty / defineProperties
+ * is statically known to be a non-object type (undefined, null, boolean,
+ * number, string).  If so, emit `throw TypeError` and return true.
+ *
+ * Per ES spec (19.1.2.4 step 1): "If Type(O) is not Object, throw a TypeError."
+ */
+function emitNonObjectArgGuard(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  argExpr: ts.Expression,
+  methodName: string,
+): boolean {
+  const tsType = ctx.checker.getTypeAtLocation(argExpr);
+  const flags = tsType.flags;
+
+  // Check for primitive types that are definitely not objects
+  const NON_OBJECT_FLAGS =
+    ts.TypeFlags.Undefined |
+    ts.TypeFlags.Void |
+    ts.TypeFlags.Null |
+    ts.TypeFlags.BooleanLike |
+    ts.TypeFlags.NumberLike |
+    ts.TypeFlags.StringLike |
+    ts.TypeFlags.BigIntLike;
+
+  if (flags & NON_OBJECT_FLAGS) {
+    // Compile the argument for side effects (it might have side effects)
+    const argType = compileExpression(ctx, fctx, argExpr);
+    if (argType) fctx.body.push({ op: "drop" });
+    emitThrowString(ctx, fctx, `TypeError: ${methodName} called on non-object`);
+    return true;
+  }
+
+  // Also check for literal expressions that are obviously non-object
+  if (argExpr.kind === ts.SyntaxKind.UndefinedKeyword ||
+      argExpr.kind === ts.SyntaxKind.NullKeyword ||
+      argExpr.kind === ts.SyntaxKind.TrueKeyword ||
+      argExpr.kind === ts.SyntaxKind.FalseKeyword ||
+      ts.isNumericLiteral(argExpr) ||
+      (ts.isIdentifier(argExpr) && argExpr.text === "undefined")) {
+    emitThrowString(ctx, fctx, `TypeError: ${methodName} called on non-object`);
+    return true;
+  }
+
+  return false;
+}
+
 // ── Null guard for object method arguments ────────────────────────────
 
 /**
@@ -310,6 +360,13 @@ export function compileObjectDefineProperty(
   const objArg = expr.arguments[0]!;
   const propArg = expr.arguments[1]!;
   const descArg = expr.arguments[2]!;
+
+  // ES spec 19.1.2.4 step 1: throw TypeError if first arg is not an object
+  if (emitNonObjectArgGuard(ctx, fctx, objArg, "Object.defineProperty")) {
+    // After the throw, emit unreachable and return externref to satisfy callers
+    fctx.body.push({ op: "unreachable" } as unknown as Instr);
+    return { kind: "externref" };
+  }
 
   // Check if descriptor is an object literal with a `value`, `get`, or `set` property
   let valueExpr: ts.Expression | undefined;
@@ -1089,6 +1146,12 @@ export function compileObjectDefineProperties(
 ): ValType | null {
   const objArg = expr.arguments[0]!;
   const descsArg = expr.arguments[1]!;
+
+  // ES spec 19.1.2.3 step 1: throw TypeError if first arg is not an object
+  if (emitNonObjectArgGuard(ctx, fctx, objArg, "Object.defineProperties")) {
+    fctx.body.push({ op: "unreachable" } as unknown as Instr);
+    return { kind: "externref" };
+  }
 
   // Static path: descriptors is an object literal — expand to individual defineProperty calls
   if (ts.isObjectLiteralExpression(descsArg)) {

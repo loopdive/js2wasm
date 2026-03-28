@@ -16095,6 +16095,15 @@ function compileClassExpression(
 ): ValType | null {
   // Look up the synthetic name assigned during the collection phase
   const syntheticName = ctx.anonClassExprNames.get(expr);
+  const classNameForCheck = syntheticName ?? expr.name?.text;
+
+  // ES2015 14.5.14 step 21: class with static 'prototype' member must throw TypeError
+  if (classNameForCheck && ctx.classThrowsOnEval.has(classNameForCheck)) {
+    emitThrowString(ctx, fctx, "TypeError: Classes may not have a static property named 'prototype'");
+    fctx.body.push({ op: "unreachable" } as unknown as Instr);
+    return { kind: "externref" };
+  }
+
   if (syntheticName) {
     const ctorName = `${syntheticName}_new`;
     const funcIdx = ctx.funcMap.get(ctorName);
