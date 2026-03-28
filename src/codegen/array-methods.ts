@@ -13,6 +13,7 @@ import {
   getOrRegisterArrayType,
   getOrRegisterVecType,
   addStringImports,
+  addUnionImports,
   localGlobalIdx,
   ensureExnTag,
 } from "./index.js";
@@ -2318,20 +2319,41 @@ function buildBridgeCallInstrs(
   loop: ArrayLoopLocals,
   elemSource: { kind: "local"; index: number } | { kind: "inline" },
 ): Instr[] {
+  // Determine what coercion is needed for the element value.
+  // The bridge function (__call_1_f64 in non-fast mode) expects f64 for the element.
+  // If the actual array element type is externref, we need to unbox it.
+  // If i32, we need f64.convert_i32_s.
+  const needsI32ToF64 = !ctx.fast && elemType.kind === "i32";
+  const needsUnbox = !ctx.fast && elemType.kind === "externref";
+  let unboxInstrs: Instr[] = [];
+  // Re-lookup bridge index after potential addUnionImports shift
+  let bridgeIdx = setup.callBridgeIdx!;
+  if (needsUnbox) {
+    addUnionImports(ctx);
+    const unboxIdx = ctx.funcMap.get("__unbox_number");
+    if (unboxIdx !== undefined) {
+      unboxInstrs = [{ op: "call", funcIdx: unboxIdx } as unknown as Instr];
+    }
+    // Re-lookup bridge index since addUnionImports shifts function indices
+    const bridgeName = ctx.fast ? "__call_1_i32" : "__call_1_f64";
+    bridgeIdx = ctx.funcMap.get(bridgeName) ?? bridgeIdx;
+  }
   return [
     { op: "local.get", index: setup.cbTmp! } as Instr,
     ...(elemSource.kind === "local"
       ? [
           { op: "local.get", index: elemSource.index } as Instr,
-          ...(!ctx.fast && elemType.kind === "i32" ? [{ op: "f64.convert_i32_s" } as Instr] : []),
+          ...(needsI32ToF64 ? [{ op: "f64.convert_i32_s" } as Instr] : []),
+          ...unboxInstrs,
         ]
       : [
           { op: "local.get", index: loop.dataTmp } as Instr,
           { op: "local.get", index: loop.iTmp } as Instr,
           { op: loop.getOp, typeIdx: arrTypeIdx } as Instr,
-          ...(!ctx.fast && elemType.kind === "i32" ? [{ op: "f64.convert_i32_s" } as Instr] : []),
+          ...(needsI32ToF64 ? [{ op: "f64.convert_i32_s" } as Instr] : []),
+          ...unboxInstrs,
         ]),
-    { op: "call", funcIdx: setup.callBridgeIdx! } as Instr,
+    { op: "call", funcIdx: bridgeIdx } as Instr,
   ];
 }
 

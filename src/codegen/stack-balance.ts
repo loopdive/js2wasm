@@ -1265,9 +1265,14 @@ function fixCallArgTypesInBody(
             // proven-safe ref→externref coercion (extern.convert_any) in
             // that case; other coercions are restricted to positions before
             // any consumer has been traversed.
+            // Also allow __unbox_number (externref→f64) since it's a simple
+            // single-value conversion that doesn't affect stack layout.
             const isSafeRefToExtern = coercion.length === 1 &&
               (coercion[0] as any).op === "extern.convert_any";
-            if (!inSubExpr || isSafeRefToExtern) {
+            const isSafeUnbox = coercion.length === 1 &&
+              (coercion[0] as any).op === "call" &&
+              (coercion[0] as any).funcIdx === unboxNumberIdx;
+            if (!inSubExpr || isSafeRefToExtern || isSafeUnbox) {
               insertions.push({ afterPos: insertPos, instrs: coercion });
             }
           }
@@ -1793,7 +1798,151 @@ function updateTypeStack(
   // delta === 0: pass-through, no stack change
 }
 
+/**
+ * Ensure __unbox_number and __box_number imports exist in the module.
+ * If they're missing, add them and shift all function indices accordingly.
+ * This is needed because certain codegen paths produce type mismatches
+ * (e.g., externref stored into f64 arrays) that the stack-balance fixups
+ * need coercion imports to resolve.
+ */
+function ensureCoercionImports(mod: WasmModule): void {
+  let hasUnbox = false;
+  let hasBox = false;
+  for (const imp of mod.imports) {
+    if (imp.desc.kind === "func") {
+      if (imp.name === "__unbox_number") hasUnbox = true;
+      if (imp.name === "__box_number") hasBox = true;
+    }
+  }
+  if (hasUnbox && hasBox) return;
+
+  // Count existing func imports to know where new ones go
+  let numFuncImports = 0;
+  for (const imp of mod.imports) {
+    if (imp.desc.kind === "func") numFuncImports++;
+  }
+  const insertionBase = numFuncImports;
+  let added = 0;
+
+  if (!hasUnbox) {
+    // Find or create func type: (externref) -> f64
+    let unboxTypeIdx = mod.types.findIndex(t =>
+      t.kind === "func" && t.params.length === 1 &&
+      t.params[0]!.kind === "externref" && t.results.length === 1 &&
+      t.results[0]!.kind === "f64"
+    );
+    if (unboxTypeIdx === -1) {
+      unboxTypeIdx = mod.types.length;
+      mod.types.push({
+        kind: "func",
+        name: "__unbox_number_type",
+        params: [{ kind: "externref" }],
+        results: [{ kind: "f64" }],
+      } as any);
+    }
+    mod.imports.push({
+      module: "env",
+      name: "__unbox_number",
+      desc: { kind: "func", typeIdx: unboxTypeIdx },
+    } as any);
+    added++;
+  }
+
+  if (!hasBox) {
+    // Find or create func type: (f64) -> externref
+    let boxTypeIdx = mod.types.findIndex(t =>
+      t.kind === "func" && t.params.length === 1 &&
+      t.params[0]!.kind === "f64" && t.results.length === 1 &&
+      t.results[0]!.kind === "externref"
+    );
+    if (boxTypeIdx === -1) {
+      boxTypeIdx = mod.types.length;
+      mod.types.push({
+        kind: "func",
+        name: "__box_number_type",
+        params: [{ kind: "f64" }],
+        results: [{ kind: "externref" }],
+      } as any);
+    }
+    mod.imports.push({
+      module: "env",
+      name: "__box_number",
+      desc: { kind: "func", typeIdx: boxTypeIdx },
+    } as any);
+    added++;
+  }
+
+  if (added === 0) return;
+
+  // Shift all function indices >= insertionBase by `added`
+  // (defined functions now have higher indices because of new imports)
+  function shiftBody(instrs: Instr[]): void {
+    for (const instr of instrs) {
+      if ((instr.op === "call" || instr.op === "return_call") && (instr as any).funcIdx >= insertionBase) {
+        (instr as any).funcIdx += added;
+      }
+      if (instr.op === "call_ref") {
+        // call_ref uses type index, not func index — no shift needed
+      }
+      if (instr.op === "ref.func" && (instr as any).funcIdx >= insertionBase) {
+        (instr as any).funcIdx += added;
+      }
+      if ("body" in instr && Array.isArray((instr as any).body)) shiftBody((instr as any).body);
+      if ("then" in instr && Array.isArray((instr as any).then)) shiftBody((instr as any).then);
+      if ("else" in instr && Array.isArray((instr as any).else)) shiftBody((instr as any).else);
+      if ("catches" in instr && Array.isArray((instr as any).catches)) {
+        for (const c of (instr as any).catches) {
+          if (Array.isArray(c.body)) shiftBody(c.body);
+        }
+      }
+      if ("catchAll" in instr && Array.isArray((instr as any).catchAll)) {
+        shiftBody((instr as any).catchAll);
+      }
+    }
+  }
+
+  for (const func of mod.functions) {
+    shiftBody(func.body);
+  }
+
+  // Shift export function indices
+  for (const exp of mod.exports) {
+    if (exp.desc.kind === "func" && exp.desc.index >= insertionBase) {
+      exp.desc.index += added;
+    }
+  }
+
+  // Shift element segment function indices (for tables)
+  if (mod.elements) {
+    for (const elem of mod.elements) {
+      if (elem.funcIndices) {
+        for (let i = 0; i < elem.funcIndices.length; i++) {
+          if (elem.funcIndices[i]! >= insertionBase) {
+            elem.funcIndices[i]! += added;
+          }
+        }
+      }
+    }
+  }
+
+  // Shift declarative funcref indices
+  if (mod.declaredFuncRefs) {
+    for (let i = 0; i < mod.declaredFuncRefs.length; i++) {
+      if (mod.declaredFuncRefs[i]! >= insertionBase) {
+        mod.declaredFuncRefs[i]! += added;
+      }
+    }
+  }
+}
+
 export function stackBalance(mod: WasmModule): number {
+  // Ensure __unbox_number and __box_number imports exist.
+  // These are needed by coercion fixups (externref<->f64) but may not have been
+  // added during codegen if the codegen paths didn't trigger addUnionImports.
+  // Adding them here (before any fixup pass) is safe because we shift all
+  // function indices in already-compiled bodies.
+  ensureCoercionImports(mod);
+
   const sigs = buildFuncSigs(mod);
   const tags = mod.tags || [];
   let totalFixups = 0;
@@ -1841,6 +1990,9 @@ export function stackBalance(mod: WasmModule): number {
 
     // Fix call argument type mismatches before other fixups
     totalFixups += fixCallArgTypesInBody(func.body, localTypes, globalTypes, mod.types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
+
+    // Fix array.set value type mismatches (e.g., externref → f64 for f64 arrays)
+    totalFixups += fixArraySetCoercion(func.body, localTypes, globalTypes, mod.types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
 
     // Fix struct.new field type mismatches (forward type-stack simulation)
     totalFixups += fixStructNewFieldCoercion(func, mod.types, mod, numImports, sigs, localTypes, globalTypes, boxNumberIdx, unboxNumberIdx);
@@ -1928,6 +2080,84 @@ function fixLocalSetCoercion(
     const coercion = callArgCoercionInstrs(stackType, localType, boxNumberIdx, unboxNumberIdx);
     if (coercion.length > 0) {
       // Insert coercion instructions before the local.set
+      body.splice(i, 0, ...coercion);
+      i += coercion.length;
+      fixups += coercion.length;
+    }
+  }
+
+  return fixups;
+}
+
+/**
+ * Fix array.set value type mismatches in a function body.
+ *
+ * Walks the instruction stream looking for array.set instructions.
+ * For each one, infers the type of the value on the stack (by looking at
+ * the preceding instruction) and compares it with the array's element type.
+ * If they don't match, inserts coercion instructions.
+ *
+ * array.set expects: [array_ref, i32_index, value] on the stack.
+ * The value (top of stack, i.e. preceding instruction) must match the
+ * array's declared element type.
+ */
+function fixArraySetCoercion(
+  body: Instr[],
+  localTypes: ValType[],
+  globalTypes: ValType[],
+  types: TypeDef[],
+  mod: WasmModule,
+  numImports: number,
+  sigs: FuncSigInfo,
+  boxNumberIdx: number | null,
+  unboxNumberIdx: number | null,
+): number {
+  let fixups = 0;
+
+  // Recurse into nested blocks first
+  for (const instr of body) {
+    if (instr.op === "if") {
+      const ifInstr = instr as any;
+      if (ifInstr.then) fixups += fixArraySetCoercion(ifInstr.then, localTypes, globalTypes, types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
+      if (ifInstr.else) fixups += fixArraySetCoercion(ifInstr.else, localTypes, globalTypes, types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
+    } else if (instr.op === "block" || instr.op === "loop") {
+      const blockInstr = instr as any;
+      if (blockInstr.body) fixups += fixArraySetCoercion(blockInstr.body, localTypes, globalTypes, types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
+    } else if (instr.op === "try") {
+      const tryInstr = instr as any;
+      if (tryInstr.body) fixups += fixArraySetCoercion(tryInstr.body, localTypes, globalTypes, types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
+      if (tryInstr.catches) {
+        for (const c of tryInstr.catches) {
+          if (c.body) fixups += fixArraySetCoercion(c.body, localTypes, globalTypes, types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
+        }
+      }
+      if (tryInstr.catchAll) fixups += fixArraySetCoercion(tryInstr.catchAll, localTypes, globalTypes, types, mod, numImports, sigs, boxNumberIdx, unboxNumberIdx);
+    }
+  }
+
+  // Now fix array.set value type mismatches in this body
+  for (let i = 0; i < body.length; i++) {
+    const instr = body[i]!;
+    if (instr.op !== "array.set") continue;
+
+    const typeIdx = (instr as any).typeIdx as number;
+    const typeDef = types[typeIdx];
+    if (!typeDef || typeDef.kind !== "array") continue;
+
+    const elemType = typeDef.element as ValType;
+    if (!elemType) continue;
+
+    // Infer the type of the value on the stack by looking at the preceding instruction.
+    // The value is the top-of-stack item just before the array.set.
+    if (i === 0) continue;
+    const prev = body[i - 1]!;
+    const stackType = inferInstrType(prev, localTypes, globalTypes, types, mod, numImports);
+    if (!stackType) continue;
+
+    // Check if coercion is needed
+    const coercion = callArgCoercionInstrs(stackType, elemType, boxNumberIdx, unboxNumberIdx);
+    if (coercion.length > 0) {
+      // Insert coercion instructions before the array.set
       body.splice(i, 0, ...coercion);
       i += coercion.length;
       fixups += coercion.length;
