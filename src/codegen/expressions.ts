@@ -15570,8 +15570,9 @@ function compileNewFunctionDeclaration(
   }
   collectThisAssignments(body.statements);
 
-  // If no this.prop assignments found, fall through to default handling
-  if (fields.length === 0) return null;
+  // Empty constructors (no this.prop assignments) — create an empty struct.
+  // Many test262 tests define `var Con = function() {}; new Con()` to test
+  // prototype-based inheritance. We emit a minimal struct + constructor.
 
   // Widen non-null ref fields to ref_null so struct.new can use ref.null defaults
   for (const field of fields) {
@@ -16726,6 +16727,22 @@ function compileNewExpression(
             const result = compileNewFunctionDeclaration(ctx, fctx, expr, fnName, decl);
             if (result) return result;
             break;
+          }
+          // Handle `var Con = function() { this.x = 1; }; new Con()`
+          // The declaration is a VariableDeclaration whose initializer is a FunctionExpression
+          if (ts.isVariableDeclaration(decl) && decl.initializer) {
+            let init: ts.Expression = decl.initializer;
+            // Unwrap parenthesized expressions
+            while (ts.isParenthesizedExpression(init)) init = init.expression;
+            if (ts.isFunctionExpression(init) && init.body) {
+              // Synthesize a FunctionDeclaration-like node for compileNewFunctionDeclaration
+              const result = compileNewFunctionDeclaration(
+                ctx, fctx, expr, fnName,
+                init as unknown as ts.FunctionDeclaration,
+              );
+              if (result) return result;
+              break;
+            }
           }
         }
       }
