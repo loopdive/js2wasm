@@ -180,6 +180,7 @@ export function shouldSkip(
   const UNCONDITIONAL_SKIP_FEATURES = new Map([
     ["source-phase-imports", "Stage 3: source phase imports"],
     ["import-defer", "Stage 3: import defer"],
+    ["upsert", "Stage 3: Map/WeakMap upsert (getOrInsert) (#837)"],
   ]);
   if (meta.features) {
     for (const feat of meta.features) {
