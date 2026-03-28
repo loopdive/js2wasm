@@ -125,9 +125,9 @@ for (const { filePath, relPath, category } of allTests) {
         // Read cached metadata for compile time and status
         const cachedMeta = JSON.parse(await readFile(metaPath, "utf-8"));
         if (cachedMeta.ok === false) {
-          recordCompileResult(relPath, category, "compile_error", cachedMeta.error, cachedMeta.compileMs);
+          recordCompileResult(relPath, category, "cached_error", cachedMeta.error, cachedMeta.compileMs);
         } else {
-          recordCompileResult(relPath, category, "compiled", undefined, cachedMeta.compileMs);
+          recordCompileResult(relPath, category, "cached", undefined, cachedMeta.compileMs);
         }
         cached++;
         releaseSlot();
