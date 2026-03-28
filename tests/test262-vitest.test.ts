@@ -706,9 +706,15 @@ for (const category of TEST_CATEGORIES) {
 
         // Handle negative parse/early tests
         if (isNegative) {
+          // Check for ES early errors detected by the precompiler's second pass
+          const earlyErrors = compileResult.ok ? (compileResult.result as any)?.earlyErrorCodes : undefined;
+          if (earlyErrors?.length > 0) {
+            recordResult(relPath, category, "pass");
+            return;
+          }
+
           if (!compileResult.ok) {
-            // Check if the compile error includes an ES early error code — that means
-            // the compiler correctly detected the spec-mandated error.
+            // Compile error — the test expected compilation to fail
             const ES_EARLY_ERRORS = new Set([1102, 1103, 1210, 1213, 1214, 1359, 1360, 2300, 18050]);
             const codes = (compileResult as any).errorCodes as number[] | undefined;
             const hasEarlyError = codes?.some((c: number) => ES_EARLY_ERRORS.has(c));

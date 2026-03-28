@@ -153,8 +153,23 @@ for (const { filePath, relPath, category } of allTests) {
         // Cache miss — compile
       }
 
+      const isNegative = meta.negative && (meta.negative.phase === "parse" || meta.negative.phase === "early" || meta.negative.phase === "resolution");
+
       const result = await pool.compile(wrapped, 20_000, false, undefined, relPath);
       if (result.ok) {
+        // For negative tests that compiled successfully: re-compile with full
+        // diagnostics to detect ES early errors (delete in strict, yield reserved, etc.)
+        // Only takes ~7ms with the incremental compiler. We store the error codes
+        // in the cache metadata so vitest can check them without recompiling.
+        let earlyErrorCodes: number[] | undefined;
+        if (isNegative) {
+          const diagResult = await pool.compile(wrapped, 20_000, true, undefined, relPath);
+          if (!diagResult.ok) {
+            const ES_EARLY_ERRORS = new Set([1102, 1103, 1210, 1213, 1214, 1359, 1360, 2300, 18050]);
+            earlyErrorCodes = ((diagResult as any).errorCodes || []).filter((c: number) => ES_EARLY_ERRORS.has(c));
+          }
+        }
+
         await writeFile(cachePath, result.binary);
         await writeFile(metaPath, JSON.stringify({
           ok: true,
@@ -162,6 +177,7 @@ for (const { filePath, relPath, category } of allTests) {
           imports: result.imports,
           sourceMap: result.sourceMap,
           compileMs: result.compileMs,
+          earlyErrorCodes: earlyErrorCodes?.length ? earlyErrorCodes : undefined,
         }));
         // Write "compiled" status — vitest will update with exec result
         recordCompileResult(relPath, category, "compiled", undefined, result.compileMs);
