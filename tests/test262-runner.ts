@@ -194,6 +194,9 @@ export function shouldSkip(
   // Skip TC39 Stage 2/3 proposals we don't support. The catch-all MetaProperty
   // handler (#712) makes import.source/import.defer compile, causing 117
   // negative parse tests to regress without this filter.
+  if (filePath && /BigInt64Array|BigUint64Array|ctors-bigint|\/BigInt\//.test(filePath)) {
+    return { skip: true, reason: "ES2020: BigInt typed arrays not implemented (#838)" };
+  }
   const UNCONDITIONAL_SKIP_FEATURES = new Map([
     ["source-phase-imports", "Stage 3: source phase imports"],
     ["import-defer", "Stage 3: import defer"],
