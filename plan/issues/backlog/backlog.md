@@ -115,11 +115,21 @@
 
 | # | Priority | Issue | Impact |
 |---|----------|-------|--------|
-| [824](../ready/824.md) | High | Compilation timeouts (10s limit) | **626 CE** |
+| [822](../ready/822.md) | **HIGH** | Wasm type mismatch compile errors (all sub-patterns) | **907 CE** |
+| [824](../ready/824.md) | High | Compilation timeouts (10s limit) | **548 CE** |
+| [839](../ready/839.md) | High | return_call stack args / type mismatch in constructors | **158 CE** |
+| [828](../ready/828.md) | Medium | Unexpected undefined AST node in compileExpression | **149 CE** |
+| [844](../ready/844.md) | Medium | Unsupported new expression for built-in classes | **85 CE** |
+| [840](../ready/840.md) | Medium | Array concat/push/splice 0-arg support | **31 CE** |
+| [835](../ready/835.md) | Low | Unknown extern class: Error types | **32 CE** |
+| [836](../ready/836.md) | Low | Tagged templates with non-PropertyAccess tags | **20 CE** |
+| [841](../ready/841.md) | Low | Unsupported Math methods (sumPrecise, cosh, sinh, tanh) | **19 CE** |
+| [843](../ready/843.md) | Low | super keyword in object literals and edge cases | **20 CE** |
+| [842](../ready/842.md) | Low | new Array() with non-literal/spread args: invalid vec type | **14 CE** |
+| [845](../ready/845.md) | Medium | Misc CE: object literals, RegExp-on-X, for-in/of edges | **340 CE** |
 | [825](../ready/825.md) | High | Null deref in static private methods | **705 FAIL** |
 | [826](../ready/826.md) | High | Illegal cast: private members from inner functions | **592 FAIL** |
 | [827](../ready/827.md) | High | Array callback methods: "fn is not a function" | **243 CE** |
-| [828](../ready/828.md) | Medium | Unexpected undefined AST node in compileExpression | **154 CE** |
 | [829](../ready/829.md) | Medium | Unsupported assignment target compile errors | **141 CE** |
 | [830](../ready/830.md) | Low | DisposableStack extern class missing | **38 CE** |
 | [831](../ready/831.md) | Medium | Negative test gaps: expected SyntaxError but compiled | **242 FAIL** |
