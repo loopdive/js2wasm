@@ -138,9 +138,6 @@ export function shouldSkip(
       reason: "Temporal API not implemented (deprioritized)",
     };
   }
-  if (filePath && /directive-prologue/.test(filePath)) {
-    return { skip: true, reason: "use strict directive tests (deprioritized)" };
-  }
 
   // Skip known hanging tests by file path — prevents infinite compilation loops
   if (filePath) {
