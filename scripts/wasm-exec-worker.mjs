@@ -94,6 +94,14 @@ parentPort.on("message", async (msg) => {
       } else if (execErr instanceof Error) {
         errInfo = execErr.message ?? String(execErr);
         exceptionPayload = execErr.stack ?? errInfo;
+        // For Wasm traps (illegal cast, null deref, unreachable), extract
+        // the function name from the stack trace for better diagnostics.
+        if (exceptionPayload && /illegal cast|null|unreachable|out of bounds/.test(errInfo)) {
+          const funcMatch = exceptionPayload.match(/at (\w+) \(wasm:/);
+          if (funcMatch) {
+            errInfo = `${errInfo} [in ${funcMatch[1]}()]`;
+          }
+        }
       } else {
         errInfo = String(execErr);
       }
