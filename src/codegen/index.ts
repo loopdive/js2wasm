@@ -14742,6 +14742,13 @@ export function destructureParamArray(
     fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 }); // get data
     fctx.body.push({ op: "i32.const", value: i });
     emitBoundsCheckedArrayGet(fctx, arrTypeIdx, elemType);
+    // Handle default initializer: [x = 23] — use default when element is null/undefined
+    if (element.initializer) {
+      const dfltTmpLocal = allocLocal(fctx, `__dparam_dflt_${fctx.locals.length}`, elemType);
+      fctx.body.push({ op: "local.set", index: dfltTmpLocal });
+      emitNestedBindingDefault(ctx, fctx, dfltTmpLocal, elemType, element.initializer);
+      fctx.body.push({ op: "local.get", index: dfltTmpLocal });
+    }
     // Coerce array element type to local's declared type if they differ (#658)
     const vecLocalType = getLocalType(fctx, localIdx);
     if (vecLocalType && !valTypesMatch(elemType, vecLocalType)) {
