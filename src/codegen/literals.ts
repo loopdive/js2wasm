@@ -602,9 +602,11 @@ export function compileObjectLiteralForStruct(
         }
       }
       if (!found) {
-        // Default value
+        // Default value for missing fields: use "undefined" sentinels so
+        // destructuring default-value checks can detect missing properties.
+        // f64 uses NaN as undefined sentinel (matches emitDefaultValueCheck).
         if (field.type.kind === "f64") {
-          fctx.body.push({ op: "f64.const", value: 0 });
+          fctx.body.push({ op: "f64.const", value: NaN });
         } else if (field.type.kind === "externref") {
           fctx.body.push({ op: "ref.null.extern" });
         } else if (field.type.kind === "eqref") {
