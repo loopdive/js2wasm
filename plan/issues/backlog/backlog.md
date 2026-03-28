@@ -111,6 +111,19 @@
 | [799](../ready/799.md) | Critical | Prototype chain (799b done, #802 for dynamic) | ~2,500 FAIL |
 | [779](../ready/779.md) | Critical | Assert failures: wrong values (analysis) | 7,096 FAIL |
 
+## 7. New issues from 2026-03-28 error analysis
+
+| # | Priority | Issue | Impact |
+|---|----------|-------|--------|
+| [824](../ready/824.md) | High | Compilation timeouts (10s limit) | **626 CE** |
+| [825](../ready/825.md) | High | Null deref in static private methods | **705 FAIL** |
+| [826](../ready/826.md) | High | Illegal cast: private members from inner functions | **592 FAIL** |
+| [827](../ready/827.md) | High | Array callback methods: "fn is not a function" | **243 CE** |
+| [828](../ready/828.md) | Medium | Unexpected undefined AST node in compileExpression | **154 CE** |
+| [829](../ready/829.md) | Medium | Unsupported assignment target compile errors | **141 CE** |
+| [830](../ready/830.md) | Low | DisposableStack extern class missing | **38 CE** |
+| [831](../ready/831.md) | Medium | Negative test gaps: expected SyntaxError but compiled | **242 FAIL** |
+
 ## Completed (760+ total)
 
 See `plan/issues/done/log.md` for the full completion log.
