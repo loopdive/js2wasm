@@ -2,7 +2,7 @@
 # Full test262 pipeline with logging
 # Usage: ./scripts/run-test262.sh
 
-set -e
+set +e  # don't exit on vitest "failure" (test failures are exit code 1)
 LOGFILE="/workspace/benchmarks/results/test262-run.log"
 
 log() { echo "$@" | tee -a "$LOGFILE"; }
