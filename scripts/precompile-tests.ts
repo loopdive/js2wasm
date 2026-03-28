@@ -64,7 +64,13 @@ for (const { filePath, relPath } of allTests) {
   const filter = shouldSkip(source, meta, filePath);
   if (filter.skip) { skipped++; continue; }
 
-  const { source: wrapped } = wrapTest(source, meta);
+  let wrapped: string;
+  try {
+    wrapped = wrapTest(source, meta).source;
+  } catch {
+    errors++;
+    continue;
+  }
   const hash = createHash("md5").update(wrapped).update(compilerHash).digest("hex");
   const cachePath = join(CACHE_DIR, `${hash}.wasm`);
   const metaPath = join(CACHE_DIR, `${hash}.json`);
