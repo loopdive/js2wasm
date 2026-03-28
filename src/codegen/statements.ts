@@ -1125,7 +1125,7 @@ export function emitNestedBindingDefault(
  * @param initializer - the TS default-value expression
  * @param targetType  - optional override for the type hint passed to compileExpression
  */
-function emitDefaultValueCheck(
+export function emitDefaultValueCheck(
   ctx: CodegenContext,
   fctx: FunctionContext,
   fieldType: ValType,

@@ -31,7 +31,7 @@ import type {
 import { createEmptyModule } from "../ir/types.js";
 import { compileExpression, resolveComputedKeyExpression, coerceType, valTypesMatch, emitBoundsCheckedArrayGet, ensureLateImport, flushLateImportShifts, emitUndefined } from "./expressions.js";
 import { collectShapes } from "../shape-inference.js";
-import { compileStatement, ensureBindingLocals, hoistFunctionDeclarations, emitNestedBindingDefault } from "./statements.js";
+import { compileStatement, ensureBindingLocals, hoistFunctionDeclarations, emitNestedBindingDefault, emitDefaultValueCheck } from "./statements.js";
 import { emitInlineMathFunctions } from "./math-helpers.js";
 
 /** Result returned by generateModule / generateMultiModule */
@@ -14371,12 +14371,20 @@ export function destructureParamObject(
     const localIdx = fctx.localMap.get(localName)!;
     fctx.body.push({ op: "local.get", index: paramIdx });
     fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
-    // Coerce struct field type to local's declared type if they differ (#658)
-    const objLocalType = getLocalType(fctx, localIdx);
-    if (objLocalType && !valTypesMatch(fieldType, objLocalType)) {
-      coerceType(ctx, fctx, fieldType, objLocalType);
+
+    // Handle default value: `function f({ x = defaultVal }: ...) {}`
+    // When the struct field holds the "undefined" sentinel (NaN for f64,
+    // ref.null for refs), evaluate the initializer instead. (#823)
+    if (element.initializer) {
+      emitDefaultValueCheck(ctx, fctx, fieldType, localIdx, element.initializer);
+    } else {
+      // Coerce struct field type to local's declared type if they differ (#658)
+      const objLocalType = getLocalType(fctx, localIdx);
+      if (objLocalType && !valTypesMatch(fieldType, objLocalType)) {
+        coerceType(ctx, fctx, fieldType, objLocalType);
+      }
+      fctx.body.push({ op: "local.set", index: localIdx });
     }
-    fctx.body.push({ op: "local.set", index: localIdx });
   }
 
   // Close null guard
