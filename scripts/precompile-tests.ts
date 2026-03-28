@@ -97,7 +97,7 @@ async function waitForSlot() {
 
 const jobs: Promise<void>[] = [];
 
-for (const { filePath, relPath } of allTests) {
+for (const { filePath, relPath, category } of allTests) {
   await waitForSlot();
 
   const job = (async () => {
