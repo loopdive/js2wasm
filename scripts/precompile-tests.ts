@@ -24,13 +24,13 @@ import {
 const TEST262_ROOT = join(import.meta.dirname ?? ".", "..", "test262");
 const CACHE_DIR = join(import.meta.dirname ?? ".", "..", ".test262-cache");
 const RESULTS_DIR = join(import.meta.dirname ?? ".", "..", "benchmarks", "results");
-const JSONL_PATH = join(RESULTS_DIR, "test262-results.jsonl");
+const COMPILE_JSONL_PATH = join(RESULTS_DIR, "test262-compile.jsonl");
 await mkdir(CACHE_DIR, { recursive: true });
 await mkdir(RESULTS_DIR, { recursive: true });
 
 // JSONL output — append compile results for reporting
 import { openSync, writeSync as fdWrite, closeSync, fsyncSync } from "fs";
-const jsonlFd = openSync(JSONL_PATH, "w"); // overwrite
+const jsonlFd = openSync(COMPILE_JSONL_PATH, "w"); // overwrite
 
 function recordCompileResult(relPath: string, category: string, status: string, error?: string, compileMs?: number) {
   const entry = JSON.stringify({

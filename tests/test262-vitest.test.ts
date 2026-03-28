@@ -370,24 +370,8 @@ mkdirSync(RESULTS_DIR, { recursive: true });
 const JSONL_PATH = join(RESULTS_DIR, "test262-results.jsonl");
 const REPORT_PATH = join(RESULTS_DIR, "test262-report.json");
 
-// Load existing JSONL entries from precompiler into a Map for in-place updates.
-// Precompiler writes: skip, compile_error, compiled (pending execution).
-// Vitest updates "compiled" → pass/fail with exec_ms.
-const resultsMap = new Map<string, any>();
-const precompiledEntries = new Set<string>();
-try {
-  const existing = readFileSync(JSONL_PATH, "utf-8");
-  for (const line of existing.split("\n")) {
-    if (!line.trim()) continue;
-    try {
-      const entry = JSON.parse(line);
-      resultsMap.set(entry.file, entry);
-      precompiledEntries.add(entry.file);
-    } catch {}
-  }
-} catch {}
-
-// Open JSONL — we'll rewrite it in afterAll with updated results
+// Open results JSONL (vitest-only execution results, separate from compile JSONL)
+writeSync(JSONL_PATH, "");
 const jsonlFd = openSync(JSONL_PATH, "a");
 let flushCount = 0;
 const REPORT_FLUSH_INTERVAL = 500; // update report.json every 500 tests
@@ -420,24 +404,16 @@ const GC_INTERVAL = 200;
 function recordResult(file: string, category: string, status: string, error?: string, timing?: { compileMs?: number; execMs?: number }) {
   const errorCategory = (status === "fail" || status === "compile_error") ? classifyError(error) : undefined;
 
-  // Update the results map — merge with precompiler entry if it exists
-  const existing = resultsMap.get(file);
-  const updated = {
+  const entry = JSON.stringify({
     file,
     category,
     status,
     error: error || undefined,
     error_category: errorCategory,
-    compile_ms: timing?.compileMs !== undefined ? Math.round(timing.compileMs) : existing?.compile_ms,
+    compile_ms: timing?.compileMs !== undefined ? Math.round(timing.compileMs) : undefined,
     exec_ms: timing?.execMs !== undefined ? Math.round(timing.execMs) : undefined,
-  };
-  resultsMap.set(file, updated);
-
-  // Also append to JSONL for live progress (skip if precompiler already wrote skip/CE)
-  const alreadyRecorded = precompiledEntries.has(file) && (status === "skip" || status === "compile_error");
-  if (!alreadyRecorded) {
-    fdWrite(jsonlFd, JSON.stringify(updated) + "\n");
-  }
+  });
+  fdWrite(jsonlFd, entry + "\n");
   summary.total++;
   (summary as any)[status]++;
   if (!catCounts[category]) catCounts[category] = { pass: 0, fail: 0, compile_error: 0, skip: 0, total: 0 };
@@ -483,11 +459,6 @@ afterAll(() => {
   try { wasmServer?.close(); } catch {}
   try { closeSync(jsonlFd); } catch {}
 
-  // Rewrite JSONL from the merged resultsMap (precompiler + execution results)
-  try {
-    const lines = [...resultsMap.values()].map(e => JSON.stringify(e)).join("\n") + "\n";
-    writeSync(JSONL_PATH, lines);
-  } catch {}
   const report = {
     timestamp: new Date().toISOString(),
     summary: { ...summary, compilable: summary.pass + summary.fail, stale: 0 },
