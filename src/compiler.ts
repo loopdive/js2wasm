@@ -3,6 +3,7 @@ import {
   analyzeFiles,
   analyzeMultiSource,
   analyzeSource,
+  IncrementalLanguageService,
   type TypedAST,
 } from "./checker/index.js";
 import { generateModule, generateMultiModule } from "./codegen/index.js";
@@ -2013,6 +2014,8 @@ const DOWNGRADE_DIAG_CODES = new Set([
 export function compileSource(
   source: string,
   options: CompileOptions = {},
+  /** Optional persistent language service for incremental compilation */
+  languageService?: IncrementalLanguageService,
 ): CompileResult {
   // Reset compile-expression recursion depth counter for this compilation unit.
   // Without this, the depth accumulates across compilations in the same process
@@ -2029,7 +2032,14 @@ export function compileSource(
   let isJsMode = options.allowJs === true || (options.fileName?.endsWith(".js") ?? false);
   const defaultFileName = options.fileName ?? (isJsMode ? "input.js" : "input.ts");
   const effectiveFileName = options.moduleName ?? defaultFileName;
-  let ast = analyzeSource(processedSource, effectiveFileName, { allowJs: options.allowJs, skipSemanticDiagnostics: options.skipSemanticDiagnostics });
+  let ast: TypedAST;
+  if (languageService) {
+    // Incremental path: reuse cached lib files via the language service
+    languageService.updateSource(processedSource, effectiveFileName);
+    ast = languageService.analyze({ allowJs: options.allowJs, skipSemanticDiagnostics: options.skipSemanticDiagnostics });
+  } else {
+    ast = analyzeSource(processedSource, effectiveFileName, { allowJs: options.allowJs, skipSemanticDiagnostics: options.skipSemanticDiagnostics });
+  }
 
   // Auto-detect: if parsing as TS fails with syntax errors that look like
   // the source is plain JS, retry with allowJs mode enabled.
@@ -2041,7 +2051,12 @@ export function compileSource(
       // Retry as JS
       isJsMode = true;
       const jsFileName = effectiveFileName.replace(/\.ts$/, ".js");
-      ast = analyzeSource(processedSource, jsFileName, { allowJs: true });
+      if (languageService) {
+        languageService.updateSource(processedSource, jsFileName);
+        ast = languageService.analyze({ allowJs: true });
+      } else {
+        ast = analyzeSource(processedSource, jsFileName, { allowJs: true });
+      }
     }
   }
 
