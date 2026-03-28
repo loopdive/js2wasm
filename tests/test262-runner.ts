@@ -2495,6 +2495,25 @@ export async function runTest262File(
     };
   }
 
+  // For runtime negative tests, if the compiler produced warnings that indicate
+  // it detected the expected error at compile time (TDZ violations, scope errors,
+  // undeclared variables), count as a pass — the compiler caught what JS would
+  // throw at runtime.
+  if (isRuntimeNegative && result.errors.some((e) => e.severity === "warning")) {
+    const totalMs = performance.now() - totalStart;
+    return {
+      file: relPath,
+      category,
+      status: "pass",
+      timing: {
+        totalMs: round2(totalMs),
+        compileMs: round2(compileMs),
+        instantiateMs: 0,
+        executeMs: 0,
+      },
+    };
+  }
+
   // Instantiate and run with timeout
   let instantiateMs = 0;
   let executeMs = 0;

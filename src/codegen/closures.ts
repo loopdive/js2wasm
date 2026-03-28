@@ -37,7 +37,7 @@ import {
 } from "../checker/type-mapper.js";
 import type { Instr, ValType, FieldDef, StructTypeDef } from "../ir/types.js";
 import { compileStatement } from "./statements.js";
-import { defaultValueInstrs, coercionInstrs } from "./type-coercion.js";
+import { defaultValueInstrs, coercionInstrs, emitGuardedRefCast } from "./type-coercion.js";
 import {
   compileExpression,
   registerCompileArrowAsClosure,
@@ -285,7 +285,7 @@ export function emitArrowParamDestructuring(
       const convertedIdx = allocLocal(fctx, `__destr_ref_${fctx.locals.length}`, structRefType);
       fctx.body.push({ op: "local.get", index: paramIdx });
       fctx.body.push({ op: "any.convert_extern" } as Instr);
-      fctx.body.push({ op: "ref.cast_null", typeIdx: structTypeIdx } as unknown as Instr);
+      emitGuardedRefCast(fctx, structTypeIdx);
       fctx.body.push({ op: "local.set", index: convertedIdx });
       paramIdx = convertedIdx;
       paramType = structRefType;
@@ -303,7 +303,7 @@ export function emitArrowParamDestructuring(
       const castLocal = allocLocal(fctx, `__destr_cast_${fctx.locals.length}`, { kind: "ref_null", typeIdx: structTypeIdx });
       fctx.body.push({ op: "local.get", index: paramIdx });
       fctx.body.push({ op: "any.convert_extern" } as Instr);
-      fctx.body.push({ op: "ref.cast_null", typeIdx: structTypeIdx } as unknown as Instr);
+      emitGuardedRefCast(fctx, structTypeIdx);
       fctx.body.push({ op: "local.set", index: castLocal });
       structParamIdx = castLocal;
     }
@@ -1109,41 +1109,20 @@ export function compileArrowAsClosure(
       // Array destructuring: function([a, b, c]) { ... }
       let handled = false;
 
-      // Resolve the vec type — for externref params, try to infer the
-      // concrete array type from TS so we can any.convert_extern + ref.cast.
-      // First try the TS checker, then fall back to the default f64 vec type.
+      // For externref params (e.g. typed as `any`), delegate to destructureParamArray
+      // which handles multi-type vec conversion with ref.test guards.
+      // A bare ref.cast to a single vec type (e.g. __vec_f64) will trap at runtime
+      // if the actual value is a different vec type (e.g. __vec_externref from []).
+      if (paramType.kind === "externref") {
+        destructureParamArray(ctx, liftedFctx, paramIdx, param.name, paramType);
+        handled = true;
+      }
+
       let resolvedParamType = paramType;
       let srcParamIdx = paramIdx;
-      if (paramType.kind === "externref") {
-        // Infer the actual array type from TS checker
-        const tsParamType = ctx.checker.getTypeAtLocation(param);
-        let inferred = resolveWasmType(ctx, tsParamType);
-        // If TS returns externref (e.g. any), fall back to the default f64 vec type
-        if (inferred.kind === "externref") {
-          const elemKey = ctx.fast ? "i32" : "f64";
-          const elemType2: ValType = ctx.fast ? { kind: "i32" } : { kind: "f64" };
-          const vecIdx = getOrRegisterVecType(ctx, elemKey, elemType2);
-          inferred = { kind: "ref_null", typeIdx: vecIdx };
-        }
-        if (inferred.kind === "ref" || inferred.kind === "ref_null") {
-          // Convert externref to the concrete vec type via any.convert_extern + ref.cast
-          const castLocal = allocLocal(liftedFctx, `__cast_arr_${liftedFctx.locals.length}`, { kind: "ref_null", typeIdx: inferred.typeIdx });
-          liftedFctx.body.push({ op: "local.get", index: paramIdx });
-          liftedFctx.body.push({ op: "ref.is_null" } as Instr);
-          liftedFctx.body.push({
-            op: "if",
-            blockType: { kind: "empty" },
-            then: [],
-            else: [
-              { op: "local.get", index: paramIdx } as Instr,
-              { op: "any.convert_extern" },
-              { op: "ref.cast_null", typeIdx: inferred.typeIdx },
-              { op: "local.set", index: castLocal } as Instr,
-            ],
-          });
-          resolvedParamType = { kind: "ref_null", typeIdx: inferred.typeIdx };
-          srcParamIdx = castLocal;
-        }
+      if (!handled && (paramType.kind === "ref" || paramType.kind === "ref_null")) {
+        resolvedParamType = paramType;
+        srcParamIdx = paramIdx;
       }
 
       if (resolvedParamType.kind === "ref" || resolvedParamType.kind === "ref_null") {
