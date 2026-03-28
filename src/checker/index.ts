@@ -199,6 +199,26 @@ export interface AnalyzeOptions {
 }
 
 /**
+ * ES spec early error diagnostic codes that should NOT be suppressed
+ * even when skipSemanticDiagnostics is true. These correspond to
+ * SyntaxError/ReferenceError conditions mandated by the spec.
+ */
+const ES_EARLY_ERROR_CODES = new Set([
+  1100, // 'this' cannot be used as a parameter
+  1102, // delete of unqualified identifier in strict mode
+  1103, // delete target must be a property reference
+  1210, // Invalid use of 'arguments' in class field initializer
+  1211, // Class declaration without 'default' must have a name
+  1213, // Identifier expected; 'X' is a reserved word in strict mode
+  1214, // Identifier expected
+  1359, // Identifier expected; 'yield' is a reserved keyword
+  1360, // Identifier expected; 'await' is a reserved keyword
+  2300, // Duplicate identifier
+  2480, // 'import()' expression is not callable with this argument
+  18050, // A rest element cannot have an initializer
+]);
+
+/**
  * Parse and type-check a TS or JS source file.
  * In-memory CompilerHost – no filesystem needed.
  */
@@ -255,7 +275,7 @@ export function analyzeSource(
 
   const syntacticDiagnostics = program.getSyntacticDiagnostics();
   const semanticDiagnostics = analyzeOptions?.skipSemanticDiagnostics
-    ? ([] as ts.Diagnostic[])
+    ? program.getSemanticDiagnostics().filter(d => ES_EARLY_ERROR_CODES.has(d.code))
     : program.getSemanticDiagnostics();
   const diagnostics = [...syntacticDiagnostics, ...semanticDiagnostics];
 
@@ -484,7 +504,7 @@ export function analyzeFiles(
 
   const syntacticDiagnostics = program.getSyntacticDiagnostics();
   const semanticDiagnostics = analyzeOptions?.skipSemanticDiagnostics
-    ? ([] as ts.Diagnostic[])
+    ? program.getSemanticDiagnostics().filter(d => ES_EARLY_ERROR_CODES.has(d.code))
     : program.getSemanticDiagnostics();
   const diagnostics = [...syntacticDiagnostics, ...semanticDiagnostics];
 
