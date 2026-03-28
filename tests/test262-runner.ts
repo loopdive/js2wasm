@@ -164,10 +164,10 @@ export function shouldSkip(
       reason: "TypeScript 5.x: Unicode 16.0.0 identifiers not supported (#832)",
     };
   }
-  if (filePath && /built-ins\/(SharedArrayBuffer|Atomics)/.test(filePath) || meta.features?.includes("SharedArrayBuffer") || meta.features?.includes("Atomics")) {
+  if (filePath && /built-ins\/SharedArrayBuffer/.test(filePath) || meta.features?.includes("SharedArrayBuffer")) {
     return {
       skip: true,
-      reason: "ES2017: SharedArrayBuffer/Atomics (requires shared Wasm memory) (#674)",
+      reason: "ES2017: SharedArrayBuffer (requires shared Wasm memory) (#674)",
     };
   }
   if (meta.features?.some((f: string) => /^set-methods/.test(f))) {
@@ -194,7 +194,7 @@ export function shouldSkip(
   // Skip TC39 Stage 2/3 proposals we don't support. The catch-all MetaProperty
   // handler (#712) makes import.source/import.defer compile, causing 117
   // negative parse tests to regress without this filter.
-  if (filePath && /BigInt64Array|BigUint64Array|ctors-bigint|\/BigInt\//.test(filePath)) {
+  if (filePath && /BigInt64Array|BigUint64Array/.test(filePath)) {
     return { skip: true, reason: "ES2020: BigInt typed arrays not implemented (#838)" };
   }
   const UNCONDITIONAL_SKIP_FEATURES = new Map([
