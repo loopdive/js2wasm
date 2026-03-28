@@ -14,6 +14,16 @@ pick any "ready" item and start.
 
 ---
 
+## NEXT: Multi-file compilation `[I]`
+
+| #   | Title | Tests | Ready? |
+|-----|-------|-------|--------|
+| 819 | Multi-file compilation: resolve imports and compile module graphs | 783 skip + real-world usability | **Ready — TOP PRIORITY** |
+
+The compiler only accepts a single source string today. This blocks real-world multi-file projects and 783 test262 tests. Uses TypeScript's `createProgram` with multiple source files to resolve imports and compile the full module graph into one Wasm module.
+
+---
+
 ## Cluster 1: Diagnostics / allowJs suppression `[I]`
 
 All independent quick wins — touch only the diagnostic suppression list in `index.ts`.
