@@ -661,6 +661,10 @@ type CompileEntry = {
 const compiledTests = new Map<string, CompileEntry>();
 const COMPILE_CONCURRENCY = POOL_SIZE * 2; // max in-flight compilations
 
+// Track compilation progress to free pool after last category
+const totalCategories = TEST_CATEGORIES.filter(c => findTestFiles(c).length > 0).length;
+let compiledCategories = 0;
+
 // Run all categories
 for (const category of TEST_CATEGORIES) {
   const files = findTestFiles(category);
@@ -736,6 +740,12 @@ for (const category of TEST_CATEGORIES) {
 
       // Wait for all remaining compilations
       await Promise.all(pending);
+
+      // Free compiler workers after the last category finishes compiling
+      compiledCategories++;
+      if (compiledCategories >= totalCategories) {
+        pool.shutdown();
+      }
     }, 600_000); // 10 min timeout for compilation phase
 
     // Phase 2: execute pre-compiled tests
