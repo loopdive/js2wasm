@@ -12,6 +12,7 @@
  *                 | { ok: false, error: string, instantiateError: true }
  */
 import { parentPort } from "node:worker_threads";
+import { readFileSync } from "node:fs";
 import { buildImports } from "./runtime-bundle.mjs";
 
 // Suppress unhandled Promise rejections — Promise tests create async
@@ -20,7 +21,10 @@ import { buildImports } from "./runtime-bundle.mjs";
 process.on("unhandledRejection", () => {});
 
 parentPort.on("message", async (msg) => {
-  const { id, binary, imports, stringPool, isRuntimeNegative } = msg;
+  const { id, imports, stringPool, isRuntimeNegative } = msg;
+  // Read binary from disk (cachePath) or use inline binary — avoids
+  // copying large Uint8Arrays through the fork's heap on cache hits.
+  const binary = msg.cachePath ? readFileSync(msg.cachePath) : msg.binary;
   const reply = (data) => parentPort.postMessage({ id, ...data });
 
   try {
