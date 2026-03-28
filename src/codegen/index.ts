@@ -14279,6 +14279,47 @@ function compileFunctionBody(
 }
 
 /**
+ * Build throw instructions for TypeError when destructuring null/undefined.
+ * Per JS spec, destructuring null/undefined must throw TypeError.
+ */
+function buildDestructureNullThrow(ctx: CodegenContext): Instr[] {
+  const msg = "TypeError: Cannot destructure 'null' or 'undefined'";
+  addStringConstantGlobal(ctx, msg);
+  const strIdx = ctx.stringGlobalMap.get(msg)!;
+  const tagIdx = ensureExnTag(ctx);
+  return [
+    { op: "global.get", index: strIdx } as Instr,
+    { op: "throw", tagIdx } as Instr,
+  ];
+}
+
+/**
+ * Emit a null/undefined check for an externref destructuring parameter.
+ * Checks both ref.is_null (Wasm null) and __extern_is_undefined (JS undefined).
+ * Throws TypeError if either is true.
+ */
+function emitExternrefDestructureGuard(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  paramIdx: number,
+): void {
+  // Check ref.is_null first (handles null)
+  fctx.body.push({ op: "local.get", index: paramIdx });
+  fctx.body.push({ op: "ref.is_null" } as Instr);
+  fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: buildDestructureNullThrow(ctx), else: [] });
+
+  // Also check JS undefined via __extern_is_undefined import
+  const undefIdx = ensureLateImport(ctx, "__extern_is_undefined",
+    [{ kind: "externref" }], [{ kind: "i32" }]);
+  if (undefIdx !== undefined) {
+    flushLateImportShifts(ctx, fctx);
+    fctx.body.push({ op: "local.get", index: paramIdx });
+    fctx.body.push({ op: "call", funcIdx: undefIdx });
+    fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: buildDestructureNullThrow(ctx), else: [] });
+  }
+}
+
+/**
  * Destructure a function parameter that is an ObjectBindingPattern.
  * The parameter value (a struct ref) is at param index `paramIdx`.
  * We extract each bound field into a new local.
@@ -14293,6 +14334,9 @@ export function destructureParamObject(
   if (paramType.kind !== "ref" && paramType.kind !== "ref_null") {
     // externref parameters: convert to struct ref before destructuring (#647)
     if (paramType.kind === "externref") {
+      // Per JS spec: destructuring null/undefined must throw TypeError
+      emitExternrefDestructureGuard(ctx, fctx, paramIdx);
+
       const tsType = ctx.checker.getTypeAtLocation(pattern);
       if (tsType) {
         ensureStructForType(ctx, tsType);
@@ -14416,13 +14460,13 @@ export function destructureParamObject(
     }
   }
 
-  // Close null guard
+  // Close null guard — throw TypeError when null (JS spec: destructuring null/undefined is TypeError)
   if (isNullable) {
     fctx.body = savedBody;
     if (destructInstrs.length > 0) {
       fctx.body.push({ op: "local.get", index: paramIdx });
       fctx.body.push({ op: "ref.is_null" } as Instr);
-      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: destructInstrs });
+      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: buildDestructureNullThrow(ctx), else: destructInstrs });
     }
   }
 }
@@ -14445,6 +14489,9 @@ export function destructureParamArray(
     // or __vec_externref from untyped arrays). We convert to __vec_externref
     // since that's what the rest of the code expects for untyped patterns.
     if (paramType.kind === "externref") {
+      // Per JS spec: destructuring null/undefined must throw TypeError
+      emitExternrefDestructureGuard(ctx, fctx, paramIdx);
+
       const extVecIdx = getOrRegisterVecType(ctx, "externref", { kind: "externref" });
       const extArrTypeIdx = getArrTypeIdxFromVec(ctx, extVecIdx);
       const convertedType: ValType = { kind: "ref_null", typeIdx: extVecIdx };
@@ -14626,13 +14673,13 @@ export function destructureParamArray(
         fctx.body.push({ op: "local.set", index: localIdx });
       }
 
-      // Close null guard
+      // Close null guard — throw TypeError when null (JS spec)
       if (isNullable) {
         fctx.body = savedBody;
         if (destructInstrs.length > 0) {
           fctx.body.push({ op: "local.get", index: paramIdx });
           fctx.body.push({ op: "ref.is_null" } as Instr);
-          fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: destructInstrs });
+          fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: buildDestructureNullThrow(ctx), else: destructInstrs });
         }
       }
       return;
@@ -14777,13 +14824,13 @@ export function destructureParamArray(
     fctx.body.push({ op: "local.set", index: localIdx });
   }
 
-  // Close null guard
+  // Close null guard — throw TypeError when null (JS spec)
   if (isNullable) {
     fctx.body = savedBody;
     if (destructInstrs.length > 0) {
       fctx.body.push({ op: "local.get", index: paramIdx });
       fctx.body.push({ op: "ref.is_null" } as Instr);
-      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: destructInstrs });
+      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: buildDestructureNullThrow(ctx), else: destructInstrs });
     }
   }
 }
