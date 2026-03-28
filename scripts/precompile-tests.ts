@@ -23,7 +23,19 @@ import {
 
 const TEST262_ROOT = join(import.meta.dirname ?? ".", "..", "test262");
 const CACHE_DIR = join(import.meta.dirname ?? ".", "..", ".test262-cache");
+const RESULTS_DIR = join(import.meta.dirname ?? ".", "..", "benchmarks", "results");
+const JSONL_PATH = join(RESULTS_DIR, "test262-results.jsonl");
 await mkdir(CACHE_DIR, { recursive: true });
+await mkdir(RESULTS_DIR, { recursive: true });
+
+// JSONL output — append compile results for reporting
+import { openSync, writeSync as fdWrite, closeSync, fsyncSync } from "fs";
+const jsonlFd = openSync(JSONL_PATH, "w"); // overwrite
+
+function recordCompileResult(relPath: string, category: string, status: string, error?: string) {
+  const entry = JSON.stringify({ file: relPath, category, status, error: error || undefined });
+  fdWrite(jsonlFd, entry + "\n");
+}
 
 // Build compiler hash (same logic as test262-vitest.test.ts)
 function buildCompilerHash(): string {
@@ -42,10 +54,10 @@ const pool = new CompilerPool(POOL_SIZE);
 console.log(`Pre-compiling test262 with ${POOL_SIZE} workers...`);
 
 // Collect all test file paths (fast — just readdir, no file reads)
-const allTests: { filePath: string; relPath: string }[] = [];
+const allTests: { filePath: string; relPath: string; category: string }[] = [];
 for (const category of TEST_CATEGORIES) {
   for (const filePath of findTestFiles(category)) {
-    allTests.push({ filePath, relPath: relative(TEST262_ROOT, filePath) });
+    allTests.push({ filePath, relPath: relative(TEST262_ROOT, filePath), category });
   }
 }
 console.log(`${allTests.length} test files found`);
@@ -89,7 +101,7 @@ for (const { filePath, relPath } of allTests) {
       const source = await readFile(filePath, "utf-8");
       const meta = parseMeta(source);
       const filter = shouldSkip(source, meta, filePath);
-      if (filter.skip) { skipped++; releaseSlot(); return; }
+      if (filter.skip) { skipped++; recordCompileResult(relPath, category, "skip", filter.reason); releaseSlot(); return; }
 
       let wrapped: string;
       try {
@@ -126,6 +138,7 @@ for (const { filePath, relPath } of allTests) {
       } else {
         await writeFile(cachePath, new Uint8Array(0));
         await writeFile(metaPath, JSON.stringify({ ok: false, error: result.error }));
+        recordCompileResult(relPath, category, "compile_error", result.error);
         errors++;
       }
 
@@ -142,6 +155,8 @@ for (const { filePath, relPath } of allTests) {
 
 await Promise.all(jobs);
 pool.shutdown();
+try { fsyncSync(jsonlFd); } catch {}
+closeSync(jsonlFd);
 
 const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
 console.log(`\nDone in ${elapsed}s — ${compiled} compiled, ${cached} cached, ${skipped} skipped, ${errors} errors`);
