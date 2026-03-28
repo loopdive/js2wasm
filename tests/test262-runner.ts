@@ -117,7 +117,7 @@ export function shouldSkip(
   // Skip tests that reference _FIXTURE files in their source — these require
   // module resolution we don't support.
   if (/_FIXTURE\.js/.test(source)) {
-    return { skip: true, reason: "imports _FIXTURE helper module" };
+    return { skip: true, reason: "no module linking support — imports _FIXTURE helper module" };
   }
 
   // Skip strict-mode-only restriction tests — deprioritized, not real-world features.
