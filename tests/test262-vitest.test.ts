@@ -9,7 +9,7 @@
  *
  * Run: npx vitest run tests/test262-vitest.test.ts
  */
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect } from "vitest";
 import { readFileSync, existsSync, writeFileSync, mkdirSync, readdirSync } from "fs";
 import { Worker } from "worker_threads";
 
@@ -99,10 +99,9 @@ const serverReady = new Promise<void>((resolve) => {
 
 // ── Compiler pool (async worker threads) ─────────────────────────────
 
-// Compiler pool sized to CPU cores for maximum parallel compilation.
-// Cache misses dispatch to any free worker; cache hits skip the pool entirely.
-import { availableParallelism } from "os";
-const POOL_SIZE = parseInt(process.env.COMPILER_POOL_SIZE || String(availableParallelism()), 10);
+// Compiler pool — small (1 worker) since precompiler handles bulk compilation.
+// This only compiles cache misses that the precompiler didn't cover.
+const POOL_SIZE = parseInt(process.env.COMPILER_POOL_SIZE || "1", 10);
 const pool = new CompilerPool(POOL_SIZE);
 
 // ── Wasm execution pool (persistent worker for running compiled tests) ────
@@ -653,120 +652,20 @@ const TEST262_ROOT = join(import.meta.dirname ?? ".", "..", "test262");
 // Phase 1 (beforeAll): dispatch ALL compilations to the pool in parallel.
 //   The pool has POOL_SIZE workers — all stay 100% busy until done.
 //   Results are stored in a Map keyed by relPath.
-// Phase 2 (it() tests): look up pre-compiled result, execute via exec worker.
-//   No compilation wait — pure cache-hit speed.
-
-type CompileEntry = {
-  ok: true; binary: Uint8Array; result: any; cachePath?: string;
-  source: string; meta: any; wrapped: string; bodyLineOffset: number;
-  category: string; filePath: string;
-} | {
-  ok: false; error: string;
-  source: string; meta: any; wrapped: string; bodyLineOffset: number;
-  category: string; filePath: string;
-};
-
-const compiledTests = new Map<string, CompileEntry>();
-const COMPILE_CONCURRENCY = POOL_SIZE * 2; // max in-flight compilations
-
-// Track compilation progress to free pool after last category
-const totalCategories = TEST_CATEGORIES.filter(c => findTestFiles(c).length > 0).length;
-let compiledCategories = 0;
-
-// Run all categories
+// Run all categories — precompiler handles bulk compilation, vitest executes.
+// Cache hits are instant (disk read). Cache misses compile on-demand (1 worker).
 for (const category of TEST_CATEGORIES) {
   const files = findTestFiles(category);
   if (files.length === 0) continue;
 
   describe(`test262: ${category}`, () => {
-    // Phase 1: compile all tests in this category before running any
-    beforeAll(async () => {
-      await serverReady;
-      const pending: Promise<void>[] = [];
-
-      for (const filePath of files) {
-        const relPath = relative(TEST262_ROOT, filePath);
-        if (compiledTests.has(relPath)) continue;
-
-        const source = readFileSync(filePath, "utf-8");
-        const meta = parseMeta(source);
-        const filter = shouldSkip(source, meta, filePath);
-        if (filter.skip) {
-          compiledTests.set(relPath, {
-            ok: false, error: filter.reason,
-            source, meta, wrapped: "", bodyLineOffset: 0, category, filePath,
-          } as any);
-          continue;
-        }
-
-        const { source: wrapped, bodyLineOffset } = wrapTest(source, meta);
-        const fixtures = resolveFixtures(source, filePath);
-        const base = { source, meta, wrapped, bodyLineOffset, category, filePath };
-
-        if (fixtures.length > 0) {
-          // compileMulti is sync — do it inline
-          try {
-            const vfiles: Record<string, string> = { "./test.ts": wrapped };
-            for (const fixPath of fixtures) {
-              vfiles["./" + relative(dirname(filePath), fixPath)] = readFileSync(fixPath, "utf-8");
-            }
-            const multiCompile = await getCompileMulti();
-            const result = multiCompile(vfiles, "./test.ts", { skipSemanticDiagnostics: true });
-            if (result.success && result.binary.length > 0) {
-              compiledTests.set(relPath, {
-                ...base, ok: true, binary: result.binary,
-                result: { imports: result.imports, stringPool: result.stringPool, sourceMap: null },
-              });
-            } else {
-              compiledTests.set(relPath, {
-                ...base, ok: false,
-                error: result.errors.map((e: any) => `L${e.line}:${e.column} ${e.message}`).join("; "),
-              });
-            }
-          } catch (e: any) {
-            compiledTests.set(relPath, { ...base, ok: false, error: e.message ?? String(e) });
-          }
-          continue;
-        }
-
-        // Dispatch to pool — use full diagnostics for negative tests so
-        // TS catches early errors (delete in strict mode, yield reserved, etc.)
-        const isNegative = meta.negative && (meta.negative.phase === "parse" || meta.negative.phase === "early" || meta.negative.phase === "resolution");
-        const job = getOrCompile(wrapped, !!isNegative, relPath).then(r => {
-          compiledTests.set(relPath, { ...base, ...r } as CompileEntry);
-        });
-        pending.push(job);
-
-        // Throttle: wait when too many in-flight
-        if (pending.length >= COMPILE_CONCURRENCY) {
-          await Promise.race(pending);
-          // Remove settled promises
-          for (let i = pending.length - 1; i >= 0; i--) {
-            const settled = await Promise.race([pending[i], Promise.resolve("pending")]);
-            if (settled !== "pending") pending.splice(i, 1);
-          }
-        }
-      }
-
-      // Wait for all remaining compilations
-      await Promise.all(pending);
-
-      // Free compiler workers after the last category finishes compiling
-      compiledCategories++;
-      if (compiledCategories >= totalCategories) {
-        pool.shutdown();
-      }
-    }, 600_000); // 10 min timeout for compilation phase
-
-    // Phase 2: execute pre-compiled tests
     for (const filePath of files) {
       const relPath = relative(TEST262_ROOT, filePath);
 
       it(relPath, async () => {
-        const entry = compiledTests.get(relPath);
-        if (!entry) { recordResult(relPath, category, "compile_error", "not compiled"); return; }
-
-        const { source, meta, bodyLineOffset } = entry;
+        const source = readFileSync(filePath, "utf-8");
+        const meta = parseMeta(source);
+        const bodyLineOffset = 0;
 
         // Handle skips
         const filter = shouldSkip(source, meta, filePath);
@@ -775,15 +674,42 @@ for (const category of TEST_CATEGORIES) {
           return;
         }
 
-        // Handle negative parse/early tests
-        if (
-          meta.negative &&
-          (meta.negative.phase === "parse" || meta.negative.phase === "early" || meta.negative.phase === "resolution")
-        ) {
-          if (!entry.ok) { recordResult(relPath, category, "pass"); return; }
+        await serverReady;
+
+        // Wrap and compile (cache hit = instant, miss = compile via pool)
+        const { source: wrapped, bodyLineOffset: wrapOffset } = wrapTest(source, meta);
+        const isNegative = meta.negative && (meta.negative.phase === "parse" || meta.negative.phase === "early" || meta.negative.phase === "resolution");
+
+        // Multi-file compilation for FIXTURE imports
+        const fixtures = resolveFixtures(source, filePath);
+        let compileResult: { ok: true; binary: Uint8Array; result: any; cachePath?: string } | { ok: false; error: string };
+
+        if (fixtures.length > 0) {
           try {
-            const imports = buildImports(entry.result.imports, undefined, entry.result.stringPool);
-            await WebAssembly.instantiate(entry.binary, imports as any);
+            const vfiles: Record<string, string> = { "./test.ts": wrapped };
+            for (const fixPath of fixtures) {
+              vfiles["./" + relative(dirname(filePath), fixPath)] = readFileSync(fixPath, "utf-8");
+            }
+            const multiCompile = await getCompileMulti();
+            const result = multiCompile(vfiles, "./test.ts", { skipSemanticDiagnostics: true });
+            if (result.success && result.binary.length > 0) {
+              compileResult = { ok: true, binary: result.binary, result: { imports: result.imports, stringPool: result.stringPool, sourceMap: null } };
+            } else {
+              compileResult = { ok: false, error: result.errors.map((e: any) => `L${e.line}:${e.column} ${e.message}`).join("; ") };
+            }
+          } catch (e: any) {
+            compileResult = { ok: false, error: e.message ?? String(e) };
+          }
+        } else {
+          compileResult = await getOrCompile(wrapped, !!isNegative, relPath);
+        }
+
+        // Handle negative parse/early tests
+        if (isNegative) {
+          if (!compileResult.ok) { recordResult(relPath, category, "pass"); return; }
+          try {
+            const imports = buildImports(compileResult.result.imports, undefined, compileResult.result.stringPool);
+            await WebAssembly.instantiate(compileResult.binary, imports as any);
           } catch {
             recordResult(relPath, category, "pass"); return;
           }
@@ -793,24 +719,24 @@ for (const category of TEST_CATEGORIES) {
           return;
         }
 
-        if (!entry.ok) {
-          recordResult(relPath, category, "compile_error", adjustErrorLines(entry.error, bodyLineOffset));
+        if (!compileResult.ok) {
+          recordResult(relPath, category, "compile_error", adjustErrorLines(compileResult.error, wrapOffset));
           return;
         }
 
         // Execute
         const isRuntimeNegative = meta.negative?.phase === "runtime";
         const EXEC_TIMEOUT_MS = 10_000;
-        const compileMs = entry.result?.compileMs;
+        const compileMs = compileResult.result?.compileMs;
 
         const execStart = performance.now();
         const workerResult = await execPool.run(
-          entry.binary,
-          entry.result.imports,
-          entry.result.stringPool,
+          compileResult.binary,
+          compileResult.result.imports,
+          compileResult.result.stringPool,
           isRuntimeNegative,
           EXEC_TIMEOUT_MS,
-          entry.cachePath,
+          compileResult.cachePath,
         );
         const execMs = performance.now() - execStart;
         const timing = { compileMs, execMs };
