@@ -1118,7 +1118,14 @@ function compileExpressionInner(
   }
 
   if (ts.isCallExpression(expr)) {
-    return compileCallExpression(ctx, fctx, expr);
+    const callResult = compileCallExpression(ctx, fctx, expr);
+    // Flush pending callback writebacks (#859): after a host call that received
+    // a callback with mutable captures, read ref cell values back into outer locals.
+    if (fctx.pendingCallbackWritebacks && fctx.pendingCallbackWritebacks.length > 0) {
+      fctx.body.push(...fctx.pendingCallbackWritebacks);
+      fctx.pendingCallbackWritebacks = undefined;
+    }
+    return callResult;
   }
 
   if (ts.isNewExpression(expr)) {
