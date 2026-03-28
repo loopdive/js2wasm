@@ -9,7 +9,7 @@
  *
  * Run: npx vitest run tests/test262-vitest.test.ts
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { readFileSync, existsSync, writeFileSync, mkdirSync, readdirSync } from "fs";
 import { Worker } from "worker_threads";
 
@@ -99,9 +99,10 @@ const serverReady = new Promise<void>((resolve) => {
 
 // ── Compiler pool (async worker threads) ─────────────────────────────
 
-// Each vitest fork gets multiple compiler workers for parallel compilation.
+// Compiler pool sized to CPU cores for maximum parallel compilation.
 // Cache misses dispatch to any free worker; cache hits skip the pool entirely.
-const POOL_SIZE = parseInt(process.env.COMPILER_POOL_SIZE || "3", 10);
+import { availableParallelism } from "os";
+const POOL_SIZE = parseInt(process.env.COMPILER_POOL_SIZE || String(availableParallelism()), 10);
 const pool = new CompilerPool(POOL_SIZE);
 
 // ── Wasm execution pool (persistent worker for running compiled tests) ────
@@ -640,67 +641,129 @@ function findNthAssert(source: string, retVal: number): string {
 
 const TEST262_ROOT = join(import.meta.dirname ?? ".", "..", "test262");
 
-// ── Prefetch: pre-compile upcoming tests while the current one executes ───
-// This keeps the compiler pool busy instead of idle during test execution.
-const PREFETCH_AHEAD = POOL_SIZE * 2; // prefetch 2× pool size ahead
-const prefetchCache = new Map<string, Promise<{ ok: true; binary: Uint8Array; result: any; cachePath?: string } | { ok: false; error: string }>>();
+// ── Two-phase execution: compile all tests first, then run them ───────
+// Phase 1 (beforeAll): dispatch ALL compilations to the pool in parallel.
+//   The pool has POOL_SIZE workers — all stay 100% busy until done.
+//   Results are stored in a Map keyed by relPath.
+// Phase 2 (it() tests): look up pre-compiled result, execute via exec worker.
+//   No compilation wait — pure cache-hit speed.
 
-function prefetchCompile(filePath: string, relPath: string): void {
-  if (prefetchCache.has(relPath)) return;
-  try {
-    const source = readFileSync(filePath, "utf-8");
-    const meta = parseMeta(source);
-    const filter = shouldSkip(source, meta, filePath);
-    if (filter.skip) return;
-    if (meta.negative && (meta.negative.phase === "parse" || meta.negative.phase === "early" || meta.negative.phase === "resolution")) return;
-    const fixtures = resolveFixtures(source, filePath);
-    if (fixtures.length > 0) return; // compileMulti is sync, don't prefetch
-    const { source: wrapped } = wrapTest(source, meta);
-    prefetchCache.set(relPath, getOrCompile(wrapped, false, relPath));
-  } catch { /* prefetch failure is non-fatal */ }
-}
+type CompileEntry = {
+  ok: true; binary: Uint8Array; result: any; cachePath?: string;
+  source: string; meta: any; wrapped: string; bodyLineOffset: number;
+  category: string; filePath: string;
+} | {
+  ok: false; error: string;
+  source: string; meta: any; wrapped: string; bodyLineOffset: number;
+  category: string; filePath: string;
+};
 
-// Run all categories — disk cache makes re-runs instant
+const compiledTests = new Map<string, CompileEntry>();
+const COMPILE_CONCURRENCY = POOL_SIZE * 2; // max in-flight compilations
+
+// Run all categories
 for (const category of TEST_CATEGORIES) {
   const files = findTestFiles(category);
   if (files.length === 0) continue;
 
   describe(`test262: ${category}`, () => {
-    for (let fileIdx = 0; fileIdx < files.length; fileIdx++) {
-      const filePath = files[fileIdx]!;
-      const relPath = relative(TEST262_ROOT, filePath);
+    // Phase 1: compile all tests in this category before running any
+    beforeAll(async () => {
+      await serverReady;
+      const pending: Promise<void>[] = [];
 
-      it(relPath, async () => {
-        // Prefetch upcoming tests to keep compiler pool busy
-        for (let ahead = 1; ahead <= PREFETCH_AHEAD && fileIdx + ahead < files.length; ahead++) {
-          prefetchCompile(files[fileIdx + ahead]!, relative(TEST262_ROOT, files[fileIdx + ahead]!));
-        }
+      for (const filePath of files) {
+        const relPath = relative(TEST262_ROOT, filePath);
+        if (compiledTests.has(relPath)) continue;
 
         const source = readFileSync(filePath, "utf-8");
         const meta = parseMeta(source);
+        const filter = shouldSkip(source, meta, filePath);
+        if (filter.skip) {
+          compiledTests.set(relPath, {
+            ok: false, error: filter.reason,
+            source, meta, wrapped: "", bodyLineOffset: 0, category, filePath,
+          } as any);
+          continue;
+        }
 
-        // Skip unsupported tests
+        const { source: wrapped, bodyLineOffset } = wrapTest(source, meta);
+        const fixtures = resolveFixtures(source, filePath);
+        const base = { source, meta, wrapped, bodyLineOffset, category, filePath };
+
+        if (fixtures.length > 0) {
+          // compileMulti is sync — do it inline
+          try {
+            const vfiles: Record<string, string> = { "./test.ts": wrapped };
+            for (const fixPath of fixtures) {
+              vfiles["./" + relative(dirname(filePath), fixPath)] = readFileSync(fixPath, "utf-8");
+            }
+            const multiCompile = await getCompileMulti();
+            const result = multiCompile(vfiles, "./test.ts", { skipSemanticDiagnostics: true });
+            if (result.success && result.binary.length > 0) {
+              compiledTests.set(relPath, {
+                ...base, ok: true, binary: result.binary,
+                result: { imports: result.imports, stringPool: result.stringPool, sourceMap: null },
+              });
+            } else {
+              compiledTests.set(relPath, {
+                ...base, ok: false,
+                error: result.errors.map((e: any) => `L${e.line}:${e.column} ${e.message}`).join("; "),
+              });
+            }
+          } catch (e: any) {
+            compiledTests.set(relPath, { ...base, ok: false, error: e.message ?? String(e) });
+          }
+          continue;
+        }
+
+        // Dispatch to pool — throttle concurrency
+        const job = getOrCompile(wrapped, false, relPath).then(r => {
+          compiledTests.set(relPath, { ...base, ...r } as CompileEntry);
+        });
+        pending.push(job);
+
+        // Throttle: wait when too many in-flight
+        if (pending.length >= COMPILE_CONCURRENCY) {
+          await Promise.race(pending);
+          // Remove settled promises
+          for (let i = pending.length - 1; i >= 0; i--) {
+            const settled = await Promise.race([pending[i], Promise.resolve("pending")]);
+            if (settled !== "pending") pending.splice(i, 1);
+          }
+        }
+      }
+
+      // Wait for all remaining compilations
+      await Promise.all(pending);
+    }, 600_000); // 10 min timeout for compilation phase
+
+    // Phase 2: execute pre-compiled tests
+    for (const filePath of files) {
+      const relPath = relative(TEST262_ROOT, filePath);
+
+      it(relPath, async () => {
+        const entry = compiledTests.get(relPath);
+        if (!entry) { recordResult(relPath, category, "compile_error", "not compiled"); return; }
+
+        const { source, meta, bodyLineOffset } = entry;
+
+        // Handle skips
         const filter = shouldSkip(source, meta, filePath);
         if (filter.skip) {
           recordResult(relPath, category, "skip", filter.reason);
           return;
         }
 
-        // Wait for HTTP server to be ready
-        await serverReady;
-
-        // Handle negative parse/early tests: compilation should fail
-        // Use skipSemanticDiagnostics:false for negative tests so TS catches more errors
+        // Handle negative parse/early tests
         if (
           meta.negative &&
           (meta.negative.phase === "parse" || meta.negative.phase === "early" || meta.negative.phase === "resolution")
         ) {
-          const { source: wrapped, bodyLineOffset } = wrapTest(source, meta);
-          const compileResult = await getOrCompile(wrapped, false, relPath);
-          if (!compileResult.ok) { recordResult(relPath, category, "pass"); return; }
+          if (!entry.ok) { recordResult(relPath, category, "pass"); return; }
           try {
-            const imports = buildImports(compileResult.result.imports, undefined, compileResult.result.stringPool);
-            await WebAssembly.instantiate(compileResult.binary, imports as any);
+            const imports = buildImports(entry.result.imports, undefined, entry.result.stringPool);
+            await WebAssembly.instantiate(entry.binary, imports as any);
           } catch {
             recordResult(relPath, category, "pass"); return;
           }
@@ -710,68 +773,22 @@ for (const category of TEST_CATEGORIES) {
           return;
         }
 
-        // Wrap and compile
-        const { source: wrapped, bodyLineOffset } = wrapTest(source, meta);
-
-        // Multi-file compilation for tests with static _FIXTURE imports
-        const fixtures = resolveFixtures(source, filePath);
-        let compileResult: { ok: true; binary: Uint8Array; result: any } | { ok: false; error: string };
-
-        if (fixtures.length > 0) {
-          // Build virtual file map: entry file + fixture files
-          try {
-            const files: Record<string, string> = { "./test.ts": wrapped };
-            for (const fixPath of fixtures) {
-              const fixSource = readFileSync(fixPath, "utf-8");
-              const fixName = "./" + relative(dirname(filePath), fixPath);
-              files[fixName] = fixSource;
-            }
-            const multiCompile = await getCompileMulti();
-            const result = multiCompile(files, "./test.ts", { skipSemanticDiagnostics: true });
-            if (result.success && result.binary.length > 0) {
-              compileResult = {
-                ok: true,
-                binary: result.binary,
-                result: { imports: result.imports, stringPool: result.stringPool, sourceMap: null },
-              };
-            } else {
-              compileResult = {
-                ok: false,
-                error: result.errors.map(e => `L${e.line}:${e.column} ${e.message}`).join("; "),
-              };
-            }
-          } catch (e: any) {
-            compileResult = { ok: false, error: e.message ?? String(e) };
-          }
-        } else {
-          // Use prefetched result if available, otherwise compile now
-          const prefetched = prefetchCache.get(relPath);
-          if (prefetched) {
-            prefetchCache.delete(relPath);
-            compileResult = await prefetched;
-          } else {
-            compileResult = await getOrCompile(wrapped, false, relPath);
-          }
-        }
-
-        if (!compileResult.ok) {
-          recordResult(relPath, category, "compile_error", adjustErrorLines(compileResult.error, bodyLineOffset));
+        if (!entry.ok) {
+          recordResult(relPath, category, "compile_error", adjustErrorLines(entry.error, bodyLineOffset));
           return;
         }
 
-        // Instantiate and run in a persistent worker thread. The worker stays
-        // alive across tests; if Wasm hangs, the pool timeout terminates and
-        // respawns it. Much faster than spawning a worker per test.
+        // Execute
         const isRuntimeNegative = meta.negative?.phase === "runtime";
         const EXEC_TIMEOUT_MS = 10_000;
 
         const workerResult = await execPool.run(
-          compileResult.binary,
-          compileResult.result.imports,
-          compileResult.result.stringPool,
+          entry.binary,
+          entry.result.imports,
+          entry.result.stringPool,
           isRuntimeNegative,
           EXEC_TIMEOUT_MS,
-          compileResult.cachePath,
+          entry.cachePath,
         );
 
         // Process worker result
