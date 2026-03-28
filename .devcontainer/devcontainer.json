@@ -31,11 +31,11 @@
         "editor.codeActionsOnSave": {
           "source.fixAll.eslint": "explicit"
         },
-        "terminal.integrated.defaultProfile.linux": "tmux",
+        "terminal.integrated.defaultProfile.linux": "bash",
         "terminal.integrated.profiles.linux": {
           "tmux": {
             "path": "zsh",
-            "args": ["-c", "tmux new-session -s claude-$(date +%s)"]
+            "args": ["-c", "tmux attach -t claude || tmux new-session -s claude"]
           },
           "zsh": {
             "path": "zsh"
