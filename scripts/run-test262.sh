@@ -19,6 +19,8 @@ END=$(date +%s)
 log "Precompile took $((END - START))s"
 
 log ""
+# Truncate results JSONL before vitest (prevents duplicates from multi-fork writes)
+> /workspace/benchmarks/results/test262-results.jsonl
 log "=== VITEST ==="
 START=$(date +%s)
 npx vitest run tests/test262-vitest.test.ts >> "$LOGFILE" 2>&1
