@@ -964,9 +964,18 @@ function emitNullGuard(
 ): void {
   const guardInstrs = collectInstrs(fctx, emitFn);
   if (isNullable && guardInstrs.length > 0) {
+    // Per JS spec, destructuring null/undefined must throw TypeError
+    const msg = "TypeError: Cannot destructure 'null' or 'undefined'";
+    addStringConstantGlobal(ctx, msg);
+    const strIdx = ctx.stringGlobalMap.get(msg)!;
+    const tagIdx = ensureExnTag(ctx);
+    const throwInstrs: Instr[] = [
+      { op: "global.get", index: strIdx } as Instr,
+      { op: "throw", tagIdx } as Instr,
+    ];
     fctx.body.push({ op: "local.get", index: srcLocal });
     fctx.body.push({ op: "ref.is_null" } as Instr);
-    fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: [], else: guardInstrs });
+    fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: throwInstrs, else: guardInstrs });
   } else {
     fctx.body.push(...guardInstrs);
   }
