@@ -52,7 +52,7 @@ export class CompilerPool {
 
     for (let i = 0; i < size; i++) {
       const worker = new Worker(workerPath, {
-        resourceLimits: { maxOldGenerationSizeMb: 512 },
+        resourceLimits: { maxOldGenerationSizeMb: 1024 },
       });
 
       const state: WorkerState = { worker, busy: false, ready: false };
@@ -140,7 +140,7 @@ export class CompilerPool {
     const workerPath = join(import.meta.dirname ?? __dirname, "compiler-worker.mjs");
     state.busy = false;
     state.ready = false;
-    state.worker = new Worker(workerPath, { resourceLimits: { maxOldGenerationSizeMb: 512 } });
+    state.worker = new Worker(workerPath, { resourceLimits: { maxOldGenerationSizeMb: 1024 } });
     state.worker.on("message", (msg: any) => {
       if (msg.type === "ready") {
         state.ready = true;
