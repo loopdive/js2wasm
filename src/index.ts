@@ -127,6 +127,7 @@ export interface CompileOptions {
 
 import * as path from "path";
 import { compileSource, compileMultiSource, compileFilesSource, compileToObjectSource } from "./compiler.js";
+import { IncrementalLanguageService } from "./checker/index.js";
 import { ModuleResolver, resolveAllImports } from "./resolve.js";
 import { treeshake, getEntryExportNames } from "./treeshake.js";
 
@@ -242,6 +243,37 @@ export function compileProject(
   const entryKey = `./${path.relative(rootDir, resolvedEntry)}`;
 
   return compileMultiSource(files, entryKey, options);
+}
+
+/**
+ * Create an incremental compiler that reuses a persistent TypeScript Language Service.
+ * Lib files are parsed once on first compilation and cached for all subsequent compilations,
+ * eliminating ~50ms of program creation overhead per compilation.
+ *
+ * Ideal for worker pools or batch compilation scenarios where many source files
+ * are compiled sequentially in the same process.
+ *
+ * @example
+ * ```ts
+ * const compiler = createIncrementalCompiler();
+ * const result1 = compiler.compile("export function a(): number { return 1; }");
+ * const result2 = compiler.compile("export function b(): number { return 2; }"); // faster
+ * compiler.dispose(); // free resources when done
+ * ```
+ */
+export function createIncrementalCompiler(defaultOptions?: CompileOptions): {
+  compile: (source: string, options?: CompileOptions) => CompileResult;
+  dispose: () => void;
+} {
+  const service = new IncrementalLanguageService();
+  return {
+    compile(source: string, options?: CompileOptions): CompileResult {
+      return compileSource(source, { ...defaultOptions, ...options }, service);
+    },
+    dispose() {
+      service.dispose();
+    },
+  };
 }
 
 export { generateWit } from "./wit-generator.js";

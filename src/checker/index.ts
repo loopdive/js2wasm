@@ -533,3 +533,5 @@ export function analyzeFiles(
     syntacticDiagnostics: syntacticDiagnostics as readonly ts.Diagnostic[],
   };
 }
+
+export { IncrementalLanguageService } from "./language-service.js";
