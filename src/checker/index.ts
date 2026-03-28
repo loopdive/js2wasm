@@ -166,7 +166,7 @@ function getLibSource(name: string): string | undefined {
 }
 
 /** Check if a file name is a known lib file */
-function isKnownLibName(name: string): boolean {
+export function isKnownLibName(name: string): boolean {
   return (
     name === "lib.d.ts" ||
     TS_LIB_NAMES.has(name) ||
@@ -176,7 +176,7 @@ function isKnownLibName(name: string): boolean {
 
 /** Pre-parsed lib SourceFiles — cached to avoid re-parsing on every compile */
 const LIB_SOURCE_FILES = new Map<string, ts.SourceFile>();
-function getLibSourceFile(
+export function getLibSourceFile(
   name: string,
   languageVersion: ts.ScriptTarget,
 ): ts.SourceFile | undefined {

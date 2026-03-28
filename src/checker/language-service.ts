@@ -1,17 +1,16 @@
 import ts from "typescript";
 import type { TypedAST, AnalyzeOptions } from "./index.js";
+import { isKnownLibName, getLibSourceFile } from "./index.js";
 
 /**
- * Incremental compiler that reuses parsed lib SourceFiles across compilations
- * via ts.createProgram's oldProgram parameter and a persistent CompilerHost.
+ * Incremental compiler that reuses parsed lib SourceFiles across compilations.
  *
- * Each compilation creates a FRESH Program and TypeChecker (no state leakage),
- * but reuses cached lib SourceFile parses via:
- * 1. Persistent CompilerHost (same host = same internal SourceFile cache)
- * 2. oldProgram parameter (TS reuses unchanged SourceFiles from previous Program)
+ * Uses the module-level LIB_SOURCE_FILES cache from checker/index.ts to return
+ * the SAME SourceFile objects for lib files. Combined with oldProgram, this
+ * enables TS to achieve full structure reuse — skipping re-parsing, re-binding,
+ * and re-resolving for unchanged lib files.
  *
- * This eliminates ~50ms of lib re-parsing per compilation while maintaining
- * identical output to standalone ts.createProgram.
+ * Each compilation creates a FRESH checker (no state leakage between tests).
  */
 export class IncrementalLanguageService {
   private currentSource = "";
@@ -32,22 +31,26 @@ export class IncrementalLanguageService {
       noEmit: true,
     };
 
-    // Create host ONCE — its internal SourceFile cache persists across compilations
-    this.host = ts.createCompilerHost(this.compilerOptions);
-    const origGetSourceFile = this.host.getSourceFile;
-    this.host.getSourceFile = (name: string, languageVersion: ts.ScriptTarget, ...rest: any[]) => {
-      if (name === this.fileName) return this.currentSourceFile;
-      return (origGetSourceFile as any).call(this.host, name, languageVersion, ...rest);
-    };
-    const origFileExists = this.host.fileExists;
-    this.host.fileExists = (name: string) => {
-      if (name === this.fileName) return true;
-      return origFileExists.call(this.host, name);
-    };
-    const origReadFile = this.host.readFile;
-    this.host.readFile = (name: string) => {
-      if (name === this.fileName) return this.currentSource;
-      return origReadFile!.call(this.host, name);
+    // Custom host that returns CACHED SourceFile objects for lib files.
+    // Same object identity across calls enables oldProgram structure reuse.
+    this.host = {
+      getSourceFile: (name: string, languageVersion: ts.ScriptTarget) => {
+        if (name === this.fileName) return this.currentSourceFile;
+        return getLibSourceFile(name, languageVersion);
+      },
+      getDefaultLibFileName: () => "lib.d.ts",
+      writeFile: () => {},
+      getCurrentDirectory: () => "/",
+      getCanonicalFileName: (f: string) => f,
+      useCaseSensitiveFileNames: () => true,
+      getNewLine: () => "\n",
+      fileExists: (name: string) => name === this.fileName || isKnownLibName(name),
+      readFile: (name: string) => {
+        if (name === this.fileName) return this.currentSource;
+        return undefined;
+      },
+      getDirectories: () => [],
+      directoryExists: () => true,
     };
   }
 
@@ -64,8 +67,7 @@ export class IncrementalLanguageService {
   }
 
   /**
-   * Analyze the current source — creates a fresh Program (fresh checker)
-   * but reuses parsed lib SourceFiles from the previous Program.
+   * Analyze — fresh Program + fresh checker, cached lib SourceFiles.
    */
   analyze(analyzeOptions?: AnalyzeOptions): TypedAST {
     const options = { ...this.compilerOptions };
@@ -74,14 +76,12 @@ export class IncrementalLanguageService {
       options.checkJs = true;
     }
 
-    // Fresh Program with oldProgram for lib reuse + persistent host cache
     const program = ts.createProgram(
       [this.fileName],
       options,
       this.host,
       this.oldProgram,
     );
-
     this.oldProgram = program;
 
     const checker = program.getTypeChecker();
@@ -100,7 +100,6 @@ export class IncrementalLanguageService {
     };
   }
 
-  /** Release resources */
   dispose(): void {
     this.oldProgram = undefined;
   }
