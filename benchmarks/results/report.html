@@ -384,14 +384,14 @@
         renderSkipReasons(report);
       }
 
-      if (!data || data.length === 0) return;
-
       document.getElementById('loading').style.display = 'none';
-      document.getElementById('content').style.display = 'block';
 
-      renderStats(data);
-      renderChart(data);
-      renderHistory(data);
+      if (data && data.length > 0) {
+        document.getElementById('content').style.display = 'block';
+        renderStats(data);
+        renderChart(data);
+        renderHistory(data);
+      }
     })();
   </script>
 </body>
