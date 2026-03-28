@@ -31,7 +31,7 @@ import type {
 import { createEmptyModule } from "../ir/types.js";
 import { compileExpression, resolveComputedKeyExpression, coerceType, valTypesMatch, emitBoundsCheckedArrayGet, ensureLateImport, flushLateImportShifts, emitUndefined } from "./expressions.js";
 import { collectShapes } from "../shape-inference.js";
-import { compileStatement, ensureBindingLocals, hoistFunctionDeclarations, emitNestedBindingDefault, emitDefaultValueCheck } from "./statements.js";
+import { compileStatement, ensureBindingLocals, hoistFunctionDeclarations, emitNestedBindingDefault, emitDefaultValueCheck, emitArgumentsObject } from "./statements.js";
 import { emitInlineMathFunctions } from "./math-helpers.js";
 
 /** Result returned by generateModule / generateMultiModule */
@@ -13250,6 +13250,15 @@ export function compileClassBodies(
         } else if (ts.isArrayBindingPattern(param.name)) {
           destructureParamArray(ctx, fctx, paramLocalIdx, param.name, params[paramLocalIdx]!.type);
         }
+      }
+
+      // Set up `arguments` object if the method body references it (#820).
+      // Class methods (like standalone functions) need an arguments vec struct
+      // so that `arguments.length` and `arguments[n]` work at runtime.
+      if (member.body && bodyUsesArguments(member.body)) {
+        const methodParamTypes = params.slice(isStatic ? 0 : 1).map(p => p.type);
+        const paramOffset = isStatic ? 0 : 1; // skip 'this' param for instance methods
+        emitArgumentsObject(ctx, fctx, methodParamTypes, paramOffset);
       }
 
       if (isGeneratorMethod && member.body) {
