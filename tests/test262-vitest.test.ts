@@ -729,8 +729,10 @@ for (const category of TEST_CATEGORIES) {
           continue;
         }
 
-        // Dispatch to pool — throttle concurrency
-        const job = getOrCompile(wrapped, false, relPath).then(r => {
+        // Dispatch to pool — use full diagnostics for negative tests so
+        // TS catches early errors (delete in strict mode, yield reserved, etc.)
+        const isNegative = meta.negative && (meta.negative.phase === "parse" || meta.negative.phase === "early" || meta.negative.phase === "resolution");
+        const job = getOrCompile(wrapped, !!isNegative, relPath).then(r => {
           compiledTests.set(relPath, { ...base, ...r } as CompileEntry);
         });
         pending.push(job);

@@ -275,7 +275,7 @@ export function analyzeSource(
 
   const syntacticDiagnostics = program.getSyntacticDiagnostics();
   const semanticDiagnostics = analyzeOptions?.skipSemanticDiagnostics
-    ? program.getSemanticDiagnostics().filter(d => ES_EARLY_ERROR_CODES.has(d.code))
+    ? ([] as ts.Diagnostic[])
     : program.getSemanticDiagnostics();
   const diagnostics = [...syntacticDiagnostics, ...semanticDiagnostics];
 
@@ -504,7 +504,7 @@ export function analyzeFiles(
 
   const syntacticDiagnostics = program.getSyntacticDiagnostics();
   const semanticDiagnostics = analyzeOptions?.skipSemanticDiagnostics
-    ? program.getSemanticDiagnostics().filter(d => ES_EARLY_ERROR_CODES.has(d.code))
+    ? ([] as ts.Diagnostic[])
     : program.getSemanticDiagnostics();
   const diagnostics = [...syntacticDiagnostics, ...semanticDiagnostics];
 
