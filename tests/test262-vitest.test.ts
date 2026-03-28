@@ -828,12 +828,29 @@ for (const category of TEST_CATEGORIES) {
         }
 
         if (!workerResult.ok) {
-          // Runtime exception
+          // Runtime exception — enrich with source line info
           if (workerResult.isException) {
-            const errInfo = workerResult.error;
+            let errInfo = workerResult.error;
             const desc = meta.description?.substring(0, 100) ?? "";
-            // If it looks like a TypeError on null access
-            if (errInfo === "TypeError (null/undefined access)") {
+
+            // Map [in funcName()] to source line
+            const fnMatch = errInfo.match(/\[in (\w+)\(\)\]/);
+            if (fnMatch) {
+              const fname = fnMatch[1];
+              const lines = source.split("\n");
+              if (fname !== "test") {
+                for (let i = 0; i < lines.length; i++) {
+                  if (lines[i].includes(`function ${fname}`) || lines[i].includes(`${fname}(`)) {
+                    const ctx = lines[i].trim().substring(0, 80);
+                    errInfo = errInfo.replace(`[in ${fname}()]`, `[in ${fname}() at L${i + 1}: ${ctx}]`);
+                    break;
+                  }
+                }
+              }
+            }
+
+            // If it looks like a TypeError on null access, add test description
+            if (/TypeError \(null\/undefined/.test(errInfo)) {
               recordResult(relPath, category, "fail", `${errInfo}${desc ? `: ${desc}` : ""}`, timing);
             } else {
               recordResult(relPath, category, "fail", errInfo, timing);
