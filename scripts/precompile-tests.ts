@@ -125,7 +125,7 @@ for (const { filePath, relPath } of allTests) {
         // Cache miss — compile
       }
 
-      const result = await pool.compile(wrapped, 5_000, false, undefined, relPath);
+      const result = await pool.compile(wrapped, 10_000, false, undefined, relPath);
       if (result.ok) {
         await writeFile(cachePath, result.binary);
         await writeFile(metaPath, JSON.stringify({
