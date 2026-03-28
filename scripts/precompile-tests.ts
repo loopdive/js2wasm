@@ -122,6 +122,13 @@ for (const { filePath, relPath, category } of allTests) {
       try {
         await access(cachePath);
         await access(metaPath);
+        // Read cached metadata for compile time and status
+        const cachedMeta = JSON.parse(await readFile(metaPath, "utf-8"));
+        if (cachedMeta.ok === false) {
+          recordCompileResult(relPath, category, "compile_error", cachedMeta.error, cachedMeta.compileMs);
+        } else {
+          recordCompileResult(relPath, category, "compiled", undefined, cachedMeta.compileMs);
+        }
         cached++;
         releaseSlot();
         return;
@@ -139,6 +146,8 @@ for (const { filePath, relPath, category } of allTests) {
           sourceMap: result.sourceMap,
           compileMs: result.compileMs,
         }));
+        // Write "compiled" status — vitest will update with exec result
+        recordCompileResult(relPath, category, "compiled", undefined, result.compileMs);
         compiled++;
       } else {
         await writeFile(cachePath, new Uint8Array(0));
