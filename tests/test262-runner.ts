@@ -147,6 +147,12 @@ export function shouldSkip(
       reason: "TypeScript 5.x: Unicode 16.0.0 identifiers not supported (#832)",
     };
   }
+  if (meta.features?.some((f: string) => /^set-methods/.test(f))) {
+    return {
+      skip: true,
+      reason: "ES2025: Set methods (union, intersection, difference, etc.) (#834)",
+    };
+  }
   if (filePath && /built-ins\/Temporal/.test(filePath)) {
     return {
       skip: true,
