@@ -610,6 +610,8 @@ export interface CodegenContext {
   capturedGlobalsWidened: Set<string>;
   /** Set of class names (local classes compiled to Wasm GC structs) */
   classSet: Set<string>;
+  /** Classes that must throw TypeError at evaluation time (e.g. static 'prototype' method) */
+  classThrowsOnEval: Set<string>;
   /** Map from "ClassName_methodName" → method info for local classes */
   classMethodSet: Set<string>;
   /** Classes inside function bodies whose body compilation is deferred
@@ -942,6 +944,7 @@ export function createCodegenContext(
     capturedGlobals: new Map(),
     capturedGlobalsWidened: new Set(),
     classSet: new Set(),
+    classThrowsOnEval: new Set(),
     classMethodSet: new Set(),
     deferredClassBodies: new Set(),
     classAccessorSet: new Set(),
@@ -10536,6 +10539,11 @@ export function collectClassDeclaration(
       const fullName = `${className}_${methodName}`;
       const isStatic = hasStaticModifier(member);
 
+      // ES2015 14.5.14 step 21: static methods cannot be named 'prototype'
+      if (isStatic && methodName === "prototype") {
+        ctx.classThrowsOnEval.add(className);
+      }
+
       if (isStatic) {
         ctx.staticMethodSet.add(fullName);
       } else {
@@ -10600,6 +10608,15 @@ export function collectClassDeclaration(
 
   // Register getter/setter accessor functions
   for (const member of decl.members) {
+    // ES2015 14.5.14 step 21: static accessors cannot be named 'prototype'
+    if ((ts.isGetAccessorDeclaration(member) || ts.isSetAccessorDeclaration(member)) &&
+        member.name && hasStaticModifier(member)) {
+      const accName = resolveClassMemberName(ctx, member.name);
+      if (accName === "prototype") {
+        ctx.classThrowsOnEval.add(className);
+      }
+    }
+
     if (
       ts.isGetAccessorDeclaration(member) &&
       member.name
