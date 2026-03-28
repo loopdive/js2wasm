@@ -82,6 +82,8 @@ class WasmExecPool {
   private pending: Map<number, { resolve: (r: any) => void; timer: ReturnType<typeof setTimeout> }> = new Map();
   private nextId = 0;
   private workerPath: string;
+  private execCount = 0;
+  private readonly MAX_EXECS = 500; // Restart worker to free Wasm memory
 
   constructor() {
     this.workerPath = join(import.meta.dirname ?? ".", "..", "scripts", "wasm-exec-worker.mjs");
@@ -118,6 +120,15 @@ class WasmExecPool {
   }
 
   run(binary: Uint8Array, imports: any[], stringPool: string[], isRuntimeNegative: boolean, timeoutMs: number): Promise<any> {
+    // Periodically restart worker to free accumulated Wasm memory
+    this.execCount++;
+    if (this.execCount >= this.MAX_EXECS) {
+      this.execCount = 0;
+      this.worker?.terminate();
+      this.worker = null;
+      this.spawn();
+    }
+
     return new Promise((resolve) => {
       const id = this.nextId++;
       const timer = setTimeout(() => {
