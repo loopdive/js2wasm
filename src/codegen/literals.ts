@@ -35,7 +35,7 @@ import {
   isVoidType,
 } from "../checker/type-mapper.js";
 import type { Instr, ValType, WasmFunction, FieldDef, StructTypeDef } from "../ir/types.js";
-import { compileStatement } from "./statements.js";
+import { compileStatement, bodyUsesArguments, emitArgumentsObject } from "./statements.js";
 import { compileExpression, getLine, getCol, VOID_RESULT } from "./shared.js";
 import { promoteAccessorCapturesToGlobals, emitMethodParamDefaults } from "./closures.js";
 import { resolveStructName, patchStructNewForAddedField } from "./expressions.js";
@@ -938,6 +938,14 @@ export function compileObjectLiteralForStruct(
         } else if (ts.isArrayBindingPattern(param.name)) {
           destructureParamArray(ctx, methodFctx, paramLocalIdx, param.name, methodFctxParams[paramLocalIdx]!.type);
         }
+      }
+
+      // Set up `arguments` object if the method body references it (#820).
+      // Object literal methods need an arguments vec struct so that
+      // `arguments.length` and `arguments[n]` work at runtime.
+      if (prop.body && bodyUsesArguments(prop.body)) {
+        const methodParamTypes = methodFctxParams.slice(1).map(p => p.type); // skip 'this'
+        emitArgumentsObject(ctx, methodFctx, methodParamTypes, 1); // paramOffset 1 to skip 'this'
       }
 
       if (isGeneratorMethod && prop.body) {

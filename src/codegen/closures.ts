@@ -1417,7 +1417,7 @@ export function compileArrowAsClosure(
       // (e.g. TS infers `any`->externref but codegen produces f64 for arithmetic).
       // Coerce the expression result to match the declared return type.
       if (exprType.kind !== closureReturnType.kind) {
-        const instrs = coercionInstrs(ctx, exprType, closureReturnType);
+        const instrs = coercionInstrs(ctx, exprType, closureReturnType, liftedFctx);
         if (instrs.length > 0) {
           liftedFctx.body.push(...instrs);
         } else if (closureReturnType.kind === "externref" && exprType.kind === "f64") {
@@ -1732,7 +1732,7 @@ export function compileArrowAsCallback(
       exprBodyHasReturnValue = true;
       // Coerce expression type to declared return type if needed
       if (exprType.kind !== cbReturnType.kind) {
-        const instrs = coercionInstrs(ctx, exprType, cbReturnType);
+        const instrs = coercionInstrs(ctx, exprType, cbReturnType, cbFctx);
         if (instrs.length > 0) {
           cbFctx.body.push(...instrs);
         }

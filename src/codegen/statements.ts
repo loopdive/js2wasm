@@ -6874,7 +6874,7 @@ function getCol(node: ts.Node): number {
  * their own `arguments` binding), but traverses into arrow functions
  * because arrows inherit the enclosing function's `arguments`.
  */
-function bodyUsesArguments(node: ts.Node): boolean {
+export function bodyUsesArguments(node: ts.Node): boolean {
   if (ts.isIdentifier(node) && node.text === "arguments") return true;
   if (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node)) {
     return false;
@@ -6892,7 +6892,7 @@ function bodyUsesArguments(node: ts.Node): boolean {
  * externref, ref) are preserved as externref values.  This matches JS
  * semantics where `arguments[n]` returns the original value.
  */
-function emitArgumentsObject(
+export function emitArgumentsObject(
   ctx: CodegenContext,
   fctx: FunctionContext,
   paramTypes: ValType[],
