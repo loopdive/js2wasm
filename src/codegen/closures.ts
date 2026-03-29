@@ -719,35 +719,6 @@ export function isHostCallbackArgument(node: ts.Node, ctx: CodegenContext): bool
     // as closure calls. For other property accesses, treat as host callback.
     return true;
   }
-  // NewExpression: `new Promise(function() {})` — executor must be JS-callable
-  if (ts.isNewExpression(parent)) {
-    if (!parent.arguments?.some((arg) => arg === node)) return false;
-    return true;
-  }
-  // Property assignment on externref: `obj.prop = function() {}` — must be JS-callable
-  if (ts.isBinaryExpression(parent) && parent.operatorToken.kind === ts.SyntaxKind.EqualsToken && parent.right === node) {
-    if (ts.isPropertyAccessExpression(parent.left)) {
-      const objType = ctx.checker.getTypeAtLocation(parent.left.expression);
-      // If the object is externref-backed (extern class), the function must be JS-callable
-      const sym = objType.getSymbol();
-      if (sym) {
-        const decl = sym.declarations?.[0];
-        if (decl && ts.isClassDeclaration(decl)) {
-          // Check if it's an extern/host class (not user-defined struct)
-          const className = sym.getName();
-          if (ctx.externClassSet?.has(className) || ctx.funcMap.has(`${className}_new`)) {
-            return true;
-          }
-        }
-      }
-      // If the target expression is externref-typed, treat as host callback
-      const targetType = ctx.checker.getTypeAtLocation(parent.left.expression);
-      const targetTypeName = ctx.checker.typeToString(targetType);
-      if (targetTypeName === "Promise" || targetTypeName.startsWith("Promise<")) {
-        return true;
-      }
-    }
-  }
   return false;
 }
 
