@@ -580,13 +580,6 @@ function fixBranchType(
     return 1;
   }
 
-  // i64 → externref: drop + ref.null.extern (lossy but valid — avoids validation error)
-  if ((expectedType.kind === "externref" || expectedType.kind === "ref_extern") && produced === "i64") {
-    body.push({ op: "drop" });
-    body.push({ op: "ref.null.extern" });
-    return 1;
-  }
-
   // ref → f64: drop + f64.const 0 (lossy but valid)
   if (expectedType.kind === "f64" && produced === "ref") {
     body.push({ op: "drop" });
@@ -999,22 +992,8 @@ function callArgCoercionInstrs(
       const actualIdx = (actual as any).typeIdx;
       const expectedIdx = (expected as any).typeIdx;
       if (actualIdx === expectedIdx) return [];
-      // Different struct type indices — insert ref.cast to expected type.
-      // This handles closure struct type mismatches from late index shifting.
-      if (expectedIdx !== undefined) {
-        return [{ op: "ref.cast_null", typeIdx: expectedIdx } as unknown as Instr];
-      }
     } else {
       return [];
-    }
-  }
-
-  // Cross ref/ref_null with different nullability but same or different typeIdx
-  if ((actual.kind === "ref" || actual.kind === "ref_null") &&
-      (expected.kind === "ref" || expected.kind === "ref_null")) {
-    const expectedIdx = (expected as any).typeIdx;
-    if (expectedIdx !== undefined) {
-      return [{ op: "ref.cast_null", typeIdx: expectedIdx } as unknown as Instr];
     }
   }
 
@@ -1285,20 +1264,13 @@ function fixCallArgTypesInBody(
           const coercion = callArgCoercionInstrs(effectiveType, expectedType, boxNumberIdx, unboxNumberIdx);
           if (coercion.length > 0) {
             // After traversing sub-expressions, the backward walk may confuse
-            // sub-expression inputs with call arguments. Only apply
-            // proven-safe coercions in that case; other coercions are
-            // restricted to positions before any consumer has been traversed.
-            const isSafeCoercion = coercion.every(c => {
-              const op = (c as any).op;
-              return op === "extern.convert_any" || op === "any.convert_extern" ||
-                     op === "ref.cast" || op === "ref.cast_null" ||
-                     op === "f64.convert_i32_s" || op === "f64.convert_i64_s" ||
-                     op === "i32.trunc_sat_f64_s" || op === "i32.wrap_i64" ||
-                     op === "i64.extend_i32_s" ||
-                     (op === "call" && boxNumberIdx !== null && (c as any).funcIdx === boxNumberIdx) ||
-                     (op === "call" && unboxNumberIdx !== null && (c as any).funcIdx === unboxNumberIdx);
-            });
-            if (!inSubExpr || isSafeCoercion) {
+            // sub-expression inputs with call arguments. Only apply the
+            // proven-safe ref→externref coercion (extern.convert_any) in
+            // that case; other coercions are restricted to positions before
+            // any consumer has been traversed.
+            const isSafeRefToExtern = coercion.length === 1 &&
+              (coercion[0] as any).op === "extern.convert_any";
+            if (!inSubExpr || isSafeRefToExtern) {
               insertions.push({ afterPos: insertPos, instrs: coercion });
             }
           }

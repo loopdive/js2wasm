@@ -292,74 +292,6 @@ function repairBody(
     i++;
   }
 
-  // Scan for array.get/array.set/array.len where the array ref operand is externref.
-  // array.get pops [array_ref, index], array.set pops [array_ref, index, value],
-  // array.len pops [array_ref]. Walk backwards to find the array ref producer.
-  i = 0;
-  while (i < body.length) {
-    const instr = body[i]!;
-    const isArrayGet = instr.op === "array.get" || instr.op === "array.get_s" || instr.op === "array.get_u";
-    const isArraySet = instr.op === "array.set";
-    const isArrayLen = instr.op === "array.len";
-    if (!isArrayGet && !isArraySet && !isArrayLen) {
-      i++;
-      continue;
-    }
-    const arrayTypeIdx = (instr as { typeIdx: number }).typeIdx;
-    if (arrayTypeIdx === undefined) { i++; continue; }
-
-    // Determine how many values are consumed (need to skip to find the array ref)
-    // array.get: 2 (array_ref, index)  array.set: 3 (array_ref, index, value)  array.len: 1 (array_ref)
-    const consumeCount = isArraySet ? 3 : isArrayLen ? 1 : 2;
-
-    let depth = 0;
-    let refIdx = -1;
-    for (let j = i - 1; j >= 0; j--) {
-      depth += instrStackDelta(body[j]!, mod);
-      if (depth >= consumeCount) {
-        refIdx = j;
-        break;
-      }
-    }
-
-    if (refIdx >= 0) {
-      const refProducer = body[refIdx]!;
-
-      if (refProducer.op === "ref.null.extern") {
-        body[refIdx] = { op: "ref.null", typeIdx: arrayTypeIdx } as Instr;
-        fixed++;
-        i++;
-        continue;
-      }
-
-      if (refProducer.op === "local.get" || refProducer.op === "local.tee") {
-        const idx = (refProducer as { index: number }).index;
-        const localType = localTypes[idx];
-        if (localType && localType.kind === "externref") {
-          body.splice(refIdx + 1, 0,
-            { op: "any.convert_extern" } as unknown as Instr,
-            { op: "ref.cast_null", typeIdx: arrayTypeIdx } as unknown as Instr,
-          );
-          fixed++;
-          i += 3;
-          continue;
-        }
-      }
-
-      // extern.convert_any produces externref from anyref — the original anyref
-      // was likely already the correct ref type. Replace extern.convert_any with
-      // ref.cast_null to get the expected array type directly from the anyref.
-      if (refProducer.op === "extern.convert_any") {
-        body[refIdx] = { op: "ref.cast_null", typeIdx: arrayTypeIdx } as unknown as Instr;
-        fixed++;
-        i++;
-        continue;
-      }
-    }
-
-    i++;
-  }
-
   return fixed;
 }
 
@@ -13099,15 +13031,10 @@ function fixupExternConvertAny(ctx: CodegenContext): void {
 
       if (lastField.type.kind === "ref" || lastField.type.kind === "ref_null") {
         // extern.convert_any produces externref but field expects (ref null N).
-        // The value before extern.convert_any is anyref — replace with ref.cast_null
-        // to cast anyref to the expected (ref null N) type.
-        const fieldTypeIdx = (lastField.type as any).typeIdx;
-        if (fieldTypeIdx !== undefined) {
-          instrs[j] = { op: "ref.cast_null", typeIdx: fieldTypeIdx } as unknown as Instr;
-        } else {
-          instrs.splice(j, 1);
-          j--;
-        }
+        // Replace with nothing (remove extern.convert_any) — the ref type from before
+        // is already correct for the struct field.
+        instrs.splice(j, 1);
+        j--; // re-check this position
       }
     }
 
