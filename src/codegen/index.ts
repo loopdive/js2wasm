@@ -189,6 +189,18 @@ function repairBody(
         i += 4; // skip past local.get + any.convert_extern + ref.cast_null + struct.get
         continue;
       }
+      // Pattern 2c: local.get of wrong ref type → insert ref.cast_null
+      if (localType && (localType.kind === "ref" || localType.kind === "ref_null")) {
+        const localTypeIdx = (localType as any).typeIdx;
+        if (localTypeIdx !== undefined && localTypeIdx !== structTypeIdx) {
+          body.splice(i + 1, 0,
+            { op: "ref.cast_null", typeIdx: structTypeIdx } as unknown as Instr,
+          );
+          fixed++;
+          i += 3; // skip past local.get + ref.cast_null + struct.get
+          continue;
+        }
+      }
     }
 
     // Pattern 2b: local.tee of externref → insert any.convert_extern + ref.cast
@@ -203,6 +215,18 @@ function repairBody(
         fixed++;
         i += 4;
         continue;
+      }
+      // Pattern 2d: local.tee of wrong ref type → insert ref.cast_null
+      if (localType && (localType.kind === "ref" || localType.kind === "ref_null")) {
+        const localTypeIdx = (localType as any).typeIdx;
+        if (localTypeIdx !== undefined && localTypeIdx !== structTypeIdx) {
+          body.splice(i + 1, 0,
+            { op: "ref.cast_null", typeIdx: structTypeIdx } as unknown as Instr,
+          );
+          fixed++;
+          i += 3;
+          continue;
+        }
       }
     }
 
@@ -286,6 +310,86 @@ function repairBody(
           i += 3; // shifted by 2 insertions + advance past struct.set
           continue;
         }
+      }
+    }
+
+    i++;
+  }
+
+  // Scan for array.get/array.set/array.len where the array ref operand is externref.
+  // array.get pops [array_ref, index], array.set pops [array_ref, index, value],
+  // array.len pops [array_ref]. Walk backwards to find the array ref producer.
+  i = 0;
+  while (i < body.length) {
+    const instr = body[i]!;
+    const isArrayGet = instr.op === "array.get" || instr.op === "array.get_s" || instr.op === "array.get_u";
+    const isArraySet = instr.op === "array.set";
+    const isArrayLen = instr.op === "array.len";
+    if (!isArrayGet && !isArraySet && !isArrayLen) {
+      i++;
+      continue;
+    }
+    const arrayTypeIdx = (instr as { typeIdx: number }).typeIdx;
+    if (arrayTypeIdx === undefined) { i++; continue; }
+
+    // Determine how many values are consumed (need to skip to find the array ref)
+    // array.get: 2 (array_ref, index)  array.set: 3 (array_ref, index, value)  array.len: 1 (array_ref)
+    const consumeCount = isArraySet ? 3 : isArrayLen ? 1 : 2;
+
+    let depth = 0;
+    let refIdx = -1;
+    for (let j = i - 1; j >= 0; j--) {
+      depth += instrStackDelta(body[j]!, mod);
+      if (depth >= consumeCount) {
+        refIdx = j;
+        break;
+      }
+    }
+
+    if (refIdx >= 0) {
+      const refProducer = body[refIdx]!;
+
+      if (refProducer.op === "ref.null.extern") {
+        body[refIdx] = { op: "ref.null", typeIdx: arrayTypeIdx } as Instr;
+        fixed++;
+        i++;
+        continue;
+      }
+
+      if (refProducer.op === "local.get" || refProducer.op === "local.tee") {
+        const idx = (refProducer as { index: number }).index;
+        const localType = localTypes[idx];
+        if (localType && localType.kind === "externref") {
+          body.splice(refIdx + 1, 0,
+            { op: "any.convert_extern" } as unknown as Instr,
+            { op: "ref.cast_null", typeIdx: arrayTypeIdx } as unknown as Instr,
+          );
+          fixed++;
+          i += 3;
+          continue;
+        }
+        // Wrong ref type — insert cast
+        if (localType && (localType.kind === "ref" || localType.kind === "ref_null")) {
+          const localTypeIdx = (localType as any).typeIdx;
+          if (localTypeIdx !== undefined && localTypeIdx !== arrayTypeIdx) {
+            body.splice(refIdx + 1, 0,
+              { op: "ref.cast_null", typeIdx: arrayTypeIdx } as unknown as Instr,
+            );
+            fixed++;
+            i += 2;
+            continue;
+          }
+        }
+      }
+
+      // extern.convert_any produces externref from anyref — the original anyref
+      // was likely already the correct ref type. Replace extern.convert_any with
+      // ref.cast_null to get the expected array type directly from the anyref.
+      if (refProducer.op === "extern.convert_any") {
+        body[refIdx] = { op: "ref.cast_null", typeIdx: arrayTypeIdx } as unknown as Instr;
+        fixed++;
+        i++;
+        continue;
       }
     }
 
