@@ -6,8 +6,8 @@ export default defineConfig({
     pool: 'forks',
     poolOptions: {
       forks: {
-        maxForks: parseInt(process.env.TEST262_WORKERS || '3', 10),
-        execArgv: ['--max-old-space-size=4096'],
+        maxForks: parseInt(process.env.TEST262_WORKERS || '1', 10),
+        execArgv: ['--max-old-space-size=2048'],
       },
     },
     testTimeout: 10000, // 10s per test — prevents infinite compilation loops from blocking the run

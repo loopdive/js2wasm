@@ -273,7 +273,11 @@ function stripThirdArg(code: string, fnName: string): string {
       }
       pos++;
     }
-    if (secondCommaPos >= 0 && closeParenPos >= 0) {
+    if (closeParenPos < 0) {
+      // Unmatched paren — append rest of code as-is
+      result += code.slice(idx + fnName.length + 1);
+      i = code.length;
+    } else if (secondCommaPos >= 0) {
       // Include up to 2nd comma, skip to close paren
       result += code.slice(idx + fnName.length + 1, secondCommaPos);
       result += ")";
