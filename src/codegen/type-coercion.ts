@@ -1933,33 +1933,38 @@ export function pushDefaultValue(fctx: FunctionContext, type: ValType, ctx?: Cod
 }
 
 /**
- * Push a sentinel value for a param with an initializer (default value) that is missing (#866).
- * For f64: pushes a unique sNaN bit pattern (0x7FF00000DEADC0DE) that no JS operation produces.
- * The callee detects this via i64.reinterpret_f64 + i64.eq to distinguish from explicit NaN/0.
- * For other types: delegates to pushDefaultValue (ref.null / 0 work as sentinels).
+ * Push the caller-side default for a missing optional parameter (#869).
+ *
+ * For constant defaults (number literal, boolean, null, undefined):
+ *   Emit the constant value directly — no sentinel needed, callee never checks.
+ *
+ * For expression defaults (non-constant initializer):
+ *   Fall back to the sNaN sentinel (0x7FF00000DEADC0DE) for f64 params.
+ *   The callee detects this via i64.reinterpret_f64 + i64.eq and evaluates the expression.
+ *
+ * For params without initializers (just `?`):
+ *   Emit the type's zero value (0, ref.null, etc.).
  */
-export function pushParamSentinel(fctx: FunctionContext, type: ValType, ctx?: CodegenContext): void {
-  if (type.kind === "f64") {
+export function pushParamSentinel(fctx: FunctionContext, type: ValType, ctx?: CodegenContext, optInfo?: OptionalParamInfo): void {
+  // If we have a constant default, emit it directly (#869)
+  if (optInfo?.constantDefault) {
+    const cd = optInfo.constantDefault;
+    if (cd.kind === "f64") {
+      fctx.body.push({ op: "f64.const", value: cd.value });
+    } else {
+      fctx.body.push({ op: "i32.const", value: cd.value });
+    }
+    return;
+  }
+
+  // Expression default or no constant available — use sentinel for f64
+  if (type.kind === "f64" && (optInfo?.hasExpressionDefault ?? true)) {
     // Unique sNaN sentinel: quiet bit (bit 51) clear, custom payload.
     // JS NaN is always 0x7FF8000000000000 (quiet NaN), so this is distinguishable.
     fctx.body.push({ op: "i64.const", value: 0x7FF00000DEADC0DEn } as unknown as Instr);
     fctx.body.push({ op: "f64.reinterpret_i64" } as unknown as Instr);
   } else {
     pushDefaultValue(fctx, type, ctx);
-  }
-}
-
-/**
- * Push the appropriate value for a missing optional argument at a call site (#869).
- * For f64 params with a known constant default, emit the constant directly
- * (no sNaN sentinel needed — callee never checks). For expression defaults or
- * non-f64 types, falls back to pushParamSentinel.
- */
-export function pushCallerDefault(fctx: FunctionContext, opt: OptionalParamInfo, ctx?: CodegenContext): void {
-  if (opt.type.kind === "f64" && opt.constantDefault !== undefined) {
-    fctx.body.push({ op: "f64.const", value: opt.constantDefault });
-  } else {
-    pushParamSentinel(fctx, opt.type, ctx);
   }
 }
 

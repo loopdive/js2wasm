@@ -537,57 +537,80 @@ export interface ExternClassInfo {
 export interface OptionalParamInfo {
   index: number;
   type: ValType;
-  /** For f64 params with constant numeric defaults, the value to inline at call sites.
-   *  When set, call sites emit this value directly instead of the sNaN sentinel (#869). */
-  constantDefault?: number;
+  /** If the default is a compile-time constant, its value is stored here.
+   *  Callers emit this value directly instead of the sNaN sentinel (#869). */
+  constantDefault?: { kind: "f64"; value: number } | { kind: "i32"; value: number };
+  /** True when the default is a non-constant expression (needs callee-side evaluation).
+   *  Callers emit the sNaN sentinel and callee checks + evaluates the expression. */
+  hasExpressionDefault?: boolean;
 }
 
 /**
- * Try to extract a constant numeric value from a parameter initializer expression.
- * Returns the number if the initializer is a compile-time constant, undefined otherwise.
- * Handles: numeric literals, -numeric, NaN, Infinity, -Infinity, true, false, null, undefined.
+ * Extract a compile-time constant from a parameter initializer (#869).
+ * Returns the constant default info if the initializer is a numeric/boolean literal,
+ * undefined/null, or a unary minus on a numeric literal. Returns undefined otherwise.
  */
-export function tryExtractConstantDefault(init: ts.Expression): number | undefined {
-  // Numeric literal: 42, 3.14
-  if (ts.isNumericLiteral(init)) {
-    return parseFloat(init.text);
+export function extractConstantDefault(
+  initializer: ts.Expression,
+  paramType: ValType,
+): OptionalParamInfo["constantDefault"] {
+  if (paramType.kind === "f64") {
+    if (ts.isNumericLiteral(initializer)) {
+      return { kind: "f64", value: Number(initializer.text) };
+    }
+    // true/false → 1/0 in f64 context
+    if (initializer.kind === ts.SyntaxKind.TrueKeyword) {
+      return { kind: "f64", value: 1 };
+    }
+    if (initializer.kind === ts.SyntaxKind.FalseKeyword) {
+      return { kind: "f64", value: 0 };
+    }
+    // undefined → NaN in f64 context
+    if (initializer.kind === ts.SyntaxKind.UndefinedKeyword ||
+        (ts.isIdentifier(initializer) && initializer.text === "undefined")) {
+      return { kind: "f64", value: NaN };
+    }
+    // null → 0 in f64 context
+    if (initializer.kind === ts.SyntaxKind.NullKeyword) {
+      return { kind: "f64", value: 0 };
+    }
+    // Unary minus: -42
+    if (ts.isPrefixUnaryExpression(initializer) &&
+        initializer.operator === ts.SyntaxKind.MinusToken &&
+        ts.isNumericLiteral(initializer.operand)) {
+      return { kind: "f64", value: -Number(initializer.operand.text) };
+    }
+    // Unary plus: +42
+    if (ts.isPrefixUnaryExpression(initializer) &&
+        initializer.operator === ts.SyntaxKind.PlusToken &&
+        ts.isNumericLiteral(initializer.operand)) {
+      return { kind: "f64", value: Number(initializer.operand.text) };
+    }
+    return undefined;
   }
-  // Negative numeric literal: -42
-  if (
-    ts.isPrefixUnaryExpression(init) &&
-    init.operator === ts.SyntaxKind.MinusToken &&
-    ts.isNumericLiteral(init.operand)
-  ) {
-    return -parseFloat(init.operand.text);
+  if (paramType.kind === "i32") {
+    if (ts.isNumericLiteral(initializer)) {
+      return { kind: "i32", value: Number(initializer.text) | 0 };
+    }
+    if (initializer.kind === ts.SyntaxKind.TrueKeyword) {
+      return { kind: "i32", value: 1 };
+    }
+    if (initializer.kind === ts.SyntaxKind.FalseKeyword) {
+      return { kind: "i32", value: 0 };
+    }
+    if (initializer.kind === ts.SyntaxKind.NullKeyword ||
+        initializer.kind === ts.SyntaxKind.UndefinedKeyword ||
+        (ts.isIdentifier(initializer) && initializer.text === "undefined")) {
+      return { kind: "i32", value: 0 };
+    }
+    if (ts.isPrefixUnaryExpression(initializer) &&
+        initializer.operator === ts.SyntaxKind.MinusToken &&
+        ts.isNumericLiteral(initializer.operand)) {
+      return { kind: "i32", value: (-Number(initializer.operand.text)) | 0 };
+    }
+    return undefined;
   }
-  // +numeric literal: +42
-  if (
-    ts.isPrefixUnaryExpression(init) &&
-    init.operator === ts.SyntaxKind.PlusToken &&
-    ts.isNumericLiteral(init.operand)
-  ) {
-    return parseFloat(init.operand.text);
-  }
-  // true/false
-  if (init.kind === ts.SyntaxKind.TrueKeyword) return 1;
-  if (init.kind === ts.SyntaxKind.FalseKeyword) return 0;
-  // null
-  if (init.kind === ts.SyntaxKind.NullKeyword) return 0;
-  // Identifiers: NaN, Infinity, undefined
-  if (ts.isIdentifier(init)) {
-    if (init.text === "NaN") return NaN;
-    if (init.text === "Infinity") return Infinity;
-    if (init.text === "undefined") return NaN; // undefined coerced to f64 is NaN
-  }
-  // -Infinity
-  if (
-    ts.isPrefixUnaryExpression(init) &&
-    init.operator === ts.SyntaxKind.MinusToken &&
-    ts.isIdentifier(init.operand) &&
-    init.operand.text === "Infinity"
-  ) {
-    return -Infinity;
-  }
+  // For ref types (externref, ref_null, etc.), constant defaults not supported yet
   return undefined;
 }
 
@@ -10003,6 +10026,8 @@ function collectExternClass(
 
 /** Types handled natively — skip extern class registration */
 const ERROR_TYPES_SKIP = new Set([
+  "Error", "TypeError", "RangeError", "SyntaxError",
+  "URIError", "EvalError", "ReferenceError",
   "Date",
 ]);
 
@@ -11784,10 +11809,13 @@ function collectDeclarations(
         const param = stmt.parameters[i]!;
         if (param.questionToken || param.initializer) {
           const info: OptionalParamInfo = { index: i, type: params[i]! };
-          // For f64 params with constant defaults, store the value for caller-side insertion (#869)
-          if (params[i]!.kind === "f64" && param.initializer) {
-            const cv = tryExtractConstantDefault(param.initializer);
-            if (cv !== undefined) info.constantDefault = cv;
+          if (param.initializer) {
+            const cd = extractConstantDefault(param.initializer, params[i]!);
+            if (cd) {
+              info.constantDefault = cd;
+            } else {
+              info.hasExpressionDefault = true;
+            }
           }
           optionalParams.push(info);
         }
@@ -14323,12 +14351,16 @@ function compileFunctionBody(
   }
 
   // Emit default-value initialization for parameters with initializers.
-  // For each param with a default value, check if the caller omitted it
-  // (externref → ref.is_null, i32 → i32.eqz, f64 → NaN self-test) and if so
-  // compile the initializer expression and assign it to the param local.
+  // For params with constant defaults (#869), the caller already inlined the value,
+  // so we skip the check. For expression defaults, check if the caller sent a sentinel.
+  const funcOptInfo = ctx.funcOptionalParams.get(func.name);
   for (let i = 0; i < decl.parameters.length; i++) {
     const param = decl.parameters[i]!;
     if (!param.initializer) continue;
+
+    // Skip callee-side check for constant defaults — caller inlined the value (#869)
+    const optEntry = funcOptInfo?.find(o => o.index === i);
+    if (optEntry?.constantDefault) continue;
 
     const paramIdx = i;
     const paramType = params[i]!.type;
