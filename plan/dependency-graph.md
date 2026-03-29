@@ -54,6 +54,12 @@ These are the biggest bang-for-buck issues. Pick from here first.
 | **850** | Object-to-primitive: valueOf/toString not called | **135 FAIL** | **Ready** (HIGH) |
 | **851** | Iterator close protocol not implemented | **147 FAIL** | **Ready** (HIGH) |
 | **854** | Iterator protocol: null next/return/throw methods | **126 FAIL** | **Ready** (HIGH) |
+| **860** | Promise resolver not a function (callback detection) | **180 FAIL** | **Ready** (HIGH) |
+| **862** | Empty error message failures (iterator/destructuring) | **212 FAIL** | **Ready** (MEDIUM) |
+| **863** | decodeURI/encodeURI #0-0 error pattern | **70 FAIL** | **Ready** (LOW) |
+| **864** | WeakMap/WeakSet invalid key errors | **45 FAIL** | **Ready** (LOW) |
+| **865** | Console wrapper for fd_write in JS environments | — | **Ready** (MEDIUM) |
+| **866** | Regression: NaN sentinel + ToPrimitive (71 tests) | **71 FAIL** | **Ready** (CRITICAL) |
 
 ---
 
