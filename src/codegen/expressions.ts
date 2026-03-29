@@ -2123,6 +2123,13 @@ export function compileAssignment(
       // The assignment is a no-op, but the expression evaluates to the RHS value
       return rhsType;
     }
+    // const bindings — assignment throws TypeError at runtime (ES spec 13.15.2)
+    if (fctx.constBindings?.has(name) || ctx.constModuleGlobals.has(name)) {
+      emitThrowString(ctx, fctx, "TypeError: Assignment to constant variable.");
+      // Emit unreachable so the stack is valid after the throw
+      fctx.body.push({ op: "unreachable" } as Instr);
+      return { kind: "f64" };
+    }
     const localIdx = fctx.localMap.get(name);
     if (localIdx !== undefined) {
       // Check if this is a boxed (ref cell) mutable capture
@@ -2281,6 +2288,12 @@ export function compileAssignment(
       return resultType;
     }
     // Check module-level globals
+    // const module globals — assignment throws TypeError (ES spec)
+    if (ctx.constModuleGlobals.has(name)) {
+      emitThrowString(ctx, fctx, "TypeError: Assignment to constant variable.");
+      fctx.body.push({ op: "unreachable" } as Instr);
+      return { kind: "f64" };
+    }
     const moduleIdx = ctx.moduleGlobals.get(name);
     if (moduleIdx !== undefined) {
       const globalDef = ctx.mod.globals[localGlobalIdx(ctx, moduleIdx)];
@@ -5645,6 +5658,13 @@ export function compileCompoundAssignment(
 
   const name = expr.left.text;
 
+  // const bindings — compound assignment throws TypeError (ES spec)
+  if (fctx.constBindings?.has(name) || ctx.constModuleGlobals.has(name)) {
+    emitThrowString(ctx, fctx, "TypeError: Assignment to constant variable.");
+    fctx.body.push({ op: "unreachable" } as Instr);
+    return { kind: "f64" };
+  }
+
   // String += : concat instead of numeric add
   if (op === ts.SyntaxKind.PlusEqualsToken) {
     const leftTsType = ctx.checker.getTypeAtLocation(expr.left);
@@ -7483,6 +7503,12 @@ function compilePrefixUnary(
       // Unwrap parenthesized expressions: ++(x) -> ++x
       const ppOperand = unwrapParens(expr.operand);
       if (ts.isIdentifier(ppOperand)) {
+        // const bindings — ++const throws TypeError (ES spec)
+        if (fctx.constBindings?.has(ppOperand.text) || ctx.constModuleGlobals.has(ppOperand.text)) {
+          emitThrowString(ctx, fctx, "TypeError: Assignment to constant variable.");
+          fctx.body.push({ op: "unreachable" } as Instr);
+          return { kind: "f64" };
+        }
         const idx = fctx.localMap.get(ppOperand.text);
         if (idx !== undefined) {
           const boxedPP = fctx.boxedCaptures?.get(ppOperand.text);
@@ -7700,6 +7726,12 @@ function compilePrefixUnary(
       // Unwrap parenthesized expressions: --(x) -> --x
       const mmOperand = unwrapParens(expr.operand);
       if (ts.isIdentifier(mmOperand)) {
+        // const bindings — --const throws TypeError (ES spec)
+        if (fctx.constBindings?.has(mmOperand.text) || ctx.constModuleGlobals.has(mmOperand.text)) {
+          emitThrowString(ctx, fctx, "TypeError: Assignment to constant variable.");
+          fctx.body.push({ op: "unreachable" } as Instr);
+          return { kind: "f64" };
+        }
         const idx = fctx.localMap.get(mmOperand.text);
         if (idx !== undefined) {
           const boxed = fctx.boxedCaptures?.get(mmOperand.text);
@@ -7936,6 +7968,12 @@ function compilePostfixUnary(
   }
 
   if (ts.isIdentifier(postOperand)) {
+    // const bindings — x++/x-- throws TypeError (ES spec)
+    if (fctx.constBindings?.has(postOperand.text) || ctx.constModuleGlobals.has(postOperand.text)) {
+      emitThrowString(ctx, fctx, "TypeError: Assignment to constant variable.");
+      fctx.body.push({ op: "unreachable" } as Instr);
+      return { kind: "f64" };
+    }
     const idx = fctx.localMap.get(postOperand.text);
     if (idx === undefined) {
       // Check module globals for postfix ++/--

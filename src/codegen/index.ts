@@ -649,6 +649,8 @@ export interface CodegenContext {
   generatorYieldType: Map<string, ValType>;
   /** Map from module-level variable name → global index in mod.globals */
   moduleGlobals: Map<string, number>;
+  /** Set of module-level variable names declared with `const` (#846) */
+  constModuleGlobals: Set<string>;
   /** Module-level variable initializers (compiled into __module_init) */
   moduleInitStatements: ts.Statement[];
   /** Nested function capture info: funcName → list of captures with outer local indices */
@@ -824,6 +826,8 @@ export interface FunctionContext {
   isGenerator?: boolean;
   /** Set of variable names that are read-only bindings (e.g. named function expression name) */
   readOnlyBindings?: Set<string>;
+  /** Set of variable names declared with `const` — assignment throws TypeError at runtime */
+  constBindings?: Set<string>;
   /** Stack of saved body arrays for addUnionImports index shifting */
   savedBodies: Instr[][];
   /** Set of function names successfully hoisted during THIS function body's hoisting pass */
@@ -970,6 +974,7 @@ export function createCodegenContext(
     generatorFunctions: new Set(),
     generatorYieldType: new Map(),
     moduleGlobals: new Map(),
+    constModuleGlobals: new Set(),
     moduleInitStatements: [],
     nestedFuncCaptures: new Map(),
     classParentMap: new Map(),
@@ -11707,6 +11712,7 @@ function collectDeclarations(
       if (hasDeclareModifier(stmt)) continue;
       // Track let/const for TDZ enforcement
       const isLetOrConst = (stmt.declarationList.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const)) !== 0;
+      const isConst = (stmt.declarationList.flags & ts.NodeFlags.Const) !== 0;
       for (const decl of stmt.declarationList.declarations) {
         if (ts.isIdentifier(decl.name)) {
           const varType = ctx.checker.getTypeAtLocation(decl);
@@ -11714,6 +11720,9 @@ function collectDeclarations(
           registerModuleGlobal(decl.name.text, wasmType);
           if (isLetOrConst) {
             ctx.tdzLetConstNames.add(decl.name.text);
+          }
+          if (isConst) {
+            ctx.constModuleGlobals.add(decl.name.text);
           }
         } else if (ts.isObjectBindingPattern(decl.name) || ts.isArrayBindingPattern(decl.name)) {
           registerBindingNames(decl.name);

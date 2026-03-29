@@ -139,4 +139,45 @@ describe('issue-820 null deref', () => {
     console.log('object method args:', ret);
     expect(ret).toBe(1);
   });
+
+  it('static method as value does not crash', async () => {
+    const ret = await runTSNoTrap(`
+      class C {
+        static method(x: number): number { return x + 1; }
+      }
+      export function test(): number {
+        var ref: any = C.method;
+        return ref === null || ref === undefined ? 1 : 0;
+      }
+    `);
+    expect(ret).toBe(1);
+  });
+
+  it('instance method as value does not crash', async () => {
+    const ret = await runTSNoTrap(`
+      class C {
+        method(x: number): number { return x + 1; }
+      }
+      export function test(): number {
+        var c = new C();
+        var ref: any = c.method;
+        return ref === null || ref === undefined ? 1 : 0;
+      }
+    `);
+    expect(ret).toBe(1);
+  });
+
+  it('class expression instance method as value does not crash', async () => {
+    const ret = await runTSNoTrap(`
+      var C = class {
+        method(x: number): number { return x + 1; }
+      };
+      export function test(): number {
+        var c = new C();
+        var ref: any = c.method;
+        return ref === null || ref === undefined ? 1 : 0;
+      }
+    `);
+    expect(ret).toBe(1);
+  });
 });

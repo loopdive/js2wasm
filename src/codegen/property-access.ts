@@ -708,6 +708,31 @@ export function compilePropertyAccess(
         fctx.body.push({ op: "ref.null.extern" });
         return { kind: "externref" };
       }
+      // ClassName.staticMethod — return function reference as externref (#820)
+      // This handles the case where a static method is accessed as a value
+      // (e.g., `var ref = C.method`) rather than called directly.
+      // Note: funcref is NOT a subtype of anyref in the Wasm GC type system,
+      // so we cannot use extern.convert_any to convert ref.func to externref.
+      // Instead, we return null externref as a placeholder — the method reference
+      // is not callable through externref dispatch, but this prevents null deref
+      // traps from the generic property access fallthrough path.
+      if (ctx.staticMethodSet.has(fullName) || ctx.classMethodSet.has(fullName)) {
+        const funcIdx = ctx.funcMap.get(fullName);
+        if (funcIdx !== undefined) {
+          fctx.body.push({ op: "ref.null.extern" });
+          return { kind: "externref" };
+        }
+      }
+      // ClassName.accessor — invoke static getter (#820)
+      const accessorKey = `${objName}_${propName}`;
+      if (ctx.classAccessorSet.has(accessorKey)) {
+        const getterName = `${objName}_get_${propName}`;
+        const funcIdx = ctx.funcMap.get(getterName);
+        if (funcIdx !== undefined) {
+          fctx.body.push({ op: "ref.null.extern" });
+          return { kind: "externref" };
+        }
+      }
     }
   }
 
@@ -1075,6 +1100,24 @@ export function compilePropertyAccess(
         }
         const propType = ctx.checker.getTypeAtLocation(expr);
         return resolveWasmType(ctx, propType);
+      }
+    }
+
+    // Handle instance method accessed as value (not call): obj.method (#820)
+    // Returns null externref to prevent null deref traps from the fallthrough path.
+    if (ctx.classSet.has(typeName)) {
+      const methodFullName = `${typeName}_${propName}`;
+      if (ctx.classMethodSet.has(methodFullName) || ctx.staticMethodSet.has(methodFullName)) {
+        const funcIdx = ctx.funcMap.get(methodFullName);
+        if (funcIdx !== undefined) {
+          // Compile and drop the object expression (for side effects)
+          const objResult = compileExpression(ctx, fctx, expr.expression);
+          if (objResult) {
+            fctx.body.push({ op: "drop" });
+          }
+          fctx.body.push({ op: "ref.null.extern" });
+          return { kind: "externref" };
+        }
       }
     }
 
