@@ -17,7 +17,7 @@ import {
   valTypesMatch,
   VOID_RESULT,
 } from "./expressions.js";
-import type { CodegenContext, FunctionContext } from "./index.js";
+import type { CodegenContext, FunctionContext, OptionalParamInfo } from "./index.js";
 import {
   addFuncType,
   addImport,
@@ -37,6 +37,7 @@ import {
   nativeStringType,
   destructureParamArray,
   destructureParamObject,
+  extractConstantDefault,
   getArrTypeIdxFromVec,
   getLocalType,
   getOrRegisterRefCellType,
@@ -47,7 +48,6 @@ import {
   resolveWasmType,
   pushBody,
   popBody,
-  tryExtractConstantDefault,
 } from "./index.js";
 import { promoteAccessorCapturesToGlobals } from "./closures.js";
 import { resolveComputedKeyExpression } from "./literals.js";
@@ -6505,15 +6505,18 @@ function compileNestedFunctionDeclaration(
   const results: ValType[] = returnType ? [returnType] : [];
 
   // Register optional/default parameters so call sites can supply defaults
-  const optionalParams: { index: number; type: ValType; constantDefault?: number }[] = [];
+  const optionalParams: OptionalParamInfo[] = [];
   for (let i = 0; i < stmt.parameters.length; i++) {
     const param = stmt.parameters[i]!;
     if (param.questionToken || param.initializer) {
-      const info: { index: number; type: ValType; constantDefault?: number } = { index: i, type: paramTypes[i]! };
-      // For f64 params with constant defaults, store value for caller-side insertion (#869)
-      if (paramTypes[i]!.kind === "f64" && param.initializer) {
-        const cv = tryExtractConstantDefault(param.initializer);
-        if (cv !== undefined) info.constantDefault = cv;
+      const info: OptionalParamInfo = { index: i, type: paramTypes[i]! };
+      if (param.initializer) {
+        const cd = extractConstantDefault(param.initializer, paramTypes[i]!);
+        if (cd) {
+          info.constantDefault = cd;
+        } else {
+          info.hasExpressionDefault = true;
+        }
       }
       optionalParams.push(info);
     }
