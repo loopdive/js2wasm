@@ -2931,14 +2931,18 @@ function compileReturnStatement(
     return;
   }
 
-  // Tail call optimization disabled: converting call → return_call without
-  // full stack-type validation causes "not enough arguments on the stack for
-  // return_call" errors (479+ test262 failures).  The return_call instruction
-  // replaces the current frame and requires the callee's full parameter list
-  // on the stack, but late import additions (addUnionImports) can shift
-  // function indices making the call target a different function.
-  // TODO: Re-enable with proper signature validation when the index shifting
-  // issue is resolved.
+  // Tail call optimization: if the last instruction is a call or call_ref,
+  // replace it with return_call / return_call_ref to eliminate stack growth
+  // for recursive and tail-position calls.
+  const lastInstr = fctx.body[fctx.body.length - 1];
+  if (lastInstr && lastInstr.op === "call") {
+    (lastInstr as any).op = "return_call";
+    return; // return_call implicitly returns — no need for explicit return
+  }
+  if (lastInstr && lastInstr.op === "call_ref") {
+    (lastInstr as any).op = "return_call_ref";
+    return; // return_call_ref implicitly returns — no need for explicit return
+  }
 
   fctx.body.push({ op: "return" });
 }
