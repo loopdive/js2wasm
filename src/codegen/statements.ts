@@ -1041,13 +1041,13 @@ export function emitExternrefDefaultCheck(
 ): void {
   const isUndefIdx = ensureExternIsUndefined(ctx, fctx);
   if (isUndefIdx !== undefined) {
-    // Check: ref.is_null(val) || __extern_is_undefined(val)
-    fctx.body.push({ op: "ref.is_null" } as Instr);
-    fctx.body.push({ op: "local.get", index: tmpLocal });
+    // JS destructuring defaults apply only when value === undefined, NOT for null.
+    // In the WebAssembly JS API, JS null maps to ref.null extern, so ref.is_null
+    // would incorrectly trigger defaults for null values. Only use __extern_is_undefined.
+    // The stack already has the externref from local.tee — call directly.
     fctx.body.push({ op: "call", funcIdx: isUndefIdx });
-    fctx.body.push({ op: "i32.or" } as Instr);
   } else {
-    // Fallback: just ref.is_null
+    // Fallback: just ref.is_null (imprecise — treats null as undefined)
     fctx.body.push({ op: "ref.is_null" } as Instr);
   }
 }
@@ -1152,6 +1152,22 @@ export function emitDefaultValueCheck(
 ): void {
   const hintType = targetType ?? fieldType;
 
+  // Build the else branch (value is NOT undefined — use it as-is, with coercion)
+  const buildElseBranch = (tmpField: number): Instr[] => {
+    if (targetType && !valTypesMatch(fieldType, targetType)) {
+      // Need coercion from fieldType to targetType before storing
+      return collectInstrs(fctx, () => {
+        fctx.body.push({ op: "local.get", index: tmpField } as Instr);
+        coerceType(ctx, fctx, fieldType, targetType);
+        fctx.body.push({ op: "local.set", index: localIdx } as Instr);
+      });
+    }
+    return [
+      { op: "local.get", index: tmpField } as Instr,
+      { op: "local.set", index: localIdx } as Instr,
+    ];
+  };
+
   if (fieldType.kind === "externref") {
     const tmpField = allocLocal(fctx, `__dflt_${fctx.locals.length}`, fieldType);
     fctx.body.push({ op: "local.tee", index: tmpField });
@@ -1164,10 +1180,7 @@ export function emitDefaultValueCheck(
       op: "if",
       blockType: { kind: "empty" },
       then: thenInstrs,
-      else: [
-        { op: "local.get", index: tmpField } as Instr,
-        { op: "local.set", index: localIdx } as Instr,
-      ],
+      else: buildElseBranch(tmpField),
     });
   } else if (fieldType.kind === "f64") {
     const tmpField = allocLocal(fctx, `__dflt_${fctx.locals.length}`, fieldType);
@@ -1182,10 +1195,7 @@ export function emitDefaultValueCheck(
       op: "if",
       blockType: { kind: "empty" },
       then: thenInstrs,
-      else: [
-        { op: "local.get", index: tmpField } as Instr,
-        { op: "local.set", index: localIdx } as Instr,
-      ],
+      else: buildElseBranch(tmpField),
     });
   } else if (fieldType.kind === "ref_null" || fieldType.kind === "ref") {
     // Nullable ref types: check ref.is_null for default value
@@ -1200,13 +1210,13 @@ export function emitDefaultValueCheck(
       op: "if",
       blockType: { kind: "empty" },
       then: thenInstrs,
-      else: [
-        { op: "local.get", index: tmpField } as Instr,
-        { op: "local.set", index: localIdx } as Instr,
-      ],
+      else: buildElseBranch(tmpField),
     });
   } else {
     // i32 and other types — no reliable undefined sentinel, just assign
+    if (targetType && !valTypesMatch(fieldType, targetType)) {
+      coerceType(ctx, fctx, fieldType, targetType);
+    }
     fctx.body.push({ op: "local.set", index: localIdx });
   }
 }
@@ -4378,7 +4388,10 @@ function compileForOfAssignDestructuring(
   } else if (ts.isArrayLiteralExpression(expr)) {
     // for ([x, y] of arr) — elem is a vec struct or tuple struct, extract by index
     if (elemType.kind !== "ref" && elemType.kind !== "ref_null") {
-      // Externref elements: cannot destructure — just skip assignments
+      // Externref elements: use __extern_get to extract indexed properties
+      if (elemType.kind === "externref") {
+        compileForOfAssignDestructuringExternref(ctx, fctx, expr, elemLocal);
+      }
       return;
     }
 
@@ -4390,13 +4403,61 @@ function compileForOfAssignDestructuring(
       innerStructDef.fields.length > 0 &&
       innerStructDef.fields.every((f: { name?: string }, idx: number) => f.name === `_${idx}`);
 
+    // Handle 0-field structs (empty tuples like []) — all elements are OOB, apply defaults
+    if (innerStructDef && innerStructDef.kind === "struct" && innerStructDef.fields.length === 0) {
+      for (let i = 0; i < expr.elements.length; i++) {
+        const el = expr.elements[i]!;
+        if (ts.isOmittedExpression(el)) continue;
+        let oobTarget: ts.Expression = el;
+        let oobInit: ts.Expression | undefined;
+        if (ts.isBinaryExpression(el) && el.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+          oobTarget = el.left;
+          oobInit = el.right;
+        }
+        if (oobInit && ts.isIdentifier(oobTarget)) {
+          const oobLocal = fctx.localMap.get(oobTarget.text);
+          if (oobLocal !== undefined) {
+            const oobType = getLocalType(fctx, oobLocal);
+            const instrs = collectInstrs(fctx, () => {
+              compileExpression(ctx, fctx, oobInit!, oobType ?? { kind: "f64" });
+              fctx.body.push({ op: "local.set", index: oobLocal } as Instr);
+            });
+            fctx.body.push(...instrs);
+          }
+        }
+      }
+      return;
+    }
+
     if (isTuple) {
       // Tuple assignment destructuring: extract fields directly
       const tupleFields = (innerStructDef as { fields: { name?: string; type: ValType }[] }).fields;
       for (let i = 0; i < expr.elements.length; i++) {
         const el = expr.elements[i]!;
         if (ts.isOmittedExpression(el)) continue;
-        if (i >= tupleFields.length) break;
+
+        // OOB: tuple has fewer fields than destructuring targets
+        if (i >= tupleFields.length) {
+          // If element has a default initializer, apply it directly (value is undefined/OOB)
+          let oobTarget: ts.Expression = el;
+          let oobInit: ts.Expression | undefined;
+          if (ts.isBinaryExpression(el) && el.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+            oobTarget = el.left;
+            oobInit = el.right;
+          }
+          if (oobInit && ts.isIdentifier(oobTarget)) {
+            const oobLocal = fctx.localMap.get(oobTarget.text);
+            if (oobLocal !== undefined) {
+              const oobType = getLocalType(fctx, oobLocal);
+              const instrs = collectInstrs(fctx, () => {
+                compileExpression(ctx, fctx, oobInit!, oobType ?? { kind: "f64" });
+                fctx.body.push({ op: "local.set", index: oobLocal } as Instr);
+              });
+              fctx.body.push(...instrs);
+            }
+          }
+          continue;
+        }
 
         const fieldType = tupleFields[i]!.type;
 
@@ -4410,18 +4471,32 @@ function compileForOfAssignDestructuring(
           continue;
         }
 
-        if (!ts.isIdentifier(el)) continue;
+        // Handle assignment with default: [v = 10]
+        let targetEl: ts.Expression = el;
+        let defaultInit: ts.Expression | undefined;
+        if (ts.isBinaryExpression(el) && el.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+          targetEl = el.left;
+          defaultInit = el.right;
+        }
 
-        const targetLocal = fctx.localMap.get(el.text);
+        if (!ts.isIdentifier(targetEl)) continue;
+
+        const targetLocal = fctx.localMap.get(targetEl.text);
         if (targetLocal === undefined) continue;
 
         const targetType = getLocalType(fctx, targetLocal);
         fctx.body.push({ op: "local.get", index: elemLocal });
         fctx.body.push({ op: "struct.get", typeIdx: innerVecTypeIdx, fieldIdx: i });
-        if (targetType && !valTypesMatch(fieldType, targetType)) {
-          coerceType(ctx, fctx, fieldType, targetType);
+
+        if (defaultInit) {
+          // Check for undefined and apply default — BEFORE type coercion
+          emitDefaultValueCheck(ctx, fctx, fieldType, targetLocal, defaultInit, targetType ?? undefined);
+        } else {
+          if (targetType && !valTypesMatch(fieldType, targetType)) {
+            coerceType(ctx, fctx, fieldType, targetType);
+          }
+          fctx.body.push({ op: "local.set", index: targetLocal });
         }
-        fctx.body.push({ op: "local.set", index: targetLocal });
       }
     } else {
       // Vec array assignment destructuring
@@ -4446,21 +4521,136 @@ function compileForOfAssignDestructuring(
           continue;
         }
 
-        if (!ts.isIdentifier(el)) continue;
+        // Handle assignment with default: [v = 10]
+        let targetEl: ts.Expression = el;
+        let defaultInit: ts.Expression | undefined;
+        if (ts.isBinaryExpression(el) && el.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+          targetEl = el.left;
+          defaultInit = el.right;
+        }
 
-        const targetLocal = fctx.localMap.get(el.text);
+        if (!ts.isIdentifier(targetEl)) continue;
+
+        const targetLocal = fctx.localMap.get(targetEl.text);
         if (targetLocal === undefined) continue;
 
         const targetType = getLocalType(fctx, targetLocal);
-        fctx.body.push({ op: "local.get", index: elemLocal });
-        fctx.body.push({ op: "struct.get", typeIdx: innerVecTypeIdx, fieldIdx: 1 });
-        fctx.body.push({ op: "i32.const", value: i });
-        emitBoundsCheckedArrayGet(fctx, innerArrTypeIdx, innerElemType);
-        if (targetType && !valTypesMatch(innerElemType, targetType)) {
-          coerceType(ctx, fctx, innerElemType, targetType);
+
+        if (defaultInit && innerElemType.kind === "externref") {
+          // For externref elements with defaults, do explicit bounds check.
+          // OOB produces ref.null.extern (Wasm null) which is indistinguishable from JS null.
+          // We must apply defaults for OOB but NOT for JS null.
+          const arrDataLocal = allocLocal(fctx, `__forof_arr_${fctx.locals.length}`, { kind: "ref", typeIdx: innerArrTypeIdx });
+          fctx.body.push({ op: "local.get", index: elemLocal });
+          fctx.body.push({ op: "struct.get", typeIdx: innerVecTypeIdx, fieldIdx: 1 });
+          fctx.body.push({ op: "local.tee", index: arrDataLocal });
+          fctx.body.push({ op: "array.len" });
+          fctx.body.push({ op: "i32.const", value: i });
+          fctx.body.push({ op: "i32.gt_s" } as Instr); // len > i means in-bounds
+
+          const hintType = targetType ?? innerElemType;
+          // Then branch: in-bounds — get element, check for undefined, apply default if needed
+          const thenInstrs = collectInstrs(fctx, () => {
+            fctx.body.push({ op: "local.get", index: arrDataLocal } as Instr);
+            fctx.body.push({ op: "i32.const", value: i } as Instr);
+            fctx.body.push({ op: "array.get", typeIdx: innerArrTypeIdx } as Instr);
+            emitDefaultValueCheck(ctx, fctx, innerElemType, targetLocal, defaultInit!, targetType ?? undefined);
+          });
+          // Else branch: OOB — apply default directly
+          const elseInstrs = collectInstrs(fctx, () => {
+            compileExpression(ctx, fctx, defaultInit!, hintType);
+            fctx.body.push({ op: "local.set", index: targetLocal } as Instr);
+          });
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: thenInstrs,
+            else: elseInstrs,
+          } as Instr);
+        } else {
+          fctx.body.push({ op: "local.get", index: elemLocal });
+          fctx.body.push({ op: "struct.get", typeIdx: innerVecTypeIdx, fieldIdx: 1 });
+          fctx.body.push({ op: "i32.const", value: i });
+          emitBoundsCheckedArrayGet(fctx, innerArrTypeIdx, innerElemType);
+
+          if (defaultInit) {
+            // Check for undefined and apply default — BEFORE type coercion
+            emitDefaultValueCheck(ctx, fctx, innerElemType, targetLocal, defaultInit, targetType ?? undefined);
+          } else {
+            if (targetType && !valTypesMatch(innerElemType, targetType)) {
+              coerceType(ctx, fctx, innerElemType, targetType);
+            }
+            fctx.body.push({ op: "local.set", index: targetLocal });
+          }
         }
-        fctx.body.push({ op: "local.set", index: targetLocal });
       }
+    }
+  }
+}
+
+/**
+ * Handle assignment destructuring of externref arrays in for-of.
+ * Uses __extern_get(elem, box(i)) for each element, with default value support.
+ */
+function compileForOfAssignDestructuringExternref(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.ArrayLiteralExpression,
+  elemLocal: number,
+): void {
+  // Ensure __extern_get is available
+  let getIdx = ctx.funcMap.get("__extern_get");
+  if (getIdx === undefined) {
+    const importsBefore = ctx.numImportFuncs;
+    const getType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", "__extern_get", { kind: "func", typeIdx: getType });
+    shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+    getIdx = ctx.funcMap.get("__extern_get");
+  }
+  if (getIdx === undefined) return;
+
+  // Ensure __box_number is available
+  let boxIdx = ctx.funcMap.get("__box_number");
+  if (boxIdx === undefined) {
+    const importsBefore = ctx.numImportFuncs;
+    const boxType = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", "__box_number", { kind: "func", typeIdx: boxType });
+    shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+    boxIdx = ctx.funcMap.get("__box_number");
+    getIdx = ctx.funcMap.get("__extern_get");
+  }
+  if (boxIdx === undefined || getIdx === undefined) return;
+
+  for (let i = 0; i < expr.elements.length; i++) {
+    const el = expr.elements[i]!;
+    if (ts.isOmittedExpression(el)) continue;
+    if (ts.isSpreadElement(el)) continue;
+
+    // Handle assignment with default: [v = 10]
+    let targetEl: ts.Expression = el;
+    let defaultInit: ts.Expression | undefined;
+    if (ts.isBinaryExpression(el) && el.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+      targetEl = el.left;
+      defaultInit = el.right;
+    }
+
+    if (!ts.isIdentifier(targetEl)) continue;
+
+    const targetLocal = fctx.localMap.get(targetEl.text);
+    if (targetLocal === undefined) continue;
+
+    // Emit: __extern_get(elem, box(i)) -> externref
+    fctx.body.push({ op: "local.get", index: elemLocal });
+    fctx.body.push({ op: "f64.const", value: i });
+    fctx.body.push({ op: "call", funcIdx: boxIdx });
+    fctx.body.push({ op: "call", funcIdx: getIdx! });
+
+    if (defaultInit) {
+      const targetType = getLocalType(fctx, targetLocal);
+      emitDefaultValueCheck(ctx, fctx, { kind: "externref" }, targetLocal, defaultInit, targetType ?? undefined);
+    } else {
+      // Coerce externref to target local's type and set
+      emitCoercedLocalSet(ctx, fctx, targetLocal, { kind: "externref" });
     }
   }
 }
