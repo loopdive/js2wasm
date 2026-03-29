@@ -934,7 +934,7 @@ function resolveImport(
     case "await":
       return (v: any) => v;
     case "dynamic_import":
-      return (specifier: any) => import(specifier);
+      return (specifier: any) => import(/* @vite-ignore */ specifier);
     case "typeof_check":
       return (v: any) => typeof v === intent.targetType ? 1 : 0;
     case "box":
