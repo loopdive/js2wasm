@@ -1110,10 +1110,12 @@ export function emitNestedBindingDefault(
       });
     }
   } else if (valueType.kind === "f64") {
-    // f64 sentinel: NaN means undefined
+    // Check for sNaN sentinel (0x7FF00000DEADC0DE) — NOT generic NaN.
+    // This distinguishes missing/undefined from explicit NaN arguments (#866).
     fctx.body.push({ op: "local.get", index: nestedLocal });
-    fctx.body.push({ op: "local.get", index: nestedLocal });
-    fctx.body.push({ op: "f64.ne" } as Instr); // NaN != NaN is true
+    fctx.body.push({ op: "i64.reinterpret_f64" } as unknown as Instr);
+    fctx.body.push({ op: "i64.const", value: 0x7FF00000DEADC0DEn } as unknown as Instr);
+    fctx.body.push({ op: "i64.eq" });
     const defaultInstrs = collectInstrs(fctx, () => {
       compileExpression(ctx, fctx, initializer, valueType);
       fctx.body.push({ op: "local.set", index: nestedLocal });
@@ -1185,8 +1187,11 @@ export function emitDefaultValueCheck(
   } else if (fieldType.kind === "f64") {
     const tmpField = allocLocal(fctx, `__dflt_${fctx.locals.length}`, fieldType);
     fctx.body.push({ op: "local.tee", index: tmpField });
-    fctx.body.push({ op: "local.get", index: tmpField });
-    fctx.body.push({ op: "f64.ne" });
+    // Check for sNaN sentinel (0x7FF00000DEADC0DE) — NOT generic NaN.
+    // This distinguishes missing/undefined from explicit NaN arguments (#866).
+    fctx.body.push({ op: "i64.reinterpret_f64" } as unknown as Instr);
+    fctx.body.push({ op: "i64.const", value: 0x7FF00000DEADC0DEn } as unknown as Instr);
+    fctx.body.push({ op: "i64.eq" });
     const thenInstrs = collectInstrs(fctx, () => {
       compileExpression(ctx, fctx, initializer, hintType);
       fctx.body.push({ op: "local.set", index: localIdx } as Instr);
