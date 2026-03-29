@@ -43,6 +43,62 @@ import {
 } from "./expressions.js";
 import { emitBoundsCheckedArrayGet, emitClampIndex, emitClampNonNeg } from "./array-methods.js";
 
+// ── Dummy struct helpers ────────────────────────────────────────────
+
+/**
+ * Emit instructions to create a dummy struct instance for a class.
+ * Used when invoking static/prototype getters that require a `this` parameter
+ * but we don't have a real instance available.
+ */
+function emitDummyStruct(ctx: CodegenContext, fctx: FunctionContext, className: string): boolean {
+  const structTypeIdx = ctx.structMap.get(className);
+  const fields = ctx.structFields.get(className);
+  if (structTypeIdx === undefined || !fields) return false;
+
+  for (const field of fields) {
+    if (field.name === "__tag") {
+      const tag = ctx.classTagMap.get(className) ?? 0;
+      fctx.body.push({ op: "i32.const", value: tag });
+    } else {
+      switch (field.type.kind) {
+        case "f64": fctx.body.push({ op: "f64.const", value: 0 }); break;
+        case "i32": fctx.body.push({ op: "i32.const", value: 0 }); break;
+        case "externref": fctx.body.push({ op: "ref.null.extern" }); break;
+        case "ref_null": fctx.body.push({ op: "ref.null", typeIdx: field.type.typeIdx }); break;
+        case "ref": fctx.body.push({ op: "ref.null", typeIdx: field.type.typeIdx }); break;
+        default: fctx.body.push({ op: "i32.const", value: 0 }); break;
+      }
+    }
+  }
+  fctx.body.push({ op: "struct.new", typeIdx: structTypeIdx });
+  return true;
+}
+
+/**
+ * Emit a call to a getter function, passing a dummy struct instance as `this`.
+ * Returns the getter's return type, or null on failure.
+ */
+function emitGetterCallWithDummy(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  className: string,
+  getterName: string,
+  funcIdx: number,
+): ValType | null {
+  if (!emitDummyStruct(ctx, fctx, className)) return null;
+  fctx.body.push({ op: "call", funcIdx });
+  // Determine return type from the getter's function type
+  const localIdx = funcIdx - ctx.numImportFuncs;
+  const funcDef = localIdx >= 0 ? ctx.mod.functions[localIdx] : undefined;
+  if (funcDef) {
+    const funcType = ctx.mod.types[funcDef.typeIdx];
+    if (funcType?.kind === "func" && funcType.results.length > 0) {
+      return funcType.results[0]!;
+    }
+  }
+  return { kind: "externref" };
+}
+
 // ── Null guard helpers ───────────────────────────────────────────────
 
 /**
@@ -723,14 +779,14 @@ export function compilePropertyAccess(
           return { kind: "externref" };
         }
       }
-      // ClassName.accessor — invoke static getter (#820)
+      // ClassName.accessor — invoke static getter (#848)
       const accessorKey = `${objName}_${propName}`;
       if (ctx.classAccessorSet.has(accessorKey)) {
         const getterName = `${objName}_get_${propName}`;
         const funcIdx = ctx.funcMap.get(getterName);
         if (funcIdx !== undefined) {
-          fctx.body.push({ op: "ref.null.extern" });
-          return { kind: "externref" };
+          const retType = emitGetterCallWithDummy(ctx, fctx, objName, getterName, funcIdx);
+          return retType ?? { kind: "externref" };
         }
       }
     }
@@ -1623,6 +1679,66 @@ export function compileElementAccess(
   // Handle super[expr] — access parent class property via computed key on `this`
   if (expr.expression.kind === ts.SyntaxKind.SuperKeyword) {
     return compileSuperElementAccess(ctx, fctx, expr);
+  }
+
+  // Handle ClassName[key] for static accessors and static properties (#848)
+  // Must intercept before compiling the object expression, since the class
+  // identifier doesn't compile to a useful runtime value for struct access.
+  if (ts.isIdentifier(expr.expression)) {
+    const objName = expr.expression.text;
+    if (ctx.classSet.has(objName)) {
+      const key = resolveComputedKeyExpression(ctx, expr.argumentExpression);
+      if (key !== undefined) {
+        // Check static accessor first
+        const accessorKey = `${objName}_${key}`;
+        if (ctx.classAccessorSet.has(accessorKey)) {
+          const getterName = `${objName}_get_${key}`;
+          const funcIdx = ctx.funcMap.get(getterName);
+          if (funcIdx !== undefined) {
+            const retType = emitGetterCallWithDummy(ctx, fctx, objName, getterName, funcIdx);
+            return retType ?? { kind: "externref" };
+          }
+        }
+        // Check static property global
+        const fullName = `${objName}_${key}`;
+        const globalIdx = ctx.staticProps.get(fullName);
+        if (globalIdx !== undefined) {
+          fctx.body.push({ op: "global.get", index: globalIdx });
+          const globalDef = ctx.mod.globals[localGlobalIdx(ctx, globalIdx)];
+          return globalDef?.type ?? { kind: "f64" };
+        }
+        // Check static method — return externref placeholder
+        if (ctx.staticMethodSet.has(fullName) || ctx.classMethodSet.has(fullName)) {
+          const funcIdx = ctx.funcMap.get(fullName);
+          if (funcIdx !== undefined) {
+            fctx.body.push({ op: "ref.null.extern" });
+            return { kind: "externref" };
+          }
+        }
+      }
+    }
+  }
+
+  // Handle ClassName.prototype[key] for instance accessors (#848)
+  // C.prototype[key] should invoke the instance getter with a dummy this.
+  if (ts.isPropertyAccessExpression(expr.expression) &&
+      ts.isIdentifier(expr.expression.expression) &&
+      expr.expression.name.text === "prototype") {
+    const className = expr.expression.expression.text;
+    if (ctx.classSet.has(className)) {
+      const key = resolveComputedKeyExpression(ctx, expr.argumentExpression);
+      if (key !== undefined) {
+        const accessorKey = `${className}_${key}`;
+        if (ctx.classAccessorSet.has(accessorKey) && !ctx.staticAccessorSet.has(accessorKey)) {
+          const getterName = `${className}_get_${key}`;
+          const funcIdx = ctx.funcMap.get(getterName);
+          if (funcIdx !== undefined) {
+            const retType = emitGetterCallWithDummy(ctx, fctx, className, getterName, funcIdx);
+            return retType ?? { kind: "externref" };
+          }
+        }
+      }
+    }
   }
 
   const objType = compileExpression(ctx, fctx, expr.expression);
