@@ -82,7 +82,38 @@ See [plan/team-setup.md](plan/team-setup.md) for full team config, roles, memory
 
 **Key numbers**: 14GB RAM + 14GB swap (container limit). Max 3 dev teammates + 1 PO + 1 SM on demand. Default 1 test262 fork. All agents use `bypassPermissions` mode + worktree isolation. Work driven by `plan/dependency-graph.md`.
 
-**Roles**: Tech lead (merges, dispatches, runs tests) · Developers (implement fixes) · Product Owner (backlog, priorities, issues) · Scrum Master (retrospectives, process improvement, unblocking). SM spawned after each sprint to review and propose improvements — see `.claude/agents/scrum-master.md`.
+### Roles and interactions
+
+```
+User (stakeholder)
+  ↕ directs priorities, approves plans
+Product Owner
+  ↓ creates issues with problem + acceptance criteria
+Architect
+  ↓ adds implementation specs to issue files (functions, Wasm patterns, edge cases)
+Tech Lead
+  ↓ creates task queue, dispatches to devs, merges (ff-only), runs test262
+Developers (×3)
+  ↑ signal completion → tech lead merges → broadcast rebase
+Scrum Master
+  ↔ reviews sprint → proposes process changes to PO + tech lead
+```
+
+| Role | Agent | Owns | Reads from | Writes to |
+|------|-------|------|-----------|-----------|
+| **Product Owner** | `.claude/agents/product-owner.md` | Backlog, issue creation, priorities | test262 results, dependency graph | `plan/issues/`, `plan/dependency-graph.md` |
+| **Architect** | `.claude/agents/architect.md` | Implementation specs | Issue files, compiler source | `## Implementation Plan` in issue files |
+| **Tech Lead** | (orchestrator) | Task queue, merges, test runs | Issue files, agent messages | `main` branch, task list |
+| **Developer** | `.claude/agents/developer.md` | Code changes in worktree | Issue file + impl spec, checklists | Source code, test files, issue status |
+| **Scrum Master** | `.claude/agents/scrum-master.md` | Process improvement | Done issues, git history, messages | `plan/retrospectives/`, checklist edits (proposed) |
+
+**Interaction flow for a typical issue:**
+1. **PO** analyzes test262 failures → creates issue with problem description and sample tests
+2. **Architect** reads issue + compiler source → writes implementation plan in the issue file
+3. **Tech lead** creates task from the issue → assigns to a dev
+4. **Dev** reads issue (with impl plan) → implements → follows checklists → signals completion
+5. **Tech lead** merges (ff-only) → runs tests → broadcasts rebase
+6. **SM** (end of sprint) reviews all completed issues → proposes process improvements
 
 ### Agent work dispatch
 - Tech lead creates tasks via `TaskCreate` at session start (ordered by priority from `plan/dependency-graph.md`)
