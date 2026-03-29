@@ -50,7 +50,7 @@ Message tester: `"Worktree ready, run equivalence tests for #[issue]"`
    - **Remaining**: what's left to do
    - **Resume**: exact next steps to pick up where you left off
    ```
-5. Message tech lead: `"Work on #N suspended, terminating."`
+5. Message tech lead: `"Suspended #N. Resume info in issue file. Terminating."`
 6. **Terminate** (exit process — a new agent will resume from the issue file later)
 
 ## Key principles
