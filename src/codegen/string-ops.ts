@@ -10,6 +10,7 @@ import { isBooleanType, isVoidType } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";
 import { compileExpression, VOID_RESULT, getLine, getCol } from "./shared.js";
 import { compileNumericBinaryOp, getFuncParamTypes, emitNullCheckThrow } from "./expressions.js";
+import { getOrCreateFuncRefWrapperTypes } from "./closures.js";
 import { pushDefaultValue, pushParamSentinel, emitGuardedRefCast, coerceType } from "./type-coercion.js";
 
 // ── Guarded funcref cast (ref.test before ref.cast to avoid illegal cast traps) ──
@@ -462,10 +463,9 @@ export function compileTaggedTemplateExpression(
 
   // Fallback: general expression tag (call expressions, IIFE, parenthesized, etc.)
   // Use the TypeScript type checker to resolve the tag expression's callable type,
-  // then find a matching registered closure by signature. This handles cases like
-  // getTag()`hello`, (function(s){ return s; })`hello`, etc.
+  // then find or create a matching closure wrapper type. This handles cases like
+  // getTag()`hello`, (function(s){ return s; })`hello`, tag`hello`, etc.
   {
-    // First, try to resolve the tag expression's type and find a matching closure
     const tagTsType = ctx.checker.getTypeAtLocation(expr.tag);
     const callSigs = tagTsType.getCallSignatures?.();
 
@@ -483,23 +483,14 @@ export function compileTaggedTemplateExpression(
         sigParamWasmTypes.push(resolveWasmType(ctx, paramType));
       }
 
-      for (const [typeIdx, info] of ctx.closureInfoByTypeIdx) {
-        if (info.paramTypes.length !== sigParamCount) continue;
-        if (sigRetWasm === null && info.returnType !== null) continue;
-        if (sigRetWasm !== null && info.returnType === null) continue;
-        if (sigRetWasm !== null && info.returnType !== null && sigRetWasm.kind !== info.returnType.kind) continue;
-        let paramsMatch = true;
-        for (let i = 0; i < sigParamCount; i++) {
-          if (sigParamWasmTypes[i]!.kind !== info.paramTypes[i]!.kind) {
-            paramsMatch = false;
-            break;
-          }
-        }
-        if (paramsMatch) {
-          matchedClosureInfo = info;
-          matchedStructTypeIdx = typeIdx;
-          break;
-        }
+      // Eagerly create wrapper types so dispatch works even when no closure
+      // with this exact signature has been compiled yet (same pattern as
+      // compileCallExpression for callable local variables).
+      const resultTypes = sigRetWasm ? [sigRetWasm] : [];
+      const wrapperTypes = getOrCreateFuncRefWrapperTypes(ctx, sigParamWasmTypes, resultTypes);
+      if (wrapperTypes) {
+        matchedClosureInfo = wrapperTypes.closureInfo;
+        matchedStructTypeIdx = wrapperTypes.structTypeIdx;
       }
     }
 

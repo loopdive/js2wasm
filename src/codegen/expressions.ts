@@ -78,7 +78,7 @@ import {
   VOID_RESULT,
   resolveThisStructName,
 } from "./shared.js";
-import { compileStatement, emitTdzCheck, hoistFunctionDeclarations } from "./statements.js";
+import { compileStatement, emitTdzCheck, hoistFunctionDeclarations, emitArgsMappingSync } from "./statements.js";
 import {
   compileNativeStringMethodCall,
   compileStringLiteral,
@@ -2249,12 +2249,15 @@ export function compileAssignment(
           // emitting an invalid local.tee with mismatched types.
           updateLocalType(fctx, localIdx, resultType);
           fctx.body.push({ op: "local.tee", index: localIdx });
+          emitArgsMappingSync(ctx, fctx, localIdx);
           return resultType;
         }
         fctx.body.push({ op: "local.tee", index: localIdx });
+        emitArgsMappingSync(ctx, fctx, localIdx);
         return effectiveLocalType;
       }
       fctx.body.push({ op: "local.tee", index: localIdx });
+      emitArgsMappingSync(ctx, fctx, localIdx);
       return resultType;
     }
     // Check captured globals
@@ -5923,9 +5926,11 @@ export function compileCompoundAssignment(
   if (needsLocalCoerce) {
     coerceType(ctx, fctx, { kind: "f64" }, localType);
     fctx.body.push({ op: "local.tee", index: localIdx });
+    emitArgsMappingSync(ctx, fctx, localIdx);
     return localType;
   }
   fctx.body.push({ op: "local.tee", index: localIdx });
+  emitArgsMappingSync(ctx, fctx, localIdx);
   return { kind: "f64" };
 }
 
@@ -7571,6 +7576,7 @@ function compilePrefixUnary(
             fctx.body.push({ op: "i32.const", value: 1 });
             fctx.body.push({ op: "i32.add" });
             fctx.body.push({ op: "local.tee", index: idx });
+            emitArgsMappingSync(ctx, fctx, idx);
             return { kind: "i32" };
           }
           if (localType?.kind === "externref") {
@@ -7584,6 +7590,7 @@ function compilePrefixUnary(
               funcIdx: ctx.funcMap.get("__box_number")!,
             });
             fctx.body.push({ op: "local.tee", index: idx });
+            emitArgsMappingSync(ctx, fctx, idx);
             return { kind: "externref" };
           }
           // ref/ref_null: struct/array reference — coerce via valueOf, then add 1
@@ -7600,12 +7607,14 @@ function compilePrefixUnary(
             fctx.body.push({ op: "i64.const", value: 1n });
             fctx.body.push({ op: "i64.add" });
             fctx.body.push({ op: "local.tee", index: idx });
+            emitArgsMappingSync(ctx, fctx, idx);
             return { kind: "i64" };
           }
           fctx.body.push({ op: "local.get", index: idx });
           fctx.body.push({ op: "f64.const", value: 1 });
           fctx.body.push({ op: "f64.add" });
           fctx.body.push({ op: "local.tee", index: idx });
+          emitArgsMappingSync(ctx, fctx, idx);
           return { kind: "f64" };
         }
         // Check module globals for prefix ++
@@ -7788,6 +7797,7 @@ function compilePrefixUnary(
             fctx.body.push({ op: "i32.const", value: 1 });
             fctx.body.push({ op: arithOpI32 });
             fctx.body.push({ op: "local.tee", index: idx });
+            emitArgsMappingSync(ctx, fctx, idx);
             return { kind: "i32" };
           }
           if (localType?.kind === "externref") {
@@ -7801,6 +7811,7 @@ function compilePrefixUnary(
               funcIdx: ctx.funcMap.get("__box_number")!,
             });
             fctx.body.push({ op: "local.tee", index: idx });
+            emitArgsMappingSync(ctx, fctx, idx);
             return { kind: "externref" };
           }
           // ref/ref_null: struct/array reference — coerce via valueOf, then sub 1
@@ -7817,12 +7828,14 @@ function compilePrefixUnary(
             fctx.body.push({ op: "i64.const", value: 1n });
             fctx.body.push({ op: isIncrement ? "i64.add" : "i64.sub" } as unknown as Instr);
             fctx.body.push({ op: "local.tee", index: idx });
+            emitArgsMappingSync(ctx, fctx, idx);
             return { kind: "i64" };
           }
           fctx.body.push({ op: "local.get", index: idx });
           fctx.body.push({ op: "f64.const", value: 1 });
           fctx.body.push({ op: arithOp });
           fctx.body.push({ op: "local.tee", index: idx });
+          emitArgsMappingSync(ctx, fctx, idx);
           return { kind: "f64" };
         }
         // Check module globals for prefix --
@@ -8127,6 +8140,7 @@ function compilePostfixUnary(
       fctx.body.push({ op: "i32.const", value: 1 });
       fctx.body.push({ op: arithOpI32 });
       fctx.body.push({ op: "local.set", index: idx });
+      emitArgsMappingSync(ctx, fctx, idx);
       return { kind: "i32" };
     }
 
@@ -8143,6 +8157,7 @@ function compilePostfixUnary(
       addUnionImports(ctx);
       fctx.body.push({ op: "call", funcIdx: ctx.funcMap.get("__box_number")! });
       fctx.body.push({ op: "local.set", index: idx });
+      emitArgsMappingSync(ctx, fctx, idx);
       fctx.body.push({ op: "local.get", index: tmpOld });
       return { kind: "f64" };
     }
@@ -8161,6 +8176,7 @@ function compilePostfixUnary(
       fctx.body.push({ op: "i64.const", value: 1n });
       fctx.body.push({ op: isIncrement ? "i64.add" : "i64.sub" } as unknown as Instr);
       fctx.body.push({ op: "local.set", index: idx });
+      emitArgsMappingSync(ctx, fctx, idx);
       return { kind: "i64" };
     }
 
@@ -8169,6 +8185,7 @@ function compilePostfixUnary(
     fctx.body.push({ op: "f64.const", value: 1 });
     fctx.body.push({ op: arithOp });
     fctx.body.push({ op: "local.set", index: idx });
+    emitArgsMappingSync(ctx, fctx, idx);
     return { kind: "f64" };
   }
 
@@ -11399,7 +11416,10 @@ function compileCallExpression(
           if (recvType !== null && recvType !== VOID_RESULT) {
             fctx.body.push({ op: "drop" });
           }
-          const paramTypes = getFuncParamTypes(ctx, funcIdx);
+          // Re-resolve funcIdx after compiling receiver — late imports during
+          // receiver compilation may have shifted function indices (#839)
+          const resolvedStaticIdx = ctx.funcMap.get(fullName) ?? funcIdx;
+          const paramTypes = getFuncParamTypes(ctx, resolvedStaticIdx);
           const paramCount = paramTypes ? paramTypes.length : expr.arguments.length;
           for (let i = 0; i < expr.arguments.length; i++) {
             if (i < paramCount) {
@@ -11430,6 +11450,8 @@ function compileCallExpression(
         // Push self (the receiver) as first argument, with type hint from method's first param
         const methodParamTypes0 = getFuncParamTypes(ctx, funcIdx);
         let recvType = compileExpression(ctx, fctx, propAccess.expression, methodParamTypes0?.[0]);
+        // Re-resolve funcIdx after compiling receiver — late imports may shift indices (#839)
+        funcIdx = ctx.funcMap.get(fullName) ?? funcIdx;
         // Track whether receiver went through emitGuardedRefCast — if so, null
         // means "wrong struct type" (not genuinely null), so we should NOT throw
         // TypeError on null after cast.

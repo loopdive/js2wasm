@@ -947,6 +947,25 @@ export interface FunctionContext {
    * into the outer locals.
    */
   pendingCallbackWritebacks?: Instr[];
+  /**
+   * Mapped arguments object info for non-strict functions with simple params.
+   * When a named parameter is assigned, the corresponding arguments array slot
+   * must be updated (and vice versa) per ES spec §10.6 mapped arguments.
+   */
+  argumentsMapping?: {
+    /** Local index of the arguments vec struct */
+    argsLocal: number;
+    /** Array type index for array.get/array.set on the data array */
+    arrTypeIdx: number;
+    /** Vec struct type index for struct.get to extract the data array */
+    vecTypeIdx: number;
+    /** Map from param local index → arguments array slot index */
+    paramToSlot: Map<number, number>;
+    /** Param types for boxing to externref */
+    paramTypes: ValType[];
+    /** Offset: number of locals before params (e.g., 1 for 'this' in instance methods) */
+    paramOffset: number;
+  };
 }
 
 /**
@@ -14489,6 +14508,22 @@ function compileFunctionBody(
     fctx.body.push({ op: "local.get", index: arrTmp });
     fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
     fctx.body.push({ op: "local.set", index: argsLocal });
+
+    // Set up mapped arguments: bidirectional sync between named params and arguments[i]
+    const paramToSlot = new Map<number, number>();
+    const paramTypes: ValType[] = [];
+    for (let i = 0; i < params.length; i++) {
+      paramToSlot.set(i, i);
+      paramTypes.push(params[i]!.type);
+    }
+    fctx.argumentsMapping = {
+      argsLocal,
+      arrTypeIdx,
+      vecTypeIdx,
+      paramToSlot,
+      paramTypes,
+      paramOffset: 0,
+    };
   }
 
   if (isGenerator) {
