@@ -25,12 +25,11 @@ Message tester: `"Worktree ready, run equivalence tests for #[issue]"`
 
 ### On completion
 1. Mark your current task as `completed` via `TaskUpdate`
-2. Message tech lead: `"Issue #N complete, branch: issue-N-desc, commit: abc1234"`
-3. Check `TaskList` for the next unowned, unblocked task
-4. If one exists: claim it with `TaskUpdate(owner: "your-name")`, start working
-5. If none available: message tech lead `"No tasks available, ready for assignment"` and wait
+2. Check `TaskList` for the next unowned, unblocked task
+3. If one exists: claim it with `TaskUpdate(owner: "your-name")` and message tech lead: `"Completed #N (commit abc1234). Picking up #M next."`
+4. If none available: message tech lead `"Completed #N (commit abc1234). No tasks available."` and wait
 
-**Do not exit** after completing a task — always check TaskList first.
+**Do not exit** after completing a task — always check TaskList first. Do not wait for tech lead approval to pick up the next task.
 
 ## Key principles
 - **Dual-mode: JS host optional** — prefer Wasm-native implementations; host imports OK as fast path with standalone fallback
