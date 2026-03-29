@@ -72,6 +72,12 @@ TypeScript-to-WebAssembly compiler using WasmGC.
 
 See [plan/team-setup.md](plan/team-setup.md) for full team config, roles, memory budget, communication protocol, and merge lessons. Agent preferences and rules are in `.claude/memory/` (MEMORY.md index).
 
+**Checklists** (read at the right moment, not at spawn time):
+- `plan/session-start-checklist.md` — tech lead reads at session start
+- `plan/pre-commit-checklist.md` — devs read before every git add/commit
+- `plan/pre-completion-checklist.md` — devs read before signaling task completion
+- `plan/pre-merge-checklist.md` — tech lead reads before every merge to main
+
 **IMPORTANT: Always use teammates, not subagents.** Spawn agents via `TeamCreate` + `Agent` with `team_name` parameter. Never use bare `Agent` spawns — subagents can't coordinate, causing OOM from concurrent test runs and duplicate work. Teammates communicate via `SendMessage` to serialize test runs and coordinate on file conflicts.
 
 **Key numbers**: 14GB RAM + 14GB swap (container limit). Max 3 dev teammates + 1 PO on demand. Default 3 test262 forks. All agents use `bypassPermissions` mode + worktree isolation. Work driven by `plan/dependency-graph.md`.

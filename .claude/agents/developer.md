@@ -90,7 +90,8 @@ Message tester: `"Worktree ready, run equivalence tests for #[issue]"`
 2. **Update issue status to `in-progress`** in the issue frontmatter
 3. Check `plan/file-locks.md` for conflicts, add your claim, **broadcast** to other devs
 4. Implement the feature/fix on your branch (`issue-{N}-{short-description}`)
-5. Write tests to `tests/issue-{N}.test.ts` (NOT `equivalence.test.ts`)
+5. **Before every commit**: read `plan/pre-commit-checklist.md` and follow every step. Never `git add -A`. Always verify `pwd` and branch.
+6. Write tests to `tests/issue-{N}.test.ts` (NOT `equivalence.test.ts`)
 6. **Do NOT run vitest or full test suite.** Instead, compile+run your specific target tests:
 ```bash
 npx tsx -e "
