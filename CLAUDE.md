@@ -85,7 +85,7 @@ See [plan/team-setup.md](plan/team-setup.md) for full team config, roles, memory
 ### Controlling agents
 - **Pause**: create a task with `[PAUSE]` in the subject after the current in-progress tasks. Agents stop when they hit it.
 - **Suspend**: send `SUSPEND` to an agent or broadcast `SUSPEND` to all. Agents commit WIP, write `SUSPEND.md` to their worktree with progress and resume instructions, then go idle.
-- **Resume**: spawn a new dev agent in the suspended worktree. The agent should check for `SUSPEND.md` in its worktree and follow the resume instructions there.
+- **Resume**: assign the issue to a dev agent. It checks `.claude/suspended/{N}.md` for the worktree path and resume instructions, then works in the existing worktree.
 - **Shutdown**: send `{"type": "shutdown_request"}` via SendMessage. Agent terminates permanently.
 
 ### Issue completion protocol (tech lead responsibility)
