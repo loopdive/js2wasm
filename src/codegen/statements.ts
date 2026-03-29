@@ -47,6 +47,7 @@ import {
   resolveWasmType,
   pushBody,
   popBody,
+  tryExtractConstantDefault,
 } from "./index.js";
 import { promoteAccessorCapturesToGlobals } from "./closures.js";
 import { resolveComputedKeyExpression } from "./literals.js";
@@ -6504,11 +6505,17 @@ function compileNestedFunctionDeclaration(
   const results: ValType[] = returnType ? [returnType] : [];
 
   // Register optional/default parameters so call sites can supply defaults
-  const optionalParams: { index: number; type: ValType }[] = [];
+  const optionalParams: { index: number; type: ValType; constantDefault?: number }[] = [];
   for (let i = 0; i < stmt.parameters.length; i++) {
     const param = stmt.parameters[i]!;
     if (param.questionToken || param.initializer) {
-      optionalParams.push({ index: i, type: paramTypes[i]! });
+      const info: { index: number; type: ValType; constantDefault?: number } = { index: i, type: paramTypes[i]! };
+      // For f64 params with constant defaults, store value for caller-side insertion (#869)
+      if (paramTypes[i]!.kind === "f64" && param.initializer) {
+        const cv = tryExtractConstantDefault(param.initializer);
+        if (cv !== undefined) info.constantDefault = cv;
+      }
+      optionalParams.push(info);
     }
   }
   if (optionalParams.length > 0) {

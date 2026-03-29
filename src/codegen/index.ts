@@ -537,6 +537,58 @@ export interface ExternClassInfo {
 export interface OptionalParamInfo {
   index: number;
   type: ValType;
+  /** For f64 params with constant numeric defaults, the value to inline at call sites.
+   *  When set, call sites emit this value directly instead of the sNaN sentinel (#869). */
+  constantDefault?: number;
+}
+
+/**
+ * Try to extract a constant numeric value from a parameter initializer expression.
+ * Returns the number if the initializer is a compile-time constant, undefined otherwise.
+ * Handles: numeric literals, -numeric, NaN, Infinity, -Infinity, true, false, null, undefined.
+ */
+export function tryExtractConstantDefault(init: ts.Expression): number | undefined {
+  // Numeric literal: 42, 3.14
+  if (ts.isNumericLiteral(init)) {
+    return parseFloat(init.text);
+  }
+  // Negative numeric literal: -42
+  if (
+    ts.isPrefixUnaryExpression(init) &&
+    init.operator === ts.SyntaxKind.MinusToken &&
+    ts.isNumericLiteral(init.operand)
+  ) {
+    return -parseFloat(init.operand.text);
+  }
+  // +numeric literal: +42
+  if (
+    ts.isPrefixUnaryExpression(init) &&
+    init.operator === ts.SyntaxKind.PlusToken &&
+    ts.isNumericLiteral(init.operand)
+  ) {
+    return parseFloat(init.operand.text);
+  }
+  // true/false
+  if (init.kind === ts.SyntaxKind.TrueKeyword) return 1;
+  if (init.kind === ts.SyntaxKind.FalseKeyword) return 0;
+  // null
+  if (init.kind === ts.SyntaxKind.NullKeyword) return 0;
+  // Identifiers: NaN, Infinity, undefined
+  if (ts.isIdentifier(init)) {
+    if (init.text === "NaN") return NaN;
+    if (init.text === "Infinity") return Infinity;
+    if (init.text === "undefined") return NaN; // undefined coerced to f64 is NaN
+  }
+  // -Infinity
+  if (
+    ts.isPrefixUnaryExpression(init) &&
+    init.operator === ts.SyntaxKind.MinusToken &&
+    ts.isIdentifier(init.operand) &&
+    init.operand.text === "Infinity"
+  ) {
+    return -Infinity;
+  }
+  return undefined;
 }
 
 /** Info about a rest parameter */
@@ -11731,7 +11783,13 @@ function collectDeclarations(
       for (let i = 0; i < stmt.parameters.length; i++) {
         const param = stmt.parameters[i]!;
         if (param.questionToken || param.initializer) {
-          optionalParams.push({ index: i, type: params[i]! });
+          const info: OptionalParamInfo = { index: i, type: params[i]! };
+          // For f64 params with constant defaults, store the value for caller-side insertion (#869)
+          if (params[i]!.kind === "f64" && param.initializer) {
+            const cv = tryExtractConstantDefault(param.initializer);
+            if (cv !== undefined) info.constantDefault = cv;
+          }
+          optionalParams.push(info);
         }
       }
 

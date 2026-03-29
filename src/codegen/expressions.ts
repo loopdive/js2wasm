@@ -94,6 +94,7 @@ import {
   emitSafeExternrefToF64,
   pushDefaultValue,
   pushParamSentinel,
+  pushCallerDefault,
 } from "./type-coercion.js";
 import {
   compileDeleteExpression,
@@ -146,6 +147,7 @@ export {
   defaultValueInstrs,
   pushDefaultValue,
   pushParamSentinel,
+  pushCallerDefault,
 } from "./type-coercion.js";
 export { compileInstanceOf, compileTypeofComparison } from "./typeof-delete.js";
 
@@ -9545,7 +9547,7 @@ function compileCallExpression(
                 const numProvided = remainingArgs.length;
                 for (const opt of optInfo) {
                   if (opt.index >= numProvided) {
-                    pushParamSentinel(fctx, opt.type, ctx);
+                    pushCallerDefault(fctx, opt, ctx);
                   }
                 }
               }
@@ -9642,7 +9644,7 @@ function compileCallExpression(
                 if (optInfo) {
                   for (const opt of optInfo) {
                     if (opt.index >= elements.length)
-                      pushParamSentinel(fctx, opt.type, ctx);
+                      pushCallerDefault(fctx, opt, ctx);
                   }
                 }
                 // Pad any remaining missing arguments with defaults
@@ -9706,7 +9708,7 @@ function compileCallExpression(
             } else {
               const optInfo = ctx.funcOptionalParams.get(funcName);
               if (optInfo) {
-                for (const opt of optInfo) pushParamSentinel(fctx, opt.type, ctx);
+                for (const opt of optInfo) pushCallerDefault(fctx, opt, ctx);
               }
               // Pad any remaining missing arguments with defaults
               const paramTypes = getFuncParamTypes(ctx, funcIdx!);
@@ -12942,7 +12944,7 @@ function compileCallExpression(
         const numProvided = expr.arguments.length;
         for (const opt of optInfo) {
           if (opt.index >= numProvided) {
-            pushParamSentinel(fctx, opt.type, ctx);
+            pushCallerDefault(fctx, opt, ctx);
           }
         }
       }
@@ -13863,7 +13865,7 @@ function compileCallExpression(
           if (optInfo) {
             for (const opt of optInfo) {
               if (opt.index >= allArgs.length) {
-                pushParamSentinel(fctx, opt.type, ctx);
+                pushCallerDefault(fctx, opt, ctx);
               }
             }
           }
