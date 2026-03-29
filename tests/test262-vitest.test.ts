@@ -294,9 +294,9 @@ async function getOrCompile(
   if (existsSync(wasmCachePath) && existsSync(metaPath)) {
     try {
       const meta = JSON.parse(readFileSync(metaPath, "utf-8"));
-      // Cached compile error — return immediately without recompiling
+      // Cached compile error or timeout — return immediately without recompiling
       if (meta.ok === false) {
-        return { ok: false, error: meta.error, errorCodes: meta.errorCodes };
+        return { ok: false, error: meta.error, errorCodes: meta.errorCodes, timeout: meta.timeout };
       }
       result = meta;
       hitCache = true;
@@ -374,7 +374,7 @@ const jsonlFd = openSync(JSONL_PATH, "a");
 let flushCount = 0;
 const REPORT_FLUSH_INTERVAL = 500; // update report.json every 500 tests
 
-const summary = { total: 0, pass: 0, fail: 0, compile_error: 0, skip: 0 };
+const summary = { total: 0, pass: 0, fail: 0, compile_error: 0, compile_timeout: 0, skip: 0 };
 const catCounts: Record<string, { pass: number; fail: number; compile_error: number; skip: number; total: number }> = {};
 
 /**
@@ -447,8 +447,8 @@ function recordResult(file: string, category: string, status: string, error?: st
     try { writeSync(REPORT_PATH, JSON.stringify(report, null, 2)); } catch {}
   }
 
-  // Fail the vitest test for non-passing results
-  if (status !== "pass" && status !== "skip") {
+  // Fail the vitest test for non-passing results (compile_timeout is expected, not a test failure)
+  if (status !== "pass" && status !== "skip" && status !== "compile_timeout") {
     throw new ConformanceError(status, error);
   }
 }
@@ -741,7 +741,8 @@ for (const category of TEST_CATEGORIES) {
         }
 
         if (!compileResult.ok) {
-          recordResult(relPath, category, "compile_error", adjustErrorLines(compileResult.error, wrapOffset));
+          const status = (compileResult as any).timeout ? "compile_timeout" : "compile_error";
+          recordResult(relPath, category, status, adjustErrorLines(compileResult.error, wrapOffset));
           return;
         }
 

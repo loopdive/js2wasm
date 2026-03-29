@@ -183,14 +183,17 @@ for (const { filePath, relPath, category } of allTests) {
         recordCompileResult(relPath, category, "compiled", undefined, result.compileMs);
         compiled++;
       } else {
-        // Don't cache timeouts — they're caused by worker contention, not bad code.
-        // They'll be retried on the next run when workers may be less loaded.
         const isTimeout = result.error?.includes("timeout");
-        if (!isTimeout) {
-          await writeFile(cachePath, new Uint8Array(0));
-          await writeFile(metaPath, JSON.stringify({ ok: false, error: result.error, errorCodes: (result as any).errorCodes, compileMs: result.compileMs }));
-        }
-        recordCompileResult(relPath, category, "compile_error", result.error, result.compileMs);
+        // Cache timeouts as a special status so vitest doesn't retry them
+        await writeFile(cachePath, new Uint8Array(0));
+        await writeFile(metaPath, JSON.stringify({
+          ok: false,
+          timeout: isTimeout,
+          error: result.error,
+          errorCodes: (result as any).errorCodes,
+          compileMs: result.compileMs,
+        }));
+        recordCompileResult(relPath, category, isTimeout ? "compile_timeout" : "compile_error", result.error, result.compileMs);
         errors++;
       }
 

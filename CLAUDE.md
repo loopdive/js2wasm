@@ -74,7 +74,7 @@ See [plan/team-setup.md](plan/team-setup.md) for full team config, roles, memory
 
 **IMPORTANT: Always use teammates, not subagents.** Spawn agents via `TeamCreate` + `Agent` with `team_name` parameter. Never use bare `Agent` spawns — subagents can't coordinate, causing OOM from concurrent test runs and duplicate work. Teammates communicate via `SendMessage` to serialize test runs and coordinate on file conflicts.
 
-**Key numbers**: 20GB RAM + 1GB swap. Max 4 dev teammates + 1 PO on demand. Default 3 test262 forks. All agents use `bypassPermissions` mode + worktree isolation. Work driven by `plan/dependency-graph.md`.
+**Key numbers**: 14GB RAM + 14GB swap (container limit). Max 4 dev teammates + 1 PO on demand. Default 3 test262 forks. All agents use `bypassPermissions` mode + worktree isolation. Work driven by `plan/dependency-graph.md`.
 
 ### Sprint History
 - **Sprint 1**: 550 → 1,509 pass (+174%), 167 fail, 5,700 CE. Issues #138-#173.
