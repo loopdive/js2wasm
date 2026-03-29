@@ -968,6 +968,9 @@ function emitExternDefinePropertyValue(
   const objLocal = allocLocal(fctx, `__defprop_obj_${fctx.locals.length}`, { kind: "externref" });
   fctx.body.push({ op: "local.set", index: objLocal });
 
+  // ES spec 19.1.2.4 step 1: throw TypeError if first arg is null/undefined (standalone mode)
+  emitObjectArgNullGuard(ctx, fctx, objLocal);
+
   // Compile prop key as externref
   const propType = compileExpression(ctx, fctx, propArg, { kind: "externref" });
   if (!propType) {
@@ -1049,6 +1052,11 @@ function emitExternDefinePropertyNoValue(
   if (!objType) return null;
   const objLocal = allocLocal(fctx, `__defprop_obj_${fctx.locals.length}`, objType);
   fctx.body.push({ op: "local.set", index: objLocal });
+
+  // ES spec 19.1.2.4 step 1: throw TypeError if first arg is null/undefined (standalone mode)
+  if (objType.kind === "externref" || objType.kind === "ref_null") {
+    emitObjectArgNullGuard(ctx, fctx, objLocal);
+  }
 
   // Compile prop and save as externref (needed for __defineProperty_value call)
   const propType = compileExpression(ctx, fctx, propArg, { kind: "externref" });

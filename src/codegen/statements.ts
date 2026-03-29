@@ -560,6 +560,12 @@ function compileVariableStatement(
 
     const name = decl.name.text;
 
+    // Track const bindings for runtime enforcement (assignment throws TypeError)
+    if (stmt.declarationList.flags & ts.NodeFlags.Const) {
+      if (!fctx.constBindings) fctx.constBindings = new Set();
+      fctx.constBindings.add(name);
+    }
+
     // Class expression: const C = class { ... } — skip, already handled as class declaration
     if (decl.initializer && ts.isClassExpression(decl.initializer)) {
       continue;
@@ -4459,6 +4465,22 @@ function compileForOfAssignDestructuring(
   }
 }
 
+/** Collect all identifier names from a binding pattern (ObjectBindingPattern or ArrayBindingPattern) */
+function collectBindingNames(pattern: ts.BindingPattern): string[] {
+  const names: string[] = [];
+  for (const element of pattern.elements) {
+    if (ts.isOmittedExpression(element)) continue;
+    if (ts.isBindingElement(element)) {
+      if (ts.isIdentifier(element.name)) {
+        names.push(element.name.text);
+      } else if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
+        names.push(...collectBindingNames(element.name));
+      }
+    }
+  }
+  return names;
+}
+
 function compileForOfStatement(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -4553,6 +4575,11 @@ function compileForOfString(
     const decl = stmt.initializer.declarations[0]!;
     const varName = ts.isIdentifier(decl.name) ? decl.name.text : `__forof_elem_${fctx.locals.length}`;
     elemLocal = allocLocal(fctx, varName, elemType);
+    // Track const bindings — assignment to const in for-of should throw TypeError
+    if ((stmt.initializer.flags & ts.NodeFlags.Const) && ts.isIdentifier(decl.name)) {
+      if (!fctx.constBindings) fctx.constBindings = new Set();
+      fctx.constBindings.add(decl.name.text);
+    }
   } else if (ts.isIdentifier(stmt.initializer)) {
     // Expression form: for (x of str) — x is already declared
     const varName = stmt.initializer.text;
@@ -4772,13 +4799,26 @@ function compileForOfArray(
   let assignDestructExpr: ts.ObjectLiteralExpression | ts.ArrayLiteralExpression | null = null;
   if (ts.isVariableDeclarationList(stmt.initializer)) {
     const decl = stmt.initializer.declarations[0]!;
+    const isConst = !!(stmt.initializer.flags & ts.NodeFlags.Const);
     if (ts.isObjectBindingPattern(decl.name) || ts.isArrayBindingPattern(decl.name)) {
       destructPattern = decl.name;
       // Allocate a temp local to hold the element for destructuring
       elemLocal = allocLocal(fctx, `__forof_elem_${fctx.locals.length}`, elemType);
+      // Track const bindings for all identifiers in the destructuring pattern
+      if (isConst) {
+        collectBindingNames(decl.name).forEach(n => {
+          if (!fctx.constBindings) fctx.constBindings = new Set();
+          fctx.constBindings.add(n);
+        });
+      }
     } else {
       const varName = ts.isIdentifier(decl.name) ? decl.name.text : `__forof_elem_${fctx.locals.length}`;
       elemLocal = allocLocal(fctx, varName, elemType);
+      // Track const bindings — assignment to const in for-of should throw TypeError
+      if (isConst && ts.isIdentifier(decl.name)) {
+        if (!fctx.constBindings) fctx.constBindings = new Set();
+        fctx.constBindings.add(decl.name.text);
+      }
     }
   } else if (ts.isObjectLiteralExpression(stmt.initializer) || ts.isArrayLiteralExpression(stmt.initializer)) {
     // Expression form with destructuring: for ({a, b} of arr) or for ([x, y] of arr)
@@ -5125,12 +5165,23 @@ function compileForOfDirectIterator(
   let assignDestructExprIter: ts.ObjectLiteralExpression | ts.ArrayLiteralExpression | null = null;
   if (ts.isVariableDeclarationList(stmt.initializer)) {
     const decl = stmt.initializer.declarations[0]!;
+    const isConst = !!(stmt.initializer.flags & ts.NodeFlags.Const);
     if (ts.isObjectBindingPattern(decl.name) || ts.isArrayBindingPattern(decl.name)) {
       destructPatternIter = decl.name;
       elemLocal = allocLocal(fctx, `__forit_elem_${fctx.locals.length}`, elemType);
+      if (isConst) {
+        collectBindingNames(decl.name).forEach(n => {
+          if (!fctx.constBindings) fctx.constBindings = new Set();
+          fctx.constBindings.add(n);
+        });
+      }
     } else {
       const varName = ts.isIdentifier(decl.name) ? decl.name.text : `__forit_elem_${fctx.locals.length}`;
       elemLocal = allocLocal(fctx, varName, elemType);
+      if (isConst && ts.isIdentifier(decl.name)) {
+        if (!fctx.constBindings) fctx.constBindings = new Set();
+        fctx.constBindings.add(decl.name.text);
+      }
     }
   } else if (ts.isObjectLiteralExpression(stmt.initializer) || ts.isArrayLiteralExpression(stmt.initializer)) {
     assignDestructExprIter = stmt.initializer;
@@ -5452,12 +5503,23 @@ function compileForOfIterator(
   let assignDestructExprIter: ts.ObjectLiteralExpression | ts.ArrayLiteralExpression | null = null;
   if (ts.isVariableDeclarationList(stmt.initializer)) {
     const decl = stmt.initializer.declarations[0]!;
+    const isConst = !!(stmt.initializer.flags & ts.NodeFlags.Const);
     if (ts.isObjectBindingPattern(decl.name) || ts.isArrayBindingPattern(decl.name)) {
       destructPatternIter = decl.name;
       elemLocal = allocLocal(fctx, `__forof_elem_${fctx.locals.length}`, elemType);
+      if (isConst) {
+        collectBindingNames(decl.name).forEach(n => {
+          if (!fctx.constBindings) fctx.constBindings = new Set();
+          fctx.constBindings.add(n);
+        });
+      }
     } else {
       const varName = ts.isIdentifier(decl.name) ? decl.name.text : `__forof_elem_${fctx.locals.length}`;
       elemLocal = allocLocal(fctx, varName, elemType);
+      if (isConst && ts.isIdentifier(decl.name)) {
+        if (!fctx.constBindings) fctx.constBindings = new Set();
+        fctx.constBindings.add(decl.name.text);
+      }
     }
   } else if (ts.isObjectLiteralExpression(stmt.initializer) || ts.isArrayLiteralExpression(stmt.initializer)) {
     // Expression form with destructuring: for ({a, b} of arr) or for ([x, y] of arr)
