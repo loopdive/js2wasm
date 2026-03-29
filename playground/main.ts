@@ -2436,6 +2436,7 @@ async function runOnly() {
     usesDom ? (previewPanel as HTMLElement) : undefined,
   );
 
+  let wasmExports: Record<string, any> | undefined;
   try {
     const { instance, nativeBuiltins } = await instantiateWasm(
       result.binary as BufferSource,
@@ -2443,10 +2444,10 @@ async function runOnly() {
     );
     console.log(`[ts2wasm] wasm:js-string → ${nativeBuiltins ? "native builtins" : "JS polyfill"}`);
 
-    const exports = instance.exports as Record<string, Function>;
-    setExports(exports);
-    if (typeof exports.main === "function") {
-      const returnValue = exports.main();
+    wasmExports = instance.exports as Record<string, any>;
+    setExports(wasmExports as Record<string, Function>);
+    if (typeof wasmExports.main === "function") {
+      const returnValue = wasmExports.main();
       if (returnValue !== undefined) logs.push(`→ ${returnValue}`);
     }
 
@@ -2458,12 +2459,31 @@ async function runOnly() {
       clearInterval(autoCycleTimer);
       autoCycleTimer = null;
     }
-    if (typeof exports.nextDemo === "function") {
-      const nd = exports.nextDemo;
+    if (typeof wasmExports.nextDemo === "function") {
+      const nd = wasmExports.nextDemo;
       autoCycleTimer = setInterval(() => nd(), 8000);
     }
   } catch (e) {
-    errorsPre.textContent = `Runtime: ${e instanceof Error ? e.message : String(e)}`;
+    let msg: string;
+    if (e instanceof WebAssembly.Exception) {
+      // Extract exception payload via __exn_tag export
+      const tag = wasmExports?.__exn_tag;
+      if (tag) {
+        try {
+          const payload = e.getArg(tag, 0);
+          msg = typeof payload === "string" ? payload :
+                payload?.message ? String(payload.message) :
+                String(payload);
+        } catch {
+          msg = String(e);
+        }
+      } else {
+        msg = String(e);
+      }
+    } else {
+      msg = e instanceof Error ? e.message : String(e);
+    }
+    errorsPre.textContent = `Runtime: ${msg}`;
     showOutputPanel("errors");
   }
 }
