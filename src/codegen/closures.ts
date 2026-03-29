@@ -763,6 +763,20 @@ export function isHostCallbackArgument(node: ts.Node, ctx: CodegenContext): bool
     // as closure calls. For other property accesses, treat as host callback.
     return true;
   }
+  // NewExpression: `new Promise(executor)`, `new Map(comparator)`, etc.
+  // Function args to constructors of extern classes need to be JS-callable.
+  if (ts.isNewExpression(parent)) {
+    if (!parent.arguments?.some((arg) => arg === node)) return false;
+    // Check if the constructor is a user-defined class — if so, NOT a host callback
+    if (ts.isIdentifier(parent.expression)) {
+      const ctorName = parent.expression.text;
+      const newFuncIdx = ctx.funcMap.get(`${ctorName}_new`);
+      if (newFuncIdx !== undefined && newFuncIdx >= ctx.numImportFuncs) {
+        return false;
+      }
+    }
+    return true;
+  }
   return false;
 }
 
