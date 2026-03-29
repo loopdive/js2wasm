@@ -1,31 +1,8 @@
 import ts from "typescript";
-
-// Node.js modules — loaded conditionally to support browser environments.
-// In browser, readLibFile() returns "" but callers can pre-populate the
-// LIB_FILES cache via preloadLibFiles() before any compilation.
-let _readFileSync: ((path: string, encoding: string) => string) | undefined;
-let _dirname: ((path: string) => string) | undefined;
-let _join: ((...paths: string[]) => string) | undefined;
-let _createRequire: ((filename: string | URL) => NodeRequire) | undefined;
-let _fileURLToPath: ((url: string | URL) => string) | undefined;
-
-// Eagerly attempt to load Node builtins. In browser builds (e.g. Vite),
-// these will throw and the variables stay undefined.
-try {
-  // Use eval to hide from static bundler analysis
-  const _fs = (0, eval)('require("fs")');
-  _readFileSync = _fs.readFileSync;
-  const _path = (0, eval)('require("path")');
-  _dirname = _path.dirname;
-  _join = _path.join;
-  const _mod = (0, eval)('require("module")');
-  _createRequire = _mod.createRequire;
-  const _url = (0, eval)('require("url")');
-  _fileURLToPath = _url.fileURLToPath;
-} catch {
-  // Running in browser — Node builtins unavailable.
-  // Callers must use preloadLibFiles() before compiling.
-}
+import { readFileSync } from "fs";
+import { dirname, join } from "path";
+import { createRequire } from "module";
+import { fileURLToPath } from "url";
 // Custom type declarations not found in TS lib files
 // All lib types now loaded from the typescript package at runtime.
 // No custom lib imports needed — lib: ["es2021", "dom"] in compilerOptions
@@ -45,23 +22,19 @@ export interface TypedAST {
 let _tsLibDir: string | undefined;
 function getTsLibDir(): string {
   if (_tsLibDir === undefined) {
-    if (!_createRequire || !_dirname) {
-      _tsLibDir = "";
-      return _tsLibDir;
-    }
     try {
       // Use createRequire to resolve the typescript package location
       // This works in both CJS and ESM contexts
-      const esmRequire = _createRequire(
+      const esmRequire = createRequire(
         typeof __filename !== "undefined"
           ? __filename
-          : _fileURLToPath!(import.meta.url),
+          : fileURLToPath(import.meta.url),
       );
-      _tsLibDir = _dirname(esmRequire.resolve("typescript/lib/lib.d.ts"));
+      _tsLibDir = dirname(esmRequire.resolve("typescript/lib/lib.d.ts"));
     } catch {
       try {
         // Fallback: try CJS require
-        _tsLibDir = _dirname!(require.resolve("typescript/lib/lib.d.ts"));
+        _tsLibDir = dirname(require.resolve("typescript/lib/lib.d.ts"));
       } catch {
         _tsLibDir = "";
       }
@@ -75,9 +48,8 @@ function getTsLibDir(): string {
  * Returns empty string if the file cannot be found (e.g. browser environment).
  */
 function readLibFile(name: string): string {
-  if (!_readFileSync || !_join) return "";
   try {
-    return _readFileSync(_join(getTsLibDir(), name), "utf-8");
+    return readFileSync(join(getTsLibDir(), name), "utf-8");
   } catch {
     return "";
   }
@@ -85,20 +57,6 @@ function readLibFile(name: string): string {
 
 /** Lazily-populated cache of lib file contents */
 const LIB_FILES: Record<string, string> = {};
-
-/**
- * Pre-populate the lib file cache. Call this before compiling in environments
- * where `fs` is unavailable (e.g. browser). Each entry maps a lib file name
- * (e.g. "lib.es5.d.ts") to its full text content.
- *
- * If the composite "lib.d.ts" entry is not provided, it will be assembled
- * automatically from the individual lib files on first access.
- */
-export function preloadLibFiles(files: Record<string, string>): void {
-  for (const [name, content] of Object.entries(files)) {
-    LIB_FILES[name] = content;
-  }
-}
 
 /** Names of lib files that TS ships and we serve at runtime */
 const TS_LIB_NAMES = new Set([
@@ -523,8 +481,7 @@ export function analyzeFiles(
   entryPath: string,
   analyzeOptions?: AnalyzeOptions,
 ): MultiTypedAST {
-  // eslint-disable-next-line no-eval -- hide from Vite bundler analysis
-  const pathMod = (0, eval)('require("path")') as typeof import("path");
+  const pathMod = require("path") as typeof import("path");
   const resolvedEntry = pathMod.resolve(entryPath);
 
   const compilerOptions: ts.CompilerOptions = {

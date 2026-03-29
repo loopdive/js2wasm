@@ -23,7 +23,7 @@ These are the biggest bang-for-buck issues. Pick from here first.
   ├── coordinates with #825 (null_deref umbrella)
   └── coordinates with #826 (illegal_cast umbrella)
 
-#846 (assert.throws not thrown -- 3,265 FAIL)
+#846 (assert.throws not thrown -- 2,799 FAIL)
   ├── coordinates with #733 (RangeError validation)
   └── coordinates with #856 (wrong error type)
 
@@ -33,29 +33,27 @@ These are the biggest bang-for-buck issues. Pick from here first.
 #847 (for-of destructuring wrong values -- 660 FAIL)
   └── coordinates with #851 (iterator close protocol)
 
-#822 (Wasm type mismatch CE -- 1,069 CE) -- independent
-#839 (return_call stack/type mismatch -- 120 CE) -- independent
-#824 (compilation timeouts -- 302 CE) -- independent
-#860 (Promise resolver not a function -- 180 FAIL) -- independent
+#822 (Wasm type mismatch CE -- 907 CE) -- independent
+#839 (return_call stack/type mismatch -- 158 CE) -- independent
+#824 (compilation timeouts -- 548 CE) -- independent
 ```
 
 | #   | Title | Impact | Ready? |
 |-----|-------|--------|--------|
 | **852** | Destructuring params: null_deref + illegal_cast | **1,525 FAIL** | **Ready** (CRITICAL) |
-| **846** | assert.throws not thrown for invalid built-in args | **3,265 FAIL** | **Ready** (CRITICAL) |
-| **822** | Wasm type mismatch compile errors (all sub-patterns) | **1,069 CE** | **Ready** (HIGH) |
+| **846** | assert.throws not thrown for invalid built-in args | **2,799 FAIL** | **Ready** (CRITICAL) |
+| **822** | Wasm type mismatch compile errors (all sub-patterns) | **907 CE** | **Ready** (HIGH) |
 | **848** | Class computed property / accessor correctness | **1,015 FAIL** | **Ready** (HIGH) |
 | **847** | for-await-of / for-of destructuring wrong values | **660 FAIL** | **Ready** (HIGH) |
-| **860** | Promise resolver not a function (callback detection) | **180 FAIL** | **Ready** (HIGH) |
-| **839** | return_call stack args / type mismatch in constructors | **120 CE** | **Ready** (HIGH) |
-| **824** | Compilation timeouts (20s limit) | **302 CE** | **Ready** (HIGH) |
+| **839** | return_call stack args / type mismatch in constructors | **158 CE** | **Ready** (HIGH) |
+| **824** | Compilation timeouts (10s limit) | **548 CE** | **Ready** (HIGH) |
 | **827** | Array callback methods: "fn is not a function" | **243 CE** | **Ready** (HIGH) |
 | **857** | wasm_compile: "fn is not a function" Array callbacks | **247 CE** | **Ready** (HIGH, coordinates #827) |
-| **825** | Null dereference failures (sub of #820) | **1,077 FAIL** | **Ready** (HIGH, coordinates #852) |
-| **826** | Illegal cast failures (sub of #820) | **1,261 FAIL** | **Ready** (HIGH, coordinates #852) |
-| **850** | Object-to-primitive: valueOf/toString not called | **112 FAIL** | **Ready** (HIGH) |
-| **851** | Iterator close protocol not implemented | **147 FAIL** | **Ready** (IN-PROGRESS) |
-| **854** | Iterator protocol: null next/return/throw methods | **72 FAIL** | **Ready** (HIGH) |
+| **825** | Null dereference failures (sub of #820) | **1,081 FAIL** | **Ready** (HIGH, coordinates #852) |
+| **826** | Illegal cast failures (sub of #820) | **1,294 FAIL** | **Ready** (HIGH, coordinates #852) |
+| **850** | Object-to-primitive: valueOf/toString not called | **135 FAIL** | **Ready** (HIGH) |
+| **851** | Iterator close protocol not implemented | **147 FAIL** | **Ready** (HIGH) |
+| **854** | Iterator protocol: null next/return/throw methods | **126 FAIL** | **Ready** (HIGH) |
 
 ---
 
@@ -63,8 +61,8 @@ These are the biggest bang-for-buck issues. Pick from here first.
 
 | #   | Title | Impact | Notes |
 |-----|-------|--------|-------|
-| 820 | TypeError / null dereference failures | 8,475 FAIL | Sub-issues: #825, #826, #852, #854 |
-| 779 | Assert failures: wrong values | 10,390 FAIL | Sub-issues: #846, #847, #848, #849, #850, #855, #856 |
+| 820 | TypeError / null dereference failures | 6,077 FAIL | Sub-issues: #825, #826, #852, #854 |
+| 779 | Assert failures: wrong values | 10,099 FAIL | Sub-issues: #846, #847, #848, #849, #850, #855, #856 |
 | 786 | Multi-assertion failures (returned N > 2) | 2,142 FAIL | In-progress |
 | 696 | Classify "other fail" runtime errors | 4,649 FAIL | Analysis |
 
@@ -76,16 +74,16 @@ All independent -- can run in parallel (different codegen paths).
 
 | #   | Title | Impact | Ready? |
 |-----|-------|--------|--------|
-| 822 | Wasm type mismatch compile errors | **1,069 CE** | **Ready** |
-| 839 | return_call stack args / type mismatch | **120 CE** | **Ready** |
-| 828 | Unexpected undefined AST node in compileExpression | **154 CE** | **Ready** |
-| 829 | Unsupported assignment target compile errors | **10 CE** | **Ready** |
-| 845 | Misc CE: object literals, RegExp-on-X, for-in/of edges | **61 CE** | **Ready** |
-| 844 | Unsupported new expression for built-in classes | **88 CE** | **Ready** |
-| 840 | Array concat/push/splice 0-arg support | **28 CE** | **Ready** |
-| 835 | Unknown extern class: Error types | **34 CE** | **Ready** |
-| 836 | Tagged templates with non-PropertyAccess tags | **21 CE** | **Ready** |
-| 843 | super keyword in object literals and edge cases | **21 CE** | **Ready** |
+| 822 | Wasm type mismatch compile errors | **907 CE** | **Ready** |
+| 839 | return_call stack args / type mismatch | **158 CE** | **Ready** |
+| 828 | Unexpected undefined AST node in compileExpression | **149 CE** | **Ready** |
+| 829 | Unsupported assignment target compile errors | **141 CE** | **Ready** |
+| 845 | Misc CE: object literals, RegExp-on-X, for-in/of edges | **340 CE** | **Ready** |
+| 844 | Unsupported new expression for built-in classes | **85 CE** | **Ready** |
+| 840 | Array concat/push/splice 0-arg support | **31 CE** | **Ready** |
+| 835 | Unknown extern class: Error types | **32 CE** | **Ready** |
+| 836 | Tagged templates with non-PropertyAccess tags | **20 CE** | **Ready** |
+| 843 | super keyword in object literals and edge cases | **20 CE** | **Ready** |
 | 842 | new Array() with non-literal/spread args | **14 CE** | **Ready** |
 | 831 | Negative test gaps: expected SyntaxError but compiled | **242 FAIL** | **Ready** |
 | 764 | Immutable global assignment error | **240 CE** | **Ready** |
@@ -107,15 +105,11 @@ All independent -- can run in parallel (different codegen paths).
 
 | #   | Title | Impact | Ready? |
 |-----|-------|--------|--------|
-| 862 | Empty error message failures (iterator/destructuring) | **212 FAIL** | **Ready** |
-| 860 | Promise resolver not a function (callback detection) | **180 FAIL** | **Ready** |
 | 849 | Mapped arguments object sync with named params | **200 FAIL** | **Ready** |
 | 855 | Promise resolution and async error handling | **210 FAIL** | **Ready** |
-| 856 | Expected TypeError but got wrong error type | **154 FAIL** | **Ready** |
-| 858 | Worker/timeout exits and eval-code null deref | **79 FAIL** | **Ready** |
-| 863 | decodeURI/encodeURI #0-0 error pattern | **70 FAIL** | **Ready** |
-| 853 | WebAssembly objects are opaque (for-in/Object.create) | **53 FAIL** | **Ready** |
-| 864 | WeakMap/WeakSet invalid key errors | **45 FAIL** | **Ready** |
+| 856 | Expected TypeError but got wrong error type | **136 FAIL** | **Ready** |
+| 858 | Worker/timeout exits and eval-code null deref | **182 FAIL** | **Ready** |
+| 853 | WebAssembly objects are opaque (for-in/Object.create) | **58 FAIL** | **Ready** |
 | 737 | Undefined-handling edge cases | 276 FAIL | **Ready** |
 | 778 | Illegal cast errors (ref.cast wrong type) | 135 FAIL | **Ready** |
 | 821 | BindingElement null guard over-triggering | 537 FAIL | **Review** |
@@ -149,8 +143,8 @@ All independent -- can run in parallel (different codegen paths).
 | #   | Title | Impact | Ready? |
 |-----|-------|--------|--------|
 | 766 | Symbol.iterator protocol for custom iterables | ~500 FAIL | **Ready** |
-| 851 | Iterator close protocol not implemented | **147 FAIL** | **In-progress** |
-| 854 | Iterator protocol: null next/return/throw methods | **72 FAIL** | **Ready** |
+| 851 | Iterator close protocol not implemented | **147 FAIL** | **Ready** |
+| 854 | Iterator protocol: null next/return/throw methods | **126 FAIL** | **Ready** |
 | 680 | Pure Wasm generators (state machines) | Eliminates 10 host imports | **Ready** |
 | 681 | Pure Wasm iterators (struct-based) | Eliminates 5 host imports | **Ready** |
 | 762 | Generator .next() argument handling | ~50 FAIL | Blocked by #680 |
@@ -245,7 +239,7 @@ All independent -- low priority, can be picked up opportunistically.
 
 | #   | Title | Impact | Ready? |
 |-----|-------|--------|--------|
-| 824 | Compilation timeouts (20s limit) | **302 CE** | **Ready** |
+| 824 | Compilation timeouts (10s limit) | **548 CE** | **Ready** |
 | 687 | Live-streaming report with run selector | Developer UX | **Ready** |
 | 699 | Shared compiler pool for test262 | Perf | **Ready** |
 | 700 | Reuse ts.CompilerHost across compilations | 25% speedup | Blocked by #699 |

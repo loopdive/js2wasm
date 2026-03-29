@@ -559,12 +559,6 @@ function compileVariableStatement(
 
     const name = decl.name.text;
 
-    // Track const bindings for runtime assignment checks (#846)
-    if (stmt.declarationList.flags & ts.NodeFlags.Const) {
-      if (!fctx.constBindings) fctx.constBindings = new Set();
-      fctx.constBindings.add(name);
-    }
-
     // Class expression: const C = class { ... } — skip, already handled as class declaration
     if (decl.initializer && ts.isClassExpression(decl.initializer)) {
       continue;
@@ -2923,49 +2917,15 @@ function compileReturnStatement(
   // Tail call optimization: if the last instruction is a call or call_ref,
   // replace it with return_call / return_call_ref to eliminate stack growth
   // for recursive and tail-position calls.
-  // Safety: validate that the callee's signature is compatible with
-  // return_call semantics. return_call requires the callee's return type
-  // to match the caller's return type (#822 — 301 wasm type errors).
   const lastInstr = fctx.body[fctx.body.length - 1];
   if (lastInstr && lastInstr.op === "call") {
-    const calleeFuncIdx = (lastInstr as any).funcIdx as number;
-    // Look up the callee's function type to validate compatibility
-    const numFuncImports = ctx.mod.imports.filter((imp: any) => imp.desc?.kind === "func").length;
-    let calleeRetType: ValType | undefined;
-    if (calleeFuncIdx < numFuncImports) {
-      // Imported function: look up import's type
-      let fIdx = 0;
-      for (const imp of ctx.mod.imports) {
-        if ((imp.desc as any)?.kind === "func") {
-          if (fIdx === calleeFuncIdx) {
-            const typeIdx = (imp.desc as any).typeIdx as number;
-            const td = ctx.mod.types[typeIdx];
-            if (td?.kind === "func") calleeRetType = td.results[0];
-            break;
-          }
-          fIdx++;
-        }
-      }
-    } else {
-      const localIdx = calleeFuncIdx - numFuncImports;
-      const func = ctx.mod.funcs[localIdx];
-      if (func) {
-        const td = ctx.mod.types[func.typeIdx];
-        if (td?.kind === "func") calleeRetType = td.results[0];
-      }
-    }
-    const callerRetType = fctx.returnType;
-    // Only apply tail call when both return types match exactly
-    const bothVoid = !calleeRetType && !callerRetType;
-    const retTypesMatch = calleeRetType && callerRetType
-      ? valTypesMatch(calleeRetType, callerRetType)
-      : bothVoid;
-    if (retTypesMatch) {
-      (lastInstr as any).op = "return_call";
-      return;
-    }
+    (lastInstr as any).op = "return_call";
+    return; // return_call implicitly returns — no need for explicit return
   }
-  // Skip call_ref tail optimization — too error-prone without signature validation
+  if (lastInstr && lastInstr.op === "call_ref") {
+    (lastInstr as any).op = "return_call_ref";
+    return; // return_call_ref implicitly returns — no need for explicit return
+  }
 
   fctx.body.push({ op: "return" });
 }
@@ -3388,12 +3348,6 @@ function compileForStatement(
         }
         if (!ts.isIdentifier(decl.name)) continue;
         const name = decl.name.text;
-
-        // Track const bindings for runtime assignment checks (#846)
-        if (stmt.initializer.flags & ts.NodeFlags.Const) {
-          if (!fctx.constBindings) fctx.constBindings = new Set();
-          fctx.constBindings.add(name);
-        }
 
         // Check if this variable is a module-level global (e.g., for(var i...)
         // at the top level). If so, use global.set instead of local.set.
@@ -4596,13 +4550,6 @@ function compileForOfString(
   let elemLocal: number;
   if (ts.isVariableDeclarationList(stmt.initializer)) {
     const decl = stmt.initializer.declarations[0]!;
-    // Track const bindings for runtime assignment checks (#846)
-    if (stmt.initializer.flags & ts.NodeFlags.Const) {
-      if (ts.isIdentifier(decl.name)) {
-        if (!fctx.constBindings) fctx.constBindings = new Set();
-        fctx.constBindings.add(decl.name.text);
-      }
-    }
     const varName = ts.isIdentifier(decl.name) ? decl.name.text : `__forof_elem_${fctx.locals.length}`;
     elemLocal = allocLocal(fctx, varName, elemType);
   } else if (ts.isIdentifier(stmt.initializer)) {
@@ -4824,13 +4771,6 @@ function compileForOfArray(
   let assignDestructExpr: ts.ObjectLiteralExpression | ts.ArrayLiteralExpression | null = null;
   if (ts.isVariableDeclarationList(stmt.initializer)) {
     const decl = stmt.initializer.declarations[0]!;
-    // Track const bindings for runtime assignment checks (#846)
-    if (stmt.initializer.flags & ts.NodeFlags.Const) {
-      if (ts.isIdentifier(decl.name)) {
-        if (!fctx.constBindings) fctx.constBindings = new Set();
-        fctx.constBindings.add(decl.name.text);
-      }
-    }
     if (ts.isObjectBindingPattern(decl.name) || ts.isArrayBindingPattern(decl.name)) {
       destructPattern = decl.name;
       // Allocate a temp local to hold the element for destructuring
@@ -5511,13 +5451,6 @@ function compileForOfIterator(
   let assignDestructExprIter: ts.ObjectLiteralExpression | ts.ArrayLiteralExpression | null = null;
   if (ts.isVariableDeclarationList(stmt.initializer)) {
     const decl = stmt.initializer.declarations[0]!;
-    // Track const bindings for runtime assignment checks (#846)
-    if (stmt.initializer.flags & ts.NodeFlags.Const) {
-      if (ts.isIdentifier(decl.name)) {
-        if (!fctx.constBindings) fctx.constBindings = new Set();
-        fctx.constBindings.add(decl.name.text);
-      }
-    }
     if (ts.isObjectBindingPattern(decl.name) || ts.isArrayBindingPattern(decl.name)) {
       destructPatternIter = decl.name;
       elemLocal = allocLocal(fctx, `__forof_elem_${fctx.locals.length}`, elemType);
@@ -6941,7 +6874,7 @@ export function hoistFunctionDeclarations(
 /**
  * Emit default-value initialization for parameters with initializers.
  * For each param with a default value, check if the caller passed the sentinel
- * (NaN for f64, 0 for i32, ref.null for ref types) and if so compile the initializer.
+ * (0 for f64/i32, ref.null for ref types) and if so compile the initializer.
  * @param paramOffset - number of prepended params (captures) before the user params
  */
 function emitDefaultParamInit(
@@ -6983,11 +6916,9 @@ function emitDefaultParamInit(
         then: thenInstrs,
       });
     } else if (paramType.kind === "f64") {
-      // NaN sentinel check: x != x is true iff x is NaN (#787)
-      // Callers pass f64.const NaN for missing arguments (pushDefaultValue).
       liftedFctx.body.push({ op: "local.get", index: paramIdx });
-      liftedFctx.body.push({ op: "local.get", index: paramIdx });
-      liftedFctx.body.push({ op: "f64.ne" });
+      liftedFctx.body.push({ op: "f64.const", value: 0 });
+      liftedFctx.body.push({ op: "f64.eq" });
       liftedFctx.body.push({
         op: "if",
         blockType: { kind: "empty" },

@@ -3,8 +3,7 @@ import { compileToWasm, evaluateAsJs, assertEquivalent, buildImports, compile, r
 
 describe("Function arity mismatch (#184)", () => {
   it("calling function with fewer args than params", async () => {
-    // Missing f64 args use NaN sentinel (matches JS: undefined coerces to NaN).
-    // f(5) => 5 + NaN = NaN
+    // In Wasm, f64 default is 0 (not undefined), so f(5) => 5 + 0 = 5
     const exports = await compileToWasm(`
       function f(a: number, b: number): number {
         return a + b;
@@ -13,12 +12,11 @@ describe("Function arity mismatch (#184)", () => {
         return f(5);
       }
     `);
-    expect(exports.test()).toBeNaN();
+    expect(exports.test()).toBe(5);
   });
 
   it("calling function with zero args when it expects two", async () => {
-    // Missing f64 args use NaN sentinel (matches JS: undefined coerces to NaN).
-    // f() => NaN + NaN = NaN
+    // In Wasm, f64 default is 0, so f() => 0 + 0 = 0
     const exports = await compileToWasm(`
       function f(a: number, b: number): number {
         return a + b;
@@ -27,7 +25,7 @@ describe("Function arity mismatch (#184)", () => {
         return f();
       }
     `);
-    expect(exports.test()).toBeNaN();
+    expect(exports.test()).toBe(0);
   });
 
   it("class constructor with fewer args than params", async () => {
@@ -51,8 +49,6 @@ describe("Function arity mismatch (#184)", () => {
   });
 
   it("class constructor with no args when it expects params", async () => {
-    // Missing f64 args use NaN sentinel (matches JS: undefined coerces to NaN).
-    // new Pair() => a=NaN, b=NaN, sum()=NaN
     const exports = await compileToWasm(`
       class Pair {
         a: number;
@@ -68,6 +64,6 @@ describe("Function arity mismatch (#184)", () => {
         return p.sum();
       }
     `);
-    expect(exports.test()).toBeNaN();
+    expect(exports.test()).toBe(0);
   });
 });

@@ -1,8 +1,6 @@
 # ts2wasm Project Memory
 
 ## CRITICAL RULES (check every time)
-- **ALWAYS spawn agents as teammates** (TeamCreate + Agent with team_name), NOT bare subagents. Teammates coordinate test runs and avoid OOM.
-- **Max 4 dev agents + 1 PO.** Each dev ~2GB RSS. Always use bypassPermissions + worktree isolation.
 - **NEVER delete worktrees without checking diffs first.** Run `git -C <wt> diff --stat` for EACH one, show to user, ask before deleting.
 - **NEVER work on agent branches/worktrees.** Always verify `pwd` is `/workspace` and branch is `main` before edits/commits.
 - **NEVER kill running tests without asking.**
@@ -17,17 +15,17 @@
 ### User & project
 - [user_role.md](user_role.md) — Project lead: challenges assumptions, thinks in compilation strategies
 - [project_team_setup.md](project_team_setup.md) — All agents as teammates via TeamCreate; details in plan/team-setup.md
-- [project_next_session.md](project_next_session.md) — Session state: 18,186 pass / 47,782 total (38.1%)
+- [project_next_session.md](project_next_session.md) — Session state: 16,013 pass, honest baseline after exception tag fix
 
 ### Team & agents (rules not in plan/team-setup.md)
-- [feedback_dev_limit.md](feedback_dev_limit.md) — Max 4 devs as teammates, test file naming, merge method
+- [feedback_dev_limit.md](feedback_dev_limit.md) — Max 2 devs, test file naming, merge method
 - [feedback_dev_agents_worktree.md](feedback_dev_agents_worktree.md) — ALL writing agents must use worktree isolation
-- [feedback_serialize_cherry_picks.md](feedback_serialize_cherry_picks.md) — Cherry-pick agent commits to main, skip lock/doc commits
+- [feedback_serialize_cherry_picks.md](feedback_serialize_cherry_picks.md) — Wait for wave to finish, then batch merge (not cherry-pick)
 - [feedback_always_cd_workspace.md](feedback_always_cd_workspace.md) — Git safety: cd /workspace, verify main, never work from agent worktrees
 - [feedback_usage_limit.md](feedback_usage_limit.md) — Stop dispatching above 90% context usage
 - [feedback_dont_ask_continue.md](feedback_dont_ask_continue.md) — Keep dispatching automatically, don't pause to ask
 - [feedback_reduce_notification_noise.md](feedback_reduce_notification_noise.md) — Only msg team-lead for merges/blockers/decisions, use TaskUpdate otherwise
-- [feedback_always_use_teammates.md](feedback_always_use_teammates.md) — Team: 4 devs + PO on demand, always as teammates via TeamCreate
+- [feedback_always_use_teammates.md](feedback_always_use_teammates.md) — Team: 2 devs + PO on demand, no tester (TTL runs tests)
 - [feedback_work_planning.md](feedback_work_planning.md) — Pre-build task queue, any dev on any task, time-box, batch merges
 - [feedback_ttl_runs_tests.md](feedback_ttl_runs_tests.md) — TTL runs tests serially in background, no tester teammate
 - [feedback_bypass_permissions.md](feedback_bypass_permissions.md) — Always use bypassPermissions mode when spawning agents
@@ -55,8 +53,5 @@
 - [feedback_no_nuclear_option.md](feedback_no_nuclear_option.md) — Never take destructive shortcuts without consent
 - [feedback_check_before_cleanup.md](feedback_check_before_cleanup.md) — Check worktree diffs before removing
 - [feedback_refactoring_failures.md](feedback_refactoring_failures.md) — After refactoring: check missing imports first, not circular deps
-
-### Documentation
-- [feedback_readme_compat.md](feedback_readme_compat.md) — Keep README ES Conformance tables in sync with skip filters
 
 Most project context lives in `/workspace/CLAUDE.md`.

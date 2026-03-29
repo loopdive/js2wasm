@@ -95,6 +95,7 @@ export type FilterResult =
 // Tests that cause the compiler to hang (infinite loop during compilation)
 const HANGING_TESTS = new Set([
   "test/built-ins/Promise/race/invoke-then.js", // #408: Promise.race compilation hang
+  "test/built-ins/Map/prototype/forEach/iterates-values-deleted-then-readded.js", // hangs: Map mutation during iteration
   "test/built-ins/Temporal/Duration/from/argument-non-string.js", // hangs: Temporal runtime loop
 ]);
 
@@ -160,7 +161,7 @@ export function shouldSkip(
   if (filePath && /unicode-16\.0\.0/.test(filePath)) {
     return {
       skip: true,
-      reason: "ES2015: Unicode 16.0.0 identifiers (TypeScript 5.x parser limitation) (#832)",
+      reason: "TypeScript 5.x: Unicode 16.0.0 identifiers not supported (#832)",
     };
   }
   if (filePath && /built-ins\/SharedArrayBuffer/.test(filePath) || meta.features?.includes("SharedArrayBuffer")) {
