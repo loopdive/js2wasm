@@ -23,7 +23,7 @@ These are the biggest bang-for-buck issues. Pick from here first.
   ├── coordinates with #825 (null_deref umbrella)
   └── coordinates with #826 (illegal_cast umbrella)
 
-#846 (assert.throws not thrown -- 2,799 FAIL)
+#846 (assert.throws not thrown -- 3,265 FAIL)
   ├── coordinates with #733 (RangeError validation)
   └── coordinates with #856 (wrong error type)
 
@@ -33,27 +33,29 @@ These are the biggest bang-for-buck issues. Pick from here first.
 #847 (for-of destructuring wrong values -- 660 FAIL)
   └── coordinates with #851 (iterator close protocol)
 
-#822 (Wasm type mismatch CE -- 907 CE) -- independent
-#839 (return_call stack/type mismatch -- 158 CE) -- independent
-#824 (compilation timeouts -- 548 CE) -- independent
+#822 (Wasm type mismatch CE -- 1,069 CE) -- independent
+#839 (return_call stack/type mismatch -- 120 CE) -- independent
+#824 (compilation timeouts -- 302 CE) -- independent
+#860 (Promise resolver not a function -- 180 FAIL) -- independent
 ```
 
 | #   | Title | Impact | Ready? |
 |-----|-------|--------|--------|
 | **852** | Destructuring params: null_deref + illegal_cast | **1,525 FAIL** | **Ready** (CRITICAL) |
-| **846** | assert.throws not thrown for invalid built-in args | **2,799 FAIL** | **Ready** (CRITICAL) |
-| **822** | Wasm type mismatch compile errors (all sub-patterns) | **907 CE** | **Ready** (HIGH) |
+| **846** | assert.throws not thrown for invalid built-in args | **3,265 FAIL** | **Ready** (CRITICAL) |
+| **822** | Wasm type mismatch compile errors (all sub-patterns) | **1,069 CE** | **Ready** (HIGH) |
 | **848** | Class computed property / accessor correctness | **1,015 FAIL** | **Ready** (HIGH) |
 | **847** | for-await-of / for-of destructuring wrong values | **660 FAIL** | **Ready** (HIGH) |
-| **839** | return_call stack args / type mismatch in constructors | **158 CE** | **Ready** (HIGH) |
-| **824** | Compilation timeouts (10s limit) | **548 CE** | **Ready** (HIGH) |
+| **860** | Promise resolver not a function (callback detection) | **180 FAIL** | **Ready** (HIGH) |
+| **839** | return_call stack args / type mismatch in constructors | **120 CE** | **Ready** (HIGH) |
+| **824** | Compilation timeouts (20s limit) | **302 CE** | **Ready** (HIGH) |
 | **827** | Array callback methods: "fn is not a function" | **243 CE** | **Ready** (HIGH) |
 | **857** | wasm_compile: "fn is not a function" Array callbacks | **247 CE** | **Ready** (HIGH, coordinates #827) |
-| **825** | Null dereference failures (sub of #820) | **1,081 FAIL** | **Ready** (HIGH, coordinates #852) |
-| **826** | Illegal cast failures (sub of #820) | **1,294 FAIL** | **Ready** (HIGH, coordinates #852) |
-| **850** | Object-to-primitive: valueOf/toString not called | **135 FAIL** | **Ready** (HIGH) |
-| **851** | Iterator close protocol not implemented | **147 FAIL** | **Ready** (HIGH) |
-| **854** | Iterator protocol: null next/return/throw methods | **126 FAIL** | **Ready** (HIGH) |
+| **825** | Null dereference failures (sub of #820) | **1,077 FAIL** | **Ready** (HIGH, coordinates #852) |
+| **826** | Illegal cast failures (sub of #820) | **1,261 FAIL** | **Ready** (HIGH, coordinates #852) |
+| **850** | Object-to-primitive: valueOf/toString not called | **112 FAIL** | **Ready** (HIGH) |
+| **851** | Iterator close protocol not implemented | **147 FAIL** | **Ready** (IN-PROGRESS) |
+| **854** | Iterator protocol: null next/return/throw methods | **72 FAIL** | **Ready** (HIGH) |
 
 ---
 
