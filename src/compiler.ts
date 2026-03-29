@@ -1198,12 +1198,6 @@ function detectEarlyErrors(
           ts.isGetAccessorDeclaration(current) || ts.isSetAccessorDeclaration(current)) {
         return true;
       }
-      // Arrow functions in class field initializers inherit super context
-      // e.g. class C { func = () => { super.prop = 'x'; } }
-      if (ts.isPropertyDeclaration(current) &&
-          (ts.isClassDeclaration(current.parent) || ts.isClassExpression(current.parent))) {
-        return true;
-      }
       // Arrow functions inherit super property context — don't stop
       if (ts.isArrowFunction(current)) {
         current = current.parent;
@@ -2270,6 +2264,15 @@ export function compileSource(
       combined.set(urlSectionBytes, emitResult.binary.length);
       binary = combined;
     } else {
+      // DEBUG: dump __module_init body before emission
+      for (const f of mod.functions) {
+        if (f.name === "__module_init") {
+          console.error("[DEBUG-EMIT] __module_init body:");
+          for (let i = 0; i < f.body.length; i++) {
+            console.error("  [" + i + "] " + (f.body[i] as any)?.op);
+          }
+        }
+      }
       binary = emitBinary(mod);
     }
   } catch (e) {
