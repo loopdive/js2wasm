@@ -8,18 +8,46 @@
 2. [ ] `git rebase main` — rebase your branch onto current main
    - If conflicts: resolve them, `git add`, `git rebase --continue`
    - If rebase goes wrong: `git rebase --abort` (your commits are safe), retry or ask for help
-3. [ ] Re-run your scoped tests AFTER rebase (not before — rebase can introduce semantic conflicts)
-4. [ ] Tests pass after rebase
-5. [ ] Issue file updated with implementation notes
-6. [ ] Issue status set to `review` in frontmatter
-7. [ ] File locks removed from `plan/file-locks.md`
+
+## Post-rebase test sequence
+
+Tests must run AFTER rebase to catch integration issues. Use the test lock to prevent OOM from parallel test runs.
+
+### Before every test run
+
+3. [ ] Check free RAM: `free -m | awk '/Mem/{print $4}'` — need **>2GB free** to proceed. If <2GB, message tech lead and wait.
+4. [ ] Acquire test lock: `mkdir /tmp/ts2wasm-test-lock 2>/dev/null` — if it fails, another agent is testing. Wait and retry.
+5. [ ] Message team: `"Running tests for #N"` (so others know to wait)
+
+### Test sequence (run in order, stop on failure)
+
+6. [ ] **Equivalence tests**: `npm test -- tests/equivalence.test.ts`
+   - These must pass. If they fail, you introduced a regression — fix it before continuing.
+7. [ ] **Issue-specific test262 tests**: compile+run the specific test262 files your issue targets
+   - Verify your fix actually works on the tests from the issue description
+8. [ ] **Full test262** (optional but recommended): `pnpm run test:262`
+   - Check for regressions: pass count should not decrease vs main
+   - This takes ~2 min with 1 fork. Only run if your changes touch core codegen paths.
+
+### After testing
+
+9. [ ] Release test lock: `rmdir /tmp/ts2wasm-test-lock`
+10. [ ] Message team: `"Tests done for #N"`
+
+## Finalize
+
+11. [ ] Issue file updated with implementation notes
+12. [ ] Issue status set to `review` in frontmatter
+13. [ ] File locks removed from `plan/file-locks.md`
 
 ## Signal completion
 
-Message tech lead: `"Completed #N (commit <hash>). Branch is rebased onto main, ready for ff-only merge."`
+Message tech lead: `"Completed #N (commit <hash>). Branch is rebased onto main, tests pass, ready for ff-only merge."`
 
 ## What NOT to do
 
 - Do NOT signal completion before rebasing
 - Do NOT ask tech lead to resolve conflicts — you own them
 - Do NOT leave uncommitted changes on your branch
+- Do NOT run tests in parallel with other agents — use the lock
+- Do NOT run tests with <2GB free RAM
