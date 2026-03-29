@@ -817,6 +817,73 @@ export function compileArrowAsClosure(
     collectWrittenIdentifiers(body, writtenInClosure);
   }
 
+  // Also detect variables written in the enclosing scope (not just the closure).
+  // If the outer function writes to a captured variable, the capture must use a
+  // ref cell so the closure sees the updated value.
+  // We use the TS checker to find all write references to the variable's symbol.
+  // A variable needs boxing if it has any assignment outside the closure body.
+  const writtenInOuter = new Set<string>();
+  for (const name of referencedNames) {
+    if (writtenInClosure.has(name)) continue; // Already mutable, no need to check
+    try {
+      // Find the symbol for this variable
+      const sym = ctx.checker.getSymbolAtLocation(
+        ts.isBlock(body)
+          ? (body.statements[0] ?? body)
+          : body
+      );
+      // Use the enclosing function body to find all writes to this name
+      let enclosing: ts.Node | undefined = arrow.parent;
+      while (enclosing && !ts.isFunctionDeclaration(enclosing) && !ts.isFunctionExpression(enclosing) &&
+             !ts.isArrowFunction(enclosing) && !ts.isMethodDeclaration(enclosing) &&
+             !ts.isConstructorDeclaration(enclosing) && !ts.isSourceFile(enclosing)) {
+        enclosing = enclosing.parent;
+      }
+      if (enclosing) {
+        const outerBody = ts.isSourceFile(enclosing) ? enclosing : (enclosing as any).body;
+        if (outerBody) {
+          // Collect writes in the outer body, excluding the closure body itself
+          const outerWrites = new Set<string>();
+          const collectOuterWrites = (node: ts.Node): void => {
+            // Skip the closure body itself
+            if (node === arrow) return;
+            // Check for assignments
+            if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+              if (ts.isIdentifier(node.left) && node.left.text === name) {
+                outerWrites.add(name);
+              }
+            }
+            if (ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) {
+              if (ts.isIdentifier(node.operand) && node.operand.text === name) {
+                outerWrites.add(name);
+              }
+            }
+            // Compound assignments (+=, -=, etc.)
+            if (ts.isBinaryExpression(node) && node.operatorToken.kind >= ts.SyntaxKind.PlusEqualsToken &&
+                node.operatorToken.kind <= ts.SyntaxKind.CaretEqualsToken) {
+              if (ts.isIdentifier(node.left) && node.left.text === name) {
+                outerWrites.add(name);
+              }
+            }
+            ts.forEachChild(node, collectOuterWrites);
+          };
+          if (ts.isBlock(outerBody)) {
+            for (const stmt of outerBody.statements) {
+              collectOuterWrites(stmt);
+            }
+          } else {
+            collectOuterWrites(outerBody);
+          }
+          if (outerWrites.has(name)) {
+            writtenInOuter.add(name);
+          }
+        }
+      }
+    } catch {
+      // If analysis fails, be conservative — don't add to writtenInOuter
+    }
+  }
+
   const captures: { name: string; type: ValType; localIdx: number; mutable: boolean; alreadyBoxed: boolean }[] = [];
   for (const name of referencedNames) {
     const localIdx = fctx.localMap.get(name);
@@ -829,8 +896,9 @@ export function compileArrowAsClosure(
     const type = localIdx < fctx.params.length
       ? fctx.params[localIdx]!.type
       : fctx.locals[localIdx - fctx.params.length]?.type ?? { kind: "f64" };
-    // A capture is mutable if the closure writes to it
-    const isMutable = writtenInClosure.has(name);
+    // A capture is mutable if the closure writes to it OR the outer scope writes to it.
+    // Both cases require a ref cell so mutations are visible across scope boundaries.
+    const isMutable = writtenInClosure.has(name) || writtenInOuter.has(name);
     // Check if the variable is already boxed from a previous closure capture.
     // If so, the local already holds a ref cell — don't wrap it again.
     const alreadyBoxed = !!fctx.boxedCaptures?.has(name);
