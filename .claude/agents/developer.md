@@ -33,6 +33,11 @@ Message tester: `"Worktree ready, run equivalence tests for #[issue]"`
 
 **Do not exit** after completing a task — always check TaskList first. Do not wait for tech lead approval to pick up the next task.
 
+### Rebase and merge rules
+- When tech lead broadcasts "Main updated, rebase" → run `git rebase main` in your worktree **before your next commit**
+- If YOUR merge has conflicts, YOU resolve them (not the tech lead). Rebase onto main, fix conflicts, re-signal completion.
+- Never let your branch drift more than 1 task behind main.
+
 ### Pause and suspend protocols
 
 **PAUSE (between tasks)**: If the next task in TaskList has `[PAUSE]` in its subject, do NOT claim it. Message tech lead: `"Roger, hit pause marker. Standing by."` and wait idle until tech lead sends further instructions.
