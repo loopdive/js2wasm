@@ -696,6 +696,8 @@ export interface CodegenContext {
   deferredClassBodies: Set<string>;
   /** Set of "ClassName_propName" for getter/setter accessor properties */
   classAccessorSet: Set<string>;
+  /** Set of "ClassName_propName" for static getter/setter accessor properties */
+  staticAccessorSet: Set<string>;
   /** Set of "ClassName_methodName" for static methods (no self param) */
   staticMethodSet: Set<string>;
   /** Map from "ClassName_propName" → global index for static properties */
@@ -1034,6 +1036,7 @@ export function createCodegenContext(
     classMethodSet: new Set(),
     deferredClassBodies: new Set(),
     classAccessorSet: new Set(),
+    staticAccessorSet: new Set(),
     staticMethodSet: new Set(),
     staticProps: new Map(),
     staticInitExprs: [],
@@ -10944,6 +10947,9 @@ export function collectClassDeclaration(
       if (!propName) continue; // dynamic computed name — skip
       const accessorKey = `${className}_${propName}`;
       ctx.classAccessorSet.add(accessorKey);
+      if (hasStaticModifier(member)) {
+        ctx.staticAccessorSet.add(accessorKey);
+      }
 
       const getterName = `${className}_get_${propName}`;
       // Skip if a function with this name is already registered (e.g., when
@@ -10988,6 +10994,9 @@ export function collectClassDeclaration(
       if (!propName) continue; // dynamic computed name — skip
       const accessorKey = `${className}_${propName}`;
       ctx.classAccessorSet.add(accessorKey);
+      if (hasStaticModifier(member)) {
+        ctx.staticAccessorSet.add(accessorKey);
+      }
 
       const setterName = `${className}_set_${propName}`;
       // Skip if already registered (same collision guard as getter above)

@@ -3986,12 +3986,109 @@ function compileExternPropertySet(
   return externValResult;
 }
 
+function emitSetterCallWithDummy(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  className: string,
+  setterName: string,
+  funcIdx: number,
+  value: ts.Expression,
+): InnerResult {
+  // Get setter's parameter types to determine value type hint
+  const setterPTypes = getFuncParamTypes(ctx, funcIdx);
+  const valTypeHint = setterPTypes?.[1]; // param 0 = self, param 1 = value
+  const valResult = compileExpression(ctx, fctx, value, valTypeHint);
+  if (!valResult) return null;
+  // Save value for return (assignments return the assigned value)
+  const tmpLocal = allocLocal(fctx, `__setter_assign_${fctx.locals.length}`, valResult);
+  fctx.body.push({ op: "local.tee", index: tmpLocal });
+  const valLocal = allocLocal(fctx, `__setter_val_${fctx.locals.length}`, valResult);
+  fctx.body.push({ op: "local.set", index: valLocal });
+  // Create dummy struct and call setter
+  const structTypeIdx = ctx.structMap.get(className);
+  const fields = ctx.structFields.get(className);
+  if (structTypeIdx === undefined || !fields) return valResult;
+  for (const field of fields) {
+    if (field.name === "__tag") {
+      const tag = ctx.classTagMap.get(className) ?? 0;
+      fctx.body.push({ op: "i32.const", value: tag });
+    } else {
+      switch (field.type.kind) {
+        case "f64": fctx.body.push({ op: "f64.const", value: 0 }); break;
+        case "i32": fctx.body.push({ op: "i32.const", value: 0 }); break;
+        case "externref": fctx.body.push({ op: "ref.null.extern" }); break;
+        case "ref_null": fctx.body.push({ op: "ref.null", typeIdx: field.type.typeIdx }); break;
+        case "ref": fctx.body.push({ op: "ref.null", typeIdx: field.type.typeIdx }); break;
+        default: fctx.body.push({ op: "i32.const", value: 0 }); break;
+      }
+    }
+  }
+  fctx.body.push({ op: "struct.new", typeIdx: structTypeIdx });
+  fctx.body.push({ op: "local.get", index: valLocal });
+  fctx.body.push({ op: "call", funcIdx });
+  fctx.body.push({ op: "local.get", index: tmpLocal });
+  return valResult;
+}
+
 function compileElementAssignment(
   ctx: CodegenContext,
   fctx: FunctionContext,
   target: ts.ElementAccessExpression,
   value: ts.Expression,
 ): InnerResult {
+  // Handle ClassName[key] = value for static setter accessors and static properties (#848)
+  if (ts.isIdentifier(target.expression)) {
+    const objName = target.expression.text;
+    if (ctx.classSet.has(objName)) {
+      const key = resolveComputedKeyExpression(ctx, target.argumentExpression);
+      if (key !== undefined) {
+        // Check static accessor setter first
+        const accessorKey = `${objName}_${key}`;
+        if (ctx.classAccessorSet.has(accessorKey)) {
+          const setterName = `${objName}_set_${key}`;
+          const funcIdx = ctx.funcMap.get(setterName);
+          if (funcIdx !== undefined) {
+            return emitSetterCallWithDummy(ctx, fctx, objName, setterName, funcIdx, value);
+          }
+        }
+        // Check static property global
+        const fullName = `${objName}_${key}`;
+        const globalIdx = ctx.staticProps.get(fullName);
+        if (globalIdx !== undefined) {
+          const globalDef = ctx.mod.globals[localGlobalIdx(ctx, globalIdx)];
+          const globalType = globalDef?.type ?? { kind: "f64" as const };
+          const valResult = compileExpression(ctx, fctx, value, globalType);
+          if (!valResult) return null;
+          const tmpLocal = allocLocal(fctx, `__static_assign_${fctx.locals.length}`, valResult);
+          fctx.body.push({ op: "local.tee", index: tmpLocal });
+          fctx.body.push({ op: "global.set", index: globalIdx });
+          fctx.body.push({ op: "local.get", index: tmpLocal });
+          return valResult;
+        }
+      }
+    }
+  }
+
+  // Handle ClassName.prototype[key] = value for instance setter accessors (#848)
+  if (ts.isPropertyAccessExpression(target.expression) &&
+      ts.isIdentifier(target.expression.expression) &&
+      target.expression.name.text === "prototype") {
+    const className = target.expression.expression.text;
+    if (ctx.classSet.has(className)) {
+      const key = resolveComputedKeyExpression(ctx, target.argumentExpression);
+      if (key !== undefined) {
+        const accessorKey = `${className}_${key}`;
+        if (ctx.classAccessorSet.has(accessorKey) && !ctx.staticAccessorSet.has(accessorKey)) {
+          const setterName = `${className}_set_${key}`;
+          const funcIdx = ctx.funcMap.get(setterName);
+          if (funcIdx !== undefined) {
+            return emitSetterCallWithDummy(ctx, fctx, className, setterName, funcIdx, value);
+          }
+        }
+      }
+    }
+  }
+
   // Push array ref
   const arrType = compileExpression(ctx, fctx, target.expression);
   if (!arrType) {

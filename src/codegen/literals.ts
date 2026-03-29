@@ -174,6 +174,7 @@ export function resolveConstantExpression(
   // Boolean literals
   if (expr.kind === ts.SyntaxKind.TrueKeyword) return 1;
   if (expr.kind === ts.SyntaxKind.FalseKeyword) return 0;
+  if (expr.kind === ts.SyntaxKind.NullKeyword) return "null";
   if (ts.isStringLiteral(expr)) return expr.text;
 
   // Parenthesized expression
@@ -275,6 +276,16 @@ export function resolveConstantExpression(
   // No-substitution template literal: `hello`
   if (ts.isNoSubstitutionTemplateLiteral(expr)) {
     return expr.text;
+  }
+
+  // Call expressions: String(expr), Number(expr)
+  if (ts.isCallExpression(expr) && ts.isIdentifier(expr.expression) && expr.arguments.length === 1) {
+    const funcName = expr.expression.text;
+    const argVal = resolveConstantExpression(ctx, expr.arguments[0]!);
+    if (argVal !== undefined) {
+      if (funcName === "String") return String(argVal);
+      if (funcName === "Number") return typeof argVal === "string" ? Number(argVal) : argVal;
+    }
   }
 
   return undefined;
