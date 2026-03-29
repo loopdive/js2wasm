@@ -1,17 +1,17 @@
 ---
 name: feedback_always_use_teammates
-description: Always create a team (max 4 devs + PO on demand), never use bare subagents
+description: Always create a team (devs + PO on demand), TTL runs tests directly, max 2 devs
 type: feedback
 ---
 
 At session start when acting as TTL:
 1. `TeamCreate` a team
-2. Spawn up to **4 dev** teammates (with worktree isolation + bypassPermissions)
-3. Spawn **PO** on demand when issues need updating
+2. Spawn **2 dev** teammates max for the first issues (with worktree isolation)
+3. Spawn **PO** on demand when issues need updating (shut down when idle)
 4. **No tester teammate** — TTL runs tests directly in background
 
-**NEVER** use solo `Agent` spawns without `team_name`. Subagents can't coordinate — they OOM from concurrent test runs and duplicate work.
+Never use solo Agent spawns without `team_name`.
 
-**Why:** Teammates can message each other to serialize test runs (only 1 runs equiv tests at a time). They can coordinate on file conflicts. The team lead merges their work.
+**Why:** OOMs come from test262 workers + dev agents competing for memory. A tester teammate adds its own process overhead on top. The TTL can run tests serially in background and report results. PO generates idle noise when not needed — spawn on demand.
 
-**How to apply:** TeamCreate → spawn devs with team_name → teammates coordinate via SendMessage → TTL merges after completion. Spawn PO only when plan/ needs updating. Max 4 devs (20GB container, each ~2GB RSS).
+**How to apply:** TeamCreate → spawn 2 devs → TTL runs tests after merges. Spawn PO only when plan/ needs updating. Max 2 devs hard limit (14GB container).

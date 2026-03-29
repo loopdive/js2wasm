@@ -1,21 +1,7 @@
 import ts from "typescript";
+import * as path from "path";
+import * as fs from "fs";
 import type { CompileOptions } from "./index.js";
-
-// Node.js modules — loaded conditionally to support browser environments.
-// resolve.ts is only used for file-based compilation (CLI/Node), never in-browser,
-// but the static imports would cause Vite to throw during dev mode externalization.
-let path: typeof import("path");
-let fs: typeof import("fs");
-try {
-  // eslint-disable-next-line no-eval -- hide from Vite bundler analysis
-  path = (0, eval)('require("path")');
-  fs = (0, eval)('require("fs")');
-} catch {
-  // Browser environment — resolve.ts functions will throw if called,
-  // but they should never be called in browser contexts.
-  path = {} as typeof import("path");
-  fs = {} as typeof import("fs");
-}
 
 /**
  * Module resolver that uses TypeScript's built-in `ts.resolveModuleName()`

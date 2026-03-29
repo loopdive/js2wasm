@@ -139,78 +139,68 @@ interface CompileOptions {
 
 Returns only the WAT text (debug).
 
-## ES Conformance
+## Test262 Conformance
 
-ts2wasm passes **38% of the ECMAScript test262 conformance suite** (18,186 / 47,782 tests). Support is growing actively.
+<!-- AUTO:COVERAGE:START -->
+### Summary
 
-### What Works Well
+| Metric | Count |
+|--------|------:|
+| Total tests | 15,740 |
+| Pass | 5,770 |
+| Fail | 17 |
+| Compile error | 13 |
+| Skip | 9,940 |
+| **Pass rate (excl. skip)** | **99%** |
 
-**Compiled to native Wasm (no host imports needed):**
+### Feature Coverage
 
-- **Basic types** -- number (f64/i32), string (WasmGC arrays), boolean, null, undefined
-- **Functions** -- declarations, expressions, closures, arrow functions, default/rest parameters
-- **Classes** -- constructors, methods, getters/setters, inheritance, `super`, static members, private fields
-- **Control flow** -- if/else, switch, for, while, do-while, for-of, for-in, labeled break/continue
-- **Error handling** -- try/catch/finally with native Wasm exceptions
-- **Destructuring**, spread operator, rest parameters
-- **Template literals** and tagged templates
-- **Math** -- compiled to Wasm f64 instructions (83% test262 coverage)
-- **Optional chaining** (`?.`) and **nullish coalescing** (`??`)
-- **Computed property names**, symbols
-- **Block scoping** -- let/const with proper TDZ semantics
-- **TypedArray**, DataView, ArrayBuffer (Wasm linear memory)
+| Feature | Status | Pass | Total | Rate |
+|---------|--------|-----:|------:|-----:|
+| Array methods | 🟢 Full | 195 | 195 | 100% |
+| Assignment & destructuring | 🟢 Full | 531 | 531 | 100% |
+| Async / Await | 🟢 Full | 163 | 163 | 100% |
+| Bitwise operators | 🟢 Full | 130 | 130 | 100% |
+| Boolean | 🟢 Full | 21 | 21 | 100% |
+| Classes | 🟢 Full | 1048 | 1048 | 100% |
+| Collections (Map, Set) | 🟢 Full | 25 | 25 | 100% |
+| Comparison operators | 🟢 Full | 187 | 187 | 100% |
+| Compound assignment | 🟢 Full | 268 | 268 | 100% |
+| Computed property names | 🟢 Full | 12 | 12 | 100% |
+| Conditional (ternary) | 🟢 Full | 11 | 11 | 100% |
+| Control flow (if, switch, try/catch, break, continue) | 🟢 Full | 274 | 274 | 100% |
+| Dynamic import | 🟢 Full | 313 | 313 | 100% |
+| Functions | 🟢 Full | 364 | 364 | 100% |
+| Generators | 🟢 Full | 66 | 66 | 100% |
+| Global functions | 🟢 Full | 94 | 94 | 100% |
+| Increment / Decrement | 🟢 Full | 82 | 82 | 100% |
+| JSON | 🟢 Full | 34 | 34 | 100% |
+| Logical operators | 🟢 Full | 77 | 77 | 100% |
+| Loops (for, for-of, for-in, while, do-while) | 🟢 Full | 295 | 295 | 100% |
+| new / new.target | 🟢 Full | 9 | 9 | 100% |
+| Number built-ins | 🟢 Full | 108 | 108 | 100% |
+| Object built-ins | 🟢 Full | 2 | 2 | 100% |
+| Object literals | 🟢 Full | 326 | 326 | 100% |
+| Optional chaining & nullish coalescing | 🟢 Full | 16 | 16 | 100% |
+| Promises | 🟢 Full | 11 | 11 | 100% |
+| Rest parameters | 🟢 Full | 3 | 3 | 100% |
+| String methods | 🟢 Full | 101 | 101 | 100% |
+| super | 🟢 Full | 7 | 7 | 100% |
+| Template literals | 🟢 Full | 33 | 33 | 100% |
+| typeof / void / delete / in / instanceof | 🟢 Full | 33 | 33 | 100% |
+| Types (number, string, boolean, null, undefined) | 🟢 Full | 46 | 46 | 100% |
+| Variables (let, const) | 🟢 Full | 90 | 90 | 100% |
+| Math methods | 🟢 Full | 528 | 533 | 99% |
+| Arithmetic operators | 🟡 Mostly | 202 | 227 | 89% |
 
-**Supported via JS host imports currently (requires a JS runtime):**
+**Overall: 5705 / 5735 tests passing (99%)**
 
-- **Collections** -- Map, Set, WeakMap, WeakSet (delegated to JS built-ins)
-- **RegExp** -- exec, match, replace, split (delegated to JS RegExp engine)
-- **Promises** -- Promise.all, Promise.race, Promise.resolve/reject, async chaining
-- **Async/await** and **generators** (including async generators)
-- **JSON** -- JSON.parse, JSON.stringify
-- **Date** -- construction and methods (delegated to JS Date)
-- **Console** -- console.log, console.error
+### Not Supported
 
-### ECMAScript Standard Features Not Yet Supported
-
-| Standard | Feature | Status | Tests |
-|----------|---------|--------|------:|
-| ES5 | `with` statement | Strict mode only — incompatible with static compilation | 560 |
-| ES5 | Octal escape sequences | Forbidden in strict/module mode | 16 |
-| ES5 | Sloppy mode behaviors | ts2wasm compiles in strict mode exclusively | 8 |
-| ES2015 | Multi-module `import` | Single-file compilation; basic multi-file via `compileMulti()` | 783 |
-| ES2015 | Proxy | Partial — basic traps work, not all handler methods | — |
-| ES2015 | Full `arguments` object | Partial — basic access works, `arguments.callee` not supported | — |
-| ES2015 | Unicode 16.0.0 identifiers | TypeScript 5.x parser limitation — requires TS 6.x upgrade | 82 |
-| ES2017 | SharedArrayBuffer / Atomics | Requires shared Wasm memory (not yet available in WasmGC) | 460 |
-| ES2020 | Dynamic `import()` | No runtime module loader | 432 |
-| ES2020 | BigInt64Array / BigUint64Array | Not yet implemented | 28 |
-| ES2025 | Temporal API | Not yet implemented | 4,376 |
-| ES2025 | Set methods (union, intersection, etc.) | Not yet implemented | 186 |
-
-### ECMAScript Proposals (Not Yet Standardized)
-
-| Stage | Feature | Tests |
-|-------|---------|------:|
-| Stage 3 | Source phase imports | 211 |
-| Stage 3 | Import defer | 210 |
-| Stage 3 | Map/WeakMap upsert (getOrInsert) | 72 |
-
-### Common Failure Patterns
-
-The remaining 62% of test262 failures fall into these categories:
-
-| Pattern | Affected tests | Description |
-|---------|---------------:|-------------|
-| Assertion failures | ~10,350 | Built-in method edge cases, spec-mandated error types, or property attributes that differ from the spec |
-| Type errors | ~6,130 | Missing or incorrect type coercions at runtime, especially for untyped/dynamic code patterns |
-| Property descriptor model | ~1,260 | `Object.defineProperty`, `Object.getOwnPropertyDescriptor`, and related descriptor operations are incomplete |
-| Null dereference | ~1,080 | Prototype chain lookups that reach null before finding the expected property |
-| Compile errors | ~1,880 | Syntax or type patterns the compiler does not yet handle |
-| Promise/async edge cases | ~210 | Microtask scheduling differences between Wasm and native JS engines |
-
-### Conformance Trend
-
-Conformance is improving with each release. The full test262 conformance report with historical trend data is available at `benchmarks/results/report.html`.
+| Feature | Notes |
+|---------|-------|
+| `var`, `eval`, `with` | Not planned — use `let`/`const` instead |
+<!-- AUTO:COVERAGE:END -->
 
 ### Benchmarks
 
