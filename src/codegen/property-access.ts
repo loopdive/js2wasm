@@ -624,8 +624,11 @@ export function compileOptionalPropertyAccess(
                   { op: "struct.get", typeIdx: structTypeIdx, fieldIdx },
                 ],
                 else: [
-                  // Type mismatch at runtime — emit a safe default
-                  ...(fields[fieldIdx]!.type.kind === "f64" ? [{ op: "f64.const", value: NaN }] :
+                  // Type mismatch at runtime — emit a safe default (sNaN sentinel for f64 #866)
+                  ...(fields[fieldIdx]!.type.kind === "f64" ? [
+                    { op: "i64.const", value: 0x7FF00000DEADC0DEn },
+                    { op: "f64.reinterpret_i64" },
+                  ] :
                      fields[fieldIdx]!.type.kind === "i32" ? [{ op: "i32.const", value: 0 }] :
                      [{ op: "ref.null.extern" }]) as Instr[],
                 ],
