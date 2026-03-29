@@ -272,7 +272,6 @@ const compilerHash = buildCompilerHash();
  */
 async function getOrCompile(
   wrappedSource: string,
-  _fullDiagnostics = false, // unused — early errors checked separately for negative tests
   relPath?: string,
 ): Promise<{ ok: true; binary: Uint8Array; result: any; cachePath?: string } | { ok: false; error: string }> {
   // Compute the source map URL filename from relPath (e.g. "test/.../S11.js" -> "S11.wasm.map")
@@ -309,7 +308,7 @@ async function getOrCompile(
   if (!hitCache) {
     // Cache miss: async compile via pool worker with race timeout
     const poolResult = await Promise.race([
-      pool.compile(wrappedSource, 10_000, fullDiagnostics, sourceMapFilename, relPath),
+      pool.compile(wrappedSource, 10_000, false, sourceMapFilename, relPath),
       new Promise<PoolResult>((resolve) =>
         setTimeout(() => resolve({ ok: false, error: "compilation timeout (10s race)", compileMs: 10000 } as PoolResult), 10_000)
       ),
@@ -701,7 +700,7 @@ for (const category of TEST_CATEGORIES) {
             compileResult = { ok: false, error: e.message ?? String(e) };
           }
         } else {
-          compileResult = await getOrCompile(wrapped, false, relPath);
+          compileResult = await getOrCompile(wrapped, relPath);
         }
 
         // Handle negative parse/early tests
