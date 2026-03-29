@@ -31,6 +31,21 @@ Message tester: `"Worktree ready, run equivalence tests for #[issue]"`
 
 **Do not exit** after completing a task — always check TaskList first. Do not wait for tech lead approval to pick up the next task.
 
+### Pause and suspend protocols
+
+**PAUSE task**: If the next task in TaskList has `[PAUSE]` in its subject, do NOT claim it. Instead message tech lead: `"Hit pause marker, waiting for instructions."` and wait.
+
+**Suspend request**: If tech lead sends a message containing `SUSPEND`, you must:
+1. Finish the current atomic operation (don't leave files half-edited)
+2. Commit any uncommitted work to your branch (even if incomplete)
+3. Write a progress file to your worktree: `SUSPEND.md` containing:
+   - Current issue number and status
+   - What's done, what's remaining
+   - Files modified and their state
+   - How to resume: exact next steps
+4. Message tech lead: `"Suspended #N. Progress saved to SUSPEND.md in worktree."`
+5. Go idle (do not pick up new tasks)
+
 ## Key principles
 - **Dual-mode: JS host optional** — prefer Wasm-native implementations; host imports OK as fast path with standalone fallback
 - Existing host imports are legacy/temporary — don't add new ones without standalone fallback

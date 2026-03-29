@@ -79,9 +79,14 @@ See [plan/team-setup.md](plan/team-setup.md) for full team config, roles, memory
 ### Agent work dispatch
 - Tech lead creates tasks via `TaskCreate` at session start (ordered by priority from `plan/dependency-graph.md`)
 - Dev agents self-serve: after completing a task, they check `TaskList` and claim the next unowned task
-- If no tasks available, dev messages team lead and waits for assignment
 - Dev agents do NOT exit after completing a task — they always check TaskList first
 - Only the tech lead runs test262; dev agents run scoped tests only (compile + run specific test files, NOT `npx vitest`)
+
+### Controlling agents
+- **Pause**: create a task with `[PAUSE]` in the subject after the current in-progress tasks. Agents stop when they hit it.
+- **Suspend**: send `SUSPEND` to an agent or broadcast `SUSPEND` to all. Agents commit WIP, write `SUSPEND.md` to their worktree with progress and resume instructions, then go idle.
+- **Resume**: read the agent's `SUSPEND.md`, create a new task with those instructions, spawn a new agent in the same worktree.
+- **Shutdown**: send `{"type": "shutdown_request"}` via SendMessage. Agent terminates permanently.
 
 ### Issue completion protocol (tech lead responsibility)
 When a dev agent reports completion, the tech lead must:
