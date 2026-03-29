@@ -13,8 +13,8 @@ Active file/function claims by agents. **Check before editing. Update when start
 
 | File | Function/Area | Agent | Issue | Since |
 |------|--------------|-------|-------|-------|
-| src/codegen/index.ts | compileClass* | dev-agent | #820, #848 | 2026-03-28 |
-| src/codegen/expressions.ts | compilePropertyAccess | dev-agent | #820, #848 | 2026-03-28 |
+| src/codegen/index.ts | compileClass* | dev-agent | #820 | 2026-03-28 |
+| src/codegen/expressions.ts | compilePropertyAccess | dev-agent | #820 | 2026-03-28 |
 | src/runtime.ts | _toPrimitive / buildImports | dev-agent-866 | #866 | 2026-03-28 |
 | src/codegen/statements.ts | emitDefaultParamInit | dev-agent-866 | #866 | 2026-03-28 |
 | src/codegen/type-coercion.ts | pushParamSentinel/pushDefaultValue | dev | #869 | 2026-03-29 |
