@@ -26,8 +26,12 @@ Tests must run AFTER rebase to catch integration issues. Use the test lock to pr
 7. [ ] **Issue-specific test262 tests**: compile+run the specific test262 files your issue targets
    - Verify your fix actually works on the tests from the issue description
 8. [ ] **Full test262** (optional but recommended): `pnpm run test:262`
+   - **REQUIRES EXTRA COORDINATION** — this uses ~4GB RAM and takes ~2 min. Only one agent may run it at a time.
+   - Before starting: broadcast `"Running full test262 for #N — hold all tests"` and wait for acknowledgment
+   - Re-check RAM: `free -m | awk '/Mem/{print $4}'` — need **>4GB free** (more than scoped tests)
+   - If another agent is already running full test262: do NOT start a second one. Wait for them to finish.
    - Check for regressions: pass count should not decrease vs main
-   - This takes ~2 min with 1 fork. Only run if your changes touch core codegen paths.
+   - Only run if your changes touch core codegen paths (expressions.ts, statements.ts, index.ts, type-coercion.ts)
 
 ### After testing
 
