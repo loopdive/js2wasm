@@ -22,8 +22,6 @@ Active file/function claims by agents. **Check before editing. Update when start
 | src/codegen/statements.ts | emitDefaultParamInit | dev | #869 | 2026-03-29 |
 | src/codegen/expressions.ts | call sites (pushParamSentinel) | dev | #869 | 2026-03-29 |
 
-| src/codegen/closures.ts | isHostCallbackArgument | dev-2 | #860 | 2026-03-29 |
-
 <!--
 Example entries:
 | src/codegen/expressions.ts | compileCallExpression | dev-1 | #512 | 2026-03-25 |
