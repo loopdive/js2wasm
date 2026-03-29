@@ -289,3 +289,5 @@ export {
   compileAndInstantiate,
   instantiateWasm,
 } from "./runtime.js";
+
+export { preloadLibFiles } from "./checker/index.js";

@@ -7,6 +7,11 @@ import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker"
 import * as ts from "typescript";
 import { compile } from "../src/index.js";
 import { buildImports, instantiateWasm } from "../src/runtime.js";
+import { loadLibFiles } from "./lib-loader.js";
+
+// Pre-populate TypeScript lib files for browser environment
+// (replaces fs.readFileSync which is unavailable in the browser)
+loadLibFiles();
 import { WasmTreemap, parseWasm, parseWasmSpans, SECTION_COLORS } from "./wasm-treemap.js";
 import type { WasmData, WasmSection, WasmFunctionBody, ByteSpan } from "./wasm-treemap.js";
 import { LayoutManager } from "./layout.js";

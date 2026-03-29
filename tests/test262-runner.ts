@@ -95,7 +95,6 @@ export type FilterResult =
 // Tests that cause the compiler to hang (infinite loop during compilation)
 const HANGING_TESTS = new Set([
   "test/built-ins/Promise/race/invoke-then.js", // #408: Promise.race compilation hang
-  "test/built-ins/Map/prototype/forEach/iterates-values-deleted-then-readded.js", // hangs: Map mutation during iteration
   "test/built-ins/Temporal/Duration/from/argument-non-string.js", // hangs: Temporal runtime loop
 ]);
 
