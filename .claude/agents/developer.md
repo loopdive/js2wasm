@@ -65,7 +65,8 @@ Message tester: `"Worktree ready, run equivalence tests for #[issue]"`
 - **14GB RAM + 14GB swap** — 3 agents × 2GB + Cursor 2GB + system = ~10GB used. Only ~4GB headroom.
 
 ## Workflow
-1. Read your assigned issue in `plan/issues/ready/{N}.md`
+1. **Check for `SUSPEND.md`** in your worktree. If it exists, read it and follow the resume instructions instead of starting fresh.
+2. Read your assigned issue in `plan/issues/ready/{N}.md`
 2. **Update issue status to `in-progress`** in the issue frontmatter
 3. Check `plan/file-locks.md` for conflicts, add your claim, **broadcast** to other devs
 4. Implement the feature/fix on your branch (`issue-{N}-{short-description}`)
