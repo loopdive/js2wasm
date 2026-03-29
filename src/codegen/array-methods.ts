@@ -16,12 +16,70 @@ import {
   localGlobalIdx,
   ensureExnTag,
   addArrayIteratorImports,
+  addStringConstantGlobal,
 } from "./index.js";
 import { isStringType } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";
 import { compileExpression, compileArrowAsClosure, VOID_RESULT, getLine, getCol } from "./shared.js";
 import { coercionInstrs, defaultValueInstrs } from "./type-coercion.js";
 import { ensureTimsortHelper } from "./timsort.js";
+
+/** Emit throw with a string message (local version to avoid circular dep on expressions.ts) */
+function emitThrowString(ctx: CodegenContext, fctx: FunctionContext, message: string): void {
+  addStringConstantGlobal(ctx, message);
+  const strIdx = ctx.stringGlobalMap.get(message)!;
+  fctx.body.push({ op: "global.get", index: strIdx } as Instr);
+  const tagIdx = ensureExnTag(ctx);
+  fctx.body.push({ op: "throw", tagIdx });
+}
+
+/**
+ * Check if a callback argument is known to be non-callable at compile time.
+ * Returns true if the argument is null, undefined, a number, string, or boolean literal.
+ */
+function isKnownNonCallable(ctx: CodegenContext, arg: ts.Expression): boolean {
+  if (arg.kind === ts.SyntaxKind.NullKeyword) return true;
+  if (arg.kind === ts.SyntaxKind.UndefinedKeyword) return true;
+  if (arg.kind === ts.SyntaxKind.TrueKeyword || arg.kind === ts.SyntaxKind.FalseKeyword) return true;
+  if (ts.isNumericLiteral(arg)) return true;
+  if (ts.isStringLiteral(arg)) return true;
+  if (ts.isIdentifier(arg) && arg.text === "undefined") return true;
+  // Check TS type flags for known non-function types
+  const tsType = ctx.checker.getTypeAtLocation(arg);
+  const NON_CALLABLE_FLAGS =
+    ts.TypeFlags.Undefined | ts.TypeFlags.Void | ts.TypeFlags.Null |
+    ts.TypeFlags.BooleanLike | ts.TypeFlags.NumberLike | ts.TypeFlags.StringLike |
+    ts.TypeFlags.BigIntLike;
+  if (tsType.flags & NON_CALLABLE_FLAGS) return true;
+  return false;
+}
+
+/**
+ * Emit TypeError for missing or non-callable callback argument.
+ * Called by array callback methods (every, some, forEach, filter, map, reduce).
+ * Returns true if a throw was emitted (caller should return early).
+ */
+function emitCallbackTypeCheck(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  callExpr: ts.CallExpression,
+  methodName: string,
+): boolean {
+  // No callback argument → always throw
+  if (callExpr.arguments.length < 1) {
+    emitThrowString(ctx, fctx, `TypeError: ${methodName} callback is not a function`);
+    return true;
+  }
+  // Known non-callable literal → compile arg for side effects, then throw
+  const cbArg = callExpr.arguments[0]!;
+  if (isKnownNonCallable(ctx, cbArg)) {
+    const cbType = compileExpression(ctx, fctx, cbArg);
+    if (cbType) fctx.body.push({ op: "drop" });
+    emitThrowString(ctx, fctx, `TypeError: ${methodName} callback is not a function`);
+    return true;
+  }
+  return false;
+}
 
 // ── Guarded funcref cast (ref.test before ref.cast to avoid illegal cast traps) ──
 function guardedFuncRefCastInstrs(fctx: FunctionContext, funcTypeIdx: number): Instr[] {
@@ -2479,9 +2537,10 @@ function compileArrayFilter(
   arrTypeIdx: number,
   elemType: ValType,
 ): ValType | null {
-  if (callExpr.arguments.length < 1) {
-    ctx.errors.push({ message: "filter requires a callback argument", line: getLine(callExpr), column: getCol(callExpr) });
-    return null;
+  // ES spec: throw TypeError if callback is not a function
+  if (emitCallbackTypeCheck(ctx, fctx, callExpr, "Array.prototype.filter")) {
+    fctx.body.push({ op: "unreachable" } as unknown as Instr);
+    return { kind: "ref_null", typeIdx: vecTypeIdx };
   }
 
   const setup = setupArrayCallback(ctx, fctx, callExpr, "filter", "flt");
@@ -2552,9 +2611,10 @@ function compileArrayMap(
   arrTypeIdx: number,
   elemType: ValType,
 ): ValType | null {
-  if (callExpr.arguments.length < 1) {
-    ctx.errors.push({ message: "map requires a callback argument", line: getLine(callExpr), column: getCol(callExpr) });
-    return null;
+  // ES spec: throw TypeError if callback is not a function
+  if (emitCallbackTypeCheck(ctx, fctx, callExpr, "Array.prototype.map")) {
+    fctx.body.push({ op: "unreachable" } as unknown as Instr);
+    return { kind: "ref_null", typeIdx: vecTypeIdx };
   }
 
   const cbArg = callExpr.arguments[0]!;
@@ -2648,9 +2708,10 @@ function compileArrayReduce(
   arrTypeIdx: number,
   elemType: ValType,
 ): ValType | null {
-  if (callExpr.arguments.length < 1) {
-    ctx.errors.push({ message: "reduce requires at least a callback", line: getLine(callExpr), column: getCol(callExpr) });
-    return null;
+  // ES spec: throw TypeError if callback is not a function
+  if (emitCallbackTypeCheck(ctx, fctx, callExpr, "Array.prototype.reduce")) {
+    fctx.body.push({ op: "unreachable" } as unknown as Instr);
+    return elemType;
   }
 
   const numKind = ctx.fast ? "i32" : "f64";
@@ -2758,9 +2819,10 @@ function compileArrayReduceRight(
   arrTypeIdx: number,
   elemType: ValType,
 ): ValType | null {
-  if (callExpr.arguments.length < 1) {
-    ctx.errors.push({ message: "reduceRight requires at least a callback", line: getLine(callExpr), column: getCol(callExpr) });
-    return null;
+  // ES spec: throw TypeError if callback is not a function
+  if (emitCallbackTypeCheck(ctx, fctx, callExpr, "Array.prototype.reduceRight")) {
+    fctx.body.push({ op: "unreachable" } as unknown as Instr);
+    return elemType;
   }
 
   const numKind = ctx.fast ? "i32" : "f64";
@@ -2905,9 +2967,10 @@ function compileArrayForEach(
   arrTypeIdx: number,
   elemType: ValType,
 ): ValType | null {
-  if (callExpr.arguments.length < 1) {
-    ctx.errors.push({ message: "forEach requires a callback argument", line: getLine(callExpr), column: getCol(callExpr) });
-    return null;
+  // ES spec: throw TypeError if callback is not a function
+  if (emitCallbackTypeCheck(ctx, fctx, callExpr, "Array.prototype.forEach")) {
+    fctx.body.push({ op: "unreachable" } as unknown as Instr);
+    return null; // void method
   }
 
   const setup = setupArrayCallback(ctx, fctx, callExpr, "forEach", "fe");
@@ -2955,9 +3018,10 @@ function compileArrayFind(
   arrTypeIdx: number,
   elemType: ValType,
 ): ValType | null {
-  if (callExpr.arguments.length < 1) {
-    ctx.errors.push({ message: "find requires a callback argument", line: getLine(callExpr), column: getCol(callExpr) });
-    return null;
+  // ES spec: throw TypeError if callback is not a function
+  if (emitCallbackTypeCheck(ctx, fctx, callExpr, "Array.prototype.find")) {
+    fctx.body.push({ op: "unreachable" } as unknown as Instr);
+    return elemType;
   }
 
   const setup = setupArrayCallback(ctx, fctx, callExpr, "find", "find");
@@ -3020,9 +3084,10 @@ function compileArrayFindIndex(
   arrTypeIdx: number,
   elemType: ValType,
 ): ValType | null {
-  if (callExpr.arguments.length < 1) {
-    ctx.errors.push({ message: "findIndex requires a callback argument", line: getLine(callExpr), column: getCol(callExpr) });
-    return null;
+  // ES spec: throw TypeError if callback is not a function
+  if (emitCallbackTypeCheck(ctx, fctx, callExpr, "Array.prototype.findIndex")) {
+    fctx.body.push({ op: "unreachable" } as unknown as Instr);
+    return { kind: "i32" };
   }
 
   const setup = setupArrayCallback(ctx, fctx, callExpr, "findIndex", "fi");
@@ -3075,9 +3140,10 @@ function compileArraySome(
   arrTypeIdx: number,
   elemType: ValType,
 ): ValType | null {
-  if (callExpr.arguments.length < 1) {
-    ctx.errors.push({ message: "some requires a callback argument", line: getLine(callExpr), column: getCol(callExpr) });
-    return null;
+  // ES spec: throw TypeError if callback is not a function
+  if (emitCallbackTypeCheck(ctx, fctx, callExpr, "Array.prototype.some")) {
+    fctx.body.push({ op: "unreachable" } as unknown as Instr);
+    return { kind: "i32" };
   }
 
   const setup = setupArrayCallback(ctx, fctx, callExpr, "some", "some");
@@ -3124,9 +3190,10 @@ function compileArrayEvery(
   arrTypeIdx: number,
   elemType: ValType,
 ): ValType | null {
-  if (callExpr.arguments.length < 1) {
-    ctx.errors.push({ message: "every requires a callback argument", line: getLine(callExpr), column: getCol(callExpr) });
-    return null;
+  // ES spec: throw TypeError if callback is not a function
+  if (emitCallbackTypeCheck(ctx, fctx, callExpr, "Array.prototype.every")) {
+    fctx.body.push({ op: "unreachable" } as unknown as Instr);
+    return { kind: "i32" };
   }
 
   const setup = setupArrayCallback(ctx, fctx, callExpr, "every", "evr");
