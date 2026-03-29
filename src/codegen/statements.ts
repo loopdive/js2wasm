@@ -80,6 +80,49 @@ function emitTdzInit(ctx: CodegenContext, fctx: FunctionContext, name: string): 
  * If the TDZ flag is 0 (uninitialized), throw a ReferenceError.
  * No-op if the variable doesn't have a TDZ flag.
  */
+/**
+ * Emit the generator body wrapped in try/catch so that exceptions thrown during
+ * eager body evaluation are stored in the buffer and deferred to the first
+ * .next() call, matching JS generator semantics (#862).
+ */
+export function emitGeneratorBodyWithTryCatch(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  bodyInstrs: Instr[],
+  bufferLocal: number,
+): void {
+  const tagIdx = ensureExnTag(ctx);
+  const storeErrorIdx = ensureLateImport(ctx, "__gen_store_error",
+    [{ kind: "externref" }, { kind: "externref" }], []);
+  flushLateImportShifts(ctx, fctx);
+
+  const errLocal = allocLocal(fctx, `__gen_caught_err_${fctx.locals.length}`, { kind: "externref" });
+  // Tagged catch: exception payload (externref) is on the stack
+  const catchBody: Instr[] = [
+    { op: "local.set", index: errLocal } as Instr,
+    { op: "local.get", index: bufferLocal } as Instr,
+    { op: "local.get", index: errLocal } as Instr,
+    { op: "call", funcIdx: storeErrorIdx! } as unknown as Instr,
+  ];
+  // catch_all: no payload on stack — push null as placeholder error
+  const catchAllBody: Instr[] = [
+    { op: "local.get", index: bufferLocal } as Instr,
+    { op: "ref.null.extern" } as Instr,
+    { op: "call", funcIdx: storeErrorIdx! } as unknown as Instr,
+  ];
+  fctx.body.push({
+    op: "try",
+    blockType: { kind: "empty" },
+    body: [{
+      op: "block",
+      blockType: { kind: "empty" },
+      body: bodyInstrs,
+    }] as Instr[],
+    catches: [{ tagIdx, body: catchBody }],
+    catchAll: catchAllBody,
+  } as unknown as Instr);
+}
+
 export function emitTdzCheck(ctx: CodegenContext, fctx: FunctionContext, name: string): void {
   const flagIdx = ctx.tdzGlobals.get(name);
   if (flagIdx === undefined) return;
@@ -6604,11 +6647,7 @@ function compileNestedFunctionDeclaration(
       liftedFctx.generatorReturnDepth = undefined;
 
       liftedFctx.body = outerBody;
-      liftedFctx.body.push({
-        op: "block",
-        blockType: { kind: "empty" },
-        body: bodyInstrs,
-      });
+      emitGeneratorBodyWithTryCatch(ctx, liftedFctx, bodyInstrs, bufferLocal);
 
       // Return __create_generator(__gen_buffer)
       const createGenIdx = ctx.funcMap.get("__create_generator")!;
@@ -6743,11 +6782,7 @@ function compileNestedFunctionDeclaration(
       liftedFctx.generatorReturnDepth = undefined;
 
       liftedFctx.body = outerBody;
-      liftedFctx.body.push({
-        op: "block",
-        blockType: { kind: "empty" },
-        body: bodyInstrs,
-      });
+      emitGeneratorBodyWithTryCatch(ctx, liftedFctx, bodyInstrs, bufferLocal);
 
       // Return __create_generator(__gen_buffer)
       const createGenIdx = ctx.funcMap.get("__create_generator")!;
