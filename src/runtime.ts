@@ -342,6 +342,7 @@ function resolveImport(
         const builtinCtors: Record<string, Function> = {
           Map, Set, WeakMap, WeakSet, WeakRef, RegExp, ArrayBuffer, DataView,
           Error, TypeError, RangeError, SyntaxError, URIError, EvalError, ReferenceError,
+          AggregateError,
           Test262Error,
         };
         const Ctor = deps?.[intent.className] ?? builtinCtors[intent.className];
@@ -606,30 +607,20 @@ function resolveImport(
       if (name === "__gen_push_f64") return (buf: any[], v: number) => { buf.push(v); };
       if (name === "__gen_push_i32") return (buf: any[], v: number) => { buf.push(v); };
       if (name === "__gen_push_ref") return (buf: any[], v: any) => { buf.push(v); };
-      if (name === "__gen_store_error") return (buf: any[], err: any) => { (buf as any).__error = err; };
       if (name === "__create_generator") return (buf: any[]) => {
         let index = 0;
-        const storedError = (buf as any).__error;
         return {
           next() {
             if (index < buf.length) {
               return { value: buf[index++], done: false };
             }
-            // If the generator body threw during eager evaluation, defer
-            // the error until all yielded values have been consumed (#862)
-            if (storedError !== undefined) {
-              (buf as any).__error = undefined;
-              throw storedError;
-            }
             return { value: undefined, done: true };
           },
           return(value: any) {
-            storedError = undefined;
             index = buf.length;
             return { value, done: true };
           },
           throw(e: any) {
-            storedError = undefined;
             index = buf.length;
             throw e;
           },

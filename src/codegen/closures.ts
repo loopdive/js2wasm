@@ -36,7 +36,7 @@ import {
   unwrapPromiseType,
 } from "../checker/type-mapper.js";
 import type { Instr, ValType, FieldDef, StructTypeDef } from "../ir/types.js";
-import { compileStatement, emitGeneratorBodyWithTryCatch } from "./statements.js";
+import { compileStatement } from "./statements.js";
 import { defaultValueInstrs, coercionInstrs, emitGuardedRefCast } from "./type-coercion.js";
 import {
   compileExpression,
@@ -1439,7 +1439,11 @@ export function compileArrowAsClosure(
     liftedFctx.generatorReturnDepth = undefined;
 
     liftedFctx.body = outerBody;
-    emitGeneratorBodyWithTryCatch(ctx, liftedFctx, bodyInstrs, bufferLocal);
+    liftedFctx.body.push({
+      op: "block",
+      blockType: { kind: "empty" },
+      body: bodyInstrs,
+    });
 
     // Return __create_generator(__gen_buffer)
     const createGenIdx = ctx.funcMap.get("__create_generator")!;
