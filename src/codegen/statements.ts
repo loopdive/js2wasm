@@ -4266,6 +4266,57 @@ function compileForOfDestructuring(
           continue;
         }
 
+        // Handle rest element: for (const [...rest] of arr) or for (const [a, ...rest] of arr)
+        if (ts.isBindingElement(element) && element.dotDotDotToken) {
+          const restName = ts.isIdentifier(element.name)
+            ? element.name.text
+            : `__rest_${fctx.locals.length}`;
+
+          // Compute rest length: max(0, original.length - i)
+          const restLenLocal = allocLocal(fctx, `__rest_len_${fctx.locals.length}`, { kind: "i32" });
+          fctx.body.push({ op: "local.get", index: elemLocal });
+          fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx: 0 }); // length
+          fctx.body.push({ op: "i32.const", value: i });
+          fctx.body.push({ op: "i32.sub" } as Instr);
+          fctx.body.push({ op: "local.set", index: restLenLocal });
+          // Clamp to 0 if negative
+          fctx.body.push({ op: "i32.const", value: 0 } as Instr);
+          fctx.body.push({ op: "local.get", index: restLenLocal });
+          fctx.body.push({ op: "local.get", index: restLenLocal });
+          fctx.body.push({ op: "i32.const", value: 0 } as Instr);
+          fctx.body.push({ op: "i32.lt_s" } as Instr);
+          fctx.body.push({ op: "select" } as Instr);
+          fctx.body.push({ op: "local.set", index: restLenLocal });
+
+          // Create new data array: array.new_default(restLen)
+          const restArrLocal = allocLocal(fctx, `__rest_arr_${fctx.locals.length}`, { kind: "ref", typeIdx: innerArrTypeIdx });
+          fctx.body.push({ op: "local.get", index: restLenLocal });
+          fctx.body.push({ op: "array.new_default", typeIdx: innerArrTypeIdx } as Instr);
+          fctx.body.push({ op: "local.set", index: restArrLocal });
+
+          // array.copy(restArr, 0, srcData, i, restLen)
+          fctx.body.push({ op: "local.get", index: restArrLocal });
+          fctx.body.push({ op: "i32.const", value: 0 });
+          fctx.body.push({ op: "local.get", index: elemLocal });
+          fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx: 1 }); // src data
+          fctx.body.push({ op: "i32.const", value: i });
+          fctx.body.push({ op: "local.get", index: restLenLocal });
+          fctx.body.push({ op: "array.copy", dstTypeIdx: innerArrTypeIdx, srcTypeIdx: innerArrTypeIdx } as Instr);
+
+          // Create new vec struct: struct.new(restLen, restArr)
+          const restVecType: ValType = { kind: "ref", typeIdx: structTypeIdx };
+          fctx.body.push({ op: "local.get", index: restLenLocal });
+          fctx.body.push({ op: "local.get", index: restArrLocal });
+          fctx.body.push({ op: "struct.new", typeIdx: structTypeIdx } as Instr);
+
+          let restIdx = fctx.localMap.get(restName);
+          if (restIdx === undefined) {
+            restIdx = allocLocal(fctx, restName, restVecType);
+          }
+          fctx.body.push({ op: "local.set", index: restIdx });
+          continue;
+        }
+
         if (!ts.isIdentifier(element.name)) continue;
         const localName = element.name.text;
         const bindingTsType = ctx.checker.getTypeAtLocation(element);

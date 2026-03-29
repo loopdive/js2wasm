@@ -21,6 +21,8 @@ Active file/function claims by agents. **Check before editing. Update when start
 | src/codegen/index.ts | OptionalParamInfo, top-level default init | dev | #869 | 2026-03-29 |
 | src/codegen/statements.ts | emitDefaultParamInit | dev | #869 | 2026-03-29 |
 | src/codegen/expressions.ts | call sites (pushParamSentinel) | dev | #869 | 2026-03-29 |
+| src/codegen/expressions.ts | compileEval / Proxy null guard | dev-2 | #825 | 2026-03-29 |
+| src/codegen/statements.ts | null guard for destructuring | dev-2 | #825 | 2026-03-29 |
 
 <!--
 Example entries:
