@@ -35,7 +35,7 @@ import {
   isVoidType,
 } from "../checker/type-mapper.js";
 import type { Instr, ValType, WasmFunction, FieldDef, StructTypeDef } from "../ir/types.js";
-import { compileStatement, bodyUsesArguments, emitArgumentsObject } from "./statements.js";
+import { compileStatement, bodyUsesArguments, emitArgumentsObject, emitGeneratorBodyWithTryCatch } from "./statements.js";
 import { compileExpression, getLine, getCol, VOID_RESULT } from "./shared.js";
 import { promoteAccessorCapturesToGlobals, emitMethodParamDefaults } from "./closures.js";
 import { resolveStructName, patchStructNewForAddedField } from "./expressions.js";
@@ -981,11 +981,7 @@ export function compileObjectLiteralForStruct(
         methodFctx.generatorReturnDepth = undefined;
 
         methodFctx.body = outerBody;
-        methodFctx.body.push({
-          op: "block",
-          blockType: { kind: "empty" },
-          body: bodyInstrs,
-        });
+        emitGeneratorBodyWithTryCatch(ctx, methodFctx, bodyInstrs, bufferLocal);
 
         // Return __create_generator(__gen_buffer)
         const createGenIdx = ctx.funcMap.get("__create_generator")!;

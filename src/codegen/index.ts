@@ -31,7 +31,7 @@ import type {
 import { createEmptyModule } from "../ir/types.js";
 import { compileExpression, resolveComputedKeyExpression, coerceType, valTypesMatch, emitBoundsCheckedArrayGet, ensureLateImport, flushLateImportShifts, shiftLateImportIndices, emitUndefined } from "./expressions.js";
 import { collectShapes } from "../shape-inference.js";
-import { compileStatement, ensureBindingLocals, hoistFunctionDeclarations, emitNestedBindingDefault, emitDefaultValueCheck, emitArgumentsObject } from "./statements.js";
+import { compileStatement, ensureBindingLocals, hoistFunctionDeclarations, emitNestedBindingDefault, emitDefaultValueCheck, emitArgumentsObject, emitGeneratorBodyWithTryCatch } from "./statements.js";
 import { emitInlineMathFunctions } from "./math-helpers.js";
 
 /** Result returned by generateModule / generateMultiModule */
@@ -13652,11 +13652,7 @@ export function compileClassBodies(
         fctx.generatorReturnDepth = undefined;
 
         fctx.body = outerBody;
-        fctx.body.push({
-          op: "block",
-          blockType: { kind: "empty" },
-          body: bodyInstrs,
-        });
+        emitGeneratorBodyWithTryCatch(ctx, fctx, bodyInstrs, bufferLocal);
 
         // Return __create_generator(__gen_buffer)
         const createGenIdx = ctx.funcMap.get("__create_generator")!;
@@ -14569,13 +14565,9 @@ function compileFunctionBody(
     for (let i = 0; i < fctx.continueStack.length; i++) fctx.continueStack[i]!--;
     fctx.generatorReturnDepth = undefined;
 
-    // Restore outer body and wrap compiled body in a block
+    // Restore outer body and wrap compiled body in try/catch
     fctx.body = outerBody;
-    fctx.body.push({
-      op: "block",
-      blockType: { kind: "empty" },
-      body: bodyInstrs,
-    });
+    emitGeneratorBodyWithTryCatch(ctx, fctx, bodyInstrs, bufferLocal);
 
     // Return __create_generator(__gen_buffer)
     const createGenIdx = ctx.funcMap.get("__create_generator")!;
