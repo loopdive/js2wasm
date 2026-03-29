@@ -145,71 +145,55 @@ ts2wasm passes **38% of the ECMAScript test262 conformance suite** (18,186 / 47,
 
 ### What Works Well
 
-The following language features have solid support:
+**Compiled to native Wasm (no host imports needed):**
 
-- **Basic types** -- number (f64), string, boolean, null, undefined
+- **Basic types** -- number (f64/i32), string (WasmGC arrays), boolean, null, undefined
 - **Functions** -- declarations, expressions, closures, arrow functions, default/rest parameters
-- **Classes** -- constructors, methods, getters/setters, inheritance, `super`, static members
+- **Classes** -- constructors, methods, getters/setters, inheritance, `super`, static members, private fields
 - **Control flow** -- if/else, switch, for, while, do-while, for-of, for-in, labeled break/continue
-- **Error handling** -- try/catch/finally with Wasm exceptions
-- **Async/await** and **generators** (including async generators)
+- **Error handling** -- try/catch/finally with native Wasm exceptions
 - **Destructuring**, spread operator, rest parameters
 - **Template literals** and tagged templates
-- **Collections** -- Array, Map, Set, WeakMap, WeakSet
-- **TypedArray**, DataView, ArrayBuffer
-- **RegExp** (via host imports)
-- **Promises** -- Promise.all, Promise.race, Promise.resolve/reject, async chaining
-- **Math** -- 270/326 built-in Math tests passing (83%)
-- **JSON** -- JSON.parse, JSON.stringify
+- **Math** -- compiled to Wasm f64 instructions (83% test262 coverage)
 - **Optional chaining** (`?.`) and **nullish coalescing** (`??`)
-- **Computed property names**, symbols, iterators
+- **Computed property names**, symbols
 - **Block scoping** -- let/const with proper TDZ semantics
+- **TypedArray**, DataView, ArrayBuffer (Wasm linear memory)
 
-### Known Limitations
+**Supported via JS host imports (requires a JS runtime):**
 
-**ES5 legacy (not planned)**
+- **Collections** -- Map, Set, WeakMap, WeakSet (delegated to JS built-ins)
+- **RegExp** -- exec, match, replace, split (delegated to JS RegExp engine)
+- **Promises** -- Promise.all, Promise.race, Promise.resolve/reject, async chaining
+- **Async/await** and **generators** (including async generators)
+- **JSON** -- JSON.parse, JSON.stringify
+- **Date** -- construction and methods (delegated to JS Date)
+- **Console** -- console.log, console.error
 
-| Feature | Reason |
-|---------|--------|
-| `with` statement | Strict mode only -- incompatible with static compilation |
-| Octal escape sequences | Forbidden in strict/module mode |
-| Sloppy mode behaviors | ts2wasm compiles in strict mode exclusively |
+### ECMAScript Standard Features Not Yet Supported
 
-**ES2015+**
+| Standard | Feature | Status | Tests |
+|----------|---------|--------|------:|
+| ES5 | `with` statement | Strict mode only — incompatible with static compilation | 560 |
+| ES5 | Octal escape sequences | Forbidden in strict/module mode | 16 |
+| ES5 | Sloppy mode behaviors | ts2wasm compiles in strict mode exclusively | 8 |
+| ES2015 | Multi-module `import` | Single-file compilation; basic multi-file via `compileMulti()` | 783 |
+| ES2015 | Proxy | Partial — basic traps work, not all handler methods | — |
+| ES2015 | Full `arguments` object | Partial — basic access works, `arguments.callee` not supported | — |
+| ES2015 | Unicode 16.0.0 identifiers | TypeScript 5.x parser limitation — requires TS 6.x upgrade | 82 |
+| ES2017 | SharedArrayBuffer / Atomics | Requires shared Wasm memory (not yet available in WasmGC) | 460 |
+| ES2020 | Dynamic `import()` | No runtime module loader | 432 |
+| ES2020 | BigInt64Array / BigUint64Array | Not yet implemented | 28 |
+| ES2025 | Temporal API | Not yet implemented | 4,376 |
+| ES2025 | Set methods (union, intersection, etc.) | Not yet implemented | 186 |
 
-| Feature | Status |
-|---------|--------|
-| Multi-module imports | Single-file compilation; basic multi-file support via `compileMulti` |
-| Proxy | Partial -- some traps work, not all handler methods |
-| Full `arguments` object | Partial -- basic access works, `arguments.callee` not supported |
+### ECMAScript Proposals (Not Yet Standardized)
 
-**ES2017**
-
-| Feature | Status |
-|---------|--------|
-| SharedArrayBuffer / Atomics | Requires shared Wasm memory (not yet available in WasmGC) |
-
-**ES2020**
-
-| Feature | Status |
-|---------|--------|
-| Dynamic `import()` | No runtime module loader |
-| BigInt64Array / BigUint64Array | Not yet implemented |
-
-**ES2025**
-
-| Feature | Status |
-|---------|--------|
-| Temporal API | Not implemented (4,524 tests skipped) |
-| Set methods (union, intersection, difference, etc.) | Not implemented (186 tests skipped) |
-
-**Stage 3 proposals**
-
-| Feature | Status |
-|---------|--------|
-| Source phase imports | Not implemented |
-| Import defer | Not implemented |
-| Map/WeakMap upsert (getOrInsert) | Not implemented |
+| Stage | Feature | Tests |
+|-------|---------|------:|
+| Stage 3 | Source phase imports | 211 |
+| Stage 3 | Import defer | 210 |
+| Stage 3 | Map/WeakMap upsert (getOrInsert) | 72 |
 
 ### Common Failure Patterns
 

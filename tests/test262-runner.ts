@@ -160,7 +160,7 @@ export function shouldSkip(
   if (filePath && /unicode-16\.0\.0/.test(filePath)) {
     return {
       skip: true,
-      reason: "TypeScript 5.x: Unicode 16.0.0 identifiers not supported (#832)",
+      reason: "ES2015: Unicode 16.0.0 identifiers (TypeScript 5.x parser limitation) (#832)",
     };
   }
   if (filePath && /built-ins\/SharedArrayBuffer/.test(filePath) || meta.features?.includes("SharedArrayBuffer")) {
