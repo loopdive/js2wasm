@@ -2871,10 +2871,6 @@ function compileReturnStatement(
 
   const hasPendingFinally = fctx.finallyStack && fctx.finallyStack.length > 0;
 
-  // Save body length before compiling return expression, so TCO can verify
-  // the tail call was actually emitted by this return expression (#839).
-  const bodyLenBeforeReturn = fctx.body.length;
-
   if (stmt.expression) {
     const exprType = compileExpression(ctx, fctx, stmt.expression, fctx.returnType ?? undefined);
     // Coerce expression result to match function return type if they differ
@@ -2922,62 +2918,17 @@ function compileReturnStatement(
   // Tail call optimization: if the last instruction is a call or call_ref,
   // replace it with return_call / return_call_ref to eliminate stack growth
   // for recursive and tail-position calls.
-  // Safety (#839): only apply when:
-  //   1. The call was emitted by this return expression (not pre-existing code)
-  //   2. The callee's return type matches the caller's
   const lastInstr = fctx.body[fctx.body.length - 1];
-  const callIsFromReturnExpr = fctx.body.length > bodyLenBeforeReturn;
-  if (lastInstr && lastInstr.op === "call" && callIsFromReturnExpr) {
-    const calleeFuncIdx = (lastInstr as any).funcIdx as number;
-    if (canTailCall(ctx, fctx, calleeFuncIdx)) {
-      (lastInstr as any).op = "return_call";
-      return; // return_call implicitly returns — no need for explicit return
-    }
+  if (lastInstr && lastInstr.op === "call") {
+    (lastInstr as any).op = "return_call";
+    return; // return_call implicitly returns — no need for explicit return
+  }
+  if (lastInstr && lastInstr.op === "call_ref") {
+    (lastInstr as any).op = "return_call_ref";
+    return; // return_call_ref implicitly returns — no need for explicit return
   }
 
   fctx.body.push({ op: "return" });
-}
-
-/**
- * Check if a tail call (return_call) is safe for the given callee.
- * return_call requires the callee's return types to match the calling function's.
- */
-function canTailCall(
-  ctx: CodegenContext,
-  fctx: FunctionContext,
-  calleeFuncIdx: number,
-): boolean {
-  // Look up callee's function type
-  const funcImports = ctx.mod.imports.filter((imp) => imp.desc.kind === "func");
-  const numImports = funcImports.length;
-  let calleeTypeIdx: number | undefined;
-  if (calleeFuncIdx < numImports) {
-    const imp = funcImports[calleeFuncIdx];
-    if (imp && imp.desc.kind === "func") calleeTypeIdx = imp.desc.typeIdx;
-  } else {
-    const fn = ctx.mod.functions[calleeFuncIdx - numImports];
-    if (fn) calleeTypeIdx = fn.typeIdx;
-  }
-  if (calleeTypeIdx === undefined) return false;
-  const calleeFt = ctx.mod.types[calleeTypeIdx];
-  if (!calleeFt || calleeFt.kind !== "func") return false;
-
-  // Compare return types
-  const calleeReturnType = calleeFt.results.length > 0 ? calleeFt.results[0] : null;
-  const callerReturnType = fctx.returnType ?? null;
-
-  // Both void — OK
-  if (!calleeReturnType && !callerReturnType) return true;
-  // One void, one not — mismatch
-  if (!calleeReturnType || !callerReturnType) return false;
-  // Compare kinds
-  if (calleeReturnType.kind !== callerReturnType.kind) return false;
-  // For ref types, also check typeIdx
-  if ((calleeReturnType.kind === "ref" || calleeReturnType.kind === "ref_null") &&
-      (callerReturnType.kind === "ref" || callerReturnType.kind === "ref_null")) {
-    if ((calleeReturnType as any).typeIdx !== (callerReturnType as any).typeIdx) return false;
-  }
-  return true;
 }
 
 /**
@@ -7111,67 +7062,4 @@ export function emitArgumentsObject(
   fctx.body.push({ op: "local.get", index: arrTmp });
   fctx.body.push({ op: "struct.new", typeIdx: vti });
   fctx.body.push({ op: "local.set", index: argsLocal });
-
-  // Set up mapped arguments: bidirectional sync between named params and arguments[i]
-  const paramToSlot = new Map<number, number>();
-  for (let i = 0; i < numArgs; i++) {
-    paramToSlot.set(i + paramOffset, i);
-  }
-  fctx.argumentsMapping = {
-    argsLocal,
-    arrTypeIdx: ati,
-    vecTypeIdx: vti,
-    paramToSlot,
-    paramTypes,
-    paramOffset,
-  };
-}
-
-/**
- * Emit write-through from a named parameter to the corresponding arguments array slot.
- * Called after a local.set/local.tee to a mapped parameter.
- * The value has already been stored in the param local; this reads it back,
- * boxes to externref, and stores in the arguments data array.
- */
-export function emitArgsMappingSync(
-  ctx: CodegenContext,
-  fctx: FunctionContext,
-  paramLocalIdx: number,
-): void {
-  const mapping = fctx.argumentsMapping;
-  if (!mapping) return;
-  const slot = mapping.paramToSlot.get(paramLocalIdx);
-  if (slot === undefined) return;
-
-  const pt = mapping.paramTypes[slot]!;
-
-  // Get the data array from the arguments vec struct: struct.get $vec 1 (field 1 = data array)
-  fctx.body.push({ op: "local.get", index: mapping.argsLocal });
-  fctx.body.push({ op: "struct.get", typeIdx: mapping.vecTypeIdx, fieldIdx: 1 } as unknown as Instr);
-  // Push the slot index
-  fctx.body.push({ op: "i32.const", value: slot });
-  // Get param value and box to externref
-  fctx.body.push({ op: "local.get", index: paramLocalIdx });
-  if (pt.kind === "f64") {
-    const boxIdx = ctx.funcMap.get("__box_number");
-    if (boxIdx !== undefined) {
-      fctx.body.push({ op: "call", funcIdx: boxIdx });
-    } else {
-      fctx.body.push({ op: "drop" });
-      fctx.body.push({ op: "ref.null.extern" });
-    }
-  } else if (pt.kind === "i32") {
-    fctx.body.push({ op: "f64.convert_i32_s" });
-    const boxIdx = ctx.funcMap.get("__box_number");
-    if (boxIdx !== undefined) {
-      fctx.body.push({ op: "call", funcIdx: boxIdx });
-    } else {
-      fctx.body.push({ op: "drop" });
-      fctx.body.push({ op: "ref.null.extern" });
-    }
-  } else if (pt.kind === "ref" || pt.kind === "ref_null") {
-    fctx.body.push({ op: "extern.convert_any" });
-  }
-  // array.set: [arrayref, i32 index, value] → []
-  fctx.body.push({ op: "array.set", typeIdx: mapping.arrTypeIdx } as unknown as Instr);
 }

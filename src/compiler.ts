@@ -2264,6 +2264,15 @@ export function compileSource(
       combined.set(urlSectionBytes, emitResult.binary.length);
       binary = combined;
     } else {
+      // DEBUG: dump __module_init body before emission
+      for (const f of mod.functions) {
+        if (f.name === "__module_init") {
+          console.error("[DEBUG-EMIT] __module_init body:");
+          for (let i = 0; i < f.body.length; i++) {
+            console.error("  [" + i + "] " + (f.body[i] as any)?.op);
+          }
+        }
+      }
       binary = emitBinary(mod);
     }
   } catch (e) {

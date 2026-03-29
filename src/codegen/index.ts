@@ -947,25 +947,6 @@ export interface FunctionContext {
    * into the outer locals.
    */
   pendingCallbackWritebacks?: Instr[];
-  /**
-   * Mapped arguments object info for non-strict functions with simple params.
-   * When a named parameter is assigned, the corresponding arguments array slot
-   * must be updated (and vice versa) per ES spec §10.6 mapped arguments.
-   */
-  argumentsMapping?: {
-    /** Local index of the arguments vec struct */
-    argsLocal: number;
-    /** Array type index for array.get/array.set on the data array */
-    arrTypeIdx: number;
-    /** Vec struct type index for struct.get to extract the data array */
-    vecTypeIdx: number;
-    /** Map from param local index → arguments array slot index */
-    paramToSlot: Map<number, number>;
-    /** Param types for boxing to externref */
-    paramTypes: ValType[];
-    /** Offset: number of locals before params (e.g., 1 for 'this' in instance methods) */
-    paramOffset: number;
-  };
 }
 
 /**
@@ -2286,6 +2267,8 @@ interface UnifiedCollectorState {
   generatorFound: boolean;
   // -- collectIteratorImports --
   iteratorFound: boolean;
+  // -- collectArrayIteratorImports --
+  arrayIteratorFound: boolean;
   // -- collectForInStringLiterals --
   forInFound: boolean;
   forInLiterals: Set<string>;
@@ -2328,6 +2311,7 @@ function createUnifiedCollectorState(sourceFile: ts.SourceFile): UnifiedCollecto
     unionFound: false,
     generatorFound: false,
     iteratorFound: false,
+    arrayIteratorFound: false,
     forInFound: false,
     forInLiterals: new Set(),
     inExprLiterals: new Set(),
@@ -2738,6 +2722,18 @@ function unifiedVisitNode(
     }
   }
 
+  // ── collectArrayIteratorImports ──
+  if (!state.arrayIteratorFound && ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+    const methodName = node.expression.name.text;
+    if (methodName === "entries" || methodName === "keys" || methodName === "values") {
+      const recvType = ctx.checker.getTypeAtLocation(node.expression.expression);
+      const sym = (recvType as ts.TypeReference).symbol ?? (recvType as ts.Type).symbol;
+      if (sym?.name === "Array") {
+        state.arrayIteratorFound = true;
+      }
+    }
+  }
+
   // ── collectIteratorImports ──
   if (!state.iteratorFound && ts.isForOfStatement(node)) {
     const exprType = ctx.checker.getTypeAtLocation(node.expression);
@@ -3122,6 +3118,15 @@ function finalizeUnifiedCollector(
   // ── collectIteratorImports finalize ──
   if (state.iteratorFound) {
     addIteratorImports(ctx);
+  }
+
+  // ── collectArrayIteratorImports finalize ──
+  if (state.arrayIteratorFound) {
+    addArrayIteratorImports(ctx);
+    // Array iterator results are externref iterators consumed via for-of generic path
+    if (!state.iteratorFound) {
+      addIteratorImports(ctx);
+    }
   }
 
   // ── collectForInStringLiterals finalize ──
@@ -8920,6 +8925,21 @@ export function addIteratorImports(ctx: CodegenContext): void {
   });
 }
 
+/** Register array iterator host imports (entries/keys/values) if not already registered */
+export function addArrayIteratorImports(ctx: CodegenContext): void {
+  if (ctx.funcMap.has("__array_entries")) return;
+
+  // All three: (externref) → externref — take a vec struct, return a JS iterator
+  const extToExt = addFuncType(
+    ctx,
+    [{ kind: "externref" }],
+    [{ kind: "externref" }],
+  );
+  addImport(ctx, "env", "__array_entries", { kind: "func", typeIdx: extToExt });
+  addImport(ctx, "env", "__array_keys", { kind: "func", typeIdx: extToExt });
+  addImport(ctx, "env", "__array_values", { kind: "func", typeIdx: extToExt });
+}
+
 /** Register for-in key enumeration host imports if not already registered */
 export function addForInImports(ctx: CodegenContext): void {
   // Guard: only register once
@@ -14508,22 +14528,6 @@ function compileFunctionBody(
     fctx.body.push({ op: "local.get", index: arrTmp });
     fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
     fctx.body.push({ op: "local.set", index: argsLocal });
-
-    // Set up mapped arguments: bidirectional sync between named params and arguments[i]
-    const paramToSlot = new Map<number, number>();
-    const paramTypes: ValType[] = [];
-    for (let i = 0; i < params.length; i++) {
-      paramToSlot.set(i, i);
-      paramTypes.push(params[i]!.type);
-    }
-    fctx.argumentsMapping = {
-      argsLocal,
-      arrTypeIdx,
-      vecTypeIdx,
-      paramToSlot,
-      paramTypes,
-      paramOffset: 0,
-    };
   }
 
   if (isGenerator) {
