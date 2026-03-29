@@ -84,7 +84,7 @@ See [plan/team-setup.md](plan/team-setup.md) for full team config, roles, memory
 
 ### Controlling agents
 - **Pause**: create a task with `[PAUSE]` in the subject after the current in-progress tasks. Agents stop when they hit it.
-- **Suspend**: send `SUSPEND` to an agent or broadcast `SUSPEND` to all. Agents commit WIP, write `SUSPEND.md` to their worktree with progress and resume instructions, then go idle.
+- **Suspend**: send `SUSPEND` to an agent or broadcast `SUSPEND` to all. Agents commit WIP, update their issue file with `status: suspended` and a `## Suspended Work` section (worktree path, branch, resume instructions), then go idle.
 - **Resume**: assign the issue to a dev agent. The issue file has `status: suspended` with a `## Suspended Work` section containing the worktree path and resume instructions.
 - **Shutdown**: send `{"type": "shutdown_request"}` via SendMessage. Agent terminates permanently.
 - **Orphaned agents** (lost team context after crash): check worktrees for commits (`git -C <wt> log --oneline main..HEAD`) and uncommitted work (`git -C <wt> diff --stat`). Save any work, then kill the process. Write `## Suspended Work` in the issue file manually with the worktree path and state.
