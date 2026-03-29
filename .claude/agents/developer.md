@@ -33,9 +33,11 @@ Message tester: `"Worktree ready, run equivalence tests for #[issue]"`
 
 ### Pause and suspend protocols
 
-**PAUSE task**: If the next task in TaskList has `[PAUSE]` in its subject, do NOT claim it. Instead message tech lead: `"Hit pause marker, waiting for instructions."` and wait.
+**PAUSE (between tasks)**: If the next task in TaskList has `[PAUSE]` in its subject, do NOT claim it. Message tech lead: `"Hit pause marker, waiting."` and wait idle until tech lead sends further instructions.
 
-**Suspend request**: If tech lead sends a message containing `SUSPEND`, you must:
+**PAUSE (immediate message)**: If tech lead sends `PAUSE`, stop work immediately — kill any running tests, don't start new operations. Message tech lead: `"Paused on #N."` and wait idle until tech lead sends `RESUME` or a new instruction.
+
+**SUSPEND**: If tech lead sends `SUSPEND`, you must save your state and terminate:
 1. Finish the current atomic operation (don't leave files half-edited)
 2. Commit any uncommitted work to your branch (even if incomplete)
 3. Update the issue file (`plan/issues/ready/{N}.md`) — set `status: suspended` in frontmatter and append a `## Suspended Work` section:
@@ -48,7 +50,7 @@ Message tester: `"Worktree ready, run equivalence tests for #[issue]"`
    - **Resume**: exact next steps to pick up where you left off
    ```
 4. Message tech lead: `"Suspended #N. Resume info in issue file."`
-5. Go idle (do not pick up new tasks)
+5. **Terminate** (exit process — a new agent will resume from the issue file later)
 
 ## Key principles
 - **Dual-mode: JS host optional** — prefer Wasm-native implementations; host imports OK as fast path with standalone fallback
