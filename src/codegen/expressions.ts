@@ -16324,6 +16324,50 @@ function compileNewExpression(
     }
   }
 
+  // Handle `new AggregateError(errors, message, options?)` (#844)
+  // AggregateError takes (iterable, message, options?) — pass errors and message as externref
+  if (ts.isIdentifier(expr.expression) && expr.expression.text === "AggregateError") {
+    const args = expr.arguments ?? [];
+    // Compile errors argument (iterable) as externref
+    if (args.length >= 1) {
+      const errorsType = compileExpression(ctx, fctx, args[0]!, { kind: "externref" });
+      if (errorsType && errorsType.kind !== "externref") {
+        coerceType(ctx, fctx, errorsType, { kind: "externref" });
+      }
+    } else {
+      fctx.body.push({ op: "ref.null.extern" });
+    }
+    // Compile message argument as externref
+    if (args.length >= 2) {
+      const msgType = compileExpression(ctx, fctx, args[1]!, { kind: "externref" });
+      if (msgType && msgType.kind !== "externref") {
+        coerceType(ctx, fctx, msgType, { kind: "externref" });
+      }
+    } else {
+      fctx.body.push({ op: "ref.null.extern" });
+    }
+    // Compile options argument as externref (for cause property)
+    if (args.length >= 3) {
+      const optsType = compileExpression(ctx, fctx, args[2]!, { kind: "externref" });
+      if (optsType && optsType.kind !== "externref") {
+        coerceType(ctx, fctx, optsType, { kind: "externref" });
+      }
+    } else {
+      fctx.body.push({ op: "ref.null.extern" });
+    }
+    const funcIdx = ensureLateImport(
+      ctx,
+      "__new_AggregateError",
+      [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }],
+      [{ kind: "externref" }],
+    );
+    flushLateImportShifts(ctx, fctx);
+    if (funcIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx });
+    }
+    return { kind: "externref" };
+  }
+
   // Handle `new Object()` — create an empty struct (equivalent to {})
   if (ts.isIdentifier(expr.expression) && expr.expression.text === "Object") {
     // Look for an empty struct type, or create an externref null as empty object

@@ -342,6 +342,7 @@ function resolveImport(
         const builtinCtors: Record<string, Function> = {
           Map, Set, WeakMap, WeakSet, WeakRef, RegExp, ArrayBuffer, DataView,
           Error, TypeError, RangeError, SyntaxError, URIError, EvalError, ReferenceError,
+          AggregateError,
           Test262Error,
         };
         const Ctor = deps?.[intent.className] ?? builtinCtors[intent.className];
