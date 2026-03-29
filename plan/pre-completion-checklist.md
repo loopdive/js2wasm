@@ -1,4 +1,4 @@
-# Pre-Completion Checklist
+do# Pre-Completion Checklist
 
 **You MUST read this file and confirm each step before signaling task completion.**
 
@@ -46,7 +46,8 @@ Tests must run AFTER rebase to catch integration issues. Use the test lock to pr
 
 ## Signal completion
 
-Message tech lead: `"Completed #N (commit <hash>). Branch is rebased onto main, tests pass, ready for ff-only merge."`
+14. [ ] Final rebase check: `git rebase main` — no-op if nothing changed, catches main moving during your test run
+15. [ ] Message tech lead: `"Completed #N (commit <hash>). Branch is rebased onto main, tests pass, ready for ff-only merge."`
 
 ## What NOT to do
 
