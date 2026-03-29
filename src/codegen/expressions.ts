@@ -167,6 +167,24 @@ export function emitThrowString(
 }
 
 /**
+ * Check if an identifier refers to a const binding (const variable or for-of const).
+ * Used to emit TypeError for const reassignment at runtime.
+ */
+function isConstBinding(id: ts.Identifier, ctx: CodegenContext): boolean {
+  const sym = ctx.checker.getSymbolAtLocation(id);
+  if (!sym) return false;
+  const decl = sym.valueDeclaration;
+  if (!decl) return false;
+  if (ts.isVariableDeclaration(decl)) {
+    const declList = decl.parent;
+    if (ts.isVariableDeclarationList(declList) && (declList.flags & ts.NodeFlags.Const) !== 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Check if a TS return type is effectively void for Wasm purposes.
  * For async functions, the TS checker reports `Promise<void>` which is not
  * caught by `isVoidType`. This helper unwraps Promise types for async
@@ -2124,6 +2142,13 @@ export function compileAssignment(
       const rhsType = compileExpression(ctx, fctx, expr.right);
       // The assignment is a no-op, but the expression evaluates to the RHS value
       return rhsType;
+    }
+    // const reassignment — throw TypeError at runtime (ES spec)
+    if (isConstBinding(expr.left, ctx)) {
+      const rhsType = compileExpression(ctx, fctx, expr.right);
+      if (rhsType) fctx.body.push({ op: "drop" });
+      emitThrowString(ctx, fctx, "TypeError: Assignment to constant variable.");
+      return VOID_RESULT;
     }
     const localIdx = fctx.localMap.get(name);
     if (localIdx !== undefined) {
@@ -5645,6 +5670,14 @@ export function compileCompoundAssignment(
     return null;
   }
 
+  // const reassignment — throw TypeError at runtime
+  if (isConstBinding(expr.left, ctx)) {
+    const rhsType = compileExpression(ctx, fctx, expr.right);
+    if (rhsType) fctx.body.push({ op: "drop" });
+    emitThrowString(ctx, fctx, "TypeError: Assignment to constant variable.");
+    return VOID_RESULT;
+  }
+
   const name = expr.left.text;
 
   // String += : concat instead of numeric add
@@ -7484,6 +7517,10 @@ function compilePrefixUnary(
     case ts.SyntaxKind.PlusPlusToken: {
       // Unwrap parenthesized expressions: ++(x) -> ++x
       const ppOperand = unwrapParens(expr.operand);
+      if (ts.isIdentifier(ppOperand) && isConstBinding(ppOperand, ctx)) {
+        emitThrowString(ctx, fctx, "TypeError: Assignment to constant variable.");
+        return VOID_RESULT;
+      }
       if (ts.isIdentifier(ppOperand)) {
         const idx = fctx.localMap.get(ppOperand.text);
         if (idx !== undefined) {
@@ -7701,6 +7738,10 @@ function compilePrefixUnary(
 
       // Unwrap parenthesized expressions: --(x) -> --x
       const mmOperand = unwrapParens(expr.operand);
+      if (ts.isIdentifier(mmOperand) && isConstBinding(mmOperand, ctx)) {
+        emitThrowString(ctx, fctx, "TypeError: Assignment to constant variable.");
+        return VOID_RESULT;
+      }
       if (ts.isIdentifier(mmOperand)) {
         const idx = fctx.localMap.get(mmOperand.text);
         if (idx !== undefined) {
@@ -7930,6 +7971,11 @@ function compilePostfixUnary(
 
   // Unwrap parenthesized expressions: (x)++ -> x++
   const postOperand = unwrapParens(expr.operand);
+
+  if (ts.isIdentifier(postOperand) && isConstBinding(postOperand, ctx)) {
+    emitThrowString(ctx, fctx, "TypeError: Assignment to constant variable.");
+    return VOID_RESULT;
+  }
 
   if (!ts.isIdentifier(postOperand)) {
     // obj.prop++ or obj[idx]++ — delegate to member increment helper

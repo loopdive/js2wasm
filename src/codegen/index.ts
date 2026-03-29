@@ -9951,8 +9951,6 @@ function collectExternClass(
 
 /** Types handled natively — skip extern class registration */
 const ERROR_TYPES_SKIP = new Set([
-  "Error", "TypeError", "RangeError", "SyntaxError",
-  "URIError", "EvalError", "ReferenceError",
   "Date",
 ]);
 

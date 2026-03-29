@@ -55,6 +55,61 @@ function _sidecarDelete(obj: any, key: any): boolean {
   return false;
 }
 
+/** Sidecar property descriptors for WasmGC structs.
+ *  Key: prop name, Value: {value, writable, enumerable, configurable} */
+const _wasmStructDescs = new WeakMap<object, Record<string, PropertyDescriptor>>();
+
+function _sidecarDefineProperty(obj: any, prop: any, desc: PropertyDescriptor): void {
+  const key = String(prop);
+  let descs = _wasmStructDescs.get(obj);
+  if (!descs) { descs = Object.create(null) as Record<string, PropertyDescriptor>; _wasmStructDescs.set(obj, descs); }
+  const existing = descs[key];
+  if (existing) {
+    // Validate against existing descriptor (ES spec 9.1.6.3)
+    if (existing.configurable === false) {
+      if (desc.configurable === true) {
+        throw new TypeError("Cannot redefine property: " + key);
+      }
+      if (desc.enumerable !== undefined && desc.enumerable !== existing.enumerable) {
+        throw new TypeError("Cannot redefine property: " + key);
+      }
+      // Data property: cannot change writable false→true, cannot change value when non-writable
+      if (!existing.get && !existing.set) {
+        if (existing.writable === false) {
+          if (desc.writable === true) {
+            throw new TypeError("Cannot redefine property: " + key);
+          }
+          if (desc.value !== undefined && desc.value !== existing.value) {
+            throw new TypeError("Cannot redefine property: " + key);
+          }
+        }
+      }
+      // Cannot switch data↔accessor on non-configurable
+      if (desc.get !== undefined || desc.set !== undefined) {
+        if (!existing.get && !existing.set) {
+          throw new TypeError("Cannot redefine property: " + key);
+        }
+      }
+      if (desc.value !== undefined || desc.writable !== undefined) {
+        if (existing.get || existing.set) {
+          throw new TypeError("Cannot redefine property: " + key);
+        }
+      }
+    }
+  }
+  // Merge new descriptor into existing
+  const merged = existing ? { ...existing } : { writable: false, enumerable: false, configurable: false } as PropertyDescriptor;
+  if (desc.value !== undefined) merged.value = desc.value;
+  if (desc.writable !== undefined) merged.writable = desc.writable;
+  if (desc.enumerable !== undefined) merged.enumerable = desc.enumerable;
+  if (desc.configurable !== undefined) merged.configurable = desc.configurable;
+  if (desc.get !== undefined) merged.get = desc.get;
+  if (desc.set !== undefined) merged.set = desc.set;
+  descs[key] = merged;
+  // Also store value in regular sidecar for property access
+  if (desc.value !== undefined) _sidecarSet(obj, key, desc.value);
+}
+
 /**
  * ToPrimitive for WasmGC structs (#850).
  *
@@ -526,23 +581,26 @@ function resolveImport(
         if (flags & (1 << 3)) desc.writable = !!(flags & 1);
         if (flags & (1 << 4)) desc.enumerable = !!(flags & (1 << 1));
         if (flags & (1 << 5)) desc.configurable = !!(flags & (1 << 2));
-        try { Object.defineProperty(obj, prop, desc); } catch (_) {
-          // WasmGC struct or frozen/sealed — store value in sidecar
-          if (desc.value !== undefined) _sidecarSet(obj, prop, desc.value);
+        if (_isWasmStruct(obj)) {
+          // WasmGC struct: use sidecar with manual descriptor validation
+          _sidecarDefineProperty(obj, prop, desc);
+        } else {
+          Object.defineProperty(obj, prop, desc);
         }
         return obj;
       };
       if (name === "__defineProperties") return (obj: any, descs: any) => {
         if (obj == null || descs == null) return obj;
-        try { Object.defineProperties(obj, descs); } catch (_) {
-          // WasmGC struct — apply each descriptor individually via sidecar
+        if (_isWasmStruct(obj)) {
           const keys = Object.keys(descs);
           for (const key of keys) {
-            const desc = descs[key];
-            if (desc && typeof desc === "object" && "value" in desc) {
-              _sidecarSet(obj, key, desc.value);
+            const d = descs[key];
+            if (d && typeof d === "object") {
+              _sidecarDefineProperty(obj, key, d as PropertyDescriptor);
             }
           }
+        } else {
+          Object.defineProperties(obj, descs);
         }
         return obj;
       };
