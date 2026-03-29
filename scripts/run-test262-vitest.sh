@@ -42,6 +42,18 @@ npx esbuild src/runtime.ts --bundle --platform=node --format=esm \
 rm -rf "$WT_DIR/benchmarks/results"
 ln -s "$MAIN_DIR/benchmarks/results" "$WT_DIR/benchmarks/results"
 
+# Archive previous results before overwriting
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+if [ -f "$RESULTS_DIR/test262-results.jsonl" ]; then
+  cp "$RESULTS_DIR/test262-results.jsonl" "$RESULTS_DIR/test262-results-${TIMESTAMP}.jsonl"
+  echo "Archived previous results as test262-results-${TIMESTAMP}.jsonl"
+fi
+if [ -f "$RESULTS_DIR/test262-report.json" ]; then
+  cp "$RESULTS_DIR/test262-report.json" "$RESULTS_DIR/test262-report-${TIMESTAMP}.json"
+fi
+# Truncate JSONL for fresh run (vitest opens in append mode)
+> "$RESULTS_DIR/test262-results.jsonl"
+
 echo "Worktree ready at $(git -C "$WT_DIR" rev-parse --short HEAD)"
 echo "Running vitest..."
 
