@@ -9865,7 +9865,10 @@ function compileCallExpression(
       ts.isIdentifier(propAccess.expression) &&
       propAccess.expression.text === "Math"
     ) {
-      return compileMathCall(ctx, fctx, propAccess.name.text, expr);
+      const mathResult = compileMathCall(ctx, fctx, propAccess.name.text, expr);
+      if (mathResult !== undefined) return mathResult;
+      // Unknown Math method — fall through to generic call handling
+      // (e.g. Array.prototype.every.call(Math, ...) rewritten as Math.every(...))
     }
 
     // Handle Number.isNaN(n) and Number.isInteger(n)
@@ -15011,18 +15014,17 @@ function compileSuperMethodCall(
 
   // Determine which class we're in
   const currentClassName = resolveEnclosingClassName(fctx);
-  if (!currentClassName) {
-    // super.method() in object literal — can't resolve statically, emit undefined
-    fctx.body.push({ op: "ref.null.extern" });
-    return { kind: "externref" };
-  }
+  if (!currentClassName) return null;
 
   // Find parent class
   const parentClassName = ctx.classParentMap.get(currentClassName);
   if (!parentClassName) {
-    // Class without extends — super resolves to Object.prototype, emit undefined fallback
-    fctx.body.push({ op: "ref.null.extern" });
-    return { kind: "externref" };
+    ctx.errors.push({
+      message: `Cannot use super in class without parent: ${currentClassName}`,
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
   }
 
   // Resolve parent method — walk up the inheritance chain
@@ -15101,18 +15103,17 @@ function compileSuperElementMethodCall(
 ): ValType | null {
   // Determine which class we're in
   const currentClassName = resolveEnclosingClassName(fctx);
-  if (!currentClassName) {
-    // super['method']() in object literal — can't resolve statically
-    fctx.body.push({ op: "ref.null.extern" });
-    return { kind: "externref" };
-  }
+  if (!currentClassName) return null;
 
   // Find parent class
   const parentClassName = ctx.classParentMap.get(currentClassName);
   if (!parentClassName) {
-    // Class without extends — emit undefined fallback
-    fctx.body.push({ op: "ref.null.extern" });
-    return { kind: "externref" };
+    ctx.errors.push({
+      message: `Cannot use super in class without parent: ${currentClassName}`,
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
   }
 
   // Resolve parent method — walk up the inheritance chain
@@ -15193,17 +15194,23 @@ export function compileSuperPropertyAccess(
   // Determine which class we're in
   const currentClassName = resolveEnclosingClassName(fctx);
   if (!currentClassName) {
-    // super.prop in object literal method — can't resolve statically, emit undefined
-    fctx.body.push({ op: "ref.null.extern" });
-    return { kind: "externref" };
+    ctx.errors.push({
+      message: `Cannot use super outside of a class method: ${fctx.name}`,
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
   }
 
   // Find parent class
   const parentClassName = ctx.classParentMap.get(currentClassName);
   if (!parentClassName) {
-    // Class without extends — super resolves to Object.prototype, emit undefined fallback
-    fctx.body.push({ op: "ref.null.extern" });
-    return { kind: "externref" };
+    ctx.errors.push({
+      message: `Cannot use super in class without parent: ${currentClassName}`,
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
   }
 
   // Check for parent getter accessor — walk up inheritance chain
@@ -15327,17 +15334,23 @@ export function compileSuperElementAccess(
   // Determine which class we're in
   const currentClassName = resolveEnclosingClassName(fctx);
   if (!currentClassName) {
-    // super[expr] in object literal method — can't resolve statically, emit undefined
-    fctx.body.push({ op: "ref.null.extern" });
-    return { kind: "externref" };
+    ctx.errors.push({
+      message: `Cannot use super outside of a class method: ${fctx.name}`,
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
   }
 
   // Find parent class
   const parentClassName = ctx.classParentMap.get(currentClassName);
   if (!parentClassName) {
-    // Class without extends — emit undefined fallback
-    fctx.body.push({ op: "ref.null.extern" });
-    return { kind: "externref" };
+    ctx.errors.push({
+      message: `Cannot use super in class without parent: ${currentClassName}`,
+      line: getLine(expr),
+      column: getCol(expr),
+    });
+    return null;
   }
 
   // Check for parent getter accessor — walk up inheritance chain
@@ -19019,7 +19032,7 @@ function compileMathCall(
   fctx: FunctionContext,
   method: string,
   expr: ts.CallExpression,
-): ValType | null {
+): ValType | null | undefined {
   // Native Wasm unary opcodes
   const nativeUnary: Record<string, string> = {
     sqrt: "f64.sqrt",
@@ -19246,6 +19259,9 @@ function compileMathCall(
     "acosh",
     "asinh",
     "atanh",
+    "cosh",
+    "sinh",
+    "tanh",
     "cbrt",
     "expm1",
     "log1p",
@@ -19387,12 +19403,10 @@ function compileMathCall(
     return { kind: "f64" };
   }
 
-  ctx.errors.push({
-    message: `Unsupported Math method: ${method}`,
-    line: getLine(expr),
-    column: getCol(expr),
-  });
-  return null;
+  // Unknown method — return undefined to let the caller fall through
+  // to generic call handling. This avoids false positives when e.g.
+  // Array.prototype.every.call(Math, ...) gets rewritten to Math.every(...).
+  return undefined;
 }
 
 function compileConditionalExpression(

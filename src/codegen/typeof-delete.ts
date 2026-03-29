@@ -15,7 +15,7 @@ import type { Instr, ValType } from "../ir/types.js";
 import { compileExpression, getLine, getCol } from "./shared.js";
 import type { InnerResult } from "./shared.js";
 import { compileStringLiteral } from "./string-ops.js";
-import { resolveStructName, shiftLateImportIndices, emitThrowString } from "./expressions.js";
+import { resolveStructName, shiftLateImportIndices } from "./expressions.js";
 
 // ── Delete expression ─────────────────────────────────────────────────
 
@@ -76,15 +76,6 @@ export function compileDeleteExpression(
 
   if (ts.isIdentifier(inner)) {
     // Variables are not deletable — return false
-    fctx.body.push({ op: "i32.const", value: 0 });
-    return { kind: "i32" };
-  }
-
-  // ES spec: delete super.x always throws ReferenceError at runtime
-  if ((ts.isPropertyAccessExpression(inner) || ts.isElementAccessExpression(inner)) &&
-      inner.expression.kind === ts.SyntaxKind.SuperKeyword) {
-    emitThrowString(ctx, fctx, "ReferenceError: unsupported reference to 'super'");
-    // Unreachable, but return i32 for type consistency
     fctx.body.push({ op: "i32.const", value: 0 });
     return { kind: "i32" };
   }
