@@ -15011,17 +15011,18 @@ function compileSuperMethodCall(
 
   // Determine which class we're in
   const currentClassName = resolveEnclosingClassName(fctx);
-  if (!currentClassName) return null;
+  if (!currentClassName) {
+    // super.method() in object literal — can't resolve statically, emit undefined
+    fctx.body.push({ op: "ref.null.extern" });
+    return { kind: "externref" };
+  }
 
   // Find parent class
   const parentClassName = ctx.classParentMap.get(currentClassName);
   if (!parentClassName) {
-    ctx.errors.push({
-      message: `Cannot use super in class without parent: ${currentClassName}`,
-      line: getLine(expr),
-      column: getCol(expr),
-    });
-    return null;
+    // Class without extends — super resolves to Object.prototype, emit undefined fallback
+    fctx.body.push({ op: "ref.null.extern" });
+    return { kind: "externref" };
   }
 
   // Resolve parent method — walk up the inheritance chain
@@ -15100,17 +15101,18 @@ function compileSuperElementMethodCall(
 ): ValType | null {
   // Determine which class we're in
   const currentClassName = resolveEnclosingClassName(fctx);
-  if (!currentClassName) return null;
+  if (!currentClassName) {
+    // super['method']() in object literal — can't resolve statically
+    fctx.body.push({ op: "ref.null.extern" });
+    return { kind: "externref" };
+  }
 
   // Find parent class
   const parentClassName = ctx.classParentMap.get(currentClassName);
   if (!parentClassName) {
-    ctx.errors.push({
-      message: `Cannot use super in class without parent: ${currentClassName}`,
-      line: getLine(expr),
-      column: getCol(expr),
-    });
-    return null;
+    // Class without extends — emit undefined fallback
+    fctx.body.push({ op: "ref.null.extern" });
+    return { kind: "externref" };
   }
 
   // Resolve parent method — walk up the inheritance chain
@@ -15191,23 +15193,17 @@ export function compileSuperPropertyAccess(
   // Determine which class we're in
   const currentClassName = resolveEnclosingClassName(fctx);
   if (!currentClassName) {
-    ctx.errors.push({
-      message: `Cannot use super outside of a class method: ${fctx.name}`,
-      line: getLine(expr),
-      column: getCol(expr),
-    });
-    return null;
+    // super.prop in object literal method — can't resolve statically, emit undefined
+    fctx.body.push({ op: "ref.null.extern" });
+    return { kind: "externref" };
   }
 
   // Find parent class
   const parentClassName = ctx.classParentMap.get(currentClassName);
   if (!parentClassName) {
-    ctx.errors.push({
-      message: `Cannot use super in class without parent: ${currentClassName}`,
-      line: getLine(expr),
-      column: getCol(expr),
-    });
-    return null;
+    // Class without extends — super resolves to Object.prototype, emit undefined fallback
+    fctx.body.push({ op: "ref.null.extern" });
+    return { kind: "externref" };
   }
 
   // Check for parent getter accessor — walk up inheritance chain
@@ -15331,23 +15327,17 @@ export function compileSuperElementAccess(
   // Determine which class we're in
   const currentClassName = resolveEnclosingClassName(fctx);
   if (!currentClassName) {
-    ctx.errors.push({
-      message: `Cannot use super outside of a class method: ${fctx.name}`,
-      line: getLine(expr),
-      column: getCol(expr),
-    });
-    return null;
+    // super[expr] in object literal method — can't resolve statically, emit undefined
+    fctx.body.push({ op: "ref.null.extern" });
+    return { kind: "externref" };
   }
 
   // Find parent class
   const parentClassName = ctx.classParentMap.get(currentClassName);
   if (!parentClassName) {
-    ctx.errors.push({
-      message: `Cannot use super in class without parent: ${currentClassName}`,
-      line: getLine(expr),
-      column: getCol(expr),
-    });
-    return null;
+    // Class without extends — emit undefined fallback
+    fctx.body.push({ op: "ref.null.extern" });
+    return { kind: "externref" };
   }
 
   // Check for parent getter accessor — walk up inheritance chain
@@ -16322,6 +16312,50 @@ function compileNewExpression(
       // If import not available (standalone), value is already on stack as externref message
       return { kind: "externref" };
     }
+  }
+
+  // Handle `new AggregateError(errors, message, options?)` (#844)
+  // AggregateError takes (iterable, message, options?) — pass errors and message as externref
+  if (ts.isIdentifier(expr.expression) && expr.expression.text === "AggregateError") {
+    const args = expr.arguments ?? [];
+    // Compile errors argument (iterable) as externref
+    if (args.length >= 1) {
+      const errorsType = compileExpression(ctx, fctx, args[0]!, { kind: "externref" });
+      if (errorsType && errorsType.kind !== "externref") {
+        coerceType(ctx, fctx, errorsType, { kind: "externref" });
+      }
+    } else {
+      fctx.body.push({ op: "ref.null.extern" });
+    }
+    // Compile message argument as externref
+    if (args.length >= 2) {
+      const msgType = compileExpression(ctx, fctx, args[1]!, { kind: "externref" });
+      if (msgType && msgType.kind !== "externref") {
+        coerceType(ctx, fctx, msgType, { kind: "externref" });
+      }
+    } else {
+      fctx.body.push({ op: "ref.null.extern" });
+    }
+    // Compile options argument as externref (for cause property)
+    if (args.length >= 3) {
+      const optsType = compileExpression(ctx, fctx, args[2]!, { kind: "externref" });
+      if (optsType && optsType.kind !== "externref") {
+        coerceType(ctx, fctx, optsType, { kind: "externref" });
+      }
+    } else {
+      fctx.body.push({ op: "ref.null.extern" });
+    }
+    const funcIdx = ensureLateImport(
+      ctx,
+      "__new_AggregateError",
+      [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }],
+      [{ kind: "externref" }],
+    );
+    flushLateImportShifts(ctx, fctx);
+    if (funcIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx });
+    }
+    return { kind: "externref" };
   }
 
   // Handle `new Object()` — create an empty struct (equivalent to {})
