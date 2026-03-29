@@ -1408,7 +1408,12 @@ export function coerceType(
               }
               cleanup(); return;
             }
-            // No valueOf — ToNumber({}) = NaN per spec
+            // No valueOf — try toString per ToPrimitive spec (#866)
+            // JS spec: for "number"/"default" hint, valueOf is tried first, then toString.
+            if (tryToStringFallback(ctx, fctx, from, typeIdx, name!, fields)) {
+              cleanup(); return;
+            }
+            // No toString either — ToNumber({}) = NaN per spec
             fctx.body.push({ op: "drop" });
             fctx.body.push({ op: "f64.const", value: NaN });
             cleanup(); return;
@@ -1596,9 +1601,13 @@ export function coerceType(
               }
               return;
             }
+            // No valueOf via eqref — try toString fallback (#866)
+            if (tryToStringFallback(ctx, fctx, from, typeIdx, name!, fields)) {
+              cleanup(); return;
+            }
             fctx.body.push({ op: "drop" });
             fctx.body.push({ op: "f64.const", value: NaN });
-            return;
+            cleanup(); return;
           }
         }
       }
@@ -1607,6 +1616,215 @@ export function coerceType(
   // Fallback: drop + push default
   fctx.body.push({ op: "drop" });
   pushDefaultValue(fctx, to, ctx);
+}
+
+/**
+ * Try to call toString on a struct as a fallback for ToPrimitive when valueOf is missing (#866).
+ * Per JS spec, ToPrimitive with "number"/"default" hint tries valueOf first, then toString.
+ * If toString is found and returns a primitive, converts the result to f64 via __unbox_number.
+ * Returns true if toString was found and code was emitted, false otherwise.
+ * Expects the struct ref on top of the Wasm stack; consumes it.
+ */
+function tryToStringFallback(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  from: ValType,
+  typeIdx: number,
+  structName: string,
+  fields: { name: string; type: ValType }[],
+): boolean {
+  // 1. Check for toString struct field (closure ref)
+  const toStrFieldIdx = fields.findIndex(f => f.name === "toString");
+  if (toStrFieldIdx >= 0) {
+    const toStrField = fields[toStrFieldIdx]!;
+    if (toStrField.type.kind === "ref" || toStrField.type.kind === "ref_null") {
+      const closureTypeIdx = (toStrField.type as { typeIdx: number }).typeIdx;
+      const closureInfo = ctx.closureInfoByTypeIdx.get(closureTypeIdx);
+      if (closureInfo) {
+        // Save struct ref, extract toString closure, call it
+        const structLocal = allocLocal(fctx, `__ts_struct_${fctx.locals.length}`, from);
+        fctx.body.push({ op: "local.set", index: structLocal });
+        fctx.body.push({ op: "local.get", index: structLocal });
+        fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: toStrFieldIdx });
+        const closureLocal = allocLocal(fctx, `__ts_closure_${fctx.locals.length}`, toStrField.type);
+        fctx.body.push({ op: "local.tee", index: closureLocal });
+        fctx.body.push({ op: "local.get", index: closureLocal });
+        fctx.body.push({ op: "struct.get", typeIdx: closureTypeIdx, fieldIdx: 0 });
+        {
+          const tmpFunc = allocTempLocal(fctx, { kind: "funcref" } as ValType);
+          fctx.body.push({ op: "local.tee", index: tmpFunc } as unknown as Instr);
+          fctx.body.push({ op: "ref.test", typeIdx: closureInfo.funcTypeIdx } as unknown as Instr);
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "val", type: { kind: "ref_null", typeIdx: closureInfo.funcTypeIdx } as ValType },
+            then: [
+              { op: "local.get", index: tmpFunc } as unknown as Instr,
+              { op: "ref.cast_null", typeIdx: closureInfo.funcTypeIdx } as unknown as Instr,
+            ],
+            else: [
+              { op: "ref.null", typeIdx: closureInfo.funcTypeIdx } as unknown as Instr,
+            ],
+          } as Instr);
+          releaseTempLocal(fctx, tmpFunc);
+        }
+        fctx.body.push({ op: "ref.as_non_null" });
+        fctx.body.push({ op: "call_ref", typeIdx: closureInfo.funcTypeIdx });
+        // Convert toString result to f64
+        emitToStringResultToF64(ctx, fctx, closureInfo.returnType);
+        return true;
+      }
+    }
+    if (toStrField.type.kind === "eqref") {
+      // toString field is eqref — try tracked closure types
+      const trackedTypes = ctx.valueOfClosureTypes.get(structName) ?? [];
+      // Also check toStringClosureTypes if available
+      for (const closureTypeIdx of trackedTypes) {
+        const info = ctx.closureInfoByTypeIdx.get(closureTypeIdx);
+        if (info && info.paramTypes.length === 0) {
+          // Try this closure type
+          const structLocal = allocLocal(fctx, `__ts_struct_${fctx.locals.length}`, from);
+          fctx.body.push({ op: "local.set", index: structLocal });
+          fctx.body.push({ op: "local.get", index: structLocal });
+          fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: toStrFieldIdx });
+          const eqLocal = allocLocal(fctx, `__ts_eq_${fctx.locals.length}`, { kind: "eqref" });
+          fctx.body.push({ op: "local.set", index: eqLocal });
+          // ref.test + cast + call
+          fctx.body.push({ op: "local.get", index: eqLocal } as Instr);
+          fctx.body.push({ op: "ref.test", typeIdx: closureTypeIdx } as unknown as Instr);
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "val", type: { kind: "f64" } },
+            then: [
+              { op: "local.get", index: eqLocal } as Instr,
+              { op: "ref.cast", typeIdx: closureTypeIdx } as unknown as Instr,
+              (() => {
+                const closureLocal2 = allocLocal(fctx, `__ts_cl2_${fctx.locals.length}`, { kind: "ref", typeIdx: closureTypeIdx });
+                return { op: "local.tee", index: closureLocal2 };
+              })() as Instr,
+              (() => {
+                const closureLocal2 = fctx.locals.length - 1 + fctx.params.length;
+                return { op: "local.get", index: closureLocal2 };
+              })() as Instr,
+              { op: "struct.get", typeIdx: closureTypeIdx, fieldIdx: 0 } as Instr,
+              (() => {
+                const funcTmp = allocTempLocal(fctx, { kind: "funcref" } as ValType);
+                const instrs: Instr[] = [
+                  { op: "local.tee", index: funcTmp } as unknown as Instr,
+                  { op: "ref.test", typeIdx: info.funcTypeIdx } as unknown as Instr,
+                  { op: "if", blockType: { kind: "val", type: { kind: "ref_null", typeIdx: info.funcTypeIdx } as ValType },
+                    then: [
+                      { op: "local.get", index: funcTmp } as unknown as Instr,
+                      { op: "ref.cast_null", typeIdx: info.funcTypeIdx } as unknown as Instr,
+                    ],
+                    else: [
+                      { op: "ref.null", typeIdx: info.funcTypeIdx } as unknown as Instr,
+                    ],
+                  } as Instr,
+                  { op: "ref.as_non_null" } as Instr,
+                  { op: "call_ref", typeIdx: info.funcTypeIdx } as Instr,
+                ];
+                releaseTempLocal(fctx, funcTmp);
+                // Convert result to f64
+                if (info.returnType?.kind === "i32") {
+                  instrs.push({ op: "f64.convert_i32_s" } as Instr);
+                } else if (info.returnType?.kind === "externref" || info.returnType?.kind === "ref_extern") {
+                  addUnionImports(ctx);
+                  const unboxIdx = ctx.funcMap.get("__unbox_number");
+                  if (unboxIdx !== undefined) {
+                    instrs.push({ op: "call", funcIdx: unboxIdx } as Instr);
+                  } else {
+                    instrs.push({ op: "drop" } as Instr);
+                    instrs.push({ op: "f64.const", value: NaN } as Instr);
+                  }
+                } else if (!info.returnType || (info.returnType.kind !== "f64")) {
+                  if (info.returnType) instrs.push({ op: "drop" } as Instr);
+                  instrs.push({ op: "f64.const", value: NaN } as Instr);
+                }
+                return instrs;
+              })(),
+            ].flat() as Instr[],
+            else: [
+              { op: "f64.const", value: NaN } as Instr,
+            ],
+          } as Instr);
+          return true;
+        }
+      }
+    }
+  }
+
+  // 2. Check for standalone ClassName_toString method
+  const toStrFuncIdx = ctx.funcMap.get(`${structName}_toString`);
+  if (toStrFuncIdx !== undefined) {
+    fctx.body.push({ op: "call", funcIdx: toStrFuncIdx });
+    const funcType = ctx.mod.types[ctx.mod.functions[toStrFuncIdx - ctx.numImportFuncs]?.typeIdx ?? -1];
+    const retKind = funcType?.kind === "func" ? funcType.results?.[0]?.kind : undefined;
+    emitToStringResultToF64ByKind(ctx, fctx, retKind);
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Convert the result of a toString call to f64.
+ * Handles f64 (passthrough), i32 (convert), externref (unbox), and other types.
+ */
+function emitToStringResultToF64(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  returnType: ValType | null | undefined,
+): void {
+  if (!returnType) {
+    // void return — push NaN
+    fctx.body.push({ op: "f64.const", value: NaN });
+  } else if (returnType.kind === "f64") {
+    // already f64 — passthrough
+  } else if (returnType.kind === "i32") {
+    fctx.body.push({ op: "f64.convert_i32_s" });
+  } else if (returnType.kind === "externref" || returnType.kind === "ref_extern") {
+    // toString returned a string — convert to f64 via __unbox_number
+    addUnionImports(ctx);
+    const unboxIdx = ctx.funcMap.get("__unbox_number");
+    if (unboxIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: unboxIdx });
+    } else {
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "f64.const", value: NaN });
+    }
+  } else {
+    // ref or other — drop and push NaN
+    fctx.body.push({ op: "drop" });
+    fctx.body.push({ op: "f64.const", value: NaN });
+  }
+}
+
+/**
+ * Same as emitToStringResultToF64 but takes a string kind.
+ */
+function emitToStringResultToF64ByKind(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  retKind: string | undefined,
+): void {
+  if (retKind === "f64") {
+    // already f64 — passthrough
+  } else if (retKind === "i32") {
+    fctx.body.push({ op: "f64.convert_i32_s" });
+  } else if (retKind === "externref" || retKind === "ref_extern") {
+    addUnionImports(ctx);
+    const unboxIdx = ctx.funcMap.get("__unbox_number");
+    if (unboxIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: unboxIdx });
+    } else {
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "f64.const", value: NaN });
+    }
+  } else {
+    // non-f64 return — drop and push NaN
+    if (retKind && retKind !== "void") fctx.body.push({ op: "drop" });
+    fctx.body.push({ op: "f64.const", value: NaN });
+  }
 }
 
 /**
@@ -1670,12 +1888,9 @@ function emitUndefinedValue(
 export function pushDefaultValue(fctx: FunctionContext, type: ValType, ctx?: CodegenContext): void {
   switch (type.kind) {
     case "f64":
-      // Use NaN as sentinel for "undefined/missing argument" (#787).
-      // NaN is correct because: (1) it matches what explicit `undefined` compiles to
-      // in f64 context (f64.const NaN), and (2) NaN is not a valid intended argument
-      // in most cases (unlike 0, which IS a valid number).
-      // Callee checks: local.get x; local.get x; f64.ne (NaN self-test).
-      fctx.body.push({ op: "f64.const", value: NaN });
+      // Default value for missing f64 args without initializers: 0.
+      // For params WITH initializers, callers should use pushParamSentinel instead (#866).
+      fctx.body.push({ op: "f64.const", value: 0 });
       break;
     case "i32":
       fctx.body.push({ op: "i32.const", value: 0 });
@@ -1714,6 +1929,23 @@ export function pushDefaultValue(fctx: FunctionContext, type: ValType, ctx?: Cod
     default:
       fctx.body.push({ op: "i32.const", value: 0 });
       break;
+  }
+}
+
+/**
+ * Push a sentinel value for a param with an initializer (default value) that is missing (#866).
+ * For f64: pushes a unique sNaN bit pattern (0x7FF00000DEADC0DE) that no JS operation produces.
+ * The callee detects this via i64.reinterpret_f64 + i64.eq to distinguish from explicit NaN/0.
+ * For other types: delegates to pushDefaultValue (ref.null / 0 work as sentinels).
+ */
+export function pushParamSentinel(fctx: FunctionContext, type: ValType, ctx?: CodegenContext): void {
+  if (type.kind === "f64") {
+    // Unique sNaN sentinel: quiet bit (bit 51) clear, custom payload.
+    // JS NaN is always 0x7FF8000000000000 (quiet NaN), so this is distinguishable.
+    fctx.body.push({ op: "i64.const", value: 0x7FF00000DEADC0DEn } as unknown as Instr);
+    fctx.body.push({ op: "f64.reinterpret_i64" } as unknown as Instr);
+  } else {
+    pushDefaultValue(fctx, type, ctx);
   }
 }
 

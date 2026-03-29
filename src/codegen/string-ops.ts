@@ -10,7 +10,7 @@ import { isBooleanType, isVoidType } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";
 import { compileExpression, VOID_RESULT, getLine, getCol } from "./shared.js";
 import { compileNumericBinaryOp, getFuncParamTypes, emitNullCheckThrow } from "./expressions.js";
-import { pushDefaultValue, emitGuardedRefCast, coerceType } from "./type-coercion.js";
+import { pushDefaultValue, pushParamSentinel, emitGuardedRefCast, coerceType } from "./type-coercion.js";
 
 // ── Guarded funcref cast (ref.test before ref.cast to avoid illegal cast traps) ──
 function emitGuardedFuncRefCast(fctx: FunctionContext, funcTypeIdx: number): void {
@@ -439,7 +439,7 @@ export function compileTaggedTemplateExpression(
           const numProvided = maxSubs + 1 + captureCount; // +1 for strings array + captures
           for (const opt of optInfo) {
             if (opt.index >= numProvided) {
-              pushDefaultValue(fctx, opt.type, ctx);
+              pushParamSentinel(fctx, opt.type, ctx);
             }
           }
         }

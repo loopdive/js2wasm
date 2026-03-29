@@ -6916,9 +6916,13 @@ function emitDefaultParamInit(
         then: thenInstrs,
       });
     } else if (paramType.kind === "f64") {
+      // Check if the f64 param holds the sentinel sNaN bit pattern (#866).
+      // This distinguishes missing args from explicit NaN/0/any other value.
+      // Sentinel: 0x7FF00000DEADC0DE (emitted by pushDefaultValue).
       liftedFctx.body.push({ op: "local.get", index: paramIdx });
-      liftedFctx.body.push({ op: "f64.const", value: 0 });
-      liftedFctx.body.push({ op: "f64.eq" });
+      liftedFctx.body.push({ op: "i64.reinterpret_f64" } as unknown as Instr);
+      liftedFctx.body.push({ op: "i64.const", value: 0x7FF00000DEADC0DEn } as unknown as Instr);
+      liftedFctx.body.push({ op: "i64.eq" });
       liftedFctx.body.push({
         op: "if",
         blockType: { kind: "empty" },

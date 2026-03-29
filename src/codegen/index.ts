@@ -353,6 +353,8 @@ function instrStackDelta(instr: Instr, mod: WasmModule): number {
     case "i64.trunc_f64_s":
     case "array.len":
     case "f64.promote_f32":
+    case "f64.reinterpret_i64":
+    case "i64.reinterpret_f64":
       return 0;
 
     // Push 0, consume 1
@@ -1148,6 +1150,9 @@ export function generateModule(
   // Emit __call_@@iterator export for runtime Symbol.iterator dispatch on WasmGC structs
   emitIteratorMethodExport(ctx);
 
+  // Emit __call_toString/__call_valueOf exports for ToPrimitive dispatch (#866)
+  emitToPrimitiveMethodExports(ctx);
+
   // WASI: export _start entry point (before dead import elimination adjusts indices)
   if (ctx.wasi) {
     addWasiStartExport(ctx);
@@ -1521,6 +1526,197 @@ function emitIteratorMethodExport(ctx: CodegenContext): void {
 
   emitMethodDispatch("@@iterator", "__call_@@iterator");
   emitMethodDispatch("next", "__call_next");
+}
+
+/**
+ * Emit __call_toString and __call_valueOf exports for ToPrimitive dispatch (#866).
+ * These allow the JS runtime to call toString/valueOf on WasmGC structs
+ * that are opaque to JavaScript (struct fields are funcrefs, not JS functions).
+ *
+ * Handles both:
+ * - Standalone methods: StructName_toString compiled as a function
+ * - Closure fields: toString field is a closure ref, call via struct.get + call_ref
+ */
+function emitToPrimitiveMethodExports(ctx: CodegenContext): void {
+  const mod = ctx.mod;
+  const dispatchTypeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }], "$call_toPrim_type");
+
+  const emitDispatchForMethod = (methodName: string, exportName: string) => {
+    type DispatchEntry = {
+      structName: string;
+      typeIdx: number;
+      mode: "standalone";
+      funcIdx: number;
+      resultType: ValType;
+    } | {
+      structName: string;
+      typeIdx: number;
+      mode: "closure";
+      fieldIdx: number;
+      closureTypeIdx: number;
+      closureInfo: ClosureInfo;
+    };
+
+    const entries: DispatchEntry[] = [];
+
+    for (const [structName, fields] of ctx.structFields) {
+      const typeIdx = ctx.structMap.get(structName);
+      if (typeIdx === undefined) continue;
+      if (structName.startsWith("Wrapper") || structName === "$AnyValue" ||
+          structName.startsWith("__vec_") || structName.startsWith("__arr_")) continue;
+
+      // 1. Check for standalone method: StructName_toString
+      const methodFullName = `${structName}_${methodName}`;
+      const funcIdx = ctx.funcMap.get(methodFullName);
+      if (funcIdx !== undefined) {
+        const funcDef = mod.functions[funcIdx - ctx.numImportFuncs];
+        const funcType = funcDef ? mod.types[funcDef.typeIdx] : undefined;
+        const resultType: ValType = (funcType && funcType.kind === "func" && funcType.results.length > 0)
+          ? funcType.results[0]!
+          : { kind: "externref" };
+        entries.push({ structName, typeIdx, mode: "standalone", funcIdx, resultType });
+        continue;
+      }
+
+      // 2. Check for closure field
+      const fieldIdx = fields.findIndex(f => f.name === methodName);
+      if (fieldIdx < 0) continue;
+      const field = fields[fieldIdx]!;
+
+      // Closure ref field
+      if (field.type.kind === "ref" || field.type.kind === "ref_null") {
+        const closureTypeIdx = (field.type as { typeIdx: number }).typeIdx;
+        const closureInfo = ctx.closureInfoByTypeIdx.get(closureTypeIdx);
+        if (closureInfo && closureInfo.paramTypes.length === 0) {
+          entries.push({ structName, typeIdx, mode: "closure", fieldIdx, closureTypeIdx, closureInfo });
+          continue;
+        }
+      }
+
+      // eqref field — try tracked closure types
+      if (field.type.kind === "eqref") {
+        const trackedTypes = ctx.valueOfClosureTypes.get(structName) ?? [];
+        for (const closureTypeIdx of trackedTypes) {
+          const closureInfo = ctx.closureInfoByTypeIdx.get(closureTypeIdx);
+          if (closureInfo && closureInfo.paramTypes.length === 0) {
+            entries.push({ structName, typeIdx, mode: "closure", fieldIdx, closureTypeIdx, closureInfo });
+            break;
+          }
+        }
+      }
+    }
+
+    if (entries.length === 0) return;
+
+    const funcIdx = ctx.numImportFuncs + mod.functions.length;
+    const anyLocal = 1;
+
+    const boxResult = (resultType: ValType, instrs: Instr[]) => {
+      if (resultType.kind === "f64") {
+        const boxIdx = ctx.funcMap.get("__box_number");
+        if (boxIdx !== undefined) instrs.push({ op: "call", funcIdx: boxIdx } as Instr);
+        else { instrs.push({ op: "drop" } as Instr); instrs.push({ op: "ref.null.extern" } as Instr); }
+      } else if (resultType.kind === "i32") {
+        instrs.push({ op: "f64.convert_i32_s" } as Instr);
+        const boxIdx = ctx.funcMap.get("__box_number");
+        if (boxIdx !== undefined) instrs.push({ op: "call", funcIdx: boxIdx } as Instr);
+        else { instrs.push({ op: "drop" } as Instr); instrs.push({ op: "ref.null.extern" } as Instr); }
+      } else if (resultType.kind === "ref" || resultType.kind === "ref_null") {
+        instrs.push({ op: "extern.convert_any" } as Instr);
+      }
+    };
+
+    const buildDispatch = (idx: number): Instr[] => {
+      if (idx >= entries.length) return [{ op: "ref.null.extern" } as Instr];
+      const entry = entries[idx]!;
+
+      const thenInstrs: Instr[] = [];
+      if (entry.mode === "standalone") {
+        thenInstrs.push(
+          { op: "local.get", index: anyLocal } as Instr,
+          { op: "ref.cast", typeIdx: entry.typeIdx } as unknown as Instr,
+          { op: "call", funcIdx: entry.funcIdx } as Instr,
+        );
+        boxResult(entry.resultType, thenInstrs);
+      } else {
+        // Closure field: extract closure, get funcref, call_ref
+        const ci = entry.closureInfo;
+        thenInstrs.push(
+          { op: "local.get", index: anyLocal } as Instr,
+          { op: "ref.cast", typeIdx: entry.typeIdx } as unknown as Instr,
+          { op: "struct.get", typeIdx: entry.typeIdx, fieldIdx: entry.fieldIdx } as Instr,
+        );
+        // The struct.get returns the field type (eqref or ref). Store in eqref local.
+        const closureLocal = 2; // eqref local
+        thenInstrs.push(
+          { op: "local.set", index: closureLocal } as Instr,
+          // Cast eqref to closure struct type for the self-param
+          { op: "local.get", index: closureLocal } as Instr,
+          { op: "ref.cast", typeIdx: entry.closureTypeIdx } as unknown as Instr,
+          // Get funcref from closure field 0
+          { op: "local.get", index: closureLocal } as Instr,
+          { op: "ref.cast", typeIdx: entry.closureTypeIdx } as unknown as Instr,
+          { op: "struct.get", typeIdx: entry.closureTypeIdx, fieldIdx: 0 } as Instr,
+          { op: "ref.cast", typeIdx: ci.funcTypeIdx } as unknown as Instr,
+          { op: "call_ref", typeIdx: ci.funcTypeIdx } as Instr,
+        );
+        const retType = ci.returnType ?? { kind: "externref" as const };
+        if (!ci.returnType) {
+          // void — push null externref
+          thenInstrs.push({ op: "ref.null.extern" } as Instr);
+        } else {
+          boxResult(retType, thenInstrs);
+        }
+      }
+
+      return [
+        { op: "local.get", index: anyLocal } as Instr,
+        { op: "ref.test", typeIdx: entry.typeIdx } as unknown as Instr,
+        { op: "if", blockType: { kind: "val" as const, type: { kind: "externref" as const } }, then: thenInstrs, else: buildDispatch(idx + 1) } as Instr,
+      ];
+    };
+
+    // Determine locals: param 0 (externref), local 1 (anyref), local 2 (eqref for closure)
+    const hasClosureEntry = entries.some(e => e.mode === "closure");
+    const locals: { name: string; type: ValType }[] = [
+      { name: "__any", type: { kind: "anyref" } },
+    ];
+    if (hasClosureEntry) {
+      locals.push({ name: "__closure", type: { kind: "eqref" } });
+    }
+
+    const body: Instr[] = [
+      { op: "local.get", index: 0 } as Instr,
+      { op: "any.convert_extern" } as Instr,
+      { op: "local.set", index: anyLocal } as Instr,
+      ...buildDispatch(0),
+    ];
+
+    mod.functions.push({
+      name: exportName,
+      typeIdx: dispatchTypeIdx,
+      locals,
+      body,
+      exported: true,
+    } as WasmFunction);
+
+    mod.exports.push({
+      name: exportName,
+      desc: { kind: "func", index: funcIdx },
+    });
+  };
+
+  emitDispatchForMethod("toString", "__call_toString");
+  emitDispatchForMethod("valueOf", "__call_valueOf");
+}
+
+/** Helper to get the kind of a struct field type */
+function fields_type_kind(ctx: CodegenContext, structTypeIdx: number, fieldIdx: number): string {
+  const structName = ctx.typeIdxToStructName.get(structTypeIdx);
+  if (!structName) return "unknown";
+  const fields = ctx.structFields.get(structName);
+  if (!fields || !fields[fieldIdx]) return "unknown";
+  return fields[fieldIdx]!.type.kind;
 }
 
 /**
@@ -14121,10 +14317,13 @@ function compileFunctionBody(
         then: thenInstrs,
       });
     } else if (paramType.kind === "f64") {
-      // NaN sentinel check: x != x is true iff x is NaN (#787)
+      // Check if the f64 param holds the sentinel sNaN bit pattern (#866).
+      // This distinguishes missing args from explicit NaN/0/any other value.
+      // Sentinel: 0x7FF00000DEADC0DE (emitted by pushParamSentinel).
       fctx.body.push({ op: "local.get", index: paramIdx });
-      fctx.body.push({ op: "local.get", index: paramIdx });
-      fctx.body.push({ op: "f64.ne" });
+      fctx.body.push({ op: "i64.reinterpret_f64" } as unknown as Instr);
+      fctx.body.push({ op: "i64.const", value: 0x7FF00000DEADC0DEn } as unknown as Instr);
+      fctx.body.push({ op: "i64.eq" });
       fctx.body.push({
         op: "if",
         blockType: { kind: "empty" },

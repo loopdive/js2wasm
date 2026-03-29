@@ -104,6 +104,17 @@ function _toPrimitive(
           } else if (field != null && typeof field !== "object") {
             return field;
           }
+          // field is an object — possibly a WasmGC closure struct.
+          // Try __call_<name> export which dispatches via ref.test/call (#866).
+          if (field != null && typeof field === "object") {
+            const callFn = exports[`__call_${name}`];
+            if (typeof callFn === "function") {
+              try {
+                const prim = callFn(obj);
+                if (prim == null || typeof prim !== "object") return prim;
+              } catch { /* call dispatch failed */ }
+            }
+          }
         } catch { /* struct field access failed */ }
       }
     }
@@ -854,8 +865,16 @@ function resolveImport(
       return intent.targetType === "boolean" ? (v: number) => Boolean(v) : (v: number) => v;
     case "unbox":
       return intent.targetType === "boolean" ? (v: any) => (v ? 1 : 0) : (v: any) => {
+        // For objects, try ToPrimitive first — Number() on WasmGC structs returns NaN
+        // without throwing (#866), so the catch-based approach doesn't work.
+        if (v != null && typeof v === "object") {
+          const prim = _toPrimitive(v, "number", callbackState);
+          if (prim !== undefined) {
+            try { return Number(prim); } catch { /* */ }
+          }
+        }
         try { return Number(v); } catch {
-          // Number() failed -- likely a WasmGC struct without native ToPrimitive (#850).
+          // Number() failed (e.g. Symbol)
           if (v != null && typeof v === "object") {
             const prim = _toPrimitive(v, "number", callbackState);
             if (prim !== undefined) {
