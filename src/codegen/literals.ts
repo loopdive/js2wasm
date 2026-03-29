@@ -39,6 +39,7 @@ import { compileStatement, bodyUsesArguments, emitArgumentsObject } from "./stat
 import { compileExpression, getLine, getCol, VOID_RESULT } from "./shared.js";
 import { promoteAccessorCapturesToGlobals, emitMethodParamDefaults } from "./closures.js";
 import { resolveStructName, patchStructNewForAddedField } from "./expressions.js";
+import { pushDefaultValue } from "./type-coercion.js";
 
 /**
  * Ensure that a struct registered for an object literal includes fields for
@@ -1045,23 +1046,33 @@ export function compileTupleLiteral(
   expr: ts.ArrayLiteralExpression,
   tupleType: ts.Type,
 ): ValType | null {
-  let elemTypes = getTupleElementTypes(ctx, tupleType);
-
-  // When the literal has fewer elements than the contextual tuple type expects
-  // (e.g. `let [x = 23] = []` where TS infers [] as [number]), truncate the
-  // tuple to match the actual literal length. This ensures destructuring
-  // correctly applies default values for missing positions instead of
-  // seeing zero-filled fields.
-  if (expr.elements.length < elemTypes.length) {
-    elemTypes = elemTypes.slice(0, expr.elements.length);
-  }
+  const elemTypes = getTupleElementTypes(ctx, tupleType);
 
   const tupleIdx = getOrRegisterTupleType(ctx, elemTypes);
 
   // Compile each element with the expected field type.
+  // For missing positions (literal shorter than tuple), push default values
+  // so the struct.new gets a full set of fields (#852).
   for (let i = 0; i < elemTypes.length; i++) {
     const expectedType = elemTypes[i] ?? { kind: "externref" as const };
-    compileExpression(ctx, fctx, expr.elements[i]!, expectedType);
+    if (i < expr.elements.length) {
+      compileExpression(ctx, fctx, expr.elements[i]!, expectedType);
+    } else {
+      // Missing element — push sentinel value that destructuring recognizes as
+      // "absent": NaN for f64, ref.null for refs/externref, 0 for i32 (#852).
+      if (expectedType.kind === "f64") {
+        fctx.body.push({ op: "f64.const", value: NaN });
+      } else if (expectedType.kind === "i32") {
+        fctx.body.push({ op: "i32.const", value: 0 });
+      } else if (expectedType.kind === "externref") {
+        fctx.body.push({ op: "ref.null.extern" } as unknown as Instr);
+      } else if (expectedType.kind === "ref_null" || expectedType.kind === "ref") {
+        const typeIdx = (expectedType as { typeIdx: number }).typeIdx;
+        fctx.body.push({ op: "ref.null", typeIdx } as unknown as Instr);
+      } else {
+        pushDefaultValue(fctx, expectedType, ctx);
+      }
+    }
   }
 
   fctx.body.push({ op: "struct.new", typeIdx: tupleIdx });

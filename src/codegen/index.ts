@@ -14905,8 +14905,10 @@ export function destructureParamObject(
   // Pre-allocate all binding locals so they exist even when param is null
   ensureBindingLocals(ctx, fctx, pattern);
 
-  // Null guard: wrap destructuring in if-not-null for ref_null params
-  const isNullable = paramType.kind === "ref_null";
+  // Null guard: wrap destructuring in if-not-null for ref params.
+  // Always treat as nullable — callers may pass mismatched values that
+  // compile to ref.null even when the declared type is non-nullable ref (#852).
+  const isNullable = paramType.kind === "ref_null" || paramType.kind === "ref";
   const savedBody = fctx.body;
   const destructInstrs: Instr[] = [];
   if (isNullable) {
@@ -15128,7 +15130,9 @@ export function destructureParamArray(
     if (tupleDef && tupleDef.kind === "struct" && tupleDef.fields.length > 0 &&
         tupleDef.fields[0]!.name === "_0") {
       // Tuple struct destructuring: extract positional fields via struct.get
-      const isNullable = paramType.kind === "ref_null";
+      // Always treat as nullable — callers may pass empty/mismatched arrays that
+      // compile to ref.null even when the declared type is non-nullable ref (#852).
+      const isNullable = paramType.kind === "ref_null" || paramType.kind === "ref";
 
       // Pre-allocate all binding locals
       ensureBindingLocals(ctx, fctx, pattern);
@@ -15238,8 +15242,10 @@ export function destructureParamArray(
   // Pre-allocate all binding locals so they exist even when param is null
   ensureBindingLocals(ctx, fctx, pattern);
 
-  // Null guard: wrap destructuring in if-not-null for ref_null params
-  const isNullable = paramType.kind === "ref_null";
+  // Null guard: wrap destructuring in if-not-null for ref params.
+  // Always treat as nullable — callers may pass empty/mismatched arrays that
+  // compile to ref.null even when the declared type is non-nullable ref (#852).
+  const isNullable = paramType.kind === "ref_null" || paramType.kind === "ref";
   const savedBody = fctx.body;
   const destructInstrs: Instr[] = [];
   if (isNullable) {

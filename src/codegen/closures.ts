@@ -36,7 +36,7 @@ import {
   unwrapPromiseType,
 } from "../checker/type-mapper.js";
 import type { Instr, ValType, FieldDef, StructTypeDef } from "../ir/types.js";
-import { compileStatement } from "./statements.js";
+import { compileStatement, compileExternrefObjectDestructuringDecl, compileExternrefArrayDestructuringDecl, collectInstrs } from "./statements.js";
 import { defaultValueInstrs, coercionInstrs, emitGuardedRefCast } from "./type-coercion.js";
 import {
   compileExpression,
@@ -278,17 +278,54 @@ export function emitArrowParamDestructuring(
     const fields = ctx.structFields.get(typeName);
     if (structTypeIdx === undefined || !fields) return;
 
-    // If the param is externref (e.g. callback from JS host), convert it to
-    // the expected struct ref type once, so that struct.get works on it.
+    // If the param is externref (e.g. callback from JS host or dynamically typed),
+    // try ref.test to see if it's a known Wasm struct; if not, use __extern_get fallback.
     if (paramType.kind === "externref") {
-      const structRefType: ValType = { kind: "ref_null", typeIdx: structTypeIdx };
-      const convertedIdx = allocLocal(fctx, `__destr_ref_${fctx.locals.length}`, structRefType);
+      // Use ref.test to check if externref is actually the expected struct
+      // If yes: convert and use struct path. If no: use __extern_get fallback.
+      const testLocal = allocLocal(fctx, `__destr_test_${fctx.locals.length}`, { kind: "i32" });
       fctx.body.push({ op: "local.get", index: paramIdx });
       fctx.body.push({ op: "any.convert_extern" } as Instr);
-      emitGuardedRefCast(fctx, structTypeIdx);
-      fctx.body.push({ op: "local.set", index: convertedIdx });
-      paramIdx = convertedIdx;
-      paramType = structRefType;
+      fctx.body.push({ op: "ref.test", typeIdx: structTypeIdx } as unknown as Instr);
+      fctx.body.push({ op: "local.set", index: testLocal });
+
+      // Struct path (ref.test succeeded)
+      const structRefType: ValType = { kind: "ref_null", typeIdx: structTypeIdx };
+      const structPath = collectInstrs(fctx, () => {
+        const convertedIdx = allocLocal(fctx, `__destr_ref_${fctx.locals.length}`, structRefType);
+        fctx.body.push({ op: "local.get", index: paramIdx });
+        fctx.body.push({ op: "any.convert_extern" } as Instr);
+        emitGuardedRefCast(fctx, structTypeIdx);
+        fctx.body.push({ op: "local.set", index: convertedIdx });
+
+        // Ensure binding locals are allocated (struct path)
+        for (const element of pattern.elements) {
+          if (!ts.isBindingElement(element)) continue;
+          if (ts.isOmittedExpression(element as any)) continue;
+          if (!ts.isIdentifier(element.name)) continue;
+          const localName = element.name.text;
+          const propNameNode = element.propertyName ?? element.name;
+          if (!ts.isIdentifier(propNameNode) && !ts.isStringLiteral(propNameNode)) continue;
+          const propName = propNameNode.text;
+          const fieldIdx = fields.findIndex((f) => f.name === propName);
+          if (fieldIdx === -1) continue;
+          const fieldType = fields[fieldIdx]!.type;
+          const localIdx = allocLocal(fctx, localName, fieldType);
+          fctx.body.push({ op: "local.get", index: convertedIdx });
+          fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+          fctx.body.push({ op: "local.set", index: localIdx });
+        }
+      });
+
+      // Externref fallback path (ref.test failed — JS object)
+      const externPath = collectInstrs(fctx, () => {
+        fctx.body.push({ op: "local.get", index: paramIdx });
+        compileExternrefObjectDestructuringDecl(ctx, fctx, pattern, paramType);
+      });
+
+      fctx.body.push({ op: "local.get", index: testLocal });
+      fctx.body.push({ op: "if", blockType: { kind: "empty" }, then: structPath, else: externPath });
+      return; // Skip the rest of the object destructuring logic
     }
 
     // Null guard for ref_null param types
@@ -414,6 +451,13 @@ export function emitArrowParamDestructuring(
   } else if (ts.isArrayBindingPattern(param.name)) {
     // Array destructuring: const [a, b] = param
     const pattern = param.name;
+
+    // If the param is externref (e.g. JS array passed to closure), use __extern_get fallback
+    if (paramType.kind === "externref") {
+      fctx.body.push({ op: "local.get", index: paramIdx });
+      compileExternrefArrayDestructuringDecl(ctx, fctx, pattern, paramType);
+      return;
+    }
 
     if (paramType.kind !== "ref" && paramType.kind !== "ref_null") return;
 
