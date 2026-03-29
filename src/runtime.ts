@@ -419,6 +419,23 @@ function resolveImport(
       };
       if (name === "__extern_is_undefined") return (v: any) => v === undefined ? 1 : 0;
       if (name === "__get_undefined") return () => undefined;
+      // __box_symbol: convert i32 symbol ID → real JS Symbol (cached by ID)
+      // so symbols preserve identity when crossing the Wasm/JS boundary (#864)
+      if (name === "__box_symbol") {
+        const symbolCache = new Map<number, symbol>([
+          [1, Symbol.iterator], [2, Symbol.hasInstance],
+          [3, Symbol.toPrimitive], [4, Symbol.toStringTag],
+          [5, Symbol.species], [6, Symbol.isConcatSpreadable],
+          [7, Symbol.match], [8, Symbol.replace],
+          [9, Symbol.search], [10, Symbol.split],
+          [11, Symbol.unscopables], [12, Symbol.asyncIterator],
+        ]);
+        return (id: number) => {
+          let sym = symbolCache.get(id);
+          if (sym === undefined) { sym = Symbol(`wasm_${id}`); symbolCache.set(id, sym); }
+          return sym;
+        };
+      }
       if (name === "__object_create") return (proto: any) => Object.create(proto);
       if (name === "__object_freeze") return (obj: any) => { try { return Object.freeze(obj); } catch { return obj; } };
       if (name === "__object_seal") return (obj: any) => { try { return Object.seal(obj); } catch { return obj; } };
@@ -859,6 +876,11 @@ function resolveImport(
         return parseInt(String(s), r as any);
       };
       if (name === "parseFloat") return (s: any) => parseFloat(String(s));
+      // URI encoding/decoding host imports
+      if (name === "decodeURI") return (s: any) => decodeURI(String(s));
+      if (name === "decodeURIComponent") return (s: any) => decodeURIComponent(String(s));
+      if (name === "encodeURI") return (s: any) => encodeURI(String(s));
+      if (name === "encodeURIComponent") return (s: any) => encodeURIComponent(String(s));
       // String.fromCharCode host import
       if (name === "String_fromCharCode") return (code: number) => String.fromCharCode(code);
       // String comparison (lexicographic ordering)

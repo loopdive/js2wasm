@@ -857,6 +857,21 @@ function compileExpressionBody(
           }
         }
       }
+      // Special case: i32 → externref with symbol TS type → use __box_symbol
+      // to produce a real JS Symbol (i32 symbols are opaque IDs that V8's
+      // WeakMap/WeakSet reject as primitive number keys). (#864)
+      if (result.kind === "i32" && expectedType.kind === "externref") {
+        const tsType = ctx.checker.getTypeAtLocation(expr);
+        if (tsType.flags & ts.TypeFlags.ESSymbolLike) {
+          const boxSymIdx = ensureLateImport(ctx, "__box_symbol",
+            [{ kind: "i32" }], [{ kind: "externref" }]);
+          if (boxSymIdx !== undefined) {
+            flushLateImportShifts(ctx, fctx);
+            fctx.body.push({ op: "call", funcIdx: boxSymIdx } as unknown as Instr);
+            return expectedType;
+          }
+        }
+      }
       coerceType(ctx, fctx, result, expectedType);
       return expectedType;
     }
