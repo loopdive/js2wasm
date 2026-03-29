@@ -77,8 +77,10 @@ See [plan/team-setup.md](plan/team-setup.md) for full team config, roles, memory
 **Key numbers**: 14GB RAM + 14GB swap (container limit). Max 3 dev teammates + 1 PO on demand. Default 3 test262 forks. All agents use `bypassPermissions` mode + worktree isolation. Work driven by `plan/dependency-graph.md`.
 
 ### Agent work dispatch
-- When a dev teammate sends "Ready for next task", the tech lead replies with the next issue from `plan/dependency-graph.md` (top priority section)
-- Dev agents do NOT exit after completing a task — they wait for the next assignment
+- Tech lead creates tasks via `TaskCreate` at session start (ordered by priority from `plan/dependency-graph.md`)
+- Dev agents self-serve: after completing a task, they check `TaskList` and claim the next unowned task
+- If no tasks available, dev messages team lead and waits for assignment
+- Dev agents do NOT exit after completing a task — they always check TaskList first
 - Only the tech lead runs test262; dev agents run scoped tests only (compile + run specific test files, NOT `npx vitest`)
 
 ### Issue completion protocol (tech lead responsibility)
