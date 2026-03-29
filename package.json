@@ -30,7 +30,8 @@
     "typecheck": "tsc --noEmit",
     "report": "npx tsx scripts/serve-report.ts",
     "build:playground": "vite build playground",
-    "upload": "pnpm run build:playground && node ../file-registry-cli/dist/bin/main.js commit && node ../file-registry-cli/dist/bin/main.js push"
+    "upload": "pnpm run build:playground && node ../file-registry-cli/dist/bin/main.js commit && node ../file-registry-cli/dist/bin/main.js push",
+    "test:channel": "node node_modules/vitest/dist/cli.js run --reporter=json 2>/dev/null | tee .claude/last-run.json; .claude/channel/send.sh test-run-done \"$(node -e \"const r=require('./.claude/last-run.json');process.stdout.write(JSON.stringify({passed:r.numPassedTests,failed:r.numFailedTests}))\")\""
   },
   "dependencies": {
     "typescript": "^5.7"

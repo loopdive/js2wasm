@@ -1,0 +1,4 @@
+node_modules/
+events.log
+server.log
+server.pid

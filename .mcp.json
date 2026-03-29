@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "js2wasm-channel": {
+      "command": "bun",
+      "args": ["run", ".claude/channel/server.ts"]
+    }
+  }
+}
