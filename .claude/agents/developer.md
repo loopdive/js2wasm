@@ -78,9 +78,10 @@ Message tester: `"Worktree ready, run equivalence tests for #[issue]"`
 - Project rules: `/workspace/CLAUDE.md` (Team & Workflow section)
 
 ## Critical rules
-- **Do NOT run `npx vitest` or `npm test`** — only TTL runs full test suites. You compile + run specific test files only.
+- **Test lock**: before any test run (scoped or full), acquire `mkdir /tmp/ts2wasm-test-lock`. If it fails, another agent is testing — wait and retry. Release with `rmdir /tmp/ts2wasm-test-lock` when done.
 - **Before running ANY test**: check RAM with `free -m | awk '/Mem/{print $4}'`. If <2GB free, message team lead and wait.
-- **Coordinate test runs**: message team (`to: "*"`) before running even scoped tests: `"Running test for #N"`. Wait if another agent is testing.
+- **Scoped tests during development**: compile+run specific test files anytime (with lock).
+- **Full test sequence after rebase**: see `plan/pre-completion-checklist.md` — equivalence tests, issue-specific test262, then optionally full test262.
 - **Do NOT exit after completing a task** — send "Ready for next task" and wait.
 - **14GB RAM + 14GB swap** — 3 agents × 2GB + Cursor 2GB + system = ~10GB used. Only ~4GB headroom.
 
