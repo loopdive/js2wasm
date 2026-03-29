@@ -160,7 +160,7 @@ ts2wasm passes **38% of the ECMAScript test262 conformance suite** (18,186 / 47,
 - **Block scoping** -- let/const with proper TDZ semantics
 - **TypedArray**, DataView, ArrayBuffer (Wasm linear memory)
 
-**Supported via JS host imports (requires a JS runtime):**
+**Supported via JS host imports currently (requires a JS runtime):**
 
 - **Collections** -- Map, Set, WeakMap, WeakSet (delegated to JS built-ins)
 - **RegExp** -- exec, match, replace, split (delegated to JS RegExp engine)
