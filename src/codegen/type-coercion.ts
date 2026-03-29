@@ -5,7 +5,7 @@
  * Contains: coerceType, pushDefaultValue, defaultValueInstrs, coercionInstrs.
  */
 
-import type { CodegenContext, FunctionContext, ClosureInfo } from "./index.js";
+import type { CodegenContext, FunctionContext, ClosureInfo, OptionalParamInfo } from "./index.js";
 import { allocLocal, allocTempLocal, releaseTempLocal, addUnionImports, addStringConstantGlobal, isAnyValue, ensureAnyHelpers } from "./index.js";
 import { registerCoerceType, ensureLateImport, flushLateImportShifts } from "./shared.js";
 import type { Instr, ValType, StructTypeDef, ArrayTypeDef } from "../ir/types.js";
@@ -1946,6 +1946,20 @@ export function pushParamSentinel(fctx: FunctionContext, type: ValType, ctx?: Co
     fctx.body.push({ op: "f64.reinterpret_i64" } as unknown as Instr);
   } else {
     pushDefaultValue(fctx, type, ctx);
+  }
+}
+
+/**
+ * Push the appropriate value for a missing optional argument at a call site (#869).
+ * For f64 params with a known constant default, emit the constant directly
+ * (no sNaN sentinel needed — callee never checks). For expression defaults or
+ * non-f64 types, falls back to pushParamSentinel.
+ */
+export function pushCallerDefault(fctx: FunctionContext, opt: OptionalParamInfo, ctx?: CodegenContext): void {
+  if (opt.type.kind === "f64" && opt.constantDefault !== undefined) {
+    fctx.body.push({ op: "f64.const", value: opt.constantDefault });
+  } else {
+    pushParamSentinel(fctx, opt.type, ctx);
   }
 }
 

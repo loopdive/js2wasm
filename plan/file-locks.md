@@ -17,6 +17,10 @@ Active file/function claims by agents. **Check before editing. Update when start
 | src/codegen/expressions.ts | compilePropertyAccess | dev-agent | #820, #848 | 2026-03-28 |
 | src/runtime.ts | _toPrimitive / buildImports | dev-agent-866 | #866 | 2026-03-28 |
 | src/codegen/statements.ts | emitDefaultParamInit | dev-agent-866 | #866 | 2026-03-28 |
+| src/codegen/type-coercion.ts | pushParamSentinel/pushDefaultValue | dev | #869 | 2026-03-29 |
+| src/codegen/index.ts | OptionalParamInfo, top-level default init | dev | #869 | 2026-03-29 |
+| src/codegen/statements.ts | emitDefaultParamInit | dev | #869 | 2026-03-29 |
+| src/codegen/expressions.ts | call sites (pushParamSentinel) | dev | #869 | 2026-03-29 |
 
 <!--
 Example entries:
