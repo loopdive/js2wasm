@@ -538,21 +538,30 @@ function resolveImport(
       //   bit 3: writable specified, bit 4: enumerable specified, bit 5: configurable specified
       //   bit 6: is accessor (get/set), bit 7: has value
       if (name === "__defineProperty_value") return (obj: any, prop: any, value: any, flags: number) => {
-        if (obj == null) return obj;
+        if (obj == null || typeof obj !== "object" && typeof obj !== "function") {
+          throw new TypeError("Object.defineProperty called on non-object");
+        }
         const desc: PropertyDescriptor = {};
         if (flags & (1 << 7)) desc.value = value;
         if (flags & (1 << 3)) desc.writable = !!(flags & 1);
         if (flags & (1 << 4)) desc.enumerable = !!(flags & (1 << 1));
         if (flags & (1 << 5)) desc.configurable = !!(flags & (1 << 2));
-        try { Object.defineProperty(obj, prop, desc); } catch (_) {
+        try { Object.defineProperty(obj, prop, desc); } catch (e) {
+          // Re-throw TypeErrors (spec-mandated: non-configurable redefinition, etc.)
+          if (e instanceof TypeError) throw e;
           // WasmGC struct or frozen/sealed — store value in sidecar
           if (desc.value !== undefined) _sidecarSet(obj, prop, desc.value);
         }
         return obj;
       };
       if (name === "__defineProperties") return (obj: any, descs: any) => {
-        if (obj == null || descs == null) return obj;
-        try { Object.defineProperties(obj, descs); } catch (_) {
+        if (obj == null || typeof obj !== "object" && typeof obj !== "function") {
+          throw new TypeError("Object.defineProperties called on non-object");
+        }
+        if (descs == null) return obj;
+        try { Object.defineProperties(obj, descs); } catch (e) {
+          // Re-throw TypeErrors (spec-mandated: non-configurable redefinition, etc.)
+          if (e instanceof TypeError) throw e;
           // WasmGC struct — apply each descriptor individually via sidecar
           const keys = Object.keys(descs);
           for (const key of keys) {

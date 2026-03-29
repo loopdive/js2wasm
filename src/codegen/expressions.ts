@@ -2133,6 +2133,15 @@ export function compileAssignment(
   }
   if (ts.isIdentifier(expr.left)) {
     const name = expr.left.text;
+    // const bindings — assignment throws TypeError at runtime
+    if (fctx.constBindings?.has(name)) {
+      // Evaluate RHS for side effects, then throw
+      const rhsType = compileExpression(ctx, fctx, expr.right);
+      if (rhsType) fctx.body.push({ op: "drop" });
+      emitThrowString(ctx, fctx, "TypeError: Assignment to constant variable.");
+      fctx.body.push({ op: "unreachable" } as unknown as Instr);
+      return { kind: "f64" }; // unreachable, but satisfy type
+    }
     // Named function expression name binding is read-only — assignments are
     // silently ignored in sloppy mode (the RHS is still evaluated for side effects)
     if (fctx.readOnlyBindings?.has(name)) {
@@ -5662,6 +5671,15 @@ export function compileCompoundAssignment(
 
   const name = expr.left.text;
 
+  // const bindings — compound assignment throws TypeError at runtime
+  if (fctx.constBindings?.has(name)) {
+    const rhsType = compileExpression(ctx, fctx, expr.right);
+    if (rhsType) fctx.body.push({ op: "drop" });
+    emitThrowString(ctx, fctx, "TypeError: Assignment to constant variable.");
+    fctx.body.push({ op: "unreachable" } as unknown as Instr);
+    return { kind: "f64" };
+  }
+
   // String += : concat instead of numeric add
   if (op === ts.SyntaxKind.PlusEqualsToken) {
     const leftTsType = ctx.checker.getTypeAtLocation(expr.left);
@@ -7499,6 +7517,11 @@ function compilePrefixUnary(
     case ts.SyntaxKind.PlusPlusToken: {
       // Unwrap parenthesized expressions: ++(x) -> ++x
       const ppOperand = unwrapParens(expr.operand);
+      if (ts.isIdentifier(ppOperand) && fctx.constBindings?.has(ppOperand.text)) {
+        emitThrowString(ctx, fctx, "TypeError: Assignment to constant variable.");
+        fctx.body.push({ op: "unreachable" } as unknown as Instr);
+        return { kind: "f64" };
+      }
       if (ts.isIdentifier(ppOperand)) {
         const idx = fctx.localMap.get(ppOperand.text);
         if (idx !== undefined) {
@@ -7716,6 +7739,11 @@ function compilePrefixUnary(
 
       // Unwrap parenthesized expressions: --(x) -> --x
       const mmOperand = unwrapParens(expr.operand);
+      if (ts.isIdentifier(mmOperand) && fctx.constBindings?.has(mmOperand.text)) {
+        emitThrowString(ctx, fctx, "TypeError: Assignment to constant variable.");
+        fctx.body.push({ op: "unreachable" } as unknown as Instr);
+        return { kind: "f64" };
+      }
       if (ts.isIdentifier(mmOperand)) {
         const idx = fctx.localMap.get(mmOperand.text);
         if (idx !== undefined) {
@@ -7953,6 +7981,12 @@ function compilePostfixUnary(
   }
 
   if (ts.isIdentifier(postOperand)) {
+    // const bindings — increment/decrement throws TypeError at runtime
+    if (fctx.constBindings?.has(postOperand.text)) {
+      emitThrowString(ctx, fctx, "TypeError: Assignment to constant variable.");
+      fctx.body.push({ op: "unreachable" } as unknown as Instr);
+      return { kind: "f64" };
+    }
     const idx = fctx.localMap.get(postOperand.text);
     if (idx === undefined) {
       // Check module globals for postfix ++/--

@@ -901,6 +901,8 @@ export interface FunctionContext {
   isGenerator?: boolean;
   /** Set of variable names that are read-only bindings (e.g. named function expression name) */
   readOnlyBindings?: Set<string>;
+  /** Set of variable names that are const bindings — assignment throws TypeError at runtime */
+  constBindings?: Set<string>;
   /** Stack of saved body arrays for addUnionImports index shifting */
   savedBodies: Instr[][];
   /** Set of function names successfully hoisted during THIS function body's hoisting pass */
