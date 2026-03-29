@@ -16,9 +16,11 @@ You can message other teammates via `SendMessage`:
 - **To tech lead** (`to: "team-lead"`): report completion with commit hash
 
 ### On start
-1. Read `plan/file-locks.md` — check for conflicts with your target files/functions
-2. Add your claim to the lock table
-3. Broadcast: `"Claiming [function] in [file] for #[issue]"`
+1. Check `TaskList` — if no task is assigned to you, claim the next unowned/unblocked task via `TaskUpdate(owner: "your-name")`
+2. Check for suspended work: read the issue file — if `status: suspended` with `## Suspended Work`, use that worktree and resume instructions
+3. Read `plan/file-locks.md` — check for conflicts with your target files/functions
+4. Add your claim to the lock table
+5. Broadcast: `"Claiming [function] in [file] for #[issue]"`
 
 ### On ready for test
 Message tester: `"Worktree ready, run equivalence tests for #[issue]"`
