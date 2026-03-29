@@ -80,7 +80,9 @@ See [plan/team-setup.md](plan/team-setup.md) for full team config, roles, memory
 
 **IMPORTANT: Always use teammates, not subagents.** Spawn agents via `TeamCreate` + `Agent` with `team_name` parameter. Never use bare `Agent` spawns — subagents can't coordinate, causing OOM from concurrent test runs and duplicate work. Teammates communicate via `SendMessage` to serialize test runs and coordinate on file conflicts.
 
-**Key numbers**: 14GB RAM + 14GB swap (container limit). Max 3 dev teammates + 1 PO on demand. Default 3 test262 forks. All agents use `bypassPermissions` mode + worktree isolation. Work driven by `plan/dependency-graph.md`.
+**Key numbers**: 14GB RAM + 14GB swap (container limit). Max 3 dev teammates + 1 PO + 1 SM on demand. Default 1 test262 fork. All agents use `bypassPermissions` mode + worktree isolation. Work driven by `plan/dependency-graph.md`.
+
+**Roles**: Tech lead (merges, dispatches, runs tests) · Developers (implement fixes) · Product Owner (backlog, priorities, issues) · Scrum Master (retrospectives, process improvement, unblocking). SM spawned after each sprint to review and propose improvements — see `.claude/agents/scrum-master.md`.
 
 ### Agent work dispatch
 - Tech lead creates tasks via `TaskCreate` at session start (ordered by priority from `plan/dependency-graph.md`)
