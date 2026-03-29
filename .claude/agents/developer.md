@@ -37,6 +37,14 @@ The tech lead will either assign you a new issue or shut you down. **Do not exit
 - Tests: `tests/equivalence.test.ts` (main), `tests/test262.test.ts` (conformance)
 - Your assigned issue: `plan/issues/{N}.md`
 - Full team setup: `plan/team-setup.md`
+- Project rules: `/workspace/CLAUDE.md` (Team & Workflow section)
+
+## Critical rules
+- **Do NOT run `npx vitest` or `npm test`** — only TTL runs full test suites. You compile + run specific test files only.
+- **Before running ANY test**: check RAM with `free -m | awk '/Mem/{print $4}'`. If <2GB free, message team lead and wait.
+- **Coordinate test runs**: message team (`to: "*"`) before running even scoped tests: `"Running test for #N"`. Wait if another agent is testing.
+- **Do NOT exit after completing a task** — send "Ready for next task" and wait.
+- **14GB RAM + 14GB swap** — 3 agents × 2GB + Cursor 2GB + system = ~10GB used. Only ~4GB headroom.
 
 ## Workflow
 1. Read your assigned issue in `plan/issues/ready/{N}.md`
