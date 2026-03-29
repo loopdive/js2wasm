@@ -38,12 +38,14 @@ Message tester: `"Worktree ready, run equivalence tests for #[issue]"`
 **Suspend request**: If tech lead sends a message containing `SUSPEND`, you must:
 1. Finish the current atomic operation (don't leave files half-edited)
 2. Commit any uncommitted work to your branch (even if incomplete)
-3. Write a progress file to your worktree: `SUSPEND.md` containing:
-   - Current issue number and status
+3. Write `.claude/suspended/{N}.md` (where N is your issue number) containing:
+   - `worktree: /workspace/.claude/worktrees/{your-worktree-name}`
+   - `branch: {your-branch-name}`
+   - `issue: {N}`
    - What's done, what's remaining
    - Files modified and their state
    - How to resume: exact next steps
-4. Message tech lead: `"Suspended #N. Progress saved to SUSPEND.md in worktree."`
+4. Message tech lead: `"Suspended #N. Resume info at .claude/suspended/N.md"`
 5. Go idle (do not pick up new tasks)
 
 ## Key principles
@@ -65,7 +67,7 @@ Message tester: `"Worktree ready, run equivalence tests for #[issue]"`
 - **14GB RAM + 14GB swap** — 3 agents × 2GB + Cursor 2GB + system = ~10GB used. Only ~4GB headroom.
 
 ## Workflow
-1. **Check for `SUSPEND.md`** in your worktree. If it exists AND is relevant to your assigned task, read it and follow the resume instructions instead of starting fresh. If it's for a different issue, ignore it.
+1. **Check for suspended work**: look for `.claude/suspended/{N}.md` where N is your assigned issue number. If it exists, read it for the worktree path, branch, and resume instructions — work in that existing worktree instead of creating a new one. Delete the suspend file once you've resumed.
 2. Read your assigned issue in `plan/issues/ready/{N}.md`
 2. **Update issue status to `in-progress`** in the issue frontmatter
 3. Check `plan/file-locks.md` for conflicts, add your claim, **broadcast** to other devs
