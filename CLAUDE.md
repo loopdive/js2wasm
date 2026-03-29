@@ -83,7 +83,7 @@ See [plan/team-setup.md](plan/team-setup.md) for full team config, roles, memory
 
 ### Issue completion protocol (tech lead responsibility)
 When a dev agent reports completion, the tech lead must:
-1. Cherry-pick the commit(s) to main (verify `pwd` is `/workspace`, branch is `main`)
+1. Merge the agent's branch to main (verify `pwd` is `/workspace`, branch is `main`). Cherry-pick only as fallback if merge fails.
 2. Move issue file from `plan/issues/ready/` to `plan/issues/done/`
 3. Update `plan/dependency-graph.md` — remove/strikethrough completed issue, update counts
 4. Update `plan/issues/backlog/backlog.md` — move to completed section, update sprint priority
