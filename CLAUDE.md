@@ -81,6 +81,16 @@ See [plan/team-setup.md](plan/team-setup.md) for full team config, roles, memory
 - Dev agents do NOT exit after completing a task — they wait for the next assignment
 - Only the tech lead runs test262; dev agents run scoped tests only (compile + run specific test files, NOT `npx vitest`)
 
+### Issue completion protocol (tech lead responsibility)
+When a dev agent reports completion, the tech lead must:
+1. Cherry-pick the commit(s) to main (verify `pwd` is `/workspace`, branch is `main`)
+2. Move issue file from `plan/issues/ready/` to `plan/issues/done/`
+3. Update `plan/dependency-graph.md` — remove/strikethrough completed issue, update counts
+4. Update `plan/issues/backlog/backlog.md` — move to completed section, update sprint priority
+5. Check for unblocked issues in `plan/issues/blocked/`
+6. Run equivalence tests to verify no regressions
+7. Dispatch next issue to the freed agent
+
 ### Sprint History
 - **Sprint 1**: 550 → 1,509 pass (+174%), 167 fail, 5,700 CE. Issues #138-#173.
 - **Sprint 2**: 12 branches, 18 issues (#207-#224). Key: destructuring hoisting (~1200 CE), string comparison, .call(), member increment/decrement, labeled break. Equivalence tests: 86 → 170.
