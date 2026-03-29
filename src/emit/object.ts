@@ -689,6 +689,12 @@ function encodeInstrWithReloc(
     case "f64.convert_i32_u":
       enc.byte(OP.f64_convert_i32_u);
       break;
+    case "i64.reinterpret_f64":
+      enc.byte(OP.i64_reinterpret_f64);
+      break;
+    case "f64.reinterpret_i64":
+      enc.byte(OP.f64_reinterpret_i64);
+      break;
     case "ref.null":
       enc.byte(OP.ref_null);
       enc.i32(instr.typeIdx);

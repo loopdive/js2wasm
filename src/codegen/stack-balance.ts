@@ -150,6 +150,7 @@ function instrDelta(instr: Instr, types: TypeDef[], funcSigs: FuncSigInfo): numb
       op === "f64.trunc" || op === "f64.nearest" || op === "f64.sqrt" ||
       op === "f64.convert_i32_s" || op === "f64.convert_i32_u" || op === "f64.convert_i64_s" ||
       op === "f64.promote_f32" || op === "f32.demote_f64" ||
+      op === "f64.reinterpret_i64" || op === "i64.reinterpret_f64" ||
       op === "i32.trunc_sat_f64_s" || op === "i32.trunc_sat_f64_u" ||
       op === "i32.trunc_f64_s" ||
       op === "i64.trunc_sat_f64_s" || op === "i64.trunc_f64_s" ||
@@ -381,7 +382,7 @@ function inferLastType(body: Instr[], types: TypeDef[], sigs: FuncSigInfo): stri
         op === "f64.ceil" || op === "f64.trunc" || op === "f64.nearest" || op === "f64.sqrt" ||
         op === "f64.copysign" || op === "f64.min" || op === "f64.max" ||
         op === "f64.convert_i32_s" || op === "f64.convert_i32_u" || op === "f64.convert_i64_s" ||
-        op === "f64.promote_f32") {
+        op === "f64.promote_f32" || op === "f64.reinterpret_i64") {
       return "f64";
     }
 
@@ -404,7 +405,8 @@ function inferLastType(body: Instr[], types: TypeDef[], sigs: FuncSigInfo): stri
         op === "i64.and" || op === "i64.or" || op === "i64.xor" ||
         op === "i64.extend_i32_s" || op === "i64.extend_i32_u" ||
         op === "i64.trunc_sat_f64_s" || op === "i64.trunc_f64_s" ||
-        op === "i64.shl" || op === "i64.shr_s" || op === "i64.shr_u") {
+        op === "i64.shl" || op === "i64.shr_s" || op === "i64.shr_u" ||
+        op === "i64.reinterpret_f64") {
       return "i64";
     }
 
@@ -875,7 +877,7 @@ function inferInstrType(
       op === "f64.ceil" || op === "f64.trunc" || op === "f64.nearest" || op === "f64.sqrt" ||
       op === "f64.copysign" || op === "f64.min" || op === "f64.max" ||
       op === "f64.convert_i32_s" || op === "f64.convert_i32_u" || op === "f64.convert_i64_s" ||
-      op === "f64.promote_f32") {
+      op === "f64.promote_f32" || op === "f64.reinterpret_i64") {
     return { kind: "f64" };
   }
   if (op === "i32.const" || op === "i32.add" || op === "i32.sub" || op === "i32.mul" ||
@@ -892,7 +894,8 @@ function inferInstrType(
       op === "array.len") {
     return { kind: "i32" };
   }
-  if (op === "i64.const" || op === "i64.extend_i32_s" || op === "i64.trunc_sat_f64_s") {
+  if (op === "i64.const" || op === "i64.extend_i32_s" || op === "i64.trunc_sat_f64_s" ||
+      op === "i64.reinterpret_f64") {
     return { kind: "i64" };
   }
   if (op === "ref.null.extern" || op === "extern.convert_any") {
@@ -1180,7 +1183,7 @@ function fixCallArgTypesInBody(
     "f64.neg", "f64.abs", "f64.floor", "f64.ceil", "f64.trunc",
     "f64.nearest", "f64.sqrt", "f64.copysign", "f64.min", "f64.max",
     "f64.convert_i32_s", "f64.convert_i32_u", "f64.convert_i64_s",
-    "f64.promote_f32",
+    "f64.promote_f32", "f64.reinterpret_i64", "i64.reinterpret_f64",
     "f64.eq", "f64.ne", "f64.lt", "f64.le", "f64.gt", "f64.ge",
     // Other type-producing ops
     "ref.is_null", "ref.test", "ref.eq",
@@ -1569,7 +1572,7 @@ function updateTypeStack(
   if (op === "f64.neg" || op === "f64.abs" || op === "f64.floor" || op === "f64.ceil" ||
       op === "f64.trunc" || op === "f64.nearest" || op === "f64.sqrt" ||
       op === "f64.convert_i32_s" || op === "f64.convert_i32_u" || op === "f64.convert_i64_s" ||
-      op === "f64.promote_f32") {
+      op === "f64.promote_f32" || op === "f64.reinterpret_i64") {
     stack.pop();
     stack.push({ kind: "f64" });
     return;
@@ -1580,7 +1583,8 @@ function updateTypeStack(
     return;
   }
   if (op === "i64.extend_i32_s" || op === "i64.extend_i32_u" ||
-      op === "i64.trunc_sat_f64_s" || op === "i64.trunc_f64_s") {
+      op === "i64.trunc_sat_f64_s" || op === "i64.trunc_f64_s" ||
+      op === "i64.reinterpret_f64") {
     stack.pop();
     stack.push({ kind: "i64" });
     return;
