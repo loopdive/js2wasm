@@ -33,14 +33,15 @@ Message tester: `"Worktree ready, run equivalence tests for #[issue]"`
 
 ### Pause and suspend protocols
 
-**PAUSE (between tasks)**: If the next task in TaskList has `[PAUSE]` in its subject, do NOT claim it. Message tech lead: `"Hit pause marker, waiting."` and wait idle until tech lead sends further instructions.
+**PAUSE (between tasks)**: If the next task in TaskList has `[PAUSE]` in its subject, do NOT claim it. Message tech lead: `"Roger, hit pause marker. Standing by."` and wait idle until tech lead sends further instructions.
 
-**PAUSE (immediate message)**: If tech lead sends `PAUSE`, stop work immediately — kill any running tests, don't start new operations. Message tech lead: `"Paused on #N."` and wait idle until tech lead sends `RESUME` or a new instruction.
+**PAUSE (immediate message)**: If tech lead sends `PAUSE`, stop work immediately — kill any running tests, don't start new operations. Message tech lead: `"Roger, paused current work on #N."` and wait idle until tech lead sends `RESUME` or a new instruction.
 
-**SUSPEND**: If tech lead sends `SUSPEND`, you must save your state and terminate:
-1. Finish the current atomic operation (don't leave files half-edited)
-2. Commit any uncommitted work to your branch (even if incomplete)
-3. Update the issue file (`plan/issues/ready/{N}.md`) — set `status: suspended` in frontmatter and append a `## Suspended Work` section:
+**SUSPEND**: If tech lead sends `SUSPEND`:
+1. Message tech lead: `"Affirmative, suspending work on #N."`
+2. Finish the current atomic operation (don't leave files half-edited)
+3. Commit any uncommitted work to your branch (even if incomplete)
+4. Update the issue file (`plan/issues/ready/{N}.md`) — set `status: suspended` in frontmatter and append a `## Suspended Work` section:
    ```markdown
    ## Suspended Work
    - **Worktree**: /workspace/.claude/worktrees/{your-worktree-name}
@@ -49,8 +50,8 @@ Message tester: `"Worktree ready, run equivalence tests for #[issue]"`
    - **Remaining**: what's left to do
    - **Resume**: exact next steps to pick up where you left off
    ```
-4. Message tech lead: `"Suspended #N. Resume info in issue file."`
-5. **Terminate** (exit process — a new agent will resume from the issue file later)
+5. Message tech lead: `"Work on #N suspended, terminating."`
+6. **Terminate** (exit process — a new agent will resume from the issue file later)
 
 ## Key principles
 - **Dual-mode: JS host optional** — prefer Wasm-native implementations; host imports OK as fast path with standalone fallback
