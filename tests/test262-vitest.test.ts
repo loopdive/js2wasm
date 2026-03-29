@@ -360,7 +360,7 @@ async function getOrCompile(
 
 // ── Result tracking (JSONL output for report.html) ──────────────────
 
-import { writeFileSync as writeSync, openSync, writeSync as fdWrite, closeSync, fsyncSync } from "fs";
+import { writeFileSync as writeSync, openSync, writeSync as fdWrite, closeSync, fsyncSync, renameSync, unlinkSync } from "fs";
 import { afterAll } from "vitest";
 
 const RESULTS_DIR = join(import.meta.dirname ?? ".", "..", "benchmarks", "results");
@@ -368,9 +368,13 @@ mkdirSync(RESULTS_DIR, { recursive: true });
 const JSONL_PATH = join(RESULTS_DIR, "test262-results.jsonl");
 const REPORT_PATH = join(RESULTS_DIR, "test262-report.json");
 
-// Open results JSONL in append mode — truncation handled by run-test262.sh
-// before vitest starts (avoids race condition with multiple forks)
-const jsonlFd = openSync(JSONL_PATH, "a");
+// Write to temp files during the run — only rename to final on complete run.
+// If the run crashes, temp files are left behind and final files are untouched.
+const JSONL_TMP_PATH = JSONL_PATH + ".tmp";
+const REPORT_TMP_PATH = REPORT_PATH + ".tmp";
+
+// Open temp JSONL for writing (truncate — each run starts fresh)
+const jsonlFd = openSync(JSONL_TMP_PATH, "w");
 let flushCount = 0;
 const REPORT_FLUSH_INTERVAL = 500; // update report.json every 500 tests
 
@@ -444,7 +448,7 @@ function recordResult(file: string, category: string, status: string, error?: st
       error_categories: { ...errorCategoryCounts },
       skip_reasons: { ...skipReasonCounts },
     };
-    try { writeSync(REPORT_PATH, JSON.stringify(report, null, 2)); } catch {}
+    try { writeSync(REPORT_TMP_PATH, JSON.stringify(report, null, 2)); } catch {}
   }
 
   // Fail the vitest test for non-passing results (compile_timeout is expected, not a test failure)
@@ -467,7 +471,12 @@ afterAll(() => {
     error_categories: { ...errorCategoryCounts },
     skip_reasons: { ...skipReasonCounts },
   };
-  writeSync(REPORT_PATH, JSON.stringify(report, null, 2));
+
+  // Write final report to temp, then rename atomically to final paths.
+  // This ensures interrupted runs never corrupt the last complete results.
+  writeSync(REPORT_TMP_PATH, JSON.stringify(report, null, 2));
+  try { renameSync(JSONL_TMP_PATH, JSONL_PATH); } catch {}
+  try { renameSync(REPORT_TMP_PATH, REPORT_PATH); } catch {}
 
   // Print error category breakdown
   const ecEntries = Object.entries(errorCategoryCounts).sort((a, b) => b[1] - a[1]);
