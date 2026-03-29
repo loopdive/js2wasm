@@ -1523,7 +1523,7 @@ function compileObjectDestructuring(
  * Destructure an externref value using __extern_get(obj, key_string) for each property.
  * Fallback for when the source type is unknown/any/externref (no struct info available).
  */
-function compileExternrefObjectDestructuringDecl(
+export function compileExternrefObjectDestructuringDecl(
   ctx: CodegenContext,
   fctx: FunctionContext,
   pattern: ts.ObjectBindingPattern,
@@ -1692,7 +1692,7 @@ function compileExternrefObjectDestructuringDecl(
  * Destructure an externref value using __extern_get(obj, boxed_index) for each element.
  * Handles cases where the RHS is dynamically typed (e.g. arguments, iterators, function returns).
  */
-function compileExternrefArrayDestructuringDecl(
+export function compileExternrefArrayDestructuringDecl(
   ctx: CodegenContext,
   fctx: FunctionContext,
   pattern: ts.ArrayBindingPattern,
