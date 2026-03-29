@@ -24,9 +24,13 @@ You can message other teammates via `SendMessage`:
 Message tester: `"Worktree ready, run equivalence tests for #[issue]"`
 
 ### On completion
-Message tech lead: `"Issue #N complete, branch: issue-N-desc, commit: abc1234. Ready for next task."`
+1. Mark your current task as `completed` via `TaskUpdate`
+2. Message tech lead: `"Issue #N complete, branch: issue-N-desc, commit: abc1234"`
+3. Check `TaskList` for the next unowned, unblocked task
+4. If one exists: claim it with `TaskUpdate(owner: "your-name")`, start working
+5. If none available: message tech lead `"No tasks available, ready for assignment"` and wait
 
-The tech lead will either assign you a new issue or shut you down. **Do not exit** after completing a task — wait for the response.
+**Do not exit** after completing a task — always check TaskList first.
 
 ## Key principles
 - **Dual-mode: JS host optional** — prefer Wasm-native implementations; host imports OK as fast path with standalone fallback
