@@ -34,8 +34,14 @@ Message tester: `"Worktree ready, run equivalence tests for #[issue]"`
 **Do not exit** after completing a task — always check TaskList first. Do not wait for tech lead approval to pick up the next task.
 
 ### Rebase and merge rules
-- When tech lead broadcasts "Main updated, rebase" → run `git rebase main` in your worktree **before your next commit**
-- If YOUR merge has conflicts, YOU resolve them (not the tech lead). Rebase onto main, fix conflicts, re-signal completion.
+- **Before signaling completion**: rebase onto main, re-test, then signal. This ensures your branch is a fast-forward from main.
+  1. Commit all your work first (so `rebase --abort` can restore everything)
+  2. `git fetch origin main && git rebase main`
+  3. If conflicts: resolve them yourself (you understand your code). If rebase goes badly: `git rebase --abort` and retry or ask for help.
+  4. Re-compile and re-run your scoped tests **after** rebase (catches silent semantic breakage)
+  5. Only signal completion after post-rebase tests pass
+- When tech lead broadcasts "Main updated, rebase" → rebase before your next commit
+- Tech lead merges with `git merge --ff-only`. If it fails, you rebase again — tech lead never resolves conflicts.
 - Never let your branch drift more than 1 task behind main.
 
 ### Pause and suspend protocols
@@ -103,11 +109,8 @@ const ret = instance.exports.test();
 console.log('Result:', ret === 1 ? 'PASS' : 'FAIL (returned ' + ret + ')');
 "
 ```
-7. Message tester when ready for full validation
-8. Update the issue `.md` with implementation notes
-9. **Update issue status to `review`** in the issue frontmatter
-10. **Remove your claim from `plan/file-locks.md`**
-11. Message tech lead with completion + commit hash
+7. **STOP — Read `plan/pre-completion-checklist.md` now.** Follow every step before continuing.
+8. Message tech lead with completion + commit hash: `"Completed #N (commit <hash>). Branch rebased onto main, ready for ff-only merge."`
 
 ## Key patterns
 - `VOID_RESULT` sentinel — `InnerResult = ValType | null | typeof VOID_RESULT`

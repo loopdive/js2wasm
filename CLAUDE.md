@@ -90,13 +90,15 @@ See [plan/team-setup.md](plan/team-setup.md) for full team config, roles, memory
 - **Shutdown**: send `{"type": "shutdown_request"}` via SendMessage. Agent terminates immediately (no state saved).
 - **Orphaned agents** (lost team context after crash): check worktrees for commits (`git -C <wt> log --oneline main..HEAD`) and uncommitted work (`git -C <wt> diff --stat`). Save any work, then kill the process. Write `## Suspended Work` in the issue file manually with the worktree path and state.
 
-### Merge protocol (merge after each task, never batch)
-1. When dev signals completion, tech lead merges their branch to `main` within minutes (`git merge --no-ff`)
-2. Broadcast to all agents: `"Main updated with #N, rebase before next commit"`
-3. Run equivalence tests after each merge
-4. If merge conflicts: abort, notify agent — **originating agent resolves conflicts**, not tech lead
-5. One merge at a time, sequential. Never accumulate branches.
-See `plan/issues/ready/873.md` for full protocol details.
+### Merge protocol (fast-forward only, never cherry-pick)
+1. **Agent rebases onto main before signaling completion** — commits all work first, rebases, re-tests after rebase. This is the critical step that prevents lost work.
+2. Tech lead merges with `git merge --ff-only` (fast-forward only, no merge commits)
+3. If ff-only fails: agent rebases again. Tech lead **never** resolves conflicts or cherry-picks.
+4. Broadcast to all agents: `"Main updated with #N, rebase before next commit"`
+5. Run equivalence tests after each merge
+6. One merge at a time, sequential. Never accumulate branches.
+7. **Never use `git checkout HEAD -- <file>` to restore files after a merge** — this is how fixes get silently reverted. If a merge brings unwanted changes, abort and have the agent fix their branch.
+8. **Commit all main-branch edits immediately** — no uncommitted changes on main, ever. Uncommitted work gets overwritten by merges.
 
 ### Issue completion (tech lead post-merge)
 1. Move issue file from `plan/issues/ready/` to `plan/issues/done/`
