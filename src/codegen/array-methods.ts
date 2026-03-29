@@ -1535,8 +1535,14 @@ function compileArrayPush(
   elemType: ValType,
 ): ValType | null {
   if (callExpr.arguments.length < 1) {
-    ctx.errors.push({ message: "push requires at least 1 argument", line: getLine(callExpr), column: getCol(callExpr) });
-    return null;
+    // push() with 0 args is a no-op that returns the array length
+    compileExpression(ctx, fctx, propAccess.expression);
+    const vecTmp0 = allocLocal(fctx, `__arr_push0_vec_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecTypeIdx });
+    fctx.body.push({ op: "local.tee", index: vecTmp0 });
+    emitReceiverNullGuard(ctx, fctx, vecTmp0);
+    fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
+    fctx.body.push({ op: "f64.convert_i32_u" });
+    return { kind: "f64" };
   }
 
   const argCount = callExpr.arguments.length;
@@ -1860,8 +1866,33 @@ function compileArrayConcat(
   _elemType: ValType,
 ): ValType | null {
   if (callExpr.arguments.length < 1) {
-    ctx.errors.push({ message: "concat requires at least 1 argument", line: getLine(callExpr), column: getCol(callExpr) });
-    return null;
+    // concat() with 0 args returns a shallow copy of the array
+    const vecSrc = allocLocal(fctx, `__arr_cat0_vs_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecTypeIdx });
+    const dataSrc = allocLocal(fctx, `__arr_cat0_ds_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
+    const lenSrc = allocLocal(fctx, `__arr_cat0_l_${fctx.locals.length}`, { kind: "i32" });
+    const newData = allocLocal(fctx, `__arr_cat0_nd_${fctx.locals.length}`, { kind: "ref_null", typeIdx: arrTypeIdx });
+
+    compileExpression(ctx, fctx, propAccess.expression);
+    fctx.body.push({ op: "local.tee", index: vecSrc });
+    emitReceiverNullGuard(ctx, fctx, vecSrc);
+    fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
+    fctx.body.push({ op: "local.set", index: lenSrc });
+    fctx.body.push({ op: "local.get", index: vecSrc });
+    fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
+    fctx.body.push({ op: "local.set", index: dataSrc });
+
+    // Create new backing array and copy
+    fctx.body.push({ op: "local.get", index: lenSrc });
+    fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx });
+    fctx.body.push({ op: "local.set", index: newData });
+    emitArrayCopy(fctx, arrTypeIdx, newData, null, dataSrc, null, lenSrc);
+
+    // Create new vec struct
+    fctx.body.push({ op: "local.get", index: lenSrc });
+    fctx.body.push({ op: "local.get", index: newData });
+    fctx.body.push({ op: "ref.as_non_null" });
+    fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
+    return { kind: "ref_null", typeIdx: vecTypeIdx };
   }
 
   const vecA = allocLocal(fctx, `__arr_cat_va_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecTypeIdx });
@@ -2052,8 +2083,14 @@ function compileArraySplice(
   _elemType: ValType,
 ): ValType | null {
   if (callExpr.arguments.length < 1) {
-    ctx.errors.push({ message: "splice requires at least 1 argument", line: getLine(callExpr), column: getCol(callExpr) });
-    return null;
+    // splice() with 0 args is a no-op that returns an empty array
+    compileExpression(ctx, fctx, propAccess.expression);
+    fctx.body.push({ op: "drop" });
+    fctx.body.push({ op: "i32.const", value: 0 });
+    fctx.body.push({ op: "i32.const", value: 0 });
+    fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx });
+    fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
+    return { kind: "ref_null", typeIdx: vecTypeIdx };
   }
 
   const vecTmp = allocLocal(fctx, `__arr_spl_vec_${fctx.locals.length}`, { kind: "ref_null", typeIdx: vecTypeIdx });
