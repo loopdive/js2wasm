@@ -21,6 +21,17 @@
     "PreToolUse": [
       {
         "matcher": "Bash",
+        "if": "Bash(git checkout*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/check-cwd.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
         "if": "Bash(git add*)",
         "hooks": [
           {
