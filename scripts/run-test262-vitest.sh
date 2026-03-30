@@ -100,10 +100,16 @@ echo "Memory monitor started (PID $MONITOR_PID, log: $MONITOR_LOG)"
 
 # ── Run vitest FROM THE WORKTREE ─────────────────────────────────
 cd "$WT_DIR"
-COMPLETED=false
+# vitest exits 1 when any test fails — which is EVERY test262 run (conformance tests).
+# Check for actual crashes by looking at the report file, not the exit code.
 npx vitest run tests/test262-vitest.test.ts \
   --reporter=verbose \
-  "$@" 2>&1 | tee /tmp/test262-vitest-run.log && COMPLETED=true
+  "$@" 2>&1 | tee /tmp/test262-vitest-run.log
+# Consider completed if the report was written (vitest's afterAll hook ran)
+COMPLETED=false
+if [ -f "$WT_DIR/benchmarks/results/test262-report.json" ]; then
+  COMPLETED=true
+fi
 
 # ── Stop memory monitor ──────────────────────────────────────────
 kill $MONITOR_PID 2>/dev/null
