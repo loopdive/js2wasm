@@ -35,7 +35,12 @@ if echo "$CMD" | grep -q 'git merge.*--ff-only'; then
   exit 0
 fi
 
-# ALLOW: git add + git commit with CHECKLIST-FOXTROT (tech lead commits)
+# ALLOW: git add (staging files is always safe)
+if echo "$CMD" | grep -qE '^git add'; then
+  exit 0
+fi
+
+# ALLOW: git commit with CHECKLIST-FOXTROT (tech lead commits)
 if echo "$CMD" | grep -q 'CHECKLIST-FOXTROT'; then
   exit 0
 fi

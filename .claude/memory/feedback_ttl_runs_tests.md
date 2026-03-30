@@ -13,7 +13,7 @@ type: feedback
 - After a batch of devs completes: use `TEST262_WORKERS=3` for faster measurement (no devs competing for memory)
 - During dev work: default 2 workers
 
-**Why:** OOMs happen from test workers + dev agents competing for memory. Dev agents running `npm test` in worktrees use ~4GB each (vitest + workers). At 14GB container limit, one dev running tests can crash everything.
+**Why:** OOMs happen from test workers + dev agents competing for memory. Dev agents running `npm test` in worktrees use ~4GB each (vitest + workers). At 16GB container limit, one dev running tests can crash everything.
 
 **How to apply:**
 - Every dev agent prompt MUST include: "Do NOT run npm test or vitest. Validate by compiling specific test files inline. When ready to test, message the tech team lead and ask them to run tests for you."

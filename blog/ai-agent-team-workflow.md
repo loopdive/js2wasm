@@ -136,7 +136,7 @@ This one was simple and devastating. An agent ran `git add -A` while its working
 
 ### 4. OOM from parallel test runs
 
-Our container has 14GB RAM and 14GB swap. The test262 suite with 3 workers uses ~9GB. A developer agent uses ~2.5GB. So the math is tight. Early on, two developer agents would both decide to run tests at the same time, and the OOM killer would terminate one of them mid-write, corrupting its worktree.
+Our container has 16GB RAM and 16GB swap. The test262 suite with 3 workers uses ~9GB. A developer agent uses ~2.5GB. So the math is tight. Early on, two developer agents would both decide to run tests at the same time, and the OOM killer would terminate one of them mid-write, corrupting its worktree.
 
 **The fix:** A filesystem-based test lock. Before running any tests, agents must `mkdir /tmp/ts2wasm-test-lock`. If the directory already exists, another agent owns the lock — wait and retry. Release with `rmdir`. Simple, atomic, works across processes.
 
