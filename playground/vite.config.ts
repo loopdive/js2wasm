@@ -1,9 +1,10 @@
 import { defineConfig } from "vite";
 import { test262Plugin } from "./vite-plugin-test262.js";
+import { dashboardPlugin } from "./vite-plugin-dashboard.js";
 
 export default defineConfig({
   base: "./",
-  plugins: [test262Plugin()],
+  plugins: [test262Plugin(), dashboardPlugin()],
   server: {
     fs: {
       // Allow serving files from project root (benchmarks, test262)
