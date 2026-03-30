@@ -40,6 +40,11 @@ if echo "$CMD" | grep -q 'CHECKLIST-FOXTROT'; then
   exit 0
 fi
 
+# ALLOW: git push (always OK from /workspace)
+if echo "$CMD" | grep -qE 'git push'; then
+  exit 0
+fi
+
 # ALLOW: git checkout main (returning to main)
 if echo "$CMD" | grep -qE 'git checkout (main|-f main)'; then
   exit 0
