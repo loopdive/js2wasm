@@ -84,6 +84,3 @@ The `L1:0` location (instead of the actual method location) suggests the error i
 
 - 149 "unexpected undefined AST node" compile errors resolved
 - Async private generator methods (static and instance) compile correctly
-
-## Previous Work (Sprint 31)
-- Was smoke-tested and found already fixed by prior work. Just needs re-confirmation.
