@@ -1,6 +1,7 @@
 #!/bin/bash
-# PreToolUse hook for Bash: warn/block when git commands run from wrong directory
-# Catches: tech lead accidentally in a worktree, agents operating on main
+# PreToolUse hook: agents MUST NOT work in /workspace directly
+# Only allowed in /workspace: git merge --ff-only, tech lead commits (CHECKLIST-FOXTROT)
+# Everything else must happen in worktrees
 
 INPUT=$(cat)
 CMD=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
@@ -8,29 +9,53 @@ if [ -z "$CMD" ]; then
   exit 0
 fi
 
-# Only check git commands that modify state
-if ! echo "$CMD" | grep -qE 'git (commit|merge|add|push|reset|revert|cherry-pick)'; then
+# Only check git commands
+if ! echo "$CMD" | grep -qE 'git (checkout|commit|merge|add|push|reset|revert|cherry-pick|branch)'; then
   exit 0
 fi
 
-# Block ff-only merge from anywhere except /workspace
+# If the command starts with "cd /workspace" or we're in /workspace, check it
+IN_WORKSPACE=false
+if echo "$CMD" | grep -qE '^cd /workspace( |&&|;|$)'; then
+  IN_WORKSPACE=true
+fi
+if [ "$PWD" = "/workspace" ] && ! echo "$CMD" | grep -qE '^cd /'; then
+  IN_WORKSPACE=true
+fi
+
+if [ "$IN_WORKSPACE" = false ]; then
+  # Not in /workspace — agent is in their worktree, all good
+  exit 0
+fi
+
+# In /workspace — only allow specific operations:
+
+# ALLOW: git merge --ff-only (merging tested branches to main)
 if echo "$CMD" | grep -q 'git merge.*--ff-only'; then
-  # Check if the command cd's to /workspace first, or we're already there
-  if ! echo "$CMD" | grep -qE '^cd /workspace &&|^cd /workspace;'; then
-    # No cd to /workspace — check current dir
-    if [ "$PWD" != "/workspace" ]; then
-      echo "BLOCKED: ff-only merge must run from /workspace. You appear to be in $PWD. Run: cd /workspace && git merge --ff-only <branch>" >&2
-      exit 2
-    fi
-  fi
+  exit 0
 fi
 
-# Warn if committing from /workspace on main (might be tech lead accident)
-if echo "$CMD" | grep -q 'git commit'; then
-  BRANCH=$(git branch --show-current 2>/dev/null)
-  if [ "$BRANCH" = "main" ] && echo "$CMD" | grep -qv 'CHECKLIST-FOXTROT\|sprint\|plan\|docs\|chore'; then
-    echo "WARNING: Committing to main directly. Is this intentional? Devs should commit in worktrees." >&2
-  fi
+# ALLOW: git add + git commit with CHECKLIST-FOXTROT (tech lead commits)
+if echo "$CMD" | grep -q 'CHECKLIST-FOXTROT'; then
+  exit 0
 fi
 
-exit 0
+# ALLOW: git checkout main (returning to main)
+if echo "$CMD" | grep -qE 'git checkout (main|-f main)'; then
+  exit 0
+fi
+
+# ALLOW: git checkout -- <file> (restoring specific files)
+if echo "$CMD" | grep -q 'git checkout --'; then
+  exit 0
+fi
+
+# ALLOW: git branch (listing/creating branches — read-only or prep)
+if echo "$CMD" | grep -qE 'git branch( |$|-D|-d)'; then
+  exit 0
+fi
+
+# BLOCK everything else in /workspace
+echo "BLOCKED: Do not run git commands in /workspace directly." >&2
+echo "Work in your worktree instead. Only ff-only merges and tech lead commits are allowed in /workspace." >&2
+exit 2
