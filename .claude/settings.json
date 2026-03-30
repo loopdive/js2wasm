@@ -25,7 +25,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/hooks/check-cwd.sh",
+            "command": ".claude/hooks/pre-git-commit.sh",
             "timeout": 5
           }
         ]
@@ -36,7 +36,51 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/hooks/check-cwd.sh",
+            "command": ".claude/hooks/pre-git-commit.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "if": "Bash(npm test*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/pre-test.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "if": "Bash(pnpm run test*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/pre-test.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "if": "Bash(npx vitest*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/pre-test.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "if": "Bash(node*vitest*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/pre-test.sh",
             "timeout": 5
           }
         ]
@@ -47,7 +91,62 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/hooks/check-cwd.sh",
+            "command": ".claude/hooks/pre-merge.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "SendMessage",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/pre-shutdown.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/pre-agent-spawn.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "if": "Bash(npm test*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/post-test.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "if": "Bash(pnpm run test*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/post-test.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "if": "Bash(npx vitest*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/post-test.sh",
             "timeout": 5
           }
         ]

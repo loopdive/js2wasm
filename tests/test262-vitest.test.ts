@@ -219,8 +219,14 @@ try {
 
 // ── Cache setup ──────────────────────────────────────────────────────
 
+//! FIXME: stale cache caused wrong test262 numbers — the cache hash keys on
+//! compiler-bundle.mjs but when the bundle was built from /workspace (wrong branch),
+//! cache entries from that build persisted and inflated/deflated pass counts.
+//! Must investigate why buildCompilerHash() didn't detect the compiler change.
+const USE_CACHE = false;
+
 const CACHE_DIR = join(import.meta.dirname ?? ".", "..", ".test262-cache");
-mkdirSync(CACHE_DIR, { recursive: true });
+if (USE_CACHE) mkdirSync(CACHE_DIR, { recursive: true });
 
 /**
  * Build a short hash of all compiler source files. When any codegen file
@@ -290,7 +296,7 @@ async function getOrCompile(
   let hitCache = false;
 
   // Cache hit: read only metadata — binary will be read by exec worker from disk
-  if (existsSync(wasmCachePath) && existsSync(metaPath)) {
+  if (USE_CACHE && existsSync(wasmCachePath) && existsSync(metaPath)) {
     try {
       const meta = JSON.parse(readFileSync(metaPath, "utf-8"));
       // Cached compile error or timeout — return immediately without recompiling
@@ -320,7 +326,7 @@ async function getOrCompile(
     result = { stringPool: poolResult.stringPool, imports: poolResult.imports, sourceMap: poolResult.sourceMap };
 
     // Write to cache
-    try {
+    if (!USE_CACHE) { /* skip cache write */ } else try {
       writeFileSync(wasmCachePath, binary);
       writeFileSync(
         metaPath,
