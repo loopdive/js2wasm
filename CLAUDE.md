@@ -211,8 +211,10 @@ Sprint planning is a collaborative process, not a solo tech lead activity:
 6. **If approved**: tester merges to main with `git merge --ff-only`, does post-merge cleanup
 7. **If rejected**: dev fixes on their branch, signals again
 8. **One tester at a time.** Tech lead queues branches. ~8.2GB total per test run.
-9. **Never rebase.** Merge preserves history and is safely reversible.
-10. **Devs continue working on next task** while waiting for test results — they don't block.
+9. **Never use `git merge` (without --ff-only) on main.** Hook blocks non-ff-only merges to main.
+10. **Never rebase.** Merge preserves history and is safely reversible.
+11. **Devs continue working on next task** while waiting for test results — they don't block.
+12. **Main never sees untested code.** The tester creates a merge proof at `.claude/nonces/merge-proof.json` before ff-only merge. Hook validates it.
 
 ### Issue completion (tester post-merge)
 1. Move issue file from `plan/issues/ready/` to `plan/issues/done/`
