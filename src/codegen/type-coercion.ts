@@ -6,7 +6,7 @@
  */
 
 import type { CodegenContext, FunctionContext, ClosureInfo, OptionalParamInfo } from "./index.js";
-import { allocLocal, allocTempLocal, releaseTempLocal, addUnionImports, addStringConstantGlobal, isAnyValue, ensureAnyHelpers } from "./index.js";
+import { allocLocal, allocTempLocal, releaseTempLocal, addUnionImports, addStringConstantGlobal, isAnyValue, ensureAnyHelpers, getArrTypeIdxFromVec } from "./index.js";
 import { registerCoerceType, ensureLateImport, flushLateImportShifts } from "./shared.js";
 import type { Instr, ValType, StructTypeDef, ArrayTypeDef } from "../ir/types.js";
 
@@ -1207,6 +1207,16 @@ export function coerceType(
       }
     }
     fctx.body.push({ op: "extern.convert_any" });
+    // Vec structs (arrays) need Symbol.iterator to be iterable by JS APIs (#854).
+    // After extern.convert_any, call __make_iterable to attach Symbol.iterator via sidecar.
+    if (getArrTypeIdxFromVec(ctx, typeIdx) >= 0) {
+      const makeIterIdx = ensureLateImport(ctx, "__make_iterable",
+        [{ kind: "externref" }], [{ kind: "externref" }]);
+      if (makeIterIdx !== undefined) {
+        flushLateImportShifts(ctx, fctx);
+        fctx.body.push({ op: "call", funcIdx: makeIterIdx });
+      }
+    }
     return;
   }
   // ref/ref_null → eqref: no-op (GC struct refs are subtypes of eqref)

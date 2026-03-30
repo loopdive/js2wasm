@@ -1811,7 +1811,7 @@ function emitVecAccessExports(ctx: CodegenContext): void {
   // Emit vec access exports when the runtime may need to introspect WasmGC arrays:
   // - for-of iteration on non-array types (__iterator)
   // - JSON.stringify on arrays of structs (JSON_stringify)
-  if (!ctx.funcMap.has("__iterator") && !ctx.funcMap.has("JSON_stringify")) return;
+  if (!ctx.funcMap.has("__iterator") && !ctx.funcMap.has("JSON_stringify") && !ctx.funcMap.has("__make_iterable")) return;
   try {
     _emitVecAccessExportsInner(ctx);
   } catch {
@@ -1823,6 +1823,9 @@ function _emitVecAccessExportsInner(ctx: CodegenContext): void {
   const mod = ctx.mod;
   const vecEntries = Array.from(ctx.vecTypeMap.entries());
   if (vecEntries.length === 0) return;
+
+  // Ensure __box_number is available for boxing f64/i32 elements in __vec_get (#854)
+  addUnionImports(ctx);
 
   // __vec_len(externref) -> i32
   const lenTypeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "i32" }], "$__vec_len_type");
@@ -9521,6 +9524,16 @@ export function getOrRegisterTupleType(
     fields,
   } as StructTypeDef);
   ctx.tupleTypeMap.set(key, typeIdx);
+  ctx.structMap.set(structName, typeIdx);
+
+  // Register in structFields so emitStructFieldGetters can export __sget_0, __sget_1 etc.
+  // This enables the runtime to introspect tuple elements (needed for Map/Set iterables).
+  ctx.structFields.set(structName, fields.map(f => ({
+    name: f.name,
+    type: f.type,
+    mutable: f.mutable ?? false,
+  })));
+
   return typeIdx;
 }
 
