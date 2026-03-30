@@ -23,3 +23,13 @@
 11. [ ] Read `plan/dependency-graph.md` — check what's ready to work on
 12. [ ] Check `plan/issues/ready/` for any issues with `status: suspended` — these have unfinished work
 13. [ ] Read last session's notes in `project_next_session.md` memory file
+
+## Before starting a new sprint
+
+14. [ ] **Review stale/orphaned work**: check for unmerged branches, old worktrees, suspended issues, stale tasks. Report to user and ask before cleaning up.
+   - Unmerged branches: `git branch | grep -v main`
+   - Orphan worktrees: `git worktree list`
+   - Suspended issues: `grep -l "status: suspended" plan/issues/ready/*.md`
+   - Stale task list: check if previous sprint's tasks are resolved
+15. [ ] **Smoke-test candidate issues**: for each issue you plan to dispatch, compile 1-2 sample test files from the issue description against current main. If they pass, close the issue — it's already fixed.
+16. [ ] Shut down all dev agents before running final test262 with multiple forks

@@ -1,25 +1,34 @@
-# Pre-Merge Checklist (Tech Lead)
+# Pre-Merge Checklist
 
-**Read this before every merge to main.**
+**Read this before merging to main.**
 
-## Before merging
+## How ff-only works with merge commits
 
-1. [ ] Run `pwd && git branch --show-current` — must be `/workspace` on `main`
-2. [ ] Verify agent branch is rebased: `git log --oneline main..<branch> | head -5` — commits should be on top of current main
-3. [ ] Merge with `git merge --ff-only <branch>`
-   - If ff-only fails: do NOT use `--no-ff` or cherry-pick. Tell the agent to rebase.
-4. [ ] **Never** run `git checkout HEAD -- <file>` to restore files after a merge — this is how fixes get silently reverted
+Your branch has merge commits from `git merge main` — that's normal. **ff-only still works** as long as your branch tip includes main's HEAD as an ancestor. The key:
+
+1. `git merge main` on your branch → creates merge commit → your branch now includes all of main
+2. `cd /workspace && git merge --ff-only <branch>` → succeeds because main is an ancestor of your branch tip
+3. If ff-only fails: main moved since your last `git merge main`. Just merge main again and retry.
+
+**Never rebase to "fix" ff-only.** Just merge main into your branch one more time.
+
+## Before merging to main
+
+1. [ ] You are in `/workspace` on `main`: `pwd && git branch --show-current`
+2. [ ] You already merged main into your branch: `git merge main` (on your branch)
+3. [ ] You ran equiv tests ON YOUR BRANCH (not on main)
+4. [ ] Test proof exists: `.claude/nonces/merge-proof.json` (hook validates this)
+5. [ ] Merge: `git merge --ff-only <branch>`
+6. [ ] If ff-only fails: go back to your branch, `git merge main` again, recreate proof, retry
 
 ## After merging
 
-5. [ ] Run `git diff HEAD~1 --stat` — verify no unexpected deletions or reversions
-6. [ ] Check that no `tests/issue-*.test.ts` files were deleted
-7. [ ] Check that shared files (runtime.ts, expressions.ts) don't have reverted changes
-8. [ ] Run equivalence tests: `npm test -- tests/equivalence.test.ts`
-9. [ ] Broadcast to agents: `"Main updated with #N, rebase before next commit"`
+7. [ ] `git diff HEAD~1 --stat` — no unexpected deletions
+8. [ ] Move issue: `mv plan/issues/ready/{N}.md plan/issues/done/`
+9. [ ] Update `plan/dependency-graph.md`
+10. [ ] Message tech lead: `"Merged #N to main."`
 
 ## If something went wrong
 
-- `git reset --hard HEAD~1` to undo the merge (only if not yet pushed)
-- Tell the agent to fix their branch and re-signal
-- **Never** manually patch files on main to fix a bad merge
+- `git reset --hard HEAD~1` to undo (only if not pushed)
+- **Never** manually patch files on main
