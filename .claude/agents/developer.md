@@ -30,20 +30,20 @@ Message only what the recipient needs to act on. Broadcasts wake every agent —
 5. Broadcast: `"Claiming [function] in [file] for #[issue]"`
 
 ### On completion
-1. **STOP — Read `plan/pre-completion-checklist.md` now.** Follow every step (rebase, test, finalize).
-2. **If a tester agent is active**: signal tech lead: `"Completed #N (commit <hash>). Ready for review."` Wait for tester to merge.
-3. **If no tester agent**: invoke the `/test-and-merge` skill — read `.claude/skills/test-and-merge.md` and follow every step to test and merge your own work.
-4. **Wait for merge confirmation** (from tester or your own skill run). Do NOT claim a new task until merged.
-5. Once merged: mark task as `completed` via `TaskUpdate`, check `TaskList` for next unowned task.
-6. If next task exists: claim it and message tech lead: `"Picking up #M next."`
-7. If none available: message tech lead `"No tasks available."` and wait.
+1. Commit all work on your branch
+2. Merge main into your branch: `git merge main`
+3. Signal tech lead: `"Branch <name> ready for test. Commit <hash>. Worktree: <path>."`
+4. **Do NOT run test262 yourself.** Tech lead spawns a dedicated tester agent for that.
+5. **Wait for tech lead to confirm merge.** Continue working on the NEXT task while waiting — pick from TaskList. But do NOT merge anything.
+6. Once tech lead confirms merge: mark previous task as `completed`.
 
 **"Completed" means merged to main, not "code done".** Do not mark a task completed until the merge is confirmed.
 
+**Do NOT run test262 or switch /workspace branches.** The shared workspace causes test result corruption when multiple agents switch branches. Only the tech lead's tester agents run test262.
+
 ### Available skills
 You can invoke these on-demand by reading the skill file and following its steps:
-- `.claude/skills/test-and-merge.md` — test and merge your own work (when no tester agent)
-- `.claude/skills/smoke-test-issue.md` — validate an issue before starting work
+- `.claude/skills/smoke-test-issue.md` — validate an issue before starting work (quick compile+run, NOT full test262)
 - `.claude/skills/architect-spec.md` — write an implementation spec for a hard problem
 - `.claude/skills/create-issue.md` — create a new issue from a failure pattern you discover
 

@@ -199,22 +199,20 @@ Sprint planning is a collaborative process, not a solo tech lead activity:
 - **Session registry**: track active agent sessions in `plan/agent-sessions.md` so sessions can be resumed. When respawning, pass the context summary in the spawn prompt.
 - **Orphaned agents** (lost team context after crash): check worktrees for commits (`git -C <wt> log --oneline main..HEAD`) and uncommitted work (`git -C <wt> diff --stat`). Save any work, then kill the process. Write `## Suspended Work` in the issue file manually with the worktree path and state.
 
-### Merge protocol (ALL testing on branch, main never sees untested code)
+### Merge protocol (dedicated tester agents, devs don't run test262)
 
-Devs use the `/test-and-merge` skill. The pre-merge hook **enforces** this — merges to main are blocked without test proof.
+**Devs do NOT run test262.** The shared `/workspace` causes branch contention that corrupts results. Instead:
 
-1. **Dev merges main INTO their branch** — `git merge main` (not rebase). This integrates all recent changes.
-2. **Dev runs ALL tests on the integrated branch** (still on their branch, NOT main):
-   - Equivalence tests: `npm test -- tests/equivalence.test.ts` — **mandatory, must pass**
-   - Issue-specific test262 tests — verify the fix works
-   - Full test262: `pnpm run test:262` — **mandatory for core codegen changes** (expressions.ts, statements.ts, index.ts, type-coercion.ts, stack-balance.ts)
-3. **Tests pass → dev creates test proof** at `.claude/nonces/merge-proof.json`
-4. **Dev merges to main**: `cd /workspace && git merge --ff-only <branch>` — hook validates proof exists and is fresh (<15 min)
-5. **Tests fail → dev fixes on their branch.** Main stays clean. Never merge failing code.
-6. **Dev does post-merge cleanup**: move issue to done/, update dep graph, message tech lead
-7. One merge at a time, sequential. Never accumulate branches.
-8. **Never use `git merge` (without --ff-only) on main.** Hook blocks non-ff-only merges to main.
+1. **Dev merges main INTO their branch** — `git merge main` (not rebase)
+2. **Dev signals tech lead**: `"Branch <name> ready for test. Commit <hash>. Worktree: <path>."`
+3. **Tech lead spawns a short-lived tester agent** (`isolation: "worktree"`) that runs `/test-and-merge` skill on the branch
+4. **Tester runs equiv tests + full test262** on the integrated branch, reports results, terminates (~600MB agent overhead, frees immediately)
+5. **Tech lead approves/rejects** based on pass count delta from baseline
+6. **If approved**: tester merges to main with `git merge --ff-only`, does post-merge cleanup
+7. **If rejected**: dev fixes on their branch, signals again
+8. **One tester at a time.** Tech lead queues branches. ~8.2GB total per test run.
 9. **Never rebase.** Merge preserves history and is safely reversible.
+10. **Devs continue working on next task** while waiting for test results — they don't block.
 
 ### Issue completion (tester post-merge)
 1. Move issue file from `plan/issues/ready/` to `plan/issues/done/`
