@@ -1,13 +1,13 @@
 # Pre-Commit Checklist
 
-**You MUST read this file before every `git add` and `git commit`.**
+**Read this before every `git add` and `git commit`. The hook injects a reminder automatically.**
 
 ## Before staging
 
-1. [ ] Run `pwd && git branch --show-current` — verify you are in YOUR worktree on YOUR branch (not /workspace on main)
-2. [ ] **Never** use `git add -A` or `git add .` — always `git add <specific files>`
+1. [ ] Run `pwd && git branch --show-current` — verify you are in YOUR worktree on YOUR branch
+2. [ ] **Never** use `git add -A` or `git add .` — always `git add <specific files>` (hook blocks this)
 3. [ ] Run `git diff --stat` — review what you're about to stage
-4. [ ] Check for accidental deletions: if any files show as deleted that you did NOT delete, do NOT stage them. These are base-difference artifacts from branching off stale main.
+4. [ ] Check for accidental deletions: if any files show as deleted that you did NOT delete, do NOT stage them
 5. [ ] Check for files outside your issue scope — don't stage changes to files you didn't intentionally edit
 
 ## Before committing
@@ -16,6 +16,10 @@
 7. [ ] No test files from other issues being deleted
 8. [ ] No source files being reverted to old versions
 9. [ ] Commit message references your issue number (#N)
+
+## Commit verification
+
+Include the code word **CHECKLIST-FOXTROT** in your commit message (anywhere in the message body). The pre-commit hook will reject commits without it.
 
 ## Red flags (stop and ask tech lead)
 

@@ -30,23 +30,35 @@ Message only what the recipient needs to act on. Broadcasts wake every agent —
 5. Broadcast: `"Claiming [function] in [file] for #[issue]"`
 
 ### On completion
-1. Mark your current task as `completed` via `TaskUpdate`
-2. Check `TaskList` for the next unowned, unblocked task
-3. If one exists: claim it with `TaskUpdate(owner: "your-name")` and message tech lead: `"Completed #N (commit abc1234). Picking up #M next."`
-4. If none available: message tech lead `"Completed #N (commit abc1234). No tasks available."` and wait
+1. **STOP — Read `plan/pre-completion-checklist.md` now.** Follow every step (rebase, test, finalize).
+2. **If a tester agent is active**: signal tech lead: `"Completed #N (commit <hash>). Ready for review."` Wait for tester to merge.
+3. **If no tester agent**: invoke the `/test-and-merge` skill — read `.claude/skills/test-and-merge.md` and follow every step to test and merge your own work.
+4. **Wait for merge confirmation** (from tester or your own skill run). Do NOT claim a new task until merged.
+5. Once merged: mark task as `completed` via `TaskUpdate`, check `TaskList` for next unowned task.
+6. If next task exists: claim it and message tech lead: `"Picking up #M next."`
+7. If none available: message tech lead `"No tasks available."` and wait.
 
-**Do not exit** after completing a task — always check TaskList first. Do not wait for tech lead approval to pick up the next task.
+**"Completed" means merged to main, not "code done".** Do not mark a task completed until the merge is confirmed.
 
-### Rebase and merge rules
-- **Before signaling completion**: rebase onto main, re-test, then signal. This ensures your branch is a fast-forward from main.
-  1. Commit all your work first (so `rebase --abort` can restore everything)
-  2. `git fetch origin main && git rebase main`
-  3. If conflicts: resolve them yourself (you understand your code). If rebase goes badly: `git rebase --abort` and retry or ask for help.
-  4. Re-compile and re-run your scoped tests **after** rebase (catches silent semantic breakage)
-  5. Only signal completion after post-rebase tests pass
-- When tech lead broadcasts "Main updated, rebase" → rebase before your next commit
-- Tech lead merges with `git merge --ff-only`. If it fails, you rebase again — tech lead never resolves conflicts.
-- Never let your branch drift more than 1 task behind main.
+### Available skills
+You can invoke these on-demand by reading the skill file and following its steps:
+- `.claude/skills/test-and-merge.md` — test and merge your own work (when no tester agent)
+- `.claude/skills/smoke-test-issue.md` — validate an issue before starting work
+- `.claude/skills/architect-spec.md` — write an implementation spec for a hard problem
+- `.claude/skills/create-issue.md` — create a new issue from a failure pattern you discover
+
+### Integration and merge rules
+- **Before signaling completion**: merge main into your branch, re-test, then signal.
+  1. Commit all your work first
+  2. `git merge main` — merges main into YOUR branch (not rebase)
+  3. If conflicts: resolve them yourself. If merge goes badly: `git merge --abort` and retry or ask for help.
+  4. Re-run your scoped tests **after** merge (catches integration breakage)
+  5. Only signal completion after post-merge tests pass
+- When tech lead broadcasts "Main updated" → `git merge main` into your branch before your next commit
+- **You merge to main yourself** using the `/test-and-merge` skill. The critical rule: **all tests run on YOUR INTEGRATED BRANCH, not on main.** Main never sees untested code.
+- The merge hook **blocks** merges to main without a test proof file. You cannot skip testing.
+- **Never use `git merge` (without --ff-only) on main.** Only `git merge --ff-only` is allowed on main.
+- **ff-only with merge commits**: your branch will have merge commits from `git merge main` — that's normal. ff-only still works because your branch tip includes main's HEAD. If ff-only fails, it means main moved since your last `git merge main` — just merge main into your branch again and retry. **Never rebase** to fix ff-only.
 
 ### Pause and suspend protocols
 
@@ -80,6 +92,8 @@ Message only what the recipient needs to act on. Broadcasts wake every agent —
 - Your assigned issue: `plan/issues/{N}.md`
 - Full team setup: `plan/team-setup.md`
 - Project rules: `/workspace/CLAUDE.md` (Team & Workflow section)
+- **Definition of Ready**: `plan/definition-of-ready.md` — when an issue is ready for dev
+- **Definition of Done**: `plan/definition-of-done.md` — when an issue is truly complete
 
 ## Critical rules
 - **Test lock**: before any test run (scoped or full), acquire `mkdir /tmp/ts2wasm-test-lock`. If it fails, another agent is testing — wait and retry. Release with `rmdir /tmp/ts2wasm-test-lock` when done.
@@ -92,9 +106,10 @@ Message only what the recipient needs to act on. Broadcasts wake every agent —
 ## Workflow
 1. **Check for suspended work**: read your issue file (`plan/issues/ready/{N}.md`). If it has `status: suspended` and a `## Suspended Work` section, use the listed worktree and follow the resume instructions instead of starting fresh.
 2. Read your assigned issue in `plan/issues/ready/{N}.md`
-2. **Update issue status to `in-progress`** in the issue frontmatter
-3. Check `plan/file-locks.md` for conflicts, add your claim, **broadcast** to other devs
-4. Implement the feature/fix on your branch (`issue-{N}-{short-description}`)
+3. **Smoke-test first**: compile 1-2 sample tests from the issue to verify the bug still reproduces. Use `.claude/skills/smoke-test-issue.md`. If all samples pass, the issue is already fixed — close it and pick the next task.
+4. **Update issue status to `in-progress`** in the issue frontmatter
+5. Check `plan/file-locks.md` for conflicts, add your claim, **broadcast** to other devs
+6. Implement the feature/fix on your branch (`issue-{N}-{short-description}`)
 5. **Before every commit**: read `plan/pre-commit-checklist.md` and follow every step. Never `git add -A`. Always verify `pwd` and branch.
 6. Write tests to `tests/issue-{N}.test.ts` (NOT `equivalence.test.ts`)
 6. **Do NOT run vitest or full test suite.** Instead, compile+run your specific target tests:
@@ -115,8 +130,9 @@ const ret = instance.exports.test();
 console.log('Result:', ret === 1 ? 'PASS' : 'FAIL (returned ' + ret + ')');
 "
 ```
-7. **STOP — Read `plan/pre-completion-checklist.md` now.** Follow every step before continuing.
-8. Message tech lead with completion + commit hash: `"Completed #N (commit <hash>). Branch rebased onto main, ready for ff-only merge."`
+7. **Record test results in the issue file**: add a `## Test Results` section showing how many of the issue's failing tests now pass. Run the sample tests from the issue description and report: `X/Y sample tests pass (was 0/Y before fix)`. If the issue lists a total count (e.g., "489 FAIL"), test a representative batch (10-20) and extrapolate.
+8. **STOP — Read `plan/pre-completion-checklist.md` now.** Follow every step before continuing.
+9. Message tech lead with completion + commit hash: `"Completed #N (commit <hash>). X/Y tests now pass. Ready for review."`
 
 ## Key patterns
 - `VOID_RESULT` sentinel — `InnerResult = ValType | null | typeof VOID_RESULT`
