@@ -55,12 +55,12 @@ npx esbuild src/runtime.ts --bundle --platform=node --format=esm \
 RUN_JSONL="$RESULTS_DIR/test262-run-${RUN_TIMESTAMP}.jsonl"
 RUN_REPORT="$RESULTS_DIR/test262-report-${RUN_TIMESTAMP}.json"
 
-# Point worktree results dir at main workspace
-rm -rf "$WT_DIR/benchmarks/results"
-mkdir -p "$WT_DIR/benchmarks/results"
+# Truncate main results JSONL for fresh run
+> "$RESULTS_DIR/test262-results.jsonl"
 
-# Vitest writes to these paths — we'll move them after
-> "$WT_DIR/benchmarks/results/test262-results.jsonl"
+# Symlink worktree results dir to main workspace (so results survive worktree cleanup)
+rm -rf "$WT_DIR/benchmarks/results"
+ln -s "$RESULTS_DIR" "$WT_DIR/benchmarks/results"
 
 echo "Run ID: $RUN_TIMESTAMP"
 echo "Worktree at $(git -C "$WT_DIR" rev-parse --short HEAD)"
@@ -134,23 +134,17 @@ fi
 # ── Handle results ───────────────────────────────────────────────
 echo ""
 
-# Copy timestamped results
-cp "$WT_DIR/benchmarks/results/test262-results.jsonl" "$RUN_JSONL" 2>/dev/null
-cp "$WT_DIR/benchmarks/results/test262-report.json" "$RUN_REPORT" 2>/dev/null
+# Results are already in $RESULTS_DIR via symlink — no copy needed
 
 if [ "$COMPLETED" = true ]; then
-  # Only update symlinks on successful completion
-  ln -sf "$(basename "$RUN_JSONL")" "$RESULTS_DIR/test262-results.jsonl"
-  ln -sf "$(basename "$RUN_REPORT")" "$RESULTS_DIR/test262-report.json"
-
   # Append to historical index
-  if [ -f "$RUN_REPORT" ]; then
-    PASS=$(python3 -c "import json; d=json.load(open('$RUN_REPORT')); print(d['summary']['pass'])" 2>/dev/null || echo "?")
-    TOTAL=$(python3 -c "import json; d=json.load(open('$RUN_REPORT')); print(d['summary']['total'])" 2>/dev/null || echo "?")
+  if [ -f "$RESULTS_DIR/test262-report.json" ]; then
+    REPORT="$RESULTS_DIR/test262-report.json"
+    PASS=$(python3 -c "import json; d=json.load(open('$REPORT')); print(d['summary']['pass'])" 2>/dev/null || echo "?")
+    TOTAL=$(python3 -c "import json; d=json.load(open('$REPORT')); print(d['summary']['total'])" 2>/dev/null || echo "?")
     echo "COMPLETED: $PASS pass / $TOTAL total"
-    echo "Results: $RUN_JSONL"
-    echo "Report:  $RUN_REPORT"
-    echo "Symlinks updated to this run."
+    echo "Results: $RESULTS_DIR/test262-results.jsonl"
+    echo "Report:  $REPORT"
   fi
 else
   echo "INCOMPLETE: vitest exited with error. Symlinks NOT updated."
