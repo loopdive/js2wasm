@@ -813,6 +813,53 @@ function resolveImport(
         }
         if (typeof ret === "function") ret.call(iter);
       };
+      // Convert a WasmGC vec struct to a real JS array so it's iterable by
+      // native JS APIs (Map, Set, spread, for-of, etc.). (#854)
+      // Uses __vec_len/__vec_get exports (bound lazily after instantiation).
+      if (name === "__make_iterable") {
+        // Convert WasmGC vec structs and tuple structs to JS arrays.
+        // Needed because Map/Set expect [key, value] tuples that are also iterable.
+        const convertToJS = (obj: any): any => {
+          if (obj == null || typeof obj !== "object") return obj;
+          if (obj[Symbol.iterator]) return obj;
+          const exports = callbackState?.getExports();
+          if (!exports) return obj;
+          // Try tuple struct FIRST (e.g. [string, number] for Map entries).
+          // Must check before vec because __vec_len returns 0 for non-vec structs,
+          // which would incorrectly produce an empty array.
+          const fieldNames = exports.__struct_field_names as Function | undefined;
+          if (typeof fieldNames === "function") {
+            const names = fieldNames(obj) as string | null;
+            if (typeof names === "string" && names.length > 0) {
+              const parts = names.split(",");
+              const isNumeric = parts.every((p: string) => /^_\d+$/.test(p));
+              if (isNumeric) {
+                const arr: any[] = new Array(parts.length);
+                for (let i = 0; i < parts.length; i++) {
+                  const getter = exports[`__sget_${parts[i]}`] as Function | undefined;
+                  arr[i] = getter ? convertToJS(getter(obj)) : undefined;
+                }
+                return arr;
+              }
+            }
+          }
+          // Try vec struct (homogeneous arrays)
+          const vecLen = exports.__vec_len as Function | undefined;
+          const vecGet = exports.__vec_get as Function | undefined;
+          if (typeof vecLen === "function" && typeof vecGet === "function") {
+            const len = vecLen(obj) as number;
+            if (typeof len === "number" && len >= 0) {
+              const arr: any[] = new Array(len);
+              for (let i = 0; i < len; i++) {
+                arr[i] = convertToJS(vecGet(obj, i));
+              }
+              return arr;
+            }
+          }
+          return obj;
+        };
+        return convertToJS;
+      }
       // Array iterator methods: entries/keys/values returning proper JS iterators.
       // Access exports lazily (inside next()) because these may be called during
       // module init before setExports has been called.
