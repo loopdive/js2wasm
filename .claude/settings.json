@@ -76,6 +76,17 @@
       },
       {
         "matcher": "Bash",
+        "if": "Bash(node*vitest*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/pre-test.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
         "if": "Bash(git merge*)",
         "hooks": [
           {
