@@ -17,6 +17,41 @@
           }
         ]
       }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "if": "Bash(git add*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/check-cwd.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "if": "Bash(git commit*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/check-cwd.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "if": "Bash(git merge*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/check-cwd.sh",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   }
 }
