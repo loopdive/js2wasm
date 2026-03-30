@@ -254,9 +254,44 @@ const _symbolToWasm: Map<symbol, string> = new Map([
   [Symbol.asyncIterator, "@@asyncIterator"],
 ]);
 
+/**
+ * Reverse map from well-known symbol i32 IDs (used in compiled Wasm) to
+ * the "@@name" string and real JS Symbol. When the compiler sees
+ * `obj[Symbol.iterator]`, it emits `i32.const 1` which becomes a boxed
+ * Number(1) at the JS boundary. This map resolves it back to "@@iterator"
+ * and Symbol.iterator for sidecar lookups.
+ */
+const _symbolIdToKeys: Map<number, { wasm: string; sym: symbol }> = new Map([
+  [1, { wasm: "@@iterator", sym: Symbol.iterator }],
+  [2, { wasm: "@@hasInstance", sym: Symbol.hasInstance }],
+  [3, { wasm: "@@toPrimitive", sym: Symbol.toPrimitive }],
+  [4, { wasm: "@@toStringTag", sym: Symbol.toStringTag }],
+  [5, { wasm: "@@species", sym: Symbol.species }],
+  [6, { wasm: "@@isConcatSpreadable", sym: Symbol.isConcatSpreadable }],
+  [7, { wasm: "@@match", sym: Symbol.match }],
+  [8, { wasm: "@@replace", sym: Symbol.replace }],
+  [9, { wasm: "@@search", sym: Symbol.search }],
+  [10, { wasm: "@@split", sym: Symbol.split }],
+  [11, { wasm: "@@unscopables", sym: Symbol.unscopables }],
+  [12, { wasm: "@@asyncIterator", sym: Symbol.asyncIterator }],
+]);
+
 /** Safe property get: works on both JS objects and WasmGC structs. */
 function _safeGet(obj: any, key: any): any {
   if (obj == null) return undefined;
+  // Well-known symbol ID (i32 from compiler): resolve to "@@name" and real Symbol
+  if (typeof key === "number" && key >= 1 && key <= 12) {
+    const symKeys = _symbolIdToKeys.get(key);
+    if (symKeys) {
+      const v = obj[symKeys.sym];
+      if (v !== undefined) return v;
+      const sc = _sidecarGet(obj, symKeys.sym);
+      if (sc !== undefined) return sc;
+      const sc2 = _sidecarGet(obj, symKeys.wasm);
+      if (sc2 !== undefined) return sc2;
+      return undefined;
+    }
+  }
   const direct = obj[key]; // safe — returns undefined for WasmGC structs
   if (direct !== undefined) return direct;
   // Check sidecar for WasmGC struct properties
@@ -273,6 +308,16 @@ function _safeGet(obj: any, key: any): any {
 /** Safe property set: works on both JS objects and WasmGC structs. */
 function _safeSet(obj: any, key: any, val: any): void {
   if (obj == null) return;
+  // Well-known symbol ID (i32 from compiler): store under both real Symbol and "@@name"
+  if (typeof key === "number" && key >= 1 && key <= 12) {
+    const symKeys = _symbolIdToKeys.get(key);
+    if (symKeys) {
+      try { obj[symKeys.sym] = val; } catch { /* WasmGC struct */ }
+      _sidecarSet(obj, symKeys.sym, val);
+      _sidecarSet(obj, symKeys.wasm, val);
+      return;
+    }
+  }
   try { obj[key] = val; }
   catch {
     _sidecarSet(obj, key, val);
@@ -699,6 +744,15 @@ function resolveImport(
           ?? _sidecarGet(obj, Symbol.iterator)
           ?? _sidecarGet(obj, "@@iterator");
         if (typeof fn === "function") return fn.call(obj);
+        // If fn is a WasmGC closure (not a JS function), call it via __call_fn_0
+        if (fn != null && _isWasmStruct(fn)) {
+          const exports = callbackState?.getExports();
+          const callFn0 = (exports as any)?.__call_fn_0;
+          if (typeof callFn0 === "function") {
+            const iter = callFn0(fn);
+            if (iter != null) return iter;
+          }
+        }
         // WasmGC struct fallback: check for @@iterator struct field via exported getter,
         // then try vec struct iteration.
         if (_isWasmStruct(obj)) {
@@ -776,6 +830,15 @@ function resolveImport(
           next = exports?.__sget_next?.(iter);
         }
         if (typeof next === "function") return next.call(iter);
+        // If next is a WasmGC closure, call via __call_fn_0
+        if (next != null && _isWasmStruct(next)) {
+          const exports = callbackState?.getExports();
+          const callFn0 = (exports as any)?.__call_fn_0;
+          if (typeof callFn0 === "function") {
+            const result = callFn0(next);
+            if (result != null) return result;
+          }
+        }
         // Try __call_next dispatch for WasmGC struct iterators
         {
           const exports = callbackState?.getExports();
@@ -811,7 +874,23 @@ function resolveImport(
           const exports = callbackState?.getExports();
           ret = exports?.__sget_return?.(iter);
         }
-        if (typeof ret === "function") ret.call(iter);
+        if (typeof ret === "function") {
+          const result = ret.call(iter);
+          // ES spec 7.4.6 IteratorClose: return value must be an Object
+          if (result !== null && result !== undefined && typeof result !== "object" && typeof result !== "function") {
+            throw new TypeError("Iterator result is not an object");
+          }
+        } else if (ret != null && _isWasmStruct(ret)) {
+          // WasmGC closure: call via __call_fn_0
+          const exports = callbackState?.getExports();
+          const callFn0 = (exports as any)?.__call_fn_0;
+          if (typeof callFn0 === "function") {
+            const result = callFn0(ret);
+            if (result !== null && result !== undefined && typeof result !== "object" && typeof result !== "function") {
+              throw new TypeError("Iterator result is not an object");
+            }
+          }
+        }
       };
       // Convert a WasmGC vec struct to a real JS array so it's iterable by
       // native JS APIs (Map, Set, spread, for-of, etc.). (#854)

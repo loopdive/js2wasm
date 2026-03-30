@@ -1230,6 +1230,9 @@ export function generateModule(
   // Emit __call_@@iterator export for runtime Symbol.iterator dispatch on WasmGC structs
   emitIteratorMethodExport(ctx);
 
+  // Emit __call_fn_0 export for calling zero-arg closures from JS (#851)
+  emitClosureCallExport(ctx);
+
   // Emit __call_toString/__call_valueOf exports for ToPrimitive dispatch (#866)
   emitToPrimitiveMethodExports(ctx);
 
@@ -1606,6 +1609,129 @@ function emitIteratorMethodExport(ctx: CodegenContext): void {
 
   emitMethodDispatch("@@iterator", "__call_@@iterator");
   emitMethodDispatch("next", "__call_next");
+}
+
+/**
+ * Emit __call_fn_0 export (#851): call a zero-arg WasmGC closure from JS.
+ * Takes an externref (the closure struct) and returns externref (the result).
+ * This enables calling dynamically-assigned closures (e.g. iterable[Symbol.iterator])
+ * from the JS runtime when the closure is stored as a WasmGC struct in the sidecar.
+ *
+ * For each zero-arg closure type in closureInfoByTypeIdx, emits:
+ *   ref.test → ref.cast → struct.get 0 (funcref) → call_ref → coerce to externref
+ */
+function emitClosureCallExport(ctx: CodegenContext): void {
+  const mod = ctx.mod;
+
+  // Collect ALL concrete zero-arg closure struct types.
+  // We dispatch on concrete types (not base wrapper types) to avoid
+  // V8's isorecursive type canonicalization — base wrapper structs with
+  // identical definitions (sub(0) struct { funcref }) are treated as the
+  // same type, causing ref.test to match the wrong closure type.
+  // Concrete types have unique capture fields, so they're always distinct.
+  const entries: { concreteStructTypeIdx: number; funcTypeIdx: number; returnType: ValType | null }[] = [];
+
+  for (const [typeIdx, info] of ctx.closureInfoByTypeIdx) {
+    if (info.paramTypes.length !== 0) continue;
+
+    // Skip base wrapper types — only use concrete closure types.
+    // Base wrappers have exactly 1 field (funcref) and superTypeIdx === -1.
+    const typeDef = mod.types[typeIdx];
+    if (typeDef && typeDef.kind === "struct" && typeDef.superTypeIdx === -1) continue;
+
+    entries.push({
+      concreteStructTypeIdx: typeIdx,
+      funcTypeIdx: info.funcTypeIdx,
+      returnType: info.returnType,
+    });
+  }
+  if (entries.length === 0) return;
+
+  // Check if __box_number is available for boxing numeric results.
+  // Don't call addUnionImports — it shifts function indices and adds imports
+  // that may not be provided by minimal runtime setups. If __box_number isn't
+  // available, numeric results will return null (acceptable for iterator protocol).
+  const boxNumberIdx = ctx.funcMap.get("__box_number");
+
+  // Main dispatch function: (externref) → externref
+  // Inlines the struct.get + call_ref for each concrete type (no trampolines needed).
+  const exportFuncTypeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }], "$call_fn_0_type");
+  const funcIdx = ctx.numImportFuncs + mod.functions.length;
+
+  const body: Instr[] = [];
+  body.push({ op: "local.get", index: 0 });
+  body.push({ op: "any.convert_extern" } as Instr);
+  body.push({ op: "local.set", index: 1 } as Instr);
+
+  let current: Instr[] = [{ op: "ref.null.extern" } as Instr];
+
+  for (const entry of entries) {
+    // Build inline call body for this concrete closure type
+    const callBody: Instr[] = [
+      // Push self param for call_ref (closure struct as first arg)
+      { op: "local.get", index: 1 } as Instr,
+      { op: "ref.cast", typeIdx: entry.concreteStructTypeIdx } as Instr,
+      // Get funcref from field 0, cast to func type, call
+      { op: "local.get", index: 1 } as Instr,
+      { op: "ref.cast", typeIdx: entry.concreteStructTypeIdx } as Instr,
+      { op: "struct.get", typeIdx: entry.concreteStructTypeIdx, fieldIdx: 0 } as Instr,
+      { op: "ref.cast", typeIdx: entry.funcTypeIdx } as Instr,
+      { op: "call_ref", typeIdx: entry.funcTypeIdx } as Instr,
+    ];
+
+    // Coerce result to externref
+    if (entry.returnType) {
+      if (entry.returnType.kind === "ref" || entry.returnType.kind === "ref_null") {
+        callBody.push({ op: "extern.convert_any" } as Instr);
+      } else if (entry.returnType.kind === "f64") {
+        if (boxNumberIdx !== undefined) {
+          callBody.push({ op: "call", funcIdx: boxNumberIdx } as Instr);
+        } else {
+          callBody.push({ op: "drop" } as Instr);
+          callBody.push({ op: "ref.null.extern" } as Instr);
+        }
+      } else if (entry.returnType.kind === "i32") {
+        if (boxNumberIdx !== undefined) {
+          callBody.push({ op: "f64.convert_i32_s" } as Instr);
+          callBody.push({ op: "call", funcIdx: boxNumberIdx } as Instr);
+        } else {
+          callBody.push({ op: "drop" } as Instr);
+          callBody.push({ op: "ref.null.extern" } as Instr);
+        }
+      }
+      // externref: no conversion needed
+    } else {
+      callBody.push({ op: "ref.null.extern" } as Instr);
+    }
+
+    current = [
+      { op: "local.get", index: 1 } as Instr,
+      { op: "ref.test", typeIdx: entry.concreteStructTypeIdx } as Instr,
+      {
+        op: "if",
+        blockType: { kind: "val", type: { kind: "externref" } },
+        then: callBody,
+        else: current,
+      } as Instr,
+    ];
+  }
+
+  body.push(...current);
+
+  mod.functions.push({
+    name: "__call_fn_0",
+    typeIdx: exportFuncTypeIdx,
+    locals: [
+      { name: "__any", type: { kind: "anyref" } },
+    ],
+    body,
+    exported: true,
+  } as WasmFunction);
+
+  mod.exports.push({
+    name: "__call_fn_0",
+    desc: { kind: "func", index: funcIdx },
+  });
 }
 
 /**
