@@ -21,6 +21,8 @@ Active file/function claims by agents. **Check before editing. Update when start
 | src/codegen/index.ts | OptionalParamInfo, top-level default init | dev | #869 | 2026-03-29 |
 | src/codegen/statements.ts | emitDefaultParamInit | dev | #869 | 2026-03-29 |
 | src/codegen/expressions.ts | call sites (pushParamSentinel) | dev | #869 | 2026-03-29 |
+| src/codegen/index.ts | fixupStructNewArgCounts | dev-1 | #822 | 2026-03-29 |
+| src/codegen/index.ts | collectClassDeclaration (async private gen) | dev-2 | #828 | 2026-03-29 |
 
 <!--
 Example entries:
