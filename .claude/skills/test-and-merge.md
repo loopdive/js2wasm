@@ -1,110 +1,102 @@
 ---
 name: test-and-merge
-description: Test on integrated branch, then merge to main. Any agent can invoke this.
+description: Full tester pipeline — merge main into branch, equiv tests, ff-only merge. Invoked by a dedicated short-lived tester agent, not by devs.
 ---
 
 # Test and Merge Pipeline
 
-Follow every step in order. Stop on first failure. **All testing happens on YOUR branch, not main.**
+**This skill is executed by a dedicated tester agent spawned by the tech lead.**
+Devs do NOT run test262 themselves. They signal "ready for test" and the tech lead spawns a tester.
 
-## Step 1: Verify state (on your branch)
+## How it works
+
+1. Dev finishes code → signals tech lead: "branch X ready for test"
+2. Tech lead spawns a short-lived tester agent (`isolation: "worktree"`)
+3. Tester runs this skill on the dev's branch
+4. Tester reports results and terminates (frees ~600MB immediately)
+5. Tech lead approves/rejects → dev merges or fixes
+
+**Only one tester runs at a time.** Tech lead queues branches.
+
+---
+
+## Step 1: Verify state (on the dev's branch)
 
 ```bash
-pwd
-git branch --show-current  # must NOT be main
+git branch --show-current  # must be the dev's branch
 git status --short         # must be clean
-git log --oneline -3       # confirm your commits are here
+git log --oneline -3       # confirm dev's commits are here
 ```
 
-If you're on main or have uncommitted changes, STOP.
-
-## Step 2: Merge main into your branch
+## Step 2: Merge main into the branch
 
 ```bash
 git merge main
 ```
 
-- **Clean merge**: proceed to Step 3
-- **Conflicts**: resolve them yourself, `git add`, `git commit`
-- **Cannot resolve**: message tech lead. STOP.
+- **Clean merge**: proceed
+- **Conflicts**: report to tech lead — dev must resolve. STOP.
 
-## Step 3: Check RAM
-
-```bash
-free -m | awk '/Mem/{print $7}'
-```
-
-Need >2GB available. If less, message tech lead and STOP.
-
-## Step 4: Run equivalence tests (ON YOUR BRANCH)
+## Step 3: Build compiler bundle from THIS worktree
 
 ```bash
-npm test -- tests/equivalence.test.ts
+npx esbuild src/index.ts --bundle --platform=node --format=esm \
+  --outfile=scripts/compiler-bundle.mjs --external:typescript
+npx esbuild src/runtime.ts --bundle --platform=node --format=esm \
+  --outfile=scripts/runtime-bundle.mjs --external:typescript
 ```
 
-- **All pass** (or same failures as main baseline): proceed
-- **New failures**: you introduced a regression. Fix it. Do NOT proceed to main.
+**Critical: build from the worktree, NOT from /workspace.**
 
-## Step 5: Run issue-specific test262 tests (ON YOUR BRANCH)
-
-Compile+run the sample tests from your issue to verify the fix works.
-
-## Step 6: Run full test262 (if touching core codegen)
-
-Only if your changes touch `src/codegen/expressions.ts`, `src/codegen/statements.ts`, `src/codegen/index.ts`, or `src/codegen/type-coercion.ts`:
+## Step 4: Run equivalence tests
 
 ```bash
-pnpm run test:262
+npx vitest run tests/equivalence/ --reporter=verbose 2>&1 | tail -30
 ```
 
-Pass count must not decrease vs main baseline.
+- **All pass** (or same failures as baseline): proceed
+- **New failures**: report to tech lead. STOP.
 
-## Step 7: Create test proof
-
-**All tests passed on your integrated branch.** Create the proof file:
+## Step 5: Run full test262
 
 ```bash
-BRANCH=$(git branch --show-current)
-cat > /workspace/.claude/nonces/merge-proof.json <<EOF
-{
-  "branch": "${BRANCH}",
-  "timestamp": "$(date -Iseconds)",
-  "equiv_passed": true,
-  "equiv_failures": "same as main baseline",
-  "test262_run": false,
-  "notes": ""
-}
-EOF
+npx vitest run tests/test262-vitest.test.ts --reporter=verbose 2>&1 | tail -20
 ```
 
-Set `test262_run` to `true` if you ran full test262. Add pass count in `notes`.
+Record the pass count from the output: `Tests X failed | Y passed (Z)`
 
-## Step 8: Merge to main
+## Step 6: Report results
+
+Message tech lead:
+```
+Test262 for branch [name]: [pass] pass / [total] total
+Delta from baseline: [+/-N]
+Equiv tests: [pass/fail]
+Recommendation: MERGE / REJECT
+```
+
+## Step 7: If approved — merge to main
 
 ```bash
 cd /workspace
-git merge --ff-only <your-branch-name>
+git merge --ff-only <branch-name>
 ```
 
-The pre-merge hook validates the proof file exists and is recent. If it blocks: go back to Step 2.
+Then post-merge cleanup:
+1. `git diff HEAD~1 --stat` — verify no deletions
+2. Move issue to done/
+3. Update dependency graph
 
-## Step 9: Verify merge
+## Step 8: Terminate
 
-```bash
-git diff HEAD~1 --stat
-```
+Report final status to tech lead and exit. Do not wait for more tasks.
 
-Check for unexpected deletions.
+---
 
-## Step 10: Post-merge cleanup
+## Memory budget
 
-1. Move issue: `mv plan/issues/ready/{N}.md plan/issues/done/`
-2. Update `plan/dependency-graph.md`
-3. Check `plan/issues/blocked/` for newly unblocked issues
-4. Message tech lead: `"Merged #N to main. Tests passed on integrated branch. Post-merge cleanup done."`
-
-## If anything went wrong
-
-- Do NOT force merge
-- `cd /workspace && git reset --hard HEAD~1` to undo merge
-- Message tech lead
+- Tester agent: ~600MB
+- Vitest parent: ~600MB
+- Vitest fork (48K tests): ~7GB peak
+- Total: ~8.2GB
+- Requires: shut down idle devs before spawning tester if RAM < 9GB available
