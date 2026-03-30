@@ -51,16 +51,17 @@ npx esbuild src/index.ts --bundle --platform=node --format=esm \
 npx esbuild src/runtime.ts --bundle --platform=node --format=esm \
   --outfile=scripts/runtime-bundle.mjs --external:typescript 2>&1 | tail -1
 
-# ── Prepare timestamped result files ─────────────────────────────
-RUN_JSONL="$RESULTS_DIR/test262-run-${RUN_TIMESTAMP}.jsonl"
-RUN_REPORT="$RESULTS_DIR/test262-report-${RUN_TIMESTAMP}.json"
+# ── Prepare result files ─────────────────────────────────────────
+# Vitest writes to test262-results.jsonl and test262-report.json (hardcoded).
+# After completion, we copy to timestamped files and update symlinks.
+# Each run gets its own file — no truncation, no append, no corruption.
 
-# Truncate main results JSONL for fresh run
-> "$RESULTS_DIR/test262-results.jsonl"
-
-# Symlink worktree results dir to main workspace (so results survive worktree cleanup)
+# Symlink worktree results dir to main workspace (results survive cleanup)
 rm -rf "$WT_DIR/benchmarks/results"
 ln -s "$RESULTS_DIR" "$WT_DIR/benchmarks/results"
+
+# Clear the JSONL before run (vitest appends to it)
+> "$RESULTS_DIR/test262-results.jsonl"
 
 echo "Run ID: $RUN_TIMESTAMP"
 echo "Worktree at $(git -C "$WT_DIR" rev-parse --short HEAD)"
@@ -134,22 +135,28 @@ fi
 # ── Handle results ───────────────────────────────────────────────
 echo ""
 
-# Results are already in $RESULTS_DIR via symlink — no copy needed
+# Results are in $RESULTS_DIR via symlink (test262-results.jsonl, test262-report.json)
+REPORT="$RESULTS_DIR/test262-report.json"
+JSONL="$RESULTS_DIR/test262-results.jsonl"
+RUN_REPORT="$RESULTS_DIR/test262-report-${RUN_TIMESTAMP}.json"
+RUN_JSONL="$RESULTS_DIR/test262-results-${RUN_TIMESTAMP}.jsonl"
 
 if [ "$COMPLETED" = true ]; then
+  # Move to timestamped files (immutable archive) and create symlinks
+  mv "$REPORT" "$RUN_REPORT" 2>/dev/null
+  mv "$JSONL" "$RUN_JSONL" 2>/dev/null
+  ln -sf "$(basename "$RUN_REPORT")" "$REPORT"
+  ln -sf "$(basename "$RUN_JSONL")" "$JSONL"
+
+  PASS=$(python3 -c "import json; d=json.load(open('$RUN_REPORT')); print(d['summary']['pass'])" 2>/dev/null || echo "?")
+  TOTAL=$(python3 -c "import json; d=json.load(open('$RUN_REPORT')); print(d['summary']['total'])" 2>/dev/null || echo "?")
+  echo "COMPLETED: $PASS pass / $TOTAL total"
+  echo "Report:  $RUN_REPORT"
+  echo "Results: $RUN_JSONL"
+  echo "Symlinks updated."
+
   # Append to historical index
-  if [ -f "$RESULTS_DIR/test262-report.json" ]; then
-    REPORT="$RESULTS_DIR/test262-report.json"
-    PASS=$(python3 -c "import json; d=json.load(open('$REPORT')); print(d['summary']['pass'])" 2>/dev/null || echo "?")
-    TOTAL=$(python3 -c "import json; d=json.load(open('$REPORT')); print(d['summary']['total'])" 2>/dev/null || echo "?")
-    echo "COMPLETED: $PASS pass / $TOTAL total"
-    echo "Results: $RESULTS_DIR/test262-results.jsonl"
-    echo "Report:  $REPORT"
-  fi
-else
-  echo "INCOMPLETE: vitest exited with error. Symlinks NOT updated."
-  echo "Partial results saved to: $RUN_JSONL"
-fi
+  if [ -f "$RUN_REPORT" ]; then
 
 # ── Cleanup ──────────────────────────────────────────────────────
 echo "Cleaning up worktree..."
