@@ -50,8 +50,8 @@ if echo "$CMD" | grep -qE 'git checkout (main|-f main)'; then
   exit 0
 fi
 
-# ALLOW: git checkout -- <file> (restoring specific files)
-if echo "$CMD" | grep -q 'git checkout --'; then
+# ALLOW: git checkout -- <file> or git checkout <branch> -- <file> (restoring specific files)
+if echo "$CMD" | grep -q 'git checkout.*--'; then
   exit 0
 fi
 
