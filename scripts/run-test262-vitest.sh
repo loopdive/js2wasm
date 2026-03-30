@@ -69,12 +69,61 @@ echo "Running vitest..."
 # ── Also build bundle in worktree for vitest to use ──────────────
 # (vitest runs from worktree, workers load compiler-bundle.mjs from there)
 
+# ── Start memory monitor ─────────────────────────────────────────
+MONITOR_LOG="$RESULTS_DIR/memory-monitor-${RUN_TIMESTAMP}.jsonl"
+(
+  echo "{\"event\":\"monitor_start\",\"timestamp\":\"$(date -Iseconds)\",\"available_mb\":$(free -m | awk '/Mem/{print $7}')}" >> "$MONITOR_LOG"
+  while true; do
+    if ! ps aux | grep -q '[v]itest'; then
+      echo "{\"event\":\"monitor_end\",\"timestamp\":\"$(date -Iseconds)\",\"available_mb\":$(free -m | awk '/Mem/{print $7}')}" >> "$MONITOR_LOG"
+      break
+    fi
+    AVAIL=$(free -m | awk '/Mem/{print $7}')
+    USED=$(free -m | awk '/Mem/{print $3}')
+    PROCS=""
+    FIRST=true
+    for pid in $(ps aux | grep '[v]itest' | awk '{print $2}'); do
+      PEAK=$(grep VmHWM /proc/$pid/status 2>/dev/null | awk '{print $2}')
+      RSS=$(grep VmRSS /proc/$pid/status 2>/dev/null | awk '{print $2}')
+      NAME=$(ps -p $pid -o comm= 2>/dev/null)
+      if [ -n "$PEAK" ] && [ "$PEAK" -gt 10000 ]; then
+        if [ "$FIRST" = true ]; then FIRST=false; else PROCS="$PROCS,"; fi
+        PROCS="$PROCS{\"pid\":$pid,\"name\":\"$NAME\",\"rss_mb\":$((RSS/1024)),\"peak_mb\":$((PEAK/1024))}"
+      fi
+    done
+    echo "{\"timestamp\":\"$(date -Iseconds)\",\"available_mb\":$AVAIL,\"used_mb\":$USED,\"vitest\":[$PROCS]}" >> "$MONITOR_LOG"
+    sleep 10
+  done
+) &
+MONITOR_PID=$!
+echo "Memory monitor started (PID $MONITOR_PID, log: $MONITOR_LOG)"
+
 # ── Run vitest FROM THE WORKTREE ─────────────────────────────────
 cd "$WT_DIR"
 COMPLETED=false
 npx vitest run tests/test262-vitest.test.ts \
   --reporter=verbose \
   "$@" 2>&1 | tee /tmp/test262-vitest-run.log && COMPLETED=true
+
+# ── Stop memory monitor ──────────────────────────────────────────
+kill $MONITOR_PID 2>/dev/null
+wait $MONITOR_PID 2>/dev/null
+echo "Memory monitor stopped"
+
+# ── Summarize peak memory ────────────────────────────────────────
+if [ -f "$MONITOR_LOG" ]; then
+  PEAK_RSS=$(python3 -c "
+import json
+peak = 0
+with open('$MONITOR_LOG') as f:
+    for line in f:
+        d = json.loads(line)
+        for v in d.get('vitest', []):
+            if v.get('peak_mb', 0) > peak: peak = v['peak_mb']
+print(peak)
+" 2>/dev/null || echo "?")
+  echo "Peak vitest memory: ${PEAK_RSS}MB"
+fi
 
 # ── Handle results ───────────────────────────────────────────────
 echo ""
