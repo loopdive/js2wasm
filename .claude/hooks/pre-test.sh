@@ -21,7 +21,8 @@ if echo "$CMD" | grep -q 'equivalence'; then
 fi
 
 # Block direct vitest/npx runs on test262 — must go through the script
-if echo "$CMD" | grep -qE 'vitest.*test262|test262.*vitest'; then
+# Only match actual run commands (vitest run, npx vitest), not git add/commit on test files
+if echo "$CMD" | grep -qE '(vitest run|npx vitest).*test262'; then
   if ! echo "$CMD" | grep -qE 'pnpm run test:262|scripts/run-test262'; then
     echo "BLOCKED: Direct test262 runs are not allowed." >&2
     echo "Use: pnpm run test:262" >&2
