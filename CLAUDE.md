@@ -21,6 +21,7 @@ TypeScript-to-WebAssembly compiler using WasmGC.
 - Test262 runner (preferred): `pnpm run test:262` — vitest-based, auto-worktree, disk cache, default 3 forks. Use `TEST262_WORKERS=5` for solo runs (no dev agents).
 - Test262 runner history: `runs/index.json` is appended by the vitest runner after each run. `benchmarks/results/report.html` reads this for the trend graph.
 - Backlog: `plan/issues/backlog/backlog.md`
+- Sprints: `plan/sprints/sprint-{N}.md` — planning, task queue, results, retrospective (living doc updated during sprint)
 - Issues: `plan/issues/` — organized by state:
   - `ready/` — no blockers, pick any to start (priority in `dependency-graph.md`)
   - `blocked/` — waiting on a dependency
@@ -76,11 +77,53 @@ See [plan/team-setup.md](plan/team-setup.md) for full team config, roles, memory
 - `plan/session-start-checklist.md` — tech lead reads at session start
 - `plan/pre-commit-checklist.md` — devs read before every git add/commit
 - `plan/pre-completion-checklist.md` — devs read before signaling task completion
-- `plan/pre-merge-checklist.md` — tech lead reads before every merge to main
+- `plan/pre-merge-checklist.md` — tester reads before every merge to main
+
+**Skills** (on-demand role protocols — any agent can invoke these):
+- `/test-and-merge` — full tester pipeline: merge main into branch, equiv tests, ff-only merge
+- `/smoke-test-issue` — validate an issue still reproduces before dispatching
+- `/analyze-regression` — diff two test262 runs to find which tests flipped
+- `/sprint-wrap-up` — end-of-sprint cleanup checklist
+- `/create-issue` — create issue file from a failure pattern
+- `/architect-spec` — write implementation spec for a hard issue
+
+Skills replace idle specialist agents. A dev can invoke `/test-and-merge` instead of waiting for a tester. Any agent can invoke `/architect-spec` instead of spawning an architect. Prefer skills over dedicated agents when:
+- The task is short (< 5 min of agent time)
+- Only one agent needs the capability at a time
+- RAM is tight
+
+Spawn dedicated agents when:
+- Multiple tasks need the same role concurrently (e.g., 3 devs)
+- The role needs sustained back-and-forth with the user (e.g., PO during planning)
+- The role accumulates context that's hard to capture in a skill (e.g., SM during retro discussion)
 
 **IMPORTANT: Always use teammates, not subagents.** Spawn agents via `TeamCreate` + `Agent` with `team_name` parameter. Never use bare `Agent` spawns — subagents can't coordinate, causing OOM from concurrent test runs and duplicate work. Teammates communicate via `SendMessage` to serialize test runs and coordinate on file conflicts.
 
-**Key numbers**: 14GB RAM + 14GB swap (container limit). Max 3 dev teammates + 1 PO + 1 SM on demand. Default 1 test262 fork. All agents use `bypassPermissions` mode + worktree isolation. Work driven by `plan/dependency-graph.md`.
+**Key numbers**: 14GB RAM + 14GB swap (container, set in `.devcontainer/devcontainer.json`). `free -m` may report ~20GB but Docker enforces 14GB hard limit. Max 4 dev teammates at a time. Default 1 test262 fork. All agents use `bypassPermissions` mode + worktree isolation. Work driven by `plan/dependency-graph.md`.
+
+**RAM monitoring**: Use `free -m` "available" column (not "free"). "free" excludes reclaimable disk cache. Example: "free" shows 1.5GB but "available" shows 7GB = the actual headroom. Hooks check "available" before allowing tests or agent spawns.
+
+**Memory budget** (measured peaks via `/proc/[pid]/status` VmHWM):
+- Fixed: Cursor ~1,400MB + system ~1,200MB + tech lead ~1,400MB = **~4,000MB**
+- Dev agent: ~350MB idle, ~500MB active, ~700MB peak
+- Equiv test: ~800MB (parent ~400MB + 1 fork ~400MB)
+- Test262 (1 fork): ~4,300MB peak (fork grows to ~4GB over 48K tests)
+- **Max 4 devs** with parallel equiv tests (~9GB). Max 2 devs during test262 (~9GB). Shut down devs for solo test262 runs.
+
+### Agent lifecycle — when to spawn, skill, or terminate
+
+| Situation | Action |
+|-----------|--------|
+| Dev needs to test + merge | Invoke `/test-and-merge` skill (no tester agent needed) |
+| Need to validate 1-2 issues | Invoke `/smoke-test-issue` skill |
+| Sprint planning (collaborative, multi-issue) | Spawn PO + Architect agents |
+| Hard issue needs design | Invoke `/architect-spec` skill, or spawn architect if multiple issues |
+| Sprint retro (discussion with user) | Spawn SM agent |
+| Planning agents done, user not talking to them | Write context summary → terminate |
+| Planning agents done, user IS talking to them | Keep alive until user signals done |
+| Dev between tasks | Keep alive — claim next task from TaskList |
+| Dev idle, no tasks available | Keep alive if more tasks expected soon. Terminate if sprint is wrapping up. |
+| End of sprint | All agents write context summaries → terminate → run `/sprint-wrap-up` |
 
 ### Roles and interactions
 
@@ -107,39 +150,73 @@ Scrum Master
 | **Developer** | `.claude/agents/developer.md` | Code changes in worktree | Issue file + impl spec, checklists | Source code, test files, issue status |
 | **Scrum Master** | `.claude/agents/scrum-master.md` | Process improvement | Done issues, git history, messages | `plan/retrospectives/`, checklist edits (proposed) |
 
-**Interaction flow for a typical issue:**
-1. **PO** analyzes test262 failures → creates issue with problem description and sample tests
-2. **Architect** reads issue + compiler source → writes implementation plan in the issue file
-3. **Tech lead** creates task from the issue → assigns to a dev
-4. **Dev** reads issue (with impl plan) → implements → follows checklists → signals completion
-5. **Tech lead** merges (ff-only) → runs tests → broadcasts rebase
-6. **SM** (end of sprint) reviews all completed issues → proposes process improvements
+**Interaction flow:**
+
+Sprint planning:
+1. **PO** validates candidate issues against current main → closes stale ones
+2. **PO** prioritizes remaining issues by value → routes hard ones to architect
+3. **Architect** reads issue + compiler source → writes implementation plan in the issue file
+4. **PO** creates task queue with full context → tech lead dispatches to devs
+
+During sprint:
+5. **Dev** reads issue (with impl plan) → implements → follows checklists → signals completion
+6. **Dev** invokes `/test-and-merge` skill → merges main into branch → equiv tests → if pass: ff-only to main → post-merge cleanup. If fail: fixes on branch.
+7. **PO** accepts/rejects completed work against acceptance criteria
+
+End of sprint:
+8. **Tech lead** runs full test262 → records results
+9. **SM** reviews sprint → proposes process improvements
+10. **PO** grooms backlog for next sprint
+
+**Tech lead discipline:**
+- Batch doc/plan commits on main AFTER all pending agent merges, not between them (doc commits force agents to re-merge main)
+- Verify equivalence tests passed (dev runs them via `/test-and-merge` skill)
+- Complete post-merge issue cleanup (move to done/, update dep graph) before dispatching next task
+
+### Sprint planning (PO + Architect + Tech Lead)
+
+Sprint planning is a collaborative process, not a solo tech lead activity:
+
+1. **PO validates** — smoke-tests top candidate issues against current main, closes already-fixed ones
+2. **PO prioritizes** — orders by value (impact × unblocking potential), not just CE/FAIL count
+3. **PO routes hard issues to Architect** — any issue marked `feasibility: hard` or touching core codegen gets an implementation spec before dev dispatch
+4. **Architect specs** — reads compiler source, writes `## Implementation Plan` in the issue file with exact functions, line numbers, Wasm patterns, edge cases
+5. **PO creates tasks** — via `TaskCreate` with full context, referencing architect specs where available
+6. **Tech lead dispatches** — assigns tasks to devs, manages the merge queue
 
 ### Agent work dispatch
-- Tech lead creates tasks via `TaskCreate` at session start (ordered by priority from `plan/dependency-graph.md`)
+- PO creates the task queue at sprint start (tech lead dispatches to devs)
 - Dev agents self-serve: after completing a task, they check `TaskList` and claim the next unowned task
 - Dev agents do NOT exit after completing a task — they always check TaskList first
-- Only the tech lead runs test262; dev agents run scoped tests only (compile + run specific test files, NOT `npx vitest`)
+- Only the tech lead runs full test262; dev agents run scoped tests and equivalence tests
 
 ### Controlling agents
 - **Pause (between tasks)**: create a task with `[PAUSE]` in the subject. Agents stop when they reach it and wait idle.
 - **Pause (immediate)**: send `PAUSE` via SendMessage. Agent stops current work, kills running tests, waits idle. Send `RESUME` to continue.
 - **Suspend**: send `SUSPEND` via SendMessage. Agent commits WIP, writes `## Suspended Work` to the issue file (worktree path, branch, resume steps), then **terminates**. A new agent resumes later from the issue file.
 - **Resume suspended work**: assign the issue to a new dev agent. It reads `status: suspended` and `## Suspended Work` in the issue file, enters the existing worktree, continues.
-- **Shutdown**: send `{"type": "shutdown_request"}` via SendMessage. Agent terminates immediately (no state saved).
+- **Shutdown**: send `{"type": "shutdown_request"}` via SendMessage. Before sending: (1) confirm with user if they're talking to the agent, (2) ask the agent to write a context summary to `plan/agent-context/{name}.md` first. See `plan/agent-sessions.md` for the summary format.
+- **Session registry**: track active agent sessions in `plan/agent-sessions.md` so sessions can be resumed. When respawning, pass the context summary in the spawn prompt.
 - **Orphaned agents** (lost team context after crash): check worktrees for commits (`git -C <wt> log --oneline main..HEAD`) and uncommitted work (`git -C <wt> diff --stat`). Save any work, then kill the process. Write `## Suspended Work` in the issue file manually with the worktree path and state.
 
-### Merge protocol (fast-forward only, never cherry-pick)
-1. **Agent rebases onto main before signaling completion** — commits all work first, rebases, re-tests after rebase. This is the critical step that prevents lost work.
-2. Tech lead merges with `git merge --ff-only` (fast-forward only, no merge commits)
-3. If ff-only fails: agent rebases again. Tech lead **never** resolves conflicts or cherry-picks.
-4. Broadcast to all agents: `"Main updated with #N, rebase before next commit"`
-5. Run equivalence tests after each merge
-6. One merge at a time, sequential. Never accumulate branches.
-7. **Never use `git checkout HEAD -- <file>` to restore files after a merge** — this is how fixes get silently reverted. If a merge brings unwanted changes, abort and have the agent fix their branch.
-8. **Commit all main-branch edits immediately** — no uncommitted changes on main, ever. Uncommitted work gets overwritten by merges.
+### Merge protocol (ALL testing on branch, main never sees untested code)
 
-### Issue completion (tech lead post-merge)
+Devs use the `/test-and-merge` skill. The pre-merge hook **enforces** this — merges to main are blocked without test proof.
+
+1. **Dev merges main INTO their branch** — `git merge main` (not rebase). This integrates all recent changes.
+2. **Dev runs ALL tests on the integrated branch** (still on their branch, NOT main):
+   - Equivalence tests: `npm test -- tests/equivalence.test.ts` — **mandatory, must pass**
+   - Issue-specific test262 tests — verify the fix works
+   - Full test262: `pnpm run test:262` — **mandatory for core codegen changes** (expressions.ts, statements.ts, index.ts, type-coercion.ts, stack-balance.ts)
+3. **Tests pass → dev creates test proof** at `.claude/nonces/merge-proof.json`
+4. **Dev merges to main**: `cd /workspace && git merge --ff-only <branch>` — hook validates proof exists and is fresh (<15 min)
+5. **Tests fail → dev fixes on their branch.** Main stays clean. Never merge failing code.
+6. **Dev does post-merge cleanup**: move issue to done/, update dep graph, message tech lead
+7. One merge at a time, sequential. Never accumulate branches.
+8. **Never use `git merge` (without --ff-only) on main.** Hook blocks non-ff-only merges to main.
+9. **Never rebase.** Merge preserves history and is safely reversible.
+
+### Issue completion (tester post-merge)
 1. Move issue file from `plan/issues/ready/` to `plan/issues/done/`
 2. Update `plan/dependency-graph.md` — remove/strikethrough completed issue
 3. Update `plan/issues/backlog/backlog.md` — sprint priority
