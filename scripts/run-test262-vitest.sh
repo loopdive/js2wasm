@@ -1,16 +1,29 @@
 #!/bin/bash
 # Run test262 via vitest in an isolated git worktree.
-# Usage: ./scripts/run-test262-vitest.sh [vitest args...]
+# Usage: pnpm run test:262 [vitest args...]
 #
-# Creates a temporary worktree from HEAD, symlinks heavy dirs,
-# runs vitest, then copies results back to main workspace.
+# - Uses flock to prevent parallel runs (only one test262 at a time)
+# - Writes results to timestamped files, updates symlink only on completion
+# - Builds compiler bundle from the worktree (not /workspace)
 
 set -e
 
 MAIN_DIR="/workspace"
-WT_DIR="/tmp/ts2wasm-vitest-$$"
+LOCKFILE="/tmp/ts2wasm-test262.lock"
 RESULTS_DIR="$MAIN_DIR/benchmarks/results"
+RUN_TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 
+# ── Exclusive lock — only one test262 run at a time ──────────────
+exec 200>"$LOCKFILE"
+if ! flock -n 200; then
+  echo "ERROR: Another test262 run is in progress (lock held: $LOCKFILE)"
+  echo "Wait for it to finish or kill the process holding the lock."
+  exit 1
+fi
+echo "Lock acquired (PID $$)"
+
+# ── Create isolated worktree ─────────────────────────────────────
+WT_DIR="/tmp/ts2wasm-vitest-$$"
 echo "Creating worktree at $WT_DIR ..."
 git -C "$MAIN_DIR" worktree add "$WT_DIR" HEAD --detach --quiet 2>/dev/null
 
@@ -26,57 +39,73 @@ if [ ! -d "$WT_DIR/test262/test" ]; then
 fi
 echo "test262 symlink OK ($(ls "$WT_DIR/test262/test/" | wc -l) dirs)"
 
-# Share the disk cache (both directions benefit)
+# Share the disk cache
 mkdir -p "$MAIN_DIR/.test262-cache"
 ln -sf "$MAIN_DIR/.test262-cache" "$WT_DIR/.test262-cache"
 
-# Build compiler bundle in worktree (needed by compiler workers)
-echo "Building compiler bundle..."
+# ── Build compiler bundle FROM THE WORKTREE (not /workspace) ─────
+echo "Building compiler bundle in worktree..."
 cd "$WT_DIR"
 npx esbuild src/index.ts --bundle --platform=node --format=esm \
   --outfile=scripts/compiler-bundle.mjs --external:typescript 2>&1 | tail -1
 npx esbuild src/runtime.ts --bundle --platform=node --format=esm \
   --outfile=scripts/runtime-bundle.mjs --external:typescript 2>&1 | tail -1
 
-# Symlink results dir so writes go directly to main workspace
+# ── Prepare timestamped result files ─────────────────────────────
+RUN_JSONL="$RESULTS_DIR/test262-run-${RUN_TIMESTAMP}.jsonl"
+RUN_REPORT="$RESULTS_DIR/test262-report-${RUN_TIMESTAMP}.json"
+
+# Point worktree results dir at main workspace
 rm -rf "$WT_DIR/benchmarks/results"
-ln -s "$MAIN_DIR/benchmarks/results" "$WT_DIR/benchmarks/results"
+mkdir -p "$WT_DIR/benchmarks/results"
 
-# Archive previous results before overwriting
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-if [ -f "$RESULTS_DIR/test262-results.jsonl" ]; then
-  cp "$RESULTS_DIR/test262-results.jsonl" "$RESULTS_DIR/test262-results-${TIMESTAMP}.jsonl"
-  echo "Archived previous results as test262-results-${TIMESTAMP}.jsonl"
-fi
-if [ -f "$RESULTS_DIR/test262-report.json" ]; then
-  cp "$RESULTS_DIR/test262-report.json" "$RESULTS_DIR/test262-report-${TIMESTAMP}.json"
-fi
-# Truncate JSONL for fresh run (vitest opens in append mode)
-> "$RESULTS_DIR/test262-results.jsonl"
+# Vitest writes to these paths — we'll move them after
+> "$WT_DIR/benchmarks/results/test262-results.jsonl"
 
-echo "Worktree ready at $(git -C "$WT_DIR" rev-parse --short HEAD)"
+echo "Run ID: $RUN_TIMESTAMP"
+echo "Worktree at $(git -C "$WT_DIR" rev-parse --short HEAD)"
 echo "Running vitest..."
 
-# Always rebuild main workspace bundle from current source to avoid stale-bundle bugs
-echo "Rebuilding main bundle..."
-cd "$MAIN_DIR"
-npx esbuild src/index.ts --bundle --platform=node --format=esm \
-  --outfile=scripts/compiler-bundle.mjs --external:typescript 2>&1 | tail -1
-npx esbuild src/runtime.ts --bundle --platform=node --format=esm \
-  --outfile=scripts/runtime-bundle.mjs --external:typescript 2>&1 | tail -1
+# ── Also build bundle in worktree for vitest to use ──────────────
+# (vitest runs from worktree, workers load compiler-bundle.mjs from there)
 
-# Run vitest from main workspace (vitest 4.x needs real node_modules, not symlinks)
+# ── Run vitest FROM THE WORKTREE ─────────────────────────────────
+cd "$WT_DIR"
+COMPLETED=false
 npx vitest run tests/test262-vitest.test.ts \
   --reporter=verbose \
-  "$@" 2>&1 | tee /tmp/test262-vitest-run.log
+  "$@" 2>&1 | tee /tmp/test262-vitest-run.log && COMPLETED=true
 
-# Results already written directly to main workspace via symlink
+# ── Handle results ───────────────────────────────────────────────
 echo ""
-echo "Results written to $RESULTS_DIR"
 
-# Cleanup worktree
+# Copy timestamped results
+cp "$WT_DIR/benchmarks/results/test262-results.jsonl" "$RUN_JSONL" 2>/dev/null
+cp "$WT_DIR/benchmarks/results/test262-report.json" "$RUN_REPORT" 2>/dev/null
+
+if [ "$COMPLETED" = true ]; then
+  # Only update symlinks on successful completion
+  ln -sf "$(basename "$RUN_JSONL")" "$RESULTS_DIR/test262-results.jsonl"
+  ln -sf "$(basename "$RUN_REPORT")" "$RESULTS_DIR/test262-report.json"
+
+  # Append to historical index
+  if [ -f "$RUN_REPORT" ]; then
+    PASS=$(python3 -c "import json; d=json.load(open('$RUN_REPORT')); print(d['summary']['pass'])" 2>/dev/null || echo "?")
+    TOTAL=$(python3 -c "import json; d=json.load(open('$RUN_REPORT')); print(d['summary']['total'])" 2>/dev/null || echo "?")
+    echo "COMPLETED: $PASS pass / $TOTAL total"
+    echo "Results: $RUN_JSONL"
+    echo "Report:  $RUN_REPORT"
+    echo "Symlinks updated to this run."
+  fi
+else
+  echo "INCOMPLETE: vitest exited with error. Symlinks NOT updated."
+  echo "Partial results saved to: $RUN_JSONL"
+fi
+
+# ── Cleanup ──────────────────────────────────────────────────────
 echo "Cleaning up worktree..."
 cd "$MAIN_DIR"
 git worktree remove --force "$WT_DIR" 2>/dev/null || rm -rf "$WT_DIR"
 
-echo "Done. Results in $RESULTS_DIR"
+# Lock released automatically when script exits (fd 200 closes)
+echo "Done."

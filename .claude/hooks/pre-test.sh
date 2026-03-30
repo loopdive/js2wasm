@@ -1,30 +1,48 @@
 #!/bin/bash
-# Pre-test hook: check RAM, warn about parallel tests, log memory
+# Pre-test hook:
+# - Block direct test262 vitest runs (must use pnpm run test:262 which has flock)
+# - Allow equivalence tests directly
+# - Check RAM
+
 INPUT=$(cat)
 CMD=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
-if [ -z "$CMD" ]; then exit 0; fi
-if ! echo "$CMD" | grep -qE 'npm test|vitest|pnpm run test'; then exit 0; fi
-
-AVAIL_MB=$(free -m | awk '/Mem/{print $7}')
-if [ "$AVAIL_MB" -lt 2000 ]; then
-  echo "BLOCKED: Only ${AVAIL_MB}MB available RAM. Need >2GB for tests." >&2
-  exit 2
+if [ -z "$CMD" ]; then
+  exit 0
 fi
 
-OTHER_TESTS=$(ps aux | grep -c '[v]itest')
-
-# Log pre-test memory snapshot
-LOGFILE="/workspace/.claude/nonces/test-memory-log.jsonl"
-TYPE="unknown"
-if echo "$CMD" | grep -q 'equivalence'; then TYPE="equiv"; elif echo "$CMD" | grep -q 'test262'; then TYPE="test262"; fi
-CLAUDE_MB=$(ps aux | grep '[c]laude' | awk '{sum+=$6} END {print int(sum/1024)}')
-echo "{\"timestamp\":\"$(date -Iseconds)\",\"phase\":\"pre\",\"type\":\"$TYPE\",\"available_mb\":$AVAIL_MB,\"claude_total_mb\":$CLAUDE_MB,\"other_tests\":$OTHER_TESTS}" >> "$LOGFILE" 2>/dev/null
-
-if [ "$OTHER_TESTS" -gt 0 ]; then
-  jq -n --arg ctx "WARNING: ${OTHER_TESTS} other vitest process(es) running. Available RAM: ${AVAIL_MB}MB." \
-    '{hookSpecificOutput: {hookEventName: "PreToolUse", additionalContext: $ctx}}'
-else
-  jq -n --arg ctx "RAM: ${AVAIL_MB}MB available. No other tests running." \
-    '{hookSpecificOutput: {hookEventName: "PreToolUse", additionalContext: $ctx}}'
+# Allow equivalence tests directly — no flock needed
+if echo "$CMD" | grep -q 'equivalence'; then
+  AVAIL_MB=$(free -m | awk '/Mem/{print $7}')
+  if [ "$AVAIL_MB" -lt 2000 ]; then
+    echo "BLOCKED: Only ${AVAIL_MB}MB available RAM." >&2
+    exit 2
+  fi
+  exit 0
 fi
+
+# Block direct vitest/npx runs on test262 — must go through the script
+# Only match actual run commands (vitest run, npx vitest), not git add/commit on test files
+if echo "$CMD" | grep -qE '(vitest run|npx vitest).*test262'; then
+  if ! echo "$CMD" | grep -qE 'pnpm run test:262|scripts/run-test262'; then
+    echo "BLOCKED: Direct test262 runs are not allowed." >&2
+    echo "Use: pnpm run test:262" >&2
+    echo "The test script uses flock for exclusive access and writes timestamped results." >&2
+    exit 2
+  fi
+fi
+
+# RAM check for any test command
+if echo "$CMD" | grep -qE 'npm test|vitest|pnpm run test'; then
+  AVAIL_MB=$(free -m | awk '/Mem/{print $7}')
+  if [ "$AVAIL_MB" -lt 2000 ]; then
+    echo "BLOCKED: Only ${AVAIL_MB}MB available RAM." >&2
+    exit 2
+  fi
+  OTHER=$(ps aux | grep -c '[v]itest')
+  if [ "$OTHER" -gt 0 ]; then
+    jq -n --arg ctx "WARNING: ${OTHER} vitest process(es) running. RAM: ${AVAIL_MB}MB." \
+      '{hookSpecificOutput: {hookEventName: "PreToolUse", additionalContext: $ctx}}'
+  fi
+fi
+
 exit 0

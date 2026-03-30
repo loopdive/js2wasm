@@ -1,0 +1,144 @@
+#!/usr/bin/env node
+/**
+ * build-data.js — Generates dashboard/data/ JSON files from project sources.
+ * Run: node dashboard/build-data.js
+ * No dependencies — uses only Node.js built-ins.
+ */
+
+import { readFileSync, writeFileSync, readdirSync, mkdirSync, existsSync } from 'fs';
+import { join, resolve } from 'path';
+
+const ROOT = resolve(import.meta.dirname, '..');
+const OUT = join(import.meta.dirname, 'data');
+
+mkdirSync(OUT, { recursive: true });
+
+// ── Frontmatter parser ───────────────────────────────────────
+function parseFrontmatter(text) {
+  const m = text.match(/^---\n([\s\S]*?)\n---/);
+  if (!m) return {};
+  const obj = {};
+  for (const line of m[1].split('\n')) {
+    const idx = line.indexOf(':');
+    if (idx < 0) continue;
+    const key = line.slice(0, idx).trim();
+    let val = line.slice(idx + 1).trim();
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'")))
+      val = val.slice(1, -1);
+    if (val.startsWith('[') && val.endsWith(']'))
+      val = val.slice(1, -1).split(',').map(s => s.trim()).filter(Boolean);
+    obj[key] = val;
+  }
+  return obj;
+}
+
+function extractTitle(text) {
+  const m = text.match(/^#\s+.*?—\s*(.+)$/m) || text.match(/^#\s+(.+)$/m);
+  return m ? m[1].trim() : 'Untitled';
+}
+
+// ── Load issues ──────────────────────────────────────────────
+function loadIssuesFromDir(dir) {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter(f => f.endsWith('.md'))
+    .map(f => {
+      const text = readFileSync(join(dir, f), 'utf-8');
+      const fm = parseFrontmatter(text);
+      const id = f.replace('.md', '');
+      const title = fm.title || extractTitle(text);
+      const status = fm.status || null;
+      return {
+        id,
+        title,
+        priority: fm.priority || 'medium',
+        feasibility: fm.feasibility || '',
+        depends_on: fm.depends_on || [],
+        goal: fm.goal || '',
+        status,
+      };
+    })
+    .sort((a, b) => Number(b.id) - Number(a.id)); // newest first
+}
+
+const issues = {
+  blocked: loadIssuesFromDir(join(ROOT, 'plan/issues/blocked')),
+  ready: loadIssuesFromDir(join(ROOT, 'plan/issues/ready')),
+  inprogress: [], // in-progress issues are in ready/ with status: in-progress
+  done: loadIssuesFromDir(join(ROOT, 'plan/issues/done')),
+};
+
+// Split ready into ready vs in-progress based on frontmatter status
+const ready = [];
+for (const iss of issues.ready) {
+  if (iss.status === 'in-progress' || iss.status === 'in_progress') {
+    issues.inprogress.push(iss);
+  } else {
+    ready.push(iss);
+  }
+}
+issues.ready = ready;
+
+writeFileSync(join(OUT, 'issues.json'), JSON.stringify(issues, null, 2));
+console.log(`Issues: ${issues.blocked.length} blocked, ${issues.ready.length} ready, ${issues.inprogress.length} in-progress, ${issues.done.length} done`);
+
+// ── Load test262 runs ────────────────────────────────────────
+const runsPath = join(ROOT, 'benchmarks/results/runs/index.json');
+let runs = [];
+if (existsSync(runsPath)) {
+  const all = JSON.parse(readFileSync(runsPath, 'utf-8'));
+  // Before Mar 20: smaller suite, keep all > 20K
+  // After Mar 19: filter partial runs (< 90% of max total seen)
+  let maxTotal = 0;
+  runs = all.filter(r => {
+    const ts = r.timestamp || "";
+    if (ts < "2026-03-20") return r.total >= 20000;
+    if (r.total > maxTotal) maxTotal = r.total;
+    return r.total >= maxTotal * 0.9;
+  });
+}
+// Copy runs to data/ for the dashboard to fetch
+writeFileSync(join(OUT, 'runs.json'), JSON.stringify(runs));
+console.log(`Test262 runs: ${runs.length} entries (filtered from raw data)`);
+
+// ── Load sprints ─────────────────────────────────────────────
+const sprintsDir = join(ROOT, 'plan/sprints');
+const sprints = [];
+if (existsSync(sprintsDir)) {
+  for (const f of readdirSync(sprintsDir).filter(f => f.endsWith('.md')).sort((a, b) => {
+    const numA = parseInt(a.match(/(\d+)/)?.[1] ?? '0', 10);
+    const numB = parseInt(b.match(/(\d+)/)?.[1] ?? '0', 10);
+    return numA - numB;
+  })) {
+    const text = readFileSync(join(sprintsDir, f), 'utf-8');
+    const name = f.replace('.md', '').replace(/-/g, ' ');
+
+    // Extract date
+    const dateM = text.match(/\*\*Date\*\*:\s*(.+)/);
+    const date = dateM ? dateM[1].trim() : '';
+
+    // Extract baseline
+    const baseM = text.match(/\*\*Baseline\*\*:\s*(.+)/);
+    const baseline = baseM ? baseM[1].trim() : '';
+
+    // Extract result
+    const resultM = text.match(/\*\*Final numbers?\*\*:\s*(.+)/i) || text.match(/\*\*Result\*\*:\s*(.+)/i);
+    const result = resultM ? resultM[1].trim() : '';
+
+    // Count merged issues
+    const mergedCount = (text.match(/\*\*Merged\*\*/gi) || []).length;
+
+    sprints.push({ name, date, baseline, result, issueCount: mergedCount });
+  }
+}
+writeFileSync(join(OUT, 'sprints.json'), JSON.stringify(sprints, null, 2));
+console.log(`Sprints: ${sprints.length} entries`);
+
+// ── Also write embedded data for file:// mode ────────────────
+const embedded = `// Auto-generated by build-data.js — do not edit
+window.__DASHBOARD_DATA__ = ${JSON.stringify({ issues, runs, sprints })};
+`;
+writeFileSync(join(import.meta.dirname, 'data.js'), embedded);
+console.log('Wrote dashboard/data.js (embedded mode)');
+
+console.log('Done. Open dashboard/index.html in a browser.');
