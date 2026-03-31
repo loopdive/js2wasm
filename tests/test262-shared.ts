@@ -468,6 +468,10 @@ function recordResult(
       fsyncSync(jsonlFd);
     } catch {}
   }
+  // Periodic GC to free accumulated Wasm compiled modules
+  if (flushCount % GC_INTERVAL === 0 && typeof globalThis.gc === "function") {
+    globalThis.gc();
+  }
   if (flushCount % REPORT_FLUSH_INTERVAL === 0) {
     const report = {
       timestamp: new Date().toISOString(),
