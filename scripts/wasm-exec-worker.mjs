@@ -119,5 +119,9 @@ parentPort.on("message", async (msg) => {
       error: outerErr.message ?? String(outerErr),
       instantiateError: true,
     });
+  } finally {
+    // Drop references to Wasm module so GC can collect compiled code
+    instance = null;
+    binary = null;
   }
 });
