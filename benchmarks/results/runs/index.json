@@ -829,12 +829,12 @@
   },
   {
     "timestamp": "2026-03-30T21:45:42.000Z",
-    "pass": 23832,
-    "fail": 24256,
-    "ce": 0,
-    "skip": 0,
+    "pass": 17252,
+    "fail": 21337,
+    "ce": 2919,
+    "skip": 6580,
     "total": 48088,
     "gitHash": "08cc4778",
-    "note": "clean baseline \u2014 cache disabled, isolated worktree build"
+    "note": "clean baseline \u2014 cache disabled, conformance count (not vitest count)"
   }
 ]
