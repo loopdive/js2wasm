@@ -65,18 +65,7 @@ ln -s "$RESULTS_DIR" "$WT_DIR/benchmarks/results"
 
 echo "Run ID: $RUN_TIMESTAMP"
 echo "Worktree at $(git -C "$WT_DIR" rev-parse --short HEAD)"
-
-# ── Phase 1: Pre-compile all tests to disk cache ────────────────
-echo ""
-echo "=== Phase 1: Pre-compiling all tests ==="
-PHASE1_START=$(date +%s)
-npx tsx scripts/precompile-tests.ts
-PHASE1_END=$(date +%s)
-echo "Phase 1 completed in $((PHASE1_END - PHASE1_START))s"
-echo ""
-
-# ── Phase 2: Execute pre-compiled tests via vitest ──────────────
-echo "=== Phase 2: Executing tests ==="
+echo "Running vitest (unified compile+execute in fork pool)..."
 
 # ── Start memory monitor ─────────────────────────────────────────
 MONITOR_LOG="$RESULTS_DIR/memory-monitor-${RUN_TIMESTAMP}.jsonl"
