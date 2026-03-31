@@ -30,6 +30,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   locales \
   openssh-server \
   && locale-gen en_US.UTF-8 \
+  && ln -sf /usr/share/zoneinfo/Europe/Berlin /etc/localtime \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 ENV LANG=en_US.UTF-8
@@ -99,6 +100,7 @@ USER root
 RUN chmod +x /usr/local/bin/init-firewall.sh && \
   echo "node ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh" > /etc/sudoers.d/node-firewall && \
   echo "node ALL=(root) NOPASSWD: /usr/sbin/sshd" >> /etc/sudoers.d/node-firewall && \
+  echo "node ALL=(root) NOPASSWD: /usr/bin/chown" >> /etc/sudoers.d/node-firewall && \
   chmod 0440 /etc/sudoers.d/node-firewall
 
 # Configure sshd
