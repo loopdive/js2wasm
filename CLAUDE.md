@@ -1,4 +1,4 @@
-# ts2wasm
+# js2wasm
 
 TypeScript-to-WebAssembly compiler using WasmGC.
 
