@@ -52,16 +52,13 @@ npx esbuild src/runtime.ts --bundle --platform=node --format=esm \
   --outfile=scripts/runtime-bundle.mjs --external:typescript 2>&1 | tail -1
 
 # ── Prepare result files ─────────────────────────────────────────
-# Vitest writes to test262-results.jsonl and test262-report.json (hardcoded).
-# After completion, we copy to timestamped files and update symlinks.
-# Each run gets its own file — no truncation, no append, no corruption.
+# Vitest writes to timestamped test262-results-YYYYMMDD-HHMMSS.jsonl directly.
+# RUN_TIMESTAMP env var tells test262-shared.ts which filename to use.
+export RUN_TIMESTAMP
 
 # Symlink worktree results dir to main workspace (results survive cleanup)
 rm -rf "$WT_DIR/benchmarks/results"
 ln -s "$RESULTS_DIR" "$WT_DIR/benchmarks/results"
-
-# Clear the JSONL before run (vitest appends to it)
-> "$RESULTS_DIR/test262-results.jsonl"
 
 echo "Run ID: $RUN_TIMESTAMP"
 echo "Worktree at $(git -C "$WT_DIR" rev-parse --short HEAD)"
@@ -104,18 +101,12 @@ CHUNKS=$(ls tests/test262-chunk*.test.ts 2>/dev/null | sort)
 > /tmp/test262-vitest-run.log
 
 if [ -n "$CHUNKS" ]; then
-  # Chunk mode: run each chunk file separately, fork dies between each
+  # Run all chunk files in a single vitest invocation — vitest parallelizes across forks
   CHUNK_COUNT=$(echo "$CHUNKS" | wc -l)
-  CURRENT=0
-  for chunk in $CHUNKS; do
-    CURRENT=$((CURRENT + 1))
-    echo ""
-    echo "=== Chunk $CURRENT/$CHUNK_COUNT: $(basename $chunk) ==="
-    npx vitest run "$chunk" \
-      --reporter=verbose \
-      "$@" 2>&1 | tee -a /tmp/test262-vitest-run.log || true
-    echo "Chunk $CURRENT/$CHUNK_COUNT done."
-  done
+  echo "Running $CHUNK_COUNT chunk files in one vitest invocation..."
+  npx vitest run tests/test262-chunk*.test.ts \
+    --reporter=verbose \
+    "$@" 2>&1 | tee /tmp/test262-vitest-run.log || true
 else
   # Single file mode: run the monolithic test file
   echo "Running single test file..."
@@ -124,8 +115,8 @@ else
     "$@" 2>&1 | tee /tmp/test262-vitest-run.log || true
 fi
 # Generate report.json from JSONL (atomic — no fork race condition)
-JSONL_FILE="$RESULTS_DIR/test262-results.jsonl"
-REPORT_FILE="$RESULTS_DIR/test262-report.json"
+JSONL_FILE="$RESULTS_DIR/test262-results-${RUN_TIMESTAMP}.jsonl"
+REPORT_FILE="$RESULTS_DIR/test262-report-${RUN_TIMESTAMP}.json"
 COMPLETED=false
 if [ -f "$JSONL_FILE" ] && [ -s "$JSONL_FILE" ]; then
   python3 -c "
@@ -200,18 +191,14 @@ fi
 # ── Handle results ───────────────────────────────────────────────
 echo ""
 
-# Results are in $RESULTS_DIR via symlink (test262-results.jsonl, test262-report.json)
-REPORT="$RESULTS_DIR/test262-report.json"
-JSONL="$RESULTS_DIR/test262-results.jsonl"
+# Files are already timestamped (vitest writes to test262-results-${RUN_TIMESTAMP}.jsonl)
 RUN_REPORT="$RESULTS_DIR/test262-report-${RUN_TIMESTAMP}.json"
 RUN_JSONL="$RESULTS_DIR/test262-results-${RUN_TIMESTAMP}.jsonl"
 
 if [ "$COMPLETED" = true ]; then
-  # Move to timestamped files (immutable archive) and create symlinks
-  mv "$REPORT" "$RUN_REPORT" 2>/dev/null
-  mv "$JSONL" "$RUN_JSONL" 2>/dev/null
-  ln -sf "$(basename "$RUN_REPORT")" "$REPORT"
-  ln -sf "$(basename "$RUN_JSONL")" "$JSONL"
+  # Update symlinks to point to latest timestamped files
+  ln -sf "$(basename "$RUN_REPORT")" "$RESULTS_DIR/test262-report.json"
+  ln -sf "$(basename "$RUN_JSONL")" "$RESULTS_DIR/test262-results.jsonl"
 
   PASS=$(python3 -c "import json; d=json.load(open('$RUN_REPORT')); print(d['summary']['pass'])" 2>/dev/null || echo "?")
   TOTAL=$(python3 -c "import json; d=json.load(open('$RUN_REPORT')); print(d['summary']['total'])" 2>/dev/null || echo "?")
