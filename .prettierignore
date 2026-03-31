@@ -1,0 +1,12 @@
+node_modules/
+dist/
+test262/
+benchmarks/results/
+.test262-cache/
+scripts/compiler-bundle.mjs
+scripts/runtime-bundle.mjs
+scripts/compiler-fork-worker.mjs
+scripts/test262-worker.mjs
+scripts/wasm-exec-worker.mjs
+*.wasm
+*.wat

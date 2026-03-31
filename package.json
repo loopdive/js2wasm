@@ -26,6 +26,8 @@
     "test:watch": "node node_modules/vitest/dist/cli.js",
     "test:262": "bash scripts/run-test262-vitest.sh",
     "build:compiler-bundle": "npx esbuild src/index.ts --bundle --platform=node --format=esm --outfile=scripts/compiler-bundle.mjs --external:typescript",
+    "format": "prettier --write 'src/**/*.ts' 'tests/**/*.ts' 'scripts/**/*.ts'",
+    "format:check": "prettier --check 'src/**/*.ts' 'tests/**/*.ts' 'scripts/**/*.ts'",
     "lint": "biome check src/",
     "typecheck": "tsc --noEmit",
     "report": "npx tsx scripts/serve-report.ts",
@@ -40,6 +42,7 @@
     "@types/node": "^22",
     "eslint": "^10.0.3",
     "monaco-editor": "^0.55.1",
+    "prettier": "^3.8.1",
     "vite": "^6",
     "vite-plugin-dts": "^4",
     "vitest": "^3"
