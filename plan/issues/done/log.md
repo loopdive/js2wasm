@@ -493,3 +493,5 @@
 | 813 | 2026-03-26 | gen.next is not a function — 1,164 tests unblocked                                                 | W6-Wave1   |
 | 814 | 2026-03-26 | ArrayBuffer extern class — 413 tests unblocked                                                     | W6-Wave1   |
 
+| 866 | 2026-03-31 | NaN sentinel fix — sNaN check + ToPrimitive toString fallback (71 FAIL restored) | Sprint-31  |
+| 849 | 2026-03-31 | Mapped arguments object sync with named parameters (200 FAIL restored) | Sprint-31  |
