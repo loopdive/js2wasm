@@ -101,7 +101,7 @@ You can invoke these on-demand by reading the skill file and following its steps
 - **Scoped tests during development**: compile+run specific test files anytime (with lock).
 - **Full test sequence after rebase**: see `plan/pre-completion-checklist.md` — equivalence tests, issue-specific test262, then optionally full test262.
 - **Do NOT exit after completing a task** — send "Ready for next task" and wait.
-- **14GB RAM + 14GB swap** — 3 agents × 2GB + Cursor 2GB + system = ~10GB used. Only ~4GB headroom.
+- **16GB RAM + 16GB swap** — 3 agents × 2GB + Cursor 2GB + system = ~10GB used. Only ~4GB headroom.
 
 ## Workflow
 1. **Check for suspended work**: read your issue file (`plan/issues/ready/{N}.md`). If it has `status: suspended` and a `## Suspended Work` section, use the listed worktree and follow the resume instructions instead of starting fresh.

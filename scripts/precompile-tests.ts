@@ -7,6 +7,11 @@
  * Uses all CPU cores for compilation. Vitest then runs pure execution
  * (cache hits only) with no compilation overhead.
  */
+// Propagate --expose-gc to compiler worker threads so they can GC periodically
+if (!process.env.NODE_OPTIONS?.includes("--expose-gc")) {
+  process.env.NODE_OPTIONS = `${process.env.NODE_OPTIONS || ""} --expose-gc`.trim();
+}
+
 import { readFile, writeFile, access, mkdir } from "fs/promises";
 import { readFileSync } from "fs";
 import { join, relative } from "path";
@@ -68,9 +73,7 @@ function buildCompilerHash(): string {
 
 const compilerHash = buildCompilerHash();
 const POOL_SIZE = parseInt(process.env.COMPILER_POOL_SIZE || String(Math.max(1, availableParallelism() - 2)), 10);
-const pool = new CompilerPool(POOL_SIZE);
-
-console.log(`Pre-compiling test262 with ${POOL_SIZE} workers...`);
+const NUM_BATCHES = parseInt(process.env.COMPILER_BATCHES || "8", 10);
 
 // Collect all test file paths (fast — just readdir, no file reads)
 const allTests: { filePath: string; relPath: string; category: string }[] = [];
@@ -80,6 +83,7 @@ for (const category of TEST_CATEGORIES) {
   }
 }
 console.log(`${allTests.length} test files found`);
+console.log(`Sequential batching: ${NUM_BATCHES} batches × ${POOL_SIZE} workers`);
 
 let compiled = 0;
 let cached = 0;
@@ -94,122 +98,137 @@ function logProgress() {
   console.log(`  ${total}/${allTests.length} (${rate}/s) — ${compiled} compiled, ${cached} cached, ${skipped} skipped, ${errors} errors [${elapsed}s]`);
 }
 
-// Process all tests fully async with controlled concurrency
-const CONCURRENCY = POOL_SIZE * 3;
-let inFlight = 0;
-let resolveSlot: (() => void) | null = null;
+/**
+ * Process a batch of tests with a fresh compiler pool.
+ * Pool is created at start and fully shut down at end, freeing all worker memory.
+ */
+async function processBatch(tests: typeof allTests, pool: CompilerPool) {
+  const CONCURRENCY = POOL_SIZE * 3;
+  let inFlight = 0;
+  let resolveSlot: (() => void) | null = null;
 
-function releaseSlot() {
-  inFlight--;
-  if (resolveSlot) { const r = resolveSlot; resolveSlot = null; r(); }
-}
+  function releaseSlot() {
+    inFlight--;
+    if (resolveSlot) { const r = resolveSlot; resolveSlot = null; r(); }
+  }
 
-async function waitForSlot() {
-  if (inFlight < CONCURRENCY) { inFlight++; return; }
-  await new Promise<void>(r => { resolveSlot = r; });
-  inFlight++;
-}
+  async function waitForSlot() {
+    if (inFlight < CONCURRENCY) { inFlight++; return; }
+    await new Promise<void>(r => { resolveSlot = r; });
+    inFlight++;
+  }
 
-const jobs: Promise<void>[] = [];
+  const jobs: Promise<void>[] = [];
 
-for (const { filePath, relPath, category } of allTests) {
-  await waitForSlot();
+  for (const { filePath, relPath, category } of tests) {
+    await waitForSlot();
 
-  const job = (async () => {
-    try {
-      const source = await readFile(filePath, "utf-8");
-      const meta = parseMeta(source);
-      const filter = shouldSkip(source, meta, filePath);
-      if (filter.skip) { skipped++; recordCompileResult(relPath, category, "skip", filter.reason); releaseSlot(); return; }
-
-      let wrapped: string;
+    const job = (async () => {
       try {
-        wrapped = wrapTest(source, meta).source;
-      } catch {
-        errors++; releaseSlot(); return;
-      }
+        const source = await readFile(filePath, "utf-8");
+        const meta = parseMeta(source);
+        const filter = shouldSkip(source, meta, filePath);
+        if (filter.skip) { skipped++; recordCompileResult(relPath, category, "skip", filter.reason); releaseSlot(); return; }
 
-      // Always compile with skipSemanticDiagnostics=true (fast).
-      // Early error detection for negative tests happens separately in vitest.
-      const hash = createHash("md5").update(wrapped).update(compilerHash).digest("hex");
-      const cachePath = join(CACHE_DIR, `${hash}.wasm`);
-      const metaPath = join(CACHE_DIR, `${hash}.json`);
-
-      // Check cache async
-      try {
-        await access(cachePath);
-        await access(metaPath);
-        // Read cached metadata for compile time and status
-        const cachedMeta = JSON.parse(await readFile(metaPath, "utf-8"));
-        if (cachedMeta.ok === false) {
-          recordCompileResult(relPath, category, "cached_error", cachedMeta.error, cachedMeta.compileMs);
-        } else {
-          recordCompileResult(relPath, category, "cached", undefined, cachedMeta.compileMs);
+        let wrapped: string;
+        try {
+          wrapped = wrapTest(source, meta).source;
+        } catch {
+          errors++; releaseSlot(); return;
         }
-        cached++;
-        releaseSlot();
-        return;
-      } catch {
-        // Cache miss — compile
-      }
 
-      const isNegative = meta.negative && (meta.negative.phase === "parse" || meta.negative.phase === "early" || meta.negative.phase === "resolution");
+        const hash = createHash("md5").update(wrapped).update(compilerHash).digest("hex");
+        const cachePath = join(CACHE_DIR, `${hash}.wasm`);
+        const metaPath = join(CACHE_DIR, `${hash}.json`);
 
-      const result = await pool.compile(wrapped, 20_000, false, undefined, relPath);
-      if (result.ok) {
-        // For negative tests that compiled successfully: re-compile with full
-        // diagnostics to detect ES early errors (delete in strict, yield reserved, etc.)
-        // Only takes ~7ms with the incremental compiler. We store the error codes
-        // in the cache metadata so vitest can check them without recompiling.
-        let earlyErrorCodes: number[] | undefined;
-        if (isNegative) {
-          const diagResult = await pool.compile(wrapped, 20_000, true, undefined, relPath);
-          if (!diagResult.ok) {
-            const ES_EARLY_ERRORS = new Set([1102, 1103, 1210, 1213, 1214, 1359, 1360, 2300, 18050]);
-            earlyErrorCodes = ((diagResult as any).errorCodes || []).filter((c: number) => ES_EARLY_ERRORS.has(c));
+        // Check cache async
+        try {
+          await access(cachePath);
+          await access(metaPath);
+          const cachedMeta = JSON.parse(await readFile(metaPath, "utf-8"));
+          if (cachedMeta.ok === false) {
+            recordCompileResult(relPath, category, "cached_error", cachedMeta.error, cachedMeta.compileMs);
+          } else {
+            recordCompileResult(relPath, category, "cached", undefined, cachedMeta.compileMs);
           }
+          cached++;
+          releaseSlot();
+          return;
+        } catch {
+          // Cache miss — compile
         }
 
-        await writeFile(cachePath, result.binary);
-        await writeFile(metaPath, JSON.stringify({
-          ok: true,
-          stringPool: result.stringPool,
-          imports: result.imports,
-          sourceMap: result.sourceMap,
-          compileMs: result.compileMs,
-          earlyErrorCodes: earlyErrorCodes?.length ? earlyErrorCodes : undefined,
-        }));
-        // Write "compiled" status — vitest will update with exec result
-        recordCompileResult(relPath, category, "compiled", undefined, result.compileMs);
-        compiled++;
-      } else {
-        const isTimeout = result.error?.includes("timeout");
-        // Cache timeouts as a special status so vitest doesn't retry them
-        await writeFile(cachePath, new Uint8Array(0));
-        await writeFile(metaPath, JSON.stringify({
-          ok: false,
-          timeout: isTimeout,
-          error: result.error,
-          errorCodes: (result as any).errorCodes,
-          compileMs: result.compileMs,
-        }));
-        recordCompileResult(relPath, category, isTimeout ? "compile_timeout" : "compile_error", result.error, result.compileMs);
+        const isNegative = meta.negative && (meta.negative.phase === "parse" || meta.negative.phase === "early" || meta.negative.phase === "resolution");
+
+        // Worker writes .wasm + .json directly to disk (no binary over IPC)
+        const result = await pool.compile(wrapped, 20_000, false, undefined, relPath, cachePath, metaPath);
+        if (result.ok) {
+          let earlyErrorCodes: number[] | undefined;
+          if (isNegative) {
+            const diagResult = await pool.compile(wrapped, 20_000, true, undefined, relPath);
+            if (!diagResult.ok) {
+              const ES_EARLY_ERRORS = new Set([1102, 1103, 1210, 1213, 1214, 1359, 1360, 2300, 18050]);
+              earlyErrorCodes = ((diagResult as any).errorCodes || []).filter((c: number) => ES_EARLY_ERRORS.has(c));
+            }
+          }
+
+          // Worker already wrote to disk; only update metadata if we have earlyErrorCodes
+          if (earlyErrorCodes?.length) {
+            const meta = JSON.parse(await readFile(metaPath, "utf-8"));
+            meta.earlyErrorCodes = earlyErrorCodes;
+            await writeFile(metaPath, JSON.stringify(meta));
+          }
+          recordCompileResult(relPath, category, "compiled", undefined, result.compileMs);
+          compiled++;
+        } else {
+          // Worker already wrote error files to disk if paths were provided
+          const isTimeout = result.error?.includes("timeout");
+          if (isTimeout) {
+            // Timeout means worker was killed — write error files ourselves
+            await writeFile(cachePath, new Uint8Array(0));
+            await writeFile(metaPath, JSON.stringify({
+              ok: false,
+              timeout: true,
+              error: result.error,
+              compileMs: result.compileMs,
+            }));
+          }
+          recordCompileResult(relPath, category, isTimeout ? "compile_timeout" : "compile_error", result.error, result.compileMs);
+          errors++;
+        }
+
+        const total = compiled + cached + errors + skipped;
+        if (total % 1000 === 0) logProgress();
+      } catch {
         errors++;
       }
+      releaseSlot();
+    })();
 
-      const total = compiled + cached + errors + skipped;
-      if (total % 1000 === 0) logProgress();
-    } catch {
-      errors++;
-    }
-    releaseSlot();
-  })();
+    jobs.push(job);
+  }
 
-  jobs.push(job);
+  await Promise.all(jobs);
 }
 
-await Promise.all(jobs);
-pool.shutdown();
+// Split tests into batches and process sequentially.
+// Between batches: shutdown pool → GC → fresh pool.
+// Between batches: shutdown forks → OS reclaims all memory → fresh forks.
+const batchSize = Math.ceil(allTests.length / NUM_BATCHES);
+
+for (let b = 0; b < NUM_BATCHES; b++) {
+  const batchTests = allTests.slice(b * batchSize, (b + 1) * batchSize);
+  console.log(`\nBatch ${b + 1}/${NUM_BATCHES}: ${batchTests.length} tests, ${POOL_SIZE} workers`);
+
+  const pool = new CompilerPool(POOL_SIZE);
+  await processBatch(batchTests, pool);
+  pool.shutdown();
+
+  // Force GC between batches to free all worker memory
+  if (typeof globalThis.gc === "function") globalThis.gc();
+  logProgress();
+}
+
 flushJsonl();
 closeSync(jsonlFd);
 

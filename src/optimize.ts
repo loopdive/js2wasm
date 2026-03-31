@@ -193,7 +193,7 @@ function optimizeWithSystemBinary(
   if (!wasmOptPath) return null;
 
   // Write to temp file, run wasm-opt, read result
-  const tmpDir = n.mkdtempSync(n.join(n.tmpdir(), "ts2wasm-opt-"));
+  const tmpDir = n.mkdtempSync(n.join(n.tmpdir(), "js2wasm-opt-"));
   const inputPath = n.join(tmpDir, "input.wasm");
   const outputPath = n.join(tmpDir, "output.wasm");
 
