@@ -10,22 +10,29 @@ import { parentPort } from "node:worker_threads";
 import { compile, createIncrementalCompiler } from "./compiler-bundle.mjs";
 
 let compileCount = 0;
-const MAX_COMPILATIONS = 500; // Restart worker every 500 compilations to prevent state accumulation
+const GC_INTERVAL = 25; // GC every 25 compilations to cap memory growth
+const RECREATE_INTERVAL = 200; // Recreate incremental compiler to release oldProgram AST
+
+const INCREMENTAL_OPTS = {
+  fileName: "test.ts",
+  sourceMap: true,
+  sourceMapUrl: "test.wasm.map",
+  emitWat: false,
+  skipSemanticDiagnostics: true,
+};
 
 // Incremental compiler — reuses parsed lib SourceFiles via oldProgram.
 // Fresh checker per compilation (no state leakage), cached lib parses (fast).
+// Recreated every RECREATE_INTERVAL to release accumulated AST memory.
 let incrementalCompiler = null;
-try {
-  incrementalCompiler = createIncrementalCompiler({
-    fileName: "test.ts",
-    sourceMap: true,
-    sourceMapUrl: "test.wasm.map",
-    emitWat: false,
-    skipSemanticDiagnostics: true,
-  });
-} catch (e) {
-  // Fall back to non-incremental if creation fails
+function createFreshCompiler() {
+  try {
+    incrementalCompiler = createIncrementalCompiler(INCREMENTAL_OPTS);
+  } catch (e) {
+    incrementalCompiler = null;
+  }
 }
+createFreshCompiler();
 
 parentPort.on("message", (msg) => {
   const start = performance.now();
@@ -76,9 +83,13 @@ parentPort.on("message", (msg) => {
   }
 
   compileCount++;
-  // Restart worker periodically to prevent TS compiler state accumulation
-  if (compileCount >= MAX_COMPILATIONS) {
-    process.exit(0);
+  // Recreate incremental compiler to release oldProgram AST + type checker state
+  if (compileCount % RECREATE_INTERVAL === 0) {
+    incrementalCompiler = null;
+    if (typeof globalThis.gc === "function") globalThis.gc();
+    createFreshCompiler();
+  } else if (compileCount % GC_INTERVAL === 0 && typeof globalThis.gc === "function") {
+    globalThis.gc();
   }
 });
 

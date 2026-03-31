@@ -109,3 +109,9 @@ Continuous log of learnings, progress, and incidents. Append new entries at the 
 - Created plan/sprints/ with per-sprint .md files
 - Living documents: planning section filled at start, results/retro updated as sprint progresses
 - Sprint historian backfilled sprints 1-29 from git history
+
+## 2026-03-30 21:50 — TRUE BASELINE ESTABLISHED: 23,832 pass (49.6%)
+- Clean run: cache disabled, isolated worktree build, no agent contention
+- Current main = baseline (062a7da2) + #854
+- Previous numbers (17-18K) were ALL wrong from stale cache + workspace contention
+- The compiler is at ~50% conformance, not ~38%

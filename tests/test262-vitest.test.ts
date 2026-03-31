@@ -1,27 +1,20 @@
 /**
- * Test262 conformance tests via vitest with per-test disk cache.
+ * Test262 conformance tests via vitest — Phase 2 (execution only).
  *
- * Compiles each test262 file through ts2wasm. Compiled Wasm binaries are
- * cached to `.test262-cache/` keyed by a hash of (test source + compiler source).
- * Subsequent runs skip recompilation for unchanged tests.
+ * Reads pre-compiled .wasm + .json from `.test262-cache/` (written by
+ * Phase 1: scripts/precompile-tests.ts). No compilation happens here.
  *
- * Runs all test262 categories with per-test disk cache.
- *
- * Run: npx vitest run tests/test262-vitest.test.ts
+ * Run: pnpm run test:262  (runs both phases via run-test262-vitest.sh)
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync, existsSync, writeFileSync, mkdirSync, readdirSync } from "fs";
 import { Worker } from "worker_threads";
 
 // Prevent unhandled Promise rejections from crashing the vitest fork.
-// Some test262 tests create Promises that reject in the wasm-exec worker;
-// if those rejections propagate to the main thread, they kill the IPC channel.
 process.on("unhandledRejection", () => {});
 import { createHash } from "crypto";
 import { join, relative, dirname, basename } from "path";
-import { createServer, type Server } from "http";
 import { buildImports } from "../src/runtime.js";
-import { CompilerPool, type PoolResult } from "../scripts/compiler-pool.js";
 // Lazy-load compileMulti only when needed (FIXTURE tests) to avoid
 // loading the full compiler into the fork alongside the pool worker.
 let _compileMulti: typeof import("../src/index.js").compileMulti | null = null;
@@ -37,7 +30,6 @@ import {
   parseMeta,
   wrapTest,
   shouldSkip,
-  lookupSourceMapOffset,
   classifyError,
   TEST_CATEGORIES,
 } from "./test262-runner.js";
@@ -49,7 +41,6 @@ import {
 function resolveFixtures(source: string, testFilePath: string): string[] {
   const fixtures: string[] = [];
   const dir = dirname(testFilePath);
-  // Match: import ... from "..._FIXTURE.js"  or  export ... from "..._FIXTURE.js"
   const importRe = /(?:import|export)\s+.*?from\s+['"]([^'"]*_FIXTURE\.js)['"]/g;
   let m;
   while ((m = importRe.exec(source)) !== null) {
@@ -59,50 +50,7 @@ function resolveFixtures(source: string, testFilePath: string): string[] {
   return [...new Set(fixtures)];
 }
 
-
-// ── Local HTTP server for wasm source map stack traces ───────────────
-// V8 only resolves wasm source maps when loading from a URL (not in-memory buffer).
-// We serve compiled .wasm + .wasm.map from test262-out/ so that error stacks include
-// mapped source locations.
-
 const PROJECT_ROOT = join(import.meta.dirname ?? ".", "..");
-const WASM_OUT_DIR = join(PROJECT_ROOT, "test262-out");
-mkdirSync(WASM_OUT_DIR, { recursive: true });
-
-let wasmServer: Server;
-let WASM_PORT = 0;
-
-const serverReady = new Promise<void>((resolve) => {
-  wasmServer = createServer((req, res) => {
-    const url = decodeURIComponent(req.url ?? "/");
-    const filePath = join(WASM_OUT_DIR, url);
-    try {
-      const data = readFileSync(filePath);
-      const ct = url.endsWith(".wasm")
-        ? "application/wasm"
-        : url.endsWith(".map")
-          ? "application/json"
-          : "application/octet-stream";
-      res.writeHead(200, { "Content-Type": ct });
-      res.end(data);
-    } catch {
-      res.writeHead(404);
-      res.end("Not found");
-    }
-  });
-  wasmServer.listen(0, "127.0.0.1", () => {
-    const addr = wasmServer.address();
-    WASM_PORT = typeof addr === "object" && addr ? addr.port : 0;
-    resolve();
-  });
-});
-
-// ── Compiler pool (async worker threads) ─────────────────────────────
-
-// Compiler pool — small (1 worker) since precompiler handles bulk compilation.
-// This only compiles cache misses that the precompiler didn't cover.
-const POOL_SIZE = parseInt(process.env.COMPILER_POOL_SIZE || "1", 10);
-const pool = new CompilerPool(POOL_SIZE);
 
 // ── Wasm execution pool (persistent worker for running compiled tests) ────
 class WasmExecPool {
@@ -111,7 +59,7 @@ class WasmExecPool {
   private nextId = 0;
   private workerPath: string;
   private execCount = 0;
-  private readonly MAX_EXECS = 500; // Restart worker to free Wasm memory
+  private readonly MAX_EXECS = 500;
 
   constructor() {
     this.workerPath = join(import.meta.dirname ?? ".", "..", "scripts", "wasm-exec-worker.mjs");
@@ -129,13 +77,12 @@ class WasmExecPool {
       }
     });
     this.worker.on("error", (err: Error) => {
-      // Worker crashed — reject all pending
       for (const [id, job] of this.pending) {
         clearTimeout(job.timer);
         job.resolve({ ok: false, error: err.message, workerError: true });
       }
       this.pending.clear();
-      this.spawn(); // respawn
+      this.spawn();
     });
     this.worker.on("exit", () => {
       for (const [id, job] of this.pending) {
@@ -143,12 +90,11 @@ class WasmExecPool {
         job.resolve({ ok: false, error: "worker exited", workerError: true });
       }
       this.pending.clear();
-      this.spawn(); // respawn
+      this.spawn();
     });
   }
 
   run(binary: Uint8Array | undefined, imports: any[], stringPool: string[], isRuntimeNegative: boolean, timeoutMs: number, cachePath?: string): Promise<any> {
-    // Periodically restart worker to free accumulated Wasm memory
     this.execCount++;
     if (this.execCount >= this.MAX_EXECS) {
       this.execCount = 0;
@@ -162,7 +108,6 @@ class WasmExecPool {
       const timer = setTimeout(() => {
         this.pending.delete(id);
         resolve({ ok: false, error: "runtime timeout (10s)", timeout: true });
-        // Kill and respawn the stuck worker
         this.worker?.terminate();
         this.worker = null;
         this.spawn();
@@ -171,10 +116,8 @@ class WasmExecPool {
       this.pending.set(id, { resolve, timer });
 
       if (cachePath) {
-        // Cache hit: tell worker to read binary from disk (zero fork heap pressure)
         this.worker!.postMessage({ id, cachePath, imports, stringPool, isRuntimeNegative });
       } else {
-        // Cache miss: pass binary inline (transfer buffer for zero-copy)
         const binaryBuf = binary!.buffer.slice(binary!.byteOffset, binary!.byteOffset + binary!.byteLength);
         this.worker!.postMessage(
           { id, binary: new Uint8Array(binaryBuf), imports, stringPool, isRuntimeNegative },
@@ -190,9 +133,8 @@ class WasmExecPool {
 }
 
 const execPool = new WasmExecPool();
-// Pool workers load compiler-bundle.mjs — already has skipSemanticDiagnostics
 
-// ── Ensure compiler bundle is up to date ─────────────────────────────
+// ── Ensure compiler bundle is up to date ─────────────────────────
 // Always rebuild before running tests — prevents stale bundle regardless
 // of how vitest is invoked (script, direct, agent, etc.)
 import { execSync } from "child_process";
@@ -206,7 +148,7 @@ try {
   // Bundle build failed — tests will use whatever bundle exists
 }
 
-// Build runtime bundle for wasm-exec-worker (worker threads can't use vitest transforms)
+// Build runtime bundle for wasm-exec-worker
 try {
   const root = join(import.meta.dirname ?? ".", "..");
   execSync(
@@ -217,73 +159,31 @@ try {
   // Runtime bundle build failed — worker will fail to load
 }
 
-// ── Cache setup ──────────────────────────────────────────────────────
-
-//! FIXME: stale cache caused wrong test262 numbers — the cache hash keys on
-//! compiler-bundle.mjs but when the bundle was built from /workspace (wrong branch),
-//! cache entries from that build persisted and inflated/deflated pass counts.
-//! Must investigate why buildCompilerHash() didn't detect the compiler change.
-const USE_CACHE = false;
+// ── Cache setup ──────────────────────────────────────────────────
 
 const CACHE_DIR = join(import.meta.dirname ?? ".", "..", ".test262-cache");
-if (USE_CACHE) mkdirSync(CACHE_DIR, { recursive: true });
 
 /**
- * Build a short hash of all compiler source files. When any codegen file
- * changes, the entire cache is effectively invalidated (new hashes).
- *
- * Hashes ALL .ts files in src/codegen/ (not a fixed list) plus the checker
- * and runtime — so new extracted files are automatically included.
+ * Build a short hash of compiler source files (must match precompile-tests.ts).
  */
 function buildCompilerHash(): string {
   const h = createHash("md5");
   const root = join(import.meta.dirname ?? ".", "..");
-
-  // Hash the compiler bundle — this is what actually runs.
-  // If the bundle is stale, the hash won't match and we recompile.
-  const bundlePath = join(root, "scripts", "compiler-bundle.mjs");
-  try {
-    h.update(readFileSync(bundlePath));
-  } catch {
-    // No bundle — hash all source files as fallback
-    h.update("no-bundle");
-  }
-
-  // Also hash the test runner (affects test wrapping/harness)
-  try {
-    h.update(readFileSync(join(import.meta.dirname ?? ".", "test262-runner.ts")));
-  } catch {
-    h.update("no-runner");
-  }
-
-  // And runtime.ts (affects host imports)
-  try {
-    h.update(readFileSync(join(root, "src", "runtime.ts")));
-  } catch {
-    h.update("no-runtime");
-  }
-
+  try { h.update(readFileSync(join(root, "scripts", "compiler-bundle.mjs"))); } catch { h.update("no-bundle"); }
+  try { h.update(readFileSync(join(import.meta.dirname ?? ".", "test262-runner.ts"))); } catch { h.update("no-runner"); }
+  try { h.update(readFileSync(join(root, "src", "runtime.ts"))); } catch { h.update("no-runtime"); }
   return h.digest("hex").slice(0, 12);
 }
 
 const compilerHash = buildCompilerHash();
 
-// ── Cache-aware async compilation via pool ───────────────────────────
-
 /**
- * Compile wrapped test source via worker pool, with disk cache.
- * Cache hit: <1ms (read from disk). Cache miss: async dispatch to pool worker.
- * Multiple tests can await compilation concurrently — pool dispatches to
- * free workers and queues the rest.
+ * Read pre-compiled test from disk cache. Returns cached metadata + cachePath,
+ * or null if the cache entry doesn't exist (unexpected in two-phase mode).
  */
-async function getOrCompile(
+function readFromCache(
   wrappedSource: string,
-  relPath?: string,
-): Promise<{ ok: true; binary: Uint8Array; result: any; cachePath?: string } | { ok: false; error: string }> {
-  // Compute the source map URL filename from relPath (e.g. "test/.../S11.js" -> "S11.wasm.map")
-  const wasmRelPath = relPath ? relPath.replace(/\.js$/, ".wasm") : undefined;
-  const sourceMapFilename = wasmRelPath ? basename(wasmRelPath) + ".map" : "test.wasm.map";
-
+): { ok: true; result: any; cachePath: string } | { ok: false; error: string; errorCodes?: number[]; timeout?: boolean } | null {
   const hash = createHash("md5")
     .update(wrappedSource)
     .update(compilerHash)
@@ -291,79 +191,22 @@ async function getOrCompile(
   const wasmCachePath = join(CACHE_DIR, `${hash}.wasm`);
   const metaPath = join(CACHE_DIR, `${hash}.json`);
 
-  let binary: Uint8Array | undefined;
-  let result: any;
-  let hitCache = false;
-
-  // Cache hit: read only metadata — binary will be read by exec worker from disk
-  if (USE_CACHE && existsSync(wasmCachePath) && existsSync(metaPath)) {
-    try {
-      const meta = JSON.parse(readFileSync(metaPath, "utf-8"));
-      // Cached compile error or timeout — return immediately without recompiling
-      if (meta.ok === false) {
-        return { ok: false, error: meta.error, errorCodes: meta.errorCodes, timeout: meta.timeout };
-      }
-      result = meta;
-      hitCache = true;
-    } catch {
-      // Corrupted cache entry — fall through to recompile
-      result = undefined;
-    }
+  if (!existsSync(wasmCachePath) || !existsSync(metaPath)) {
+    return null; // Cache miss — not precompiled
   }
 
-  if (!hitCache) {
-    // Cache miss: async compile via pool worker with race timeout
-    const poolResult = await Promise.race([
-      pool.compile(wrappedSource, 10_000, false, sourceMapFilename, relPath),
-      new Promise<PoolResult>((resolve) =>
-        setTimeout(() => resolve({ ok: false, error: "compilation timeout (10s race)", compileMs: 10000 } as PoolResult), 10_000)
-      ),
-    ]);
-    if (!poolResult.ok) {
-      return { ok: false, error: poolResult.error };
+  try {
+    const meta = JSON.parse(readFileSync(metaPath, "utf-8"));
+    if (meta.ok === false) {
+      return { ok: false, error: meta.error, errorCodes: meta.errorCodes, timeout: meta.timeout };
     }
-    binary = poolResult.binary;
-    result = { stringPool: poolResult.stringPool, imports: poolResult.imports, sourceMap: poolResult.sourceMap };
-
-    // Write to cache
-    if (!USE_CACHE) { /* skip cache write */ } else try {
-      writeFileSync(wasmCachePath, binary);
-      writeFileSync(
-        metaPath,
-        JSON.stringify({
-          stringPool: poolResult.stringPool,
-          imports: poolResult.imports,
-          sourceMap: poolResult.sourceMap,
-        }),
-      );
-    } catch {
-      // Cache write failure is non-fatal
-    }
+    return { ok: true, result: meta, cachePath: wasmCachePath };
+  } catch {
+    return null; // Corrupted cache entry
   }
-
-  // Write .wasm and .wasm.map to test262-out/ for HTTP serving
-  if (wasmRelPath && binary) {
-    try {
-      const outWasm = join(WASM_OUT_DIR, wasmRelPath);
-      mkdirSync(dirname(outWasm), { recursive: true });
-      writeFileSync(outWasm, binary);
-      if (result.sourceMap) {
-        writeFileSync(outWasm + ".map", result.sourceMap);
-      }
-    } catch {
-      // Non-fatal — falls back to in-memory instantiation
-    }
-  }
-
-  // For cache hits, return cachePath so exec worker can read from disk
-  // instead of passing the binary through the fork's heap.
-  if (hitCache) {
-    return { ok: true, binary: undefined as any, result, cachePath: wasmCachePath };
-  }
-  return { ok: true, binary: binary!, result };
 }
 
-// ── Result tracking (JSONL output for report.html) ──────────────────
+// ── Result tracking (JSONL output for report.html) ──────────────
 
 import { writeFileSync as writeSync, openSync, writeSync as fdWrite, closeSync, fsyncSync } from "fs";
 import { afterAll } from "vitest";
@@ -373,27 +216,15 @@ mkdirSync(RESULTS_DIR, { recursive: true });
 const JSONL_PATH = join(RESULTS_DIR, "test262-results.jsonl");
 const REPORT_PATH = join(RESULTS_DIR, "test262-report.json");
 
-// Open results JSONL in append mode — truncation handled by run-test262.sh
-// before vitest starts (avoids race condition with multiple forks)
 const jsonlFd = openSync(JSONL_PATH, "a");
 let flushCount = 0;
-const REPORT_FLUSH_INTERVAL = 500; // update report.json every 500 tests
+const REPORT_FLUSH_INTERVAL = 500;
 
 const summary = { total: 0, pass: 0, fail: 0, compile_error: 0, compile_timeout: 0, skip: 0 };
 const catCounts: Record<string, { pass: number; fail: number; compile_error: number; skip: number; total: number }> = {};
-
-/**
- * Error category counts — tracks how many failures fall into each bucket.
- * See classifyError() in test262-runner.ts for category definitions.
- */
 const errorCategoryCounts: Record<string, number> = {};
-
-/**
- * Skip reason counts — tracks why tests were skipped (unsupported features).
- */
 const skipReasonCounts: Record<string, number> = {};
 
-/** Thrown by recordResult for non-passing tests so vitest reports real failures */
 class ConformanceError extends Error {
   constructor(status: string, detail?: string) {
     super(`[${status}] ${detail || "unknown"}`);
@@ -401,7 +232,7 @@ class ConformanceError extends Error {
   }
 }
 
-// Periodic GC to prevent fork OOM — cache reads accumulate heap pressure
+// Periodic GC to prevent fork OOM
 const GC_INTERVAL = 200;
 
 function recordResult(file: string, category: string, status: string, error?: string, timing?: { compileMs?: number; execMs?: number }) {
@@ -424,20 +255,20 @@ function recordResult(file: string, category: string, status: string, error?: st
   (catCounts[category] as any)[status]++;
   catCounts[category].total++;
 
-  // Track error category counts
   if (errorCategory) {
     errorCategoryCounts[errorCategory] = (errorCategoryCounts[errorCategory] || 0) + 1;
   }
 
-  // Track skip reasons
   if (status === "skip" && error) {
     skipReasonCounts[error] = (skipReasonCounts[error] || 0) + 1;
   }
 
-  // Periodically flush JSONL and update report.json for live viewing
   flushCount++;
   if (flushCount % 50 === 0) {
     try { fsyncSync(jsonlFd); } catch {}
+  }
+  if (flushCount % GC_INTERVAL === 0 && typeof globalThis.gc === "function") {
+    globalThis.gc();
   }
   if (flushCount % REPORT_FLUSH_INTERVAL === 0) {
     const report = {
@@ -452,15 +283,13 @@ function recordResult(file: string, category: string, status: string, error?: st
     try { writeSync(REPORT_PATH, JSON.stringify(report, null, 2)); } catch {}
   }
 
-  // Fail the vitest test for non-passing results (compile_timeout is expected, not a test failure)
-  if (status !== "pass" && status !== "skip" && status !== "compile_timeout") {
+  if (status !== "pass") {
     throw new ConformanceError(status, error);
   }
 }
 
 afterAll(() => {
-  try { pool.shutdown(); } catch {}
-  try { wasmServer?.close(); } catch {}
+  try { execPool.shutdown(); } catch {}
   try { closeSync(jsonlFd); } catch {}
 
   const report = {
@@ -474,7 +303,6 @@ afterAll(() => {
   };
   writeSync(REPORT_PATH, JSON.stringify(report, null, 2));
 
-  // Print error category breakdown
   const ecEntries = Object.entries(errorCategoryCounts).sort((a, b) => b[1] - a[1]);
   if (ecEntries.length > 0) {
     console.log(`\nError categories:`);
@@ -483,7 +311,6 @@ afterAll(() => {
     }
   }
 
-  // Print skip reason breakdown
   const skipEntries = Object.entries(skipReasonCounts).sort((a, b) => b[1] - a[1]);
   if (skipEntries.length > 0) {
     console.log(`\nUnsupported features (skipped):`);
@@ -494,26 +321,23 @@ afterAll(() => {
 
   console.log(`\nTest262: ${summary.total} total — ${summary.pass} pass, ${summary.fail} fail, ${summary.compile_error} CE, ${summary.skip} skip`);
 
-  // Append to historical index (runs/index.json) for trend tracking
+  // Append to historical index (runs/index.json)
   try {
     const RUNS_DIR = join(RESULTS_DIR, "runs");
     mkdirSync(RUNS_DIR, { recursive: true });
     const INDEX_PATH = join(RUNS_DIR, "index.json");
 
-    // Get git hash
     let gitHash = "unknown";
     try {
       const { execSync } = require("child_process");
       gitHash = execSync("git rev-parse --short HEAD", { encoding: "utf-8" }).trim();
     } catch {}
 
-    // Read existing index
     let index: any[] = [];
     try {
       index = JSON.parse(readFileSync(INDEX_PATH, "utf-8"));
     } catch {}
 
-    // Append new entry
     index.push({
       timestamp: report.timestamp,
       pass: summary.pass,
@@ -525,17 +349,11 @@ afterAll(() => {
     });
 
     writeSync(INDEX_PATH, JSON.stringify(index, null, 2) + "\n");
-  } catch {
-    // Non-fatal — index update failure should not break the test run
-  }
+  } catch {}
 });
 
-// ── Assertion lookup (maps returned N to the Nth assert in the source) ──
+// ── Assertion lookup ────────────────────────────────────────────
 
-/**
- * Adjust line numbers in error messages from wrapped-source coordinates
- * back to original test file coordinates.
- */
 function adjustErrorLines(msg: string, offset: number): string {
   if (offset === 0) return msg;
   return msg.replace(/\bL(\d+)(:\d+)?/g, (_m, line, col) => {
@@ -544,104 +362,21 @@ function adjustErrorLines(msg: string, offset: number): string {
   });
 }
 
-/**
- * Use source map to resolve a wasm error to a source line.
- * Extracts byte offset from V8 wasm stack trace, looks it up in the source map,
- * and appends the original source line.
- */
-function resolveWasmErrorLine(
-  err: any, sourceMap: string | null, source: string, bodyLineOffset: number,
-): string {
-  const msg = err.message ?? String(err);
-  const stack = typeof err?.stack === "string" ? err.stack : "";
-
-  // V8 source-mapped format: "at funcName (test.ts:LINE:COL)" or "at test.ts:LINE:COL"
-  // When wasm is loaded via URL with a source map, V8 resolves locations automatically.
-  // V8 source-mapped stacks may have multiple frames — find the first one in the test body
-  const frameRegex = /at\s+(?:(\w+)\s+)?\(?(?:.*?\.ts):(\d+):(\d+)\)?/g;
-  let bestMatch: { funcName: string; rawLine: number; adjLine: number } | null = null;
-  let match: RegExpExecArray | null;
-  while ((match = frameRegex.exec(stack)) !== null) {
-    const funcName = match[1] ?? "";
-    const rawLine = parseInt(match[2], 10);
-    const adjLine = rawLine - bodyLineOffset;
-    // Prefer the first frame that maps to the test body (adjLine > 0 and within source)
-    if (adjLine > 0 && adjLine <= source.split("\n").length) {
-      bestMatch = { funcName, rawLine, adjLine };
-      break;
-    }
-    // Keep the first frame as fallback
-    if (!bestMatch) bestMatch = { funcName, rawLine, adjLine };
-  }
-  if (bestMatch) {
-    const lines = source.split("\n");
-    if (bestMatch.adjLine > 0 && bestMatch.adjLine <= lines.length) {
-      const ctx = lines[bestMatch.adjLine - 1]?.trim().substring(0, 80) || "(empty line)";
-      return `${msg} [at L${bestMatch.adjLine}: ${ctx}]`;
-    }
-    // Line is in preamble — show function name if available
-    const where = bestMatch.funcName ? `in ${bestMatch.funcName}()` : "in test wrapper";
-    return `${msg} [${where}]`;
-  }
-
-  // Try to extract wasm byte offset from stack trace
-  // V8 formats: "at func (wasm://wasm/hash:wasm-function[N]:0xOFFSET)"
-  //             "at wasm://wasm/hash:wasm-function[N]:0xOFFSET"
-  const offsetMatch = stack.match(/:0x([0-9a-fA-F]+)/) ?? msg.match(/@\+(\d+)/);
-
-  // Also extract function name from wasm stack
-  const funcMatch = stack.match(/at (\w+) \(wasm:\/\//);
-  const funcName = funcMatch?.[1];
-
-  // Try source map lookup
-  if (sourceMap && offsetMatch) {
-    try {
-      const byteOffset = parseInt(offsetMatch[1], 16);
-      const mapped = lookupSourceMapOffset(sourceMap, byteOffset);
-      if (mapped && mapped.line > 0) {
-        const adjLine = mapped.line - bodyLineOffset;
-        const srcLine = adjLine > 0 ? adjLine : mapped.line;
-        const lines = source.split("\n");
-        const ctx = lines[srcLine - 1]?.trim().substring(0, 80) || "(empty line)";
-        return `${msg} [at L${srcLine}: ${ctx}]`;
-      }
-    } catch {}
-  }
-
-  // Fallback: try to find function name in source
-  if (funcName && funcName !== "test") {
-    const lines = source.split("\n");
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].includes(`function ${funcName}`) || lines[i].includes(`${funcName}(`)) {
-        return `${msg} [in ${funcName}() at L${i + 1}]`;
-      }
-    }
-    return `${msg} [in ${funcName}()]`;
-  }
-
-  return msg;
-}
-
 function findNthAssert(source: string, retVal: number): string {
-  // __assert_count starts at 1 and increments before check, so returned N
-  // means the (N-1)th assertion failed. -1 means a catch block fired.
   if (retVal === -1) return "exception caught in test body";
-  const idx = retVal - 1; // 0-based assertion index (returned 2 → 1st assert)
+  const idx = retVal - 1;
   if (idx < 1) return `early return (${retVal})`;
 
-  // Find all assert-like calls in the original source
-  // Match multi-line assert calls by finding the opening and counting parens
   const lines = source.split("\n");
   const assertStarts: { line: number; text: string }[] = [];
   for (let i = 0; i < lines.length; i++) {
     if (/\bassert\b/.test(lines[i])) {
-      // Collect up to 3 lines for multi-line asserts
       const text = lines.slice(i, Math.min(i + 3, lines.length)).join(" ").trim();
       assertStarts.push({ line: i + 1, text: text.substring(0, 120) });
     }
   }
 
-  const target = idx - 1; // convert to 0-based index into assertStarts
+  const target = idx - 1;
   if (target >= 0 && target < assertStarts.length) {
     const a = assertStarts[target];
     return `assert #${idx} at L${a.line}: ${a.text}`;
@@ -649,16 +384,12 @@ function findNthAssert(source: string, retVal: number): string {
   return `assert #${idx} (found ${assertStarts.length} asserts in source)`;
 }
 
-// ── Test generation ──────────────────────────────────────────────────
+// ── Test generation ──────────────────────────────────────────────
 
 const TEST262_ROOT = join(import.meta.dirname ?? ".", "..", "test262");
 
-// ── Two-phase execution: compile all tests first, then run them ───────
-// Phase 1 (beforeAll): dispatch ALL compilations to the pool in parallel.
-//   The pool has POOL_SIZE workers — all stay 100% busy until done.
-//   Results are stored in a Map keyed by relPath.
-// Run all categories — precompiler handles bulk compilation, vitest executes.
-// Cache hits are instant (disk read). Cache misses compile on-demand (1 worker).
+// Phase 2: read pre-compiled cache entries and execute them.
+// Cache was populated by Phase 1 (scripts/precompile-tests.ts).
 for (const category of TEST_CATEGORIES) {
   const files = findTestFiles(category);
   if (files.length === 0) continue;
@@ -670,7 +401,6 @@ for (const category of TEST_CATEGORIES) {
       it(relPath, async () => {
         const source = readFileSync(filePath, "utf-8");
         const meta = parseMeta(source);
-        const bodyLineOffset = 0;
 
         // Handle skips
         const filter = shouldSkip(source, meta, filePath);
@@ -679,17 +409,16 @@ for (const category of TEST_CATEGORIES) {
           return;
         }
 
-        await serverReady;
-
-        // Wrap and compile (cache hit = instant, miss = compile via pool)
+        // Wrap test (same as precompiler — must produce identical source for hash match)
         const { source: wrapped, bodyLineOffset: wrapOffset } = wrapTest(source, meta);
         const isNegative = meta.negative && (meta.negative.phase === "parse" || meta.negative.phase === "early" || meta.negative.phase === "resolution");
 
-        // Multi-file compilation for FIXTURE imports
+        // Multi-file compilation for FIXTURE imports (can't be precompiled)
         const fixtures = resolveFixtures(source, filePath);
-        let compileResult: { ok: true; binary: Uint8Array; result: any; cachePath?: string } | { ok: false; error: string };
+        let compileResult: { ok: true; binary: Uint8Array; result: any; cachePath?: string } | { ok: false; error: string; errorCodes?: number[]; timeout?: boolean };
 
         if (fixtures.length > 0) {
+          // FIXTURE tests: compile inline (rare, can't be precompiled)
           try {
             const vfiles: Record<string, string> = { "./test.ts": wrapped };
             for (const fixPath of fixtures) {
@@ -706,12 +435,18 @@ for (const category of TEST_CATEGORIES) {
             compileResult = { ok: false, error: e.message ?? String(e) };
           }
         } else {
-          compileResult = await getOrCompile(wrapped, relPath);
+          // Normal path: read from pre-compiled cache
+          const cached = readFromCache(wrapped);
+          if (cached === null) {
+            // Cache miss — this shouldn't happen in two-phase mode, but handle gracefully
+            recordResult(relPath, category, "compile_error", "not in precompile cache (run Phase 1 first)");
+            return;
+          }
+          compileResult = cached;
         }
 
         // Handle negative parse/early tests
         if (isNegative) {
-          // Check for ES early errors detected by the precompiler's second pass
           const earlyErrors = compileResult.ok ? (compileResult.result as any)?.earlyErrorCodes : undefined;
           if (earlyErrors?.length > 0) {
             recordResult(relPath, category, "pass");
@@ -719,23 +454,21 @@ for (const category of TEST_CATEGORIES) {
           }
 
           if (!compileResult.ok) {
-            // Compile error — the test expected compilation to fail
             const ES_EARLY_ERRORS = new Set([1102, 1103, 1210, 1213, 1214, 1359, 1360, 2300, 18050]);
             const codes = (compileResult as any).errorCodes as number[] | undefined;
             const hasEarlyError = codes?.some((c: number) => ES_EARLY_ERRORS.has(c));
             if (hasEarlyError) {
               recordResult(relPath, category, "pass");
             } else {
-              // Compile error but not from an ES early error — still counts as pass
-              // since the test expected compilation to fail
               recordResult(relPath, category, "pass");
             }
             return;
           }
           // Compilation succeeded — try instantiation (Wasm validation may catch errors)
           try {
+            const binary = compileResult.cachePath ? readFileSync(compileResult.cachePath) : compileResult.binary;
             const imports = buildImports(compileResult.result.imports, undefined, compileResult.result.stringPool);
-            await WebAssembly.instantiate(compileResult.binary, imports as any);
+            await WebAssembly.instantiate(binary, imports as any);
           } catch {
             recordResult(relPath, category, "pass"); return;
           }
@@ -751,14 +484,14 @@ for (const category of TEST_CATEGORIES) {
           return;
         }
 
-        // Execute
+        // Execute via worker
         const isRuntimeNegative = meta.negative?.phase === "runtime";
         const EXEC_TIMEOUT_MS = 10_000;
         const compileMs = compileResult.result?.compileMs;
 
         const execStart = performance.now();
         const workerResult = await execPool.run(
-          compileResult.binary,
+          compileResult.cachePath ? undefined : compileResult.binary,
           compileResult.result.imports,
           compileResult.result.stringPool,
           isRuntimeNegative,
@@ -775,7 +508,6 @@ for (const category of TEST_CATEGORIES) {
         }
 
         if (workerResult.instantiateError) {
-          // Wasm validation errors — extract function name + byte offset
           const msg = workerResult.error;
           const funcMatch = msg.match(/Compiling function #\d+:"(\w+)" failed/);
           const offsetMatch = msg.match(/@\+(\d+)/);
@@ -834,12 +566,10 @@ for (const category of TEST_CATEGORIES) {
         }
 
         if (!workerResult.ok) {
-          // Runtime exception — enrich with source line info
           if (workerResult.isException) {
             let errInfo = workerResult.error;
             const desc = meta.description?.substring(0, 100) ?? "";
 
-            // Map [in funcName()] to source line
             const fnMatch = errInfo.match(/\[in (\w+)\(\)\]/);
             if (fnMatch) {
               const fname = fnMatch[1];
@@ -855,7 +585,6 @@ for (const category of TEST_CATEGORIES) {
               }
             }
 
-            // If it looks like a TypeError on null access, add test description
             if (/TypeError \(null\/undefined/.test(errInfo)) {
               recordResult(relPath, category, "fail", `${errInfo}${desc ? `: ${desc}` : ""}`, timing);
             } else {

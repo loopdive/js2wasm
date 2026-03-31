@@ -826,5 +826,95 @@
     "skip": 6580,
     "total": 48088,
     "gitHash": "7ed3c456"
+  },
+  {
+    "timestamp": "2026-03-30T21:45:42.000Z",
+    "pass": 17252,
+    "fail": 21337,
+    "ce": 2919,
+    "skip": 6580,
+    "total": 48088,
+    "gitHash": "08cc4778",
+    "note": "clean baseline — cache disabled, conformance count (not vitest count)"
+  },
+  {
+    "timestamp": "2026-03-31T01:24:13.763Z",
+    "pass": 2179,
+    "fail": 2644,
+    "ce": 355,
+    "skip": 833,
+    "total": 6011,
+    "gitHash": "4be8d50d",
+    "chunk": true
+  },
+  {
+    "timestamp": "2026-03-31T01:24:29.966Z",
+    "pass": 2141,
+    "fail": 2692,
+    "ce": 358,
+    "skip": 820,
+    "total": 6011,
+    "gitHash": "4be8d50d",
+    "chunk": true
+  },
+  {
+    "timestamp": "2026-03-31T01:27:24.124Z",
+    "pass": 2149,
+    "fail": 2669,
+    "ce": 374,
+    "skip": 819,
+    "total": 6011,
+    "gitHash": "4be8d50d",
+    "chunk": true
+  },
+  {
+    "timestamp": "2026-03-31T01:27:25.033Z",
+    "pass": 2176,
+    "fail": 2629,
+    "ce": 378,
+    "skip": 828,
+    "total": 6011,
+    "gitHash": "4be8d50d",
+    "chunk": true
+  },
+  {
+    "timestamp": "2026-03-31T01:30:36.773Z",
+    "pass": 2122,
+    "fail": 2686,
+    "ce": 382,
+    "skip": 821,
+    "total": 6011,
+    "gitHash": "4be8d50d",
+    "chunk": true
+  },
+  {
+    "timestamp": "2026-03-31T01:30:48.052Z",
+    "pass": 2149,
+    "fail": 2657,
+    "ce": 381,
+    "skip": 824,
+    "total": 6011,
+    "gitHash": "4be8d50d",
+    "chunk": true
+  },
+  {
+    "timestamp": "2026-03-31T01:33:52.591Z",
+    "pass": 2192,
+    "fail": 2666,
+    "ce": 334,
+    "skip": 819,
+    "total": 6011,
+    "gitHash": "4be8d50d",
+    "chunk": true
+  },
+  {
+    "timestamp": "2026-03-31T01:34:01.003Z",
+    "pass": 2158,
+    "fail": 2682,
+    "ce": 355,
+    "skip": 816,
+    "total": 6011,
+    "gitHash": "4be8d50d",
+    "chunk": true
   }
 ]
