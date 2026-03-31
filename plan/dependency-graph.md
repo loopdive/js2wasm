@@ -89,7 +89,7 @@ All independent -- can run in parallel (different codegen paths).
 
 | #   | Title | Impact | Ready? |
 |-----|-------|--------|--------|
-| 849 | Mapped arguments object sync with named params | **200 FAIL** | **Ready** |
+| ~~849~~ | ~~Mapped arguments object sync with named params~~ | ~~**200 FAIL**~~ | **Done** |
 | 855 | Promise resolution and async error handling | **210 FAIL** | **Ready** |
 | 856 | Expected TypeError but got wrong error type | **136 FAIL** | **Ready** |
 | 858 | Worker/timeout exits and eval-code null deref | **182 FAIL** | **Ready** |
