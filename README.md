@@ -1,10 +1,14 @@
 <p align="center">
+<<<<<<< HEAD
   <img src="./jswasmlogo.png" alt="ts2wasm" width="300" />
+=======
+  <img src="./playground/image.png" alt="js2wasm" width="300" />
+>>>>>>> 18e6a09de5e24883ff85809ea89d6dd17a3ccb5e
 </p>
 
-# ts2wasm Typescript to WebAssembly Compiler
+# js2wasm ECMAScript to WebAssembly Compiler
 
-AOT compiler that compiles a strict subset of TypeScript directly to WebAssembly with the GC proposal.
+AOT compiler that compiles Javascript directly to WebAssembly with the GC proposal.
 
 Runs entirely in the browser – no server, no build step for user code.
 
@@ -12,13 +16,13 @@ Runs entirely in the browser – no server, no build step for user code.
 TS Source (String) → tsc Parser+Checker → Codegen → Wasm GC Binary (Uint8Array) → WebAssembly.instantiate()
 ```
 
-## Why ts2wasm?
+## Why js2wasm?
 
-TypeScript normally transpiles to JavaScript, which requires a JS engine to run and provides no sandboxing between modules – any module can access globals, the filesystem, the network, or mutate shared state. ts2wasm compiles TypeScript directly to WebAssembly instead, which unlocks features that regular TS/JS does not have:
+TypeScript normally transpiles to JavaScript, which requires a JS engine to run and provides no sandboxing between modules – any module can access globals, the filesystem, the network, or mutate shared state. js2wasm compiles TypeScript directly to WebAssembly instead, which unlocks features that regular TS/JS does not have:
 
 - **Run untrusted TypeScript safely in-process** – a Wasm module runs in a sandboxed linear memory with no access to the host filesystem, network, or globals unless explicitly imported. No need to spin up a separate isolate or subprocess. This helps limit the blast radius of security vulnerabilities and supply chain attacks.
-- **No runtime embedding required** – Run TypeScript in environments without a JS engine like embedded systems, Wasm-only runtimes (wasmtime, wasmer, wazero), or any host that speaks Wasm but not JavaScript. because ts2wasm targets Wasm GC, the engine manages memory and garbage collection natively. There is no runtime, allocator, or standard library bundled into the output. Compiled modules are in the range of a few hundred bytes to a few kilobytes – smaller than what virtually any other language can achieve when compiling to Wasm. This makes tiny ESM style modules practical.
-- **No need to think about glue code** – ts2wasm provides a helper function to create bindings for JS and DOM APIs transparently, so you can use them in your TypeScript code without having to adapt your code given you don't use any features that are not supported by ts2wasm. Glue code for JS and DOM APIs is provided once by the host, not per module, Support for the upcoming `wasm:js-string` built-in is already present.
+- **No runtime embedding required** – Run TypeScript in environments without a JS engine like embedded systems, Wasm-only runtimes (wasmtime, wasmer, wazero), or any host that speaks Wasm but not JavaScript. because js2wasm targets Wasm GC, the engine manages memory and garbage collection natively. There is no runtime, allocator, or standard library bundled into the output. Compiled modules are in the range of a few hundred bytes to a few kilobytes – smaller than what virtually any other language can achieve when compiling to Wasm. This makes tiny ESM style modules practical.
+- **No need to think about glue code** – js2wasm provides a helper function to create bindings for JS and DOM APIs transparently, so you can use them in your TypeScript code without having to adapt your code given you don't use any features that are not supported by js2wasm. Glue code for JS and DOM APIs is provided once by the host, not per module, Support for the upcoming `wasm:js-string` built-in is already present.
 
 ## Example
 
@@ -80,7 +84,7 @@ pnpm dev         # Start playground
 ## CLI
 
 ```bash
-ts2wasm input.ts [options]
+js2wasm input.ts [options]
 ```
 
 | Option            | Description                               |
@@ -95,7 +99,7 @@ Output files: `<name>.wasm`, `<name>.wat`, `<name>.d.ts`, `<name>.imports.js`
 ## API
 
 ```ts
-import { compile } from "ts2wasm";
+import { compile } from "js2wasm";
 
 const result = compile(`
   export function add(a: number, b: number): number {
@@ -141,7 +145,7 @@ Returns only the WAT text (debug).
 
 ## ES Conformance
 
-ts2wasm passes **18,167 / 47,797** tests from the [ECMAScript test262 conformance suite](https://github.com/nicolo-ribaudo/tc39-proposal-test262) (38%). Conformance is improving with each release.
+js2wasm passes **18,167 / 47,797** tests from the [ECMAScript test262 conformance suite](https://github.com/nicolo-ribaudo/tc39-proposal-test262) (38%). Conformance is improving with each release.
 
 ### What Works Well
 
@@ -172,6 +176,7 @@ ts2wasm passes **18,167 / 47,797** tests from the [ECMAScript test262 conformanc
 
 ### ECMAScript Standard Features Not Yet Supported
 
+<<<<<<< HEAD
 | Standard | Feature                                 | Status                                                         | Tests |
 | -------- | --------------------------------------- | -------------------------------------------------------------- | ----: |
 | ES5      | `with` statement                        | Strict mode only — incompatible with static compilation        |   560 |
@@ -185,6 +190,21 @@ ts2wasm passes **18,167 / 47,797** tests from the [ECMAScript test262 conformanc
 | ES2020   | BigInt64Array / BigUint64Array          | Not yet implemented                                            |    28 |
 | ES2025   | Temporal API                            | Not yet implemented                                            | 4,376 |
 | ES2025   | Set methods (union, intersection, etc.) | Not yet implemented                                            |   186 |
+=======
+| Standard | Feature | Status | Tests |
+|----------|---------|--------|------:|
+| ES5 | `with` statement | Strict mode only — incompatible with static compilation | 560 |
+| ES5 | Octal escape sequences | Forbidden in strict/module mode | 16 |
+| ES5 | Sloppy mode behaviors | js2wasm compiles in strict mode exclusively | 8 |
+| ES2015 | Multi-module `import` | Single-file compilation; basic multi-file via `compileMulti()` | 783 |
+| ES2015 | Proxy | Partial — basic traps work, not all handler methods | — |
+| ES2015 | Full `arguments` object | Partial — basic access works, `arguments.callee` not supported | — |
+| ES2017 | SharedArrayBuffer / Atomics | Requires shared Wasm memory (not yet available in WasmGC) | 460 |
+| ES2020 | Dynamic `import()` | No runtime module loader | 432 |
+| ES2020 | BigInt64Array / BigUint64Array | Not yet implemented | 28 |
+| ES2025 | Temporal API | Not yet implemented | 4,376 |
+| ES2025 | Set methods (union, intersection, etc.) | Not yet implemented | 186 |
+>>>>>>> 18e6a09de5e24883ff85809ea89d6dd17a3ccb5e
 
 ### ECMAScript Proposals (Not Yet Standardized)
 
@@ -265,7 +285,7 @@ Use `--nativeStrings` to use WasmGC i16 arrays instead of `wasm:js-string`.
 │                 │ Typed AST                               │
 │                 ▼                                         │
 │  ┌──────────────────────────────┐                         │
-│  │  ts2wasm Codegen             │                         │
+│  │  js2wasm Codegen             │                         │
 │  │  - AST → IR                  │                         │
 │  │  - IR → Wasm Binary          │                         │
 │  │  - IR → WAT Text (debug)     │                         │
@@ -283,11 +303,11 @@ Use `--nativeStrings` to use WasmGC i16 arrays instead of `wasm:js-string`.
 ## Project Structure
 
 ```
-ts2wasm/
+js2wasm/
 ├── src/
 │   ├── index.ts              # Public API: compile(), compileToWat()
 │   ├── compiler.ts           # Pipeline: parse → check → codegen → emit
-│   ├── cli.ts                # CLI entry point (ts2wasm <input.ts>)
+│   ├── cli.ts                # CLI entry point (js2wasm <input.ts>)
 │   ├── import-resolver.ts    # import → declare stub transformation
 │   ├── checker/
 │   │   ├── index.ts          # tsc integration with in-memory CompilerHost
