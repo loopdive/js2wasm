@@ -115,3 +115,31 @@ Continuous log of learnings, progress, and incidents. Append new entries at the 
 - Current main = baseline (062a7da2) + #854
 - Previous numbers (17-18K) were ALL wrong from stale cache + workspace contention
 - The compiler is at ~50% conformance, not ~38%
+
+**CORRECTION (2026-03-31):** The 23,832 was the vitest pass count (includes 6,580 skips counted as pass). True conformance = 17,252. Later analysis found even that was inflated: old runner had a bug where negative tests always passed (both if/else branches said "pass"). After fixing that bug + accounting for sprint-31 reverts, honest baseline = **15,246 pass / 48,174 total (31.7%)**.
+
+## 2026-03-31 20:30 — Sprint 31 redo, test infra overhaul
+
+### Test infrastructure
+- Merged #889: unified fork architecture (compile+execute in one child_process.fork). 9 workers, 113MB peak each, 1.7GB total.
+- Fixed timestamped result files — test runs no longer overwrite each other.
+- Fixed dashboard field name mismatch (`compile_error` → `ce`) and runs/index.json path.
+- Single vitest invocation for all 16 chunks (was 16 sequential restarts, ~5 min waste).
+- Full test262 run: ~13 min at 62 tests/sec. 15,246 pass confirmed as deterministic baseline.
+
+### Sprint 31 team (6 devs + 1 tester)
+- Stale issue problem: 5 of first 12 dev assignments (#844, #835, #836, #841, #829-partial) already fixed on main. Need PO smoke-test before dispatch.
+- dev-4 built #891 (equiv test fork pool with flock) — waiting in tester queue behind #839 and #866.
+- Memory pressure: 19 concurrent vitest processes from devs ignoring "tester only" rule. Broadcast PAUSE, no OOM but hit 3.8GB available.
+- Tester bottleneck: merge queue growing (6 branches waiting). Single tester is serial, each equiv run ~3 min. Need #891 merged first to add flock + speed up tests.
+
+### Regression analysis
+- 18,284 → 15,246 fully explained: stale cache (~3K), negative test bug (~900), sprint-31 reverts (~2,100).
+- No new bugs from #889 unified fork merge.
+- Sprint-31 issues (#839, #866, #822, #826, #862) cover all recoverable tests.
+
+### Key learnings
+- **Devs must not run tests** — only tester. Without flock (#891), concurrent test runs eat memory.
+- **Smoke-test issues before dispatch** — too many stale assignments waste agent time.
+- **Tester is the bottleneck** — consider 2 testers or faster equiv tests when queue > 3.
+- **Dashboard needs correct field names** — `ce` not `compile_error`, `skip` required.
