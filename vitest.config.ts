@@ -9,7 +9,7 @@ export default defineConfig({
         // 1 fork — runner script loops over chunk files, fork dies between each
         // Fork uses nproc compiler threads for max parallelism
         maxForks: parseInt(process.env.TEST262_WORKERS || '1', 10),
-        execArgv: ['--max-old-space-size=2048'],
+        execArgv: ['--max-old-space-size=4096'],
       },
     },
     testTimeout: 10000, // 10s per test — prevents infinite compilation loops from blocking the run
