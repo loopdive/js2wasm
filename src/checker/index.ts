@@ -1,8 +1,29 @@
 import ts from "typescript";
-import { readFileSync } from "fs";
 import { dirname, join } from "path";
-import { createRequire } from "module";
-import { fileURLToPath } from "url";
+
+// Lazy-load Node.js modules for browser compatibility.
+// Vite externalizes "fs" and "module" — static imports crash in the browser.
+let _readFileSync: typeof import("fs").readFileSync | null = null;
+function getReadFileSync() {
+  if (!_readFileSync) {
+    try { _readFileSync = eval('require')('fs').readFileSync; } catch { _readFileSync = null; }
+  }
+  return _readFileSync;
+}
+let _createRequire: typeof import("module").createRequire | null = null;
+function getCreateRequire() {
+  if (!_createRequire) {
+    try { _createRequire = eval('require')('module').createRequire; } catch { _createRequire = null; }
+  }
+  return _createRequire;
+}
+let _fileURLToPath: typeof import("url").fileURLToPath | null = null;
+function getFileURLToPath() {
+  if (!_fileURLToPath) {
+    try { _fileURLToPath = eval('require')('url').fileURLToPath; } catch { _fileURLToPath = null; }
+  }
+  return _fileURLToPath;
+}
 // Custom type declarations not found in TS lib files
 // All lib types now loaded from the typescript package at runtime.
 // No custom lib imports needed — lib: ["es2021", "dom"] in compilerOptions
@@ -25,10 +46,13 @@ function getTsLibDir(): string {
     try {
       // Use createRequire to resolve the typescript package location
       // This works in both CJS and ESM contexts
-      const esmRequire = createRequire(
+      const cr = getCreateRequire();
+      const fup = getFileURLToPath();
+      if (!cr || !fup) throw new Error("Node.js modules not available");
+      const esmRequire = cr(
         typeof __filename !== "undefined"
           ? __filename
-          : fileURLToPath(import.meta.url),
+          : fup(import.meta.url),
       );
       _tsLibDir = dirname(esmRequire.resolve("typescript/lib/lib.d.ts"));
     } catch {
@@ -49,7 +73,9 @@ function getTsLibDir(): string {
  */
 function readLibFile(name: string): string {
   try {
-    return readFileSync(join(getTsLibDir(), name), "utf-8");
+    const rfs = getReadFileSync();
+    if (!rfs) return "";
+    return rfs(join(getTsLibDir(), name), "utf-8");
   } catch {
     return "";
   }
