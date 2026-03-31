@@ -2,7 +2,7 @@
   <img src="./playground/image.png" alt="ts2wasm" width="300" />
 </p>
 
-# js2wasm Typescript to WebAssembly Compiler
+# js2wasm ECMAScript to WebAssembly Compiler
 
 AOT compiler that compiles a strict subset of TypeScript directly to WebAssembly with the GC proposal.
 
