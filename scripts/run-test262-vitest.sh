@@ -99,13 +99,22 @@ MONITOR_LOG="$RESULTS_DIR/memory-monitor-${RUN_TIMESTAMP}.jsonl"
 MONITOR_PID=$!
 echo "Memory monitor started (PID $MONITOR_PID, log: $MONITOR_LOG)"
 
-# ── Run vitest FROM THE WORKTREE ─────────────────────────────────
+# ── Run vitest in shards FROM THE WORKTREE ───────────────────────
 cd "$WT_DIR"
-# vitest exits 1 when any test fails — which is EVERY test262 run (conformance tests).
-# Check for actual crashes by looking at the report file, not the exit code.
-npx vitest run tests/test262-vitest.test.ts \
-  --reporter=verbose \
-  "$@" 2>&1 | tee /tmp/test262-vitest-run.log
+SHARDS=${TEST262_SHARDS:-3}
+echo "Running $SHARDS shards (3 forks × 4 compiler threads per fork)..."
+> /tmp/test262-vitest-run.log
+
+for i in $(seq 1 $SHARDS); do
+  echo ""
+  echo "=== Shard $i/$SHARDS ==="
+  npx vitest run tests/test262-vitest.test.ts \
+    --shard=$i/$SHARDS \
+    --reporter=verbose \
+    "$@" 2>&1 | tee -a /tmp/test262-vitest-run.log
+  echo "Shard $i/$SHARDS done."
+done
+
 # Consider completed if the report was written (vitest's afterAll hook ran)
 COMPLETED=false
 if [ -f "$WT_DIR/benchmarks/results/test262-report.json" ]; then
