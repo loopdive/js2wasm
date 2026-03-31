@@ -96,7 +96,8 @@ const serverReady = new Promise<void>((resolve) => {
 
 // ── Compiler pool ───────────────────────────────────────────────────
 
-const POOL_SIZE = parseInt(process.env.COMPILER_POOL_SIZE || "1", 10);
+// Default 4 compiler threads per fork (2 forks × 4 threads = 8 total)
+const POOL_SIZE = parseInt(process.env.COMPILER_POOL_SIZE || "4", 10);
 const pool = new CompilerPool(POOL_SIZE);
 
 // ── Wasm execution pool ─────────────────────────────────────────────
@@ -212,29 +213,8 @@ class WasmExecPool {
 
 const execPool = new WasmExecPool();
 
-// ── Ensure compiler bundle is up to date ────────────────────────────
-
-import { execSync } from "child_process";
-try {
-  const root = join(import.meta.dirname ?? ".", "..");
-  execSync(
-    "npx esbuild src/index.ts --bundle --platform=node --format=esm --outfile=scripts/compiler-bundle.mjs --external:typescript",
-    { cwd: root, stdio: "pipe", timeout: 30000 },
-  );
-} catch {
-  // Bundle build failed — tests will use whatever bundle exists
-}
-
-// Build runtime bundle for wasm-exec-worker
-try {
-  const root = join(import.meta.dirname ?? ".", "..");
-  execSync(
-    "npx esbuild src/runtime.ts --bundle --platform=node --format=esm --outfile=scripts/runtime-bundle.mjs --external:typescript",
-    { cwd: root, stdio: "pipe", timeout: 30000 },
-  );
-} catch {
-  // Runtime bundle build failed — worker will fail to load
-}
+// Bundle builds removed — run-test262-vitest.sh builds them once before
+// vitest starts. Having each fork spawn esbuild was wasteful (N concurrent builds).
 
 // ── Cache setup ─────────────────────────────────────────────────────
 
