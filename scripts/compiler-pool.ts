@@ -48,7 +48,7 @@ export class CompilerPool {
   private readyResolve: (() => void) | null = null;
   private readyCount = 0;
 
-  constructor(private size = Math.max(1, cpus().length - 1)) {
+  constructor(private size = 4) {
     const workerPath = join(import.meta.dirname ?? __dirname, "compiler-worker.mjs");
 
     for (let i = 0; i < size; i++) {
