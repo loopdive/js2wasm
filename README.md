@@ -63,15 +63,20 @@ export function main(): void {
 
 ![Playground](./playground.png)
 
-The module analyzer shows the size of the WebAssembly binary and the WAT text for the compiled module.
-
-![Module Analyzer](./treemap.png)
-
 ## Try it
 
 **[Live Playground →](https://js2wasm.loopdive.com)** — compile and run TypeScript as WebAssembly in your browser. No install needed.
 
-The default example is a booking calendar with date picker and price grid — rendered entirely by WebAssembly. The host browser provides DOM APIs via imports; all logic, layout, and event handling runs inside the Wasm sandbox.
+The playground was built for dogfooding and analysis during development. It provides:
+
+- **Live compiler** — edit TypeScript, see compiled Wasm instantly (< 50ms for small programs)
+- **Preview panel** — rendered output with DOM API support (the default example is a booking calendar rendered entirely by WebAssembly)
+- **WAT inspector** — view the generated WebAssembly Text Format for any compiled module
+- **Module analyzer** — treemap visualization of binary size by function
+- **Import/export viewer** — see what the module imports from the host and what it exports
+- **Error diagnostics** — TypeScript errors and Wasm validation errors with source locations
+- **test262 explorer** — browse and run ECMAScript conformance tests against the compiler
+- **Multiple examples** — DOM manipulation, async/await, generators, classes, TypedArrays
 
 ## Quickstart
 
