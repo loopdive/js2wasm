@@ -10,6 +10,7 @@
  */
 import { Worker } from "worker_threads";
 import { join } from "path";
+import { cpus } from "os";
 
 export interface PoolCompileResult {
   ok: true;
@@ -47,7 +48,7 @@ export class CompilerPool {
   private readyResolve: (() => void) | null = null;
   private readyCount = 0;
 
-  constructor(private size = 4) {
+  constructor(private size = cpus().length) {
     const workerPath = join(import.meta.dirname ?? __dirname, "compiler-worker.mjs");
 
     for (let i = 0; i < size; i++) {
