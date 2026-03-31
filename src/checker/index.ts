@@ -1,8 +1,14 @@
 import ts from "typescript";
-import { dirname, join } from "path";
 
-// Lazy-load Node.js modules for browser compatibility.
-// Vite externalizes "fs" and "module" — static imports crash in the browser.
+// Lazy-load ALL Node.js modules for browser compatibility.
+// Vite externalizes fs, path, module, url — static imports crash in the browser.
+let _path: typeof import("path") | null = null;
+function getPath() {
+  if (!_path) { try { _path = eval('require')('path'); } catch { _path = null; } }
+  return _path;
+}
+function dirname(p: string) { return getPath()?.dirname(p) ?? ""; }
+function join(...args: string[]) { return getPath()?.join(...args) ?? args.join("/"); }
 let _readFileSync: typeof import("fs").readFileSync | null = null;
 function getReadFileSync() {
   if (!_readFileSync) {
