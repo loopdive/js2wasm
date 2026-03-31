@@ -9,7 +9,7 @@ printf '\033[01;34m%s\033[00m' "${cwd:-$(pwd)}"
 report="/workspace/benchmarks/results/test262-report.json"
 compile_jsonl="/workspace/benchmarks/results/test262-compile.jsonl"
 precompiling=$(ps aux 2>/dev/null | grep '[p]recompile-tests' | head -1)
-vitesting=$(ps aux 2>/dev/null | grep '[v]itest.*test262\|vitest [0-9]' | head -1)
+vitesting=$(ps aux 2>/dev/null | grep '[v]itest.*test262\|vitest [0-9]\|run-test262-vitest' | head -1)
 if [ -n "$precompiling" ]; then
   done=$(wc -l < "$compile_jsonl" 2>/dev/null || echo 0)
   printf ' \033[00;33m⟳compile:%s/48K\033[00m' "$done"
