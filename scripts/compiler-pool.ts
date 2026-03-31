@@ -43,7 +43,7 @@ interface ForkState {
 export class CompilerPool {
   private forks: ForkState[] = [];
   private pending = new Map<number, PendingJob>();
-  private queue: Array<{ id: number; source: string; sourceMapUrl?: string; resolve: (r: PoolResult) => void }> = [];
+  private queue: Array<{ id: number; source: string; sourceMapUrl?: string; wasmPath?: string; metaPath?: string; resolve: (r: PoolResult) => void }> = [];
   private nextId = 0;
   private readyResolve: (() => void) | null = null;
   private readyCount = 0;
@@ -110,8 +110,8 @@ export class CompilerPool {
     });
   }
 
-  /** Compile source — queues if all forks busy. */
-  compile(source: string, timeoutMs = 10_000, _fullDiag?: boolean, sourceMapUrl?: string, label?: string): Promise<PoolResult> {
+  /** Compile source — queues if all forks busy. Pass wasmPath/metaPath to write directly to disk. */
+  compile(source: string, timeoutMs = 10_000, _fullDiag?: boolean, sourceMapUrl?: string, label?: string, wasmPath?: string, metaPath?: string): Promise<PoolResult> {
     return new Promise((resolve) => {
       const id = this.nextId++;
       const timer = setTimeout(() => {
@@ -126,7 +126,7 @@ export class CompilerPool {
           this.respawnFork(stuck);
         }
       }, timeoutMs);
-      this.queue.push({ id, source, sourceMapUrl, resolve: (r: PoolResult) => { clearTimeout(timer); resolve(r); } });
+      this.queue.push({ id, source, sourceMapUrl, wasmPath, metaPath, resolve: (r: PoolResult) => { clearTimeout(timer); resolve(r); } });
       this.dispatch();
     });
   }
@@ -139,7 +139,7 @@ export class CompilerPool {
       const job = this.queue.shift()!;
       free.busy = true;
       this.pending.set(job.id, { id: job.id, resolve: job.resolve });
-      free.proc.send({ id: job.id, source: job.source, sourceMapUrl: job.sourceMapUrl });
+      free.proc.send({ id: job.id, source: job.source, sourceMapUrl: job.sourceMapUrl, wasmPath: job.wasmPath, metaPath: job.metaPath });
     }
   }
 
