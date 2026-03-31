@@ -476,12 +476,12 @@ export function compileBinaryExpression(
       if (Number.isFinite(numIdx) && numIdx >= 0 && Number.isInteger(numIdx)) {
         // Evaluate left for side effects, drop result
         const leftResult = compileExpression(ctx, fctx, expr.left);
-        if (leftResult && leftResult !== VOID_RESULT) {
+        if (leftResult) {
           fctx.body.push({ op: "drop" });
         }
         // Compile the array expression to get the vec struct
         const rightResult = compileExpression(ctx, fctx, expr.right);
-        if (rightResult && rightResult !== VOID_RESULT) {
+        if (rightResult) {
           // Read length field (field 0 of vec struct)
           fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
           // Compare: numIdx < length
@@ -495,11 +495,11 @@ export function compileBinaryExpression(
       // Non-numeric key like "length" on array — check TS type
       if (staticKey === "length") {
         const leftResult = compileExpression(ctx, fctx, expr.left);
-        if (leftResult && leftResult !== VOID_RESULT) {
+        if (leftResult) {
           fctx.body.push({ op: "drop" });
         }
         const rightResult = compileExpression(ctx, fctx, expr.right);
-        if (rightResult && rightResult !== VOID_RESULT) {
+        if (rightResult) {
           fctx.body.push({ op: "drop" });
         }
         fctx.body.push({ op: "i32.const", value: 1 });
@@ -514,11 +514,11 @@ export function compileBinaryExpression(
       // Evaluate both operands for side effects (needed for comma expressions like
       // (NUMBER = Number, "MAX_VALUE") in NUMBER). Drop the produced values.
       const leftResult = compileExpression(ctx, fctx, expr.left);
-      if (leftResult && leftResult !== VOID_RESULT) {
+      if (leftResult) {
         fctx.body.push({ op: "drop" });
       }
       const rightResult = compileExpression(ctx, fctx, expr.right);
-      if (rightResult && rightResult !== VOID_RESULT) {
+      if (rightResult) {
         fctx.body.push({ op: "drop" });
       }
       fctx.body.push({ op: "i32.const", value: has ? 1 : 0 });
@@ -561,11 +561,11 @@ export function compileBinaryExpression(
     // can be resolved from its type (e.g., a string variable with a known literal type).
     {
       const leftResult = compileExpression(ctx, fctx, expr.left);
-      if (leftResult && leftResult !== VOID_RESULT) {
+      if (leftResult) {
         fctx.body.push({ op: "drop" });
       }
       const rightResult = compileExpression(ctx, fctx, expr.right);
-      if (rightResult && rightResult !== VOID_RESULT) {
+      if (rightResult) {
         fctx.body.push({ op: "drop" });
       }
 

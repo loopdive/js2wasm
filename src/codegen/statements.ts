@@ -1968,7 +1968,7 @@ function compileArrayDestructuring(ctx: CodegenContext, fctx: FunctionContext, d
               } finally {
                 (ctx as any)._arrayLiteralForceVec = false;
               }
-              if (initType && initType !== VOID_RESULT) {
+              if (initType) {
                 if (
                   (initType.kind === "ref" || initType.kind === "ref_null") &&
                   ts.isObjectBindingPattern(element.name)
@@ -2275,7 +2275,8 @@ function compileArrayDestructuring(ctx: CodegenContext, fctx: FunctionContext, d
   }
 
   // Vec array destructuring (original path)
-  const elemType = arrDef!.element;
+  if (!arrDef || arrDef.kind !== "array") return;
+  const elemType = arrDef.element;
 
   emitNullGuard(ctx, fctx, tmpLocal, isNullableArr, () => {
     for (let i = 0; i < pattern.elements.length; i++) {
@@ -2463,7 +2464,8 @@ function compileArrayDestructuring(ctx: CodegenContext, fctx: FunctionContext, d
                     fctx.body.push({ op: "local.set", index: nLocalIdx });
                   }
                   return; // done — skip the drop below
-                } else if (ts.isObjectBindingPattern(element.name)) {
+                }
+                if (ts.isObjectBindingPattern(element.name)) {
                   // Store in temp local and extract struct fields
                   const tmpObjLocal = allocLocal(fctx, `__dflt_obj_${fctx.locals.length}`, initType);
                   fctx.body.push({ op: "local.set", index: tmpObjLocal });
@@ -2518,7 +2520,8 @@ function compileArrayDestructuring(ctx: CodegenContext, fctx: FunctionContext, d
             if (ts.isArrayBindingPattern(element.name)) {
               fctx.body.push({ op: "local.get", index: nestedExtLocal });
               compileExternrefArrayDestructuringDecl(ctx, fctx, element.name, elemType);
-            } else if (ts.isObjectBindingPattern(element.name)) {
+            }
+                if (ts.isObjectBindingPattern(element.name)) {
               fctx.body.push({ op: "local.get", index: nestedExtLocal });
               compileExternrefObjectDestructuringDecl(ctx, fctx, element.name, elemType);
             }
@@ -2682,7 +2685,8 @@ function compileArrayDestructuring(ctx: CodegenContext, fctx: FunctionContext, d
             if (ts.isArrayBindingPattern(element.name)) {
               fctx.body.push({ op: "local.get", index: nestedLocal });
               compileExternrefArrayDestructuringDecl(ctx, fctx, element.name, elemType);
-            } else if (ts.isObjectBindingPattern(element.name)) {
+            }
+                if (ts.isObjectBindingPattern(element.name)) {
               fctx.body.push({ op: "local.get", index: nestedLocal });
               compileExternrefObjectDestructuringDecl(ctx, fctx, element.name, elemType);
             }
@@ -2887,7 +2891,7 @@ function compileReturnStatement(ctx: CodegenContext, fctx: FunctionContext, stmt
     if (stmt.expression) {
       const bufferIdx = fctx.localMap.get("__gen_buffer");
       const resultType = compileExpression(ctx, fctx, stmt.expression);
-      if (resultType !== null && resultType !== VOID_RESULT && bufferIdx !== undefined) {
+      if (resultType !== null && bufferIdx !== undefined) {
         // Push the return value into the gen buffer so it appears as the
         // final next() value (#729)
         const tmpLocal = allocLocal(fctx, `__gen_ret_${fctx.locals.length}`, resultType);
@@ -2904,7 +2908,7 @@ function compileReturnStatement(ctx: CodegenContext, fctx: FunctionContext, stmt
           const pushIdx = ctx.funcMap.get("__gen_push_ref");
           if (pushIdx !== undefined) fctx.body.push({ op: "call", funcIdx: pushIdx });
         }
-      } else if (resultType !== null && resultType !== VOID_RESULT) {
+      } else if (resultType !== null) {
         fctx.body.push({ op: "drop" });
       }
     }
@@ -3548,7 +3552,7 @@ function compileForStatement(ctx: CodegenContext, fctx: FunctionContext, stmt: t
       if (!fctx.safeIndexedArrays) {
         fctx.safeIndexedArrays = new Set();
       }
-      fctx.safeIndexedArrays.add(arrayVar + ":" + indexVar);
+      fctx.safeIndexedArrays.add(`${arrayVar}:${indexVar}`);
     }
   }
 
@@ -4390,9 +4394,7 @@ function compileForOfAssignDestructuring(
         // Property doesn't exist on primitive — use default if provided
         const init = ts.isShorthandPropertyAssignment(prop)
           ? prop.objectAssignmentInitializer
-          : ts.isPropertyAssignment(prop) && prop.initializer && ts.isAssignmentExpression
-            ? undefined
-            : undefined;
+          : undefined;
         if (init) {
           const targetType = getLocalType(fctx, targetLocal);
           const instrs = collectInstrs(fctx, () => {
@@ -5344,7 +5346,7 @@ function compileForOfDirectIterator(
 
   // Find "done" and "value" field indices in the result struct
   const resultFields =
-    ctx.structFields.get(iterStructName + "_next_result") ?? findStructFieldsByTypeIdx(ctx, resultStructTypeIdx);
+    ctx.structFields.get(`${iterStructName}_next_result`) ?? findStructFieldsByTypeIdx(ctx, resultStructTypeIdx);
   if (!resultFields) return false;
 
   let doneFieldIdx = -1;
@@ -6552,8 +6554,10 @@ function compileTryStatement(ctx: CodegenContext, fctx: FunctionContext, stmt: t
       if (exnLocalIdx !== null) {
         const getCaughtIdx = ensureLateImport(ctx, "__get_caught_exception", [], [{ kind: "externref" }]);
         flushLateImportShifts(ctx, fctx);
-        fctx.body.push({ op: "call", funcIdx: getCaughtIdx });
-        fctx.body.push({ op: "local.set", index: exnLocalIdx });
+        if (getCaughtIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx: getCaughtIdx });
+          fctx.body.push({ op: "local.set", index: exnLocalIdx });
+        }
       }
 
       if (finallyInstrs) {

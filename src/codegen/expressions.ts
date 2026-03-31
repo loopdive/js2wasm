@@ -39,6 +39,7 @@ import {
   isAnyValue,
   localGlobalIdx,
   nativeStringType,
+  popBody,
   pushBody,
   releaseTempLocal,
   resolveWasmType,
@@ -777,11 +778,7 @@ function compileExpressionBody(
   // Guard: if compileExpressionInner returned an unexpected non-null value
   // without a valid .kind property (e.g., undefined from a missing return path),
   // treat it as null to prevent crashes.
-  if (
-    result !== null &&
-    result !== VOID_RESULT &&
-    (typeof result !== "object" || result === null || !("kind" in result))
-  ) {
+  if (result !== null && (typeof result !== "object" || result === null || !("kind" in result))) {
     const fallbackType = expectedType ?? { kind: "f64" as const };
     pushDefaultValue(fctx, fallbackType, ctx);
     return fallbackType;
@@ -1197,7 +1194,7 @@ function compileExpressionInner(ctx: CodegenContext, fctx: FunctionContext, expr
     if (selfIdx !== undefined) {
       fctx.body.push({ op: "local.get", index: selfIdx });
       const selfType = fctx.locals[selfIdx];
-      if (selfType) return selfType;
+      if (selfType) return selfType.type;
     }
     fctx.body.push({ op: "ref.null.extern" });
     return { kind: "externref" };
@@ -1926,11 +1923,6 @@ export function compileNullishCoalescing(
   if (
     rType.kind === "f64" &&
     (resultKind.kind === "externref" || resultKind.kind === "ref" || resultKind.kind === "ref_null")
-  ) {
-    unifiedType = { kind: "externref" };
-  } else if (
-    resultKind.kind === "f64" &&
-    (rType.kind === "externref" || rType.kind === "ref" || rType.kind === "ref_null")
   ) {
     unifiedType = { kind: "externref" };
   } else {
@@ -7077,7 +7069,7 @@ function compilePrefixUnary(
       return compileMemberIncDec(ctx, fctx, expr.operand, "add", "prefix");
     }
     case ts.SyntaxKind.MinusMinusToken: {
-      const isIncrement = expr.operator === ts.SyntaxKind.PlusPlusToken;
+      const isIncrement = false;
       const arithOp = isIncrement ? "f64.add" : "f64.sub";
       const arithOpI32 = isIncrement ? "i32.add" : "i32.sub";
 
@@ -8020,6 +8012,224 @@ export function getFuncParamTypes(ctx: CodegenContext, funcIdx: number): ValType
   return undefined;
 }
 
+function compileOptionalCallExpression(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.CallExpression,
+): InnerResult {
+  const propAccess = expr.expression as ts.PropertyAccessExpression;
+  const objType = compileExpression(ctx, fctx, propAccess.expression);
+  if (!objType) return null;
+
+  const tmp = allocLocal(fctx, `__optcall_${fctx.locals.length}`, objType);
+  fctx.body.push({ op: "local.tee", index: tmp });
+  fctx.body.push({ op: "ref.is_null" });
+
+  let callReturnType: ValType | typeof VOID_RESULT = VOID_RESULT;
+  const sig = ctx.checker.getResolvedSignature(expr);
+  if (sig) {
+    const retType = ctx.checker.getReturnTypeOfSignature(sig);
+    if (!isVoidType(retType)) callReturnType = resolveWasmType(ctx, retType);
+  }
+  let resultType: ValType = callReturnType === VOID_RESULT ? { kind: "externref" } : callReturnType;
+
+  const savedBody = pushBody(fctx);
+  const tsReceiverType = ctx.checker.getTypeAtLocation(propAccess.expression);
+  const methodName = ts.isPrivateIdentifier(propAccess.name) ? propAccess.name.text.slice(1) : propAccess.name.text;
+  let methodResolved = false;
+
+  if (!methodResolved && isExternalDeclaredClass(tsReceiverType, ctx.checker)) {
+    const className = tsReceiverType.getSymbol()?.name;
+    if (className) {
+      let current: string | undefined = className;
+      while (current) {
+        const info = ctx.externClasses.get(current);
+        if (info?.methods.has(methodName)) {
+          const importName = `${info.importPrefix}_${methodName}`;
+          const funcIdx = ctx.funcMap.get(importName);
+          if (funcIdx !== undefined) {
+            fctx.body.push({ op: "local.get", index: tmp });
+            for (const arg of expr.arguments) compileExpression(ctx, fctx, arg);
+            fctx.body.push({ op: "call", funcIdx });
+            methodResolved = true;
+          }
+          break;
+        }
+        current = ctx.externClassParent.get(current);
+      }
+    }
+  }
+
+  if (!methodResolved) {
+    let receiverClassName = tsReceiverType.getSymbol()?.name;
+    if (receiverClassName && !ctx.classSet.has(receiverClassName)) {
+      receiverClassName = ctx.classExprNameMap.get(receiverClassName) ?? receiverClassName;
+    }
+    if (receiverClassName && ctx.classSet.has(receiverClassName)) {
+      let fullName = `${receiverClassName}_${methodName}`;
+      let funcIdx = ctx.funcMap.get(fullName);
+      if (funcIdx === undefined) {
+        let ancestor = ctx.classParentMap.get(receiverClassName);
+        while (ancestor && funcIdx === undefined) {
+          fullName = `${ancestor}_${methodName}`;
+          funcIdx = ctx.funcMap.get(fullName);
+          ancestor = ctx.classParentMap.get(ancestor);
+        }
+      }
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "local.get", index: tmp });
+        if (objType.kind === "ref_null") fctx.body.push({ op: "ref.as_non_null" } as Instr);
+        const paramTypes = getFuncParamTypes(ctx, funcIdx);
+        for (let i = 0; i < expr.arguments.length; i++) {
+          compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
+        }
+        if (paramTypes) {
+          for (let i = expr.arguments.length + 1; i < paramTypes.length; i++) {
+            pushDefaultValue(fctx, paramTypes[i]!, ctx);
+          }
+        }
+        fctx.body.push({ op: "call", funcIdx });
+        methodResolved = true;
+      }
+    }
+  }
+
+  if (!methodResolved) {
+    const structTypeName = resolveStructName(ctx, tsReceiverType);
+    if (structTypeName) {
+      const fullName = `${structTypeName}_${methodName}`;
+      const funcIdx = ctx.funcMap.get(fullName);
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "local.get", index: tmp });
+        if (objType.kind === "ref_null") fctx.body.push({ op: "ref.as_non_null" } as Instr);
+        const paramTypes = getFuncParamTypes(ctx, funcIdx);
+        for (let i = 0; i < expr.arguments.length; i++) {
+          compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
+        }
+        if (paramTypes) {
+          for (let i = expr.arguments.length + 1; i < paramTypes.length; i++) {
+            pushDefaultValue(fctx, paramTypes[i]!, ctx);
+          }
+        }
+        fctx.body.push({ op: "call", funcIdx });
+        methodResolved = true;
+      }
+    }
+  }
+
+  if (!methodResolved && isStringType(tsReceiverType)) {
+    if (ctx.fast && ctx.nativeStrTypeIdx >= 0) {
+      const nativeResult = compileNativeStringMethodCall(ctx, fctx, expr, propAccess, methodName);
+      if (nativeResult !== null) {
+        resultType = nativeResult;
+        methodResolved = true;
+      }
+    } else {
+      const importName = `string_${methodName}`;
+      const funcIdx = ctx.funcMap.get(importName);
+      if (funcIdx !== undefined) {
+        fctx.body.push({ op: "local.get", index: tmp });
+        for (const arg of expr.arguments) compileExpression(ctx, fctx, arg);
+        fctx.body.push({ op: "call", funcIdx });
+        methodResolved = true;
+      }
+    }
+  }
+
+  if (!methodResolved) fctx.body.push(...defaultValueInstrs(resultType));
+
+  const elseInstrs = fctx.body;
+  popBody(fctx, savedBody);
+
+  if (resultType.kind === "ref") resultType = { kind: "ref_null", typeIdx: resultType.typeIdx };
+
+  fctx.body.push({
+    op: "if",
+    blockType: { kind: "val", type: resultType },
+    then: defaultValueInstrs(resultType),
+    else: elseInstrs,
+  });
+
+  return resultType;
+}
+
+function compileOptionalDirectCall(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.CallExpression,
+): InnerResult {
+  const callee = expr.expression as ts.Identifier;
+  const calleeType = compileExpression(ctx, fctx, callee);
+  if (!calleeType) return null;
+
+  if (calleeType.kind !== "ref" && calleeType.kind !== "ref_null" && calleeType.kind !== "externref") {
+    fctx.body.push({ op: "drop" });
+    const syntheticCall = ts.factory.createCallExpression(callee, expr.typeArguments, expr.arguments);
+    ts.setTextRange(syntheticCall, expr);
+    return compileCallExpression(ctx, fctx, syntheticCall as ts.CallExpression);
+  }
+
+  const tmp = allocLocal(fctx, `__optdcall_${fctx.locals.length}`, calleeType);
+  fctx.body.push({ op: "local.tee", index: tmp });
+  fctx.body.push({ op: "ref.is_null" });
+
+  let resultType: ValType = { kind: "externref" };
+  const sig = ctx.checker.getResolvedSignature(expr);
+  if (sig) {
+    const retType = ctx.checker.getReturnTypeOfSignature(sig);
+    if (!isVoidType(retType)) {
+      const resolved = resolveWasmType(ctx, retType);
+      resultType = resolved.kind === "ref" ? { kind: "ref_null", typeIdx: resolved.typeIdx } : resolved;
+    }
+  }
+
+  const savedBody = pushBody(fctx);
+  const funcName = callee.text;
+  const closureInfo = ctx.closureMap.get(funcName);
+  const funcIdx = ctx.funcMap.get(funcName);
+  let resolved = false;
+
+  if (closureInfo && (calleeType.kind === "ref" || calleeType.kind === "ref_null")) {
+    fctx.body.push({ op: "local.get", index: tmp });
+    if (calleeType.kind === "ref_null") fctx.body.push({ op: "ref.as_non_null" } as Instr);
+    const closureTmp = allocLocal(fctx, `__optdcall_cls_${fctx.locals.length}`, {
+      kind: "ref",
+      typeIdx: calleeType.typeIdx,
+    });
+    fctx.body.push({ op: "local.tee", index: closureTmp });
+    fctx.body.push({ op: "local.get", index: closureTmp });
+    for (const arg of expr.arguments) compileExpression(ctx, fctx, arg);
+    fctx.body.push({ op: "call_ref", typeIdx: closureInfo.funcTypeIdx } as unknown as Instr);
+    resolved = true;
+  } else if (funcIdx !== undefined) {
+    const paramTypes = getFuncParamTypes(ctx, funcIdx);
+    for (let i = 0; i < expr.arguments.length; i++) {
+      compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
+    }
+    if (paramTypes) {
+      for (let i = expr.arguments.length; i < paramTypes.length; i++) {
+        pushDefaultValue(fctx, paramTypes[i]!, ctx);
+      }
+    }
+    fctx.body.push({ op: "call", funcIdx });
+    resolved = true;
+  }
+
+  if (!resolved) fctx.body.push(...defaultValueInstrs(resultType));
+
+  const elseInstrs = fctx.body;
+  popBody(fctx, savedBody);
+
+  fctx.body.push({
+    op: "if",
+    blockType: { kind: "val", type: resultType },
+    then: defaultValueInstrs(resultType),
+    else: elseInstrs,
+  });
+
+  return resultType;
+}
+
 /** Compile a call to a closure variable: closureVar(args...) */
 function compileClosureCall(
   ctx: CodegenContext,
@@ -8077,7 +8287,7 @@ function compileClosureCall(
   // Drop excess arguments beyond the closure's parameter count (evaluate for side effects)
   for (let i = paramCount; i < expr.arguments.length; i++) {
     const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-    if (extraType !== null && extraType !== VOID_RESULT) {
+    if (extraType !== null) {
       fctx.body.push({ op: "drop" });
     }
   }
@@ -8191,7 +8401,7 @@ function compileGetterCallable(
     }
     for (let i = methodParamCount; i < expr.arguments.length; i++) {
       const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-      if (extraType !== null && extraType !== VOID_RESULT) {
+      if (extraType !== null) {
         fctx.body.push({ op: "drop" });
       }
     }
@@ -8286,7 +8496,7 @@ function compileCallablePropertyCall(
         // Drop excess arguments beyond param count (side effects only)
         for (let i = cpParamCount; i < expr.arguments.length; i++) {
           const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-          if (extraType !== null && extraType !== VOID_RESULT) {
+          if (extraType !== null) {
             fctx.body.push({ op: "drop" });
           }
         }
@@ -8349,7 +8559,7 @@ function compileCallablePropertyCall(
         }
         for (let i = wpParamCount; i < expr.arguments.length; i++) {
           const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-          if (extraType !== null && extraType !== VOID_RESULT) {
+          if (extraType !== null) {
             fctx.body.push({ op: "drop" });
           }
         }
@@ -8430,7 +8640,7 @@ function compileCallablePropertyCall(
         }
         for (let i = cpRefParamCount; i < expr.arguments.length; i++) {
           const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-          if (extraType !== null && extraType !== VOID_RESULT) {
+          if (extraType !== null) {
             fctx.body.push({ op: "drop" });
           }
         }
@@ -8500,7 +8710,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
     if (specArg) {
       const specResult = compileExpression(ctx, fctx, specArg);
       // Coerce to externref if needed
-      if (specResult && specResult !== VOID_RESULT && specResult.kind !== "externref") {
+      if (specResult && specResult.kind !== "externref") {
         coerceType(ctx, fctx, specResult, { kind: "externref" });
       }
     } else {
@@ -8516,7 +8726,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       const extraArg = expr.arguments[ai];
       const extraResult = compileExpression(ctx, fctx, extraArg);
       // Drop the value from the stack if the expression produced one
-      if (extraResult && extraResult !== VOID_RESULT) {
+      if (extraResult) {
         fctx.body.push({ op: "drop" });
       }
     }
@@ -8623,7 +8833,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           // Evaluate and drop thisArg (first argument) if present
           if (expr.arguments.length > 0) {
             const thisType = compileExpression(ctx, fctx, expr.arguments[0]!);
-            if (thisType && thisType !== VOID_RESULT) {
+            if (thisType) {
               fctx.body.push({ op: "drop" });
             }
           }
@@ -8906,7 +9116,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
                   // Extra argument beyond method's parameter count — evaluate for
                   // side effects (JS semantics) and discard the result
                   const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-                  if (extraType !== null && extraType !== VOID_RESULT) {
+                  if (extraType !== null) {
                     fctx.body.push({ op: "drop" });
                   }
                 }
@@ -8930,7 +9140,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
                   // Extra argument beyond method's parameter count — evaluate for
                   // side effects (JS semantics) and discard the result
                   const extraType = compileExpression(ctx, fctx, elements[i]!);
-                  if (extraType !== null && extraType !== VOID_RESULT) {
+                  if (extraType !== null) {
                     fctx.body.push({ op: "drop" });
                   }
                 }
@@ -10088,7 +10298,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
               compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
             } else {
               const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-              if (extraType !== null && extraType !== VOID_RESULT) {
+              if (extraType !== null) {
                 fctx.body.push({ op: "drop" });
               }
             }
@@ -10396,7 +10606,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         // Static methods: evaluate receiver for side effects, drop, call directly
         if (isStaticMethod) {
           const recvType = compileExpression(ctx, fctx, propAccess.expression);
-          if (recvType !== null && recvType !== VOID_RESULT) {
+          if (recvType !== null) {
             fctx.body.push({ op: "drop" });
           }
           const paramTypes = getFuncParamTypes(ctx, funcIdx);
@@ -10406,7 +10616,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
               compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
             } else {
               const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-              if (extraType !== null && extraType !== VOID_RESULT) {
+              if (extraType !== null) {
                 fctx.body.push({ op: "drop" });
               }
             }
@@ -10481,7 +10691,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
               // Extra argument beyond method's parameter count — evaluate for
               // side effects (JS semantics) and discard the result
               const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-              if (extraType !== null && extraType !== VOID_RESULT) {
+              if (extraType !== null) {
                 fctx.body.push({ op: "drop" });
               }
             }
@@ -10531,7 +10741,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             // Extra argument beyond method's parameter count — evaluate for
             // side effects (JS semantics) and discard the result
             const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-            if (extraType !== null && extraType !== VOID_RESULT) {
+            if (extraType !== null) {
               fctx.body.push({ op: "drop" });
             }
           }
@@ -10607,7 +10817,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
                 compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
               } else {
                 const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-                if (extraType !== null && extraType !== VOID_RESULT) {
+                if (extraType !== null) {
                   fctx.body.push({ op: "drop" });
                 }
               }
@@ -10657,7 +10867,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
               compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
             } else {
               const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-              if (extraType !== null && extraType !== VOID_RESULT) {
+              if (extraType !== null) {
                 fctx.body.push({ op: "drop" });
               }
             }
@@ -10892,7 +11102,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             const argType = compileExpression(ctx, fctx, expr.arguments[0]!, {
               kind: "f64",
             });
-            if (!argType || argType === VOID_RESULT) {
+            if (!argType) {
               fctx.body.push({ op: "i32.const", value: 0 });
             } else if (argType.kind === "f64") {
               fctx.body.push({ op: "i32.trunc_sat_f64_s" });
@@ -10917,7 +11127,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           if (ai < userParamCount) {
             const expectedArgType = paramTypes?.[ai + 1]; // +1 for self param
             const argResult = compileExpression(ctx, fctx, args[ai]!, expectedArgType);
-            if (!argResult || argResult === VOID_RESULT) {
+            if (!argResult) {
               // void/null result — push a default value for the expected type
               pushDefaultValue(fctx, expectedArgType ?? { kind: "f64" }, ctx);
             } else if (expectedArgType && argResult.kind !== expectedArgType.kind) {
@@ -10927,7 +11137,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             // Extra argument beyond function's parameter count — evaluate for
             // side effects and drop the result
             const extraType = compileExpression(ctx, fctx, args[ai]!);
-            if (extraType !== null && extraType !== VOID_RESULT) {
+            if (extraType !== null) {
               fctx.body.push({ op: "drop" });
             }
           }
@@ -10986,7 +11196,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       }
 
       const exprType = compileExpression(ctx, fctx, propAccess.expression);
-      if (exprType && exprType !== VOID_RESULT) {
+      if (exprType) {
         // If the compiled expression produced an externref, try JS toString
         if (exprType.kind === "externref") {
           const toStrIdx = ensureLateImport(ctx, "__extern_toString", [{ kind: "externref" }], [{ kind: "externref" }]);
@@ -11049,7 +11259,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             // Drop any arguments (generator .next() with args not yet supported)
             for (const arg of expr.arguments) {
               const argType = compileExpression(ctx, fctx, arg);
-              if (argType && argType !== VOID_RESULT) {
+              if (argType) {
                 fctx.body.push({ op: "drop" });
               }
             }
@@ -11098,12 +11308,12 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         // accessing an unknown property returns undefined and calling it throws.
         {
           const recvType = compileExpression(ctx, fctx, propAccess.expression);
-          if (recvType && recvType !== VOID_RESULT) {
+          if (recvType) {
             fctx.body.push({ op: "drop" });
           }
           for (const arg of expr.arguments) {
             const argType = compileExpression(ctx, fctx, arg);
-            if (argType && argType !== VOID_RESULT) {
+            if (argType) {
               fctx.body.push({ op: "drop" });
             }
           }
@@ -11270,7 +11480,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
 
       const argType = compileExpression(ctx, fctx, strArg0);
 
-      if (argType === VOID_RESULT || argType === null) {
+      if (argType === null) {
         // String(void-expr) → "undefined"
         addStringConstantGlobal(ctx, "undefined");
         const undefGIdx = ctx.stringGlobalMap.get("undefined")!;
@@ -11356,7 +11566,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       }
       const argType = compileExpression(ctx, fctx, expr.arguments[0]!);
       // void / undefined → always false
-      if (argType === VOID_RESULT || argType === null) {
+      if (argType === null) {
         fctx.body.push({ op: "i32.const", value: 0 });
         return { kind: "i32" };
       }
@@ -11530,7 +11740,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             }
             for (let i = cpParamCnt; i < expr.arguments.length; i++) {
               const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-              if (extraType !== null && extraType !== VOID_RESULT) {
+              if (extraType !== null) {
                 fctx.body.push({ op: "drop" });
               }
             }
@@ -11779,7 +11989,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
   // Handle IIFE: (function() { ... })() or (() => expr)() — inline the function body
   {
     // Unwrap parenthesized expression to find the function/arrow
-    let callee = expr.expression;
+    let callee: ts.Expression = expr.expression;
     while (ts.isParenthesizedExpression(callee)) {
       callee = callee.expression;
     }
@@ -11806,7 +12016,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           }
         }
         // If closure compilation failed, drop any value on stack and fall through to fallback
-        if (closureType && closureType !== VOID_RESULT) {
+        if (closureType) {
           fctx.body.push({ op: "drop" });
         }
       } else {
@@ -11820,7 +12030,8 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           const paramLocals: number[] = [];
           const allArgLocals: { idx: number; type: ValType }[] = [];
           for (let i = 0; i < params.length; i++) {
-            const paramName = ts.isIdentifier(params[i]!.name) ? params[i]!.name.text : `__iife_p${i}`;
+            const param = params[i]!;
+            const paramName = ts.isIdentifier(param.name) ? param.name.text : `__iife_p${i}`;
             const argType = compileExpression(ctx, fctx, args[i]!);
             const localType = argType ?? { kind: "f64" as const };
             const idx = allocLocal(fctx, paramName, localType);
@@ -11835,8 +12046,8 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             // Store extra args in locals for the arguments object
             for (let i = params.length; i < args.length; i++) {
               const t = compileExpression(ctx, fctx, args[i]!);
-              const localType = t && t !== VOID_RESULT ? t : { kind: "f64" as const };
-              if (t === null || t === VOID_RESULT) {
+              const localType = t ?? { kind: "f64" as const };
+              if (t === null) {
                 // No value produced — push a default
                 fctx.body.push({ op: "f64.const", value: 0 });
               }
@@ -11848,7 +12059,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             // Drop extra arguments (evaluate for side effects)
             for (let i = params.length; i < args.length; i++) {
               const t = compileExpression(ctx, fctx, args[i]!);
-              if (t && t !== VOID_RESULT) {
+              if (t) {
                 fctx.body.push({ op: "drop" });
               }
             }
@@ -12033,14 +12244,14 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
   // Handle comma-operator indirect calls: (0, foo)() or (expr, fn)()
   // Unwrap parenthesized comma expression, evaluate left for side effects, call right.
   {
-    let callee = expr.expression;
+    let callee: ts.Expression = expr.expression;
     while (ts.isParenthesizedExpression(callee)) {
       callee = callee.expression;
     }
     if (ts.isBinaryExpression(callee) && callee.operatorToken.kind === ts.SyntaxKind.CommaToken) {
       // Evaluate left side for side effects and drop
       const leftType = compileExpression(ctx, fctx, callee.left);
-      if (leftType && leftType !== VOID_RESULT) {
+      if (leftType) {
         fctx.body.push({ op: "drop" });
       }
       // Create a synthetic call with the right side as callee
@@ -12101,7 +12312,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
               compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
             } else {
               const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-              if (extraType !== null && extraType !== VOID_RESULT) {
+              if (extraType !== null) {
                 fctx.body.push({ op: "drop" });
               }
             }
@@ -12158,7 +12369,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
                 compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
               } else {
                 const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-                if (extraType !== null && extraType !== VOID_RESULT) {
+                if (extraType !== null) {
                   fctx.body.push({ op: "drop" });
                 }
               }
@@ -12207,7 +12418,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
               compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]);
             } else {
               const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-              if (extraType !== null && extraType !== VOID_RESULT) {
+              if (extraType !== null) {
                 fctx.body.push({ op: "drop" });
               }
             }
@@ -12244,7 +12455,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
                 compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
               } else {
                 const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-                if (extraType !== null && extraType !== VOID_RESULT) {
+                if (extraType !== null) {
                   fctx.body.push({ op: "drop" });
                 }
               }
@@ -12463,12 +12674,12 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       // compile receiver, discard; compile each argument for side effects; return externref.
       {
         const recvType = compileExpression(ctx, fctx, elemAccess.expression);
-        if (recvType && recvType !== VOID_RESULT) {
+        if (recvType) {
           fctx.body.push({ op: "drop" });
         }
         for (const arg of expr.arguments) {
           const argType = compileExpression(ctx, fctx, arg);
-          if (argType && argType !== VOID_RESULT) {
+          if (argType) {
             fctx.body.push({ op: "drop" });
           }
         }
@@ -12481,18 +12692,18 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
     // compile receiver + index expression + arguments for side effects; return externref.
     {
       const recvType = compileExpression(ctx, fctx, elemAccess.expression);
-      if (recvType && recvType !== VOID_RESULT) {
+      if (recvType) {
         fctx.body.push({ op: "drop" });
       }
       if (argExpr) {
         const keyType = compileExpression(ctx, fctx, argExpr);
-        if (keyType && keyType !== VOID_RESULT) {
+        if (keyType) {
           fctx.body.push({ op: "drop" });
         }
       }
       for (const arg of expr.arguments) {
         const argType = compileExpression(ctx, fctx, arg);
-        if (argType && argType !== VOID_RESULT) {
+        if (argType) {
           fctx.body.push({ op: "drop" });
         }
       }
@@ -12518,7 +12729,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           // Evaluate and drop thisArg (first bind argument) for side effects
           if (bindCall.arguments.length > 0) {
             const thisType = compileExpression(ctx, fctx, bindCall.arguments[0]!);
-            if (thisType && thisType !== VOID_RESULT) {
+            if (thisType) {
               fctx.body.push({ op: "drop" });
             }
           }
@@ -12611,7 +12822,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
                 // Extra argument beyond method's parameter count — evaluate for
                 // side effects (JS semantics) and discard the result
                 const extraType = compileExpression(ctx, fctx, allArgs[i]!);
-                if (extraType !== null && extraType !== VOID_RESULT) {
+                if (extraType !== null) {
                   fctx.body.push({ op: "drop" });
                 }
               }
@@ -12723,7 +12934,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           }
           for (let i = crParamCnt; i < expr.arguments.length; i++) {
             const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-            if (extraType !== null && extraType !== VOID_RESULT) {
+            if (extraType !== null) {
               fctx.body.push({ op: "drop" });
             }
           }
@@ -12843,7 +13054,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           }
           for (let i = ccParamCnt; i < expr.arguments.length; i++) {
             const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-            if (extraType !== null && extraType !== VOID_RESULT) {
+            if (extraType !== null) {
               fctx.body.push({ op: "drop" });
             }
           }
@@ -12880,12 +13091,12 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
   // (e.g. chained calls, dynamic dispatch, uncommon AST shapes).
   {
     const calleeType = compileExpression(ctx, fctx, expr.expression);
-    if (calleeType && calleeType !== VOID_RESULT) {
+    if (calleeType) {
       fctx.body.push({ op: "drop" });
     }
     for (const arg of expr.arguments) {
       const argType = compileExpression(ctx, fctx, arg);
-      if (argType && argType !== VOID_RESULT) {
+      if (argType) {
         fctx.body.push({ op: "drop" });
       }
     }
@@ -12965,7 +13176,7 @@ function compileConditionalCallee(
             compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i]);
           } else {
             const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-            if (extraType !== null && extraType !== VOID_RESULT) {
+            if (extraType !== null) {
               fctx.body.push({ op: "drop" });
             }
           }
@@ -13140,7 +13351,7 @@ function compileExpressionCallee(
       if (funcIdx !== undefined || closureInfo) {
         // Compile the full assignment for side effects (stores value in LHS)
         const assignResult = compileExpression(ctx, fctx, calleeExpr);
-        if (assignResult && assignResult !== VOID_RESULT) {
+        if (assignResult) {
           fctx.body.push({ op: "drop" });
         }
         // Now make a direct call using the RHS identifier as callee
@@ -13227,7 +13438,7 @@ function compileExpressionCallee(
         }
         for (let i = ecParamCnt; i < expr.arguments.length; i++) {
           const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-          if (extraType !== null && extraType !== VOID_RESULT) {
+          if (extraType !== null) {
             fctx.body.push({ op: "drop" });
           }
         }
@@ -13262,7 +13473,7 @@ function compileExpressionCallee(
   // the call via the RHS of an assignment or the last operand
   if (ts.isBinaryExpression(calleeExpr)) {
     const assignResult = compileExpression(ctx, fctx, calleeExpr);
-    if (assignResult && assignResult !== VOID_RESULT) {
+    if (assignResult) {
       fctx.body.push({ op: "drop" });
     }
     // Try calling the RHS (for assignment) or right operand (for logical)
@@ -13283,12 +13494,12 @@ function compileExpressionCallee(
   // return externref null. Avoids hard compile errors for uncommon callee shapes.
   {
     const calleeType = compileExpression(ctx, fctx, calleeExpr);
-    if (calleeType && calleeType !== VOID_RESULT) {
+    if (calleeType) {
       fctx.body.push({ op: "drop" });
     }
     for (const arg of expr.arguments) {
       const argType = compileExpression(ctx, fctx, arg);
-      if (argType && argType !== VOID_RESULT) {
+      if (argType) {
         fctx.body.push({ op: "drop" });
       }
     }
@@ -13309,7 +13520,7 @@ function compileExpressionCallee(
  */
 function compileIIFE(ctx: CodegenContext, fctx: FunctionContext, expr: ts.CallExpression): InnerResult | undefined {
   // Unwrap parenthesized expression to find the function expression
-  let callee = expr.expression;
+  let callee: ts.Expression = expr.expression;
   while (ts.isParenthesizedExpression(callee)) {
     callee = callee.expression;
   }
@@ -13583,7 +13794,7 @@ function resolveEnclosingClassName(fctx: FunctionContext): string | undefined {
 }
 
 /** Compile super.method(args) — resolve to ParentClass_method and call with this */
-function compileSuperMethodCall(ctx: CodegenContext, fctx: FunctionContext, expr: ts.CallExpression): ValType | null {
+function compileSuperMethodCall(ctx: CodegenContext, fctx: FunctionContext, expr: ts.CallExpression): InnerResult {
   const propAccess = expr.expression as ts.PropertyAccessExpression;
   const methodName = propAccess.name.text;
 
@@ -13637,7 +13848,7 @@ function compileSuperMethodCall(ctx: CodegenContext, fctx: FunctionContext, expr
       // Extra argument beyond method's parameter count — evaluate for
       // side effects (JS semantics) and discard the result
       const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-      if (extraType !== null && extraType !== VOID_RESULT) {
+      if (extraType !== null) {
         fctx.body.push({ op: "drop" });
       }
     }
@@ -13724,7 +13935,7 @@ function compileSuperElementMethodCall(
       // Extra argument beyond method's parameter count — evaluate for
       // side effects (JS semantics) and discard the result
       const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-      if (extraType !== null && extraType !== VOID_RESULT) {
+      if (extraType !== null) {
         fctx.body.push({ op: "drop" });
       }
     }
@@ -13744,11 +13955,11 @@ function compileSuperElementMethodCall(
   const sig = ctx.checker.getResolvedSignature(expr);
   if (sig) {
     const retType = ctx.checker.getReturnTypeOfSignature(sig);
-    if (isEffectivelyVoidReturn(ctx, retType, resolvedName)) return VOID_RESULT;
-    if (wasmFuncReturnsVoid(ctx, finalSuperIdx)) return VOID_RESULT;
+    if (isEffectivelyVoidReturn(ctx, retType, resolvedName)) return null;
+    if (wasmFuncReturnsVoid(ctx, finalSuperIdx)) return null;
     return getWasmFuncReturnType(ctx, finalSuperIdx) ?? resolveWasmType(ctx, retType);
   }
-  return VOID_RESULT;
+  return null;
 }
 
 /**
@@ -16069,7 +16280,7 @@ function compileExternMethodCall(
       compileExpression(ctx, fctx, callExpr.arguments[i]!, hint);
     } else {
       const extraType = compileExpression(ctx, fctx, callExpr.arguments[i]!);
-      if (extraType !== null && extraType !== VOID_RESULT) {
+      if (extraType !== null) {
         fctx.body.push({ op: "drop" });
       }
     }

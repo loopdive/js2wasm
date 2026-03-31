@@ -164,9 +164,7 @@ function instrDelta(instr: Instr, types: TypeDef[], funcSigs: FuncSigInfo): numb
     op === "ref.cast_null" ||
     op === "ref.test" ||
     op === "ref.is_null" ||
-    op === "i32.eqz" ||
-    op === "i64.eqz" ||
-    op === "i32.clz" ||
+    op === "i32.eqz" ||    op === "i32.clz" ||
     op === "f64.neg" ||
     op === "f64.abs" ||
     op === "f64.floor" ||
@@ -188,9 +186,7 @@ function instrDelta(instr: Instr, types: TypeDef[], funcSigs: FuncSigInfo): numb
     op === "i64.trunc_f64_s" ||
     op === "i64.extend_i32_s" ||
     op === "i64.extend_i32_u" ||
-    op === "i32.wrap_i64" ||
-    op === "any.convert_extern" ||
-    op === "extern.convert_any" ||
+    op === "i32.wrap_i64" ||    op === "extern.convert_any" ||
     op === "array.len" ||
     op === "memory.grow" ||
     op === "v128.not" ||
@@ -533,9 +529,7 @@ function inferLastType(body: Instr[], types: TypeDef[], sigs: FuncSigInfo): stri
       op === "f64.lt" ||
       op === "f64.le" ||
       op === "f64.gt" ||
-      op === "f64.ge" ||
-      op === "i64.eqz" ||
-      op === "i64.eq" ||
+      op === "f64.ge" ||      op === "i64.eq" ||
       op === "i64.ne"
     ) {
       return "i32";
@@ -609,9 +603,6 @@ function inferLastType(body: Instr[], types: TypeDef[], sigs: FuncSigInfo): stri
 
     // f32 producers
     if (op === "f32.const") return "f32";
-
-    // any.convert_extern produces anyref (a GC ref)
-    if (op === "any.convert_extern") return "ref";
 
     // select preserves operand type -- unknown without further analysis
     if (op === "select") return null;
@@ -1090,9 +1081,7 @@ function inferInstrType(
     op === "f64.lt" ||
     op === "f64.le" ||
     op === "f64.gt" ||
-    op === "f64.ge" ||
-    op === "i64.eqz" ||
-    op === "i64.eq" ||
+    op === "f64.ge" ||    op === "i64.eq" ||
     op === "i64.ne" ||
     op === "array.len"
   ) {
@@ -1876,7 +1865,7 @@ function updateTypeStack(
     stack.push({ kind: "ref_null", typeIdx } as ValType);
     return;
   }
-  if (op === "ref.null.extern" || op === "ref.null extern") {
+  if (op === "ref.null.extern") {
     stack.push({ kind: "externref" } as ValType);
     return;
   }
@@ -1941,9 +1930,7 @@ function updateTypeStack(
   if (
     op === "ref.is_null" ||
     op === "ref.test" ||
-    op === "i32.eqz" ||
-    op === "i64.eqz" ||
-    op === "i32.clz" ||
+    op === "i32.eqz" ||    op === "i32.clz" ||
     op === "i32.wrap_i64" ||
     op === "i32.trunc_sat_f64_s" ||
     op === "i32.trunc_sat_f64_u" ||
@@ -2020,9 +2007,7 @@ function updateTypeStack(
     op === "f64.lt" ||
     op === "f64.le" ||
     op === "f64.gt" ||
-    op === "f64.ge" ||
-    op === "i64.eqz" ||
-    op === "i64.eq" ||
+    op === "f64.ge" ||    op === "i64.eq" ||
     op === "i64.ne"
   ) {
     stack.pop();

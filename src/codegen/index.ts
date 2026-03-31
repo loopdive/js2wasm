@@ -1234,7 +1234,7 @@ export function generateModule(
   // Copy metadata for .d.ts / helper generation — only include actually-used extern classes
   const importNames = mod.imports.map((imp) => imp.name);
   for (const [key, info] of ctx.externClasses) {
-    const prefix = info.importPrefix + "_";
+    const prefix = `${info.importPrefix}_`;
     const isUsed = importNames.some((n) => n.startsWith(prefix));
     if (key === info.className && isUsed) {
       mod.externClasses.push({
@@ -2235,7 +2235,7 @@ export function generateMultiModule(
   // Copy metadata for .d.ts / helper generation
   const importNames = mod.imports.map((imp) => imp.name);
   for (const [key, info] of ctx.externClasses) {
-    const prefix = info.importPrefix + "_";
+    const prefix = `${info.importPrefix}_`;
     const isUsed = importNames.some((n) => n.startsWith(prefix));
     if (key === info.className && isUsed) {
       mod.externClasses.push({
@@ -2898,19 +2898,14 @@ function unifiedVisitNode(ctx: CodegenContext, state: UnifiedCollectorState, nod
   }
   // Method declarations: { method() {} } → name = "method"
   if (ts.isMethodDeclaration(node) && node.name && ts.isIdentifier(node.name)) {
-    const prefix = node.modifiers?.some((m) => m.kind === ts.SyntaxKind.GetKeyword)
-      ? "get "
-      : node.modifiers?.some((m) => m.kind === ts.SyntaxKind.SetKeyword)
-        ? "set "
-        : "";
-    state.stringLiterals.add(prefix + node.name.text);
+    state.stringLiterals.add(node.name.text);
   }
   // Getter/setter declarations
   if (ts.isGetAccessorDeclaration(node) && node.name && ts.isIdentifier(node.name)) {
-    state.stringLiterals.add("get " + node.name.text);
+    state.stringLiterals.add(`get ${node.name.text}`);
   }
   if (ts.isSetAccessorDeclaration(node) && node.name && ts.isIdentifier(node.name)) {
-    state.stringLiterals.add("set " + node.name.text);
+    state.stringLiterals.add(`set ${node.name.text}`);
   }
 
   // ── Recurse into children ──
@@ -4489,7 +4484,11 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
   );
 
   // Generic numeric binary op helper generator
-  function addNumericBinaryHelper(name: string, i32op: string, f64op: string): void {
+  function addNumericBinaryHelper(
+    name: string,
+    i32op: "i32.sub" | "i32.mul",
+    f64op: "f64.sub" | "f64.mul",
+  ): void {
     addHelper(
       name,
       [anyRefNull, anyRefNull],
@@ -4519,7 +4518,7 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
             { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
             { op: "local.get", index: 1 },
             { op: "struct.get", typeIdx: anyTypeIdx, fieldIdx: 1 },
-            { op: i32op },
+            { op: i32op } as Instr,
             { op: "call", funcIdx: boxI32Idx },
           ],
           else: [
@@ -4528,7 +4527,7 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
             { op: "call", funcIdx: toF64Idx },
             { op: "local.get", index: 1 },
             { op: "call", funcIdx: toF64Idx },
-            { op: f64op },
+            { op: f64op } as Instr,
             { op: "call", funcIdx: boxF64Idx },
           ],
         },
@@ -4878,7 +4877,10 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
 
   // Comparison helpers: __any_lt, __any_gt, __any_le, __any_ge
   // All use numeric comparison (convert to f64, compare)
-  function addComparisonHelper(name: string, f64op: string): void {
+  function addComparisonHelper(
+    name: string,
+    f64op: "f64.lt" | "f64.gt" | "f64.le" | "f64.ge",
+  ): void {
     addHelper(
       name,
       [anyRefNull, anyRefNull],
@@ -4888,7 +4890,7 @@ export function ensureAnyHelpers(ctx: CodegenContext): void {
         { op: "call", funcIdx: toF64Idx },
         { op: "local.get", index: 1 },
         { op: "call", funcIdx: toF64Idx },
-        { op: f64op },
+        { op: f64op } as Instr,
       ],
     );
   }
@@ -12795,7 +12797,7 @@ function fixupStructNewResultCoercion(ctx: CodegenContext): void {
       // Fix array.new_default: length must be i32, not externref
       if (instr.op === "array.new_default" && i > 0) {
         const prev = instrs[i - 1]!;
-        if (prev.op === "ref.null.extern" || prev.op === "ref.null extern") {
+        if (prev.op === "ref.null.extern" ) {
           instrs[i - 1] = { op: "i32.const", value: 0 } as Instr;
         } else {
           let isExternref = false;
@@ -12861,7 +12863,7 @@ function fixupStructNewResultCoercion(ctx: CodegenContext): void {
         let isFuncref = false;
         if (prev.op === "extern.convert_any") {
           isAlreadyExternref = true;
-        } else if (prev.op === "ref.null.extern" || prev.op === "ref.null extern") {
+        } else if (prev.op === "ref.null.extern" ) {
           isAlreadyExternref = true;
         } else if (prev.op === "ref.func") {
           isFuncref = true;
@@ -12955,7 +12957,7 @@ function fixupExternConvertAny(ctx: CodegenContext): void {
 
       if (prev.op === "extern.convert_any") {
         isAlreadyExternref = true;
-      } else if (prev.op === "ref.null.extern" || prev.op === "ref.null extern") {
+      } else if (prev.op === "ref.null.extern" ) {
         isAlreadyExternref = true;
       } else if (prev.op === "ref.func") {
         isFuncref = true;
@@ -13115,7 +13117,7 @@ function fixupExternConvertAny(ctx: CodegenContext): void {
 
         const paramType = params[pi]!;
         if (
-          (argInstr.op === "ref.null.extern" || argInstr.op === "ref.null extern") &&
+          (argInstr.op === "ref.null.extern" ) &&
           (paramType.kind === "ref" || paramType.kind === "ref_null")
         ) {
           // Replace ref.null extern with ref.null of the correct type
