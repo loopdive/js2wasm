@@ -106,10 +106,58 @@ cd "$WT_DIR"
 npx vitest run tests/test262-chunk*.test.ts \
   --reporter=verbose \
   "$@" 2>&1 | tee /tmp/test262-vitest-run.log
-# Consider completed if the report was written (vitest's afterAll hook ran)
+# Generate report.json from JSONL (atomic — no fork race condition)
+JSONL_FILE="$RESULTS_DIR/test262-results.jsonl"
+REPORT_FILE="$RESULTS_DIR/test262-report.json"
 COMPLETED=false
-if [ -f "$WT_DIR/benchmarks/results/test262-report.json" ]; then
-  COMPLETED=true
+if [ -f "$JSONL_FILE" ] && [ -s "$JSONL_FILE" ]; then
+  python3 -c "
+import json
+from collections import Counter
+
+statuses = Counter()
+cats = {}
+errors = Counter()
+skips = Counter()
+
+with open('$JSONL_FILE') as f:
+    for line in f:
+        r = json.loads(line)
+        s = r['status']
+        statuses[s] += 1
+        cat = r.get('category', 'unknown')
+        if cat not in cats:
+            cats[cat] = {'pass': 0, 'fail': 0, 'compile_error': 0, 'skip': 0, 'total': 0}
+        cats[cat][s] = cats[cat].get(s, 0) + 1
+        cats[cat]['total'] += 1
+        if r.get('error_category'):
+            errors[r['error_category']] += 1
+        if s == 'skip' and r.get('error'):
+            skips[r['error']] += 1
+
+report = {
+    'timestamp': '$(date -Iseconds)',
+    'summary': {
+        'total': sum(statuses.values()),
+        'pass': statuses.get('pass', 0),
+        'fail': statuses.get('fail', 0),
+        'compile_error': statuses.get('compile_error', 0),
+        'compile_timeout': statuses.get('compile_timeout', 0),
+        'skip': statuses.get('skip', 0),
+        'compilable': statuses.get('pass', 0) + statuses.get('fail', 0),
+        'stale': 0,
+    },
+    'categories': [{'name': n, **c} for n, c in sorted(cats.items())],
+    'error_categories': dict(errors),
+    'skip_reasons': dict(skips),
+}
+
+with open('$REPORT_FILE', 'w') as f:
+    json.dump(report, f, indent=2)
+
+s = report['summary']
+print(f'Report: {s[\"pass\"]} pass / {s[\"total\"]} total ({s[\"pass\"]/s[\"total\"]*100:.1f}%)')
+" && COMPLETED=true
 fi
 
 # ── Stop memory monitor ──────────────────────────────────────────
