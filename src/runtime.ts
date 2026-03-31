@@ -1502,7 +1502,8 @@ export async function compileAndInstantiate(source: string, deps?: Record<string
     throw new Error(result.errors.map((e) => e.message).join("\n"));
   }
   const imports = buildImports(result.imports, deps, result.stringPool);
-  const { instance } = await instantiateWasm(result.binary, imports.env, imports.string_constants);
+  const binary = new Uint8Array(result.binary);
+  const { instance } = await instantiateWasm(binary, imports.env, imports.string_constants);
   if (imports.setExports) {
     imports.setExports(instance.exports as Record<string, Function>);
   }

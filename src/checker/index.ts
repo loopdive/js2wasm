@@ -1,15 +1,19 @@
 import ts from "typescript";
 
+function safeRequire<T>(id: string): T | null {
+  try {
+    return Function("return require")()(id) as T;
+  } catch {
+    return null;
+  }
+}
+
 // Lazy-load ALL Node.js modules for browser compatibility.
 // Vite externalizes fs, path, module, url — static imports crash in the browser.
-let _path: typeof import("path") | null = null;
+let _path: typeof import("node:path") | null = null;
 function getPath() {
   if (!_path) {
-    try {
-      _path = eval("require")("path");
-    } catch {
-      _path = null;
-    }
+    _path = safeRequire<typeof import("node:path")>("node:path");
   }
   return _path;
 }
@@ -19,36 +23,29 @@ function dirname(p: string) {
 function join(...args: string[]) {
   return getPath()?.join(...args) ?? args.join("/");
 }
-let _readFileSync: typeof import("fs").readFileSync | null = null;
+let _readFileSync: typeof import("node:fs").readFileSync | null = null;
 function getReadFileSync() {
   if (!_readFileSync) {
-    try {
-      _readFileSync = eval("require")("fs").readFileSync;
-    } catch {
-      _readFileSync = null;
-    }
+    _readFileSync =
+      safeRequire<typeof import("node:fs")>("node:fs")?.readFileSync ?? null;
   }
   return _readFileSync;
 }
-let _createRequire: typeof import("module").createRequire | null = null;
+let _createRequire: typeof import("node:module").createRequire | null = null;
 function getCreateRequire() {
   if (!_createRequire) {
-    try {
-      _createRequire = eval("require")("module").createRequire;
-    } catch {
-      _createRequire = null;
-    }
+    _createRequire =
+      safeRequire<typeof import("node:module")>("node:module")
+        ?.createRequire ?? null;
   }
   return _createRequire;
 }
-let _fileURLToPath: typeof import("url").fileURLToPath | null = null;
+let _fileURLToPath: typeof import("node:url").fileURLToPath | null = null;
 function getFileURLToPath() {
   if (!_fileURLToPath) {
-    try {
-      _fileURLToPath = eval("require")("url").fileURLToPath;
-    } catch {
-      _fileURLToPath = null;
-    }
+    _fileURLToPath =
+      safeRequire<typeof import("node:url")>("node:url")?.fileURLToPath ??
+      null;
   }
   return _fileURLToPath;
 }
@@ -222,10 +219,13 @@ export function isKnownLibName(name: string): boolean {
 
 /** Pre-parsed lib SourceFiles — cached to avoid re-parsing on every compile */
 const LIB_SOURCE_FILES = new Map<string, ts.SourceFile>();
-export function getLibSourceFile(name: string, languageVersion: ts.ScriptTarget): ts.SourceFile | undefined {
+export function getLibSourceFile(
+  name: string,
+  languageVersion: ts.ScriptTarget | ts.CreateSourceFileOptions,
+): ts.SourceFile | undefined {
   const content = getLibSource(name);
   if (content === undefined) return undefined;
-  const key = `${name}:${languageVersion}`;
+  const key = `${name}:${JSON.stringify(languageVersion)}`;
   let sf = LIB_SOURCE_FILES.get(key);
   if (!sf) {
     sf = ts.createSourceFile(name, content, languageVersion);
@@ -338,14 +338,12 @@ export interface MultiTypedAST {
  * Strips leading "./", resolves ".." segments, and ensures ".ts" extension.
  */
 function normalizeFileName(name: string): string {
-  if (name.startsWith("./")) {
-    name = name.slice(2);
-  }
-  if (name.startsWith("/")) {
-    name = name.slice(1);
+  let normalized = name.startsWith("./") ? name.slice(2) : name;
+  if (normalized.startsWith("/")) {
+    normalized = normalized.slice(1);
   }
   // Resolve ".." path segments (e.g., "link/../emit/foo" → "emit/foo")
-  const parts = name.split("/");
+  const parts = normalized.split("/");
   const resolved: string[] = [];
   for (const part of parts) {
     if (part === "..") {
@@ -354,14 +352,14 @@ function normalizeFileName(name: string): string {
       resolved.push(part);
     }
   }
-  name = resolved.join("/");
+  normalized = resolved.join("/");
   // Replace .js extension with .ts, or append .ts if no extension
-  if (name.endsWith(".js")) {
-    name = name.slice(0, -3) + ".ts";
-  } else if (!name.endsWith(".ts")) {
-    name = name + ".ts";
+  if (normalized.endsWith(".js")) {
+    normalized = `${normalized.slice(0, -3)}.ts`;
+  } else if (!normalized.endsWith(".ts")) {
+    normalized = `${normalized}.ts`;
   }
-  return name;
+  return normalized;
 }
 
 /**
@@ -502,7 +500,7 @@ export function analyzeMultiSource(
  * Returns a MultiTypedAST suitable for generateMultiModule().
  */
 export function analyzeFiles(entryPath: string, analyzeOptions?: AnalyzeOptions): MultiTypedAST {
-  const pathMod = require("path") as typeof import("path");
+  const pathMod = require("node:path") as typeof import("node:path");
   const resolvedEntry = pathMod.resolve(entryPath);
 
   const compilerOptions: ts.CompilerOptions = {

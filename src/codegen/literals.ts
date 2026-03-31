@@ -1202,7 +1202,7 @@ export function compileArrayLiteral(
       if (!srcType || (srcType.kind !== "ref" && srcType.kind !== "ref_null")) {
         // The compiled expression left a value on the stack — drop it so we
         // don't corrupt the running total (i32) that sits underneath.
-        if (srcType && srcType !== VOID_RESULT) {
+        if (srcType) {
           fctx.body.push({ op: "drop" });
         }
         continue;

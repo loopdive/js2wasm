@@ -452,7 +452,7 @@ export function emitExternrefToStructGet(
       // For ref/ref_null result types, the externref from __extern_get needs
       // to be converted to anyref and then cast to the expected struct type.
       // If the cast fails (wrong type from JS), fall back to a default value.
-      if (resultType.kind === "ref_null" || resultType.kind === "ref") {
+      if (resultType.kind === "ref_null") {
         // The __extern_get returns externref; convert to anyref, try ref.cast_null
         const tmpExtResult = allocTempLocal(fctx, { kind: "anyref" });
         externGetFallback.push({ op: "any.convert_extern" } as Instr);

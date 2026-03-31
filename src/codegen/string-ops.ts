@@ -397,7 +397,7 @@ export function compileTaggedTemplateExpression(
       fctx.body.push({ op: "ref.as_non_null" });
       fctx.body.push({ op: "call_ref", typeIdx: closureInfo.funcTypeIdx });
 
-      return closureInfo.returnType ?? VOID_RESULT;
+      return closureInfo.returnType ?? null;
     }
 
     // Case 2: tag is a known function
@@ -570,7 +570,7 @@ export function compileTaggedTemplateExpression(
       fctx.body.push({ op: "ref.as_non_null" });
       fctx.body.push({ op: "call_ref", typeIdx: matchedClosureInfo.funcTypeIdx });
 
-      return matchedClosureInfo.returnType ?? VOID_RESULT;
+      return matchedClosureInfo.returnType ?? null;
     }
 
     // No matching closure found — try compiling the tag as a general expression
@@ -607,13 +607,13 @@ export function compileTaggedTemplateExpression(
           fctx.body.push({ op: "ref.as_non_null" });
           fctx.body.push({ op: "call_ref", typeIdx: closureInfo.funcTypeIdx });
 
-          return closureInfo.returnType ?? VOID_RESULT;
+          return closureInfo.returnType ?? null;
         }
       }
 
       // If the tag expression compiled but didn't return a recognizable closure,
       // drop it and emit null as fallback
-      if (tagResult && tagResult !== VOID_RESULT) {
+      if (tagResult) {
         fctx.body.push({ op: "drop" });
       }
     }
@@ -1022,7 +1022,7 @@ export function compileNativeStringMethodCall(
     fctx.body.push({ op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 }); // .off
     if (expr.arguments.length > 0) {
       const argType = compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "f64" });
-      if (!argType || argType === VOID_RESULT) {
+      if (!argType) {
         fctx.body.push({ op: "i32.const", value: 0 });
       } else if (argType.kind === "f64") {
         fctx.body.push({ op: "i32.trunc_sat_f64_s" });
@@ -1041,7 +1041,7 @@ export function compileNativeStringMethodCall(
     emitFlatten();
     if (expr.arguments.length > 0) {
       const argType = compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "f64" });
-      if (!argType || argType === VOID_RESULT) {
+      if (!argType) {
         fctx.body.push({ op: "i32.const", value: 0 });
       } else if (argType.kind === "f64") {
         fctx.body.push({ op: "i32.trunc_sat_f64_s" });
@@ -1068,7 +1068,7 @@ export function compileNativeStringMethodCall(
     const idxTmp = allocLocal(fctx, `__str_at_idx_${fctx.locals.length}`, { kind: "i32" });
     if (expr.arguments.length > 0) {
       const argType = compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "f64" });
-      if (!argType || argType === VOID_RESULT) {
+      if (!argType) {
         fctx.body.push({ op: "i32.const", value: 0 });
       } else if (argType.kind === "f64") {
         fctx.body.push({ op: "i32.trunc_sat_f64_s" });
@@ -1106,7 +1106,7 @@ export function compileNativeStringMethodCall(
     // start
     if (expr.arguments.length > 0) {
       const argType = compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "f64" });
-      if (!argType || argType === VOID_RESULT) {
+      if (!argType) {
         // void/null result — push default 0
         fctx.body.push({ op: "i32.const", value: 0 });
       } else if (argType.kind === "f64") {
@@ -1118,7 +1118,7 @@ export function compileNativeStringMethodCall(
     // end
     if (expr.arguments.length > 1) {
       const argType = compileExpression(ctx, fctx, expr.arguments[1]!, { kind: "f64" });
-      if (!argType || argType === VOID_RESULT) {
+      if (!argType) {
         fctx.body.push({ op: "i32.const", value: 0x7fffffff });
       } else if (argType.kind === "f64") {
         fctx.body.push({ op: "i32.trunc_sat_f64_s" });
@@ -1142,7 +1142,7 @@ export function compileNativeStringMethodCall(
     // start
     if (expr.arguments.length > 0) {
       const argType = compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "f64" });
-      if (!argType || argType === VOID_RESULT) {
+      if (!argType) {
         fctx.body.push({ op: "i32.const", value: 0 });
       } else if (argType.kind === "f64") {
         fctx.body.push({ op: "i32.trunc_sat_f64_s" });
@@ -1153,7 +1153,7 @@ export function compileNativeStringMethodCall(
     // end
     if (expr.arguments.length > 1) {
       const argType = compileExpression(ctx, fctx, expr.arguments[1]!, { kind: "f64" });
-      if (!argType || argType === VOID_RESULT) {
+      if (!argType) {
         fctx.body.push({ op: "i32.const", value: 0x7fffffff });
       } else if (argType.kind === "f64") {
         fctx.body.push({ op: "i32.trunc_sat_f64_s" });
@@ -1180,7 +1180,7 @@ export function compileNativeStringMethodCall(
     // fromIndex arg
     if (expr.arguments.length > 1) {
       const argType = compileExpression(ctx, fctx, expr.arguments[1]!, { kind: "f64" });
-      if (!argType || argType === VOID_RESULT) {
+      if (!argType) {
         fctx.body.push({ op: "i32.const", value: 0 });
       } else if (argType.kind === "f64") {
         fctx.body.push({ op: "i32.trunc_sat_f64_s" });
@@ -1205,7 +1205,7 @@ export function compileNativeStringMethodCall(
     }
     if (expr.arguments.length > 1) {
       const argType = compileExpression(ctx, fctx, expr.arguments[1]!, { kind: "f64" });
-      if (!argType || argType === VOID_RESULT) {
+      if (!argType) {
         fctx.body.push({ op: "i32.const", value: 0x7fffffff });
       } else if (argType.kind === "f64") {
         fctx.body.push({ op: "i32.trunc_sat_f64_s" });
@@ -1516,7 +1516,7 @@ export function compileNativeStringMethodCall(
     fctx.body.push({ op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 }); // .off
     if (expr.arguments.length > 0) {
       const argType = compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "f64" });
-      if (!argType || argType === VOID_RESULT) {
+      if (!argType) {
         fctx.body.push({ op: "i32.const", value: 0 });
       } else if (argType.kind === "f64") {
         fctx.body.push({ op: "i32.trunc_sat_f64_s" });
@@ -1552,7 +1552,7 @@ export function compileNativeStringMethodCall(
       }
       // For non-literal args, compile and drop (can't validate at compile time)
       const argType = compileExpression(ctx, fctx, formArg);
-      if (argType && argType !== VOID_RESULT) {
+      if (argType) {
         fctx.body.push({ op: "drop" });
       }
     }

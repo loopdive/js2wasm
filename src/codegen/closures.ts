@@ -334,18 +334,7 @@ export function emitArrowParamDestructuring(
 
     // If the parameter is externref but we need a struct, convert it first.
     // This happens in __cb_N callbacks where parameters come from JS host as externref.
-    let structParamIdx = paramIdx;
-    if (paramType.kind === "externref") {
-      const castLocal = allocLocal(fctx, `__destr_cast_${fctx.locals.length}`, {
-        kind: "ref_null",
-        typeIdx: structTypeIdx,
-      });
-      fctx.body.push({ op: "local.get", index: paramIdx });
-      fctx.body.push({ op: "any.convert_extern" } as Instr);
-      emitGuardedRefCast(fctx, structTypeIdx);
-      fctx.body.push({ op: "local.set", index: castLocal });
-      structParamIdx = castLocal;
-    }
+    const structParamIdx = paramIdx;
 
     for (const element of pattern.elements) {
       if (!ts.isBindingElement(element)) continue;

@@ -2035,9 +2035,10 @@ export function compilePropertyIntrospection(
     } else if (isConstructorReceiver) {
       // On the constructor (typeof C): only static members are own.
       if (decls && decls.length > 0) {
-        const hasStatic = decls.some(
-          (d) =>
-            ts.canHaveModifiers(d) && d.modifiers?.some((m: ts.Modifier) => m.kind === ts.SyntaxKind.StaticKeyword),
+        const hasStatic = decls.some((d) =>
+          ts.canHaveModifiers(d)
+            ? (ts.getModifiers(d as ts.HasModifiers)?.some((m) => m.kind === ts.SyntaxKind.StaticKeyword) ?? false)
+            : false,
         );
         if (!hasStatic) continue;
       }
@@ -2074,7 +2075,7 @@ export function compilePropertyIntrospection(
     // No argument — hasOwnProperty() with no args returns false in JS
     // Compile receiver for side effects
     const recvType = compileExpression(ctx, fctx, propAccess.expression);
-    if (recvType && recvType !== VOID_RESULT) {
+    if (recvType) {
       fctx.body.push({ op: "drop" });
     }
     fctx.body.push({ op: "i32.const", value: 0 });
@@ -2108,11 +2109,11 @@ export function compilePropertyIntrospection(
 
     // Compile receiver and argument for side effects, then drop
     const recvType = compileExpression(ctx, fctx, propAccess.expression);
-    if (recvType && recvType !== VOID_RESULT) {
+    if (recvType) {
       fctx.body.push({ op: "drop" });
     }
     const argResultType = compileExpression(ctx, fctx, arg);
-    if (argResultType && argResultType !== VOID_RESULT) {
+    if (argResultType) {
       fctx.body.push({ op: "drop" });
     }
     fctx.body.push({ op: "i32.const", value: has ? 1 : 0 });
@@ -2136,7 +2137,7 @@ export function compilePropertyIntrospection(
 
     // Compile receiver for side effects, drop it
     const recvType = compileExpression(ctx, fctx, propAccess.expression);
-    if (recvType && recvType !== VOID_RESULT) {
+    if (recvType) {
       fctx.body.push({ op: "drop" });
     }
 
@@ -2167,11 +2168,11 @@ export function compilePropertyIntrospection(
 
   // Fallback: compile both sides for side effects, return false
   const recvType = compileExpression(ctx, fctx, propAccess.expression);
-  if (recvType && recvType !== VOID_RESULT) {
+  if (recvType) {
     fctx.body.push({ op: "drop" });
   }
   const argResultType = compileExpression(ctx, fctx, arg);
-  if (argResultType && argResultType !== VOID_RESULT) {
+  if (argResultType) {
     fctx.body.push({ op: "drop" });
   }
   fctx.body.push({ op: "i32.const", value: 0 });

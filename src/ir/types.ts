@@ -35,7 +35,7 @@ export type TypeDef = FuncTypeDef | StructTypeDef | ArrayTypeDef | RecGroupDef |
 
 export interface FuncTypeDef {
   kind: "func";
-  name: string;
+  name?: string;
   params: ValType[];
   results: ValType[];
 }
@@ -63,7 +63,7 @@ export interface SubTypeDef {
   name: string;
   superType: number | null;
   final: boolean;
-  type: StructTypeDef | ArrayTypeDef;
+  type: StructTypeDef | ArrayTypeDef | FuncTypeDef;
 }
 export interface FieldDef {
   name: string;
@@ -136,7 +136,9 @@ type InstrBase =
   | { op: "i64.extend_i32_s" }
   | { op: "i64.extend_i32_u" }
   | { op: "i64.trunc_f64_s" }
+  | { op: "i64.reinterpret_f64" }
   | { op: "f64.convert_i64_s" }
+  | { op: "f64.reinterpret_i64" }
   | { op: "f64.const"; value: number }
   | { op: "f32.const"; value: number }
   | { op: "i32.add" }
@@ -157,6 +159,8 @@ type InstrBase =
   | { op: "i32.shr_s" }
   | { op: "i32.shr_u" }
   | { op: "i32.clz" }
+  | { op: "i32.wrap_i64" }
+  | { op: "i32.trunc_f64_u" }
   | { op: "i32.trunc_sat_f64_s" }
   | { op: "i32.trunc_sat_f64_u" }
   | { op: "i64.trunc_sat_f64_s" }
@@ -188,7 +192,9 @@ type InstrBase =
   | { op: "if"; blockType: BlockType; then: Instr[]; else?: Instr[] }
   | { op: "br"; depth: number }
   | { op: "br_if"; depth: number }
+  | { op: "br_table" }
   | { op: "return" }
+  | { op: "end" }
   | { op: "call"; funcIdx: number }
   | { op: "return_call"; funcIdx: number }
   | { op: "call_indirect"; typeIdx: number; tableIdx: number }
