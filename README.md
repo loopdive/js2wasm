@@ -4,7 +4,7 @@
 
 # js2wasm ECMAScript to WebAssembly Compiler
 
-AOT compiler that compiles a strict subset of TypeScript directly to WebAssembly with the GC proposal.
+AOT compiler that compiles Javascript directly to WebAssembly with the GC proposal.
 
 Runs entirely in the browser – no server, no build step for user code.
 
@@ -12,7 +12,7 @@ Runs entirely in the browser – no server, no build step for user code.
 TS Source (String) → tsc Parser+Checker → Codegen → Wasm GC Binary (Uint8Array) → WebAssembly.instantiate()
 ```
 
-## Why ts2wasm?
+## Why js2wasm?
 
 TypeScript normally transpiles to JavaScript, which requires a JS engine to run and provides no sandboxing between modules – any module can access globals, the filesystem, the network, or mutate shared state. ts2wasm compiles TypeScript directly to WebAssembly instead, which unlocks features that regular TS/JS does not have:
 
