@@ -482,9 +482,8 @@ function recordResult(
       error_categories: { ...errorCategoryCounts },
       skip_reasons: { ...skipReasonCounts },
     };
-    try {
-      writeFileSync(REPORT_PATH, JSON.stringify(report, null, 2));
-    } catch {}
+    // Report.json is generated from JSONL by the runner script after vitest exits.
+    // Don't write it here — multiple forks would race and overwrite each other.
   }
 
   if (status !== "pass") {
@@ -621,22 +620,7 @@ export function runTest262Chunk(chunkIndex: number, totalChunks: number) {
       closeSync(jsonlFd);
     } catch {}
 
-    const report = {
-      timestamp: new Date().toISOString(),
-      summary: {
-        ...summary,
-        compilable: summary.pass + summary.fail,
-        stale: 0,
-      },
-      categories: Object.entries(catCounts)
-        .map(([name, c]) => ({ name, ...c }))
-        .sort((a, b) => a.name.localeCompare(b.name)),
-      error_categories: { ...errorCategoryCounts },
-      skip_reasons: { ...skipReasonCounts },
-    };
-    try {
-      writeFileSync(REPORT_PATH, JSON.stringify(report, null, 2));
-    } catch {}
+    // Report.json generated from JSONL by runner script — not here (fork race condition)
 
     // Print error category breakdown
     const ecEntries = Object.entries(errorCategoryCounts).sort(
