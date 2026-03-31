@@ -12,6 +12,8 @@ MAIN_DIR="/workspace"
 LOCKFILE="/tmp/ts2wasm-test262.lock"
 RESULTS_DIR="$MAIN_DIR/benchmarks/results"
 RUN_TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+RUN_START_EPOCH=$(date +%s)
+RUN_START_ISO=$(date -Iseconds)
 
 # ── Exclusive lock — only one test262 run at a time ──────────────
 exec 200>"$LOCKFILE"
@@ -144,7 +146,26 @@ JSONL="$RESULTS_DIR/test262-results.jsonl"
 RUN_REPORT="$RESULTS_DIR/test262-report-${RUN_TIMESTAMP}.json"
 RUN_JSONL="$RESULTS_DIR/test262-results-${RUN_TIMESTAMP}.jsonl"
 
+RUN_END_EPOCH=$(date +%s)
+RUN_DURATION=$((RUN_END_EPOCH - RUN_START_EPOCH))
+
 if [ "$COMPLETED" = true ]; then
+  # Inject run metadata into report before archiving
+  python3 -c "
+import json
+with open('$REPORT') as f:
+    d = json.load(f)
+d['run'] = {
+    'started': '$RUN_START_ISO',
+    'duration_s': $RUN_DURATION,
+    'peak_vitest_mb': ${PEAK_RSS:-0},
+    'git_hash': '$(git -C \"$WT_DIR\" rev-parse --short HEAD 2>/dev/null || echo unknown)',
+    'timestamp': '$RUN_TIMESTAMP',
+}
+with open('$REPORT', 'w') as f:
+    json.dump(d, f, indent=2)
+" 2>/dev/null
+
   # Move to timestamped files (immutable archive) and create symlinks
   mv "$REPORT" "$RUN_REPORT" 2>/dev/null
   mv "$JSONL" "$RUN_JSONL" 2>/dev/null
@@ -153,7 +174,7 @@ if [ "$COMPLETED" = true ]; then
 
   PASS=$(python3 -c "import json; d=json.load(open('$RUN_REPORT')); print(d['summary']['pass'])" 2>/dev/null || echo "?")
   TOTAL=$(python3 -c "import json; d=json.load(open('$RUN_REPORT')); print(d['summary']['total'])" 2>/dev/null || echo "?")
-  echo "COMPLETED: $PASS pass / $TOTAL total"
+  echo "COMPLETED: $PASS pass / $TOTAL total (${RUN_DURATION}s, peak ${PEAK_RSS:-?}MB)"
   echo "Report:  $RUN_REPORT"
   echo "Results: $RUN_JSONL"
   echo "Symlinks updated."
