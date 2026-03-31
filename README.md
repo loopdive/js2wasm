@@ -1,9 +1,5 @@
 <p align="center">
-<<<<<<< HEAD
-  <img src="./jswasmlogo.png" alt="ts2wasm" width="300" />
-=======
-  <img src="./playground/image.png" alt="js2wasm" width="300" />
->>>>>>> 18e6a09de5e24883ff85809ea89d6dd17a3ccb5e
+  <img src="./jswasmlogo.png" alt="js2wasm" width="300" />
 </p>
 
 # js2wasm ECMAScript to WebAssembly Compiler
@@ -176,12 +172,11 @@ js2wasm passes **18,167 / 47,797** tests from the [ECMAScript test262 conformanc
 
 ### ECMAScript Standard Features Not Yet Supported
 
-<<<<<<< HEAD
 | Standard | Feature                                 | Status                                                         | Tests |
 | -------- | --------------------------------------- | -------------------------------------------------------------- | ----: |
 | ES5      | `with` statement                        | Strict mode only — incompatible with static compilation        |   560 |
 | ES5      | Octal escape sequences                  | Forbidden in strict/module mode                                |    16 |
-| ES5      | Sloppy mode behaviors                   | ts2wasm compiles in strict mode exclusively                    |     8 |
+| ES5      | Sloppy mode behaviors                   | js2wasm compiles in strict mode exclusively                    |     8 |
 | ES2015   | Multi-module `import`                   | Single-file compilation; basic multi-file via `compileMulti()` |   783 |
 | ES2015   | Proxy                                   | Partial — basic traps work, not all handler methods            |     — |
 | ES2015   | Full `arguments` object                 | Partial — basic access works, `arguments.callee` not supported |     — |
@@ -190,21 +185,6 @@ js2wasm passes **18,167 / 47,797** tests from the [ECMAScript test262 conformanc
 | ES2020   | BigInt64Array / BigUint64Array          | Not yet implemented                                            |    28 |
 | ES2025   | Temporal API                            | Not yet implemented                                            | 4,376 |
 | ES2025   | Set methods (union, intersection, etc.) | Not yet implemented                                            |   186 |
-=======
-| Standard | Feature | Status | Tests |
-|----------|---------|--------|------:|
-| ES5 | `with` statement | Strict mode only — incompatible with static compilation | 560 |
-| ES5 | Octal escape sequences | Forbidden in strict/module mode | 16 |
-| ES5 | Sloppy mode behaviors | js2wasm compiles in strict mode exclusively | 8 |
-| ES2015 | Multi-module `import` | Single-file compilation; basic multi-file via `compileMulti()` | 783 |
-| ES2015 | Proxy | Partial — basic traps work, not all handler methods | — |
-| ES2015 | Full `arguments` object | Partial — basic access works, `arguments.callee` not supported | — |
-| ES2017 | SharedArrayBuffer / Atomics | Requires shared Wasm memory (not yet available in WasmGC) | 460 |
-| ES2020 | Dynamic `import()` | No runtime module loader | 432 |
-| ES2020 | BigInt64Array / BigUint64Array | Not yet implemented | 28 |
-| ES2025 | Temporal API | Not yet implemented | 4,376 |
-| ES2025 | Set methods (union, intersection, etc.) | Not yet implemented | 186 |
->>>>>>> 18e6a09de5e24883ff85809ea89d6dd17a3ccb5e
 
 ### ECMAScript Proposals (Not Yet Standardized)
 
