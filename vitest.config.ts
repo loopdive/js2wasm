@@ -6,9 +6,9 @@ export default defineConfig({
     pool: 'forks',
     poolOptions: {
       forks: {
-        // 1 fork — runner script loops over chunk files, fork dies between each
-        // Fork uses nproc compiler threads for max parallelism
-        maxForks: parseInt(process.env.TEST262_WORKERS || '1', 10),
+        // 1 vitest fork — CompilerPool inside spawns cpus-1 child_process.fork workers
+        // Multiple vitest forks would create multiple pools and OOM
+        maxForks: 1,
         execArgv: ['--max-old-space-size=4096', '--expose-gc'],
       },
     },
