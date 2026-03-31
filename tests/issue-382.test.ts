@@ -16,7 +16,8 @@ async function run(source: string, fn: string = "test", args: unknown[] = []): P
 
 describe("issue-382: spread argument in super/function calls", () => {
   it("compiles spread in function call: fn(...args)", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       function add(a: number, b: number): number {
         return a + b;
       }
@@ -26,11 +27,13 @@ describe("issue-382: spread argument in super/function calls", () => {
       export function test(): number {
         return wrapper(3, 7);
       }
-    `)).toBe(10);
+    `),
+    ).toBe(10);
   });
 
   it("compiles spread in super() call", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       class Parent {
         x: number;
         constructor(x: number) {
@@ -46,11 +49,13 @@ describe("issue-382: spread argument in super/function calls", () => {
         const c = new Child(42);
         return c.x;
       }
-    `)).toBe(42);
+    `),
+    ).toBe(42);
   });
 
   it("compiles spread with multiple parent fields", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       class Parent {
         a: number;
         b: number;
@@ -68,11 +73,13 @@ describe("issue-382: spread argument in super/function calls", () => {
         const c = new Child(10, 20);
         return c.a + c.b;
       }
-    `)).toBe(30);
+    `),
+    ).toBe(30);
   });
 
   it("spread rest params forwarded to another function", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       function sum(a: number, b: number, c: number): number {
         return a + b + c;
       }
@@ -82,7 +89,8 @@ describe("issue-382: spread argument in super/function calls", () => {
       export function test(): number {
         return forward(1, 2, 3);
       }
-    `)).toBe(6);
+    `),
+    ).toBe(6);
   });
 
   it("TS2556 diagnostic is downgraded to warning", () => {

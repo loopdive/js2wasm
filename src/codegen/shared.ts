@@ -25,15 +25,11 @@ export type InnerResult = ValType | null | typeof VOID_RESULT;
  * struct name from the local's ref type index. Used as a fallback when
  * resolveStructName returns undefined for `this`-property accesses/assignments.
  */
-export function resolveThisStructName(
-  ctx: CodegenContext,
-  fctx: FunctionContext,
-): string | undefined {
+export function resolveThisStructName(ctx: CodegenContext, fctx: FunctionContext): string | undefined {
   const selfIdx = fctx.localMap.get("this");
   if (selfIdx === undefined) return undefined;
-  const selfType = selfIdx < fctx.params.length
-    ? fctx.params[selfIdx]!.type
-    : fctx.locals[selfIdx - fctx.params.length]?.type;
+  const selfType =
+    selfIdx < fctx.params.length ? fctx.params[selfIdx]!.type : fctx.locals[selfIdx - fctx.params.length]?.type;
   if (!selfType || (selfType.kind !== "ref" && selfType.kind !== "ref_null")) return undefined;
   const typeIdx = (selfType as { typeIdx: number }).typeIdx;
   return ctx.typeIdxToStructName.get(typeIdx);
@@ -44,10 +40,7 @@ export function resolveThisStructName(
 /** Check if two ValTypes are structurally equal */
 export function valTypesMatch(a: ValType, b: ValType): boolean {
   if (a.kind !== b.kind) return false;
-  if (
-    (a.kind === "ref" || a.kind === "ref_null") &&
-    (b.kind === "ref" || b.kind === "ref_null")
-  ) {
+  if ((a.kind === "ref" || a.kind === "ref_null") && (b.kind === "ref" || b.kind === "ref_null")) {
     return (a as { typeIdx: number }).typeIdx === (b as { typeIdx: number }).typeIdx;
   }
   return true;
@@ -131,11 +124,7 @@ export function compileArrowAsClosure(
 
 // ── emitBoundsCheckedArrayGet ─────────────────────────────────────────
 
-type EmitBoundsCheckedArrayGetFn = (
-  fctx: FunctionContext,
-  arrTypeIdx: number,
-  elementType: ValType,
-) => void;
+type EmitBoundsCheckedArrayGetFn = (fctx: FunctionContext, arrTypeIdx: number, elementType: ValType) => void;
 
 let _emitBoundsCheckedArrayGet: EmitBoundsCheckedArrayGetFn = () => {
   throw new Error("emitBoundsCheckedArrayGet not yet registered");
@@ -145,11 +134,7 @@ export function registerEmitBoundsCheckedArrayGet(fn: EmitBoundsCheckedArrayGetF
   _emitBoundsCheckedArrayGet = fn;
 }
 
-export function emitBoundsCheckedArrayGet(
-  fctx: FunctionContext,
-  arrTypeIdx: number,
-  elementType: ValType,
-): void {
+export function emitBoundsCheckedArrayGet(fctx: FunctionContext, arrTypeIdx: number, elementType: ValType): void {
   _emitBoundsCheckedArrayGet(fctx, arrTypeIdx, elementType);
 }
 
@@ -204,10 +189,7 @@ type EnsureLateImportFn = (
   resultTypes: ValType[],
 ) => number | undefined;
 
-type FlushLateImportShiftsFn = (
-  ctx: CodegenContext,
-  fctx: FunctionContext,
-) => void;
+type FlushLateImportShiftsFn = (ctx: CodegenContext, fctx: FunctionContext) => void;
 
 let _ensureLateImport: EnsureLateImportFn = () => {
   throw new Error("ensureLateImport not yet registered");
@@ -234,9 +216,6 @@ export function ensureLateImport(
   return _ensureLateImport(ctx, name, paramTypes, resultTypes);
 }
 
-export function flushLateImportShifts(
-  ctx: CodegenContext,
-  fctx: FunctionContext,
-): void {
+export function flushLateImportShifts(ctx: CodegenContext, fctx: FunctionContext): void {
   _flushLateImportShifts(ctx, fctx);
 }

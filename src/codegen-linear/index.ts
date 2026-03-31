@@ -1,11 +1,6 @@
 import ts from "typescript";
 import type { TypedAST, MultiTypedAST } from "../checker/index.js";
-import type {
-  FuncTypeDef,
-  Instr,
-  ValType,
-  WasmModule,
-} from "../ir/types.js";
+import type { FuncTypeDef, Instr, ValType, WasmModule } from "../ir/types.js";
 import { createEmptyModule } from "../ir/types.js";
 import type { LinearContext, LinearFuncContext, CollectionKind } from "./context.js";
 import { addLocal } from "./context.js";
@@ -218,7 +213,13 @@ export function generateLinearMultiModule(multiAst: MultiTypedAST): WasmModule {
   }
 
   // ── Forward-register all functions across all files ──
-  const allFuncEntries: { kind: "ctor" | "method" | "func"; node: ts.Node; name: string; className?: string; isEntry: boolean }[] = [];
+  const allFuncEntries: {
+    kind: "ctor" | "method" | "func";
+    node: ts.Node;
+    name: string;
+    className?: string;
+    isEntry: boolean;
+  }[] = [];
 
   for (const classDecl of classDecls) {
     const className = classDecl.name!.text;
@@ -311,11 +312,14 @@ export function generateLinearMultiModule(multiAst: MultiTypedAST): WasmModule {
 }
 
 /** Like compileFunction but only exports if isEntry is true or re-exported */
-function compileFunctionMulti(ctx: LinearContext, decl: ts.FunctionDeclaration, isEntry: boolean, reExportedNames: Set<string>): void {
+function compileFunctionMulti(
+  ctx: LinearContext,
+  decl: ts.FunctionDeclaration,
+  isEntry: boolean,
+  reExportedNames: Set<string>,
+): void {
   const name = decl.name!.text;
-  const hasExportKeyword = decl.modifiers?.some(
-    (m) => m.kind === ts.SyntaxKind.ExportKeyword,
-  ) ?? false;
+  const hasExportKeyword = decl.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword) ?? false;
   // Export if: (1) directly exported from entry file, or (2) re-exported by entry file
   const isExported = (hasExportKeyword && isEntry) || reExportedNames.has(name);
 
@@ -393,9 +397,7 @@ function compileFunctionMulti(ctx: LinearContext, decl: ts.FunctionDeclaration, 
 
 function compileFunction(ctx: LinearContext, decl: ts.FunctionDeclaration): void {
   const name = decl.name!.text;
-  const isExported = decl.modifiers?.some(
-    (m) => m.kind === ts.SyntaxKind.ExportKeyword,
-  ) ?? false;
+  const isExported = decl.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword) ?? false;
 
   // Build parameter types
   const params: { name: string; type: ValType }[] = [];
@@ -482,11 +484,7 @@ function compileFunction(ctx: LinearContext, decl: ts.FunctionDeclaration): void
   ctx.currentFunc = null;
 }
 
-function compileStatement(
-  ctx: LinearContext,
-  fctx: LinearFuncContext,
-  stmt: ts.Statement,
-): void {
+function compileStatement(ctx: LinearContext, fctx: LinearFuncContext, stmt: ts.Statement): void {
   if (ts.isReturnStatement(stmt)) {
     if (stmt.expression) {
       compileExpression(ctx, fctx, stmt.expression);
@@ -679,11 +677,7 @@ function compileStatement(
 
 // ── ForOfStatement ─────────────────────────────────────────────────────
 
-function compileForOfStatement(
-  ctx: LinearContext,
-  fctx: LinearFuncContext,
-  stmt: ts.ForOfStatement,
-): void {
+function compileForOfStatement(ctx: LinearContext, fctx: LinearFuncContext, stmt: ts.ForOfStatement): void {
   // Compile the iterable expression (the array)
   compileExpression(ctx, fctx, stmt.expression);
   const arrLocal = addLocal(fctx, `__forof_arr_${fctx.locals.length}`, { kind: "i32" });
@@ -707,7 +701,9 @@ function compileForOfStatement(
     fctx.body.push({ op: "i32.load8_u", align: 0, offset: 0 });
     fctx.body.push({ op: "i32.const", value: 0x02 }); // Uint8Array tag
     fctx.body.push({ op: "i32.eq" });
-    fctx.body.push({ op: "if", blockType: { kind: "val", type: { kind: "i32" } },
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "val", type: { kind: "i32" } },
       then: [
         { op: "local.get", index: arrLocal },
         { op: "call", funcIdx: u8LenIdx },
@@ -763,7 +759,9 @@ function compileForOfStatement(
       if (iterTypeStr.endsWith("[]") && !iterTypeStr.startsWith("number") && !iterTypeStr.startsWith("boolean")) {
         elementIsI32 = true;
       }
-    } catch { /* fall through */ }
+    } catch {
+      /* fall through */
+    }
   }
   let loopVarIdx: number | undefined;
   if (loopVarName) {
@@ -791,7 +789,9 @@ function compileForOfStatement(
       fctx.body.push({ op: "i32.load8_u", align: 0, offset: 0 });
       fctx.body.push({ op: "i32.const", value: 0x02 }); // Uint8Array tag
       fctx.body.push({ op: "i32.eq" });
-      fctx.body.push({ op: "if", blockType: { kind: "val", type: { kind: "i32" } },
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "val", type: { kind: "i32" } },
         then: [
           { op: "local.get", index: arrLocal },
           { op: "local.get", index: idxLocal },
@@ -890,15 +890,19 @@ function compileForOfMap(
       keyIsI32 = true;
       valIsI32 = true;
     }
-  } catch { /* default: f64 */ }
+  } catch {
+    /* default: f64 */
+  }
 
   // Create locals for destructured variables
-  const keyVarIdx = destructuredNames.length > 0
-    ? addLocal(fctx, destructuredNames[0], keyIsI32 ? { kind: "i32" } : { kind: "f64" })
-    : undefined;
-  const valVarIdx = destructuredNames.length > 1
-    ? addLocal(fctx, destructuredNames[1], valIsI32 ? { kind: "i32" } : { kind: "f64" })
-    : undefined;
+  const keyVarIdx =
+    destructuredNames.length > 0
+      ? addLocal(fctx, destructuredNames[0], keyIsI32 ? { kind: "i32" } : { kind: "f64" })
+      : undefined;
+  const valVarIdx =
+    destructuredNames.length > 1
+      ? addLocal(fctx, destructuredNames[1], valIsI32 ? { kind: "i32" } : { kind: "f64" })
+      : undefined;
 
   // Register collection types for destructured variables using TypeChecker
   try {
@@ -921,7 +925,9 @@ function compileForOfMap(
         }
       }
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 
   const loopBody: Instr[] = [];
   const savedBody = fctx.body;
@@ -1018,11 +1024,7 @@ function compileForOfMap(
 
 // ── DoWhileStatement ──────────────────────────────────────────────────
 
-function compileDoWhileStatement(
-  ctx: LinearContext,
-  fctx: LinearFuncContext,
-  stmt: ts.DoStatement,
-): void {
+function compileDoWhileStatement(ctx: LinearContext, fctx: LinearFuncContext, stmt: ts.DoStatement): void {
   const loopBody: Instr[] = [];
   const savedBody = fctx.body;
   fctx.body = loopBody;
@@ -1061,11 +1063,7 @@ function compileDoWhileStatement(
 
 // ── SwitchStatement ────────────────────────────────────────────────────
 
-function compileSwitchStatement(
-  ctx: LinearContext,
-  fctx: LinearFuncContext,
-  stmt: ts.SwitchStatement,
-): void {
+function compileSwitchStatement(ctx: LinearContext, fctx: LinearFuncContext, stmt: ts.SwitchStatement): void {
   // Compile as cascading if/else with fall-through support.
   // Group consecutive case clauses with empty bodies (fall-through)
   // into a single OR'd condition.
@@ -1173,11 +1171,7 @@ function compileSwitchStatement(
   }
 }
 
-export function compileExpression(
-  ctx: LinearContext,
-  fctx: LinearFuncContext,
-  expr: ts.Expression,
-): void {
+export function compileExpression(ctx: LinearContext, fctx: LinearFuncContext, expr: ts.Expression): void {
   if (ts.isNumericLiteral(expr)) {
     fctx.body.push({ op: "f64.const", value: Number(expr.text) });
   } else if (ts.isStringLiteral(expr) || ts.isNoSubstitutionTemplateLiteral(expr)) {
@@ -1283,8 +1277,10 @@ export function compileExpression(
         }
         fctx.body.push({ op: "local.set", index: idx });
       }
-    } else if (ts.isPropertyAccessExpression(expr.operand) &&
-               expr.operand.expression.kind === ts.SyntaxKind.ThisKeyword) {
+    } else if (
+      ts.isPropertyAccessExpression(expr.operand) &&
+      expr.operand.expression.kind === ts.SyntaxKind.ThisKeyword
+    ) {
       // this.field++ / this.field--
       const propName = expr.operand.name.text;
       const className = inferClassName(ctx, fctx, expr.operand.expression);
@@ -1429,11 +1425,13 @@ function isCallVoid(ctx: LinearContext, expr: ts.CallExpression): boolean {
     const callType = ctx.checker.getTypeAtLocation(expr);
     const typeStr = ctx.checker.typeToString(callType);
     if (typeStr === "void") return true;
-  } catch { /* fall through */ }
+  } catch {
+    /* fall through */
+  }
   // Fallback: check compiled function
   if (ts.isIdentifier(expr.expression)) {
     const funcName = expr.expression.text;
-    const wasmFunc = ctx.mod.functions.find(f => f.name === funcName);
+    const wasmFunc = ctx.mod.functions.find((f) => f.name === funcName);
     if (wasmFunc) {
       const funcType = ctx.mod.types[wasmFunc.typeIdx];
       if (funcType && funcType.kind === "func" && funcType.results.length === 0) return true;
@@ -1461,7 +1459,9 @@ function isVoidExpression(ctx: LinearContext, expr: ts.Expression): boolean {
       const callType = ctx.checker.getTypeAtLocation(expr);
       const typeStr = ctx.checker.typeToString(callType);
       if (typeStr === "void") return true;
-    } catch { /* fall through */ }
+    } catch {
+      /* fall through */
+    }
     return false;
   }
 
@@ -1476,7 +1476,7 @@ function emitDefaultArgs(
   funcName: string,
   providedArgCount: number,
 ): void {
-  const wasmFunc = ctx.mod.functions.find(f => f.name === funcName);
+  const wasmFunc = ctx.mod.functions.find((f) => f.name === funcName);
   if (!wasmFunc) return;
   const funcType = ctx.mod.types[wasmFunc.typeIdx];
   if (!funcType || funcType.kind !== "func") return;
@@ -1529,11 +1529,7 @@ function classifyFieldType(
 }
 
 /** Compile an object literal expression as a heap-allocated struct */
-function compileObjectLiteral(
-  ctx: LinearContext,
-  fctx: LinearFuncContext,
-  expr: ts.ObjectLiteralExpression,
-): void {
+function compileObjectLiteral(ctx: LinearContext, fctx: LinearFuncContext, expr: ts.ObjectLiteralExpression): void {
   // Determine the type name from the TypeChecker
   // Use contextual type (from variable annotation or parameter type) first,
   // since getTypeAtLocation on object literals returns the anonymous structural type
@@ -1561,7 +1557,9 @@ function compileObjectLiteral(
         if (name && name !== "__object" && name !== "__type") typeName = name;
       }
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 
   // Collect ALL property definitions from the interface type (not just the literal).
   // This ensures optional fields that get assigned later have proper offsets.
@@ -1588,7 +1586,9 @@ function compileObjectLiteral(
         }
       }
     }
-  } catch { /* fall through to literal-based approach */ }
+  } catch {
+    /* fall through to literal-based approach */
+  }
 
   // Fallback: collect from literal properties if interface fields couldn't be resolved
   if (!usedInterfaceFields) {
@@ -1684,11 +1684,7 @@ function compileObjectLiteral(
  * compile it as a lambda and emit the closure setup + table index.
  * Otherwise, just compile the expression normally.
  */
-function compileCallArg(
-  ctx: LinearContext,
-  fctx: LinearFuncContext,
-  arg: ts.Expression,
-): void {
+function compileCallArg(ctx: LinearContext, fctx: LinearFuncContext, arg: ts.Expression): void {
   if (ts.isArrowFunction(arg) || ts.isFunctionExpression(arg)) {
     emitClosureSetup(ctx, fctx, arg);
   } else {
@@ -1696,11 +1692,7 @@ function compileCallArg(
   }
 }
 
-function compileBinaryExpression(
-  ctx: LinearContext,
-  fctx: LinearFuncContext,
-  expr: ts.BinaryExpression,
-): void {
+function compileBinaryExpression(ctx: LinearContext, fctx: LinearFuncContext, expr: ts.BinaryExpression): void {
   const op = expr.operatorToken.kind;
 
   // Handle assignment
@@ -2047,13 +2039,20 @@ function bitwiseOp(op: ts.SyntaxKind): Instr {
 /** Convert a bitwise compound assignment token to its corresponding bitwise operator token */
 function bitwiseCompoundToOp(op: ts.SyntaxKind): ts.SyntaxKind {
   switch (op) {
-    case ts.SyntaxKind.BarEqualsToken: return ts.SyntaxKind.BarToken;
-    case ts.SyntaxKind.AmpersandEqualsToken: return ts.SyntaxKind.AmpersandToken;
-    case ts.SyntaxKind.CaretEqualsToken: return ts.SyntaxKind.CaretToken;
-    case ts.SyntaxKind.LessThanLessThanEqualsToken: return ts.SyntaxKind.LessThanLessThanToken;
-    case ts.SyntaxKind.GreaterThanGreaterThanEqualsToken: return ts.SyntaxKind.GreaterThanGreaterThanToken;
-    case ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken: return ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken;
-    default: return op;
+    case ts.SyntaxKind.BarEqualsToken:
+      return ts.SyntaxKind.BarToken;
+    case ts.SyntaxKind.AmpersandEqualsToken:
+      return ts.SyntaxKind.AmpersandToken;
+    case ts.SyntaxKind.CaretEqualsToken:
+      return ts.SyntaxKind.CaretToken;
+    case ts.SyntaxKind.LessThanLessThanEqualsToken:
+      return ts.SyntaxKind.LessThanLessThanToken;
+    case ts.SyntaxKind.GreaterThanGreaterThanEqualsToken:
+      return ts.SyntaxKind.GreaterThanGreaterThanToken;
+    case ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken:
+      return ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken;
+    default:
+      return op;
   }
 }
 
@@ -2113,10 +2112,7 @@ function emitTruthyCoercion(fctx: LinearFuncContext, type: ValType): void {
 // ── Collection detection ──────────────────────────────────────────────
 
 /** Detect whether a variable declaration is a collection type */
-function detectCollectionKind(
-  ctx: LinearContext,
-  decl: ts.VariableDeclaration,
-): CollectionKind | null {
+function detectCollectionKind(ctx: LinearContext, decl: ts.VariableDeclaration): CollectionKind | null {
   // Check type annotation: number[], Array<number>, Uint8Array, Map<K,V>, Set<V>
   if (decl.type) {
     const text = decl.type.getText();
@@ -2137,8 +2133,12 @@ function detectCollectionKind(
     // Detect new TextEncoder().encode(...) → Uint8Array
     if (ts.isCallExpression(decl.initializer) && ts.isPropertyAccessExpression(decl.initializer.expression)) {
       const pa = decl.initializer.expression;
-      if (pa.name.text === "encode" && ts.isNewExpression(pa.expression) &&
-          ts.isIdentifier(pa.expression.expression) && pa.expression.expression.text === "TextEncoder") {
+      if (
+        pa.name.text === "encode" &&
+        ts.isNewExpression(pa.expression) &&
+        ts.isIdentifier(pa.expression.expression) &&
+        pa.expression.expression.text === "TextEncoder"
+      ) {
         return "Uint8Array";
       }
     }
@@ -2151,7 +2151,9 @@ function detectCollectionKind(
       if (typeStr.startsWith("Map<") || typeStr === "Map") return "Map";
       if (typeStr.startsWith("Set<") || typeStr === "Set") return "Set";
       if (typeStr === "number[]" || typeStr.endsWith("[]") || typeStr.startsWith("Array<")) return "Array";
-    } catch { /* fall through */ }
+    } catch {
+      /* fall through */
+    }
   }
   return null;
 }
@@ -2163,9 +2165,7 @@ function getExprCollectionKind(
   expr: ts.Expression,
 ): CollectionKind | null {
   if (ts.isIdentifier(expr)) {
-    return fctx.collectionTypes.get(expr.text)
-      ?? ctx.moduleCollectionTypes.get(expr.text)
-      ?? null;
+    return fctx.collectionTypes.get(expr.text) ?? ctx.moduleCollectionTypes.get(expr.text) ?? null;
   }
   // Handle property access on class instances: this.data or obj.items
   if (ts.isPropertyAccessExpression(expr)) {
@@ -2198,17 +2198,15 @@ function getExprCollectionKind(
     if (typeStr.startsWith("Map<") || typeStr === "Map") return "Map";
     if (typeStr.startsWith("Set<") || typeStr === "Set") return "Set";
     if (typeStr.endsWith("[]") || typeStr.startsWith("Array<")) return "Array";
-  } catch { /* fall through */ }
+  } catch {
+    /* fall through */
+  }
   return null;
 }
 
 // ── Array literal ────────────────────────────────────────────────────
 
-function compileArrayLiteral(
-  ctx: LinearContext,
-  fctx: LinearFuncContext,
-  expr: ts.ArrayLiteralExpression,
-): void {
+function compileArrayLiteral(ctx: LinearContext, fctx: LinearFuncContext, expr: ts.ArrayLiteralExpression): void {
   const elements = expr.elements;
   const cap = Math.max(elements.length, 16);
   const arrNewIdx = ctx.funcMap.get("__arr_new")!;
@@ -2252,7 +2250,9 @@ function compileObjectDestructuring(
   let objType: ts.Type | null = null;
   try {
     objType = ctx.checker.getTypeAtLocation(initializer);
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 
   // Build property list with offsets (matching the TypeChecker-based property access fallback)
   const propOffsets = new Map<string, { offset: number; type: "i32" | "f64" }>();
@@ -2267,7 +2267,9 @@ function compileObjectDestructuring(
         if (baseType.flags & (ts.TypeFlags.NumberLike | ts.TypeFlags.BooleanLike)) {
           isF64 = true;
         }
-      } catch { /* default: i32 */ }
+      } catch {
+        /* default: i32 */
+      }
       const fieldSize = isF64 ? 8 : 4;
       if (isF64 && offset % 8 !== 0) offset = Math.ceil(offset / 8) * 8;
       else if (!isF64 && offset % 4 !== 0) offset = Math.ceil(offset / 4) * 4;
@@ -2282,9 +2284,12 @@ function compileObjectDestructuring(
     if (!ts.isBindingElement(element)) continue;
 
     // Get property name and variable name
-    const propName = element.propertyName && ts.isIdentifier(element.propertyName)
-      ? element.propertyName.text
-      : ts.isIdentifier(element.name) ? element.name.text : null;
+    const propName =
+      element.propertyName && ts.isIdentifier(element.propertyName)
+        ? element.propertyName.text
+        : ts.isIdentifier(element.name)
+          ? element.name.text
+          : null;
     const varName = ts.isIdentifier(element.name) ? element.name.text : null;
 
     if (!propName || !varName) continue;
@@ -2312,7 +2317,9 @@ function compileObjectDestructuring(
       const propType = ctx.checker.getTypeAtLocation(element);
       const typeStr = ctx.checker.typeToString(ctx.checker.getNonNullableType(propType));
       if (typeStr.endsWith("[]")) fctx.collectionTypes.set(varName, "Array");
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 }
 
@@ -2338,7 +2345,9 @@ function compileArrayDestructuring(
       elemIsI32 = true;
     }
     if (typeStr === "string[]") elemIsI32 = true;
-  } catch { /* default: f64 */ }
+  } catch {
+    /* default: f64 */
+  }
 
   for (let i = 0; i < pattern.elements.length; i++) {
     const element = pattern.elements[i];
@@ -2383,11 +2392,7 @@ function compileArrayDestructuring(
 
 // ── NewExpression ────────────────────────────────────────────────────
 
-function compileNewExpression(
-  ctx: LinearContext,
-  fctx: LinearFuncContext,
-  expr: ts.NewExpression,
-): void {
+function compileNewExpression(ctx: LinearContext, fctx: LinearFuncContext, expr: ts.NewExpression): void {
   if (!ts.isIdentifier(expr.expression)) {
     ctx.errors.push({ message: "Unsupported new expression", line: 0, column: 0 });
     return;
@@ -2405,7 +2410,9 @@ function compileNewExpression(
         const argTsType = ctx.checker.getTypeAtLocation(expr.arguments[0]);
         const argTypeStr = ctx.checker.typeToString(argTsType);
         isArrayBuffer = argTypeStr === "ArrayBuffer";
-      } catch { /* fallback: not ArrayBuffer */ }
+      } catch {
+        /* fallback: not ArrayBuffer */
+      }
 
       if (isArrayBuffer) {
         // new Uint8Array(arrayBuffer) → __u8arr_from_raw(buf+4, buf[0])
@@ -2424,7 +2431,9 @@ function compileNewExpression(
         try {
           const argTypeStr = ctx.checker.typeToString(ctx.checker.getTypeAtLocation(expr.arguments[0]));
           isNumberArray = argTypeStr === "number[]" || argTypeStr.endsWith("[]");
-        } catch { /* fallback */ }
+        } catch {
+          /* fallback */
+        }
         if (isNumberArray) {
           const fromArrIdx = ctx.funcMap.get("__u8arr_from_arr")!;
           compileExpression(ctx, fctx, expr.arguments[0]);
@@ -2494,11 +2503,7 @@ function compileNewExpression(
 
 // ── PropertyAccessExpression ─────────────────────────────────────────
 
-function compilePropertyAccess(
-  ctx: LinearContext,
-  fctx: LinearFuncContext,
-  expr: ts.PropertyAccessExpression,
-): void {
+function compilePropertyAccess(ctx: LinearContext, fctx: LinearFuncContext, expr: ts.PropertyAccessExpression): void {
   const propName = expr.name.text;
 
   // Try to resolve compile-time constant values (e.g., SECTION.type from `as const` objects)
@@ -2512,7 +2517,9 @@ function compilePropertyAccess(
       compileStringLiteral(ctx, fctx, (type as any).value);
       return;
     }
-  } catch { /* fall through to runtime access */ }
+  } catch {
+    /* fall through to runtime access */
+  }
 
   const objKind = getExprCollectionKind(ctx, fctx, expr.expression);
 
@@ -2528,7 +2535,9 @@ function compilePropertyAccess(
       fctx.body.push({ op: "i32.load8_u", align: 0, offset: 0 });
       fctx.body.push({ op: "i32.const", value: 0x02 });
       fctx.body.push({ op: "i32.eq" });
-      fctx.body.push({ op: "if", blockType: { kind: "val", type: { kind: "i32" } },
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "val", type: { kind: "i32" } },
         then: [
           { op: "local.get", index: ptrLocal },
           { op: "call", funcIdx: u8LenIdx },
@@ -2613,7 +2622,9 @@ function compilePropertyAccess(
         const rawPropType = ctx.checker.getTypeOfSymbolAtLocation(prop, expr);
         const propType = ctx.checker.getNonNullableType(rawPropType);
         const typeStr = ctx.checker.typeToString(propType);
-        const isF64 = typeStr === "number" || typeStr === "boolean" ||
+        const isF64 =
+          typeStr === "number" ||
+          typeStr === "boolean" ||
           (propType.getFlags() & (ts.TypeFlags.NumberLike | ts.TypeFlags.BooleanLike)) !== 0;
 
         if (prop.getName() === propName) {
@@ -2632,7 +2643,9 @@ function compilePropertyAccess(
         return;
       }
     }
-  } catch { /* fall through */ }
+  } catch {
+    /* fall through */
+  }
 
   // Fallback: just report error for unsupported property access
   ctx.errors.push({
@@ -2644,11 +2657,7 @@ function compilePropertyAccess(
 
 // ── ElementAccessExpression ──────────────────────────────────────────
 
-function compileElementAccess(
-  ctx: LinearContext,
-  fctx: LinearFuncContext,
-  expr: ts.ElementAccessExpression,
-): void {
+function compileElementAccess(ctx: LinearContext, fctx: LinearFuncContext, expr: ts.ElementAccessExpression): void {
   const objKind = getExprCollectionKind(ctx, fctx, expr.expression);
 
   if (objKind === "Array") {
@@ -2663,7 +2672,9 @@ function compileElementAccess(
       const elemType = ctx.checker.getTypeAtLocation(expr);
       const typeStr = ctx.checker.typeToString(elemType);
       if (typeStr !== "number" && typeStr !== "boolean") elemIsNum = false;
-    } catch { /* default: assume number */ }
+    } catch {
+      /* default: assume number */
+    }
     if (elemIsNum) {
       fctx.body.push({ op: "f64.convert_i32_s" });
     }
@@ -2751,18 +2762,17 @@ function compileElementAccessAssignment(
 
 // ── Method calls ─────────────────────────────────────────────────────
 
-function compileMethodCall(
-  ctx: LinearContext,
-  fctx: LinearFuncContext,
-  expr: ts.CallExpression,
-): void {
+function compileMethodCall(ctx: LinearContext, fctx: LinearFuncContext, expr: ts.CallExpression): void {
   const propAccess = expr.expression as ts.PropertyAccessExpression;
   const methodName = propAccess.name.text;
 
   // Handle new TextDecoder().decode(bytes) → __str_from_u8arr(bytes)
-  if (methodName === "decode" && ts.isNewExpression(propAccess.expression) &&
-      ts.isIdentifier(propAccess.expression.expression) &&
-      propAccess.expression.expression.text === "TextDecoder") {
+  if (
+    methodName === "decode" &&
+    ts.isNewExpression(propAccess.expression) &&
+    ts.isIdentifier(propAccess.expression.expression) &&
+    propAccess.expression.expression.text === "TextDecoder"
+  ) {
     const strFromU8Idx = ctx.funcMap.get("__str_from_u8arr")!;
     if (expr.arguments.length > 0) {
       compileExpression(ctx, fctx, expr.arguments[0]);
@@ -2774,9 +2784,12 @@ function compileMethodCall(
   }
 
   // Handle new TextEncoder().encode(s) → __str_from_u8arr(s) (same layout copy)
-  if (methodName === "encode" && ts.isNewExpression(propAccess.expression) &&
-      ts.isIdentifier(propAccess.expression.expression) &&
-      propAccess.expression.expression.text === "TextEncoder") {
+  if (
+    methodName === "encode" &&
+    ts.isNewExpression(propAccess.expression) &&
+    ts.isIdentifier(propAccess.expression.expression) &&
+    propAccess.expression.expression.text === "TextEncoder"
+  ) {
     const strFromU8Idx = ctx.funcMap.get("__str_from_u8arr")!;
     if (expr.arguments.length > 0) {
       compileExpression(ctx, fctx, expr.arguments[0]);
@@ -2900,7 +2913,13 @@ function compileArrayMethodCall(
     fctx.body.push({ op: "call", funcIdx: pushIdx });
     // push returns void in runtime, but expression needs a value for drop
     fctx.body.push({ op: "f64.const", value: 0 });
-  } else if (methodName === "filter" || methodName === "map" || methodName === "some" || methodName === "find" || methodName === "flatMap") {
+  } else if (
+    methodName === "filter" ||
+    methodName === "map" ||
+    methodName === "some" ||
+    methodName === "find" ||
+    methodName === "flatMap"
+  ) {
     // Inline expansion of higher-order array methods
     compileArrayHOF(ctx, fctx, expr, propAccess, methodName as "filter" | "map" | "some" | "find" | "flatMap");
   } else if (methodName === "join") {
@@ -2941,11 +2960,13 @@ function compileArrayHOF(
     ctx.errors.push({ message: `Array.${method}() requires inline arrow function`, line: 0, column: 0 });
     return;
   }
-  const paramName = callback.parameters[0] && ts.isIdentifier(callback.parameters[0].name)
-    ? callback.parameters[0].name.text : "__hof_param";
+  const paramName =
+    callback.parameters[0] && ts.isIdentifier(callback.parameters[0].name)
+      ? callback.parameters[0].name.text
+      : "__hof_param";
   // Optional second parameter (index)
-  const indexParamName = callback.parameters[1] && ts.isIdentifier(callback.parameters[1].name)
-    ? callback.parameters[1].name.text : null;
+  const indexParamName =
+    callback.parameters[1] && ts.isIdentifier(callback.parameters[1].name) ? callback.parameters[1].name.text : null;
 
   // Determine element type (i32 for objects/strings, f64 for numbers)
   let elemIsI32 = true;
@@ -2953,7 +2974,9 @@ function compileArrayHOF(
     const arrType = ctx.checker.getTypeAtLocation(propAccess.expression);
     const arrStr = ctx.checker.typeToString(ctx.checker.getNonNullableType(arrType));
     if (arrStr === "number[]" || arrStr === "boolean[]") elemIsI32 = false;
-  } catch { /* default: i32 */ }
+  } catch {
+    /* default: i32 */
+  }
   const elemType: ValType = elemIsI32 ? { kind: "i32" } : { kind: "f64" };
 
   // Create temp locals
@@ -3029,8 +3052,9 @@ function compileArrayHOF(
 
   // Compile callback body expression
   const bodyExpr = ts.isBlock(callback.body)
-    ? (callback.body.statements[0] && ts.isReturnStatement(callback.body.statements[0])
-        ? callback.body.statements[0].expression : undefined)
+    ? callback.body.statements[0] && ts.isReturnStatement(callback.body.statements[0])
+      ? callback.body.statements[0].expression
+      : undefined
     : callback.body;
 
   if (!bodyExpr) {
@@ -3127,9 +3151,15 @@ function compileArrayHOF(
     innerLoopBody.push({ op: "br", depth: 0 });
 
     fctx.body.push({
-      op: "block", blockType: { kind: "empty" }, body: [{
-        op: "loop", blockType: { kind: "empty" }, body: innerLoopBody,
-      }],
+      op: "block",
+      blockType: { kind: "empty" },
+      body: [
+        {
+          op: "loop",
+          blockType: { kind: "empty" },
+          body: innerLoopBody,
+        },
+      ],
     });
   }
 
@@ -3147,11 +3177,13 @@ function compileArrayHOF(
   fctx.body.push({
     op: "block",
     blockType: { kind: "empty" },
-    body: [{
-      op: "loop",
-      blockType: { kind: "empty" },
-      body: loopBody,
-    }],
+    body: [
+      {
+        op: "loop",
+        blockType: { kind: "empty" },
+        body: loopBody,
+      },
+    ],
   });
   fctx.blockDepth -= 2;
 
@@ -3263,11 +3295,13 @@ function compileArrayJoin(
   fctx.body.push({
     op: "block",
     blockType: { kind: "empty" },
-    body: [{
-      op: "loop",
-      blockType: { kind: "empty" },
-      body: loopBody,
-    }],
+    body: [
+      {
+        op: "loop",
+        blockType: { kind: "empty" },
+        body: loopBody,
+      },
+    ],
   });
   fctx.blockDepth -= 2;
 
@@ -3327,29 +3361,37 @@ function compileUint8ArrayMethodCall(
     fctx.body.push({ op: "local.set", index: iLocal });
 
     // Copy loop
-    fctx.body.push({ op: "block", blockType: { kind: "empty" }, body: [
-      { op: "loop", blockType: { kind: "empty" }, body: [
-        { op: "local.get", index: iLocal },
-        { op: "local.get", index: lenLocal },
-        { op: "i32.ge_u" },
-        { op: "br_if", depth: 1 },
-        // dest[12+i] = src[12+i]
-        { op: "local.get", index: destLocal },
-        { op: "local.get", index: iLocal },
-        { op: "i32.add" },
-        { op: "local.get", index: srcLocal },
-        { op: "local.get", index: iLocal },
-        { op: "i32.add" },
-        { op: "i32.load8_u", align: 0, offset: 12 },
-        { op: "i32.store8", align: 0, offset: 12 },
-        // i++
-        { op: "local.get", index: iLocal },
-        { op: "i32.const", value: 1 },
-        { op: "i32.add" },
-        { op: "local.set", index: iLocal },
-        { op: "br", depth: 0 },
-      ]},
-    ]});
+    fctx.body.push({
+      op: "block",
+      blockType: { kind: "empty" },
+      body: [
+        {
+          op: "loop",
+          blockType: { kind: "empty" },
+          body: [
+            { op: "local.get", index: iLocal },
+            { op: "local.get", index: lenLocal },
+            { op: "i32.ge_u" },
+            { op: "br_if", depth: 1 },
+            // dest[12+i] = src[12+i]
+            { op: "local.get", index: destLocal },
+            { op: "local.get", index: iLocal },
+            { op: "i32.add" },
+            { op: "local.get", index: srcLocal },
+            { op: "local.get", index: iLocal },
+            { op: "i32.add" },
+            { op: "i32.load8_u", align: 0, offset: 12 },
+            { op: "i32.store8", align: 0, offset: 12 },
+            // i++
+            { op: "local.get", index: iLocal },
+            { op: "i32.const", value: 1 },
+            { op: "i32.add" },
+            { op: "local.set", index: iLocal },
+            { op: "br", depth: 0 },
+          ],
+        },
+      ],
+    });
   } else {
     ctx.errors.push({
       message: `Unsupported Uint8Array method: .${methodName}()`,
@@ -3387,7 +3429,9 @@ function compileMapMethodCall(
       const retType = ctx.checker.getTypeAtLocation(expr);
       const retStr = ctx.checker.typeToString(ctx.checker.getNonNullableType(retType));
       if (retStr !== "number" && retStr !== "boolean") valIsNum = false;
-    } catch { /* default: assume number */ }
+    } catch {
+      /* default: assume number */
+    }
     if (valIsNum) {
       fctx.body.push({ op: "f64.convert_i32_s" });
     }
@@ -3442,11 +3486,7 @@ function compileSetMethodCall(
  * Compile an expression and convert to i32 if needed.
  * If the expression produces f64, emit i32.trunc_f64_s; if i32, no-op.
  */
-function compileExprToI32(
-  ctx: LinearContext,
-  fctx: LinearFuncContext,
-  expr: ts.Expression,
-): void {
+function compileExprToI32(ctx: LinearContext, fctx: LinearFuncContext, expr: ts.Expression): void {
   const exprType = inferExprType(ctx, fctx, expr);
   compileExpression(ctx, fctx, expr);
   if (exprType.kind === "f64") {
@@ -3458,11 +3498,7 @@ function compileExprToI32(
  * Compile an expression and convert to f64 if needed.
  * If the expression produces i32, emit f64.convert_i32_s; if f64, no-op.
  */
-function compileExprToF64(
-  ctx: LinearContext,
-  fctx: LinearFuncContext,
-  expr: ts.Expression,
-): void {
+function compileExprToF64(ctx: LinearContext, fctx: LinearFuncContext, expr: ts.Expression): void {
   const exprType = inferExprType(ctx, fctx, expr);
   compileExpression(ctx, fctx, expr);
   if (exprType.kind === "i32") {
@@ -3473,11 +3509,7 @@ function compileExprToF64(
 // ── Type inference and resolution ────────────────────────────────────
 
 /** Infer the wasm type of an expression (simple heuristic) */
-function inferExprType(
-  ctx: LinearContext,
-  fctx: LinearFuncContext,
-  expr: ts.Expression,
-): ValType {
+function inferExprType(ctx: LinearContext, fctx: LinearFuncContext, expr: ts.Expression): ValType {
   // String literals and template expressions are i32 (pointers)
   if (ts.isStringLiteral(expr) || ts.isNoSubstitutionTemplateLiteral(expr) || ts.isTemplateExpression(expr)) {
     return { kind: "i32" };
@@ -3501,7 +3533,14 @@ function inferExprType(
   if (ts.isObjectLiteralExpression(expr)) return { kind: "i32" };
   if (ts.isNewExpression(expr) && ts.isIdentifier(expr.expression)) {
     const name = expr.expression.text;
-    if (name === "Uint8Array" || name === "Map" || name === "Set" || name === "ArrayBuffer" || name === "Float64Array" || name === "Float32Array") {
+    if (
+      name === "Uint8Array" ||
+      name === "Map" ||
+      name === "Set" ||
+      name === "ArrayBuffer" ||
+      name === "Float64Array" ||
+      name === "Float32Array"
+    ) {
       return { kind: "i32" };
     }
     // Class constructors return i32 pointers
@@ -3534,8 +3573,10 @@ function inferExprType(
     const propName = expr.name.text;
     // Check collection length/size
     const objKind = getExprCollectionKind(ctx, fctx, expr.expression);
-    if ((propName === "length" && (objKind === "Array" || objKind === "Uint8Array" || objKind === "ArrayOrUint8Array")) ||
-        (propName === "size" && (objKind === "Map" || objKind === "Set"))) {
+    if (
+      (propName === "length" && (objKind === "Array" || objKind === "Uint8Array" || objKind === "ArrayOrUint8Array")) ||
+      (propName === "size" && (objKind === "Map" || objKind === "Set"))
+    ) {
       return { kind: "f64" }; // length/size are returned as f64
     }
     if (propName === "length" && isStringExpr(ctx, fctx, expr.expression)) {
@@ -3558,7 +3599,9 @@ function inferExprType(
       const baseType = ctx.checker.getNonNullableType(type);
       if (baseType.flags & (ts.TypeFlags.NumberLike | ts.TypeFlags.BooleanLike)) return { kind: "f64" };
       return { kind: "i32" }; // strings, objects, arrays → pointer
-    } catch { /* fall through */ }
+    } catch {
+      /* fall through */
+    }
   }
 
   // NonNull assertion: unwrap
@@ -3578,15 +3621,18 @@ function inferExprType(
       const typeStr = ctx.checker.typeToString(type);
       if (typeStr === "number" || typeStr === "boolean") return { kind: "f64" };
       return { kind: "i32" }; // objects, strings → pointer
-    } catch { /* fall through */ }
+    } catch {
+      /* fall through */
+    }
   }
 
   // Postfix/prefix unary
   if (ts.isPostfixUnaryExpression(expr) || ts.isPrefixUnaryExpression(expr)) {
     // ! and ~ always convert result to f64 (via f64.convert_i32_s)
-    if (ts.isPrefixUnaryExpression(expr) &&
-        (expr.operator === ts.SyntaxKind.ExclamationToken ||
-         expr.operator === ts.SyntaxKind.TildeToken)) {
+    if (
+      ts.isPrefixUnaryExpression(expr) &&
+      (expr.operator === ts.SyntaxKind.ExclamationToken || expr.operator === ts.SyntaxKind.TildeToken)
+    ) {
       return { kind: "f64" };
     }
     return inferExprType(ctx, fctx, expr.operand);
@@ -3600,7 +3646,9 @@ function inferExprType(
       if (baseType.flags & (ts.TypeFlags.NumberLike | ts.TypeFlags.BooleanLike)) return { kind: "f64" };
       const typeStr = ctx.checker.typeToString(baseType);
       if (typeStr !== "void") return { kind: "i32" };
-    } catch { /* fall through */ }
+    } catch {
+      /* fall through */
+    }
   }
 
   // Conditional (ternary) expression: type of the result
@@ -3614,13 +3662,13 @@ function inferExprType(
 }
 
 /** Resolve a TS type annotation to a ValType */
-function resolveType(
-  _ctx: LinearContext,
-  typeNode: ts.TypeNode | undefined,
-): ValType | null {
+function resolveType(_ctx: LinearContext, typeNode: ts.TypeNode | undefined): ValType | null {
   if (!typeNode) return null;
   // Strip "| undefined" and "| null" for optional types
-  const text = typeNode.getText().replace(/\s*\|\s*(undefined|null)/g, "").trim();
+  const text = typeNode
+    .getText()
+    .replace(/\s*\|\s*(undefined|null)/g, "")
+    .trim();
   switch (text) {
     case "number":
       return { kind: "f64" };
@@ -3779,9 +3827,7 @@ function compileClassCtor(
 ): void {
   const ctorName = layout.ctorFuncName;
 
-  const params: { name: string; type: ValType }[] = [
-    { name: "this", type: { kind: "i32" } },
-  ];
+  const params: { name: string; type: ValType }[] = [{ name: "this", type: { kind: "i32" } }];
 
   if (ctorDecl) {
     for (const p of ctorDecl.parameters) {
@@ -3873,9 +3919,7 @@ function compileClassMethod(
   const methodName = (methodDecl.name as ts.Identifier).text;
   const wasmMethodName = layout.methods.get(methodName)!;
 
-  const params: { name: string; type: ValType }[] = [
-    { name: "this", type: { kind: "i32" } },
-  ];
+  const params: { name: string; type: ValType }[] = [{ name: "this", type: { kind: "i32" } }];
 
   for (const p of methodDecl.parameters) {
     const paramName = ts.isIdentifier(p.name) ? p.name.text : "_";
@@ -3949,9 +3993,7 @@ function compileClassGetter(
   const getterName = (getterDecl.name as ts.Identifier).text;
   const wasmGetterName = layout.getters.get(getterName)!;
 
-  const params: { name: string; type: ValType }[] = [
-    { name: "this", type: { kind: "i32" } },
-  ];
+  const params: { name: string; type: ValType }[] = [{ name: "this", type: { kind: "i32" } }];
 
   const returnType = resolveType(ctx, getterDecl.type);
   const isVoid = returnType === null;
@@ -4044,7 +4086,7 @@ function compileClassNewExpression(
     }
   }
   // Fill in default values for missing parameters
-  const ctorTypeIdx = ctx.mod.functions.find(f => f.name === layout.ctorFuncName)?.typeIdx;
+  const ctorTypeIdx = ctx.mod.functions.find((f) => f.name === layout.ctorFuncName)?.typeIdx;
   if (ctorTypeIdx !== undefined) {
     const ctorType = ctx.mod.types[ctorTypeIdx];
     if (ctorType && ctorType.kind === "func") {
@@ -4112,11 +4154,7 @@ function compilePropertyAssignment(
 }
 
 /** Infer the class name of an expression */
-function inferClassName(
-  ctx: LinearContext,
-  fctx: LinearFuncContext,
-  expr: ts.Expression,
-): string | undefined {
+function inferClassName(ctx: LinearContext, fctx: LinearFuncContext, expr: ts.Expression): string | undefined {
   // `this` — infer from function name (ClassName_ctor or ClassName_methodName)
   if (expr.kind === ts.SyntaxKind.ThisKeyword) {
     const funcName = fctx.name;
@@ -4159,11 +4197,7 @@ function inferClassName(
 // ── String literal support ───────────────────────────────────────────
 
 /** Compile a string literal into a __str_from_data call */
-function compileStringLiteral(
-  ctx: LinearContext,
-  fctx: LinearFuncContext,
-  value: string,
-): void {
+function compileStringLiteral(ctx: LinearContext, fctx: LinearFuncContext, value: string): void {
   const encoded = new TextEncoder().encode(value);
 
   // Check if we already have this string in the data segment
@@ -4198,11 +4232,7 @@ function findMethodResultType(ctx: LinearContext, wasmFuncName: string): ValType
 }
 
 /** Compile a template expression: `hello ${name}` → __str_concat chain */
-function compileTemplateExpression(
-  ctx: LinearContext,
-  fctx: LinearFuncContext,
-  expr: ts.TemplateExpression,
-): void {
+function compileTemplateExpression(ctx: LinearContext, fctx: LinearFuncContext, expr: ts.TemplateExpression): void {
   const strConcatIdx = ctx.funcMap.get("__str_concat")!;
 
   // Start with the head text
@@ -4266,7 +4296,7 @@ function collectModuleGlobals(ctx: LinearContext, sf: ts.SourceFile): void {
   for (const stmt of sf.statements) {
     if (!ts.isVariableStatement(stmt)) continue;
     // Skip declare statements
-    if (stmt.modifiers?.some(m => m.kind === ts.SyntaxKind.DeclareKeyword)) continue;
+    if (stmt.modifiers?.some((m) => m.kind === ts.SyntaxKind.DeclareKeyword)) continue;
     const isConst = (stmt.declarationList.flags & ts.NodeFlags.Const) !== 0;
     for (const decl of stmt.declarationList.declarations) {
       if (!ts.isIdentifier(decl.name)) continue;
@@ -4282,13 +4312,13 @@ function collectModuleGlobals(ctx: LinearContext, sf: ts.SourceFile): void {
       let initInstr: Instr[];
       if (isConst && decl.initializer && ts.isNumericLiteral(decl.initializer)) {
         const val = Number(decl.initializer.text);
-        initInstr = wasmType.kind === "i32"
-          ? [{ op: "i32.const" as const, value: val | 0 }]
-          : [{ op: "f64.const" as const, value: val }];
+        initInstr =
+          wasmType.kind === "i32"
+            ? [{ op: "i32.const" as const, value: val | 0 }]
+            : [{ op: "f64.const" as const, value: val }];
       } else {
-        initInstr = wasmType.kind === "i32"
-          ? [{ op: "i32.const" as const, value: 0 }]
-          : [{ op: "f64.const" as const, value: 0 }];
+        initInstr =
+          wasmType.kind === "i32" ? [{ op: "i32.const" as const, value: 0 }] : [{ op: "f64.const" as const, value: 0 }];
       }
 
       const globalIdx = ctx.mod.globals.length;
@@ -4338,7 +4368,9 @@ function inferDeclType(ctx: LinearContext, decl: ts.VariableDeclaration): ValTyp
     if (baseType.flags & (ts.TypeFlags.NumberLike | ts.TypeFlags.BooleanLike)) return { kind: "f64" };
     // Everything else (strings, objects, arrays, classes, etc.) is i32 pointers
     return { kind: "i32" };
-  } catch { /* fall through */ }
+  } catch {
+    /* fall through */
+  }
   return { kind: "f64" };
 }
 
@@ -4442,20 +4474,46 @@ function detectParamCollectionTypes(
         fctx.collectionTypes.set(paramName, "Array");
         continue;
       }
-      if (text === "Uint8Array") { fctx.collectionTypes.set(paramName, "Uint8Array"); continue; }
-      if (text.startsWith("Map<") || text === "Map") { fctx.collectionTypes.set(paramName, "Map"); continue; }
-      if (text.startsWith("Set<") || text === "Set") { fctx.collectionTypes.set(paramName, "Set"); continue; }
+      if (text === "Uint8Array") {
+        fctx.collectionTypes.set(paramName, "Uint8Array");
+        continue;
+      }
+      if (text.startsWith("Map<") || text === "Map") {
+        fctx.collectionTypes.set(paramName, "Map");
+        continue;
+      }
+      if (text.startsWith("Set<") || text === "Set") {
+        fctx.collectionTypes.set(paramName, "Set");
+        continue;
+      }
     }
     // TypeChecker fallback
     try {
       const type = ctx.checker.getTypeAtLocation(param);
       const typeStr = ctx.checker.typeToString(type);
-      if (typeStr === "number[] | Uint8Array" || typeStr === "Uint8Array | number[]") { fctx.collectionTypes.set(paramName, "ArrayOrUint8Array"); continue; }
-      if (typeStr === "Uint8Array") { fctx.collectionTypes.set(paramName, "Uint8Array"); continue; }
-      if (typeStr.startsWith("Map<")) { fctx.collectionTypes.set(paramName, "Map"); continue; }
-      if (typeStr.startsWith("Set<")) { fctx.collectionTypes.set(paramName, "Set"); continue; }
-      if (typeStr.endsWith("[]") || typeStr.startsWith("Array<")) { fctx.collectionTypes.set(paramName, "Array"); continue; }
-    } catch { /* ignore */ }
+      if (typeStr === "number[] | Uint8Array" || typeStr === "Uint8Array | number[]") {
+        fctx.collectionTypes.set(paramName, "ArrayOrUint8Array");
+        continue;
+      }
+      if (typeStr === "Uint8Array") {
+        fctx.collectionTypes.set(paramName, "Uint8Array");
+        continue;
+      }
+      if (typeStr.startsWith("Map<")) {
+        fctx.collectionTypes.set(paramName, "Map");
+        continue;
+      }
+      if (typeStr.startsWith("Set<")) {
+        fctx.collectionTypes.set(paramName, "Set");
+        continue;
+      }
+      if (typeStr.endsWith("[]") || typeStr.startsWith("Array<")) {
+        fctx.collectionTypes.set(paramName, "Array");
+        continue;
+      }
+    } catch {
+      /* ignore */
+    }
   }
 }
 
@@ -4534,16 +4592,15 @@ function compileArrowFunctionArg(
       const name = node.text;
       if (capturedNames.has(name)) return;
       // Check if this identifier is from the outer scope (not an arrow param)
-      const isArrowParam = arrow.parameters.some(
-        (p) => ts.isIdentifier(p.name) && p.name.text === name,
-      );
+      const isArrowParam = arrow.parameters.some((p) => ts.isIdentifier(p.name) && p.name.text === name);
       if (!isArrowParam) {
         const outerIdx = outerFctx.localMap.get(name);
         if (outerIdx !== undefined) {
           capturedNames.add(name);
-          const outerType = outerIdx < outerFctx.params.length
-            ? outerFctx.params[outerIdx].type
-            : outerFctx.locals[outerIdx - outerFctx.params.length]?.type ?? { kind: "f64" as const };
+          const outerType =
+            outerIdx < outerFctx.params.length
+              ? outerFctx.params[outerIdx].type
+              : (outerFctx.locals[outerIdx - outerFctx.params.length]?.type ?? { kind: "f64" as const });
           captures.push({ name, outerIdx, type: outerType });
         }
       }
@@ -4699,16 +4756,15 @@ function emitClosureSetup(
     if (ts.isIdentifier(node)) {
       const name = node.text;
       if (capturedNames.has(name)) return;
-      const isArrowParam = arrow.parameters.some(
-        (p) => ts.isIdentifier(p.name) && p.name.text === name,
-      );
+      const isArrowParam = arrow.parameters.some((p) => ts.isIdentifier(p.name) && p.name.text === name);
       if (!isArrowParam) {
         const outerIdx = fctx.localMap.get(name);
         if (outerIdx !== undefined) {
           capturedNames.add(name);
-          const outerType = outerIdx < fctx.params.length
-            ? fctx.params[outerIdx].type
-            : fctx.locals[outerIdx - fctx.params.length]?.type ?? { kind: "f64" as const };
+          const outerType =
+            outerIdx < fctx.params.length
+              ? fctx.params[outerIdx].type
+              : (fctx.locals[outerIdx - fctx.params.length]?.type ?? { kind: "f64" as const });
           captures.push({ name, outerIdx, type: outerType });
         }
       }

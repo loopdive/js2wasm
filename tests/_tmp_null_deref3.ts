@@ -21,6 +21,8 @@ if (!result.success) {
   for (const e of result.errors) console.log("  L" + e.line + ": " + e.message);
   process.exit(1);
 }
-WebAssembly.instantiate(result.binary, { env: {} }).then(({ instance }) => {
-  console.log("Result:", (instance.exports as any).test());
-}).catch((e: any) => console.log("Runtime error:", e.message));
+WebAssembly.instantiate(result.binary, { env: {} })
+  .then(({ instance }) => {
+    console.log("Result:", (instance.exports as any).test());
+  })
+  .catch((e: any) => console.log("Runtime error:", e.message));

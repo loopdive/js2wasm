@@ -17,25 +17,30 @@ async function run(source: string, fn: string = "test", args: unknown[] = []): P
 describe("issue-341: property introspection (hasOwnProperty, propertyIsEnumerable)", () => {
   describe("hasOwnProperty with static keys", () => {
     it("returns true for existing property", async () => {
-      expect(await run(`
+      expect(
+        await run(`
         export function test(): number {
           const obj = { x: 1, y: 2 };
           return obj.hasOwnProperty("x") ? 1 : 0;
         }
-      `)).toBe(1);
+      `),
+      ).toBe(1);
     });
 
     it("returns false for non-existing property", async () => {
-      expect(await run(`
+      expect(
+        await run(`
         export function test(): number {
           const obj = { x: 1, y: 2 };
           return obj.hasOwnProperty("z") ? 1 : 0;
         }
-      `)).toBe(0);
+      `),
+      ).toBe(0);
     });
 
     it("works with multiple property checks", async () => {
-      expect(await run(`
+      expect(
+        await run(`
         export function test(): number {
           const obj = { a: 10, b: 20, c: 30 };
           let count = 0;
@@ -45,33 +50,39 @@ describe("issue-341: property introspection (hasOwnProperty, propertyIsEnumerabl
           if (obj.hasOwnProperty("d")) count = count + 1;
           return count;
         }
-      `)).toBe(3);
+      `),
+      ).toBe(3);
     });
   });
 
   describe("propertyIsEnumerable with static keys", () => {
     it("returns true for existing property", async () => {
-      expect(await run(`
+      expect(
+        await run(`
         export function test(): number {
           const obj = { x: 1, y: 2 };
           return obj.propertyIsEnumerable("x") ? 1 : 0;
         }
-      `)).toBe(1);
+      `),
+      ).toBe(1);
     });
 
     it("returns false for non-existing property", async () => {
-      expect(await run(`
+      expect(
+        await run(`
         export function test(): number {
           const obj = { x: 1, y: 2 };
           return obj.propertyIsEnumerable("z") ? 1 : 0;
         }
-      `)).toBe(0);
+      `),
+      ).toBe(0);
     });
   });
 
   describe("hasOwnProperty on class instances", () => {
     it("returns true for class fields", async () => {
-      expect(await run(`
+      expect(
+        await run(`
         class Point {
           x: number;
           y: number;
@@ -88,13 +99,15 @@ describe("issue-341: property introspection (hasOwnProperty, propertyIsEnumerabl
           if (p.hasOwnProperty("z")) count = count + 1;
           return count;
         }
-      `)).toBe(2);
+      `),
+      ).toBe(2);
     });
   });
 
   describe("in operator (existing functionality)", () => {
     it("static key in object literal", async () => {
-      expect(await run(`
+      expect(
+        await run(`
         export function test(): number {
           const obj = { x: 1, y: 2 };
           if (!("x" in obj)) return 0;
@@ -102,18 +115,21 @@ describe("issue-341: property introspection (hasOwnProperty, propertyIsEnumerabl
           if ("z" in obj) return 0;
           return 1;
         }
-      `)).toBe(1);
+      `),
+      ).toBe(1);
     });
   });
 
   describe("hasOwnProperty with no arguments", () => {
     it("returns false when called with no args", async () => {
-      expect(await run(`
+      expect(
+        await run(`
         export function test(): number {
           const obj = { x: 1 };
           return (obj as any).hasOwnProperty() ? 1 : 0;
         }
-      `)).toBe(0);
+      `),
+      ).toBe(0);
     });
   });
 });

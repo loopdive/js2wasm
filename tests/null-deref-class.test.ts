@@ -14,7 +14,8 @@ async function run(source: string, fn: string, args: unknown[] = []): Promise<un
 
 describe("null pointer dereference in class instances", () => {
   it("class with property access in methods", async () => {
-    const result = await run(`
+    const result = await run(
+      `
       class Counter {
         count: number;
         constructor() {
@@ -32,12 +33,15 @@ describe("null pointer dereference in class instances", () => {
       c.increment();
       c.increment();
       export function main(): number { return c.getCount(); }
-    `, "main");
+    `,
+      "main",
+    );
     expect(result).toBe(3);
   });
 
   it("class expression assigned to variable", async () => {
-    const result = await run(`
+    const result = await run(
+      `
       const MyClass = class {
         value: number;
         constructor(v: number) {
@@ -49,12 +53,15 @@ describe("null pointer dereference in class instances", () => {
       };
       const obj = new MyClass(42);
       export function main(): number { return obj.getValue(); }
-    `, "main");
+    `,
+      "main",
+    );
     expect(result).toBe(42);
   });
 
   it("method modifying and reading this.prop", async () => {
-    const result = await run(`
+    const result = await run(
+      `
       class Adder {
         sum: number;
         constructor() {
@@ -71,12 +78,15 @@ describe("null pointer dereference in class instances", () => {
       a.add(10);
       a.add(20);
       export function main(): number { return a.getSum(); }
-    `, "main");
+    `,
+      "main",
+    );
     expect(result).toBe(30);
   });
 
   it("chained property reads on returned objects", async () => {
-    const result = await run(`
+    const result = await run(
+      `
       class Wrapper {
         inner: number;
         constructor(v: number) {
@@ -90,7 +100,9 @@ describe("null pointer dereference in class instances", () => {
         const w = makeWrapper(99);
         return w.inner;
       }
-    `, "main");
+    `,
+      "main",
+    );
     expect(result).toBe(99);
   });
 });

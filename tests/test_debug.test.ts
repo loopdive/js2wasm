@@ -4,8 +4,8 @@ import { buildImports } from "../src/runtime.js";
 
 async function run(source: string): Promise<any> {
   const result = compile(source, { fileName: "test.ts" });
-  if (result.errors.some(e => e.severity === "error")) {
-    throw new Error(result.errors.map(e => e.message).join("; "));
+  if (result.errors.some((e) => e.severity === "error")) {
+    throw new Error(result.errors.map((e) => e.message).join("; "));
   }
   const imports = buildImports(result.imports, undefined, result.stringPool);
   const { instance } = await WebAssembly.instantiate(result.binary, imports);
@@ -131,13 +131,16 @@ describe("externref compound assignment", () => {
   });
 
   it("string comparison operators", async () => {
-    const result = compile(`
+    const result = compile(
+      `
       export function test(): number {
         if ("b" > "a") return 1;
         return 0;
       }
-    `, { fileName: "test.ts" });
-    expect(result.errors.filter(e => e.severity === "error")).toEqual([]);
+    `,
+      { fileName: "test.ts" },
+    );
+    expect(result.errors.filter((e) => e.severity === "error")).toEqual([]);
     const imports = buildImports(result.imports, undefined, result.stringPool);
     const { instance } = await WebAssembly.instantiate(result.binary, imports);
     const ret = (instance.exports as any).test();

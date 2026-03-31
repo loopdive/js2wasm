@@ -21,10 +21,7 @@ export function main(): number {
     const result = compile(src);
     expect(result.success).toBe(true);
     const imports = buildImports(result.imports);
-    const { instance } = await WebAssembly.instantiate(
-      result.binary as BufferSource,
-      imports,
-    );
+    const { instance } = await WebAssembly.instantiate(result.binary as BufferSource, imports);
     const exports = instance.exports as any;
     expect(exports.main()).toBe(3);
   });
@@ -47,10 +44,7 @@ export function main(): number {
     const result = compile(src);
     expect(result.success).toBe(true);
     const imports = buildImports(result.imports);
-    const { instance } = await WebAssembly.instantiate(
-      result.binary as BufferSource,
-      imports,
-    );
+    const { instance } = await WebAssembly.instantiate(result.binary as BufferSource, imports);
     const exports = instance.exports as any;
     expect(exports.main()).toBe(3);
   });

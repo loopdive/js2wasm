@@ -16,7 +16,8 @@ async function run(source: string, fn: string, args: unknown[] = []): Promise<un
 
 describe("issue-334: Private class fields and methods", () => {
   it("private field read via this.#field", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       class Counter {
         #count: number = 0;
         getCount(): number { return this.#count; }
@@ -25,12 +26,15 @@ describe("issue-334: Private class fields and methods", () => {
         const c = new Counter();
         return c.getCount();
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(val).toBe(0);
   });
 
   it("private field write via this.#field = value", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       class Box {
         #value: number = 0;
         setValue(v: number): void { this.#value = v; }
@@ -41,12 +45,15 @@ describe("issue-334: Private class fields and methods", () => {
         b.setValue(42);
         return b.getValue();
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(val).toBe(42);
   });
 
   it("private field compound assignment (this.#count += 1)", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       class Counter {
         #count: number = 0;
         increment(): void { this.#count += 1; }
@@ -59,12 +66,15 @@ describe("issue-334: Private class fields and methods", () => {
         c.increment();
         return c.getCount();
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(val).toBe(3);
   });
 
   it("private field postfix increment (this.#count++)", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       class Counter {
         #count: number = 0;
         increment(): number { return this.#count++; }
@@ -76,13 +86,16 @@ describe("issue-334: Private class fields and methods", () => {
         c.increment();
         return old * 100 + c.getCount();
       }
-    `, "test");
+    `,
+      "test",
+    );
     // old=0, after two increments count=2, result = 0*100+2 = 2
     expect(val).toBe(2);
   });
 
   it("private field prefix increment (++this.#count)", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       class Counter {
         #count: number = 0;
         increment(): number { return ++this.#count; }
@@ -93,13 +106,16 @@ describe("issue-334: Private class fields and methods", () => {
         const v = c.increment();
         return v * 100 + c.getCount();
       }
-    `, "test");
+    `,
+      "test",
+    );
     // v=1, count=1, result = 1*100+1 = 101
     expect(val).toBe(101);
   });
 
   it("private method call (this.#method())", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       class Calculator {
         #value: number;
         constructor(v: number) { this.#value = v; }
@@ -110,12 +126,15 @@ describe("issue-334: Private class fields and methods", () => {
         const c = new Calculator(21);
         return c.getDouble();
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(val).toBe(42);
   });
 
   it("multiple private fields", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       class Point {
         #x: number;
         #y: number;
@@ -129,12 +148,15 @@ describe("issue-334: Private class fields and methods", () => {
         const p = new Point(10, 20);
         return p.sum();
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(val).toBe(30);
   });
 
   it("private field with initializer", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       class Config {
         #defaultValue: number = 99;
         getDefault(): number { return this.#defaultValue; }
@@ -143,12 +165,15 @@ describe("issue-334: Private class fields and methods", () => {
         const c = new Config();
         return c.getDefault();
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(val).toBe(99);
   });
 
   it("compound assignment on accessor property (get/set)", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       class C {
         _value: number = 10;
         get value(): number { return this._value; }
@@ -161,12 +186,15 @@ describe("issue-334: Private class fields and methods", () => {
         c.addToValue(5);
         return c.getValue();
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(val).toBe(15);
   });
 
   it("increment/decrement on accessor property", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       class C {
         _count: number = 0;
         get count(): number { return this._count; }
@@ -183,13 +211,16 @@ describe("issue-334: Private class fields and methods", () => {
         const v = c.dec();
         return v * 100 + c.getCount();
       }
-    `, "test");
+    `,
+      "test",
+    );
     // inc 3 times: count=3, dec: returns 2, count=2. Result: 2*100+2=202
     expect(val).toBe(202);
   });
 
   it("postfix increment on accessor property", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       class C {
         _count: number = 5;
         get count(): number { return this._count; }
@@ -202,7 +233,9 @@ describe("issue-334: Private class fields and methods", () => {
         const old = c.postInc();
         return old * 100 + c.getCount();
       }
-    `, "test");
+    `,
+      "test",
+    );
     // old=5, count after=6, result: 5*100+6=506
     expect(val).toBe(506);
   });

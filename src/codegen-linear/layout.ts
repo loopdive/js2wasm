@@ -32,10 +32,7 @@ export interface ClassLayout {
  * @param fieldDefs - Array of { name, type } where type is "i32" or "f64"
  * @returns The computed ClassLayout
  */
-export function computeClassLayout(
-  name: string,
-  fieldDefs: { name: string; type: "i32" | "f64" }[],
-): ClassLayout {
+export function computeClassLayout(name: string, fieldDefs: { name: string; type: "i32" | "f64" }[]): ClassLayout {
   const HEADER_SIZE = 8; // tag (1) + padding (3) + payload_size (4)
   const FIELD_SIZE = 8; // each field gets 8 bytes for uniform access
 

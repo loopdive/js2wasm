@@ -15,16 +15,23 @@ async function run(source: string, fn: string, args: unknown[] = []): Promise<un
 
 describe("Function.name property (#147)", () => {
   it("named function declaration", async () => {
-    expect(await run(`
+    expect(
+      await run(
+        `
       function hello() { return 42; }
       export function test(): string {
         return hello.name;
       }
-    `, "test")).toBe("hello");
+    `,
+        "test",
+      ),
+    ).toBe("hello");
   });
 
   it("class constructor name", async () => {
-    expect(await run(`
+    expect(
+      await run(
+        `
       class MyClass {
         x: number;
         constructor() { this.x = 1; }
@@ -32,11 +39,16 @@ describe("Function.name property (#147)", () => {
       export function test(): string {
         return MyClass.name;
       }
-    `, "test")).toBe("MyClass");
+    `,
+        "test",
+      ),
+    ).toBe("MyClass");
   });
 
   it("class expression with explicit name", async () => {
-    expect(await run(`
+    expect(
+      await run(
+        `
       const Foo = class NamedClass {
         x: number;
         constructor() { this.x = 1; }
@@ -44,11 +56,16 @@ describe("Function.name property (#147)", () => {
       export function test(): string {
         return Foo.name;
       }
-    `, "test")).toBe("NamedClass");
+    `,
+        "test",
+      ),
+    ).toBe("NamedClass");
   });
 
   it("anonymous class expression gets variable name", async () => {
-    expect(await run(`
+    expect(
+      await run(
+        `
       const Bar = class {
         x: number;
         constructor() { this.x = 1; }
@@ -56,20 +73,30 @@ describe("Function.name property (#147)", () => {
       export function test(): string {
         return Bar.name;
       }
-    `, "test")).toBe("Bar");
+    `,
+        "test",
+      ),
+    ).toBe("Bar");
   });
 
   it("function .name returns string type", async () => {
-    expect(await run(`
+    expect(
+      await run(
+        `
       function add(a: number, b: number) { return a + b; }
       export function test(): string {
         return add.name;
       }
-    `, "test")).toBe("add");
+    `,
+        "test",
+      ),
+    ).toBe("add");
   });
 
   it("class with methods - name still works", async () => {
-    expect(await run(`
+    expect(
+      await run(
+        `
       class Calculator {
         x: number;
         constructor() { this.x = 0; }
@@ -78,6 +105,9 @@ describe("Function.name property (#147)", () => {
       export function test(): string {
         return Calculator.name;
       }
-    `, "test")).toBe("Calculator");
+    `,
+        "test",
+      ),
+    ).toBe("Calculator");
   });
 });

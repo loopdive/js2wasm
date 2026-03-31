@@ -3,31 +3,23 @@ import { assertEquivalent, compileToWasm } from "./equivalence/helpers.js";
 
 describe("Issue #202: Variable scope and hoisting", () => {
   it("var used before declaration", async () => {
-    await assertEquivalent(
-      `export function test(): number { x = 5; var x; return x; }`,
-      [{ fn: "test", args: [] }],
-    );
+    await assertEquivalent(`export function test(): number { x = 5; var x; return x; }`, [{ fn: "test", args: [] }]);
   });
 
   it("var in if-block accessible outside", async () => {
-    await assertEquivalent(
-      `export function test(): number { if (true) { var x = 42; } return x; }`,
-      [{ fn: "test", args: [] }],
-    );
+    await assertEquivalent(`export function test(): number { if (true) { var x = 42; } return x; }`, [
+      { fn: "test", args: [] },
+    ]);
   });
 
   it("var in for-loop accessible after loop", async () => {
-    await assertEquivalent(
-      `export function test(): number { for (var i = 0; i < 5; i++) {} return i; }`,
-      [{ fn: "test", args: [] }],
-    );
+    await assertEquivalent(`export function test(): number { for (var i = 0; i < 5; i++) {} return i; }`, [
+      { fn: "test", args: [] },
+    ]);
   });
 
   it("var hoisted with default value (undefined -> 0 for f64)", async () => {
-    await assertEquivalent(
-      `export function test(): number { var x; return x || 0; }`,
-      [{ fn: "test", args: [] }],
-    );
+    await assertEquivalent(`export function test(): number { var x; return x || 0; }`, [{ fn: "test", args: [] }]);
   });
 
   it("var in nested blocks accessible at function scope", async () => {

@@ -9,7 +9,7 @@ import { buildImports } from "../src/runtime.ts";
 function compileAndRun(source: string): any {
   const result = compile(source, { fileName: "test.ts" });
   if (!result.success) {
-    throw new Error(`Compilation failed: ${result.errors.map(e => e.message).join("; ")}`);
+    throw new Error(`Compilation failed: ${result.errors.map((e) => e.message).join("; ")}`);
   }
   return result;
 }
@@ -89,9 +89,7 @@ describe("Issue #836: Tagged templates with Identifier and CallExpression tags",
       }
     `;
     const result = compile(source, { fileName: "test.ts" });
-    const tagErrors = result.errors.filter(e =>
-      e.message.includes("unsupported tag expression kind")
-    );
+    const tagErrors = result.errors.filter((e) => e.message.includes("unsupported tag expression kind"));
     expect(tagErrors).toHaveLength(0);
   });
 });

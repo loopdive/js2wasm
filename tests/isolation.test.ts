@@ -125,10 +125,7 @@ describe("isolation validation", () => {
 
     // Since BINDING_LOCAL should prevent resolution normally, we'll
     // manually add the resolution for testing the isolation check
-    const importSymIdx = importer.symbols.findIndex(
-      (s) =>
-        s.name === "privateFunc" && s.flags & SYMBOL_UNDEFINED,
-    );
+    const importSymIdx = importer.symbols.findIndex((s) => s.name === "privateFunc" && s.flags & SYMBOL_UNDEFINED);
     if (importSymIdx >= 0) {
       resolution.resolved.set(`0:${importSymIdx}`, {
         targetModule: 1,
@@ -139,17 +136,12 @@ describe("isolation validation", () => {
       resolution.errors.length = 0;
     }
 
-    const report = validateIsolation(
-      [importer, exporter],
-      resolution,
-    );
+    const report = validateIsolation([importer, exporter], resolution);
 
     expect(report.properties.noPrivateFunctionAccess).toBe(false);
     expect(report.violations.length).toBeGreaterThan(0);
 
-    const violation = report.violations.find(
-      (v) => v.property === "noPrivateFunctionAccess",
-    );
+    const violation = report.violations.find((v) => v.property === "noPrivateFunctionAccess");
     expect(violation).toBeDefined();
     expect(violation!.module).toBe("importer");
     expect(violation!.targetModule).toBe("exporter");
@@ -193,17 +185,12 @@ describe("isolation validation", () => {
     const parsedB = parseObject("moduleB", moduleB);
 
     const resolution = resolveSymbols([parsedA, parsedB]);
-    const report = validateIsolation(
-      [parsedA, parsedB],
-      resolution,
-    );
+    const report = validateIsolation([parsedA, parsedB], resolution);
 
     expect(report.properties.noSharedGlobals).toBe(false);
     expect(report.violations.length).toBeGreaterThan(0);
 
-    const violation = report.violations.find(
-      (v) => v.property === "noSharedGlobals",
-    );
+    const violation = report.violations.find((v) => v.property === "noSharedGlobals");
     expect(violation).toBeDefined();
     expect(violation!.symbol).toBe("sharedCounter");
     expect(violation!.message).toContain("sharedCounter");
@@ -242,15 +229,10 @@ describe("isolation validation", () => {
     const parsedB = parseObject("moduleB", moduleB);
 
     const resolution = resolveSymbols([parsedA, parsedB]);
-    const report = validateIsolation(
-      [parsedA, parsedB],
-      resolution,
-    );
+    const report = validateIsolation([parsedA, parsedB], resolution);
 
     expect(report.properties.noSharedGlobals).toBe(true);
-    const globalViolations = report.violations.filter(
-      (v) => v.property === "noSharedGlobals",
-    );
+    const globalViolations = report.violations.filter((v) => v.property === "noSharedGlobals");
     expect(globalViolations).toHaveLength(0);
   });
 
@@ -259,10 +241,7 @@ describe("isolation validation", () => {
     const importer = parseObject("importer", makeCleanImporter());
 
     const resolution = resolveSymbols([importer, exporter]);
-    const report = validateIsolation(
-      [importer, exporter],
-      resolution,
-    );
+    const report = validateIsolation([importer, exporter], resolution);
 
     expect(report.properties.importExportOnly).toBe(true);
     expect(report.properties.noSharedGlobals).toBe(true);
@@ -313,15 +292,8 @@ describe("isolation validation", () => {
 
     // If the symbol was resolved (resolver doesn't check EXPORTED flag,
     // only isolation does), manually verify
-    const importSymIdx = importer.symbols.findIndex(
-      (s) =>
-        s.name === "internalFunc" &&
-        s.flags & SYMBOL_UNDEFINED,
-    );
-    if (
-      importSymIdx >= 0 &&
-      !resolution.resolved.has(`0:${importSymIdx}`)
-    ) {
+    const importSymIdx = importer.symbols.findIndex((s) => s.name === "internalFunc" && s.flags & SYMBOL_UNDEFINED);
+    if (importSymIdx >= 0 && !resolution.resolved.has(`0:${importSymIdx}`)) {
       // Force resolution for test purposes
       resolution.resolved.set(`0:${importSymIdx}`, {
         targetModule: 1,
@@ -331,15 +303,10 @@ describe("isolation validation", () => {
       resolution.errors.length = 0;
     }
 
-    const report = validateIsolation(
-      [importer, exporter],
-      resolution,
-    );
+    const report = validateIsolation([importer, exporter], resolution);
 
     expect(report.properties.importExportOnly).toBe(false);
-    const violation = report.violations.find(
-      (v) => v.property === "importExportOnly",
-    );
+    const violation = report.violations.find((v) => v.property === "importExportOnly");
     expect(violation).toBeDefined();
     expect(violation!.module).toBe("importer");
     expect(violation!.targetModule).toBe("exporter");
@@ -379,10 +346,7 @@ describe("isolation validation", () => {
     const parsedB = parseObject("moduleB", moduleB);
 
     const resolution = resolveSymbols([parsedA, parsedB]);
-    const report = validateIsolation(
-      [parsedA, parsedB],
-      resolution,
-    );
+    const report = validateIsolation([parsedA, parsedB], resolution);
 
     for (const violation of report.violations) {
       // Every violation should mention module names
@@ -407,9 +371,7 @@ describe("isolation validation", () => {
     const report = validateIsolation([parsed], resolution);
 
     expect(report.properties.memoryIsolation).toBe(false);
-    const violation = report.violations.find(
-      (v) => v.property === "memoryIsolation",
-    );
+    const violation = report.violations.find((v) => v.property === "memoryIsolation");
     expect(violation).toBeDefined();
     expect(violation!.module).toBe("weirdModule");
     expect(violation!.message).toContain("2 memories");

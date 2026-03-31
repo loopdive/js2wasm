@@ -72,7 +72,10 @@ export class CompilerPool {
   private readyCount = 0;
   private workerPath: string;
 
-  constructor(private size = 4, workerType: "compile" | "unified" = "compile") {
+  constructor(
+    private size = 4,
+    workerType: "compile" | "unified" = "compile",
+  ) {
     const workerFile = workerType === "unified" ? "test262-worker.mjs" : "compiler-fork-worker.mjs";
     this.workerPath = join(import.meta.dirname ?? __dirname, workerFile);
     for (let i = 0; i < size; i++) {
@@ -135,28 +138,52 @@ export class CompilerPool {
   }
 
   /** Compile source — queues if all forks busy. */
-  compile(source: string, timeoutMs = 10_000, _fullDiag?: boolean, sourceMapUrl?: string, label?: string, wasmPath?: string, metaPath?: string): Promise<PoolResult> {
-    return this.enqueue({
-      source, sourceMapUrl, wasmPath, metaPath, execute: false,
-    }, timeoutMs, label);
+  compile(
+    source: string,
+    timeoutMs = 10_000,
+    _fullDiag?: boolean,
+    sourceMapUrl?: string,
+    label?: string,
+    wasmPath?: string,
+    metaPath?: string,
+  ): Promise<PoolResult> {
+    return this.enqueue(
+      {
+        source,
+        sourceMapUrl,
+        wasmPath,
+        metaPath,
+        execute: false,
+      },
+      timeoutMs,
+      label,
+    );
   }
 
   /** Compile + execute a test — returns full TestResult. */
-  runTest(source: string, opts: {
-    isNegative?: boolean;
-    isRuntimeNegative?: boolean;
-    wasmPath?: string;
-    metaPath?: string;
-    label?: string;
-  } = {}, timeoutMs = 30_000): Promise<TestResult> {
-    return this.enqueue({
-      source,
-      execute: true,
-      isNegative: opts.isNegative || false,
-      isRuntimeNegative: opts.isRuntimeNegative || false,
-      wasmPath: opts.wasmPath,
-      metaPath: opts.metaPath,
-    }, timeoutMs, opts.label);
+  runTest(
+    source: string,
+    opts: {
+      isNegative?: boolean;
+      isRuntimeNegative?: boolean;
+      wasmPath?: string;
+      metaPath?: string;
+      label?: string;
+    } = {},
+    timeoutMs = 30_000,
+  ): Promise<TestResult> {
+    return this.enqueue(
+      {
+        source,
+        execute: true,
+        isNegative: opts.isNegative || false,
+        isRuntimeNegative: opts.isRuntimeNegative || false,
+        wasmPath: opts.wasmPath,
+        metaPath: opts.metaPath,
+      },
+      timeoutMs,
+      opts.label,
+    );
   }
 
   private enqueue(msg: Record<string, any>, timeoutMs: number, label?: string): Promise<any> {
@@ -165,11 +192,16 @@ export class CompilerPool {
       const timer = setTimeout(() => {
         console.error(`[pool] TIMEOUT: exceeded ${timeoutMs / 1000}s${label ? ` [${label}]` : ""}, killing worker`);
         this.pending.delete(id);
-        resolve(msg.execute
-          ? { status: "compile_timeout", error: `timeout (${timeoutMs / 1000}s)`, compileMs: timeoutMs } as TestResult
-          : { ok: false, error: `compilation timeout (${timeoutMs / 1000}s)`, compileMs: timeoutMs } as PoolResult
+        resolve(
+          msg.execute
+            ? ({
+                status: "compile_timeout",
+                error: `timeout (${timeoutMs / 1000}s)`,
+                compileMs: timeoutMs,
+              } as TestResult)
+            : ({ ok: false, error: `compilation timeout (${timeoutMs / 1000}s)`, compileMs: timeoutMs } as PoolResult),
         );
-        const stuck = this.forks.find(w => w.busy);
+        const stuck = this.forks.find((w) => w.busy);
         if (stuck) {
           stuck.busy = false;
           stuck.ready = false;
@@ -180,7 +212,10 @@ export class CompilerPool {
       this.queue.push({
         id,
         msg,
-        resolve: (r: any) => { clearTimeout(timer); resolve(r); },
+        resolve: (r: any) => {
+          clearTimeout(timer);
+          resolve(r);
+        },
       });
       this.dispatch();
     });

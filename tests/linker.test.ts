@@ -90,9 +90,7 @@ describe("linker", () => {
       const parsed = parseObject("test", bytes);
 
       // Should have 1 function symbol (exported "add")
-      const funcSymbols = parsed.symbols.filter(
-        (s) => s.kind === SYMTAB_FUNCTION,
-      );
+      const funcSymbols = parsed.symbols.filter((s) => s.kind === SYMTAB_FUNCTION);
       expect(funcSymbols.length).toBeGreaterThanOrEqual(1);
 
       const addSym = funcSymbols.find((s) => s.name === "add");
@@ -111,9 +109,7 @@ describe("linker", () => {
       expect(parsed.imports[0]!.typeIdx).toBe(0);
 
       // Should have an undefined symbol for the import
-      const undefinedSyms = parsed.symbols.filter(
-        (s) => s.flags & SYMBOL_UNDEFINED,
-      );
+      const undefinedSyms = parsed.symbols.filter((s) => s.flags & SYMBOL_UNDEFINED);
       expect(undefinedSyms.length).toBeGreaterThanOrEqual(1);
     });
 

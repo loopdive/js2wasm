@@ -33,10 +33,7 @@ class Encoder {
     while (more) {
       let b = value & 0x7f;
       value >>= 7;
-      if (
-        (value === 0 && (b & 0x40) === 0) ||
-        (value === -1 && (b & 0x40) !== 0)
-      ) {
+      if ((value === 0 && (b & 0x40) === 0) || (value === -1 && (b & 0x40) !== 0)) {
         more = false;
       } else {
         b |= 0x80;
@@ -255,12 +252,8 @@ export function buildTestObject(config: TestObjectConfig): Uint8Array {
   }
 
   // ── Export section ──────────────────────────────────────────
-  const funcExports = functions
-    .map((f, i) => ({ ...f, localIdx: i }))
-    .filter((f) => f.exported);
-  const globalExports = globals
-    .map((g, i) => ({ ...g, localIdx: i }))
-    .filter((g) => g.exported);
+  const funcExports = functions.map((f, i) => ({ ...f, localIdx: i })).filter((f) => f.exported);
+  const globalExports = globals.map((g, i) => ({ ...g, localIdx: i })).filter((g) => g.exported);
   const totalExports = funcExports.length + globalExports.length;
 
   if (totalExports > 0) {
@@ -411,9 +404,7 @@ export function buildTestObject(config: TestObjectConfig): Uint8Array {
  * Build a test object with undefined symbols that use EXPLICIT_NAME flag
  * so they can be resolved by name in the linker.
  */
-export function buildTestObjectWithNamedImports(
-  config: TestObjectConfig,
-): Uint8Array {
+export function buildTestObjectWithNamedImports(config: TestObjectConfig): Uint8Array {
   // Override import symbols to use EXPLICIT_NAME flag
   const enriched: TestObjectConfig = {
     ...config,
@@ -503,12 +494,8 @@ export function buildTestObjectWithNamedImports(
   }
 
   // ── Export section ──────────────────────────────────────────
-  const funcExports = functions
-    .map((f, i) => ({ ...f, localIdx: i }))
-    .filter((f) => f.exported);
-  const globalExports = globals
-    .map((g, i) => ({ ...g, localIdx: i }))
-    .filter((g) => g.exported);
+  const funcExports = functions.map((f, i) => ({ ...f, localIdx: i })).filter((f) => f.exported);
+  const globalExports = globals.map((g, i) => ({ ...g, localIdx: i })).filter((g) => g.exported);
   const totalExports = funcExports.length + globalExports.length;
 
   if (totalExports > 0) {
@@ -612,10 +599,7 @@ export function buildTestObjectWithNamedImports(
           symEnc.u32(sym.index);
           // For undefined + EXPLICIT_NAME: write the name
           // For defined (not undefined): always write the name
-          if (
-            !(sym.flags & SYMBOL_UNDEFINED) ||
-            sym.flags & SYMBOL_EXPLICIT_NAME
-          ) {
+          if (!(sym.flags & SYMBOL_UNDEFINED) || sym.flags & SYMBOL_EXPLICIT_NAME) {
             symEnc.name(sym.name);
           }
           break;

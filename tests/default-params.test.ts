@@ -72,8 +72,8 @@ describe("default parameter values", () => {
       buildImports(result.imports, undefined, result.stringPool),
     );
     const exports = instance.exports as any;
-    expect(exports.noArgs()).toBe(3);   // 1 + 2
-    expect(exports.oneArg()).toBe(12);  // 10 + 2
+    expect(exports.noArgs()).toBe(3); // 1 + 2
+    expect(exports.oneArg()).toBe(12); // 10 + 2
     expect(exports.twoArgs()).toBe(30); // 10 + 20
   });
 
@@ -143,7 +143,7 @@ describe("default parameter values", () => {
       buildImports(result.imports, undefined, result.stringPool),
     );
     const exports = instance.exports as any;
-    expect(exports.withDefault()).toBe(50);  // 5 * 10
+    expect(exports.withDefault()).toBe(50); // 5 * 10
     expect(exports.withOverride()).toBe(15); // 5 * 3
   });
 

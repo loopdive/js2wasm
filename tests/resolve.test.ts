@@ -2,12 +2,7 @@ import { describe, it, expect } from "vitest";
 import * as path from "path";
 import * as fs from "fs";
 import ts from "typescript";
-import {
-  ModuleResolver,
-  resolveAllImports,
-  getBarePackageName,
-  compileMulti,
-} from "../src/index.js";
+import { ModuleResolver, resolveAllImports, getBarePackageName, compileMulti } from "../src/index.js";
 import { treeshake, getEntryExportNames } from "../src/treeshake.js";
 
 const FIXTURES = path.resolve(__dirname, "fixtures/npm-resolve");
@@ -161,12 +156,16 @@ describe("treeshake", () => {
     };
 
     const rootNames = Object.keys(files);
-    const program = ts.createProgram(rootNames, {
-      target: ts.ScriptTarget.ES2022,
-      module: ts.ModuleKind.ESNext,
-      moduleResolution: ts.ModuleResolutionKind.Node10,
-      noLib: true,
-    }, compilerHost);
+    const program = ts.createProgram(
+      rootNames,
+      {
+        target: ts.ScriptTarget.ES2022,
+        module: ts.ModuleKind.ESNext,
+        moduleResolution: ts.ModuleResolutionKind.Node10,
+        noLib: true,
+      },
+      compilerHost,
+    );
 
     const checker = program.getTypeChecker();
     const sourceFiles = rootNames.map((n) => program.getSourceFile(n)!).filter(Boolean);
@@ -176,13 +175,16 @@ describe("treeshake", () => {
   }
 
   it("keeps only reachable declarations", () => {
-    const { sourceFiles, entryFile, checker } = createProgram({
-      "main.ts": `
+    const { sourceFiles, entryFile, checker } = createProgram(
+      {
+        "main.ts": `
         function used(): number { return 42; }
         function unused(): number { return 99; }
         export function run(): number { return used(); }
       `,
-    }, "main.ts");
+      },
+      "main.ts",
+    );
 
     const entryExports = getEntryExportNames(entryFile);
     const reachable = treeshake(entryExports, sourceFiles, checker);
@@ -201,16 +203,19 @@ describe("treeshake", () => {
   });
 
   it("follows cross-file references", () => {
-    const { sourceFiles, entryFile, checker } = createProgram({
-      "util.ts": `
+    const { sourceFiles, entryFile, checker } = createProgram(
+      {
+        "util.ts": `
         export function helper(): number { return 1; }
         export function deadHelper(): number { return 2; }
       `,
-      "main.ts": `
+        "main.ts": `
         import { helper } from "./util";
         export function run(): number { return helper(); }
       `,
-    }, "main.ts");
+      },
+      "main.ts",
+    );
 
     const entryExports = getEntryExportNames(entryFile);
     const reachable = treeshake(entryExports, sourceFiles, checker);
@@ -228,13 +233,16 @@ describe("treeshake", () => {
   });
 
   it("keeps all exports when no specific entry exports provided", () => {
-    const { sourceFiles, entryFile, checker } = createProgram({
-      "main.ts": `
+    const { sourceFiles, entryFile, checker } = createProgram(
+      {
+        "main.ts": `
         export function a(): number { return 1; }
         export function b(): number { return 2; }
         function c(): number { return 3; }
       `,
-    }, "main.ts");
+      },
+      "main.ts",
+    );
 
     const entryExports = getEntryExportNames(entryFile);
     const reachable = treeshake(entryExports, sourceFiles, checker);
@@ -252,16 +260,19 @@ describe("treeshake", () => {
   });
 
   it("keeps interface declarations referenced by exported functions", () => {
-    const { sourceFiles, entryFile, checker } = createProgram({
-      "types.ts": `
+    const { sourceFiles, entryFile, checker } = createProgram(
+      {
+        "types.ts": `
         export interface Point { x: number; y: number; }
         export interface Unused { z: number; }
       `,
-      "main.ts": `
+        "main.ts": `
         import { Point } from "./types";
         export function getX(p: Point): number { return p.x; }
       `,
-    }, "main.ts");
+      },
+      "main.ts",
+    );
 
     const entryExports = getEntryExportNames(entryFile);
     const reachable = treeshake(entryExports, sourceFiles, checker);
@@ -297,10 +308,7 @@ describe("multi-file compilation with resolution concepts", () => {
       `,
     };
     const result = compileMulti(files, "./main.ts");
-    expect(
-      result.success,
-      `Compile failed: ${result.errors.map((e) => e.message).join(", ")}`,
-    ).toBe(true);
+    expect(result.success, `Compile failed: ${result.errors.map((e) => e.message).join(", ")}`).toBe(true);
 
     const imports = {
       env: {
@@ -347,12 +355,16 @@ describe("multi-file compilation with resolution concepts", () => {
       readFile: (name) => fileMap.get(name),
     };
 
-    const program = ts.createProgram(Object.keys(files), {
-      target: ts.ScriptTarget.ES2022,
-      module: ts.ModuleKind.ESNext,
-      moduleResolution: ts.ModuleResolutionKind.Node10,
-      noLib: true,
-    }, compilerHost);
+    const program = ts.createProgram(
+      Object.keys(files),
+      {
+        target: ts.ScriptTarget.ES2022,
+        module: ts.ModuleKind.ESNext,
+        moduleResolution: ts.ModuleResolutionKind.Node10,
+        noLib: true,
+      },
+      compilerHost,
+    );
 
     const checker = program.getTypeChecker();
     const sourceFiles = Object.keys(files).map((n) => program.getSourceFile(n)!);

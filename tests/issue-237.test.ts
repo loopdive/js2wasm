@@ -25,10 +25,7 @@ describe("Issue #237: BigInt i64 vs externref type mismatch", () => {
     `;
     const result = compile(source);
     expect(result.success).toBe(true);
-    const { instance } = await WebAssembly.instantiate(
-      result.binary,
-      buildImports(result),
-    );
+    const { instance } = await WebAssembly.instantiate(result.binary, buildImports(result));
     const exports = instance.exports as Record<string, Function>;
     expect(exports.bigIntToNumber()).toBe(42);
   });
@@ -56,10 +53,7 @@ describe("Issue #237: BigInt i64 vs externref type mismatch", () => {
     `;
     const result = compile(source);
     expect(result.success).toBe(true);
-    const { instance } = await WebAssembly.instantiate(
-      result.binary,
-      buildImports(result),
-    );
+    const { instance } = await WebAssembly.instantiate(result.binary, buildImports(result));
     const exports = instance.exports as Record<string, Function>;
     expect(exports.bigIntCompare()).toBe(1);
   });
@@ -89,10 +83,7 @@ describe("Issue #237: BigInt i64 vs externref type mismatch", () => {
     `;
     const result = compile(source);
     expect(result.success).toBe(true);
-    const { instance } = await WebAssembly.instantiate(
-      result.binary,
-      buildImports(result),
-    );
+    const { instance } = await WebAssembly.instantiate(result.binary, buildImports(result));
     const exports = instance.exports as Record<string, Function>;
     expect(exports.bigIntMul()).toBe(42);
   });

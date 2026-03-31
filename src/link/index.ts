@@ -4,10 +4,7 @@
 
 export { link } from "./linker.js";
 export type { LinkOptions, LinkResult, LinkError } from "./linker.js";
-export type {
-  IsolationReport,
-  IsolationViolation,
-} from "./isolation.js";
+export type { IsolationReport, IsolationViolation } from "./isolation.js";
 export { validateIsolation } from "./isolation.js";
 export { parseObject } from "./reader.js";
 export type {

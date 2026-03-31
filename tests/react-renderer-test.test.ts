@@ -12,11 +12,7 @@ import { describe, it, expect } from "vitest";
 import { compile } from "../src/index.js";
 import { buildImports } from "../src/runtime.js";
 
-async function run(
-  source: string,
-  fn: string = "test",
-  args: unknown[] = [],
-): Promise<unknown> {
+async function run(source: string, fn: string = "test", args: unknown[] = []): Promise<unknown> {
   const result = compile(source);
   if (!result.success) {
     throw new Error(
@@ -100,11 +96,12 @@ function clearHooks(): void {
 // Tests
 // ---------------------------------------------------------------------------
 describe("React Milestone 4: Minimal custom renderer", () => {
-
   describe("single component render cycle", () => {
-
     it("renders a counter component and reads initial state", async () => {
-      const source = FIBER_CLASS + HOOKS_SOURCE + `
+      const source =
+        FIBER_CLASS +
+        HOOKS_SOURCE +
+        `
 function Counter(): number {
   const count = useState(0);
   return count;
@@ -125,7 +122,10 @@ export function test(): number {
     });
 
     it("re-renders after state update and output changes", async () => {
-      const source = FIBER_CLASS + HOOKS_SOURCE + `
+      const source =
+        FIBER_CLASS +
+        HOOKS_SOURCE +
+        `
 function Counter(): number {
   const count = useState(0);
   return count;
@@ -152,7 +152,10 @@ export function test(): number {
     });
 
     it("multiple state updates accumulate correctly", async () => {
-      const source = FIBER_CLASS + HOOKS_SOURCE + `
+      const source =
+        FIBER_CLASS +
+        HOOKS_SOURCE +
+        `
 function Counter(): number {
   const count = useState(0);
   return count;
@@ -183,9 +186,11 @@ export function test(): number {
   });
 
   describe("multi-hook component", () => {
-
     it("component with two useState hooks", async () => {
-      const source = FIBER_CLASS + HOOKS_SOURCE + `
+      const source =
+        FIBER_CLASS +
+        HOOKS_SOURCE +
+        `
 function TwoCounters(): number {
   const a = useState(10);
   const b = useState(20);
@@ -202,7 +207,10 @@ export function test(): number {
     });
 
     it("updates second hook independently", async () => {
-      const source = FIBER_CLASS + HOOKS_SOURCE + `
+      const source =
+        FIBER_CLASS +
+        HOOKS_SOURCE +
+        `
 function TwoCounters(): number {
   const a = useState(10);
   const b = useState(20);
@@ -229,9 +237,11 @@ export function test(): number {
   });
 
   describe("fiber tree with component output", () => {
-
     it("builds fiber tree and stores component outputs", async () => {
-      const source = FIBER_CLASS + HOOKS_SOURCE + `
+      const source =
+        FIBER_CLASS +
+        HOOKS_SOURCE +
+        `
 export function test(): number {
   // Build a 2-node fiber tree: root -> child
   const root = new FiberNode(0, 1);
@@ -258,7 +268,10 @@ export function test(): number {
     });
 
     it("renders tree with sibling chain", async () => {
-      const source = FIBER_CLASS + HOOKS_SOURCE + `
+      const source =
+        FIBER_CLASS +
+        HOOKS_SOURCE +
+        `
 export function test(): number {
   const root = new FiberNode(0, 0);
   const c1 = new FiberNode(1, 1);
@@ -293,9 +306,11 @@ export function test(): number {
   });
 
   describe("full render pipeline: component + fiber + hooks + re-render", () => {
-
     it("component renders into fiber, state updates, re-renders with new output", async () => {
-      const source = FIBER_CLASS + HOOKS_SOURCE + `
+      const source =
+        FIBER_CLASS +
+        HOOKS_SOURCE +
+        `
 function Counter(): number {
   const count = useState(0);
   // "render" output is count * 2 + 1  (odd numbers indicate rendered)
@@ -333,7 +348,10 @@ export function test(): number {
     });
 
     it("reconciliation: detects which fibers need update via flag diffing", async () => {
-      const source = FIBER_CLASS + HOOKS_SOURCE + `
+      const source =
+        FIBER_CLASS +
+        HOOKS_SOURCE +
+        `
 const Update = 4;
 
 export function test(): number {
@@ -396,7 +414,10 @@ export function test(): number {
     });
 
     it("full pipeline: 3-fiber tree with hooks, render, update, re-render, collect output", async () => {
-      const source = FIBER_CLASS + HOOKS_SOURCE + `
+      const source =
+        FIBER_CLASS +
+        HOOKS_SOURCE +
+        `
 // Component function: returns count + type offset
 function renderComponent(typeOffset: number): number {
   const count = useState(0);
@@ -459,9 +480,10 @@ export function test(): number {
   });
 
   describe("renderToNumber: depth-first tree traversal", () => {
-
     it("depth-first traversal collects output from nested fiber tree", async () => {
-      const source = FIBER_CLASS + `
+      const source =
+        FIBER_CLASS +
+        `
 // Iterative depth-first traversal using return_ pointers.
 // Uses iterative approach because the compiler does not yet narrow
 // nullable refs for recursive function call arguments.
@@ -523,7 +545,9 @@ export function test(): number {
     });
 
     it("traversal on single node returns its value", async () => {
-      const source = FIBER_CLASS + `
+      const source =
+        FIBER_CLASS +
+        `
 function renderToNumber(start: FiberNode): number {
   let sum = 0;
   let node: FiberNode | null = start;
@@ -558,9 +582,11 @@ export function test(): number {
   });
 
   describe("effect-like patterns", () => {
-
     it("useEffect simulation: runs side-effect after render", async () => {
-      const source = FIBER_CLASS + HOOKS_SOURCE + `
+      const source =
+        FIBER_CLASS +
+        HOOKS_SOURCE +
+        `
 // Simulate useEffect by storing effect result in a separate hook slot
 // Hook 0 = count, Hook 1 = effect output (derived from count)
 function ComponentWithEffect(): number {

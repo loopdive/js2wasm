@@ -16,7 +16,8 @@ async function run(source: string, fn: string, args: unknown[] = []): Promise<un
 
 describe("Function constructor pattern: new FuncDecl()", () => {
   it("basic function constructor with this.x = value", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       function Foo() {
         this.x = 42;
       }
@@ -24,12 +25,15 @@ describe("Function constructor pattern: new FuncDecl()", () => {
       export function test(): number {
         return obj.x;
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(val).toBe(42);
   });
 
   it("function constructor with multiple properties", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       function Foo() {
         this.x = 1;
         this.y = 2;
@@ -38,12 +42,15 @@ describe("Function constructor pattern: new FuncDecl()", () => {
       export function test(): number {
         return f.x + f.y;
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(val).toBe(3);
   });
 
   it("function constructor with parameters", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       function Point(x: number, y: number) {
         this.x = x;
         this.y = y;
@@ -52,12 +59,15 @@ describe("Function constructor pattern: new FuncDecl()", () => {
       export function test(): number {
         return p.x + p.y;
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(val).toBe(7);
   });
 
   it("multiple instances of same constructor", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       function Counter(start: number) {
         this.val = start;
       }
@@ -66,12 +76,15 @@ describe("Function constructor pattern: new FuncDecl()", () => {
         const b = new Counter(20);
         return a.val + b.val;
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(val).toBe(30);
   });
 
   it("function constructor called inside exported function", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       function Box(v: number) {
         this.value = v;
       }
@@ -79,7 +92,9 @@ describe("Function constructor pattern: new FuncDecl()", () => {
         const b = new Box(99);
         return b.value;
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(val).toBe(99);
   });
 });

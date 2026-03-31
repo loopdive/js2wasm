@@ -45,12 +45,23 @@ export function testSection(): Uint8Array {
     const mod = generateLinearMultiModule(multiAst);
 
     // Export runtime helpers
-    const helpers = ["__malloc", "__arr_new", "__arr_push", "__arr_len", "__arr_get",
-      "__u8arr_new", "__u8arr_from_arr", "__u8arr_len", "__u8arr_get",
-      "WasmEncoder_ctor", "WasmEncoder_byte", "WasmEncoder_u32", "WasmEncoder_finish",
+    const helpers = [
+      "__malloc",
+      "__arr_new",
+      "__arr_push",
+      "__arr_len",
+      "__arr_get",
+      "__u8arr_new",
+      "__u8arr_from_arr",
+      "__u8arr_len",
+      "__u8arr_get",
+      "WasmEncoder_ctor",
+      "WasmEncoder_byte",
+      "WasmEncoder_u32",
+      "WasmEncoder_finish",
     ];
     for (const name of helpers) {
-      const idx = mod.functions.findIndex(f => f.name === name);
+      const idx = mod.functions.findIndex((f) => f.name === name);
       if (idx >= 0) mod.exports.push({ name, desc: { kind: "func", index: idx } });
     }
 
@@ -70,7 +81,7 @@ export function testSection(): Uint8Array {
     const bytes: number[] = [];
     const u8 = new Uint8Array(memory.buffer);
     for (let i = 0; i < len; i++) bytes.push(u8[resultPtr + 12 + i]);
-    console.log("result length:", len, "bytes:", bytes.map(b => b.toString(16).padStart(2, '0')).join(' '));
+    console.log("result length:", len, "bytes:", bytes.map((b) => b.toString(16).padStart(2, "0")).join(" "));
 
     // Expected: byte(1) = 01, u32(2) = 02 (2 content bytes), content: u32(2)=02 byte(0x60)=60
     // So: 01 02 02 60
@@ -119,10 +130,19 @@ export function testCapturedSection(): Uint8Array {
     const multiAst = analyzeMultiSource(files, "test.ts");
     const mod = generateLinearMultiModule(multiAst);
 
-    const helpers = ["__malloc", "__arr_new", "__arr_push", "__arr_len", "__arr_get",
-      "__u8arr_new", "__u8arr_from_arr", "__u8arr_len", "__u8arr_get"];
+    const helpers = [
+      "__malloc",
+      "__arr_new",
+      "__arr_push",
+      "__arr_len",
+      "__arr_get",
+      "__u8arr_new",
+      "__u8arr_from_arr",
+      "__u8arr_len",
+      "__u8arr_get",
+    ];
     for (const name of helpers) {
-      const idx = mod.functions.findIndex(f => f.name === name);
+      const idx = mod.functions.findIndex((f) => f.name === name);
       if (idx >= 0) mod.exports.push({ name, desc: { kind: "func", index: idx } });
     }
 
@@ -138,7 +158,7 @@ export function testCapturedSection(): Uint8Array {
     const bytes: number[] = [];
     const u8 = new Uint8Array(memory.buffer);
     for (let i = 0; i < len; i++) bytes.push(u8[resultPtr + 12 + i]);
-    console.log("captured section result:", len, "bytes:", bytes.map(b => b.toString(16).padStart(2, '0')).join(' '));
+    console.log("captured section result:", len, "bytes:", bytes.map((b) => b.toString(16).padStart(2, "0")).join(" "));
 
     // Expected: section(1, content) where content = u32(2)=02 byte(0x7c)=7c byte(0x7c)=7c
     // Total content: 3 bytes. So: 01 03 02 7c 7c
@@ -189,10 +209,19 @@ export function testMultiSection(): Uint8Array {
     const multiAst = analyzeMultiSource(files, "test.ts");
     const mod = generateLinearMultiModule(multiAst);
 
-    const helpers = ["__malloc", "__arr_new", "__arr_push", "__arr_len", "__arr_get",
-      "__u8arr_new", "__u8arr_from_arr", "__u8arr_len", "__u8arr_get"];
+    const helpers = [
+      "__malloc",
+      "__arr_new",
+      "__arr_push",
+      "__arr_len",
+      "__arr_get",
+      "__u8arr_new",
+      "__u8arr_from_arr",
+      "__u8arr_len",
+      "__u8arr_get",
+    ];
     for (const name of helpers) {
-      const idx = mod.functions.findIndex(f => f.name === name);
+      const idx = mod.functions.findIndex((f) => f.name === name);
       if (idx >= 0) mod.exports.push({ name, desc: { kind: "func", index: idx } });
     }
 
@@ -208,7 +237,7 @@ export function testMultiSection(): Uint8Array {
     const bytes: number[] = [];
     const u8 = new Uint8Array(memory.buffer);
     for (let i = 0; i < len; i++) bytes.push(u8[resultPtr + 12 + i]);
-    console.log("multi section result:", len, "bytes:", bytes.map(b => b.toString(16).padStart(2, '0')).join(' '));
+    console.log("multi section result:", len, "bytes:", bytes.map((b) => b.toString(16).padStart(2, "0")).join(" "));
 
     // Section 1: content = u32(2) byte(0x7c) byte(0x7c) = 3 bytes
     // Section 3: content = u32(2) u32(0) u32(1) = 3 bytes

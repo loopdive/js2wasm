@@ -74,12 +74,15 @@ describe("WASI target", () => {
   });
 
   it("produces valid wasm binary for WASI target", async () => {
-    const result = compile(`
+    const result = compile(
+      `
       export function add(a: number, b: number): number {
         return a + b;
       }
       console.log("hello");
-    `, { target: "wasi" });
+    `,
+      { target: "wasi" },
+    );
     expect(result.success).toBe(true);
 
     // Validate the binary can be compiled by the Wasm engine

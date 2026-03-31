@@ -3,47 +3,51 @@ import type { ValType } from "../ir/types.js";
 
 /** Types with built-in wasm GC handling that should NOT be treated as extern classes */
 const BUILTIN_TYPES = new Set([
-  "Array", "Number", "Boolean", "String", "Object", "Function",
-  "Symbol", "BigInt", "Int8Array", "Uint8Array", "Int16Array",
-  "Uint16Array", "Int32Array", "Uint32Array", "Float32Array", "Float64Array",
-  "ArrayBuffer", "DataView", "Date", "JSON", "Math", "Promise",
-  "Generator", "Iterator", "IterableIterator", "Iterable",
-  "IteratorResult", "IteratorYieldResult", "IteratorReturnResult",
+  "Array",
+  "Number",
+  "Boolean",
+  "String",
+  "Object",
+  "Function",
+  "Symbol",
+  "BigInt",
+  "Int8Array",
+  "Uint8Array",
+  "Int16Array",
+  "Uint16Array",
+  "Int32Array",
+  "Uint32Array",
+  "Float32Array",
+  "Float64Array",
+  "ArrayBuffer",
+  "DataView",
+  "Date",
+  "JSON",
+  "Math",
+  "Promise",
+  "Generator",
+  "Iterator",
+  "IterableIterator",
+  "Iterable",
+  "IteratorResult",
+  "IteratorYieldResult",
+  "IteratorReturnResult",
 ]);
 
-export function mapTsTypeToWasm(
-  type: ts.Type,
-  checker: ts.TypeChecker,
-  fast?: boolean,
-): ValType {
-  if (
-    type.flags & ts.TypeFlags.BigInt ||
-    type.flags & ts.TypeFlags.BigIntLiteral
-  ) {
+export function mapTsTypeToWasm(type: ts.Type, checker: ts.TypeChecker, fast?: boolean): ValType {
+  if (type.flags & ts.TypeFlags.BigInt || type.flags & ts.TypeFlags.BigIntLiteral) {
     return { kind: "i64" };
   }
-  if (
-    type.flags & ts.TypeFlags.Number ||
-    type.flags & ts.TypeFlags.NumberLiteral
-  ) {
+  if (type.flags & ts.TypeFlags.Number || type.flags & ts.TypeFlags.NumberLiteral) {
     return { kind: fast ? "i32" : "f64" };
   }
-  if (
-    type.flags & ts.TypeFlags.Boolean ||
-    type.flags & ts.TypeFlags.BooleanLiteral
-  ) {
+  if (type.flags & ts.TypeFlags.Boolean || type.flags & ts.TypeFlags.BooleanLiteral) {
     return { kind: "i32" };
   }
-  if (
-    type.flags & ts.TypeFlags.String ||
-    type.flags & ts.TypeFlags.StringLiteral
-  ) {
+  if (type.flags & ts.TypeFlags.String || type.flags & ts.TypeFlags.StringLiteral) {
     return { kind: "externref" }; // JS string pass-through
   }
-  if (
-    type.flags & ts.TypeFlags.Void ||
-    type.flags & ts.TypeFlags.Undefined
-  ) {
+  if (type.flags & ts.TypeFlags.Void || type.flags & ts.TypeFlags.Undefined) {
     return { kind: "i32" }; // void → no result (handled in codegen)
   }
   if (type.flags & ts.TypeFlags.Null) {
@@ -51,24 +55,16 @@ export function mapTsTypeToWasm(
   }
 
   // Symbol types (ESSymbol, UniqueESSymbol) → i32 (unique counter ID)
-  if (
-    (type.flags & ts.TypeFlags.ESSymbol) !== 0 ||
-    (type.flags & ts.TypeFlags.UniqueESSymbol) !== 0
-  ) {
+  if ((type.flags & ts.TypeFlags.ESSymbol) !== 0 || (type.flags & ts.TypeFlags.UniqueESSymbol) !== 0) {
     return { kind: "i32" };
   }
 
   // Union with null/undefined → unwrap to inner type
   if (type.isUnion()) {
-    const nonNullish = type.types.filter(
-      (t) =>
-        !(t.flags & ts.TypeFlags.Null) &&
-        !(t.flags & ts.TypeFlags.Undefined),
-    );
+    const nonNullish = type.types.filter((t) => !(t.flags & ts.TypeFlags.Null) && !(t.flags & ts.TypeFlags.Undefined));
     if (nonNullish.length === 1) {
       const inner = mapTsTypeToWasm(nonNullish[0]!, checker, fast);
-      if (inner.kind === "ref")
-        return { kind: "ref_null", typeIdx: inner.typeIdx };
+      if (inner.kind === "ref") return { kind: "ref_null", typeIdx: inner.typeIdx };
       // T | undefined for primitives → just use T (e.g. number | undefined → f64)
       return inner;
     }
@@ -116,16 +112,21 @@ export function isExternalDeclaredClass(type: ts.Type, checker?: ts.TypeChecker)
   const decls = symbol.getDeclarations();
   if (!decls || decls.length === 0) return false;
   const symName = symbol.getName();
-  if (decls.some(
-    (d) =>
-      // declare class Foo { ... }
-      (ts.isClassDeclaration(d) && isDeclareContext(d)) ||
-      // declare var Foo: { prototype: Foo; new(): Foo }  (lib.dom.d.ts pattern)
-      (ts.isVariableDeclaration(d) && isDeclareVarWithConstructor(d)) ||
-      // declare var Date: DateConstructor  (TypeReferenceNode pattern, skip builtins)
-      (ts.isVariableDeclaration(d) && checker && !BUILTIN_TYPES.has(symName) &&
-        isDeclareVarWithTypeRefConstructor(d, checker)),
-  )) return true;
+  if (
+    decls.some(
+      (d) =>
+        // declare class Foo { ... }
+        (ts.isClassDeclaration(d) && isDeclareContext(d)) ||
+        // declare var Foo: { prototype: Foo; new(): Foo }  (lib.dom.d.ts pattern)
+        (ts.isVariableDeclaration(d) && isDeclareVarWithConstructor(d)) ||
+        // declare var Date: DateConstructor  (TypeReferenceNode pattern, skip builtins)
+        (ts.isVariableDeclaration(d) &&
+          checker &&
+          !BUILTIN_TYPES.has(symName) &&
+          isDeclareVarWithTypeRefConstructor(d, checker)),
+    )
+  )
+    return true;
 
   return false;
 }
@@ -151,8 +152,7 @@ function isDeclareVarWithTypeRefConstructor(d: ts.VariableDeclaration, checker: 
 function isDeclareContext(node: ts.Node): boolean {
   if (ts.canHaveModifiers(node)) {
     const mods = ts.getModifiers(node);
-    if (mods?.some((m) => m.kind === ts.SyntaxKind.DeclareKeyword))
-      return true;
+    if (mods?.some((m) => m.kind === ts.SyntaxKind.DeclareKeyword)) return true;
   }
   // Check if inside a declare namespace/module
   // ClassDecl → ModuleBlock → ModuleDeclaration, so walk up
@@ -169,42 +169,27 @@ function isDeclareContext(node: ts.Node): boolean {
 
 /** Check if a ts.Type represents void */
 export function isVoidType(type: ts.Type): boolean {
-  return (
-    (type.flags & ts.TypeFlags.Void) !== 0 ||
-    (type.flags & ts.TypeFlags.Undefined) !== 0
-  );
+  return (type.flags & ts.TypeFlags.Void) !== 0 || (type.flags & ts.TypeFlags.Undefined) !== 0;
 }
 
 /** Check if a ts.Type represents bigint */
 export function isBigIntType(type: ts.Type): boolean {
-  return (
-    (type.flags & ts.TypeFlags.BigInt) !== 0 ||
-    (type.flags & ts.TypeFlags.BigIntLiteral) !== 0
-  );
+  return (type.flags & ts.TypeFlags.BigInt) !== 0 || (type.flags & ts.TypeFlags.BigIntLiteral) !== 0;
 }
 
 /** Check if a ts.Type represents number */
 export function isNumberType(type: ts.Type): boolean {
-  return (
-    (type.flags & ts.TypeFlags.Number) !== 0 ||
-    (type.flags & ts.TypeFlags.NumberLiteral) !== 0
-  );
+  return (type.flags & ts.TypeFlags.Number) !== 0 || (type.flags & ts.TypeFlags.NumberLiteral) !== 0;
 }
 
 /** Check if a ts.Type represents boolean */
 export function isBooleanType(type: ts.Type): boolean {
-  return (
-    (type.flags & ts.TypeFlags.Boolean) !== 0 ||
-    (type.flags & ts.TypeFlags.BooleanLiteral) !== 0
-  );
+  return (type.flags & ts.TypeFlags.Boolean) !== 0 || (type.flags & ts.TypeFlags.BooleanLiteral) !== 0;
 }
 
 /** Check if a ts.Type represents string (including String wrapper object) */
 export function isStringType(type: ts.Type): boolean {
-  if (
-    (type.flags & ts.TypeFlags.String) !== 0 ||
-    (type.flags & ts.TypeFlags.StringLiteral) !== 0
-  ) {
+  if ((type.flags & ts.TypeFlags.String) !== 0 || (type.flags & ts.TypeFlags.StringLiteral) !== 0) {
     return true;
   }
   // Also recognize the String wrapper object type (e.g. from `new String("x")`)
@@ -228,10 +213,7 @@ export function isNumberWrapperType(type: ts.Type): boolean {
  * Check if a ts.Type is a Symbol type.
  */
 export function isSymbolType(type: ts.Type): boolean {
-  return (
-    (type.flags & ts.TypeFlags.ESSymbol) !== 0 ||
-    (type.flags & ts.TypeFlags.UniqueESSymbol) !== 0
-  );
+  return (type.flags & ts.TypeFlags.ESSymbol) !== 0 || (type.flags & ts.TypeFlags.UniqueESSymbol) !== 0;
 }
 
 /**
@@ -252,9 +234,7 @@ export function isGeneratorType(type: ts.Type): boolean {
   const symbol = type.getSymbol();
   if (!symbol) return false;
   return (
-    (symbol.name === "Generator" ||
-      symbol.name === "Iterator" ||
-      symbol.name === "IterableIterator") &&
+    (symbol.name === "Generator" || symbol.name === "Iterator" || symbol.name === "IterableIterator") &&
     !!(type.flags & ts.TypeFlags.Object)
   );
 }
@@ -294,11 +274,7 @@ export function unwrapPromiseType(type: ts.Type, checker: ts.TypeChecker): ts.Ty
  */
 export function isHeterogeneousUnion(type: ts.Type, checker: ts.TypeChecker, fast?: boolean): boolean {
   if (!type.isUnion()) return false;
-  const nonNullish = type.types.filter(
-    (t) =>
-      !(t.flags & ts.TypeFlags.Null) &&
-      !(t.flags & ts.TypeFlags.Undefined),
-  );
+  const nonNullish = type.types.filter((t) => !(t.flags & ts.TypeFlags.Null) && !(t.flags & ts.TypeFlags.Undefined));
   if (nonNullish.length <= 1) return false;
   const mapped = nonNullish.map((t) => mapTsTypeToWasm(t, checker, fast));
   return !mapped.every((m) => m.kind === mapped[0]!.kind);

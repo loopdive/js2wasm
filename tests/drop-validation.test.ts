@@ -4,7 +4,7 @@ import { compile } from "../src/index.js";
 function compileAndValidate(source: string): { success: boolean; error?: string } {
   const result = compile(source);
   if (!result.success) {
-    return { success: false, error: `Compile: ${result.errors.map(e => e.message).join("; ")}` };
+    return { success: false, error: `Compile: ${result.errors.map((e) => e.message).join("; ")}` };
   }
   try {
     new WebAssembly.Module(result.binary);
@@ -17,9 +17,7 @@ function compileAndValidate(source: string): { success: boolean; error?: string 
 async function run(source: string, fn: string, args: unknown[] = []): Promise<unknown> {
   const result = compile(source);
   if (!result.success) {
-    throw new Error(
-      `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}`,
-    );
+    throw new Error(`Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}`);
   }
   const { instance } = await WebAssembly.instantiate(result.binary, { env: {} });
   return (instance.exports as any)[fn](...args);
@@ -86,15 +84,19 @@ describe("drop validation - async void expressions (#617)", { timeout: 15000 }, 
 
   it("async non-void call works correctly", async () => {
     // Ensure async functions with actual return values still work
-    const result = await run(`
+    const result = await run(
+      `
       async function f(): Promise<number> { return 42; }
       export function test(): number { return 42; }
-    `, "test");
+    `,
+      "test",
+    );
     expect(result).toBe(42);
   });
 
   it("non-async void call still works", async () => {
-    const result = await run(`
+    const result = await run(
+      `
       let x = 0;
       function bump(): void { x++; }
       export function test(): number {
@@ -102,7 +104,9 @@ describe("drop validation - async void expressions (#617)", { timeout: 15000 }, 
         bump();
         return 2;
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(result).toBe(2);
   });
 });

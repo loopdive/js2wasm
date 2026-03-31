@@ -3,15 +3,16 @@ import { compile } from "../src/index.js";
 
 describe("Issue #713: Cannot destructure: unknown type", () => {
   it("object destructuring with unknown source type compiles (JS mode)", () => {
-    const result = compile(`
+    const result = compile(
+      `
       function test(x) {
         var { a, b } = x;
         return a;
       }
-    `, { allowJs: true, fileName: "input.js" });
-    const unknownErrors = result.errors.filter(e =>
-      e.message.includes("Cannot destructure: unknown type")
+    `,
+      { allowJs: true, fileName: "input.js" },
     );
+    const unknownErrors = result.errors.filter((e) => e.message.includes("Cannot destructure: unknown type"));
     expect(unknownErrors).toHaveLength(0);
     expect(result.success).toBe(true);
   });
@@ -26,9 +27,7 @@ describe("Issue #713: Cannot destructure: unknown type", () => {
         return 0;
       }
     `);
-    const unknownErrors = result.errors.filter(e =>
-      e.message.includes("Cannot destructure: unknown type")
-    );
+    const unknownErrors = result.errors.filter((e) => e.message.includes("Cannot destructure: unknown type"));
     expect(unknownErrors).toHaveLength(0);
     expect(result.success).toBe(true);
   });
@@ -43,23 +42,22 @@ describe("Issue #713: Cannot destructure: unknown type", () => {
         return 0;
       }
     `);
-    const unknownErrors = result.errors.filter(e =>
-      e.message.includes("Cannot destructure: unknown type")
-    );
+    const unknownErrors = result.errors.filter((e) => e.message.includes("Cannot destructure: unknown type"));
     expect(unknownErrors).toHaveLength(0);
     expect(result.success).toBe(true);
   });
 
   it("array destructuring with unknown source type compiles (JS mode)", () => {
-    const result = compile(`
+    const result = compile(
+      `
       function test(x) {
         var [a, b] = x;
         return a;
       }
-    `, { allowJs: true, fileName: "input.js" });
-    const unknownErrors = result.errors.filter(e =>
-      e.message.includes("Cannot destructure")
+    `,
+      { allowJs: true, fileName: "input.js" },
     );
+    const unknownErrors = result.errors.filter((e) => e.message.includes("Cannot destructure"));
     expect(unknownErrors).toHaveLength(0);
     expect(result.success).toBe(true);
   });
@@ -77,9 +75,7 @@ describe("Issue #713: Cannot destructure: unknown type", () => {
       }
     `);
     // Should compile (may throw at runtime, but should not be a compile error)
-    const unknownErrors = result.errors.filter(e =>
-      e.message.includes("Cannot destructure: unknown type")
-    );
+    const unknownErrors = result.errors.filter((e) => e.message.includes("Cannot destructure: unknown type"));
     expect(unknownErrors).toHaveLength(0);
   });
 });

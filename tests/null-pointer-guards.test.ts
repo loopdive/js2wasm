@@ -15,9 +15,7 @@ describe("null pointer guards in codegen (#552)", () => {
       }
     `);
     // Should compile without field-access errors
-    const fieldErrors = result.errors.filter(e =>
-      e.message.includes("Cannot read properties of undefined")
-    );
+    const fieldErrors = result.errors.filter((e) => e.message.includes("Cannot read properties of undefined"));
     expect(fieldErrors).toHaveLength(0);
   });
 
@@ -29,7 +27,7 @@ describe("null pointer guards in codegen (#552)", () => {
       export function check(): number { return val as number; }
     `);
     // Should compile without stack errors from missing fallback
-    const stackErrors = result.errors.filter(e => e.message.includes("stack"));
+    const stackErrors = result.errors.filter((e) => e.message.includes("stack"));
     expect(stackErrors).toHaveLength(0);
   });
 
@@ -45,9 +43,7 @@ describe("null pointer guards in codegen (#552)", () => {
         return +w;
       }
     `);
-    const crashErrors = result.errors.filter(e =>
-      e.message.includes("Cannot read properties of undefined")
-    );
+    const crashErrors = result.errors.filter((e) => e.message.includes("Cannot read properties of undefined"));
     expect(crashErrors).toHaveLength(0);
   });
 });

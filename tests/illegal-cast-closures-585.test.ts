@@ -27,7 +27,8 @@ async function run(source: string, fn: string, args: unknown[] = []): Promise<un
 
 describe("illegal cast - closures from different scopes (#585)", () => {
   it("closure assigned from different factory calls", async () => {
-    const result = await run(`
+    const result = await run(
+      `
       function makeAdder(x: number) {
         return function(y: number): number { return x + y; };
       }
@@ -40,12 +41,15 @@ describe("illegal cast - closures from different scopes (#585)", () => {
         let r2 = fn(3);
         return r1 * 100 + r2;
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(result).toBe(813);
   });
 
   it("higher-order function returning closures with mutable captures", async () => {
-    const result = await run(`
+    const result = await run(
+      `
       function makeCounter(start: number) {
         let count = start;
         return function(): number {
@@ -61,25 +65,31 @@ describe("illegal cast - closures from different scopes (#585)", () => {
         let r3 = c1();
         return r1 * 10000 + r2 * 10 + r3;
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(result).toBe(10000 + 1010 + 2);
   });
 
   it("closure returned from call expression invoked immediately - fn()()", async () => {
-    const result = await run(`
+    const result = await run(
+      `
       function makeMultiplier(x: number) {
         return function(y: number): number { return x * y; };
       }
       export function test(): number {
         return makeMultiplier(3)(7);
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(result).toBe(21);
   });
 
   it("class method with default parameter creating closure (scope-paramsbody pattern)", async () => {
     // This pattern matches the test262 scope-meth-paramsbody-var-close pattern
-    const result = await run(`
+    const result = await run(
+      `
       let probe: () => number;
       class C {
         m(_: number = 0): void {
@@ -92,7 +102,9 @@ describe("illegal cast - closures from different scopes (#585)", () => {
         c.m();
         return probe();
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(result).toBe(42);
   });
 
@@ -100,7 +112,8 @@ describe("illegal cast - closures from different scopes (#585)", () => {
     // This is the exact pattern that caused illegal cast in test262:
     // A closure returning externref passed to a function expecting () => void.
     // The contextual type override ensures the wrapper struct matches.
-    const result = await run(`
+    const result = await run(
+      `
       function doCall(fn: () => void): number {
         fn();
         return 1;
@@ -115,14 +128,17 @@ describe("illegal cast - closures from different scopes (#585)", () => {
         const c = new C();
         return c.run();
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(result).toBe(1);
   });
 
   it("assert_throws pattern with capturing closure (#585)", async () => {
     // Pattern from test262 compound-assignment tests:
     // assert_throws(() => obj.method()) where the lambda captures obj
-    const result = await run(`
+    const result = await run(
+      `
       function assertThrows(fn: () => void): number {
         try {
           fn();
@@ -141,14 +157,17 @@ describe("illegal cast - closures from different scopes (#585)", () => {
         const o = new C();
         return assertThrows(() => o.doSomething());
       }
-    `, "test");
+    `,
+      "test",
+    );
     // doSomething doesn't throw, so assertThrows returns 0
     expect(result).toBe(0);
   });
 
   it("class expression with name scope (class expr name binding)", async () => {
     // Matches test262 scope-name-lex-close pattern
-    const result = await run(`
+    const result = await run(
+      `
       export function test(): number {
         let result = 0;
         const cls = class MyClass {
@@ -160,7 +179,9 @@ describe("illegal cast - closures from different scopes (#585)", () => {
         result = obj.getVal();
         return result;
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(result).toBe(99);
   });
 });

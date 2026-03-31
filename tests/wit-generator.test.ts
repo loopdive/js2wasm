@@ -159,9 +159,7 @@ describe("WIT generator", () => {
   });
 
   it("does not include wit when option is not set", () => {
-    const result = compile(
-      `export function add(a: number, b: number): number { return a + b; }`,
-    );
+    const result = compile(`export function add(a: number, b: number): number { return a + b; }`);
 
     expect(result.success).toBe(true);
     expect(result.wit).toBeUndefined();

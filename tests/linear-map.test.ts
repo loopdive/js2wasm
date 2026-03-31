@@ -9,9 +9,7 @@ import {
   addMapRuntime,
 } from "../src/codegen-linear/runtime.js";
 
-async function buildWithMap(
-  setup: (mod: ReturnType<typeof createEmptyModule>, fi: Record<string, number>) => void,
-) {
+async function buildWithMap(setup: (mod: ReturnType<typeof createEmptyModule>, fi: Record<string, number>) => void) {
   const mod = createEmptyModule();
   addRuntime(mod);
   addUint8ArrayRuntime(mod);

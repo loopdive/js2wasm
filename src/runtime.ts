@@ -36,7 +36,10 @@ function _isWasmStruct(obj: any): boolean {
 
 function _getSidecar(obj: object): Record<string | symbol, any> {
   let sc = _wasmStructProps.get(obj);
-  if (!sc) { sc = Object.create(null) as Record<string | symbol, any>; _wasmStructProps.set(obj, sc); }
+  if (!sc) {
+    sc = Object.create(null) as Record<string | symbol, any>;
+    _wasmStructProps.set(obj, sc);
+  }
   return sc;
 }
 
@@ -51,7 +54,10 @@ function _sidecarSet(obj: any, key: any, val: any): void {
 
 function _sidecarDelete(obj: any, key: any): boolean {
   const sc = _wasmStructProps.get(obj);
-  if (sc && key in sc) { delete sc[key]; return true; }
+  if (sc && key in sc) {
+    delete sc[key];
+    return true;
+  }
   return false;
 }
 
@@ -77,7 +83,9 @@ function _toPrimitive(
     try {
       const prim = scToPrim.call(obj, hint);
       if (prim == null || typeof prim !== "object") return prim;
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   const exports = callbackState?.getExports();
@@ -90,7 +98,9 @@ function _toPrimitive(
       try {
         const prim = scFn.call(obj);
         if (prim == null || typeof prim !== "object") return prim;
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
     // Wasm-exported struct field getter (__sget_valueOf, __sget_toString)
     if (exports) {
@@ -112,10 +122,14 @@ function _toPrimitive(
               try {
                 const prim = callFn(obj);
                 if (prim == null || typeof prim !== "object") return prim;
-              } catch { /* call dispatch failed */ }
+              } catch {
+                /* call dispatch failed */
+              }
             }
           }
-        } catch { /* struct field access failed */ }
+        } catch {
+          /* struct field access failed */
+        }
       }
     }
     return undefined;
@@ -164,7 +178,10 @@ function _getStructFieldNames(obj: any, exports: Record<string, Function> | unde
  * Convert a WasmGC struct to a plain JS object using exported getters.
  * Returns undefined if the struct type is not recognized.
  */
-function _structToPlainObject(obj: any, exports: Record<string, Function> | undefined): Record<string, any> | undefined {
+function _structToPlainObject(
+  obj: any,
+  exports: Record<string, Function> | undefined,
+): Record<string, any> | undefined {
   const fieldNames = _getStructFieldNames(obj, exports);
   if (!fieldNames) return undefined;
   const result: Record<string, any> = {};
@@ -273,8 +290,9 @@ function _safeGet(obj: any, key: any): any {
 /** Safe property set: works on both JS objects and WasmGC structs. */
 function _safeSet(obj: any, key: any, val: any): void {
   if (obj == null) return;
-  try { obj[key] = val; }
-  catch {
+  try {
+    obj[key] = val;
+  } catch {
     _sidecarSet(obj, key, val);
     // Also store under the "@@name" alias for well-known symbols
     if (typeof key === "symbol") {
@@ -284,7 +302,10 @@ function _safeSet(obj: any, key: any, val: any): void {
     // And vice-versa: if key is "@@name", also store under the real Symbol
     if (typeof key === "string" && key.startsWith("@@")) {
       for (const [sym, wk] of _symbolToWasm) {
-        if (wk === key) { _sidecarSet(obj, sym, val); break; }
+        if (wk === key) {
+          _sidecarSet(obj, sym, val);
+          break;
+        }
       }
     }
   }
@@ -293,7 +314,9 @@ function _safeSet(obj: any, key: any, val: any): void {
 /** wasm:js-string polyfill for engines without native support (https://developer.mozilla.org/de/docs/WebAssembly/Guides/JavaScript_builtins) */
 export const jsString = {
   concat: (a: string, b: string): string => {
-    try { return a + b; } catch {
+    try {
+      return a + b;
+    } catch {
       // ToPrimitive failed on one operand (likely WasmGC struct) (#850)
       const sa = typeof a === "string" ? a : _toPrimitiveSync(a, "default");
       const sb = typeof b === "string" ? b : _toPrimitiveSync(b, "default");
@@ -302,8 +325,7 @@ export const jsString = {
   },
   length: (s: string): number => s.length,
   equals: (a: string, b: string): number => (a === b ? 1 : 0),
-  substring: (s: string, start: number, end: number): string =>
-    s.substring(start, end),
+  substring: (s: string, start: number, end: number): string => s.substring(start, end),
   charCodeAt: (s: string, i: number): number => s.charCodeAt(i),
 };
 
@@ -323,13 +345,18 @@ function resolveImport(
       // Determine console method and type variant
       let consoleFn: (...args: any[]) => void = console.log;
       let isBool = variant === "bool";
-      if (variant.startsWith("warn_")) { consoleFn = console.warn; isBool = variant === "warn_bool"; }
-      else if (variant.startsWith("error_")) { consoleFn = console.error; isBool = variant === "error_bool"; }
-      else if (variant.startsWith("log_")) { isBool = variant === "log_bool"; }
-      else if (variant === "bool") { isBool = true; }
-      return isBool
-        ? (v: number) => consoleFn(Boolean(v))
-        : (v: any) => consoleFn(v);
+      if (variant.startsWith("warn_")) {
+        consoleFn = console.warn;
+        isBool = variant === "warn_bool";
+      } else if (variant.startsWith("error_")) {
+        consoleFn = console.error;
+        isBool = variant === "error_bool";
+      } else if (variant.startsWith("log_")) {
+        isBool = variant === "log_bool";
+      } else if (variant === "bool") {
+        isBool = true;
+      }
+      return isBool ? (v: number) => consoleFn(Boolean(v)) : (v: any) => consoleFn(v);
     }
     case "string_method": {
       const method = intent.method;
@@ -338,15 +365,36 @@ function resolveImport(
     case "extern_class": {
       if (intent.action === "new") {
         // Test262Error is a simple Error subclass used by the test262 harness
-        class Test262Error extends Error { constructor(msg?: string) { super(msg); this.name = "Test262Error"; } }
+        class Test262Error extends Error {
+          constructor(msg?: string) {
+            super(msg);
+            this.name = "Test262Error";
+          }
+        }
         const builtinCtors: Record<string, Function> = {
-          Map, Set, WeakMap, WeakSet, WeakRef, RegExp, ArrayBuffer, DataView,
-          Error, TypeError, RangeError, SyntaxError, URIError, EvalError, ReferenceError,
+          Map,
+          Set,
+          WeakMap,
+          WeakSet,
+          WeakRef,
+          RegExp,
+          ArrayBuffer,
+          DataView,
+          Error,
+          TypeError,
+          RangeError,
+          SyntaxError,
+          URIError,
+          EvalError,
+          ReferenceError,
           AggregateError,
           Test262Error,
         };
         const Ctor = deps?.[intent.className] ?? builtinCtors[intent.className];
-        if (!Ctor) return (...args: any[]) => { throw new Error(`No dependency provided for extern class "${intent.className}"`); };
+        if (!Ctor)
+          return (...args: any[]) => {
+            throw new Error(`No dependency provided for extern class "${intent.className}"`);
+          };
         // Strip trailing null/undefined args — the compiler pads missing
         // optional args with ref.null.extern, but constructors like RegExp
         // reject explicit null (e.g. new RegExp("x", null) throws).
@@ -378,248 +426,306 @@ function resolveImport(
       if (name === "number_toString") return (v: number) => String(v);
       if (name === "number_toFixed") return (v: number, d: number) => v.toFixed(d);
       if (name === "number_toPrecision") return (v: number, p: number) => v.toPrecision(p);
-      if (name === "number_toExponential") return (v: number, d: number) => isNaN(d) ? v.toExponential() : v.toExponential(d);
-      if (name === "JSON_stringify") return (v: any, replacer: any, space: any) => {
-        const exports = callbackState?.getExports();
-        // Deep-convert WasmGC structs and vecs to plain JS values
-        const plain = _wasmToPlain(v, exports);
-        // Normalize sentinel values: NaN means "not provided"
-        const rep = (replacer == null || (typeof replacer === "number" && isNaN(replacer))) ? undefined : replacer;
-        const sp = (space == null || (typeof space === "number" && isNaN(space))) ? undefined : space;
-        return JSON.stringify(plain, rep as any, sp);
-      };
-      if (name === "JSON_parse") return (s: any) => JSON.parse(s);
-      if (name === "__extern_get") return (obj: any, key: any) => {
-        const val = _safeGet(obj, key);
-        if (val !== undefined) return val;
-        // Try struct getter exports as fallback for WasmGC opaque fields
-        if (typeof key === "string") {
+      if (name === "number_toExponential")
+        return (v: number, d: number) => (isNaN(d) ? v.toExponential() : v.toExponential(d));
+      if (name === "JSON_stringify")
+        return (v: any, replacer: any, space: any) => {
           const exports = callbackState?.getExports();
-          const getter = exports?.[`__sget_${key}`];
-          if (typeof getter === "function") return getter(obj);
-        }
-        return undefined;
-      };
+          // Deep-convert WasmGC structs and vecs to plain JS values
+          const plain = _wasmToPlain(v, exports);
+          // Normalize sentinel values: NaN means "not provided"
+          const rep = replacer == null || (typeof replacer === "number" && isNaN(replacer)) ? undefined : replacer;
+          const sp = space == null || (typeof space === "number" && isNaN(space)) ? undefined : space;
+          return JSON.stringify(plain, rep as any, sp);
+        };
+      if (name === "JSON_parse") return (s: any) => JSON.parse(s);
+      if (name === "__extern_get")
+        return (obj: any, key: any) => {
+          const val = _safeGet(obj, key);
+          if (val !== undefined) return val;
+          // Try struct getter exports as fallback for WasmGC opaque fields
+          if (typeof key === "string") {
+            const exports = callbackState?.getExports();
+            const getter = exports?.[`__sget_${key}`];
+            if (typeof getter === "function") return getter(obj);
+          }
+          return undefined;
+        };
       if (name === "__extern_set") return _safeSet;
-      if (name === "__extern_length") return (obj: any) => {
-        if (obj == null) return 0;
-        const len = obj.length;
-        if (len !== undefined) return len;
-        return _sidecarGet(obj, "length") ?? 0;
-      };
-      if (name === "__extern_toString") return (v: any) => {
-        if (v == null) return String(v);
-        if (typeof v.toString === "function") return v.toString();
-        // ToPrimitive for WasmGC structs (#850)
-        if (typeof v === "object") {
-          const prim = _toPrimitive(v, "string", callbackState);
-          if (prim !== undefined) return String(prim);
-        }
-        try { return String(v); } catch { return "[object Object]"; }
-      };
-      if (name === "__extern_is_undefined") return (v: any) => v === undefined ? 1 : 0;
+      if (name === "__extern_length")
+        return (obj: any) => {
+          if (obj == null) return 0;
+          const len = obj.length;
+          if (len !== undefined) return len;
+          return _sidecarGet(obj, "length") ?? 0;
+        };
+      if (name === "__extern_toString")
+        return (v: any) => {
+          if (v == null) return String(v);
+          if (typeof v.toString === "function") return v.toString();
+          // ToPrimitive for WasmGC structs (#850)
+          if (typeof v === "object") {
+            const prim = _toPrimitive(v, "string", callbackState);
+            if (prim !== undefined) return String(prim);
+          }
+          try {
+            return String(v);
+          } catch {
+            return "[object Object]";
+          }
+        };
+      if (name === "__extern_is_undefined") return (v: any) => (v === undefined ? 1 : 0);
       if (name === "__get_undefined") return () => undefined;
       // __box_symbol: convert i32 symbol ID → real JS Symbol (cached by ID)
       // so symbols preserve identity when crossing the Wasm/JS boundary (#864)
       if (name === "__box_symbol") {
         const symbolCache = new Map<number, symbol>([
-          [1, Symbol.iterator], [2, Symbol.hasInstance],
-          [3, Symbol.toPrimitive], [4, Symbol.toStringTag],
-          [5, Symbol.species], [6, Symbol.isConcatSpreadable],
-          [7, Symbol.match], [8, Symbol.replace],
-          [9, Symbol.search], [10, Symbol.split],
-          [11, Symbol.unscopables], [12, Symbol.asyncIterator],
+          [1, Symbol.iterator],
+          [2, Symbol.hasInstance],
+          [3, Symbol.toPrimitive],
+          [4, Symbol.toStringTag],
+          [5, Symbol.species],
+          [6, Symbol.isConcatSpreadable],
+          [7, Symbol.match],
+          [8, Symbol.replace],
+          [9, Symbol.search],
+          [10, Symbol.split],
+          [11, Symbol.unscopables],
+          [12, Symbol.asyncIterator],
         ]);
         return (id: number) => {
           let sym = symbolCache.get(id);
-          if (sym === undefined) { sym = Symbol(`wasm_${id}`); symbolCache.set(id, sym); }
+          if (sym === undefined) {
+            sym = Symbol(`wasm_${id}`);
+            symbolCache.set(id, sym);
+          }
           return sym;
         };
       }
       if (name === "__object_create") return (proto: any) => Object.create(proto);
-      if (name === "__object_freeze") return (obj: any) => { try { return Object.freeze(obj); } catch { return obj; } };
-      if (name === "__object_seal") return (obj: any) => { try { return Object.seal(obj); } catch { return obj; } };
-      if (name === "__object_preventExtensions") return (obj: any) => { try { return Object.preventExtensions(obj); } catch { return obj; } };
+      if (name === "__object_freeze")
+        return (obj: any) => {
+          try {
+            return Object.freeze(obj);
+          } catch {
+            return obj;
+          }
+        };
+      if (name === "__object_seal")
+        return (obj: any) => {
+          try {
+            return Object.seal(obj);
+          } catch {
+            return obj;
+          }
+        };
+      if (name === "__object_preventExtensions")
+        return (obj: any) => {
+          try {
+            return Object.preventExtensions(obj);
+          } catch {
+            return obj;
+          }
+        };
       // Object.keys/values/entries host imports — handle WasmGC structs via
       // exported getters so opaque struct fields are visible at runtime.
-      if (name === "__object_keys") return (obj: any) => {
-        if (obj == null) return [];
-        if (_isWasmStruct(obj)) {
-          const exports = callbackState?.getExports();
-          const fieldNames = _getStructFieldNames(obj, exports);
-          if (fieldNames) return fieldNames;
-        }
-        return Object.keys(obj);
-      };
-      if (name === "__object_values") return (obj: any) => {
-        if (obj == null) return [];
-        if (_isWasmStruct(obj)) {
-          const exports = callbackState?.getExports();
-          const fieldNames = _getStructFieldNames(obj, exports);
-          if (fieldNames) {
-            return fieldNames.map(key => {
-              const getter = exports?.[`__sget_${key}`];
-              return typeof getter === "function" ? getter(obj) : undefined;
-            });
+      if (name === "__object_keys")
+        return (obj: any) => {
+          if (obj == null) return [];
+          if (_isWasmStruct(obj)) {
+            const exports = callbackState?.getExports();
+            const fieldNames = _getStructFieldNames(obj, exports);
+            if (fieldNames) return fieldNames;
           }
-        }
-        return Object.values(obj);
-      };
-      if (name === "__object_entries") return (obj: any) => {
-        if (obj == null) return [];
-        if (_isWasmStruct(obj)) {
-          const exports = callbackState?.getExports();
-          const fieldNames = _getStructFieldNames(obj, exports);
-          if (fieldNames) {
-            return fieldNames.map(key => {
-              const getter = exports?.[`__sget_${key}`];
-              const val = typeof getter === "function" ? getter(obj) : undefined;
-              return [key, val];
-            });
-          }
-        }
-        return Object.entries(obj);
-      };
-      if (name === "__extern_slice") return (arr: any, start: number) => {
-        if (Array.isArray(arr)) return arr.slice(start);
-        if (typeof arr === "string") return Array.from(arr).slice(start);
-        // Handle WasmGC structs (tuples) — extract fields from index onwards
-        if (_isWasmStruct(arr)) {
-          const exports = callbackState?.getExports();
-          const fieldNames = _getStructFieldNames(arr, exports);
-          if (fieldNames && exports) {
-            const result: any[] = [];
-            for (let i = Math.max(0, start); i < fieldNames.length; i++) {
-              const getter = exports[`__sget_${fieldNames[i]}`];
-              if (typeof getter === "function") {
-                let val = getter(arr);
-                if (_isWasmStruct(val)) val = _structToPlainObject(val, exports) ?? val;
-                result.push(val);
-              }
-            }
-            return result;
-          }
-        }
-        if (arr != null && typeof arr[Symbol.iterator] === "function") return Array.from(arr).slice(start);
-        return [];
-      };
-      if (name === "__extern_rest_object") return (obj: any, excludedKeysStr: string) => {
-        if (obj == null) return {};
-        const excluded = new Set(excludedKeysStr ? String(excludedKeysStr).split(",") : []);
-        const result: Record<string, any> = {};
-        // For WasmGC structs, use exported getters to read fields
-        if (_isWasmStruct(obj)) {
-          const exports = callbackState?.getExports();
-          const fieldNames = _getStructFieldNames(obj, exports);
-          if (fieldNames) {
-            for (const key of fieldNames) {
-              if (!excluded.has(key)) {
+          return Object.keys(obj);
+        };
+      if (name === "__object_values")
+        return (obj: any) => {
+          if (obj == null) return [];
+          if (_isWasmStruct(obj)) {
+            const exports = callbackState?.getExports();
+            const fieldNames = _getStructFieldNames(obj, exports);
+            if (fieldNames) {
+              return fieldNames.map((key) => {
                 const getter = exports?.[`__sget_${key}`];
-                if (typeof getter === "function") result[key] = getter(obj);
-              }
+                return typeof getter === "function" ? getter(obj) : undefined;
+              });
             }
           }
-        } else {
-          for (const key of Object.keys(obj)) {
-            if (!excluded.has(key)) result[key] = obj[key];
+          return Object.values(obj);
+        };
+      if (name === "__object_entries")
+        return (obj: any) => {
+          if (obj == null) return [];
+          if (_isWasmStruct(obj)) {
+            const exports = callbackState?.getExports();
+            const fieldNames = _getStructFieldNames(obj, exports);
+            if (fieldNames) {
+              return fieldNames.map((key) => {
+                const getter = exports?.[`__sget_${key}`];
+                const val = typeof getter === "function" ? getter(obj) : undefined;
+                return [key, val];
+              });
+            }
           }
-        }
-        // Also copy sidecar properties (for WasmGC structs with dynamic props)
-        const sc = _wasmStructProps.get(obj);
-        if (sc) {
-          for (const key of Object.keys(sc)) {
-            if (!excluded.has(key) && !(key in result)) result[key] = sc[key];
+          return Object.entries(obj);
+        };
+      if (name === "__extern_slice")
+        return (arr: any, start: number) => {
+          if (Array.isArray(arr)) return arr.slice(start);
+          if (typeof arr === "string") return Array.from(arr).slice(start);
+          // Handle WasmGC structs (tuples) — extract fields from index onwards
+          if (_isWasmStruct(arr)) {
+            const exports = callbackState?.getExports();
+            const fieldNames = _getStructFieldNames(arr, exports);
+            if (fieldNames && exports) {
+              const result: any[] = [];
+              for (let i = Math.max(0, start); i < fieldNames.length; i++) {
+                const getter = exports[`__sget_${fieldNames[i]}`];
+                if (typeof getter === "function") {
+                  let val = getter(arr);
+                  if (_isWasmStruct(val)) val = _structToPlainObject(val, exports) ?? val;
+                  result.push(val);
+                }
+              }
+              return result;
+            }
           }
-        }
-        return result;
-      };
+          if (arr != null && typeof arr[Symbol.iterator] === "function") return Array.from(arr).slice(start);
+          return [];
+        };
+      if (name === "__extern_rest_object")
+        return (obj: any, excludedKeysStr: string) => {
+          if (obj == null) return {};
+          const excluded = new Set(excludedKeysStr ? String(excludedKeysStr).split(",") : []);
+          const result: Record<string, any> = {};
+          // For WasmGC structs, use exported getters to read fields
+          if (_isWasmStruct(obj)) {
+            const exports = callbackState?.getExports();
+            const fieldNames = _getStructFieldNames(obj, exports);
+            if (fieldNames) {
+              for (const key of fieldNames) {
+                if (!excluded.has(key)) {
+                  const getter = exports?.[`__sget_${key}`];
+                  if (typeof getter === "function") result[key] = getter(obj);
+                }
+              }
+            }
+          } else {
+            for (const key of Object.keys(obj)) {
+              if (!excluded.has(key)) result[key] = obj[key];
+            }
+          }
+          // Also copy sidecar properties (for WasmGC structs with dynamic props)
+          const sc = _wasmStructProps.get(obj);
+          if (sc) {
+            for (const key of Object.keys(sc)) {
+              if (!excluded.has(key) && !(key in result)) result[key] = sc[key];
+            }
+          }
+          return result;
+        };
       // Object.defineProperty host import — flags is a bitmask:
       //   bit 0: writable, bit 1: enumerable, bit 2: configurable
       //   bit 3: writable specified, bit 4: enumerable specified, bit 5: configurable specified
       //   bit 6: is accessor (get/set), bit 7: has value
-      if (name === "__defineProperty_value") return (obj: any, prop: any, value: any, flags: number) => {
-        if (obj == null || typeof obj !== "object" && typeof obj !== "function") {
-          throw new TypeError("Object.defineProperty called on non-object");
-        }
-        const desc: PropertyDescriptor = {};
-        if (flags & (1 << 7)) desc.value = value;
-        if (flags & (1 << 3)) desc.writable = !!(flags & 1);
-        if (flags & (1 << 4)) desc.enumerable = !!(flags & (1 << 1));
-        if (flags & (1 << 5)) desc.configurable = !!(flags & (1 << 2));
-        try { Object.defineProperty(obj, prop, desc); } catch (e) {
-          // Re-throw TypeErrors (spec-mandated: non-configurable redefinition, etc.)
-          if (e instanceof TypeError) throw e;
-          // WasmGC struct or frozen/sealed — store value in sidecar
-          if (desc.value !== undefined) _sidecarSet(obj, prop, desc.value);
-        }
-        return obj;
-      };
-      if (name === "__defineProperties") return (obj: any, descs: any) => {
-        if (obj == null || typeof obj !== "object" && typeof obj !== "function") {
-          throw new TypeError("Object.defineProperties called on non-object");
-        }
-        if (descs == null) return obj;
-        try { Object.defineProperties(obj, descs); } catch (e) {
-          // Re-throw TypeErrors (spec-mandated: non-configurable redefinition, etc.)
-          if (e instanceof TypeError) throw e;
-          // WasmGC struct — apply each descriptor individually via sidecar
-          const keys = Object.keys(descs);
-          for (const key of keys) {
-            const desc = descs[key];
-            if (desc && typeof desc === "object" && "value" in desc) {
-              _sidecarSet(obj, key, desc.value);
+      if (name === "__defineProperty_value")
+        return (obj: any, prop: any, value: any, flags: number) => {
+          if (obj == null || (typeof obj !== "object" && typeof obj !== "function")) {
+            throw new TypeError("Object.defineProperty called on non-object");
+          }
+          const desc: PropertyDescriptor = {};
+          if (flags & (1 << 7)) desc.value = value;
+          if (flags & (1 << 3)) desc.writable = !!(flags & 1);
+          if (flags & (1 << 4)) desc.enumerable = !!(flags & (1 << 1));
+          if (flags & (1 << 5)) desc.configurable = !!(flags & (1 << 2));
+          try {
+            Object.defineProperty(obj, prop, desc);
+          } catch (e) {
+            // Re-throw TypeErrors (spec-mandated: non-configurable redefinition, etc.)
+            if (e instanceof TypeError) throw e;
+            // WasmGC struct or frozen/sealed — store value in sidecar
+            if (desc.value !== undefined) _sidecarSet(obj, prop, desc.value);
+          }
+          return obj;
+        };
+      if (name === "__defineProperties")
+        return (obj: any, descs: any) => {
+          if (obj == null || (typeof obj !== "object" && typeof obj !== "function")) {
+            throw new TypeError("Object.defineProperties called on non-object");
+          }
+          if (descs == null) return obj;
+          try {
+            Object.defineProperties(obj, descs);
+          } catch (e) {
+            // Re-throw TypeErrors (spec-mandated: non-configurable redefinition, etc.)
+            if (e instanceof TypeError) throw e;
+            // WasmGC struct — apply each descriptor individually via sidecar
+            const keys = Object.keys(descs);
+            for (const key of keys) {
+              const desc = descs[key];
+              if (desc && typeof desc === "object" && "value" in desc) {
+                _sidecarSet(obj, key, desc.value);
+              }
             }
           }
-        }
-        return obj;
-      };
-      if (name === "__getOwnPropertyDescriptor") return (obj: any, prop: any) => {
-        if (obj == null) return undefined;
-        return Object.getOwnPropertyDescriptor(obj, prop);
-      };
+          return obj;
+        };
+      if (name === "__getOwnPropertyDescriptor")
+        return (obj: any, prop: any) => {
+          if (obj == null) return undefined;
+          return Object.getOwnPropertyDescriptor(obj, prop);
+        };
       // __create_descriptor(value, flags) → {value, writable, enumerable, configurable}
       // flags: bit 0 = writable, bit 1 = enumerable, bit 2 = configurable
-      if (name === "__create_descriptor") return (value: any, flags: number) => {
-        return {
-          value,
-          writable: !!(flags & 1),
-          enumerable: !!(flags & 2),
-          configurable: !!(flags & 4),
+      if (name === "__create_descriptor")
+        return (value: any, flags: number) => {
+          return {
+            value,
+            writable: !!(flags & 1),
+            enumerable: !!(flags & 2),
+            configurable: !!(flags & 4),
+          };
         };
-      };
       // Tagged template support: JS array builder and tagged template caller
       if (name === "__js_array_new") return () => [];
-      if (name === "__js_array_push") return (arr: any[], val: any) => { arr.push(val); };
+      if (name === "__js_array_push")
+        return (arr: any[], val: any) => {
+          arr.push(val);
+        };
       if (name === "__tagged_template") return (tag: Function, strings: any[], subs: any[]) => tag(strings, ...subs);
       // for-in key enumeration: returns a JS array of enumerable string keys
-      if (name === "__for_in_keys") return (obj: any) => {
-        if (obj == null) return [];
-        // Plain JS object — use for-in (includes prototype chain)
-        if (!_isWasmStruct(obj)) {
-          const keys: string[] = [];
-          for (const k in obj) keys.push(k);
-          return keys;
-        }
-        // WasmGC struct — combine struct field names + sidecar properties
-        const exports = callbackState?.getExports();
-        const fieldNames = _getStructFieldNames(obj, exports) ?? [];
-        const sc = _wasmStructProps.get(obj);
-        if (sc) {
-          const sidecarKeys = Object.keys(sc);
-          for (const k of sidecarKeys) {
-            if (!fieldNames.includes(k)) fieldNames.push(k);
+      if (name === "__for_in_keys")
+        return (obj: any) => {
+          if (obj == null) return [];
+          // Plain JS object — use for-in (includes prototype chain)
+          if (!_isWasmStruct(obj)) {
+            const keys: string[] = [];
+            for (const k in obj) keys.push(k);
+            return keys;
           }
-        }
-        return fieldNames;
-      };
-      if (name === "__for_in_len") return (keys: any) => {
-        if (keys == null || !Array.isArray(keys)) return 0;
-        return keys.length;
-      };
-      if (name === "__for_in_get") return (keys: any, i: number) => {
-        if (keys == null || !Array.isArray(keys)) return undefined;
-        return keys[i];
-      };
+          // WasmGC struct — combine struct field names + sidecar properties
+          const exports = callbackState?.getExports();
+          const fieldNames = _getStructFieldNames(obj, exports) ?? [];
+          const sc = _wasmStructProps.get(obj);
+          if (sc) {
+            const sidecarKeys = Object.keys(sc);
+            for (const k of sidecarKeys) {
+              if (!fieldNames.includes(k)) fieldNames.push(k);
+            }
+          }
+          return fieldNames;
+        };
+      if (name === "__for_in_len")
+        return (keys: any) => {
+          if (keys == null || !Array.isArray(keys)) return 0;
+          return keys.length;
+        };
+      if (name === "__for_in_get")
+        return (keys: any, i: number) => {
+          if (keys == null || !Array.isArray(keys)) return undefined;
+          return keys[i];
+        };
       // Promise combinators and constructors
       if (name === "Promise_all") return (arr: any) => Promise.all(arr);
       if (name === "Promise_race") return (arr: any) => Promise.race(arr);
@@ -630,189 +736,214 @@ function resolveImport(
       if (name === "Promise_catch") return (p: any, cb: any) => p.catch(cb);
       // Generator support: buffer management and generator creation
       if (name === "__gen_create_buffer") return () => [];
-      if (name === "__gen_push_f64") return (buf: any[], v: number) => { buf.push(v); };
-      if (name === "__gen_push_i32") return (buf: any[], v: number) => { buf.push(v); };
-      if (name === "__gen_push_ref") return (buf: any[], v: any) => { buf.push(v); };
-      if (name === "__create_generator") return (buf: any[]) => {
-        let index = 0;
-        return {
-          next() {
-            if (index < buf.length) {
-              return { value: buf[index++], done: false };
-            }
-            return { value: undefined, done: true };
-          },
-          return(value: any) {
-            index = buf.length;
-            return { value, done: true };
-          },
-          throw(e: any) {
-            index = buf.length;
-            throw e;
-          },
-          [Symbol.iterator]() { return this; },
+      if (name === "__gen_push_f64")
+        return (buf: any[], v: number) => {
+          buf.push(v);
         };
-      };
-      if (name === "__gen_next") return (gen: any) => {
-        const next = gen.next ?? _sidecarGet(gen, "next");
-        if (typeof next === "function") return next.call(gen);
-        throw new TypeError("generator.next is not a function");
-      };
-      if (name === "__gen_return") return (gen: any, val: any) => {
-        const ret = gen.return ?? _sidecarGet(gen, "return");
-        if (typeof ret === "function") return ret.call(gen, val);
-        return { value: val, done: true };
-      };
-      if (name === "__gen_throw") return (gen: any, err: any) => {
-        const thr = gen.throw ?? _sidecarGet(gen, "throw");
-        if (typeof thr === "function") return thr.call(gen, err);
-        throw err;
-      };
-      if (name === "__gen_result_value") return (result: any) => {
-        let val = result.value;
-        if (val !== undefined) return val;
-        val = _sidecarGet(result, "value");
-        if (val !== undefined) return val;
-        const exports = callbackState?.getExports();
-        return exports?.__sget_value?.(result);
-      };
-      if (name === "__gen_result_value_f64") return (result: any) => {
-        let val = result.value ?? _sidecarGet(result, "value");
-        if (val === undefined) {
+      if (name === "__gen_push_i32")
+        return (buf: any[], v: number) => {
+          buf.push(v);
+        };
+      if (name === "__gen_push_ref")
+        return (buf: any[], v: any) => {
+          buf.push(v);
+        };
+      if (name === "__create_generator")
+        return (buf: any[]) => {
+          let index = 0;
+          return {
+            next() {
+              if (index < buf.length) {
+                return { value: buf[index++], done: false };
+              }
+              return { value: undefined, done: true };
+            },
+            return(value: any) {
+              index = buf.length;
+              return { value, done: true };
+            },
+            throw(e: any) {
+              index = buf.length;
+              throw e;
+            },
+            [Symbol.iterator]() {
+              return this;
+            },
+          };
+        };
+      if (name === "__gen_next")
+        return (gen: any) => {
+          const next = gen.next ?? _sidecarGet(gen, "next");
+          if (typeof next === "function") return next.call(gen);
+          throw new TypeError("generator.next is not a function");
+        };
+      if (name === "__gen_return")
+        return (gen: any, val: any) => {
+          const ret = gen.return ?? _sidecarGet(gen, "return");
+          if (typeof ret === "function") return ret.call(gen, val);
+          return { value: val, done: true };
+        };
+      if (name === "__gen_throw")
+        return (gen: any, err: any) => {
+          const thr = gen.throw ?? _sidecarGet(gen, "throw");
+          if (typeof thr === "function") return thr.call(gen, err);
+          throw err;
+        };
+      if (name === "__gen_result_value")
+        return (result: any) => {
+          let val = result.value;
+          if (val !== undefined) return val;
+          val = _sidecarGet(result, "value");
+          if (val !== undefined) return val;
           const exports = callbackState?.getExports();
-          val = exports?.__sget_value?.(result);
-        }
-        return Number(val);
-      };
-      if (name === "__gen_result_done") return (result: any) => {
-        let done = result.done ?? _sidecarGet(result, "done");
-        if (done === undefined) {
-          const exports = callbackState?.getExports();
-          done = exports?.__sget_done?.(result);
-        }
-        return done ? 1 : 0;
-      };
+          return exports?.__sget_value?.(result);
+        };
+      if (name === "__gen_result_value_f64")
+        return (result: any) => {
+          let val = result.value ?? _sidecarGet(result, "value");
+          if (val === undefined) {
+            const exports = callbackState?.getExports();
+            val = exports?.__sget_value?.(result);
+          }
+          return Number(val);
+        };
+      if (name === "__gen_result_done")
+        return (result: any) => {
+          let done = result.done ?? _sidecarGet(result, "done");
+          if (done === undefined) {
+            const exports = callbackState?.getExports();
+            done = exports?.__sget_done?.(result);
+          }
+          return done ? 1 : 0;
+        };
       // Iterator protocol: host-delegated iteration for non-array types
-      if (name === "__iterator") return (obj: any) => {
-        // Check direct Symbol.iterator first, then sidecar (both JS Symbol and Wasm "@@iterator")
-        const fn = obj[Symbol.iterator]
-          ?? _sidecarGet(obj, Symbol.iterator)
-          ?? _sidecarGet(obj, "@@iterator");
-        if (typeof fn === "function") return fn.call(obj);
-        // WasmGC struct fallback: check for @@iterator struct field via exported getter,
-        // then try vec struct iteration.
-        if (_isWasmStruct(obj)) {
-          const exports = callbackState?.getExports();
-          // Try __call_@@iterator to invoke [Symbol.iterator]() on the struct
-          const callIter = (exports as any)?.["__call_@@iterator"];
-          if (typeof callIter === "function") {
-            const iter = callIter(obj);
-            if (iter != null) return iter;
-          }
-          // Fallback: synthesize an array iterator if the struct is a vec (array wrapper)
-          const vecLen = exports?.__vec_len;
-          const vecGet = exports?.__vec_get;
-          if (typeof vecLen === "function" && typeof vecGet === "function") {
-            const len = vecLen(obj);
-            if (typeof len === "number" && len >= 0) {
-              let i = 0;
-              return {
-                next() {
-                  if (i >= len) return { value: undefined, done: true };
-                  const val = vecGet(obj, i);
-                  i++;
-                  return { value: val, done: false };
-                },
-                [Symbol.iterator]() { return this; },
-              };
+      if (name === "__iterator")
+        return (obj: any) => {
+          // Check direct Symbol.iterator first, then sidecar (both JS Symbol and Wasm "@@iterator")
+          const fn = obj[Symbol.iterator] ?? _sidecarGet(obj, Symbol.iterator) ?? _sidecarGet(obj, "@@iterator");
+          if (typeof fn === "function") return fn.call(obj);
+          // WasmGC struct fallback: check for @@iterator struct field via exported getter,
+          // then try vec struct iteration.
+          if (_isWasmStruct(obj)) {
+            const exports = callbackState?.getExports();
+            // Try __call_@@iterator to invoke [Symbol.iterator]() on the struct
+            const callIter = (exports as any)?.["__call_@@iterator"];
+            if (typeof callIter === "function") {
+              const iter = callIter(obj);
+              if (iter != null) return iter;
+            }
+            // Fallback: synthesize an array iterator if the struct is a vec (array wrapper)
+            const vecLen = exports?.__vec_len;
+            const vecGet = exports?.__vec_get;
+            if (typeof vecLen === "function" && typeof vecGet === "function") {
+              const len = vecLen(obj);
+              if (typeof len === "number" && len >= 0) {
+                let i = 0;
+                return {
+                  next() {
+                    if (i >= len) return { value: undefined, done: true };
+                    const val = vecGet(obj, i);
+                    i++;
+                    return { value: val, done: false };
+                  },
+                  [Symbol.iterator]() {
+                    return this;
+                  },
+                };
+              }
             }
           }
-        }
-        throw new TypeError((typeof obj === "object" ? Object.prototype.toString.call(obj) : String(obj)) + " is not iterable");
-      };
-      if (name === "__async_iterator") return (obj: any) => {
-        const asyncIter = obj[Symbol.asyncIterator]
-          ?? _sidecarGet(obj, Symbol.asyncIterator)
-          ?? _sidecarGet(obj, "@@asyncIterator");
-        if (asyncIter) return asyncIter.call(obj);
-        const syncIter = obj[Symbol.iterator]
-          ?? _sidecarGet(obj, Symbol.iterator)
-          ?? _sidecarGet(obj, "@@iterator");
-        if (typeof syncIter === "function") return syncIter.call(obj);
-        // WasmGC struct fallback: check @@iterator struct field, then vec iteration
-        if (_isWasmStruct(obj)) {
-          const exports = callbackState?.getExports();
-          // Try __call_@@iterator to invoke [Symbol.iterator]() on the struct
-          const callIter = (exports as any)?.["__call_@@iterator"];
-          if (typeof callIter === "function") {
-            const iter = callIter(obj);
-            if (iter != null) return iter;
-          }
-          const vecLen = exports?.__vec_len;
-          const vecGet = exports?.__vec_get;
-          if (typeof vecLen === "function" && typeof vecGet === "function") {
-            const len = vecLen(obj);
-            if (typeof len === "number" && len >= 0) {
-              let i = 0;
-              return {
-                next() {
-                  if (i >= len) return { value: undefined, done: true };
-                  const val = vecGet(obj, i);
-                  i++;
-                  return { value: val, done: false };
-                },
-                [Symbol.iterator]() { return this; },
-              };
+          throw new TypeError(
+            (typeof obj === "object" ? Object.prototype.toString.call(obj) : String(obj)) + " is not iterable",
+          );
+        };
+      if (name === "__async_iterator")
+        return (obj: any) => {
+          const asyncIter =
+            obj[Symbol.asyncIterator] ?? _sidecarGet(obj, Symbol.asyncIterator) ?? _sidecarGet(obj, "@@asyncIterator");
+          if (asyncIter) return asyncIter.call(obj);
+          const syncIter = obj[Symbol.iterator] ?? _sidecarGet(obj, Symbol.iterator) ?? _sidecarGet(obj, "@@iterator");
+          if (typeof syncIter === "function") return syncIter.call(obj);
+          // WasmGC struct fallback: check @@iterator struct field, then vec iteration
+          if (_isWasmStruct(obj)) {
+            const exports = callbackState?.getExports();
+            // Try __call_@@iterator to invoke [Symbol.iterator]() on the struct
+            const callIter = (exports as any)?.["__call_@@iterator"];
+            if (typeof callIter === "function") {
+              const iter = callIter(obj);
+              if (iter != null) return iter;
+            }
+            const vecLen = exports?.__vec_len;
+            const vecGet = exports?.__vec_get;
+            if (typeof vecLen === "function" && typeof vecGet === "function") {
+              const len = vecLen(obj);
+              if (typeof len === "number" && len >= 0) {
+                let i = 0;
+                return {
+                  next() {
+                    if (i >= len) return { value: undefined, done: true };
+                    const val = vecGet(obj, i);
+                    i++;
+                    return { value: val, done: false };
+                  },
+                  [Symbol.iterator]() {
+                    return this;
+                  },
+                };
+              }
             }
           }
-        }
-        throw new TypeError("object is not iterable");
-      };
-      if (name === "__iterator_next") return (iter: any) => {
-        let next = iter.next ?? _sidecarGet(iter, "next");
-        // Try struct getter for "next" method
-        if (next === undefined) {
-          const exports = callbackState?.getExports();
-          next = exports?.__sget_next?.(iter);
-        }
-        if (typeof next === "function") return next.call(iter);
-        // Try __call_next dispatch for WasmGC struct iterators
-        {
-          const exports = callbackState?.getExports();
-          const callNext = (exports as any)?.["__call_next"];
-          if (typeof callNext === "function") {
-            const result = callNext(iter);
-            if (result != null) return result;
+          throw new TypeError("object is not iterable");
+        };
+      if (name === "__iterator_next")
+        return (iter: any) => {
+          let next = iter.next ?? _sidecarGet(iter, "next");
+          // Try struct getter for "next" method
+          if (next === undefined) {
+            const exports = callbackState?.getExports();
+            next = exports?.__sget_next?.(iter);
           }
-        }
-        throw new TypeError("iterator.next is not a function");
-      };
-      if (name === "__iterator_done") return (result: any) => {
-        let done = result.done ?? _sidecarGet(result, "done");
-        // Try struct getter for "done" field
-        if (done === undefined) {
+          if (typeof next === "function") return next.call(iter);
+          // Try __call_next dispatch for WasmGC struct iterators
+          {
+            const exports = callbackState?.getExports();
+            const callNext = (exports as any)?.["__call_next"];
+            if (typeof callNext === "function") {
+              const result = callNext(iter);
+              if (result != null) return result;
+            }
+          }
+          throw new TypeError("iterator.next is not a function");
+        };
+      if (name === "__iterator_done")
+        return (result: any) => {
+          let done = result.done ?? _sidecarGet(result, "done");
+          // Try struct getter for "done" field
+          if (done === undefined) {
+            const exports = callbackState?.getExports();
+            done = exports?.__sget_done?.(result);
+          }
+          return done ? 1 : 0;
+        };
+      if (name === "__iterator_value")
+        return (result: any) => {
+          let val = result.value;
+          if (val !== undefined) return val;
+          val = _sidecarGet(result, "value");
+          if (val !== undefined) return val;
+          // Try struct getter for "value" field
           const exports = callbackState?.getExports();
-          done = exports?.__sget_done?.(result);
-        }
-        return done ? 1 : 0;
-      };
-      if (name === "__iterator_value") return (result: any) => {
-        let val = result.value;
-        if (val !== undefined) return val;
-        val = _sidecarGet(result, "value");
-        if (val !== undefined) return val;
-        // Try struct getter for "value" field
-        const exports = callbackState?.getExports();
-        return exports?.__sget_value?.(result);
-      };
-      if (name === "__iterator_return") return (iter: any) => {
-        let ret = iter?.return ?? _sidecarGet(iter, "return");
-        if (ret === undefined) {
-          const exports = callbackState?.getExports();
-          ret = exports?.__sget_return?.(iter);
-        }
-        if (typeof ret === "function") ret.call(iter);
-      };
+          return exports?.__sget_value?.(result);
+        };
+      if (name === "__iterator_return")
+        return (iter: any) => {
+          let ret = iter?.return ?? _sidecarGet(iter, "return");
+          if (ret === undefined) {
+            const exports = callbackState?.getExports();
+            ret = exports?.__sget_return?.(iter);
+          }
+          if (typeof ret === "function") ret.call(iter);
+        };
       // Convert a WasmGC vec struct to a real JS array so it's iterable by
       // native JS APIs (Map, Set, spread, for-of, etc.). (#854)
       // Uses __vec_len/__vec_get exports (bound lazily after instantiation).
@@ -863,74 +994,87 @@ function resolveImport(
       // Array iterator methods: entries/keys/values returning proper JS iterators.
       // Access exports lazily (inside next()) because these may be called during
       // module init before setExports has been called.
-      if (name === "__array_entries") return (arr: any) => {
-        let i = 0;
-        let len: number | undefined;
-        return {
-          next() {
-            const exports = callbackState?.getExports();
-            const vecLen = exports?.__vec_len;
-            const vecGet = exports?.__vec_get;
-            if (typeof vecLen !== "function" || typeof vecGet !== "function") return { value: undefined, done: true };
-            if (len === undefined) len = vecLen(arr) as number;
-            if (i >= len) return { value: undefined, done: true };
-            const val = vecGet(arr, i);
-            const entry = [i, val];
-            i++;
-            return { value: entry, done: false };
-          },
-          [Symbol.iterator]() { return this; },
+      if (name === "__array_entries")
+        return (arr: any) => {
+          let i = 0;
+          let len: number | undefined;
+          return {
+            next() {
+              const exports = callbackState?.getExports();
+              const vecLen = exports?.__vec_len;
+              const vecGet = exports?.__vec_get;
+              if (typeof vecLen !== "function" || typeof vecGet !== "function") return { value: undefined, done: true };
+              if (len === undefined) len = vecLen(arr) as number;
+              if (i >= len) return { value: undefined, done: true };
+              const val = vecGet(arr, i);
+              const entry = [i, val];
+              i++;
+              return { value: entry, done: false };
+            },
+            [Symbol.iterator]() {
+              return this;
+            },
+          };
         };
-      };
-      if (name === "__array_keys") return (arr: any) => {
-        let i = 0;
-        let len: number | undefined;
-        return {
-          next() {
-            const exports = callbackState?.getExports();
-            const vecLen = exports?.__vec_len;
-            if (typeof vecLen !== "function") return { value: undefined, done: true };
-            if (len === undefined) len = vecLen(arr) as number;
-            if (i >= len) return { value: undefined, done: true };
-            return { value: i++, done: false };
-          },
-          [Symbol.iterator]() { return this; },
+      if (name === "__array_keys")
+        return (arr: any) => {
+          let i = 0;
+          let len: number | undefined;
+          return {
+            next() {
+              const exports = callbackState?.getExports();
+              const vecLen = exports?.__vec_len;
+              if (typeof vecLen !== "function") return { value: undefined, done: true };
+              if (len === undefined) len = vecLen(arr) as number;
+              if (i >= len) return { value: undefined, done: true };
+              return { value: i++, done: false };
+            },
+            [Symbol.iterator]() {
+              return this;
+            },
+          };
         };
-      };
-      if (name === "__array_values") return (arr: any) => {
-        let i = 0;
-        let len: number | undefined;
-        return {
-          next() {
-            const exports = callbackState?.getExports();
-            const vecLen = exports?.__vec_len;
-            const vecGet = exports?.__vec_get;
-            if (typeof vecLen !== "function" || typeof vecGet !== "function") return { value: undefined, done: true };
-            if (len === undefined) len = vecLen(arr) as number;
-            if (i >= len) return { value: undefined, done: true };
-            return { value: vecGet(arr, i++), done: false };
-          },
-          [Symbol.iterator]() { return this; },
+      if (name === "__array_values")
+        return (arr: any) => {
+          let i = 0;
+          let len: number | undefined;
+          return {
+            next() {
+              const exports = callbackState?.getExports();
+              const vecLen = exports?.__vec_len;
+              const vecGet = exports?.__vec_get;
+              if (typeof vecLen !== "function" || typeof vecGet !== "function") return { value: undefined, done: true };
+              if (len === undefined) len = vecLen(arr) as number;
+              if (i >= len) return { value: undefined, done: true };
+              return { value: vecGet(arr, i++), done: false };
+            },
+            [Symbol.iterator]() {
+              return this;
+            },
+          };
         };
-      };
       // Callback bridges for functional array methods
       if (name === "__call_1_f64") return (fn: Function, a: number) => fn(a);
       if (name === "__call_2_f64") return (fn: Function, a: number, b: number) => fn(a, b);
       if (name === "__call_1_i32") return (fn: Function, a: number) => fn(a);
       if (name === "__call_2_i32") return (fn: Function, a: number, b: number) => fn(a, b);
       if (name === "__typeof") return (v: any) => typeof v;
-      if (name === "__instanceof") return (v: any, ctorName: string) => {
-        try {
-          const ctor = (globalThis as any)[ctorName];
-          if (typeof ctor !== "function") return 0;
-          return v instanceof ctor ? 1 : 0;
-        } catch { return 0; }
-      };
+      if (name === "__instanceof")
+        return (v: any, ctorName: string) => {
+          try {
+            const ctor = (globalThis as any)[ctorName];
+            if (typeof ctor !== "function") return 0;
+            return v instanceof ctor ? 1 : 0;
+          } catch {
+            return 0;
+          }
+        };
       // parseInt / parseFloat host imports
-      if (name === "parseInt") return (s: any, radix: number) => {
-        const r = Number.isNaN(radix) ? undefined : radix;
-        return parseInt(String(s), r as any);
-      };
+      if (name === "parseInt")
+        return (s: any, radix: number) => {
+          const r = Number.isNaN(radix) ? undefined : radix;
+          return parseInt(String(s), r as any);
+        };
       if (name === "parseFloat") return (s: any) => parseFloat(String(s));
       // URI encoding/decoding host imports
       if (name === "decodeURI") return (s: any) => decodeURI(String(s));
@@ -983,39 +1127,52 @@ function resolveImport(
       return () => {};
     }
     case "callback_maker":
-      return (id: number, cap: any) => (...args: any[]) => {
-        const exports = callbackState?.getExports();
-        return exports?.[`__cb_${id}`]?.(cap, ...args);
-      };
+      return (id: number, cap: any) =>
+        (...args: any[]) => {
+          const exports = callbackState?.getExports();
+          return exports?.[`__cb_${id}`]?.(cap, ...args);
+        };
     case "await":
       return (v: any) => v;
     case "dynamic_import":
       return (specifier: any) => import(/* @vite-ignore */ specifier);
     case "typeof_check":
-      return (v: any) => typeof v === intent.targetType ? 1 : 0;
+      return (v: any) => (typeof v === intent.targetType ? 1 : 0);
     case "box":
       return intent.targetType === "boolean" ? (v: number) => Boolean(v) : (v: number) => v;
     case "unbox":
-      return intent.targetType === "boolean" ? (v: any) => (v ? 1 : 0) : (v: any) => {
-        // For objects, try ToPrimitive first — Number() on WasmGC structs returns NaN
-        // without throwing (#866), so the catch-based approach doesn't work.
-        if (v != null && typeof v === "object") {
-          const prim = _toPrimitive(v, "number", callbackState);
-          if (prim !== undefined) {
-            try { return Number(prim); } catch { /* */ }
-          }
-        }
-        try { return Number(v); } catch {
-          // Number() failed (e.g. Symbol)
-          if (v != null && typeof v === "object") {
-            const prim = _toPrimitive(v, "number", callbackState);
-            if (prim !== undefined) {
-              try { return Number(prim); } catch { /* */ }
+      return intent.targetType === "boolean"
+        ? (v: any) => (v ? 1 : 0)
+        : (v: any) => {
+            // For objects, try ToPrimitive first — Number() on WasmGC structs returns NaN
+            // without throwing (#866), so the catch-based approach doesn't work.
+            if (v != null && typeof v === "object") {
+              const prim = _toPrimitive(v, "number", callbackState);
+              if (prim !== undefined) {
+                try {
+                  return Number(prim);
+                } catch {
+                  /* */
+                }
+              }
             }
-          }
-          return NaN;
-        }
-      };
+            try {
+              return Number(v);
+            } catch {
+              // Number() failed (e.g. Symbol)
+              if (v != null && typeof v === "object") {
+                const prim = _toPrimitive(v, "number", callbackState);
+                if (prim !== undefined) {
+                  try {
+                    return Number(prim);
+                  } catch {
+                    /* */
+                  }
+                }
+              }
+              return NaN;
+            }
+          };
     case "truthy_check":
       return (v: any) => (v ? 1 : 0);
     case "extern_get":
@@ -1040,7 +1197,7 @@ function resolveImport(
     case "declared_global": {
       if (intent.name === "globalThis") return () => globalThis;
       const val = deps?.[intent.name];
-      return val !== undefined ? () => val : (() => {});
+      return val !== undefined ? () => val : () => {};
     }
     case "proxy_create":
       return (target: any, handler: any) => {
@@ -1066,16 +1223,11 @@ function resolveImport(
  * Build string constants object for the "string_constants" import namespace.
  * Each string pool entry becomes a WebAssembly.Global with ref extern type.
  */
-export function buildStringConstants(
-  stringPool: string[] = [],
-): Record<string, WebAssembly.Global> {
+export function buildStringConstants(stringPool: string[] = []): Record<string, WebAssembly.Global> {
   const constants: Record<string, WebAssembly.Global> = {};
   for (const s of stringPool) {
     if (!(s in constants)) {
-      constants[s] = new WebAssembly.Global(
-        { value: "externref", mutable: false },
-        s,
-      );
+      constants[s] = new WebAssembly.Global({ value: "externref", mutable: false }, s);
     }
   }
   return constants;
@@ -1083,16 +1235,11 @@ export function buildStringConstants(
 
 /** Check a manifest against a policy blocklist before instantiation.
  *  Returns an array of violated import keys (empty if all clear). */
-export function checkPolicy(
-  manifest: ImportDescriptor[],
-  policy: ImportPolicy,
-): string[] {
+export function checkPolicy(manifest: ImportDescriptor[], policy: ImportPolicy): string[] {
   const violations: string[] = [];
   for (const imp of manifest) {
     if (imp.intent.type === "extern_class") {
-      const key = imp.intent.member
-        ? `${imp.intent.className}.${imp.intent.member}`
-        : imp.intent.className;
+      const key = imp.intent.member ? `${imp.intent.className}.${imp.intent.member}` : imp.intent.className;
       if (policy.blocked.has(key)) violations.push(key);
     }
     if (imp.intent.type === "declared_global") {
@@ -1112,18 +1259,26 @@ function wrapWithContainment(
   const { className, action, member } = intent;
 
   // Traversal properties that could escape containment
-  const traversalProps = new Set([
-    "parentElement", "parentNode", "offsetParent",
-  ]);
+  const traversalProps = new Set(["parentElement", "parentNode", "offsetParent"]);
 
   // Dangerous properties — block entirely (return null)
   const blockedProps = new Set(["ownerDocument", "baseURI", "getRootNode"]);
 
   // Mutation methods that need containment check
   const mutationMethods = new Set([
-    "appendChild", "removeChild", "insertBefore", "replaceChild",
-    "remove", "append", "prepend", "after", "before", "replaceWith",
-    "insertAdjacentElement", "insertAdjacentHTML", "insertAdjacentText",
+    "appendChild",
+    "removeChild",
+    "insertBefore",
+    "replaceChild",
+    "remove",
+    "append",
+    "prepend",
+    "after",
+    "before",
+    "replaceWith",
+    "insertAdjacentElement",
+    "insertAdjacentHTML",
+    "insertAdjacentText",
   ]);
 
   // Helper: check if domRoot contains an element (duck-typed for mock objects)
@@ -1184,10 +1339,14 @@ function wrapWithContainment(
   // For method actions
   if (action === "method" && member) {
     // Document query methods — redirect to domRoot
-    if ((className === "Document" || className === "document") &&
-        (member === "querySelector" || member === "querySelectorAll" ||
-         member === "getElementById" || member === "getElementsByClassName" ||
-         member === "getElementsByTagName")) {
+    if (
+      (className === "Document" || className === "document") &&
+      (member === "querySelector" ||
+        member === "querySelectorAll" ||
+        member === "getElementById" ||
+        member === "getElementsByClassName" ||
+        member === "getElementsByTagName")
+    ) {
       return (_self: any, ...args: any[]) => (domRoot as any)[member](...args);
     }
     // createElement is safe — just creates a detached element
@@ -1304,7 +1463,9 @@ export function buildImports(
   };
   // Always provide setExports — needed for callbacks, native string marshaling,
   // and struct field getter discovery (__sget_*).
-  result.setExports = (exports: Record<string, Function>) => { wasmExports = exports; };
+  result.setExports = (exports: Record<string, Function>) => {
+    wasmExports = exports;
+  };
   return result;
 }
 
@@ -1325,33 +1486,23 @@ export async function instantiateWasm(
     );
     return { instance, nativeBuiltins: true };
   } catch {
-    const { instance } = await WebAssembly.instantiate(
-      binary,
-      {
-        env,
-        "wasm:js-string": jsString,
-        string_constants: sc,
-      } as WebAssembly.Imports,
-    );
+    const { instance } = await WebAssembly.instantiate(binary, {
+      env,
+      "wasm:js-string": jsString,
+      string_constants: sc,
+    } as WebAssembly.Imports);
     return { instance, nativeBuiltins: false };
   }
 }
 
 /** Compile TypeScript source and instantiate the Wasm module. */
-export async function compileAndInstantiate(
-  source: string,
-  deps?: Record<string, any>,
-): Promise<WebAssembly.Exports> {
+export async function compileAndInstantiate(source: string, deps?: Record<string, any>): Promise<WebAssembly.Exports> {
   const result = compileSource(source);
   if (!result.success) {
     throw new Error(result.errors.map((e) => e.message).join("\n"));
   }
   const imports = buildImports(result.imports, deps, result.stringPool);
-  const { instance } = await instantiateWasm(
-    result.binary,
-    imports.env,
-    imports.string_constants,
-  );
+  const { instance } = await instantiateWasm(result.binary, imports.env, imports.string_constants);
   if (imports.setExports) {
     imports.setExports(instance.exports as Record<string, Function>);
   }

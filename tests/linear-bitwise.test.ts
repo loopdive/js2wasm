@@ -18,7 +18,7 @@ describe("linear-bitwise: bitwise operators", () => {
         return a & b;
       }
     `);
-    expect(e.band(0xFF, 0x0F)).toBe(0x0F);
+    expect(e.band(0xff, 0x0f)).toBe(0x0f);
     expect(e.band(12, 10)).toBe(8); // 1100 & 1010 = 1000
   });
 

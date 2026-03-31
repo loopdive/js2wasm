@@ -47,10 +47,7 @@ export function resolveSymbols(objects: ParsedObject[]): Resolution {
   const errors: string[] = [];
 
   // Build a map of exported/defined symbols: name → (moduleIdx, symbolIdx, SymbolInfo)
-  const definedSymbols = new Map<
-    string,
-    { moduleIdx: number; symbolIdx: number; symbol: SymbolInfo }[]
-  >();
+  const definedSymbols = new Map<string, { moduleIdx: number; symbolIdx: number; symbol: SymbolInfo }[]>();
 
   for (let modIdx = 0; modIdx < objects.length; modIdx++) {
     const obj = objects[modIdx]!;
@@ -75,18 +72,12 @@ export function resolveSymbols(objects: ParsedObject[]): Resolution {
 
   // Check for duplicate strong definitions
   for (const [key, defs] of definedSymbols) {
-    const strongDefs = defs.filter(
-      (d) => !(d.symbol.flags & SYMBOL_BINDING_WEAK),
-    );
+    const strongDefs = defs.filter((d) => !(d.symbol.flags & SYMBOL_BINDING_WEAK));
     if (strongDefs.length > 1) {
       const [kindStr, ...nameParts] = key.split(":");
       const symbolName = nameParts.join(":");
-      const moduleNames = strongDefs.map(
-        (d) => objects[d.moduleIdx]!.name,
-      );
-      errors.push(
-        `Duplicate symbol "${symbolName}" (kind ${kindStr}) defined in: ${moduleNames.join(", ")}`,
-      );
+      const moduleNames = strongDefs.map((d) => objects[d.moduleIdx]!.name);
+      errors.push(`Duplicate symbol "${symbolName}" (kind ${kindStr}) defined in: ${moduleNames.join(", ")}`);
     }
   }
 
@@ -104,16 +95,12 @@ export function resolveSymbols(objects: ParsedObject[]): Resolution {
       const defs = definedSymbols.get(key);
 
       if (!defs || defs.length === 0) {
-        errors.push(
-          `Unresolved symbol "${sym.name}" (kind ${sym.kind}) in module "${obj.name}"`,
-        );
+        errors.push(`Unresolved symbol "${sym.name}" (kind ${sym.kind}) in module "${obj.name}"`);
         continue;
       }
 
       // Prefer strong definitions over weak ones
-      const strongDefs = defs.filter(
-        (d) => !(d.symbol.flags & SYMBOL_BINDING_WEAK),
-      );
+      const strongDefs = defs.filter((d) => !(d.symbol.flags & SYMBOL_BINDING_WEAK));
       const chosen = strongDefs.length > 0 ? strongDefs[0]! : defs[0]!;
 
       const mapKey = `${modIdx}:${symIdx}`;

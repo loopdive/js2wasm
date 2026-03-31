@@ -10,8 +10,8 @@ describe("new Function() compiles without errors (#711)", () => {
       }
     `);
     // Should compile without errors related to "Unsupported new expression"
-    const newFuncErrors = (result.errors ?? []).filter(e =>
-      e.message.includes("Unsupported new expression") && e.message.includes("Function")
+    const newFuncErrors = (result.errors ?? []).filter(
+      (e) => e.message.includes("Unsupported new expression") && e.message.includes("Function"),
     );
     expect(newFuncErrors).toHaveLength(0);
   });
@@ -23,8 +23,8 @@ describe("new Function() compiles without errors (#711)", () => {
         return 42;
       }
     `);
-    const newFuncErrors = (result.errors ?? []).filter(e =>
-      e.message.includes("Unsupported new expression") && e.message.includes("Function")
+    const newFuncErrors = (result.errors ?? []).filter(
+      (e) => e.message.includes("Unsupported new expression") && e.message.includes("Function"),
     );
     expect(newFuncErrors).toHaveLength(0);
   });
@@ -36,8 +36,8 @@ describe("new Function() compiles without errors (#711)", () => {
         return 42;
       }
     `);
-    const newFuncErrors = (result.errors ?? []).filter(e =>
-      e.message.includes("Unsupported new expression") && e.message.includes("Function")
+    const newFuncErrors = (result.errors ?? []).filter(
+      (e) => e.message.includes("Unsupported new expression") && e.message.includes("Function"),
     );
     expect(newFuncErrors).toHaveLength(0);
   });

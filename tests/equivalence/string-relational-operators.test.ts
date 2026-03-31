@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { compileToWasm, evaluateAsJs, assertEquivalent, buildImports, compile, readFileSync, resolve } from "./helpers.js";
+import {
+  compileToWasm,
+  evaluateAsJs,
+  assertEquivalent,
+  buildImports,
+  compile,
+  readFileSync,
+  resolve,
+} from "./helpers.js";
 
 describe("String relational operators (#214)", () => {
   it("string < string", async () => {

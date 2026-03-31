@@ -4,7 +4,7 @@ import { buildImports } from "./helpers.js";
 
 async function compileAndRun(source: string) {
   const result = compile(source, { fileName: "test.ts" });
-  expect(result.success, `CE: ${result.errors.map(e=>e.message).join('; ')}`).toBe(true);
+  expect(result.success, `CE: ${result.errors.map((e) => e.message).join("; ")}`).toBe(true);
   const imports = buildImports(result);
   const { instance } = await WebAssembly.instantiate(result.binary, imports);
   return instance.exports as Record<string, Function>;

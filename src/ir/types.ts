@@ -31,12 +31,7 @@ export interface WasmModule {
   dataSegments: { offset: number; bytes: Uint8Array }[];
 }
 
-export type TypeDef =
-  | FuncTypeDef
-  | StructTypeDef
-  | ArrayTypeDef
-  | RecGroupDef
-  | SubTypeDef;
+export type TypeDef = FuncTypeDef | StructTypeDef | ArrayTypeDef | RecGroupDef | SubTypeDef;
 
 export interface FuncTypeDef {
   kind: "func";
@@ -353,10 +348,7 @@ type InstrBase =
 
 export type Instr = InstrBase & { sourcePos?: SourcePos };
 
-export type BlockType =
-  | { kind: "empty" }
-  | { kind: "val"; type: ValType }
-  | { kind: "type"; typeIdx: number };
+export type BlockType = { kind: "empty" } | { kind: "val"; type: ValType } | { kind: "type"; typeIdx: number };
 
 export interface CatchClause {
   tagIdx: number;

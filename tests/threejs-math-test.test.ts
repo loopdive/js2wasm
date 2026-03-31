@@ -536,7 +536,9 @@ describe("Three.js math module (Vector3 + Matrix4)", () => {
       expect(wasmResult).toBe(ITERS * 32);
       expect(jsSum).toBe(ITERS * 32);
 
-      console.log(`[Benchmark] dot product x${ITERS}: Wasm=${wasmTime.toFixed(2)}ms, JS=${jsTime.toFixed(2)}ms, ratio=${(jsTime / wasmTime).toFixed(2)}x`);
+      console.log(
+        `[Benchmark] dot product x${ITERS}: Wasm=${wasmTime.toFixed(2)}ms, JS=${jsTime.toFixed(2)}ms, ratio=${(jsTime / wasmTime).toFixed(2)}x`,
+      );
     });
 
     it("matrix multiply benchmark", async () => {
@@ -575,7 +577,9 @@ describe("Three.js math module (Vector3 + Matrix4)", () => {
       expect(wasmResult).toBe(ITERS * 250);
       expect(jsSum).toBe(ITERS * 250);
 
-      console.log(`[Benchmark] matrix multiply x${ITERS}: Wasm=${wasmTime.toFixed(2)}ms, JS=${jsTime.toFixed(2)}ms, ratio=${(jsTime / wasmTime).toFixed(2)}x`);
+      console.log(
+        `[Benchmark] matrix multiply x${ITERS}: Wasm=${wasmTime.toFixed(2)}ms, JS=${jsTime.toFixed(2)}ms, ratio=${(jsTime / wasmTime).toFixed(2)}x`,
+      );
     });
 
     it("normalize + cross product benchmark", async () => {

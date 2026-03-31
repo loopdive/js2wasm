@@ -5,43 +5,43 @@ import { buildImports } from "../../src/runtime.js";
 async function run(source: string, fn: string = "main"): Promise<unknown> {
   const result = compile(source);
   if (!result.success) {
-    throw new Error(
-      `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}`,
-    );
+    throw new Error(`Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}`);
   }
   const imports = buildImports(result.imports, undefined, result.stringPool);
-  const { instance } = await WebAssembly.instantiate(
-    result.binary,
-    imports as WebAssembly.Imports,
-  );
+  const { instance } = await WebAssembly.instantiate(result.binary, imports as WebAssembly.Imports);
   return (instance.exports as any)[fn]();
 }
 
 describe("WeakMap equivalence", () => {
   it("WeakMap set and get", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       export function main(): number {
         const wm = new WeakMap<object, number>();
         const key = {};
         wm.set(key, 42);
         return wm.get(key)!;
       }
-    `)).toBe(42);
+    `),
+    ).toBe(42);
   });
 
   it("WeakMap has returns true for existing key", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       export function main(): number {
         const wm = new WeakMap<object, number>();
         const key = {};
         wm.set(key, 10);
         return wm.has(key) ? 1 : 0;
       }
-    `)).toBe(1);
+    `),
+    ).toBe(1);
   });
 
   it("WeakMap has returns false for missing key", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       export function main(): number {
         const wm = new WeakMap<object, number>();
         const key1 = {};
@@ -49,11 +49,13 @@ describe("WeakMap equivalence", () => {
         wm.set(key1, 10);
         return wm.has(key2) ? 1 : 0;
       }
-    `)).toBe(0);
+    `),
+    ).toBe(0);
   });
 
   it("WeakMap delete removes key", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       export function main(): number {
         const wm = new WeakMap<object, number>();
         const key = {};
@@ -63,11 +65,13 @@ describe("WeakMap equivalence", () => {
         const hasAfter = wm.has(key) ? 1 : 0;
         return hasBefore * 10 + hasAfter;
       }
-    `)).toBe(10);
+    `),
+    ).toBe(10);
   });
 
   it("WeakMap set overwrites existing value", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       export function main(): number {
         const wm = new WeakMap<object, number>();
         const key = {};
@@ -75,11 +79,13 @@ describe("WeakMap equivalence", () => {
         wm.set(key, 99);
         return wm.get(key)!;
       }
-    `)).toBe(99);
+    `),
+    ).toBe(99);
   });
 
   it("WeakMap with multiple keys", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       export function main(): number {
         const wm = new WeakMap<object, number>();
         const k1 = {};
@@ -90,24 +96,28 @@ describe("WeakMap equivalence", () => {
         wm.set(k3, 3);
         return wm.get(k1)! + wm.get(k2)! + wm.get(k3)!;
       }
-    `)).toBe(6);
+    `),
+    ).toBe(6);
   });
 });
 
 describe("WeakSet equivalence", () => {
   it("WeakSet add and has", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       export function main(): number {
         const ws = new WeakSet<object>();
         const obj = {};
         ws.add(obj);
         return ws.has(obj) ? 1 : 0;
       }
-    `)).toBe(1);
+    `),
+    ).toBe(1);
   });
 
   it("WeakSet has returns false for non-member", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       export function main(): number {
         const ws = new WeakSet<object>();
         const obj1 = {};
@@ -115,11 +125,13 @@ describe("WeakSet equivalence", () => {
         ws.add(obj1);
         return ws.has(obj2) ? 1 : 0;
       }
-    `)).toBe(0);
+    `),
+    ).toBe(0);
   });
 
   it("WeakSet delete removes member", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       export function main(): number {
         const ws = new WeakSet<object>();
         const obj = {};
@@ -129,11 +141,13 @@ describe("WeakSet equivalence", () => {
         const hasAfter = ws.has(obj) ? 1 : 0;
         return hasBefore * 10 + hasAfter;
       }
-    `)).toBe(10);
+    `),
+    ).toBe(10);
   });
 
   it("WeakSet add is idempotent", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       export function main(): number {
         const ws = new WeakSet<object>();
         const obj = {};
@@ -142,11 +156,13 @@ describe("WeakSet equivalence", () => {
         ws.add(obj);
         return ws.has(obj) ? 1 : 0;
       }
-    `)).toBe(1);
+    `),
+    ).toBe(1);
   });
 
   it("WeakSet with multiple objects", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       export function main(): number {
         const ws = new WeakSet<object>();
         const a = {};
@@ -159,6 +175,7 @@ describe("WeakSet equivalence", () => {
         const hasC = ws.has(c) ? 1 : 0;
         return hasA * 100 + hasB * 10 + hasC;
       }
-    `)).toBe(101);
+    `),
+    ).toBe(101);
   });
 });

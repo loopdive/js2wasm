@@ -9,22 +9,23 @@
 import ts from "typescript";
 import type { CodegenContext, FunctionContext } from "./index.js";
 import {
-  allocLocal, allocTempLocal, releaseTempLocal,
-  resolveWasmType, addUnionImports, addStringConstantGlobal,
-  getArrTypeIdxFromVec, localGlobalIdx, getOrRegisterVecType,
-  pushBody, popBody, ensureExnTag,
+  allocLocal,
+  allocTempLocal,
+  releaseTempLocal,
+  resolveWasmType,
+  addUnionImports,
+  addStringConstantGlobal,
+  getArrTypeIdxFromVec,
+  localGlobalIdx,
+  getOrRegisterVecType,
+  pushBody,
+  popBody,
+  ensureExnTag,
 } from "./index.js";
-import {
-  isStringType,
-  isExternalDeclaredClass,
-  isIteratorResultType,
-} from "../checker/type-mapper.js";
+import { isStringType, isExternalDeclaredClass, isIteratorResultType } from "../checker/type-mapper.js";
 import type { Instr, ValType, FieldDef } from "../ir/types.js";
 import { coercionInstrs, defaultValueInstrs } from "./type-coercion.js";
-import {
-  compileExpression, valTypesMatch, getLine, getCol,
-  resolveThisStructName,
-} from "./shared.js";
+import { compileExpression, valTypesMatch, getLine, getCol, resolveThisStructName } from "./shared.js";
 import {
   coerceType,
   compileStringLiteral,
@@ -61,12 +62,24 @@ function emitDummyStruct(ctx: CodegenContext, fctx: FunctionContext, className: 
       fctx.body.push({ op: "i32.const", value: tag });
     } else {
       switch (field.type.kind) {
-        case "f64": fctx.body.push({ op: "f64.const", value: 0 }); break;
-        case "i32": fctx.body.push({ op: "i32.const", value: 0 }); break;
-        case "externref": fctx.body.push({ op: "ref.null.extern" }); break;
-        case "ref_null": fctx.body.push({ op: "ref.null", typeIdx: field.type.typeIdx }); break;
-        case "ref": fctx.body.push({ op: "ref.null", typeIdx: field.type.typeIdx }); break;
-        default: fctx.body.push({ op: "i32.const", value: 0 }); break;
+        case "f64":
+          fctx.body.push({ op: "f64.const", value: 0 });
+          break;
+        case "i32":
+          fctx.body.push({ op: "i32.const", value: 0 });
+          break;
+        case "externref":
+          fctx.body.push({ op: "ref.null.extern" });
+          break;
+        case "ref_null":
+          fctx.body.push({ op: "ref.null", typeIdx: field.type.typeIdx });
+          break;
+        case "ref":
+          fctx.body.push({ op: "ref.null", typeIdx: field.type.typeIdx });
+          break;
+        default:
+          fctx.body.push({ op: "i32.const", value: 0 });
+          break;
       }
     }
   }
@@ -133,10 +146,7 @@ export function isProvablyNonNull(expr: ts.Expression): boolean {
 
 export function typeErrorThrowInstrs(ctx: CodegenContext): Instr[] {
   const tagIdx = ensureExnTag(ctx);
-  return [
-    { op: "ref.null.extern" } as Instr,
-    { op: "throw", tagIdx } as Instr,
-  ];
+  return [{ op: "ref.null.extern" } as Instr, { op: "throw", tagIdx } as Instr];
 }
 
 /**
@@ -146,11 +156,7 @@ export function typeErrorThrowInstrs(ctx: CodegenContext): Instr[] {
  *
  * Stack: [ref_null T] -> [ref_null T]  (non-null at runtime after this point)
  */
-export function emitNullCheckThrow(
-  ctx: CodegenContext,
-  fctx: FunctionContext,
-  refType: ValType,
-): void {
+export function emitNullCheckThrow(ctx: CodegenContext, fctx: FunctionContext, refType: ValType): void {
   const backupLocal: number | undefined = (fctx as any).__lastGuardedCastBackup;
 
   const tmp = allocTempLocal(fctx, refType);
@@ -171,7 +177,7 @@ export function emitNullCheckThrow(
           op: "if",
           blockType: { kind: "empty" },
           then: typeErrorThrowInstrs(ctx),
-          else: [],  // wrong struct type — don't throw
+          else: [], // wrong struct type — don't throw
         } as Instr,
       ],
       else: [],
@@ -228,9 +234,8 @@ export function emitNullGuardedStructGet(
   throwOnNull: boolean = false,
 ): void {
   // For result type in the if block, normalize ref to ref_null so the null branch is valid
-  const resultType: ValType = fieldType.kind === "ref"
-    ? { kind: "ref_null", typeIdx: (fieldType as any).typeIdx }
-    : fieldType;
+  const resultType: ValType =
+    fieldType.kind === "ref" ? { kind: "ref_null", typeIdx: (fieldType as any).typeIdx } : fieldType;
 
   // When propName is provided, the object may be a valid GC struct of a
   // DIFFERENT type (after emitGuardedRefCast returned ref.null for a type
@@ -270,10 +275,7 @@ export function emitNullGuardedStructGet(
         ];
       }
       // No more alternates — return default value
-      return [
-        ...defaultValueInstrs(resultType),
-        { op: "local.set", index: resultLocal } as Instr,
-      ];
+      return [...defaultValueInstrs(resultType), { op: "local.set", index: resultLocal } as Instr];
     };
 
     // Check if emitGuardedRefCast saved a pre-cast backup (#792).
@@ -289,36 +291,37 @@ export function emitNullGuardedStructGet(
     fctx.body.push({
       op: "if",
       blockType: { kind: "empty" },
-      then: backupLocal !== undefined
-        ? [
-            // Value is null — could be wrong struct type or genuinely null.
-            // Check the backup anyref to distinguish.
-            { op: "local.get", index: backupLocal } as Instr,
-            { op: "ref.is_null" } as Instr,
-            {
-              op: "if",
-              blockType: { kind: "empty" },
-              // Backup is also null → genuinely null, throw TypeError
-              then: typeErrorThrowInstrs(ctx),
-              // Backup is non-null → wrong struct type, try primary + alternates on backup
-              else: [
-                { op: "local.get", index: backupLocal } as Instr,
-                { op: "ref.test", typeIdx } as Instr,
-                {
-                  op: "if",
-                  blockType: { kind: "empty" },
-                  then: [
-                    { op: "local.get", index: backupLocal } as Instr,
-                    { op: "ref.cast", typeIdx } as Instr,
-                    { op: "struct.get", typeIdx, fieldIdx } as Instr,
-                    { op: "local.set", index: resultLocal } as Instr,
-                  ],
-                  else: buildFallback(backupLocal, 0),
-                } as Instr,
-              ],
-            } as Instr,
-          ]
-        : typeErrorThrowInstrs(ctx),
+      then:
+        backupLocal !== undefined
+          ? [
+              // Value is null — could be wrong struct type or genuinely null.
+              // Check the backup anyref to distinguish.
+              { op: "local.get", index: backupLocal } as Instr,
+              { op: "ref.is_null" } as Instr,
+              {
+                op: "if",
+                blockType: { kind: "empty" },
+                // Backup is also null → genuinely null, throw TypeError
+                then: typeErrorThrowInstrs(ctx),
+                // Backup is non-null → wrong struct type, try primary + alternates on backup
+                else: [
+                  { op: "local.get", index: backupLocal } as Instr,
+                  { op: "ref.test", typeIdx } as Instr,
+                  {
+                    op: "if",
+                    blockType: { kind: "empty" },
+                    then: [
+                      { op: "local.get", index: backupLocal } as Instr,
+                      { op: "ref.cast", typeIdx } as Instr,
+                      { op: "struct.get", typeIdx, fieldIdx } as Instr,
+                      { op: "local.set", index: resultLocal } as Instr,
+                    ],
+                    else: buildFallback(backupLocal, 0),
+                  } as Instr,
+                ],
+              } as Instr,
+            ]
+          : typeErrorThrowInstrs(ctx),
       else: [],
     });
 
@@ -346,17 +349,12 @@ export function emitNullGuardedStructGet(
   fctx.body.push({ op: "ref.is_null" });
   // When throwOnNull is true, throw TypeError for null/undefined property access (#728).
   // When false (ref cells), return a default value for uninitialized captures.
-  const nullBranch = throwOnNull
-    ? typeErrorThrowInstrs(ctx)
-    : defaultValueInstrs(resultType);
+  const nullBranch = throwOnNull ? typeErrorThrowInstrs(ctx) : defaultValueInstrs(resultType);
   fctx.body.push({
     op: "if",
     blockType: { kind: "val" as const, type: resultType },
     then: nullBranch,
-    else: [
-      { op: "local.get", index: tmp } as Instr,
-      { op: "struct.get", typeIdx, fieldIdx } as Instr,
-    ],
+    else: [{ op: "local.get", index: tmp } as Instr, { op: "struct.get", typeIdx, fieldIdx } as Instr],
   });
 }
 
@@ -380,9 +378,8 @@ export function emitExternrefToStructGet(
   throwOnNull: boolean = false,
 ): void {
   // For result type, normalize ref to ref_null so the null branch is valid
-  const resultType: ValType = fieldType.kind === "ref"
-    ? { kind: "ref_null", typeIdx: (fieldType as any).typeIdx }
-    : fieldType;
+  const resultType: ValType =
+    fieldType.kind === "ref" ? { kind: "ref_null", typeIdx: (fieldType as any).typeIdx } : fieldType;
 
   // Convert externref -> anyref for struct type testing
   fctx.body.push({ op: "any.convert_extern" } as Instr);
@@ -416,7 +413,12 @@ export function emitExternrefToStructGet(
   // object doesn't match any known struct type.
   let externGetFallback: Instr[] | undefined;
   if (propName) {
-    const getIdx = ensureLateImport(ctx, "__extern_get", [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+    const getIdx = ensureLateImport(
+      ctx,
+      "__extern_get",
+      [{ kind: "externref" }, { kind: "externref" }],
+      [{ kind: "externref" }],
+    );
     flushLateImportShifts(ctx, fctx);
     if (getIdx !== undefined) {
       externGetFallback = [];
@@ -464,10 +466,7 @@ export function emitExternrefToStructGet(
             { op: "ref.cast", typeIdx: (resultType as any).typeIdx } as Instr,
             { op: "local.set", index: resultLocal } as Instr,
           ],
-          else: [
-            ...defaultValueInstrs(resultType),
-            { op: "local.set", index: resultLocal } as Instr,
-          ],
+          else: [...defaultValueInstrs(resultType), { op: "local.set", index: resultLocal } as Instr],
         } as Instr);
         releaseTempLocal(fctx, tmpExtResult);
       } else {
@@ -507,10 +506,7 @@ export function emitExternrefToStructGet(
     if (externGetFallback) {
       return externGetFallback;
     }
-    return [
-      ...defaultValueInstrs(resultType),
-      { op: "local.set", index: resultLocal } as Instr,
-    ];
+    return [...defaultValueInstrs(resultType), { op: "local.set", index: resultLocal } as Instr];
   };
 
   fctx.body.push({
@@ -625,12 +621,11 @@ export function compileOptionalPropertyAccess(
                 ],
                 else: [
                   // Type mismatch at runtime — emit a safe default (sNaN sentinel for f64 #866)
-                  ...(fields[fieldIdx]!.type.kind === "f64" ? [
-                    { op: "i64.const", value: 0x7FF00000DEADC0DEn },
-                    { op: "f64.reinterpret_i64" },
-                  ] :
-                     fields[fieldIdx]!.type.kind === "i32" ? [{ op: "i32.const", value: 0 }] :
-                     [{ op: "ref.null.extern" }]) as Instr[],
+                  ...((fields[fieldIdx]!.type.kind === "f64"
+                    ? [{ op: "i64.const", value: 0x7ff00000deadc0den }, { op: "f64.reinterpret_i64" }]
+                    : fields[fieldIdx]!.type.kind === "i32"
+                      ? [{ op: "i32.const", value: 0 }]
+                      : [{ op: "ref.null.extern" }]) as Instr[]),
                 ],
               });
             } else {
@@ -706,9 +701,11 @@ export function compilePropertyAccess(
   }
 
   // Handle import.meta.url and other import.meta properties
-  if (ts.isMetaProperty(expr.expression) &&
-      expr.expression.keywordToken === ts.SyntaxKind.ImportKeyword &&
-      expr.expression.name.text === "meta") {
+  if (
+    ts.isMetaProperty(expr.expression) &&
+    expr.expression.keywordToken === ts.SyntaxKind.ImportKeyword &&
+    expr.expression.name.text === "meta"
+  ) {
     if (propName === "url") {
       return compileStringLiteral(ctx, fctx, "module.wasm");
     }
@@ -796,17 +793,47 @@ export function compilePropertyAccess(
   }
 
   // Handle Math.<method>.length — static function arity
-  if (propName === "length" &&
-      ts.isPropertyAccessExpression(expr.expression) &&
-      ts.isIdentifier(expr.expression.expression) &&
-      expr.expression.expression.text === "Math") {
+  if (
+    propName === "length" &&
+    ts.isPropertyAccessExpression(expr.expression) &&
+    ts.isIdentifier(expr.expression.expression) &&
+    expr.expression.expression.text === "Math"
+  ) {
     const mathMethodArity: Record<string, number> = {
-      abs: 1, ceil: 1, floor: 1, round: 1, trunc: 1, sign: 1,
-      sqrt: 1, cbrt: 1, clz32: 1, fround: 1,
-      exp: 1, expm1: 1, log: 1, log2: 1, log10: 1, log1p: 1,
-      sin: 1, cos: 1, tan: 1, asin: 1, acos: 1, atan: 1,
-      sinh: 1, cosh: 1, tanh: 1, asinh: 1, acosh: 1, atanh: 1,
-      min: 2, max: 2, pow: 2, atan2: 2, imul: 2, hypot: 2,
+      abs: 1,
+      ceil: 1,
+      floor: 1,
+      round: 1,
+      trunc: 1,
+      sign: 1,
+      sqrt: 1,
+      cbrt: 1,
+      clz32: 1,
+      fround: 1,
+      exp: 1,
+      expm1: 1,
+      log: 1,
+      log2: 1,
+      log10: 1,
+      log1p: 1,
+      sin: 1,
+      cos: 1,
+      tan: 1,
+      asin: 1,
+      acos: 1,
+      atan: 1,
+      sinh: 1,
+      cosh: 1,
+      tanh: 1,
+      asinh: 1,
+      acosh: 1,
+      atanh: 1,
+      min: 2,
+      max: 2,
+      pow: 2,
+      atan2: 2,
+      imul: 2,
+      hypot: 2,
       random: 0,
     };
     const method = expr.expression.name.text;
@@ -820,16 +847,15 @@ export function compilePropertyAccess(
   if (propName === "length") {
     const callSigs = objType.getCallSignatures?.();
     const constructSigs2 = objType.getConstructSignatures?.();
-    const lengthSigs = (callSigs && callSigs.length > 0) ? callSigs : (constructSigs2 && constructSigs2.length > 0) ? constructSigs2 : null;
+    const lengthSigs =
+      callSigs && callSigs.length > 0 ? callSigs : constructSigs2 && constructSigs2.length > 0 ? constructSigs2 : null;
     if (lengthSigs && lengthSigs.length > 0) {
       // Use the first call/construct signature's parameter count (excluding rest params)
       const sig = lengthSigs[0]!;
-      const paramCount = sig.parameters.filter(
-        (p: any) => {
-          const decl = p.valueDeclaration;
-          return !decl || !ts.isParameter(decl) || !decl.dotDotDotToken;
-        }
-      ).length;
+      const paramCount = sig.parameters.filter((p: any) => {
+        const decl = p.valueDeclaration;
+        return !decl || !ts.isParameter(decl) || !decl.dotDotDotToken;
+      }).length;
       fctx.body.push({ op: "f64.const", value: paramCount });
       return { kind: "f64" };
     }
@@ -843,7 +869,8 @@ export function compilePropertyAccess(
       // Resolve the function name from the type symbol or the expression
       let funcName = objType.getSymbol()?.name ?? "";
       // __type, __function, __class, __object are anonymous type names from TS checker
-      if (funcName === "__type" || funcName === "__function" || funcName === "__class" || funcName === "__object") funcName = "";
+      if (funcName === "__type" || funcName === "__function" || funcName === "__class" || funcName === "__object")
+        funcName = "";
       // If the symbol name is empty (anonymous function), infer from context:
       if (funcName === "") {
         if (ts.isIdentifier(expr.expression)) {
@@ -852,8 +879,10 @@ export function compilePropertyAccess(
         } else if (ts.isPropertyAccessExpression(expr.expression)) {
           // Property access: obj.method.name => infer "method"
           funcName = expr.expression.name.text;
-        } else if (ts.isElementAccessExpression(expr.expression) &&
-                   ts.isStringLiteral(expr.expression.argumentExpression)) {
+        } else if (
+          ts.isElementAccessExpression(expr.expression) &&
+          ts.isStringLiteral(expr.expression.argumentExpression)
+        ) {
           // Element access: obj["method"].name => infer "method"
           funcName = expr.expression.argumentExpression.text;
         }
@@ -880,9 +909,10 @@ export function compilePropertyAccess(
     if (ts.isIdentifier(expr.expression)) {
       const localIdx = fctx.localMap.get(expr.expression.text);
       if (localIdx !== undefined) {
-        const localType = localIdx < fctx.params.length
-          ? fctx.params[localIdx]!.type
-          : fctx.locals[localIdx - fctx.params.length]?.type;
+        const localType =
+          localIdx < fctx.params.length
+            ? fctx.params[localIdx]!.type
+            : fctx.locals[localIdx - fctx.params.length]?.type;
         if (localType?.kind === "externref") {
           const funcIdx = ctx.funcMap.get("__extern_length");
           if (funcIdx !== undefined) {
@@ -895,7 +925,11 @@ export function compilePropertyAccess(
         if ((localType?.kind === "ref" || localType?.kind === "ref_null") && localType.typeIdx !== undefined) {
           const vecTypeIdx = (localType as { typeIdx: number }).typeIdx;
           const typeDef = ctx.mod.types[vecTypeIdx];
-          if (typeDef?.kind === "struct" && typeDef.fields[0]?.name === "length" && typeDef.fields[1]?.name === "data") {
+          if (
+            typeDef?.kind === "struct" &&
+            typeDef.fields[0]?.name === "length" &&
+            typeDef.fields[1]?.name === "data"
+          ) {
             fctx.body.push({ op: "local.get", index: localIdx });
             fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
             if (!ctx.fast) fctx.body.push({ op: "f64.convert_i32_s" });
@@ -913,8 +947,11 @@ export function compilePropertyAccess(
         // Guard: the TS type might not match the runtime struct type.
         // If the compiled expression returned a different ref type, use ref.test
         // to verify before struct.get, falling back to __extern_length or 0.
-        if (exprResult && (exprResult.kind === "ref" || exprResult.kind === "ref_null") &&
-            (exprResult as any).typeIdx !== vecTypeIdx) {
+        if (
+          exprResult &&
+          (exprResult.kind === "ref" || exprResult.kind === "ref_null") &&
+          (exprResult as any).typeIdx !== vecTypeIdx
+        ) {
           const lenTmp = allocLocal(fctx, `__len_tmp_${fctx.locals.length}`, { kind: "anyref" });
           fctx.body.push({ op: "local.set", index: lenTmp });
           fctx.body.push({ op: "local.get", index: lenTmp });
@@ -929,9 +966,7 @@ export function compilePropertyAccess(
               { op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 } as Instr,
               ...(ctx.fast ? [] : [{ op: "f64.convert_i32_s" } as Instr]),
             ],
-            else: [
-              { op: ctx.fast ? "i32.const" : "f64.const", value: 0 } as Instr,
-            ],
+            else: [{ op: ctx.fast ? "i32.const" : "f64.const", value: 0 } as Instr],
           });
           return lenResult;
         }
@@ -945,7 +980,11 @@ export function compilePropertyAccess(
     {
       const savedLen = fctx.body.length;
       const exprType = compileExpression(ctx, fctx, expr.expression);
-      if (exprType && (exprType.kind === "ref" || exprType.kind === "ref_null") && (exprType as { typeIdx: number }).typeIdx !== undefined) {
+      if (
+        exprType &&
+        (exprType.kind === "ref" || exprType.kind === "ref_null") &&
+        (exprType as { typeIdx: number }).typeIdx !== undefined
+      ) {
         const vecTypeIdx = (exprType as { typeIdx: number }).typeIdx;
         const typeDef = ctx.mod.types[vecTypeIdx];
         if (typeDef?.kind === "struct" && typeDef.fields[0]?.name === "length" && typeDef.fields[1]?.name === "data") {
@@ -970,13 +1009,18 @@ export function compilePropertyAccess(
     if (ts.isIdentifier(expr.expression)) {
       const localIdx = fctx.localMap.get(expr.expression.text);
       if (localIdx !== undefined) {
-        const localType = localIdx < fctx.params.length
-          ? fctx.params[localIdx]!.type
-          : fctx.locals[localIdx - fctx.params.length]?.type;
+        const localType =
+          localIdx < fctx.params.length
+            ? fctx.params[localIdx]!.type
+            : fctx.locals[localIdx - fctx.params.length]?.type;
         if ((localType?.kind === "ref" || localType?.kind === "ref_null") && localType.typeIdx !== undefined) {
           const typeIdx = (localType as { typeIdx: number }).typeIdx;
           const typeDef = ctx.mod.types[typeIdx];
-          if (typeDef?.kind === "struct" && typeDef.fields[0]?.name === "length" && typeDef.fields[1]?.name === "data") {
+          if (
+            typeDef?.kind === "struct" &&
+            typeDef.fields[0]?.name === "length" &&
+            typeDef.fields[1]?.name === "data"
+          ) {
             isVecLike = true;
           }
         }
@@ -1024,10 +1068,7 @@ export function compilePropertyAccess(
   }
 
   // Handle Math constants
-  if (
-    ts.isIdentifier(expr.expression) &&
-    expr.expression.text === "Math"
-  ) {
+  if (ts.isIdentifier(expr.expression) && expr.expression.text === "Math") {
     const mathConstants: Record<string, number> = {
       PI: Math.PI,
       E: Math.E,
@@ -1045,10 +1086,7 @@ export function compilePropertyAccess(
   }
 
   // Handle Number constants
-  if (
-    ts.isIdentifier(expr.expression) &&
-    expr.expression.text === "Number"
-  ) {
+  if (ts.isIdentifier(expr.expression) && expr.expression.text === "Number") {
     const numberConstants: Record<string, number> = {
       EPSILON: Number.EPSILON,
       MAX_SAFE_INTEGER: Number.MAX_SAFE_INTEGER,
@@ -1066,10 +1104,7 @@ export function compilePropertyAccess(
   }
 
   // Handle Symbol.iterator, Symbol.hasInstance, etc. → constant i32
-  if (
-    ts.isIdentifier(expr.expression) &&
-    expr.expression.text === "Symbol"
-  ) {
+  if (ts.isIdentifier(expr.expression) && expr.expression.text === "Symbol") {
     const symId = getWellKnownSymbolId(propName);
     if (symId !== undefined) {
       fctx.body.push({ op: "i32.const", value: symId });
@@ -1263,19 +1298,22 @@ export function compilePropertyAccess(
       // Field not found on this struct at compile time. Walk the __proto__
       // chain: get the __proto__ externref field, and if non-null, use
       // __extern_get(proto, propName) to look up the property dynamically.
-      const protoFieldIdx = fields.findIndex(f => f.name === "__proto__");
+      const protoFieldIdx = fields.findIndex((f) => f.name === "__proto__");
       if (protoFieldIdx !== -1) {
         const protoAccessType = ctx.checker.getTypeAtLocation(expr);
         const protoResultWasm = resolveWasmType(ctx, protoAccessType);
-        const effectiveResult: ValType = (protoResultWasm.kind === "f64" || protoResultWasm.kind === "i32")
-          ? protoResultWasm : { kind: "externref" };
+        const effectiveResult: ValType =
+          protoResultWasm.kind === "f64" || protoResultWasm.kind === "i32" ? protoResultWasm : { kind: "externref" };
 
-        const getIdx = ensureLateImport(ctx, "__extern_get",
-          [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+        const getIdx = ensureLateImport(
+          ctx,
+          "__extern_get",
+          [{ kind: "externref" }, { kind: "externref" }],
+          [{ kind: "externref" }],
+        );
         let unboxIdx: number | undefined;
         if (effectiveResult.kind === "f64" || effectiveResult.kind === "i32") {
-          unboxIdx = ensureLateImport(ctx, "__unbox_number",
-            [{ kind: "externref" }], [{ kind: "f64" }]);
+          unboxIdx = ensureLateImport(ctx, "__unbox_number", [{ kind: "externref" }], [{ kind: "f64" }]);
         }
         flushLateImportShifts(ctx, fctx);
 
@@ -1370,7 +1408,7 @@ export function compilePropertyAccess(
     // try auto-registering the property from the TS type
     const props = objType.getProperties?.();
     if (props) {
-      const tsProp = props.find(p => p.name === propName);
+      const tsProp = props.find((p) => p.name === propName);
       if (tsProp) {
         const propTsType = ctx.checker.getTypeOfSymbolAtLocation(tsProp, expr);
         const propWasmType = resolveWasmType(ctx, propTsType);
@@ -1381,61 +1419,77 @@ export function compilePropertyAccess(
           const typeDef = ctx.mod.types[structTypeIdx];
           if (typeDef?.kind === "struct") {
             // Add the missing field (widen ref to ref_null for default initialization)
-            const fieldType = propWasmType.kind === "ref"
-              ? { kind: "ref_null" as const, typeIdx: (propWasmType as { typeIdx: number }).typeIdx }
-              : propWasmType;
+            const fieldType =
+              propWasmType.kind === "ref"
+                ? { kind: "ref_null" as const, typeIdx: (propWasmType as { typeIdx: number }).typeIdx }
+                : propWasmType;
             const newField: FieldDef = { name: propName, type: fieldType, mutable: true };
             fields.push(newField);
             // fields === typeDef.fields (same array ref from structFields map)
             patchStructNewForAddedField(ctx, fctx, structTypeIdx, propWasmType);
             const fieldIdx = fields.length - 1;
-          if (fieldIdx !== -1) {
-            const fieldType = fields[fieldIdx]!.type;
-            const objResult = compileExpression(ctx, fctx, expr.expression);
-            const exprNonNull2 = isProvablyNonNull(expr.expression);
-            if (objResult && objResult.kind === "ref_null") {
-              // Always use multi-struct dispatch to avoid illegal cast traps (#778)
-              emitNullGuardedStructGet(ctx, fctx, objResult, fieldType, structTypeIdx, fieldIdx, propName);
-              if (fieldType.kind === "ref") {
-                return { kind: "ref_null", typeIdx: (fieldType as any).typeIdx };
+            if (fieldIdx !== -1) {
+              const fieldType = fields[fieldIdx]!.type;
+              const objResult = compileExpression(ctx, fctx, expr.expression);
+              const exprNonNull2 = isProvablyNonNull(expr.expression);
+              if (objResult && objResult.kind === "ref_null") {
+                // Always use multi-struct dispatch to avoid illegal cast traps (#778)
+                emitNullGuardedStructGet(ctx, fctx, objResult, fieldType, structTypeIdx, fieldIdx, propName);
+                if (fieldType.kind === "ref") {
+                  return { kind: "ref_null", typeIdx: (fieldType as any).typeIdx };
+                }
+                return fieldType;
+              } else if (objResult && objResult.kind === "externref") {
+                emitExternrefToStructGet(
+                  ctx,
+                  fctx,
+                  fieldType,
+                  structTypeIdx,
+                  fieldIdx,
+                  propName,
+                  true /* throwOnNull */,
+                );
+              } else if (objResult && objResult.kind === "ref") {
+                // Always use multi-struct dispatch to avoid illegal cast traps (#778)
+                const nullableObj: ValType = { kind: "ref_null", typeIdx: (objResult as any).typeIdx ?? structTypeIdx };
+                emitNullGuardedStructGet(ctx, fctx, nullableObj, fieldType, structTypeIdx, fieldIdx, propName);
+                if (fieldType.kind === "ref") {
+                  return { kind: "ref_null", typeIdx: (fieldType as any).typeIdx };
+                }
+              } else {
+                fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
               }
               return fieldType;
-            } else if (objResult && objResult.kind === "externref") {
-              emitExternrefToStructGet(ctx, fctx, fieldType, structTypeIdx, fieldIdx, propName, true /* throwOnNull */);
-            } else if (objResult && objResult.kind === "ref") {
-              // Always use multi-struct dispatch to avoid illegal cast traps (#778)
-              const nullableObj: ValType = { kind: "ref_null", typeIdx: (objResult as any).typeIdx ?? structTypeIdx };
-              emitNullGuardedStructGet(ctx, fctx, nullableObj, fieldType, structTypeIdx, fieldIdx, propName);
-              if (fieldType.kind === "ref") {
-                return { kind: "ref_null", typeIdx: (fieldType as any).typeIdx };
-              }
-            } else {
-              fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
             }
-            return fieldType;
           }
         }
       }
     }
-  }
   } // close if (typeName && !ctx.classSet.has(typeName))
 
   // For externref objects (e.g. results of host calls like RegExp.exec()),
   // use __extern_get(obj, key) to dynamically read the property at runtime.
   {
     const objWasmType = resolveWasmType(ctx, objType);
-    const isExternObj = objWasmType.kind === "externref" || (
-      ts.isIdentifier(expr.expression) && (() => {
-        const localIdx = fctx.localMap.get(expr.expression.text);
-        if (localIdx === undefined) return false;
-        const localType = localIdx < fctx.params.length
-          ? fctx.params[localIdx]!.type
-          : fctx.locals[localIdx - fctx.params.length]?.type;
-        return localType?.kind === "externref";
-      })()
-    );
+    const isExternObj =
+      objWasmType.kind === "externref" ||
+      (ts.isIdentifier(expr.expression) &&
+        (() => {
+          const localIdx = fctx.localMap.get(expr.expression.text);
+          if (localIdx === undefined) return false;
+          const localType =
+            localIdx < fctx.params.length
+              ? fctx.params[localIdx]!.type
+              : fctx.locals[localIdx - fctx.params.length]?.type;
+          return localType?.kind === "externref";
+        })());
     if (isExternObj) {
-      const getIdx = ensureLateImport(ctx, "__extern_get", [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+      const getIdx = ensureLateImport(
+        ctx,
+        "__extern_get",
+        [{ kind: "externref" }, { kind: "externref" }],
+        [{ kind: "externref" }],
+      );
       let unboxIdx: number | undefined;
       if (accessWasm.kind === "f64" || accessWasm.kind === "i32") {
         unboxIdx = ensureLateImport(ctx, "__unbox_number", [{ kind: "externref" }], [{ kind: "f64" }]);
@@ -1488,13 +1542,12 @@ export function compilePropertyAccess(
           fctx.body.push({ op: "any.convert_extern" } as Instr);
           fctx.body.push({ op: "local.set", index: tmpAnyExt });
 
-          const resultWasm = accessWasm.kind === "f64" || accessWasm.kind === "i32" ? accessWasm : { kind: "externref" as const };
+          const resultWasm =
+            accessWasm.kind === "f64" || accessWasm.kind === "i32" ? accessWasm : { kind: "externref" as const };
           const resultLocal = allocLocal(fctx, `__sd_res_${fctx.locals.length}`, resultWasm);
 
           // Build the __extern_get fallback instructions
-          const externGetFallback: Instr[] = [
-            { op: "local.get", index: objTmp } as Instr,
-          ];
+          const externGetFallback: Instr[] = [{ op: "local.get", index: objTmp } as Instr];
           addStringConstantGlobal(ctx, propName);
           const strGlobalIdxExt = ctx.stringGlobalMap.get(propName);
           if (strGlobalIdxExt !== undefined) {
@@ -1660,10 +1713,7 @@ export function emitBoundsGuardedArraySet(
  * Check if an element access expression matches a safe bounds-check-eliminated
  * pattern from a for-loop (e.g., arr[i] inside `for (...; i < arr.length; ...)`).
  */
-export function isSafeBoundsEliminated(
-  fctx: FunctionContext,
-  expr: ts.ElementAccessExpression,
-): boolean {
+export function isSafeBoundsEliminated(fctx: FunctionContext, expr: ts.ElementAccessExpression): boolean {
   if (!fctx.safeIndexedArrays || fctx.safeIndexedArrays.size === 0) return false;
   // Both the array and the index must be simple identifiers
   if (!ts.isIdentifier(expr.expression) || !ts.isIdentifier(expr.argumentExpression)) return false;
@@ -1724,9 +1774,11 @@ export function compileElementAccess(
 
   // Handle ClassName.prototype[key] for instance accessors (#848)
   // C.prototype[key] should invoke the instance getter with a dummy this.
-  if (ts.isPropertyAccessExpression(expr.expression) &&
-      ts.isIdentifier(expr.expression.expression) &&
-      expr.expression.name.text === "prototype") {
+  if (
+    ts.isPropertyAccessExpression(expr.expression) &&
+    ts.isIdentifier(expr.expression.expression) &&
+    expr.expression.name.text === "prototype"
+  ) {
     const className = expr.expression.expression.text;
     if (ctx.classSet.has(className)) {
       const key = resolveComputedKeyExpression(ctx, expr.argumentExpression);
@@ -1780,7 +1832,12 @@ export function compileElementAccessBody(
   if (objType.kind === "externref") {
     compileExpression(ctx, fctx, expr.argumentExpression, { kind: "externref" });
     // Lazily register __extern_get if not already registered
-    let funcIdx = ensureLateImport(ctx, "__extern_get", [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+    let funcIdx = ensureLateImport(
+      ctx,
+      "__extern_get",
+      [{ kind: "externref" }, { kind: "externref" }],
+      [{ kind: "externref" }],
+    );
     flushLateImportShifts(ctx, fctx);
     if (funcIdx !== undefined) {
       fctx.body.push({ op: "call", funcIdx });
@@ -1819,7 +1876,12 @@ export function compileElementAccessBody(
     }
     // Compile key as externref and call __extern_get
     compileExpression(ctx, fctx, expr.argumentExpression, { kind: "externref" });
-    let funcIdx = ensureLateImport(ctx, "__extern_get", [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+    let funcIdx = ensureLateImport(
+      ctx,
+      "__extern_get",
+      [{ kind: "externref" }, { kind: "externref" }],
+      [{ kind: "externref" }],
+    );
     flushLateImportShifts(ctx, fctx);
     if (funcIdx !== undefined) {
       fctx.body.push({ op: "call", funcIdx });
@@ -1833,7 +1895,8 @@ export function compileElementAccessBody(
 
   // Handle tuple struct — element access with literal index → struct.get
   if (typeDef?.kind === "struct") {
-    const isVecStructAccess = typeDef.fields[0]?.name === "length" &&
+    const isVecStructAccess =
+      typeDef.fields[0]?.name === "length" &&
       typeDef.fields[1]?.name === "data" &&
       (typeDef.fields.length === 2 || (typeDef.fields.length === 3 && typeDef.fields[2]?.name === "raw"));
 
@@ -1928,7 +1991,12 @@ export function compileElementAccessBody(
       compileExpression(ctx, fctx, expr.argumentExpression, { kind: "externref" });
       // Call __extern_get(externref, externref) → externref
       {
-        let funcIdx = ensureLateImport(ctx, "__extern_get", [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+        let funcIdx = ensureLateImport(
+          ctx,
+          "__extern_get",
+          [{ kind: "externref" }, { kind: "externref" }],
+          [{ kind: "externref" }],
+        );
         flushLateImportShifts(ctx, fctx);
         if (funcIdx !== undefined) {
           fctx.body.push({ op: "call", funcIdx });

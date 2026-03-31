@@ -5,7 +5,21 @@
  */
 import ts from "typescript";
 import type { CodegenContext, FunctionContext, ClosureInfo } from "./index.js";
-import { allocLocal, resolveWasmType, getOrRegisterVecType, getArrTypeIdxFromVec, addUnionImports, nativeStringType, flatStringType, addStringImports, addStringConstantGlobal, nextModuleGlobalIdx, getOrRegisterTemplateVecType, pushBody, ensureExnTag } from "./index.js";
+import {
+  allocLocal,
+  resolveWasmType,
+  getOrRegisterVecType,
+  getArrTypeIdxFromVec,
+  addUnionImports,
+  nativeStringType,
+  flatStringType,
+  addStringImports,
+  addStringConstantGlobal,
+  nextModuleGlobalIdx,
+  getOrRegisterTemplateVecType,
+  pushBody,
+  ensureExnTag,
+} from "./index.js";
 import { isBooleanType, isVoidType } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";
 import { compileExpression, VOID_RESULT, getLine, getCol } from "./shared.js";
@@ -24,9 +38,7 @@ function emitGuardedFuncRefCast(fctx: FunctionContext, funcTypeIdx: number): voi
       { op: "local.get", index: tmpFunc } as unknown as Instr,
       { op: "ref.cast_null", typeIdx: funcTypeIdx } as unknown as Instr,
     ],
-    else: [
-      { op: "ref.null", typeIdx: funcTypeIdx } as unknown as Instr,
-    ],
+    else: [{ op: "ref.null", typeIdx: funcTypeIdx } as unknown as Instr],
   } as Instr);
 }
 
@@ -72,11 +84,7 @@ export function compileStringLiteral(
  * Materialize a string literal as a NativeString GC struct in fast mode.
  * Emits array.new_fixed with the WTF-16 code units, then struct.new.
  */
-export function compileNativeStringLiteral(
-  ctx: CodegenContext,
-  fctx: FunctionContext,
-  value: string,
-): ValType {
+export function compileNativeStringLiteral(ctx: CodegenContext, fctx: FunctionContext, value: string): ValType {
   const strDataTypeIdx = ctx.nativeStrDataTypeIdx;
   const strTypeIdx = ctx.nativeStrTypeIdx;
 
@@ -224,7 +232,6 @@ export function compileNativeTemplateExpression(
   return nativeStringType(ctx);
 }
 
-
 // ── Tagged template expressions ──────────────────────────────────────
 
 /**
@@ -271,7 +278,11 @@ export function compileTaggedTemplateExpression(
   const baseVecTypeIdx = getOrRegisterVecType(ctx, elemKind, elemWasm);
   const arrTypeIdx = getArrTypeIdxFromVec(ctx, baseVecTypeIdx);
   if (arrTypeIdx < 0) {
-    ctx.errors.push({ message: "Tagged template: invalid vec type for strings array", line: getLine(expr), column: getCol(expr) });
+    ctx.errors.push({
+      message: "Tagged template: invalid vec type for strings array",
+      line: getLine(expr),
+      column: getCol(expr),
+    });
     return null;
   }
 
@@ -352,7 +363,11 @@ export function compileTaggedTemplateExpression(
     if (closureInfo) {
       const localIdx = fctx.localMap.get(tagName);
       if (localIdx === undefined) {
-        ctx.errors.push({ message: `Tagged template: closure variable '${tagName}' not found`, line: getLine(expr), column: getCol(expr) });
+        ctx.errors.push({
+          message: `Tagged template: closure variable '${tagName}' not found`,
+          line: getLine(expr),
+          column: getCol(expr),
+        });
         return null;
       }
 
@@ -428,7 +443,9 @@ export function compileTaggedTemplateExpression(
         // No rest param — push substitutions as positional args
         // Only push up to the number of declared params (excluding captures and strings array)
         const captureCount = nestedCaptures ? nestedCaptures.length : 0;
-        const maxSubs = paramTypes ? Math.min(substitutions.length, paramTypes.length - 1 - captureCount) : substitutions.length;
+        const maxSubs = paramTypes
+          ? Math.min(substitutions.length, paramTypes.length - 1 - captureCount)
+          : substitutions.length;
         for (let i = 0; i < maxSubs; i++) {
           compileExpression(ctx, fctx, substitutions[i]!, paramTypes?.[i + 1 + captureCount]);
         }
@@ -692,10 +709,14 @@ export function compileStringBinaryOp(
         if (funcIdx !== undefined) {
           fctx.body.push({ op: "call", funcIdx });
           fctx.body.push({ op: "i32.const", value: 0 });
-          const cmpOp = op === ts.SyntaxKind.LessThanToken ? "i32.lt_s"
-            : op === ts.SyntaxKind.LessThanEqualsToken ? "i32.le_s"
-            : op === ts.SyntaxKind.GreaterThanToken ? "i32.gt_s"
-            : "i32.ge_s";
+          const cmpOp =
+            op === ts.SyntaxKind.LessThanToken
+              ? "i32.lt_s"
+              : op === ts.SyntaxKind.LessThanEqualsToken
+                ? "i32.le_s"
+                : op === ts.SyntaxKind.GreaterThanToken
+                  ? "i32.gt_s"
+                  : "i32.ge_s";
           fctx.body.push({ op: cmpOp as any });
           return { kind: "i32" };
         }
@@ -830,7 +851,11 @@ export function compileStringBinaryOp(
     addStringConstantGlobal(ctx, "undefined");
     const undefGIdx = ctx.stringGlobalMap.get("undefined")!;
     fctx.body.push({ op: "global.get", index: undefGIdx });
-  } else if (op === ts.SyntaxKind.PlusToken && leftType && (leftType.kind === "f64" || leftType.kind === "i32" || leftType.kind === "i64")) {
+  } else if (
+    op === ts.SyntaxKind.PlusToken &&
+    leftType &&
+    (leftType.kind === "f64" || leftType.kind === "i32" || leftType.kind === "i64")
+  ) {
     if (isBooleanType(leftTsType) && leftType.kind === "i32") {
       // Boolean → "true"/"false" via conditional select of string constants
       emitBoolToString(ctx, fctx);
@@ -864,7 +889,11 @@ export function compileStringBinaryOp(
     addStringConstantGlobal(ctx, "undefined");
     const undefGIdx = ctx.stringGlobalMap.get("undefined")!;
     fctx.body.push({ op: "global.get", index: undefGIdx });
-  } else if (op === ts.SyntaxKind.PlusToken && rightType && (rightType.kind === "f64" || rightType.kind === "i32" || rightType.kind === "i64")) {
+  } else if (
+    op === ts.SyntaxKind.PlusToken &&
+    rightType &&
+    (rightType.kind === "f64" || rightType.kind === "i32" || rightType.kind === "i64")
+  ) {
     if (isBooleanType(rightTsType) && rightType.kind === "i32") {
       emitBoolToString(ctx, fctx);
     } else {
@@ -886,7 +915,11 @@ export function compileStringBinaryOp(
       addStringConstantGlobal(ctx, "undefined");
       fctx.body.push({ op: "global.get", index: ctx.stringGlobalMap.get("undefined")! });
     }
-  } else if (op === ts.SyntaxKind.PlusToken && rightType && (rightType.kind === "ref" || rightType.kind === "ref_null")) {
+  } else if (
+    op === ts.SyntaxKind.PlusToken &&
+    rightType &&
+    (rightType.kind === "ref" || rightType.kind === "ref_null")
+  ) {
     // Struct ref → externref for concat
     fctx.body.push({ op: "extern.convert_any" });
   }
@@ -928,10 +961,14 @@ export function compileStringBinaryOp(
       if (funcIdx !== undefined) {
         fctx.body.push({ op: "call", funcIdx });
         fctx.body.push({ op: "i32.const", value: 0 });
-        const cmpOp = op === ts.SyntaxKind.LessThanToken ? "i32.lt_s"
-          : op === ts.SyntaxKind.LessThanEqualsToken ? "i32.le_s"
-          : op === ts.SyntaxKind.GreaterThanToken ? "i32.gt_s"
-          : "i32.ge_s";
+        const cmpOp =
+          op === ts.SyntaxKind.LessThanToken
+            ? "i32.lt_s"
+            : op === ts.SyntaxKind.LessThanEqualsToken
+              ? "i32.le_s"
+              : op === ts.SyntaxKind.GreaterThanToken
+                ? "i32.gt_s"
+                : "i32.ge_s";
         fctx.body.push({ op: cmpOp as any });
         return { kind: "i32" };
       }
@@ -1082,7 +1119,7 @@ export function compileNativeStringMethodCall(
     if (expr.arguments.length > 1) {
       const argType = compileExpression(ctx, fctx, expr.arguments[1]!, { kind: "f64" });
       if (!argType || argType === VOID_RESULT) {
-        fctx.body.push({ op: "i32.const", value: 0x7FFFFFFF });
+        fctx.body.push({ op: "i32.const", value: 0x7fffffff });
       } else if (argType.kind === "f64") {
         fctx.body.push({ op: "i32.trunc_sat_f64_s" });
       }
@@ -1091,7 +1128,7 @@ export function compileNativeStringMethodCall(
       // We need to get the receiver again — use a temp local
       // Actually, push len from the string on stack — but receiver is consumed.
       // Simpler: push i32.const MAX_INT as sentinel and let helper clamp
-      fctx.body.push({ op: "i32.const", value: 0x7FFFFFFF });
+      fctx.body.push({ op: "i32.const", value: 0x7fffffff });
     }
     const funcIdx = ctx.nativeStrHelpers.get("__str_substring")!;
     fctx.body.push({ op: "call", funcIdx });
@@ -1117,12 +1154,12 @@ export function compileNativeStringMethodCall(
     if (expr.arguments.length > 1) {
       const argType = compileExpression(ctx, fctx, expr.arguments[1]!, { kind: "f64" });
       if (!argType || argType === VOID_RESULT) {
-        fctx.body.push({ op: "i32.const", value: 0x7FFFFFFF });
+        fctx.body.push({ op: "i32.const", value: 0x7fffffff });
       } else if (argType.kind === "f64") {
         fctx.body.push({ op: "i32.trunc_sat_f64_s" });
       }
     } else {
-      fctx.body.push({ op: "i32.const", value: 0x7FFFFFFF });
+      fctx.body.push({ op: "i32.const", value: 0x7fffffff });
     }
     const funcIdx = ctx.nativeStrHelpers.get("__str_slice")!;
     fctx.body.push({ op: "call", funcIdx });
@@ -1169,12 +1206,12 @@ export function compileNativeStringMethodCall(
     if (expr.arguments.length > 1) {
       const argType = compileExpression(ctx, fctx, expr.arguments[1]!, { kind: "f64" });
       if (!argType || argType === VOID_RESULT) {
-        fctx.body.push({ op: "i32.const", value: 0x7FFFFFFF });
+        fctx.body.push({ op: "i32.const", value: 0x7fffffff });
       } else if (argType.kind === "f64") {
         fctx.body.push({ op: "i32.trunc_sat_f64_s" });
       }
     } else {
-      fctx.body.push({ op: "i32.const", value: 0x7FFFFFFF });
+      fctx.body.push({ op: "i32.const", value: 0x7fffffff });
     }
     const funcIdx = ctx.nativeStrHelpers.get("__str_lastIndexOf")!;
     fctx.body.push({ op: "call", funcIdx });
@@ -1245,7 +1282,7 @@ export function compileNativeStringMethodCall(
         fctx.body.push({ op: "i32.trunc_sat_f64_s" });
       }
     } else {
-      fctx.body.push({ op: "i32.const", value: 0x7FFFFFFF });
+      fctx.body.push({ op: "i32.const", value: 0x7fffffff });
     }
     const funcIdx = ctx.nativeStrHelpers.get("__str_endsWith")!;
     fctx.body.push({ op: "call", funcIdx });
@@ -1289,10 +1326,7 @@ export function compileNativeStringMethodCall(
           fctx.body.push({
             op: "if",
             blockType: { kind: "empty" },
-            then: [
-              { op: "global.get", index: strIdx } as Instr,
-              { op: "throw", tagIdx } as Instr,
-            ],
+            then: [{ op: "global.get", index: strIdx } as Instr, { op: "throw", tagIdx } as Instr],
             else: [],
           });
         }
@@ -1326,8 +1360,8 @@ export function compileNativeStringMethodCall(
       emitFlatten();
     } else {
       // Create a single-space native string (len=1, off=0, [32])
-      fctx.body.push({ op: "i32.const", value: 1 });  // len
-      fctx.body.push({ op: "i32.const", value: 0 });  // off
+      fctx.body.push({ op: "i32.const", value: 1 }); // len
+      fctx.body.push({ op: "i32.const", value: 0 }); // off
       fctx.body.push({ op: "i32.const", value: 32 }); // space
       fctx.body.push({ op: "array.new_fixed", typeIdx: ctx.nativeStrDataTypeIdx, length: 1 });
       fctx.body.push({ op: "struct.new", typeIdx: ctx.nativeStrTypeIdx });
@@ -1355,8 +1389,8 @@ export function compileNativeStringMethodCall(
       compileExpression(ctx, fctx, expr.arguments[1]!);
       emitFlatten();
     } else {
-      fctx.body.push({ op: "i32.const", value: 1 });  // len
-      fctx.body.push({ op: "i32.const", value: 0 });  // off
+      fctx.body.push({ op: "i32.const", value: 1 }); // len
+      fctx.body.push({ op: "i32.const", value: 0 }); // off
       fctx.body.push({ op: "i32.const", value: 32 });
       fctx.body.push({ op: "array.new_fixed", typeIdx: ctx.nativeStrDataTypeIdx, length: 1 });
       fctx.body.push({ op: "struct.new", typeIdx: ctx.nativeStrTypeIdx });
@@ -1378,8 +1412,10 @@ export function compileNativeStringMethodCall(
 
   // For replace/replaceAll/split with RegExp args, skip native handlers and
   // fall through to the host import path which properly handles RegExp objects.
-  const firstArgIsRegExp = (method === "replace" || method === "replaceAll" || method === "split") &&
-    expr.arguments.length > 0 && (() => {
+  const firstArgIsRegExp =
+    (method === "replace" || method === "replaceAll" || method === "split") &&
+    expr.arguments.length > 0 &&
+    (() => {
       const argType = ctx.checker.getTypeAtLocation(expr.arguments[0]!);
       const symName = argType.getSymbol()?.getName();
       return symName === "RegExp";
@@ -1402,8 +1438,8 @@ export function compileNativeStringMethodCall(
       emitFlatten();
     } else {
       // default: empty string (len=0, off=0, [])
-      fctx.body.push({ op: "i32.const", value: 0 });  // len
-      fctx.body.push({ op: "i32.const", value: 0 });  // off
+      fctx.body.push({ op: "i32.const", value: 0 }); // len
+      fctx.body.push({ op: "i32.const", value: 0 }); // off
       fctx.body.push({ op: "i32.const", value: 0 });
       fctx.body.push({ op: "array.new_default", typeIdx: ctx.nativeStrDataTypeIdx });
       fctx.body.push({ op: "struct.new", typeIdx: ctx.nativeStrTypeIdx });
@@ -1430,8 +1466,8 @@ export function compileNativeStringMethodCall(
       emitFlatten();
     } else {
       // default: empty string (len=0, off=0, [])
-      fctx.body.push({ op: "i32.const", value: 0 });  // len
-      fctx.body.push({ op: "i32.const", value: 0 });  // off
+      fctx.body.push({ op: "i32.const", value: 0 }); // len
+      fctx.body.push({ op: "i32.const", value: 0 }); // off
       fctx.body.push({ op: "i32.const", value: 0 });
       fctx.body.push({ op: "array.new_default", typeIdx: ctx.nativeStrDataTypeIdx });
       fctx.body.push({ op: "struct.new", typeIdx: ctx.nativeStrTypeIdx });
@@ -1451,8 +1487,8 @@ export function compileNativeStringMethodCall(
       emitFlatten();
     } else {
       // default: empty string separator (split each char) (len=0, off=0, [])
-      fctx.body.push({ op: "i32.const", value: 0 });  // len
-      fctx.body.push({ op: "i32.const", value: 0 });  // off
+      fctx.body.push({ op: "i32.const", value: 0 }); // len
+      fctx.body.push({ op: "i32.const", value: 0 }); // off
       fctx.body.push({ op: "i32.const", value: 0 });
       fctx.body.push({ op: "array.new_default", typeIdx: ctx.nativeStrDataTypeIdx });
       fctx.body.push({ op: "struct.new", typeIdx: ctx.nativeStrTypeIdx });
@@ -1536,7 +1572,11 @@ export function compileNativeStringMethodCall(
     // Compile arguments — string args need flattening + marshaling
     for (const arg of expr.arguments) {
       const argType = compileExpression(ctx, fctx, arg);
-      if (argType && argType.kind === "ref" && (argType.typeIdx === strTypeIdx || argType.typeIdx === ctx.anyStrTypeIdx)) {
+      if (
+        argType &&
+        argType.kind === "ref" &&
+        (argType.typeIdx === strTypeIdx || argType.typeIdx === ctx.anyStrTypeIdx)
+      ) {
         // String arg → flatten + marshal to externref
         emitFlatten();
         fctx.body.push({ op: "call", funcIdx: toExternIdx });
@@ -1571,4 +1611,3 @@ export function compileNativeStringMethodCall(
   });
   return null;
 }
-

@@ -83,7 +83,7 @@ describe("Issue #736: SyntaxError detection at compile time", () => {
   describe("cover initialized name", () => {
     shouldError("({ a = 1 });", "cover initialized name in non-destructuring context");
     // Destructuring context should be fine
-    shouldCompile('var a: number; ({ a = 1 } = { a: 2 });', "cover initialized name in destructuring");
+    shouldCompile("var a: number; ({ a = 1 } = { a: 2 });", "cover initialized name in destructuring");
   });
 
   describe("for-in with destructuring pattern initializer", () => {

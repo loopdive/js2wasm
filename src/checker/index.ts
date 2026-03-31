@@ -4,29 +4,51 @@ import ts from "typescript";
 // Vite externalizes fs, path, module, url — static imports crash in the browser.
 let _path: typeof import("path") | null = null;
 function getPath() {
-  if (!_path) { try { _path = eval('require')('path'); } catch { _path = null; } }
+  if (!_path) {
+    try {
+      _path = eval("require")("path");
+    } catch {
+      _path = null;
+    }
+  }
   return _path;
 }
-function dirname(p: string) { return getPath()?.dirname(p) ?? ""; }
-function join(...args: string[]) { return getPath()?.join(...args) ?? args.join("/"); }
+function dirname(p: string) {
+  return getPath()?.dirname(p) ?? "";
+}
+function join(...args: string[]) {
+  return getPath()?.join(...args) ?? args.join("/");
+}
 let _readFileSync: typeof import("fs").readFileSync | null = null;
 function getReadFileSync() {
   if (!_readFileSync) {
-    try { _readFileSync = eval('require')('fs').readFileSync; } catch { _readFileSync = null; }
+    try {
+      _readFileSync = eval("require")("fs").readFileSync;
+    } catch {
+      _readFileSync = null;
+    }
   }
   return _readFileSync;
 }
 let _createRequire: typeof import("module").createRequire | null = null;
 function getCreateRequire() {
   if (!_createRequire) {
-    try { _createRequire = eval('require')('module').createRequire; } catch { _createRequire = null; }
+    try {
+      _createRequire = eval("require")("module").createRequire;
+    } catch {
+      _createRequire = null;
+    }
   }
   return _createRequire;
 }
 let _fileURLToPath: typeof import("url").fileURLToPath | null = null;
 function getFileURLToPath() {
   if (!_fileURLToPath) {
-    try { _fileURLToPath = eval('require')('url').fileURLToPath; } catch { _fileURLToPath = null; }
+    try {
+      _fileURLToPath = eval("require")("url").fileURLToPath;
+    } catch {
+      _fileURLToPath = null;
+    }
   }
   return _fileURLToPath;
 }
@@ -55,11 +77,7 @@ function getTsLibDir(): string {
       const cr = getCreateRequire();
       const fup = getFileURLToPath();
       if (!cr || !fup) throw new Error("Node.js modules not available");
-      const esmRequire = cr(
-        typeof __filename !== "undefined"
-          ? __filename
-          : fup(import.meta.url),
-      );
+      const esmRequire = cr(typeof __filename !== "undefined" ? __filename : fup(import.meta.url));
       _tsLibDir = dirname(esmRequire.resolve("typescript/lib/lib.d.ts"));
     } catch {
       try {
@@ -178,7 +196,7 @@ function getLibSource(name: string): string | undefined {
       // DOM (decorators loaded via /// <reference> in lib.es5.d.ts)
       "lib.dom.d.ts",
     ];
-    const parts = libNames.map(n => getLibSource(n) ?? "");
+    const parts = libNames.map((n) => getLibSource(n) ?? "");
     const content = parts.join("\n");
     LIB_FILES[name] = content;
     return content;
@@ -199,19 +217,12 @@ function getLibSource(name: string): string | undefined {
 
 /** Check if a file name is a known lib file */
 export function isKnownLibName(name: string): boolean {
-  return (
-    name === "lib.d.ts" ||
-    TS_LIB_NAMES.has(name) ||
-    (name.startsWith("lib.") && name.endsWith(".d.ts"))
-  );
+  return name === "lib.d.ts" || TS_LIB_NAMES.has(name) || (name.startsWith("lib.") && name.endsWith(".d.ts"));
 }
 
 /** Pre-parsed lib SourceFiles — cached to avoid re-parsing on every compile */
 const LIB_SOURCE_FILES = new Map<string, ts.SourceFile>();
-export function getLibSourceFile(
-  name: string,
-  languageVersion: ts.ScriptTarget,
-): ts.SourceFile | undefined {
+export function getLibSourceFile(name: string, languageVersion: ts.ScriptTarget): ts.SourceFile | undefined {
   const content = getLibSource(name);
   if (content === undefined) return undefined;
   const key = `${name}:${languageVersion}`;
@@ -254,11 +265,7 @@ const ES_EARLY_ERROR_CODES = new Set([
  * Parse and type-check a TS or JS source file.
  * In-memory CompilerHost – no filesystem needed.
  */
-export function analyzeSource(
-  source: string,
-  fileName = "input.ts",
-  analyzeOptions?: AnalyzeOptions,
-): TypedAST {
+export function analyzeSource(source: string, fileName = "input.ts", analyzeOptions?: AnalyzeOptions): TypedAST {
   const isJs = fileName.endsWith(".js") || fileName.endsWith(".jsx");
   const scriptKind = isJs ? ts.ScriptKind.JS : ts.ScriptKind.TS;
   const useAllowJs = isJs || analyzeOptions?.allowJs === true;
@@ -274,13 +281,7 @@ export function analyzeSource(
   const compilerHost: ts.CompilerHost = {
     getSourceFile(name, languageVersion) {
       if (name === fileName) {
-        return ts.createSourceFile(
-          name,
-          source,
-          languageVersion,
-          true,
-          scriptKind,
-        );
+        return ts.createSourceFile(name, source, languageVersion, true, scriptKind);
       }
       const libSf = getLibSourceFile(name, languageVersion);
       if (libSf) return libSf;
@@ -414,13 +415,7 @@ export function analyzeMultiSource(
     getSourceFile(name, languageVersion) {
       const userContent = normalizedFiles.get(name);
       if (userContent !== undefined) {
-        return ts.createSourceFile(
-          name,
-          userContent,
-          languageVersion,
-          true,
-          ts.ScriptKind.TS,
-        );
+        return ts.createSourceFile(name, userContent, languageVersion, true, ts.ScriptKind.TS);
       }
       const libSf = getLibSourceFile(name, languageVersion);
       if (libSf) return libSf;
@@ -432,8 +427,7 @@ export function analyzeMultiSource(
     getCanonicalFileName: (f) => f,
     useCaseSensitiveFileNames: () => true,
     getNewLine: () => "\n",
-    fileExists: (name) =>
-      normalizedFiles.has(name) || isKnownLibName(name),
+    fileExists: (name) => normalizedFiles.has(name) || isKnownLibName(name),
     readFile: (name) => normalizedFiles.get(name),
     getDirectories: () => [],
     directoryExists: () => true,
@@ -447,9 +441,7 @@ export function analyzeMultiSource(
           resolved = normalizeFileName(containingDir + moduleName);
         } else {
           // Bare specifier: check the lookup map first, then fall back to normalizeFileName
-          resolved =
-            bareSpecifierLookup.get(moduleName) ??
-            normalizeFileName(moduleName);
+          resolved = bareSpecifierLookup.get(moduleName) ?? normalizeFileName(moduleName);
         }
         if (normalizedFiles.has(resolved)) {
           return {
@@ -509,10 +501,7 @@ export function analyzeMultiSource(
  *
  * Returns a MultiTypedAST suitable for generateMultiModule().
  */
-export function analyzeFiles(
-  entryPath: string,
-  analyzeOptions?: AnalyzeOptions,
-): MultiTypedAST {
+export function analyzeFiles(entryPath: string, analyzeOptions?: AnalyzeOptions): MultiTypedAST {
   const pathMod = require("path") as typeof import("path");
   const resolvedEntry = pathMod.resolve(entryPath);
 

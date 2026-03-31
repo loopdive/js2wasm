@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { compileToWasm, evaluateAsJs, assertEquivalent, buildImports, compile, readFileSync, resolve } from "./helpers.js";
+import {
+  compileToWasm,
+  evaluateAsJs,
+  assertEquivalent,
+  buildImports,
+  compile,
+  readFileSync,
+  resolve,
+} from "./helpers.js";
 
 describe("logical assignment on property access (#415)", () => {
   it("obj.x ??= default when x is defined", async () => {

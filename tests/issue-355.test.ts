@@ -5,7 +5,9 @@ import { buildImports } from "../src/runtime.js";
 async function run(source: string, fn: string, args: unknown[] = []): Promise<unknown> {
   const result = compile(source);
   if (!result.success) {
-    throw new Error(`Compile failed:\n${result.errors.map(e => `  L${e.line}: ${e.message}`).join("\n")}\nWAT:\n${result.wat}`);
+    throw new Error(
+      `Compile failed:\n${result.errors.map((e) => `  L${e.line}: ${e.message}`).join("\n")}\nWAT:\n${result.wat}`,
+    );
   }
   const imports = buildImports(result.imports, undefined, result.stringPool);
   const { instance } = await WebAssembly.instantiate(result.binary, imports);

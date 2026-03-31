@@ -14,7 +14,8 @@ async function run(src: string): Promise<any> {
 describe("Object.keys/values/entries on Wasm structs", () => {
   // -- Object.keys --
   it("Object.keys returns correct keys for object literal", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       export function test(): number {
         const obj = { a: 1, b: 2, c: 3 };
         const keys = Object.keys(obj);
@@ -24,11 +25,13 @@ describe("Object.keys/values/entries on Wasm structs", () => {
         if (keys[2] !== 'c') return 12;
         return 1;
       }
-    `)).toBe(1);
+    `),
+    ).toBe(1);
   });
 
   it("Object.keys works on class instances", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       class Point { x: number; y: number; constructor(x: number, y: number) { this.x = x; this.y = y; } }
       export function test(): number {
         const p = new Point(10, 20);
@@ -38,20 +41,24 @@ describe("Object.keys/values/entries on Wasm structs", () => {
         if (keys[1] !== 'y') return 11;
         return 1;
       }
-    `)).toBe(1);
+    `),
+    ).toBe(1);
   });
 
   it("Object.keys returns empty array for empty object", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       export function test(): number {
         const obj = {};
         return Object.keys(obj).length;
       }
-    `)).toBe(0);
+    `),
+    ).toBe(0);
   });
 
   it("Object.keys works through function parameter", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       function getKeys(obj: {a: number, b: number}): string[] {
         return Object.keys(obj);
       }
@@ -61,21 +68,25 @@ describe("Object.keys/values/entries on Wasm structs", () => {
         if (result[0] !== 'a') return 10;
         return 1;
       }
-    `)).toBe(1);
+    `),
+    ).toBe(1);
   });
 
   it("Object.keys works inline (chained .length)", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       export function test(): number {
         const obj = { a: 1 };
         return Object.keys(obj).length;
       }
-    `)).toBe(1);
+    `),
+    ).toBe(1);
   });
 
   // -- Object.values --
   it("Object.values returns correct values for object literal", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       export function test(): number {
         const obj = { x: 42, y: 99 };
         const vals = Object.values(obj);
@@ -84,11 +95,13 @@ describe("Object.keys/values/entries on Wasm structs", () => {
         if (vals[1] !== 99) return 11;
         return 1;
       }
-    `)).toBe(1);
+    `),
+    ).toBe(1);
   });
 
   it("Object.values works on class instances", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       class Pair { a: number; b: number; constructor(a: number, b: number) { this.a = a; this.b = b; } }
       export function test(): number {
         const p = new Pair(5, 10);
@@ -98,12 +111,14 @@ describe("Object.keys/values/entries on Wasm structs", () => {
         if (vals[1] !== 10) return 11;
         return 1;
       }
-    `)).toBe(1);
+    `),
+    ).toBe(1);
   });
 
   // -- Object.entries --
   it("Object.entries returns correct entries for object literal", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       export function test(): number {
         const obj = { a: 10, b: 20 };
         const entries = Object.entries(obj);
@@ -114,37 +129,44 @@ describe("Object.keys/values/entries on Wasm structs", () => {
         if (entries[1][1] !== 20) return 13;
         return 1;
       }
-    `)).toBe(1);
+    `),
+    ).toBe(1);
   });
 
   // -- Runtime fallback (any type) with host imports --
   it("Object.keys on any-typed object uses host import", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       export function test(): number {
         const obj: any = { a: 1, b: 2 };
         const keys = Object.keys(obj);
         return keys.length;
       }
-    `)).toBe(2);
+    `),
+    ).toBe(2);
   });
 
   it("Object.values on any-typed object uses host import", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       export function test(): number {
         const obj: any = { x: 42 };
         const vals = Object.values(obj);
         return vals.length;
       }
-    `)).toBe(1);
+    `),
+    ).toBe(1);
   });
 
   it("Object.entries on any-typed object uses host import", async () => {
-    expect(await run(`
+    expect(
+      await run(`
       export function test(): number {
         const obj: any = { a: 1, b: 2 };
         const entries = Object.entries(obj);
         return entries.length;
       }
-    `)).toBe(2);
+    `),
+    ).toBe(2);
   });
 });

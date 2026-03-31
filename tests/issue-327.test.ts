@@ -17,114 +17,144 @@ async function run(source: string, fn: string, args: unknown[] = []): Promise<un
 describe("issue-327: Object-to-primitive coercion (valueOf/toString)", () => {
   describe("prefix increment on object", () => {
     it("++{} returns NaN", async () => {
-      const val = await run(`
+      const val = await run(
+        `
         export function test(): number {
           var x: any = {};
           return ++x;
         }
-      `, "test");
+      `,
+        "test",
+      );
       expect(val).toBeNaN();
     });
 
     it("++{} stores NaN back", async () => {
-      const val = await run(`
+      const val = await run(
+        `
         export function test(): number {
           var x: any = {};
           ++x;
           return x;
         }
-      `, "test");
+      `,
+        "test",
+      );
       expect(val).toBeNaN();
     });
   });
 
   describe("prefix decrement on object", () => {
     it("--{} returns NaN", async () => {
-      const val = await run(`
+      const val = await run(
+        `
         export function test(): number {
           var x: any = {};
           return --x;
         }
-      `, "test");
+      `,
+        "test",
+      );
       expect(val).toBeNaN();
     });
 
     it("--{} stores NaN back", async () => {
-      const val = await run(`
+      const val = await run(
+        `
         export function test(): number {
           var x: any = {};
           --x;
           return x;
         }
-      `, "test");
+      `,
+        "test",
+      );
       expect(val).toBeNaN();
     });
   });
 
   describe("postfix increment on object", () => {
     it("{}++ returns NaN (old value)", async () => {
-      const val = await run(`
+      const val = await run(
+        `
         export function test(): number {
           var x: any = {};
           return x++;
         }
-      `, "test");
+      `,
+        "test",
+      );
       expect(val).toBeNaN();
     });
 
     it("{}++ stores NaN back", async () => {
-      const val = await run(`
+      const val = await run(
+        `
         export function test(): number {
           var x: any = {};
           x++;
           return x;
         }
-      `, "test");
+      `,
+        "test",
+      );
       expect(val).toBeNaN();
     });
   });
 
   describe("postfix decrement on object", () => {
     it("{}-- returns NaN (old value)", async () => {
-      const val = await run(`
+      const val = await run(
+        `
         export function test(): number {
           var x: any = {};
           return x--;
         }
-      `, "test");
+      `,
+        "test",
+      );
       expect(val).toBeNaN();
     });
 
     it("{}-- stores NaN back", async () => {
-      const val = await run(`
+      const val = await run(
+        `
         export function test(): number {
           var x: any = {};
           x--;
           return x;
         }
-      `, "test");
+      `,
+        "test",
+      );
       expect(val).toBeNaN();
     });
   });
 
   describe("arithmetic coercion on objects", () => {
     it("unary + on {} returns NaN", async () => {
-      const val = await run(`
+      const val = await run(
+        `
         export function test(): number {
           var x: any = {};
           return +x;
         }
-      `, "test");
+      `,
+        "test",
+      );
       expect(val).toBeNaN();
     });
 
     it("unary - on {} returns NaN", async () => {
-      const val = await run(`
+      const val = await run(
+        `
         export function test(): number {
           var x: any = {};
           return -x;
         }
-      `, "test");
+      `,
+        "test",
+      );
       expect(val).toBeNaN();
     });
   });

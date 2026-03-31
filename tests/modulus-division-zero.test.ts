@@ -14,58 +14,37 @@ async function run(source: string, fn: string, args: unknown[] = []): Promise<un
 
 describe("modulus and division by zero constant folding", () => {
   it("x % 0 produces NaN", async () => {
-    const result = await run(
-      `export function test(): number { return 5 % 0; }`,
-      "test",
-    );
+    const result = await run(`export function test(): number { return 5 % 0; }`, "test");
     expect(result).toBeNaN();
   });
 
   it("0 % 0 produces NaN", async () => {
-    const result = await run(
-      `export function test(): number { return 0 % 0; }`,
-      "test",
-    );
+    const result = await run(`export function test(): number { return 0 % 0; }`, "test");
     expect(result).toBeNaN();
   });
 
   it("x / 0 produces Infinity", async () => {
-    const result = await run(
-      `export function test(): number { return 5 / 0; }`,
-      "test",
-    );
+    const result = await run(`export function test(): number { return 5 / 0; }`, "test");
     expect(result).toBe(Infinity);
   });
 
   it("-x / 0 produces -Infinity", async () => {
-    const result = await run(
-      `export function test(): number { return -5 / 0; }`,
-      "test",
-    );
+    const result = await run(`export function test(): number { return -5 / 0; }`, "test");
     expect(result).toBe(-Infinity);
   });
 
   it("0 / 0 produces NaN", async () => {
-    const result = await run(
-      `export function test(): number { return 0 / 0; }`,
-      "test",
-    );
+    const result = await run(`export function test(): number { return 0 / 0; }`, "test");
     expect(result).toBeNaN();
   });
 
   it("normal modulus still works", async () => {
-    const result = await run(
-      `export function test(): number { return 10 % 3; }`,
-      "test",
-    );
+    const result = await run(`export function test(): number { return 10 % 3; }`, "test");
     expect(result).toBe(1);
   });
 
   it("normal division still works", async () => {
-    const result = await run(
-      `export function test(): number { return 10 / 2; }`,
-      "test",
-    );
+    const result = await run(`export function test(): number { return 10 / 2; }`, "test");
     expect(result).toBe(5);
   });
 });

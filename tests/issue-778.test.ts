@@ -48,7 +48,8 @@ describe("issue-778: illegal cast guards", () => {
 
   it("closure funcref cast is guarded", async () => {
     // Closure dispatch should not trap even with type mismatches
-    const result = compile(`
+    const result = compile(
+      `
       function apply(fn: (x: number) => number, val: number): number {
         return fn(val);
       }
@@ -56,7 +57,9 @@ describe("issue-778: illegal cast guards", () => {
       export function test(): number {
         return apply(double, 5) === 10 ? 1 : 0;
       }
-    `, { fileName: "test.ts" });
+    `,
+      { fileName: "test.ts" },
+    );
     expect(result.success).toBe(true);
     const imports = buildImports(result.imports, undefined, result.stringPool);
     const { instance } = await WebAssembly.instantiate(result.binary, imports);

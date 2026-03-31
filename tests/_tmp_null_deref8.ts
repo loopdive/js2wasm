@@ -42,6 +42,8 @@ if (!result.success) {
 console.log("Compile OK");
 
 const imports = buildImports(result.imports, undefined, result.stringPool);
-WebAssembly.instantiate(result.binary, imports).then(({ instance }) => {
-  console.log("Result:", (instance.exports as any).test());
-}).catch((e: any) => console.log("Runtime error:", e.message));
+WebAssembly.instantiate(result.binary, imports)
+  .then(({ instance }) => {
+    console.log("Result:", (instance.exports as any).test());
+  })
+  .catch((e: any) => console.log("Runtime error:", e.message));

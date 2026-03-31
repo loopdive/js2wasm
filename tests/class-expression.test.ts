@@ -18,10 +18,9 @@ describe("ClassExpression in various positions (#330)", () => {
         return obj.get();
       }
     `);
-    expect(
-      result.success,
-      `Compile failed:\n${result.errors.map((e) => `L${e.line}: ${e.message}`).join("\n")}`,
-    ).toBe(true);
+    expect(result.success, `Compile failed:\n${result.errors.map((e) => `L${e.line}: ${e.message}`).join("\n")}`).toBe(
+      true,
+    );
 
     const { instance } = await WebAssembly.instantiate(result.binary, {
       env: {
@@ -49,10 +48,9 @@ describe("ClassExpression in various positions (#330)", () => {
         return obj.getN();
       }
     `);
-    expect(
-      result.success,
-      `Compile failed:\n${result.errors.map((e) => `L${e.line}: ${e.message}`).join("\n")}`,
-    ).toBe(true);
+    expect(result.success, `Compile failed:\n${result.errors.map((e) => `L${e.line}: ${e.message}`).join("\n")}`).toBe(
+      true,
+    );
 
     const { instance } = await WebAssembly.instantiate(result.binary, {
       env: {
@@ -90,10 +88,9 @@ describe("ClassExpression in various positions (#330)", () => {
         return c.sum();
       }
     `);
-    expect(
-      result.success,
-      `Compile failed:\n${result.errors.map((e) => `L${e.line}: ${e.message}`).join("\n")}`,
-    ).toBe(true);
+    expect(result.success, `Compile failed:\n${result.errors.map((e) => `L${e.line}: ${e.message}`).join("\n")}`).toBe(
+      true,
+    );
 
     const { instance } = await WebAssembly.instantiate(result.binary, {
       env: {
@@ -121,10 +118,9 @@ describe("ClassExpression in various positions (#330)", () => {
         return obj.getV();
       }
     `);
-    expect(
-      result.success,
-      `Compile failed:\n${result.errors.map((e) => `L${e.line}: ${e.message}`).join("\n")}`,
-    ).toBe(true);
+    expect(result.success, `Compile failed:\n${result.errors.map((e) => `L${e.line}: ${e.message}`).join("\n")}`).toBe(
+      true,
+    );
 
     const { instance } = await WebAssembly.instantiate(result.binary, {
       env: {
@@ -151,10 +147,9 @@ describe("ClassExpression in various positions (#330)", () => {
         return obj.getValue();
       }
     `);
-    expect(
-      result.success,
-      `Compile failed:\n${result.errors.map((e) => `L${e.line}: ${e.message}`).join("\n")}`,
-    ).toBe(true);
+    expect(result.success, `Compile failed:\n${result.errors.map((e) => `L${e.line}: ${e.message}`).join("\n")}`).toBe(
+      true,
+    );
 
     const { instance } = await WebAssembly.instantiate(result.binary, {
       env: {
@@ -185,10 +180,9 @@ describe("ClassExpression in various positions (#330)", () => {
         return p1.sum() + p2.sum();
       }
     `);
-    expect(
-      result.success,
-      `Compile failed:\n${result.errors.map((e) => `L${e.line}: ${e.message}`).join("\n")}`,
-    ).toBe(true);
+    expect(result.success, `Compile failed:\n${result.errors.map((e) => `L${e.line}: ${e.message}`).join("\n")}`).toBe(
+      true,
+    );
 
     const { instance } = await WebAssembly.instantiate(result.binary, {
       env: {
@@ -213,10 +207,9 @@ describe("ClassExpression in various positions (#330)", () => {
         return obj.getX();
       }
     `);
-    expect(
-      result.success,
-      `Compile failed:\n${result.errors.map((e) => `L${e.line}: ${e.message}`).join("\n")}`,
-    ).toBe(true);
+    expect(result.success, `Compile failed:\n${result.errors.map((e) => `L${e.line}: ${e.message}`).join("\n")}`).toBe(
+      true,
+    );
 
     const { instance } = await WebAssembly.instantiate(result.binary, {
       env: {
@@ -250,10 +243,9 @@ describe("ClassExpression in various positions (#330)", () => {
         return obj.getVal();
       }
     `);
-    expect(
-      result.success,
-      `Compile failed:\n${result.errors.map((e) => `L${e.line}: ${e.message}`).join("\n")}`,
-    ).toBe(true);
+    expect(result.success, `Compile failed:\n${result.errors.map((e) => `L${e.line}: ${e.message}`).join("\n")}`).toBe(
+      true,
+    );
 
     const { instance } = await WebAssembly.instantiate(result.binary, {
       env: {

@@ -16,7 +16,8 @@ async function run(source: string, fn: string, args: unknown[] = []): Promise<un
 
 describe("issue-336: for-of object destructuring on non-struct refs", () => {
   it("empty object destructuring on booleans", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       export function test(): number {
         let counter = 0;
         const arr: boolean[] = [false];
@@ -25,12 +26,15 @@ describe("issue-336: for-of object destructuring on non-struct refs", () => {
         }
         return counter;
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(val).toBe(1);
   });
 
   it("empty object destructuring on numbers", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       export function test(): number {
         let counter = 0;
         const arr: number[] = [0];
@@ -39,12 +43,15 @@ describe("issue-336: for-of object destructuring on non-struct refs", () => {
         }
         return counter;
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(val).toBe(1);
   });
 
   it("empty object destructuring on strings", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       export function test(): number {
         let counter = 0;
         const arr: string[] = [""];
@@ -53,12 +60,15 @@ describe("issue-336: for-of object destructuring on non-struct refs", () => {
         }
         return counter;
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(val).toBe(1);
   });
 
   it("empty object destructuring on multiple elements", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       export function test(): number {
         let counter = 0;
         const arr: number[] = [1, 2, 3];
@@ -67,12 +77,15 @@ describe("issue-336: for-of object destructuring on non-struct refs", () => {
         }
         return counter;
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(val).toBe(3);
   });
 
   it("empty binding pattern destructuring on numbers", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       export function test(): number {
         let counter = 0;
         const arr: number[] = [42];
@@ -81,12 +94,15 @@ describe("issue-336: for-of object destructuring on non-struct refs", () => {
         }
         return counter;
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(val).toBe(1);
   });
 
   it("empty binding pattern destructuring on booleans", async () => {
-    const val = await run(`
+    const val = await run(
+      `
       export function test(): number {
         let counter = 0;
         const arr: boolean[] = [true, false];
@@ -95,7 +111,9 @@ describe("issue-336: for-of object destructuring on non-struct refs", () => {
         }
         return counter;
       }
-    `, "test");
+    `,
+      "test",
+    );
     expect(val).toBe(2);
   });
 });

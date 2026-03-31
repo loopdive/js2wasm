@@ -9,11 +9,8 @@ import { compile } from "../src/index.js";
 
 function compileWithoutKindCrash(source: string): void {
   const result = compile(source, { allowJs: false });
-  const kindErrors = result.errors.filter(
-    (e) =>
-      e.message.includes(
-        "Cannot read properties of undefined (reading 'kind')",
-      ),
+  const kindErrors = result.errors.filter((e) =>
+    e.message.includes("Cannot read properties of undefined (reading 'kind')"),
   );
   expect(kindErrors).toEqual([]);
 }

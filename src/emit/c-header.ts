@@ -43,10 +43,7 @@ function wasmTypeToCType(type: ValType): string {
  * @param exports - List of exported functions with their signatures
  * @returns The C header file content as a string
  */
-export function generateCHeader(
-  moduleName: string,
-  exports: CHeaderExport[],
-): string {
+export function generateCHeader(moduleName: string, exports: CHeaderExport[]): string {
   const guard = moduleName.toUpperCase().replace(/[^A-Z0-9]/g, "_") + "_H";
 
   const lines: string[] = [];
@@ -61,17 +58,10 @@ export function generateCHeader(
     // Skip memory and non-function exports
     if (exp.name === "memory") continue;
 
-    const returnType =
-      exp.results.length === 0
-        ? "void"
-        : wasmTypeToCType(exp.results[0]!);
+    const returnType = exp.results.length === 0 ? "void" : wasmTypeToCType(exp.results[0]!);
 
     const paramList =
-      exp.params.length === 0
-        ? "void"
-        : exp.params
-            .map((p, i) => `${wasmTypeToCType(p)} p${i}`)
-            .join(", ");
+      exp.params.length === 0 ? "void" : exp.params.map((p, i) => `${wasmTypeToCType(p)} p${i}`).join(", ");
 
     // If there are multiple return values (e.g. string returning ptr+len),
     // we model this as a struct return in the header comment but use the
@@ -83,10 +73,7 @@ export function generateCHeader(
         .slice(1)
         .map((r, i) => `${wasmTypeToCType(r)}* out_${i}`)
         .join(", ");
-      const allParams =
-        exp.params.length === 0
-          ? outParams
-          : `${paramList}, ${outParams}`;
+      const allParams = exp.params.length === 0 ? outParams : `${paramList}, ${outParams}`;
       lines.push(`${returnType} ${exp.name}(${allParams});`);
     } else {
       lines.push(`${returnType} ${exp.name}(${paramList});`);
@@ -105,9 +92,7 @@ export function generateCHeader(
  * Only includes function exports (not memory, tables, etc.)
  */
 export function extractCHeaderExports(mod: WasmModule): CHeaderExport[] {
-  const numImportFuncs = mod.imports.filter(
-    (i) => i.desc.kind === "func",
-  ).length;
+  const numImportFuncs = mod.imports.filter((i) => i.desc.kind === "func").length;
   const result: CHeaderExport[] = [];
 
   for (const exp of mod.exports) {

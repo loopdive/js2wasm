@@ -106,10 +106,7 @@ export function decodeMappings(mappings: string): number[][][] {
  * @param entries Source map entries from binary emission
  * @param sourcesContent Optional map from file name to source content
  */
-export function generateSourceMap(
-  entries: SourceMapEntry[],
-  sourcesContent?: Map<string, string>,
-): SourceMapV3 {
+export function generateSourceMap(entries: SourceMapEntry[], sourcesContent?: Map<string, string>): SourceMapV3 {
   if (entries.length === 0) {
     return {
       version: 3,
@@ -134,9 +131,7 @@ export function generateSourceMap(
   }
 
   // Build sourcesContent array
-  const contentArray: (string | null)[] = sources.map((s) =>
-    sourcesContent?.get(s) ?? null,
-  );
+  const contentArray: (string | null)[] = sources.map((s) => sourcesContent?.get(s) ?? null);
 
   // Generate mappings using Wasm source map convention.
   // For Wasm, each mapping segment contains:
@@ -161,11 +156,7 @@ export function generateSourceMap(
 
     // Encode segment: [generatedColumn, sourceIdx, sourceLine, sourceColumn]
     // In wasm source maps, "generatedColumn" represents the wasm byte offset delta
-    const segment =
-      encodeVLQ(wasmDelta) +
-      encodeVLQ(srcIdxDelta) +
-      encodeVLQ(lineDelta) +
-      encodeVLQ(colDelta);
+    const segment = encodeVLQ(wasmDelta) + encodeVLQ(srcIdxDelta) + encodeVLQ(lineDelta) + encodeVLQ(colDelta);
 
     segments.push(segment);
 

@@ -15,10 +15,7 @@ async function compileAndRun(source: string): Promise<{
   }
 
   const imports = buildImports(result.imports, undefined, result.stringPool);
-  const { instance } = await WebAssembly.instantiate(
-    result.binary,
-    imports as unknown as WebAssembly.Imports,
-  );
+  const { instance } = await WebAssembly.instantiate(result.binary, imports as unknown as WebAssembly.Imports);
   return { exports: instance.exports as any, instance };
 }
 
@@ -151,13 +148,13 @@ describe("generators", () => {
 
     const gen = (exports.addPairs as Function)(10, 3);
     const r1 = gen.next();
-    expect(r1.value).toBe(13);  // 10 + 3
+    expect(r1.value).toBe(13); // 10 + 3
 
     const r2 = gen.next();
-    expect(r2.value).toBe(30);  // 10 * 3
+    expect(r2.value).toBe(30); // 10 * 3
 
     const r3 = gen.next();
-    expect(r3.value).toBe(7);   // 10 - 3
+    expect(r3.value).toBe(7); // 10 - 3
 
     const r4 = gen.next();
     expect(r4.done).toBe(true);

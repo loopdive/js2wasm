@@ -6,11 +6,7 @@ import { buildStringConstants } from "../src/runtime.js";
  * Helper: compile TS source and instantiate with string_constants + polyfill.
  * Returns the Wasm instance exports.
  */
-async function run(
-  source: string,
-  fn: string,
-  args: unknown[] = [],
-): Promise<unknown> {
+async function run(source: string, fn: string, args: unknown[] = []): Promise<unknown> {
   const result = compile(source);
   if (!result.success) {
     throw new Error(
@@ -29,19 +25,15 @@ async function run(
     concat: (a: string, b: string) => a + b,
     length: (s: string) => s.length,
     equals: (a: string, b: string) => (a === b ? 1 : 0),
-    substring: (s: string, start: number, end: number) =>
-      s.substring(start, end),
+    substring: (s: string, start: number, end: number) => s.substring(start, end),
     charCodeAt: (s: string, i: number) => s.charCodeAt(i),
   };
 
-  const { instance } = await WebAssembly.instantiate(
-    result.binary,
-    {
-      env,
-      "wasm:js-string": jsStringPolyfill,
-      string_constants: buildStringConstants(result.stringPool),
-    } as WebAssembly.Imports,
-  );
+  const { instance } = await WebAssembly.instantiate(result.binary, {
+    env,
+    "wasm:js-string": jsStringPolyfill,
+    string_constants: buildStringConstants(result.stringPool),
+  } as WebAssembly.Imports);
   return (instance.exports as any)[fn](...args);
 }
 
@@ -181,12 +173,7 @@ describe("importedStringConstants", () => {
 
   describe("end-to-end execution", () => {
     it("returns a string literal", async () => {
-      expect(
-        await run(
-          `export function hello(): string { return "world"; }`,
-          "hello",
-        ),
-      ).toBe("world");
+      expect(await run(`export function hello(): string { return "world"; }`, "hello")).toBe("world");
     });
 
     it("compares string with literal using ===", async () => {
@@ -304,19 +291,15 @@ describe("importedStringConstants", () => {
         concat: (a: string, b: string) => a + b,
         length: (s: string) => s.length,
         equals: (a: string, b: string) => (a === b ? 1 : 0),
-        substring: (s: string, start: number, end: number) =>
-          s.substring(start, end),
+        substring: (s: string, start: number, end: number) => s.substring(start, end),
         charCodeAt: (s: string, i: number) => s.charCodeAt(i),
       };
 
-      const { instance } = await WebAssembly.instantiate(
-        result.binary,
-        {
-          env,
-          "wasm:js-string": jsStringPolyfill,
-          string_constants: buildStringConstants(result.stringPool),
-        } as WebAssembly.Imports,
-      );
+      const { instance } = await WebAssembly.instantiate(result.binary, {
+        env,
+        "wasm:js-string": jsStringPolyfill,
+        string_constants: buildStringConstants(result.stringPool),
+      } as WebAssembly.Imports);
       const exports = instance.exports as any;
 
       // Module globals work

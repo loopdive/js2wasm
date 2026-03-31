@@ -27,6 +27,8 @@ if (!result.success) {
   process.exit(1);
 }
 console.log("Compile OK, instantiating...");
-WebAssembly.instantiate(result.binary, { env: {} }).then(({ instance }) => {
-  console.log("Result:", (instance.exports as any).test());
-}).catch((e: any) => console.log("Runtime error:", e.message));
+WebAssembly.instantiate(result.binary, { env: {} })
+  .then(({ instance }) => {
+    console.log("Result:", (instance.exports as any).test());
+  })
+  .catch((e: any) => console.log("Runtime error:", e.message));

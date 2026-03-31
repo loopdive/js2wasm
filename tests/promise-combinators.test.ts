@@ -23,13 +23,12 @@ describe("Promise.all / Promise.race", () => {
     ).toBe(true);
 
     class MockSource {
-      getPromises() { return [Promise.resolve(1), Promise.resolve(2), Promise.resolve(3)]; }
+      getPromises() {
+        return [Promise.resolve(1), Promise.resolve(2), Promise.resolve(3)];
+      }
     }
     const imports = buildImports(result.imports, { Source: MockSource }, result.stringPool);
-    const { instance } = await WebAssembly.instantiate(
-      result.binary,
-      imports as WebAssembly.Imports,
-    );
+    const { instance } = await WebAssembly.instantiate(result.binary, imports as WebAssembly.Imports);
     const exports = instance.exports as any;
     // The Wasm function returns an externref (the Promise from Promise.all);
     // await from JS resolves it
@@ -56,13 +55,12 @@ describe("Promise.all / Promise.race", () => {
     ).toBe(true);
 
     class MockSource {
-      getPromises() { return [Promise.resolve(10), Promise.resolve(20), Promise.resolve(30)]; }
+      getPromises() {
+        return [Promise.resolve(10), Promise.resolve(20), Promise.resolve(30)];
+      }
     }
     const imports = buildImports(result.imports, { Source: MockSource }, result.stringPool);
-    const { instance } = await WebAssembly.instantiate(
-      result.binary,
-      imports as WebAssembly.Imports,
-    );
+    const { instance } = await WebAssembly.instantiate(result.binary, imports as WebAssembly.Imports);
     const exports = instance.exports as any;
     const out = await exports.runRace();
     expect(out).toBe(10);

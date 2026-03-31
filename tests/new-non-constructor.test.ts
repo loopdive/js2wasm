@@ -17,7 +17,8 @@ function tryInstantiate(result: CompileResult): string | null {
 
 describe("new on non-constructor builtins (#432)", () => {
   it("new Math.ceil() in assert_throws does not cause stack underflow", () => {
-    const result = compile(`
+    const result = compile(
+      `
       function assert_throws(fn: () => void): void {
         try { fn(); } catch (e) { return; }
       }
@@ -28,7 +29,9 @@ describe("new on non-constructor builtins (#432)", () => {
         });
         return 0;
       }
-    `, { fileName: "test.ts" });
+    `,
+      { fileName: "test.ts" },
+    );
     const err = tryInstantiate(result);
     expect(err).toBeNull();
   });
@@ -38,10 +41,7 @@ describe("new on non-constructor builtins (#432)", () => {
     // The bug was that the __module_init guard preamble shared instruction objects
     // between exported functions, causing double-remapping during dead import
     // elimination when there were many preamble functions.
-    const source = readFileSync(
-      "/workspace/test262/test/built-ins/Math/ceil/not-a-constructor.js",
-      "utf-8"
-    );
+    const source = readFileSync("/workspace/test262/test/built-ins/Math/ceil/not-a-constructor.js", "utf-8");
     const { source: wrapped } = wrapTest(source);
     const result = compile(wrapped, { fileName: "test.ts" });
     const err = tryInstantiate(result);
@@ -52,7 +52,8 @@ describe("new on non-constructor builtins (#432)", () => {
     // Regression test: when there are enough preamble functions that dead
     // import elimination removes several union imports, the guard preamble's
     // call to __module_init must not be double-remapped.
-    const result = compile(`
+    const result = compile(
+      `
 let __fail: number = 0;
 function f1(a: number, b: number): number { if (a === b) return 1; return 0; }
 function f2(a: number, b: number): void { if (!f1(a, b)) { __fail = 1; } }
@@ -73,7 +74,9 @@ export function test(): number {
   if (__fail) { return 0; }
   return 1;
 }
-`, { fileName: "test.ts" });
+`,
+      { fileName: "test.ts" },
+    );
     const err = tryInstantiate(result);
     expect(err).toBeNull();
   });

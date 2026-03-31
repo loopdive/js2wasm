@@ -59,10 +59,7 @@ describe("Issue #841: Math method support", () => {
   it("unknown Math method does not produce compile error", () => {
     // This tests the false positive fix — unknown methods should fall through
     // instead of emitting "Unsupported Math method" errors
-    const compiled = compile(
-      `export function test(): number { return 1; }`,
-      { fileName: "test.ts" },
-    );
+    const compiled = compile(`export function test(): number { return 1; }`, { fileName: "test.ts" });
     // Just verify the compiler doesn't crash on normal code
     expect(compiled.success).toBe(true);
   });

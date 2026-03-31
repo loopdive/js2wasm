@@ -40,8 +40,8 @@ if (!result.success) {
 }
 
 // Print the full WAT for the method function
-const wat = result.wat || '';
-const lines = wat.split('\n');
+const wat = result.wat || "";
+const lines = wat.split("\n");
 let inMethod = false;
 let depth = 0;
 for (const line of lines) {
@@ -51,7 +51,7 @@ for (const line of lines) {
   if (inMethod) {
     console.log(line);
     depth += (line.match(/\(/g) || []).length - (line.match(/\)/g) || []).length;
-    if (depth <= 0 && line.trim().startsWith(')')) {
+    if (depth <= 0 && line.trim().startsWith(")")) {
       break;
     }
   }
