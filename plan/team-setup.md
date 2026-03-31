@@ -42,7 +42,7 @@ The **Tech Lead runs all tests directly** in background — no tester teammate. 
 Use `TeamCreate` to create the team, then spawn roles:
 
 ```
-TeamCreate: "ts2wasm"
+TeamCreate: "js2wasm"
   - developer × 2 max (agent def: .claude/agents/developer.md, isolation: worktree)
   - product-owner on demand (agent def: .claude/agents/product-owner.md)
   - NO tester — TTL runs tests directly
