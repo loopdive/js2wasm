@@ -104,19 +104,28 @@ echo "Memory monitor started (PID $MONITOR_PID, log: $MONITOR_LOG)"
 # Fork uses nproc compiler threads for max CPU utilization.
 cd "$WT_DIR"
 CHUNKS=$(ls tests/test262-chunk*.test.ts 2>/dev/null | sort)
-CHUNK_COUNT=$(echo "$CHUNKS" | wc -l)
-CURRENT=0
 > /tmp/test262-vitest-run.log
 
-for chunk in $CHUNKS; do
-  CURRENT=$((CURRENT + 1))
-  echo ""
-  echo "=== Chunk $CURRENT/$CHUNK_COUNT: $(basename $chunk) ==="
-  npx vitest run "$chunk" \
+if [ -n "$CHUNKS" ]; then
+  # Chunk mode: run each chunk file separately, fork dies between each
+  CHUNK_COUNT=$(echo "$CHUNKS" | wc -l)
+  CURRENT=0
+  for chunk in $CHUNKS; do
+    CURRENT=$((CURRENT + 1))
+    echo ""
+    echo "=== Chunk $CURRENT/$CHUNK_COUNT: $(basename $chunk) ==="
+    npx vitest run "$chunk" \
+      --reporter=verbose \
+      "$@" 2>&1 | tee -a /tmp/test262-vitest-run.log || true
+    echo "Chunk $CURRENT/$CHUNK_COUNT done."
+  done
+else
+  # Single file mode: run the monolithic test file
+  echo "Running single test file..."
+  npx vitest run tests/test262-vitest.test.ts \
     --reporter=verbose \
-    "$@" 2>&1 | tee -a /tmp/test262-vitest-run.log || true
-  echo "Chunk $CURRENT/$CHUNK_COUNT done."
-done
+    "$@" 2>&1 | tee /tmp/test262-vitest-run.log || true
+fi
 # Generate report.json from JSONL (atomic — no fork race condition)
 JSONL_FILE="$RESULTS_DIR/test262-results.jsonl"
 REPORT_FILE="$RESULTS_DIR/test262-report.json"
