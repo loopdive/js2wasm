@@ -248,6 +248,19 @@ export function test262Plugin(): Plugin {
           return;
         }
 
+        // Lightweight summary: categories with counts only, no file lists (~2KB vs ~500KB)
+        if (url.pathname === "/api/test262-index-summary") {
+          const index = getIndex();
+          const summary = index.categories.map(c => ({
+            name: c.name,
+            path: c.path,
+            fileCount: c.fileCount,
+          }));
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({ categories: summary }));
+          return;
+        }
+
         if (url.pathname === "/api/test262-files") {
           const cat = url.searchParams.get("category");
           if (!cat) {

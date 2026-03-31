@@ -8,7 +8,7 @@ Team structure via `TeamCreate`:
 - **Up to 8 dev teammates** when no tests running (worktree isolation, any task, ~500MB each)
 - **PO on demand** (spawn when plan/ needs updating, shut down when idle)
 - **No tester teammate** — TTL runs tests directly in background
-- Container: 14GB RAM, 28GB swap
+- Container: 16GB RAM, 32GB swap
 
 Full config: `plan/team-setup.md`
 

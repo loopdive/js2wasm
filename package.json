@@ -1,5 +1,5 @@
 {
-  "name": "ts2wasm",
+  "name": "js2wasm",
   "version": "0.1.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -11,7 +11,7 @@
     "registry": "https://npm.pkg.github.com"
   },
   "bin": {
-    "ts2wasm": "./dist/cli.js"
+    "js2wasm": "./dist/cli.js"
   },
   "exports": {
     ".": {

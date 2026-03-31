@@ -1,6 +1,11 @@
 import ts from "typescript";
 import * as path from "path";
-import * as fs from "fs";
+// Lazy-load fs for browser compatibility (Vite externalizes Node.js modules)
+let _fs: typeof import("fs") | null = null;
+function getFs() {
+  if (!_fs) { try { _fs = eval('require')('fs'); } catch { _fs = null; } }
+  return _fs;
+}
 import type { CompileOptions } from "./index.js";
 
 /**
@@ -41,21 +46,21 @@ export class ModuleResolver {
     this.host = {
       fileExists: (fileName) => {
         try {
-          return fs.statSync(fileName).isFile();
+          return getFs()!.statSync(fileName).isFile();
         } catch {
           return false;
         }
       },
       readFile: (fileName) => {
         try {
-          return fs.readFileSync(fileName, "utf-8");
+          return getFs()!.readFileSync(fileName, "utf-8");
         } catch {
           return undefined;
         }
       },
       directoryExists: (dirName) => {
         try {
-          return fs.statSync(dirName).isDirectory();
+          return getFs()!.statSync(dirName).isDirectory();
         } catch {
           return false;
         }
@@ -63,7 +68,7 @@ export class ModuleResolver {
       getCurrentDirectory: () => rootDir,
       getDirectories: (dirPath) => {
         try {
-          return fs
+          return getFs()!
             .readdirSync(dirPath, { withFileTypes: true })
             .filter((d) => d.isDirectory())
             .map((d) => d.name);
@@ -73,7 +78,7 @@ export class ModuleResolver {
       },
       realpath: (p) => {
         try {
-          return fs.realpathSync(p);
+          return getFs()!.realpathSync(p);
         } catch {
           return p;
         }
@@ -87,13 +92,13 @@ export class ModuleResolver {
   private loadTsconfigPaths(): Partial<ts.CompilerOptions> {
     const tsconfigPath = path.join(this.rootDir, "tsconfig.json");
     try {
-      if (!fs.statSync(tsconfigPath).isFile()) return {};
+      if (!getFs()!.statSync(tsconfigPath).isFile()) return {};
     } catch {
       return {};
     }
 
     const configFile = ts.readConfigFile(tsconfigPath, (p) =>
-      fs.readFileSync(p, "utf-8"),
+      getFs()!.readFileSync(p, "utf-8"),
     );
     if (configFile.error || !configFile.config) return {};
 
@@ -213,7 +218,7 @@ export function resolveAllImports(
 
     let content: string;
     try {
-      content = fs.readFileSync(filePath, "utf-8");
+      content = getFs()!.readFileSync(filePath, "utf-8");
     } catch {
       // File not found — skip (TS will report errors)
       continue;

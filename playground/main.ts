@@ -855,7 +855,9 @@ test262Panel.innerHTML = `
 `;
 
 interface T262Category { name: string; path: string; fileCount: number; files: string[]; }
-let t262Index: T262Category[] | null = null;
+interface T262CategorySummary { name: string; path: string; fileCount: number; }
+let t262Index: T262CategorySummary[] | null = null;
+const t262FilesCache = new Map<string, string[]>();
 
 // ── Test262 results data ──
 interface T262Report {
@@ -919,12 +921,21 @@ let t262Debounce: ReturnType<typeof setTimeout> | null = null;
 let t262ActivePath = "";
 let t262Loading = false;
 
-async function t262LoadIndex(): Promise<T262Category[]> {
+async function t262LoadIndex(): Promise<T262CategorySummary[]> {
   if (t262Index) return t262Index;
-  const resp = await fetch("/api/test262-index");
+  // Use summary endpoint — no file lists, ~2KB instead of ~500KB
+  const resp = await fetch("/api/test262-index-summary");
   const data = await resp.json();
-  t262Index = data.categories as T262Category[];
+  t262Index = data.categories as T262CategorySummary[];
   return t262Index;
+}
+
+async function t262LoadFiles(category: string): Promise<string[]> {
+  if (t262FilesCache.has(category)) return t262FilesCache.get(category)!;
+  const resp = await fetch(`/api/test262-files?category=${encodeURIComponent(category)}`);
+  const files = await resp.json() as string[];
+  t262FilesCache.set(category, files);
+  return files;
 }
 
 async function t262LoadFile(path: string): Promise<string> {
@@ -979,10 +990,10 @@ interface T262TreeNode {
   name: string;       // segment name (e.g. "Math")
   fullPath: string;   // full path up to this node (e.g. "built-ins/Math")
   children: Map<string, T262TreeNode>;
-  categories: T262Category[];  // leaf categories at this node
+  categories: T262CategorySummary[];  // leaf categories at this node
 }
 
-function t262BuildTree(cats: T262Category[]): T262TreeNode {
+function t262BuildTree(cats: T262CategorySummary[]): T262TreeNode {
   const root: T262TreeNode = { name: "", fullPath: "", children: new Map(), categories: [] };
   for (const cat of cats) {
     const parts = cat.name.split("/");
@@ -1108,7 +1119,10 @@ async function t262Render() {
   function nodeMatchesFilter(node: T262TreeNode, f: string): boolean {
     if (node.fullPath.toLowerCase().includes(f)) return true;
     for (const cat of node.categories) {
-      if (cat.files.some(file => file.toLowerCase().includes(f))) return true;
+      if (cat.name.toLowerCase().includes(f) || cat.path.toLowerCase().includes(f)) return true;
+      // Check cached file lists (if already loaded)
+      const cached = t262FilesCache.get(cat.path);
+      if (cached?.some(file => file.toLowerCase().includes(f))) return true;
     }
     for (const child of node.children.values()) {
       if (nodeMatchesFilter(child, f)) return true;
@@ -1199,9 +1213,11 @@ async function t262Render() {
           await renderNode(child, el, depth + 1);
         }
         for (const cat of child.categories) {
+          // Lazy-load file list on demand (#868)
+          const allFiles = await t262LoadFiles(cat.path);
           const displayFiles = filter
-            ? cat.files.filter(f => f.toLowerCase().includes(filter))
-            : cat.files;
+            ? allFiles.filter(f => f.toLowerCase().includes(filter))
+            : allFiles;
 
           const filesEl = document.createElement("div");
           filesEl.className = "t262-files";

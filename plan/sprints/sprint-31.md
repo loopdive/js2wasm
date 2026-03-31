@@ -2,7 +2,7 @@
 
 **Date**: 2026-03-30
 **Goal**: Re-apply sprint-31 fixes without regressions. Test262 between EVERY merge.
-**Baseline**: 18,599 pass / 48,088 total (38.7%)
+**Baseline**: 15,246 pass / 48,174 total (31.7%) — honest baseline, no cache, negative test bug fixed
 
 ## Learnings from Sprint 31
 
@@ -23,6 +23,7 @@
 
 | Order | Issue | Risk | Impact | Notes |
 |-------|-------|------|--------|-------|
+| 0 | #891 | Low | Infra | Apply test262 learnings (fork pool, memory isolation) to equiv tests — unblocks team scaling |
 | 1 | #839 | Low | 40 CE | Tail call guard — isolated to statements.ts |
 | 2 | #866 | Low | 71 FAIL | sNaN sentinel — isolated changes |
 | 3 | #854 | Low | 32 FAIL | WasmGC iterable — runtime.ts only |

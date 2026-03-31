@@ -24,15 +24,15 @@ parentPort.on("message", async (msg) => {
   const { id, imports, stringPool, isRuntimeNegative } = msg;
   // Read binary from disk (cachePath) or use inline binary — avoids
   // copying large Uint8Arrays through the fork's heap on cache hits.
-  const binary = msg.cachePath ? readFileSync(msg.cachePath) : msg.binary;
+  let binary = msg.cachePath ? readFileSync(msg.cachePath) : msg.binary;
   const reply = (data) => parentPort.postMessage({ id, ...data });
 
+  let instance;
   try {
     // Build the import object
     const importObj = buildImports(imports, undefined, stringPool);
 
     // Instantiate the Wasm module
-    let instance;
     try {
       const result = await WebAssembly.instantiate(binary, importObj);
       instance = result.instance;
@@ -119,5 +119,9 @@ parentPort.on("message", async (msg) => {
       error: outerErr.message ?? String(outerErr),
       instantiateError: true,
     });
+  } finally {
+    // Drop references to Wasm module so GC can collect compiled code
+    instance = null;
+    binary = null;
   }
 });
