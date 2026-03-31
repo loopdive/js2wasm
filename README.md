@@ -6,7 +6,9 @@
 
 AOT compiler that compiles Javascript directly to WebAssembly with the GC proposal.
 
-Runs entirely in the browser – no server, no build step for user code.
+The goal of this project is to compile existing Javascript code to WebAssembly efficiently in terms of performance and module size without requiring to ship a JS runtime with it. This allows to run Javscript code in places where shipping a JS runtime in the module is prohibitively slow and heavy (embedded, serverless) and also aims to provide an opportunity for module based intra process sandboxing to reduce the blast radius if a module turns out to be adversarial by limiting its permissions to a deny by default security model with Object Capabilities (OCap) to contain supply chain attacks.
+
+The compiler itself is based on Typescript 6 and needs a JS runtime to compile JS or TS to .wasm which can also be done in the browser or locally with Node.js.
 
 ```
 JS/TS Source (String) → tsc Parser+Checker → Codegen → Wasm GC Binary (Uint8Array) → WebAssembly.instantiate()
@@ -61,20 +63,29 @@ export function main(): void {
 }
 ```
 
-renders this in the browser:
+![Playground](./playground.png)
 
-![Screenshot](./screenshot.png)
+## Try it
 
-The module analyzer shows the size of the WebAssembly binary and the WAT text for the compiled module.
+**[Live Playground →](https://js2wasm.loopdive.com)** — compile and run TypeScript as WebAssembly in your browser. No install needed.
 
-![Module Analyzer](./treemap.png)
+The playground was built for dogfooding and analysis during development. It provides:
+
+- **Live compiler** — edit TypeScript, see compiled Wasm instantly (< 50ms for small programs)
+- **Preview panel** — rendered output with DOM API support (the default example is a booking calendar rendered entirely by WebAssembly)
+- **WAT inspector** — view the generated WebAssembly Text Format for any compiled module
+- **Module analyzer** — treemap visualization of binary size by function
+- **Import/export viewer** — see what the module imports from the host and what it exports
+- **Error diagnostics** — TypeScript errors and Wasm validation errors with source locations
+- **test262 explorer** — browse and run ECMAScript conformance tests against the compiler
+- **Multiple examples** — DOM manipulation, async/await, generators, classes, TypedArrays
 
 ## Quickstart
 
 ```bash
 pnpm install
 pnpm test        # 195 tests
-pnpm dev         # Start playground
+pnpm dev         # Start playground locally
 ```
 
 ## CLI
@@ -141,7 +152,7 @@ Returns only the WAT text (debug).
 
 ## ES Conformance
 
-js2wasm passes **18,167 / 47,797** tests from the [ECMAScript test262 conformance suite](https://github.com/nicolo-ribaudo/tc39-proposal-test262) (38%). Conformance is improving with each release.
+js2wasm passes **17,265 / 48,088** tests from the [ECMAScript test262 conformance suite](https://github.com/tc39/test262) (35.9%). Conformance is improving with each sprint — see the [live dashboard](https://js2wasm.loopdive.com/dashboard/) for the latest numbers and trend charts.
 
 ### What Works Well
 
