@@ -2,7 +2,7 @@
   <img src="./jswasmlogo.png" alt="js2wasm" width="300" />
 </p>
 
-# js2wasm ECMAScript to WebAssembly Compiler
+# js2wasm - ECMAScript to WebAssembly Compiler
 
 AOT compiler that compiles Javascript directly to WebAssembly with the GC proposal.
 

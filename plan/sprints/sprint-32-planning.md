@@ -1,103 +1,89 @@
-# Sprint 32 — Planning Notes
+# Sprint 32 — Planning Notes (STF Presentability)
 
-**Date**: 2026-03-29
+**Date**: 2026-03-31
 **Participants**: PO (planning), Tech Lead (dispatch)
-**Baseline**: 18,599 pass / 48,088 total (38.7%) — sprint 31 still in progress
-
-## Goal
-
-Cross 40% pass rate (need ~637 more passes above baseline). Sprint 31 in-progress work (#826, #854, #851, #862) should get us close; sprint 32 aims to push solidly past 40% and toward 42-43%.
-
-## Issue validation (PO smoke-tested against current main)
-
-| Issue | Sample test | Result | Verdict |
-|-------|------------|--------|---------|
-| #840 (31 CE) | concat/S15.4.4.4_A1_T3.js | RT: undefined (crash) | **REAL** — concat 0-arg still broken |
-| #829 (141 CE) | assignment/target-assignment.js | PASS | **LIKELY FIXED** — 4/4 samples compile OK |
-| #849 (200 FAIL) | arguments-object/mapped-arguments-nonconfigurable-2.js | CE: type mismatch | **REAL** — CE at instantiate |
-| #854 (126 FAIL) | for-of/Array.prototype.entries.js | FAIL(2) | **REAL** — in sprint 31 |
-| #856 (136 FAIL) | Object/defineProperties/15.2.3.7-6-a-12.js | RT: opaque | **REAL** — opaque object issue |
-| #844 (85 CE) | AggregateError/cause-property.js | RT: not iterable | **REAL** — CE at new expression |
-| #822 (907 CE) | class/dstr/async-gen-meth-dflt-obj-ptrn-prop-obj.js | CE: not enough args struct.new | **REAL** — still ~907 CE |
-| #826 (~489 FAIL) | destructuring/initialization-returns-normal-completion.js | PASS | **PARTIAL** — some fixed, others still fail (826b: CE, 826c: illegal cast) |
-| #858 (182 FAIL) | eval-code/direct/arrow-fn-...arguments-assign.js | RT: null deref | **REAL** — null pointer in eval |
-| #851 (147 FAIL) | async-generator/named-yield-star-getiter-async-get-abrupt.js | PASS | **PARTIAL** — some sync paths fixed, async-gen may still fail (in sprint 31) |
-| #845 (340 CE) | array/spread-err-mult-err-obj-unresolvable.js | CE: type mismatch | **REAL** — misc CE |
-| #855 (210 FAIL) | Promise/all/S25.4.4.1_A1.1_T1.js | PASS (simple cases) | **PARTIAL** — simple Promise tests pass, complex async likely still fail |
-
-## Issues to close (already fixed)
-
-- **#829** (141 CE): All 4 sample tests compile and pass. Recommend closing with verification run.
+**Context**: Sovereign Technology Fund application — repo must demonstrate maturity, rigor, and clear direction
 
 ## Prioritization rationale
 
-**Strategy**: Focus on medium-difficulty, high-impact issues. #822 (907 CE) is the elephant but needs architect — park it for sprint 33. Stack easy/medium wins to build momentum.
+**Strategy**: Maximize first-impression impact for STF reviewers. A funding application reviewer will: (1) read the README, (2) check the roadmap, (3) look for a demo, (4) evaluate engineering practices. We order tasks to match this evaluation path.
 
-**Sprint 32 picks** (ordered by value):
+### Priority 1: README (#885) — Critical
 
-1. **#845** (340 CE, hard) — misc CE, multiple sub-patterns. Biggest bang. **Needs architect spec** — too many sub-patterns for a dev to triage solo.
-2. **#858** (182 FAIL, medium) — eval null deref. Clear root cause (scope chain not initialized). Dev-ready.
-3. **#849** (200 FAIL, medium) — mapped arguments. CE at instantiation. Clear root cause. Dev-ready but complex semantics.
-4. **#856** (136 FAIL, medium) — wrong error type. Property descriptor validation. Dev-ready, coordinates with #797.
-5. **#844** (85 CE, medium) — new AggregateError + primitive wrappers. Dev-ready, clear scope.
-6. **#840** (31 CE, easy) — concat/push/splice 0-arg. Quick win. Dev-ready.
-7. **#831** (242 FAIL, medium) — negative test gaps. SyntaxError detection. Dev-ready.
-8. **#863** (70 FAIL, medium) — decodeURI failures. Clear scope.
+**Why first**: The README is the single most impactful artifact. STF reviewers will judge the project in 30 seconds based on it. Current README has outdated numbers and lacks the comparison table that shows js2wasm's unique position.
 
-**Total estimated impact**: ~1,200+ tests (CE + FAIL reduction)
+**Effort**: Easy (1-2h). Content exists — needs assembly and updating.
 
-## Feasibility assessment
+**Key deliverables**:
+- Real conformance number (16,013 / 48,088 = 33.3%)
+- Comparison table vs Javy, Porffor, JAWSM, StarlingMonkey
+- Architecture diagram (TypeScript → parser → codegen → WasmGC → .wasm)
+- "Why js2wasm" section: no vendor lock-in, standalone WASI, WasmGC native
+- Quick-start example
 
-| Issue | Feasibility | Needs architect? | Files touched |
-|-------|------------|------------------|---------------|
-| #845 | hard | **YES** — too many sub-patterns | expressions.ts, statements.ts, index.ts |
-| #858 | medium | No — clear root cause | expressions.ts (eval scope chain) |
-| #849 | medium | Recommended | index.ts, statements.ts (mapped arguments) |
-| #856 | medium | No — descriptor validation | expressions.ts (defineProperty) |
-| #844 | medium | No — add new cases | expressions.ts (NewExpression) |
-| #840 | easy | No | expressions.ts (array methods) |
-| #831 | medium | No — AST checks | index.ts (early error detection) |
-| #863 | medium | No | runtime.ts (URI encoding) |
+### Priority 2: ROADMAP (#887) — Critical
+
+**Why second**: Funding bodies need to see a clear trajectory. What's been achieved, what's planned, why it matters for digital sovereignty.
+
+**Effort**: Easy (1-2h). Sprint history and goal data are all in `plan/`.
+
+**Key deliverables**:
+- Vision statement (AOT JS→Wasm, no runtime, platform-independent)
+- Achieved section (768+ issues, 33.3% conformance, dual mode, generators, async, TypedArray)
+- Near/medium/long-term roadmap with targets
+- Sovereign technology relevance section
+
+### Priority 3: GitHub Pages (#883) — High
+
+**Why third**: A live demo is more compelling than screenshots. The playground already works locally — just needs deployment.
+
+**Effort**: Easy (2-3h). Vite build works. Need GitHub Actions workflow + Pages config.
+
+**Notes**: URL should be updated from ts2wasm to js2wasm.
+
+### Priority 4: Conformance report (#886) — High
+
+**Why fourth**: Shows engineering rigor. A public chart of conformance progress over 31 sprints demonstrates consistent, measurable improvement.
+
+**Effort**: Easy (2-3h). Dashboard chart code exists. Need static build + data pipeline.
+
+**Depends on**: #883 (Pages deployment infrastructure).
+
+### Priority 5: CI pipeline (#884) — High
+
+**Why fifth**: STF reviewers will check for CI. Automated testing on PRs shows maturity.
+
+**Effort**: Medium (3-4h). Needs GitHub Actions workflow, cache config, runner sizing.
+
+**Depends on**: #882 (sharded runner) for full test262. Can start with equiv tests only.
+
+### Already done: Benchmarks (#888)
+
+Committed at 6b486bf9. Results show js2wasm produces 100-1000x smaller Wasm output than Javy/StarlingMonkey (which bundle interpreter runtimes). This is the strongest competitive differentiator.
+
+## Dev assignment
+
+| Dev | Tasks | Rationale |
+|-----|-------|-----------|
+| dev-1 | #885 → #883 → #884 | README first (content), then infrastructure (Pages, CI) — natural flow |
+| dev-2 | #887 → #886 | ROADMAP (content), then conformance page (builds on Pages) |
+
+**Parallelism**: dev-1 and dev-2 work fully independently on tasks 1-2. Task 3-4 can overlap. Task 5 is last because it has a dependency.
+
+## Risk assessment
+
+| Risk | Mitigation |
+|------|------------|
+| GitHub Pages URL still shows ts2wasm | Update repo settings; redirects may work automatically |
+| #884 blocked by #882 (sharded runner) | Start with equiv-tests-only CI; add test262 shard later |
+| Conformance number lower than expected (33.3% after exception tag fix) | Frame as "honest baseline" — show trajectory, not just current number |
+| README comparison table data incomplete | Use known data from existing blog post + benchmark results |
 
 ## Decisions
 
 | Proposal | Decision | Rationale |
 |----------|----------|-----------|
-| #822 in sprint 32 | **Deferred to 33** | Still ~907 CE but repair-pass approach already failed once (+6K regression). Needs fresh architect analysis. |
-| #845 needs architect | **Accepted** | 6+ sub-patterns in different codegen areas — dev needs a roadmap |
-| #849 needs architect | **Recommended** | Mapped arguments is tricky (bidirectional sync, defineProperty interaction) |
-| #829 close | **Accepted** | 4/4 samples pass, likely fixed by prior destructuring work |
-| #855 defer | **Deferred** | Promise/async is hard, partial fixes already landed; complex remaining cases need architect |
-| Max 3 dev tasks for sprint | **Accepted** | Maintain 1-task-per-dev discipline from sprint 31 |
-
-## Task queue (2 devs)
-
-**Dev-1 path**: #858 → #844 → #840
-**Dev-2 path**: #856 → #831 → #863
-**Architect**: Spec #845, then spec #849 — devs pick these up after initial tasks
-
-| Order | Issue | Impact | Dev | Depends on | Files |
-|-------|-------|--------|-----|------------|-------|
-| 1 | #858 | 182 FAIL | dev-1 | — | expressions.ts |
-| 2 | #856 | 136 FAIL | dev-2 | — | expressions.ts (defineProperty) |
-| 3 | #844 | 85 CE | dev-1 | #858 done | expressions.ts (NewExpression) |
-| 4 | #831 | 242 FAIL | dev-2 | #856 done | index.ts |
-| 5 | #840 | 31 CE | dev-1 | #844 done | expressions.ts (array methods) |
-| 6 | #863 | 70 FAIL | dev-2 | #831 done | runtime.ts |
-| 7 | #845 | 340 CE | next avail | architect spec | expressions.ts, statements.ts |
-| 8 | #849 | 200 FAIL | next avail | architect spec | index.ts, statements.ts |
-
-## Expected impact
-
-| Issue | Type | Est. tests fixed |
-|-------|------|------------------|
-| #858 | FAIL | ~120 |
-| #856 | FAIL | ~100 |
-| #844 | CE | ~35 |
-| #831 | FAIL | ~150 |
-| #840 | CE | ~31 |
-| #863 | FAIL | ~50 |
-| #845 (if architect specs) | CE | ~200 |
-| #849 (if architect specs) | FAIL | ~150 |
-| **Committed (1-6)** | | **~486 tests** |
-| **Stretch (7-8)** | | **+350 tests** |
+| Include #888 in sprint | **Already done** | Benchmark committed. Just reference results. |
+| 2 devs sufficient | **Yes** | All tasks are easy-medium effort. No architect needed. |
+| Skip compiler work this sprint | **Yes** | Presentability sprint — compiler fixes resume in sprint 33. |
+| Use js2wasm everywhere | **Yes** | Repo was renamed. All new content uses js2wasm. |
