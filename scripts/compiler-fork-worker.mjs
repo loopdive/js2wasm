@@ -1,11 +1,12 @@
 /**
  * Compiler fork worker — runs as a child process (not worker thread).
  * Uses process.send/process.on('message') for IPC.
- * Binary is base64-encoded since IPC can't transfer raw Uint8Array.
+ * Writes compiled .wasm + .json directly to disk (no binary over IPC).
  *
  * Launched by CompilerPool via child_process.fork().
- * --expose-gc and --max-old-space-size=384 are passed via execArgv.
+ * --expose-gc and --max-old-space-size=512 are passed via execArgv.
  */
+import { writeFileSync } from "node:fs";
 import { compile, createIncrementalCompiler } from "./compiler-bundle.mjs";
 
 let compileCount = 0;
@@ -53,20 +54,51 @@ process.on("message", (msg) => {
       const errorCodes = result.errors
         .filter(e => e.severity === "error" && e.code)
         .map(e => e.code);
+
+      // Write error to disk if cachePath provided
+      if (msg.wasmPath && msg.metaPath) {
+        writeFileSync(msg.wasmPath, new Uint8Array(0));
+        writeFileSync(msg.metaPath, JSON.stringify({
+          ok: false,
+          timeout: false,
+          error: errMsg || "unknown",
+          errorCodes,
+          compileMs,
+        }));
+      }
+
       process.send({ id: msg.id, ok: false, error: errMsg || "unknown", errorCodes, compileMs });
       return;
     }
 
-    // Base64-encode binary for IPC (can't send raw Uint8Array over fork IPC)
-    process.send({
-      id: msg.id,
-      ok: true,
-      binary: Buffer.from(result.binary).toString("base64"),
-      stringPool: result.stringPool,
-      imports: result.imports,
-      sourceMap: result.sourceMap || null,
-      compileMs,
-    });
+    // Write binary + metadata directly to disk (no base64 over IPC)
+    if (msg.wasmPath && msg.metaPath) {
+      writeFileSync(msg.wasmPath, result.binary);
+      writeFileSync(msg.metaPath, JSON.stringify({
+        ok: true,
+        stringPool: result.stringPool,
+        imports: result.imports,
+        sourceMap: result.sourceMap || null,
+        compileMs,
+      }));
+      process.send({
+        id: msg.id,
+        ok: true,
+        compileMs,
+        writtenToDisk: true,
+      });
+    } else {
+      // Fallback: send binary over IPC (for callers that don't provide paths)
+      process.send({
+        id: msg.id,
+        ok: true,
+        binary: Buffer.from(result.binary).toString("base64"),
+        stringPool: result.stringPool,
+        imports: result.imports,
+        sourceMap: result.sourceMap || null,
+        compileMs,
+      });
+    }
   } catch (err) {
     process.send({
       id: msg.id,

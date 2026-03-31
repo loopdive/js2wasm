@@ -160,7 +160,8 @@ async function processBatch(tests: typeof allTests, pool: CompilerPool) {
 
         const isNegative = meta.negative && (meta.negative.phase === "parse" || meta.negative.phase === "early" || meta.negative.phase === "resolution");
 
-        const result = await pool.compile(wrapped, 20_000, false, undefined, relPath);
+        // Worker writes .wasm + .json directly to disk (no binary over IPC)
+        const result = await pool.compile(wrapped, 20_000, false, undefined, relPath, cachePath, metaPath);
         if (result.ok) {
           let earlyErrorCodes: number[] | undefined;
           if (isNegative) {
@@ -171,27 +172,27 @@ async function processBatch(tests: typeof allTests, pool: CompilerPool) {
             }
           }
 
-          await writeFile(cachePath, result.binary);
-          await writeFile(metaPath, JSON.stringify({
-            ok: true,
-            stringPool: result.stringPool,
-            imports: result.imports,
-            sourceMap: result.sourceMap,
-            compileMs: result.compileMs,
-            earlyErrorCodes: earlyErrorCodes?.length ? earlyErrorCodes : undefined,
-          }));
+          // Worker already wrote to disk; only update metadata if we have earlyErrorCodes
+          if (earlyErrorCodes?.length) {
+            const meta = JSON.parse(await readFile(metaPath, "utf-8"));
+            meta.earlyErrorCodes = earlyErrorCodes;
+            await writeFile(metaPath, JSON.stringify(meta));
+          }
           recordCompileResult(relPath, category, "compiled", undefined, result.compileMs);
           compiled++;
         } else {
+          // Worker already wrote error files to disk if paths were provided
           const isTimeout = result.error?.includes("timeout");
-          await writeFile(cachePath, new Uint8Array(0));
-          await writeFile(metaPath, JSON.stringify({
-            ok: false,
-            timeout: isTimeout,
-            error: result.error,
-            errorCodes: (result as any).errorCodes,
-            compileMs: result.compileMs,
-          }));
+          if (isTimeout) {
+            // Timeout means worker was killed — write error files ourselves
+            await writeFile(cachePath, new Uint8Array(0));
+            await writeFile(metaPath, JSON.stringify({
+              ok: false,
+              timeout: true,
+              error: result.error,
+              compileMs: result.compileMs,
+            }));
+          }
           recordCompileResult(relPath, category, isTimeout ? "compile_timeout" : "compile_error", result.error, result.compileMs);
           errors++;
         }
