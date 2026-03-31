@@ -622,9 +622,10 @@ export function compileObjectLiteralForStruct(
       if (!found) {
         // Default value for missing fields: use "undefined" sentinels so
         // destructuring default-value checks can detect missing properties.
-        // f64 uses NaN as undefined sentinel (matches emitDefaultValueCheck).
+        // f64 uses sNaN sentinel 0x7FF00000DEADC0DE (matches emitDefaultValueCheck #866).
         if (field.type.kind === "f64") {
-          fctx.body.push({ op: "f64.const", value: NaN });
+          fctx.body.push({ op: "i64.const", value: 0x7FF00000DEADC0DEn } as unknown as Instr);
+          fctx.body.push({ op: "f64.reinterpret_i64" } as unknown as Instr);
         } else if (field.type.kind === "externref") {
           fctx.body.push({ op: "ref.null.extern" });
         } else if (field.type.kind === "eqref") {
@@ -1059,9 +1060,10 @@ export function compileTupleLiteral(
       compileExpression(ctx, fctx, expr.elements[i]!, expectedType);
     } else {
       // Missing element — push sentinel value that destructuring recognizes as
-      // "absent": NaN for f64, ref.null for refs/externref, 0 for i32 (#852).
+      // "absent": sNaN sentinel for f64, ref.null for refs/externref, 0 for i32 (#852, #866).
       if (expectedType.kind === "f64") {
-        fctx.body.push({ op: "f64.const", value: NaN });
+        fctx.body.push({ op: "i64.const", value: 0x7FF00000DEADC0DEn } as unknown as Instr);
+        fctx.body.push({ op: "f64.reinterpret_i64" } as unknown as Instr);
       } else if (expectedType.kind === "i32") {
         fctx.body.push({ op: "i32.const", value: 0 });
       } else if (expectedType.kind === "externref") {

@@ -209,7 +209,7 @@ if [ "$COMPLETED" = true ]; then
 
   # Append to historical index
   if [ -f "$RUN_REPORT" ]; then
-    RUNS_DIR="$MAIN_DIR/runs"
+    RUNS_DIR="$RESULTS_DIR/runs"
     mkdir -p "$RUNS_DIR"
     INDEX_FILE="$RUNS_DIR/index.json"
     if [ ! -f "$INDEX_FILE" ]; then echo '[]' > "$INDEX_FILE"; fi
@@ -220,7 +220,8 @@ entry = {
     'timestamp': '$RUN_TIMESTAMP',
     'pass': report['summary']['pass'],
     'fail': report['summary']['fail'],
-    'compile_error': report['summary'].get('compile_error', 0),
+    'ce': report['summary'].get('compile_error', 0),
+    'skip': report['summary'].get('skip', 0),
     'total': report['summary']['total'],
 }
 with open('$INDEX_FILE') as f: idx = json.load(f)

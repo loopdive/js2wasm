@@ -20113,27 +20113,59 @@ export function tryStaticToNumber(
       }
     }
   }
-  // Object literal: check valueOf or return NaN for {}
+  // Object literal: check valueOf, then toString per ToPrimitive spec (#866)
+  // Only fold when we can fully statically resolve the return value.
+  // If valueOf/toString have side effects (throw, etc.), bail out to runtime.
   if (ts.isObjectLiteralExpression(expr)) {
+    // Empty object literal {} → ToNumber({}) = NaN per spec
+    if (expr.properties.length === 0) return NaN;
+    // Try valueOf first (hint "number")
     const valueOfProp = expr.properties.find(
       (p) =>
         ts.isPropertyAssignment(p) &&
         ts.isIdentifier(p.name) &&
         p.name.text === "valueOf",
     );
-    if (!valueOfProp || !ts.isPropertyAssignment(valueOfProp)) {
-      // {} or object without valueOf → ToNumber = NaN
-      return NaN;
+    if (valueOfProp && ts.isPropertyAssignment(valueOfProp)) {
+      const init = valueOfProp.initializer;
+      if (ts.isFunctionExpression(init) || ts.isArrowFunction(init)) {
+        // Check if valueOf returns a non-primitive (object/array) — ToPrimitive
+        // falls through to toString in that case, so we can't use valueOf's result
+        const returnExpr = getReturnExpression(init);
+        if (returnExpr && (ts.isObjectLiteralExpression(returnExpr) || ts.isArrayLiteralExpression(returnExpr))) {
+          // valueOf returns a non-primitive → fall through to toString
+        } else {
+          const retVal = getStaticReturnValue(ctx, init);
+          if (retVal !== undefined) return retVal;
+          // valueOf exists but can't be statically resolved (may throw, have side effects)
+          // → bail out to runtime, don't fold
+          return undefined;
+        }
+      } else {
+        // valueOf is not a function literal → can't fold
+        return undefined;
+      }
     }
-    // valueOf is a function expression — analyze its return value
-    const init = valueOfProp.initializer;
-    if (ts.isFunctionExpression(init) || ts.isArrowFunction(init)) {
-      const retVal = getStaticReturnValue(ctx, init);
-      if (retVal !== undefined) return retVal;
-      // valueOf function returns void → ToNumber(undefined) = NaN
-      if (returnsVoid(init)) return NaN;
+    // No valueOf → try toString (ToPrimitive fallback per JS spec)
+    const toStringProp = expr.properties.find(
+      (p) =>
+        ts.isPropertyAssignment(p) &&
+        ts.isIdentifier(p.name) &&
+        p.name.text === "toString",
+    );
+    if (toStringProp && ts.isPropertyAssignment(toStringProp)) {
+      const init = toStringProp.initializer;
+      if (ts.isFunctionExpression(init) || ts.isArrowFunction(init)) {
+        const retVal = getStaticReturnValue(ctx, init);
+        if (retVal !== undefined) return retVal;
+        // toString exists but can't be statically resolved → bail to runtime
+        return undefined;
+      }
+      // toString is not a function literal → can't fold
+      return undefined;
     }
-    return NaN; // Fallback for objects: ToNumber always produces NaN for non-primitive valueOf
+    // No valueOf or toString → NaN (spec: ToNumber({}) = NaN)
+    return NaN;
   }
   // Parenthesized expression: unwrap parentheses
   if (ts.isParenthesizedExpression(expr)) {
@@ -20183,15 +20215,17 @@ function getStaticReturnValue(
   return undefined;
 }
 
-/** Check if a function body returns void (no return statement or return without value) */
-function returnsVoid(fn: ts.FunctionExpression | ts.ArrowFunction): boolean {
+/** Get the return expression of a simple function (single return statement) */
+function getReturnExpression(fn: ts.FunctionExpression | ts.ArrowFunction): ts.Expression | undefined {
   const body = fn.body;
-  if (!ts.isBlock(body)) return false; // expression body always has a value
+  if (!ts.isBlock(body)) return body; // arrow expression body
   for (const stmt of body.statements) {
-    if (ts.isReturnStatement(stmt) && stmt.expression) return false;
+    if (ts.isReturnStatement(stmt) && stmt.expression) return stmt.expression;
   }
-  return true; // No return with value found
+  return undefined;
 }
+
+
 
 function isStaticNaN(ctx: CodegenContext, expr: ts.Expression): boolean {
   // NaN identifier
